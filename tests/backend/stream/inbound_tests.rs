@@ -952,6 +952,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "needs-ask",
         // 答一条挂着的待答请求：锁一下登记表、交通道，不碰盘不起进程 ⇒ 异步档、不阻塞。
         "needs-answer",
+        // 撤一组复制 · 删除 · 改权限：只锁一下票表、立旗，不碰盘 ⇒ 异步档、不阻塞。
+        "files-batch-stop",
         // 在 app 里登录：起登录子命令、等它打印链接（有界）⇒ 硬臂里的阻塞档；粘码 · 等它换完（有界）· 读账号清单 ⇒ 阻塞档；收作业只锁一下表，也放阻塞档（同族一档）。
         "login-start",
         "login-finish",

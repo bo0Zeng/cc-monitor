@@ -546,11 +546,16 @@ where
     if write(line, &local, &mkdir).await.is_ok() {
         let chmod = w::FilesChmodReq {
             root: w::WirePath::from(own.as_str()),
-            rel: w::WirePath::from("staging"),
+            items: vec![w::ChmodItem {
+                rel: w::WirePath::from("staging"),
+            }],
             mode: STAGING_MODE,
+            ticket: None,
         };
-        if let Err(e) = write(line, &local, &chmod).await {
-            return failed(e.into());
+        if let Err(f) =
+            super::source::ask_one(line, &local, &chmod, super::writeops::WRITE_BUDGET).await
+        {
+            return failed(f);
         }
     }
     let key = uuid::Uuid::new_v4().simple().to_string();
@@ -621,10 +626,12 @@ async fn write<C: cmd_wire::files::Call>(
 fn delete_req(root: &str, rel: &str) -> cmd_wire::files::FilesDeleteReq {
     cmd_wire::files::FilesDeleteReq {
         root: cmd_wire::files::WirePath::from(root),
-        rel: cmd_wire::files::WirePath::from(rel),
-        recursive: None,
-        expect: None,
-        limit: None,
+        items: vec![cmd_wire::files::DeleteItem {
+            rel: cmd_wire::files::WirePath::from(rel),
+            recursive: None,
+            expect: None,
+        }],
+        ticket: None,
     }
 }
 

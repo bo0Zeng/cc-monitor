@@ -438,7 +438,7 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
     // 目录**摆得出**「复制为」框了（后端 `recursive: true`），框里记着「源是目录」
-    //   ⇒ 那一趟线上带 `recursive: true`（`copy_tests::a_directory_job_says_recursive_and_its_reply_must_count`）。
+    //   ⇒ 那一趟线上与文件同形，后端按源判、整棵复制（`copy_tests::a_directory_job_goes_as_the_same_item_and_its_outcome_counts`）。
     assert!(w.begin_copy(0), "目录摆不出「复制为」框");
     let job = w
         .copy_prompt()
@@ -2876,7 +2876,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     wait_for(&wired, "files-copy", 1).await;
     assert_eq!(
         last_args(&wired, "files-copy"),
-        serde_json::json!({ "root": b16(b"/srv/d\xff"), "from": b16(b"f\xfe"), "to": "g", "overwrite": false })
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }], "on_exists": "ask" })
     );
     assert_eq!(
         last_args(&wired, "files-stat")["path"],
@@ -2895,7 +2895,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     wait_for(&wired, "files-delete", 1).await;
     assert_eq!(
         last_args(&wired, "files-delete"),
-        serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "rel": b16(b"f\xfe") }] })
     );
     // 有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
     // 搜索（当前目录以下）：范围、浏览名单与重走的根按字节上线。

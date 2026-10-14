@@ -271,8 +271,6 @@ pub struct FakeBackend {
     pub grep_reply: Option<serde_json::Value>,
     /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
-    /// `files-delete` 一趟一趟回的「还剩几条」（取一个用一个；用完 ⇒ 不带这一格，即删完了）。
-    pub delete_left: std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<u64>>>,
     /// 路径换名（截图那几张）：`(窗口看到的前缀, 盘上真的前缀)` —— 进来的参数把前者换成后者再答，答出去的再换回来，
     /// 窗口里的面包屑就是一台真机器那样的 `/home/user/…`，看不到沙箱路径。
     pub alias: Option<(String, String)>,
@@ -294,7 +292,6 @@ impl FakeBackend {
             hold_rebuild: None,
             grep_reply: None,
             hold_grep: None,
-            delete_left: Default::default(),
             alias: None,
         }
     }
@@ -875,16 +872,18 @@ impl FakeBackend {
                         None,
                     );
                 }
-                // 应答照新后端：`files` / `dirs` 恒在；带 `recursive: true` ⇒ 按「一棵」回一组定值。
-                let tree = args.get("recursive").and_then(|v| v.as_bool()) == Some(true);
+                // 应答照后端：一组一项，那一项带 `files` / `dirs`；源名没有扩展名（合成目录 `a/d`）⇒ 按「一棵」回一组定值。
+                let from = args["items"][0]["from"].as_str().unwrap_or("");
+                let tree = !crate::source::remote_basename(from).contains('.');
                 let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
                 (
                     true,
                     None,
                     None,
-                    Some(
-                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs, "links": 0 }),
-                    ),
+                    Some(serde_json::json!({
+                        "outcomes": [{ "key": "0", "state": "done", "path": root, "bytes": 42, "files": files, "dirs": dirs }],
+                        "said": "已复制 1 项",
+                    })),
                 )
             }
             // 写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
@@ -943,17 +942,18 @@ impl FakeBackend {
                         None,
                     );
                 }
-                let mut reply = serde_json::json!({ "path": root });
-                // 改权限：回改之前的位（撤销据它；合成值恒 0o644）。
-                if cmd == "files-chmod" {
-                    reply["mode"] = args.get("mode").cloned().unwrap_or_default();
-                    reply["before"] = serde_json::json!(0o644);
-                }
-                if cmd == "files-delete" {
-                    let n = self.delete_left.lock().unwrap().pop_front().unwrap_or(0);
-                    reply["removed"] = serde_json::json!(1);
-                    reply["remaining"] = serde_json::json!(n);
-                }
+                let reply = match cmd {
+                    // 改权限：一组一项，回改之前的位（撤销据它；合成值恒 0o644）。
+                    "files-chmod" => serde_json::json!({
+                        "outcomes": [{ "key": "0", "state": "done", "path": root, "before": 0o644 }],
+                        "said": "已改权限 1 项",
+                    }),
+                    "files-delete" => serde_json::json!({
+                        "outcomes": [{ "key": "0", "state": "done", "path": root, "removed": 1 }],
+                        "said": "已删除 1 项",
+                    }),
+                    _ => serde_json::json!({ "path": root }),
+                };
                 (true, None, None, Some(reply))
             }
             // 新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，

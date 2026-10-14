@@ -308,6 +308,10 @@ pub fn host_env_from(
         .collect()
 }
 
+/// 一段路径的原始字节（线上那一形：UTF-8 是串，别的是 `{b16}`）。
+type PathBytes = files_wire::WirePath;
+use cmd_wire::files as files_wire;
+
 /// 后端发给客户端的一帧；`kind` 是标签，例如 `{"kind":"hello","v":1,...}`。
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -775,6 +779,22 @@ pub enum Frame {
         /// 只在最后一帧：这一趟怎么收场的。
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TransferEnd>,
+    },
+
+    /// **同一台上一组（复制 · 删除 · 改权限）此刻做到哪了**（`control/files_batch.rs`，带票的那一组在做时才出现）。
+    ///
+    /// 每一帧都是一整份快照，按变更合并（堵住时只留最新那一格）；结局在那一问的应答里，不在这里。
+    /// 走应答那条独立通道，与 [`Frame::Transfer`] 同。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
+    FilesBatch {
+        /// 那一组的票（发起时交来的，本后端只当不透明的串回填）。
+        ticket: String,
+        /// 做完了几项。
+        done: u64,
+        /// 一共几项。
+        total: u64,
+        /// 手上那一项（根底下的相对段）；做完了缺席。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current: Option<PathBytes>,
     },
 
     /// 〔「测试连接的进度不许倒退」〕**测试连接那一趟的一格进度**（`dial/probe.rs`，`remote-probe` 在跑时才出现）。
@@ -1280,6 +1300,8 @@ impl Frame {
             Frame::Transfer { .. } => false,
             // 测试连接的进度 / 结局：同上（走应答通道）。
             Frame::Probe { .. } => false,
+            // 一组的进度：只是快照（结局在应答里），但走应答通道、不丢。
+            Frame::FilesBatch { .. } => false,
             // SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对），丢了由位置号 `n` 原位说出来。
             // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
             Frame::LiveCard(_) => true,
@@ -1321,6 +1343,7 @@ impl Frame {
             | Frame::LinkEnd { .. }
             | Frame::Transfer { .. }
             | Frame::Probe { .. }
+            | Frame::FilesBatch { .. }
             | Frame::TerminalScreen { .. }
             | Frame::TerminalFollowEnd { .. } => None,
         }
@@ -1360,6 +1383,7 @@ impl Frame {
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
+            Frame::FilesBatch { ticket, .. } => ("files_batch", Some(ticket.clone())),
             Frame::LiveCard(l) => ("live_card", Some(l.sid.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
             Frame::SessionBranch { sid, .. } => ("session_branch", Some(sid.clone())),

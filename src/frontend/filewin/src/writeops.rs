@@ -357,10 +357,10 @@ pub async fn apply_typed(
 pub enum Applied {
     /// 新建目录 · 改名：落点。
     Path(cmd_wire::files::FilesPathReply),
-    /// 删（整棵树时是最后那一趟）。
-    Deleted(cmd_wire::files::FilesDeleteReply),
-    /// 改权限。
-    Chmod(cmd_wire::files::FilesChmodReply),
+    /// 删（`files-delete` 一组一项的那一项）。
+    Deleted(cmd_wire::batch::BatchOutcome),
+    /// 改权限（同上；`before` 撤销用）。
+    Chmod(cmd_wire::batch::BatchOutcome),
 }
 
 /// 尾段：有损名发原始字节，否则发那一串。
@@ -413,23 +413,21 @@ async fn apply_named(
             };
             ask_typed(line, origin, &req, t).await.map(Applied::Path)
         }
-        // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析）；文件 ⇒ 不带（射程同此前）。
-        // 删一整棵树：一趟一段（`limit`），`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
-        // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。
+        // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析、按段删）；文件 ⇒ 不带（射程同此前）。
+        // 一组一项（`files-delete` 收一组）。
         WriteOp::Delete { path, is_dir, raw } => {
             let req = w::FilesDeleteReq {
                 root: root(parent_dir(path)),
-                rel: rel_wire(remote_basename(path), raw.as_deref()),
-                recursive: is_dir.then_some(true),
-                expect: None,
-                limit: is_dir.then_some(TREE_SLICE),
+                items: vec![w::DeleteItem {
+                    rel: rel_wire(remote_basename(path), raw.as_deref()),
+                    recursive: is_dir.then_some(true),
+                    expect: None,
+                }],
+                ticket: None,
             };
-            loop {
-                let d = ask_typed(line, origin, &req, t).await?;
-                if d.remaining == 0 {
-                    return Ok(Applied::Deleted(d));
-                }
-            }
+            super::source::ask_one(line, origin, &req, t)
+                .await
+                .map(Applied::Deleted)
         }
         WriteOp::Rename { from, to, raw } => {
             let dir = parent_dir(from);
@@ -455,10 +453,15 @@ async fn apply_named(
         WriteOp::Chmod { path, mode, raw } => {
             let req = w::FilesChmodReq {
                 root: root(parent_dir(path)),
-                rel: rel_wire(remote_basename(path), raw.as_deref()),
+                items: vec![w::ChmodItem {
+                    rel: rel_wire(remote_basename(path), raw.as_deref()),
+                }],
                 mode: *mode,
+                ticket: None,
             };
-            ask_typed(line, origin, &req, t).await.map(Applied::Chmod)
+            super::source::ask_one(line, origin, &req, t)
+                .await
+                .map(Applied::Chmod)
         }
     }
 }
@@ -474,10 +477,6 @@ pub fn budget_for(op: &WriteOp) -> std::time::Duration {
 /// 删一整棵树的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
 /// 每条两次路径解析 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
 pub const TREE_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
-
-/// 删一整棵树时一趟让后端删几条（删够了停在两条之间、回还剩几条）：列一遍剩下的树 ＋ 删这一段
-/// 要落在一趟的等待（[`TREE_BUDGET`]）里；后端不看钟，一趟多大由这一侧定。
-pub const TREE_SLICE: u64 = 10_000;
 
 /// 删这一行的那一件（有损名带着原始字节）。窗口上「删除」那一跳（单删 · 批量删）只经这一处拼。
 pub fn delete_op(r: &Listed) -> WriteOp {

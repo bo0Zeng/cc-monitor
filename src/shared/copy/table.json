@@ -10561,10 +10561,58 @@
       "zh": "{path} 不是普通文件 · 复制目录要带 recursive",
       "args": ["path"]
     },
-    "beFilesWrite.copy.recursiveOverwrite": {
+    "beFiles.batch.verbCopy": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "复制",
+      "args": []
+    },
+    "beFiles.batch.verbDelete": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "删除",
+      "args": []
+    },
+    "beFiles.batch.verbChmod": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改权限",
+      "args": []
+    },
+    "beFiles.batch.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已{action} {n} 项",
+      "args": ["action", "n"]
+    },
+    "beFiles.batch.doneInto": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已{action} {n} 项 → {dir}",
+      "args": ["action", "n", "dir"]
+    },
+    "beFiles.batch.partial": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad}",
+      "args": ["action", "n", "ok", "skip", "bad"]
+    },
+    "beFiles.batch.stopped": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad} · 已取消 {left}",
+      "args": ["action", "n", "ok", "skip", "bad", "left"]
+    },
+    "beFiles.batch.clash": {
       "kind": "error",
       "role": "报错",
-      "zh": "程序出错",
+      "zh": "同名 {n} 项",
+      "args": ["n"]
+    },
+    "beFiles.batch.mintSpent": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已存在",
       "args": []
     },
     "beFilesWrite.copyTree.kindLink": {
@@ -27948,6 +27996,30 @@
       "kind": "error",
       "role": "原因格",
       "zh": "原因不明",
+      "args": []
+    },
+    "reason.code.refused": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "被拒",
+      "args": []
+    },
+    "reason.code.stale": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已在别处改过",
+      "args": []
+    },
+    "reason.code.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "不支持",
+      "args": []
+    },
+    "reason.code.badName": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "名称无效",
       "args": []
     },
     "reason.spawn.notInstalled": {

@@ -336,22 +336,22 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
         (
             "copy",
             "files-copy",
-            json!({ "root": r, "from": "moved.txt", "to": "copied.txt" }),
+            json!({ "root": r, "items": [{ "from": "moved.txt", "to": "copied.txt" }] }),
         ),
         (
             "copy-tree",
             "files-copy",
-            json!({ "root": r, "from": "tree", "to": "tree2", "recursive": true }),
+            json!({ "root": r, "items": [{ "from": "tree", "to": "tree2" }] }),
         ),
         (
             "chmod-first",
             "files-chmod",
-            json!({ "root": r, "rel": "copied.txt", "mode": 384 }),
+            json!({ "root": r, "items": [{ "rel": "copied.txt" }], "mode": 384 }),
         ),
         (
             "chmod",
             "files-chmod",
-            json!({ "root": r, "rel": "copied.txt", "mode": 416 }),
+            json!({ "root": r, "items": [{ "rel": "copied.txt" }], "mode": 416 }),
         ),
         (
             "write-text",
@@ -391,27 +391,22 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
         (
             "delete",
             "files-delete",
-            json!({ "root": r, "rel": "copied.txt" }),
+            json!({ "root": r, "items": [{ "rel": "copied.txt" }] }),
         ),
         (
             "delete-expect",
             "files-delete",
-            json!({ "root": r, "rel": "moved.txt", "expect": "abcd" }),
+            json!({ "root": r, "items": [{ "rel": "moved.txt", "expect": "abcd" }] }),
         ),
         (
             "delete-empty-dir",
             "files-delete",
-            json!({ "root": r, "rel": "dir1", "expect": { "empty_dir": true } }),
-        ),
-        (
-            "delete-tree-slice",
-            "files-delete",
-            json!({ "root": r, "rel": "tree2", "recursive": true, "limit": 2 }),
+            json!({ "root": r, "items": [{ "rel": "dir1", "expect": { "empty_dir": true } }] }),
         ),
         (
             "delete-tree",
             "files-delete",
-            json!({ "root": r, "rel": "tree2", "recursive": true }),
+            json!({ "root": r, "items": [{ "rel": "tree2", "recursive": true }] }),
         ),
         (
             "extract",

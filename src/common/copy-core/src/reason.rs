@@ -38,6 +38,28 @@ pub fn sftp_status_reason(code: u32) -> String {
     }
 }
 
+/// 一条写命令的码（文件管理那一族的闭集）→ 原因词；`io_failed` 照下层原话里系统那个错号说（`(os error N)`，没有 ⇒「原因不明」）。
+/// 一组里没做成的那一项只带码与原话，原因词在这里定（全仓这一张表只住这里）。
+pub fn code_reason(code: &str, raw: Option<&str>) -> String {
+    match code {
+        "exists" => io_reason(std::io::ErrorKind::AlreadyExists),
+        "refused" | "bad_path" => copy_text("reason.code.refused", &[]),
+        "stale" => copy_text("reason.code.stale", &[]),
+        "no_unix_mode" => copy_text("reason.code.unsupported", &[]),
+        "bad_name" => copy_text("reason.code.badName", &[]),
+        _ => io_reason(os_kind(raw.unwrap_or_default())),
+    }
+}
+
+/// 系统原话里那个错号（`... (os error 13)`）→ 那一种 IO 错；没有错号 ⇒ `Other`。
+fn os_kind(raw: &str) -> std::io::ErrorKind {
+    raw.rsplit_once("(os error ")
+        .and_then(|(_, tail)| tail.split_once(')'))
+        .and_then(|(n, _)| n.trim().parse::<i32>().ok())
+        .map(|n| std::io::Error::from_raw_os_error(n).kind())
+        .unwrap_or(std::io::ErrorKind::Other)
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/copy-core/reason_tests.rs"]
 mod tests;

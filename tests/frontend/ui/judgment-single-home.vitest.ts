@@ -704,6 +704,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
   "cmd-wire": {
     LOCAL: "J36",
+    // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。
+    bare: NONE,
     is_local: "J36",
     is_remote: "J36",
     // 本机那一个 · 远端名 · 线上那个串 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
@@ -792,6 +794,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     truncate_raw: NONE,
     // 下层 IO 错 → 原因词（`reason` 模块）：后端 · 壳写句子时取词，TS 侧不碰 IO 错，没有孪生。
     io_reason: NONE,
+    // 写命令的码 → 原因词（同一模块）：一组里没做成的那一项只带码与原话，后端拼结局时取词；TS 侧照回包里那个词画，没有孪生。
+    code_reason: NONE,
     // SFTP 状态码 → 原因词（同一模块）：只有后端的 SFTP 那一层用，TS 侧没有孪生。
     sftp_status_reason: NONE,
     // 子进程起不来 → 原因词（同一模块）：只有后端起子进程那一口用，TS 侧不起进程，没有孪生。

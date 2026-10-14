@@ -485,12 +485,14 @@ fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory
         serde_json::to_value(copy_args(&job(), true).unwrap()).unwrap(),
         serde_json::json!({
             "root": "/srv/data",
-            "from": "big.bin",
-            "to": "big.bin.copy",
-            "overwrite": true,
+            "items": [{ "from": "big.bin", "to": "big.bin.copy" }],
+            "on_exists": "overwrite",
         })
     );
-    assert_eq!(copy_args(&job(), false).unwrap().overwrite, Some(false));
+    assert_eq!(
+        copy_args(&job(), false).unwrap().on_exists,
+        Some(cmd_wire::batch::OnExists::Ask)
+    );
     let elsewhere = CopyJob {
         from: "/srv/data/big.bin".into(),
         to: "/srv/other/big.bin".into(),
@@ -530,7 +532,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
         wired.log.lock().unwrap().clone(),
         vec![serde_json::json!({
             "cmd": CMD_COPY,
-            "args": {"root": "/srv/data", "from": "big.bin", "to": "big.bin.copy", "overwrite": true},
+            "args": {"root": "/srv/data", "items": [{"from": "big.bin", "to": "big.bin.copy"}], "on_exists": "overwrite"},
         })],
         "线上那一行不是「根 ＋ 两个尾段 ＋ 覆盖策略」"
     );
@@ -578,7 +580,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         prod.len()
     );
     // 〔有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
-    for needle in ["source::ask_typed(", "transfer::probe_remote_at("] {
+    for needle in ["source::ask_one(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
@@ -605,7 +607,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         );
     }
     // 反空真：这把尺子认得出「有」。
-    assert!(prod.contains("source::ask_typed("));
+    assert!(prod.contains("source::ask_one("));
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -736,21 +738,20 @@ async fn a_failure_in_a_batch_is_named_and_does_not_stop_the_rest() {
     );
 }
 
-/// 目录那一件线上多 `recursive: true`；文件那一件一个键都不多。应答解析：文件那件在旧后端（没有 `files` / `dirs`）上按「一个文件」记，目录那件缺键就报错。
+/// 目录那一件与文件那一件线上同形（后端按源判、目录整棵复制）。应答那一项带几个字节 · 几份文件 · 几个目录。
 #[test]
-fn a_directory_job_says_recursive_and_its_reply_must_count() {
+fn a_directory_job_goes_as_the_same_item_and_its_outcome_counts() {
     let f = CopyJob::beside("/srv/a/x", "/srv/a", "y").unwrap();
     let d = CopyJob::beside("/srv/a/x", "/srv/a", "y")
         .unwrap()
         .dir(true);
-    assert_eq!(copy_args(&f, false).unwrap().recursive, None);
-    assert_eq!(copy_args(&d, false).unwrap().recursive, Some(true));
-    let new = cmd_wire::files::FilesTreeReply {
-        path: cmd_wire::files::WirePath::from("/srv/a/y"),
-        bytes: 9,
-        files: 3,
-        dirs: 2,
-        links: 0,
+    assert_eq!(copy_args(&f, false).unwrap(), copy_args(&d, false).unwrap());
+    let new = cmd_wire::batch::BatchOutcome {
+        path: Some(cmd_wire::files::WirePath::from("/srv/a/y")),
+        bytes: Some(9),
+        files: Some(3),
+        dirs: Some(2),
+        ..cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done)
     };
     assert_eq!(
         copied_from_reply(&d, &new),

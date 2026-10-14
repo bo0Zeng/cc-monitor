@@ -1,15 +1,14 @@
-chmod	{"before":384,"mode":416,"path":"<ROOT>/copied.txt"}
+chmod	{"outcomes":[{"before":384,"key":"0","path":"<ROOT>/copied.txt","state":"done"}],"said":"已改权限 1 项"}
 commit-text	{"bytes":5,"path":"<ROOT>/ct.txt","sha256":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}
 commit-upload	{"bytes":4,"path":"<ROOT>/up.bin"}
-copy	{"bytes":3,"dirs":0,"files":1,"links":0,"path":"<ROOT>/copied.txt"}
-copy-tree	{"bytes":5,"dirs":2,"files":2,"links":0,"path":"<ROOT>/tree2"}
+copy	{"outcomes":[{"bytes":3,"dirs":0,"files":1,"key":"0","path":"<ROOT>/copied.txt","state":"done"}],"said":"已复制 1 项"}
+copy-tree	{"outcomes":[{"bytes":5,"dirs":2,"files":2,"key":"0","path":"<ROOT>/tree2","state":"done"}],"said":"已复制 1 项"}
 create	{"bytes":3,"path":"<ROOT>/made.txt"}
 create-odd	{"bytes":0,"path":{"b16":"<ROOTHEX>2f6f64642dff2e747874"}}
-delete	{"path":"<ROOT>/copied.txt","remaining":0,"removed":1}
-delete-empty-dir	{"path":"<ROOT>/dir1","remaining":0,"removed":1}
-delete-expect	{"path":"<ROOT>/moved.txt","remaining":0,"removed":1}
-delete-tree	{"path":"<ROOT>/tree2","remaining":0,"removed":2}
-delete-tree-slice	{"path":"<ROOT>/tree2","remaining":2,"removed":2}
+delete	{"outcomes":[{"key":"0","path":"<ROOT>/copied.txt","removed":1,"state":"done"}],"said":"已删除 1 项"}
+delete-empty-dir	{"outcomes":[{"key":"0","path":"<ROOT>/dir1","removed":1,"state":"done"}],"said":"已删除 1 项"}
+delete-expect	{"outcomes":[{"key":"0","path":"<ROOT>/moved.txt","removed":1,"state":"done"}],"said":"已删除 1 项"}
+delete-tree	{"outcomes":[{"key":"0","path":"<ROOT>/tree2","removed":4,"state":"done"}],"said":"已删除 1 项"}
 extract	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a"}
 extract-fresh	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a (2)"}
 link	{"path":"<ROOT>/ln"}

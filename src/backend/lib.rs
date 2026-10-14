@@ -1307,6 +1307,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-write-text",
     // 同一面第七条（同根内复制）。登记理由与上面逐字相同。
     "--files-copy",
+    // 撤一组复制 · 删除 · 改权限。登记理由同上（CLI 面从 `REGISTRY` 派生）。
+    "--files-batch-stop",
     // 解压。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 发版时统一 bump。
     "--files-extract",
     // 上传的提交。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
@@ -2284,6 +2286,9 @@ pub const EMITS: &[&str] = &[
     // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "probe",
+    // 同一台上一组（复制 · 删除 · 改权限）的进度（`stream/inbound` 那一路听票、真发，登记 = 承诺真发）。只在带票的那一组在做时出现；
+    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
+    "files_batch",
     // 活卡（中转抄出来的流在 `stream::live` 拼成的成品，`tap::attach` 那一路经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；只发这条流名单里的会话。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "live_card",

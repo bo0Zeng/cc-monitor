@@ -210,6 +210,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `total` | number | 总字节 |
 | `end` | TransferEnd? | 只在最后一帧：这一趟怎么收场的 |
 
+### `files_batch`
+
+**同一台上一组（复制 · 删除 · 改权限）此刻做到哪了**（`control/files_batch.rs`，带票的那一组在做时才出现）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `ticket` | string | 那一组的票（发起时交来的，本后端只当不透明的串回填） |
+| `done` | number | 做完了几项 |
+| `total` | number | 一共几项 |
+| `current` | PathBytes? | 手上那一项（根底下的相对段）；做完了缺席 |
+
 ### `probe`
 
 **测试连接那一趟的一格进度**（`dial/probe.rs`，`remote-probe` 在跑时才出现）。
@@ -788,52 +799,186 @@ type WirePath = string | { b16: string };
 
 #### `files-delete`
 
-删一个文件或一个空目录。
+删一组（文件 · 空目录 · 显式递归的整棵）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-delete`
 
-入参 `FilesDeleteReq` · 回包 `FilesDeleteReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `FilesDeleteReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
 type DeleteExpect = { empty_dir: true } | string | { b16: string };
-type FilesDeleteReply = { path: WirePath, removed: number, remaining: number, };
-type FilesDeleteReq = { root: WirePath, rel: WirePath, recursive?: boolean, expect?: DeleteExpect, limit?: number, };
+type DeleteItem = { rel: WirePath, recursive?: boolean, expect?: DeleteExpect, };
+type FilesDeleteReq = { root: WirePath, items: Array<DeleteItem>, ticket?: string, };
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
+码：`bad_args` · `bad_path`
 
 #### `files-chmod`
 
-改 unix 权限位。
+一组改成同一个 unix 权限位。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-chmod` · 没有 unix 权限位的机器上做不到
 
-入参 `FilesChmodReq` · 回包 `FilesChmodReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `FilesChmodReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesChmodReply = { path: WirePath, mode: number, before?: number, };
-type FilesChmodReq = { root: WirePath, rel: WirePath, mode: number, };
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
+type ChmodItem = { rel: WirePath, };
+type FilesChmodReq = { root: WirePath, items: Array<ChmodItem>, mode: number, ticket?: string, };
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `no_unix_mode` · `refused`
+码：`bad_args` · `bad_path` · `no_unix_mode`
 
 #### `files-copy`
 
-同根内复制一份普通文件。
+同根内复制一组。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-copy`
 
-入参 `FilesCopyReq` · 回包 `FilesTreeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `FilesCopyReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesCopyReq = { root: WirePath, from: WirePath, to: WirePath, overwrite?: boolean, recursive?: boolean, };
-type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
+type CopyItem = { from: WirePath, to: WirePath, };
+type Decide = "overwrite" | "skip" | "keep_both";
+type FilesCopyReq = { root: WirePath, items: Array<CopyItem>, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused`
+码：`bad_args` · `bad_path` · `exists`
+
+#### `files-batch-stop`
+
+撤一组复制 · 删除 · 改权限。
+
+收 `args` · 可撤 · CLI：`ccm -- --files-batch-stop`
+
+入参 `FilesBatchStopReq` · 回包 `FilesBatchStopReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesBatchStopReply = { stopping: boolean, };
+type FilesBatchStopReq = { ticket: string, };
+```
+
+码：`bad_args`
 
 #### `files-extract`
 
@@ -10819,13 +10964,14 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--ext-note-set` | ＝ 帧命令 `ext-note-set`：写 / 改 / 清一个扩展的备注 |
 | `--ext-uninstall-apply` | ＝ 帧命令 `ext-uninstall-apply`：从这台卸一个扩展 |
 | `--ext-uninstall-preview` | ＝ 帧命令 `ext-uninstall-preview`：从这台卸一个扩展之前那张卡 |
+| `--files-batch-stop` | ＝ 帧命令 `files-batch-stop`：撤一组复制 · 删除 · 改权限 |
 | `--files-browse` | ＝ 帧命令 `files-browse`：告诉后端「用户现在在看哪几个目录」 |
-| `--files-chmod` | ＝ 帧命令 `files-chmod`：改 unix 权限位 |
+| `--files-chmod` | ＝ 帧命令 `files-chmod`：一组改成同一个 unix 权限位 |
 | `--files-commit-text` | ＝ 帧命令 `files-commit-text`：按块读回、拼起来、覆盖写 |
 | `--files-commit-upload` | ＝ 帧命令 `files-commit-upload`：把暂存区里一份传完的上传件挪进目标 |
-| `--files-copy` | ＝ 帧命令 `files-copy`：同根内复制一份普通文件 |
+| `--files-copy` | ＝ 帧命令 `files-copy`：同根内复制一组 |
 | `--files-create` | ＝ 帧命令 `files-create`：在文件管理目标根底下新建一份此前不存在的文件 |
-| `--files-delete` | ＝ 帧命令 `files-delete`：删一个文件或一个空目录 |
+| `--files-delete` | ＝ 帧命令 `files-delete`：删一组（文件 · 空目录 · 显式递归的整棵） |
 | `--files-delete-session` | ＝ 帧命令 `files-delete-session`：删一份历史会话 |
 | `--files-extract` | ＝ 帧命令 `files-extract`：解压到一个新目录 |
 | `--files-find` | ＝ 帧命令 `files-find`：在常驻索引里查 |

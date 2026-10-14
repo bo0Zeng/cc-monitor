@@ -53,10 +53,12 @@ impl comms_inward::chan::router::Backends for Rig {
             }
             // 写面那几条照各自的回包类型答。
             (_, "files-mkdir") => Ok(serde_json::json!({ "path": "/x" })),
-            (_, "files-chmod") => Ok(serde_json::json!({ "path": "/x", "mode": 448 })),
-            (_, "files-delete") => {
-                Ok(serde_json::json!({ "path": "/x", "removed": 1, "remaining": 0 }))
-            }
+            (_, "files-chmod") => Ok(
+                serde_json::json!({ "outcomes": [{ "key": "0", "state": "done", "path": "/x" }], "said": "已改权限 1 项" }),
+            ),
+            (_, "files-delete") => Ok(
+                serde_json::json!({ "outcomes": [{ "key": "0", "state": "done", "path": "/x", "removed": 1 }], "said": "已删除 1 项" }),
+            ),
             _ => Ok(serde_json::json!({ "path": "/x", "bytes": 5 })),
         };
         Box::pin(async move { answer.map(|v| Body(serde_json::to_vec(&v).unwrap_or_default())) })
@@ -187,7 +189,8 @@ async fn a_cross_copy_pulls_from_a_pushes_to_b_and_cleans_the_local_staging() {
     let dels = args_of(&log, "<local>", "files-delete");
     let key_part = staged.rsplit('/').next().unwrap().to_string();
     assert!(
-        dels.iter().any(|d| d["rel"] == key_part.as_str()),
+        dels.iter()
+            .any(|d| d["items"][0]["rel"] == key_part.as_str()),
         "本机暂存件没删：{dels:?}"
     );
     assert!(
@@ -206,7 +209,7 @@ async fn a_failed_push_removes_the_staging_on_b_too() {
     assert_eq!(
         args_of(&log, "B", "files-delete"),
         vec![
-            serde_json::json!({ "root": "/home/b/.cc-monitor/staging", "rel": format!("{}.part", "k".repeat(32)) })
+            serde_json::json!({ "root": "/home/b/.cc-monitor/staging", "items": [{ "rel": format!("{}.part", "k".repeat(32)) }] })
         ],
         "B 那头开过单的暂存件没删"
     );

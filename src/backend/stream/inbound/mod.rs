@@ -519,6 +519,9 @@ fn dispatch(
         crate::control::terminal_follow::FOLLOW_ACK | crate::control::terminal_follow::UNFOLLOW => {
             Disposition::Reply(follows.answer_wire(&req.cmd, &req.id, &req.args, &req.tz))
         }
+        // 同一台上一组一条那三条：带票的那一组的进度走**本连接的应答通道**（`files-batch` 帧）⇒ 先挂上本连接听那张票，
+        //   本体照旧是命令表里那一行（文件管理写面那一档，CLI 面同一份；CLI 面没有人听，不发进度）。
+        "files-copy" | "files-delete" | "files-chmod" => listened(req, replies, given),
         "cancel" => {
             let target = req
                 .args
@@ -571,27 +574,74 @@ fn dispatch(
         // 不扫分派臂的**文本**（按缩进切，既对 rustfmt 脆，又只能事后比对）：
         // 名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
         // 在注册表这一侧不可表示；`hello.commands` 也从注册表派生（[`command_names`]），没有第二份名单。
-        other => match lookup(other) {
-            Some(spec) => match spec::prepare(spec.run, Some(&given.own)) {
-                Some(spec::Prepared::Async(f)) => Disposition::SpawnData(req, f),
-                Some(spec::Prepared::Blocking(f)) => Disposition::SpawnBlocking(req, f),
-                // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
-                None => Disposition::Reply(Frame::err(
-                    &req.id,
-                    "unknown_command",
-                    &copy_text(
-                        "beInbound.dispatch.unhandled",
-                        &[("other", &other.to_string())],
-                    ),
-                )),
-            },
+        _ => by_registry(req, given),
+    }
+}
+
+/// 其余命令一律查注册表（`dispatch` 的最后一臂；带进度的那三条挂好听的人之后也走这里）。
+fn by_registry(req: Request, given: &Given) -> Disposition {
+    let other = req.cmd.as_str();
+    match lookup(other) {
+        Some(spec) => match spec::prepare(spec.run, Some(&given.own)) {
+            Some(spec::Prepared::Async(f)) => Disposition::SpawnData(req, f),
+            Some(spec::Prepared::Blocking(f)) => Disposition::SpawnBlocking(req, f),
+            // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
             None => Disposition::Reply(Frame::err(
                 &req.id,
                 "unknown_command",
-                // 说这句的就是那台不认的后端，它不知道 monitor 怎么称呼它 ⇒「该机」。
-                &copy_core::backend_old(&copy_core::peer_machine()),
+                &copy_text(
+                    "beInbound.dispatch.unhandled",
+                    &[("other", &other.to_string())],
+                ),
             )),
         },
+        None => Disposition::Reply(Frame::err(
+            &req.id,
+            "unknown_command",
+            // 说这句的就是那台不认的后端，它不知道 monitor 怎么称呼它 ⇒「该机」。
+            &copy_core::backend_old(&copy_core::peer_machine()),
+        )),
+    }
+}
+
+/// `files-copy` · `files-delete` · `files-chmod`：入参里带了票 ⇒ 本连接听那张票的进度（按变更合并：堵住时只留最新那一格），
+/// 这一问答完就不听了（重连带同一张票再问的那一条连接自己再挂一次）。
+fn listened(req: Request, replies: &mpsc::Sender<Frame>, given: &Given) -> Disposition {
+    let ear = req.args.get("ticket").and_then(|t| t.as_str()).map(|t| {
+        let (tx, mut rx) = tokio::sync::watch::channel::<Option<Frame>>(None);
+        let out = replies.clone();
+        tokio::spawn(async move {
+            while rx.changed().await.is_ok() {
+                let f = rx.borrow_and_update().clone();
+                if let Some(f) = f {
+                    if out.send(f).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+        crate::control::files_batch::listen(
+            t,
+            Box::new(move |p| {
+                tx.send_replace(Some(Frame::FilesBatch {
+                    ticket: p.ticket.clone(),
+                    done: p.done,
+                    total: p.total,
+                    current: p.current.clone(),
+                }));
+            }),
+        )
+    });
+    match by_registry(req, given) {
+        Disposition::SpawnBlocking(req, run) => Disposition::SpawnBlocking(
+            req,
+            Box::new(move |r: Request| {
+                let out = run(r);
+                drop(ear);
+                out
+            }),
+        ),
+        other => other,
     }
 }
 

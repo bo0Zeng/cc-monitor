@@ -726,6 +726,8 @@ fn every_registered_command_declares_its_run_kind() {
         "needs-ask",
         // 答一条挂着的待答请求：异步档（锁登记表、交通道，不碰盘）。
         "needs-answer",
+        // 撤一组复制 · 删除 · 改权限：异步档（锁票表、立旗，不碰盘）。
+        "files-batch-stop",
         // 在 app 里登录：起登录子命令是内建（硬臂；带本连接的号，作业跟着本连接走）；粘码 · 收作业 · 需手动清单阻塞。
         "login-start",
         "login-finish",
@@ -854,6 +856,8 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
                     .map(|c| c.name)
                     .collect::<Vec<_>>(),
             )
+            // 撤一组复制 · 删除 · 改权限（`control/files_batch.rs`）：写那一族的，只立旗、不碰盘。
+            .chain([crate::control::files_batch::STOP])
             .map(str::to_string)
             .collect();
     assert!(
@@ -905,7 +909,10 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             matches!(spec.run, super::spec::Run::Typed(_)),
             "`{name}` 不是 typed 的那一档 —— 写的这一族入参 · 回包 · 码都从类型来"
         );
-        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上。
+        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上（撤一组那一条不写盘、不经写面那一扇，不在这里调）。
+        if name == crate::control::files_batch::STOP {
+            continue;
+        }
         if let Err(crate::control::files_write::WriteFail {
             code, said: msg, ..
         }) = crate::control::files_write::tests::ask(name, &serde_json::json!({}))

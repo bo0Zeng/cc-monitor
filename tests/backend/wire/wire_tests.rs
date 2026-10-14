@@ -491,6 +491,20 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             cell: serde_json::json!({"reached": "ssh"}),
         }),
         [
+            Frame::FilesBatch {
+                ticket: s("b1"),
+                done: 1,
+                total: 3,
+                current: Some(cmd_wire::files::WirePath::from("a.txt")),
+            },
+            Frame::FilesBatch {
+                ticket: s("b1"),
+                done: 3,
+                total: 3,
+                current: None,
+            },
+        ],
+        [
             Frame::LiveCard(LiveCard {
                 sid: s("s1"),
                 run: Some(s("a1")),

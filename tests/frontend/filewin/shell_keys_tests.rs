@@ -624,7 +624,12 @@ async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
             .unwrap()
             .iter()
             .filter(|r| r["cmd"] == "files-delete")
-            .map(|r| r["args"]["rel"].as_str().unwrap_or("").to_string())
+            .map(|r| {
+                r["args"]["items"][0]["rel"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string()
+            })
             .collect();
         v.sort();
         v
@@ -1349,7 +1354,7 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
         .unwrap()
         .iter()
         .filter(|r| r["cmd"] == "files-chmod")
-        .map(|r| r["args"]["rel"].clone())
+        .map(|r| r["args"]["items"][0]["rel"].clone())
         .collect();
     assert_eq!(
         chmods,
@@ -1376,8 +1381,8 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
     assert_eq!(
         dels,
         vec![
-            serde_json::json!({ "root": "/srv/data", "rel": b16 }),
-            serde_json::json!({ "root": "/srv/data", "rel": "sub", "recursive": true, "limit": crate::writeops::TREE_SLICE }),
+            serde_json::json!({ "root": "/srv/data", "items": [{ "rel": b16 }] }),
+            serde_json::json!({ "root": "/srv/data", "items": [{ "rel": "sub", "recursive": true }] }),
         ],
         "线上那几行 files-delete 不对（目录要带 recursive，乱码名要走 b16）"
     );

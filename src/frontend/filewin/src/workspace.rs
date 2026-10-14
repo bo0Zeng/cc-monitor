@@ -1619,13 +1619,12 @@ pub fn across_args(
             )
         })
     };
-    Ok(cmd_wire::files::FilesCopyReq {
-        root: root_path.path(),
-        from: rel(&from)?,
-        to: rel(&to)?,
-        overwrite: Some(overwrite),
-        recursive: super::copy::recursive_of(job),
-    })
+    Ok(super::copy::one_copy(
+        root_path.path(),
+        rel(&from)?,
+        rel(&to)?,
+        overwrite,
+    ))
 }
 
 /// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（目录那一件是整棵）。
@@ -1636,7 +1635,7 @@ pub async fn copy_across(
     overwrite: bool,
 ) -> Result<super::copy::Copied, String> {
     let req = across_args(job, overwrite)?;
-    let d = super::source::ask_typed(line, origin, &req, super::copy::COPY_BUDGET)
+    let d = super::source::ask_one(line, origin, &req, super::copy::COPY_BUDGET)
         .await
         .map_err(|f| f.said)?;
     Ok(super::copy::copied_from_reply(job, &d))

@@ -577,9 +577,8 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
         copies,
         vec![serde_json::json!({
             "root": "/srv",
-            "from": "a/x.txt",
-            "to": "b/x.txt",
-            "overwrite": false,
+            "items": [{ "from": "a/x.txt", "to": "b/x.txt" }],
+            "on_exists": "ask",
         })],
         "线上那一行与期望不等"
     );
@@ -675,8 +674,8 @@ async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() 
     assert_eq!(
         copies,
         vec![
-            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false}),
-            serde_json::json!({"root": "/srv", "from": "a/d", "to": "b/d", "overwrite": false, "recursive": true}),
+            serde_json::json!({"root": "/srv", "items": [{"from": "a/x.txt", "to": "b/x.txt"}], "on_exists": "ask"}),
+            serde_json::json!({"root": "/srv", "items": [{"from": "a/d", "to": "b/d"}], "on_exists": "ask"}),
         ],
         "线上那两行与期望不等"
     );
@@ -712,7 +711,7 @@ fn across_args_cuts_paths_at_the_common_directory() {
         let v = serde_json::to_value(across_args(&job(from, to), true).unwrap()).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "root": root, "from": f, "to": t, "overwrite": true }),
+            serde_json::json!({ "root": root, "items": [{ "from": f, "to": t }], "on_exists": "overwrite" }),
             "{from} → {to}"
         );
     }
@@ -851,7 +850,7 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
     assert_eq!(
         copies,
         vec![
-            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false})
+            serde_json::json!({"root": "/srv", "items": [{"from": "a/x.txt", "to": "b/x.txt"}], "on_exists": "ask"})
         ],
         "拖过去那一趟线上那一行与期望不等"
     );
@@ -871,7 +870,7 @@ fn across_args_cut_lossy_paths_by_their_bytes() {
     };
     assert_eq!(
         serde_json::to_value(across_args(&job, false).unwrap()).unwrap(),
-        serde_json::json!({ "root": "/srv", "from": { "b16": "61ff2f78" }, "to": "b/x", "overwrite": false })
+        serde_json::json!({ "root": "/srv", "items": [{ "from": { "b16": "61ff2f78" }, "to": "b/x" }], "on_exists": "ask" })
     );
 }
 

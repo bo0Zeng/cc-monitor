@@ -147,6 +147,7 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 /// 它要的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`，两块各引各的。
 /// `control/files_extract.rs`（解压 ＋ 建链接）同一条理由住 `control/`。
 const MEMBERS_ELSEWHERE: &[&str] = &[
+    "control/files_batch.rs",
     "control/files_commit.rs",
     "control/files_extract.rs",
     "control/files_upload_chunks.rs",
@@ -156,6 +157,7 @@ const MEMBERS_ELSEWHERE: &[&str] = &[
 /// 模块在 crate 内的路径前缀（**成员之间**的引用不算一条边）。
 const MODULE_PATHS: &[&str] = &[
     "files::",
+    "control::files_batch::",
     "control::files_commit::",
     "control::files_extract::",
     "control::files_upload_chunks::",
@@ -534,6 +536,29 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_write::delete_session_of",
         Door::Command,
     ),
+    // 一组一条的复制（`control/files_batch.rs`）：同名要问那一形带同名清单（码表里 `exists` 带 `data`），不经 `Act` 那一扇（它只交码与那一句）。
+    (
+        "stream/inbound/files_write_face.rs",
+        "control::files_batch::copy",
+        Door::Command,
+    ),
+    (
+        "stream/inbound/files_write_face.rs",
+        "control::files_batch::CopyRefused",
+        Door::Command,
+    ),
+    // 撤一组（`files-batch-stop`）：只立旗。
+    (
+        "stream/inbound/files_write_face.rs",
+        "control::files_batch::stop",
+        Door::Command,
+    ),
+    // 本连接听一张票的进度（帧面分派那一层挂、`files-batch` 帧）。
+    (
+        "stream/inbound/mod.rs",
+        "control::files_batch::listen",
+        Door::Command,
+    ),
     ("lib.rs", "files::capability_names", Door::Ledger),
 ];
 
@@ -631,13 +656,15 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
         // 6 → 7：读的那几条换成类型，`files::answer_wire` 换成 `files::answer` ＋ 选能力的 `files::Ask`。
         // 7 → 7：写的那几条换成类型，三面各一个 `answer_wire` 换成 `control::files_write::answer` ＋ 选本体的 `control::files_write::Act`
         //   ＋ 删会话那一条的本体 `control::files_write::delete_session_of`（它要门递的那两问）。
-        command, 7,
-        "命令注册那一处够到的入口从 7 个变成了 {command} 个 —— \
+        // 7 → 11：一组一条（`control::files_batch`）：复制带同名清单的入口 `copy` ＋ 它的拒绝类型 `CopyRefused` · 撤 `stop` · 帧面听进度 `listen`。
+        command, 11,
+        "命令注册那一处够到的入口从 11 个变成了 {command} 个 —— \
          读（`files::answer` ＋ `files::Ask`）／ 写 · 上传提交 · 解压（`control::files_write::answer` ＋ `control::files_write::Act`）／ 删会话（`control::files_write::delete_session_of`），\
          〔SR1b 09-24 +3，layer11 −3〕传输台归原生那一块，三格出列。\
          〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。〔FILES3 +1〕按内容搜那个可撤的入口 `files::answer_grep_cancellable`。\
          〔第 8 批 +1〕读的那几条换成类型：`files::answer_wire` 换成 `files::answer` ＋ 选能力的那个 trait `files::Ask`。\
          〔第 8 批 ±0〕写的那几条换成类型：三个 `answer_wire` 换成 `answer` ＋ `Act` ＋ 删会话那一条的 `delete_session_of`。\
+         〔fsel1 +4〕一组一条：`files_batch::copy` · `CopyRefused` · `stop` · `listen`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
 }

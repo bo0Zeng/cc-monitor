@@ -1101,6 +1101,42 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
     })
 }
 
+/// 一组只一项那几条（复制 · 删除 · 改权限）：做成了 ⇒ 那一项的结局；没做成 ⇒ 那一项的码与那一句（复制详情是那一项的原话）。
+pub async fn ask_one<C: cmd_wire::files::Call<Reply = cmd_wire::batch::BatchReply>>(
+    line: &Line,
+    origin: &Origin,
+    req: &C,
+    t: std::time::Duration,
+) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
+    one_of(ask_typed(line, origin, req, t).await?)
+}
+
+/// 一组只一项的回包 → 那一项（同 [`ask_one`]）。
+pub fn one_of(r: cmd_wire::batch::BatchReply) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
+    use cmd_wire::batch::ItemState;
+    let Some(o) = r.outcomes.into_iter().next() else {
+        return Err(Failed::local(r.said));
+    };
+    if o.state == ItemState::Done {
+        return Ok(o);
+    }
+    let detail = o.detail.clone().unwrap_or_default();
+    let (said, rest) = match detail.split_once('\n') {
+        Some((a, b)) => (a.to_string(), b.to_string()),
+        None if detail.is_empty() => (r.said, String::new()),
+        None => (detail, String::new()),
+    };
+    Err(Failed {
+        code: o.code.or_else(|| {
+            serde_json::to_value(o.state)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+        }),
+        said,
+        detail: rest,
+    })
+}
+
 /// 一份回包按那条命令的回包类型解（解不出 ⇒ 解码器那一句）。
 pub fn reply_of<C: cmd_wire::files::Call>(d: serde_json::Value) -> Result<C::Reply, String> {
     serde_json::from_value(d).map_err(|e| e.to_string())

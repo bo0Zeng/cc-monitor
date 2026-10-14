@@ -410,28 +410,37 @@ pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<cmd_wire::files::File
             &[("from", &job.from.to_string()), ("to", &job.to.to_string())],
         ));
     }
-    Ok(cmd_wire::files::FilesCopyReq {
-        root: root.path(),
-        from: from.tail(),
-        to: to.tail(),
-        overwrite: Some(overwrite),
-        recursive: recursive_of(job),
-    })
+    Ok(one_copy(root.path(), from.tail(), to.tail(), overwrite))
 }
 
-/// 源是目录 ⇒ `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
-/// 目录那一件从来不问覆盖，所以这里的 `overwrite` 恒是 `false`）。文件那一形不带这一格。
-pub fn recursive_of(job: &CopyJob) -> Option<bool> {
-    job.is_dir.then_some(true)
+/// 一件复制 ＝ `files-copy` 一组一项（目录按源判、整棵复制）。`overwrite` ⇒ 同名的盖掉；不盖 ⇒ 同名回 `exists`（窗口先探过，那是探完之后冒出来的）。
+pub fn one_copy(
+    root: cmd_wire::files::WirePath,
+    from: cmd_wire::files::WirePath,
+    to: cmd_wire::files::WirePath,
+    overwrite: bool,
+) -> cmd_wire::files::FilesCopyReq {
+    use cmd_wire::batch::OnExists;
+    cmd_wire::files::FilesCopyReq {
+        root,
+        items: vec![cmd_wire::files::CopyItem { from, to }],
+        on_exists: Some(if overwrite {
+            OnExists::Overwrite
+        } else {
+            OnExists::Ask
+        }),
+        decide: None,
+        ticket: None,
+    }
 }
 
-/// `files-copy` 的回包 → [`Copied`]（回包按类型解好了：几个字节 · 几份文件 · 几个目录都在）。
-pub fn copied_from_reply(job: &CopyJob, d: &cmd_wire::files::FilesTreeReply) -> Copied {
+/// `files-copy` 那一项的结局 → [`Copied`]（几个字节 · 几份文件 · 几个目录）。
+pub fn copied_from_reply(job: &CopyJob, d: &cmd_wire::batch::BatchOutcome) -> Copied {
     Copied {
         name: job.name.clone(),
-        bytes: d.bytes,
-        files: d.files,
-        dirs: d.dirs,
+        bytes: d.bytes.unwrap_or(0),
+        files: d.files.unwrap_or(0),
+        dirs: d.dirs.unwrap_or(0),
     }
 }
 
@@ -449,8 +458,8 @@ pub async fn copy_remote(
     overwrite: bool,
 ) -> Result<u64, super::source::Failed> {
     let req = copy_args(job, overwrite)?;
-    let d = super::source::ask_typed(line, origin, &req, COPY_BUDGET).await?;
-    Ok(d.bytes)
+    let d = super::source::ask_one(line, origin, &req, COPY_BUDGET).await?;
+    Ok(d.bytes.unwrap_or(0))
 }
 
 // ═══════════════════════════════════════════════════════════════════════

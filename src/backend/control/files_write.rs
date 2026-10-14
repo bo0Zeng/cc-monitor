@@ -2685,25 +2685,23 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-delete",
-        purpose:
-            "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \
-               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；给了 `expect` \
-               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；`expect: {\"empty_dir\": true}` \
-               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）；递归删可带 `limit`：\
-               这一趟至多删几条、停在两条之间，`remaining` 回还剩几条（再发一趟接着删）",
+        purpose: "删一组（`control/files_batch.rs`）：每项一个文件或一个**空**目录（删的是链接本身，不跟过去）；显式 `recursive: true` \
+               才删整棵树 —— 逐条目过路径解析，任一条被拒那一项不动（`delete_tree`）、按段删，段与段之间看撤的旗；给了 `expect` \
+               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则那一项 `stale`，一个字节不动）；`expect: {\"empty_dir\": true}` \
+               ⇒ 只删一个空目录；逐项结局 ＋ 结局那一行；带票 ⇒ 断开照常做完、再问回同一份",
     },
     ManageCommand {
         name: "files-chmod",
-        purpose: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
-没有 unix 权限位的平台上回 `no_unix_mode`",
+        purpose: "一组改成同一个 unix 权限位（低 12 位，`control/files_batch.rs`）；**跟链接**，所以落点解到底再判一次；\
+没有 unix 权限位的平台上那一项回 `no_unix_mode`；每项带改之前的那一份（撤销用）",
     },
     // ── 窗口的「复制」换走通道 ──────────────────
     ManageCommand {
         name: "files-copy",
-        purpose: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
-               显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；显式 `recursive: true` \
-               才复制目录 —— 逐条目过路径解析，跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）；\
-树里的链接复制**链接本身**（目标文本原样，`links` 计数）",
+        purpose: "同根内复制一组（`control/files_batch.rs`）：先探整组落点，同名而没答 ⇒ 一项不做、回 `exists` 与同名清单；\
+               答法 `overwrite` · `skip` · `keep_both`（另起 `名 (2).ext`，撞上往后试）；目录整棵复制、同名不合并；\
+               **三条路径各过一遍路径解析**；不覆盖的那几项 `O_EXCL`，探完之后冒出来的同名不盖（那一项 `exists`）；\
+               覆盖经暂存旁名原子顶掉；权限位从源抄；树里的链接复制**链接本身**",
     },
     ManageCommand {
         name: "files-write-text",
@@ -2755,9 +2753,6 @@ acts! {
     FilesCreateReq => FilesPathBytesReply, |r, f| create(f, r);
     FilesMkdirReq => FilesPathReply, |r, f| mkdir(f, r);
     FilesRenameReq => FilesPathReply, |r, f| rename(f, r);
-    FilesDeleteReq => FilesDeleteReply, |r, f| delete(f, r);
-    FilesChmodReq => FilesChmodReply, |r, f| chmod(f, r);
-    FilesCopyReq => FilesTreeReply, |r, f| copy(f, r);
     FilesWriteTextReq => FilesWrittenReply, |r, f| write_text(f, r);
     FilesPeekReq => FilesPeekReply, |r, f| peek(r);
     FilesPutReq => FilesPutReply, |r, f| put(f, r);
@@ -2866,81 +2861,6 @@ fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply
     let done = rename_entry(face, &root, &from, &to).map_err(refusal)?;
     Ok(wire::FilesPathReply {
         path: wire_of(&done),
-    })
-}
-
-/// `files-delete`：递归**显式**；CAS 给了 ⇒ 只删一份普通文件（逐字节）或一个空目录（`{"empty_dir": true}`）；
-/// 递归删可带 `limit`：这一趟至多删几条，停在两条之间、回 `remaining`（调用方再发一趟接着删）。
-fn delete(face: &Face, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, WriteFail> {
-    let root = root_of(&req.root, "root")?;
-    let rel = rel_of(&req.rel);
-    let recursive = req.recursive.unwrap_or(false);
-    if recursive && req.expect.is_some() {
-        return Err(WriteFail::from((
-            "bad_args",
-            crate::common::contract::malformed("`expect` and `recursive` are mutually exclusive"),
-        )));
-    }
-    let limit = req.limit.map(|l| l as usize);
-    let (done, removed, remaining) = if recursive {
-        delete_tree_upto(face, &root, &rel, limit).map_err(refusal)?
-    } else if let Some(want) = req.expect {
-        let done = match want {
-            wire::DeleteExpect::Bytes(b) => delete_file_expecting(face, &root, &rel, &b.0),
-            wire::DeleteExpect::EmptyDir => delete_empty_dir(face, &root, &rel),
-        };
-        (done.map_err(refusal)?, 1, 0)
-    } else {
-        (delete_entry(face, &root, &rel).map_err(refusal)?, 1, 0)
-    };
-    Ok(wire::FilesDeleteReply {
-        path: wire_of(&done),
-        removed: n(removed),
-        remaining: n(remaining),
-    })
-}
-
-/// `files-chmod`：`before` ＝ 改之前的低 12 位（撤销 ＝ 拿它再改一次）；读不到 ⇒ 缺这一格（不编一个数）。
-fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, WriteFail> {
-    let root = root_of(&req.root, "root")?;
-    let rel = rel_of(&req.rel);
-    let (done, before) = change_mode_reporting(face, &root, &rel, req.mode).map_err(refusal)?;
-    Ok(wire::FilesChmodReply {
-        path: wire_of(&done),
-        mode: req.mode,
-        before,
-    })
-}
-
-/// `files-copy`：覆盖策略**显式**（缺 ⇒ 不覆盖，`O_EXCL`）；复制目录**显式**，与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
-/// 两形同一张回包（`files` / `dirs` 恒在）：调用方不必按问法猜回来的键。
-fn copy(face: &Face, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, WriteFail> {
-    let root = root_of(&req.root, "root")?;
-    let (from, to) = (rel_of(&req.from), rel_of(&req.to));
-    let overwrite = req.overwrite.unwrap_or(false);
-    if req.recursive.unwrap_or(false) {
-        if overwrite {
-            return Err(WriteFail::from((
-                "bad_args",
-                copy_text("beFilesWrite.copy.recursiveOverwrite", &[]),
-            )));
-        }
-        let t = copy_tree(face, &root, &from, &to).map_err(refusal)?;
-        return Ok(wire::FilesTreeReply {
-            path: wire_of(&t.path),
-            bytes: t.bytes,
-            files: n(t.files),
-            dirs: n(t.dirs),
-            links: n(t.links),
-        });
-    }
-    let (done, bytes) = copy_entry(face, &root, &from, &to, overwrite).map_err(refusal)?;
-    Ok(wire::FilesTreeReply {
-        path: wire_of(&done),
-        bytes,
-        files: 1,
-        dirs: 0,
-        links: 0,
     })
 }
 

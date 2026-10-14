@@ -218,6 +218,9 @@ pub enum InboundFrame {
     /// 测试连接那一趟的一格进度 / 结局（后端 `wire::Frame::Probe`）。只有**本机后端**那条流上会有
     /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
     Probe { ticket: String, cell: String },
+    /// 同一台上一组（复制 · 删除 · 改权限）此刻做到哪了（后端 `wire::Frame::FilesBatch`）。本机远端两条流上都会有
+    /// （那一组在哪台做就是哪台推的）。`cell` ＝ `{"done": n, "total": n, "current"?: 路径}` 的文本（原样，界面严格收）。
+    FilesBatch { ticket: String, cell: String },
     /// 终端实时预览的一整屏（后端 `wire::Frame::TerminalScreen`）。本机远端两条流上都会有（订了哪台就是哪台推的），
     /// 交 `terminal_screen_relay::deliver`。`cell` ＝ `{"seq": n, "view": {…}}` 的文本（`view` 必须是对象；内容由界面严格收）。
     TerminalScreen { ticket: String, cell: String },
@@ -679,6 +682,20 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 .filter(|c| c.is_object())
                 .ok_or_else(|| bad(k, "`cell` is not an object"))?
                 .to_string(),
+        },
+        // 一组的进度：票 ＋ 做完几项 · 一共几项 ＋ 手上那一项（可缺，原样）。
+        "files_batch" => InboundFrame::FilesBatch {
+            ticket: req_str(obj, k, "ticket")?,
+            cell: {
+                let mut c = serde_json::json!({
+                    "done": req_u64(obj, k, "done")?,
+                    "total": req_u64(obj, k, "total")?,
+                });
+                if let Some(cur) = obj.get("current") {
+                    c["current"] = cur.clone();
+                }
+                c.to_string()
+            },
         },
         // 终端实时预览：票 ＋ 序号 ＋ 那一屏（必须是对象，原样转交）。
         "terminal_screen" => InboundFrame::TerminalScreen {

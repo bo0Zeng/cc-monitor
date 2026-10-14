@@ -3,6 +3,7 @@
 //! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
 
+use cmd_wire::batch::{BatchReply, ItemState, OnExists};
 use cmd_wire::files as wire;
 use copy_core::copy_text;
 
@@ -51,12 +52,12 @@ pub(crate) trait Door {
     fn ls(&self, req: wire::LsReq) -> Result<wire::LsReply, Said>;
     fn peek(&self, req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, Said>;
     fn put(&self, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said>;
-    fn delete(&self, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, Said>;
-    fn copy(&self, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, Said>;
+    fn delete(&self, req: wire::FilesDeleteReq) -> Result<BatchReply, Said>;
+    fn copy(&self, req: wire::FilesCopyReq) -> Result<BatchReply, Said>;
     fn mkdir(&self, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said>;
     fn link(&self, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Said>;
     fn rename_to(&self, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said>;
-    fn chmod(&self, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, Said>;
+    fn chmod(&self, req: wire::FilesChmodReq) -> Result<BatchReply, Said>;
 }
 
 /// 门那一侧的失败 → [`Said`]：契约诊断那一截不带（原话在命令自己的应答里才进复制详情）。
@@ -133,62 +134,83 @@ pub(crate) fn put(
     })
 }
 
-fn delete_req(root: &str, rel: &str) -> wire::FilesDeleteReq {
-    wire::FilesDeleteReq {
-        root: wp(root),
-        rel: wp(rel),
-        recursive: None,
-        expect: None,
-        limit: None,
+/// 一组只一项：那一项没做成 ⇒ 它的码与那一句（同单条时的失败）。
+fn only(r: Result<BatchReply, Said>) -> Result<(), Said> {
+    let r = r?;
+    match r.outcomes.into_iter().next() {
+        Some(o) if o.state == ItemState::Done => Ok(()),
+        Some(o) => Err((
+            o.code.unwrap_or_else(|| "io_failed".to_string()),
+            o.detail
+                .map(|d| d.lines().next().unwrap_or_default().to_string())
+                .unwrap_or(r.said),
+        )),
+        None => Err(("io_failed".to_string(), r.said)),
     }
+}
+
+fn delete_one(d: &dyn Door, root: &str, item: wire::DeleteItem) -> Result<(), Said> {
+    only(d.delete(wire::FilesDeleteReq {
+        root: wp(root),
+        items: vec![item],
+        ticket: None,
+    }))
 }
 
 /// 删一个文件，带 CAS（`expect` = 读到的那一份）；不等 / 已经不在 ⇒ `Stale`。
 pub(crate) fn delete(d: &dyn Door, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
-    d.delete(wire::FilesDeleteReq {
-        expect: Some(wire::DeleteExpect::Bytes(wp(expect))),
-        ..delete_req(root, rel)
-    })
-    .map(|_| ())
+    delete_one(
+        d,
+        root,
+        wire::DeleteItem {
+            rel: wp(rel),
+            recursive: None,
+            expect: Some(wire::DeleteExpect::Bytes(wp(expect))),
+        },
+    )
     .map_err(refused)
 }
 
 /// 只删一个空目录（`expect: {"empty_dir": true}`）；不空 / 已经不在 ⇒ `Stale`。
 pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<(), Refused> {
-    d.delete(wire::FilesDeleteReq {
-        expect: Some(wire::DeleteExpect::EmptyDir),
-        ..delete_req(root, rel)
-    })
-    .map(|_| ())
+    delete_one(
+        d,
+        root,
+        wire::DeleteItem {
+            rel: wp(rel),
+            recursive: None,
+            expect: Some(wire::DeleteExpect::EmptyDir),
+        },
+    )
     .map_err(refused)
 }
 
 /// 删一项（链接删链接本身；`recursive` ⇒ 整棵目录，逐条目过路径解析）。
 pub(crate) fn remove(d: &dyn Door, root: &str, rel: &str, recursive: bool) -> Result<(), String> {
-    d.delete(wire::FilesDeleteReq {
-        recursive: Some(recursive),
-        ..delete_req(root, rel)
-    })
-    .map(|_| ())
+    delete_one(
+        d,
+        root,
+        wire::DeleteItem {
+            rel: wp(rel),
+            recursive: Some(recursive),
+            expect: None,
+        },
+    )
     .map_err(|e| refused(e).said())
 }
 
-/// 同根内复制一份（`files-copy`：目标已在 ⇒ 拒；`recursive` ⇒ 整棵目录，链接照原样复制成链接；权限位从源抄）。
-pub(crate) fn copy(
-    d: &dyn Door,
-    root: &str,
-    from: &str,
-    to: &str,
-    recursive: bool,
-) -> Result<(), String> {
-    d.copy(wire::FilesCopyReq {
+/// 同根内复制一份（`files-copy` 一组一项：目标已在 ⇒ 拒；目录整棵，链接照原样复制成链接；权限位从源抄）。
+pub(crate) fn copy(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
+    only(d.copy(wire::FilesCopyReq {
         root: wp(root),
-        from: wp(from),
-        to: wp(to),
-        overwrite: None,
-        recursive: Some(recursive),
-    })
-    .map(|_| ())
+        items: vec![wire::CopyItem {
+            from: wp(from),
+            to: wp(to),
+        }],
+        on_exists: Some(OnExists::Ask),
+        decide: None,
+        ticket: None,
+    }))
     .map_err(|e| refused(e).said())
 }
 
@@ -227,12 +249,12 @@ pub(crate) fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(
 }
 
 pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<(), String> {
-    d.chmod(wire::FilesChmodReq {
+    only(d.chmod(wire::FilesChmodReq {
         root: wp(root),
-        rel: wp(rel),
+        items: vec![wire::ChmodItem { rel: wp(rel) }],
         mode,
-    })
-    .map(|_| ())
+        ticket: None,
+    }))
     .map_err(|e| refused(e).said())
 }
 

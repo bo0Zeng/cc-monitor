@@ -39,10 +39,10 @@ impl Door for HomeDoor {
     fn put(&self, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said> {
         LocalFiles.put(req)
     }
-    fn delete(&self, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, Said> {
+    fn delete(&self, req: wire::FilesDeleteReq) -> Result<cmd_wire::batch::BatchReply, Said> {
         LocalFiles.delete(req)
     }
-    fn copy(&self, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, Said> {
+    fn copy(&self, req: wire::FilesCopyReq) -> Result<cmd_wire::batch::BatchReply, Said> {
         LocalFiles.copy(req)
     }
     fn mkdir(&self, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said> {
@@ -54,7 +54,7 @@ impl Door for HomeDoor {
     fn rename_to(&self, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said> {
         LocalFiles.rename_to(req)
     }
-    fn chmod(&self, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, Said> {
+    fn chmod(&self, req: wire::FilesChmodReq) -> Result<cmd_wire::batch::BatchReply, Said> {
         LocalFiles.chmod(req)
     }
 }
