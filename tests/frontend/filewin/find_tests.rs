@@ -25,6 +25,24 @@
 use super::testing::{self, Declared, FakeBackend};
 use super::*;
 
+// 入参按线上类型造、回包按回包类型解；下面几条判的是「发出去的那一份 JSON」与「一份 JSON 回包解成什么」，
+// 经这几层薄壳把两步接起来（解不出 ⇒ 报错，同 `ask_typed` 那一步）。
+fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value {
+    serde_json::to_value(super::find_args(asked, seq, stream, offset)).unwrap()
+}
+fn rebuild_args_at(root: Option<&[u8]>) -> Value {
+    serde_json::to_value(super::rebuild_args_at(root)).unwrap()
+}
+fn browse_args_at(dirs: &[crate::source::RemotePath]) -> Value {
+    serde_json::to_value(super::browse_args_at(dirs)).unwrap()
+}
+fn decode_find(d: &Value) -> Result<FindOutcome, String> {
+    crate::source::reply_of::<cmd_wire::files::FindReq>(d.clone()).map(super::decode_find)
+}
+fn decode_status(d: &Value) -> Result<IndexStatus, String> {
+    crate::source::reply_of::<cmd_wire::files::IndexStatusReq>(d.clone()).map(super::decode_status)
+}
+
 /// 这几条用例共用的子串。**两个字符**：一个字符会命中太多（近乎全集 ⇒ 相等断言
 /// 退化成「全都中」），四个字符在 38 个字母的语料上常常一条都不中（退化成空集）。
 /// 人群自检（[`the_synthetic_tree_is_not_a_trivial_shape`]）钉住它两头都不塌。

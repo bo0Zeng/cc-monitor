@@ -97,7 +97,7 @@ pub struct Preview {
     /// 要显示的那一份（`None` ＝ 这一项不读）。
     want: Option<String>,
     /// 那一份发出去的线上路径（当前目录有损时按字节寻址，[`FileWindow::row_path`]）。
-    wire: serde_json::Value,
+    wire: cmd_wire::files::WirePath,
     /// 那一份按文本读还是按图读。
     how: Want,
     /// 按图读时那一张的钥匙（[`super::picture::Pictures`] 里认它）。
@@ -156,7 +156,7 @@ impl Default for Preview {
         Self {
             key: None,
             want: None,
-            wire: serde_json::Value::Null,
+            wire: cmd_wire::files::WirePath::default(),
             how: Want::Text,
             pic: None,
             pic_wait: None,
@@ -435,7 +435,7 @@ impl Preview {
                 }
                 self.how = Want::Image;
                 self.pic = Some(super::picture::PicKey::of(&r));
-                self.wire = pane.row_path(&r).wire();
+                self.wire = pane.row_path(&r).path();
                 self.want = Some(r.path.clone());
                 self.view = View::Loading(r.path.clone());
                 return;
@@ -466,7 +466,7 @@ impl Preview {
             return;
         }
         self.how = Want::Text;
-        self.wire = pane.row_path(&r).wire();
+        self.wire = pane.row_path(&r).path();
         self.want = Some(r.path.clone());
         self.view = View::Loading(r.path.clone());
     }
@@ -510,16 +510,12 @@ impl Preview {
         self.fired += 1;
         let wire = self.wire.clone();
         h.spawn(async move {
-            let args = serde_json::json!({ "path": wire, "max_bytes": PREVIEW_MAX_BYTES });
+            let req = cmd_wire::files::ReadTextReq {
+                path: wire,
+                max_bytes: PREVIEW_MAX_BYTES,
+            };
             let r = super::editor::text_from_reply(
-                super::source::ask_coded(
-                    &line,
-                    &origin,
-                    super::editor::CMD_READ_TEXT,
-                    &args,
-                    super::editor::READ_BUDGET,
-                )
-                .await,
+                super::source::ask_typed(&line, &origin, &req, super::editor::READ_BUDGET).await,
             )
             .map_err(|f| f.said);
             *slot.lock().unwrap() = Some((path, r));

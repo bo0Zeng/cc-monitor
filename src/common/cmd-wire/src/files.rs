@@ -44,7 +44,7 @@ fn from_hex(s: &str) -> Option<Vec<u8>> {
     ts(
         export,
         type = "string | { b16: string }",
-        export_to = "../../../frontend/ui/generated/"
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct WirePath(pub Vec<u8>);
@@ -119,7 +119,7 @@ impl<'de> Deserialize<'de> for WirePath {
     ts(
         export,
         type = "{ b16: string }",
-        export_to = "../../../frontend/ui/generated/"
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub struct HexBytes(pub Vec<u8>);
@@ -156,7 +156,7 @@ impl<'de> Deserialize<'de> for HexBytes {
     ts(
         export,
         type = "string | { b16: string }",
-        export_to = "../../../frontend/ui/generated/"
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub enum ChunkBytes {
@@ -197,7 +197,7 @@ impl<'de> Deserialize<'de> for ChunkBytes {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "lowercase")]
 pub enum FileKind {
@@ -212,7 +212,7 @@ pub enum FileKind {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "lowercase")]
 pub enum LinkTo {
@@ -228,7 +228,7 @@ pub enum LinkTo {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct LsReq {
@@ -248,7 +248,7 @@ pub struct LsReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct LsEntry {
@@ -283,7 +283,7 @@ pub struct LsEntry {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct LsReply {
@@ -305,7 +305,7 @@ pub struct LsReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct StatReq {
@@ -317,7 +317,7 @@ pub struct StatReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct SizeReq {
@@ -329,7 +329,7 @@ pub struct SizeReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct StatReply {
@@ -364,7 +364,7 @@ pub struct StatReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesPathReply {
@@ -378,7 +378,7 @@ pub struct FilesPathReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct SizeReply {
@@ -406,7 +406,7 @@ pub struct SizeReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct ReadTextReq {
@@ -421,7 +421,7 @@ pub struct ReadTextReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct ReadTextReply {
@@ -440,7 +440,7 @@ pub struct ReadTextReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct ReadChunkReq {
@@ -456,7 +456,7 @@ pub struct ReadChunkReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct ReadChunkReply {
@@ -477,7 +477,7 @@ pub struct ReadChunkReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct GrepReq {
@@ -498,7 +498,7 @@ pub struct GrepReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct GrepLine {
@@ -515,7 +515,7 @@ pub struct GrepLine {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct GrepHit {
@@ -536,7 +536,7 @@ pub struct GrepHit {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "lowercase")]
 pub enum GrepStopped {
@@ -549,7 +549,7 @@ pub enum GrepStopped {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct GrepReply {
@@ -584,7 +584,7 @@ pub struct GrepReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "lowercase")]
 pub enum FindSort {
@@ -600,7 +600,7 @@ pub enum FindSort {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "lowercase")]
 pub enum FindScope {
@@ -613,7 +613,7 @@ pub enum FindScope {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FindReq {
@@ -652,7 +652,7 @@ pub struct FindReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesFindHit {
@@ -675,7 +675,7 @@ pub struct FilesFindHit {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FindReply {
@@ -710,7 +710,7 @@ pub struct FindReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct IndexStatusReply {
@@ -745,7 +745,7 @@ pub struct IndexStatusReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct RebuildReq {
@@ -759,7 +759,7 @@ pub struct RebuildReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct RebuildReply {
@@ -783,7 +783,7 @@ pub struct RebuildReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct BrowseReq {
@@ -795,7 +795,7 @@ pub struct BrowseReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct BrowseReply {
@@ -824,7 +824,7 @@ pub struct BrowseReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct HomeReq {}
@@ -834,7 +834,7 @@ pub struct HomeReq {}
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct IndexStatusReq {}
@@ -856,7 +856,7 @@ fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Opti
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, type = "string", export_to = "../../../frontend/ui/generated/")
+    ts(export, type = "string", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct Sha256Hex(pub String);
 
@@ -884,7 +884,7 @@ impl<'de> Deserialize<'de> for Sha256Hex {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct Sha256Expect {
@@ -899,7 +899,7 @@ pub struct Sha256Expect {
     ts(
         export,
         type = "{ empty_dir: true } | string | { b16: string }",
-        export_to = "../../../frontend/ui/generated/"
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 pub enum DeleteExpect {
@@ -963,7 +963,7 @@ impl<'de> Deserialize<'de> for DeleteExpect {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesCreateReq {
@@ -983,7 +983,7 @@ pub struct FilesCreateReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesPathBytesReply {
@@ -997,7 +997,7 @@ pub struct FilesPathBytesReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesMkdirReq {
@@ -1013,7 +1013,7 @@ pub struct FilesMkdirReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesRenameReq {
@@ -1030,7 +1030,7 @@ pub struct FilesRenameReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesDeleteReq {
@@ -1064,7 +1064,7 @@ pub struct FilesDeleteReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesDeleteReply {
@@ -1080,7 +1080,7 @@ pub struct FilesDeleteReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesChmodReq {
@@ -1094,7 +1094,7 @@ pub struct FilesChmodReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesChmodReply {
@@ -1110,7 +1110,7 @@ pub struct FilesChmodReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesCopyReq {
@@ -1138,7 +1138,7 @@ pub struct FilesCopyReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesTreeReply {
@@ -1158,7 +1158,7 @@ pub struct FilesTreeReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesExtractReq {
@@ -1178,7 +1178,7 @@ pub struct FilesExtractReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesLinkReq {
@@ -1192,7 +1192,7 @@ pub struct FilesLinkReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesWriteTextReq {
@@ -1207,7 +1207,7 @@ pub struct FilesWriteTextReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesWrittenReply {
@@ -1222,7 +1222,7 @@ pub struct FilesWrittenReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesPeekReq {
@@ -1235,7 +1235,7 @@ pub struct FilesPeekReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesPeekReply {
@@ -1249,7 +1249,7 @@ pub struct FilesPeekReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesPutReq {
@@ -1279,7 +1279,7 @@ pub struct FilesPutReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesPutReply {
@@ -1296,7 +1296,7 @@ pub struct FilesPutReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesDeleteSessionReq {
@@ -1308,7 +1308,7 @@ pub struct FilesDeleteSessionReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesStageChunkReq {
@@ -1323,7 +1323,7 @@ pub struct FilesStageChunkReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesStageChunkReply {
@@ -1336,7 +1336,7 @@ pub struct FilesStageChunkReply {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesCommitTextReq {
@@ -1355,7 +1355,7 @@ pub struct FilesCommitTextReq {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
 pub struct FilesCommitUploadReq {

@@ -828,14 +828,13 @@ pub async fn read_text_at(
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
 ) -> Result<Option<Opened>, super::source::Failed> {
-    let args = serde_json::to_value(cmd_wire::files::ReadTextReq {
-        path: cmd_wire::files::WirePath(at.bytes()),
+    let req = cmd_wire::files::ReadTextReq {
+        path: at.path(),
         max_bytes: MAX_EDIT_BYTES as u64,
-    })
-    .unwrap_or(serde_json::Value::Null);
+    };
     opened_from_reply(
         origin,
-        super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
+        super::source::ask_typed(line, origin, &req, READ_BUDGET).await,
     )
 }
 
@@ -852,7 +851,7 @@ pub struct Opened {
 /// 立起一个存不回去的编辑面比不打开更糟 —— 那句话说清是后端太旧。
 pub fn opened_from_reply(
     origin: &super::source::Origin,
-    r: Result<serde_json::Value, super::source::Failed>,
+    r: Result<cmd_wire::files::ReadTextReply, super::source::Failed>,
 ) -> Result<Option<Opened>, super::source::Failed> {
     let Some(got) = reply_from(r)? else {
         return Ok(None);
@@ -871,14 +870,12 @@ pub fn opened_from_reply(
     }))
 }
 
-/// 后端那一趟的结局按回包类型解：拒的那两种（不是一份能编辑的文本）⇒ `None`；解不出 ⇒ 契约不符。
+/// 后端那一趟的结局（已按回包类型解过）：拒的那两种（不是一份能编辑的文本）⇒ `None`。
 fn reply_from(
-    r: Result<serde_json::Value, super::source::Failed>,
+    r: Result<cmd_wire::files::ReadTextReply, super::source::Failed>,
 ) -> Result<Option<cmd_wire::files::ReadTextReply>, super::source::Failed> {
     match r {
-        Ok(d) => super::source::reply_of::<cmd_wire::files::ReadTextReq>(d)
-            .map(Some)
-            .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]).into()),
+        Ok(d) => Ok(Some(d)),
         Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
         Err(f) => Err(f),
     }
@@ -892,7 +889,7 @@ fn reply_from(
 ///   不是「这一趟没走通」—— 两者分开说（[`not_text_notice`] 那句话里连竞态那一形都说了）。
 /// - 其余一律 `Err`（那句话原样）。
 pub fn text_from_reply(
-    r: Result<serde_json::Value, super::source::Failed>,
+    r: Result<cmd_wire::files::ReadTextReply, super::source::Failed>,
 ) -> Result<Option<String>, super::source::Failed> {
     Ok(reply_from(r)?.map(|got| got.text))
 }

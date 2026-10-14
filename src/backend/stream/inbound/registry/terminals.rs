@@ -125,10 +125,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::faces::session_new_face::SessionNewDir>(
         "起新会话前核一个目录：在不在 · 会用哪个终端名",
     ),
-    // 动一个会话之前会打断什么（`observe/interrupts_query.rs`）：按族答，界面只画。只读。
-    crate::stream::inbound::typed::blocking::<crate::faces::feature_face::SessionInterrupts>(
-        "动一个会话之前，会打断什么",
-    ),
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
     //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
     crate::stream::inbound::typed::async_with_files::<crate::faces::session_restart_face::SessionRestart>(

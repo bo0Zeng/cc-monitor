@@ -182,8 +182,8 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     let body = &proc[at_fn..];
     let body = &body[..body.find("\n}\n").expect("`first_screen` 的花括号没收口")];
     let at_home = body
-        .find("super::source::CMD_HOME")
-        .expect("`first_screen` 里没有问 home 那一问（`files-home` 那个常量）");
+        .find("super::source::home_of(")
+        .expect("`first_screen` 里没有问 home 那一问（`files-home`，`source::home_of`）");
     let at_list = body
         .find("super::source::list_dir(")
         .expect("`first_screen` 里没有列目录那一下");
@@ -200,8 +200,8 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     );
     for needle in [
         "InboundBackends",
-        "CMD_HOME",
-        "CMD_LS",
+        "home_of(",
+        "LsReq",
         "list_dir(",
         "source::ask(",
     ] {

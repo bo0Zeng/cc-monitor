@@ -476,7 +476,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
         prod.len()
     );
     for needle in [
-        "\"files-stat\"",
+        "files::StatReq {",
         "\"transfer-upload\"",
         "\"files-commit-upload\"",
         "pub fn lanes()",
@@ -699,6 +699,10 @@ impl comms_inward::chan::router::Backends for XferHost {
             "transfer-upload" => serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }),
             "transfer-download" => serde_json::json!({ "id": "x-down" }),
             "files-home" => serde_json::json!({ "path": "/srv/a.bin" }),
+            "files-stat" => serde_json::json!({
+                "path": "/srv/a.bin", "kind": "file", "size": 3, "readonly": false,
+                "owner": null, "link_target": null
+            }),
             // 回包照那条命令的类型（块：只有 `bytes`；提交：落点 ＋ 字节数）。
             "files-stage-chunk" => serde_json::json!({ "bytes": 3 }),
             _ => serde_json::json!({ "path": "/srv/a.bin", "bytes": 3 }),

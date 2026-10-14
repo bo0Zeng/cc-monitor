@@ -1,5 +1,25 @@
 use super::*;
 
+/// 一份 `files-read-text` 回包（JSON）先按回包类型解（`ask_typed` 那一步；解不出 ⇒ 这一侧的那一句），再交下面那一步。
+fn typed(
+    r: Result<serde_json::Value, crate::source::Failed>,
+) -> Result<cmd_wire::files::ReadTextReply, crate::source::Failed> {
+    r.and_then(|d| crate::source::reply_of::<cmd_wire::files::ReadTextReq>(d).map_err(Into::into))
+}
+
+fn text_from_reply(
+    r: Result<serde_json::Value, crate::source::Failed>,
+) -> Result<Option<String>, crate::source::Failed> {
+    super::text_from_reply(typed(r))
+}
+
+fn opened_from_reply(
+    o: &crate::source::Origin,
+    r: Result<serde_json::Value, crate::source::Failed>,
+) -> Result<Option<Opened>, crate::source::Failed> {
+    super::opened_from_reply(o, typed(r))
+}
+
 fn row(name: &str, is_dir: bool, lossy: bool, size: u64) -> Row {
     Row {
         name: name.to_string(),

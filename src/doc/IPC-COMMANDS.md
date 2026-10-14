@@ -23,7 +23,7 @@ Handshake sent once when a client connects。
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
-| `uncancellable` | [string]? | `commands` 里**撤不动**的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
+| `uncancellable` | [string]? | `commands` 里**撤不动**、又不是 typed 的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
 | `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
 
 ### `line`
@@ -3192,7 +3192,7 @@ type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
 type HistorySearchMergeReq = { machines: Array<MachineHits>, };
 type Liveness = "live" | "ended";
-type MachineHits = { origin: string, sessions: Array<SessionHits>, };
+type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
 type Merged = { 
 /**
  * `hitCount` 之和。
@@ -3251,6 +3251,7 @@ status: Liveness,
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
 can: Can, };
+type Origin = string;
 type SearchHit = { 
 /**
  * 消息 uuid：打开查看器后据此滚动定位、高亮。
@@ -6004,12 +6005,72 @@ type FirstRunStepId = "terminal" | "named" | "remote";
 入参 `LastSeenReadReq` · 回包 `LastSeen`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LastSeen = { accounts: SeenEntry | null, data: SeenEntry | null, };
+type ChangedFile = { path: string, what: string, 
+/**
+ * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
+ */
+undo: UndoAt | null, };
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+/**
+ * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
+ */
+wholeCovers: Array<string>, file: string | null, 
+/**
+ * 去哪一处做（设置窗的页 · 栏 · 锚点）。
+ */
+go: UndoAt | null, howUrl: string | null, 
+/**
+ * 显示时要遮住的那把钥匙。
+ */
+mask: string | null, action: ChoreAction, };
+type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
+type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
+type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type DataReport = { 
+/**
+ * 这台家目录（显示时 `~` 缩写按它）。
+ */
+home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
+/**
+ * 这台有没有 tmux（查不动 ⇒ `null`）。
+ */
+tmux: boolean | null, 
+/**
+ * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+ */
+chores: number, own: Array<OwnItem>, };
+type DiffOp = "same" | "del" | "add";
+type DiffRow = { n: number | null, op: DiffOp, text: string, };
+type LastSeen = { accounts: SeenEntry | null, data: SeenData | null, };
 type LastSeenReadReq = { 
 /**
  * 哪台（机器名）。
  */
-origin: string, };
+origin: Origin, };
+type Origin = string;
+type OwnClass = "truth" | "cache";
+type OwnItem = { 
+/**
+ * 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+ */
+id: string, 
+/**
+ * 是什么（写好的那一句，界面照抄）。
+ */
+what: string, 
+/**
+ * `~/.cc-monitor/…` 写法。
+ */
+path: string, dir: boolean, class: OwnClass, exists: boolean, 
+/**
+ * 文件的字节数；目录 / 不在 ⇒ `null`。
+ */
+size: number | null, };
+type SeenData = { "state": "kept", 
+/**
+ * 记下的时刻（毫秒）。
+ */
+atMs: number, value: DataReport, } | { "state": "unreadable", atMs: number, };
 type SeenEntry = { 
 /**
  * 记下的时刻（毫秒）。
@@ -6019,6 +6080,7 @@ atMs: number,
  * 那一份应答原样。
  */
 value: Record<string, unknown>, };
+type UndoAt = { page: string, tab?: string, anchor?: string, };
 ```
 
 码：`bad_args` · `io_failed`
@@ -6032,7 +6094,7 @@ value: Record<string, unknown>, };
 入参 `LastSeenWriteReq` · 回包 `LastSeenWritten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LastSeenWriteReq = { origin: string, kind?: SeenKind, 
+type LastSeenWriteReq = { origin: Origin, kind?: SeenKind, 
 /**
  * 那一份应答（对象，序列化后 ≤ 256 KiB）。
  */
@@ -6046,6 +6108,7 @@ type LastSeenWritten = {
  * 记下的时刻（毫秒）。
  */
 atMs: number, };
+type Origin = string;
 type SeenKind = "accounts" | "data";
 ```
 
@@ -6233,7 +6296,7 @@ type AssetsSyncRow = {
 /**
  * 可达表的键（monitor 交来的 origin 串）。
  */
-origin: string, 
+origin: Origin, 
 /**
  * 那台目录的 `self`（没拉成 ⇒ `null`）。
  */
@@ -6301,12 +6364,13 @@ use?: string | null,
  * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
  */
 agent_sock?: string | null, };
+type Origin = string;
 type Prefer = { host: string, port: number, };
 type ReachRow = { 
 /**
  * 那台的名字。
  */
-origin: string, 
+origin: Origin, 
 /**
  * 对面的资产目录 id。
  */
@@ -9269,31 +9333,6 @@ forkOf?: string, };
 
 码：`bad_args`
 
-#### `session-interrupts`
-
-动一个会话之前，会打断什么。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-interrupts`
-
-入参 `SessionInterruptsReq` · 回包 `SessionInterrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type InterruptFamily = { family: InterruptKind, 
-/**
- * 显示名（`turn` 那一族没有名字 ⇒ 空表）。
- */
-names: Array<string>, };
-type InterruptKind = "turn" | "agent" | "task";
-type SessionInterrupts = { families: Array<InterruptFamily>, };
-type SessionInterruptsReq = { 
-/**
- * 会话 id（空 ⇒ `bad_args`）。
- */
-sid: string, };
-```
-
-码：`bad_args`
-
 #### `session-restart`
 
 换号重启。
@@ -10098,7 +10137,8 @@ path: string | null,
  */
 hosts: Array<Host>, };
 type MachinesSet = { machines: MachinesReply, pinned: Array<PinnedDay>, kept: number, };
-type PinnedDay = { origin: string, day: string, };
+type Origin = string;
+type PinnedDay = { origin: Origin, day: string, };
 ```
 
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
@@ -10200,7 +10240,7 @@ type ForwardStartReq = {
 /**
  * 那台的名字（可达表的键）。
  */
-origin: string, 
+origin: Origin, 
 /**
  * 绑本机 `127.0.0.1:localPort`。
  */
@@ -10259,6 +10299,7 @@ addresses: Array<string>,
  * 跳板那一台的名字（空 ⇒ 直连）。
  */
 jump?: string, };
+type Origin = string;
 ```
 
 码：`bad_args` · `bad_spec` · `unreachable` · `bad_jump` · `full` · `failed`
@@ -10318,7 +10359,7 @@ type ForwardRow = { id: string,
 /**
  * 那台的名字。
  */
-origin: string, localPort: number, remoteHost: string, remotePort: number, 
+origin: Origin, localPort: number, remoteHost: string, remotePort: number, 
 /**
  * `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
  */
@@ -10329,6 +10370,7 @@ state: "running" | "error",
 connCount: number, };
 type Forwards = { forwards: Array<ForwardRow>, };
 type NoArgs = Record<symbol, never>;
+type Origin = string;
 ```
 
 码：`bad_args`
@@ -10384,12 +10426,13 @@ use?: string | null,
  * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
  */
 agent_sock?: string | null, };
+type Origin = string;
 type Prefer = { host: string, port: number, };
 type ReachReq = { 
 /**
  * 那台的名字（monitor 的 origin 名）。
  */
-origin: string, 
+origin: Origin, 
 /**
  * 那台的拨号（只有路径，没有私钥本体）。
  */
@@ -10398,12 +10441,12 @@ type ReachRow = {
 /**
  * 那台的名字。
  */
-origin: string, 
+origin: Origin, 
 /**
  * 对面的资产目录 id。
  */
 machine: string | null, };
-type Reached = { origin: string, reach: Array<ReachRow>, };
+type Reached = { origin: Origin, reach: Array<ReachRow>, };
 ```
 
 码：`bad_args`
@@ -10819,7 +10862,6 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
-| `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
 | `--session-model` | ＝ 帧命令 `session-model`：会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送） |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |

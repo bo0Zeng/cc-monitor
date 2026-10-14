@@ -4,6 +4,11 @@ use super::*;
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 use crate::select::Action;
 
+/// 一份 `files-stat` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成框里那几格。
+fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
+    crate::source::reply_of::<cmd_wire::files::StatReq>(d.clone()).map(super::stat_from_reply)
+}
+
 /// `files-stat` 的应答 → 框里那几格：属主与链接指向（字符串 / 字节形）都认，`null` 当没有。
 #[test]
 fn a_stat_reply_is_read_with_owner_and_link_target() {
@@ -56,6 +61,23 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert_eq!(wired.count("files-stat"), 1, "该恰好问一次后端");
+    // 发出去的整份字节（换形前用旧代码跑出来钉的）。
+    let sent: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-stat")
+        .map(|r| serde_json::to_string(&r["args"]).unwrap())
+        .collect();
+    assert_eq!(
+        sent,
+        [format!(
+            r#"{{"path":{}}}"#,
+            serde_json::to_string(&format!("{d}/a.txt")).unwrap()
+        )],
+        "属性框发出去的字节变了"
+    );
     let lines = w.props().unwrap().lines();
     let path_line = lines
         .iter()

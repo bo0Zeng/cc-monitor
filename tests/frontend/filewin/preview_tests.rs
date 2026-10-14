@@ -115,6 +115,23 @@ async fn the_latest_pick_wins_and_the_middle_ones_are_never_read() {
         vec![PREVIEW_MAX_BYTES; 2],
         "线上那几趟的 max_bytes 不是预览的上限"
     );
+    // 发出去的整份字节（换形前用旧代码跑出来钉的）。
+    let sent: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-read-text")
+        .map(|r| serde_json::to_string(&r["args"]).unwrap())
+        .collect();
+    assert_eq!(
+        sent,
+        [
+            r#"{"max_bytes":65536,"path":"/srv/a.txt"}"#,
+            r#"{"max_bytes":65536,"path":"/srv/c.txt"}"#
+        ],
+        "预览发出去的字节变了"
+    );
     match p.view() {
         View::Text { path, text, .. } => {
             assert_eq!(path, "/srv/c.txt");

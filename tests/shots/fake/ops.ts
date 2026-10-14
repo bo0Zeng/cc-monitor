@@ -87,10 +87,5 @@ export function defaultOps(): Record<string, OpHandler> {
       cwd: req.cwd,
       prompt: null,
     }),
-    // 会打断什么：合成世界里每个会话都当它有一轮在跑、带它在做的任务。
-    "session-interrupts": (_o, req, w) => {
-      const tasks = (w.sessions.find((s) => s.sid === req.sid)?.tasks ?? []).filter((t) => t.status === "in_progress").map((t) => t.subject);
-      return { families: [{ family: "turn", names: [] }, ...(tasks.length ? [{ family: "task", names: tasks }] : [])] };
-    },
   };
 }

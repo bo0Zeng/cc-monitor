@@ -619,7 +619,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-day-paint",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
-        "session-interrupts",
         "mcp-read",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
         "terminal-processes", // 读系统连接表 ＋ 进程表（每个进程开一次句柄问启动时刻）
@@ -840,7 +839,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-strategy-tz",
         "rotation-day-paint",
         "tasks-list",
-        "session-interrupts",
         "mcp-read",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
         "terminal-processes", // 读系统连接表 ＋ 进程表（每个进程开一次句柄问启动时刻）
@@ -1072,9 +1070,23 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
     let mut sorted = got.clone();
     sorted.sort();
     assert_eq!(got, sorted, "`uncancellable` 没按字母排");
+    // typed 命令那一半由指纹表那份说（`cmd_wire::shapes::UNCANCELLABLE`，客户端读它本侧编进来的那一份），hello 那一栏不再列。
+    assert!(
+        got.iter().all(|n| cmd_wire::shapes::shape_of(n).is_none()),
+        "hello 的 `uncancellable` 列了 typed 命令：{got:?}"
+    );
+    let mut all: Vec<String> = got
+        .into_iter()
+        .chain(
+            cmd_wire::shapes::UNCANCELLABLE
+                .iter()
+                .map(|s| s.to_string()),
+        )
+        .collect();
+    all.sort();
     let mut blocking = blocking;
     blocking.sort();
-    assert_eq!(got, blocking);
+    assert_eq!(all, blocking);
 }
 
 /// ★ **不可取消的命令不许回一条撒谎的 `cancelled`。**
@@ -1972,7 +1984,6 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             "sessions-start",
             serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "items": [] }),
         ),
-        ("session-interrupts", serde_json::json!({ "sid": 1 })),
         (
             "session-terminals",
             serde_json::json!({ "sid": "s-1", "extra": 1 }),

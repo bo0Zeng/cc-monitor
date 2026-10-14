@@ -8,7 +8,7 @@ import { fakeClipboard } from "../../../test-support/clipboard-fake";
 const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed } = vi.hoisted(() => ({
   localOpened: [] as string[],
   localRevealed: [] as string[],
-  seen: new Map<string, Record<string, { atMs: number; value: unknown }>>(),
+  seen: new Map<string, Record<string, unknown>>(),
   fileWin: [] as Array<{ host: unknown; at: unknown }>,
   disk: { cfg: {} as Record<string, unknown> },
   answers: new Map<string, unknown>(),
@@ -36,7 +36,8 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         const a = JSON.parse(new TextDecoder().decode(body)) as { origin: string; kind?: string; value?: unknown };
         if (origin !== "<local>") return Promise.reject(new Error("上次值只问本机后端"));
         const mine = seen.get(a.origin) ?? {};
-        if (op === "last-seen-write") seen.set(a.origin, { ...mine, [a.kind!]: { atMs: Date.now(), value: a.value } });
+        // `data` 那一份后端按回包类型核过、读回来带 `state`（这里只记合法的那一形；读不懂那一形另由判据塞）。
+        if (op === "last-seen-write") seen.set(a.origin, { ...mine, [a.kind!]: a.kind === "data" ? { state: "kept", atMs: Date.now(), value: a.value } : { atMs: Date.now(), value: a.value } });
         const out = op === "last-seen-read" ? { accounts: mine.accounts ?? null, data: mine.data ?? null } : { atMs: 1 };
         return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
       }
@@ -66,7 +67,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
 
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
-import { decodeDataReport } from "../../../../src/frontend/ui/settings/data-reads";
+import { recallDataReport } from "../../../../src/frontend/ui/settings/data-reads";
 import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
 import { forgetResumeDefaults, resumeInTmuxAt } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -146,22 +147,12 @@ beforeEach(() => {
   forgetResumeDefaults();
 });
 
-describe("data-report 的应答严格收", () => {
-  it("★ 照形状收；多一格 / 缺一格 / 类型不对 ⇒ 抛（不拿半份当整份画）", () => {
-    expect(decodeDataReport(report()).chores).toBe(1);
-    expect(() => decodeDataReport({ ...report(), extra: 1 })).toThrow();
-    const { chores: _c, ...noChores } = report();
-    expect(() => decodeDataReport(noChores)).toThrow();
-    expect(() => decodeDataReport(report({ tmux: "no" }))).toThrow();
-    expect(() => decodeDataReport(report({ todo: [chore({ kind: "maybe" })] }))).toThrow();
-    expect(() => decodeDataReport(report({ todo: [chore({ state: "copied" })] })), "「已复制」只住界面").toThrow();
-    expect(() => decodeDataReport(report({ todo: [{ ...chore({}), extra: 1 }] }))).toThrow();
-    expect(() => decodeDataReport(report({ todo: [chore({ diff: [{ n: 0, op: "add", text: "" }] })] }))).toThrow();
-    expect(() => decodeDataReport(report({ own: [{ id: "x", what: "x", path: "~/.cc-monitor/x", dir: false, class: "maybe", exists: true, size: 1 }] })), "class 闭集").toThrow();
-    expect(() => decodeDataReport(report({ own: [{ id: "x", what: "x", path: "~/.cc-monitor/x", dir: false, class: "cache", exists: true, size: -1 }] }))).toThrow();
-    expect(() => decodeDataReport(report({ own: [{ id: "x", path: "~/.cc-monitor/x", dir: false, class: "cache", exists: true, size: 1 }] })), "每一样带写好的那一句").toThrow();
-    const { own: _o, ...noOwn } = report();
-    expect(() => decodeDataReport(noOwn)).toThrow();
+describe("上次值", () => {
+  it("★ 后端核过的那一份照用；后端说读不懂（存档不是这一版）⇒ 当没有上次值，不拿原样画", async () => {
+    seen.set("devbox", { data: { state: "kept", atMs: 7, value: report() } });
+    expect(await recallDataReport("devbox")).toEqual({ report: report(), atMs: 7 });
+    seen.set("devbox", { data: { state: "unreadable", atMs: 7 } });
+    expect(await recallDataReport("devbox")).toBeNull();
   });
 });
 

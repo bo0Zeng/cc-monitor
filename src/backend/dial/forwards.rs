@@ -61,7 +61,6 @@ fn invalid(detail: &str) -> (&'static str, String) {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ForwardStartReq {
     /// 那台的名字（可达表的键）。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     /// 绑本机 `127.0.0.1:localPort`。
     pub(crate) local_port: u16,
@@ -319,7 +318,6 @@ pub(crate) fn stop_with(
 pub(crate) struct ForwardRow {
     pub(crate) id: String,
     /// 那台的名字。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     pub(crate) local_port: u16,
     pub(crate) remote_host: String,

@@ -12,6 +12,12 @@
 use super::*;
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 
+/// 一份 `files-size` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成几个数：缺一格就是解不出。
+fn sized_from_reply(name: &str, d: &serde_json::Value) -> Result<Sized, String> {
+    crate::source::reply_of::<cmd_wire::files::SizeReq>(d.clone())
+        .map(|r| super::sized_from_reply(name, r))
+}
+
 fn full() -> serde_json::Value {
     serde_json::json!({
         "path": "/srv/a", "bytes": 2048, "files": 3, "dirs": 2, "links": 1,

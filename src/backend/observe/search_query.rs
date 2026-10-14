@@ -1324,8 +1324,6 @@ pub(crate) fn merge_at(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MachineHits {
-    // TS 那一侧写成串（`Origin` 就是串）：`Machine` 的生成物归 `cmd-wire` 自己导出，这里不连带导（两个包的生成物目录相对深度不同）。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     pub(crate) sessions: Vec<SessionHits>,
 }

@@ -603,13 +603,14 @@ fn dispatch(
     }
 }
 
-/// 撤不动的那几条：阻塞档（`Run::Blocking`）开跑之后打不断，`cancel` 命中回 `not_cancellable`。
-/// hello 的 `uncancellable` 就是它 —— 与 `dispatch` 按档位分流读的是同一张表。
+/// 撤不动的那几条里**不是 typed 的**：阻塞档开跑之后打不断，`cancel` 命中回 `not_cancellable`。
+/// hello 的 `uncancellable` 就是它 —— 与 `dispatch` 按档位分流读的是同一张表。typed 那一半算进了形状指纹、
+/// 由指纹表那份生成物说（`cmd_wire::shapes::UNCANCELLABLE`，客户端读本侧编进来的那一份），这里不再列。
 /// 按字母排：它是一个集合，次序与命令登记在哪一族无关。
 pub fn uncancellable() -> Vec<String> {
     let mut names: Vec<String> = REGISTRY
         .iter()
-        .filter(|s| s.run.blocking())
+        .filter(|s| s.run.blocking() && !matches!(s.run, Run::Typed(_)))
         .map(|s| s.name.to_string())
         .chain(BUILTIN_BLOCKING.iter().map(|n| n.to_string()))
         .collect();

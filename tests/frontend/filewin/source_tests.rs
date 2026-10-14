@@ -1,5 +1,15 @@
 use super::*;
 
+/// 一份 `files-ls` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成一屏：两步任一不过都是报错。
+fn rows_from_ls_data(
+    d: &serde_json::Value,
+    by: impl Into<Sort>,
+) -> Result<(Vec<Listed>, Cut), String> {
+    reply_of::<cmd_wire::files::LsReq>(d.clone())
+        .map(|r| super::rows_from_ls_data(r, by))
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))
+}
+
 /// 造一棵**结构**上像样的临时目录树：名字全合成，不锚在任何活体上。
 fn synth_tree() -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!(
@@ -90,7 +100,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 /// 上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
 /// 整棵树恰好一处（`source.rs`）」。窗口改成只经通道说 `call` 之后，那条路整条摘了 ⇒ 判据翻面：
 ///
-/// - 问后端 `files-ls` 的地方（`CMD_LS` 这个名字被用到的地方）恰好两处：
+/// - 问后端 `files-ls` 的地方（它的入参类型 `LsReq` 被用到的地方）恰好两处：
 ///   `source.rs`（窗口进程里那一次，[`list_via_backend`]）与 `entry.rs`（开窗前那一屏，
 ///   monitor 进程里经通道宿主的同一个句柄）。**两向相等**，多一处 / 少一处都红。
 /// - 池子那条列目录命令在整棵树的生产段里**零处**（零命中守卫，带反向自检）。
@@ -117,7 +127,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
         "`filewin/` 下只扫到 {} 份 `.rs`（{files:?}）—— 扫描面塌了，下面几条在空转",
         files.len()
     );
-    let ask_ls = "CMD_LS";
+    let ask_ls = "LsReq";
     let pool_ls = format!("sftp_pool::sftp_{}(", "list_dir");
     let mut asking: Vec<(String, bool)> = Vec::new();
     let mut total_prod = 0usize;
@@ -129,7 +139,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
         let src = std::fs::read_to_string(path).expect("read filewin rs");
         let prod = guard_core::production_code(&src);
         total_prod += prod.len();
-        // 定义那一行（`pub const CMD_LS`）不算「问」。
+        // 定义那一行（带 `const` 的）不算「问」。
         let uses = prod
             .lines()
             .filter(|l| {
@@ -244,6 +254,10 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
 /// 不是合法 UTF-8 / 缺 `path` / 形状不对 ⇒ **报错**，不有损解码去开一个别处的窗。
 #[test]
 fn the_home_reply_is_decoded_as_bytes_and_refused_when_it_cannot_address_a_directory() {
+    // 解回包类型（`ask_typed` 那一步）再交 `home_from_reply`：两步任一不过都是报错。
+    let home_from_reply = |v: &serde_json::Value| {
+        reply_of::<cmd_wire::files::HomeReq>(v.clone()).and_then(super::home_from_reply)
+    };
     assert_eq!(
         home_from_reply(&serde_json::json!({ "path": "/home/u/" })).unwrap(),
         "/home/u"
@@ -1329,4 +1343,84 @@ fn an_unreadable_refusal_keeps_its_body_out_of_the_sentence_and_in_the_detail() 
         )),
         "{d}"
     );
+}
+
+/// 合成后端：只记下每一趟**原样收到的字节**（不解），一律回 `{}`（这条判据只看发出去的那一半）。
+struct RawLog(std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>);
+
+impl comms_inward::chan::router::Backends for RawLog {
+    fn call(
+        &self,
+        _origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
+        _left: std::time::Duration,
+        _cancel: comms_inward::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
+    > {
+        self.0
+            .lock()
+            .unwrap()
+            .push((op.0.clone(), payload.0.clone()));
+        Box::pin(async { Ok(comms_inward::chan::wire::Body(b"{}".to_vec())) })
+    }
+
+    fn subscribe(
+        &self,
+        _o: comms_inward::chan::wire::Origin,
+        _k: comms_inward::chan::wire::Kind,
+        _f: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        use futures::StreamExt as _;
+        futures::stream::empty().boxed()
+    }
+}
+
+/// 文件窗口问读侧那几条（列目录 · 算大小 · 探在不在 · 读文本 · 搜索）发出去的**字节**：
+/// 换形（`json!` 拼 → 按线上类型发）之前用旧代码跑出来钉成字面量，换形之后逐字节比。
+/// 路径两形都走：合法 UTF-8 ⇒ 字符串；有损 ⇒ `{"b16": …}`。（属性框 · 预览两处在各自的窗口判据里钉。）
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
+    let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let line = crate::find::testing::wire(std::sync::Arc::new(RawLog(log.clone())), 1 << 20);
+    let o = Origin("R".into());
+    let plain = RemotePath::plain("/srv/a b");
+    let lossy = RemotePath::from_bytes(b"/srv/d\xff");
+    for p in [&plain, &lossy] {
+        let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, SortBy::default()).await;
+        let _ = crate::size::size_remote(&line, &o, &p.path(), "n").await;
+        let _ = crate::transfer::stat_remote_at(&line, &o, p.path()).await;
+        let _ = crate::editor::read_text_at(&line, &o, p).await;
+    }
+    let board = crate::find::SearchBoard::default();
+    let asked = crate::find::Asked {
+        query: "q".into(),
+        under: Some(lossy.clone()),
+        ..Default::default()
+    };
+    crate::find::fetch_more(board.clone(), line.clone(), o.clone(), 7, asked, 3).await;
+    let got: Vec<String> = log
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(c, b)| format!("{c} {}", String::from_utf8_lossy(b)))
+        .collect();
+    let stream = board.stream().to_string();
+    let want = [
+        r#"files-ls {"limit":50000,"path":"/srv/a b"}"#.to_string(),
+        r#"files-size {"path":"/srv/a b"}"#.to_string(),
+        r#"files-stat {"path":"/srv/a b"}"#.to_string(),
+        r#"files-read-text {"max_bytes":8388608,"path":"/srv/a b"}"#.to_string(),
+        r#"files-ls {"limit":50000,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-size {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-stat {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-read-text {"max_bytes":8388608,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        format!(
+            r#"files-find {{"desc":false,"limit":100,"offset":3,"query":"q","seq":7,"sort":"relevance","stream":"{stream}","under":{{"b16":"2f7372762f64ff"}}}}"#
+        ),
+    ];
+    assert_eq!(got, want, "发出去的字节变了");
 }

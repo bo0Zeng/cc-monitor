@@ -103,7 +103,7 @@ pub struct Load {
     pub line: super::source::Line,
     pub origin: super::source::Origin,
     /// 发出去的路径（有损名按字节）。
-    pub wire: serde_json::Value,
+    pub wire: cmd_wire::files::WirePath,
     /// 读到多少就停。
     pub cap: u64,
     /// 解出来最长边不超过它。
@@ -200,13 +200,11 @@ impl Pictures {
     async fn read(&self, key: &PicKey, l: &Load) -> Result<Option<Vec<u8>>, String> {
         let mut bytes: Vec<u8> = Vec::new();
         loop {
-            let path = serde_json::from_value::<cmd_wire::files::WirePath>(l.wire.clone())
-                .map_err(|_| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
             let d = super::source::ask_typed(
                 &l.line,
                 &l.origin,
                 &cmd_wire::files::ReadChunkReq {
-                    path,
+                    path: l.wire.clone(),
                     offset: bytes.len() as u64,
                     len: super::lossy_pull::PULL_CHUNK,
                 },

@@ -250,8 +250,6 @@ import type { Sent } from "./Sent";
 import type { SessionCommands } from "./SessionCommands";
 import type { SessionCommandsReq } from "./SessionCommandsReq";
 import type { SessionFacts } from "./SessionFacts";
-import type { SessionInterrupts } from "./SessionInterrupts";
-import type { SessionInterruptsReq } from "./SessionInterruptsReq";
 import type { SessionModelReq } from "./SessionModelReq";
 import type { SessionNew } from "./SessionNew";
 import type { SessionNewDirReq } from "./SessionNewDirReq";
@@ -437,7 +435,6 @@ export interface TypedCommands {
   "rotation-view": { req: RotationViewReq; reply: RotationViewReply; code: "bad_args" | "no_session" | "no_strategy" | "refused" };
   "session-commands": { req: SessionCommandsReq; reply: SessionCommands; code: "bad_args" | "no_such_session" };
   "session-fork": { req: ForkReq; reply: Forked; code: "bad_args" | "fork_failed" };
-  "session-interrupts": { req: SessionInterruptsReq; reply: SessionInterrupts; code: "bad_args" };
   "session-model": { req: SessionModelReq; reply: ModelSwitched; code: "bad_args" | "unsupported" | "no_such_session" | "no_tmux" | "unobservable" | "child_timed_out" };
   "session-new": { req: NewRequest; reply: SessionNew; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_strategy" };
   "session-new-dir": { req: SessionNewDirReq; reply: DirChecked; code: "bad_args" };

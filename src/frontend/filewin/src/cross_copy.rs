@@ -343,16 +343,7 @@ impl DirPick {
         h.spawn(async move {
             let to = comms_inward::chan::wire::Origin(machine.clone());
             let path = if path.is_empty() {
-                match super::source::ask(
-                    &line,
-                    &to,
-                    "files-home",
-                    &serde_json::json!({}),
-                    super::transfer::PROBE_BUDGET,
-                )
-                .await
-                .and_then(|d| super::source::home_from_reply(&d))
-                {
+                match super::source::home_of(&line, &to, super::transfer::PROBE_BUDGET).await {
                     Ok(h) => h,
                     Err(e) => {
                         me.land(gen, None, Err(e), &ctx);
@@ -484,16 +475,7 @@ where
     };
     let to = comms_inward::chan::wire::Origin(machine.trim().to_string());
     // ① B 那台：home · 落点 · 目标已在就问一次。
-    let bhome = match super::source::ask(
-        line,
-        &to,
-        "files-home",
-        &serde_json::json!({}),
-        super::transfer::PROBE_BUDGET,
-    )
-    .await
-    .and_then(|d| super::source::home_from_reply(&d))
-    {
+    let bhome = match super::source::home_of(line, &to, super::transfer::PROBE_BUDGET).await {
         Ok(h) => h,
         Err(e) => {
             return failed(super::source::Failed::from(copy_text(
@@ -549,16 +531,7 @@ where
     }
     // ② 本机暂存（经本机后端：home · 暂存区 · 落点）。
     let local = comms_inward::chan::wire::Origin(LOCAL_ORIGIN.to_string());
-    let lhome = match super::source::ask(
-        line,
-        &local,
-        "files-home",
-        &serde_json::json!({}),
-        super::transfer::PROBE_BUDGET,
-    )
-    .await
-    .and_then(|d| super::source::home_from_reply(&d))
-    {
+    let lhome = match super::source::home_of(line, &local, super::transfer::PROBE_BUDGET).await {
         Ok(h) => h,
         Err(e) => return failed(e.into()),
     };

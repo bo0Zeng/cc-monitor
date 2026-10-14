@@ -216,12 +216,10 @@ pub fn decode_path(v: &Value) -> Option<Vec<u8>> {
         .map(|p| p.0)
 }
 
-/// `files-find` 的 `data` → [`FindOutcome`]（按回包类型解，解不出一处 ⇒ 整趟失败）。
-pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
+/// `files-find` 的回包 → [`FindOutcome`]（按回包类型解在前一步，解不出一处 ⇒ 整趟失败）。
+pub fn decode_find(d: cmd_wire::files::FindReply) -> FindOutcome {
     use cmd_wire::files::FileKind;
-    let d = super::source::reply_of::<cmd_wire::files::FindReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    Ok(FindOutcome {
+    FindOutcome {
         hits: d
             .hits
             .into_iter()
@@ -250,14 +248,12 @@ pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
         cover_root: d.cover_root.map(|p| p.0),
         offset: d.offset as usize,
         start: d.start.map(|p| p.0),
-    })
+    }
 }
 
-/// `files-index-status` 的 `data` → [`IndexStatus`]（按回包类型解：缺一格就是解不出，不悄悄当 0）。
-pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
-    let d = super::source::reply_of::<cmd_wire::files::IndexStatusReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    Ok(IndexStatus {
+/// `files-index-status` 的回包 → [`IndexStatus`]（按回包类型解在前一步：缺一格就是解不出，不悄悄当 0）。
+pub fn decode_status(d: cmd_wire::files::IndexStatusReply) -> IndexStatus {
+    IndexStatus {
         index_missing: d.index_missing,
         entries: d.entries,
         resident_bytes: d.resident_bytes,
@@ -271,7 +267,7 @@ pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
         cold_first_build_secs: d.cold_first_build_secs,
         skipped_mounts: d.skipped_mounts,
         unreadable_paths: d.unreadable_paths.into_iter().map(|p| p.0).collect(),
-    })
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -354,10 +350,10 @@ pub struct Asked {
     pub sort: FindSort,
 }
 
-/// `files-find` 的 `args`：原样的搜索词 ＋ 号 ＋ 搜索框名 ＋ 范围 ＋ 排序 ＋ 这一屏从哪起。
-pub fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value {
+/// `files-find` 的入参：原样的搜索词 ＋ 号 ＋ 搜索框名 ＋ 范围 ＋ 排序 ＋ 这一屏从哪起。
+pub fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> cmd_wire::files::FindReq {
     use cmd_wire::files::{FindReq, FindScope, WirePath};
-    to_args(&FindReq {
+    FindReq {
         query: asked.query.clone(),
         under: (!asked.machine)
             .then(|| asked.under.as_ref().map(|u| WirePath(u.bytes())))
@@ -369,29 +365,21 @@ pub fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value 
         limit: Some(PAGE as u64),
         sort: Some(asked.sort.col.wire()),
         desc: Some(asked.sort.desc),
-    })
+    }
 }
 
-/// `files-index-rebuild` 的 `args`：后端给的那个根；没给 ⇒ 不带（后端走家目录）。
-pub fn rebuild_args_at(root: Option<&[u8]>) -> Value {
-    to_args(&cmd_wire::files::RebuildReq {
+/// `files-index-rebuild` 的入参：后端给的那个根；没给 ⇒ 不带（后端走家目录）。
+pub fn rebuild_args_at(root: Option<&[u8]>) -> cmd_wire::files::RebuildReq {
+    cmd_wire::files::RebuildReq {
         path: root.map(|b| cmd_wire::files::WirePath(b.to_vec())),
-    })
+    }
 }
 
-/// `files-browse` 的 `args` —— **此刻的整份名单**（后端自己算差分）。
-pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> Value {
-    to_args(&cmd_wire::files::BrowseReq {
-        dirs: dirs
-            .iter()
-            .map(|d| cmd_wire::files::WirePath(d.bytes()))
-            .collect(),
-    })
-}
-
-/// 一份入参照它的线上类型摊成 JSON（这几样序列化不会失败）。
-fn to_args<C: cmd_wire::files::Call>(req: &C) -> Value {
-    serde_json::to_value(req).unwrap_or(Value::Null)
+/// `files-browse` 的入参 —— **此刻的整份名单**（后端自己算差分）。
+pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> cmd_wire::files::BrowseReq {
+    cmd_wire::files::BrowseReq {
+        dirs: dirs.iter().map(super::source::RemotePath::path).collect(),
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -933,25 +921,6 @@ impl Round {
 // 往返
 // ═══════════════════════════════════════════════════════════════════
 
-/// 发一条命令、拿它的 `data`。
-///
-/// 🔴**它只是 [`super::source::ask`] 的一层转交** —— 窗口进程里说 `call`
-/// 的唯一一处住那边（列目录与搜索两个消费者、写面四条都经它）。从前这里直接问进程级
-/// 登记表（`inbound_client`）并走共用分流器翻成三态；窗口成了独立进程之后那张表在这个
-/// 进程里是空的，而通道那一侧已经按分好了层（宿主调的就是那个分流器的
-/// 分层出口）⇒ 这里只剩「翻成一句人话」，翻译住 [`super::source::said`]。
-///
-/// ⚠ 搜索**没有第二条路可回落** ——：SFTP 给不了搜索。
-pub(super) async fn call_one(
-    line: &Line,
-    origin: &Origin,
-    cmd: &str,
-    args: Value,
-    t: Duration,
-) -> Result<Value, String> {
-    super::source::ask(line, origin, cmd, &args, t).await
-}
-
 /// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
 /// 对外那句只说哪一步没成 ＋ 那台的原话；命令名与错误码不上屏，只进日志（排查用）。
 pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
@@ -976,41 +945,31 @@ pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
     )
 }
 
-/// 问一趟 `files-find`。`Ok(None)` = 后端说这一趟已被同一个搜索框更新的一趟顶掉（不出声）。
+/// 问一趟 `files-find`（按 `FindReq` 发、按 `FindReply` 解）。`Ok(None)` = 后端说这一趟已被同一个搜索框更新的一趟顶掉（不出声）。
+///
+/// ⚠ 搜索**没有第二条路可回落** ——：SFTP 给不了搜索。
 async fn ask_find(
     line: &Line,
     origin: &Origin,
-    args: &Value,
+    req: &cmd_wire::files::FindReq,
 ) -> Result<Option<FindOutcome>, super::source::Failed> {
-    match super::source::ask_coded(line, origin, CMD_FIND, args, call_timeout()).await {
-        // 回来的读不懂：两端约定对不上（程序出错）；解析器的原话进复制详情。
-        Ok(v) => decode_find(&v).map(Some).map_err(|e| {
-            super::source::Failed::here(
-                copy_text("rsFilewinFind.round.findFailed", &[]),
-                origin,
-                CMD_FIND,
-                Some(&e.to_string()),
-            )
-        }),
+    match super::source::ask_typed(line, origin, req, call_timeout()).await {
+        Ok(r) => Ok(Some(decode_find(r))),
         Err(f) if f.code.as_deref() == Some("superseded") => Ok(None),
         Err(f) => Err(f),
     }
 }
 
 async fn ask_status(line: &Line, origin: &Origin) -> Result<IndexStatus, String> {
-    let v = call_one(
+    super::source::ask_typed(
         line,
         origin,
-        CMD_INDEX_STATUS,
-        to_args(&cmd_wire::files::IndexStatusReq {}),
+        &cmd_wire::files::IndexStatusReq {},
         call_timeout(),
     )
-    .await?;
-    // 同上读不懂；这一格只有一句（不出复制详情），解析器的原话记一行日志。
-    decode_status(&v).map_err(|e| {
-        tracing::warn!("filewin: {CMD_INDEX_STATUS} answer unreadable: {e}");
-        copy_text("rsFilewinFind.round.statusFailed", &[])
-    })
+    .await
+    .map(decode_status)
+    .map_err(|f| f.said)
 }
 
 /// 🔴 **一趟搜索的全部编排。**
@@ -1034,15 +993,15 @@ async fn one_round(
     let mut round = Round::default();
 
     if board.note_browsing(cwd) {
-        if let Err(r) = call_one(
+        if let Err(r) = super::source::ask_typed(
             line,
             origin,
-            CMD_BROWSE,
-            browse_args_at(std::slice::from_ref(cwd)),
+            &browse_args_at(std::slice::from_ref(cwd)),
             call_timeout(),
         )
         .await
         {
+            let r = r.said;
             // 少的是「这个目录此刻新不新」，不是整趟搜索 ⇒ 只进日志。
             tracing::warn!("filewin: browse list not delivered: {r}");
         }
@@ -1077,14 +1036,14 @@ async fn one_round(
         if first.is_some() {
             board.mark_first_build(first);
         }
-        let rebuilt = call_one(
+        let rebuilt = super::source::ask_typed(
             line,
             origin,
-            CMD_INDEX_REBUILD,
-            rebuild_args_at(outcome.cover_root.as_deref()),
+            &rebuild_args_at(outcome.cover_root.as_deref()),
             rebuild_timeout(),
         )
-        .await;
+        .await
+        .map_err(|f| f.said);
         if first.is_some() {
             board.mark_first_build(None);
         }

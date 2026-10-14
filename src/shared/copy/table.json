@@ -10263,18 +10263,6 @@
       "zh": "新建目录",
       "args": []
     },
-    "rsFilewinFind.round.findFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "搜索失败 · 程序出错",
-      "args": []
-    },
-    "rsFilewinFind.round.statusFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "读取文件清单状态失败 · 程序出错",
-      "args": []
-    },
     "rsFilewinFind.refusal.line": {
       "kind": "error",
       "role": "原因格",
@@ -17159,12 +17147,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "保存位置须含目录与文件名 · 未下载",
-      "args": []
-    },
-    "rsFilewinLossyPull.reply.badChunk": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "该机后端回的一段内容无法解析 · 未下完",
       "args": []
     },
     "beFilesWrite.deleteTree.stopped": {

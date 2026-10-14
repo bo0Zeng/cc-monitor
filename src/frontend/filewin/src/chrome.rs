@@ -1316,15 +1316,8 @@ impl Workspace {
         *slot.lock().unwrap() = HomeState::Asking;
         let origin = pane.source.origin();
         h.spawn(async move {
-            let got = super::source::ask(
-                &line,
-                &origin,
-                super::source::CMD_HOME,
-                &serde_json::json!({}),
-                super::proc::FIRST_SCREEN_BUDGET,
-            )
-            .await
-            .and_then(|d| super::source::home_from_reply(&d));
+            let got =
+                super::source::home_of(&line, &origin, super::proc::FIRST_SCREEN_BUDGET).await;
             *slot.lock().unwrap() = match got {
                 Ok(home) => HomeState::Known(home),
                 Err(e) => HomeState::Failed(e),

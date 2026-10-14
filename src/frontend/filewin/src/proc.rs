@@ -52,17 +52,7 @@ pub async fn first_screen(
 ) -> Result<(String, Vec<Listed>), String> {
     let cwd = match cwd {
         Some(d) => d,
-        None => {
-            let d = super::source::ask(
-                line,
-                &source.origin(),
-                super::source::CMD_HOME,
-                &serde_json::json!({}),
-                FIRST_SCREEN_BUDGET,
-            )
-            .await?;
-            super::source::home_from_reply(&d)?
-        }
+        None => super::source::home_of(line, &source.origin(), FIRST_SCREEN_BUDGET).await?,
     };
     let (rows, _truncated) =
         super::source::list_dir(line, source, &cwd, super::source::SortBy::default()).await?;
