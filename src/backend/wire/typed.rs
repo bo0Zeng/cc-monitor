@@ -245,7 +245,8 @@ pub(crate) struct Typed {
 }
 
 impl Typed {
-    /// 开跑之后打不打得断（阻塞档打不断：hello 的 `uncancellable` 由它派生）。
+    /// 开跑之后打不打得断（阻塞档打不断）：读它的只有形状指纹（撤不动的算进指纹，`cmd_wire::shapes::UNCANCELLABLE` 由它写）。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn blocking(&self) -> bool {
         matches!(self.how, How::Blocking | How::FrameBlocking)
     }

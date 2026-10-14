@@ -806,28 +806,9 @@ impl Drop for Desk {
     }
 }
 
-fn ok(id: &str, data: Option<serde_json::Value>) -> Frame {
-    Frame::Reply {
-        id: id.to_string(),
-        ok: true,
-        code: None,
-        message: None,
-        detail: None,
-        data,
-    }
-}
-
 /// 这几条命令就地被拒的那一帧（详情里带命令名）。
 fn err(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
     Frame::refused(id, cmd, code, message)
-}
-
-fn text<'a>(args: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
-    args.get(k)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            crate::common::contract::malformed(&format!("missing `{k}` or not a string"))
-        })
 }
 
 /// 票号：本进程里单调（票只在一条连接里有意义；`xfer-` 前缀与旧传输台同形）。

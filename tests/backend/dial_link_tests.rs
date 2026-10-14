@@ -145,24 +145,28 @@ async fn a_stalled_link_does_not_block_another() {
     let table = Table::new(tx);
     let window = LINK_CHUNK_BYTES as u64;
     let big = pattern(8 * LINK_CHUNK_BYTES);
-    table.install(
-        "stuck".to_string(),
-        window,
-        move |_up, mut down| async move {
-            use tokio::io::AsyncWriteExt;
-            let _ = down.write_all(&big).await;
-        },
-    );
+    table
+        .install(
+            "stuck".to_string(),
+            window,
+            move |_up, mut down| async move {
+                use tokio::io::AsyncWriteExt;
+                let _ = down.write_all(&big).await;
+            },
+        )
+        .unwrap();
     let want = pattern(5 * LINK_CHUNK_BYTES);
     let payload = want.clone();
-    table.install(
-        "free".to_string(),
-        MAX_WINDOW,
-        move |_up, mut down| async move {
-            use tokio::io::AsyncWriteExt;
-            down.write_all(&payload).await.unwrap();
-        },
-    );
+    table
+        .install(
+            "free".to_string(),
+            MAX_WINDOW,
+            move |_up, mut down| async move {
+                use tokio::io::AsyncWriteExt;
+                down.write_all(&payload).await.unwrap();
+            },
+        )
+        .unwrap();
     settle().await;
     let frames = drain(&mut rx);
     assert_eq!(bytes_of(&frames, "free"), want, "另一条链路被堵住了");
@@ -175,9 +179,11 @@ async fn a_stalled_link_does_not_block_another() {
 async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
     let (tx, mut rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
-    table.install("E".to_string(), MAX_WINDOW, |mut up, mut down| async move {
-        let _ = tokio::io::copy(&mut up, &mut down).await;
-    });
+    table
+        .install("E".to_string(), MAX_WINDOW, |mut up, mut down| async move {
+            let _ = tokio::io::copy(&mut up, &mut down).await;
+        })
+        .unwrap();
     let chunks: Vec<Vec<u8>> = (0..3).map(|i| pattern(1000 + i)).collect();
     for (i, c) in chunks.iter().enumerate() {
         let r = table.data(
@@ -211,7 +217,7 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
 async fn an_upstream_flood_is_refused_as_busy() {
     let (tx, _rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
-    table.install("B".to_string(), MAX_WINDOW, hang);
+    table.install("B".to_string(), MAX_WINDOW, hang).unwrap();
     let block = crate::wire::b64_encode(&[1u8; 8]);
     let codes: Vec<Option<String>> = (0..5)
         .map(|i| {
@@ -239,10 +245,12 @@ async fn close_aborts_the_link_and_is_idempotent() {
     let (tx, _rx) = mpsc::channel::<Frame>(16);
     let table = Table::new(tx);
     let (drop_tx, mut drop_rx) = mpsc::channel::<()>(1);
-    table.install("C".to_string(), MAX_WINDOW, move |up, down| async move {
-        let _keep = (up, down, DropSignal(drop_tx));
-        std::future::pending::<()>().await
-    });
+    table
+        .install("C".to_string(), MAX_WINDOW, move |up, down| async move {
+            let _keep = (up, down, DropSignal(drop_tx));
+            std::future::pending::<()>().await
+        })
+        .unwrap();
     settle().await;
     assert_eq!(table.len(), 1);
     let r = table.close("x", &serde_json::json!({"link": "C"}));
@@ -269,10 +277,12 @@ async fn dropping_the_table_aborts_every_link() {
     let (drop_tx, mut drop_rx) = mpsc::channel::<()>(1);
     for i in 0..3 {
         let d = drop_tx.clone();
-        table.install(format!("T{i}"), MAX_WINDOW, move |up, down| async move {
-            let _keep = (up, down, DropSignal(d));
-            std::future::pending::<()>().await
-        });
+        table
+            .install(format!("T{i}"), MAX_WINDOW, move |up, down| async move {
+                let _keep = (up, down, DropSignal(d));
+                std::future::pending::<()>().await
+            })
+            .unwrap();
     }
     drop(drop_tx);
     settle().await;
@@ -337,7 +347,7 @@ async fn open_refuses_what_it_should_with_a_code() {
         "子系统那一口该回 unsupported_use（留口不开）"
     );
     assert_eq!(table.len(), 0);
-    table.install("dup".to_string(), MAX_WINDOW, hang);
+    table.install("dup".to_string(), MAX_WINDOW, hang).unwrap();
     assert_eq!(
         code(table.open(
             "a",
@@ -346,7 +356,7 @@ async fn open_refuses_what_it_should_with_a_code() {
         "duplicate_link"
     );
     for i in 1..MAX_LINKS_PER_CONNECTION {
-        table.install(format!("n{i}"), MAX_WINDOW, hang);
+        table.install(format!("n{i}"), MAX_WINDOW, hang).unwrap();
     }
     assert_eq!(table.len(), MAX_LINKS_PER_CONNECTION);
     assert_eq!(
