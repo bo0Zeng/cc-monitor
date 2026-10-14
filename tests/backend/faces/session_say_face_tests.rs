@@ -11,6 +11,7 @@ fn req(sid: &str, text: &str) -> SessionSayReq {
         sid: sid.into(),
         text: text.into(),
         client: Some("phone".into()),
+        seen_screen: None,
     }
 }
 
@@ -209,5 +210,34 @@ fn other_refusals_are_passed_back_without_resuming() {
         )
         .unwrap();
         assert_eq!(got.why, Some(why));
+    }
+}
+
+/// ★ 带了看见的那一屏的指纹 ⇒ 原样交给 `terminal-input`（画面变了它就不送，原样回）；
+/// 送的那一刻终端没了也不恢复：看见的那一屏已经不在了，恢复出来的不是调用方看见的那一条。
+#[test]
+fn a_seen_screen_rides_along_and_a_gone_terminal_is_not_resumed() {
+    let with_seen = |sid: &str| SessionSayReq {
+        seen_screen: Some("0123456789abcdef".into()),
+        ..req(sid, "看一下收件箱")
+    };
+    let sent = RefCell::new(Vec::<TerminalInputReq>::new());
+    let changed = |r: &TerminalInputReq| {
+        sent.borrow_mut().push(r.clone());
+        Ok(Sent {
+            screen: Some("fedcba9876543210".into()),
+            ..refused(Refused::ScreenChanged)
+        })
+    };
+    let got = say_with(&with_seen(SID), &|_| false, &changed, &no_resume).unwrap();
+    assert_eq!(got.why, Some(Refused::ScreenChanged));
+    assert_eq!(
+        sent.borrow()[0].seen_screen.as_deref(),
+        Some("0123456789abcdef"),
+        "看见的那一屏的指纹没交给送字那一条"
+    );
+    for gone in [Refused::NotKnown, Refused::Ended] {
+        let got = say_with(&with_seen(SID), &|_| false, &|_| Ok(refused(gone)), &no_resume).unwrap();
+        assert_eq!((got.result, got.why), (SentResult::Refused, Some(gone)));
     }
 }

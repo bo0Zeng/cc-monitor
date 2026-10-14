@@ -1,4 +1,4 @@
-//! 帧面 `session-say` 的宿主壳：往一条会话说一句（聊天屏 ➤ · 压缩上下文 · 清空会话 · 点 Skill 都走它）。
+//! 帧面 `session-say` 的宿主壳：往一条会话说一句（聊天屏 ➤ · 压缩上下文 · 清空会话 · 点 Skill · cc-bus 敲门都走它）。
 //! 那台说这条会话在等人（批准 · 回答）⇒ 不送（框开着时打的字会落进框里）；不在等 ⇒ 照 `terminal-input` 那一条送、补回车。
 //! 送的时候这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 按记下的号恢复这条会话，那一句当第一句交出去
 //! （模型 · 权限档取会话记录里最后那一条，同 `history-facts` 那一处扫描；起法同批量起的 tmux 那一形，`session_batch::resume_saying`）。
@@ -25,6 +25,11 @@ pub(crate) struct SessionSayReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) client: Option<String>,
+    /// 送之前看到的那一屏的指纹（`terminal-preview` 的 `screen`）：画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`（同 `terminal-input`）。
+    /// 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) seen_screen: Option<String>,
 }
 
 typed::codes! {
@@ -123,10 +128,11 @@ pub(crate) fn say_with(
         text: Some(req.text.clone()),
         enter: Some(true),
         client: req.client.clone(),
+        seen_screen: req.seen_screen.clone(),
         ..TerminalInputReq::default()
     })?;
-    // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。
-    if !matches!(sent.why, Some(Refused::NotKnown | Refused::Ended)) {
+    // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。带了看见的那一屏 ⇒ 不恢复。
+    if req.seen_screen.is_some() || !matches!(sent.why, Some(Refused::NotKnown | Refused::Ended)) {
         return Ok(sent);
     }
     let Some(a) = resume(req) else {

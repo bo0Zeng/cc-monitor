@@ -245,12 +245,13 @@ pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// 这一趟的意图：`@<名>` 打头 ⇒ 配置文件里那一段合并上命令行当场给的（`book` 只在这一形才读）；否则照 [`argv::parse`]。
+/// 这一趟的意图：`@<名>` 打头 ⇒ 配置文件里那一段合并上命令行当场给的（`book` 只在这一形才读）；否则照命令行（[`argv::parse_layered`] 不带配置层）。
 /// `@` 后面那段当不了配置名（`@README.md 讲讲`）⇒ 不是配置，整行照旧交 agent。
+/// 一并交回每一项来自哪一层（命令行那一层名字是空串；`--ccm-print` 的「来自」照它写）。
 pub(crate) fn parse_entry(
     args: &[String],
     book: impl FnOnce() -> Result<crate::assets::aliases::profile::Book, String>,
-) -> Result<Parsed, Die> {
+) -> Result<(Parsed, Vec<argv::Origin>), Die> {
     use crate::assets::aliases::profile;
     let named = args
         .first()
@@ -260,10 +261,10 @@ pub(crate) fn parse_entry(
         Some(name) => {
             let b = book().map_err(Die)?;
             profile::resolve(&b, name, &args[1..])
-                .map(|r| r.parsed)
+                .map(|r| (r.parsed, r.origins))
                 .map_err(Die)
         }
-        None => argv::parse(args),
+        None => argv::parse_layered(&[], args),
     }
 }
 
@@ -299,7 +300,7 @@ pub fn run(
         return EXIT_NO_TERMINAL;
     }
     let env = Env::from_process(process_argv);
-    let parsed = match parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home)) {
+    let (parsed, origins) = match parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home)) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),
     };
@@ -327,12 +328,17 @@ pub fn run(
             let mut env = env;
             // 这一家认不认得这份扫描由计划那一侧问适配层（`Adapter::live`）。
             env.running_sessions = o.resumes.is_some().then_some(running);
-            let plan = match plan_of(&o, env, true) {
+            let Planned { plan, env, table } = match plan_of(&o, env, true) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),
             };
             if o.print {
+                // 那条命令进 stdout（照原样能交给 shell）；「来自」那一节进 stderr，每行是注释（混进去一起交给 shell 也不改那条命令）。
                 println!("{}", plan::render_for(&plan, plan::terminal_shell()));
+                eprint!(
+                    "{}",
+                    plan::render_from(&plan::from_rows(&o, &origins, &env, &table, &plan))
+                );
                 return 0;
             }
             execute(plan, own)
@@ -364,7 +370,7 @@ fn agent_env(agent: &str, env: &mut Env, inherit: Option<&dyn Fn(&str) -> Option
 ///
 /// `inherit_account`：要不要读**这个进程**环境里继承来的账号目录变量。一次性模式（用户终端里敲的）要；
 /// 别名预览不要 —— 那一问答的是「从一个新终端敲这条别名」，常驻后端进程身上的变量不是那个终端的。
-fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, Die> {
+fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Planned, Die> {
     let get = |k: &str| std::env::var(k).ok();
     agent_env(
         &o.agent,
@@ -386,7 +392,15 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, 
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
     // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
     let taken = crate::common::session_snapshot::global().taken_names().ok();
-    plan::build(o, &env, &table, taken.as_ref())
+    let plan = plan::build(o, &env, &table, taken.as_ref())?;
+    Ok(Planned { plan, env, table })
+}
+
+/// [`plan_of`] 的成品：计划 ＋ 算它用的那份环境与账号表（`--ccm-print` 的「来自」按同一份写）。
+struct Planned {
+    plan: Plan,
+    env: Env,
+    table: AccountTable,
 }
 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
@@ -530,8 +544,8 @@ pub(crate) fn answer_print(req: &CcmPrintReq) -> Result<CcmLine, (&'static str, 
     let o = match parse_entry(&argv, || {
         crate::assets::aliases::profile::read_at(&Env::for_preview().home)
     }) {
-        Ok(Parsed::Opts(o)) => o,
-        Ok(Parsed::Early(_)) => {
+        Ok((Parsed::Opts(o), _)) => o,
+        Ok((Parsed::Early(_), _)) => {
             return Err((
                 "refused",
                 copy_core::copy_text("beCcm.preview.noSession", &[]),
@@ -539,7 +553,9 @@ pub(crate) fn answer_print(req: &CcmPrintReq) -> Result<CcmLine, (&'static str, 
         }
         Err(Die(msg)) => return Err(("refused", msg)),
     };
-    let plan = plan_of(&o, Env::for_preview(), false).map_err(|Die(msg)| ("refused", msg))?;
+    let plan = plan_of(&o, Env::for_preview(), false)
+        .map_err(|Die(msg)| ("refused", msg))?
+        .plan;
     Ok(CcmLine {
         line: plan::render_for(&plan, plan::terminal_shell()),
     })
@@ -560,7 +576,7 @@ pub(crate) fn preview_resolved(
         env.pwd = plan::expand_home(a, &env.home);
     }
     let home = env.home.clone();
-    let plan = plan_of(&o, env, false).map_err(|Die(m)| m)?;
+    let plan = plan_of(&o, env, false).map_err(|Die(m)| m)?.plan;
     Ok((
         plan::render_for(&plan, plan::terminal_shell()),
         plan::render_short(&plan, &home),

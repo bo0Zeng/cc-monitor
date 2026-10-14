@@ -39,7 +39,8 @@ ccm -p --model haiku --tools "" --no-session-persistence --setting-sources proje
 
 - 不给工具 · 不起 MCP · 不跑用户级钩子与插件 · 关掉思考（`MAX_THINKING_TOKENS=0`）· 不落会话记录。
 - 工作目录 `~/.cc-monitor/autostart/`：cc-monitor 后端在历史页与会话列表里藏掉工作目录是它的会话。
-- 交给 ccm 的环境去掉了 `CCM_*` · `CLAUDE_CODE_*` · `ANTHROPIC_*` · `CLAUDE_CONFIG_DIR` · `TMUX*`（免得从某个 claude 会话里继承来、发到别的号或别的中转上）。
+- 交给 ccm 的环境照本进程的，只多 `MAX_THINKING_TOKENS=0` · `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` 两格：号由 `--account-dir` 点名（压过继承来的号）、中转按这一发重新问、嵌套标记由 ccm 清掉。在某条会话里跑时这一发记成它的子会话，轮换不跟随主会话，照点名的号发。
+- 环境里有用户自己设的上游地址或 API 密钥时照样交下去（ccm 不按名字猜着剥）：那一发就走用户自己那一路。
 
 **花多少**（实测一发，claude 2.1.289）：系统提示词换成一句 ⇒ 输入约 870 token（claude 自带、去不掉的那一段）· 输出 4 token。不换系统提示词约 6.8k token：缓存热时按一成价算，可隔几小时才发一次时缓存早已过期、要按写缓存价付 ⇒ 换掉更省。
 
