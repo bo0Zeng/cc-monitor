@@ -1,6 +1,7 @@
 //! 离线那台的上次值：本机后端替界面记下每台最近一次读成的那几份（账号清单 · 「文件与数据」那一份），断开时界面照它画「上次的」，跨重启还在。
 //! 住 `~/.cc-monitor/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），后端自己的状态；能重建（再连上一次就有），按缓存记。
 //! 全仓唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
+//! `data` 那一份按 `data-report` 的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`SeenData`]）。
 //! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
 use crate::platform::fs::{Own, OwnPath};
@@ -76,13 +77,35 @@ pub(crate) struct SeenEntry {
     pub(crate) value: Map<String, Value>,
 }
 
+/// 记下的 `data-report` 那一份，按那条命令的回包类型核过：对得上 ⇒ 原样（已是类型）；
+/// 存档不是此刻这一版（形状指纹不同 · 旧版存的没带指纹 · 解不回回包类型）⇒ 照实说读不懂，原样不交出去。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub(crate) enum SeenData {
+    Kept {
+        /// 记下的时刻（毫秒）。
+        #[serde(rename = "atMs")]
+        #[cfg_attr(test, ts(rename = "atMs", type = "number"))]
+        at_ms: u64,
+        value: crate::footprint::data::DataReport,
+    },
+    Unreadable {
+        #[serde(rename = "atMs")]
+        #[cfg_attr(test, ts(rename = "atMs", type = "number"))]
+        at_ms: u64,
+    },
+}
+
 /// `last-seen-read` 的回包：没记过的那一样 ⇒ `null`。
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// `accounts` 那一份（`accounts-list` 还不是 typed）照旧原样交；它 typed 时同 `data` 一个办法。
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct LastSeen {
     pub(crate) accounts: Option<SeenEntry>,
-    pub(crate) data: Option<SeenEntry>,
+    pub(crate) data: Option<SeenData>,
 }
 
 /// `last-seen-write` 的回包。
@@ -94,6 +117,15 @@ pub(crate) struct LastSeenWritten {
     /// 记下的时刻（毫秒）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at_ms: u64,
+}
+
+/// `data` 那一样是哪条命令的回包（存档记下它此刻的形状指纹，读回来对一下是不是这一版）。
+const DATA_CMD: &str = "data-report";
+
+/// 一份 `data-report` 应答按回包类型严格收：解成类型、再写回去跟原样逐值比（多一格 · 缺一格 · 类型不对都不收）。
+fn data_report_of(v: &Value) -> Option<crate::footprint::data::DataReport> {
+    let r: crate::footprint::data::DataReport = serde_json::from_value(v.clone()).ok()?;
+    (serde_json::to_value(&r).ok()? == *v).then_some(r)
 }
 
 /// 记哪几样（闭集，同 [`SeenKind`]）：`accounts` ＝ `accounts-list` 的应答 · `data` ＝ `data-report` 的应答。
@@ -148,9 +180,26 @@ pub(crate) fn read_at(path: &Path, req: &LastSeenReadReq) -> Answer<LastSeen> {
         mine.and_then(|m| m.get(k.key()))
             .and_then(|e| serde_json::from_value::<SeenEntry>(e.clone()).ok())
     };
+    let data = mine
+        .and_then(|m| m.get(SeenKind::Data.key()))
+        .and_then(|e| {
+            let at_ms = e.get("atMs")?.as_u64()?;
+            let this_version =
+                e.get("shape").and_then(Value::as_str) == cmd_wire::shapes::shape_of(DATA_CMD);
+            Some(
+                match e
+                    .get("value")
+                    .filter(|_| this_version)
+                    .and_then(data_report_of)
+                {
+                    Some(value) => SeenData::Kept { at_ms, value },
+                    None => SeenData::Unreadable { at_ms },
+                },
+            )
+        });
     Ok(LastSeen {
         accounts: got(SeenKind::Accounts),
-        data: got(SeenKind::Data),
+        data,
     })
 }
 
@@ -162,8 +211,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     let origin = origin_arg(&req.origin)?.to_string();
     let kind = req
         .kind
-        .ok_or_else(|| bad("`kind` is not one of accounts / data"))?
-        .key();
+        .ok_or_else(|| bad("`kind` is not one of accounts / data"))?;
     let value = Value::Object(
         req.value
             .clone()
@@ -182,6 +230,16 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
             ),
         )));
     }
+    // `data` 那一份按回包类型核过才收，连同此刻的形状指纹一起存（读回来据此认是不是这一版）。
+    let shape = match kind {
+        SeenKind::Data => {
+            data_report_of(&value)
+                .ok_or_else(|| bad("`value` is not a `data-report` reply of this version"))?;
+            cmd_wire::shapes::shape_of(DATA_CMD)
+        }
+        SeenKind::Accounts => None,
+    };
+    let kind = kind.key();
     let (dir, file) = place(own)?;
     own.ensure_dir(&dir).map_err(|e| {
         (
@@ -199,7 +257,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
         )
     })?;
     locked_edit(own, &dir, &file, |all| {
-        record(all, origin, kind, &value, now_ms);
+        record(all, origin, kind, &value, shape, now_ms);
         true
     })?;
     Ok(LastSeenWritten { at_ms: now_ms })
@@ -240,14 +298,24 @@ fn place(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::spec::
 }
 
 /// 记下一份；台数超了先丢最久没更新的那台。
-fn record(all: &mut Map<String, Value>, origin: String, kind: &str, value: &Value, now_ms: u64) {
+fn record(
+    all: &mut Map<String, Value>,
+    origin: String,
+    kind: &str,
+    value: &Value,
+    shape: Option<&str>,
+    now_ms: u64,
+) {
     let entry = all
         .entry(origin)
         .or_insert_with(|| Value::Object(Map::new()));
     if !entry.is_object() {
         *entry = Value::Object(Map::new());
     }
-    entry[kind] = json!({"atMs": now_ms, "value": value});
+    entry[kind] = match shape {
+        Some(shape) => json!({"atMs": now_ms, "shape": shape, "value": value}),
+        None => json!({"atMs": now_ms, "value": value}),
+    };
     while all.len() > MAX_ORIGINS {
         let newest = |m: &Value| {
             KINDS

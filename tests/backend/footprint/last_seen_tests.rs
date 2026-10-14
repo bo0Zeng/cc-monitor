@@ -20,6 +20,22 @@ fn write_at(
     super::write_at(own, &req, now).map(|x| serde_json::to_value(x).unwrap())
 }
 
+/// 一份合法的 `data-report` 应答（后端真类型序列化出来的）。
+fn report() -> serde_json::Value {
+    use crate::footprint::chores::{Chore, ChoreAction, ChoreKind};
+    let mut c = Chore::new("ccm", ChoreKind::Must, ChoreAction::CopyCommand);
+    c.go = Some(crate::footprint::data::UndoAt::page("ext"));
+    serde_json::to_value(crate::footprint::data::DataReport {
+        home: "/home/u".into(),
+        changed_files: vec![],
+        todo: vec![c],
+        tmux: Some(true),
+        chores: 1,
+        own: vec![],
+    })
+    .unwrap()
+}
+
 struct Dir(std::path::PathBuf);
 impl Dir {
     fn new(tag: &str) -> Self {
@@ -76,12 +92,12 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
     );
     write_at(
         &d.own(),
-        &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h"}}),
+        &json!({"origin": "devbox", "kind": "accounts", "value": {"home": "/h"}}),
         5,
     )
     .unwrap();
     assert_eq!(
-        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["data"],
+        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
         json!({"atMs": 5, "value": {"home": "/h"}})
     );
 }
@@ -117,7 +133,7 @@ fn 台数封顶_超了先丢最久没更新的那台() {
     for i in 0..=MAX_ORIGINS {
         write_at(
             &d.own(),
-            &json!({"origin": format!("m{i}"), "kind": "data", "value": {}}),
+            &json!({"origin": format!("m{i}"), "kind": "data", "value": report()}),
             i as u64 + 1,
         )
         .unwrap();
@@ -142,7 +158,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     ] {
         write_at(
             &d.own(),
-            &json!({"origin": o, "kind": k, "value": {"x": 1}}),
+            &json!({"origin": o, "kind": k, "value": if k == "data" { report() } else { json!({"x": 1}) }}),
             10,
         )
         .unwrap();
@@ -154,7 +170,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     );
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap(),
-        json!({"accounts": null, "data": {"atMs": 10, "value": {"x": 1}}})
+        json!({"accounts": null, "data": {"state": "kept", "atMs": 10, "value": report()}})
     );
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
     assert!(raw.get("devbox").is_none(), "盘上还留着那台：{raw}");
@@ -162,7 +178,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     // 清就只清：带着 kind / value 的 forget 不收（两件事别混在一次里）。
     let mixed = write_at(
         &d.own(),
-        &json!({"origin": "gpu-01", "forget": true, "kind": "data", "value": {"x": 2}}),
+        &json!({"origin": "gpu-01", "forget": true, "kind": "data", "value": report()}),
         40,
     );
     assert_eq!(mixed.unwrap_err().code, "bad_args");
@@ -170,4 +186,71 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
         read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap()["data"]["atMs"],
         10
     );
+}
+
+/// `data` 那一份按 `data-report` 的回包类型收：多一格 · 缺一格 · 类型不对 ⇒ `bad_args`、不落盘；收下的连同那条命令此刻的形状指纹一起存。
+#[test]
+fn data_那一份按回包类型收_形状不对的不收() {
+    let d = Dir::new("shape-in");
+    let code = |v: serde_json::Value| {
+        write_at(
+            &d.own(),
+            &json!({"origin": "devbox", "kind": "data", "value": v}),
+            1,
+        )
+        .unwrap_err()
+        .code
+    };
+    let mut extra = report();
+    extra["extra"] = json!(1);
+    let mut missing = report();
+    missing.as_object_mut().unwrap().remove("own");
+    let mut wrong = report();
+    wrong["todo"][0]["kind"] = json!("maybe");
+    for v in [json!({"home": "/h"}), extra, missing, wrong] {
+        assert_eq!(code(v), "bad_args");
+    }
+    assert!(!d.file().exists(), "拒掉的不许落一个字节");
+    write_at(
+        &d.own(),
+        &json!({"origin": "devbox", "kind": "data", "value": report()}),
+        7,
+    )
+    .unwrap();
+    let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
+    assert_eq!(
+        raw["devbox"]["data"]["shape"],
+        json!(cmd_wire::shapes::shape_of("data-report").unwrap()),
+        "存档要记下是哪一版的回包"
+    );
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["data"],
+        json!({"state": "kept", "atMs": 7, "value": report()})
+    );
+}
+
+/// 存档不是此刻这一版（指纹不同 · 旧版存的没带指纹 · 解不回回包类型）⇒ 照实说读不懂，原样不交出去。
+#[test]
+fn 存档不是这一版_照实说读不懂_不交原样() {
+    let d = Dir::new("shape-out");
+    std::fs::create_dir_all(d.file().parent().unwrap()).unwrap();
+    let mut wrong = report();
+    wrong["tmux"] = json!("no");
+    let now = cmd_wire::shapes::shape_of("data-report").unwrap();
+    for (o, entry) in [
+        (
+            "old",
+            json!({"atMs": 3, "shape": "00000000", "value": report()}),
+        ),
+        ("bare", json!({"atMs": 4, "value": report()})),
+        ("bent", json!({"atMs": 5, "shape": now, "value": wrong})),
+    ] {
+        std::fs::write(d.file(), json!({ o: {"data": entry} }).to_string()).unwrap();
+        let got = read_at(&d.file(), &json!({"origin": o})).unwrap();
+        assert_eq!(got["data"]["state"], json!("unreadable"), "{o}: {got}");
+        assert!(
+            got["data"].get("value").is_none(),
+            "{o}：读不懂的原样不交出去"
+        );
+    }
 }

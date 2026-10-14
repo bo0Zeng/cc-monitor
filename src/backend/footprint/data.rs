@@ -18,27 +18,29 @@ use super::rows::{ConfigSurfaceReport, SurfaceRow, SurfaceState};
 use crate::platform::fs::Ro;
 
 /// cc-monitor 自己的家（相对家目录）：这下面的不是「你的文件」。
+use std::borrow::Cow;
+
 const OWN_HOME: &str = "~/.cc-monitor";
 
 /// 设置窗的一处：页 · 栏 · 锚点（与设置窗「带目的地打开」同一种形状；没有的那一格不出）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct UndoAt {
-    pub(crate) page: &'static str,
+    pub(crate) page: Cow<'static, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) tab: Option<&'static str>,
+    pub(crate) tab: Option<Cow<'static, str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) anchor: Option<&'static str>,
+    pub(crate) anchor: Option<Cow<'static, str>>,
 }
 
 impl UndoAt {
     /// 只到页。
     pub(crate) const fn page(page: &'static str) -> UndoAt {
         UndoAt {
-            page,
+            page: Cow::Borrowed(page),
             tab: None,
             anchor: None,
         }
@@ -47,9 +49,9 @@ impl UndoAt {
     /// 页 · 栏 · 锚点。
     pub(crate) const fn at(page: &'static str, tab: &'static str, anchor: &'static str) -> UndoAt {
         UndoAt {
-            page,
-            tab: Some(tab),
-            anchor: Some(anchor),
+            page: Cow::Borrowed(page),
+            tab: Some(Cow::Borrowed(tab)),
+            anchor: Some(Cow::Borrowed(anchor)),
         }
     }
 }
@@ -66,11 +68,11 @@ fn undo_of(tool_id: &str) -> Option<UndoAt> {
 }
 
 /// cc-monitor 写进用户文件的一处。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct ChangedFile {
-    pub(crate) path: &'static str,
+    pub(crate) path: Cow<'static, str>,
     pub(crate) what: String,
     /// 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
     pub(crate) undo: Option<UndoAt>,
@@ -88,7 +90,7 @@ pub(crate) struct Missing {
 }
 
 /// 删了会丢（`truth`）还是能重建（`cache`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
@@ -98,12 +100,12 @@ pub(crate) enum OwnClass {
 }
 
 /// cc-monitor 在这台自己家里放的一样。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct OwnItem {
     /// 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
-    pub(crate) id: &'static str,
+    pub(crate) id: Cow<'static, str>,
     /// 是什么（写好的那一句，界面照抄）。
     pub(crate) what: String,
     /// `~/.cc-monitor/…` 写法。
@@ -116,8 +118,8 @@ pub(crate) struct OwnItem {
     pub(crate) size: Option<u64>,
 }
 
-/// `data-report` 的回包。
-#[derive(Debug, Clone, serde::Serialize)]
+/// `data-report` 的回包。也收（`Deserialize`）：本机后端替界面记的「上次值」按它核存档（`last_seen`）。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
@@ -156,7 +158,7 @@ fn changed(r: &SurfaceRow) -> Option<ChangedFile> {
         return None;
     }
     Some(ChangedFile {
-        path: p,
+        path: Cow::Borrowed(p),
         what: r.tool_name.clone(),
         undo: undo_of(r.tool_id),
     })
@@ -194,7 +196,7 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<OwnItem> {
             let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
             let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
             OwnItem {
-                id,
+                id: Cow::Borrowed(id),
                 what: own_what(id),
                 path: format!("~/{rel}"),
                 dir,

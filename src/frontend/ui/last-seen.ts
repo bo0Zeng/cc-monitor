@@ -8,12 +8,9 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { isObj } from "./ipc/decode";
 import type { SeenKind } from "./generated/SeenKind";
-import type { SeenEntry } from "./generated/SeenEntry";
+import type { LastSeen } from "./generated/LastSeen";
 
 export type { SeenKind };
-
-/** 一份上次值：原样那一份应答 ＋ 记下的时刻（形状由握手指纹核过）。 */
-export type Seen = SeenEntry;
 
 const BUDGET_MS = 10_000;
 /** 这次运行里交过的那一份（键 ＝ 机器 ＋ 种类），同样的不再交。 */
@@ -34,8 +31,8 @@ export async function rememberSeen(origin: Origin, kind: SeenKind, value: unknow
   }
 }
 
-/** 那台上次读成的那一份；没有 / 问不到 ⇒ `null`。 */
-export async function recallSeen(origin: Origin, kind: SeenKind): Promise<Seen | null> {
+/** 那台上次读成的那一份（`data` 那一样后端按回包类型核过，不是这一版就说读不懂）；没有 / 问不到 ⇒ `null`。 */
+export async function recallSeen<K extends SeenKind>(origin: Origin, kind: K): Promise<LastSeen[K] | null> {
   if (isLocalOrigin(origin)) return null;
   try {
     const got = await callTyped(LOCAL_ORIGIN, "last-seen-read", { origin }, budgetWithin(BUDGET_MS));

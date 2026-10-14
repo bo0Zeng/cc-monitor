@@ -107,7 +107,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
         wire(
             &ls(
                 &own,
-                &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h"}}),
+                &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h", "changedFiles": [], "todo": [], "tmux": null, "chores": 0, "own": []}}),
                 2000
             )
             .unwrap()
@@ -116,7 +116,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     );
     assert_eq!(
         read("devbox"),
-        r#"{"accounts":{"atMs":1000,"value":{"accounts":[{"name":"work"}],"meta":{"enabled":true}}},"data":{"atMs":2000,"value":{"home":"/h"}}}"#
+        r#"{"accounts":{"atMs":1000,"value":{"accounts":[{"name":"work"}],"meta":{"enabled":true}}},"data":{"atMs":2000,"state":"kept","value":{"changedFiles":[],"chores":0,"home":"/h","own":[],"tmux":null,"todo":[]}}}"#
     );
     assert_eq!(
         wire(&ls(&own, &json!({"origin": "devbox", "forget": true}), 3000).unwrap()),

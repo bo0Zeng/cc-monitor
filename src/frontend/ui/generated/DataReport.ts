@@ -4,7 +4,7 @@ import type { Chore } from "./Chore";
 import type { OwnItem } from "./OwnItem";
 
 /**
- * `data-report` 的回包。
+ * `data-report` 的回包。也收（`Deserialize`）：本机后端替界面记的「上次值」按它核存档（`last_seen`）。
  */
 export type DataReport = { 
 /**
