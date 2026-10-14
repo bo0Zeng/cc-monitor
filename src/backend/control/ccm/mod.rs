@@ -33,9 +33,9 @@
 //!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
-pub(crate) mod argv;
 pub(crate) mod plan;
 
+use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;
 use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
@@ -190,18 +190,6 @@ pub(crate) fn own_source() -> &'static str {
     include_str!("mod.rs")
 }
 
-/// 这个二进制在终端里的名字（`~/.cc-monitor/bin/ccm`）。预览语境里「叫的是 `ccm`」就是它（`plan::Env::for_preview`）。
-pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
-
-/// 用配置文件里那一段的写法：`@<名>` 打头（[`PROFILE_SIGIL`] ＋ 段名）。
-pub(crate) const PROFILE_SIGIL: char = '@';
-
-/// 这个名字是不是 ccm 自己（`ccm` · 后端本名 `cc-monitor-backend` 及旧版释放的 `cc-monitor-backend-<build>`）。
-/// 不是 ⇒ 被叫成这个名字等同 `@<名>`（[`route`]）；配置文件也不收这几个名字当段名。
-pub(crate) fn is_own_name(name: &str) -> bool {
-    name == SUBCOMMAND_WORD || name.starts_with(env!("CARGO_PKG_NAME"))
-}
-
 /// 被叫成的那个名字若是一段配置的名字 ⇒ 那个名字（`argv[0]` 取最后一段；Windows 上去掉 `.exe`）。
 /// 是 ccm 自己、或根本当不了配置名（形状不对）⇒ `None`，照 ccm 本身走。
 pub(crate) fn profile_called(argv0: &str) -> Option<String> {
@@ -222,11 +210,6 @@ pub enum Entry {
     Ccm(Vec<String>),
     /// 当后端用：一次性子命令或流模式的 argv（已去掉打头的 `--`）。
     Backend(Vec<String>),
-}
-
-/// 后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
-pub(crate) fn is_backend_word(w: &str) -> bool {
-    crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }
 
 /// 分流：`argv0` 是这个进程被叫成的名字，`args` 是其后那一串。

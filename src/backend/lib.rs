@@ -37,6 +37,7 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 #[cfg(test)]
 #[path = "../../tests/backend/cc_bus_boundary_guard.rs"]
 mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
+pub mod ccm_line; // ccm 这一行的词与解析（旗标 · 解析 · 自己叫什么 · 配置的记号）：起会话 · 账号域 · 别名那一族都往下引它
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // K-P6b / C2 /：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）

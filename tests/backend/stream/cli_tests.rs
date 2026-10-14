@@ -919,7 +919,7 @@ fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
     for name in &n {
         if let Some(spec) = REGISTRY.iter().find(|x| x.name == *name) {
             assert!(
-                spec.run.on_frame_arm() || crate::control::ccm::argv::is_ccm_word(&flag_of(name)),
+                spec.run.on_frame_arm() || crate::ccm_line::argv::is_ccm_word(&flag_of(name)),
                 "`NOT_ON_CLI` 里的 {name} 跑得起来、也不是 ccm 的词 —— 它的理由该住 `STREAM_ONLY` 或 `UI_ONLY`"
             );
         }

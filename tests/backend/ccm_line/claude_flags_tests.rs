@@ -6,7 +6,7 @@
 use super::*;
 use std::collections::BTreeSet;
 
-const SNAPSHOT: &str = include_str!("../../../__fixtures__/claude-help.snapshot.txt");
+const SNAPSHOT: &str = include_str!("../../__fixtures__/claude-help.snapshot.txt");
 
 /// `--help` 里的旗标：选项行是两格缩进、`-` 开头；取名字那一栏（到两个空格为止），逗号分开的每一形。
 fn flags_of(help: &str) -> BTreeSet<String> {

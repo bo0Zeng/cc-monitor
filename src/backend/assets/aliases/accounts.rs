@@ -7,7 +7,7 @@
 
 use super::profile::{self, Book, Change, Profile, ProfileEdit};
 use crate::accounts::manage::aliases::alias_name;
-use crate::control::ccm::argv::{flag, Parsed};
+use crate::ccm_line::argv::{flag, Parsed};
 
 /// 这一段是不是「账号那一形」：自己只写了号（可再加 tmux），没有交给 agent 的词 ⇒ `(号, 是否 tmux)`，号与 tmux 按合并下来的算
 /// （`workcct` 基于 `cct` 只写了号，也是「work 号 ＋ tmux」）。**不看名字**（名字是用户可改的）；合不下来的那一段不算。

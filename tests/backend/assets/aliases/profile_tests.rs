@@ -1,8 +1,8 @@
 //! 配置文件（`profiles.toml`）：每一段是一组 ccm 选项、可写「基于」另一段；继承链父 → 子合并，命令行当场给的最后盖。
-//! 词与命令行同一张表、同一个解析器（`control/ccm/argv.rs`）。
+//! 词与命令行同一张表、同一个解析器（`ccm_line/argv.rs`）。
 
 use super::*;
-use crate::control::ccm::argv::{flag, Parsed};
+use crate::ccm_line::argv::{flag, Parsed};
 
 const BOOK: &str = r#"# 我的 ccm 配置（手写的注释要留住）
 [cc]
@@ -29,7 +29,7 @@ fn resolved(book: &str, name: &str, args: &[&str]) -> Resolved {
     }
 }
 
-fn opts_of(r: &Resolved) -> &crate::control::ccm::argv::Opts {
+fn opts_of(r: &Resolved) -> &crate::ccm_line::argv::Opts {
     match &r.parsed {
         Parsed::Opts(o) => o,
         Parsed::Early(e) => panic!("不该是立即结束的那一形：{e:?}"),
@@ -211,7 +211,7 @@ fn profile_names_must_be_command_names_and_not_the_backend_itself() {
 /// （命令行上 `--` 左边那串），没有只在配置里有的项；ccm 能放在 `--` 右边的词，除了每次取值都不同的那几个，都能写进配置。
 #[test]
 fn the_file_speaks_exactly_the_command_lines_words() {
-    use crate::control::ccm::argv::is_ccm_word;
+    use crate::ccm_line::argv::is_ccm_word;
     let per_call = [
         flag::NEW,
         flag::ATTACH,
@@ -226,7 +226,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
     for k in &keys {
         assert!(is_ccm_word(&format!("--{k}")), "配置里的 {k} 不是 ccm 的词");
     }
-    let all = crate::control::ccm::argv::RIGHT_WORDS;
+    let all = crate::ccm_line::argv::RIGHT_WORDS;
     let want: Vec<String> = all
         .iter()
         .filter(|w| !per_call.contains(*w))
@@ -243,7 +243,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
 #[test]
 fn the_command_line_form_and_the_file_form_say_the_same_thing() {
     let by_file = resolved(BOOK, "teamcct", &["你好"]);
-    let by_cli = crate::control::ccm::argv::parse(&v(&[
+    let by_cli = crate::ccm_line::argv::parse(&v(&[
         "你好",
         "--",
         "--cwd-if",

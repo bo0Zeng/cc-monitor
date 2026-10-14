@@ -56,7 +56,7 @@ const CLI_REQUEST_ID: &str = "cli";
 /// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里结构上答不了 ⇒ 不上；[`UI_ONLY`] 那几条答得了、只是除了界面没人用 ⇒ 暂不上。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
     !spec.run.on_frame_arm()
-        && !crate::control::ccm::argv::is_ccm_word(&flag_of(spec.name))
+        && !crate::ccm_line::argv::is_ccm_word(&flag_of(spec.name))
         && !STREAM_ONLY.contains(&spec.name)
         && !UI_ONLY.contains(&spec.name)
 }

@@ -908,10 +908,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "足迹：与 `data-report` 同住 `footprint/mod.rs` 与帧面 `faces/footprint_report_face.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
     ),
     (
-        "first-run",
-        "首次运行那份数：与 `data-report` 同住 `footprint/`（引用图按文件取，经 `footprint/mod.rs`），它自己不问 tmux（三步看启动文件 · 账号库 · 台数）",
-    ),
-    (
         "session-new",
         "起新会话：tmux 那一形没 tmux ⇒ `place` 那一格不行（`place_unavailable`），开终端那一形本来用不着 tmux（Windows 本机照做）",
     ),
@@ -947,78 +943,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "sessions-stop",
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),
-    (
-        "aliases-block-install",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-block-remove",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-block-render",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-read",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "powershell-policy-set",
-        "与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
-    ),
-    (
-        "accounts-mcp-pick",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-mcp-sync",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-mcp-read",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-mcp-remove",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-add",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-init",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-login-cmd",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-remove",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-repair",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-rollback",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-set-default",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "accounts-verify",
-        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
     ("bus-broadcast", "同 `bus-list`：挑在线的那一步读 `live`，问不到 tmux 就当「不知道谁在线」如实回，不回 `no_tmux`"),
     ("bus-kill", "同 `bus-list`（转调 `cc-kill`；tmux 只用来挂 `live`）"),
     ("bus-list", "`control/cc_bus.rs::agents_via_cc_list` 经 `gate::list_sessions().ok()` 挂「还活着吗」那一栏 —— 问不到回 `live: null`（「不假装知道」），命令本身照做；它的能力是转调 cc-bus，不是 tmux"),
@@ -1037,19 +961,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ),
     (
         "profiles-read",
-        "别名那一族（`assets/aliases/page.rs`）与 `profiles-resolve` 同文件 —— 按文件画的引用图因此连到了 tmux；本条只读配置文件，不问 tmux",
-    ),
-    (
-        "profiles-impact",
-        "同 `profiles-read`：只在内存里合并比对，不问 tmux",
-    ),
-    (
-        "profiles-bases",
-        "同 `profiles-read`：只看「基于」那条链，不问 tmux",
-    ),
-    (
-        "profiles-write",
-        "同 `profiles-read`：按条目改配置文件、补链接，不问 tmux",
+        "配置文件整份：`tmux` 那一格问这台有没有 tmux（`faces/profiles_face.rs` 交 `control::terminals::tmux_here`），没 tmux ⇒ `tmux: false`、别的几格照答",
     ),
     (
         "ccm-print",
@@ -1336,7 +1248,7 @@ const CCM_TMUX_EXCEPTIONS: &[(&str, bool, &str)] = &[
 /// 🔴 ccm 面：真靠 tmux 的能力（真解析器 ＋ 真计划现推）∪ 登记的例外 == `CCM_TMUX_CARRIED`。
 #[test]
 fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
-    use crate::control::ccm::argv::{parse, Parsed};
+    use crate::ccm_line::argv::{parse, Parsed};
     use crate::control::ccm::plan::{build, Account, AccountTable, Env, Plan};
     use std::collections::BTreeSet;
     let env = Env {
@@ -1366,7 +1278,7 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         // 探针把 ccm 选项写在前 ⇒ 喂解析器前换成 `--` 切分的排列。
-        match parse(&crate::control::ccm::argv::tests::mixed_to_split(&a)) {
+        match parse(&crate::ccm_line::argv::tests::mixed_to_split(&a)) {
             Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
             Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),
             Err(d) => Err(d.0),

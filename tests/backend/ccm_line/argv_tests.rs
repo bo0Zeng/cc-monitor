@@ -1,6 +1,6 @@
 //! # （ccm argv 的组合规则一条都不许静默忽略）＋ / `D2`
 //!
-//! 后端的纪律是「一条都不许静默忽略」（`control/ccm/argv.rs`）；三种互斥 / 依赖组合
+//! 后端的纪律是「一条都不许静默忽略」（`ccm_line/argv.rs`）；三种互斥 / 依赖组合
 //! 就是 `the_combination_rules_all_fail_loudly` 逐条断言的那几种。`the_ccm_argv_is_parsed_in_exactly_one_place` 对 `D1`「一个判定只有一个家」；
 //! `every_default_lives_only_in_the_defaults_block` 对 `D2`「一个数只有一个住址」。
 
@@ -130,7 +130,7 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
     let codex = |a: &[&str]| {
         let mut w = v(a);
         w.extend(v(&["--", "--ccm-agent", "codex"]));
-        match crate::control::ccm::argv::parse(&w).expect("该解析得动") {
+        match crate::ccm_line::argv::parse(&w).expect("该解析得动") {
             Parsed::Opts(o) => *o,
             other => panic!("{other:?}"),
         }
@@ -146,7 +146,7 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
 #[test]
 fn an_agent_without_accounts_refuses_to_pick_one() {
     let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", "codex")]);
-    let said = |a: &[&str]| match crate::control::ccm::argv::parse(&v(a)) {
+    let said = |a: &[&str]| match crate::ccm_line::argv::parse(&v(a)) {
         Err(Die(m)) => m,
         other => panic!("{a:?} 该被拒：{other:?}"),
     };
@@ -283,12 +283,16 @@ fn every_default_lives_only_in_the_defaults_block() {
 fn the_ccm_argv_is_parsed_in_exactly_one_place() {
     let others: &[(&str, &str)] = &[
         (
+            "ccm_line/mod.rs",
+            include_str!("../../../src/backend/ccm_line/mod.rs"),
+        ),
+        (
             "control/ccm/mod.rs",
-            include_str!("../../../../src/backend/control/ccm/mod.rs"),
+            include_str!("../../../src/backend/control/ccm/mod.rs"),
         ),
         (
             "control/ccm/plan.rs",
-            include_str!("../../../../src/backend/control/ccm/plan.rs"),
+            include_str!("../../../src/backend/control/ccm/plan.rs"),
         ),
     ];
     let mut hits: Vec<String> = Vec::new();

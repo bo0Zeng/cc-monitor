@@ -55,8 +55,8 @@ pub(crate) mod links;
 pub(crate) mod page;
 pub(crate) mod profile;
 
+use crate::ccm_line::argv::flag;
 use crate::common::door::{self, Door};
-use crate::control::ccm::argv::flag;
 // 方言住后端 OS 适配层（原住本目录）。
 use crate::platform::child::Deadline;
 use crate::platform::shell::dialect::{self, Listed, RestTo, Shell};
@@ -68,7 +68,7 @@ pub(crate) const POLICY_SET_CAP: Deadline = Deadline::secs(28);
 
 /// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`，适配层不往上够 ⇒ 由这里交下去。
 pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
-    word: crate::control::ccm::SUBCOMMAND_WORD,
+    word: crate::ccm_line::SUBCOMMAND_WORD,
     end: flag::END,
 };
 
@@ -241,7 +241,7 @@ fn old_list(shell: Shell, text: &str) -> (Vec<Alias>, Vec<String>) {
 
 /// 一条别名在别名文件里交给 ccm 的那一个词：`@<名>`。
 fn own_word(name: &str) -> String {
-    format!("{}{name}", crate::control::ccm::PROFILE_SIGIL)
+    format!("{}{name}", crate::ccm_line::PROFILE_SIGIL)
 }
 
 /// 一条别名（旧形状的帧面）⇒ 配置文件里那一段要写成的样子（`from` 由调用方给）。
@@ -264,7 +264,7 @@ fn edit_of_alias(a: &Alias, from: Option<String>) -> profile::ProfileEdit {
 }
 
 fn argv_split(args: &[String]) -> (&[String], Option<&[String]>) {
-    match crate::control::ccm::argv::last_end(args) {
+    match crate::ccm_line::argv::last_end(args) {
         Some(k) => (&args[..k], Some(&args[k + 1..])),
         None => (args, None),
     }

@@ -119,9 +119,9 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 /// 只登记不接住 = 把一片扫描面静默挖空，那正是本文件头注里 D 审计一击即破的那一族。
 const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
-        "control/ccm/argv.rs",
+        "ccm_line/argv.rs",
         "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
-         （由 `control::ccm::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
+         （由 `ccm_line::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
          它们是终端命令面、不是 wire 协议面。",
     ),
     // `ccm …` 调用行的渲染器（从 monitor 搬进后端）：它**写**那套终端旗标给用户的 shell 跑，不是后端分派的 argv。
@@ -543,7 +543,7 @@ mod tests {
         // 🔴 **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
         //    剖分把那条判据搬去了 `tests/backend/control/ccm_tests.rs`，剖分器**按原语义
         //    重定向**了它的 `include_str!`，于是那一行今天逐字是
-        //    `include_str!("../../../src/backend/control/ccm/argv.rs")` ⇒ 整串针失配
+        //    `include_str!("../../../src/backend/ccm_line/argv.rs")` ⇒ 整串针失配
         //    （现打红：「接盘判据不再扫 `argv.rs` 了」）。
         //    ⇒ 针改成**只认路径的收尾文件名**：它认的是「有一处 include 读的是 argv.rs」，
         //      而不是「那条相对路径逐字长这样」。前者是事实，后者是位置。
@@ -581,8 +581,10 @@ mod tests {
         );
         for (f, why) in TERMINAL_SURFACE_FILES {
             assert!(
-                f.starts_with("control/ccm/") || *f == "control/launch_render/ccm_invocation.rs",
-                "`{f}` 不在 `control/ccm/` 下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
+                f.starts_with("ccm_line/")
+                    || f.starts_with("control/ccm/")
+                    || *f == "control/launch_render/ccm_invocation.rs",
+                "`{f}` 不在 ccm 那一族（`ccm_line/` · `control/ccm/`）下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
             );
             assert!(
                 why.len() > 40,

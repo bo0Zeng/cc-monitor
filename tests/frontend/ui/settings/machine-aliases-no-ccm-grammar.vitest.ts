@@ -8,7 +8,7 @@
  *
  * # 判法
  *
- * 旗标的全集取后端原文（`src/backend/control/ccm/argv.rs` 的 `mod flag` 里每一个常量，含 `--` 与 `new`）——
+ * 旗标的全集取后端原文（`src/backend/ccm_line/argv.rs` 的 `mod flag` 里每一个常量，含 `--` 与 `new`）——
  * 与被扫的界面文件异源。别名页那两份生产文件（剥注释）里：
  * - 字符串字面量恰是某个旗标、或以「旗标=」打头 ⇒ 命中；
  * - 按空白切一串（`.split(/\s…/)`）⇒ 命中。
@@ -39,7 +39,7 @@ function stripTsComments(src: string): string {
 
 /** 后端 `argv.rs::flag` 里每一个常量的值。 */
 function ccmWords(): string[] {
-  const src = readFileSync(resolve(REPO_ROOT, "src/backend/control/ccm/argv.rs"), "utf8");
+  const src = readFileSync(resolve(REPO_ROOT, "src/backend/ccm_line/argv.rs"), "utf8");
   const at = src.indexOf("pub(crate) mod flag {");
   const body = src.slice(at, src.indexOf("\n}\n", at));
   return [...body.matchAll(/pub\(crate\) const [A-Z_]+: &str = "([^"]*)";/g)].map((m) => m[1]);
@@ -61,7 +61,7 @@ function hits(code: string, words: readonly string[]): string[] {
 describe("别名页零处自己解析 ccm 参数", () => {
   it("旗标全集取自后端原文：恰是那几条常量，含分界 `--` 与位置词 `new`", () => {
     const words = ccmWords();
-    const declared = (readFileSync(resolve(REPO_ROOT, "src/backend/control/ccm/argv.rs"), "utf8").split("pub(crate) mod flag {")[1] ?? "")
+    const declared = (readFileSync(resolve(REPO_ROOT, "src/backend/ccm_line/argv.rs"), "utf8").split("pub(crate) mod flag {")[1] ?? "")
       .split("\n}\n")[0]
       .match(/pub\(crate\) const /g)!.length;
     expect(words.length, "抠出来的与声明的条数对不上 —— 抽取坏了").toBe(declared);

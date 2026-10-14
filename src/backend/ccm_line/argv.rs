@@ -236,7 +236,7 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
     };
     let Some(&known) = RIGHT_WORDS.iter().find(|w| **w == key) else {
         // 右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
-        return die(if i == 0 && crate::control::ccm::is_backend_word(a) {
+        return die(if i == 0 && super::is_backend_word(a) {
             copy_text(
                 "beArgv.parse.backendWordAfterClaudeArgs",
                 &[("w", &a.to_string())],
@@ -571,9 +571,9 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/control/ccm/argv_tests.rs"]
+#[path = "../../../tests/backend/ccm_line/argv_tests.rs"]
 pub(crate) mod tests; // `pub(crate)`：旧写法夹具的换排列 `tests::mixed_to_split` 给同族几份单测共用
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/control/ccm/claude_flags_tests.rs"]
+#[path = "../../../tests/backend/ccm_line/claude_flags_tests.rs"]
 mod claude_flags_tests;

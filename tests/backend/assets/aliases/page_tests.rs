@@ -23,7 +23,11 @@ fn read_with(d: &HomeDoor, args: &Value, tmux: Option<bool>, tz: &crate::Tz) -> 
 }
 
 fn answer_resolve(d: &HomeDoor, args: &Value) -> Wired {
-    wired(super::answer_resolve(d, &taken(args)?))
+    wired(super::answer_resolve(
+        d,
+        &taken(args)?,
+        crate::control::ccm::preview_resolved,
+    ))
 }
 
 fn answer_impact(d: &HomeDoor, args: &Value) -> Wired {

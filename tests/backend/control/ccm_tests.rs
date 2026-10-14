@@ -234,7 +234,7 @@ fn the_version_moved_because_the_implementation_did() {
 #[test]
 fn every_flag_we_accept_has_a_usage_line() {
     let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/ccm/argv.rs"
+        "../../../src/backend/ccm_line/argv.rs"
     ));
     let mut flags: Vec<String> = Vec::new();
     let mut from = 0usize;
