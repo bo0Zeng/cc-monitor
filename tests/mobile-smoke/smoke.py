@@ -282,7 +282,7 @@ def main():
         # 拒的那一句是条长提示（带「复制详情」）：它在的时候「+」要让开、不被盖住，接着点得到。
         if not wait(t("detail.act.copy"), 5):
             raise Step.Fail("拒了却没出那条提示")
-        if fab_under_notice("+", t("detail.act.copy")):
+        if fab_under_notice(t("mobIdentity.fab.aria"), t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
@@ -290,6 +290,9 @@ def main():
         for line in key:
             typed(line)
             adb("shell", "input", "keyevent", "66")
+        # `input text` 敲进去是异步的（输入法排着队一行行吃）：等最后一行真进了框再按「搬进来」，机器忙时不等就交上去半把钥匙。
+        if not wait(key[-1].split()[-1], 20):
+            raise Step.Fail("钥匙敲不进框里")
         tap(t("mobIdentity.import.ok"))
         if not wait("SHA256:", 10):
             raise Step.Fail("整把钥匙没导进来")
