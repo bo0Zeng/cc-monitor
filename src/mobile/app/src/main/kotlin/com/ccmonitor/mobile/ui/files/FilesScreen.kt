@@ -64,13 +64,13 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
-import java.io.IOException
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
+import java.io.IOException
+import java.util.UUID
 
 /** 当前打开的对话框。 */
 private sealed interface FilesDialog {
@@ -361,7 +361,7 @@ private fun PathHeader(
         if (dir.text != null) {
             PhIconButton(
                 Ph.Star,
-                copyText(if (bookmarked != null) "rsFilewinBookmarks.label.drop" else "rsFilewinBookmarks.label.add"),
+                if (bookmarked != null) copyText("rsFilewinBookmarks.label.drop") else copyText("rsFilewinBookmarks.label.add"),
                 onClick = onToggleBookmark,
                 tint = if (bookmarked != null) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant,
             )
