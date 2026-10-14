@@ -1075,7 +1075,7 @@ fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
 /// `lines` 是这台活会话那几行（`accounts-sessions` 同一份）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
 /// 活着的都算 `liveStreams`（停的那几秒 cc-monitor 里这几个不更新）。`forwards` 是这台后端账上通往 `machine` 的转发（没给 `machine` ⇒ 0）。
 /// 读不懂的行跳过。**纯函数**。
-pub(crate) fn machine_product(lines: &[String], forwards: u32) -> serde_json::Value {
+pub(crate) fn machine_product(lines: &[String], forwards: u32) -> Interrupts {
     let (mut relayed, mut maybe, mut live) = (0u32, 0u32, 0u32);
     for l in lines {
         let Ok(row) = serde_json::from_str::<serde_json::Value>(l) else {
@@ -1091,21 +1091,33 @@ pub(crate) fn machine_product(lines: &[String], forwards: u32) -> serde_json::Va
             _ => maybe += 1,
         }
     }
-    serde_json::json!({
-        "relayedSessions": relayed,
-        "relayedMaybe": maybe,
-        "liveStreams": live,
-        "forwards": forwards,
-    })
+    Interrupts {
+        relayed_sessions: relayed,
+        relayed_maybe: maybe,
+        live_streams: live,
+        forwards,
+    }
+}
+
+/// `machine-interrupts` 的回包：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（[`machine_product`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Interrupts {
+    /// 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）。
+    pub(crate) relayed_sessions: u32,
+    /// 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）。
+    pub(crate) relayed_maybe: u32,
+    /// 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）。
+    pub(crate) live_streams: u32,
+    /// 这台账上通往问的那台机器的转发（问的是重启 / 退出 cc-monitor ⇒ 账上全部）。
+    pub(crate) forwards: u32,
 }
 
 /// 「现在重启 cc-monitor」之前那一问（`machine-interrupts` 带 `appExit`）：这台后端随 cc-monitor 退出一起停（`kill` ＝ 它自己那份退出行为）
 /// ⇒ 这台的活会话照 [`machine_product`] 数、账上全部转发（`all_forwards`）都断；留着 ⇒ 什么都不断。**纯函数**。
-pub(crate) fn app_exit_product(
-    kill: bool,
-    lines: &[String],
-    all_forwards: u32,
-) -> serde_json::Value {
+pub(crate) fn app_exit_product(kill: bool, lines: &[String], all_forwards: u32) -> Interrupts {
     if kill {
         machine_product(lines, all_forwards)
     } else {
@@ -1118,12 +1130,23 @@ pub(crate) fn session_lines_for_frame(agent_home: &Path) -> Vec<String> {
     session_accounts(agent_home, &resolve_accts_dir())
 }
 
+/// `accounts-trust` 的回包。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Trust {
+    /// 这个账号接受过该目录的信任对话框。
+    pub(crate) trusted: bool,
+    /// 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）。
+    pub(crate) known: bool,
+}
+
 /// 帧面 `accounts-trust`：换号前的信任预检。`config_dir == None` ⇒ 账号 0（路径写死在 `$HOME`，不收路径参数）；
 /// 否则必须 ∈ manifest（否则就成了任意文件读原语）。拒绝码原样上交。成品 `{trusted, known}`。
 pub(crate) fn trust_product(
     config_dir: Option<&str>,
     cwd: &str,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<Trust, (String, String)> {
     trust_product_at(&resolve_accts_dir(), config_dir, cwd)
 }
 
@@ -1132,7 +1155,7 @@ pub(crate) fn trust_product_at(
     accts_dir: &Path,
     config_dir: Option<&str>,
     cwd: &str,
-) -> Result<serde_json::Value, (String, String)> {
+) -> Result<Trust, (String, String)> {
     let line = match config_dir {
         None => account_trust_zero(cwd)?,
         Some(c) => account_trust(accts_dir, c, cwd)?,
@@ -1148,9 +1171,7 @@ pub(crate) fn trust_product_at(
         )
     })?;
     match (v["trusted"].as_bool(), v["known"].as_bool()) {
-        (Some(trusted), Some(known)) => {
-            Ok(serde_json::json!({ "trusted": trusted, "known": known }))
-        }
+        (Some(trusted), Some(known)) => Ok(Trust { trusted, known }),
         _ => Err((
             "failed".to_string(),
             crate::common::contract::malformed("trust line lacks `trusted` / `known`"),

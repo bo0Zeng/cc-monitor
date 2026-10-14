@@ -1294,7 +1294,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 ///
 /// | 格 | 断的是什么 | 翻掉它的形状 |
 /// |---|---|---|
-/// | ① | 帧命令 `accounts-sessions` 的 `lines` 那一格说明里的字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
+/// | ① | 帧命令 `accounts-sessions` 的回包类型说明里的字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
 /// | ② | 本文件头注把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠一个键」那句假话 |
 ///
 /// # ⚠ 它买不到什么
@@ -1303,13 +1303,19 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 /// 解释）它一个字都判不了 —— 那是评审的活。
 #[test]
 fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
-    // 协议参考的命令那一节从登记表的字段说明生成：`accounts-sessions` 的 `lines` 那一格就是这里的说明。
-    let row = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|c| c.name == "accounts-sessions")
-        .and_then(|c| c.fields.iter().find(|f| f.name == "lines"))
-        .map(|f| f.doc)
-        .expect("登记表里没有 `accounts-sessions` 的 `lines` 那一格");
+    // 协议参考的命令那一节从回包类型生成：`accounts-sessions` 的回包 `SessionLines` 的说明就是这里那一行。
+    let face = include_str!("../../../src/backend/faces/read_face.rs");
+    let end = face
+        .find("pub(crate) struct SessionLines {")
+        .expect("`read_face.rs` 里没有 `SessionLines`");
+    let row: String = face[..end]
+        .lines()
+        .rev()
+        .skip_while(|l| !l.trim_start().starts_with("///"))
+        .take_while(|l| l.trim_start().starts_with("///") || l.trim_start().starts_with("#["))
+        .filter(|l| l.trim_start().starts_with("///"))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
     let prod = production_text();
@@ -1547,15 +1553,24 @@ fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
     let dir = a.to_string_lossy().to_string();
     assert_eq!(
         trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
-        serde_json::json!({"trusted": true, "known": true})
+        Trust {
+            trusted: true,
+            known: true
+        }
     );
     assert_eq!(
         trust_product_at(&accts, Some(&dir), "/w/q").unwrap(),
-        serde_json::json!({"trusted": false, "known": true})
+        Trust {
+            trusted: false,
+            known: true
+        }
     );
     assert_eq!(
         trust_product_at(&accts, Some(&dir), "/w/r").unwrap(),
-        serde_json::json!({"trusted": false, "known": false})
+        Trust {
+            trusted: false,
+            known: false
+        }
     );
     // 与 CLI 那一臂逐格对拍（同一个函数，两个出口）。
     let cli: serde_json::Value =
@@ -2070,7 +2085,7 @@ fn the_machine_product_matches_the_cross_language_golden() {
             .collect();
         let forwards = c["forwards"].as_u64().unwrap() as u32;
         assert_eq!(
-            machine_product(&lines, forwards),
+            serde_json::to_value(machine_product(&lines, forwards)).unwrap(),
             c["reply"],
             "「{}」：现产的成品与金样对不上",
             c["name"]
@@ -2105,9 +2120,10 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
     ];
     let zero =
         serde_json::json!({"relayedSessions":0,"relayedMaybe":0,"liveStreams":0,"forwards":0});
-    assert_eq!(app_exit_product(false, &lines, 3), zero);
+    let wire = |p: Interrupts| serde_json::to_value(p).unwrap();
+    assert_eq!(wire(app_exit_product(false, &lines, 3)), zero);
     assert_eq!(
-        app_exit_product(true, &lines, 3),
+        wire(app_exit_product(true, &lines, 3)),
         serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
     );
 }

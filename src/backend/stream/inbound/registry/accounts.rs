@@ -93,51 +93,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（界面问那台 ＋ 问本机数通往那台的转发，并排画）。只读。
-    CommandSpec {
-        name: "machine-interrupts",
-        summary: "停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么",
-        codes: &["bad_args"],
-        fields: &[arg("appExit", "可缺；`true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零"), out("forwards", "见 `machine`"), out("liveStreams", "这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）"), arg("machine", "可缺"), out("relayedMaybe", "活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）"), out("relayedSessions", "这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "accounts-sessions",
-        summary: "正在跑的会话各属哪个账号",
-        codes: &["too_large"],
-        fields: &[out("lines", "每条运行中会话一行 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜）")],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::wire::typed::blocking::<crate::faces::read_face::MachineInterrupts>(
+        "停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么",
+    ),
+    crate::wire::typed::blocking::<crate::faces::read_face::AccountsSessions>(
+        "正在跑的会话各属哪个账号",
+    ),
     // 换号前的信任预检：`configDir`（缺席 / null = 账号 0）＋ `cwd` → `{trusted, known}`。
     //   同族同档（读一份 manifest ＋ 一份 `.claude.json` ⇒ 阻塞档）、同一个只读宿主。
-    CommandSpec {
-        name: "accounts-trust",
-        summary: "换号前的信任预检",
-        codes: &[
-            "bad_args",
-            "failed",
-            "manifest_unavailable",
-            "no_home",
-            "unknown_config_dir",
-            "unsafe_config_dir",
-        ],
-        fields: &[arg("configDir", "目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 agent 自己那份用户级配置，不收路径）"), arg("cwd", "要预检的工作目录（必填）"), out("known", "这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）"), out("trusted", "这个账号接受过该目录的信任对话框")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::wire::typed::blocking::<crate::faces::read_face::AccountsTrust>("换号前的信任预检"),
     // 改账号库的那几条（typed：入参 · 成品 · 码表都从 `cmd_wire::accounts` 与 `faces::accounts_face` 的类型来）：本体 `accounts/manage/`，
     //   帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了改配置文件、重生成别名）。
     //   写经这台的文件管理面（[`LocalFiles`]）与分派那一层递的写句柄（key 表）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。

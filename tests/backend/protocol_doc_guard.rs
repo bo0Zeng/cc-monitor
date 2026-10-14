@@ -655,6 +655,12 @@ mod tests {
             ),
             (
                 "observe/accounts_query.rs",
+                "Interrupts",
+                "typed 帧命令 `machine-interrupts` 的回包（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
+            ),
+            ("observe/accounts_query.rs", "Trust", "同上，`accounts-trust` 的回包"),
+            (
+                "observe/accounts_query.rs",
                 "BadgeFacts",
                 "**不上线**：徽章那一判照类型读回清单那一行的几格（读，不写）",
             ),

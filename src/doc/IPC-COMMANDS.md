@@ -2091,14 +2091,36 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machine-interrupts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `appExit` | → | 可缺；`true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零 |
-| `forwards` | ← | 见 `machine` |
-| `liveStreams` | ← | 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新） |
-| `machine` | → | 可缺 |
-| `relayedMaybe` | ← | 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它） |
-| `relayedSessions` | ← | 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动） |
+入参 `MachineInterruptsReq` · 回包 `Interrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Interrupts = { 
+/**
+ * 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）。
+ */
+relayedSessions: number, 
+/**
+ * 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）。
+ */
+relayedMaybe: number, 
+/**
+ * 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）。
+ */
+liveStreams: number, 
+/**
+ * 这台账上通往问的那台机器的转发（问的是重启 / 退出 cc-monitor ⇒ 账上全部）。
+ */
+forwards: number, };
+type MachineInterruptsReq = { 
+/**
+ * 数通往哪台的转发（缺 ⇒ 不数）。
+ */
+machine?: string | null, 
+/**
+ * `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
+ */
+appExit?: boolean | null, };
+```
 
 码：`bad_args`
 
@@ -2108,11 +2130,14 @@ v: number | null, };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-sessions`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `lines` | ← | 每条运行中会话一行 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
+入参 `NoArgs` · 回包 `SessionLines`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`too_large`
+```ts
+type NoArgs = Record<symbol, never>;
+type SessionLines = { lines: Array<string>, };
+```
+
+码：`bad_args` · `too_large`
 
 #### `accounts-trust`
 
@@ -2120,12 +2145,29 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-trust`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `configDir` | → | 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 agent 自己那份用户级配置，不收路径） |
-| `cwd` | → | 要预检的工作目录（必填） |
-| `known` | ← | 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认） |
-| `trusted` | ← | 这个账号接受过该目录的信任对话框 |
+入参 `AccountsTrustReq` · 回包 `Trust`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountsTrustReq = { 
+/**
+ * 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**
+ * （读 agent 自己那份用户级配置，不收路径）。
+ */
+configDir?: string | null, 
+/**
+ * 要预检的工作目录。
+ */
+cwd: string, };
+type Trust = { 
+/**
+ * 这个账号接受过该目录的信任对话框。
+ */
+trusted: boolean, 
+/**
+ * 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）。
+ */
+known: boolean, };
+```
 
 码：`bad_args` · `failed` · `manifest_unavailable` · `no_home` · `unknown_config_dir` · `unsafe_config_dir`
 
