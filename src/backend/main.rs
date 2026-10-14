@@ -751,7 +751,7 @@ async fn serve_listening(
     let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone());
     tap::adopt(&book);
 
-    // 多客户：认证通过的连接排进这里；每条自己一份 watcher / inbound / writer。
+    // 多客户：认证通过的连接排进这里；watcher 一个进程一份（各连接在它上面一份投影），inbound / writer 每条自己一份。
     let (attached_tx, mut attached_rx) = tokio::sync::mpsc::channel::<Attached>(1);
     let (done_tx, mut done_rx) = tokio::sync::mpsc::channel::<u64>(1);
     // 此刻连着几条流（归零才按退出行为办）。

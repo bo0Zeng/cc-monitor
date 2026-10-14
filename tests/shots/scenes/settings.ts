@@ -405,13 +405,13 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText('.settings-page:not([hidden]) [data-anchor="keybindings"] button', copyText("settingsPanel.keybindings.open")));
     await sleep(900);
   }),
-  settings("settings-general-advanced", "设置 · 通用 · 高级", "通用页展开「高级：上下文上限」", async () => {
-    await go("general");
-    const head = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-anchor="context-limits"] [aria-expanded]');
-    if (head) {
-      head.click();
-      head.scrollIntoView({ block: "start" });
-    }
+  settings("settings-machine-local-context-limits", "设置 · 本机 · 上下文上限", "本机「这台上的 cc-monitor」里展开「上下文上限」", async () => {
+    await go("machine:（本机）");
+    await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
+    await sleep(500);
+    const head = await waitFor('.settings-page:not([hidden]) [data-anchor="context-limits"] [aria-expanded]');
+    await click(head);
+    head.scrollIntoView({ block: "start" });
     await sleep(700);
   }),
   settings("settings-machines-add", "设置 · 添加机器 · 自己填", "机器页点「添加机器」→「自己填」", async () => {
