@@ -6,8 +6,8 @@ use crate::listing::HistoryListReply;
 use crate::needs::NeedsList;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::session::{
-    Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands, SessionNew,
-    TailPlan, TerminalsList,
+    Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands,
+    SessionNew, TailPlan, TerminalsList,
 };
 use serde::Serialize;
 
