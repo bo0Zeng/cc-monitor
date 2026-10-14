@@ -31,6 +31,42 @@ pub(crate) enum LoginStartReq {
     },
 }
 
+/// `login-start` 的整份入参：登录什么（[`LoginStartReq`]，与它同一层）＋ 发起这一趟的浏览器在不在后端这台（`browserHere`）。
+/// 那一格不进目标：同一个目标从哪台浏览器发起都是同一份作业（新开就替掉旧的），`login-finish` 交回的目标也不带它。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LoginStartArgs {
+    pub(crate) target: LoginStartReq,
+    /// 打开登录链接的浏览器在后端这台上（桌面连本机）：登录页回跳到这台的本机端口，那一家自己登完。
+    /// 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
+    pub(crate) browser_here: bool,
+}
+
+/// 入参里那一格的名字。
+const BROWSER_HERE: &str = "browserHere";
+
+impl LoginStartArgs {
+    /// 从 `args` 收：先摘下 `browserHere`（缺 ⇒ `false`；不是布尔 ⇒ `bad_args`），其余照 [`LoginStartReq`] 收（多一格照旧拒）。
+    pub(crate) fn take(args: &Value) -> Result<LoginStartArgs, Fail> {
+        let mut rest = args.clone();
+        let here = match rest.as_object_mut().and_then(|o| o.remove(BROWSER_HERE)) {
+            None => false,
+            Some(Value::Bool(b)) => b,
+            Some(other) => {
+                return Err(Fail::new(
+                    "bad_args",
+                    crate::common::contract::malformed(&format!(
+                        "`{BROWSER_HERE}` must be a boolean, got {other}"
+                    )),
+                ))
+            }
+        };
+        Ok(LoginStartArgs {
+            target: typed::take(&rest)?,
+            browser_here: here,
+        })
+    }
+}
+
 /// 粘回来的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -53,7 +89,8 @@ impl PasteKind {
 }
 
 /// `login-start` 的成品：作业号 · 登录链接（在浏览器里打开；不用内嵌网页，密码不经界面）· 粘回来的是什么 ·
-/// 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推一帧 `changed {login}`，粘码框只是后备）。
+/// 会不会自己登完（发起它的浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推一帧 `changed {login}`，粘码框只是后备；
+/// 不在这台 ⇒ `false`，只能粘）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -109,7 +146,7 @@ fn accounts_product(agent: &str) -> Value {
 
 /// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`on_end` ＝ 作业自己收了时推给本连接的那一帧）。
 pub(crate) fn start(
-    req: &LoginStartReq,
+    args: &LoginStartArgs,
     conn: u64,
     path: Option<std::ffi::OsString>,
     on_end: sign_in::OnEnd,
@@ -124,6 +161,7 @@ pub(crate) fn start(
         ))
     };
     // 目标键：入参原样（同一个目标新开就替掉旧的；`finish` 成了解回来交给界面）。
+    let req = &args.target;
     let target = serde_json::to_string(req).unwrap_or_default();
     let (face, dir, then, cwd) = match req {
         LoginStartReq::Account { agent, account } => {
@@ -177,12 +215,21 @@ pub(crate) fn start(
     };
     let s = sign_in::start(&ask, on_end)
         .map_err(|s| typed::of_fail(Fail::from(("failed", s)), LoginStartErr::Failed))?;
-    Ok(LoginStarted {
+    Ok(started(s, face, args))
+}
+
+/// 起好了的那一份 ⇒ 回包：会不会自己登完照发起它的浏览器在不在这台（不在 ⇒ 回跳到不了这台的本机端口，只能粘）。
+fn started(
+    s: sign_in::Started,
+    face: crate::agents::SignInFace,
+    args: &LoginStartArgs,
+) -> LoginStarted {
+    LoginStarted {
         job: s.job,
         url: s.url,
         paste: PasteKind::of(face.paste),
-        auto: true,
-    })
+        auto: args.browser_here,
+    }
 }
 
 /// 这个名字是不是那一份配置里的一个 MCP 服务器（`mcp-read` 同一个读法；项目目录给了 ⇒ 连项目级 · 本地级一起看）。
@@ -202,7 +249,7 @@ pub(crate) fn answer_start(
     conn: u64,
     on_end: sign_in::OnEnd,
 ) -> crate::stream::inbound::spec::Outcome {
-    let req: LoginStartReq = typed::take(args)?;
+    let req = LoginStartArgs::take(args)?;
     let got = start(&req, conn, None, on_end).map_err(Codes::into_fail)?;
     crate::stream::inbound::spec::wire::<_, Fail>(&got).map(Some)
 }

@@ -115,6 +115,75 @@ fn the_login_target_takes_exactly_its_two_shapes() {
     }
 }
 
+/// `browserHere`：与目标同一层交、不进目标；缺 ⇒ 按「不在」答；不是布尔 ⇒ 拒。多一格照旧拒。
+#[test]
+fn whether_the_browser_is_here_rides_beside_the_target() {
+    let target = LoginStartReq::Account {
+        agent: "claude".into(),
+        account: "w".into(),
+    };
+    let base = json!({ "kind": "account", "agent": "claude", "account": "w" });
+    let with = |v: Value| {
+        let mut a = base.clone();
+        a["browserHere"] = v;
+        LoginStartArgs::take(&a)
+    };
+    assert_eq!(
+        with(json!(true)).expect("收"),
+        LoginStartArgs {
+            target: target.clone(),
+            browser_here: true
+        }
+    );
+    assert_eq!(
+        with(json!(false)).expect("收"),
+        LoginStartArgs {
+            target: target.clone(),
+            browser_here: false
+        }
+    );
+    assert_eq!(
+        LoginStartArgs::take(&base).expect("收"),
+        LoginStartArgs {
+            target,
+            browser_here: false
+        },
+        "缺 ⇒ 不在这台"
+    );
+    for bad in [json!("yes"), json!(1), Value::Null] {
+        assert_eq!(with(bad.clone()).expect_err("拒").code, "bad_args", "{bad}");
+    }
+    let mut extra = base.clone();
+    extra["server"] = json!("x");
+    assert_eq!(
+        LoginStartArgs::take(&extra).expect_err("拒").code,
+        "bad_args"
+    );
+}
+
+/// 会不会自己登完照 `browserHere` 答：浏览器不在这台 ⇒ 回跳到不了，只能粘（不说「会自己登完」）。
+#[test]
+fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
+    let face = crate::agents::accounts_face("claude")
+        .and_then(|f| f.sign_in)
+        .expect("claude 在 app 里登");
+    for here in [true, false] {
+        let args = LoginStartArgs {
+            target: LoginStartReq::Account {
+                agent: "claude".into(),
+                account: "w".into(),
+            },
+            browser_here: here,
+        };
+        let s = sign_in::Started {
+            job: "login-1-0".into(),
+            url: "https://claude.com/cai/oauth/authorize?state=s".into(),
+        };
+        assert_eq!(started(s, face, &args).auto, here);
+    }
+}
+
+/// 登录失败的回包说还能怎么办（`data.again`），每个码一个定值：接着粘 · 重来 · 没路。码表里每个码都有（`bad_args` 不带）。
 /// MCP 那一种：名字以 `-` 开头（会被子命令当成旗标）· 空名一律不认，配置读都不读。
 #[test]
 fn a_mcp_name_that_could_pass_for_a_flag_is_never_listed() {
