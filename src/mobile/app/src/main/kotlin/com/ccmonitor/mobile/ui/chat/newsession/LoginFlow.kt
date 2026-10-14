@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 登录抽屉此刻（需手动与登录稿 §2）。 */
+/** 登录抽屉此刻。 */
 data class LoginUi(
     /** 登录的是哪个号（目标行）。 */
     val account: String,
@@ -29,7 +29,7 @@ data class LoginUi(
 )
 
 /**
- * 在 app 里登录一个号（需手动与登录稿 §2）：`login-start` 起那一家的登录、交回链接 ⇒ 系统浏览器开；粘回来的那一段经 `login-finish` 交给它；
+ * 在 app 里登录一个号：`login-start` 起那一家的登录、交回链接 ⇒ 系统浏览器开；粘回来的那一段经 `login-finish` 交给它；
  * 取消 · 收起 ⇒ `login-cancel`。令牌由那一家自己换、自己写，手机只转链接与那一段。
  * 本树的后端还没有失败回包的 `again`：没起成 ⇒ 红条 ＋［重新开始］；提交没成 ⇒ 那一格下面一行、照样可改了再交，也可［重新开始］。
  */

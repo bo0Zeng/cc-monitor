@@ -34,7 +34,7 @@ import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
 /**
- * 浏览屏（能用门槛稿 §2，全屏）：顶栏 ← ＋「选目录」＋ 机器名；路径一行（↑ 上一级）；只列文件夹；底部路径 ＋「选这个目录」。
+ * 浏览屏（全屏）：顶栏 ← ＋「选目录」＋ 机器名；路径一行（↑ 上一级）；只列文件夹；底部路径 ＋「选这个目录」。
  * 点一行 ＝ 进去；长按 ＝ 选中它（淡底，底部写的是它）；← 退出浏览、不改选择。
  */
 @Composable

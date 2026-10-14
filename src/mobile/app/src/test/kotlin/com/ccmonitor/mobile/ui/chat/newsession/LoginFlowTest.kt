@@ -12,7 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 登录抽屉（需手动与登录稿 §2）：起 ⇒ 链接与粘什么照回包；交 ⇒ login-finish；没成 ⇒ 那台那一句；收起 ⇒ login-cancel。 */
+/** 登录抽屉：起 ⇒ 链接与粘什么照回包；交 ⇒ login-finish；没成 ⇒ 那台那一句；收起 ⇒ login-cancel。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LoginFlowTest {
     private val started = mapOf("job" to "j1", "url" to "https://example.com/oauth", "paste" to "code", "auto" to false)

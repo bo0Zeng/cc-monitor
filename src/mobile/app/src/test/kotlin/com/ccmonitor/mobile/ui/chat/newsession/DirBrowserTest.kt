@@ -10,7 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** 浏览屏（能用门槛稿 §2）：只列文件夹（files-ls dirs_only）；点 ＝ 进去，↑ ＝ 上一级，长按 ＝ 选中它；「选这个目录」选的是选中的那个、没有就是这一层。 */
+/** 浏览屏：只列文件夹（files-ls dirs_only）；点 ＝ 进去，↑ ＝ 上一级，长按 ＝ 选中它；「选这个目录」选的是选中的那个、没有就是这一层。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DirBrowserTest {
     private fun dirs(vararg p: String) = mapOf("entries" to p.map { mapOf("path" to it, "kind" to "dir") }, "truncated" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)

@@ -54,7 +54,7 @@ data class MachineRow(
 )
 
 /**
- * 新建会话的选项（能用门槛稿 §1）：顶栏下一排 chip：机器 · agent · 账号（只有一家 / 一个号不画那一颗），下一行工作目录（长路径从左省略）。
+ * 新建会话的选项：顶栏下一排 chip：机器 · agent · 账号（只有一家 / 一个号不画那一颗），下一行工作目录（长路径从左省略）。
  * 发出第一条之后整块不出（[com.ccmonitor.mobile.ui.chat.ChatUiState.drafting]）。
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -137,7 +137,7 @@ fun AgentSheet(
     ui.agents.forEach { a -> PickRow(title = a.text, tag = NewSessionTags.ROW, selected = a.kind == ui.agent, onClick = { onPick(a.kind) }) }
 }
 
-/** 工作目录抽屉（稿 §2）：「最近的」＋「浏览…」。 */
+/** 工作目录抽屉：「最近的」＋「浏览…」。 */
 @Composable
 fun CwdSheet(
     ui: NewSessionUi,
@@ -177,7 +177,7 @@ fun CwdSheet(
     )
 }
 
-/** 账号抽屉（稿 §3）：上面账号，下面一节轮换。长按一个号 ⇒「设为默认」。 */
+/** 账号抽屉：上面账号，下面一节轮换。长按一个号 ⇒「设为默认」。 */
 @Composable
 fun AccountSheet(
     ui: NewSessionUi,

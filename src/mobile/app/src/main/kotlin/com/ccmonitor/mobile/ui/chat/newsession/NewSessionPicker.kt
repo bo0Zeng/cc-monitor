@@ -77,7 +77,7 @@ data class Chosen(
 )
 
 /**
- * 一张新建会话草稿的选项（能用门槛稿 §1–3，主会话补 10-12）：打开就问那台一次（`session-new-facts` · `accounts-list`），四样默认值都是那台的；
+ * 一张新建会话草稿的选项：打开就问那台一次（`session-new-facts` · `accounts-list`），四样默认值都是那台的；
  * 点 chip 只为改，改了才多交那一格。账号抽屉打开那一刻再问一次账号 · 额度 · 轮换（关了不再问）。手机不另记默认。
  */
 class NewSessionPicker(

@@ -15,7 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 新建会话的选项（能用门槛稿 §1–3 ＋ 主会话补 10-12）：打开就是填好的，四样默认值都读那台；点 chip 只为改，改了才交那一格。
+ * 新建会话的选项：打开就是填好的，四样默认值都读那台；点 chip 只为改，改了才交那一格。
  * 判据：默认值从哪来 · 哪颗 chip 不画 · 目录不在灰掉 · 换 agent 账号重问 · 设为默认走那台 · 交给 session-new 的只有改过的。
  */
 @OptIn(ExperimentalCoroutinesApi::class)

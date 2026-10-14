@@ -13935,40 +13935,34 @@
       "zh": "登录账号",
       "args": []
     },
-    "login.open": {
+    "login.act.open": {
       "kind": "action",
       "role": "按钮",
       "zh": "打开登录页",
       "args": []
     },
-    "login.copyLink": {
+    "login.act.copyLink": {
       "kind": "action",
       "role": "按钮",
       "zh": "复制链接",
       "args": []
     },
-    "login.pasteClip": {
+    "login.act.paste": {
       "kind": "action",
       "role": "按钮",
       "zh": "粘贴",
       "args": []
     },
-    "login.submit": {
+    "login.act.submit": {
       "kind": "action",
       "role": "按钮",
       "zh": "提交",
       "args": []
     },
-    "login.restart": {
+    "login.act.restart": {
       "kind": "action",
       "role": "按钮",
       "zh": "重新开始",
-      "args": []
-    },
-    "login.auto": {
-      "kind": "body",
-      "role": "状态",
-      "zh": "登录页完成后自动结束",
       "args": []
     },
     "login.paste.code": {
@@ -13992,7 +13986,7 @@
     "login.paste.redirectUrlHelp": {
       "kind": "body",
       "role": "说明",
-      "zh": "浏览器无法打开的那一页的完整地址",
+      "zh": "浏览器无法打开的页面的完整地址",
       "args": []
     },
     "newSession.recheck.action": {
@@ -29267,12 +29261,12 @@
     "mobNewSession.dir.pick": {
       "kind": "action",
       "role": "按钮",
-      "zh": "选这个目录",
+      "zh": "选定目录",
       "args": []
     },
     "mobNewSession.dir.up": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "action",
+      "role": "按钮",
       "zh": "上一级",
       "args": []
     },

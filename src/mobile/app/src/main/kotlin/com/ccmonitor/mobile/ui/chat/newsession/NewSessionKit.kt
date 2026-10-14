@@ -35,7 +35,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 
 /*
- * 新建会话那几屏共用的小件：chip · 抽屉头 · 抽屉里的一行 · 号牌 · 状态点。形照能用门槛稿 §1–3（外观对齐稿的形：chip 36 dp 高、命中区 48；抽屉一行 52）。
+ * 新建会话那几屏共用的小件：chip · 抽屉头 · 抽屉里的一行 · 号牌 · 状态点。chip 画出来 36 dp 高、命中区 48；抽屉一行 52。
  * 字符图标（▾ ✓ ›）等 mobtheme 换成 Phosphor。
  */
 

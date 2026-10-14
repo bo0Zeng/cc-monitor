@@ -86,7 +86,7 @@ fun ChatRoute(
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    // 在一条会话里点「新建会话」⇒ 新的那张起在这条的目录（主会话补 10-12）。
+    // 在一条会话里点「新建会话」⇒ 新的那张起在这条的目录。
     val onDrawer: (DrawerAction) -> Unit = { action ->
         val cwd = state.cwd
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)

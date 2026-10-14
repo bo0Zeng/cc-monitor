@@ -33,7 +33,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
 import com.ccmonitor.mobile.core.copy.copyText
 
 /**
- * 登录抽屉（需手动与登录稿 §2，手机那一侧，底部抽屉）：标题 · 目标行（号牌 ＋ 号名 · 机器）·［打开登录页］·［复制链接］·
+ * 登录抽屉（底部抽屉，桌面是靠右的抽屉，里面同一套）：标题 · 目标行（号牌 ＋ 号名 · 机器）·［打开登录页］·［复制链接］·
  * 粘贴那一格（名字照 `paste`，定义在下面一行灰字）·［粘贴］·［提交］· 底部［取消］（作业没了是［关闭］）。
  * 打开登录页用系统浏览器，不内嵌网页（密码不经界面）。收起一律交 `login-cancel`（[LoginFlow.cancel]）。
  */
@@ -77,9 +77,9 @@ private fun Body(
     val started = s.started
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { started?.let { open(context, it.url) } }, enabled = started != null, modifier = Modifier.heightIn(min = 48.dp)) { Text(copyText("login.open")) }
+            Button(onClick = { started?.let { open(context, it.url) } }, enabled = started != null, modifier = Modifier.heightIn(min = 48.dp)) { Text(copyText("login.act.open")) }
             OutlinedButton(onClick = { started?.let { clipboard.setText(AnnotatedString(it.url)) } }, enabled = started != null, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text(copyText("login.copyLink"))
+                Text(copyText("login.act.copyLink"))
             }
         }
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -89,9 +89,9 @@ private fun Body(
         OutlinedTextField(value = pasted, onValueChange = { pasted = it }, enabled = started != null && !s.submitting, singleLine = true, modifier = Modifier.fillMaxWidth())
         s.pasteError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { clipboard.getText()?.text?.let { pasted = it } }, enabled = started != null && !s.submitting) { Text(copyText("login.pasteClip")) }
-            Button(onClick = { flow.submit(pasted) }, enabled = started != null && pasted.isNotBlank() && !s.submitting) { Text(copyText("login.submit")) }
-            if (s.pasteError != null) TextButton(onClick = flow::start) { Text(copyText("login.restart")) }
+            OutlinedButton(onClick = { clipboard.getText()?.text?.let { pasted = it } }, enabled = started != null && !s.submitting) { Text(copyText("login.act.paste")) }
+            Button(onClick = { flow.submit(pasted) }, enabled = started != null && pasted.isNotBlank() && !s.submitting) { Text(copyText("login.act.submit")) }
+            if (s.pasteError != null) TextButton(onClick = flow::start) { Text(copyText("login.act.restart")) }
         }
     }
 }
@@ -103,7 +103,7 @@ private fun Failed(
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick = onRestart) { Text(copyText("login.restart")) }
+        OutlinedButton(onClick = onRestart) { Text(copyText("login.act.restart")) }
     }
 }
 

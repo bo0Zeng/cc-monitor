@@ -17,7 +17,7 @@ import com.ccmonitor.mobile.link.HostBackends
 import org.koin.compose.koinInject
 
 /**
- * 新建会话那一块（能用门槛稿 §1–3）：选项那两排 chip ＋ 它们开的几个抽屉 ＋ 浏览屏 ＋ 登录抽屉。
+ * 新建会话那一块：选项那两排 chip ＋ 它们开的几个抽屉 ＋ 浏览屏 ＋ 登录抽屉。
  * 选项的事实与点过的住 [picker]（随这张草稿、应用级）；抽屉开着哪一个只是这一屏的事。换机器 ⇒ [onSwitchMachine]（那台上的新建会话）。
  */
 @Composable
