@@ -3,23 +3,13 @@
 use crate::wire::spec::{arg, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "cancel",
-        summary: "撤掉一条在跑的命令（`target` = 它的 `id`）；撤不存在的 id 也回 `ok`",
-        codes: &[],
-        fields: &[arg("target", "要撤的那条命令的 `id`")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::wire::conn::Cancel>(
+        "撤掉一条在跑的命令（`target` = 它的 `id`）；撤不存在的 id 也回 `ok`",
+    ),
     // 流只发要看的会话：本连接那份 watcher 的名单 ⇒ **只在帧面**。
-    CommandSpec {
-        name: "stream-watch",
-        summary: "这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单 · 活卡不上这条流（刚进名单的会话此刻每张活卡补一张整卡，出名单的撤卡），宣告 · 状态 · 轮次边沿照发；主线外清单只给 `branch` 里要了的会话、照手上那份只补缺的；回刚进名单的那几个从第几行起上流",
-        codes: &["bad_args"],
-        fields: &[arg("branch", "要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）：`[{sid, path?, at?, sum?}]`，`at` · `sum` 照手上最后一帧 `session_branch` 的 `at + off.len()` 与 `sum`，手上没有 ⇒ `at: 0`"), arg("sids", "在看的会话 id（串数组；空 ＝ 一个都不看）"), out("from", "刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回）"), out("path", "`from[]`：那份记录在那台机器上的绝对路径"), out("seq", "`from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补"), out("sid", "`from[]`：会话 id")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::wire::conn::StreamWatch>(
+        "这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单 · 活卡不上这条流（刚进名单的会话此刻每张活卡补一张整卡，出名单的撤卡），宣告 · 状态 · 轮次边沿照发；主线外清单只给 `branch` 里要了的会话、照手上那份只补缺的；回刚进名单的那几个从第几行起上流",
+    ),
     // **链路四条** —— 本机只常驻一个后端，
     // 到各远端的 SSH 连接由它持有、按拨号身份复用（`ssh-dial/pool.rs`）；monitor 经这条流开「链路」，
     // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
@@ -86,12 +76,5 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Builtin,
     },
-    CommandSpec {
-        name: "ping",
-        summary: "问活：零载荷，回 `ok`",
-        codes: &[],
-        fields: &[],
-        takes_input: false,
-        run: Run::Async(|_r| Box::pin(async move { Ok(None) })),
-    },
+    crate::wire::typed::asynchronous::<crate::wire::conn::Ping>("问活：零载荷，回 `ok`"),
 ];

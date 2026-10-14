@@ -217,9 +217,11 @@ pub(crate) enum How {
     Blocking,
     /// 真异步：交给独立 task，`cancel` 能在 await 点打断。
     Async,
-    /// 帧面硬臂（要碰本连接的票表 · 链路表 · 应答通道）：分派在 `dispatch` 那条硬臂，经 [`answer`] 一处收发。
+    /// 帧面硬臂（要碰本连接的票表 · 链路表 · 应答通道）：分派在 `dispatch` 那条硬臂，经 [`answer`] / [`answer_async`] 一处收发。
     /// 只在帧面（CLI 面不派生）、不进 [`super::spec::invoke`]。
     Frame,
+    /// 同 [`How::Frame`]，只是那条硬臂把本体交进阻塞池（[`answer_blocking`]）：开跑之后打不断。
+    FrameBlocking,
 }
 
 /// 一条登记命令跑起来的那一份（类型擦掉之后）。
@@ -240,11 +242,11 @@ pub(crate) struct Typed {
 impl Typed {
     /// 开跑之后打不打得断（阻塞档打不断：hello 的 `uncancellable` 由它派生）。
     pub(crate) fn blocking(&self) -> bool {
-        self.how == How::Blocking
+        matches!(self.how, How::Blocking | How::FrameBlocking)
     }
     /// 帧面硬臂那一档。
     pub(crate) fn on_frame_arm(&self) -> bool {
-        self.how == How::Frame
+        matches!(self.how, How::Frame | How::FrameBlocking)
     }
 }
 
@@ -263,9 +265,11 @@ pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> 
     })
 }
 
+/// 本体那一份 ⇒ 结局：失败照码表投；零出参的回包（`()` ⇒ `null`）不带 `data`。
 fn settle<C: Command>(got: Result<C::Reply, C::Err>) -> Outcome {
     let reply = got.map_err(Codes::into_fail)?;
-    super::spec::wire::<_, Fail>(&reply).map(Some)
+    let v = super::spec::wire::<_, Fail>(&reply)?;
+    Ok((!v.is_null()).then_some(v))
 }
 
 /// 按声明交能力 → 解入参 → 本体 → 回包（阻塞档在调用方那条阻塞线程上跑完）。
@@ -285,7 +289,7 @@ fn go<C: Handle>(h: &super::spec::Hands, how: How) -> Option<super::spec::Prepar
             super::spec::Prepared::Blocking(Box::new(move |r| super::spec::finish(run(r))))
         }
         How::Async => super::spec::Prepared::Async(Box::new(move |r| Box::pin(run(r)))),
-        How::Frame => return None,
+        How::Frame | How::FrameBlocking => return None,
     })
 }
 
@@ -321,9 +325,70 @@ pub(crate) fn answer<C: Command>(
     }
 }
 
-/// 帧面硬臂那一档的一行登记（本体在 `dispatch` 那条硬臂里经 [`answer`] 调）。
+/// 一发失败的应答帧（码表里那一格）：硬臂那几条自己发应答的（`link-data` 成功那一下由上行泵回）失败时经它。
+pub(crate) fn refuse<C: Command>(
+    id: &str,
+    args: &serde_json::Value,
+    e: C::Err,
+) -> crate::wire::Frame {
+    e.into_fail().into_reply(id.to_string(), C::NAME, args)
+}
+
+/// 帧面硬臂那一档交给通用 spawn 那一路的一份（异步：`cancel` 能在 await 点打断）：入参按类型收 → 本体 future → 结局。
+/// 本体拿到的是入参与信封那两样（[`Cx`]），硬臂要的本连接那几样由它在闭包里带进去。
+pub(crate) fn answer_async<C, F, Fut>(run: F) -> super::spec::DataHandler
+where
+    C: Command,
+    F: FnOnce(C::Req, Cx) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<C::Reply, C::Err>> + Send + 'static,
+{
+    Box::new(move |r: Request| {
+        Box::pin(async move {
+            let req = take::<C::Req>(&r.args)?;
+            let cx = Cx {
+                tz: r.tz,
+                until: r.until,
+                needs: (),
+            };
+            settle::<C>(run(req, cx).await)
+        })
+    })
+}
+
+/// 同 [`answer_async`]，入参已在硬臂里就地收好（要在读循环里当场生效的那一半先做了，如 `stream-watch` 换名单）：只剩等结局那一半交出去。
+pub(crate) fn answer_later<C, Fut>(fut: Fut) -> super::spec::DataHandler
+where
+    C: Command,
+    Fut: std::future::Future<Output = Result<C::Reply, C::Err>> + Send + 'static,
+{
+    Box::new(move |_r: Request| Box::pin(async move { settle::<C>(fut.await) }))
+}
+
+/// 同 [`answer_async`]，本体交进阻塞池（[`How::FrameBlocking`]：开跑之后打不断）。
+pub(crate) fn answer_blocking<C, F>(run: F) -> super::spec::BlockingHandler
+where
+    C: Command,
+    F: FnOnce(C::Req, Cx) -> Result<C::Reply, C::Err> + Send + 'static,
+{
+    Box::new(move |r: Request| {
+        let req = take::<C::Req>(&r.args)?;
+        let cx = Cx {
+            tz: r.tz,
+            until: r.until,
+            needs: (),
+        };
+        settle::<C>(run(req, cx))
+    })
+}
+
+/// 帧面硬臂那一档的一行登记（本体在 `dispatch` 那条硬臂里经 [`answer`] / [`answer_async`] 调）。
 pub(crate) const fn frame<C: Command>(summary: &'static str) -> CommandSpec {
     spec::<C>(summary, How::Frame, false, false, go_frame)
+}
+
+/// 同 [`frame`]，那条硬臂把本体交进阻塞池（[`answer_blocking`]）。
+pub(crate) const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, How::FrameBlocking, false, false, go_frame)
 }
 
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。

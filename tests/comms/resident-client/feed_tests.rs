@@ -23,14 +23,29 @@ async fn ask(
 
 const MINE: &str = "p10g-mine";
 
+/// 那台握手那一行：交它认的命令与那几条的形状指纹（跟本侧编进来的同一份）。
+/// `p0a-ancient` 比版本门那一问还早（不认 `resident-verdict`）；`p9b-reshaped` 认它、可那一条的形状与本侧对不上（比形状改过之前的那一版）。
 fn hello(build: &str) -> String {
+    let cmds: &[&str] = if build == "p0a-ancient" {
+        &["ping", "cancel", "stream-watch"]
+    } else {
+        &["ping", "cancel", "stream-watch", "resident-verdict"]
+    };
+    let shapes: serde_json::Map<String, serde_json::Value> = cmds
+        .iter()
+        .filter_map(|c| {
+            let fp = if build == "p9b-reshaped" && *c == crate::gate::VERDICT_CMD {
+                "00000000"
+            } else {
+                cmd_wire::shapes::shape_of(c)?
+            };
+            Some((c.to_string(), serde_json::Value::String(fp.into())))
+        })
+        .collect();
     format!(
-        r#"{{"kind":"hello","v":1,"build_id":"{build}","host_arch":"x86_64","claude_dir":"/c","commands":{cmds}}}"#,
-        cmds = if build == "p0a-ancient" {
-            r#"["ping","cancel","stream-watch"]"#
-        } else {
-            r#"["ping","cancel","stream-watch","resident-verdict"]"#
-        }
+        r#"{{"kind":"hello","v":1,"build_id":"{build}","host_arch":"x86_64","claude_dir":"/c","commands":{cmds},"shapes":{shapes}}}"#,
+        cmds = serde_json::to_string(cmds).unwrap(),
+        shapes = serde_json::Value::Object(shapes),
     )
 }
 
@@ -352,6 +367,31 @@ async fn an_older_backend_is_used_and_said_to_need_an_update() {
         )
     })
     .await;
+    // 那台认这一问、可这一问的形状与本侧对不上（版本门这一条改过形之前的那一版）⇒ 问不成 ⇒ 当旧、照实说要更新（一问都不发）。
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp("p9b-reshaped"));
+    let (feed, _) = start(&f);
+    until("版本门那一问形状对不上 ⇒ 当旧", || {
+        matches!(
+            feed.state(),
+            State::Up {
+                notice: Some(_),
+                ..
+            }
+        )
+    })
+    .await;
+    match feed.state() {
+        State::Up {
+            notice: Some(p), ..
+        } => assert_eq!(p.text, copy_core::backend_old("box")),
+        other => panic!("形状对不上的那台照接、带一句要更新：{other:?}"),
+    }
+    assert_eq!(
+        f.verdicts.load(Ordering::SeqCst),
+        0,
+        "形状对不上的那一问不该发出去"
+    );
     for newer in ["p11a-next", MINE] {
         let f = Arc::new(Fake::default());
         f.attaches.lock().unwrap().push_back(upp(newer));

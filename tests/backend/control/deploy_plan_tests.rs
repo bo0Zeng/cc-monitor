@@ -429,6 +429,18 @@ fn the_verdict_replaces_only_upward_and_only_once() {
     }
 }
 
+/// 照线上那一份喂（JSON 入参经 typed 那一处收成类型，同生产），回包回成 `Value`、失败回成码；盖住 `super::*` 里的同名口。
+fn answer_resident_verdict(args: &Value) -> Result<Value, (String, String)> {
+    use crate::wire::typed::Codes as _;
+    let req: VerdictReq = crate::wire::typed::take(args).map_err(|f| (f.code, f.message))?;
+    super::answer_resident_verdict(&req)
+        .map(|v| serde_json::to_value(v).unwrap())
+        .map_err(|e| {
+            let f = e.into_fail();
+            (f.code, f.message)
+        })
+}
+
 /// 帧面那一格：`{action, older}` 恰这两个键；缺 `mine`（或空）· `theirs` · `replaced` ⇒ `bad_args`。
 #[test]
 fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
@@ -448,7 +460,7 @@ fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
     ] {
         assert_eq!(
             answer_resident_verdict(&bad).map_err(|(c, _)| c),
-            Err("bad_args"),
+            Err("bad_args".to_string()),
             "{bad}"
         );
     }

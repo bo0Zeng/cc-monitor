@@ -500,8 +500,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sids` | [string] |  |
-| `branch` | [BranchHeld]? |  |
+| `sids` | [string] | 在看的会话 id（空 ＝ 一个都不看） |
+| `branch` | [BranchHeld]? | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要） |
 
 #### `BranchHeld`
 
@@ -511,7 +511,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `sid` | string |  |
 | `path` | string? |  |
-| `at` | number? |  |
+| `at` | number? | 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`） |
 | `sum` | string? |  |
 
 #### `WatchReply`
@@ -562,9 +562,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `target` | → | 要撤的那条命令的 `id` |
+入参 `CancelReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CancelReq = { 
+/**
+ * 要撤的那条命令的 `id`；撤不存在的也回 `ok`。
+ */
+target: string, };
+```
+
+码：`bad_args`
 
 #### `stream-watch`
 
@@ -572,14 +580,42 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `branch` | → | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）：`[{sid, path?, at?, sum?}]`，`at` · `sum` 照手上最后一帧 `session_branch` 的 `at + off.len()` 与 `sum`，手上没有 ⇒ `at: 0` |
-| `sids` | → | 在看的会话 id（串数组；空 ＝ 一个都不看） |
-| `from` | ← | 刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回） |
-| `path` | ← | `from[]`：那份记录在那台机器上的绝对路径 |
-| `seq` | ← | `from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补 |
-| `sid` | ← | `from[]`：会话 id |
+入参 `WatchAsk` · 回包 `WatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BranchHeld = { sid: string, path?: string | null, 
+/**
+ * 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`）。
+ */
+at?: number, sum?: string | null, };
+type WatchAsk = { 
+/**
+ * 在看的会话 id（空 ＝ 一个都不看）。
+ */
+sids: Array<string>, 
+/**
+ * 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）。
+ */
+branch?: Array<BranchHeld>, };
+type WatchFrom = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 这份会话记录在那台机器上的绝对路径。
+ */
+path: string, 
+/**
+ * 这条流从这一行起发它。
+ */
+seq: number, };
+type WatchReply = { 
+/**
+ * 刚进名单的会话每份记录一格（先前就在名单里的不回）。
+ */
+from: Array<WatchFrom>, };
+```
 
 码：`bad_args`
 
@@ -731,6 +767,14 @@ type WirePath = string | { b16: string };
 问活：零载荷，回 `ok`。
 
 不收 `args` · 可撤 · CLI：`ccm -- --ping`
+
+入参 `NoArgs` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 ### 4.2 文件管理
 
@@ -10235,13 +10279,33 @@ type Prefer = { host: string, port: number, };
 
 收 `args` · 可撤 · CLI：`ccm -- --resident-verdict`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `action` | ← | `replace`（换掉再接）· `attach`（接上它） |
-| `mine` | → | monitor 手上这一版后端自报的身份（非空） |
-| `older` | ← | 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」） |
-| `replaced` | → | 这一趟是不是已经换过一次 |
-| `theirs` | → | 那台 hello 报的 `build_id`（缺 ⇒ 空串） |
+入参 `VerdictReq` · 回包 `VerdictReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type VerdictAction = "replace" | "attach";
+type VerdictReply = { 
+/**
+ * 换掉再接 · 接上它。
+ */
+action: VerdictAction, 
+/**
+ * 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
+ */
+older: boolean, };
+type VerdictReq = { 
+/**
+ * monitor 手上这一版后端自报的身份（非空）。
+ */
+mine: string, 
+/**
+ * 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
+ */
+theirs: string, 
+/**
+ * 这一趟是不是已经换过一次。
+ */
+replaced: boolean, };
+```
 
 码：`bad_args`
 

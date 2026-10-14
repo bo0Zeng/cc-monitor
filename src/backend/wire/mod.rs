@@ -8,6 +8,7 @@
 //! 这一份是**帧面的协议零件**那一层的根（最底下，只引 `platform` · `common` · `agents` · `relay`；`layering_guard` 钉着）：
 //! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住上面的 `crate::stream`。
 
+pub(crate) mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
 pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
 pub mod listen; // K-P1：常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
@@ -1469,38 +1470,56 @@ impl Frame {
 /// `stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流
 /// （`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct WatchFrom {
     /// 会话 id。
     pub sid: String,
     /// 这份会话记录在那台机器上的绝对路径。
     pub path: String,
     /// 这条流从这一行起发它。
+    #[cfg_attr(test, ts(type = "number"))]
     pub seq: u64,
 }
 
 /// `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
 pub struct WatchAsk {
+    /// 在看的会话 id（空 ＝ 一个都不看）。
     pub sids: Vec<String>,
+    /// 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub branch: Vec<BranchHeld>,
 }
 
 /// `stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。
 /// 手上什么都没有 ⇒ `at: 0`、不带 `path` / `sum`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
 pub struct BranchHeld {
     pub sid: String,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub path: Option<String>,
+    /// 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
     pub at: u64,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub sum: Option<String>,
 }
 
 /// `stream-watch` 的应答。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct WatchReply {
     /// 刚进名单的会话每份记录一格（先前就在名单里的不回）。
     pub from: Vec<WatchFrom>,

@@ -743,47 +743,6 @@ fn every_registered_command_declares_its_run_kind() {
     );
 }
 
-/// ★**「声明零字段」不许成为免检开关**：零字段的命令在协议参考里就没有字段表，
-/// 而有载荷却声明成空等于让契约面整个消失 ⇒ 默认拒绝 ＋ 豁免登记（写明为什么）。
-#[test]
-fn declaring_zero_fields_needs_a_reason() {
-    /// `(命令名, 为什么它可以声明零载荷字段)`。
-    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[("ping", "零载荷：问活，回 `ok`。")];
-    let mut unexplained: Vec<&str> = Vec::new();
-    let mut zero = 0usize;
-    for spec in super::REGISTRY {
-        // typed 命令的字段从类型来（协议参考照类型写），不手写镜子。
-        if !spec.fields.is_empty() || matches!(spec.run, super::spec::Run::Typed(_)) {
-            continue;
-        }
-        zero += 1;
-        if !ZERO_FIELD_REASONS.iter().any(|(n, _)| *n == spec.name) {
-            unexplained.push(spec.name);
-        }
-    }
-    assert!(
-        zero >= 1,
-        "没有任何命令声明零字段 —— 本条在空转。\
-             若确实全都列了字段，请把本条连同 `ZERO_FIELD_REASONS` 一起删掉（别留空转的判据）"
-    );
-    assert!(
-        unexplained.is_empty(),
-        "这些命令把 `fields` 声明成空：{unexplained:?}\n\
-             空声明 ⇒ 协议参考里没有它的字段表。要么把载荷字段列出来，要么在 `ZERO_FIELD_REASONS` 里写明为什么它没有可列的字段。"
-    );
-    for (name, _) in ZERO_FIELD_REASONS {
-        let spec = super::REGISTRY
-            .iter()
-            .find(|s| s.name == *name)
-            .unwrap_or_else(|| panic!("`ZERO_FIELD_REASONS` 里的 `{name}` 已经不在注册表里"));
-        assert!(
-            spec.fields.is_empty(),
-            "`{name}` 现在列了 {} 个字段，豁免登记该删了（登记表腐烂比没有登记更糟）",
-            spec.fields.len()
-        );
-    }
-}
-
 /// ★★ **`files-read` 上线的那四条，登记的就是它声明的那四条。**
 ///
 /// # 它治的是哪一形
@@ -1054,12 +1013,6 @@ use typed_replies::*;
 #[allow(clippy::type_complexity)]
 const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     (
-        "stream-watch",
-        sampled::<crate::wire::WatchReply>,
-        &["path", "seq", "sid"],
-        &[],
-    ),
-    (
         "needs-ask",
         sampled::<crate::control::asks::AskReply>,
         &[],
@@ -1099,7 +1052,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
-        ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
         ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
         ("link-credit", "只回 ok（还信用）"),
         ("link-data", "只回 ok；字节走 `link_data` 帧"),
@@ -1107,7 +1059,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             "link-open",
             "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧",
         ),
-        ("ping", "问活，回 ok"),
         (
             "terminal-follow-ack",
             "只回 ok；下一帧画面走 `terminal_screen`",
@@ -1118,8 +1069,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 2;
-    const UNSHAPED: &[&str] = &["remote-probe", "resident-verdict"];
+    const UNSHAPED_CEILING: usize = 1;
+    const UNSHAPED: &[&str] = &["remote-probe"];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {
             serde_json::Value::Object(m) => {

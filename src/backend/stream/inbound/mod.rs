@@ -137,13 +137,6 @@ pub(crate) struct Given {
     pub(crate) own: crate::platform::Own,
 }
 
-/// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）；`branch` 可缺（＝ 一份主线外清单都不要），给了就是 `[{sid, path?, at?, sum?}]`。
-/// 别的形状 ⇒ `bad_args`。
-fn watch_ask(args: &serde_json::Value) -> Option<crate::wire::WatchAsk> {
-    args.get("sids")?.as_array()?;
-    serde_json::from_value(args.clone()).ok()
-}
-
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
 /// `id` 是客户端给的**不透明串**——backend 不解析、不校验格式、只当 map 的键和回显值。
@@ -437,28 +430,24 @@ fn dispatch(
                 })
             }),
         ),
-        "stream-watch" => {
-            let Some(ask) = watch_ask(&req.args) else {
-                return Disposition::Reply(Frame::err(
-                    &req.id,
-                    "bad_args",
-                    &crate::common::contract::malformed(
-                        "stream-watch: `sids` must be an array of strings, `branch` an array of {sid, path?, at?, sum?}",
+        // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
+        "stream-watch" => match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
+            Err(f) => Disposition::Reply(f.into_reply(req.id, &req.cmd, &req.args)),
+            Ok(ask) => {
+                let answer = (given.watch.0)(ask);
+                Disposition::SpawnData(
+                    req,
+                    crate::wire::typed::answer_later::<crate::wire::conn::StreamWatch, _>(
+                        async move {
+                            // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
+                            Ok(crate::wire::WatchReply {
+                                from: answer.await.unwrap_or_default(),
+                            })
+                        },
                     ),
-                ));
-            };
-            let answer = (given.watch.0)(ask);
-            Disposition::SpawnData(
-                req,
-                Box::new(move |_r: Request| -> DataFut {
-                    Box::pin(async move {
-                        // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
-                        let from = answer.await.unwrap_or_default();
-                        Ok(serde_json::to_value(crate::wire::WatchReply { from }).ok())
-                    })
-                }),
-            )
-        }
+                )
+            }
+        },
         // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
         // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
         //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
@@ -520,12 +509,10 @@ fn dispatch(
             Disposition::Reply(follows.answer_wire(&req.cmd, &req.id, &req.args, &req.tz))
         }
         "cancel" => {
-            let target = req
-                .args
-                .get("target")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
+            let target = match crate::wire::typed::take::<crate::wire::conn::CancelReq>(&req.args) {
+                Ok(c) => c.target,
+                Err(f) => return Disposition::Reply(f.into_reply(req.id, &req.cmd, &req.args)),
+            };
             // ★ **不可取消的命令要说实话，不许回一条撒谎的 `cancelled`。**
             //
             // D 设计审计（视角 A · P4）实测出的谎：`launch` 的处理器是**同步阻塞**的，

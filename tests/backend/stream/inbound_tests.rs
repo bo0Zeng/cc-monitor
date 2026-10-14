@@ -493,7 +493,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     assert!(matches!(d("deploy-plan"), Disposition::SpawnData(..)));
     // 按内容搜：可撤（走那一趟在阻塞线程池上、看取消位，future 被丢即收手）；读不了时带系统原话（进复制详情）。
     assert!(matches!(d("files-grep"), Disposition::SpawnData(..)));
-    assert!(matches!(d("cancel"), Disposition::Done));
+    // `cancel` 是硬臂、就地做完：空 `args`（没给 `target`）⇒ 当场回一条 `bad_args`，不起任务。
+    assert!(matches!(d("cancel"), Disposition::Reply(..)));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
     // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
     // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `bad_args` 应答（不起任务）。

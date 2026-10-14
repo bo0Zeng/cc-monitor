@@ -45,6 +45,7 @@ import type { BusSent } from "./BusSent";
 import type { BusSpawnReq } from "./BusSpawnReq";
 import type { BusSpawnedNow } from "./BusSpawnedNow";
 import type { BusState } from "./BusState";
+import type { CancelReq } from "./CancelReq";
 import type { CatalogMergeReq } from "./CatalogMergeReq";
 import type { CatalogReply } from "./CatalogReply";
 import type { CcBusInstalled } from "./CcBusInstalled";
@@ -314,7 +315,11 @@ import type { TransferUploaded } from "./TransferUploaded";
 import type { Trust } from "./Trust";
 import type { UserInputs } from "./UserInputs";
 import type { UserInputsReq } from "./UserInputsReq";
+import type { VerdictReply } from "./VerdictReply";
+import type { VerdictReq } from "./VerdictReq";
 import type { VerifyReport } from "./VerifyReport";
+import type { WatchAsk } from "./WatchAsk";
+import type { WatchReply } from "./WatchReply";
 import type { Whereabouts } from "./Whereabouts";
 
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */
@@ -352,6 +357,7 @@ export interface TypedCommands {
   "bus-send": { req: BusSendReq; reply: BusSent; code: "bad_args" | "bad_id" | "not_installed" | "rejected" | "child_timed_out" | "too_long" | "failed" };
   "bus-spawn": { req: BusSpawnReq; reply: BusSpawnedNow; code: "bad_args" | "bad_id" | "not_installed" | "child_timed_out" | "failed" };
   "bus-state": { req: NoArgs; reply: BusState; code: "bad_args" | "not_installed" | "child_timed_out" | "failed" };
+  "cancel": { req: CancelReq; reply: null; code: "bad_args" };
   "cc-bus-install": { req: NoReq; reply: CcBusInstalled; code: "bad_args" | "bad_file" | "refused" };
   "cc-bus-install-state": { req: NoReq; reply: CcBusState; code: "bad_args" | "refused" };
   "ccm-print": { req: CcmPrintReq; reply: CcmLine; code: "bad_args" | "refused" };
@@ -437,6 +443,7 @@ export interface TypedCommands {
   "mcp-sync-preview": { req: McpPreviewReq; reply: McpPreview; code: "bad_args" | "bad_file" | "bad_path" | "refused" };
   "mcp-sync-source": { req: McpSourceReq; reply: McpSource; code: "bad_args" | "bad_file" | "bad_path" | "io_failed" | "missing" | "refused" };
   "needs-answer": { req: AnswerReq; reply: Answered; code: "bad_args" | "not_found" | "already_answered" | "closed_elsewhere" | "bad_choice" | "note_required" };
+  "ping": { req: NoArgs; reply: null; code: "bad_args" };
   "place-verdict": { req: PlaceReq; reply: PlaceAnswer; code: "bad_args" | "refused" | "undecidable" };
   "plan-ack": { req: PlanAckReq; reply: PlanAckReply; code: "bad_args" | "io_failed" | "no_such_need" | "not_ackable" | "not_read" | "review_unreadable" };
   "plan-cell-view": { req: PlanCellViewReq; reply: PlanCellView; code: "bad_args" | "no_view" };
@@ -459,6 +466,7 @@ export interface TypedCommands {
   "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
   "relay-optin": { req: OptinReq; reply: Optin; code: "bad_args" | "failed" };
   "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };
+  "resident-verdict": { req: VerdictReq; reply: VerdictReply; code: "bad_args" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
   "rotation-day-paint": { req: RotationDayPaintReq; reply: RotationDayPaintReply; code: "bad_args" };
@@ -497,6 +505,7 @@ export interface TypedCommands {
   "skill-install-record": { req: RecordReq; reply: RecordReply; code: "bad_args" | "io_failed" | "ledger_unreadable" | "not_found" | "too_large" };
   "skill-read": { req: SkillReadReq; reply: SkillRead; code: "bad_args" | "io_failed" | "not_found" | "too_large" };
   "ssh-config-import": { req: SshImportReq; reply: SshImported; code: "bad_args" };
+  "stream-watch": { req: WatchAsk; reply: WatchReply; code: "bad_args" };
   "tasks-list": { req: TasksListReq; reply: TasksList; code: "bad_args" | "failed" | "too_large" };
   "terminal-input": { req: TerminalInputReq; reply: Sent; code: "bad_args" | "bad_target" | "no_tmux" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
   "terminal-name-mint": { req: TerminalNameMintReq; reply: Minted; code: "bad_args" | "child_timed_out" };

@@ -564,27 +564,82 @@ pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
     }
 }
 
-/// 帧面入口：`{mine, theirs, replaced}` → `{action: "attach" | "replace", older}`。`mine` 空 / 缺 · 缺 `theirs` / `replaced` ⇒ `bad_args`。
-pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, String)> {
-    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
-    let mine = args
-        .get("mine")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| bad("missing `mine` (non-empty string)"))?;
-    let theirs = args
-        .get("theirs")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `theirs` (string)"))?;
-    let replaced = args
-        .get("replaced")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| bad("missing `replaced` (bool)"))?;
-    let v = resident_verdict(mine, theirs, replaced);
-    Ok(json!({
-        "action": if v.replace { "replace" } else { "attach" },
-        "older": v.older,
-    }))
+/// `resident-verdict` 的入参：手上这一版 · 那台 hello 报的 · 这一趟换过没有（只有事实）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct VerdictReq {
+    /// monitor 手上这一版后端自报的身份（非空）。
+    pub(crate) mine: String,
+    /// 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
+    pub(crate) theirs: String,
+    /// 这一趟是不是已经换过一次。
+    pub(crate) replaced: bool,
+}
+
+/// `resident-verdict` 的回包。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct VerdictReply {
+    /// 换掉再接 · 接上它。
+    pub(crate) action: VerdictAction,
+    /// 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
+    pub(crate) older: bool,
+}
+
+/// [`VerdictReply::action`]。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum VerdictAction {
+    Replace,
+    Attach,
+}
+
+crate::wire::typed::codes! {
+    /// `resident-verdict` 的码：`mine` 是空串。
+    pub(crate) enum VerdictErr {}
+}
+
+/// `resident-verdict`：远端常驻后端 hello 的新旧（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
+pub(crate) struct ResidentVerdict;
+
+impl crate::wire::typed::Command for ResidentVerdict {
+    const NAME: &'static str = "resident-verdict";
+    type Req = VerdictReq;
+    type Reply = VerdictReply;
+    type Err = VerdictErr;
+}
+
+impl crate::wire::typed::Handle for ResidentVerdict {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: VerdictReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<VerdictReply, VerdictErr>> + Send + 'static {
+        std::future::ready(answer_resident_verdict(&req))
+    }
+}
+
+/// [`ResidentVerdict`] 的本体：`mine` 空 ⇒ `bad_args`。
+pub(crate) fn answer_resident_verdict(req: &VerdictReq) -> Result<VerdictReply, VerdictErr> {
+    if req.mine.is_empty() {
+        return Err(VerdictErr::BadArgs(crate::common::contract::malformed(
+            "missing `mine` (non-empty string)",
+        )));
+    }
+    let v = resident_verdict(&req.mine, &req.theirs, req.replaced);
+    Ok(VerdictReply {
+        action: if v.replace {
+            VerdictAction::Replace
+        } else {
+            VerdictAction::Attach
+        },
+        older: v.older,
+    })
 }
 
 // ═══ 本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════

@@ -17,20 +17,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // **远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
     //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端）。
-    CommandSpec {
-        name: "resident-verdict",
-        summary: "远端常驻后端要不要换一次",
-        codes: &["bad_args"],
-        fields: &[out("action", "`replace`（换掉再接）· `attach`（接上它）"), arg("mine", "monitor 手上这一版后端自报的身份（非空）"), out("older", "那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）"), arg("replaced", "这一趟是不是已经换过一次"), arg("theirs", "那台 hello 报的 `build_id`（缺 ⇒ 空串）")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::control::deploy_plan::answer_resident_verdict(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::wire::typed::asynchronous::<crate::control::deploy_plan::ResidentVerdict>(
+        "远端常驻后端要不要换一次",
+    ),
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
     crate::wire::typed::blocking::<crate::control::deploy_plan::PlaceVerdict>("本机那一份放不放"),
