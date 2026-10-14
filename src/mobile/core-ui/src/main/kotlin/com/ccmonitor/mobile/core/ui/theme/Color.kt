@@ -42,3 +42,17 @@ val LightSuccess = Color(0xFF3E9D63)
 val LightWarn = Color(0xFFB5811F)
 val LightDiffAddBg = Color(0x243E9D63)
 val LightDiffDelBg = Color(0x24C44651)
+
+// === 账号身份色板（与桌面 `tokens.css` 的 `--acct-c0..c7` / `--acct-ink0..7` 同值，主题无关）===
+// 令牌生成器（mobtheme）进来以后换成生成的那一份。号色第几格是账号库里的事实（`accounts-list.color`），这里只给值。
+val AcctPalette: List<Pair<Color, Color>> =
+    listOf(
+        Color(0xFF256ABF) to Color(0xFFFFFFFF),
+        Color(0xFFEB6834) to Color(0xFF141414),
+        Color(0xFF1BAF7A) to Color(0xFF141414),
+        Color(0xFFEDA100) to Color(0xFF141414),
+        Color(0xFFE87BA4) to Color(0xFF141414),
+        Color(0xFF008300) to Color(0xFFFFFFFF),
+        Color(0xFF4A3AA7) to Color(0xFFFFFFFF),
+        Color(0xFFE34948) to Color(0xFF141414),
+    )

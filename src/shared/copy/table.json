@@ -13923,6 +13923,78 @@
       "zh": "先填工作目录",
       "args": []
     },
+    "newSession.cwd.missing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录不在",
+      "args": []
+    },
+    "login.sheet.account": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "登录账号",
+      "args": []
+    },
+    "login.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "打开登录页",
+      "args": []
+    },
+    "login.copyLink": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制链接",
+      "args": []
+    },
+    "login.pasteClip": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "粘贴",
+      "args": []
+    },
+    "login.submit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "提交",
+      "args": []
+    },
+    "login.restart": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新开始",
+      "args": []
+    },
+    "login.auto": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "登录页完成后自动结束",
+      "args": []
+    },
+    "login.paste.code": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "授权码",
+      "args": []
+    },
+    "login.paste.redirectUrl": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "回跳地址",
+      "args": []
+    },
+    "login.paste.codeHelp": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "登录完成后登录页上显示的代码",
+      "args": []
+    },
+    "login.paste.redirectUrlHelp": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "浏览器无法打开的那一页的完整地址",
+      "args": []
+    },
     "newSession.recheck.action": {
       "kind": "action",
       "role": "按钮",
@@ -29178,6 +29250,30 @@
       "kind": "action",
       "role": "按钮",
       "zh": "打开抽屉",
+      "args": []
+    },
+    "mobNewSession.dir.browse": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "浏览…",
+      "args": []
+    },
+    "mobNewSession.dir.browseTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "选目录",
+      "args": []
+    },
+    "mobNewSession.dir.pick": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "选这个目录",
+      "args": []
+    },
+    "mobNewSession.dir.up": {
+      "kind": "aria",
+      "role": "读屏",
+      "zh": "上一级",
       "args": []
     },
     "mobNav.newSession.title": {

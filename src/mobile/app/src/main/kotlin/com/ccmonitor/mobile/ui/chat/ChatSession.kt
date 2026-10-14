@@ -8,7 +8,6 @@ import com.ccmonitor.mobile.core.claude.link.HistoryTail
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNew
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.str
@@ -19,6 +18,7 @@ import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
+import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -50,6 +50,10 @@ data class ChatUiState(
     val historyError: String? = null,
     /** 已经起成、认出来的那条会话；新建会话发第一条之前是 `null`。 */
     val sid: String? = null,
+    /** 新建会话还没发第一条（或起不来、回到草稿）：选项那两排 chip 在。 */
+    val drafting: Boolean = false,
+    /** 这条会话的工作目录（在它里面点「新建会话」⇒ 新的那张用它）；还不知道 ⇒ `null`。 */
+    val cwd: String? = null,
 )
 
 /** 聊天屏对着的是哪条会话。 */
@@ -62,8 +66,8 @@ sealed interface ChatTarget {
     /** 新建会话：发第一条时请那台起。[ticket] 一个草稿一张。 */
     data class Draft(
         val ticket: String,
-        /** 在哪个目录起（开头的 `~` 那台按它的家目录读）。 */
-        val cwd: String,
+        /** 从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`，见 [NewSessionPicker]）。 */
+        val cwd: String?,
         /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-new-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
         val agent: String?,
     ) : ChatTarget
@@ -92,10 +96,13 @@ class ChatSession(
     private val scope: CoroutineScope,
     private val arrivalMs: Long = ARRIVAL_MS,
 ) {
-    private val _state = MutableStateFlow(ChatUiState(sid = (target as? ChatTarget.Existing)?.sid))
+    private val _state = MutableStateFlow(ChatUiState(sid = (target as? ChatTarget.Existing)?.sid, drafting = target is ChatTarget.Draft))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private val draft = target as? ChatTarget.Draft
+
+    /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
+    val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, it.agent, scope) }
     private val records = mutableListOf<Map<String, Any?>>()
     private val outgoing = mutableListOf<Outgoing>()
     private val lock = Mutex()
@@ -262,13 +269,15 @@ class ChatSession(
         d: ChatTarget.Draft,
         first: Outgoing,
     ) {
-        _state.value = _state.value.copy(failedWhy = null)
+        _state.value = _state.value.copy(failedWhy = null, drafting = false)
         val before = link.table.value.sessions.keys
-        // 起哪一家问那台（存的那一家认得 ⇒ 它，否则第一家）；问不到 ⇒ 照存的交，认不出由那台那一句说。
-        val facts = (link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }
-        val agent = facts?.let { SessionNewFacts.pick(it, d.agent)?.kind } ?: d.agent.orEmpty()
+        // 选项打开时问过那台（起哪一家 · 默认号 · 最近的目录）；问不到 ⇒ 照存的那一家、从哪进来的目录交，认不出由那台那一句说。
+        val p = picker ?: return
+        p.settled()
+        val c = p.chosen()
+        val args = SessionNew.args(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
         val answer =
-            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, agent, first.text), NEW_MS)) {
+            when (val r = link.call(SessionNew.COMMAND, args, NEW_MS)) {
                 is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
             }
@@ -282,13 +291,14 @@ class ChatSession(
             mark(first, delivery, text)
         }
         sid = arrived
-        _state.value = _state.value.copy(sid = arrived)
+        _state.value = _state.value.copy(sid = arrived, cwd = answer.cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
     }
 
+    /** 会话那一层没成：那一句上屏；新建会话还没起成 ⇒ 回到草稿（选项回来，改了再发）。 */
     private fun failSession(text: String?) {
-        _state.value = _state.value.copy(failedWhy = text)
+        _state.value = _state.value.copy(failedWhy = text, drafting = draft != null && sid == null)
     }
 
     /** 一条会话流上来的两样：一行 · 进名单那一格（从第几行起上流）。 */
@@ -426,13 +436,16 @@ class ChatSession(
 
     /** 那条会话的记录文件：会话表里有就用它，没有（不在跑了）问 `history-list`。 */
     private suspend fun pathOf(s: String): String? {
-        link.table.value.sessions[s]
-            ?.path
-            ?.let { return it }
+        link.table.value.sessions[s]?.let { live ->
+            live.cwd?.let { _state.value = _state.value.copy(cwd = it) }
+            live.path?.let { return it }
+        }
         return when (val r = link.call(HistoryList.COMMAND, null, READ_MS)) {
             is Reply.Ok -> {
                 val list = HistoryList.of(r.data) ?: return null.also { failSession(unreadableReply(machine, HistoryList.COMMAND, r.data.toString()).text) }
-                list.rows.firstOrNull { it.sessionId == s }?.jsonlPath ?: null.also { failSession(copyText("mobChat.record.missing", "machine" to machine)) }
+                val row = list.rows.firstOrNull { it.sessionId == s }
+                row?.projectPath?.let { if (_state.value.cwd == null) _state.value = _state.value.copy(cwd = it) }
+                row?.jsonlPath ?: null.also { failSession(copyText("mobChat.record.missing", "machine" to machine)) }
             }
             else -> null.also { failSession(r.problem(machine, HistoryList.COMMAND)?.text) }
         }

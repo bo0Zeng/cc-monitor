@@ -352,6 +352,7 @@ class ChatSessionTest {
         runTest {
             val facts =
                 mapOf(
+                    "recent" to emptyList<Any>(),
                     "agents" to
                         listOf("codex", "claude").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                 )
@@ -368,5 +369,49 @@ class ChatSessionTest {
                 runCurrent()
                 assertEquals("存的是 $stored", want, link.calls("session-new").single()?.get("agent"))
             }
+        }
+
+    @Test
+    fun `新建会话：发第一条时把这一张的选项一次交给 session-new（目录 · agent · 改过的账号）；起不来 ⇒ 回到草稿`() =
+        runTest {
+            val link = FakeCoreLink()
+            var start: Reply = failed("目录不在")
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-new-facts" ->
+                        ok(
+                            mapOf(
+                                "recent" to listOf(mapOf("cwd" to "/h/orders", "lastMs" to 1.0, "lastText" to "19:02")),
+                                "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>()) },
+                            ),
+                        )
+                    "accounts-list" ->
+                        ok(
+                            mapOf(
+                                "accounts" to listOf("work", "personal").map { mapOf("name" to it, "configDir" to "/a/$it", "mode" to "isolated", "selectable" to true) },
+                                "meta" to mapOf("effectiveDefault" to "work"),
+                            ),
+                        )
+                    "session-new" -> start
+                    else -> Reply.LinkDown
+                }
+            }
+            val s = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = null, agent = "codex"), "box", backgroundScope)
+            runCurrent()
+            assertTrue(s.state.value.drafting)
+            s.picker!!.pickAccount("personal")
+            s.send("你好")
+            runCurrent()
+            val args = link.calls("session-new").single()!!
+            assertEquals("/h/orders", args["cwd"])
+            assertEquals("codex", args["agent"])
+            assertEquals(mapOf("kind" to "named", "name" to "personal"), args["account"])
+            assertTrue("起不来 ⇒ 选项回来", s.state.value.drafting)
+            start = ok(started + ("sid" to "pre"))
+            s.retry(s.local().single().key)
+            runCurrent()
+            assertEquals("pre", s.state.value.sid)
+            assertEquals(false, s.state.value.drafting)
+            assertEquals("/h/proj", s.state.value.cwd)
         }
 }

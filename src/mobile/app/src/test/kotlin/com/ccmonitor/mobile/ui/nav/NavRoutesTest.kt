@@ -52,9 +52,18 @@ class NavRoutesTest {
             Screen.Chat.route
                 .replace("{hostId}", "h1")
                 .replace("{sid}", "s1")
-                // `new` 是可选查询参数，缺省填保守的一侧（已有对话）
-                .replace("{${Screen.Chat.ARG_NEW}}", "false"),
+                // `new` 是可选查询参数，缺省填保守的一侧（已有对话）；`cwd` 只在新建会话带了从哪进来的目录时才有。
+                .replace("{${Screen.Chat.ARG_NEW}}", "false")
+                .replace("&${Screen.Chat.ARG_CWD}={${Screen.Chat.ARG_CWD}}", ""),
             Screen.Chat.of("h1", "s1"),
+        )
+        assertEquals(
+            Screen.Chat.route
+                .replace("{hostId}", "h1")
+                .replace("{sid}", "t1")
+                .replace("{${Screen.Chat.ARG_NEW}}", "true")
+                .replace("{${Screen.Chat.ARG_CWD}}", "%2Fh%2Fa%20b"),
+            Screen.Chat.of("h1", "t1", isNew = true, cwd = "/h/a b"),
         )
     }
 
@@ -132,6 +141,10 @@ class NavRoutesTest {
         template.forEachIndexed { i, seg ->
             if (!seg.startsWith("{")) assertEquals("第 $i 段应是字面量 $seg", seg, actual[i])
         }
-        assertEquals("查询参数名要与模板一致", "${Screen.Chat.ARG_NEW}={${Screen.Chat.ARG_NEW}}", Screen.Chat.route.substringAfter('?'))
+        assertEquals(
+            "查询参数名要与模板一致",
+            "${Screen.Chat.ARG_NEW}={${Screen.Chat.ARG_NEW}}&${Screen.Chat.ARG_CWD}={${Screen.Chat.ARG_CWD}}",
+            Screen.Chat.route.substringAfter('?'),
+        )
     }
 }

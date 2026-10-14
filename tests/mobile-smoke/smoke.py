@@ -319,12 +319,29 @@ def main():
         rig("tmux", "send-keys", "-t", f"needs{T}", "y", "Enter")
 
     with Step("3-新建会话"):
+        # 新建会话打开就是填好的（目录 ＝ 那台最近用过的第一个）；点目录 chip → 浏览… → 进一层 → 选这个目录，起在那一层。
+        sh(f"mkdir -p ~/work/{T}dir")
         drawer(t("mobDrawer.item.newChat"))
+        if not wait("~/work", 20):
+            raise Step.Fail("目录 chip 没填上那台最近的目录")
+        tap("~/work")
+        if not wait(t("mobNewSession.dir.browse"), 10):
+            raise Step.Fail("目录抽屉没出来")
+        tap(t("mobNewSession.dir.browse"))
+        if not wait(f"{T}dir", 20):
+            raise Step.Fail("浏览屏里没列出那一层的文件夹")
+        tap(f"{T}dir")
+        time.sleep(2)
+        tap(t("mobNewSession.dir.pick"))
+        if not wait(f"~/work/{T}dir", 10):
+            raise Step.Fail("选了目录，chip 没换成它")
         tap(t("mobChat.input.placeholder")); typed(f"{T} new session")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} new session", 40):
             raise Step.Fail("答不回来")
+        if f"{T}dir" not in sh("ls ~/.claude/projects/"):
+            raise Step.Fail("那条会话没起在选的目录里")
 
     with Step("4-聊天屏"):
         tap(t("mobChat.input.placeholder")); typed(f"{T} long")
@@ -434,21 +451,20 @@ def main():
 
     with Step("10-Codex"):
         launch()
-        add_host("smokecodex")
-        # 哪几家是那台给的（session-new-facts）：存好、连上以后进编辑页才列得出，手机自己不认识 Codex。
-        drawer(t("mobDrawer.server.named", name=""))
-        time.sleep(1.5)
-        tap_in_row("smokecodex", t("mobHosts.row.edit"))
-        if not wait("Codex", 40):
-            raise Step.Fail("主机设置里列不出那台能起的几家")
-        tap("Codex")
-        adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
+        # 哪几家是那台给的（session-new-facts）：新建会话顶栏下那一颗 agent chip 列得出，手机自己不认识 Codex。
+        facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+                                          capture_output=True, text=True).stdout or "{}")
+        names = {a.get("kind"): a.get("text") for a in (facts.get("data") or {}).get("agents") or []}
+        if "codex" not in names or "claude" not in names:
+            raise Step.Fail(f"那台没给两家：{names!r}")
+        drawer(t("mobDrawer.item.newChat"))
+        if not wait(names["claude"], 20):
+            raise Step.Fail("新建会话没画 agent chip")
+        tap(names["claude"])
+        if not wait(names["codex"], 10):
+            raise Step.Fail("agent 抽屉里列不出那台能起的几家")
+        tap(names["codex"])
         time.sleep(1)
-        tap(t("mobHostEdit.page.save"))
-        time.sleep(2)
-        tap("smokecodex")
-        time.sleep(2)
-        to_chat()
         hide_keyboard()
         tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()
