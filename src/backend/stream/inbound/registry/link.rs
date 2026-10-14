@@ -14,43 +14,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 到各远端的 SSH 连接由它持有、按拨号身份复用（`ssh-dial/pool.rs`）；monitor 经这条流开「链路」，
     // 链路上的字节与 C2 那个 `--dial` 子进程的 stdout 逐字节同形（`dial/mod.rs` 头注）。
     // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。
-    CommandSpec {
-        name: "link-open",
-        summary: "开一条链路",
-        codes: &[
-            "bad_args",
-            "unsupported_use",
-            "duplicate_link",
-            "too_many_links",
-        ],
-        fields: &[arg("dial", "拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键）；`use:\"files\"` 开 sftp 一问一答"), arg("link", "链路 id：客户端给、客户端负责唯一"), arg("window", "初始下行信用（字节），在 [32 KiB, 16 MiB] 之内")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "link-data",
-        summary: "往链路里送一块上行字节",
-        codes: &["bad_args", "no_such_link", "link_busy", "link_closed"],
-        fields: &[arg("data", "无"), arg("link", "链路 id")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "link-credit",
-        summary: "还下行信用",
-        codes: &["bad_args", "no_such_link"],
-        fields: &[arg("bytes", "客户端读走了多少字节（累计信用不超过 16 MiB）"), arg("link", "链路 id")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "link-close",
-        summary: "关一条链路",
-        codes: &["bad_args"],
-        fields: &[arg("link", "链路 id；关不存在的也回 `ok`")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::dial::link::LinkOpen>("开一条链路"),
+    crate::wire::typed::frame::<crate::dial::link::LinkData>("往链路里送一块上行字节"),
+    crate::wire::typed::frame::<crate::dial::link::LinkCredit>("还下行信用"),
+    crate::wire::typed::frame::<crate::dial::link::LinkClose>("关一条链路"),
     // **传输四条** —— 用户「SFTP 进本机常驻后端，只写暂存区」：传输台从 monitor 搬进
     // 本机常驻后端。四条都是帧面硬臂：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     // 开单两条是 typed（入参 · 回包 · 码从类型来），帧面硬臂那一档：分派照旧在 `dispatch` 那条硬臂。

@@ -625,11 +625,23 @@ from: Array<WatchFrom>, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键）；`use:"files"` 开 sftp 一问一答 |
-| `link` | → | 链路 id：客户端给、客户端负责唯一 |
-| `window` | → | 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内 |
+入参 `LinkOpenReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkOpenReq = { 
+/**
+ * 链路 id：客户端给、客户端负责唯一（1..=128 字节）。
+ */
+link: string, 
+/**
+ * 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）；`use:"files"` 开 sftp 一问一答。
+ */
+dial: Record<string, unknown>, 
+/**
+ * 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内。
+ */
+window: number, };
+```
 
 码：`bad_args` · `unsupported_use` · `duplicate_link` · `too_many_links`
 
@@ -639,10 +651,15 @@ from: Array<WatchFrom>, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `data` | → | 无 |
-| `link` | → | 链路 id |
+入参 `LinkDataReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkDataReq = { link: string, 
+/**
+ * 一块上行字节（base64，解出来至多 32 KiB）。
+ */
+data: string, };
+```
 
 码：`bad_args` · `no_such_link` · `link_busy` · `link_closed`
 
@@ -652,10 +669,15 @@ from: Array<WatchFrom>, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | → | 客户端读走了多少字节（累计信用不超过 16 MiB） |
-| `link` | → | 链路 id |
+入参 `LinkCreditReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkCreditReq = { link: string, 
+/**
+ * 客户端读走了多少字节（累计信用不超过 16 MiB）。
+ */
+bytes: number, };
+```
 
 码：`bad_args` · `no_such_link`
 
@@ -665,9 +687,15 @@ from: Array<WatchFrom>, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `link` | → | 链路 id；关不存在的也回 `ok` |
+入参 `LinkCloseReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkCloseReq = { 
+/**
+ * 关不存在的也回 `ok`。
+ */
+link: string, };
+```
 
 码：`bad_args`
 

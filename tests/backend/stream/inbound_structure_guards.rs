@@ -1052,13 +1052,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
-        ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
-        ("link-credit", "只回 ok（还信用）"),
-        ("link-data", "只回 ok；字节走 `link_data` 帧"),
-        (
-            "link-open",
-            "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧",
-        ),
         (
             "terminal-follow-ack",
             "只回 ok；下一帧画面走 `terminal_screen`",
