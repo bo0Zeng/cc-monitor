@@ -67,6 +67,7 @@ data class Rendered(
 @WireOf("NewFacts")
 @JsonClass(generateAdapter = true)
 data class NewFacts(
+    val recent: List<RecentDir>,
     val agents: List<AgentFacts>,
 )
 
@@ -466,3 +467,69 @@ data class SessionSkill(
     val text: String?,
     val say: String,
 )
+
+// ── 新建会话那几屏（mobui2）：最近的目录 · 目录在不在 · 只列文件夹 · 轮换策略目录 · 在 app 里登录 ──
+
+@WireOf("RecentDir")
+@JsonClass(generateAdapter = true)
+data class RecentDir(
+    val cwd: String,
+    val lastText: String,
+)
+
+@WireOf("DirChecked")
+@JsonClass(generateAdapter = true)
+data class DirChecked(
+    val exists: Boolean,
+)
+
+@WireOf("LsReply")
+@JsonClass(generateAdapter = true)
+data class LsReply(
+    val entries: List<LsEntry>,
+)
+
+@WireOf("LsEntry")
+@JsonClass(generateAdapter = true)
+data class LsEntry(
+    val path: Any,
+)
+
+@WireOf("FilesPathReply")
+@JsonClass(generateAdapter = true)
+data class FilesPathReply(
+    val path: Any,
+)
+
+@WireOf("RotationStrategiesReply")
+@JsonClass(generateAdapter = true)
+data class RotationStrategiesReply(
+    val strategies: List<RotStrategyItem>,
+    val forNew: String,
+)
+
+@WireOf("RotStrategyItem")
+@JsonClass(generateAdapter = true)
+data class RotStrategyItem(
+    val id: String,
+    val description: String,
+    val forNew: Boolean,
+)
+
+@WireOf("LoginStarted")
+@JsonClass(generateAdapter = true)
+data class LoginStarted(
+    val job: String,
+    val url: String,
+    val paste: PasteKind,
+    val auto: Boolean,
+)
+
+@JsonClass(generateAdapter = false)
+enum class PasteKind {
+    @Json(name = "code")
+    CODE,
+
+    @Json(name = "redirectUrl")
+    REDIRECT_URL,
+}

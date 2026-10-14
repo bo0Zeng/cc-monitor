@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import androidx.lifecycle.ViewModel
+import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -13,6 +14,9 @@ class ChatViewModel(
     private val session: ChatSession,
 ) : ViewModel() {
     val state: StateFlow<ChatUiState> get() = session.state
+
+    /** 新建会话那一张的选项；已有的那条 ⇒ `null`。 */
+    val picker: NewSessionPicker? get() = session.picker
 
     init {
         session.open()

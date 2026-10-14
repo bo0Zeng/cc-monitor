@@ -27,6 +27,15 @@ sealed interface DrawerAction {
     /** 底行 ⚙。 */
     data object Settings : DrawerAction
 
+    /**
+     * 一张新的新建会话：换机器（新建会话里点机器 chip 选了另一台）· 在一条会话里点「新建会话」（[cwd] ＝ 那条的目录）。
+     * 抽屉上那一项本身是 [NewConversation]，聊天屏知道这条会话的目录时换成这一形。
+     */
+    data class NewDraft(
+        val hostId: String,
+        val cwd: String?,
+    ) : DrawerAction
+
     /** 「最近」里点一条 ⇒ 打开它、接着聊。 */
     data class OpenRecent(
         val sessionId: String,

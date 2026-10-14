@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.ui.nav
 
+import java.net.URLEncoder
+
 /** 全局导航路由。 */
 sealed class Screen(
     val route: String,
@@ -35,7 +37,7 @@ sealed class Screen(
     /**
      * 一个对话。由「主机 + 对话编号」共同确定，只用编号的话两台主机上同号的对话会撞（见 `chatKey`）。
      */
-    data object Chat : Screen("chat/{hostId}/{sid}?new={new}") {
+    data object Chat : Screen("chat/{hostId}/{sid}?new={new}&cwd={cwd}") {
         /**
          * [isNew] = 对话刚开，远端还不存在。`ChatRoute` 据此决定加不加 `--resume <编号>`：
          * 对远端没见过的编号 resume 会直接失败（`--resume` 还按目录划分作用域）。
@@ -45,9 +47,12 @@ sealed class Screen(
             hostId: String,
             sid: String,
             isNew: Boolean = false,
-        ): String = "chat/$hostId/$sid?new=$isNew"
+            /** 新建会话从哪进来的那个目录（见 `ChatRoute.draftCwd`）。 */
+            cwd: String? = null,
+        ): String = "chat/$hostId/$sid?new=$isNew" + (cwd?.let { "&cwd=" + URLEncoder.encode(it, "UTF-8").replace("+", "%20") } ?: "")
 
         const val ARG_NEW = "new"
+        const val ARG_CWD = "cwd"
     }
 
     // 「新建会话 · 选主机」：复用 HostListScreen，但连接一律 forceNew=true；

@@ -33,7 +33,21 @@ object SessionNew {
         ticket: String,
         agent: String,
         prompt: String,
-    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt)
+        /** 改过账号 ⇒ 那个号名（`account: {kind: named}`）；没改 ⇒ `null`、不交（那台按它的默认号）。 */
+        account: String? = null,
+        /** 改过轮换 ⇒ 那一份（不轮换 ＝ `strategy: null`）；没改 ⇒ `null`、不交（那台按「新会话用」那份）。 */
+        rotation: Rotation? = null,
+    ): Map<String, Any?> =
+        buildMap {
+            putAll(mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt))
+            account?.let { put("account", mapOf("kind" to "named", "name" to it)) }
+            rotation?.let { put("rotation", mapOf("strategy" to it.strategy)) }
+        }
+
+    /** 这一条新会话用哪份轮换策略（`session-new.rotation`）：[strategy] 为 `null` ＝ 不轮换。 */
+    data class Rotation(
+        val strategy: String?,
+    )
 
     /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（终端屏「后台起」那一格）。 */
     fun inTmux(
@@ -77,6 +91,9 @@ object SessionNewFacts {
     const val COMMAND: String = "session-new-facts"
 
     fun of(data: Any?): List<AgentFacts>? = Wire.bind<NewFacts>(data)?.agents
+
+    /** 整份（新建会话那几屏还要最近的目录）。 */
+    fun full(data: Any?): NewFacts? = Wire.bind<NewFacts>(data)
 
     /** 这台存的那一家（线上 kind）；没存 · 那台不认 ⇒ 那台列的第一家；一家都没有 ⇒ `null`。 */
     fun pick(

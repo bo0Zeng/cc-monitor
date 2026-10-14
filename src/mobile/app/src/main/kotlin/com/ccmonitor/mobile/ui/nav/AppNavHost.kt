@@ -368,6 +368,11 @@ private fun NavGraphBuilder.chatRoutes(
                     type = NavType.BoolType
                     defaultValue = false
                 },
+                navArgument(Screen.Chat.ARG_CWD) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
             ),
     ) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
@@ -383,6 +388,7 @@ private fun NavGraphBuilder.chatRoutes(
             hostId = hostId,
             sessionId = sid,
             isNew = isNew,
+            draftCwd = entry.arguments?.getString(Screen.Chat.ARG_CWD),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
         )
     }
@@ -413,6 +419,7 @@ private fun NavHostController.followDrawer(
  * | 动作 | 去处 |
  * |---|---|
  * | ⊕ 新对话 | 这台上空的新对话，换掉当前这条 |
+ * | 新的一张（换机器 · 在一条会话里点新建） | 那台上空的新建会话（带那条的目录），换掉当前这条 |
  * | 最近里的一条 | 那条对话（接着聊），换掉当前这条 |
  * | 对话 | 对话列表 |
  * | 文件 · 终端 | 当前服务器的文件屏 · 终端屏 |
@@ -429,6 +436,7 @@ internal fun drawerDestination(
 ): DrawerNav =
     when (action) {
         DrawerAction.NewConversation -> DrawerNav(Screen.Chat.of(hostId, newConversationId(), isNew = true), replacesChat = true)
+        is DrawerAction.NewDraft -> DrawerNav(Screen.Chat.of(action.hostId, newConversationId(), isNew = true, cwd = action.cwd), replacesChat = true)
         is DrawerAction.OpenRecent -> DrawerNav(Screen.Chat.of(hostId, action.sessionId), replacesChat = true)
         DrawerAction.Conversations -> DrawerNav(Screen.Conversations.of(hostId), replacesChat = false)
         DrawerAction.Files -> DrawerNav(openFiles(hostId), replacesChat = false)
