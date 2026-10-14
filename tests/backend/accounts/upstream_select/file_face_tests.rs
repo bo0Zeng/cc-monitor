@@ -678,3 +678,41 @@ fn an_unreadable_table_hands_its_raw_to_the_detail_not_the_sentence() {
     assert!(!err.message.contains(raw), "原话上了句子：{err:?}");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，临时目录换成 `<root>`）：带端点 · 只配 key（端点照留）。
+#[test]
+fn the_key_set_reply_keeps_its_wire_bytes() {
+    let home = temp_dir("bytes");
+    let own = crate::platform::fs::Own::issue_data_at(&home);
+    let bytes = |v: &dyn Fn() -> serde_json::Value| {
+        serde_json::to_string(&v())
+            .unwrap()
+            .replace(&home.display().to_string(), "<root>")
+    };
+    let a = bytes(&|| {
+        serde_json::to_value(
+            answer_set_at(
+                &own,
+                &json!({"configDir": "/h/accts/work", "key": PLAIN, "baseUrl": "https://api.example.com"}),
+            )
+            .expect("写"),
+        )
+        .unwrap()
+    });
+    let b = bytes(&|| {
+        serde_json::to_value(
+            answer_set_at(&own, &json!({"configDir": "/h/accts/work", "key": PLAIN})).expect("写"),
+        )
+        .unwrap()
+    });
+    let want = [
+        r##"{"account":"work","baseUrl":"https://api.example.com","masked":"••••••••-KEY","path":"<root>/apikey-credentials.json"}"##,
+        r##"{"account":"work","baseUrl":"https://api.example.com","masked":"••••••••-KEY","path":"<root>/apikey-credentials.json"}"##,
+    ];
+    assert_eq!(
+        [a.as_str(), b.as_str()],
+        want,
+        "线上字节变了。现打：\n{a}\n{b}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

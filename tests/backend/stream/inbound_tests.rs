@@ -1720,6 +1720,29 @@ fn history_search_options_are_not_subcommand_words() {
     }
 }
 
+/// 账号那几条换成 typed 之前钉的线上字节（沙箱里的空家：没有会话 · 没有转发）。
+#[test]
+fn the_account_reads_keep_their_wire_bytes() {
+    let wire = |cmd: &str, args: serde_json::Value| {
+        serde_json::to_string(&run_registered(cmd, args).unwrap()).unwrap()
+    };
+    assert_eq!(
+        wire("accounts-sessions", serde_json::json!({})),
+        r#"{"lines":[]}"#
+    );
+    assert_eq!(
+        wire("machine-interrupts", serde_json::json!({})),
+        r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0}"#
+    );
+    assert_eq!(
+        wire(
+            "machine-interrupts",
+            serde_json::json!({ "machine": "box", "appExit": true })
+        ),
+        r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0}"#
+    );
+}
+
 /// 手机也在问的那几条换成 typed 之后，回包的线上字节不变：经登记表跑（同分派那一层），回包按帧里那一份写法（`serde_json::to_string`）
 /// 逐字节比手机那一侧收的形状（入参照抄手机发的那一份：`core-claude/.../link/Terminals.kt`）。
 #[test]
