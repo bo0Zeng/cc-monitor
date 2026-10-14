@@ -158,13 +158,16 @@ fn ask_of<A: serde::de::DeserializeOwned>(
     op: &str,
     payload: &serde_json::Value,
 ) -> Result<A, (String, String)> {
-    serde_json::from_value(payload.clone()).map_err(|e| {
-        tracing::warn!("传输：窗口说的 {op} 载荷解不出来（{e}）");
-        (
-            "bad_args".to_string(),
-            copy_text("rsSftpPool.call.badArgs", &[("op", &op.to_string())]),
-        )
-    })
+    match serde_json::from_value(payload.clone()) {
+        Ok(a) => Ok(a),
+        Err(e) => {
+            tracing::warn!("传输：窗口说的 {op} 载荷解不出来（{e}）");
+            Err((
+                "bad_args".to_string(),
+                copy_text("rsSftpPool.call.badArgs", &[("op", &op.to_string())]),
+            ))
+        }
+    }
 }
 
 /// 按后端那一份类型转给本机后端，回包按类型解（解不出 ⇒ 没回传输编号），登记一个中继。
