@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # 手机冒烟主路（模拟器 ＋ 沙箱后端，替身 agent）：从清空的 App 起，一步一步走，每步截屏、记时，末尾一张表。
 # 前提：rig.sh up（沙箱 sshd ＋ 后端）· emu.sh up（模拟器）· debug 包已装；环境照 emu.sh env。入口是同目录 smoke.sh。
+# 第 4 步后两小步（4b 模型 chip · 4c ［+］面板）走聊天屏输入那一圈。
 # 每一步只看手机屏上与台架记录里看得到的东西（不读 App 内部）；判不出的写「看不出」，不当过。
 import json
 import os
@@ -225,6 +226,28 @@ def add_host(name):
     time.sleep(2)
 
 
+def claude_models(cell="models"):
+    """那台给 claude 的模型 · 权限档（session-new-facts 那一家的 `models` / `permissionModes`）。"""
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+                                      capture_output=True, text=True).stdout or "{}")
+    agents = (facts.get("data") or {}).get("agents") or []
+    got = next((a[cell] for a in agents if a.get("kind") == "claude"), [])
+    if not got:
+        raise Step.Fail(f"那台没给 claude 的 {cell}：{facts!r}"[:200])
+    return got
+
+
+def pane_has(name, text, secs):
+    """那个 tmux 会话的屏上在 [secs] 秒内出现 [text]。"""
+    end = time.time() + secs
+    while True:
+        if text in rig("tmux", "capture-pane", "-p", "-t", name or "").stdout:
+            return True
+        if time.time() >= end:
+            return False
+        time.sleep(1)
+
+
 def switch_model(name):
     """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-new-facts），点一个 ⇒ session-model。
     替身读到 `/model <值>` 就落那一家的读回 ⇒ 结局「换成了」，那台写好的那一句上屏（Toast，经无障碍事件看）；
@@ -265,6 +288,9 @@ def switch_model(name):
 
 
 def main():
+    # 深浅：CCM_SMOKE_NIGHT=yes|no 时先把模拟器切到那一套（截图两套各走一趟用）；不设不动。
+    if os.environ.get("CCM_SMOKE_NIGHT") in ("yes", "no"):
+        adb("shell", "cmd", "uimode", "night", os.environ["CCM_SMOKE_NIGHT"])
     adb("shell", "pm", "clear", PKG)
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
@@ -340,6 +366,74 @@ def main():
         tap(t("cards.thinking.title"))
         if not wait("替身在想。", 5):
             raise Step.Fail("思考展不开")
+
+    with Step("4b-换模型 chip"):
+        # 聊天屏输入框下那颗模型 chip：抽屉里列那台给的模型，点一个 ⇒ session-model；读回 done 才换字（替身落的读回是那个值）。
+        name = tmux_name_of(f"{T} new session")
+        pick = claude_models()[-1]
+        hide_keyboard()
+        tap(t("session.model.title"))
+        if not wait(pick["text"], 10):
+            raise Step.Fail(f"模型抽屉里没有「{pick['text']}」")
+        shot("4b-模型抽屉")
+        tap(pick["text"])
+        if not pane_has(name, f"> /model {pick['value']}", 20):
+            raise Step.Fail(f"点了「{pick['text']}」，那个会话里没收到 /model {pick['value']}")
+        end = time.time() + 20
+        while time.time() < end and ui.find(t("session.model.title")) is not None:
+            time.sleep(1)
+        if ui.find(t("session.model.unsure")) is not None:
+            raise Step.Fail("chip 上方说换模型结果未知（没读回）")
+        if ui.find(pick["value"]) is None:
+            raise Step.Fail(f"chip 没换成读回的字「{pick['value']}」")
+        # 权限档 chip：抽屉里列那台给的档（session-new-facts）。替身不画档位那一行、也不认切档键（按下去的键会混进它读的下一行），这里只开抽屉不切。
+        tap(t("session.permission.title"))
+        modes = claude_models("permissionModes")
+        if not wait(modes[0]["text"], 10):
+            raise Step.Fail(f"权限档抽屉里没有「{modes[0]['text']}」")
+        shot("4b-权限档抽屉")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+
+    with Step("4c-加号面板"):
+        # ［+］：命令清单是那台给这条会话的（session-commands），点一条只填进输入框；压缩上下文不确认、经 session-say 送；清空会话先确认，取消就不送。
+        name = tmux_name_of(f"{T} new session")
+        hide_keyboard()
+        tap(t("mobPlus.title"))
+        if not wait(t("mobPlus.commands"), 15):
+            raise Step.Fail("面板里没有「命令」那一行")
+        shot("4c-面板")
+        tap(t("mobPlus.commands"))
+        if not wait("/init", 10):
+            raise Step.Fail("命令清单里没有 /init")
+        shot("4c-命令清单")
+        tap("/init")
+        time.sleep(1.5)
+        if ui.find("/init ") is None:
+            raise Step.Fail("点了 /init 没填进输入框")
+        if pane_has(name, "> /init", 2):
+            raise Step.Fail("点了命令就发出去了（应只填进输入框）")
+        tap("/init ")
+        for _ in range(8):
+            adb("shell", "input", "keyevent", "67")
+        hide_keyboard()
+        tap(t("mobPlus.title"))
+        if not wait(t("mobPlus.clear"), 15):
+            raise Step.Fail("面板里没有「清空会话」")
+        tap(t("mobPlus.clear"))
+        if not wait(t("session.clear.body"), 5):
+            raise Step.Fail("清空会话没先确认")
+        shot("4c-清空先确认")
+        tap(t("kit.dialog.cancel"))
+        time.sleep(2)
+        if pane_has(name, "> /clear", 2):
+            raise Step.Fail("取消了照样送了 /clear")
+        tap(t("mobPlus.title"))
+        if not wait(t("mobPlus.compact"), 15):
+            raise Step.Fail("面板里没有「压缩上下文」")
+        tap(t("mobPlus.compact"))
+        if not pane_has(name, "> /compact", 20):
+            raise Step.Fail("压缩上下文没送进那个会话")
 
     with Step("5-一轮完成的通知"):
         name = tmux_name_of(f"{T} new session")

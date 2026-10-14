@@ -30,6 +30,6 @@ bash tests/mobile-smoke/smoke.sh
 - `frames.py <命令> '<JSON 入参>' [期限毫秒]`：经台架开一条常驻流问一句（和手机同一条路）；`frames.py watch <秒>` 只看流上的帧。
 - `ui.py dump|tap|has|wait|text|key|shot`：按字找控件点、截屏。
 - `fake-agent.py`：替身。句里带 `long` ⇒ 一大段回答；带 `ask` ⇒ 停在批准框上（需手动），终端里再敲一行才往下走；敲进来 `/model <值>` ⇒ 只落那一家换模型的读回（第 9 步换模型用）。`CCM_SMOKE_STEP`（每条记录间隔）· `CCM_SMOKE_BOOT`（起到能收第一句之前停多久）。
-- `smoke.py`：十步（加机器连上 · 对话列表 · 新建会话 · 聊天屏 · 完成通知 · 断网再连 · 换网 · 杀进程再开 · 终端屏（含命令面板换模型）· Codex），每步只看屏上和台架记录里看得到的。
+- `smoke.py`：十步（加机器连上 · 对话列表 · 新建会话 · 聊天屏（后跟两小步：输入框下的模型 chip · ［+］面板的命令 / 清空先确认 / 压缩）· 完成通知 · 断网再连 · 换网 · 杀进程再开 · 终端屏（含命令面板换模型）· Codex），每步只看屏上和台架记录里看得到的。
 
 收：`bash tests/mobile-smoke/emu.sh down; bash tests/mobile-smoke/rig.sh down`（台架目录留着，删掉 `.build/mobile-smoke/` 即全清）。

@@ -26,6 +26,18 @@ class ChatViewModel(
 
     fun stop() = session.stop()
 
+    /** 输入那一圈（➤ · ■ · 两颗 chip · ［+］面板）。 */
+    val actions: ChatInputActions =
+        ChatInputActions(
+            send = session::send,
+            stop = session::stop,
+            switchModel = session::switchModel,
+            switchPermission = session::switchPermission,
+            loadPicks = session::loadPicks,
+            loadCommands = session::loadCommands,
+            say = session::say,
+        )
+
     /** 聊天屏进 / 出（`stream-watch` 名单跟着它）。 */
     fun visible(on: Boolean) = session.visible(on)
 }

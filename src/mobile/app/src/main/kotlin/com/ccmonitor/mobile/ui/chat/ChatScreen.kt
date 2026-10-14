@@ -1,27 +1,20 @@
 package com.ccmonitor.mobile.ui.chat
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
@@ -39,8 +32,7 @@ import kotlinx.coroutines.flow.filter
 @Composable
 fun ChatScreen(
     state: ChatUiState,
-    onSend: (String) -> Unit,
-    onStop: () -> Unit,
+    actions: ChatInputActions,
     modifier: Modifier = Modifier,
     /** 上滑到顶时请求再载更早的一段。 */
     onLoadOlder: () -> Unit = {},
@@ -50,7 +42,7 @@ fun ChatScreen(
     Column(modifier.fillMaxSize()) {
         ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend)
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
-        ChatInputRow(running = state.running, onSend = onSend, onStop = onStop)
+        ChatInputArea(state = state, actions = actions)
     }
 }
 
@@ -95,10 +87,13 @@ fun ChatTranscript(
     // 跟到底。触发看「最后一个单元的 key + 内容长度」而不是 `units.size`：流式期间数量不变，
     // 而往顶部插历史会改 size。滚到最后一个单元的末尾（一条很长的回答也看得到它最新那几行），偏移交给列表自己夹到底。
     // 视口高度也在 key 里：键盘弹起把消息区压矮时，贴着底的照样看得到最新那几行。
+    // 活卡逐字长在正文尾巴上：它的字数也在 key 里，贴着底时跟着它长。
     val lastUnit = state.units.lastOrNull()
+    val liveLength = state.live.sumOf { c -> c.blocks.sumOf { it.text.length } + 1 }
+    val total = state.units.size + state.live.size
     val viewport by remember { derivedStateOf { listState.layoutInfo.viewportSize.height } }
-    LaunchedEffect(lastUnit?.key, lastUnit?.searchableText()?.length, viewport) {
-        if (following && state.units.isNotEmpty()) listState.scrollToItem(state.units.lastIndex, Int.MAX_VALUE)
+    LaunchedEffect(lastUnit?.key, lastUnit?.searchableText()?.length, liveLength, viewport) {
+        if (following && total > 0) listState.scrollToItem(total - 1, Int.MAX_VALUE)
     }
 
     Column(modifier.fillMaxWidth()) {
@@ -111,6 +106,7 @@ fun ChatTranscript(
             // 不传的话「复制代码」按钮照样渲染但点了没反应。
             onCopyCode = { clipboard.setText(AnnotatedString(it)) },
             onRetrySend = onRetrySend,
+            trailer = { liveCards(state.live) },
         )
 
         state.failedWhy?.let {
@@ -143,48 +139,6 @@ private fun HistoryStatusBar(state: ChatUiState) {
     }
 }
 
-/** 输入行：输入框 ＋ 发送 / 停止（运行中且框里没字 ⇒ 停止；二选一，不并存）。输入框永远不锁。 */
-@Composable
-private fun ChatInputRow(
-    running: Boolean,
-    onSend: (String) -> Unit,
-    onStop: () -> Unit,
-) {
-    // `rememberSaveable`：转屏会重建 Activity，`remember` 的草稿会丢光。
-    var draft by rememberSaveable { mutableStateOf("") }
-    Surface(tonalElevation = 2.dp) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
-                placeholder = { Text(copyText("mobChat.input.placeholder")) },
-                singleLine = false,
-                maxLines = INPUT_MAX_LINES,
-            )
-            if (running && draft.isBlank()) {
-                TextButton(onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text(copyText("mobChat.input.stop")) }
-            } else {
-                TextButton(
-                    onClick = {
-                        onSend(draft)
-                        draft = ""
-                    },
-                    enabled = draft.isNotBlank(),
-                    modifier = Modifier.testTag(ChatTestTags.SEND),
-                ) {
-                    Text(copyText("mobChat.input.send"))
-                }
-            }
-        }
-    }
-}
-
-private const val INPUT_MAX_LINES = 4
 
 /**
  * 该不该现在去载更早的一段：到顶了（或尾段里一条进界面的都没有）、允许载、没在载，

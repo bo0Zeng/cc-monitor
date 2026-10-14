@@ -31725,6 +31725,78 @@
       "role": "标签",
       "zh": "轮换",
       "args": []
+    },
+    "session.model.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "模型",
+      "args": []
+    },
+    "session.permission.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "权限档",
+      "args": []
+    },
+    "session.model.unsure": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "换模型结果未知",
+      "args": []
+    },
+    "session.permission.unsure": {
+      "kind": "body",
+      "role": "状态",
+      "zh": "换权限档结果未知",
+      "args": []
+    },
+    "session.clear.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "清空会话",
+      "args": []
+    },
+    "session.clear.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "从空的上下文重新开始 · 之前的对话留在会话列表里",
+      "args": []
+    },
+    "session.clear.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "清空",
+      "args": []
+    },
+    "mobPlus.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "添加",
+      "args": []
+    },
+    "mobPlus.commands": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "命令",
+      "args": []
+    },
+    "mobPlus.skills": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Skill",
+      "args": []
+    },
+    "mobPlus.compact": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "压缩上下文",
+      "args": []
+    },
+    "mobPlus.clear": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "清空会话",
+      "args": []
     }
   }
 }

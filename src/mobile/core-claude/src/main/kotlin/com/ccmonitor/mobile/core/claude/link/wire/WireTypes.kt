@@ -76,6 +76,7 @@ data class AgentFacts(
     val kind: String,
     val text: String,
     val models: List<NewSessionPick>,
+    val permissionModes: List<NewSessionPick>,
 )
 
 @WireOf("NewSessionPick")
@@ -89,6 +90,7 @@ data class NewSessionPick(
 @JsonClass(generateAdapter = true)
 data class ModelSwitched(
     val result: ModeSwitchResult,
+    val model: String?,
     val said: String?,
 )
 
@@ -158,4 +160,52 @@ data class TailPlan(
     @Json(name = "split_at") val splitAt: Long,
     @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
+)
+
+// ── 会话中途：切权限档 · 这条会话能用的命令与 Skill（聊天屏输入那一圈读的） ──────────
+
+@WireOf("ModeSwitched")
+@JsonClass(generateAdapter = true)
+data class ModeSwitched(
+    val result: ModeSwitchResult,
+    val modeText: String?,
+    val said: String?,
+)
+
+@WireOf("SessionCommands")
+@JsonClass(generateAdapter = true)
+data class SessionCommands(
+    val commands: List<SessionCommand>,
+    val skills: List<SessionSkill>,
+    val problems: List<String>,
+)
+
+@WireOf("SessionCommand")
+@JsonClass(generateAdapter = true)
+data class SessionCommand(
+    val name: String,
+    val text: String?,
+    val scope: CommandScope,
+    val scopeText: String,
+    val confirm: Boolean,
+)
+
+@JsonClass(generateAdapter = false)
+enum class CommandScope {
+    @Json(name = "builtin")
+    BUILTIN,
+
+    @Json(name = "project")
+    PROJECT,
+
+    @Json(name = "user")
+    USER,
+}
+
+@WireOf("SessionSkill")
+@JsonClass(generateAdapter = true)
+data class SessionSkill(
+    val name: String,
+    val text: String?,
+    val say: String,
 )

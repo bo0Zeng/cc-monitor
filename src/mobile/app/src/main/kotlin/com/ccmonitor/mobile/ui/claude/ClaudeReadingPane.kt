@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -58,6 +59,8 @@ fun ClaudeReadingPane(
     onCopyCode: (String) -> Unit = {}, // 复制代码块
     // 本地消息发送失败时的重试。默认 no-op，只读阅读面用不到。
     onRetrySend: (String) -> Unit = {},
+    // 正文尾巴上不进时间线的那一块（聊天屏的活卡）。
+    trailer: LazyListScope.() -> Unit = {},
 ) {
     val tokens = LocalAppTokens.current
     // 整个面共享一个 Markwon 实例，避免每张卡重建解析器。
@@ -88,6 +91,7 @@ fun ClaudeReadingPane(
                     is RenderUnit.Interrupt -> InterruptLine(unit)
                 }
             }
+            trailer()
         }
     }
 }

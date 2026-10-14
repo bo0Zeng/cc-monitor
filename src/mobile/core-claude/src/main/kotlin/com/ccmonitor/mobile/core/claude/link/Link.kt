@@ -30,6 +30,9 @@ interface CoreLink {
     val table: StateFlow<SessionTable>
     val lines: SharedFlow<RecordLine>
 
+    /** 流上的活卡帧（只有名单里的会话）。可丢：丢了一帧那张卡接不上、先不画，等那台下一张整卡。 */
+    val live: SharedFlow<LiveFrame>
+
     /**
      * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
      * 断着那一段的 `line` 帧没收到 ⇒ 读过的正文要从断处补读。
