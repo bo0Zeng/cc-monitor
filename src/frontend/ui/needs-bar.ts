@@ -9,7 +9,7 @@ import { machineOf, needsOf, fullTitle } from "./session-face";
 
 /**
  * 窗口标题与系统通知：每次标签页栏刷新时喂一次（`observe`）。
- * - 标题：`cc-monitor · 需手动 N`（0 个时只有 `cc-monitor`）；变了才写。
+ * - 标题：`cc-monitor · 需手动 N`（0 个时只有 `cc-monitor`）；N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项，`total`）；变了才写。
  * - 通知：一个会话**开始**等你（上一次喂的时候它不在等）、主窗口不在前台、设置里开着 ⇒ 发一条：标题 `{title}（{machine}）· 等批准`，正文是那一句。
  *   那一刻会话事实还没到（种类不明）⇒ 等它到了再发（不先发一条「需手动」再补一条）；到不了（老后端）⇒ 最多等 [`NOTIFY_WAIT_MS`] 照发。
  */
@@ -30,14 +30,12 @@ export class NeedsWatch {
 
   constructor(private readonly deps: NeedsWatchDeps) {}
 
-  observe(tabs: Iterable<Tab>): void {
-    let n = 0;
+  observe(tabs: Iterable<Tab>, total: number): void {
     const now = this.deps.now();
     const still = new Set<string>();
     for (const t of tabs) {
       const need = needsOf(t);
       if (!need) continue;
-      n++;
       still.add(t.sessionId);
       let w = this.waiting.get(t.sessionId);
       if (!w) {
@@ -50,7 +48,7 @@ export class NeedsWatch {
       }
     }
     for (const sid of [...this.waiting.keys()]) if (!still.has(sid)) this.waiting.delete(sid);
-    const title = n > 0 ? copyText("needs.windowTitle.count", { n }) : copyText("needs.windowTitle.base");
+    const title = total > 0 ? copyText("needs.windowTitle.count", { n: total }) : copyText("needs.windowTitle.base");
     if (title !== this.title) {
       this.title = title;
       this.deps.setTitle(title);

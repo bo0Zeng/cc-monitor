@@ -3,7 +3,9 @@ declare const classes: {
   readonly drawer: string;
   readonly drawerBody: string;
   readonly drawerDim: string;
+  readonly drawerFoot: string;
   readonly drawerHead: string;
+  readonly drawerScrim: string;
   readonly drawerSub: string;
   readonly drawerTitle: string;
 };

@@ -12,6 +12,8 @@ export const ACCOUNTS = [
 
 export function defaultOps(): Record<string, OpHandler> {
   return {
+    // 会话外的需手动清单：默认世界里没有（「需手动」浮层与登录抽屉那几张的世界 `scenes/login.ts` 换掉这一条）。
+    "manual-list": () => ({ items: [] }),
     // 计划清单：默认世界里没有计划（计划页的世界 `plan.ts::planWorld` 换掉这一条）。
     "plan-list": () => ({ pb: { state: "ok", said: null }, workspaces: [] }),
     "accounts-sessions": (origin, _req, w) => ({

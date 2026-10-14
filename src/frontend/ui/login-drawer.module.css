@@ -1,0 +1,96 @@
+/* 登录抽屉（账号 · MCP 同一个）：目标行 · 链接那一排 · 自动结束那一行 · 粘贴那一格。 */
+@layer components {
+  .ldBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    font-size: var(--font-size-mono);
+  }
+
+  .ldWho {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+    color: var(--text);
+  }
+
+  .ldName {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .ldDim {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .ldLinks {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .ldUrl {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .ldAuto {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .ldRule {
+    height: 1px;
+    background: var(--border-soft);
+  }
+
+  .ldPasteBox {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .ldPasteLine {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .ldPaste {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ldPaste input {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+  }
+
+  .ldPasteLine > button {
+    margin-top: calc(var(--font-size-small) * 1.5 + var(--space-2));
+  }
+
+  .ldInfo {
+    display: inline-flex;
+    margin-left: var(--space-2);
+    vertical-align: middle;
+    color: var(--text-2);
+    cursor: help;
+  }
+
+  .ldSubmitRow {
+    display: flex;
+    justify-content: flex-end;
+  }
+}

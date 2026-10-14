@@ -30,8 +30,13 @@ import { copyText } from "./copy-table";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
-import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
-import { closeMenu, menuAnchoredOn, openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
+import { attachTooltip, delegateTooltip } from "./kit/tooltip";
+import { openMenu, type MenuAnchor, type MenuItem } from "./kit/menu";
+import { closePopover, openPopover, popoverOpenOn, swapPopoverContent } from "./kit/popover";
+import { renderNeedsPanel, type PanelFacts, type PanelPlan } from "./needs-panel";
+import type { ManualBook } from "./manual-book";
+import type { ManualItem } from "./login-reads";
+import type { Origin } from "./ipc/origin";
 import { foldCaret } from "./kit/fold";
 import { fmtDur } from "./duration-format";
 import { abbrOf, dotOf, fullTitle, groupSummary, machineOf, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts, sinceText } from "./session-face";
@@ -137,15 +142,20 @@ interface GroupEls {
 }
 
 /** 栏里的一行（键盘焦点落在哪）：标签页 · 组头。 */
+/** 计划那一侧的「需手动」：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条 · 按片列出（浮层用）。 */
+export interface PlanNeeds {
+  count: () => number;
+  at: () => number | null;
+  open: (i: number) => void;
+  slices: () => PanelPlan[];
+}
+
 export type FocusRow = { kind: "tab"; sid: string } | { kind: "head"; gid: string };
 
 /** 这个事件落在会打字的框里（组头改名的输入框）⇒ 列表键不管。 */
 function isTyping(t: EventTarget | null): boolean {
   return t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 }
-
-/** 「需手动」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
-const NEEDS_MENU = { min: 360, ideal: 420, max: 480, viewportGutter: 32 } as const;
 
 /** 栏收成 44px 时（`tab-bar-fold.ts`）悬停卡宽 260。 */
 const folded = (): boolean => document.body.dataset.tabBar === "folded";
@@ -232,20 +242,8 @@ export class TabBarView {
     this.needsKbd = document.createElement("span");
     this.needsKbd.className = "tab-needs-kbd";
     this.needsEl.append(needsDot, needsText, this.needsCount, needsSp, this.needsKbd);
-    // 悬停 500ms ⇒ kit 菜单列出每个在等你的会话与那一句，点一行跳过去；没到点就移开 ⇒ 不开。
-    let needsHover: ReturnType<typeof setTimeout> | null = null;
-    this.needsEl.addEventListener("mouseenter", () => {
-      if (needsHover !== null) clearTimeout(needsHover);
-      // 调度：一次性 —— 「需手动」悬停 500ms 才开菜单，移开就清
-      needsHover = setTimeout(() => {
-        needsHover = null;
-        if (!menuAnchoredOn(this.needsEl)) this.openNeedsMenu();
-      }, TOOLTIP_DELAY_MS);
-    });
-    this.needsEl.addEventListener("mouseleave", () => {
-      if (needsHover !== null) clearTimeout(needsHover);
-      needsHover = null;
-    });
+    this.needsEl.setAttribute("aria-haspopup", "dialog");
+    this.needsEl.setAttribute("aria-expanded", "false");
 
     this.downEl = document.createElement("div");
     this.downEl.className = "tab-machine-down";
@@ -279,7 +277,12 @@ export class TabBarView {
    * 计划那一侧的「需手动」（计划页挂进来）：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条。
    * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题，不发系统通知。
    */
-  plan: { count: () => number; at: () => number | null; open: (i: number) => void } = { count: () => 0, at: () => null, open: () => {} };
+  plan: PlanNeeds = { count: () => 0, at: () => null, open: () => {}, slices: () => [] };
+
+  /**
+   * 会话外的「需手动」（宿主挂进来）：每台 `manual-list` 的账 · 点那一行开登录抽屉。条数进「需手动 N」与窗口标题，不进 `Ctrl+J`、不发系统通知。
+   */
+  manual: { book: ManualBook | null; login: (origin: Origin, item: ManualItem) => void } = { book: null, login: () => {} };
 
   /** 「需手动」的下一站（`Ctrl+J` · 点「需手动」那一条）：会话在前、计划项在后。没有 ⇒ 什么都不做。 */
   nextNeeds(): void {
@@ -291,16 +294,93 @@ export class TabBarView {
     else this.plan.open(step.plan);
   }
 
-  /** 此刻「需手动」的数：需要处理的会话 ＋ 计划项（窗口标题用）。 */
+  /** 此刻「需手动」的数：需要处理的会话 ＋ 计划项 ＋ 会话外的每一项（窗口标题用，与入口同一个数）。 */
   needsCountNow(): number {
-    let n = this.plan.count();
+    let n = this.plan.count() + (this.manual.book?.count() ?? 0);
     for (const t of this.store.tabs.values()) if (needsOf(t)) n++;
     return n;
   }
 
-  /** 计划那一侧的数变了 ⇒ 重画「需手动 N」。 */
+  /** 计划那一侧 · 会话外那一份的数变了 ⇒ 重画「需手动 N」（浮层开着 ⇒ 原地换内容）。 */
   planNeedsChanged(): void {
     this.updateNeedsStrip();
+    this.repaintNeedsPanel();
+  }
+
+  /** 点「需手动」：开 / 关浮层。开的那一下各台的会话外清单重问一次（问回来之前照上一份画）。 */
+  toggleNeedsPanel(): void {
+    if (popoverOpenOn(this.needsEl)) {
+      closePopover();
+      return;
+    }
+    const content = this.needsPanel(0);
+    openPopover(this.needsEl, content, {
+      label: copyText("tabBar.needs.label"),
+      align: "start",
+      onClose: () => {
+        this.needsEl.classList.remove("is-open");
+        this.updateNeedsStrip();
+      },
+    });
+    this.needsEl.classList.add("is-open");
+    content.focus();
+    void this.manual.book?.again();
+  }
+
+  /** 浮层那一份内容（`at` ＝ 键盘选着第几行）。 */
+  private needsPanel(at: number): HTMLElement {
+    const facts = this.needsFacts();
+    this.needsDrawn = JSON.stringify(facts);
+    const root = this.buildNeedsPanel(facts, at);
+    this.needsContent = root;
+    return root;
+  }
+
+  /** 浮层此刻那一份内容（原地换时从它取选着的那一行）· 画它用的那一份事实（一字不差 ⇒ 不重画）。 */
+  private needsContent: HTMLElement | null = null;
+  private needsDrawn = "";
+
+  private needsFacts(): PanelFacts {
+    const now = Date.now();
+    const sessions = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), now).map((sid) => {
+      const t = this.store.tabs.get(sid)!;
+      return { sid, origin: t.origin, title: fullTitle(t), state: stateLine(t, now).text, what: needsOf(t)?.what ?? null };
+    });
+    return { sessions, plans: this.plan.slices(), manual: this.manual.book?.states() ?? [] };
+  }
+
+  private buildNeedsPanel(facts: PanelFacts, at: number): HTMLElement {
+    const close = (): void => closePopover();
+    return renderNeedsPanel(
+      facts,
+      {
+        answer: (sid) => {
+          close();
+          this.host.answerAt(sid);
+        },
+        plan: (i) => {
+          close();
+          this.plan.open(i);
+        },
+        login: (origin, item) => {
+          close();
+          this.manual.login(origin, item);
+        },
+      },
+      at,
+    ).root;
+  }
+
+  /** 浮层开着、数据变了 ⇒ 原地换内容（选着的那一行下标照留；焦点留在浮层里）。 */
+  private repaintNeedsPanel(): void {
+    if (!popoverOpenOn(this.needsEl)) return;
+    if (JSON.stringify(this.needsFacts()) === this.needsDrawn) return;
+    const old = this.needsContent;
+    const at = Number(old?.dataset.at ?? 0);
+    const focused = old !== null && old.contains(document.activeElement);
+    const next = this.needsPanel(Number.isFinite(at) && at >= 0 ? at : 0);
+    swapPopoverContent(this.needsEl, next);
+    if (focused) next.focus();
   }
 
   private reread(): void {
@@ -340,8 +420,7 @@ export class TabBarView {
       return;
     }
     if (e.target instanceof Node && this.needsEl.contains(e.target)) {
-      if (menuAnchoredOn(this.needsEl)) closeMenu();
-      this.nextNeeds();
+      this.toggleNeedsPanel();
       return;
     }
     if (e.target instanceof Element && typeof e.target.closest === "function") {
@@ -657,6 +736,7 @@ export class TabBarView {
     }
     if (this.listEl.lastChild !== this.slotTail) this.listEl.appendChild(this.slotTail);
     this.updateNeedsStrip();
+    this.repaintNeedsPanel();
     this.updateMachineDown();
     // 起步那一批（重放）画完之后，再新长出来的行才淡入。
     if (!this.store.inBatch && this.tabButtons.size > 0) this.painted = true;
@@ -664,44 +744,29 @@ export class TabBarView {
     this.store.notify();
   }
 
-  /** 「需手动 N」：N ≥ 1 才出。 */
+  /**
+   * 「需手动 N」：N ≥ 1 才出（浮层开着时照留：最后一项刚解决 ⇒ 去掉数字，关了才消失）。
+   * 有哪台回了话、清单却无法读取 ⇒ 不带数字、虚线框（数说不准）。
+   */
   private updateNeedsStrip(): void {
     const n = this.needsCountNow();
-    this.needsEl.style.display = n === 0 ? "none" : "";
-    if (n === 0) return;
+    const open = popoverOpenOn(this.needsEl);
+    const unreadable = this.manual.book?.anyUnreadable() ?? false;
+    this.needsEl.style.display = n === 0 && !open && !unreadable ? "none" : "";
+    if (this.needsEl.classList.contains("is-unknown") !== unreadable) this.needsEl.classList.toggle("is-unknown", unreadable);
+    if (n === 0 && !open && !unreadable) return;
     const chord = dispatcher.effectiveChord("needs.next");
     const pretty = chord ? KeybindingDispatcher.prettyChord(chord) : "";
     if (this.needsKbd.dataset.chord !== pretty) {
       this.needsKbd.dataset.chord = pretty;
       this.needsKbd.replaceChildren(...(pretty ? [kbd(pretty)] : []));
     }
-    if (this.needsCount.dataset.n !== String(n)) {
-      this.needsCount.dataset.n = String(n);
-      this.needsCount.replaceChildren(...[countBadge(n, "warn")].filter((b): b is HTMLSpanElement => b !== null));
+    const shown = unreadable ? "" : String(n);
+    if (this.needsCount.dataset.n !== shown) {
+      this.needsCount.dataset.n = shown;
+      this.needsCount.replaceChildren(...[unreadable ? null : countBadge(n, "warn")].filter((b): b is HTMLSpanElement => b !== null));
     }
     this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
-  }
-
-  /** 「需手动」菜单：每个需手动的会话（照核心的先后：危险度在前、同档等得久的在前）· 状态 · 等的那一句；点一行切过去。 */
-  private openNeedsMenu(): void {
-    const now = Date.now();
-    const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined), now);
-    if (tabs.length === 0) return;
-    const items: MenuItem[] = tabs.map((sid) => {
-      const t = this.store.tabs.get(sid)!;
-      return {
-        id: sid,
-        label: fullTitle(t),
-        avatar: statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact"),
-        detail: stateLine(t, now).text,
-        detailTone: "warn",
-        body: needsOf(t)?.what || undefined,
-        onClick: () => this.host.answerAt(sid),
-      };
-    });
-    const room = window.innerWidth - NEEDS_MENU.viewportGutter;
-    const width = Math.max(Math.min(NEEDS_MENU.min, room), Math.min(NEEDS_MENU.ideal, NEEDS_MENU.max, room));
-    openMenu({ el: this.needsEl }, items, { label: copyText("tabBar.needs.label"), width });
   }
 
   /** 机器离线条：看不见的那台、还有状态不明的会话 ⇒ 一条（`{machine} 离线 · N 会话状态不明 / 采样 3m 前［重新连接］`）。 */

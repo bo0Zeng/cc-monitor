@@ -26,6 +26,7 @@ import { writeApikeyKey } from "../apikey-reads";
 import { openOnMachine } from "../file-window";
 import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { bindEvents } from "../events";
+import { openLoginDrawer } from "../login-drawer";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, validateAcctName, type VerifyReport } from "../account-ops";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { button, buttonRow, setBusy, setDisabled } from "../kit/button";
@@ -486,6 +487,11 @@ export class AccountsSection {
         if (machineHasTmux(origin) !== false) act.appendChild(button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
       } else if (waiting) {
         act.appendChild(button({ label: copyText("acctPage.login.reopen"), size: "compact", onClick: stop(() => void this.login(origin, a)) }));
+      } else if (accountRowKind(a) === "notLoggedIn") {
+        // 需登录 ⇒［登录…］开登录抽屉（与「需手动」浮层里那一行同一个）。
+        const go = button({ label: copyText("newSession.account.login"), size: "compact", onClick: stop(() => this.signIn(origin, a)) });
+        go.dataset.action = "acct-login";
+        act.appendChild(go);
       } else if (!isDef) {
         const setDef = button({ label: copyText("acctPage.row.setDefault"), size: "compact", onClick: stop(() => void this.setDefault(origin, a)) });
         setDef.classList.add("acct-row-hoverbtn");
@@ -527,7 +533,11 @@ export class AccountsSection {
     const items: MenuItem[] = [];
     if (a.name !== f.state.meta?.effectiveDefault) items.push({ label: copyText("acctPage.row.setDefault"), onClick: () => void this.setDefault(origin, a), ...off });
     if (accountRowKind(a) === "apikey") items.push({ label: copyText("acctPage.menu.changeKey"), onClick: () => this.openDetail(a.name), ...off });
-    else if (a.configDir !== null) items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => void this.login(origin, a), ...off });
+    else {
+      items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => this.signIn(origin, a), ...off });
+      // 在终端里登录只留在这里（开终端跑那台答的登录那一行；开不了 ⇒ 那一行改给［tmux 里登录］）。
+      if (a.configDir !== null) items.push({ label: copyText("acctPage.menu.loginTerminal"), onClick: () => void this.login(origin, a), ...off });
+    }
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) items.push({ label: copyText("acctPage.menu.copyCommands"), onClick: () => copyCmds(cmds) });
     if (a.configDir !== null) {
@@ -724,6 +734,16 @@ export class AccountsSection {
     await this.reload(true, true);
   }
 
+  /** ［登录…］·「⋯ 重新登录…」：开登录抽屉（目标照这一行拼：那一家 ＋ 号名）。登成了那一行随推送自己变。 */
+  private signIn(origin: Origin, a: Account): void {
+    const key = this.key(a.name, origin);
+    this.noWindow.delete(key);
+    this.waiting.delete(key);
+    openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: a.name }, onDone: () => void this.reload(true, true) });
+    if (this.facts) this.paint(this.facts);
+  }
+
+  /** 「⋯ 在终端里登录…」：开终端窗口跑那台答的登录那一行。 */
   private async login(origin: Origin, a: Account): Promise<void> {
     const key = this.key(a.name, origin);
     try {
@@ -785,7 +805,7 @@ export class AccountsSection {
     this.newBtn.setAttribute("aria-expanded", "false");
   }
 
-  /** 建好：订阅号开登录窗口（那一行「等待终端登录…」，登录完后端推一帧、行自己变「已登录」）；API 号 key 没存上 ⇒ 那一行展开。 */
+  /** 建好：订阅号开登录抽屉（登成了后端推一帧、行自己变「已登录」）；API 号 key 没存上 ⇒ 那一行展开。 */
   private async create(origin: Origin, req: NewAccountRequest): Promise<void> {
     const machine = machineName(origin);
     let change;
@@ -798,11 +818,9 @@ export class AccountsSection {
     this.closeForm();
     const key = this.key(req.name, origin);
     if (req.kind !== "api-key" && !req.credFile) {
-      const got = await openLoginWindow(origin, req.name).catch(() => "noWindow" as const);
-      if (got === "opened") this.waiting.add(key);
-      else this.noWindow.add(key);
       // 下一行照后端回的那几句（如「已开的终端要重读别名」），界面不另拼。
-      toast(got === "opened" ? copyText("acctPage.new.doneLogin", { name: req.name, machine }) : copyText("acctPage.new.done", { name: req.name, machine }), change.notes.join("\n"));
+      toast(copyText("acctPage.new.done", { name: req.name, machine }), change.notes.join("\n"));
+      openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: req.name }, onDone: () => void this.reload(true, true) });
     } else {
       toast(copyText("acctPage.new.done", { name: req.name, machine }), [change.keyProblem, ...change.notes].filter((x): x is string => !!x).join("\n"), change.keyProblem ? { level: "error" } : {});
       if (change.keyProblem) this.open.add(key);

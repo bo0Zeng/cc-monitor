@@ -265,7 +265,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) .ext-filter button", "MCP"));
     await sleep(500);
   }, troubleWorld),
-  settings("settings-ext-mcp", "设置 · 扩展 · MCP 需登录 / 连接失败 · 抽屉", "筛到 MCP：github 本机的点右上角黄标（需登录）、devbox 红标（断开）· 图例多两项 · 点开：本机那一行「需登录 · 号 · 几点记下」［去登录］· devbox 那一行「会话「…」里连接失败 · 几点」＋ 原话 ＋［复制详情］", async () => {
+  settings("settings-ext-mcp", "设置 · 扩展 · MCP 需登录 / 连接失败 · 抽屉", "筛到 MCP：github 本机的点右上角黄标（需登录）、devbox 红标（断开）· 图例多两项 · 点开：本机那一行「需登录 · 号 · 几点记下」（［登录…］见「需手动与登录」那一组）· devbox 那一行「会话「…」里连接失败 · 几点」＋ 原话 ＋［复制详情］", async () => {
     await go("ext");
     await sleep(600);
     await click(await byText(".settings-page:not([hidden]) .ext-filter button", "MCP"));

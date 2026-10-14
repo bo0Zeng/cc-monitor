@@ -392,10 +392,10 @@ export const MAIN_SCENES: Scene[] = [
     document.querySelector(".step-line[data-state=awaiting]")?.scrollIntoView({ block: "center" });
     await sleep(500);
   }),
-  main("main-needs-list", "主窗口 · 「需手动」菜单", "悬停栏顶「需手动 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
+  main("main-needs-list", "主窗口 · 「需手动」浮层", "点栏顶「需手动 2」：浮层列出每个在等的会话与它等的那一句（等得最久的在前；点一行切过去；悬停不再开菜单）", async () => {
     await mainReady(ALL_TABS);
     await sleep(600);
-    document.querySelector<HTMLElement>(".tab-needs")!.dispatchEvent(new Event("mouseenter"));
+    await click(".tab-needs");
     await sleep(800);
   }, answerWorld),
   main("main-ended", "主窗口 · 已结束的会话", "第三个 tab：会话已结束（tab 灰、斜体）", async () => {

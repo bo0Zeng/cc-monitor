@@ -3,6 +3,7 @@
  *
  * Esc 关（压进弹层栈）；有没存的输入时先问 `放弃填写`（`isDirty` 由调用方给）；关后焦点回触发处。
  * 压暗那一层不接指针：左边内容照样能滚、能读（改的都是立刻生效的设置，不挡人）。
+ * `scrim`：要人在这里做完一件事的那种（登录抽屉）⇒ 换成模态遮罩，点遮罩 ＝ 关（同 ✕ · Esc）。
  */
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { button } from "./button";
@@ -20,6 +21,10 @@ export interface DrawerSpec {
   width?: number;
   /** 离窗口底边留多少 px 不盖（主窗口的状态栏：再点状态栏那颗按钮就能关）。 */
   bottom?: number;
+  /** 模态遮罩（压暗得更深、接指针，点它 ＝ 关）。缺 ⇒ 不挡左边内容的那一层。 */
+  scrim?: boolean;
+  /** 底栏（贴着抽屉底边，不随内容滚）。 */
+  foot?: HTMLElement;
   isDirty?: () => boolean;
   onClose?: () => void;
 }
@@ -32,7 +37,8 @@ export interface DrawerHandle {
 export function openDrawer(spec: DrawerSpec): DrawerHandle {
   const before = document.activeElement;
   const dim = document.createElement("div");
-  dim.className = s.drawerDim;
+  dim.className = spec.scrim ? s.drawerScrim : s.drawerDim;
+  if (spec.scrim) dim.addEventListener("click", () => void close());
   const panel = document.createElement("aside");
   panel.className = s.drawer;
   panel.setAttribute("role", "dialog");
@@ -62,6 +68,12 @@ export function openDrawer(spec: DrawerSpec): DrawerHandle {
   body.className = s.drawerBody;
   body.appendChild(spec.body);
   panel.append(head, body);
+  if (spec.foot) {
+    const foot = document.createElement("div");
+    foot.className = s.drawerFoot;
+    foot.appendChild(spec.foot);
+    panel.appendChild(foot);
+  }
   let closed = false;
   const layer: OverlayHandle = {
     handleEsc: () => {

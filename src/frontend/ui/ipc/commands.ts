@@ -167,6 +167,9 @@ export const commands = {
   /** 写系统剪贴板（`clipboard.rs`，回真成败）。桶①。只经 `src/frontend/ui/clipboard.ts` 调（复制只有一个家）。 */
   clipboard_write: (args: { text: string }) => invoke<void>("clipboard_write", args),
 
+  /** 读系统剪贴板里的文字（`clipboard.rs`）。桶①。只经 `src/frontend/ui/clipboard.ts` 调。 */
+  clipboard_read: () => invoke<string>("clipboard_read"),
+
   /** 设置页「终端」那一行要的事实：自动会挑谁 · 本机探到哪些 · 现在设的是什么（挑终端的判定在壳的平台层）。
    *  `TerminalChoices` 是生成物 ⇒ **桶③**。 */
   terminal_choices: () => invoke<TerminalChoices>("terminal_choices"),

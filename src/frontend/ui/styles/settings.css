@@ -1791,6 +1791,11 @@ body.settings-window-mode .settings-panel {
     flex: none;
     white-space: nowrap;
   }
+  /* 几个号都要登 ⇒ 每颗［登录…］前面那个号的号牌。 */
+  .ext-mcp-acts > .settings-btn > .acct-avatar {
+    margin-right: 4px;
+    vertical-align: -2px;
+  }
   .ext-mcp-raw {
     margin: 6px 0 0;
     padding: 8px 10px;

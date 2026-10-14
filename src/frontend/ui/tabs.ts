@@ -49,7 +49,9 @@ import { LiveCards, type LivePainter } from "./live-card";
 import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
-import { TabBarView } from "./tab-bar-view";
+import { TabBarView, type PlanNeeds } from "./tab-bar-view";
+import type { ManualBook } from "./manual-book";
+import type { ManualItem } from "./login-reads";
 import { TabRouter } from "./tab-router";
 import { applyFacts } from "./tab-session-facts";
 import { FactsSource } from "./views/facts-source";
@@ -1176,9 +1178,16 @@ export class TabManager {
     this.bar.nextNeeds();
   }
 
-  /** 计划那一侧的「需手动」挂进来（几条 · 站在第几条 · 去第几条），之后数变了调 `planNeedsChanged`。 */
-  attachPlanNeeds(plan: { count: () => number; at: () => number | null; open: (i: number) => void }): void {
+  /** 计划那一侧的「需手动」挂进来（几条 · 站在第几条 · 去第几条 · 按片列出），之后数变了调 `planNeedsChanged`。 */
+  attachPlanNeeds(plan: PlanNeeds): void {
     this.bar.plan = plan;
+    this.bar.planNeedsChanged();
+  }
+
+  /** 会话外的「需手动」挂进来（每台 `manual-list` 的账 · 点那一行开登录抽屉）；账变了 ⇒ 入口 · 浮层 · 窗口标题跟着重画。 */
+  attachManual(book: ManualBook, login: (origin: Origin, item: ManualItem) => void): void {
+    this.bar.manual = { book, login };
+    book.subscribe(() => this.bar.planNeedsChanged());
     this.bar.planNeedsChanged();
   }
 
