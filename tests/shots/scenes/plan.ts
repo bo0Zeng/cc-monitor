@@ -42,7 +42,7 @@ export const PLAN_SCENES: Scene[] = [
     await mainReady(TABS);
     await waitFor(".plan-trigger");
   }, {}),
-  plan("plan-03-filter-open", "计划 · 过滤 未做完", "子头过滤点「未做完」：只留未做完的格与它们的上级", async () => {
+  plan("plan-03-filter-open", "计划 · 过滤 没做完", "子头过滤点「没做完」：只留没做完的格与它们的上级", async () => {
     await openPlan();
     await click(await byText(".plan-view .plan-filter", copyText("plan.filter.open")));
     await sleep(300);

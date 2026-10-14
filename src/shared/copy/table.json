@@ -28146,8 +28146,11 @@
     "plan.filter.open": {
       "kind": "control",
       "role": "标签",
-      "zh": "未做完",
-      "args": []
+      "zh": "没做完",
+      "args": [],
+      "waive": {
+        "C-T1": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.review.topDone": {
       "kind": "title",
@@ -28510,8 +28513,12 @@
     "plan.legend.dropped": {
       "kind": "body",
       "role": "片段",
-      "zh": "不做的",
-      "args": []
+      "zh": "不做了的",
+      "args": [],
+      "waive": {
+        "C-T1": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫",
+        "C-W17": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.legend.hide": {
       "kind": "action",
