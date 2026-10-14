@@ -13,7 +13,10 @@
 //!
 //! 文件事件各用自己的盯，不经会话文件那一圈（那一圈卡住时节点照到）。
 
-use crate::accounts::upstream_select::rotate::LibraryRead;
+/// 这台账号库里每个号的配置目录（给家目录 → 那几个目录）：宿主读好交进来（`faces::rotation_face::account_dirs`），
+/// 换号这一侧不认识账号库管理（与上游选择收账号库读法同一形）。
+pub(crate) type AccountDirs =
+    std::sync::Arc<dyn Fn(&std::path::Path) -> Vec<std::path::PathBuf> + Send + Sync>;
 
 /// 这一件从哪来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,22 +79,20 @@ pub(crate) struct LoginWatch {
 }
 
 /// 这台的账号库要盯的那几个目录：清单的目录 ＋ 每个号的配置目录。家推不出 / 没建账号库 ⇒ 只有清单的目录。
-/// 账号库由宿主读好交进来（`library`，同 [`crate::accounts::upstream_select::rotate::LibraryRead`]）：换号这一侧不认识账号库管理。
+/// 每个号的配置目录由宿主交进来（[`AccountDirs`]）。
 fn logins_dirs(
     home: &std::path::Path,
-    library: &LibraryRead,
+    library: &AccountDirs,
 ) -> (std::path::PathBuf, Vec<std::path::PathBuf>) {
     let manifest_dir = home.join(relay_route_core::ACCOUNTS_DIR_REL);
-    let lib = library(home);
-    let dirs = lib.accounts.iter().filter_map(|a| a.dir.clone()).collect();
-    (manifest_dir, dirs)
+    (manifest_dir, library(home))
 }
 
 fn logins_arm(
     home: std::path::PathBuf,
     tx: Nodes,
     held: std::sync::Arc<std::sync::Mutex<Option<crate::platform::watch_file::Watching>>>,
-    library: LibraryRead,
+    library: AccountDirs,
 ) -> Result<(), String> {
     let (manifest_dir, dirs) = logins_dirs(&home, &library);
     let login_name = crate::agents::login_of(crate::agents::credentials_file_agent())
@@ -135,11 +136,11 @@ fn logins_arm(
 }
 
 impl LoginWatch {
-    /// 盯 `home` 下的账号库，节点发到 `tx`；`library` 是宿主交进来的账号库读法。
+    /// 盯 `home` 下的账号库，节点发到 `tx`；`library` 是宿主交进来的每号配置目录（[`AccountDirs`]）。
     pub(crate) fn start(
         home: &std::path::Path,
         tx: &Nodes,
-        library: LibraryRead,
+        library: AccountDirs,
     ) -> Result<Self, String> {
         let held = std::sync::Arc::new(std::sync::Mutex::new(None));
         logins_arm(home.to_path_buf(), tx.clone(), held.clone(), library)?;
@@ -156,8 +157,8 @@ impl LoginWatch {
 }
 
 /// 常驻 / 流那一路起来时调一次：盯这台的账号库，进程活着就一直盯。盯不上只出声。
-/// `library`：账号库的读法，宿主交（`faces::rotation_face::library`）。
-pub(crate) fn watch_logins_here(library: LibraryRead) {
+/// `library`：每号配置目录，宿主交（`faces::rotation_face::account_dirs`）。
+pub(crate) fn watch_logins_here(library: AccountDirs) {
     static HELD: std::sync::Mutex<Option<LoginWatch>> = std::sync::Mutex::new(None);
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {

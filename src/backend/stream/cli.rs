@@ -15,16 +15,16 @@
 //! # 信封
 //!
 //! · 入：那条命令的 `args`（一段 JSON；空 = `{}`），两个口**二选一**，都是一处读（[`read_args`]，住 `cli_args`），每条子命令自动都有：
-//!   - stdin：默认读到 EOF；带 [`crate::STDIN_LINE_FLAG`]（任意位置）⇒ 只读一行（给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，
+//!   - stdin：默认读到 EOF；带 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（任意位置）⇒ 只读一行（给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，
 //!     capture 不关远端 stdin）。stdin 开着却 [`super::cli_args::STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`，不挂住。
-//!   - argv：[`crate::ARGS_B64_FLAG`] `<base64 的 JSON>`（任意位置；给写不了 stdin 的调用方：第二个前端的执行通道只有 stdout）。
-//!     给了它就**不碰 stdin**；与 [`crate::STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
+//!   - argv：[`crate::wire::cli_words::ARGS_B64_FLAG`] `<base64 的 JSON>`（任意位置；给写不了 stdin 的调用方：第二个前端的执行通道只有 stdout）。
+//!     给了它就**不碰 stdin**；与 [`crate::wire::cli_words::STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
 //!   上限：stdin [`super::cli_args::MAX_CLI_STDIN`]；argv [`super::cli_args::MAX_ARGS_B64_LEN`]（编码后，留在系统单个参数的上限之内）。超了 `args_too_large`，不截断。
-//! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::TEXT_FLAG`]（所有命令通用）：
+//! · 出：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。例外是 [`crate::wire::cli_words::TEXT_FLAG`]（所有命令通用）：
 //!   同一份回包里核心写好的那几格（顶上的 `text` · 每一处 `rows`）拼成给人看的字（`control/ship_text.rs`，不按业务写）。
-//! · 期限：[`crate::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
-//! · 时区：[`crate::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ UTC。
-//! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
+//! · 期限：[`crate::wire::cli_words::WITHIN_MS_FLAG`] `<毫秒>`（任意位置）与帧面请求信封的 `within_ms` 同名同义，到点回的是同一个码。
+//! · 时区：[`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`（任意位置）与帧面请求信封的 `tz` 同名同义：回包里「几点」按看的那一台的钟写；没带 ⇒ UTC。
+//! · 错：exit 2 + stderr 一行 `{code, message, detail, data?}` —— 与帧面失败应答同一份（[`Failed`]）；带 [`crate::wire::cli_words::TEXT_FLAG`] ⇒ 那一句 ＋ 复制详情。
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
@@ -94,7 +94,7 @@ pub(crate) const UI_ONLY: &[&str] = &["session-terminals", "terminal-processes"]
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
 pub(crate) fn flag_of(name: &str) -> String {
-    crate::cli_flag(name)
+    crate::wire::cli_words::cli_flag(name)
 }
 
 /// CLI 子命令 → 它在 `REGISTRY` 上的那条登记。
@@ -130,7 +130,10 @@ pub fn refuse_unknown(args: &[String], tz: &crate::Tz) -> i32 {
 /// [`refuse_unknown`] 的本体（stderr 是入参，测试喂替身）。`--text` 照收（那一句 ＋ 复制详情）。
 pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate::Tz) -> i32 {
     let flag = args.first().map(String::as_str).unwrap_or_default();
-    let text = args.iter().skip(1).any(|a| a == crate::TEXT_FLAG);
+    let text = args
+        .iter()
+        .skip(1)
+        .any(|a| a == crate::wire::cli_words::TEXT_FLAG);
     let f = Failed::new(
         None,
         "unknown_command",
@@ -175,7 +178,7 @@ fn probe() -> i32 {
 
 /// CLI 控制面的一次性入口。返回进程退出码。
 ///
-/// `tz` ＝ 看的那一台的时区（[`crate::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
+/// `tz` ＝ 看的那一台的时区（[`crate::wire::cli_words::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
 /// `own` ＝ 启动入口造的那一份写句柄（只递给写自家状态的那几条，同帧面分派）。
 pub async fn run(args: &[String], tz: &crate::Tz, own: &crate::platform::Own) -> i32 {
     run_io(
@@ -206,7 +209,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     }
     let opts = &args[1..];
     // 「给人看」那一形：成功 ＝ 回包里写好的格拼成字（`control/ship_text.rs`，不分命令）；失败那一形 ＝ 那一句 ＋ 复制详情。
-    let text = opts.iter().any(|a| a == crate::TEXT_FLAG);
+    let text = opts.iter().any(|a| a == crate::wire::cli_words::TEXT_FLAG);
     let Some(spec) = spec_for(flag) else {
         // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：与 `main` 那条 `_` 臂同一形。
         return refuse_unknown_to(args, err, tz);
@@ -244,7 +247,10 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             Ok(s) => input = s,
             Err((code, message)) => return refuse(err, code, message),
         }
-    } else if opts.iter().any(|a| a == crate::ARGS_B64_FLAG) {
+    } else if opts
+        .iter()
+        .any(|a| a == crate::wire::cli_words::ARGS_B64_FLAG)
+    {
         // 不收入参的命令带 argv 载荷：用法错，不悄悄忽略（同 `--text`）。
         return refuse(
             err,
@@ -306,7 +312,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             let f = if f.code == "bad_args" && trimmed.is_empty() && reads_stdin(spec) {
                 let hint = format!(
                     "no args were given: pass a JSON object on stdin, or base64 of it after {}",
-                    crate::ARGS_B64_FLAG
+                    crate::wire::cli_words::ARGS_B64_FLAG
                 );
                 f.with_raw(Some(&hint))
             } else {
@@ -317,10 +323,10 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     }
 }
 
-/// 声明口 [`crate::VIEW_FLAG`]（位置不限）⇒ 声明那一团（缺 ＝ `null` ＝ 全量）。值以 `{` 打头 ＝ JSON 原样，否则当 base64 解。
+/// 声明口 [`crate::wire::cli_words::VIEW_FLAG`]（位置不限）⇒ 声明那一团（缺 ＝ `null` ＝ 全量）。值以 `{` 打头 ＝ JSON 原样，否则当 base64 解。
 /// 缺值 · 给两次 · 解不出 ⇒ `bad_args`；声明本身认不认得由登记处那一处判（`stream/inbound/views.rs`，同帧面）。
 pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static str, String)> {
-    let flag = crate::VIEW_FLAG;
+    let flag = crate::wire::cli_words::VIEW_FLAG;
     let mut seen: Option<&str> = None;
     let mut i = 0;
     while i < opts.len() {
@@ -349,24 +355,27 @@ pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static st
     serde_json::from_str(&text).map_err(|e| bad_args(&format!("{flag}: not JSON ({e})")))
 }
 
-/// 期限口 [`crate::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::ARGS_B64_FLAG`]）；
+/// 期限口 [`crate::wire::cli_words::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::wire::cli_words::ARGS_B64_FLAG`]）；
 /// 值的读法与帧面信封那一格同一处（[`crate::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
 fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
     let mut seen: Option<Option<u64>> = None;
     let mut i = 0;
     while i < opts.len() {
-        if opts[i] == crate::WITHIN_MS_FLAG {
+        if opts[i] == crate::wire::cli_words::WITHIN_MS_FLAG {
             let Some(v) = opts.get(i + 1).filter(|v| !v.starts_with("--")) else {
                 return Err(bad_args(&format!(
                     "{} needs a value",
-                    crate::WITHIN_MS_FLAG
+                    crate::wire::cli_words::WITHIN_MS_FLAG
                 )));
             };
             let ms = serde_json::from_str::<serde_json::Value>(v)
                 .ok()
                 .and_then(|v| crate::wire::within_ms_of(&v));
             if seen.replace(ms).is_some() {
-                return Err(bad_args(&format!("{} given twice", crate::WITHIN_MS_FLAG)));
+                return Err(bad_args(&format!(
+                    "{} given twice",
+                    crate::wire::cli_words::WITHIN_MS_FLAG
+                )));
             }
             i += 2;
             continue;
@@ -374,6 +383,80 @@ fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
         i += 1;
     }
     Ok(seen.flatten())
+}
+
+use crate::stream::inbound::views::{StreamView, StreamWants};
+
+/// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流要什么）。
+///
+/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。[`crate::wire::cli_words::TZ_FLAG`] 任意位置都剥（一次性 CLI 面同样按它写钟面）；
+/// [`crate::wire::cli_words::VIEW_FLAG`] 只在流模式那一形里剥（打头不是子命令；子命令的 `--view` 归它自己的 CLI 臂解）。
+/// 声明解不出 · 认不出 ⇒ `Err(那几处)`（不起流）。
+pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamWants), String> {
+    args.retain(|a| !crate::STREAM_FLAGS.contains(&a.as_str()));
+    let mut wants = StreamWants::default();
+    if let Some(i) = args
+        .iter()
+        .position(|a| a == crate::wire::cli_words::TZ_FLAG)
+    {
+        let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
+        args.drain(i..i + 1 + usize::from(v.is_some()));
+        wants.tz = v.as_deref().and_then(crate::Tz::named).unwrap_or_default();
+    }
+    let subcommand = args
+        .first()
+        .is_some_and(|a| crate::SUBCOMMANDS.contains(&a.as_str()));
+    if !subcommand && args.iter().any(|a| a == crate::wire::cli_words::VIEW_FLAG) {
+        let decl = view_of(&args).map_err(|(_, why)| why)?;
+        wants.view = StreamView::parse(&decl)?;
+        let i = args
+            .iter()
+            .position(|a| a == crate::wire::cli_words::VIEW_FLAG)
+            .unwrap_or_default();
+        args.drain(i..(i + 2).min(args.len()));
+    }
+    Ok((args, wants))
+}
+
+/// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？
+///
+/// 返回 `true` = 一次性查询。判据是 **`args[0]` 是不是一条已登记的子命令**，
+/// 不再是「非空即查询」。
+///
+/// # 未知 `--flag` 忽略，未知**裸参数**仍报错
+///
+/// 两者要分开：
+/// - 未知 `--flag`：可能是**新版 monitor 发给旧版 backend** 的。忽略它 + 一行 warn，
+///   照常进流模式发 hello ⇒ monitor 拿得到握手、能看出对面旧、可以降级。
+///   这条不能追溯修好**已经部署**的旧后端，但它让**下一个** flag 的新增是安全的。
+/// - 未知裸参数（不以 `--` 开头）：那是明确的调用错误。任何未来协议都不会把裸参数放 `args[0]`，
+///   静默吞掉只会让人查半天。**仍旧落进查询分支报 `unknown argument` + exit 2。**
+pub fn is_query_mode(args: &[String]) -> bool {
+    match args.first() {
+        None => false,
+        Some(first) => {
+            if crate::SUBCOMMANDS.contains(&first.as_str()) {
+                return true;
+            }
+            // 不是子命令：这两种都算**明确的调用错误**，交给查询分支报 unknown argument + exit 2。
+            //
+            // - 还有任何一个**裸参数**（不以 `--` 开头）：任何未来协议都不会这么发。
+            // - `args[0]` 是个**子命令选项**（如 `--scope`）：选项脱离了它的子命令，
+            //   静默当成起流会让调用方拿到一堆 jsonl 行还以为查询成功了。
+            if args.iter().any(|a| !a.starts_with("--"))
+                || crate::SUBCOMMAND_OPTIONS.contains(&first.as_str())
+            {
+                return true;
+            }
+            for a in args {
+                tracing::warn!(
+                    "未知 flag {a}：本后端不认识它，已忽略并照常进流模式。\
+                     （若这是新版 monitor 的新能力，请升级后端。）"
+                );
+            }
+            false
+        }
+    }
 }
 
 #[cfg(test)]

@@ -400,7 +400,7 @@ const PRINT_MAX_WORD_BYTES: usize = 4096;
 /// 界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。
 /// 纯函数：不起进程、不碰盘。
 pub(crate) fn answer_probe() -> CcmCard {
-    answer_probe_for(crate::TMUX_PLATFORM)
+    answer_probe_for(crate::platform::tmux::TMUX_PLATFORM)
 }
 
 /// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）。
@@ -419,7 +419,7 @@ pub(crate) struct CcmCard {
 }
 
 /// [`answer_probe`] 的内核（平台档是入参，与 [`probe_output_for`] 同一组来源）。
-pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> CcmCard {
+pub(crate) fn answer_probe_for(platform: crate::platform::tmux::TmuxPlatform) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
         capabilities: crate::ccm_launcher_with(platform),
@@ -696,14 +696,17 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 /// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
 /// `detach` / `tmux-size` / `tmux-base` / `bus-register` …（`RT1.md §8` F7），而那几条在 Windows 上
 /// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
-/// [`crate::ccm_launcher_with`]`(`[`crate::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
+/// [`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
 /// （「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。
 pub(crate) fn probe_output(self_path: &str) -> String {
-    probe_output_for(self_path, crate::TMUX_PLATFORM)
+    probe_output_for(self_path, crate::platform::tmux::TMUX_PLATFORM)
 }
 
 /// [`probe_output`] 的内核：平台档是入参 ⇒ 本机是 Linux 也能把「Windows 那一份会吐什么」算出来判。
-pub(crate) fn probe_output_for(self_path: &str, platform: crate::TmuxPlatform) -> String {
+pub(crate) fn probe_output_for(
+    self_path: &str,
+    platform: crate::platform::tmux::TmuxPlatform,
+) -> String {
     format!(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
         crate::ccm_launcher_with(platform).join(","),

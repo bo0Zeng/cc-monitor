@@ -1297,7 +1297,7 @@ mod tests {
 
     /// `lib.rs` 根上转出去的名字：`pub use <模块>::…::<名>;`（含 `pub(crate)` · `as 别名`）⇒ `名 → 模块`。
     /// `crate::<名>` 照它记到那个模块头上（不然经根转一手就躲过了量法）。
-    /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的（如 `StreamWants` 带 `StreamView`）这里看不见：那一形手理。
+    /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的这里看不见：那一形手理（const1 起根上不再有这样的，`StreamWants` 挪去 `stream::inbound::views`）。
     fn root_reexports(tops: &[String]) -> std::collections::BTreeMap<String, String> {
         let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
             .expect("读 lib.rs");
@@ -1495,6 +1495,5 @@ mod tests {
             via.get("REPLY_PAGE_BYTES").map(String::as_str),
             Some("wire")
         );
-        assert_eq!(via.get("StreamView").map(String::as_str), Some("stream"));
     }
 }

@@ -175,7 +175,7 @@ where
     let command = format!(
         "{} -- {}",
         relay_route_core::BACKEND_LANDING_SHELL,
-        crate::STREAM_FLAG_EXPLICIT
+        crate::wire::cli_words::STREAM_FLAG_EXPLICIT
     );
     let req = crate::dial::parse_request_value(&json!({
         "machine": args.get("machine"),

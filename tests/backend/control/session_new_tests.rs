@@ -51,7 +51,7 @@ impl Rig {
     }
 
     fn call(&self, args: Value) -> Result<Value, Failed> {
-        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
             .into_iter()
             .map(str::to_string)
             .collect();

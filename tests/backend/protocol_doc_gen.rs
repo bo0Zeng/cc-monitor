@@ -699,7 +699,10 @@ fn traits_of(spec: &CommandSpec) -> String {
         t.push(format!("收 `view`（{}）", at.join("，")));
     }
     if crate::stream::cli::cli_exposed(spec) {
-        t.push(format!("CLI：`ccm -- {}`", crate::cli_flag(spec.name)));
+        t.push(format!(
+            "CLI：`ccm -- {}`",
+            crate::wire::cli_words::cli_flag(spec.name)
+        ));
     } else {
         t.push("只在流上".to_string());
     }
@@ -809,7 +812,7 @@ fn cli(out: &mut String) {
         }
         let (_, usage, what) = crate::stream::inbound::CLI_ONLY_DOCS
             .iter()
-            .find(|(f, _, _)| crate::cli_flag(f) == flag)
+            .find(|(f, _, _)| crate::wire::cli_words::cli_flag(f) == flag)
             .unwrap_or_else(|| {
                 panic!(
                     "CLI 子命令 `{flag}` 在 `CLI_ONLY_DOCS` 里没有说明 —— 加一行（用法 ＋ 一句话）"
@@ -825,7 +828,7 @@ fn cli(out: &mut String) {
     }
     let ghosts: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
         .iter()
-        .map(|(f, _, _)| crate::cli_flag(f))
+        .map(|(f, _, _)| crate::wire::cli_words::cli_flag(f))
         .filter(|f| !documented.contains(&f.as_str()))
         .collect();
     assert!(

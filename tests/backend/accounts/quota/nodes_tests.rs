@@ -59,7 +59,8 @@ fn a_login_file_or_the_manifest_changing_sends_a_logins_node() {
     let (home, manifest, z) = library_home("acct");
     let tx: Nodes = tokio::sync::broadcast::channel(64).0;
     let mut rx = tx.subscribe();
-    let w = LoginWatch::start(&home, &tx, crate::faces::rotation_face::library()).expect("watch");
+    let w =
+        LoginWatch::start(&home, &tx, crate::faces::rotation_face::account_dirs()).expect("watch");
     assert!(w.armed());
     std::fs::write(z.join(".credentials.json"), "{\"x\":1}").expect("creds");
     assert!(

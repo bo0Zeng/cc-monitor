@@ -427,7 +427,10 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     let cmd = push_command();
     assert_eq!(
         cmd,
-        crate::dial::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
+        crate::dial::remote_ask::command_line(&[
+            PUSH_FLAG,
+            crate::wire::cli_words::STDIN_LINE_FLAG
+        ]),
         "推那一趟的命令行不是「后端路径 ＋ 两个旗标」"
     );
     // 命令行以固定落点打头（它自己带 `"$HOME"`）⇒ 查的是落点之后那一段。
@@ -461,7 +464,10 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
         // 打头的 `--` 让那台的 `ccm` 当后端用（替身 `echo` 把它原样印出来）。
-        format!("-- {PUSH_FLAG} {}\n", crate::STDIN_LINE_FLAG)
+        format!(
+            "-- {PUSH_FLAG} {}\n",
+            crate::wire::cli_words::STDIN_LINE_FLAG
+        )
     );
     assert_eq!(
         pull_command(),

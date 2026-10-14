@@ -38,9 +38,9 @@
 use super::super::{
     capabilities_on, parity_faces, tmux_platform_of, unix_mode_bits_on, GapKind, Target,
     CAPABILITY_FACES, COMMAND_FACES, NO_UNIX_MODE, TARGETS, TARGET_GAPS, TARGET_NARROWINGS,
-    TMUX_PLATFORM,
 };
 use crate::control::ccm::CCM_TMUX_CARRIED;
+use crate::platform::tmux::TMUX_PLATFORM;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// 「结构上没有」那一档必须说出来的话（任一即可）。

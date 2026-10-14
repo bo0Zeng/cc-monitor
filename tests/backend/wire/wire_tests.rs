@@ -1964,7 +1964,7 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
     for flag in SECOND_FRONTEND_SUBCOMMANDS {
         assert!(crate::SUBCOMMANDS.contains(flag), "{flag} 不在子命令表里了");
         assert!(
-            crate::is_query_mode(&[flag.to_string()]),
+            crate::stream::cli::is_query_mode(&[flag.to_string()]),
             "{flag} 不进一次性模式了"
         );
     }

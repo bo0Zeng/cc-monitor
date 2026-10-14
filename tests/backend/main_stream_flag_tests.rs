@@ -1,4 +1,4 @@
-use super::split_stream_flags;
+use crate::stream::cli::split_stream_flags;
 
 fn v(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
@@ -10,7 +10,7 @@ fn v(a: &[&str]) -> Vec<String> {
 fn only_the_stream_word_is_a_stream_flag() {
     let (rest, got) = split_stream_flags(v(&["--stream"])).unwrap();
     assert!(rest.is_empty(), "--stream 没被剥干净 → §26 死循环");
-    assert_eq!(got, super::StreamWants::default());
+    assert_eq!(got, crate::stream::inbound::views::StreamWants::default());
     for old in ["--with-bg", "--tail-only", "--with-pid", "--with-raw"] {
         let (rest, _) = split_stream_flags(v(&["--stream", old])).unwrap();
         assert_eq!(rest, v(&[old]), "{old} 还被当成流旗标剥");
@@ -26,7 +26,8 @@ fn the_stream_view_flag_is_parsed_in_stream_mode_only() {
     assert!(rest.is_empty(), "{rest:?}");
     assert_eq!(
         got.view,
-        super::StreamView::parse(&serde_json::from_str(decl).unwrap()).unwrap()
+        crate::stream::inbound::views::StreamView::parse(&serde_json::from_str(decl).unwrap())
+            .unwrap()
     );
     assert!(got.view.is_some());
     let b64 = crate::wire::b64_encode(decl.as_bytes());
@@ -55,7 +56,8 @@ fn the_stream_view_flag_is_parsed_in_stream_mode_only() {
 /// 缺值 · 认不得 ⇒ UTC（不拒）。一次性 CLI 面与流模式同一个旗标。
 #[test]
 fn the_viewer_time_zone_flag_is_stripped_with_its_value() {
-    use super::{StreamWants, Tz};
+    use super::Tz;
+    use crate::stream::inbound::views::StreamWants;
     let sh = Tz::named("Asia/Shanghai").expect("时区库里有上海");
     let (rest, got) = split_stream_flags(v(&["--stream", "--tz", "Asia/Shanghai"])).unwrap();
     assert!(rest.is_empty(), "{rest:?}");
@@ -92,5 +94,5 @@ fn the_viewer_time_zone_flag_is_stripped_with_its_value() {
 fn query_args_pass_through() {
     let (rest, wants) = split_stream_flags(v(&["--read-session", "/p/s.jsonl"])).unwrap();
     assert_eq!(rest, v(&["--read-session", "/p/s.jsonl"]));
-    assert_eq!(wants, super::StreamWants::default());
+    assert_eq!(wants, crate::stream::inbound::views::StreamWants::default());
 }

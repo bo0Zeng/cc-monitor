@@ -186,10 +186,10 @@ pub fn to_line_viewed(
     Ok(s)
 }
 
-/// attach 行里这条连接要什么（`{"attach":true,"tz":"Asia/Shanghai","view":{…}}`）：`tz` 同 [`crate::TZ_FLAG`]（认不得 ⇒ UTC）·
+/// attach 行里这条连接要什么（`{"attach":true,"tz":"Asia/Shanghai","view":{…}}`）：`tz` 同 [`crate::wire::cli_words::TZ_FLAG`]（认不得 ⇒ UTC）·
 /// `view` 同请求信封的声明（[`StreamView`]；缺 ＝ 全量）。别的键（`attach` 以外）· 声明认不出 ⇒ `Err`（当 malformed 拒）。
 /// 每条连接各按自己的这一行定，不看进程起参。
-pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
+pub fn attach_flags(line: &str) -> Result<Option<StreamWants>, ()> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
     let o = v.as_object().ok_or(())?;
     if o.keys()
@@ -201,7 +201,7 @@ pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
         Some(decl) => StreamView::parse(decl).map_err(|_| ())?,
         None => None,
     };
-    Ok(Some(crate::StreamWants {
+    Ok(Some(StreamWants {
         tz: o.get("tz").map(crate::Tz::of).unwrap_or_default(),
         view,
     }))
@@ -210,3 +210,14 @@ pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
 #[cfg(test)]
 #[path = "../../../../tests/backend/stream/views_tests.rs"]
 mod tests;
+
+/// 一条流的客户端要了什么：时区 ＋ 出口的声明。缺 ＝ 全量（bg 会话照宣告、`session_added` 带 `pid`；历史一律不重放，客户端按骨架 / 尾段补）。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StreamWants {
+    /// [`crate::wire::cli_words::TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
+    /// 一次性 CLI 面的回包同样按它写。缺 · 认不得 ⇒ UTC。
+    pub tz: crate::Tz,
+    /// 这条流的出口声明（attach 行的 `view` · 流模式起参的 [`crate::wire::cli_words::VIEW_FLAG`]，与请求信封的 `view` 同一套词）：推出去的帧照它裁格
+    /// （[`StreamView`]）。缺 ＝ 全量。
+    pub view: Option<StreamView>,
+}

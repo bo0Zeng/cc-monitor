@@ -308,7 +308,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 ## 26. bg 会话门是数据层配置门；后端流模式 flag 必须先于查询模式判定剥离（Batch7-F24）
 
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`（那一家的原词不上线）。后台会话是**标注而非过滤**：后端照宣告（`background: true`），显示与否由出口按用户开关定（本机远端两条流同一个口径）。
-- **后端任何新的流模式旗标必须在一次性查询模式判定之前从参数里剥掉**（`lib.rs::split_stream_flags`），否则旗标落进查询分支、后端打印结果就退出，monitor 等不到 hello。
+- **后端任何新的流模式旗标必须在一次性查询模式判定之前从参数里剥掉**（`stream/cli.rs::split_stream_flags`），否则旗标落进查询分支、后端打印结果就退出，monitor 等不到 hello。
 - **流要什么不靠协商旗标**：流模式起参只有 `--stream` · `--tz` · `--view`，这条流要什么由声明说（attach 行的 `view` / `--view`）；hello 不带能力 token。`build_id` 管换不换后端，`v` 只为破坏性变更加。
 
 ## 27. 远端会话生命周期信号的两条载荷型约束（Batch9）

@@ -2018,21 +2018,23 @@ pub fn capability_ledger() -> Vec<(&'static str, &'static str)> {
 //   macOS 今天两道编译门禁都没有、也没有产线（`§7.1.1b` 第 5、6 行）⇒ 本段对 [`Target::MacOs`]
 //   那一列判的只是「**声明上**与别的 target 一样」，不是「那边真跑得起来」。
 
-/// 编译 target → 那一格在「tmux 在不在」这件事上**平台这一维**给的档（[`TmuxPlatform`]）。
+/// 编译 target → 那一格在「tmux 在不在」这件事上**平台这一维**给的档（[`platform::tmux::TmuxPlatform`]）。
 ///
 /// # 为什么它是本段的一根柱子
 ///
 /// 本仓今天所有「这个 target 上做不到」的声明，归根到底只有一种机制：**载体是 tmux，
-/// 而那个 target 没有 tmux**。[`TmuxPlatform`] 已经把「Windows 上确证没有」这句话
+/// 而那个 target 没有 tmux**。[`platform::tmux::TmuxPlatform`] 已经把「Windows 上确证没有」这句话
 /// 做成了编译期的值（`K-P4` 那时，头注逐字「这一句在**编译期**就成立，不需要探针去证」）。
 /// ⇒ 本函数只把 [`Target`] 这根轴接到那根轴上，**不另立一份平台知识**。
 ///
 /// ⚠ 两根轴对不对得上，由 `target_parity_guard::the_target_axis_agrees_with_the_host_tmux_platform`
 /// （本机那一格，运行期）与下面那条 `#[cfg(windows)]` 编译期断言（Windows 那一格）各钉一半。
-pub const fn tmux_platform_of(t: Target) -> TmuxPlatform {
+pub const fn tmux_platform_of(t: Target) -> platform::tmux::TmuxPlatform {
     match t {
-        Target::Windows => TmuxPlatform::AbsentUnlessExeOnPath,
-        Target::LinuxGnu | Target::LinuxMusl | Target::MacOs => TmuxPlatform::AskThePath,
+        Target::Windows => platform::tmux::TmuxPlatform::AbsentUnlessExeOnPath,
+        Target::LinuxGnu | Target::LinuxMusl | Target::MacOs => {
+            platform::tmux::TmuxPlatform::AskThePath
+        }
     }
 }
 
@@ -2059,13 +2061,13 @@ const _: () = assert!(
     "Target 轴说 Windows 有 unix 权限位，或者这份 Windows 二进制竟然是 unix —— 两根轴分叉了"
 );
 
-/// ★ 只在 Windows 编译时存在：[`tmux_platform_of`] 给 Windows 的档 == 那份二进制真编进去的 [`TMUX_PLATFORM`]。
+/// ★ 只在 Windows 编译时存在：[`tmux_platform_of`] 给 Windows 的档 == 那份二进制真编进去的 [`platform::tmux::TMUX_PLATFORM`]。
 ///
 /// 同 `TMUX_PLATFORM` 旁边那条：本机（Linux）门禁上它**不存在**，开口的时刻是
 /// `winchk-backend` 那一格的 Windows 编译。
 #[cfg(windows)]
 const _: () = assert!(
-    tmux_platform_of(Target::Windows) as u8 == TMUX_PLATFORM as u8,
+    tmux_platform_of(Target::Windows) as u8 == platform::tmux::TMUX_PLATFORM as u8,
     "Target 轴说 Windows 是一档，TMUX_PLATFORM 说是另一档 —— 两根平台轴分叉了"
 );
 
@@ -2075,7 +2077,7 @@ const _: () = assert!(
 /// 按 [`unavailable_from`] 头注那条三态处置，「不知道」**不许**压成「做不到」；
 /// Windows 那一档答「确证没有」（`Some(false)`）—— 那是它的平台默认，不靠探针。
 fn tmux_by_platform(t: Target) -> Option<bool> {
-    tmux_present(tmux_platform_of(t), None)
+    platform::tmux::tmux_present(tmux_platform_of(t), None)
 }
 
 /// 帧面命令里，在 target `t` 上**平台默认做不到**的那几条（`codes` 里声明了 `no_tmux` 的 ·
@@ -2099,11 +2101,11 @@ fn ccm_launcher_on(t: Target) -> Vec<&'static str> {
     ccm_launcher_with(tmux_platform_of(t))
 }
 
-/// 上面那一步的内核：平台档是**入参**（同 [`tmux_present`] 的做法），
-/// 于是「能力账」（按 [`Target`] 问）与「`ccm --ccm-probe` 自报」（按本二进制的 [`TMUX_PLATFORM`] 问）
+/// 上面那一步的内核：平台档是**入参**（同 [`crate::platform::tmux::tmux_present`] 的做法），
+/// 于是「能力账」（按 `crate::Target` 问）与「`ccm --ccm-probe` 自报」（按本二进制的 [`crate::platform::tmux::TMUX_PLATFORM`] 问）
 /// 走的是**同一个函数**，不另写名单。
-pub(crate) fn ccm_launcher_with(p: TmuxPlatform) -> Vec<&'static str> {
-    let no_tmux = tmux_present(p, None) == Some(false);
+pub(crate) fn ccm_launcher_with(p: crate::platform::tmux::TmuxPlatform) -> Vec<&'static str> {
+    let no_tmux = crate::platform::tmux::tmux_present(p, None) == Some(false);
     control::ccm::CAPABILITIES
         .iter()
         .copied()
@@ -2286,36 +2288,8 @@ pub const EMITS: &[&str] = &[
     "terminal_follow_end",
 ];
 
-/// `--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，
-/// 起流那几发（monitor 远端流 / 测试连接探针 / 本机宿主 / 远端常驻子进程）一律带它打头，由 `control::ccm::intercept` 按本表分流。
-/// 它不对应任何能力（老后端不认 ⇒ 按未知旗标照常进流模式，同 U6b-2 的降级）。
-pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
-
-/// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
-pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
-/// 那一家的 hook 叫 ccm 的那几个词（打头的 `--`：后面是后端的词），后面再接那一家的 kind。
-pub const ANSWER_HOOK_WORDS: [&str; 2] = ["--", ANSWER_HOOK_FLAG];
-
-/// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（[`StreamWants::view`]）。
-pub const STREAM_FLAGS: &[&str] = &[STREAM_FLAG_EXPLICIT];
-
-/// 一条流的客户端要了什么：时区 ＋ 出口的声明。缺 ＝ 全量（bg 会话照宣告、`session_added` 带 `pid`；历史一律不重放，客户端按骨架 / 尾段补）。
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct StreamWants {
-    /// [`TZ_FLAG`] `<IANA 名>`：看的那一台的时区 —— 这条流推出去的「几点」（`line.record.timeText` 一类）按它写；
-    /// 一次性 CLI 面的回包同样按它写。缺 · 认不得 ⇒ UTC。
-    pub tz: Tz,
-    /// 这条流的出口声明（attach 行的 `view` · 流模式起参的 [`VIEW_FLAG`]，与请求信封的 `view` 同一套词）：推出去的帧照它裁格
-    /// （`stream::inbound::views::StreamView`）。缺 ＝ 全量。
-    pub view: Option<StreamView>,
-}
-
-pub use stream::inbound::views::StreamView;
-
-/// **看的人那一台的时区**：`--tz <IANA 名>`（任意位置；流模式与一次性 CLI 面同一个旗标）与帧面请求信封的 `tz` 同名同义：
-/// 回包与推送里「几点」「今天 / 昨天」按它写，不按这台后端的钟。缺 · 缺值 · 认不得 ⇒ UTC（不拒）。
-/// 常驻那条连接的 attach 行带同名一格 `tz`（[`wire::listen::attach_flags`]）。
-pub const TZ_FLAG: &str = "--tz";
+/// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（`StreamWants::view`）。
+pub const STREAM_FLAGS: &[&str] = &[wire::cli_words::STREAM_FLAG_EXPLICIT];
 
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub use common::time::Tz;
@@ -2327,134 +2301,27 @@ pub fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, st
     common::time::fill_at(line, tz)
 }
 
-/// **「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
-///
-/// 为什么要它：远端那一跳（`remote_ask::DialRemote`，capture）**不关远端的 stdin** ⇒ 默认那种「读到 EOF」会一直等；
-/// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
-/// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
-/// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
-/// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
-///
-/// 住这里（argv 三分表旁边）而不住 `stream::cli`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
-/// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
-pub const STDIN_LINE_FLAG: &str = "--stdin-line";
-
-/// **argv 形载荷口**：跟在子命令后面、位置不限（`--history-read --args-b64 <base64 的 JSON>`）⇒ 入参从这里取，不碰 stdin。
-///
-/// 为什么要它：第二个前端的执行通道**只有 stdout、写不了 stdin**，而 CLI 面上收入参的命令占了绝大多数。base64 而不是裸 JSON：
-/// 一个参数里只剩 `[A-Za-z0-9+/=]`，过哪一家登录 shell 的引号都不变形（fish 吃反斜杠那一类，见 [`STDIN_LINE_FLAG`] 的头注）。
-/// 与 [`STDIN_LINE_FLAG`] 二选一；上限与系统单个参数的上限见 `control/cli_args.rs::MAX_ARGS_B64_LEN`。
-/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
-pub const ARGS_B64_FLAG: &str = "--args-b64";
-
-/// **「给人看」那一形**：跟在 CLI 控制面那一族（`--<帧命令>`）后面 ⇒ 回包里核心写好的格（顶上 `text` · 每一处 `rows`）拼成字
-/// （`control/ship_text.rs`，所有命令通用、不按业务写）。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
-pub const TEXT_FLAG: &str = "--text";
-
-/// **期限口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--terminals-list --within-ms 10000`）⇒ 与帧面请求信封的 `within_ms`
-/// 同名同义：发起方这一发愿意等多久（毫秒），减余量换成截止时刻，装总期限的命令都收紧到它；值不是正整数 ⇒ 当没带（同帧面那一格的宽读）。
-/// 住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
-pub const WITHIN_MS_FLAG: &str = "--within-ms";
-
-/// **出口的声明口**：跟在 CLI 控制面那一族（`--<帧命令>`）后面、位置不限（`--history-read --args-b64 <…> --view <…>`）⇒ 与帧面请求信封的
-/// `view` 同名同义（要哪几格 · 哪几格不要，`faces/project.rs`）。值是声明的 JSON 原样（`{` 打头），或它的 base64（过哪一家登录 shell 都不变形，
-/// 同 [`ARGS_B64_FLAG`]）。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
-pub const VIEW_FLAG: &str = "--view";
-
-/// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`stream/cli.rs::flag_of`）
-/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `stream::cli`，是为了让
-/// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
-pub fn cli_flag(name: &str) -> String {
-    format!("--{name}")
-}
-
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // `--after-ms` · `--include-tools` · `--limit` · `--scope`（全文搜索的选项词）第 8 批删了：帧面 `history-search` 的入参直接从类型收（`faces/search_face.rs`）。
     // `--from` · `--until` · `--query`（`--list-user-inputs` · `--read-session-from-offset` · `--find-in-session` 的选项）随那几条子命令删了。
     // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    ARGS_B64_FLAG,
+    wire::cli_words::ARGS_B64_FLAG,
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
     "--grace",
     // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
     "--replace",
     // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
-    STDIN_LINE_FLAG,
+    wire::cli_words::STDIN_LINE_FLAG,
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。
-    TEXT_FLAG,
-    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 [`split_stream_flags`]）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    TZ_FLAG,
+    wire::cli_words::TEXT_FLAG,
+    // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 `stream::cli::split_stream_flags`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    wire::cli_words::TZ_FLAG,
     // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    VIEW_FLAG,
+    wire::cli_words::VIEW_FLAG,
     // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    WITHIN_MS_FLAG,
+    wire::cli_words::WITHIN_MS_FLAG,
 ];
-
-/// 从 argv 剥离流模式 flag，返回（剩余参数, 这条流要什么）。
-///
-/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。[`TZ_FLAG`] 任意位置都剥（一次性 CLI 面同样按它写钟面）；
-/// [`VIEW_FLAG`] 只在流模式那一形里剥（打头不是子命令；子命令的 `--view` 归它自己的 CLI 臂解）。
-/// 声明解不出 · 认不出 ⇒ `Err(那几处)`（不起流）。
-pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamWants), String> {
-    args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
-    let mut wants = StreamWants::default();
-    if let Some(i) = args.iter().position(|a| a == TZ_FLAG) {
-        let v = args.get(i + 1).filter(|v| !v.starts_with("--")).cloned();
-        args.drain(i..i + 1 + usize::from(v.is_some()));
-        wants.tz = v.as_deref().and_then(Tz::named).unwrap_or_default();
-    }
-    let subcommand = args
-        .first()
-        .is_some_and(|a| SUBCOMMANDS.contains(&a.as_str()));
-    if !subcommand && args.iter().any(|a| a == VIEW_FLAG) {
-        let decl = stream::cli::view_of(&args).map_err(|(_, why)| why)?;
-        wants.view = StreamView::parse(&decl)?;
-        let i = args.iter().position(|a| a == VIEW_FLAG).unwrap_or_default();
-        args.drain(i..(i + 2).min(args.len()));
-    }
-    Ok((args, wants))
-}
-
-/// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？
-///
-/// 返回 `true` = 一次性查询。判据是 **`args[0]` 是不是一条已登记的子命令**，
-/// 不再是「非空即查询」。
-///
-/// # 未知 `--flag` 忽略，未知**裸参数**仍报错
-///
-/// 两者要分开：
-/// - 未知 `--flag`：可能是**新版 monitor 发给旧版 backend** 的。忽略它 + 一行 warn，
-///   照常进流模式发 hello ⇒ monitor 拿得到握手、能看出对面旧、可以降级。
-///   这条不能追溯修好**已经部署**的旧后端，但它让**下一个** flag 的新增是安全的。
-/// - 未知裸参数（不以 `--` 开头）：那是明确的调用错误。任何未来协议都不会把裸参数放 `args[0]`，
-///   静默吞掉只会让人查半天。**仍旧落进查询分支报 `unknown argument` + exit 2。**
-pub fn is_query_mode(args: &[String]) -> bool {
-    match args.first() {
-        None => false,
-        Some(first) => {
-            if SUBCOMMANDS.contains(&first.as_str()) {
-                return true;
-            }
-            // 不是子命令：这两种都算**明确的调用错误**，交给查询分支报 unknown argument + exit 2。
-            //
-            // - 还有任何一个**裸参数**（不以 `--` 开头）：任何未来协议都不会这么发。
-            // - `args[0]` 是个**子命令选项**（如 `--scope`）：选项脱离了它的子命令，
-            //   静默当成起流会让调用方拿到一堆 jsonl 行还以为查询成功了。
-            if args.iter().any(|a| !a.starts_with("--"))
-                || SUBCOMMAND_OPTIONS.contains(&first.as_str())
-            {
-                return true;
-            }
-            for a in args {
-                tracing::warn!(
-                    "未知 flag {a}：本后端不认识它，已忽略并照常进流模式。\
-                     （若这是新版 monitor 的新能力，请升级后端。）"
-                );
-            }
-            false
-        }
-    }
-}
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
@@ -2563,156 +2430,6 @@ pub fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
     out
 }
 
-/// `K-P4`：与世界打交道的那一半 —— 给定 `PATH` 的值，`tmux` 在不在它上面。
-///
-/// # 判准为什么正好是「`PATH` 上有没有一个可执行的 `tmux`」
-///
-/// 因为**真调用那一刻就是这么找的**：`control/kill.rs` `control/gate.rs` `control/launch.rs`
-/// 三处都走 `Command::new("tmux")`，unix 上它是 `execvp` ⇒ 逐字就是 `PATH` 查找。
-/// 事前那句话与事后那句话用**同一个判准**，两者才不会各说各话。
-///
-/// # `None`（判不出来）今天只剩**一个**来源
-///
-/// ① `PATH` 没设、或是空的 ⇒ **无处可查**，「没找到」这句话说不出口。
-///
-/// # 🔴 首行那个 `cfg!(unix)` 今天只说一件事（`K-P4` 下一拍拆开的就是它）
-///
-/// 上一版它**同时**说了两句话：「**我这个探针在非 unix 上不工作**」（**真的** ——
-/// Windows 的 `CreateProcess` 还会看进程自身目录、当前目录、`System32`，并按 `PATHEXT`
-/// 补后缀，真装了的那个叫 `tmux.exe`，而本扫描找的是无后缀的 `tmux`）
-/// 与「**所以答案未知**」（**假的**）。后一句让这张表**在 Windows 上恒空**，
-/// 而 Windows 正是这一件的动机平台 —— 原始问题在那儿一格都没被治。
-///
-/// 现在**平台那一维搬去了 [`TmuxPlatform`]**：非 unix 上压根走不到这个函数
-/// （`tmux_present` 在 windows 那一档调的是 [`tmux_exe_in`]）。
-/// ⇒ 这一行留着，只表达**它自己那一句**：「扫 `PATH` 找无后缀 `tmux`」这个判准
-/// 只在 unix 上与 `execvp` 等价，别处不等价，所以它在别处**不开口**。
-pub fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
-    if !cfg!(unix) {
-        return None;
-    }
-    tmux_found(path, false, &|p| plugin::discover::is_executable(p))
-}
-
-/// `PATH` 上找 `tmux`：与找 agent 命令行同一处（[`platform::shell::find_session_command`]，后端里逐目录找命令只有它）。
-/// `PATH` 没设 / 空（或不是 UTF-8）⇒ `None`（无处可查）；`is_file` 定什么样的文件算数。
-fn tmux_found(
-    path: Option<&std::ffi::OsStr>,
-    windows: bool,
-    is_file: &dyn Fn(&std::path::Path) -> bool,
-) -> Option<bool> {
-    match platform::shell::find_session_command(
-        "tmux",
-        path.and_then(std::ffi::OsStr::to_str),
-        windows,
-        is_file,
-    ) {
-        platform::shell::SessionCommand::Unknown => None,
-        platform::shell::SessionCommand::Absent => Some(false),
-        platform::shell::SessionCommand::Found { .. } => Some(true),
-    }
-}
-
-/// `K-P4`（下一拍）：**平台**这一维 —— 与「探针」那一维分开的第二个值。
-///
-/// # 它治的是「一个值装了两件事」
-///
-/// 上一拍 `tmux_in` 的首行把「**探针在这个平台上不工作**」（真）与「**答案未知**」（假）
-/// 压成了同一个 `None`。于是 `unavailable_from(None)` 不列任何命令 ⇒
-/// **这张表在 Windows 上恒空** ⇒「没有 tmux 却宣称我认 `kill`/`launch`」这个原始问题，
-/// 在**动机平台**上一格都没治。⇒ 本枚举把那两件事拆成两个值。
-///
-/// # 三档，🔴 不许再合并
-///
-/// ⚠ 拆开的是**平台**这一维，**不是**三态处置那条规则 —— 那条（「不知道」不许压成
-/// 「做不到」）在 [`unavailable_from`] 的头注里，这里一个字没动，也不该动：
-/// 它论证过「不知道」压成「做不到」会让**能用的功能从界面上无声消失**。
-/// 上一拍的病不在那条规则，在**把 Windows 归进了「不知道」这一档**。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum TmuxPlatform {
-    /// **unix** —— 平台这一维**没有结论**，整件事交给探针（[`tmux_in`] 扫 `PATH`）。
-    /// 探针的三档原样保留：找到 = `Some(true)` · 没找到 = `Some(false)` ·
-    /// `PATH` 无处可查 = `None`。
-    AskThePath,
-    /// **windows** —— 那儿**没有原生 tmux**（它要 `fork` / pty / unix domain socket）
-    /// ⇒ 默认答案是**确证的「没有」**，这一句在**编译期**就成立，不需要探针去证。
-    ///
-    /// 探针在这一档里只有**一个方向**的作用：把答案**抬成「有」**（有人把 MSYS2 /
-    /// Cygwin 的 `tmux.exe` 放上了 `PATH` —— 那台机器上 `Command::new("tmux")` 真的能起来）；
-    /// 它**永远不会**把答案压回「不知道」。
-    ///
-    /// ⇒ 漏看的方向也是安全的：`tmux_exe_in` 看不见的地方（进程自身目录 / 当前目录 /
-    /// `System32`），我们说「没有」，而同一台机器真调用时 `CreateProcess` **也搜 `PATH`**、
-    /// 一样失败、一样回 `no_tmux` ⇒ **事前那句话与事后那句话仍然是同一句**。
-    AbsentUnlessExeOnPath,
-    /// **既不是 unix 也不是 windows** —— 探针不适用，平台这一维**也没有结论**
-    /// ⇒ 老实说「不知道」，按三态处置那条不列进表。
-    /// 🔴 **这一档不许再拿来装 Windows**：那正是上一拍的病。
-    NoOpinion,
-}
-
-/// `K-P4`：Windows 形状的探针 —— `PATH` 上有没有一个叫 `tmux.exe` 的普通文件。
-///
-/// # 为什么不复用 [`tmux_in`]
-///
-/// 那个找的是**无后缀**的 `tmux`，还要执行位；而 Windows 上真装了的叫 `tmux.exe`，
-/// 且那儿没有执行位这个概念（`plugin::discover::is_executable` 在非 unix 上恒真）。
-/// 两条都不是那边的形状 ⇒ 各写各的判准，别让一个函数装两个平台的语义。
-///
-/// # 它证不到什么（如实写）
-///
-/// `CreateProcess` 的查找面比 `PATH` 大（进程自身目录 · 当前目录 · `System32` · `Windows`），
-/// 还会按 `PATHEXT` 补后缀 ⇒ **它可能漏看**。漏看之后答案是「没有」，
-/// 而那正是 [`TmuxPlatform::AbsentUnlessExeOnPath`] 头注里论证过的安全方向。
-pub fn tmux_exe_in(path: Option<&std::ffi::OsStr>) -> bool {
-    // 只认 `tmux.exe`（起 tmux 那一下 `CreateProcess` 只补 `.exe`）：别的后缀那几形（`.cmd` · `.ps1` …）不算数。
-    let exe = |p: &std::path::Path| {
-        p.file_name()
-            .is_some_and(|n| n.eq_ignore_ascii_case("tmux.exe"))
-            && p.is_file()
-    };
-    tmux_found(path, true, &exe) == Some(true)
-}
-
-/// `K-P4`：两维合起来 —— **平台**（编译期定死）× **探针**（去世界上看）。
-///
-/// 三个入参组合的答案由 [`TmuxPlatform`] 各档头注给；这个函数本身**不碰 `cfg!`**，
-/// 平台是**入参**。⇒ 本机是 Linux 也能把「Windows 那台机器」当成一个入参跑出来，
-/// 而那正是 `the_windows_answer_is_confirmed_absent_not_unknown` 拿到读数的方式。
-pub fn tmux_present(platform: TmuxPlatform, path: Option<&std::ffi::OsStr>) -> Option<bool> {
-    match platform {
-        TmuxPlatform::AskThePath => tmux_in(path),
-        TmuxPlatform::AbsentUnlessExeOnPath => Some(tmux_exe_in(path)),
-        TmuxPlatform::NoOpinion => None,
-    }
-}
-
-/// 这份二进制编译到哪个平台 —— **全文件唯一**一处把平台翻成值的地方。
-///
-/// 「唯一一处」与「windows 那一支给的是哪一档」由
-/// `the_windows_arm_is_wired_into_the_source` 钉住（它读的是**磁盘上的源码文本**）。
-pub const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {
-    TmuxPlatform::AbsentUnlessExeOnPath
-} else if cfg!(unix) {
-    TmuxPlatform::AskThePath
-} else {
-    TmuxPlatform::NoOpinion
-};
-
-/// ★ 一条**只在 Windows 编译时存在**的编译期断言。
-///
-/// 🔴 **它在本仓门禁上给不出任何读数** —— 本机是 Linux，这个 item 在这儿
-/// **编译期就不存在**。它开口的时刻是任何一次 **Windows 编译**
-/// （backend「必须在 Windows 上编得过」这条纪律见 `plugin/discover.rs::is_executable` 头注）。
-/// 写它的理由：Linux 那侧只有源码文本判据（读的是「那一支写在那儿」），
-/// 而这一条读的是「**那一支真的被编进去了**」—— 两者证的不是同一件事。
-#[cfg(windows)]
-const _: () = assert!(
-    matches!(TMUX_PLATFORM, TmuxPlatform::AbsentUnlessExeOnPath),
-    "Windows 上平台这一维必须是「确证没有」而不是「不知道」——\
-     改回 NoOpinion 会让握手帧第四条面在 Windows 上恒空，而 Windows 正是这一件的动机平台。"
-);
-
 /// `K-P4`：生产入口 —— hello 那一帧填的就是它（真填：`main.rs::build_hello`）。
 /// 两维：tmux（[`unavailable_from`]）· unix 权限位（[`unix_mode_unavailable`]，这份二进制是不是 unix）。
 ///
@@ -2722,8 +2439,8 @@ const _: () = assert!(
 /// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
 /// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
 pub fn unavailable_here() -> Vec<wire::Unavailable> {
-    let mut out = unavailable_from(tmux_present(
-        TMUX_PLATFORM,
+    let mut out = unavailable_from(platform::tmux::tmux_present(
+        platform::tmux::TMUX_PLATFORM,
         std::env::var_os("PATH").as_deref(),
     ));
     out.extend(unix_mode_unavailable(cfg!(unix)));

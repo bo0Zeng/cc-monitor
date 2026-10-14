@@ -26,6 +26,7 @@
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
 use cc_monitor_backend::faces::read_face;
 use cc_monitor_backend::stream::cli;
+use cc_monitor_backend::stream::inbound::views::StreamWants;
 use cc_monitor_backend::stream::{inbound, tap, topic_body};
 use cc_monitor_backend::wire::{self, drain, listen, topic_hook};
 use cc_monitor_backend::*;
@@ -142,13 +143,13 @@ async fn main() {
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     // 流的声明写坏了（`--stream --view <认不出的>`）：不起流 —— 当一次性那一形回失败信封、退出 2（下面那个 `match` 的头一臂）。
-    let (args, wants, bad_view) = match split_stream_flags(args) {
+    let (args, wants, bad_view) = match cli::split_stream_flags(args) {
         Ok((a, w)) => (a, w, None),
         Err(why) => (Vec::new(), StreamWants::default(), Some(why)),
     };
-    init_tracing(is_query_mode(&args) || bad_view.is_some());
+    init_tracing(cli::is_query_mode(&args) || bad_view.is_some());
 
-    if is_query_mode(&args) || bad_view.is_some() {
+    if cli::is_query_mode(&args) || bad_view.is_some() {
         // 看的那一台的时区（`--tz`，剥流旗标那一步剥出来的）：一次性回包里的「几点」按它写。
         let z = &wants.tz;
         // 一次性查询模式：手写的几条（tmux 钩子 · 常驻后端起找停）＋ 从帧命令派生的 CLI 面；别的一律「不认识」。
@@ -870,7 +871,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
     mut tap_rx: impl tap::TapSource,
     tz: cc_monitor_backend::Tz,
-    view: Option<cc_monitor_backend::StreamView>,
+    view: Option<cc_monitor_backend::stream::inbound::views::StreamView>,
 ) {
     // ★ 应答优先，但**有预算**。
     //
@@ -947,7 +948,7 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out: &mut W,
     frame: &Frame,
     tz: &cc_monitor_backend::Tz,
-    view: Option<&cc_monitor_backend::StreamView>,
+    view: Option<&cc_monitor_backend::stream::inbound::views::StreamView>,
 ) -> std::io::Result<usize> {
     let line = cc_monitor_backend::stream::inbound::views::to_line_viewed(frame, view)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;

@@ -515,7 +515,7 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
 // ── 第二个前端够得着 CLI 面：入参不再隐含「调用方写得了 stdin」 ─────────────
 //
 // 第二个前端的执行通道只有 stdout、写不了 stdin，而 CLI 面上要入参的命令占了绝大多数（出成品的 `history-read` 一族全在里面）。
-// ⇒ 入参另有一个 argv 形的口（[`crate::ARGS_B64_FLAG`]），与 stdin 二选一；stdin 开着却一直不写，也得立即回码。
+// ⇒ 入参另有一个 argv 形的口（[`crate::wire::cli_words::ARGS_B64_FLAG`]），与 stdin 二选一；stdin 开着却一直不写，也得立即回码。
 
 /// 读端：一直不给字节、也不关（真管道上「对面开着 stdin 不写」）。手里那个 `Sender` 一放，它就当 EOF 收尾 ——
 /// 测试结束时放掉，免得线程一直挂着。
@@ -612,7 +612,10 @@ fn the_argv_payload_answers_byte_for_byte_like_stdin() {
         let b64 = crate::wire::b64_encode(text.as_bytes());
         let (_hold, quiet) = silent();
         // stdin 开着不写：argv 那一形**不该去碰 stdin**（碰了就是挂住或 no_input）。
-        let by_argv = run_cli(&strs(&[&flag, crate::ARGS_B64_FLAG, &b64]), quiet);
+        let by_argv = run_cli(
+            &strs(&[&flag, crate::wire::cli_words::ARGS_B64_FLAG, &b64]),
+            quiet,
+        );
         // 失败信封的复制详情首行是出错那一刻的时刻（两趟各自取钟）：抹掉它再逐字比。
         let unclocked = |(rc, out, err): (i32, String, String)| {
             let err = match serde_json::from_str::<serde_json::Value>(err.trim()) {
@@ -646,7 +649,7 @@ fn a_bad_view_on_the_cli_face_is_refused_before_the_command_runs() {
         assert_eq!((rc, out.as_str()), (2, ""), "{args:?}：该回失败信封");
         err_code(&err)
     };
-    let v = crate::VIEW_FLAG;
+    let v = crate::wire::cli_words::VIEW_FLAG;
     for bad in [
         r#"{"omit":{"record":["blcoks"]}}"#,
         r#"{"omit":{"facts":["touchedFiles"]}}"#,
@@ -674,7 +677,7 @@ fn a_bad_view_on_the_cli_face_is_refused_before_the_command_runs() {
 /// ★ stdin 开着、一直不写：**立即回码**，不挂住（缺入参就说缺入参）；EOF 那一形照旧当 `{}` 交给命令自己判。
 #[test]
 fn a_silent_open_stdin_answers_at_once_instead_of_hanging() {
-    for extra in [&[][..], &[crate::STDIN_LINE_FLAG][..]] {
+    for extra in [&[][..], &[crate::wire::cli_words::STDIN_LINE_FLAG][..]] {
         let (_hold, quiet) = silent();
         let mut args = strs(&["--history-read"]);
         args.extend(strs(extra));
@@ -700,14 +703,14 @@ fn a_silent_open_stdin_answers_at_once_instead_of_hanging() {
 fn the_one_line_flag_counts_wherever_it_sits() {
     let line = b"{\"path\":\"/nonexistent/cli2nd/a.jsonl\"}\n".to_vec();
     let at_one = run_cli(
-        &strs(&["--history-read", crate::STDIN_LINE_FLAG]),
+        &strs(&["--history-read", crate::wire::cli_words::STDIN_LINE_FLAG]),
         ThenPanic(Some(line.clone())),
     );
     let at_end = run_cli(
         &strs(&[
             "--history-read",
             "--some-later-option",
-            crate::STDIN_LINE_FLAG,
+            crate::wire::cli_words::STDIN_LINE_FLAG,
         ]),
         ThenPanic(Some(line)),
     );
@@ -745,17 +748,17 @@ fn the_argv_payload_refuses_clearly() {
     assert_eq!(
         refuse(&[
             "--history-read",
-            crate::ARGS_B64_FLAG,
+            crate::wire::cli_words::ARGS_B64_FLAG,
             &ok,
-            crate::STDIN_LINE_FLAG
+            crate::wire::cli_words::STDIN_LINE_FLAG
         ]),
         "bad_args"
     );
     assert_eq!(
         refuse(&[
             "--history-read",
-            crate::STDIN_LINE_FLAG,
-            crate::ARGS_B64_FLAG,
+            crate::wire::cli_words::STDIN_LINE_FLAG,
+            crate::wire::cli_words::ARGS_B64_FLAG,
             &ok
         ]),
         "bad_args"
@@ -764,44 +767,67 @@ fn the_argv_payload_refuses_clearly() {
     assert_eq!(
         refuse(&[
             "--history-read",
-            crate::ARGS_B64_FLAG,
+            crate::wire::cli_words::ARGS_B64_FLAG,
             &ok,
-            crate::ARGS_B64_FLAG,
+            crate::wire::cli_words::ARGS_B64_FLAG,
             &ok
         ]),
         "bad_args"
     );
     assert_eq!(
-        refuse(&["--history-read", crate::ARGS_B64_FLAG]),
+        refuse(&["--history-read", crate::wire::cli_words::ARGS_B64_FLAG]),
         "bad_args"
     );
     // 不收入参的命令带它：用法错，不悄悄忽略（同 `--text`）。
-    assert_eq!(refuse(&["--ping", crate::ARGS_B64_FLAG, &ok]), "bad_args");
+    assert_eq!(
+        refuse(&["--ping", crate::wire::cli_words::ARGS_B64_FLAG, &ok]),
+        "bad_args"
+    );
     // 坏 base64 · 解出来不是 UTF-8 · 不是 JSON。
     assert_eq!(
-        refuse(&["--history-read", crate::ARGS_B64_FLAG, "e30"]),
+        refuse(&[
+            "--history-read",
+            crate::wire::cli_words::ARGS_B64_FLAG,
+            "e30"
+        ]),
         "bad_request"
     );
     let not_utf8 = crate::wire::b64_encode(&[0xff, 0xfe]);
     assert_eq!(
-        refuse(&["--history-read", crate::ARGS_B64_FLAG, &not_utf8]),
+        refuse(&[
+            "--history-read",
+            crate::wire::cli_words::ARGS_B64_FLAG,
+            &not_utf8
+        ]),
         "bad_request"
     );
     let not_json = crate::wire::b64_encode(b"{nope");
     assert_eq!(
-        refuse(&["--history-read", crate::ARGS_B64_FLAG, &not_json]),
+        refuse(&[
+            "--history-read",
+            crate::wire::cli_words::ARGS_B64_FLAG,
+            &not_json
+        ]),
         "bad_request"
     );
     // 超大：argv 那一形自己的上限（比系统单个参数的上限小一点，系统放得进来的才轮得到它说）。
     let big = "A".repeat(MAX_ARGS_B64_LEN + 4);
     assert_eq!(
-        refuse(&["--history-read", crate::ARGS_B64_FLAG, &big]),
+        refuse(&[
+            "--history-read",
+            crate::wire::cli_words::ARGS_B64_FLAG,
+            &big
+        ]),
         "args_too_large"
     );
     let just = crate::wire::b64_encode(&vec![b' '; MAX_ARGS_B64_LEN / 4 * 3]);
     assert!(just.len() <= MAX_ARGS_B64_LEN);
     assert_ne!(
-        refuse(&["--history-read", crate::ARGS_B64_FLAG, &just]),
+        refuse(&[
+            "--history-read",
+            crate::wire::cli_words::ARGS_B64_FLAG,
+            &just
+        ]),
         "args_too_large",
         "刚好到上限的不该被拒成太大"
     );
@@ -849,8 +875,8 @@ fn the_protocol_doc_states_the_input_limits_the_code_enforces() {
         "MAX_CLI_STDIN 不是整 MiB，下面这条比法要改"
     );
     for want in [
-        crate::ARGS_B64_FLAG.to_string(),
-        crate::STDIN_LINE_FLAG.to_string(),
+        crate::wire::cli_words::ARGS_B64_FLAG.to_string(),
+        crate::wire::cli_words::STDIN_LINE_FLAG.to_string(),
         format!("{mib} MiB（{MAX_CLI_STDIN} 字节）"),
         format!("{MAX_ARGS_B64_LEN} 字节"),
         format!("{} ms", STDIN_QUIET.as_millis()),
@@ -1022,7 +1048,7 @@ fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> s
 fn cli_failure(cmd: &str, args: &serde_json::Value, extra: &[&str]) -> (i32, String) {
     let mut argv = vec![
         flag_of(cmd),
-        crate::ARGS_B64_FLAG.to_string(),
+        crate::wire::cli_words::ARGS_B64_FLAG.to_string(),
         crate::wire::b64_encode(args.to_string().as_bytes()),
     ];
     argv.extend(extra.iter().map(|s| s.to_string()));
@@ -1151,7 +1177,11 @@ fn the_cli_deadline_times_out_exactly_like_the_frame_one() {
         crate::platform::child::TIMED_OUT,
         "帧面没按期限超时：{frame}"
     );
-    let (rc, err) = cli_failure("terminals-list", &args, &[crate::WITHIN_MS_FLAG, "1"]);
+    let (rc, err) = cli_failure(
+        "terminals-list",
+        &args,
+        &[crate::wire::cli_words::WITHIN_MS_FLAG, "1"],
+    );
     assert_eq!(rc, 2, "{err}");
     let cli: serde_json::Value = serde_json::from_str(err.trim())
         .unwrap_or_else(|e| panic!("stderr 不是一行 JSON（{e}）：{err:?}"));
@@ -1162,12 +1192,12 @@ fn the_cli_deadline_times_out_exactly_like_the_frame_one() {
 #[test]
 fn the_cli_deadline_option_refuses_like_the_other_options_and_reads_like_the_frame() {
     for argv in [
-        vec!["--ping", crate::WITHIN_MS_FLAG],
+        vec!["--ping", crate::wire::cli_words::WITHIN_MS_FLAG],
         vec![
             "--ping",
-            crate::WITHIN_MS_FLAG,
+            crate::wire::cli_words::WITHIN_MS_FLAG,
             "5000",
-            crate::WITHIN_MS_FLAG,
+            crate::wire::cli_words::WITHIN_MS_FLAG,
             "5000",
         ],
     ] {
@@ -1180,7 +1210,7 @@ fn the_cli_deadline_option_refuses_like_the_other_options_and_reads_like_the_fra
     }
     for v in ["0", "-1", "1.5", "soon", "5000"] {
         let (rc, out, err) = run_cli(
-            &strs(&["--ping", crate::WITHIN_MS_FLAG, v]),
+            &strs(&["--ping", crate::wire::cli_words::WITHIN_MS_FLAG, v]),
             std::io::empty(),
         );
         assert_eq!(rc, 0, "{v}：{err}");
@@ -1207,7 +1237,7 @@ fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
         "详情没说缺什么：{detail}"
     );
     assert!(
-        detail.contains("stdin") && detail.contains(crate::ARGS_B64_FLAG),
+        detail.contains("stdin") && detail.contains(crate::wire::cli_words::ARGS_B64_FLAG),
         "详情没说入参从哪给：{detail}"
     );
 }

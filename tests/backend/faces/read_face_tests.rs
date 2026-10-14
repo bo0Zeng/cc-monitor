@@ -1977,7 +1977,7 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
         v
     };
     let elsewhere = facts_with(&[], false);
-    let hooked = facts_with(&[crate::ANSWER_HOOK_FLAG, "claude"], false);
+    let hooked = facts_with(&[crate::agents::asks::ANSWER_HOOK_FLAG, "claude"], false);
     let noted = facts_with(&[], true);
     let _ = std::fs::remove_dir_all(&home);
     let said = copy_core::copy_text("beAsk.manual.offElsewhere", &[]);

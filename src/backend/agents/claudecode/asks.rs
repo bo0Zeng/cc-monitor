@@ -148,7 +148,7 @@ const EVENT: &str = "PermissionRequest";
 pub(crate) const HOOK_TIMEOUT_SECS: u64 = 3600;
 /// hook 那一趟叫 ccm 的哪几个词（后端子命令 ＋ 这一家的 kind）。
 pub(crate) fn hook_words() -> [&'static str; 3] {
-    let [end, flag] = crate::ANSWER_HOOK_WORDS;
+    let [end, flag] = crate::agents::asks::ANSWER_HOOK_WORDS;
     [end, flag, super::AGENT_KIND]
 }
 

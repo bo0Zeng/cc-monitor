@@ -4,45 +4,11 @@
 //! 本层进了 `agent_boundary_guard::CORE_FILES`，插件的候选路径里带着 agent 的名字 ⇒ 写死在这里当场会红。
 //! 不能只靠 `PATH`：backend 可能由 app 经 SSH exec 起（非登录 shell），用户级的 `bin` 目录未必在 `PATH` 里 ⇒ 固定候选先走一遍，`PATH` 只当兜底。
 
-use crate::platform::fs::Ro;
+#[cfg(test)]
+use crate::platform::fs::windows_launchable_name;
+use crate::platform::fs::{is_executable, Ro};
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
-
-/// 这个路径今天是不是一个能跑的文件。判文件再判执行位，两个都要：只判执行位会被同名的目录劫持。
-///
-/// 非 unix：Windows 那一臂是 [`windows_launchable_name`]（只认 `.exe`）；其余平台保守 `false`（确证的空实现：一个插件都找不到）——
-/// 不返回「什么都算可执行」：那会让 [`find`] 把 `PATH` 上第一个同名文件当成插件交出去（[`crate::platform::cfgless_guard`] 钉着这一族）。
-/// 找不到的那条路上有 [`not_installed_message`]，它会说出查过哪些地方。
-pub(crate) fn is_executable(p: &Path) -> bool {
-    let Ok(md) = Ro::metadata(p) else {
-        return false;
-    };
-    if !md.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        crate::platform::fs::Ro::mode(&md).is_some_and(|mode| mode & 0o111 != 0)
-    }
-    #[cfg(windows)]
-    {
-        windows_launchable_name(p)
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        false
-    }
-}
-
-/// Windows 上「这个普通文件能不能被当程序起」—— 只认 `.exe`（大小写不敏感）。
-///
-/// 不读 `PATHEXT`：那一整套（`.bat` / `.cmd` / `.com` …）是「在 `PATH` 上按名字找命令」的规矩，而经这一口起的东西名字里就带着 `.exe`；
-/// `.bat` / `.cmd` 要经 `cmd.exe` 解释才起得来，插件口是 argv 直传、不过 shell 的。这不是完整的 Windows 语义。
-/// 纯函数（不碰盘、不带平台门），在哪个平台上都能测；只有 Windows 那一臂用它。
-#[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn windows_launchable_name(p: &Path) -> bool {
-    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
-}
 
 /// 找不到时说**查过哪些地方** —— 纯函数。
 ///

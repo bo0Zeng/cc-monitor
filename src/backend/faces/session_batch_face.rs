@@ -62,7 +62,7 @@ pub(crate) fn with_deps_as<T>(
         crate::observe::accounts_query::session_writers(&crate::history::listing::agent_home(), sid)
     };
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
-    let caps = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+    let caps = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();

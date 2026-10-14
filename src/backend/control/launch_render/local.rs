@@ -226,7 +226,7 @@ fn with_spec<T>(
         detach,
     };
     // 能力是这台 ccm 自己的（渲染就在这台后端里）。
-    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();

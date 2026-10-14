@@ -803,7 +803,7 @@ fn caps_line(out: &str) -> std::collections::BTreeSet<String> {
 fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
     let win = caps_line(&probe_output_for(
         "C:\\x\\ccm.exe",
-        crate::TmuxPlatform::AbsentUnlessExeOnPath,
+        crate::platform::tmux::TmuxPlatform::AbsentUnlessExeOnPath,
     ));
     let want_absent = [
         "tmux",
@@ -836,7 +836,7 @@ fn on_windows_the_probe_does_not_claim_what_only_tmux_can_carry() {
     // 正控：Linux（问 PATH 的那一档）上逐字是整张表 —— 两张手写名单的并集。
     let linux = caps_line(&probe_output_for(
         "/usr/local/bin/ccm",
-        crate::TmuxPlatform::AskThePath,
+        crate::platform::tmux::TmuxPlatform::AskThePath,
     ));
     let all: std::collections::BTreeSet<String> = want_present
         .iter()
@@ -859,7 +859,7 @@ fn the_real_probe_asks_this_binarys_own_platform() {
         .expect("找不到 `probe_output` —— 抽取器坏了");
     assert_eq!(
         body.trim(),
-        "probe_output_for(self_path, crate::TMUX_PLATFORM)",
+        "probe_output_for(self_path, crate::platform::tmux::TMUX_PLATFORM)",
         "`probe_output` 要把本二进制的 `TMUX_PLATFORM` 交给内核"
     );
     assert_eq!(
@@ -870,7 +870,10 @@ fn the_real_probe_asks_this_binarys_own_platform() {
     // 本机读数：Linux 上生产那一份 == 问 PATH 那一档。
     assert_eq!(
         caps_line(&probe_output("/x/ccm")),
-        caps_line(&probe_output_for("/x/ccm", crate::TmuxPlatform::AskThePath))
+        caps_line(&probe_output_for(
+            "/x/ccm",
+            crate::platform::tmux::TmuxPlatform::AskThePath
+        ))
     );
 }
 
