@@ -123,7 +123,7 @@ pub(crate) struct Turn<'a> {
 }
 
 /// 读身份的缓存：`.claude.json` 可能很大，按那份文件的戳缓存（文件动了再读）。
-/// 这台此刻活着的会话（sid 集合）。判活只认一处：生产那一份是 [`crate::observe::accounts_query::live_here`]（pidfile 里的会话 id ＋ 进程还是同一个）。
+/// 这台此刻活着的会话（sid 集合）。判活只认一处：生产那一份是 [`crate::history::live::live_here`]（pidfile 里的会话 id ＋ 进程还是同一个）。
 pub(crate) type Live = Arc<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
 
 type IdentityCache = Mutex<BTreeMap<PathBuf, (Option<(std::time::SystemTime, u64)>, String)>>;

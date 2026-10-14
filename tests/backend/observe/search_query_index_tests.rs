@@ -53,7 +53,7 @@ fn ask_all(
                     &fence,
                     &q.trim().to_lowercase(),
                     &opts_from_words(&rest),
-                    &crate::observe::accounts_query::live_session_ids(home),
+                    &crate::history::live::live_session_ids(home),
                     &mut lines_into(&mut buf),
                 )
                 .expect("search ok");
@@ -285,7 +285,7 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
     append(&b2, add.as_bytes());
     touch(&b2, 1_900_000_000_000);
     ask();
-    let witness = before.min(crate::observe::fs::WITNESS_BYTES as u64);
+    let witness = before.min(crate::common::append_read::WITNESS_BYTES as u64);
     let grew = Refresh {
         full: 0,
         appended: 1,
@@ -334,7 +334,7 @@ fn fix_after_the_warm_up_the_first_question_reads_nothing() {
             &fence,
             "docker",
             &opts_from_words(&[]),
-            &crate::observe::accounts_query::live_session_ids(&home),
+            &crate::history::live::live_session_ids(&home),
             &mut lines_into(&mut want),
         )
         .expect("search ok");
@@ -425,7 +425,7 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
     );
     // 答案照旧：两条正文都命中、轮次照数（会话内查找）。
     let mut hits = Vec::new();
-    let fence = crate::observe::fence::Fence::at(&home.join("projects")).unwrap();
+    let fence = crate::common::fence::Fence::at(&home.join("projects")).unwrap();
     let admitted = fence.admit(&f).unwrap();
     index.files.insert(admitted.clone(), entry);
     index
@@ -467,7 +467,7 @@ fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
         touch(&f, 1_800_000_000_000 + i64::from(i) * 1_000);
     }
     let fence = Fence::at(&projects_root(&home)).expect("围栏");
-    let live = crate::observe::accounts_query::live_session_ids(&home);
+    let live = crate::history::live::live_session_ids(&home);
     let ask = |index: &mut SearchIndex, q: &str, tools: bool| {
         let rest: Vec<String> = if tools {
             vec!["--include-tools".into()]
@@ -546,7 +546,7 @@ fn many_batches_still_answer_most_recent_first() {
             &fence,
             "cursor",
             &opts_from_words(&[]),
-            &crate::observe::accounts_query::live_session_ids(&home),
+            &crate::history::live::live_session_ids(&home),
             &mut lines_into(&mut buf),
         )
         .expect("search ok");
@@ -573,7 +573,7 @@ fn many_batches_still_answer_most_recent_first() {
 /// 〔perfC4〕几条线程 ＝ min(8, 这台机器可用的并行数)，至少一条；问不出可用数 ⇒ 一条（远端可能是一两核的小机器，不按 8 条起）。
 #[test]
 fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
-    use crate::observe::par::par_workers;
+    use crate::common::par::par_workers;
     let got: Vec<(Option<usize>, usize)> = [
         None,
         Some(0),
@@ -602,7 +602,7 @@ fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
     );
 }
 
-/// 〔perfC4〕几条线程只在一处算：后端生产段里问机器并行数的只有 `observe/par.rs` 那一处（[`crate::observe::par::par_workers`]），
+/// 〔perfC4〕几条线程只在一处算：后端生产段里问机器并行数的只有 `common/par.rs` 那一处（[`crate::common::par::par_workers`]），
 /// 别处要分线程走 `par_in_order`，不自己再问一遍、再定一个上限。
 #[test]
 fn the_worker_count_is_asked_in_one_place() {
@@ -632,8 +632,8 @@ fn the_worker_count_is_asked_in_one_place() {
         .collect();
     assert_eq!(
         hits,
-        vec![("observe/par.rs".to_string(), 1)],
-        "问机器并行数只许在 `observe/par.rs::par_workers` 一处（别处分线程走 `par_in_order`）"
+        vec![("common/par.rs".to_string(), 1)],
+        "问机器并行数只许在 `common/par.rs::par_workers` 一处（别处分线程走 `par_in_order`）"
     );
 }
 
@@ -641,7 +641,7 @@ fn the_worker_count_is_asked_in_one_place() {
 #[test]
 fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
     let items: Vec<usize> = (0..500).collect();
-    let got = crate::observe::par::par_in_order(items.clone(), |i| {
+    let got = crate::common::par::par_in_order(items.clone(), |i| {
         if i % 37 == 0 {
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
@@ -649,7 +649,7 @@ fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
     });
     assert_eq!(got, items.iter().map(|i| i * 3).collect::<Vec<_>>());
     let caught = std::panic::catch_unwind(|| {
-        crate::observe::par::par_in_order((0..64).collect::<Vec<usize>>(), |i| {
+        crate::common::par::par_in_order((0..64).collect::<Vec<usize>>(), |i| {
             assert!(i != 40, "第 40 件坏了");
             i
         })
@@ -667,7 +667,7 @@ fn the_resident_bound_is_128_mb() {
 /// d：整份读按块 —— 第一次带一份 8 MiB 的记录（整份那一臂），读的时候本线程手里最多两块多一点，不是整份文件。
 #[test]
 fn a_whole_read_holds_about_a_block_not_the_file() {
-    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    use crate::common::append_read::test_support::{big_record, BIG, HELD_BOUND};
     let dir = std::env::temp_dir().join(format!("ccm-sx-held-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("建临时目录");
     let path = dir.join("big.jsonl");
@@ -692,7 +692,7 @@ fn a_whole_read_holds_about_a_block_not_the_file() {
 /// d：追加读按块 —— 两问之间长了 8 MiB，读的时候本线程手里同样只有两块多一点。
 #[test]
 fn an_appended_read_holds_about_a_block_not_the_growth() {
-    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    use crate::common::append_read::test_support::{big_record, BIG, HELD_BOUND};
     let dir = std::env::temp_dir().join(format!("ccm-sx-held-app-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("建临时目录");
     let path = dir.join("grow.jsonl");

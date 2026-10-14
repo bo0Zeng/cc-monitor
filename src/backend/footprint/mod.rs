@@ -63,7 +63,7 @@ pub(crate) fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, Footprin
     answer_with(
         &get,
         &crate::platform::shell::session_shell_path,
-        &crate::observe::history_query::agent_home(),
+        &crate::history::listing::agent_home(),
         req,
     )
 }
@@ -82,20 +82,11 @@ pub(crate) fn data_answer(
 ) -> Result<data::DataReport, FootprintFail> {
     let report = answer(req)?;
     let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
-    let tmux = tmux_here();
+    let tmux = crate::control::terminals::tmux_here();
     let own = crate::platform::paths::home_dir()
         .map(|h| data::own_rows(&h))
         .unwrap_or_default();
     Ok(data::shape(&report, todo, tmux, own))
-}
-
-/// 这台有没有 tmux（查不动 ⇒ `None`）：「文件与数据」那一份 · 别名页表单 · 起新会话框同一个判法（`control::terminals::rows_here`）。
-pub(crate) fn tmux_here() -> Option<bool> {
-    match crate::control::terminals::rows_here() {
-        Ok(Some(_)) => Some(true),
-        Ok(None) => Some(false),
-        Err(_) => None,
-    }
 }
 
 /// [`answer`] 的本体（整份足迹，两种问法共用这一份）：环境取值器、起会话那个 shell 的 `PATH` 与 agent 家目录都是参数

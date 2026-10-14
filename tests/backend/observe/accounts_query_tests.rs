@@ -1982,40 +1982,6 @@ fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {
     );
 }
 
-#[cfg(unix)]
-#[test]
-fn live_session_ids_are_the_pidfiles_whose_process_is_still_there() {
-    let home = tmpdir("c4d-live");
-    let sessions = home.join("sessions");
-    fs::create_dir_all(&sessions).unwrap();
-    let me = std::process::id();
-    fs::write(
-        sessions.join(format!("{me}.json")),
-        r#"{"sessionId":"live-sid","cwd":"/w"}"#,
-    )
-    .unwrap();
-    fs::write(
-        sessions.join("4194304.json"),
-        r#"{"sessionId":"dead-sid","cwd":"/w"}"#,
-    )
-    .unwrap();
-    fs::write(
-        sessions.join("notapid.json"),
-        r#"{"sessionId":"ignored","cwd":"/w"}"#,
-    )
-    .unwrap();
-    let got = live_session_ids(&home);
-    assert_eq!(
-        got,
-        ["live-sid".to_string()].into_iter().collect(),
-        "活着的那一个要在、死了的那一个不许在"
-    );
-    // 没有 sessionId 的活进程不算（它说不出是哪个会话）。
-    fs::write(sessions.join(format!("{me}.json")), r#"{"cwd":"/w"}"#).unwrap();
-    assert!(live_session_ids(&home).is_empty());
-    let _ = fs::remove_dir_all(&home);
-}
-
 /// **`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
 /// 带钥匙段的回环中转地址 ⇒ `true`；别的地址（直连 / 没带钥匙的旧形状）⇒ `false`；没设 ⇒ `false`；进程已死 ⇒ `null`。
 /// 而且**值本身不出参**（它带着中转钥匙）。守的要求：「`session_accounts` 多读 `ANTHROPIC_BASE_URL` ·

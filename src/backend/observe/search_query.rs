@@ -16,13 +16,13 @@
 //! 本模块仍直接在 `serde_json::Value` 上抽取，是因为搜索只要正文 / 工具内容那几段文本，不要整条记录的成品 ——
 //! 那是**取数**的差别，不是**口径**的差别（口径只有上面那一个家）。
 //!
-//! 安全：路径严格限 `<claude_dir>/projects/`（〔审计 F 🔴-6〕经 observe 唯一那道围栏 `observe/fence.rs::Fence`；
+//! 安全：路径严格限 `<claude_dir>/projects/`（〔审计 F 🔴-6〕经 observe 唯一那道围栏 `common/fence.rs::Fence`；
 //! 先前这里内联复刻了一份 history_query 的，点名的第二个家）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
-use crate::observe::fence::Fence;
-use crate::observe::fs::{Blocks, Step, Tailed};
-use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
+use crate::common::append_read::{Blocks, Step, Tailed};
+use crate::common::fence::Fence;
+use crate::history::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -81,7 +81,7 @@ pub(crate) struct SessionHits {
     /// 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
     pub(crate) status: Liveness,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
-    pub(crate) can: crate::observe::history_query::Can,
+    pub(crate) can: crate::history::listing::Can,
 }
 
 /// 一条命中。
@@ -124,9 +124,9 @@ impl Liveness {
         }
     }
 
-    /// 同历史清单那一格的词（`history_query::status_of`，`can_of` 按它判）。
+    /// 同历史清单那一格的词（`history::listing::status_of`，`can_of` 按它判）。
     fn word(self) -> &'static str {
-        crate::observe::history_query::status_of(Some(self == Liveness::Live))
+        crate::history::listing::status_of(Some(self == Liveness::Live))
     }
 }
 
@@ -167,11 +167,11 @@ pub(crate) fn search_counting(
     if q.is_empty() || !root.is_dir() {
         return Ok(0); // 空查询 / 无 projects → 无输出（exit 0）
     }
-    // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`observe/fence.rs`）。
+    // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`common/fence.rs`）。
     let fence = Fence::at(&root)?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    let live = crate::observe::accounts_query::live_session_ids(agent_home);
+    let live = crate::history::live::live_session_ids(agent_home);
     let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
@@ -707,7 +707,7 @@ impl SearchIndex {
                 .map(|(path, _)| (path.clone(), prev.remove(path)))
                 .collect();
             let tools = opts.include_tools;
-            let brought = crate::observe::par::par_in_order(work, |(path, prev)| {
+            let brought = crate::common::par::par_in_order(work, |(path, prev)| {
                 let mut last = Refresh::default();
                 let got = bring_up(&path, prev, tools, &mut last);
                 (got, last)
@@ -742,11 +742,8 @@ impl SearchIndex {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
                     session.status = Liveness::of(live.contains(&session.session_id));
                     session.is_bg = bg;
-                    session.can = crate::observe::history_query::can_of(
-                        &session.agent,
-                        session.status.word(),
-                        bg,
-                    );
+                    session.can =
+                        crate::history::listing::can_of(&session.agent, session.status.word(), bg);
                     push(session)?;
                 }
             }
@@ -963,7 +960,7 @@ fn session_row(
         .to_string();
     SessionHits {
         // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
-        can: crate::observe::history_query::can_of(&agent, Liveness::Ended.word(), false),
+        can: crate::history::listing::can_of(&agent, Liveness::Ended.word(), false),
         agent,
         session_id,
         project_path,

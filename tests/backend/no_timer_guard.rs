@@ -858,7 +858,7 @@ mod tests {
     /// 它们只阻塞在任务队列上（无期限的 `recv()`）：没有任务就睡在内核里，不定时、不自己醒 —— 本护栏守的性质不受影响；
     /// 登在这里是为了让「后端又多了一种常驻线程」这件事有人看过：多一处、少一处、等法变了（带了期限）都红。
     pub(super) const REGISTERED_QUEUE_WORKERS: &[(&str, &str, &str)] = &[(
-        "observe/par.rs",
+        "common/par.rs",
         "q.recv()",
         "记录预读的线程池（`par::Pool`，watcher 在 `watch_loop` 起一份 `PrimePool`）：各会话的预读在这里并行，\
          线程数照 `par_workers`；取任务就是这一处无期限的 `recv()`，队列的发送端没了（池子丢了）它回错、线程退出。",

@@ -1,21 +1,21 @@
-//! 〔审计 F 🔴-6〕**读路径的越界围栏在 observe 里只有一个家**（`observe/fence.rs`），两个读者都经它。
+//! 〔审计 F 🔴-6〕**读路径的越界围栏只有一个家**（`common/fence.rs`，10-13 从 observe 下沉：会话清单挪进 history 之后两层都过它），读会话的那几份都经它。
 //!
 //! # 守的要求（住址）
 //!
-//! 要求：「`history_query::fence_under_projects` 是具名围栏，头注逐字『**别再造一份**』；
+//! 要求：「`history::listing::fence_under_projects` 是具名围栏，头注逐字『**别再造一份**』；
 //! `search_query::search` 里又内联了一份（头注『复刻 history_query』）。⇒ 判据的人群是『本文件』，而性质说的是
 //! 『别再造一份』—— 又一个守卫范围 ≠ 性质范围，而这次护的是**安全判定**」；「⇒ 正确处置是在 **observe 内部**
-//! 给它一个家（`observe/fence.rs`，`§5.3 C5`……）；**不是改 `common` 的门槛**」。
+//! 给它一个家（`common/fence.rs`，`§5.3 C5`……）；**不是改 `common` 的门槛**」。
 //!
 //! # 三条
 //!
-//! - **F1 一个家**：人群 = `src/backend/observe/**.rs` 生产段（`guard_core::scan_tree_excluding` 现扫）；
+//! - **F1 一个家**：人群 = `src/backend/observe/**.rs` ＋ `src/backend/history/**.rs` 生产段（`guard_core::scan_tree_excluding` 现扫）＋ 家本身；
 //!   含 `canonicalize(` 的文件集合 == `{fence.rs}`（两向相等），且 `fence.rs` 里恰好两处、`Fence::at` 与
 //!   `Fence::admit` 各一处（解开根 · 解开目标）。
 //!   ⇒ 名字接自 `history_query_tests.rs` 里原来那一条（audit-0805 E3 立的，人群只有 `history_query.rs` 一份 ——
 //!   正是说的「守卫范围 ≠ 性质范围」那一形，`search_query` 那份内联的它看不见）：性质没变，人群换成 observe 全树。
-//! - **F2 两个读者都经它**：observe 生产段里点名围栏（`fence::` · `Fence::` · `fence_under_projects(`）的文件集合
-//!   == `{history_query.rs, search_query.rs}`（除家本身）。F1 在「内联那份删了、围栏也没接上」那一形下照绿 ——
+//! - **F2 读者都经它**：observe 与 history 生产段里点名围栏（`fence::` · `Fence::` · `fence_under_projects(`）的文件集合
+//!   == `{history/listing.rs, observe/history_query.rs, observe/search_query.rs, observe/skeleton.rs}`（除家本身）。F1 在「内联那份删了、围栏也没接上」那一形下照绿 ——
 //!   这一条就是为那一形立的（`search` 那一处围栏是纵深防御：它那一趟目录遍历默认不跟 symlink，行为判据打不到它）。
 //! - **F3 行为**：放行根下（相对 · 绝对）· 拒 `..` 越界 · 拒 symlink 逃逸（unix）· 根不存在 / 目标不存在的报错原话
 //!   （与收口前逐字相同）。
@@ -29,25 +29,37 @@ use super::*;
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// observe 生产段：`(相对 observe/ 的路径, 生产代码)`。
-fn observe_sources() -> Vec<(String, String)> {
-    let root = crate::guard_support::src_root().join("observe");
-    let out: Vec<(String, String)> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
-        .into_iter()
-        .map(|(p, text)| {
-            let rel = p
-                .strip_prefix(&root)
-                .expect("扫到的文件不在 observe/ 下")
-                .to_string_lossy()
-                .replace('\\', "/");
-            (rel, crate::guard_support::production_side_of(&p, &text))
-        })
-        .collect();
-    assert!(
-        out.iter()
-            .any(|(f, code)| f == "history_query.rs" && code.len() > 3_000),
-        "扫描面里没有剥好的 `history_query.rs` —— 根取歪了或剥法过剥，本文件此刻无效"
-    );
+/// 读会话的两层（observe · history）的生产段 ＋ 围栏的家：`(相对后端源码根的路径, 生产代码)`。
+fn reader_sources() -> Vec<(String, String)> {
+    let src_root = crate::guard_support::src_root();
+    let mut out: Vec<(String, String)> = Vec::new();
+    for layer in ["observe", "history"] {
+        let root = src_root.join(layer);
+        out.extend(
+            guard_core::scan_tree_excluding(&root, &["rs"], &[])
+                .into_iter()
+                .map(|(p, text)| {
+                    let rel = p
+                        .strip_prefix(&src_root)
+                        .expect("扫到的文件不在后端源码根下")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    (rel, crate::guard_support::production_side_of(&p, &text))
+                }),
+        );
+    }
+    let home = src_root.join("common/fence.rs");
+    let text = std::fs::read_to_string(&home).expect("读 common/fence.rs");
+    out.push((
+        "common/fence.rs".to_string(),
+        crate::guard_support::production_side_of(&home, &text),
+    ));
+    for want in ["observe/history_query.rs", "history/listing.rs"] {
+        assert!(
+            out.iter().any(|(f, code)| f == want && code.len() > 3_000),
+            "扫描面里没有剥好的 `{want}` —— 根取歪了或剥法过剥，本文件此刻无效"
+        );
+    }
     out
 }
 
@@ -60,11 +72,11 @@ fn fn_chunk<'a>(code: &'a str, head: &str) -> &'a str {
     &code[at..at + head.len() + end]
 }
 
-/// ★ F1：`canonicalize(` 在 observe 生产段只住 `fence.rs`，而且恰好是 `Fence::at` / `Fence::admit` / `real_path` 各一处
+/// ★ F1：`canonicalize(` 在 observe 与 history 生产段只住 `common/fence.rs`，而且恰好是 `Fence::at` / `Fence::admit` / `real_path` 各一处
 /// （`real_path` 只规范化、不放行：骨架缓存的键用它，8a b 后续）。
 #[test]
 fn path_resolution_has_exactly_one_home() {
-    let src = observe_sources();
+    let src = reader_sources();
     let homes: BTreeSet<&str> = src
         .iter()
         .filter(|(_, code)| code.contains("canonicalize("))
@@ -72,14 +84,14 @@ fn path_resolution_has_exactly_one_home() {
         .collect();
     assert_eq!(
         homes,
-        BTreeSet::from(["fence.rs"]),
+        BTreeSet::from(["common/fence.rs"]),
         "\n🔴 observe 里自己解析路径再判越界的不只一处（「别再造一份」）：{homes:?}\n\
-         ⇒ 经 `observe/fence.rs::Fence`（或 `fence_under_projects`）放行，别再写一份 canonicalize ＋ `starts_with`。\n\
+         ⇒ 经 `common/fence.rs::Fence`（或 `fence_under_projects`）放行，别再写一份 canonicalize ＋ `starts_with`。\n\
          少了 `fence.rs` ⇒ 围栏本身被改掉了，去看它是不是还挡得住 symlink 逃逸。"
     );
     let fence = &src
         .iter()
-        .find(|(f, _)| f == "fence.rs")
+        .find(|(f, _)| f == "common/fence.rs")
         .expect("上面刚断言过")
         .1;
     assert_eq!(
@@ -96,14 +108,14 @@ fn path_resolution_has_exactly_one_home() {
     }
 }
 
-/// ★ F2：observe 里点名围栏的读者 == `{history_query.rs, search_query.rs, skeleton.rs}`（两向相等；
+/// ★ F2：observe 与 history 里点名围栏的读者 == `{history/listing.rs, observe/history_query.rs, observe/search_query.rs, observe/skeleton.rs}`（两向相等；
 /// `skeleton.rs` 只拿 `fence::real_path` 规范化缓存的键，不靠它放行 —— 它读的是自家数据目录）。
 #[test]
-fn both_readers_in_observe_go_through_the_fence() {
-    let users: BTreeSet<String> = observe_sources()
+fn every_session_reader_goes_through_the_fence() {
+    let users: BTreeSet<String> = reader_sources()
         .into_iter()
         .filter(|(f, code)| {
-            f != "fence.rs"
+            f != "common/fence.rs"
                 && (code.contains("fence::")
                     || code.contains("Fence::")
                     || code.contains("fence_under_projects("))
@@ -113,9 +125,10 @@ fn both_readers_in_observe_go_through_the_fence() {
     assert_eq!(
         users,
         BTreeSet::from([
-            "history_query.rs".to_string(),
-            "search_query.rs".to_string(),
-            "skeleton.rs".to_string()
+            "history/listing.rs".to_string(),
+            "observe/history_query.rs".to_string(),
+            "observe/search_query.rs".to_string(),
+            "observe/skeleton.rs".to_string()
         ]),
         "\n经围栏的 observe 读者变了：{users:?}\n\
          ⇒ 少了一个 ⇒ 那一份的越界防护没了（F1 在这一形下照绿）；\n\

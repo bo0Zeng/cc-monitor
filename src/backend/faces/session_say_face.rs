@@ -53,7 +53,7 @@ impl Command for SessionSay {
 
 impl WithFiles for SessionSay {
     fn run(req: SessionSayReq, _cx: &Cx, files: Files) -> Result<Sent, SessionSayErr> {
-        let home = crate::observe::history_query::agent_home();
+        let home = crate::history::listing::agent_home();
         let asked = crate::control::asks::sids();
         let waiting = |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
         let resume = |r: &SessionSayReq| resume_here(r, files);
@@ -71,7 +71,7 @@ impl WithFiles for SessionSay {
 /// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。任一找不到 ⇒ `None`（不恢复）。
 fn resume_here(req: &SessionSayReq, files: Files) -> Option<Answer> {
     use crate::observe::history_query as hq;
-    let home = hq::agent_home();
+    let home = crate::history::listing::agent_home();
     let path = hq::session_record(&home, &req.sid).ok()?;
     let path = path.to_str()?;
     let agent = hq::facts_agent(&home, path)?;

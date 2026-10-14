@@ -1587,7 +1587,7 @@ impl ReaderState {
     fn renamed(
         &mut self,
         sid: &str,
-        mut change: impl FnMut(&mut super::search_rules::LabelFacts) -> bool,
+        mut change: impl FnMut(&mut crate::history::search_rules::LabelFacts) -> bool,
         sink: &mut FrameSink,
     ) {
         let before = self.name_face(sid);
@@ -1790,7 +1790,7 @@ struct SessionEntry {
     activity: Option<crate::agents::SessionActivity>,
     /// 叫这条会话什么的那几样（[`crate::stream::wire::NameFace`]）：宣告时从清单缓存与注解取，之后跟着读到的标题记录 · 第一句 · 注解改。
     /// 不在看的会话行照读（只是不上流），这几样照记。
-    facts: super::search_rules::LabelFacts,
+    facts: crate::history::search_rules::LabelFacts,
     /// 客户端手里这条会话的记录路径（宣告时那一份；之后记录出现 · 换了一份就跟上，并发一帧 `session_status` 带它）。
     path: Option<String>,
 }
@@ -2043,7 +2043,7 @@ enum Look {
 ///   `reread = Rewritten`。`tail` 为 `None`（第一次读 / 刚丢过游标）⇒ 不核。
 /// - ★ 这一趟看到的文件长度用「真读到多少」算（`metadata` 与读之间文件还在长；多读到的字节这一趟一起处理掉），见 [`NewLines::finish`]。
 fn read_tail_from(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Look {
-    read_tail_in_blocks(path, cursor, tail, crate::observe::fs::READ_BLOCK)
+    read_tail_in_blocks(path, cursor, tail, crate::common::append_read::READ_BLOCK)
 }
 
 /// [`read_tail_from`] 的本体（块多大是参数：判据拿小块验「按块扫 == 一整块扫」）。
@@ -2103,7 +2103,7 @@ fn read_tail_in_blocks(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>, blo
 /// 一趟续读：从起读处按块读到尾，每块止于一个 `\n`，交给同一段扫描（[`read_new_lines_at`]）出行；
 /// 末尾没写完的那截不交（留给下一趟）。手里最多 ≈ 一块 ＋ 正在读的那一行。
 struct NewLines {
-    blocks: crate::observe::fs::Blocks<RoFile>,
+    blocks: crate::common::append_read::Blocks<RoFile>,
     /// 下一块在文件里的起点（起读处 ＋ 已交出的块）。
     at: u64,
     /// 起读处。
@@ -2128,7 +2128,7 @@ impl NewLines {
         reread: Option<RereadWhy>,
     ) -> Self {
         Self {
-            blocks: crate::observe::fs::Blocks::new(f, block),
+            blocks: crate::common::append_read::Blocks::new(f, block),
             at: start,
             start,
             from,
@@ -2664,14 +2664,14 @@ fn note_name(
     sink: &mut FrameSink,
 ) {
     use crate::agents::record::Body;
-    let change = |f: &mut super::search_rules::LabelFacts| match body {
+    let change = |f: &mut crate::history::search_rules::LabelFacts| match body {
         Body::Title { text, .. } if f.title.as_deref() != Some(text) => {
             f.title = Some(text.clone());
             true
         }
         Body::Said { who, .. } if f.first.is_empty() => match who.speech() {
             Some(s) => {
-                f.first = super::search_rules::truncate_excerpt(&s, 120);
+                f.first = crate::history::search_rules::truncate_excerpt(&s, 120);
                 true
             }
             None => false,
@@ -2725,7 +2725,8 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
     if f.seek(SeekFrom::Start(cursor.consumed)).is_err() {
         return;
     }
-    let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+    let mut blocks =
+        crate::common::append_read::Blocks::new(f, crate::common::append_read::READ_BLOCK);
     if !matches!(blocks.next(), Ok(None)) {
         return; // 读不动 / 还有完整行没消费（补读那一步没读动）⇒ 不猜
     }
@@ -2855,7 +2856,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         return false;
     }
     // 工作目录是这台家里不出会话的那个目录 ⇒ 不成 tab —— 判据与历史页同一处。
-    if pidfile_cwd(&bytes).is_some_and(|c| super::history_query::hidden_cwd(&c)) {
+    if pidfile_cwd(&bytes).is_some_and(|c| crate::history::listing::hidden_cwd(&c)) {
         return false;
     }
     // 后台会话（适配层判，`agents::pidfile_background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
@@ -2998,7 +2999,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         .find(|e| e.sid == sid)
         .map(|e| e.facts.clone());
     let fresh_name = known.is_none();
-    let facts = known.unwrap_or_else(|| super::search_rules::LabelFacts {
+    let facts = known.unwrap_or_else(|| crate::history::search_rules::LabelFacts {
         project_dir: project_dir.clone(),
         custom: state.custom_title(&sid),
         ..Default::default()
@@ -3271,7 +3272,10 @@ fn announce_writer(
         return false;
     };
     let dir = face.project_dir.and_then(|f| f(p));
-    if dir.as_deref().is_some_and(super::history_query::hidden_cwd) {
+    if dir
+        .as_deref()
+        .is_some_and(crate::history::listing::hidden_cwd)
+    {
         return false;
     }
     announce(
@@ -3665,7 +3669,7 @@ pub(crate) struct PrimeDone {
     /// 第一份记录里最后一件说了「此刻在干什么」的事（这一家的记录说这件事才有）。
     activity: Option<crate::agents::SessionActivity>,
     /// 名字那几样（[`PrimeJob::label`] 要了才有）。
-    facts: Option<super::search_rules::LabelFacts>,
+    facts: Option<crate::history::search_rules::LabelFacts>,
 }
 
 /// 读完要落的骨架（交回之后再落：几十 MB 的写不挡「读完了」那一帧）。
@@ -3706,7 +3710,7 @@ fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<SkelLater>) {
         gen,
         files: out,
         activity,
-        facts: label.map(|p| super::history_query::label_facts_of(&p)),
+        facts: label.map(|p| crate::history::listing::label_facts_of(&p)),
     };
     (done, later)
 }
@@ -4108,10 +4112,10 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
 }
 
 /// 预读的线程池：各会话并行（上限按 CPU 数），一条会话一趟、趟内照顺序读。做完经 watcher 的事件通道交回（`WatchEvent::Primed`）。
-/// 池子里的线程只阻塞在任务队列上（[`crate::observe::par::Pool`]），不睡、不定时。
+/// 池子里的线程只阻塞在任务队列上（[`crate::common::par::Pool`]），不睡、不定时。
 /// 排队在本线程（[`dispatch_primes`] 按名单挑），池子里同时至多线程数那么多份 ⇒ 名单一变就能改先后，已交出去的不撤。
 pub(crate) struct PrimePool {
-    pool: crate::observe::par::Pool<PrimeJob>,
+    pool: crate::common::par::Pool<PrimeJob>,
     /// 还没交出去的（宣告的先后）。
     queue: std::collections::VecDeque<PrimeJob>,
     /// 交出去了、还没交回的份数。
@@ -4121,7 +4125,7 @@ pub(crate) struct PrimePool {
 impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
         PrimePool {
-            pool: crate::observe::par::Pool::new("record-prime", move |job| {
+            pool: crate::common::par::Pool::new("record-prime", move |job| {
                 let (done, later) = run_prime(job);
                 let _ = events.send(WatchEvent::Primed(done));
                 store_skeletons(later);

@@ -16,19 +16,11 @@ pub(crate) mod cc_bus_hooks;
 pub(crate) mod facts_cache;
 pub(crate) mod facts_query;
 // 中转看见的请求标记（每个会话的请求带没带扩展上下文那一项）：中转的 tap 口写、会话事实读。
-pub(crate) mod relay_marks;
-// 〔审计 F 🔴-6〕读路径越界围栏的唯一住址：`history_query` 与 `search_query` 都经它。
-pub(crate) mod fence;
-pub(crate) mod fs;
-// 一次性等待（记录里长出某一条 · 会话由新进程报出）：换号重启那条命令用，期限由发起方给。
 pub mod history_query;
-pub(crate) mod listing_scan; // 历史清单那一行的逐行扫描（累计的那几格 · 读每一行的窄探针）
+pub(crate) mod relay_marks;
+// 一次性等待（记录里长出某一条 · 会话由新进程报出）：换号重启那条命令用，期限由发起方给。
 pub(crate) mod one_wait;
-// 分线程做、按原序交回（线程数只在这里算）：历史清单与全文搜索共用。
-pub(crate) mod par;
 pub mod search_query;
-// 搜索的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）。
-pub(crate) mod search_rules;
 // 会话账本：可重连 / 已结束由这台后端裁、发成品帧（挂在 watcher 发帧的出口上）。
 pub(crate) mod session_ledger;
 pub(crate) mod session_terminals; // `session-terminals`：此刻是哪个终端在显示这个会话（点 ↗ 时问一次）

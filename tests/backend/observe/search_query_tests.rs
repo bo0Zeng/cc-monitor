@@ -385,7 +385,7 @@ fn row(sid: &str, updated: i64, hits: u32, cut: bool) -> SessionHits {
         hits_truncated: cut,
         is_bg: false,
         status: Liveness::Ended,
-        can: crate::observe::history_query::can_of("a", "ended", false),
+        can: crate::history::listing::can_of("a", "ended", false),
     }
 }
 
@@ -445,7 +445,7 @@ fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
     );
 }
 
-/// 命中带这台判的 `status` · `isBg` · `can`（与历史清单的行同一张规则，`history_query::can_of`）：
+/// 命中带这台判的 `status` · `isBg` · `can`（与历史清单的行同一张规则，`history::listing::can_of`）：
 /// 在跑的（这台有它的 pidfile、进程活着）⇒ 切过去；后台分身 ⇒ 要恢复主会话、不能分叉；其余 ⇒ 能恢复。
 /// 跨语言金样 `tests/__fixtures__/history-search-row.golden.json`（TS 严格解码器读同一份）。
 #[test]

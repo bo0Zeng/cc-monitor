@@ -251,7 +251,7 @@ pub(crate) fn answer() -> HooksReport {
     let home = crate::platform::paths::home_dir();
     answer_at(
         home.as_deref(),
-        &crate::observe::history_query::agent_home(),
+        &crate::history::listing::agent_home(),
         crate::agents::asset_kind()
             .and_then(crate::agents::skills_root)
             .as_deref(),

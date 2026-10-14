@@ -306,5 +306,5 @@ pub(crate) fn project_name(dir: &str) -> Option<&str> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/search_rules_tests.rs"]
+#[path = "../../../tests/backend/history/search_rules_tests.rs"]
 mod tests;

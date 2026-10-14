@@ -537,7 +537,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// `files-copy` 收 `recursive`（计划趟逐条目解析、整趟拒 / 执行趟逐条目再解析、中途失败撤回本趟所建）· 索引不跨文件系统 · `files-browse` 真挂 watcher
 /// （应答多 `watching` / `watch_failed` / `watch_error`）· 暂存件跨盘提交退回「复制后删」（`EXDEV`）· 非 UTF-8 名按字节寻址。
 ///
-/// ★★★ **p3z-fence-home-backendpath**（2026-09-26）：行为 —— 读路径围栏收成 `observe/fence.rs::Fence` 一个家（history / search 两个读者）·
+/// ★★★ **p3z-fence-home-backendpath**（2026-09-26）：行为 —— 读路径围栏收成 `common/fence.rs::Fence` 一个家（history / search 两个读者）·
 /// `remote-reach` 进门判 `backend` 形状、不合形回 `bad_args`。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4a-free-text-gate**（2026-09-26）：行为 —— `ccm` 拒相对 / 带 `..` / 带换行的 `--cwd`，

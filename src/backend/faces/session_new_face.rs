@@ -40,7 +40,7 @@ fn answer(
     own: &crate::platform::fs::Own,
     nf: &crate::platform::fs::NewFile,
 ) -> Result<session_new::SessionNew, session_new::Failed> {
-    let home = crate::observe::history_query::agent_home();
+    let home = crate::history::listing::agent_home();
     let fork =
         |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(nf, &home, sid, uuid);
     let user_home = crate::platform::paths::home_dir();
@@ -172,7 +172,7 @@ pub(crate) fn recent_dirs(
 fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
     let mut buf: Vec<u8> = Vec::new();
     // 读不出记录树 ⇒ 记一行、少这一家的目录（框里照常起，只是「最近的」少几项）。
-    if let Err(e) = crate::observe::history_query::list_projects_into(home, &mut buf) {
+    if let Err(e) = crate::history::listing::list_projects_into(home, &mut buf) {
         tracing::warn!("session-new-facts：读不出记录树的项目清单：{e}");
     }
     let mut out: Vec<(String, i64)> = String::from_utf8_lossy(&buf)
@@ -265,7 +265,7 @@ pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'st
             ))
         }
     };
-    let home = crate::observe::history_query::agent_home();
+    let home = crate::history::listing::agent_home();
     let fork = match fork_of {
         None => None,
         Some(sid) => {
@@ -293,7 +293,7 @@ pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'st
     Ok(NewFacts {
         recent: recent_dirs(
             &record_dirs(&home),
-            &crate::observe::history_query::hidden_cwd,
+            &crate::history::listing::hidden_cwd,
             &crate::common::time::TextClock::new(
                 u64::try_from(crate::common::time::now_secs()).unwrap_or(0),
                 tz,

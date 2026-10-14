@@ -1,6 +1,6 @@
 //! 「足迹」那两条成品（typed）：`footprint-report` · `data-report`。本体在 `footprint/mod.rs`（申报表 · 判定 · 重排都在 `footprint/`），
 //! 这里只接上名字 · 入参 · 回包 · 码表与档：都只读 ⇒ 阻塞档；`data-report` 读别名块的候选经文件管理面 ⇒ 带它那一档。
-//! 单住这份文件：`data-report` 问这台的 tmux（`footprint::tmux_here`），引用图按文件算，与别的放一起会把它们也判成「够得着 tmux」。
+//! 单住这份文件：`data-report` 问这台的 tmux（`control::terminals::tmux_here`），引用图按文件算，与别的放一起会把它们也判成「够得着 tmux」。
 
 use crate::footprint::data::DataReport;
 use crate::footprint::rows::ConfigSurfaceReport;

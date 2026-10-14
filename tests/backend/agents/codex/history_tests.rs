@@ -169,10 +169,10 @@ fn the_core_name_of_a_codex_session_is_its_first_human_line() {
             }
         })
         .collect();
-    let facts = crate::observe::history_query::label_facts_among(&reg, &p);
+    let facts = crate::history::listing::label_facts_among(&reg, &p);
     assert_eq!(facts.first, "修一下夹具里的那条测试");
     assert_eq!(facts.project_dir.as_deref(), Some("/w/proj"));
-    let (name, named) = crate::observe::search_rules::session_label(&facts);
+    let (name, named) = crate::history::search_rules::session_label(&facts);
     assert!(named, "说过话的会话起了名字：{name}");
     assert_eq!(name, "修一下夹具里的那条测试");
     let _ = std::fs::remove_dir_all(&d);

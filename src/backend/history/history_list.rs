@@ -28,7 +28,7 @@ use serde_json::Value;
 
 use crate::common::cells::Words;
 use crate::history::history_annotations::{Loaded, Table};
-use crate::observe::history_query::{can_of, status_of, Can};
+use crate::history::listing::{can_of, status_of, Can};
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
@@ -340,7 +340,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
     }
 }
 
-/// 叫这一行什么（[`crate::observe::search_rules::session_label`]，与标签页 · 通知同一个）。
+/// 叫这一行什么（[`crate::history::search_rules::session_label`]，与标签页 · 通知同一个）。
 fn label_of(
     custom: Option<&str>,
     title: Option<&str>,
@@ -348,13 +348,13 @@ fn label_of(
     project: &str,
     sid: &str,
 ) -> String {
-    let facts = crate::observe::search_rules::LabelFacts {
+    let facts = crate::history::search_rules::LabelFacts {
         custom: custom.map(str::to_string),
         title: title.map(str::to_string),
         first: first.to_string(),
         project_dir: (!project.is_empty()).then(|| project.to_string()),
     };
-    crate::observe::search_rules::session_label(&facts).0
+    crate::history::search_rules::session_label(&facts).0
 }
 
 /// 一行的分组键：哪一家 ＋ 真实目录（记录目录名会撞）。
@@ -371,10 +371,10 @@ pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
 /// [`machine_listing`]；`only` ＝ 按 sid 问的那一条：记录树里只整份扫叫这个名字的那一份（别的会话只出分组要的几格，
 /// [`answer_from`] 按 sid 滤掉）⇒ 答案与整台扫逐字相同，不必把整台每份会话从头扫一遍。
 fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, String)> {
-    let home = crate::observe::history_query::agent_home();
-    let live = LiveSet(crate::observe::accounts_query::live_session_ids(&home));
-    let tree = crate::observe::history_query::sessions_by_dir_for(&home, only)
-        .map_err(|e| ("failed", e))?;
+    let home = crate::history::listing::agent_home();
+    let live = LiveSet(crate::history::live::live_session_ids(&home));
+    let tree =
+        crate::history::listing::sessions_by_dir_for(&home, only).map_err(|e| ("failed", e))?;
     let synth: Vec<(
         &'static str,
         Vec<crate::agents::SynthSession>,

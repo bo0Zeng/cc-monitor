@@ -11,7 +11,7 @@
 ///
 /// ⇒ 本条把「谁承载标题」这件事变成可机检的：
 /// 人群 = `agents/claudecode/schema.rs`（原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
-/// 性质 = 它必须被标题抽取段接住 ——那一段今天住后端 `observe/listing_scan.rs::SessionScan::absorb`（`history_query.rs::analyze_session` 转调）
+/// 性质 = 它必须被标题抽取段接住 ——那一段今天住后端 `history/listing_scan.rs::SessionScan::absorb`（`history/listing.rs::analyze_session` 转调）
 /// （本机与远端同一个函数），按记录的线上类型名分臂。
 /// 加第三种标题记录而忘了接 ⇒ 红。
 ///
@@ -67,7 +67,7 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
         bearers.len()
     );
 
-    let backend = include_str!("../../../../src/backend/observe/listing_scan.rs");
+    let backend = include_str!("../../../../src/backend/history/listing_scan.rs");
     let at = guard_core::find_pinned(backend, "pub(super) fn absorb(&mut self, line: &str) {")
         .unwrap_or_else(|e| panic!("后端逐行吸收记录的那个方法不是恰好一处：{e}"));
     let body_end = backend[at + 1..]

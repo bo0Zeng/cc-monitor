@@ -1112,9 +1112,19 @@ mod tests {
             "适配层在功能之下：申报表用适配层自己的词（`agents::footprint_decl`），足迹那边读",
         ),
         (
+            "accounts",
+            "observe",
+            "这台此刻活着的会话（`live_here`）住 history；观测侧读账号库出账号清单成品",
+        ),
+        (
             "agents",
             "control",
             "适配层在功能之下（只在测试档的 `agents/fake` 例外，测试段不受管）",
+        ),
+        (
+            "assets",
+            "footprint",
+            "足迹读别名清单（`assets::aliases::read_via`）；「这台有没有 tmux」住控制面（`control::terminals::tmux_here`）",
         ),
         (
             "assets",
@@ -1147,11 +1157,6 @@ mod tests {
         ),
         (
             "accounts",
-            "observe",
-            "`upstream_select` → `accounts_query::live_here`",
-        ),
-        (
-            "accounts",
             "stream",
             "帧面协议零件（第 8 批第 8 刀拆 `stream`）",
         ),
@@ -1159,11 +1164,6 @@ mod tests {
             "assets",
             "control",
             "`ccm` 命令行的常量与拼法住 `control::ccm`（后端共用常量归位那一刀）",
-        ),
-        (
-            "assets",
-            "footprint",
-            "`assets/aliases/page.rs` → `footprint::tmux_here`",
         ),
         ("assets", "stream", "帧面协议零件（第 8 批第 8 刀）"),
         (

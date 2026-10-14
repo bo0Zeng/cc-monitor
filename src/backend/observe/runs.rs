@@ -831,7 +831,8 @@ impl RunTrack {
         }
         // 按块读到尾（第一次认领时是整份；不一次读进内存）：每块整行逐行记进簿里、游标跟着块走；末尾没写完的那截等下次。
         let sid = cur.sid.clone();
-        let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+        let mut blocks =
+            crate::common::append_read::Blocks::new(f, crate::common::append_read::READ_BLOCK);
         while let Ok(Some(whole)) = blocks.next() {
             cur.consumed += whole.len() as u64;
             for line in whole[..whole.len() - 1].split(|&b| b == b'\n') {

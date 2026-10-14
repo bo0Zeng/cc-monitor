@@ -122,7 +122,7 @@ fn session_label_picks_in_order() {
 // ═══ 搜索口径只有一个家（原 `tests/frontend/shell/search_kou_jing_guard.rs` 的 ①② 两道，随家搬进后端）══════
 //
 // 要求：「一个判定只有一个家」。家从共享 crate `search-core` 拆成两份：通用口径 = 本文件的被测
-// `observe/search_rules.rs`，Claude 记录文本 = 适配层 `agents/claudecode/text.rs`；搜索那一侧（`observe/search_query.rs`）不许自己再有一份，
+// `history/search_rules.rs`，Claude 记录文本 = 适配层 `agents/claudecode/text.rs`；搜索那一侧（`observe/search_query.rs`）不许自己再有一份，
 // 且必须真的调到家里那一份。monitor 那一侧零处（③）仍住 `tests/frontend/shell/search_kou_jing_guard.rs`。
 
 /// 通用口径的助手（收口前两侧各写一遍的那 12 个里的 8 个）。
@@ -165,7 +165,7 @@ const MUST_CALL: &[&str] = &[
 #[test]
 fn the_search_kou_jing_has_exactly_one_home() {
     let rules =
-        guard_core::production_code(include_str!("../../../src/backend/observe/search_rules.rs"));
+        guard_core::production_code(include_str!("../../../src/backend/history/search_rules.rs"));
     let text = guard_core::production_code(include_str!(
         "../../../src/backend/agents/claudecode/text.rs"
     ));

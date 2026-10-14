@@ -64,7 +64,7 @@ fn merge_takes_rows_per_machine_and_names_only_the_remote_ones() {
         hits_truncated: cut,
         is_bg: false,
         status: crate::observe::search_query::Liveness::Ended,
-        can: crate::observe::history_query::can_of("claude-code", "ended", false),
+        can: crate::history::listing::can_of("claude-code", "ended", false),
     };
     let got = crate::observe::search_query::merge_at(
         vec![

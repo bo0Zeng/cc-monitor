@@ -343,8 +343,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 翻 `zero`：界面照旧逐台扇出（各台常驻索引保热），合并排序问本机后端
     //   `history-search-merge`（`observe/search_query.rs::merge_at` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
-    // `search-core` 拆进后端：通用口径住 `observe/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）。
-    homes: ["src/backend/observe/search_rules.rs::sort_by_recency", "src/backend/observe/search_rules.rs::clamp_limit"],
+    // `search-core` 拆进后端：通用口径住 `history/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）。
+    homes: ["src/backend/history/search_rules.rs::sort_by_recency", "src/backend/history/search_rules.rs::clamp_limit"],
     status: "zero",
     defs: ["mergeSearchResults"],
     needles: [
@@ -995,7 +995,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     split_keyed_base_url: NONE,
     STAGING_DIR_REL: NONE,
   },
-  // `search-core` 出列：crate 删了（通用口径 → 后端 `observe/search_rules.rs` · Claude 记录文本 → `agents/claudecode/text.rs`），J10 / J15 的住址改成路径形。
+  // `search-core` 出列：crate 删了（通用口径 → 后端 `history/search_rules.rs` · Claude 记录文本 → `agents/claudecode/text.rs`），J10 / J15 的住址改成路径形。
   "shell-quote-core": {
     // 〔合并 TL3 续做〕`INVARIANTS §47` ② 自由文本那一层（拒绝集只收 NUL / CR / LF）进了本 crate：TS 侧零处拼 shell、零处判它 ⇒ NONE。
     FREE_TEXT_REFUSED: NONE,

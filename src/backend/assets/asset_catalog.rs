@@ -374,13 +374,13 @@ pub(crate) fn assets_from(sightings: &[crate::agents::Sightings]) -> (Vec<Asset>
 /// 这台上开过会话的项目目录：取历史清单那一份（项目清单每一行的 `projectPath`），不另起一份扫描。
 /// 列不出来 ⇒ 空 ＋ 一句话（「这台没有项目」与「这台的项目列不出来」不许合成一句）。
 pub(crate) fn session_projects() -> (Vec<String>, Option<String>) {
-    session_projects_at(&crate::observe::history_query::agent_home())
+    session_projects_at(&crate::history::listing::agent_home())
 }
 
 /// [`session_projects`] 的本体：agent 的家由调用方给（判据拿临时家目录喂）。
 pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<String>) {
     let mut buf = Vec::new();
-    if let Err(e) = crate::observe::history_query::list_projects_into(agent_home, &mut buf) {
+    if let Err(e) = crate::history::listing::list_projects_into(agent_home, &mut buf) {
         return (Vec::new(), Some(e));
     }
     let mut dirs: Vec<String> = String::from_utf8_lossy(&buf)

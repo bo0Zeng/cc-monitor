@@ -3,7 +3,7 @@
 //! 家在沙箱的数据目录里（`CCM_DATA_DIR` 指过去），不碰真家目录。
 
 use super::*;
-use crate::observe::fs::READ_BLOCK;
+use crate::common::append_read::READ_BLOCK;
 use std::path::PathBuf;
 
 /// 一个沙箱数据目录 ＋ 指着它的写句柄。

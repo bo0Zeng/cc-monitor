@@ -31,12 +31,8 @@ pub(crate) fn with_deps_as<T>(
 ) -> T {
     let list = tmux_rows;
     let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
-        crate::observe::history_query::record_for(
-            &crate::observe::history_query::agent_home(),
-            dir,
-            sid,
-        )
-        .map(|p| (p.present, p.root))
+        crate::observe::history_query::record_for(&crate::history::listing::agent_home(), dir, sid)
+            .map(|p| (p.present, p.root))
     };
     let kill =
         |name: &str, sid: &str| crate::control::kill::run_as(name, sid, client).map(|b| b.note());
@@ -63,10 +59,7 @@ pub(crate) fn with_deps_as<T>(
         .map(|m| m.name)
     };
     let writers = |sid: &str| {
-        crate::observe::accounts_query::session_writers(
-            &crate::observe::history_query::agent_home(),
-            sid,
-        )
+        crate::observe::accounts_query::session_writers(&crate::history::listing::agent_home(), sid)
     };
     let pretrust = |dir: &str, cwd: &str| pretrust_with(files, agent, dir, cwd);
     let caps = crate::ccm_launcher_with(crate::TMUX_PLATFORM)

@@ -33,7 +33,7 @@ fn now_ms() -> u64 {
 
 /// 这台的配置根：默认那一个 ＋ 账号库里每个号的配置目录。
 fn config_roots() -> Vec<PathBuf> {
-    let mut roots = vec![crate::observe::history_query::agent_home()];
+    let mut roots = vec![crate::history::listing::agent_home()];
     if let Some(home) = crate::platform::paths::home_dir() {
         roots.extend(
             crate::faces::rotation_face::library_at(&home)
@@ -55,7 +55,7 @@ fn entry() -> Result<PathBuf, Fail> {
 /// 生产的「这个 id 是谁」：活会话表（判活与在干什么同主窗口标签页）· 记录树里有它的记录 ⇒ 会话；
 /// 记录树里有它的子 agent 记录 ⇒ 挂在父会话底下（活不活看父会话）；都不中 ⇒ 认不出。
 fn who_port() -> impl Fn(&str) -> Whose {
-    let home = crate::observe::history_query::agent_home();
+    let home = crate::history::listing::agent_home();
     let root = crate::agents::records_root(&home);
     let doing = crate::observe::accounts_query::live_doing(&home);
     let live = move |sid: &str| {
@@ -270,7 +270,7 @@ fn files(args: &Value, tz: &crate::Tz) -> Answer {
 fn list(args: &Value, tz: &crate::Tz) -> Answer {
     let fresh = args.get("fresh").and_then(Value::as_bool).unwrap_or(false);
     let mut dirs: Vec<String> =
-        crate::observe::accounts_query::live_cwds(&crate::observe::history_query::agent_home());
+        crate::observe::accounts_query::live_cwds(&crate::history::listing::agent_home());
     if let Some(a) = args.get("dirs") {
         let a = a
             .as_array()

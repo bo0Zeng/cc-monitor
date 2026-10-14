@@ -55,7 +55,7 @@ impl Command for TasksListCmd {
 
 impl Blocking for TasksListCmd {
     fn run(req: TasksListReq, _cx: &Cx) -> Result<TasksList, TasksListErr> {
-        tasks_at(&crate::observe::history_query::agent_home(), req)
+        tasks_at(&crate::history::listing::agent_home(), req)
     }
 }
 
@@ -394,7 +394,7 @@ impl crate::stream::inbound::typed::Blocking for SessionInterrupts {
         _cx: &crate::stream::inbound::typed::Cx,
     ) -> Result<crate::observe::interrupts_query::SessionInterrupts, SessionInterruptsErr> {
         crate::observe::interrupts_query::answer_at(
-            &crate::observe::history_query::agent_home(),
+            &crate::history::listing::agent_home(),
             &req.sid,
         )
         .map_err(SessionInterruptsErr::BadArgs)
@@ -428,15 +428,12 @@ impl crate::stream::inbound::typed::Blocking for SessionTerminals {
         req: crate::observe::session_terminals::SidReq,
         _cx: &crate::stream::inbound::typed::Cx,
     ) -> Result<crate::observe::session_terminals::Showing, SessionTerminalsErr> {
-        crate::observe::session_terminals::answer_at(
-            &crate::observe::history_query::agent_home(),
-            &req,
-        )
-        .map_err(|(code, said)| match code {
-            "bad_args" => SessionTerminalsErr::BadArgs(said),
-            "no_such_session" => SessionTerminalsErr::NoSuchSession(said),
-            crate::platform::child::TIMED_OUT => SessionTerminalsErr::ChildTimedOut(said),
-            _ => SessionTerminalsErr::Failed(said),
-        })
+        crate::observe::session_terminals::answer_at(&crate::history::listing::agent_home(), &req)
+            .map_err(|(code, said)| match code {
+                "bad_args" => SessionTerminalsErr::BadArgs(said),
+                "no_such_session" => SessionTerminalsErr::NoSuchSession(said),
+                crate::platform::child::TIMED_OUT => SessionTerminalsErr::ChildTimedOut(said),
+                _ => SessionTerminalsErr::Failed(said),
+            })
     }
 }

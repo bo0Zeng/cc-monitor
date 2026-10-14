@@ -181,7 +181,7 @@ impl ActivityFace {
 }
 
 /// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
-/// `label` ＝ [`crate::observe::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截
+/// `label` ＝ [`crate::history::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截
 /// （界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NameFace {
@@ -192,12 +192,12 @@ pub(crate) struct NameFace {
 
 impl NameFace {
     /// 那几样 ⇒ 这两格。
-    pub(crate) fn of(facts: &crate::observe::search_rules::LabelFacts) -> Self {
-        let (label, _) = crate::observe::search_rules::session_label(facts);
+    pub(crate) fn of(facts: &crate::history::search_rules::LabelFacts) -> Self {
+        let (label, _) = crate::history::search_rules::session_label(facts);
         let label_project = facts
             .project_dir
             .as_deref()
-            .and_then(crate::observe::search_rules::project_name)
+            .and_then(crate::history::search_rules::project_name)
             .map(Words::from);
         NameFace {
             label: Words(label),

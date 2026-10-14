@@ -1552,7 +1552,7 @@ fn claude_code_gives_the_extra_run_cells() {
 /// 读完运行表照样对上。
 #[test]
 fn a_first_child_read_holds_about_a_block_not_the_file() {
-    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    use crate::common::append_read::test_support::{big_record, BIG, HELD_BOUND};
     let shape = claude_code();
     let dir = scratch("held");
     let parent = (shape.parent_of)(&dir, SID);

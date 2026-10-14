@@ -664,7 +664,7 @@ mod tests {
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),
             (
-                "observe/history_query.rs",
+                "history/listing.rs",
                 "Can",
                 "`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」那一格：命令应答里的一块，不是流协议帧",
             ),
@@ -720,17 +720,17 @@ mod tests {
                 "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
             ),
             (
-                "observe/history_query.rs",
+                "history/listing.rs",
                 "CanResume",
                 "`Can.resume` 的三个词（`history-list` 每行与全文搜索每行的「能做什么」）",
             ),
             (
-                "observe/history_query.rs",
+                "history/listing.rs",
                 "CanDelete",
                 "`Can.delete` 的三个词（同上）",
             ),
             (
-                "observe/listing_scan.rs",
+                "history/listing_scan.rs",
                 "ListingHead",
                 "**只读不出**：扫历史清单时读 CLI 记录行的窄探针（记录文件 schema 里要的那几格），不上线",
             ),
@@ -782,6 +782,10 @@ mod tests {
                 include_str!("../../src/backend/observe/history_query.rs"),
             ),
             (
+                "history/listing.rs",
+                include_str!("../../src/backend/history/listing.rs"),
+            ),
+            (
                 "observe/search_query.rs",
                 include_str!("../../src/backend/observe/search_query.rs"),
             ),
@@ -794,8 +798,8 @@ mod tests {
                 include_str!("../../src/backend/agents/claudecode/turn.rs"),
             ),
             (
-                "observe/listing_scan.rs",
-                include_str!("../../src/backend/observe/listing_scan.rs"),
+                "history/listing_scan.rs",
+                include_str!("../../src/backend/history/listing_scan.rs"),
             ),
             (
                 "observe/tasks_query.rs",

@@ -12,10 +12,10 @@
 //! - 写只经 [`Own`]：建目录 · 拿目录锁 · 原子写（流式）· 删文件。
 //! - **按块读写**：写的时候边序列化边往盘上流（缓冲一块 [`READ_BLOCK`]），每过一块在两项之间插一个换行（JSON 允许）⇒ 文件是一行行
 //!   不长于约一块的；读的时候经 [`Blocks`] 一块一块读、边读边解析 ⇒ 手里不再有整份原文，峰值 ≈ 一块 ＋ 解出来的那份结构。
-//! - **键是规范化之后的路径**（[`crate::observe::fence::real_path`]）：预读那一路拿的是走出来的路径（可能经符号链接），冷开扫描图拿的是
+//! - **键是规范化之后的路径**（[`crate::common::fence::real_path`]）：预读那一路拿的是走出来的路径（可能经符号链接），冷开扫描图拿的是
 //!   围栏放行之后的路径 —— 同一份记录两种写法落到同一个键上，两样各自的那份文件都在同一个摘要底下，谁都能按这个键找到对方那一份。
 
-use super::fs::{Blocks, READ_BLOCK};
+use crate::common::append_read::{Blocks, READ_BLOCK};
 use crate::platform::fs::{Own, OwnPath, Ro};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -255,7 +255,7 @@ impl Skeletons {
 
 /// 一份骨架的键：规范化之后的路径（解不开 ⇒ 原样）。
 fn key_of(path: &Path) -> std::path::PathBuf {
-    crate::observe::fence::real_path(path).unwrap_or_else(|| path.to_path_buf())
+    crate::common::fence::real_path(path).unwrap_or_else(|| path.to_path_buf())
 }
 
 /// 边序列化边写：缓冲一块，写出去的字节每过一块就在下一个数组元素 / 对象键之前插一个换行 ⇒ 文件一行行不长于约一块（[`Blocks`] 读得动）。

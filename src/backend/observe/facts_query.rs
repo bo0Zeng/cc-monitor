@@ -21,7 +21,7 @@
 //!
 //! | 格 | 口径 |
 //! |---|---|
-//! | `forkedFrom` | `history_query::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
+//! | `forkedFrom` | `history::listing::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
 //! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
 //! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
@@ -1167,7 +1167,7 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
 /// 一条**已解析**的记录累加到 `f` 上。三格口径的唯一住址（见头注那张表）。
 pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
     if f.forked_from.is_none() {
-        if let Some((sid, _)) = super::history_query::fork_origin(v) {
+        if let Some((sid, _)) = crate::history::listing::fork_origin(v) {
             f.forked_from = Some(sid);
         }
     }

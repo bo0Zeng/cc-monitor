@@ -182,7 +182,7 @@ fn find_and_global_search_agree_on_the_same_file() {
             include_tools: tools,
             scope: None,
             after_ms: 0,
-            limit: crate::observe::search_rules::DEFAULT_LIMIT,
+            limit: crate::history::search_rules::DEFAULT_LIMIT,
             titles: false,
         };
         let mut budget = SnippetBudget::new(opts.limit);

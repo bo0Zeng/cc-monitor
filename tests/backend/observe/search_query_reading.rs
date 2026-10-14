@@ -41,9 +41,8 @@ fn ask(phase: &str, round: usize, q: &str) {
 #[ignore = "SX1 读数：真规模本机历史（只读）只量耗时与条数；跑法住本文件头注"]
 fn sx1_real_history_search_reading() {
     let script = std::env::var("SX1_EVICT").expect("要 `SX1_EVICT` 指向 SX1-evict-page-cache.py");
-    let root = crate::agents::claudecode::paths::projects_root(
-        &crate::observe::history_query::agent_home(),
-    );
+    let root =
+        crate::agents::claudecode::paths::projects_root(&crate::history::listing::agent_home());
     let load = std::fs::read_to_string("/proc/loadavg").unwrap_or_default();
     println!("SX1 build={} load={}", crate::BUILD_ID, load.trim());
     // 冷首趟：先把人群文件丢出页缓存（只读，posix_fadvise）。

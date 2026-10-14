@@ -325,7 +325,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     crate::agents::SessionActivity::NeedsYou,
                 )),
                 name_face: crate::stream::wire::NameFace::of(
-                    &crate::observe::search_rules::LabelFacts {
+                    &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
                         project_dir: Some(s("/w")),
                         ..Default::default()
@@ -373,7 +373,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     crate::agents::SessionActivity::NeedsYou,
                 )),
                 name_face: crate::stream::wire::NameFace::of(
-                    &crate::observe::search_rules::LabelFacts {
+                    &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
                         project_dir: Some(s("/w")),
                         ..Default::default()
@@ -979,7 +979,7 @@ fn b64_matches_the_rfc_4648_test_vectors() {
 /// （只 Line 带）。uuid = 客户端 dedup 键；title · body 是通知那两行（核心写好，桌面与手机照抄）。
 #[test]
 fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
-    let named = crate::observe::search_rules::LabelFacts {
+    let named = crate::history::search_rules::LabelFacts {
         title: Some("notes".into()),
         ..Default::default()
     };
@@ -1007,7 +1007,7 @@ fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
 /// 叫这条会话什么那两格：名字（`session_label`）＋ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
 #[test]
 fn the_name_face_carries_the_name_and_the_project() {
-    use crate::observe::search_rules::LabelFacts;
+    use crate::history::search_rules::LabelFacts;
     let face = |f: LabelFacts| serde_json::to_value(crate::stream::wire::NameFace::of(&f)).unwrap();
     let proj = || Some("/w/proj/".to_string());
     let untitled = copy_core::copy_text("history.row.untitled", &[]);

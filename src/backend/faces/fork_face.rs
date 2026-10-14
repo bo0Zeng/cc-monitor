@@ -27,7 +27,7 @@ impl Command for SessionFork {
 
 impl Blocking for SessionFork {
     fn run(req: ForkReq, _cx: &Cx) -> Result<Forked, ForkErr> {
-        let home = crate::observe::history_query::agent_home();
+        let home = crate::history::listing::agent_home();
         // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
         let nf = crate::platform::fs::NewFile::issue();
         crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {

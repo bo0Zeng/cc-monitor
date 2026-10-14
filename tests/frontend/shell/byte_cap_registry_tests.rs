@@ -667,15 +667,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // `src/backend/observe/search_query.rs`），靠下面「对 D」那条判据
     // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
     // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
-    // `search-core` 拆进后端：两条封顶随通用口径住 `observe/search_rules.rs`（仍只此一份）。
+    // `search-core` 拆进后端：两条封顶随通用口径住 `history/search_rules.rs`（仍只此一份）。
     (
-        "src/backend/observe/search_rules.rs",
+        "src/backend/history/search_rules.rs",
         "MAIN_CAP",
         "单条 main 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
     ),
     (
-        "src/backend/observe/search_rules.rs",
+        "src/backend/history/search_rules.rs",
         "TOOL_CAP",
         "单条 tool 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
@@ -1561,7 +1561,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //
     // 原文：`src/frontend/shell/src/search.rs` 与 `src/backend/observe/search_query.rs`
     // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
-    // （`search-core`；今天住后端 `observe/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+    // （`search-core`；今天住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
     // 把这件事焊住的判据换了个形状，住（随家搬进后端）
     // `tests/backend/observe/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：

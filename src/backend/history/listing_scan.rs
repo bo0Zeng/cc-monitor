@@ -1,5 +1,5 @@
 //! 历史清单那一行的逐行扫描：扫一份会话记录时累计的那几格（[`SessionScan`]）与读每一行用的窄探针（[`ListingHead`]）。
-//! 口径（每一格取什么）逐格说明在 `history_query::analyze_session` 的头注；缓存与「变长只扫尾巴」在 `history_query` 的清单缓存那一格。
+//! 口径（每一格取什么）逐格说明在 `history::listing::analyze_session` 的头注；缓存与「变长只扫尾巴」在 `history::listing` 的清单缓存那一格。
 //! 单住一份：探针是读记录文件 schema 的反序列化类型，不是协议类型（不进生成的协议参考）。
 
 use std::path::Path;
@@ -99,7 +99,7 @@ impl SessionScan {
                 self.forked = head
                     .forked_from
                     .as_ref()
-                    .and_then(super::history_query::forked_pair);
+                    .and_then(super::listing::forked_pair);
             }
         }
         match kind {
@@ -148,7 +148,7 @@ impl SessionScan {
         serde_json::json!({
             "sessionId": session_id,
             "jsonlPath": p.to_string_lossy(),
-            "startedAtMs": self.started_at.unwrap_or_else(|| super::history_query::created_ms_or_mtime(p)),
+            "startedAtMs": self.started_at.unwrap_or_else(|| super::listing::created_ms_or_mtime(p)),
             "updatedAtMs": crate::platform::fs::Ro::mtime_ms(p),
             "messageCountApprox": self.count,
             "firstUserExcerpt": self.excerpt,
