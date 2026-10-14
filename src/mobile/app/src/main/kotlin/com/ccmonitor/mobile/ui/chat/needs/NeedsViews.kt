@@ -30,7 +30,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -432,12 +432,6 @@ private fun ChoiceButton(
                 shape = ROW_SHAPE,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = LocalAppTokens.current.errorText),
             ) { inner() }
-        ChoiceLook.QUIET ->
-            TextButton(
-                onClick = onClick,
-                enabled = enabled || busy,
-                modifier = m,
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
-            ) { inner() }
+        ChoiceLook.QUIET -> SecondaryButton(onClick = onClick, modifier = m, enabled = enabled || busy) { inner() }
     }
 }
