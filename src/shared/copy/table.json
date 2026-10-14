@@ -1767,6 +1767,24 @@
       "zh": "换模型结果未知\n未读到新的模型",
       "args": []
     },
+    "beSessionSwitch.why.running": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "本轮结束后可换模型",
+      "args": []
+    },
+    "beSessionSwitch.why.waiting": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先答完需手动",
+      "args": []
+    },
+    "beSessionSwitch.why.ended": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话已退出",
+      "args": []
+    },
     "beSessionModel.name.versioned": {
       "kind": "body",
       "role": "片段",

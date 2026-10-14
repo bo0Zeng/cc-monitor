@@ -1348,7 +1348,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1361,7 +1361,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\"}\n"
     );
 }
 
@@ -1409,7 +1409,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n",
         "agent_kind 每条都带"
     );
 
@@ -1422,7 +1422,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\"}\n",
         "缺的格不上线"
     );
 }
@@ -1556,18 +1556,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1594,9 +1594,10 @@ fn mig1_session_state_has_exactly_these_bytes() {
             copy_core::copy_text(name, &[]),
             copy_core::copy_text(hint, &[]),
         );
+        let ended = copy_core::copy_text("beSessionSwitch.why.ended", &[]);
         assert_eq!(
             to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\"}}\n")
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
         );
     }
 }
@@ -1632,7 +1633,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"switch\":{\"model\":{\"can\":\"yes\"},\"permission\":{\"can\":\"yes\"}},\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -2142,4 +2143,43 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
     );
     let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], 3);
     assert!(matches!(&none[..], [Frame::SessionBranch { at: 3, off, .. }] if off.is_empty()));
+}
+
+/// 会话帧上的 `switch`（此刻能不能换模型 · 权限档）由核心判、随那一态带：
+/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换；离开「活」（可重连 · 已结束）⇒ 都灰。
+/// 灰的那一格（`can: no`）带写好的那一句，可换的（`can: yes`）不带。
+#[test]
+fn session_frames_say_whether_model_and_permission_can_switch_now() {
+    use crate::agents::SessionActivity as A;
+    use crate::stream::wire::ActivityFace;
+    let yes = serde_json::json!({"can": "yes"});
+    let no = |key: &str| serde_json::json!({"can": "no", "why": copy_core::copy_text(key, &[])});
+    let switch = |face: ActivityFace| serde_json::to_value(face).unwrap()["switch"].clone();
+    assert_eq!(
+        switch(ActivityFace::of(Some(A::Working))),
+        serde_json::json!({"model": no("beSessionSwitch.why.running"), "permission": yes})
+    );
+    assert_eq!(
+        switch(ActivityFace::of(Some(A::NeedsYou))),
+        serde_json::json!({"model": no("beSessionSwitch.why.waiting"), "permission": no("beSessionSwitch.why.waiting")})
+    );
+    for face in [
+        ActivityFace::of(Some(A::Idle)),
+        ActivityFace::of(Some(A::BackgroundWork)),
+        ActivityFace::of(None),
+        ActivityFace::reading(),
+    ] {
+        assert_eq!(
+            switch(face),
+            serde_json::json!({"model": yes, "permission": yes})
+        );
+    }
+    for fate in [SessionFate::Reconnectable, SessionFate::Ended] {
+        let v = serde_json::to_value(Frame::session_state("s".into(), fate)).unwrap();
+        assert_eq!(
+            v["switch"],
+            serde_json::json!({"model": no("beSessionSwitch.why.ended"), "permission": no("beSessionSwitch.why.ended")}),
+            "{v}"
+        );
+    }
 }

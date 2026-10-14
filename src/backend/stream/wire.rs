@@ -129,6 +129,8 @@ pub(crate) struct ActivityFace {
     activity_text: Words,
     activity_tone: Tone,
     activity_order: u8,
+    /// 此刻能不能换模型 · 权限档（随那一态判，[`Switch::live`]）。
+    switch: Switch,
 }
 
 impl ActivityFace {
@@ -167,6 +169,7 @@ impl ActivityFace {
             activity_text: Words(text),
             activity_tone: tone,
             activity_order: order,
+            switch: Switch::live(a),
         }
     }
 
@@ -176,6 +179,65 @@ impl ActivityFace {
         ActivityFace {
             activity_text: Words(copy_core::copy_text("beSession.activity.reading", &[])),
             ..Self::of(None)
+        }
+    }
+}
+
+/// **此刻能不能换模型 · 权限档的唯一判定处**（会话帧上的 `switch`：`session_added` · `session_status` 随那一态带（[`ActivityFace`]），
+/// `session_state` 带离开「活」那一形）。界面只照 `can` 灰不灰、照 `why` 写 chip 上方那一行，不自己判。
+/// 正在换（转圈）是发起的那一端自己知道的，不在这里。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Switch {
+    /// 换模型（`session-model`）。
+    model: CanSwitch,
+    /// 切权限档（`session-permission`）。
+    permission: CanSwitch,
+}
+
+/// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub(crate) enum CanSwitch {
+    /// 能换。
+    Yes,
+    /// 此刻不能（chip 灰着，上方写这一句）。
+    No { why: Words },
+}
+
+impl CanSwitch {
+    fn no(key: &str) -> Self {
+        CanSwitch::No {
+            why: Words(copy_core::copy_text(key, &[])),
+        }
+    }
+}
+
+impl Switch {
+    /// 活会话此刻那一态 ⇒ 能不能换：
+    /// 在等人 ⇒ 都不能（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（送的那一行排成下一条消息、不立刻生效）、权限档能（跑着也收切档键）；
+    /// 闲着 · 后台命令在跑 · 说不清 ⇒ 都能（说不清时由那两条命令自己判、照实回）。
+    pub(crate) fn live(a: Option<SessionActivity>) -> Self {
+        match a {
+            Some(SessionActivity::NeedsYou) => Switch {
+                model: CanSwitch::no("beSessionSwitch.why.waiting"),
+                permission: CanSwitch::no("beSessionSwitch.why.waiting"),
+            },
+            Some(SessionActivity::Working) => Switch {
+                model: CanSwitch::no("beSessionSwitch.why.running"),
+                permission: CanSwitch::Yes,
+            },
+            Some(SessionActivity::Idle | SessionActivity::BackgroundWork) | None => Switch {
+                model: CanSwitch::Yes,
+                permission: CanSwitch::Yes,
+            },
+        }
+    }
+
+    /// 离开「活」（进程退了：可重连 · 已结束）⇒ 都不能：两条命令都要往那一家的进程里送。
+    pub(crate) fn gone() -> Self {
+        Switch {
+            model: CanSwitch::no("beSessionSwitch.why.ended"),
+            permission: CanSwitch::no("beSessionSwitch.why.ended"),
         }
     }
 }
@@ -559,6 +621,8 @@ pub enum Frame {
         state_hint: Words,
         /// 语气。
         state_tone: Tone,
+        /// 此刻能不能换模型 · 权限档（离开「活」那一形，[`Switch::gone`]）。
+        switch: Switch,
     },
     /// A session file went away.
     SessionRemoved {
@@ -1176,6 +1240,7 @@ impl Frame {
             state_text,
             state_hint,
             state_tone,
+            switch: Switch::gone(),
         }
     }
 

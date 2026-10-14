@@ -582,6 +582,9 @@ fn put(
     }
 }
 
+/// 会话帧上 `switch` 那两格（[`crate::stream::wire::Switch`]）按 `can` 分能换 · 不能换两种。
+const SWITCH_TAGS: &[(&str, &str)] = &[("model", "can"), ("permission", "can")];
+
 /// 一件成品。
 pub(crate) struct Product {
     /// 成品名（声明里 `cells` 的键）。帧是帧的 `kind`。
@@ -644,17 +647,17 @@ pub(crate) const PRODUCTS: &[Product] = &[
     // `lines` 10-12 挪出这一帧（read8a：宣告不等预读，行数改由读完那一帧 `session_primed` 带）：手机从来没读过它，只有桌面壳在读、同一刀跟上。
     Product {
         name: "session_added",
-        tags: &[],
+        tags: SWITCH_TAGS,
         specimens: specimens::session_added,
     },
     Product {
         name: "session_status",
-        tags: &[],
+        tags: SWITCH_TAGS,
         specimens: specimens::session_status,
     },
     Product {
         name: "session_state",
-        tags: &[],
+        tags: SWITCH_TAGS,
         specimens: specimens::session_state,
     },
     Product {

@@ -93,6 +93,7 @@ A new session file appeared。
 | `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
 | `state_hint` | Words | 悬停那一句 |
 | `state_tone` | Tone | 语气 |
+| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形，`Switch::gone`） |
 
 ### `session_removed`
 
@@ -297,6 +298,23 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `activity_text` | Words |  |
 | `activity_tone` | Tone |  |
 | `activity_order` | number |  |
+| `switch` | Switch | 此刻能不能换模型 · 权限档（随那一态判，`Switch::live`） |
+
+#### `Switch`
+
+**此刻能不能换模型 · 权限档的唯一判定处**（会话帧上的 `switch`：`session_added` · `session_status` 随那一态带（`ActivityFace`）， `session_state` 带离开「活」那一形）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `model` | CanSwitch | 换模型（`session-model`） |
+| `permission` | CanSwitch | 切权限档（`session-permission`） |
+
+#### `CanSwitch`
+
+一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+
+- `can: "yes"` —— 能换
+- `can: "no"`，带 `why` Words —— 此刻不能（chip 灰着，上方写这一句）
 
 #### `NameFace`
 
