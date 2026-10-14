@@ -53,9 +53,6 @@ pub mod history; // 历史清单与注解（history_list · history_annotations�
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
 pub mod lineage; // 会话血缘：谁起的谁（中转那一处认，只存 `~/.cc-monitor/lineage.json` 一份）
 #[cfg(test)]
-#[path = "../../tests/backend/ts_export_guard.rs"]
-mod ts_export_guard; // 第 8 刀：ts-rs 生成物只落在登记的目录、同名只许一个出处
-#[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
@@ -76,7 +73,10 @@ mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 mod ratchet_guard; // K-P1 KPY7：动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
-mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod readonly_guard;
+#[cfg(test)]
+#[path = "../../tests/backend/ts_export_guard.rs"]
+mod ts_export_guard; // 第 8 刀：ts-rs 生成物只落在登记的目录、同名只许一个出处 // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 #[cfg(test)]
 pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`）
 pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
