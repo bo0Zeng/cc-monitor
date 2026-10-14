@@ -139,6 +139,7 @@ object FilesHome {
     const val COMMAND: String = "files-home"
 
     fun of(data: Any?): RemotePath? = Wire.bind<FilesPathReply>(data)?.let { RemotePath.of(it.path) }
+
     /** 新建会话的目录 chip 要的那一串：家目录读不成字 ⇒ `null`。 */
     fun text(data: Any?): String? = of(data)?.text
 }
@@ -178,6 +179,7 @@ object FilesLs {
             }
         return Listing(entries, r.truncated, r.total)
     }
+
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
     fun dirs(path: String): Map<String, Any?> = mapOf("path" to path, "dirs_only" to true)
 
