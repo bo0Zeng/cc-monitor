@@ -594,6 +594,38 @@ fn expand_use(u: &str) -> Vec<String> {
         .collect()
 }
 
+/// `use` 那一段里每个 ` as 名字`（前后是空白 · 逗号 · 花括号）摘掉：`crate::g::calm as c` → `crate::g::calm`。
+fn drop_use_aliases(u: &str) -> String {
+    let toks: Vec<&str> = u
+        .split_inclusive(|c: char| c.is_whitespace() || c == ',' || c == '{' || c == '}')
+        .collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < toks.len() {
+        let t = toks[i];
+        if t.trim_end() == "as" && t.ends_with(char::is_whitespace) {
+            // 跳过 `as` 与它后面那个名字（空白 token 一并跳过），保留名字后面的分隔符。
+            i += 1;
+            while i < toks.len() && toks[i].trim().is_empty() {
+                i += 1;
+            }
+            if let Some(name) = toks.get(i) {
+                let sep: String = name
+                    .chars()
+                    .rev()
+                    .take_while(|c| *c == ',' || *c == '{' || *c == '}')
+                    .collect();
+                out.push_str(&sep);
+            }
+            i += 1;
+            continue;
+        }
+        out.push_str(t);
+        i += 1;
+    }
+    out
+}
+
 /// 一份文件的生产段里提到的路径（`crate::…` / `super::…` / `self::…` / 本文件 `mod x;` 声明的子模块 `x::…`），
 /// 以及 `use` 语句展开后的每一条。返回解析成绝对模块路径之后的段列表。
 fn paths_in(me: &[String], src: &str) -> Vec<Vec<String>> {
@@ -654,7 +686,8 @@ fn paths_in(me: &[String], src: &str) -> Vec<Vec<String>> {
         let Some(end) = src[at + 4..].find(';') else {
             break;
         };
-        let u: String = src[at + 4..at + 4 + end]
+        // `a::b as c`：别名不改指向 ⇒ 先把 ` as 名字` 摘掉再去空白（不然拼成 `bas c`，指到父模块或指不到）。
+        let u: String = drop_use_aliases(&src[at + 4..at + 4 + end])
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();
@@ -1232,6 +1265,37 @@ fn the_tmux_reach_ruler_works_on_a_synthetic_tree() {
     assert!(
         !edges["b/mod.rs"].contains("b/inner.rs"),
         "只声明没使用的子模块被当成了引用"
+    );
+}
+
+/// `use … as 别名`：别名不改指向。指子模块的别名不连父模块（误红那一形）；指到 tmux 那一份的别名要连上（漏判那一形）。
+#[test]
+fn the_tmux_reach_ruler_reads_use_as_aliases() {
+    let tree: Tree = [
+        ("lib.rs", "pub mod f; pub mod g; pub mod h;"),
+        ("f.rs", "use crate::g::calm as c;\npub fn h() { c::go(); }"),
+        (
+            "g/mod.rs",
+            "pub mod calm;\npub fn spawn() { let _ = crate::platform::child::Child::new(\"tmux\"); }",
+        ),
+        ("g/calm.rs", "pub fn go() {}"),
+        ("h.rs", "use crate::{f as ff, g as gg};\npub fn h() { gg::spawn(); ff::h(); }"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+    let edges = file_edges(&tree);
+    let from = |f: &str| std::iter::once(f.to_string()).collect();
+    assert_eq!(
+        edges["f.rs"].iter().collect::<Vec<_>>(),
+        vec!["g/calm.rs"],
+        "`use crate::g::calm as c` 该只连 `g/calm.rs`：{edges:?}"
+    );
+    assert!(!reachable(&edges, &from("f.rs")).contains("g/mod.rs"));
+    assert_eq!(
+        edges["h.rs"].iter().collect::<Vec<_>>(),
+        vec!["f.rs", "g/mod.rs"],
+        "分组里的别名也要认：{edges:?}"
     );
 }
 
