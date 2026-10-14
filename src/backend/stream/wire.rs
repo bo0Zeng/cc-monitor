@@ -1191,18 +1191,6 @@ impl Frame {
         }
     }
 
-    /// 一条命令当场失败、带下层原话的那一种应答（原话进复制详情，句子 `message` 里没有它）。
-    pub(crate) fn err_raw(id: &str, cmd: &str, code: &str, message: &str, raw: &str) -> Frame {
-        let f = crate::stream::detail::Failed::new(
-            Some(cmd),
-            code,
-            message.to_string(),
-            Some(raw),
-            None,
-        );
-        Frame::failed(id.to_string(), f)
-    }
-
     /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
     pub(crate) fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
         let f =
