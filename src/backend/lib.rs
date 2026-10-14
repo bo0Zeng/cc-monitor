@@ -1008,6 +1008,8 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p10m-typed-assets：子命令集不变；footprint-report · data-report · assets-sync 换成 typed（资产那张表全 typed：
 /// 入参多键 ⇒ bad_args，assets-sync 只给 origin 就查可达表），hello 带的形状指纹表跟着变。
+/// stream-watch 多 branch（要哪几个会话的主线外清单、手上已有前几条 ＋ 摘要 ⇒ 只补缺的那一截；不报 ⇒ 收不到主线外清单），
+/// session_branch 多 sum；子命令集与形状指纹表不变。
 pub const BUILD_ID: &str = "p10m-typed-assets";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
