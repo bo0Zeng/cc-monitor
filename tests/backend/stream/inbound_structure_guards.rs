@@ -191,7 +191,6 @@ fn the_registry_families_are_exactly_the_files_in_the_registry_directory() {
 /// 那条走**真的 `dispatch`**（接缝），这条查**注册表的声明**（源）。两条都要有。
 #[test]
 fn every_registered_command_declares_its_run_kind() {
-    use super::Run;
     for spec in super::REGISTRY {
         // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
         // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
@@ -451,7 +450,8 @@ fn every_registered_command_declares_its_run_kind() {
             "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",
             spec.name
         );
-        let is_builtin = matches!(spec.run, Run::Builtin);
+        // 帧面硬臂：`Run::Builtin` 与 typed 的那一档（开单两条）。
+        let is_builtin = spec.run.on_frame_arm();
         // 链路四条也是硬臂：要碰**本连接的链路表**与应答通道（`dial/link.rs`），
         // 而且 `link-data` 必须在读循环里就地分派（保序）—— 交给独立 task 就不再保序。
         // 传输四条也是硬臂：要碰**本连接的票表**与应答通道（进度帧走应答通道，`control/transfer.rs`）。
@@ -1134,10 +1134,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             "只回 ok；下一帧画面走 `terminal_screen`",
         ),
         ("terminal-unfollow", "只回 ok（幂等）"),
-        ("transfer-download", "只回 ok；进度与终局走 `transfer` 帧"),
         ("transfer-start", "只回 ok；进度与终局走 `transfer` 帧"),
         ("transfer-stop", "只回 ok（幂等）"),
-        ("transfer-upload", "只回 ok；进度与终局走 `transfer` 帧"),
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。

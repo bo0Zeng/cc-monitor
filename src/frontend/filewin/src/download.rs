@@ -266,9 +266,6 @@ impl DownloadBoard {
     }
 }
 
-/// 开单：下载（传输台那一侧 `sftp_pool::TRANSFER_DOWNLOAD`，判据钉两份相等）。
-pub const OP_DOWNLOAD: &str = "transfer-download";
-
 /// 真起一件下载 —— **开单 → 起跑并看**，两步全经通道。
 ///
 /// 🔴窗口进程**一行 SFTP 都不碰**了：字节由 monitor 里的传输台从远端读、
@@ -282,35 +279,24 @@ pub async fn pull_one(
     dest: &str,
     board: &DownloadBoard,
 ) -> Result<(), super::source::Failed> {
-    pull_one_at(
-        line,
-        origin,
-        remote_path,
-        serde_json::Value::String(dest.to_string()),
-        board,
-    )
-    .await
+    pull_one_at(line, origin, remote_path, dest.into(), board).await
 }
 
-/// 同 [`pull_one`]，本机落点给线上那一形（字符串或 `{"b16": …}`：有损名在 Linux 上按原始字节落名）。
+/// 同 [`pull_one`]，本机落点给原始字节（有损名在 Linux 上按原始字节落名）。
 pub async fn pull_one_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     remote_path: &str,
-    dest: serde_json::Value,
+    dest: cmd_wire::files::WirePath,
     board: &DownloadBoard,
 ) -> Result<(), super::source::Failed> {
     let stop = board.cancels().stop_token();
-    let opened = super::source::ask_coded(
-        line,
-        origin,
-        OP_DOWNLOAD,
-        &serde_json::json!({ "remote_path": remote_path, "local_path": dest }),
-        super::transfer::OPEN_BUDGET,
-    )
-    .await?;
-    let id =
-        super::transfer::field(&opened, OP_DOWNLOAD, "id").map_err(super::source::Failed::from)?;
+    let ask = cmd_wire::transfer::TransferDownloadAsk {
+        remote_path: remote_path.to_string(),
+        local_path: dest,
+    };
+    let cmd_wire::transfer::TransferOpened { id } =
+        super::source::ask_typed(line, origin, &ask, super::transfer::OPEN_BUDGET).await?;
     let sink = board.clone();
     super::source::watch(
         line,

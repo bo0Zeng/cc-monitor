@@ -824,7 +824,7 @@ fn handler_files(
     out
 }
 
-/// 一族命令表里 typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：本体就是那个类型住的文件，
+/// 一族命令表里 typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()` · 帧面硬臂那一档 `typed::frame::<路径>()`）：本体就是那个类型住的文件，
 /// 命令名从那份文件里它的 `impl Command for <类型>` 那一段的 `const NAME` 读（异源：不读 `REGISTRY`）。
 fn typed_handler_files_of(
     table: &str,
@@ -842,6 +842,7 @@ fn typed_handler_files_of(
         "typed::async_owning::<",
         "typed::async_own::<",
         "typed::facing::<",
+        "typed::frame::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];
@@ -1096,12 +1097,10 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ("link-open", "同上"),
     ("ping", "就地应答"),
     (
-        "transfer-download",
-        "传输台那几条住 `inbound::dispatch` 的硬臂",
+        "transfer-start",
+        "传输台起跑 · 撤住 `inbound::dispatch` 的硬臂（开单两条是 typed，本体经 `typed::frame` 那一行点得出）",
     ),
-    ("transfer-start", "同上"),
     ("transfer-stop", "同上"),
-    ("transfer-upload", "同上"),
     (
         "terminal-follow-ack",
         "`Run::Builtin`：终端实时预览的回执住 `inbound::dispatch` 的硬臂，就地记账（往那张票的订阅线程递一句），不起 tmux",

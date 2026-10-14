@@ -135,18 +135,11 @@ fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
     );
 }
 
-/// 🔴 窗口这一侧写死的那几个**线上名字**与对面（monitor 的传输中继）那一份逐字相等（原住 `transfer_tests` 的前半；
-/// 后端提交命令表那一半留在窗口包里）。漂开的症状是具体的：开单答「不认」、订阅答「没有这条流」。
+/// 🔴 窗口这一侧写死的那个**线上名字**（进度流的前缀）与对面（monitor 的传输中继）那一份逐字相等（原住 `transfer_tests` 的前半；
+/// 后端提交命令表那一半留在窗口包里）。漂开的症状是具体的：订阅答「没有这条流」。
 #[test]
 fn the_transfer_names_the_window_says_are_the_ones_the_monitor_relays() {
-    assert_eq!(
-        cc_monitor_filewin::transfer::OP_UPLOAD,
-        crate::sftp_pool::TRANSFER_UPLOAD
-    );
-    assert_eq!(
-        cc_monitor_filewin::download::OP_DOWNLOAD,
-        crate::sftp_pool::TRANSFER_DOWNLOAD
-    );
+    // 开单两条的名字不再两边各写一份：窗口发的、monitor 认的都是 `cmd_wire::transfer` 那两个入参类型挂的名字。
     assert_eq!(
         cc_monitor_filewin::transfer::KIND_PREFIX,
         crate::sftp_pool::TRANSFER_KIND_PREFIX
