@@ -15,8 +15,11 @@ const B_REFRESH: &str = "fake-refresh-of-b";
 pub(crate) const S1: &str = "11111111-1111-4111-8111-111111111111";
 pub(crate) const S2: &str = "22222222-2222-4222-8222-222222222222";
 
+/// 判据的「此刻」：钉死一刻（2026-01-15 03:00 UTC，不在整两点上：过去那一截里要有一格刻度），不读墙钟。往前两小时 · 往后十二小时（01:00–15:00） · 停发到一小时后都落在同一天（UTC），
+/// 钟面一律只写 `HH:MM`；读墙钟时每天 UTC 23 点那一小时「停发到几点」跨了零点、带上日期，判据就红。
+/// 产品那一侧的钟都从入口交进来（`view_with` · `preset_with` · `record_seen` 的 `now`）。
 pub(crate) fn now() -> u64 {
-    crate::accounts::quota::now_unix()
+    1_768_446_000
 }
 
 fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
