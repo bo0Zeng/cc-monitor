@@ -1,7 +1,8 @@
 /**
  * **右键一个标签页，菜单里放哪几项**（会话头「更多」是同一份）—— 以及那几格要异步就绪的项怎么就绪。
  *
- * 分组从上到下：看它（在新窗口打开 · 打开工作目录 · 切到终端 · 看它的终端 · 看一眼终端画面）· 固定 / 分组 ·
+ * 分组从上到下：看它（在新窗口打开 · 打开工作目录 · 切到终端 · 看它的终端 · 看一眼终端画面）· 固定 / 分组 / 隐藏
+ *（「已隐藏」那一行里的：只有取消隐藏 —— 隐藏的会话不是标签页，不固定、不分组）·
  * 恢复这个会话 ▸ · 在终端里打开 · 账号… · 关闭标签页 · 结束会话…（红字，最后一组，在 tmux 里的才有）。
  * 灰着的项第二行写为什么；还在问那台 tmux 的那几项先画出来、右侧转圈，答回来才变可点（`sessions-where`，界面不判）。
  * 状态不明（那台看不见）的标签页：恢复 · 在终端里打开 · 结束 · 账号… 一律灰（同一句），只有关闭标签页可点。
@@ -127,6 +128,9 @@ export interface TabMenuHost {
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
   close(sid: string): void;
+  /** 隐藏 · 取消隐藏（与批量菜单同一口：交命令、给撤销 toast；栏上那一格等推帧来了才挪）。 */
+  hide(sids: readonly string[]): void;
+  unhide(sids: readonly string[]): void;
   /** 打开工作目录 · 切到终端（Windows）· 看它的终端（底部抽屉终端页）。 */
   openCwd(sid: string): void;
   front(sid: string): void;
@@ -169,9 +173,19 @@ export class TabMenu {
     }
     if (t) items.push({ icon: "terminal", label: copyText("tabMenu.open.drawer"), detail: keyOf("panel.toggle-terminal"), onClick: () => this.host.viewTerminal(sid) });
 
-    // ② 固定 · 分组
+    // ② 固定 · 分组 · 隐藏（隐藏的会话只有「取消隐藏」：它不占标签页，不固定、不分组）
     items.push({ label: "", divider: true });
-    if (t && this.host.pinnedLoaded()) {
+    const hidden = t?.hidden ?? null;
+    if (t && hidden !== null) {
+      items.push({
+        id: "hide",
+        icon: "hidden",
+        label: copyText("tabBar.menu.unhide"),
+        title: hidden.by === "self" ? undefined : copyText("tabBar.unhide.ruleHint", { said: hidden.said }),
+        onClick: () => this.host.unhide([sid]),
+      });
+    }
+    if (t && hidden === null && this.host.pinnedLoaded()) {
       items.push({
         id: "pin",
         icon: "pin",
@@ -180,7 +194,8 @@ export class TabMenu {
         onClick: () => this.host.togglePin(sid),
       });
     }
-    if (this.host.collectionsLoaded()) items.push({ id: "group", icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
+    if (hidden === null && this.host.collectionsLoaded()) items.push({ id: "group", icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
+    if (t && hidden === null) items.push({ id: "hide", icon: "hidden", label: copyText("tabBar.menu.hide"), title: copyText("tabBar.hidden.tip"), onClick: () => this.host.hide([sid]) });
 
     // ③ 恢复 · 在终端里打开 · 账号
     items.push({ label: "", divider: true });

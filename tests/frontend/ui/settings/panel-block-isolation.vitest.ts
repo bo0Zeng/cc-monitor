@@ -124,7 +124,6 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
   behaviorIn: vi.fn(() => ({
     autoFollowUserActive: false,
     bringMonitorToFrontOnUserActive: false,
-    showBgSessions: false,
     notifyTurnEnd: false,
     notifyNeeds: false,
     resumeCommandPresets: behaviorStub.presets,

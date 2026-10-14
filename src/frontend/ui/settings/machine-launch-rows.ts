@@ -1,5 +1,6 @@
 /**
- * 每台「这台上的 cc-monitor」里「怎么起会话」那两格（本机远端同一个组件）：恢复会话的启动程序 · 恢复到 tmux 里。
+ * 每台「这台上的 cc-monitor」里「怎么起会话」那几格（本机远端同一个组件）：恢复会话的启动程序 · 恢复到 tmux 里 ·
+ * 子会话 · 分身会话默认进不进标签栏（［显示｜隐藏］分段按钮 ⇒ `prefs-set {childTab | bgTab}`；判哪条会话隐藏在那台后端，这里只改那台的偏好）。
  * 值住**那台**后端（`prefs.json`，经 `machine-prefs.ts` 的 `prefs-read` / `prefs-set`），界面不存副本：画之前问那台、改了交那台、画写完读回的那一份。
  *
  * - 启动程序：下拉（`ResumeSelect`；空 ＝ 那一家自己的默认启动器）⇒ `prefs-set {launchers: {<默认那一家>: 值}}`；用过的记进界面那份预设
@@ -17,6 +18,10 @@ import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { readPrefs, setPrefs, type PrefsReply } from "../machine-prefs";
 import { ResumeSelect } from "./resume-select";
 import { toggleSwitch } from "../kit/switch";
+import { segmented } from "../kit/tabs";
+import { attachTooltip } from "../kit/tooltip";
+import { setPlace } from "../session-hidden-cmds";
+import { placesOf, type TabPlace, type TabPlaces } from "../session-hidden";
 import { detailOf, sayFailure, sayWithDetail } from "../kit/detail";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 import type { Origin } from "../ipc/origin";
@@ -27,7 +32,72 @@ function applied(): void {
   );
 }
 
-/** 那台那两格（`name` ＝ 那台在界面上的名字，说明里用）。建好不问；`load()` 才问那台（机器页第一次可见时宿主调）。 */
+/**
+ * 子会话 · 分身会话那两行：名字短、说明在悬停；分段按钮读回那台之前灰着，改了交那台、画写完读回的那一份，失败退回、行下一句。
+ * 回两行与「读回了」那一下（读不懂 ⇒ 照读回的画、仍灰着：那台也拒写）。
+ */
+function placeRows(origin: Origin): { rows: HTMLElement[]; fill: (prefs: unknown, writable: boolean) => void } {
+  const specs: { which: keyof TabPlaces; label: string; tip: string; role: string }[] = [
+    { which: "childTab", label: copyText("settings.machine.childTab"), tip: copyText("settings.machine.childTabTip"), role: "child-tab" },
+    { which: "bgTab", label: copyText("settings.machine.bgTab"), tip: copyText("settings.machine.bgTabTip"), role: "bg-tab" },
+  ];
+  let places: TabPlaces = placesOf(null);
+  let writable = false;
+  const paints: (() => void)[] = [];
+  const rows = specs.map((sp) => {
+    const err = document.createElement("div");
+    err.className = "settings-row-error";
+    err.hidden = true;
+    const help = document.createElement("div");
+    help.append(err);
+    const slot = document.createElement("div");
+    const paint = (): void => {
+      const seg = segmented<TabPlace>({
+        items: [
+          { key: "show", label: copyText("settings.machine.tabShow") },
+          { key: "hide", label: copyText("settings.machine.tabHide") },
+        ],
+        current: places[sp.which],
+        label: sp.label,
+        onChange: (to) => {
+          if (!writable) return paint();
+          err.hidden = true;
+          setPlace(origin, sp.which, to).then(
+            (p) => {
+              places = p;
+              paints.forEach((f) => f());
+              applied();
+            },
+            (e: unknown) => {
+              paint();
+              sayWithDetail(err, copyText("settings.behavior.saveFailedLine", { why: String(e) }), detailOf(e));
+              err.hidden = false;
+            },
+          );
+        },
+      });
+      seg.setAttribute("aria-disabled", String(!writable));
+      slot.replaceChildren(seg);
+    };
+    paints.push(paint);
+    paint();
+    const row = ccRow(sp.label, help, [slot]);
+    row.dataset.role = sp.role;
+    const label = row.querySelector<HTMLElement>(".machine-cc-label");
+    if (label) attachTooltip(label, sp.tip);
+    return row;
+  });
+  return {
+    rows,
+    fill: (prefs, w) => {
+      places = placesOf(prefs);
+      writable = w;
+      paints.forEach((f) => f());
+    },
+  };
+}
+
+/** 那台那几格（`name` ＝ 那台在界面上的名字，说明里用）。建好不问；`load()` 才问那台（机器页第一次可见时宿主调）。 */
 export function machineLaunchRows(
   origin: Origin,
   name: string,
@@ -121,8 +191,12 @@ export function machineLaunchRows(
   tmuxRow.dataset.role = "resume-tmux";
   tmuxRow.append(sw.root, tmuxErr);
 
+  // ── 子会话 · 分身会话进不进标签栏 ──
+  const place = placeRows(origin);
+
   // ── 问那台 ──
   const fill = (r: PrefsReply, p: string[]): void => {
+    place.fill(r.prefs, r.state !== "unreadable");
     presets = p;
     saved = r.prefs.launchers[DEFAULT_AGENT] ?? "";
     sel.set(saved, presets);
@@ -158,5 +232,5 @@ export function machineLaunchRows(
         },
       );
   };
-  return { rows: [launchRow, tmuxRow], load };
+  return { rows: [launchRow, tmuxRow, ...place.rows], load };
 }

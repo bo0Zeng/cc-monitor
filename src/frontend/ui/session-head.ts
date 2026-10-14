@@ -11,6 +11,9 @@
  * 「看它的终端」开底部抽屉的终端页（会话还有终端可去才出）。「显示 ▾」是两个流开关（过程默认展开 · 显示系统注入）合成的一颗。
  * 在新窗口打开 · 账号 · 固定 · 分组 · 恢复 · 关闭标签页那几颗借「⋯」那份菜单的同一项（字、能不能点、点了做什么都是那一项）。
  *
+ * 标题后面按会话多几颗小标：被隐藏的 `已隐藏`（悬停是后端那一句）· 它是别的会话起的 `由 X 启动`（点了切回主会话）·
+ * 它起过子会话 `子会话 N`（点开列子会话：名字 · 状态点 · 已隐藏标，点一行切过去）。血缘两格读会话事实（`history-facts`），界面不判。
+ *
  * 只排版：一句话怎么写从 `session-face.ts` 取；做事的都交宿主（`TabManager` 那几条）。
  */
 import type { Tab } from "./tab-model";
@@ -24,6 +27,7 @@ import { statusDot, setDot } from "./kit/status-dot";
 import { attachTooltip } from "./kit/tooltip";
 import { button } from "./kit/button";
 import { dotOf, fullTitle, machineOf, stateLine, stateWord } from "./session-face";
+import { tag } from "./kit/badge";
 import { openMenu, type MenuItem } from "./kit/menu";
 import { closePopover, openPopover, popoverOpenOn } from "./kit/popover";
 import { undoToast } from "./kit/toast";
@@ -63,6 +67,10 @@ export interface SessionHeadHost {
   menuItem(sid: string, id: HeadMenuId): MenuItem | null;
   /** 两个流开关（「显示 ▾」的下拉与「⋯」里同一份）。 */
   displayItems(): MenuItem[];
+  /** 这个会话在不在栏上（标签页或「已隐藏」那一行里）：血缘那两颗只对在的切得过去。 */
+  tabOf(sid: string): Tab | null;
+  /** 切过去（同点标签页；在「已隐藏」里的那一行跟着展开）。 */
+  switchTo(sid: string): void;
 }
 
 /**
@@ -104,6 +112,8 @@ export class SessionHead {
   private readonly dir: HTMLSpanElement;
   private readonly state: HTMLSpanElement;
   private readonly plan: HTMLSpanElement;
+  /** 已隐藏 · 由 X 启动 · 子会话 N 那几颗。 */
+  private readonly kin: HTMLSpanElement;
   private readonly extra: HTMLSpanElement;
   private readonly acts: HTMLSpanElement;
   private drawn: string | null = null;
@@ -137,6 +147,8 @@ export class SessionHead {
     this.state.className = s.shState;
     this.plan = document.createElement("span");
     this.plan.className = s.shPlanSlot;
+    this.kin = document.createElement("span");
+    this.kin.className = s.shPlanSlot;
     const sp = document.createElement("span");
     sp.className = s.shSp;
     this.extra = document.createElement("span");
@@ -149,7 +161,7 @@ export class SessionHead {
       if (t) this.host.more(b, t.sessionId, this.moreExtra());
     });
     this.moreBtn.dataset.head = "more";
-    this.el.append(this.dot, this.title, this.where, this.dir, this.state, this.plan, sp, this.extra, this.acts);
+    this.el.append(this.dot, this.title, this.where, this.dir, this.state, this.plan, this.kin, sp, this.extra, this.acts);
     this.el.style.display = "none";
     // 窗口宽窄变了 ⇒ 重新看放不放得下（收进去的变宽就回来）。
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.fit()).observe(this.el);
@@ -324,7 +336,8 @@ export class SessionHead {
     const term = hasTerminal(tab.state);
     const extra = canResume(tab.state) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
     const mark = this.host.planMark(tab);
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, tab.state.liveness].join("\u0000");
+    const kin = this.kinKey(tab);
+    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, tab.state.liveness, kin].join("\u0000");
     if (drawn === this.drawn) return;
     this.drawn = drawn;
     this.el.style.display = "";
@@ -355,6 +368,7 @@ export class SessionHead {
       b.addEventListener("click", () => mark.open());
       this.plan.replaceChildren(b);
     } else this.plan.replaceChildren();
+    this.kin.replaceChildren(...this.kinChips(tab));
     // 右边一排：照用户排的那几颗，本会话用不上的不出；最右「⋯」。和上次画的一样 ⇒ 不换。
     const built = this.buttons().map((id) => this.build(id, tab, extra)).filter((b): b is Built => b !== null);
     const actsDrawn = [sid, ...built.map((b) => `${b.id}:${b.el.getAttribute("aria-label")}:${b.el.getAttribute("aria-disabled") ?? ""}:${b.el.getAttribute("aria-pressed") ?? ""}`)].join("\u0000");
@@ -364,6 +378,59 @@ export class SessionHead {
     for (const b of built) b.el.dataset.head = b.id;
     this.acts.replaceChildren(...built.map((b) => b.el), this.moreBtn);
     this.fit();
+  }
+
+  /** 隐藏那一格与血缘两格此刻的样子（变了才重画）；子会话在不在栏上也算（切不切得过去跟着变）。 */
+  private kinKey(tab: Tab): string {
+    const lin = tab.lineage;
+    const p = lin?.startedBy ?? null;
+    const kids = (lin?.children ?? []).map((c) => `${c.sid}:${c.title}:${c.live ? 1 : 0}:${c.hidden?.said ?? ""}:${this.host.tabOf(c.sid) ? 1 : 0}`).join(",");
+    return [tab.hidden?.said ?? "", p ? `${p.sid}:${p.title}:${this.host.tabOf(p.sid) ? 1 : 0}` : "", kids].join("\u0001");
+  }
+
+  /** 已隐藏（悬停那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话）。 */
+  private kinChips(tab: Tab): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    if (tab.hidden) {
+      const t = tag(copyText("sessionHead.kin.hidden"));
+      t.dataset.head = "hidden";
+      attachTooltip(t, () => tab.hidden?.said ?? null);
+      out.push(t);
+    }
+    const chip = (role: string, text: string, onClick: ((b: HTMLButtonElement) => void) | null): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = s.shPlan;
+      b.dataset.head = role;
+      b.textContent = text;
+      if (onClick) b.addEventListener("click", () => onClick(b));
+      else b.setAttribute("aria-disabled", "true");
+      return b;
+    };
+    const parent = tab.lineage?.startedBy ?? null;
+    if (parent) {
+      const there = this.host.tabOf(parent.sid) !== null;
+      out.push(chip("parent", copyText("sessionHead.kin.parent", { title: parent.title }), there ? () => this.host.switchTo(parent.sid) : null));
+    }
+    const kids = tab.lineage?.children ?? [];
+    if (kids.length > 0) out.push(chip("children", copyText("sessionHead.kin.children", { n: kids.length }), (b) => this.openChildren(b, tab)));
+    return out;
+  }
+
+  /** 「子会话 N」点开：每个子会话一行（状态点 · 名字 · 已隐藏标）；在栏上的点一行切过去，不在的灰着。 */
+  private openChildren(anchor: HTMLElement, tab: Tab): void {
+    const items: MenuItem[] = (tab.lineage?.children ?? []).map((c) => {
+      const t = this.host.tabOf(c.sid);
+      return {
+        id: c.sid,
+        label: c.title,
+        avatar: t ? statusDot(dotOf(t), stateWord(t), "compact") : statusDot(c.live ? "running" : "ended", c.live ? copyText("sessionFace.dot.running") : copyText("sessionState.ended.name"), "compact"),
+        detail: c.hidden ? copyText("sessionHead.kin.hidden") : undefined,
+        enabled: t !== null,
+        onClick: () => this.host.switchTo(c.sid),
+      };
+    });
+    openMenu({ el: anchor, align: "start" }, items, { label: copyText("sessionHead.kin.children", { n: items.length }) });
   }
 
   /** 「⋯」最上面一组（收进来的）与最后一组（两个流开关 ＋ 调整会话头按钮…）。 */

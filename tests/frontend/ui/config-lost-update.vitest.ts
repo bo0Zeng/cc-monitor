@@ -75,7 +75,6 @@ const COLS = [{ id: "c1", name: "组一" }];
 const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
-  showBgSessions: false,
   resumeCommandPresets: [],
   notifyTurnEnd: true,
   notifyNeeds: true,

@@ -1,8 +1,9 @@
 /**
  * `config.json` 的 `tabBar` 段 —— tab 栏里那些用户手写的真相（拖出来的顺序、固定、分组都重算不出来，要活过重启）。
  *
- * 三个键：`order`（顺序）· `pinned`（固定的 tab）· `groupOf`（每个 tab 自己的组 id，`tabBar.groupOf.<sid> = <组 id>`）。
- * 每个键只动自己：`writeSegKey` 是 order / pinned 唯一的写口（`tab-bar-state.vitest.ts` 各有一格盯着），
+ * 四个键：`order`（顺序）· `pinned`（固定的 tab）· `groupOf`（每个 tab 自己的组 id，`tabBar.groupOf.<sid> = <组 id>`）·
+ * `hiddenOpen`（栏底「已隐藏」那一行展开着没有，缺 ＝ 收着）。
+ * 每个键只动自己：`writeSegKey` 是 order / pinned / hiddenOpen 唯一的写口（`tab-bar-state.vitest.ts` 各有一格盯着），
  * groupOf 按 tab 一条路径写（[`groupOfEdit`] 是唯一的造法）—— 盘上没有「一个组的成员名单」。
  * 不并进 `tabCollections`：那一段已经稳了，动它只添迁移风险。
  */
@@ -17,7 +18,7 @@ const KEY = "tabBar";
  * 不做 try/catch：写失败要让调用方知道（调用方的形状是
  *   「先改内存再落盘，落盘失败只记日志」——日志由调用方打，不是这里吞掉）。
  */
-async function writeSegKey(field: "order" | "pinned", value: unknown): Promise<void> {
+async function writeSegKey(field: "order" | "pinned" | "hiddenOpen", value: unknown): Promise<void> {
   await patchConfig([setAt([KEY, field], value)]);
 }
 
@@ -25,7 +26,7 @@ async function writeSegKey(field: "order" | "pinned", value: unknown): Promise<v
  * 段里两个键唯一的读口。段不是对象（数组 / 字符串 / 缺失）⇒ 回 `undefined`，
  * 由各自的 `sanitize*` 把它变成空表。
  */
-async function readSegKey(field: "order" | "pinned" | "groupOf"): Promise<unknown> {
+async function readSegKey(field: "order" | "pinned" | "groupOf" | "hiddenOpen"): Promise<unknown> {
   const cfg = (await loadConfig()) as Record<string, unknown>;
   const seg = cfg[KEY];
   if (!seg || typeof seg !== "object" || Array.isArray(seg)) return undefined;
@@ -252,4 +253,21 @@ export async function getGroupOf(): Promise<Map<string, string>> {
  */
 export function groupOfEdit(sid: string, gid: string | null): ConfigEdit {
   return gid === null ? removeAt([KEY, "groupOf", sid]) : setAt([KEY, "groupOf", sid], gid);
+}
+
+// ===== 栏底「已隐藏」那一行收 / 展（`tabBar.hiddenOpen`）=====
+
+/** 读「已隐藏」那一行展开着没有：只认 `true`，别的（缺 · 认不出 · 读失败）⇒ 收着。 */
+export async function getHiddenOpen(): Promise<boolean> {
+  try {
+    return (await readSegKey("hiddenOpen")) === true;
+  } catch (e) {
+    console.warn("getHiddenOpen failed:", e);
+    return false;
+  }
+}
+
+/** 写「已隐藏」那一行收 / 展。**只动 `tabBar.hiddenOpen` 这一个键**。 */
+export async function setHiddenOpen(on: boolean): Promise<void> {
+  await writeSegKey("hiddenOpen", on);
 }

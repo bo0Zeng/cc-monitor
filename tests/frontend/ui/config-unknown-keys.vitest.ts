@@ -73,8 +73,8 @@ const sorted = (xs: readonly string[]): string[] => [...xs].sort();
  * 本工作区吃过这个亏（「恒等两侧同源会恒真」）。
  *
  * 这一份的来源是**现打的反向全扫**（2026-09-21）：`src/` 下每个 `import … from "./config"`
- * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。Rust 侧另读两个
- *（`showBgSessions` / `remote`），都已在列；`claudeDir` 第 7 批起只剩迁移那一段删它。
+ * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。Rust 侧另读一个
+ *（`remote`；`showBgSessions` 随「显示分身会话」开关整条删了，分身进不进标签栏改由各台偏好管），都已在列；`claudeDir` 第 7 批起只剩迁移那一段删它。
  */
 const CENSUS: readonly string[] = [
   "theme", // src/frontend/ui/theme.ts
@@ -91,7 +91,6 @@ const CENSUS: readonly string[] = [
   "contextLimits",
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──
   "bringMonitorToFrontOnUserActive",
-  "showBgSessions",
   "resumeCommand",
   "localResumeCommand",
   "terminal", // src/frontend/ui/settings/terminal-row.ts（壳开终端时只读）

@@ -10,6 +10,7 @@
  */
 import type { SessionFacts } from "./session-reads";
 import type { Tab } from "./tab-model";
+import { lineageOf, sameLineage } from "./session-hidden";
 
 /** 一份成品落下来之后，哪几样真变了（宿主据此只刷变了的那几块）。 */
 export interface FactsChange {
@@ -24,6 +25,8 @@ export interface FactsChange {
   needs: boolean;
   /** 悬停卡的那两样（没结果的调用 · 最后一句）变了。 */
   peek: boolean;
+  /** 血缘（由谁启动 · 子会话）变了。 */
+  lineage: boolean;
 }
 
 /** 后端的一份成品 ⇒ tab 上的几样（整份替换，不合并；项目目录后端还没读到 ⇒ 不动 tab 上那一份）。 */
@@ -55,5 +58,9 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.lastSay = f.lastSay;
   tab.retries = new Map(f.retries.map((r) => [r.id, r.outcome]));
 
-  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek };
+  const lin = lineageOf(f);
+  const lineage = tab.lineage === undefined || !sameLineage(tab.lineage, lin);
+  tab.lineage = lin;
+
+  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek, lineage };
 }

@@ -4451,6 +4451,18 @@
       "zh": "关闭标签页（{n}）",
       "args": ["n"]
     },
+    "tabBatch.menu.hide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "隐藏（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.unhide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "取消隐藏（{n}）",
+      "args": ["n"]
+    },
     "tabBatch.stop.line": {
       "kind": "body",
       "role": "片段",
@@ -4552,6 +4564,18 @@
       "kind": "body",
       "role": "片段",
       "zh": "不在分组",
+      "args": []
+    },
+    "tabBatch.why.hidden": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已隐藏",
+      "args": []
+    },
+    "tabBatch.why.notHidden": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未隐藏",
       "args": []
     },
     "tabBatch.why.noTmux": {
@@ -7880,6 +7904,43 @@
       "args": [],
       "limited": ["tmux"]
     },
+    "settings.machine.childTab": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "子会话",
+      "args": []
+    },
+    "settings.machine.childTabTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "在会话里用 ccm 启动的会话 · 默认进不进标签栏",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "settings.machine.bgTab": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "分身会话",
+      "args": []
+    },
+    "settings.machine.bgTabTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "Claude 在后台起的主会话副本 · 默认进不进标签栏",
+      "args": []
+    },
+    "settings.machine.tabShow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "显示",
+      "args": []
+    },
+    "settings.machine.tabHide": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "隐藏",
+      "args": []
+    },
     "settingsPanel.behavior.resumeInTmuxHelp": {
       "kind": "body",
       "role": "说明",
@@ -7889,18 +7950,6 @@
       "waive": {
         "C-W14": "说明开关的效果（恢复到 tmux 里），不是 tmux 缺失 / 启动失败那一族"
       }
-    },
-    "settingsPanel.behavior.showHiddenTasks": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "显示分身会话",
-      "args": []
-    },
-    "settingsPanel.behavior.showHiddenTasksHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "分身会话的标签页带层叠图标 · 重启 cc-monitor 后生效",
-      "args": []
     },
     "settingsPanel.behavior.autoFront": {
       "kind": "control",
@@ -8099,12 +8148,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "保存失败",
-      "args": []
-    },
-    "settingsPanel.behavior.hiddenTasks": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "显示分身会话",
       "args": []
     },
     "settingsPanel.open.partialFailed": {
@@ -11859,7 +11902,7 @@
     "rsDriftLedger.consequence.unknownSessionKind": {
       "kind": "body",
       "role": "说明",
-      "zh": "按分身会话算 · 关「显示分身会话」即隐藏",
+      "zh": "按分身会话算 · 进不进标签栏照「分身会话」设置",
       "args": []
     },
     "rsDriftLedger.consequence.unknownSessionStatus": {
@@ -23223,6 +23266,24 @@
       "zh": "调整会话头按钮…",
       "args": []
     },
+    "sessionHead.kin.hidden": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已隐藏",
+      "args": []
+    },
+    "sessionHead.kin.parent": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "由 {title} 启动",
+      "args": ["title"]
+    },
+    "sessionHead.kin.children": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "子会话 {n}",
+      "args": ["n"]
+    },
     "sessionHead.edit.remove": {
       "kind": "action",
       "role": "菜单项",
@@ -26811,6 +26872,60 @@
       "kind": "body",
       "role": "toast",
       "zh": "已取消固定「{title}」",
+      "args": ["title"]
+    },
+    "tabBar.hidden.row": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "已隐藏 {n}",
+      "args": ["n"]
+    },
+    "tabBar.hidden.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "不占标签页的活会话 · 历史与手机里照常可见",
+      "args": []
+    },
+    "tabBar.menu.hide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "隐藏",
+      "args": []
+    },
+    "tabBar.menu.unhide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "取消隐藏",
+      "args": []
+    },
+    "tabBar.unhide.ruleHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "不再按「{said}」隐藏",
+      "args": ["said"]
+    },
+    "tabBar.hide.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已隐藏「{title}」",
+      "args": ["title"]
+    },
+    "tabBar.hide.doneMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已隐藏 ×{n}",
+      "args": ["n"]
+    },
+    "tabBar.hide.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "隐藏失败 · {title}",
+      "args": ["title"]
+    },
+    "tabBar.unhide.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "取消隐藏失败 · {title}",
       "args": ["title"]
     },
     "beProfile.name.own": {

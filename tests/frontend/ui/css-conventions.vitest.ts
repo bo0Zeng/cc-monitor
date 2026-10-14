@@ -311,6 +311,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
   "src/frontend/ui/status-messages.ts::this.dot":
     "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
+  "src/frontend/ui/tab-hide.ts::tab":
+    "不是元素：`tab.hidden` 是会话的隐藏那一格（`Tab.hidden`，后端判好的 `{by, said}`），与 DOM 的 `hidden` 同名而已",
   "src/frontend/ui/tab-bar-drag.ts::line":
     "拖放的插入线 `line`（`s.dropLine`：fixed 定位、不写 display）—— 起拖时先收着，落点不画线（armed / 出栏 / 落在组头 / 压住）时收起",
   "src/frontend/ui/terminal-page.ts::this.followBox":
