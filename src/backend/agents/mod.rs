@@ -61,6 +61,7 @@
 //! 谁想把别处的直呼挪进来，当场红。
 
 use crate::platform::fs::Ro;
+pub(crate) use cmd_wire::needs::AskKind;
 use std::path::{Path, PathBuf};
 
 // 待答请求的成品（`needs.ask`）与选项写字（通用）。
@@ -223,19 +224,6 @@ pub(crate) struct AskIn {
     pub(crate) blocks_terminal: bool,
     /// 那一家交来的工具参数原样（答的时候适配层要它）。
     pub(crate) input: serde_json::Value,
-}
-
-/// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum AskKind {
-    #[serde(rename = "approve")]
-    Approve,
-    #[serde(rename = "answer")]
-    Question,
-    #[serde(rename = "plan")]
-    Plan,
 }
 
 /// 「允许，且以后不再问」那一条建议。

@@ -320,7 +320,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 任何会落盘、跨进程或上线的身份标识，必须 **opaque ＋ 稳定 ＋ 出生一次 ＋ 永不从名字 / 路径 / 位置算**。想不清就先别发，用外部已有的稳定 id 顶着（Claude Code 的 `sessionId`）。
 
-今天的持久身份全挂外部稳定 id：会话与历史注解按 `sessionId`（`history_annotations.rs::Table`）· `ps-registry` 按 pid。`origin`（`stream_source/config.rs` 的 `RemoteConfig.label`，空则回退 `host`）是用户可控的外部 id，只做结构字段与内存表的键，不当任何落盘登记表的主键；别把它换成从 IP / 路径现算的值。会话 / 后端登记表的主键不许拿 tmux 会话名 · 主机名 · 路径。
+今天的持久身份全挂外部稳定 id：会话与历史注解按 `sessionId`（`cmd-wire/src/listing.rs::Table`）· `ps-registry` 按 pid。`origin`（`stream_source/config.rs` 的 `RemoteConfig.label`，空则回退 `host`）是用户可控的外部 id，只做结构字段与内存表的键，不当任何落盘登记表的主键；别把它换成从 IP / 路径现算的值。会话 / 后端登记表的主键不许拿 tmux 会话名 · 主机名 · 路径。
 
 **为什么是单向门**：id 一旦被别处引用或落盘就锁死；拿会变的值当键（Claude Code 自己的 `enc(cwd)`）一搬目录历史全对不上。
 

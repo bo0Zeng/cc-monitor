@@ -292,7 +292,7 @@ pub fn close(h: i64) {
 
 /// 一问一答的结局 ⇒ 交 Kotlin 的那一行：`{call, ok:true, data}` · `{call, ok:false, code, message, detail, data?}` ·
 /// `{call, timeout:true}` · `{call, cancelled:true}` · `{call, down:true}` · `{call, unreadable:true, detail}`。
-/// 成了的回包按两端同一份线上类型解（`cmd_wire::session::decode_reply`）：解得开 ⇒ `data` 是按类型重写的那一份；
+/// 成了的回包按两端同一份线上类型解（`cmd_wire::replies::decode_reply`）：解得开 ⇒ `data` 是按类型重写的那一份；
 /// 形状对不上 ⇒ `unreadable`（serde 那一句进详情）；回包类型还不住那里的命令 ⇒ 原样。事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）
 /// 经通信层那一份分流器说成一句（`route_call_error`），照失败交。
 pub fn reply_json(
@@ -305,7 +305,7 @@ pub fn reply_json(
     let v = match &got {
         Ok(data) => {
             let data = data.clone().unwrap_or(serde_json::Value::Null);
-            match cmd_wire::session::decode_reply(cmd, data.clone()) {
+            match cmd_wire::replies::decode_reply(cmd, data.clone()) {
                 None => serde_json::json!({ "call": id, "ok": true, "data": data }),
                 Some(Ok(typed)) => serde_json::json!({ "call": id, "ok": true, "data": typed }),
                 Some(Err(why)) => serde_json::json!({
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn every_outcome_lands_as_the_line_kotlin_reads() {
         let j = |r: Result<Option<serde_json::Value>, CallError>| -> serde_json::Value {
-            serde_json::from_str(&reply_json(7, "box", "history-list", r)).expect("JSON")
+            serde_json::from_str(&reply_json(7, "box", "history-facts", r)).expect("JSON")
         };
         assert_eq!(
             j(Ok(Some(serde_json::json!({"a": 1})))),
@@ -399,7 +399,7 @@ mod tests {
             .unwrap()
             .starts_with("history-tail: "));
         let raw = serde_json::json!({"anything": [1, 2]});
-        assert_eq!(j("history-list", raw.clone())["data"], raw);
+        assert_eq!(j("history-facts", raw.clone())["data"], raw);
     }
 
     /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样 · 断了只是一个记号。

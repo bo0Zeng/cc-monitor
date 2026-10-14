@@ -41,6 +41,7 @@ use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
 };
+pub(crate) use cmd_wire::needs::NeedsRow;
 use copy_core::copy_text;
 use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use std::path::{Path, PathBuf};
@@ -781,15 +782,6 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
             (sid, Doing { activity, needs })
         })
         .collect()
-}
-
-/// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NeedsRow {
-    pub(crate) sid: String,
-    pub(crate) needs: super::facts_query::Needs,
 }
 
 /// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），

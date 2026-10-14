@@ -8,6 +8,7 @@
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
 use crate::observe::record_page::{ReadRow, RecordLine, RunRow};
 use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx, NoArgs};
+pub(crate) use cmd_wire::needs::NeedsList;
 use std::path::Path;
 
 use super::read_face::{
@@ -609,15 +610,6 @@ pub(crate) fn record_at(
 }
 
 // ───────────────────────── sessions-needs ─────────────────────────
-
-/// `sessions-needs` 的回包：这台上需手动的会话，先答的在前。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NeedsList {
-    /// 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
-    pub(crate) waiting: Vec<crate::observe::accounts_query::NeedsRow>,
-}
 
 codes! {
     /// `sessions-needs` 自己没有别的码。

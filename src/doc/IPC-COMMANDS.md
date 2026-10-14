@@ -10946,33 +10946,6 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 ### `history-list` 每行与全文搜索每行的「这一行能做什么」
 
-#### `Can`
-
-`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（`can_of` 的成品）：闭集的词与两个开关。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `resume` | CanResume | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
-| `accounts` | bool | 恢复时能不能选号 |
-| `fork` | bool | 能不能从某一轮分叉 |
-| `delete` | CanDelete | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
-
-#### `CanResume`
-
-`Can::resume` 的三个词。
-
-- `yes`
-- `switch`
-- `bg`
-
-#### `CanDelete`
-
-`Can::delete` 的三个词。
-
-- `yes`
-- `live`
-- `unsure`
-
 ### 骨架索引的一行（`history-index` 的 `rows` 装运之前）
 
 #### `IndexRow`

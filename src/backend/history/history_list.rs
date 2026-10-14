@@ -20,15 +20,18 @@
 //! 「不知道」不装成已知：判不了活（合成历史没有 pidfile）⇒ `isLive: null`、那一组 `hasLive: null`；
 //! 注解读不到 / 读不懂 ⇒ 行照出（星标 · 隐藏按没有算），`notice` 说一句为什么。
 
+pub(crate) use cmd_wire::listing::{
+    FailedDir, HistoryGroup, HistoryList, HistoryListReply, HistoryRow, Listing, RawRow,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::common::cells::Words;
 use crate::history::history_annotations::{Loaded, Table};
-use crate::history::listing::{can_of, status_of, Can};
+use crate::history::listing::{can_of, status_of};
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
@@ -42,198 +45,6 @@ static REMOTE_CACHE: std::sync::Mutex<BTreeMap<String, Listing>> =
 
 /// 这台此刻活着的会话（pidfile 源头）。
 pub(crate) struct LiveSet(pub(crate) BTreeSet<String>);
-
-/// 一台自己的清单（`raw` 那一形，也是远端那一支带回来的样子）：行 · 读不了的记录目录 · 那台自己的注解（或读不到它的那一句）。
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryListing"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Listing {
-    pub(crate) rows: Vec<RawRow>,
-    pub(crate) failed: Vec<FailedDir>,
-    /// 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) annotations: Option<Table>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) annotations_notice: Option<String>,
-}
-
-/// 读不了的一个记录目录。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryFailedDir"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct FailedDir {
-    pub(crate) project_dir: String,
-    pub(crate) error: String,
-}
-
-/// 清单里的一行（这台判过活、注解格先按没有填）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "HistoryRawRow"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct RawRow {
-    pub(crate) agent: String,
-    pub(crate) session_id: String,
-    pub(crate) project_path: String,
-    pub(crate) project_name: String,
-    pub(crate) ai_title: Option<String>,
-    pub(crate) first_user_excerpt: String,
-    /// 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
-    pub(crate) title: String,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) started_at: i64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) updated_at: i64,
-    pub(crate) jsonl_path: String,
-    /// 判不了活（合成历史没有 pidfile）⇒ `null`。
-    pub(crate) is_live: Option<bool>,
-    pub(crate) message_count_approx: u32,
-    pub(crate) is_bg: bool,
-    pub(crate) starred: bool,
-    pub(crate) custom_title: Option<String>,
-    pub(crate) hidden: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) forked_from_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) forked_from_message_uuid: Option<String>,
-    /// 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
-    pub(crate) project_dir: String,
-    /// 分组键：哪一家 ＋ 真实目录。
-    pub(crate) group: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) last_account: Option<String>,
-}
-
-/// `history-list` 的成品。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryList {
-    pub(crate) rows: Vec<HistoryRow>,
-    pub(crate) groups: Vec<HistoryGroup>,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) total: usize,
-    pub(crate) truncated: bool,
-    /// 注解没并上的那一句；并上了 ⇒ `null`。
-    pub(crate) notice: Option<String>,
-}
-
-/// 成品的一行。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct HistoryRow {
-    pub(crate) agent: String,
-    pub(crate) session_id: String,
-    pub(crate) project_path: String,
-    pub(crate) project_name: String,
-    pub(crate) ai_title: Option<String>,
-    pub(crate) first_user_excerpt: String,
-    pub(crate) title: String,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) started_at: i64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) updated_at: i64,
-    pub(crate) jsonl_path: String,
-    pub(crate) message_count_approx: u32,
-    pub(crate) is_bg: bool,
-    pub(crate) starred: bool,
-    pub(crate) custom_title: Option<String>,
-    pub(crate) hidden: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) forked_from_session_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) forked_from_message_uuid: Option<String>,
-    pub(crate) project_dir: String,
-    pub(crate) group: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) last_account: Option<String>,
-    /// 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
-    pub(crate) label: Words,
-    /// 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
-    pub(crate) untitled: bool,
-    /// `live` · `ended` · `unknown`（活不活只出这一格）。
-    #[cfg_attr(test, ts(type = "\"live\" | \"ended\" | \"unknown\""))]
-    pub(crate) status: &'static str,
-    pub(crate) can: Can,
-    /// 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
-    pub(crate) agent_tag: Option<Words>,
-    /// 被筛掉、只为挂住分叉子会话才带上的父会话（界面淡显）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "true"))]
-    pub(crate) context: Option<bool>,
-    /// 排序键（`activity` ⇒ 最后活动，`created` ⇒ 开始；毫秒）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) at: i64,
-    pub(crate) at_text: Words,
-    pub(crate) section_text: Words,
-    pub(crate) span_text: Words,
-    /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
-    pub(crate) origin: Option<cmd_wire::Machine>,
-}
-
-/// 按项目看时的一组。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct HistoryGroup {
-    pub(crate) key: String,
-    pub(crate) agent: String,
-    pub(crate) project_name: String,
-    pub(crate) project_path: String,
-    pub(crate) project_dir: String,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) count: u64,
-    /// 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
-    pub(crate) has_live: Option<bool>,
-    pub(crate) starred: bool,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) last_activity: i64,
-    /// 几台的组并成一列时按它（大的在前）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) order: i64,
-    /// 读不了的那个记录目录：原因。
-    pub(crate) failed: Option<String>,
-    /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
-    pub(crate) origin: Option<cmd_wire::Machine>,
-}
 
 /// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
 pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
@@ -501,16 +312,6 @@ pub(crate) struct HistoryListReq {
     pub(crate) limit: Option<u64>,
 }
 
-/// `history-list` 的回包：`raw` ⇒ 这台自己那份清单；平时 ⇒ 并好 · 筛好 · 排好的成品。线上不带标签（两形的键不重：成品有 `groups`）。
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(untagged)]
-pub(crate) enum HistoryListReply {
-    Listing(Listing),
-    List(HistoryList),
-}
-
 crate::stream::inbound::typed::codes! {
     /// `history-list` 的码。
     pub(crate) enum HistoryListErr {
@@ -663,7 +464,7 @@ fn row_of(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> H
         agent_tag: agent_tag(&r.agent).map(Words::from),
         label: Words(f.label),
         untitled: f.untitled,
-        status: f.status,
+        status: f.status.to_string(),
         context: context.then_some(true),
         at,
         at_text,
@@ -807,7 +608,7 @@ fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
         });
         g.count += 1;
         // 有在跑的：确定有一个就够；有答不了的就不许说「都没在跑」（同项目清单）。
-        match v.status {
+        match v.status.as_str() {
             "live" => g.has_live = Some(true),
             "unknown" if g.has_live != Some(true) => g.has_live = None,
             _ => {}
@@ -877,7 +678,7 @@ pub(crate) fn specimen() -> HistoryList {
             last_account: Some(s("a")),
             label: w("c"),
             untitled: false,
-            status: "ended",
+            status: "ended".to_string(),
             can: can_of("agent", "ended", false),
             agent_tag: Some(w("g")),
             context: Some(true),
