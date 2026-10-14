@@ -1013,7 +1013,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// 入参多键 ⇒ bad_args，assets-sync 只给 origin 就查可达表），hello 带的形状指纹表跟着变。
 /// stream-watch 多 branch（要哪几个会话的主线外清单、手上已有前几条 ＋ 摘要 ⇒ 只补缺的那一截；不报 ⇒ 收不到主线外清单），
 /// session_branch 多 sum；子命令集与形状指纹表不变。
-pub const BUILD_ID: &str = "p10m-typed-assets";
+///
+/// p10n-cut8-oneway：子命令集少 --session-interrupts（子命令与通道各一，没人调了）；同名类型只许一个出处、
+/// 删 10 处 ts(as = "String")（换成 Origin）、文件窗口剩下那几条读侧请求换 typed ⇒ hello 带的形状指纹表跟着变；
+/// hello 里「撤不动」名单只列还不是 typed 的那几条。last-seen-read 按种类核存档（旧版存下的读回来算读不懂，
+/// 再连上一次才有上次值），last-seen-write 形状不对 ⇒ bad_args。功能之间只许单向（只搬家、改引用方向，线上形不变）。
+pub const BUILD_ID: &str = "p10n-cut8-oneway";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
