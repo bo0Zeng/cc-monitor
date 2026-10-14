@@ -845,6 +845,7 @@ pub fn run() {
             app_restart::restart_app,
             desktop_notify::notify_desktop,
             clipboard::clipboard_write,
+            clipboard::clipboard_read,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。

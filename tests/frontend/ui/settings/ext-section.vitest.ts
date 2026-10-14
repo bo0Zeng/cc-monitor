@@ -81,6 +81,8 @@ const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t
 
 /** 各台 `mcp-read` 答什么（按 origin；没写 ⇒ 空表；`Error` ⇒ 那一问没成）。 */
 let mcpAnswers: Record<string, unknown> = {};
+/** 各台 `manual-list` 答什么（按 origin；没写 ⇒ 空清单）。 */
+let manualAnswers: Record<string, unknown> = {};
 
 /** 按命令名答（`ext-list` 依次答给定的几份）。 */
 function backend(
@@ -104,6 +106,12 @@ function backend(
         return chanReply({ note: (chanArgsJson(a) as { text: string }).text || null });
       case "hooks-diag":
         return chanReply(hooks(a.origin));
+      case "manual-list":
+        return chanReply(manualAnswers[a.origin] ?? { items: [] });
+      case "login-start":
+        return chanReply({ job: "job-1", url: "https://login.example/x", paste: "redirectUrl", auto: false });
+      case "login-cancel":
+        return chanReply({ was: true });
       case "mcp-read": {
         const got = mcpAnswers[a.origin] ?? { entries: [], dirs: [], problems: [] };
         if (got instanceof Error) throw got;
@@ -514,12 +522,14 @@ export function comparesFingerprints(src: string): string[] {
 }
 
 // 要求：MCP 状态稿甲 1（每台那个点右上角一个小标：黄 = 需登录 · 红 = 断开；没小标只说「装了」；图例补两项；
-// 停用的不画——停用按项目记，一格一台说不清是哪个项目）与甲 2（抽屉里那台下面一行：需登录那一句 ＋［去登录］复制那条命令、toast；
+// 停用的不画——停用按项目记，一格一台说不清是哪个项目）与甲 2（抽屉里那台下面一行：需登录那一句 ＋［登录…］开登录抽屉（稿 `需手动与登录.md` §2 别的入口；
+// 原来那颗「去登录 · 复制 /mcp 去会话里粘」作废）；
 // 断开那一句 ＋ 原话 ＋［复制详情］；两种都没有 ⇒ 不画）。字与哪一种都是那台后端 `mcp-read` 写好的，界面照抄。
 describe("MCP：每台的小标与抽屉那一行", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     mcpAnswers = {};
+    manualAnswers = {};
   });
   const both = cell("same", [place(user, "same")]);
   const mcpList = () => ({ machines, problems: [], rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
@@ -565,25 +575,36 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(marks(t, "tracker").map(([m]) => m)).toEqual(["ext-dot-mark is-login", null]);
   });
 
-  it("抽屉：需登录那一句 ＋［去登录］（复制那条命令、toast，不跳窗）；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
+  it("★ 抽屉：需登录那一句 ＋［登录…］（那台 manual-list 里同名同范围那一项的解法，开登录抽屉、交它的 fix.args）；不复制 /mcp；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
     answers();
+    const args = { kind: "mcp", agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
+    manualAnswers = {
+      "<local>": {
+        items: [
+          { kind: "mcpLogin", account: "acct-a", server: "tracker", scope: "user", said: "核心·MCP tracker 需登录", fix: { command: "login-start", args } },
+          { kind: "mcpLogin", account: "acct-a", server: "other", scope: "user", said: "核心·别的", fix: { command: "login-start", args: { ...args, server: "other" } } },
+        ],
+      },
+    };
     const s = await page([mcpList()]);
     open(s, "mcp/tracker");
     const [mine, theirs] = machineLines(s);
     expect(mine.querySelector(".ext-mcp.is-login .ext-mcp-said")?.textContent).toBe(login.said);
-    expect(mine.querySelector(".ext-mcp.is-login .settings-hint")?.textContent).toBe(copyText("extPage.mcp.loginHint", { cmd: "/mcp", name: "tracker" }));
     expect(mine.querySelector(".ext-mcp.is-fail")).toBeNull();
     expect(theirs.querySelector(".ext-mcp.is-fail .ext-mcp-said")?.textContent).toBe(failed.said);
     expect(theirs.querySelector(".ext-mcp-raw")?.textContent).toBe(failed.detail);
     expect(theirs.querySelector('.ext-mcp.is-fail [data-part="copy-detail"]')).not.toBeNull();
     expect(theirs.querySelector(".ext-mcp.is-login")).toBeNull();
-    const go = mine.querySelector<HTMLButtonElement>('[data-action="mcp-login"]')!;
-    expect(go.textContent).toBe(copyText("extPage.mcp.login"));
+    const go = [...mine.querySelectorAll<HTMLButtonElement>('[data-action="mcp-login"]')];
+    expect(go.map((b) => b.textContent), "同名同范围那一项一颗").toEqual([copyText("newSession.account.login")]);
     invokeMock.mockClear();
-    go.click();
+    go[0].click();
     await settle();
-    expect(invokeMock.mock.calls.filter(([c]) => c === "clipboard_write").map(([, a]) => a)).toEqual([{ text: "/mcp" }]);
-    expect(document.querySelector("#kit-toast-stack")?.textContent).toContain(copyText("extPage.mcp.copied", { cmd: "/mcp" }));
+    expect(ops().filter(([, op]) => op === "login-start")).toEqual([["<local>", "login-start", { ...args, browserHere: true }]]);
+    expect(invokeMock.mock.calls.filter(([c]) => c === "clipboard_write"), "不再复制 /mcp").toEqual([]);
+    expect(document.querySelector("aside[data-login-kind]")?.getAttribute("aria-label")).toBe(copyText("login.sheet.mcp"));
+    document.querySelector<HTMLButtonElement>('aside[data-login-kind] [data-action="login-bottom"]')!.click();
+    await settle();
   });
 
   it("后台重读回来变了：只重建 MCP 那几行（skill 那一行还是原来那个元素），抽屉不关、换成新的字", async () => {

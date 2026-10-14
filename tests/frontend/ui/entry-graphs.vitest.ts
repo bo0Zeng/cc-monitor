@@ -757,6 +757,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
   "src/frontend/ui/views/agent-window.module.css": { stacked: false, why: "agent 窗口（`views/agent-window.ts`）：标题区 · 说明 · 小片 · 结束线只挂自己的哈希类；滚动容器挂全局 `.stream`，不叠这些类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
+  "src/frontend/ui/needs-panel.module.css": { stacked: false, why: "「需手动」浮层里的那几行（`needs-panel.ts`）：只挂自己的哈希类（外框是 kit 浮层，按钮 · 状态点 · 图标是 kit 的）" },
+  "src/frontend/ui/login-drawer.module.css": { stacked: false, why: "登录抽屉的内容（`login-drawer.ts`）：只挂自己的哈希类（外框是 kit 抽屉，按钮 · 输入框 · 红条是 kit 的，输入框包在本文件的一格里）" },
   "src/frontend/ui/answer-block.module.css": { stacked: false, why: "答题块（`answer-block.ts`）：只挂自己的哈希类（按钮是 kit 的，数字键那一格按属性认、不叠类）" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },

@@ -381,7 +381,7 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
 });
 
 describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那几个", () => {
-  it("建 TabBarView：手势五个在 barEl 上（点 · 右键 · 按下 · 列表键按下 / 松开）、悬停两组（卡 · 行尾动作）各四个在列表上、栏顶「刷新」五个 ·「需手动」菜单进出两个；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
+  it("建 TabBarView：手势五个在 barEl 上（点 · 右键 · 按下 · 列表键按下 / 松开）、悬停两组（卡 · 行尾动作）各四个在列表上、栏顶「刷新」五个（「需手动」悬停菜单那进出两个随它并进点开的浮层删了）；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
     for (const m of [5, 40]) {
       const spy = vi.spyOn(EventTarget.prototype, "addEventListener");
       try {
@@ -390,8 +390,8 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那�
           spy.mock.calls.filter((_, i) => spy.mock.contexts[i] === el).map((c) => c[0] as string).sort();
         expect(on(r.bar), "手势：恰好五个委托").toEqual(["click", "contextmenu", "keydown", "keyup", "mousedown"]);
         expect(on(r.view.listEl), "悬停：卡与行尾动作两组委托").toEqual(["focusin", "focusin", "focusout", "focusout", "mouseout", "mouseout", "mouseover", "mouseover"]);
-        // 栏顶「刷新」一份悬停提示（五个）·「需手动」菜单的进 / 出两个（固定，不随 tab 数涨）。
-        expect(spy.mock.calls.length, "构造总数恒定").toBe(5 + 8 + 5 + 2);
+        // 栏顶「刷新」一份悬停提示（五个）（固定，不随 tab 数涨）；「需手动」点开浮层走栏上那个点的委托，不另挂。
+        expect(spy.mock.calls.length, "构造总数恒定").toBe(5 + 8 + 5);
         spy.mockClear();
         for (let i = 0; i < m; i++) {
           r.store.tabs.set(`n${i}`, fakeTab(`n${i}`));

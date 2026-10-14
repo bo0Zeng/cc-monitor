@@ -13960,6 +13960,12 @@
       "zh": "登录账号",
       "args": []
     },
+    "login.sheet.mcp": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "登录 MCP 服务器",
+      "args": []
+    },
     "login.act.open": {
       "kind": "action",
       "role": "按钮",
@@ -13988,6 +13994,12 @@
       "kind": "action",
       "role": "按钮",
       "zh": "重新开始",
+      "args": []
+    },
+    "login.sheet.auto": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "登录页完成后自动结束",
       "args": []
     },
     "login.paste.code": {
@@ -19487,30 +19499,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "extPage.mcp.login": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "去登录",
-      "args": []
-    },
-    "extPage.mcp.loginHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "复制 {cmd} · 在该号的会话里粘贴、选中 {name} 登录",
-      "args": ["cmd", "name"]
-    },
-    "extPage.mcp.copied": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已复制 {cmd}",
-      "args": ["cmd"]
-    },
-    "extPage.mcp.copyFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "复制 {cmd} 失败",
-      "args": ["cmd"]
-    },
     "beExt.apply.changed": {
       "kind": "error",
       "role": "报错",
@@ -22877,6 +22865,24 @@
       "zh": "下一个需手动的会话",
       "args": []
     },
+    "needs.panel.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无需手动事项",
+      "args": []
+    },
+    "needs.panel.offline": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 离线 · 未计入",
+      "args": ["machine"]
+    },
+    "needs.panel.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} · 需手动清单无法读取",
+      "args": ["machine"]
+    },
     "tabBar.machineDown.body": {
       "kind": "body",
       "role": "说明",
@@ -25450,6 +25456,12 @@
       "zh": "重新登录…",
       "args": []
     },
+    "acctPage.menu.loginTerminal": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在终端里登录…",
+      "args": []
+    },
     "acctPage.menu.copyCommands": {
       "kind": "action",
       "role": "菜单项",
@@ -25823,12 +25835,6 @@
       "kind": "body",
       "role": "toast",
       "zh": "已新建 {name} · {machine}",
-      "args": ["name", "machine"]
-    },
-    "acctPage.new.doneLogin": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已新建 {name} · {machine} · 登录窗口已开",
       "args": ["name", "machine"]
     },
     "acctPage.new.failed": {
@@ -27972,6 +27978,12 @@
       "kind": "error",
       "role": "报错",
       "zh": "无法写入剪贴板",
+      "args": []
+    },
+    "rsShellCmd.clipboard.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法读取剪贴板",
       "args": []
     },
     "rsShellCmd.autoLaunch.readNoDir": {

@@ -114,6 +114,18 @@
   display: inline-flex;
 }
 
+/* 浮层开着：入口描一圈强调色。 */
+.tab-needs.is-open {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* 有哪台的需手动清单无法读取：数说不准 ⇒ 不带数字、虚线框、不涂琥珀。 */
+.tab-needs.is-unknown {
+  border-style: dashed;
+  border-color: var(--border-medium);
+  background: transparent;
+}
+
 /* 机器离线条（I5「过期」）：一台一条；连上了自己消失。 */
 .tab-machine-down {
   flex: none;

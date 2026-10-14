@@ -1,4 +1,4 @@
-//! 写系统剪贴板：全产品的复制（复制详情 · 复制命令 · 代码块复制 …）只这一个家（界面经 [`clipboard_write`]，`src/frontend/ui/clipboard.ts`）。
+//! 系统剪贴板：全产品的复制（复制详情 · 复制命令 · 代码块复制 …）与登录抽屉的［粘贴］只这一个家（界面经 [`clipboard_write`] · [`clipboard_read`]，`src/frontend/ui/clipboard.ts`）。
 //!
 //! 为什么不让网页自己写（`navigator.clipboard.writeText`）：WebView2 在系统剪贴板被别的程序占着（打开不关）时照样回成功，
 //! 界面就说「已复制」而剪贴板里还是旧的（WIN5 · 10-08 虚拟机现打）。这里走系统接口（arboard，各平台的做法在它里面），回的是真成败：
@@ -36,4 +36,29 @@ pub async fn clipboard_write(text: String) -> Result<(), Said> {
     }
     .await;
     r.map_err(|s| s.named("clipboard_write"))
+}
+
+/// 读系统剪贴板里的文字。读不出 ⇒ 下层原话。
+fn read_text() -> Result<String, String> {
+    let mut slot = BOARD.lock().unwrap_or_else(|p| p.into_inner());
+    let mut board = match slot.take() {
+        Some(b) => b,
+        None => arboard::Clipboard::new().map_err(|e| e.to_string())?,
+    };
+    let got = board.get_text().map_err(|e| e.to_string());
+    *slot = Some(board);
+    got
+}
+
+/// IPC：读系统剪贴板里的文字（登录抽屉［粘贴］：原样填进那一格，不判像不像）；读不出 ⇒「读不出剪贴板」＋ 原话。
+#[tauri::command]
+pub async fn clipboard_read() -> Result<String, Said> {
+    let r: Result<String, Said> = async move {
+        tokio::task::spawn_blocking(read_text)
+            .await
+            .map_err(Said::crashed)?
+            .map_err(|raw| Said::with_raw(copy_text("rsShellCmd.clipboard.readFailed", &[]), raw))
+    }
+    .await;
+    r.map_err(|s| s.named("clipboard_read"))
 }

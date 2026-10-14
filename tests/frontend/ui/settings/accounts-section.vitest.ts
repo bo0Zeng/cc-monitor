@@ -28,6 +28,7 @@ const accountsInit = vi.fn();
 const accountsRepair = vi.fn();
 const accountsAdd = vi.fn();
 const writeApikeyKey = vi.fn();
+const openLoginDrawer = vi.fn();
 
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: (...a: unknown[]) => emit(...a), listen: vi.fn() }));
@@ -71,6 +72,7 @@ vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
   accountsRepair: (...a: unknown[]) => accountsRepair(...a),
   accountsAdd: (...a: unknown[]) => accountsAdd(...a),
 }));
+vi.mock("../../../../src/frontend/ui/login-drawer", () => ({ openLoginDrawer: (...a: unknown[]) => openLoginDrawer(...a) }));
 vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (...a: unknown[]) => writeApikeyKey(...a) }));
 
 import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
@@ -154,7 +156,7 @@ beforeEach(() => {
   setCurrentMachine("devbox");
   confirmed = [];
   answer = true;
-  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey]) m.mockReset();
+  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey, openLoginDrawer]) m.mockReset();
   const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
@@ -378,6 +380,23 @@ describe("各态", () => {
 });
 
 describe("登录与指路", () => {
+  it("★ 需登录那一行［登录…］·「⋯ 重新登录…」都开登录抽屉（目标照这一行拼：那一家 ＋ 号名）；在终端里登录只在「⋯」里", async () => {
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
+    const el = await mount();
+    const go = rowOf(el, "team").querySelector<HTMLButtonElement>('[data-action="acct-login"]')!;
+    expect(go.textContent).toBe(copyText("newSession.account.login"));
+    expect(rowOf(el, "work").querySelector('[data-action="acct-login"]'), "已登录的那一行没有").toBeNull();
+    go.click();
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude-code", account: "team" } }));
+    expect(openLoginWindow, "不开终端").not.toHaveBeenCalled();
+    buttonNamed(rowOf(el, "work"), copyText("acctPage.row.more", { name: "work" })).click();
+    const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
+    expect(items.some((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal"))), "终端那条路留在「⋯」里").toBe(true);
+    items.find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude-code", account: "work" } }));
+    expect(openLoginWindow).not.toHaveBeenCalled();
+  });
+
   it("开不了终端窗口 ⇒ 那一行说「本机无法开终端窗口」＋［在 tmux 里登录］，点了用这个号起 tmux 会话", async () => {
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
@@ -385,7 +404,7 @@ describe("登录与指路", () => {
     const el = await mount();
     expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.notLoggedIn"));
     buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
-    const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!;
+    const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal")))!;
     relogin.click();
     await settle();
     expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team");
@@ -401,7 +420,7 @@ describe("登录与指路", () => {
     openLoginWindow.mockResolvedValue("noWindow");
     const el = await mount();
     buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
-    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
+    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal")))!.click();
     await settle();
     expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
     expect([...rowOf(el, "team").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
@@ -413,7 +432,7 @@ describe("登录与指路", () => {
     openLoginWindow.mockResolvedValue("opened");
     const el = await mount();
     buttonNamed(rowOf(el, "team"), copyText("acctPage.row.more", { name: "team" })).click();
-    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
+    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal")))!.click();
     await settle();
     expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
     expect(buttonNamed(rowOf(el, "team"), copyText("acctPage.login.reopen"))).toBeDefined();
@@ -466,8 +485,7 @@ describe("动作", () => {
     expect(buttonNamed(el, copyText("acctPage.verify.more"))).toBeDefined();
   });
 
-  it("新建订阅号：交给那台 accounts-add，建好就开登录窗口，那一行「等待终端登录…」", async () => {
-    openLoginWindow.mockResolvedValue("opened");
+  it("★ 新建订阅号：交给那台 accounts-add，建好就开登录抽屉（不开终端）", async () => {
     const el = await mount();
     buttonNamed(el, copyText("acctPage.head.new")).click();
     const name = el.querySelector<HTMLInputElement>(".acct-new input")!;
@@ -478,9 +496,9 @@ describe("动作", () => {
     buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
     expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "team", kind: "subscription" });
-    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team");
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude-code", account: "team" } }));
+    expect(openLoginWindow).not.toHaveBeenCalled();
     expect(el.querySelector(".acct-new")).toBeNull();
-    expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
   });
 
   it("★ 建好那一句的下一行照后端回的提示（如「已开的终端要重读别名」），界面不另拼", async () => {

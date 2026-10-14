@@ -4,7 +4,7 @@ import { resolve } from "node:path";
  * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
  * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
- * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
+ * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它开浮层（浮层本身见 `needs-panel.vitest.ts`）、`Ctrl+J` 跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
  * - 窗口标题与系统通知（消息流底部的答题块另见 `answer-block.vitest.ts`）；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
  *
@@ -242,7 +242,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
 }
 
 describe("标签页栏：「需手动 N」与机器离线条", () => {
-  it("★ 「需手动」只在有人等你时出、写数；点它跳等得最久的，再点跳下一个；行尾「等批准」换掉未读数", () => {
+  it("★ 「需手动」只在有人等你时出、写数；点它开浮层、点那一行跳过去；行尾「等批准」换掉未读数", () => {
     const r = bar([tab("a"), tab("b", { activity: waiting, needs: approve(NOW - 10_000), unread: 3 }), tab("c")]);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
@@ -250,7 +250,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const b = r.view.tabButtons.get("b")!;
     expect([b.needs.textContent, b.badge.textContent]).toEqual([copyText("beSession.needs.approve"), ""]);
     strip.click();
-    expect(r.host.answerAt, "需手动的入口 ⇒ 跳过去、焦点进答题块").toHaveBeenCalledWith("b");
+    document.querySelector<HTMLElement>('[data-row="session"]')!.click();
+    expect(r.host.answerAt, "浮层里那一行 ⇒ 跳过去、焦点进答题块").toHaveBeenCalledWith("b");
     expect(r.host.switchTo).not.toHaveBeenCalled();
     // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
     (r.store.tabs.get("b") as Tab).activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
@@ -259,24 +260,18 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     expect(b.badge.textContent).toBe("3");
   });
 
-  it("★ 悬停「需手动」500ms ⇒ kit 菜单：每个在等你的会话一行（等得最久的在前 · 状态 · 那一句作第二行）；点一行切过去；没到点就移开不开", () => {
+  it("★ 悬停「需手动」不再开菜单（并进点开的那个浮层）；`Ctrl+J` 照旧直接跳等得最久的、不开浮层", () => {
     vi.useFakeTimers();
     try {
       const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) }), tab("b", { activity: waiting, needs: approve(NOW - 60_000) })]);
       const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
       strip.dispatchEvent(new Event("mouseenter"));
-      vi.advanceTimersByTime(400);
-      strip.dispatchEvent(new Event("mouseleave"));
-      vi.advanceTimersByTime(400);
-      expect(document.querySelector('[role="menu"]'), "没到 500ms 就移开 ⇒ 不开").toBeNull();
-      strip.dispatchEvent(new Event("mouseenter"));
-      vi.advanceTimersByTime(500);
-      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')];
-      expect(rows.map((b) => b.querySelector('[data-part="label"]')?.textContent)).toEqual(["b", "a"]);
-      expect(rows[0].querySelector('[data-part="body"]')?.textContent).toBe("rm -rf build/");
-      rows[1].click();
-      expect(r.host.answerAt).toHaveBeenCalledWith("a");
-      expect(document.querySelector('[role="menu"]'), "选了一项就关").toBeNull();
+      vi.advanceTimersByTime(2_000);
+      expect(document.querySelector('[role="menu"]'), "悬停不开").toBeNull();
+      expect(document.querySelector('[role="dialog"]'), "悬停不开").toBeNull();
+      r.view.nextNeeds();
+      expect(r.host.answerAt).toHaveBeenCalledWith("b");
+      expect(document.querySelector('[role="dialog"]'), "Ctrl+J 不开浮层").toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -354,36 +349,38 @@ describe("「需手动」· 窗口标题 · 系统通知（消息流底部那一
 
     it("★ 标题：`cc-monitor · 需手动 N`，0 个时只有 `cc-monitor`；变了才写", () => {
       const r = rig(true);
-      r.w.observe([tab("a")]);
-      r.w.observe([tab("a")]);
-      r.w.observe([tab("a", { activity: waiting }), tab("b", { activity: waiting })]);
-      expect(r.titles).toEqual([copyText("needs.windowTitle.base"), copyText("needs.windowTitle.count", { n: 2 })]);
+      r.w.observe([tab("a")], 0);
+      r.w.observe([tab("a")], 0);
+      r.w.observe([tab("a", { activity: waiting }), tab("b", { activity: waiting })], 2);
+      // N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）：会话没变、会话外多了一项 ⇒ 标题跟着变。
+      r.w.observe([tab("a", { activity: waiting }), tab("b", { activity: waiting })], 3);
+      expect(r.titles).toEqual([copyText("needs.windowTitle.base"), copyText("needs.windowTitle.count", { n: 2 }), copyText("needs.windowTitle.count", { n: 3 })]);
     });
 
     it("★ 通知：一个会话**开始**等你、主窗口不在前台才发一条；种类没到先等它（不先发一条需手动）；同一次等待不重发", async () => {
       const r = rig(false);
       const t = tab("a", { activity: waiting });
-      r.w.observe([t]);
+      r.w.observe([t], 1);
       await vi.runAllTimersAsync();
       expect(r.sent, "种类还没到：先不发").toEqual([]);
       t.needs = approve();
-      r.w.observe([t]);
+      r.w.observe([t], 1);
       await vi.runAllTimersAsync();
-      r.w.observe([t]);
+      r.w.observe([t], 1);
       await vi.runAllTimersAsync();
       expect(r.sent).toEqual([[copyText("needs.notify.title", { title: "a", machine: copyText("sessionFace.machine.local"), kind: copyText("beSession.needs.approve") }), "rm -rf build/"]]);
       // 种类一直不来 ⇒ 等满 NOTIFY_WAIT_MS 照发活动信号带来的那个字（核心写的）。
       const old = tab("b", { activity: waiting });
-      r.w.observe([old]);
+      r.w.observe([old], 1);
       r.tick(NOTIFY_WAIT_MS);
-      r.w.observe([old]);
+      r.w.observe([old], 1);
       await vi.runAllTimersAsync();
       expect(r.sent.at(-1)?.[0]).toContain(copyText("beSession.activity.needsYou"));
     });
 
     it("主窗口在前台 ⇒ 不发", async () => {
       const r = rig(true);
-      r.w.observe([tab("a", { activity: waiting, needs: approve() })]);
+      r.w.observe([tab("a", { activity: waiting, needs: approve() })], 1);
       await vi.runAllTimersAsync();
       expect(r.sent).toEqual([]);
     });

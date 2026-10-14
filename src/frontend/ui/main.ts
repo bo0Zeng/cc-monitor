@@ -43,7 +43,10 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { PlanView } from "./views/plan";
-import { PlanNeedsBook } from "./plan-needs";
+import { PlanNeedsBook, type PlanNeedItem } from "./plan-needs";
+import { ManualBook } from "./manual-book";
+import { openLoginDrawer } from "./login-drawer";
+import type { PanelPlan } from "./needs-panel";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -243,6 +246,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   let startup: StartupActive | null = null;
   // 计划那一侧的「需手动」的账（会话头那一枚标 · 标签栏的数 · Ctrl J 都读它；计划页问到的交给它）。
   const planNeeds = new PlanNeedsBook();
+  const manualBook = new ManualBook();
+  // 窗口标题的 N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）。`tabs` 建好之后才会被调到（标签页栏那一次刷新排在下一个微任务里）。
+  const paintNeedsTitle = (): void => needsWatch.observe(tabs.tabsInOrder(), tabs.needsCount());
 
   // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
@@ -309,7 +315,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         terminalPage.sessionChanged();
         paintTerminalActs();
         answerBlock.render();
-        needsWatch.observe(tabs.tabsInOrder());
+        paintNeedsTitle();
       });
     },
     tasksPanel,
@@ -566,10 +572,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.book = planNeeds;
   // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
   void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
-  tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i) });
+  tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i), slices: () => planSlices(planNeeds.items()) });
+  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。不发系统通知。
+  tabs.attachManual(manualBook, (origin, item) => {
+    if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void manualBook.refresh(origin) });
+  });
+  manualBook.subscribe(() => paintNeedsTitle());
   const planTrigger = headButton("plan-trigger", "plan", copyText("main.cmd.openPlan"), hintWithKey(copyText("main.topbar.planHint"), "app.toggle-plan"), () => overlays.toggle("plan"));
   planNeeds.subscribe(() => {
     tabs.planNeedsChanged();
+    paintNeedsTitle();
     sessionHead.render();
     planTrigger.dataset.needs = String(planNeeds.total() > 0);
   });
@@ -821,6 +833,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   // 「没回来的组员」等每台都在自己那条流上报完了才认（壳那一刻先在别的台的流上到了也不算）。
   tabs.setMachines(machines as Origin[]);
+  // 会话外的需手动：每台问一次（之后那台推 `changed {manual}` 再问它）。
+  void manualBook.refreshAll(machines as Origin[]);
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
@@ -915,6 +929,10 @@ window.addEventListener("DOMContentLoaded", async () => {
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
           break;
         }
+        case "manual":
+          // 那台会话外的需手动清单可能变了 ⇒ 重问那一台（可能漏了也只问那一台：清单不分键）。
+          void manualBook.refresh(origin);
+          break;
         case "profiles":
           break;
       }
@@ -953,7 +971,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
     //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "manual"] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。
@@ -1004,3 +1022,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 最大化 / 全屏后内容错位由 Rust 侧修（`src/frontend/shell/src/lib.rs` on_window_event：去抖后微调 webview 尺寸，
   //   强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）—— DOM 这一层够不着合成层偏移。
 });
+
+/** 计划项按片收成浮层那几行（同一片的几条一行、带条数；点它去那一片的第一条）。 */
+function planSlices(items: readonly PlanNeedItem[]): PanelPlan[] {
+  const out: PanelPlan[] = [];
+  items.forEach((it, i) => {
+    const last = out[out.length - 1];
+    if (last && last.origin === it.origin && last.workspace === it.workspace && last.slice === it.slice) last.n++;
+    else out.push({ origin: it.origin, workspace: it.workspace, slice: it.slice, n: 1, first: i });
+  });
+  return out;
+}

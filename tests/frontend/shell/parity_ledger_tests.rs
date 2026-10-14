@@ -61,6 +61,8 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("notify_desktop", "app.window.self", Side::Both),
     // 写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，哪台的内容都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("clipboard_write", "app.window.self", Side::Both),
+    // 读系统剪贴板（登录抽屉［粘贴］）：同上，剪贴板是面前这台桌面的 ⇒ `Both`。
+    ("clipboard_read", "app.window.self", Side::Both),
     ("open_log_dir", "app.logs", Side::Both),
     // P2s（C8）：backend 策略是 **per-host** 的（入参带 origin，本机 = `<local>`）⇒ `Both`。
     // 一个命令服务两侧，正是 C1「本地要和远端一样」在命令面上的样子。
@@ -637,7 +639,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`probe_session_record`，`Both`，归已有能力 `history.read-session`）。
     // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
     // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
+    // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 41;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
