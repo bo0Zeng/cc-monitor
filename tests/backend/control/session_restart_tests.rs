@@ -69,7 +69,7 @@ impl Rig {
         self.calls().iter().filter(|c| c.starts_with(what)).count()
     }
     fn deps<T>(&self, f: impl FnOnce(&Deps<'_>) -> T) -> T {
-        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+        let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
             .into_iter()
             .map(str::to_string)
             .collect();

@@ -45,7 +45,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 const ROOT = resolve(__dirname, "../../..");
 /** 另一侧的源文件 —— `K-R48` 第二拍起是 Rust，不再是 bash。**只读，不改**。 */
 const CCM_DIR = resolve(ROOT, "src/backend/control/ccm");
-const ccmArgv = readFileSync(resolve(CCM_DIR, "argv.rs"), "utf8");
+const ccmArgv = readFileSync(resolve(ROOT, "src/backend/ccm_line/argv.rs"), "utf8");
 const ccmPlan = readFileSync(resolve(CCM_DIR, "plan.rs"), "utf8");
 const ccm = `${ccmArgv}\n${ccmPlan}`;
 // monitor 这一侧「发 `--base`」的那一份今天只在 Rust（`ccm_invocation.rs` 的

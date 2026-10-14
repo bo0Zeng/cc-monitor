@@ -15,9 +15,10 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
         .step_by(2)
         .map(str::to_string)
         .collect();
-    // 表里引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量。
+    // 表里引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量（那个词住 `wire/cli_words.rs`）。
     if body.contains("STREAM_FLAG_EXPLICIT") {
-        let l = src
+        let words = include_str!("../../../../src/backend/wire/cli_words.rs");
+        let l = words
             .lines()
             .find(|l| l.contains("pub const STREAM_FLAG_EXPLICIT: &str"))
             .expect("抠不到 STREAM_FLAG_EXPLICIT");

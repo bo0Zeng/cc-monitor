@@ -51,6 +51,7 @@ pub(crate) mod signal;
 pub(crate) mod ssh_agent;
 pub(crate) mod ssh_client;
 pub(crate) mod stderr_fd;
+pub(crate) mod tmux; // 这台的 tmux：平台那一维（编译期）× 探针那一维（扫 `PATH`）
 pub(crate) mod watch_file;
 #[cfg(windows)]
 pub(crate) mod win_proc;

@@ -33,9 +33,9 @@
 //!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
-pub(crate) mod argv;
 pub(crate) mod plan;
 
+use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;
 use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
@@ -190,18 +190,6 @@ pub(crate) fn own_source() -> &'static str {
     include_str!("mod.rs")
 }
 
-/// 这个二进制在终端里的名字（`~/.cc-monitor/bin/ccm`）。预览语境里「叫的是 `ccm`」就是它（`plan::Env::for_preview`）。
-pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
-
-/// 用配置文件里那一段的写法：`@<名>` 打头（[`PROFILE_SIGIL`] ＋ 段名）。
-pub(crate) const PROFILE_SIGIL: char = '@';
-
-/// 这个名字是不是 ccm 自己（`ccm` · 后端本名 `cc-monitor-backend` 及旧版释放的 `cc-monitor-backend-<build>`）。
-/// 不是 ⇒ 被叫成这个名字等同 `@<名>`（[`route`]）；配置文件也不收这几个名字当段名。
-pub(crate) fn is_own_name(name: &str) -> bool {
-    name == SUBCOMMAND_WORD || name.starts_with(env!("CARGO_PKG_NAME"))
-}
-
 /// 被叫成的那个名字若是一段配置的名字 ⇒ 那个名字（`argv[0]` 取最后一段；Windows 上去掉 `.exe`）。
 /// 是 ccm 自己、或根本当不了配置名（形状不对）⇒ `None`，照 ccm 本身走。
 pub(crate) fn profile_called(argv0: &str) -> Option<String> {
@@ -222,11 +210,6 @@ pub enum Entry {
     Ccm(Vec<String>),
     /// 当后端用：一次性子命令或流模式的 argv（已去掉打头的 `--`）。
     Backend(Vec<String>),
-}
-
-/// 后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
-pub(crate) fn is_backend_word(w: &str) -> bool {
-    crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }
 
 /// 分流：`argv0` 是这个进程被叫成的名字，`args` 是其后那一串。
@@ -417,7 +400,7 @@ const PRINT_MAX_WORD_BYTES: usize = 4096;
 /// 界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。
 /// 纯函数：不起进程、不碰盘。
 pub(crate) fn answer_probe() -> CcmCard {
-    answer_probe_for(crate::TMUX_PLATFORM)
+    answer_probe_for(crate::platform::tmux::TMUX_PLATFORM)
 }
 
 /// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）。
@@ -436,7 +419,7 @@ pub(crate) struct CcmCard {
 }
 
 /// [`answer_probe`] 的内核（平台档是入参，与 [`probe_output_for`] 同一组来源）。
-pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> CcmCard {
+pub(crate) fn answer_probe_for(platform: crate::platform::tmux::TmuxPlatform) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
         capabilities: crate::ccm_launcher_with(platform),
@@ -713,14 +696,17 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 /// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
 /// `detach` / `tmux-size` / `tmux-base` / `bus-register` …（`RT1.md §8` F7），而那几条在 Windows 上
 /// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
-/// [`crate::ccm_launcher_with`]`(`[`crate::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
+/// [`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
 /// （「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。
 pub(crate) fn probe_output(self_path: &str) -> String {
-    probe_output_for(self_path, crate::TMUX_PLATFORM)
+    probe_output_for(self_path, crate::platform::tmux::TMUX_PLATFORM)
 }
 
 /// [`probe_output`] 的内核：平台档是入参 ⇒ 本机是 Linux 也能把「Windows 那一份会吐什么」算出来判。
-pub(crate) fn probe_output_for(self_path: &str, platform: crate::TmuxPlatform) -> String {
+pub(crate) fn probe_output_for(
+    self_path: &str,
+    platform: crate::platform::tmux::TmuxPlatform,
+) -> String {
     format!(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
         crate::ccm_launcher_with(platform).join(","),

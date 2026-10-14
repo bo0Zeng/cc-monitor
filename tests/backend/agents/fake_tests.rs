@@ -459,7 +459,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
 /// 通用层若在哪一格上按名字认人，本假 agent 那一行就会答错。
 #[test]
 fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
-    use crate::control::ccm::argv::{self, Parsed};
+    use crate::ccm_line::argv::{self, Parsed};
     use crate::control::ccm::plan::{self, AccountTable, Env, Plan};
     let reg = registry_with_fake();
     let env = Env {

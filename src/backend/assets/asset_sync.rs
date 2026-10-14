@@ -14,7 +14,7 @@
 //! # capture ＋「只读一行 stdin」，不是长流
 //!
 //! - 不起远端的流模式：流模式一起来就往 tmux server 装全局 hook（载荷里烤着那个进程的 pid），一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
-//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_args.rs::read_input` 收）：
+//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`wire/cli_words.rs::STDIN_LINE_FLAG`，`control/cli_args.rs::read_input` 收）：
 //!   命令行里只有后端路径与两个旗标，载荷不进命令行（不要求远端登录 shell 认 POSIX 单引号与管道）。
 //!   后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line` · `shell_quote_core::posix_quote`）：路径里没有 `'` / `\` 时 fish 也认。
 //! - 一趟的大小有上限：远端 CLI 面 stdin 的上限（`cli_args::MAX_CLI_STDIN`，1 MiB，超了拒）⇒ 推的载荷按台切块，
@@ -104,7 +104,7 @@ pub fn pull_command() -> String {
 
 /// 推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
 pub fn push_command() -> String {
-    crate::dial::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
+    crate::dial::remote_ask::command_line(&[PUSH_FLAG, crate::wire::cli_words::STDIN_LINE_FLAG])
 }
 
 /// 推那一趟写进远端 stdin 的那一行（载荷本身是紧凑 JSON、没有换行 ⇒ 恰好一行）。

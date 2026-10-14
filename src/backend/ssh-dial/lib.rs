@@ -183,7 +183,7 @@ pub struct CaptureOpts {
     #[serde(default)]
     pub abort_marker: Option<String>,
     /// exec 之后原样写进远端进程 stdin 的字节（缺席 = 一个字节不写）。**不关 stdin** ——
-    /// 收它的那一侧是后端 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`），读到换行就动手。
+    /// 收它的那一侧是后端 CLI 面的「只读一行」入口（`wire/cli_words.rs::STDIN_LINE_FLAG`），读到换行就动手。
     /// 有了它，载荷不必拼进命令行（那要求远端登录 shell 认 POSIX 引号与管道）。
     #[serde(default)]
     pub stdin: Option<String>,

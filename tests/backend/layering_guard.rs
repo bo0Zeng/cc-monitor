@@ -1146,24 +1146,20 @@ mod tests {
             "observe",
             "会话清单 · 叫会话什么 · 判活住 history；observe 的记录级读与 watcher 反过来调它",
         ),
-    ];
-
-    /// **还互相引用的对**（按字母序成对）。只许缩：多出一对 ⇒ 红；理掉一对没删这一行 ⇒ 也红。
-    const STILL_MUTUAL: &[(&str, &str, &str)] = &[
         (
             "accounts",
             "control",
-            "`ccm` 命令行的常量与拼法住 `control::ccm`（后端共用常量归位那一刀）",
-        ),
-        (
-            "accounts",
-            "faces",
-            "`accounts/quota/nodes.rs` → `faces::rotation_face::library_at`",
+            "ccm 这一行的词与解析住 `ccm_line`（谁都往下引）；起会话那一侧读账号库",
         ),
         (
             "assets",
             "control",
-            "`ccm` 命令行的常量与拼法住 `control::ccm`（后端共用常量归位那一刀）",
+            "别名 / 配置那一族只认 `ccm_line`；探 tmux · 渲 ccm 那一行由 `faces::profiles_face` 交进来",
+        ),
+        (
+            "accounts",
+            "faces",
+            "faces 是账号库与上游选择接头的那一处：账号库由 faces 读好交进来（`LibraryRead`）",
         ),
     ];
 
@@ -1301,7 +1297,7 @@ mod tests {
 
     /// `lib.rs` 根上转出去的名字：`pub use <模块>::…::<名>;`（含 `pub(crate)` · `as 别名`）⇒ `名 → 模块`。
     /// `crate::<名>` 照它记到那个模块头上（不然经根转一手就躲过了量法）。
-    /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的（如 `StreamWants` 带 `StreamView`）这里看不见：那一形手理。
+    /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的这里看不见：那一形手理（const1 起根上不再有这样的，`StreamWants` 挪去 `stream::inbound::views`）。
     fn root_reexports(tops: &[String]) -> std::collections::BTreeMap<String, String> {
         let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
             .expect("读 lib.rs");
@@ -1397,7 +1393,7 @@ mod tests {
         m
     }
 
-    /// ★ **功能之间只许单向**：定了方向的那几对反方向零处；还互相引用的对恰好是 [`STILL_MUTUAL`]。
+    /// ★ **功能之间只许单向**：定了方向的那几对反方向零处；任何两个顶层模块都不许互相引用。
     #[test]
     fn features_reference_each_other_one_way_only() {
         let m = reference_matrix();
@@ -1410,38 +1406,18 @@ mod tests {
                 ));
             }
         }
-        let mut mutual: Vec<(String, String)> = m
-            .keys()
-            .filter(|(a, b)| a < b && m.contains_key(&(b.clone(), a.clone())))
-            .cloned()
-            .collect();
-        mutual.sort();
-        let want: Vec<(String, String)> = STILL_MUTUAL
-            .iter()
-            .map(|(a, b, _)| (a.to_string(), b.to_string()))
-            .collect();
-        for p in &mutual {
-            if !want.contains(p) {
-                let (x, y) = (count(&p.0, &p.1).unwrap(), count(&p.1, &p.0).unwrap());
+        for (a, b) in m.keys().filter(|(a, b)| a < b) {
+            if let (Some(x), Some(y)) = (count(a, b), count(b, a)) {
                 bad.push(format!(
-                    "新的互相引用：{} → {} {} 处 · {} → {} {} 处 —— 挑一个方向，把反方向那几处搬走",
-                    p.0, p.1, x.0, p.1, p.0, y.0
-                ));
-            }
-        }
-        for p in &want {
-            if !mutual.contains(p) {
-                bad.push(format!(
-                    "{} ⇄ {} 已经不互相引用了 —— 从 `STILL_MUTUAL` 删掉那一行（再加一行到 `ONE_WAY` 把方向钉住）",
-                    p.0, p.1
+                    "互相引用：{a} → {b} {} 处 · {b} → {a} {} 处 —— 挑一个方向，把反方向那几处搬走（再加一行到 `ONE_WAY` 把方向钉住）",
+                    x.0, y.0
                 ));
             }
         }
         assert!(
             bad.is_empty(),
-            "后端模块之间的方向不对：\n  {}\n（此刻互相引用 {} 对）",
-            bad.join("\n  "),
-            mutual.len()
+            "后端模块之间的方向不对：\n  {}",
+            bad.join("\n  ")
         );
     }
 
@@ -1519,6 +1495,5 @@ mod tests {
             via.get("REPLY_PAGE_BYTES").map(String::as_str),
             Some("wire")
         );
-        assert_eq!(via.get("StreamView").map(String::as_str), Some("stream"));
     }
 }

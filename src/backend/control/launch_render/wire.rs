@@ -87,7 +87,7 @@ pub(crate) fn render_ccm_launch(
     req: &CliRenderRequest,
     account: &Settled,
 ) -> Result<String, String> {
-    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();

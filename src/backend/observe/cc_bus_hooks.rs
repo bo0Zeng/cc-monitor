@@ -256,8 +256,8 @@ pub(crate) fn answer() -> HooksReport {
             .and_then(crate::agents::skills_root)
             .as_deref(),
         !matches!(
-            crate::TMUX_PLATFORM,
-            crate::TmuxPlatform::AbsentUnlessExeOnPath
+            crate::platform::tmux::TMUX_PLATFORM,
+            crate::platform::tmux::TmuxPlatform::AbsentUnlessExeOnPath
         ),
     )
 }

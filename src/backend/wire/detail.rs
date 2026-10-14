@@ -65,7 +65,7 @@ impl Failed {
     }
 
     /// 投到 CLI 面（**唯一一处**：CLI 控制面与常驻后端起停那几条都经这里）：
-    /// stderr 一行 `{code, message, detail, data?}`，退出 2；`text`（[`crate::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
+    /// stderr 一行 `{code, message, detail, data?}`，退出 2；`text`（[`crate::wire::cli_words::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
     /// `tz` ＝ 看的那一台的时区（`--tz`）：详情里那一行时刻按它填。
     pub(crate) fn emit_to(
         &self,

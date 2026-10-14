@@ -9,10 +9,10 @@
 //!
 //! # 本文件不许出现 ccm 旗标的字面量
 //!
-//! 旗标名的唯一住址是 [`super::argv::flag`]。由
+//! 旗标名的唯一住址是 [`crate::ccm_line::argv::flag`]。由
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
-use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
+use crate::ccm_line::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
@@ -153,9 +153,9 @@ pub(crate) type RelayAsk = fn(
 impl Env {
     /// 从真实进程取一份。**只读环境**，不写任何东西。
     ///
-    /// 优先级：**环境变量 > 内置默认**（默认值住 [`super::argv::Defaults`]，这里一个字面量都不许再写）。
+    /// 优先级：**环境变量 > 内置默认**（默认值住 [`crate::ccm_line::argv::Defaults`]，这里一个字面量都不许再写）。
     pub(crate) fn from_process(process_argv: &[String]) -> Self {
-        use super::argv::Defaults;
+        use crate::ccm_line::argv::Defaults;
         // 家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
         //   （`exit_policy::policy_path` · `asset_catalog`）。从前只认 `HOME`：Windows 上
         //   默认没有它 ⇒ 账号库落到当前盘的根上，找不到号还说「不在那个文件里」。
@@ -216,7 +216,7 @@ impl Env {
 
     /// 同 [`Env::for_preview`]，家目录由调用方给（设置窗那一页按这台文件管理面答的家目录算）。
     pub(crate) fn for_preview_in(home: String) -> Self {
-        use super::argv::Defaults;
+        use crate::ccm_line::argv::Defaults;
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {

@@ -57,7 +57,7 @@ fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
 }
 
 fn caps() -> BTreeSet<String> {
-    crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+    crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect()

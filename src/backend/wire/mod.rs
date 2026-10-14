@@ -8,6 +8,7 @@
 //! 这一份是**帧面的协议零件**那一层的根（最底下，只引 `platform` · `common` · `agents` · `relay`；`layering_guard` 钉着）：
 //! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住上面的 `crate::stream`。
 
+pub mod cli_words; // CLI 面的词：流模式显式词 · 子命令后面的选项词（与请求信封同名的那几格）· 帧命令名到子命令的拼法
 pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
 pub mod listen; // K-P1：常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）

@@ -129,14 +129,14 @@ fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
 /// 在终端里起 claude 登录 `name` 那一行：`<家>/.cc-monitor/bin/ccm -- --account <名>`（值一律过唯一的 quote）。
 fn login_line(home: &str, name: &str) -> String {
     let ccm = join(
-        &join(&join(home, crate::control::exit_policy::DIR_NAME), "bin"),
-        crate::control::ccm::SUBCOMMAND_WORD,
+        &join(&join(home, crate::common::own_dir::DIR_NAME), "bin"),
+        crate::ccm_line::SUBCOMMAND_WORD,
     );
     format!(
         "{} {} {} {}",
         shell_quote_core::posix_quote(&ccm),
-        crate::control::ccm::argv::flag::END,
-        crate::control::ccm::argv::flag::ACCOUNT,
+        crate::ccm_line::argv::flag::END,
+        crate::ccm_line::argv::flag::ACCOUNT,
         shell_quote_core::posix_quote(name)
     )
 }

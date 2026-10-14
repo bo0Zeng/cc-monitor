@@ -100,9 +100,9 @@ pub(crate) enum RestTo {
 /// 适配层不往上依赖。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Call<'a> {
-    /// 被调的那个命令（`control::ccm::SUBCOMMAND_WORD`）。
+    /// 被调的那个命令（`ccm_line::SUBCOMMAND_WORD`）。
     pub(crate) word: &'a str,
-    /// 分两半的那个词（`control::ccm::argv::flag::END`）：左边交 claude，右边归 ccm。
+    /// 分两半的那个词（`ccm_line::argv::flag::END`）：左边交 claude，右边归 ccm。
     pub(crate) end: &'a str,
 }
 

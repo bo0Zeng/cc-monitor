@@ -1,6 +1,5 @@
-use super::{
-    tmux_exe_in, tmux_in, tmux_present, unavailable_from, unavailable_here, TmuxPlatform, NO_TMUX,
-};
+use super::{unavailable_from, unavailable_here, NO_TMUX};
+use crate::platform::tmux::{tmux_exe_in, tmux_in, tmux_present, TmuxPlatform};
 
 /// ★ `K-P4` 红线之一〔NET2 真填〕：**生产 hello 填的就是这台机器的答案**（「`hello.unavailable` 真填」）。
 ///
@@ -347,8 +346,9 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
 /// 那由 `#[cfg(windows)] const _` 那条编译期断言守，而**那一条在本仓门禁上不存在**。
 #[test]
 fn the_windows_arm_is_wired_into_the_source() {
-    // `TMUX_PLATFORM` 与 tmux 可用性那一族已搬进 `lib.rs` ⇒ 扫两份的全集。
-    let prod = crate::guard_support::production_code(&crate::guard_support::backend_root_source());
+    // `TMUX_PLATFORM` 与 tmux 可用性那一族住 `platform/tmux.rs`（const1 从 `lib.rs` 挪过去）。
+    let prod =
+        crate::guard_support::production_code(include_str!("../../src/backend/platform/tmux.rs"));
     let decl = // 搬进 `lib.rs` 时提了权 ⇒ 逐字锚跟着改成 `pub const`。
         // ⚠ 这一条**本该红，也真的红了**：它报的是「有一行包含它但不等于它」并把那一行
         //   原样印了出来 —— 逐字锚的正确失效方式。

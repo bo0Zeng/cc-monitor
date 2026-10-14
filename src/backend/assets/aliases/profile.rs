@@ -21,7 +21,7 @@ use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use toml_edit::{Array, DocumentMut, Item, Table, Value};
 
-use crate::control::ccm::argv::{self, flag, Die, Layer, Origin, Parsed};
+use crate::ccm_line::argv::{self, flag, Die, Layer, Origin, Parsed};
 
 /// 「基于」那一项的键（命令行上是 `@名`）。
 pub(crate) const FROM_KEY: &str = "from";
@@ -137,10 +137,10 @@ fn line_at(raw: &str, at: usize) -> usize {
         + 1
 }
 
-/// 这个名字能不能当一段配置的名字：两种 shell 都认得的命令名，而且不是 ccm 自己（[`crate::control::ccm::is_own_name`]）。
+/// 这个名字能不能当一段配置的名字：两种 shell 都认得的命令名，而且不是 ccm 自己（[`crate::ccm_line::is_own_name`]）。
 pub(crate) fn name_ok(name: &str) -> Result<(), String> {
     use crate::platform::shell::dialect::Shell;
-    if crate::control::ccm::is_own_name(name) {
+    if crate::ccm_line::is_own_name(name) {
         return Err(copy_text("beProfile.name.own", &[("name", name)]));
     }
     if !Shell::Posix.dialect().name_is_valid(name)
