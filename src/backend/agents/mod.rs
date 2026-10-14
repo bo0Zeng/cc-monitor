@@ -1346,17 +1346,8 @@ pub enum StreamEv {
     Stop { ok: bool },
 }
 
-/// 归一流里一块是什么。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum BlockKind {
-    Text,
-    Thinking,
-    Tool,
-    Other,
-}
+/// 归一流里一块是什么：线上形住 `cmd-wire::live`（活卡每一块的种类）。
+pub use cmd_wire::live::BlockKind;
 
 /// 通用层要的那一组面（记录 ＋ 子运行住址）：流式 watcher 跟的那一家给；判据喂别的一组（假适配层）。
 #[derive(Clone, Copy)]

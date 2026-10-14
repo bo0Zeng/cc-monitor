@@ -395,6 +395,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `tool` | string |  |
 | `state` | RunState |  |
 
+#### `LiveBlock`
+
+活卡里的一块。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `kind` | BlockKind |  |
+| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
+| `tool` | string? | 工具块的工具名 |
+
 #### `LiveCard`
 
 `Frame::Live` 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -423,16 +433,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 - `streaming` —— 上游还在说
 - `awaiting` —— 上游说完了，那一轮的记录还没到
-
-#### `LiveBlock`
-
-活卡里的一块。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `kind` | BlockKind |  |
-| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
-| `tool` | string? | 工具块的工具名 |
 
 #### `LiveWhy`
 

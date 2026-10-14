@@ -35,7 +35,7 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
             (
                 c.name.as_str(),
                 c.scope,
-                c.scope_text.0.as_str(),
+                c.scope_text.as_str(),
                 c.needs_args,
                 c.confirm,
             )
@@ -65,7 +65,7 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
     assert_eq!(got.skills.len(), 1);
     assert_eq!(got.skills[0].name, "plot");
     assert_eq!(
-        got.skills[0].say.0,
+        got.skills[0].say,
         copy_core::copy_text("beSessionCommands.skill.say", &[("name", "plot")])
     );
     // 线上那一形。
@@ -124,13 +124,13 @@ fn each_command_carries_the_words_for_its_marks() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
     for c in &got.commands {
         assert_eq!(
-            c.needs_args_text.as_ref().map(|w| w.0.clone()),
+            c.needs_args_text.clone(),
             c.needs_args.then(|| t("beSessionCommands.mark.needsArgs")),
             "{}",
             c.name
         );
         assert_eq!(
-            c.confirm_text.as_ref().map(|w| w.0.clone()),
+            c.confirm_text.clone(),
             c.confirm.then(|| t("beSessionCommands.mark.confirm")),
             "{}",
             c.name
@@ -162,4 +162,30 @@ fn compact_and_clear_come_with_the_line_to_say() {
     let v = serde_json::to_value(&clear).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(keys, vec!["confirm", "say"]);
+}
+
+/// ★ 回包逐字节（线上形挪进 `cmd-wire` 前后同一份字节）：顶层键序 · 每条命令的键序 · 为假的标字照出 `null`；
+/// 手机按 `cmd_wire::session::decode_reply` 解得开、按类型重写出来是同一份。
+#[test]
+fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
+    let face = crate::agents::asset_face("claude").expect("Claude 的资产面");
+    let mut got = commands_of(&face, None, std::path::Path::new(""));
+    got.commands.truncate(1);
+    (got.compact, got.clear) = one_shots("claude");
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let want = format!(
+        r#"{{"commands":[{{"name":"clear","text":"{text}","scope":"builtin","scopeText":"{scope}","needsArgs":false,"confirm":true,"needsArgsText":null,"confirmText":"{confirm}"}}],"skills":[],"problems":[],"compact":{{"say":"/compact","confirm":false}},"clear":{{"say":"/clear","confirm":true}}}}"#,
+        text = t("beSessionCommands.builtin.clear"),
+        scope = t("beSessionCommands.scope.builtin"),
+        confirm = t("beSessionCommands.mark.confirm"),
+    );
+    let bytes = serde_json::to_string(&got).unwrap();
+    assert_eq!(bytes, want);
+    let back = cmd_wire::session::decode_reply(
+        "session-commands",
+        serde_json::from_str(&bytes).unwrap(),
+    )
+    .expect("表里有 session-commands")
+    .expect("解得开");
+    assert_eq!(back, serde_json::from_str::<serde_json::Value>(&want).unwrap());
 }

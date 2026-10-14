@@ -868,6 +868,11 @@ fn live_frames_have_exactly_these_bytes() {
     ];
     for (frame, want) in cases {
         assert_eq!(to_line(&frame).unwrap(), want);
+        // 线上形住 `cmd-wire::live`：帧体（去掉 `kind`）按那份类型解得开、重写出来是同一份。
+        let mut body: serde_json::Value = serde_json::from_str(want.trim_end()).unwrap();
+        body.as_object_mut().unwrap().remove("kind");
+        let card: cmd_wire::live::LiveCard = serde_json::from_value(body.clone()).expect("活卡帧体解得开");
+        assert_eq!(serde_json::to_value(&card).unwrap(), body);
         assert!(
             frame.loss_is_recoverable(),
             "活卡帧可丢（jsonl 保对），却被判成不可恢复"

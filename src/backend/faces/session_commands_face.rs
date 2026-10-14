@@ -2,12 +2,11 @@
 //! 内置几条由适配层声明；住文件里的按那条会话的项目目录与它用的号的配置目录现扫（目录名 · 认法住适配层）；每格的字由这里写好。
 
 use crate::agents::AssetFace;
-use crate::common::cells::Words;
 use crate::common::contract::malformed;
 use crate::stream::inbound::spec::Fail;
 use crate::stream::inbound::typed::{self, Blocking, Command, Cx};
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// `session-commands` 的入参。
@@ -20,88 +19,8 @@ pub(crate) struct SessionCommandsReq {
     pub(crate) sid: String,
 }
 
-/// `session-commands` 的回包。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionCommands {
-    /// 内置的在前，再本项目、用户级（各按名字排）。
-    pub(crate) commands: Vec<SessionCommand>,
-    /// 本项目的在前，再用户级。
-    pub(crate) skills: Vec<SessionSkill>,
-    /// 读不出来的那几份（一句一份；不整条失败）。
-    pub(crate) problems: Vec<String>,
-    /// ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
-    pub(crate) compact: Option<SessionAct>,
-    /// 同上「清空会话」。
-    pub(crate) clear: Option<SessionAct>,
-}
-
-/// ［+］面板分隔线下的一个一次性动作。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionAct {
-    /// 经 `session-say` 送进会话的那一句（那一家声明的）。
-    pub(crate) say: String,
-    /// 送之前先确认（清空 ⇒ 是；压缩 ⇒ 否）。
-    pub(crate) confirm: bool,
-}
-
-/// 一条斜杠命令。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SessionCommand {
-    /// 命令名（不带 `/`；界面填进输入框的是 `/name `）。
-    pub(crate) name: String,
-    /// 简介；文件里没写 ⇒ `null`。
-    pub(crate) text: Option<String>,
-    /// 住哪。
-    pub(crate) scope: CommandScope,
-    /// 同一格写给人看的字。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) scope_text: Words,
-    /// 要跟参数（填进去停住等补）。
-    pub(crate) needs_args: bool,
-    /// 发之前先确认。
-    pub(crate) confirm: bool,
-    /// `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "string | null"))]
-    pub(crate) needs_args_text: Option<Words>,
-    /// `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "string | null"))]
-    pub(crate) confirm_text: Option<Words>,
-}
-
-/// 命令住哪。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum CommandScope {
-    /// 那一家内置。
-    Builtin,
-    /// 本项目（`<项目>/.claude/commands`）。
-    Project,
-    /// 这条会话用的号的配置目录里。
-    User,
-}
-
-/// 一个 Skill。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct SessionSkill {
-    /// 名字。
-    pub(crate) name: String,
-    /// 简介；没写 ⇒ `null`。
-    pub(crate) text: Option<String>,
-    /// 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub(crate) say: Words,
-}
+/// `session-commands` 的回包与它引到的几样：线上形住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::{CommandScope, SessionAct, SessionCommand, SessionCommands, SessionSkill};
 
 typed::codes! {
     /// `session-commands` 的码。
@@ -192,12 +111,10 @@ pub(crate) fn commands_of(
     root: &Path,
 ) -> SessionCommands {
     let seen = (face.session_scan)(project, root);
-    let scope_text = |s: CommandScope| {
-        Words(match s {
-            CommandScope::Builtin => copy_text("beSessionCommands.scope.builtin", &[]),
-            CommandScope::Project => copy_text("beSessionCommands.scope.project", &[]),
-            CommandScope::User => copy_text("beSessionCommands.scope.user", &[]),
-        })
+    let scope_text = |s: CommandScope| match s {
+        CommandScope::Builtin => copy_text("beSessionCommands.scope.builtin", &[]),
+        CommandScope::Project => copy_text("beSessionCommands.scope.project", &[]),
+        CommandScope::User => copy_text("beSessionCommands.scope.user", &[]),
     };
     let builtin = face.builtin_commands.iter().map(|b| SessionCommand {
         name: b.name.to_string(),
@@ -232,10 +149,7 @@ pub(crate) fn commands_of(
             .skills
             .into_iter()
             .map(|s| SessionSkill {
-                say: Words(copy_text(
-                    "beSessionCommands.skill.say",
-                    &[("name", &s.name)],
-                )),
+                say: copy_text("beSessionCommands.skill.say", &[("name", &s.name)]),
                 name: s.name,
                 text: s.description,
             })
@@ -260,8 +174,8 @@ pub(crate) fn one_shots(kind: &str) -> (Option<SessionAct>, Option<SessionAct>) 
 }
 
 /// 为真 ⇒ 那一格的字；为假 ⇒ `None`。
-fn mark(on: bool, key: &str) -> Option<Words> {
-    on.then(|| Words(copy_text(key, &[])))
+fn mark(on: bool, key: &str) -> Option<String> {
+    on.then(|| copy_text(key, &[]))
 }
 
 #[cfg(test)]
