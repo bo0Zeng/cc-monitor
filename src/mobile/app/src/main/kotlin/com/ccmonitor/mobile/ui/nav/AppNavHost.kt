@@ -397,7 +397,7 @@ private fun RotationRoute(
         sid = sid,
         machine = name,
         onBack = { nav.popBackStack() },
-        onOpenFile = { nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Sftp)}") },
+        onOpenFile = { nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Files)}") },
     )
 }
 
