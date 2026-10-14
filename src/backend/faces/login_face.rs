@@ -31,6 +31,42 @@ pub(crate) enum LoginStartReq {
     },
 }
 
+/// `login-start` 的整份入参：登录什么（[`LoginStartReq`]，与它同一层）＋ 发起这一趟的浏览器在不在后端这台（`browserHere`）。
+/// 那一格不进目标：同一个目标从哪台浏览器发起都是同一份作业（新开就替掉旧的），`login-finish` 交回的目标也不带它。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LoginStartArgs {
+    pub(crate) target: LoginStartReq,
+    /// 打开登录链接的浏览器在后端这台上（桌面连本机）：登录页回跳到这台的本机端口，那一家自己登完。
+    /// 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
+    pub(crate) browser_here: bool,
+}
+
+/// 入参里那一格的名字。
+const BROWSER_HERE: &str = "browserHere";
+
+impl LoginStartArgs {
+    /// 从 `args` 收：先摘下 `browserHere`（缺 ⇒ `false`；不是布尔 ⇒ `bad_args`），其余照 [`LoginStartReq`] 收（多一格照旧拒）。
+    pub(crate) fn take(args: &Value) -> Result<LoginStartArgs, Fail> {
+        let mut rest = args.clone();
+        let here = match rest.as_object_mut().and_then(|o| o.remove(BROWSER_HERE)) {
+            None => false,
+            Some(Value::Bool(b)) => b,
+            Some(other) => {
+                return Err(Fail::new(
+                    "bad_args",
+                    crate::common::contract::malformed(&format!(
+                        "`{BROWSER_HERE}` must be a boolean, got {other}"
+                    )),
+                ))
+            }
+        };
+        Ok(LoginStartArgs {
+            target: typed::take(&rest)?,
+            browser_here: here,
+        })
+    }
+}
+
 /// 粘回来的是什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -53,7 +89,8 @@ impl PasteKind {
 }
 
 /// `login-start` 的成品：作业号 · 登录链接（在浏览器里打开；不用内嵌网页，密码不经界面）· 粘回来的是什么 ·
-/// 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推一帧 `changed {login}`，粘码框只是后备）。
+/// 会不会自己登完（发起它的浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推一帧 `changed {login}`，粘码框只是后备；
+/// 不在这台 ⇒ `false`，只能粘）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -64,15 +101,61 @@ pub(crate) struct LoginStarted {
     pub(crate) auto: bool,
 }
 
+/// 登录失败之后还能怎么办（`login-start` · `login-finish` 失败的 `data.again`）：由后端照码定，界面照它画，不按码去猜。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum LoginAgainHow {
+    /// 作业还在，接着粘（粘的框留着）。
+    Paste,
+    /// 作业没了，从头再起一趟（`login-start`）。
+    Restart,
+    /// 没路：再来一趟也是同样的结果（没有这个号 · 这一家不在 app 里登 …）。
+    None,
+}
+
+/// 登录失败的 `data`：还能怎么办。每个码一个定值，写在码表那一行上（`bad_args` 不带：入参形状不对，不是一条能走的路）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LoginAgain {
+    pub(crate) again: LoginAgainHow,
+}
+
+impl LoginAgain {
+    const PASTE: LoginAgain = LoginAgain {
+        again: LoginAgainHow::Paste,
+    };
+    const RESTART: LoginAgain = LoginAgain {
+        again: LoginAgainHow::Restart,
+    };
+    const NONE: LoginAgain = LoginAgain {
+        again: LoginAgainHow::None,
+    };
+}
+
 typed::codes! {
-    /// `login-start` 可能回的码。
+    /// `login-start` 可能回的码（每个码带 `data: {again}`，值写在各码那一行）。
     pub(crate) enum LoginStartErr {
-        /// 账号库里没有这个号 · 那一份配置里没有这个 MCP 服务器。
-        NotFound = "not_found",
-        /// 这一家不在 app 里登（号 · MCP）· 这个号是 API 号（不用登录）。
-        Unsupported = "unsupported",
-        /// 起不来 · 没给出登录链接就退了 · 等不到链接（原话里是它最后说的几行）。
-        Failed = "failed",
+        /// 账号库里没有这个号 · 那一份配置里没有这个 MCP 服务器。`again: none`。
+        NotFound = "not_found" => LoginAgain,
+        /// 这一家不在 app 里登（号 · MCP）· 这个号是 API 号（不用登录）。`again: none`。
+        Unsupported = "unsupported" => LoginAgain,
+        /// 起不来 · 没给出登录链接就退了 · 等不到链接（原话里是它最后说的几行）。`again: restart`。
+        Failed = "failed" => LoginAgain,
+    }
+}
+
+impl LoginStartErr {
+    fn not_found(said: String) -> Self {
+        LoginStartErr::NotFound(said, LoginAgain::NONE)
+    }
+    fn unsupported(said: String) -> Self {
+        LoginStartErr::Unsupported(said, LoginAgain::NONE)
+    }
+    fn failed(said: String) -> Self {
+        LoginStartErr::Failed(said, LoginAgain::RESTART)
     }
 }
 
@@ -109,21 +192,22 @@ fn accounts_product(agent: &str) -> Value {
 
 /// `login-start` 的本体（分派的硬臂调它：`conn` ＝ 本连接的号，`on_end` ＝ 作业自己收了时推给本连接的那一帧）。
 pub(crate) fn start(
-    req: &LoginStartReq,
+    args: &LoginStartArgs,
     conn: u64,
     path: Option<std::ffi::OsString>,
     on_end: sign_in::OnEnd,
 ) -> Result<LoginStarted, LoginStartErr> {
     let unsupported = |agent: &str| {
-        LoginStartErr::Unsupported(copy_text("beLogin.agent.unsupported", &[("agent", agent)]))
+        LoginStartErr::unsupported(copy_text("beLogin.agent.unsupported", &[("agent", agent)]))
     };
     let not_found = |account: &str| {
-        LoginStartErr::NotFound(copy_text(
+        LoginStartErr::not_found(copy_text(
             "beLogin.account.notFound",
             &[("account", account)],
         ))
     };
     // 目标键：入参原样（同一个目标新开就替掉旧的；`finish` 成了解回来交给界面）。
+    let req = &args.target;
     let target = serde_json::to_string(req).unwrap_or_default();
     let (face, dir, then, cwd) = match req {
         LoginStartReq::Account { agent, account } => {
@@ -132,7 +216,7 @@ pub(crate) fn start(
                 .ok_or_else(|| unsupported(agent))?;
             let (dir, api) = account_of(agent, account).ok_or_else(|| not_found(account))?;
             if api {
-                return Err(LoginStartErr::Unsupported(copy_text(
+                return Err(LoginStartErr::unsupported(copy_text(
                     "beLogin.account.apiKey",
                     &[("account", account)],
                 )));
@@ -155,7 +239,7 @@ pub(crate) fn start(
             };
             let project = project_dir.as_deref().map(std::path::Path::new);
             if !mcp_listed(agent, project, server) {
-                return Err(LoginStartErr::NotFound(copy_text(
+                return Err(LoginStartErr::not_found(copy_text(
                     "beLogin.mcp.notFound",
                     &[("server", server)],
                 )));
@@ -176,13 +260,22 @@ pub(crate) fn start(
         path,
     };
     let s = sign_in::start(&ask, on_end)
-        .map_err(|s| typed::of_fail(Fail::from(("failed", s)), LoginStartErr::Failed))?;
-    Ok(LoginStarted {
+        .map_err(|s| LoginStartErr::failed(Fail::from(("failed", s)).into_said()))?;
+    Ok(started(s, face, args))
+}
+
+/// 起好了的那一份 ⇒ 回包：会不会自己登完照发起它的浏览器在不在这台（不在 ⇒ 回跳到不了这台的本机端口，只能粘）。
+fn started(
+    s: sign_in::Started,
+    face: crate::agents::SignInFace,
+    args: &LoginStartArgs,
+) -> LoginStarted {
+    LoginStarted {
         job: s.job,
         url: s.url,
         paste: PasteKind::of(face.paste),
-        auto: true,
-    })
+        auto: args.browser_here,
+    }
 }
 
 /// 这个名字是不是那一份配置里的一个 MCP 服务器（`mcp-read` 同一个读法；项目目录给了 ⇒ 连项目级 · 本地级一起看）。
@@ -202,7 +295,7 @@ pub(crate) fn answer_start(
     conn: u64,
     on_end: sign_in::OnEnd,
 ) -> crate::stream::inbound::spec::Outcome {
-    let req: LoginStartReq = typed::take(args)?;
+    let req = LoginStartArgs::take(args)?;
     let got = start(&req, conn, None, on_end).map_err(Codes::into_fail)?;
     crate::stream::inbound::spec::wire::<_, Fail>(&got).map(Some)
 }
@@ -257,16 +350,38 @@ pub(crate) struct LoginDone {
 }
 
 typed::codes! {
-    /// `login-finish` 可能回的码。
+    /// `login-finish` 可能回的码（每个码带 `data: {again}`，值写在各码那一行）。
     pub(crate) enum LoginFinishErr {
-        /// 粘的格式不对，或那一家说码不对：作业还在，可以再粘。
-        BadPaste = "bad_paste",
-        /// 那一家换码没成：作业收了，要重来（原话里是它最后说的几行）。
-        Refused = "refused",
-        /// 没有这份作业（收了 · 被替掉）。
-        NoJob = "no_job",
-        /// 等了一阵还没答：作业还在。
-        ChildTimedOut = "child_timed_out",
+        /// 粘的格式不对，或那一家说码不对：作业还在，可以再粘。`again: paste`。
+        BadPaste = "bad_paste" => LoginAgain,
+        /// 那一家换码没成：作业收了，要重来（原话里是它最后说的几行）。`again: restart`。
+        Refused = "refused" => LoginAgain,
+        /// 没有这份作业（收了 · 被替掉）。`again: restart`。
+        NoJob = "no_job" => LoginAgain,
+        /// 等了一阵还没答：作业还在（那一家答了就推 `changed {login}`），粘的框留着。`again: paste`。
+        ChildTimedOut = "child_timed_out" => LoginAgain,
+    }
+}
+
+impl LoginFinishErr {
+    fn of(f: FinishFail) -> Self {
+        match f {
+            FinishFail::NoJob => Self::no_job(),
+            FinishFail::BadPaste => LoginFinishErr::BadPaste(
+                copy_text("beLogin.finish.badPaste", &[]),
+                LoginAgain::PASTE,
+            ),
+            FinishFail::Slow => LoginFinishErr::ChildTimedOut(
+                copy_text("beLogin.finish.slow", &[]),
+                LoginAgain::PASTE,
+            ),
+            FinishFail::Refused(s) => {
+                LoginFinishErr::Refused(Fail::from(("refused", s)).into_said(), LoginAgain::RESTART)
+            }
+        }
+    }
+    fn no_job() -> Self {
+        LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[]), LoginAgain::RESTART)
     }
 }
 
@@ -280,23 +395,12 @@ impl Command for LoginFinish {
 impl Blocking for LoginFinish {
     fn run(req: LoginFinishReq, _cx: &typed::Cx) -> Result<LoginDone, LoginFinishErr> {
         sign_in::finish(&req.job, &req.pasted)
-            .map_err(|f| match f {
-                FinishFail::NoJob => LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])),
-                FinishFail::BadPaste => {
-                    LoginFinishErr::BadPaste(copy_text("beLogin.finish.badPaste", &[]))
-                }
-                FinishFail::Slow => {
-                    LoginFinishErr::ChildTimedOut(copy_text("beLogin.finish.slow", &[]))
-                }
-                FinishFail::Refused(s) => {
-                    typed::of_fail(Fail::from(("refused", s)), LoginFinishErr::Refused)
-                }
-            })
+            .map_err(LoginFinishErr::of)
             .and_then(|key| {
                 // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
                 serde_json::from_str(&key)
                     .map(|target| LoginDone { target })
-                    .map_err(|_| LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])))
+                    .map_err(|_| LoginFinishErr::no_job())
             })
     }
 }
@@ -368,7 +472,7 @@ pub(crate) enum ManualItem {
         fix: ManualFix,
     },
     /// 一个 MCP 服务器要登录（那一家最近一次连它时记下的、还在有效期内）。`fix` ＝ 在 app 里登：`login-start {kind: mcp}`；
-    /// 那一家不在 app 里登 MCP ⇒ `null`（只能在会话里登）。
+    /// 那一家不在 app 里登 MCP ⇒ `null`（只能在会话里登），这时 `why` 说为什么没有解法。
     McpLogin {
         /// 在哪个号里；没设账号的那一份 ⇒ `null`。
         account: Option<String>,
@@ -376,6 +480,10 @@ pub(crate) enum ManualItem {
         scope: String,
         said: String,
         fix: Option<ManualFix>,
+        /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        why: Option<String>,
     },
 }
 
@@ -391,8 +499,11 @@ pub(crate) struct ManualList {
 pub(crate) struct ManualListCmd;
 
 typed::codes! {
-    /// `manual-list` 读不到的一律按「没有」答，自己没有别的码。
-    pub(crate) enum ManualListErr {}
+    /// `manual-list` 可能回的码。MCP 的缓存读不到按「没有」答（那一项本来就是「最近一次连它时记下的」）。
+    pub(crate) enum ManualListErr {
+        /// 账号库清单在、却读不懂：说不出哪些号需登录，不回空清单（空清单看起来像「没事」）。那一句是为什么。
+        Unreadable = "unreadable",
+    }
 }
 
 impl Command for ManualListCmd {
@@ -415,20 +526,26 @@ impl Blocking for ManualListCmd {
                 crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
             )
         });
-        Ok(manual_of(
+        manual_of(
             agent,
             &accounts_product(agent),
+            crate::observe::accounts_query::library_unreadable_here(),
             mcp.as_ref().map(|(k, r)| (*k, r)),
-        ))
+        )
     }
 }
 
 /// [`ManualListCmd`] 的纯构造器：账号清单成品（`accounts-list` 那一份）· MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
+/// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 回 `unreadable`，不列。
 pub(crate) fn manual_of(
     agent: &str,
     accounts: &Value,
+    unreadable: Option<String>,
     mcp: Option<(&str, &crate::agents::McpRead)>,
-) -> ManualList {
+) -> Result<ManualList, ManualListErr> {
+    if let Some(why) = unreadable {
+        return Err(ManualListErr::Unreadable(why));
+    }
     let signs_in = crate::agents::accounts_face(agent).is_some_and(|f| f.sign_in.is_some());
     let mut items: Vec<ManualItem> = accounts["accounts"]
         .as_array()
@@ -488,6 +605,12 @@ pub(crate) fn manual_of(
                 ),
                 None => copy_text("beManual.list.mcpLoginBare", &[("server", &e.name)]),
             };
+            let why = (!mcp_signs_in).then(|| {
+                copy_text(
+                    "beManual.list.mcpNoFix",
+                    &[("agent", &agent_name(mcp_kind))],
+                )
+            });
             let fix = mcp_signs_in.then(|| ManualFix {
                 command: "login-start",
                 args: LoginStartReq::Mcp {
@@ -503,10 +626,18 @@ pub(crate) fn manual_of(
                 scope: e.scope.to_string(),
                 said,
                 fix,
+                why,
             });
         }
     }
-    ManualList { items }
+    Ok(ManualList { items })
+}
+
+/// 这一家对用户的叫法（没有起会话那一面 ⇒ 它的 id）。
+fn agent_name(kind: &str) -> String {
+    crate::agents::launch_face_among(crate::agents::REGISTRY, kind)
+        .map_or(kind, |l| l.display_name)
+        .to_string()
 }
 
 #[cfg(test)]

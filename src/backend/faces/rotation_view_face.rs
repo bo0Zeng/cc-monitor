@@ -226,7 +226,8 @@ pub(crate) enum RotHint {
         #[cfg_attr(test, ts(optional))]
         path: Option<String>,
     },
-    /// 文件头里没写时区：分时段按 UTC 算。`zone` ＝ 看的那一台的时区名（「设时区」设成它；说不出 ⇒ 缺，不出按钮）。
+    /// 文件头里没写时区：分时段按 UTC 算。`zone` ＝ 看的那一台的时区名（请求信封的 `tz`；`local` ⇒ 这台系统的时区名）：
+    /// 「设时区」设成它。看的那一台也说不出 ⇒ 缺，不出按钮，提示那一句照实说（`beRotation.hint.tzNoZone`）。
     TzUnknown {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(test, ts(optional))]
@@ -355,7 +356,9 @@ fn note_of(hint: RotHint, name: &str) -> RotNote {
                 &[("name", name), ("why", &error.why_text())],
             ),
         },
-        RotHint::TzUnknown { .. } => copy_core::copy_text("beRotation.hint.tz", &[]),
+        RotHint::TzUnknown { zone: Some(_) } => copy_core::copy_text("beRotation.hint.tz", &[]),
+        // 看的那一台也说不出自己的时区（信封没带 · 认不得 · 「这一台」读不出）⇒ 不出［设成 …］，句子里照实说。
+        RotHint::TzUnknown { zone: None } => copy_core::copy_text("beRotation.hint.tzNoZone", &[]),
         RotHint::Newer => copy_core::copy_text("beRotation.hint.newer", &[]),
         RotHint::OldScripts { n, .. } => {
             copy_core::copy_text("beRotation.hint.old", &[("n", &n.to_string())])
@@ -687,7 +690,7 @@ pub(crate) fn view_with(
     }
     if item.tz_unknown {
         hints.push(RotHint::TzUnknown {
-            zone: tz.iana_name(),
+            zone: tz.viewer_zone(),
         });
     }
     if item.words_bad {

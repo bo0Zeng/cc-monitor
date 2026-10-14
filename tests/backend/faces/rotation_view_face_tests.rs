@@ -588,6 +588,50 @@ fn a_session_view_draws_what_already_happened() {
     assert!(s.past.is_none());
 }
 
+/// ★ 「时区不明」总带上看的那一台的时区：信封里说了 ⇒ 那个名；`local` ⇒ 这台系统的时区名；
+/// 那一侧也说不出（没带 · 认不得）⇒ 照实不带 `zone`，句子里说一句（不冒充成 UTC）。
+#[test]
+fn the_unknown_zone_hint_names_the_viewers_zone_or_says_it_cannot() {
+    let home = Home::new("view-hint-tz");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    let tz_hint = |tz: &crate::Tz| {
+        session_view_in(&ctx, &home, S1, tz)
+            .hints
+            .into_iter()
+            .find(|h| matches!(h.hint, RotHint::TzUnknown { .. }))
+            .expect("时区不明那一条")
+    };
+    let named = tz_hint(&crate::Tz::named("Europe/Paris").expect("tz"));
+    assert_eq!(
+        named.hint,
+        RotHint::TzUnknown {
+            zone: Some("Europe/Paris".into())
+        }
+    );
+    assert_eq!(named.text, copy_core::copy_text("beRotation.hint.tz", &[]));
+    for unsaid in [serde_json::Value::Null, serde_json::json!("Mars/Base")] {
+        let n = tz_hint(&crate::Tz::of(&unsaid));
+        assert_eq!(
+            n.hint,
+            RotHint::TzUnknown { zone: None },
+            "{unsaid}：说不出就不带"
+        );
+        assert_eq!(
+            n.text,
+            copy_core::copy_text("beRotation.hint.tzNoZone", &[])
+        );
+    }
+    let here = tz_hint(&crate::Tz::named(crate::common::time::TZ_HERE).expect("local"));
+    assert_eq!(
+        here.hint,
+        RotHint::TzUnknown {
+            zone: crate::platform::local_tz::iana_name()
+        },
+        "「这一台」⇒ 这台系统的时区名"
+    );
+}
+
 /// ★ 提示带上按钮要的东西：出错 ⇒ 那份文件的路径；时区不明 ⇒ 看的那一台的时区名；旧格式 ⇒ 哪几份、在哪。
 /// 时刻的字照看的那一台的时区写。
 #[test]
