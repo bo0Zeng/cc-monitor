@@ -487,9 +487,14 @@ fn dispatch(
                 }),
             )
         }
-        "transfer-upload" | "transfer-download" | "transfer-start" | "transfer-stop" => {
+        // 上传开单先去远端落点探整组同名（要等那台）⇒ 起一个异步任务；别的三条就地做完。
+        "transfer-upload" => {
+            let run = xfers.upload_wire_for();
+            Disposition::SpawnData(req, run)
+        }
+        "transfer-download" | "transfer-start" | "transfer-stop" => {
             Disposition::Reply(crate::control::transfer::Desk::answer_wire(
-                xfers, &req.cmd, &req.id, &req.args,
+                xfers, &req.cmd, &req.id, &req.args, &req.tz,
             ))
         }
         // 终端实时预览三条：要碰**本连接的订阅票表**与应答通道（画面帧走应答通道）⇒ 同一档硬臂。

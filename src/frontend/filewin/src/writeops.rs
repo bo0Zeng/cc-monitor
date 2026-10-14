@@ -37,7 +37,7 @@
 //! | 一格通道预算（`6 − 4 = 2` 格永远留给浏览） | 那条不变量被拆成两份互不知情的预算 |
 //! | 池里那条连接 | 同一台远端被拨第二条 SSH（`super` 头注那一节） |
 //!
-//! # 🔴 三、两段（原来三段）的顺序**就是 [`run_writes`] 的结构** —— 照 [`super::transfer::run_drop`] 办
+//! # 🔴 三、两段（原来三段）的顺序**就是 [`run_writes`] 的结构**
 //!
 //! ```text
 //! ① confirm  —— 要动的那几件**一次**交给人（`FnOnce` ⇒ 一半由编译器守）
@@ -46,13 +46,12 @@
 //!
 //! 原来排在最前面的「① fence —— 围栏（本地、不过网）」那一段删了（理由住本模块头注 FN1 那一节）。
 //!
-//! ⚠ `confirm` 回来的那一摞由 `ops.iter().filter(|o| allowed.contains(o))` 过一遍
-//! （同 `run_drop` 那一行）⇒ **它没法凭空塞进一件调用方没交给它的操作**：
+//! ⚠ `confirm` 回来的那一摞由 `ops.iter().filter(|o| allowed.contains(o))` 过一遍 ⇒ **它没法凭空塞进一件调用方没交给它的操作**：
 //! 回值只起「准不准」的作用，不起「做什么」的作用。
 //!
-//! ## 为什么 ③ 是**串行**的（与 `run_drop` 刻意不同形）
+//! ## 为什么 ③ 是**串行**的（与上传那一路刻意不同形）
 //!
-//! `run_drop` 并行是因为传输走的是那 **4 条车道**，串行只用得到 1 条。
+//! 上传那一路（[`super::transfer::run_drop`]）并行是因为传输走的是那 **4 条车道**，串行只用得到 1 条。
 //! 而这四条命令走的是 `with_sftp`，吃的是**通道预算**（`SESSION_CHANNEL_CAP`）——
 //! 一次并发起 N 件小写操作，会把那句「2 格永远留给浏览」吃掉，
 //! 而换来的只是几个 packet 的延迟。⇒ **串行，并把理由写在这儿**。
@@ -67,7 +66,7 @@
 //! | 改名 | 不问 | 目标已存在时由服务端拒（SFTP 的 `RENAME` 不覆盖）；而且它**可逆** |
 //!
 //! ⚠ 「问过了」与「没问」在类型上分得开：`confirm` 是 `FnOnce`
-//! ⇒ **不许被调第二次**，这一半由编译器守（同 `run_drop` 的先例）。
+//! ⇒ **不许被调第二次**，这一半由编译器守。
 //!
 //! # ⚠ 这一刀**买不到**什么（逐条写明，别读宽）
 //!
@@ -252,7 +251,7 @@ pub struct WriteOutcome {
 ///   —— 类型上就不许被调第二次，「一次问完」这件事有一半是编译器在守。
 /// - `apply`：真做准做的那一摞（同一种的一组一条命令，[`apply_all`]），交回逐件的成败。
 ///
-/// ⚠ **不用问的那几件也要等这一次问完**。那是刻意的，同 [`super::transfer::run_drop`]：
+/// ⚠ **不用问的那几件也要等这一次问完**。那是刻意的：
 /// 若把它们先放出去，用户答「全都别做」时已经有几件写到对面盘上了 ——
 /// 「先问完再动手」就只剩一半。
 pub async fn run_writes<C, CFut, A, AFut>(ops: Vec<WriteOp>, confirm: C, apply: A) -> WriteOutcome
@@ -267,7 +266,7 @@ where
         return out;
     }
     // ── ① 一次问完 ────────────────────────────────────────────────────
-    //    没有要问的就**不问** —— 弹一个空框是噪音，不是慎重（同 `run_drop`）。
+    //    没有要问的就**不问** —— 弹一个空框是噪音，不是慎重。
     // 这一段之前原来还有「围栏（本地、不过网）」一段，删了。
     let asking: Vec<WriteOp> = ops.iter().filter(|o| o.needs_confirm()).cloned().collect();
     out.asked = asking.len();
@@ -279,7 +278,7 @@ where
 
     // 准做的那一摞 = 不用问的全部 ＋ 人点了「做」的那几件。
     //
-    // 🔴 `allowed.contains(o)` 这一行是**承重的**（同 `run_drop` 那一行）：
+    // 🔴 `allowed.contains(o)` 这一行是**承重的**：
     //    回值只起「准不准」的作用 ⇒ `confirm` 没法凭空塞进一件调用方**没交给它**的操作。
     let go: Vec<WriteOp> = ops
         .into_iter()
@@ -1081,7 +1080,7 @@ fn low12(m: Option<u32>) -> Option<u32> {
     m.filter(|m| *m <= 0o7777)
 }
 
-/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote`] 那一问、同一个期限），按入参顺序交回。
+/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote_at`] 那一问、同一个期限），按入参顺序交回。
 pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {

@@ -27,11 +27,12 @@ pub const KEEP_FINISHED: usize = 50;
 /// 一趟是什么、它那块看板在哪。
 #[derive(Clone)]
 pub enum Trip {
-    /// 上传一摞：`dir` 是传到的那个目录（显示名），`items` 是这一摞（重试失败的那几个要用）。
+    /// 上传一摞：`dir` 是传到的那个目录（显示名），`items` 是这一摞（重试失败的那几个要用），`ask` 是整组开单那一问（同名冲突框）。
     Upload {
         board: DropBoard,
         items: Vec<Pending>,
         dir: String,
+        ask: BatchBoard,
     },
     /// 下载一个文件到本机 `dest`。
     Download {
@@ -75,8 +76,15 @@ pub enum Act {
     RetryUpload(Vec<Pending>),
     /// 再下一次（下载）。
     RetryDownload { src: String, dest: String },
-    /// 接着传这一摞里没传的（上传停了之后）。
+    /// 接着传这一摞里没传的（上传停了之后；再开单，续传先对尾块）。
     Resume(Vec<Pending>),
+    /// 一组里没成的那几项另起一组（另一张票）：`at` ＝ 寻址的那台，`home` ＝ 在哪台的后端里做（同原来那一组）。
+    RetryBatch {
+        plan: super::batch::Plan,
+        icon: &'static str,
+        at: super::source::Origin,
+        home: super::source::Origin,
+    },
 }
 
 /// 一行画成什么（全从看板读数现算，判据与界面看同一份）。
@@ -294,7 +302,9 @@ impl Progress {
                             copy_text("rsFilewinWorkspace.closeAsk.deleting", &[]),
                             (*icon, name, String::new()),
                         ),
-                        super::batch::Verb::Chmod | super::batch::Verb::Download => {
+                        super::batch::Verb::Chmod
+                        | super::batch::Verb::Download
+                        | super::batch::Verb::Upload => {
                             put(transfers, (*icon, name, String::new()))
                         }
                     }
@@ -379,7 +389,7 @@ impl Job {
     /// 这一行画不画：那一趟开头那一问（同名要不要盖 · 删除 n 项？· 撞名另起一个？）摆着时还不算开跑。
     pub fn shown(&self) -> bool {
         match &self.trip {
-            Trip::Upload { board, .. } => !board.is_asking(),
+            Trip::Upload { ask, .. } => !ask.is_asking() && ask.phase() != Phase::Dropped,
             Trip::Copy { board, .. } => !board.is_asking(),
             Trip::Batch { board, .. } => !board.is_asking() && board.phase() != Phase::Dropped,
             Trip::Extract { board, .. } => !board.is_asking(),
@@ -390,7 +400,9 @@ impl Job {
     /// 人在那一问上答了「取消」⇒ 这一趟没开过，整行拿掉。
     fn dropped(&self) -> bool {
         match &self.trip {
-            Trip::Batch { board, .. } => board.phase() == Phase::Dropped,
+            Trip::Batch { board, .. } | Trip::Upload { ask: board, .. } => {
+                board.phase() == Phase::Dropped
+            }
             Trip::Copy { board, .. } => {
                 board.rounds() > 0 && matches!(board.last(), Some(CopyOutcome::Skipped))
             }
@@ -653,10 +665,7 @@ impl Job {
                             ),
                             button: (!again.is_empty()).then(|| {
                                 (
-                                    copy_text(
-                                        "rsFilewinProgress.action.retryN",
-                                        &[("n", &again.len().to_string())],
-                                    ),
+                                    copy_text("rsFilewinBatch.btn.retry", &[]),
                                     Ok(Act::RetryUpload(again)),
                                 )
                             }),
@@ -688,7 +697,7 @@ impl Job {
                             copy: None,
                             button: (!rest.is_empty()).then(|| {
                                 (
-                                    copy_text("rsFilewinProgress.action.resume", &[]),
+                                    copy_text("rsFilewinBatch.btn.resume", &[]),
                                     Ok(Act::Resume(rest)),
                                 )
                             }),
@@ -733,7 +742,7 @@ impl Job {
                         nums: ended,
                         copy: None,
                         button: Some((
-                            copy_text("rsFilewinProgress.action.resume", &[]),
+                            copy_text("rsFilewinBatch.btn.resume", &[]),
                             Ok(Act::RetryDownload {
                                 src: src.clone(),
                                 dest: dest.clone(),
@@ -839,7 +848,19 @@ impl Job {
                         frac: None,
                         nums: ended,
                         copy: super::batch::copy_details(&plan, &r),
-                        button: None,
+                        button: super::batch::retry_plan(&plan, &r).zip(board.route()).map(
+                            |(plan, (at, home))| {
+                                (
+                                    copy_text("rsFilewinBatch.btn.retry", &[]),
+                                    Ok(Act::RetryBatch {
+                                        plan,
+                                        icon,
+                                        at,
+                                        home,
+                                    }),
+                                )
+                            },
+                        ),
                     },
                     Phase::Failed(f) => View {
                         state,

@@ -831,7 +831,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let r = crate::sftp_pool::transfer_call(
         cfg.clone(),
         crate::sftp_pool::TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": up }] }),
+        &serde_json::json!({ "items": [{ "local_path": up }], "remote_dir": "/tmp" }),
     )
     .await
     .expect("开单（上传）");

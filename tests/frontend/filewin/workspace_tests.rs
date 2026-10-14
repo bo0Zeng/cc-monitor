@@ -337,6 +337,7 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
             board: board.clone(),
             items: Vec::new(),
             dir: "srv".into(),
+            ask: crate::transfer::tests::upload_ask(&[]),
         },
         Some("/srv".into()),
         None,
@@ -1072,6 +1073,7 @@ async fn screenshot_for_the_shots_tool() {
         w.progress.add(
             Trip::Upload {
                 board: up.clone(),
+                ask: crate::transfer::tests::upload_ask(&items),
                 items: items.clone(),
                 dir: "orders-service".into(),
             },
@@ -1119,6 +1121,7 @@ async fn screenshot_for_the_shots_tool() {
         w.progress.add(
             Trip::Upload {
                 board: failed.clone(),
+                ask: crate::transfer::tests::upload_ask(&items),
                 items: items.clone(),
                 dir: "orders-service".into(),
             },
@@ -1143,11 +1146,16 @@ async fn screenshot_for_the_shots_tool() {
         let cross = crate::batch::BatchBoard::new(crate::batch::Plan {
             verb: crate::batch::Verb::Copy,
             cmd: "transfer-copy",
-            args: serde_json::json!({}),
+            args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
+                {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
             names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
             into: Some("gpu-01:/home/user/inbox".into()),
             machine: "devbox".into(),
         });
+        cross.set_route(
+            crate::source::Origin("devbox".into()),
+            crate::source::Origin("<local>".into()),
+        );
         w.progress.add(
             Trip::Batch {
                 board: cross.clone(),
@@ -1195,6 +1203,118 @@ async fn screenshot_for_the_shots_tool() {
             &t,
         )));
         w.progress.settle(chrono_like_today_at(13, 41));
+    }
+    // 结局行那两颗：上传一摞停了（［继续］：没传的那几项再开单，续传先对尾块）· 复制到另一台部分失败（［重试失败的］）；
+    //   状态栏「已选 3 项 · 大小」（都是文件）。
+    if scene == "batch-end" {
+        use crate::progress::Trip;
+        let items: Vec<crate::transfer::Pending> =
+            ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"]
+                .iter()
+                .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), &d))
+                .collect();
+        let cross = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "transfer-copy",
+            args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
+                {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
+            names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
+            into: Some("gpu-01:/home/user/inbox".into()),
+            machine: "devbox".into(),
+        });
+        cross.set_route(
+            crate::source::Origin("devbox".into()),
+            crate::source::Origin("<local>".into()),
+        );
+        w.progress.add(
+            Trip::Batch {
+                board: cross.clone(),
+                icon: egui_phosphor::regular::ARROWS_LEFT_RIGHT,
+            },
+            None,
+            None,
+        );
+        cross.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+            outcomes: vec![
+                cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done),
+                cmd_wire::batch::BatchOutcome {
+                    reason: Some(copy_core::copy_text("reason.io.denied", &[])),
+                    detail: Some("那台说：Permission denied".into()),
+                    ..cmd_wire::batch::BatchOutcome::bare("1", cmd_wire::batch::ItemState::Failed)
+                },
+                cmd_wire::batch::BatchOutcome::bare("2", cmd_wire::batch::ItemState::Skipped),
+            ],
+            said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
+        }));
+        let up = crate::transfer::DropBoard::default();
+        w.progress.add(
+            Trip::Upload {
+                board: up.clone(),
+                ask: crate::transfer::tests::upload_ask(&items),
+                items: items.clone(),
+                dir: "orders-service".into(),
+            },
+            Some(d.clone()),
+            None,
+        );
+        up.cancels().request();
+        let cancelled: crate::source::Failed = crate::transfer::CANCELLED.as_str().into();
+        up.finish(crate::transfer::DropOutcome {
+            ok: 1,
+            failed: vec![
+                ("release-2.tar.gz".into(), cancelled.clone()),
+                ("release-3.tar.gz".into(), cancelled),
+            ],
+            ..Default::default()
+        });
+        // 一趟下载在跑（表最底下那一行，只为让上面两行整行摆得下）。
+        let down = crate::download::DownloadBoard::default();
+        w.progress.add(
+            Trip::Download {
+                board: down.clone(),
+                name: "logs-0930.zip".into(),
+                src: vdir.join("logs-0930.zip").to_string_lossy().to_string(),
+                dest: "~/下载/logs-0930.zip".into(),
+            },
+            None,
+            None,
+        );
+        down.begin("logs-0930.zip");
+        down.progress(58_000_000, 480_000_000);
+        w.pick_also(&["Cargo.toml", "README.md"]);
+        w.progress.settle(chrono_like_today_at(13, 41));
+    }
+    // 一组复制全成 ⇒ 右下角回执（后端那一行原样）；「进度」表收着（没有失败不自己摊开）。
+    if scene == "batch-done" {
+        use crate::progress::Trip;
+        let all = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "files-copy",
+            args: serde_json::json!({}),
+            names: vec!["Cargo.toml".into(), "README.md".into()],
+            into: Some("~/work/b".into()),
+            machine: "devbox".into(),
+        });
+        w.progress.add(
+            Trip::Batch {
+                board: all.clone(),
+                icon: egui_phosphor::regular::COPY,
+            },
+            Some(d.clone()),
+            None,
+        );
+        all.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+            outcomes: (0..2)
+                .map(|i| {
+                    cmd_wire::batch::BatchOutcome::bare(
+                        i.to_string(),
+                        cmd_wire::batch::ItemState::Done,
+                    )
+                })
+                .collect(),
+            said: "已复制 2 项 → ~/work/b".into(),
+        }));
+        w.batches.push(all);
     }
     // 断线 · 过期（稿 18）：那条流说「离线」；摆着的那一屏是 13:40 列到的。
     if scene == "stale" {
@@ -1261,29 +1381,37 @@ async fn screenshot_for_the_shots_tool() {
         let i = row_of(&w, "main.rs");
         w.begin_chmod(i);
     }
-    // 上传遇到同名（稿 12）：本机三份、两份同名。
+    // 上传遇到同名（稿 12）：本机三份、两份同名 ⇒ 那台后端探了回同名清单，冲突框照它画（时刻是后端写好的字）。
     if scene == "upload-clash" {
         let local = base.join("..").join("..").join("local");
-        let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md"]
+        let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md", "notes.txt"]
             .iter()
             .filter_map(|n| {
                 crate::transfer::Pending::into_remote_dir(&local.join(n).to_string_lossy(), &d)
             })
             .collect();
-        for n in ["main.rs", "README.md"] {
-            let md = std::fs::metadata(dir.join(n)).unwrap();
-            w.board.note_there(
-                n,
-                Some(md.len()),
-                // 「那台」那一格是后端写好的短写法（合成场景替它按这台的钟写）。
-                md.modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|t| crate::source::mtime_text(t.as_secs()).short),
-            );
-        }
-        w.board.set_total(3);
-        std::mem::forget(w.board.ask(items));
+        let b = crate::batch::BatchBoard::new(crate::batch::Plan {
+            into: Some(d.clone()),
+            ..crate::transfer::tests::upload_ask(&items).plan()
+        });
+        let c = |key: &str, name: &str, size: u64, at: &str, there: u64, there_at: &str| {
+            cmd_wire::batch::Conflict {
+                key: key.into(),
+                name: cmd_wire::files::WirePath::from(name),
+                kind: cmd_wire::files::FileKind::File,
+                size: Some(size),
+                mtime_text: Some(at.into()),
+                there: cmd_wire::files::FileKind::File,
+                there_size: Some(there),
+                there_mtime_text: Some(there_at.into()),
+                dir_into: false,
+            }
+        };
+        std::mem::forget(b.ask(vec![
+            c("0", "main.rs", 2_380, "14:02", 1_940, "10-01 09:10"),
+            c("1", "README.md", 1_210, "11:47", 1_210, "09-28 18:03"),
+        ]));
+        w.batches.push(b);
     }
     // 复制到另一台（稿 13）：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
     if scene == "cross-copy" {
@@ -1320,10 +1448,10 @@ async fn screenshot_for_the_shots_tool() {
                 name: cmd_wire::files::WirePath::from(name),
                 kind,
                 size,
-                mtime: size.map(|_| chrono_like_today_at(14, 2) as i64),
+                mtime_text: size.map(|_| "14:02".to_string()),
                 there: kind,
                 there_size: there,
-                there_mtime: there.map(|_| chrono_like_today_at(9, 10) as i64 - 86_400 * 13),
+                there_mtime_text: there.map(|_| "10-01 09:10".to_string()),
                 dir_into: dir,
             }
         };
@@ -1811,6 +1939,7 @@ fn closing_the_window_asks_once_listing_unsaved_pages_and_running_trips() {
             board: up,
             items: Vec::new(),
             dir: "l".into(),
+            ask: crate::transfer::tests::upload_ask(&[]),
         },
         Some("/l".into()),
         None,
@@ -2098,6 +2227,7 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
     ws.progress.add(
         Trip::Upload {
             board: failed.clone(),
+            ask: crate::transfer::tests::upload_ask(&items),
             items,
             dir: "data".into(),
         },

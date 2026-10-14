@@ -179,7 +179,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
         cfg("中继·上传"),
         TRANSFER_UPLOAD,
         // `home` 原样转给传输台（它连上之后比 SFTP 起始目录）。
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "home": "/home/u" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "remote_dir": "/srv", "home": "/home/u" }),
     )
     .await
     .expect("开单");
@@ -240,7 +240,7 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
     transfer_call(
         cfg("中继·撤"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/y.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/y.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect("开单");
@@ -264,7 +264,7 @@ async fn a_stale_watch_dropping_late_leaves_a_newer_ticket_with_the_same_id_alon
     transfer_call(
         cfg("中继·重号"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect("开单");
@@ -275,7 +275,7 @@ async fn a_stale_watch_dropping_late_leaves_a_newer_ticket_with_the_same_id_alon
     let v = transfer_call(
         cfg("中继·重号"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect("再开单");
@@ -324,7 +324,7 @@ async fn bad_subscriptions_say_why_in_place() {
     transfer_call(
         cfg("中继·坏"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect("开单");
@@ -357,7 +357,7 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     } = transfer_call(
         cfg("中继·旧"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect_err("老后端不该开得了单");
@@ -377,7 +377,7 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     } = transfer_call(
         cfg("中继·无"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect_err("本机后端不在也开得了单？");
@@ -493,11 +493,11 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
     let cases = [
         (
             TRANSFER_UPLOAD,
-            serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }] }),
+            serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "remote_dir": "/srv" }),
         ),
         (
             TRANSFER_UPLOAD,
-            serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "home": "/home/u" }),
+            serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "remote_dir": "/srv", "home": "/home/u" }),
         ),
         (
             TRANSFER_DOWNLOAD,
@@ -554,8 +554,8 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         got.push(format!("{op} {payload} => {code} {said}"));
     }
     let want = [
-        r#"transfer-upload {"dial":<dial>,"items":[{"local_path":"/tmp/x.bin"}]} => {"items":[{"id":"xfer-1","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
-        r#"transfer-upload {"dial":<dial>,"home":"/home/u","items":[{"local_path":"/tmp/x.bin"}]} => {"items":[{"id":"xfer-2","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
+        r#"transfer-upload {"dial":<dial>,"items":[{"local_path":"/tmp/x.bin"}],"remote_dir":"/srv"} => {"items":[{"id":"xfer-1","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
+        r#"transfer-upload {"dial":<dial>,"home":"/home/u","items":[{"local_path":"/tmp/x.bin"}],"remote_dir":"/srv"} => {"items":[{"id":"xfer-2","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
         r#"transfer-download {"dial":<dial>,"items":[{"name":"a b","remote_path":"/srv/a b"}],"local_dir":"/tmp"} => {"items":[{"id":"xfer-3","key":"0","state":"opened"}]}"#,
         r#"transfer-download {"dial":<dial>,"items":[{"name":{"b16":"ff"},"remote_path":"/srv/a"}],"local_dir":"/tmp"} => {"items":[{"id":"xfer-4","key":"0","state":"opened"}]}"#,
         r#"transfer-upload {} => bad_args 请求格式不对 · transfer-upload"#,

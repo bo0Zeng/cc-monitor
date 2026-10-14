@@ -86,7 +86,7 @@ async fn open_upload(label: &str) -> String {
     let v = crate::sftp_pool::transfer_call(
         cfg(label),
         crate::sftp_pool::TRANSFER_UPLOAD,
-        &serde_json::json!({ "items": [{ "local_path": "/tmp/ccm-sr1b-chan.bin" }] }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/ccm-sr1b-chan.bin" }], "remote_dir": "/srv" }),
     )
     .await
     .expect("开单");

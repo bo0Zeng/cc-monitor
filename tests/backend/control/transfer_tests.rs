@@ -600,6 +600,7 @@ fn batched(cmd: &str, a: &serde_json::Value) -> serde_json::Value {
         if let Some(l) = o.remove("local_path") {
             item.insert("local_path".into(), l);
         }
+        o.entry("remote_dir").or_insert(serde_json::json!("/r"));
     } else {
         if let Some(r) = o.remove("remote_path") {
             item.insert("remote_path".into(), r);
@@ -623,10 +624,77 @@ fn batched(cmd: &str, a: &serde_json::Value) -> serde_json::Value {
     serde_json::Value::Object(o)
 }
 
+/// 一个不等任何东西的 future 当场取值（下面两份落点替身都在本机盘上当场答）。
+fn ready<T>(f: impl std::future::Future<Output = T>) -> T {
+    let mut f = std::pin::pin!(f);
+    match f
+        .as_mut()
+        .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
+    {
+        std::task::Poll::Ready(v) => v,
+        std::task::Poll::Pending => panic!("落点替身该当场答"),
+    }
+}
+
+/// 远端落点上什么都没有（开单那几条判据不问同名）。
+struct Bare;
+impl Landing for Bare {
+    fn look<'a>(&'a self, _: &'a [u8]) -> crate::control::transfer_copy::Fut<'a, Option<Seen>> {
+        Box::pin(async { None })
+    }
+}
+
+/// 本机一个目录当远端落点（判同名那几条）：照盘上那一格答（不跟链接）。
+struct Here;
+impl Landing for Here {
+    fn look<'a>(&'a self, path: &'a [u8]) -> crate::control::transfer_copy::Fut<'a, Option<Seen>> {
+        let m = Ro::symlink_metadata(crate::common::path_wire::to_path_buf(path)).ok();
+        Box::pin(async move {
+            let m = m?;
+            Some(Seen {
+                kind: if m.is_dir() {
+                    cwf::FileKind::Dir
+                } else {
+                    cwf::FileKind::File
+                },
+                size: m.is_file().then(|| m.len()),
+                mtime: crate::common::batch_book::mtime_secs(m.modified()),
+            })
+        })
+    }
+}
+
 impl Desk {
-    /// 一项的开单问法经答口问（同 [`batched`]）。
+    /// 上传开单经它的本体（[`upload_with`]，帧面那一发同一份）问、落点照 `land` 答，回应答帧。
+    fn upload_frame(
+        &self,
+        id: &str,
+        args: &serde_json::Value,
+        land: &dyn Landing,
+        tz: &crate::Tz,
+    ) -> Frame {
+        let out = ready(typed::outcome_async::<TransferUpload, _>(args, |req| {
+            upload_with(&self.tickets, land, req, tz)
+        }));
+        match out {
+            Ok(data) => Frame::Reply {
+                id: id.to_string(),
+                ok: true,
+                code: None,
+                message: None,
+                detail: None,
+                data,
+            },
+            Err(f) => f.into_reply(id.to_string(), TRANSFER_UPLOAD, args),
+        }
+    }
+
+    /// 一项的开单问法经答口问（同 [`batched`]）；上传那一条的落点上什么都没有。
     fn ask1(&self, cmd: &str, id: &str, a: &serde_json::Value) -> Frame {
-        self.answer_wire(cmd, id, &batched(cmd, a))
+        if cmd == TRANSFER_UPLOAD {
+            return self.upload_frame(id, &batched(cmd, a), &Bare, &crate::Tz::default());
+        }
+        self.answer_wire(cmd, id, &batched(cmd, a), &crate::Tz::default())
     }
 }
 
@@ -1134,7 +1202,7 @@ async fn the_two_openers_answer_with_the_same_bytes() {
         r#"{"kind":"reply","id":"u4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：missing field `dial`"}"#,
         r#"{"kind":"reply","id":"u5","ok":true,"data":{"items":[{"code":"refused","detail":"<tmp> 不是普通文件 · 不可传","key":"0","reason":"被拒","state":"failed"}]}}"#,
         r#"{"kind":"reply","id":"u6","ok":true,"data":{"items":[{"code":"io_failed","detail":"读取失败 · 本机 <tmp>/gone.bin · 路径不存在\nNo such file or directory (os error 2)","key":"0","reason":"路径不存在","state":"failed"}]}}"#,
-        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `dial`, `items`, `home`"}"#,
+        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `dial`, `items`, `remote_dir`, `home`, `on_exists`, `decide`"}"#,
         r#"{"kind":"reply","id":"d1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dl.bin","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"d2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dÿ.bin","state":"opened"}]}}"#,
         r#"{"kind":"reply","id":"d3","ok":true,"data":{"items":[{"code":"refused","detail":"解析 <tmp>/nope 失败 · 路径不存在","key":"0","reason":"被拒","state":"failed"}]}}"#,
@@ -1167,13 +1235,18 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
         serde_json::json!({"dial": dial(), "local_dir": dir, "on_exists": on,
             "items": [{"remote_path": "/r/a.txt"}, {"remote_path": "/r/b.txt"}]})
     };
-    let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g1", &ask("ask"));
+    let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g1", &ask("ask"), &crate::Tz::default());
     let Frame::Reply { ok, code, .. } = &f else {
         panic!("{f:?}")
     };
     assert!(!ok && code.as_deref() == Some("exists"), "{f:?}");
     assert_eq!(desk.len(), 0, "有同名而没答 ⇒ 一单都不开");
-    let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g2", &ask("keep_both"));
+    let f = desk.answer_wire(
+        TRANSFER_DOWNLOAD,
+        "g2",
+        &ask("keep_both"),
+        &crate::Tz::default(),
+    );
     let Frame::Reply { data: Some(d), .. } = &f else {
         panic!("{f:?}")
     };
@@ -1181,4 +1254,143 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
     assert_eq!(d["items"][0]["new_name"], "a (3).txt");
     assert_eq!(d["items"][1]["state"], "opened");
     assert_eq!(desk.len(), 2);
+}
+
+/// 上传一组：远端落点有同名而没答 ⇒ 一单不开、回 `exists` 带同名清单（两头的大小 · 时刻都在，时刻按看的那一台的钟写好）；
+/// 答了 ⇒ 跳过的不开单 · 覆盖的提交时盖 · 保留两份的在远端另起名（撞上往后试）；不同名的照开、提交时不盖。
+#[tokio::test]
+async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() {
+    let (tx, _rx) = mpsc::channel(64);
+    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let here = Tmp::dir("up-here");
+    let there = Tmp::dir("up-there");
+    let a = here.file("a.txt", b"new!");
+    let b = here.file("b.txt", b"b");
+    there.file("a.txt", b"old");
+    there.file("a (2).txt", b"old2");
+    let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    std::fs::File::options()
+        .write(true)
+        .open(there.path("a.txt"))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let tz = crate::Tz::named("Asia/Tokyo").unwrap();
+    let dir = there.0.to_string_lossy().into_owned();
+    let ask = |decide: serde_json::Value| {
+        let mut v = serde_json::json!({"dial": dial(), "remote_dir": dir,
+            "items": [{"local_path": a}, {"local_path": b}]});
+        if !decide.is_null() {
+            v["decide"] = decide;
+        }
+        v
+    };
+    let f = desk.upload_frame("u1", &ask(serde_json::Value::Null), &Here, &tz);
+    let Frame::Reply {
+        ok, code, detail, ..
+    } = &f
+    else {
+        panic!("{f:?}")
+    };
+    assert!(!ok && code.as_deref() == Some("exists"), "{f:?}");
+    assert_eq!(desk.len(), 0, "有同名而没答 ⇒ 一单都不开");
+    let Err(UploadErr::Exists(_, c)) = ready(upload_with(
+        &desk.tickets,
+        &Here,
+        serde_json::from_value(ask(serde_json::Value::Null)).unwrap(),
+        &tz,
+    )) else {
+        panic!("同名清单不在：{detail:?}")
+    };
+    let mine = std::fs::metadata(&a).unwrap();
+    assert_eq!(
+        c.conflicts,
+        [Conflict {
+            key: "0".into(),
+            name: cwf::WirePath::from("a.txt"),
+            kind: cwf::FileKind::File,
+            size: Some(4),
+            mtime_text: crate::common::batch_book::moment_text(
+                crate::common::batch_book::mtime_secs(mine.modified()),
+                &tz
+            ),
+            there: cwf::FileKind::File,
+            there_size: Some(3),
+            there_mtime_text: Some("2023-11-15 07:13".into()),
+            dir_into: false,
+        }],
+        "只有 a.txt 同名；那台那一格按东京的钟写"
+    );
+    let item = |f: &Frame, i: usize| match f {
+        Frame::Reply { data: Some(d), .. } => d["items"][i].clone(),
+        other => panic!("{other:?}"),
+    };
+    let f = desk.upload_frame("u2", &ask(serde_json::json!({"0": "skip"})), &Here, &tz);
+    assert_eq!(item(&f, 0)["state"], "skipped");
+    assert_eq!(item(&f, 1)["state"], "opened");
+    assert_eq!(
+        item(&f, 1).get("overwrite"),
+        None,
+        "不同名的那一项提交时不盖"
+    );
+    assert_eq!(desk.len(), 1, "跳过的不开单");
+    let (tx2, _rx2) = mpsc::channel(64);
+    let fresh = Desk::new(tx2, crate::platform::fs::Face::issue());
+    let f = fresh.upload_frame(
+        "u3",
+        &ask(serde_json::json!({"0": "overwrite"})),
+        &Here,
+        &tz,
+    );
+    assert_eq!(item(&f, 0)["state"], "opened");
+    assert_eq!(item(&f, 0)["overwrite"], true, "答了覆盖 ⇒ 提交时盖");
+    assert_eq!(item(&f, 0).get("new_name"), None);
+    let (tx3, _rx3) = mpsc::channel(64);
+    let fresh = Desk::new(tx3, crate::platform::fs::Face::issue());
+    let f = fresh.upload_frame(
+        "u4",
+        &ask(serde_json::json!({"0": "keep_both"})),
+        &Here,
+        &tz,
+    );
+    assert_eq!(item(&f, 0)["state"], "opened");
+    assert_eq!(item(&f, 0)["new_name"], "a (3).txt", "撞上 (2) 往后试");
+    assert_eq!(item(&f, 0).get("overwrite"), None);
+}
+
+/// 远端落点那一格是目录：不合并 ⇒ 答「覆盖」也跳过，清单里写明 `dir_into`。
+#[tokio::test]
+async fn an_upload_onto_a_remote_dir_never_merges() {
+    let (tx, _rx) = mpsc::channel(64);
+    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let here = Tmp::dir("up-dir-here");
+    let there = Tmp::dir("up-dir-there");
+    let a = here.file("a", b"x");
+    std::fs::create_dir_all(there.path("a")).unwrap();
+    let req = |decide: Option<serde_json::Value>| {
+        let mut v = serde_json::json!({"dial": dial(), "remote_dir": there.0.to_string_lossy(),
+            "items": [{"local_path": a}]});
+        if let Some(d) = decide {
+            v["decide"] = d;
+        }
+        serde_json::from_value::<TransferUploadReq>(v).unwrap()
+    };
+    let Err(UploadErr::Exists(_, c)) = ready(upload_with(
+        &desk.tickets,
+        &Here,
+        req(None),
+        &crate::Tz::default(),
+    )) else {
+        panic!("目录同名也要问")
+    };
+    assert!(c.conflicts[0].dir_into);
+    let got = ready(upload_with(
+        &desk.tickets,
+        &Here,
+        req(Some(serde_json::json!({"0": "overwrite"}))),
+        &crate::Tz::default(),
+    ))
+    .unwrap();
+    assert_eq!(got.items[0].state, OpenState::Skipped);
+    assert_eq!(desk.len(), 0);
 }

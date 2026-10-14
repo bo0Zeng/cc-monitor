@@ -165,20 +165,20 @@ pub struct Conflict {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub size: Option<u64>,
-    /// 要放过去的那一项的修改时刻（Unix 秒）。
+    /// 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub mtime: Option<i64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub mtime_text: Option<String>,
     /// 已在那儿的那一项是什么。
     pub there: crate::files::FileKind,
     /// 已在那儿的那一项的大小（文件）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub there_size: Option<u64>,
-    /// 已在那儿的那一项的修改时刻（Unix 秒）。
+    /// 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub there_mtime: Option<i64>,
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub there_mtime_text: Option<String>,
     /// 两头有一头是目录：目录不合并，只能跳过或保留两份。
     pub dir_into: bool,
 }

@@ -102,8 +102,8 @@
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
 //!   往外拖（下载）做了（[`super::download`]）；窗口之间互拖没做。
 //! - （大文件编辑改流式）**仍然没做** —— 这一刀没有编辑面。
-//! - （拖入多文件先一次问完再并行）**第二刀做了**，
-//!   住 [`super::transfer::run_drop`]；三段的顺序就是那个函数的结构，判据钉的是顺序与并行度。
+//! - （拖入多文件先一次问完再并行）做了：整组一条开单（同名由后端在落点那台探、冲突框问一次），
+//!   开了单的并行传，住 [`super::transfer::run_drop`]；判据钉的是开单一次与并行度。
 
 use copy_core::copy_text;
 use copy_core::said::Said;
@@ -1456,13 +1456,8 @@ impl FileWindow {
             .collect()
     }
 
-    /// 起一趟 `§5.4d`：**先一次问完，再并行传**。
-    ///
-    /// 🔴 三段的顺序不在这里，在 [`crate::transfer::run_drop`] 的结构里 ——
-    /// 这里只负责把「问谁 · 怎么问 · 怎么传」三个口接上去。
-    /// 接错了会被 `transfer_tests` 逮住的是**那个函数**，不是本函数；
-    /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
-    /// ⚠ 从前这句话是「没运行时 / 本机源」—— 本机源那一支不在了（见 `Source` 头注）。
+    /// 起一趟上传：整组一条开单（同名由后端在落点那台探，有同名冲突框问一次），开了单的并行传（[`crate::transfer::run_drop`]）。
+    /// 接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_drop(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
             return false;
@@ -1478,7 +1473,7 @@ impl FileWindow {
         self.start_drop_items(items, ctx)
     }
 
-    /// 同 [`Self::start_drop`]，只是这一摞的目标目录照它们自己带着的（「进度」表上「重试 n 个」「接着传」走这里）。
+    /// 同 [`Self::start_drop`]，只是这一摞的目标目录照它们自己带着的（「进度」表上「重试失败的」「继续」走这里）。
     pub fn start_drop_items(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
             return false;
@@ -1497,60 +1492,53 @@ impl FileWindow {
         let board = self.board.fresh_like();
         self.board = board.clone();
         self.seen_rounds = 0;
-        // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
-        //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
-        board.attach(ctx);
-        board.set_total(items.len());
+        // 🔴 **把窗口交给看板**，它自己会在「进度动了 / 跑完了」时敲一下。
+        board.attach(ctx.clone());
         self.drops_started += 1;
         let dir = super::source::parent_dir(&items[0].remote_path);
+        // 开单那一问（同名冲突框挂在这个标签页上，与复制 · 下载同一个框）。
+        let ask = super::batch::BatchBoard::new(super::batch::Plan {
+            verb: super::batch::Verb::Upload,
+            cmd: super::transfer::CMD_UPLOAD,
+            args: serde_json::to_value(super::transfer::group_ask(&items, None, None))
+                .unwrap_or_default(),
+            names: items.iter().map(|p| p.name.clone()).collect(),
+            into: Some(dir.clone()),
+            machine: self.source.label(),
+        });
+        ask.attach(ctx);
+        self.batches.push(ask.clone());
         let id = self.progress.add(
             super::progress::Trip::Upload {
                 board: board.clone(),
                 items: items.clone(),
                 dir: super::source::remote_basename(&dir).to_string(),
+                ask: ask.clone(),
             },
             Some(dir),
             None,
         );
         self.track_job("upload", id);
         h.spawn(async move {
-            // 上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
             let (up_line, up_origin) = (line.clone(), origin.clone());
-            let ask_board = board.clone();
             let up_board = board.clone();
-            let probe_board = board.clone();
+            let open_board = board.clone();
             let out = super::transfer::run_drop(
                 items,
                 super::transfer::lanes(),
-                move |p| {
-                    let line = line.clone();
-                    let origin = origin.clone();
-                    let seen = probe_board.clone();
-                    async move {
-                        // 在 ⇒ 顺手记下那台的大小与修改时间（同名那张表「那台」那一格）。
-                        let got =
-                            super::transfer::stat_remote_at(&line, &origin, p.path_wire()).await;
-                        if let Some(v) = &got {
-                            seen.note_there(&p.name, Some(v.size), v.mtime_text.clone());
-                        }
-                        got.is_some()
-                    }
+                move || async move {
+                    super::transfer::open_group(&line, &origin, &ask, &open_board).await
                 },
-                move |clashes| {
-                    let rx = ask_board.ask(clashes);
-                    async move { rx.await.unwrap_or_default() }
-                },
-                move |p| {
+                move |t| {
                     let (line, origin) = (up_line.clone(), up_origin.clone());
                     let b = up_board.clone();
-                    // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件
-                    //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
-                    //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
+                    // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件一件都不起
+                    //   （键由那道闸造并登记，理由住 `launch_unless_cancelled`）。
                     async move {
                         let desk = b.cancels();
-                        let name = p.name.clone();
+                        let name = t.item.name.clone();
                         super::transfer::launch_unless_cancelled(&desk, &name, |_id| async move {
-                            super::transfer::upload_remote(&line, &origin, &p, &b).await
+                            super::transfer::upload_remote(&line, &origin, &t, &b).await
                         })
                         .await
                     }
@@ -1655,6 +1643,15 @@ impl FileWindow {
             return false;
         }
         self.seen_rounds = now;
+        // 一摞全传成了 ⇒ 右下角一句回执；有失败的 · 停了的看「进度」表那一行。
+        if let Some(o) = self.board.last() {
+            if o.ok > 0 && o.failed.is_empty() && !self.board.cancels().is_cancelled() {
+                self.receipt = Some(copy_text(
+                    "rsFilewinProgress.upload.done",
+                    &[("n", &o.ok.to_string())],
+                ));
+            }
+        }
         self.reload();
         true
     }
@@ -1834,14 +1831,29 @@ impl FileWindow {
         use super::batch::Phase;
         let before = self.batches.len();
         let mut landed = false;
+        let mut said = None;
         self.batches.retain(|b| match b.phase() {
-            Phase::Ended(_) | Phase::Failed(_) => {
+            Phase::Ended(r) => {
+                // 全成了 ⇒ 右下角一句回执（后端拼好的那一行）；有没成的看「进度」表那一行。
+                if r.outcomes
+                    .iter()
+                    .all(|o| o.state == cmd_wire::batch::ItemState::Done)
+                {
+                    said = Some(r.said);
+                }
+                landed = true;
+                false
+            }
+            Phase::Failed(_) => {
                 landed = true;
                 false
             }
             Phase::Dropped | Phase::Opened => false,
             _ => true,
         });
+        if let Some(t) = said {
+            self.receipt = Some(t);
+        }
         if landed {
             self.selection.clear_picked();
             self.reload();
@@ -4172,8 +4184,7 @@ impl FileWindow {
 
     /// 编辑面以外的那几个框有没有一个摆着。
     fn asking_up(&self) -> bool {
-        self.board.is_asking()
-            || self.copy_board.is_asking()
+        self.copy_board.is_asking()
             // 解压撞名那一问。
             || self.extract_board.is_asking()
             // 复制到另一台：填机器名那一问 · 盖不盖那一问。
@@ -4913,8 +4924,6 @@ impl FileWindow {
         self.props_ui(ui);
         // 后台那几趟（上传 · 下载 · 复制 · 解压 · 算大小 · 删除）的进度、停与结局不在这里画：
         //   它们是窗口底部「进度」表里的一行（`super::progress`，由 `Workspace` 画）。这里只剩每一趟开头那一问（模态，画在列表之前）。
-        let machine = self.source.label();
-        self.board.ui(ui, &machine);
         self.copy_board.ui(ui);
         self.extract_board.ui(ui);
         for b in &self.batches {

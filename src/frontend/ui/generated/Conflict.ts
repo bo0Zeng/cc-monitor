@@ -23,9 +23,9 @@ kind: FileKind,
  */
 size?: number, 
 /**
- * 要放过去的那一项的修改时刻（Unix 秒）。
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
-mtime?: number, 
+mtime_text?: string, 
 /**
  * 已在那儿的那一项是什么。
  */
@@ -35,9 +35,9 @@ there: FileKind,
  */
 there_size?: number, 
 /**
- * 已在那儿的那一项的修改时刻（Unix 秒）。
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
-there_mtime?: number, 
+there_mtime_text?: string, 
 /**
  * 两头有一头是目录：目录不合并，只能跳过或保留两份。
  */

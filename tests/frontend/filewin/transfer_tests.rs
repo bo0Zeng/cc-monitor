@@ -12,191 +12,142 @@ fn p(name: &str) -> Pending {
     }
 }
 
-/// 一台**时序台架**：谁在什么号上发生了什么。
-///
-/// 🔴 判「先问完再动手」靠的是**号的先后**，不是 `sleep` 之后看看 ——
-/// 后者是时序赌博，换台机器就翻。
-#[derive(Default)]
-struct Tape {
-    seq: AtomicUsize,
-    events: std::sync::Mutex<Vec<(usize, String)>>,
+/// 后端开单回的那一项（判据手写）。
+fn item(key: usize, state: &str, extra: serde_json::Value) -> cmd_wire::transfer::OpenedItem {
+    let mut v = serde_json::json!({"key": key.to_string(), "state": state});
+    if state == "opened" {
+        v["id"] = serde_json::json!(format!("x-{key}"));
+        v["staged"] = serde_json::json!(format!("{key}").repeat(32));
+    }
+    for (k, x) in extra.as_object().cloned().unwrap_or_default() {
+        v[k] = x;
+    }
+    serde_json::from_value(v).unwrap()
 }
 
-impl Tape {
-    fn mark(&self, what: &str) -> usize {
-        let n = self.seq.fetch_add(1, O::SeqCst);
-        self.events.lock().unwrap().push((n, what.to_string()));
-        n
-    }
-    fn seqs_of(&self, prefix: &str) -> Vec<usize> {
-        self.events
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(_, w)| w.starts_with(prefix))
-            .map(|(n, _)| *n)
-            .collect()
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// 正题一：**一次问完** —— 问一次、拿到全部冲突项、而且排在所有传输之前
-// ════════════════════════════════════════════════════════════════════════
-
-/// 🔴 前半句：**先把覆盖确认一次问完。**
-///
-/// 三样一起判，少一样就漏一形：
-/// ① `confirm` 被调用**恰好一次**（旧面板那种 `for … confirm … await` 会调 N 次）；
-/// ② 它拿到的是**全部**冲突项（相等断言，不是「至少包含」）；
-/// ③ **任何一次** `launch` 的号都大于那一次 `confirm` 的号（顺序，不是巧合）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn every_overwrite_question_is_asked_once_and_before_any_transfer_starts() {
-    let tape = Tape::default();
-    let confirm_calls = AtomicUsize::new(0);
-    // a / c 在远端已经有了，b / d 没有。
-    let items = vec![p("a"), p("b"), p("c"), p("d")];
-    let seen: std::sync::Mutex<Vec<Pending>> = std::sync::Mutex::new(Vec::new());
-
-    let out = run_drop(
-        items.clone(),
-        4,
-        |it| {
-            let t = &tape;
-            async move {
-                t.mark(&format!("probe:{}", it.name));
-                it.name == "a" || it.name == "c"
-            }
-        },
-        |clashes| {
-            confirm_calls.fetch_add(1, O::SeqCst);
-            tape.mark("confirm");
-            *seen.lock().unwrap() = clashes.clone();
-            // 人答「两件都覆盖」。
-            async move { clashes }
-        },
-        |it| {
-            let t = &tape;
-            async move {
-                t.mark(&format!("launch:{}", it.name));
-                Ok(())
-            }
-        },
+/// 每一项都开了单（不同名、不盖）。
+fn all_opened(n: usize) -> Opened {
+    Opened::Items(
+        (0..n)
+            .map(|i| item(i, "opened", serde_json::json!({})))
+            .collect(),
     )
-    .await;
-
-    // ① 恰好一次。
-    assert_eq!(
-        confirm_calls.load(O::SeqCst),
-        1,
-        "覆盖确认被问了 {} 次 —— `§5.4d` 要的是**一次问完**（旧面板那条 `for … await` 就是 N 次）",
-        confirm_calls.load(O::SeqCst)
-    );
-
-    // ② 全部冲突项，逐项相等。
-    assert_eq!(
-        seen.lock()
-            .unwrap()
-            .iter()
-            .map(|x| x.name.clone())
-            .collect::<Vec<_>>(),
-        vec!["a".to_string(), "c".to_string()],
-        "那一次问的时候，摆在人面前的不是全部冲突项"
-    );
-
-    // ③ 顺序：最后一次 confirm 之后才有第一次 launch。
-    let confirm_at = *tape.seqs_of("confirm").first().expect("一次都没问");
-    let launches = tape.seqs_of("launch:");
-    assert_eq!(
-        launches.len(),
-        4,
-        "四件都准传了，却只起了 {} 趟",
-        launches.len()
-    );
-    let first_launch = *launches.iter().min().unwrap();
-    assert!(
-        first_launch > confirm_at,
-        "第一趟传输在号 {first_launch} 就起来了，而那一次确认在号 {confirm_at} \
-         —— 有传输跑在「问完」之前"
-    );
-    // 反向：所有 probe 都在 confirm 之前（「问」这一段自己也是完整的）。
-    let probes = tape.seqs_of("probe:");
-    assert_eq!(probes.len(), 4);
-    assert!(
-        probes.iter().all(|n| *n < confirm_at),
-        "有一次「远端已经有了吗」是在确认之后才问的"
-    );
-
-    assert_eq!(
-        out,
-        DropOutcome {
-            asked: 2,
-            skipped: 0,
-            ok: 4,
-            ..Default::default()
-        }
-    );
 }
 
-/// 人答「全都不覆盖」⇒ 冲突那几件**一件都不传**，不冲突那几件照传。
+// ════════════════════════════════════════════════════════════════════════
+// 正题一：**整组一条开单，怎么落照后端那一份**
+// ════════════════════════════════════════════════════════════════════════
+
+/// 🔴 开单恰好一次（整组），之后每一件**照回包那一项**起：跳过的不起 · 答了覆盖的提交时盖 · 保留两份的换成那台另起的名字 ·
+/// 没开成的带着那一项的原因出来；这一层自己一句「那儿有没有」都不问（`run_drop` 手里压根没有探的那一口）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn answering_no_skips_exactly_the_clashing_items() {
-    let launched: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+async fn each_item_lands_the_way_the_group_opener_said() {
+    let opens = AtomicUsize::new(0);
+    let launched: std::sync::Mutex<Vec<(String, String, bool, String)>> =
+        std::sync::Mutex::new(Vec::new());
     let out = run_drop(
-        vec![p("a"), p("b"), p("c")],
+        vec![p("a.txt"), p("b.txt"), p("c.txt"), p("d.txt")],
         4,
-        |it| async move { it.name != "b" },   // a / c 冲突
-        |_clashes| async move { Vec::new() }, // 全都不覆盖
-        |it| {
+        || {
+            opens.fetch_add(1, O::SeqCst);
+            async {
+                Opened::Items(vec![
+                    item(0, "skipped", serde_json::json!({})),
+                    item(1, "opened", serde_json::json!({"overwrite": true})),
+                    item(2, "opened", serde_json::json!({"new_name": "c (2).txt"})),
+                    item(
+                        3,
+                        "failed",
+                        serde_json::json!({"code": "busy", "reason": copy_core::copy_text("reason.io.busy", &[]), "detail": "同一文件正在上传"}),
+                    ),
+                ])
+            }
+        },
+        |t| {
             let l = &launched;
             async move {
-                l.lock().unwrap().push(it.name.clone());
+                l.lock().unwrap().push((
+                    t.item.name.clone(),
+                    t.item.remote_path.clone(),
+                    t.item.overwrite,
+                    t.id.clone(),
+                ));
                 Ok(())
             }
         },
     )
     .await;
+    assert_eq!(opens.load(O::SeqCst), 1, "整组只开一次单");
+    let mut got = launched.lock().unwrap().clone();
+    got.sort();
     assert_eq!(
-        launched.lock().unwrap().clone(),
-        vec!["b".to_string()],
-        "答了「不覆盖」，冲突那几件还是传了"
+        got,
+        vec![
+            ("b.txt".into(), "/srv/b.txt".into(), true, "x-1".into()),
+            (
+                "c (2).txt".into(),
+                "/srv/c (2).txt".into(),
+                false,
+                "x-2".into()
+            ),
+        ]
     );
-    assert_eq!(out.asked, 2);
-    assert_eq!(out.skipped, 2);
-    assert_eq!(out.ok, 1);
+    assert_eq!((out.ok, out.skipped), (2, 1));
+    assert_eq!(
+        out.failed,
+        vec![(
+            "d.txt".to_string(),
+            super::super::source::Failed {
+                code: Some("busy".into()),
+                said: copy_core::copy_text("reason.io.busy", &[]),
+                detail: "同一文件正在上传".into(),
+            }
+        )]
+    );
 }
 
-/// 一件都不冲突 ⇒ **不问**。弹一个空框是噪音，不是慎重。
+/// 冲突框上答了取消 ⇒ 一件都不起；整组没开成 ⇒ 每一件都带着那一句算没传成。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn nothing_clashing_means_nobody_gets_asked() {
-    let asked = AtomicUsize::new(0);
+async fn a_dropped_or_refused_group_launches_nothing() {
+    let launched = AtomicUsize::new(0);
+    let launch = |_t: Ticketed| {
+        launched.fetch_add(1, O::SeqCst);
+        async { Ok(()) }
+    };
     let out = run_drop(
         vec![p("a"), p("b")],
         4,
-        |_| async move { false },
-        |c| {
-            asked.fetch_add(1, O::SeqCst);
-            async move { c }
-        },
-        |_| async move { Ok(()) },
+        || async { Opened::Dropped },
+        launch,
     )
     .await;
-    assert_eq!(asked.load(O::SeqCst), 0, "没有冲突却弹了确认框");
-    assert_eq!(out.asked, 0);
-    assert_eq!(out.ok, 2);
+    assert_eq!(out, DropOutcome::default());
+    let no: super::super::source::Failed = "那台后端版本过旧".into();
+    let out = run_drop(
+        vec![p("a"), p("b")],
+        4,
+        || {
+            let no = no.clone();
+            async move { Opened::Failed(no) }
+        },
+        launch,
+    )
+    .await;
+    assert_eq!(launched.load(O::SeqCst), 0);
+    assert_eq!(
+        out.failed,
+        vec![("a".to_string(), no.clone()), ("b".to_string(), no)]
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 正题二：**再并行起传输** —— 而且那道闸是真的
+// 正题二：**并行起传输** —— 而且那道闸是真的
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 后半句：**并行起传输。**
+/// 🔴 **并行**。
 ///
-/// 判法是**结构性**的，不是计时：四件传输各自 `Barrier(4).wait()` ——
-/// 只有四件**真的同时在飞**barrier 才凑得齐。串行实现（旧面板那条 `for … await`）
-/// 第一件就永远等不到第二件 ⇒ 超时，而超时在这条判据里就是红。
-///
-/// ⚠ 顺带用一个高水位计数器印出**真实的**同时在飞数，并按**相等**判 4
-/// （不是 `>= 2`：`>= 2` 在「只并行了两件」时照样绿）。
+/// 只有四件**真的同时在飞**barrier 才凑得齐。串行实现第一件就永远等不到第二件 ⇒ 超时，而超时在这条判据里就是红。
+/// ⚠ 顺带用一个高水位计数器印出**真实的**同时在飞数，并按**相等**判 4。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn four_dropped_files_really_fly_at_the_same_time() {
     let gate = std::sync::Arc::new(tokio::sync::Barrier::new(4));
@@ -209,8 +160,7 @@ async fn four_dropped_files_really_fly_at_the_same_time() {
     let fut = run_drop(
         vec![p("a"), p("b"), p("c"), p("d")],
         4,
-        |_| async move { false },
-        |c| async move { c },
+        || async { all_opened(4) },
         move |_| {
             let g = g.clone();
             let f = f.clone();
@@ -228,11 +178,7 @@ async fn four_dropped_files_really_fly_at_the_same_time() {
 
     let out = tokio::time::timeout(guard_core::wall::CEILING, fut)
         .await
-        .expect(
-            "四件传输没能同时在飞（`Barrier(4)` 凑不齐 ⇒ 超时）—— \
-             这正是旧面板 `uploadDropped` 那条 `for … await` 的形状，\
-             而要的就是把它去掉",
-        );
+        .expect("四件传输没能同时在飞（`Barrier(4)` 凑不齐 ⇒ 超时）");
     assert_eq!(out.ok, 4);
     assert_eq!(
         high.load(O::SeqCst),
@@ -242,11 +188,7 @@ async fn four_dropped_files_really_fly_at_the_same_time() {
     );
 }
 
-/// 🔴 **阴性对照：那道闸是真的闸。**
-///
-/// 没有这一条，上面那条「四件同飞」可能只是因为 `lanes` 压根没被看过 ——
-/// 一个不生效的闸在「四件同飞」这个方向上表现得和生效的一模一样。
-/// ⇒ 把闸调到 2，同一个 `Barrier(4)` 必须**凑不齐**（超时）。
+/// 🔴 **阴性对照：那道闸是真的闸。** 把闸调到 2，同一个 `Barrier(4)` 必须**凑不齐**（超时）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_lane_cap_actually_caps() {
     let gate = std::sync::Arc::new(tokio::sync::Barrier::new(4));
@@ -254,8 +196,7 @@ async fn the_lane_cap_actually_caps() {
     let fut = run_drop(
         vec![p("a"), p("b"), p("c"), p("d")],
         2, // ← 闸窄于 barrier 要的人数
-        |_| async move { false },
-        |c| async move { c },
+        || async { all_opened(4) },
         move |_| {
             let g = g.clone();
             async move {
@@ -277,10 +218,9 @@ async fn failures_come_back_named_and_with_their_own_message() {
     let out = run_drop(
         vec![p("a"), p("b")],
         4,
-        |_| async move { false },
-        |c| async move { c },
-        |it| async move {
-            if it.name == "a" {
+        || async { all_opened(2) },
+        |t| async move {
+            if t.item.name == "a" {
                 Err("对面盘满了".into())
             } else {
                 Ok(())
@@ -292,18 +232,17 @@ async fn failures_come_back_named_and_with_their_own_message() {
     assert_eq!(out.failed, vec![("a".to_string(), "对面盘满了".into())]);
 }
 
-/// 空拖入 ⇒ 空结果，一个探测都不发。
+/// 空拖入 ⇒ 空结果，一次开单都不发。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_empty_drop_touches_nothing() {
     let touched = AtomicUsize::new(0);
     let out = run_drop(
         Vec::new(),
         4,
-        |_| {
+        || {
             touched.fetch_add(1, O::SeqCst);
-            async move { false }
+            async { all_opened(0) }
         },
-        |c| async move { c },
         |_| {
             touched.fetch_add(1, O::SeqCst);
             async move { Ok(()) }
@@ -314,44 +253,6 @@ async fn an_empty_drop_touches_nothing() {
     assert_eq!(out, DropOutcome::default());
 }
 
-/// 🔴 **保序**：答案要配回原来那一件。
-///
-/// 失效形状最难看：用 `buffer_unordered` 之后 `items.zip(flags)` 把 A 的「已存在」
-/// 配到 B 头上 ⇒ **覆盖了一个不该覆盖的文件**。这里让探测的耗时与顺序**反着来**
-/// （第一件最慢），乱序实现会把 flag 配错。
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn the_probe_answers_stay_glued_to_the_item_that_asked() {
-    let seen: std::sync::Mutex<Vec<Pending>> = std::sync::Mutex::new(Vec::new());
-    let items = vec![p("slow-and-clashing"), p("fast-and-fresh")];
-    run_drop(
-        items,
-        4,
-        |it| async move {
-            if it.name.starts_with("slow") {
-                tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-                true
-            } else {
-                false
-            }
-        },
-        |clashes| {
-            *seen.lock().unwrap() = clashes.clone();
-            async move { clashes }
-        },
-        |_| async move { Ok(()) },
-    )
-    .await;
-    assert_eq!(
-        seen.lock()
-            .unwrap()
-            .iter()
-            .map(|x| x.name.clone())
-            .collect::<Vec<_>>(),
-        vec!["slow-and-clashing".to_string()],
-        "冲突标记配错了人 —— 那意味着会覆盖一个不该覆盖的文件"
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 看板：**有事发生就得敲窗口一下**
 // ════════════════════════════════════════════════════════════════════════
@@ -360,18 +261,12 @@ async fn the_probe_answers_stay_glued_to_the_item_that_asked() {
 /// ⇒ 不敲一下，进度条要等到用户下次动鼠标才跳一格 —— 看起来就是「卡住了」，
 /// 而「卡住了」与「真的没在传」在屏幕上分不开。
 ///
-/// 三个时刻都要敲：**有问题要问** · **进度动了** · **跑完了**。
+/// 两个时刻都要敲：**进度动了** · **跑完了**（同名那一问是冲突框那块看板的事）。
 /// ⚠ 判的是 `Context::has_requested_repaint()`（egui 自己那个标志），
 /// 不是「我们调了 `request_repaint`」—— 后者是判源码，前者是判行为。
 #[test]
 fn the_board_pokes_the_window_whenever_something_happened() {
     for (what, act) in [
-        (
-            "有问题要问",
-            Box::new(|b: &DropBoard| {
-                b.ask(vec![p("a")]);
-            }) as Box<dyn Fn(&DropBoard)>,
-        ),
         (
             "进度动了",
             Box::new(|b: &DropBoard| b.progress("a", 1, 2)) as Box<dyn Fn(&DropBoard)>,
@@ -418,8 +313,6 @@ fn a_board_with_no_window_still_records_and_does_not_panic() {
     let board = DropBoard::default();
     board.progress("a", 3, 9);
     board.finish(DropOutcome {
-        asked: 0,
-        skipped: 0,
         ok: 1,
         ..Default::default()
     });
@@ -463,7 +356,7 @@ fn a_pending_upload_targets_the_current_remote_directory_with_forward_slashes() 
 ///
 /// 上一版这里钉的是「上传走 `sftp_pool` 那条既有命令」。**今天反过来**：
 /// 窗口进程一行 SFTP 都不碰——上传经通道开单、订阅、再经后端提交。
-/// 买的是：这一层**只剩**通道那几个口（开单 · 提交 · 探测各恰好一处），自己开连接 / 分块写 /
+/// 买的是：这一层**只剩**通道那几个口（整组开单 · 提交 · 「复制为」借的那一问探测各恰好一处），自己开连接 / 分块写 /
 /// 直调池子传输命令的痕迹一个都没有。行为那一半由下面 `an_upload_opens_watches_then_commits…` 那一族判。
 #[test]
 fn the_real_adapters_speak_only_through_the_channel() {
@@ -477,7 +370,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
     );
     for needle in [
         "files::StatReq {",
-        "TransferUploadAsk {",
+        "UploadItem {",
         "\"files-commit-upload\"",
         "pub fn lanes()",
     ] {
@@ -588,39 +481,6 @@ fn the_wire_names_the_window_says_are_the_ones_the_other_side_answers() {
     );
 }
 
-/// 🔴 **只有人点了「覆盖」的那几件带 `overwrite: true` 去提交**；没被问过的一律 `false`。
-///
-/// 两向：带 `true` 的集合 == 人勾了的冲突项；带 `false` 的 == 其余真传了的。
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn only_the_items_a_human_agreed_to_overwrite_go_out_with_overwrite() {
-    let launched: std::sync::Mutex<Vec<(String, bool)>> = std::sync::Mutex::new(Vec::new());
-    run_drop(
-        vec![p("a"), p("b"), p("c"), p("d")],
-        4,
-        |it| async move { it.name == "a" || it.name == "c" }, // a / c 冲突
-        |clashes| async move { clashes.into_iter().filter(|x| x.name == "a").collect() },
-        |it| {
-            let l = &launched;
-            async move {
-                l.lock().unwrap().push((it.name.clone(), it.overwrite));
-                Ok(())
-            }
-        },
-    )
-    .await;
-    let mut got = launched.lock().unwrap().clone();
-    got.sort();
-    assert_eq!(
-        got,
-        vec![
-            ("a".to_string(), true),
-            ("b".to_string(), false),
-            ("d".to_string(), false),
-        ],
-        "覆盖标记没跟着人的回答走（c 答了不覆盖该不传；b / d 没被问过该是 false）"
-    );
-}
-
 // ════════════════════════════════════════════════════════════════════════
 // 经通道的那三步：开单 → 起跑并看 → 提交（真回环 ＋ 真钥匙 ＋ 合成对端）
 // ════════════════════════════════════════════════════════════════════════
@@ -636,6 +496,9 @@ pub(crate) enum Ends {
     Mismatch,
     /// 永不收场（只有被停订才结束）——「撤」那一条用。
     Hang,
+    /// 同 [`Ends::Done`]，只是开单那一组没带 `decide` 时对端说第一项同名（回 `exists` 带同名清单）；
+    /// 带了 ⇒ 照答开单（答覆盖的那一项带 `overwrite`）。
+    Clash,
 }
 
 /// 一台合成对端：记下它看见的每一步（`call` 的名字与载荷 · 订阅的 kind · 流被丢掉）。
@@ -682,7 +545,7 @@ impl comms_inward::chan::router::Backends for XferHost {
             .lock()
             .unwrap()
             .push(format!("{} {}", op.0, String::from_utf8_lossy(&payload.0)));
-        self.log.lock().unwrap().push((op.0.clone(), args));
+        self.log.lock().unwrap().push((op.0.clone(), args.clone()));
         if op.0 == "files-commit-upload" {
             let n = self
                 .commits
@@ -701,7 +564,29 @@ impl comms_inward::chan::router::Backends for XferHost {
                 });
             }
         }
+        if op.0 == "transfer-upload"
+            && matches!(self.ends, Ends::Clash)
+            && args.get("decide").is_none()
+        {
+            let body = serde_json::to_vec(&serde_json::json!({
+                "code": "exists",
+                "message": "同名 1 项",
+                "data": {"conflicts": [{"key": "0", "name": "a.bin", "kind": "file", "size": 3,
+                    "mtime_text": "10-12 14:02", "there": "file", "there_size": 1,
+                    "there_mtime_text": "10-01 09:10", "dir_into": false}]},
+            }))
+            .unwrap_or_default();
+            return Box::pin(async move {
+                Err(comms_inward::chan::wire::err_from_wire(
+                    comms_inward::chan::wire::WireErr::Refused,
+                    body,
+                ))
+            });
+        }
         let answer = match op.0.as_str() {
+            "transfer-upload" if args["decide"]["0"] == "overwrite" => {
+                serde_json::json!({ "items": [{ "key": "0", "state": "opened", "id": "x-up", "staged": "k".repeat(32), "overwrite": true }] })
+            }
             "transfer-upload" => {
                 serde_json::json!({ "items": [{ "key": "0", "state": "opened", "id": "x-up", "staged": "k".repeat(32) }] })
             }
@@ -746,7 +631,7 @@ impl comms_inward::chan::router::Backends for XferHost {
         let mark = DropMark(self.log.clone());
         let head = futures::stream::iter([frame]);
         match self.ends {
-            Ends::Done | Ends::DoneStaleCommits(_) => head
+            Ends::Done | Ends::DoneStaleCommits(_) | Ends::Clash => head
                 .chain(futures::stream::iter([end(
                     serde_json::json!({ "state": "done", "bytes": 3, "sha256": xfer_sha() }),
                 )]))
@@ -824,13 +709,16 @@ pub(crate) async fn xfer_rig_raw(
     )
 }
 
-/// 开单两条窗口发出去的**字节**（换形之前用旧代码跑出来钉的）：上传带 `home`（问得到那台的 `$HOME`）· 下载远端路径 ＋ 本机落点。
+/// 开单两条窗口发出去的**字节**：上传整组一条（本机路径 · 远端落点目录 · 问得到那台的 `$HOME`；不带票）· 下载远端路径 ＋ 本机落点。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_openers_the_window_sends_keep_their_wire_bytes() {
     let (line, origin, _log, raw) = xfer_rig_raw(Ends::Done).await;
-    upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
-        .await
-        .expect("上传该走通");
+    let items = [p("a.bin")];
+    let opened = open_group(&line, &origin, &upload_ask(&items), &DropBoard::default()).await;
+    assert!(
+        matches!(opened, Opened::Items(_)),
+        "整组开单该走通：{opened:?}"
+    );
     let board = crate::download::DownloadBoard::default();
     crate::download::pull_one(&line, &origin, "/srv/a b", "/tmp/a b", &board)
         .await
@@ -845,7 +733,7 @@ async fn the_openers_the_window_sends_keep_their_wire_bytes() {
     assert_eq!(
         got,
         [
-            r#"transfer-upload {"home":"/srv/a.bin","items":[{"local_path":"/home/u/a.bin"}]}"#,
+            r#"transfer-upload {"home":"/srv/a.bin","items":[{"local_path":"/home/u/a.bin"}],"remote_dir":"/srv"}"#,
             r#"transfer-download {"items":[{"name":"a b","remote_path":"/srv/a b"}],"local_dir":"/tmp","on_exists":"overwrite"}"#,
         ],
         "开单发出去的字节变了"
@@ -856,18 +744,39 @@ pub(crate) fn steps(log: &std::sync::Mutex<Vec<(String, serde_json::Value)>>) ->
     log.lock().unwrap().iter().map(|(s, _)| s.clone()).collect()
 }
 
-/// 🔴 **上传三步的顺序与载荷**：开单（带本机路径）→ 订阅 `transfer/<开单回的 id>` → 提交
-/// （`key` 是开单回的那一个，`root` / `rel` 由目标路径切出来，`overwrite` 是人的回答）。
+/// 一件已在整组开单里开了单（票号与暂存件的键同合成对端开单答的那一份）。
+pub(crate) fn t1(item: Pending) -> Ticketed {
+    Ticketed {
+        item,
+        id: "x-up".into(),
+        key: "k".repeat(32),
+    }
+}
+
+/// 整组开单那一问（同 `shell.rs` 起一摞时那样摆：开单那一条 ＋ 整组的入参）。
+pub(crate) fn upload_ask(items: &[Pending]) -> crate::batch::BatchBoard {
+    crate::batch::BatchBoard::new(crate::batch::Plan {
+        verb: crate::batch::Verb::Upload,
+        cmd: CMD_UPLOAD,
+        args: serde_json::to_value(group_ask(items, None, None)).unwrap(),
+        names: items.iter().map(|p| p.name.clone()).collect(),
+        into: Some("/srv".into()),
+        machine: "devbox".into(),
+    })
+}
+
+/// 🔴 **开了单的一件：订阅 → 提交的顺序与载荷**：订阅 `transfer/<开单回的 id>` → 提交
+/// （`key` 是开单回的那一个，`root` / `rel` 由目标路径切出来，`overwrite` 是开单回包那一项说的）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
+async fn an_opened_upload_watches_then_commits_with_the_answer_it_was_opened_with() {
     let (line, origin, log) = xfer_rig(Ends::Done).await;
     let board = DropBoard::default();
     let mut item = p("a.bin");
     item.overwrite = true;
-    upload_remote(&line, &origin, &item, &board)
+    upload_remote(&line, &origin, &t1(item), &board)
         .await
         .expect("该走通");
-    // 「流被丢掉」那一笔是收场之后路由器收尾记下的，与三步的先后无关 ⇒ 不进这张序。
+    // 「流被丢掉」那一笔是收场之后路由器收尾记下的，与几步的先后无关 ⇒ 不进这张序。
     let got: Vec<(String, serde_json::Value)> = log
         .lock()
         .unwrap()
@@ -876,25 +785,14 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
         .cloned()
         .collect();
     let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
-    // 开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
     assert_eq!(
         &names[..],
-        [
-            "files-home",
-            "transfer-upload",
-            "subscribe",
-            "files-commit-upload"
-        ],
-        "三步的顺序不对：{names:?}"
+        ["subscribe", "files-commit-upload"],
+        "顺序不对（单子已在整组开单那一步开好，这里不再开单）：{names:?}"
     );
-    let got = &got[1..];
+    assert_eq!(got[0].1, serde_json::json!("transfer/x-up"));
     assert_eq!(
-        got[0].1,
-        serde_json::json!({ "items": [{ "local_path": "/home/u/a.bin" }], "home": "/srv/a.bin" })
-    );
-    assert_eq!(got[1].1, serde_json::json!("transfer/x-up"));
-    assert_eq!(
-        got[2].1,
+        got[1].1,
         serde_json::json!({ "key": "k".repeat(32), "root": "/srv", "rel": "a.bin", "overwrite": true,
                             "expect": { "sha256": xfer_sha() } }),
         "提交没带传输台交的整份摘要（远端后端改名上位之前要核它）"
@@ -903,29 +801,28 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
 
 /// **提交时整份摘要对不上 ⇒ 从头重传一次、出声**（不等 ⇒ stale、删坏暂存件、从 0 重传并出声）。
 ///
-/// 要求住址：同上那条裁决。两形：① 第一次提交 stale、第二次成 ⇒ 整条再走一遍
-/// （开单 → 看 → 提交，两遍），成、而且这一件记进「从头重传过」；② 一直 stale ⇒ 只重一次、第二次照原话失败（不原地打转）。
+/// 两形：① 第一次提交 stale、第二次成 ⇒ 这一件另开一张单再走一遍
+/// （看 → 提交，两遍），成、而且这一件记进「从头重传过」；② 一直 stale ⇒ 只重一次、第二次照原话失败（不原地打转）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
     let (line, origin, log) = xfer_rig(Ends::DoneStaleCommits(1)).await;
     let board = DropBoard::default();
-    upload_remote(&line, &origin, &p("a.bin"), &board)
+    upload_remote(&line, &origin, &t1(p("a.bin")), &board)
         .await
         .expect("重传一次该成");
-    // 开头那一次问 `$HOME`（问过就记着，重传那一遍不再问）。
-    let names: Vec<String> = steps(&log)
-        .into_iter()
-        .filter(|s| s != "dropped" && s != "files-home")
-        .collect();
-    assert_eq!(steps(&log).iter().filter(|s| *s == "files-home").count(), 1);
-    let once = ["transfer-upload", "subscribe", "files-commit-upload"];
+    // 重传那一遍这一件另开一张单（之前问一次 `$HOME`、带上）。
+    let names: Vec<String> = steps(&log).into_iter().filter(|s| s != "dropped").collect();
     assert_eq!(
         names,
-        once.iter()
-            .chain(once.iter())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-        "stale 之后不是「整条从头再走一遍」"
+        [
+            "subscribe",
+            "files-commit-upload",
+            "files-home",
+            "transfer-upload",
+            "subscribe",
+            "files-commit-upload"
+        ],
+        "stale 之后不是「另开一张单、从头再走一遍」"
     );
     board.finish(DropOutcome {
         ok: 1,
@@ -938,7 +835,7 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
     );
 
     let (line, origin, log) = xfer_rig(Ends::DoneStaleCommits(usize::MAX)).await;
-    let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
+    let e = upload_remote(&line, &origin, &t1(p("a.bin")), &DropBoard::default())
         .await
         .expect_err("一直对不上竟然成了");
     assert!(e.said.contains("对不上"), "原话没带回来：{e}");
@@ -956,7 +853,7 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_failed_transfer_is_never_committed() {
     let (line, origin, log) = xfer_rig(Ends::Failed).await;
-    let e = upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
+    let e = upload_remote(&line, &origin, &t1(p("a.bin")), &DropBoard::default())
         .await
         .expect_err("该失败");
     assert!(e.said.contains("断网（合成）"), "失败那一句没带回来：{e}");
@@ -978,7 +875,7 @@ async fn pressing_cancel_stops_the_subscription_and_nothing_is_committed() {
     let desk = board.cancels();
     let run = {
         let (line, origin, board) = (line.clone(), origin.clone(), board.clone());
-        tokio::spawn(async move { upload_remote(&line, &origin, &p("a.bin"), &board).await })
+        tokio::spawn(async move { upload_remote(&line, &origin, &t1(p("a.bin")), &board).await })
     };
     // 等订阅真的挂上（对端记下了那一笔）再按取消 —— 有界自旋，不睡觉。
     tokio::time::timeout(guard_core::wall::CEILING, async {
@@ -1061,15 +958,14 @@ async fn pressing_cancel_stops_every_transfer_that_had_not_started_yet() {
 
     let out = run_drop(
         items.clone(),
-        1,                        // 一件一件来，好让「第几件之后按取消」是确定的
-        |_| async move { false }, // 都不冲突 ⇒ 不问
-        |_| async move { Vec::new() },
-        |item| {
+        1, // 一件一件来，好让「第几件之后按取消」是确定的
+        || async { all_opened(10) },
+        |t| {
             let d = desk.clone();
             let inner = desk.clone();
             let n = &started;
             async move {
-                super::launch_unless_cancelled(&d, &item.name, |id| async move {
+                super::launch_unless_cancelled(&d, &t.item.name, |id| async move {
                     let k = n.fetch_add(1, O::SeqCst) + 1;
                     // 第 2 件起来之后按取消（＝ 用户点那颗按钮）。
                     if k == 2 {
@@ -1125,13 +1021,12 @@ async fn a_run_that_is_never_cancelled_launches_every_single_item() {
     let out = run_drop(
         items,
         1,
-        |_| async move { false },
-        |_| async move { Vec::new() },
-        |item| {
+        || async { all_opened(10) },
+        |t| {
             let d = desk.clone();
             let n = &started;
             async move {
-                super::launch_unless_cancelled(&d, &item.name, |_id| async move {
+                super::launch_unless_cancelled(&d, &t.item.name, |_id| async move {
                     n.fetch_add(1, O::SeqCst);
                     Ok(())
                 })

@@ -18,6 +18,9 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
+    "tests/backend/faces/session_say_face_tests.rs": [
+      { "text": "继续", "use": "输入" }
+    ],
     "tests/backend/plan/book_tests.rs": [
       { "text": "没做完", "use": "输入" },
       { "text": "超时", "use": "输入" }

@@ -5,11 +5,11 @@
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
 //! |---|---|---|
-//! | [`a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_the_file`] | 传输台答 `sftp_home_mismatch` ⇒ 这一件改走块形、`via_backend` 记下原因；块拼回来 == 本机那份、提交带 `chunks` / `bytes` / 整份摘要；下一件直接走块形、不再开 SFTP 的单 | 期望是本机文件自己的字节与 `sha2` 现算的摘要 |
+//! | [`a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_the_file`] | 传输台答 `sftp_home_mismatch` ⇒ 这一件改走块形、`via_backend` 记下原因；块拼回来 == 本机那份、提交带 `chunks` / `bytes` / 整份摘要 | 期望是本机文件自己的字节与 `sha2` 现算的摘要 |
 //! | [`hex_is_lowercase_and_byte_exact`] | 十六进制与 `format!("{:02x}")` 逐字相同 | 期望由标准库现算 |
 
 use super::*;
-use crate::transfer::tests::{steps, xfer_rig, Ends};
+use crate::transfer::tests::{xfer_rig, Ends};
 use sha2::Digest as _;
 
 #[test]
@@ -32,7 +32,7 @@ async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_t
     let board = crate::transfer::DropBoard::default();
     let item =
         crate::transfer::Pending::into_remote_dir(&local.to_string_lossy(), "/srv").expect("待传");
-    crate::transfer::upload_remote(&line, &origin, &item, &board)
+    crate::transfer::upload_remote(&line, &origin, &crate::transfer::tests::t1(item), &board)
         .await
         .expect("块形该走通");
     assert!(
@@ -50,8 +50,6 @@ async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_t
     assert_eq!(
         names,
         [
-            "files-home",
-            "transfer-upload",
             "subscribe",
             "files-stage-chunk",
             "files-stage-chunk",
@@ -60,14 +58,9 @@ async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_t
         ],
         "顺序不对"
     );
-    assert_eq!(
-        got[1].1["home"],
-        serde_json::json!("/srv/a.bin"),
-        "开单没带后端的 home"
-    );
     let mut rebuilt = Vec::new();
-    let key = got[3].1["key"].clone();
-    for (i, (_, a)) in got[3..6].iter().enumerate() {
+    let key = got[1].1["key"].clone();
+    for (i, (_, a)) in got[1..4].iter().enumerate() {
         assert_eq!(a["seq"], serde_json::json!(i), "块号不对");
         assert_eq!(a["key"], key, "几块不是同一个键");
         let hexed = a["content"]["b16"].as_str().expect("b16");
@@ -81,27 +74,11 @@ async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_t
         .map(|x| format!("{x:02x}"))
         .collect();
     assert_eq!(
-        got[6].1,
+        got[4].1,
         serde_json::json!({
             "key": key, "root": "/srv", "rel": "big.bin", "overwrite": false,
             "expect": { "sha256": want_sha }, "chunks": 3, "bytes": body.len(),
         })
-    );
-    // 下一件：这一窗已经改走后端链路 ⇒ 不再开 SFTP 的单。
-    let before = steps(&log)
-        .iter()
-        .filter(|s| *s == "transfer-upload")
-        .count();
-    crate::transfer::upload_remote(&line, &origin, &item, &board)
-        .await
-        .expect("第二件块形该走通");
-    assert_eq!(
-        steps(&log)
-            .iter()
-            .filter(|s| *s == "transfer-upload")
-            .count(),
-        before,
-        "改走后端链路之后又开了 SFTP 的单"
     );
     std::fs::remove_dir_all(&dir).ok();
 }

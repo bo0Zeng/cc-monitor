@@ -175,8 +175,8 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-ssh", "3f3647ff"),
     ("terminals-list", "8b48f403"),
     ("transfer-copy", "3aea1dc9"),
-    ("transfer-download", "03433c8c"),
-    ("transfer-upload", "55c40b2a"),
+    ("transfer-download", "b03b4a6b"),
+    ("transfer-upload", "7abc6720"),
 ];
 
 /// typed 命令里开跑之后撤不动的那几条（阻塞档），按命令名排。客户端撤单时读本侧这一份：指纹对得上才会发，对上了两边必然一致。

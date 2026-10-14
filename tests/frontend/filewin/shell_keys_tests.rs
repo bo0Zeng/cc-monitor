@@ -216,7 +216,7 @@ fn clicks_with_modifiers_pick_exactly_those_rows_and_paint_exactly_those() {
     let painted = d.frame(&mut w, Vec::new());
     let line = w.status_line();
     assert!(
-        copy_core::copy_matches("rsFilewinChrome.status.picked", &line) && line.contains(" 3 "),
+        copy_core::copy_matches("rsFilewinChrome.status.pickedN", &line) && line.contains(" 3 "),
         "{line}"
     );
     assert_eq!(rects_of(&painted, &line).len(), 1, "状态栏上没画出那一行");

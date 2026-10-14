@@ -256,6 +256,19 @@ pub(crate) fn choice_of(
     }
 }
 
+/// 同名清单里那两格时刻（文件的修改时刻，unix 秒）⇒ 写好的字：按此刻与看的那一台的时区（同额度与轮换那几处时刻的写法）。
+pub(crate) fn moment_text(secs: Option<i64>, tz: &crate::Tz) -> Option<String> {
+    secs.filter(|s| *s > 0)
+        .map(|s| crate::common::time::fmt_at(s, crate::common::time::now_secs(), tz))
+}
+
+/// 盘上那一格的修改时刻（`metadata.modified()` 那一格）⇒ unix 秒。
+pub(crate) fn mtime_secs(t: std::io::Result<std::time::SystemTime>) -> Option<i64> {
+    t.ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_secs()).ok())
+}
+
 /// 一项的键：它在 `items` 里的序号。
 pub(crate) fn key_of(i: usize) -> String {
     i.to_string()

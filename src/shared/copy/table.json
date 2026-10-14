@@ -10450,51 +10450,6 @@
       "zh": "传输未交回校验值 · 无法比对 · 未写入目标 · 重开 app 再传",
       "args": []
     },
-    "rsFilewinTransfer.ui.overwriteNone": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "全部跳过",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.name": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "名字",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.here": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "本机",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.cancelAll": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "取消整批",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.overwriteChecked": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "覆盖勾选的 {n} 项",
-      "args": ["n"],
-      "waive": {
-        "C-W15": "压了换事实：「勾选的」「{n} 项」限定了覆盖哪些，去掉就成了全覆盖"
-      }
-    },
-    "rsFilewinTransfer.ui.askOnce": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "勾选的覆盖 · 未勾的跳过 · 不重名的照传 ×{n}",
-      "args": ["n"]
-    },
-    "rsFilewinTransfer.ui.askOverwrite": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "同名 {n} · {machine}",
-      "args": ["n", "machine"]
-    },
     "rsFilewinTransfer.label.cancel": {
       "kind": "action",
       "role": "按钮",
@@ -11065,6 +11020,12 @@
       "zh": "下载",
       "args": []
     },
+    "rsFilewinBatch.verb.upload": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "上传",
+      "args": []
+    },
     "rsFilewinBatch.row.title": {
       "kind": "body",
       "role": "进度",
@@ -11105,6 +11066,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "覆盖",
+      "args": []
+    },
+    "rsFilewinBatch.btn.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重试失败的",
+      "args": []
+    },
+    "rsFilewinBatch.btn.resume": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "继续",
       "args": []
     },
     "rsFilewinBatch.btn.each": {
@@ -20661,8 +20634,14 @@
     "rsFilewinChrome.status.picked": {
       "kind": "body",
       "role": "说明",
-      "zh": " · 选中 {n} · {size}",
+      "zh": " · 已选 {n} 项 · {size}",
       "args": ["n", "size"]
+    },
+    "rsFilewinChrome.status.pickedN": {
+      "kind": "body",
+      "role": "说明",
+      "zh": " · 已选 {n} 项",
+      "args": ["n"]
     },
     "rsFilewinChrome.status.transfers": {
       "kind": "action",
@@ -22736,18 +22715,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "重试",
-      "args": []
-    },
-    "rsFilewinProgress.action.retryN": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重试 ×{n}",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.action.resume": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "接着传",
       "args": []
     },
     "rsFilewinProgress.stop.uncancellable": {

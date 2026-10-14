@@ -1,4 +1,5 @@
-//! **一组一条命令**在窗口里的那一层：复制到另一栏 · 复制到另一台 · 删除 · 改权限（下载那一组见 [`super::download`]）。
+//! **一组一条命令**在窗口里的那一层：复制到另一栏 · 复制到另一台 · 删除 · 改权限；下载 · 上传那两组的开单也经这里问同名
+//! （开了单之后各项怎么传见 [`super::download`] · [`super::transfer`]）。
 //!
 //! 「先探 → 问一次 → 做 → 逐项结局」住后端（一组一条命令），窗口只剩：
 //!
@@ -10,7 +11,8 @@
 //! 撤：  `files-batch-stop {ticket}`（做完手上那一项就停，剩下的回 `cancelled`）
 //! ```
 //!
-//! 票是窗口铸的（一组一张 UUID）：每一组都带，删一整棵树也撤得了。
+//! 票是窗口铸的（一组一张 UUID）：后端按票记的那几种（同台三条 · 两台之间复制）每一组都带，删一整棵树也撤得了；
+//! 下载 · 上传开单不按票记（开了单的每一项各是传输台里的一单），不带。
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -49,15 +51,27 @@ pub enum Verb {
     Delete,
     Chmod,
     Download,
+    Upload,
 }
 
 impl Verb {
+    /// 后端按票记这一种吗（下载 · 上传开单不记：开了单的每一项各是传输台里的一单）。
+    pub fn ticketed(self) -> bool {
+        !matches!(self, Verb::Download | Verb::Upload)
+    }
+
+    /// 回包是开了哪几单（下载 · 上传），不是一组的结局。
+    pub fn opens(self) -> bool {
+        matches!(self, Verb::Download | Verb::Upload)
+    }
+
     pub fn text(self) -> String {
         match self {
             Verb::Copy => copy_text("rsFilewinBatch.verb.copy", &[]),
             Verb::Delete => copy_text("rsFilewinBatch.verb.delete", &[]),
             Verb::Chmod => copy_text("rsFilewinBatch.verb.chmod", &[]),
             Verb::Download => copy_text("rsFilewinBatch.verb.download", &[]),
+            Verb::Upload => copy_text("rsFilewinBatch.verb.upload", &[]),
         }
     }
 }
@@ -99,7 +113,7 @@ pub enum Phase {
     Failed(super::source::Failed),
     /// 冲突框上答了「取消」：一项都没做。
     Dropped,
-    /// 回包不是一组的结局（下载一组回的是开了哪几单）：交给调用方接着看。
+    /// 回包不是一组的结局（下载 · 上传一组回的是开了哪几单）：交给调用方接着看。
     Opened,
 }
 
@@ -140,6 +154,8 @@ struct Desk {
     asking: Option<Asking>,
     stopper: Option<Arc<dyn Fn() + Send + Sync>>,
     stopping: bool,
+    /// 这一组寻址的那台 · 真正在哪台的后端里做（[`go`] 记下；「重试失败的」照它另起一组）。
+    route: Option<(super::source::Origin, super::source::Origin)>,
 }
 
 /// 一组在窗口上的样子（UI 线程画、tokio 那条写）。
@@ -161,6 +177,7 @@ impl BatchBoard {
                 asking: None,
                 stopper: None,
                 stopping: false,
+                route: None,
             })),
             ctx: Arc::default(),
         }
@@ -311,6 +328,16 @@ impl BatchBoard {
         self.lock().stopping
     }
 
+    /// 记下这一组寻址的那台 · 在哪台的后端里做（[`go`] 起跑时记；截图台架摆结局那几态也用它）。
+    pub(crate) fn set_route(&self, at: super::source::Origin, home: super::source::Origin) {
+        self.lock().route = Some((at, home));
+    }
+
+    /// 这一组寻址的那台 · 在哪台的后端里做（还没起跑 ⇒ `None`）。
+    pub fn route(&self) -> Option<(super::source::Origin, super::source::Origin)> {
+        self.lock().route.clone()
+    }
+
     /// 一行的标题：`复制 5 项`（落在一个目录 ⇒ `复制 5 项到 ~/proj/b`）。
     pub fn title(&self) -> String {
         let p = self.plan();
@@ -405,6 +432,41 @@ pub fn copy_details(p: &Plan, r: &BatchReply) -> Option<String> {
     (!segs.is_empty()).then(|| format!("{}\n{}\n\n{}", title_of(p), r.said, segs.join("\n\n")))
 }
 
+/// 「重试失败的」那一组：只含没成的那几项（失败 · 探完之后才冒出来的同名；目录里的那一格算它顶上那一项），
+/// 别的入参照原样（根 · 落点 · 权限位）；票在另起那一组时新铸。一项都没失败 ⇒ `None`。
+pub fn retry_plan(p: &Plan, r: &BatchReply) -> Option<Plan> {
+    let mut keep: Vec<usize> = r
+        .outcomes
+        .iter()
+        .filter(|o| matches!(o.state, ItemState::Failed | ItemState::Exists))
+        .filter_map(|o| {
+            o.key
+                .split_once('/')
+                .map_or(o.key.as_str(), |(head, _)| head)
+                .parse::<usize>()
+                .ok()
+        })
+        .collect();
+    keep.sort_unstable();
+    keep.dedup();
+    let items = p.args.get("items")?.as_array()?;
+    let picked: Vec<serde_json::Value> =
+        keep.iter().filter_map(|&i| items.get(i).cloned()).collect();
+    if picked.is_empty() {
+        return None;
+    }
+    let mut args = p.args.clone();
+    args["items"] = serde_json::Value::Array(picked);
+    Some(Plan {
+        args,
+        names: keep
+            .iter()
+            .filter_map(|&i| p.names.get(i).cloned())
+            .collect(),
+        ..p.clone()
+    })
+}
+
 /// 断开那一行：`devbox 断开 · 复制 5 项 · 完成 2 · 其余待核`。
 pub fn cut_line(p: &Plan, t: &Tick) -> String {
     copy_text(
@@ -433,12 +495,14 @@ where
     UF: Future<Output = ()>,
 {
     let mut args = board.plan().args;
-    args["ticket"] = serde_json::Value::String(board.ticket());
+    if board.plan().verb.ticketed() {
+        args["ticket"] = serde_json::Value::String(board.ticket());
+    }
     let mut cuts = 0usize;
     loop {
         match ask(args.clone()).await {
             Ok(v) => {
-                if board.plan().verb == Verb::Download {
+                if board.plan().verb.opens() {
                     board.set(Phase::Opened);
                     return Some(v);
                 }
@@ -519,6 +583,7 @@ pub async fn go(
     board: BatchBoard,
 ) {
     let ticket = board.ticket();
+    board.set_route(at.clone(), home.clone());
     let rt = tokio::runtime::Handle::current();
     {
         let (line, home, ticket) = (line.clone(), home.clone(), ticket.clone());
@@ -566,7 +631,7 @@ pub async fn go(
 }
 
 /// 画冲突框（有一组在问时）：标题 `复制 5 项到 ~/proj/b` · `同名 3 项` · 清单（名字 ｜ 要放过去的 → 已有的；目录写不合并）·
-/// ［逐项选］· ［取消］［跳过同名］（默认）［保留两份］［覆盖］（危险）。逐项选展开 ⇒ 每行一个三段（目录只给跳过｜保留两份）·［取消］［确定］。
+/// ［逐项选］· ［取消］［跳过同名］（默认）［保留两份］［覆盖］（危险）。逐项选展开 ⇒ 每行一个三段（目录只给跳过｜保留两份）·［取消］［动作本身（复制 · 上传 …）］。
 pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
     if !board.is_asking() {
         return;
@@ -680,13 +745,14 @@ pub const DEFAULT_ANSWER: usize = 1;
 /// 冲突框清单的一行：名字 ｜ `2.1 MB · 10-12 14:02 → 已有 1.8 MB · 10-01 09:10`；目录同名 ⇒ `目录不合并 · 跳过或保留两份`。
 pub fn conflict_row(c: &Conflict) -> super::kit::ListRow {
     use cmd_wire::files::FileKind;
-    let side = |size: Option<u64>, mtime: Option<i64>| {
+    // 时刻照抄后端写好的字（按看的那一台的钟），不换算。
+    let side = |size: Option<u64>, mtime: &Option<String>| {
         let mut parts = Vec::new();
         if let Some(s) = size {
             parts.push(copy_core::size_text(s));
         }
-        if let Some(m) = mtime.filter(|m| *m > 0) {
-            parts.push(super::source::mtime_text(m as u64).short);
+        if let Some(m) = mtime {
+            parts.push(m.clone());
         }
         parts.join(&copy_text("rsFilewinCopy.batch.listSep", &[]))
     };
@@ -696,8 +762,8 @@ pub fn conflict_row(c: &Conflict) -> super::kit::ListRow {
         copy_text(
             "rsFilewinBatch.meta.vs",
             &[
-                ("mine", &side(c.size, c.mtime)),
-                ("there", &side(c.there_size, c.there_mtime)),
+                ("mine", &side(c.size, &c.mtime_text)),
+                ("there", &side(c.there_size, &c.there_mtime_text)),
             ],
         )
     };

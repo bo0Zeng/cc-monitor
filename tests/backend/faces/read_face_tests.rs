@@ -683,24 +683,17 @@ fn facts_say_what_the_session_is_waiting_for() {
     let pids = crate::observe::watcher::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     // 「没挂答题口」那一句照持着它的进程的环境与命令行现判：环境不从本进程继承那两格（本进程的环境是全局的），
-    // 并且等 sleep 真 exec 完再问 —— exec 窗口里 /proc/<pid>/environ 读回 0 字节，判成「取不到」、那一句就没了
+    // 并且等它真 exec 完再问 —— exec 窗口里 /proc/<pid>/environ 读回 0 字节，判成「取不到」、那一句就没了
     // （机器忙时整套里偶发红的就是这一形：manualText 成了「只能在终端里答」）。
-    let mut c = std::process::Command::new("sleep")
-        .arg("30")
+    //   它活到这里亲手停它为止（`cat` 等着读标准输入）：不按墙钟给它定寿命（`sleep 30` 在机器忙时会先走，僵尸读不出环境）。
+    let mut c = std::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
         .env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV)
         .env_remove(crate::agents::claudecode::asks::PLUGIN_ENV)
         .spawn()
         .unwrap();
-    let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
-    let environ = std::path::PathBuf::from(format!("/proc/{}/environ", c.id()));
-    for () in guard_core::wall::rounds() {
-        let execd = std::fs::read(&cmdline).is_ok_and(|b| b.starts_with(b"sleep\0"))
-            && std::fs::read(&environ).is_ok_and(|b| !b.is_empty());
-        if execd {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+    exec_done(c.id(), b"cat\0");
     let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
     let pidfile = |status: &str| {
         let body = format!(
@@ -1821,6 +1814,23 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }
 
+/// 等刚起的那个子进程**真 exec 完**：命令行换成了它自己的（`head` 打头）**并且**环境读得出来。
+/// fork 之后、exec 之前 /proc/<pid>/environ 还是父进程那一份；exec 当中内核先写命令行、再写环境，
+/// 两样之间读环境回 0 字节（判成「取不到」，那一句就没了）⇒ 两样都等到。上限是兜底的那一个数，不按快慢判。
+#[cfg(target_os = "linux")]
+fn exec_done(pid: u32, head: &[u8]) {
+    let cmdline = std::path::PathBuf::from(format!("/proc/{pid}/cmdline"));
+    let environ = std::path::PathBuf::from(format!("/proc/{pid}/environ"));
+    for () in guard_core::wall::rounds() {
+        if std::fs::read(&cmdline).is_ok_and(|b| b.starts_with(head))
+            && std::fs::read(&environ).is_ok_and(|b| !b.is_empty())
+        {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 /// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
 /// 在等批准时 `needs.manualText` 也是这一句（没带那个变量的进程见下一条：看它是不是 ccm 起的）。
 #[cfg(target_os = "linux")]
@@ -1839,22 +1849,18 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
     let pids = crate::observe::watcher::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     let facts_with = |off: Option<&str>| {
-        let mut cmd = std::process::Command::new("sleep");
-        cmd.arg("30");
+        // 持着会话的那个进程活到这里亲手停它为止（`cat` 等着读它的标准输入，那一头在这里攥着）：
+        //   不按墙钟给它定寿命 —— 从前是 `sleep 30`，机器忙到这一问拖过 30 秒时它先走了，留下的僵尸读不出环境，那一格成了 `null`。
+        let mut cmd = std::process::Command::new("cat");
+        cmd.stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null());
         if let Some(v) = off {
             cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, v);
         } else {
             cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         }
         let mut c = cmd.spawn().unwrap();
-        // fork 之后、exec 之前，/proc/<pid>/environ 还是父进程那一份（不带这个变量）⇒ 等它真成了 sleep 再问。
-        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
-        let until = std::time::Instant::now() + guard_core::wall::CEILING;
-        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sleep\0"))
-            && std::time::Instant::now() < until
-        {
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        exec_done(c.id(), b"cat\0");
         let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
         let body = format!(
             r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
@@ -1940,18 +1946,15 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
     let var = crate::agents::claudecode::asks::PLUGIN_ENV;
     // `extra` 接在 sh 的位置参数后面（只为让它出现在命令行里）；`noted` ⇒ 像 ccm 那样给这个进程留一张便条。
     let facts_with = |extra: &[&str], noted: bool| {
+        // 同上一条：`sh` 等着读标准输入，活到这里亲手停它为止（不按墙钟给它定寿命）。
         let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", "sleep 30; :", "sh"]).args(extra);
+        cmd.args(["-c", "read _; :", "sh"])
+            .args(extra)
+            .stdin(std::process::Stdio::piped());
         cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         cmd.env_remove(var);
         let mut c = cmd.spawn().unwrap();
-        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
-        let until = std::time::Instant::now() + guard_core::wall::CEILING;
-        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sh\0-c\0"))
-            && std::time::Instant::now() < until
-        {
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        exec_done(c.id(), b"sh\0-c\0");
         if noted {
             let now = crate::common::time::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2194,21 +2197,17 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
     );
     let var = crate::agents::claudecode::asks::PLUGIN_ENV;
     let facts_with = |dirs: Option<String>| {
-        let mut cmd = std::process::Command::new("sleep");
-        cmd.arg("30");
+        // 活到这里亲手停它为止（`cat` 等着读标准输入），不按墙钟给它定寿命。
+        let mut cmd = std::process::Command::new("cat");
+        cmd.stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null());
         cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         match &dirs {
             Some(v) => cmd.env(var, v),
             None => cmd.env_remove(var),
         };
         let mut c = cmd.spawn().unwrap();
-        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
-        let until = std::time::Instant::now() + guard_core::wall::CEILING;
-        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sleep\0"))
-            && std::time::Instant::now() < until
-        {
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
+        exec_done(c.id(), b"cat\0");
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

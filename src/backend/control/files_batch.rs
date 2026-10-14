@@ -22,7 +22,9 @@ use super::files_write::{
     delete_file_expecting, delete_tree_upto, lexical_in_root, rel_of, root_of, wire_of, WriteFail,
     WriteRefusal,
 };
-use crate::common::batch_book::{cancel_rest, choice_of, key_of, minted, said_of, ticketed, Run};
+use crate::common::batch_book::{
+    cancel_rest, choice_of, key_of, minted, moment_text, mtime_secs, said_of, ticketed, Run,
+};
 use crate::platform::fs::{Face, Ro};
 
 /// 保留两份另起名时最多往后试到第几个。
@@ -63,12 +65,7 @@ fn look(p: &Path) -> Option<(wire::FileKind, Option<u64>, Option<i64>)> {
         wire::FileKind::Other
     };
     let size = t.is_file().then(|| m.len());
-    let mtime = m
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64);
-    Some((kind, size, mtime))
+    Some((kind, size, mtime_secs(m.modified())))
 }
 
 /// 一项同名时的答 ＋ 那一格是不是目录（不合并）。
@@ -112,7 +109,12 @@ fn copy_one(
 }
 
 /// `files-copy`。
-pub(crate) fn copy(face: &Face, req: wire::FilesCopyReq) -> Result<BatchReply, CopyRefused> {
+/// 同名清单里的时刻按 `tz`（看的那一台的时区）写好。
+pub(crate) fn copy(
+    face: &Face,
+    req: wire::FilesCopyReq,
+    tz: &crate::common::time::Tz,
+) -> Result<BatchReply, CopyRefused> {
     let root = root_of(&req.root, "root")?;
     let on_exists = req.on_exists.unwrap_or_default();
     let items: Vec<(PathBuf, PathBuf)> = req
@@ -146,10 +148,10 @@ pub(crate) fn copy(face: &Face, req: wire::FilesCopyReq) -> Result<BatchReply, C
                     name: wire_of(Path::new(dst.file_name().unwrap_or_default())),
                     kind,
                     size,
-                    mtime,
+                    mtime_text: moment_text(mtime, tz),
                     there,
                     there_size,
-                    there_mtime,
+                    there_mtime_text: moment_text(there_mtime, tz),
                     dir_into,
                 });
             }
@@ -448,7 +450,8 @@ pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply,
 impl super::files_write::Act for wire::FilesCopyReq {
     type Reply = BatchReply;
     fn act(self, face: &Face) -> Result<BatchReply, WriteFail> {
-        copy(face, self).map_err(|e| match e {
+        // 门不问人 ⇒ 同名清单（连同它的时刻字）不出门，时区照缺。
+        copy(face, self, &Default::default()).map_err(|e| match e {
             CopyRefused::Clash(said, _) => WriteFail::from((super::files_write::EXISTS, said)),
             CopyRefused::Fail(f) => f,
         })

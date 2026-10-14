@@ -467,5 +467,5 @@ export interface TypedCommands {
   "terminals-list": { req: TerminalsListReq; reply: TerminalsList; code: "bad_args" | "unobservable" | "child_timed_out" };
   "transfer-copy": { req: TransferCopyReq; reply: BatchReply; code: "bad_args" | "exists" | "unreachable" | "sftp_home_mismatch" };
   "transfer-download": { req: TransferDownloadReq; reply: TransferOpened; code: "bad_args" | "refused" | "exists" };
-  "transfer-upload": { req: TransferUploadReq; reply: TransferOpened; code: "bad_args" };
+  "transfer-upload": { req: TransferUploadReq; reply: TransferOpened; code: "bad_args" | "exists" };
 }

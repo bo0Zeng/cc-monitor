@@ -657,6 +657,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 入参 `TransferUploadReq` · 回包 `TransferOpened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Decide = "overwrite" | "skip" | "keep_both";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type OpenState = "opened" | "skipped" | "failed";
 type OpenedItem = { key: string, state: OpenState, 
 /**
@@ -672,9 +674,13 @@ staged?: string,
  */
 path?: WirePath, 
 /**
- * 下载保留两份时另起的那个名。
+ * 保留两份时另起的那个名（下载：本机落名；上传：提交时远端那一段名字）。
  */
 new_name?: WirePath, 
+/**
+ * 上传：提交时盖掉远端已有的同名（同名照答覆盖的那几项）。
+ */
+overwrite?: boolean, 
 /**
  * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
  */
@@ -684,12 +690,12 @@ type TransferUploadReq = {
 /**
  * 拨号请求（同 `link-open` 的 `dial`）：后端拨号核心读它。
  */
-dial: Record<string, unknown>, items: Array<UploadItem>, home?: string, };
+dial: Record<string, unknown>, items: Array<UploadItem>, remote_dir: WirePath, home?: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
 type UploadItem = { local_path: string, };
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args`
+码：`bad_args` · `exists`
 
 #### `transfer-download`
 
@@ -718,9 +724,13 @@ staged?: string,
  */
 path?: WirePath, 
 /**
- * 下载保留两份时另起的那个名。
+ * 保留两份时另起的那个名（下载：本机落名；上传：提交时远端那一段名字）。
  */
 new_name?: WirePath, 
+/**
+ * 上传：提交时盖掉远端已有的同名（同名照答覆盖的那几项）。
+ */
+overwrite?: boolean, 
 /**
  * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
  */

@@ -48,7 +48,7 @@ impl Tape {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 正题一：**三段的顺序就是函数结构**（照 `run_drop` 的形状办）
+// 正题一：**三段的顺序就是函数结构**
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 探测 → **一次**问覆盖 → 才动手。三样一起判，少一样就漏一形：
@@ -119,7 +119,7 @@ async fn the_probe_and_the_question_both_come_before_anything_is_copied() {
     );
 }
 
-/// 目标不存在 ⇒ **不问**。弹一个空框是噪音，不是慎重（同 `run_drop`）。
+/// 目标不存在 ⇒ **不问**。弹一个空框是噪音，不是慎重。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_target_that_is_not_there_yet_asks_nobody() {
     let asked = AtomicUsize::new(0);
@@ -567,7 +567,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
 /// ⚠ **判源码是代理，不是标的**（同 `transfer_tests` / `source_tests` 的如实标注）。
 ///
 /// 买的是：复制经 `source::ask_coded` 说后端那条命令（失败连码与复制详情一起交回）（窗口进程够后端的唯一一处），
-/// 探测借 `transfer::probe_remote`（「那儿有没有东西」只有一个口径）；
+/// 探测借 `transfer::probe_remote_at`（「那儿有没有东西」只有一个口径）；
 /// SFTP 池子、进度通道、取消台一样都不碰。买不到：一台真远端上那一趟真跑过。
 #[test]
 fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
@@ -579,7 +579,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    // 〔有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
+    // 〔有损名全寻址〕探目标用 `probe_remote_at`（路径可以是字节）。
     for needle in ["source::ask_one(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),

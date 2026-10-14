@@ -308,7 +308,6 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
     assert!(!w.settle_finished_drops(), "一趟都没跑却说要重列");
 
     w.board.finish(crate::transfer::DropOutcome {
-        asked: 0,
         skipped: 0,
         ok: 1,
         ..Default::default()
@@ -2786,7 +2785,7 @@ fn last_args(wired: &crate::find::testing::Wired, cmd: &str) -> serde_json::Valu
 }
 
 /// 进一个有损名目录（按字节）⇒ 列目录发 `{"b16": …}`；里面一个有损名文件：算大小 / 读文本 / 复制为 / 删除，
-/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；有损目录里上传（探目标）/ 搜索 / 开终端也按字节。
+/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；有损目录里上传（开单的落点目录）/ 搜索 / 开终端也按字节。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_bytes() {
     use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
@@ -2800,6 +2799,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
                 "files-read-text",
                 "files-copy",
                 "files-stat",
+                "transfer-upload",
                 "files-delete",
                 "files-index-status",
                 "files-browse",
@@ -2914,17 +2914,18 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-index-rebuild")["path"],
         b16(b"/srv/d\xff")
     );
-    // 上传：探目标在不在按字节（整条路径 ＝ 目录字节 ＋ `/` ＋ 名字）。
+    // 上传：整组开单那一条的落点目录按字节（同名在那台探，窗口不再自己问 `files-stat`）。
     let stats = wired.count("files-stat");
     assert!(w.start_drop(
         vec![crate::transfer::Pending::into_remote_dir("/tmp/up.txt", &w.cwd).unwrap()],
         None
     ));
-    wait_for(&wired, "files-stat", stats + 1).await;
+    wait_for(&wired, "transfer-upload", 1).await;
     assert_eq!(
-        last_args(&wired, "files-stat")["path"],
-        b16(b"/srv/d\xff/up.txt")
+        last_args(&wired, "transfer-upload")["remote_dir"],
+        b16(b"/srv/d\xff")
     );
+    assert_eq!(wired.count("files-stat"), stats, "上传时窗口又自己探了同名");
     // 开终端：窗口只交意图，当前目录按字节交给 monitor 接的那一问（`cd` 那一串的字节形在后端拼，
     //   判据 `tests/backend/dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold`）。
     assert!(w.open_terminal_here(None), "有损目录里开终端那一问没发出去");
@@ -3300,6 +3301,7 @@ fn a_transfer_outcome_is_not_lost_behind_a_collapsed_table() {
             board: up.clone(),
             items: Vec::new(),
             dir: "data".into(),
+            ask: crate::transfer::tests::upload_ask(&[]),
         },
         Some("/srv/data".into()),
         None,
@@ -3708,4 +3710,72 @@ fn an_edit_page_that_was_refused_says_why_where_the_text_would_be() {
             "这一帧上没有「{want}」。画出来的是：{painted:?}"
         );
     }
+}
+
+/// 一组全成了 ⇒ 右下角一句回执（后端拼好的那一行，原样）；有没成的 ⇒ 不出回执（看「进度」表那一行）。上传一摞全成同理（那一行写的是几项）。
+#[test]
+fn a_group_that_fully_succeeds_says_so_in_a_toast() {
+    use cmd_wire::batch::{BatchOutcome, BatchReply, ItemState};
+    let mut w = remote_window_with_rows("/srv/data", Vec::new());
+    let plan = crate::batch::Plan {
+        verb: crate::batch::Verb::Copy,
+        cmd: "files-copy",
+        args: serde_json::json!({"root": "/srv", "items": [{}, {}]}),
+        names: vec!["a".into(), "b".into()],
+        into: Some("/srv/b".into()),
+        machine: "devbox".into(),
+    };
+    let landed = |w: &mut FileWindow, states: &[ItemState], said: &str| {
+        let b = crate::batch::BatchBoard::new(plan.clone());
+        w.batches.push(b.clone());
+        b.set(crate::batch::Phase::Ended(BatchReply {
+            outcomes: states
+                .iter()
+                .enumerate()
+                .map(|(i, s)| BatchOutcome::bare(i.to_string(), *s))
+                .collect(),
+            said: said.into(),
+        }));
+        w.receipt = None;
+        w.settle_finished_batches();
+        w.receipt.clone()
+    };
+    assert_eq!(
+        landed(
+            &mut w,
+            &[ItemState::Done, ItemState::Done],
+            "已复制 2 项 → /srv/b"
+        ),
+        Some("已复制 2 项 → /srv/b".to_string())
+    );
+    assert_eq!(
+        landed(
+            &mut w,
+            &[ItemState::Done, ItemState::Failed],
+            "复制 2 项 · 完成 1 · 跳过 0 · 失败 ×1"
+        ),
+        None,
+        "有没成的也出了回执"
+    );
+    w.receipt = None;
+    w.board.finish(crate::transfer::DropOutcome {
+        ok: 2,
+        ..Default::default()
+    });
+    assert!(w.settle_finished_drops());
+    assert_eq!(
+        w.receipt,
+        Some(copy_core::copy_text(
+            "rsFilewinProgress.upload.done",
+            &[("n", "2")]
+        ))
+    );
+    w.receipt = None;
+    w.board.finish(crate::transfer::DropOutcome {
+        ok: 1,
+        failed: vec![("x".into(), "盘满了".into())],
+        ..Default::default()
+    });
+    assert!(w.settle_finished_drops());
+    assert_eq!(w.receipt, None, "上传有失败的也出了回执");
 }

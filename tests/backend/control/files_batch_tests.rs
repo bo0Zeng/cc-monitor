@@ -43,6 +43,11 @@ fn copy_req(
     }
 }
 
+/// 本文件那几条不问时刻 ⇒ 看的那一台的时区照缺（按 UTC 写）。
+fn copy(face: &Face, req: FilesCopyReq) -> Result<BatchReply, CopyRefused> {
+    super::copy(face, req, &crate::Tz::default())
+}
+
 fn states(r: &BatchReply) -> Vec<ItemState> {
     r.outcomes.iter().map(|o| o.state).collect()
 }
@@ -65,6 +70,53 @@ fn a_clash_anywhere_in_the_group_leaves_every_byte_alone() {
     assert_eq!(c.conflicts[0].key, "1");
     assert!(!root.join("a2").exists(), "整组有同名时第一项也不许先做");
     assert_eq!(fs::read(root.join("b2")).unwrap(), b"old");
+}
+
+/// 同名清单里两头的修改时刻是后端按看的那一台的钟写好的字（界面照画，不换算）；两头各是各的。
+#[test]
+fn the_clash_list_carries_moments_written_on_the_viewers_clock() {
+    let root = temp_root("moment");
+    fs::write(root.join("a"), b"A").unwrap();
+    fs::write(root.join("a2"), b"old").unwrap();
+    let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+    fs::File::options()
+        .write(true)
+        .open(root.join("a2"))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let tz = crate::Tz::named("Asia/Tokyo").unwrap();
+    let got = super::copy(
+        &Face::issue(),
+        copy_req(&root, &[("a", "a2")], OnExists::Ask, None),
+        &tz,
+    );
+    let Err(CopyRefused::Clash(_, c)) = got else {
+        panic!("{got:?}")
+    };
+    let secs = |p: &Path| {
+        fs::metadata(p)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+    };
+    let text = |p: &Path| {
+        Some(crate::common::time::fmt_at(
+            secs(p),
+            crate::common::time::now_secs(),
+            &tz,
+        ))
+    };
+    assert_eq!(c.conflicts[0].mtime_text, text(&root.join("a")));
+    assert_eq!(c.conflicts[0].there_mtime_text, text(&root.join("a2")));
+    assert_eq!(
+        c.conflicts[0].there_mtime_text.as_deref(),
+        Some("2023-11-15 07:13"),
+        "那一刻按东京的钟写"
+    );
 }
 
 #[test]

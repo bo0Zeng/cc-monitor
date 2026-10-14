@@ -1149,6 +1149,23 @@ impl Workspace {
             Act::RetryDownload { src, dest } => {
                 self.pane_on_mut(f).start_pull(&src, &dest, false, ctx)
             }
+            // 另起的那一组寻址同一台：落在看着那台的那一栏（焦点那一栏优先）；那台已经没有标签页开着 ⇒ 做不了。
+            Act::RetryBatch {
+                plan,
+                icon,
+                at,
+                home,
+            } => {
+                let pane = if self.pane_on(f).source.origin() == at {
+                    Some(self.pane_on_mut(f))
+                } else {
+                    self.sides
+                        .iter_mut()
+                        .flat_map(|s| s.tabs.iter_mut().map(|t| &mut t.pane))
+                        .find(|p| p.source.origin() == at)
+                };
+                pane.is_some_and(|p| p.start_batch(plan, home, icon, ctx))
+            }
         }
     }
 

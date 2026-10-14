@@ -211,9 +211,9 @@ impl Command for FilesCopy {
 }
 
 impl Facing for FilesCopy {
-    fn run(req: wire::FilesCopyReq, _cx: &Cx, face: &Face) -> Result<BatchReply, FilesCopyErr> {
+    fn run(req: wire::FilesCopyReq, cx: &Cx, face: &Face) -> Result<BatchReply, FilesCopyErr> {
         use crate::control::files_batch::CopyRefused;
-        crate::control::files_batch::copy(face, req).map_err(|e| match e {
+        crate::control::files_batch::copy(face, req, &cx.tz).map_err(|e| match e {
             CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
             CopyRefused::Fail(f) => typed::of_fail(
                 Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),

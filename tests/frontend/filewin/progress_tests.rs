@@ -5,7 +5,7 @@ use super::*;
 use copy_core::copy_text;
 
 fn upload(board: &DropBoard, n: usize) -> Trip {
-    let items = (0..n)
+    let items: Vec<super::super::transfer::Pending> = (0..n)
         .map(|k| {
             super::super::transfer::Pending::into_remote_dir(&format!("/tmp/f{k}.bin"), "/srv/data")
                 .unwrap()
@@ -13,6 +13,7 @@ fn upload(board: &DropBoard, n: usize) -> Trip {
         .collect();
     Trip::Upload {
         board: board.clone(),
+        ask: crate::transfer::tests::upload_ask(&items),
         items,
         dir: "data".into(),
     }
@@ -57,8 +58,8 @@ fn each_trip_is_its_own_row_and_one_landing_leaves_the_others_running() {
     assert_eq!(p.jobs().len(), 2);
 }
 
-/// 上传失败 ⇒ 标题「上传失败 n」、按钮「重试 n 个」交出**失败的那几个**（不是整摞）；
-/// 人按了停 ⇒「已停」那一句、按钮「接着传」交出没传的那几个。
+/// 上传失败 ⇒ 标题「上传失败 n」、按钮「重试失败的」交出**失败的那几个**（不是整摞）；
+/// 人按了停 ⇒「已停」那一句、按钮「继续」交出没传的那几个（再开单，续传先对尾块）。
 #[test]
 fn a_failed_upload_offers_to_retry_exactly_the_ones_that_failed() {
     let p = Progress::default();
@@ -88,10 +89,7 @@ fn a_failed_upload_offers_to_retry_exactly_the_ones_that_failed() {
     let Some((label, Ok(Act::RetryUpload(again)))) = v.button else {
         panic!("失败那一行没有「重试」：{:?}", v.button);
     };
-    assert_eq!(
-        label,
-        copy_text("rsFilewinProgress.action.retryN", &[("n", "2")])
-    );
+    assert_eq!(label, copy_text("rsFilewinBatch.btn.retry", &[]));
     let names: Vec<&str> = again.iter().map(|x| x.name.as_str()).collect();
     assert_eq!(names, vec!["f1.bin", "f2.bin"]);
     // 停了的那一摞。
@@ -115,7 +113,92 @@ fn a_failed_upload_offers_to_retry_exactly_the_ones_that_failed() {
             &[("a", "1"), ("b", "2")]
         )
     );
-    assert!(matches!(v.button, Some((_, Ok(Act::Resume(ref r)))) if r.len() == 2));
+    assert!(matches!(v.button, Some((ref l, Ok(Act::Resume(ref r))))
+        if r.len() == 2 && *l == copy_text("rsFilewinBatch.btn.resume", &[])));
+}
+
+/// 一组的结局里有没成的 ⇒ 那一行带「重试失败的」：交出的那一组**只含没成的那几项**（同一台上的那几条照原样的根与参数），
+/// 寻址同一台另起一组（窗口那一级照它新起一块看板 ⇒ 新铸一张票）；全成了 ⇒ 不带按钮。
+#[test]
+fn a_partly_failed_group_offers_to_retry_only_the_failed_items_under_a_new_ticket() {
+    use cmd_wire::batch::{BatchOutcome, BatchReply, ItemState};
+    let p = Progress::default();
+    let b = crate::batch::BatchBoard::new(crate::batch::Plan {
+        verb: crate::batch::Verb::Copy,
+        cmd: "files-copy",
+        args: serde_json::json!({"root": "/srv", "items": [
+            {"from": "a", "to": "b/a"}, {"from": "c", "to": "b/c"}, {"from": "d", "to": "b/d"}]}),
+        names: vec!["a".into(), "c".into(), "d".into()],
+        into: Some("/srv/b".into()),
+        machine: "devbox".into(),
+    });
+    p.add(
+        Trip::Batch {
+            board: b.clone(),
+            icon: egui_phosphor::regular::COPY,
+        },
+        Some("/srv/b".into()),
+        None,
+    );
+    b.set(crate::batch::Phase::Ended(BatchReply {
+        outcomes: vec![
+            BatchOutcome::bare("0", ItemState::Done),
+            BatchOutcome {
+                reason: Some(copy_text("reason.io.denied", &[])),
+                ..BatchOutcome::bare("1", ItemState::Failed)
+            },
+            BatchOutcome::bare("2", ItemState::Skipped),
+        ],
+        said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
+    }));
+    let (at, home) = (
+        crate::source::Origin("devbox".into()),
+        crate::source::Origin("devbox".into()),
+    );
+    b.set_route(at.clone(), home.clone());
+    p.settle(0);
+    let v = p.jobs()[0].view();
+    let Some((
+        label,
+        Ok(Act::RetryBatch {
+            plan,
+            at: a,
+            home: h,
+            ..
+        }),
+    )) = v.button
+    else {
+        panic!("部分失败那一行没有「重试失败的」：{:?}", v.button);
+    };
+    assert_eq!(label, copy_text("rsFilewinBatch.btn.retry", &[]));
+    assert_eq!(plan.names, vec!["c".to_string()]);
+    assert_eq!(
+        plan.args,
+        serde_json::json!({"root": "/srv", "items": [{"from": "c", "to": "b/c"}]}),
+        "只含没成的那一项、不带原来那张票"
+    );
+    assert_eq!((a, h), (at, home), "另起的那一组寻址同一台");
+    // 全成了 ⇒ 不带按钮。
+    let ok = crate::batch::BatchBoard::new(b.plan());
+    ok.set_route(
+        crate::source::Origin("devbox".into()),
+        crate::source::Origin("devbox".into()),
+    );
+    p.add(
+        Trip::Batch {
+            board: ok.clone(),
+            icon: egui_phosphor::regular::COPY,
+        },
+        None,
+        None,
+    );
+    ok.set(crate::batch::Phase::Ended(BatchReply {
+        outcomes: (0..3)
+            .map(|i| BatchOutcome::bare(i.to_string(), ItemState::Done))
+            .collect(),
+        said: "已复制 3 项 → /srv/b".into(),
+    }));
+    assert_eq!(p.jobs()[1].view().button, None);
 }
 
 fn delete_board() -> crate::batch::BatchBoard {

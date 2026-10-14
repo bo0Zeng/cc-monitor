@@ -35,7 +35,8 @@ pub struct DownloadItem {
     pub name: Option<WirePath>,
 }
 
-/// 窗口说的 `transfer-upload`：一组本机文件 ＋ 问得到的那台后端的 `$HOME`（传输台连上之后与 SFTP 起始目录比，不一致 ⇒ 一个字节不写）。
+/// 窗口说的 `transfer-upload`：一组本机文件放进远端一个目录 ＋ 问得到的那台后端的 `$HOME`（传输台连上之后与 SFTP 起始目录比，不一致 ⇒ 一个字节不写）；
+/// 同名照 `on_exists`（缺 ⇒ `ask`：先在远端落点探整组，有同名一单不开、回 `exists` 带同名清单）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -45,9 +46,17 @@ pub struct DownloadItem {
 #[serde(deny_unknown_fields)]
 pub struct TransferUploadAsk {
     pub items: Vec<UploadItem>,
+    /// 远端落点目录（绝对路径；不是 UTF-8 时走原始字节）：同名在这一处探。
+    pub remote_dir: WirePath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub home: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub on_exists: Option<crate::batch::OnExists>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub decide: Option<std::collections::BTreeMap<String, crate::batch::Decide>>,
 }
 
 /// 窗口说的 `transfer-download`：一组远端路径落到本机一个目录；同名照 `on_exists`（缺 ⇒ `ask`：本机落点那一侧先探，有同名一单不开、回 `exists` 带同名清单）。
@@ -83,9 +92,16 @@ pub struct TransferUploadReq {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "Record<string, unknown>"))]
     pub dial: serde_json::Value,
     pub items: Vec<UploadItem>,
+    pub remote_dir: WirePath,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub home: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub on_exists: Option<crate::batch::OnExists>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub decide: Option<std::collections::BTreeMap<String, crate::batch::Decide>>,
 }
 
 /// monitor 转给本机后端的 `transfer-download`。
@@ -146,10 +162,14 @@ pub struct OpenedItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub path: Option<WirePath>,
-    /// 下载保留两份时另起的那个名。
+    /// 保留两份时另起的那个名（下载：本机落名；上传：提交时远端那一段名字）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub new_name: Option<WirePath>,
+    /// 上传：提交时盖掉远端已有的同名（同名照答覆盖的那几项）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub overwrite: bool,
     /// 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -268,7 +288,10 @@ impl TransferUploadAsk {
         TransferUploadReq {
             dial,
             items: self.items,
+            remote_dir: self.remote_dir,
             home: self.home,
+            on_exists: self.on_exists,
+            decide: self.decide,
         }
     }
 }

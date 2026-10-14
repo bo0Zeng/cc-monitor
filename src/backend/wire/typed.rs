@@ -400,6 +400,20 @@ pub(crate) fn outcome<C: Command>(
     take::<C::Req>(args).and_then(|req| settle::<C>(run(req)))
 }
 
+/// 同 [`outcome`]，本体要等（帧面硬臂那一档里交出异步处理器的那几条：上传开单先去远端探同名）。
+pub(crate) async fn outcome_async<C: Command, F>(
+    args: &serde_json::Value,
+    run: impl FnOnce(C::Req) -> F,
+) -> Outcome
+where
+    F: std::future::Future<Output = Result<C::Reply, C::Err>>,
+{
+    match take::<C::Req>(args) {
+        Ok(req) => settle::<C>(run(req).await),
+        Err(f) => Err(f),
+    }
+}
+
 /// 帧面硬臂那一档（[`TypedRun::Frame`]）的一发：入参按类型收 → `run` → 应答帧（成功带回包；失败照码表投，详情里带命令名）。
 /// `dispatch` 的硬臂调本体时都经这里（本体签名里只有类型，没有 `args`）。
 pub(crate) fn answer<C: Command>(
