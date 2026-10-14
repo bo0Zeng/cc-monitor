@@ -34,9 +34,9 @@ data class LiveSession(
     val name: String? = null,
     val agentKind: String? = null,
     val attachable: Boolean? = null,
-    /** 「运行中 · 空闲 · 后台任务运行中 · 需手动 · 说不清 · 读记录中」那一句与语气，照抄。 */
+    /** 「运行中 · 空闲 · 后台任务运行中 · 需手动 · 状态不明 · 读记录中」那一句与语气，照抄。 */
     val activity: Toned,
-    /** 那台判得出它一轮在跑（帧上 `activity` 是 `working`）。判不出（`activity` 缺席：说不清 · 读记录中）⇒ 不算在跑。聊天屏的停止键只认它。 */
+    /** 那台判得出它一轮在跑（帧上 `activity` 是 `working`）。判不出（`activity` 缺席：状态不明 · 读记录中）⇒ 不算在跑。聊天屏的停止键只认它。 */
     val running: Boolean = false,
 )
 

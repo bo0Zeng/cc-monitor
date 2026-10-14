@@ -412,7 +412,7 @@
         "model": null
       },
       "ok": false,
-      "out": "此机 ccm 做不到这样启动会话 · 缺 cwd"
+      "out": "此机 ccm 不支持这样启动会话 · 缺 cwd"
     },
     {
       "name": "建 tmux 会话而这台没有 tmux",
@@ -448,7 +448,7 @@
         "model": null
       },
       "ok": false,
-      "out": "此机 ccm 做不到这样启动会话 · 缺 tmux"
+      "out": "此机 ccm 不支持这样启动会话 · 缺 tmux"
     },
     {
       "name": "已触发的 model 维度要的能力缺失",

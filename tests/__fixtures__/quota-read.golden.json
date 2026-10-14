@@ -2193,7 +2193,7 @@
         "candidates": [],
         "detail": null,
         "earliestReturn": null,
-        "fiveHour": "5h 读不到",
+        "fiveHour": "5h 无法读取",
         "names": {
           "accounts": {
             "0": "~/.claude",

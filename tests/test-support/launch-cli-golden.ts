@@ -78,10 +78,10 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: "ccm -- new --ccm-agent claude --base --cwd '/home/用户/带 空格'" },
   // ---- refusal 类（表达不了就拒，不渲一条丢了修饰的命令） ----
   { name: "缺无条件能力 cwd", caps: ALL_CAPS.filter((c) => c !== "cwd"), ctx: base(),
-    ok: false, out: "此机 ccm 做不到这样启动会话 · 缺 cwd" },
+    ok: false, out: "此机 ccm 不支持这样启动会话 · 缺 cwd" },
   { name: "建 tmux 会话而这台没有 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base({
       container: { kind: "tmux", name: "cc-x", mode: "create" },
-    }), ok: false, out: "此机 ccm 做不到这样启动会话 · 缺 tmux" },
+    }), ok: false, out: "此机 ccm 不支持这样启动会话 · 缺 tmux" },
   { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ account: { kind: "named", name: "z" } }), prefs: { models: { z: "opus" } },
     ok: false, out: "此机 ccm 不认设置项 model · 缺 model" },
   { name: "已触发的 account 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "account"), ctx: base(),

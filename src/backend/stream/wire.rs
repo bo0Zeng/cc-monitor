@@ -155,7 +155,7 @@ impl ActivityFace {
                 Tone::Plain,
                 3,
             ),
-            // 判不出就照实说「说不清」：不说一句没判出来的「运行中」。语气 plain、序跟着语气走（与闲着同一档）。
+            // 判不出就照实说「状态不明」：不说一句没判出来的「运行中」。语气 plain、序跟着语气走（与闲着同一档）。
             None => (
                 copy_core::copy_text("beSession.activity.unclear", &[]),
                 Tone::Plain,

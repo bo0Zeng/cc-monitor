@@ -167,7 +167,7 @@ export class DataSection {
       copyText("data.note.byDefault"),
       strong(copyText("data.note.notCleared")),
       copyText("data.note.howToClear"),
-      // 那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
+      // 那一格怎么读：只想腾空间的话，删「可重建」的就够了。
       copyText("data.note.classes"),
     );
     this.mainBody.appendChild(note);
