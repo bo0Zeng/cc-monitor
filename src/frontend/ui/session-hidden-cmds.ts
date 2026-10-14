@@ -4,11 +4,15 @@
 import { annotate } from "./history-reads";
 import type { Origin } from "./ipc/origin";
 import { setPrefs } from "./machine-prefs";
+import type { Hide } from "./generated/Hide";
 import { placesOf, type HideSet, type TabPlace, type TabPlaces } from "./session-hidden";
 
-/** 改单个那一格（注解住会话所在那台）。成不成都由推帧那一格说了算：界面不先挪。标签栏 · 历史页同这一个口。 */
-export async function setHide(origin: Origin, sid: string, to: HideSet): Promise<void> {
-  await annotate(origin, sid, { hide: to });
+/**
+ * 改单个那一格（注解住会话所在那台）。成不成都由推帧那一格说了算：界面不先挪。标签栏 · 历史页同这一个口。
+ * 回改之前那一格（后端读写那一处给的）：撤销「隐藏」照它交回去（`session-hidden.ts::undoHide`）。
+ */
+export async function setHide(origin: Origin, sid: string, to: HideSet): Promise<Hide | null> {
+  return (await annotate(origin, sid, { hide: to })).prev;
 }
 
 /** 改那台的一格，回写完读回的两格。 */

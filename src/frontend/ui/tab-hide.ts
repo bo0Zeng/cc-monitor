@@ -10,14 +10,15 @@ import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
 import { isResumeOnly } from "./tab-session-state";
-import { sameHidden, type HideSet, type SessionHidden } from "./session-hidden";
+import { sameHidden, undoHide, type HideSet, type SessionHidden } from "./session-hidden";
 import { copyText } from "./copy-table";
+import type { Hide } from "./generated/Hide";
 import { fullTitle } from "./session-face";
 
 /** 隐藏那几件要宿主做的：交命令 · 出 toast · 重画 · 关掉一个已结束的。 */
 export interface TabHideHost {
-  /** 改单个那一格（`history-annotate {hide}`）；失败 ⇒ 抛。 */
-  setHide(tab: Tab, to: HideSet): Promise<void>;
+  /** 改单个那一格（`history-annotate {hide}`），回改之前那一格；失败 ⇒ 抛。 */
+  setHide(tab: Tab, to: HideSet): Promise<Hide | null>;
   /** 可撤的 toast（撤销 ⇒ `undo`；过期 ⇒ `settle`）。 */
   undoToast(title: string, undo: () => void, settle: () => void): void;
   /** 没交成那一句。 */
@@ -77,11 +78,13 @@ export class TabHide {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) === null);
     if (tabs.length === 0) return;
     for (const t of tabs) this.before.set(t.sessionId, { index: this.store.orderedIds.indexOf(t.sessionId), group: t.group, pinned: t.pinned });
-    void this.send(tabs, "on");
+    // 撤销回到隐藏之前那一份单独设置（各个照后端回的改之前那一格，`undoHide`），不一律钉成「单独显示」。
+    const prevs = new Map<string, Hide | null>();
+    const sent = this.send(tabs, () => "on", (t, prev) => prevs.set(t.sessionId, prev));
     const title = tabs.length === 1 ? copyText("tabBar.hide.done", { title: fullTitle(tabs[0]) }) : copyText("tabBar.hide.doneMany", { n: tabs.length });
     this.host.undoToast(
       title,
-      () => void this.send(tabs, "off"),
+      () => void sent.then(() => this.send(tabs.filter((t) => prevs.has(t.sessionId)), (t) => undoHide(prevs.get(t.sessionId) ?? null))),
       () => tabs.forEach((t) => this.before.delete(t.sessionId)),
     );
   }
@@ -91,18 +94,23 @@ export class TabHide {
    */
   unhide(sids: readonly string[]): void {
     const tabs = sids.map((s) => this.store.tabs.get(s)).filter((t): t is Tab => t !== undefined && (t.hidden ?? null) !== null);
-    if (tabs.length > 0) void this.send(tabs, "off");
+    if (tabs.length > 0) void this.send(tabs, () => "off");
   }
 
-  private async send(tabs: readonly Tab[], to: HideSet): Promise<void> {
+  /** 逐个交（`to` ＝ 这一个交什么）；交成了 ⇒ `done(那一个, 改之前那一格)`。 */
+  private async send(tabs: readonly Tab[], to: (t: Tab) => HideSet, done?: (t: Tab, prev: Hide | null) => void): Promise<void> {
     await Promise.all(
-      tabs.map((t) =>
-        this.host.setHide(t, to).catch((e: unknown) => {
-          this.before.delete(t.sessionId);
-          const title = fullTitle(t);
-          this.host.failed(to === "on" ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title }), e);
-        }),
-      ),
+      tabs.map((t) => {
+        const word = to(t);
+        return this.host.setHide(t, word).then(
+          (prev) => done?.(t, prev),
+          (e: unknown) => {
+            this.before.delete(t.sessionId);
+            const title = fullTitle(t);
+            this.host.failed(word === "on" ? copyText("tabBar.hide.failed", { title }) : copyText("tabBar.unhide.failed", { title }), e);
+          },
+        );
+      }),
     );
   }
 

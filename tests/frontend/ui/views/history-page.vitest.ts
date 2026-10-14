@@ -196,7 +196,7 @@ beforeEach(() => {
       const ss = ms.flatMap((m) => m.sessions.map((s) => ({ ...s, ...(m.origin === LOCAL_ORIGIN ? {} : { origin: m.origin }), atText: "12:00", spanText: "12:00–12:00" })));
       return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss });
     }
-    if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 } });
+    if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: null });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
     if (c.op === "history-forget") return chanReply({ removed: true, sid: "a" });
     return undefined;
@@ -438,10 +438,10 @@ describe("键盘与菜单", () => {
     expect(calls("history-annotate").at(-1)).toEqual({ sid: "b", patch: { hide: "on" } });
     const { undoToast } = await import("../../../../src/frontend/ui/kit/toast");
     expect(vi.mocked(undoToast)).toHaveBeenCalled();
-    // 撤销同标签栏那一处：交 `off`（同一个交命令的口）。
+    // 撤销同标签栏那一处：照回包里改之前那一格交回去（原本没有单独设置 ⇒ `rule`，同一个交命令的口）。
     (vi.mocked(undoToast).mock.calls.at(-1)![1] as () => void)();
     await flush();
-    expect(calls("history-annotate").at(-1)).toEqual({ sid: "b", patch: { hide: "off" } });
+    expect(calls("history-annotate").at(-1)).toEqual({ sid: "b", patch: { hide: "rule" } });
     openMenuOn("a");
     menuItem(copyText("history.menu.rename"))!.click();
     await answerAskText("新名字");

@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailable: vi.fn(() => false) }));
 vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(), setPrefs: vi.fn() }));
-vi.mock("../../../src/frontend/ui/history-reads", () => ({ annotate: vi.fn(async () => ({ entry: {} })) }));
+vi.mock("../../../src/frontend/ui/history-reads", () => ({ annotate: vi.fn(async () => ({ entry: {}, prev: null })) }));
 
 import { TabStore } from "../../../src/frontend/ui/tab-store";
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
@@ -25,7 +25,7 @@ import type { Needs, SessionFacts } from "../../../src/frontend/ui/session-reads
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, LIVE } from "../../../src/frontend/ui/tab-session-state";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { hiddenPushed, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
+import { hiddenPushed, undoHide, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
 import { setHide } from "../../../src/frontend/ui/session-hidden-cmds";
 import { TabHide, type TabHideHost } from "../../../src/frontend/ui/tab-hide";
 import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
@@ -221,7 +221,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     };
     const toasts: { title: string; undo: () => void; settle: () => void }[] = [];
     const host = {
-      setHide: vi.fn(async (_t: Tab, _to: HideSet) => {}),
+      setHide: vi.fn(async (_t: Tab, _to: HideSet): Promise<"on" | "off" | null> => null),
       undoToast: vi.fn((title: string, undo: () => void, settle: () => void) => void toasts.push({ title, undo, settle })),
       failed: vi.fn(),
       refreshTabBar: vi.fn(),
@@ -231,7 +231,7 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     return { h, host, store, prefs, toasts };
   }
 
-  it("★ 隐藏一个：交 `on`、toast「已隐藏「名」」、栏上先不挪；撤销交 `off`", async () => {
+  it("★ 隐藏一个：交 `on`、toast「已隐藏「名」」、栏上先不挪；撤销照后端回的改之前那一格交回去（没有 ⇒ `rule`，不钉成单独显示）", async () => {
     const r = rig([tab("a"), tab("b")]);
     r.h.hide(["b"]);
     await Promise.resolve();
@@ -239,8 +239,18 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     expect(r.toasts.map((t) => t.title)).toEqual([copyText("tabBar.hide.done", { title: "名-b" })]);
     expect(r.store.tabs.get("b")!.hidden, "界面不先挪：等推帧").toBeNull();
     r.toasts[0].undo();
-    await Promise.resolve();
-    expect(r.host.setHide.mock.calls.at(-1)?.[1]).toBe("off");
+    await new Promise((x) => setTimeout(x, 0));
+    expect(r.host.setHide.mock.calls.at(-1)?.[1], "撤销等隐藏那一问回来、照它回的那一格交").toBe("rule");
+  });
+
+  it("★ 批量隐藏的撤销逐个照各自改之前那一格：原本单独显示的交 `off`、原本照规则的交 `rule`", async () => {
+    const r = rig([tab("a"), tab("b")]);
+    r.host.setHide.mockImplementation(async (t: Tab) => (t.sessionId === "a" ? "off" : null));
+    r.h.hide(["a", "b"]);
+    await new Promise((x) => setTimeout(x, 0));
+    r.toasts[0].undo();
+    await new Promise((x) => setTimeout(x, 0));
+    expect(r.host.setHide.mock.calls.slice(2).map((c) => [(c[0]).sessionId, c[1]])).toEqual([["a", "off"], ["b", "rule"]]);
   });
 
   it("批量隐藏：一条「已隐藏 N 个」；已经隐藏的跳过", () => {
@@ -277,9 +287,11 @@ describe("隐藏 / 取消隐藏：交的命令 · 撤销 · 推帧到了才挪",
     expect(r.host.close.mock.calls).toEqual([["b"]]);
   });
 
-  it("命令交到会话所在那台：`history-annotate {sid, patch: {hide}}`", async () => {
-    await setHide("gpu-01", "s1", "rule");
-    expect(vi.mocked(annotate)).toHaveBeenCalledWith("gpu-01", "s1", { hide: "rule" });
+  it("命令交到会话所在那台：`history-annotate {sid, patch: {hide}}`；回改之前那一格；撤销的词照它（`null` ⇒ `rule`）", async () => {
+    vi.mocked(annotate).mockResolvedValueOnce({ entry: { starred: false, customTitle: null, hide: "on", updatedAt: 1 }, prev: "off" });
+    expect(await setHide("gpu-01", "s1", "on")).toBe("off");
+    expect(vi.mocked(annotate)).toHaveBeenCalledWith("gpu-01", "s1", { hide: "on" });
+    expect([undoHide("off"), undoHide("on"), undoHide(null)]).toEqual(["off", "on", "rule"]);
   });
 });
 

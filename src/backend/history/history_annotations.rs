@@ -462,6 +462,7 @@ pub(crate) fn annotate_at(
             .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     }
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
+    let prev = entry.hide;
     if let Some(s) = patch.starred {
         entry.starred = s;
     }
@@ -478,15 +479,17 @@ pub(crate) fn annotate_at(
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
-    Ok(Annotated { entry })
+    Ok(Annotated { entry, prev })
 }
 
-/// `history-annotate` 的回包：改完的那一条。
+/// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Annotated {
     pub(crate) entry: Entry,
+    /// 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
+    pub(crate) prev: Option<Hide>,
 }
 
 /// `history-forget` 的回包。

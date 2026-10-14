@@ -13,6 +13,7 @@
  */
 import type { Changed } from "./changed-stream";
 import type { Hidden } from "./generated/Hidden";
+import type { Hide } from "./generated/Hide";
 import type { HideAsk } from "./generated/HideAsk";
 import type { Kin } from "./generated/Kin";
 import type { Prefs } from "./generated/Prefs";
@@ -57,6 +58,14 @@ export function sameLineage(a: SessionLineage, b: SessionLineage): boolean {
 
 /** 单个那一格：隐藏 · 取消隐藏（不按规则）· 回到规则。 */
 export type HideSet = HideAsk;
+
+/**
+ * 撤销「隐藏」交什么：回到隐藏之前那一份单独设置 —— 原本没有 ⇒ `rule`（照规则，规则以后变了照样管得到它）；原本有 ⇒ 原样。
+ * 「取消隐藏」（从已隐藏里拿出来）不走这里：那是明说要显示，交 `off`。
+ */
+export function undoHide(prev: Hide | null): HideSet {
+  return prev ?? "rule";
+}
 
 /** 这台偏好里的两格：子会话 · 分身会话默认进不进标签栏。 */
 export type TabPlace = Tab;

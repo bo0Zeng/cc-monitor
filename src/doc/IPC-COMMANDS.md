@@ -2878,7 +2878,11 @@ sid: string,
  * 要改的那几格。
  */
 patch: Patch, };
-type Annotated = { entry: Entry, };
+type Annotated = { entry: Entry, 
+/**
+ * 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
+ */
+prev: Hide | null, };
 type Entry = { starred: boolean, customTitle: string | null, 
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。

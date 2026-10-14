@@ -215,6 +215,43 @@ fn patch_semantics_match_what_the_monitor_did() {
         e["entry"],
         json!({"starred": false, "customTitle": null, "hide": "on", "updatedAt": 9})
     );
+    // ★ 回包带改之前那一格（`prev`）：撤销照它交回去 ——
+    //   先无单独设置 → 隐藏（`prev: null`）→ 撤销交 `rule` ⇒ 注解里那一格回到没有（不是钉成「单独设为显示」）。
+    assert_eq!(e["prev"], Value::Null, "{e}");
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "fresh", "patch": {"hide": "rule"}}),
+        10,
+    )
+    .unwrap();
+    assert_eq!(e["prev"], "on", "{e}");
+    assert!(
+        e["entry"].get("hide").is_none(),
+        "撤销后那一格该回到没有：{e}"
+    );
+    let disk: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    assert!(disk["entries"]["fresh"].get("hide").is_none(), "{disk}");
+    // 原本单独设为显示的：隐藏时 `prev: "off"`；不改隐藏那一格的补丁也照实回那一格。
+    answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "fresh", "patch": {"hide": "off"}}),
+        11,
+    )
+    .unwrap();
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "fresh", "patch": {"hide": "on"}}),
+        12,
+    )
+    .unwrap();
+    assert_eq!(e["prev"], "off", "{e}");
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "fresh", "patch": {"starred": true}}),
+        13,
+    )
+    .unwrap();
+    assert_eq!(e["prev"], "on", "{e}");
     // 坏入参拒，文件不动。
     let before = std::fs::read(&p).unwrap();
     for bad in [
@@ -335,6 +372,7 @@ impl crate::guard_support::Shaped for Annotated {
                 hide: Some(Hide::On),
                 updated_at: 1,
             },
+            prev: Some(Hide::Off),
         }]
     }
 }
