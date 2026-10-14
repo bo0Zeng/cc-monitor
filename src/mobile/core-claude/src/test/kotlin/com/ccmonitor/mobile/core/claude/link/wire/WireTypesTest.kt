@@ -54,6 +54,13 @@ class WireTypesTest {
                     val why: String,
                 )
 
+                @WireOf("Needs")
+                @JsonClass(generateAdapter = true)
+                data class Needs(
+                    val text: Long,
+                    val head: String,
+                )
+
                 @WireOf("Killed")
                 data class Killed(
                     val killed: Boolean,
@@ -78,7 +85,8 @@ class WireTypesTest {
         assertTrue(got, got.contains("SentResult"))
         assertTrue("少了 @JsonClass 的类认得出：$got", got.contains("Killed"))
         assertTrue("没写线上字的枚举常量认得出：$got", got.contains("ModeSwitchResult.UNSURE"))
-        assertEquals("可空那一格 TS 那边必有 ⇒ 不算错", 5, got.lines().size)
+        assertTrue("别名那一型（Words ＝ string）照它指的核：$got", got.contains("Needs.text"))
+        assertEquals("可空那一格 TS 那边必有 ⇒ 不算错；别名对得上的那一格不算错", 6, got.lines().size)
     }
 
     /** 装（Moshi 生成的解码器）：嵌套 · 列表 · 枚举 · 线上键；多出来的键照收；不可空那一格缺了或来了 null ⇒ 装不进（null），不补默认值。 */
@@ -144,6 +152,8 @@ class WireTypesTest {
             return if (lits.toSet() == words.toSet()) null else "枚举 $kt 的线上字是 $words，$ts 是 $lits"
         }
         decl.classes.firstOrNull { it.name == kt }?.let { return if (it.wire == ts) null else "$kt 声明的是 ${it.wire}，这里是 `$ts`" }
+        // 别名（`Words` ＝ `string`）：照它指的那一型核。
+        Ts.load(ts)?.alias?.let { return fits(decl, kt, it) }
         val literal = Regex("^\"[^\"]*\"( \\| \"[^\"]*\")*$")
         val ok =
             when (kt) {
@@ -223,6 +233,8 @@ class WireTypesTest {
     private class Ts(
         val fields: Map<String, Field>?,
         val literals: List<String>?,
+        /** `export type X = string;` 这种别名指的那一型（只认基本型）。 */
+        val alias: String? = null,
     ) {
         class Field(
             val type: String,
@@ -248,6 +260,7 @@ class WireTypesTest {
                 if (Regex("^\"[^\"]*\"( \\| \"[^\"]*\")*$").matches(rhs)) {
                     return Ts(null, Regex("\"([^\"]*)\"").findAll(rhs).map { it.groupValues[1] }.toList())
                 }
+                if (rhs in setOf("string", "number", "boolean")) return Ts(null, null, rhs)
                 if (!rhs.startsWith("{") || !rhs.endsWith("}")) return Ts(null, null)
                 return Ts(fields(rhs.substring(1, rhs.length - 1)), null)
             }

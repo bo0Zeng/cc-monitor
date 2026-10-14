@@ -1,24 +1,18 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
+
 /*
  * 核心成品的解码：只认格、不判、不写字（`架构.md` D3 · D10）。每一格的意思以 `IPC-COMMANDS.md` 为准；
  * 形状对不上（缺必填格）⇒ `null`，由调用方报「两端契约对不上」，不补默认值。
  */
 
-/** 语气（`common::cells::Tone`）：闭集，出口按它选颜色，不按字。认不出 ⇒ `null`（照 plain 画、报一次）。 */
-enum class Tone {
-    PLAIN,
-    FAIL,
-    NOW,
-    NEED,
-    WARN,
-    BUSY,
-    ;
-
-    companion object {
-        fun of(s: String?): Tone? = entries.firstOrNull { it.name.equals(s, ignoreCase = true) }
-    }
-}
+/** 语气（[Tone]，线上类）的一个词；认不出 ⇒ `null`（照 plain 画、报一次）。会话帧上那几格不经核心按类型解，在这里认。 */
+fun toneOf(s: String?): Tone? = Wire.bind<Tone>(s)
 
 /** 一格写好的字 ＋ 它的语气。 */
 data class Toned(
@@ -78,7 +72,7 @@ data class SessionTable(
         val prior = sessions[sid] ?: return this
         val now =
             prior.copy(
-                activity = Toned(text, Tone.of(frame.str("activity_tone"))),
+                activity = Toned(text, toneOf(frame.str("activity_tone"))),
                 running = frame.str("activity") == RUNNING,
                 path = frame.str("path") ?: prior.path,
             )
@@ -98,7 +92,7 @@ data class SessionTable(
                 name = m.str("name"),
                 agentKind = m.str("agent_kind"),
                 attachable = m.bool("attachable"),
-                activity = Toned(text, Tone.of(m.str("activity_tone"))),
+                activity = Toned(text, toneOf(m.str("activity_tone"))),
                 running = m.str("activity") == RUNNING,
             )
         }
@@ -112,50 +106,11 @@ data class SessionTable(
     }
 }
 
-/** 一条需手动（`sessions-needs` 的 `waiting[]` 一项 · `history-facts.needs`）。 */
-data class Needs(
-    val kind: String,
-    /** 「等批准 · Bash」那一句（核心按文案表写好）。 */
-    val text: String,
-    val tone: Tone?,
-    /** 先答哪个，0 最先。 */
-    val rank: Long,
-    /** 那台答出那一刻已等了多久（毫秒）；屏上从收到那份起接着走表（`DurationFormat.waited`）。没有起点 ⇒ `null`。 */
-    val waitedMs: Long?,
-) {
-    companion object {
-        fun of(m: Map<String, Any?>?): Needs? = decoding { need(m) }
-
-        internal fun need(m: Map<String, Any?>?): Needs =
-            m.need().let {
-                Needs(
-                    kind = it.str("kind").need(),
-                    text = it.str("text").need(),
-                    tone = Tone.of(it.str("tone")),
-                    rank = it.num("rank").need(),
-                    waitedMs = it.num("waitedMs"),
-                )
-            }
-    }
-}
-
-/** `sessions-needs`：这台需手动的会话，已按 `rank` 排（同一档等得久的在前）——出口照这个先后，不另排。 */
+/** `sessions-needs`：这台需手动的会话，已按 `rank` 排（同一档等得久的在前）——出口照这个先后，不另排。核心按 `cmd-wire` 那一份解过。 */
 object SessionsNeeds {
     const val COMMAND: String = "sessions-needs"
 
-    data class Row(
-        val sid: String,
-        val needs: Needs,
-    )
-
-    fun of(data: Any?): List<Row>? =
-        decoding {
-            data
-                .asObj()
-                .objs("waiting")
-                .need()
-                .map { w -> Row(w.str("sid").need(), Needs.need(w.obj("needs"))) }
-        }
+    fun of(data: Any?): List<NeedsRow>? = Wire.bind<NeedsList>(data)?.waiting
 }
 
 /**
@@ -165,46 +120,8 @@ object SessionsNeeds {
 object HistoryList {
     const val COMMAND: String = "history-list"
 
-    data class Row(
-        val sessionId: String,
-        /** 显示标题（回退链核心算好）。 */
-        val label: String,
-        /** 行尾那一格（这台本地钟写好）。 */
-        val atText: String?,
-        /** 分段头（今天 · 昨天 · 本周 …）。 */
-        val sectionText: String?,
-        val projectPath: String?,
-        val jsonlPath: String?,
-        val agent: String?,
-        /** 行上那一家的小牌（对用户的叫法）；`null` ＝ 不画。 */
-        val agentTag: String?,
-    )
-
-    data class Answer(
-        val rows: List<Row>,
-        /** 注解没并上的那句话；`null` ＝ 并上了。 */
-        val notice: String?,
-        val truncated: Boolean,
-    )
-
-    fun of(data: Any?): Answer? =
-        decoding {
-            val m = data.asObj()
-            val rows =
-                m.objs("rows").need().map { r ->
-                    Row(
-                        sessionId = r.str("sessionId").need(),
-                        label = r.str("label").need(),
-                        atText = r.str("atText"),
-                        sectionText = r.str("sectionText"),
-                        projectPath = r.str("projectPath"),
-                        jsonlPath = r.str("jsonlPath"),
-                        agent = r.str("agent"),
-                        agentTag = r.str("agentTag"),
-                    )
-                }
-            Answer(rows, m.str("notice"), m.bool("truncated") == true)
-        }
+    /** 核心按 `cmd-wire` 那一份解过的成品（平时那一形；`raw` 那一形手机不问）。 */
+    fun of(data: Any?): HistoryListPage? = Wire.bind<HistoryListPage>(data)
 }
 
 /** `quota-read`：这台的额度账。每号一段 `rows`（写好的几行）· `fiveHour`（「5h 41%」那一格）· `warm`（开窗那一判）。 */
@@ -236,7 +153,7 @@ object QuotaRead {
     private fun account(m: Map<String, Any?>): Account {
         val rows =
             m["rows"].asList().map { row ->
-                row.asList().map { cell -> cell.asObj().let { c -> Toned(c.str("text").need(), Tone.of(c.str("tone"))) } }
+                row.asList().map { cell -> cell.asObj().let { c -> Toned(c.str("text").need(), toneOf(c.str("tone"))) } }
             }
         return Account(m.str("account").need(), rows, m.str("fiveHour"), m.obj("warm")?.str("text"))
     }

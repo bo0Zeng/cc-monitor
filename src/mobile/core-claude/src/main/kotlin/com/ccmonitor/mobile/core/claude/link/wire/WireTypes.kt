@@ -159,3 +159,68 @@ data class TailPlan(
     @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
 )
+
+@JsonClass(generateAdapter = false)
+enum class Tone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "now")
+    NOW,
+
+    @Json(name = "need")
+    NEED,
+
+    @Json(name = "warn")
+    WARN,
+
+    @Json(name = "busy")
+    BUSY,
+}
+
+@WireOf("NeedsList")
+@JsonClass(generateAdapter = true)
+data class NeedsList(
+    val waiting: List<NeedsRow>,
+)
+
+@WireOf("NeedsRow")
+@JsonClass(generateAdapter = true)
+data class NeedsRow(
+    val sid: String,
+    val needs: Needs,
+)
+
+@WireOf("Needs")
+@JsonClass(generateAdapter = true)
+data class Needs(
+    val kind: String,
+    val text: String,
+    val tone: Tone,
+    val rank: Long,
+    val waitedMs: Long?,
+)
+
+@WireOf("HistoryList")
+@JsonClass(generateAdapter = true)
+data class HistoryListPage(
+    val rows: List<HistoryRow>,
+    val notice: String?,
+    val truncated: Boolean,
+)
+
+@WireOf("HistoryRow")
+@JsonClass(generateAdapter = true)
+data class HistoryRow(
+    val sessionId: String,
+    val label: String,
+    val atText: String,
+    val sectionText: String,
+    val projectPath: String,
+    val jsonlPath: String,
+    val agent: String,
+    val agentTag: String?,
+)
