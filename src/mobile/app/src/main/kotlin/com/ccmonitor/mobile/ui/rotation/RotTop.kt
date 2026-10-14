@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -117,14 +118,14 @@ private fun About(
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val st = view?.strategy
+    val accounts = board.state.collectAsState().value.accounts
     if (st == null) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(copyText("rot.none.desc"), color = muted, style = MaterialTheme.typography.bodyMedium)
             if (inSession && view != null) {
                 AccountBadge(
                     view.start,
-                    board.state.value.accounts[view.start]
-                        ?.color,
+                    accounts[view.start]?.color,
                     18,
                 )
                 Text(board.label(view.start), style = MaterialTheme.typography.bodyMedium)

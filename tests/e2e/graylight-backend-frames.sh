@@ -238,8 +238,8 @@ FAKE_PID=""  # 已杀,cleanup 不再重复
 
 MARK_KILL="$(wc -l <"$FRAMES")"
 # 起始行用 0 而非 MARK_KILL：MARK_KILL 是在 kill **之后**取的，帧可能已经先落盘了。
-# 此刻 $SID 已是 1bis 换上的新 sid，全文只会有它这一条 session_removed，不会串。
-SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 'session_removed' || true)"
+# 此刻 $SID 已是 1bis 换上的新 sid：按 `"sid":"<新 sid>"` 认它那一条（老 sid 那条 superseded 帧的 `by` 里也写着新 sid，按子串认会串到那一条）。
+SR="$(wait_line 0 "\"kind\":\"session_removed\",\"sid\":\"$SID\"" 'session_removed' || true)"
 if [ -z "$SR" ]; then
   bad "上限内未见 SessionRemoved($SID)"
 else
