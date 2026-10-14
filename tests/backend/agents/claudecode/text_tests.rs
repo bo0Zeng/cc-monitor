@@ -3,6 +3,7 @@
 //! 夹具的结构照本机记录的形状（记录级字段 · 具名框 · 固定句），正文全是编的。
 
 use super::*;
+use crate::agents::UserTextExt as _;
 use crate::agents::{Pasted, Speaker, UserText};
 use serde_json::{json, Value};
 

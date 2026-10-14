@@ -726,6 +726,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     COMMANDS: NONE,
     decode_reply: NONE,
     reply_names: NONE,
+    // 通用记录的两处纯形状（`record`）：「谁说的」那一格的线上词（`Speaker::kind`，骨架索引也存它）· 没有正文的那一形（`UserText::of`）。
+    //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
+    kind: NONE,
+    of: NONE,
   },
   "copy-core": {
     backend_old: "J22",

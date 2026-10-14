@@ -4,7 +4,7 @@
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
-//! - [`session`] · [`needs`] · [`listing`]：手机问的那几条的回包（会话族 · 需手动 · 历史清单）；
+//! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录）；
 //! - [`replies`]：客户端那一侧按类型解回包的那一张表（[`replies::decode_reply`]）；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
@@ -16,6 +16,7 @@ pub mod files;
 pub mod listing;
 pub mod machine;
 pub mod needs;
+pub mod record;
 pub mod replies;
 pub mod session;
 pub mod shapes;

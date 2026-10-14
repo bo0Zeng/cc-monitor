@@ -1,9 +1,10 @@
 //! 客户端那一侧（手机嵌的 Rust 核心）按类型解回包：「命令 ⇒ 回包类型」那一张表（[`decode_reply`]）。
-//! 表里的类型都住本包（[`crate::session`] · [`crate::needs`] · [`crate::listing`] …），就是后端那条命令 `impl Command` 回的那一个
+//! 表里的类型都住本包（[`crate::session`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
 //! （后端判据按 TS 名对，[`reply_names`]）。表里没有的命令照原样交（回包类型还住后端那几族）。
 
 use crate::listing::HistoryListReply;
 use crate::needs::NeedsList;
+use crate::record::{HistoryLines, HistoryRead, Record};
 use crate::session::{
     Killed, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionNew, TailPlan, TerminalsList,
 };
@@ -44,7 +45,9 @@ macro_rules! replies {
 }
 
 replies! {
+    "history-lines" => HistoryLines<Record>,
     "history-list" => HistoryListReply,
+    "history-read" => HistoryRead<Record>,
     "history-tail" => TailPlan,
     "kill" => Killed,
     "launch-render-cli" => Rendered,

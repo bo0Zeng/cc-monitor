@@ -61,6 +61,7 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
+use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
 use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;

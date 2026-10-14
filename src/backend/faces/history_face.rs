@@ -6,9 +6,11 @@
 //! 入方向不许出现 `observe::` 的那条线照旧：本文件住 `faces/`，与 `read_face` 同一层。
 
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
-use crate::observe::record_page::{ReadRow, RecordLine, RunRow};
+use crate::observe::record_page::{RecordLine, RunRow};
 use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx, NoArgs};
 pub(crate) use cmd_wire::needs::NeedsList;
+/// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
+pub(crate) use cmd_wire::record::{HistoryLines, HistoryRead};
 use std::path::Path;
 
 use super::read_face::{
@@ -62,20 +64,6 @@ pub(crate) struct HistoryReadReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
     pub(crate) until: Option<u64>,
-}
-
-/// `history-read` 的回包（带 `view` 时 `rows[]` 那几格可缺）。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryRead {
-    /// 这一页里每个可计行一条（空白 / 纯 BOM 行不占）。
-    pub(crate) rows: Vec<ReadRow>,
-    /// 下一页从这里起（＝ `offset` ＋ 这一页的原始字节数）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) next: u64,
-    /// 区间到头了（`until` 或读时的文件长度）。
-    pub(crate) eof: bool,
 }
 
 page_codes!(
@@ -242,23 +230,6 @@ pub(crate) struct HistoryLinesReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
     pub(crate) until: Option<u64>,
-}
-
-/// `history-lines` 的回包。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryLines {
-    /// 第一行的行号。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    /// 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) next: u64,
-    /// 读到了最后一个完整行之后。
-    pub(crate) eof: bool,
-    /// `[from, next)` 里进界面的那些（不进界面的照占号、不出现）。
-    pub(crate) lines: Vec<RecordLine>,
 }
 
 page_codes!(

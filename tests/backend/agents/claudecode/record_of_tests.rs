@@ -1,6 +1,7 @@
 //! Claude 一行 ⇒ 通用记录：各类全格 ＋ 最少格（金样 `tests/__fixtures__/record.golden.jsonl`，手机端照它比）· 自动应答按型号认 ·
 //! 报错带原因与状态码 · 一轮结束与帧 `turn_end` 同判 · 不进界面的几类不出记录。夹具是结构占位，不采真正文。
 use super::*;
+use crate::agents::record::RecordExt as _;
 
 /// 金样重写开关（人读过「现打」再落盘）。
 const REGEN: &str = "CCM_REGEN_RECORD_GOLDEN";

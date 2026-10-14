@@ -6,6 +6,8 @@
 //! 解析时填进记录成品（`schema.rs`：assistant 的 `toolSteps` · user 的 `toolResults` · 报错的 `apiReason`），界面只排版。
 //! 读不出的格就缺，不猜。
 
+use crate::agents::PlanTitleExt as _;
+use crate::agents::StepResultExt as _;
 use crate::agents::{
     Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepResult, ToolStep,
 };

@@ -5,6 +5,7 @@
 //! escapes any inner newline as `\n` (two chars), so the only literal newline
 //! on the wire is the trailing terminator appended by [`to_line`].
 
+use crate::agents::record::RecordExt as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

@@ -18,6 +18,7 @@
 //!
 //! 本文件不含任何 `--旗标` 字面量：argv 在 `history_query.rs` 里解析（那份在 `protocol_doc_guard::DISPATCH_FILES` 里）；这里只有纯核。
 
+use crate::agents::UserTextExt as _;
 use serde_json::Value;
 
 /// 清单上一条显示多少字（Unicode 标量计）。超出截断加省略号。

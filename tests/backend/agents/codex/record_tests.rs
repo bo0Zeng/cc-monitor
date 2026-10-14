@@ -1,8 +1,10 @@
 use super::super::parse::session_meta_cwd;
 use super::CodexRecordKind as K;
 use super::*;
+use crate::agents::record::RecordExt as _;
 use crate::agents::Speaker;
 use crate::agents::UserText;
+use crate::agents::UserTextExt as _;
 use serde_json::json;
 
 fn env(top: &str, payload: Value) -> Value {

@@ -679,11 +679,12 @@ pub(crate) const PRODUCTS: &[Product] = &[
 /// 各件成品的样本。全用成品自己的类型造（编译器管住字段齐全；`None` / 空列表由判据管）。
 mod specimens {
     use super::{node_of, Specimen};
-    use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
+    use crate::agents::record::{Block, Body, BodyExt as _, Record, ReplyError, TitleBy};
     use crate::agents::{
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
         ResultKind, SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
     };
+    use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
         Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,
