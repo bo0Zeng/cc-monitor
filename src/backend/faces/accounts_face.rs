@@ -107,6 +107,40 @@ pub(crate) fn change(
     Ok(change)
 }
 
+crate::wire::typed::codes! {
+    /// `apikey-key-set` 的码。
+    pub(crate) enum KeySetErr {
+        /// 现有文件解析不了：拒绝、不覆盖。
+        BadFile = "bad_file",
+        /// 读写盘没成 · 推不出那份文件在哪。
+        IoFailed = "io_failed",
+    }
+}
+
+/// `apikey-key-set`：给一个账号写 key，写完读回（本体 `accounts/upstream_select/file_face.rs`；同步文件 I/O ⇒ 阻塞档；写经分派那一层递的写句柄）。
+pub(crate) struct ApikeyKeySet;
+
+impl crate::wire::typed::Command for ApikeyKeySet {
+    const NAME: &'static str = "apikey-key-set";
+    type Req = file_face::KeySetReq;
+    type Reply = file_face::KeySet;
+    type Err = KeySetErr;
+}
+
+impl crate::wire::typed::Handle for ApikeyKeySet {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: file_face::KeySetReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<file_face::KeySet, KeySetErr>> + Send + 'static
+    {
+        async move {
+            file_face::answer_set(&req, &cx.needs)
+                .map_err(|f| crate::wire::typed::of_fail(f, KeySetErr::IoFailed))
+        }
+    }
+}
+
 /// 改账号库那几条递给本体的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
 /// 那份表（上游选择自己的状态）写经分派那一层递进来的写句柄。
 fn with_account_keys<R>(own: &crate::platform::Own, f: impl FnOnce(&KeyDoor<'_>) -> R) -> R {

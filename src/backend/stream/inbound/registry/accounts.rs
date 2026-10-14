@@ -47,7 +47,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //     **不进 argv / env / 日志**；两条的应答都只有掩码。
     //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断。
     //   ⚠ 它们**不起中转**、中转那几条也**不碰凭据**（「账号就账号, 中转就中转」）。
-    crate::wire::typed::blocking::<crate::accounts::upstream_select::file_face::ApikeyKeySet>(
+    crate::wire::typed::blocking::<crate::faces::accounts_face::ApikeyKeySet>(
         "给一个账号写 key，写完读回",
     ),
     // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。

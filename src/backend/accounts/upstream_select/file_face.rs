@@ -94,39 +94,6 @@ pub(crate) struct KeySet {
     pub(crate) base_url: Option<String>,
 }
 
-crate::wire::typed::codes! {
-    /// `apikey-key-set` 的码。
-    pub(crate) enum KeySetErr {
-        /// 现有文件解析不了：拒绝、不覆盖。
-        BadFile = "bad_file",
-        /// 读写盘没成 · 推不出那份文件在哪。
-        IoFailed = "io_failed",
-    }
-}
-
-/// `apikey-key-set`：给一个账号写 key，写完读回（同步文件 I/O ⇒ 阻塞档；写经分派那一层递的写句柄）。
-pub(crate) struct ApikeyKeySet;
-
-impl crate::wire::typed::Command for ApikeyKeySet {
-    const NAME: &'static str = "apikey-key-set";
-    type Req = KeySetReq;
-    type Reply = KeySet;
-    type Err = KeySetErr;
-}
-
-impl crate::wire::typed::Handle for ApikeyKeySet {
-    type Needs = crate::wire::typed::needs::Own;
-    fn run(
-        req: KeySetReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<KeySet, KeySetErr>> + Send + 'static {
-        async move {
-            answer_set(&req, &cx.needs)
-                .map_err(|f| crate::wire::typed::of_fail(f, KeySetErr::IoFailed))
-        }
-    }
-}
-
 /// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。推不出路径 ⇒ 拒（一个字节不写）。
 pub(crate) fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Fail> {
     answer_set_at(own, req)
