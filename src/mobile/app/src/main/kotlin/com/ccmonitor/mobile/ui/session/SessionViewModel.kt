@@ -210,7 +210,7 @@ class SessionViewModel(
     private val _aliasPicked = MutableStateFlow(false)
     val aliasPicked: StateFlow<Boolean> = _aliasPicked.asStateFlow()
 
-    /** 这一台的迁移说明（手机原来存的启动配置，原样）；没有 ⇒ 空。「知道了」之后这一台的就没了（[ackMoved]）。 */
+    /** 这一台的迁移说明（手机原来存的启动配置，原样）；没有 ⇒ 空。关掉之后这一台的就没了（[ackMoved]）。 */
     private val _moved = MutableStateFlow<List<MovedLaunch>>(emptyList())
     val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
 
@@ -240,7 +240,7 @@ class SessionViewModel(
         }
     }
 
-    /** 迁移说明「知道了」：这一台的不再出。 */
+    /** 迁移说明关掉：这一台的不再出。 */
     fun ackMoved() {
         _moved.value = emptyList()
         viewModelScope.launch(io) { movedRepo.ack(hostId) }
