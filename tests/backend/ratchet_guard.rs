@@ -39,8 +39,7 @@
 //! ⇒ 口径统一为：**凡钉一条棘轮，必须钉到它的断言实参行**；常量声明行只是配套的第二针
 //! （它挡的是「不动断言、只把那个数调小」）。
 //! ⚙ 这一格 monitor 侧那半（`local_backend_host_tests.rs::this_item_loosened_none_of_the_ratchets_it_touched`）
-//! **本来就是对的** —— 它那 4 条针钉的全是断言实参行（`PLATFORM_EXCEPTIONS.len() <= 1,` ·
-//! `missing.is_empty(),` · `found.len() >= 5,` · `found.len() >= 15,`）。
+//! **本来就是对的** —— 它那几条针钉的全是断言实参行（`missing.is_empty(),` · `found.len() >= 5,` · `found.len() >= 15,`）。
 //! 松的是后端侧这一份，**两侧口径今天对齐了**。
 //!
 //! ⚠ 修的是「**漏钉了哪一行**」，**不是换一种钉法** —— 上面那条「不对整张表取 md5」的

@@ -11,7 +11,7 @@
 //!
 //! 它做的正是 `C4` 不许成员做的事：读配置、读环境变量（`SSH_AUTH_SOCK`）。
 //! 与 `chan/host.rs`（绑回环造钥匙）、`local_backend_host.rs`（起本机后端）同一类 —— **宿主**。
-//! 住顶层而不住 `backend/control/`：`backend/` 那一半不许认平台（`the_backend_half_stays_platform_agnostic`），
+//! 住顶层而不住 `backend/control/`：`backend/` 那一半不许认平台（`platform_home_guard::platform_forms_live_only_at_home`），
 //! 而 agent 套接字那一格是 Unix 才有的事。
 //!
 //! # 🔴 没有退路（`D11`：「后端是给定的，不要退路」）

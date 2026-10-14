@@ -220,3 +220,8 @@ write_account_aliases
 write_key_at
 write_key_on
 write_skill_file
+isCompactRecord
+compactWaiters
+settleCompact
+awaitCompactFor
+hasCompactWaiters

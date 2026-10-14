@@ -1,10 +1,10 @@
 //! 要求：「`platform/` | **操作系统** | 唯一允许平台原语与平台 `cfg`」· 阶段 H「monitor 侧的 `platform/` 层」· 「壳生产段里平台 `cfg` / 平台原语只许在壳的 `platform/` 子模块（与 `src/common/host-core`）」。
 //!
-//! **壳的源码人群里，平台形态只许住在允许区（[`HOMES`]）；还没收的逐份点名在 [`PENDING`]，名单只许变短。**
+//! **壳的源码人群里，平台形态只许住在允许区（[`HOMES`]）。**（从前还有一张待收名单，16 行收到 0 删了。）
 //!
 //! - 人群：壳 `src/` 那棵模块树的生产段（`guard_core::scan_tree_excluding`：顺 `#[path]`，也收 manifest `[package.metadata.guard] population` 声明的兄弟包）。
 //! - 形态：[`platform_forms`] —— 谓词点了操作系统的 `cfg(…)` / `cfg!(…)` / `cfg_attr(谓词, …)`，以及 [`PRIMITIVES`] 里的平台原语。
-//! - 判：带形态、不在允许区的文件集 == 名单里此刻在盘上的那几行（两向）；名单条数 == [`PENDING_LEN`]（收一份：删一行、上限同拍减一）。
+//! - 判：带形态、不在允许区的文件集 == ∅。
 //!
 //! 买不到：「两个平台都编得过」（真判据仍是门禁 `winchk` 的跨 target 编译）；运行期才分平台的东西（`"powershell.exe"` 这类程序名、命令串）不在形态集里。
 
@@ -20,22 +20,6 @@ const HOMES: &[&str] = &[
     // 文件窗口包自己的平台层。
     "cc-monitor-filewin/platform.rs",
 ];
-
-/// 这一行此刻在不在盘上由谁的合入决定。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Presence {
-    /// 在盘上、带形态 —— 不在就红（搬走 / 改名了改住址，收完了删行）。
-    Now,
-    // 〔合 P4b〕「P4 合入后才出现」那一档随 P4 合入退役。
-}
-
-/// **待收名单**：`(模块住址, 归谁收, 在不在)`。收完一份删一行，并把 [`PENDING_LEN`] 同拍减一。
-// 〔合 P4b〕名单上本来全是「归 P4 收」的 16 行（壳 config · launch · lib · utils · local_backend_host · filewin/proc 与窗口包 download · fonts · lossy_pull · scale · shell）：
-//   P4 子步 2 / 7 收成零命中（壳的 `platform/` · 窗口包的 `platform.rs`），16 行删、上限同拍 16 → 0。
-const PENDING: &[(&str, &str, Presence)] = &[];
-
-/// 名单条数的上限，与 [`PENDING`] 恒等：删行时同拍减一；**不许加**（加一行 = 往壳里别处又写了平台代码）。〔合 P4b〕16 → 0。
-const PENDING_LEN: usize = 0;
 
 /// `cfg` 谓词里点了操作系统的词（字符串字面量之外，按整词认）。`target_arch` 不在：那是架构，不是操作系统。
 const CFG_WORDS: &[&str] = &[
@@ -205,53 +189,22 @@ fn population() -> Vec<(String, String)> {
         .collect()
 }
 
-/// ★ 主判据：带平台形态、不在允许区的文件集 == 待收名单里此刻在盘上的那几行。
+/// ★ 主判据：带平台形态、不在允许区的文件集 == ∅。
 #[test]
-fn platform_forms_live_only_at_home_or_on_the_pending_list() {
-    let pop = population();
-    let on_disk: BTreeSet<&str> = pop.iter().map(|(a, _)| a.as_str()).collect();
-    let mut offenders: Vec<(String, BTreeSet<String>)> = Vec::new();
-    for (addr, prod) in &pop {
-        let forms = platform_forms(prod);
-        if !forms.is_empty() && !at_home(addr) {
-            offenders.push((addr.clone(), forms));
-        }
-    }
-    let found: BTreeSet<&str> = offenders.iter().map(|(a, _)| a.as_str()).collect();
-    let listed: BTreeSet<&str> = PENDING
+fn platform_forms_live_only_at_home() {
+    let offenders: Vec<String> = population()
         .iter()
-        .filter(|(a, _, p)| *p == Presence::Now || on_disk.contains(a))
-        .map(|(a, ..)| *a)
-        .collect();
-    let gone: Vec<&str> = PENDING
-        .iter()
-        .filter(|(a, _, p)| *p == Presence::Now && !on_disk.contains(a))
-        .map(|(a, ..)| *a)
+        .filter(|(addr, _)| !at_home(addr))
+        .filter_map(|(addr, prod)| {
+            let forms = platform_forms(prod);
+            (!forms.is_empty()).then(|| format!("  {addr}: {forms:?}"))
+        })
         .collect();
     assert!(
-        gone.is_empty(),
-        "待收名单里这几行不在盘上了：{gone:?}\n搬走 / 改名 ⇒ 改成新住址；删了 ⇒ 删这一行（并把 PENDING_LEN 减一）。"
-    );
-    let unlisted: Vec<String> = offenders
-        .iter()
-        .filter(|(a, _)| !listed.contains(a.as_str()))
-        .map(|(a, f)| format!("  {a}: {f:?}"))
-        .collect();
-    assert!(
-        unlisted.is_empty(),
+        offenders.is_empty(),
         "壳的生产段在允许区之外出现了平台形态（平台 cfg 与平台原语只许住 `platform/`）：\n{}\n\
-         ⇒ 读法收进 `platform/` 里一个函数 / 常量，调用处改调；判定规则留在原处。不许往待收名单里加行。",
-        unlisted.join("\n")
-    );
-    let done: Vec<&&str> = listed.iter().filter(|a| !found.contains(**a)).collect();
-    assert!(
-        done.is_empty(),
-        "待收名单里这几份已经没有平台形态了：{done:?} ⇒ 收完了，删那一行并把 PENDING_LEN 减一（名单只许变短）。"
-    );
-    assert_eq!(
-        PENDING.len(),
-        PENDING_LEN,
-        "待收名单条数与上限不等：删行要同拍把 PENDING_LEN 减一；上限不许加。"
+         ⇒ 读法收进 `platform/` 里一个函数 / 常量，调用处改调；判定规则留在原处。",
+        offenders.join("\n")
     );
 }
 

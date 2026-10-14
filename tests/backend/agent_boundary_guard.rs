@@ -120,34 +120,10 @@ mod tests {
         "stream/inbound/registry/terminals.rs",
     ];
 
-    /// **已知欠账**（`文件:行内容片段`, 归哪一件, 为什么今天不动它）—— **递减棘轮**。
+    /// **冻结兼容**（`文件`, `行内容片段`, 为什么清不掉, **解锁条件**）。
     ///
-    /// 立表当天判据红出的就是这两条，它们**正是 `D3` 预言的那处**：协议把 agent 名字
-    /// 焊进了字段名。改它要 bump 协议版本、两侧同改、动 `protocol_doc_guard` 的对拍
-    /// ⇒ 归 `S4`，这里不顺手改（一功能一 commit）。
-    ///
-    /// 三条纪律，缺一条这张表就会变成许愿池：
-    /// ① **命中不在表里 ⇒ 红**（新增违规立刻现形）；
-    /// ② **表里的条目不再命中 ⇒ 也红**（修好了必须摘登记，否则表会攒成幽灵）；
-    /// ③ 所以它**只会缩短**，不会变长 —— `S4` 落地那天这张表清零。
-    ///
-    /// ★ **`S4` 已清零**，两条各自的去向不一样，记在这里免得下一个人以为是漏删：
-    /// - `codex_dir`（连同 `kinds`）：**从协议里删掉了**。它们从来没上过线
-    ///   （`main.rs` 一直硬写 `None` / 空 ⇒ `skip_serializing_if` 省略），删是零代价 ——
-    ///   `D3` 逐字「越晚改越贵（今天两个字段，将来五个）」，而没人收到过的**现在**最便宜。
-    /// - `claude_dir`：**删不掉**（真在线上、有仓外消费方）⇒ 它不在本表里，
-    ///   而是进了下面那张**性质相反**的 `FROZEN_COMPAT`。
-    ///
-    /// ⚠ 空表**不等于判据失效**：正题那条「命中不在表里 ⇒ 红」照常生效，
-    /// 只是从今天起**一条欠账都不该有**。空表下再冒出一处，会直接落进 `unknown` 报红。
-    const KNOWN_DEBT: &[(&str, &str, &str)] = &[];
-
-    /// **冻结兼容**（`文件`, `行内容片段`, 为什么清不掉, **解锁条件**）—— 与上表**性质相反**。
-    ///
-    /// `KNOWN_DEBT` 是「欠着、要还」，本表是「**还不了，且知道为什么、什么时候能还**」。
-    /// 两张表分开是 `S4` 刻意做的：**把清不掉的东西塞进要清零的表，那张表就永远清不了零，
-    /// 递减棘轮从此失去意义**（`S3` 在 `agent_locality_guard::NOT_AGENT_KNOWLEDGE` 上
-    /// 立过同一条分界：那张表与欠账表性质相反，进去的东西永远留着）。
+    /// 「还不了，且知道为什么、什么时候能还」。从前旁边还有一张要清零的欠账表，`S4` 清到 0 删了；
+    /// 别把要还的欠账塞进本表 —— 新冒出一处 agent 字面量就该直接红。
     ///
     /// ⚠ 但本表与 `NOT_AGENT_KNOWLEDGE` 仍有一处关键不同，别照抄：
     /// 那张装的是**假阳**（判据看走眼了，那本来就不是 agent 知识）⇒ 永远留着；
@@ -239,31 +215,19 @@ mod tests {
              取法坏了（路径写错？文件挪走了？），本断言此刻有一部分在**空转**",
             CORE_FILES.len()
         );
-        // 登记过的挑出来（欠账 `KNOWN_DEBT` + 冻结兼容 `FROZEN_COMPAT`）；
-        // 剩下的才是**新增违规**。⚠ 两张表**都**要参与，但它们性质相反：
-        // 前者要清零，后者带解锁条件、清不掉（分表的理由见两张表各自的头注）。
+        // 冻结兼容 `FROZEN_COMPAT` 登记过的挑出来；剩下的才是**新增违规**（欠账表数到 0 删了，新冒出一处直接红）。
         let (known, unknown): (Vec<String>, Vec<String>) = hits.into_iter().partition(|h| {
-            KNOWN_DEBT
+            FROZEN_COMPAT
                 .iter()
-                .any(|(f, frag, _)| h.contains(f) && h.contains(frag))
-                || FROZEN_COMPAT
-                    .iter()
-                    .any(|(f, frag, _, _)| h.contains(f) && h.contains(frag))
+                .any(|(f, frag, _, _)| h.contains(f) && h.contains(frag))
         });
         // ★ 棘轮的第二条：**修好了必须摘登记**。否则表会攒成幽灵，
         //   而幽灵条目会让下一个人以为"这里还欠着 / 这里还冻着"，进而不敢动。
-        //   ⚠ 两张表同一条纪律 —— `FROZEN_COMPAT` 也会幽灵化（字段真删了却忘了摘）。
-        let mut ghosts: Vec<String> = KNOWN_DEBT
+        let ghosts: Vec<String> = FROZEN_COMPAT
             .iter()
-            .filter(|(f, frag, _)| !known.iter().any(|h| h.contains(f) && h.contains(frag)))
-            .map(|(f, frag, _)| format!("KNOWN_DEBT {f}:{frag}"))
+            .filter(|(f, frag, _, _)| !known.iter().any(|h| h.contains(f) && h.contains(frag)))
+            .map(|(f, frag, _, _)| format!("FROZEN_COMPAT {f}:{frag}"))
             .collect();
-        ghosts.extend(
-            FROZEN_COMPAT
-                .iter()
-                .filter(|(f, frag, _, _)| !known.iter().any(|h| h.contains(f) && h.contains(frag)))
-                .map(|(f, frag, _, _)| format!("FROZEN_COMPAT {f}:{frag}")),
-        );
         assert!(
             ghosts.is_empty(),
             "这些登记条目**已经不再命中**了：{ghosts:?}\n\
@@ -289,7 +253,7 @@ mod tests {
         // **曾经被宣称为通用层的每一个文件**。加进 `CORE_FILES` 的同一轮要追加到这里。
         //
         // ⚠ 写两遍是**刻意的**：它让"把某个文件移出通用层"必须是一个**显式动作**
-        //（同 `KNOWN_DEBT` 要手动摘登记）。
+        //（同 `FROZEN_COMPAT` 要手动摘登记）。
         //
         // ★ 这张表原名 `AT_BIRTH`，只装 `S1` 立表当天那 6 个 —— 于是 `S3` 后来加进
         // `CORE_FILES` 的 5 个**可以被静默删掉**（6 个元老还在、长度也够，两条断言全绿）。
@@ -355,9 +319,8 @@ mod tests {
 
     /// ★ 冻结兼容**必须带解锁条件**，而且**只许缩短**。
     ///
-    /// 没有这一条的话，`FROZEN_COMPAT` 就是 `KNOWN_DEBT` 的一个逃生舱：
-    /// 清不掉的往里一放，欠账表当场清零、看起来很干净，而问题原封不动
-    /// —— 那正是 `S4` 分这两张表要防的事，不是要造的事。
+    /// 没有这一条的话，`FROZEN_COMPAT` 就是一个逃生舱：
+    /// 新冒出的违规往里一放就绿，而问题原封不动。
     ///
     /// 两条纪律：
     /// ① 每条都要有**非空的解锁条件**（没有解锁条件的「冻结」= 「永久豁免」的好听说法）；

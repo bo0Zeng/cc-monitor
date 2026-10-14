@@ -6,7 +6,7 @@
  * -：「3. 前端不许从流上攒全会话事实 —— `onLine` 上的旁路记账员只剩『真事件』那两个。」
  * -：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** / **『刚刚发生了什么』＝ 事件 ＝ 留在流上**」；
  *   那张表里标「**事件，留在流上**」的原有两行：`turnEndNotifier.observe`（轮次结束 → 系统通知）·
- *   `compactWaiters`（compact 完成 → 唤醒换号重启编排；换号重启整条下沉后端之后它没了，等压缩摘要由那台自己盯记录）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
+ *   compact 完成那一个（唤醒换号重启编排；换号重启整条下沉后端之后它没了，等压缩摘要由那台自己盯记录）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
  *   `noteTouchedFiles` · `applyForkedFrom`）由 STC 改成问后端（`history-facts`，阶段 C）。
  *
  * ## 两条判据

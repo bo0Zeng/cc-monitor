@@ -166,7 +166,7 @@ subscribe(origin, kind)    → 流
 
 ### 2.4 monitor：宿主 ＋ 通信层
 
-monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知识（窗口 · 起子进程 · 开终端 · 放字节 · 本机后端起停）与通信层；读会话、判定、改世界都在后端。壳里调后端的客户端那一组生产段零平台原语、零宿主耦合，由 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 钉着。
+monitor 的 Rust 半是 Tauri 壳（`src/frontend/shell/`），只留宿主知识（窗口 · 起子进程 · 开终端 · 放字节 · 本机后端起停）与通信层；读会话、判定、改世界都在后端。壳里调后端的客户端那一组生产段零平台原语、零宿主耦合，由 `platform_home_guard.rs::platform_forms_live_only_at_home` 钉着。
 
 壳里没有后端那几层的副本：
 
@@ -505,6 +505,8 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 - 推送：`push-candidate.sh` 先把合并好的分支推到候选分支 `next`，`ci.yml` 在上面跑与 main 同一套 job，全绿才快进 `main`；`release.yml` 只认标签，第一个 job `ci-gate` 要求这个提交上有一条绿的 CI。
 - 重活（编译 · 测试 · 门禁 · gradle）经 `heavy.sh`：单独一个封顶内存的 scope ＋ 槽位排队，没有 `systemd-run --user` 的机器直接跑。
 - 门禁、挑格、推送这几份脚本自己也有判据（`tests/backend/flow_scripts_guard.rs`）。
+- 新加一条判据之前先问编译器挡不挡得住：类型 · `clippy.toml` 的 `disallowed-methods`（后端，`Cargo.toml` 里定成 deny）· `eslint.config.js` 的 `no-restricted-syntax`（界面）能挡的，就不写扫源码文字的判据。
+- 新加的判据在文件头（或那条测试的头注）写一句**什么时候删它**：它防的那件事改由类型 / 结构挡住时 · 它的登记表 / 豁免表数到 0 时（连表带那几条只判表的断言一起删，主断言留着、改成不认例外）· 它说的那件事整个撤了时。写不出删除条件的，多半是在给一次事故叠一层，先想有没有结构上的挡法。
 
 ---
 

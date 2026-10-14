@@ -25,7 +25,7 @@
 //! 先剥注释、再把字符串字面量的**内容**抹成空格（针表里的 `"Command::new("` 是数据不是调用），再认信号：
 //! 没有测试 ⇒ 支撑 · 有「碰 OS」信号 ⇒ 集成 · 否则有「读仓内文本」信号 ⇒ 源码扫描 · 否则 ⇒ 单元。
 //! 一份文件里几种都有 ⇒ 取环境要求最高的那个（单元 < 扫描 < 集成）。`#[ignore]` 那几条**另进真机层逐条登记**，
-//! 不改文件的层。判别器判错的 ⇒ 进 [`OVERRIDES`] 并写理由，而每一行都必须**真的**与判别器不一致（死行 ⇒ 红）。
+//! 不改文件的层。判别器判错了就改判别器（从前的例外表数到 0 删了）。
 //!
 //! # 已经有人守的，不重做（本文件只在它们没盖到的地方长东西）
 //!
@@ -54,8 +54,8 @@ use std::path::{Path, PathBuf};
 
 // ───────────────────────────── 登记表 ─────────────────────────────
 
-/// 单元 / 源码扫描 / 集成三层**不逐份登记**：每份的层就是判别器（[`detect`] ＋ [`OVERRIDES`]）判出来的那一层，
-/// 下面各层的自检都从盘上现取人群（[`tier_files`]）。只登记两张：判别器判错的（[`OVERRIDES`]）与支撑（[`SUPPORT`]）。
+/// 单元 / 源码扫描 / 集成三层**不逐份登记**：每份的层就是判别器（[`detect`]）判出来的那一层，
+/// 下面各层的自检都从盘上现取人群（[`tier_files`]）。只登记支撑（[`SUPPORT`]）。
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
@@ -165,16 +165,8 @@ const E2E_SUPPORT: &[&str] = &[
     "tests/e2e/weak-net/rig.sh",
 ];
 
-/// `tests/e2e/` 下**没有任何一份脚本 / 配置 / 测试引用**的 shell（剥注释后按文件名找）——
-/// **报备、不处置**（删还是接回执行链，待定）：
-/// `(文件, 为什么还留着 / 现状)`。每一行必须真的仍是孤儿（有人引用了 ⇒ 死行 ⇒ 红）。
-///
-/// TQ1 落地时报备的两份都裁了，表清空：`p3t-local-tmux.sh` 现打 10 过 / 0 败 ⇒ 接回执行链（进了 `E2E`）；
-/// `tier2-rig.sh` 是手动真机台架 ⇒ 留，挪进 [`MANUAL_RIGS`]（有了裁定就不再是「报备」）。再长出孤儿 ⇒ 照红。
-const UNREFERENCED: &[(&str, &str)] = &[];
-
 /// **手动、真机**的台架：刻意不进任何执行链（要真图形会话 / 真 dev 实例，门禁与 CI 都起不来），由人照 README 跑。
-/// `(文件, 为什么不进执行链 · 谁来跑)`。与 [`UNREFERENCED`] 同一道闸：每一行必须真的仍是没人引用的辅助件
+/// `(文件, 为什么不进执行链 · 谁来跑)`。每一行必须真的仍是没人引用的辅助件
 /// （有脚本 / 配置 / 测试引用它了 ⇒ 它不再是「只有人手跑」⇒ 死行 ⇒ 红）。
 pub(super) const MANUAL_RIGS: &[(&str, &str)] = &[(
     "tests/e2e/tier2-rig.sh",
@@ -182,12 +174,6 @@ pub(super) const MANUAL_RIGS: &[(&str, &str)] = &[(
      它起的是**跑着的 dev app**，无头门禁与 CI 里没有那个 app（同 `e2e_gate_registry` 里 `graylight` / `f40` 两条豁免的理由）。\
      真机测试资源未拍 ⇒ 留作手动工具，跑法在 `tests/e2e/README.md`「全链套件怎么跑」",
 )];
-
-/// 集成层自检现打逮到的「缺环境就 `return`」，**报备、不处置**（这里不改测试体）：
-/// `(文件, 测试函数, 现状)`。每一行必须真的仍是那一形（修好了 ⇒ 死行 ⇒ 红）。
-// 〔TQ1 合并时修〕落地时报备的两条（`accounts_query_tests.rs` 里 `CLAUDE_CONFIG_DIR` 有值就 `return` 的那两条）
-//   已改成另起一个清掉该变量的子进程当「裸起会话」，不再读宿主环境 ⇒ 表清空。再长出这一形 ⇒ 集成层自检照红。
-const SILENT_SKIPS_REPORTED: &[(&str, &str, &str)] = &[];
 
 /// 真机层的一条的触发者。
 #[derive(Debug, Clone, Copy)]
@@ -466,9 +452,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
     ),
 ];
-
-/// 判别器判错的那几份：`(文件, 应归的层, 理由)`。
-const OVERRIDES: &[(&str, Tier, &str)] = &[];
 
 // ───────────────────────────── 人群 ─────────────────────────────
 
@@ -974,10 +957,6 @@ fn tiers_on_disk(root: &Path) -> BTreeMap<String, Tier> {
     let mut out = BTreeMap::new();
     for (rel, disk_text) in rust_test_files(root).into_iter().chain(ts_test_files(root)) {
         let t = detect(&rel, &disk_text);
-        let t = OVERRIDES
-            .iter()
-            .find(|(f, _, _)| *f == rel)
-            .map_or(t, |(_, o, _)| *o);
         out.insert(rel, t);
     }
     out
@@ -1171,24 +1150,6 @@ fn the_tiers_partition_the_test_files_on_disk() {
                 table_name(*want)
             )),
             None => problems.push(format!("  正控 `{f}` 盘上没有 —— 换一份点名")),
-        }
-    }
-
-    // ③ 例外表无死行：每一行必须真的与判别器不一致。
-    let rust = rust_test_files(&root);
-    let ts = ts_test_files(&root);
-    for (f, o, why) in OVERRIDES {
-        let Some(raw) = rust.get(*f).or_else(|| ts.get(*f)) else {
-            problems.push(format!(
-                "  `OVERRIDES` 里的 `{f}` 盘上没有（理由原是：{why}）"
-            ));
-            continue;
-        };
-        if detect(f, raw) == *o {
-            problems.push(format!(
-                "  `OVERRIDES` 里的 `{f}` 判别器现在自己就判成 {} 了 —— 死行，删掉（理由原是：{why}）",
-                table_name(*o)
-            ));
         }
     }
 
@@ -1460,13 +1421,7 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
     out
 }
 
-/// **按设计必须不在**的路径字面量：判据用它钉「这个文件删了、长回来就红」（`!root.join(..).is_file()`），
-/// 下面那条「字面量必须解析得到」对它们反着核 —— 在表里的必须**不存在**，存在了就红；表里的行在盘上用不到也红（两向）。
-/// 加一行 = 显式声明「这一处是反向量法」，不是给路径断了的扫描开后门。
-// 量「`session-backend.ts` 必须不在」的那两处随状态列那一族判据删了 ⇒ 今天没有反向量法的路径。
-const ABSENT_BY_DESIGN: &[(&str, &str)] = &[];
-
-/// T2：扫描层每一处以仓内根为基的路径字面量都指得到盘上东西（`ABSENT_BY_DESIGN` 里的反着核）。
+/// T2：扫描层每一处以仓内根为基的路径字面量都指得到盘上东西。
 #[test]
 fn scan_tier_every_root_anchored_path_literal_resolves() {
     let root = repo();
@@ -1478,8 +1433,6 @@ fn scan_tier_every_root_anchored_path_literal_resolves() {
         .collect();
     let mut bad = reach_violations(&root, &as_strs(&scan));
     let mut checked = 0usize;
-    let mut absent_seen: std::collections::BTreeSet<(&str, String)> =
-        std::collections::BTreeSet::new();
     // 人群：三层里**每一份** Rust 测试文件（一份既扫源码又起进程的文件按层归集成，但它的扫描照样会扫空集）。
     for f in three.iter().filter(|f| lang_of(f) == Lang::Rust) {
         let f = f.as_str();
@@ -1487,29 +1440,12 @@ fn scan_tier_every_root_anchored_path_literal_resolves() {
         for (line, func, lit) in root_anchored_literals(f, raw) {
             let base = root_fn_base(f, &func).expect("上面筛过");
             checked += 1;
-            if ABSENT_BY_DESIGN
-                .iter()
-                .any(|(af, al)| *af == f && *al == lit)
-            {
-                absent_seen.insert((f, lit.clone()));
-                if root.join(base).join(&lit).exists() {
-                    bad.push(format!(
-                        "  `{f}` 第 {line} 行 `{lit}` 登记在 `ABSENT_BY_DESIGN`（按设计必须不在），可它在盘上 —— 删掉的东西长回来了"
-                    ));
-                }
-                continue;
-            }
             if !root.join(base).join(&lit).exists() {
                 bad.push(format!(
                     "  `{f}` 第 {line} 行 `{func}().join(\"{lit}\")` ⇒ `{base}/{lit}` 盘上不存在 —— \
                      这条扫描此刻在扫空集"
                 ));
             }
-        }
-    }
-    for (af, al) in ABSENT_BY_DESIGN {
-        if !absent_seen.contains(&(*af, (*al).to_string())) {
-            bad.push(format!("  `ABSENT_BY_DESIGN` 里 `{af}` → `{al}` 这一行在盘上没有对应的字面量 —— 表在腐烂，删掉这一行"));
         }
     }
     // 抽取器自检：一处都没抽到 ⇒ 抽取器在真文件上瞎了（合成夹具那条管不到真文件的写法漂移）⇒ 下面的零命中不携带信息。
@@ -1628,7 +1564,6 @@ fn integration_tier_never_skips_silently() {
         .collect();
     let mut bad = reach_violations(&root, &as_strs(&integration));
     let mut fns = 0usize;
-    let mut reported_seen: BTreeSet<(String, String)> = BTreeSet::new();
     for f in three.iter().filter(|f| lang_of(f) == Lang::Rust) {
         let f = f.as_str();
         let Some(raw) = rust.get(f) else { continue };
@@ -1637,26 +1572,12 @@ fn integration_tier_never_skips_silently() {
                 continue;
             }
             fns += 1;
-            let reported = SILENT_SKIPS_REPORTED
-                .iter()
-                .any(|(rf, rn, _)| *rf == f && *rn == name);
-            if reported && !silent_skips(&body).is_empty() {
-                reported_seen.insert((f.to_string(), name.clone()));
-                continue;
-            }
             for at in silent_skips(&body) {
                 bad.push(format!(
                     "  `{f}::{name}` 函数体第 {at} 行：读环境变量之后三行内有 `return` —— \
                      缺环境时这条测试没跑也算过。要么缺了就 panic（带原因），要么标 `#[ignore]` 进真机层登记触发者"
                 ));
             }
-        }
-    }
-    for (rf, rn, _) in SILENT_SKIPS_REPORTED {
-        if !reported_seen.contains(&(rf.to_string(), rn.to_string())) {
-            bad.push(format!(
-                "  `SILENT_SKIPS_REPORTED` 里的 `{rf}::{rn}` 已经不是那一形了 —— 死行，删掉"
-            ));
         }
     }
     assert!(
@@ -1731,34 +1652,26 @@ fn e2e_tier_is_what_package_json_runs_and_no_helper_is_orphaned() {
             .filter(|(p, _)| p != h)
             .filter(|(_, text)| crate::contains_word(text, base))
             .count();
-        let reported = UNREFERENCED.iter().chain(MANUAL_RIGS).any(|(f, _)| f == h);
+        let reported = MANUAL_RIGS.iter().any(|(f, _)| f == h);
         match (users == 0, reported) {
             (true, false) => bad.push(format!(
-                "  辅助件 `{h}` 没有任何一份脚本 / 配置 / 测试引用它 —— 孤儿：接回执行链或删掉（或进 `UNREFERENCED` 报备）"
+                "  辅助件 `{h}` 没有任何一份脚本 / 配置 / 测试引用它 —— 孤儿：接回执行链或删掉（真是手动台架就进 `MANUAL_RIGS` 写清谁来跑）"
             )),
             (false, true) => bad.push(format!(
-                "  `UNREFERENCED` / `MANUAL_RIGS` 里的 `{h}` 现在有 {users} 份在引用它了 —— 死行，删掉"
+                "  `MANUAL_RIGS` 里的 `{h}` 现在有 {users} 份在引用它了 —— 死行，删掉"
             )),
             _ => {}
         }
     }
-    for (f, why) in UNREFERENCED.iter().chain(MANUAL_RIGS) {
+    for (f, why) in MANUAL_RIGS {
         if !helpers.contains(*f) {
             bad.push(format!(
-                "  `UNREFERENCED` / `MANUAL_RIGS` 里的 `{f}` 已不是 `tests/e2e/` 下的辅助件 —— 死行，删掉"
+                "  `MANUAL_RIGS` 里的 `{f}` 已不是 `tests/e2e/` 下的辅助件 —— 死行，删掉"
             ));
         }
         if why.trim().chars().count() < 20 {
             bad.push(format!(
                 "  `{f}` 那一行的理由太短 —— 写清为什么不进执行链、谁来跑"
-            ));
-        }
-    }
-    // 两张表不许同时登记同一份（「报备待裁」与「已裁：手动」是两个互斥的状态）。
-    for (f, _) in MANUAL_RIGS {
-        if UNREFERENCED.iter().any(|(u, _)| u == f) {
-            bad.push(format!(
-                "  `{f}` 同时在 `UNREFERENCED` 与 `MANUAL_RIGS` 里 —— 只许一个状态"
             ));
         }
     }

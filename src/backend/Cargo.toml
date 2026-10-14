@@ -86,6 +86,10 @@ path = "../../tests/benches/s7_history_read.rs"
 harness = false
 test = true
 
+[lints.clippy]
+# 「现在」只有一处（禁的路径与理由住 `clippy.toml`）：别处直接问系统钟 ⇒ clippy 红。
+disallowed_methods = "deny"
+
 [features]
 # 截图台架那一档（`tests/shots/real/pool.mjs` 编）：「现在」从台架交的时刻接着走（`common::time::shots_clock`）。
 # 发版 / CI / 门禁里不许开（判据 `one_clock_guard` · 壳那一侧 `shots_feature_guard_tests::s3`）。

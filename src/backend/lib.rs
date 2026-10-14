@@ -14,6 +14,8 @@
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
 //! monitor 不读它：monitor 的「我这一版」是手上那份内嵌字节自报的 id。**别在第四处写它的住址。**
 
+// 测试段可以直接问系统钟（量具、夹具的时刻）；生产段只许 `common::time::now`（`clippy.toml`）。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
 pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
 #[path = "../../tests/backend/agent_boundary_guard.rs"]

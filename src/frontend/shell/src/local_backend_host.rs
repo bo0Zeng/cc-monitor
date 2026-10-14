@@ -103,9 +103,8 @@ impl StartOutcome {
 //
 // 这一段全部住在**宿主知识层**，理由是硬的（现打）：
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
-// 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
-// ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
-// （`PLATFORM_EXCEPTIONS`：今天 0 条、上限 0；壳里平台形态另只许住 `platform/`，`platform_home_guard` 钉）。
+// 在 `platform_home_guard.rs::platform_forms_live_only_at_home` 的禁针里
+// ⇒ **写进 `backend/` 当场红**（壳里平台形态只许住 `platform/`，没有例外表）。
 // ⇒ 落点只能是这里，形状照 `platform::fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -723,7 +722,7 @@ fn reap_detached(
 /// 把一次 `wait()` 的结果翻成 [`crate::backend_policy::Outcome`]。
 ///
 /// ★ **信号号只有这一层取得到**：它要 `std::os::unix::process::ExitStatusExt`，
-/// 而 `std::os::unix` 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic`
+/// 而 `std::os::unix` 在 `platform_home_guard.rs::platform_forms_live_only_at_home`
 /// 的禁针里 ⇒ `backend/` 那半只能把 `ExitStatus` **原样**交上来
 /// （`SuperviseEvent::Exited.status`），翻译落在这里。
 ///
@@ -1472,7 +1471,7 @@ pub fn start_local_backend() -> StartOutcome {
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
     // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
-    // （`the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`）。
+    // （`platform_home_guard::platform_forms_live_only_at_home` 的禁针含 `std::os::unix`）。
     // 走不了（平台不支持 / `CCM_NO_DETACH` 关掉了）才回落到下面那条今天的路。
     // **中转不再是 monitor 另起的第三个进程**：它住本机常驻后端进程里，
     //   由后端自己 `bind`（`relay::listen::host`）。monitor 这一侧只剩一件事 —— 起后端时把

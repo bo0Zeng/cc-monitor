@@ -24,9 +24,9 @@
 //!
 //! # 🔴 它为什么住在这里（宿主知识层），而不住 `backend/`
 //!
-//! `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针含 `#[cfg(windows)`
+//! `platform_home_guard.rs::platform_forms_live_only_at_home` 的禁针含 `#[cfg(windows)`
 //! 与 `std::os::windows` / `std::os::unix` ⇒ 写进 `backend/` 当场红；
-//! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`；今天 0 条，壳里平台形态另由 `platform_home_guard` 只许住 `platform/`）。
+//! 壳里平台形态只许住 `platform/`，没有例外表。
 //! ⇒ `backend/` 的两个落点（`local_backend::supervise_with_stdio` ·
 //! `local_query::run_query`）**只收注入参数**，形状照 `start_or_extract` 的
 //! `make_executable: &dyn Fn(...)` 那个先例（见 [`ManagedSpawn`]）。

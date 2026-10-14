@@ -171,22 +171,6 @@ fn every_listed_subcommand_is_actually_dispatched() {
     );
 }
 
-/// **同时**落在「字面量臂」与「派生臂」两条路上的那几条 —— `(token, 它为什么非要留自己那条臂)`。
-///
-/// # 为什么这一张是手写的，而上面那三条路是遍历出来的
-///
-/// 「今天谁在双路上」遍历得出来；「**它为什么必须留着自己那条臂**」遍历不出来 ——
-/// 那是一次裁定。**两种角色的发现机制不同 ⇒ 分两张表**，
-/// 抄 `src/frontend/shell/src/backend_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
-/// （逐字：「一张表混装两种角色是它自己会红的那种错」）。
-///
-/// 没有这一张，[`every_listed_subcommand_has_a_live_dispatch_route`] 在双路那几条上
-/// **有一个洞**：摘掉它们的字面量臂，派生臂会静默接住 ⇒ 主断言不红，而那是一次**换路**。
-///
-/// 今天是空的：唯一那条 `--resolve`（信封与手机端冻结在 2026-07-18）的手写臂第 7 批第二题删了 ——
-/// 手机不调它，它照派生规则走 CLI 面、信封与别的命令同一形。表留着：再有一条要双路，得先在这里写下理由。
-const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[];
-
 /// ★★ `KR102D2` 甲：**表里每一条子命令都有一条活的分派落点。**
 ///
 /// # 它买的是哪一形：「子命令表里有、分派臂没有」
@@ -289,34 +273,21 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
              ② 让它上 `inbound::REGISTRY` 的 CLI 面（走派生臂）。"
     );
 
-    // ── 第二格：**双路**那几条的字面量臂不许悄悄消失（[`DUAL_ROUTE_ARMS`] 的活）──
+    // ── 第二格：一条子命令不许同时落在字面量臂与派生臂上 ──
     //
-    // 上面那条主断言在它们身上**有个洞**：摘掉字面量臂，派生臂会静默接住 ⇒ 不红。
-    // 而那是一次**换路**，不是等价重构。两个方向都判。
-    let mut vanished: Vec<&str> = Vec::new();
-    for (tok, _why) in DUAL_ROUTE_ARMS {
-        if !literal.contains(tok) {
-            vanished.push(tok);
-        }
-    }
-    assert!(
-        vanished.is_empty(),
-        "这几条**登记过「必须走自己那条臂」**的子命令，字面量臂不见了：{vanished:?}\n\
-             ⇒ 派生臂（CLI 面）会静默接住它们 —— 主断言因此不红，而**路已经换了**。\n\
-             理由逐条写在 `DUAL_ROUTE_ARMS` 里。真要换路，改那张表并说清谁来承接旧信封。"
-    );
+    // 上面那条主断言在双路那几条身上有个洞：摘掉字面量臂，派生臂会静默接住 ⇒ 不红，而那是一次换路。
+    // 双路今天一条都没有（从前的豁免表数到 0 删了）⇒ 直接判「没有双路」。
     let mut unexplained: Vec<&str> = Vec::new();
     for tok in SUBCOMMANDS.iter().copied() {
         let on_derived = derived_arm && crate::stream::cli::spec_for(tok).is_some();
-        if on_derived && literal.contains(&tok) && !DUAL_ROUTE_ARMS.iter().any(|(t, _)| *t == tok) {
+        if on_derived && literal.contains(&tok) {
             unexplained.push(tok);
         }
     }
     assert!(
         unexplained.is_empty(),
-        "这几条**同时**落在字面量臂与派生臂上，而 `DUAL_ROUTE_ARMS` 里没有它们：{unexplained:?}\n\
-             ⇒ 两条路谁先谁后决定了调用方拿到哪一种信封，这件事必须有人写下理由。\n\
-             要么把它加进那张表（连理由一起），要么把它那条字面量臂删掉、只走派生。"
+        "这几条**同时**落在字面量臂与派生臂上：{unexplained:?}\n\
+             ⇒ 两条路谁先谁后决定了调用方拿到哪一种信封。把字面量臂删掉、只走派生。"
     );
 }
 

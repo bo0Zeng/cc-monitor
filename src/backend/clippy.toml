@@ -1,0 +1,8 @@
+# 后端的「现在」只有一处：取当前墙钟一律调 `common::time::now`（及 `now_secs` · `now_ms`），别处直接问系统钟编不过
+#（`Cargo.toml` 的 `[lints.clippy]` 把这条定成 deny；按解析后的路径认，`use … as` 起别名也认得出）。
+# 只有一处，截图台架才能把「现在」给死。测试段放开（`lib.rs` 头上那一行 `cfg_attr(test, …)`）。
+disallowed-methods = [
+  { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
+  { path = "jiff::Timestamp::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
+  { path = "jiff::Zoned::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
+]
