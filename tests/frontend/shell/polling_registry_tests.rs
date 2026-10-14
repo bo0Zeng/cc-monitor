@@ -50,12 +50,8 @@ const REGISTERED: &[(&str, &str, &str)] = &[
              ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; backend_running && break; done` \
              —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",
     ),
-    (
-        "src/shared/cc-bus/scripts/cc-bus-lib.sh",
-        "one-shot",
-        "`:238` 的 `sleep 0.3` 夹在 `tmux send-keys <文本>` 与 `tmux send-keys Enter` 之间 —— \
-             **键入节奏**，一次性。不是周期唤醒：它不在任何循环的每轮上，前后是一对 send-keys。",
-    ),
+    // `src/shared/cc-bus/scripts/cc-bus-lib.sh` 那一行（敲门时两发 send-keys 之间的 `sleep 0.3`）退役：
+    //   敲门改经后端 `session-say`（回车由后端补），往窗格里打字那一档整条删了 ⇒ 行删。
     (
         "src/shared/cc-bus/scripts/cc-kill",
         "one-shot",

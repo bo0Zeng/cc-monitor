@@ -8713,7 +8713,12 @@ text: string,
 /**
  * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
  */
-client?: string, };
+client?: string, 
+/**
+ * 送之前看到的那一屏的指纹（`terminal-preview` 的 `screen`）：画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`（同 `terminal-input`）。
+ * 给了它，送的那一刻终端没了也不恢复（看见的那一屏已经不在了）。
+ */
+seen_screen?: string, };
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`

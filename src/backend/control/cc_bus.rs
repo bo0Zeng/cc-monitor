@@ -258,6 +258,9 @@ pub(crate) fn waited_secs(out: &Done) -> u64 {
 
 /// 机器可读形的首行标记（`cc-list --tsv` / `cc-agents --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
 /// 照打人读表 ⇒ 见不到标记就明说「cc-bus 比后端旧」，不猜着按人读表解（命令是接口，接口认不出就说）。
+/// `cc-register` 的「这一格会话编号」旗标（ccm 起会话的收尾登记时知道编号就带上，`plan::render_container_tail`）。
+pub(crate) const REGISTER_SID: &str = "--sid";
+
 const ROSTER_TSV_HEAD: &str = "#cc-list-tsv\t1";
 const SPAWNED_TSV_HEAD: &str = "#cc-agents-tsv\t1";
 const LOG_HEAD: &str = "#cc-log\t1";

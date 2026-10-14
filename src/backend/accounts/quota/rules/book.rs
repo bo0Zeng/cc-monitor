@@ -195,6 +195,8 @@ impl Book {
 
     /// 中转第一次看见这个会话 / 会话换了开它的号 ⇒ 记下（新会话照 `forNew`；换了开它的号 ⇒ 在用的号 · 拖出来的顺序 · memo · 叫醒清掉）。
     /// 每天头一次看见已知的会话 ⇒ 刷新「看见」的时刻；新会话被看见时顺手清旧会话。改了 ⇒ `true`。
+    ///
+    /// 〔继承表〕轮换那一格：新会话照 `forNew` 那一份，不看起它的那条会话用的是哪份。
     pub(crate) fn saw(&mut self, sid: &str, agent: &str, start: &str, now: u64) -> bool {
         let for_new = self.for_new.clone();
         match self.sessions.get_mut(sid) {

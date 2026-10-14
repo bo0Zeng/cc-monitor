@@ -389,6 +389,8 @@ pub(crate) fn chain<'a>(book: &'a Book, name: &str) -> Result<Vec<&'a Profile>, 
 
 /// **继承合并的入口**：ccm 起会话（`@名` / 被叫成那个名字）、`--ccm-print`、设置窗的合并预览都从这里拿。
 /// `args` 是命令行当场给的（`[交给 agent 的…] -- [ccm 选项…]`），盖在合并结果最上面；合并规则只住 `argv::parse_layered`。
+///
+/// 〔继承表〕别名那一格：只认这一发自己的 `@名`，不随主会话。
 pub(crate) fn resolve(book: &Book, name: &str, args: &[String]) -> Result<Resolved, String> {
     let chain = chain(book, name)?;
     let layers: Vec<Layer> = chain.iter().map(|p| p.layer()).collect();

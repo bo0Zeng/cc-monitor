@@ -182,6 +182,13 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     ),
     (
         "control/cc_bus.rs",
+        "src/shared/cc-bus/scripts/cc-register",
+        &["--sid"],
+        "ccm 起会话的收尾登记上 cc-bus 时（`control/cc_bus.rs::REGISTER_SID`，`plan::render_container_tail` 用），这一发知道会话编号就带上它：\
+         登记那一格的第 5 列，敲门按它经后端说一句。是 cc-register 的命令面，不是后端的子命令。",
+    ),
+    (
+        "control/cc_bus.rs",
         "src/shared/cc-bus/scripts/cc-agents",
         &["--tsv"],
         "`bus-state` 转调 `cc-agents --tsv`（机器可读的派生台账）。是 cc-agents 的命令面，不是后端的子命令。",
@@ -220,11 +227,18 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
 ];
 
 /// 子进程认、而后端**刻意不发**的旗标 —— 每条带理由（②那一向的另一半）。
-pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[(
-    "src/shared/cc-bus/scripts/cc-spawn",
-    "--new",
-    "P4b 之后 cc-spawn **默认就是新建**，`--new` 是为兼容外面的老调用方保留的 no-op；后端没有理由发它。",
-)];
+pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[
+    (
+        "src/shared/cc-bus/scripts/cc-spawn",
+        "--new",
+        "P4b 之后 cc-spawn **默认就是新建**，`--new` 是为兼容外面的老调用方保留的 no-op；后端没有理由发它。",
+    ),
+    (
+        "src/shared/cc-bus/scripts/cc-spawn",
+        "--as",
+        "照一条别名起（交成 `ccm @<别名>`）是给终端里与 agent 自己用的；`bus-spawn` 的入参里没有别名这一格，后端不发它。",
+    ),
+];
 
 /// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
 /// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。

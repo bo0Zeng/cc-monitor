@@ -5,8 +5,8 @@
 #
 # 现打:cc-bus 的脚本里 tmux 47 处、flock 20 处 —— **三个适配面全糊在通用层里**,
 # 换一个 OS 或换一个 agent 就要改遍所有脚本。本文件把那道缝写成**函数名的契约**:
-#   ① agent 适配 —— 结束钩子形状(能不能拦停)、文本怎么算"提交"、能力三位
-#   ② OS   适配 —— 投递通道(POSIX: tmux send-keys ↔ Windows: 别的通道)、进程指纹
+#   ① agent 适配 —— 结束钩子形状(能不能拦停)、自己是哪条会话、能力位
+#   ② OS   适配 —— 读窗格身份(那个窗格里跑的是哪条会话;POSIX: tmux 窗格上的标记 ↔ Windows: 没做)
 #   ③ 存储 适配 —— 排他/共享锁、原子追加、时间戳、路径原语
 #
 # 🔴 **缝切在 shell 里,不搬进后端**(「不要. cc-bus 就是额外的
@@ -29,8 +29,8 @@
 # ⚠ 这三张表是**判据的分母**:装载后逐项现打 `declare -F`,少一个就 13(fail-closed)。
 #   表空了判据当场红(反空真),不会因为"扫不到"而放行。
 CCBUS_TRAIT_STORE_FNS="store_caps store_lock_shared store_lock_exclusive store_append_line store_now store_path_real"
-CCBUS_TRAIT_OS_FNS="os_caps os_send_keys os_pane_fingerprint"
-CCBUS_TRAIT_AGENT_FNS="agent_caps agent_block_reason agent_submit_enter"
+CCBUS_TRAIT_OS_FNS="os_caps os_pane_identity"
+CCBUS_TRAIT_AGENT_FNS="agent_caps agent_block_reason agent_self_sid"
 
 # ── 能力降级链:§3.2b 那张表的**唯一的家** ───────────────────────────────────
 # kinds.tsv 里配的每一项行为,在 agent 不支持时都必须有一个**明确的去处** ——
@@ -45,6 +45,20 @@ CCBUS_BEHAVIOR_CAP="block:can_block nudge:can_nudge inbox:can_readback"
 CCBUS_DEGRADE_SINK="reject"
 
 ccbus_adapt_dir() { (cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); }
+
+# 找这台的后端(就是 `ccm`):敲门(往会话说一句)与 cc-spawn(起会话)都经它。唯一一处查找次序:
+#   `$CCM_BIN`(显式) → 部署落点 `~/.cc-monitor/bin/ccm` → PATH 上的 `cc-monitor-backend` → PATH 上的 `ccm`。
+# 🔴 刻意不认 `$CCM_BACKEND_BIN`:那是 monitor 给终端窗口导的「正在跑的那份常驻后端」,不是给 CLI 找入口用的。
+# ⚠ 必须 `-f` 而不能只 `-x`:`[ -x <目录> ]` 为真(装个名叫 `ccm` 的 skill 目录就会劫持解析)。
+# 找到 ⇒ 打出路径 rc=0;找不到 ⇒ rc=1(调用方说清楚,不猜)。
+ccbus_ccm_bin() {
+  local x
+  for x in "${CCM_BIN:-}" "$HOME/.cc-monitor/bin/ccm" \
+           "$(command -v cc-monitor-backend 2>/dev/null)" "$(command -v ccm 2>/dev/null)"; do
+    if [ -n "$x" ] && [ -f "$x" ] && [ -x "$x" ]; then printf '%s' "$x"; return 0; fi
+  done
+  return 1
+}
 
 # 适配日志:降级、能力缺失都要留痕(§3.2b 逐字「并在 bus.log 里说清降级了」)。
 # ⚠ 刻意不调 route_log:本文件会被**不 source cc-bus-lib.sh** 的 cc-peek / cc-commit 用。

@@ -59,6 +59,8 @@ fn has_prefix_as(name: &str, prefix: &str, fold: bool) -> bool {
 }
 
 /// 这个名字是不是不往下传的（[`OWN_ENVS`] ∪ [`INTERNAL_PREFIXES`] 那几族 ∪ 上层登记的会话号变量）；按本平台的大小写规矩比。
+///
+/// 〔继承表〕后端自己的载体那一格。
 pub(crate) fn is_internal(name: &str) -> bool {
     is_internal_as(
         name,

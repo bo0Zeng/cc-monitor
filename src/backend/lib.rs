@@ -1034,6 +1034,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// quota-read typed；会话事实多 quietUnread（没有链上身份的未知类型不画卡、照实记几行哪几种）⇒ 形状指纹表再跟着变。
 /// 会话帧多 switch（此刻能不能换模型 · 权限档，那一句后端写）· session-new-facts 每家多 modelDefault / modelNote ·
 /// session-commands 多 compact / clear · session_removed 多 by · history-facts 多 modelText ⇒ 形状指纹表再跟着变。
+/// session-say 多一格可选的 seen_screen（cc-bus 带：发的那一端看过的那一屏，用来判送没送对；桌面 · 手机不带）⇒ 形状指纹表再跟着变。
 pub const BUILD_ID: &str = "p10o-login-busy";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。

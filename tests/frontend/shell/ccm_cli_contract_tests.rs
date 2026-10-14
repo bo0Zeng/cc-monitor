@@ -150,11 +150,20 @@ fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
     //    换成了循环体里的 `$_x`。
     // ⚠ **钉性质不钉拼法**〔第一版是 `pin_line` 整行相等，变异当场暴露它过严〕：
     //    把顺序换成 `[ -x X ] && [ -f X ]` 语义完全一样，而整行相等会误红。
-    for probe in ["-f \"$_x\"", "-x \"$_x\""] {
-        guard_core::find_pinned(&src, probe).unwrap_or_else(|e| {
+    // 〔10-14〕查找次序搬进 `cc-bus-adapt.sh` 的 `ccbus_ccm_bin`（敲门也经它找后端，一处）：cc-spawn 只调它，
+    //   `-f` 与 `-x` 同一行那条照旧钉在那一处。
+    guard_core::find_pinned(&src, "CCM_BIN=$(ccbus_ccm_bin)").unwrap_or_else(|e| {
+        panic!("{e}\n⇒ `cc-spawn` 不再经 `ccbus_ccm_bin` 找后端 —— 查找次序又长出了第二份")
+    });
+    let adapt_path =
+        crate::guard_support::repo_root().join("src/shared/cc-bus/scripts/cc-bus-adapt.sh");
+    let adapt = std::fs::read_to_string(&adapt_path)
+        .unwrap_or_else(|e| panic!("读不到 {adapt_path:?}: {e}"));
+    for probe in ["-f \"$x\"", "-x \"$x\""] {
+        guard_core::find_pinned(&adapt, probe).unwrap_or_else(|e| {
             panic!(
                 "{e}\n\
-                     ⇒ `cc-spawn` 解析 `ccm` 时缺了 `{probe}` 这一半。**只 `-x` 不够**：\n\
+                     ⇒ `ccbus_ccm_bin` 解析 `ccm` 时缺了 `{probe}` 这一半。**只 `-x` 不够**：\n\
                      `[ -x <目录> ]` 为真，而查找次序里那几档都可能是目录\n\
                      （历史实测：`~/.claude/skills/` 下全是目录，装个名叫 `ccm` 的 skill 就会劫持解析，\n\
                      报「是一个目录」后整体失败）。\n\
@@ -163,9 +172,9 @@ fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
         });
     }
     // 两个测试必须在**同一行**：分散到两处会让「其中一处被删」看起来仍然合规。
-    let same_line = src
-        .lines()
-        .any(|l| l.contains("-f \"$_x\"") && l.contains("-x \"$_x\""));
+    let same_line = adapt.lines().any(|l| {
+        guard_core::contains_word(l, "-f \"$x\"") && guard_core::contains_word(l, "-x \"$x\"")
+    });
     assert!(
         same_line,
         "`-f` 与 `-x` 不在同一行了 —— 解析分支被拆开，其中一半可能已经不在那条判断上。"
