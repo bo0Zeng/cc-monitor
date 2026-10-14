@@ -17,7 +17,11 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
-        shapes: vec![],
+        // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
+        shapes: cmd_wire::shapes::SHAPES
+            .iter()
+            .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
     }
 }
 

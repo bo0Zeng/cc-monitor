@@ -621,7 +621,11 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         commands: vec!["ping".into()],
         unavailable: vec![],
         uncancellable: vec![],
-        shapes: vec![],
+        // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
+        shapes: cmd_wire::shapes::SHAPES
+            .iter()
+            .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
     };
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();
     let client = crate::inbound_client::park(mine).into_client(witness);

@@ -3,10 +3,14 @@
 use super::*;
 use tokio::io::AsyncBufReadExt;
 
+/// 同一版的后端：交它认的那两条与它们的形状指纹（跟本侧编进来的同一份）。
 fn hello() -> BackendHello {
-    let h = crate::attach::Hello::parse(
-        r#"{"kind":"hello","v":1,"build_id":"b","commands":["ping","cancel"]}"#,
-    )
+    let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
+    let h = crate::attach::Hello::parse(&format!(
+        r#"{{"kind":"hello","v":1,"build_id":"b","commands":["ping","cancel"],"shapes":{{"ping":"{}","cancel":"{}"}}}}"#,
+        shape("ping"),
+        shape("cancel")
+    ))
     .expect("hello");
     BackendHello::from_hello_frame(&h).expect("见证")
 }

@@ -55,7 +55,11 @@ fn rig() -> Rig {
             .collect(),
         unavailable: vec![],
         uncancellable: vec![],
-        shapes: vec![],
+        // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
+        shapes: cmd_wire::shapes::SHAPES
+            .iter()
+            .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
     };
     let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
