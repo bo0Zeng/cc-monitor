@@ -157,3 +157,36 @@ fn every_mode_the_session_can_be_in_has_its_words() {
         None
     );
 }
+
+/// 记录里的模型原值 ⇒ 写给人看的名字：系列名同起会话那张表的字，版本取一两位的数段（日期段不算）；认不出 ⇒ 没有字，不猜。
+#[test]
+fn the_model_written_in_the_record_reads_as_its_name() {
+    let family = |v: &str| {
+        super::MODEL_ALIASES
+            .iter()
+            .find(|c| c.value == v)
+            .map(|c| (c.text)())
+            .unwrap()
+    };
+    let text = |m: &str| crate::agents::model_text("claude", m);
+    assert_eq!(
+        text("claude-opus-4-5-20251101"),
+        Some(format!("{} 4.5", family("opus")))
+    );
+    assert_eq!(
+        text("claude-sonnet-4-20250514"),
+        Some(format!("{} 4", family("sonnet")))
+    );
+    assert_eq!(
+        text("claude-3-5-haiku-20241022"),
+        Some(format!("{} 3.5", family("haiku")))
+    );
+    for m in ["<synthetic>", "claude-opus", "claude-mystery-4-5", "gpt-5", ""] {
+        assert_eq!(text(m), None, "`{m}` 不该有字");
+    }
+    assert_eq!(
+        crate::agents::model_text("codex", "claude-opus-4-5"),
+        None,
+        "没考据过模型名的那一家不给字"
+    );
+}

@@ -156,6 +156,9 @@ pub(crate) struct SessionFacts {
     pub(crate) touched_files: Vec<String>,
     /// 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
     pub(crate) usage: Option<UsageFact>,
+    /// `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
+    /// （界面照抄，不自己拼）。每次现给，不进续算表。
+    pub(crate) model_text: Option<Words>,
     /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub(crate) project_dir: Option<String>,

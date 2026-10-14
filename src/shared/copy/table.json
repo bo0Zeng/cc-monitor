@@ -1767,6 +1767,12 @@
       "zh": "换模型结果未知\n未读到新的模型",
       "args": []
     },
+    "beSessionModel.name.versioned": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{family} {version}",
+      "args": ["family", "version"]
+    },
     "beSessionModel.switch.unsupported": {
       "kind": "error",
       "role": "报错",

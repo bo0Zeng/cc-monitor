@@ -1583,6 +1583,13 @@ pub(crate) fn facts_at(
         .zip(facts.permission_mode.as_deref())
         .and_then(|(kind, mode)| crate::agents::permission_mode_text(kind, mode))
         .map(crate::common::cells::Words);
+    // 模型的字：那一家的模型那一处给（同起会话的那张表的系列名）。
+    facts.model_text = facts
+        .agent
+        .as_deref()
+        .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
+        .and_then(|(kind, model)| crate::agents::model_text(kind, model))
+        .map(crate::common::cells::Words);
     // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。

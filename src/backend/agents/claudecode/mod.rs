@@ -195,6 +195,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     needs_bus_id: false,
     has_identity: true,
     models: Some(resume::MODEL_ALIASES),
+    model_text: Some(resume::model_text),
     model_switch: Some(super::ModelSwitch {
         command: resume::model_command,
         read: resume::model_said,

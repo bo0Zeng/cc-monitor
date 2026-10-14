@@ -213,6 +213,7 @@ describe("〔STC〕第五问：会话事实", () => {
       ],
       permissionMode: "acceptEdits",
       permissionModeText: copyText("beAsk.choice.planEdits"),
+      modelText: null,
       tokens: {
         input: 1,
         output: 0,

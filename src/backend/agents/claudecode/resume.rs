@@ -132,6 +132,28 @@ pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
     format!("{base} {RESUME_TOKEN} {session_id}")
 }
 
+/// 记录里的模型原值（`claude-opus-4-5-20251101` · 旧式 `claude-3-5-sonnet-20241022`）⇒ 写给人看的名字（「Opus 4.5」）：
+/// 系列名取起会话那张表（[`MODEL_ALIASES`]）里同名那一项的字，版本取原值里一两位的数段（八位的日期段不算）。
+/// 不是 `claude-` 开头 · 认不出系列 · 没有版本段 ⇒ `None`（不猜）。
+pub(crate) fn model_text(raw: &str) -> Option<String> {
+    let parts: Vec<&str> = raw.strip_prefix("claude-")?.split('-').collect();
+    let family = parts
+        .iter()
+        .find_map(|p| MODEL_ALIASES.iter().find(|c| c.value == *p))?;
+    let version: Vec<&str> = parts
+        .iter()
+        .copied()
+        .filter(|p| (1..=2).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit()))
+        .collect();
+    if version.is_empty() {
+        return None;
+    }
+    Some(copy_core::copy_text(
+        "beSessionModel.name.versioned",
+        &[("family", &(family.text)()), ("version", &version.join("."))],
+    ))
+}
+
 /// 会话开着时换模型送的那一行：`/model <值>`（它也把这个模型存成这个号以后新会话的默认，那一家自己说的）。
 pub(crate) fn model_command(value: &str) -> String {
     format!("/model {value}")

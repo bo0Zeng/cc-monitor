@@ -342,6 +342,8 @@ pub(crate) struct LaunchFace {
     pub(crate) has_identity: bool,
     /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
     pub(crate) models: Option<&'static [Choice]>,
+    /// 记录里写的模型原值 ⇒ 写给人看的名字（会话事实 `modelText`）；认不出 ⇒ `None`。这一家没考据过 ⇒ `None`。
+    pub(crate) model_text: Option<fn(&str) -> Option<String>>,
     /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
     pub(crate) model_switch: Option<ModelSwitch>,
 }
@@ -413,6 +415,11 @@ impl PermissionFace {
 /// `kind` 那一家的 `mode` 这一档写给人看的那一句（[`PermissionFace::text_of`]）。认不出这一家 · 这一家没有权限档 · 认不出这一档 ⇒ `None`。
 pub(crate) fn permission_mode_text(kind: &str, mode: &str) -> Option<String> {
     launch_face_among(REGISTRY, kind)?.permission?.text_of(mode)
+}
+
+/// `kind` 那一家记录里的模型原值 `raw` 写给人看的名字（[`LaunchFace::model_text`]）。认不出这一家 · 这一家没有这一格 · 认不出这个值 ⇒ `None`。
+pub(crate) fn model_text(kind: &str, raw: &str) -> Option<String> {
+    launch_face_among(REGISTRY, kind)?.model_text?(raw)
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

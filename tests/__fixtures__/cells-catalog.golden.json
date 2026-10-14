@@ -826,6 +826,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "modelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.ask.choices[].id",
           "type": "string"
