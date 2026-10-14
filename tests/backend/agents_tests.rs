@@ -561,18 +561,19 @@ fn export_bindings_agent_profile_table() {
 /// ★ ccm 不再做 resume 的决定（之后它是 claude 的壳；从 monitor `agent_profile_parity_tests.rs` 搬来）。
 #[test]
 fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
-    let dir = crate::guard_support::repo_root().join("src/backend/control/ccm");
-    let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
-        .iter()
-        .map(|f| {
-            std::fs::read_to_string(dir.join(f))
-                .unwrap_or_else(|e| panic!("读不到 control/ccm/{f}：{e}"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let src = crate::guard_support::repo_root().join("src/backend");
+    let ccm: String = [
+        "control/ccm/mod.rs",
+        "ccm_line/argv.rs",
+        "control/ccm/plan.rs",
+    ]
+    .iter()
+    .map(|f| std::fs::read_to_string(src.join(f)).unwrap_or_else(|e| panic!("读不到 {f}：{e}")))
+    .collect::<Vec<_>>()
+    .join("\n");
     assert!(
         ccm.len() > 5000,
-        "control/ccm 三份只有 {} 字节，抽错了？",
+        "ccm 那三份只有 {} 字节，抽错了？",
         ccm.len()
     );
     assert!(

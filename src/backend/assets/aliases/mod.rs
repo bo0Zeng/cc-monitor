@@ -179,7 +179,7 @@ impl Alias {
     }
 }
 
-/// 读回口的产物：启动文件候选（接入那一格）。清单在配置文件那一页（`page.rs::answer_read`）。
+/// 读回口的产物：启动文件候选（接入那一格）。清单在配置文件那一页（`page.rs::read_with`）。
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[derive(Debug, serde::Serialize)]

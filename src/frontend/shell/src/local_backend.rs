@@ -1344,7 +1344,7 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 /// - [`STREAM_WORD`] 打头：后端就叫 `ccm` 之后零参数是「起会话」，流模式靠这个显式词。
 pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[BACKEND_SEP, STREAM_WORD];
 
-/// 「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
+/// 「我是流模式后端」的显式词（后端 `cli_words.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
 /// monitor 起流的每一发（本机两条载体 · 远端流 · 测试连接探针）都以它打头。
 pub(crate) const STREAM_WORD: &str = "--stream";
 

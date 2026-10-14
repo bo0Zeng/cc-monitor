@@ -31,6 +31,16 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     //    ⚠ 漏登它的后果逐字写在本名单头注里：那份文件里的 `--子命令` **全部不受
     //      IPC-PROTOCOL.md 对拍约束**，而对拍判据照常报绿。
     ("lib.rs", include_str!("../../src/backend/lib.rs")),
+    // const1：`lib.rs` 里那几个旗标的字面量（流模式显式词 · 子命令后面的选项词）住址挪了 —— 词进 `wire/cli_words.rs`，
+    //   答题 hook 那个子命令的词进 `agents/asks.rs`（写进 hook 设置的是适配层）。同 `lib.rs` 那一行：本判据自己算出来的。
+    (
+        "wire/cli_words.rs",
+        include_str!("../../src/backend/wire/cli_words.rs"),
+    ),
+    (
+        "agents/asks.rs",
+        include_str!("../../src/backend/agents/asks.rs"),
+    ),
     // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
     // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
