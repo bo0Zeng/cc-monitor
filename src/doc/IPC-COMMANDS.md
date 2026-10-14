@@ -2817,7 +2817,7 @@ type ManualList = { items: Array<ManualItem>, };
 type NoArgs = Record<symbol, never>;
 ```
 
-码：`bad_args`
+码：`bad_args` · `unreadable`
 
 ### 4.4 历史会话与它的读面
 

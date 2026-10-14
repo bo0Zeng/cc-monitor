@@ -43,7 +43,10 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         dirs: vec![],
         problems: vec![],
     };
-    let got = serde_json::to_value(manual_of("claude", &accounts, Some(("claude", &mcp)))).unwrap();
+    let got = serde_json::to_value(
+        manual_of("claude", &accounts, None, Some(("claude", &mcp))).expect("列得出"),
+    )
+    .unwrap();
     let fix = |a: &str| json!({ "command": "login-start", "args": { "kind": "account", "agent": "claude", "account": a } });
     let mcp_fix = |a: Value, s: &str| {
         json!({ "command": "login-start",
@@ -65,10 +68,14 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         ]})
     );
     // 那一家不在 app 里登 ⇒ 不列需登录的号（没有解法的不列成「点了能解」）。
-    let fake = serde_json::to_value(manual_of("no-such-agent", &accounts, None)).unwrap();
+    let fake =
+        serde_json::to_value(manual_of("no-such-agent", &accounts, None, None).expect("列得出"))
+            .unwrap();
     assert_eq!(fake, json!({ "items": [] }));
-    let no_mcp_login =
-        serde_json::to_value(manual_of("no-such-agent", &accounts, Some(("fake", &mcp)))).unwrap();
+    let no_mcp_login = serde_json::to_value(
+        manual_of("no-such-agent", &accounts, None, Some(("fake", &mcp))).expect("列得出"),
+    )
+    .unwrap();
     assert_eq!(no_mcp_login["items"][0]["kind"], "mcpLogin");
     assert_eq!(
         no_mcp_login["items"][0]["fix"],
@@ -89,6 +96,45 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         "有解法的不带 `why`"
     );
 }
+
+/// 账号库清单在、却读不懂 ⇒ 回 `unreadable` ＋ 为什么，不回空清单（空清单看起来像「没事」）。
+/// 读法照账号清单那一份（坏 JSON 的清单 ⇒ `meta.error` 那一句）；没有清单（没启用多账号）照旧列得出。
+#[test]
+fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
+    use crate::observe::accounts_query::{library_unreadable, list_product_with};
+    let root = std::env::temp_dir().join(format!("ccm-manual-unreadable-{}", std::process::id()));
+    let accts = root.join("accts");
+    std::fs::create_dir_all(&accts).unwrap();
+    std::fs::write(accts.join("accounts.json"), "{not json").unwrap();
+    let product = list_product_with(&accts, None, &[], &[], "claude", "claude", false);
+    let why = library_unreadable(&accts);
+    assert_eq!(
+        why.clone().map(Value::String),
+        Some(product["meta"]["error"].clone()),
+        "同账号清单那一句"
+    );
+    let fail = manual_of("claude", &product, why, None)
+        .expect_err("读不懂 ⇒ 不是空清单")
+        .into_fail();
+    assert_eq!(fail.code, "unreadable");
+    assert_eq!(
+        json!(fail.message),
+        product["meta"]["error"],
+        "那一句是为什么"
+    );
+    let nope = root.join("nope");
+    assert_eq!(
+        library_unreadable(&nope),
+        None,
+        "没有清单 ＝ 没启用多账号，不是读不懂"
+    );
+    let absent = list_product_with(&nope, None, &[], &[], "claude", "claude", false);
+    assert_eq!(
+        serde_json::to_value(manual_of("claude", &absent, None, None).expect("没有清单照列"))
+            .unwrap(),
+        json!({ "items": [] })
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// 入参按 `kind` 分两种；多一格 · 少了必填的 · 不认得的 `kind` 一律拒（不会照旧形状把 MCP 那一种当成号）。

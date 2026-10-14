@@ -110,7 +110,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("machines-read", "0c29f57f"),
     ("machines-set", "87885cb3"),
     ("machines-try", "b89be5b2"),
-    ("manual-list", "78bccfd4"),
+    ("manual-list", "82e49776"),
     ("mcp-read", "a1c8d4b7"),
     ("mcp-sync-apply", "fa2ce73c"),
     ("mcp-sync-preview", "95a05e7f"),

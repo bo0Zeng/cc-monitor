@@ -124,6 +124,18 @@ pub(crate) fn accounts_enabled_here() -> bool {
     load_manifest(&resolve_accts_dir()).is_ok()
 }
 
+/// 账号库清单在、却读不懂（读不出 · 不是 JSON · 版本不认）⇒ 为什么（同账号清单 `meta.error` 那一句）；读得懂 · 没有清单
+/// （没启用多账号，正常状态）⇒ `None`。需手动清单据此回 `unreadable`，不把读不懂当成「没有需登录的号」。
+pub(crate) fn library_unreadable(accts_dir: &Path) -> Option<String> {
+    let why = load_manifest(accts_dir).err()?;
+    (!matches!(manifest_path(accts_dir).try_exists(), Ok(false))).then_some(why)
+}
+
+/// [`library_unreadable`]，这台的账号库。
+pub(crate) fn library_unreadable_here() -> Option<String> {
+    library_unreadable(&resolve_accts_dir())
+}
+
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let p = manifest_path(accts_dir);
     // 没有清单 ＝ 没启用多账号（正常状态）：只回那一句，不记日志（记了就是每次列账号都多一行 WARN，CLI 的 stderr 也跟着脏）。

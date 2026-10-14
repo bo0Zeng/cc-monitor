@@ -499,8 +499,11 @@ pub(crate) struct ManualList {
 pub(crate) struct ManualListCmd;
 
 typed::codes! {
-    /// `manual-list` 读不到的一律按「没有」答，自己没有别的码。
-    pub(crate) enum ManualListErr {}
+    /// `manual-list` 可能回的码。MCP 的缓存读不到按「没有」答（那一项本来就是「最近一次连它时记下的」）。
+    pub(crate) enum ManualListErr {
+        /// 账号库清单在、却读不懂：说不出哪些号需登录，不回空清单（空清单看起来像「没事」）。那一句是为什么。
+        Unreadable = "unreadable",
+    }
 }
 
 impl Command for ManualListCmd {
@@ -523,20 +526,26 @@ impl Blocking for ManualListCmd {
                 crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
             )
         });
-        Ok(manual_of(
+        manual_of(
             agent,
             &accounts_product(agent),
+            crate::observe::accounts_query::library_unreadable_here(),
             mcp.as_ref().map(|(k, r)| (*k, r)),
-        ))
+        )
     }
 }
 
 /// [`ManualListCmd`] 的纯构造器：账号清单成品（`accounts-list` 那一份）· MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
+/// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 回 `unreadable`，不列。
 pub(crate) fn manual_of(
     agent: &str,
     accounts: &Value,
+    unreadable: Option<String>,
     mcp: Option<(&str, &crate::agents::McpRead)>,
-) -> ManualList {
+) -> Result<ManualList, ManualListErr> {
+    if let Some(why) = unreadable {
+        return Err(ManualListErr::Unreadable(why));
+    }
     let signs_in = crate::agents::accounts_face(agent).is_some_and(|f| f.sign_in.is_some());
     let mut items: Vec<ManualItem> = accounts["accounts"]
         .as_array()
@@ -621,7 +630,7 @@ pub(crate) fn manual_of(
             });
         }
     }
-    ManualList { items }
+    Ok(ManualList { items })
 }
 
 /// 这一家对用户的叫法（没有起会话那一面 ⇒ 它的 id）。
