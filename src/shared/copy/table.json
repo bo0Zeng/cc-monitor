@@ -1724,6 +1724,18 @@
       "zh": "权限档切换结果未知\n按键后屏幕未变",
       "args": []
     },
+    "beSessionMode.mode.bypassPermissions": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "跳过所有确认",
+      "args": []
+    },
+    "beSessionMode.mode.dontAsk": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "只用已允许的工具",
+      "args": []
+    },
     "beSessionMode.switch.unsupported": {
       "kind": "error",
       "role": "报错",

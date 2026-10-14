@@ -66,6 +66,7 @@
       }
     ],
     "permissionMode": "acceptEdits",
+    "permissionModeText": "自动接受编辑",
     "projectDir": "/g/proj",
     "retries": [
       {

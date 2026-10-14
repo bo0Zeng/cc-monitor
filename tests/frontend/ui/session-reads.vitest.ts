@@ -212,6 +212,7 @@ describe("〔STC〕第五问：会话事实", () => {
         { id: "rt-2", outcome: "retrying" },
       ],
       permissionMode: "acceptEdits",
+      permissionModeText: copyText("beAsk.choice.planEdits"),
       tokens: {
         input: 1,
         output: 0,

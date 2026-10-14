@@ -75,6 +75,11 @@ retries: Array<RetryRun>,
  */
 permissionMode: string | null, 
 /**
+ * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ */
+permissionModeText: Words | null, 
+/**
  * 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
  */
 tokens: TokenUse | null, 

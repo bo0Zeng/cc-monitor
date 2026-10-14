@@ -30,7 +30,7 @@ internal class HostConnectionState(
     /** 在飞连接。只在 [lock] 内访问。 */
     var connecting: SshTransport? = null
 
-    /** 与探活同时起跑的那条新连接（还没装上）。只在 [lock] 内访问；disconnect 连它一起关。 */
+    /** 探活没及时回话时另拨、与它赛跑的那条新连接（还没装上）。只在 [lock] 内访问；disconnect 连它一起关。 */
     var racing: SshTransport? = null
 
     /** 在跑的那一场「留旧的还是换新的」（同一台同时只跑一场，后来的等同一场）。只在 [lock] 内访问。 */

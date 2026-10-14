@@ -84,6 +84,26 @@ pub(crate) const PERMISSION_MODES: &[Choice] = &[
     },
 ];
 
+/// 会话会处在、起会话时不给选的档（记录里写的 · 屏底认得出的）：越过批准的两档 · `auto` · 旧名 `manual`（＝ `default`，同一句）。
+pub(crate) const SHOWN_MODES: &[Choice] = &[
+    Choice {
+        value: "auto",
+        text: || copy_core::copy_text("beAsk.choice.planAuto", &[]),
+    },
+    Choice {
+        value: "bypassPermissions",
+        text: || copy_core::copy_text("beSessionMode.mode.bypassPermissions", &[]),
+    },
+    Choice {
+        value: "dontAsk",
+        text: || copy_core::copy_text("beSessionMode.mode.dontAsk", &[]),
+    },
+    Choice {
+        value: "manual",
+        text: || copy_core::copy_text("beAsk.choice.planManual", &[]),
+    },
+];
+
 /// Shift+Tab 那一圈最多几档：`default → acceptEdits → plan`，开了的 `bypassPermissions` · `auto` 接在 `plan` 后面。
 pub(crate) const MODE_CYCLE_MAX: usize = 5;
 

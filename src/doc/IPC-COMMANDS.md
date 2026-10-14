@@ -5333,6 +5333,11 @@ retries: Array<RetryRun>,
  */
 permissionMode: string | null, 
 /**
+ * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ */
+permissionModeText: Words | null, 
+/**
  * 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
  */
 tokens: TokenUse | null, 
@@ -8569,7 +8574,7 @@ result: ModeSwitchResult,
  */
 mode: string | null, 
 /**
- * 同一档写给人看的字；那一家起会话不给这一档 · 没读到 ⇒ `null`。
+ * 同一档写给人看的字（同会话事实 `permissionModeText` 那一处：`PermissionFace::text_of`）；没读到 · 这一档没有字 ⇒ `null`。
  */
 modeText: string | null, 
 /**
