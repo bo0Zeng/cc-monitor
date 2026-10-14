@@ -187,6 +187,7 @@ function unreadWorld(): World {
   c.user("把发布脚本里的版本号改成从标签读。");
   c.say("好，先看一下现在的发布脚本。");
   c.unknown();
+  c.bookkeeping();
   c.say("脚本里版本号写死在第 12 行，改成读 `git describe` 的结果。");
   c.broken();
   c.user("可以，顺便把 CHANGELOG 也补一条。");
@@ -565,7 +566,7 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await scrollStream("top");
   }, oddCardsWorld),
-  card("card-unread", "认不出的记录", "核心认不出的两行（没见过的类型 · 见过的类型形状变了）：各一行琥珀细条，第一条点开看原文摘录与［复制详情］", async () => {
+  card("card-unread", "认不出的记录", "核心认不出的两行（没见过的类型 · 见过的类型形状变了）：各一行琥珀细条，第一条点开看原文摘录与［复制详情］；夹在中间的一行没身份的簿记行不成卡", async () => {
     await mainReady(ALL_TABS);
     await openCard(".card-unread", 0, "center");
     document.querySelector<HTMLDetailsElement>(".stream.active .card-unread")!.open = true;

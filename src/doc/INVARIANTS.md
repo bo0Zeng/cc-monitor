@@ -205,6 +205,8 @@
 
 未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；在设置「机器 → 足迹 → 未识别的数据」查看。
 
+上屏只分一刀，判在适配层一处（`record_of::quiet_unread_of`）：没见过的 `type` 又没有链身份 ⇒ 那一家的簿记行，不画「认不出的记录」卡，会话事实 `quietUnread` 照实记几行、哪几种；带链身份的、已知类型形状变了的，照旧一行一张卡。
+
 **为什么不能松动**：一条记录静默消失，它的子记录就成了孤儿 ⇒ 主线判定把整支误判成「回退掉的」。
 
 ---

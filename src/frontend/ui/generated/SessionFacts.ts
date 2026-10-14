@@ -6,6 +6,7 @@ import type { LastSay } from "./LastSay";
 import type { McpTrouble } from "./McpTrouble";
 import type { Needs } from "./Needs";
 import type { PendingCall } from "./PendingCall";
+import type { QuietUnread } from "./QuietUnread";
 import type { RetryRun } from "./RetryRun";
 import type { TokenUse } from "./TokenUse";
 import type { UsageFact } from "./UsageFact";
@@ -103,4 +104,8 @@ answerOff: Words | null,
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
-mcp: Array<McpTrouble>, };
+mcp: Array<McpTrouble>, 
+/**
+ * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+ */
+quietUnread: QuietUnread | null, };

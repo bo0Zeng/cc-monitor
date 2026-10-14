@@ -524,6 +524,8 @@ fn golden_facts_session(home: &Path) -> String {
         r#"{"type":"permission-mode","permissionMode":"acceptEdits","sessionId":"s-g"}"#,
         r#"{"type":"cost-state","totalCostUSD":0.4242,"modelUsage":{},"hasUnknownModelCost":false}"#,
         r#"{"type":"attachment","attachment":{"type":"deferred_tools_delta","addedNames":[],"needsAuthMcpServers":["m-n"],"failedMcpServers":[{"name":"m-f","error":"e-f"}]}}"#,
+        // 没见过的类型、没有链上身份（那一家的簿记行）：不成卡，`quietUnread` 记一行。
+        r#"{"type":"golden-future-ledger","sessionId":"s-g"}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))

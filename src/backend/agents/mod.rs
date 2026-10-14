@@ -619,6 +619,9 @@ pub(crate) struct RecordFace {
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
     /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
     pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
+    /// 一条已解析的记录 ⇒ 它是不是「认不出、又不成卡」的那种行（这一家的簿记行）⇒ 它的类型名；不是 ⇒ `None`。
+    /// 不成卡是这一家的翻译表判的（`parse` 那一格给它不出记录），这一格只让会话事实照实记几行、哪几种。`None` 这一格 ＝ 这一家没有这种行。
+    pub(crate) quiet_unread: Option<fn(&serde_json::Value) -> Option<String>>,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -1716,6 +1719,13 @@ pub(crate) struct McpSaid {
 pub(crate) fn mcp_said_of(kind: &str, v: &serde_json::Value) -> Option<McpSaid> {
     record_face(kind)
         .and_then(|r| r.mcp_said)
+        .and_then(|f| f(v))
+}
+
+/// `kind` 那一家：这条记录是认不出、又不成卡的那种行 ⇒ 它的类型名（会话事实 `quietUnread` 记数用）。
+pub(crate) fn quiet_unread_of(kind: &str, v: &serde_json::Value) -> Option<String> {
+    record_face(kind)
+        .and_then(|r| r.quiet_unread)
         .and_then(|f| f(v))
 }
 

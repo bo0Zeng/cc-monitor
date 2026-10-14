@@ -403,6 +403,22 @@ pub enum JsonlRecord {
     WorktreeState {},
     #[serde(rename = "frame-link")]
     FrameLink {},
+    // Claude Code 2.1.29x 新写的簿记行（10-14 语料，114 份会话：atis-latch 11378 行 / 98 份 · history-suppression 1805 ·
+    // bridge-session 1790 · cost-state 328 / 113 份 · artifact-comment-monitor 4 · artifact-autoreact-ledger 4，都没有链身份）：
+    // 认识、不上屏、不进链（同上面那一批）。`cost-state` 的花费由会话事实直接读（`observe/facts_query.rs`），不经这里。
+    // 往后再冒出来的没身份新类型不必等登记：适配层不给它们出卡、只在会话事实里记数（`record_of::quiet_unread_of`）。
+    #[serde(rename = "atis-latch")]
+    AtisLatch {},
+    #[serde(rename = "history-suppression")]
+    HistorySuppression {},
+    #[serde(rename = "bridge-session")]
+    BridgeSession {},
+    #[serde(rename = "cost-state")]
+    CostState {},
+    #[serde(rename = "artifact-comment-monitor")]
+    ArtifactCommentMonitor {},
+    #[serde(rename = "artifact-autoreact-ledger")]
+    ArtifactAutoreactLedger {},
 
     /// F63 (issue #49)：**看不懂的记录 —— 留原文 + 留链上的身份**。
     ///
@@ -427,11 +443,11 @@ pub enum JsonlRecord {
     /// parentUuid 全为 0** —— 即此刻并没有在误折叠，本变体是**保险 + 诚实**：
     /// ①不再静默丢 5.6% 的行；②Claude 哪天发一个带链身份的新类型时自动扛住。
     ///
-    /// **带链身份的**出链事实（照 `Attachment` 先例：**不进界面但进链**，`chain.rs`）；
-    /// 不出通用记录（`record_of` 认不出 ⇒ 缺，界面照占号）。
-    /// **没有链身份的**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种今天全是）
-    /// 在这里就滤掉：它们不建卡、不进链，没有任何读者，却要付每条的固定开销（去重入集合 · sink · 门控）。「不静默」那一半由 `drift_ledger`（`UnknownRecordType` 面，解析时记）接着管 ——
-    /// 诊断面照旧看得见「多了一种没见过的类型」。
+    /// **带链身份的**出链事实（照 `Attachment` 先例：进链，`chain.rs`），并出通用记录 `unread`（界面一行琥珀细条）。
+    /// **没有链身份的未知类型**（uuid 与 parentUuid 都缺 —— 上面实测的那 7 种、10-14 那 6 种全是）不进链、也不出卡：
+    /// 对话内容每行都带身份，没身份的只可能是那一家的簿记行（10-14 起，`record_of::quiet_unread_of` 一处判）。
+    /// 「不静默」那一半：会话事实 `quietUnread` 记几行、哪几种；机器级的 `drift_ledger`（`UnknownRecordType` 面，解析时记）照旧。
+    /// 已知类型解析失败（形状变了）不论有无身份都出卡。
     #[serde(rename = "cc-monitor-unrecognized")]
     Unrecognized {
         #[serde(default)]

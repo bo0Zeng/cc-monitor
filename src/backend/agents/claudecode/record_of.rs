@@ -7,7 +7,7 @@
 //! | `system` · `subtype == "api_error"` | `retry` |
 //! | `ai-title` / `custom-title` | `title{by: agent / user}` |
 //! | `queue-operation` · `remove` · 人说的 | `queued` |
-//! | 看不懂的（`Unrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录） |
+//! | 看不懂的（`Unrecognized`：没见过的类型 · 形状变了） | `unread`（写好的一句 ＋ 原文摘录）；没见过的类型又没有链上身份 ⇒ 无记录（[`quiet_unread_of`]，会话事实里记数） |
 //! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
@@ -62,6 +62,31 @@ pub(crate) fn lands_of(v: &Value) -> crate::agents::Lands {
         }
         _ => Lands::Own,
     }
+}
+
+/// **没有链上身份的未知顶层类型 ⇒ 不成卡**（10-14 起）：对话内容每行都带 `uuid` / `parentUuid`，两样都没有的只可能是这一家的簿记行
+/// （Claude Code 每一版都会添几种，一行一张「认不出的记录」会刷满消息流）。不悄悄丢：会话事实 `quietUnread` 照实记几行、哪几种
+/// （注册表 `RecordFace.quiet_unread`）。带身份的未知行照旧 `unread`；认识的类型形状变了（不论有无身份）照旧 `unread`。
+///
+/// 判只这一处：[`record_of`] 对 `Unrecognized` 用同一个 [`no_identity`]、同一个「类型 serde 认不出」（`unknown-type` 那一支就是 serde 落到 `Unknown`），
+/// 判据逐行对拍两处一致。这一问给的是那个类型名；不是这种行 ⇒ `None`。
+pub(crate) fn quiet_unread_of(v: &Value) -> Option<String> {
+    let s = |k: &str| v.get(k).and_then(Value::as_str);
+    if !no_identity(s("uuid"), s("parentUuid")) {
+        return None;
+    }
+    let t = s("type")?;
+    // 只拿判别格试解：落到 `Unknown` ⇔ 类型 serde 不认识（认识的类型缺格是 Err，不算）。
+    matches!(
+        serde_json::from_value::<JsonlRecord>(serde_json::json!({ "type": t })),
+        Ok(JsonlRecord::Unknown)
+    )
+    .then(|| t.to_string())
+}
+
+/// 链上身份两样都没有（抢救时取的就是这两格的字符串值，[`super::parse`]）。
+fn no_identity(uuid: Option<&str>, parent_uuid: Option<&str>) -> bool {
+    uuid.is_none() && parent_uuid.is_none()
 }
 
 /// 一条已解析的记录（`Value`）⇒ [`record_of`] 会给它的类，不走整条翻译（骨架索引每行一问）。
@@ -213,6 +238,15 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             Some(rec_of(String::new(), timestamp, Body::Queued { who }))
         }
         // 认不出（没见过的类型 · 见过的类型形状变了）：每行一条 `unread`；相邻同类并成一条是出记录页那一遍的事。
+        // 没见过的类型、又没有链上身份 ⇒ 簿记行，不成卡（[`quiet_unread_of`]）。
+        JsonlRecord::Unrecognized {
+            ref uuid,
+            ref parent_uuid,
+            ref reason,
+            ..
+        } if reason == "unknown-type" && no_identity(uuid.as_deref(), parent_uuid.as_deref()) => {
+            None
+        }
         JsonlRecord::Unrecognized {
             uuid,
             timestamp,

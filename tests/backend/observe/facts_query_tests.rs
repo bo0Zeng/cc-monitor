@@ -155,6 +155,7 @@ fn the_fast_path_never_changes_the_answer() {
     recs.push(result("g2"));
     recs.push(result("g2"));
     recs.push(json!({"type": "attachment", "x": 1}));
+    recs.push(json!({"type": "some-future-ledger", "sessionId": "s"}));
     recs.push(handback("fp-1", true));
     recs.push(mcp_delta(
         json!({"failedMcpServers": [{"name": "m-f", "error": "e"}]}),
@@ -163,6 +164,11 @@ fn the_fast_path_never_changes_the_answer() {
     let fast = scan_all(&text);
     assert_eq!(fast.handed_back, ["fp-1"], "交回那一行没漏过快路");
     assert_eq!(fast.mcp.len(), 1, "MCP 那一行没漏过快路");
+    assert_eq!(
+        fast.quiet_unread.as_ref().map(|q| q.count),
+        Some(1),
+        "没身份的簿记行没漏过快路"
+    );
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
@@ -177,11 +183,11 @@ fn the_fast_path_never_changes_the_answer() {
         ..SessionFacts::default()
     };
     assert!(!could_matter(
-        br#"{"type":"user","forkedFrom":{"sessionId":"y"}}"#,
+        br#"{"type":"user","uuid":"u","forkedFrom":{"sessionId":"y"}}"#,
         &f
     ));
     assert!(!could_matter(
-        br#"{"type":"user","message":{"content":[{"type":"tool_result"}]}}"#,
+        br#"{"type":"user","uuid":"u","message":{"content":[{"type":"tool_result"}]}}"#,
         &f
     ));
 }
@@ -579,7 +585,7 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     // 正控：有没结果的调用时，别人的工具结果照旧不解析。
     let f = scan_all(&jsonl(&recs[..1]));
     assert!(!could_matter(
-        br#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"other"}]}}"#,
+        br#"{"type":"user","uuid":"u","message":{"content":[{"type":"tool_result","tool_use_id":"other"}]}}"#,
         &f
     ));
     assert!(could_matter(
@@ -1440,5 +1446,44 @@ fn every_needs_head_starts_with_its_status_cell() {
             head.starts_with(&word),
             "{kind:?}：钉条第一行「{head}」没有以状态格「{word}」打头"
         );
+    }
+}
+
+/// ★ **没身份的簿记行不成卡，但不悄悄丢**：会话事实 `quietUnread` 照实记几行、哪几种（首见序）、写好的一句。
+/// 带身份的未知行（照旧成卡）· 认识的类型（含形状变了的）都不算进来。接力扫 == 一次扫完；快路不漏它（行里没有 `"uuid"`）。
+#[test]
+fn bookkeeping_lines_nobody_reads_are_counted_in_the_facts() {
+    let recs = vec![
+        json!({"type": "some-future-ledger", "sessionId": "s", "n": 1}),
+        json!({"type": "some-future-kind", "uuid": "u-1", "parentUuid": "p-1", "timestamp": "t"}),
+        json!({"type": "other-future-ledger", "sessionId": "s"}),
+        json!({"type": "mode", "sessionId": "s"}),
+        json!({"type": "ai-title", "sessionId": "s"}),
+        json!({"type": "some-future-ledger", "sessionId": "s", "n": 2}),
+    ];
+    let text = jsonl(&recs);
+    let whole = scan_all(&text);
+    let v = serde_json::to_value(&whole).unwrap();
+    assert_eq!(
+        v["quietUnread"],
+        json!({
+            "count": 3,
+            "kinds": ["some-future-ledger", "other-future-ledger"],
+            "text": copy_core::copy_text(
+                "record.unread.quiet",
+                &[("n", "3"), ("types", "some-future-ledger · other-future-ledger")]
+            ),
+        })
+    );
+    // 一行都没有 ⇒ null。
+    let none = serde_json::to_value(scan_all(&jsonl(&recs[1..2]))).unwrap();
+    assert_eq!(none["quietUnread"], Value::Null);
+    // 接力扫 == 一次扫完。
+    let mut cuts = vec![0usize];
+    cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
+    for cut in cuts {
+        let head = scan_all(&text[..cut]);
+        let resumed = scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap();
+        assert_eq!(resumed, whole, "在字节 {cut} 处接力");
     }
 }

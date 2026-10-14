@@ -1029,6 +1029,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// rotation-view「时区不明」照看的那一台给时区，说不出就不带 zone。会话事实多 permissionModeText（权限档的字由后端给）·
 /// session-say 窗格前台只剩 shell 就不送；launch 失败带回是送达未知还是明确没送进（没送进先收掉本趟建的空会话）·
 /// 后端装的 tmux 钩子不出声、开发版不往默认 tmux server 装 ⇒ 形状指纹表再跟着变，子命令集仍不变。
+/// 协议零件下沉成顶层 wire（线上字节不变）；history-read / -lines 与通用记录进 cmd-wire、历史回包一条一条降级、
+/// quota-read typed；会话事实多 quietUnread（没有链上身份的未知类型不画卡、照实记几行哪几种）⇒ 形状指纹表再跟着变。
 pub const BUILD_ID: &str = "p10o-login-busy";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。

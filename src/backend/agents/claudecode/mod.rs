@@ -276,6 +276,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     }),
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
+    quiet_unread: Some(record_of::quiet_unread_of),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

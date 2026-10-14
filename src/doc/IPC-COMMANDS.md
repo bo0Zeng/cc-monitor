@@ -5266,6 +5266,19 @@ text: Words | null,
  * 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
  */
 whyText: Words | null, };
+type QuietUnread = { 
+/**
+ * 「无法识别 N 行（类型：a · b）」。
+ */
+text: Words, 
+/**
+ * 几行。
+ */
+count: number, 
+/**
+ * 哪几种（原文里的 `type`，首见序，至多 [`QUIET_KINDS_KEEP`] 种）。
+ */
+kinds: Array<string>, };
 type RetryOutcome = "retrying" | "recovered" | "failed" | "interrupted";
 type RetryRun = { 
 /**
@@ -5361,7 +5374,11 @@ answerOff: Words | null,
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
-mcp: Array<McpTrouble>, };
+mcp: Array<McpTrouble>, 
+/**
+ * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+ */
+quietUnread: QuietUnread | null, };
 type StepWait = "running" | "awaiting" | "unclear";
 type TokenUse = { input: number, output: number, cacheRead: number, cacheWrite5m: number, cacheWrite1h: number, 
 /**

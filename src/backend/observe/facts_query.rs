@@ -34,6 +34,7 @@
 //! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
 //! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 断开 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
+//! | `quietUnread` | 认不出、又不成卡的行（适配层 `agents::quiet_unread_of` 判：没见过的顶层类型 ＋ 没有链上身份 ⇒ 那一家的簿记行）：几行 · 哪几种（首见序，至多 [`QUIET_KINDS_KEEP`] 种，再多只加数）· 写好的一句；一行都没有 ⇒ `null` |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -102,6 +103,9 @@ pub(crate) const BG_KEEP: usize = 16;
 
 /// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
+
+/// `quietUnread` 至多记多少种类型（再多的只加行数）。
+pub(crate) const QUIET_KINDS_KEEP: usize = 16;
 /// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
 pub(crate) const SAY_CHARS: usize = 160;
 
@@ -193,6 +197,22 @@ pub(crate) struct SessionFacts {
     pub(crate) answer_off: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,
+    /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+    pub(crate) quiet_unread: Option<QuietUnread>,
+}
+
+/// 认不出、又不成卡的那几行（会话事实 `quietUnread`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct QuietUnread {
+    /// 「无法识别 N 行（类型：a · b）」。
+    pub(crate) text: Words,
+    /// 几行。
+    pub(crate) count: u32,
+    /// 哪几种（原文里的 `type`，首见序，至多 [`QUIET_KINDS_KEEP`] 种）。
+    pub(crate) kinds: Vec<String>,
 }
 
 /// 一条还没收场的后台命令。
@@ -941,6 +961,8 @@ pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, rel
 pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
     (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
         || contains(line, b"\"permission-mode\"")
+        // 认不出、又不成卡的行（[`note_quiet`]）：没有链上身份 ⇒ 行里没有 `"uuid"` 字样（簿记行都短）。
+        || !contains(line, b"\"uuid\"")
         || contains(line, b"\"cost-state\"")
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
@@ -1029,6 +1051,31 @@ fn note_mcp(f: &mut SessionFacts, v: &Value) {
         put(S::Failed, now.collect());
     }
     f.mcp.sort_by(|a, b| a.name.cmp(&b.name));
+}
+
+/// 这一家说这一行认不出、又不成卡 ⇒ 记一行（种类首见序），那一句照新的数重写。
+fn note_quiet(f: &mut SessionFacts, v: &Value) {
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let Some(t) = crate::agents::quiet_unread_of(kind, v) else {
+        return;
+    };
+    let q = f.quiet_unread.get_or_insert_with(|| QuietUnread {
+        text: Words(String::new()),
+        count: 0,
+        kinds: Vec::new(),
+    });
+    q.count += 1;
+    if !q.kinds.contains(&t) && q.kinds.len() < QUIET_KINDS_KEEP {
+        q.kinds.push(t);
+    }
+    let n = q.count.to_string();
+    let types = q
+        .kinds
+        .join(&copy_core::copy_text("record.unread.quietSep", &[]));
+    q.text = Words(copy_core::copy_text(
+        "record.unread.quiet",
+        &[("n", &n), ("types", &types)],
+    ));
 }
 
 fn open_retry(f: &SessionFacts) -> bool {
@@ -1126,6 +1173,7 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
     note_retry(f, kind, v);
     note_background(f, v, at.as_ref());
     note_mcp(f, v);
+    note_quiet(f, v);
     match kind {
         Some("user") => note_user(f, v),
         Some("assistant") => {

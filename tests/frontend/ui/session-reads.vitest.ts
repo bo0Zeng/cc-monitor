@@ -180,7 +180,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：后端真出的会话事实就是生成的那个类型（逐字段）", () => {
     const f = factsOf(wire);
     expect(f).toEqual({
-      end: 3081,
+      end: 3131,
       rev: 1,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
@@ -231,6 +231,7 @@ describe("〔STC〕第五问：会话事实", () => {
         { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
       answerOff: null,
+      quietUnread: { count: 1, kinds: ["golden-future-ledger"], text: copyText("record.unread.quiet", { n: "1", types: "golden-future-ledger" }) },
     });
   });
 
