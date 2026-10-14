@@ -15,7 +15,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.wire.PasteKind
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 
 /**
  * 登录抽屉（底部抽屉，桌面是靠右的抽屉，里面同一套）：标题 · 目标行（号牌 ＋ 号名 · 机器）·［打开登录页］·［复制链接］·
@@ -60,7 +60,7 @@ fun LoginSheet(
         }
         s.failed?.let { Failed(it, onRestart = flow::start) } ?: Body(flow, s)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = close) { Text(if (s.failed != null) copyText("kit.drawer.close") else copyText("kit.dialog.cancel")) }
+            SecondaryButton(onClick = close) { Text(if (s.failed != null) copyText("kit.drawer.close") else copyText("kit.dialog.cancel")) }
         }
     }
 }
@@ -91,7 +91,7 @@ private fun Body(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { clipboard.getText()?.text?.let { pasted = it } }, enabled = started != null && !s.submitting) { Text(copyText("login.act.paste")) }
             Button(onClick = { flow.submit(pasted) }, enabled = started != null && pasted.isNotBlank() && !s.submitting) { Text(copyText("login.act.submit")) }
-            if (s.pasteError != null) TextButton(onClick = flow::start) { Text(copyText("login.act.restart")) }
+            if (s.pasteError != null) SecondaryButton(onClick = flow::start) { Text(copyText("login.act.restart")) }
         }
     }
 }

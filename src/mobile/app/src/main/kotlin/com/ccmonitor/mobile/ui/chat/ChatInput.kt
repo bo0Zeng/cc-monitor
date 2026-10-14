@@ -28,7 +28,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +51,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -111,7 +111,7 @@ internal fun ChatInputArea(
             ) {
                 if (open) {
                     val plus = copyText("mobPlus.sheet.title")
-                    TextButton(
+                    SecondaryButton(
                         onClick = {
                             actions.loadCommands()
                             sheet = InputSheet.Plus
@@ -371,7 +371,7 @@ private fun CommandList(
 ) {
     val skills = at == InputSheet.Skills
     Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = back) { Text(copyText("mobKit.act.back")) }
+        SecondaryButton(onClick = back) { Text(copyText("mobKit.act.back")) }
         Text(
             if (skills) copyText("mobPlus.row.skills") else copyText("mobPlus.row.commands"),
             style = MaterialTheme.typography.titleMedium,
@@ -430,7 +430,7 @@ private fun ClearDialog(
         modifier = Modifier.testTag(ChatTestTags.CLEAR_DIALOG),
         title = { Text(copyText("session.clear.title")) },
         text = { Text(copyText("session.clear.body")) },
-        dismissButton = { TextButton(onClick = onCancel, modifier = Modifier.focusRequester(cancel)) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onCancel, modifier = Modifier.focusRequester(cancel)) { Text(copyText("kit.dialog.cancel")) } },
         confirmButton = { Button(onClick = onClear, modifier = Modifier.testTag(ChatTestTags.CLEAR_OK)) { Text(copyText("session.clear.ok")) } },
     )
     LaunchedEffect(Unit) { runCatching { cancel.requestFocus() } }
