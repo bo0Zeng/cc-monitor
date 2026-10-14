@@ -1126,7 +1126,9 @@ fn note_quiet(f: &mut SessionFacts, v: &Value) {
         q.kinds.push(t);
     }
     let n = q.count.to_string();
-    let types = q.kinds.join(&copy_core::copy_text("record.unread.quietSep", &[]));
+    let types = q
+        .kinds
+        .join(&copy_core::copy_text("record.unread.quietSep", &[]));
     q.text = Words(copy_core::copy_text(
         "record.unread.quiet",
         &[("n", &n), ("types", &types)],
