@@ -1,7 +1,7 @@
 //! 帧面 `launch-local` / `launch-render-cli` 的宿主壳：起会话挑号要的两样事实（这台的账号库 · 某条会话上次用的号）
 //! 住观测层与这台的家，由这层交给 `control/`（`control → observe` 是反向边）。批量起（`session_batch_face`）用同一份。
 
-use crate::assets::door::Door;
+use crate::common::door::Door;
 use crate::control::launch_account::{self as la, Facts, Library};
 use crate::control::launch_render::{self as lr, LaunchRenderErr, Rendered};
 use crate::stream::inbound::typed::{self, Command, WithFiles};

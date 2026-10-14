@@ -11,7 +11,7 @@
 //! - 真 monitor 那一趟（`footprint_client_facts`）：monitor 侧 `tests/frontend/shell/footprint_client_tests.rs`。
 
 use super::*;
-use crate::footprint::registry::HostScope;
+use crate::agents::footprint_decl::HostScope;
 use crate::footprint::rows::host_label;
 use serde_json::{json, Value};
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::assets::door::Said;
+use crate::common::door::Said;
 use crate::stream::inbound::LocalFiles;
 use cmd_wire::files as wire;
 use std::path::PathBuf;

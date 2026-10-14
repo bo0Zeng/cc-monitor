@@ -1104,4 +1104,360 @@ mod tests {
         assert!(refs_to_layer("use crate::observe_helpers;", "observe").is_empty());
         assert!(refs_to_layer("use crate::{common::observe_helpers};", "observe").is_empty());
     }
+
+    // ═══ 功能之间只许单向（oneway1，10-13）═══════════════════════════════════════════════
+
+    /// **定了方向的那几对**：`(谁, 不许引谁, 为什么是这个方向)`。反方向一处都不许（生产段，量法见 [`top_level_refs`]）。
+    ///
+    /// 加一行之前先挑方向：被引的那一侧要能不知道引它的那一侧照样成立。
+    const ONE_WAY: &[(&str, &str, &str)] = &[
+        (
+            "accounts",
+            "assets",
+            "各号共用的 MCP 与账号库同一把锁、同一份清单、同一份共享集合 ⇒ 归账号域；资产那边调它",
+        ),
+        (
+            "agents",
+            "footprint",
+            "适配层在功能之下：申报表用适配层自己的词（`agents::footprint_decl`），足迹那边读",
+        ),
+        (
+            "agents",
+            "control",
+            "适配层在功能之下（只在测试档的 `agents/fake` 例外，测试段不受管）",
+        ),
+        (
+            "assets",
+            "observe",
+            "资产目录要的项目清单与 agent 家住 history（`history::listing`）",
+        ),
+        (
+            "footprint",
+            "faces",
+            "faces 是帧面宿主，功能不往上引；看哪几个家（`mcp_look`）住账号域",
+        ),
+        (
+            "history",
+            "observe",
+            "会话清单 · 叫会话什么 · 判活住 history；observe 的记录级读与 watcher 反过来调它",
+        ),
+    ];
+
+    /// **还互相引用的对**（按字母序成对）。只许缩：多出一对 ⇒ 红；理掉一对没删这一行 ⇒ 也红。
+    const STILL_MUTUAL: &[(&str, &str, &str)] = &[
+        (
+            "accounts",
+            "control",
+            "`ccm` 命令行的常量与拼法住 `control::ccm`（后端共用常量归位那一刀）",
+        ),
+        (
+            "accounts",
+            "faces",
+            "`accounts/quota/nodes.rs` → `faces::rotation_face::library_at`",
+        ),
+        (
+            "accounts",
+            "observe",
+            "`upstream_select` → `accounts_query::live_here`",
+        ),
+        (
+            "accounts",
+            "stream",
+            "帧面协议零件（第 8 批第 8 刀拆 `stream`）",
+        ),
+        (
+            "assets",
+            "control",
+            "`ccm` 命令行的常量与拼法住 `control::ccm`（后端共用常量归位那一刀）",
+        ),
+        (
+            "assets",
+            "footprint",
+            "`assets/aliases/page.rs` → `footprint::tmux_here`",
+        ),
+        ("assets", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+        (
+            "control",
+            "dial",
+            "`dial/remote_ask.rs` → `control::prefs_migration::after_reach`",
+        ),
+        ("control", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+        ("dial", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+        (
+            "faces",
+            "stream",
+            "帧面协议零件与命令登记（第 8 批第 8 刀）",
+        ),
+        ("history", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+        ("observe", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+        ("plan", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+    ];
+
+    /// 一份文件的模块路径（相对源码根，`assets/aliases/mod.rs` ⇒ `[assets, aliases]`）。
+    fn module_path_of(rel: &str) -> Vec<String> {
+        let mut parts: Vec<String> = rel
+            .trim_end_matches(".rs")
+            .split('/')
+            .map(str::to_string)
+            .collect();
+        if parts.last().is_some_and(|l| l == "mod") {
+            parts.pop();
+        }
+        parts
+    }
+
+    fn is_ident_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_'
+    }
+
+    /// 一段生产段里**引到的顶层模块**（每出现一次记一次）：`crate::<模块>` · 走到根的 `super::…::<模块>` ·
+    /// 成组导入 `use crate::{a, b::c}`（花括号第一层的每一员）。`me` 是这份文件的模块路径。
+    fn top_level_refs(me: &[String], code: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let ident_at =
+            |s: &str| -> String { s.chars().take_while(|c| is_ident_char(*c)).collect() };
+        let before_ok = |i: usize| {
+            code[..i]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !is_ident_char(c) && c != ':')
+        };
+        // 成组：花括号第一层每一员的第一段。
+        let group = |rest: &str, out: &mut Vec<String>| {
+            let mut depth = 0usize;
+            let mut start = true;
+            for (k, c) in rest.char_indices() {
+                match c {
+                    '{' => {
+                        depth += 1;
+                        start = false;
+                    }
+                    '}' if depth == 0 => break,
+                    '}' => depth -= 1,
+                    ',' if depth == 0 => start = true,
+                    c if start && is_ident_char(c) => {
+                        out.push(ident_at(&rest[k..]));
+                        start = false;
+                    }
+                    c if !c.is_whitespace() => start = false,
+                    _ => {}
+                }
+            }
+        };
+        let mut from = 0usize;
+        while let Some(rel) = code[from..].find("crate::") {
+            let i = from + rel;
+            from = i + "crate::".len();
+            if !before_ok(i) {
+                continue;
+            }
+            let rest = &code[from..];
+            if let Some(g) = rest.strip_prefix('{') {
+                group(g, &mut out);
+            } else {
+                let name = ident_at(rest);
+                if !name.is_empty() {
+                    out.push(name);
+                }
+            }
+        }
+        let mut from = 0usize;
+        while let Some(rel) = code[from..].find("super::") {
+            let i = from + rel;
+            if !before_ok(i) {
+                from = i + 1;
+                continue;
+            }
+            let mut ups = 0usize;
+            let mut j = i;
+            while code[j..].starts_with("super::") {
+                ups += 1;
+                j += "super::".len();
+            }
+            from = j;
+            if ups < me.len() {
+                continue;
+            }
+            let rest = &code[j..];
+            if let Some(g) = rest.strip_prefix('{') {
+                group(g, &mut out);
+            } else {
+                let name = ident_at(rest);
+                if !name.is_empty() {
+                    out.push(name);
+                }
+            }
+        }
+        out
+    }
+
+    /// 父模块是不是写着 `#[cfg(test)] mod <名>;`（整份只在测试档）。
+    fn declared_test_only(parent_src: &str, name: &str) -> bool {
+        let lines: Vec<&str> = parent_src.lines().collect();
+        for (k, l) in lines.iter().enumerate() {
+            let t = guard_core::strip_visibility(l.trim_start());
+            if t.trim_end() != format!("mod {name};") {
+                continue;
+            }
+            let mut b = k;
+            while b > 0 {
+                b -= 1;
+                let p = lines[b].trim();
+                if p == "#[cfg(test)]" {
+                    return true;
+                }
+                if !(p.starts_with("#[") || p.starts_with("//")) {
+                    break;
+                }
+            }
+        }
+        false
+    }
+
+    /// 全后端两两引用的次数：`(谁, 引谁) → (处, 份)`。人群＝各顶层模块目录下全部 `.rs`，减去父模块写明只在测试档的。
+    fn reference_matrix() -> std::collections::BTreeMap<(String, String), (usize, usize)> {
+        let root = crate::guard_support::src_root();
+        let tops = top_modules();
+        let mut m: std::collections::BTreeMap<(String, String), (usize, usize)> =
+            Default::default();
+        let mut seen = 0usize;
+        for top in &tops {
+            let dir = root.join(top);
+            if !dir.is_dir() {
+                continue;
+            }
+            let mut stack = vec![dir];
+            while let Some(d) = stack.pop() {
+                for entry in std::fs::read_dir(&d).expect("read dir") {
+                    let path = entry.expect("dir entry").path();
+                    if path.is_dir() {
+                        stack.push(path);
+                        continue;
+                    }
+                    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                        continue;
+                    }
+                    let rel = path
+                        .strip_prefix(&root)
+                        .expect("under src root")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let me = module_path_of(&rel);
+                    // 祖先里有一层是测试档 ⇒ 整份不算。
+                    let test_only = (1..me.len()).any(|k| {
+                        let parent = &me[..k];
+                        let dir = root.join(parent.join("/"));
+                        let p1 = dir.join("mod.rs");
+                        let p2 = root.join(format!("{}.rs", parent.join("/")));
+                        [p1, p2].iter().any(|p| {
+                            std::fs::read_to_string(p).is_ok_and(|s| declared_test_only(&s, &me[k]))
+                        })
+                    });
+                    if test_only {
+                        continue;
+                    }
+                    seen += 1;
+                    let src = std::fs::read_to_string(&path).expect("read rs");
+                    let mut per: std::collections::BTreeMap<String, usize> = Default::default();
+                    for t in top_level_refs(&me, &production_code(&src)) {
+                        if t != me[0] && tops.contains(&t) {
+                            *per.entry(t).or_default() += 1;
+                        }
+                    }
+                    for (t, n) in per {
+                        let e = m.entry((me[0].clone(), t)).or_default();
+                        e.0 += n;
+                        e.1 += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            seen > 300,
+            "只采到 {seen} 份 .rs —— 采集坏了，下面的判定是空转"
+        );
+        m
+    }
+
+    /// ★ **功能之间只许单向**：定了方向的那几对反方向零处；还互相引用的对恰好是 [`STILL_MUTUAL`]。
+    #[test]
+    fn features_reference_each_other_one_way_only() {
+        let m = reference_matrix();
+        let count = |a: &str, b: &str| m.get(&(a.to_string(), b.to_string())).copied();
+        let mut bad = Vec::new();
+        for (who, not, why) in ONE_WAY {
+            if let Some((n, files)) = count(who, not) {
+                bad.push(format!(
+                    "{who} → {not}：{n} 处 / {files} 份（方向定的是 {not} → {who}：{why}）"
+                ));
+            }
+        }
+        let mut mutual: Vec<(String, String)> = m
+            .keys()
+            .filter(|(a, b)| a < b && m.contains_key(&(b.clone(), a.clone())))
+            .cloned()
+            .collect();
+        mutual.sort();
+        let want: Vec<(String, String)> = STILL_MUTUAL
+            .iter()
+            .map(|(a, b, _)| (a.to_string(), b.to_string()))
+            .collect();
+        for p in &mutual {
+            if !want.contains(p) {
+                let (x, y) = (count(&p.0, &p.1).unwrap(), count(&p.1, &p.0).unwrap());
+                bad.push(format!(
+                    "新的互相引用：{} → {} {} 处 · {} → {} {} 处 —— 挑一个方向，把反方向那几处搬走",
+                    p.0, p.1, x.0, p.1, p.0, y.0
+                ));
+            }
+        }
+        for p in &want {
+            if !mutual.contains(p) {
+                bad.push(format!(
+                    "{} ⇄ {} 已经不互相引用了 —— 从 `STILL_MUTUAL` 删掉那一行（再加一行到 `ONE_WAY` 把方向钉住）",
+                    p.0, p.1
+                ));
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "后端模块之间的方向不对：\n  {}\n（此刻互相引用 {} 对）",
+            bad.join("\n  "),
+            mutual.len()
+        );
+    }
+
+    /// 反向自检：量法认得 `crate::` · 走到根的 `super::` · 成组导入，不认没走到根的 `super::` 与只是后缀相同的路径。
+    #[test]
+    fn the_reference_matrix_scan_actually_bites() {
+        let me = |s: &str| module_path_of(s);
+        assert_eq!(me("assets/aliases/mod.rs"), vec!["assets", "aliases"]);
+        assert_eq!(
+            top_level_refs(&me("history/x.rs"), "let a = crate::observe::q::f();"),
+            vec!["observe"]
+        );
+        assert_eq!(
+            top_level_refs(&me("history/x.rs"), "use super::super::observe::q;"),
+            vec!["observe"]
+        );
+        assert_eq!(
+            top_level_refs(&me("history/mod.rs"), "use super::observe::q;"),
+            vec!["observe"]
+        );
+        // 没走到根：`history/x.rs` 里的 `super::q` 是 history 自己。
+        assert!(top_level_refs(&me("history/x.rs"), "use super::listing::f;").is_empty());
+        assert_eq!(
+            top_level_refs(
+                &me("history/x.rs"),
+                "use crate::{observe::{a, b}, common::said, stream};"
+            ),
+            vec!["observe", "common", "stream"]
+        );
+        assert!(top_level_refs(&me("history/x.rs"), "use self::crate_ish::observe;").is_empty());
+        assert!(declared_test_only(
+            "#[cfg(test)]\npub(crate) mod fake;\n",
+            "fake"
+        ));
+        assert!(!declared_test_only("pub(crate) mod fake;\n", "fake"));
+    }
 }

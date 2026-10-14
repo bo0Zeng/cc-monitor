@@ -76,7 +76,7 @@ fn expires(e: &Value, c: &Cells) -> u64 {
 /// 一条的指纹：只取令牌那三格（访问 · 刷新 · 过期时刻），算一段 16 位十六进制的摘要（与装记录比定义同一个摘要函数）。
 /// 只用来认「变没变」；底里存它，不存令牌。
 pub(crate) fn fingerprint(e: &Value, c: &Cells) -> String {
-    crate::assets::skill_ledger::digest_of(&format!(
+    crate::common::digest::fnv_digest(&format!(
         "{}\0{}\0{}",
         text(e, c.access).unwrap_or(""),
         text(e, c.refresh).unwrap_or(""),

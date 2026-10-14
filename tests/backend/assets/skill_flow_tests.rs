@@ -13,7 +13,7 @@ fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
 }
 
 fn answer_install(
-    d: &dyn crate::assets::door::Door,
+    d: &dyn crate::common::door::Door,
     facts: &dyn crate::assets::mcp_sync::Facts,
     root: Option<&std::path::Path>,
     record: Record,

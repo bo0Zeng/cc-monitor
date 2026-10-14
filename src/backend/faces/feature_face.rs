@@ -164,7 +164,7 @@ fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpRe
         return capped(mcp_reply(&Default::default(), &McpSay::default()))
             .map_err(McpReadErr::TooLarge);
     };
-    let look = mcp_look(kind);
+    let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
     let read = crate::agents::mcp_read(kind, dir.as_deref(), &look).unwrap_or_default();
     // 断开：这台此刻活着的会话里那一家说的（各号的家都看）；每个名字取说它最晚的那一条。
     let homes: Vec<std::path::PathBuf> = look.homes.iter().map(|(_, h)| h.clone()).collect();
@@ -177,30 +177,6 @@ fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpRe
         login_command: crate::agents::mcp_login_command(kind).unwrap_or(""),
     };
     capped(mcp_reply(&read, &say)).map_err(McpReadErr::TooLarge)
-}
-
-/// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
-/// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。
-pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
-    let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
-        .and_then(|h| {
-            crate::accounts::manage::mcp_share_exec::accounts_in(&h.display().to_string())
-                .ok()
-                .flatten()
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(name, dir)| (Some(name), std::path::PathBuf::from(dir)))
-        .collect();
-    if let Some(bare) = crate::agents::home_of_kind(kind) {
-        if !homes.iter().any(|(_, d)| *d == bare) {
-            homes.push((None, bare));
-        }
-    }
-    let now_ms = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-    crate::agents::McpLook { homes, now_ms }
 }
 
 /// 整份过同一个上限（不截断）：过了 ⇒ 那一句。

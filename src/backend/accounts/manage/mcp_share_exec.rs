@@ -12,7 +12,7 @@ use super::layout;
 use super::mcp_share::{self, Seen, Servers, Store};
 use super::model::Manifest;
 use super::scan::{item_at, join};
-use crate::assets::door::{self, Door, Refused};
+use crate::common::door::{self, Door, Refused};
 use crate::platform::acct_view::Item;
 use cmd_wire::accounts::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
 use copy_core::copy_text;
@@ -96,7 +96,7 @@ pub(crate) fn user_mcp_file() -> Option<std::path::PathBuf> {
     store_file_in(&home.display().to_string())
         .map(std::path::PathBuf::from)
         // 今天只管 Claude 的用户级 MCP 文件（唯一声明了资产面的那一家）。Codex 的 MCP 来了改这里。
-        .or_else(|| crate::assets::asset_kind().and_then(crate::agents::user_mcp_file))
+        .or_else(|| crate::agents::asset_kind().and_then(crate::agents::user_mcp_file))
 }
 
 /// 一个号的配置文件 ⇒ 服务器表（文件不在 ⇒ 空表）。
@@ -487,6 +487,26 @@ pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpVie
     run(d, Why::Asked, &|s, seen| {
         Ok(mcp_share::decide(s, seen, name, Some(def.clone())))
     })
+}
+
+/// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
+/// 账号库读不出 ⇒ 只看没设账号的那一份（状态少说，不说错）。足迹 · 帧面（MCP 读面 · 登录）都问它（原住 `faces/feature_face.rs`）。
+pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
+    let mut homes: Vec<(Option<String>, std::path::PathBuf)> = crate::platform::paths::home_dir()
+        .and_then(|h| accounts_in(&h.display().to_string()).ok().flatten())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, dir)| (Some(name), std::path::PathBuf::from(dir)))
+        .collect();
+    if let Some(bare) = crate::agents::home_of_kind(kind) {
+        if !homes.iter().any(|(_, d)| *d == bare) {
+            homes.push((None, bare));
+        }
+    }
+    let now_ms = crate::common::time::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    crate::agents::McpLook { homes, now_ms }
 }
 
 #[cfg(test)]

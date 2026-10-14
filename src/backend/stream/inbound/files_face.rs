@@ -24,9 +24,9 @@ fn ask<A: crate::files::Ask, E: Codes>(
 /// 资产域那扇门（`doors::LocalFiles`）问读的那几样：同一个本体，失败只交码与那一句（不过这一条的码表：门不是帧面）。
 pub(crate) fn in_process<A: crate::files::Ask>(
     req: A,
-) -> Result<A::Reply, crate::assets::door::Said> {
+) -> Result<A::Reply, crate::common::door::Said> {
     crate::files::answer(req, &Default::default())
-        .map_err(|f| crate::assets::door::said_of(f.code, &f.said))
+        .map_err(|f| crate::common::door::said_of(f.code, &f.said))
 }
 
 codes! {

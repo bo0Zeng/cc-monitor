@@ -77,7 +77,7 @@ struct Client {
 /// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 待办 · 有没有 tmux」重排（[`data`] · [`chores`]）。
 /// `door` 是这台的文件管理面（别名块的候选经它读）。
 pub(crate) fn data_answer(
-    door: &dyn crate::assets::door::Door,
+    door: &dyn crate::common::door::Door,
     req: &FootprintReq,
 ) -> Result<data::DataReport, FootprintFail> {
     let report = answer(req)?;

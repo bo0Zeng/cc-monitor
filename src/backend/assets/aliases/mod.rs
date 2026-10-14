@@ -47,6 +47,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::Path;
 
+pub(crate) mod accounts;
 pub(crate) mod block;
 pub(crate) mod fence;
 pub(crate) mod form;
@@ -54,7 +55,7 @@ pub(crate) mod links;
 pub(crate) mod page;
 pub(crate) mod profile;
 
-use crate::assets::door::{self, Door};
+use crate::common::door::{self, Door};
 use crate::control::ccm::argv::flag;
 // 方言住后端 OS 适配层（原住本目录）。
 use crate::platform::child::Deadline;

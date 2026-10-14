@@ -8,11 +8,10 @@
 
 pub(crate) mod gather;
 pub(crate) mod marks;
-pub(crate) mod patch;
 
+use crate::common::json_patch::{self as patch, DiffLine, Plan};
 use crate::footprint::data::{Missing, UndoAt};
 use copy_core::copy_text;
-use patch::{DiffLine, Plan};
 use serde_json::Value;
 
 /// PATH 上先找到的那个 `ccm` 不是 cc-monitor 放的。

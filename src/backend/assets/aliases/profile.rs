@@ -303,7 +303,7 @@ pub(crate) fn parse_book(text: &str) -> Book {
 
 /// 配置文件在这台机器上的路径。
 pub(crate) fn path_in(home: &str) -> String {
-    crate::assets::door::join_under(home, relay_route_core::PROFILES_REL)
+    crate::common::door::join_under(home, relay_route_core::PROFILES_REL)
 }
 
 /// ccm 那一趟直接读（一次性模式不经文件管理面）：不在 ⇒ 一段都没有；读不了 ⇒ 那一句。

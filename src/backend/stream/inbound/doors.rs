@@ -2,7 +2,7 @@
 
 use super::spec::{prepare, Prepared};
 use super::REGISTRY;
-use crate::assets::door::{Door, Said};
+use crate::common::door::{Door, Said};
 use crate::stream::wire::Request;
 use cmd_wire::files as wire;
 

@@ -252,7 +252,7 @@ pub(crate) fn answer() -> HooksReport {
     answer_at(
         home.as_deref(),
         &crate::observe::history_query::agent_home(),
-        crate::assets::asset_kind()
+        crate::agents::asset_kind()
             .and_then(crate::agents::skills_root)
             .as_deref(),
         !matches!(
@@ -270,7 +270,7 @@ pub(crate) fn answer_at(
     supported: bool,
 ) -> HooksReport {
     // 钩子写在 cc-bus 装进的那一家的用户级设置文件里（注册表足迹面 `user_settings` 的用户那一份）。
-    let settings = crate::assets::asset_kind()
+    let settings = crate::agents::asset_kind()
         .and_then(|k| crate::agents::user_settings_of(k, agent_home))
         .unwrap_or_default();
     // 超上限 / 不是普通文件 / 读不了 ⇒ 按「没读到」降级，`note` 说出来（`diagnose(None)`）。

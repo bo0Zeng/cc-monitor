@@ -1,16 +1,17 @@
 //! 帧面宿主：改账号库的那几条 typed 命令（`accounts-*`，本体 `accounts::manage::wire`）＋ 两步装配 ——
 //! ① 建 API 号 ⇒ key 写进这台的 apikey 表（`accounts::upstream_select::file_face`，与 `apikey-key-set` 同一个写口）；
 //!    删号 ⇒ 表里这个号那一行跟着清掉、回滚 ⇒ 放回去（那两步由执行器排进同一份备份，写的仍是表自己那一口）；
-//! ② 建号 ⇒ 这台的别名文件加上 `<名>cc` ＋ `<名>cct`；删号 ⇒ 删掉参数指向它的全部（`accounts::manage::aliases`；
+//! ② 建号 ⇒ 这台的别名文件加上 `<名>cc` ＋ `<名>cct`；删号 ⇒ 删掉参数指向它的全部（`assets::aliases::accounts`；
 //!    这台说哪几种 shell 就改哪几份，没有 tmux 的那一份只加 `<名>cc`）。只在这两个时刻动，平时不回补；
 //! ③ 账号库改过之后 ⇒ 各号共用的用户级 MCP 同步一趟（`accounts::manage::mcp_share_exec`），并让监听器的名单跟上。
 //! 各号共用的 MCP 那几条（`accounts-mcp-*`）也从这里进。
 //! 两块互不认识，接在这里（`accounts/mod.rs` 头注：账号库与上游选择零引用）。
 
-use crate::accounts::manage::{aliases as acct_aliases, mcp_share_exec, mcp_share_watch, wire};
+use crate::accounts::manage::{mcp_share_exec, mcp_share_watch, wire};
 use crate::accounts::upstream_select::file_face;
+use crate::assets::aliases::accounts as acct_aliases;
 use crate::assets::aliases::{self, AmendErr};
-use crate::assets::door::Door;
+use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
 use crate::stream::inbound::spec::Fail;
 use crate::stream::inbound::typed::{self, Command, Files, NoArgs, WithOwn};
@@ -549,7 +550,7 @@ fn amend_aliases(d: &dyn Door, events: &[wire::AliasEvent]) -> (AliasChange, Vec
 
 /// 写没成时说是哪一份（家目录都问不到 ⇒ 空串）。
 fn aliases_path_hint(d: &dyn Door) -> String {
-    crate::assets::door::home(d)
+    crate::common::door::home(d)
         .map(|h| aliases::profile::path_in(&h))
         .unwrap_or_default()
 }

@@ -15,7 +15,7 @@ fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
 }
 
 fn answer_source(
-    d: &dyn crate::assets::door::Door,
+    d: &dyn crate::common::door::Door,
     user_mcp: Option<&std::path::Path>,
     args: &Value,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
@@ -23,7 +23,7 @@ fn answer_source(
 }
 
 fn answer_preview(
-    d: &dyn crate::assets::door::Door,
+    d: &dyn crate::common::door::Door,
     facts: &dyn crate::assets::mcp_sync::Facts,
     args: &Value,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
@@ -31,7 +31,7 @@ fn answer_preview(
 }
 
 fn answer_apply(
-    d: &dyn crate::assets::door::Door,
+    d: &dyn crate::common::door::Door,
     record: Record,
     args: &Value,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {

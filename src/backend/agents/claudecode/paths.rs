@@ -109,14 +109,10 @@ fn settings_env_snippet(url: &str) -> String {
     serde_json::to_string_pretty(&v).unwrap_or_default()
 }
 
-/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住「待办」那一层）。
+/// 那份设置文件现在的内容 ＋ 地址 ⇒ 合好的整份：`env.ANTHROPIC_BASE_URL` 就地设上，别的原样（JSON 就地改法住 `common::json_patch`，与足迹「待办」同一份）。
 fn settings_env_merge(now: &str, url: &str) -> Option<String> {
-    crate::footprint::chores::patch::set_member(
-        now,
-        &["env", BASE_URL_ENV],
-        &serde_json::json!(url),
-    )
-    .map(|p| p.whole)
+    crate::common::json_patch::set_member(now, &["env", BASE_URL_ENV], &serde_json::json!(url))
+        .map(|p| p.whole)
 }
 
 /// 默认配置根在 `$HOME` 下的名字。

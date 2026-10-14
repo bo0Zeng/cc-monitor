@@ -1,5 +1,5 @@
 //! 把这台二进制带着的 cc-bus 装到这台的 `<skills 根>/cc-bus/`。资产的装不算部署：判 · 写 · 记都在那台后端，
-//! 写经它自己的文件管理面（[`crate::assets::door`]），装卸账复用 skill 装记录那一份（`skill_ledger`，`name = "cc-bus"`）。
+//! 写经它自己的文件管理面（[`crate::common::door`]），装卸账复用 skill 装记录那一份（`skill_ledger`，`name = "cc-bus"`）。
 //!
 //! # `INVARIANTS` 第 7 条例外的四个配套要求
 //!
@@ -15,8 +15,8 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-use crate::assets::door::{self, Door};
 use crate::assets::hub_wire::{CcBusInstalled, CcBusState};
+use crate::common::door::{self, Door};
 
 pub(crate) use super::skill_ledger::Record;
 use super::skill_ledger::{RecordReq, Recorded};
@@ -199,7 +199,7 @@ fn rel_of(skills: &Path, rel: &str) -> String {
 pub(crate) fn embedded_digest() -> String {
     let mut files: Vec<&(&str, &[u8])> = FILES.iter().collect();
     files.sort_by(|a, b| a.0.split('/').cmp(b.0.split('/')));
-    let mut f = crate::assets::asset_catalog::Fnv::default();
+    let mut f = crate::common::digest::Fnv::default();
     f.part(crate::assets::asset_catalog::KIND_SKILL.as_bytes());
     for (rel, bytes) in files {
         f.part(rel.as_bytes()).part(bytes);
@@ -229,7 +229,7 @@ pub(crate) fn state_at(skills: &Path) -> CcBusState {
 }
 
 fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
-    super::asset_kind()
+    crate::agents::asset_kind()
         .and_then(crate::agents::skills_root)
         .ok_or_else(|| {
             crate::stream::inbound::spec::Fail::from((
@@ -326,7 +326,7 @@ pub(crate) fn install_at(
         files.insert(
             (*rel).to_string(),
             Recorded {
-                digest: crate::assets::skill_ledger::digest_of(text),
+                digest: crate::common::digest::fnv_digest(text),
                 created: true,
             },
         );

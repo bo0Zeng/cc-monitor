@@ -4,7 +4,7 @@
 //! 经这台的文件管理面（`files-ls` · `files-stat` · `files-link` · `files-delete`），不自己碰盘。
 //! 认「是我们放的」只凭一条：那个目录里、指向 `ccm`（链接文本逐字）的链接。别的文件一个都不动。
 
-use crate::assets::door::{self, Door};
+use crate::common::door::{self, Door};
 use cmd_wire::files as wire;
 
 /// 链接住的目录（ccm 自己住的那个，`~/.cc-monitor/bin`）。

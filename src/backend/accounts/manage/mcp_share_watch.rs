@@ -10,7 +10,7 @@
 //!
 //! ⚠ 买不到的（同 `files/browse_watch.rs`）：watch 绑 inode 不绑路径 · 内核队列溢出会丢事件 —— 丢了的那一下等下一个事件补上。
 
-use crate::assets::door::Door;
+use crate::common::door::Door;
 use crate::platform::watch_file::Watching;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -54,7 +54,7 @@ fn rearm(home: &str) {
 
 /// 一趟：名单跟上 ⇒ 同步一趟。只出声，不拖垮后端。
 fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
-    let home = match crate::assets::door::home(d) {
+    let home = match crate::common::door::home(d) {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("账号之间同步 MCP：家目录说不出来：{e}");

@@ -191,7 +191,7 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
     if server.is_empty() || server.starts_with('-') {
         return false;
     }
-    let look = crate::faces::feature_face::mcp_look(agent);
+    let look = crate::accounts::manage::mcp_share_exec::mcp_look(agent);
     crate::agents::mcp_read(agent, project, &look)
         .is_some_and(|r| r.entries.iter().any(|e| e.name == server))
 }
@@ -409,7 +409,7 @@ impl Blocking for ManualListCmd {
             return Ok(ManualList { items: Vec::new() });
         };
         let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
-            let look = crate::faces::feature_face::mcp_look(kind);
+            let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
             (
                 kind,
                 crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),

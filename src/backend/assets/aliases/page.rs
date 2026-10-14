@@ -607,7 +607,7 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
         }),
         said: summary_of(p, shell),
         form: form_of(p),
-        account_shape: crate::accounts::manage::aliases::shape_of(book, p)
+        account_shape: super::accounts::shape_of(book, p)
             .map(|(account, tmux)| AccountShape { account, tmux }),
     }
 }

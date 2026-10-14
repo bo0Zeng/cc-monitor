@@ -7,7 +7,7 @@
 //! 哪步必做也在这里定（`required`：今天只有 `terminal`；另两步可选）。`left` ＝ 必做而还没打勾的几步（主窗口状态栏那一枚只数它，
 //! 可选的不为它一直催）；`skipped` ＝ 「开始用」那一块点过「跳过」（记在 `chores.json`，经 `chores-mark` 的 `skipStart` 写）。只读。
 
-use crate::assets::door::Door;
+use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
 use serde::{Deserialize, Serialize};
 

@@ -59,7 +59,7 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
     let skill = FILES.iter().find(|(r, _)| *r == "SKILL.md").unwrap();
     assert_eq!(
         files["SKILL.md"]["digest"],
-        json!(crate::assets::skill_ledger::digest_of(
+        json!(crate::common::digest::fnv_digest(
             std::str::from_utf8(skill.1).unwrap()
         ))
     );
