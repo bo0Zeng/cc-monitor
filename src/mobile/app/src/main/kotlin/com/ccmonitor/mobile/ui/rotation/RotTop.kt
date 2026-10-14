@@ -118,7 +118,8 @@ private fun About(
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val st = view?.strategy
-    val accounts = board.state.collectAsState().value.accounts
+    val boardUi by board.state.collectAsState()
+    val accounts = boardUi.accounts
     if (st == null) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(copyText("rot.none.desc"), color = muted, style = MaterialTheme.typography.bodyMedium)
