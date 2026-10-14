@@ -47,6 +47,8 @@ class UiWordlistTest {
     private val sharedSentences =
         mapOf(
             "无会话记录" to "history.list.empty：与桌面历史页同一条，「会话」照共用术语表指 agent 的一次运行",
+            "清空会话" to "session.clear.title · mobPlus.row.clear：两端共用的确认框标题，「会话」照共用术语表指 agent 的一次运行",
+            "从空的上下文重新开始 · 之前的对话留在会话列表里" to "session.clear.body：同上那一框的正文，两端共用",
         )
 
     /**

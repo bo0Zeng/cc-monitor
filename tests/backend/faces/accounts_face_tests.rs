@@ -99,6 +99,7 @@ fn machine(tag: &str) -> Tmp {
     t.write(".claude/.credentials.json", "{\"fake\":\"cred-d\"}");
     t.write(".claude/stats-cache.json", "{}");
     t.write(".claude/policy-limits.json", "{}");
+    t.write(".claude/remote-settings.json.synced-at", "1");
     t.write(".claude/backups/one.json", "{}");
     t.write(".claude/skills/foo.md", "x");
     t.write(".claude/projects/p/MEMORY.md", "m");
@@ -316,6 +317,7 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         ".credentials.json",
         "stats-cache.json",
         "policy-limits.json",
+        "remote-settings.json.synced-at",
         ".claude.json",
     ] {
         assert!(

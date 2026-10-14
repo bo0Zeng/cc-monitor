@@ -67,6 +67,7 @@ import arrowCounterClockwise from "@phosphor-icons/core/assets/regular/arrow-cou
 import gitFork from "@phosphor-icons/core/assets/regular/git-fork.svg?raw";
 import arrowBendDownLeft from "@phosphor-icons/core/assets/regular/arrow-bend-down-left.svg?raw";
 import stack from "@phosphor-icons/core/assets/regular/stack.svg?raw";
+import eyeSlash from "@phosphor-icons/core/assets/regular/eye-slash.svg?raw";
 import file from "@phosphor-icons/core/assets/regular/file.svg?raw";
 import circleHalf from "@phosphor-icons/core/assets/regular/circle-half.svg?raw";
 import circle from "@phosphor-icons/core/assets/regular/circle.svg?raw";
@@ -145,6 +146,7 @@ const SVG = {
   prohibit: prohibit,
   person: user,
   send: paperPlaneTilt,
+  hidden: eyeSlash,
 } as const;
 
 export type IconName = keyof typeof SVG;

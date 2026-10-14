@@ -65,6 +65,12 @@ class DrawerTest {
         assertEquals(DrawerNav(Screen.Chat.of("h1", "s7"), replacesChat = true), go(DrawerAction.OpenRecent("s7")))
         assertEquals(DrawerNav(Screen.Hosts.route, replacesChat = false), go(DrawerAction.Servers))
         assertEquals(DrawerNav(Screen.Settings.route, replacesChat = false), go(DrawerAction.Settings))
+        // 新建会话里换到另一台 · 在一条会话里点新建（带那条的目录）：那台上空的新建会话，换掉当前这条。
+        assertEquals(DrawerNav(Screen.Chat.of("h2", newId(), isNew = true), replacesChat = true), go(DrawerAction.NewDraft("h2", null)))
+        assertEquals(
+            DrawerNav("chat/h1/${newId()}?new=true&cwd=%2Fh%2Fmy%20proj", replacesChat = true),
+            go(DrawerAction.NewDraft("h1", "/h/my proj")),
+        )
     }
 
     @Test

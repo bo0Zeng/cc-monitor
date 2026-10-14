@@ -12,7 +12,9 @@
 //! session_meta/turn_context/world_state/response_item/event_msg；后两者的 `payload.type` 再细分。
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
+use crate::agents::record::BodyExt as _;
 use crate::agents::record::{Block, Body, Record};
+use crate::agents::SpeakerExt as _;
 use crate::agents::{Speaker, Translated, UserText};
 use serde_json::Value;
 

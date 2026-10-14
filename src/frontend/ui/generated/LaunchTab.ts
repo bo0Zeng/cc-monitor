@@ -2,7 +2,7 @@
 import type { Tab } from "./Tab";
 
 /**
- * 起会话时那一格 `--tab`：值 ＋ 写它的那个别名（命令行当场给的 ⇒ 没有）。隐藏的判定读它（`control/session_hidden.rs`）；
+ * 起会话时那一格 `--tab`：值 ＋ 写它的那个别名（命令行当场给的 ⇒ 没有）。后端的启动台账按它记、隐藏的判定读它；
  * 那一台的清单（`history-list` 的 `raw`）每行带它。
  */
 export type LaunchTab = { tab: Tab, alias?: string, };

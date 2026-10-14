@@ -6,6 +6,7 @@
  * - 实时流视图 `tab-stream-view.ts`（一个 tab 的渲染那一半只经它；每个 tab 第一趟会话事实与轮次的排班 `tab-cold-reads.ts`）
  * - tab 栏 `tab-bar-view.ts` · 拖拽 `tab-bar-drag.ts` · 落点 `tab-drop.ts` · 落盘偏好 `tab-bar-prefs.ts`
  * - 会话动作 `tab-session-actions.ts`（菜单项 `tab-menu.ts`）
+ * - 隐藏 `tab-hide.ts`（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏交的命令 · 撤销 · 隐藏了又结束的收走）
  */
 import { markRunCard, markRunWindow } from "./cards/subagent";
 import { openAgentWindow } from "./agent-window-open";
@@ -19,7 +20,7 @@ import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-pane
 import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
-import { toast, undoToast } from "./kit/toast";
+import { failToast, toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
@@ -48,6 +49,9 @@ import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
 import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
 import { TabBarPrefs } from "./tab-bar-prefs";
+import { TabHide } from "./tab-hide";
+import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
+import { setHide } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
 import { TabRouter } from "./tab-router";
@@ -194,6 +198,20 @@ export class TabManager {
     resumeTab: (sid) => this.actions.resumeTab(sid),
     streamElOf: (sid) => this.streamElOf(sid),
   });
+
+  /** 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏交的命令 · 撤销 · 隐藏了又结束的收走）。 */
+  private readonly hider = new TabHide(this.store, this.prefs, {
+    setHide: (tab, to) => setHide(tab.origin, tab.sessionId, to),
+    undoToast: (title, undo, settle) => undoToast(title, undo, settle),
+    failed: (title, e) => failToast(title, e),
+    refreshTabBar: () => this.refreshTabBar(),
+    close: (sid) => this.closeTab(sid),
+  });
+
+  /** 后端那一格到了（推帧主题「会话隐藏」）：换上、挪进挪出「已隐藏」。没这个 tab ⇒ 不管（它宣告时自己带着那一格）。 */
+  setHidden(sid: string, hidden: SessionHidden | null): void {
+    this.hider.land(sid, hidden);
+  }
 
   /** 从 `config.json` 拉一次集合并重画（宿主启动时调一次）。 */
   loadCollections(): Promise<void> {
@@ -371,6 +389,8 @@ export class TabManager {
       pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
       close: (sid) => this.closeTab(sid),
+      hide: (sids) => this.hider.hide(sids),
+      unhide: (sids) => this.hider.unhide(sids),
       openCwd: (sid) => void this.openTabCwd(sid),
       front: (sid) => this.frontFor(sid),
       viewTerminal: (sid) => {
@@ -421,6 +441,8 @@ export class TabManager {
     closeTabs: (sids) => {
       for (const sid of sids) this.closeTab(sid);
     },
+    hide: (sids) => this.hider.hide(sids),
+    unhide: (sids) => this.hider.unhide(sids),
   };
 
   private openTabCwd(sid: string): Promise<void> {
@@ -512,10 +534,13 @@ export class TabManager {
     name: string | null = null,
     // `null` ＝ 没说 ＝ 视为可以；只有显式 `false` 才记账。
     attachable: boolean | null = null,
+    // 会话宣告带的隐藏那一格（`undefined` ＝ 不是宣告来的，如固定复活 ⇒ 不动）。
+    hidden?: SessionHidden | null,
   ): void {
     if (attachable === false) this.store.notAttachableSids.add(sessionId);
     else this.store.notAttachableSids.delete(sessionId);
     this.ensureTab(sessionId, projectDir, "", origin, background, name);
+    if (hidden !== undefined) this.hider.land(sessionId, hidden);
   }
 
   /**
@@ -736,6 +761,9 @@ export class TabManager {
       pinned: false,
       // 组员关系是 tab 自己的属性；盘上有它的组 id ⇒ 下面 `adoptGroup` 归位。
       group: null,
+      // 隐藏那一格由宣告带来（`createSkeletonTab` 随后落）；血缘随会话事实来。
+      hidden: null,
+      lineage: NO_LINEAGE,
       ...render,
       parentPath: sourcePath,
       unread: 0,
@@ -873,6 +901,7 @@ export class TabManager {
     tab.activity = null;
     this.refreshTabBar();
     this.emitTabStateProbe(tab);
+    this.hider.reap(); // 隐藏的结束了 ⇒ 不留（正看着的切走再收）
   }
 
   /**
@@ -1196,6 +1225,11 @@ export class TabManager {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }
 
+  /** 这个会话的 tab（栏上或「已隐藏」那一行里；没有 ⇒ `null`）。 */
+  tabOf(sid: string): Tab | null {
+    return this.store.tabs.get(sid) ?? null;
+  }
+
   /** 会话头 · 「需手动」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
   activeTab(): Tab | null {
     const sid = this.store.activeId;
@@ -1359,7 +1393,7 @@ export class TabManager {
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
-    } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
+    } else if (ch.writers || ch.needs || ch.peek || ch.lineage) this.refreshTabBar();
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
   }
 
@@ -1758,6 +1792,7 @@ export class TabManager {
     // 记住所在 tab ＋ 手动切的 5s 保护（`tab-router.ts::noteSwitched`）。
     this.router.noteSwitched(sessionId, source);
     this.refreshTabBar(); // active 高亮 + badge 立即更新（廉价，不阻塞）
+    this.hider.reap(); // 刚切走的那个若是隐藏了又结束的 ⇒ 这时才收
 
     // 回到离开时的位置：切走时贴着底的才贴底（往上翻着看的不拽到底 —— 后台 tab 只是 `visibility:hidden`，滚动位置一直在）。
     // 贴底（读 scrollHeight，强制同步 reflow）与面板整表 re-render 推到下一帧：让 `.active` 的切换先画出来；期间又切走则跳过。

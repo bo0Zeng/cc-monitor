@@ -16,8 +16,6 @@ import { loadConfig, patchConfig, setAt } from "./config";
 const KEY_AUTO_FOLLOW = "autoFollowUserActive";
 const KEY_BRING_FRONT = "bringMonitorToFrontOnUserActive";
 
-const KEY_SHOW_BG = "showBgSessions";
-
 const KEY_RESUME_PRESETS = "resumeCommandPresets";
 
 /**
@@ -71,11 +69,6 @@ export interface BehaviorConfig {
    */
   bringMonitorToFrontOnUserActive: boolean;
   /**
-   * 显示 bg 后台任务会话（⚙ 标识；平铺为普通 tab）。默认 true。
-   * **重启生效**（壳起流时读一次：本机远端两条流都按它藏 bg 会话）。
-   */
-  showBgSessions: boolean;
-  /**
    * 用过的恢复命令，最近用的在最前（每台「恢复会话的启动程序」那一格的下拉）：只是这扇界面的输入历史。
    * 生效值住各台后端（`prefs.json` 的 `launchers`，经 `machine-prefs.ts`），恢复进不进 tmux 也在那里。
    */
@@ -92,7 +85,6 @@ export interface BehaviorConfig {
 const DEFAULTS: BehaviorConfig = {
   autoFollowUserActive: true,
   bringMonitorToFrontOnUserActive: false,
-  showBgSessions: true,
   resumeCommandPresets: [],
   notifyTurnEnd: true,
   notifyNeeds: true,
@@ -119,10 +111,6 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
       typeof cfg[KEY_BRING_FRONT] === "boolean"
         ? (cfg[KEY_BRING_FRONT] as boolean)
         : DEFAULTS.bringMonitorToFrontOnUserActive,
-    showBgSessions:
-      typeof cfg[KEY_SHOW_BG] === "boolean"
-        ? (cfg[KEY_SHOW_BG] as boolean)
-        : DEFAULTS.showBgSessions,
     resumeCommandPresets: readPresets(cfg[KEY_RESUME_PRESETS]),
     notifyTurnEnd:
       typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
@@ -140,7 +128,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
   await patchConfig([
     setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),
     setAt([KEY_BRING_FRONT], next.bringMonitorToFrontOnUserActive),
-    setAt([KEY_SHOW_BG], next.showBgSessions),
     setAt([KEY_RESUME_PRESETS], next.resumeCommandPresets),
     setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
     setAt([KEY_NOTIFY_NEEDS], next.notifyNeeds),

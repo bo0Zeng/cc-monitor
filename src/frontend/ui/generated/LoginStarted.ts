@@ -3,6 +3,7 @@ import type { PasteKind } from "./PasteKind";
 
 /**
  * `login-start` 的成品：作业号 · 登录链接（在浏览器里打开；不用内嵌网页，密码不经界面）· 粘回来的是什么 ·
- * 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推一帧 `changed {login}`，粘码框只是后备）。
+ * 会不会自己登完（发起它的浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推一帧 `changed {login}`，粘码框只是后备；
+ * 不在这台 ⇒ `false`，只能粘）。
  */
 export type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, };

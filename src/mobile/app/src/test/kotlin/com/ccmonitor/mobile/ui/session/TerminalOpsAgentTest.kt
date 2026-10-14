@@ -14,6 +14,7 @@ import org.junit.Test
 class TerminalOpsAgentTest {
     private val facts =
         mapOf(
+            "recent" to emptyList<Any>(),
             "agents" to
                 listOf(
                     mapOf("kind" to "claude", "text" to "Claude Code", "models" to listOf(mapOf("value" to "opus", "text" to "Opus")), "permissionModes" to emptyList<Any>()),

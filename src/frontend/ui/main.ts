@@ -13,6 +13,7 @@
  */
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
+import { HIDDEN_TOPIC, hiddenOf } from "./session-hidden";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
@@ -254,6 +255,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       more: (anchor, sid, extra) => tabs.openMenuFor(anchor, sid, extra),
       menuItem: (sid, id) => tabs.menuItemFor(sid, id),
       displayItems: () => tabs.streamToggles(),
+      tabOf: (sid) => tabs.tabOf(sid),
+      switchTo: (sid) => tabs.switchTo(sid),
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
       attach: (sid) => tabs.attachInTerminal(sid),
       reconnect: (origin) => tabs.reconnect(origin),
@@ -865,7 +868,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionStarted: (sessionId, meta) => {
       const had = tabs.hasTab(sessionId);
       // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name);
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden);
       if (had) tabs.reviveTab(sessionId);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
@@ -917,6 +920,12 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
         case "profiles":
           break;
+        case HIDDEN_TOPIC: {
+          // 会话隐藏那一格变了（单个点的 · 规则改了）：帧里带着那一格 ⇒ 换上；没带 ⇒ 等那台重宣告（重连时整份再来）。
+          const p = pushedProducts(change, hiddenOf);
+          for (const [sid, h] of p.got) if (sid !== null) tabs.setHidden(sid, h);
+          break;
+        }
       }
     },
     // 会话红绿灯（后端翻好的活动态）
@@ -934,6 +943,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         meta.background,
         meta.name,
         meta.attachable,
+        meta.hidden,
       );
       // 上次所在 tab 是远端会话时在此补切（应用一次即清）。
       startup?.onAppeared(sessionId);
@@ -953,7 +963,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
     //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", HIDDEN_TOPIC] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。

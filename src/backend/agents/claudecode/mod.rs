@@ -178,6 +178,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     permission: Some(super::PermissionFace {
         flag: resume::PERMISSION_MODE_FLAG,
         modes: resume::PERMISSION_MODES,
+        shown: resume::SHOWN_MODES,
         switch: Some(super::ModeSwitch {
             key: "shift-tab",
             cycle_max: resume::MODE_CYCLE_MAX,
@@ -275,6 +276,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     }),
     project_dir: Some(parse::project_dir),
     mcp_said: Some(mcp::said_of),
+    quiet_unread: Some(record_of::quiet_unread_of),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

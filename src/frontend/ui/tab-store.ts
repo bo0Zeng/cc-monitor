@@ -11,7 +11,7 @@
 import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
 import type { Tab, TabsSummary } from "./tab-model";
-import { isLive, type ContainerEvent } from "./tab-session-state";
+import { isLive, isResumeOnly, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
 import { dotOf, needsOf } from "./session-face";
 import { barRows } from "./tab-drop";
@@ -125,7 +125,9 @@ export class TabStore {
       if (isLive(t.state)) live += 1;
       // 需手动那一份：种类 ＋ 挂着的请求（答题块按它换）＋ 只能在终端里答那一句 —— 种类不变、请求挂上 / 答掉也要通知。
       const n = needsOf(t);
-      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}`);
+      // 隐藏那一格 · 血缘：会话头的「已隐藏」「由 X 启动」「子会话 N」跟着换。
+      const lin = t.lineage ? `${t.lineage.startedBy?.sid ?? ""}\u0002${t.lineage.children.map((c) => `${c.sid}:${c.live ? 1 : 0}:${c.hidden?.by ?? ""}`).join(",")}` : "";
+      faces.push(`${t.sessionId}\u0001${dotOf(t)}\u0001${n?.kind ?? ""}\u0001${n?.ask?.id ?? ""}\u0001${n?.manualText ?? ""}\u0001${t.pending[0]?.name ?? ""}\u0001${t.hidden?.said ?? ""}\u0001${lin}`);
     }
     return { total: this.tabs.size, live, dead: this.tabs.size - live, faces: faces.join("\u0000") };
   }
@@ -139,12 +141,30 @@ export class TabStore {
    * **条上看到的顺序**：组与散的混排在 `orderedIds` 里，每个组的组员聚到它第一个组员那一格（`tab-drop.ts::barRows`）。
    * Shift 连选 · 「需手动」读这一个顺序；给了 `skipCollapsed` ⇒ 跳过那些收着的组里的（数字键 · `]` `[` · 关掉后落到哪）。
    */
-  visibleOrder(groupIds: readonly string[], skipCollapsed?: ReadonlySet<string>): string[] {
+  visibleOrder(groupIds: readonly string[], skipCollapsed?: ReadonlySet<string>, skipHidden = false): string[] {
     const out: string[] = [];
-    for (const r of barRows(this.orderedIds, (sid) => this.tabs.get(sid)?.group ?? null, groupIds, skipCollapsed)) {
+    for (const r of barRows(this.barIds(), (sid) => this.tabs.get(sid)?.group ?? null, groupIds, skipCollapsed)) {
       if (r.kind === "tab" && !r.hidden) out.push(r.sid);
     }
+    // 「已隐藏」那一行排在栏的最后（`skipHidden` ＝ 那一行收着，看不见的不走）。
+    if (!skipHidden) out.push(...this.hiddenRow());
     return out;
+  }
+
+  /** 占标签页的那些（不隐藏的），按 `orderedIds`。 */
+  barIds(): string[] {
+    return this.orderedIds.filter((sid) => this.tabs.get(sid)?.hidden == null);
+  }
+
+  /**
+   * 「已隐藏」那一行里列的：隐藏的、还没结束的（结束了就不列，要看去历史）；当前看着的那一个已结束了也先留着，切走再收（`TabManager.reapHidden`）。
+   * 按 `orderedIds`。隐藏不隐藏只看 `Tab.hidden`（后端那一格），这里不判。
+   */
+  hiddenRow(): string[] {
+    return this.orderedIds.filter((sid) => {
+      const t = this.tabs.get(sid);
+      return t !== undefined && t.hidden != null && (!isResumeOnly(t.state) || sid === this.activeId);
+    });
   }
 
   /**

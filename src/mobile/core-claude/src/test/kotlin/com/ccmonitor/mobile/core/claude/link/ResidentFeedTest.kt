@@ -167,4 +167,27 @@ class ResidentFeedTest {
             core.emit("lost", "")
             assertEquals(1, lost)
         }
+
+    @Test
+    fun `活卡帧解出来发到 live；认不出的那一帧只报一次契约对不上、不发`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val broken = mutableListOf<String>()
+            val f =
+                ResidentFeed(
+                    scope = backgroundScope,
+                    core = core,
+                    machine = { "box" },
+                    ssh = MutableStateFlow(SshLink("""{"host":"h"}""")),
+                    mine = "p10g-mine",
+                    tz = "Asia/Shanghai",
+                    onBreak = { broken += it },
+                ).also { it.ensure() }
+            val got = mutableListOf<LiveFrame>()
+            backgroundScope.launch { f.live.collect { got += it } }
+            core.emit("frame", """{"kind":"live_card","sid":"s1","card":4,"n":1,"op":"text","i":0,"s":"字"}""")
+            core.emit("frame", """{"kind":"live_card","sid":"s1","card":4,"n":2,"op":"grow"}""")
+            assertEquals(listOf(LiveFrame("s1", null, 4, 1, LiveFrame.Op.Text(0, "字"))), got)
+            assertEquals(1, broken.size)
+        }
 }

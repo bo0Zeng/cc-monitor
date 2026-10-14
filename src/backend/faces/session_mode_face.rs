@@ -38,7 +38,7 @@ pub(crate) struct ModeSwitched {
     pub(crate) result: SwitchResult,
     /// 最后读到的档（原值）；没读 · 认不出 ⇒ `null`。
     pub(crate) mode: Option<&'static str>,
-    /// 同一档写给人看的字；那一家起会话不给这一档 · 没读到 ⇒ `null`。
+    /// 同一档写给人看的字（同会话事实 `permissionModeText` 那一处：`PermissionFace::text_of`）；没读到 · 这一档没有字 ⇒ `null`。
     #[cfg_attr(test, ts(type = "string | null"))]
     pub(crate) mode_text: Option<Words>,
     /// `refused` 的原因（同 `terminal-input`）。
@@ -269,10 +269,7 @@ fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
         watch: None,
     };
     let mut got = switch_with(&req.mode, &sw, waiting, &mut io)?;
-    got.mode_text = got
-        .mode
-        .and_then(|m| perm.modes.iter().find(|c| c.value == m))
-        .map(|c| Words((c.text)()));
+    got.mode_text = got.mode.and_then(|m| perm.text_of(m)).map(Words);
     Ok(got)
 }
 

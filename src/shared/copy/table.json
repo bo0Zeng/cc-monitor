@@ -1419,8 +1419,15 @@
     "beLaunch.type.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 往 {target} 发送失败 · tmux 报错 · 内容可能未进去",
-      "args": ["target"],
+      "zh": "启动命令未送达 · tmux 会话 {name} · tmux 报错",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beLaunch.type.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动命令送达未知 · tmux 无应答\n先看 tmux 会话 {name} 的画面",
+      "args": ["name"],
       "limited": ["tmux"]
     },
     "beStderrFd.point.dupFailed": {
@@ -1722,6 +1729,18 @@
       "kind": "error",
       "role": "原因格",
       "zh": "权限档切换结果未知\n按键后屏幕未变",
+      "args": []
+    },
+    "beSessionMode.mode.bypassPermissions": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "跳过所有确认",
+      "args": []
+    },
+    "beSessionMode.mode.dontAsk": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "只用已允许的工具",
       "args": []
     },
     "beSessionMode.switch.unsupported": {
@@ -3483,6 +3502,18 @@
       "zh": "无法识别的记录 · {type} · {n} 条",
       "args": ["type", "n"]
     },
+    "record.unread.quiet": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "无法识别 {n} 行（类型：{types}）",
+      "args": ["n", "types"]
+    },
+    "record.unread.quietSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
     "record.unread.parseFailed": {
       "kind": "body",
       "role": "说明",
@@ -4420,6 +4451,18 @@
       "zh": "关闭标签页（{n}）",
       "args": ["n"]
     },
+    "tabBatch.menu.hide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "隐藏（{n}）",
+      "args": ["n"]
+    },
+    "tabBatch.menu.unhide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "取消隐藏（{n}）",
+      "args": ["n"]
+    },
     "tabBatch.stop.line": {
       "kind": "body",
       "role": "片段",
@@ -4521,6 +4564,18 @@
       "kind": "body",
       "role": "片段",
       "zh": "不在分组",
+      "args": []
+    },
+    "tabBatch.why.hidden": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已隐藏",
+      "args": []
+    },
+    "tabBatch.why.notHidden": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未隐藏",
       "args": []
     },
     "tabBatch.why.noTmux": {
@@ -7849,6 +7904,43 @@
       "args": [],
       "limited": ["tmux"]
     },
+    "settings.machine.childTab": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "子会话",
+      "args": []
+    },
+    "settings.machine.childTabTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "在会话里用 ccm 启动的会话 · 默认进不进标签栏",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "settings.machine.bgTab": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "分身会话",
+      "args": []
+    },
+    "settings.machine.bgTabTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "Claude 在后台起的主会话副本 · 默认进不进标签栏",
+      "args": []
+    },
+    "settings.machine.tabShow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "显示",
+      "args": []
+    },
+    "settings.machine.tabHide": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "隐藏",
+      "args": []
+    },
     "settingsPanel.behavior.resumeInTmuxHelp": {
       "kind": "body",
       "role": "说明",
@@ -7858,18 +7950,6 @@
       "waive": {
         "C-W14": "说明开关的效果（恢复到 tmux 里），不是 tmux 缺失 / 启动失败那一族"
       }
-    },
-    "settingsPanel.behavior.showHiddenTasks": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "显示分身会话",
-      "args": []
-    },
-    "settingsPanel.behavior.showHiddenTasksHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "分身会话的标签页带层叠图标 · 重启 cc-monitor 后生效",
-      "args": []
     },
     "settingsPanel.behavior.autoFront": {
       "kind": "control",
@@ -8068,12 +8148,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "保存失败",
-      "args": []
-    },
-    "settingsPanel.behavior.hiddenTasks": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "显示分身会话",
       "args": []
     },
     "settingsPanel.open.partialFailed": {
@@ -11828,7 +11902,7 @@
     "rsDriftLedger.consequence.unknownSessionKind": {
       "kind": "body",
       "role": "说明",
-      "zh": "按分身会话算 · 关「显示分身会话」即隐藏",
+      "zh": "按分身会话算 · 进不进标签栏照「分身会话」设置",
       "args": []
     },
     "rsDriftLedger.consequence.unknownSessionStatus": {
@@ -13917,6 +13991,72 @@
       "zh": "先填工作目录",
       "args": []
     },
+    "newSession.cwd.missing": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录不在",
+      "args": []
+    },
+    "login.sheet.account": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "登录账号",
+      "args": []
+    },
+    "login.act.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "打开登录页",
+      "args": []
+    },
+    "login.act.copyLink": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制链接",
+      "args": []
+    },
+    "login.act.paste": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "粘贴",
+      "args": []
+    },
+    "login.act.submit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "提交",
+      "args": []
+    },
+    "login.act.restart": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重新开始",
+      "args": []
+    },
+    "login.paste.code": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "授权码",
+      "args": []
+    },
+    "login.paste.redirectUrl": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "回跳地址",
+      "args": []
+    },
+    "login.paste.codeHelp": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "登录完成后登录页上显示的代码",
+      "args": []
+    },
+    "login.paste.redirectUrlHelp": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "浏览器无法打开的页面的完整地址",
+      "args": []
+    },
     "newSession.recheck.action": {
       "kind": "action",
       "role": "按钮",
@@ -15490,6 +15630,20 @@
       "zh": "ccm: 启动失败 · {kind} · {message}",
       "args": ["kind", "message"],
       "limited": ["ccm"]
+    },
+    "beCcm.execute.bareReaped": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "ccm: 刚建的 tmux 会话 {name} 只剩 shell · 已收掉",
+      "args": ["name"],
+      "limited": ["tmux", "ccm"]
+    },
+    "beCcm.execute.bareKept": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "ccm: 刚建的 tmux 会话 {name} 里已有别的程序 · 留着",
+      "args": ["name"],
+      "limited": ["tmux", "ccm"]
     },
     "bePlan.names.unreadable": {
       "kind": "body",
@@ -21542,6 +21696,12 @@
       "zh": "MCP {server} 需登录",
       "args": ["server"]
     },
+    "beManual.list.mcpNoFix": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{agent} 不支持在 app 里登录 MCP · 需在会话里登录",
+      "args": ["agent"]
+    },
     "beQuotaProbe.run.exit": {
       "kind": "error",
       "role": "报错",
@@ -23213,6 +23373,24 @@
       "role": "菜单项",
       "zh": "调整会话头按钮…",
       "args": []
+    },
+    "sessionHead.kin.hidden": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已隐藏",
+      "args": []
+    },
+    "sessionHead.kin.parent": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "由「{title}」启动",
+      "args": ["title"]
+    },
+    "sessionHead.kin.children": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "子会话 {n}",
+      "args": ["n"]
     },
     "sessionHead.edit.remove": {
       "kind": "action",
@@ -26804,6 +26982,60 @@
       "zh": "已取消固定「{title}」",
       "args": ["title"]
     },
+    "tabBar.hidden.row": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "已隐藏 {n}",
+      "args": ["n"]
+    },
+    "tabBar.hidden.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "不占标签页的活会话 · 历史与手机里照常可见",
+      "args": []
+    },
+    "tabBar.menu.hide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "隐藏",
+      "args": []
+    },
+    "tabBar.menu.unhide": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "取消隐藏",
+      "args": []
+    },
+    "tabBar.unhide.ruleHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "不再按「{said}」隐藏",
+      "args": ["said"]
+    },
+    "tabBar.hide.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已隐藏「{title}」",
+      "args": ["title"]
+    },
+    "tabBar.hide.doneMany": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已隐藏 ×{n}",
+      "args": ["n"]
+    },
+    "tabBar.hide.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "隐藏失败 · {title}",
+      "args": ["title"]
+    },
+    "tabBar.unhide.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "取消隐藏失败 · {title}",
+      "args": ["title"]
+    },
     "beProfile.name.own": {
       "kind": "error",
       "role": "报错",
@@ -29300,6 +29532,30 @@
       "zh": "打开抽屉",
       "args": []
     },
+    "mobNewSession.dir.browse": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "浏览…",
+      "args": []
+    },
+    "mobNewSession.dir.browseTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "选目录",
+      "args": []
+    },
+    "mobNewSession.dir.pick": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "选定目录",
+      "args": []
+    },
+    "mobNewSession.dir.up": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "上一级",
+      "args": []
+    },
     "mobNav.newSession.title": {
       "kind": "title",
       "role": "标题",
@@ -31574,6 +31830,12 @@
       "zh": "需手动 · 时区不明 · 分时段上限暂按 UTC 算",
       "args": []
     },
+    "beRotation.hint.tzNoZone": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动 · 时区不明 · 分时段暂按 UTC 算 · 本设备时区也不明",
+      "args": []
+    },
     "beRotation.hint.old": {
       "kind": "body",
       "role": "说明",
@@ -31844,6 +32106,78 @@
       "kind": "control",
       "role": "标签",
       "zh": "轮换",
+      "args": []
+    },
+    "session.model.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "模型",
+      "args": []
+    },
+    "session.permission.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "权限档",
+      "args": []
+    },
+    "session.model.unsure": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "换模型结果未知",
+      "args": []
+    },
+    "session.permission.unsure": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "换权限档结果未知",
+      "args": []
+    },
+    "session.clear.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "清空会话",
+      "args": []
+    },
+    "session.clear.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "从空的上下文重新开始 · 之前的对话留在会话列表里",
+      "args": []
+    },
+    "session.clear.ok": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "清空",
+      "args": []
+    },
+    "mobPlus.sheet.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "添加",
+      "args": []
+    },
+    "mobPlus.row.commands": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "命令",
+      "args": []
+    },
+    "mobPlus.row.skills": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Skill",
+      "args": []
+    },
+    "mobPlus.row.compact": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "压缩上下文",
+      "args": []
+    },
+    "mobPlus.row.clear": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "清空会话",
       "args": []
     }
   }

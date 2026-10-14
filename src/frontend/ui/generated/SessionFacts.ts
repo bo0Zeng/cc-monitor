@@ -7,6 +7,7 @@ import type { LastSay } from "./LastSay";
 import type { McpTrouble } from "./McpTrouble";
 import type { Needs } from "./Needs";
 import type { PendingCall } from "./PendingCall";
+import type { QuietUnread } from "./QuietUnread";
 import type { RetryRun } from "./RetryRun";
 import type { TokenUse } from "./TokenUse";
 import type { UsageFact } from "./UsageFact";
@@ -76,6 +77,11 @@ retries: Array<RetryRun>,
  */
 permissionMode: string | null, 
 /**
+ * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ */
+permissionModeText: Words | null, 
+/**
  * 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
  */
 tokens: TokenUse | null, 
@@ -107,4 +113,8 @@ startedBy: Kin | null,
 /**
  * 它起的子会话（按起的先后）；不累加，每次现查。
  */
-children: Array<Kin>, };
+children: Array<Kin>, 
+/**
+ * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+ */
+quietUnread: QuietUnread | null, };

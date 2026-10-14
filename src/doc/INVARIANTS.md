@@ -205,6 +205,8 @@
 
 未知 `type`、或已知 `type` 但字段解析失败而原文仍是合法 JSON ⇒ 抢救成 `JsonlRecord::Unrecognized`（留原文与链身份），不出 `parse_line` 之外丢掉；只有连 JSON 都不成立的行才回 `Err`。带链身份（`uuid` / `parentUuid`）的记录不论认不认得都进链（`chain.rs`）。各降级点各记一笔有界的账，住那台后端 `src/backend/agents/claudecode/drift.rs`（帧命令 `drift-report`）；在设置「机器 → 足迹 → 未识别的数据」查看。
 
+上屏只分一刀，判在适配层一处（`record_of::quiet_unread_of`）：没见过的 `type` 又没有链身份 ⇒ 那一家的簿记行，不画「认不出的记录」卡，会话事实 `quietUnread` 照实记几行、哪几种；带链身份的、已知类型形状变了的，照旧一行一张卡。
+
 **为什么不能松动**：一条记录静默消失，它的子记录就成了孤儿 ⇒ 主线判定把整支误判成「回退掉的」。
 
 ---
@@ -320,7 +322,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 任何会落盘、跨进程或上线的身份标识，必须 **opaque ＋ 稳定 ＋ 出生一次 ＋ 永不从名字 / 路径 / 位置算**。想不清就先别发，用外部已有的稳定 id 顶着（Claude Code 的 `sessionId`）。
 
-今天的持久身份全挂外部稳定 id：会话与历史注解按 `sessionId`（`history_annotations.rs::Table`）· `ps-registry` 按 pid。`origin`（`stream_source/config.rs` 的 `RemoteConfig.label`，空则回退 `host`）是用户可控的外部 id，只做结构字段与内存表的键，不当任何落盘登记表的主键；别把它换成从 IP / 路径现算的值。会话 / 后端登记表的主键不许拿 tmux 会话名 · 主机名 · 路径。
+今天的持久身份全挂外部稳定 id：会话与历史注解按 `sessionId`（`cmd-wire/src/listing.rs::Table`）· `ps-registry` 按 pid。`origin`（`stream_source/config.rs` 的 `RemoteConfig.label`，空则回退 `host`）是用户可控的外部 id，只做结构字段与内存表的键，不当任何落盘登记表的主键；别把它换成从 IP / 路径现算的值。会话 / 后端登记表的主键不许拿 tmux 会话名 · 主机名 · 路径。
 
 **为什么是单向门**：id 一旦被别处引用或落盘就锁死；拿会变的值当键（Claude Code 自己的 `enc(cwd)`）一搬目录历史全对不上。
 

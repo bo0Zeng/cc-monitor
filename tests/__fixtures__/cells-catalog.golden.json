@@ -1114,8 +1114,32 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "permissionModeText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "projectDir",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "quietUnread.count",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "quietUnread.kinds[]",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "quietUnread.text",
           "type": "string"
         },
         {

@@ -34,6 +34,7 @@
 //! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
 //! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 断开 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
+//! | `quietUnread` | 认不出、又不成卡的行（适配层 `agents::quiet_unread_of` 判：没见过的顶层类型 ＋ 没有链上身份 ⇒ 那一家的簿记行）：几行 · 哪几种（首见序，至多 [`QUIET_KINDS_KEEP`] 种，再多只加数）· 写好的一句；一行都没有 ⇒ `null` |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
@@ -43,6 +44,7 @@
 //! 能改动事实的记录必然带着那几个键名（Claude Code 写 JSON 不转义 ASCII 字母），由判据逐行对拍「过滤 / 不过滤」两向相等。
 
 use crate::common::cells::Words;
+pub(crate) use cmd_wire::needs::{Needs, NeedsKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -101,6 +103,9 @@ pub(crate) const BG_KEEP: usize = 16;
 
 /// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
+
+/// `quietUnread` 至多记多少种类型（再多的只加行数）。
+pub(crate) const QUIET_KINDS_KEEP: usize = 16;
 /// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
 pub(crate) const SAY_CHARS: usize = 160;
 
@@ -176,6 +181,9 @@ pub(crate) struct SessionFacts {
     pub(crate) retries: Vec<RetryRun>,
     /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
     pub(crate) permission_mode: Option<String>,
+    /// 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+    /// 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+    pub(crate) permission_mode_text: Option<Words>,
     /// 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
     pub(crate) tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
@@ -195,6 +203,8 @@ pub(crate) struct SessionFacts {
     /// 它起的子会话（按起的先后）；不累加，每次现查。
     #[serde(default)]
     pub(crate) children: Vec<Kin>,
+    /// 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+    pub(crate) quiet_unread: Option<QuietUnread>,
 }
 
 /// 会话血缘里的另一条会话（会话头「由 … 启动」· 「子会话 N」那一列）：编号 · 叫它什么 · 活不活 · 隐不隐藏（判定住 `control/session_hidden.rs`）。
@@ -211,6 +221,20 @@ pub(crate) struct Kin {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) hidden: Option<cmd_wire::session::Hidden>,
+}
+
+/// 认不出、又不成卡的那几行（会话事实 `quietUnread`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct QuietUnread {
+    /// 「无法识别 N 行（类型：a · b）」。
+    pub(crate) text: Words,
+    /// 几行。
+    pub(crate) count: u32,
+    /// 哪几种（原文里的 `type`，首见序，至多 [`QUIET_KINDS_KEEP`] 种）。
+    pub(crate) kinds: Vec<String>,
 }
 
 /// 一条还没收场的后台命令。
@@ -562,67 +586,6 @@ pub(crate) struct LastSay {
     /// `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) at_ms: Option<i64>,
-}
-
-/// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum NeedsKind {
-    /// 批准一个工具调用（或别的批准框）。
-    Approve,
-    /// 回答一个问题 / 填那一侧要的输入。
-    Answer,
-    /// 批准计划。
-    Plan,
-    /// 放行沙箱里的命令联网。
-    Network,
-    /// 批准协作的另一个运行发来的请求。
-    Worker,
-    /// 确认它提的会话目标。
-    Goal,
-    /// 在开着的对话框里选一项。
-    Choose,
-    Unknown,
-}
-
-/// **需手动**的成品：种类 · 等的那一句 · 从何时起等。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Needs {
-    pub(crate) kind: NeedsKind,
-    /// 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
-    pub(crate) tool: Option<String>,
-    /// 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
-    pub(crate) call: Option<String>,
-    /// 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
-    pub(crate) what: Option<String>,
-    /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) since_ms: Option<u64>,
-    /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
-    pub(crate) text: Words,
-    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
-    pub(crate) head: Words,
-    /// 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
-    pub(crate) head_code: Option<String>,
-    /// 语气（恒 `need`）。
-    pub(crate) tone: crate::common::cells::Tone,
-    /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
-    pub(crate) rank: u8,
-    /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
-    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) waited_ms: Option<u64>,
-    /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
-    pub(crate) waited_text: Option<Words>,
-    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
-    pub(crate) ask: Option<crate::agents::asks::Ask>,
-    /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
-    pub(crate) manual_text: Option<Words>,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -1020,6 +983,8 @@ pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, rel
 pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
     (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
         || contains(line, b"\"permission-mode\"")
+        // 认不出、又不成卡的行（[`note_quiet`]）：没有链上身份 ⇒ 行里没有 `"uuid"` 字样（簿记行都短）。
+        || !contains(line, b"\"uuid\"")
         || contains(line, b"\"cost-state\"")
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
@@ -1108,6 +1073,31 @@ fn note_mcp(f: &mut SessionFacts, v: &Value) {
         put(S::Failed, now.collect());
     }
     f.mcp.sort_by(|a, b| a.name.cmp(&b.name));
+}
+
+/// 这一家说这一行认不出、又不成卡 ⇒ 记一行（种类首见序），那一句照新的数重写。
+fn note_quiet(f: &mut SessionFacts, v: &Value) {
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let Some(t) = crate::agents::quiet_unread_of(kind, v) else {
+        return;
+    };
+    let q = f.quiet_unread.get_or_insert_with(|| QuietUnread {
+        text: Words(String::new()),
+        count: 0,
+        kinds: Vec::new(),
+    });
+    q.count += 1;
+    if !q.kinds.contains(&t) && q.kinds.len() < QUIET_KINDS_KEEP {
+        q.kinds.push(t);
+    }
+    let n = q.count.to_string();
+    let types = q
+        .kinds
+        .join(&copy_core::copy_text("record.unread.quietSep", &[]));
+    q.text = Words(copy_core::copy_text(
+        "record.unread.quiet",
+        &[("n", &n), ("types", &types)],
+    ));
 }
 
 fn open_retry(f: &SessionFacts) -> bool {
@@ -1205,6 +1195,7 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
     note_retry(f, kind, v);
     note_background(f, v, at.as_ref());
     note_mcp(f, v);
+    note_quiet(f, v);
     match kind {
         Some("user") => note_user(f, v),
         Some("assistant") => {

@@ -2,9 +2,14 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.FirstSay
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
+import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewReply
 import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
@@ -28,7 +33,21 @@ object SessionNew {
         ticket: String,
         agent: String,
         prompt: String,
-    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt)
+        /** 改过账号 ⇒ 那个号名（`account: {kind: named}`）；没改 ⇒ `null`、不交（那台按它的默认号）。 */
+        account: String? = null,
+        /** 改过轮换 ⇒ 那一份（不轮换 ＝ `strategy: null`）；没改 ⇒ `null`、不交（那台按「新会话用」那份）。 */
+        rotation: Rotation? = null,
+    ): Map<String, Any?> =
+        buildMap {
+            putAll(mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt))
+            account?.let { put("account", mapOf("kind" to "named", "name" to it)) }
+            rotation?.let { put("rotation", mapOf("strategy" to it.strategy)) }
+        }
+
+    /** 这一条新会话用哪份轮换策略（`session-new.rotation`）：[strategy] 为 `null` ＝ 不轮换。 */
+    data class Rotation(
+        val strategy: String?,
+    )
 
     /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（终端屏「后台起」那一格）。 */
     fun inTmux(
@@ -73,6 +92,9 @@ object SessionNewFacts {
 
     fun of(data: Any?): List<AgentFacts>? = Wire.bind<NewFacts>(data)?.agents
 
+    /** 整份（新建会话那几屏还要最近的目录）。 */
+    fun full(data: Any?): NewFacts? = Wire.bind<NewFacts>(data)
+
     /** 这台存的那一家（线上 kind）；没存 · 那台不认 ⇒ 那台列的第一家；一家都没有 ⇒ `null`。 */
     fun pick(
         agents: List<AgentFacts>,
@@ -89,8 +111,43 @@ object SessionModel {
         model: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "model" to model, "client" to CLIENT)
 
-    /** 结局（`done` · `unsure` · `refused`）＋ 那台写好的那一句。 */
+    /** 结局（`done` · `unsure` · `refused`）＋ 读回的显示名 ＋ 那台写好的那一句。 */
     fun of(data: Any?): ModelSwitched? = Wire.bind<ModelSwitched>(data)
+}
+
+/** `session-permission`：中途给一条会话切权限档（那台按那一家的循环键、读回到了为止；在等人不按）。 */
+object SessionPermission {
+    const val COMMAND: String = "session-permission"
+
+    /** [mode] 是那台 `session-new-facts` 那一家 `permissionModes` 里的原值。 */
+    fun args(
+        sid: String,
+        mode: String,
+    ): Map<String, Any?> = mapOf("sid" to sid, "mode" to mode, "client" to CLIENT)
+
+    /** 结局 ＋ 读回那一档写给人看的字 ＋ 那台写好的那一句。 */
+    fun of(data: Any?): ModeSwitched? = Wire.bind<ModeSwitched>(data)
+}
+
+/** `session-commands`：一条会话能用的斜杠命令与 Skill（那台按那条会话的目录与号现扫，字也是它写的）。 */
+object SessionCommandList {
+    const val COMMAND: String = "session-commands"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+
+    fun of(data: Any?): SessionCommands? = Wire.bind<SessionCommands>(data)
+}
+
+/** `session-say`：往一条会话说一句（那台判：在等人不送 · 终端没了按记下的号恢复再交）。结局同 [TerminalInput]。 */
+object SessionSay {
+    const val COMMAND: String = "session-say"
+
+    fun args(
+        sid: String,
+        text: String,
+    ): Map<String, Any?> = mapOf("sid" to sid, "text" to text, "client" to CLIENT)
+
+    fun of(data: Any?): TerminalInput.Result? = TerminalInput.of(data)
 }
 
 /** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
@@ -170,19 +227,18 @@ object HistoryRead {
     ): Map<String, Any?> = mapOf("path" to path, "offset" to offset, "until" to until)
 
     data class Page(
-        val records: List<Map<String, Any?>>,
+        val records: List<LineRecord>,
         /** 每条记录那一行之后的字节（与 [records] 一一对应）。 */
         val ends: List<Long>,
         val next: Long,
         val eof: Boolean,
     )
 
-    fun of(data: Any?): Page? =
-        decoding {
-            val m = data.asObj()
-            val rows = m.objs("rows").need().mapNotNull { r -> r.obj("record")?.let { it to (r.num("end") ?: -1L) } }
-            Page(rows.map { it.first }, rows.map { it.second }, m.num("next").need(), m.bool("eof") == true)
-        }
+    fun of(data: Any?): Page? {
+        val p = Wire.bind<HistoryReadPage>(data) ?: return null
+        val rows = p.rows.mapNotNull { r -> r.record?.let { it to (r.end ?: -1L) } }
+        return Page(rows.map { it.first }, rows.map { it.second }, p.next, p.eof)
+    }
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
@@ -196,7 +252,7 @@ object HistoryLines {
     ): Map<String, Any?> = mapOf("path" to path, "from" to from, "until" to until)
 
     data class Page(
-        val records: List<Map<String, Any?>>,
+        val records: List<LineRecord>,
         /** 每条记录的行号（与 [records] 一一对应）。 */
         val seqs: List<Long>,
         /** 下一段从这一行起。 */
@@ -204,15 +260,13 @@ object HistoryLines {
         val eof: Boolean,
     )
 
-    fun of(data: Any?): Page? =
-        decoding {
-            val m = data.asObj()
-            val rows = m.objs("lines").need().mapNotNull { l -> l.obj("record")?.let { it to l.num("seq").need() } }
-            Page(rows.map { it.first }, rows.map { it.second }, m.num("next").need(), m.bool("eof") == true)
-        }
+    fun of(data: Any?): Page? {
+        val p = Wire.bind<HistoryLinesPage>(data) ?: return null
+        return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof)
+    }
 }
 
-/** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号）。 */
+/** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号；形状对不上的那一条核心那一层已换成认不出那一条〔`unread` 卡〕，同按页读的那两条）。 */
 data class RecordLine(
     val sid: String,
     val path: String,
@@ -220,13 +274,14 @@ data class RecordLine(
     val seq: Long,
     /** 这一行末尾在文件里的累计字节。 */
     val byteOffset: Long?,
-    val record: Map<String, Any?>?,
+    val record: LineRecord?,
 ) {
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
+            val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
             return decoding {
-                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), frame.obj("record"))
+                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record)
             }
         }
     }

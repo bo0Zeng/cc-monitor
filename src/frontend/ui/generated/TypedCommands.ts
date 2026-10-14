@@ -400,7 +400,7 @@ export interface TypedCommands {
   "machines-read": { req: NoArgs; reply: MachinesReply; code: "bad_args" };
   "machines-set": { req: MachinesEdits; reply: MachinesSet; code: "bad_args" | "unreadable" | "element_gone" | "element_exists" | "bad_machine" | "io_failed" };
   "machines-try": { req: MachinesEdits; reply: MachinesTried; code: "bad_args" };
-  "manual-list": { req: NoArgs; reply: ManualList; code: "bad_args" };
+  "manual-list": { req: NoArgs; reply: ManualList; code: "bad_args" | "unreadable" };
   "mcp-read": { req: McpReadReq; reply: McpReadReply; code: "bad_args" | "too_large" };
   "mcp-sync-apply": { req: McpApplyReq; reply: McpApplied; code: "bad_args" | "bad_file" | "bad_path" | "needs_input" | "refused" | "stale" };
   "mcp-sync-preview": { req: McpPreviewReq; reply: McpPreview; code: "bad_args" | "bad_file" | "bad_path" | "refused" };

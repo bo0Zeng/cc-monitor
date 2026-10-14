@@ -8,4 +8,8 @@ export type ManualItem = { "kind": "accountLogin", agent: string, account: strin
 /**
  * 在哪个号里；没设账号的那一份 ⇒ `null`。
  */
-account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, };
+account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, 
+/**
+ * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+ */
+why?: string, };

@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,6 +31,12 @@ private const val FRESH = "fresh"
 
 /** 指数退避 `baseDelay shl n` 的 n 上限，防 Long 溢出（2^20×base 早已超过 maxDelay）。 */
 private const val MAX_BACKOFF_SHIFT = 20
+
+/**
+ * 探活这么久还没回话才另拨一条新的、两边接着赛跑（[SshConnectionManager] 的 keepOrReplace）。健康的旧连接一个来回就回话，
+ * 这一段内回了就不另拨（另拨的那两条会在那台多记两次登录）；黑洞上换上新连接只晚这一小段。
+ */
+internal const val FRESH_AFTER_MS = 400L
 
 /**
  * 探活的兜底期限：只在「新起的那条也站不住」（网整个不通）时才走到它；平时谁先站住由对端回话定（[SshConnectionManager] 的 keepOrReplace）。
@@ -97,7 +105,7 @@ class SshConnectionManager(
         val emit: (SshConnectEvent.Stage, String) -> Unit = { stage, msg ->
             onEvent?.invoke(SshConnectEvent(first.host, first.port, stage, msg))
         }
-        // 已有活连接就复用：同主机多个 tab 共享一条连接，各自 openShell。快路径不进锁；复用前让对端答（与一条新连接同时起跑）。
+        // 已有活连接就复用：同主机多个 tab 共享一条连接，各自 openShell。快路径不进锁；复用前让对端答（几百毫秒没回话才另拨一条，见 keepOrReplace）。
         reusableOrReplaced(id, emit, onEvent)?.let { return it }
         // 另一个 connect 在飞时提示在等。isLocked 只是快照，只用来出提示，不参与决策。
         if (connectLockFor(id).isLocked) emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.waitOther"))
@@ -135,8 +143,9 @@ class SshConnectionManager(
     }
 
     /**
-     * 旧连接还能不能用，让对端答，不靠等期限：探活（对端回 CHANNEL_OPEN 的确认）与一条新连接同时起跑，谁先站住用谁。
-     * - 旧的先回话 ⇒ 留旧的，新起的那条当场关（多半还在 TCP / banner 那一步）。
+     * 旧连接还能不能用，让对端答，不靠等期限：先探活（对端回 CHANNEL_OPEN 的确认），[FRESH_AFTER_MS] 内没回话才另拨一条新连接，谁先站住用谁。
+     * - 旧的在那一小段里回了话 ⇒ 留旧的，一条都不另拨。
+     * - 旧的另拨之后才回话 ⇒ 留旧的，新起的那条当场关（多半还在 TCP / banner 那一步）。
      * - 新的先认证完 ⇒ 旧的比新建一条还慢，留着也没用：装上新的（[linkOf] 换一条），旧的后台关。这样复用永远不慢于新建。
      * - 旧的答「死」（对端回了 RST 一类）⇒ 等新的那条。
      * - 两边都不成 ⇒ 摘掉旧的（替换，不自增代号），回 null，调用方照原来的路重连。
@@ -175,32 +184,18 @@ class SshConnectionManager(
         onEvent: ((SshConnectEvent) -> Unit)?,
         onDead: () -> Unit,
     ): SshTransport? {
-        val fresh = transportFactory(knownHostStore)
-        synchronized(lockFor(id)) {
-            val st = stateFor(id)
-            if (st.generation != gen) return null // 期间被断开
-            st.racing = fresh
-        }
+        val probe = reconnectScope.async { runCatching { existing.probeAlive(PROBE_TIMEOUT_MS) }.getOrDefault(false) }
+        // 先只等探活一小段：这一段里回了「活」⇒ 留旧的，不另拨；答「死」或还没回话 ⇒ 另拨一条，接着赛跑。
+        if (withTimeoutOrNull(FRESH_AFTER_MS) { probe.await() } == true) return stillInstalled(id, existing)
+        val fresh = freshIfCurrent(id, gen) ?: return null.also { probe.cancel() }
         try {
-            val probe = reconnectScope.async { runCatching { existing.probeAlive(PROBE_TIMEOUT_MS) }.getOrDefault(false) }
             val made = reconnectScope.async { runCatching { handshake(fresh, cfgs, onEvent, AtomicBoolean()) }.isSuccess }
-            val first =
-                select {
-                    probe.onAwait { PROBE to it }
-                    made.onAwait { FRESH to it }
-                }
-            val keepOld: Boolean? =
-                when (first) {
-                    PROBE to true -> true
-                    FRESH to true -> false
-                    PROBE to false -> false.takeIf { made.await() }
-                    else -> true.takeIf { probe.await() }
-                }
+            val keepOld = keepOld(probe, made)
             if (keepOld != true) onDead()
             return when (keepOld) {
                 true -> {
                     closeInBackground(listOf(fresh))
-                    existing.takeIf { states[id]?.connection === it && it.isConnected }
+                    stillInstalled(id, existing)
                 }
                 false -> {
                     probe.cancel()
@@ -216,6 +211,40 @@ class SshConnectionManager(
             synchronized(lockFor(id)) { stateFor(id).let { if (it.racing === fresh) it.racing = null } }
         }
     }
+
+    /** 探活与新连接谁先站住：旧的回了「活」⇒ true（留旧的）；新的先认证完 ⇒ false（换上新的）；两边都不成 ⇒ null。 */
+    private suspend fun keepOld(
+        probe: Deferred<Boolean>,
+        made: Deferred<Boolean>,
+    ): Boolean? {
+        val first =
+            select {
+                probe.onAwait { PROBE to it }
+                made.onAwait { FRESH to it }
+            }
+        return when (first) {
+            PROBE to true -> true
+            FRESH to true -> false
+            PROBE to false -> false.takeIf { made.await() }
+            else -> true.takeIf { probe.await() }
+        }
+    }
+
+    /** 旧的那条还装着、本地标志也还活 ⇒ 它；否则 null（期间被断开 · 被换掉了）。 */
+    private fun stillInstalled(
+        id: String,
+        existing: SshTransport,
+    ): SshTransport? = existing.takeIf { states[id]?.connection === it && it.isConnected }
+
+    /** 代号没变（期间没被断开）⇒ 造一条新的、记成在赛跑的那条；变了 ⇒ null（先核再造，不留一条没人关的）。 */
+    private fun freshIfCurrent(
+        id: String,
+        gen: Int,
+    ): SshTransport? =
+        synchronized(lockFor(id)) {
+            val st = stateFor(id)
+            if (st.generation == gen) transportFactory(knownHostStore).also { st.racing = it } else null
+        }
 
     /**
      * 真正建连的临界区体，被 [connect] 的单飞锁包着。
@@ -560,7 +589,7 @@ class SshConnectionManager(
     /**
      * 前台或网络恢复时，重连底层已死但状态仍是 CONNECTED 的会话。
      * 本地 `isConnected` 对黑洞断网（无 FIN）好一阵仍是 true，所以本地标志还活着的会话让对端答（keepOrReplace：
-     * 探活与一条新连接同时起跑，谁先站住用谁），两边都不成才走退避重连；本地标志已死的直接重连。同一台同时只跑一场。
+     * 先探活，几百毫秒没回话才另拨一条、谁先站住用谁），两边都不成才走退避重连；本地标志已死的直接重连。同一台同时只跑一场。
      */
     fun probeAndReconnectStale() {
         _sessions.value.values
@@ -583,7 +612,7 @@ class SshConnectionManager(
                 when {
                     // 本地标志已死：直接重连。
                     st.isStaleReconnectCandidate(existing?.isConnected == true) -> reconnect(st)
-                    // 本地标志仍活：让对端答（与一条新连接同时起跑，见 keepOrReplace）；两边都不成才走退避重连。
+                    // 本地标志仍活：让对端答（几百毫秒没回话才另拨一条，见 keepOrReplace）；两边都不成才走退避重连。
                     existing != null && st.countsAsActive() ->
                         reconnectScope.launch { if (keepOrReplace(st.id, existing) == null) reconnect(st) }
                 }

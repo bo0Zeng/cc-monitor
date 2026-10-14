@@ -79,7 +79,7 @@ class SessionsTest {
         val page = HistoryRead.of(reads["history-read"])!!
         assertEquals(273L, page.next)
         assertTrue(page.eof)
-        assertEquals(listOf("r-1", "r-2"), page.records.map { it.str("id") })
+        assertEquals(listOf("r-1", "r-2"), page.records.map { it.id })
         assertEquals(listOf(152L, 273L), page.ends)
     }
 
@@ -90,9 +90,17 @@ class SessionsTest {
         assertEquals("s1", a.sid)
         assertEquals(120L, a.byteOffset)
         assertEquals("行号与 history-lines · stream-watch 的 from 同一个空间", 3L, a.seq)
-        assertEquals("u1", a.record?.str("id"))
+        assertEquals("u1", a.record?.id)
         assertNull(RecordLine.of(least)!!.record)
         assertNull(RecordLine.of(mapOf("kind" to "session_added", "sid" to "s1")))
+    }
+
+    @Test
+    fun `line 帧：核心把解不开的那条换成的认不出那一条照常装进来（类名可空 · 没有时刻）`() {
+        val card = mapOf("agent" to "", "id" to "unread:00ab", "t" to "unread", "why" to "unknownType", "type" to null, "text" to "无法识别的记录 · 无类型", "tone" to "warn", "excerpt" to "{}", "count" to 1)
+        val line = RecordLine.of(mapOf("kind" to "line", "session_id" to "s", "path" to "/p", "seq" to 3L, "record" to card))!!
+        assertEquals("无法识别的记录 · 无类型", line.record!!.text)
+        assertEquals("{}", line.record!!.excerpt)
     }
 
     @Test
@@ -100,7 +108,7 @@ class SessionsTest {
         assertEquals(mapOf("path" to "/p/a.jsonl", "from" to 4L, "until" to 9L), HistoryLines.args("/p/a.jsonl", 4, 9))
         val page = HistoryLines.of(reads["history-lines"])!!
         assertTrue(page.eof)
-        assertEquals(listOf("r-1", "r-2"), page.records.map { it.str("id") })
+        assertEquals(listOf("r-1", "r-2"), page.records.map { it.id })
         assertEquals(listOf(1L, 2L), page.seqs)
         assertEquals(3L, page.next)
         assertNull(HistoryLines.of(mapOf("lines" to emptyList<Any>())))

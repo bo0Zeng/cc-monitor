@@ -46,6 +46,11 @@ fn sq(s: &str) -> String {
 ///
 /// **`run-shell -b`**：`-b` 是后台执行 —— 不加的话 tmux 会**同步等**这条命令跑完，
 /// 把会话关闭这条路径卡在我们的进程启动上。
+///
+/// **不出声**（[`QUIET`]）：输出全丢、退出码恒 0。`run-shell` 有输出或退非零时，tmux 把那句话用 view-mode 盖在
+/// 钩子目标的窗格上 —— 对 `session-created` 来说就是刚建好的那个会话；之后往里送的启动命令会被 view-mode 的键表吃掉
+/// （10-13：一组指向已删工作树的钩子回 127，`ccm` 起的 claude 就这么没起来）。`notify` 自己恒退 0；
+/// 要挡的是程序不在 / 起不来那一形（127 · 126），那一形只有 shell 接得住。
 pub(crate) fn hook_set_args(
     event: &str,
     slot: u32,
@@ -55,7 +60,7 @@ pub(crate) fn hook_set_args(
 ) -> Vec<String> {
     // 本二进制就叫 `ccm` ⇒ 叫后端子命令一律 `<exe> -- <子命令>`（没有 `--` 会整行交给 claude）。
     let payload = format!(
-        "{} -- {NOTIFY_FLAG} {pid} {starttime}",
+        "{} -- {NOTIFY_FLAG} {pid} {starttime} {QUIET}",
         sq(&exe.to_string_lossy())
     );
     vec![
@@ -65,6 +70,9 @@ pub(crate) fn hook_set_args(
         format!("run-shell -b {}", sq(&payload)),
     ]
 }
+
+/// 钩子命令的尾巴：输出丢掉、退出码恒 0（见 [`hook_set_args`]）。认格（[`occupant_of`]）只看旗标后面两个数，不看它。
+const QUIET: &str = ">/dev/null 2>&1 || true";
 
 /// 摘一格（生产只用它摘**死槽**：载荷认得出、那个 pid 的 starttime 对不上的那几格）。
 ///
@@ -279,8 +287,60 @@ pub fn install_for_this_process() {
         tracing::warn!("拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）");
         return;
     };
+    let entry = crate::platform::paths::installed_ccm_entry()
+        .and_then(|e| crate::platform::fs::Ro::canonicalize(e).ok());
+    if entry.as_deref() != Some(exe.as_path()) {
+        let socket = socket_path(&mut run_tmux);
+        if !hooks_allowed(&exe, entry.as_deref(), socket.as_deref()) {
+            tracing::info!(
+                "这个后端（{}）不在安装位置，连到的是用户的默认 tmux server（{}）⇒ 不装 hook（这台 server 上会话生 / 死 / 改名不立刻重探，等别的事件触发）",
+                exe.display(),
+                socket.as_deref().unwrap_or("socket 问不出")
+            );
+            return;
+        }
+    }
     let n = install_hooks(&exe, me, start);
     tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
+}
+
+/// 这个后端能不能往它连到的那台 server 上装 hook。
+///
+/// 装在安装位置的那一份（`exe` 就是 `<家>/.cc-monitor/bin/ccm`，`entry` 是它解开链接后的路径）⇒ 能。
+/// 别的（开发版：工作树的 `.build/…`、测试程序）⇒ 只往**不是用户默认 server** 的那台装：e2e 的 shim 强插 `-L`、
+/// 台架给私有 `TMUX_TMPDIR`，都不是默认那台；问不出 socket ⇒ 不装（宁可少一条通知，不碰用户那台）。
+/// 起因（10-13）：某一路在 tmux 窗格里起的开发版后端继承了 `$TMUX`，把 hook 装到了用户的默认 server 上，
+/// 工作树一删，那组 hook 每建一个会话就回 127。
+pub(crate) fn hooks_allowed(exe: &Path, entry: Option<&Path>, socket: Option<&str>) -> bool {
+    if entry == Some(exe) {
+        return true;
+    }
+    socket.is_some_and(|s| !is_users_default_socket(s))
+}
+
+/// 用户的默认 server：`<临时根>/tmux-<uid>/default`（临时根 = [`crate::platform::paths::temp_root`]，unix 上 `/tmp`；不带 `-L` / `-S`、也没设 `TMUX_TMPDIR` 时 tmux 连的那一台）。
+pub(crate) fn is_users_default_socket(s: &str) -> bool {
+    let p = Path::new(s);
+    let uid_dir = p.parent();
+    p.file_name().is_some_and(|n| n == "default")
+        && uid_dir.and_then(Path::parent) == Some(crate::platform::paths::temp_root().as_path())
+        && uid_dir
+            .and_then(Path::file_name)
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_prefix("tmux-"))
+            .is_some_and(|uid| !uid.is_empty() && uid.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// 这个后端连到的那台 server 的 socket（tmux 自己答，不按环境推：shim 插的 `-L` 环境里看不见）。没答成 ⇒ `None`。
+fn socket_path(run: TmuxRun<'_>) -> Option<String> {
+    match run(&[
+        "display-message".into(),
+        "-p".into(),
+        "#{socket_path}".into(),
+    ]) {
+        Ok((true, out)) => Some(out.trim().to_string()).filter(|s| !s.is_empty()),
+        _ => None,
+    }
 }
 
 /// 「装那一格的那个后端还在不在」—— 与 [`notify`] 同一条身份校验（pid 的 starttime 对得上）。

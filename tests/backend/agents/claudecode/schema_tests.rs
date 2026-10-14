@@ -369,7 +369,13 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
             | JsonlRecord::PrLink {}
             | JsonlRecord::Relocated {}
             | JsonlRecord::WorktreeState {}
-            | JsonlRecord::FrameLink {} => "status-line",
+            | JsonlRecord::FrameLink {}
+            | JsonlRecord::AtisLatch {}
+            | JsonlRecord::HistorySuppression {}
+            | JsonlRecord::BridgeSession {}
+            | JsonlRecord::CostState {}
+            | JsonlRecord::ArtifactCommentMonitor {}
+            | JsonlRecord::ArtifactAutoreactLedger {} => "status-line",
             JsonlRecord::Unrecognized {
                 uuid, parent_uuid, ..
             } => {
@@ -418,7 +424,7 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
         ("file-history-snapshot", false), // 无读者
         ("status-line", false), // 无读者（Claude 的状态行：mode · agent-name …）
         ("unrecognized+identity", true), // `unread` 一行（两个前端画一行 warn 细条）；也进链（F63 保险那一半在链事实里）
-        ("unrecognized-bare", true),     // `unread` 一行；不进链
+        ("unrecognized-bare", false), // 没见过的类型又没有链上身份 ⇒ 那一家的簿记行，不成卡、不进链；会话事实 `quietUnread` 记数（10-14 起）
     ]
     .into_iter()
     .collect();

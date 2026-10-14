@@ -9,6 +9,8 @@ import com.ccmonitor.mobile.core.claude.link.ResidentFeed
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.notice
@@ -36,8 +38,8 @@ class ConversationsViewModel(
     private val backend: ResidentFeed,
     private val machine: String,
 ) : ViewModel() {
-    private val list = MutableStateFlow<Fetched<HistoryList.Answer>>(Fetched.Loading)
-    private val needs = MutableStateFlow<Fetched<List<SessionsNeeds.Row>>>(Fetched.Loading)
+    private val list = MutableStateFlow<Fetched<HistoryListPage>>(Fetched.Loading)
+    private val needs = MutableStateFlow<Fetched<List<NeedsRow>>>(Fetched.Loading)
 
     val state: StateFlow<ConversationsUiState> =
         combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, needsAt) }
@@ -183,8 +185,8 @@ data class HistoryItem(
 internal fun view(
     link: LinkState,
     table: SessionTable,
-    list: Fetched<HistoryList.Answer>,
-    needs: Fetched<List<SessionsNeeds.Row>>,
+    list: Fetched<HistoryListPage>,
+    needs: Fetched<List<NeedsRow>>,
     needsAt: Long = 0,
 ): ConversationsUiState {
     if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(), connecting = false, listLoading = false)

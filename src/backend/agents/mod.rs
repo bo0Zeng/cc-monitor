@@ -61,6 +61,12 @@
 //! 谁想把别处的直呼挪进来，当场红。
 
 use crate::platform::fs::Ro;
+pub(crate) use cmd_wire::needs::AskKind;
+// 通用记录里那几样的形状住 `cmd-wire`（手机按同一份解）；后端在它们上面写字的那几处是下面的 `*Ext`。
+pub(crate) use cmd_wire::record::{
+    Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, Pasted, PatchHunk, PlanTitle,
+    ResultKind, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
+};
 use std::path::{Path, PathBuf};
 
 // 待答请求的成品（`needs.ask`）与选项写字（通用）。
@@ -225,19 +231,6 @@ pub(crate) struct AskIn {
     pub(crate) input: serde_json::Value,
 }
 
-/// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum AskKind {
-    #[serde(rename = "approve")]
-    Approve,
-    #[serde(rename = "answer")]
-    Question,
-    #[serde(rename = "plan")]
-    Plan,
-}
-
 /// 「允许，且以后不再问」那一条建议。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct AskSuggestion {
@@ -382,6 +375,8 @@ pub(crate) struct PermissionFace {
     pub(crate) flag: &'static str,
     /// 可选的档（原值 ＋ 字）。
     pub(crate) modes: &'static [Choice],
+    /// 会话会处在、却不给选的档（原值 ＋ 字：越过批准的那几档 · 别名）。会话事实 · 屏底认出来的档都要有字，字从这里与 [`Self::modes`] 取。
+    pub(crate) shown: &'static [Choice],
     /// 会话开着时怎么切档；这一家切不了 ⇒ `None`。
     pub(crate) switch: Option<ModeSwitch>,
 }
@@ -395,6 +390,22 @@ pub(crate) struct ModeSwitch {
     pub(crate) cycle_max: usize,
     /// 从此刻那一屏（纯文本行）认出此刻的档（原值）；认不出 ⇒ `None`。
     pub(crate) read: fn(&[String]) -> Option<&'static str>,
+}
+
+impl PermissionFace {
+    /// 这一档写给人看的那一句（会话事实 · 切档的回包都读它）：可选的档 ＋ 只认不选的档（[`PermissionFace::shown`]）里找；都没有 ⇒ `None`（不猜）。
+    pub(crate) fn text_of(&self, mode: &str) -> Option<String> {
+        self.modes
+            .iter()
+            .chain(self.shown)
+            .find(|c| c.value == mode)
+            .map(|c| (c.text)())
+    }
+}
+
+/// `kind` 那一家的 `mode` 这一档写给人看的那一句（[`PermissionFace::text_of`]）。认不出这一家 · 这一家没有权限档 · 认不出这一档 ⇒ `None`。
+pub(crate) fn permission_mode_text(kind: &str, mode: &str) -> Option<String> {
+    launch_face_among(REGISTRY, kind)?.permission?.text_of(mode)
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。
@@ -512,26 +523,6 @@ pub(crate) fn launchable_kinds() -> Vec<&'static str> {
         .collect()
 }
 
-/// 一个 `tool_use` 在界面上画成哪一种卡 —— **通用的值域**；哪个工具名算哪一种是各家的格式知识（`agents/<名>/`，
-/// 注册表 [`RecordFace::tool_card`]）。没有这一格 ＝ 普通工具卡。随记录成品带出（`JsonlRecord::Assistant` 的 `toolCards`），
-/// 界面只按它画、不认工具名（判定只在后端 · `§2.1` 加一个 agent 只改 `agents/`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum ToolCard {
-    /// 展开 ＝ 子会话（折叠卡里嵌着渲染子 agent 的记录）。
-    Agent,
-    /// agent 在等用户决定（默认展开，不收成过程里的一步）。
-    Interactive,
-    /// 写类工具（参数按行级 diff 画）。
-    Diff,
-    /// 结果默认按 Markdown 画。
-    Md,
-    /// 跑一行命令的工具：入参里 `command` 是那一行、`description` 是可缺的说明 —— 展开画命令本身，不画入参 JSON。
-    Command,
-}
-
 /// [`RecordFace::branch`] 的形状。
 pub(crate) type BranchFn =
     fn(&[serde_json::Value], &str, &str, &str) -> Result<Vec<serde_json::Value>, String>;
@@ -628,6 +619,9 @@ pub(crate) struct RecordFace {
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
     /// 一条已解析的记录 ⇒ 那一家在这一条里说的此刻各 MCP 服务器的样子（[`McpSaid`]）；不是这种记录 ⇒ `None`。
     pub(crate) mcp_said: Option<fn(&serde_json::Value) -> Option<McpSaid>>,
+    /// 一条已解析的记录 ⇒ 它是不是「认不出、又不成卡」的那种行（这一家的簿记行）⇒ 它的类型名；不是 ⇒ `None`。
+    /// 不成卡是这一家的翻译表判的（`parse` 那一格给它不出记录），这一格只让会话事实照实记几行、哪几种。`None` 这一格 ＝ 这一家没有这种行。
+    pub(crate) quiet_unread: Option<fn(&serde_json::Value) -> Option<String>>,
 }
 
 /// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
@@ -771,82 +765,14 @@ pub(crate) fn background_marks(v: &serde_json::Value) -> Vec<BgMark> {
         .unwrap_or_default()
 }
 
-/// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct ChildRunTag {
-    pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub kind: Option<String>,
-}
-
-/// 过程里一步的「一行人话」：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
-/// 怎么从入参里挑主参数与说明是各家的格式知识（`agents/<名>/steps.rs`）；界面只排版，不认入参结构。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct ToolStep {
-    /// 工具名（原样）。
-    pub tool: String,
-    /// 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub arg: Option<String>,
-    /// 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub path: bool,
-    /// 说明（Bash 的 `description` 那一类）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub note: Option<String>,
-    /// 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
-    pub known: bool,
-    /// 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub text: Option<crate::common::cells::Words>,
-    /// 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
-    /// 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub ask: Option<StepAsk>,
-}
-
-/// 提问 / 计划卡的内容（[`ToolStep::ask`]）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum StepAsk {
-    /// 在问人：一道或几道题，每道题几个选项。
-    Questions { questions: Vec<AskQuestion> },
-    /// 交一份计划等人批（正文是 Markdown 原文）＋ 卡片标题那三态写好的字。
-    Plan { text: String, title: PlanTitle },
-}
-
-/// 计划卡的标题（[`StepAsk::Plan`]）：三态都由核心写好、状态格打头（同钉条第一行「等批准 · 计划」）；
-/// 界面按这一步的结果挑一句照抄（还没结果 ⇒ `waiting`；批了 ⇒ `approved`；没批 ⇒ `kept`），不另写字。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct PlanTitle {
-    /// 等着批。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub waiting: crate::common::cells::Words,
-    /// 批了。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub approved: crate::common::cells::Words,
-    /// 没批（接着规划）。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub kept: crate::common::cells::Words,
-}
-
-impl PlanTitle {
+/// 计划卡标题那三句（形状在 `cmd-wire`，写字在这里）。
+pub(crate) trait PlanTitleExt {
     /// 那三句（唯一一处）。
-    pub(crate) fn written() -> Self {
+    fn written() -> Self;
+}
+
+impl PlanTitleExt for PlanTitle {
+    fn written() -> Self {
         use crate::common::cells::Words;
         Self {
             waiting: Words(copy_core::copy_text("needs.bar.plan", &[])),
@@ -856,120 +782,17 @@ impl PlanTitle {
     }
 }
 
-/// 一道题（[`StepAsk::Questions`]）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct AskQuestion {
-    /// 题前那一小格（原文）。没有 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub header: Option<String>,
-    /// 题目（原文）。
-    pub question: String,
-    /// 可以选几项（`true` ＝ 多选）。
-    pub multi: bool,
-    pub options: Vec<AskOption>,
-}
-
-/// 一个选项（原文）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct AskOption {
-    pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub description: Option<String>,
-}
-
-/// 过程里一步的结果一句（B5 后一半 ＋ B7）：user 记录成品的 `toolResults`（`tool_result.tool_use_id` ⇒ 它）。
-/// 数是从结果里读的（各家的格式知识），界面只按这几格拼字；读不出的格缺。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Default)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct StepResult {
-    /// 成功（`false` ＝ 失败或被拒）。
-    pub ok: bool,
-    /// 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub rejected: bool,
-    /// 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub lines: Option<u32>,
-    /// 改动：加了几行 · 删了几行。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub added: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub removed: Option<u32>,
-    /// 命中几个文件（搜索 / 列文件）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub files: Option<u32>,
-    /// 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub answer: Option<Answer>,
-    /// 命令失败时的退出码（结果里写着才有）。
-    #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub exit_code: Option<i32>,
-    /// 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub file: Option<String>,
-    /// 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub patch: Option<Vec<PatchHunk>>,
-    /// diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
-    #[serde(rename = "patchTruncated", skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub patch_truncated: bool,
-    /// 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
-    /// 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub text: crate::common::cells::Words,
-    /// 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub timed: Option<crate::common::cells::Words>,
-    /// 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub preview: Option<String>,
-    /// 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub chars: Option<u32>,
-    /// 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub kind: Option<ResultKind>,
-}
-
-/// 派出子运行那次调用拿到的结果是哪一种（各家的格式知识，适配层判；界面只照它画）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub enum ResultKind {
-    /// 后台派出当场回的「已启动」回执：子运行还在跑，这不是它交回的东西；收场看运行表。
-    Launched,
-    /// 子运行交回的结果（前台派出那次调用拿到的结果）。
-    Handback,
-}
-
 /// 耗时那一截的占位（出口填）。
 pub(crate) const DUR_SLOT: &str = "{dur}";
 
-impl StepResult {
+/// 过程一步的结果那一句（形状在 `cmd-wire`，写字在这里）。
+pub(crate) trait StepResultExt {
     /// ★ 右侧那一句（唯一一处）。`read` ＝ 这是读文件那一类的结果（`lines` 才说成「读了几行」；命令输出几行 · 搜索命中几行不说）。
-    pub(crate) fn written(mut self, read: bool) -> Self {
+    fn written(self, read: bool) -> Self;
+}
+
+impl StepResultExt for StepResult {
+    fn written(mut self, read: bool) -> Self {
         let w = |s: String| crate::common::cells::Words(s);
         let (text, timed) = if self.rejected {
             (copy_core::copy_text("stream.step.rejected", &[]), None)
@@ -1023,132 +846,6 @@ impl StepResult {
     }
 }
 
-/// 一段改动（统一 diff 的一个 hunk）。行正文带着头字（` ` 没变 · `+` 加的 · `-` 删的）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct PatchHunk {
-    /// 改之前这段从第几行起（1 起）· 占几行；改之后同。
-    pub old_start: u32,
-    pub old_lines: u32,
-    pub new_start: u32,
-    pub new_lines: u32,
-    pub lines: Vec<String>,
-}
-
-/// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Answer {
-    /// 计划批准了。
-    Approved,
-    /// 提问选了这几项（选项原文，按问题顺序；一题多选的那题各项都列）。
-    Picked { options: Vec<String> },
-}
-
-/// 报错 / 重试的原因种类（B6）：界面按它出一词（服务器过载 · 额度满 · 网络中断 · 需登录 · 上下文超长 · 原因不明），不认状态码与报错原文。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub enum ApiReason {
-    Overloaded,
-    Quota,
-    Network,
-    Auth,
-    Context,
-    Unknown,
-}
-
-/// 一条用户角色的记录（或一条排队消息）是**谁说的** —— 通用的值域；怎么认是各家的格式知识（`agents/<名>/`，
-/// 注册表 [`TextFace::user`]）。随记录成品带出（`userText.speaker`），界面按它决定画不画、画成哪种，不认正文里的标记。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Speaker {
-    /// 人打的字（含粘贴、采纳的建议、忙时排队打的）。
-    Human,
-    /// 人敲的斜杠命令。
-    SlashCommand { name: String, args: String },
-    /// 人敲的 `!` 命令。
-    BashInput { command: String },
-    /// `!` 命令的输出回显。
-    BashOutput { stdout: String, stderr: String },
-    /// 本地命令（斜杠命令）的输出回显。
-    CommandOutput,
-    /// 后台任务（子 agent / 后台命令）的收场通知。
-    TaskNotification {
-        #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        task_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        status: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        summary: Option<String>,
-        #[serde(rename = "toolUseId", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        tool_use_id: Option<String>,
-    },
-    /// 同一会话里的子 agent 发来的话；`handback` ＝ 它交回的报告。`from` 是子 agent 的 id。
-    AgentMessage {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        from: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        name: Option<String>,
-        handback: bool,
-        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        body: Option<String>,
-    },
-    /// 另一个会话（另一个实例）发来的话。
-    PeerSession {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        from: Option<String>,
-        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        body: Option<String>,
-    },
-    /// （子 agent 那一侧）主会话后来发给它的话。
-    Coordinator {
-        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        body: Option<String>,
-    },
-    /// （子 agent 那一侧）主会话派给它的活。
-    AgentTask,
-    /// 系统注入：提醒、技能展开、续跑样板、定时触发、额度恢复后的续跑等。
-    /// 默认不露；会话头「⋯」里开了「显示系统注入」才画（一条一行、收着）。
-    System {
-        /// 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        body: Option<String>,
-    },
-    /// 上下文压缩后续接用的摘要（只经 [`Speaker::compact`] 来）。
-    #[serde(rename_all = "camelCase")]
-    CompactSummary {
-        /// 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
-        #[cfg_attr(test, ts(as = "String"))]
-        chars_text: crate::common::cells::Words,
-    },
-    /// 中断标记（人按了 Esc）。
-    Interrupt,
-    /// 工具结果回灌。
-    ToolResult,
-}
-
 /// [`Speaker::kind`] 那一份闭集（骨架读回来认词用）。
 pub(crate) const SPEAKER_KINDS: [&str; 14] = [
     "human",
@@ -1167,69 +864,14 @@ pub(crate) const SPEAKER_KINDS: [&str; 14] = [
     "toolResult",
 ];
 
-impl Speaker {
-    /// 线上 `kind` 那一格（骨架索引的 `sp` 也用它）。
-    pub(crate) fn kind(&self) -> &'static str {
-        match self {
-            Self::Human => "human",
-            Self::SlashCommand { .. } => "slashCommand",
-            Self::BashInput { .. } => "bashInput",
-            Self::BashOutput { .. } => "bashOutput",
-            Self::CommandOutput => "commandOutput",
-            Self::TaskNotification { .. } => "taskNotification",
-            Self::AgentMessage { .. } => "agentMessage",
-            Self::PeerSession { .. } => "peerSession",
-            Self::Coordinator { .. } => "coordinator",
-            Self::AgentTask => "agentTask",
-            Self::System { .. } => "system",
-            Self::CompactSummary { .. } => "compactSummary",
-            Self::Interrupt => "interrupt",
-            Self::ToolResult => "toolResult",
-        }
-    }
-}
-
-/// 一条用户角色记录判过「谁说的」的成品（user 记录与排队消息的 `userText`）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct UserText {
-    pub speaker: Speaker,
-    /// 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
-    pub text: String,
-    /// `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<Pasted>>"))]
-    pub pasted: Vec<Pasted>,
-}
-
-/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标，含两头的标记）＋ 正文那一截（`[bodyStart, bodyEnd)`）与它的行数。
-/// 界面据此把超过 12 行的折起来、不超过的只露正文（不认标记的写法）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct Pasted {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub id: Option<String>,
-    pub start: u32,
-    pub end: u32,
-    pub body_start: u32,
-    pub body_end: u32,
-    /// 正文的行数（两头的空行不算）。
-    pub lines: u32,
-}
-
-impl Default for UserText {
-    fn default() -> Self {
-        Self::of(Speaker::System { body: None })
-    }
-}
-
-impl Speaker {
+/// 「谁说的」那一侧后端写字的一种（形状在 `cmd-wire`）。
+pub(crate) trait SpeakerExt {
     /// 压缩摘要那一种：数好正文多少字（按字，不按 UTF-16）。
-    pub(crate) fn compact(text: &str) -> Self {
+    fn compact(text: &str) -> Self;
+}
+
+impl SpeakerExt for Speaker {
+    fn compact(text: &str) -> Self {
         Self::CompactSummary {
             chars_text: crate::common::cells::Words(copy_core::count_text(
                 text.chars().count() as u64
@@ -1238,18 +880,14 @@ impl Speaker {
     }
 }
 
-impl UserText {
-    /// 没有正文要显示的那几种来源。
-    pub(crate) fn of(speaker: Speaker) -> Self {
-        Self {
-            speaker,
-            text: String::new(),
-            pasted: Vec::new(),
-        }
-    }
-
+/// 判过「谁说的」的成品上后端认的那一句（形状在 `cmd-wire`）。
+pub(crate) trait UserTextExt {
     /// 人在这条里说的话（大纲 · 搜索 · 历史摘录都用它）；不是人说的、或说了个空 ⇒ `None`。
-    pub(crate) fn speech(&self) -> Option<String> {
+    fn speech(&self) -> Option<String>;
+}
+
+impl UserTextExt for UserText {
+    fn speech(&self) -> Option<String> {
         let s = match &self.speaker {
             Speaker::Human => self.text.clone(),
             Speaker::SlashCommand { name, args } => format!("{name} {args}").trim().to_string(),
@@ -2081,6 +1719,13 @@ pub(crate) struct McpSaid {
 pub(crate) fn mcp_said_of(kind: &str, v: &serde_json::Value) -> Option<McpSaid> {
     record_face(kind)
         .and_then(|r| r.mcp_said)
+        .and_then(|f| f(v))
+}
+
+/// `kind` 那一家：这条记录是认不出、又不成卡的那种行 ⇒ 它的类型名（会话事实 `quietUnread` 记数用）。
+pub(crate) fn quiet_unread_of(kind: &str, v: &serde_json::Value) -> Option<String> {
+    record_face(kind)
+        .and_then(|r| r.quiet_unread)
         .and_then(|f| f(v))
 }
 

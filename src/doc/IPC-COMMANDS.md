@@ -2786,10 +2786,11 @@ notes: Array<string>, };
 |---|---|---|
 | `account` | → | 账号库里的号（账号 0 是 `0`；`mcp` 那一种可为 `null`：那一家的默认配置目录） |
 | `agent` | → | 哪一家（同 `accounts-list` 的 `agent`） |
+| `browserHere` | → | 可缺：打开登录链接的浏览器在不在后端这台（桌面连本机交 `true`；手机 · 连远端交 `false`）；缺 ⇒ 按不在答。不进目标（`login-finish` 交回的 `target` 不带它） |
 | `kind` | → | 登录什么：`account`（一个号）· `mcp`（一个号里的一个 MCP 服务器） |
 | `projectDir` | → | `mcp` 那一种：那一条配置所属的项目目录（用户级 ⇒ `null`） |
 | `server` | → | `mcp` 那一种：服务器名（`mcp-read` 里那一条） |
-| `auto` | ← | 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备） |
+| `auto` | ← | 会不会自己登完：照 `browserHere` 答 —— 浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推 `changed {login}`，粘码只是后备；不在 ⇒ `false`，回跳到不了这台，只能粘 |
 | `job` | ← | 作业号（`login-finish` · `login-cancel` 交它） |
 | `paste` | ← | 粘回来的是什么：`code`（登录页上给的那一段）· `redirectUrl`（浏览器回跳到本机的那一整条地址） |
 | `url` | ← | 登录链接（在浏览器里打开，不用内嵌网页） |
@@ -2846,12 +2847,16 @@ type ManualItem = { "kind": "accountLogin", agent: string, account: string, said
 /**
  * 在哪个号里；没设账号的那一份 ⇒ `null`。
  */
-account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, };
+account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, 
+/**
+ * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+ */
+why?: string, };
 type ManualList = { items: Array<ManualItem>, };
 type NoArgs = Record<symbol, never>;
 ```
 
-码：`bad_args`
+码：`bad_args` · `unreadable`
 
 ### 4.4 历史会话与它的读面
 
@@ -3075,7 +3080,7 @@ projectDir: string,
 group: string, lastAccount?: string, };
 type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
- * 隐藏那一格（判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。
+ * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。
  */
 hidden?: Hidden, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
 /**
@@ -5312,6 +5317,19 @@ text: Words | null,
  * 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
  */
 whyText: Words | null, };
+type QuietUnread = { 
+/**
+ * 「无法识别 N 行（类型：a · b）」。
+ */
+text: Words, 
+/**
+ * 几行。
+ */
+count: number, 
+/**
+ * 哪几种（原文里的 `type`，首见序，至多 [`QUIET_KINDS_KEEP`] 种）。
+ */
+kinds: Array<string>, };
 type RetryOutcome = "retrying" | "recovered" | "failed" | "interrupted";
 type RetryRun = { 
 /**
@@ -5379,6 +5397,11 @@ retries: Array<RetryRun>,
  */
 permissionMode: string | null, 
 /**
+ * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ */
+permissionModeText: Words | null, 
+/**
  * 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
  */
 tokens: TokenUse | null, 
@@ -5410,7 +5433,11 @@ startedBy: Kin | null,
 /**
  * 它起的子会话（按起的先后）；不累加，每次现查。
  */
-children: Array<Kin>, };
+children: Array<Kin>, 
+/**
+ * 认不出、又不成卡的行（那一家的簿记行：没见过的类型、没有链上身份）：不在消息流里画，在这里照实说几行、哪几种。一行都没有 ⇒ `null`。
+ */
+quietUnread: QuietUnread | null, };
 type StepWait = "running" | "awaiting" | "unclear";
 type TokenUse = { input: number, output: number, cacheRead: number, cacheWrite5m: number, cacheWrite1h: number, 
 /**
@@ -8643,7 +8670,7 @@ result: ModeSwitchResult,
  */
 mode: string | null, 
 /**
- * 同一档写给人看的字；那一家起会话不给这一档 · 没读到 ⇒ `null`。
+ * 同一档写给人看的字（同会话事实 `permissionModeText` 那一处：`PermissionFace::text_of`）；没读到 · 这一档没有字 ⇒ `null`。
  */
 modeText: string | null, 
 /**
@@ -9584,7 +9611,7 @@ session: string,
  */
 created: boolean, 
 /**
- * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）。
+ * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（送之前同一串命令里先退出窗格模式（copy-mode 等），键不会被模式吃掉；程序起没起来它不知道）。
  */
 typed: boolean, };
 type Mode = "create-or-attach" | "send-into";
@@ -11092,33 +11119,6 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `launch` | Launch | 起分叉出来的新会话要的三格 |
 
 ### `history-list` 每行与全文搜索每行的「这一行能做什么」
-
-#### `Can`
-
-`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（`can_of` 的成品）：闭集的词与两个开关。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `resume` | CanResume | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
-| `accounts` | bool | 恢复时能不能选号 |
-| `fork` | bool | 能不能从某一轮分叉 |
-| `delete` | CanDelete | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
-
-#### `CanResume`
-
-`Can::resume` 的三个词。
-
-- `yes`
-- `switch`
-- `bg`
-
-#### `CanDelete`
-
-`Can::delete` 的三个词。
-
-- `yes`
-- `live`
-- `unsure`
 
 ### 骨架索引的一行（`history-index` 的 `rows` 装运之前）
 

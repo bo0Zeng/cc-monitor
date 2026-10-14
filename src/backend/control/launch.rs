@@ -149,7 +149,8 @@ pub(crate) struct LaunchOutcome {
     pub(crate) created: bool,
     /// `send-keys` **退出码为 0**（幂等短路时为 false —— 会话已在，不重复 resume）。
     ///
-    /// ⚠ **不是「载荷真的落进应用了」**：pane 在 copy-mode 时 `send-keys` 照样退 0。
+    /// ⚠ **不是「载荷真的落进应用了」**：送之前先退出了窗格模式（copy-mode 吃键那一形没了），但程序起没起来、
+    /// shell 读没读它，退出码都说不出。
     /// 由 `typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住语义边界。
     pub(crate) typed: bool,
 }
@@ -523,8 +524,67 @@ pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
     })
 }
 
-pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
+pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, LaunchFail> {
     run_with(req, &tmux)
+}
+
+/// 送键那一发没确认的两种：tmux 明说没送进（`send-keys` 退非零）· tmux 没应答（送没送到不知道）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Delivery {
+    NotDelivered,
+    Unknown,
+}
+
+/// [`run`] 的失败：线上那一份 [`CmdErr`] ＋ 送键没确认时是哪一种、会话是不是本趟新建的。
+/// 线上只看 `fail`（两种同码 `typed_unconfirmed`）；`untyped` 给命令行那一处决定接进去还是收掉（`ccm::execute`）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LaunchFail {
+    pub(crate) fail: CmdErr,
+    /// `Some((哪一种, 会话是本趟建的))`：只在送键那一发上有。
+    pub(crate) untyped: Option<(Delivery, bool)>,
+}
+
+impl std::ops::Deref for LaunchFail {
+    type Target = CmdErr;
+    fn deref(&self) -> &CmdErr {
+        &self.fail
+    }
+}
+
+impl From<CmdErr> for LaunchFail {
+    fn from(fail: CmdErr) -> Self {
+        LaunchFail {
+            fail,
+            untyped: None,
+        }
+    }
+}
+
+impl From<(&'static str, String)> for LaunchFail {
+    fn from(e: (&'static str, String)) -> Self {
+        CmdErr::from(e).into()
+    }
+}
+
+/// [`reap_if_bare`] 的生产那一口（真 tmux）。
+pub(crate) fn reap(name: &str) -> bool {
+    reap_if_bare(name, &tmux)
+}
+
+/// 收掉本趟建的、里面只剩 shell 的那个会话（启动命令明确没送进时用：不留一个只剩 shell 的空会话）。
+/// 判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell（`pane_start_command` 空）、
+/// 没有客户端接着 ⇒ `kill-session`；别的形（窗格起的是别的程序 · 开了别的窗口 · 有人接着）一律不动。
+/// 不看窗格前台是什么：shell 刚起时 rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟），按它判就成了碰运气。
+/// 回「这一趟把它收掉了」（本来就不在 ⇒ `false`）。
+pub(crate) fn reap_if_bare(name: &str, tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>) -> bool {
+    const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
+    let t = exact_target(name);
+    let there = || matches!(tmux(&["has-session", "-t", &t]), Ok(r) if r.ok);
+    if !there() {
+        return false;
+    }
+    let kill = format!("kill-session -t {t}");
+    matches!(tmux(&["if-shell", "-F", "-t", &t, BARE, &kill]), Ok(r) if r.ok) && !there()
 }
 
 /// [`run`] 的本体：起 tmux 的那一下由调用方交进来（生产 = [`tmux`]；判据交一个不起进程的替身，
@@ -532,7 +592,7 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
 fn run_with(
     req: &LaunchRequest,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<LaunchOutcome, CmdErr> {
+) -> Result<LaunchOutcome, LaunchFail> {
     let t = exact_target(&req.name);
     match req.mode {
         Mode::SendInto => {
@@ -548,7 +608,7 @@ fn run_with(
             //   带了 `ccm_sid` ⇒ 句柄是挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），身份也按它判。
             let handle =
                 super::gate::admit(&req.name, &t, req.ccm_sid.as_deref(), req.client.as_deref())?;
-            type_payload(&handle, &req.payload, tmux)?;
+            type_payload(&handle, &req.name, &req.payload, false, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -564,7 +624,7 @@ fn run_with(
                         typed: false,
                     });
                 }
-                return Err(CmdErr::from(("bad_args", said)));
+                return Err(CmdErr::from(("bad_args", said)).into());
             }
             let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", &req.name];
             if let Some(cwd) = &req.cwd {
@@ -597,7 +657,8 @@ fn run_with(
                     "create_failed",
                     copy_text("beLaunch.create.failed", &[("name", &req.name)]),
                 )
-                .with_raw(Some(&made.stderr)));
+                .with_raw(Some(&made.stderr))
+                .into());
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
             // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律
@@ -660,7 +721,7 @@ fn run_with(
                     &["set-option", "-t", &t, "@ccm_client", client],
                 );
             }
-            type_payload(&t, &req.payload, tmux)?;
+            type_payload(&t, &req.name, &req.payload, true, tmux)?;
             Ok(LaunchOutcome {
                 created: true,
                 typed: true,
@@ -673,20 +734,50 @@ fn run_with(
 ///
 /// 这一档是 DoD 6 那条「起了但没确认」的落点：调用方**不许**据此重试 create
 /// （会话确实在），该做的是告诉用户「会话建好了但没能把命令打进去」。
+///
+/// **先退出窗格模式，再送**，两条在同一串 tmux 命令里（`copy-mode -q ; send-keys …`，tmux 一口气跑完，别的插不进中间）：
+/// 窗格在 copy-mode / view-mode 里时送的键归那个模式的键表，命令进不了 shell（10-13：一条出声的钩子把新会话切进 view-mode，
+/// `ccm` 送的启动命令就这么被吃掉）。`copy-mode -q` 不在模式里时也退 0。`send-into` 那一臂同样：用户点了「就地 resume」，
+/// 那个窗格正翻着屏的话翻屏被退出。不改成「把命令交给 `new-session`」：那会让窗格进程就是 agent、一退窗格就没了，
+/// 空 shell 那一形（`send-into` 往里敲的就是它）跟着没了。
+/// 送键那一发过了期限 ⇒ 也归 `typed_unconfirmed`（会话在，送没送到不知道），期限那句进复制详情。
+/// `name`：说给人听的那个 tmux 会话名（`target` 是精确目标或句柄）。
+/// `created`：会话是本趟新建的（失败时带回去，命令行那一处据此决定收不收）。
 fn type_payload(
     target: &str,
+    name: &str,
     payload: &str,
+    created: bool,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<(), CmdErr> {
-    let r = tmux(&["send-keys", "-t", target, payload, "Enter"])?;
-    if r.ok {
-        return Ok(());
+) -> Result<(), LaunchFail> {
+    // 一串里先退出窗格模式、再送（见上）。
+    #[rustfmt::skip]
+    let sent = tmux(&["copy-mode", "-q", "-t", target, ";", "send-keys", "-t", target, payload, "Enter"]);
+    match sent {
+        Ok(r) if r.ok => Ok(()),
+        Ok(r) => Err(unconfirmed(
+            Delivery::NotDelivered,
+            name,
+            &r.stderr,
+            created,
+        )),
+        Err(e) if e.code == crate::platform::child::TIMED_OUT => {
+            Err(unconfirmed(Delivery::Unknown, name, &e.message, created))
+        }
+        Err(e) => Err(e.into()),
     }
-    Err(CmdErr::new(
-        "typed_unconfirmed",
-        copy_text("beLaunch.type.failed", &[("target", target)]),
-    )
-    .with_raw(Some(&r.stderr)))
+}
+
+/// [`type_payload`] 没确认的那一份：同码 `typed_unconfirmed`，句子按哪一种说，tmux 原话进复制详情。
+fn unconfirmed(delivery: Delivery, name: &str, raw: &str, created: bool) -> LaunchFail {
+    let said = match delivery {
+        Delivery::NotDelivered => copy_text("beLaunch.type.failed", &[("name", name)]),
+        Delivery::Unknown => copy_text("beLaunch.type.timedOut", &[("name", name)]),
+    };
+    LaunchFail {
+        fail: CmdErr::new("typed_unconfirmed", said).with_raw(Some(raw)),
+        untyped: Some((delivery, created)),
+    }
 }
 
 /// 终端管理送字的那一段字面字过不过形状：非空、不超长、除 `\n` / `\t` 外没有控制字符（按键走 [`press_key`]）。
@@ -743,7 +834,7 @@ pub(crate) struct Launched {
     pub(crate) session: String,
     /// 这一次新建了会话。
     pub(crate) created: bool,
-    /// `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）。
+    /// `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（送之前同一串命令里先退出窗格模式（copy-mode 等），键不会被模式吃掉；程序起没起来它不知道）。
     pub(crate) typed: bool,
 }
 
@@ -767,7 +858,7 @@ crate::wire::typed::codes! {
         WrongOwner = "wrong_owner",
         /// 建会话那一发失败。
         CreateFailed = "create_failed",
-        /// `send-keys` 退出码不是 0。
+        /// 会话在，启动命令没送进去：`send-keys` 退非零，或那一发过了期限（送没送到不知道）。
         TypedUnconfirmed = "typed_unconfirmed",
         /// 那一发 `tmux` 过了期限。
         ChildTimedOut = "child_timed_out",
@@ -788,7 +879,7 @@ impl crate::wire::typed::Blocking for Launch {
     fn run(req: LaunchReq, _cx: &crate::wire::typed::Cx) -> Result<Launched, LaunchErr> {
         let of = |f| crate::wire::typed::of_fail(f, LaunchErr::CreateFailed);
         let req = parse_request(req).map_err(of)?;
-        let out = run(&req).map_err(of)?;
+        let out = run(&req).map_err(|e| of(e.fail))?;
         Ok(reply(&req.name, out.created, out.typed))
     }
 }

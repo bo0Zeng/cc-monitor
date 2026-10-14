@@ -1,7 +1,9 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -21,7 +23,7 @@ import org.junit.Test
 
 /**
  * 聊天屏的会话：起会话 · 送字 · 正文全走那台核心。
- * 判据：手机起的会话是那台 tmux 里的（`session-new` 的 `place: tmux`，桌面那一侧看得到、接得上）；手机打的字经 `terminal-input` 进那条会话。
+ * 判据：手机起的会话是那台 tmux 里的（`session-new` 的 `place: tmux`，桌面那一侧看得到、接得上）；手机打的字经 `session-say` 进那条会话。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatSessionTest {
@@ -42,14 +44,14 @@ class ChatSessionTest {
             .filter { it.sourceUuid == null }
 
     @Test
-    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 认出报到的那条 ⇒ 字经 terminal-input 进那条会话`() =
+    fun `新建会话：第一句 ⇒ 请那台在 tmux 里起（带票）⇒ 认出报到的那条 ⇒ 字经 session-say 进那条会话`() =
         runTest {
             val link = FakeCoreLink()
             link.report("old", "/h/proj") // 起之前就在的同目录会话不算
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-new" -> ok(started)
-                    "terminal-input" -> ok(mapOf("result" to "delivered"))
+                    "session-say" -> ok(mapOf("result" to "delivered"))
                     "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0, "tail_from" to 0, "total" to 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
@@ -58,13 +60,13 @@ class ChatSessionTest {
             s.send("你好")
             runCurrent()
             assertEquals(listOf(mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1", "prompt" to "你好")), link.calls("session-new"))
-            assertTrue("报到之前不送字", link.calls("terminal-input").isEmpty())
+            assertTrue("报到之前不送字", link.calls("session-say").isEmpty())
             assertEquals(DeliveryState.SENDING, s.local().single().delivery)
 
             link.report("new", "/h/proj")
             runCurrent()
             assertEquals("new", s.state.value.sid)
-            assertEquals(listOf(mapOf("sid" to "new", "text" to "你好")), link.calls("terminal-input"))
+            assertEquals(listOf(mapOf("sid" to "new", "text" to "你好", "client" to "mobile")), link.calls("session-say"))
             assertNull("送到了的不挂标", s.local().single().delivery)
 
             link.line("new", 0, human("u1", "你好"))
@@ -81,7 +83,7 @@ class ChatSessionTest {
     private fun said(prompt: Map<String, Any?>) = started + mapOf("sid" to "pre", "prompt" to prompt)
 
     @Test
-    fun `新建会话：第一句随 session-new 交（那台作为启动参数交），送没送到照回包里的 prompt；不另走 terminal-input`() =
+    fun `新建会话：第一句随 session-new 交（那台作为启动参数交），送没送到照回包里的 prompt；不另走 session-say`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
@@ -95,18 +97,18 @@ class ChatSessionTest {
             runCurrent()
             assertEquals("你好", link.calls("session-new").single()?.get("prompt"))
             assertEquals("pre", s.state.value.sid)
-            assertTrue("第一句已随起交了，不再送一遍", link.calls("terminal-input").isEmpty())
+            assertTrue("第一句已随起交了，不再送一遍", link.calls("session-say").isEmpty())
             assertNull("送到了的不挂标", s.local().single().delivery)
         }
 
     @Test
-    fun `新建会话（兜底）：那台说第一句没交到（refused，能改的）⇒ 那句标未送达、字照那台写的；再发一次走 terminal-input`() =
+    fun `新建会话（兜底）：那台说第一句没交到（refused，能改的）⇒ 那句标未送达、字照那台写的；再发一次走 session-say`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-new" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))
-                    "terminal-input" -> ok(mapOf("result" to "delivered"))
+                    "session-say" -> ok(mapOf("result" to "delivered"))
                     else -> Reply.LinkDown
                 }
             }
@@ -118,7 +120,7 @@ class ChatSessionTest {
             assertEquals(copyText("terminal.input.failed", "why" to "终端已不在"), o.deliveryText)
             s.retry(o.key)
             runCurrent()
-            assertEquals(listOf(mapOf("sid" to "pre", "text" to "你好")), link.calls("terminal-input"))
+            assertEquals(listOf(mapOf("sid" to "pre", "text" to "你好", "client" to "mobile")), link.calls("session-say"))
             assertEquals(1, link.calls("session-new").size)
         }
 
@@ -159,13 +161,13 @@ class ChatSessionTest {
         }
 
     @Test
-    fun `Codex 那台也落聊天屏：新建会话起的是 Codex，字同样经 terminal-input 进那条会话`() =
+    fun `Codex 那台也落聊天屏：新建会话起的是 Codex，字同样经 session-say 进那条会话`() =
         runTest {
             val link = FakeCoreLink()
             link.answer = { cmd, _ ->
                 when (cmd) {
                     "session-new" -> ok(started + ("agent" to "codex"))
-                    "terminal-input" -> ok(mapOf("result" to "delivered"))
+                    "session-say" -> ok(mapOf("result" to "delivered"))
                     "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0, "tail_from" to 0, "total" to 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
@@ -176,7 +178,7 @@ class ChatSessionTest {
             assertEquals("codex", link.calls("session-new").single()?.get("agent"))
             link.report("cx", "/h/proj")
             runCurrent()
-            assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下")), link.calls("terminal-input"))
+            assertEquals(listOf(mapOf("sid" to "cx", "text" to "看一下", "client" to "mobile")), link.calls("session-say"))
             assertNull("送到了的不挂标", s.local().single().delivery)
         }
 
@@ -192,7 +194,7 @@ class ChatSessionTest {
             link.report("new", "/h/proj")
             runCurrent()
             assertEquals(1, link.calls("session-new").size)
-            assertEquals(listOf("一", "二"), link.calls("terminal-input").map { it?.get("text") })
+            assertEquals(listOf("一", "二"), link.calls("session-say").map { it?.get("text") })
         }
 
     @Test
@@ -217,7 +219,7 @@ class ChatSessionTest {
             advanceTimeBy(ChatSession.ARRIVAL_MS + 1)
             runCurrent()
             assertEquals(copyText("launchArrival.missed.title"), s.state.value.failedWhy)
-            assertTrue(link.calls("terminal-input").isEmpty())
+            assertTrue(link.calls("session-say").isEmpty())
         }
 
     @Test
@@ -294,7 +296,7 @@ class ChatSessionTest {
             add(1) // 接上以后先来的一行比已有的新、中间缺着
             link.line("s1", file.records.lastIndex.toLong(), file.records.last())
             runCurrent()
-            assertEquals(RecordUnits.of(file.records), s.state.value.units)
+            assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
             assertTrue("补段走的是按行号取", link.calls("history-lines").isNotEmpty())
             assertNull(s.state.value.failedWhy)
         }
@@ -312,7 +314,7 @@ class ChatSessionTest {
             up = true
             link.epoch.value += 1
             runCurrent()
-            assertEquals(RecordUnits.of(file.records), s.state.value.units)
+            assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
             assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
         }
 
@@ -321,7 +323,7 @@ class ChatSessionTest {
         runTest {
             val link = FakeCoreLink()
             val results = ArrayDeque(listOf(mapOf("result" to "unsure"), mapOf("result" to "refused", "why" to "screen_changed", "said" to "画面已变"), mapOf("result" to "refused", "why" to "ended", "said" to "已结束")))
-            link.answer = { cmd, _ -> if (cmd == "terminal-input") ok(results.removeFirst()) else Reply.LinkDown }
+            link.answer = { cmd, _ -> if (cmd == "session-say") ok(results.removeFirst()) else Reply.LinkDown }
             val s = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope)
             s.send("a")
             runCurrent()
@@ -352,6 +354,7 @@ class ChatSessionTest {
         runTest {
             val facts =
                 mapOf(
+                    "recent" to emptyList<Any>(),
                     "agents" to
                         listOf("codex", "claude").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                 )
@@ -368,5 +371,49 @@ class ChatSessionTest {
                 runCurrent()
                 assertEquals("存的是 $stored", want, link.calls("session-new").single()?.get("agent"))
             }
+        }
+
+    @Test
+    fun `新建会话：发第一条时把这一张的选项一次交给 session-new（目录 · agent · 改过的账号）；起不来 ⇒ 回到草稿`() =
+        runTest {
+            val link = FakeCoreLink()
+            var start: Reply = failed("目录不在")
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-new-facts" ->
+                        ok(
+                            mapOf(
+                                "recent" to listOf(mapOf("cwd" to "/h/orders", "lastMs" to 1.0, "lastText" to "19:02")),
+                                "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
+                            ),
+                        )
+                    "accounts-list" ->
+                        ok(
+                            mapOf(
+                                "accounts" to listOf("work", "personal").map { mapOf("name" to it, "configDir" to "/a/$it", "mode" to "isolated", "selectable" to true) },
+                                "meta" to mapOf("effectiveDefault" to "work"),
+                            ),
+                        )
+                    "session-new" -> start
+                    else -> Reply.LinkDown
+                }
+            }
+            val s = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = null, agent = "codex"), "box", backgroundScope)
+            runCurrent()
+            assertTrue(s.state.value.drafting)
+            s.picker!!.pickAccount("personal")
+            s.send("你好")
+            runCurrent()
+            val args = link.calls("session-new").single()!!
+            assertEquals("/h/orders", args["cwd"])
+            assertEquals("codex", args["agent"])
+            assertEquals(mapOf("kind" to "named", "name" to "personal"), args["account"])
+            assertTrue("起不来 ⇒ 选项回来", s.state.value.drafting)
+            start = ok(started + ("sid" to "pre"))
+            s.retry(s.local().single().key)
+            runCurrent()
+            assertEquals("pre", s.state.value.sid)
+            assertEquals(false, s.state.value.drafting)
+            assertEquals("/h/proj", s.state.value.cwd)
         }
 }

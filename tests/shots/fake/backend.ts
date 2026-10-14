@@ -301,9 +301,11 @@ export class FakeBackend {
     if (this.world.hopDown?.[origin]?.includes(op)) return Promise.reject({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] });
     if (REAL_OPS.has(op)) {
       const face = WINDOWS_FACE[origin]?.[op];
+      const kin = op === "history-facts" ? lineageFor(this.world, String(req.path ?? "")) : null;
       return new Promise((r) => setTimeout(r, delay))
         .then(() => this.real(origin, op, req, args.view))
         .then((b) => {
+          if (kin) return enc.encode(JSON.stringify({ ...(JSON.parse(dec.decode(b)) as object), ...kin })).buffer;
           if (!face) return b;
           const v = JSON.parse(dec.decode(b)) as { meta?: object };
           return enc.encode(JSON.stringify({ ...v, meta: { ...v.meta, ...face.meta } })).buffer;
@@ -399,6 +401,12 @@ export class FakeBackend {
       }
     }
   }
+}
+
+/** 〔对类型 · 会话隐藏〕这份记录（路径里带会话 id）的血缘两格：场景给了 ⇒ 那一份；没给 ⇒ `null`（真后端答的原样交）。 */
+function lineageFor(world: World, path: string): Record<string, unknown> | null {
+  for (const [sid, v] of Object.entries(world.factsLineage ?? {})) if (path.includes(sid)) return v;
+  return null;
 }
 
 /** 替身那一份复制详情（那台后端写、monitor 转交的那几行）：钟停在夹具那一刻，机器与版本是合成的。 */

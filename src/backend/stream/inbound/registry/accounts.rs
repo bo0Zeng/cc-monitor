@@ -236,7 +236,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "login-start",
         summary: "在 app 里登录一个号或一个号里的一个 MCP 服务器：起那一家的登录子命令，交回登录链接（本连接断了 ⇒ 作业收）",
         codes: crate::faces::login_face::LOGIN_START_CODES,
-        fields: &[arg("account", "账号库里的号（账号 0 是 `0`；`mcp` 那一种可为 `null`：那一家的默认配置目录）"), arg("agent", "哪一家（同 `accounts-list` 的 `agent`）"), arg("kind", "登录什么：`account`（一个号）· `mcp`（一个号里的一个 MCP 服务器）"), arg("projectDir", "`mcp` 那一种：那一条配置所属的项目目录（用户级 ⇒ `null`）"), arg("server", "`mcp` 那一种：服务器名（`mcp-read` 里那一条）"), out("auto", "会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备）"), out("job", "作业号（`login-finish` · `login-cancel` 交它）"), out("paste", "粘回来的是什么：`code`（登录页上给的那一段）· `redirectUrl`（浏览器回跳到本机的那一整条地址）"), out("url", "登录链接（在浏览器里打开，不用内嵌网页）")],
+        fields: &[arg("account", "账号库里的号（账号 0 是 `0`；`mcp` 那一种可为 `null`：那一家的默认配置目录）"), arg("agent", "哪一家（同 `accounts-list` 的 `agent`）"), arg("browserHere", "可缺：打开登录链接的浏览器在不在后端这台（桌面连本机交 `true`；手机 · 连远端交 `false`）；缺 ⇒ 按不在答。不进目标（`login-finish` 交回的 `target` 不带它）"), arg("kind", "登录什么：`account`（一个号）· `mcp`（一个号里的一个 MCP 服务器）"), arg("projectDir", "`mcp` 那一种：那一条配置所属的项目目录（用户级 ⇒ `null`）"), arg("server", "`mcp` 那一种：服务器名（`mcp-read` 里那一条）"), out("auto", "会不会自己登完：照 `browserHere` 答 —— 浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推 `changed {login}`，粘码只是后备；不在 ⇒ `false`，回跳到不了这台，只能粘"), out("job", "作业号（`login-finish` · `login-cancel` 交它）"), out("paste", "粘回来的是什么：`code`（登录页上给的那一段）· `redirectUrl`（浏览器回跳到本机的那一整条地址）"), out("url", "登录链接（在浏览器里打开，不用内嵌网页）")],
         takes_input: true,
         // 本体 `faces::login_face::answer_start`（`dispatch` 的硬臂带着本连接的号调它）。
         run: Run::Builtin,

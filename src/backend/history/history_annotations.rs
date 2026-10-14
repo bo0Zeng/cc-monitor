@@ -28,6 +28,7 @@
 
 use crate::platform::fs::{Own, OwnLock, OwnPath};
 use crate::wire::typed::{codes, of_fail, Command, Cx, Owning};
+pub use cmd_wire::listing::{Entry, Table};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -39,24 +40,6 @@ use serde_json::{json, Map, Value};
 /// 读一份注解文件的上限。超了 ⇒ 当读不懂：读回「不知道」、拒写（一个字节不动）。
 /// 一条注解约 150 字节 ⇒ 64 MiB 装得下四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
 pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
-
-/// 一条注解（别名与缺省见各字段）。
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct Entry {
-    #[serde(default)]
-    pub starred: bool,
-    #[serde(default, rename = "customTitle", alias = "custom_title")]
-    pub custom_title: Option<String>,
-    /// 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub hide: Option<Hide>,
-    #[serde(default, rename = "updatedAt", alias = "updated_at")]
-    #[cfg_attr(test, ts(type = "number"))]
-    pub updated_at: i64,
-}
 
 /// 单个那一格（[`Entry::hide`]；线上形住 `cmd-wire`，隐藏的判定在控制面也读它）。
 pub use cmd_wire::session::Hide;
@@ -111,9 +94,6 @@ struct Doc {
     #[serde(default)]
     entries: BTreeMap<String, Entry>,
 }
-
-/// sid → 注解。
-pub type Table = BTreeMap<String, Entry>;
 
 /// 读的结局。「推不出家」「文件不在」「读不懂」三件事分开说 —— 后两件对界面的意思完全不同：
 /// 文件不在 = 还没有任何注解（真的是 0）；读不懂 = 不知道（不许说成 0）。

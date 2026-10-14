@@ -3,6 +3,7 @@
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};
+pub(crate) use cmd_wire::needs::{Ask, AskRun, Choice, NoteNeed, Question, QuestionOption};
 
 /// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
 pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
@@ -138,141 +139,7 @@ pub(crate) fn hook_off_words(env_value: &str) -> Words {
 }
 use crate::common::cells::{Tone, Words};
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-/// 一条待答请求的成品（`needs.ask`）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "NeedsAsk"
-    )
-)]
-pub(crate) struct Ask {
-    /// 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
-    pub(crate) id: String,
-    /// 种类（同 `needs.kind` 那一套里的三种：approve · answer · plan）。
-    pub(crate) kind: AskKind,
-    /// 工具名原样。
-    pub(crate) tool: String,
-    /// 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
-    pub(crate) run: Option<AskRun>,
-    /// 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
-    pub(crate) what: Option<String>,
-    /// 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
-    pub(crate) detail: String,
-    /// 能选的几项，排好序（「以后不再问」那几项不放第一位）。
-    pub(crate) choices: Vec<Choice>,
-    /// 提问那一种的题目；别的种类为空。
-    pub(crate) questions: Vec<Question>,
-    /// 何时挂上的（epoch ms，这台的钟）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) since_ms: u64,
-}
-
-/// 发请求的那一趟子运行。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "NeedsAskRun"
-    )
-)]
-pub(crate) struct AskRun {
-    pub(crate) id: String,
-    /// 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
-    pub(crate) kind: Option<String>,
-}
-
-/// 一个选项。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "NeedsChoice"
-    )
-)]
-pub(crate) struct Choice {
-    /// 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
-    pub(crate) id: String,
-    pub(crate) text: Words,
-    pub(crate) tone: Tone,
-    /// 要不要附一句话：none · optional · required。
-    pub(crate) note: NoteNeed,
-}
-
-/// 选项要不要附一句话。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "NeedsNote"
-    )
-)]
-pub(crate) enum NoteNeed {
-    None,
-    Optional,
-    Required,
-}
-
-/// 一道题（提问那一种）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "NeedsQuestion"
-    )
-)]
-pub(crate) struct Question {
-    /// `q0` · `q1` …（答的时候 `picks` 按它键）。
-    pub(crate) id: String,
-    pub(crate) text: String,
-    pub(crate) header: Option<String>,
-    pub(crate) multi: bool,
-    pub(crate) options: Vec<QuestionOption>,
-    /// 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
-    pub(crate) other: bool,
-}
-
-/// 一道题的一个选项。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "NeedsQuestionOption"
-    )
-)]
-pub(crate) struct QuestionOption {
-    /// `q0o0` …
-    pub(crate) id: String,
-    pub(crate) text: String,
-    pub(crate) detail: Option<String>,
-}
 
 /// 成品：选项按种类写好字。
 pub(crate) fn product_of(id: &str, a: &AskIn, since_ms: u64) -> Ask {

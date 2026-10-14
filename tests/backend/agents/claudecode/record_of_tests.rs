@@ -1,6 +1,7 @@
 //! Claude 一行 ⇒ 通用记录：各类全格 ＋ 最少格（金样 `tests/__fixtures__/record.golden.jsonl`，手机端照它比）· 自动应答按型号认 ·
 //! 报错带原因与状态码 · 一轮结束与帧 `turn_end` 同判 · 不进界面的几类不出记录。夹具是结构占位，不采真正文。
 use super::*;
+use crate::agents::record::{BodyExt as _, RecordExt as _};
 
 /// 金样重写开关（人读过「现打」再落盘）。
 const REGEN: &str = "CCM_REGEN_RECORD_GOLDEN";
@@ -308,10 +309,11 @@ fn records_without_a_reader_do_not_come_out() {
     }
 }
 
-/// Claude 自己的状态行（07-16 语料里落在「未知类型」的那 7 种）：认识、不上屏 —— 不出记录，也不再记成漂移。
+/// Claude 自己的状态行（07-16 语料里落在「未知类型」的那 7 种 · 10-14 语料里 Claude Code 2.1.29x 新写的 6 种）：认识、不上屏 ——
+/// 不出记录，也不再记成漂移。10-14 那 6 种照真行的键名造（值全是占位；`bridge-session` 的账号 / 组织号用全零假值）。
 #[test]
 fn claude_status_lines_are_known_and_stay_off_screen() {
-    for t in [
+    let mut raws: Vec<String> = [
         "mode",
         "agent-name",
         "file-history-delta",
@@ -319,8 +321,26 @@ fn claude_status_lines_are_known_and_stay_off_screen() {
         "relocated",
         "worktree-state",
         "frame-link",
-    ] {
-        let raw = format!(r#"{{"type":"{t}","sessionId":"s","x":1}}"#);
+    ]
+    .iter()
+    .map(|t| format!(r#"{{"type":"{t}","sessionId":"s","x":1}}"#))
+    .collect();
+    raws.extend(
+        [
+            r#"{"type":"atis-latch","atis":"","sessionId":"s"}"#,
+            r#"{"type":"history-suppression","sessionId":"s","cause":"migration","ts":"2026-10-14T00:00:00.000Z"}"#,
+            r#"{"type":"bridge-session","sessionId":"s","bridgeSessionId":"cse_placeholder","lastSequenceNum":1,"noHistoryBackfill":true,"ownerAccountUuid":"00000000-0000-0000-0000-000000000000","ownerOrganizationUuid":"00000000-0000-0000-0000-000000000000"}"#,
+            r#"{"type":"cost-state","sessionId":"s","totalCostUsd":0.5}"#,
+            r#"{"type":"artifact-comment-monitor","sessionId":"s","x":1}"#,
+            r#"{"type":"artifact-autoreact-ledger","sessionId":"s","x":1}"#,
+        ]
+        .map(str::to_string),
+    );
+    for raw in raws {
+        let t = serde_json::from_str::<serde_json::Value>(&raw).unwrap()["type"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(&raw, 0))
             .unwrap()
             .unwrap();
@@ -338,7 +358,8 @@ fn claude_status_lines_are_known_and_stay_off_screen() {
 /// 认不出的一行出 `unread`：没见过的类型 · 见过的类型形状变了；写好的一句、`warn`、原文摘录按字符截到 400 字节以内。
 #[test]
 fn an_unread_line_comes_out_as_unread() {
-    use crate::agents::record::{UnreadWhy, EXCERPT_BYTES};
+    use crate::agents::record::UnreadWhy;
+    use cmd_wire::record::EXCERPT_BYTES;
     let r = one(r#"{"type":"some-new-kind","uuid":"x","timestamp":"2026-10-09T01:30:00.000Z"}"#)
         .expect("没见过的类型也要出一条");
     let Body::Unread {
@@ -375,7 +396,10 @@ fn an_unread_line_comes_out_as_unread() {
     );
 
     // 长行：按字符截，不截半个字。
-    let long = format!(r#"{{"type":"some-new-kind","pad":"{}"}}"#, "字".repeat(400));
+    let long = format!(
+        r#"{{"type":"some-new-kind","uuid":"x","pad":"{}"}}"#,
+        "字".repeat(400)
+    );
     let r = one(&long).unwrap();
     let Body::Unread { excerpt, .. } = &r.body else {
         panic!()
@@ -386,6 +410,64 @@ fn an_unread_line_comes_out_as_unread() {
         excerpt.0.len()
     );
     assert!(long.starts_with(&excerpt.0));
+}
+
+/// **没有链上身份的未知顶层类型不成卡**（10-14 起的规矩）：对话内容每行都带 `uuid` / `parentUuid`，没身份的只可能是那一家的簿记行 ——
+/// 下一版再加几种也不刷屏。同一份记录里：没身份的新类型 ⇒ 不出记录；带身份的新类型 ⇒ 照旧 `unread`；
+/// 认识的类型形状变了（没身份也算）⇒ 照旧 `unread`。不悄悄丢的那一半（会话事实里记几行、哪几种）在 `facts_query_tests`。
+#[test]
+fn a_bookkeeping_line_without_identity_is_no_card() {
+    let lines = [
+        (
+            r#"{"type":"some-future-ledger","sessionId":"s","n":1}"#,
+            false,
+        ),
+        (
+            r#"{"type":"some-future-kind","uuid":"u-1","parentUuid":"p-1","timestamp":"2026-10-14T00:00:00.000Z"}"#,
+            true,
+        ),
+        (r#"{"type":"some-future-kind","parentUuid":"p-2"}"#, true),
+        (r#"{"type":"ai-title","sessionId":"s"}"#, true),
+    ];
+    for (raw, card) in lines {
+        let t = crate::agents::claudecode::parse::translated(&crate::agents::Line::new(raw, 0))
+            .unwrap()
+            .expect("合法 JSON 的一行都有一份翻译");
+        assert_eq!(
+            matches!(
+                t.record.as_ref().map(|r| &r.body),
+                Some(Body::Unread { .. })
+            ),
+            card,
+            "{raw}: {t:?}"
+        );
+    }
+    // 判只一处：会话事实记数那一问（[`quiet_unread_of`]）与翻译表不出卡逐行一致 —— 认不出的行里，不成卡 ⇔ 它记数；
+    // 认识的类型（有没有身份都）不记数。
+    let more = [
+        r#"{"type":"mode","sessionId":"s"}"#,
+        r#"{"type":"atis-latch","atis":"","sessionId":"s"}"#,
+        r#"{"type":"user","uuid":"u","timestamp":"t","message":{"role":"user","content":"q"}}"#,
+        r#"{"type":"some-future-ledger","uuid":7}"#,
+        r#"{"sessionId":"s"}"#,
+    ];
+    for raw in lines.iter().map(|(r, _)| *r).chain(more) {
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let line = crate::agents::Line::new(raw, 0);
+        let rec = crate::agents::claudecode::parse::parse_line(&line)
+            .unwrap()
+            .unwrap();
+        let unrecognized = matches!(
+            rec,
+            crate::agents::claudecode::schema::JsonlRecord::Unrecognized { .. }
+        );
+        let carded = record_of(rec, "@0").is_some();
+        let quiet = quiet_unread_of(&v);
+        assert_eq!(quiet.is_some(), unrecognized && !carded, "{raw}");
+        if let Some(t) = quiet {
+            assert_eq!(Some(t.as_str()), v["type"].as_str(), "{raw}");
+        }
+    }
 }
 
 /// 秤 1 / 2 / 6 喂界面的语料就是这一家翻译表对原文语料（`scale2-height-records.jsonl`）逐行的成品 ——

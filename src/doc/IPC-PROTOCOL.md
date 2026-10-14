@@ -76,7 +76,8 @@
   续算令牌那几格投影不去（`history-facts` 的 `end` · `rev`：`cells` 没点、`omit` 点了都照样在），下一问把它们当 `prior: {end, rev}` 交回。
   令牌对不上那台常驻后端续算表里的任何一份（挤掉了 · 后端重启过 · 一次性 CLI 进程）⇒ `stale_prior`，调用方不带令牌从 0 要一份。
 - **`tz`（时刻按谁的钟）**：看的那一台（桌面 · 手机）的时区，IANA 名。回包里写成字的时刻（`…Text` · `timeText` · `tsText` · `startText` · `mtime_text` · 今天 / 昨天那几格）**一律按它写**，不按答话那台后端自己的钟；远端那一跳（这台替看的人问另一台）回来的原始时刻也由这台按它写。
-  不是串 · 时区库里没有这个名 · 没带 ⇒ **UTC**（不拒）。偏移按**那一刻**算（夏令时跟着那一刻，冬天看夏天的记录照样对）；时区库随后端二进制带，各平台同一份。
+  不是串 · 时区库里没有这个名 · 没带 ⇒ **按 UTC 写**（不拒），但当成「看的那一台说不出自己的时区」：要那一台时区名的地方不冒充成 `UTC`
+  （`rotation-view` 的「时区不明」那一条不带 `zone`、句子里照实说一句）。`local` ＝ 看的人就在答话这一台：按这台系统的钟，要那一台时区名时给这台系统的时区名（说不出同上）。替看的人问别台时照算的那一个转过去（没说 ⇒ 明说 `UTC`）。偏移按**那一刻**算（夏令时跟着那一刻，冬天看夏天的记录照样对）；时区库随后端二进制带，各平台同一份。
   为什么是 IANA 名而不是偏移：偏移只说得准「此刻」，历史页 · 记录里的时刻一跨夏令时就差一小时；看的那一台本来就叫得出自己的名（`Intl` · `ZoneId` · 系统设置），给名不多花一个字节的心思。
   原始时刻（`at` · `resetsAt` · `tsMs` · `mtime_secs` …）照旧是数，要它跟着走的「已经多久」由出口按此刻自己走字（见 §7 的时长约定）。
   复制详情（`detail`）里那一行时刻同样按它写，并带偏移（`2026-10-10 04:30:15 +08:00`，跟哪台的日志都对得上）：详情在深处拼好时先留空位，出去那一下（流的写者按这条连接看的那一台的时区 · CLI 按 `--tz`）填。
@@ -88,6 +89,9 @@
   终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
+- **登录失败还能怎么办**：`login-start` · `login-finish` 失败时（`bad_args` 除外）`data` 带 `again`：`paste`（作业还在，接着粘）· `restart`（作业没了，重起一趟 `login-start`）·
+  `none`（再来也是同样结果）。值由后端照码定、写在码表那一行上（`faces/login_face.rs`）：`not_found` · `unsupported` ⇒ `none`；`failed` · `refused` · `no_job` ⇒ `restart`；
+  `bad_paste` · `child_timed_out` ⇒ `paste`。界面照 `again` 画，不按码去猜。
 - **失败应答三格**：`code` 给程序认（分支 · 重试判断）；`message` 是给人看的那一句（后端按共享文案表 `src/shared/copy/table.json` 写好，前端原样上屏）；
   `detail` 是「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话，排法只住 `copy_core::detail`），下层原话只进这里、不进 `message`。
 
@@ -181,7 +185,7 @@
 
 ### 通用记录
 
-会话记录里一行在界面里是什么，由那一家的适配层翻成这一形（`agents/record.rs`；Claude 的翻译表 `agents/claudecode/record_of.rs`，Codex 的 `agents/codex/record.rs`）。
+会话记录里一行在界面里是什么，由那一家的适配层翻成这一形（形状 `src/common/cmd-wire/src/record.rs`，两侧同一份；Claude 的翻译表 `agents/claudecode/record_of.rs`，Codex 的 `agents/codex/record.rs`）。
 两个前端都只按 `t` 与格排版，不认任何一家的盘上格式。每类全格 ＋ 最少格的样本：`tests/__fixtures__/record.golden.jsonl`（后端真序列化器写，`record_of_tests` 钉着）。Codex 那一家的样本是一整份造的中性 rollout（`tests/__fixtures__/codex-rollout.sample.jsonl`）走读页那一遍写成的 `tests/__fixtures__/record-codex.golden.jsonl`（`agents/codex` 的 `record_tests` 钉着；界面 `codex-record.vitest.ts`、手机 `CodexRecordGoldenTest` 解同一份）；它的 `function_call` 入参盘上是 `arguments` 那个 JSON 串，适配层解成对象放进 `tool_use.input`（解不出 ⇒ 原串包成 `{input}`）。
 
 公共格（每类都有）：

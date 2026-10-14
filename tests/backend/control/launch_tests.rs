@@ -819,17 +819,19 @@ impl FakeTmux {
             answer: Box::new(answer),
         }
     }
+    /// 一串命令（`a ; b`）按最后那一条认：送键那一发前面带着退出窗格模式那一条。
     fn call(&self, a: &[&str]) -> Result<Ran, CmdErr> {
         self.calls
             .borrow_mut()
             .push(a.iter().map(|s| s.to_string()).collect());
-        (self.answer)(a[0])
+        (self.answer)(last_cmd(a)[0])
     }
     fn verbs(&self) -> Vec<String> {
         self.calls
             .borrow()
             .iter()
             .map(|c| {
+                let c = last_cmd(c);
                 if c[0] == "set-option" {
                     format!("set-option {}", c[3])
                 } else {
@@ -837,6 +839,14 @@ impl FakeTmux {
                 }
             })
             .collect()
+    }
+}
+
+/// 一串 tmux 命令（`;` 隔开）里的最后那一条。
+fn last_cmd<S: AsRef<str>>(a: &[S]) -> &[S] {
+    match a.iter().rposition(|w| w.as_ref() == ";") {
+        Some(i) => &a[i + 1..],
+        None => a,
     }
 }
 
@@ -1054,7 +1064,7 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
         let e = run_with(&with_name(bad), &|a| f.call(a)).unwrap_err();
         assert_eq!(e.code, "bad_args", "{bad}");
         assert_eq!(
-            Some(e.message),
+            Some(e.fail.message),
             new_tmux_name_said(bad),
             "{bad}：说的不是 ccm 铸名那一句"
         );
@@ -1098,7 +1108,7 @@ fn a_created_session_is_declared_by_whoever_created_it() {
             .position(|l| l.starts_with("set-option -t =cc-decl: @ccm_client "));
         let typed = seen
             .iter()
-            .position(|l| l.starts_with("send-keys"))
+            .position(|l| l.contains("send-keys"))
             .expect("键入了");
         assert_eq!(tag.is_some(), want, "{seen:?}");
         if let Some(t) = tag {
@@ -1106,4 +1116,220 @@ fn a_created_session_is_declared_by_whoever_created_it() {
             assert_eq!(seen[t], "set-option -t =cc-decl: @ccm_client ccm");
         }
     }
+}
+
+// ═══ busy1：送启动命令不被窗格模式吃掉 · 送不进时说清 ═══════════════════════════
+//
+// 10-13 用户敲 `ccm` 起不来：一条别人装的钩子把新会话的窗格切进 view-mode，ccm 随后送的启动命令被那个模式的键表吃掉
+// （`f` 弹出 jump forward），命令没进 shell；那一发送键也没在期限内答，落成笼统的「tmux 5 秒内无应答」。
+
+/// 新会话的窗格在送键之前进了 view-mode（一条出声的钩子）⇒ 启动命令照样进 shell（真 tmux，沙箱 server）。
+#[cfg(target_os = "linux")]
+#[test]
+fn busy1_the_start_command_reaches_the_shell_even_if_the_new_pane_is_in_a_mode() {
+    let sb = crate::tmux_sandbox::SandboxTmux::new("typemode");
+    sb.ok(&[
+        "set-hook",
+        "-g",
+        "session-created[98]",
+        "run-shell -b \"'/gone/cc-monitor-backend' -- --tmux-notify 1 2\"",
+    ]);
+    let req = parse_request(&serde_json::json!({
+        "mode": "create-or-attach",
+        "name": "busy1-typed",
+        "payload": "echo busy1-$((6*7))",
+        "cwd": sb.dir().to_string_lossy(),
+    }))
+    .expect("请求应当解析成功");
+    // 建完会话先等窗格真进了模式，再让生产那一臂往下走（钩子是后台跑的：不等就测不到那一形）。
+    let tmux = |a: &[&str]| {
+        let r = ran(sb.child(), a);
+        if a[0] == "new-session" {
+            assert!(
+                sb.wait_for(3_000, |s| s.out(&[
+                    "display-message",
+                    "-p",
+                    "-t",
+                    "=busy1-typed:",
+                    "#{pane_in_mode}"
+                ]) == "1"),
+                "前提没摆出来：新会话的窗格没进模式"
+            );
+        }
+        r
+    };
+    let o = run_with(&req, &tmux).expect("该建成");
+    assert_eq!((o.created, o.typed), (true, true));
+    let landed = sb.wait_for(3_000, |s| {
+        s.out(&["capture-pane", "-p", "-t", "=busy1-typed:"])
+            .lines()
+            .any(|l| l.contains("busy1-42") && !l.contains("echo"))
+    });
+    assert!(
+        landed,
+        "启动命令没进 shell（被窗格模式吃掉了）。窗格模式：{:?}；画面：\n{}",
+        sb.out(&[
+            "display-message",
+            "-p",
+            "-t",
+            "=busy1-typed:",
+            "#{pane_mode}"
+        ]),
+        sb.out(&["capture-pane", "-p", "-t", "=busy1-typed:"])
+    );
+}
+
+/// 送键那一发：退非零 ⇒「启动命令未送达」；过了期限 ⇒ 也归 `typed_unconfirmed`（会话在、送没送到不知道），
+/// 句子说送达未知、点名那个 tmux 会话，期限那句进复制详情 —— 不再是笼统的 `child_timed_out`。
+#[test]
+fn busy1_a_start_command_that_did_not_get_through_says_so() {
+    let req = create_req();
+    let f = FakeTmux::new(|verb| match verb {
+        "send-keys" => said(false, "can't find pane: %9"),
+        _ => said(true, ""),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "typed_unconfirmed");
+    assert_eq!(
+        e.message,
+        copy_text("beLaunch.type.failed", &[("name", "cc-w5vis")])
+    );
+    assert_eq!(e.raw.as_deref(), Some("can't find pane: %9"));
+
+    let slow = crate::platform::child::ChildFail::TimedOut {
+        program: "tmux".into(),
+        after: crate::platform::child::Deadline::secs(5),
+    };
+    let slow_said = slow.to_string();
+    let f = FakeTmux::new(move |verb| match verb {
+        "send-keys" => Err(CmdErr::from(
+            crate::platform::child::ChildFail::TimedOut {
+                program: "tmux".into(),
+                after: crate::platform::child::Deadline::secs(5),
+            }
+            .into_cmd_said("no_tmux", |w| w.to_string()),
+        )),
+        _ => said(true, ""),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "typed_unconfirmed", "{}", e.message);
+    assert_eq!(
+        e.message,
+        copy_text("beLaunch.type.timedOut", &[("name", "cc-w5vis")])
+    );
+    assert_eq!(e.raw.as_deref(), Some(slow_said.as_str()));
+}
+
+// ═══ busy2：送键没确认 ⇒ 分清两种；明确没送进 ⇒ 收掉本趟建的空会话 ═══════════════════
+
+/// 送键那一发：退非零 ⇒ 「明确没送进」；过了期限 ⇒ 「送达未知」；两种都标着会话是本趟建的。线上照旧同一个码。
+#[test]
+fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
+    let req = create_req();
+    let f = FakeTmux::new(|verb| match verb {
+        "send-keys" => said(false, "can't find pane: %9"),
+        _ => said(true, ""),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "typed_unconfirmed");
+    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+
+    let f = FakeTmux::new(|verb| match verb {
+        "send-keys" => Err(CmdErr::from(
+            crate::platform::child::ChildFail::TimedOut {
+                program: "tmux".into(),
+                after: crate::platform::child::Deadline::secs(5),
+            }
+            .into_cmd_said("no_tmux", |w| w.to_string()),
+        )),
+        _ => said(true, ""),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "typed_unconfirmed");
+    assert_eq!(e.untyped, Some((Delivery::Unknown, true)));
+
+    // 别的失败（建不出来）不带这一格。
+    let f = FakeTmux::new(|verb| match verb {
+        "new-session" | "has-session" => said(false, "no"),
+        _ => said(true, ""),
+    });
+    let e = run_with(&req, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "create_failed");
+    assert_eq!(e.untyped, None);
+}
+
+/// 明确没送进 ⇒ 本趟建的那个只剩 shell 的会话收掉（真 tmux，沙箱 server）；里面跑着别的程序 · 开了第二个窗口的不动。
+#[cfg(target_os = "linux")]
+#[test]
+fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
+    let sb = crate::tmux_sandbox::SandboxTmux::new("reap");
+    let req = parse_request(&serde_json::json!({
+        "mode": "create-or-attach",
+        "name": "busy2-bare",
+        "payload": "echo never",
+        "cwd": sb.dir().to_string_lossy(),
+    }))
+    .expect("请求应当解析成功");
+    // 真 tmux，只送键那一发答「没送进」。
+    let tmux = |a: &[&str]| {
+        if a.contains(&"send-keys") {
+            return said(false, "not now");
+        }
+        ran(sb.child(), a)
+    };
+    let e = run_with(&req, &tmux).unwrap_err();
+    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    let real = |a: &[&str]| ran(sb.child(), a);
+    assert!(
+        sb.run(&["has-session", "-t", "=busy2-bare:"])
+            .status
+            .success(),
+        "前提：会话建了"
+    );
+    let seen = sb.out(&[
+        "display-message",
+        "-p",
+        "-t",
+        "=busy2-bare:",
+        "#{session_windows} #{window_panes} [#{pane_start_command}] #{session_attached}",
+    ]);
+    assert!(
+        reap_if_bare("busy2-bare", &real),
+        "只剩 shell 的会话该收掉：{seen}"
+    );
+    assert!(
+        !sb.run(&["has-session", "-t", "=busy2-bare:"])
+            .status
+            .success(),
+        "会话还在"
+    );
+
+    // 里面跑着别的程序 ⇒ 不动。
+    sb.ok(&["new-session", "-d", "-s", "busy2-busy", "sleep 600"]);
+    assert!(!reap_if_bare("busy2-busy", &real));
+    assert!(sb
+        .run(&["has-session", "-t", "=busy2-busy:"])
+        .status
+        .success());
+    // 开了第二个窗口 ⇒ 不动。
+    sb.ok(&["new-session", "-d", "-s", "busy2-two"]);
+    sb.ok(&["new-window", "-t", "=busy2-two:"]);
+    assert!(!reap_if_bare("busy2-two", &real));
+    assert!(sb
+        .run(&["has-session", "-t", "=busy2-two:"])
+        .status
+        .success());
+    // 窗格起的不是默认 shell（前台此刻是什么不看）⇒ 不动。
+    sb.ok(&["new-session", "-d", "-s", "busy2-cmd", "sh"]);
+    assert!(!reap_if_bare("busy2-cmd", &real));
+    assert!(sb
+        .run(&["has-session", "-t", "=busy2-cmd:"])
+        .status
+        .success());
+    // 名字只认精确那一个：`busy2-tw` 不存在 ⇒ 不碰 `busy2-two`。
+    assert!(!reap_if_bare("busy2-tw", &real));
+    assert!(sb
+        .run(&["has-session", "-t", "=busy2-two:"])
+        .status
+        .success());
 }

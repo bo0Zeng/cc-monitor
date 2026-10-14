@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
 import android.content.Intent
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -30,9 +31,11 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
+import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.chatHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -61,6 +64,8 @@ fun ChatRoute(
     onDrawerAction: (DrawerAction) -> Unit,
     /** 新建会话（发第一条时请那台起）；`false` ＝ 从列表点进来的那一条。 */
     isNew: Boolean = false,
+    /** 新建会话从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`）。 */
+    draftCwd: String? = null,
     modifier: Modifier = Modifier,
 ) {
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
@@ -68,7 +73,7 @@ fun ChatRoute(
     KeepAliveWhileLinked(link)
     val host = rememberChatHost(hostId) ?: return
     val product = rememberProductName(hostId, host.agent)
-    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = host.cwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
+    val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = draftCwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
     val vm: ChatViewModel =
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
@@ -81,26 +86,42 @@ fun ChatRoute(
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawerAction) {
+    // 在一条会话里点「新建会话」⇒ 新的那张起在这条的目录。
+    val onDrawer: (DrawerAction) -> Unit = { action ->
+        val cwd = state.cwd
+        onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
+    }
+    val picker = vm.picker
+    ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
-            topBar = { ChatTopBar(title = product, onOpenDrawer = { scope.launch { drawerState.open() } }) },
+            topBar = {
+                ChatTopBar(
+                    title = if (state.drafting) copyText("newSession.title.plain") else product,
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                )
+            },
         ) { inner ->
-            ChatScreen(
-                state = state,
-                onSend = vm::send,
-                onRetrySend = vm::retry,
-                onStop = vm::stop,
-                onLoadOlder = vm::loadOlder,
-                // 键盘弹起：垫上输入法，消息区缩到输入行上方（不垫的话系统把整窗往上推，顶栏和消息被推出屏外）。
-                // 先认领 Scaffold 已垫的那几块，手势条那一段才不算两遍。
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(inner)
-                        .consumeWindowInsets(inner)
-                        .imePadding(),
-            )
+            // 键盘弹起：垫上输入法，消息区缩到输入行上方（不垫的话系统把整窗往上推，顶栏和消息被推出屏外）。
+            // 先认领 Scaffold 已垫的那几块，手势条那一段才不算两遍。
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(inner)
+                    .consumeWindowInsets(inner)
+                    .imePadding(),
+            ) {
+                if (state.drafting && picker != null) {
+                    NewSessionPane(hostId, host.machine, picker, onSwitchMachine = { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) })
+                }
+                ChatScreen(
+                    state = state,
+                    actions = vm.actions,
+                    onRetrySend = vm::retry,
+                    onLoadOlder = vm::loadOlder,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -131,10 +152,9 @@ fun ChatController.sessionOf(
 ): ChatSession =
     sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope) }
 
-/** 这台在手机上的名字 ＋ 新建会话起在哪（这台的默认工作目录，没填 ⇒ `~`）；还没读到 ⇒ `null`。 */
+/** 这台在手机上的名字 ＋ 存的那一家；还没读到 ⇒ `null`。 */
 private data class ChatHost(
     val machine: String,
-    val cwd: String,
     /** 这台存的那一家（线上 kind；没选 ⇒ `null`）：新建会话起哪一家由那台按它认。 */
     val agent: String?,
 )
@@ -147,7 +167,6 @@ private fun rememberChatHost(hostId: String): ChatHost? {
         value =
             ChatHost(
                 machine = h?.label ?: hostId,
-                cwd = h?.defaultWorkingDir?.trim()?.ifEmpty { null } ?: HOME_DIR,
                 agent = h?.agentKind,
             )
     }
@@ -167,9 +186,6 @@ private fun rememberProductName(
     }
     return got
 }
-
-/** 新建会话的出厂目录（那台按它的家目录读）。 */
-private const val HOME_DIR = "~"
 
 /**
  * 聊天屏的顶栏：左上 ☰ 拉出抽屉。

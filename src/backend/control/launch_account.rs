@@ -261,17 +261,8 @@ pub(crate) struct Book {
     pub(crate) tabs: BTreeMap<String, LaunchTab>,
 }
 
-/// 起会话时那一格 `--tab`：值 ＋ 写它的那个别名（命令行当场给的 ⇒ 没有）。隐藏的判定读它（`control/session_hidden.rs`）；
-/// 那一台的清单（`history-list` 的 `raw`）每行带它。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct LaunchTab {
-    pub(crate) tab: cmd_wire::session::Tab,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) alias: Option<String>,
-}
+/// 起会话时那一格 `--tab`（线上形住 `cmd-wire`：那一台的清单每行带它）。隐藏的判定读它（`control/session_hidden.rs`）。
+pub(crate) use cmd_wire::session::LaunchTab;
 
 /// 一张便条：起这个进程时用的号 ＋ 写下的时刻（unix 秒）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

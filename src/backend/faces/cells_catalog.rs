@@ -684,6 +684,7 @@ mod specimens {
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
         ResultKind, SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
     };
+    use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
         Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,
@@ -989,6 +990,7 @@ mod specimens {
                         outcome: RetryOutcome::Recovered,
                     }],
                     permission_mode: some("default"),
+                    permission_mode_text: Some(Words(s("p"))),
                     tokens: Some(TokenUse {
                         input: 1,
                         output: 1,
@@ -1055,6 +1057,11 @@ mod specimens {
                             },
                         ),
                     }],
+                    quiet_unread: Some(crate::observe::facts_query::QuietUnread {
+                        text: Words(s("q")),
+                        count: 1,
+                        kinds: vec![s("k")],
+                    }),
                 };
                 node_of(&f)
             })

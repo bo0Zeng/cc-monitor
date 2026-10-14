@@ -1,14 +1,15 @@
 package com.ccmonitor.mobile.ui.overview
 
-import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
-import com.ccmonitor.mobile.core.claude.link.Needs
 import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.claude.link.SessionTable
-import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
-import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
+import com.ccmonitor.mobile.core.claude.link.wire.Needs
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.link.Problem
 import org.junit.Assert.assertEquals
@@ -20,12 +21,12 @@ import org.junit.Test
 class ConversationsViewTest {
     private fun row(
         sid: String,
-        section: String?,
-    ) = HistoryList.Row(sid, "标题 $sid", "09:0$sid", section, "/w", null, "claude", null)
+        section: String,
+    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null)
 
     private val list =
         Fetched.Got(
-            HistoryList.Answer(
+            HistoryListPage(
                 rows = listOf(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")),
                 notice = null,
                 truncated = true,
@@ -54,8 +55,8 @@ class ConversationsViewTest {
     fun `需手动照核心的先后、字照抄；清单里没有的不拿 sid 顶标题`() {
         val needs =
             listOf(
-                SessionsNeeds.Row("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, 180_000L)),
-                SessionsNeeds.Row("9", Needs("answer", "等回答", Tone.NEED, 1, null)),
+                NeedsRow("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, 180_000L)),
+                NeedsRow("9", Needs("answer", "等回答", Tone.NEED, 1, null)),
             )
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs), needsAt = 1_000)
         assertEquals(listOf("3", "9"), v.needs.map { it.sessionId })

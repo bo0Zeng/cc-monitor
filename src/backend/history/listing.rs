@@ -12,6 +12,7 @@ use super::listing_scan::SessionScan;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
 use crate::platform::fs::Ro;
+pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -48,44 +49,6 @@ pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
             _ => CanDelete::Yes,
         },
     }
-}
-
-/// `history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（[`can_of`] 的成品）：闭集的词与两个开关。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Can {
-    /// `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
-    pub(crate) resume: CanResume,
-    /// 恢复时能不能选号。
-    pub(crate) accounts: bool,
-    /// 能不能从某一轮分叉。
-    pub(crate) fork: bool,
-    /// `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
-    pub(crate) delete: CanDelete,
-}
-
-/// [`Can::resume`] 的三个词。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum CanResume {
-    Yes,
-    Switch,
-    Bg,
-}
-
-/// [`Can::delete`] 的三个词。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum CanDelete {
-    Yes,
-    Live,
-    Unsure,
 }
 
 /// 项目清单的本体，出口是参数（资产目录 `asset_catalog` 写内存）。

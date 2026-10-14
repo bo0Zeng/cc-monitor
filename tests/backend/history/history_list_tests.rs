@@ -863,6 +863,14 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
     for (n, want) in &pinned {
         assert_eq!(got.get(n), Some(want), "`{n}` 那一份的线上字节变了");
     }
+    // 手机嵌的 Rust 核心按 `cmd-wire` 那一份（两形 `HistoryListReply`）解每一份：解得开、按类型重写出来逐字节相同。
+    for (n, b) in &got {
+        let v: Value = serde_json::from_str(b).unwrap();
+        match cmd_wire::replies::decode_reply("history-list", v) {
+            Some(Ok(back)) => assert_eq!(&wire(back), b, "`{n}` 重写出来不一样"),
+            other => panic!("`{n}`：手机解不开后端写的那一份：{other:?}"),
+        }
+    }
 }
 
 /// 隐藏的判定照那一台的事实（`raw` 清单带来的 `--tab` · 主会话 · 偏好）：子会话按偏好隐藏、悬停那一句说主会话叫什么（照清单里它那一行）；

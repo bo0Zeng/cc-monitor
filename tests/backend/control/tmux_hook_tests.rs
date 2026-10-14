@@ -47,7 +47,7 @@ fn hook_args_shape() {
     assert_eq!(a[2], "session-closed[63]");
     assert_eq!(
         a[3],
-        "run-shell -b ''\\''/opt/ccm/backend'\\'' -- --tmux-notify 42 999'"
+        "run-shell -b ''\\''/opt/ccm/backend'\\'' -- --tmux-notify 42 999 >/dev/null 2>&1 || true'"
     );
 }
 
@@ -538,4 +538,134 @@ fn an_unanswering_tmux_ends_the_hook_round_after_one_deadline() {
     );
     assert!(took < guard_core::wall::CEILING, "{took:?}");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ═══ busy1：钩子不出声 · 死主的钩子照摘 · 开发版后端不往用户默认 server 装 ═══════════════
+//
+// 10-13 用户敲 `ccm` 起不来：默认 server 上漏着一组指向已删工作树的开发版后端的钩子，程序不在 ⇒ `run-shell` 回 127，
+// tmux 把那句话用 view-mode 盖在新会话的窗格上，ccm 随后送的启动命令被 view-mode 的键表吃掉。
+
+/// 生产的 `hook_set_args` 装一条指向不存在程序的钩子：新建会话之后窗格不进任何模式（真 tmux，沙箱 server）。
+#[cfg(target_os = "linux")]
+#[test]
+fn busy1_a_hook_whose_program_is_gone_never_puts_the_new_pane_into_a_mode() {
+    let sb = crate::tmux_sandbox::SandboxTmux::new("hookquiet");
+    let gone = sb.dir().join("gone/cc-monitor-backend");
+    for event in HOOK_EVENTS {
+        let a = hook_set_args(event, 99, &gone, 4_000_001, 7);
+        let a: Vec<&str> = a.iter().map(String::as_str).collect();
+        sb.ok(&a);
+    }
+    sb.ok(&["new-session", "-d", "-s", "fresh"]);
+    // 钩子是 `-b`（后台跑）：等它跑完那一会儿里窗格一直不进模式才算。
+    let moded = sb.wait_for(1_500, |s| {
+        s.out(&["display-message", "-p", "-t", "=fresh:", "#{pane_in_mode}"]) == "1"
+    });
+    assert!(
+        !moded,
+        "钩子的程序不在时新会话的窗格进了 {:?}：送进去的启动命令会被那个模式的键表吃掉",
+        sb.out(&["display-message", "-p", "-t", "=fresh:", "#{pane_mode}"])
+    );
+}
+
+/// 程序已经不在（工作树删了）的那种死槽，装的时候照样摘掉；别人的一格不碰（真 tmux，沙箱 server）。
+#[cfg(target_os = "linux")]
+#[test]
+fn busy1_install_removes_a_dead_backends_hooks_even_when_its_program_is_gone() {
+    let sb = crate::tmux_sandbox::SandboxTmux::new("hookdead");
+    // 漏出去的那一组原样：旧形状（没有静音后缀）、程序不在、pid 不在。
+    let leaked = "run-shell -b \"'/gone/tree/.build/backend/debug/cc-monitor-backend' -- --tmux-notify 4000002 148135949\"";
+    for event in HOOK_EVENTS {
+        sb.ok(&["set-hook", "-g", &format!("{event}[99]"), leaked]);
+    }
+    sb.ok(&[
+        "set-hook",
+        "-g",
+        "session-closed[60]",
+        "run-shell -b 'echo user'",
+    ]);
+    let mut run =
+        |a: &[String]| run_tmux_via(sb.child(), crate::platform::child::Deadline::secs(5), a);
+    let me = (4_000_003u32, 1u64);
+    let n = install_hooks_with(
+        &mut run,
+        &PathBuf::from("/opt/ccm/backend"),
+        me.0,
+        me.1,
+        &|p, s| (p, s) == me,
+    );
+    assert_eq!(n, 3);
+    for event in HOOK_EVENTS {
+        let got = parse_show_hooks(event, &sb.out(&["show-hooks", "-g", event]));
+        assert_eq!(
+            got.get(&99),
+            None,
+            "{event}[99] 那一格死主的钩子还在：{got:?}"
+        );
+        assert_eq!(
+            got.values()
+                .filter(|o| **o == Occupant::Backend(me.0, me.1))
+                .count(),
+            1,
+            "{event}：自己没恰好装一格：{got:?}"
+        );
+    }
+    assert_eq!(
+        parse_show_hooks(
+            "session-closed",
+            &sb.out(&["show-hooks", "-g", "session-closed"])
+        )
+        .get(&60),
+        Some(&Occupant::Foreign),
+        "用户自己的钩子被碰了"
+    );
+}
+
+/// 开发版后端（不在 `<家>/.cc-monitor/bin/` 那一份）不往用户的默认 server 装钩子；装在安装位置的照装；
+/// 私有 socket（`-L` 名字、私有 `TMUX_TMPDIR`）上照装；问不出 socket 的，不在安装位置就不装。
+#[test]
+fn busy1_only_the_installed_backend_hooks_the_users_default_server() {
+    let installed = Path::new("/home/u/.cc-monitor/bin/ccm");
+    let dev = Path::new("/home/u/wt/.build/backend/debug/cc-monitor-backend");
+    let entry = Some(installed);
+    let default = Some("/tmp/tmux-1000/default");
+    for (exe, socket, want, why) in [
+        (installed, default, true, "装在安装位置的后端"),
+        (dev, default, false, "开发版后端 × 用户默认 server"),
+        (
+            dev,
+            Some("/tmp/tmux-1000/ccm-e2e-1a2b3c4d"),
+            true,
+            "开发版后端 × -L 私有 socket",
+        ),
+        (
+            dev,
+            Some("/w/.build/box/tmux/tmux-1000/default"),
+            true,
+            "开发版后端 × 私有 TMUX_TMPDIR",
+        ),
+        (dev, None, false, "开发版后端 × 问不出 socket"),
+        (installed, None, true, "装在安装位置的后端 × 问不出 socket"),
+    ] {
+        assert_eq!(hooks_allowed(exe, entry, socket), want, "{why}");
+    }
+    // 家目录说不出 ⇒ 没有「安装位置」可比：谁都按开发版算。
+    assert!(!hooks_allowed(installed, None, default));
+    assert!(hooks_allowed(
+        installed,
+        None,
+        Some("/tmp/tmux-1000/ccm-e2e-1")
+    ));
+    for s in ["/tmp/tmux-1000/default", "/tmp/tmux-0/default"] {
+        assert!(is_users_default_socket(s), "{s}");
+    }
+    for s in [
+        "/tmp/tmux-1000/other",
+        "/x/tmux-1000/default",
+        "/tmp/tmux-abc/default",
+        "/tmp/default",
+        "",
+    ] {
+        assert!(!is_users_default_socket(s), "{s}");
+    }
 }

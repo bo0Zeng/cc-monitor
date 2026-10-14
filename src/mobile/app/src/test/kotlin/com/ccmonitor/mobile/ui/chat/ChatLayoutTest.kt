@@ -20,9 +20,11 @@ class ChatLayoutTest {
     @Test
     fun `聊天屏让开输入法：在 Scaffold 给的内边距之后先认领它、再垫输入法（手势条不算两遍）`() {
         val code = KotlinSourceScanner.codeOnlyKeepingLiterals(source("src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatRoute.kt"))
-        val at = code.indexOf("ChatScreen(")
-        assertTrue("前提：ChatRoute 里得找到 ChatScreen(", at >= 0)
-        val call = code.substring(at, code.indexOf("\n            )", at))
+        // Scaffold 内容那一块（新建会话的选项 ＋ 聊天面同在一列里）：垫在包着它们的那一列上。
+        val at = code.indexOf("{ inner ->")
+        val screen = code.indexOf("ChatScreen(", at)
+        assertTrue("前提：ChatRoute 里得找到 Scaffold 内容那一块与其中的 ChatScreen(", at >= 0 && screen > at)
+        val call = code.substring(at, screen)
         val pad = call.indexOf(".padding(inner)")
         val consume = call.indexOf(".consumeWindowInsets(inner)")
         val ime = call.indexOf(".imePadding()")

@@ -782,6 +782,107 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
     assert!(!p.contains("to-c-zq"), "给 C 的字落进了活动窗格");
 }
 
+/// ★ 往会话说一句（`session-say` 那一条送字，[`super::say_on`]）：挂着这个 sid 的窗格前台是 shell（agent 已退）⇒ 一个字都不送，
+/// 回「已经没了」（`ended`，`session-say` 照它恢复再送）；前台是 `claude` ⇒ 照送；前台是没登记进程名的那一家（`codex`）⇒ 也照送
+/// （判不了的不当成没了）。前台叫什么照 tmux 的 `#{pane_current_command}`。
+#[test]
+fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_left_behind() {
+    let iso = Iso::new("say");
+    let new = |name: &str, cmd: &str, sid: &str| {
+        let o = iso.tmux(&[
+            "-f",
+            "/dev/null",
+            "new-session",
+            "-d",
+            "-x",
+            "80",
+            "-y",
+            "10",
+            "-s",
+            name,
+            cmd,
+        ]);
+        assert!(
+            o.status.success(),
+            "建会话失败：{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        iso.tmux(&["set-option", "-t", &format!("={name}:"), "@ccm_sid", sid]);
+    };
+    // 前台是 shell：agent 退了、只剩 shell 的样子。
+    new("left-cc", "sh", "sid-left");
+    // 前台进程名是 `claude` / `codex`（`exec -a` 改的是 argv[0]，tmux 照它报前台名；`cat` 留在同一个进程组里回显打进去的字）。
+    new(
+        "live-cc",
+        "bash -c \"exec -a claude bash -c 'cat; :'\"",
+        "sid-live",
+    );
+    new(
+        "live-cx",
+        "bash -c \"exec -a codex bash -c 'cat; :'\"",
+        "sid-cx",
+    );
+    let program = |name: &str, want: &str| -> bool {
+        guard_core::wall::rounds().any(|_| {
+            let l = list_on(iso.on(), &json!({})).unwrap();
+            let hit = l["terminals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["tmux_name"] == name && t["program"] == want);
+            if !hit {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            hit
+        })
+    };
+    assert!(
+        program("left-cc", "sh") && program("live-cc", "claude") && program("live-cx", "codex"),
+        "夹具：三个窗格的前台名没对上"
+    );
+    let say = |sid: &str, text: &str| -> Value {
+        val(super::say_on(
+            iso.on(),
+            &req::<TerminalInputReq>(&json!({ "sid": sid, "text": text, "enter": true })).unwrap(),
+        )
+        .unwrap())
+    };
+
+    let r = say("sid-left", "echo say-zq-left");
+    assert_eq!(r["result"], "refused", "{r}");
+    assert_eq!(r["why"], "ended", "{r}");
+    // 不睡等：之后自己往那个窗格打一句当界桩，界桩回显了还没有那一句 ⇒ 没送过（真送了会落在界桩前面）。
+    let h = iso.handle_of("left-cc");
+    iso.tmux(&["send-keys", "-t", "=left-cc:", "-l", "echo fence-zq"]);
+    iso.tmux(&["send-keys", "-t", "=left-cc:", "Enter"]);
+    assert!(iso.shows_times(&h, "fence-zq", 2), "夹具：界桩没回显");
+    let shot = preview_on(
+        iso.on(),
+        &json!({ "terminal": h, "color": false }),
+        &Default::default(),
+    )
+    .unwrap();
+    assert!(
+        !shot["lines"].to_string().contains("say-zq-left"),
+        "那一句送进了 agent 退了以后留下的 shell：{}",
+        shot["lines"]
+    );
+
+    let r = say("sid-live", "say-zq-live");
+    assert_eq!(r, json!({ "result": "delivered" }));
+    assert!(
+        iso.shows(&iso.handle_of("live-cc"), "say-zq-live"),
+        "该送进 agent 的那一句没到"
+    );
+    let r = say("sid-cx", "say-zq-cx");
+    assert_eq!(
+        r,
+        json!({ "result": "delivered" }),
+        "前台名判不了的被当成没了"
+    );
+    assert!(iso.shows(&iso.handle_of("live-cx"), "say-zq-cx"));
+}
+
 /// 容器那一格的句柄 == 名单里同一会话的句柄（同一台、同一窗格）。走打标那一条生产路（`identity_tag::tag`），
 /// tmux 换成指向隔离 socket 的那一个；被打标的是非活动窗口里的窗格（句柄必须落在它上面，不是活动的那个）。
 #[cfg(target_os = "linux")]

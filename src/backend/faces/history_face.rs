@@ -6,8 +6,11 @@
 //! 入方向不许出现 `observe::` 的那条线照旧：本文件住 `faces/`，与 `read_face` 同一层。
 
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
-use crate::observe::record_page::{ReadRow, RecordLine, RunRow};
+use crate::observe::record_page::{RecordLine, RunRow};
 use crate::wire::typed::{codes, of_pair, Blocking, Command, Cx, NoArgs};
+pub(crate) use cmd_wire::needs::NeedsList;
+/// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
+pub(crate) use cmd_wire::record::{HistoryLines, HistoryRead};
 use std::path::Path;
 
 use super::read_face::{
@@ -62,20 +65,6 @@ pub(crate) struct HistoryReadReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
     pub(crate) until: Option<u64>,
-}
-
-/// `history-read` 的回包（带 `view` 时 `rows[]` 那几格可缺）。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryRead {
-    /// 这一页里每个可计行一条（空白 / 纯 BOM 行不占）。
-    pub(crate) rows: Vec<ReadRow>,
-    /// 下一页从这里起（＝ `offset` ＋ 这一页的原始字节数）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) next: u64,
-    /// 区间到头了（`until` 或读时的文件长度）。
-    pub(crate) eof: bool,
 }
 
 page_codes!(
@@ -242,23 +231,6 @@ pub(crate) struct HistoryLinesReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
     pub(crate) until: Option<u64>,
-}
-
-/// `history-lines` 的回包。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct HistoryLines {
-    /// 第一行的行号。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    /// 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) next: u64,
-    /// 读到了最后一个完整行之后。
-    pub(crate) eof: bool,
-    /// `[from, next)` 里进界面的那些（不进界面的照占号、不出现）。
-    pub(crate) lines: Vec<RecordLine>,
 }
 
 page_codes!(
@@ -610,15 +582,6 @@ pub(crate) fn record_at(
 }
 
 // ───────────────────────── sessions-needs ─────────────────────────
-
-/// `sessions-needs` 的回包：这台上需手动的会话，先答的在前。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NeedsList {
-    /// 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
-    pub(crate) waiting: Vec<crate::observe::accounts_query::NeedsRow>,
-}
 
 codes! {
     /// `sessions-needs` 自己没有别的码。
@@ -1599,6 +1562,13 @@ pub(crate) fn facts_at(
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = history_query::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
+    // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
+    facts.permission_mode_text = facts
+        .agent
+        .as_deref()
+        .zip(facts.permission_mode.as_deref())
+        .and_then(|(kind, mode)| crate::agents::permission_mode_text(kind, mode))
+        .map(crate::common::cells::Words);
     // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。

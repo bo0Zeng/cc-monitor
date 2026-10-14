@@ -54,7 +54,6 @@ export const CONFIG_KEY_OWNERS = {
   // ── src/frontend/ui/behavior.ts 那一族 ─────────────────────────────────────────────
   autoFollowUserActive: "src/frontend/ui/behavior.ts",
   bringMonitorToFrontOnUserActive: "src/frontend/ui/behavior.ts",
-  showBgSessions: "src/frontend/ui/behavior.ts",
   // 用过的恢复命令（只是这扇界面的输入历史；生效值住各台后端）。
   resumeCommandPresets: "src/frontend/ui/behavior.ts",
   // 通用页那一格恢复命令 · 恢复默认进不进 tmux（搬走的那一族）。

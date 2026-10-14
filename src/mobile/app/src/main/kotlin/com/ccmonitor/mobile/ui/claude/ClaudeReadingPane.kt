@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +47,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 
 /**
  * 会话只读阅读面：把 [RenderUnit] 列表渲染成卡片流，嵌在会话屏里复用。
@@ -58,6 +62,8 @@ fun ClaudeReadingPane(
     onCopyCode: (String) -> Unit = {}, // 复制代码块
     // 本地消息发送失败时的重试。默认 no-op，只读阅读面用不到。
     onRetrySend: (String) -> Unit = {},
+    // 正文尾巴上不进时间线的那一块（聊天屏的活卡）。
+    trailer: LazyListScope.() -> Unit = {},
 ) {
     val tokens = LocalAppTokens.current
     // 整个面共享一个 Markwon 实例，避免每张卡重建解析器。
@@ -86,8 +92,10 @@ fun ClaudeReadingPane(
                     is RenderUnit.BashOutput -> BashOutputCard(unit, matched)
                     is RenderUnit.CompactSummary -> CompactSummaryCard(unit, matched)
                     is RenderUnit.Interrupt -> InterruptLine(unit)
+                    is RenderUnit.Unread -> UnreadLine(unit, matched)
                 }
             }
+            trailer()
         }
     }
 }
@@ -100,6 +108,56 @@ private fun InterruptLine(unit: RenderUnit.Interrupt) {
         style = monoSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/**
+ * 认不出的那一条：左 2dp 琥珀条的一行（字 ＋ 钟面），默认折起；点开是原文摘录 ＋［复制详情］（同桌面那一张）。
+ * 字 · 钟面 · 摘录都是核心写好的，这里不按类名分支。搜索命中自动展开。
+ */
+@Composable
+private fun UnreadLine(
+    unit: RenderUnit.Unread,
+    matched: Boolean,
+) {
+    val tokens = LocalAppTokens.current
+    var expanded by rememberExpandable(matched)
+    val bar = tokens.warn
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .matchHighlight(matched)
+            .drawBehind { drawRect(bar, size = Size(2.dp.toPx(), size.height)) }
+            .padding(start = tokens.spacing.sm),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = tokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                unit.text,
+                style = monoSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            unit.timeText?.let {
+                Spacer(Modifier.width(tokens.spacing.sm))
+                Text(it, style = monoSmall, color = tokens.textFaint)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
+        }
+        AnimatedVisibility(expanded) {
+            Column(Modifier.padding(bottom = tokens.spacing.xs)) {
+                Text(unit.excerpt, style = monoSmall, color = tokens.textFaint)
+                CopyDetailButton(unit.text, unit.excerpt)
+            }
+        }
+    }
 }
 
 /** 斜杠命令 `/name args`：紧凑单行（name 强调、args 次要），与真实 prompt 区分开的低调标识。 */

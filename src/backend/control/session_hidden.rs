@@ -16,25 +16,8 @@ use crate::control::launch_account::LaunchTab;
 use cmd_wire::session::{Hidden, HiddenBy, Hide, Tab};
 use copy_core::copy_text;
 
-/// 这台偏好里那两格（`prefs.json` 的 `childTab` · `bgTab`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Rules {
-    pub(crate) child_tab: Tab,
-    pub(crate) bg_tab: Tab,
-}
-
-impl Default for Rules {
-    /// 缺省：子会话隐藏 · 分身会话显示。
-    fn default() -> Self {
-        Rules {
-            child_tab: Tab::Hide,
-            bg_tab: Tab::Show,
-        }
-    }
-}
+/// 这台偏好里那两格（线上形与缺省住 `cmd-wire`）。
+pub(crate) use cmd_wire::session::Rules;
 
 /// 判一条会话要的事实。
 #[derive(Debug, Clone, Copy, Default)]

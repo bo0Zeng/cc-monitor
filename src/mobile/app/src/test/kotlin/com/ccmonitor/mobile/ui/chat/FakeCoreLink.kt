@@ -2,14 +2,17 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.LiveFrame
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
-import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,6 +26,12 @@ internal class FakeCoreLink :
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
     override val epoch = MutableStateFlow(0L)
+    private val liveFlow = MutableSharedFlow<LiveFrame>(extraBufferCapacity = 64)
+    override val live: SharedFlow<LiveFrame> = liveFlow.asSharedFlow()
+
+    /** 流上来一帧活卡（照线上那一形，经 [LiveFrame.of] 解）。 */
+    suspend fun live(frame: Map<String, Any?>) = liveFlow.emit(LiveFrame.of(frame + ("kind" to LiveFrame.KIND))!!)
+
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }
@@ -42,7 +51,7 @@ internal class FakeCoreLink :
         sid: String,
         seq: Long,
         record: Map<String, Any?>?,
-    ) = lineFlow.emit(RecordLine(sid, "/p/$sid.jsonl", seq, null, record))
+    ) = lineFlow.emit(RecordLine(sid, "/p/$sid.jsonl", seq, null, record?.let { Wire.bind<LineRecord>(it) }))
 
     /** 此刻有人在看的会话（[hold] 的计数）。 */
     val held = mutableMapOf<String, Int>()

@@ -82,6 +82,11 @@ export interface World {
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */
   ops: Record<string, OpHandler>;
+  /**
+   * 〔对类型 · 会话隐藏〕会话事实里血缘那两格（`startedBy` · `children`）：会话 id → 那两格。真后端答的 `history-facts` 还没有这两格，
+   * 台架按记录路径里的会话 id 把场景给的并上去（形状照设计稿 `会话隐藏.md` §4.3）。后端那一路进来、场景改写盘上的血缘账以后删。
+   */
+  factsLineage?: Record<string, Record<string, unknown>>;
   /** 终端实时画面那一路怎么演（不给 ⇒ `live`：订上、推一屏）：推一屏之后画面中断 · 推一屏之后那台断开。只能快照的那一种由场景把 `terminal-follow` 换成拒。 */
   terminalLive?: "live" | "lost" | "offline";
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */

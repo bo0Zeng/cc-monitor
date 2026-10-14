@@ -671,11 +671,6 @@ mod tests {
             ("control/fork_launch.rs", "AccountFact", "同上，号那一格的值（`null` ＝ 账号 0）"),
             (
                 "observe/accounts_query.rs",
-                "NeedsRow",
-                "`sessions-needs` 一行的出参（会话 id ＋ `history-facts` 那一份 `needs`），命令应答不是流协议帧",
-            ),
-            (
-                "observe/accounts_query.rs",
                 "Badge",
                 "`accounts-list` 每个号那一枚徽章（命令应答里的一块），不是流协议帧",
             ),
@@ -688,11 +683,6 @@ mod tests {
                 "observe/accounts_query.rs",
                 "RawAccount",
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
-            ),
-            (
-                "history/listing.rs",
-                "Can",
-                "`history-list` 每行（与全文搜索每个会话）的「这一行能做什么」那一格：命令应答里的一块，不是流协议帧",
             ),
             (
                 "observe/history_query.rs",
@@ -744,16 +734,6 @@ mod tests {
                 "observe/search_query.rs",
                 "FindHit",
                 "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
-            ),
-            (
-                "history/listing.rs",
-                "CanResume",
-                "`Can.resume` 的三个词（`history-list` 每行与全文搜索每行的「能做什么」）",
-            ),
-            (
-                "history/listing.rs",
-                "CanDelete",
-                "`Can.delete` 的三个词（同上）",
             ),
             (
                 "history/listing_scan.rs",

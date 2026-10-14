@@ -2,6 +2,6 @@
 import type { Tab } from "./Tab";
 
 /**
- * 这台偏好里那两格（`prefs.json` 的 `childTab` · `bgTab`）。
+ * 这台偏好里那两格（`prefs.json` 的 `childTab` · `bgTab`）：子会话 · 分身会话进不进标签页。缺省只住这里（[`Rules::default`]）。
  */
 export type Rules = { childTab: Tab, bgTab: Tab, };

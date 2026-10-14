@@ -41,6 +41,7 @@ use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
 };
+pub(crate) use cmd_wire::needs::NeedsRow;
 use copy_core::copy_text;
 use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
 use std::path::{Path, PathBuf};
@@ -122,6 +123,18 @@ pub(crate) fn default_manifest_path() -> PathBuf {
 /// 首次运行「给现在登录的号起个名字」那一步读它（`footprint/readiness.rs`）。
 pub(crate) fn accounts_enabled_here() -> bool {
     load_manifest(&resolve_accts_dir()).is_ok()
+}
+
+/// 账号库清单在、却读不懂（读不出 · 不是 JSON · 版本不认）⇒ 为什么（同账号清单 `meta.error` 那一句）；读得懂 · 没有清单
+/// （没启用多账号，正常状态）⇒ `None`。需手动清单据此回 `unreadable`，不把读不懂当成「没有需登录的号」。
+pub(crate) fn library_unreadable(accts_dir: &Path) -> Option<String> {
+    let why = load_manifest(accts_dir).err()?;
+    (!matches!(manifest_path(accts_dir).try_exists(), Ok(false))).then_some(why)
+}
+
+/// [`library_unreadable`]，这台的账号库。
+pub(crate) fn library_unreadable_here() -> Option<String> {
+    library_unreadable(&resolve_accts_dir())
 }
 
 fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
@@ -781,19 +794,6 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
             (sid, Doing { activity, needs })
         })
         .collect()
-}
-
-/// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct NeedsRow {
-    pub(crate) sid: String,
-    pub(crate) needs: super::facts_query::Needs,
-    /// 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ 不上线。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) hidden: Option<cmd_wire::session::Hidden>,
 }
 
 /// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），

@@ -5140,12 +5140,14 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     handedBack: [],
     retries: [],
     permissionMode: null,
+    permissionModeText: null,
     tokens: null,
     cost: null,
     bgTasks: [],
     background: null,
     mcp: [],
     answerOff: null,
+    quietUnread: null,
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
@@ -6661,12 +6663,14 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     handedBack: [],
     retries: [],
     permissionMode: null,
+    permissionModeText: null,
     tokens: null,
     cost: null,
     bgTasks: [],
     background: null,
     mcp: [],
     answerOff: null,
+    quietUnread: null,
   });
   const line = (sid: string, seq: number) =>
     ({ session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "reply", id: `${sid}-${seq}` } }) as never;

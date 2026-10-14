@@ -14,8 +14,34 @@ object ChatTestTags {
     const val NO_MORE_HISTORY = "chat-no-more-history"
     const val HISTORY_ERROR = "chat-history-error"
 
-    /** 权限模式指示，只读：协议没给可选列表。 */
+    /** 权限档 chip（点开是那台给的档）。 */
     const val PERMISSION_MODE = "chat-permission-mode"
+
+    /** 模型 chip。 */
+    const val MODEL_CHIP = "chat-model-chip"
+
+    /** chip 原位转圈（正在换）。 */
+    const val CHIP_SPINNER = "chat-chip-spinner"
+
+    /** chip 上方那一行。 */
+    const val NOTE = "chat-note"
+
+    /** 模型 · 权限档的抽屉。 */
+    const val PICK_SHEET = "chat-pick-sheet"
+
+    /** ［+］与它升起的面板 · 面板里两行下钻 · 下钻那一页的清单。 */
+    const val PLUS = "chat-plus"
+    const val PLUS_SHEET = "chat-plus-sheet"
+    const val PLUS_COMMANDS = "chat-plus-commands"
+    const val PLUS_SKILLS = "chat-plus-skills"
+    const val COMMAND_LIST = "chat-command-list"
+
+    /** 清空会话的确认框与它的确认键。 */
+    const val CLEAR_DIALOG = "chat-clear-dialog"
+    const val CLEAR_OK = "chat-clear-ok"
+
+    /** 正文尾巴上的活卡（逐字长出来的那一块）。 */
+    const val LIVE = "chat-live"
 
     /** 会话形态提示（「只回显」/「已停止显示，远端可能还在跑」）。 */
     const val SESSION_MODE = "chat-session-mode"

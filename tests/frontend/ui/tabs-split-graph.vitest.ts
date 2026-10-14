@@ -117,6 +117,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
+    "src/frontend/ui/tab-hide.ts", // 隐藏那几件（帧上那一格落到 tab 上 · 隐藏 / 取消隐藏 · 撤销 · 隐藏了又结束的收走）
+    "src/frontend/ui/session-hidden.ts", // 新建的 tab 血缘那一格的空值（`NO_LINEAGE`）
+    "src/frontend/ui/session-hidden-cmds.ts", // 隐藏那几件交的命令（`history-annotate {hide}`）由组装根接给 `tab-hide`
     "src/frontend/ui/session-face.ts", // 历史页那一行的「需手动」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf`，字照抄核心写的）
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
@@ -145,7 +148,11 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-router.ts": ["src/frontend/ui/local-storage.ts", "src/frontend/ui/tab-session-state.ts"],
   // ① 会话事实的投影（后端出成品 ⇒ tab 上的 Map / Set / 两格）：只有类型依赖。
   //   原先的两条（agent 工具名判定 `cards/subagent.ts` · 写类工具表 `panorama/session-files.ts`）随抽取器一起搬进了后端。
-  "src/frontend/ui/tab-session-facts.ts": [],
+  // 血缘那两格（`startedBy` · `children`）的解码与比较住 `session-hidden.ts`（纯函数，零 IPC）。
+  "src/frontend/ui/tab-session-facts.ts": ["src/frontend/ui/session-hidden.ts"],
+  // ② 隐藏那几件：帧上那一格落到 tab 上、摘 / 放回固定与分组、撤销 toast；命令与 toast 经宿主。
+  //   一格比一格（`sameHidden`）· toast 的字（文案表）· 标题（`fullTitle`）· 已结束的收走（`isResumeOnly`）。
+  "src/frontend/ui/tab-hide.ts": ["src/frontend/ui/copy-table.ts", "src/frontend/ui/session-face.ts", "src/frontend/ui/session-hidden.ts", "src/frontend/ui/tab-session-state.ts"],
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，骨架索引与正文都经通道问那台后端。
   // 大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/frontend/ui/tab-stream-view.ts": [

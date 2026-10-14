@@ -327,7 +327,7 @@ pub(crate) fn terminal_json(
         Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
         Who::NotOurs => super::terminals_wire::refused(Refused::NotManaged),
     };
-    let shell = SHELLS.contains(&row.program.as_str());
+    let shell = shell_only(row);
     let state = match (row.sid.is_empty(), shell) {
         (false, true) => TermState::ProgramExited,
         (true, true) => TermState::Idle,
@@ -896,6 +896,28 @@ fn refused(why: Refused) -> Sent {
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
 /// 形状不对才是错（`bad_target` · `bad_args`）。
 pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+    send_on(on, req, |_| true)
+}
+
+/// 往一条会话说一句（`session-say` 那一条送字）：同 [`input_on`]，过了身份门再多一道 —— 挂着它的那个窗格此刻前台是不是只剩 shell
+/// （名单那一刻的 `#{pane_current_command}`，同名单里「程序已退出」那一处：[`shell_only`]）。
+/// 是（agent 退了）⇒ 一个字都不送，回「已经没了」（`ended`）：话是说给 agent 的，送进 shell 就成了一行命令。
+/// 只认 shell 不认「是不是那一家的进程名」：Codex 今天没登记进程名、前台还可能是 agent 起的别的程序，按名字认会把在跑的会话当成没了。
+pub(crate) fn say_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+    send_on(on, req, |row| !shell_only(row))
+}
+
+/// 这个窗格前台是 shell（[`SHELLS`]）⇒ 跑在里面的程序已经退了、只剩 shell。名单那一格的状态与 [`say_on`] 都读它。
+fn shell_only(row: &TermRow) -> bool {
+    SHELLS.contains(&row.program.as_str())
+}
+
+/// [`input_on`] · [`say_on`] 的本体：`takes` 答名单里那一行（过了身份门之后）此刻收不收。
+fn send_on(
+    on: On<'_>,
+    req: &TerminalInputReq,
+    takes: impl Fn(&TermRow) -> bool,
+) -> Result<Sent, CmdErr> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
     let requester = gate::requester(req.client.as_deref())?;
@@ -918,6 +940,9 @@ pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdEr
         Who::Pass => {}
         Who::OtherClient => return Ok(refused(Refused::NotYours)),
         Who::NotOurs => return Ok(refused(Refused::NotManaged)),
+    }
+    if !takes(row) {
+        return Ok(refused(Refused::Ended));
     }
     // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
     let at = row.pane.clone().unwrap_or(p.session_id);

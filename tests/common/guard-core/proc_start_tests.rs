@@ -87,7 +87,17 @@ fn the_shared_e2e_helper_reads_start_time_of_a_process_whose_name_has_spaces() {
     let dir = std::env::temp_dir().join(format!("proc-start-judge-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let exe = dir.join("a b) c");
-    std::fs::write(&exe, "#!/bin/sh\nread _ || :\n").unwrap();
+    // 本进程只写一份旁稿，`exe` 由 `cp` 那个子进程写：本进程里从没有过 `exe` 的写 fd。
+    // 在本进程里直接写 ⇒ 并行测试里别的线程正在 fork 时，子进程在 fork 与 exec 之间还攥着那份写 fd，
+    // 这时 exec 它 ＝ `ETXTBSY`（`Text file busy (os error 26)`，整套并行、机器忙时撞得到）。进程名要是脚本名，不能改经 `/bin/sh` 起。
+    let draft = dir.join("draft");
+    std::fs::write(&draft, "#!/bin/sh\nread _ || :\n").unwrap();
+    let cp = std::process::Command::new("cp")
+        .arg(&draft)
+        .arg(&exe)
+        .status()
+        .expect("cp 起不来");
+    assert!(cp.success(), "cp 没写成：{cp:?}");
     std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut child = std::process::Command::new(&exe)
         .stdin(std::process::Stdio::piped())
