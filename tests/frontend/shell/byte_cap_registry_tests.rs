@@ -562,9 +562,9 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "一台的平铺会话清单一次回的行数（调用方给 `limit` 可改，1–20000）",
         "截断+说清",
     ),
-    // 常驻进程里那张「一份记录扫出的那一行」的记账表（`history_query.rs`）：超了整张清掉重来，下一问照常整份扫 —— 只丢记账，不丢数据。
+    // 常驻进程里那张「一份记录扫出的那一行」的记账表（`history/listing.rs`）：超了整张清掉重来，下一问照常整份扫 —— 只丢记账，不丢数据。
     (
-        "src/backend/observe/history_query.rs",
+        "src/backend/history/listing.rs",
         "SESSION_META_CAP",
         "常驻进程记着的会话记录摘要条数（按长度 · 修改时刻认没变，没变不再整份扫）",
         "索引截断（不丢数据）",
@@ -667,15 +667,15 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // `src/backend/observe/search_query.rs`），靠下面「对 D」那条判据
     // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
     // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
-    // `search-core` 拆进后端：两条封顶随通用口径住 `observe/search_rules.rs`（仍只此一份）。
+    // `search-core` 拆进后端：两条封顶随通用口径住 `history/search_rules.rs`（仍只此一份）。
     (
-        "src/backend/observe/search_rules.rs",
+        "src/backend/history/search_rules.rs",
         "MAIN_CAP",
         "单条 main 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
     ),
     (
-        "src/backend/observe/search_rules.rs",
+        "src/backend/history/search_rules.rs",
         "TOOL_CAP",
         "单条 tool 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
@@ -1225,7 +1225,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "硬报错",
     ),
     (
-        "src/backend/observe/accounts_query.rs",
+        "src/backend/history/live.rs",
         "MAX_SESSION_FILE_BYTES",
         "读单个 `sessions/<PID>.json`",
         "跳过+说清",
@@ -1561,10 +1561,10 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //
     // 原文：`src/frontend/shell/src/search.rs` 与 `src/backend/observe/search_query.rs`
     // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
-    // （`search-core`；今天住后端 `observe/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+    // （`search-core`；今天住后端 `history/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
     // 把这件事焊住的判据换了个形状，住（随家搬进后端）
-    // `tests/backend/observe/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
+    // `tests/backend/history/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
     // 它断言搜索那一侧（今天只剩后端）生产段**不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义，
     // monitor 生产树里零处再搜由 `search_kou_jing_guard.rs::the_monitor_grows_no_search_helpers` 断言。
     // ⇒ 这两个数搬回任何一侧，当场红。

@@ -1,4 +1,4 @@
-//! observe 内部共享的增量读（只往后追加的会话记录）。读盘本身经 `platform::fs::Ro`。
+//! 只往后追加的文件（会话记录）的增量读，observe 与 history 共用（原 `observe/fs.rs`，10-13 下沉）。读盘本身经 `platform::fs::Ro`。
 
 use crate::platform::fs::{Ro, RoFile};
 use std::path::Path;
@@ -173,9 +173,9 @@ impl<R: std::io::Read> Blocks<R> {
 
 // d（整份读按块）几份判据共用的夹具与量法住测试树。
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/streamed_read_support.rs"]
+#[path = "../../../tests/backend/common/streamed_read_support.rs"]
 pub(crate) mod test_support;
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/streamed_read_tests.rs"]
+#[path = "../../../tests/backend/common/streamed_read_tests.rs"]
 mod tests;

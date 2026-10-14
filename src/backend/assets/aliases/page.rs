@@ -607,7 +607,7 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
         }),
         said: summary_of(p, shell),
         form: form_of(p),
-        account_shape: crate::accounts::manage::aliases::shape_of(book, p)
+        account_shape: super::accounts::shape_of(book, p)
             .map(|(account, tmux)| AccountShape { account, tmux }),
     }
 }
@@ -727,7 +727,7 @@ pub(crate) struct ProfilesBook {
 /// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
 /// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。
 pub(crate) fn answer_read(d: &dyn Door, tz: &crate::Tz) -> Answer<ProfilesBook> {
-    read_with(d, crate::footprint::tmux_here(), tz)
+    read_with(d, crate::control::terminals::tmux_here(), tz)
 }
 
 /// [`answer_read`] 的本体：有没有 tmux 是参数（判据喂定值，不去探这台）。

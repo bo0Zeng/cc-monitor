@@ -3,7 +3,7 @@
 
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
-use crate::assets::door::Door;
+use crate::common::door::Door;
 use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::Shell;
 use serde_json::Value;
@@ -124,7 +124,7 @@ fn mcp_login() -> Vec<super::McpLogin> {
     let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
         return Vec::new();
     };
-    let look = crate::faces::feature_face::mcp_look(kind);
+    let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
     let cwds = crate::agents::home_of_kind(kind)
         .map(|h| crate::observe::accounts_query::live_cwds(&h))
         .unwrap_or_default();

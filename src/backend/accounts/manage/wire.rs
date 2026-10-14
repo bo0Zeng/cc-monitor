@@ -9,7 +9,7 @@ use crate::stream::inbound::spec::Fail;
 /// 这一层的拒绝：码 ＋ 那一句 ＋ 下层原话（原话进复制详情）。计划那一层（`layout`）只交 `(码, 句)`，`?` 换过来。
 type Refusal = Fail;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
-use crate::assets::door::{self, Door};
+use crate::common::door::{self, Door};
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd, AccountNameArgs,
     AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,

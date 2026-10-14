@@ -75,7 +75,7 @@ fn skill_dir(
     let project = project
         .map(crate::assets::mcp_edit::project_root)
         .transpose()?;
-    let root = super::asset_kind()
+    let root = crate::agents::asset_kind()
         .and_then(|k| crate::agents::skill_root_at(k, project.as_deref().map(Path::new)))
         .ok_or(("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
     let dir = root.join(name);
@@ -454,7 +454,7 @@ pub(crate) fn answer_plan_with(
                 Some((
                     p.clone(),
                     SkillLedgerFile {
-                        digest: crate::assets::skill_ledger::digest_of(text),
+                        digest: crate::common::digest::fnv_digest(text),
                         created: states.get(p.as_str()) == Some(&State::New),
                     },
                 ))
@@ -538,7 +538,7 @@ fn on_disk_now(
         // 目录 / 特殊文件：装写进去的是一份普通文件，现在换了种类 ⇒ 不按原文删它。
         Ok(m) if !m.is_file() => (UNINSTALL_UNREADABLE, None),
         Ok(_) => match read_text(abs) {
-            (Some(t), _) if crate::assets::skill_ledger::digest_of(&t) == recorded.digest => {
+            (Some(t), _) if crate::common::digest::fnv_digest(&t) == recorded.digest => {
                 (UNINSTALL_INTACT, Some(t))
             }
             (Some(t), _) => (UNINSTALL_MODIFIED, Some(t)),

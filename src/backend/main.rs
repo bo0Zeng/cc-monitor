@@ -33,6 +33,12 @@ use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use wire::Frame;
 
+/// watcher 看见、控制面去做的那两件事（观测侧不改世界，只在那一刻报一声；两处起 watcher 都接这一份）。
+const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions {
+    tmux_server_up: control::tmux_hook::install_for_this_process,
+    session_seen: control::launch_account::adopt_seen,
+};
+
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
 
@@ -246,7 +252,7 @@ async fn main() {
     // 全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
     observe::search_query::warm_in_background(agent_home.clone());
     // 历史清单的缓存同样起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
-    observe::history_query::warm_listing_in_background(agent_home.clone());
+    history::listing::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     assets::aliases::migrate_here();
     // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
@@ -414,7 +420,7 @@ async fn run_over_stdio(
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
     // (c) Start the watcher reader（这台一份）并接上这一条流：回这条连接的有界出方向通道。
     // 运行簿：整台一本，watcher 写、tap 那一路的流归位读。
-    let (poke, book) = observe::watcher::spawn(agent_home, own.clone());
+    let (poke, book) = observe::watcher::spawn(agent_home, own.clone(), WATCH_REACTIONS);
     tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
     let (rx, attached) = poke.attach(&wants);
@@ -748,7 +754,7 @@ async fn serve_listening(
 
     // 这台一份 watcher（read8a：整台一份读者）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
     //   每接上一条流就 `attach` 一份投影（名单 · 续点 · 没送出去的帧按连接），记录整台只预读一次。
-    let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone());
+    let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone(), WATCH_REACTIONS);
     tap::adopt(&book);
 
     // 多客户：认证通过的连接排进这里；watcher 一个进程一份（各连接在它上面一份投影），inbound / writer 每条自己一份。

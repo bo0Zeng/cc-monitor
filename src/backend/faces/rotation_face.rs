@@ -73,7 +73,7 @@ impl Ctx {
                 quota,
                 home,
                 library(),
-                Arc::new(crate::observe::accounts_query::live_here),
+                Arc::new(crate::history::live::live_here),
                 None,
             ),
             rows: Box::new(move |agent, a| {

@@ -23,7 +23,7 @@ fn over_cap<T: serde::Serialize>(reply: &T) -> Option<String> {
 
 /// 这台的记录树根（生产只这一个值）。
 fn home() -> std::path::PathBuf {
-    history_query::agent_home()
+    crate::history::listing::agent_home()
 }
 
 /// 按字节分页那几条的码：围栏外 ⇒ `refused`；一行比续读上限还长 ⇒ `oversized_line`；读不动 ⇒ `failed`。

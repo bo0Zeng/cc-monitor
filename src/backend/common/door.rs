@@ -1,4 +1,4 @@
-//! 资产域够用户文件的那一扇门：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
+//! 后端够用户文件的那一扇门（原住 `assets/`，账号库 · 足迹 · 控制面也走它，10-13 下沉到这里）：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
 //! 每一问一个方法、收发那几条 `files-*` 帧命令同一份线上类型（实现住 `stream/inbound/doors.rs::LocalFiles`：
 //! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
@@ -337,5 +337,5 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
 pub(crate) use crate::platform::paths::join_under;
 
 #[cfg(test)]
-#[path = "../../../tests/backend/assets/door_wire_tests.rs"]
+#[path = "../../../tests/backend/common/door_wire_tests.rs"]
 mod wire_tests;

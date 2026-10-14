@@ -21,7 +21,7 @@ use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
-use crate::assets::door::{self, Door};
+use crate::common::door::{self, Door};
 use crate::platform::shell::posix;
 
 /// 推送结果：key 是新加的还是本就存在。

@@ -11,7 +11,7 @@ use super::mcp_logins::{self, Cells, Entries, LoginBase, LoginWrite, SeenLogins}
 use super::mcp_share_exec::{accounts_in, load_store, lock, put_private};
 use crate::accounts::oauth::store::{self, Locked, Read};
 use crate::agents::{EntryLogins, LoginFace};
-use crate::assets::door::{self, Door};
+use crate::common::door::{self, Door};
 use crate::platform::fs::Own;
 use copy_core::copy_text;
 use serde_json::Value;

@@ -273,13 +273,20 @@ mod tests {
     /// `ratchet_guard` / `single_stream_guard` / `listen` / `main`），
     /// **已上报 PM 立跟进件**。
     /// ⇒ 修掉一处就把这里的数改小；**改大 = 又新增了一句**，那正是本条要拦的。
-    const STALE_FALLBACK_BACKLOG: &[(&str, usize, &str)] = &[(
-        "observe/watcher.rs",
-        2,
-        "两句 warn 串：`:223`「拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）」·\
-             `:1061`「监视 tmux socket 目录失败 …（复活仍由 ticker 兜）」。\
-             两句都在承诺一条 `P5` 已经删掉的退路。**这里不改，另立跟进。**",
-    )];
+    const STALE_FALLBACK_BACKLOG: &[(&str, usize, &str)] = &[
+        (
+            "control/tmux_hook.rs",
+            1,
+            "warn 串 `:279`「拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）」（10-13 随装 hook 那一半从 \
+             `observe/watcher.rs` 搬来，原样未改）。承诺一条 `P5` 已经删掉的退路。**这里不改，另立跟进。**",
+        ),
+        (
+            "observe/watcher.rs",
+            1,
+            "warn 串 `:1409`「监视 tmux socket 目录失败 …（复活仍由 ticker 兜）」。\
+             承诺一条 `P5` 已经删掉的退路。**这里不改，另立跟进。**",
+        ),
+    ];
 
     /// ★★ 正题（棘轮二）：**生产段里承诺「周期性退路」的话只许变少。**
     ///

@@ -27,9 +27,10 @@
 //!
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
-use super::registry::{
-    Carrier, EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ShellProfile, ToolDestination,
-    ToolSource, ToolSpec, TouchEffect, TouchedFile,
+use super::registry::{EnvBacking, EnvEntry, EnvTier};
+use crate::agents::footprint_decl::{
+    Carrier, EnvProbe, HostScope, ShellProfile, ToolDestination, ToolSource, ToolSpec, TouchEffect,
+    TouchedFile,
 };
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -248,7 +249,7 @@ fn resolve_by_destination(
             Vantage::Remote => resolve_local_home(declared, home, agent_home),
         },
         // 一个工具两个落点 ⇒ 两个载体（`ccm`：远端 `RemoteHomeRelative`、本机 `LocalHomeRelative`，各带各的 touch），
-        //    这里没有双值那一臂。理由住 `footprint::registry::Carrier` 的头注。
+        //    这里没有双值那一臂。理由住 `agents::footprint_decl::Carrier` 的头注。
         ToolDestination::LocalHomeRelative(_) => resolve_local_home(declared, home, agent_home),
         // 「不是我们装的」**不等于「查不了」** —— 恰恰相反：
         // 这一档的全部意义就是「我们查得到它在不在，但装不了」。

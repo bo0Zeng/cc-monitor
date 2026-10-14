@@ -344,7 +344,7 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 ///
 /// | 入口 | 今天的反应 |
 /// |---|---|
-/// | `history_query::list_projects_into`（项目清单） | 「记录树根不在」（`Ok(false)`、零行）：调用方据此说「这台还没有会话记录」 |
+/// | `history::listing::list_projects_into`（项目清单） | 「记录树根不在」（`Ok(false)`、零行）：调用方据此说「这台还没有会话记录」 |
 /// | `search_query::search_into`（全文搜索） | **零命中** ⇒ 静默 |
 /// | `accounts_query::session_accounts`（会话归属） | **零行** ⇒ 静默 |
 /// | `resolve_query`（`agentKind:"fake"`，生产注册表里没有这一家） | **`bad_args`：不认识这个 agent，说出认得的几家** |
@@ -373,7 +373,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     // ① 项目清单：答「记录树根不在」（不是零个项目）—— 调用方据此说「这台还没有会话记录」。
     let mut out: Vec<u8> = Vec::new();
     assert_eq!(
-        crate::observe::history_query::list_projects_into(&root, &mut out),
+        crate::history::listing::list_projects_into(&root, &mut out),
         Ok(false),
         "项目清单对一个布局不同的 agent 不再说「记录树根不在」了 —— 那它就退化成了「静默零个项目」"
     );

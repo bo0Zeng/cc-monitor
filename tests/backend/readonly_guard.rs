@@ -2955,7 +2955,7 @@ mod g6_dependency_signoff {
              谁划边界：只许 `ssh-dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
         ),
-        // `search-core` 那一行出列：crate 删了（通用口径收成 `observe/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
+        // `search-core` 那一行出列：crate 删了（通用口径收成 `history/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
         (
             "serde",
             DEPS,

@@ -265,6 +265,24 @@ pub(crate) fn install_hooks(exe: &Path, pid: u32, starttime: u64) -> usize {
     install_hooks_with(&mut run_tmux, exe, pid, starttime, &backend_alive)
 }
 
+/// P4b：给当前 tmux server 装通知 hook（观测侧看见 server 起来了就调它：`observe::watcher::Reactions::tmux_server_up`，由 `main.rs` 接上）。**尽力而为**：拿不到自己的 exe 路径 /
+/// starttime 就跳过（那说明 `/proc` 不可用，整条 pidfd 路本来也不成立）。
+///
+/// 装的是**我们自己进程**的 pid + starttime —— hook 子进程据此校验身份再发 SIGUSR1，
+/// 挡的是「backend 退出后 pid 被复用，hook 误伤无关进程」。
+pub fn install_for_this_process() {
+    let me = std::process::id();
+    let (Ok(exe), Some(start)) = (
+        std::env::current_exe(),
+        crate::platform::proc::proc_starttime(me),
+    ) else {
+        tracing::warn!("拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）");
+        return;
+    };
+    let n = install_hooks(&exe, me, start);
+    tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
+}
+
 /// 「装那一格的那个后端还在不在」—— 与 [`notify`] 同一条身份校验（pid 的 starttime 对得上）。
 pub(crate) fn backend_alive(pid: u32, starttime: u64) -> bool {
     crate::platform::proc::proc_starttime(pid) == Some(starttime)

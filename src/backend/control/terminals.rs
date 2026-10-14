@@ -262,6 +262,15 @@ fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, CmdErr> {
     Ok(Some((rows, clients, !odd)))
 }
 
+/// 这台有没有 tmux（查不动 ⇒ `None`）：「文件与数据」那一份 · 别名页表单 · 起新会话框同一个判法（[`rows_here`]；原住 `footprint/mod.rs`）。
+pub(crate) fn tmux_here() -> Option<bool> {
+    match rows_here() {
+        Ok(Some(_)) => Some(true),
+        Ok(None) => Some(false),
+        Err(_) => None,
+    }
+}
+
 /// 这台此刻的名单（生产：默认 socket）；没装 tmux ⇒ `None`。批量停 / 起按 sid 认窗格用它。
 pub(crate) fn rows_here() -> Result<Option<Vec<TermRow>>, CmdErr> {
     Ok(rows_found_on(On::default())?.map(|(rows, _, _)| rows))

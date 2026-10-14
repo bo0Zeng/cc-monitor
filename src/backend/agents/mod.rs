@@ -70,6 +70,8 @@ pub mod claudecode;
 pub(crate) mod codex;
 // 漂移账的通用形（各家的账本交出来的都是它）。
 pub(crate) mod drift;
+/// 足迹申报表的词（各家用它申报自己布局里的那几条；足迹那边读）。
+pub(crate) mod footprint_decl;
 pub(crate) mod mainline;
 pub(crate) mod record;
 pub(crate) mod sse_anthropic;
@@ -1638,6 +1640,13 @@ pub(crate) fn sole_kind(has: impl Fn(&Adapter) -> bool) -> Option<&'static str> 
     sole_kind_among(REGISTRY, has)
 }
 
+/// 资产面那一家（读 / 装 skill · 用户级 MCP 文件）：注册表里**唯一**声明了资产面的那一家（今天只有 Claude）；两家都声明 ⇒ `None`、照实拒。
+/// 资产域 · 账号库的 MCP 共享 · cc-bus 钩子都问它（原住 `assets/mod.rs`）。
+/// ⚠ Codex 的 skill 根来了（扩展位置带上程序这一维），改这里：由请求说是哪一家。
+pub(crate) fn asset_kind() -> Option<&'static str> {
+    sole_kind(|a| a.assets.is_some())
+}
+
 /// `kind` 那一家的记录解释面。认不出 ⇒ `None`。
 pub(crate) fn record_face(kind: &str) -> Option<RecordFace> {
     adapter_among(REGISTRY, kind).and_then(|a| a.records)
@@ -1921,8 +1930,8 @@ pub(crate) fn drift_report() -> drift::DriftReport {
 /// 见 [`Adapter::footprint`]。
 #[derive(Clone, Copy)]
 pub(crate) struct FootprintFace {
-    pub(crate) tools: &'static [crate::footprint::registry::ToolSpec],
-    pub(crate) env: &'static [crate::footprint::registry::UnmanagedEnv],
+    pub(crate) tools: &'static [footprint_decl::ToolSpec],
+    pub(crate) env: &'static [footprint_decl::UnmanagedEnv],
     pub(crate) under_agent_home: fn(&str) -> Option<&str>,
     pub(crate) user_settings: fn(&Path) -> [PathBuf; 2],
 }

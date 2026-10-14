@@ -92,7 +92,7 @@ impl Command for HistorySearch {
 impl Blocking for HistorySearch {
     fn run(req: HistorySearchReq, _cx: &Cx) -> Result<HistorySearchReply, HistorySearchErr> {
         search_at(
-            &crate::observe::history_query::agent_home(),
+            &crate::history::listing::agent_home(),
             req,
             super::read_face::LINES_CAP_BYTES,
         )

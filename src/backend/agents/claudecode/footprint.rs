@@ -4,7 +4,7 @@
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-use crate::footprint::registry::{
+use crate::agents::footprint_decl::{
     Carrier, EnvProbe, HostScope, Provisioning, Text, ToolDestination, ToolSource, ToolSpec,
     TouchEffect, TouchedFile, UnmanagedEnv,
 };

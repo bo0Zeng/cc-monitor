@@ -27,7 +27,7 @@ use copy_core::copy_text;
 use serde::Serialize;
 use std::path::Path;
 
-use crate::assets::door::{self, Door};
+use crate::common::door::{self, Door};
 use crate::platform::shell::dialect::{self, Shell};
 
 /// ⚠ `K-R62` 起是 `pub(crate)`：`fenced_block::FENCE_SHAPES` 那张账要**指**这一对，

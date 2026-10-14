@@ -113,7 +113,7 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
             malformed("`sid` must be a session id"),
         ));
     }
-    let home = crate::observe::history_query::agent_home();
+    let home = crate::history::listing::agent_home();
     let record = crate::observe::history_query::session_record(&home, &req.sid).map_err(|_| {
         Fail::new(
             "no_such_session",

@@ -124,7 +124,7 @@ fn a_reread_restarts_the_line_numbers_after_saying_so() {
 /// 出声在前、行号从 0 数、一行不少。
 #[test]
 fn a_reread_from_zero_holds_about_a_block_not_the_file() {
-    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    use crate::common::append_read::test_support::{big_record, BIG, HELD_BOUND};
     let (dir, path, mut state, mut sink, mut rx) = rig("held");
     std::fs::write(&path, b"{\"n\":0,\"uuid\":\"aaaaaaaa-0000\"}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);

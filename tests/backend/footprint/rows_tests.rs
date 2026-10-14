@@ -11,7 +11,7 @@ use super::*;
 use guard_core::ScanReport;
 
 /// 受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
-static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
+static TOOLS: std::sync::LazyLock<Vec<crate::agents::footprint_decl::ToolSpec>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::tools()
             .into_iter()
@@ -19,7 +19,7 @@ static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
             .collect()
     });
 #[allow(dead_code)]
-static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::footprint::registry::UnmanagedEnv>> =
+static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::agents::footprint_decl::UnmanagedEnv>> =
     std::sync::LazyLock::new(|| {
         crate::footprint::registry::unmanaged()
             .into_iter()
@@ -1204,7 +1204,7 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let (_, blind) = observe_unmanaged(
         "tmux",
         EnvProbe::CannotProbe {
-            why: crate::footprint::registry::Text(|| {
+            why: crate::agents::footprint_decl::Text(|| {
                 "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」".to_string()
             }),
         },
@@ -1259,21 +1259,21 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     let synthetic = crate::footprint::registry::EnvEntry {
         id: "owed-sample",
         display_name: "owed".into(),
-        who: crate::footprint::registry::Provisioning::AppShips,
+        who: crate::agents::footprint_decl::Provisioning::AppShips,
         tier: EnvTier::AppShipsNoInstallerYet,
         why: String::new(),
         site: "rows.rs::unmanaged_row",
         backing: crate::footprint::registry::EnvBacking::Named {
             named: "owed-sample",
             host: HostScope::Client,
-            probe: crate::footprint::registry::EnvProbe::OnPath,
+            probe: crate::agents::footprint_decl::EnvProbe::OnPath,
         },
     };
     let owed_row = unmanaged_row(
         &synthetic,
         "owed-sample",
         HostScope::Client,
-        crate::footprint::registry::EnvProbe::OnPath,
+        crate::agents::footprint_decl::EnvProbe::OnPath,
         &env_with(&h, &fs, Some("/usr/bin")),
     );
     let owed: Vec<&SurfaceRow> = std::iter::once(&owed_row)
@@ -1580,7 +1580,8 @@ fn this_module_only_reads() {
     assert_eq!(
         rows_use,
         [
-            "use super::registry::{",
+            "use super::registry::{EnvBacking, EnvEntry, EnvTier};",
+            "use crate::agents::footprint_decl::{",
             "use copy_core::copy_text;",
             "use std::path::{Path, PathBuf};"
         ],

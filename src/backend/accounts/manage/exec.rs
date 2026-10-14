@@ -14,7 +14,7 @@
 use super::layout::{describe, Op, Plan};
 use super::model::Manifest;
 use super::scan::{is_under, item_at, join, Roots, BACKUP_PREFIX, ROLLED_BACK_NAME, UNDO_NAME};
-use crate::assets::door::{self, Door, Refused};
+use crate::common::door::{self, Door, Refused};
 use crate::platform::acct_view::Item;
 use copy_core::copy_text;
 

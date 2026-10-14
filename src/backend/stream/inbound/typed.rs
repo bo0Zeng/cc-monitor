@@ -76,7 +76,7 @@ pub(crate) trait Blocking: Command {
 
 /// 文件管理面（同 `faces::launch_face::Files`）：生产那一份住 `stream/inbound`（`LocalFiles`），由命令表那一行递进来
 /// —— 写面只有 `stream/inbound/` 够得着（`readonly_guard` 第三层），本文件不点它的名。
-pub(crate) type Files = &'static (dyn crate::assets::door::Door + Sync);
+pub(crate) type Files = &'static (dyn crate::common::door::Door + Sync);
 
 /// 同 [`Blocking`]，多递一份**文件管理面**（起之前预标信任经它写）。处理器签名里写着它要这一份。
 pub(crate) trait WithFiles: Command {

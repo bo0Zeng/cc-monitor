@@ -10,7 +10,7 @@
 //! `{"v":1,"installs":{"<skill 目录绝对路径>":{"name":"demo","files":{"<相对路径>":{"digest":"<16 位十六进制>","created":true}}}}}`
 //!
 //! - **键是目录的绝对路径**：记的是「装时写进了哪几个文件」—— 落点是事实，名字只给人看。
-//! - `digest`：**装时写进去的那一份原文**的摘要（`asset_catalog::Fnv`，只答相同 / 不同，**不防篡改**）。
+//! - `digest`：**装时写进去的那一份原文**的摘要（`common::digest::Fnv`，只答相同 / 不同，**不防篡改**）。
 //! - `created`：装之前这个路径不在 ⇒ `true`；装时盖掉了这台原有的一份 ⇒ `false`（卸它回不到装之前那一份 ⇒ 卸时要问）。
 //! - 同一个目录再装一次：并进去 —— 新路径加进来、已记的换新摘要、`created` 取第一次的。
 //!
@@ -97,14 +97,7 @@ impl Default for Ledger {
 
 /// 一条 MCP 定义的摘要（键序无关：按规范写法算）。装的时候记、卸的时候比。
 pub fn mcp_digest(def: &Value) -> String {
-    digest_of(&crate::assets::asset_catalog::canonical(def))
-}
-
-/// 一段原文的摘要（装时记、卸时比，两处同一个函数）。**纯**。
-pub fn digest_of(text: &str) -> String {
-    let mut f = crate::assets::asset_catalog::Fnv::default();
-    f.part(text.as_bytes());
-    f.hex()
+    crate::common::digest::fnv_digest(&crate::assets::asset_catalog::canonical(def))
 }
 
 fn valid_digest(d: &str) -> bool {
@@ -401,7 +394,7 @@ pub(crate) fn record_at(
                 // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。
                 (None, Some(p)) => {
                     let p = crate::assets::mcp_edit::project_root(p)?;
-                    super::asset_kind()
+                    crate::agents::asset_kind()
                         .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(&p))))
                         .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
                         .join(name)
@@ -411,7 +404,7 @@ pub(crate) fn record_at(
                 (None, None) => {
                     let root = match skills_root {
                         Some(r) => r.to_path_buf(),
-                        None => super::asset_kind()
+                        None => crate::agents::asset_kind()
                             .and_then(crate::agents::skills_root)
                             .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?,
                     };

@@ -3,9 +3,9 @@
 //! 写口由 `stream/inbound/` 递进来 —— 写自家状态的 `Own` 只经那一扇门递进来）都在被写的这一台。
 //! 写不重读重算：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个。
 
-use super::door::{self, Door, Refused};
 use crate::assets::hub_wire::{SkillApplied, SkillApplyReq, SkillPlanReq, SkillSourceFile};
 use crate::assets::mcp_sync::Facts;
+use crate::common::door::{self, Door, Refused};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 

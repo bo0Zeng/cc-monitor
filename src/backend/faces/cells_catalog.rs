@@ -1101,7 +1101,7 @@ mod specimens {
 
     /// 名字是起出来的那一形（`label_project` 也带）。
     fn named() -> crate::stream::wire::NameFace {
-        crate::stream::wire::NameFace::of(&crate::observe::search_rules::LabelFacts {
+        crate::stream::wire::NameFace::of(&crate::history::search_rules::LabelFacts {
             title: some("t"),
             project_dir: some("/w"),
             ..Default::default()

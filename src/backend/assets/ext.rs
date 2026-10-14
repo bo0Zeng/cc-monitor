@@ -25,8 +25,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
-use super::door::{self, Door, Refused};
 use super::skill_ledger::{Record, RecordReq};
+use crate::common::door::{self, Door, Refused};
 
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
 
@@ -960,7 +960,7 @@ pub(crate) struct Env {
 impl Env {
     pub(crate) fn here() -> Env {
         Env {
-            skills: super::asset_kind().and_then(crate::agents::skills_root),
+            skills: crate::agents::asset_kind().and_then(crate::agents::skills_root),
             user_mcp: crate::accounts::manage::mcp_share_exec::user_mcp_file(),
             ledger: super::skill_ledger::ledger_path(),
             home: crate::platform::paths::home_dir(),
@@ -971,7 +971,7 @@ impl Env {
     pub(crate) fn skill_root(&self, at: &ExtLoc) -> Option<PathBuf> {
         match at {
             ExtLoc::User => self.skills.clone(),
-            ExtLoc::Project { dir } => super::asset_kind()
+            ExtLoc::Project { dir } => crate::agents::asset_kind()
                 .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(dir)))),
         }
     }
@@ -989,7 +989,7 @@ fn need<T>(v: Option<T>) -> Result<T, crate::stream::inbound::spec::Fail> {
 
 /// 一段值的记号（看过的那一份 · 应用时再算一次比）。
 pub(crate) fn token_of(v: &Value) -> String {
-    super::skill_ledger::digest_of(&asset_catalog::canonical(v))
+    crate::common::digest::fnv_digest(&asset_catalog::canonical(v))
 }
 
 /// 备份落点：`<家>/.cc-monitor/backups/<毫秒>-<种类>-<名字>`（名字里别的字符换成 `_`）。回（家下相对段, 绝对路径）。
@@ -1235,7 +1235,7 @@ pub(crate) fn answer_uninstall_preview(
                 files: vec![name.to_string()],
                 backup: None,
                 said: copy_text("beExt.uninstall.mcpShared", &[("name", name)]),
-                token: super::skill_ledger::digest_of(&m.text),
+                token: crate::common::digest::fnv_digest(&m.text),
             }
         }
         ExtKind::Mcp => {
@@ -1264,7 +1264,7 @@ pub(crate) fn answer_uninstall_preview(
                 files: vec![name.to_string()],
                 backup,
                 said,
-                token: super::skill_ledger::digest_of(&m.text),
+                token: crate::common::digest::fnv_digest(&m.text),
             }
         }
     };
@@ -1359,7 +1359,7 @@ pub(crate) fn answer_uninstall_apply(
         }
         ExtKind::Mcp if at == ExtLoc::User => {
             let m = mcp_here(d, env, name, &at)?;
-            if super::skill_ledger::digest_of(&m.text) != token {
+            if crate::common::digest::fnv_digest(&m.text) != token {
                 return Err(stale());
             }
             let view = crate::accounts::manage::mcp_share_exec::remove(d, name)?;
@@ -1371,7 +1371,7 @@ pub(crate) fn answer_uninstall_apply(
         }
         ExtKind::Mcp => {
             let m = mcp_here(d, env, name, &at)?;
-            if super::skill_ledger::digest_of(&m.text) != token {
+            if crate::common::digest::fnv_digest(&m.text) != token {
                 return Err(stale());
             }
             let mut note = None;

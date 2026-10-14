@@ -646,7 +646,7 @@ fn a_real_record_tree_becomes_the_machine_listing() {
             .unwrap();
         }
     }
-    let tree = crate::observe::history_query::sessions_by_dir(&home)
+    let tree = crate::history::listing::sessions_by_dir(&home)
         .expect("读得了")
         .expect("记录树在");
     let live = LiveSet([S4.to_string()].into_iter().collect());
@@ -704,7 +704,7 @@ fn asking_by_sid_scans_one_session_and_answers_the_same() {
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
     let live = LiveSet([S4.to_string()].into_iter().collect());
     let listing = |only: Option<&str>| {
-        let tree = crate::observe::history_query::sessions_by_dir_for(&home, only)
+        let tree = crate::history::listing::sessions_by_dir_for(&home, only)
             .expect("读得了")
             .expect("记录树在");
         listing_from(tree, &[], &live, &json!({ S1: "work" }))

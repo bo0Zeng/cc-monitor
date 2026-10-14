@@ -26,9 +26,9 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 /// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
 pub(crate) fn in_process<A: crate::control::files_write::Act>(
     req: A,
-) -> Result<A::Reply, crate::assets::door::Said> {
+) -> Result<A::Reply, crate::common::door::Said> {
     crate::stream::inbound::spec::with_face(|face| crate::control::files_write::answer(req, face))
-        .map_err(|f| crate::assets::door::said_of(f.code, &f.said))
+        .map_err(|f| crate::common::door::said_of(f.code, &f.said))
 }
 
 codes! {

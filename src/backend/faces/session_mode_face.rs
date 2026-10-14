@@ -241,7 +241,7 @@ fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
             malformed("`sid` must be a session id"),
         ));
     }
-    let home = crate::observe::history_query::agent_home();
+    let home = crate::history::listing::agent_home();
     let kind = crate::observe::history_query::session_record(&home, &req.sid)
         .ok()
         .and_then(|p| crate::agents::record_kind_of(&p));

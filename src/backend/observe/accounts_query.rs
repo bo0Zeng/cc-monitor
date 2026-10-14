@@ -35,6 +35,7 @@
 //!   问账号 0 时不收路径参数。
 
 use crate::common::cells::Words;
+use crate::history::live::{parse_procstart_ticks, pidfiles};
 use crate::platform::fs::Ro;
 use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
@@ -46,11 +47,6 @@ use std::path::{Path, PathBuf};
 
 /// manifest 读取上限。账号数有限，几 MB 足矣，此处宽松给 8MB 兜底。
 const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
-/// 单个 `sessions/<PID>.json` 读取上限（正常几百字节）。
-const MAX_SESSION_FILE_BYTES: u64 = 1024 * 1024;
-/// `sessions/*.json` 扫描上限，防病态目录拖垮一次性查询。
-const MAX_SESSION_FILES: usize = 500;
-
 // ---------------------------------------------------------------- manifest
 
 #[derive(serde::Deserialize)]
@@ -201,15 +197,6 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 
 // `/proc/<pid>/stat` 的 starttime 只有一份：`platform::proc::proc_starttime`。
 use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
-
-/// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
-fn parse_procstart_ticks(v: &serde_json::Value) -> Option<u64> {
-    let field = v.get("procStart")?;
-    if let Some(s) = field.as_str() {
-        return s.trim().parse::<u64>().ok();
-    }
-    field.as_u64()
-}
 
 /// 该 pidfile 记录的进程**当前是否仍是同一个进程**（防 PID 复用 → 误归属账号）。
 /// 严于 watcher 的判活：这里的结果直接喂给"按会话切账号"，**错标签比缺标签危害大**，
@@ -594,73 +581,6 @@ pub(crate) fn list_product_with(
     serde_json::json!({ "meta": meta, "accounts": accounts, "notice": notice })
 }
 
-/// pidfile 目录里每一份读得出来的 `(pid, 内容)`（上限、跳过要说清）。抽出来让「这台机器上哪几个会话活着」（[`live_session_ids`]）
-/// 与账号归属读同一批 pidfile；pidfile 目录问注册表里后端盯着的那一家（与判活同一处 `agents::pidfile_dir`）。
-fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
-    let mut out = Vec::new();
-    let dir = crate::agents::pidfile_dir(agent_home);
-    let Ok(rd) = Ro::read_dir(&dir) else {
-        return Vec::new(); // 没有 sessions/ → 零行（exit 0）
-    };
-    let mut seen = 0usize;
-    for ent in rd.flatten() {
-        if seen >= MAX_SESSION_FILES {
-            tracing::warn!("sessions/ 条目超过 {MAX_SESSION_FILES}，其余跳过");
-            break;
-        }
-        let path = ent.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-        let Some(pid) = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .and_then(|s| s.parse::<u32>().ok())
-        else {
-            continue;
-        };
-        seen += 1;
-        let bytes = match Ro::read_regular_capped(&path, MAX_SESSION_FILE_BYTES) {
-            Ok(b) => b,
-            Err(e) => {
-                // 跳过要说清是谁：一个超过 `MAX_SESSION_FILE_BYTES` 的 pidfile 被静默丢掉，那个会话就永远不归属到任何账号、也没人说得出是哪一个。
-                tracing::warn!(
-                    "会话文件 {} 读不了，跳过（不归属该会话）：{e}",
-                    path.display()
-                );
-                continue;
-            }
-        };
-        let v: serde_json::Value = match serde_json::from_slice(&bytes) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        out.push((pid, v));
-    }
-    out
-}
-
-/// 这台此刻活着的会话（[`live_session_ids`]，家取这台那一家的家）：轮换数「另 N 会话也在用」· 判「会话走了」都问它。
-pub(crate) fn live_here() -> std::collections::BTreeSet<String> {
-    live_session_ids(&super::history_query::agent_home())
-}
-
-/// 这台机器上此刻活着的会话（sid 集合）—— 历史跨机 join 的本机判活源头：pidfile 里的会话 id ＋ 进程还是不是同一个
-/// （`platform::proc::session_alive`：存在性 ＋ 有 `procStart` 时对拍启动时刻 —— 与 watcher 加会话那一道闸同一个平台原语，
-/// 不是账号归属那道更严的「缺 `procStart` 就不认」）。
-pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<String> {
-    pidfiles(agent_home)
-        .into_iter()
-        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
-        .filter_map(|(_, v)| {
-            v.get("sessionId")
-                .and_then(|x| x.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        })
-        .collect()
-}
-
 /// 这台活会话里那一家说断开的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiveMcpFailed {
@@ -675,7 +595,7 @@ pub(crate) struct LiveMcpFailed {
 
 /// 这台此刻活着的交互会话（`homes` 各号的家里的 pidfile；判活同 [`live_session_ids`]，后台任务不算）里，
 /// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
-/// 每条会话只读 MCP 那一格（`facts_query::mcp_of`）；标题取历史清单的缓存（`history_query::session_title_of`）。
+/// 每条会话只读 MCP 那一格（`facts_query::mcp_of`）；标题取历史清单的缓存（`history::listing::session_title_of`）。
 pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let mut out: Vec<LiveMcpFailed> = Vec::new();
     for home in homes {
@@ -714,7 +634,7 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
                 }
                 out.retain(|o| o.name != m.name);
                 let title = title
-                    .get_or_insert_with(|| super::history_query::session_title_of(&path))
+                    .get_or_insert_with(|| crate::history::listing::session_title_of(&path))
                     .clone();
                 out.push(LiveMcpFailed {
                     name: m.name,

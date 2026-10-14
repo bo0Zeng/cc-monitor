@@ -974,18 +974,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
     ),
     (
-        "login-finish",
-        "在 app 里登录那一族与需手动清单（`faces/login_face.rs` · `accounts/sign_in.rs`）只读账号清单成品（`observe/accounts_query.rs`）与 MCP 读面（`faces/feature_face.rs::mcp_look`），起的是那一家的登录子命令 —— 按文件画的引用图经那两份文件连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "login-cancel",
-        "在 app 里登录那一族与需手动清单（`faces/login_face.rs` · `accounts/sign_in.rs`）只读账号清单成品（`observe/accounts_query.rs`）与 MCP 读面（`faces/feature_face.rs::mcp_look`），起的是那一家的登录子命令 —— 按文件画的引用图经那两份文件连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
-        "manual-list",
-        "在 app 里登录那一族与需手动清单（`faces/login_face.rs` · `accounts/sign_in.rs`）只读账号清单成品（`observe/accounts_query.rs`）与 MCP 读面（`faces/feature_face.rs::mcp_look`），起的是那一家的登录子命令 —— 按文件画的引用图经那两份文件连到了 tmux；本族不问 tmux、不起 tmux",
-    ),
-    (
         "accounts-mcp-pick",
         "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
     ),

@@ -161,7 +161,7 @@ pub(crate) type Answer = Result<Value, Fail>;
 
 /// 按名字跑一条（别族的判据也借它搭夹具）：入参经 typed 那一处收（同生产），再交给本体。门 · key 表那几口由判据给。
 pub(crate) fn answer(
-    d: &dyn crate::assets::door::Door,
+    d: &dyn crate::common::door::Door,
     cmd: &str,
     args: &Value,
     keys: &KeyDoor,

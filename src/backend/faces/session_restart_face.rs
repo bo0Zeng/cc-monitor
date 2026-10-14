@@ -77,14 +77,14 @@ impl Host for Prod {
     fn watch_compact(&self, sid: &str) -> impl Future<Output = Result<Armed, String>> + Send {
         let sid = sid.to_string();
         joined(tokio::task::spawn_blocking(move || {
-            one_wait::compact_summary(&crate::observe::history_query::agent_home(), &sid)
+            one_wait::compact_summary(&crate::history::listing::agent_home(), &sid)
         }))
     }
 
     fn watch_arrival(&self, sid: &str) -> impl Future<Output = Result<Armed, String>> + Send {
         let sid = sid.to_string();
         joined(tokio::task::spawn_blocking(move || {
-            one_wait::session_arrival(&crate::observe::history_query::agent_home(), &sid)
+            one_wait::session_arrival(&crate::history::listing::agent_home(), &sid)
         }))
     }
 }

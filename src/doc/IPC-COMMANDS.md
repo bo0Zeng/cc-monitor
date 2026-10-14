@@ -300,7 +300,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `NameFace`
 
-**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::observe::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截（界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
+**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::history::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截（界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -10944,7 +10944,7 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `jsonlPath` | string | 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
 | `launch` | Launch | 起分叉出来的新会话要的三格 |
 
-### 骨架索引的一行（`history-index` 的 `rows` 装运之前）
+### `history-list` 每行与全文搜索每行的「这一行能做什么」
 
 #### `Can`
 
@@ -10972,6 +10972,8 @@ type SshImported = { groups: Array<SshImportGroup>, };
 - `yes`
 - `live`
 - `unsure`
+
+### 骨架索引的一行（`history-index` 的 `rows` 装运之前）
 
 #### `IndexRow`
 

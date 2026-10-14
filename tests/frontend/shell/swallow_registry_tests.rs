@@ -139,7 +139,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));", Why::PeerGone, "watcher 已停：连接本来就不在它的名单上了"),
     // read8a：预读交回 watcher（它在退出 ⇒ 结果没人要）；任务交线程池（池子的线程都退了 ⇒ 进程在收尾）。
     ("src/backend/observe/watcher.rs", "let _ = events.send(WatchEvent::Primed(done));", Why::PeerGone, "watcher 已停：这一趟预读的结果没人要"),
-    ("src/backend/observe/par.rs", "let _ = self.tx.send(job);", Why::PeerGone, "池子的线程都退了（只在进程收尾时）：这份任务没人跑，交它的那一方也在收尾"),
+    ("src/backend/common/par.rs", "let _ = self.tx.send(job);", Why::PeerGone, "池子的线程都退了（只在进程收尾时）：这份任务没人跑，交它的那一方也在收尾"),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", Why::PeerGone, ""),
     // +2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", Why::PeerGone, ""),

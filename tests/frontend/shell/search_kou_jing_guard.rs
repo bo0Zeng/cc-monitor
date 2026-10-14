@@ -3,7 +3,7 @@
 //! # ✅ 它服务哪条要求：「一个判定只有一个家」·「本机与远端走同一条代码路径」
 //!
 //! 从前本文件还钉「口径的家恰一份 · 后端搜索那一侧只调它」（①②）：家从共享 crate `search-core` 拆进后端之后，
-//! 那两道随家搬进后端 `tests/backend/observe/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（不再跨两半读源码）。
+//! 那两道随家搬进后端 `tests/backend/history/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（不再跨两半读源码）。
 //! 这里只剩 ③：monitor 生产树里零处定义那 12 个助手 —— 本机搜索只许经通道问本机后端。
 
 /// 收口前在两侧**各写一遍**的那 12 个助手（`K-R85` 逐条实测同名同形）。

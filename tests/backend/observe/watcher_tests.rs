@@ -1404,7 +1404,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             status: None,
             waiting_for: None,
             activity: None,
-            facts: crate::observe::search_rules::LabelFacts {
+            facts: crate::history::search_rules::LabelFacts {
                 project_dir: Some("/w/proj".into()),
                 ..Default::default()
             },

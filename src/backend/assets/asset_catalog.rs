@@ -15,7 +15,7 @@
 //!
 //! # 摘要
 //!
-//! FNV-1a 64（[`Fnv`]）—— 稳定、零新依赖。只答「相同 / 不同」，不防篡改。
+//! FNV-1a 64（[`crate::common::digest::Fnv`]）—— 稳定、零新依赖。只答「相同 / 不同」，不防篡改。
 
 use crate::common::said::IntoNote as _;
 use crate::platform::fs::{Own, OwnLock, OwnPath};
@@ -172,36 +172,6 @@ pub fn entry_key(kind: &str, name: &str) -> String {
 
 // ───────────────────────── 摘要（纯） ─────────────────────────
 
-/// FNV-1a 64。每段先喂长度再喂字节 ⇒ 段与段之间不会粘成同一串。
-#[derive(Clone, Copy)]
-pub struct Fnv(u64);
-
-impl Default for Fnv {
-    fn default() -> Self {
-        Fnv(0xcbf2_9ce4_8422_2325)
-    }
-}
-
-impl Fnv {
-    fn byte(&mut self, b: u8) {
-        self.0 ^= u64::from(b);
-        self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    /// 喂一段（带长度前缀）。
-    pub fn part(&mut self, bytes: &[u8]) -> &mut Self {
-        for b in (bytes.len() as u64).to_le_bytes() {
-            self.byte(b);
-        }
-        for &b in bytes {
-            self.byte(b);
-        }
-        self
-    }
-    pub fn hex(&self) -> String {
-        format!("{:016x}", self.0)
-    }
-}
-
 /// JSON 的规范写法：对象按键排序（不依赖 `serde_json` 开没开 `preserve_order`）。
 pub fn canonical(v: &Value) -> String {
     match v {
@@ -224,7 +194,7 @@ pub fn canonical(v: &Value) -> String {
 
 /// 一条 MCP 定义 → 目录条目。`digest` 按**整条原文**（含密钥值）的规范写法算；`summary` 去掉密钥值。
 pub fn mcp_asset(project: Option<&str>, name: &str, def: &Value, file: Option<&Path>) -> Asset {
-    let mut f = Fnv::default();
+    let mut f = crate::common::digest::Fnv::default();
     f.part(KIND_MCP.as_bytes()).part(canonical(def).as_bytes());
     Asset {
         kind: KIND_MCP.to_string(),
@@ -273,7 +243,7 @@ pub fn skill_asset(
     dir: &Path,
     description: Option<&str>,
 ) -> Asset {
-    let mut f = Fnv::default();
+    let mut f = crate::common::digest::Fnv::default();
     f.part(KIND_SKILL.as_bytes());
     let (mut files, mut bytes) = (0usize, 0u64);
     let mut binary = false;
@@ -404,13 +374,13 @@ pub(crate) fn assets_from(sightings: &[crate::agents::Sightings]) -> (Vec<Asset>
 /// 这台上开过会话的项目目录：取历史清单那一份（项目清单每一行的 `projectPath`），不另起一份扫描。
 /// 列不出来 ⇒ 空 ＋ 一句话（「这台没有项目」与「这台的项目列不出来」不许合成一句）。
 pub(crate) fn session_projects() -> (Vec<String>, Option<String>) {
-    session_projects_at(&crate::observe::history_query::agent_home())
+    session_projects_at(&crate::history::listing::agent_home())
 }
 
 /// [`session_projects`] 的本体：agent 的家由调用方给（判据拿临时家目录喂）。
 pub(crate) fn session_projects_at(agent_home: &Path) -> (Vec<String>, Option<String>) {
     let mut buf = Vec::new();
-    if let Err(e) = crate::observe::history_query::list_projects_into(agent_home, &mut buf) {
+    if let Err(e) = crate::history::listing::list_projects_into(agent_home, &mut buf) {
         return (Vec::new(), Some(e));
     }
     let mut dirs: Vec<String> = String::from_utf8_lossy(&buf)
@@ -826,7 +796,7 @@ fn new_machine_id() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let mut f = Fnv::default();
+    let mut f = crate::common::digest::Fnv::default();
     f.part(
         home()
             .map(|h| h.to_string_lossy().into_owned())

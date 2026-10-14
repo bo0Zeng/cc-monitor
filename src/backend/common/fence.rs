@@ -1,14 +1,14 @@
-//! 读路径的越界围栏 —— observe 里唯一的家：「路径必须在某个根之下」那道 `canonicalize` ＋ 前缀校验（挡 symlink 逃逸 / `../` 穿越）。
-//! 判定本体（解开根 · 解开目标 · 前缀比）只住这里的 [`Fence`]；`history_query::fence_under_projects` 只是「以 `projects/` 为根立一道 `Fence`」，
+//! 读路径的越界围栏 —— 唯一的家：「路径必须在某个根之下」那道 `canonicalize` ＋ 前缀校验（挡 symlink 逃逸 / `../` 穿越）。
+//! 判定本体（解开根 · 解开目标 · 前缀比）只住这里的 [`Fence`]；`history::listing::fence_under_projects` 只是「以 `projects/` 为根立一道 `Fence`」，
 //! `search_query` 也经它。安全判定只能有一份：两份的话，强化其中一份时另一份不会跟。
 //! 「根是哪一个」是调用方的事 —— 本文件不认识任何一家 agent 的目录布局。
 //!
-//! 住 `observe/` 不进 `common/`：两个读者同属 observe，不够 `common` 的「≥2 个上层用」门槛。
+//! 住 `common/`：会话清单挪进 history 之后，observe 与 history 两层都过它（10-13 从 observe 下沉）。
 //! 它是读路径的越界防护，不是「不许改什么」的数据围栏；文件管理那一面（`files/`）不走这里。
 //!
 //! 报错原话（Claude 的 `projects/` 根：`projects root unavailable: …` · `path unavailable: …` · `refusing to access outside projects dir: …`）
 //! 里的「projects」取根目录自己的名字，别的根说的是它自己的名字。
-//! 判据：`tests/backend/observe/fence_tests.rs`（observe 全树现扫：`canonicalize` 只在这里 · 两个读者都经它）。
+//! 判据：`tests/backend/common/fence_tests.rs`（observe 全树现扫：`canonicalize` 只在这里 · 两个读者都经它）。
 
 use std::path::{Path, PathBuf};
 
@@ -65,5 +65,5 @@ pub(crate) fn real_path(p: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/fence_tests.rs"]
+#[path = "../../../tests/backend/common/fence_tests.rs"]
 mod tests;

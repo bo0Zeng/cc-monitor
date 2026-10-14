@@ -210,19 +210,14 @@ fn spawn_pid_watcher(
     });
 }
 
-/// P4b：给当前 tmux server 装通知 hook。**尽力而为**：拿不到自己的 exe 路径 /
-/// starttime 就跳过（那说明 `/proc` 不可用，整条 pidfd 路本来也不成立）。
-///
-/// 装的是**我们自己进程**的 pid + starttime —— hook 子进程据此校验身份再发 SIGUSR1，
-/// 挡的是「backend 退出后 pid 被复用，hook 误伤无关进程」。
-fn install_tmux_hooks_best_effort() {
-    let me = std::process::id();
-    let (Ok(exe), Some(start)) = (std::env::current_exe(), proc_starttime(me)) else {
-        tracing::warn!("拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）");
-        return;
-    };
-    let n = crate::control::tmux_hook::install_hooks(&exe, me, start);
-    tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
+/// watcher 看见、控制面去做的那两件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `main.rs` 接上控制面那两个函数）。
+/// 两件的时机都只有观测侧有：「tmux server 起来了」是 socket 目录 inotify 看到的；`(pid, sid)` 只在 pidfile 出现 / 改写那一刻同时在手。
+#[derive(Clone, Copy)]
+pub struct Reactions {
+    /// tmux server（重新）起来了 ⇒ 给它装通知 hook（hook 活在 server 内存里，server 每次起来都要重装；`control::tmux_hook::install_for_this_process`）。
+    pub tmux_server_up: fn(),
+    /// pidfile 出现 / 改写：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt_seen`；写句柄是起 watcher 时交进来的那一份）。
+    pub session_seen: fn(&crate::platform::fs::Own, u32, &str),
 }
 
 /// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
@@ -902,6 +897,7 @@ impl WatchHandle {
 pub fn spawn(
     agent_home: PathBuf,
     own: crate::platform::fs::Own,
+    reactions: Reactions,
 ) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
     let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
@@ -915,7 +911,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            watch_loop(agent_home, b, events_tx, events_rx, own);
+            watch_loop(agent_home, b, events_tx, events_rx, own, reactions);
             live_leave(me);
         })
         .expect("spawn jsonl-watcher thread");
@@ -1024,6 +1020,7 @@ fn watch_loop(
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
     own: crate::platform::fs::Own,
+    reactions: Reactions,
 ) {
     // 记录树的根与 pidfile 目录问注册表里后端盯着的那一家（`RecordFace.tree` · `LocalFace`）；没有那一家 ⇒ 不盯。
     let (Some(projects), Some(local)) = (
@@ -1050,7 +1047,7 @@ fn watch_loop(
         .map(|r| r.root.clone())
         .collect();
     state.skeletons = Some(crate::observe::skeleton::Skeletons::new(own.clone()));
-    state.launch = Some(own);
+    state.launch = Some((reactions, own));
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
     state.annotations = annotations_table();
@@ -1388,8 +1385,8 @@ fn watch_loop(
                         tracing::info!("已给 tmux server pid {pid} 挂 pidfd 看守（零轮询判死）");
                         // P4b：**这里就是「该（重）装 hook」的时机** —— hook 活在 server
                         // 内存里，server 每次起来都要重装，而 P3 把「server 起来了」变成了事件。
-                        // 装不上不致命（退回定时探测），但会 warn ⇒ 不静默降级。
-                        install_tmux_hooks_best_effort();
+                        // 装不上不致命（退回定时探测），但会 warn ⇒ 不静默降级。装的那一半在控制面（[`Reactions::tmux_server_up`]）。
+                        (reactions.tmux_server_up)();
                     }
                     None if matches!(obs, TmuxObservation::NoServer) => {
                         server = ServerState::Gone;
@@ -1545,9 +1542,9 @@ struct ReaderState {
     /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
     /// 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
     typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
-    /// 认起会话便条、记账号的写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
+    /// 认起会话便条、记账号：控制面那一手 ＋ 写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
     /// 默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入启动时造的那一份。
-    launch: Option<crate::platform::fs::Own>,
+    launch: Option<(Reactions, crate::platform::fs::Own)>,
     /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
     annotations: crate::history::history_annotations::Table,
     /// 大记录的骨架落在哪（生产由 [`watch_loop`] 照启动时的写句柄装上；`None`（夹具）⇒ 不读也不落）。
@@ -1590,7 +1587,7 @@ impl ReaderState {
     fn renamed(
         &mut self,
         sid: &str,
-        mut change: impl FnMut(&mut super::search_rules::LabelFacts) -> bool,
+        mut change: impl FnMut(&mut crate::history::search_rules::LabelFacts) -> bool,
         sink: &mut FrameSink,
     ) {
         let before = self.name_face(sid);
@@ -1793,7 +1790,7 @@ struct SessionEntry {
     activity: Option<crate::agents::SessionActivity>,
     /// 叫这条会话什么的那几样（[`crate::stream::wire::NameFace`]）：宣告时从清单缓存与注解取，之后跟着读到的标题记录 · 第一句 · 注解改。
     /// 不在看的会话行照读（只是不上流），这几样照记。
-    facts: super::search_rules::LabelFacts,
+    facts: crate::history::search_rules::LabelFacts,
     /// 客户端手里这条会话的记录路径（宣告时那一份；之后记录出现 · 换了一份就跟上，并发一帧 `session_status` 带它）。
     path: Option<String>,
 }
@@ -2046,7 +2043,7 @@ enum Look {
 ///   `reread = Rewritten`。`tail` 为 `None`（第一次读 / 刚丢过游标）⇒ 不核。
 /// - ★ 这一趟看到的文件长度用「真读到多少」算（`metadata` 与读之间文件还在长；多读到的字节这一趟一起处理掉），见 [`NewLines::finish`]。
 fn read_tail_from(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Look {
-    read_tail_in_blocks(path, cursor, tail, crate::observe::fs::READ_BLOCK)
+    read_tail_in_blocks(path, cursor, tail, crate::common::append_read::READ_BLOCK)
 }
 
 /// [`read_tail_from`] 的本体（块多大是参数：判据拿小块验「按块扫 == 一整块扫」）。
@@ -2106,7 +2103,7 @@ fn read_tail_in_blocks(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>, blo
 /// 一趟续读：从起读处按块读到尾，每块止于一个 `\n`，交给同一段扫描（[`read_new_lines_at`]）出行；
 /// 末尾没写完的那截不交（留给下一趟）。手里最多 ≈ 一块 ＋ 正在读的那一行。
 struct NewLines {
-    blocks: crate::observe::fs::Blocks<RoFile>,
+    blocks: crate::common::append_read::Blocks<RoFile>,
     /// 下一块在文件里的起点（起读处 ＋ 已交出的块）。
     at: u64,
     /// 起读处。
@@ -2131,7 +2128,7 @@ impl NewLines {
         reread: Option<RereadWhy>,
     ) -> Self {
         Self {
-            blocks: crate::observe::fs::Blocks::new(f, block),
+            blocks: crate::common::append_read::Blocks::new(f, block),
             at: start,
             start,
             from,
@@ -2667,14 +2664,14 @@ fn note_name(
     sink: &mut FrameSink,
 ) {
     use crate::agents::record::Body;
-    let change = |f: &mut super::search_rules::LabelFacts| match body {
+    let change = |f: &mut crate::history::search_rules::LabelFacts| match body {
         Body::Title { text, .. } if f.title.as_deref() != Some(text) => {
             f.title = Some(text.clone());
             true
         }
         Body::Said { who, .. } if f.first.is_empty() => match who.speech() {
             Some(s) => {
-                f.first = super::search_rules::truncate_excerpt(&s, 120);
+                f.first = crate::history::search_rules::truncate_excerpt(&s, 120);
                 true
             }
             None => false,
@@ -2728,7 +2725,8 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
     if f.seek(SeekFrom::Start(cursor.consumed)).is_err() {
         return;
     }
-    let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+    let mut blocks =
+        crate::common::append_read::Blocks::new(f, crate::common::append_read::READ_BLOCK);
     if !matches!(blocks.next(), Ok(None)) {
         return; // 读不动 / 还有完整行没消费（补读那一步没读动）⇒ 不猜
     }
@@ -2858,7 +2856,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         return false;
     }
     // 工作目录是这台家里不出会话的那个目录 ⇒ 不成 tab —— 判据与历史页同一处。
-    if pidfile_cwd(&bytes).is_some_and(|c| super::history_query::hidden_cwd(&c)) {
+    if pidfile_cwd(&bytes).is_some_and(|c| crate::history::listing::hidden_cwd(&c)) {
         return false;
     }
     // 后台会话（适配层判，`agents::pidfile_background`）照宣告，帧带 `background: true`；成不成 tab 由客户端按这一格定。
@@ -3001,7 +2999,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         .find(|e| e.sid == sid)
         .map(|e| e.facts.clone());
     let fresh_name = known.is_none();
-    let facts = known.unwrap_or_else(|| super::search_rules::LabelFacts {
+    let facts = known.unwrap_or_else(|| crate::history::search_rules::LabelFacts {
         project_dir: project_dir.clone(),
         custom: state.custom_title(&sid),
         ..Default::default()
@@ -3274,7 +3272,10 @@ fn announce_writer(
         return false;
     };
     let dir = face.project_dir.and_then(|f| f(p));
-    if dir.as_deref().is_some_and(super::history_query::hidden_cwd) {
+    if dir
+        .as_deref()
+        .is_some_and(crate::history::listing::hidden_cwd)
+    {
         return false;
     }
     announce(
@@ -3297,18 +3298,11 @@ fn announce_writer(
     )
 }
 
-/// 「这条会话用哪个号起的」：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt`）。
-/// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。写不成只出声。
+/// 「这条会话用哪个号起的」：报给控制面（[`Reactions::session_seen`]，`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`）。
+/// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。
 fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
-    let Some(own) = state.launch.as_ref() else {
-        return;
-    };
-    let started_at = |p: u32| {
-        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
-    };
-    let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
-    if let Err(e) = crate::control::launch_account::adopt(own, pid, sid, started_at(pid), &alive) {
-        tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{}", e.logged());
+    if let Some((reactions, own)) = state.launch.as_ref() {
+        (reactions.session_seen)(own, pid, sid);
     }
 }
 
@@ -3675,7 +3669,7 @@ pub(crate) struct PrimeDone {
     /// 第一份记录里最后一件说了「此刻在干什么」的事（这一家的记录说这件事才有）。
     activity: Option<crate::agents::SessionActivity>,
     /// 名字那几样（[`PrimeJob::label`] 要了才有）。
-    facts: Option<super::search_rules::LabelFacts>,
+    facts: Option<crate::history::search_rules::LabelFacts>,
 }
 
 /// 读完要落的骨架（交回之后再落：几十 MB 的写不挡「读完了」那一帧）。
@@ -3716,7 +3710,7 @@ fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<SkelLater>) {
         gen,
         files: out,
         activity,
-        facts: label.map(|p| super::history_query::label_facts_of(&p)),
+        facts: label.map(|p| crate::history::listing::label_facts_of(&p)),
     };
     (done, later)
 }
@@ -4118,10 +4112,10 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
 }
 
 /// 预读的线程池：各会话并行（上限按 CPU 数），一条会话一趟、趟内照顺序读。做完经 watcher 的事件通道交回（`WatchEvent::Primed`）。
-/// 池子里的线程只阻塞在任务队列上（[`crate::observe::par::Pool`]），不睡、不定时。
+/// 池子里的线程只阻塞在任务队列上（[`crate::common::par::Pool`]），不睡、不定时。
 /// 排队在本线程（[`dispatch_primes`] 按名单挑），池子里同时至多线程数那么多份 ⇒ 名单一变就能改先后，已交出去的不撤。
 pub(crate) struct PrimePool {
-    pool: crate::observe::par::Pool<PrimeJob>,
+    pool: crate::common::par::Pool<PrimeJob>,
     /// 还没交出去的（宣告的先后）。
     queue: std::collections::VecDeque<PrimeJob>,
     /// 交出去了、还没交回的份数。
@@ -4131,7 +4125,7 @@ pub(crate) struct PrimePool {
 impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
         PrimePool {
-            pool: crate::observe::par::Pool::new("record-prime", move |job| {
+            pool: crate::common::par::Pool::new("record-prime", move |job| {
                 let (done, later) = run_prime(job);
                 let _ = events.send(WatchEvent::Primed(done));
                 store_skeletons(later);

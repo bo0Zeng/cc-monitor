@@ -52,7 +52,7 @@ export interface Tab {
   /** 名字旁边的项目那一格（核心给的；名字是起出来的才有）。 */
   labelProject: string | null;
   /**
-   * 本会话是从哪个会话 fork 来的（判定住后端 `history_query::fork_origin`，与历史树同一份；出现一次就锁定）。null = 非 fork。
+   * 本会话是从哪个会话 fork 来的（判定住后端 `history::listing::fork_origin`，与历史树同一份；出现一次就锁定）。null = 非 fork。
    * 给 tab 标题加 `↳` 血缘徽标 ＋ 悬停 —— 不然 fork 出来的会话与原会话是同名的两个 tab、分不清。
    */
   forkedFromSessionId: string | null;

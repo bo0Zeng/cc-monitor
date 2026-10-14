@@ -285,10 +285,19 @@ fn nothing_changed_nothing_written() {
 
 #[test]
 fn digest_sees_every_byte_and_nothing_else() {
-    assert_eq!(digest_of("a\n"), digest_of("a\n"));
-    assert_ne!(digest_of("a\n"), digest_of("a\r\n"));
-    assert_ne!(digest_of(""), digest_of(" "));
-    assert!(valid_digest(&digest_of("x")));
+    assert_eq!(
+        crate::common::digest::fnv_digest("a\n"),
+        crate::common::digest::fnv_digest("a\n")
+    );
+    assert_ne!(
+        crate::common::digest::fnv_digest("a\n"),
+        crate::common::digest::fnv_digest("a\r\n")
+    );
+    assert_ne!(
+        crate::common::digest::fnv_digest(""),
+        crate::common::digest::fnv_digest(" ")
+    );
+    assert!(valid_digest(&crate::common::digest::fnv_digest("x")));
 }
 
 /// 文件名在 `src/` 全部生产代码里恰好一个家（第二个写者 / 空转两向都红）。正控：把针塞进一份副本里数得出来。

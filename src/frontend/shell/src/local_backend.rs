@@ -48,7 +48,7 @@
 //! # ⚠ 它只认这一份产物内嵌的那份，**绝不扫仓库 dev 产物、也不找 exe 旁边** —— 这是刻意的
 //!
 //! 摸底量到一件安全相关的事：backend 一启动就**无条件**往它能连到的 tmux server 上装三条
-//! 全局 hook（`observe/watcher.rs::install_tmux_hooks_best_effort` → `set-hook -g`），
+//! 全局 hook（watcher 看见 server 起来了 ⇒ `control/tmux_hook.rs::install_for_this_process` → `set-hook -g`），
 //! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-backend`
 //! 就起它」会去改用户真实 tmux server 的状态。
 //!

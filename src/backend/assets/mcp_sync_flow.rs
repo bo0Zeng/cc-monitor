@@ -8,7 +8,6 @@
 //! 用户级 MCP：这台有账号库 ⇒ 写进各账号共用的那一份、同步到所有号（`accounts::manage::mcp_share_exec::put`）；
 //! 没有 ⇒ 它住 agent 自己的热状态文件，只当来源读，这里不往它里面写。
 
-use super::door::{self, Door, Refused};
 use super::ext::{ExtLoc, ExtSlot};
 use super::mcp_edit::{mcp_json, plan_project_mcp, upsert_mcp_server_value};
 use super::skill_ledger::{Record, RecordReq};
@@ -18,6 +17,7 @@ use crate::assets::hub_wire::{
     McpSuspect,
 };
 use crate::assets::mcp_sync::{candidates, judge, servers_of, Facts, There};
+use crate::common::door::{self, Door, Refused};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -181,10 +181,7 @@ pub(crate) fn answer_preview(
         def,
         slots,
         suspects,
-        target: tgt
-            .text
-            .as_deref()
-            .map(crate::assets::skill_ledger::digest_of),
+        target: tgt.text.as_deref().map(crate::common::digest::fnv_digest),
     })
 }
 
@@ -200,10 +197,7 @@ pub(crate) fn answer_apply(
     let def = def_arg(&req.def)?;
     let (root, tgt, servers) = target_of(d, &at)?;
     let seen = req.target.as_deref();
-    let now = tgt
-        .text
-        .as_deref()
-        .map(crate::assets::skill_ledger::digest_of);
+    let now = tgt.text.as_deref().map(crate::common::digest::fnv_digest);
     if now.as_deref() != seen {
         return Err(crate::stream::inbound::spec::Fail::from((
             "stale",

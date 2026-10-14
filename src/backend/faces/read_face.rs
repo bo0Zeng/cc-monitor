@@ -194,7 +194,7 @@ pub(crate) type Answer = Result<Value, (&'static str, String)>;
 /// 帧面入口：命令名从 `r.cmd` 来（与 `files::answer_wire` 同一形 —— 「登记的名字」与
 /// 「真正跑的那条」在类型上是同一个值）。
 pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    answer_at(&crate::observe::history_query::agent_home(), cmd, args, tz)
+    answer_at(&crate::history::listing::agent_home(), cmd, args, tz)
 }
 
 /// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。

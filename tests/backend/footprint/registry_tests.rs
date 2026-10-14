@@ -6,14 +6,17 @@ use std::collections::HashSet;
 static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> =
     std::sync::LazyLock::new(|| tools().into_iter().cloned().collect());
 
-/// 申报表的两份源码：本表（`footprint/registry.rs`）＋ 这一家的那一半（`agents/claudecode/footprint.rs`）。
+/// 申报表的源码：本表（`footprint/registry.rs`）＋ 这一家的那一半（`agents/claudecode/footprint.rs`）＋ 词（`agents/footprint_decl.rs`）。
 const REGISTRY_SRC: &str = include_str!("../../../src/backend/footprint/registry.rs");
 const AGENT_SRC: &str = include_str!("../../../src/backend/agents/claudecode/footprint.rs");
+/// 申报表的词（`ToolSpec` 等那几个类型的定义，住适配层）。
+const DECL_SRC: &str = include_str!("../../../src/backend/agents/footprint_decl.rs");
 
-/// 两份各剥各的再接起来（本表末尾有测试段，接起来再剥会把后一份整个切掉）。
+/// 各剥各的再接起来（本表末尾有测试段，接起来再剥会把后一份整个切掉）。
 fn tools_code() -> String {
     format!(
-        "{}\n{}",
+        "{}\n{}\n{}",
+        production_code(DECL_SRC),
         production_code(REGISTRY_SRC),
         production_code(AGENT_SRC)
     )

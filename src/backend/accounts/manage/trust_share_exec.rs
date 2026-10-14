@@ -11,7 +11,7 @@ use super::mcp_share_exec::{accounts_in, lock, put_private, read_text, MAX_CONFI
 use super::scan::join;
 use super::trust_share;
 use crate::agents::TrustCells;
-use crate::assets::door::{self, Door, Refused};
+use crate::common::door::{self, Door, Refused};
 use std::collections::BTreeSet;
 
 type Refusal = crate::stream::inbound::spec::Fail;

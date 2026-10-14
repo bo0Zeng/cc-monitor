@@ -420,7 +420,7 @@ impl M {
         let ledger = self.env.ledger.clone().unwrap();
         let root = match args.get("project").and_then(Value::as_str) {
             Some(p) => crate::agents::skill_root_at(
-                crate::assets::asset_kind().unwrap(),
+                crate::agents::asset_kind().unwrap(),
                 Some(Path::new(p)),
             )
             .unwrap(),

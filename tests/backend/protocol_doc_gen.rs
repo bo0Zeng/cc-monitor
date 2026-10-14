@@ -846,6 +846,10 @@ fn oneshot_types(out: &mut String) {
             "`session-fork` 的出参（应答另多 `launch` 一格）",
         ),
         (
+            "history/listing.rs",
+            "`history-list` 每行与全文搜索每行的「这一行能做什么」",
+        ),
+        (
             "observe/history_query.rs",
             "骨架索引的一行（`history-index` 的 `rows` 装运之前）",
         ),

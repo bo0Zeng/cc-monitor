@@ -368,7 +368,7 @@ fn ledger_with(d: &Path, name: &str, files: Value) -> (PathBuf, String) {
 }
 
 fn dg(t: &str) -> String {
-    crate::assets::skill_ledger::digest_of(t)
+    crate::common::digest::fnv_digest(t)
 }
 
 #[test]

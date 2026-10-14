@@ -224,7 +224,7 @@ pub fn host_relay(
         let rest = rotate::rest_members(lib.accounts.iter().map(|a| a.id.as_str()), &[], |x| {
             lib.accounts.iter().any(|a| a.id == x && !a.api)
         });
-        let live = crate::observe::accounts_query::live_here();
+        let live = crate::history::live::live_here();
         crate::accounts::quota::rotation::migrate_here(
             &own,
             &crate::accounts::quota::rotation::UpgradeEnv {
@@ -303,7 +303,7 @@ impl Ready for Booted {
                 quota,
                 home,
                 library,
-                std::sync::Arc::new(crate::observe::accounts_query::live_here),
+                std::sync::Arc::new(crate::history::live::live_here),
                 None,
             ))
             .tracing_lineage(std::sync::Arc::new(crate::lineage::LineageStore::at(

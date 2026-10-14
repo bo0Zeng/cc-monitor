@@ -178,7 +178,7 @@ pub(crate) fn has_exec_bits() -> bool {
     cfg!(unix)
 }
 
-/// 〔原 `assets/door.rs`〕`rel`（`/` 或 `\` 分隔）接在 `home` 底下：分隔符跟 `home` 自己的写法走
+/// 〔原 `assets/door.rs`，今住 `common/door.rs`〕`rel`（`/` 或 `\` 分隔）接在 `home` 底下：分隔符跟 `home` 自己的写法走
 /// （`home` 里只有 `\` ⇒ `\`，否则 `/`）—— 那台机器的 home 是什么写法由它自己的后端答，这里只照着拼。
 pub(crate) fn join_under(home: &str, rel: &str) -> String {
     let sep = if home.contains('\\') && !home.contains('/') {
