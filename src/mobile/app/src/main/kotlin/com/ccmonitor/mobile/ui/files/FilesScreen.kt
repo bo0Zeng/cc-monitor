@@ -332,7 +332,7 @@ private fun PathHeader(
 ) {
     val tokens = LocalAppTokens.current
     Row(
-        Modifier.fillMaxWidth().background(tokens.surfaceRaised).padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+        Modifier.fillMaxWidth().background(tokens.bg2).padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -604,7 +604,7 @@ private fun BookmarkChip(
         maxLines = 1,
         modifier =
             Modifier
-                .background(tokens.surfaceRaised, RoundedCornerShape(50))
+                .background(tokens.card, RoundedCornerShape(tokens.radius.m))
                 .combinedClickable(onClick = onJump, onLongClick = onDelete)
                 .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
     )
