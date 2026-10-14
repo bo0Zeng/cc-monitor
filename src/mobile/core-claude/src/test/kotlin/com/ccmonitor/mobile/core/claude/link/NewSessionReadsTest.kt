@@ -106,7 +106,7 @@ class NewSessionReadsTest {
     fun `files-ls：只列文件夹；路径是那台写好的全路径，名字照末段；读不成字的路径不列`() {
         assertEquals(mapOf("path" to "/h/work", "dirs_only" to true), FilesLs.dirs("/h/work"))
         val got =
-            FilesLs.of(
+            FilesLs.dirsOf(
                 mapOf(
                     "entries" to
                         listOf(
@@ -121,7 +121,7 @@ class NewSessionReadsTest {
             )!!
         assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.map { it.path })
         assertEquals(listOf("billing", "notes"), got.map { it.name })
-        assertNull(FilesLs.of(mapOf("entries" to listOf(mapOf("kind" to "dir")))))
+        assertNull(FilesLs.dirsOf(mapOf("entries" to listOf(mapOf("kind" to "dir")))))
         assertEquals("/h/work", FilesLs.parent("/h/work/billing"))
         assertEquals("/", FilesLs.parent("/h"))
         assertNull("根没有上一级", FilesLs.parent("/"))
@@ -129,8 +129,8 @@ class NewSessionReadsTest {
 
     @Test
     fun `files-home：那台的家目录`() {
-        assertEquals("/h", FilesHome.of(mapOf("path" to "/h")))
-        assertNull(FilesHome.of(mapOf("path" to mapOf("b16" to "ff"))))
+        assertEquals("/h", FilesHome.text(mapOf("path" to "/h")))
+        assertNull(FilesHome.text(mapOf("path" to mapOf("b16" to "ff"))))
     }
 
     @Test

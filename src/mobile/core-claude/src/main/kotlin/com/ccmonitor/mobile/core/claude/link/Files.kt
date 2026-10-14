@@ -139,6 +139,8 @@ object FilesHome {
     const val COMMAND: String = "files-home"
 
     fun of(data: Any?): RemotePath? = Wire.bind<FilesPathReply>(data)?.let { RemotePath.of(it.path) }
+    /** 新建会话的目录 chip 要的那一串：家目录读不成字 ⇒ `null`。 */
+    fun text(data: Any?): String? = of(data)?.text
 }
 
 /** `files-ls`：一个目录的直接子项（那台读目录的顺序；排序是屏上的事）。 */
@@ -175,6 +177,25 @@ object FilesLs {
                 Entry(p, p.name.shown, e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true), e.size, e.mtimeText)
             }
         return Listing(entries, r.truncated, r.total)
+    }
+    /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
+    fun dirs(path: String): Map<String, Any?> = mapOf("path" to path, "dirs_only" to true)
+
+    data class Dir(
+        val path: String,
+    ) {
+        val name: String get() = path.trimEnd('/').substringAfterLast('/').ifEmpty { path }
+    }
+
+    /** [dirs] 那一问的一层文件夹；路径读不成字（那台用 `b16` 交的）⇒ 不列。形状对不上 ⇒ `null`。 */
+    fun dirsOf(data: Any?): List<Dir>? = Wire.bind<LsReply>(data)?.entries?.mapNotNull { (it.path as? String)?.let(::Dir) }
+
+    /** 上一级；根 ⇒ `null`。 */
+    fun parent(path: String): String? {
+        val p = path.trimEnd('/')
+        if (p.isEmpty()) return null
+        val cut = p.lastIndexOf('/')
+        return if (cut <= 0) "/" else p.substring(0, cut)
     }
 }
 
