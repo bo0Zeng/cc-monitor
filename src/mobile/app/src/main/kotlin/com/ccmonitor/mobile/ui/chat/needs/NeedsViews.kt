@@ -335,7 +335,7 @@ private fun NoteBox(
     ChoiceButton(c.text, ChoiceLook.PRIMARY, enabled = !sheet.locked && (!required || text.isNotBlank()), busy = sheet.sending == c.id, tag = NeedsTags.choice(c.id)) {
         act.sendNote(text)
     }
-    ChoiceButton(copyText("askBlock.note.cancel"), ChoiceLook.QUIET, enabled = !sheet.locked, busy = false, tag = NeedsTags.choice("cancel"), onClick = act.cancelNote)
+    ChoiceButton(copyText("askBlock.note.cancel"), ChoiceLook.QUIET, enabled = !sheet.locked, busy = false, tag = NeedsTags.choice("note-back"), onClick = act.cancelNote)
 }
 
 /** 一题一屏：题头（header）· 题目 · 选项（单选圆点 / 多选方块，选中淡底 ＋ 强调色描边）· 末尾「其他…」。 */
