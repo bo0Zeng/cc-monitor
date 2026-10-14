@@ -1154,12 +1154,13 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 /// 两侧异源：左边是真 hello 行经 `stream_source::parse_frame` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
-    // `kill` · `launch` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
+    // `kill` · `launch` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
     let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
     let line = format!(
-        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}},{{"command":7}}],"uncancellable":["launch",null],"shapes":{{"kill":"{}","launch":"{}"}}}}"#,
+        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}},{{"command":7}}],"uncancellable":["launch",null],"shapes":{{"kill":"{}","launch":"{}","ping":"{}"}}}}"#,
         shape("kill"),
-        shape("launch")
+        shape("launch"),
+        shape("ping")
     );
     let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
     let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");

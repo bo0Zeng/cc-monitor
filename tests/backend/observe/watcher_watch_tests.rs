@@ -203,15 +203,3 @@ fn coming_into_view_resends_the_run_table_and_the_branch_list() {
     assert_eq!(kinds, vec![B.to_string()], "新看的会话补一帧运行表（整份）");
     std::fs::remove_dir_all(&dir).ok();
 }
-
-impl crate::guard_support::Shaped for crate::wire::WatchReply {
-    fn samples() -> Vec<Self> {
-        vec![crate::wire::WatchReply {
-            from: vec![WatchFrom {
-                sid: "s".into(),
-                path: "/p/s.jsonl".into(),
-                seq: 3,
-            }],
-        }]
-    }
-}

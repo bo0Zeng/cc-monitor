@@ -121,14 +121,3 @@ fn a_mcp_name_that_could_pass_for_a_flag_is_never_listed() {
     assert!(!mcp_listed("claude", None, "--help"));
     assert!(!mcp_listed("claude", None, ""));
 }
-
-impl crate::guard_support::Shaped for LoginStarted {
-    fn samples() -> Vec<Self> {
-        vec![LoginStarted {
-            job: "login-1-0".into(),
-            url: "https://claude.com/cai/oauth/authorize?state=s".into(),
-            paste: PasteKind::Code,
-            auto: true,
-        }]
-    }
-}

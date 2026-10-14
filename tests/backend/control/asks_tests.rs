@@ -357,25 +357,6 @@ fn the_hook_client_calls_it_closed_only_after_leaving_waiting() {
     assert!(!hook::closed_now(&[], started, &mut seen));
 }
 
-impl crate::guard_support::Shaped for AskReply {
-    fn samples() -> Vec<Self> {
-        vec![
-            AskReply {
-                decision: Some(json!({"hookSpecificOutput": {"decision": {"behavior": "allow"}}})),
-            },
-            AskReply { decision: None },
-        ]
-    }
-}
-
-impl crate::guard_support::Shaped for Answered {
-    fn samples() -> Vec<Self> {
-        vec![Answered {
-            result: AnswerResult::Answered,
-        }]
-    }
-}
-
 /// hook 认「是不是 ccm 起的那一个会话」：只有经环境那一路来的 hook（自己的环境里那个变量带着我们的插件目录）才要认 ——
 /// `--settings` 那一路不会传给子进程。认法：先看常驻那份表（发问那个进程有 ccm 留的便条 · 会话 id 记在起会话那份记录里），
 /// 再看发问那个进程起来时的环境：带着那一家的嵌套标记 ⇒ 是会话里 Bash 起的子进程；读不出 ⇒ 认不出。认不出 ⇒ 空手退。

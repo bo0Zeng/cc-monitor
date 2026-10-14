@@ -730,19 +730,6 @@ fn refusals_say_which_way_live_went() {
     assert_ne!(said[1], said[2]);
 }
 
-impl crate::guard_support::Shaped for Refused {
-    fn samples() -> Vec<Self> {
-        vec![
-            Refused {
-                live: Live::SnapshotOnly,
-            },
-            Refused {
-                live: Live::Stopped,
-            },
-        ]
-    }
-}
-
 /// ★ 一次性看屏（切权限档用）：起了之后此刻之前的变化忘掉；那个窗格有输出 ⇒ 等到「变了」；
 /// 没输出 ⇒ 到期回「没变」（有界、不挂）；放手 ⇒ 那个控制模式客户端退掉（只关输入、不杀）。
 #[test]

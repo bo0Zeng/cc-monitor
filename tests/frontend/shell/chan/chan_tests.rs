@@ -776,14 +776,17 @@ fn a_typed_command_whose_shape_differs_is_not_sent() {
     let (op, mine) = *cmd_wire::shapes::SHAPES
         .first()
         .expect("形状指纹表是空的 —— 本条在空转");
+    // 不是 typed 的那一种（比形状指纹还早的那一版后端才有）：取一个不在指纹表里的名字。
+    let old = "pre-typed-op";
+    assert!(cmd_wire::shapes::shape_of(old).is_none());
     let offer = |shapes: Vec<(String, String)>| {
-        Offer::new(vec![op.to_string(), "ping".into()], vec![], vec![]).with_shapes(shapes)
+        Offer::new(vec![op.to_string(), old.into()], vec![], vec![]).with_shapes(shapes)
     };
     assert!(!offer(vec![(op.into(), mine.into())]).shape_differs(op));
     assert!(offer(vec![(op.into(), "00000000".into())]).shape_differs(op));
     assert!(offer(vec![]).shape_differs(op));
     assert!(
-        !offer(vec![]).shape_differs("ping"),
+        !offer(vec![]).shape_differs(old),
         "不是 typed 的命令不看指纹"
     );
     assert!(

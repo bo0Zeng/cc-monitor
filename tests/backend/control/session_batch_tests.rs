@@ -846,53 +846,6 @@ fn launched_sample() -> LaunchedAccount {
     }
 }
 
-impl crate::guard_support::Shaped for Batched {
-    fn samples() -> Vec<Self> {
-        let all = Outcome {
-            sid: "s-1".into(),
-            outcome: "failed",
-            why: Some("record_gone".into()),
-            detail: "/home/u/.claude-work".into(),
-            said: Some("x".into()),
-            copy_detail: "y".into(),
-            session: Some("proj-cc".into()),
-            bus: Some(
-                crate::control::cc_bus::BusCleanup {
-                    removed: vec!["p_cc".into()],
-                    failed: vec![("r_cc".into(), "gone".into())],
-                    unread: None,
-                }
-                .note(),
-            ),
-            cmd: Some("ccm --resume s-1".into()),
-            account: Some(launched_sample()),
-            unavailable: Some(AccountUnavailable {
-                requested: "work".into(),
-                pinned: true,
-                list_known: true,
-                alternative: Some("home".into()),
-            }),
-        };
-        vec![Batched { results: vec![all] }]
-    }
-}
-
-impl crate::guard_support::Shaped for Whereabouts {
-    fn samples() -> Vec<Self> {
-        vec![Whereabouts {
-            results: vec![Whereabout {
-                sid: "s-1".into(),
-                standing: StandingWord::Ambiguous,
-                names: vec!["proj-cc".into()],
-                terminals: vec![TerminalAt {
-                    host: "tmux",
-                    terminal: "$1".into(),
-                }],
-            }],
-        }]
-    }
-}
-
 /// 列名单那一发过了期限（总期限用完了）⇒ 三条都整条回 `child_timed_out`（同别的装了总期限的命令）；
 /// 别的列不成 ⇒ 看不见（`unobservable`，不是零会话）。
 #[test]
