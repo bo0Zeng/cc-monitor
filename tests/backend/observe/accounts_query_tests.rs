@@ -405,6 +405,7 @@ fn account_trust_in_a_subdirectory_counts_the_repo_root() {
 }
 
 // ---- 6. --session-accounts（procStart 身份对拍是核心）----
+
 #[test]
 fn session_accounts_marks_dead_and_bare() {
     let root = tmpdir("sess");
@@ -423,23 +424,26 @@ fn session_accounts_marks_dead_and_bare() {
     assert_eq!(by_sid["sid-dead"]["bare"], false, "死进程不算裸起");
     assert_eq!(by_sid["sid-dead"]["account"], serde_json::Value::Null);
 
-    // 当前进程 pid + **正确的 procStart** → 身份对拍通过 → alive:true
+    // 一个活的子进程 pid + **正确的 procStart** → 身份对拍通过 → alive:true；它的环境里没有 `CLAUDE_CONFIG_DIR` ⇒ 裸起。
+    // 不拿本测试进程自己当会话：`/proc/self/environ` 是进程起来那一刻的环境，测试档换家只清得了 `std::env`，
+    //   外面会话的 `CLAUDE_CONFIG_DIR` 还在那里面（同 [`bare_child`] 头注）。
     #[cfg(target_os = "linux")]
     {
-        let me = std::process::id();
-        let real_ticks = proc_starttime(me).expect("能读自己的 starttime");
+        let mut live = bare_child();
+        let pid = live.id();
+        let ticks = proc_starttime(pid).expect("能读子进程的 starttime");
         fs::write(
-            sessions.join(format!("{me}.json")),
-            format!(r#"{{"sessionId":"sid-live","cwd":"/w2","procStart":"{real_ticks}"}}"#),
+            sessions.join(format!("{pid}.json")),
+            format!(r#"{{"sessionId":"sid-live","cwd":"/w2","procStart":"{ticks}"}}"#),
         )
         .unwrap();
         let lines = session_accounts(&claude, &root.join("no-accts"));
         by_sid = sid_map(&lines);
         assert_eq!(by_sid["sid-live"]["alive"], true, "procStart 相符应判活");
-        if std::env::var_os("CLAUDE_CONFIG_DIR").is_none() {
-            assert_eq!(by_sid["sid-live"]["bare"], true);
-            assert_eq!(by_sid["sid-live"]["configDir"], serde_json::Value::Null);
-        }
+        assert_eq!(by_sid["sid-live"]["bare"], true, "{:?}", by_sid["sid-live"]);
+        assert_eq!(by_sid["sid-live"]["configDir"], serde_json::Value::Null);
+        let _ = live.kill();
+        let _ = live.wait();
     }
     let _ = fs::remove_dir_all(&root);
 }
