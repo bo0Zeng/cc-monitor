@@ -141,7 +141,6 @@ pub(crate) fn register(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct ReachRow {
     /// 那台的名字。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     /// 对面的资产目录 id。
     pub(crate) machine: Option<String>,
@@ -165,7 +164,6 @@ pub(crate) fn reach_rows(table: &Table) -> Vec<ReachRow> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReachReq {
     /// 那台的名字（monitor 的 origin 名）。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     /// 那台的拨号（只有路径，没有私钥本体）。
     pub(crate) dial: super::pick::MachineDial,
@@ -176,7 +174,6 @@ pub(crate) struct ReachReq {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Reached {
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     pub(crate) reach: Vec<ReachRow>,
 }

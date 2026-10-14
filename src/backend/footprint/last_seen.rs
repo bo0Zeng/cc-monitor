@@ -38,7 +38,6 @@ impl SeenKind {
 #[serde(deny_unknown_fields)]
 pub(crate) struct LastSeenReadReq {
     /// 哪台（机器名）。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
 }
 
@@ -48,7 +47,6 @@ pub(crate) struct LastSeenReadReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LastSeenWriteReq {
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]

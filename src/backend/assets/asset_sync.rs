@@ -72,7 +72,6 @@ pub(crate) struct AssetsSyncReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct AssetsSyncRow {
     /// 可达表的键（monitor 交来的 origin 串）。
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     /// 那台目录的 `self`（没拉成 ⇒ `null`）。
     pub(crate) peer: Option<String>,

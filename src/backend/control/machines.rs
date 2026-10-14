@@ -340,7 +340,6 @@ enum Applied {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct PinnedDay {
-    #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     pub(crate) day: String,
 }
