@@ -73,6 +73,7 @@ class NewSessionPickerTest {
         l.answer = { cmd, args ->
             when (cmd) {
                 "session-new-facts" -> ok(f)
+                "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
                 "quota-read" -> ok(quota)
                 "rotation-strategies" -> ok(strategies)
@@ -98,6 +99,7 @@ class NewSessionPickerTest {
             assertEquals("work", s.account)
             assertEquals("codex", s.agent)
             assertEquals(listOf("/h/work/orders", "/h/work/billing"), s.recent.map { it.cwd })
+            assertEquals("家目录照那台的 files-home（账号库没开也有）", "/h/me", s.home)
             assertEquals("claude", picker(link(), stored = "gone").state.value.agent)
         }
 

@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.chat.newsession
 import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.AccountsSetDefault
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
@@ -97,6 +98,7 @@ class NewSessionPicker(
     init {
         scope.launch {
             loadFacts()
+            loadHome()
             loadAccounts()
             loaded.complete(Unit)
         }
@@ -124,6 +126,12 @@ class NewSessionPicker(
         }
     }
 
+    /** 那台的家目录（路径里缩成 `~`）；问不到 ⇒ 路径原样。 */
+    private suspend fun loadHome() {
+        val home = (link.call(FilesHome.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { FilesHome.of(it.data) } ?: return
+        _state.update { it.copy(home = home) }
+    }
+
     private suspend fun loadAccounts(keep: Boolean = false) {
         val agent = _state.value.agent ?: storedAgent.orEmpty()
         val r = link.call(AccountsList.COMMAND, AccountsList.args(agent), READ_MS)
@@ -138,7 +146,7 @@ class NewSessionPicker(
                 accounts = list.accounts,
                 defaultAccount = list.effectiveDefault,
                 account = kept ?: list.effectiveDefault?.takeIf { d -> list.accounts.any { it.name == d } },
-                home = list.home,
+                home = s.home ?: list.home,
                 accountsFailed = null,
             )
         }
