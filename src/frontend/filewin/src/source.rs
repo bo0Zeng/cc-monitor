@@ -620,10 +620,19 @@ pub fn start_dir_from_home(answer: &str) -> Result<String, String> {
     })
 }
 
-/// 问 home 那条线上命令的名字（后端 `files-read` 族第八条）。
-pub const CMD_HOME: &str = "files-home";
+/// 问那台的家目录（`files-home`，按类型发、按类型解）→ 开窗的起点。窗口里问 home 的都经这一处。
+pub async fn home_of(
+    line: &Line,
+    origin: &Origin,
+    t: std::time::Duration,
+) -> Result<String, String> {
+    let r = ask_typed(line, origin, &cmd_wire::files::HomeReq {}, t)
+        .await
+        .map_err(|f| f.said)?;
+    home_from_reply(r)
+}
 
-/// 一趟 `files-home` 的 `data` → 开窗的起点。
+/// 一趟 `files-home` 的回包 → 开窗的起点。
 ///
 /// 🔴**这一问从 SFTP 换到了后端。** 上一版这里是一个
 /// async 函数（monitor 为「`.` 是哪儿」单拨一条 SFTP，走池子那条 `realpath` 命令），
@@ -632,9 +641,7 @@ pub const CMD_HOME: &str = "files-home";
 ///
 /// 两道：① `path` 解成字节 —— **不是合法 UTF-8 就拒**（窗口的路径是字符串，有损解码之后
 /// 寻址不到那个目录，开出来的是别处）；② 能不能当起点，交 [`start_dir_from_home`]。
-pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
-    let r = reply_of::<cmd_wire::files::HomeReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
+pub fn home_from_reply(r: cmd_wire::files::FilesPathReply) -> Result<String, String> {
     let s =
         String::from_utf8(r.path.0).map_err(|_| copy_text("rsFilewinSource.home.notUtf8", &[]))?;
     start_dir_from_home(&s)

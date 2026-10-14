@@ -244,6 +244,10 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
 /// 不是合法 UTF-8 / 缺 `path` / 形状不对 ⇒ **报错**，不有损解码去开一个别处的窗。
 #[test]
 fn the_home_reply_is_decoded_as_bytes_and_refused_when_it_cannot_address_a_directory() {
+    // 解回包类型（`ask_typed` 那一步）再交 `home_from_reply`：两步任一不过都是报错。
+    let home_from_reply = |v: &serde_json::Value| {
+        reply_of::<cmd_wire::files::HomeReq>(v.clone()).and_then(super::home_from_reply)
+    };
     assert_eq!(
         home_from_reply(&serde_json::json!({ "path": "/home/u/" })).unwrap(),
         "/home/u"

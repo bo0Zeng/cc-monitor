@@ -840,16 +840,9 @@ impl DropBoard {
         if let Some(h) = self.inner.lock().unwrap().backend_home.clone() {
             return Some(h);
         }
-        let d = super::source::ask(
-            line,
-            origin,
-            "files-home",
-            &serde_json::json!({}),
-            PROBE_BUDGET,
-        )
-        .await
-        .ok()?;
-        let h = super::source::home_from_reply(&d).ok()?;
+        let h = super::source::home_of(line, origin, PROBE_BUDGET)
+            .await
+            .ok()?;
         self.inner.lock().unwrap().backend_home = Some(h.clone());
         Some(h)
     }
