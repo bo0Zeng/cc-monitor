@@ -472,7 +472,7 @@ pub(crate) enum ManualItem {
         fix: ManualFix,
     },
     /// 一个 MCP 服务器要登录（那一家最近一次连它时记下的、还在有效期内）。`fix` ＝ 在 app 里登：`login-start {kind: mcp}`；
-    /// 那一家不在 app 里登 MCP ⇒ `null`（只能在会话里登）。
+    /// 那一家不在 app 里登 MCP ⇒ `null`（只能在会话里登），这时 `why` 说为什么没有解法。
     McpLogin {
         /// 在哪个号里；没设账号的那一份 ⇒ `null`。
         account: Option<String>,
@@ -480,6 +480,10 @@ pub(crate) enum ManualItem {
         scope: String,
         said: String,
         fix: Option<ManualFix>,
+        /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        why: Option<String>,
     },
 }
 
@@ -592,6 +596,12 @@ pub(crate) fn manual_of(
                 ),
                 None => copy_text("beManual.list.mcpLoginBare", &[("server", &e.name)]),
             };
+            let why = (!mcp_signs_in).then(|| {
+                copy_text(
+                    "beManual.list.mcpNoFix",
+                    &[("agent", &agent_name(mcp_kind))],
+                )
+            });
             let fix = mcp_signs_in.then(|| ManualFix {
                 command: "login-start",
                 args: LoginStartReq::Mcp {
@@ -607,10 +617,18 @@ pub(crate) fn manual_of(
                 scope: e.scope.to_string(),
                 said,
                 fix,
+                why,
             });
         }
     }
     ManualList { items }
+}
+
+/// 这一家对用户的叫法（没有起会话那一面 ⇒ 它的 id）。
+fn agent_name(kind: &str) -> String {
+    crate::agents::launch_face_among(crate::agents::REGISTRY, kind)
+        .map_or(kind, |l| l.display_name)
+        .to_string()
 }
 
 #[cfg(test)]

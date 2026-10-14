@@ -21440,6 +21440,12 @@
       "zh": "MCP {server} 需登录",
       "args": ["server"]
     },
+    "beManual.list.mcpNoFix": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{agent} 不支持在 app 里登录 MCP · 需在会话里登录",
+      "args": ["agent"]
+    },
     "beQuotaProbe.run.exit": {
       "kind": "error",
       "role": "报错",

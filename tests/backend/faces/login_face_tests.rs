@@ -24,7 +24,7 @@ fn entry(
 
 /// 需登录的号：订阅号 · 目录在 · 还没就绪的那几个（API 号 · 目录不在 · 已登录的不算）；每项 `fix` 指向 `login-start`。
 /// 需登录的 MCP：每个号一项，没设账号的那一份 `account: null`；断开 · 停用的不算；每项 `fix` 指向 `login-start {kind: mcp}`（登在那个号上）。
-/// 那一家不在 app 里登 MCP ⇒ `fix: null`（只能在会话里登，不列成「点了能解」）。
+/// 那一家不在 app 里登 MCP ⇒ `fix: null`（只能在会话里登，不列成「点了能解」），并带 `why`：为什么没有解法。
 #[test]
 fn the_manual_list_names_each_thing_and_how_to_fix_it() {
     let accounts = json!({ "accounts": [
@@ -75,6 +75,20 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         Value::Null,
         "不在 app 里登 MCP 的那一家：没有解法"
     );
+    assert_eq!(
+        no_mcp_login["items"][0]["why"],
+        json!(copy_text("beManual.list.mcpNoFix", &[("agent", "fake")])),
+        "没有解法时说为什么"
+    );
+    assert!(
+        got["items"]
+            .as_array()
+            .expect("items")
+            .iter()
+            .all(|i| i.get("why").is_none()),
+        "有解法的不带 `why`"
+    );
+}
 }
 
 /// 入参按 `kind` 分两种；多一格 · 少了必填的 · 不认得的 `kind` 一律拒（不会照旧形状把 MCP 那一种当成号）。
