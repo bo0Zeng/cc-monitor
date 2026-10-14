@@ -1833,6 +1833,18 @@
       "zh": "换模型",
       "args": []
     },
+    "beSessionCommands.mark.needsArgs": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "带参数",
+      "args": []
+    },
+    "beSessionCommands.mark.confirm": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "先确认",
+      "args": []
+    },
     "beSessionCommands.scope.builtin": {
       "kind": "body",
       "role": "片段",

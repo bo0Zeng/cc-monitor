@@ -8468,6 +8468,15 @@ client?: string, };
 
 ```ts
 type CommandScope = "builtin" | "project" | "user";
+type SessionAct = { 
+/**
+ * 经 `session-say` 送进会话的那一句（那一家声明的）。
+ */
+say: string, 
+/**
+ * 送之前先确认（清空 ⇒ 是；压缩 ⇒ 否）。
+ */
+confirm: boolean, };
 type SessionCommand = { 
 /**
  * 命令名（不带 `/`；界面填进输入框的是 `/name `）。
@@ -8492,7 +8501,15 @@ needsArgs: boolean,
 /**
  * 发之前先确认。
  */
-confirm: boolean, };
+confirm: boolean, 
+/**
+ * `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+ */
+needsArgsText: string | null, 
+/**
+ * `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。
+ */
+confirmText: string | null, };
 type SessionCommands = { 
 /**
  * 内置的在前，再本项目、用户级（各按名字排）。
@@ -8505,7 +8522,15 @@ skills: Array<SessionSkill>,
 /**
  * 读不出来的那几份（一句一份；不整条失败）。
  */
-problems: Array<string>, };
+problems: Array<string>, 
+/**
+ * ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+ */
+compact: SessionAct | null, 
+/**
+ * 同上「清空会话」。
+ */
+clear: SessionAct | null, };
 type SessionCommandsReq = { 
 /**
  * 会话 id。

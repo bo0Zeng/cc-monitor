@@ -322,6 +322,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         processes: None,
         launch: None,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,

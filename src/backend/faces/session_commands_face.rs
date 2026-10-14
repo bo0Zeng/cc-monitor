@@ -31,6 +31,21 @@ pub(crate) struct SessionCommands {
     pub(crate) skills: Vec<SessionSkill>,
     /// 读不出来的那几份（一句一份；不整条失败）。
     pub(crate) problems: Vec<String>,
+    /// ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+    pub(crate) compact: Option<SessionAct>,
+    /// 同上「清空会话」。
+    pub(crate) clear: Option<SessionAct>,
+}
+
+/// ［+］面板分隔线下的一个一次性动作。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct SessionAct {
+    /// 经 `session-say` 送进会话的那一句（那一家声明的）。
+    pub(crate) say: String,
+    /// 送之前先确认（清空 ⇒ 是；压缩 ⇒ 否）。
+    pub(crate) confirm: bool,
 }
 
 /// 一条斜杠命令。
@@ -52,6 +67,12 @@ pub(crate) struct SessionCommand {
     pub(crate) needs_args: bool,
     /// 发之前先确认。
     pub(crate) confirm: bool,
+    /// `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) needs_args_text: Option<Words>,
+    /// `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) confirm_text: Option<Words>,
 }
 
 /// 命令住哪。
@@ -122,10 +143,13 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
     })?;
     let kind = crate::agents::record_kind_of(&record).unwrap_or_default();
     let Some(face) = crate::agents::asset_face(kind) else {
+        let (compact, clear) = one_shots(kind);
         return Ok(SessionCommands {
             commands: Vec::new(),
             skills: Vec::new(),
             problems: Vec::new(),
+            compact,
+            clear,
         });
     };
     let project = crate::agents::project_dir_of(&record).map(PathBuf::from);
@@ -134,10 +158,12 @@ fn answer(req: &SessionCommandsReq) -> Result<SessionCommands, Fail> {
         &super::launch_face::library_of(kind),
         crate::agents::home_of_kind(kind).as_deref(),
     );
-    Ok(match root {
+    let mut out = match root {
         Some(root) => commands_of(&face, project.as_deref(), &root),
         None => commands_of(&face, project.as_deref(), Path::new("")),
-    })
+    };
+    (out.compact, out.clear) = one_shots(kind);
+    Ok(out)
 }
 
 /// 这条会话用哪个号的配置目录（同起会话「跟随」那一序）：上次用的号 → 这台默认号 → 账号 0（那一家自己的家，`zero`）。
@@ -180,6 +206,8 @@ pub(crate) fn commands_of(
         scope_text: scope_text(CommandScope::Builtin),
         needs_args: b.needs_args,
         confirm: b.confirm,
+        needs_args_text: mark(b.needs_args, "beSessionCommands.mark.needsArgs"),
+        confirm_text: mark(b.confirm, "beSessionCommands.mark.confirm"),
     });
     let files = seen.commands.into_iter().map(|c| {
         let scope = if c.project {
@@ -194,6 +222,8 @@ pub(crate) fn commands_of(
             scope_text: scope_text(scope),
             needs_args: c.needs_args,
             confirm: false,
+            needs_args_text: mark(c.needs_args, "beSessionCommands.mark.needsArgs"),
+            confirm_text: None,
         }
     });
     SessionCommands {
@@ -211,7 +241,27 @@ pub(crate) fn commands_of(
             })
             .collect(),
         problems: seen.problems,
+        compact: None,
+        clear: None,
     }
+}
+
+/// 那一家的两个一次性动作（压缩上下文 · 清空会话）：那一句取注册表（[`crate::agents::compact_request_of`] · [`crate::agents::clear_request_of`]）。
+/// 压缩不先确认；清空先确认（原对话还在会话列表里，可确认框照样要：丢掉的是这条会话此刻的上下文）。
+pub(crate) fn one_shots(kind: &str) -> (Option<SessionAct>, Option<SessionAct>) {
+    let act = |say: &str, confirm: bool| SessionAct {
+        say: say.to_string(),
+        confirm,
+    };
+    (
+        crate::agents::compact_request_of(kind).map(|s| act(s, false)),
+        crate::agents::clear_request_of(kind).map(|s| act(s, true)),
+    )
+}
+
+/// 为真 ⇒ 那一格的字；为假 ⇒ `None`。
+fn mark(on: bool, key: &str) -> Option<Words> {
+    on.then(|| Words(copy_text(key, &[])))
 }
 
 #[cfg(test)]

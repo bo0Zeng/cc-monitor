@@ -73,7 +73,16 @@ fn the_list_puts_builtins_first_and_writes_every_word() {
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,
-        vec!["confirm", "name", "needsArgs", "scope", "scopeText", "text"]
+        vec![
+            "confirm",
+            "confirmText",
+            "name",
+            "needsArgs",
+            "needsArgsText",
+            "scope",
+            "scopeText",
+            "text"
+        ]
     );
     assert_eq!(v["scope"], "builtin");
     let _ = std::fs::remove_dir_all(&d);
@@ -105,4 +114,52 @@ fn the_account_follows_last_then_default_then_account_zero() {
     assert_eq!(pick(Some("lab"), None), Some(zero.to_path_buf()));
     assert_eq!(pick(None, None), Some(zero.to_path_buf()));
     assert_eq!(config_root_of(None, &lib(None), None), None);
+}
+
+/// ★ 每条命令「带参数 · 先确认」的字由后端写：为真才有那一句，为假 ⇒ `null`（界面照抄，不按真假自己写字）。
+#[test]
+fn each_command_carries_the_words_for_its_marks() {
+    let face = crate::agents::asset_face("claude").expect("Claude 的资产面");
+    let got = commands_of(&face, None, std::path::Path::new(""));
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    for c in &got.commands {
+        assert_eq!(
+            c.needs_args_text.as_ref().map(|w| w.0.clone()),
+            c.needs_args.then(|| t("beSessionCommands.mark.needsArgs")),
+            "{}",
+            c.name
+        );
+        assert_eq!(
+            c.confirm_text.as_ref().map(|w| w.0.clone()),
+            c.confirm.then(|| t("beSessionCommands.mark.confirm")),
+            "{}",
+            c.name
+        );
+    }
+    assert!(got.commands.iter().any(|c| c.needs_args) && got.commands.iter().any(|c| c.confirm));
+}
+
+/// ★ ［+］面板分隔线下那两个一次性动作：送进会话的那一句与先不先确认由后端给（压缩不确认 · 清空先确认）；
+/// 那一句取注册表那一家声明的（压缩 ＝ `compact_request`），界面不按命令名认。这一家没有 ⇒ `null`（那一行不画）。
+#[test]
+fn compact_and_clear_come_with_the_line_to_say() {
+    let (compact, clear) = one_shots("claude");
+    let compact = compact.expect("Claude 能压缩");
+    assert_eq!(
+        Some(compact.say.as_str()),
+        crate::agents::compact_request_of("claude")
+    );
+    assert!(!compact.confirm);
+    let clear = clear.expect("Claude 能清空");
+    assert_eq!(
+        Some(clear.say.as_str()),
+        crate::agents::clear_request_of("claude")
+    );
+    assert!(clear.confirm);
+    assert!(compact.say != clear.say);
+    let (c, k) = one_shots("codex");
+    assert!(c.is_none() && k.is_none());
+    let v = serde_json::to_value(&clear).unwrap();
+    let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys, vec!["confirm", "say"]);
 }

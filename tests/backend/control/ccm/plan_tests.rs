@@ -2259,6 +2259,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         processes: None,
         launch: Some(crate::agents::fake::LAUNCH),
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
