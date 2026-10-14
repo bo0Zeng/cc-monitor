@@ -159,6 +159,7 @@ const emptyForm = (name = "", from: string | null = null): ProfileForm => ({
   detach: false,
   busRegister: false,
   busNote: null,
+  tab: null,
 });
 
 /** 一格写了没有（开关写 `true` 才算写了）。 */
@@ -192,6 +193,9 @@ function startSlot(f: ProfileForm, s: SlotId, accounts: readonly string[]): Prof
     case "busRegister":
       n[s] = true;
       break;
+    case "tab":
+      n.tab = "hide";
+      break;
     default:
       n[s] = "";
   }
@@ -210,6 +214,7 @@ const SLOT_LABEL: Record<SlotId, () => string> = {
   detach: () => copyText("beProfile.slot.detach"),
   busRegister: () => copyText("beProfile.slot.busRegister"),
   busNote: () => copyText("beProfile.slot.busNote"),
+  tab: () => copyText("beProfile.slot.tab"),
 };
 
 /**

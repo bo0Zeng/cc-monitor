@@ -1039,10 +1039,10 @@ export class HistoryView {
   private async hide(r: HistoryRow): Promise<void> {
     const to = !r.hidden;
     try {
-      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hidden: to });
+      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hide: to ? "on" : "off" });
       this.refresh(Boolean(r.origin), keyOf(r.origin));
       if (to)
-        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hidden: false }).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
+        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hide: "rule" }).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
     } catch (e) {
       failToast(copyText("history.hide.failed"), e);
     }
@@ -1253,7 +1253,6 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     isBg: sh.isBg,
     starred: false,
     customTitle: null,
-    hidden: false,
     status: sh.status,
     can: sh.can,
     ...(sh.origin ? { origin: sh.origin } : {}),

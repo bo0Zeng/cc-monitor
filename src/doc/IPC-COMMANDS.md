@@ -57,6 +57,7 @@ A new session file appeared。
 | `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
+| `hidden` | Hidden? | 隐藏那一格（不占标签页，判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线 |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
 
@@ -349,6 +350,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
+- `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 
 #### `Unavailable`
 
@@ -2872,7 +2874,13 @@ sid: string,
  */
 patch: Patch, };
 type Annotated = { entry: Entry, };
-type Entry = { starred: boolean, customTitle: string | null, hidden: boolean, updatedAt: number, };
+type Entry = { starred: boolean, customTitle: string | null, 
+/**
+ * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
+ */
+hide?: Hide, updatedAt: number, };
+type Hide = "on" | "off";
+type HideAsk = "on" | "off" | "rule";
 type Patch = { 
 /**
  * 星标。
@@ -2883,9 +2891,9 @@ starred?: boolean | null,
  */
 customTitle?: string | null, 
 /**
- * 隐藏。
+ * 单个那一格：`on` · `off` · `rule`（摘掉、回到规则）。
  */
-hidden?: boolean | null, };
+hide?: HideAsk | null, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
@@ -2960,7 +2968,14 @@ fork: boolean,
 delete: CanDelete, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
-type Entry = { starred: boolean, customTitle: string | null, hidden: boolean, updatedAt: number, };
+type Entry = { starred: boolean, customTitle: string | null, 
+/**
+ * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
+ */
+hide?: Hide, updatedAt: number, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type Hide = "on" | "off";
 type HistoryFailedDir = { projectDir: string, error: string, };
 type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
 /**
@@ -3028,7 +3043,11 @@ type HistoryListing = { rows: Array<HistoryRawRow>, failed: Array<HistoryFailedD
 /**
  * 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
  */
-annotations?: { [key in string]: Entry }, annotationsNotice?: string, };
+annotations?: { [key in string]: Entry }, annotationsNotice?: string, 
+/**
+ * 那台偏好里子会话 · 分身会话进不进标签页（隐藏的判定照那一台的）。
+ */
+rules: Rules, };
 type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
 /**
  * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
@@ -3037,7 +3056,15 @@ title: string, startedAt: number, updatedAt: number, jsonlPath: string,
 /**
  * 判不了活（合成历史没有 pidfile）⇒ `null`。
  */
-isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, hidden: boolean, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+/**
+ * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
+ */
+launchTab?: LaunchTab, 
+/**
+ * 主会话（那台的会话血缘）；没有 ⇒ 缺。
+ */
+parent?: string, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
 /**
  * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
  */
@@ -3046,7 +3073,11 @@ projectDir: string,
  * 分组键：哪一家 ＋ 真实目录。
  */
 group: string, lastAccount?: string, };
-type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, hidden: boolean, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+/**
+ * 隐藏那一格（判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。
+ */
+hidden?: Hidden, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */
@@ -3076,6 +3107,9 @@ at: number, atText: Words, sectionText: Words, spanText: Words,
  */
 origin?: string, };
 type HistorySort = "activity" | "created";
+type LaunchTab = { tab: Tab, alias?: string, };
+type Rules = { childTab: Tab, bgTab: Tab, };
+type Tab = "show" | "hide";
 type Words = string;
 ```
 
@@ -4817,6 +4851,8 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 
 ```ts
 type AskKind = "approve" | "answer" | "plan";
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Needs = { kind: NeedsKind, 
 /**
  * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
@@ -4943,7 +4979,11 @@ type NeedsQuestionOption = {
  * `q0o0` …
  */
 id: string, text: string, detail: string | null, };
-type NeedsRow = { sid: string, needs: Needs, };
+type NeedsRow = { sid: string, needs: Needs, 
+/**
+ * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ 不上线。
+ */
+hidden?: Hidden, };
 type NoArgs = Record<symbol, never>;
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type Words = string;
@@ -5067,6 +5107,8 @@ type FactsClock = { text: Words, from: number, };
 type FactsCost = { micros: number, partial: boolean, text: Words, };
 type FactsLastRequest = { id: string, tokens: Array<number>, };
 type FactsToken = { end: number, rev: number, };
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type HistoryFactsReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
@@ -5079,6 +5121,15 @@ path: string,
  * [`facts_cache`]: crate::observe::facts_cache
  */
 prior?: FactsToken, };
+type Kin = { sid: string, title: string, 
+/**
+ * 此刻活着（这台 pidfile 说的）。
+ */
+live: boolean, 
+/**
+ * 隐藏那一格；不隐藏 ⇒ 不上线。
+ */
+hidden?: Hidden, };
 type LastSay = { text: string, 
 /**
  * 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
@@ -5351,7 +5402,15 @@ answerOff: Words | null,
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
-mcp: Array<McpTrouble>, };
+mcp: Array<McpTrouble>, 
+/**
+ * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
+ */
+startedBy: Kin | null, 
+/**
+ * 它起的子会话（按起的先后）；不累加，每次现查。
+ */
+children: Array<Kin>, };
 type StepWait = "running" | "awaiting" | "unclear";
 type TokenUse = { input: number, output: number, cacheRead: number, cacheWrite5m: number, cacheWrite1h: number, 
 /**
@@ -7276,7 +7335,11 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, };
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };
 type ProfileKind = "link" | "function";
 type ProfileOwnItem = { key: string, slot: ProfileSlotId, vals: Array<string>, line: number, };
 type ProfileProblem = { line: number | null, message: string, 
@@ -7297,7 +7360,7 @@ said: string, form: ProfileForm,
  * 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
 accountShape: ProfileAccountShape | null, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesBook = { 
@@ -7358,6 +7421,7 @@ path: string,
  * 没能转的那几行（原样）。
  */
 skipped: Array<string>, };
+type Tab = "show" | "hide";
 ```
 
 码：`bad_args` · `refused`
@@ -7377,7 +7441,11 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, };
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };
 type ProfileMergeRow = { key: string, slot: ProfileSlotId, label: string, vals: Array<string>, said: string, from: string, overriddenBy: string | null, };
 type ProfileResolved = { 
 /**
@@ -7400,7 +7468,7 @@ lineError: string | null,
  * 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`。
  */
 problem: string | null, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesResolveReq = { 
@@ -7412,6 +7480,7 @@ name: string, edit?: ProfileForm | null,
  * `~` 打头按这台家目录展开。
  */
 at?: string | null, };
+type Tab = "show" | "hide";
 ```
 
 码：`bad_args` · `refused`
@@ -7433,14 +7502,19 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, };
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
 type ProfileSlotChange = { slot: ProfileSlotId, label: string, before: string, after: string, };
-type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote";
+type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesImpact = { affected: Array<ProfileAffected>, };
 type ProfilesImpactReq = { changes: Array<ProfileOp>, };
+type Tab = "show" | "hide";
 ```
 
 码：`bad_args` · `refused`
@@ -7477,12 +7551,17 @@ type ProfileForm = { name: string, from: string | null, account: ProfileAccountP
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, };
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };
 type ProfileOp = { "op": "set", was: string | null, form: ProfileForm, } | { "op": "remove", name: string, children?: ProfileChildren, } | { "op": "init", seed: boolean, } | { "op": "ackMigrated", };
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
 type ProfilesWriteDone = { wrote: boolean, fingerprint: string | null, reload: string | null, };
 type ProfilesWriteReq = { changes: Array<ProfileOp>, fingerprint: string | null, };
+type Tab = "show" | "hide";
 ```
 
 码：`bad_args` · `refused` · `stale`
@@ -9902,7 +9981,15 @@ contextLimits: { [key in string]: number },
  * 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
  * 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
  */
-agentHomes: { [key in string]: string }, };
+agentHomes: { [key in string]: string }, 
+/**
+ * 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
+ */
+childTab: Tab, 
+/**
+ * 分身会话（那一家在后台起的主会话副本）进不进标签页；缺省显示。
+ */
+bgTab: Tab, };
 type PrefsReply = { 
 /**
  * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
@@ -9924,6 +10011,7 @@ path: string | null,
  * 照用的那一份。
  */
 prefs: Prefs, };
+type Tab = "show" | "hide";
 ```
 
 码：`bad_args`
@@ -9958,7 +10046,15 @@ contextLimits: { [key in string]: number },
  * 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
  * 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
  */
-agentHomes: { [key in string]: string }, };
+agentHomes: { [key in string]: string }, 
+/**
+ * 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
+ */
+childTab: Tab, 
+/**
+ * 分身会话（那一家在后台起的主会话副本）进不进标签页；缺省显示。
+ */
+bgTab: Tab, };
 type PrefsReply = { 
 /**
  * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
@@ -9996,7 +10092,16 @@ contextLimits?: { [key in string]: number },
 /**
  * 某一家的数据目录：`{kind: 路径}`，空串 ⇒ 删掉那一家（回到它自己的解析）。只动点到的那几家；改了要重启后端才生效。
  */
-agentHomes?: { [key in string]: string }, };
+agentHomes?: { [key in string]: string }, 
+/**
+ * 子会话进不进标签页。
+ */
+childTab?: Tab, 
+/**
+ * 分身会话进不进标签页。
+ */
+bgTab?: Tab, };
+type Tab = "show" | "hide";
 ```
 
 码：`bad_args` · `unreadable` · `io_failed`

@@ -230,6 +230,8 @@ describe("〔STC〕第五问：会话事实", () => {
         { name: "m-n", status: "needsLogin", detail: null, at: null },
       ],
       answerOff: null,
+      startedBy: null,
+      children: [],
     });
   });
 

@@ -435,7 +435,7 @@ describe("键盘与菜单", () => {
     openMenuOn("b");
     menuItem(copyText("history.menu.hide"))!.click();
     await flush();
-    expect(calls("history-annotate").at(-1)).toEqual({ sid: "b", patch: { hidden: true } });
+    expect(calls("history-annotate").at(-1)).toEqual({ sid: "b", patch: { hide: "on" } });
     const { undoToast } = await import("../../../../src/frontend/ui/kit/toast");
     expect(vi.mocked(undoToast)).toHaveBeenCalled();
     openMenuOn("a");

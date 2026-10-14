@@ -87,9 +87,9 @@ fn fixtures() -> PathBuf {
 
 /// 这台的注解：S1 星标 · S2 隐藏 · S4 星标 ＋ 隐藏（S3 S5 没有注解）。
 fn ann() -> Table {
-    let e = |starred, hidden| Entry {
+    let e = |starred, hidden: bool| Entry {
         starred,
-        hidden,
+        hide: hidden.then_some(crate::history::history_annotations::Hide::On),
         ..Entry::default()
     };
     [
@@ -381,7 +381,7 @@ fn one_session_by_id_ignores_the_other_filters() {
     let v = answer(json!({"sid": S2, "query": "不会命中", "within_days": 1}));
     assert_eq!(sids(&v), vec![S2], "隐藏的、搜索词不中的也回");
     assert_eq!(v["total"], 1);
-    assert_eq!(find(&v, S2)["hidden"], true);
+    assert_eq!(find(&v, S2)["hidden"]["by"], "self");
     let v = answer(json!({"sid": S5}));
     assert_eq!(sids(&v), vec![S5], "不补父会话");
     assert!(find(&v, S5).get("context").is_none());
@@ -863,4 +863,69 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
     for (n, want) in &pinned {
         assert_eq!(got.get(n), Some(want), "`{n}` 那一份的线上字节变了");
     }
+}
+
+/// 隐藏的判定照那一台的事实（`raw` 清单带来的 `--tab` · 主会话 · 偏好）：子会话按偏好隐藏、悬停那一句说主会话叫什么（照清单里它那一行）；
+/// 单个那一格「取消隐藏」压过规则；不隐藏的那一行不带这一格。
+#[test]
+fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
+    let mut l: Listing = serde_json::from_value(listing()).unwrap();
+    for r in &mut l.rows {
+        if r.session_id == S3 {
+            r.parent = Some(S1.to_string());
+        }
+        if r.session_id == S5 {
+            r.launch_tab = Some(crate::control::launch_account::LaunchTab {
+                tab: cmd_wire::session::Tab::Hide,
+                alias: Some("cct".into()),
+            });
+        }
+    }
+    let run = |l: &Listing, ann: &Table| {
+        serde_json::to_value(super::answer_from(
+            l,
+            None,
+            Ok(ann),
+            &ask(json!({"hidden": true})),
+            1_000,
+            &Default::default(),
+        ))
+        .unwrap()
+    };
+    let v = run(&l, &ann());
+    let s1_label = find(&v, S1)["label"].as_str().unwrap().to_string();
+    assert_eq!(find(&v, S3)["hidden"]["by"], "child");
+    assert_eq!(
+        find(&v, S3)["hidden"]["said"],
+        copy_core::copy_text("beSession.hidden.child", &[("parent", &s1_label)])
+    );
+    assert_eq!(find(&v, S5)["hidden"]["by"], "alias");
+    assert!(
+        find(&v, S1).get("hidden").is_none(),
+        "不隐藏的那一行带了隐藏那一格"
+    );
+    // 默认清单里没有它们（隐藏的不进）。
+    let plain = serde_json::to_value(super::answer_from(
+        &l,
+        None,
+        Ok(&ann()),
+        &ask(json!({})),
+        1_000,
+        &Default::default(),
+    ))
+    .unwrap();
+    assert!(!sids(&plain).contains(&S3.to_string()));
+    // 那台偏好子会话显示 ⇒ 不隐藏；单个那一格写了「取消隐藏」⇒ 别名那一格也不算。
+    l.rules.child_tab = cmd_wire::session::Tab::Show;
+    let mut a = ann();
+    a.insert(
+        S5.to_string(),
+        Entry {
+            hide: Some(crate::history::history_annotations::Hide::Off),
+            ..Entry::default()
+        },
+    );
+    let v = run(&l, &a);
+    assert!(find(&v, S3).get("hidden").is_none());
+    assert!(find(&v, S5).get("hidden").is_none());
 }

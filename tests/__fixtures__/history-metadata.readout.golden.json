@@ -1,37 +1,34 @@
 {
   "0000aaaa-0000-4000-8000-000000000001": {
     "customTitle": "占位标题一",
-    "hidden": false,
     "starred": true,
     "updatedAt": 1727250000001
   },
   "0000aaaa-0000-4000-8000-000000000002": {
     "customTitle": "占位标题二（蛇形别名）",
-    "hidden": true,
     "starred": false,
-    "updatedAt": 1727250000002
+    "updatedAt": 1727250000002,
+    "hide": "on"
   },
   "0000aaaa-0000-4000-8000-000000000003": {
     "customTitle": null,
-    "hidden": false,
     "starred": false,
     "updatedAt": 0
   },
   "0000aaaa-0000-4000-8000-000000000004": {
     "customTitle": null,
-    "hidden": true,
     "starred": true,
-    "updatedAt": 0
+    "updatedAt": 0,
+    "hide": "on"
   },
   "0000aaaa-0000-4000-8000-000000000005": {
     "customTitle": null,
-    "hidden": true,
     "starred": false,
-    "updatedAt": 1727250000005
+    "updatedAt": 1727250000005,
+    "hide": "on"
   },
   "019a0000-0000-7000-8000-00000000c0de": {
     "customTitle": "codex 会话也按 sid 记",
-    "hidden": false,
     "starred": true,
     "updatedAt": 0
   }

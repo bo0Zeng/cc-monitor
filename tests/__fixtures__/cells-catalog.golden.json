@@ -749,6 +749,36 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "children[].hidden.by",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].hidden.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].live",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].sid",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "children[].title",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "cost.micros",
           "type": "number"
         },
@@ -1109,6 +1139,36 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "startedBy.hidden.by",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.hidden.said",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.live",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.sid",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "startedBy.title",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "tokens.cacheRead",
           "type": "number"
         },
@@ -1243,6 +1303,18 @@
     },
     {
       "cells": [
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "hidden.by",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "hidden.said",
+          "type": "string"
+        },
         {
           "frozen": false,
           "kind": "value",
@@ -1628,6 +1700,18 @@
           "frozen": true,
           "kind": "value",
           "path": "cwd",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "hidden.by",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "hidden.said",
           "type": "string"
         },
         {
@@ -2480,8 +2564,14 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "rows[].hidden",
-          "type": "bool"
+          "path": "rows[].hidden.by",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "rows[].hidden.said",
+          "type": "string"
         },
         {
           "frozen": false,

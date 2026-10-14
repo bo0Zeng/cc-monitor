@@ -20,14 +20,18 @@ fn the_first_session_on_an_origin_owns_it_and_later_ones_are_its_children() {
     );
     assert!(b.saw(o(T, None), "s-kid", "claude-code", 101));
     assert_eq!(b.parent_of("s-kid"), Some("s-owner"));
-    assert_eq!(
-        b.parents
-            .iter()
-            .filter(|(_, p)| p.parent == "s-owner")
-            .map(|(k, _)| k.as_str())
-            .collect::<Vec<_>>(),
-        vec!["s-kid"]
-    );
+    assert_eq!(b.children_of("s-owner"), vec!["s-kid"]);
+    assert!(b.children_of("s-kid").is_empty());
+}
+
+/// 子会话按记下的先后排（不按编号）：后起的在后。
+#[test]
+fn children_come_in_the_order_they_were_first_seen() {
+    let mut b = Book::default();
+    assert!(b.saw(o(T, None), "s-owner", "claude-code", 100));
+    assert!(b.saw(o(T, None), "s-z", "claude-code", 101));
+    assert!(b.saw(o(T, None), "s-a", "claude-code", 102));
+    assert_eq!(b.children_of("s-owner"), vec!["s-z", "s-a"]);
 }
 
 /// 同一个会话再发（subagent 带的也是父会话的编号，同一格）⇒ 不改、不写盘。

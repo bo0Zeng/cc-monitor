@@ -932,6 +932,7 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     let note = Note {
         account,
         plugin: d.plugin_dirs.is_some(),
+        tab: d.tab.clone(),
     };
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
@@ -1011,11 +1012,12 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     )
 }
 
-/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的。
-#[derive(Clone, Copy)]
+/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的 · `--tab`。
+#[derive(Clone)]
 struct Note<'a> {
     account: Option<&'a str>,
     plugin: bool,
+    tab: Option<crate::control::launch_account::LaunchTab>,
 }
 
 impl Note<'_> {
@@ -1023,6 +1025,7 @@ impl Note<'_> {
     const NONE: Note<'static> = Note {
         account: None,
         plugin: false,
+        tab: None,
     };
 }
 
@@ -1130,13 +1133,17 @@ fn exec_or_spawn(
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        let left = match (leave.account, leave.plugin) {
-            (_, true) => {
-                crate::control::launch_account::leave_plugin_note(own, pid, leave.account, now)
-            }
-            (Some(name), false) => crate::control::launch_account::leave_note(own, pid, name, now),
-            (None, false) => return,
-        };
+        if leave.account.is_none() && !leave.plugin && leave.tab.is_none() {
+            return;
+        }
+        let left = crate::control::launch_account::leave_note(
+            own,
+            pid,
+            leave.account,
+            leave.plugin,
+            leave.tab.clone(),
+            now,
+        );
         if let Err(e) = left {
             eprintln!("ccm: {}", e.logged());
         }

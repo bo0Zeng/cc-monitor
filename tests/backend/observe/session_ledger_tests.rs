@@ -35,6 +35,7 @@ fn added(sid: &str) -> Ev {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     }
@@ -151,6 +152,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });

@@ -330,6 +330,16 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     },
                 ),
                 waiting_for: Some(s("permission prompt")),
+                hidden: crate::control::session_hidden::judge(
+                    &crate::control::session_hidden::Facts {
+                        bg: true,
+                        rules: crate::control::session_hidden::Rules {
+                            child_tab: cmd_wire::session::Tab::Hide,
+                            bg_tab: cmd_wire::session::Tab::Hide,
+                        },
+                        ..Default::default()
+                    },
+                ),
                 container: Some(SessionContainer::Hosted {
                     host: TerminalHost::Tmux,
                     terminal: Some("tmux-3-7".into()),
@@ -348,6 +358,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 face: crate::wire::ActivityFace::of(None),
                 name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
+                hidden: None,
                 container: None,
                 pid: 0,
             },
@@ -1339,6 +1350,7 @@ fn dg3_codex_fields_serialize_when_present() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     })
@@ -1401,6 +1413,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     })
@@ -1544,6 +1557,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             face: crate::wire::ActivityFace::of(None),
             name_face: crate::history::search_rules::name_face(&Default::default()),
             waiting_for: None,
+            hidden: None,
             container: c,
             pid: 0,
         })
@@ -1623,6 +1637,7 @@ fn loc1b_session_added_carries_the_pid() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 4242,
     })

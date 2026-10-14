@@ -1033,6 +1033,28 @@ mod specimens {
                             at: some("t"),
                         })
                         .collect(),
+                    started_by: Some(crate::observe::facts_query::Kin {
+                        sid: s("k"),
+                        title: s("t"),
+                        live: true,
+                        hidden: crate::control::session_hidden::judge(
+                            &crate::control::session_hidden::Facts {
+                                pin: Some(crate::history::history_annotations::Hide::On),
+                                ..Default::default()
+                            },
+                        ),
+                    }),
+                    children: vec![crate::observe::facts_query::Kin {
+                        sid: s("k"),
+                        title: s("t"),
+                        live: true,
+                        hidden: crate::control::session_hidden::judge(
+                            &crate::control::session_hidden::Facts {
+                                pin: Some(crate::history::history_annotations::Hide::On),
+                                ..Default::default()
+                            },
+                        ),
+                    }],
                 };
                 node_of(&f)
             })
@@ -1076,6 +1098,10 @@ mod specimens {
                 ask: Some(crate::agents::asks::specimen()),
                 manual_text: Some(Words(s("m"))),
             },
+            hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+                pin: Some(crate::history::history_annotations::Hide::On),
+                ..Default::default()
+            }),
         })]
     }
 
@@ -1121,6 +1147,10 @@ mod specimens {
             face: ActivityFace::of(Some(activity)),
             name_face: named(),
             waiting_for: some("w"),
+            hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+                pin: Some(crate::history::history_annotations::Hide::On),
+                ..Default::default()
+            }),
             container: Some(SessionContainer::Hosted {
                 host: TerminalHost::Tmux,
                 terminal: some("tmux-1-1"),

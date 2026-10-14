@@ -1,4 +1,5 @@
-//! **这台的偏好**：对这台做事时怎么做 —— 每一家用哪条启动命令 · 恢复时进不进 tmux · 每个号默认用哪个模型 · 上下文上限表。
+//! **这台的偏好**：对这台做事时怎么做 —— 每一家用哪条启动命令 · 恢复时进不进 tmux · 每个号默认用哪个模型 · 上下文上限表 ·
+//! 子会话 / 分身会话进不进标签页（隐藏的判定读它，`control/session_hidden.rs`）。
 //! 住这台后端的家（`~/.cc-monitor/prefs.json`，[`relay_route_core::PREFS_REL`]），不住各个前端：手机直连这台，
 //! 从来不经过桌面那一份设置，偏好住在这里两端才拿到同一份。
 //!
@@ -26,7 +27,7 @@ const MAX_BYTES: u64 = 256 * 1024;
 pub(crate) const PREFS_ROWS_MAX: usize = 256;
 
 /// 这台的偏好（盘上那一形，也是线上那几格）。
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
@@ -43,6 +44,25 @@ pub(crate) struct Prefs {
     /// 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
     /// 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
     pub(crate) agent_homes: BTreeMap<String, String>,
+    /// 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
+    pub(crate) child_tab: cmd_wire::session::Tab,
+    /// 分身会话（那一家在后台起的主会话副本）进不进标签页；缺省显示。
+    pub(crate) bg_tab: cmd_wire::session::Tab,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        let rules = crate::control::session_hidden::Rules::default();
+        Prefs {
+            launchers: BTreeMap::new(),
+            resume_in_tmux: false,
+            models: BTreeMap::new(),
+            context_limits: BTreeMap::new(),
+            agent_homes: BTreeMap::new(),
+            child_tab: rules.child_tab,
+            bg_tab: rules.bg_tab,
+        }
+    }
 }
 
 /// 盘上整份（多一格版本）。
@@ -63,6 +83,14 @@ impl Prefs {
             .filter(|s| !s.is_empty())
             .unwrap_or(default)
             .to_string()
+    }
+
+    /// 隐藏的判定读的那两格。
+    pub(crate) fn rules(&self) -> crate::control::session_hidden::Rules {
+        crate::control::session_hidden::Rules {
+            child_tab: self.child_tab,
+            bg_tab: self.bg_tab,
+        }
     }
 
     /// 上限表那一形（`facts_query::ContextLimits`：子串小写）。
@@ -321,6 +349,14 @@ pub(crate) struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) agent_homes: Option<BTreeMap<String, String>>,
+    /// 子会话进不进标签页。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) child_tab: Option<cmd_wire::session::Tab>,
+    /// 分身会话进不进标签页。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) bg_tab: Option<cmd_wire::session::Tab>,
 }
 
 /// 补丁打到 `p` 上（纯）。
@@ -348,6 +384,12 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
             "" => p.agent_homes.remove(k),
             t => p.agent_homes.insert(k.clone(), t.to_string()),
         };
+    }
+    if let Some(t) = s.child_tab {
+        p.child_tab = t;
+    }
+    if let Some(t) = s.bg_tab {
+        p.bg_tab = t;
     }
     p
 }

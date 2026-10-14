@@ -522,11 +522,6 @@ const PLURALS_NEWLY_CAUGHT: &[(&str, &str, &str)] = &[
         "sessions",
         "那条 `/sessions/` 路径串 —— **那道 Claude 数据围栏自己的一半**",
     ),
-    (
-        "load_show_bg_sessions",
-        "sessions",
-        "读「显示后台会话」那个业务设置",
-    ),
     ("sids", "sids", "tmux 账本里按 origin 存的那批会话 id"),
     (
         "announced_sids",

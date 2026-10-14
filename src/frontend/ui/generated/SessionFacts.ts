@@ -2,6 +2,7 @@
 import type { BgTask } from "./BgTask";
 import type { FactsBackground } from "./FactsBackground";
 import type { FactsCost } from "./FactsCost";
+import type { Kin } from "./Kin";
 import type { LastSay } from "./LastSay";
 import type { McpTrouble } from "./McpTrouble";
 import type { Needs } from "./Needs";
@@ -98,4 +99,12 @@ answerOff: Words | null,
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
-mcp: Array<McpTrouble>, };
+mcp: Array<McpTrouble>, 
+/**
+ * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
+ */
+startedBy: Kin | null, 
+/**
+ * 它起的子会话（按起的先后）；不累加，每次现查。
+ */
+children: Array<Kin>, };

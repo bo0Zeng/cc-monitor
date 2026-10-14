@@ -5125,6 +5125,8 @@ describe.each([
 describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () => {
   const facts = (p: Partial<SessionFacts> = {}): SessionFacts => ({
     agent: "claude",
+    startedBy: null,
+    children: [],
     end: 100,
     rev: 7,
     forkedFrom: null,
@@ -6644,6 +6646,8 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
   const COLD_OPS = new Set(["history-facts", "history-turns", "history-index", "history-user-inputs"]);
   const facts = (): SessionFacts => ({
     agent: "claude",
+    startedBy: null,
+    children: [],
     end: 100,
     rev: 7,
     forkedFrom: null,

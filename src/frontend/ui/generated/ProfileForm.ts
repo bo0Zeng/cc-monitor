@@ -2,6 +2,7 @@
 import type { ProfileAccountPick } from "./ProfileAccountPick";
 import type { ProfileCwdCase } from "./ProfileCwdCase";
 import type { ProfileTmuxPick } from "./ProfileTmuxPick";
+import type { Tab } from "./Tab";
 
 /**
  * 一段配置的表单：名字 · 基于谁 · 各格（`None` / `false` ＝ 继承，没写进这一段）。
@@ -11,4 +12,8 @@ export type ProfileForm = { name: string, from: string | null, account: ProfileA
 /**
  * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
  */
-args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, };
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };

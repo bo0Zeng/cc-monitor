@@ -3,7 +3,8 @@
 //! - 判定：用户点名的号 · 账号 0 · 跟随（这条会话上次的号 → 这台的默认号 → 账号 0）。
 //!   跟随时上次那个号选不了 ⇒ 不起、给一个显式的替代（绝不悄悄换成别的号）。
 //! - 记录：`ccm` 在最终那一跳给将要跑 agent 的那个进程留一张**便条**（`launch-pending/<pid>.json`：号 ＋ 时刻，
-//!   各写各的）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号` 记进 `launch-accounts.json`（只有观测侧写，锁里原子写）。
+//!   各写各的；起会话时给了 `--tab` 也记在这张上）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号`（与 `sid → 标签页`）记进
+//!   `launch-accounts.json`（启动台账：只有观测侧写，锁里原子写）。
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
 use crate::platform::fs::{Own, OwnPath};
@@ -252,10 +253,24 @@ pub(crate) const FILE_NAME: &str =
 pub(crate) const NOTES_DIR: &str =
     relay_route_core::file_name_of(relay_route_core::LAUNCH_NOTES_DIR_REL);
 
-/// `launch-accounts.json`：`sid → 号`。
+/// `launch-accounts.json`（启动台账）：`sid → 号` ＋ 起会话时给了 `--tab` 的那几条 `sid → 标签页`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Book {
     pub(crate) sessions: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) tabs: BTreeMap<String, LaunchTab>,
+}
+
+/// 起会话时那一格 `--tab`：值 ＋ 写它的那个别名（命令行当场给的 ⇒ 没有）。隐藏的判定读它（`control/session_hidden.rs`）；
+/// 那一台的清单（`history-list` 的 `raw`）每行带它。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LaunchTab {
+    pub(crate) tab: cmd_wire::session::Tab,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) alias: Option<String>,
 }
 
 /// 一张便条：起这个进程时用的号 ＋ 写下的时刻（unix 秒）。
@@ -267,6 +282,9 @@ pub(crate) struct Note {
     /// 这个进程起来时答题插件经环境交下去了（换了启动器那一支）：hook 认「是 ccm 起的那一个」· 会话事实判「启动器没把环境传下去」都看它。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) plugin: bool,
+    /// 起这个进程时给了 `--tab`（别名里写的也算）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tab: Option<LaunchTab>,
 }
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
@@ -287,30 +305,14 @@ pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
     read_book(home?).ok()?.sessions.get(sid).cloned()
 }
 
-/// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条。失败只出声（不挡起会话）。
-/// 落点：写句柄的数据目录那一根（`home`）底下的便条目录。
+/// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条（号说得出名字才记 · 答题插件是不是经环境交下去的 · `--tab`）。
+/// 失败只出声（不挡起会话）。落点：写句柄的数据目录那一根（`home`）底下的便条目录。
 pub(crate) fn leave_note(
     own: &Own,
     pid: u32,
-    account: &str,
-    now: u64,
-) -> Result<(), crate::common::said::Said> {
-    write_note(
-        own,
-        pid,
-        &Note {
-            account: account.to_string(),
-            at: now,
-            plugin: false,
-        },
-    )
-}
-
-/// 同上，换了启动器那一支（答题插件经环境交下去了）：号说得出名字就一起记。
-pub(crate) fn leave_plugin_note(
-    own: &Own,
-    pid: u32,
     account: Option<&str>,
+    plugin: bool,
+    tab: Option<LaunchTab>,
     now: u64,
 ) -> Result<(), crate::common::said::Said> {
     write_note(
@@ -319,7 +321,8 @@ pub(crate) fn leave_plugin_note(
         &Note {
             account: account.unwrap_or_default().to_string(),
             at: now,
-            plugin: true,
+            plugin,
+            tab,
         },
     )
 }
@@ -365,7 +368,8 @@ pub fn adopt_seen(own: &Own, pid: u32, sid: &str) {
     }
 }
 
-/// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`；顺手清掉进程已不在的便条。
+/// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`（便条带 `--tab` ⇒ 连同 `sid → 标签页`）；
+/// 顺手清掉进程已不在的便条。
 /// `started` ＝ 这个进程的起始时刻（unix 秒；说不出 ⇒ `None`）。`alive(p)` ＝ 别的 pid：不在 ⇒ `None`，在 ⇒ 它的起始时刻（说不出 ⇒ `Some(None)`）。
 pub(crate) fn adopt(
     own: &Own,
@@ -411,13 +415,20 @@ pub(crate) fn adopt(
             }
         }
     }
-    let Some(note) = note.filter(|n| !n.account.is_empty()) else {
+    let Some(note) = note.filter(|n| !n.account.is_empty() || n.tab.is_some()) else {
         return Ok(false);
     };
-    if read_book(home)?.sessions.get(sid) == Some(&note.account) {
+    let book = read_book(home)?;
+    let account = (!note.account.is_empty()).then_some(note.account.as_str());
+    if account.is_none_or(|a| book.sessions.get(sid).map(String::as_str) == Some(a))
+        && note
+            .tab
+            .as_ref()
+            .is_none_or(|t| book.tabs.get(sid) == Some(t))
+    {
         return Ok(false);
     }
-    record(own, &home_dir, sid, &note.account)?;
+    record(own, &home_dir, sid, account, note.tab.as_ref())?;
     Ok(true)
 }
 
@@ -431,13 +442,19 @@ fn record(
     own: &Own,
     home: &OwnPath,
     sid: &str,
-    account: &str,
+    account: Option<&str>,
+    tab: Option<&LaunchTab>,
 ) -> Result<(), crate::common::said::Said> {
     own.ensure_dir(home)
         .map_err(|e| failed(home.as_path(), &e))?;
     let held = own.lock(home)?;
     let mut book = read_book(home.as_path())?;
-    book.sessions.insert(sid.to_string(), account.to_string());
+    if let Some(a) = account {
+        book.sessions.insert(sid.to_string(), a.to_string());
+    }
+    if let Some(t) = tab {
+        book.tabs.insert(sid.to_string(), t.clone());
+    }
     let file = home.join(FILE_NAME)?;
     let body = crate::common::own_state::json_body(file.as_path(), &book)?;
     own.write(&file, &held, &body)

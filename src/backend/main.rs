@@ -260,6 +260,8 @@ async fn main() {
     // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
     if resident {
         control::prefs_migration::migrate_here(&own);
+        // 历史注解的「隐藏」换成三态（升级链那一节）：常驻那一位起来时整份换一次、原文留 `.v1`。
+        cc_monitor_backend::history::history_annotations::migrate_here(&own);
     }
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。

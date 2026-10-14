@@ -790,17 +790,24 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 pub(crate) struct NeedsRow {
     pub(crate) sid: String,
     pub(crate) needs: super::facts_query::Needs,
+    /// 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ 不上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) hidden: Option<cmd_wire::session::Hidden>,
 }
 
 /// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
 /// 先答的在前（[`super::facts_query::needs_first`]）。
 /// `asked` ＝ 此刻有待答请求挂着的会话（常驻进程那一份登记表，顶层壳交进来）；`dress` ＝ 给一条 `needs` 配上它挂着的请求（同上）。
+/// `hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
 pub(crate) fn live_needs(
     agent_home: &Path,
     asked: &[String],
     dress: &dyn Fn(Option<super::facts_query::Needs>, &str) -> Option<super::facts_query::Needs>,
+    hidden: &dyn Fn(&str, bool) -> Option<cmd_wire::session::Hidden>,
 ) -> Vec<NeedsRow> {
     let live = live_activity(agent_home);
+    let bg = live_background(agent_home);
     // 那台说在等的 ∪ 有请求挂着的（挡着终端的那种 pidfile 不说在等，照样是要人答的）；后者只收此刻活着的会话。
     let mut sids: Vec<String> = live
         .iter()
@@ -821,6 +828,7 @@ pub(crate) fn live_needs(
                     waiting.then(|| waiting_needs(agent_home, &sid)).flatten(),
                     &sid,
                 )?,
+                hidden: hidden(&sid, bg.contains(&sid)),
                 sid,
             })
         })
@@ -839,6 +847,23 @@ pub(crate) fn waiting_now(agent_home: &Path, sid: &str, asked: &[String]) -> boo
         Some(_) => asked.iter().any(|a| a == sid),
         None => false,
     }
+}
+
+/// 这台此刻活着的分身会话（pidfile 那一家说是后台的，`agents::pidfile_background`）。
+pub(crate) fn live_background(agent_home: &Path) -> std::collections::BTreeSet<String> {
+    pidfiles(agent_home)
+        .into_iter()
+        .filter(|(pid, v)| {
+            crate::agents::pidfile_background(v)
+                && crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v))
+        })
+        .filter_map(|(_, v)| {
+            v.get("sessionId")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
 }
 
 /// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。

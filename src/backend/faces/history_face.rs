@@ -644,6 +644,23 @@ impl Blocking for SessionsNeedsCmd {
 
 /// [`SessionsNeedsCmd`] 的本体，家目录是参数。
 pub(crate) fn needs_at(home: &Path) -> NeedsList {
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
+    needs_with(
+        home,
+        &crate::control::session_hidden::Here::read_now(),
+        &annotations,
+    )
+}
+
+/// [`needs_at`]；隐藏要的这台那几样 · 注解由调用方给（判据喂夹具）。
+pub(crate) fn needs_with(
+    home: &Path,
+    here: &crate::control::session_hidden::Here,
+    annotations: &crate::history::history_annotations::Table,
+) -> NeedsList {
     NeedsList {
         waiting: crate::observe::accounts_query::live_needs(
             home,
@@ -659,6 +676,11 @@ pub(crate) fn needs_at(home: &Path) -> NeedsList {
                     )
                 });
                 dress_ask(n, sid, off.as_ref())
+            },
+            &|sid, bg| {
+                crate::history::session_hidden::hidden_here(here, annotations, sid, bg, &|p| {
+                    crate::history::session_hidden::title_here(p, annotations)
+                })
             },
         ),
     }
@@ -1598,10 +1620,48 @@ pub(crate) fn facts_at(
     });
     // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
     facts_query::settle_pending(&mut facts, holders.is_some());
+    // 会话血缘：由谁启动 · 起了哪几个（不累加，每次现查；子会话隐不隐藏照同一处判）。
+    let (parent, children) = kin_of(home, sid, &crate::control::session_hidden::Here::read_now());
+    facts.started_by = parent;
+    facts.children = children;
     match over_cap(&facts) {
         Some(said) => Err(HistoryFactsErr::TooLarge(said)),
         None => Ok(facts),
     }
+}
+
+/// 这条会话的主会话与子会话（`here` ＝ 这台的会话血缘 · 启动台账 · 偏好；注解现读）：会话事实那两格。
+pub(crate) fn kin_of(
+    home: &Path,
+    sid: &str,
+    here: &crate::control::session_hidden::Here,
+) -> (
+    Option<crate::observe::facts_query::Kin>,
+    Vec<crate::observe::facts_query::Kin>,
+) {
+    use crate::history::session_hidden::title_here;
+    use crate::observe::facts_query::Kin;
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
+    let live = crate::history::live::live_session_ids(home);
+    let bg = crate::observe::accounts_query::live_background(home);
+    let kin = |k: &str| Kin {
+        sid: k.to_string(),
+        title: title_here(k, &annotations),
+        live: live.contains(k),
+        hidden: crate::history::session_hidden::hidden_here(
+            here,
+            &annotations,
+            k,
+            bg.contains(k),
+            &|p| title_here(p, &annotations),
+        ),
+    };
+    let parent = here.parent_of(sid).map(kin);
+    let children = here.lineage.children_of(sid).into_iter().map(kin).collect();
+    (parent, children)
 }
 
 #[cfg(test)]

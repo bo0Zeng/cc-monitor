@@ -18,7 +18,7 @@
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
-use crate::stream_source::{local_step, parse_frame, BgHide, InboundFrame, LocalItem, LocalStep};
+use crate::stream_source::{local_step, parse_frame, InboundFrame, LocalItem, LocalStep};
 use std::collections::BTreeSet;
 
 // ─── 小工具：函数范围（rustfmt 保证收尾 `}` 与签名同缩进）───────────────────────────
@@ -273,9 +273,9 @@ fn frame(line: &str) -> LocalItem {
     LocalItem::Frame(parse_frame(line).expect("手写帧解不出来"))
 }
 
-/// `consume_local` 那一刻：先过 bg 那道门（[`BgHide::admit`]，远端那条流同一份），过得去的才分派；藏 ⇒ 记成 `Skip`。
-fn step(bg: &mut BgHide, item: LocalItem) -> LocalStep {
-    bg.admit(item).map(local_step).unwrap_or(LocalStep::Skip)
+/// `consume_local` 那一刻：每一件都分派（隐不隐藏是帧上那一格、界面读，壳不丢帧）。
+fn step(item: LocalItem) -> LocalStep {
+    local_step(item)
 }
 
 #[test]
@@ -311,79 +311,70 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         rid: None,
     };
 
-    // ① 显示 bg：一切照转。
-    let mut h = BgHide::new(true);
-    assert_eq!(step(&mut h, frame(LINE_A)), line_a);
+    // 一切照转：分身会话与交互会话同一条路（隐不隐藏由后端判好、帧上带着，壳不藏）。
+    assert_eq!(step(frame(LINE_A)), line_a);
     // 宣告本身不排快照（它不等记录）；读完那一帧才排。
-    assert_eq!(step(&mut h, frame(ADD_A)), LocalStep::Skip);
+    assert_eq!(step(frame(ADD_A)), LocalStep::Skip);
     assert_eq!(
-        step(&mut h, frame(PRIMED_A)),
+        step(frame(PRIMED_A)),
         LocalStep::Announce {
             sid: "a".into(),
             path: Some("/p/a.jsonl".into()),
             lines: Some(4)
         }
     );
-    assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
+    assert_eq!(step(frame(ADD_B_BG)), LocalStep::Skip);
     assert_eq!(
-        step(&mut h, frame(PRIMED_B)),
+        step(frame(PRIMED_B)),
         LocalStep::Announce {
             sid: "b".into(),
             path: Some("/p/b.jsonl".into()),
             lines: Some(9)
         }
     );
-    assert_eq!(step(&mut h, frame(LINE_B)), line_b);
+    assert_eq!(step(frame(LINE_B)), line_b);
+    assert_eq!(step(frame(REM_B)), LocalStep::Remove { sid: "b".into() });
+    assert_eq!(step(frame(STATUS)), LocalStep::Skip);
+    assert_eq!(step(frame(ADD_A_OLD_CC)), LocalStep::Skip);
     assert_eq!(
-        step(&mut h, frame(REM_B)),
-        LocalStep::Remove { sid: "b".into() }
-    );
-    assert_eq!(step(&mut h, frame(STATUS)), LocalStep::Skip);
-
-    // ② 不显示 bg：bg 的宣告与它的行一律不进；交互 / 旧 CC（没写 kind）照转。
-    let mut h = BgHide::new(false);
-    assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
-    assert_eq!(
-        step(&mut h, frame(PRIMED_B)),
-        LocalStep::Skip,
-        "藏起来的 bg 读完那一帧也不进"
-    );
-    assert_eq!(step(&mut h, frame(LINE_B)), LocalStep::Skip);
-    assert_eq!(step(&mut h, frame(ADD_A_OLD_CC)), LocalStep::Skip);
-    assert_eq!(
-        step(&mut h, frame(PRIMED_A_EMPTY)),
+        step(frame(PRIMED_A_EMPTY)),
         LocalStep::Announce {
             sid: "a".into(),
             path: None,
             lines: None
         }
     );
-    assert_eq!(step(&mut h, frame(LINE_A)), line_a);
-    // 退场：撤它；藏起来的要留到它的去向（`session_state`）那一帧才忘 —— 摘除那一帧就忘了 ⇒ 紧跟的去向会漏出去。
-    assert_eq!(
-        step(&mut h, frame(REM_B)),
-        LocalStep::Remove { sid: "b".into() }
-    );
-    assert_eq!(
-        step(
-            &mut h,
-            frame(
-                r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#
-            )
-        ),
-        LocalStep::Skip
-    );
-    assert_eq!(
-        step(&mut h, frame(LINE_B)),
-        line_b,
-        "去向之后还藏着它（同一个 sid 再来是新的宣告）"
-    );
+    // 流结束 · 丢行。
+    assert_eq!(step(LocalItem::StreamEnded), LocalStep::StreamEnded);
+    assert_eq!(step(LocalItem::LineLost), LocalStep::Lost);
+}
 
-    // ③ 流结束照过那道门（`consume_local` 每条流换一道新门：下一条流会重新宣告）。
-    let mut h = BgHide::new(false);
-    let _ = step(&mut h, frame(ADD_B_BG));
-    assert_eq!(step(&mut h, LocalItem::StreamEnded), LocalStep::StreamEnded);
-    assert_eq!(step(&mut h, LocalItem::LineLost), LocalStep::Lost);
+/// 分身会话不再在壳里整条丢（从前「显示分身会话」关掉 ⇒ 连它的批准框一起丢，会话隐藏稿问题 3）：
+/// 本机与远端两条读循环里都没有那道门，也不再读那个开关。
+#[test]
+fn no_read_loop_drops_background_sessions() {
+    for (name, src) in [
+        (
+            "stream_source/local.rs",
+            include_str!("../../../src/frontend/shell/src/stream_source/local.rs"),
+        ),
+        (
+            "stream_source/run.rs",
+            include_str!("../../../src/frontend/shell/src/stream_source/run.rs"),
+        ),
+        (
+            "lib.rs",
+            include_str!("../../../src/frontend/shell/src/lib.rs"),
+        ),
+    ] {
+        let code = guard_core::production_code(src);
+        for gone in ["BgHide", "showBgSessions", "show_bg"] {
+            assert!(
+                !code.contains(gone),
+                "{name} 里还有 {gone}：分身会话又在壳里被丢了"
+            );
+        }
+    }
 }
 
 // ─── F3 ────────────────────────────────────────────────────────────────────
@@ -843,45 +834,31 @@ fn the_local_product_core_matches_the_hand_written_table() {
         local_product(&LocalItem::StreamEnded, crate::origin::LOCAL),
         Some(In::LinkLost { origin: local() })
     );
-    // 不显示 bg：过那道门（[`BgHide::admit`]，同 `consume_local`）⇒ bg 的宣告不进；藏起来的 sid 的灯与去向也不进。
-    let product = |bg: &mut BgHide, item: LocalItem| {
-        bg.admit(item)
-            .and_then(|i| local_product(&i, crate::origin::LOCAL))
-    };
-    let mut off = BgHide::new(false);
-    assert_eq!(product(&mut off, frame(ADD_B_BG)), None);
-    assert_eq!(product(&mut off, frame(STATUS_B)), None);
-    assert_eq!(product(&mut off, frame(LEFT_B)), None);
-    assert!(
-        product(&mut off, frame(LEFT_B)).is_some(),
-        "正控：去向之后不再藏"
-    );
-    assert!(
-        product(&mut BgHide::new(true), frame(ADD_B_BG)).is_some(),
-        "正控：显示 bg 时它进"
-    );
+    // 分身会话的宣告 · 灯（需手动跟着它）· 去向照样交起停成品（壳不藏）。
+    let product = |item: LocalItem| local_product(&item, crate::origin::LOCAL);
+    assert!(product(frame(ADD_B_BG)).is_some(), "分身会话的宣告没进");
+    assert!(product(frame(STATUS_B)).is_some(), "分身会话的灯没进");
+    assert!(product(frame(LEFT_B)).is_some(), "分身会话的去向没进");
 }
 
-/// 本机分派核：记录文件的出声交 `Notice`；藏起来的 bg 会话照旧不出声。
+/// 本机分派核：记录文件的出声交 `Notice`（分身会话的也交）。
 #[test]
-fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
+fn a_session_file_notice_is_dispatched_for_every_session() {
     const GONE: &str = r#"{"kind":"session_file_gone","session_id":"a","path":"/p/a.jsonl"}"#;
     const REREAD_B: &str =
         r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated"}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"bg","background":true}"#;
-    let mut h = BgHide::new(false);
     assert_eq!(
-        step(&mut h, frame(GONE)),
+        step(frame(GONE)),
         LocalStep::Notice {
             sid: "a".into(),
             path: "/p/a.jsonl".into(),
             change: crate::stream_source::FileChange::Gone,
         }
     );
-    assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
-    assert_eq!(step(&mut h, frame(REREAD_B)), LocalStep::Skip);
+    assert_eq!(step(frame(ADD_B_BG)), LocalStep::Skip);
     assert_eq!(
-        step(&mut BgHide::new(true), frame(REREAD_B)),
+        step(frame(REREAD_B)),
         LocalStep::Notice {
             sid: "b".into(),
             path: "/p/b.jsonl".into(),

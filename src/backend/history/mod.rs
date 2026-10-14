@@ -7,3 +7,4 @@ pub(crate) mod listing_scan; // 历史清单那一行的逐行扫描（累计的
 pub(crate) mod live; // 这台此刻活着的会话：pidfile ＋ 判活（原住 `observe/accounts_query.rs`）
                      // 搜索与叫会话什么的通用口径（原共享 crate `search-core` 通用那一半：常量 · snippet 预算 · 最近优先 · 片段 / 截断 · 标题）。
 pub(crate) mod search_rules;
+pub(crate) mod session_hidden; // 隐藏的判定在历史这一层的口（注解里单个那一格 · 叫主会话什么）

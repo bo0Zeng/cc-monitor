@@ -45,6 +45,7 @@ pub(crate) enum SlotId {
     Detach,
     BusRegister,
     BusNote,
+    Tab,
 }
 
 /// 表单的一格：`id`（[`ProfileForm`] 里那一格的名字）· 标签（文案键）· 落在配置文件里的哪几个键。
@@ -119,6 +120,11 @@ pub(crate) const SLOTS: &[Slot] = &[
         label: || copy_text("beProfile.slot.busNote", &[]),
         flags: &[flag::BUS_NOTE],
     },
+    Slot {
+        id: SlotId::Tab,
+        label: || copy_text("beProfile.slot.tab", &[]),
+        flags: &[flag::TAB],
+    },
 ];
 
 /// 一个 ccm 选项（或 `None` ＝ 交给 agent 的那串）归哪一格。
@@ -144,6 +150,10 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
         Some(flag::CWD_IF) => copy_text("beProfile.val.cwdIf", &[("at", &v(0)), ("to", &v(1))]),
         Some(flag::CWD) => copy_text("beProfile.val.cwd", &[("dir", &v(0))]),
         Some(flag::DETACH | flag::BUS_REGISTER) => copy_text("beProfile.val.on", &[]),
+        Some(flag::TAB) => match vals.first().and_then(|v| argv::tab_of(v)) {
+            Some(cmd_wire::session::Tab::Hide) => copy_text("beProfile.val.tabHide", &[]),
+            _ => copy_text("beProfile.val.tabShow", &[]),
+        },
         Some(_) => vals.join(" "),
     }
 }
@@ -253,6 +263,9 @@ pub(crate) struct ProfileForm {
     pub bus_register: bool,
     #[serde(default)]
     pub bus_note: Option<String>,
+    /// 标签页：显示 / 隐藏（`null` ＝ 继承）。
+    #[serde(default)]
+    pub tab: Option<cmd_wire::session::Tab>,
 }
 
 /// 表单 ⇒ 配置文件里那一段要写成的样子（ccm 选项按 [`SLOTS`] 的顺序）。一格文本的引号没配对 ⇒ 那一句。
@@ -305,6 +318,9 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
         ccm.push(flag::BUS_REGISTER.to_string());
     }
     pair(flag::BUS_NOTE, s(&f.bus_note), &mut ccm);
+    if let Some(t) = f.tab {
+        ccm.extend([flag::TAB.to_string(), argv::tab_word(t).to_string()]);
+    }
     let agent = match &f.args {
         Some(a) => super::form::split_box(a)
             .map_err(|_| copy_text("beAliasForm.passthru.unbalanced", &[]))?,
@@ -360,6 +376,7 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
             flag::DETACH => f.detach = true,
             flag::BUS_REGISTER => f.bus_register = true,
             flag::BUS_NOTE => f.bus_note = Some(one()),
+            flag::TAB => f.tab = argv::tab_of(&one()),
             _ => {}
         }
     }

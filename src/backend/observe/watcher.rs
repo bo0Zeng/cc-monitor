@@ -1111,6 +1111,14 @@ fn watch_loop(
         if let Some(ear) = notes_ear.as_mut() {
             ear.arm(&mut debouncer);
         }
+        // 隐藏要的另两份（这台偏好 · 会话血缘）：动了 ⇒ 活会话重判隐藏（同一种耳朵）。
+        let mut hide_ears: Vec<ProfilesEar> = crate::history::session_hidden::rule_files()
+            .into_iter()
+            .filter_map(ProfilesEar::new)
+            .collect();
+        for ear in &mut hide_ears {
+            ear.arm(&mut debouncer);
+        }
         // 「开着即活」那几家：记录根挂上 debouncer（读行；根还不在 ⇒ 等写者那道耳朵报它出现时再挂）＋ 写者那道耳朵。
         let mut writer_watch: Vec<(PathBuf, bool)> =
             writer_roots.iter().map(|r| (r.clone(), false)).collect();
@@ -1138,7 +1146,7 @@ fn watch_loop(
             ears,
             sock_dir_watched,
             accounts_ear,
-            (profiles_ear, notes_ear),
+            (profiles_ear, notes_ear, hide_ears),
             (writer_watch, writer_ears),
         ))
     });
@@ -1148,7 +1156,7 @@ fn watch_loop(
         mut ears,
         mut sock_dir_watched,
         mut accounts_ear,
-        (mut profiles_ear, mut notes_ear),
+        (mut profiles_ear, mut notes_ear, mut hide_ears),
         (mut writer_watch, _writer_ears),
     )) = armed
     else {
@@ -1223,11 +1231,20 @@ fn watch_loop(
                         sink.send(Frame::changed(Topic::Profiles, None, None, None));
                     }
                 }
-                // 注解动了 ⇒ 重读，改了名的活会话各一帧 `session_status`。
+                // 注解动了 ⇒ 重读，改了名的活会话各一帧 `session_status`、隐不隐藏变了的各一帧 `changed {session_hidden}`。
                 if let Some(ear) = notes_ear.as_mut() {
                     if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
                         state.reload_annotations(annotations_table(), &mut sink);
                     }
+                }
+                // 这台偏好 · 会话血缘动了 ⇒ 活会话重判隐藏（批内合并）。
+                let mut rules_moved = false;
+                for ear in &mut hide_ears {
+                    rules_moved |=
+                        ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path()));
+                }
+                if rules_moved {
+                    state.rejudge_hidden(&mut sink);
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
@@ -1466,6 +1483,9 @@ fn watch_loop(
                     if let Some(ear) = notes_ear.as_mut() {
                         ear.arm(&mut debouncer);
                     }
+                    for ear in &mut hide_ears {
+                        ear.arm(&mut debouncer);
+                    }
                     state.reload_annotations(annotations_table(), &mut sink);
                     sink.send(Frame::changed(Topic::Accounts, None, None, None));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
@@ -1610,13 +1630,59 @@ impl ReaderState {
         }
     }
 
-    /// 注解那份文件动了 ⇒ 换上新读的那张表，改了名的活会话各发一帧 `session_status`。
+    /// 这条会话此刻隐不隐藏（`here` ＝ 这台此刻那几样；主会话叫什么照它在这里的名字，不在跟 ⇒ 照记录）。
+    fn hidden_of(
+        &self,
+        here: &crate::history::session_hidden::Here,
+        sid: &str,
+        bg: bool,
+    ) -> Option<cmd_wire::session::Hidden> {
+        crate::history::session_hidden::hidden_here(here, &self.annotations, sid, bg, &|p| {
+            match self.sessions.values().find(|e| e.sid == p) {
+                Some(e) => crate::history::search_rules::session_label(&e.facts).0,
+                None => crate::history::session_hidden::title_here(p, &self.annotations),
+            }
+        })
+    }
+
+    /// 注解 · 这台偏好 · 会话血缘动了 ⇒ 每个活会话重判一次隐藏，变了的各推一帧 `changed {session_hidden, key: sid, body: {hidden}}`，
+    /// 记着的那一帧 `session_added` 一起换（之后接上来的连接拿到的是新的）。
+    fn rejudge_hidden(&mut self, sink: &mut FrameSink) {
+        let here = crate::history::session_hidden::Here::read_now();
+        let mut sids: Vec<String> = self.added.keys().cloned().collect();
+        sids.sort_unstable();
+        for sid in sids {
+            let Some(Frame::SessionAdded {
+                background, hidden, ..
+            }) = self.added.get(&sid)
+            else {
+                continue;
+            };
+            let now = self.hidden_of(&here, &sid, *background);
+            if &now == hidden {
+                continue;
+            }
+            if let Some(Frame::SessionAdded { hidden, .. }) = self.added.get_mut(&sid) {
+                hidden.clone_from(&now);
+            }
+            let body = serde_json::json!({ "hidden": now });
+            sink.send(Frame::changed(
+                Topic::SessionHidden,
+                Some(sid.clone()),
+                None,
+                Some(body),
+            ));
+        }
+    }
+
+    /// 注解那份文件动了 ⇒ 换上新读的那张表，改了名的活会话各发一帧 `session_status`、隐不隐藏变了的各推一帧（[`Self::rejudge_hidden`]）。
     fn reload_annotations(
         &mut self,
         table: crate::history::history_annotations::Table,
         sink: &mut FrameSink,
     ) {
         self.annotations = table;
+        self.rejudge_hidden(sink);
         let sids: std::collections::BTreeSet<String> =
             self.sessions.values().map(|e| e.sid.clone()).collect();
         for sid in sids {
@@ -3026,6 +3092,12 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     // 之后过不了身份门，而「为什么」原先整条链零线索。
     let (container, wrote) = tag_identity(pid, &sid);
     adopt_launch_note(state, pid, &sid);
+    // 隐不隐藏（启动台账要在认完便条之后读）：判定住 `control/session_hidden.rs`。
+    let hidden = state.hidden_of(
+        &crate::history::session_hidden::Here::read_now(),
+        &sid,
+        a.background,
+    );
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     arm_pid_watcher(&key_for_watch, pid, start, state);
     if announced {
@@ -3058,6 +3130,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         },
         name_face,
         waiting_for: a.waiting_for,
+        hidden,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
         // pid 与 verdict 核过的是同一个进程（见 `wire::Frame::SessionAdded::pid`）。

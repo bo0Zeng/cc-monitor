@@ -39,6 +39,9 @@ pub enum Topic {
     Manual,
     /// 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）。
     Machines,
+    /// 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：
+    /// 注解 · 这台偏好 · 会话血缘动了之后判出来的。不重读整份清单，收到就换（丢了重问 `history-list {sid}` 那一行）。
+    SessionHidden,
 }
 
 /// 主题表的一行。
@@ -77,7 +80,7 @@ pub enum Ask {
 
 impl Topic {
     /// 全部主题（表的行序）。
-    pub const ALL: [Topic; 11] = [
+    pub const ALL: [Topic; 12] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -89,6 +92,7 @@ impl Topic {
         Topic::Login,
         Topic::Manual,
         Topic::Machines,
+        Topic::SessionHidden,
     ];
 
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
@@ -205,6 +209,17 @@ impl Topic {
                 body: false,
                 body_cap: 0,
                 reask: "machines-read",
+                ask: Ask::None,
+            },
+            // 走 watcher 的出方向（不可丢：标签页挪进挪出靠它）；`body` 由发端给（判定在 `control/session_hidden.rs`）。
+            Topic::SessionHidden => TopicSpec {
+                name: "session_hidden",
+                lossy: false,
+                key: true,
+                rev: false,
+                body: true,
+                body_cap: 1024,
+                reask: "history-list",
                 ask: Ask::None,
             },
         }

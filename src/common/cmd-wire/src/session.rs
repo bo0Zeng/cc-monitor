@@ -394,6 +394,67 @@ pub struct LaunchedAccount {
     pub model: Option<String>,
 }
 
+/// 新会话进不进标签页：`ccm --tab` · 别名里的 `tab` · 这台偏好 `childTab` / `bgTab` 都是这两个值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub enum Tab {
+    Show,
+    Hide,
+}
+
+/// 单个那一格（历史注解 `hide`）：`on` 隐藏 · `off` 不隐藏（缺 ＝ 照规则）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub enum Hide {
+    On,
+    Off,
+}
+
+/// 一条会话不占标签页、不进历史默认清单的来由（判定只住后端 `observe/session_hidden.rs`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub enum HiddenBy {
+    /// 单个点了「隐藏」（注解 `hide: on`）。
+    #[serde(rename = "self")]
+    Own,
+    /// 起它的别名写了 `tab = "hide"`。
+    Alias,
+    /// 起它的那一行命令当场给了 `--tab hide`（没经别名）。
+    Launch,
+    /// 它是别的会话起的，这台偏好「子会话」＝ 隐藏。
+    Child,
+    /// 分身会话，这台偏好「分身会话」＝ 隐藏。
+    Bg,
+}
+
+/// 那一格：`session_added` · `history-list` 每一行 · `sessions-needs` 每一行 · 主题 `session_hidden` 的 `body` 都是它。
+/// 不隐藏 ⇒ 不上线（主题 `body` 里写 `null`）。`said` 是悬停里那一句（后端拼好）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct Hidden {
+    pub by: HiddenBy,
+    pub said: String,
+}
+
 /// `launch-render-cli` · `launch-local` 的应答：那一行 `ccm …` ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
