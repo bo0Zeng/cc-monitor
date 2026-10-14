@@ -341,6 +341,14 @@ fn wait_exit(c: &mut Child) -> std::process::ExitStatus {
     }
 }
 
+/// 等它退之前说的最后那一句到了，再交回 stderr 全文。
+/// 不能「进程退了就读全文」：stderr 那根管子由另一条线程逐行收，进程退了那一刻，最后一两行可能还在管子里没收上来
+///   （机器忙时撞得到：退出码已经是 0，全文里却还只有「收尾」那一句）。等的是那一行这件事，兜底是那个统一的上限。
+fn said_through(c: &Child, last: &str, what: &str) -> String {
+    wait_line(&c.err, |l| l.contains(last), what);
+    c.err_all.lock().unwrap().join("\n")
+}
+
 const CAPTURE_A: &str = r#"{"id":"a","cmd":"terminal-preview","args":{"sid":"hx1-a"}}"#;
 const CAPTURE_B: &str = r#"{"id":"b","cmd":"terminal-preview","args":{"sid":"hx1-b"}}"#;
 
@@ -379,10 +387,9 @@ fn d2_sigterm_waits_for_the_blocking_command_and_refuses_new_ones() {
     assert_eq!(v["code"], serde_json::json!(SHUTTING_DOWN), "{refused}");
     // 放开 ⇒ 在飞那条做完 ⇒ 退 0，并说「都做完了」。
     rig.release();
+    let err = said_through(&c, "在跑的那几条都做完了", "「都做完了」那句");
     let st = wait_exit(&mut c);
-    assert_eq!(st.code(), Some(0), "排空完应退 0：{st:?}");
-    let err = c.err_all.lock().unwrap().join("\n");
-    assert!(err.contains("在跑的那几条都做完了"), "stderr：{err}");
+    assert_eq!(st.code(), Some(0), "排空完应退 0：{st:?}；stderr：{err}");
     assert!(!err.contains("又收到一次停机信号"), "stderr：{err}");
 }
 
@@ -394,9 +401,9 @@ fn d2_a_second_sigterm_stops_waiting() {
         "第一次 SIGTERM 就退了 —— 没有排空"
     );
     sigterm(&c);
+    let err = said_through(&c, "又收到一次停机信号", "「又收到一次停机信号」那句");
     let st = wait_exit(&mut c);
-    assert_eq!(st.code(), Some(0), "{st:?}");
-    let err = c.err_all.lock().unwrap().join("\n");
+    assert_eq!(st.code(), Some(0), "{st:?}；stderr：{err}");
     assert!(
         err.contains("又收到一次停机信号") && err.contains("还有 1 条没做完"),
         "第二次 SIGTERM 应当不等、并说还剩几条：{err}"
@@ -414,9 +421,9 @@ fn d2_a_second_sigterm_stops_waiting() {
 #[test]
 fn d4_the_drain_deadline_names_what_was_left_and_exits() {
     let (rig, mut c) = up_to_draining_with("deadline", Some(800));
+    let err = said_through(&c, "排空期限", "「排空期限到了」那句");
     let st = wait_exit(&mut c);
-    assert_eq!(st.code(), Some(0), "{st:?}");
-    let err = c.err_all.lock().unwrap().join("\n");
+    assert_eq!(st.code(), Some(0), "{st:?}；stderr：{err}");
     assert!(
         err.contains("排空期限") && err.contains("terminal-preview（id=a）"),
         "到点了应当说出哪一条没做完：{err}"
