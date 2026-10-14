@@ -31,7 +31,6 @@ use super::CREDENTIALS_FILE_AGENT;
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use copy_core::copy_text;
 use relay_route_core::{base_url, RouteMode, PORT};
-use serde_json::Value;
 
 /// 账号 0（不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。只是标签（`/t/` 从不查它的 key）。
 pub(crate) const BASE_ACCOUNT_SEGMENT: &str = acct_core::BARE_ACCOUNT;
@@ -450,17 +449,6 @@ pub(crate) fn optin_at(
         snippet: r.url.as_deref().map(face.snippet),
         listening: listening(PORT),
     }
-}
-
-/// 线上 `agent`（适配器 id）→ 那一家。缺席 / 不是串 ⇒ `bad_args`（入参形状，调用方没表态是哪一家就不猜）；
-/// 空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家（不当成「这一家没有表」静默往下走）。
-/// 认法住 `agents::pick_adapter`。
-pub(crate) fn agent_arg(args: &Value) -> Result<&'static str, (&'static str, String)> {
-    let name = args.get("agent").and_then(Value::as_str).ok_or((
-        "bad_args",
-        copy_text("beUpstreamEndpoint.args.missingString", &[("k", "agent")]),
-    ))?;
-    crate::agents::pick_adapter(Some(name)).map_err(|say| ("bad_args", say))
 }
 
 #[cfg(test)]

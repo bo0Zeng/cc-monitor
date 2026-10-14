@@ -1,5 +1,5 @@
 //! 额度每号几行 · 开窗那一判：对金样 `tests/__fixtures__/quota-text.golden.json`（每号每行每格 ＋ `--text` 整段字 ＋ 每号的 `warm`）。
-//! 回包照真出口走一遍：语义位那一格的字由显示态那一处写（`show.rs::slot_words`）· 时刻的字由出口那一遍写（`with_texts`）· 再添行与开窗。
+//! 回包照真出口走一遍：语义位那一格的字由显示态那一处写（`show.rs::slot_words`）· 时刻的字由出口写（`TextClock`）· 再添行与开窗。
 use super::*;
 
 const REGEN: &str = "CCM_REGEN_QUOTA_ROWS";

@@ -5,7 +5,7 @@
 //! 戳格式那几格（扫描命令 · 扫描回话 · 字节自报 · 序键）住契约 crate 的 `tests/common/deploy-contract/lib_tests.rs`。
 
 use super::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 

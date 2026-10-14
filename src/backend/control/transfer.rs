@@ -88,6 +88,51 @@ impl typed::Command for TransferUpload {
     type Err = UploadErr;
 }
 
+/// 起跑 · 撤那两条的入参：那张票。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TransferIdReq {
+    /// 传输单 id（开单那一条回的）。
+    pub(crate) id: String,
+}
+
+codes! {
+    /// `transfer-start` 会回的码。
+    pub(crate) enum StartErr {
+        /// 这条连接上没有这张票。
+        NoSuchTransfer = "no_such_transfer",
+        /// 这张票已经起跑过。
+        AlreadyStarted = "already_started",
+    }
+}
+
+codes! {
+    /// `transfer-stop` 没有别的码（撤不在册的也回 `ok`）。
+    pub(crate) enum StopErr {}
+}
+
+/// 起跑那一条（帧面硬臂：之后进度与终局走 `transfer` 帧）。
+pub(crate) struct TransferStart;
+
+impl typed::Command for TransferStart {
+    const NAME: &'static str = TRANSFER_START;
+    type Req = TransferIdReq;
+    type Reply = ();
+    type Err = StartErr;
+}
+
+/// 撤那一条（帧面硬臂，幂等）。
+pub(crate) struct TransferStop;
+
+impl typed::Command for TransferStop {
+    const NAME: &'static str = TRANSFER_STOP;
+    type Req = TransferIdReq;
+    type Reply = ();
+    type Err = StopErr;
+}
+
 /// 开单（下载）那一条（同 [`TransferUpload`]）。
 pub(crate) struct TransferDownload;
 
@@ -805,8 +850,11 @@ impl Desk {
         match cmd {
             TRANSFER_UPLOAD => typed::answer::<TransferUpload>(id, args, |r| self.upload(r)),
             TRANSFER_DOWNLOAD => typed::answer::<TransferDownload>(id, args, |r| self.download(r)),
-            TRANSFER_START => self.start(id, args),
-            TRANSFER_STOP => self.stop(id, args),
+            TRANSFER_START => typed::answer::<TransferStart>(id, args, |r| self.start(r)),
+            TRANSFER_STOP => typed::answer::<TransferStop>(id, args, |r| {
+                self.stop(r);
+                Ok(())
+            }),
             other => err(
                 id,
                 other,
@@ -911,11 +959,8 @@ impl Desk {
     }
 
     /// `transfer-stop`：撤。没起跑的票当场摘掉；起跑了的由它自己收场（撤删 / 撤留）后摘掉。
-    fn stop(&self, id: &str, args: &serde_json::Value) -> Frame {
-        let tid = match text(args, "id") {
-            Ok(t) => t.to_string(),
-            Err(m) => return err(id, TRANSFER_STOP, "bad_args", &m),
-        };
+    fn stop(&self, r: TransferIdReq) {
+        let tid = r.id;
         let mut g = lock(&self.tickets);
         if let Some(t) = g.get(&tid) {
             t.cancel.fire();
@@ -923,32 +968,24 @@ impl Desk {
                 g.remove(&tid);
             }
         }
-        ok(id, None)
     }
 
     /// `transfer-start`：起跑。两个任务：传输本体 · 进度转发（`watch` 合并）。
-    fn start(&self, id: &str, args: &serde_json::Value) -> Frame {
-        let tid = match text(args, "id") {
-            Ok(t) => t.to_string(),
-            Err(m) => return err(id, TRANSFER_START, "bad_args", &m),
-        };
+    fn start(&self, r: TransferIdReq) -> Result<(), StartErr> {
+        let tid = r.id;
         let (dial, job, cancel) = {
             let mut g = lock(&self.tickets);
             let Some(t) = g.get_mut(&tid) else {
-                return err(
-                    id,
-                    TRANSFER_START,
-                    "no_such_transfer",
-                    &copy_text("beTransfer.start.unknown", &[("tid", &tid.to_string())]),
-                );
+                return Err(StartErr::NoSuchTransfer(copy_text(
+                    "beTransfer.start.unknown",
+                    &[("tid", &tid.to_string())],
+                )));
             };
             let Some(job) = t.job.take() else {
-                return err(
-                    id,
-                    TRANSFER_START,
-                    "already_started",
-                    &copy_text("beTransfer.start.already", &[("tid", &tid.to_string())]),
-                );
+                return Err(StartErr::AlreadyStarted(copy_text(
+                    "beTransfer.start.already",
+                    &[("tid", &tid.to_string())],
+                )));
             };
             (t.dial.clone(), job, Arc::clone(&t.cancel))
         };
@@ -985,7 +1022,7 @@ impl Desk {
             let _ = forward.await;
             lock(&tickets).remove(&tid);
         });
-        ok(id, None)
+        Ok(())
     }
 }
 

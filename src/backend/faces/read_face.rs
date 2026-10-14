@@ -31,7 +31,6 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::Value;
 
 /// `history-read` 一页的目标字节数。
 ///

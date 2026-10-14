@@ -1057,8 +1057,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             "只回 ok；下一帧画面走 `terminal_screen`",
         ),
         ("terminal-unfollow", "只回 ok（幂等）"),
-        ("transfer-start", "只回 ok；进度与终局走 `transfer` 帧"),
-        ("transfer-stop", "只回 ok（幂等）"),
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。

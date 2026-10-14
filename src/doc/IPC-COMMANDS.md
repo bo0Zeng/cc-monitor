@@ -772,9 +772,15 @@ type WirePath = string | { b16: string };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 传输单 id；之后进度与终局走 `transfer` 帧 |
+入参 `TransferIdReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TransferIdReq = { 
+/**
+ * 传输单 id（开单那一条回的）。
+ */
+id: string, };
+```
 
 码：`bad_args` · `no_such_transfer` · `already_started`
 
@@ -784,9 +790,15 @@ type WirePath = string | { b16: string };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 传输单 id；撤不在册的也回 `ok` |
+入参 `TransferIdReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TransferIdReq = { 
+/**
+ * 传输单 id（开单那一条回的）。
+ */
+id: string, };
+```
 
 码：`bad_args`
 

@@ -192,43 +192,10 @@ pub(crate) fn fmt_at(t: i64, now: i64, tz: &Tz) -> String {
     }
 }
 
-/// 回包里认得的时刻格（unix 秒）：出口那一遍（[`with_texts`]）在它旁边添 `<键>Text`。闭集 —— 新的时刻格要显示就加在这里。
-pub(crate) const TIME_KEYS: &[&str] = &["at", "seenAt", "resetsAt", "fromResetsAt", "since"];
-
 /// 距今（只写未来）：`+12m` · `+1h50m` · `+2h` · `+3d`（满 24h 只写天）；已过 ⇒ `None`。分钟向上取整。
 /// 写法只住 `copy_core::rel_duration` 一处（短时长那一套，同一份金样）。
 pub(crate) fn fmt_rel(t: i64, now: i64) -> Option<String> {
     copy_core::rel_duration(t.saturating_sub(now).saturating_mul(1_000))
-}
-
-/// **回包出口那一遍**：走遍整份回包，每个对象里认得的时刻格（[`TIME_KEYS`]，值是整数）旁边添一格 `<键>Text`
-/// ＝ [`fmt_at`] 按 `now` 与看的那一台的时区写好的字；还没到的时刻再添一格 `<键>RelText` ＝ 距今（[`fmt_rel`]，发出那一刻的字，
-/// 要它跟着走就按节拍重问）。界面只照这几格排，不换算。
-pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz: &Tz) {
-    match v {
-        serde_json::Value::Object(m) => {
-            let adds: Vec<(String, String)> = TIME_KEYS
-                .iter()
-                .filter_map(|k| {
-                    m.get(*k)
-                        .and_then(serde_json::Value::as_i64)
-                        .map(|t| (*k, t))
-                })
-                .flat_map(|(k, t)| {
-                    std::iter::once((format!("{k}Text"), fmt_at(t, now, tz)))
-                        .chain(fmt_rel(t, now).map(|r| (format!("{k}RelText"), r)))
-                })
-                .collect();
-            for x in m.values_mut() {
-                with_texts(x, now, tz);
-            }
-            for (k, t) in adds {
-                m.insert(k, serde_json::Value::String(t));
-            }
-        }
-        serde_json::Value::Array(a) => a.iter_mut().for_each(|x| with_texts(x, now, tz)),
-        _ => {}
-    }
 }
 
 /// 成品写时刻字的那一把钟：此刻 ＋ 看的那一台的时区（[`Tz`]：应答按请求信封的 `tz`，推送帧按连接的 `tz`，缺了按 UTC）。
@@ -260,11 +227,6 @@ impl TextClock {
     /// 那一刻距今（[`fmt_rel`]；已过 ⇒ `None`）。
     pub(crate) fn rel(&self, t: u64) -> Option<crate::common::cells::Words> {
         fmt_rel(i64::try_from(t).unwrap_or(i64::MAX), self.now).map(crate::common::cells::Words)
-    }
-
-    /// 透传的一团（原数）里认得的时刻格旁边添字（[`with_texts`]）。
-    pub(crate) fn on(&self, v: &mut serde_json::Value) {
-        with_texts(v, self.now, &self.tz);
     }
 }
 

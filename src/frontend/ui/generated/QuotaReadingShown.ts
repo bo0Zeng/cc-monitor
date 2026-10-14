@@ -5,7 +5,7 @@ import type { QuotaWindowRead } from "./QuotaWindowRead";
 import type { Words } from "./Words";
 
 /**
- * 账上那一条的额度快照（[`QuotaReading`]）＋ 时刻旁边写好的字（同 `common::time::with_texts` 那个写法：整数时刻才添、`…RelText` 只给还没到的）。
+ * 账上那一条的额度快照（[`QuotaReading`]）＋ 时刻旁边写好的字（`TextClock::text` · `rel`：有时刻才添、`…RelText` 只给还没到的）。
  */
 export type QuotaReadingShown = { 
 /**

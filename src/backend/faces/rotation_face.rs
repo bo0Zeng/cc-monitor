@@ -46,9 +46,7 @@ use crate::accounts::quota::rules::{book, shelf};
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::Hop;
 use crate::common::time::TextClock;
-use crate::wire::spec::{wire, Fail};
 use copy_core::copy_text;
-use serde_json::Value;
 use std::sync::Arc;
 
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
@@ -95,14 +93,13 @@ pub(crate) const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENT
 
 // ── quota-read ───────────────────────────────────────────────────────────────────────
 
-/// `quota-read`：这台的额度账，每条带上显示态；另给账号库里从没出过数的号、此刻发得出去的号、最早回来的那个。
-/// 出口那一下给每个时刻添好显示的字、每号添好几行与开窗那一判。
 crate::wire::typed::codes! {
     /// `quota-read` 没有别的码：读不出来是一个状态（`state: "unreadable"` ＋ `reason`），不是一次失败。
     pub(crate) enum QuotaReadErr {}
 }
 
-/// `quota-read`：这台的额度账（读一份文件 ＋ 账号库 ⇒ 阻塞档）。
+/// `quota-read`：这台的额度账，每条带上显示态；另给账号库里从没出过数的号、此刻发得出去的号、最早回来的那个。
+/// 出口那一下给每个时刻添好显示的字、每号添好几行与开窗那一判（读一份文件 ＋ 账号库 ⇒ 阻塞档）。
 pub(crate) struct QuotaReadCmd;
 
 impl crate::wire::typed::Command for QuotaReadCmd {

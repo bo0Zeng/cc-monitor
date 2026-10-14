@@ -1,6 +1,6 @@
 //! 命令表 · 连接本身：`cancel` · `ping` · 链路四条 · 传输四条（帧面硬臂那几条的本体是 `dispatch` 的硬臂）。
 
-use crate::wire::spec::{arg, out, CommandSpec, Run};
+use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::wire::conn::Cancel>(
@@ -27,21 +27,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::control::transfer::TransferDownload>(
         "开一张下载单",
     ),
-    CommandSpec {
-        name: "transfer-start",
-        summary: "传输单起跑",
-        codes: &["bad_args", "no_such_transfer", "already_started"],
-        fields: &[arg("id", "传输单 id；之后进度与终局走 `transfer` 帧")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "transfer-stop",
-        summary: "撤一张传输单",
-        codes: &["bad_args"],
-        fields: &[arg("id", "传输单 id；撤不在册的也回 `ok`")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::control::transfer::TransferStart>("传输单起跑"),
+    crate::wire::typed::frame::<crate::control::transfer::TransferStop>("撤一张传输单"),
     crate::wire::typed::asynchronous::<crate::wire::conn::Ping>("问活：零载荷，回 `ok`"),
 ];

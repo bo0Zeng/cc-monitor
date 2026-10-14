@@ -40,7 +40,7 @@ use std::pin::Pin;
 use copy_core::copy_text;
 use deploy_contract::{Arch, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity, Route, LINES};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
 pub(crate) use crate::wire::spec::Fail;

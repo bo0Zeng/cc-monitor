@@ -626,13 +626,17 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
         .as_str()
         .is_some_and(|i| i.starts_with("xfer-")));
     // 起跑一张不在册的票。
-    let (_, code, _) = reply_of(&desk.start("r6", &serde_json::json!({"id": "xfer-nope"})));
+    let (_, code, _) = reply_of(&desk.answer_wire(
+        TRANSFER_START,
+        "r6",
+        &serde_json::json!({"id": "xfer-nope"}),
+    ));
     assert_eq!(code.as_deref(), Some("no_such_transfer"));
     // 撤：没起跑的票当场摘；再撤一次幂等。
     assert_eq!(desk.len(), 1);
-    assert!(reply_of(&desk.stop("r7", &serde_json::json!({"id": tid}))).0);
+    assert!(reply_of(&desk.answer_wire(TRANSFER_STOP, "r7", &serde_json::json!({"id": tid}))).0);
     assert_eq!(desk.len(), 0, "没起跑的票撤了之后还在册");
-    assert!(reply_of(&desk.stop("r8", &serde_json::json!({"id": tid}))).0);
+    assert!(reply_of(&desk.answer_wire(TRANSFER_STOP, "r8", &serde_json::json!({"id": tid}))).0);
     // 摘了之后同一份文件又能开单。
     assert!(
         reply_of(&desk.answer_wire(
@@ -660,8 +664,9 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
         &serde_json::json!({"dial": d, "local_path": local}),
     ));
     let tid = data.unwrap()["id"].as_str().unwrap().to_string();
-    assert!(reply_of(&desk.start("r2", &serde_json::json!({"id": tid}))).0);
-    let (_, code, _) = reply_of(&desk.start("r3", &serde_json::json!({"id": tid})));
+    assert!(reply_of(&desk.answer_wire(TRANSFER_START, "r2", &serde_json::json!({"id": tid}))).0);
+    let (_, code, _) =
+        reply_of(&desk.answer_wire(TRANSFER_START, "r3", &serde_json::json!({"id": tid})));
     assert_eq!(code.as_deref(), Some("already_started"));
     let mut frames = Vec::new();
     loop {
