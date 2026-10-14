@@ -33,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,18 +52,25 @@ import com.ccmonitor.mobile.core.copy.SizeFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
+import com.ccmonitor.mobile.core.ui.icon.IconTextButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import java.io.IOException
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
-import java.io.IOException
-import java.util.UUID
 
 /** 当前打开的对话框。 */
 private sealed interface FilesDialog {
@@ -145,8 +151,8 @@ fun FilesScreen(
                 is FilesUi.Error ->
                     Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(s.problem.text, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
+                            ErrorLine(s.problem.text)
+                            SecondaryButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
                             CopyDetailButton(s.problem.text, s.problem.detail)
                         }
                     }
@@ -281,11 +287,11 @@ private fun Toolbar(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onShowTabs) { Text("▤ tab") } // ▤ 是允许的符号，不是 emoji
-        TextButton(onClick = { onDialog(FilesDialog.Mkdir) }) { Text("＋ " + copyText("rsFilewinWriteops.label.mkdir")) }
-        TextButton(onClick = { onDialog(FilesDialog.Create) }) { Text("＋ " + copyText("rsFilewinChrome.command.newFile")) }
-        TextButton(onClick = vm::toggleSort) { Text(if (sortBySize) copyText("rsFilewinSource.sort.size") else copyText("rsFilewinSource.sort.name")) }
-        TextButton(onClick = { onOpenTerminal(dir.shown) }) { Text(copyText("rsFilewinShell.frame.terminal")) }
+        PhIconButton(Ph.Tabs, copyText("mobTabs.open.aria"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        IconTextButton(Ph.FolderPlus, copyText("rsFilewinWriteops.label.mkdir"), onClick = { onDialog(FilesDialog.Mkdir) })
+        IconTextButton(Ph.File, copyText("rsFilewinChrome.command.newFile"), onClick = { onDialog(FilesDialog.Create) })
+        SecondaryButton(onClick = vm::toggleSort) { Text(if (sortBySize) copyText("rsFilewinSource.sort.size") else copyText("rsFilewinSource.sort.name")) }
+        SecondaryButton(onClick = { onOpenTerminal(dir.shown) }) { Text(copyText("rsFilewinShell.frame.terminal")) }
     }
 }
 
@@ -336,7 +342,7 @@ private fun PathHeader(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = { onNavigate(dir.parent) }) { Text("⬆") }
+        PhIconButton(Ph.ArrowUp, copyText("rsFilewinChrome.nav.up"), onClick = { onNavigate(dir.parent) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         // 当前目录总在眼前：只排末尾几段，前面的收成「…」（点它到它那一级；再往上用 ⬆）。
         val all = dir.crumbs()
         val shown = if (all.size > CRUMBS_SHOWN) listOf("…" to all[all.size - CRUMBS_SHOWN].second) + all.takeLast(CRUMBS_SHOWN - 1) else all
@@ -351,7 +357,15 @@ private fun PathHeader(
                 )
             }
         }
-        if (dir.text != null) TextButton(onClick = onToggleBookmark) { Text(if (bookmarked != null) "★" else "☆") }
+        // 收藏后图标用 `--accent`；Phosphor 的 fill 不另引，靠颜色分。
+        if (dir.text != null) {
+            PhIconButton(
+                Ph.Star,
+                copyText(if (bookmarked != null) "rsFilewinBookmarks.label.drop" else "rsFilewinBookmarks.label.add"),
+                onClick = onToggleBookmark,
+                tint = if (bookmarked != null) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -430,19 +444,19 @@ private fun EntryMenu(
         text = {
             Column {
                 if (!entry.isDir) {
-                    TextButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
-                    TextButton(onClick = { then(actions.startEdit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
-                    TextButton(onClick = { then(actions.download) }) { Text(copyText("rsFilewinDownload.label.download")) }
+                    SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    SecondaryButton(onClick = { then(actions.startEdit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
+                    SecondaryButton(onClick = { then(actions.download) }) { Text(copyText("rsFilewinDownload.label.download")) }
                 }
-                TextButton(onClick = { onDialog(FilesDialog.Rename(entry)) }) { Text(copyText("rsFilewinWriteops.label.rename")) }
-                TextButton(onClick = { then(actions.startChmod) }) { Text(copyText("rsFilewinWriteops.label.chmod")) }
-                TextButton(onClick = { onDialog(FilesDialog.Delete(entry)) }) {
-                    Text(copyText("rsFilewinWriteops.label.delete"), color = MaterialTheme.colorScheme.error)
+                SecondaryButton(onClick = { onDialog(FilesDialog.Rename(entry)) }) { Text(copyText("rsFilewinWriteops.label.rename")) }
+                SecondaryButton(onClick = { then(actions.startChmod) }) { Text(copyText("rsFilewinWriteops.label.chmod")) }
+                SecondaryButton(onClick = { onDialog(FilesDialog.Delete(entry)) }, danger = true) {
+                    Text(copyText("rsFilewinWriteops.label.delete"))
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -466,12 +480,15 @@ private fun DeleteDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = {
-                onConfirm()
-                onDismiss()
-            }) { Text(copyText("rsFilewinWriteops.label.delete"), color = MaterialTheme.colorScheme.error) }
+            SecondaryButton(
+                onClick = {
+                    onConfirm()
+                    onDismiss()
+                },
+                danger = true,
+            ) { Text(copyText("rsFilewinWriteops.label.delete")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -498,14 +515,14 @@ private fun ChmodDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            SecondaryButton(onClick = {
                 parsed.onSuccess {
                     onConfirm(it)
                     onDismiss()
                 }
             }, enabled = parsed.isSuccess) { Text(copyText("rsFilewinWriteops.label.chmod")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -525,7 +542,7 @@ private fun PreviewDialog(
                 modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -546,8 +563,8 @@ private fun EditDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp),
             )
         },
-        confirmButton = { TextButton(onClick = { onDialog(FilesDialog.ConfirmSave(d, text)) }) { Text(copyText("rsFilewinShell.editor.save")) } },
-        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onDialog(FilesDialog.ConfirmSave(d, text)) }) { Text(copyText("rsFilewinShell.editor.save")) } },
+        dismissButton = { SecondaryButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -566,8 +583,8 @@ private fun ConfirmSaveDialog(
             val bytes = d.text.toByteArray(Charsets.UTF_8).size
             Text(copyText("mobFiles.overwrite.body", "name" to d.edit.entry.name, "chars" to d.text.length, "bytes" to bytes), style = monoSmall)
         },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobFiles.overwrite.ok"), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = onBack) { Text(copyText("mobFiles.overwrite.back")) } },
+        confirmButton = { SecondaryButton(onClick = onConfirm, danger = true) { Text(copyText("mobFiles.overwrite.ok")) } },
+        dismissButton = { SecondaryButton(onClick = onBack) { Text(copyText("mobFiles.overwrite.back")) } },
     )
 }
 
@@ -584,8 +601,8 @@ private fun NameDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { OutlinedTextField(value, { value = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { onConfirm(value.trim()) }, enabled = value.isNotBlank()) { Text(title) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onConfirm(value.trim()) }, enabled = value.isNotBlank()) { Text(title) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -621,12 +638,13 @@ private fun EntryRow(
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = Touch.rowFile)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (e.isDir) "📁" else "📄")
+        PhIcon(if (e.isDir) Ph.FolderSimple else Ph.File, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
             Text(e.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
             e.mtime?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
