@@ -2,6 +2,7 @@
 //! 发完 hello 就死退避照样涨 · 问答等它接上 · 新连接整份重报在看名单 · 没装：装不了的要人动手、装得了的自己再试 ·
 //! 不是 Unix 两端都等人 · ［重新连接］在拨的时候按也算数、接上那一刻作废 · 断线重连续上之后数格。全部虚拟时钟。
 use super::*;
+use crate::backoff::RECONNECT_MIN;
 use crate::client::CallError;
 use crate::gate::Verdict;
 use std::collections::VecDeque;
@@ -41,6 +42,10 @@ enum Peer {
     Absent,
     /// 握手成，之后照答；`die_now` ⇒ 回完 attach 就断。
     Up { build: String, die_now: bool },
+    /// 拨出去没人回话（路断成黑洞：SYN 发出去石沉大海）：开链路那一步一直不回。
+    Hang,
+    /// 握手成、交完头一帧之后**路断成黑洞**：问什么都不回、也不断（没有 EOF）。
+    Mute { build: String },
 }
 
 #[derive(Default)]
@@ -61,6 +66,8 @@ struct Fake {
     froms: Mutex<VecDeque<serde_json::Value>>,
     /// 拨它 ⇒ 接着的那一条当场断（断网）。
     drop_link: tokio::sync::Notify,
+    /// 那台收到的 `ping`（问活）条数。
+    pings: AtomicUsize,
 }
 
 struct T(Arc<Fake>);
@@ -81,6 +88,9 @@ impl Transport for T {
                 .unwrap()
                 .pop_front()
                 .unwrap_or(Peer::Absent);
+            if matches!(peer, Peer::Hang) {
+                return std::future::pending().await;
+            }
             let (mine, theirs) = tokio::io::duplex(64 * 1024);
             tokio::spawn(serve(peer, theirs, Arc::clone(&f)));
             Ok(mine)
@@ -161,6 +171,7 @@ fn start_desk(f: &Arc<Fake>) -> (Arc<Feed<D>>, Seen) {
 
 async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
     let mut r = tokio::io::BufReader::new(s);
+    let mute = matches!(peer, Peer::Mute { .. });
     let (build, die_now) = match peer {
         Peer::Absent => {
             let _ = r
@@ -170,6 +181,8 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
             return;
         }
         Peer::Up { build, die_now } => (build, die_now),
+        Peer::Mute { build } => (build, false),
+        Peer::Hang => unreachable!("没人回话的那一拨开不出链路"),
     };
     let _ = r
         .get_mut()
@@ -196,7 +209,13 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         if got == 0 {
             return;
         }
+        if mute {
+            continue;
+        }
         let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        if v["cmd"] == "ping" {
+            f.pings.fetch_add(1, Ordering::SeqCst);
+        }
         if v["cmd"] == "stream-watch" {
             f.watches.lock().unwrap().push(v["args"].clone());
         }
@@ -850,4 +869,145 @@ async fn a_relay_that_stays_absent_is_tried_a_capped_number_of_times() {
         "先直接接一回，ensure 之后至多再接 RELAY_TRIES 回"
     );
     assert_eq!(f.ensured.load(Ordering::SeqCst), 1);
+}
+
+/// 隔一段一段的时刻（秒，虚拟时钟）。
+fn gaps_of(f: &Fake) -> Vec<u64> {
+    let at = f.attach_at.lock().unwrap().clone();
+    at.windows(2).map(|w| (w[1] - w[0]).as_secs()).collect()
+}
+
+/// **拨出去没人回话**（静默断网：网卡还在、包全丢，SYN 石沉大海）：这一拨到 [`DIAL_WITHIN`] 就放弃、隔下界再拨，
+/// 一直没人回话也不往上涨（够不着那台，没有一次登录落到它身上，涨退避护不了谁）——网回来之后至多
+/// 「拨号期限 ＋ 下界」就有一拨赶上。拨不通 ⇒ 不去 ensure（ensure 走的是同一条拨不通的路）。
+#[tokio::test(start_paused = true)]
+async fn a_dial_nobody_answers_is_dropped_in_time_and_retried_without_climbing() {
+    let f = Arc::new(Fake::default());
+    {
+        let mut a = f.attaches.lock().unwrap();
+        for _ in 0..8 {
+            a.push_back(Peer::Hang);
+        }
+        a.push_back(upp(MINE));
+    }
+    let (feed, _) = start(&f);
+    until("网回来那一拨接上了", || up(&feed)).await;
+    let every = (DIAL_WITHIN + RECONNECT_MIN).as_secs();
+    assert_eq!(
+        gaps_of(&f),
+        vec![every; 8],
+        "没人回话的每一拨：到期限放弃、隔下界再拨，不涨"
+    );
+    assert_eq!(f.ensured.load(Ordering::SeqCst), 0, "拨不通 ⇒ 不 ensure");
+    // 回过话的失败照旧涨：发完 hello 就死的那一形见 `a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer`。
+}
+
+/// **宿主报「网回来了 / 网变了 / 回前台」**（`wake`）· 换了一条 SSH（`set_transport`）· ［重试］（`reconnect`）：
+/// 正卡在一拨没人回话的拨号里 ⇒ 当场丢下它、马上再拨，不等拨号期限，也不等退避。
+#[tokio::test(start_paused = true)]
+async fn a_host_event_drops_a_hanging_dial_and_dials_again_at_once() {
+    for how in ["wake", "set_transport", "reconnect"] {
+        let f = Arc::new(Fake::default());
+        {
+            let mut a = f.attaches.lock().unwrap();
+            a.push_back(Peer::Hang);
+            a.push_back(upp(MINE));
+        }
+        let (feed, _) = start(&f);
+        until("第一拨在拨", || f.attach_at.lock().unwrap().len() == 1).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        match how {
+            "wake" => feed.wake(),
+            "set_transport" => feed.set_transport(Some(Arc::new(T(Arc::clone(&f))))),
+            _ => feed.reconnect(),
+        }
+        until("再拨接上了", || up(&feed)).await;
+        assert_eq!(
+            gaps_of(&f),
+            vec![1],
+            "{how}：卡着的那一拨当场丢下、马上再拨"
+        );
+    }
+}
+
+/// **连接自己的心跳**：流上 [`HEARTBEAT_IDLE`] 没来一个字节 ⇒ 问一句活（`ping`）；问出去 [`PING_WITHIN`] 还是一个字节都没来 ⇒
+/// 判这条死了、收掉重接（不等 SSH 保活：它要最后收包之后 20 秒才判死，判死之前网回来了，补发的包还要等 TCP 的退避）。
+/// 健康的空闲连接照答、不断；来着字节的连接（哪怕一行很长、还没读完）不问。
+#[tokio::test(start_paused = true)]
+async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
+    let f = Arc::new(Fake::default());
+    {
+        let mut a = f.attaches.lock().unwrap();
+        a.push_back(Peer::Mute { build: MINE.into() });
+        a.push_back(upp(MINE));
+    }
+    let (feed, seen) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    until("判死、重接上了", || {
+        f.attach_at.lock().unwrap().len() == 2 && up(&feed)
+    })
+    .await;
+    let gap = gaps_of(&f)[0];
+    assert_eq!(
+        gap,
+        (HEARTBEAT_IDLE + PING_WITHIN + RECONNECT_MIN).as_secs(),
+        "静了 {HEARTBEAT_IDLE:?} 问活、{PING_WITHIN:?} 没回话判死、隔下界重接"
+    );
+    assert!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Lost)),
+        "心跳判死同流断了：请宿主探 SSH"
+    );
+    // 第二条照答：空闲十分钟不断，问活照问。
+    tokio::time::sleep(Duration::from_secs(600)).await;
+    assert_eq!(
+        f.attach_at.lock().unwrap().len(),
+        2,
+        "健康的空闲连接不该被心跳判死"
+    );
+    let asked = f.pings.load(Ordering::SeqCst) as u64;
+    assert!(
+        asked >= 600 / (HEARTBEAT_IDLE.as_secs() + 1),
+        "空闲时每 {HEARTBEAT_IDLE:?} 问一次活：只问了 {asked} 次"
+    );
+}
+
+/// 宿主报「网回来了 / 网变了 / 回前台」时**连着**（[`Feed::wake`]）⇒ 当场问一句活，不等下一次心跳：
+/// 没回话 ⇒ [`PING_WITHIN`] 判死重接；回了 ⇒ 照用。
+#[tokio::test(start_paused = true)]
+async fn a_wake_while_up_asks_at_once() {
+    let f = Arc::new(Fake::default());
+    {
+        let mut a = f.attaches.lock().unwrap();
+        a.push_back(Peer::Mute { build: MINE.into() });
+        a.push_back(upp(MINE));
+    }
+    let (feed, _) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    feed.wake();
+    until("判死、重接上了", || {
+        f.attach_at.lock().unwrap().len() == 2 && up(&feed)
+    })
+    .await;
+    assert_eq!(
+        gaps_of(&f)[0],
+        (Duration::from_secs(1) + PING_WITHIN + RECONNECT_MIN).as_secs(),
+        "叫醒那一刻就问活"
+    );
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let before = f.pings.load(Ordering::SeqCst);
+    feed.wake();
+    until("健康的那一条答了这一问", || {
+        f.pings.load(Ordering::SeqCst) == before + 1
+    })
+    .await;
+    tokio::time::sleep(PING_WITHIN * 2).await;
+    assert_eq!(
+        f.attach_at.lock().unwrap().len(),
+        2,
+        "回了话 ⇒ 照用、不重接"
+    );
 }

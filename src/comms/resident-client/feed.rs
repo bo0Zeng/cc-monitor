@@ -12,13 +12,17 @@
 //! - 宿主交了一条 SSH（[`Feed::set_transport`]）⇒ 当场接；换了一条 ⇒ 旧流关掉、在新的上接；交 `None` ⇒ 不接、停在断开。
 //! - 每一轮开拨之前先做宿主那一步（[`Transport::before_round`]，桌面：把这一版的后端放到那台）。
 //! - 流断了、SSH 还在 ⇒ 交一个 [`Event::Lost`]（让宿主去探 SSH：多半是它先死了），再按退避接（[`crate::backoff`]，活过 30 s 才清零）。
+//! - 开链路那一步 [`DIAL_WITHIN`] 没回话（静默断网）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
+//!   换了一条 SSH）⇒ 丢下马上再拨。
+//! - 连着的时候判死靠流自己的心跳（[`HEARTBEAT_IDLE`] 没来字节就问活、[`PING_WITHIN`] 没回话就判死），不等 SSH 保活；
+//!   宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句活。
 //! - 走不通、要人动手的那几种不自己反复试，等 [`Feed::reconnect`] / [`Feed::wake`]（［重试］· 回前台 · 网络变了 · 机器页「起」）：
 //!   那台不是 Unix（常驻脱离不了）恒是；没装 · 起不了常驻 · 不是我们的后端只在装不了后端的宿主上是（装得了的下一轮装过再试）。
 //!
 //! 每次接上先交 [`Event::Attached`]（那台的 hello 原样一行 ＋ 这条连接的客户端），再交 [`State::Up`]（`epoch` 加一，之前在路上的问答作废）。
 
 use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
-use crate::backoff::{should_reset_backoff, Backoff};
+use crate::backoff::{should_reset_backoff, Backoff, DIAL_WITHIN, HEARTBEAT_IDLE, PING_WITHIN};
 use crate::client::{BackendHello, InboundClient};
 use crate::gate::Verdict;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
@@ -185,6 +189,10 @@ enum FailKind {
     Install,
     /// 那台不是 Unix：怎样都不会好。
     Unsupported,
+    /// 拨出去到 [`DIAL_WITHIN`] 都没回话：没够到那一台（静默断网）⇒ 再试会好，不涨退避（没有一次登录落到它身上）。
+    Unreached,
+    /// 拨着的时候宿主报了事（网回来了 · 回前台 · 换了一条 SSH · ［重试］）⇒ 丢下这一拨、马上整份重来。
+    Interrupted,
 }
 
 impl Fail {
@@ -213,6 +221,8 @@ pub struct Feed<T: Transport> {
     kick: tw::Sender<u64>,
     /// 当前这条流的收工信号（[`Feed::reconnect`] 拨它）。
     cut: Mutex<Option<Arc<Notify>>>,
+    /// 连着的时候被叫醒（[`Feed::wake`]）⇒ 当场问一句活（[`Feed::pump`] 收它）。
+    ask: Notify,
     /// 在看名单：`None` ＝ 宿主从没报过（不发 `stream-watch`，那台照旧全发）。
     watched: Mutex<Option<Watched>>,
     watch_tick: tw::Sender<u64>,
@@ -231,6 +241,7 @@ impl<T: Transport> Feed<T> {
             client: Mutex::new(None),
             kick: tw::channel(0).0,
             cut: Mutex::new(None),
+            ask: Notify::new(),
             watched: Mutex::new(None),
             watch_tick: tw::channel(0).0,
             tasks: Mutex::new(Vec::new()),
@@ -263,9 +274,12 @@ impl<T: Transport> Feed<T> {
         self.kick.send_modify(|k| *k += 1);
     }
 
-    /// 回到前台 · 网络变了 · ［重新连接］：通着不动；没通 ⇒ 不等退避马上再接（此刻正在拨 ⇒ 这一轮没成就不睡）。
+    /// 回到前台 · 网络变了 · 网回来了 · ［重新连接］：通着 ⇒ 当场问一句活（[`PING_WITHIN`] 没回话就判死重接，回了照用）；
+    /// 没通 ⇒ 不等退避马上再接（正卡在一拨开不出链路的拨号里 ⇒ 丢下它马上再拨；正在做别的那几步 ⇒ 这一轮没成就不睡）。
     pub fn wake(&self) {
-        if !matches!(*self.state.borrow(), State::Up { .. }) {
+        if matches!(*self.state.borrow(), State::Up { .. }) {
+            self.ask.notify_one();
+        } else {
             self.kick.send_modify(|k| *k += 1);
         }
     }
@@ -378,7 +392,7 @@ impl<T: Transport> Feed<T> {
             let cut = Arc::new(Notify::new());
             *lock(&self.cut) = Some(Arc::clone(&cut));
             let installs = t.installer().is_some();
-            let (saw_hello, needs_hand) = match self.connect(&t).await {
+            let (saw_hello, needs_hand, reached) = match self.connect(&t, &cut).await {
                 Ok(Connected {
                     client,
                     reader,
@@ -427,11 +441,21 @@ impl<T: Transport> Feed<T> {
                     })
                     .await;
                     (self.events)(Event::Lost).await;
-                    (true, false)
+                    (true, false, true)
+                }
+                Err(Fail {
+                    kind: FailKind::Interrupted,
+                    ..
+                }) => {
+                    // 宿主报的那件事就是「马上再来」：不说断了、不睡，从下界来。
+                    *lock(&self.cut) = None;
+                    kicks.borrow_and_update();
+                    backoff.after_wait(true, false, true);
+                    continue;
                 }
                 Err(Fail { problem, kind }) => {
                     let needs_hand = match kind {
-                        FailKind::Transient => false,
+                        FailKind::Transient | FailKind::Unreached | FailKind::Interrupted => false,
                         FailKind::Install => !installs,
                         FailKind::Unsupported => true,
                     };
@@ -441,7 +465,7 @@ impl<T: Transport> Feed<T> {
                         unsupported: kind == FailKind::Unsupported,
                     })
                     .await;
-                    (false, needs_hand)
+                    (false, needs_hand, kind != FailKind::Unreached)
                 }
             };
             *lock(&self.cut) = None;
@@ -468,17 +492,21 @@ impl<T: Transport> Feed<T> {
                     }
                 }
             };
-            backoff.after_wait(kicked, healthy);
+            backoff.after_wait(kicked, healthy, reached);
         }
     }
 
     /// 接一次：直接接 ⇒ 没接上就 ensure ⇒ 再接；装得了后端的宿主再过一道版本门（旧 ⇒ 换一次再接）。
-    async fn connect(&self, t: &Arc<T>) -> Result<Connected<T::Stream>, Fail> {
-        let mut attached = match self.attach_once(t).await {
+    /// 链路都开不出来（拨不通 · 没人回话 · 拨着被宿主叫停）⇒ 不 ensure（ensure 走的是同一条路）。
+    async fn connect(&self, t: &Arc<T>, cut: &Notify) -> Result<Connected<T::Stream>, Fail> {
+        let mut attached = match self.attach_on(t, cut).await {
             Ok(a) => a,
+            Err(e @ (AttachOr::Dial(_) | AttachOr::Unanswered | AttachOr::Interrupted)) => {
+                return Err(self.attach_problem(e))
+            }
             Err(_) => {
                 self.ensure(t, ENSURE).await?;
-                self.attach_after_ensure(t).await?
+                self.attach_after_ensure(t, cut).await?
             }
         };
         let mut replaced = false;
@@ -500,7 +528,7 @@ impl<T: Transport> Feed<T> {
                 drop(attached);
                 replaced = true;
                 self.ensure(t, ENSURE_REPLACE).await?;
-                attached = self.attach_after_ensure(t).await?;
+                attached = self.attach_after_ensure(t, cut).await?;
                 continue;
             }
             break verdict.older.then(|| self.old_notice(&theirs));
@@ -572,11 +600,22 @@ impl<T: Transport> Feed<T> {
     }
 
     /// 开一条 `--resident-attach`、握手（attach 行带这条流的出口声明：会话帧里不要本机才用得上的 `pid`）。
-    async fn attach_on(&self, t: &Arc<T>) -> Result<attach::Attached<T::Stream>, AttachOr> {
-        let stream = t
-            .stream(backend_command(ATTACH))
-            .await
-            .map_err(AttachOr::Dial)?;
+    /// 开链路那一步：到 [`DIAL_WITHIN`] 没回话 ⇒ 丢下（[`AttachOr::Unanswered`]）；拨着的时候宿主报了事 ⇒ 丢下（[`AttachOr::Interrupted`]）：
+    /// [`Feed::wake`] · [`Feed::reconnect`]（按的那一下在开拨之后才算：开拨之前按的照旧只省一次等）· [`Feed::set_transport`]（拨这一轮的收工信号 `cut`）。
+    async fn attach_on(
+        &self,
+        t: &Arc<T>,
+        cut: &Notify,
+    ) -> Result<attach::Attached<T::Stream>, AttachOr> {
+        let mut kicked = self.kick.subscribe();
+        let stream = tokio::select! {
+            got = tokio::time::timeout(DIAL_WITHIN, t.stream(backend_command(ATTACH))) => match got {
+                Ok(r) => r.map_err(AttachOr::Dial)?,
+                Err(_) => return Err(AttachOr::Unanswered),
+            },
+            () = cut.notified() => return Err(AttachOr::Interrupted),
+            _ = kicked.changed() => return Err(AttachOr::Interrupted),
+        };
         attach::handshake(
             stream,
             self.cfg.tz.as_deref(),
@@ -587,14 +626,14 @@ impl<T: Transport> Feed<T> {
         .map_err(AttachOr::Shake)
     }
 
-    async fn attach_once(&self, t: &Arc<T>) -> Result<attach::Attached<T::Stream>, Fail> {
-        self.attach_on(t).await.map_err(|e| self.attach_problem(e))
-    }
-
     /// ensure 之后：小中继回 `absent`（常驻还没绑上口）隔一会儿再试。
-    async fn attach_after_ensure(&self, t: &Arc<T>) -> Result<attach::Attached<T::Stream>, Fail> {
+    async fn attach_after_ensure(
+        &self,
+        t: &Arc<T>,
+        cut: &Notify,
+    ) -> Result<attach::Attached<T::Stream>, Fail> {
         for _ in 0..RELAY_TRIES {
-            match self.attach_on(t).await {
+            match self.attach_on(t, cut).await {
                 Ok(a) => return Ok(a),
                 Err(AttachOr::Shake(AttachFail::Refused(r))) if r == RELAY_ABSENT => {}
                 Err(e) => return Err(self.attach_problem(e)),
@@ -618,6 +657,20 @@ impl<T: Transport> Feed<T> {
         let m = &self.cfg.machine;
         let f = match e {
             AttachOr::Dial(p) => return Fail::new(p, FailKind::Transient),
+            AttachOr::Unanswered => {
+                return Fail::new(
+                    Problem::new(
+                        self.offline().text,
+                        format!(
+                            "{} · {}s",
+                            copy_text("reason.dial.timeout", &[]),
+                            DIAL_WITHIN.as_secs()
+                        ),
+                    ),
+                    FailKind::Unreached,
+                )
+            }
+            AttachOr::Interrupted => return Fail::new(self.offline(), FailKind::Interrupted),
             AttachOr::Shake(f) => f,
         };
         match f {
@@ -662,21 +715,71 @@ impl<T: Transport> Feed<T> {
         read_one_shot(&exec, &self.cfg.machine).map(|_| ())
     }
 
-    /// 读到头为止：应答交回请求方，别的帧原样交宿主。到头 · 读不动 · 被叫停（[`Feed::reconnect`]）⇒ 回。
+    /// 读到头为止：应答交回请求方，别的帧原样交宿主。到头 · 读不动 · 被叫停（[`Feed::reconnect`]）· 心跳判死 ⇒ 回。
+    ///
+    /// 心跳：[`HEARTBEAT_IDLE`] 没来一个字节 ⇒ 问一句活；问出去 [`PING_WITHIN`] 还是一个字节都没来 ⇒ 判死（被叫醒时当场问，同一个判法）。
+    /// 「来了字节」按读进来的字节算、不按整行（一行几 MiB 的记录在慢网上要读好一阵，读着就是活着）。
+    /// 那台不认 `ping` ⇒ 不问（判死照旧靠 SSH 保活）。读一行不许中途取消（[`read_capped_line`] 不是 cancellation-safe）⇒ 这一行的读在心跳那几支之间一直留着。
     async fn pump(
         &self,
         client: &Arc<InboundClient>,
-        mut reader: tokio::io::BufReader<tokio::io::ReadHalf<T::Stream>>,
+        reader: tokio::io::BufReader<tokio::io::ReadHalf<T::Stream>>,
         cut: &Notify,
     ) {
         let mut buf = Vec::new();
         // 这条流上有几行不是合法 UTF-8（按替换字符读的）：数着，按 2 的幂次说一句。
         let mut bad_utf8 = 0u64;
+        let beats = client.accepts(PING);
+        let heard = std::sync::atomic::AtomicU64::new(0);
+        let mut reader = Counted {
+            inner: reader,
+            n: &heard,
+        };
+        // 上一次看到的字节数 · 那一刻；问活发出去的那一刻（没在问 ⇒ `None`）。
+        let mut seen = (0u64, tokio::time::Instant::now());
+        let mut asked: Option<tokio::time::Instant> = None;
         loop {
-            let got = tokio::select! {
-                r = read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP) => r,
-                () = cut.notified() => return,
+            let got = {
+                let read = read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP);
+                tokio::pin!(read);
+                loop {
+                    let due = match asked {
+                        Some(at) => at + PING_WITHIN,
+                        None => seen.1 + HEARTBEAT_IDLE,
+                    };
+                    tokio::select! {
+                        r = &mut read => break r,
+                        () = cut.notified() => return,
+                        () = tokio::time::sleep_until(due), if beats => {
+                            let n = heard.load(std::sync::atomic::Ordering::Relaxed);
+                            if n != seen.0 {
+                                // 读着一行长的：来着字节就是活着。
+                                seen = (n, tokio::time::Instant::now());
+                                asked = None;
+                            } else if asked.is_some() {
+                                tracing::warn!(
+                                    "[{}] 常驻流问活 {}s 没回话 ⇒ 判这条死了、重接",
+                                    self.cfg.machine,
+                                    PING_WITHIN.as_secs()
+                                );
+                                return;
+                            } else {
+                                asked = Some(ask_alive(client));
+                            }
+                        }
+                        () = self.ask.notified(), if beats => {
+                            if asked.is_none() {
+                                asked = Some(ask_alive(client));
+                            }
+                        }
+                    }
+                }
             };
+            seen = (
+                heard.load(std::sync::atomic::Ordering::Relaxed),
+                tokio::time::Instant::now(),
+            );
+            asked = None;
             match got {
                 Ok(CappedLine::Line) => {
                     if std::str::from_utf8(&buf).is_err() {
@@ -735,9 +838,60 @@ impl<T: Transport> Feed<T> {
     }
 }
 
-/// 开一条 attach 没成在哪一层：链路没开出来 · 握手走不通。
+/// 问活那一条命令（零载荷，回 `ok`）。
+const PING: &str = "ping";
+
+/// 发一句问活、不等它（回话也是流上的一行，[`Feed::pump`] 按来没来字节判）。回发出去的那一刻。
+fn ask_alive(client: &Arc<InboundClient>) -> tokio::time::Instant {
+    let c = Arc::clone(client);
+    tokio::spawn(async move {
+        if let Err(e) = c.call(PING, serde_json::Value::Null, PING_WITHIN).await {
+            tracing::debug!("问活没答上（{e:?}）：判不判死看流上来没来字节");
+        }
+    });
+    tokio::time::Instant::now()
+}
+
+/// 读端套一层：数读进来（`consume` 掉）的字节，心跳按它判「来没来字节」。
+struct Counted<'a, R> {
+    inner: R,
+    n: &'a std::sync::atomic::AtomicU64,
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for Counted<'_, R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        out: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = out.filled().len();
+        let r = Pin::new(&mut self.inner).poll_read(cx, out);
+        let got = (out.filled().len() - before) as u64;
+        self.n.fetch_add(got, std::sync::atomic::Ordering::Relaxed);
+        r
+    }
+}
+
+impl<R: tokio::io::AsyncBufRead + Unpin> tokio::io::AsyncBufRead for Counted<'_, R> {
+    fn poll_fill_buf(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<&[u8]>> {
+        Pin::new(&mut self.get_mut().inner).poll_fill_buf(cx)
+    }
+
+    fn consume(mut self: Pin<&mut Self>, amt: usize) {
+        self.n
+            .fetch_add(amt as u64, std::sync::atomic::Ordering::Relaxed);
+        Pin::new(&mut self.inner).consume(amt);
+    }
+}
+
+/// 开一条 attach 没成在哪一层：链路没开出来（拨不通 · 到期限没人回话 · 拨着被宿主叫停）· 握手走不通。
 enum AttachOr {
     Dial(Problem),
+    Unanswered,
+    Interrupted,
     Shake(AttachFail),
 }
 

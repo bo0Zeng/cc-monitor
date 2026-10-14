@@ -49,7 +49,7 @@ impl PhoneLink {
         })?;
         let (up_w, up_r) = tokio::io::duplex(256 * 1024);
         let (mut down_w, mut down_r) = tokio::io::duplex(256 * 1024);
-        tokio::spawn(async move {
+        let dialing = tokio::spawn(async move {
             let stages = ssh_dial::StageSink::new(false);
             ssh_dial::uses::run_with(
                 &req,
@@ -61,7 +61,11 @@ impl PhoneLink {
             .await;
             let _ = down_w.shutdown().await;
         });
+        // 等 ack 那一段被丢下（循环到拨号期限放弃 · 宿主叫停）⇒ 这一拨的任务一并收掉：挂在 SYN 上的那一拨不留着占这个身份的拨号锁，
+        // 下一拨才拨得出去。拿到 ack 之后它就是这条链路本身，随两头的读写端收工。
+        let dialing = AbortOnDrop(Some(dialing.abort_handle()));
         let ack = read_ack(&mut down_r).await?;
+        dialing.keep();
         Ok((down_r, up_w)).and_then(|pair| {
             if ack_ok(&ack) {
                 Ok(pair)
@@ -69,6 +73,23 @@ impl PhoneLink {
                 Err(ack_problem(&ack))
             }
         })
+    }
+}
+
+/// 被丢下就 abort 那个任务（[`AbortOnDrop::keep`] 之后不管它）。
+struct AbortOnDrop(Option<tokio::task::AbortHandle>);
+
+impl AbortOnDrop {
+    fn keep(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        if let Some(h) = self.0.take() {
+            h.abort();
+        }
     }
 }
 
@@ -349,6 +370,44 @@ mod tests {
     use super::*;
 
     /// 一问一答的结局逐种落到 Kotlin 认的那一行；事前就拒的那几种照失败交、带码与一句话。
+    /// 开链路等 ack 那一段被丢下（循环到拨号期限放弃 · 宿主叫停）⇒ 那一拨的任务跟着收掉（不留一拨挂在 SYN 上占拨号锁）；
+    /// 拿到 ack 之后 `keep` ⇒ 不管它（它就是那条链路本身）。
+    #[test]
+    fn a_dial_dropped_before_its_ack_takes_its_task_down() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(dropped_dial_takes_its_task_down());
+    }
+
+    async fn dropped_dial_takes_its_task_down() {
+        let stuck = tokio::spawn(std::future::pending::<()>());
+        drop(AbortOnDrop(Some(stuck.abort_handle())));
+        // 单线程运行时里收掉一个任务只要调度器转几圈：数圈数，不看墙钟。
+        let mut stuck = stuck;
+        let ended = tokio::select! {
+            biased;
+            r = &mut stuck => Some(r),
+            () = async {
+                for _ in 0..64 {
+                    tokio::task::yield_now().await;
+                }
+            } => None,
+        };
+        assert!(
+            matches!(ended, Some(Err(ref e)) if e.is_cancelled()),
+            "丢下了，那一拨还挂着"
+        );
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let kept = tokio::spawn(async move {
+            let _ = rx.await;
+        });
+        AbortOnDrop(Some(kept.abort_handle())).keep();
+        tx.send(()).unwrap();
+        assert!(kept.await.is_ok(), "拿到 ack 之后不该被收掉");
+    }
+
     #[test]
     fn every_outcome_lands_as_the_line_kotlin_reads() {
         let j = |r: Result<Option<serde_json::Value>, CallError>| -> serde_json::Value {

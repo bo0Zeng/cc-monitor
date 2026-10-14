@@ -40,7 +40,7 @@ class CcMonitorApp : Application() {
 
     /**
      * 维护 [AppForeground]，并在 0→1（回到前台，含冷启动）时调 [SshConnectionManager.probeAndReconnectStale]，
-     * 再让每台断着的常驻流当场重接（[HostBackends.onForeground]；SSH 那层重连过的那几台由流自己跟上）。
+     * 再把每台的常驻流交给核心（[HostBackends.wake]：连着的当场问活、断着的当场重接；SSH 那层重连过的那几台由流自己跟上）。
      * 网络恢复由 [com.ccmonitor.mobile.service.SshKeepAliveService] 触发探测；纯回前台（同网络下服务端 idle 超时、
      * NAT 重绑静默掐断）只能靠这里，否则首次交互要吃满 15s openShell 看门狗。
      * 探测可以在主线程调：临界区很短，网络往返在 reconnectScope 里。
@@ -53,7 +53,7 @@ class CcMonitorApp : Application() {
             ForegroundTracker(
                 onEnterForeground = {
                     manager.probeAndReconnectStale()
-                    backends.onForeground()
+                    backends.wake()
                 },
                 setForeground = { AppForeground.isForeground = it },
             )

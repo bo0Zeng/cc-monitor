@@ -5,6 +5,7 @@
 #   1 正式包 arm64 经 ARM 转译：系统报这个包跑在 arm64-v8a 上 · 进程里有转译层 · 连上 · 新建会话答得回来。
 #   2 Doze / App Standby / am kill / force-stop：退后台 → 进那个状态 → 桌面那侧来几句 → 回前台；量「回前台 → 重连」「回前台 → 收齐」。
 #   3 网：模拟器控制台的限速 · 延迟 · 断数据（先量它们管不管用）＋ 模拟器里的 netem（慢）· iptables（静默断）；量「网回来 → 看到新话」。
+#     静默断网 15 秒 · 90 秒：网回来 CCM_DEVICE_REJOIN（默认 10）秒内要重连上，晚了就红（断 90 秒改前要 56 秒）。
 #   4 通知：后台时那台来一条需手动 ⇒ 出通知 · 点它进那一条；一轮完成的通知点进去也得是那一条。
 # CCM_DEVICE_BREAK=reconnect：回前台 / 网回来之前把台架 sshd（监听的与已连上的）停掉 ⇒ 2 · 3 必须红（看台架自己会红）。
 import json
@@ -28,6 +29,8 @@ BREAK = os.environ.get("CCM_DEVICE_BREAK", "")
 ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4").split()
 # 回前台 / 网回来之后多久还没收齐就判红（秒）。
 WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
+# 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
+REJOIN = float(os.environ.get("CCM_DEVICE_REJOIN", "10"))
 D = "d" + str(int(time.time()))[-5:]
 rows = []  # (项, 结果 绿/红/没核, 说明)
 nums = {}  # 量出来的数：名 → 秒（或说明）
@@ -492,6 +495,8 @@ def item3():
         notes.append(f"静默断网 {secs}s：重连 {re_at}s · 看到 {None if got is None else round(got, 1)}s")
         if got is None:
             reds.append(f"静默断网 {secs}s 之后 {WITHIN:.0f}s 内没补上")
+        elif re_at is None or re_at > REJOIN:
+            reds.append(f"静默断网 {secs}s：网回来 {re_at}s 才重连（要 ≤ {REJOIN:.0f}s）")
         say(f"  {notes[-1]}")
     if not adb("shell", "pidof", PKG).strip():
         reds.append("App 没了")
