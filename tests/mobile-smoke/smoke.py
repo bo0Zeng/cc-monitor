@@ -196,9 +196,9 @@ def tap_in_row(label, button):
 
 
 def open_import():
-    """钥匙页点「+」开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
+    """钥匙页点悬浮的「+」（按无障碍名找）开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
     for _ in range(3):
-        tap("+")
+        tap(t("mobIdentity.fab.aria"))
         if wait(t("mobIdentity.add.import"), 4):
             break
     tap(t("mobIdentity.add.import"))
@@ -208,7 +208,7 @@ def open_import():
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
-    tap("+")
+    tap(t("mobHosts.fab.aria"))
     time.sleep(1.5)
     tap(t("mobHostEdit.field.name")); typed(name)
     tap(t("mobHostEdit.field.host")); typed(host_alias())
@@ -320,14 +320,14 @@ def main():
 
     with Step("3-新建会话"):
         drawer(t("mobDrawer.item.newChat"))
-        tap(t("mobChat.input.placeholder")); typed(f"{T} new session")
+        tap(t("chat.input.placeholder")); typed(f"{T} new session")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} new session", 40):
             raise Step.Fail("答不回来")
 
     with Step("4-聊天屏"):
-        tap(t("mobChat.input.placeholder")); typed(f"{T} long")
+        tap(t("chat.input.placeholder")); typed(f"{T} long")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(t("cards.thinking.title"), 20):
@@ -450,7 +450,7 @@ def main():
         time.sleep(2)
         to_chat()
         hide_keyboard()
-        tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
+        tap(t("chat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} codex", 40):

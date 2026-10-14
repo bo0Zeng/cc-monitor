@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.session
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -13,7 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,8 +32,9 @@ import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
 import com.ccmonitor.mobile.core.data.db.CustomButtonType
 import com.ccmonitor.mobile.core.data.db.LongPressMode
+import com.ccmonitor.mobile.core.data.db.SWITCH_KEY_LABEL
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
-import com.ccmonitor.mobile.core.ui.theme.monoBody
+import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 
@@ -69,7 +71,7 @@ fun ExtraKeysRow(
     Row(
         modifier
             .fillMaxWidth()
-            .background(tokens.surfaceRaised)
+            .background(tokens.bg2)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
@@ -101,7 +103,7 @@ fun ExtraKeysRow(
         // 键排永不会进得去出不来。加载中的瞬时空排会闪一下逃生键，无害。
         if (activeGroup != ButtonGroups.FN && keys.none { CustomButtonType.fromDb(it.type) == CustomButtonType.SWITCH }) {
             key("__escape_to_fn__") {
-                KeyChip(label = "⇌", onTap = { dispatch(CustomButton(id = "__escape__", label = "⇌", command = ButtonGroups.FN, type = "switch")) })
+                KeyChip(label = SWITCH_KEY_LABEL, onTap = { dispatch(CustomButton(id = "__escape__", label = SWITCH_KEY_LABEL, command = ButtonGroups.FN, type = "switch")) })
             }
         }
     }
@@ -137,14 +139,15 @@ private fun KeyChip(
     Box(
         modifier =
             Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .background(if (active) tokens.accentSoft else tokens.surfaceHigh)
+                .clip(RoundedCornerShape(tokens.radius.m))
+                .background(if (active) tokens.selectedBg else tokens.card)
+                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(tokens.radius.m))
                 .pressGestures(longPressMode, thresholdMs, repeatMs, onTap, onLongPressDiscrete)
                 .defaultMinSize(minWidth = 40.dp, minHeight = 36.dp)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = monoBody)
+        KeyCapLabel(label, style = monoSmall)
     }
 }
 

@@ -16,6 +16,9 @@ import com.ccmonitor.mobile.core.copy.copyText
  * main 组工具条用 builtin 类型（show_tabs/command_palette/tmux_sessions，不发字节）。
  */
 
+/** 组切换键的名字（种子里三个 switch 键 · 键排的逃生键共用）；键帽上画成 arrows-left-right 图标，名字本身是数据、读屏念它。 */
+const val SWITCH_KEY_LABEL = "⇌"
+
 /** 一条种子按钮定义（[group] = [CustomButton.btnGroup]；[sortOrder] 按列表序生成）。 */
 internal data class SeedButton(
     val id: String,
@@ -34,7 +37,7 @@ internal val DEFAULT_SEED_BUTTONS: List<SeedButton> =
         SeedButton("ak-tb-tmux", copyText("mobDefaultButtons.label.tmux"), "builtin", "tmux_sessions", ButtonGroups.MAIN),
         // fn 组（近键盘默认排）：`⇌` 切到 alt 组；`Ctrl` 粘性（builtin）；Tab/Esc/方向键 escape；粘贴。
         // `⇌` 是 switch 类型，command=目标组，fn→alt→vim→fn 循环。
-        SeedButton("ak-fn-switch", "⇌", "switch", ButtonGroups.ALT, ButtonGroups.FN),
+        SeedButton("ak-fn-switch", SWITCH_KEY_LABEL, "switch", ButtonGroups.ALT, ButtonGroups.FN),
         SeedButton("ak-fn-ctrl", "Ctrl", "builtin", "toggle_ctrl", ButtonGroups.FN),
         SeedButton("ak-fn-tab", "Tab", "escape", "\\t", ButtonGroups.FN),
         SeedButton("ak-fn-esc", "Esc", "escape", "\\e", ButtonGroups.FN),
@@ -44,7 +47,7 @@ internal val DEFAULT_SEED_BUTTONS: List<SeedButton> =
         SeedButton("ak-fn-right", "→", "escape", "\\e[C", ButtonGroups.FN),
         SeedButton("ak-fn-paste", copyText("mobDefaultButtons.label.paste"), "builtin", "paste", ButtonGroups.FN),
         // alt 组（第二排）：`⇌` 切到 vim 组；`Alt` 粘性；Ctrl+End/Home/End/PgUp/PgDn/Esc escape（xterm 序列）。
-        SeedButton("ak-alt-switch", "⇌", "switch", ButtonGroups.VIM, ButtonGroups.ALT),
+        SeedButton("ak-alt-switch", SWITCH_KEY_LABEL, "switch", ButtonGroups.VIM, ButtonGroups.ALT),
         SeedButton("ak-alt-alt", "Alt", "builtin", "toggle_alt", ButtonGroups.ALT),
         SeedButton("ak-alt-ctrlend", "Ctrl+End", "escape", "\\e[1;5F", ButtonGroups.ALT),
         SeedButton("ak-alt-home", "Home", "escape", "\\e[H", ButtonGroups.ALT),
@@ -53,7 +56,7 @@ internal val DEFAULT_SEED_BUTTONS: List<SeedButton> =
         SeedButton("ak-alt-pgdn", "PgDn", "escape", "\\e[6~", ButtonGroups.ALT),
         SeedButton("ak-alt-esc", "Esc", "escape", "\\e", ButtonGroups.ALT),
         // vim 组：`⇌` 切回 fn 组（闭环）；其余 19 键 VIM_KEYS 对应（escape 类型，原字符透传；`↵`=`\n` 回车执行）
-        SeedButton("ak-vim-switch", "⇌", "switch", ButtonGroups.FN, ButtonGroups.VIM),
+        SeedButton("ak-vim-switch", SWITCH_KEY_LABEL, "switch", ButtonGroups.FN, ButtonGroups.VIM),
         SeedButton("ak-vim-esc", "Esc", "escape", "\\e", ButtonGroups.VIM),
         SeedButton("ak-vim-i", "i", "escape", "i", ButtonGroups.VIM),
         SeedButton("ak-vim-colon", ":", "escape", ":", ButtonGroups.VIM),

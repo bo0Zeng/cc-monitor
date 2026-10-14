@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -142,7 +143,7 @@ private fun TmuxManagerBody(
             onAttach = onAttach,
             onKillRequested = onKillRequested,
         )
-        HorizontalDivider(color = tokens.surfaceHigh, modifier = Modifier.padding(vertical = tokens.spacing.sm))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = tokens.spacing.sm))
         TmuxNewSessionRow(
             newName = newName,
             onNameChange = onNameChange,
@@ -204,8 +205,8 @@ private fun TmuxSessionList(
 ) {
     val tokens = LocalAppTokens.current
     when {
-        loading -> Text(copyText("mobTmux.list.loading"), color = tokens.textFaint)
-        sessions.isEmpty() -> Text(copyText("mobTmux.list.empty"), color = tokens.textFaint)
+        loading -> Text(copyText("mobTmux.list.loading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        sessions.isEmpty() -> Text(copyText("mobTmux.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else ->
             sessions.forEach { s ->
                 TmuxSessionRow(
@@ -238,13 +239,13 @@ private fun TmuxSessionRow(
                     if (s.attached) append(copyText("mobTmux.row.attached"))
                 }.removePrefix(" · "),
                 style = monoSmall,
-                color = tokens.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         TextButton(onClick = onAttach) { Text(copyText("mobTmux.row.attach")) }
-        TextButton(onClick = onKill) { Text(copyText("mobTmux.row.kill"), color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+        TextButton(onClick = onKill) { Text(copyText("mobTmux.row.kill"), color = LocalAppTokens.current.errorText) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }

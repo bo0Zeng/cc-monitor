@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
@@ -31,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
@@ -39,6 +42,9 @@ import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
+import com.ccmonitor.mobile.core.ui.icon.BackButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.copyPlainText
@@ -78,18 +84,16 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
             // 返回键与 `ButtonSettingsScreen` 同一写法。
-            TextButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp, top = 8.dp)) {
-                Text(copyText("mobKit.act.back"))
-            }
+            BackButton(onBack, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
             Text(
                 text = IDENTITY_SCREEN_TITLE,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             )
             if (identities.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     // 文案说差别、不说算法名（下面的选择框同理）。
-                    Text(copyText("mobIdentity.list.empty"), color = tokens.textFaint)
+                    Text(copyText("mobIdentity.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -119,9 +123,15 @@ private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
     var showGenerateEd25519 by remember { mutableStateOf(false) }
     FloatingActionButton(
         onClick = { showChooser = true },
-        modifier = Modifier.align(Alignment.BottomEnd).clearOfNotice().padding(24.dp),
+        modifier =
+            Modifier
+                .align(Alignment.BottomEnd)
+                .clearOfNotice()
+                .padding(24.dp)
+                .semantics { contentDescription = copyText("mobIdentity.fab.aria") },
+        shape = RoundedCornerShape(LocalAppTokens.current.radius.xl),
     ) {
-        Text("+", style = MaterialTheme.typography.titleLarge)
+        PhIcon(Ph.Plus, contentDescription = null)
     }
     if (showChooser) {
         IdentityChooserDialog(
@@ -190,7 +200,7 @@ private fun IdentityRow(
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) { Text(copyText("mobIdentity.delete.ok"), color = MaterialTheme.colorScheme.error) }
+                }) { Text(copyText("mobIdentity.delete.ok"), color = LocalAppTokens.current.errorText) }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
@@ -206,18 +216,18 @@ private fun IdentityRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(identity.label, style = MaterialTheme.typography.bodyMedium)
-            Text(identity.keyType, style = MaterialTheme.typography.labelSmall, color = tokens.textFaint)
+            Text(identity.keyType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
             text = identity.fingerprintSha256,
             style = monoSmall,
-            color = tokens.textFaint,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onCopy) { Text(copyText("mobIdentity.row.copyKey")) }
-            TextButton(onClick = { showDeleteConfirm = true }) { Text(copyText("mobIdentity.row.delete"), color = MaterialTheme.colorScheme.error) }
+            TextButton(onClick = { showDeleteConfirm = true }) { Text(copyText("mobIdentity.row.delete"), color = LocalAppTokens.current.errorText) }
         }
     }
 }

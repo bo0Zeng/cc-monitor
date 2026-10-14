@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.Problem
@@ -105,15 +106,15 @@ private fun LazyListScope.historySection(
                 Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 r.status?.let { StatusText(it) }
             }
-            r.agentTag?.let { Text(it, style = monoSmall) }
-            r.atText?.let { Text(it, style = monoSmall) }
+            r.agentTag?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
 
 @Composable
 private fun SectionHeader(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
+    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
 }
 
 @Composable
@@ -121,16 +122,17 @@ private fun StatusText(s: Toned) {
     Text(s.text, color = toneColor(s.tone), style = monoSmall)
 }
 
-/** 语气 ⇒ 颜色：闭集，按核心给的语气选，不按字。 */
+/**
+ * 语气 ⇒ 字色：闭集，按核心给的语气选，不按字。状态字回 `--text-2`，只有需手动那句琥珀、出错那句红字（稿 `外观对齐` 第 2 节）；
+ * 在跑不再用强调色当字色（那是状态点的事，状态点九种等核心给齐两轴再画）。
+ */
 @Composable
 private fun toneColor(t: Tone?): Color {
     val tokens = LocalAppTokens.current
     return when (t) {
         Tone.NEED, Tone.WARN -> tokens.warn
-        Tone.FAIL -> MaterialTheme.colorScheme.error
-        Tone.NOW -> tokens.success
-        Tone.BUSY -> MaterialTheme.colorScheme.primary
-        Tone.PLAIN, null -> tokens.textFaint
+        Tone.FAIL -> tokens.errorText
+        Tone.NOW, Tone.BUSY, Tone.PLAIN, null -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 
@@ -140,7 +142,7 @@ private fun ProblemBar(
     onRetry: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(OverviewTags.PROBLEM)) {
-        Text(p.text, color = MaterialTheme.colorScheme.error)
+        ErrorLine(p.text)
         Row {
             TextButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
             CopyDetailButton(p.text, p.detail)

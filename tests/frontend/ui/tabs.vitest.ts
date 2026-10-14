@@ -6620,7 +6620,7 @@ describe("ui3 · 组成块：落点反馈看块、窄栏悬停带组名", () => 
   });
 
   it("块的样子：`--group-fill` 是 3% 白；组是淡底 ＋ 细边 ＋ 圆角 8，组员不缩进、没有引导线", () => {
-    const tokens = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/tokens.css"), "utf8");
+    const tokens = readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8");
     expect(tokens).toMatch(/--group-fill:\s*#ffffff08;/);
     const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles.css"), "utf8");
     const rule = (sel: string): string => {

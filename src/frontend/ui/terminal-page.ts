@@ -616,7 +616,7 @@ export class TerminalPage {
     this.owner.textContent = row.clients > 0 && row.input === "shared" ? copyText("terminal.input.shared", { n: row.clients }) : row.clients === 0 ? copyText("terminal.input.nobody") : "";
     const no = row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
     this.box.disabled = no !== null || this.sending;
-    this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("terminal.input.placeholder");
+    this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("chat.input.placeholder");
     setDisabled(this.sendBtn, no);
     setBusy(this.sendBtn, this.sending ? copyText("terminal.input.send") : null);
     for (const b of this.keyBtns) setDisabled(b, no);

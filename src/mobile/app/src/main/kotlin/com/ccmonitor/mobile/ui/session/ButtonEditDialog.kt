@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,6 +27,9 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.terminal.escapeSequenceBytes
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import java.util.Locale
 import java.util.UUID
 
@@ -298,7 +302,11 @@ private fun ButtonEditForm(
         }
         // 长按配置；switch 的长按固定是开设置，这里不显示。
         if (s.type != "switch") LongPressEditor(s)
-        Text(buttonPreview(s.type, s.command, s.builtinAction, s.switchTarget), style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(buttonPreview(s.type, s.command, s.builtinAction, s.switchTarget), style = MaterialTheme.typography.bodySmall)
+            // 命令型末尾带回车：arrow-elbow-down-left（稿 `外观对齐` 第 13 节，原先是字符「⏎」）。
+            if (s.type == "command") PhIcon(Ph.ArrowElbowDownLeft, contentDescription = null, size = Touch.iconInline)
+        }
     }
 }
 
@@ -351,7 +359,7 @@ private fun KeyPresetPicker(s: ButtonEditState) {
     var open by remember { mutableStateOf(false) }
     val current = KEY_PRESETS.firstOrNull { it.type == s.type && it.command == s.command && it.ctrl == s.ctrl }
     Box {
-        TextButton(onClick = { open = true }) { Text(copyText("mobButtonEdit.key.pick", "key" to (current?.label ?: copyText("mobButtonEdit.key.custom"))) + " ▾") }
+        DropdownTrigger(copyText("mobButtonEdit.key.pick", "key" to (current?.label ?: copyText("mobButtonEdit.key.custom"))), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             KEY_PRESETS.forEach { k ->
                 DropdownMenuItem(text = { Text(k.label) }, onClick = {
@@ -420,7 +428,7 @@ internal fun buttonPreview(
             copyText("mobButtonEdit.preview.builtin", "action" to (BUILTIN_ACTIONS.firstOrNull { it.first == builtinAction }?.second ?: builtinAction))
         "keycode" -> copyText("mobButtonEdit.preview.keycode")
         "switch" -> copyText("mobButtonEdit.preview.switch", "group" to (BUTTON_GROUPS.firstOrNull { it.first == switchTarget }?.second ?: switchTarget))
-        else -> copyText("mobButtonEdit.preview.command", "command" to command) + "⏎"
+        else -> copyText("mobButtonEdit.preview.command", "command" to command)
     }
 
 /** 内建动作下拉选择。 */
@@ -432,7 +440,7 @@ internal fun BuiltinActionPicker(
     var open by remember { mutableStateOf(false) }
     val label = BUILTIN_ACTIONS.firstOrNull { it.first == selected }?.second ?: selected
     Box {
-        TextButton(onClick = { open = true }) { Text(copyText("mobButtonEdit.builtin.pick", "action" to label) + " ▾") }
+        DropdownTrigger(copyText("mobButtonEdit.builtin.pick", "action" to label), onClick = { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             BUILTIN_ACTIONS.forEach { (id, name) ->
                 DropdownMenuItem(text = { Text(name) }, onClick = {
@@ -441,5 +449,17 @@ internal fun BuiltinActionPicker(
                 })
             }
         }
+    }
+}
+
+/** 下拉的触发处：字 ＋ caret-down（行内 16 dp）。 */
+@Composable
+private fun DropdownTrigger(
+    text: String,
+    onClick: () -> Unit,
+) {
+    TextButton(onClick = onClick) {
+        Text(text)
+        PhIcon(Ph.CaretDown, contentDescription = null, size = Touch.iconInline)
     }
 }

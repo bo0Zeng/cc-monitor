@@ -341,7 +341,7 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
   it("遍历与词法真的扫到了东西", () => {
     const led = ledger();
     // 正控按名字点（不写份数）：令牌那份 CSS · 主窗口入口 · 消息流的 `.stream`（CSS 里有规则、代码里真挂）。
-    expect(led.cssFiles.some((f) => f.endsWith("styles/tokens.css")), "CSS 遍历里没有 `tokens.css` —— 遍历坏了").toBe(true);
+    expect(led.cssFiles.some((f) => f.endsWith("shared/theme/tokens.css")), "CSS 遍历里没有 `tokens.css` —— 遍历坏了").toBe(true);
     expect(led.codeFiles.some((f) => f.endsWith("frontend/ui/main.ts")), "代码遍历里没有 `main.ts` —— 遍历坏了").toBe(true);
     expect(led.cssClasses.has("stream"), "CSS 类名里没有 `stream` —— 选择器抽取坏了").toBe(true);
     expect(led.literals.has("stream"), "代码侧 token 里没有 `stream` —— 词法器错位了").toBe(true);
@@ -420,7 +420,7 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
       bare,
       "这些 `z-index` 没走刻度：\n  " +
         bare.join("\n  ") +
-        "\n★ 十档刻度定义在 `src/frontend/ui/styles/tokens.css`（`--z-base` … `--z-drag`），\n" +
+        "\n★ 十档刻度定义在 `src/shared/theme/tokens.css`（`--z-base` … `--z-drag`），\n" +
         "  **别机械按数值映射** —— 要求逐条判语义。\n" +
         "★ 这一格同时钉在 `.stylelintrc.json` 的 `declaration-property-value-allowed-list` 上，\n" +
         "  所以 `npm run lint:css` 也看得见它（那条是 advisory，本条才是会红的那个）。",
@@ -945,7 +945,7 @@ describe("S25 ⑥ 容器查询取代写死宽度（件 5）", () => {
 
   it("⑥c 量不到时的回退值 == tokens.css 的 --stream-max-width", () => {
     const fb = /\}\)\((\d+)\);\s*$/.exec(colWInit(est))?.[1];
-    const tok = /--stream-max-width:\s*(\d+)px/.exec(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/tokens.css"), "utf8"))?.[1];
+    const tok = /--stream-max-width:\s*(\d+)px/.exec(readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8"))?.[1];
     expect(fb, "切不出 COL_W 的回退值").toBeTruthy();
     expect(tok, "tokens.css 里切不出 --stream-max-width").toBeTruthy();
     expect(Number(fb), "COL_W 的回退值与 --stream-max-width 漂了").toBe(Number(tok));

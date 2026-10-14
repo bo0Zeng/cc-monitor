@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.drawer
 
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.ui.overview.HistoryItem
 
 /** 抽屉里有什么：项、顺序、文案都住这里，[ChatDrawer] 只负责画。没路可走的项不列。 */
@@ -34,25 +35,23 @@ sealed interface DrawerAction {
 }
 
 /**
- * 抽屉上半的一项。
+ * 抽屉上半的一项：行首一个 Phosphor 图标 ＋ 字（稿 `外观对齐` 第 3 节；「新对话」不再用强调色的字）。
  *
- * @property accent 强调色（只有「新对话」）。
  * @property onLongPress 长按做什么。目前恒为 null：选账号要先接 `accounts-list`。
  */
 data class DrawerEntry(
     val item: DrawerItem,
-    val glyph: String,
+    val icon: Ph,
     val label: String,
-    val accent: Boolean = false,
     val onLongPress: DrawerAction? = null,
 )
 
 fun drawerEntries(): List<DrawerEntry> =
     listOf(
-        DrawerEntry(DrawerItem.NewConversation, "⊕", copyText("mobDrawer.item.newChat"), accent = true),
-        DrawerEntry(DrawerItem.Conversations, "💬", copyText("mobDrawer.item.chats")),
-        DrawerEntry(DrawerItem.Files, "📁", copyText("mobDrawer.item.files")),
-        DrawerEntry(DrawerItem.Terminal, "⌨", copyText("mobDrawer.item.terminal")),
+        DrawerEntry(DrawerItem.NewConversation, Ph.PlusCircle, copyText("mobDrawer.item.newChat")),
+        DrawerEntry(DrawerItem.Conversations, Ph.Chats, copyText("mobDrawer.item.chats")),
+        DrawerEntry(DrawerItem.Files, Ph.FolderSimple, copyText("mobDrawer.item.files")),
+        DrawerEntry(DrawerItem.Terminal, Ph.TerminalWindow, copyText("mobDrawer.item.terminal")),
     )
 
 fun DrawerItem.action(): DrawerAction =
@@ -98,14 +97,10 @@ val RECENT_HEADER: String get() = copyText("mobDrawer.recent.title")
 
 fun serverRowLabel(name: String?): String = if (name.isNullOrBlank()) copyText("mobDrawer.server.bare") else copyText("mobDrawer.server.named", "name" to name)
 
-const val SETTINGS_GLYPH = "⚙"
-
-/** ⚙ 念给读屏软件听的字。 */
+/** 底行设置那颗（gear-six）念给读屏软件听的字。 */
 val SETTINGS_DESCRIPTION: String get() = copyText("mobDrawer.settings.aria")
 
-/** 聊天屏左上那颗。 */
-const val DRAWER_OPEN_GLYPH = "☰"
-
+/** 聊天屏左上那颗（list）念给读屏软件听的字。 */
 val DRAWER_OPEN_DESCRIPTION: String get() = copyText("mobDrawer.open.aria")
 
 /** 抽屉里一件事的去处：[route]；[replacesChat] = 换掉当前这条对话，而不是往返回栈上叠一屏。 */

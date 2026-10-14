@@ -135,7 +135,7 @@ fun CommandPalette(
                         Text(
                             group,
                             style = monoSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                         )
                         items.forEach { a ->

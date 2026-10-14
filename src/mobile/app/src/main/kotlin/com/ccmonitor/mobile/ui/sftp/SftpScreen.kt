@@ -52,10 +52,16 @@ import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
+import com.ccmonitor.mobile.core.ui.icon.IconTextButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -147,7 +153,8 @@ private fun SftpContent(
             if (ui is SftpUi.Ready) {
                 ExtendedFloatingActionButton(
                     text = { Text(copyText("mobSftp.fab.upload")) },
-                    icon = {},
+                    icon = { PhIcon(Ph.UploadSimple, contentDescription = null) },
+                    shape = RoundedCornerShape(LocalAppTokens.current.radius.xl),
                     onClick = { uploadLauncher.launch("*/*") },
                     modifier = Modifier.clearOfNotice(),
                 )
@@ -160,7 +167,7 @@ private fun SftpContent(
                 is SftpUi.Error ->
                     Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(copyText("mobSftp.load.failed"), color = MaterialTheme.colorScheme.error)
+                            ErrorLine(copyText("mobSftp.load.failed"))
                             TextButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
                             CopyDetailButton(copyText("mobSftp.load.failed"), s.message)
                         }
@@ -299,8 +306,8 @@ private fun SftpReadyContent(
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onShowTabs) { Text("▤ tab") } // ▤ 是允许的符号，不是 emoji
-            TextButton(onClick = { onDialog(SftpDialog.Mkdir) }) { Text("＋ " + copyText("mobSftp.bar.mkdir")) }
+            PhIconButton(Ph.Tabs, copyText("mobTabs.open.aria"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            IconTextButton(Ph.FolderPlus, copyText("mobSftp.bar.mkdir"), onClick = { onDialog(SftpDialog.Mkdir) })
             TextButton(onClick = { vm.toggleSort() }) { Text(if (sortBySize) copyText("mobSftp.bar.sortSize") else copyText("mobSftp.bar.sortName")) }
             // SFTP 路径归一成 shell cd 路径（Windows /C:/x→C:/x；POSIX 原样）。
             TextButton(onClick = { onOpenTerminal(dialectFor(hostOs).sftpCwdToShell(path)) }) { Text(copyText("mobSftp.bar.terminal")) }
@@ -352,23 +359,30 @@ private fun SftpPathHeader(
 ) {
     val tokens = LocalAppTokens.current
     Row(
-        Modifier.fillMaxWidth().background(tokens.surfaceRaised).padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+        // 路径条：骨架（`--bg-2`）、等宽（同文件窗口）。
+        Modifier.fillMaxWidth().background(tokens.bg2).padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = { onNavigate(parentOf(path)) }) { Text("⬆") }
+        PhIconButton(Ph.ArrowUp, copyText("mobSftp.bar.up"), onClick = { onNavigate(parentOf(path)) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             buildCrumbs(path).forEachIndexed { i, (label, full) ->
-                if (i > 0) Text("/", style = monoSmall, color = tokens.textFaint)
+                if (i > 0) Text("/", style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
                     label,
                     style = monoSmall,
-                    color = if (full == path) MaterialTheme.colorScheme.onSurface else tokens.textFaint,
+                    color = if (full == path) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clickable { onNavigate(full) }.padding(horizontal = 2.dp, vertical = 4.dp),
                 )
             }
         }
-        TextButton(onClick = onToggleBookmark) { Text(if (bookmarked != null) "★" else "☆") }
+        // 收藏后图标用 `--accent`；Phosphor 的 fill 不另引，靠颜色分。
+        PhIconButton(
+            Ph.Star,
+            copyText("mobSftp.bar.bookmark"),
+            onClick = onToggleBookmark,
+            tint = if (bookmarked != null) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -487,7 +501,7 @@ private fun DeleteEntryDialog(
                 onConfirm()
                 onDialog(null)
             }) {
-                Text(copyText("mobSftp.delete.ok"), color = MaterialTheme.colorScheme.error)
+                Text(copyText("mobSftp.delete.ok"), color = LocalAppTokens.current.errorText)
             }
         },
         dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
@@ -556,7 +570,7 @@ private fun ConfirmSaveDialog(
                 style = monoSmall,
             )
         },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobSftp.overwrite.ok"), color = MaterialTheme.colorScheme.error) } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobSftp.overwrite.ok"), color = LocalAppTokens.current.errorText) } },
         // 返回编辑（保留改动）。
         dismissButton = { TextButton(onClick = { onDialog(SftpDialog.Edit(d.name, d.path, d.text)) }) { Text(copyText("mobSftp.overwrite.back")) } },
     )
@@ -584,7 +598,7 @@ private fun ActionMenuDialog(
                     TextButton(onClick = onDownload) { Text(copyText("mobSftp.menu.download")) }
                 }
                 TextButton(onClick = onRename) { Text(copyText("mobSftp.menu.rename")) }
-                TextButton(onClick = onDelete) { Text(copyText("mobSftp.menu.delete"), color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onDelete) { Text(copyText("mobSftp.menu.delete"), color = LocalAppTokens.current.errorText) }
             }
         },
         confirmButton = {},
@@ -630,7 +644,7 @@ private fun BookmarkChip(
         maxLines = 1,
         modifier =
             Modifier
-                .background(tokens.surfaceRaised, RoundedCornerShape(50))
+                .background(tokens.card, RoundedCornerShape(tokens.radius.m))
                 .combinedClickable(onClick = onJump, onLongClick = onDelete) // 点跳转，长按删
                 .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
     )
@@ -652,9 +666,9 @@ private fun SftpRow(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (e.isDir) "📁" else "📄")
-        Text(e.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
-        if (!e.isDir) Text(SizeFormat.text(e.size), style = monoSmall, color = tokens.textFaint)
+        PhIcon(if (e.isDir) Ph.FolderSimple else Ph.File, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(e.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, style = monoBody)
+        if (!e.isDir) Text(SizeFormat.text(e.size), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

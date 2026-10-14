@@ -6,12 +6,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -25,10 +29,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -115,7 +126,7 @@ fun ChatTranscript(
 
         state.failedWhy?.let {
             // 会话那一层的失败：核心那一句原样（起不来 · 读不出记录）。
-            Text(text = it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
+            ErrorLine(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         }
     }
 }
@@ -152,35 +163,70 @@ private fun ChatInputRow(
 ) {
     // `rememberSaveable`：转屏会重建 Activity，`remember` 的草稿会丢光。
     var draft by rememberSaveable { mutableStateOf("") }
-    Surface(tonalElevation = 2.dp) {
+    val tokens = LocalAppTokens.current
+    // 输入区是骨架（`--bg-2`），输入框底 `--field-bg`、边 `--border-medium`、聚焦 `--accent`；➤ / ■ 是这一屏唯一的主按钮。
+    Surface(color = tokens.bg2) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(tokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
-                placeholder = { Text(copyText("mobChat.input.placeholder")) },
+                placeholder = { Text(copyText("chat.input.placeholder"), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 singleLine = false,
                 maxLines = INPUT_MAX_LINES,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                shape = RoundedCornerShape(tokens.radius.l),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = tokens.fieldBg,
+                        unfocusedContainerColor = tokens.fieldBg,
+                        focusedBorderColor = tokens.accent,
+                        cursorColor = tokens.accent,
+                    ),
             )
             if (running && draft.isBlank()) {
-                TextButton(onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text(copyText("mobChat.input.stop")) }
+                SendButton(Ph.Stop, copyText("mobChat.input.stop"), enabled = true, onClick = onStop, modifier = Modifier.testTag(ChatTestTags.STOP))
             } else {
-                TextButton(
+                SendButton(
+                    Ph.PaperPlaneRight,
+                    copyText("mobChat.input.send"),
+                    enabled = draft.isNotBlank(),
                     onClick = {
                         onSend(draft)
                         draft = ""
                     },
-                    enabled = draft.isNotBlank(),
                     modifier = Modifier.testTag(ChatTestTags.SEND),
-                ) {
-                    Text(copyText("mobChat.input.send"))
-                }
+                )
             }
         }
+    }
+}
+
+/** 发送 / 停止：主按钮（`--accent-strong` 底 ＋ 白图标），命中区 48 dp；没字时灰掉（0.45）。无障碍名照文案表。 */
+@Composable
+private fun SendButton(
+    icon: Ph,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FilledIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.size(Touch.target).semantics { contentDescription = label },
+        shape = RoundedCornerShape(LocalAppTokens.current.radius.m),
+        colors =
+            IconButtonDefaults.filledIconButtonColors(
+                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = LocalAppTokens.current.disabledAlpha),
+                disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = LocalAppTokens.current.disabledAlpha),
+            ),
+    ) {
+        PhIcon(icon, contentDescription = null)
     }
 }
 

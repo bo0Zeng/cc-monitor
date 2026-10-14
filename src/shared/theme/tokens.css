@@ -1,6 +1,10 @@
 /**
  * 设计令牌：组件里只许用这里的名字，不写色值、字号、圆角、阴影的字面量。
  *
+ * 桌面与手机共用这一份（唯一的正本）：网页三个窗口直接链它；手机 `core-ui` 构建时从它生成 Kotlin 常量
+ * （`src/mobile/core-ui/build.gradle.kts` 的 `genThemeTokens`，读第一块 `:root`；读不懂的值 ⇒ 手机构建失败），
+ * 哪个槽取哪个令牌只写在手机的映射里（判据 `src/mobile/app/…/ThemeLedgerTest.kt` 两向对账）。
+ *
  * 文件窗口（egui）读同一份：开窗那一刻按 `file-window.ts::FILE_WINDOW_THEME_TOKENS` 取 `:root` 的计算值交过去，
  * 它照着映射，自己不另写数。名单上的令牌值只许写字面量（`#…` · `rgb()` · `px` · 阴影三段），不许 `var()` / `color-mix()`。
  *

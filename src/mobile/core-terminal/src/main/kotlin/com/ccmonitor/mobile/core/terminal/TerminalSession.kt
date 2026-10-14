@@ -160,7 +160,7 @@ class TerminalSession(
     private val onResizeRemote: (cols: Int, rows: Int) -> Unit,
     rows: Int = 24,
     cols: Int = 80,
-    palette: TerminalPalette = OneHalfDarkPalette,
+    palette: TerminalPalette,
     // 远端 shell 通道（core-ssh ShellChannel，以 [Closeable] 传入，core-terminal 不依赖 core-ssh）。
     // 由这个会话持有，[close] 时后台关闭。只关 input 不够：输入流 close 只是本地 EOF，
     // 不关通道、不通知远端，会留下孤儿远端 shell 与僵尸 tmux attach client。

@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 
 /**
@@ -42,7 +43,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onBack) { Text(copyText("mobKit.act.back")) }
+                BackButton(onBack)
                 Text(copyText("rsLib.settings.windowTitle"), style = MaterialTheme.typography.titleLarge)
             }
             // 终端那一节：每一行都从 [settingsEntries] 来，本文件不写死任何一条。
