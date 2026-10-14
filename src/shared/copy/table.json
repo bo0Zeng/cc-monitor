@@ -31460,6 +31460,12 @@
       "zh": "需手动 · 时区不明 · 分时段上限暂按 UTC 算",
       "args": []
     },
+    "beRotation.hint.tzNoZone": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动 · 时区不明 · 分时段暂按 UTC 算 · 本设备时区也不明",
+      "args": []
+    },
     "beRotation.hint.old": {
       "kind": "body",
       "role": "说明",

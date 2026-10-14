@@ -298,7 +298,25 @@ fn t11_the_viewer_time_zone_is_named_and_daylight_saving_follows_the_instant() {
         serde_json::Value::Null,
     ] {
         assert_eq!(Tz::of(&v), Tz::default(), "{v}");
+        // 按 UTC 算，但说不出看的那一台是哪个时区（不冒充成 `UTC`）。
+        assert_eq!(Tz::of(&v).offset_secs(0), 0, "{v}");
+        assert_eq!(Tz::of(&v).viewer_zone(), None, "{v}");
+        assert_eq!(
+            Tz::of(&v).iana_name().as_deref(),
+            Some("UTC"),
+            "转给别台时照算的那一个明说"
+        );
     }
+    assert_eq!(
+        Tz::named("UTC").expect("UTC").viewer_zone().as_deref(),
+        Some("UTC")
+    );
+    assert_eq!(sh().viewer_zone().as_deref(), Some("Asia/Shanghai"));
+    assert_eq!(
+        Tz::named(TZ_HERE).expect("local").viewer_zone(),
+        crate::platform::local_tz::iana_name(),
+        "「这一台」⇒ 这台系统的时区名"
+    );
     assert_eq!(sh().offset_secs(0), 8 * 3_600);
     // 「看的人就在这一台」：按这台系统的钟（与这台的偏移读法同一处）；只等于它自己。
     let here = Tz::named(TZ_HERE).expect("认得 local");
