@@ -17,7 +17,6 @@ import com.ccmonitor.mobile.core.claude.link.SessionPermission
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
-import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick

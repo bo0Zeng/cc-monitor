@@ -287,6 +287,96 @@ def switch_model(name):
         raise Step.Fail(f"没看到那台写好的那一句「{said}」")
 
 
+def long_press(text):
+    n = ui.find(text)
+    if n is None:
+        raise Step.Fail(f"屏上找不到「{text}」")
+    x, y = ui.center(n)
+    adb("shell", "input", "swipe", str(x), str(y), str(x), str(y), "900")
+    time.sleep(1.5)
+
+
+def tap_last(text):
+    """同一个字有几处（对话框标题与确认键同字）时点最后一处：确认键在最下。"""
+    hits = [n for n in ui.nodes() if text == n.get("text")]
+    if not hits:
+        raise Step.Fail(f"屏上找不到「{text}」")
+    adb("shell", "input", "tap", *map(str, ui.center(hits[-1])))
+
+
+def files_page():
+    """文件页那几步：列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 上传 · 下载；读写都问那台后端（台架盘上看结果）。"""
+    d = f"files{T}"
+    # 上几趟留下的先清掉（台架家里的），这一趟那一份要在第一屏里。
+    sh(f"rm -rf ~/work/files* && mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
+    drawer(t("mobDrawer.item.files"))
+    if not wait("work", 30):
+        raise Step.Fail("家目录没列出来")
+    tap("work")
+    if not wait(d, 15):
+        raise Step.Fail("进不了 work")
+    tap(d)
+    if not wait("a.txt", 15):
+        raise Step.Fail(f"进不了 {d}")
+    long_press("a.txt")
+    tap(t("rsFilewinWorkspace.label.preview"))
+    if not wait(f"hello {T}", 15):
+        raise Step.Fail("预览没出那一份的字")
+    shot("11-预览")
+    tap(t("mobKit.act.close")); time.sleep(1)
+    mk = t("rsFilewinWriteops.label.mkdir")
+    tap("＋ " + mk); time.sleep(1)
+    typed(f"new{T}"); hide_keyboard()
+    tap_last(mk)
+    if not wait(f"new{T}", 15) or "new" + T not in sh(f"ls ~/work/{d}"):
+        raise Step.Fail("新建目录没落到那台")
+    long_press(f"new{T}")
+    rn = t("rsFilewinWriteops.label.rename")
+    tap(rn); time.sleep(1)
+    for _ in range(12):
+        adb("shell", "input", "keyevent", "67")
+    typed(f"ren{T}"); hide_keyboard()
+    tap_last(rn)
+    if not wait(f"ren{T}", 15) or "ren" + T not in sh(f"ls ~/work/{d}"):
+        raise Step.Fail("改名没落到那台")
+    long_press(f"ren{T}")
+    de = t("rsFilewinWriteops.label.delete")
+    tap(de); time.sleep(1)
+    tap_last(de)
+    time.sleep(3)
+    if "ren" + T in sh(f"ls ~/work/{d}"):
+        raise Step.Fail("删除没落到那台")
+    # 下载：点文件 ⇒ 存进 App 自己的外部文件目录。
+    tap("a.txt")
+    if not wait(t("mobFiles.download.done", path="")[:3], 20):
+        raise Step.Fail("下载没说做成")
+    got = adb("shell", "cat", f"/sdcard/Android/data/{PKG}/files/a.txt")
+    if f"hello {T}" not in got:
+        raise Step.Fail(f"下载下来的不是那一份：{got[:80]!r}")
+    # 上传：系统选文件那一屏里点台架推进去的那一份。
+    up = f"up{T}.txt"
+    open(os.path.join(OUT, up), "w").write(f"up {T}\n")
+    adb("push", os.path.join(OUT, up), f"/sdcard/Download/{up}")
+    adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", f"file:///sdcard/Download/{up}")
+    time.sleep(2)
+    # 下载那条提示在的时候按钮让开（可能整个被盖住），等它收起再点。
+    if not wait(t("rsFilewinUpload.label.upload"), 15):
+        raise Step.Fail("找不到上传按钮")
+    tap(t("rsFilewinUpload.label.upload"))
+    if not wait(up, 15):
+        tap("Downloads", must=False) or tap("Download", must=False)
+        if not wait(up, 10):
+            raise Step.Fail("选文件那一屏里找不到推进去的那一份")
+    tap(up)
+    end = time.time() + 30
+    while time.time() < end and f"up {T}" not in sh(f"cat ~/work/{d}/{up} 2>/dev/null; true"):
+        time.sleep(1)
+    if time.time() >= end:
+        raise Step.Fail("上传没落到那台")
+    if not wait(up, 10):
+        raise Step.Fail("上传完列表里没有它")
+
+
 def main():
     # 深浅：CCM_SMOKE_NIGHT=yes|no 时先把模拟器切到那一套（截图两套各走一趟用）；不设不动。
     if os.environ.get("CCM_SMOKE_NIGHT") in ("yes", "no"):
@@ -294,6 +384,28 @@ def main():
     adb("shell", "pm", "clear", PKG)
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
+
+    only = os.environ.get("CCM_SMOKE_ONLY")
+    if only == "files":
+        # 只走文件页（台架里已有 smokebox、钥匙已导；调样子 · 截图用）。
+        with Step("1-加机器连上"):
+            launch(fresh=True)
+            tap(t("mobIdentity.page.title")); time.sleep(1)
+            open_import()
+            tap(t("mobIdentity.import.name")); typed("smoke")
+            tap(t("mobIdentity.import.pem")); time.sleep(0.5)
+            for line in key:
+                typed(line)
+                adb("shell", "input", "keyevent", "66")
+            tap(t("mobIdentity.import.ok"))
+            if not wait("SHA256:", 10):
+                raise Step.Fail("整把钥匙没导进来")
+            tap(t("mobKit.act.back")); time.sleep(1)
+            add_host("smokebox")
+            drawer(t("mobDrawer.item.chats"))
+        with Step("11-文件页"):
+            files_page()
+        return report()
 
     with Step("1-加机器连上"):
         launch(fresh=True)
@@ -550,6 +662,14 @@ def main():
         if not wait(f"替身收到：{T} codex", 40):
             raise Step.Fail("Codex 答不回来")
 
+    with Step("11-文件页"):
+        launch()
+        files_page()
+
+    report()
+
+
+def report():
     print()
     print("| 步 | 结果 | 用时 | 截图 |")
     print("|---|---|---|---|")

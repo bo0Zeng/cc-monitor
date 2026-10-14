@@ -258,7 +258,7 @@ private fun HostListActions(
 internal fun hostDeleteWarning(label: String): String =
     copyText("mobHosts.delete.body", "label" to label)
 
-@OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按删除，与 SftpScreen 的「点跳转，长按删」一致
+@OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按删除，与 FilesScreen 的「点跳转，长按删」一致
 @Composable
 private fun HostRow(
     host: Host,

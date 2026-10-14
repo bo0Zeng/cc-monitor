@@ -1,0 +1,97 @@
+package com.ccmonitor.mobile.ui.files
+
+import com.ccmonitor.mobile.core.claude.link.CoreFailure
+import com.ccmonitor.mobile.core.claude.link.RemotePath
+import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.ui.chat.FakeCoreLink
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
+
+/**
+ * 文件屏的读写全问那台后端（`files-*`）：手机不判能不能做、不写出错那句，失败原样带回那台写好的那一句与复制详情。
+ * 上传一块一块进暂存区再提交（不覆盖）；下载按块读回；删目录一段一段删到没剩。
+ */
+class FileOpsTest {
+    private val dir = RemotePath.of("/w")
+
+    @Test
+    fun uploadStagesEveryChunkThenCommitsWithTheWholeDigestAndNeverOverwrites() =
+        runTest {
+            val link = FakeCoreLink().apply { answer = { cmd, _ -> if (cmd == "files-stage-chunk") Reply.Ok(mapOf("bytes" to 1.0)) else Reply.Ok(mapOf("path" to "/w/up.bin", "bytes" to 1.0)) } }
+            val body = ByteArray(FileOps.CHUNK * 2 + 5) { (it % 251).toByte() }
+            val seen = mutableListOf<Long>()
+            FileOps(link) { "box" }.upload(dir, "up.bin", { body.inputStream() }) { got, _ -> seen += got }.getOrThrow()
+            val chunks = link.calls("files-stage-chunk")
+            assertEquals(listOf(0L, 1L, 2L), chunks.map { it!!["seq"] })
+            assertEquals("同一份上传同一个键", 1, chunks.map { it!!["key"] }.toSet().size)
+            val commit = link.calls("files-commit-upload").single()!!
+            assertEquals(false, commit["overwrite"])
+            assertEquals(3L, commit["chunks"])
+            assertEquals(body.size.toLong(), commit["bytes"])
+            assertEquals(chunks.first()!!["key"], commit["key"])
+            val sha = MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
+            assertEquals(mapOf("sha256" to sha), commit["expect"])
+            assertEquals(body.size.toLong(), seen.last())
+        }
+
+    @Test
+    fun aRefusedCommitCarriesTheBackendsSentenceAndDetail() =
+        runTest {
+            val link =
+                FakeCoreLink().apply {
+                    answer = { cmd, _ ->
+                        if (cmd == "files-commit-upload") Reply.Failed(CoreFailure("io_failed", "那台写的那一句", "详情")) else Reply.Ok(mapOf("bytes" to 1.0))
+                    }
+                }
+            val e = FileOps(link) { "box" }.upload(dir, "up.bin", { byteArrayOf(1).inputStream() }) { _, _ -> }.exceptionOrNull() as FileOps.Failed
+            assertEquals("那台写的那一句", e.problem.text)
+            assertEquals("详情", e.problem.detail)
+        }
+
+    @Test
+    fun downloadReadsChunksUntilTheEnd() =
+        runTest {
+            val link =
+                FakeCoreLink().apply {
+                    answer = { _, a ->
+                        val off = a!!["offset"] as Long
+                        Reply.Ok(mapOf("path" to "/w/f", "offset" to off.toDouble(), "size" to 3.0, "eof" to (off > 0), "content" to mapOf("b16" to if (off == 0L) "0102" else "03")))
+                    }
+                }
+            val out = ByteArrayOutputStream()
+            assertEquals(3L, FileOps(link) { "box" }.download(RemotePath.of("/w/f"), out) { _, _ -> }.getOrThrow())
+            assertArrayEquals(byteArrayOf(1, 2, 3), out.toByteArray())
+            assertEquals(listOf(0L, 2L), link.calls("files-read-chunk").map { it!!["offset"] })
+        }
+
+    @Test
+    fun deletingAFolderGoesSliceBySliceUntilNothingRemains() =
+        runTest {
+            var left = 2.0
+            val link = FakeCoreLink().apply { answer = { _, _ -> Reply.Ok(mapOf("path" to "/w/d", "removed" to 1.0, "remaining" to --left)) } }
+            FileOps(link) { "box" }.delete(dir, RemotePath.of("/w/d").name, isDir = true).getOrThrow()
+            assertEquals(2, link.calls("files-delete").size)
+            assertTrue(link.calls("files-delete").all { it!!["recursive"] == true })
+        }
+
+    @Test
+    fun aBrokenLinkSaysTheSentenceTheOtherScreensSay() =
+        runTest {
+            val e = FileOps(FakeCoreLink()) { "box" }.list(dir).exceptionOrNull() as FileOps.Failed
+            assertEquals(copyText("front.body.offline", "machine" to "box"), e.problem.text)
+        }
+
+    @Test
+    fun theModeIsTypedAsOctalDigits() {
+        assertEquals(420L, FileOps.modeOf("644").getOrThrow())
+        assertEquals(copyText("rsFilewinWriteops.mode.empty"), FileOps.modeOf(" ").exceptionOrNull()?.message)
+        assertEquals(copyText("rsFilewinWriteops.mode.notOctal"), FileOps.modeOf("69").exceptionOrNull()?.message)
+        assertEquals(copyText("rsFilewinWriteops.mode.outOfRange"), FileOps.modeOf("17777").exceptionOrNull()?.message)
+    }
+}

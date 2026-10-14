@@ -429,7 +429,7 @@ class SshConnectionManager(
         closeInBackground(doomed) // 物理关闭在锁外后台做
     }
 
-    /** 强制断开（用户断连、SFTP 收尾、disconnectAll）：无视持有者，清集并真断开。 */
+    /** 强制断开（用户断连、disconnectAll）：无视持有者，清集并真断开。 */
     fun disconnect(id: String) {
         val doomed =
             synchronized(lockFor(id)) {
@@ -499,7 +499,7 @@ class SshConnectionManager(
 
     /**
      * 用存好的配置重连单个会话（尽力而为，按 id 去重防风暴）。
-     * 重建的是新连接：状态、SFTP 与新操作恢复，已有交互终端的旧流不会自动重挂。
+     * 重建的是新连接：状态与新操作恢复，已有交互终端的旧流不会自动重挂。
      */
     private fun reconnect(st: SessionState) {
         // 配置与代号必须在同一把锁内一起读：disconnect 落在两次读之间时，会拿断开前的配置配断开后的代号，

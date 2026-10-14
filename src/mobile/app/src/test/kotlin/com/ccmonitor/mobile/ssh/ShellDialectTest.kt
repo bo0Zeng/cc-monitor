@@ -48,36 +48,6 @@ class ShellDialectTest {
         assertSame(PowerShellDialect, dialectFor("windows"))
     }
 
-    // SFTP 路径 → shell cd 路径归一。
-    @Test
-    fun posixSftpCwdIdentity() {
-        // POSIX：SFTP 路径即 shell 路径，恒原样。
-        assertEquals("/home/me/proj", PosixDialect.sftpCwdToShell("/home/me/proj"))
-        assertEquals("/", PosixDialect.sftpCwdToShell("/"))
-        assertEquals(".", PosixDialect.sftpCwdToShell("."))
-        assertEquals("/C:/x", PosixDialect.sftpCwdToShell("/C:/x")) // POSIX 不动盘符形
-    }
-
-    @Test
-    fun windowsSftpCwdStripsDriveLeadingSlash() {
-        // Windows：SFTP 返 /C:/Users/... → 去盘符前导 / → C:/Users/...（cd 'C:/...' 对）。
-        assertEquals("C:/Users/me", PowerShellDialect.sftpCwdToShell("/C:/Users/me"))
-        assertEquals("D:/data", PowerShellDialect.sftpCwdToShell("/D:/data"))
-        assertEquals("c:/lower", PowerShellDialect.sftpCwdToShell("/c:/lower")) // 小写盘符
-        // 盘符根（面包屑上溯 parentOf 可达，无尾斜杠）→ 去前导 /：cd 'C:' 合法，cd '/C:' 不合法。
-        assertEquals("C:", PowerShellDialect.sftpCwdToShell("/C:"))
-        assertEquals("C:/", PowerShellDialect.sftpCwdToShell("/C:/"))
-    }
-
-    @Test
-    fun windowsSftpCwdKeepsNonDrivePath() {
-        // 非 /盘符:/ 前缀保持原样（不误伤）。
-        assertEquals("/foo/bar", PowerShellDialect.sftpCwdToShell("/foo/bar")) // 无盘符
-        assertEquals("C:/x", PowerShellDialect.sftpCwdToShell("C:/x")) // 已无前导 /
-        assertEquals(".", PowerShellDialect.sftpCwdToShell("."))
-        assertEquals("/CD:/x", PowerShellDialect.sftpCwdToShell("/CD:/x")) // 双字母非盘符 → 不动
-    }
-
     @Test
     fun isWindowsHelper() {
         assertTrue(isWindows("windows"))

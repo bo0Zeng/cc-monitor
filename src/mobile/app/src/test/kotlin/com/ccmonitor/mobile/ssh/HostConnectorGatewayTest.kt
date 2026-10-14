@@ -199,7 +199,7 @@ class HostConnectorGatewayTest {
      * 扫描器自检：上面全部判据的判别力都押在 [codeOnly] 上。
      *
      * 两个坑：
-     * ① 正则版剥注释会被形如「引号-星-斜杠-星-引号」的字符串字面骗到（`SftpScreen.kt` 上传用的
+     * ① 正则版剥注释会被形如「引号-星-斜杠-星-引号」的字符串字面骗到（`FilesScreen.kt` 上传用的
      *    MIME 通配串就是这个形状），把随后的代码当注释吃掉。
      * ② Kotlin 的块注释是嵌套的：KDoc 里写一个 `/` 紧跟 ``（想表达某个目录通配）会真的开一层嵌套注释，
      *    编译器报 `Unclosed comment`。
@@ -277,7 +277,7 @@ class HostConnectorGatewayTest {
 
         private const val APP_MODULE = "app/src/main/kotlin/com/ccmonitor/mobile/di/AppModule.kt"
         private const val SESSION_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionViewModel.kt"
-        private const val SFTP_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/sftp/SftpViewModel.kt"
+        private const val FILES_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/files/FilesViewModel.kt"
         private const val HOST_LINK = "app/src/main/kotlin/com/ccmonitor/mobile/ui/common/HostLink.kt"
         private const val KEEP_ALIVE = "app/src/main/kotlin/com/ccmonitor/mobile/service/SshKeepAliveService.kt"
         private const val HOST_BACKENDS = "app/src/main/kotlin/com/ccmonitor/mobile/link/HostBackends.kt"
@@ -297,10 +297,10 @@ class HostConnectorGatewayTest {
          *
          * | 函数 | 谁在用 |
          * |---|---|
-         * | `connect` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
+         * | `connect` | `SessionViewModel` · `FilesViewModel` · `HostLink` |
          * | `retain` | `AppModule`（`ChatController` 的 `ConnectionHolder` 端口）+ 三个屏 |
          * | `release` | `AppModule`（同上）+ 两个 VM + `HostLink` |
-         * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
+         * | `connection` | `SessionViewModel` · `FilesViewModel` · `HostLink` |
          * | `disconnectAll` | `SshKeepAliveService.onTaskRemoved` |
          * | `linkOf` · `probeStale` | `HostBackends`（常驻流跟着 SSH 的连接重接：把它的拨号请求交给核心 · 流断了先叫 SSH 探活） |
          *
@@ -309,10 +309,10 @@ class HostConnectorGatewayTest {
          */
         private val PINNED_GATEWAY_CALLERS =
             linkedMapOf(
-                "connect" to setOf(SESSION_VM, SFTP_VM, HOST_LINK),
-                "retain" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
-                "release" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
-                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK),
+                "connect" to setOf(SESSION_VM, FILES_VM, HOST_LINK),
+                "retain" to setOf(APP_MODULE, SESSION_VM, FILES_VM, HOST_LINK),
+                "release" to setOf(APP_MODULE, SESSION_VM, FILES_VM, HOST_LINK),
+                "connection" to setOf(SESSION_VM, FILES_VM, HOST_LINK),
                 "disconnectAll" to setOf(KEEP_ALIVE),
                 "linkOf" to setOf(HOST_BACKENDS),
                 "probeStale" to setOf(HOST_BACKENDS),
@@ -330,7 +330,6 @@ class HostConnectorGatewayTest {
          * | `app/…/CcMonitorApp.kt` | `probeAndReconnectStale` 接线（前台跟踪 ⇒ 后台重连，不是建/断） |
          * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 / `probeAndReconnectStale` |
          * | `app/…/ui/session/SessionViewModel.kt` | 通道工厂 + `sessions` |
-         * | `app/…/ui/sftp/SftpScreen.kt` | 只有一行 import，供 KDoc 链接用；代码里不碰 |
          *
          * 没有一条在拿「连接的生死与句柄」。
          */
@@ -340,7 +339,6 @@ class HostConnectorGatewayTest {
                 KEEP_ALIVE,
                 GATEWAY,
                 SESSION_VM,
-                "app/src/main/kotlin/com/ccmonitor/mobile/ui/sftp/SftpScreen.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/CommandChannel.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/di/SshModule.kt",
@@ -354,11 +352,9 @@ class HostConnectorGatewayTest {
          * | `SshConnectionManager.kt` | 它自己，没有接收者 |
          * | `di/SshModule.kt` | `single { SshConnectionManager(get()) }`，构造而非调用 |
          * | `CommandChannel.kt` | 两支扩展函数，接收者隐式（`connection(id)` 裸调），按 `manager.` 扫天然看不见。注意：这是个真盲区，谁都可以写一支 `fun SshConnectionManager.xxx()` 在里面裸调 `connect(…)` |
-         * | `ui/sftp/SftpScreen.kt` | 只有一行 import 供 KDoc 链接用 |
          */
         private val MANAGER_REACHABLE_WITHOUT_RECEIVER =
             setOf(
-                "app/src/main/kotlin/com/ccmonitor/mobile/ui/sftp/SftpScreen.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/CommandChannel.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt",
                 "core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/di/SshModule.kt",

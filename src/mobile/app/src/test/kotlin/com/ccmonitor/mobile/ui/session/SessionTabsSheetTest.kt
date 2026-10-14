@@ -32,10 +32,10 @@ class SessionTabsSheetTest {
         assertEquals("devbox", tabBaseLabel(sess(TabTarget.Terminal()), "devbox"))
     }
 
-    // SFTP tab 无 Terminal payload → 纯主机名（类型符 📁 由渲染处另加）。
+    // 文件 tab 无 Terminal payload → 纯主机名（类型符 📁 由渲染处另加）。
     @Test
-    fun sftpShowsHostLabelOnly() {
-        assertEquals("devbox", tabBaseLabel(sess(TabTarget.Sftp), "devbox"))
+    fun filesShowsHostLabelOnly() {
+        assertEquals("devbox", tabBaseLabel(sess(TabTarget.Files), "devbox"))
     }
 
     // 编号规则：首个不编号，第 2/3 次出现补 ·2/·3；不同名互不影响；顺序保持。

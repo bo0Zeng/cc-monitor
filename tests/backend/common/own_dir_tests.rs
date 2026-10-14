@@ -187,4 +187,21 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
         "dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE,",
     )
     .expect("本后端交给拨号核心的建目录权限位不是 own_dir 那一个");
+    // 手机那一份（`mobcore`）装的也是部署那一种，权限位与本后端交的同值（它够不着本 crate，常量自写一份，这里钉相等）。
+    let phone = crate::guard_support::production_code(
+        &std::fs::read_to_string(
+            crate::guard_support::src_root().join("../mobile/core-rs/rust/lib.rs"),
+        )
+        .expect("读手机核心"),
+    );
+    guard_core::find_pinned(
+        &phone,
+        &format!(
+            "const DEPLOY_DIR_MODE: u32 = 0o{:o};",
+            crate::common::own_dir::PRIVATE_DIR_MODE
+        ),
+    )
+    .expect("手机核心交给拨号核心的建目录权限位与本后端的不同值");
+    guard_core::find_pinned(&phone, "files: WriteRules::Deploy {")
+        .expect("手机核心装的写规矩不是部署那一种");
 }

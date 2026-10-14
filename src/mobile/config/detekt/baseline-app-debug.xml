@@ -9,6 +9,5 @@
     <ID>LongMethod:ClaudeSampleData.kt:fun sampleRenderUnits: List&lt;RenderUnit&gt;</ID>
     <ID>LongMethod:HostScreens.kt:@Composable fun HostEditorScreen</ID>
     <ID>RedundantSuspendModifier:HostViewModel.kt:HostViewModel$suspend</ID>
-    <ID>UnsafeCallOnNullableType:SftpScreen.kt:context.contentResolver.openInputStream(uri)!!</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -33,11 +33,11 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import org.koin.compose.koinInject
 
 /**
- * 会话 tab 面板（[ModalBottomSheet]），由终端 / SFTP 工具条左端的按钮唤出；工具条在 `imePadding()` 内，键盘弹起也够得着。
+ * 会话 tab 面板（[ModalBottomSheet]），由终端 / 文件屏工具条左端的按钮唤出；工具条在 `imePadding()` 内，键盘弹起也够得着。
  * 列出全部已开 tab（类型符 ▷/📁、可读标签、当前高亮、× 关闭）；点击经 [onSwitchTab] 切换
  * （导航在 AppNavHost：launchSingleTop + popUpTo，点当前 tab 直接短路）。
  * 底部「＋」二选：[onNewTerminalTab] 为当前主机强制新开终端 tab（forceNew=true）；
- * [onNewSftpTab] 打开或聚焦当前主机的 SFTP tab（forceNew=false，每主机至多一个）。
+ * [onNewFilesTab] 打开或聚焦当前主机的文件 tab（forceNew=false，每主机至多一个）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +45,7 @@ fun SessionTabsSheet(
     currentKey: String?,
     onSwitchTab: (key: String) -> Unit,
     onNewTerminalTab: () -> Unit,
-    onNewSftpTab: () -> Unit,
+    onNewFilesTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val tabManager = koinInject<SessionTabManager>()
@@ -54,12 +54,12 @@ fun SessionTabsSheet(
     val hosts by hostRepo.observeAll().collectAsState(initial = emptyList())
     // 可读标签兜底链，加上 forceNew 同名副本的渲染期编号（·2/·3）；元数据与去重键不掺渲染修饰。
     // 编号对含类型符的完整显示文本做：forceNew 的副本类型符相同，仍会编号；
-    // 同主机一个终端加一个 SFTP，类型符已能区分，不编号。
+    // 同主机一个终端加一个文件 tab，类型符已能区分，不编号。
     val labels =
         remember(sessions, hosts) {
             numberDuplicates(
                 sessions.map { s ->
-                    val symbol = if (s.target is SessionTabManager.TabTarget.Sftp) "📁" else "▷"
+                    val symbol = if (s.target is SessionTabManager.TabTarget.Files) "📁" else "▷"
                     "$symbol ${tabBaseLabel(s, hosts.firstOrNull { it.id == s.hostId }?.label ?: s.hostId)}"
                 },
             )
@@ -92,7 +92,7 @@ fun SessionTabsSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(onClick = onNewTerminalTab) { Text("＋ " + copyText("mobTabs.sheet.newTerminal")) }
-                TextButton(onClick = onNewSftpTab) { Text("＋ " + copyText("mobTabs.sheet.newFiles")) }
+                TextButton(onClick = onNewFilesTab) { Text("＋ " + copyText("mobTabs.sheet.newFiles")) }
             }
         }
     }
