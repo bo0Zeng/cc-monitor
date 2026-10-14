@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,6 +41,7 @@ import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
 import com.ccmonitor.mobile.ui.overview.ConversationsRoute
+import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
@@ -101,6 +103,7 @@ private fun AppNavGraph(
                 onNavigate = { route -> nav.navigate(route) },
             )
         }
+        rotationRoutes(nav, tabManager)
         composable(Screen.ButtonSettings.route) {
             ButtonSettingsScreen(hostId = null, onBack = { nav.popBackStack() })
         }
@@ -345,6 +348,59 @@ private fun NavGraphBuilder.launchRoute(nav: NavHostController) {
     }
 }
 
+/**
+ * 轮换屏两个进口：聊天屏「⋯」→ 轮换（那条会话）· 设置 → 机器与账号 → 轮换（当前服务器 ＝ 上次那台，新会话用的那份）。
+ * 提示里的［看代码］· 旧格式那几份开那台的文件屏。
+ */
+private fun NavGraphBuilder.rotationRoutes(
+    nav: NavHostController,
+    tabManager: SessionTabManager,
+) {
+    composable(
+        Screen.Rotation.route,
+        arguments =
+            listOf(
+                navArgument(Screen.Rotation.ARG_SID) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+    ) { entry ->
+        val hostId = entry.arguments?.getString("hostId").orEmpty()
+        RotationRoute(nav, tabManager, hostId, entry.arguments?.getString(Screen.Rotation.ARG_SID))
+    }
+    composable(Screen.RotationHere.route) {
+        val settings = koinInject<SettingsRepository>()
+        val hosts = koinInject<HostRepository>()
+        val here by produceState<String?>(null) { value = settings.getLastHost()?.let { id -> hosts.get(id) }?.id ?: "" }
+        when (val id = here) {
+            null -> Unit
+            "" -> LaunchedEffect(Unit) { nav.navigate(Screen.Hosts.route) { popUpTo(Screen.RotationHere.route) { inclusive = true } } }
+            else -> RotationRoute(nav, tabManager, id, null)
+        }
+    }
+}
+
+@Composable
+private fun RotationRoute(
+    nav: NavHostController,
+    tabManager: SessionTabManager,
+    hostId: String,
+    sid: String?,
+) {
+    val hosts = koinInject<HostRepository>()
+    val machine by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId) }.getOrNull()?.label ?: hostId }
+    val name = machine ?: return
+    RotationScreen(
+        hostId = hostId,
+        sid = sid,
+        machine = name,
+        onBack = { nav.popBackStack() },
+        onOpenFile = { nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Sftp)}") },
+    )
+}
+
 /** 对话总览与单个对话两条路由。 */
 private fun NavGraphBuilder.chatRoutes(
     nav: NavHostController,
@@ -390,6 +446,7 @@ private fun NavGraphBuilder.chatRoutes(
             isNew = isNew,
             draftCwd = entry.arguments?.getString(Screen.Chat.ARG_CWD),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
+            onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
         )
     }
 }

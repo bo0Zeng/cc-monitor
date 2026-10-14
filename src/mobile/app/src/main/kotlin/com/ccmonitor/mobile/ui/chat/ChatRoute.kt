@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -18,8 +20,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -66,6 +71,8 @@ fun ChatRoute(
     isNew: Boolean = false,
     /** 新建会话从哪进来的那个目录（在一条会话里点「新建会话」⇒ 那条的目录）；没有 ⇒ `null`（那台最近的第一个 · `~`）。 */
     draftCwd: String? = null,
+    /** 顶栏「⋯」→ 轮换：这条会话（sid）的轮换屏。 */
+    onOpenRotation: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
@@ -99,6 +106,7 @@ fun ChatRoute(
                 ChatTopBar(
                     title = if (state.drafting) copyText("newSession.title.plain") else product,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
+                    onRotation = state.sid?.takeIf { !state.drafting }?.let { s -> { onOpenRotation(s) } },
                 )
             },
         ) { inner ->
@@ -188,9 +196,7 @@ private fun rememberProductName(
 }
 
 /**
- * 聊天屏的顶栏：左上 ☰ 拉出抽屉。
- *
- * 右上 ⋯ 不画：它只放对这条对话本身做的事，那几项还没有。
+ * 聊天屏的顶栏：左上 ☰ 拉出抽屉；右上 ⋯ 只放对这条对话本身做的事（今天一项：轮换）。还没起好的新建会话（[onRotation] 为 `null`）不画 ⋯。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -198,7 +204,9 @@ private fun ChatTopBar(
     /** 这台那一家写给人看的名字（那台给的）。不写主机名，界面上不出现「连接」那套说法。 */
     title: String,
     onOpenDrawer: () -> Unit,
+    onRotation: (() -> Unit)?,
 ) {
+    var menu by remember { mutableStateOf(false) }
     TopAppBar(
         navigationIcon = {
             IconButton(
@@ -209,8 +217,24 @@ private fun ChatTopBar(
             }
         },
         title = { Text(title) },
+        actions = {
+            if (onRotation != null) {
+                IconButton(
+                    onClick = { menu = true },
+                    modifier = Modifier.semantics { contentDescription = copyText("history.row.more") }.testTag(ChatTestTags.MORE),
+                ) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleLarge) }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(copyText("mobChat.more.rotation")) }, onClick = {
+                        menu = false
+                        onRotation()
+                    })
+                }
+            }
+        },
     )
 }
+
+private const val MORE_GLYPH = "⋯"
 
 /**
  * 连上主机就起前台保活服务。

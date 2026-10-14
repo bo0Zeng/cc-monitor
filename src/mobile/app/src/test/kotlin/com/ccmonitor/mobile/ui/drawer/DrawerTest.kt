@@ -140,7 +140,8 @@ class DrawerTest {
     @Test
     fun theEntrancesTheDrawerReplacedAreGone() {
         val route = codeOnly(source("ChatRoute.kt"))
-        assertFalse("聊天屏 ⋮ 菜单没有项了 ⇒ 不画", route.contains("DropdownMenu"))
+        assertEquals("聊天屏 ⋯ 菜单只放对这条对话本身做的事（今天只有轮换）", 1, Regex("DropdownMenuItem\\(").findAll(route).count())
+        assertTrue(route.contains("copyText(\"mobChat.more.rotation\")"))
         for (gone in listOf("onOpenConversations", "onNewConversation", "onSwitchHost", "onOpenSettings")) {
             assertFalse("聊天屏不再有 $gone 这个入口", route.contains(gone))
         }

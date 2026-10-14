@@ -67,6 +67,9 @@ object ChatTestTags {
     /** 「它想做的一件事被挡住了」（下行 `system/permission_denied`）。 */
     const val BLOCKED = "chat-blocked"
 
+    /** 顶栏右上的 ⋯（对这条对话本身做的事）。 */
+    const val MORE = "chat-more"
+
     /** 顶栏左上的 ☰，拉出抽屉。 */
     const val DRAWER_OPEN = "chat-drawer-open"
 }
