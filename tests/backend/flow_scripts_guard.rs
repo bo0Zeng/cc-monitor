@@ -203,6 +203,158 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// 只放 `tools` 那几样（本机找得到的才放）的一个 PATH 目录。
+    fn tool_bin(d: &Path, tools: &[&str]) -> PathBuf {
+        let bin = d.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        for tool in tools {
+            let found = Command::new("bash")
+                .args(["-c", &format!("type -P {tool}")])
+                .output()
+                .unwrap();
+            let at = String::from_utf8_lossy(&found.stdout).trim().to_string();
+            if at.starts_with('/') {
+                std::os::unix::fs::symlink(&at, bin.join(tool)).unwrap();
+            }
+        }
+        bin
+    }
+
+    fn heavy_with_path(d: &Path, bin: &Path, args: &[&str]) -> Output {
+        Command::new(bin.join("bash"))
+            .arg(root().join("tests/scripts/heavy.sh"))
+            .args(args)
+            .current_dir(d)
+            .env("PATH", bin)
+            .env("GATE_STATE_DIR", d.join("state"))
+            .env_remove("HEAVY_HELD")
+            .env_remove("TMUX")
+            .env_remove("TMUX_PANE")
+            .output()
+            .unwrap()
+    }
+
+    /// 本进程的 nice 值再降 10（封顶 19）：判据自己可能就跑在一份降过的重活里。
+    fn lowered_nice() -> String {
+        let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
+        let after = &stat[stat.rfind(')').unwrap() + 2..];
+        let mine: i32 = after.split(' ').nth(16).unwrap().parse().unwrap();
+        (mine + 10).min(19).to_string()
+    }
+
+    /// 重活让着人（busy1）：命令跑在 `nice 10`、有 `ionice` 时 io 类是 idle；没有 `nice` / `ionice` 照跑、并说一声。
+    /// 读的是命令自己那个进程的 nice 值（`/proc/self/stat` 第 19 格）与 `ionice -p` 的回话，不看脚本怎么写的。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn heavy_runs_the_command_at_low_cpu_and_io_priority() {
+        const BASE: &[&str] = &[
+            "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "false", "cut",
+        ];
+        let d = scratch("heavy-nice");
+        let bin = tool_bin(&d, &[BASE, &["nice", "ionice"]].concat());
+        assert!(
+            bin.join("nice").exists() && bin.join("ionice").exists(),
+            "本机没有 nice / ionice：本条测不了它要测的那一形"
+        );
+        let probe = "cut -d' ' -f19 /proc/self/stat; ionice -p $$";
+        let out = heavy_with_path(&d, &bin, &["bash", "-c", probe]);
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{said}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let mut lines = said.lines();
+        let want = lowered_nice();
+        assert_eq!(
+            lines.next(),
+            Some(want.as_str()),
+            "重活的 nice 值没降 10：{said}"
+        );
+        assert_eq!(lines.next(), Some("idle"), "重活的 io 类不是 idle：{said}");
+        let _ = std::fs::remove_dir_all(&d);
+
+        let d = scratch("heavy-nonice");
+        let bin = tool_bin(&d, BASE);
+        let out = heavy_with_path(&d, &bin, &["echo", "still-ran"]);
+        let note = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "still-ran",
+            "{note}"
+        );
+        for t in ["nice", "ionice"] {
+            assert!(note.contains(t), "没有 {t} 却没说一声：{note}");
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 有 `systemd-run --user` 的那条路：重活进专用切片 `ccheavy.slice`、切片的 CPU 权重压低（权重要设在切片上：
+    /// scope 自己的权重只跟同一个父组里的兄弟比；切片名不带「-」，带了会被拆成嵌套切片、权重落在内层又白设）；
+    /// 内存封顶照旧；命令照样跑在 nice 10。替身 `systemd-run` / `systemctl` 记下 argv、照跑 `--` 后面那段。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn heavy_puts_the_scope_into_a_low_weight_slice() {
+        let d = scratch("heavy-slice");
+        let bin = tool_bin(
+            &d,
+            &[
+                "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "false",
+                "cut", "nice", "ionice",
+            ],
+        );
+        let log = d.join("calls.log");
+        let fake = |name: &str, body: &str| {
+            let p = bin.join(name);
+            std::fs::write(
+                &p,
+                format!(
+                    "#!/bin/bash\necho \"{name} $*\" >> '{}'\n{body}\n",
+                    log.display()
+                ),
+            )
+            .unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        fake("systemctl", "exit 0");
+        fake(
+            "systemd-run",
+            "while [ $# -gt 0 ] && [ \"$1\" != -- ]; do shift; done; shift; exec \"$@\"",
+        );
+        let out = heavy_with_path(&d, &bin, &["bash", "-c", "cut -d' ' -f19 /proc/self/stat"]);
+        let calls = std::fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            out.status.success(),
+            "{calls}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            lowered_nice(),
+            "{calls}"
+        );
+        let run = calls
+            .lines()
+            .find(|l| l.starts_with("systemd-run "))
+            .unwrap_or_else(|| panic!("没经 systemd-run：{calls}"));
+        for want in [
+            "--user",
+            "--scope",
+            "--slice=ccheavy.slice",
+            "MemoryHigh=",
+            "MemoryMax=",
+        ] {
+            assert!(run.contains(want), "systemd-run 那一发少了 {want}：{run}");
+        }
+        assert!(
+            calls.lines().any(|l| l
+                .starts_with("systemctl --user set-property --runtime ccheavy.slice CPUWeight=")),
+            "切片的 CPU 权重没设：{calls}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     fn git(dir: &Path, args: &[&str]) {
         let ok = Command::new("git")
             .args([

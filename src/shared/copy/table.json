@@ -1419,8 +1419,15 @@
     "beLaunch.type.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "tmux 往 {target} 发送失败 · tmux 报错 · 内容可能未进去",
-      "args": ["target"],
+      "zh": "启动命令未送达 · tmux 会话 {name} · tmux 报错",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beLaunch.type.timedOut": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动命令送达未知 · tmux 无应答\n先看 tmux 会话 {name} 的画面",
+      "args": ["name"],
       "limited": ["tmux"]
     },
     "beStderrFd.point.dupFailed": {
@@ -15424,6 +15431,20 @@
       "zh": "ccm: 启动失败 · {kind} · {message}",
       "args": ["kind", "message"],
       "limited": ["ccm"]
+    },
+    "beCcm.execute.bareReaped": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "ccm: 刚建的 tmux 会话 {name} 只剩 shell · 已收掉",
+      "args": ["name"],
+      "limited": ["tmux", "ccm"]
+    },
+    "beCcm.execute.bareKept": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "ccm: 刚建的 tmux 会话 {name} 里已有别的程序 · 留着",
+      "args": ["name"],
+      "limited": ["tmux", "ccm"]
     },
     "bePlan.names.unreadable": {
       "kind": "body",

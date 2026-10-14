@@ -102,7 +102,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("kill", "5a6e81b0"),
     ("last-seen-read", "1aaae64e"),
     ("last-seen-write", "7e4222b2"),
-    ("launch", "97fe3a31"),
+    ("launch", "e7405d81"),
     ("launch-local", "8bc6bf22"),
     ("launch-render-cli", "407922cf"),
     ("login-cancel", "3578d171"),

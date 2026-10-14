@@ -779,7 +779,11 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                 }
                 Err(f) => {
                     // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
-                    let msg = crate::common::said::Said::from(f.clone()).logged();
+                    let msg = crate::common::said::Said::from(f.fail.clone()).logged();
+                    let after = after_launch_fail(&f, c.detach);
+                    // 明确没送进 ⇒ 先收掉本趟建的那个只剩 shell 的会话，再报（不留空会话）。
+                    let reaped = (after == AfterFail::ReapThenReport)
+                        .then(|| crate::control::launch::reap(&c.name));
                     eprintln!(
                         "{}",
                         copy_text(
@@ -787,7 +791,21 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                             &[("kind", &f.code), ("message", &msg)]
                         )
                     );
-                    return 4;
+                    match reaped {
+                        Some(true) => eprintln!(
+                            "{}",
+                            copy_text("beCcm.execute.bareReaped", &[("name", &c.name)])
+                        ),
+                        Some(false) => eprintln!(
+                            "{}",
+                            copy_text("beCcm.execute.bareKept", &[("name", &c.name)])
+                        ),
+                        None => {}
+                    }
+                    // 送达未知、不带 `--detach` ⇒ 往下走收尾那一段（自检 → 接进会话），让人直接看画面。
+                    if after != AfterFail::JoinAnyway {
+                        return 4;
+                    }
                 }
             }
             // 会话名必须由**建它的人**说出来（`--detach` 的既有契约）。
@@ -809,6 +827,26 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
             }
         }
         Plan::Direct(d) => exec_direct(d, own),
+    }
+}
+
+/// 容器路建会话 · 送启动命令没成之后怎么办。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AfterFail {
+    /// 报那一句、退 4。
+    Report,
+    /// 送达未知（tmux 没应答）、要接进去：先报那一句，照样接进会话 —— 命令可能已经送到，让人直接看画面。
+    JoinAnyway,
+    /// 明确没送进、会话是本趟建的：收掉那个只剩 shell 的会话，再报那一句、退 4。
+    ReapThenReport,
+}
+
+fn after_launch_fail(f: &crate::control::launch::LaunchFail, detach: bool) -> AfterFail {
+    use crate::control::launch::Delivery;
+    match f.untyped {
+        Some((Delivery::Unknown, true)) if !detach => AfterFail::JoinAnyway,
+        Some((Delivery::NotDelivered, true)) => AfterFail::ReapThenReport,
+        _ => AfterFail::Report,
     }
 }
 

@@ -75,6 +75,9 @@ mod ratchet_guard; // K-P1 KPY7：动过的那几张登记表，**断言那几�
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard;
 #[cfg(test)]
+#[path = "../../tests/backend/tmux_sandbox.rs"]
+mod tmux_sandbox; // 判据用的私有 tmux server（`-L` ＋ 私有 TMUX_TMPDIR，碰不到用户的默认 server；仅测试构建）
+#[cfg(test)]
 #[path = "../../tests/backend/ts_export_guard.rs"]
 mod ts_export_guard; // 第 8 刀：ts-rs 生成物只落在登记的目录、同名只许一个出处 // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 #[cfg(test)]
@@ -1022,7 +1025,9 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p10o-login-busy：子命令集不变。login-start 入参多 browserHere（auto 照它答，缺这一格答 false）·
 /// 登录失败回包多 again · manual-list 的 fix 为空带 why、账号库读不懂回 unreadable（不再回空清单）⇒ 形状指纹表跟着变；
-/// rotation-view「时区不明」照看的那一台给时区，说不出就不带 zone。
+/// rotation-view「时区不明」照看的那一台给时区，说不出就不带 zone。会话事实多 permissionModeText（权限档的字由后端给）·
+/// session-say 窗格前台只剩 shell 就不送；launch 失败带回是送达未知还是明确没送进（没送进先收掉本趟建的空会话）·
+/// 后端装的 tmux 钩子不出声、开发版不往默认 tmux server 装 ⇒ 形状指纹表再跟着变，子命令集仍不变。
 pub const BUILD_ID: &str = "p10o-login-busy";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。

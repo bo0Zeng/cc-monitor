@@ -48,7 +48,9 @@ pub(crate) fn with_deps_as<T>(
             height: None,
             client: client.map(str::to_string),
         })?;
-        crate::control::launch::run(&req).map(|_| ())
+        crate::control::launch::run(&req)
+            .map(|_| ())
+            .map_err(|e| e.fail)
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
     let mint = |base: batch::NameBase| {

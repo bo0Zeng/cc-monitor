@@ -9510,7 +9510,7 @@ session: string,
  */
 created: boolean, 
 /**
- * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）。
+ * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（送之前同一串命令里先退出窗格模式（copy-mode 等），键不会被模式吃掉；程序起没起来它不知道）。
  */
 typed: boolean, };
 type Mode = "create-or-attach" | "send-into";
