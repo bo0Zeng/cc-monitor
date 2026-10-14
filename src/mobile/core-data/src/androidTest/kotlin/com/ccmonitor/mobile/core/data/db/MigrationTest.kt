@@ -354,10 +354,56 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→15 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    /** 15→16：`launchers` 表没了；旧行原样进设置表的迁移说明那一格（一条一段、一段五格，空格 ＝ 没写）；机器 · 身份 · 别的设置原样在。 */
     @Test
-    fun migrateAll1To15Validates() {
+    fun migrate15To16DropsLaunchersAndKeepsTheirTextForTheOneTimeNote() {
+        helper.createDatabase(dbName, 15).apply {
+            execSQL(
+                "INSERT INTO launchers (id,hostId,label,workingDir,tmuxSession,command,sortOrder,pinned) VALUES " +
+                    "('l2','h1','cct','~/w x','cc','claude --resume ''a b''',1,0), ('l1','h1','cc',NULL,NULL,'claude',0,0)",
+            )
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,authRef,sortOrder,autoReconnect,reconnectOnNetworkChange," +
+                    "maxReconnectAttempts) VALUES ('h1','pi','example.com',22,'pi','k1',0,1,1,0)",
+            )
+            execSQL(
+                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
+                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 16, true, MIGRATION_15_16)
+        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='launchers'").use { c ->
+            assertTrue("launchers 表应已删掉", !c.moveToFirst())
+        }
+        db.query("SELECT `value` FROM settings WHERE `key`='launch_moved'").use { c ->
+            assertTrue("迁移说明那一格应在", c.moveToFirst())
+            assertEquals(
+                "h1\u001fcc\u001f\u001f\u001fclaude\u001eh1\u001fcct\u001f~/w x\u001fcc\u001fclaude --resume 'a b'",
+                c.getString(0),
+            )
+        }
+        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("h1", c.getString(0))
+        }
+        db.query("SELECT label, authRef FROM hosts WHERE id='h1'").use { c ->
+            assertTrue("机器表应原样还在", c.moveToFirst())
+            assertEquals("pi", c.getString(0))
+            assertEquals("k1", c.getString(1))
+        }
+        db.query("SELECT label, length(privateKeyEnc) FROM identities WHERE id='k1'").use { c ->
+            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
+            assertEquals("key", c.getString(0))
+            assertEquals(2, c.getInt(1))
+        }
+    }
+
+    /** 全链路 1→16 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    @Test
+    fun migrateAll1To16Validates() {
         helper.createDatabase(dbName, 1).close()
-        helper.runMigrationsAndValidate(dbName, 15, true, *ALL_MIGRATIONS)
+        helper.runMigrationsAndValidate(dbName, 16, true, *ALL_MIGRATIONS)
     }
 }

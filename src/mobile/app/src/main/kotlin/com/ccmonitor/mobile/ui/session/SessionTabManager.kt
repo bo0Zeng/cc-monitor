@@ -20,12 +20,10 @@ class SessionTabManager {
         /**
          * 终端 shell 会话。
          * - [cd]：初始工作目录（文件屏「在此打开终端」传入）。
-         * - [launcherId]：启动配置（cc / cct）。
          * - [tmuxSession]：首连即接回的会话名（敲那台渲出的那一行）。进去重键：不同名各开一个 tab，同名复用。
          */
         data class Terminal(
             val cd: String? = null,
-            val launcherId: String? = null,
             val tmuxSession: String? = null,
         ) : TabTarget
 

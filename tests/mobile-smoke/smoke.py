@@ -406,6 +406,24 @@ def frames(cmd, args, within=20000):
     return json.loads(out or "{}")
 
 
+SMOKE_ALIAS = "smk"
+
+
+def tmux_sessions():
+    return [l for l in rig("tmux", "list-sessions", "-F", "#{session_name}").stdout.splitlines() if l]
+
+
+def seed_alias():
+    """台架那台的一条别名（起在 tmux 里、名字自动取），经别名页那条写命令建；已有就不再建。"""
+    book = (frames("profiles-read", {}).get("data") or {})
+    if any(p.get("name") == SMOKE_ALIAS for p in book.get("profiles") or []):
+        return
+    r = frames("profiles-write", {"changes": [{"op": "set", "was": None, "form": {"name": SMOKE_ALIAS, "tmux": {"mode": "auto"}}}],
+                                  "fingerprint": book.get("fingerprint")})
+    if not (r.get("data") or {}).get("wrote"):
+        raise Step.Fail(f"台架建不了别名：{r!r}"[:300])
+
+
 def seed_rotation():
     """台架里的账号库（work · team · lab）与两份策略；跨趟留着，再跑一遍不出错就行。"""
     frames("accounts-init", {"name": "work"})
@@ -683,7 +701,28 @@ def main():
             raise Step.Fail("重开之后没有被杀那段的话")
 
     with Step("9-终端屏"):
-        name = tmux_name_of(f"{T} new session")
+        # 从别名起：台架那台配一条别名（别名页那条写命令），终端屏「用哪个启动」那一排列的是它（profiles-read），
+        # 点它 ⇒ 那个 shell 里敲 `ccm @名`、在台架 tmux 里起会话；再从 tmux 会话列表接进去，两侧打字都进那个会话、命令面板换模型。
+        seed_alias()
+        before = set(tmux_sessions())
+        drawer(t("mobDrawer.item.terminal"))
+        if not wait(SMOKE_ALIAS, 30):
+            raise Step.Fail(f"终端屏「用哪个启动」那一排没列出那台的别名 {SMOKE_ALIAS}")
+        shot("9a-终端屏-别名")
+        hide_keyboard()
+        tap(SMOKE_ALIAS)
+        end = time.time() + 30
+        while time.time() < end and not (set(tmux_sessions()) - before):
+            time.sleep(1)
+        fresh = sorted(set(tmux_sessions()) - before)
+        if not fresh:
+            raise Step.Fail(f"点了 {SMOKE_ALIAS}，台架 tmux 里没起新会话（ccm @{SMOKE_ALIAS} 没跑起来）")
+        name = fresh[0]
+        if not pane_has(name, "就绪", 30):
+            raise Step.Fail(f"别名起的会话 {name} 里替身没就绪")
+        if ui.find(SMOKE_ALIAS) is not None:
+            raise Step.Fail("按过一个别名之后那一排没收起")
+        adb("shell", "input", "keyevent", "4")
         drawer(t("mobDrawer.item.terminal"))
         time.sleep(2)
         hide_keyboard()

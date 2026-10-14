@@ -177,22 +177,6 @@ data class Bookmark(
     val sortOrder: Int = 0,
 )
 
-/**
- * 启动配置：把「连上后手拼 cd/tmux/命令」存成一键可复用的项（cc/cct/进项目）。
- * 经 [com.ccmonitor.mobile.ssh.LaunchSpec] 消费：tmuxSession 非空→`tmux new -A -s <name>`；command 非空→进入后跑（如 claude）。
- */
-@Entity(tableName = "launchers")
-data class Launcher(
-    @PrimaryKey val id: String,
-    val hostId: String,
-    val label: String,
-    val workingDir: String? = null,
-    val tmuxSession: String? = null,
-    val command: String? = null,
-    val sortOrder: Int = 0,
-    val pinned: Boolean = false,
-)
-
 /** 应用级设置（键值表，增键不用迁移）。类型化访问经 SettingsRepository。 */
 @Entity(tableName = "settings")
 data class Settings(

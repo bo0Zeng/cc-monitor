@@ -5,10 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
-import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.data.repo.LauncherRepository
 import com.ccmonitor.mobile.core.ssh.SessionState
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConfigHost
@@ -25,7 +23,6 @@ import kotlinx.coroutines.withContext
 class HostViewModel(
     private val hostRepo: HostRepository,
     identityRepo: IdentityRepository,
-    launcherRepo: LauncherRepository,
     connector: HostConnector,
 ) : ViewModel() {
     /** 每台此刻的 SSH 连接 ⇒ 行首那颗点（手机自己那条连接的事实）。 */
@@ -37,13 +34,6 @@ class HostViewModel(
 
     val identities: StateFlow<List<Identity>> =
         identityRepo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    /** launcher 按 hostId 分组，供主机行的 chips。 */
-    val launchersByHost: StateFlow<Map<String, List<Launcher>>> =
-        launcherRepo
-            .observeAll()
-            .map { all -> all.groupBy { it.hostId } }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** 载入单个主机供编辑器回显（null 表示未找到）。 */
     suspend fun getHost(id: String): Host? = hostRepo.get(id)

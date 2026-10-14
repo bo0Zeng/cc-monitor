@@ -71,19 +71,18 @@ val appModule =
         }
         viewModel { IdentityViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
-        viewModel { HostViewModel(get(), get(), get(), get()) }
-        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession)`
+        viewModel { HostViewModel(get(), get(), get()) }
+        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->
             SessionViewModel(
                 hostId = params.get(0),
                 cdArg = params.get(1),
-                launcherIdArg = params.get(2),
-                tmuxArg = params.get(3),
+                tmuxArg = params.get(2),
                 manager = get(),
                 hostRepo = get(),
                 identityRepo = get(),
-                launcherRepo = get(),
+                movedRepo = get(), // 迁移说明那一格：手机原来存的启动配置，每台列一次
                 hostConnector = get(),
                 backends = get(), // 这台的常驻流：终端那几件问那台核心
                 knownHostStore = get(), // TOFU 恢复路径
@@ -95,5 +94,5 @@ val appModule =
         single<KnownHostStore> { KnownHostDaoStore(get()) } // get()=KnownHostDao（dataModule 提供）
         single { HostConnector(get(), get(), get()) }
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
-        single { DevSeeder(androidContext(), get(), get(), get(), get()) }
+        single { DevSeeder(androidContext(), get(), get(), get()) }
     }

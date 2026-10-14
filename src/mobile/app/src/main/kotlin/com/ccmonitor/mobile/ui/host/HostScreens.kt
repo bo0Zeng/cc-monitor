@@ -4,7 +4,6 @@ import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +19,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
@@ -55,7 +53,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
-import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
@@ -69,7 +66,6 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.HostBackends
-import com.ccmonitor.mobile.ssh.dialectFor
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import kotlinx.coroutines.launch
@@ -99,7 +95,6 @@ fun HostListScreen(
     onIdentities: () -> Unit,
     onFiles: (String) -> Unit = {},
     onEdit: (String) -> Unit = {},
-    onLaunch: (String, String) -> Unit = { _, _ -> }, // (hostId, launcherId) 一键启动
     onSessions: () -> Unit = {}, // 会话总览（多 tab）
     // 「新建会话 · 选主机」页复用本屏：true 时显示对应的标题与提示。连接语义（forceNew）由调用方接，
     // 本屏不感知；返回键取消由导航自然提供。
@@ -108,7 +103,6 @@ fun HostListScreen(
 ) {
     val vm = koinViewModel<HostViewModel>()
     val hosts by vm.hosts.collectAsState()
-    val launchersByHost by vm.launchersByHost.collectAsState()
     val linkDots by vm.linkDots.collectAsState()
     val tokens = LocalAppTokens.current
 
@@ -142,10 +136,8 @@ fun HostListScreen(
                             HostRow(
                                 host,
                                 dot = linkDots[host.id],
-                                launchers = launchersByHost[host.id].orEmpty(),
                                 // 种类跟着 hostId 一起交出去，见本屏头注。
                                 onClick = { onConnect(host.id) },
-                                onLaunch = { launcherId -> onLaunch(host.id, launcherId) },
                                 onFiles = { onFiles(host.id) },
                                 onEdit = { onEdit(host.id) },
                                 onDelete = { vm.deleteHost(host) },
@@ -290,9 +282,7 @@ internal fun hostDeleteWarning(label: String): String =
 private fun HostRow(
     host: Host,
     dot: SessionDot?,
-    launchers: List<Launcher>,
     onClick: () -> Unit,
-    onLaunch: (String) -> Unit,
     onFiles: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -303,7 +293,7 @@ private fun HostRow(
         Modifier
             .fillMaxWidth()
             .heightIn(min = Touch.rowDouble)
-            // 点行按默认方式连接（无 launcher）；长按 ＝ ⋯。
+            // 点行连接；长按 ＝ ⋯。
             .combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
             .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.Center,
@@ -333,22 +323,6 @@ private fun HostRow(
                 }
             }
             PhIconButton(Ph.DotsThree, copyText("mobHosts.row.more", "label" to host.label), onClick = { showMenu = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        // 启动配置 chips（cc/cct/项目）：点 chip 即带 launcher 连接（一键 cd、tmux、跑命令）。
-        // 能力位门控：launcher 要跑 tmux/claude，`supportsTmux` 为 false（如 Windows/PS）时隐藏。
-        if (launchers.isNotEmpty() && dialectFor(host.os).supportsTmux) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                launchers.forEach { l ->
-                    AssistChip(
-                        onClick = { onLaunch(l.id) },
-                        label = { Text(l.label, style = monoSmall) },
-                        leadingIcon = { PhIcon(Ph.Play, contentDescription = null, size = Touch.iconInline) },
-                    )
-                }
-            }
         }
     }
 }

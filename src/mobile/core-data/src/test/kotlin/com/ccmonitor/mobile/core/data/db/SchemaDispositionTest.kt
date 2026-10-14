@@ -6,16 +6,14 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Room schema 的处置必须是有意的：纯 JVM，零设备。
+ * Room schema 只许走迁移：纯 JVM，零设备。
  *
- * 迁移真跑一次的是设备上的 `MigrationTest`；没有模拟器时那条不会被跑到，
- * 这里只保证「schema 被动过」不会悄悄发生。不替代 `MigrationTest`：迁移 SQL 写得对不对这里看不见。
+ * 库里有 ssh 身份（私钥）与机器表：破坏性重建（`fallbackToDestructiveMigration…`）等于每次升级把用户的钥匙和机器清空，
+ * 所以生产 builder 只接 `.addMigrations(*ALL_MIGRATIONS)`、一处破坏性回退都不许有；迁移链完整到 `version`，
+ * 设备上的 `MigrationTest` 全链条也指到 `version`、最后那一跳有逐步测（旧行还在）。
  *
- * 处置二选一，并写明在 [PINNED_DISPOSITION]：
- * - `migrate`：`DataModule.kt` 里 `.addMigrations(*ALL_MIGRATIONS)`；迁移链完整到 `version`，
- *   `MigrationTest` 的全链条也指到 `version`。
- * - `destructive`：`.fallbackToDestructiveMigration…`；不要求迁移链，`version` 与导出 json 仍要对齐。
- * 两者都不写或同时写都红。换处置必须改常量，这个决定才会出现在 diff 里。
+ * 迁移真跑一次的是设备上的 `MigrationTest`；没有模拟器时那条不会被跑到，这里只保证「schema 被动过」不会悄悄发生，
+ * 迁移 SQL 写得对不对这里看不见。
  *
  * 注意：bump 版本后构建时 KSP 会自动导出新版本的 json，所以「bump 了没导出」抓不到；
  * 导出那条守的是中间缺版本、或 `exportSchema` 被关掉。`@Test` 按行首计数，不剥注释。
@@ -23,48 +21,42 @@ import java.io.File
 class SchemaDispositionTest {
     // ---- 判据 ---------------------------------------------------------------
 
-    /** 声明的 schema 版本还是钉着的那个：任何一次 bump 都要在这里手动改，并选定处置。 */
+    /** 声明的 schema 版本还是钉着的那个：任何一次 bump 都要在这里手动改，并写上那一跳的迁移。 */
     @Test
     fun theDeclaredSchemaVersionIsStillTheOnePinnedHere() {
         assertEquals(
             "`AppDatabase` 的 schema 版本变了（钉着 $PINNED_VERSION，实读 ${declaredVersion()}）。\n" +
-                "   先定这一版的处置是 `migrate` 还是 `destructive`。不做向后兼容时默认是 `destructive`，\n" +
-                "   要同时改 [PINNED_DISPOSITION] 与 `DataModule.kt` 的 builder；仍要 `migrate` 则迁移链与 `MigrationTest` 都跟到新版本。",
+                "   写上那一跳的 `MIGRATION_i_(i+1)` 并进 `ALL_MIGRATIONS`，`MigrationTest` 的全链条与逐步测跟到新版本，再改这里。",
             PINNED_VERSION,
             declaredVersion(),
         )
     }
 
     /**
-     * 生产 builder 里恰好一种处置，且是钉着的那一种。
-     * 一种都没有时 Room 在版本不匹配时抛 `IllegalStateException`，升级即崩；两种都有则看不出哪个生效。
+     * 生产 builder 接了迁移链，且手机生产源里一处破坏性回退都没有。
+     * 没接迁移 ⇒ 版本一变 Room 当场抛异常（升级即崩）；有破坏性回退 ⇒ 迁移缺一跳时悄悄清库（钥匙与机器全没）。
      */
     @Test
-    fun exactlyOneSchemaDispositionIsWiredInTheProductionBuilder() {
-        val src = read(DATA_MODULE)
-        val migrate = MIGRATE_CALL.containsMatchIn(src)
-        val destructive = DESTRUCTIVE_CALL.containsMatchIn(src)
-
+    fun onlyMigrationsAreWiredAndThereIsNoDestructiveFallback() {
         assertTrue(
-            "`$DATA_MODULE` 里一种 schema 处置都没接，版本一变，Room 当场抛异常（用户升级即崩）。\n" +
-                "   要么 `.addMigrations(*ALL_MIGRATIONS)`，要么 `.fallbackToDestructiveMigration…`，二者必居其一。",
-            migrate || destructive,
+            "`$DATA_MODULE` 里没接 `.addMigrations(*ALL_MIGRATIONS)`：版本一变，Room 当场抛异常（用户升级即崩）。",
+            MIGRATE_CALL.containsMatchIn(read(DATA_MODULE)),
         )
-        assertTrue(
-            "`$DATA_MODULE` 里同时接了迁移与破坏性重建，看不出哪个生效。只留一个。",
-            !(migrate && destructive),
-        )
-
-        val actual = if (migrate) MIGRATE else DESTRUCTIVE
+        val destructive =
+            repoRoot()
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" && "/src/main/" in it.invariantSeparatorsPath }
+                .filter { DESTRUCTIVE_CALL.containsMatchIn(it.readText()) }
+                .map { it.relativeTo(repoRoot()).invariantSeparatorsPath }
+                .toList()
         assertEquals(
-            "schema 处置换了（钉着 `$PINNED_DISPOSITION`，实读 `$actual`），本文件的常量没跟着改。\n" +
-                "   换处置是发版级决定（迁移发出去就固定，重建会清库），需手动改常量，让它出现在 diff 里。",
-            PINNED_DISPOSITION,
-            actual,
+            "手机生产源里出现了破坏性回退（升级时会清掉库里的钥匙与机器）：只许写迁移。",
+            emptyList<String>(),
+            destructive,
         )
     }
 
-    /** `1..version` 每一版都有导出的 json，不多不少；两种处置下都成立。 */
+    /** `1..version` 每一版都有导出的 json，不多不少。 */
     @Test
     fun everySchemaVersionUpToTheDeclaredOneHasAnExportedJson() {
         val v = declaredVersion()
@@ -77,17 +69,9 @@ class SchemaDispositionTest {
         )
     }
 
-    /** 迁移链完整：`MIGRATION_i_(i+1)` 逐版声明齐，`ALL_MIGRATIONS` 不漏不多。只在 `migrate` 下要求。 */
+    /** 迁移链完整：`MIGRATION_i_(i+1)` 逐版声明齐，`ALL_MIGRATIONS` 不漏不多。 */
     @Test
     fun theMigrationChainIsCompleteAndMatchesTheDeclaredVersion() {
-        if (PINNED_DISPOSITION != MIGRATE) {
-            assertEquals(
-                "处置是 `$PINNED_DISPOSITION`，本条不要求迁移链；但 `ALL_MIGRATIONS` 若还在被生产侧引用就说明没改干净。",
-                DESTRUCTIVE,
-                PINNED_DISPOSITION,
-            )
-            return
-        }
         val v = declaredVersion()
         val expected = (1 until v).toList()
         assertEquals(
@@ -109,7 +93,6 @@ class SchemaDispositionTest {
      */
     @Test
     fun theInstrumentedFullChainTestTargetsTheDeclaredVersion() {
-        if (PINNED_DISPOSITION != MIGRATE) return
         val v = declaredVersion()
         val src = read(MIGRATION_TEST)
 
@@ -194,14 +177,8 @@ class SchemaDispositionTest {
     }
 
     private companion object {
-        const val MIGRATE = "migrate"
-        const val DESTRUCTIVE = "destructive"
-
         /** 改 schema 版本时同时改这里。 */
-        const val PINNED_VERSION = 15
-
-        /** schema 处置：[MIGRATE]（写迁移、不丢数据）或 [DESTRUCTIVE]（重建、清库）。换处置必须改这一行。 */
-        const val PINNED_DISPOSITION = MIGRATE
+        const val PINNED_VERSION = 16
 
         const val APP_DATABASE = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/AppDatabase.kt"
         const val MIGRATIONS = "core-data/src/main/kotlin/com/ccmonitor/mobile/core/data/db/Migrations.kt"
@@ -218,7 +195,7 @@ class SchemaDispositionTest {
         val MIGRATION_DECL = Regex("^val MIGRATION_(\\d+)_\\d+ =", RegexOption.MULTILINE)
         val MIGRATION_REF = Regex("^\\s*MIGRATION_(\\d+)_\\d+,", RegexOption.MULTILINE)
         val MIGRATE_CALL = Regex("^\\s*\\.addMigrations\\(", RegexOption.MULTILINE)
-        val DESTRUCTIVE_CALL = Regex("^\\s*\\.fallbackToDestructiveMigration", RegexOption.MULTILINE)
+        val DESTRUCTIVE_CALL = Regex("fallbackToDestructiveMigration")
         val FULL_CHAIN_TARGET = Regex("runMigrationsAndValidate\\(dbName, (\\d+), true, \\*ALL_MIGRATIONS\\)")
     }
 }

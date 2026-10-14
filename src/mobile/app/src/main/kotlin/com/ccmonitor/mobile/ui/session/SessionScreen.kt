@@ -88,17 +88,15 @@ import kotlin.math.roundToInt
 fun SessionScreen(
     hostId: String,
     cd: String? = null,
-    launcherId: String? = null,
     tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
-) = SessionContent(hostId, cd, launcherId, tmuxSession, onAttachInNewTab, onShowTabs)
+) = SessionContent(hostId, cd, tmuxSession, onAttachInNewTab, onShowTabs)
 
 @Composable
 private fun SessionContent(
     hostId: String,
     cd: String?,
-    launcherId: String?,
     tmuxSession: String?,
     onAttachInNewTab: (name: String) -> Unit,
     onShowTabs: () -> Unit,
@@ -106,7 +104,7 @@ private fun SessionContent(
     // Koin 参数不能传 null，可空参数一律用空串表示 null。
     val vm =
         koinViewModel<SessionViewModel> {
-            parametersOf(hostId, cd ?: "", launcherId ?: "", tmuxSession ?: "")
+            parametersOf(hostId, cd ?: "", tmuxSession ?: "")
         }
     val state by vm.uiState.collectAsState()
     val context = LocalContext.current
@@ -341,6 +339,9 @@ private fun ConnectedContent(
         onCaptured = { captureText = it },
         onShowTabs = onShowTabs,
     )
+    // 迁移说明：手机原来存的启动配置，这一台的列一次。
+    val moved by vm.moved.collectAsState()
+    if (moved.isNotEmpty()) MovedLaunchDialog(moved, vm::makeAlias, vm::ackMoved)
     ConnectedDialogs(
         vm = vm,
         showTmux = showTmux,
@@ -371,8 +372,12 @@ private fun ConnectedScaffold(
     val terminalDropped by vm.terminalDropped.collectAsState()
     val dropped = terminalDropped || (status != null && status != SessionStatus.CONNECTED)
     // statusBarsPadding：边到边下终端不被系统状态栏遮挡。
+    // 「用哪个启动」那一排：这台的别名，按过一个就收起。
+    val aliases by vm.aliases.collectAsState()
+    val aliasPicked by vm.aliasPicked.collectAsState()
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         if (dropped) DroppedBanner(status, onReconnect)
+        if (!aliasPicked) LaunchAliasRow(aliases, vm::startAlias)
         Box(Modifier.fillMaxWidth().weight(1f)) {
             ConnectedTerminal(hostId, s, vm, onShowTmux, onPushKey, onCaptured, onShowTabs)
         }

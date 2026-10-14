@@ -11,7 +11,7 @@ import com.ccmonitor.mobile.core.data.db.seedDefaultButtons
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.data.repo.LauncherRepository
+import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -38,7 +38,6 @@ val dataModule =
         single { get<AppDatabase>().knownHostDao() }
         single { get<AppDatabase>().customButtonDao() }
         single { get<AppDatabase>().bookmarkDao() }
-        single { get<AppDatabase>().launcherDao() }
         single { get<AppDatabase>().settingsDao() }
 
         single<CryptoBox> { KeystoreCryptoBox(androidContext()) }
@@ -46,6 +45,6 @@ val dataModule =
         single { HostRepository(get(), get()) }
         single { IdentityRepository(get(), get()) }
         single { BookmarkRepository(get()) }
-        single { LauncherRepository(get()) }
+        single { MovedLaunchRepository(get()) }
         single { SettingsRepository(get()) }
     }

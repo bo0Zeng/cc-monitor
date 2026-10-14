@@ -7,8 +7,6 @@ import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
-import com.ccmonitor.mobile.core.data.db.Launcher
-import com.ccmonitor.mobile.core.data.db.LauncherDao
 import com.ccmonitor.mobile.core.data.db.Settings
 import com.ccmonitor.mobile.core.data.db.SettingsDao
 import kotlinx.coroutines.flow.Flow
@@ -67,23 +65,6 @@ class BookmarkRepository(
     suspend fun save(bookmark: Bookmark) = dao.upsert(bookmark)
 
     suspend fun delete(bookmark: Bookmark) = dao.delete(bookmark)
-
-    suspend fun deleteById(id: String) = dao.deleteById(id)
-}
-
-/** 主机启动配置（cc/cct/进项目）。 */
-class LauncherRepository(
-    private val dao: LauncherDao,
-) {
-    fun observeForHost(hostId: String): Flow<List<Launcher>> = dao.observeForHost(hostId)
-
-    fun observeAll(): Flow<List<Launcher>> = dao.observeAll()
-
-    suspend fun get(id: String): Launcher? = dao.get(id)
-
-    suspend fun save(launcher: Launcher) = dao.upsert(launcher)
-
-    suspend fun delete(launcher: Launcher) = dao.delete(launcher)
 
     suspend fun deleteById(id: String) = dao.deleteById(id)
 }

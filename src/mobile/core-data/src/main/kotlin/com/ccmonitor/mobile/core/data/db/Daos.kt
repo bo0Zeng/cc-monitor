@@ -114,27 +114,6 @@ interface BookmarkDao {
 }
 
 @Dao
-interface LauncherDao {
-    @Query("SELECT * FROM launchers WHERE hostId = :hostId ORDER BY sortOrder, label")
-    fun observeForHost(hostId: String): Flow<List<Launcher>>
-
-    @Query("SELECT * FROM launchers ORDER BY sortOrder, label")
-    fun observeAll(): Flow<List<Launcher>> // 主机列表按 hostId 分组显示 chips
-
-    @Query("SELECT * FROM launchers WHERE id = :id")
-    suspend fun get(id: String): Launcher? // 一键启动按 launcherId 取配置
-
-    @Upsert
-    suspend fun upsert(launcher: Launcher)
-
-    @Delete
-    suspend fun delete(launcher: Launcher)
-
-    @Query("DELETE FROM launchers WHERE id = :id")
-    suspend fun deleteById(id: String)
-}
-
-@Dao
 interface SettingsDao {
     @Query("SELECT `value` FROM settings WHERE `key` = :key")
     fun observe(key: String): Flow<String?>

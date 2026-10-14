@@ -11,7 +11,7 @@ import java.io.File
  * `tmux new-session` 的名字只来自两个点名的来源（聊天屏的会话由那台核心起，不在这里）。
  *
  * tmux 会话名分两类：
- * ③ 用户显式给的名字：`HostConnect.resolveTmuxSession`（`LaunchSpec.tmuxSession` > `DEFAULT_TMUX_SESSION="main"`）
+ * ③ 用户显式给的名字：`HostConnect.resolveTmuxSession`（显式给的名 > `DEFAULT_TMUX_SESSION="main"`）
  *    与 tmux 管理器新建行里手敲的那个名。那是终端的自由 tmux 会话，既不在我们的名字空间也不在后端的；
  *    透传那几支不许自己加前缀。
  *
@@ -70,7 +70,7 @@ class TmuxSessionNameSourceTest {
      * ③b-③：其余三支原样透传调用方给的名字，不许自己加前缀、不许截。
      * （`TmuxBackend.enter` 在表里量了两遍：带/不带工作目录。）
      *
-     * 那三支收的名字是用户显式值（`LaunchSpec.tmuxSession` > `DEFAULT_TMUX_SESSION`，
+     * 那三支收的名字是用户显式值（显式给的名 > `DEFAULT_TMUX_SESSION`，
      * 或 tmux 管理器新建行里手敲的那个）。防的是有人在这三支里「顺手」给会话名加个 `cc-`
      * 前缀：那会让终端的自由会话撞进后端或我们自己的名字空间，而调用方一无所知。
      *

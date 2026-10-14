@@ -198,6 +198,22 @@ val MIGRATION_14_15 =
         }
     }
 
+// 删 `launchers` 表（手机自己存的启动配置）：起会话改用那台的别名。旧行在删表之前原样写进设置表的迁移说明那一格
+// （`MovedLaunchRepository`：一条一段、一段五格），每台连上终端时列一次、可复制，「知道了」之后就没了。不留旧表。
+// char(30) / char(31) 与 `MovedLaunchRepository.RECORD` / `.FIELD` 是同一对分隔符；一行都没有 ⇒ 那一格为 NULL（没有可说的）。
+val MIGRATION_15_16 =
+    object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "INSERT OR REPLACE INTO `settings` (`key`, `value`) SELECT 'launch_moved', group_concat(" +
+                    "hostId || char(31) || label || char(31) || IFNULL(workingDir, '') || char(31) || " +
+                    "IFNULL(tmuxSession, '') || char(31) || IFNULL(command, ''), char(30)) " +
+                    "FROM (SELECT * FROM `launchers` ORDER BY hostId, sortOrder, label)",
+            )
+            db.execSQL("DROP TABLE `launchers`")
+        }
+    }
+
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
@@ -214,4 +230,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_12_13,
         MIGRATION_13_14,
         MIGRATION_14_15,
+        MIGRATION_15_16,
     )
