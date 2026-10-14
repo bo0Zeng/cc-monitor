@@ -6004,12 +6004,71 @@ type FirstRunStepId = "terminal" | "named" | "remote";
 入参 `LastSeenReadReq` · 回包 `LastSeen`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LastSeen = { accounts: SeenEntry | null, data: SeenEntry | null, };
+type ChangedFile = { path: string, what: string, 
+/**
+ * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
+ */
+undo: UndoAt | null, };
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+/**
+ * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
+ */
+wholeCovers: Array<string>, file: string | null, 
+/**
+ * 去哪一处做（设置窗的页 · 栏 · 锚点）。
+ */
+go: UndoAt | null, howUrl: string | null, 
+/**
+ * 显示时要遮住的那把钥匙。
+ */
+mask: string | null, action: ChoreAction, };
+type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
+type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
+type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type DataReport = { 
+/**
+ * 这台家目录（显示时 `~` 缩写按它）。
+ */
+home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
+/**
+ * 这台有没有 tmux（查不动 ⇒ `null`）。
+ */
+tmux: boolean | null, 
+/**
+ * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+ */
+chores: number, own: Array<OwnItem>, };
+type DiffOp = "same" | "del" | "add";
+type DiffRow = { n: number | null, op: DiffOp, text: string, };
+type LastSeen = { accounts: SeenEntry | null, data: SeenData | null, };
 type LastSeenReadReq = { 
 /**
  * 哪台（机器名）。
  */
 origin: string, };
+type OwnClass = "truth" | "cache";
+type OwnItem = { 
+/**
+ * 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+ */
+id: string, 
+/**
+ * 是什么（写好的那一句，界面照抄）。
+ */
+what: string, 
+/**
+ * `~/.cc-monitor/…` 写法。
+ */
+path: string, dir: boolean, class: OwnClass, exists: boolean, 
+/**
+ * 文件的字节数；目录 / 不在 ⇒ `null`。
+ */
+size: number | null, };
+type SeenData = { "state": "kept", 
+/**
+ * 记下的时刻（毫秒）。
+ */
+atMs: number, value: DataReport, } | { "state": "unreadable", atMs: number, };
 type SeenEntry = { 
 /**
  * 记下的时刻（毫秒）。
@@ -6019,6 +6078,7 @@ atMs: number,
  * 那一份应答原样。
  */
 value: Record<string, unknown>, };
+type UndoAt = { page: string, tab?: string, anchor?: string, };
 ```
 
 码：`bad_args` · `io_failed`
