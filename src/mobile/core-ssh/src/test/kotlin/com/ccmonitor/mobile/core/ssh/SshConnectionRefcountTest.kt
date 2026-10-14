@@ -137,7 +137,7 @@ class SshConnectionRefcountTest {
             val t2 = mgr.connect("id", "h", "L", testCfg("good")) // tab 2 同 id
             assertSame("第 2 tab 应复用同一连接", t1, t2)
             advanceUntilIdle()
-            assertTrue("同时起跑的那条新连接关掉（旧的先回话）", produced.drop(1).all { it.closed })
+            assertEquals("旧的当场回了话：不另拨", 1, produced.size)
             assertTrue("第 1 个连接未被顶掉", t1.isConnected)
         }
 
@@ -187,7 +187,7 @@ class SshConnectionRefcountTest {
             val t2 = mgr.connect("id", "h", "L", testCfg("good"), onEvent = { events.add(it) })
             assertSame("探测过 → 复用同一连接", t1, t2)
             advanceUntilIdle()
-            assertTrue("复用不换：同时起跑的那条新连接关掉", produced.drop(1).all { it.closed })
+            assertEquals("复用不换：旧的当场回了话，不另拨", 1, produced.size)
             assertTrue(
                 "应发「校验可用性」提示（TCP）",
                 events.any { it.stage == SshConnectEvent.Stage.TCP && it.message.contains("校验可用") },

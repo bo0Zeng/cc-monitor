@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
@@ -14,9 +15,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 旧连接还能不能用，让对端答：探活与一条新连接同时起跑，谁先站住用谁（台子读数「复用 · 刚断过」5.4 秒 vs 新建 0.4 秒）。
- * 黑洞上的探活永远不回话（[FakeTransport.probeGate] 不放行），判据一律不推虚拟时间：
- * 换上新连接靠的是「新的那条先站住」这件事，不是哪个期限到了。
+ * 旧连接还能不能用，让对端答：先只探活，[FRESH_AFTER_MS] 内没回话才另拨一条新的、两边接着赛跑，谁先站住用谁
+ * （台子读数「复用 · 刚断过」5.4 秒 vs 新建 0.4 秒）。探活及时回了话就不另拨（不让那台多记两次登录）。
+ * 黑洞上的探活永远不回话（[FakeTransport.probeGate] 不放行），判据只推到「另拨」那一刻为止：
+ * 换上新连接靠的是「新的那条先站住」这件事，不是探活期限到了。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class StaleLinkRaceTest {
@@ -34,10 +36,13 @@ class StaleLinkRaceTest {
             produced[0].probeGate = CompletableDeferred() // 黑洞：探活不回话
             mgr.probeAndReconnectStale()
             runCurrent()
+            assertEquals("探活还没回话、还没到另拨那一刻：不另拨", 1, produced.size)
+            advanceTimeBy(FRESH_AFTER_MS)
+            runCurrent()
             assertEquals("新起了一条", 2, produced.size)
             assertSame("新的那条站住了就换上", produced[1], mgr.connection("id"))
             assertSame("linkOf 跟着换一条", produced[1], seen.last())
-            assertEquals("虚拟时间没走：没等任何期限", 0L, currentTime)
+            assertEquals("只等了另拨前那一小段，没等探活期限", FRESH_AFTER_MS, currentTime)
             advanceUntilIdle()
             assertTrue("黑洞那条后台关掉", produced[0].closed)
         }
@@ -50,10 +55,11 @@ class StaleLinkRaceTest {
             mgr.connect("id", "h", "L", cfg)
             produced[0].probeGate = CompletableDeferred()
             val got = async { mgr.connect("id", "h", "L", cfg) }
+            advanceTimeBy(FRESH_AFTER_MS)
             runCurrent()
             assertTrue("没等探活期限就回了", got.isCompleted)
             assertSame("回的是新的那条", produced[1], got.await())
-            assertEquals(0L, currentTime)
+            assertEquals(FRESH_AFTER_MS, currentTime)
         }
 
     @Test
@@ -74,13 +80,47 @@ class StaleLinkRaceTest {
             val answer = CompletableDeferred<Unit>()
             produced[0].probeGate = answer
             mgr.probeAndReconnectStale()
+            advanceTimeBy(FRESH_AFTER_MS)
             runCurrent()
-            assertEquals("探活与新连接同时起跑", 2, produced.size)
+            assertEquals("探活没及时回话：另拨一条，接着赛跑", 2, produced.size)
             answer.complete(Unit) // 对端回话：旧的还活着
             runCurrent()
             advanceUntilIdle()
             assertSame("留旧的", produced[0], mgr.connection("id"))
             assertTrue("新起的那条关掉（握手被关断）", produced[1].closed)
+        }
+
+    @Test
+    fun `回前台时探活几百毫秒内回了话：留旧的，不另拨`() =
+        runTest {
+            val produced = mutableListOf<FakeTransport>()
+            val mgr = testManager(produced)
+            mgr.connect("id", "h", "L", cfg)
+            val answer = CompletableDeferred<Unit>()
+            produced[0].probeGate = answer
+            mgr.probeAndReconnectStale()
+            advanceTimeBy(FRESH_AFTER_MS - 1)
+            runCurrent()
+            answer.complete(Unit) // 另拨之前对端回了话
+            runCurrent()
+            advanceUntilIdle()
+            assertEquals("一条都没另拨", 1, produced.size)
+            assertSame("留旧的", produced[0], mgr.connection("id"))
+            assertEquals(1, produced[0].probeCalls.get())
+        }
+
+    @Test
+    fun `探活及时答「死」：不等到另拨那一刻，当场另拨`() =
+        runTest {
+            val produced = mutableListOf<FakeTransport>()
+            val mgr = testManager(produced)
+            mgr.connect("id", "h", "L", cfg)
+            produced[0].probeAliveResult = false // 对端回了 RST 一类
+            mgr.probeAndReconnectStale()
+            runCurrent()
+            assertEquals("当场另拨了一条", 2, produced.size)
+            assertSame("换上新的", produced[1], mgr.connection("id"))
+            assertEquals("没等到另拨那一刻", 0L, currentTime)
         }
 
     @Test
