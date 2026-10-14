@@ -202,8 +202,8 @@ class SettingsEntriesTest {
             headers,
         )
         assertEquals(
-            "数据侧的节数也钉住（只有「终端」一节）：多一节就该重新算内容高度",
-            1,
+            "数据侧的节数也钉住（「终端」·「机器与账号」两节；10-14 mobrot 加第二节，冒烟走设置 → 轮换核过点得到）：多一节就该重新算内容高度",
+            2,
             settingsEntries().map { it.section }.distinct().size,
         )
     }
@@ -332,6 +332,8 @@ class SettingsEntriesTest {
                 "Settings" to Screen.Settings.route,
                 "ButtonSettings" to Screen.ButtonSettings.route,
                 "HostButtons" to Screen.HostButtons.route,
+                "Rotation" to Screen.Rotation.route,
+                "RotationHere" to Screen.RotationHere.route,
             )
     }
 }

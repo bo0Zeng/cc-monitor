@@ -502,7 +502,17 @@ data class RotationStrategiesReply(
 data class RotStrategyItem(
     val id: String,
     val description: String,
+    val rev: String,
+    val error: RotStrategyError?,
+    val inUse: List<String>,
     val forNew: Boolean,
+)
+
+@WireOf("RotStrategyError")
+@JsonClass(generateAdapter = true)
+data class RotStrategyError(
+    val line: Long?,
+    val msg: String,
 )
 
 @WireOf("LoginStarted")
@@ -587,4 +597,264 @@ data class ReadChunkReply(
 @JsonClass(generateAdapter = true)
 data class FilesDeleteReply(
     val remaining: Long,
+)
+
+// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。策略写的字（`StrategyText` ＝ 一句或分语言）声明成 `Any`，取字在 `Rotation.text`。 ──
+
+@WireOf("RotationViewReply")
+@JsonClass(generateAdapter = true)
+data class RotationViewReply(
+    val now: Long,
+    val nowText: String,
+    val strategy: RotStrategyItem?,
+    val form: List<RotFormCell>,
+    val settings: Any?,
+    val dirty: Boolean,
+    val start: String,
+    val current: String,
+    val accounts: List<Fact>,
+    val listed: Int,
+    val decision: RotTryDecision?,
+    val timeline: RotTryTimeline?,
+    val past: RotPast?,
+    val baseRev: String,
+    val hints: List<RotNote>,
+)
+
+@WireOf("RotFormCell")
+@JsonClass(generateAdapter = true)
+data class RotFormCell(
+    val key: String,
+    val kind: RotFormKind,
+    val scope: RotFormScope,
+    val inherit: Boolean?,
+    val label: Any,
+    val help: Any?,
+    val windows: List<String>?,
+    val min: Double?,
+    val max: Double?,
+    val unit: String?,
+    val default: Any?,
+    val choices: List<RotFormChoice>?,
+    val nullable: Any?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class RotFormKind {
+    @Json(name = "percent")
+    PERCENT,
+
+    @Json(name = "minutes")
+    MINUTES,
+
+    @Json(name = "toggle")
+    TOGGLE,
+
+    @Json(name = "choice")
+    CHOICE,
+
+    @Json(name = "daySegments")
+    DAY_SEGMENTS,
+}
+
+@JsonClass(generateAdapter = false)
+enum class RotFormScope {
+    @Json(name = "all")
+    ALL,
+
+    @Json(name = "each")
+    EACH,
+}
+
+@WireOf("RotFormChoice")
+@JsonClass(generateAdapter = true)
+data class RotFormChoice(
+    val v: String,
+    val label: Any,
+)
+
+@WireOf("Fact")
+@JsonClass(generateAdapter = true)
+data class Fact(
+    val account: String,
+    val w5h: WinFact,
+    val w7d: WinFact,
+    val blocked: FactBlocked?,
+)
+
+@WireOf("WinFact")
+@JsonClass(generateAdapter = true)
+data class WinFact(
+    val used: Double,
+    val resetsText: String?,
+)
+
+@WireOf("FactBlocked")
+@JsonClass(generateAdapter = true)
+data class FactBlocked(
+    val text: String,
+)
+
+@WireOf("RotTryDecision")
+@JsonClass(generateAdapter = true)
+data class RotTryDecision(
+    val temp: List<String>,
+)
+
+@WireOf("RotTryTimeline")
+@JsonClass(generateAdapter = true)
+data class RotTryTimeline(
+    val switches: List<RotTrySwitch>,
+    val uses: List<RotTryUse>,
+    val lanes: List<RotTryLane>,
+    val ticks: List<RotTryTick>,
+)
+
+@WireOf("RotTrySwitch")
+@JsonClass(generateAdapter = true)
+data class RotTrySwitch(
+    val at: Long,
+    val atText: String,
+    val account: String,
+)
+
+@WireOf("RotTryUse")
+@JsonClass(generateAdapter = true)
+data class RotTryUse(
+    val from: Long,
+    val to: Long,
+    val account: String?,
+    val fromTemp: Boolean,
+    val capUnknown: Boolean,
+    val skipped: List<String>,
+)
+
+@WireOf("RotTryLane")
+@JsonClass(generateAdapter = true)
+data class RotTryLane(
+    val account: String,
+    val segs: List<RotTryLaneSeg>,
+)
+
+@WireOf("RotTryLaneSeg")
+@JsonClass(generateAdapter = true)
+data class RotTryLaneSeg(
+    val from: Long,
+    val to: Long,
+    val sendable: Boolean,
+    val reset: Boolean,
+    val fromText: String,
+    val left: Double,
+)
+
+@WireOf("RotTryTick")
+@JsonClass(generateAdapter = true)
+data class RotTryTick(
+    val at: Long,
+    val text: String,
+)
+
+@WireOf("RotPast")
+@JsonClass(generateAdapter = true)
+data class RotPast(
+    val from: Long,
+    val uses: List<RotPastUse>,
+    val lanes: List<RotPastLane>,
+)
+
+@WireOf("RotPastUse")
+@JsonClass(generateAdapter = true)
+data class RotPastUse(
+    val from: Long,
+    val to: Long,
+    val account: String?,
+)
+
+@WireOf("RotPastLane")
+@JsonClass(generateAdapter = true)
+data class RotPastLane(
+    val account: String,
+    val segs: List<RotPastSeg>,
+)
+
+@WireOf("RotPastSeg")
+@JsonClass(generateAdapter = true)
+data class RotPastSeg(
+    val from: Long,
+    val to: Long,
+    val sendable: Boolean,
+    val reset: Boolean,
+    val fromText: String,
+)
+
+@WireOf("RotNote")
+@JsonClass(generateAdapter = true)
+data class RotNote(
+    val hint: RotHint,
+    val text: String,
+    val detail: String?,
+)
+
+/** 提示是标签联合（`k`）：平铺成「标签 ＋ 各支的格全可空」（同 [LineRecord]）。 */
+@WireOf("RotHint")
+@JsonClass(generateAdapter = true)
+data class RotHint(
+    val k: RotHintKind,
+    val until: Long?,
+    val error: RotStrategyError?,
+    val path: String?,
+    val zone: String?,
+    val files: List<RotOldFile>?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class RotHintKind {
+    @Json(name = "hold")
+    HOLD,
+
+    @Json(name = "strategyError")
+    STRATEGY_ERROR,
+
+    @Json(name = "tzUnknown")
+    TZ_UNKNOWN,
+
+    @Json(name = "oldScripts")
+    OLD_SCRIPTS,
+
+    @Json(name = "newer")
+    NEWER,
+
+    @Json(name = "wordsBad")
+    WORDS_BAD,
+
+    @Json(name = "bookUnreadable")
+    BOOK_UNREADABLE,
+}
+
+@WireOf("RotOldFile")
+@JsonClass(generateAdapter = true)
+data class RotOldFile(
+    val name: String,
+    val path: String,
+)
+
+@WireOf("RotSeg")
+@JsonClass(generateAdapter = true)
+data class RotSeg(
+    val from: Long,
+    val to: Long,
+    val v: Double,
+)
+
+@WireOf("RotationDayPaintReply")
+@JsonClass(generateAdapter = true)
+data class RotationDayPaintReply(
+    val segs: List<RotSeg>,
+)
+
+@WireOf("RotationSaveReply")
+@JsonClass(generateAdapter = true)
+data class RotationSaveReply(
+    val id: String,
+    val rev: String,
 )

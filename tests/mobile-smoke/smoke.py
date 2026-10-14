@@ -5,6 +5,7 @@
 # 每一步只看手机屏上与台架记录里看得到的东西（不读 App 内部）；判不出的写「看不出」，不当过。
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -325,7 +326,7 @@ def files_page():
     shot("11-预览")
     tap(t("mobKit.act.close")); time.sleep(1)
     mk = t("rsFilewinWriteops.label.mkdir")
-    tap("＋ " + mk); time.sleep(1)
+    tap(mk); time.sleep(1)
     typed(f"new{T}"); hide_keyboard()
     tap_last(mk)
     if not wait(f"new{T}", 15) or "new" + T not in sh(f"ls ~/work/{d}"):
@@ -375,6 +376,50 @@ def files_page():
         raise Step.Fail("上传没落到那台")
     if not wait(up, 10):
         raise Step.Fail("上传完列表里没有它")
+
+
+# 轮换屏那一步用的两份策略（合成的：照号牌顺序用；一格「权重容差」）。写进台架家里的策略目录（不是真家目录）。
+SMOKE_STRATEGY = """// 照号牌顺序用（冒烟台架）。
+/*--- rotation
+{
+  "format": 5,
+  "tz": "UTC",
+  "settings": { "accounts": [{ "id": "work" }, { "id": "team" }, { "id": "lab" }], "close": 25 },
+  "form": [
+    { "key": "close", "kind": "percent", "scope": "all", "min": 0, "max": 100, "default": 25,
+      "label": { "zh": "权重容差" }, "help": { "zh": "冒烟台架的一格" } }
+  ]
+}
+---*/
+fn decide(ctx) {
+  let order = [];
+  let why = #{};
+  for r in ctx.settings.accounts { order.push(r.id); why[r.id] = "照号牌顺序"; }
+  #{ order: order, why: why, hold_until: (), wake: #{ at: (), when: [] }, memo: () }
+}
+"""
+
+
+def frames(cmd, args, within=20000):
+    out = subprocess.run([sys.executable, os.path.join(here, "frames.py"), cmd, json.dumps(args), str(within)],
+                         capture_output=True, text=True).stdout
+    return json.loads(out or "{}")
+
+
+def seed_rotation():
+    """台架里的账号库（work · team · lab）与两份策略；跨趟留着，再跑一遍不出错就行。"""
+    frames("accounts-init", {"name": "work"})
+    for n in ("team", "lab"):
+        frames("accounts-add", {"name": n, "kind": "subscription"})
+    import base64
+    b = base64.b64encode(SMOKE_STRATEGY.encode()).decode()
+    sh(f"mkdir -p ~/.cc-monitor/strategies && for n in smoke-a smoke-b; do echo {b} | base64 -d > ~/.cc-monitor/strategies/$n.rhai; done")
+
+
+def lane_head(text):
+    """时间轴里号名那一列的 [text]（同名的号牌在上面，取最靠下、靠左的那一个）。"""
+    ns = [n for n in ui.nodes() if n.get("text") == text and ui.center(n)[0] < 300]
+    return max(ns, key=lambda n: ui.center(n)[1], default=None)
 
 
 def main():
@@ -690,6 +735,89 @@ def main():
 
 
 def report():
+    with Step("12-轮换屏"):
+        # 从会话进轮换屏（聊天屏「⋯」→ 轮换）· 换策略 · 长按号名拖到最上那条成临时条目 · 改一格 · 存；每一样都核那台的记录。
+        seed_rotation()
+        started = frames("session-new", {"agent": "claude", "cwd": "~/work", "place": "tmux", "local": False, "ticket": f"{T}rot",
+                                         "prompt": f"{T} rotation", "rotation": {"strategy": "smoke-a"}}, 45000)
+        sid = (started.get("data") or {}).get("sid")
+        if not sid:
+            raise Step.Fail(f"台架起不了带轮换的会话：{started!r}"[:300])
+        launch()
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} rotation", 40):
+            raise Step.Fail("对话列表里没有那条带轮换的会话")
+        tap(f"{T} rotation")
+        time.sleep(3)
+        tap(t("history.row.more"))
+        time.sleep(1)
+        tap(t("mobChat.more.rotation"))
+        if not wait("smoke-a", 20):
+            raise Step.Fail("轮换屏没画出那条会话用的策略")
+        if not wait(t("rot.h.cards"), 10) or ui.find(t("mobRot.cards.hint")) is None:
+            raise Step.Fail("轮换屏没画出轮换账号那一块")
+        shot("12a-轮换屏")
+        tap("smoke-a")
+        if not wait("smoke-b", 10):
+            raise Step.Fail("策略抽屉里没有 smoke-b")
+        tap("smoke-b")
+        end = time.time() + 20
+        while time.time() < end and ((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("strategy") or {}).get("id") != "smoke-b":
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("选了 smoke-b，那台记的那条会话没换过去")
+        if not wait("smoke-b", 10):
+            raise Step.Fail("换了策略，屏上没跟着换")
+        to_bottom()
+        time.sleep(1)
+        head = lane_head("team")
+        top = next((n for n in ui.nodes() if n.get("content-desc") == t("rot.h.sim")), None)
+        if head is None or top is None:
+            raise Step.Fail("模拟里找不到 team 那一行或最上那条")
+        (x1, y1), (x2, y2) = ui.center(head), ui.center(top)
+        adb("shell", "input", "draganddrop", str(x1), str(y1), str(x2), str(y2), "1500")
+        end = time.time() + 20
+        while time.time() < end and "team" not in (((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("decision") or {}).get("temp") or []):
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("拖了 team 到最上那条，那台没记成临时条目")
+        if not wait(t("rot.sim.manual", n=1), 10):
+            raise Step.Fail("排了临时条目，模拟的小标题没出「手动 1 段」")
+        shot("12b-临时条目")
+        adb("shell", "input", "swipe", "540", "700", "540", "1600", "200")
+        time.sleep(1)
+        box = ui.find("25")
+        if box is None:
+            raise Step.Fail("找不到「权重容差」那一格的数")
+        adb("shell", "input", "tap", *map(str, ui.center(box)))
+        time.sleep(0.5)
+        adb("shell", "input", "keyevent", "123")
+        for _ in range(4):
+            adb("shell", "input", "keyevent", "67")
+        typed("30")
+        adb("shell", "input", "keyevent", "66")
+        if not wait(t("rot.top.save"), 15):
+            raise Step.Fail("改了一格，底部没出没存条")
+        shot("12c-没存")
+        tap(t("rot.top.save"))
+        end = time.time() + 20
+        while time.time() < end and not re.search(r'"close":\s*30(\.0)?\b', sh("cat ~/.cc-monitor/strategies/smoke-b.rhai")):
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("点了存，smoke-b 那份文件里没写进 30")
+        hide_keyboard()
+        if wait(t("rot.top.save"), 3):
+            raise Step.Fail("存完没存条还在")
+        # 另一个进口：设置 → 机器与账号 → 轮换（这台新会话用的那份），点得到。
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("mobSettings.entry.rotation"), 10):
+            raise Step.Fail("设置里没有「机器与账号 → 轮换」")
+        tap(t("mobSettings.entry.rotation"))
+        if not wait(t("rot.top.here", machine="smokebox"), 15):
+            raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
+
     print()
     print("| 步 | 结果 | 用时 | 截图 |")
     print("|---|---|---|---|")

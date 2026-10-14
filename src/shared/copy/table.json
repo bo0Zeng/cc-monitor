@@ -29228,6 +29228,24 @@
       "zh": "发送",
       "args": []
     },
+    "mobChat.more.rotation": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "轮换",
+      "args": []
+    },
+    "mobRot.top.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "轮换",
+      "args": []
+    },
+    "mobRot.cards.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "长按拖动改默认优先级",
+      "args": []
+    },
     "mobReading.bash.title": {
       "kind": "title",
       "role": "标题",
@@ -29417,6 +29435,18 @@
       "kind": "title",
       "role": "标题",
       "zh": "终端",
+      "args": []
+    },
+    "mobSettings.section.machine": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "机器与账号",
+      "args": []
+    },
+    "mobSettings.entry.rotation": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "轮换",
       "args": []
     },
     "mobKit.act.back": {

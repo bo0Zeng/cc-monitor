@@ -29,6 +29,8 @@ fun settingsEntries(): List<SettingsEntry> =
         SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.buttons"), Screen.ButtonSettings.route),
         // 身份从服务器列表里进；这里给的是到服务器列表那一跳。
         SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.hosts"), Screen.Hosts.route),
+        // 轮换看的是当前服务器（上次那台）新会话用的那份。
+        SettingsEntry(copyText("mobSettings.section.machine"), copyText("mobSettings.entry.rotation"), Screen.RotationHere.route),
     )
 
 /** 节标题就叫「终端」，不叫「高级」「更多」：找终端的人应该直接看见这两个字。 */
