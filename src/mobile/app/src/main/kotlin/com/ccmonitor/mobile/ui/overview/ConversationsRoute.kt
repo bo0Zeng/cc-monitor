@@ -39,7 +39,7 @@ import org.koin.core.parameter.parametersOf
 
 /**
  * 「对话」这一屏的入口：先建 SSH 连接（`HostLink`），通了再在上面接那台的常驻流、读核心的清单。
- * 顶栏同聊天屏：抽屉按钮 ＋「对话」＋ 这台的名字（稿 `外观对齐` 第 2 节）；抽屉与聊天屏是同一个。
+ * 顶栏同聊天屏：抽屉按钮 ＋「对话」＋ 这台的名字；抽屉与聊天屏是同一个。
  */
 @Composable
 fun ConversationsRoute(

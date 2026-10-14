@@ -129,7 +129,7 @@ private fun StatusText(s: Toned) {
     Text(s.text, color = toneColor(s.tone), style = MaterialTheme.typography.bodySmall)
 }
 
-/** 行标题：正文字号 600（稿 `外观对齐` 第 2 节）。 */
+/** 行标题：正文字号 600。 */
 @Composable
 private fun rowTitle() = MaterialTheme.typography.titleSmall
 
@@ -159,7 +159,7 @@ private fun DotRow(
 }
 
 /**
- * 语气 ⇒ 字色：闭集，按核心给的语气选，不按字。状态字回 `--text-2`，只有需手动那句琥珀、出错那句红字（稿 `外观对齐` 第 2 节）；
+ * 语气 ⇒ 字色：闭集，按核心给的语气选，不按字。状态字回 `--text-2`，只有需手动那句琥珀、出错那句红字；
  * 在跑不再用强调色当字色（那是状态点的事，状态点九种等核心给齐两轴再画）。
  */
 @Composable

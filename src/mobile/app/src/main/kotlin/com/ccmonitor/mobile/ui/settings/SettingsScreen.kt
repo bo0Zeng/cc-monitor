@@ -67,7 +67,7 @@ fun SettingsScreen(
 private fun EntrySections(onNavigate: (String) -> Unit) {
     settingsEntries().groupBy { it.section }.forEach { (section, entries) ->
         Text(section, style = MaterialTheme.typography.titleMedium)
-        // 一项一行（56 dp），行尾 caret（稿 `外观对齐` 第 7 节）。
+        // 一项一行（56 dp），行尾 caret。
         entries.forEach { entry ->
             Row(
                 Modifier

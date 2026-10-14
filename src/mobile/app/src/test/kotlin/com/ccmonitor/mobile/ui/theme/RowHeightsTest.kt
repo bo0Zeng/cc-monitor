@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 列表行高照手机适配层（`Touch`，稿 `外观对齐` 第三节：单行 48 · 双行 64 · 设置一项 56 · 文件行 52 · 抽屉项 52），逐屏登记：
+ * 列表行高照手机适配层（`Touch`：单行 48 · 双行 64 · 设置一项 56 · 文件行 52 · 抽屉项 52），逐屏登记：
  * 登记的每个画行的函数里要引到那一档 `Touch.rowX`，且不许自己写行高数（`height(56.dp)` · `heightIn(min = 48.dp)` · 常量）。
  * 消息流正文（Markwon 那个 TextView）字号 · 行高取 `bodyLarge`（`--font-size-prose` 15 / `--line-height-prose` 1.65），不写死。
  */

@@ -87,7 +87,7 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     // inset 垫在最外层 Box 上：返回键/标题让开状态栏，右下的 FAB 让开手势条。
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
-            // 顶栏：返回图标 ＋ 标题（稿 `外观对齐` 第 10 节：「← 返回」字换顶栏图标）。
+            // 顶栏：返回图标 ＋ 标题（「← 返回」字换顶栏图标）。
             Row(
                 Modifier.fillMaxWidth().heightIn(min = Touch.topBar).padding(start = 4.dp, end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -272,7 +272,7 @@ private fun NewIdentityDialog(
     )
 }
 
-/** 添一把钥匙：从底部拉起、三种来源（稿 `外观对齐` 第 10 节）。说差别不说算法名；格式判别交给解析，不让用户判。 */
+/** 添一把钥匙：从底部拉起、三种来源。说差别不说算法名；格式判别交给解析，不让用户判。 */
 @Composable
 private fun IdentityChooserSheet(
     onDismiss: () -> Unit,

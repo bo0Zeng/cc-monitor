@@ -66,7 +66,7 @@ fun ChatDrawer(
         gesturesEnabled = true,
         scrimColor = MaterialTheme.colorScheme.scrim,
         drawerContent = {
-            // 抽屉 ＝ 凸起面（`--card`）＋ `--border-medium` 边 ＋ 外角 10；遮罩 `--overlay-backdrop`（稿第 3 节）。
+            // 抽屉 ＝ 凸起面（`--card`）＋ `--border-medium` 边 ＋ 外角 10；遮罩 `--overlay-backdrop`。
             ModalDrawerSheet(
                 Modifier.fillMaxWidth(DRAWER_WIDTH_FRACTION).border(1.dp, MaterialTheme.colorScheme.outline, DrawerShape),
                 drawerShape = DrawerShape,

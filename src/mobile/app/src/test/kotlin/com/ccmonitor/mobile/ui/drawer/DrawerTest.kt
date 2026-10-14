@@ -33,7 +33,7 @@ class DrawerTest {
             entries.map { it.item },
         )
         assertEquals(listOf("新对话", "对话", "文件", "终端"), entries.map { it.label })
-        assertEquals("行首图标（稿 `外观对齐` 第 13 节）", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
+        assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
         assertEquals("顶上的名字", "cc-monitor", DRAWER_TITLE)
         assertEquals("「最近」小标题", "最近", RECENT_HEADER)
         assertEquals("底行", "服务器 · devbox", serverRowLabel("devbox"))

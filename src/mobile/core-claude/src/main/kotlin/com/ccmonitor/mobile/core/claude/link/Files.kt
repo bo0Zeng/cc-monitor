@@ -13,7 +13,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 /*
- * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 分块上传 · 分块下载。都是那台后端的帧命令（`IPC-COMMANDS.md` §4.2），
+ * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 分块上传 · 分块下载。都是那台后端的帧命令，
  * 桌面文件窗口问的同一族；能不能做 · 出错那一句 · 冲突都由那台判、那台写。手机只拼入参，回包由嵌的 Rust 核心按 `cmd-wire` 那一份解过、
  * 装进 `link/wire/` 的声明类。写的那几问照桌面的切法：`root` ＝ 当前目录，`rel` ＝ 一段名字（敲的名字带 `single`，合不合法那台判）。
  */

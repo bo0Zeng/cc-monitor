@@ -44,7 +44,7 @@ sealed interface DrawerAction {
 }
 
 /**
- * 抽屉上半的一项：行首一个 Phosphor 图标 ＋ 字（稿 `外观对齐` 第 3 节；「新对话」不再用强调色的字）。
+ * 抽屉上半的一项：行首一个 Phosphor 图标 ＋ 字（「新对话」不再用强调色的字）。
  *
  * @property onLongPress 长按做什么。目前恒为 null：选账号要先接 `accounts-list`。
  */

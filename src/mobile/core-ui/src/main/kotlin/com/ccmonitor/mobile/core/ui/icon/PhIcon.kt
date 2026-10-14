@@ -81,7 +81,7 @@ fun PhIconButton(
     }
 }
 
-/** 二级页左上的返回：arrow-left 图标按钮（稿 `外观对齐` 第 13 节：「← 返回」字换图标），无障碍名「返回」。 */
+/** 二级页左上的返回：arrow-left 图标按钮（「← 返回」字换图标），无障碍名「返回」。 */
 @Composable
 fun BackButton(
     onBack: () -> Unit,

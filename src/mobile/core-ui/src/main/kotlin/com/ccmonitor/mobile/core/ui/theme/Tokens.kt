@@ -14,7 +14,7 @@ data class ThemeShadow(
     val color: Color,
 )
 
-/** 两档阴影在 Compose 里的 elevation：取偏移量（浮层 6 · 模态 12，与稿第 11 节同）。适配层：两边画阴影的方式不同，数值不照抄 blur。 */
+/** 两档阴影在 Compose 里的 elevation：取偏移量（浮层 6 · 模态 12）。适配层：两边画阴影的方式不同，数值不照抄 blur。 */
 val ThemeShadow.shadowElevation: Dp get() = y
 
 /** 间距：桌面同一刻度 2 4 6 8 12 16 24 32（`--space-1` … `--space-8`）。 */

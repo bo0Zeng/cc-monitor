@@ -110,7 +110,7 @@ private fun SessionTabRowItem(
     onClick: () -> Unit,
     onClose: () -> Unit,
 ) {
-    // 当前项：选中淡底 ＋ accent 图标（同抽屉，稿 `外观对齐` 第 3 节）。
+    // 当前项：选中淡底 ＋ accent 图标（同抽屉）。
     val tokens = LocalAppTokens.current
     val bg = if (selected) tokens.selectedBg else Color.Transparent
     val fg = MaterialTheme.colorScheme.onSurface

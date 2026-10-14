@@ -385,7 +385,7 @@ private fun DroppedBanner(
     status: SessionStatus?,
     onReconnect: () -> Unit,
 ) {
-    // 错误条：`--card` 底（errorContainer）＋ 左 3 dp `--error` 条，字用正文色（稿 `外观对齐` 第二节）。
+    // 错误条：`--card` 底（errorContainer）＋ 左 3 dp `--error` 条，字用正文色。
     Row(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(end = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

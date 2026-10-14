@@ -5,7 +5,7 @@ import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 
 /**
  * 终端画面的配色取桌面同一族令牌 `--term-*`（画面是内容色，不是界面色；后端给的 16 色名照这一族画）。
- * 光标 `--accent`、选区 `--selected-bg`（稿 `外观对齐` 第 8 节）。只做映射。
+ * 光标 `--accent`、选区 `--selected-bg`。只做映射。
  */
 val AppTerminalPalette =
     TerminalPalette(

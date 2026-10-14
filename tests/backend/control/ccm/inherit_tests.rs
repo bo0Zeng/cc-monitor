@@ -133,7 +133,7 @@ fn each_item_is_one_row_and_says_both_paths() {
         assert!(!seen.contains(&row.item), "{:?} 在表里出现了两次", row.item);
         seen.push(row.item);
     }
-    // 直路与 tmux 路这一格就是不一样：表里照实写，不假装一样（`起会话与环境继承.md` §5.1 的偏离）。
+    // 直路与 tmux 路这一格就是不一样：表里照实写，不假装一样。
     let rest = INHERIT
         .iter()
         .find(|r| r.item == Item::OtherEnv)

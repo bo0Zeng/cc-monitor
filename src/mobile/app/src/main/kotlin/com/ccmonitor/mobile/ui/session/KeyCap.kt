@@ -13,7 +13,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 
-/** 键帽名里当图标用的那几个字符 → Phosphor（稿 `外观对齐` 第 8 · 13 节）。 */
+/** 键帽名里当图标用的那几个字符 → Phosphor。 */
 private val KEY_GLYPHS =
     mapOf(
         "↑" to Ph.ArrowUp,

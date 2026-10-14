@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.core.ui.theme
 import androidx.compose.ui.unit.dp
 
 /**
- * 手机适配层（稿 `外观对齐` 第三节）：手指比鼠标指针粗、手机有顶栏 —— 这些尺寸只有手机有，不进 `tokens.css`。
+ * 手机适配层：手指比鼠标指针粗、手机有顶栏 —— 这些尺寸只有手机有，不进 `tokens.css`。
  * 画出来的按钮可以小于 48，命中区不能（M3 `minimumInteractiveComponentSize` 同值）。
  */
 object Touch {

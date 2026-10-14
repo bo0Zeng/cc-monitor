@@ -304,7 +304,7 @@ private fun ButtonEditForm(
         if (s.type != "switch") LongPressEditor(s)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(buttonPreview(s.type, s.command, s.builtinAction, s.switchTarget), style = MaterialTheme.typography.bodySmall)
-            // 命令型末尾带回车：arrow-elbow-down-left（稿 `外观对齐` 第 13 节，原先是字符「⏎」）。
+            // 命令型末尾带回车：arrow-elbow-down-left（原先是字符「⏎」）。
             if (s.type == "command") PhIcon(Ph.ArrowElbowDownLeft, contentDescription = null, size = Touch.iconInline)
         }
     }

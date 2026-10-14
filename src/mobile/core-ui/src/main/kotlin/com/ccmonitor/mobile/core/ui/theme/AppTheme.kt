@@ -9,7 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 
 /**
- * M3 的每个颜色槽取哪个令牌（稿 `外观对齐` 第 11 节）。只做映射，值全在 `tokens.css`。
+ * M3 的每个颜色槽取哪个令牌。只做映射，值全在 `tokens.css`。
  * 每个槽都显式给：漏一个就落回 M3 的默认紫（判据 `ThemeLedgerTest` 逐槽比 M3 默认值）。
  *
  * - `--accent` 不进 `primary`：M3 拿 primary 当 TextButton 的字色，accent 当字只有 3.7:1；它在 [AppTokens.accent]。

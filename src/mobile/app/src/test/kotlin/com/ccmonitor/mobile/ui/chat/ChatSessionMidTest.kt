@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 聊天屏输入那一圈的会话中途四样（稿 `能用门槛` 第 4–6 节）＋ 逐字流：
+ * 聊天屏输入那一圈的会话中途四样 ＋ 逐字流：
  * 换模型 · 切权限档读回才换字、没读回回原字 ＋ 一句；［+］面板的清单 · 动作都问那台；活卡照那台的帧长、撤。
  */
 @OptIn(ExperimentalCoroutinesApi::class)

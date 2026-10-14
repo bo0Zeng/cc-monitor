@@ -271,7 +271,7 @@ private fun HostListActions(
     onSessions: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        // 顶栏三颗图标按钮（稿 `外观对齐` 第 1 节）：会话总览 · 导入 · 钥匙；字只当无障碍名。
+        // 顶栏三颗图标按钮：会话总览 · 导入 · 钥匙；字只当无障碍名。
         PhIconButton(Ph.Chats, copyText("mobHosts.list.sessions"), onClick = onSessions, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         ImportSshConfigButton(vm)
         PhIconButton(Ph.Key, IDENTITY_SCREEN_TITLE, onClick = onIdentities, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -353,7 +353,7 @@ private fun HostRow(
     }
 }
 
-/** 一台的 ⋯：行尾「编辑 · 文件」收进这里（稿 `外观对齐` 第 1 节），删除也在这里（撤不回 ⇒ 再弹确认框）。 */
+/** 一台的 ⋯：行尾「编辑 · 文件」收进这里，删除也在这里（撤不回 ⇒ 再弹确认框）。 */
 @Composable
 private fun HostRowMenu(
     host: Host,
