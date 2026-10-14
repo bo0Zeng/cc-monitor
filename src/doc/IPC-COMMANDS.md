@@ -1317,21 +1317,270 @@ type WirePath = string | { b16: string };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --quota-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
-| `candidates` | ← | 换号 · 加号那几处的候选 `{agent, account, kind}`：出过数的在前、没出过的在后，起会话时没说是哪个号的 `_` 不在里面（判断只住 `name_words::is_candidate`）；界面照它画，不另拼、不另滤 |
-| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
-| `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
-| `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
-| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
-| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
-| `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
-| `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
-| `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来） |
-| `unseen` | ← | 账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send\|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`） |
-| `text` | ← | 读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null` |
-| `usableNow` | ← | 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算） |
+入参 `NoArgs` · 回包 `QuotaRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type NoArgs = Record<symbol, never>;
+type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
+/**
+ * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
+ */
+fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, seenAt: number, seenAtText: Words, 
+/**
+ * 别台的钟走在前面时才有。
+ */
+seenAtRelText?: Words, 
+/**
+ * 那一条账的额度快照（原数照原样；时刻旁边的字已添）。
+ */
+reading: QuotaReadingShown, 
+/**
+ * 各窗口几点、从哪看到的（原数照原样；账上没记 ⇒ 缺）。
+ */
+windowsSeen?: { [key in string]: QuotaWindowSeen }, kind: QuotaKind, state: QuotaState, 
+/**
+ * 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
+ */
+stale: boolean, 
+/**
+ * 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。
+ */
+limiting?: string, 
+/**
+ * `5h` · `7d` 各一格（有数的才出）。
+ */
+slots: Array<SlotShow>, login: LoginState, 
+/**
+ * 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
+ */
+subId?: string, 
+/**
+ * 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
+ */
+windows?: Array<WindowShow>, 
+/**
+ * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
+ */
+usage: Usage, };
+type QuotaCandidate = { agent: string, account: string, kind: QuotaKind, };
+type QuotaCell = { text: Words, tone: Tone, };
+type QuotaEarliestReturn = { account: string, at: number, atText: Words, atRelText?: Words, };
+type QuotaKind = "sub" | "api";
+type QuotaNames = { accounts: { [key in string]: Words }, slots: { [key in string]: Words }, };
+type QuotaOverageShown = { status?: QuotaStatus, 
+/**
+ * 为什么不可用（那一家的原值）。
+ */
+disabled?: string, 
+/**
+ * 这一发正在用超额。
+ */
+inUse: boolean, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
+type QuotaRead = { 
+/**
+ * 那份文件读到的三态。
+ */
+state: QuotaReadState, 
+/**
+ * 只在 `unreadable` 时有：为什么读不出来（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答）。
+ */
+detail: string | null, 
+/**
+ * 那份文件的绝对路径（家推不出来时 `null`）。
+ */
+path: string | null, 
+/**
+ * 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）。
+ */
+now: number, 
+/**
+ * 每个出过数的号一条，按 `(agent, account)` 排。
+ */
+accounts: Array<QuotaAccount>, 
+/**
+ * 账号库里有、额度账上从没出过数的号。
+ */
+unseen: Array<QuotaUnseen>, 
+/**
+ * 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜。
+ */
+usableNow: Array<string>, 
+/**
+ * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（[`is_candidate`]）。界面只照它画，不另拼、不另滤。
+ */
+candidates: Array<QuotaCandidate>, 
+/**
+ * 被拒 / 超额在兜的号里最早回来的那个；没有、或都说不出时刻 ⇒ `null`。
+ */
+earliestReturn: QuotaEarliestReturn | null, 
+/**
+ * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`quota_rows::head_text`]）。
+ */
+text: Words | null, 
+/**
+ * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
+ */
+fiveHour: Words | null, 
+/**
+ * 号名 / 位名表（出口画号名 · 位名只照它）。
+ */
+names: QuotaNames, };
+type QuotaReadState = "present" | "absent" | "unreadable";
+type QuotaReadingShown = { 
+/**
+ * 限流器的结论；回包里没说 ⇒ 缺。
+ */
+status?: QuotaStatus, 
+/**
+ * 那一发被上游拒了（没被服务）。
+ */
+refused: boolean, 
+/**
+ * 此刻卡着的那个窗口名。
+ */
+limiting?: string, windows: Array<QuotaWindowRead>, overage?: QuotaOverageShown, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
+type QuotaSource = "headers" | "usage";
+type QuotaState = "ok" | "near" | "refused" | "overageInUse" | "unseen" | "resetSinceSeen";
+type QuotaStatus = "allowed" | "warning" | "rejected";
+type QuotaUnseen = { rows: Array<Array<QuotaCell>>, 
+/**
+ * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
+ */
+fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+/**
+ * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
+ */
+usage: QuotaUnseenUsage, };
+type QuotaUnseenUsage = { slot?: string, window?: Words, value: Words, text: Words, tone: Tone, };
+type QuotaWarm = { act: QuotaWarmAct, at?: number, 
+/**
+ * `at` 写给人看的样子（[`Warm::stamp`]）。
+ */
+atText?: Words, 
+/**
+ * `at` 距今。
+ */
+atRelText?: Words, 
+/**
+ * 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
+ */
+text: Words, };
+type QuotaWarmAct = "send" | "wait";
+type QuotaWindowRead = { name: string, 
+/**
+ * 已用比例（通常 0–1，可以超过 1）。
+ */
+used?: number, 
+/**
+ * 越过了哪条预警线（比例）；没越过就没有。
+ */
+warnedAt?: number, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
+type QuotaWindowSeen = { at: number, atText: Words, atRelText?: Words, from: QuotaSource, };
+type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
+/**
+ * `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
+ */
+resetsAtText?: string, 
+/**
+ * `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
+ */
+resetsAtRelText?: string, 
+/**
+ * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
+ */
+full?: boolean, 
+/**
+ * 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ */
+text: string, 
+/**
+ * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Usage = { 
+/**
+ * 画的是哪个语义位（卡着的那个；回包没说 ⇒ `5h`）；按量号 ⇒ 缺。
+ */
+slot?: string, 
+/**
+ * 那个语义位的字（`5h`）；按量号 ⇒ 缺。
+ */
+window?: string, 
+/**
+ * 用量那一格（`63%` · `✕` · `超额` · `—` · `被拒` · `按量`）。
+ */
+value: string, 
+/**
+ * 被拒时几点重置（`↻19:00`，出口那一下按钟写，[`QuotaShow::stamp`]）；没有 ⇒ 缺。
+ */
+reset?: string, 
+/**
+ * 连成一句（`5h 63%` · `5h ✕ ↻19:00` · `按量`）：下拉项右侧 · 切换那颗按钮。
+ */
+text: string, 
+/**
+ * 语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
+type WindowShow = { 
+/**
+ * 那一家的窗口名（`five_hour` · `seven_day` · `seven_day_<模型>` · …）。
+ */
+name: string, 
+/**
+ * 窗口键（`5h` · `7d` · `7d:<模型>`；轮换的上限 · 单段预算按它配）；不算用量窗口的（超额）⇒ 缺。
+ */
+key?: string, 
+/**
+ * 取整的百分比（已重置未计时 ⇒ 0）。
+ */
+pct?: number, 
+/**
+ * 几点重置；有 ＝ 这个窗口在计时。
+ */
+resetsAt?: number, 
+/**
+ * `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
+ */
+resetsAtText?: string, 
+/**
+ * `resets_at` 距今（同上，只在还没到时有）。
+ */
+resetsAtRelText?: string, seenAt: number, 
+/**
+ * `seen_at` 写给人看的样子（同上）。
+ */
+seenAtText?: string, 
+/**
+ * `seen_at` 距今（别台的钟走在前面时才有）。
+ */
+seenAtRelText?: string, from: QuotaSource, 
+/**
+ * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
+ */
+resetSinceSeen?: boolean, };
+type Words = string;
+```
+
+码：`bad_args`
 
 #### `quota-probe`
 

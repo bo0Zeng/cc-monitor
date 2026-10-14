@@ -16,9 +16,9 @@ struct SeenIn {
     agent: String,
     account: String,
     seen_at: u64,
-    reading: Value,
+    reading: crate::agents::QuotaReading,
     #[serde(default)]
-    windows_seen: Option<Value>,
+    windows_seen: std::collections::BTreeMap<String, crate::accounts::quota::ledger::WindowSeen>,
     #[serde(flatten)]
     show: crate::accounts::quota::show::QuotaShow,
 }
@@ -47,7 +47,7 @@ fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
                 x.show.state,
                 x.show.limiting.as_deref(),
                 &x.show.slots,
-                x.reading["resetsAt"].as_u64(),
+                x.reading.resets_at,
             );
             Seen {
                 agent: x.agent,
@@ -78,15 +78,16 @@ fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
             h
         })
         .collect();
+    use crate::accounts::quota::ledger::ReadState;
     let state = match reply["state"].as_str() {
-        Some("present") => "present",
-        Some("absent") => "absent",
-        _ => "unreadable",
+        Some("present") => ReadState::Present,
+        Some("absent") => ReadState::Absent,
+        _ => ReadState::Unreadable,
     };
     let base = Base {
         state,
-        reason: reply["reason"].clone(),
-        detail: reply.get("detail").cloned().unwrap_or(Value::Null),
+        reason: reply["reason"].as_str().map(str::to_string),
+        detail: reply["detail"].as_str().map(str::to_string),
         path: reply["path"].as_str().map(str::to_string),
         now,
         usable_now: serde_json::from_value(reply["usableNow"].clone()).unwrap_or_default(),
@@ -185,14 +186,29 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
 fn the_unreadable_head_says_the_reason() {
     let why = "读取失败 · /h/.cc-monitor/quota.json · 无权限";
     assert_eq!(
-        head_text("unreadable", true, Some(why)).map(|w| w.0),
+        head_text(
+            crate::accounts::quota::ledger::ReadState::Unreadable,
+            true,
+            Some(why)
+        )
+        .map(|w| w.0),
         Some(why.to_string())
     );
     assert_eq!(
-        head_text("unreadable", true, None).map(|w| w.0),
+        head_text(
+            crate::accounts::quota::ledger::ReadState::Unreadable,
+            true,
+            None
+        )
+        .map(|w| w.0),
         Some(copy_text("acct.text.readFail", &[]))
     );
-    assert!(head_text("present", false, Some(why)).is_none());
+    assert!(head_text(
+        crate::accounts::quota::ledger::ReadState::Present,
+        false,
+        Some(why)
+    )
+    .is_none());
 }
 
 /// ★★ 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）由核心写：订阅号 `5h 41%` · 卡着的照语义位的字；
@@ -296,8 +312,11 @@ fn an_unreadable_ledger_sends_nothing_and_says_which_file_and_why() {
     let now = 1_791_189_600u64;
     let read = crate::accounts::quota::ledger::answer_of(Some(&p), now);
     let _ = std::fs::remove_dir_all(&d);
-    assert_eq!(read.state, "unreadable");
-    let why = read.reason.as_str().expect("读不懂要有原因").to_string();
+    assert_eq!(
+        read.state,
+        crate::accounts::quota::ledger::ReadState::Unreadable
+    );
+    let why = read.reason.clone().expect("读不懂要有原因");
     assert!(
         why.contains(&p.display().to_string()),
         "原因里说是哪一份：{why}"

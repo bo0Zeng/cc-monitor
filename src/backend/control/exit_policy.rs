@@ -212,12 +212,11 @@ fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> ExitPolicy {
         _ => None,
     };
     let (reason, detail) = crate::wire::detail::unreadable("exit-policy-read", why);
-    let text = |v: serde_json::Value| v.as_str().map(str::to_string);
     ExitPolicy {
         state: r.state(),
         kill_on_exit: r.kill_on_exit(),
-        reason: text(reason),
-        detail: text(detail),
+        reason,
+        detail,
         path: path.map(|p| p.display().to_string()),
         said: said(r, resident),
     }

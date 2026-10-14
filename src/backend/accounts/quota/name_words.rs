@@ -41,6 +41,15 @@ pub(crate) fn slot_text(w: &str) -> String {
 
 /// 成品上的 `names` 那一格：`accounts` 只列与原名不同的号（今天只有 `_`），`slots` 列每个语义位。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaNames"
+    )
+)]
 pub(crate) struct Names {
     pub(crate) accounts: BTreeMap<String, Words>,
     pub(crate) slots: BTreeMap<String, Words>,

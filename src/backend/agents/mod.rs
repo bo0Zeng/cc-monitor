@@ -2425,6 +2425,8 @@ pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {
 
 /// 限流器对一发的结论（各家的值翻成这三档）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum QuotaStatus {
     Allowed,

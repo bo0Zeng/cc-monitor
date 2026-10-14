@@ -1071,7 +1071,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
         "terminal-follow",
         sampled::<crate::control::terminal_follow::Refused>,

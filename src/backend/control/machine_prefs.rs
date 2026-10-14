@@ -279,11 +279,10 @@ fn reply(l: &Loaded, path: Option<&Path>) -> PrefsReply {
         _ => None,
     };
     let (reason, detail) = crate::wire::detail::unreadable("prefs-read", why);
-    let text = |v: serde_json::Value| v.as_str().map(str::to_string);
     PrefsReply {
         state: l.state(),
-        reason: text(reason),
-        detail: text(detail),
+        reason,
+        detail,
         path: path.map(|p| p.display().to_string()),
         prefs: l.prefs(),
     }

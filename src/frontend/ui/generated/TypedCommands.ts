@@ -224,6 +224,7 @@ import type { ProfilesWriteDone } from "./ProfilesWriteDone";
 import type { ProfilesWriteReq } from "./ProfilesWriteReq";
 import type { PubkeyPushReq } from "./PubkeyPushReq";
 import type { PubkeyPushed } from "./PubkeyPushed";
+import type { QuotaRead } from "./QuotaRead";
 import type { ReachReq } from "./ReachReq";
 import type { Reached } from "./Reached";
 import type { ReadChunkReply } from "./ReadChunkReply";
@@ -455,6 +456,7 @@ export interface TypedCommands {
   "profiles-write": { req: ProfilesWriteReq; reply: ProfilesWriteDone; code: "bad_args" | "refused" | "stale" };
   "pubkey-push": { req: PubkeyPushReq; reply: PubkeyPushed; code: "bad_args" | "bad_jump" | "refused" | "failed" };
   "quota-probe": { req: ProbeReq; reply: Probed; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "not_found" | "unsupported" };
+  "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
   "relay-optin": { req: OptinReq; reply: Optin; code: "bad_args" | "failed" };
   "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };

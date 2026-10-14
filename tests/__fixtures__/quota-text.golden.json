@@ -50,7 +50,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -136,7 +137,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -224,7 +226,8 @@
             "reading": {
               "refused": true,
               "resetsAt": 1791198000,
-              "resetsAtText": "19:00"
+              "resetsAtText": "19:00",
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -315,7 +318,8 @@
             "reading": {
               "refused": true,
               "resetsAt": 1791189660,
-              "resetsAtText": "16:41"
+              "resetsAtText": "16:41",
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -406,7 +410,8 @@
             "reading": {
               "refused": false,
               "resetsAt": 1791198000,
-              "resetsAtText": "19:00"
+              "resetsAtText": "19:00",
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -490,7 +495,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791162120,
             "seenAtText": "09:02",
@@ -576,7 +582,8 @@
             "reading": {
               "refused": true,
               "resetsAt": 1791192300,
-              "resetsAtText": "17:25"
+              "resetsAtText": "17:25",
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -650,7 +657,8 @@
             "limiting": "5h",
             "login": "needsLogin",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -733,7 +741,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189060,
             "seenAtText": "16:31",
@@ -853,7 +862,8 @@
             "kind": "api",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189000,
             "seenAtText": "16:30",
@@ -869,7 +879,8 @@
             "reading": {
               "refused": true,
               "resetsAt": 1791190320,
-              "resetsAtText": "16:52"
+              "resetsAtText": "16:52",
+              "windows": []
             },
             "seenAt": 1791189000,
             "seenAtText": "16:30",
@@ -883,7 +894,8 @@
             "kind": "api",
             "login": "needsKey",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189000,
             "seenAtText": "16:30",
@@ -1003,7 +1015,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1791189480,
             "seenAtText": "16:38",
@@ -1129,7 +1142,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1798678920,
             "seenAtText": "09:02",
@@ -1158,7 +1172,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "seenAt": 1767196200,
             "seenAtText": "2025-12-31 23:50",

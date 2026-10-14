@@ -11,6 +11,15 @@ use serde_json::Value;
 
 /// 行里的一格。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaCell"
+    )
+)]
 pub(crate) struct Cell {
     pub(crate) text: Words,
     pub(crate) tone: Tone,
@@ -171,8 +180,12 @@ pub(crate) fn unseen_block(u: &Value) -> Rows {
 }
 
 /// `quota-read` 顶上那一句：读不出 ⇒ 读答的原因那一句（读的哪份 · 原因词；没给才说「原因不明」）；一个号都没有 ⇒ 无采样；否则没有。
-pub(crate) fn head_text(state: &str, empty: bool, reason: Option<&str>) -> Option<Words> {
-    if state == "unreadable" {
+pub(crate) fn head_text(
+    state: crate::accounts::quota::ledger::ReadState,
+    empty: bool,
+    reason: Option<&str>,
+) -> Option<Words> {
+    if state == crate::accounts::quota::ledger::ReadState::Unreadable {
         Some(Words(reason.filter(|r| !r.trim().is_empty()).map_or_else(
             || copy_text("acct.text.readFail", &[]),
             str::to_string,
@@ -196,8 +209,9 @@ pub(crate) fn five_hour(value: &str) -> String {
 }
 
 /// `quota-read` 顶上那一格「5h」：账读不出 ⇒ `5h 读不到`（每号那一格这时没有号可挂）；否则没有。
-pub(crate) fn head_five_hour(state: &str) -> Option<Words> {
-    (state == "unreadable").then(|| Words(five_hour(&copy_text("acct.val.unreadable", &[]))))
+pub(crate) fn head_five_hour(state: crate::accounts::quota::ledger::ReadState) -> Option<Words> {
+    (state == crate::accounts::quota::ledger::ReadState::Unreadable)
+        .then(|| Words(five_hour(&copy_text("acct.val.unreadable", &[]))))
 }
 
 /// 开窗那一判：重置时刻之后再等这么久才看（重置按整点 / 十分对齐，留余量）。
@@ -209,6 +223,15 @@ const WARM_UNREADABLE_RETRY_S: i64 = 15 * 60;
 
 /// 开窗那一判的一个号：`send`（发一句让 5h 窗口开始计时）· `wait`（睡到 `at`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaWarmAct"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum WarmAct {
     Send,
@@ -217,16 +240,28 @@ pub(crate) enum WarmAct {
 
 /// `warm`：quota-warm 照它办（只执行、不判）。`at` 只在 `wait` 时有（旁边由出口写好 `atText`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaWarm"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Warm {
     pub(crate) act: WarmAct,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
     pub(crate) at: Option<i64>,
     /// `at` 写给人看的样子（[`Warm::stamp`]）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) at_text: Option<Words>,
     /// `at` 距今。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) at_rel_text: Option<Words>,
     /// 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
     pub(crate) text: Words,

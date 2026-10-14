@@ -12,7 +12,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -167,7 +168,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -325,7 +327,8 @@
               "refused": true,
               "resetsAt": 1791198000,
               "resetsAtRelText": "+2h20m",
-              "resetsAtText": "19:00"
+              "resetsAtText": "19:00",
+              "windows": []
             },
             "rows": [
               [
@@ -488,7 +491,8 @@
               "refused": true,
               "resetsAt": 1791189660,
               "resetsAtRelText": "+1m",
-              "resetsAtText": "16:41"
+              "resetsAtText": "16:41",
+              "windows": []
             },
             "rows": [
               [
@@ -650,7 +654,8 @@
               "refused": false,
               "resetsAt": 1791198000,
               "resetsAtRelText": "+2h20m",
-              "resetsAtText": "19:00"
+              "resetsAtText": "19:00",
+              "windows": []
             },
             "rows": [
               [
@@ -812,7 +817,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -961,7 +967,8 @@
               "refused": true,
               "resetsAt": 1791192300,
               "resetsAtRelText": "+45m",
-              "resetsAtText": "17:25"
+              "resetsAtText": "17:25",
+              "windows": []
             },
             "rows": [
               [
@@ -1100,7 +1107,8 @@
             "limiting": "5h",
             "login": "needsLogin",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -1247,7 +1255,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -1395,7 +1404,8 @@
             "kind": "api",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -1458,7 +1468,8 @@
               "refused": true,
               "resetsAt": 1791190320,
               "resetsAtRelText": "+12m",
-              "resetsAtText": "16:52"
+              "resetsAtText": "16:52",
+              "windows": []
             },
             "rows": [
               [
@@ -1523,7 +1534,8 @@
             "kind": "api",
             "login": "needsKey",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -1643,7 +1655,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -1912,7 +1925,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [
@@ -2022,7 +2036,8 @@
             "limiting": "5h",
             "login": "ok",
             "reading": {
-              "refused": false
+              "refused": false,
+              "windows": []
             },
             "rows": [
               [

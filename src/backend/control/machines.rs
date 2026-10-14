@@ -617,11 +617,10 @@ fn reply(l: &Loaded, path: Option<&Path>) -> MachinesReply {
         _ => None,
     };
     let (reason, detail) = crate::wire::detail::unreadable("machines-read", why);
-    let text = |v: Value| v.as_str().map(str::to_string);
     MachinesReply {
         state: l.state(),
-        reason: text(reason),
-        detail: text(detail),
+        reason,
+        detail,
         path: path.map(|p| p.display().to_string()),
         hosts: l.hosts(),
     }
