@@ -354,6 +354,19 @@ def main():
             raise Step.Fail("钉条上没有［答］（答题口没挂上？）")
         time.sleep(1.5)
 
+    def tap_still(text):
+        """抽屉在往上滑时点会点空（落在遮罩上 ⇒ 收起、不算答）：等那一项连着两次都在同一处再点。"""
+        last = None
+        for _ in range(10):
+            n = ui.find(text)
+            b = ui.bounds(n) if n is not None else None
+            if b is not None and b == last:
+                adb("shell", "input", "tap", *map(str, ui.center(n)))
+                return
+            last = b
+            time.sleep(0.5)
+        raise Step.Fail(f"「{text}」一直没停稳")
+
     def answered(said, want):
         """那一步的结果里落了答题口给的决定（替身原样写进记录），这一轮跟着答完。"""
         end = time.time() + 30
@@ -375,16 +388,16 @@ def main():
             if ui.find(want) is None:
                 raise Step.Fail(f"抽屉里没有「{want}」")
         shot("4d-批准抽屉")
-        tap(always)
+        tap_still(always)
         answered(f"{T} ask go", '"behavior": "allow"')
 
     with Step("4e-答提问"):
         ask_up(f"{T} askq go", t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
-        tap("Red")
+        tap_still("Red")
         shot("4e-提问第一题")
-        tap(t("mobAsk.act.next")); time.sleep(1)
-        tap("Pear")
-        tap(t("beAsk.choice.answer"))
+        tap_still(t("mobAsk.act.next")); time.sleep(1)
+        tap_still("Pear")
+        tap_still(t("beAsk.choice.answer"))
         answered(f"{T} askq go", '"Which color?": "Red"')
 
     with Step("4f-批计划"):
@@ -392,7 +405,7 @@ def main():
         if ui.find(t("beAsk.choice.planAuto")) is None:
             raise Step.Fail("抽屉里没有「自动模式」")
         shot("4f-批计划抽屉")
-        tap(t("beAsk.choice.planManual"))
+        tap_still(t("beAsk.choice.planManual"))
         answered(f"{T} plan go", '"mode": "default"')
 
     with Step("4g-别处先答了"):
@@ -402,7 +415,7 @@ def main():
         if not wait(t("askBlock.gone.elsewhere"), 20):
             raise Step.Fail("抽屉里没出「已在终端答过或已关闭」")
         shot("4g-别处先答了")
-        tap(t("mobKit.act.close"))
+        tap_still(t("mobKit.act.close"))
         time.sleep(1)
         if ui.find(t("mobNeeds.act.answer")) is not None:
             raise Step.Fail("别处答完了钉条还在")
