@@ -912,7 +912,7 @@ fn front_markers_are_fresh_and_an_empty_marker_names_no_tab() {
 /// ★ 什么时候试切标签页：只在 Windows Terminal 的窗口、而且窗口是借某一级的控制台认出来的（记号要挂在那个控制台上）；
 /// 不是 Windows Terminal（经典控制台没有标签、别的终端程序不试）⇒ 不试；终端那一级认出的窗口 ⇒ 不试、说为什么
 /// （提权 ⇒ 无权切；否则 ⇒ 读不到控制台）。窗口切过去了、标签页没切成 ⇒ 已切到窗口 · 标签页未切换；窗口没切过去 ⇒ 照窗口那一句说。
-/// 标签个数只在提权那一支才数（[`elevated_tab_step_counts_the_owner_s_tabs`]），别的分支不数（替身一数就炸）。
+/// 标签个数只在终端那一级认出窗口的那一支才数（[`owner_tab_step_counts_the_owner_s_tabs`]），别的分支不数（替身一数就炸）。
 #[test]
 fn tabs_are_tried_only_in_windows_terminal_through_the_console_that_named_the_window() {
     let uncounted = || -> usize { panic!("这一支不该数标签") };
@@ -930,7 +930,7 @@ fn tabs_are_tried_only_in_windows_terminal_through_the_console_that_named_the_wi
         TabStep::Miss(TabMiss::Elevated)
     );
     assert_eq!(
-        tab_step(Via::Owner { elevated: false }, true, uncounted),
+        tab_step(Via::Owner { elevated: false }, true, || 2),
         TabStep::Miss(TabMiss::NoConsole)
     );
     assert_eq!(
@@ -956,13 +956,22 @@ fn tabs_are_tried_only_in_windows_terminal_through_the_console_that_named_the_wi
     );
 }
 
-/// ★ 终端那一级提权、窗口是按「它只有这一个窗口」认出来的：标签页读不了，但标签有几个照进程树数得出（Windows Terminal 每个标签
-/// 底下一个伪控制台宿主进程，非提权进程也看得见）。只有一个 ⇒ 前面显示的就是它 ⇒ 不用切、结局切成；两个以上（或数不出 = 0）⇒
-/// 照旧「已切到窗口 · 标签页未切换」，原因是提权。
+/// ★ 窗口是按「终端那一级只有这一个窗口」认出来的（提权 ⇒ 无权读标签页 · 不提权 ⇒ 读不到控制台）：标签页切不了，但标签有几个
+/// 照进程树数得出（Windows Terminal 每个标签底下一个伪控制台宿主进程，非提权进程也看得见）。只有一个 ⇒ 前面显示的就是它 ⇒
+/// 不用切、结局切成；两个以上（或数不出 = 0）⇒ 照旧「已切到窗口 · 标签页未切换」，原因照那一支说。两支同一处判。
 #[test]
-fn elevated_tab_step_counts_the_owner_s_tabs() {
+fn owner_tab_step_counts_the_owner_s_tabs() {
     let elevated = Via::Owner { elevated: true };
+    let plain = Via::Owner { elevated: false };
     assert_eq!(tab_step(elevated, true, || 1), TabStep::Skip);
+    assert_eq!(tab_step(plain, true, || 1), TabStep::Skip);
+    for n in [0, 2, 3] {
+        assert_eq!(
+            tab_step(plain, true, || n),
+            TabStep::Miss(TabMiss::NoConsole),
+            "不提权 {n} 个"
+        );
+    }
     assert_eq!(
         with_tab(FrontOutcome::Switched, None),
         FrontOutcome::Switched

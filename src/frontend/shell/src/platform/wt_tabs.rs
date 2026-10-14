@@ -3,7 +3,7 @@
 //! 只给小助手用（`platform/console.rs::helper_main` 的 tab 那一支，借着那个会话的控制台挂记号标题时现读）；
 //! 「名字列表 ＋ 记号 ⇒ 选第几个 / 为什么没选成」那条规则在 `bind.rs::pick_tab`，这里只读、只点。
 //! 窗口是不是 Windows Terminal 按窗口类名认（[`is_terminal_window`]）；别的终端程序不试。
-//! 读不了标签页时（终端是提权的）标签个数照进程树数（[`tab_count`]，monitor 这边现数）。
+//! 切不了标签页时（窗口是终端那一级认出的：提权 · 读不到控制台）标签个数照进程树数（[`tab_count`]，monitor 这边现数）。
 
 /// Windows Terminal 顶层窗口的类名。
 #[cfg(windows)]
