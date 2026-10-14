@@ -16,7 +16,7 @@ use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
 use crate::observe::runs::{next_event, RunBook, RunTrack, RUNS_KEEP, STALE_AFTER};
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::run_route::{Routed, RunRouter};
-use crate::stream::wire::{Frame, RunState};
+use crate::wire::{Frame, RunState};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -1322,7 +1322,7 @@ fn a_file_event_only_looks_under_its_own_parent_record() {
 // ── 运行表多给的几格：谁派的 · 三个时刻 · 在等哪个工具 · 为什么是这个结局 · 报错原话 ─────────────────────
 
 /// 一个运行此刻的那一格。
-fn info_of(book: &RunBook, run: &str) -> crate::stream::wire::RunInfo {
+fn info_of(book: &RunBook, run: &str) -> crate::wire::RunInfo {
     book.runs(SID)
         .into_iter()
         .find(|r| r.run == run)
@@ -1337,7 +1337,7 @@ fn at(secs: u64) -> Option<u64> {
 /// 主运行派出 g1（后台）与 g2（前台、以报错收场）；g1 在等一个工具、又派出孙运行 g3，g3 自己写出终局；
 /// g4 自己写出失败终局；g5 久未再写；会话退休时 g1 还在跑。每条记录都写着自己的时刻（与读到它的时刻无关）。
 fn extra_cells_scenario(shape: &Shape) {
-    use crate::stream::wire::RunWhy;
+    use crate::wire::RunWhy;
     let dir = scratch(&format!("{}-cells", shape.name));
     let parent = (shape.parent_of)(&dir, SID);
     let book = Arc::new(RunBook::default());
@@ -1510,13 +1510,13 @@ fn extra_cells_scenario(shape: &Shape) {
         shape.name
     );
     let sh = crate::Tz::named("Asia/Shanghai").unwrap();
-    let mut f = crate::stream::wire::Frame::SessionRuns {
+    let mut f = crate::wire::Frame::SessionRuns {
         sid: "s".into(),
         runs: vec![info_of(&book, "g6")],
         ended: Vec::new(),
     };
     f.stamp(&sh);
-    let crate::stream::wire::Frame::SessionRuns { runs, .. } = f else {
+    let crate::wire::Frame::SessionRuns { runs, .. } = f else {
         unreachable!()
     };
     assert_eq!(

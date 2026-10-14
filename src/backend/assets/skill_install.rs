@@ -37,7 +37,7 @@ use crate::assets::asset_catalog::{
 const MAX_PATHS_PER_FILE: usize = 8;
 
 /// 这一族的应答。
-pub type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
+pub type Answer = Result<Value, crate::wire::spec::Fail>;
 
 /// skill 名：一段目录名（不许带分隔符 / `..` / 点开头 / NUL）。装记录的写口也用它（`skill_ledger::record_at`）。
 pub(crate) fn valid_name(name: &str) -> bool {
@@ -57,9 +57,9 @@ pub fn valid_rel(p: &str) -> bool {
             .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
 }
 
-fn name_ok(name: &str) -> Result<String, crate::stream::inbound::spec::Fail> {
+fn name_ok(name: &str) -> Result<String, crate::wire::spec::Fail> {
     if !valid_name(name) {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "bad_args",
             copy_text("beSkillInstall.read.badName", &[("name", name)]),
         )));
@@ -71,7 +71,7 @@ fn name_ok(name: &str) -> Result<String, crate::stream::inbound::spec::Fail> {
 fn skill_dir(
     project: Option<&str>,
     name: &str,
-) -> Result<(PathBuf, PathBuf), crate::stream::inbound::spec::Fail> {
+) -> Result<(PathBuf, PathBuf), crate::wire::spec::Fail> {
     let project = project
         .map(crate::assets::mcp_edit::project_root)
         .transpose()?;
@@ -99,7 +99,7 @@ fn read_text(p: &Path) -> (Option<String>, Option<String>) {
 /// 走一个目录的结果：`(每个普通文件的（相对路径, 绝对路径）, 没下去的那几处)`。
 type Walked = (Vec<(String, PathBuf)>, Vec<String>);
 
-fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
+fn walk(dir: &Path) -> Result<Walked, crate::wire::spec::Fail> {
     let mut files = Vec::new();
     let mut skipped = Vec::new();
     for ent in walkdir::WalkDir::new(dir)
@@ -111,7 +111,7 @@ fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
             let kind = e
                 .io_error()
                 .map_or(std::io::ErrorKind::Other, std::io::Error::kind);
-            crate::stream::inbound::spec::Fail::from((
+            crate::wire::spec::Fail::from((
                 "io_failed",
                 crate::common::said::Said::with_raw(
                     copy_text(
@@ -139,7 +139,7 @@ fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
             continue;
         }
         if files.len() >= MAX_FILES {
-            return Err(crate::stream::inbound::spec::Fail::from((
+            return Err(crate::wire::spec::Fail::from((
                 "too_large",
                 copy_text(
                     "beSkillInstall.read.tooMany",
@@ -156,9 +156,7 @@ fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
 }
 
 /// `skill-read`：来源那台上这个 skill 的全部文件。
-pub(crate) fn answer_read(
-    req: &SkillReadReq,
-) -> Result<SkillRead, crate::stream::inbound::spec::Fail> {
+pub(crate) fn answer_read(req: &SkillReadReq) -> Result<SkillRead, crate::wire::spec::Fail> {
     answer_read_at(None, req)
 }
 
@@ -166,14 +164,14 @@ pub(crate) fn answer_read(
 pub(crate) fn answer_read_at(
     root: Option<&Path>,
     req: &SkillReadReq,
-) -> Result<SkillRead, crate::stream::inbound::spec::Fail> {
+) -> Result<SkillRead, crate::wire::spec::Fail> {
     let name = name_ok(&req.name)?;
     let (root, dir) = match root {
         Some(r) => (r.to_path_buf(), r.join(&name)),
         None => skill_dir(req.project.as_deref(), &name)?,
     };
     if !Ro::metadata(&dir).is_ok_and(|m| m.is_dir()) {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "not_found",
             copy_text(
                 "beSkillInstall.read.notFound",
@@ -304,9 +302,9 @@ struct SourceFile {
 
 fn source_arg(
     arr: &[SkillSourceFile],
-) -> Result<BTreeMap<String, SourceFile>, crate::stream::inbound::spec::Fail> {
+) -> Result<BTreeMap<String, SourceFile>, crate::wire::spec::Fail> {
     if arr.len() > MAX_FILES {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "too_large",
             copy_text(
                 "beSkillInstall.install.tooMany",
@@ -317,7 +315,7 @@ fn source_arg(
     let mut out = BTreeMap::new();
     for f in arr {
         if !valid_rel(&f.path) {
-            return Err(crate::stream::inbound::spec::Fail::from((
+            return Err(crate::wire::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(
                     "a file `path` is missing or not a relative path inside the skill",
@@ -329,7 +327,7 @@ fn source_arg(
             exec: f.exec,
         };
         if out.insert(f.path.clone(), file).is_some() {
-            return Err(crate::stream::inbound::spec::Fail::from((
+            return Err(crate::wire::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!("{:?} given twice", f.path)),
             )));
@@ -339,9 +337,7 @@ fn source_arg(
 }
 
 /// 帧面入口。
-pub(crate) fn answer_plan(
-    req: &SkillPlanReq,
-) -> Result<SkillPlan, crate::stream::inbound::spec::Fail> {
+pub(crate) fn answer_plan(req: &SkillPlanReq) -> Result<SkillPlan, crate::wire::spec::Fail> {
     answer_plan_with(&mcp_sync::Live::from_env(), None, req)
 }
 
@@ -350,7 +346,7 @@ pub(crate) fn answer_plan_with(
     facts: &dyn Facts,
     root: Option<&Path>,
     req: &SkillPlanReq,
-) -> Result<SkillPlan, crate::stream::inbound::spec::Fail> {
+) -> Result<SkillPlan, crate::wire::spec::Fail> {
     let name = name_ok(&req.name)?;
     let (root, dir) = match root {
         Some(r) => (r.to_path_buf(), r.join(&name)),
@@ -363,7 +359,7 @@ pub(crate) fn answer_plan_with(
     };
     let (take, overwrite) = (set(&req.take), set(&req.overwrite));
     if take.is_none() && overwrite.is_some() {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`overwrite` given without `take`"),
         )));
@@ -430,13 +426,13 @@ pub(crate) fn answer_plan_with(
                 .iter()
                 .find(|p| source.get(*p).is_some_and(|f| f.text.is_none()))
             {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "bad_args",
                     copy_text("beSkillInstall.install.sourceUnreadable", &[("p", p)]),
                 )));
             }
             if let Some(p) = t.iter().find(|p| unwritable.contains_key(*p)) {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "bad_file",
                     copy_text("beSkillInstall.install.targetNotText", &[("p", p)]),
                 )));
@@ -558,7 +554,7 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let take = mcp_sync::names_arg(args.get("take"), "take")?;
     let confirm = mcp_sync::names_arg(args.get("confirm"), "confirm")?;
     if take.is_none() && confirm.is_some() {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`confirm` given without `take`"),
         )));
@@ -598,7 +594,7 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
         Some(take) => {
             let confirm = confirm.unwrap_or_default();
             if let Some(p) = confirm.iter().find(|p| !take.contains(*p)) {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "bad_args",
                     crate::common::contract::malformed(&format!(
                         "{p:?} is in `confirm` but not in `take`"
@@ -608,13 +604,13 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
             for p in &take {
                 match judged.get(p.as_str()) {
                     None => {
-                        return Err(crate::stream::inbound::spec::Fail::from((
+                        return Err(crate::wire::spec::Fail::from((
                             "bad_args",
                             copy_text("beSkillInstall.uninstall.notInLedger", &[("p", p)]),
                         )))
                     }
                     Some((state, false, _)) => {
-                        return Err(crate::stream::inbound::spec::Fail::from((
+                        return Err(crate::wire::spec::Fail::from((
                             "bad_args",
                             copy_text(
                                 "beSkillInstall.uninstall.badState",
@@ -623,7 +619,7 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
                         )))
                     }
                     Some((_, true, true)) if !confirm.contains(p) => {
-                        return Err(crate::stream::inbound::spec::Fail::from((
+                        return Err(crate::wire::spec::Fail::from((
                             "needs_consent",
                             copy_text("beSkillInstall.uninstall.needsConsent", &[("p", p)]),
                         )))

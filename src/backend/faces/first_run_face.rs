@@ -1,7 +1,7 @@
 //! 帧面 `first-run`（typed）：首次运行「开始用」三步各自打没打勾，本体在 `footprint/readiness.rs`；读启动文件经文件管理面。
 
 use crate::footprint::readiness;
-use crate::stream::inbound::typed::{codes, Command, Cx, Files, WithFiles};
+use crate::wire::typed::{codes, Command, Cx, Files, WithFiles};
 
 codes! {
     /// `first-run` 自己的码（只有入参不对那一种）。

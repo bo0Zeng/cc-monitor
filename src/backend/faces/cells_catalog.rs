@@ -690,7 +690,7 @@ mod specimens {
         RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::history_query::IndexRow;
-    use crate::stream::wire::{
+    use crate::wire::{
         ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
     };
     use std::collections::BTreeMap;
@@ -1100,8 +1100,8 @@ mod specimens {
     }
 
     /// 名字是起出来的那一形（`label_project` 也带）。
-    fn named() -> crate::stream::wire::NameFace {
-        crate::stream::wire::NameFace::of(&crate::history::search_rules::LabelFacts {
+    fn named() -> crate::wire::NameFace {
+        crate::history::search_rules::name_face(&crate::history::search_rules::LabelFacts {
             title: some("t"),
             project_dir: some("/w"),
             ..Default::default()

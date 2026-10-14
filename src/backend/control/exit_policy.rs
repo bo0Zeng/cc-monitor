@@ -165,8 +165,8 @@ fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
 /// 一次性 CLI 面没有这些环境 ⇒ 按被监护说（保守那一句）。
 fn resident_now() -> bool {
     matches!(
-        crate::stream::listen::mode_from(&|k| std::env::var(k).ok()),
-        Ok(crate::stream::listen::Mode::Listen)
+        crate::wire::listen::mode_from(&|k| std::env::var(k).ok()),
+        Ok(crate::wire::listen::Mode::Listen)
     )
 }
 
@@ -211,7 +211,7 @@ fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> ExitPolicy {
         Read::Unreadable(why) => Some(why),
         _ => None,
     };
-    let (reason, detail) = crate::stream::detail::unreadable("exit-policy-read", why);
+    let (reason, detail) = crate::wire::detail::unreadable("exit-policy-read", why);
     let text = |v: serde_json::Value| v.as_str().map(str::to_string);
     ExitPolicy {
         state: r.state(),
@@ -242,18 +242,15 @@ pub(crate) struct ExitPolicySet {
 pub(crate) fn answer_set(
     req: &ExitPolicySet,
     own: &Own,
-) -> Result<ExitPolicy, crate::stream::inbound::spec::Fail> {
+) -> Result<ExitPolicy, crate::wire::spec::Fail> {
     let path = policy_path().ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::new(
-            "io_failed",
-            copy_text("beExitPolicy.answerSet.noHome", &[]),
-        )
+        crate::wire::spec::Fail::new("io_failed", copy_text("beExitPolicy.answerSet.noHome", &[]))
     })?;
     write_at(own, req.kill_on_exit).map_err(|e| ("io_failed", e))?;
     Ok(wire(&read_at(&path), Some(&path)))
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `exit-policy-read` 没有别的码：「读不出来」是一个状态（`state: "unreadable"` ＋ `reason`），不是一次失败。
     pub(crate) enum ExitReadErr {}
 }
@@ -261,24 +258,24 @@ crate::stream::inbound::typed::codes! {
 /// `exit-policy-read`：读「退出行为」那个值（值住后端所在那台；同步文件 I/O ⇒ 阻塞档）。
 pub(crate) struct ExitPolicyRead;
 
-impl crate::stream::inbound::typed::Command for ExitPolicyRead {
+impl crate::wire::typed::Command for ExitPolicyRead {
     const NAME: &'static str = "exit-policy-read";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = ExitPolicy;
     type Err = ExitReadErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for ExitPolicyRead {
+impl crate::wire::typed::Blocking for ExitPolicyRead {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<ExitPolicy, ExitReadErr> {
         Ok(answer_read())
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `exit-policy-set` 的码：家目录说不出 · 写没成。
     pub(crate) enum ExitSetErr {
         IoFailed = "io_failed",
@@ -288,21 +285,20 @@ crate::stream::inbound::typed::codes! {
 /// `exit-policy-set`：写「退出行为」那个值，写完读回（写自家状态 ⇒ 只递写句柄）。
 pub(crate) struct ExitPolicySetCmd;
 
-impl crate::stream::inbound::typed::Command for ExitPolicySetCmd {
+impl crate::wire::typed::Command for ExitPolicySetCmd {
     const NAME: &'static str = "exit-policy-set";
     type Req = ExitPolicySet;
     type Reply = ExitPolicy;
     type Err = ExitSetErr;
 }
 
-impl crate::stream::inbound::typed::Owning for ExitPolicySetCmd {
+impl crate::wire::typed::Owning for ExitPolicySetCmd {
     fn run(
         req: ExitPolicySet,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
         own: &Own,
     ) -> Result<ExitPolicy, ExitSetErr> {
-        answer_set(&req, own)
-            .map_err(|f| crate::stream::inbound::typed::of_fail(f, ExitSetErr::IoFailed))
+        answer_set(&req, own).map_err(|f| crate::wire::typed::of_fail(f, ExitSetErr::IoFailed))
     }
 }
 

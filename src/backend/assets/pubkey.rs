@@ -174,7 +174,7 @@ pub(crate) struct KeyAdded {
     pub(crate) outcome: PushOutcome,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `authorized-keys-add` 的码：那一行不是一把公钥 · 读写那份文件没成。
     pub(crate) enum KeyAddErr {
         Refused = "refused",
@@ -185,20 +185,20 @@ crate::stream::inbound::typed::codes! {
 /// `authorized-keys-add`（被写那台答）：算经本文件，写经文件管理面（CAS ＋ 建父目录 ＋ 700 / 600）。
 pub(crate) struct AuthorizedKeysAdd;
 
-impl crate::stream::inbound::typed::Command for AuthorizedKeysAdd {
+impl crate::wire::typed::Command for AuthorizedKeysAdd {
     const NAME: &'static str = "authorized-keys-add";
     type Req = KeyAddReq;
     type Reply = KeyAdded;
     type Err = KeyAddErr;
 }
 
-impl crate::stream::inbound::typed::WithFiles for AuthorizedKeysAdd {
+impl crate::wire::typed::WithFiles for AuthorizedKeysAdd {
     fn run(
         req: KeyAddReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        _cx: &crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
     ) -> Result<KeyAdded, KeyAddErr> {
-        answer_add(files, &req).map_err(crate::stream::inbound::typed::of_pair(KeyAddErr::IoFailed))
+        answer_add(files, &req).map_err(crate::wire::typed::of_pair(KeyAddErr::IoFailed))
     }
 }
 
@@ -339,7 +339,7 @@ pub(crate) struct PubkeyPushed {
     pub(crate) via: PushVia,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `pubkey-push` 的码：跳板查无 / 成环 · 那份 `.pub` 找不到 / 不是公钥 · 那台没加上。
     pub(crate) enum PushErr {
         BadJump = "bad_jump",
@@ -351,22 +351,22 @@ crate::stream::inbound::typed::codes! {
 /// `pubkey-push`（本机常驻后端答）：见头注。真异步（拨号 / 问那台）。
 pub(crate) struct PubkeyPush;
 
-impl crate::stream::inbound::typed::Command for PubkeyPush {
+impl crate::wire::typed::Command for PubkeyPush {
     const NAME: &'static str = "pubkey-push";
     type Req = PubkeyPushReq;
     type Reply = PubkeyPushed;
     type Err = PushErr;
 }
 
-impl crate::stream::inbound::typed::Async for PubkeyPush {
+impl crate::wire::typed::Async for PubkeyPush {
     fn run(
         req: PubkeyPushReq,
-        _cx: crate::stream::inbound::typed::Cx,
+        _cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<PubkeyPushed, PushErr>> + Send + 'static {
         async move {
             answer_push(&req, &Wire, &read_local_pub)
                 .await
-                .map_err(crate::stream::inbound::typed::of_pair(PushErr::Failed))
+                .map_err(crate::wire::typed::of_pair(PushErr::Failed))
         }
     }
 }

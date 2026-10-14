@@ -21,9 +21,7 @@ use crate::agents::{BlockKind, StreamEv};
 use crate::observe::runs::RunBook;
 use crate::relay::TapEvent;
 use crate::stream::run_route::{Routed, RunRouter};
-use crate::stream::wire::{
-    Frame, LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy, RunState, TapEnd,
-};
+use crate::wire::{Frame, LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy, RunState, TapEnd};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 

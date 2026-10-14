@@ -9,7 +9,7 @@ use crate::common::door::{self, Door, Refused};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
+type Answer = Result<Value, crate::wire::spec::Fail>;
 
 pub(crate) use super::skill_ledger::Record;
 use super::skill_ledger::{RecordReq, Recorded};
@@ -17,7 +17,7 @@ use super::skill_ledger::{RecordReq, Recorded};
 fn texts_by_path(
     v: Option<&Value>,
     key: &str,
-) -> Result<Map<String, Value>, crate::stream::inbound::spec::Fail> {
+) -> Result<Map<String, Value>, crate::wire::spec::Fail> {
     let arr = v.and_then(Value::as_array).ok_or_else(|| {
         (
             "bad_args",
@@ -86,7 +86,7 @@ pub(crate) fn answer_install(
     root: Option<&std::path::Path>,
     record: Record,
     req: &SkillApplyReq,
-) -> Result<SkillApplied, crate::stream::inbound::spec::Fail> {
+) -> Result<SkillApplied, crate::wire::spec::Fail> {
     let plan = crate::assets::skill_install::answer_plan_with(
         facts,
         root,
@@ -170,7 +170,7 @@ pub(crate) fn answer_install(
             None => why,
             Some(r) => format!("{why}{r}"),
         };
-        return Err(crate::stream::inbound::spec::Fail::from(("stale", why)));
+        return Err(crate::wire::spec::Fail::from(("stale", why)));
     }
     Ok(SkillApplied {
         dir: plan.dir,
@@ -244,7 +244,7 @@ pub(crate) fn answer_uninstall(
             None => why,
             Some(r) => format!("{why}{r}"),
         };
-        return Err(crate::stream::inbound::spec::Fail::from(("stale", why)));
+        return Err(crate::wire::spec::Fail::from(("stale", why)));
     }
     let (dir_removed, dir_failed) = remove_emptied_dirs(d, dir, &recorded);
     Ok(

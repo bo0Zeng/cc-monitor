@@ -5,7 +5,7 @@ use serde_json::json;
 fn take<R: serde::de::DeserializeOwned>(
     v: &serde_json::Value,
 ) -> Result<R, (&'static str, String)> {
-    crate::stream::inbound::typed::take(v).map_err(|f| ("bad_args", f.message))
+    crate::wire::typed::take(v).map_err(|f| ("bad_args", f.message))
 }
 fn owned<T>(r: Result<T, (&'static str, String)>) -> Result<T, (String, String)> {
     r.map_err(|(c, m)| (c.to_string(), m))
@@ -99,7 +99,7 @@ fn broadcast_reply(
 /// `KR113D2` 逼出一次裁定：**收，还是不收，都要落成盘上看得见的东西**。
 /// 裁的是**乙（不收）** —— 理由逐条写在下面第三栏，**不是一句「以后再说」**。
 ///
-/// 形状抄 `readonly_guard::spawn_registry::ALLOWED` 与 `cli_control::NOT_ON_CLI`
+/// 形状抄 `readonly_guard::spawn_registry::ALLOWED` 与 `stream::cli::NOT_ON_CLI`
 ///（逐字：「把『为什么这条不上』写成**数据**，好让机检对着它比 —— 散文里说一遍，
 /// 下一个人加命令时看不见」）。
 ///

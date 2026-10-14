@@ -8,7 +8,7 @@
 ///
 /// # 它逮的是一条实测到的静默失效
 ///
-/// 分派臂是派生的（`Some(f) if cli_control::handles(f)`），可 `main::is_query_mode`
+/// 分派臂是派生的（`Some(f) if stream::cli::handles(f)`），可 `main::is_query_mode`
 /// 这道**闸门**读的是手写的 `SUBCOMMANDS`。于是往 `inbound::REGISTRY` 加一条命令：
 /// 帧面立刻有了、`hello.commands` 也报了，而 CLI 面 —— 一行 warn
 /// 「未知 flag，已忽略并照常进流模式」，然后 backend **进了流模式**。
@@ -39,6 +39,7 @@ use super::*;
 use crate::control::cli_args::{
     read_input, MAX_ARGS_B64_LEN, MAX_CLI_STDIN, STDIN_LINE_FLAG, STDIN_QUIET,
 };
+use crate::wire::detail::failed_of;
 
 /// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
 /// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收帧面硬臂与占了 ccm 的词那几条）。
@@ -186,7 +187,7 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     ),
     (
         "session-restart",
-        "停旧 ＋ 起新那一步拿的是**退出排空的票**（`inbound::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
+        "停旧 ＋ 起新那一步拿的是**退出排空的票**（`wire::drain::DRAIN`），等压缩摘要与等新进程报出各一次有界等待（各 ≤ 1 h）——\
          「发起方走了那台照样做完」靠的就是那张票钉住**常驻进程**不退；一次性进程里那张票钉的是命令自己那个进程，\
          钉不住任何东西，而调用方还得把一次调用挂在那儿几分钟 ⇒ 真依赖流语义。命令行那一侧要同一件事：\
          `--sessions-stop` 再 `--sessions-start`，自己掌期限。",
@@ -287,7 +288,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
 /// 真去起了进程，那边会红。两条各挡一种绕法。
 #[test]
 fn the_cli_entry_never_names_a_concrete_handler() {
-    let raw = include_str!("../../../src/backend/control/cli_control.rs");
+    let raw = include_str!("../../../src/backend/stream/cli.rs");
     let prod = crate::guard_support::production_code(raw);
     for banned in [
         "control::launch::",
@@ -315,9 +316,8 @@ fn the_cli_entry_never_names_a_concrete_handler() {
 /// 只是**开始说谎** —— 而 skill 按它的话决定走不走新路 ⇒ 静默降级，没有任何报错。
 #[test]
 fn the_probe_reports_exactly_what_it_can_dispatch() {
-    let raw = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cli_control.rs"
-    ));
+    let raw =
+        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         !raw.contains("\"--launch\"") && !raw.contains("\"--kill\""),
         "`probe()` 里出现了硬编码的命令字面量 —— 清单必须从 `REGISTRY` 派生"
@@ -429,9 +429,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     );
     assert!(!declared.is_empty(), "一条无输入命令都没有 —— 本断言在空转");
     // `run` 必须用的就是这个决定，不是另写一份判断。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cli_control.rs"
-    ));
+    let prod =
+        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         prod.contains("if reads_stdin(spec) {"),
         "`run` 不再按 `reads_stdin` 决定读不读 stdin —— 上面那条断言此刻钉的是一个没人用的函数"
@@ -444,7 +443,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
 /// 逼下一个人写他自己的理由。
 #[test]
 fn the_cli_entry_does_not_borrow_the_frame_entrys_boundary_reason() {
-    let raw = include_str!("../../../src/backend/control/cli_control.rs");
+    let raw = include_str!("../../../src/backend/stream/cli.rs");
     // 下面两串是 `launch.rs` 那句依据的核心措辞（讲对端的 SSH 身份那句）。
     // ⚠ 本注释**刻意不复述它们** —— 复述一遍，本判据自己就会把自己判红。
     for borrowed in ["握着这台机器的 SSH 会话", "对端本来就握着"] {
@@ -610,7 +609,7 @@ fn the_argv_payload_answers_byte_for_byte_like_stdin() {
             &strs(&[&flag]),
             std::io::Cursor::new(text.clone().into_bytes()),
         );
-        let b64 = crate::stream::wire::b64_encode(text.as_bytes());
+        let b64 = crate::wire::b64_encode(text.as_bytes());
         let (_hold, quiet) = silent();
         // stdin 开着不写：argv 那一形**不该去碰 stdin**（碰了就是挂住或 no_input）。
         let by_argv = run_cli(&strs(&[&flag, crate::ARGS_B64_FLAG, &b64]), quiet);
@@ -658,7 +657,7 @@ fn a_bad_view_on_the_cli_face_is_refused_before_the_command_runs() {
         assert_eq!(refuse(&["--history-read", v, bad]), "bad_args", "{bad}");
     }
     // base64 的那一形与 JSON 原样同一处判
-    let b64 = crate::stream::wire::b64_encode(br#"{"omit":{"record":["blcoks"]}}"#);
+    let b64 = crate::wire::b64_encode(br#"{"omit":{"record":["blcoks"]}}"#);
     assert_eq!(refuse(&["--history-read", v, &b64]), "bad_args");
     assert_eq!(refuse(&["--history-read", v]), "bad_args");
     assert_eq!(refuse(&["--history-read", v, "{}", v, "{}"]), "bad_args");
@@ -735,7 +734,7 @@ fn the_one_line_flag_counts_wherever_it_sits() {
 /// ★ 两个口二选一；用法错一律 `bad_args`，坏载荷 `bad_request`，超大 `args_too_large` —— 都是立即回、不截断。
 #[test]
 fn the_argv_payload_refuses_clearly() {
-    let ok = crate::stream::wire::b64_encode(b"{}");
+    let ok = crate::wire::b64_encode(b"{}");
     let refuse = |args: &[&str]| {
         let (_hold, quiet) = silent();
         let (rc, out, err) = run_cli(&strs(args), quiet);
@@ -783,12 +782,12 @@ fn the_argv_payload_refuses_clearly() {
         refuse(&["--history-read", crate::ARGS_B64_FLAG, "e30"]),
         "bad_request"
     );
-    let not_utf8 = crate::stream::wire::b64_encode(&[0xff, 0xfe]);
+    let not_utf8 = crate::wire::b64_encode(&[0xff, 0xfe]);
     assert_eq!(
         refuse(&["--history-read", crate::ARGS_B64_FLAG, &not_utf8]),
         "bad_request"
     );
-    let not_json = crate::stream::wire::b64_encode(b"{nope");
+    let not_json = crate::wire::b64_encode(b"{nope");
     assert_eq!(
         refuse(&["--history-read", crate::ARGS_B64_FLAG, &not_json]),
         "bad_request"
@@ -799,7 +798,7 @@ fn the_argv_payload_refuses_clearly() {
         refuse(&["--history-read", crate::ARGS_B64_FLAG, &big]),
         "args_too_large"
     );
-    let just = crate::stream::wire::b64_encode(&vec![b' '; MAX_ARGS_B64_LEN / 4 * 3]);
+    let just = crate::wire::b64_encode(&vec![b' '; MAX_ARGS_B64_LEN / 4 * 3]);
     assert!(just.len() <= MAX_ARGS_B64_LEN);
     assert_ne!(
         refuse(&["--history-read", crate::ARGS_B64_FLAG, &just]),
@@ -1001,10 +1000,10 @@ fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> s
             std::io::Cursor::new(line.into_bytes()),
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
-            crate::stream::wire::HelloFlushed::for_tests(),
+            crate::wire::HelloFlushed::for_tests(),
         )
         .await
         .unwrap();
@@ -1024,7 +1023,7 @@ fn cli_failure(cmd: &str, args: &serde_json::Value, extra: &[&str]) -> (i32, Str
     let mut argv = vec![
         flag_of(cmd),
         crate::ARGS_B64_FLAG.to_string(),
-        crate::stream::wire::b64_encode(args.to_string().as_bytes()),
+        crate::wire::b64_encode(args.to_string().as_bytes()),
     ];
     argv.extend(extra.iter().map(|s| s.to_string()));
     let (rc, out, err) = run_cli(&argv, std::io::empty());

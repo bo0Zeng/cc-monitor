@@ -20,7 +20,7 @@
 //! 买不到：Windows 上「原子挪过去」是覆盖既有文件的那一下改名（`Own::write`），没在真 Windows 上跑过。
 
 use crate::platform::fs::{Own, OwnLock, OwnPath};
-use crate::stream::inbound::typed::{codes, of_fail, Command, Cx, Owning};
+use crate::wire::typed::{codes, of_fail, Command, Cx, Owning};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -132,10 +132,10 @@ pub fn load() -> Loaded {
 }
 
 /// 读—改—写的锁：先建那一层目录（数据目录，默认就是 `~/.cc-monitor`，建的那一下只给本人），再拿它的跨进程锁。
-fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::stream::inbound::spec::Fail> {
+fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::wire::spec::Fail> {
     let d = dir.as_path();
     if let Err(e) = own.ensure_dir(dir) {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
@@ -150,7 +150,7 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::stream::in
         )));
     }
     own.lock(dir).map_err(|e| {
-        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
+        crate::wire::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })
 }
 
@@ -185,9 +185,9 @@ fn now_ms() -> i64 {
 }
 
 /// 读原文成「严格读过的结构 ＋ 原文 JSON」。文件不在 ⇒ 缺省形状。
-fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::stream::inbound::spec::Fail> {
+fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::wire::spec::Fail> {
     match read_raw(path)
-        .map_err(|e| crate::stream::inbound::spec::Fail::from(("annotations_unreadable", e)))?
+        .map_err(|e| crate::wire::spec::Fail::from(("annotations_unreadable", e)))?
     {
         None => Ok((Doc::default(), json!({ "version": 0, "entries": {} }))),
         Some(b) => {
@@ -195,7 +195,7 @@ fn read_for_write(path: &Path) -> Result<(Doc, Value), crate::stream::inbound::s
             let raw: Value = serde_json::from_slice(&b)
                 .map_err(|e| ("annotations_unreadable", format!("{e}")))?;
             if !raw.is_object() {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "annotations_unreadable",
                     copy_text(
                         "beHistoryAnnotations.readForWrite.notObject",
@@ -260,9 +260,9 @@ fn write_at(
 }
 
 /// 那份文件所在的目录（数据目录）与它本身。推不出家 ⇒ `no_annotations`。
-fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::spec::Fail> {
+fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::wire::spec::Fail> {
     let dir = own.root().ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::from((
+        crate::wire::spec::Fail::from((
             "no_annotations",
             copy_text(
                 "beHistoryAnnotations.needPath.unknown",
@@ -272,11 +272,11 @@ fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::sp
     })?;
     let file = dir
         .join(creds_core::store::HISTORY_METADATA_FILE)
-        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+        .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
     Ok((dir, file))
 }
 
-// ───────────────────────── 帧命令（typed，`stream/inbound/typed.rs`）─────────────────────────
+// ───────────────────────── 帧命令（typed，`wire/typed.rs`）─────────────────────────
 
 codes! {
     /// `history-annotate` · `history-forget` 的码。
@@ -290,8 +290,8 @@ codes! {
     }
 }
 
-/// 下层那一份 [`Fail`](crate::stream::inbound::spec::Fail) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
-fn err(f: crate::stream::inbound::spec::Fail) -> AnnotationErr {
+/// 下层那一份 [`Fail`](crate::wire::spec::Fail) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
+fn err(f: crate::wire::spec::Fail) -> AnnotationErr {
     of_fail(f, AnnotationErr::IoFailed)
 }
 
@@ -383,7 +383,7 @@ pub(crate) fn annotate_at(
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
-        .map_err(|e| err(crate::stream::inbound::spec::Fail::from(("io_failed", e))))?;
+        .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     Ok(Annotated { entry })
 }
 
@@ -415,7 +415,7 @@ pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, Annotati
     }
     put_entry(&mut raw, sid, None);
     write_at(own, &file, &held, &raw)
-        .map_err(|e| err(crate::stream::inbound::spec::Fail::from(("io_failed", e))))?;
+        .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
     Ok(Forgotten { removed: true })
 }
 

@@ -667,7 +667,7 @@ struct RequestLine<'a> {
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
 ///
-/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?, tz?, view?}`，`args` 可缺省）。
+/// 对侧是 `src/backend/wire/mod.rs::Request`（`{id, cmd, args, within_ms?, tz?, view?}`，`args` 可缺省）。
 /// `within`：发起方这一发还愿意等多久（调用方给的，这里只换成毫秒搬上线；不足 1 ms 记 1）；`None` ⇒ 不带这一格。
 /// `tz`：看的这一台的时区（[`InboundClient::set_viewer_tz`]）；`None` ⇒ 不带（后端按 UTC 写）。
 /// `view`：出口的声明，原样搬上线；`None` ⇒ 不带这一格（＝ 全量）。

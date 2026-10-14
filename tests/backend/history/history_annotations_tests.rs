@@ -19,8 +19,8 @@
 //! - 两个后端进程同时写；真 Windows 上的原子挪。
 
 use super::*;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{take, Codes as _};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{take, Codes as _};
 
 /// 线上那一份入参照分派那一层解（`typed::take`）再交本体；回包 · 失败都投成线上那一份（判据比的是线上形状）。
 fn answer_annotate_at(own: &Own, args: &Value, now: i64) -> Result<Value, Fail> {

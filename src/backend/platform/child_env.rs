@@ -9,7 +9,7 @@
 //! 中转口（`CCM_RELAY_PORT`：窗格里的 `ccm` 靠它找同机的中转，不是秘密；清掉它 ccm 会去连默认口）·
 //! 设置里填的 Claude 目录（`CLAUDE_CONFIG_DIR`，给 agent 的）。
 
-/// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`；帧面监听 `stream/listen.rs` 读它）。
+/// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`；帧面监听 `wire/listen.rs` 读它）。
 /// 听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），宿主与后端同一个函数。
 pub(crate) const RESIDENT: &str = "CCM_RESIDENT";
 

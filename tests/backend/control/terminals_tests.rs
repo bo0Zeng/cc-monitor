@@ -787,7 +787,7 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
 #[cfg(target_os = "linux")]
 #[test]
 fn the_container_handle_is_the_list_handle_of_the_same_pane() {
-    use crate::stream::wire::{SessionContainer, TerminalHost};
+    use crate::wire::{SessionContainer, TerminalHost};
     let iso = Iso::new("container");
     iso.session("box-cc", "", "");
     let o = iso.tmux(&["new-window", "-t", "=box-cc:", "cat"]);

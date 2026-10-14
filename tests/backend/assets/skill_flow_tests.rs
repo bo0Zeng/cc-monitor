@@ -6,9 +6,9 @@ use crate::stream::inbound::LocalFiles;
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 
@@ -18,7 +18,7 @@ fn answer_install(
     root: Option<&std::path::Path>,
     record: Record,
     args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| super::answer_install(d, facts, root, record, r))
 }
 
@@ -26,7 +26,7 @@ fn plan_with(
     facts: &dyn crate::assets::mcp_sync::Facts,
     root: Option<&std::path::Path>,
     args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| {
         crate::assets::skill_install::answer_plan_with(facts, root, r)
     })
@@ -142,7 +142,7 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
     let record = |a: &crate::assets::skill_ledger::RecordReq| {
         crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a)
     };
-    let crate::stream::inbound::spec::Fail { code, message: why, .. } = answer_install(
+    let crate::wire::spec::Fail { code, message: why, .. } = answer_install(
         &LocalFiles,
         &NoFacts,
         Some(&root),

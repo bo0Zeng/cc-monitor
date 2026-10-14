@@ -16,7 +16,7 @@ where
     Fut: Future<Output = ()> + Send + 'static,
 {
     let req: ForwardStartReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::start_with(&req, reach, ledger, serve)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
@@ -24,7 +24,7 @@ where
 
 fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
     let req: ForwardStartReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     spec_of(&req)
 }
 
@@ -33,8 +33,7 @@ fn list_with(ledger: &Ledger) -> Value {
 }
 
 fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, (&'static str, String)> {
-    let req: ForwardId =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: ForwardId = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::stop_with(req, ledger).map(|r| serde_json::to_value(r).unwrap())
 }
 

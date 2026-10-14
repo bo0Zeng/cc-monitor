@@ -4,8 +4,8 @@
 //! 不住命令表那一份族文件：同读的那一份（`files_face.rs`）的理由，族文件只放登记那几行。
 
 use crate::platform::fs::Face;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, codes, Codes, Command, Cx, Facing};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, codes, Codes, Command, Cx, Facing};
 use cmd_wire::files as wire;
 
 /// 写的那几条共用：问本体，失败收进这一条的码表（原话跟着那一句走）。
@@ -27,7 +27,7 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
 pub(crate) fn in_process<A: crate::control::files_write::Act>(
     req: A,
 ) -> Result<A::Reply, crate::common::door::Said> {
-    crate::stream::inbound::spec::with_face(|face| crate::control::files_write::answer(req, face))
+    crate::wire::spec::with_face(|face| crate::control::files_write::answer(req, face))
         .map_err(|f| crate::common::door::said_of(f.code, &f.said))
 }
 

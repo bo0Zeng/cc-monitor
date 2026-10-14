@@ -67,7 +67,7 @@ pub(crate) struct Forked {
     pub(crate) launch: super::fork_launch::Launch,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `session-fork` 的码。
     pub(crate) enum ForkErr {
         /// 记录树读不出 · 源会话找不着 · 那条消息不在 · 落盘失败。
@@ -141,7 +141,7 @@ pub(crate) fn fork_at(
     launch: &dyn Fn(&Path, &str) -> super::fork_launch::Launch,
 ) -> Result<Forked, ForkErr> {
     let res = fork_checked(nf, agent_home, &req.sid, &req.uuid)
-        .map_err(crate::stream::inbound::typed::of_pair(ForkErr::ForkFailed))?;
+        .map_err(crate::wire::typed::of_pair(ForkErr::ForkFailed))?;
     Ok(Forked {
         launch: launch(&res.source, &req.sid),
         session_id: res.session_id,

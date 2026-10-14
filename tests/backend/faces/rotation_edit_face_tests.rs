@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::faces::rotation_view_face::tests::{now, seen, Home, S1, S2};
-use crate::stream::inbound::typed::Blocking;
+use crate::wire::typed::Blocking;
 use serde_json::json;
 
 fn code_of(src: &str) -> String {
@@ -438,7 +438,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
 /// 24 小时条上刷一段（无状态的算术）：越界的分钟 ⇒ `bad_args`。
 #[test]
 fn day_paint_is_plain_arithmetic() {
-    let cx = crate::stream::inbound::typed::Cx {
+    let cx = crate::wire::typed::Cx {
         tz: crate::Tz::default(),
         until: None,
     };

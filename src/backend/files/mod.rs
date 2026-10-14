@@ -29,7 +29,7 @@
 //! 索引怎么建、什么时候变新是机制的线上面：`files-index-rebuild`（[`index::rebuild_once`]）· `files-browse`（[`browse_watch::set_browsing`]）；
 //! 节拍归调用方（后端零定时器）—— 没人发 rebuild，`files.find` 就回 `index_missing: true`。
 //! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
-//! 跨 target 的对等断言（各面能力集横着对、逐条登记豁免）没做；它与「在这台机器上做不到」（[`crate::stream::wire::Unavailable`]，运行期逐机器）是两个轴。
+//! 跨 target 的对等断言（各面能力集横着对、逐条登记豁免）没做；它与「在这台机器上做不到」（[`crate::wire::Unavailable`]，运行期逐机器）是两个轴。
 
 use crate::platform::fs::Ro;
 use cmd_wire::files::{self as wire, FileKind, WirePath};

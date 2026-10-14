@@ -17,7 +17,7 @@ fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
     })?;
     super::parse_request(req)
 }
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 
 fn args(v: serde_json::Value) -> serde_json::Value {
     v
@@ -688,7 +688,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
         .iter()
         .find(|s| s.name == "launch")
         .expect("注册表里没有 launch");
-    let crate::stream::inbound::spec::Run::Typed(t) = spec.run else {
+    let crate::wire::spec::Run::Typed(t) = spec.run else {
         panic!("launch 不是 typed 命令")
     };
     let shape = (t.shape)();

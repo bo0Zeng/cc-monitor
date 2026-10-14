@@ -1,5 +1,5 @@
 //! base64（RFC 4648 §4，标准字母表、带 `=` 补位）：链路字节进 JSON 串的那一种编码。
-//! 后端的帧面（`stream/wire.rs` 转一手）与本 crate 的 files 一问一答用同一份。
+//! 后端的帧面（`wire/mod.rs` 转一手）与本 crate 的 files 一问一答用同一份。
 
 /// base64 的字母表（RFC 4648 §4，标准字母表、带 `=` 补位）。
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

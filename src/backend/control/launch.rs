@@ -155,7 +155,7 @@ pub(crate) struct LaunchOutcome {
 }
 
 /// 失败：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。
-pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
+pub(crate) type CmdErr = crate::wire::spec::Fail;
 
 /// `=name:` —— tmux 的**精确匹配**目标形式（F01）。
 ///
@@ -756,7 +756,7 @@ pub(crate) fn reply(session: &str, created: bool, typed: bool) -> Launched {
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `launch` 的码：形状 · 过门（send-into）· 建 / 键入那几发 tmux。
     pub(crate) enum LaunchErr {
         /// tmux 起不来。
@@ -777,16 +777,16 @@ crate::stream::inbound::typed::codes! {
 /// `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）。阻塞档（起 tmux）。
 pub(crate) struct Launch;
 
-impl crate::stream::inbound::typed::Command for Launch {
+impl crate::wire::typed::Command for Launch {
     const NAME: &'static str = "launch";
     type Req = LaunchReq;
     type Reply = Launched;
     type Err = LaunchErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for Launch {
-    fn run(req: LaunchReq, _cx: &crate::stream::inbound::typed::Cx) -> Result<Launched, LaunchErr> {
-        let of = |f| crate::stream::inbound::typed::of_fail(f, LaunchErr::CreateFailed);
+impl crate::wire::typed::Blocking for Launch {
+    fn run(req: LaunchReq, _cx: &crate::wire::typed::Cx) -> Result<Launched, LaunchErr> {
+        let of = |f| crate::wire::typed::of_fail(f, LaunchErr::CreateFailed);
         let req = parse_request(req).map_err(of)?;
         let out = run(&req).map_err(of)?;
         Ok(reply(&req.name, out.created, out.typed))

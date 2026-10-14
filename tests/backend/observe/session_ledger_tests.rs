@@ -3,7 +3,7 @@
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决：摘除按 cause ＋ 摘除之后才起的快照 · 只收割可重连的（活的只认 pidfile）·
 //! 按会话句柄认会话（改名不算关）· 一个会话里几个窗格各挂各的 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
-use crate::stream::wire::{Frame, RemovalCause, SessionFate};
+use crate::wire::{Frame, RemovalCause, SessionFate};
 
 /// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（观测不再是帧）。
 enum Ev {
@@ -32,8 +32,8 @@ fn added(sid: &str) -> Ev {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -148,8 +148,8 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,

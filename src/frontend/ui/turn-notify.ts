@@ -48,7 +48,7 @@ export class TurnEndNotifier {
     };
   }
 
-  /** 会话流的 `turn_end` 格（`TabManager.onTurnEnd`）：那个会话一轮结束了。标题 · 正文是后端写好的（`wire.rs::Frame::turn_end`），照抄。 */
+  /** 会话流的 `turn_end` 格（`TabManager.onTurnEnd`）：那个会话一轮结束了。标题 · 正文是后端写好的（后端 `wire::Frame::turn_end`），照抄。 */
   observe(sid: string, title: string, body: string): void {
     if (this.disabled) return;
     const now = this.deps.now();

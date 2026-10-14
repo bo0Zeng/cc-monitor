@@ -13,8 +13,8 @@ use crate::assets::aliases::accounts as acct_aliases;
 use crate::assets::aliases::{self, AmendErr};
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, Command, Files, NoArgs, WithOwn};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Command, Files, NoArgs, WithOwn};
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,
     AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView, AccountNameArgs,

@@ -598,7 +598,7 @@ pub enum ForkSlot<T> {
 }
 
 /// 源会话在哪个终端：某个终端（句柄）· 不在任何终端里。线上同会话容器那一格：`{host:"tmux", terminal}` · `{host:"none"}`
-/// （两个 `host` 词与 `stream::wire::TerminalHost::as_wire` · `HOST_NONE` 同字，判据钉着）。
+/// （两个 `host` 词与 `wire::TerminalHost::as_wire` · `HOST_NONE` 同字，判据钉着）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(

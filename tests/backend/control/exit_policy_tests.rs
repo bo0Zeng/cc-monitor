@@ -33,8 +33,8 @@ fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> serde_json::Value {
 fn answer_set(
     args: &serde_json::Value,
     own: &Own,
-) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
-    let req: ExitPolicySet = crate::stream::inbound::typed::take(args)?;
+) -> Result<serde_json::Value, crate::wire::spec::Fail> {
+    let req: ExitPolicySet = crate::wire::typed::take(args)?;
     super::answer_set(&req, own).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -289,7 +289,7 @@ fn wire_child() {
 /// 没有常驻开关 ⇒ 被监护那一句；开关在 ⇒ 常驻那一句。
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
-    use crate::stream::listen::ENV_RESIDENT;
+    use crate::wire::listen::ENV_RESIDENT;
     let home = temp_dir("wire-child");
     let said = |env: &[(&str, &str)]| -> serde_json::Value {
         let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))

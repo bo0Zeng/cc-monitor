@@ -6,7 +6,7 @@
 
 use super::spec::Fail;
 use crate::faces::project::{parse_view, project_reply, View};
-use crate::stream::wire::Request;
+use crate::wire::Request;
 use serde_json::Value;
 
 /// 命令 → 应答里成品住的那几处 `(路径, 成品名)`（外层的成品排在它里面那件之前）。路径写法同格目录，空串 ＝ 整份应答。
@@ -169,6 +169,42 @@ impl StreamView {
             o.insert("kind".to_string(), Value::String(kind));
         }
     }
+}
+
+/// [`crate::wire::to_line`] 照这条流的出口声明裁过（[`StreamView`]；`None` ＝ 全量，字节与 `to_line` 同）。流的写者对每一帧调它。
+pub fn to_line_viewed(
+    frame: &crate::wire::Frame,
+    view: Option<&StreamView>,
+) -> serde_json::Result<String> {
+    let Some(view) = view else {
+        return crate::wire::to_line(frame);
+    };
+    let mut v = serde_json::to_value(frame)?;
+    view.apply(&mut v);
+    let mut s = serde_json::to_string(&v)?;
+    s.push('\n');
+    Ok(s)
+}
+
+/// attach 行里这条连接要什么（`{"attach":true,"tz":"Asia/Shanghai","view":{…}}`）：`tz` 同 [`crate::TZ_FLAG`]（认不得 ⇒ UTC）·
+/// `view` 同请求信封的声明（[`StreamView`]；缺 ＝ 全量）。别的键（`attach` 以外）· 声明认不出 ⇒ `Err`（当 malformed 拒）。
+/// 每条连接各按自己的这一行定，不看进程起参。
+pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
+    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
+    let o = v.as_object().ok_or(())?;
+    if o.keys()
+        .any(|k| !matches!(k.as_str(), "attach" | "tz" | "view"))
+    {
+        return Err(());
+    }
+    let view = match o.get("view") {
+        Some(decl) => StreamView::parse(decl).map_err(|_| ())?,
+        None => None,
+    };
+    Ok(Some(crate::StreamWants {
+        tz: o.get("tz").map(crate::Tz::of).unwrap_or_default(),
+        view,
+    }))
 }
 
 #[cfg(test)]

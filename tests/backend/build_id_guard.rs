@@ -204,7 +204,7 @@ mod tests {
                 }
             }
         }
-        for (k, f, t) in crate::stream::wire::tests::SECOND_FRONTEND_READS {
+        for (k, f, t) in crate::wire::tests::SECOND_FRONTEND_READS {
             lines.push(format!("frame:{k}.{f} {t}"));
         }
         // 反向自检：冻结格一格都没数到 ⇒ 这一段恒等、改了冻结格也不红。

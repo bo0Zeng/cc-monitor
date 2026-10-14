@@ -3,7 +3,7 @@
 
 use crate::control::{cc_bus, kill, launch, session_batch, terminals};
 use crate::platform::child::{Budget, Deadline, Until};
-use crate::stream::wire::Request;
+use crate::wire::Request;
 
 /// 发起方期限里留给回程与界面收尾的那一段：后端在发起方放手之前这么久答出那句准话。
 pub(crate) const MARGIN_MS: u64 = 2_000;

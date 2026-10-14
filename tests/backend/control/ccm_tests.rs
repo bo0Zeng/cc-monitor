@@ -2,8 +2,7 @@ use super::*;
 
 // 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
 fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
-    let req: CcmPrintReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: CcmPrintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_print(&req).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -1067,13 +1066,13 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
         "proj-cc"
     );
     // 入参组合不对（两个都没给 · 两个都给）⇒ `bad_args`，不去问快照；形状不对（类型错 · 多一个键）在解入参那一步就拒了。
-    use crate::stream::inbound::typed::{Blocking as _, Codes as _};
+    use crate::wire::typed::{Blocking as _, Codes as _};
     for (cwd, fork_of) in [(None, None), (Some("/a"), Some("b"))] {
         let req = TerminalNameMintReq {
             cwd: cwd.map(str::to_string),
             fork_of: fork_of.map(str::to_string),
         };
-        let cx = crate::stream::inbound::typed::Cx {
+        let cx = crate::wire::typed::Cx {
             tz: Default::default(),
             until: None,
         };

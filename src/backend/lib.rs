@@ -87,10 +87,11 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
-pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
+pub mod stream; // 进后端的口（最上层）：命令表 · 帧面与 CLI 面的分派 · 门 · 期限 · 出口声明 · tap（谁都不引它，只 main / lib 接）
 #[cfg(test)]
 #[path = "../../tests/backend/test_home_guard.rs"]
 mod test_home_guard; // 每个有判据的 Rust crate 都引了 `src/common/test-home`（测试档的家一开始就是沙箱）
+pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
@@ -513,7 +514,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// `files-delete` 多一形 `expect:{"empty_dir":true}` · 传输 done 帧带 `sha256` · 新帧 `session_file_gone` / `session_file_reread`
 /// （活会话 jsonl 被删 / 截短 / 原地改写变长）。子命令没变，照 p1v 先例不加历史行；旧远端后端会被判旧、自动重装。
 ///
-/// ★★★ **p3s-drain-deadline-viarelay**（2026-09-25）：行为 —— 退出排空加 30 s 期限（`inbound::DRAIN_DEADLINE`，
+/// ★★★ **p3s-drain-deadline-viarelay**（2026-09-25）：行为 —— 退出排空加 30 s 期限（`wire::drain::DRAIN_DEADLINE`，
 /// 后端零定时器唯一登记让位的一处；到点记哪几条没做完再退）· 覆盖写遇硬链接 / 别人属主退回就地写并说明 · 自家目录一律 `own_dir::ensure_private_dir`
 /// 建成 0700（远端部署新建目录 SETSTAT 0700）· `accounts-sessions` 每行多一格 `viaRelay`。子命令没变，照 p1v 先例不加历史行。
 ///
@@ -882,7 +883,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p9l-term-follow：终端实时画面订阅（terminal-follow / -ack / -unfollow 三条帧命令 · terminal_screen / terminal_follow_end 两种帧 · tmux 控制模式只读客户端当变化信号 · 一帧在途、512 KiB 上限）· 远端版本不符分要更新 / 较新 / 不可比三类由壳判；文件窗口 shell.rs 拆函数。
 ///
-/// p9m-copy-detail：失败应答多一格 detail（时刻 · 机器 · 命令 · 码 · 原话，排版只在 copy-core::detail）· 结束会话 / 读画面 / 送字 / cc-bus / 账号库「契约对不上」的码 → 句搬进后端 stream/said.rs、处理器原句进详情 · 批量停 / 起每项带 said 与详情 · 句子里不许接原话（C-W18）。
+/// p9m-copy-detail：失败应答多一格 detail（时刻 · 机器 · 命令 · 码 · 原话，排版只在 copy-core::detail）· 结束会话 / 读画面 / 送字 / cc-bus / 账号库「契约对不上」的码 → 句搬进后端 wire/said.rs、处理器原句进详情 · 批量停 / 起每项带 said 与详情 · 句子里不许接原话（C-W18）。
 ///
 /// p9n-transfer-detail：transfer 收场帧 state=failed 多一格可缺的 detail（why 只剩原因词）· transfer-upload 开单读不到本机那份带原话 · 文件写面失败统一 WriteFail（码 · 句 · 原话）· 后端 common::said::Said；终端那一路之后 Linux 通知 / 开终端、复制详情续做、瘦身五一并进来。
 ///
@@ -898,7 +899,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p9t-resident-socket-cells：常驻后端去钥匙，只听家里只给本人的 Unix 套接字（~/.cc-monitor/run/），远端经 ssh 跑 --resident-attach 小中继去连；attach 行只剩 {attach, flags}；--resident-ensure 答 {pid}（不再给 port / token）；拨号 ack 去掉 open_refused 与 tunnel；只许直通那把中转钥匙由根钥匙派生、relay-pass-key 不再用；文件窗口改走父子管道（种子与就绪行），不再监听。
 /// 会话血缘：起会话地址尾上带来处段 ~<来处>[~<父>]（语法只在 relay-route-core）；中转认谁起的谁，记 ~/.cc-monitor/lineage.json；起子进程不往下传各家「我是哪个会话」的变量（self_sid_env）；子会话默认跟随父会话（{"parent": sid}）。
-/// CLI 失败信封只剩一种：stderr 一行 {code, message, detail, data?}（与帧面失败应答同一份 stream::detail::Failed），下层原话进 detail，不再有 raw 格；--text 的失败是那一句 ＋ 复制详情；CLI 面开 --within-ms（同帧面 within_ms）。needs.kind 八种（approve · answer · plan · network · worker · goal · choose · unknown）；activity 多 background_work；足迹那一份 claude_config_dir 改叫 agent_home。
+/// CLI 失败信封只剩一种：stderr 一行 {code, message, detail, data?}（与帧面失败应答同一份 wire::detail::Failed），下层原话进 detail，不再有 raw 格；--text 的失败是那一句 ＋ 复制详情；CLI 面开 --within-ms（同帧面 within_ms）。needs.kind 八种（approve · answer · plan · network · worker · goal · choose · unknown）；activity 多 background_work；足迹那一份 claude_config_dir 改叫 agent_home。
 /// 状态的字进核心：session_added / session_status 带 activity_text · activity_tone，session_state 带 state_text · state_hint · state_tone（必有），facts.needs 带 text · tone；新帧命令 cells-catalog（每件成品有哪些格）。计划：plan-command（代敲 pb continue · pause · view），plan_changed 三格必填、壳转进界面。全文搜索分层（正文层优先留、工具层先放，常驻上界 128 MB）。
 ///
 /// p9u-needs-bgwork-mcp：核心补格——facts.needs 加 rank（先答哪个）· waitedMs · waitedText（已等多久在那台算）；facts.usage 带写好的字（contextText · limitText · promptTokensText · percent · contextTone · limitFromText）；activity 说不清也带字（运行中 · now），background_work 写「后台任务运行中」· 语气 busy；facts 多 bgTasks · background（后台命令与时长，会走的那一句 clock{text, from}）· mcp（要登录 · 断开 · 还在连）；格目录缺格清空、记录金样扩全、冻结表并进格目录。
@@ -914,7 +915,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 连上只拉尾段：旁路快照只读每会话最后 REPLAY_TAIL_KEEP 个可计行，头段由界面往上翻时按行号 / 偏移取回（壳侧 Read::Full 改名 Read::Tail，tail_seq 删）。
 /// 手机端 app 并进本仓 src/mobile（门禁 mobile 格 · CI mobile job · 第三方许可登记手机端二进制）；CI 认候选分支 next，winlink 那格加查 lib 测试程序带进程清单。
 ///
-/// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
+/// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 wire/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
 /// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
 /// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
 ///
@@ -1096,9 +1097,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 会话外的需手动清单（`manual-list`，typed）派生的 CLI 面：无入参。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--manual-list",
     // 只读查询面那八条帧命令**自动派生**出来的 CLI 面
-    //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
+    //（`stream::cli::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
-    //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
+    //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`stream::cli::STREAM_ONLY`）。
     "--accounts-sessions",
     // 会话级答题 hook 的客户端（`control/asks/hook.rs`）：那一家的 hook 叫它，它经本机常驻后端问人、把答案交回去。⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--answer-hook",
@@ -1111,14 +1112,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--backend-log",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
-    // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
+    // 分派臂按 `stream::cli::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
     // 而且 `build_id_guard` 的指纹也取自它 ⇒ 加在这里会**逼出一次 BUILD_ID bump**，那正是要的。
     // P4f：cc-bus 的两条基础命令。⚠ **不加这两行的后果是静默的** ——
     // 分派臂是派生的（认得出来），但 `is_query_mode` 这道**闸门**读的是本表：
     // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
     // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
-    // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
+    // ⇒ 现由 `stream::cli::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
     // 广播（`inbound::REGISTRY` 的 `bus-broadcast`）：原是 monitor 里的组合（列名单 ＋ 逐个发），
     //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
     //   （`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
@@ -1204,7 +1205,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 首次运行「开始用」那份数（`first-run`）派生的 CLI 面。只读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--first-run",
     // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时
-    //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump（打版本号时统一做）。
+    //   按本表分流会把 `ccm --ccm-print` 抢进后端（`stream::cli::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--mcp-read",
     // MCP 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
@@ -1237,7 +1238,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     "--assets-catalog",
     "--assets-catalog-merge",
-    // `assets-sync` 是真异步命令 ⇒ 按派生规则上 CLI 面（`cli_control::cli_exposed`：非内建即上）。
+    // `assets-sync` 是真异步命令 ⇒ 按派生规则上 CLI 面（`stream::cli::cli_exposed`：非内建即上）。
     // ⚠ 一次性进程没有常驻那一个的连接池与可达表：它自己新拨一条、对那一台做一趟，扇出恒为零台。
     "--assets-sync",
     // skill「装到这台」那两条（`skill-read` / `skill-install-plan`）派生的 CLI 面。只读，入参从 stdin 读。
@@ -1257,7 +1258,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--remote-reach",
-    // 测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
+    // 测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `stream::cli` 判据的 `NOT_ON_CLI`）。
     // 历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
     // 文件住家里，一次性进程与常驻那一个按家推出同一份。加这三行会逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--history-annotate",
@@ -1277,7 +1278,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 与上面那四条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
     // 🔴 **本族第一条会往盘上写的命令。**
     //
-    // 它落在这张表里**不是选择，是派生的必然**：`cli_control::cli_exposed` 逐字是
+    // 它落在这张表里**不是选择，是派生的必然**：`stream::cli::cli_exposed` 逐字是
     // `!spec.run.on_frame_arm()` —— 只要一条命令进了 `inbound::REGISTRY`
     // 且不是那个硬臂，CLI 面就**自动**认得它；而本表是 `is_query_mode` 那道闸门。
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
@@ -1372,11 +1373,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-stop",
     // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。
     "--resolve",
-    // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    // `--resync` 摘了（`stream::cli::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
     //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
     //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），
-    //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `cli_control::STREAM_ONLY`，照派生规则上 CLI 面。
+    //   一格都不读本进程的可达表 / 监听状态 / 在飞表 ⇒ 不进 `stream::cli::STREAM_ONLY`，照派生规则上 CLI 面。
     //   登记在本表的理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读的就是本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 是新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--session-new",
@@ -1392,13 +1393,13 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--sessions-where",
     // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ssh-config-import",
-    // `tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
+    // `tasks-list` 帧命令**自动派生**出来的 CLI 面（`stream::cli::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
     "--tasks-list",
     // 终端管理 L1 三条帧命令自动派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ `BUILD_ID` 发版时统一 bump。
     "--terminal-input",
-    // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `cli_control` 那张「只有界面用得着」的表里，
+    // 铸终端名 · 开终端那一串（`terminal-name-mint` / `terminal-ssh`）派生的 CLI 面：原先在 `stream::cli` 那张「只有界面用得着」的表里，
     //   复核后放出（铸名经会话快照现探；那一串由入参与这台的 ssh 客户端算出）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--terminal-name-mint",
     "--terminal-preview",
@@ -1928,7 +1929,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--kill",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `kill` 那一行是**同一条实现**（CLI 面经 `stream::cli::spec_for` \
               派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
@@ -1936,7 +1937,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--launch",
         target: Target::Windows,
         kind: GapKind::Owed,
-        rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `launch` 那一行是**同一条实现**（CLI 面经 `stream::cli::spec_for` \
               派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。",
     },
     // ── `files-chmod` × Windows：待拍 3 ────────────
@@ -1960,7 +1961,7 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         capability: "--files-chmod",
         target: Target::Windows,
         kind: GapKind::Structural,
-        rationale: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
+        rationale: "与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `stream::cli::spec_for` \
               派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。",
     },
 ];
@@ -2128,7 +2129,7 @@ fn cli_subcommands_on(t: Target) -> Vec<&'static str> {
         .iter()
         .copied()
         .filter(|flag| {
-            control::cli_control::spec_for(flag).is_none_or(|s| !gone.iter().any(|g| g == s.name))
+            stream::cli::spec_for(flag).is_none_or(|s| !gone.iter().any(|g| g == s.name))
         })
         .collect()
 }
@@ -2168,7 +2169,7 @@ pub const COMMAND_FACES: &[CapabilityFace] = &[
         declares: cli_subcommand_names,
         declared_in: "lib.rs",
         targets: TARGETS,
-        target_basis: "`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `cli_control::spec_for` 派生到 \
+        target_basis: "`SUBCOMMANDS` 四个 target 上逐字同一张表；经 `stream::cli::spec_for` 派生到 \
                        `REGISTRY` 的那几条，做不做得到跟着帧面那一条走。CLI 独有的那几条**没有任何逐 target \
                        声明**（例：`--tmux-notify` 在 Windows 上没人会调它，但声明里说不出来）⇒ 判成处处都在。",
     },
@@ -2252,7 +2253,7 @@ pub const EMITS: &[&str] = &[
     "overflow",
     "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     // tmux 快照不上线：只喂这台的会话账本。
-    // 「X 变了 ⇒ 重读」那一种（主题表 `stream/topic.rs`：账号清单 · 配置文件 · 任务清单由 watcher 发，额度 · 轮换 · 规则 · 计划走 tap 那条；登记 = 承诺真发，已接线）。
+    // 「X 变了 ⇒ 重读」那一种（主题表 `wire/topic.rs`：账号清单 · 配置文件 · 任务清单由 watcher 发，额度 · 轮换 · 规则 · 计划走 tap 那条；登记 = 承诺真发，已接线）。
     "changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」。
@@ -2312,13 +2313,13 @@ pub use stream::inbound::views::StreamView;
 
 /// **看的人那一台的时区**：`--tz <IANA 名>`（任意位置；流模式与一次性 CLI 面同一个旗标）与帧面请求信封的 `tz` 同名同义：
 /// 回包与推送里「几点」「今天 / 昨天」按它写，不按这台后端的钟。缺 · 缺值 · 认不得 ⇒ UTC（不拒）。
-/// 常驻那条连接的 attach 行带同名一格 `tz`（[`stream::listen::attach_flags`]）。
+/// 常驻那条连接的 attach 行带同名一格 `tz`（[`wire::listen::attach_flags`]）。
 pub const TZ_FLAG: &str = "--tz";
 
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub use common::time::Tz;
 /// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`main.rs::writer_task`）。
-pub use faces::read_face::REPLY_PAGE_BYTES;
+pub use wire::REPLY_PAGE_BYTES;
 
 /// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
 pub fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {
@@ -2333,7 +2334,7 @@ pub fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, st
 /// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
 /// 上限同默认那一形（`control/cli_args.rs::MAX_CLI_STDIN`，超了拒、不截断）。
 ///
-/// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
+/// 住这里（argv 三分表旁边）而不住 `stream::cli`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
@@ -2359,8 +2360,8 @@ pub const WITHIN_MS_FLAG: &str = "--within-ms";
 /// 同 [`ARGS_B64_FLAG`]）。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
 pub const VIEW_FLAG: &str = "--view";
 
-/// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
-/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
+/// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`stream/cli.rs::flag_of`）
+/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `stream::cli`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
 pub fn cli_flag(name: &str) -> String {
     format!("--{name}")
@@ -2405,7 +2406,7 @@ pub fn split_stream_flags(mut args: Vec<String>) -> Result<(Vec<String>, StreamW
         .first()
         .is_some_and(|a| SUBCOMMANDS.contains(&a.as_str()));
     if !subcommand && args.iter().any(|a| a == VIEW_FLAG) {
-        let decl = control::cli_control::view_of(&args).map_err(|(_, why)| why)?;
+        let decl = stream::cli::view_of(&args).map_err(|(_, why)| why)?;
         wants.view = StreamView::parse(&decl)?;
         let i = args.iter().position(|a| a == VIEW_FLAG).unwrap_or_default();
         args.drain(i..(i + 2).min(args.len()));
@@ -2512,14 +2513,14 @@ pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 /// unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
 /// 与 tmux 那一维同形：谁声明会回那个码，谁就依赖那个机制，从 `inbound::REGISTRY` 的 `codes` 现推。
-pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<stream::wire::Unavailable> {
+pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<wire::Unavailable> {
     if unix_mode_bits {
         return Vec::new();
     }
     stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.codes.contains(&NO_UNIX_MODE))
-        .map(|s| stream::wire::Unavailable {
+        .map(|s| wire::Unavailable {
             command: s.name.to_string(),
             code: NO_UNIX_MODE.to_string(),
         })
@@ -2546,12 +2547,12 @@ pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<stream::wire::Unavaila
 /// 压成**做得到** ⇒ 客户端照今天的样子办（照发、点了看 `no_tmux`）⇒
 /// **一个字节都没退化**，只是这一格没买到。⇒ 后者是唯一安全的那一侧。
 /// 一句话：**这张表只在有把握时才开口，没把握时它退回今天的行为。**
-pub fn unavailable_from(tmux: Option<bool>) -> Vec<stream::wire::Unavailable> {
+pub fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
     let mut out = Vec::new();
     if tmux == Some(false) {
         for spec in stream::inbound::REGISTRY {
             if spec.codes.contains(&NO_TMUX) {
-                out.push(stream::wire::Unavailable {
+                out.push(wire::Unavailable {
                     command: spec.name.to_string(),
                     code: NO_TMUX.to_string(),
                 });
@@ -2719,7 +2720,7 @@ const _: () = assert!(
 /// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
 /// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
 /// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
-pub fn unavailable_here() -> Vec<stream::wire::Unavailable> {
+pub fn unavailable_here() -> Vec<wire::Unavailable> {
     let mut out = unavailable_from(tmux_present(
         TMUX_PLATFORM,
         std::env::var_os("PATH").as_deref(),

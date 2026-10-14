@@ -199,10 +199,7 @@ fn it_is_registered_typed_and_refuses_fields_it_does_not_use() {
         .iter()
         .find(|s| s.name == "rotation-facts")
         .expect("登记了");
-    assert!(matches!(
-        spec.run,
-        crate::stream::inbound::spec::Run::Typed(_)
-    ));
+    assert!(matches!(spec.run, crate::wire::spec::Run::Typed(_)));
     assert!(
         serde_json::from_value::<RotationFactsReq>(serde_json::json!({"sid": "x"})).is_err(),
         "多一格该拒（解入参那一步回 bad_args）"

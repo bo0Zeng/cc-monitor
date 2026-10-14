@@ -121,7 +121,7 @@ export interface EventHandlers {
   /** 同一批的记录都处理完后调一次（多块时只在 300ms grace 真正到点时调）：TabManager 算主线 ＋ rebuild，切回 live。 */
   onBatchEnd?: () => void;
   /**
-   * 那台的某样东西变了（`topic`：账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单；主题表住后端 `stream/topic.rs`）。
+   * 那台的某样东西变了（`topic`：账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单；主题表住后端 `wire/topic.rs`）。
    * `change.cells` 是变了的那几格（`key` · `rev` · `body`），`change.all` ＝ 期间可能漏了（那台又接上 / 丢了几格 / 格读不懂 ⇒ 那台这一样整份重问）。
    * 来自通道 `subscribe(origin, "changed/<topic>")`（`changed-stream.ts::changedItems` 读格），一批叫一次。
    */

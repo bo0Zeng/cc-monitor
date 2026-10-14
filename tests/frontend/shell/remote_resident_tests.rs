@@ -263,7 +263,7 @@ fn the_relay_refusal_line_is_read_and_its_words_match_the_backend() {
         relay_refusal(r#"{"kind":"hello","v":1,"build_id":"p1"}"#),
         None
     );
-    let be = include_str!("../../../src/backend/stream/listen.rs");
+    let be = include_str!("../../../src/backend/wire/listen.rs");
     assert!(
         be.contains(&format!(
             "pub const REFUSE_ABSENT: &str = \"{RELAY_ABSENT}\";"

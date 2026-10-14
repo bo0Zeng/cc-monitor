@@ -5,7 +5,7 @@
 #
 # 单测把 `parse_list` / `classify_send` 那些纯函数钉住了，但它们**证明不了命令调得动**：
 # 08-13 实测撞到过一次 —— 两条命令进了 `inbound::REGISTRY`、`hello.commands` 也报了它们、
-# 分派臂也认（`cli_control::handles` 是派生的），而 `main::is_query_mode` 这道**闸门**
+# 分派臂也认（`stream::cli::handles` 是派生的），而 `main::is_query_mode` 这道**闸门**
 # 读的是手写的 `SUBCOMMANDS`。漏加两行的后果是**静默的**：backend 打一行
 # 「未知 flag，已忽略」的 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行。
 # 单测全绿。⇒ 这套件跑的是**真二进制的真 argv**。

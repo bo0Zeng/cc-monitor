@@ -353,7 +353,7 @@ fn t12_detail_time_slots_are_filled_in_the_viewer_zone_with_the_offset() {
     // 坏了的空位原样留着（看得见），不吞字。
     assert_eq!(fill_at("⟦at:xx⟧ 与 ⟦at:", &sh()), "⟦at:xx⟧ 与 ⟦at:");
     // 复制详情本身只写空位：那一层不知道看的人是谁。
-    assert!(crate::stream::detail::of(Some("c"), "x", None).contains("⟦at:"));
+    assert!(crate::wire::detail::of(Some("c"), "x", None).contains("⟦at:"));
 }
 
 /// 钟面 `HH:MM` 与界面那一个钟面读口（`clock-face.ts::clockFace`）对同一份金样。

@@ -62,7 +62,7 @@
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
 use crate::platform::fs::{Ro, RoFile};
-use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
+use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
@@ -152,8 +152,8 @@ enum WatchEvent {
     Watch {
         /// 哪条连接报的（[`Attachment`] 的号）。
         sub: u64,
-        ask: crate::stream::wire::WatchAsk,
-        done: tokio::sync::oneshot::Sender<Vec<crate::stream::wire::WatchFrom>>,
+        ask: crate::wire::WatchAsk,
+        done: tokio::sync::oneshot::Sender<Vec<crate::wire::WatchFrom>>,
     },
     /// 一条流连接接上来了：从这一刻起它收这台的帧（先收一份此刻的样子，[`join`]）。
     Join(Sub),
@@ -834,14 +834,12 @@ impl WatcherPoke {
     }
 
     /// 接上一条流连接：回它的出方向通道（这台的帧从这里来；先来一份此刻的样子）与它在这台 watcher 上的那一份（丢了 ＝ 走了）。
-    /// 这条连接要的时区（`wants.tz`）给按连接现写的那几帧用（任务清单变了那一帧的体）。
-    pub fn attach(&self, wants: &crate::StreamWants) -> (mpsc::Receiver<Frame>, Attachment) {
+    /// 这条连接要的时区（attach 行 / 流模式起参的 `tz`）给按连接现写的那几帧用（任务清单变了那一帧的体）。
+    pub fn attach(&self, tz: &crate::Tz) -> (mpsc::Receiver<Frame>, Attachment) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
-        let _ = self
-            .0
-            .send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));
+        let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone())));
         (
             rx,
             Attachment(WatchHandle {
@@ -879,9 +877,9 @@ impl WatchHandle {
     /// 这条流此刻在看哪几个会话（整份换）；回刚进名单的那几个从第几行起上流。watcher 已停 ⇒ 回的那一头直接断。
     pub fn watch(
         &self,
-        ask: crate::stream::wire::WatchAsk,
-    ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>> {
-        let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>();
+        ask: crate::wire::WatchAsk,
+    ) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>> {
+        let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>();
         let _ = self.tx.send(WatchEvent::Watch {
             sub: self.id,
             ask,
@@ -1235,7 +1233,7 @@ fn watch_loop(
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
                     // 体按各连接看的那一台的时区现写。
                     sink.send_each(|tz| {
-                        let body = crate::stream::topic_hook::body(Topic::Tasks, Some(&sid), tz);
+                        let body = crate::wire::topic_hook::body(Topic::Tasks, Some(&sid), tz);
                         Frame::changed(Topic::Tasks, Some(sid.clone()), None, body)
                     });
                 }
@@ -1572,15 +1570,15 @@ impl ReaderState {
             .and_then(|e| e.custom_title.clone())
     }
 
-    /// 此刻叫这条会话什么（[`crate::stream::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid。
-    fn name_face(&self, sid: &str) -> crate::stream::wire::NameFace {
+    /// 此刻叫这条会话什么（[`crate::wire::NameFace`]）；没记着它（没宣告过）⇒ 只凭 sid。
+    fn name_face(&self, sid: &str) -> crate::wire::NameFace {
         let facts = self
             .sessions
             .values()
             .find(|e| e.sid == sid)
             .map(|e| e.facts.clone())
             .unwrap_or_default();
-        crate::stream::wire::NameFace::of(&facts)
+        crate::history::search_rules::name_face(&facts)
     }
 
     /// 改这条会话叫什么的那几样（`change` 回真 = 改了）；名字真变了 ⇒ 一帧 `session_status`（活动那几格照记着的带全）。
@@ -1604,7 +1602,7 @@ impl ReaderState {
         if name_face != before {
             sink.send(Frame::SessionStatus {
                 sid: sid.to_string(),
-                face: crate::stream::wire::ActivityFace::of(activity),
+                face: crate::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for,
                 path: None,
@@ -1788,7 +1786,7 @@ struct SessionEntry {
     waiting_for: Option<String>,
     /// 此刻在干什么（名字变了要再发 `session_status`，那一帧带全）。
     activity: Option<crate::agents::SessionActivity>,
-    /// 叫这条会话什么的那几样（[`crate::stream::wire::NameFace`]）：宣告时从清单缓存与注解取，之后跟着读到的标题记录 · 第一句 · 注解改。
+    /// 叫这条会话什么的那几样（[`crate::wire::NameFace`]）：宣告时从清单缓存与注解取，之后跟着读到的标题记录 · 第一句 · 注解改。
     /// 不在看的会话行照读（只是不上流），这几样照记。
     facts: crate::history::search_rules::LabelFacts,
     /// 客户端手里这条会话的记录路径（宣告时那一份；之后记录出现 · 换了一份就跟上，并发一帧 `session_status` 带它）。
@@ -2340,10 +2338,10 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
 /// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发，[`primed`]）、也不回续点（它的续点由 `session_primed` 给）。
 fn watch_sessions(
     sub: u64,
-    ask: crate::stream::wire::WatchAsk,
+    ask: crate::wire::WatchAsk,
     state: &mut ReaderState,
     sink: &mut FrameSink,
-) -> Vec<crate::stream::wire::WatchFrom> {
+) -> Vec<crate::wire::WatchFrom> {
     let next: HashSet<String> = ask.sids.into_iter().collect();
     let Some(me) = sink.subs.iter_mut().find(|s| s.id == sub) else {
         return Vec::new();
@@ -2361,7 +2359,7 @@ fn watch_sessions(
         }
     };
     // 要清单的：只算在看的那几个（不在看的清单本来就不上流）。
-    let held: HashMap<String, crate::stream::wire::BranchHeld> = ask
+    let held: HashMap<String, crate::wire::BranchHeld> = ask
         .branch
         .into_iter()
         .filter(|h| next.contains(&h.sid))
@@ -2394,7 +2392,7 @@ fn watch_sessions(
     for sid in fresh {
         sink.send_to(sub, state.runs_frame(&sid));
         for p in mine(state, &sid) {
-            from.push(crate::stream::wire::WatchFrom {
+            from.push(crate::wire::WatchFrom {
                 sid: sid.clone(),
                 path: p.to_string_lossy().into_owned(),
                 seq: state.seqs.peek(&p.to_string_lossy()),
@@ -2436,11 +2434,11 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
         ) = (&mut added, entry)
         {
             *face = if state.reading.contains(&sid) {
-                crate::stream::wire::ActivityFace::reading()
+                crate::wire::ActivityFace::reading()
             } else {
-                crate::stream::wire::ActivityFace::of(e.activity)
+                crate::wire::ActivityFace::of(e.activity)
             };
-            *name_face = crate::stream::wire::NameFace::of(&e.facts);
+            *name_face = crate::history::search_rules::name_face(&e.facts);
             waiting_for.clone_from(&e.waiting_for);
             if e.path.is_some() {
                 path.clone_from(&e.path);
@@ -2534,7 +2532,7 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
     };
     sink.send(Frame::SessionStatus {
         sid: session_id.to_string(),
-        face: crate::stream::wire::ActivityFace::of(activity),
+        face: crate::wire::ActivityFace::of(activity),
         name_face: state.name_face(session_id),
         waiting_for,
         path: Some(path_str.to_string()),
@@ -2648,7 +2646,7 @@ fn note_activity(
     };
     sink.send(Frame::SessionStatus {
         sid: sid.to_string(),
-        face: crate::stream::wire::ActivityFace::of(Some(a)),
+        face: crate::wire::ActivityFace::of(Some(a)),
         name_face: state.name_face(sid),
         waiting_for,
         path,
@@ -2881,10 +2879,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             entry.waiting_for = new_waiting.clone();
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
             entry.activity = activity;
-            let name_face = crate::stream::wire::NameFace::of(&entry.facts);
+            let name_face = crate::history::search_rules::name_face(&entry.facts);
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
-                face: crate::stream::wire::ActivityFace::of(activity),
+                face: crate::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for: new_waiting,
                 path: None,
@@ -3004,7 +3002,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         custom: state.custom_title(&sid),
         ..Default::default()
     });
-    let name_face = crate::stream::wire::NameFace::of(&facts);
+    let name_face = crate::history::search_rules::name_face(&facts);
     state.sessions.insert(
         key,
         SessionEntry {
@@ -3054,9 +3052,9 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         face: if reading {
-            crate::stream::wire::ActivityFace::reading()
+            crate::wire::ActivityFace::reading()
         } else {
-            crate::stream::wire::ActivityFace::of(a.activity)
+            crate::wire::ActivityFace::of(a.activity)
         },
         name_face,
         waiting_for: a.waiting_for,
@@ -3308,7 +3306,7 @@ fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
 
 /// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，
 /// 回（容器，这次真写了没有）。`tag()` 自带「值一样就不动」⇒ 对账不多写一次。
-fn tag_identity(pid: u32, sid: &str) -> (Option<crate::stream::wire::SessionContainer>, bool) {
+fn tag_identity(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
     let outcome = crate::control::identity_tag::tag(pid, sid);
     if let Some(note) = outcome.failure_note(pid, sid) {
         tracing::warn!("{note}");
@@ -4078,7 +4076,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
                 e.map_or((None, None), |e| (e.waiting_for.clone(), e.path.clone()));
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
-                face: crate::stream::wire::ActivityFace::of(None),
+                face: crate::wire::ActivityFace::of(None),
                 name_face: state.name_face(&sid),
                 waiting_for,
                 path,
@@ -4603,7 +4601,7 @@ impl Sub {
         match self.branch_held.remove(path) {
             Some((n, sum)) if !stale => usize::try_from(n)
                 .ok()
-                .filter(|&n| n <= off.len() && crate::stream::wire::branch_sum(&off[..n]) == sum)
+                .filter(|&n| n <= off.len() && crate::wire::branch_sum(&off[..n]) == sum)
                 .unwrap_or(0),
             _ => 0,
         }

@@ -1,18 +1,18 @@
 //! 一条入方向命令的登记形状。各族的命令表（`registry/`）只 use 这一份。
 
 use crate::common::said::IntoNote as _;
-use crate::stream::wire::Request;
+use crate::wire::Request;
 
 /// 处理器：拿走 [`Request`]，返回一个可以在**独立 task** 上跑的 future。
-pub(super) type Handler = Box<dyn FnOnce(Request) -> BoxFut + Send>;
+pub(crate) type Handler = Box<dyn FnOnce(Request) -> BoxFut + Send>;
 /// 同步阻塞处理器（见 [`Disposition::SpawnBlocking`]）。
-pub(super) type BlockingHandler = Box<dyn FnOnce(Request) -> Outcome + Send>;
-pub(super) type CmdResult = Result<Option<serde_json::Value>, (String, String)>;
+pub(crate) type BlockingHandler = Box<dyn FnOnce(Request) -> Outcome + Send>;
+pub(crate) type CmdResult = Result<Option<serde_json::Value>, (String, String)>;
 /// 一条命令的结局（应答那一帧由它出）：成功的返回值 · 失败（码 ＋ 原话 ＋ 按码定形的 `data`）。
 pub(crate) type Outcome = Result<Option<serde_json::Value>, Fail>;
 
 /// 命令级失败。`data` 只给在协议文档里按码定了形的那几个码（多数码没有 ⇒ 应答里不出这一格）。
-/// `raw` 是下层原话（子进程 stderr · 系统报错）：不进 `message`，进应答的 `detail`（[`crate::stream::detail::of`]）。
+/// `raw` 是下层原话（子进程 stderr · 系统报错）：不进 `message`，进应答的 `detail`（[`crate::wire::detail::of`]）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Fail {
     pub(crate) code: String,
@@ -88,19 +88,19 @@ impl Fail {
     }
 
     /// 这次失败投出去的那一份（两个面都经这里：帧面的应答 · CLI 面的信封）。`cmd` 是命令名，进详情的「命令」那一项。
-    /// 这条命令有「码 → 句」表（[`crate::stream::said::reword`]）⇒ 句子换成表里那一句，处理器原来那句进原话。
+    /// 这条命令有「码 → 句」表（[`crate::wire::said::reword`]）⇒ 句子换成表里那一句，处理器原来那句进原话。
     pub(crate) fn settle(
         mut self,
         cmd: &str,
         args: &serde_json::Value,
-    ) -> crate::stream::detail::Failed {
-        if let Some(said) = crate::stream::said::reword(cmd, args, &self.code) {
+    ) -> crate::wire::detail::Failed {
+        if let Some(said) = crate::wire::said::reword(cmd, args, &self.code) {
             let was = std::mem::replace(&mut self.message, said);
             if self.raw.is_none() && !was.trim().is_empty() {
                 self.raw = Some(was);
             }
         }
-        crate::stream::detail::Failed::new(
+        crate::wire::detail::Failed::new(
             Some(cmd),
             &self.code,
             self.message,
@@ -115,17 +115,17 @@ impl Fail {
         id: String,
         cmd: &str,
         args: &serde_json::Value,
-    ) -> crate::stream::wire::Frame {
-        crate::stream::wire::Frame::failed(id, self.settle(cmd, args))
+    ) -> crate::wire::Frame {
+        crate::wire::Frame::failed(id, self.settle(cmd, args))
     }
 }
-pub(super) type BoxFut =
+pub(crate) type BoxFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
 /// 同 [`BoxFut`]，结局可带按码定形的 `data`。
 pub(crate) type DataFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = Outcome> + Send + 'static>>;
 /// 异步处理器（失败可带 `data`）。
-pub(super) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
+pub(crate) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
 
 /// 一条命令**怎么跑**。三档，缺一不可：
 ///

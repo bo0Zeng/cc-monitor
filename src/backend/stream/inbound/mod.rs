@@ -32,7 +32,7 @@
 //! 单行长度上限（不缓冲、不 OOM）· 未见 Hello 之前不许有 stdin（时序，机检钉住）·
 //! 坏行只回错误、**绝不结束进程**。
 
-use crate::stream::wire::{Frame, Request};
+use crate::wire::{Frame, Request};
 use copy_core::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -42,14 +42,14 @@ use tokio::sync::mpsc;
 mod caps;
 mod cli_only;
 mod doors;
-mod drain;
 pub(crate) mod files_face;
 pub(crate) mod files_session_face;
 pub(crate) mod files_write_face;
 mod sniff;
-pub(crate) mod spec;
-pub(crate) mod typed;
-pub(crate) mod views;
+pub mod views;
+
+// 协议零件住 `wire`（这一层与各族命令表、各门照短名用它们；不转出）。
+use crate::wire::{drain, spec};
 
 pub(crate) use caps::install as install_total;
 pub(crate) use caps::until_of;
@@ -58,18 +58,14 @@ pub(crate) use caps::until_of;
 pub(crate) use caps::{cap_of, MARGIN_MS};
 pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
-pub use doors::{fill_account_colors, watch_account_mcp, watch_rotation};
-pub use drain::{exit_after_drain, shutdown_listener, SHUTTING_DOWN};
+pub use doors::{fill_account_colors, migrate_aliases, watch_account_mcp, watch_rotation};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};
-pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-pub(crate) use spec::{prepare, CommandSpec, Prepared, Run};
-use spec::{BlockingHandler, BoxFut, DataFut, DataHandler, Fail, Handler, Outcome};
-// 字段的向只有协议文档生成器读（测试档）。
-#[cfg(test)]
-pub(crate) use spec::Dir;
+use spec::{
+    BlockingHandler, BoxFut, CommandSpec, DataFut, DataHandler, Fail, Handler, Outcome, Run,
+};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
@@ -117,9 +113,7 @@ pub fn command_names() -> Vec<&'static str> {
 #[derive(Clone)]
 pub struct WatchDesk(
     Arc<
-        dyn Fn(
-                crate::stream::wire::WatchAsk,
-            ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+        dyn Fn(crate::wire::WatchAsk) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>>
             + Send
             + Sync,
     >,
@@ -128,9 +122,7 @@ pub struct WatchDesk(
 impl WatchDesk {
     /// 接上这条连接的 watcher（入参就是它的 `watch` 口）。
     pub fn new(
-        f: impl Fn(
-                crate::stream::wire::WatchAsk,
-            ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+        f: impl Fn(crate::wire::WatchAsk) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>>
             + Send
             + Sync
             + 'static,
@@ -147,7 +139,7 @@ pub(crate) struct Given {
 
 /// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）；`branch` 可缺（＝ 一份主线外清单都不要），给了就是 `[{sid, path?, at?, sum?}]`。
 /// 别的形状 ⇒ `bad_args`。
-fn watch_ask(args: &serde_json::Value) -> Option<crate::stream::wire::WatchAsk> {
+fn watch_ask(args: &serde_json::Value) -> Option<crate::wire::WatchAsk> {
     args.get("sids")?.as_array()?;
     serde_json::from_value(args.clone()).ok()
 }
@@ -167,7 +159,7 @@ struct InFlight {
 /// 起入方向 reader。
 ///
 /// ★ **Hello 必须已经 flush** —— 那不是一条纪律，是一个**参数**：
-/// [`crate::stream::wire::HelloFlushed`] 只能由 `wire::write_and_flush_hello` 产出，
+/// [`crate::wire::HelloFlushed`] 只能由 `wire::write_and_flush_hello` 产出，
 /// 拿不到它就调不了本函数。顺序因此**编译期不可表示**。
 ///
 /// U6b-1 曾用一条比较 `main.rs` 里两个字符串字节位置的机检来钉它，
@@ -178,7 +170,7 @@ pub fn spawn<R>(
     replies: mpsc::Sender<Frame>,
     watch: WatchDesk,
     own: crate::platform::Own,
-    _hello_flushed: crate::stream::wire::HelloFlushed,
+    _hello_flushed: crate::wire::HelloFlushed,
 ) -> tokio::task::JoinHandle<()>
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
@@ -320,12 +312,12 @@ async fn handle_line(
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
         Disposition::SpawnBlocking(req, run) => {
             // 取票在起跑之前：闸关了（进程在收场）⇒ 一个字节不动、回协议级 `shutting_down`。
-            let Some(ticket) = DRAIN.enter(format!("{}（id={}）", req.cmd, req.id)) else {
+            let Some(ticket) = drain::DRAIN.enter(format!("{}（id={}）", req.cmd, req.id)) else {
                 send(
                     replies,
                     Frame::err(
                         &req.id,
-                        SHUTTING_DOWN,
+                        drain::SHUTTING_DOWN,
                         &copy_text("beInbound.drain.shuttingDown", &[]),
                     ),
                 )
@@ -421,7 +413,7 @@ fn dispatch(
                         let body =
                             serde_json::to_value(crate::faces::login_face::SignInState::of(ended))
                                 .ok();
-                        use crate::stream::topic::Topic;
+                        use crate::wire::topic::Topic;
                         let _ = push.blocking_send(Frame::changed(
                             Topic::Login,
                             Some(job.to_string()),
@@ -462,7 +454,7 @@ fn dispatch(
                     Box::pin(async move {
                         // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
                         let from = answer.await.unwrap_or_default();
-                        Ok(serde_json::to_value(crate::stream::wire::WatchReply { from }).ok())
+                        Ok(serde_json::to_value(crate::wire::WatchReply { from }).ok())
                     })
                 }),
             )
@@ -843,7 +835,7 @@ mod drain_tests;
 ///
 /// 扫文本的机检（比较 `main.rs` 里两个字符串的字节位置 · 扫 `dispatch` 的分派臂文本）
 /// 会被普通重构击穿（一次函数抽取 · 尾随注释 / 同臂混用 / 或模式）：
-/// - Hello 顺序 ⇒ [`crate::stream::wire::HelloFlushed`] 见证（拿不到就调不了 `spawn`）；
+/// - Hello 顺序 ⇒ [`crate::wire::HelloFlushed`] 见证（拿不到就调不了 `spawn`）；
 /// - 处理器不许跑在读循环上 ⇒ `dispatch` **非 async**，分派臂里没有 `.await` 可写。
 ///
 /// **别往判据上加正则，让违规不可表示。**

@@ -1655,7 +1655,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "cc_bus_install.rs::answer_install",
-                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    record: Record,\n) -> Result<CcBusInstalled, crate::stream::inbound::spec::Fail> {",
+                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    record: Record,\n) -> Result<CcBusInstalled, crate::wire::spec::Fail> {",
             }),
             uninstall: None,
         },
@@ -1709,7 +1709,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_install",
-                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    req: &SkillApplyReq,\n) -> Result<SkillApplied, crate::stream::inbound::spec::Fail> {",
+                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    req: &SkillApplyReq,\n) -> Result<SkillApplied, crate::wire::spec::Fail> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_uninstall",

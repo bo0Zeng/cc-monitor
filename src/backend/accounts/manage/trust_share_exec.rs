@@ -14,7 +14,7 @@ use crate::agents::TrustCells;
 use crate::common::door::{self, Door, Refused};
 use std::collections::BTreeSet;
 
-type Refusal = crate::stream::inbound::spec::Fail;
+type Refusal = crate::wire::spec::Fail;
 
 /// 预标那一下的结局。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -423,7 +423,7 @@ pub(crate) enum OnceErr {
     Unreadable(String),
 }
 
-/// **问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`control/cli_control.rs`：入参 JSON 走 stdin、
+/// **问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`stream/cli.rs`：入参 JSON 走 stdin、
 /// 读到 EOF；exit 0 ⇒ stdout 一行 JSON · exit 2 ⇒ stderr 一行 `{code, message}`），不经 shell。
 /// 同步命令里问后端就走这一条（`INVARIANTS §10`：同步命令里不 `block_on` 连常驻后端）；本机后端自举（[`ask_place_verdict`]）也走它。
 pub(crate) fn ask_once(

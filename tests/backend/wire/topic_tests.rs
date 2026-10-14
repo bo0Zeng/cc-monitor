@@ -81,7 +81,7 @@ fn changed_frames_are_built_in_one_place() {
             );
         }
     }
-    assert_eq!(hits, vec!["stream/wire.rs".to_string()]);
+    assert_eq!(hits, vec!["wire/mod.rs".to_string()]);
 }
 
 /// IPC-PROTOCOL 的「`changed` 主题表」逐行 ＝ 本表（手写那一份不许与代码说两样话）。
@@ -116,10 +116,7 @@ fn the_protocol_topic_table_is_this_table() {
             s.reask
         ));
     }
-    assert_eq!(
-        table, want,
-        "IPC-PROTOCOL 的主题表与 stream/topic.rs 对不上"
-    );
+    assert_eq!(table, want, "IPC-PROTOCOL 的主题表与 wire/topic.rs 对不上");
 }
 
 /// 每个主题的「重问」是一条登记了的命令。
@@ -152,10 +149,10 @@ fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
         crate::stream::topic_body::body_now(Topic::RotationStrategies, None, &crate::Tz::default()),
         {
-            use crate::stream::inbound::typed::Blocking;
+            use crate::wire::typed::Blocking;
             crate::faces::rotation_view_face::RotationStrategies::run(
                 Default::default(),
-                &crate::stream::inbound::typed::Cx {
+                &crate::wire::typed::Cx {
                     tz: crate::Tz::default(),
                     until: None,
                 },
@@ -172,12 +169,12 @@ fn a_computed_body_is_the_reask_reply() {
             &crate::Tz::default()
         ),
         {
-            use crate::stream::inbound::typed::Blocking as _;
+            use crate::wire::typed::Blocking as _;
             crate::faces::feature_face::TasksListCmd::run(
                 crate::faces::feature_face::TasksListReq {
                     sid: "no-such-sid".to_string(),
                 },
-                &crate::stream::inbound::typed::Cx {
+                &crate::wire::typed::Cx {
                     tz: crate::Tz::default(),
                     until: None,
                 },

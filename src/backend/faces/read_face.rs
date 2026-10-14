@@ -39,13 +39,6 @@ use serde_json::{json, Value};
 /// 页越大，实时行被挡住的时间越长；页越小，往返越多。1 MiB 在 1 Mbps 的弱网上约 8 秒一页。
 pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 
-/// 分页的那几条帧命令（`history-index` · `-user-inputs` · `-turns` · `-branch`）一条应答至多多少字节，`session_branch` 一帧同此。
-///
-/// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`main.rs::writer_task`）
-/// ⇒ 页越大，实时行被挡得越久；页越小，往返越多。取 1 MiB：同 `history-read` 一页、同远端链路的窗口；
-/// 一份 394 MB 的合成记录冷开一趟分页那四条共 19 页（256 KiB 要 71 页，远端每页一个往返）。
-pub const REPLY_PAGE_BYTES: usize = 1 << 20;
-
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
 ///
 /// monitor 那头单帧上限 64 MiB（`stream_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
@@ -130,7 +123,7 @@ pub(crate) struct BackendLogReq {
     pub(crate) max_bytes: Option<u64>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `backend-log` 的码：那份文件读不了。
     pub(crate) enum BackendLogErr {
         Failed = "failed",
@@ -140,28 +133,24 @@ crate::stream::inbound::typed::codes! {
 /// `backend-log`：这台后端的 stderr 诊断文件尾部（读一份文件 ⇒ 阻塞档）。
 pub(crate) struct BackendLog;
 
-impl crate::stream::inbound::typed::Command for BackendLog {
+impl crate::wire::typed::Command for BackendLog {
     const NAME: &'static str = "backend-log";
     type Req = BackendLogReq;
     type Reply = LogTail;
     type Err = BackendLogErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for BackendLog {
-    fn run(
-        req: BackendLogReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<LogTail, BackendLogErr> {
+impl crate::wire::typed::Blocking for BackendLog {
+    fn run(req: BackendLogReq, _cx: &crate::wire::typed::Cx) -> Result<LogTail, BackendLogErr> {
         let max = req
             .max_bytes
             .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
-        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max).map_err(
-            crate::stream::inbound::typed::of_pair(BackendLogErr::Failed),
-        )
+        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
+            .map_err(crate::wire::typed::of_pair(BackendLogErr::Failed))
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `drift-report` 没有别的码。
     pub(crate) enum DriftReportErr {}
 }
@@ -169,18 +158,18 @@ crate::stream::inbound::typed::codes! {
 /// `drift-report`：这台后端的漂移账（看不懂的记录类型），各家的面并在一起、注册序（纯内存读一把锁，同 `forward-list`）。
 pub(crate) struct DriftReportCmd;
 
-impl crate::stream::inbound::typed::Command for DriftReportCmd {
+impl crate::wire::typed::Command for DriftReportCmd {
     const NAME: &'static str = "drift-report";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = crate::agents::drift::DriftReport;
     type Err = DriftReportErr;
 }
 
-impl crate::stream::inbound::typed::Async for DriftReportCmd {
+impl crate::wire::typed::Async for DriftReportCmd {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<crate::agents::drift::DriftReport, DriftReportErr>>
            + Send
            + 'static {

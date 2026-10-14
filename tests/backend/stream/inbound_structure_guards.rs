@@ -967,8 +967,8 @@ fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
         .collect();
     let derived: Vec<String> = super::REGISTRY
         .iter()
-        .filter(|s| crate::control::cli_control::cli_exposed(s))
-        .map(|s| crate::control::cli_control::flag_of(s.name))
+        .filter(|s| crate::stream::cli::cli_exposed(s))
+        .map(|s| crate::stream::cli::flag_of(s.name))
         .filter(|f| names_tmux(f))
         .collect();
     assert!(
@@ -1055,7 +1055,7 @@ use typed_replies::*;
 const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     (
         "stream-watch",
-        sampled::<crate::stream::wire::WatchReply>,
+        sampled::<crate::wire::WatchReply>,
         &["path", "seq", "sid"],
         &[],
     ),
@@ -1289,7 +1289,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
 }
 
 /// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::BlockingOwn(` …）只许在
-/// `stream/inbound/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
+/// `wire/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
 /// 各写一份 `match`，枢纽那一份漏了两档，问本机那一跳的 8 条一律 `unknown_command`。
 #[test]
 fn only_one_place_matches_on_how_a_command_runs() {
@@ -1324,7 +1324,7 @@ fn only_one_place_matches_on_how_a_command_runs() {
     at.sort();
     assert_eq!(
         at,
-        vec!["stream/inbound/spec.rs".to_string()],
+        vec!["wire/spec.rs".to_string()],
         "按档分派该只有 `spec::prepare` 一处"
     );
 }

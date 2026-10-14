@@ -853,7 +853,7 @@ pub fn update_at(
     scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
-) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
+) -> Result<CatalogReply, crate::wire::spec::Fail> {
     let (cat, problems, changed) = update_with(own, scanned, label, incoming, false, now_secs())?;
     let path = own.at_home(relay_route_core::ASSET_CATALOG_REL).ok();
     Ok(wire(
@@ -873,7 +873,7 @@ pub fn update_with(
     incoming: Option<BTreeMap<String, Snapshot>>,
     visit: bool,
     now: u64,
-) -> Result<(Catalog, Vec<String>, bool), crate::stream::inbound::spec::Fail> {
+) -> Result<(Catalog, Vec<String>, bool), crate::wire::spec::Fail> {
     update_core(own, scanned, label, incoming, visit, None, now)
 }
 
@@ -884,7 +884,7 @@ pub fn update_noting(
     label: &str,
     note: (&str, &str),
     now: u64,
-) -> Result<(Catalog, bool), crate::stream::inbound::spec::Fail> {
+) -> Result<(Catalog, bool), crate::wire::spec::Fail> {
     update_core(own, scanned, label, None, false, Some(note), now).map(|(c, _, ch)| (c, ch))
 }
 
@@ -896,12 +896,9 @@ fn update_core(
     visit: bool,
     note: Option<(&str, &str)>,
     now: u64,
-) -> Result<(Catalog, Vec<String>, bool), crate::stream::inbound::spec::Fail> {
+) -> Result<(Catalog, Vec<String>, bool), crate::wire::spec::Fail> {
     let no_home = |_| {
-        crate::stream::inbound::spec::Fail::from((
-            "io_failed",
-            copy_text("beAssetCatalog.write.noHome", &[]),
-        ))
+        crate::wire::spec::Fail::from(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))
     };
     let dir = own.home_dir().map_err(no_home)?;
     let file = own
@@ -924,16 +921,13 @@ fn update_core(
         )
     })?;
     let held = own.lock(&dir).map_err(|e| {
-        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
+        crate::wire::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut cat = match read_at(path) {
         Read::Present(c) => c,
         Read::Absent => fresh(new_machine_id()),
         Read::Unreadable(why) => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "catalog_unreadable",
-                why,
-            )))
+            return Err(crate::wire::spec::Fail::from(("catalog_unreadable", why)))
         }
     };
     let Scanned {
@@ -960,7 +954,7 @@ fn update_core(
     }
     if dirty || !path.exists() {
         write_at(own, &file, &held, &cat)
-            .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+            .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
     }
     Ok((cat, problems, changed))
 }
@@ -968,7 +962,7 @@ fn update_core(
 fn update_now(
     own: &Own,
     incoming: Option<BTreeMap<String, Snapshot>>,
-) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
+) -> Result<CatalogReply, crate::wire::spec::Fail> {
     update_at(own, scan_here(), &machine_label(), incoming)
 }
 
@@ -976,7 +970,7 @@ fn update_now(
 pub(crate) fn answer_current(
     visit: bool,
     own: &Own,
-) -> Result<(Catalog, Vec<String>), crate::stream::inbound::spec::Fail> {
+) -> Result<(Catalog, Vec<String>), crate::wire::spec::Fail> {
     let (cat, problems, _) =
         update_with(own, scan_here(), &machine_label(), None, visit, now_secs())?;
     Ok((cat, problems))
@@ -987,12 +981,12 @@ pub(crate) fn answer_note(
     key: &str,
     text: &str,
     own: &Own,
-) -> Result<Catalog, crate::stream::inbound::spec::Fail> {
+) -> Result<Catalog, crate::wire::spec::Fail> {
     update_noting(own, scan_here(), &machine_label(), (key, text), now_secs()).map(|(c, _)| c)
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。
-pub fn answer_catalog(own: &Own) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
+pub fn answer_catalog(own: &Own) -> Result<CatalogReply, crate::wire::spec::Fail> {
     update_now(own, None)
 }
 
@@ -1000,7 +994,7 @@ pub fn answer_catalog(own: &Own) -> Result<CatalogReply, crate::stream::inbound:
 pub fn answer_merge(
     req: CatalogMergeReq,
     own: &Own,
-) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
+) -> Result<CatalogReply, crate::wire::spec::Fail> {
     let incoming = machines_of(req.catalog.machines).map_err(|e| ("bad_args", e))?;
     update_now(own, Some(incoming))
 }

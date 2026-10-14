@@ -151,7 +151,7 @@ mod tests {
     /// | 拼法 | 上表那版 | 现在 |
     /// |---|---|---|
     /// | **`use crate::observe;`** + `observe::accounts_query::run(..)` | **全绿** | 抓到 |
-    /// | **`use crate::{observe, stream::wire};`** | **全绿** | 抓到 |
+    /// | **`use crate::{observe, wire};`** | **全绿** | 抓到 |
     /// | `use crate::observe as obs;` | 抓到 | 抓到 |
     ///
     /// 讽刺的地方在于：上一版**专门禁了层别名**，理由逐字写着「建立之后所有用法都绕过本护栏」——
@@ -215,7 +215,7 @@ mod tests {
                 }
             }
         }
-        // 成组导入 `use crate::{observe, stream::wire};` —— 层名被包进花括号，上面的锚点一个都对不上。
+        // 成组导入 `use crate::{observe, wire};` —— 层名被包进花括号，上面的锚点一个都对不上。
         // 实测：这一行放进 `control/gate.rs`，三条判据全绿。
         for prefix in ["use crate::{", "use super::super::{"] {
             let mut from = 0usize;
@@ -393,11 +393,11 @@ mod tests {
         // 正控：同一个判法在一份引了帧面的合成样本上必须认出来。
         let sample = vec![(
             "common/x.rs".to_string(),
-            "pub(crate) const A: &str = crate::stream::listen::ENV_PORT;\n".to_string(),
+            "pub(crate) const A: &str = crate::wire::listen::ENV_PORT;\n".to_string(),
         )];
         assert_eq!(
             upward_refs(&sample, &["common", "platform"]),
-            vec!["common/x.rs → crate::stream::listen::ENV_PORT".to_string()]
+            vec!["common/x.rs → crate::wire::listen::ENV_PORT".to_string()]
         );
     }
 
@@ -585,7 +585,7 @@ mod tests {
             );
         }
         assert!(
-            refs_to_layer("use crate::{plugin, stream::wire};", "plugin")
+            refs_to_layer("use crate::{plugin, wire};", "plugin")
                 .iter()
                 .any(|h| h.contains("成组导入")),
             "层名藏在花括号里没被抓到"
@@ -707,7 +707,7 @@ mod tests {
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         ("door::Key", "中转口的钥匙：后端读好 / 铸好交进来（`Relay::new`），中转只拿它比对"),
         ("door::Keys", "门上那两把（全权 · 只许直通）：后端读好 / 铸好一起交进来"),
-        ("door::tokens_match", "定长比对的唯一住址：中转口的门与后端控制口（`stream::listen`）比令牌都用它"),
+        ("door::tokens_match", "定长比对的唯一住址：中转口的门与后端控制口（`wire::listen`）比令牌都用它"),
         ("server::Relay", "一个中转的全部入参（上游选择那只手 · 钥匙 · tee 落点 · 两个期限值），由后端的监听面造"),
         ("server::serve_one", "后端的接受循环接下一条连接就交给它一次：解析 → 问上游选择 → 连上游 → 逐块透传 ＋ tee"),
         ("server::refuse_busy", "在途满了（上界在后端）回 503 并排掉已到的字节 —— 拒绝要出声"),
@@ -1085,7 +1085,7 @@ mod tests {
         }
         // 成组导入：层名在花括号里。
         assert!(
-            refs_to_layer("use crate::{observe, stream::wire};", "observe")
+            refs_to_layer("use crate::{observe, wire};", "observe")
                 .iter()
                 .any(|h| h.contains("成组导入")),
             "`use crate::{{observe, wire}};` 没被抓到 —— 层名藏在组里，锚点对不上"
@@ -1137,6 +1137,11 @@ mod tests {
             "faces 是帧面宿主，功能不往上引；看哪几个家（`mcp_look`）住账号域",
         ),
         (
+            "dial",
+            "control",
+            "`remote-reach` 登记完再交偏好，接线住 `faces::remote_reach_face`；控制面经 dial 拨号",
+        ),
+        (
             "history",
             "observe",
             "会话清单 · 叫会话什么 · 判活住 history；observe 的记录级读与 watcher 反过来调它",
@@ -1156,31 +1161,21 @@ mod tests {
             "`accounts/quota/nodes.rs` → `faces::rotation_face::library_at`",
         ),
         (
-            "accounts",
-            "stream",
-            "帧面协议零件（第 8 批第 8 刀拆 `stream`）",
-        ),
-        (
             "assets",
             "control",
             "`ccm` 命令行的常量与拼法住 `control::ccm`（后端共用常量归位那一刀）",
         ),
-        ("assets", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+    ];
+
+    /// 帧面的协议零件（`wire`）只许引的那几个顶层模块：它们自己也只引 `platform` / `common`。
+    const WIRE_MAY_USE: &[(&str, &str)] = &[
+        ("platform", "平台原语"),
+        ("common", "两边都要的纯工具"),
         (
-            "control",
-            "dial",
-            "`dial/remote_ask.rs` → `control::prefs_migration::after_reach`",
+            "agents",
+            "帧里带的那几样适配层的词（记录 · 块的种类 · 活动）",
         ),
-        ("control", "stream", "帧面协议零件（第 8 批第 8 刀）"),
-        ("dial", "stream", "帧面协议零件（第 8 批第 8 刀）"),
-        (
-            "faces",
-            "stream",
-            "帧面协议零件与命令登记（第 8 批第 8 刀）",
-        ),
-        ("history", "stream", "帧面协议零件（第 8 批第 8 刀）"),
-        ("observe", "stream", "帧面协议零件（第 8 批第 8 刀）"),
-        ("plan", "stream", "帧面协议零件（第 8 批第 8 刀）"),
+        ("relay", "中转口那一个环境变量名"),
     ];
 
     /// 一份文件的模块路径（相对源码根，`assets/aliases/mod.rs` ⇒ `[assets, aliases]`）。
@@ -1304,10 +1299,42 @@ mod tests {
         false
     }
 
+    /// `lib.rs` 根上转出去的名字：`pub use <模块>::…::<名>;`（含 `pub(crate)` · `as 别名`）⇒ `名 → 模块`。
+    /// `crate::<名>` 照它记到那个模块头上（不然经根转一手就躲过了量法）。
+    /// ⚠ `lib.rs` 里**自己定义**、内含别的模块类型的（如 `StreamWants` 带 `StreamView`）这里看不见：那一形手理。
+    fn root_reexports(tops: &[String]) -> std::collections::BTreeMap<String, String> {
+        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+            .expect("读 lib.rs");
+        let mut out = std::collections::BTreeMap::new();
+        for l in production_code(&lib).lines() {
+            let t = guard_core::strip_visibility(l.trim_start());
+            let Some(path) = t.strip_prefix("use ") else {
+                continue;
+            };
+            let path = path.split(';').next().unwrap_or("").trim();
+            if path.contains('{') {
+                continue;
+            }
+            let (path, alias) = match path.split_once(" as ") {
+                Some((p, a)) => (p.trim(), Some(a.trim())),
+                None => (path, None),
+            };
+            let path = path.trim_start_matches("crate::");
+            let first = path.split("::").next().unwrap_or("");
+            if !tops.iter().any(|m| m == first) {
+                continue;
+            }
+            let name = alias.unwrap_or_else(|| path.rsplit("::").next().unwrap_or(""));
+            out.insert(name.to_string(), first.to_string());
+        }
+        out
+    }
+
     /// 全后端两两引用的次数：`(谁, 引谁) → (处, 份)`。人群＝各顶层模块目录下全部 `.rs`，减去父模块写明只在测试档的。
     fn reference_matrix() -> std::collections::BTreeMap<(String, String), (usize, usize)> {
         let root = crate::guard_support::src_root();
         let tops = top_modules();
+        let via_root = root_reexports(&tops);
         let mut m: std::collections::BTreeMap<(String, String), (usize, usize)> =
             Default::default();
         let mut seen = 0usize;
@@ -1350,6 +1377,7 @@ mod tests {
                     let src = std::fs::read_to_string(&path).expect("read rs");
                     let mut per: std::collections::BTreeMap<String, usize> = Default::default();
                     for t in top_level_refs(&me, &production_code(&src)) {
+                        let t = via_root.get(&t).cloned().unwrap_or(t);
                         if t != me[0] && tops.contains(&t) {
                             *per.entry(t).or_default() += 1;
                         }
@@ -1417,6 +1445,42 @@ mod tests {
         );
     }
 
+    /// ★ **命令表与接线在最上、协议零件在最下**（cut8c 拆 `stream`）：
+    /// - `stream`（命令表 · 两面的分派 · 门 · 期限 · 出口声明 · tee 消费侧）谁都不许引 —— 只有 `main.rs` / `lib.rs` 接它；
+    /// - `wire`（帧 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸）只许引 [`WIRE_MAY_USE`]。
+    #[test]
+    fn the_registry_sits_on_top_and_the_protocol_parts_at_the_bottom() {
+        let m = reference_matrix();
+        let tops = top_modules();
+        assert!(
+            tops.iter().any(|t| t == "stream") && tops.iter().any(|t| t == "wire"),
+            "`lib.rs` 里找不到 `stream` / `wire` —— 下面两条是空转"
+        );
+        let mut bad = Vec::new();
+        for ((who, to), (n, files)) in &m {
+            if to == "stream" {
+                bad.push(format!(
+                    "{who} → stream：{n} 处 / {files} 份（命令表与接线在最上，功能不引它；要的是协议零件就去 `wire`）"
+                ));
+            }
+            if who == "wire" && !WIRE_MAY_USE.iter().any(|(t, _)| t == to) {
+                bad.push(format!(
+                    "wire → {to}：{n} 处 / {files} 份（协议零件只许引 platform · common · agents · relay）"
+                ));
+            }
+        }
+        for (low, why) in WIRE_MAY_USE {
+            for ((who, to), (n, _)) in &m {
+                if who == low && !["platform", "common"].contains(&to.as_str()) {
+                    bad.push(format!(
+                        "{low} → {to}：{n} 处 —— {low} 不再只引 platform / common，`wire` 引它（{why}）就不在最下了"
+                    ));
+                }
+            }
+        }
+        assert!(bad.is_empty(), "层次不对：\n  {}", bad.join("\n  "));
+    }
+
     /// 反向自检：量法认得 `crate::` · 走到根的 `super::` · 成组导入，不认没走到根的 `super::` 与只是后缀相同的路径。
     #[test]
     fn the_reference_matrix_scan_actually_bites() {
@@ -1449,5 +1513,12 @@ mod tests {
             "fake"
         ));
         assert!(!declared_test_only("pub(crate) mod fake;\n", "fake"));
+        // 根上转出：`crate::REPLY_PAGE_BYTES` 记到它住的那个模块头上（此刻 lib.rs 里就有这一行）。
+        let via = root_reexports(&top_modules());
+        assert_eq!(
+            via.get("REPLY_PAGE_BYTES").map(String::as_str),
+            Some("wire")
+        );
+        assert_eq!(via.get("StreamView").map(String::as_str), Some("stream"));
     }
 }

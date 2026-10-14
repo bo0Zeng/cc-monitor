@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 /// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳）。
 fn take<R: serde::de::DeserializeOwned>(a: Value) -> R {
-    crate::stream::inbound::typed::take(&a).unwrap()
+    crate::wire::typed::take(&a).unwrap()
 }
 
 /// 帧面那一跳的写法（键按字典序）。
@@ -187,7 +187,7 @@ fn skill_install_record_keeps_its_wire_bytes() {
 /// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
 #[test]
 fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::stream::inbound::spec::{prepare, Prepared};
+    use crate::wire::spec::{prepare, Prepared};
     let d = tmp("extra");
     let own = crate::platform::fs::Own::issue_at(&d);
     let digest = "0123456789abcdef";
@@ -226,7 +226,7 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
         let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&own)) else {
             panic!("{cmd} 不在阻塞档");
         };
-        let req = crate::stream::wire::Request {
+        let req = crate::wire::Request {
             id: "t".to_string(),
             cmd: cmd.to_string(),
             args,

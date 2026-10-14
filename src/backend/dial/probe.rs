@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncWriteExt, BufReader};
 
 use crate::dial::remote_ask::{self, AbortOnDrop};
-use crate::stream::wire::Frame;
+use crate::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
 const LINE_CAP: u64 = 1024 * 1024;
@@ -49,7 +49,7 @@ fn outcome(
 
 /// 没过的那几形的复制详情：时刻 · 机器 · 命令 · 下层原话（那一句里不接原话，原话在这里）。
 fn failed_detail(raw: Option<&str>) -> Option<String> {
-    Some(crate::stream::detail::of_run("remote-probe", raw))
+    Some(crate::wire::detail::of_run("remote-probe", raw))
 }
 
 /// 测试连接那一行给人看的几格要的事实：后端版本（BUILD_ID）· 这台说做不到几项；
@@ -287,7 +287,7 @@ where
         ));
     };
     // 键值对那一形只进日志（`wire::hello_summary`）；界面那一行由下面三格拼（文案表）。
-    tracing::info!("测试连接：{}", crate::stream::wire::hello_summary(&hello));
+    tracing::info!("测试连接：{}", crate::wire::hello_summary(&hello));
     let facts = hello_facts(&hello);
     let (build, gaps) = (facts.build.clone(), facts.gaps.to_string());
     cells.push(json!({ "reached": "hello" })).await?;

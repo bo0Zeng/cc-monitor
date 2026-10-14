@@ -45,12 +45,12 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         include_str!("../../src/backend/control/launch.rs"),
     ),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
-    // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
+    // `stream::cli::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
     // `PROBE_FLAG = "--backend-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
     // ⇒ 登记在这里，`--backend-probe` 才受 IPC-PROTOCOL.md 对拍约束。
     (
-        "control/cli_control.rs",
-        include_str!("../../src/backend/control/cli_control.rs"),
+        "stream/cli.rs",
+        include_str!("../../src/backend/stream/cli.rs"),
     ),
     // `control/resident.rs`：`--replace` 这个选项字面量（`--resident-ensure` 的「先停再起」）让派生的文件集把它扫了进来。
     (
@@ -65,7 +65,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
     // `accounts/iso.rs` 那一行摘了：`--acct-iso-status` / `--acct-iso-shellinit` 的 argv 形分派退役，
-    //   两问上了帧面（CLI 面由 `cli_control` 从 `REGISTRY` 派生，那一份早在本表里）。
+    //   两问上了帧面（CLI 面由 `stream::cli` 从 `REGISTRY` 派生，那一份早在本表里）。
     // `observe/history_query.rs` · `observe/accounts_query.rs` 两行摘了（10-11）：`--read-session*` · `--list-*` ·
     //   `--find-in-session` · `--account-trust*` 那几条手写子命令删了，两份文件里不再有 `"--` 字面量。
     // `observe/search_query.rs` · `faces/read_face.rs` 两行摘了（第 8 批）：帧面 `history-search` 的入参直接从类型收，
@@ -947,7 +947,7 @@ mod tests {
     /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
     fn frame_variants() -> Vec<String> {
         let src =
-            crate::guard_support::production_code(include_str!("../../src/backend/stream/wire.rs"));
+            crate::guard_support::production_code(include_str!("../../src/backend/wire/mod.rs"));
         // 运行时拼，免得命中本文件自己的说明文字。
         let needle = format!("pub enum {}", "Frame");
         let at = src

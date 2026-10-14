@@ -4,7 +4,7 @@
 use crate::assets::asset_catalog;
 use crate::assets::ext;
 use crate::faces::catalog_face::CatalogErr;
-use crate::stream::inbound::typed::{self, codes, Command, Cx, Files, Owning, WithFiles, WithOwn};
+use crate::wire::typed::{self, codes, Command, Cx, Files, Owning, WithFiles, WithOwn};
 
 /// `ext-list`：这台现扫一次、记下（资产目录的写口从这里递进去），各台目录合成「条目 × 机器」。
 pub(crate) struct ExtListCmd;

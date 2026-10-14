@@ -8,7 +8,7 @@ use crate::control::launch_account::AccountAsk;
 use crate::control::session_batch::{self as batch, Answer, Item};
 use crate::control::terminals::{input_reply, no_said, CmdErr, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
-use crate::stream::inbound::typed::{self, Command, Cx, Files, WithFiles};
+use crate::wire::typed::{self, Command, Cx, Files, WithFiles};
 use serde::Deserialize;
 
 /// `session-say` 的入参。

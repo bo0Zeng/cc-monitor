@@ -4,7 +4,7 @@
 pub(crate) use super::exec::KeyTable;
 use super::exec::{self, Applied};
 use super::layout::{self, AddIntent, Plan};
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 
 /// 这一层的拒绝：码 ＋ 那一句 ＋ 下层原话（原话进复制详情）。计划那一层（`layout`）只交 `(码, 句)`，`?` 换过来。
 type Refusal = Fail;

@@ -26,7 +26,7 @@ const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
-type CmdErr = crate::stream::inbound::spec::Fail;
+type CmdErr = crate::wire::spec::Fail;
 
 /// `kill` 的入参（`deny_unknown_fields`）。会话名的**形状**在 [`admit_existing_name`] 判：
 /// 与 `launch` 同一条纪律，这**不是安全边界**（对端本来就能在这台机上跑任意命令），
@@ -51,7 +51,7 @@ pub(crate) struct KillReq {
 /// `kill` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::Killed;
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `kill` 的码：三道门 · 杀那一发 tmux。
     pub(crate) enum KillErr {
         /// tmux 起不来。
@@ -72,16 +72,16 @@ crate::stream::inbound::typed::codes! {
 /// `kill`：杀一个 tmux 会话（破坏性：三道门在 `gate::admit_destructive`）。阻塞档（起 tmux）。
 pub(crate) struct Kill;
 
-impl crate::stream::inbound::typed::Command for Kill {
+impl crate::wire::typed::Command for Kill {
     const NAME: &'static str = "kill";
     type Req = KillReq;
     type Reply = Killed;
     type Err = KillErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for Kill {
-    fn run(req: KillReq, _cx: &crate::stream::inbound::typed::Cx) -> Result<Killed, KillErr> {
-        kill(&req).map_err(|f| crate::stream::inbound::typed::of_fail(f, KillErr::KillFailed))
+impl crate::wire::typed::Blocking for Kill {
+    fn run(req: KillReq, _cx: &crate::wire::typed::Cx) -> Result<Killed, KillErr> {
+        kill(&req).map_err(|f| crate::wire::typed::of_fail(f, KillErr::KillFailed))
     }
 }
 

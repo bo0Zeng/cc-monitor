@@ -6,7 +6,7 @@
 use crate::footprint::agent_home_check;
 use crate::footprint::chores::marks;
 use crate::footprint::last_seen;
-use crate::stream::inbound::typed::{self, codes, Blocking, Command, Cx, Owning};
+use crate::wire::typed::{self, codes, Blocking, Command, Cx, Owning};
 
 codes! {
     /// `agent-home-check` 自己的码（只有入参不对那一种：判出来的四态都是回包）。

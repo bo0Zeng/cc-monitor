@@ -28,7 +28,7 @@ fn wired<R: serde::de::DeserializeOwned>(
     fill: impl FnOnce(R) -> R,
     f: impl FnOnce(&R, &Facts) -> Result<Rendered, LaunchRenderErr>,
 ) -> Result<Value, (String, String)> {
-    use crate::stream::inbound::typed::Codes;
+    use crate::wire::typed::Codes;
     let req: R =
         serde_json::from_value(v.clone()).map_err(|e| ("bad_args".to_string(), e.to_string()))?;
     let req = fill(req);
@@ -165,7 +165,7 @@ fn the_account_used_is_in_the_product_and_an_unusable_one_is_refused_with_data()
     );
     assert!(v["cmd"].as_str().unwrap().contains("--account z"), "{v}");
     let fail = {
-        use crate::stream::inbound::typed::Codes;
+        use crate::wire::typed::Codes;
         let req: super::local::LocalLaunchRequest =
             serde_json::from_value(resume(serde_json::json!({"kind": "named", "name": "gone"})))
                 .unwrap();

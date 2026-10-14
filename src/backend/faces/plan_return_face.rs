@@ -4,7 +4,7 @@
 //! 之后 `plan-read` 里那一格带落没落地（[`crate::plan::needs::landing`]）。
 
 use crate::plan::needs::{self, Returned};
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -162,8 +162,7 @@ fn give_back(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     let send = |a: &Value| {
         let req: crate::control::terminals_wire::TerminalInputReq =
             serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?;
-        crate::control::terminals_wire::input(&req)
-            .and_then(|sent| crate::stream::inbound::spec::wire(&sent))
+        crate::control::terminals_wire::input(&req).and_then(|sent| crate::wire::spec::wire(&sent))
     };
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(own, ws, sl, id, r)

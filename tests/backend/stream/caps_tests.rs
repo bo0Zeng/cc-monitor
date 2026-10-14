@@ -1,7 +1,7 @@
 //! 阻塞档命令的总期限归发起方：信封里带的期限减余量装进那条命令；不带 / 带坏了 ⇒ 按后端登记的上限。
 
 use super::*;
-use crate::stream::wire::Frame;
+use crate::wire::Frame;
 
 /// 信封里那一格宽读：正整数才算带了；别的形状当没带，整条请求照收（不回 `bad_request`）。
 #[test]
@@ -108,10 +108,10 @@ fn caps_child() {
             std::io::Cursor::new(input.as_bytes().to_vec()),
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
-            crate::stream::wire::HelloFlushed::for_tests(),
+            crate::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("读循环");
         while let Some(f) = rx.recv().await {

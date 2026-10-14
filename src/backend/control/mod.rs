@@ -9,8 +9,7 @@
 //! - [`capture_pane`]：抓一次某个窗格此刻那一屏（只读、只抓一次；`readonly_guard::capture_is_read_only` 逐元素钉 argv）。
 //! - [`kill`]：杀一个 tmux 会话，过三道门（Gate 3 = `windows==1` 只给它），对 `#{session_id}` 句柄下手。
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
-//! - [`cli_args`]：CLI 面读入参的唯一一处（`cli_control` 经它读）。
-//! - [`cli_control`]：控制面的第二个入口（一次性 CLI），不实现任何命令，只去 `inbound::REGISTRY` 查那条登记、跑它自己的 `run`。
+//! - [`cli_args`]：CLI 面读入参的唯一一处（`stream::cli` 经它读）。
 //! - [`cc_bus`]：cc-bus 的基础命令（`bus-list` / `bus-send`），转调本机的 cc-bus 命令；不读 cc-bus 的任何数据文件，只把它的命令当接口。
 //! - [`deploy_plan`]：部署计划（帧命令 `deploy-plan`）；只读那台，放字节归 monitor。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）—— 名字里有 `query`，但它是计划面，属于控制的前半。
@@ -26,7 +25,6 @@ pub(crate) mod cc_bus;
 pub(crate) mod cc_bus_wire; // cc-bus 那七条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
 pub mod cli_args;
-pub mod cli_control;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;

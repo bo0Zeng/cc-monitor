@@ -753,7 +753,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
             detail: p
                 .raw
                 .as_deref()
-                .map(|r| crate::stream::detail::of(Some("profiles-read"), "syntax", Some(r))),
+                .map(|r| crate::wire::detail::of(Some("profiles-read"), "syntax", Some(r))),
         });
     let seed: Vec<ProfileOut> = if store.text.is_none() {
         let text = profile::apply_changes(Some(""), &seed_changes()).map_err(refused)?;
@@ -1489,16 +1489,16 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
 // 帧命令（typed）：经这台的文件管理面读写 ⇒ 阻塞档，带文件面
 // ═══════════════════════════════════════════════════════════════════════════
 
-use crate::stream::inbound::typed::{of_pair, Command, Cx, Files, NoArgs, WithFiles};
+use crate::wire::typed::{of_pair, Command, Cx, Files, NoArgs, WithFiles};
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// 配置文件那几条只读的码：读没成 · 表单写不成配置（那一句说清哪一样）。
     pub(crate) enum ProfilesErr {
         Refused = "refused",
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `profiles-write` 的码：读写没成 · 改完多出坏处（那一句说清哪一样）· 盘上那份在读回之后被别处改过（一个字节没写）。
     pub(crate) enum ProfilesWriteErr {
         Refused = "refused",

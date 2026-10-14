@@ -26,7 +26,7 @@ use copy_core::said::Said;
 /// 打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）；流模式显式词（零参数是起会话）。
 pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &["--", crate::STREAM_FLAG_EXPLICIT];
 
-/// 宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`inbound::DRAIN_DEADLINE`）：
+/// 宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`wire::drain::DRAIN_DEADLINE`）：
 /// 后端先把「哪几条没做完」说出来、自己退；强杀只兜它连那一步都走不到的情形。关系由 `resident_tests` 钉住。
 pub(crate) const STOP_GRACE_MS: u32 = 35_000;
 /// 强杀之后再等它没了的上限（毫秒）：SIGKILL 是立刻的，还在 ⇒ 卡在内核里（D 态），如实报「没停掉」。
@@ -76,7 +76,7 @@ const STOP: &str = "resident-stop";
 const ATTACH: &str = "resident-attach";
 
 fn fail(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    super::cli_control::emit_err(cmd, code, message)
+    crate::wire::detail::emit_err(cmd, code, message)
 }
 
 /// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
@@ -116,7 +116,7 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 
 }
 
 /// 本平台有没有常驻后端（脱离当前进程单独跑 · 听这台家里的套接字）：有 ⇒ `None`；没有 ⇒ 那一句话。
-/// `--resident-ensure`（回 `unsupported`）与带常驻开关的流模式（`main.rs::claim_then_log`，退 [`crate::stream::listen::EXIT_BAD_LISTEN_CONFIG`]）
+/// `--resident-ensure`（回 `unsupported`）与带常驻开关的流模式（`main.rs::claim_then_log`，退 [`crate::wire::listen::EXIT_BAD_LISTEN_CONFIG`]）
 /// 都在建任何目录之前先问它 —— 同一句话、同一处判（判本身住平台层 `platform::child::cannot_detach`）。
 pub fn unsupported_here() -> Option<String> {
     crate::platform::child::cannot_detach()
@@ -133,7 +133,7 @@ pub async fn attach() -> i32 {
         Err(e) => {
             let reason = relay_refusal(e.kind());
             eprintln!("resident-attach: {e}");
-            print!("{}", crate::stream::listen::refusal_line(reason));
+            print!("{}", crate::wire::listen::refusal_line(reason));
             return 2;
         }
     };
@@ -155,9 +155,9 @@ pub async fn attach() -> i32 {
 pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
     match kind {
         std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused => {
-            crate::stream::listen::REFUSE_ABSENT
+            crate::wire::listen::REFUSE_ABSENT
         }
-        _ => crate::stream::listen::REFUSE_UNREACHABLE,
+        _ => crate::wire::listen::REFUSE_UNREACHABLE,
     }
 }
 
@@ -170,7 +170,7 @@ pub fn ensure(args: &[String], own: &Own) -> i32 {
     let hosted = vec![
         // 中转口与这台 `ccm` 起会话时找的是同一个口（同一个函数：这台环境里交了就用交的，否则默认口）。
         (
-            crate::stream::listen::RELAY_PORT_ENV,
+            crate::wire::listen::RELAY_PORT_ENV,
             crate::accounts::upstream_select::endpoint::relay_port(&|k| std::env::var(k).ok())
                 .to_string(),
         ),
@@ -208,7 +208,7 @@ pub(crate) fn parse_grace(args: &[String]) -> Result<u32, String> {
         return Ok(STOP_GRACE_MS);
     };
     let drain_secs =
-        u32::try_from(crate::stream::inbound::DRAIN_DEADLINE.as_secs()).unwrap_or(u32::MAX);
+        u32::try_from(crate::wire::drain::DRAIN_DEADLINE.as_secs()).unwrap_or(u32::MAX);
     let bad = || {
         copy_text(
             "beResident.stop.badGrace",
@@ -301,7 +301,7 @@ fn run_dir(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
 
 /// 子进程的环境：常驻开关 · 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。纯函数，判据钉它。
 pub(crate) fn child_env(home: &Path, hosted: &[(&str, String)]) -> Vec<(String, String)> {
-    let mut env = vec![(crate::stream::listen::ENV_RESIDENT.into(), "1".into())];
+    let mut env = vec![(crate::wire::listen::ENV_RESIDENT.into(), "1".into())];
     env.extend(hosted.iter().map(|(k, v)| {
         let v = match v.strip_prefix("~/") {
             Some(rel) => home.join(rel).display().to_string(),

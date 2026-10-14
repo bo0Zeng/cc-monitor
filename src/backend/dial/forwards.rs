@@ -383,7 +383,7 @@ pub(crate) fn running_all() -> u32 {
         .count() as u32
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `forward-start` 的码：规格不对 · 那台不在可达表里也没交配置 · 跳板查无 / 成环 · 账满了 · 链路没起来。
     pub(crate) enum ForwardStartErr {
         BadSpec = "bad_spec",
@@ -397,17 +397,17 @@ crate::stream::inbound::typed::codes! {
 /// `forward-start`：起一条本地端口转发。真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断。
 pub(crate) struct ForwardStart;
 
-impl crate::stream::inbound::typed::Command for ForwardStart {
+impl crate::wire::typed::Command for ForwardStart {
     const NAME: &'static str = "forward-start";
     type Req = ForwardStartReq;
     type Reply = ForwardStarted;
     type Err = ForwardStartErr;
 }
 
-impl crate::stream::inbound::typed::Async for ForwardStart {
+impl crate::wire::typed::Async for ForwardStart {
     fn run(
         req: ForwardStartReq,
-        _cx: crate::stream::inbound::typed::Cx,
+        _cx: crate::wire::typed::Cx,
     ) -> impl Future<Output = Result<ForwardStarted, ForwardStartErr>> + Send + 'static {
         async move {
             start_with(
@@ -420,14 +420,12 @@ impl crate::stream::inbound::typed::Async for ForwardStart {
                 },
             )
             .await
-            .map_err(crate::stream::inbound::typed::of_pair(
-                ForwardStartErr::Failed,
-            ))
+            .map_err(crate::wire::typed::of_pair(ForwardStartErr::Failed))
         }
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `forward-stop` 的码：账上没有这个号。
     pub(crate) enum ForwardStopErr {
         NotFound = "not_found",
@@ -437,27 +435,25 @@ crate::stream::inbound::typed::codes! {
 /// `forward-stop`：停一条转发（纯内存，一把锁）。
 pub(crate) struct ForwardStop;
 
-impl crate::stream::inbound::typed::Command for ForwardStop {
+impl crate::wire::typed::Command for ForwardStop {
     const NAME: &'static str = "forward-stop";
     type Req = ForwardId;
     type Reply = ForwardId;
     type Err = ForwardStopErr;
 }
 
-impl crate::stream::inbound::typed::Async for ForwardStop {
+impl crate::wire::typed::Async for ForwardStop {
     fn run(
         req: ForwardId,
-        _cx: crate::stream::inbound::typed::Cx,
+        _cx: crate::wire::typed::Cx,
     ) -> impl Future<Output = Result<ForwardId, ForwardStopErr>> + Send + 'static {
         std::future::ready(
-            stop_with(req, &LEDGER).map_err(crate::stream::inbound::typed::of_pair(
-                ForwardStopErr::NotFound,
-            )),
+            stop_with(req, &LEDGER).map_err(crate::wire::typed::of_pair(ForwardStopErr::NotFound)),
         )
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `forward-list` 没有别的码。
     pub(crate) enum ForwardListErr {}
 }
@@ -465,18 +461,18 @@ crate::stream::inbound::typed::codes! {
 /// `forward-list`：列转发（纯内存，一把锁）。
 pub(crate) struct ForwardList;
 
-impl crate::stream::inbound::typed::Command for ForwardList {
+impl crate::wire::typed::Command for ForwardList {
     const NAME: &'static str = "forward-list";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = Forwards;
     type Err = ForwardListErr;
 }
 
-impl crate::stream::inbound::typed::Async for ForwardList {
+impl crate::wire::typed::Async for ForwardList {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: crate::wire::typed::Cx,
     ) -> impl Future<Output = Result<Forwards, ForwardListErr>> + Send + 'static {
         std::future::ready(Ok(list_with(&LEDGER)))
     }

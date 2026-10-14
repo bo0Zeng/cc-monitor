@@ -25,7 +25,7 @@
 1. **本体**放进它该在的那一层：产出观测的读进 `observe/`，改状态、或只喂控制决策的查询进 `control/`，写用户文件经 `control/files_write` 那一族；入参出参用结构，不拼 shell 串。
 2. **登记**进它那一族的命令表 `src/backend/stream/inbound/registry/<族>.rs`：`SPECS` 里一条 `CommandSpec`（名字 · 一句话 · 错误码 · 字段（名 ＋ 向 ＋ 一句话） · 有没有入参 · 跑法）。`hello` 的命令名单从命令表派生，不另写。新开一族就在 `registry/` 下加一份文件、并进 `stream/inbound/mod.rs` 的 `FAMILIES`（漏了由 `inbound_structure_guards.rs::the_registry_families_are_exactly_the_files_in_the_registry_directory` 报）。只读查询的帧面宿主住 `faces/`。
 3. **协议文档**：协议参考 [IPC-COMMANDS.md](IPC-COMMANDS.md) 从命令表生成，登记完重生成一次（命令见 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 开头）；不重生成 `protocol_doc_gen` 会红。
-4. **CLI 面**：帧命令默认派生同名的一次性子命令；只在流面上有意义的（读本进程里的 watcher、中转或转发账）登记进 `src/backend/control/cli_control.rs` 的 `STREAM_ONLY` 并写理由。子命令表一变 `build_id_guard` 就红 ⇒ bump `src/backend/lib.rs` 的 `BUILD_ID` 并重铺内嵌字节（[BUILDING.md § 内嵌字节与 BUILD_ID](BUILDING.md#内嵌字节与-build_id)）。
+4. **CLI 面**：帧命令默认派生同名的一次性子命令；只在流面上有意义的（读本进程里的 watcher、中转或转发账）登记进 `src/backend/stream/cli.rs` 的 `STREAM_ONLY` 并写理由。子命令表一变 `build_id_guard` 就红 ⇒ bump `src/backend/lib.rs` 的 `BUILD_ID` 并重铺内嵌字节（[BUILDING.md § 内嵌字节与 BUILD_ID](BUILDING.md#内嵌字节与-build_id)）。
 5. **界面**：`chan.call(origin, "命令名", 载荷, 期限)`，期限由发起那件事的一方给一个绝对时刻。vitest 里用 `tests/test-support/chan-fake.ts` 的通道替身。
 6. **检查**：后端 `cargo test`（在 `src/backend`）· `npm test` · `npx tsc --noEmit`。
 

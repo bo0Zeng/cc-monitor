@@ -58,7 +58,7 @@ impl Tmp {
         let v: Value = serde_json::from_str(&self.read(&cfg(acct))).unwrap_or(Value::Null);
         v.get("mcpServers").cloned().unwrap_or(json!({}))
     }
-    fn call(&self, cmd: &str, args: Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    fn call(&self, cmd: &str, args: Value) -> Result<Value, crate::wire::spec::Fail> {
         let table = self.0.join(".cc-monitor/apikey-credentials.json");
         let set = |v: &Value| {
             file_face::answer_set_at(

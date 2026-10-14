@@ -5,7 +5,7 @@ use crate::accounts::quota::rules::decide::{self, Pick, Sigma};
 use crate::accounts::quota::rules::script;
 use crate::accounts::quota::rules::simulate;
 use crate::accounts::quota::rules::Acct;
-use crate::stream::inbound::typed::{Blocking, Command, Cx};
+use crate::wire::typed::{Blocking, Command, Cx};
 
 /// `rotation-try` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -200,7 +200,7 @@ pub(crate) struct RotationTryReply {
     pub(crate) timeline: RotTryTimeline,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-try` 自己的码。
     pub(crate) enum RotationTryErr {
         /// 那份原文读不懂（头的形状 · 编不过 · 没有 `score`）。

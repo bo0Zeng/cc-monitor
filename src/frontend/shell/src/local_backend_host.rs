@@ -135,7 +135,7 @@ pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 64 * 1024;
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
 /// 两边同一个函数。
 ///
-/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/stream/listen.rs::ENV_RESIDENT`。
+/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/wire/listen.rs::ENV_RESIDENT`。
 /// 两边漂了**不会报错** —— 起出来的后端会当成「没设」而走 stdio 那条路，
 /// 于是宿主等在一个永远不会有人绑的套接字上，日志里只有一句「断开」。
 /// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。

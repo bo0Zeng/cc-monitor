@@ -37,7 +37,7 @@ pub(crate) struct OptinReq {
     pub(crate) agent: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `relay-optin` 的码：家目录说不出 · 那一家没有这一形。
     pub(crate) enum OptinErr {
         Failed = "failed",
@@ -47,18 +47,15 @@ crate::stream::inbound::typed::codes! {
 /// `relay-optin`：直接敲的那一家也走中转（读这台那份用户级设置文件 ⇒ 阻塞档）。
 pub(crate) struct RelayOptin;
 
-impl crate::stream::inbound::typed::Command for RelayOptin {
+impl crate::wire::typed::Command for RelayOptin {
     const NAME: &'static str = "relay-optin";
     type Req = OptinReq;
     type Reply = endpoint::Optin;
     type Err = OptinErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for RelayOptin {
-    fn run(
-        req: OptinReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<endpoint::Optin, OptinErr> {
-        answer_optin(&req).map_err(crate::stream::inbound::typed::of_pair(OptinErr::Failed))
+impl crate::wire::typed::Blocking for RelayOptin {
+    fn run(req: OptinReq, _cx: &crate::wire::typed::Cx) -> Result<endpoint::Optin, OptinErr> {
+        answer_optin(&req).map_err(crate::wire::typed::of_pair(OptinErr::Failed))
     }
 }

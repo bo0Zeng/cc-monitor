@@ -166,7 +166,7 @@ pub(crate) fn answer(
     args: &Value,
     keys: &KeyDoor,
 ) -> Answer {
-    use crate::stream::inbound::typed::take;
+    use crate::wire::typed::take;
     fn out<T: serde::Serialize>(v: Result<T, Fail>) -> Answer {
         v.map(|v| serde_json::to_value(v).expect("成品序列化得出"))
     }
@@ -690,7 +690,7 @@ fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
     let key_set = |_: &Value| -> file_face::FileFaceAnswer {
-        Err(crate::stream::inbound::spec::Fail::from((
+        Err(crate::wire::spec::Fail::from((
             "io_failed",
             "盘满了".to_string(),
         )))

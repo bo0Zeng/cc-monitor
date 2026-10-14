@@ -116,7 +116,7 @@
 
 「X 变了 ⇒ 重读」只一种帧：`{"kind":"changed","topic":…, "key"?, "rev"?, "body"?}`。`topic` 是哪一样；`key` 是哪一个；`rev` 是变成了哪一版；
 `body` 是那一样的小成品（带了就不用重问，超了上限就不带）。没拿到 `body` ⇒ 重问表里那条查询（那一份的唯一出口仍是那条查询）。
-表只住后端一处（`stream/topic.rs`）；壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅（格体 ＝ 帧去掉 `kind` / `topic`：`{key?, rev?, body?}`）。
+表只住后端一处（`wire/topic.rs`）；壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅（格体 ＝ 帧去掉 `kind` / `topic`：`{key?, rev?, body?}`）。
 10-10 起这一种替掉了从前每样东西各一种的七种「某某变了」帧（不留旧形）。
 
 <!-- topic-table:begin -->
@@ -284,6 +284,6 @@
 ## 加一条协议
 
 - **线上命令**：在 `src/backend/stream/inbound/registry/` 对应那一族加一条 `CommandSpec`（名字 · 一句话 · 码 · 字段 ＋ 向 ＋ 一句话 · 收不收载荷 · 怎么跑），CLI 面自动派生（还要进 `lib.rs` 的 `SUBCOMMANDS`）；重生成 `IPC-COMMANDS.md`。
-- **帧字段**：加在 `stream/wire.rs` 的 `Frame` 上，写一句 `///`；只加不改；进金样；重生成。
+- **帧字段**：加在 `wire/mod.rs` 的 `Frame` 上，写一句 `///`；只加不改；进金样；重生成。
 - **CLI 独有子命令**：进 `SUBCOMMANDS` 与 `stream/inbound/cli_only.rs` 的 `CLI_ONLY_DOCS`（用法 ＋ 一句话）。
 - **文件**：只许在 `~/.cc-monitor/` 下；UTF-8 无 BOM、原子写、未知字段忽略；写明短暂还是持久，短暂的写明超时；在上面那张表里加一行。

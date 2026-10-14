@@ -223,7 +223,7 @@ fn tail_args(path: &Path, n: usize) -> Vec<std::ffi::OsString> {
     vec![
         o("--history-tail"),
         o("--args-b64"),
-        cc_monitor_backend::stream::wire::b64_encode(args.as_bytes()).into(),
+        cc_monitor_backend::wire::b64_encode(args.as_bytes()).into(),
     ]
 }
 

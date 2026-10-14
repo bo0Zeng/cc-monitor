@@ -215,7 +215,7 @@ fn first_frame_comes_at_once_with_the_preview_product() {
         "实时画面要带颜色段"
     );
     // 线上形状：kind ＋ 票 ＋ 序号 ＋ 画面。
-    let wire: Value = serde_json::from_str(&crate::stream::wire::to_line(&f).unwrap()).unwrap();
+    let wire: Value = serde_json::from_str(&crate::wire::to_line(&f).unwrap()).unwrap();
     assert_eq!(wire["kind"], "terminal_screen");
     assert_eq!(wire["ticket"], "t1");
     assert_eq!(wire["seq"], 1);

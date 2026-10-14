@@ -137,7 +137,7 @@ pub(crate) fn registry_sources() -> Vec<(String, String)> {
 #[path = "../../tests/backend/guard_support_tests.rs"]
 mod tests;
 
-/// 一条命令应答的 typed 结构体（serde 序列化；处理器经 `stream::inbound::spec::wire` 把它变成应答 `data`）。
+/// 一条命令应答的 typed 结构体（serde 序列化；处理器经 `wire::spec::wire` 把它变成应答 `data`）。
 /// 判据（`every_command_declares_exactly_the_fields_it_puts_out`）从它真序列化的样本拿键，与登记的出参两向对拍。
 ///
 /// **规矩：每个分支一个样本，样本人手构造。** 枚举的每个变体一个；只在某一支才有的格（`Option` · `skip_serializing_if`）

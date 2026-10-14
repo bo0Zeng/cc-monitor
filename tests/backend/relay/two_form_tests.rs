@@ -177,7 +177,7 @@ data: {{\"type\":\"response.completed\",\"sequence_number\":4,\"response\":{{\"i
 fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_routes_its_runs() {
     use crate::accounts::upstream_select::UpstreamPick;
     use crate::agents::StreamEv;
-    use crate::stream::wire::Frame;
+    use crate::wire::Frame;
     let chatgpt = spawn_name_upstream(responses_ok());
     let api = spawn_name_upstream(responses_ok());
     let base = |up: &NameUpstream, path: &str| {

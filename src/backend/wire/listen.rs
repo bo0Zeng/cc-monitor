@@ -143,7 +143,7 @@ pub enum Verdict {
     Malformed,
 }
 
-/// 判一行 attach 请求。**纯函数**。形状：`{"attach":true}`（可带 `tz` · `view`，见 [`attach_flags`]）。
+/// 判一行 attach 请求。**纯函数**。形状：`{"attach":true}`（可带 `tz` · `view`，见 `stream::inbound::views::attach_flags`）。
 ///
 /// 刻意**不复用 `wire::Frame`** —— 那是冻结兼容面（手机端在读），往它加变体是一次与手机端的契约变更；
 /// 而握手这件事只发生在 hello 之后、流之前，它不该出现在任何一条被消费的帧流里。
@@ -156,27 +156,6 @@ pub fn attach_verdict(line: &str) -> Verdict {
     } else {
         Verdict::Malformed
     }
-}
-
-/// attach 行里这条连接要什么（`{"attach":true,"tz":"Asia/Shanghai","view":{…}}`）：`tz` 同 [`crate::TZ_FLAG`]（认不得 ⇒ UTC）·
-/// `view` 同请求信封的声明（[`crate::StreamView`]；缺 ＝ 全量）。别的键（`attach` 以外）· 声明认不出 ⇒ `Err`（当 malformed 拒）。
-/// 每条连接各按自己的这一行定，不看进程起参。
-pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
-    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
-    let o = v.as_object().ok_or(())?;
-    if o.keys()
-        .any(|k| !matches!(k.as_str(), "attach" | "tz" | "view"))
-    {
-        return Err(());
-    }
-    let view = match o.get("view") {
-        Some(decl) => crate::StreamView::parse(decl).map_err(|_| ())?,
-        None => None,
-    };
-    Ok(Some(crate::StreamWants {
-        tz: o.get("tz").map(crate::Tz::of).unwrap_or_default(),
-        view,
-    }))
 }
 
 /// 拒绝那一行。`reason` 只许是本模块的常量。
@@ -243,5 +222,5 @@ where
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/stream/listen_tests.rs"]
+#[path = "../../../tests/backend/wire/listen_tests.rs"]
 mod tests;

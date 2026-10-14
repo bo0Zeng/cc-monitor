@@ -628,12 +628,12 @@ mod tests {
         "「测试连接」不再走代理、或探活改由界面侧期限兜住的那天。",
     ),
         (
-        "stream/inbound/drain.rs",
+        "wire/drain.rs",
         "Duration::from_millis(30_000)",
-        "流模式收场的**退出排空期限**（`inbound::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
-         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_DEADLINE_WAKES`（stream/inbound/drain.rs 那一行）。只在进程要退时装一次。",
+        "流模式收场的**退出排空期限**（`wire::drain::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
+         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_DEADLINE_WAKES`（wire/drain.rs 那一行）。只在进程要退时装一次。",
         "缩性质",
-        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_DEADLINE_WAKES` 里 stream/inbound/drain.rs 那一行一起摘。",
+        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_DEADLINE_WAKES` 里 wire/drain.rs 那一行一起摘。",
     ),
         (
         "runs.rs",
@@ -744,7 +744,7 @@ mod tests {
             "`FINISH_WITHIN`（60 秒）；它一答（成 · 不成 · 码不对）就立刻醒。",
         ),
         (
-            "stream/inbound/drain.rs",
+            "wire/drain.rs",
             "tokio::time::sleep(deadline)",
             "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的**上限**：到点仍没排空 ⇒ 说出哪几条没做完、退出。\
              零定时器在这里让位的理由：排空要有上限，而远端后端 SSH 断开时**没有**别的一方能给它上限\
@@ -1592,7 +1592,7 @@ mod g6_reach {
         //   那条一次性连接的 inactivity 上限，从界面侧搬进拨号代理）。keepalive 那一条只是换了住址。
         // 5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
-        // 6 → **7**：多的那一条是 `stream/inbound/drain.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
+        // 6 → **7**：多的那一条是 `wire/drain.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
         //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_DEADLINE_WAKES`。
         // 7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
         // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值）。

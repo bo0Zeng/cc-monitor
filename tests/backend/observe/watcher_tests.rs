@@ -1413,7 +1413,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
     );
     watch_sessions(
         0,
-        crate::stream::wire::WatchAsk {
+        crate::wire::WatchAsk {
             sids: vec!["other".into()],
             branch: vec![],
         },
@@ -1593,7 +1593,7 @@ fn status_diff_emits_session_status_frame() {
             assert_eq!(sid, "st-sid");
             assert_eq!(
                 face,
-                crate::stream::wire::ActivityFace::of(Some(SessionActivity::Working)),
+                crate::wire::ActivityFace::of(Some(SessionActivity::Working)),
                 "适配层翻好的活动态"
             );
             assert!(!background, "不写 kind ⇒ 交互");
@@ -1620,7 +1620,7 @@ fn status_diff_emits_session_status_frame() {
             assert_eq!(sid, "st-sid");
             assert_eq!(
                 face,
-                crate::stream::wire::ActivityFace::of(Some(SessionActivity::NeedsYou))
+                crate::wire::ActivityFace::of(Some(SessionActivity::NeedsYou))
             );
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
@@ -1635,7 +1635,7 @@ fn status_diff_emits_session_status_frame() {
             face,
             waiting_for: None,
             ..
-        }) if face == crate::stream::wire::ActivityFace::of(Some(SessionActivity::Idle))
+        }) if face == crate::wire::ActivityFace::of(Some(SessionActivity::Idle))
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1693,9 +1693,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
             assert_eq!(name_face.label(), "乙");
             assert_eq!(
                 face,
-                crate::stream::wire::ActivityFace::of(Some(
-                    crate::agents::SessionActivity::Working
-                )),
+                crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::Working)),
                 "活动那几格照记着的带全"
             );
         }
@@ -2205,8 +2203,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2220,8 +2218,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2241,8 +2239,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2256,8 +2254,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2271,8 +2269,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2312,8 +2310,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -2609,7 +2607,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
     sink.send(Frame::turn_end(
         "x".into(),
         "u".into(),
-        &crate::stream::wire::NameFace::of(&Default::default()),
+        &crate::history::search_rules::name_face(&Default::default()),
     ));
     match rx.try_recv() {
         Ok(Frame::Overflow {
@@ -2621,7 +2619,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
             assert!(!lost_truncated, "才两条，远没到上限");
             assert_eq!(
                 lost,
-                vec![crate::stream::wire::LostFrame {
+                vec![crate::wire::LostFrame {
                     kind: "session_removed",
                     subject: Some("sid-gone".into()),
                 }],
@@ -2670,7 +2668,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     sink.send(Frame::turn_end(
         "x".into(),
         "u".into(),
-        &crate::stream::wire::NameFace::of(&Default::default()),
+        &crate::history::search_rules::name_face(&Default::default()),
     ));
     match rx.try_recv() {
         Ok(Frame::Overflow {
@@ -2692,7 +2690,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
 /// 那正是 B-3 的原样复发。⇒ 用零命中守卫钉住源码形态。
 #[test]
 fn the_recoverability_table_has_no_catch_all_arm() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/stream/wire.rs"));
+    let src = guard_core::production_code(include_str!("../../../src/backend/wire/mod.rs"));
     let begin = src
         .find("pub fn loss_is_recoverable")
         .expect("找不到 loss_is_recoverable —— 抽取器坏了，本条会零命中地绿");
@@ -3149,7 +3147,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     // 顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
     //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
     //   `process_session_added` 真把打标的结局接到了帧上。
-    let containers: Vec<Option<crate::stream::wire::SessionContainer>> = frames
+    let containers: Vec<Option<crate::wire::SessionContainer>> = frames
         .iter()
         .filter_map(|f| match f {
             Frame::SessionAdded { container, .. } => Some(container.clone()),
@@ -3158,7 +3156,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
         .collect();
     assert_eq!(
         containers,
-        vec![Some(crate::stream::wire::SessionContainer::None); 2],
+        vec![Some(crate::wire::SessionContainer::None); 2],
         "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
     );
     let got: Vec<String> = frames
@@ -3450,7 +3448,7 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
 /// 两个新帧的线上形状（逐字节；异源 = 手写期望）＋ 丢了不可恢复（按身份报）。
 #[test]
 fn the_two_session_file_frames_have_exactly_these_bytes() {
-    use crate::stream::wire::{to_line, RereadWhy};
+    use crate::wire::{to_line, RereadWhy};
     let gone = Frame::SessionFileGone {
         session_id: "s".into(),
         path: "/p/s.jsonl".into(),
@@ -3837,14 +3835,14 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
 fn resync_face_reply_matches_the_cross_language_golden() {
     /// 照分派那一层解入参（`typed::take`）再跑；回包投成线上那一份，失败只留码。
     fn answer(args: &serde_json::Value) -> Result<serde_json::Value, String> {
-        use crate::stream::inbound::typed::{Blocking as _, Codes as _};
-        let req = crate::stream::inbound::typed::take(args).map_err(|f| f.code)?;
-        let cx = crate::stream::inbound::typed::Cx {
+        use crate::wire::typed::{Blocking as _, Codes as _};
+        let req = crate::wire::typed::take(args).map_err(|f| f.code)?;
+        let cx = crate::wire::typed::Cx {
             tz: Default::default(),
             until: None,
         };
         let got =
-            crate::faces::resync_face::ResyncCmd::run(req, &cx).map_err(|e| e.into_fail().code)?;
+            crate::stream::resync_face::ResyncCmd::run(req, &cx).map_err(|e| e.into_fail().code)?;
         Ok(serde_json::to_value(got).expect("回包总能序列化"))
     }
     let golden: serde_json::Value =
@@ -4587,7 +4585,7 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
-    use crate::stream::wire::{BranchHeld, WatchAsk};
+    use crate::wire::{BranchHeld, WatchAsk};
     let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-read8c-held-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

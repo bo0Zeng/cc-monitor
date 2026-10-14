@@ -879,10 +879,7 @@ fn handler_files_of(
 ) {
     for block in table.split("CommandSpec {").skip(1) {
         // 块到下一条 typed 那一行为止（typed 那几行不是 `CommandSpec {` 块，由 [`typed_handler_files_of`] 另认）。
-        let block = block
-            .split("crate::stream::inbound::typed::")
-            .next()
-            .unwrap_or(block);
+        let block = block.split("crate::wire::typed::").next().unwrap_or(block);
         let Some(n) = block.find("name: \"") else {
             continue;
         };
@@ -1147,7 +1144,7 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
                 panic!("`BUILTIN_HANDLER_FILE` 登记的 `{name}` 不在命令表里 —— 删那一行")
             });
         assert!(
-            matches!(spec.run, crate::stream::inbound::Run::Builtin),
+            matches!(spec.run, crate::wire::spec::Run::Builtin),
             "`BUILTIN_HANDLER_FILE` 登记的 `{name}` 不是硬臂 —— 它的 `run:` 自己点得出本体，删那一行"
         );
         assert!(

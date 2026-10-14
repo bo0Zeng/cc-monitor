@@ -8,10 +8,8 @@ pub(crate) use crate::assets::hub_wire::{
     CcBusInstallCmd, CcBusStateCmd, McpApplyCmd, McpPreviewCmd, McpSourceCmd, SkillApplyCmd,
     SkillPlanCmd, SkillReadCmd,
 };
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{
-    self, codes, Blocking, Codes, Command, Cx, Files, WithFiles, WithOwn,
-};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, codes, Blocking, Codes, Command, Cx, Files, WithFiles, WithOwn};
 
 /// 下层那一份失败收进这一条的码表（码不在表里 ⇒ `fallback`）。
 fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Fail) -> E {

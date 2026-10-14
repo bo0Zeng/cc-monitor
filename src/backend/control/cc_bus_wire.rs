@@ -1,8 +1,8 @@
 //! cc-bus 那七条帧命令的形状：入参 · 回包 · 码表 · 怎么跑。本体（转调 cc-bus 的脚本、读它的输出）在 [`super::cc_bus`]。
 
 use super::cc_bus;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, Blocking, Codes, Command, Cx, NoArgs};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Blocking, Codes, Command, Cx, NoArgs};
 
 /// 本体回的那一对（码 ＋ 那一句）⇒ 这一条的码表。
 fn of<E: Codes>(fallback: fn(String) -> E) -> impl Fn((String, String)) -> E {

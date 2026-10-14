@@ -4,7 +4,7 @@
 use copy_core::said::Said;
 
 /// **等一次停机信号**（unix：SIGTERM 或 SIGINT；别处：Ctrl-C）。从 `main.rs` 下沉（那里原有一个同形的等信号函数，已删）——
-/// 那一段带平台 cfg，而流模式的收场（`inbound::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
+/// 那一段带平台 cfg，而流模式的收场（`drain::exit_after_drain`）也要它（排空时再来一次 ⇒ 不等了）。
 ///
 /// ★ **监听在调用的这一刻就登记好**，返回的 future 只负责等 —— 写成 `async fn` 的话，登记要等第一次被 poll，
 /// 建好之后、poll 之前到的那一次信号就漏了。

@@ -4,8 +4,8 @@
 use crate::agents::AssetFace;
 use crate::common::cells::Words;
 use crate::common::contract::malformed;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, Blocking, Command, Cx};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Blocking, Command, Cx};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

@@ -14,7 +14,7 @@ mod cli_parity;
 
 use crate::control::launch_account::{self as la, Settled};
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `launch-render-cli` · `launch-local` 的码（两条同一份）。
     pub(crate) enum LaunchRenderErr {
         /// 渲不出来（坏输入 · 目录不在 · 那一家认不得）：那一句说为什么。

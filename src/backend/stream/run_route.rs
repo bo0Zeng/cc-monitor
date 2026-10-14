@@ -11,7 +11,7 @@
 use crate::agents::{StreamEv, StreamFace, StreamFamily};
 use crate::observe::runs::RunBook;
 use crate::relay::{TapBody, TapEvent};
-use crate::stream::wire::TapEnd;
+use crate::wire::TapEnd;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 

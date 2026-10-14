@@ -4,7 +4,7 @@
 use crate::common::door::Door;
 use crate::control::launch_account::{self as la, Facts, Library};
 use crate::control::launch_render::{self as lr, LaunchRenderErr, Rendered};
-use crate::stream::inbound::typed::{self, Command, WithFiles};
+use crate::wire::typed::{self, Command, WithFiles};
 
 /// 起会话那几条要的文件管理面（起之前预标信任经它写）：生产那一份由命令表交（`stream/inbound` 的 `LocalFiles`）。
 /// 预标住这里不住 `session_batch_face`：渲那一行的两条（`launch-local` · `launch-render-cli`）不碰 tmux，引用不该连带过去。

@@ -75,10 +75,9 @@ pub(crate) fn current(path: Option<&Path>) -> Marks {
 pub(crate) fn mark_at(
     own: &crate::platform::fs::Own,
     req: &ChoresMarkReq,
-) -> Result<Marks, crate::stream::inbound::spec::Fail> {
-    let bad = |d: &str| {
-        crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
-    };
+) -> Result<Marks, crate::wire::spec::Fail> {
+    let bad =
+        |d: &str| crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(d));
     let nonempty = |s: &str, k: &str| {
         if s.is_empty() {
             Err(bad(&format!("`{k}` missing")))
@@ -92,13 +91,9 @@ pub(crate) fn mark_at(
     if let ChoresMarkReq::SelfPaste { rc } = req {
         nonempty(rc, "rc")?;
     }
-    let io =
-        |e: crate::common::said::Said| crate::stream::inbound::spec::Fail::from(("io_failed", e));
+    let io = |e: crate::common::said::Said| crate::wire::spec::Fail::from(("io_failed", e));
     let dir = own.home_dir().map_err(|_| {
-        crate::stream::inbound::spec::Fail::from((
-            "io_failed",
-            copy_text("beChore.marks.noHome", &[]),
-        ))
+        crate::wire::spec::Fail::from(("io_failed", copy_text("beChore.marks.noHome", &[])))
     })?;
     let file = own.at_home(relay_route_core::CHORES_REL).map_err(io)?;
     let path = file.as_path();
@@ -125,10 +120,7 @@ pub(crate) fn mark_at(
         crate::common::own_state::Read::Absent => Marks::default(),
         crate::common::own_state::Read::Present(m) => m,
         crate::common::own_state::Read::Unreadable(why) => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "marks_unreadable",
-                why,
-            )))
+            return Err(crate::wire::spec::Fail::from(("marks_unreadable", why)))
         }
     };
     match req {
@@ -152,7 +144,7 @@ pub(crate) fn mark_at(
 pub(crate) fn answer_mark(
     req: &ChoresMarkReq,
     own: &crate::platform::fs::Own,
-) -> Result<Marks, crate::stream::inbound::spec::Fail> {
+) -> Result<Marks, crate::wire::spec::Fail> {
     mark_at(own, req)
 }
 

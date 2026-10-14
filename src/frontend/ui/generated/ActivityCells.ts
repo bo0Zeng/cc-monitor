@@ -2,7 +2,7 @@
 import type { SessionActivity } from "./SessionActivity";
 
 /**
- * 一条活会话此刻在干什么那几格（那台核心的 `stream::wire::ActivityFace`，原样转交）：那一态（`None` ＝ 说不清）·
+ * 一条活会话此刻在干什么那几格（那台核心的 `wire::ActivityFace`，原样转交）：那一态（`None` ＝ 说不清）·
  * 写好的字与语气（运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）· 监控板组内的序（`activity_order`，小的在前，核心排的）。
  * 解码只一处（`stream_source::frame` 的 `activity_cells`）。
  */

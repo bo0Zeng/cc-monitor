@@ -15,9 +15,9 @@
 ///
 /// # 人群与豁免
 ///
-/// 人群 = **流式那条路**（`main.rs` / `stream/inbound/` 整个目录 / `wire.rs` / `listen.rs`）生产段里所有
+/// 人群 = **流式那条路**（`main.rs` / `stream/inbound/` 整个目录 / `wire/mod.rs`（帧）/ `wire/listen.rs`）生产段里所有
 /// `write_all(`。今天恰好三处，各自登记：
-/// · `wire.rs::write_and_flush_hello` —— 握手前那一帧，写完才产出 `HelloFlushed`；
+/// · `wire::write_and_flush_hello`（`wire/mod.rs`）—— 握手前那一帧，写完才产出 `HelloFlushed`；
 ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
 /// · `main.rs::write_frame` —— writer_task 的出口本体。
 /// · `listen.rs::write_line` —— attach 握手的应答行（`K-P1` 补进人群的那一员，见下）。
@@ -63,7 +63,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
     let mut files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
     files.push((
         std::path::PathBuf::from("wire.rs"),
-        include_str!("../../../src/backend/stream/wire.rs").to_string(),
+        include_str!("../../../src/backend/wire/mod.rs").to_string(),
     ));
     for (path, src) in files {
         let name = path
@@ -138,7 +138,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
 /// 关联函数，且 `for_tests` 必须带 `#[cfg(test)]`；③ 元组字段必须私有。
 #[test]
 fn the_hello_witness_has_exactly_one_way_to_exist() {
-    let src = include_str!("../../../src/backend/stream/wire.rs");
+    let src = include_str!("../../../src/backend/wire/mod.rs");
     let prod = guard_core::production_code(src);
 
     // ① 构造点恰好一处。
@@ -245,7 +245,7 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 /// `live` 一种 `op` 一形：全格取整卡（带 `run`），最少格取「说完了」那一形（不带 `run`）。
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
-    use crate::stream::wire::{
+    use crate::wire::{
         AgentHome, LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo,
         RunState, RunWhy, SessionContainer, SessionFate, TerminalHost, TransferEnd, Unavailable,
     };
@@ -321,10 +321,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: Some(s("/w")),
                 name: Some(s("n")),
                 path: Some(s("/p/s1.jsonl")),
-                face: crate::stream::wire::ActivityFace::of(Some(
-                    crate::agents::SessionActivity::NeedsYou,
-                )),
-                name_face: crate::stream::wire::NameFace::of(
+                face: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
                         project_dir: Some(s("/w")),
@@ -347,8 +345,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 project_dir: None,
                 name: None,
                 path: None,
-                face: crate::stream::wire::ActivityFace::of(None),
-                name_face: crate::stream::wire::NameFace::of(&Default::default()),
+                face: crate::wire::ActivityFace::of(None),
+                name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 container: None,
                 pid: 0,
@@ -369,10 +367,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::SessionStatus {
                 sid: s("s1"),
-                face: crate::stream::wire::ActivityFace::of(Some(
-                    crate::agents::SessionActivity::NeedsYou,
-                )),
-                name_face: crate::stream::wire::NameFace::of(
+                face: crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::NeedsYou)),
+                name_face: crate::history::search_rules::name_face(
                     &crate::history::search_rules::LabelFacts {
                         title: Some(s("t")),
                         project_dir: Some(s("/w")),
@@ -384,8 +380,8 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             },
             Frame::SessionStatus {
                 sid: s("s1"),
-                face: crate::stream::wire::ActivityFace::of(None),
-                name_face: crate::stream::wire::NameFace::of(&Default::default()),
+                face: crate::wire::ActivityFace::of(None),
+                name_face: crate::history::search_rules::name_face(&Default::default()),
                 waiting_for: None,
                 path: None,
             },
@@ -404,7 +400,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::turn_end(
             s("s1"),
             s("u1"),
-            &crate::stream::wire::NameFace::of(&Default::default()),
+            &crate::history::search_rules::name_face(&Default::default()),
         )),
         [
             Frame::Overflow {
@@ -568,14 +564,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: s("/p/s1.jsonl"),
                 at: 0,
                 off: vec![s("u2"), s("a2")],
-                sum: crate::stream::wire::branch_sum(&[s("u2"), s("a2")]),
+                sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
             },
             Frame::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
                 at: 2,
                 off: vec![],
-                sum: crate::stream::wire::branch_sum(&[s("u2"), s("a2")]),
+                sum: crate::wire::branch_sum(&[s("u2"), s("a2")]),
             },
         ],
         [
@@ -593,12 +589,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         [
             Frame::TerminalFollowEnd {
                 ticket: s("t1"),
-                why: crate::stream::wire::FollowEnd::TooBig,
+                why: crate::wire::FollowEnd::TooBig,
                 said: s("that-sentence-1"),
             },
             Frame::TerminalFollowEnd {
                 ticket: s("t1"),
-                why: crate::stream::wire::FollowEnd::Gone,
+                why: crate::wire::FollowEnd::Gone,
                 said: s("that-sentence-2"),
             },
         ],
@@ -607,7 +603,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
 
 /// `Frame` 的全部变体名（从源码的 `pub enum Frame` 里数，异源于上面的样本）→ 线上 kind（snake_case）。
 fn frame_variant_kinds() -> std::collections::BTreeSet<String> {
-    let src = include_str!("../../../src/backend/stream/wire.rs");
+    let src = include_str!("../../../src/backend/wire/mod.rs");
     let beg = src.find("pub enum Frame").expect("找不到 Frame 枚举");
     let end = src[beg..].find("\n}\n").expect("找不到枚举结尾") + beg;
     src[beg..end]
@@ -762,7 +758,7 @@ fn link_frames_have_exactly_these_bytes() {
 /// 它丢了不可恢复（终局丢了，看的人永远等下去）。
 #[test]
 fn transfer_frames_have_exactly_these_bytes() {
-    let f = |end: Option<crate::stream::wire::TransferEnd>| Frame::Transfer {
+    let f = |end: Option<crate::wire::TransferEnd>| Frame::Transfer {
         id: "xfer-7".into(),
         got: 262144,
         total: 1000000,
@@ -774,7 +770,7 @@ fn transfer_frames_have_exactly_these_bytes() {
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000}\n",
         ),
         (
-            f(Some(crate::stream::wire::TransferEnd::Done {
+            f(Some(crate::wire::TransferEnd::Done {
                 bytes: 1000000,
                 sha256: None,
             })),
@@ -782,28 +778,28 @@ fn transfer_frames_have_exactly_these_bytes() {
         ),
         // 上传那一路的传完带整份摘要（提交时的对拍依据）；下载那一路没有 ⇒ 上一格原样不上线。
         (
-            f(Some(crate::stream::wire::TransferEnd::Done {
+            f(Some(crate::wire::TransferEnd::Done {
                 bytes: 1000000,
                 sha256: Some("ab".repeat(32)),
             })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
         ),
         (
-            f(Some(crate::stream::wire::TransferEnd::Failed { why: "写暂存件失败".into(), code: None, detail: None })),
+            f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into(), code: None, detail: None })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"写暂存件失败\"}}\n",
         ),
         // 带码的那一形（今天只有 SFTP 起始目录不是后端 home 那一码）。
         (
-            f(Some(crate::stream::wire::TransferEnd::Failed { why: "w".into(), code: Some("sftp_home_mismatch".into()), detail: None })),
+            f(Some(crate::wire::TransferEnd::Failed { why: "w".into(), code: Some("sftp_home_mismatch".into()), detail: None })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"w\",\"code\":\"sftp_home_mismatch\"}}\n",
         ),
         // 带复制详情的那一形（句子只带原因词，原话在 `detail` 里）。
         (
-            f(Some(crate::stream::wire::TransferEnd::Failed { why: "w".into(), code: None, detail: Some("d".into()) })),
+            f(Some(crate::wire::TransferEnd::Failed { why: "w".into(), code: None, detail: Some("d".into()) })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"w\",\"detail\":\"d\"}}\n",
         ),
         (
-            f(Some(crate::stream::wire::TransferEnd::Cancelled)),
+            f(Some(crate::wire::TransferEnd::Cancelled)),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"cancelled\"}}\n",
         ),
     ];
@@ -818,7 +814,7 @@ fn transfer_frames_have_exactly_these_bytes() {
 #[test]
 fn live_frames_have_exactly_these_bytes() {
     use crate::agents::BlockKind;
-    use crate::stream::wire::{LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy};
+    use crate::wire::{LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy};
     let live = |run: Option<&str>, n: u64, op: LiveOp| {
         Frame::LiveCard(LiveCard {
             sid: "0b6c1f7e-sid".into(),
@@ -884,7 +880,7 @@ fn live_frames_have_exactly_these_bytes() {
 #[test]
 fn session_runs_frames_have_exactly_these_bytes() {
     use crate::agents::RunDid;
-    use crate::stream::wire::{RunEnded, RunInfo, RunState, RunWhy};
+    use crate::wire::{RunEnded, RunInfo, RunState, RunWhy};
     let f = Frame::SessionRuns {
         sid: "s1".into(),
         runs: vec![
@@ -986,7 +982,7 @@ fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
     let line = to_line(&Frame::turn_end(
         "sid-9".into(),
         "u-abc".into(),
-        &crate::stream::wire::NameFace::of(&named),
+        &crate::history::search_rules::name_face(&named),
     ))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
@@ -1008,7 +1004,8 @@ fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
 #[test]
 fn the_name_face_carries_the_name_and_the_project() {
     use crate::history::search_rules::LabelFacts;
-    let face = |f: LabelFacts| serde_json::to_value(crate::stream::wire::NameFace::of(&f)).unwrap();
+    let face =
+        |f: LabelFacts| serde_json::to_value(crate::history::search_rules::name_face(&f)).unwrap();
     let proj = || Some("/w/proj/".to_string());
     let untitled = copy_core::copy_text("history.row.untitled", &[]);
     assert_eq!(
@@ -1339,8 +1336,8 @@ fn dg3_codex_fields_serialize_when_present() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -1353,8 +1350,8 @@ fn dg3_codex_fields_serialize_when_present() {
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         path: None,
     })
@@ -1401,8 +1398,8 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
@@ -1415,8 +1412,8 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         path: None,
     })
@@ -1533,7 +1530,7 @@ fn removal_cause_is_additive_on_the_wire() {
 /// - `{"host":"tmux","terminal":…}` / `{"host":"tmux"}`（句柄算不出就不写那一格）/ `{"host":"none"}`。
 #[test]
 fn session_added_container_is_an_object_with_host_and_terminal() {
-    use crate::stream::wire::{SessionContainer, TerminalHost};
+    use crate::wire::{SessionContainer, TerminalHost};
     let frame = |c: Option<SessionContainer>| {
         to_line(&Frame::SessionAdded {
             sid: "s".into(),
@@ -1544,8 +1541,8 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             project_dir: None,
             name: None,
             path: None,
-            face: crate::stream::wire::ActivityFace::of(None),
-            name_face: crate::stream::wire::NameFace::of(&Default::default()),
+            face: crate::wire::ActivityFace::of(None),
+            name_face: crate::history::search_rules::name_face(&Default::default()),
             waiting_for: None,
             container: c,
             pid: 0,
@@ -1575,7 +1572,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
 /// monitor `stream_source::parse_frame` 照这两个字面量认它。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
-    use crate::stream::wire::SessionFate;
+    use crate::wire::SessionFate;
     for (state, word, name, hint) in [
         (
             SessionFate::Reconnectable,
@@ -1623,8 +1620,8 @@ fn loc1b_session_added_carries_the_pid() {
         project_dir: None,
         name: None,
         path: None,
-        face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default()),
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 4242,
@@ -1648,12 +1645,12 @@ fn hx2_host_env_echoes_exactly_the_handed_names_and_nothing_else() {
         ("CCM_RELAY_PORT", "8788"),
         ("CCM_DATA_DIR", "/iso/home"),
         ("CCM_APIKEY_CREDENTIALS", "/d/apikey-credentials.json"),
-        (crate::stream::listen::ENV_RESIDENT, "1"),
+        (crate::wire::listen::ENV_RESIDENT, "1"),
         ("HOME", "/home/u"),
     ]
     .into_iter()
     .collect();
-    let got = crate::stream::wire::host_env_from(|n| env.get(n).map(|v| v.to_string()));
+    let got = crate::wire::host_env_from(|n| env.get(n).map(|v| v.to_string()));
     let want: std::collections::BTreeMap<String, String> = [
         ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
         ("CCM_DATA_DIR".to_string(), "/iso/home".to_string()),
@@ -1661,18 +1658,17 @@ fn hx2_host_env_echoes_exactly_the_handed_names_and_nothing_else() {
     .into_iter()
     .collect();
     assert_eq!(got, want);
-    assert!(crate::stream::wire::host_env_from(|_| None).is_empty());
+    assert!(crate::wire::host_env_from(|_| None).is_empty());
 }
 
 /// 🔴 I1b：回显名单恰两格（== 手写）；常驻开关不在其中。
 #[test]
 fn hx2_the_echo_list_is_exactly_the_two_handed_names() {
-    let names: std::collections::BTreeSet<&str> =
-        crate::stream::wire::HOST_ECHO_ENVS.into_iter().collect();
+    let names: std::collections::BTreeSet<&str> = crate::wire::HOST_ECHO_ENVS.into_iter().collect();
     let want: std::collections::BTreeSet<&str> =
         ["CCM_RELAY_PORT", "CCM_DATA_DIR"].into_iter().collect();
     assert_eq!(names, want);
-    assert!(!names.contains(crate::stream::listen::ENV_RESIDENT));
+    assert!(!names.contains(crate::wire::listen::ENV_RESIDENT));
 }
 
 /// 🔴 I1c：空表 ⇒ 省略（线上字节与既有冻结串逐字节相同）；有值 ⇒ 落在最后、键按名排序。生产那一行恰好一处、读的是真环境。
@@ -1827,18 +1823,18 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         Frame::turn_end(
             "s".into(),
             "u".into(),
-            &crate::stream::wire::NameFace::of(&Default::default()),
+            &crate::history::search_rules::name_face(&Default::default()),
         ),
-        Frame::LiveCard(crate::stream::wire::LiveCard {
+        Frame::LiveCard(crate::wire::LiveCard {
             sid: "s".into(),
             run: s.clone(),
             card: 1,
             n: 0,
-            op: crate::stream::wire::LiveOp::Open {
+            op: crate::wire::LiveOp::Open {
                 rid: "r-1".into(),
-                phase: crate::stream::wire::LivePhase::Streaming,
+                phase: crate::wire::LivePhase::Streaming,
                 clipped: false,
-                blocks: vec![crate::stream::wire::LiveBlock {
+                blocks: vec![crate::wire::LiveBlock {
                     kind: crate::agents::BlockKind::Text,
                     text: Some("hi".into()),
                     tool: None,
@@ -1980,12 +1976,12 @@ fn the_subcommands_the_second_frontend_calls_stay_put() {
 #[test]
 fn session_frames_carry_the_state_written_and_toned() {
     use crate::agents::SessionActivity as A;
-    use crate::stream::wire::{ActivityFace, SessionFate};
+    use crate::wire::{ActivityFace, SessionFate};
     let status = |a: Option<A>| {
         serde_json::to_value(Frame::SessionStatus {
             sid: "s".into(),
             face: ActivityFace::of(a),
-            name_face: crate::stream::wire::NameFace::of(&Default::default()),
+            name_face: crate::history::search_rules::name_face(&Default::default()),
             waiting_for: None,
             path: None,
         })
@@ -2039,7 +2035,7 @@ fn session_frames_carry_the_state_written_and_toned() {
         "说不清与闲着同一档（语气都是 plain）"
     );
     // 读记录中：同「说不清」那一格，字照实说。
-    let reading = serde_json::to_value(crate::stream::wire::ActivityFace::reading()).unwrap();
+    let reading = serde_json::to_value(crate::wire::ActivityFace::reading()).unwrap();
     assert_eq!(reading["activity_tone"], "plain");
     assert_eq!(reading["activity_order"], none["activity_order"]);
     assert!(
@@ -2121,19 +2117,19 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
         // read8c：每帧的摘要 ＝ 到它末尾为止那一截的摘要（客户端交回的就是它）。
         assert_eq!(
             *sum,
-            crate::stream::wire::branch_sum(&all),
+            crate::wire::branch_sum(&all),
             "第 {at} 条起那一帧的摘要不是到它末尾的那一截"
         );
     }
     assert_eq!(all, off);
     let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], 8);
     assert!(
-        matches!(&tail[..], [Frame::SessionBranch { at: 8, off: o, sum, .. }] if o.len() == 2 && *sum == crate::stream::wire::branch_sum(&off[..10]))
+        matches!(&tail[..], [Frame::SessionBranch { at: 8, off: o, sum, .. }] if o.len() == 2 && *sum == crate::wire::branch_sum(&off[..10]))
     );
     // 摘要跨进程稳定：钉一个数（FNV-1a 64），换了算法 ⇒ 客户端交回的旧摘要全对不上（只是多发整份，但要有意为之）。
-    assert_eq!(crate::stream::wire::branch_sum(&[]), "cbf29ce484222325");
+    assert_eq!(crate::wire::branch_sum(&[]), "cbf29ce484222325");
     assert_eq!(
-        crate::stream::wire::branch_sum(&["a".to_string()]),
+        crate::wire::branch_sum(&["a".to_string()]),
         format!(
             "{:016x}",
             (((0xcbf2_9ce4_8422_2325u64 ^ 0x61).wrapping_mul(0x0100_0000_01b3)) ^ 0x0a)

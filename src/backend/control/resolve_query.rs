@@ -1,4 +1,4 @@
-//! `resolve`：读 `ResumeSpec`，出 `CommandPlan`（camelCase）。帧命令，CLI 面照派生规则有 `--resolve`（信封与别的命令同一形，`cli_control`）。
+//! `resolve`：读 `ResumeSpec`，出 `CommandPlan`（camelCase）。帧命令，CLI 面照派生规则有 `--resolve`（信封与别的命令同一形，`stream::cli`）。
 //!
 //! - 入：`ResumeSpec{sessionId, launchCandidates:[String?], agentKind?}`（别的格不认、不报错，照 serde 缺省忽略）。
 //! - 出：`CommandPlan{command, mode:"PtyInject"|"ExecOnce",
@@ -77,7 +77,7 @@ pub(crate) struct CommandPlan {
     pub(crate) substituted_from: Option<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `resolve` 的码（`bad_args` 另含：`agentKind` 不是注册表里的一家）。
     pub(crate) enum ResolveErr {
         /// `sessionId` 不是 `[0-9A-Za-z_-]{1,128}`（它会进命令串）。
@@ -90,21 +90,21 @@ crate::stream::inbound::typed::codes! {
 /// `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（帧面与派生的 CLI 面同一个）。纯计算 ⇒ 异步档。
 pub(crate) struct ResolveCmd;
 
-impl crate::stream::inbound::typed::Command for ResolveCmd {
+impl crate::wire::typed::Command for ResolveCmd {
     const NAME: &'static str = "resolve";
     type Req = ResumeSpec;
     type Reply = CommandPlan;
     type Err = ResolveErr;
 }
 
-impl crate::stream::inbound::typed::Async for ResolveCmd {
+impl crate::wire::typed::Async for ResolveCmd {
     fn run(
         req: ResumeSpec,
-        _cx: crate::stream::inbound::typed::Cx,
+        _cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<CommandPlan, ResolveErr>> + Send + 'static {
         std::future::ready(
             resolve(crate::agents::REGISTRY, &req)
-                .map_err(crate::stream::inbound::typed::of_pair(ResolveErr::BadArgs)),
+                .map_err(crate::wire::typed::of_pair(ResolveErr::BadArgs)),
         )
     }
 }

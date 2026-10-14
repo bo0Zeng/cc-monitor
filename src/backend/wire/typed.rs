@@ -10,7 +10,7 @@
 //!   分派照旧在 `dispatch` 那条硬臂，硬臂那一发经 [`answer`] 一处（入参按类型收 · 回包按类型写 · 失败照码表）。
 
 use super::spec::{CommandSpec, DataFut, Fail, Outcome, Run};
-use crate::stream::wire::Request;
+use crate::wire::Request;
 
 /// 测试档才要的 TS 派生（生成类型 · 形状指纹）；发布二进制里它什么都不要求。
 #[cfg(test)]
@@ -131,8 +131,19 @@ pub(crate) trait AsyncFiles: Command {
 
 /// 两台之间那几件的枢纽问**这台自己**的那一跳（生产 = `doors::hub_here`，由命令表那一行递进来，同 [`Files`]）：
 /// 按引起这一趟的请求时区与写句柄造一份。
-pub(crate) type Hub =
-    fn(&crate::Tz, &crate::platform::Own) -> std::sync::Arc<dyn crate::assets::hub::Here>;
+pub(crate) type Hub = fn(&crate::Tz, &crate::platform::Own) -> std::sync::Arc<dyn Here>;
+
+/// 这台自己的那几条内层命令（生产 = `stream/inbound/doors.rs::LocalFrames`：本进程 `REGISTRY` 的 `run`，限那几条）。
+/// 资产域的枢纽（`assets::hub`）经它问这台自己；实现在命令表那一层，这里只是那一口的形状。
+pub(crate) trait Here: Send + Sync {
+    fn ask(
+        &self,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, (String, String)>;
+    /// 看的人那一台的时区（引起这一趟的那条请求的信封 `tz`）：问别台时原样转过去，那台回的「几点」照它写。
+    fn viewer_tz(&self) -> crate::Tz;
+}
 
 /// 同 [`Async`]，多递一份**写自家状态的句柄**（按值：交出去的 future 要 `'static`；同 [`super::Run::AsyncOwn`]）
 /// 与枢纽问这台自己的那一跳（[`Hub`]，命令表那一行递的）。分派那一层手里没有写句柄的入口交不出来（同 [`Owning`]）。
@@ -168,16 +179,16 @@ pub(crate) struct Cx {
 /// 入参解得出、组合不对（「两个里恰好给一个」那一类）的由处理器自己回 `BadArgs`。
 macro_rules! codes {
     ($(#[$m:meta])* $vis:vis enum $name:ident { $($body:tt)* }) => {
-        $crate::stream::inbound::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] [] $($body)*);
+        $crate::wire::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] [] $($body)*);
     };
     // 带 `data` 的那一种。
     (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$($of:tt)*]
         $(#[$vm:meta])* $var:ident = $code:literal => $data:ty $(, $($rest:tt)*)?) => {
-        $crate::stream::inbound::typed::codes!(@munch $attrs $vis $name
+        $crate::wire::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String, $data),]
-            [$($arms)* $name::$var(said, data) => $crate::stream::inbound::spec::Fail {
+            [$($arms)* $name::$var(said, data) => $crate::wire::spec::Fail {
                 data: ::serde_json::to_value(&data).ok(),
-                ..$crate::stream::inbound::spec::Fail::new($code, said)
+                ..$crate::wire::spec::Fail::new($code, said)
             },]
             [$($codes)* $code,]
             [$($of)*]
@@ -186,9 +197,9 @@ macro_rules! codes {
     // 只有那一句的那一种。
     (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$($of:tt)*]
         $(#[$vm:meta])* $var:ident = $code:literal $(, $($rest:tt)*)?) => {
-        $crate::stream::inbound::typed::codes!(@munch $attrs $vis $name
+        $crate::wire::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String),]
-            [$($arms)* $name::$var(said) => $crate::stream::inbound::spec::Fail::new($code, said),]
+            [$($arms)* $name::$var(said) => $crate::wire::spec::Fail::new($code, said),]
             [$($codes)* $code,]
             [$($of)* ($code, $var)]
             $($($rest)*)?);
@@ -202,7 +213,7 @@ macro_rules! codes {
             BadArgs(String),
             $($vars)*
         }
-        impl $crate::stream::inbound::typed::Codes for $name {
+        impl $crate::wire::typed::Codes for $name {
             const ALL: &'static [&'static str] = &["bad_args", $($codes)*];
             #[allow(unreachable_patterns, clippy::match_single_binding)]
             fn of_code(code: &str, said: String) -> Result<Self, String> {
@@ -212,9 +223,9 @@ macro_rules! codes {
                     _ => return Err(said),
                 })
             }
-            fn into_fail(self) -> $crate::stream::inbound::spec::Fail {
+            fn into_fail(self) -> $crate::wire::spec::Fail {
                 match self {
-                    $name::BadArgs(said) => $crate::stream::inbound::spec::Fail::new("bad_args", said),
+                    $name::BadArgs(said) => $crate::wire::spec::Fail::new("bad_args", said),
                     $($arms)*
                 }
             }
@@ -226,7 +237,7 @@ pub(crate) use codes;
 /// 那一份 typed 的跑法（装进 [`Run::Typed`]）。
 #[derive(Clone, Copy)]
 pub(crate) struct Typed {
-    pub(super) run: TypedRun,
+    pub(crate) run: TypedRun,
     /// 生成类型与形状指纹用（测试档）。
     #[cfg(test)]
     pub(crate) shape: fn() -> tests::Shape,
@@ -240,7 +251,7 @@ impl Typed {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum TypedRun {
+pub(crate) enum TypedRun {
     Blocking(fn(Request) -> Outcome),
     /// 阻塞、要文件管理面（[`WithFiles`]）：那一份是命令表那一行递的。
     BlockingFiles(fn(Request, Files) -> Outcome, Files),
@@ -384,9 +395,9 @@ pub(crate) fn answer<C: Command>(
     id: &str,
     args: &serde_json::Value,
     run: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
-) -> crate::stream::wire::Frame {
+) -> crate::wire::Frame {
     match take::<C::Req>(args).and_then(|req| settle::<C>(run(req))) {
-        Ok(data) => crate::stream::wire::Frame::Reply {
+        Ok(data) => crate::wire::Frame::Reply {
             id: id.to_string(),
             ok: true,
             code: None,
@@ -468,5 +479,5 @@ const fn spec<C: Command>(summary: &'static str, run: TypedRun) -> CommandSpec {
 
 // 一条 typed 命令的形状（入参 · 回包的 TS 声明 ＋ 码表）与它的指纹：测试档才要，住测试树（`typed_tests.rs`）。
 #[cfg(test)]
-#[path = "../../../../tests/backend/stream/typed_tests.rs"]
+#[path = "../../../tests/backend/wire/typed_tests.rs"]
 pub(crate) mod tests;

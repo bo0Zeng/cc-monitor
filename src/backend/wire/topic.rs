@@ -217,5 +217,5 @@ impl Topic {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/stream/topic_tests.rs"]
+#[path = "../../../tests/backend/wire/topic_tests.rs"]
 mod tests;

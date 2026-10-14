@@ -2,7 +2,7 @@
 //! 本体在 [`super::terminals`]；这里只有形状与「怎么跑」那一层。两个前端共用（手机也在读）⇒ 回包的键与「有才出」那几格照换形前原样。
 
 use super::terminals::{self as t, CmdErr, On};
-use crate::stream::inbound::typed::{self, Blocking, Command, Cx};
+use crate::wire::typed::{self, Blocking, Command, Cx};
 use serde::Deserialize;
 
 // ── 入参 ──────────────────────────────────────────────────────────────

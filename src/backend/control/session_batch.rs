@@ -46,14 +46,10 @@ pub(crate) struct Deps<'a> {
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
     pub(crate) kill:
-        &'a dyn Fn(
-            &str,
-            &str,
-        ) -> Result<super::cc_bus::BusNote, crate::stream::inbound::spec::Fail>,
+        &'a dyn Fn(&str, &str) -> Result<super::cc_bus::BusNote, crate::wire::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) send_into:
-        &'a dyn Fn(&str, &str, &str) -> Result<(), crate::stream::inbound::spec::Fail>,
+    pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), crate::wire::spec::Fail>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
     /// 基名从哪来 ⇒ 这台铸的新会话名（同 `terminal-name-mint`：按这台此刻的会话名避让）。
@@ -244,12 +240,12 @@ impl Answer {
     fn done(sid: &str) -> Self {
         Self::new(sid, "done", None, String::new())
     }
-    /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，`crate::stream::said`；
+    /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，`crate::wire::said`；
     /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
     fn to_wire(self, cmd: &str) -> Outcome {
         let failed = self.outcome == "failed";
         let said = match (&self.why, failed && cmd == "sessions-stop") {
-            (Some(why), true) => crate::stream::said::reword(
+            (Some(why), true) => crate::wire::said::reword(
                 "kill",
                 &json!({ "name": self.session.as_deref().unwrap_or_default() }),
                 why,
@@ -257,7 +253,7 @@ impl Answer {
             _ => None,
         };
         let copy_detail = match (&self.why, failed) {
-            (Some(why), true) => crate::stream::detail::of(Some(cmd), why, Some(&self.detail)),
+            (Some(why), true) => crate::wire::detail::of(Some(cmd), why, Some(&self.detail)),
             _ => String::new(),
         };
         Outcome {
@@ -359,7 +355,7 @@ pub(crate) struct SidsReq {
 pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> {
     let sids = sids_of(&req.sids)?;
     let rows = listed(deps)?;
-    let host = crate::stream::wire::TerminalHost::Tmux.as_wire();
+    let host = crate::wire::TerminalHost::Tmux.as_wire();
     let results = sids
         .iter()
         .map(|sid| {

@@ -8,8 +8,7 @@ fn resolve_from_json(
     input: &str,
 ) -> Result<String, (&'static str, String)> {
     let v: Value = serde_json::from_str(input.trim()).map_err(|e| ("bad_args", e.to_string()))?;
-    let spec: ResumeSpec =
-        crate::stream::inbound::typed::take(&v).map_err(|f| ("bad_args", f.message))?;
+    let spec: ResumeSpec = crate::wire::typed::take(&v).map_err(|f| ("bad_args", f.message))?;
     let plan = resolve(registry, &spec)?;
     Ok(serde_json::to_string(&plan).expect("成品总能序列化"))
 }

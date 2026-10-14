@@ -10,7 +10,7 @@
 /// 契约错的那一句（`malformed`）与拆它的那一处（`parts`）：本体住拨号核心（`ssh-dial/lib.rs`，手机同一份），这里只转用。
 /// 诊断跟着那一串走（隔一个分隔字符），由失败信封那一处（`parts`）拆开：句子照旧只有「请求格式不对」，
 /// 诊断进复制详情的「原话」那一行 —— 看的人知道缺的是哪一格、要什么形状，不必去翻那台的日志。
-/// 失败信封（`stream::detail::Failed` · `Fail`）只经 `parts` 拆；没有诊断 ⇒ 原样。
+/// 失败信封（`wire::detail::Failed` · `Fail`）只经 `parts` 拆；没有诊断 ⇒ 原样。
 /// 反方向（那一句 ＋ 原话 ⇒ 一串，`joined`）与分隔字符同住那一处。
 pub(crate) use ssh_dial::{joined, malformed, parts};
 

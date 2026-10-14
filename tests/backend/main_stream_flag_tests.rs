@@ -29,7 +29,7 @@ fn the_stream_view_flag_is_parsed_in_stream_mode_only() {
         super::StreamView::parse(&serde_json::from_str(decl).unwrap()).unwrap()
     );
     assert!(got.view.is_some());
-    let b64 = crate::stream::wire::b64_encode(decl.as_bytes());
+    let b64 = crate::wire::b64_encode(decl.as_bytes());
     let (_, by_b64) = split_stream_flags(v(&["--stream", "--view", &b64])).unwrap();
     assert_eq!(by_b64.view, got.view, "base64 那一形解出来不一样");
     assert!(

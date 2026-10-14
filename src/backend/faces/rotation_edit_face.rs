@@ -8,7 +8,7 @@ use crate::accounts::quota::rules::{decide, form, script, shelf};
 use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
-use crate::stream::inbound::typed::{Blocking, Command, Cx, Files, WithOwn};
+use crate::wire::typed::{Blocking, Command, Cx, Files, WithOwn};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -116,7 +116,7 @@ pub(crate) struct RotationSettingsReply {
     pub(crate) dirty: bool,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-settings` 自己的码。
     pub(crate) enum RotationSettingsErr {
         NoSession = "no_session",
@@ -228,7 +228,7 @@ pub(crate) struct RotationSaveReply {
     pub(crate) rev: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-save` 自己的码。
     pub(crate) enum RotationSaveErr {
         NoSession = "no_session",
@@ -332,7 +332,7 @@ pub(crate) struct RotationRevertReq {
     pub(crate) sid: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-revert` 自己的码。
     pub(crate) enum RotationRevertErr {
         NoSession = "no_session",
@@ -397,7 +397,7 @@ pub(crate) struct RotationUseReq {
     pub(crate) discard: bool,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-use` 自己的码。
     pub(crate) enum RotationUseErr {
         NoSession = "no_session",
@@ -480,7 +480,7 @@ pub(crate) struct RotationForNewReq {
     pub(crate) strategy: Option<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-for-new` 自己的码。
     pub(crate) enum RotationForNewErr {
         NoStrategy = "no_strategy",
@@ -553,7 +553,7 @@ pub(crate) struct RotationTempReply {
     pub(crate) temp: Vec<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-temp` 自己的码。
     pub(crate) enum RotationTempErr {
         NoSession = "no_session",
@@ -647,7 +647,7 @@ pub(crate) struct RotUnusable {
     pub(crate) until: Option<u64>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-use-now` 自己的码。
     pub(crate) enum RotationUseNowErr {
         NoSession = "no_session",
@@ -769,7 +769,7 @@ pub(crate) struct RotationStrategyAddReq {
     pub(crate) name: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-strategy-add` 自己的码。
     pub(crate) enum RotationStrategyAddErr {
         /// 那份原文读不懂（头的形状 · 编不过 · 没有 `decide` · 设置不合声明）。
@@ -827,7 +827,7 @@ pub(crate) struct RotationStrategyCopyReq {
     pub(crate) name: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-strategy-copy` 自己的码。
     pub(crate) enum RotationStrategyCopyErr {
         NoStrategy = "no_strategy",
@@ -880,7 +880,7 @@ pub(crate) struct RotationStrategyRenameReq {
     pub(crate) if_rev: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-strategy-rename` 自己的码。
     pub(crate) enum RotationStrategyRenameErr {
         NoStrategy = "no_strategy",
@@ -967,7 +967,7 @@ pub(crate) struct RotStrategyRev {
     pub(crate) rev: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-strategy-tz` 自己的码。
     pub(crate) enum RotationStrategyTzErr {
         NoStrategy = "no_strategy",
@@ -1049,7 +1049,7 @@ pub(crate) struct RotInUse {
     pub(crate) sids: Vec<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-strategy-delete` 自己的码。
     pub(crate) enum RotationStrategyDeleteErr {
         NoStrategy = "no_strategy",
@@ -1157,7 +1157,7 @@ pub(crate) struct RotationDayPaintReply {
     pub(crate) segs: Vec<RotSeg>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-day-paint` 自己的码（只有入参不对那一种）。
     pub(crate) enum RotationDayPaintErr {}
 }

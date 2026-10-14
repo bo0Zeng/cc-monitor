@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 
@@ -54,7 +54,7 @@ fn put(root: &Path, rel: &str, body: &str) {
 
 fn ok_record(
     _: &crate::assets::skill_ledger::RecordReq,
-) -> Result<crate::assets::skill_ledger::RecordReply, crate::stream::inbound::spec::Fail> {
+) -> Result<crate::assets::skill_ledger::RecordReply, crate::wire::spec::Fail> {
     Ok(crate::assets::skill_ledger::RecordReply {
         changed: true,
         remaining: 1,
@@ -215,7 +215,7 @@ const APPLY_AGAIN: &str =
 /// 入参多一个键 ⇒ `bad_args`（入参照拒；回包不拒多的键，见 `hub_tests`）。经本进程那一行登记跑（同枢纽本机那一跳）。
 #[test]
 fn an_inner_request_with_an_extra_key_is_bad_args() {
-    use crate::stream::inbound::spec::{prepare, Prepared};
+    use crate::wire::spec::{prepare, Prepared};
     let cases = [
         ("skill-read", json!({ "name": "demo", "bogus": 1 })),
         (
@@ -240,7 +240,7 @@ fn an_inner_request_with_an_extra_key_is_bad_args() {
         let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
             panic!("{cmd} 不在阻塞档");
         };
-        let req = crate::stream::wire::Request {
+        let req = crate::wire::Request {
             id: "t".to_string(),
             cmd: cmd.to_string(),
             args,

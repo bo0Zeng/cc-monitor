@@ -13,7 +13,7 @@
 //! 钉「链路上的字节 == C2 拨号代理 stdout 的形状」。真 sshd 上的读数见 `tests/evidence/SR1a-link-loopback.py`。
 
 use super::*;
-use crate::stream::wire::{b64_decode, Frame};
+use crate::wire::{b64_decode, Frame};
 use tokio::sync::mpsc;
 
 /// 一个永远挂着、并**攥着两根管子**的 `serve`（不攥着的话管子当场被丢 ⇒ 链路立刻结束）。
@@ -205,7 +205,7 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
         let r = table.data(
             "link-data",
             &format!("d{i}"),
-            &serde_json::json!({"link": "E", "data": crate::stream::wire::b64_encode(c)}),
+            &serde_json::json!({"link": "E", "data": crate::wire::b64_encode(c)}),
         );
         assert!(
             r.is_none(),
@@ -235,7 +235,7 @@ async fn an_upstream_flood_is_refused_as_busy() {
     let (tx, _rx) = mpsc::channel::<Frame>(1024);
     let table = Table::new(tx);
     table.install("link-open", "t", "B".to_string(), MAX_WINDOW, hang);
-    let block = crate::stream::wire::b64_encode(&[1u8; 8]);
+    let block = crate::wire::b64_encode(&[1u8; 8]);
     let codes: Vec<Option<String>> = (0..5)
         .map(|i| {
             table
@@ -458,7 +458,7 @@ async fn open_refuses_what_it_should_with_a_code() {
         Some("bad_args"),
         "坏 base64 没被拒"
     );
-    let huge = crate::stream::wire::b64_encode(&vec![0u8; LINK_CHUNK_BYTES + 1]);
+    let huge = crate::wire::b64_encode(&vec![0u8; LINK_CHUNK_BYTES + 1]);
     let too_big = table.data(
         "link-data",
         "a",

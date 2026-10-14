@@ -28,18 +28,19 @@
 //! · exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id。
 
 use crate::common::contract;
-use crate::stream::detail::Failed;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::{CommandSpec, REGISTRY};
-use crate::stream::wire::Request;
+use crate::stream::inbound::REGISTRY;
+use crate::wire::detail::Failed;
+use crate::wire::spec::CommandSpec;
+use crate::wire::spec::Fail;
+use crate::wire::Request;
 use std::io::{Read, Write};
 use std::time::Duration;
 
 /// 能力探测口。集成方按能力兼容，不按版本号；出 JSON（不是 `ccm --ccm-probe` 那种 `key=value` 行：那是 ccm 专用的方言）。
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
-/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`super::cli_args`]。
-use super::cli_args::{bad_args, read_args, STDIN_QUIET};
+/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`crate::control::cli_args`]。
+use crate::control::cli_args::{bad_args, read_args, STDIN_QUIET};
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -115,23 +116,6 @@ pub fn handles(flag: &str) -> bool {
     flag == PROBE_FLAG || spec_for(flag).is_some()
 }
 
-/// `control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
-/// `cmd` 进复制详情的「命令」那一项；`message` 可带下层原话（`Said.raw`），原话进复制详情、不上句子。
-pub fn emit_err(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
-    // 这几条（常驻起停那两问）不收 `--tz` ⇒ 详情那一行时刻按 UTC 填（同「没带按 UTC」）。
-    emit_failed(
-        &mut std::io::stderr(),
-        &failed_of(cmd, code, message.into()),
-        false,
-        &crate::Tz::default(),
-    )
-}
-
-/// [`emit_err`] 交出去的那一份：那一句进 `message`，下层原话进复制详情（[`Failed::new`] 的 `raw`）。
-pub(crate) fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Failed {
-    Failed::new(Some(cmd), code, s.said, s.raw.as_deref(), None)
-}
-
 /// 失败那一份投到 CLI 面（[`Failed::emit_to`]：与别的 CLI 出口同一处）。
 fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i32 {
     f.emit_to(err, text, tz)
@@ -160,7 +144,7 @@ pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate
 /// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
 pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
     let detail = why.unwrap_or_default().to_string();
-    let f = crate::stream::inbound::spec::Fail::new(
+    let f = crate::wire::spec::Fail::new(
         "bad_args",
         crate::common::contract::malformed(&format!("stream: {detail}")),
     )
@@ -241,7 +225,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     };
     // 出口的声明：与帧面同一处解、同一处拒（开跑之前）、同一处裁（成功的应答）。
     let (view, plan) = match view_of(opts)
-        .map_err(crate::stream::inbound::spec::Fail::from)
+        .map_err(crate::wire::spec::Fail::from)
         .and_then(|v| crate::stream::inbound::views::plan_for(spec.name, &v).map(|p| (v, p)))
     {
         Ok(vp) => vp,
@@ -292,9 +276,9 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     let total = crate::stream::inbound::install_total(&req);
     // 这几行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
     let outcome: Result<Option<serde_json::Value>, Fail> =
-        match crate::stream::inbound::prepare(spec.run, Some(own)) {
-            Some(crate::stream::inbound::Prepared::Blocking(f)) => f(req),
-            Some(crate::stream::inbound::Prepared::Async(f)) => f(req).await,
+        match crate::wire::spec::prepare(spec.run, Some(own)) {
+            Some(crate::wire::spec::Prepared::Blocking(f)) => f(req),
+            Some(crate::wire::spec::Prepared::Async(f)) => f(req).await,
             None => {
                 return refuse(
                     err,
@@ -358,7 +342,7 @@ pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static st
     let text = if v.trim_start().starts_with('{') {
         v.to_string()
     } else {
-        let bytes = crate::stream::wire::b64_decode(v)
+        let bytes = crate::wire::b64_decode(v)
             .map_err(|e| bad_args(&format!("{flag}: neither JSON nor base64 ({e})")))?;
         String::from_utf8(bytes).map_err(|e| bad_args(&format!("{flag} is not UTF-8: {e}")))?
     };
@@ -366,7 +350,7 @@ pub(crate) fn view_of(opts: &[String]) -> Result<serde_json::Value, (&'static st
 }
 
 /// 期限口 [`crate::WITHIN_MS_FLAG`]（位置不限）：缺值 · 给两次 ⇒ `bad_args`（同 [`crate::ARGS_B64_FLAG`]）；
-/// 值的读法与帧面信封那一格同一处（[`crate::stream::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
+/// 值的读法与帧面信封那一格同一处（[`crate::wire::within_ms_of`]：不是正整数 ⇒ 当没带）。
 fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
     let mut seen: Option<Option<u64>> = None;
     let mut i = 0;
@@ -380,7 +364,7 @@ fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
             };
             let ms = serde_json::from_str::<serde_json::Value>(v)
                 .ok()
-                .and_then(|v| crate::stream::wire::within_ms_of(&v));
+                .and_then(|v| crate::wire::within_ms_of(&v));
             if seen.replace(ms).is_some() {
                 return Err(bad_args(&format!("{} given twice", crate::WITHIN_MS_FLAG)));
             }
@@ -393,5 +377,5 @@ fn within_of(opts: &[String]) -> Result<Option<u64>, (&'static str, String)> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/control/cli_control_tests.rs"]
+#[path = "../../../tests/backend/stream/cli_tests.rs"]
 mod tests;

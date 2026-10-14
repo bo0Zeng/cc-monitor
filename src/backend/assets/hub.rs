@@ -46,14 +46,8 @@ use super::hub_wire::{
 };
 use crate::dial::remote_ask::{Remote, Table};
 
-type Answer = Result<Value, (String, String)>;
-
-/// 这台自己的那几条内层命令（生产 = `stream/inbound/doors.rs::LocalFrames`：本进程 `REGISTRY` 的 `run`，限那几条）。
-pub(crate) trait Here: Send + Sync {
-    fn ask(&self, cmd: &str, args: Value) -> Answer;
-    /// 看的人那一台的时区（引起这一趟的那条请求的信封 `tz`）：问别台时原样转过去，那台回的「几点」照它写。
-    fn viewer_tz(&self) -> crate::Tz;
-}
+/// 这台自己的那几条内层命令那一口住协议零件那一层（[`crate::wire::typed::Here`]，命令表那一行递进来）。
+use crate::wire::typed::Here;
 
 /// 枢纽要问的一台：`None` = 这台自己。
 fn machine_of(args: &Value, k: &str) -> Result<Option<String>, (String, String)> {
@@ -135,7 +129,7 @@ fn machine_name(m: Option<&str>) -> String {
 /// 枢纽按自己这台的写法判会把别台的路径错拒（Windows 上的枢纽不认 `/home/…`）。
 fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
     let s = args.get("scope");
-    let own = |e: crate::stream::inbound::spec::Fail| (e.code, e.message);
+    let own = |e: crate::wire::spec::Fail| (e.code, e.message);
     Ok((
         ExtLoc::shape_of(s.and_then(|s| s.get("from")), "scope.from").map_err(own)?,
         ExtLoc::shape_of(s.and_then(|s| s.get("to")), "scope.to").map_err(own)?,
@@ -168,7 +162,7 @@ struct Ask<'a> {
 }
 
 fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
-    let own = |e: crate::stream::inbound::spec::Fail| (e.code, e.message);
+    let own = |e: crate::wire::spec::Fail| (e.code, e.message);
     let kind = ExtKind::from_arg(args).map_err(own)?;
     let (from, to) = (machine_of(args, "from")?, machine_of(args, "to")?);
     let name = str_arg(args, "name")?;
@@ -694,12 +688,8 @@ fn said_of(m: String) -> (String, Option<String>) {
 }
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current` 带上那份写句柄，由命令表那扇门递进来）；`Sync` ⇒ 跨 await 送得出去。
-pub(crate) type CurrentFn<'a> = &'a (dyn Fn(
-    bool,
-) -> Result<
-    (super::asset_catalog::Catalog, Vec<String>),
-    crate::stream::inbound::spec::Fail,
-> + Sync);
+pub(crate) type CurrentFn<'a> = &'a (dyn Fn(bool) -> Result<(super::asset_catalog::Catalog, Vec<String>), crate::wire::spec::Fail>
+         + Sync);
 
 /// 那张表现拼一次（`ext-list` 同一份目录 ＋ 可达表）；目录那一份由命令表那扇门递进来（同 `ext-list`）。
 fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, (String, String)> {

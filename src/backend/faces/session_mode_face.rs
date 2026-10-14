@@ -6,7 +6,7 @@ use crate::common::cells::Words;
 use crate::common::contract::malformed;
 use crate::control::terminals::{self, no_said, CmdErr, On, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
-use crate::stream::inbound::typed::{self, Blocking, Command, Cx};
+use crate::wire::typed::{self, Blocking, Command, Cx};
 use serde::{Deserialize, Serialize};
 
 /// 按一下之后最多等几次重画（每次至多 `terminal_follow::REDRAW_WAIT`）：重画了、读到的档却还没变 ⇒ 再等一次。

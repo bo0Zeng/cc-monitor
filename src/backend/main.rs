@@ -24,9 +24,10 @@
 //    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
 // ⚠ 用 glob 而不是逐项列 —— 这一段是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
-use cc_monitor_backend::control::cli_control;
 use cc_monitor_backend::faces::read_face;
-use cc_monitor_backend::stream::{inbound, listen, tap, topic_body, topic_hook, wire};
+use cc_monitor_backend::stream::cli;
+use cc_monitor_backend::stream::{inbound, tap, topic_body};
+use cc_monitor_backend::wire::{self, drain, listen, topic_hook};
 use cc_monitor_backend::*;
 
 use std::path::PathBuf;
@@ -152,7 +153,7 @@ async fn main() {
         let z = &wants.tz;
         // 一次性查询模式：手写的几条（tmux 钩子 · 常驻后端起找停）＋ 从帧命令派生的 CLI 面；别的一律「不认识」。
         let code = match args.first().map(String::as_str) {
-            _ if bad_view.is_some() => cli_control::refuse_stream_view(bad_view.as_deref(), z),
+            _ if bad_view.is_some() => cli::refuse_stream_view(bad_view.as_deref(), z),
             // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
@@ -168,15 +169,15 @@ async fn main() {
             // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、
             //   生产里没人调；`--resolve` 照派生规则走下面那条臂（信封与别的命令同一形）。
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
-            // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
+            // 认哪些 flag 由 `cli::spec_for` 从 `inbound::REGISTRY` 派生，
             // 于是「帧面加一条命令」不需要回来改这里。
             // ⚠ **必须写成单行臂**：`argv_table_guard::every_dispatch_arm_actually_calls_an_implementation`
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
-            Some(f) if cli_control::handles(f) => cli_control::run(&args, z, &own).await,
+            Some(f) if cli::handles(f) => cli::run(&args, z, &own).await,
             // 不认识的子命令（含删掉的那几条带着裸参数敲）：stderr 一行 `unknown_command` 失败信封、退出 2。
-            _ => cli_control::refuse_unknown(&args, z),
+            _ => cli::refuse_unknown(&args, z),
         };
         std::process::exit(code);
     }
@@ -254,7 +255,7 @@ async fn main() {
     // 历史清单的缓存同样起来就后台热（低优先级的一次性线程）：第一次打开历史页 / 按 sid 开查看窗不再现扫整台。
     history::listing::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
-    assets::aliases::migrate_here();
+    stream::inbound::migrate_aliases();
     // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
     if resident {
         control::prefs_migration::migrate_here(&own);
@@ -285,8 +286,8 @@ async fn main() {
             inbound::watch_account_mcp(&own);
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
             // 收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
-            //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
-            let stop = inbound::shutdown_listener();
+            //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`drain::exit_after_drain`）。
+            let stop = drain::shutdown_listener();
             tokio::select! {
                 () = serve_listening(
                     listener,
@@ -300,11 +301,11 @@ async fn main() {
                     tracing::info!("shutdown signal received; exiting");
                 }
             }
-            inbound::exit_after_drain("常驻后端收到停机信号", None::<std::future::Ready<()>>).await
+            drain::exit_after_drain("常驻后端收到停机信号", None::<std::future::Ready<()>>).await
         }
     }
 
-    // ★ **必须显式 exit，不能让 runtime 自然 drop。**那一下今天住 `inbound::exit_after_drain`
+    // ★ **必须显式 exit，不能让 runtime 自然 drop。**那一下今天住 `drain::exit_after_drain`
     //   （三个退出口共用）；下面这段理由原样留着，它说的是那一下为什么必须是 `exit`。
     //
     // `tokio::io::stdin()` 走的是**阻塞线程池**。`inbound_task.abort()` 只取消那个 async
@@ -322,7 +323,7 @@ async fn main() {
     // 🪦原话「为什么 exit 是安全的：**流模式后端没有任何待落盘状态** —— 它只读；
     // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了」—— RW1 / FW5 / F9c 之后**已假**：
     // `files-*` 写面、`files-commit-*`、`exit-policy-set`、资产目录、`apikey-key-set`、`history-annotate` 全在流模式里跑，
-    // 当场 `exit` 会把正在写的那一条连线程带走（E §E2）。⇒ 今天 exit 之前先排空停不下来的那一档（`inbound::exit_after_drain`）。
+    // 当场 `exit` 会把正在写的那一条连线程带走（E §E2）。⇒ 今天 exit 之前先排空停不下来的那一档（`drain::exit_after_drain`）。
     // stdout 不欠 flush 那半仍成立：`writer_task` 每帧写完即 flush。
     // 两条载体都不返回（类型上是 `!`，各自在收场处 exit）⇒ 这里没有第二个 exit。
 }
@@ -400,7 +401,7 @@ async fn run_over_stdio(
         Err(e) => {
             tracing::error!("failed to write/flush hello frame: {e}");
             // 一条命令都还没收过 ⇒ 没有可排空的；走同一个收场口只为「exit 只有一处」。
-            inbound::exit_after_drain("hello 写不出去", None::<std::future::Ready<()>>).await
+            drain::exit_after_drain("hello 写不出去", None::<std::future::Ready<()>>).await
         }
     };
 
@@ -423,7 +424,7 @@ async fn run_over_stdio(
     let (poke, book) = observe::watcher::spawn(agent_home, own.clone(), WATCH_REACTIONS);
     tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, attached) = poke.attach(&wants);
+    let (rx, attached) = poke.attach(&wants.tz);
     // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
     let tap_rx = tap::attach(tz.clone());
     let inbound_task = inbound::spawn(
@@ -450,9 +451,9 @@ async fn run_over_stdio(
     let poke_task = spawn_sigusr1_task();
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
-    // 收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
+    // 收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`drain::exit_after_drain`）；
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
-    let stop = inbound::shutdown_listener();
+    let stop = drain::shutdown_listener();
     let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz, view);
     tokio::pin!(writer);
     let signalled = tokio::select! {
@@ -472,12 +473,12 @@ async fn run_over_stdio(
     poke_for_shutdown.shutdown();
     poke_task.abort();
     if signalled {
-        inbound::exit_after_drain("收到停机信号", Some(writer)).await
+        drain::exit_after_drain("收到停机信号", Some(writer)).await
     }
     // 写者断了 = 对端走了（SSH 断 / monitor 退）：入方向不会再有东西来，收掉它再排空。
     inbound_task.abort();
     drop(reply_tx);
-    inbound::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
+    drain::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
 }
 
 /// 这条连接的 `stream-watch` 口接到它在这台 watcher 上的那一份（名单按连接）。
@@ -603,7 +604,7 @@ async fn handshake_one(
         }
     };
     // flags 写坏了与整行坏了同一格拒（`malformed-attach`）。
-    let flags = listen::attach_flags(&line);
+    let flags = inbound::views::attach_flags(&line);
     let verdict = match (listen::attach_verdict(&line), &flags) {
         (listen::Verdict::Attach, Err(())) => listen::Verdict::Malformed,
         (v, _) => v,
@@ -789,7 +790,7 @@ async fn serve_listening(
                 let Attached { reader, writer, hello_flushed, flags } = att;
                 let wants = flags.unwrap_or_else(|| defaults.clone());
                 let (tz, view) = (wants.tz.clone(), wants.view.clone());
-                let (rx, poke) = watcher.attach(&wants);
+                let (rx, poke) = watcher.attach(&wants.tz);
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -836,7 +837,7 @@ async fn serve_listening(
                 if control::exit_policy::last_client_left() {
                     // 不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
                     //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「断开 ⇒ 起一个」走）。
-                    inbound::exit_after_drain(
+                    drain::exit_after_drain(
                         "流结束 ⇒ 这台机器的退出策略是「结束」",
                         None::<std::future::Ready<()>>,
                     )
@@ -948,7 +949,7 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     tz: &cc_monitor_backend::Tz,
     view: Option<&cc_monitor_backend::StreamView>,
 ) -> std::io::Result<usize> {
-    let line = cc_monitor_backend::stream::wire::to_line_viewed(frame, view)
+    let line = cc_monitor_backend::stream::inbound::views::to_line_viewed(frame, view)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     let line = cc_monitor_backend::stamp_detail_slots(&line, tz);
     out.write_all(line.as_bytes()).await?;

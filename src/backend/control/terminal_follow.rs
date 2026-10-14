@@ -50,7 +50,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use super::terminals::{self, On};
-use crate::stream::wire::{FollowEnd, Frame};
+use crate::wire::{FollowEnd, Frame};
 
 /// 订上。
 pub const FOLLOW: &str = "terminal-follow";
@@ -143,7 +143,7 @@ struct Inner {
     tickets: Tickets,
 }
 
-type CmdErr = crate::stream::inbound::spec::Fail;
+type CmdErr = crate::wire::spec::Fail;
 
 fn bad_args(detail: &str) -> CmdErr {
     CmdErr::new("bad_args", crate::common::contract::malformed(detail))

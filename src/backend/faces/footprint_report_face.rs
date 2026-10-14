@@ -5,7 +5,7 @@
 use crate::footprint::data::DataReport;
 use crate::footprint::rows::ConfigSurfaceReport;
 use crate::footprint::FootprintReq;
-use crate::stream::inbound::typed::{self, codes, Blocking, Command, Cx, Files, WithFiles};
+use crate::wire::typed::{self, codes, Blocking, Command, Cx, Files, WithFiles};
 
 codes! {
     /// 足迹那两条的码。

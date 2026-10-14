@@ -20,7 +20,7 @@ fn the_src_root_address_points_at_a_real_tree() {
             &[
                 "main.rs",
                 "stream/inbound/mod.rs",
-                "stream/listen.rs",
+                "wire/listen.rs",
                 "Cargo.toml",
             ][..],
         ),

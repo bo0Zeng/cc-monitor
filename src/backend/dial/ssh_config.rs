@@ -13,7 +13,7 @@ use serde::Serialize;
 
 /// 命令级错误：`(code, message)`。
 /// 失败：码 ＋ 那一句 ＋ 原话（`ssh -G` 自己说的 · 起不来时的系统报错，进复制详情）。
-type CmdErr = crate::stream::inbound::spec::Fail;
+type CmdErr = crate::wire::spec::Fail;
 
 /// 一个别名解析出的有效连接参数（聚合之前的那一份）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -345,7 +345,7 @@ pub(crate) struct SshImported {
     pub(crate) groups: Vec<ImportGroup>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `ssh-config-import` 只有 `bad_args`（解析失败的别名照跳过，不整条回错）。
     pub(crate) enum ImportErr {}
 }
@@ -353,18 +353,15 @@ crate::stream::inbound::typed::codes! {
 /// `ssh-config-import`：批量导入预览。阻塞档：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出。
 pub(crate) struct SshConfigImport;
 
-impl crate::stream::inbound::typed::Command for SshConfigImport {
+impl crate::wire::typed::Command for SshConfigImport {
     const NAME: &'static str = "ssh-config-import";
     type Req = SshImportReq;
     type Reply = SshImported;
     type Err = ImportErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for SshConfigImport {
-    fn run(
-        req: SshImportReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<SshImported, ImportErr> {
+impl crate::wire::typed::Blocking for SshConfigImport {
+    fn run(req: SshImportReq, _cx: &crate::wire::typed::Cx) -> Result<SshImported, ImportErr> {
         let mut groups = import();
         mark_in_list(&mut groups, &req.known);
         Ok(SshImported { groups })

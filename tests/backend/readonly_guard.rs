@@ -745,10 +745,7 @@ mod tests {
         ("DiagLog::issue", &["main.rs"]),
         // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
         //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
-        (
-            "Face::issue",
-            &["stream/inbound/mod.rs", "stream/inbound/spec.rs"],
-        ),
+        ("Face::issue", &["stream/inbound/mod.rs", "wire/spec.rs"]),
         // 分叉那只只会新建的手：只有分叉那两条命令造 —— 都是 typed，各在它自己那份实现里。
         (
             "NewFile::issue",
@@ -799,7 +796,8 @@ mod tests {
 
     #[test]
     fn only_the_file_manager_commands_are_handed_the_face() {
-        use crate::stream::inbound::{Run, REGISTRY};
+        use crate::stream::inbound::REGISTRY;
+        use crate::wire::spec::Run;
         let got: std::collections::BTreeSet<&str> = REGISTRY
             .iter()
             .filter(|s| matches!(s.run, Run::Typed(t) if t.hands_the_face()))
@@ -2074,20 +2072,20 @@ mod g6_staged_zero {
             "跨 crate",
         ),
         // 住址跟着**判据**搬：这两条的第二栏是判据名，
-        // 而那两条判据这一轮从 `src/backend/stream/wire.rs` 的测试段搬进了
-        // `tests/backend/stream/wire_tests.rs`。**表的条数一格没变。**
+        // 而那两条判据这一轮从 `src/backend/wire/mod.rs` 的测试段搬进了
+        // `tests/backend/wire/wire_tests.rs`。**表的条数一格没变。**
         // ⚠ 顺带收紧了一格：旧住址（生产段那份 `wire.rs`）里今天只剩一句**散文**提到
         //   第一个名字 —— 存在性检查在散文上照样过，而那不是「判据还在」。
         //   指到判据真住的那份文件之后，它认的是那个 `fn` 本身。
         (
-            "tests/backend/stream/wire_tests.rs",
+            "tests/backend/wire/wire_tests.rs",
             "production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen",
             "`main.rs` 生产段给 `homes` 赋值**恰好 1 处**且逐字是空构造",
             "自己就是那条判据",
             "本 crate",
         ),
         (
-            "tests/backend/stream/wire_tests.rs",
+            "tests/backend/wire/wire_tests.rs",
             "the_backend_can_already_discover_homes_it_just_does_not_send_them",
             "反锚：发现能力**还在**（合成夹具走真发现路 + 精确字节断言）",
             "自己就是那条判据",
@@ -2367,7 +2365,7 @@ mod g6_scope_pins {
 ///
 /// # 10-09 现状（下面 09-13 那段是当时的读数）
 ///
-/// CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 的失败都经 `stream::detail::Failed::emit_to` **一处**投出
+/// CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 的失败都经 `wire::detail::Failed::emit_to` **一处**投出
 /// （`{code, message, detail, data?}`，与帧面失败应答同一份）；这张表只剩不走它的两份：`--resolve`（与手机端仓冻结着同一份金样）·
 /// 部署链路那一行应答（不是 CLI 出口）。
 ///
@@ -2385,7 +2383,7 @@ mod g6_scope_pins {
 ///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
 ///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
 /// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
-///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 多一格可缺的 `raw`（下层原话）；
+///    与 `control/oneshot_session.rs` **逐字同形**；`stream/cli.rs` 多一格可缺的 `raw`（下层原话）；
 ///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
 ///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
 ///
@@ -2443,11 +2441,11 @@ mod error_envelope_registry {
     /// 🔴 **不是免检名单**：没签字的当场红，签了字而今天匹配不上的也当场红。
     const SIGNED: &[(&str, &str, &str, &str)] = &[
         // `control/resolve_query.rs` 那一行（`--resolve` 手写臂的 `emit_err` 兜底）删了：第 7 批第二题删了那条手写臂，
-        //   `--resolve` 照派生规则走 CLI 面，失败经 `stream::detail::Failed` 投出，与别的命令同一份。
-        // `control/cli_control.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `stream::detail::Failed` 序列化，
+        //   `--resolve` 照派生规则走 CLI 面，失败经 `wire::detail::Failed` 投出，与别的命令同一份。
+        // `stream/cli.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `wire::detail::Failed` 序列化，
         //   与帧面失败应答同一份（`{code, message, detail, data?}`），不再手拼键。
         // `control/fork_write.rs`（`--fork-session` 的 `fail`）与 `observe/accounts_query.rs` 两行（`--account-trust*` 的内联信封 ·
-        //   用法错那一档）删了：10-09 改由 `stream::detail::Failed::emit` 投出，与帧面失败应答同一份；
+        //   用法错那一档）删了：10-09 改由 `wire::detail::Failed::emit` 投出，与帧面失败应答同一份；
         //   观测层引 `stream::` 不是反向边（`--list-projects` 早就这么走），当初「要先动分层」那条理由不成立。
         // `accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
         //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
@@ -2597,7 +2595,7 @@ mod error_envelope_registry {
     #[test]
     fn every_signed_row_says_why_it_is_its_own_copy() {
         // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
-        // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`stream::detail::Failed`，与帧面同一份）。
+        // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`wire::detail::Failed`，与帧面同一份）。
         // 5 → 2：`--fork-session` 与 `--account-trust*`（两行）也收进去了。
         // 2 → 1：`--resolve` 的手写臂删了（10-11），它那份兜底随之没了。
         assert!(

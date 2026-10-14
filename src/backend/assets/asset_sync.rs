@@ -28,7 +28,7 @@
 
 use crate::assets::asset_catalog::{CatalogIn, CatalogMachine, CatalogMergeReq, CatalogReply};
 use crate::common::said::IntoNote as _;
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
@@ -244,16 +244,15 @@ async fn sync_one(
         row.peer = peer.clone();
     }
     // ② 并（对面那一份按并的入参收：形状不对 ⇒ 那一句同写口拒的那一形）
-    let req: CatalogMergeReq =
-        match crate::stream::inbound::typed::take(&json!({ "catalog": theirs })) {
-            Ok(r) => r,
-            Err(f) => {
-                return (
-                    false,
-                    outcome(key, peer.as_deref(), false, 0, &[fold_failed(f)]),
-                )
-            }
-        };
+    let req: CatalogMergeReq = match crate::wire::typed::take(&json!({ "catalog": theirs })) {
+        Ok(r) => r,
+        Err(f) => {
+            return (
+                false,
+                outcome(key, peer.as_deref(), false, 0, &[fold_failed(f)]),
+            )
+        }
+    };
     let theirs = req.catalog.clone();
     let mine = match fold_blocking(fold, req).await {
         Ok(v) => v,

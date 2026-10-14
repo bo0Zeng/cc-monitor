@@ -445,7 +445,7 @@ pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> CcmCard {
     }
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `ccm-probe` 没有别的码。
     pub(crate) enum ProbeErr {}
 }
@@ -453,18 +453,18 @@ crate::stream::inbound::typed::codes! {
 /// `ccm-probe`：这台的 `ccm` 会哪些。纯函数（不起进程、不碰盘）⇒ 不进阻塞档。
 pub(crate) struct CcmProbe;
 
-impl crate::stream::inbound::typed::Command for CcmProbe {
+impl crate::wire::typed::Command for CcmProbe {
     const NAME: &'static str = "ccm-probe";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = CcmCard;
     type Err = ProbeErr;
 }
 
-impl crate::stream::inbound::typed::Async for CcmProbe {
+impl crate::wire::typed::Async for CcmProbe {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<CcmCard, ProbeErr>> + Send + 'static {
         std::future::ready(Ok(answer_probe()))
     }
@@ -488,7 +488,7 @@ pub(crate) struct CcmLine {
     pub(crate) line: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `ccm-print` 的码：ccm 自己拒了这组参数（原话带回）· 给的是 `--help` 这类不起会话的那一形。
     pub(crate) enum PrintErr {
         Refused = "refused",
@@ -498,16 +498,16 @@ crate::stream::inbound::typed::codes! {
 /// `ccm-print`：一条别名实际会执行什么。只读（读账号库 manifest ＋ 问会话快照）⇒ 阻塞档。
 pub(crate) struct CcmPrint;
 
-impl crate::stream::inbound::typed::Command for CcmPrint {
+impl crate::wire::typed::Command for CcmPrint {
     const NAME: &'static str = "ccm-print";
     type Req = CcmPrintReq;
     type Reply = CcmLine;
     type Err = PrintErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for CcmPrint {
-    fn run(req: CcmPrintReq, _cx: &crate::stream::inbound::typed::Cx) -> Result<CcmLine, PrintErr> {
-        answer_print(&req).map_err(crate::stream::inbound::typed::of_pair(PrintErr::Refused))
+impl crate::wire::typed::Blocking for CcmPrint {
+    fn run(req: CcmPrintReq, _cx: &crate::wire::typed::Cx) -> Result<CcmLine, PrintErr> {
+        answer_print(&req).map_err(crate::wire::typed::of_pair(PrintErr::Refused))
     }
 }
 
@@ -619,7 +619,7 @@ pub(crate) struct Minted {
     pub(crate) name: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `terminal-name-mint` 自己的码。
     pub(crate) enum TerminalNameMintErr {
         /// 问会话快照那一次 `tmux` 过了期限。
@@ -630,17 +630,17 @@ crate::stream::inbound::typed::codes! {
 /// `terminal-name-mint`：起会话要的终端名（这台派生基名、按它的会话快照避让）。阻塞档：快照问一次就起一次 `tmux`。
 pub(crate) struct TerminalNameMint;
 
-impl crate::stream::inbound::typed::Command for TerminalNameMint {
+impl crate::wire::typed::Command for TerminalNameMint {
     const NAME: &'static str = "terminal-name-mint";
     type Req = TerminalNameMintReq;
     type Reply = Minted;
     type Err = TerminalNameMintErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for TerminalNameMint {
+impl crate::wire::typed::Blocking for TerminalNameMint {
     fn run(
         req: TerminalNameMintReq,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<Minted, TerminalNameMintErr> {
         let base = match (req.cwd.as_deref(), req.fork_of.as_deref()) {
             (Some(cwd), None) => crate::control::session_batch::NameBase::Cwd(cwd),

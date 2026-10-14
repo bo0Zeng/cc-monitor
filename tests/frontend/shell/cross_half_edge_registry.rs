@@ -173,7 +173,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   开窗那一跳的 `.env(k, v)` 由 monitor 自己的 `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 钉着。
     // `stream_source/emits_parity.rs → src/backend/lib.rs`（`EMITS` 两侧对拍）那一条随那份判据删了：
     //   认得哪些帧改由跨语言金样 `tests/__fixtures__/session-stream.golden.jsonl` 两向比（后端写、monitor 读）。
-    // `ssh_source_f032_idle_tests.rs → src/backend/stream/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
+    // `ssh_source_f032_idle_tests.rs → src/backend/wire/mod.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
     //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
@@ -200,7 +200,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/shell/remote_resident_tests.rs",
-        "src/backend/stream/listen.rs",
+        "src/backend/wire/listen.rs",
         "★**跨 crate 字面量对拍**：小中继「没人在听」那个理由词（`REFUSE_ABSENT`）客户端那一侧（`resident-client`，桌面与手机同一份）与后端各声明一份，重连循环凭它判「等一会儿再接」还是「当场停」；\
          漂了**不会报错** —— 刚起的那台后端还没绑上，会被当成接不上直接报失败 ⇒ 同时读两侧源码才验得了",
     ),

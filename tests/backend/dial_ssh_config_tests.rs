@@ -298,7 +298,7 @@ fn in_list_is_judged_by_host_user_and_port() {
     }
     // 不交列表 ⇒ 拒（界面那一侧恒交，缺了是两侧对不上）。
     assert_eq!(
-        crate::stream::inbound::typed::take::<SshImportReq>(&serde_json::json!({}))
+        crate::wire::typed::take::<SshImportReq>(&serde_json::json!({}))
             .map(|_| ())
             .unwrap_err()
             .code,

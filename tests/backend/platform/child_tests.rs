@@ -42,7 +42,7 @@ fn own_envs_are_exactly_what_the_host_hands_the_backend_for_itself() {
     let handed: std::collections::BTreeSet<String> = crate::control::resident::child_env(
         std::path::Path::new("/h"),
         &[
-            (crate::stream::listen::RELAY_PORT_ENV, "8788".into()),
+            (crate::wire::listen::RELAY_PORT_ENV, "8788".into()),
             (crate::stderr_log::ENV, "~/x.log".into()),
         ],
     )
@@ -51,10 +51,10 @@ fn own_envs_are_exactly_what_the_host_hands_the_backend_for_itself() {
     .collect();
     let mut want_handed: std::collections::BTreeSet<String> =
         want.iter().map(|s| s.to_string()).collect();
-    want_handed.insert(crate::stream::listen::RELAY_PORT_ENV.to_string());
+    want_handed.insert(crate::wire::listen::RELAY_PORT_ENV.to_string());
     assert_eq!(handed, want_handed, "起常驻载体交的 ≠ 自有那一份 ＋ 中转口");
     assert!(
-        !OWN_ENVS.contains(&crate::stream::listen::RELAY_PORT_ENV),
+        !OWN_ENVS.contains(&crate::wire::listen::RELAY_PORT_ENV),
         "中转口不许清：窗格里的 ccm 靠它找同机中转，清掉就去连默认口"
     );
 }
