@@ -66,11 +66,25 @@ pub struct Linked {
 pub struct Hearing<S> {
     inner: S,
     heard: Arc<crate::pool::Heard>,
+    /// 还没收到过对面的字节 ⇒ 收到第一批时报一步「收到 SSH 头」（[`crate::step::BANNER`]），之后不再报。
+    first: Option<StageSink>,
 }
 
 impl<S> Hearing<S> {
     pub fn new(inner: S, heard: Arc<crate::pool::Heard>) -> Self {
-        Hearing { inner, heard }
+        Hearing {
+            inner,
+            heard,
+            first: None,
+        }
+    }
+
+    /// 收到第一批字节时往 `stages` 报一步。
+    pub fn telling(self, stages: &StageSink) -> Self {
+        Hearing {
+            first: Some(stages.clone()),
+            ..self
+        }
     }
 }
 
@@ -84,6 +98,9 @@ impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Hearing<S> {
         let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
         if matches!(r, std::task::Poll::Ready(Ok(()))) && buf.filled().len() > before {
             self.heard.touch();
+            if let Some(s) = self.first.take() {
+                s.step(crate::step::BANNER);
+            }
         }
         r
     }
@@ -240,6 +257,7 @@ impl client::Handler for Checker {
             all.insert(self.endpoint.clone(), actual.clone());
         }
         // 到 host key 校验 = 该地址 TCP ＋ KEX 已过。
+        self.stages.step(crate::step::HOSTKEY);
         self.stages.emit(Stage::HostKey {
             endpoint: self.endpoint.clone(),
             fingerprint: actual.clone(),
@@ -491,10 +509,11 @@ async fn race(
                 };
                 let r = match tcp_hop(&ep).await {
                     Ok((tcp, compress)) => {
+                        stages.step(crate::step::TCP);
                         let config = config(apply && compress);
                         client::connect_stream(
                             config,
-                            Hearing::new(tcp, Arc::clone(&heard)),
+                            Hearing::new(tcp, Arc::clone(&heard)).telling(&stages),
                             checker,
                         )
                         .await
@@ -945,7 +964,7 @@ async fn through_hops(
                 s
             }
             Some(prev) => {
-                let tunnel = open_tunnel(prev, &hop.host, hop.port)
+                let tunnel = open_tunnel(prev, &hop.host, hop.port, stages)
                     .await
                     .map_err(|e| jump_failed(stages, hop_dial_failed(&name), e, None))?;
                 let observed: Arc<Mutex<Option<String>>> = Arc::default();
@@ -961,6 +980,8 @@ async fn through_hops(
                     // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
                     heard: Arc::new(crate::pool::Heard::new()),
                 };
+                let tunnel =
+                    Hearing::new(tunnel, Arc::new(crate::pool::Heard::new())).telling(stages);
                 client::connect_stream(config_for(req.probe, false, &hop_trust), tunnel, checker)
                     .await
                     .map_err(|e| {
@@ -989,13 +1010,16 @@ async fn through_hops(
                 None,
             )
         })?;
+        stages.step(crate::step::AUTH);
         held.push(session);
     }
     let last = held.last().expect("调用方只在有跳板时走这里");
-    let tunnel = open_tunnel(last, &req.host, req.port).await.map_err(|e| {
-        stages.note_why(crate::why::JUMP);
-        (e, None)
-    })?;
+    let tunnel = open_tunnel(last, &req.host, req.port, stages)
+        .await
+        .map_err(|e| {
+            stages.note_why(crate::why::JUMP);
+            (e, None)
+        })?;
     Ok((tunnel, compress, held))
 }
 
@@ -1004,24 +1028,30 @@ async fn open_tunnel(
     via: &client::Handle<Checker>,
     host: &str,
     port: u16,
+    stages: &StageSink,
 ) -> Result<russh::ChannelStream<client::Msg>, Said> {
-    via.channel_open_direct_tcpip(
-        host.to_string(),
-        u32::from(port),
-        "127.0.0.1".to_string(),
-        0,
-    )
-    .await
-    .map(russh::Channel::into_stream)
-    .map_err(|e| {
-        Said::with_raw(
-            copy_text(
-                "beConnect.jump.tunnelFailed",
-                &[("host", host), ("port", &port.to_string())],
-            ),
-            &e,
+    let opened = via
+        .channel_open_direct_tcpip(
+            host.to_string(),
+            u32::from(port),
+            "127.0.0.1".to_string(),
+            0,
         )
-    })
+        .await
+        .map(russh::Channel::into_stream)
+        .map_err(|e| {
+            Said::with_raw(
+                copy_text(
+                    "beConnect.jump.tunnelFailed",
+                    &[("host", host), ("port", &port.to_string())],
+                ),
+                &e,
+            )
+        });
+    if opened.is_ok() {
+        stages.step(crate::step::TUNNEL);
+    }
+    opened
 }
 
 /// 连 ＋ 鉴权。`jump` 在就先连跳板链（[`through_hops`]）、经最后一台开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
@@ -1067,7 +1097,7 @@ pub async fn establish(
         };
         let session = client::connect_stream(
             config_for(req.probe, compress_inner, &target_trust),
-            Hearing::new(tunnel, Arc::clone(&heard)),
+            Hearing::new(tunnel, Arc::clone(&heard)).telling(stages),
             checker,
         )
         .await
@@ -1102,6 +1132,7 @@ pub async fn establish(
         });
         return Err((e, fingerprint));
     }
+    stages.step(crate::step::AUTH);
     stages.emit(Stage::Auth {
         ok: true,
         detail: None,

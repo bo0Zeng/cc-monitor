@@ -1491,6 +1491,7 @@ dependencies = [
  "cmd-wire",
  "comms-inward",
  "copy-core",
+ "guard-core",
  "jni",
  "resident-client",
  "ring",

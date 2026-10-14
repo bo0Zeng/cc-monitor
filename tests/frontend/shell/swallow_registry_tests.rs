@@ -96,6 +96,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/transfer.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "DP1 之后只清**空的** `.part`（一个字节都没落）；清不掉只剩一个 0 字节文件，主错误已在回"),
     ("src/backend/dial/link.rs", "let _ = replies.send(Frame::LinkEnd { link: link.clone(), error, }).await;", Why::PeerGone, ""),
     ("src/backend/dial/probe.rs", "let _ = up_w.shutdown().await;", Why::DeadLink, "测试连接探完关上行写半边（结局已定，这条探活链路随即整条丢掉）"),
+    ("src/backend/ssh-dial/lib.rs", "let _ = tx.send(s);", Why::PeerGone, "拨号进展报给这一趟写进展行的那一头；ack 写出去之后那一头收了，后到的那一步没人要"),
     ("src/backend/ssh-dial/pool.rs", "let _ = self.freed.set(freed);", Why::SetOnce, "族的铃只挂一次"),
     ("src/backend/ssh-dial/sftp.rs", "let _ = s.sftp().remove_file(b).await;", Why::CleanupAfterFailure, "部署换名成功后删自己挪走的旧备份件 / 换名失败而落点已被别的部署者占上时删它；删不掉只剩一份 `.bak`"),
     ("src/backend/ssh-dial/sftp.rs", "let _ = s.sftp().rename(b, rel.clone()).await;", Why::CleanupAfterFailure, "换名失败、落点还空着 ⇒ 把自己挪走的旧文件挪回去（主错误已在回）"),

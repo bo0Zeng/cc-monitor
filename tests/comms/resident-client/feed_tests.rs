@@ -46,6 +46,8 @@ enum Peer {
     Hang,
     /// 握手成、交完头一帧之后**路断成黑洞**：问什么都不回、也不断（没有 EOF）。
     Mute { build: String },
+    /// 慢链路：开链路那一步隔 `gaps`（秒）报一步进展（拨号核心那几行 `progress`），报完照 `then` 回。
+    Slow { gaps: Vec<u64>, then: Box<Peer> },
 }
 
 #[derive(Default)]
@@ -74,7 +76,11 @@ struct T(Arc<Fake>);
 
 impl Transport for T {
     type Stream = tokio::io::DuplexStream;
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
             assert!(command.ends_with("-- --resident-attach"), "{command}");
@@ -82,12 +88,19 @@ impl Transport for T {
                 .lock()
                 .unwrap()
                 .push(tokio::time::Instant::now());
-            let peer = f
+            let mut peer = f
                 .attaches
                 .lock()
                 .unwrap()
                 .pop_front()
                 .unwrap_or(Peer::Absent);
+            if let Peer::Slow { gaps, then } = peer {
+                for g in gaps {
+                    tokio::time::sleep(Duration::from_secs(g)).await;
+                    progress.step();
+                }
+                peer = *then;
+            }
             if matches!(peer, Peer::Hang) {
                 return std::future::pending().await;
             }
@@ -117,9 +130,13 @@ struct D(Arc<Fake>);
 
 impl Transport for D {
     type Stream = tokio::io::DuplexStream;
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let t = T(Arc::clone(&self.0));
-        Box::pin(async move { t.stream(command).await })
+        Box::pin(async move { t.stream(command, progress).await })
     }
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
         let t = T(Arc::clone(&self.0));
@@ -182,7 +199,7 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         }
         Peer::Up { build, die_now } => (build, die_now),
         Peer::Mute { build } => (build, false),
-        Peer::Hang => unreachable!("没人回话的那一拨开不出链路"),
+        Peer::Hang | Peer::Slow { .. } => unreachable!("没人回话 / 还在拨的那一拨开不出链路"),
     };
     let _ = r
         .get_mut()
@@ -900,6 +917,48 @@ async fn a_dial_nobody_answers_is_dropped_in_time_and_retried_without_climbing()
     );
     assert_eq!(f.ensured.load(Ordering::SeqCst), 0, "拨不通 ⇒ 不 ensure");
     // 回过话的失败照旧涨：发完 hello 就死的那一形见 `a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer`。
+}
+
+/// **慢链路**（往返一秒以上、再隔跳板）：登录 ＋ 开 exec 合计远超 [`DIAL_WITHIN`]，但拨号核心一步一步在报进展 ——
+/// 每一步都重新计时，这一拨不丢、一次接上。
+#[tokio::test(start_paused = true)]
+async fn a_slow_dial_that_keeps_moving_is_not_dropped() {
+    let f = Arc::new(Fake::default());
+    let step = DIAL_WITHIN.as_secs() - 2;
+    f.attaches.lock().unwrap().push_back(Peer::Slow {
+        gaps: vec![step; 5],
+        then: Box::new(upp(MINE)),
+    });
+    let t0 = tokio::time::Instant::now();
+    let (feed, _) = start(&f);
+    until("慢链路接上了", || up(&feed)).await;
+    assert_eq!(
+        f.attach_at.lock().unwrap().len(),
+        1,
+        "一步一步在动的那一拨不该被丢下重拨"
+    );
+    assert!(t0.elapsed() >= Duration::from_secs(5 * step));
+}
+
+/// 动过几步、然后**一步都不动了**（拨到一半网断了）：从最后一步起 [`DIAL_WITHIN`] 丢下、隔下界再拨，同样不涨退避。
+#[tokio::test(start_paused = true)]
+async fn a_dial_that_stops_moving_is_dropped_its_window_after_the_last_step() {
+    let f = Arc::new(Fake::default());
+    {
+        let mut a = f.attaches.lock().unwrap();
+        a.push_back(Peer::Slow {
+            gaps: vec![6, 6],
+            then: Box::new(Peer::Hang),
+        });
+        a.push_back(upp(MINE));
+    }
+    let (feed, _) = start(&f);
+    until("再拨接上了", || up(&feed)).await;
+    assert_eq!(
+        gaps_of(&f),
+        vec![12 + (DIAL_WITHIN + RECONNECT_MIN).as_secs()],
+        "最后一步之后 {DIAL_WITHIN:?} 才丢、隔下界再拨"
+    );
 }
 
 /// **宿主报「网回来了 / 网变了 / 回前台」**（`wake`）· 换了一条 SSH（`set_transport`）· ［重试］（`reconnect`）：

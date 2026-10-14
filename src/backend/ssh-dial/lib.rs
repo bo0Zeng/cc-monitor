@@ -11,6 +11,7 @@
 //! ```text
 //! 上行  stream / shell 时是原样写进 SSH channel 的字节；capture · forward 时不读（读到 EOF ＝ 对面走了）
 //! 下行  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）
+//!       progress=true 时每过一步当场一行 {"progress":"tcp|banner|hostkey|auth|tunnel|channel"}（[`step`]；与阶段行交错，不攒）
 //!       然后恰好一行 ack（DialAck，`\n` 结尾）
 //!       其后按用法：stream / shell 原样字节 · capture 一行 Captured 后结束 ·
 //!       forward 每接进一条连接一行 {"accepted":n} ·
@@ -242,6 +243,9 @@ pub struct DialRequest {
     /// 它是一条路径、不是凭据本体；不进连接池的身份（换 agent 不该换连接）。
     #[serde(default)]
     pub agent_sock: Option<String>,
+    /// ack 之前每过一步当场写一行 `{"progress":…}`（[`step`]）。重连循环拿它判「这一拨还在动」（`resident-client` 的 `DIAL_WITHIN`）。
+    #[serde(default)]
+    pub progress: bool,
 }
 
 impl DialRequest {
@@ -405,6 +409,23 @@ pub enum Stage {
     Established,
 }
 
+/// 拨号的进展（`progress` 行的值）：每过一步报一次，经跳板时跳板那几台与目标那一台各走一遍。
+/// 只报「过了」：没过的那一步由 ack 说。读它的那一侧只拿它重新计时，不按名字分支。
+pub mod step {
+    /// 那个口的 TCP 连上了。
+    pub const TCP: &str = "tcp";
+    /// 对面的第一批字节到了（SSH 头）。
+    pub const BANNER: &str = "banner";
+    /// 密钥交换做完、host key 校验过了。
+    pub const HOSTKEY: &str = "hostkey";
+    /// 认证过了。
+    pub const AUTH: &str = "auth";
+    /// 经跳板开出了到下一台的隧道。
+    pub const TUNNEL: &str = "tunnel";
+    /// 通道开了（exec · sftp · shell 那一条；之后就是 ack）。
+    pub const CHANNEL: &str = "channel";
+}
+
 /// `use: capture` 的结果行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Captured {
@@ -426,6 +447,8 @@ pub struct StageSink {
     why: Arc<Mutex<Option<&'static str>>>,
     /// 这一趟最后一次握手时服务端给的 host key 类型。
     key_type: Arc<Mutex<Option<String>>>,
+    /// 进展往哪报（请求带 `progress` 时 [`uses::run_with`] 接上；没有 ⇒ 不报）。
+    steps: Option<tokio::sync::mpsc::UnboundedSender<&'static str>>,
 }
 
 impl StageSink {
@@ -435,6 +458,39 @@ impl StageSink {
             buf: Arc::default(),
             why: Arc::default(),
             key_type: Arc::default(),
+            steps: None,
+        }
+    }
+
+    /// 同一份，另把进展报到回的那一头（[`step`] 那几个）。
+    pub fn reporting(
+        &self,
+    ) -> (
+        StageSink,
+        tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (
+            StageSink {
+                steps: Some(tx),
+                ..self.clone()
+            },
+            rx,
+        )
+    }
+
+    /// 不记阶段 · 原因码 · host key 类型的一份，进展照报到同一头（赛跑里另拨的那一条：它多半被丢掉，但这一趟在等它）。
+    pub fn quiet(&self) -> StageSink {
+        StageSink {
+            steps: self.steps.clone(),
+            ..StageSink::new(false)
+        }
+    }
+
+    /// 过了一步（[`step`]）。
+    pub fn step(&self, s: &'static str) {
+        if let Some(tx) = &self.steps {
+            let _ = tx.send(s);
         }
     }
 

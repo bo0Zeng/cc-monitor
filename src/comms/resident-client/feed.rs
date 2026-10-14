@@ -12,7 +12,7 @@
 //! - 宿主交了一条 SSH（[`Feed::set_transport`]）⇒ 当场接；换了一条 ⇒ 旧流关掉、在新的上接；交 `None` ⇒ 不接、停在断开。
 //! - 每一轮开拨之前先做宿主那一步（[`Transport::before_round`]，桌面：把这一版的后端放到那台）。
 //! - 流断了、SSH 还在 ⇒ 交一个 [`Event::Lost`]（让宿主去探 SSH：多半是它先死了），再按退避接（[`crate::backoff`]，活过 30 s 才清零）。
-//! - 开链路那一步 [`DIAL_WITHIN`] 没回话（静默断网）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
+//! - 开链路那一步 [`DIAL_WITHIN`] 里拨号核心一步进展都没报（静默断网；慢链路每过一步重新计时，[`Progress`]）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
 //!   换了一条 SSH）⇒ 丢下马上再拨。
 //! - 连着的时候判死靠流自己的心跳（[`HEARTBEAT_IDLE`] 没来字节就问活、[`PING_WITHIN`] 没回话就判死），不等 SSH 保活；
 //!   宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句活。
@@ -62,11 +62,34 @@ pub struct Exec {
 
 pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// **开链路那一拨的进展**。拨号核心（`ssh-dial`，两端同一份）每过一步报一次 —— TCP 连上 · 收到 SSH 头 · host key 过了 ·
+/// 认证过 · 经跳板开出隧道 · 通道开了（经跳板时每一台各走一遍）；宿主（桌面经本机后端的链路 · 手机在进程里）读到就原样
+/// [`Progress::step`]，不自己判。循环只看它：每来一步重新计 [`DIAL_WITHIN`]，一步都没来的 [`DIAL_WITHIN`] 才丢下这一拨。
+#[derive(Clone, Default)]
+pub struct Progress(Arc<Notify>);
+
+impl Progress {
+    /// 过了一步。
+    pub fn step(&self) {
+        self.0.notify_one();
+    }
+
+    /// 等下一步（之前报过、还没被等走的那一步当场算）。
+    async fn moved(&self) {
+        self.0.notified().await;
+    }
+}
+
 /// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全；外加宿主那两样（每一轮之前做的那一步 · 装不装得了后端）。
 /// 手机：拨号核心在这台手机上开的链路；桌面：本机常驻后端给的链路（monitor `stream_source/run.rs`）。
 pub trait Transport: Send + Sync + 'static {
     type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>>;
+    /// 开一条长 exec。拨号核心每报一步进展（ack 之前的 `{"progress":…}` 行，`ssh-dial` 的 `step`），宿主原样交给 `progress`（[`Progress`]）。
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>>;
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>>;
     /// 每一轮开拨之前（桌面：部署预检，把这一版的后端放到那台的落点）。缺省不做事。
     fn before_round(&self) -> Boxed<'_, ()> {
@@ -600,7 +623,7 @@ impl<T: Transport> Feed<T> {
     }
 
     /// 开一条 `--resident-attach`、握手（attach 行带这条流的出口声明：会话帧里不要本机才用得上的 `pid`）。
-    /// 开链路那一步：到 [`DIAL_WITHIN`] 没回话 ⇒ 丢下（[`AttachOr::Unanswered`]）；拨着的时候宿主报了事 ⇒ 丢下（[`AttachOr::Interrupted`]）：
+    /// 开链路那一步：[`DIAL_WITHIN`] 里拨号核心一步进展都没报（[`Progress`]）⇒ 丢下（[`AttachOr::Unanswered`]）；每报一步重新计时；拨着的时候宿主报了事 ⇒ 丢下（[`AttachOr::Interrupted`]）：
     /// [`Feed::wake`] · [`Feed::reconnect`]（按的那一下在开拨之后才算：开拨之前按的照旧只省一次等）· [`Feed::set_transport`]（拨这一轮的收工信号 `cut`）。
     async fn attach_on(
         &self,
@@ -608,13 +631,20 @@ impl<T: Transport> Feed<T> {
         cut: &Notify,
     ) -> Result<attach::Attached<T::Stream>, AttachOr> {
         let mut kicked = self.kick.subscribe();
-        let stream = tokio::select! {
-            got = tokio::time::timeout(DIAL_WITHIN, t.stream(backend_command(ATTACH))) => match got {
-                Ok(r) => r.map_err(AttachOr::Dial)?,
-                Err(_) => return Err(AttachOr::Unanswered),
-            },
-            () = cut.notified() => return Err(AttachOr::Interrupted),
-            _ = kicked.changed() => return Err(AttachOr::Interrupted),
+        let progress = Progress::default();
+        let dial = t.stream(backend_command(ATTACH), progress.clone());
+        let quiet = tokio::time::sleep(DIAL_WITHIN);
+        let cut = cut.notified();
+        tokio::pin!(dial, quiet, cut);
+        let stream = loop {
+            tokio::select! {
+                got = &mut dial => break got.map_err(AttachOr::Dial)?,
+                // 拨号核心报了一步进展 ⇒ 重新计时：一步都没来的 DIAL_WITHIN 才丢。
+                () = progress.moved() => quiet.as_mut().reset(tokio::time::Instant::now() + DIAL_WITHIN),
+                () = &mut quiet => return Err(AttachOr::Unanswered),
+                () = &mut cut => return Err(AttachOr::Interrupted),
+                _ = kicked.changed() => return Err(AttachOr::Interrupted),
+            }
         };
         attach::handshake(
             stream,

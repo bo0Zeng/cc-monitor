@@ -36,7 +36,7 @@ const CAP: u64 = 64 * 1024;
 async fn stages_come_out_in_order_then_the_ack_then_the_captured_line() {
     let mut r = tokio::io::BufReader::new(REAL_OUTPUT.as_bytes());
     let mut seen: Vec<ConnectStage> = Vec::new();
-    let ack = handshake(&mut r, "capture", CAP, &mut |s| seen.push(s))
+    let ack = handshake(&mut r, "capture", CAP, &mut |s| seen.push(s), &mut || {})
         .await
         .expect("真读数读不动");
     assert_eq!(
@@ -83,7 +83,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
         "\n"
     );
     let mut r = tokio::io::BufReader::new(out.as_bytes());
-    let e = handshake(&mut r, "stream", CAP, &mut |_| {})
+    let e = handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {})
         .await
         .expect_err("拨不通被读成了通");
     assert_eq!(
@@ -102,7 +102,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
         "\n"
     );
     let mut r = tokio::io::BufReader::new(out.as_bytes());
-    let e = handshake(&mut r, "stream", CAP, &mut |_| {})
+    let e = handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {})
         .await
         .expect_err("拨不通被读成了通");
     assert!(
@@ -115,7 +115,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
         "\n"
     );
     let mut r = tokio::io::BufReader::new(out.as_bytes());
-    let e = handshake(&mut r, "stream", CAP, &mut |_| {})
+    let e = handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {})
         .await
         .expect_err("拨不通被读成了通");
     assert!(
@@ -130,7 +130,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
 async fn an_old_proxy_is_named_not_misread() {
     let out = "{\"ok\":true,\"error\":null,\"fingerprint\":\"SHA256:x\"}\nout\n";
     let mut r = tokio::io::BufReader::new(out.as_bytes());
-    let e = handshake(&mut r, "capture", CAP, &mut |_| {})
+    let e = handshake(&mut r, "capture", CAP, &mut |_| {}, &mut || {})
         .await
         .expect_err("老代理被当成新代理了");
     assert_eq!(
@@ -145,7 +145,7 @@ async fn an_old_proxy_is_named_not_misread() {
         .contains(&copy_core::backend_old(&copy_core::local_machine())));
     // 同一个 ack，请求的是长流 ⇒ **照样出声**（见下面那句为什么）
     let mut r = tokio::io::BufReader::new(out.as_bytes());
-    let e = handshake(&mut r, "stream", CAP, &mut |_| {}).await;
+    let e = handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {}).await;
     assert_eq!(
         e,
         Err(LinkError::TooOld {
@@ -161,24 +161,51 @@ async fn an_old_proxy_is_named_not_misread() {
 async fn silence_garbage_and_an_endless_line_are_three_different_errors() {
     let mut r = tokio::io::BufReader::new(&b""[..]);
     assert_eq!(
-        handshake(&mut r, "stream", CAP, &mut |_| {}).await,
+        handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {}).await,
         Err(LinkError::Silent)
     );
     let mut r = tokio::io::BufReader::new(&b"not json\n"[..]);
     assert!(matches!(
-        handshake(&mut r, "stream", CAP, &mut |_| {}).await,
+        handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {}).await,
         Err(LinkError::Garbled(_))
     ));
     let long = format!("{{\"ok\":true,\"pad\":\"{}\"}}", "x".repeat(100));
     let mut r = tokio::io::BufReader::new(long.as_bytes());
     assert!(matches!(
-        handshake(&mut r, "stream", 32, &mut |_| {}).await,
+        handshake(&mut r, "stream", 32, &mut |_| {}, &mut || {}).await,
         Err(LinkError::LineTooLong(_))
     ));
     // 正控：同一行、上限够 ⇒ 读得过（它是 ok 但缺 `uses` ⇒ 落到 TooOld，不是行太长）
     let mut r = tokio::io::BufReader::new(long.as_bytes());
     assert!(matches!(
-        handshake(&mut r, "stream", CAP, &mut |_| {}).await,
+        handshake(&mut r, "stream", CAP, &mut |_| {}, &mut || {}).await,
         Err(LinkError::TooOld { .. })
     ));
+}
+
+/// 进展行（请求带 `progress` 时拨号核心每过一步一行）：每一行交一次 `on_step`、不当阶段也不当 ack；之后照读 ack。
+#[tokio::test]
+async fn progress_lines_tick_once_each_and_are_not_the_ack() {
+    let text = concat!(
+        r#"{"progress":"tcp"}"#,
+        "\n",
+        r#"{"progress":"banner"}"#,
+        "\n",
+        r#"{"stage":{"kind":"established"}}"#,
+        "\n",
+        r#"{"progress":"channel"}"#,
+        "\n",
+        r#"{"ok":true,"v":2,"uses":["stream"]}"#,
+        "\n",
+    );
+    let mut r = tokio::io::BufReader::new(text.as_bytes());
+    let mut ticks = 0;
+    let mut stages = 0;
+    let ack = handshake(&mut r, "stream", CAP, &mut |_| stages += 1, &mut || {
+        ticks += 1
+    })
+    .await
+    .expect("读不动");
+    assert!(ack.ok);
+    assert_eq!((ticks, stages), (3, 1));
 }

@@ -5,7 +5,9 @@
 //! `lost`（流断了、请 Kotlin 探一次 SSH）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
 
 use resident_client::client::CallError;
-use resident_client::feed::{sink, Boxed, Config, Event, Exec, Feed, Problem, State, Transport};
+use resident_client::feed::{
+    sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
+};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -33,13 +35,19 @@ impl PhoneLink {
     }
 
     /// 在这条连接上开一条用法链路，读到 ack；回下行读端与上行写端。没开成 ⇒ 那一句 ＋ 详情。
-    async fn open(&self, uses: serde_json::Value) -> Result<(DuplexStream, DuplexStream), Problem> {
+    /// 拨号核心报的进展（ack 之前的 `progress` 行）原样交给 `progress`。
+    async fn open(
+        &self,
+        uses: serde_json::Value,
+        progress: &Progress,
+    ) -> Result<(DuplexStream, DuplexStream), Problem> {
         let mut req = self.base.clone();
         if let (Some(r), Some(u)) = (req.as_object_mut(), uses.as_object()) {
             for (k, v) in u {
                 r.insert(k.clone(), v.clone());
             }
             r.insert("stages".into(), false.into());
+            r.insert("progress".into(), true.into());
         }
         let req: ssh_dial::DialRequest = serde_json::from_value(req).map_err(|e| {
             Problem::new(
@@ -64,7 +72,7 @@ impl PhoneLink {
         // 等 ack 那一段被丢下（循环到拨号期限放弃 · 宿主叫停）⇒ 这一拨的任务一并收掉：挂在 SYN 上的那一拨不留着占这个身份的拨号锁，
         // 下一拨才拨得出去。拿到 ack 之后它就是这条链路本身，随两头的读写端收工。
         let dialing = AbortOnDrop(Some(dialing.abort_handle()));
-        let ack = read_ack(&mut down_r).await?;
+        let ack = read_ack(&mut down_r, progress).await?;
         dialing.keep();
         Ok((down_r, up_w)).and_then(|pair| {
             if ack_ok(&ack) {
@@ -96,10 +104,17 @@ impl Drop for AbortOnDrop {
 impl Transport for PhoneLink {
     type Stream = Join<DuplexStream, DuplexStream>;
 
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         Box::pin(async move {
             let (down, up) = self
-                .open(serde_json::json!({ "use": "stream", "command": command }))
+                .open(
+                    serde_json::json!({ "use": "stream", "command": command }),
+                    &progress,
+                )
                 .await?;
             Ok(tokio::io::join(down, up))
         })
@@ -108,11 +123,14 @@ impl Transport for PhoneLink {
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
         Box::pin(async move {
             let (mut down, _up) = self
-                .open(serde_json::json!({
-                    "use": "capture",
-                    "command": command,
-                    "capture": { "max_bytes": CAPTURE_MAX },
-                }))
+                .open(
+                    serde_json::json!({
+                        "use": "capture",
+                        "command": command,
+                        "capture": { "max_bytes": CAPTURE_MAX },
+                    }),
+                    &Progress::default(),
+                )
                 .await?;
             let line = read_line(&mut down).await.ok_or_else(|| {
                 Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
@@ -122,14 +140,19 @@ impl Transport for PhoneLink {
     }
 }
 
-/// 读到 ack 那一行（阶段行跳过）。链路没给就收工 ⇒ 当这条连接用不了。
-async fn read_ack(down: &mut DuplexStream) -> Result<serde_json::Value, Problem> {
+/// 读到 ack 那一行（阶段行跳过、进展行交给 `progress`）。链路没给就收工 ⇒ 当这条连接用不了。
+async fn read_ack(
+    down: &mut DuplexStream,
+    progress: &Progress,
+) -> Result<serde_json::Value, Problem> {
     loop {
         let line = read_line(down).await.ok_or_else(|| {
             Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
         })?;
         let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
-        if v.get("stage").is_none() {
+        if v.get("progress").is_some() {
+            progress.step();
+        } else if v.get("stage").is_none() {
             return Ok(v);
         }
     }

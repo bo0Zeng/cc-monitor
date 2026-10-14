@@ -6,7 +6,9 @@
 use super::*;
 use crate::event_replay::EventReplay;
 use crate::session_book::{In as BookIn, LiveMeta};
-use resident_client::feed::{Boxed, Event, Exec, Feed, Install, Problem, State, Transport};
+use resident_client::feed::{
+    Boxed, Event, Exec, Feed, Install, Problem, Progress, State, Transport,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -43,12 +45,16 @@ pub(crate) struct DeskLink {
 impl Transport for DeskLink {
     type Stream = crate::dial_host::DialStream;
 
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         Box::pin(async move {
             let host_label = self.cfg.origin_label();
             let t_exec = std::time::Instant::now();
             // 接成了就是订阅：摘掉一次性总时限（握手那两行各有自己的期限，`HANDSHAKE_LINE`）。
-            let got = crate::dial_host::stream(&self.cfg, &command)
+            let got = crate::dial_host::stream(&self.cfg, &command, &mut || progress.step())
                 .await
                 .map(crate::dial_host::DialStream::lives_long)
                 .map_err(problem_of);

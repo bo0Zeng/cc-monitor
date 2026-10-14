@@ -765,6 +765,31 @@ mod tests {
         assert_eq!(hosts[0]["port"], 2200);
     }
 
+    /// **看门狗到期 ⇒ 拨号核心里那条 TCP 没了**：一条还没等到 ack 的链路（对面接了 TCP、一个字节都不说：黑洞那一形）被关
+    /// （Kotlin 那一侧握手看门狗到点 ⇒ `Core.close`），那一拨在核心里跟着收掉，对面看到这条 TCP 关了 —— 不留一拨挂着占拨号锁。
+    #[test]
+    fn closing_a_link_before_its_ack_takes_its_tcp_down() {
+        let sock = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = sock.local_addr().unwrap().port();
+        let req =
+            serde_json::json!({ "host": "127.0.0.1", "port": port, "user": "u", "use": "hold" });
+        let id =
+            super::open_link(&req.to_string(), std::sync::Arc::new(|_, _| {})).expect("开不成");
+        let (mut peer, _) = sock.accept().expect("核心没拨过来");
+        peer.set_read_timeout(Some(guard_core::wall::CEILING))
+            .unwrap();
+        super::close_link(id);
+        let mut buf = [0u8; 256];
+        loop {
+            match std::io::Read::read(&mut peer, &mut buf) {
+                Ok(0) => break,
+                Ok(_) => continue, // 核心先发的 SSH 头
+                Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => break,
+                Err(e) => panic!("关了链路，那条 TCP 还在（{e}）"),
+            }
+        }
+    }
+
     /// 链路表：读不动的请求开不成；开成的链路先交下行字节、收工时交一个「没了」；关掉之后再送 ⇒ `false`。
     #[test]
     fn a_link_opens_reports_its_end_and_refuses_sends_once_closed() {

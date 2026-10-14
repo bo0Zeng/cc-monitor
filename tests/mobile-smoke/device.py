@@ -7,6 +7,9 @@
 #   3 网：模拟器控制台的限速 · 延迟 · 断数据（先量它们管不管用）＋ 模拟器里的 netem（慢）· iptables（静默断）；量「网回来 → 看到新话」。
 #     静默断网 15 秒 · 90 秒：网回来 CCM_DEVICE_REJOIN（默认 10）秒内要重连上，晚了就红（断 90 秒改前要 56 秒）。
 #   4 通知：后台时那台来一条需手动 ⇒ 出通知 · 点它进那一条；一轮完成的通知点进去也得是那一条。
+#   5 慢链路 ＋ 跳板：台架起第二台 sshd 当跳板（rig.sh hop），加一台经它的机器；模拟器里 netem 往返 1.5 秒：
+#     新加那一台要接得上（新建会话答得回）；慢链路上断 20 秒 · 正常网上断 90 秒，网回来 CCM_DEVICE_REJOIN 秒内常驻流要重连上、
+#     文件页（SSH 那层）要列得出来。
 # CCM_DEVICE_BREAK=reconnect：回前台 / 网回来之前把台架 sshd（监听的与已连上的）停掉 ⇒ 2 · 3 必须红（看台架自己会红）。
 import json
 import os
@@ -26,11 +29,14 @@ OUT = smoke.OUT
 PKG = smoke.PKG
 ARM = os.environ.get("CCM_DEVICE_ARM") == "1"
 BREAK = os.environ.get("CCM_DEVICE_BREAK", "")
-ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4").split()
+ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4 5").split()
 # 回前台 / 网回来之后多久还没收齐就判红（秒）。
 WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
 # 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
 REJOIN = float(os.environ.get("CCM_DEVICE_REJOIN", "10"))
+# 跳板那台 sshd 的口（rig.sh hop）。慢链路那一格的往返（模拟器出方向 netem 加的那一段）。
+HOP_PORT = os.environ.get("CCM_SMOKE_HOP_PORT", "22423")
+SLOW_RTT_MS = int(os.environ.get("CCM_DEVICE_SLOW_RTT", "1500"))
 D = "d" + str(int(time.time()))[-5:]
 rows = []  # (项, 结果 绿/红/没核, 说明)
 nums = {}  # 量出来的数：名 → 秒（或说明）
@@ -388,12 +394,13 @@ def item2():
 # ── 3 网 ──
 
 def nc_ms():
-    """模拟器里连一次台架 sshd、读到它的招呼行要多少毫秒（只连 TCP，不登录）。"""
+    """模拟器里连一次台架 sshd、读到它的招呼行要多少毫秒（只连 TCP，不登录）。
+    减法在这边做：模拟器那份 shell 的算术是 32 位，纳秒差过了 2.1 秒就溢出成负数。"""
     out = adb("shell", f'a=$(date +%s%N); n=$(echo | timeout 20 nc -w 5 {smoke.host_alias()} {smoke.PORT} 2>/dev/null | head -c 8 | wc -c); '
-                       f'b=$(date +%s%N); echo $n $(( (b-a)/1000000 ))')
+                       f'b=$(date +%s%N); echo $n $a $b')
     try:
-        n, ms = out.strip().splitlines()[-1].split()
-        return int(ms) if int(n) > 0 else None  # 没读到招呼行 ⇒ 没连通
+        n, a, b = out.strip().splitlines()[-1].split()
+        return (int(b) - int(a)) // 1_000_000 if int(n) > 0 else None  # 没读到招呼行 ⇒ 没连通
     except (ValueError, IndexError):
         return None
 
@@ -500,6 +507,150 @@ def item3():
         say(f"  {notes[-1]}")
     if not adb("shell", "pidof", PKG).strip():
         reds.append("App 没了")
+    if reds:
+        raise Red("；".join(reds + notes))
+    return "；".join(notes)
+
+
+# ── 5 慢链路 ＋ 跳板 ──
+
+def add_host_via(name, host, port, jump=None):
+    """加一台机器：地址 · 口 · 钥匙 smoke；jump ＝ 经哪一台已加的机器跳（屏上那一行「名字 (地址)」）。存完落在它的新建会话屏。"""
+    smoke.to_chat()
+    smoke.drawer(t("mobDrawer.server.named", name=""))
+    tap("+")
+    time.sleep(1.5)
+    tap(t("mobHostEdit.field.name")); smoke.typed(name)
+    tap(t("mobHostEdit.field.host")); smoke.typed(host)
+    tap("22")
+    for k in ("123",) + ("67",) * 4:
+        adb("shell", "input", "keyevent", k)
+    smoke.typed(str(port))
+    tap(t("mobHostEdit.field.user")); smoke.typed(smoke.USER)
+    smoke.hide_keyboard()
+    adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
+    time.sleep(1)
+    tap("smoke")
+    if jump:
+        tap(f"{jump} ({smoke.host_alias()})")
+        time.sleep(0.5)
+    tap(t("mobHostEdit.page.save"))
+    time.sleep(2)
+
+
+def files_listed(t0, secs):
+    """文件页（走 SSH 那层）列出那台家目录的那一刻距 t0 多少秒：进不去 / 没列出来就退回去再进，像人那样再点一次；secs 内都不成 ⇒ None。"""
+    end = t0 + secs
+    while time.time() < end:
+        try:
+            smoke.drawer(t("mobDrawer.item.files"))
+        except smoke.Step.Fail:
+            time.sleep(1)
+            continue
+        for _ in range(3):  # 列不出来那一屏有［重试］：像人那样点它
+            if wait(".bash_profile", 3):
+                return time.time() - t0
+            if not tap(t("front.act.retry"), must=False):
+                break
+    return None
+
+
+def hop_accepts():
+    """跳板那台 sshd 认过几次登录（它的日志里）。"""
+    try:
+        return open(os.path.join(BOX, "logs", "hop-sshd.log"), encoding="utf-8").read().count("Accepted publickey")
+    except OSError:
+        return 0
+
+
+def cut_and_back(label, secs, name):
+    """断 secs 秒（那台在断的时候来一句）→ 网回来：先在那条会话里量那句上屏（常驻流），再量文件页列出（SSH 那层；含先等的那一段）。
+    常驻流重连另从 commands.log 读第一条 ccm（台架上另一台直连的机器也算在里面，以上屏那一格为准）。"""
+    smoke.to_chat()
+    to_session(state["slow_title"])
+    cut_host(True)
+    time.sleep(2)
+    if nc_ms() is not None:
+        cut_host(False)
+        raise Red("断了之后模拟器照样连得通台架（没断成）")
+    send(name, f"{D} {label}")
+    time.sleep(secs)
+    if BREAK == "reconnect":
+        break_reconnect()
+        rig("hop", "down")
+    cut_host(False)
+    t0 = time.time()
+    got = till_visible(f"替身收到：{D} {label}", t0, WITHIN)
+    files = files_listed(t0, WITHIN + 30)
+    cmds = [c for c in commands_after(t0) if "ccm" in c[1]]
+    re_at = round(cmds[0][0] - t0, 1) if cmds else None
+    if BREAK == "reconnect":
+        mend_reconnect()
+        rig("hop", "up")
+    return re_at, None if files is None else round(files, 1), None if got is None else round(got, 1)
+
+
+def item5():
+    reds, notes = [], []
+    rig("hop", "up")
+    smoke.to_chat()
+    add_host_via("hop", smoke.host_alias(), HOP_PORT)
+    base = nc_ms()
+    netem(f"delay {SLOW_RTT_MS}ms")
+    slow = nc_ms()
+    if base is None or slow is None or slow - base < SLOW_RTT_MS * 0.8:
+        netem(None)
+        raise Red(f"netem 没造出慢链路（改前 {base}ms · 改后 {slow}ms）")
+    nums[f"慢链路：连一次 TCP ＋ 读到招呼行（ms，改前 / 改后）"] = f"{base} / {slow}"
+    hops0 = hop_accepts()
+    # ① 慢链路上新加一台经跳板的机器：新建会话答得回。
+    add_host_via("slow", "127.0.0.1", smoke.PORT, jump="hop")
+    t0 = time.time()
+    title = f"{D} slow"
+    # 对话列表出来 ＝ 常驻流接上了（新建会话屏只在打开那一刻问一次那台，没接上就停在「离线」，不拿它判）。
+    smoke.drawer(t("mobDrawer.item.chats"))
+    ready = wait(t("history.section.today"), 180)
+    up_at = time.time() - t0 if ready else None
+    answered = None
+    if ready:
+        smoke.drawer(t("mobDrawer.item.newChat"))
+        wait("Claude Code", 60)
+        tap(t("mobChat.input.placeholder")); smoke.typed(title)
+        smoke.hide_keyboard()
+        tap(t("mobChat.input.send"))
+        answered = till_visible(f"替身收到：{title}", t0, 180)
+    attaches = [c for c in commands_after(t0) if "--resident-attach" in c[1]]
+    nums["慢链路 ＋ 跳板：新加那台 → 常驻流接上（对话列表出来）"] = round(up_at, 1) if up_at is not None else "180s 没接上"
+    nums["慢链路 ＋ 跳板：新加那台 → 新建会话答回"] = round(answered, 1) if answered is not None else "没答回"
+    nums["慢链路 ＋ 跳板：那段时间里起了几次常驻流 · 跳板登录几次"] = f"{len(attaches)} · {hop_accepts() - hops0}"
+    notes.append(f"慢链路接上 {nums['慢链路 ＋ 跳板：新加那台 → 常驻流接上（对话列表出来）']} · "
+                 f"答回 {nums['慢链路 ＋ 跳板：新加那台 → 新建会话答回']}")
+    if answered is None:
+        netem(None)
+        raise Red("慢链路 ＋ 跳板上 180s 内新建会话答不回；" + "；".join(notes))
+    state["slow_title"] = title
+    name = smoke.tmux_name_of(title)
+    if not name:
+        netem(None)
+        raise Red("台架 tmux 里找不到慢链路上那条会话")
+    # ② 慢链路上断 20 秒：网回来要从头拨一条（池里那条死了）——每一步之间隔一两个往返，合计超过拨号期限。
+    # ③ 正常网（跳板照旧）上断 90 秒。
+    for label, secs, shaped in (("slowcut20", 20, True), ("jumpcut90", 90, False)):
+        if not shaped:
+            netem(None)
+        re_at, files, got = cut_and_back(label, secs, name)
+        what = f"{'慢链路' if shaped else '正常网'}断 {secs}s"
+        nums[f"{what}：网回来 → 常驻流重连"] = re_at if re_at is not None else "没有新连进来的命令"
+        nums[f"{what}：网回来 → 文件页列出（SSH 那层）"] = files if files is not None else "没列出"
+        nums[f"{what}：网回来 → 看到断开时来的那句"] = got if got is not None else "没看到"
+        notes.append(f"{what}：重连 {re_at}s · 文件页 {files}s · 看到 {got}s")
+        say(f"  {notes[-1]}")
+        limit = REJOIN + (SLOW_RTT_MS / 1000 * 12 if shaped else 0)  # 慢链路上从头登录一趟本身就要十来个往返
+        if got is None or got > limit:
+            reds.append(f"{what}：网回来 {got}s 断开时来的那句才上屏（要 ≤ {limit:.0f}s）")
+        if files is None or files > limit + 5:  # 文件页那一格含进抽屉 · 点开的几秒
+            reds.append(f"{what}：网回来 {files}s 文件页才列出（要 ≤ {limit + 5:.0f}s）")
+    netem(None)
     if reds:
         raise Red("；".join(reds + notes))
     return "；".join(notes)
@@ -629,14 +780,17 @@ def main():
             adb("shell", "pm", "clear", PKG)
             adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     if "name" in state:
-        for k, name, fn in (("2", "2-Doze待机杀后台", item2), ("3", "3-断网限速", item3), ("4", "4-通知", item4)):
+        for k, name, fn in (("2", "2-Doze待机杀后台", item2), ("3", "3-断网限速", item3), ("4", "4-通知", item4),
+                            ("5", "5-慢链路跳板", item5)):
             if k in ITEMS:
                 item(name, fn)
     else:
-        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知")):
+        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知"), ("5", "5-慢链路跳板")):
             if k in ITEMS:
                 rows.append((name, "红", "准备那一步没成（没连通 / 新会话答不回）", "0s", []))
     netem(None)
+    cut_host(False)
+    rig("hop", "down")
     print()
     print("| 项 | 结果 | 说明 | 用时 |")
     print("|---|---|---|---|")

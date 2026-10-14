@@ -103,6 +103,13 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "resident-client/feed.rs",
+        "attach_on",
+        "wait-for-condition",
+        "开常驻流那一拨的拨号期限（`resident-client`，桌面与手机同一条）：拨号核心每报一步进展就把这一觉往后挪 10 s（`DIAL_WITHIN`），\
+             一步都没来的 10 s 才醒、丢下这一拨；链路开出来 · 宿主报事即止。等的是「这一拨还在不在动」，不是节拍器。",
+    ),
+    (
+        "resident-client/feed.rs",
         "run",
         "wait-for-condition",
         "一台的重连循环（`resident-client`，桌面与手机同一条）睡退避（2→30 s 上限，活过 30 s 才清零）：\
