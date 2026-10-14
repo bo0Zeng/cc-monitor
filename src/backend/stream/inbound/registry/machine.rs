@@ -1,6 +1,5 @@
 //! 命令表 · 机器：`ssh-*` · `remote-*` · `deploy-*` · `resident-*` · `place-verdict` · `drift-report` · `powershell-*` · `authorized-keys-add` · `pubkey-push` · `backend-log` · `exit-policy-*` · `relay-optin` · `forward-*` · `ccm-*`。
 
-use crate::stream::inbound::LocalFiles;
 use crate::wire::spec::{arg, both, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
@@ -41,10 +40,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "把本机公钥推进那台的 `authorized_keys`",
     ),
     // **公钥写进这台的 `authorized_keys`**（被写那台答）：算经 `assets/pubkey.rs`，写经 [`LocalFiles`]（CAS ＋ 建父目录 ＋ 700 / 600）。
-    crate::wire::typed::with_files::<crate::assets::pubkey::AuthorizedKeysAdd>(
-        "把一行公钥并进这台的 `authorized_keys`",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::assets::pubkey::AuthorizedKeysAdd>("把一行公钥并进这台的 `authorized_keys`"),
     // 「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
     //   （`~/.cc-monitor/backend.json`），前端要读要改都经这两条，**前端从不碰那个文件**。
     //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
@@ -54,14 +50,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::exit_policy::ExitPolicyRead>(
         "读「退出行为」那个值（值住后端所在那台）",
     ),
-    crate::wire::typed::owning::<crate::control::exit_policy::ExitPolicySetCmd>("写「退出行为」那个值，写完读回"),
+    crate::wire::typed::blocking::<crate::control::exit_policy::ExitPolicySetCmd>("写「退出行为」那个值，写完读回"),
     // 这台的偏好（`~/.cc-monitor/prefs.json`：启动命令 · 恢复进不进 tmux · 每号模型 · 上下文上限表）：住这台，前端只经这两条读写。
     crate::wire::typed::blocking::<crate::control::machine_prefs::PrefsRead>("读这台的偏好"),
-    crate::wire::typed::owning::<crate::control::machine_prefs::PrefsSetCmd>("改这台的偏好，写完读回"),
+    crate::wire::typed::blocking::<crate::control::machine_prefs::PrefsSetCmd>("改这台的偏好，写完读回"),
     // 这一端的机器表（`~/.cc-monitor/machines.json`：连各台用的名字 · 地址 · 钥匙 · 指纹 · 跳板 · 连不连）：住拨号那一端，monitor 只经这三条读写。
     crate::wire::typed::blocking::<crate::control::machines::MachinesRead>("读这一端的机器表"),
     crate::wire::typed::blocking::<crate::control::machines::MachinesTry>("这串补丁若现在落盘，机器表那一道过不过（盘上不动）"),
-    crate::wire::typed::owning::<crate::control::machines::MachinesSetCmd>("改机器表（按键认那一台），写完读回、推 `changed {machines}`"),
+    crate::wire::typed::blocking::<crate::control::machines::MachinesSetCmd>("改机器表（按键认那一台），写完读回、推 `changed {machines}`"),
     // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
     crate::wire::typed::blocking::<crate::faces::relay_optin_face::RelayOptin>(
         "直接敲的 agent 也走中转",

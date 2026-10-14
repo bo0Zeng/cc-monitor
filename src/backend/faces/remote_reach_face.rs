@@ -3,7 +3,7 @@
 //! 两边只在这里接上：拨号那一层不认识控制面（`layering_guard` 的 dial ↛ control）。
 
 use crate::dial::remote_ask::{answer_reach_with, ReachReq, Reached, REACH};
-use crate::wire::typed::{codes, Async, Command, Cx};
+use crate::wire::typed::{codes, Command};
 use std::future::Future;
 
 codes! {
@@ -21,10 +21,11 @@ impl Command for RemoteReach {
     type Err = ReachErr;
 }
 
-impl Async for RemoteReach {
+impl crate::wire::typed::Handle for RemoteReach {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: ReachReq,
-        cx: Cx,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl Future<Output = Result<Reached, ReachErr>> + Send + 'static {
         let got = answer_reach_with(&req, &REACH).map_err(|(_, said)| ReachErr::BadArgs(said));
         // 第 7 批换形：那台连上了 ⇒ 从旧设置搬来、还待交给它的那一份偏好后台交一次（只在常驻那一位；下一版删）。

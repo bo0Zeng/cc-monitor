@@ -834,14 +834,7 @@ fn typed_handler_files_of(
 ) {
     for ctor in [
         "typed::blocking::<",
-        "typed::with_files::<",
-        "typed::with_own::<",
-        "typed::owning::<",
         "typed::asynchronous::<",
-        "typed::async_with_files::<",
-        "typed::async_owning::<",
-        "typed::async_own::<",
-        "typed::facing::<",
         "typed::frame::<",
     ] {
         for (at, _) in table.match_indices(ctor) {

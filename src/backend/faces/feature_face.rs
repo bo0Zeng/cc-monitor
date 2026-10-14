@@ -8,7 +8,7 @@
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
-use crate::wire::typed::{codes, of_pair, Blocking, Command, Cx};
+use crate::wire::typed::{codes, of_pair, Command};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -53,9 +53,13 @@ impl Command for TasksListCmd {
     type Err = TasksListErr;
 }
 
-impl Blocking for TasksListCmd {
-    fn run(req: TasksListReq, _cx: &Cx) -> Result<TasksList, TasksListErr> {
-        tasks_at(&crate::history::listing::agent_home(), req)
+impl crate::wire::typed::Handle for TasksListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: TasksListReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<TasksList, TasksListErr>> + Send + 'static {
+        async move { tasks_at(&crate::history::listing::agent_home(), req) }
     }
 }
 
@@ -96,12 +100,16 @@ impl Command for HooksDiagCmd {
     type Err = HooksDiagErr;
 }
 
-impl Blocking for HooksDiagCmd {
+impl crate::wire::typed::Handle for HooksDiagCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: &Cx,
-    ) -> Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr> {
-        capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge)
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr>,
+    > + Send
+           + 'static {
+        async move { capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge) }
     }
 }
 
@@ -135,9 +143,18 @@ impl Command for McpReadCmd {
     type Err = McpReadErr;
 }
 
-impl Blocking for McpReadCmd {
-    fn run(req: McpReadReq, cx: &Cx) -> Result<McpReadReply, McpReadErr> {
-        mcp_read_here(&req, &cx.tz)
+impl crate::wire::typed::Handle for McpReadCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: McpReadReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<McpReadReply, McpReadErr>> + Send + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            mcp_read_here(&req, &cx.tz)
+        }
     }
 }
 
@@ -385,17 +402,26 @@ impl crate::wire::typed::Command for SessionTerminals {
     type Err = SessionTerminalsErr;
 }
 
-impl crate::wire::typed::Blocking for SessionTerminals {
+impl crate::wire::typed::Handle for SessionTerminals {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: crate::observe::session_terminals::SidReq,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<crate::observe::session_terminals::Showing, SessionTerminalsErr> {
-        crate::observe::session_terminals::answer_at(&crate::history::listing::agent_home(), &req)
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::session_terminals::Showing, SessionTerminalsErr>,
+    > + Send
+           + 'static {
+        async move {
+            crate::observe::session_terminals::answer_at(
+                &crate::history::listing::agent_home(),
+                &req,
+            )
             .map_err(|(code, said)| match code {
                 "bad_args" => SessionTerminalsErr::BadArgs(said),
                 "no_such_session" => SessionTerminalsErr::NoSuchSession(said),
                 crate::platform::child::TIMED_OUT => SessionTerminalsErr::ChildTimedOut(said),
                 _ => SessionTerminalsErr::Failed(said),
             })
+        }
     }
 }

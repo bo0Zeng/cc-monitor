@@ -10,7 +10,7 @@ use crate::accounts::quota::strategy::FailWhy;
 use crate::accounts::upstream_select::turn::{self, Loaded};
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of, RotTryDecision, RotTryTimeline};
-use crate::wire::typed::{Blocking, Command, Cx};
+use crate::wire::typed::Command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -111,14 +111,19 @@ impl Command for RotationStrategies {
     type Err = RotationStrategiesErr;
 }
 
-impl Blocking for RotationStrategies {
+impl crate::wire::typed::Handle for RotationStrategies {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: RotationStrategiesReq,
-        _cx: &Cx,
-    ) -> Result<RotationStrategiesReply, RotationStrategiesErr> {
-        let ctx = Ctx::here();
-        let live = (ctx.hop.live)();
-        Ok(strategies_with(&ctx, &req, &|sid| live.contains(sid)))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationStrategiesReply, RotationStrategiesErr>>
+           + Send
+           + 'static {
+        async move {
+            let ctx = Ctx::here();
+            let live = (ctx.hop.live)();
+            Ok(strategies_with(&ctx, &req, &|sid| live.contains(sid)))
+        }
     }
 }
 
@@ -487,17 +492,27 @@ impl Command for RotationView {
     type Err = RotationViewErr;
 }
 
-impl Blocking for RotationView {
-    fn run(req: RotationViewReq, cx: &Cx) -> Result<RotationViewReply, RotationViewErr> {
-        let ctx = Ctx::here();
-        let live = (ctx.hop.live)();
-        view_with(
-            &ctx,
-            &req,
-            crate::accounts::quota::now_unix(),
-            &cx.tz,
-            &|sid| live.contains(sid),
-        )
+impl crate::wire::typed::Handle for RotationView {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: RotationViewReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationViewReply, RotationViewErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            let ctx = Ctx::here();
+            let live = (ctx.hop.live)();
+            view_with(
+                &ctx,
+                &req,
+                crate::accounts::quota::now_unix(),
+                &cx.tz,
+                &|sid| live.contains(sid),
+            )
+        }
     }
 }
 

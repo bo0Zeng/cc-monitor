@@ -747,6 +747,14 @@ fn command(out: &mut String, spec: &CommandSpec) {
         let codes: Vec<String> = spec.codes.iter().map(|c| format!("`{c}`")).collect();
         let _ = writeln!(out, "码：{}\n", codes.join(" · "));
     }
+    // 带 `data` 的码：`data` 的形状（声明在上面那一块里）。
+    if let Run::Typed(t) = spec.run {
+        let data = (t.shape)().data;
+        if !data.is_empty() {
+            let d: Vec<String> = data.iter().map(|(c, t)| format!("`{c}` ⇒ `{t}`")).collect();
+            let _ = writeln!(out, "失败带 `data` 的码：{}\n", d.join(" · "));
+        }
+    }
 }
 
 fn commands(out: &mut String) {

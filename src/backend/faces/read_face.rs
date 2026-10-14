@@ -140,13 +140,19 @@ impl crate::wire::typed::Command for BackendLog {
     type Err = BackendLogErr;
 }
 
-impl crate::wire::typed::Blocking for BackendLog {
-    fn run(req: BackendLogReq, _cx: &crate::wire::typed::Cx) -> Result<LogTail, BackendLogErr> {
-        let max = req
-            .max_bytes
-            .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
-        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-            .map_err(crate::wire::typed::of_pair(BackendLogErr::Failed))
+impl crate::wire::typed::Handle for BackendLog {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BackendLogReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LogTail, BackendLogErr>> + Send + 'static {
+        async move {
+            let max = req
+                .max_bytes
+                .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
+            log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
+                .map_err(crate::wire::typed::of_pair(BackendLogErr::Failed))
+        }
     }
 }
 
@@ -166,10 +172,11 @@ impl crate::wire::typed::Command for DriftReportCmd {
     type Err = DriftReportErr;
 }
 
-impl crate::wire::typed::Async for DriftReportCmd {
+impl crate::wire::typed::Handle for DriftReportCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<crate::agents::drift::DriftReport, DriftReportErr>>
            + Send
            + 'static {

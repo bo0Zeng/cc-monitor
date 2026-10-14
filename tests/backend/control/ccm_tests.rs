@@ -1066,7 +1066,7 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
         "proj-cc"
     );
     // 入参组合不对（两个都没给 · 两个都给）⇒ `bad_args`，不去问快照；形状不对（类型错 · 多一个键）在解入参那一步就拒了。
-    use crate::wire::typed::{Blocking as _, Codes as _};
+    use crate::wire::typed::{Codes as _, Handle as _};
     for (cwd, fork_of) in [(None, None), (Some("/a"), Some("b"))] {
         let req = TerminalNameMintReq {
             cwd: cwd.map(str::to_string),
@@ -1075,8 +1075,11 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
         let cx = crate::wire::typed::Cx {
             tz: Default::default(),
             until: None,
+            needs: (),
         };
-        let got = TerminalNameMint::run(req, &cx).unwrap_err().into_fail();
+        let got = crate::wire::spec::finish(TerminalNameMint::run(req, cx))
+            .unwrap_err()
+            .into_fail();
         assert_eq!(got.code, "bad_args");
     }
 }

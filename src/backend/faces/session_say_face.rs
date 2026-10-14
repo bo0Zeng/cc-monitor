@@ -8,7 +8,7 @@ use crate::control::launch_account::AccountAsk;
 use crate::control::session_batch::{self as batch, Answer, Item};
 use crate::control::terminals::{input_reply, no_said, CmdErr, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
-use crate::wire::typed::{self, Command, Cx, Files, WithFiles};
+use crate::wire::typed::{self, Command, Files};
 use serde::Deserialize;
 
 /// `session-say` 的入参。
@@ -51,19 +51,29 @@ impl Command for SessionSay {
     type Err = SessionSayErr;
 }
 
-impl WithFiles for SessionSay {
-    fn run(req: SessionSayReq, _cx: &Cx, files: Files) -> Result<Sent, SessionSayErr> {
-        let home = crate::history::listing::agent_home();
-        let asked = crate::control::asks::sids();
-        let waiting = |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
-        let resume = |r: &SessionSayReq| resume_here(r, files);
-        say_with(
-            &req,
-            &waiting,
-            &crate::control::terminals_wire::input,
-            &resume,
-        )
-        .map_err(|f| typed::of_fail(f, SessionSayErr::Unobservable))
+impl crate::wire::typed::Handle for SessionSay {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: SessionSayReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Sent, SessionSayErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            let home = crate::history::listing::agent_home();
+            let asked = crate::control::asks::sids();
+            let waiting =
+                |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
+            let resume = |r: &SessionSayReq| resume_here(r, files);
+            say_with(
+                &req,
+                &waiting,
+                &crate::control::terminals_wire::input,
+                &resume,
+            )
+            .map_err(|f| typed::of_fail(f, SessionSayErr::Unobservable))
+        }
     }
 }
 

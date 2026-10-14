@@ -9,7 +9,7 @@ pub(crate) use crate::assets::hub_wire::{
     SkillPlanCmd, SkillReadCmd,
 };
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, codes, Blocking, Codes, Command, Cx, Files, WithFiles, WithOwn};
+use crate::wire::typed::{self, codes, Codes, Command};
 
 /// 下层那一份失败收进这一条的码表（码不在表里 ⇒ `fallback`）。
 fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Fail) -> E {
@@ -51,9 +51,16 @@ impl Inner for SkillReadCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl Blocking for SkillReadCmd {
-    fn run(req: wire::SkillReadReq, _cx: &Cx) -> Result<wire::SkillRead, SkillReadErr> {
-        crate::assets::skill_install::answer_read(&req).map_err(own_err(SkillReadErr::IoFailed))
+impl crate::wire::typed::Handle for SkillReadCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::SkillReadReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::SkillRead, SkillReadErr>> + Send + 'static
+    {
+        async move {
+            crate::assets::skill_install::answer_read(&req).map_err(own_err(SkillReadErr::IoFailed))
+        }
     }
 }
 
@@ -84,9 +91,16 @@ impl Inner for SkillPlanCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl Blocking for SkillPlanCmd {
-    fn run(req: wire::SkillPlanReq, _cx: &Cx) -> Result<wire::SkillPlan, SkillPlanErr> {
-        crate::assets::skill_install::answer_plan(&req).map_err(own_err(SkillPlanErr::IoFailed))
+impl crate::wire::typed::Handle for SkillPlanCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::SkillPlanReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::SkillPlan, SkillPlanErr>> + Send + 'static
+    {
+        async move {
+            crate::assets::skill_install::answer_plan(&req).map_err(own_err(SkillPlanErr::IoFailed))
+        }
     }
 }
 
@@ -119,21 +133,26 @@ impl Inner for SkillApplyCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl WithOwn for SkillApplyCmd {
+impl crate::wire::typed::Handle for SkillApplyCmd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: wire::SkillApplyReq,
-        _cx: &Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<wire::SkillApplied, SkillApplyErr> {
-        crate::assets::skill_flow::answer_install(
-            files,
-            &crate::assets::mcp_sync::Live::from_env(),
-            None,
-            &record(own),
-            &req,
-        )
-        .map_err(own_err(SkillApplyErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::SkillApplied, SkillApplyErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            crate::assets::skill_flow::answer_install(
+                files,
+                &crate::assets::mcp_sync::Live::from_env(),
+                None,
+                &record(own),
+                &req,
+            )
+            .map_err(own_err(SkillApplyErr::IoFailed))
+        }
     }
 }
 
@@ -166,18 +185,24 @@ impl Inner for McpSourceCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl WithFiles for McpSourceCmd {
+impl crate::wire::typed::Handle for McpSourceCmd {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: wire::McpSourceReq,
-        _cx: &Cx,
-        files: Files,
-    ) -> Result<wire::McpSource, McpSourceErr> {
-        crate::assets::mcp_sync_flow::answer_source(
-            files,
-            crate::assets::ext::Env::here().user_mcp.as_deref(),
-            &req,
-        )
-        .map_err(own_err(McpSourceErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::McpSource, McpSourceErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            crate::assets::mcp_sync_flow::answer_source(
+                files,
+                crate::assets::ext::Env::here().user_mcp.as_deref(),
+                &req,
+            )
+            .map_err(own_err(McpSourceErr::Refused))
+        }
     }
 }
 
@@ -206,18 +231,24 @@ impl Inner for McpPreviewCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl WithFiles for McpPreviewCmd {
+impl crate::wire::typed::Handle for McpPreviewCmd {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: wire::McpPreviewReq,
-        _cx: &Cx,
-        files: Files,
-    ) -> Result<wire::McpPreview, McpPreviewErr> {
-        crate::assets::mcp_sync_flow::answer_preview(
-            files,
-            &crate::assets::mcp_sync::Live::from_env(),
-            &req,
-        )
-        .map_err(own_err(McpPreviewErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::McpPreview, McpPreviewErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            crate::assets::mcp_sync_flow::answer_preview(
+                files,
+                &crate::assets::mcp_sync::Live::from_env(),
+                &req,
+            )
+            .map_err(own_err(McpPreviewErr::Refused))
+        }
     }
 }
 
@@ -250,15 +281,20 @@ impl Inner for McpApplyCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl WithOwn for McpApplyCmd {
+impl crate::wire::typed::Handle for McpApplyCmd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: wire::McpApplyReq,
-        _cx: &Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<wire::McpApplied, McpApplyErr> {
-        crate::assets::mcp_sync_flow::answer_apply(files, &record(own), &req)
-            .map_err(own_err(McpApplyErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::McpApplied, McpApplyErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            crate::assets::mcp_sync_flow::answer_apply(files, &record(own), &req)
+                .map_err(own_err(McpApplyErr::Refused))
+        }
     }
 }
 
@@ -284,9 +320,16 @@ impl Inner for CcBusStateCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl Blocking for CcBusStateCmd {
-    fn run(_req: wire::NoReq, _cx: &Cx) -> Result<wire::CcBusState, CcBusStateErr> {
-        crate::assets::cc_bus_install::answer_state().map_err(own_err(CcBusStateErr::Refused))
+impl crate::wire::typed::Handle for CcBusStateCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: wire::NoReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::CcBusState, CcBusStateErr>> + Send + 'static
+    {
+        async move {
+            crate::assets::cc_bus_install::answer_state().map_err(own_err(CcBusStateErr::Refused))
+        }
     }
 }
 
@@ -314,14 +357,19 @@ impl Inner for CcBusInstallCmd {
     type Reply = <Self as Command>::Reply;
 }
 
-impl WithOwn for CcBusInstallCmd {
+impl crate::wire::typed::Handle for CcBusInstallCmd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         _req: wire::NoReq,
-        _cx: &Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<wire::CcBusInstalled, CcBusInstallErr> {
-        crate::assets::cc_bus_install::answer_install(files, &record(own))
-            .map_err(own_err(CcBusInstallErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::CcBusInstalled, CcBusInstallErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            crate::assets::cc_bus_install::answer_install(files, &record(own))
+                .map_err(own_err(CcBusInstallErr::Refused))
+        }
     }
 }

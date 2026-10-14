@@ -531,10 +531,11 @@ impl crate::wire::typed::Command for HistoryListCmd {
     type Err = HistoryListErr;
 }
 
-impl crate::wire::typed::Async for HistoryListCmd {
+impl crate::wire::typed::Handle for HistoryListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: HistoryListReq,
-        cx: crate::wire::typed::Cx,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<HistoryListReply, HistoryListErr>> + Send + 'static
     {
         async move {

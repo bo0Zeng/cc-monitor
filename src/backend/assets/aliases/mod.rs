@@ -1035,13 +1035,18 @@ impl crate::wire::typed::Command for AliasesRead {
     type Err = AliasErr;
 }
 
-impl crate::wire::typed::WithFiles for AliasesRead {
+impl crate::wire::typed::Handle for AliasesRead {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: AliasesReadReq,
-        _cx: &crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
-    ) -> Result<AliasListing, AliasErr> {
-        answer_read(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AliasListing, AliasErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_read(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        }
     }
 }
 
@@ -1055,13 +1060,18 @@ impl crate::wire::typed::Command for AliasesBlockRender {
     type Err = AliasErr;
 }
 
-impl crate::wire::typed::WithFiles for AliasesBlockRender {
+impl crate::wire::typed::Handle for AliasesBlockRender {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: BlockReq,
-        _cx: &crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
-    ) -> Result<BlockText, AliasErr> {
-        answer_block_render(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BlockText, AliasErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_block_render(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        }
     }
 }
 
@@ -1075,13 +1085,19 @@ impl crate::wire::typed::Command for AliasesBlockInstall {
     type Err = AliasErr;
 }
 
-impl crate::wire::typed::WithFiles for AliasesBlockInstall {
+impl crate::wire::typed::Handle for AliasesBlockInstall {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: BlockReq,
-        _cx: &crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
-    ) -> Result<BlockDone, AliasErr> {
-        answer_block_install(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BlockDone, AliasErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_block_install(files, &req)
+                .map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        }
     }
 }
 
@@ -1095,13 +1111,18 @@ impl crate::wire::typed::Command for AliasesBlockRemove {
     type Err = AliasErr;
 }
 
-impl crate::wire::typed::WithFiles for AliasesBlockRemove {
+impl crate::wire::typed::Handle for AliasesBlockRemove {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: BlockReq,
-        _cx: &crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
-    ) -> Result<BlockDone, AliasErr> {
-        answer_block_remove(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BlockDone, AliasErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_block_remove(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+        }
     }
 }
 
@@ -1115,9 +1136,13 @@ impl crate::wire::typed::Command for PowershellPolicySet {
     type Err = AliasErr;
 }
 
-impl crate::wire::typed::Blocking for PowershellPolicySet {
-    fn run(req: PolicySetReq, _cx: &crate::wire::typed::Cx) -> Result<PolicySet, AliasErr> {
-        answer_policy_set(&req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
+impl crate::wire::typed::Handle for PowershellPolicySet {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: PolicySetReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<PolicySet, AliasErr>> + Send + 'static {
+        async move { answer_policy_set(&req).map_err(crate::wire::typed::of_pair(AliasErr::Refused)) }
     }
 }
 

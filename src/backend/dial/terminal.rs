@@ -284,17 +284,21 @@ impl crate::wire::typed::Command for TerminalSsh {
     type Err = TerminalSshErr;
 }
 
-impl crate::wire::typed::Blocking for TerminalSsh {
+impl crate::wire::typed::Handle for TerminalSsh {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: TerminalSshReq,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<SshCommand, TerminalSshErr> {
-        answer_in(
-            &req,
-            crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
-            &crate::platform::ssh_client::locate(),
-        )
-        .map_err(crate::wire::typed::of_pair(TerminalSshErr::Refused))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<SshCommand, TerminalSshErr>> + Send + 'static
+    {
+        async move {
+            answer_in(
+                &req,
+                crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+                &crate::platform::ssh_client::locate(),
+            )
+            .map_err(crate::wire::typed::of_pair(TerminalSshErr::Refused))
+        }
     }
 }
 

@@ -5,7 +5,7 @@
 
 use crate::platform::fs::Face;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, codes, Codes, Command, Cx, Facing};
+use crate::wire::typed::{self, codes, Codes, Command};
 use cmd_wire::files as wire;
 
 /// 写的那几条共用：问本体，失败收进这一条的码表（原话跟着那一句走）。
@@ -57,13 +57,20 @@ impl Command for FilesCreate {
     type Err = FilesCreateErr;
 }
 
-impl Facing for FilesCreate {
+impl crate::wire::typed::Handle for FilesCreate {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesCreateReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPathBytesReply, FilesCreateErr> {
-        ask(req, face, FilesCreateErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathBytesReply, FilesCreateErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesCreateErr::BadArgs)
+        }
     }
 }
 
@@ -93,13 +100,19 @@ impl Command for FilesMkdir {
     type Err = FilesMkdirErr;
 }
 
-impl Facing for FilesMkdir {
+impl crate::wire::typed::Handle for FilesMkdir {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesMkdirReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPathReply, FilesMkdirErr> {
-        ask(req, face, FilesMkdirErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesMkdirErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesMkdirErr::BadArgs)
+        }
     }
 }
 
@@ -129,13 +142,19 @@ impl Command for FilesRename {
     type Err = FilesRenameErr;
 }
 
-impl Facing for FilesRename {
+impl crate::wire::typed::Handle for FilesRename {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesRenameReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPathReply, FilesRenameErr> {
-        ask(req, face, FilesRenameErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesRenameErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesRenameErr::BadArgs)
+        }
     }
 }
 
@@ -163,13 +182,19 @@ impl Command for FilesDelete {
     type Err = FilesDeleteErr;
 }
 
-impl Facing for FilesDelete {
+impl crate::wire::typed::Handle for FilesDelete {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesDeleteReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesDeleteReply, FilesDeleteErr> {
-        ask(req, face, FilesDeleteErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesDeleteReply, FilesDeleteErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesDeleteErr::BadArgs)
+        }
     }
 }
 
@@ -197,13 +222,19 @@ impl Command for FilesChmod {
     type Err = FilesChmodErr;
 }
 
-impl Facing for FilesChmod {
+impl crate::wire::typed::Handle for FilesChmod {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesChmodReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesChmodReply, FilesChmodErr> {
-        ask(req, face, FilesChmodErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesChmodReply, FilesChmodErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesChmodErr::BadArgs)
+        }
     }
 }
 
@@ -229,13 +260,19 @@ impl Command for FilesCopy {
     type Err = FilesCopyErr;
 }
 
-impl Facing for FilesCopy {
+impl crate::wire::typed::Handle for FilesCopy {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesCopyReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesTreeReply, FilesCopyErr> {
-        ask(req, face, FilesCopyErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesTreeReply, FilesCopyErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesCopyErr::BadArgs)
+        }
     }
 }
 
@@ -265,13 +302,19 @@ impl Command for FilesExtract {
     type Err = FilesExtractErr;
 }
 
-impl Facing for FilesExtract {
+impl crate::wire::typed::Handle for FilesExtract {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesExtractReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesTreeReply, FilesExtractErr> {
-        ask(req, face, FilesExtractErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesTreeReply, FilesExtractErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesExtractErr::BadArgs)
+        }
     }
 }
 
@@ -297,13 +340,19 @@ impl Command for FilesLink {
     type Err = FilesLinkErr;
 }
 
-impl Facing for FilesLink {
+impl crate::wire::typed::Handle for FilesLink {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesLinkReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPathReply, FilesLinkErr> {
-        ask(req, face, FilesLinkErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesLinkErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesLinkErr::BadArgs)
+        }
     }
 }
 
@@ -331,13 +380,20 @@ impl Command for FilesWriteText {
     type Err = FilesWriteTextErr;
 }
 
-impl Facing for FilesWriteText {
+impl crate::wire::typed::Handle for FilesWriteText {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesWriteTextReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesWrittenReply, FilesWriteTextErr> {
-        ask(req, face, FilesWriteTextErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesWrittenReply, FilesWriteTextErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesWriteTextErr::BadArgs)
+        }
     }
 }
 
@@ -367,13 +423,19 @@ impl Command for FilesPeek {
     type Err = FilesPeekErr;
 }
 
-impl Facing for FilesPeek {
+impl crate::wire::typed::Handle for FilesPeek {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesPeekReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPeekReply, FilesPeekErr> {
-        ask(req, face, FilesPeekErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPeekReply, FilesPeekErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesPeekErr::BadArgs)
+        }
     }
 }
 
@@ -401,13 +463,19 @@ impl Command for FilesPut {
     type Err = FilesPutErr;
 }
 
-impl Facing for FilesPut {
+impl crate::wire::typed::Handle for FilesPut {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesPutReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPutReply, FilesPutErr> {
-        ask(req, face, FilesPutErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPutReply, FilesPutErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesPutErr::BadArgs)
+        }
     }
 }
 
@@ -431,13 +499,20 @@ impl Command for FilesStageChunk {
     type Err = FilesStageChunkErr;
 }
 
-impl Facing for FilesStageChunk {
+impl crate::wire::typed::Handle for FilesStageChunk {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesStageChunkReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesStageChunkReply, FilesStageChunkErr> {
-        ask(req, face, FilesStageChunkErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesStageChunkReply, FilesStageChunkErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesStageChunkErr::BadArgs)
+        }
     }
 }
 
@@ -465,13 +540,20 @@ impl Command for FilesCommitText {
     type Err = FilesCommitTextErr;
 }
 
-impl Facing for FilesCommitText {
+impl crate::wire::typed::Handle for FilesCommitText {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesCommitTextReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesWrittenReply, FilesCommitTextErr> {
-        ask(req, face, FilesCommitTextErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesWrittenReply, FilesCommitTextErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesCommitTextErr::BadArgs)
+        }
     }
 }
 
@@ -499,12 +581,19 @@ impl Command for FilesCommitUpload {
     type Err = FilesCommitUploadErr;
 }
 
-impl Facing for FilesCommitUpload {
+impl crate::wire::typed::Handle for FilesCommitUpload {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesCommitUploadReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPathBytesReply, FilesCommitUploadErr> {
-        ask(req, face, FilesCommitUploadErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathBytesReply, FilesCommitUploadErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            ask(req, face, FilesCommitUploadErr::BadArgs)
+        }
     }
 }

@@ -15,40 +15,63 @@ pub(crate) struct Shape {
     pub(crate) decls: Vec<(String, String)>,
     /// 开跑之后撤不动（阻塞档）。登记那一档定，[`typed`] 填；算进指纹：两端指纹对得上 ⇒ 撤不撤得动也一致。
     pub(crate) uncancellable: bool,
+    /// 带 `data` 的那几个码 ⇒ `data` 的 TS 名（码表次序）；算进指纹：两端读 `data` 的形状对不上 ⇒ 指纹就对不上。
+    pub(crate) data: Vec<(&'static str, String)>,
+}
+
+/// 一个类型的 TS 名，连同它与它递归引到的每个具名类型的声明（按名排、去重）。
+pub(crate) struct Ty {
+    pub(crate) name: String,
+    pub(crate) decls: std::collections::BTreeMap<String, String>,
+}
+
+struct Collect<'a>(
+    &'a ts_rs::Config,
+    std::collections::BTreeMap<String, String>,
+);
+
+impl ts_rs::TypeVisitor for Collect<'_> {
+    fn visit<T: ts_rs::TS + 'static + ?Sized>(&mut self) {
+        if T::output_path().is_none() {
+            return; // 内联的（基本类型 · 容器）：形状在引它的那份声明里
+        }
+        let name = T::name(self.0);
+        if self.1.contains_key(&name) {
+            return;
+        }
+        self.1.insert(name, T::decl(self.0));
+        T::visit_dependencies(self);
+    }
+}
+
+pub(crate) fn ty_of<T: ts_rs::TS + 'static>() -> Ty {
+    let cfg = ts_rs::Config::default();
+    let mut c = Collect(&cfg, Default::default());
+    ts_rs::TypeVisitor::visit::<T>(&mut c);
+    // 是 `()` 之类内联类型 ⇒ 上面那一下没记；它自己的依赖照样走一遍。
+    T::visit_dependencies(&mut c);
+    Ty {
+        name: T::name(&cfg),
+        decls: c.1,
+    }
 }
 
 pub(crate) fn shape_of<C: Command>() -> Shape {
-    use ts_rs::TS;
-    struct Collect<'a>(
-        &'a ts_rs::Config,
-        std::collections::BTreeMap<String, String>,
-    );
-    impl ts_rs::TypeVisitor for Collect<'_> {
-        fn visit<T: TS + 'static + ?Sized>(&mut self) {
-            if T::output_path().is_none() {
-                return; // 内联的（基本类型 · 容器）：形状在引它的那份声明里
-            }
-            let name = T::name(self.0);
-            if self.1.contains_key(&name) {
-                return;
-            }
-            self.1.insert(name, T::decl(self.0));
-            T::visit_dependencies(self);
-        }
+    let (req, reply) = (ty_of::<C::Req>(), ty_of::<C::Reply>());
+    let mut decls = req.decls;
+    decls.extend(reply.decls);
+    let mut data = Vec::new();
+    for (code, ty) in <C::Err as Codes>::data_shapes() {
+        decls.extend(ty.decls);
+        data.push((code, ty.name));
     }
-    let cfg = ts_rs::Config::default();
-    let mut c = Collect(&cfg, Default::default());
-    ts_rs::TypeVisitor::visit::<C::Req>(&mut c);
-    ts_rs::TypeVisitor::visit::<C::Reply>(&mut c);
-    // 入参 / 回包是 `()` 之类内联类型 ⇒ 上面那两下没记；它们自己的依赖照样走一遍。
-    C::Req::visit_dependencies(&mut c);
-    C::Reply::visit_dependencies(&mut c);
     Shape {
-        req: C::Req::name(&cfg),
-        reply: C::Reply::name(&cfg),
+        req: req.name,
+        reply: reply.name,
         codes: <C::Err as Codes>::ALL,
-        decls: c.1.into_iter().collect(),
+        decls: decls.into_iter().collect(),
         uncancellable: false,
+        data,
     }
 }
 
@@ -62,6 +85,11 @@ impl Shape {
             self.codes.join(","),
             if self.uncancellable { "no" } else { "yes" }
         );
+        // 带 `data` 的码：没有就不写这一行（不带 `data` 的命令指纹不变）。
+        if !self.data.is_empty() {
+            let d: Vec<String> = self.data.iter().map(|(c, t)| format!("{c}={t}")).collect();
+            text.push_str(&format!("data {}\n", d.join(",")));
+        }
         for (name, decl) in &self.decls {
             text.push_str(&format!("{name}\n{decl}\n"));
         }
@@ -71,6 +99,35 @@ impl Shape {
             h = h.wrapping_mul(0x0100_0193);
         }
         format!("{h:08x}")
+    }
+}
+
+/// 走登记表跑一条命令（同分派那一层：写句柄是测试档那一份；异步档在当场起的运行时上等它）。各族的测试经它问。
+pub(crate) fn ask(cmd: &str, args: serde_json::Value) -> super::super::spec::Outcome {
+    let spec = REGISTRY
+        .iter()
+        .find(|s| s.name == cmd)
+        .unwrap_or_else(|| panic!("`{cmd}` 不在登记表里"));
+    let req = crate::wire::Request {
+        id: "t".to_string(),
+        cmd: cmd.to_string(),
+        args,
+        within_ms: None,
+        view: serde_json::Value::Null,
+        tz: Default::default(),
+        until: None,
+    };
+    let own = crate::platform::fs::Own::for_tests();
+    match super::super::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(&own))) {
+        Some(super::super::spec::Prepared::Blocking(f)) => f(req),
+        Some(super::super::spec::Prepared::Async(f)) => {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("起运行时")
+                .block_on(f(req))
+        }
+        None => panic!("`{cmd}` 是帧面硬臂，不经登记表跑"),
     }
 }
 

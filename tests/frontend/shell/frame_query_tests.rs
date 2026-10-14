@@ -46,14 +46,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
     for (_, prod) in &families {
         for ctor in [
             "typed::blocking::<",
-            "typed::with_files::<",
-            "typed::with_own::<",
-            "typed::owning::<",
             "typed::asynchronous::<",
-            "typed::async_with_files::<",
-            "typed::async_owning::<",
-            "typed::async_own::<",
-            "typed::facing::<",
         ] {
             for (at, _) in prod.match_indices(ctor) {
                 let rest = &prod[at + ctor.len()..];

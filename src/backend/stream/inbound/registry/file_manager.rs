@@ -59,7 +59,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
     //   别族拿不到它。理由整段在 `control/files_write` 头注「写怎么被挡住」那一节。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesCreate>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesCreate>(
         "在文件管理目标根底下新建一份此前不存在的文件",
     ),
     // ── 改动既有数据的那五条 ──────────
@@ -69,23 +69,25 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⚠ 本段五条与上面 `files-create` 的 `run` 逐字同形（名字从 `r.cmd` 来）。
     // ⚠ 全在阻塞档：同步文件系统 I/O（外加围栏那几次 `canonicalize`），开跑之后打不断
     //   ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesMkdir>("新建一个目录"),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesRename>("改名 / 同根内移动"),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesDelete>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesMkdir>("新建一个目录"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesRename>("改名 / 同根内移动"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesDelete>(
         "删一个文件或一个空目录",
     ),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesChmod>("改 unix 权限位"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesChmod>("改 unix 权限位"),
     // 写面第七条：同根内复制。与上面五条同住一个模块、
     //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给 `Face` 添动词**：由 `O_EXCL` 新建 ＋
     //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesCopy>("同根内复制一份普通文件"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesCopy>(
+        "同根内复制一份普通文件",
+    ),
     // 解压：处理器住
     //   `control/files_extract.rs`，写经 `Face`。阻塞档（同步读包 ＋ 落盘）。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesExtract>("解压到一个新目录"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesExtract>("解压到一个新目录"),
     // 建一条链接（`files_extract.rs::land_link` 那一个动词，FILES2 已在写面闭集里）：链接那条路径过根底下的解析，
     //   目标文本原样（同 `cp -P`）。阻塞档（一次 `symlink`）。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesLink>("建一条符号链接"),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesWriteText>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesLink>("建一条符号链接"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesWriteText>(
         "覆盖写一份已经在的普通文件",
     ),
     // ── 用户文件的读改写 ＋ 删历史会话 ─────────────────────────
@@ -96,9 +98,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
     // 上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
     //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesPeek>("读改写的读那一半"),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesPut>("整份替换一份文本文件"),
-    typed::facing::<crate::stream::inbound::files_session_face::FilesDeleteSession>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesPeek>("读改写的读那一半"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesPut>("整份替换一份文本文件"),
+    typed::blocking::<crate::stream::inbound::files_session_face::FilesDeleteSession>(
         "删一份历史会话",
     ),
     // ── 上传的**提交** ──────────────────────
@@ -108,13 +110,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   处理器住 `control/files_commit.rs`，写经 `Face`。阻塞档：同步文件系统 I/O（路径解析的 `canonicalize` ＋ 改名）。
     // ── 存盘装不进一条请求行时：逐块进暂存区 ＋ 读回拼起来原地覆盖 ──────────
     //   同住 `control/files_commit.rs`，阻塞档理由同上一条。
-    typed::facing::<crate::stream::inbound::files_write_face::FilesStageChunk>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesStageChunk>(
         "存盘的一块进暂存区",
     ),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesCommitText>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitText>(
         "按块读回、拼起来、覆盖写",
     ),
-    typed::facing::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesCommitUpload>(
         "把暂存区里一份传完的上传件挪进目标",
     ),
     typed::blocking::<crate::stream::inbound::files_face::FilesBrowse>(

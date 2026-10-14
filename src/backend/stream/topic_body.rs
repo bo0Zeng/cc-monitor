@@ -34,7 +34,7 @@ pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde
     if spec.run.writes() {
         return None;
     }
-    match crate::wire::spec::prepare(spec.run, None)? {
+    match crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(None))? {
         crate::wire::spec::Prepared::Blocking(f) => f(req).ok().flatten(),
         crate::wire::spec::Prepared::Async(_) => None,
     }

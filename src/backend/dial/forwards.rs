@@ -404,10 +404,11 @@ impl crate::wire::typed::Command for ForwardStart {
     type Err = ForwardStartErr;
 }
 
-impl crate::wire::typed::Async for ForwardStart {
+impl crate::wire::typed::Handle for ForwardStart {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: ForwardStartReq,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl Future<Output = Result<ForwardStarted, ForwardStartErr>> + Send + 'static {
         async move {
             start_with(
@@ -442,10 +443,11 @@ impl crate::wire::typed::Command for ForwardStop {
     type Err = ForwardStopErr;
 }
 
-impl crate::wire::typed::Async for ForwardStop {
+impl crate::wire::typed::Handle for ForwardStop {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: ForwardId,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl Future<Output = Result<ForwardId, ForwardStopErr>> + Send + 'static {
         std::future::ready(
             stop_with(req, &LEDGER).map_err(crate::wire::typed::of_pair(ForwardStopErr::NotFound)),
@@ -469,10 +471,11 @@ impl crate::wire::typed::Command for ForwardList {
     type Err = ForwardListErr;
 }
 
-impl crate::wire::typed::Async for ForwardList {
+impl crate::wire::typed::Handle for ForwardList {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl Future<Output = Result<Forwards, ForwardListErr>> + Send + 'static {
         std::future::ready(Ok(list_with(&LEDGER)))
     }

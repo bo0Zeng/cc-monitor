@@ -165,31 +165,143 @@ impl Run {
         matches!(
             self,
             Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_) | super::typed::TypedRun::Frame))
+        ) || matches!(self, Run::Typed(t) if t.blocking())
     }
 
-    /// 帧面硬臂（`dispatch` 里那几条：要碰本连接的状态）：[`Run::Builtin`] 与 typed 的那一档（[`super::typed::TypedRun::Frame`]）。
-    /// 只在帧面（CLI 面不派生）、不进 [`prepare`]。
+    /// 帧面硬臂（`dispatch` 里那几条：要碰本连接的状态）：[`Run::Builtin`] 与 typed 的那一档（[`super::typed::How::Frame`]）。
+    /// 只在帧面（CLI 面不派生）、不进 [`invoke`]。
     pub(crate) fn on_frame_arm(self) -> bool {
         matches!(self, Run::Builtin) || matches!(self, Run::Typed(t) if t.on_frame_arm())
     }
 
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
     pub(crate) fn writes(self) -> bool {
-        matches!(self, Run::BlockingOwn(_))
-            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_)) || t.hands_the_face())
+        matches!(self, Run::BlockingOwn(_)) || matches!(self, Run::Typed(t) if t.writes || t.face)
     }
 }
 
-/// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
-/// 帧面硬臂那几条（[`Run::on_frame_arm`]）在分派的硬臂里，这里也是 `None`。
-/// 文件管理面的写句柄只在这一处造、只活这一问：[`prepare`] 的 `Facing` 那一档（帧面 · CLI 面），
-/// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
-pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
-    f(&crate::platform::fs::Face::issue())
+/// 分派那一层手里的能力：写自家状态的句柄（文件门 · 小成品重问那几处没有 ⇒ `None`）· 文件管理面 · 枢纽问这台自己那一跳。
+/// 后两样是这台的单例，由入方向那一层（`stream::inbound::hands`）装上；本模块不点它们的名。
+pub(crate) struct Hands<'a> {
+    pub(crate) own: Option<&'a crate::platform::Own>,
+    pub(crate) files: super::typed::Files,
+    pub(crate) hub: super::typed::Hub,
 }
 
-pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Prepared> {
+/// 一条命令要的能力（[`super::typed::Handle::Needs`]）：处理器拿到的那一份（`Given`）· 要不要写句柄 · 怎么从 [`Hands`] 里取。
+/// 取不到（要写句柄、手里没有）⇒ `None`：那条命令在这个入口交不出来。
+pub(crate) trait Needs: 'static {
+    type Given: Send + 'static;
+    /// 要写自家状态的句柄。
+    const WRITES: bool;
+    /// 要文件管理写句柄（改用户的文件）。
+    const FACE: bool;
+    fn give(h: &Hands) -> Option<Self::Given>;
+}
+
+/// 能力的那几样（[`Needs`]）。
+pub(crate) mod needs {
+    use super::{Hands, Needs};
+    use crate::wire::typed::{Files as Door, Hub as HubFn};
+
+    /// 什么都不要。
+    pub(crate) struct Nothing;
+    /// 这台的文件管理面（只读 · 起之前预标信任那几样写经它）。
+    pub(crate) struct Files;
+    /// 写自家状态的句柄（`~/.cc-monitor` 底下）。
+    pub(crate) struct Own;
+    /// 文件管理面 ＋ 写自家状态的句柄。
+    pub(crate) struct FilesOwn;
+    /// 文件管理写句柄（改用户的文件）：分派那一层造一份、只活这一问。
+    pub(crate) struct Face;
+    /// 写自家状态的句柄 ＋ 枢纽问这台自己那一跳。
+    pub(crate) struct OwnHub;
+
+    impl Needs for Nothing {
+        type Given = ();
+        const WRITES: bool = false;
+        const FACE: bool = false;
+        fn give(_: &Hands) -> Option<()> {
+            Some(())
+        }
+    }
+    impl Needs for Files {
+        type Given = Door;
+        const WRITES: bool = false;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<Door> {
+            Some(h.files)
+        }
+    }
+    impl Needs for Own {
+        type Given = crate::platform::Own;
+        const WRITES: bool = true;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<crate::platform::Own> {
+            h.own.cloned()
+        }
+    }
+    impl Needs for FilesOwn {
+        type Given = (Door, crate::platform::Own);
+        const WRITES: bool = true;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<Self::Given> {
+            Some((h.files, h.own?.clone()))
+        }
+    }
+    impl Needs for Face {
+        type Given = crate::platform::fs::Face;
+        const WRITES: bool = false;
+        const FACE: bool = true;
+        fn give(_: &Hands) -> Option<crate::platform::fs::Face> {
+            Some(super::issue_face())
+        }
+    }
+    impl Needs for OwnHub {
+        type Given = (crate::platform::Own, HubFn);
+        const WRITES: bool = true;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<Self::Given> {
+            Some((h.own?.clone(), h.hub))
+        }
+    }
+}
+
+/// 文件管理写句柄只在这一处造、只活这一问：[`needs::Face`] 那一份（帧面 · CLI 面），
+/// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
+fn issue_face() -> crate::platform::fs::Face {
+    crate::platform::fs::Face::issue()
+}
+
+/// 同 [`issue_face`]，句柄只活这一个闭包。
+pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
+    f(&issue_face())
+}
+
+/// 阻塞档的本体在调用方这条线程上跑完：本体是同步代码包成的 future，一次就完；
+/// 真等到了什么（不该有）就停在这条线程上等它醒（不借 tokio 的 `block_on`：枢纽那一跳会在异步任务里同步问本机一条阻塞命令）。
+pub(crate) fn finish<F: std::future::Future>(fut: F) -> F::Output {
+    struct Wake(std::thread::Thread);
+    impl std::task::Wake for Wake {
+        fn wake(self: std::sync::Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+    let waker = std::task::Waker::from(std::sync::Arc::new(Wake(std::thread::current())));
+    let mut cx = std::task::Context::from_waker(&waker);
+    let mut fut = std::pin::pin!(fut);
+    loop {
+        if let std::task::Poll::Ready(v) = fut.as_mut().poll(&mut cx) {
+            return v;
+        }
+        std::thread::park();
+    }
+}
+
+/// 按档把处理器装成 [`Prepared`]：分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面都经这一处。
+/// 帧面硬臂那几条（[`Run::on_frame_arm`]）在分派的硬臂里，这里是 `None`；要写句柄、`hands` 里没有 ⇒ `None`。
+pub(crate) fn invoke(run: Run, hands: &Hands) -> Option<Prepared> {
+    let own = hands.own;
     Some(match run {
         Run::Async(f) => Prepared::Async(Box::new(move |r| {
             Box::pin(async move { f(r).await.map_err(Fail::from) })
@@ -200,37 +312,7 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
             let own = own?.clone();
             Prepared::Blocking(Box::new(move |r| f(r, &own)))
         }
-        Run::Typed(t) => match t.run {
-            super::typed::TypedRun::Blocking(f) => Prepared::Blocking(Box::new(f)),
-            super::typed::TypedRun::BlockingFiles(f, files) => {
-                Prepared::Blocking(Box::new(move |r| f(r, files)))
-            }
-            super::typed::TypedRun::BlockingOwn(f, files) => {
-                let own = own?.clone();
-                Prepared::Blocking(Box::new(move |r| f(r, files, &own)))
-            }
-            super::typed::TypedRun::BlockingOwning(f) => {
-                let own = own?.clone();
-                Prepared::Blocking(Box::new(move |r| f(r, &own)))
-            }
-            // 文件管理写面：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
-            super::typed::TypedRun::BlockingFace(f) => {
-                Prepared::Blocking(Box::new(move |r| with_face(|face| f(r, face))))
-            }
-            super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
-            super::typed::TypedRun::AsyncFiles(f, files) => {
-                Prepared::Async(Box::new(move |r| f(r, files)))
-            }
-            super::typed::TypedRun::AsyncOwning(f, hub) => {
-                let own = own?.clone();
-                Prepared::Async(Box::new(move |r| f(r, own, hub)))
-            }
-            super::typed::TypedRun::AsyncOwn(f) => {
-                let own = own?.clone();
-                Prepared::Async(Box::new(move |r| f(r, own)))
-            }
-            super::typed::TypedRun::Frame => return None,
-        },
+        Run::Typed(t) => return (t.go)(hands),
         Run::Builtin => return None,
     })
 }

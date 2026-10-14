@@ -6,12 +6,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
     //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
-    crate::wire::typed::owning::<crate::history::history_annotations::HistoryAnnotateCmd>(
-        "改一条历史注解",
-    ),
-    crate::wire::typed::owning::<crate::history::history_annotations::HistoryForgetCmd>(
-        "删一条历史注解",
-    ),
+    crate::wire::typed::blocking::<crate::history::history_annotations::HistoryAnnotateCmd>("改一条历史注解"),
+    crate::wire::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>("删一条历史注解"),
     // 「这台上每条会话上次用哪个号起的」（起会话账号记录，会话所在那台各问一次）。读不懂 ⇒ `unreadable`。
     crate::wire::typed::blocking::<crate::control::launch_account::HistoryLastAccountsCmd>(
         "sid → 上次用哪个号起",

@@ -784,12 +784,18 @@ impl crate::wire::typed::Command for Launch {
     type Err = LaunchErr;
 }
 
-impl crate::wire::typed::Blocking for Launch {
-    fn run(req: LaunchReq, _cx: &crate::wire::typed::Cx) -> Result<Launched, LaunchErr> {
-        let of = |f| crate::wire::typed::of_fail(f, LaunchErr::CreateFailed);
-        let req = parse_request(req).map_err(of)?;
-        let out = run(&req).map_err(of)?;
-        Ok(reply(&req.name, out.created, out.typed))
+impl crate::wire::typed::Handle for Launch {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: LaunchReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Launched, LaunchErr>> + Send + 'static {
+        async move {
+            let of = |f| crate::wire::typed::of_fail(f, LaunchErr::CreateFailed);
+            let req = parse_request(req).map_err(of)?;
+            let out = run(&req).map_err(of)?;
+            Ok(reply(&req.name, out.created, out.typed))
+        }
     }
 }
 

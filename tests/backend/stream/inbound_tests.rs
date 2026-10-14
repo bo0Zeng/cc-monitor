@@ -128,7 +128,7 @@ fn the_backend_runtime_keeps_more_than_one_worker() {
     );
 }
 use super::*;
-use crate::wire::spec::{prepare, Prepared};
+use crate::wire::spec::{invoke, Prepared};
 
 /// 分派要的那两样：`stream-watch` 那一口 ＋ 一份指到临时目录的写句柄。
 fn given_for_tests(watch: WatchDesk) -> Given {
@@ -1656,7 +1656,10 @@ fn run_registered(cmd: &str, args: serde_json::Value) -> Outcome {
         tz: Default::default(),
         until: None,
     };
-    match prepare(spec.run, Some(&crate::platform::fs::Own::for_tests())) {
+    match invoke(
+        spec.run,
+        &crate::stream::inbound::hands(Some(&crate::platform::fs::Own::for_tests())),
+    ) {
         Some(Prepared::Blocking(f)) => f(req),
         _ => panic!("`{cmd}` 不在阻塞档"),
     }
@@ -1674,7 +1677,10 @@ fn run_any(cmd: &str, args: serde_json::Value) -> Outcome {
         tz: Default::default(),
         until: None,
     };
-    match prepare(spec.run, Some(&crate::platform::fs::Own::for_tests())) {
+    match invoke(
+        spec.run,
+        &crate::stream::inbound::hands(Some(&crate::platform::fs::Own::for_tests())),
+    ) {
         Some(Prepared::Blocking(f)) => f(req),
         Some(Prepared::Async(f)) => tokio::runtime::Builder::new_current_thread()
             .enable_all()

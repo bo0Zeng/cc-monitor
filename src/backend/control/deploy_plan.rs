@@ -525,10 +525,11 @@ impl crate::wire::typed::Command for DeployPlan {
     type Err = DeployPlanErr;
 }
 
-impl crate::wire::typed::Async for DeployPlan {
+impl crate::wire::typed::Handle for DeployPlan {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: DeployPlanReq,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Planned, DeployPlanErr>> + Send + 'static {
         async move {
             let dial = req
@@ -701,9 +702,15 @@ impl crate::wire::typed::Command for PlaceVerdict {
     type Err = PlaceErr;
 }
 
-impl crate::wire::typed::Blocking for PlaceVerdict {
-    fn run(req: PlaceReq, _cx: &crate::wire::typed::Cx) -> Result<PlaceAnswer, PlaceErr> {
-        answer_place(&req).map_err(|f| crate::wire::typed::of_fail(f, PlaceErr::Undecidable))
+impl crate::wire::typed::Handle for PlaceVerdict {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: PlaceReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<PlaceAnswer, PlaceErr>> + Send + 'static {
+        async move {
+            answer_place(&req).map_err(|f| crate::wire::typed::of_fail(f, PlaceErr::Undecidable))
+        }
     }
 }
 

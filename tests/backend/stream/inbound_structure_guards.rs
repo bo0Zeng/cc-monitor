@@ -1072,12 +1072,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "plan-command",
-        sampled::<crate::plan::wire::PlanCmdReply>,
-        &[],
-        &[],
-    ),
-    (
         "quota-probe",
         sampled::<crate::faces::quota_probe_face::Probed>,
         &[],
@@ -1109,14 +1103,11 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
 fn every_command_declares_exactly_the_fields_it_puts_out() {
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
-    // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
-    const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
     #[allow(clippy::type_complexity)]
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
         ("accounts-list", ACCOUNTS, "/accounts-list", &[], &[]),
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
-        ("plan-files", PLAN_FILES, "", &[], &[]),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
@@ -1139,17 +1130,11 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 11;
+    const UNSHAPED_CEILING: usize = 5;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "apikey-key-set",
         "machine-interrupts",
-        "plan-ack",
-        "plan-cell-view",
-        "plan-list",
-        "plan-read",
-        "plan-return",
-        "plan-unack",
         "remote-probe",
         "resident-verdict",
     ];

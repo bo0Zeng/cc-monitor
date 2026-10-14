@@ -2,7 +2,7 @@
 //! 只读；拼装只在 [`crate::accounts::upstream_select::rotate::Hop::facts`] 一处。`轮换-v5-分层.md` §1.1 · §1.9。
 
 use crate::accounts::quota::facts::Fact;
-use crate::wire::typed::{Blocking, Command, Cx};
+use crate::wire::typed::Command;
 
 /// `rotation-facts` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -44,15 +44,25 @@ impl Command for RotationFacts {
     type Err = RotationFactsErr;
 }
 
-impl Blocking for RotationFacts {
-    fn run(req: RotationFactsReq, cx: &Cx) -> Result<RotationFactsReply, RotationFactsErr> {
-        let ctx = crate::faces::rotation_face::Ctx::here();
-        Ok(facts_with(
-            &ctx,
-            &req,
-            crate::accounts::quota::now_unix(),
-            &cx.tz,
-        ))
+impl crate::wire::typed::Handle for RotationFacts {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: RotationFactsReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationFactsReply, RotationFactsErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            let ctx = crate::faces::rotation_face::Ctx::here();
+            Ok(facts_with(
+                &ctx,
+                &req,
+                crate::accounts::quota::now_unix(),
+                &cx.tz,
+            ))
+        }
     }
 }
 

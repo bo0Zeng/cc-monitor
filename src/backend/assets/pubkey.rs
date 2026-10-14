@@ -192,13 +192,18 @@ impl crate::wire::typed::Command for AuthorizedKeysAdd {
     type Err = KeyAddErr;
 }
 
-impl crate::wire::typed::WithFiles for AuthorizedKeysAdd {
+impl crate::wire::typed::Handle for AuthorizedKeysAdd {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: KeyAddReq,
-        _cx: &crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
-    ) -> Result<KeyAdded, KeyAddErr> {
-        answer_add(files, &req).map_err(crate::wire::typed::of_pair(KeyAddErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<KeyAdded, KeyAddErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_add(files, &req).map_err(crate::wire::typed::of_pair(KeyAddErr::IoFailed))
+        }
     }
 }
 
@@ -358,10 +363,11 @@ impl crate::wire::typed::Command for PubkeyPush {
     type Err = PushErr;
 }
 
-impl crate::wire::typed::Async for PubkeyPush {
+impl crate::wire::typed::Handle for PubkeyPush {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: PubkeyPushReq,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<PubkeyPushed, PushErr>> + Send + 'static {
         async move {
             answer_push(&req, &Wire, &read_local_pub)

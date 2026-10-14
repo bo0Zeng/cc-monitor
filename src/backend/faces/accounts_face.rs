@@ -14,7 +14,7 @@ use crate::assets::aliases::{self, AmendErr};
 use crate::common::door::Door;
 use crate::platform::shell::dialect::Shell;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Command, Files, NoArgs, WithOwn};
+use crate::wire::typed::{self, Command, Files, NoArgs};
 use cmd_wire::accounts::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,
     AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView, AccountNameArgs,
@@ -192,14 +192,18 @@ impl Command for AccountsInit {
     type Err = ChangeErr;
 }
 
-impl WithOwn for AccountsInit {
+impl crate::wire::typed::Handle for AccountsInit {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountInitArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<AccountChange, ChangeErr> {
-        change_with(files, own, wire::Request::Init(req))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountChange, ChangeErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            change_with(files, own, wire::Request::Init(req))
+        }
     }
 }
 
@@ -213,14 +217,18 @@ impl Command for AccountsAdd {
     type Err = ChangeErr;
 }
 
-impl WithOwn for AccountsAdd {
+impl crate::wire::typed::Handle for AccountsAdd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountAddArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<AccountChange, ChangeErr> {
-        change_with(files, own, wire::Request::Add(req))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountChange, ChangeErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            change_with(files, own, wire::Request::Add(req))
+        }
     }
 }
 
@@ -234,14 +242,18 @@ impl Command for AccountsRemove {
     type Err = ChangeErr;
 }
 
-impl WithOwn for AccountsRemove {
+impl crate::wire::typed::Handle for AccountsRemove {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountRemoveArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<AccountChange, ChangeErr> {
-        change_with(files, own, wire::Request::Remove(req))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountChange, ChangeErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            change_with(files, own, wire::Request::Remove(req))
+        }
     }
 }
 
@@ -255,14 +267,18 @@ impl Command for AccountsSetDefault {
     type Err = ChangeErr;
 }
 
-impl WithOwn for AccountsSetDefault {
+impl crate::wire::typed::Handle for AccountsSetDefault {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountNameArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<AccountChange, ChangeErr> {
-        change_with(files, own, wire::Request::SetDefault(req))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountChange, ChangeErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            change_with(files, own, wire::Request::SetDefault(req))
+        }
     }
 }
 
@@ -276,14 +292,18 @@ impl Command for AccountsRepair {
     type Err = ChangeErr;
 }
 
-impl WithOwn for AccountsRepair {
+impl crate::wire::typed::Handle for AccountsRepair {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountRepairArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<AccountChange, ChangeErr> {
-        change_with(files, own, wire::Request::Repair(req))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountChange, ChangeErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            change_with(files, own, wire::Request::Repair(req))
+        }
     }
 }
 
@@ -297,14 +317,18 @@ impl Command for AccountsRollback {
     type Err = ChangeErr;
 }
 
-impl WithOwn for AccountsRollback {
+impl crate::wire::typed::Handle for AccountsRollback {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountRollbackArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<AccountChange, ChangeErr> {
-        change_with(files, own, wire::Request::Rollback(req))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountChange, ChangeErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            change_with(files, own, wire::Request::Rollback(req))
+        }
     }
 }
 
@@ -319,14 +343,18 @@ impl Command for AccountsVerify {
     type Err = VerifyErr;
 }
 
-impl WithOwn for AccountsVerify {
+impl crate::wire::typed::Handle for AccountsVerify {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         _req: NoArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        _own: &crate::platform::Own,
-    ) -> Result<VerifyReport, VerifyErr> {
-        wire::run_verify(files).map_err(|f| typed::of_fail(f, VerifyErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<VerifyReport, VerifyErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, _own) = (needs.0, &needs.1);
+
+            wire::run_verify(files).map_err(|f| typed::of_fail(f, VerifyErr::IoFailed))
+        }
     }
 }
 
@@ -340,14 +368,19 @@ impl Command for AccountsLoginCmd {
     type Err = LoginCmdErr;
 }
 
-impl WithOwn for AccountsLoginCmd {
+impl crate::wire::typed::Handle for AccountsLoginCmd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountNameArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        _own: &crate::platform::Own,
-    ) -> Result<AccountLoginCmd, LoginCmdErr> {
-        wire::run_login_cmd(files, &req).map_err(|f| typed::of_fail(f, LoginCmdErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountLoginCmd, LoginCmdErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, _own) = (needs.0, &needs.1);
+
+            wire::run_login_cmd(files, &req).map_err(|f| typed::of_fail(f, LoginCmdErr::IoFailed))
+        }
     }
 }
 
@@ -362,14 +395,18 @@ impl Command for AccountsMcpRead {
     type Err = McpErr;
 }
 
-impl WithOwn for AccountsMcpRead {
+impl crate::wire::typed::Handle for AccountsMcpRead {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         _req: NoArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        _own: &crate::platform::Own,
-    ) -> Result<AccountMcpView, McpErr> {
-        mcp_share_exec::read(files).map_err(|f| typed::of_fail(f, McpErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountMcpView, McpErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, _own) = (needs.0, &needs.1);
+
+            mcp_share_exec::read(files).map_err(|f| typed::of_fail(f, McpErr::IoFailed))
+        }
     }
 }
 
@@ -383,15 +420,20 @@ impl Command for AccountsMcpRemove {
     type Err = McpEditErr;
 }
 
-impl WithOwn for AccountsMcpRemove {
+impl crate::wire::typed::Handle for AccountsMcpRemove {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountMcpNameArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        _own: &crate::platform::Own,
-    ) -> Result<AccountMcpView, McpEditErr> {
-        mcp_share_exec::remove(files, &req.name)
-            .map_err(|f| typed::of_fail(f, McpEditErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountMcpView, McpEditErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, _own) = (needs.0, &needs.1);
+
+            mcp_share_exec::remove(files, &req.name)
+                .map_err(|f| typed::of_fail(f, McpEditErr::IoFailed))
+        }
     }
 }
 
@@ -405,15 +447,20 @@ impl Command for AccountsMcpPick {
     type Err = McpEditErr;
 }
 
-impl WithOwn for AccountsMcpPick {
+impl crate::wire::typed::Handle for AccountsMcpPick {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountMcpPickArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        _own: &crate::platform::Own,
-    ) -> Result<AccountMcpView, McpEditErr> {
-        mcp_share_exec::pick(files, &req.name, req.from.as_deref())
-            .map_err(|f| typed::of_fail(f, McpEditErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountMcpView, McpEditErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, _own) = (needs.0, &needs.1);
+
+            mcp_share_exec::pick(files, &req.name, req.from.as_deref())
+                .map_err(|f| typed::of_fail(f, McpEditErr::IoFailed))
+        }
     }
 }
 
@@ -427,14 +474,18 @@ impl Command for AccountsMcpSync {
     type Err = McpErr;
 }
 
-impl WithOwn for AccountsMcpSync {
+impl crate::wire::typed::Handle for AccountsMcpSync {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: AccountMcpSyncArgs,
-        _cx: &typed::Cx,
-        files: Files,
-        _own: &crate::platform::Own,
-    ) -> Result<AccountMcpView, McpErr> {
-        mcp_share_exec::set_sync(files, req.on).map_err(|f| typed::of_fail(f, McpErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<AccountMcpView, McpErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, _own) = (needs.0, &needs.1);
+
+            mcp_share_exec::set_sync(files, req.on).map_err(|f| typed::of_fail(f, McpErr::IoFailed))
+        }
     }
 }
 

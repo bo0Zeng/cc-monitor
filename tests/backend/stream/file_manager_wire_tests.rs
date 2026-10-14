@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use crate::wire::spec::{prepare, Prepared};
+use crate::wire::spec::{invoke, Prepared};
 use crate::wire::Request;
 
 /// 走登记表跑一条（阻塞档当场跑，异步档在当场起的运行时上等）。
@@ -27,7 +27,10 @@ fn run(cmd: &str, args: Value) -> Result<Value, String> {
         tz: Default::default(),
         until: None,
     };
-    let got = match prepare(spec.run, Some(&crate::platform::fs::Own::for_tests())) {
+    let got = match invoke(
+        spec.run,
+        &crate::stream::inbound::hands(Some(&crate::platform::fs::Own::for_tests())),
+    ) {
         Some(Prepared::Blocking(f)) => f(req),
         Some(Prepared::Async(f)) => tokio::runtime::Builder::new_current_thread()
             .enable_all()

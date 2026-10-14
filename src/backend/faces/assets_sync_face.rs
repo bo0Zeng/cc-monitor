@@ -3,7 +3,7 @@
 
 use crate::assets::asset_catalog;
 use crate::assets::asset_sync::{self, AssetsSyncReq, AssetsSynced, Fold};
-use crate::wire::typed::{self, codes, AsyncOwn, Command, Cx};
+use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// `assets-sync` 的码。
@@ -25,13 +25,16 @@ impl Command for AssetsSyncCmd {
     type Err = AssetsSyncErr;
 }
 
-impl AsyncOwn for AssetsSyncCmd {
+impl crate::wire::typed::Handle for AssetsSyncCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: AssetsSyncReq,
-        _cx: Cx,
-        own: crate::platform::Own,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<AssetsSynced, AssetsSyncErr>> + Send + 'static
     {
+        let (_cx, needs) = cx.split();
+        let own = needs;
+
         async move {
             let fold: Fold = std::sync::Arc::new(move |m| asset_catalog::answer_merge(m, &own));
             asset_sync::answer(&req, fold, &crate::dial::remote_ask::DialRemote)

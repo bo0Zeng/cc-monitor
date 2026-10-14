@@ -5,7 +5,7 @@ use crate::agents::AssetFace;
 use crate::common::cells::Words;
 use crate::common::contract::malformed;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Blocking, Command, Cx};
+use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -100,9 +100,14 @@ impl Command for SessionCommandsCmd {
     type Err = SessionCommandsErr;
 }
 
-impl Blocking for SessionCommandsCmd {
-    fn run(req: SessionCommandsReq, _cx: &Cx) -> Result<SessionCommands, SessionCommandsErr> {
-        answer(&req).map_err(|f| typed::of_fail(f, SessionCommandsErr::NoSuchSession))
+impl crate::wire::typed::Handle for SessionCommandsCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: SessionCommandsReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<SessionCommands, SessionCommandsErr>> + Send + 'static
+    {
+        async move { answer(&req).map_err(|f| typed::of_fail(f, SessionCommandsErr::NoSuchSession)) }
     }
 }
 

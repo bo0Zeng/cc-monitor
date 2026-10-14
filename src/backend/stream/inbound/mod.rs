@@ -572,7 +572,7 @@ fn dispatch(
         // 名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
         // 在注册表这一侧不可表示；`hello.commands` 也从注册表派生（[`command_names`]），没有第二份名单。
         other => match lookup(other) {
-            Some(spec) => match spec::prepare(spec.run, Some(&given.own)) {
+            Some(spec) => match spec::invoke(spec.run, &hands(Some(&given.own))) {
                 Some(spec::Prepared::Async(f)) => Disposition::SpawnData(req, f),
                 Some(spec::Prepared::Blocking(f)) => Disposition::SpawnBlocking(req, f),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
@@ -612,6 +612,15 @@ pub fn uncancellable() -> Vec<String> {
 
 /// 硬臂里走阻塞档的那几条（登记是 `Run::Builtin`，`dispatch` 交 `SpawnBlocking`）：同样开跑之后打不断。
 const BUILTIN_BLOCKING: &[&str] = &["login-start"];
+
+/// 分派那一层手里的能力（[`spec::Hands`]）：写句柄由调用方递（没有 ⇒ `None`）；文件管理面 · 枢纽问这台自己那一跳是这台的单例，只在这里装。
+pub(crate) fn hands(own: Option<&crate::platform::Own>) -> spec::Hands<'_> {
+    spec::Hands {
+        own,
+        files: &LocalFiles,
+        hub: doors::hub_here,
+    }
+}
 
 /// 命令表按族分住 `registry/` 下各一份（每份一张 `SPECS`），在编译期拼回一张 [`REGISTRY`]。
 pub(crate) mod registry {

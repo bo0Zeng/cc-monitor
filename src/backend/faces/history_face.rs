@@ -7,7 +7,7 @@
 
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
 use crate::observe::record_page::{ReadRow, RecordLine, RunRow};
-use crate::wire::typed::{codes, of_pair, Blocking, Command, Cx, NoArgs};
+use crate::wire::typed::{codes, of_pair, Command, NoArgs};
 use std::path::Path;
 
 use super::read_face::{
@@ -93,9 +93,19 @@ impl Command for HistoryReadCmd {
     type Err = HistoryReadErr;
 }
 
-impl Blocking for HistoryReadCmd {
-    fn run(req: HistoryReadReq, cx: &Cx) -> Result<HistoryRead, HistoryReadErr> {
-        read_at(&home(), req, &cx.tz)
+impl crate::wire::typed::Handle for HistoryReadCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryReadReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryRead, HistoryReadErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            read_at(&home(), req, &cx.tz)
+        }
     }
 }
 
@@ -185,9 +195,19 @@ impl Command for HistoryPageCmd {
     type Err = HistoryPageErr;
 }
 
-impl Blocking for HistoryPageCmd {
-    fn run(req: HistoryPageReq, cx: &Cx) -> Result<HistoryPage, HistoryPageErr> {
-        page_at(&home(), req, &cx.tz)
+impl crate::wire::typed::Handle for HistoryPageCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryPageReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryPage, HistoryPageErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            page_at(&home(), req, &cx.tz)
+        }
     }
 }
 
@@ -276,9 +296,19 @@ impl Command for HistoryLinesCmd {
     type Err = HistoryLinesErr;
 }
 
-impl Blocking for HistoryLinesCmd {
-    fn run(req: HistoryLinesReq, cx: &Cx) -> Result<HistoryLines, HistoryLinesErr> {
-        lines_at(&home(), req, &cx.tz)
+impl crate::wire::typed::Handle for HistoryLinesCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryLinesReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryLines, HistoryLinesErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            lines_at(&home(), req, &cx.tz)
+        }
     }
 }
 
@@ -385,9 +415,18 @@ impl Command for HistoryRunCmd {
     type Err = HistoryRunErr;
 }
 
-impl Blocking for HistoryRunCmd {
-    fn run(req: HistoryRunReq, cx: &Cx) -> Result<HistoryRun, HistoryRunErr> {
-        run_at(&home(), req, &cx.tz)
+impl crate::wire::typed::Handle for HistoryRunCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryRunReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryRun, HistoryRunErr>> + Send + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            run_at(&home(), req, &cx.tz)
+        }
     }
 }
 
@@ -477,9 +516,13 @@ impl Command for HistoryBranchCmd {
     type Err = HistoryBranchErr;
 }
 
-impl Blocking for HistoryBranchCmd {
-    fn run(req: BranchReq, _cx: &Cx) -> Result<Branch, HistoryBranchErr> {
-        branch_at(&home(), req)
+impl crate::wire::typed::Handle for HistoryBranchCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BranchReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Branch, HistoryBranchErr>> + Send + 'static {
+        async move { branch_at(&home(), req) }
     }
 }
 
@@ -547,9 +590,13 @@ impl Command for HistoryTailCmd {
     type Err = HistoryTailErr;
 }
 
-impl Blocking for HistoryTailCmd {
-    fn run(req: HistoryTailReq, _cx: &Cx) -> Result<TailPlan, HistoryTailErr> {
-        tail_at(&home(), req)
+impl crate::wire::typed::Handle for HistoryTailCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryTailReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<TailPlan, HistoryTailErr>> + Send + 'static {
+        async move { tail_at(&home(), req) }
     }
 }
 
@@ -594,9 +641,14 @@ impl Command for HistoryRecordCmd {
     type Err = HistoryRecordErr;
 }
 
-impl Blocking for HistoryRecordCmd {
-    fn run(req: HistoryRecordReq, _cx: &Cx) -> Result<RecordProbe, HistoryRecordErr> {
-        record_at(&home(), req)
+impl crate::wire::typed::Handle for HistoryRecordCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryRecordReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RecordProbe, HistoryRecordErr>> + Send + 'static
+    {
+        async move { record_at(&home(), req) }
     }
 }
 
@@ -636,9 +688,14 @@ impl Command for SessionsNeedsCmd {
     type Err = SessionsNeedsErr;
 }
 
-impl Blocking for SessionsNeedsCmd {
-    fn run(_req: NoArgs, _cx: &Cx) -> Result<NeedsList, SessionsNeedsErr> {
-        Ok(needs_at(&home()))
+impl crate::wire::typed::Handle for SessionsNeedsCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<NeedsList, SessionsNeedsErr>> + Send + 'static
+    {
+        async move { Ok(needs_at(&home())) }
     }
 }
 
@@ -971,9 +1028,14 @@ impl Command for HistoryIndexCmd {
     type Err = HistoryIndexErr;
 }
 
-impl Blocking for HistoryIndexCmd {
-    fn run(req: HistoryIndexReq, _cx: &Cx) -> Result<HistoryIndex, HistoryIndexErr> {
-        index_at(&home(), req)
+impl crate::wire::typed::Handle for HistoryIndexCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryIndexReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryIndex, HistoryIndexErr>> + Send + 'static
+    {
+        async move { index_at(&home(), req) }
     }
 }
 
@@ -1127,9 +1189,13 @@ impl Command for UserInputsCmd {
     type Err = UserInputsErr;
 }
 
-impl Blocking for UserInputsCmd {
-    fn run(req: UserInputsReq, _cx: &Cx) -> Result<UserInputs, UserInputsErr> {
-        user_inputs_at(&home(), req)
+impl crate::wire::typed::Handle for UserInputsCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: UserInputsReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<UserInputs, UserInputsErr>> + Send + 'static {
+        async move { user_inputs_at(&home(), req) }
     }
 }
 
@@ -1252,9 +1318,19 @@ impl Command for HistoryTurnsCmd {
     type Err = HistoryTurnsErr;
 }
 
-impl Blocking for HistoryTurnsCmd {
-    fn run(req: HistoryTurnsReq, cx: &Cx) -> Result<HistoryTurns, HistoryTurnsErr> {
-        turns_at(&home(), req, &cx.tz)
+impl crate::wire::typed::Handle for HistoryTurnsCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryTurnsReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryTurns, HistoryTurnsErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            turns_at(&home(), req, &cx.tz)
+        }
     }
 }
 
@@ -1428,9 +1504,19 @@ impl Command for HistoryFindCmd {
     type Err = HistoryFindErr;
 }
 
-impl Blocking for HistoryFindCmd {
-    fn run(req: HistoryFindReq, cx: &Cx) -> Result<HistoryFind, HistoryFindErr> {
-        find_at(&home(), req, &cx.tz)
+impl crate::wire::typed::Handle for HistoryFindCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistoryFindReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryFind, HistoryFindErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            find_at(&home(), req, &cx.tz)
+        }
     }
 }
 
@@ -1518,14 +1604,20 @@ impl Command for HistoryFactsCmd {
     type Err = HistoryFactsErr;
 }
 
-impl Blocking for HistoryFactsCmd {
+impl crate::wire::typed::Handle for HistoryFactsCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: HistoryFactsReq,
-        _cx: &Cx,
-    ) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
-        // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
-        let limits = crate::control::machine_prefs::read_now().prefs().limits();
-        facts_at(&home(), req, &limits)
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr>,
+    > + Send
+           + 'static {
+        async move {
+            // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
+            let limits = crate::control::machine_prefs::read_now().prefs().limits();
+            facts_at(&home(), req, &limits)
+        }
     }
 }
 

@@ -3835,14 +3835,15 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
 fn resync_face_reply_matches_the_cross_language_golden() {
     /// 照分派那一层解入参（`typed::take`）再跑；回包投成线上那一份，失败只留码。
     fn answer(args: &serde_json::Value) -> Result<serde_json::Value, String> {
-        use crate::wire::typed::{Blocking as _, Codes as _};
+        use crate::wire::typed::{Codes as _, Handle as _};
         let req = crate::wire::typed::take(args).map_err(|f| f.code)?;
         let cx = crate::wire::typed::Cx {
             tz: Default::default(),
             until: None,
+            needs: (),
         };
-        let got =
-            crate::stream::resync_face::ResyncCmd::run(req, &cx).map_err(|e| e.into_fail().code)?;
+        let got = crate::wire::spec::finish(crate::stream::resync_face::ResyncCmd::run(req, cx))
+            .map_err(|e| e.into_fail().code)?;
         Ok(serde_json::to_value(got).expect("回包总能序列化"))
     }
     let golden: serde_json::Value =

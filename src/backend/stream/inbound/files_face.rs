@@ -4,7 +4,7 @@
 //! 也不住命令表那一份族文件：那一份还递删会话的窄口（够得到原生那一侧），本体所在的文件要只够得到文件管理那一块。
 
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, codes, Async, Blocking, Codes, Command, Cx};
+use crate::wire::typed::{self, codes, Codes, Command, Cx};
 use cmd_wire::files as wire;
 
 /// 读的那几条共用：问本体，失败收进这一条的码表（原话跟着那一句走）。
@@ -55,9 +55,18 @@ impl Command for FilesLs {
     type Err = FilesLsErr;
 }
 
-impl Blocking for FilesLs {
-    fn run(req: wire::LsReq, cx: &Cx) -> Result<wire::LsReply, FilesLsErr> {
-        ask(req, cx, FilesLsErr::BadArgs)
+impl crate::wire::typed::Handle for FilesLs {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::LsReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::LsReply, FilesLsErr>> + Send + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesLsErr::BadArgs)
+        }
     }
 }
 
@@ -81,9 +90,19 @@ impl Command for FilesStat {
     type Err = FilesStatErr;
 }
 
-impl Blocking for FilesStat {
-    fn run(req: wire::StatReq, cx: &Cx) -> Result<wire::StatReply, FilesStatErr> {
-        ask(req, cx, FilesStatErr::BadArgs)
+impl crate::wire::typed::Handle for FilesStat {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::StatReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::StatReply, FilesStatErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesStatErr::BadArgs)
+        }
     }
 }
 
@@ -109,9 +128,19 @@ impl Command for FilesFind {
     type Err = FilesFindErr;
 }
 
-impl Blocking for FilesFind {
-    fn run(req: wire::FindReq, cx: &Cx) -> Result<wire::FindReply, FilesFindErr> {
-        ask(req, cx, FilesFindErr::BadArgs)
+impl crate::wire::typed::Handle for FilesFind {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::FindReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FindReply, FilesFindErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesFindErr::BadArgs)
+        }
     }
 }
 
@@ -132,12 +161,20 @@ impl Command for FilesIndexStatus {
     type Err = FilesIndexStatusErr;
 }
 
-impl Blocking for FilesIndexStatus {
+impl crate::wire::typed::Handle for FilesIndexStatus {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: wire::IndexStatusReq,
-        cx: &Cx,
-    ) -> Result<wire::IndexStatusReply, FilesIndexStatusErr> {
-        ask(req, cx, FilesIndexStatusErr::BadArgs)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::IndexStatusReply, FilesIndexStatusErr>>
+           + Send
+           + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesIndexStatusErr::BadArgs)
+        }
     }
 }
 
@@ -165,9 +202,20 @@ impl Command for FilesIndexRebuild {
     type Err = FilesIndexRebuildErr;
 }
 
-impl Blocking for FilesIndexRebuild {
-    fn run(req: wire::RebuildReq, cx: &Cx) -> Result<wire::RebuildReply, FilesIndexRebuildErr> {
-        ask(req, cx, FilesIndexRebuildErr::BadArgs)
+impl crate::wire::typed::Handle for FilesIndexRebuild {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::RebuildReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::RebuildReply, FilesIndexRebuildErr>>
+           + Send
+           + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesIndexRebuildErr::BadArgs)
+        }
     }
 }
 
@@ -189,9 +237,19 @@ impl Command for FilesBrowse {
     type Err = FilesBrowseErr;
 }
 
-impl Blocking for FilesBrowse {
-    fn run(req: wire::BrowseReq, cx: &Cx) -> Result<wire::BrowseReply, FilesBrowseErr> {
-        ask(req, cx, FilesBrowseErr::BadArgs)
+impl crate::wire::typed::Handle for FilesBrowse {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::BrowseReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::BrowseReply, FilesBrowseErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesBrowseErr::BadArgs)
+        }
     }
 }
 
@@ -219,9 +277,19 @@ impl Command for FilesReadText {
     type Err = FilesReadTextErr;
 }
 
-impl Blocking for FilesReadText {
-    fn run(req: wire::ReadTextReq, cx: &Cx) -> Result<wire::ReadTextReply, FilesReadTextErr> {
-        ask(req, cx, FilesReadTextErr::BadArgs)
+impl crate::wire::typed::Handle for FilesReadText {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::ReadTextReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::ReadTextReply, FilesReadTextErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesReadTextErr::BadArgs)
+        }
     }
 }
 
@@ -247,9 +315,20 @@ impl Command for FilesReadChunk {
     type Err = FilesReadChunkErr;
 }
 
-impl Blocking for FilesReadChunk {
-    fn run(req: wire::ReadChunkReq, cx: &Cx) -> Result<wire::ReadChunkReply, FilesReadChunkErr> {
-        ask(req, cx, FilesReadChunkErr::BadArgs)
+impl crate::wire::typed::Handle for FilesReadChunk {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::ReadChunkReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::ReadChunkReply, FilesReadChunkErr>>
+           + Send
+           + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesReadChunkErr::BadArgs)
+        }
     }
 }
 
@@ -273,9 +352,19 @@ impl Command for FilesSize {
     type Err = FilesSizeErr;
 }
 
-impl Blocking for FilesSize {
-    fn run(req: wire::SizeReq, cx: &Cx) -> Result<wire::SizeReply, FilesSizeErr> {
-        ask(req, cx, FilesSizeErr::BadArgs)
+impl crate::wire::typed::Handle for FilesSize {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::SizeReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::SizeReply, FilesSizeErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesSizeErr::BadArgs)
+        }
     }
 }
 
@@ -298,9 +387,19 @@ impl Command for FilesHome {
     type Err = FilesHomeErr;
 }
 
-impl Blocking for FilesHome {
-    fn run(req: wire::HomeReq, cx: &Cx) -> Result<wire::FilesPathReply, FilesHomeErr> {
-        ask(req, cx, FilesHomeErr::BadArgs)
+impl crate::wire::typed::Handle for FilesHome {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: wire::HomeReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesHomeErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            ask(req, cx, FilesHomeErr::BadArgs)
+        }
     }
 }
 
@@ -324,10 +423,11 @@ impl Command for FilesGrep {
     type Err = FilesGrepErr;
 }
 
-impl Async for FilesGrep {
+impl crate::wire::typed::Handle for FilesGrep {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: wire::GrepReq,
-        _cx: Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::GrepReply, FilesGrepErr>> + Send + 'static
     {
         async move {

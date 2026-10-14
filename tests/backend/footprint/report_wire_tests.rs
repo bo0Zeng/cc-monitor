@@ -272,7 +272,7 @@ fn data_report_own_rows_keep_their_wire_bytes() {
 /// 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，`client` 那一层也拒（一份事实都不读）。
 #[test]
 fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::wire::spec::{prepare, Prepared};
+    use crate::wire::spec::{invoke, Prepared};
     let cases = [
         ("footprint-report", json!({ "bogus": 1 })),
         (
@@ -290,7 +290,8 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
             .iter()
             .find(|s| s.name == cmd)
             .unwrap();
-        let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
+        let Some(Prepared::Blocking(run)) = invoke(spec.run, &crate::stream::inbound::hands(None))
+        else {
             panic!("{cmd} 不在阻塞档");
         };
         let req = crate::wire::Request {

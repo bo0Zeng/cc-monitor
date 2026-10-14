@@ -147,6 +147,14 @@ impl crate::wire::typed::Codes for SessionNewErr {
             raw,
         }
     }
+    /// 起不来的每一种都带 [`SessionNewRefusal`]（哪一格 · 选不了号那一形；整体的那几种 `field: null`）。
+    #[cfg(test)]
+    fn data_shapes() -> Vec<(&'static str, crate::wire::typed::tests::Ty)> {
+        SESSION_NEW_CODES
+            .iter()
+            .map(|c| (*c, crate::wire::typed::tests::ty_of::<SessionNewRefusal>()))
+            .collect()
+    }
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         match SESSION_NEW_CODES.iter().find(|c| **c == code) {
             Some(c) => Ok(SessionNewErr((c, said, None, None))),

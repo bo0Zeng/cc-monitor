@@ -461,10 +461,11 @@ impl crate::wire::typed::Command for CcmProbe {
     type Err = ProbeErr;
 }
 
-impl crate::wire::typed::Async for CcmProbe {
+impl crate::wire::typed::Handle for CcmProbe {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<CcmCard, ProbeErr>> + Send + 'static {
         std::future::ready(Ok(answer_probe()))
     }
@@ -505,9 +506,13 @@ impl crate::wire::typed::Command for CcmPrint {
     type Err = PrintErr;
 }
 
-impl crate::wire::typed::Blocking for CcmPrint {
-    fn run(req: CcmPrintReq, _cx: &crate::wire::typed::Cx) -> Result<CcmLine, PrintErr> {
-        answer_print(&req).map_err(crate::wire::typed::of_pair(PrintErr::Refused))
+impl crate::wire::typed::Handle for CcmPrint {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: CcmPrintReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<CcmLine, PrintErr>> + Send + 'static {
+        async move { answer_print(&req).map_err(crate::wire::typed::of_pair(PrintErr::Refused)) }
     }
 }
 
@@ -637,27 +642,31 @@ impl crate::wire::typed::Command for TerminalNameMint {
     type Err = TerminalNameMintErr;
 }
 
-impl crate::wire::typed::Blocking for TerminalNameMint {
+impl crate::wire::typed::Handle for TerminalNameMint {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: TerminalNameMintReq,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<Minted, TerminalNameMintErr> {
-        let base = match (req.cwd.as_deref(), req.fork_of.as_deref()) {
-            (Some(cwd), None) => crate::control::session_batch::NameBase::Cwd(cwd),
-            (None, Some(source)) => crate::control::session_batch::NameBase::ForkOf(source),
-            _ => {
-                return Err(TerminalNameMintErr::BadArgs(
-                    crate::common::contract::malformed("give exactly one of `cwd` / `forkOf`"),
-                ))
-            }
-        };
-        // 快照那一层只回 `no_tmux`（下面那层接住了，不算失败）与 `child_timed_out` 两个码 ⇒ 到这里的只有后者。
-        terminal_name_mint_with(base, crate::common::session_snapshot::global()).map_err(
-            |(code, said)| {
-                debug_assert_eq!(code, crate::platform::child::TIMED_OUT);
-                TerminalNameMintErr::ChildTimedOut(said)
-            },
-        )
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Minted, TerminalNameMintErr>> + Send + 'static
+    {
+        async move {
+            let base = match (req.cwd.as_deref(), req.fork_of.as_deref()) {
+                (Some(cwd), None) => crate::control::session_batch::NameBase::Cwd(cwd),
+                (None, Some(source)) => crate::control::session_batch::NameBase::ForkOf(source),
+                _ => {
+                    return Err(TerminalNameMintErr::BadArgs(
+                        crate::common::contract::malformed("give exactly one of `cwd` / `forkOf`"),
+                    ))
+                }
+            };
+            // 快照那一层只回 `no_tmux`（下面那层接住了，不算失败）与 `child_timed_out` 两个码 ⇒ 到这里的只有后者。
+            terminal_name_mint_with(base, crate::common::session_snapshot::global()).map_err(
+                |(code, said)| {
+                    debug_assert_eq!(code, crate::platform::child::TIMED_OUT);
+                    TerminalNameMintErr::ChildTimedOut(said)
+                },
+            )
+        }
     }
 }
 

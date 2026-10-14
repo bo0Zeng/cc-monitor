@@ -71,7 +71,7 @@ fn the_reach_table_the_shell_reads_keeps_its_wire_bytes() {
 
 /// 走登记表跑一条（同分派那一层）：阻塞档直接跑，异步档在一个当场起的运行时上等它。
 fn run_any(cmd: &str, args: serde_json::Value) -> super::spec::Outcome {
-    use super::spec::{prepare, Prepared};
+    use super::spec::{invoke, Prepared};
     let spec = super::lookup(cmd).unwrap_or_else(|| panic!("`{cmd}` 不在登记表里"));
     let req = crate::wire::Request {
         id: "t".to_string(),
@@ -82,7 +82,10 @@ fn run_any(cmd: &str, args: serde_json::Value) -> super::spec::Outcome {
         tz: Default::default(),
         until: None,
     };
-    match prepare(spec.run, Some(&crate::platform::fs::Own::for_tests())) {
+    match invoke(
+        spec.run,
+        &crate::stream::inbound::hands(Some(&crate::platform::fs::Own::for_tests())),
+    ) {
         Some(Prepared::Blocking(f)) => f(req),
         Some(Prepared::Async(f)) => tokio::runtime::Builder::new_current_thread()
             .enable_all()

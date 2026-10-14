@@ -1489,7 +1489,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
 // 帧命令（typed）：经这台的文件管理面读写 ⇒ 阻塞档，带文件面
 // ═══════════════════════════════════════════════════════════════════════════
 
-use crate::wire::typed::{of_pair, Command, Cx, Files, NoArgs, WithFiles};
+use crate::wire::typed::{of_pair, Command, NoArgs};
 
 crate::wire::typed::codes! {
     /// 配置文件那几条只读的码：读没成 · 表单写不成配置（那一句说清哪一样）。
@@ -1517,9 +1517,19 @@ impl Command for ProfilesRead {
     type Err = ProfilesErr;
 }
 
-impl WithFiles for ProfilesRead {
-    fn run(_req: NoArgs, cx: &Cx, files: Files) -> Result<ProfilesBook, ProfilesErr> {
-        answer_read(files, &cx.tz).map_err(of_pair(ProfilesErr::Refused))
+impl crate::wire::typed::Handle for ProfilesRead {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        _req: NoArgs,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfilesBook, ProfilesErr>> + Send + 'static {
+        let (cx, needs) = cx.split();
+        async move {
+            let cx = &cx;
+            let files = needs;
+
+            answer_read(files, &cx.tz).map_err(of_pair(ProfilesErr::Refused))
+        }
     }
 }
 
@@ -1533,9 +1543,18 @@ impl Command for ProfilesResolve {
     type Err = ProfilesErr;
 }
 
-impl WithFiles for ProfilesResolve {
-    fn run(req: ProfilesResolveReq, _cx: &Cx, files: Files) -> Result<Resolved, ProfilesErr> {
-        answer_resolve(files, &req).map_err(of_pair(ProfilesErr::Refused))
+impl crate::wire::typed::Handle for ProfilesResolve {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: ProfilesResolveReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Resolved, ProfilesErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_resolve(files, &req).map_err(of_pair(ProfilesErr::Refused))
+        }
     }
 }
 
@@ -1549,9 +1568,19 @@ impl Command for ProfilesImpactCmd {
     type Err = ProfilesErr;
 }
 
-impl WithFiles for ProfilesImpactCmd {
-    fn run(req: ProfilesImpactReq, _cx: &Cx, files: Files) -> Result<ProfilesImpact, ProfilesErr> {
-        answer_impact(files, &req).map_err(of_pair(ProfilesErr::Refused))
+impl crate::wire::typed::Handle for ProfilesImpactCmd {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: ProfilesImpactReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfilesImpact, ProfilesErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_impact(files, &req).map_err(of_pair(ProfilesErr::Refused))
+        }
     }
 }
 
@@ -1565,9 +1594,19 @@ impl Command for ProfilesBasesCmd {
     type Err = ProfilesErr;
 }
 
-impl WithFiles for ProfilesBasesCmd {
-    fn run(req: ProfilesBasesReq, _cx: &Cx, files: Files) -> Result<ProfilesBases, ProfilesErr> {
-        answer_bases(files, &req).map_err(of_pair(ProfilesErr::Refused))
+impl crate::wire::typed::Handle for ProfilesBasesCmd {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: ProfilesBasesReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfilesBases, ProfilesErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_bases(files, &req).map_err(of_pair(ProfilesErr::Refused))
+        }
     }
 }
 
@@ -1581,13 +1620,19 @@ impl Command for ProfilesWrite {
     type Err = ProfilesWriteErr;
 }
 
-impl WithFiles for ProfilesWrite {
+impl crate::wire::typed::Handle for ProfilesWrite {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: ProfilesWriteReq,
-        _cx: &Cx,
-        files: Files,
-    ) -> Result<ProfilesWriteDone, ProfilesWriteErr> {
-        answer_write(files, &req).map_err(of_pair(ProfilesWriteErr::Refused))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfilesWriteDone, ProfilesWriteErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_write(files, &req).map_err(of_pair(ProfilesWriteErr::Refused))
+        }
     }
 }
 

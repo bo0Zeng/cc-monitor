@@ -54,8 +54,12 @@ impl crate::wire::typed::Command for RelayOptin {
     type Err = OptinErr;
 }
 
-impl crate::wire::typed::Blocking for RelayOptin {
-    fn run(req: OptinReq, _cx: &crate::wire::typed::Cx) -> Result<endpoint::Optin, OptinErr> {
-        answer_optin(&req).map_err(crate::wire::typed::of_pair(OptinErr::Failed))
+impl crate::wire::typed::Handle for RelayOptin {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: OptinReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<endpoint::Optin, OptinErr>> + Send + 'static {
+        async move { answer_optin(&req).map_err(crate::wire::typed::of_pair(OptinErr::Failed)) }
     }
 }

@@ -187,7 +187,7 @@ fn skill_install_record_keeps_its_wire_bytes() {
 /// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
 #[test]
 fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::wire::spec::{prepare, Prepared};
+    use crate::wire::spec::{invoke, Prepared};
     let d = tmp("extra");
     let own = crate::platform::fs::Own::issue_at(&d);
     let digest = "0123456789abcdef";
@@ -223,7 +223,9 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
             .iter()
             .find(|s| s.name == cmd)
             .unwrap();
-        let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&own)) else {
+        let Some(Prepared::Blocking(run)) =
+            invoke(spec.run, &crate::stream::inbound::hands(Some(&own)))
+        else {
             panic!("{cmd} 不在阻塞档");
         };
         let req = crate::wire::Request {

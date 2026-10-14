@@ -392,10 +392,11 @@ impl crate::wire::typed::Command for NeedsAnswerCmd {
     type Err = AnswerErr;
 }
 
-impl crate::wire::typed::Async for NeedsAnswerCmd {
+impl crate::wire::typed::Handle for NeedsAnswerCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: AnswerReq,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Answered, AnswerErr>> + Send + 'static {
         std::future::ready(answer(req).map_err(crate::wire::typed::of_pair(AnswerErr::NotFound)))
     }

@@ -1591,6 +1591,7 @@ type FactBlocked = { why: FactWhy, until?: number, text: string, };
 type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type LoginState = "ok" | "needsLogin" | "needsKey";
 type QuotaKind = "sub" | "api";
+type RotBadCell = { cell: string, code: string, };
 type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
 /**
  * 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
@@ -1624,6 +1625,7 @@ type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
+type RotRefused = { cells: Array<RotBadCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -1771,6 +1773,8 @@ resetsText?: string, rate?: number, };
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused`
 
+失败带 `data` 的码：`refused` ⇒ `RotRefused`
+
 #### `rotation-settings`
 
 改一份设置。
@@ -1780,6 +1784,9 @@ resetsText?: string, rate?: number, };
 入参 `RotationSettingsReq` · 回包 `RotationSettingsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotBadCell = { cell: string, code: string, };
+type RotConflict = { rev: string, };
+type RotRefused = { cells: Array<RotBadCell>, };
 type RotWhere = { sid: string, } | { strategy: string, };
 type RotationSettingsReply = { 
 /**
@@ -1799,6 +1806,8 @@ ifRev?: string, };
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
 
+失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
+
 #### `rotation-save`
 
 存设置。
@@ -1808,6 +1817,9 @@ ifRev?: string, };
 入参 `RotationSaveReq` · 回包 `RotationSaveReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotBadCell = { cell: string, code: string, };
+type RotConflict = { rev: string, };
+type RotRefused = { cells: Array<RotBadCell>, };
 type RotSaveAs = { name: string, };
 type RotWhere = { sid: string, } | { strategy: string, };
 type RotationSaveReply = { id: string, rev: string, };
@@ -1827,6 +1839,8 @@ as?: RotSaveAs, };
 ```
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
+
+失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
 
 #### `rotation-revert`
 
@@ -1910,11 +1924,15 @@ type RotationTempReq = { sid: string, op: RotTempOp, };
 入参 `RotationUseNowReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type RotDone = Record<symbol, never>;
+type RotUnusable = { why?: FactWhy, until?: number, };
 type RotationUseNowReq = { sid: string, account: string, };
 ```
 
 码：`bad_args` · `no_session` · `not_listed` · `unusable` · `io_failed`
+
+失败带 `data` 的码：`unusable` ⇒ `RotUnusable`
 
 #### `rotation-strategy-add`
 
@@ -1925,6 +1943,7 @@ type RotationUseNowReq = { sid: string, account: string, };
 入参 `RotationStrategyAddReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotBadStrategy = { line?: number, };
 type RotStrategyId = { id: string, };
 type RotationStrategyAddReq = { 
 /**
@@ -1938,6 +1957,8 @@ name: string, };
 ```
 
 码：`bad_args` · `bad_strategy` · `io_failed`
+
+失败带 `data` 的码：`bad_strategy` ⇒ `RotBadStrategy`
 
 #### `rotation-strategy-copy`
 
@@ -1963,11 +1984,14 @@ type RotationStrategyCopyReq = { id: string, name: string, };
 入参 `RotationStrategyRenameReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotConflict = { rev: string, };
 type RotStrategyId = { id: string, };
 type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
+
+失败带 `data` 的码：`conflict` ⇒ `RotConflict`
 
 #### `rotation-strategy-delete`
 
@@ -1979,10 +2003,13 @@ type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
 
 ```ts
 type RotDone = Record<symbol, never>;
+type RotInUse = { sids: Array<string>, };
 type RotationStrategyDeleteReq = { id: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `in_use` · `io_failed`
+
+失败带 `data` 的码：`in_use` ⇒ `RotInUse`
 
 #### `rotation-strategy-tz`
 
@@ -1993,11 +2020,14 @@ type RotationStrategyDeleteReq = { id: string, };
 入参 `RotationStrategyTzReq` · 回包 `RotStrategyRev`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotConflict = { rev: string, };
 type RotStrategyRev = { rev: string, };
 type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
+
+失败带 `data` 的码：`conflict` ⇒ `RotConflict`
 
 #### `rotation-day-paint`
 
@@ -7828,6 +7858,23 @@ class: string, };
 
 ```ts
 type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -7864,6 +7911,8 @@ account: LaunchedAccount | null, };
 
 码：`bad_args` · `refused` · `account_unavailable`
 
+失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable`
+
 #### `launch-render-cli`
 
 远端起会话那一行 `ccm …`。
@@ -7874,6 +7923,23 @@ account: LaunchedAccount | null, };
 
 ```ts
 type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type CliRenderRequest = { 
 /**
  * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
@@ -7902,6 +7968,8 @@ type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_i
 ```
 
 码：`bad_args` · `refused` · `account_unavailable`
+
+失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable`
 
 #### `terminal-ssh`
 
@@ -9113,6 +9181,23 @@ type StartMode = "tmux" | "window";
 
 ```ts
 type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type FirstSay = { 
 /**
  * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
@@ -9228,10 +9313,22 @@ cwd: string,
  * 第一句交进去的结局；没给第一句 ⇒ `null`。
  */
 prompt: FirstSay | null, };
+type SessionNewField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
 type SessionNewOutcome = "started" | "open";
+type SessionNewRefusal = { 
+/**
+ * 不行的那一格；整体的（起不来 · 分叉写不成 · 渲不出）⇒ `null`。
+ */
+field: SessionNewField | null, 
+/**
+ * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
+ */
+unavailable: AccountUnavailable | null, };
 ```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
+
+失败带 `data` 的码：`bad_args` ⇒ `SessionNewRefusal` · `unknown_agent` ⇒ `SessionNewRefusal` · `bad_command` ⇒ `SessionNewRefusal` · `no_dir` ⇒ `SessionNewRefusal` · `account_unavailable` ⇒ `SessionNewRefusal` · `place_unavailable` ⇒ `SessionNewRefusal` · `bad_tmux_name` ⇒ `SessionNewRefusal` · `tmux_taken` ⇒ `SessionNewRefusal` · `unobservable` ⇒ `SessionNewRefusal` · `fork_failed` ⇒ `SessionNewRefusal` · `refused` ⇒ `SessionNewRefusal` · `start_failed` ⇒ `SessionNewRefusal` · `child_timed_out` ⇒ `SessionNewRefusal` · `launch_pending` ⇒ `SessionNewRefusal` · `no_strategy` ⇒ `SessionNewRefusal`
 
 #### `session-new-facts`
 
@@ -9379,6 +9476,23 @@ forkOf?: string, };
 入参 `RestartReq` · 回包 `Restarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type Arrival = "arrived" | "missed";
 type Compact = "done" | "timed_out" | "skipped" | "unsupported" | "failed";
 type LaunchedAccount = { name: string, configDir: string, 
@@ -9386,6 +9500,7 @@ type LaunchedAccount = { name: string, configDir: string,
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
  */
 model: string | null, };
+type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };
 type RestartReq = { 
 /**
  * 会话 id。
@@ -9443,6 +9558,8 @@ account: LaunchedAccount | null, };
 ```
 
 码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed` · `child_timed_out`
+
+失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable` · `ambiguous` ⇒ `RestartRefused` · `session_already_live` ⇒ `RestartRefused` · `stop_failed` ⇒ `RestartRefused` · `start_failed` ⇒ `RestartRefused`
 
 #### `launch`
 
@@ -10113,6 +10230,11 @@ fault: MachineFault | null, };
 
 ```ts
 type ElemKey = { fields: Array<string>, equals: string, };
+type Gone = { 
+/**
+ * 认出了不止一台（不猜是哪台）。
+ */
+ambiguous: boolean, };
 type Host = { 
 /**
  * 这台的名字（origin）；空 ⇒ 用 `host`。
@@ -10151,6 +10273,20 @@ jump: string,
  */
 connect: boolean, };
 type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachineFault = { 
+/**
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ */
+code: MachineFaultCode, 
+/**
+ * 出问题的那台的名字（`label` 非空取它、否则 `host`）。
+ */
+name: string, 
+/**
+ * 那一格下面的那一句（添加机器框 · 机器卡同读）。
+ */
+said: string, };
+type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken";
 type MachinesEdits = { edits: Array<MachineEdit>, };
 type MachinesReply = { 
 /**
@@ -10179,6 +10315,8 @@ type PinnedDay = { origin: Origin, day: string, };
 ```
 
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
+
+失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
 
 #### `relay-optin`
 
@@ -10606,14 +10744,36 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dirs` | → | 可选：另要问的目录（串的数组） |
-| `fresh` | → | 可选布尔：`true` ⇒ 认过的目录也重问 |
-| `pb` | ← | `{state: ok\|missing\|unsupported, said, version}`：pb 装没装、认不认得它的输出 |
-| `workspaces` | ← | 每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, bySession, slices: [{name, domain, current, progress, needCount, error, stale}]}` |
+入参 `PlanListReq` · 回包 `PlanList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args`
+```ts
+type PlanList = { pb: PlanPb, workspaces: Array<PlanListWorkspace>, };
+type PlanListReq = { 
+/**
+ * 另要问的目录（这台的路径）。
+ */
+dirs?: Array<string> | null, 
+/**
+ * `true` ⇒ 认过的目录也重问 pb。
+ */
+fresh?: boolean | null, };
+type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, };
+type PlanListWorkspace = { workspace: string, repo: string | null, auto: boolean, rev: string, stale: PlanStale | null, needCount: number, bySession: { [key in string]: PlanSessionBlock }, slices: Array<PlanListSlice>, };
+type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
+type PlanProgress = { done: number, open: number, dropped: number, };
+type PlanSessionBlock = { slice: string, block: string, 
+/**
+ * 块根格（编号；点会话头那一枚标选中它）。
+ */
+cell: string | null, 
+/**
+ * 块根格的标题；顶块 ⇒ `null`。
+ */
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+```
+
+码：`bad_args` · `failed`
 
 #### `plan-read`
 
@@ -10621,15 +10781,143 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `workspace` | → | 工作区根（`plan-list` 给的那个） |
-| `rev` | ← | 这一份输出的摘要：变了才算计划变了 |
-| `readAt` | ← | 读到的时刻（epoch ms） |
-| `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
-| `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
-| `slices` | ← | 每片一格：`path` ＝ 仓库相对工作区根（pb 登记的；旧 pb 没给 ⇒ 片名）；读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null`；顶块（`project`）那一次记在片上的 `returned` |
-| `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
+入参 `PlanReadReq` · 回包 `PlanRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
+type PlanBlock = { id: string, cells: Array<string>, dir: string | null, owner: PlanWho | null, phase: string | null, 
+/**
+ * 站在哪一格（编号）。
+ */
+at: string | null, row: boolean, };
+type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
+/**
+ * pb 的原话（做完了 · 没做完 · 不做了）。
+ */
+status: string | null, 
+/**
+ * 状态的码；pb 给了别的字 ⇒ `null`。
+ */
+statusCode: "done" | "open" | "dropped" | null, 
+/**
+ * 没做完时的原因（pb 原话）。
+ */
+why: string | null, 
+/**
+ * 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
+ */
+whyCode: PlanWhyCode | null, signs: Array<PlanSign>, owner: PlanWho | null, 
+/**
+ * 签它的（上一级）；pb 没给 ⇒ `null`。
+ */
+signer: PlanWho | null, refs: PlanRefs, hasView: boolean, 
+/**
+ * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
+ */
+returned: PlanReturned | null, };
+type PlanCheck = { unreadable: unknown[], red: Array<PlanRed>, undecidable: Array<PlanUndecidable>, };
+type PlanEdgeWords = { to: string | null, with: string | null, after: string | null, replaces: string | null, };
+type PlanEdges = { to: Array<string>, with: Array<string>, after: Array<string>, replaces: Array<string>, };
+type PlanFile = { path: string, 
+/**
+ * pb 的原话（在 · 缺 · 空 · 坏）。
+ */
+state: string | null, 
+/**
+ * 对账的码；认不出 ⇒ `null`。
+ */
+stateCode: "ok" | "missing" | "empty" | "broken" | null, note: string | null, 
+/**
+ * 同一份文件还挂在哪几格（编号）。
+ */
+alsoBy: Array<string>, };
+type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, };
+type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: string | null, cell: string | null, 
+/**
+ * 那一条牵着的会话（问人 · 停了的那一个）。
+ */
+sid: string | null, 
+/**
+ * 判据红那一条在 `check.red` 里的位置。
+ */
+red?: number, acked: boolean, };
+type PlanPhase = { name: string | null, does: string | null, marks: Array<string>, };
+type PlanProgress = { done: number, open: number, dropped: number, };
+type PlanRead = { pb: string | null, workspace: string, repo: string | null, auto: boolean, slices: Array<PlanSlice>, bySession: { [key in string]: PlanSessionBlock }, 
+/**
+ * 这一份输出的摘要：变了才算计划变了。
+ */
+rev: string, readAt: number, readAtText?: string, stale: PlanStale | null, needCount: number, };
+type PlanReadReq = { 
+/**
+ * 工作区根（`plan-list` 给的那个）。
+ */
+workspace: string, };
+type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, };
+type PlanRef = { start: number, end: number, ids: Array<string>, };
+type PlanRefs = { title: Array<PlanRef>, body: Array<PlanRef>, };
+type PlanReturned = { 
+/**
+ * 退回那一刻（epoch ms）。
+ */
+at: number, atText?: string, to: PlanWho | null, state: "returned" | "unsure" | "landed", 
+/**
+ * 落地的那一种：底下多出新格 · 正文改了。
+ */
+by: "child" | "body" | null, child: PlanReturnedChild | null, };
+type PlanReturnedChild = { id: string, title: string | null, };
+type PlanSessionBlock = { slice: string, block: string, 
+/**
+ * 块根格（编号；点会话头那一枚标选中它）。
+ */
+cell: string | null, 
+/**
+ * 块根格的标题；顶块 ⇒ `null`。
+ */
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+type PlanSign = { 
+/**
+ * pb 的 ISO 时刻。
+ */
+at: string | null, 
+/**
+ * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
+ */
+atText?: string, 
+/**
+ * 那一刻的毫秒（自 1970，排序用）；读不出时刻 ⇒ `null`。
+ */
+atMs: number | null, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+type PlanSlice = { name: string, domain: string | null, 
+/**
+ * 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
+ */
+path: string, current: boolean, 
+/**
+ * 这一刻读不成的那一句（pb 原样）。
+ */
+error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+/**
+ * 这一片要你看的数（没认可的，不含问人）。
+ */
+needCount: number, 
+/**
+ * 顶块（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
+ */
+returned: PlanReturned | null, };
+type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+type PlanUndecidable = { rule: string | null, why: string | null, };
+type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
+/**
+ * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ */
+sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+/**
+ * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
+ */
+needs: string | null, };
+type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" };
+```
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`
 
@@ -10639,12 +10927,24 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-cell-view`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 格的编号 |
-| `slice` | → | 片名 |
-| `view` | ← | 原样那一段 |
-| `workspace` | → | 工作区根 |
+入参 `PlanCellViewReq` · 回包 `PlanCellView`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanCellView = { view: string, };
+type PlanCellViewReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 格的编号。
+ */
+id: string, };
+```
 
 码：`bad_args` · `no_view`
 
@@ -10654,13 +10954,20 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `cmd` | → | `continue` · `pause` · `view` |
-| `workspace` | → | 工作区根 |
-| `rc` | ← | pb 的退出码（成了才回，恒 0） |
-| `said` | ← | pb 说的第一句 |
-| `path` | ← | `view` 写的那一页（那台机器上的路径）；别的 ⇒ `null` |
+入参 `PlanCommandReq` · 回包 `PlanCmdReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanCmdReply = { rc: number, said: string | null, path: string | null, };
+type PlanCommandReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * `continue` · `pause` · `view`。
+ */
+cmd: "continue" | "pause" | "view", };
+```
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported` · `refused`
 
@@ -10670,14 +10977,50 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-files`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dir` | → | 那台机器上的绝对路径（串） |
-| `workspace` | ← | 工作区根；不在任何工作区 ⇒ `null` |
-| `slice` | ← | 片名；不在任何一片的仓库（`<工作区>/<path>/`：pb 登记的位置，没登记 ⇒ 片名）里 ⇒ `null` |
-| `unreadable` | ← | 那一片此刻读不成的那一句（条目空） |
-| `entries` | ← | 每份声明过的文件 `{name, id, title, statusCode, status, block, signAtText, fileState, fileNote, dup: [{id, title}]}`（被几格声明 ⇒ 先声明的作主、其余进 `dup`） |
-| `unowned` | ← | 无主的那几份（要 pb 给；没给 ⇒ `null`） |
+入参 `PlanFilesReq` · 回包 `PlanFiles`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanFileDup = { id: string, title: string | null, };
+type PlanFileOwner = { 
+/**
+ * 文件名（目录里的那一项）。
+ */
+name: string, 
+/**
+ * 作主的那一格（排期上先声明它的那一格）。
+ */
+id: string, title: string | null, statusCode: string | null, status: string | null, 
+/**
+ * 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
+ */
+block: string | null, 
+/**
+ * 作数那一条签收的时刻（成了字）；没签过 ⇒ `null`。
+ */
+signAtText: string | null, 
+/**
+ * 对账：`ok` · `missing` · `empty` · `broken`。
+ */
+fileState: string | null, fileNote: string | null, 
+/**
+ * 也声明它的那几格（pb 判据红「两个节点声明同一个文件」）。
+ */
+dup: Array<PlanFileDup>, };
+type PlanFiles = { workspace: string | null, slice: string | null, 
+/**
+ * 那一片此刻读不成的那一句（条目空）。
+ */
+unreadable: string | null, entries: Array<PlanFileOwner>, 
+/**
+ * 无主的那几份（要 pb 给 `unowned`；没给 ⇒ `null`）。
+ */
+unowned: Array<string> | null, };
+type PlanFilesReq = { 
+/**
+ * 那台机器上的绝对路径。
+ */
+dir: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -10687,14 +11030,28 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-ack`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `key` | → | 那一条的键（`plan-read` 里 `needs[].key`） |
-| `slice` | → | 片名 |
-| `workspace` | → | 工作区根 |
-| `acked` | ← | `true` |
-| `key` | ← | 原样 |
-| `needCount` | ← | 这个工作区此刻要你看的数 |
+入参 `PlanAckReq` · 回包 `PlanAckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanAckReply = { acked: boolean, key: string, 
+/**
+ * 这个工作区此刻要人过目的数。
+ */
+needCount: number, };
+type PlanAckReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 那一条的键（`plan-read` 里 `needs[].key`）。
+ */
+key: string, };
+```
 
 码：`bad_args` · `io_failed` · `no_such_need` · `not_ackable` · `not_read` · `review_unreadable`
 
@@ -10704,14 +11061,28 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-unack`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `key` | → | 那一条的键 |
-| `slice` | → | 片名 |
-| `workspace` | → | 工作区根 |
-| `acked` | ← | `false` |
-| `key` | ← | 原样 |
-| `needCount` | ← | 这个工作区此刻要你看的数 |
+入参 `PlanAckReq` · 回包 `PlanAckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanAckReply = { acked: boolean, key: string, 
+/**
+ * 这个工作区此刻要人过目的数。
+ */
+needCount: number, };
+type PlanAckReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 那一条的键（`plan-read` 里 `needs[].key`）。
+ */
+key: string, };
+```
 
 码：`bad_args` · `io_failed` · `not_read` · `review_unreadable`
 
@@ -10721,21 +11092,53 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-return` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 自报的前端（过 `terminal-input` 那一道身份门） |
-| `id` | → | 格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手） |
-| `line` | ← | 送出的那一行（后端拼；只读） |
-| `result` | ← | `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制） |
-| `said` | ← | `refused` / `copy` 时给人看的那一句 |
-| `screen` | ← | `screen-changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹（同 `terminal-input`） |
-| `slice` | → | 片名 |
-| `text` | → | 人的原话（换行并成空格） |
-| `to` | → | 可选：`owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有） |
-| `to` | ← | 送给的那一位（同 `plan-read` 里 `owner` 的形状） |
-| `why` | ← | `waiting`（在等你批准或回答）· `ended` · `unknown` · 或 `terminal-input` 的原因 |
-| `workspace` | → | 工作区根 |
+入参 `PlanReturnReq` · 回包 `PlanReturnReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanReturnReply = { line: string, to: PlanWho | null, 
+/**
+ * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
+ */
+result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, };
+type PlanReturnReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手）。
+ */
+id: string, 
+/**
+ * 人的原话（换行并成空格）。
+ */
+text: string, 
+/**
+ * `owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有）。
+ */
+to?: "owner" | "signer", 
+/**
+ * 自报的前端（过 `terminal-input` 那一道身份门）。
+ */
+client?: string | null, 
+/**
+ * 送之前看到的那一屏的指纹（同 `terminal-input`）。
+ */
+seen_screen?: string | null, };
+type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
+/**
+ * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ */
+sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+/**
+ * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
+ */
+needs: string | null, };
+```
 
 码：`bad_args` · `bad_target` · `capture_failed` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_server` · `no_such_cell` · `no_such_session` · `no_target` · `no_tmux` · `not_workspace` · `pb_unsupported` · `review_unreadable` · `unobservable`
 

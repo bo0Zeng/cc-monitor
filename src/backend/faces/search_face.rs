@@ -2,7 +2,7 @@
 //! 本体（索引 · 口径 · 合并规则）在 `observe/search_query.rs`；这里只有线上那三个类型和接线。
 
 use crate::observe::search_query::{self, MachineHits, Merged, SearchOpts, SessionHits};
-use crate::wire::typed::{codes, Async, Blocking, Command, Cx};
+use crate::wire::typed::{codes, Command};
 
 /// `history-search` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -89,13 +89,20 @@ impl Command for HistorySearch {
     type Err = HistorySearchErr;
 }
 
-impl Blocking for HistorySearch {
-    fn run(req: HistorySearchReq, _cx: &Cx) -> Result<HistorySearchReply, HistorySearchErr> {
-        search_at(
-            &crate::history::listing::agent_home(),
-            req,
-            super::read_face::LINES_CAP_BYTES,
-        )
+impl crate::wire::typed::Handle for HistorySearch {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: HistorySearchReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistorySearchReply, HistorySearchErr>> + Send + 'static
+    {
+        async move {
+            search_at(
+                &crate::history::listing::agent_home(),
+                req,
+                super::read_face::LINES_CAP_BYTES,
+            )
+        }
     }
 }
 
@@ -163,10 +170,11 @@ impl Command for HistorySearchMerge {
     type Err = HistorySearchMergeErr;
 }
 
-impl Async for HistorySearchMerge {
+impl crate::wire::typed::Handle for HistorySearchMerge {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: HistorySearchMergeReq,
-        cx: Cx,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Merged, HistorySearchMergeErr>> + Send + 'static
     {
         let now_ms = crate::common::time::now_secs().saturating_mul(1_000);

@@ -4,7 +4,7 @@
 
 use crate::assets::hub_wire as wire;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, codes, AsyncOwning, Command, Cx};
+use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// `ext-hub-preview` / `ext-hub-apply` 的码（各台的失败不在这里：进那一台的 `error`）。
@@ -28,14 +28,16 @@ impl Command for ExtHubPreview {
     type Err = ExtHubErr;
 }
 
-impl AsyncOwning for ExtHubPreview {
+impl crate::wire::typed::Handle for ExtHubPreview {
+    type Needs = crate::wire::typed::needs::OwnHub;
     fn run(
         req: wire::HubReq,
-        cx: Cx,
-        own: crate::platform::Own,
-        hub: typed::Hub,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::HubPreview, ExtHubErr>> + Send + 'static
     {
+        let (cx, needs) = cx.split();
+        let (own, hub) = needs;
+
         async move {
             let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
             crate::assets::hub::ext_preview_many(
@@ -61,14 +63,16 @@ impl Command for ExtHubApply {
     type Err = ExtHubErr;
 }
 
-impl AsyncOwning for ExtHubApply {
+impl crate::wire::typed::Handle for ExtHubApply {
+    type Needs = crate::wire::typed::needs::OwnHub;
     fn run(
         req: wire::HubApplyReq,
-        cx: Cx,
-        own: crate::platform::Own,
-        hub: typed::Hub,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::HubApplied, ExtHubErr>> + Send + 'static
     {
+        let (cx, needs) = cx.split();
+        let (own, hub) = needs;
+
         async move {
             let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
             crate::assets::hub::ext_apply_many(

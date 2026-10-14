@@ -51,13 +51,14 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
             h::facts_at(home, r, &limits)
         }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
-            <super::BackendLog as crate::wire::typed::Blocking>::run(
+            crate::wire::spec::finish(<super::BackendLog as crate::wire::typed::Handle>::run(
                 r,
-                &crate::wire::typed::Cx {
+                crate::wire::typed::Cx {
                     tz: tz.clone(),
                     until: None,
+                    needs: (),
                 },
-            )
+            ))
         }),
         _ => super::answer_at(home, cmd, args, tz),
     }

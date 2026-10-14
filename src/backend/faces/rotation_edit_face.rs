@@ -8,7 +8,7 @@ use crate::accounts::quota::rules::{decide, form, script, shelf};
 use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
-use crate::wire::typed::{Blocking, Command, Cx, Files, WithOwn};
+use crate::wire::typed::Command;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -137,14 +137,20 @@ impl Command for RotationSettings {
     type Err = RotationSettingsErr;
 }
 
-impl WithOwn for RotationSettings {
+impl crate::wire::typed::Handle for RotationSettings {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationSettingsReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotationSettingsReply, RotationSettingsErr> {
-        settings_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationSettingsReply, RotationSettingsErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            settings_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -249,14 +255,19 @@ impl Command for RotationSave {
     type Err = RotationSaveErr;
 }
 
-impl WithOwn for RotationSave {
+impl crate::wire::typed::Handle for RotationSave {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationSaveReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotationSaveReply, RotationSaveErr> {
-        save_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationSaveReply, RotationSaveErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            save_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -350,14 +361,19 @@ impl Command for RotationRevert {
     type Err = RotationRevertErr;
 }
 
-impl WithOwn for RotationRevert {
+impl crate::wire::typed::Handle for RotationRevert {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationRevertReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotDone, RotationRevertErr> {
-        revert_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotDone, RotationRevertErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            revert_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -418,14 +434,18 @@ impl Command for RotationUse {
     type Err = RotationUseErr;
 }
 
-impl WithOwn for RotationUse {
+impl crate::wire::typed::Handle for RotationUse {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationUseReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotDone, RotationUseErr> {
-        use_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotDone, RotationUseErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            use_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -498,14 +518,19 @@ impl Command for RotationForNew {
     type Err = RotationForNewErr;
 }
 
-impl WithOwn for RotationForNew {
+impl crate::wire::typed::Handle for RotationForNew {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationForNewReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotDone, RotationForNewErr> {
-        for_new_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotDone, RotationForNewErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            for_new_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -573,14 +598,19 @@ impl Command for RotationTemp {
     type Err = RotationTempErr;
 }
 
-impl WithOwn for RotationTemp {
+impl crate::wire::typed::Handle for RotationTemp {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationTempReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotationTempReply, RotationTempErr> {
-        temp_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationTempReply, RotationTempErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            temp_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -668,14 +698,19 @@ impl Command for RotationUseNow {
     type Err = RotationUseNowErr;
 }
 
-impl WithOwn for RotationUseNow {
+impl crate::wire::typed::Handle for RotationUseNow {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationUseNowReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotDone, RotationUseNowErr> {
-        use_now_with(&Ctx::here(), own, &req, crate::accounts::quota::now_unix())
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotDone, RotationUseNowErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            use_now_with(&Ctx::here(), own, &req, crate::accounts::quota::now_unix())
+        }
     }
 }
 
@@ -788,14 +823,19 @@ impl Command for RotationStrategyAdd {
     type Err = RotationStrategyAddErr;
 }
 
-impl WithOwn for RotationStrategyAdd {
+impl crate::wire::typed::Handle for RotationStrategyAdd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationStrategyAddReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotStrategyId, RotationStrategyAddErr> {
-        add_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotStrategyId, RotationStrategyAddErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            add_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -845,14 +885,19 @@ impl Command for RotationStrategyCopy {
     type Err = RotationStrategyCopyErr;
 }
 
-impl WithOwn for RotationStrategyCopy {
+impl crate::wire::typed::Handle for RotationStrategyCopy {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationStrategyCopyReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotStrategyId, RotationStrategyCopyErr> {
-        copy_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotStrategyId, RotationStrategyCopyErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            copy_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -899,14 +944,20 @@ impl Command for RotationStrategyRename {
     type Err = RotationStrategyRenameErr;
 }
 
-impl WithOwn for RotationStrategyRename {
+impl crate::wire::typed::Handle for RotationStrategyRename {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationStrategyRenameReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotStrategyId, RotationStrategyRenameErr> {
-        rename_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotStrategyId, RotationStrategyRenameErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            rename_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -986,14 +1037,19 @@ impl Command for RotationStrategyTz {
     type Err = RotationStrategyTzErr;
 }
 
-impl WithOwn for RotationStrategyTz {
+impl crate::wire::typed::Handle for RotationStrategyTz {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationStrategyTzReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotStrategyRev, RotationStrategyTzErr> {
-        tz_with(&Ctx::here(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotStrategyRev, RotationStrategyTzErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            tz_with(&Ctx::here(), own, &req)
+        }
     }
 }
 
@@ -1069,16 +1125,21 @@ impl Command for RotationStrategyDelete {
     type Err = RotationStrategyDeleteErr;
 }
 
-impl WithOwn for RotationStrategyDelete {
+impl crate::wire::typed::Handle for RotationStrategyDelete {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: RotationStrategyDeleteReq,
-        _cx: &Cx,
-        _files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<RotDone, RotationStrategyDeleteErr> {
-        let ctx = Ctx::here();
-        let live = (ctx.hop.live)();
-        delete_with(&ctx, own, &req, &|sid| live.contains(sid))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotDone, RotationStrategyDeleteErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (_files, own) = (needs.0, &needs.1);
+
+            let ctx = Ctx::here();
+            let live = (ctx.hop.live)();
+            delete_with(&ctx, own, &req, &|sid| live.contains(sid))
+        }
     }
 }
 
@@ -1172,25 +1233,30 @@ impl Command for RotationDayPaint {
     type Err = RotationDayPaintErr;
 }
 
-impl Blocking for RotationDayPaint {
+impl crate::wire::typed::Handle for RotationDayPaint {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: RotationDayPaintReq,
-        _cx: &Cx,
-    ) -> Result<RotationDayPaintReply, RotationDayPaintErr> {
-        if req.from > form::DAY_MIN || req.to > form::DAY_MIN {
-            return Err(RotationDayPaintErr::BadArgs(
-                crate::common::contract::malformed(
-                    "`from` and `to` must be minutes of a day (0–1440)",
-                ),
-            ));
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationDayPaintReply, RotationDayPaintErr>>
+           + Send
+           + 'static {
+        async move {
+            if req.from > form::DAY_MIN || req.to > form::DAY_MIN {
+                return Err(RotationDayPaintErr::BadArgs(
+                    crate::common::contract::malformed(
+                        "`from` and `to` must be minutes of a day (0–1440)",
+                    ),
+                ));
+            }
+            let segs: Vec<(u64, u64, f64)> = req.segs.iter().map(|s| (s.from, s.to, s.v)).collect();
+            Ok(RotationDayPaintReply {
+                segs: form::day_paint(&segs, req.from, req.to, req.v)
+                    .into_iter()
+                    .map(|(from, to, v)| RotSeg { from, to, v })
+                    .collect(),
+            })
         }
-        let segs: Vec<(u64, u64, f64)> = req.segs.iter().map(|s| (s.from, s.to, s.v)).collect();
-        Ok(RotationDayPaintReply {
-            segs: form::day_paint(&segs, req.from, req.to, req.v)
-                .into_iter()
-                .map(|(from, to, v)| RotSeg { from, to, v })
-                .collect(),
-        })
     }
 }
 

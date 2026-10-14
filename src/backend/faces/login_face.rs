@@ -4,7 +4,7 @@
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Blocking, Codes, Command, NoArgs};
+use crate::wire::typed::{self, Codes, Command, NoArgs};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -277,27 +277,35 @@ impl Command for LoginFinish {
     type Err = LoginFinishErr;
 }
 
-impl Blocking for LoginFinish {
-    fn run(req: LoginFinishReq, _cx: &typed::Cx) -> Result<LoginDone, LoginFinishErr> {
-        sign_in::finish(&req.job, &req.pasted)
-            .map_err(|f| match f {
-                FinishFail::NoJob => LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])),
-                FinishFail::BadPaste => {
-                    LoginFinishErr::BadPaste(copy_text("beLogin.finish.badPaste", &[]))
-                }
-                FinishFail::Slow => {
-                    LoginFinishErr::ChildTimedOut(copy_text("beLogin.finish.slow", &[]))
-                }
-                FinishFail::Refused(s) => {
-                    typed::of_fail(Fail::from(("refused", s)), LoginFinishErr::Refused)
-                }
-            })
-            .and_then(|key| {
-                // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
-                serde_json::from_str(&key)
-                    .map(|target| LoginDone { target })
-                    .map_err(|_| LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])))
-            })
+impl crate::wire::typed::Handle for LoginFinish {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: LoginFinishReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LoginDone, LoginFinishErr>> + Send + 'static {
+        async move {
+            sign_in::finish(&req.job, &req.pasted)
+                .map_err(|f| match f {
+                    FinishFail::NoJob => {
+                        LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[]))
+                    }
+                    FinishFail::BadPaste => {
+                        LoginFinishErr::BadPaste(copy_text("beLogin.finish.badPaste", &[]))
+                    }
+                    FinishFail::Slow => {
+                        LoginFinishErr::ChildTimedOut(copy_text("beLogin.finish.slow", &[]))
+                    }
+                    FinishFail::Refused(s) => {
+                        typed::of_fail(Fail::from(("refused", s)), LoginFinishErr::Refused)
+                    }
+                })
+                .and_then(|key| {
+                    // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
+                    serde_json::from_str(&key)
+                        .map(|target| LoginDone { target })
+                        .map_err(|_| LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])))
+                })
+        }
     }
 }
 
@@ -333,11 +341,18 @@ impl Command for LoginCancel {
     type Err = LoginCancelErr;
 }
 
-impl Blocking for LoginCancel {
-    fn run(req: LoginCancelReq, _cx: &typed::Cx) -> Result<LoginCancelled, LoginCancelErr> {
-        Ok(LoginCancelled {
-            was: sign_in::cancel(&req.job),
-        })
+impl crate::wire::typed::Handle for LoginCancel {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: LoginCancelReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LoginCancelled, LoginCancelErr>> + Send + 'static
+    {
+        async move {
+            Ok(LoginCancelled {
+                was: sign_in::cancel(&req.job),
+            })
+        }
     }
 }
 
@@ -403,23 +418,29 @@ impl Command for ManualListCmd {
     type Err = ManualListErr;
 }
 
-impl Blocking for ManualListCmd {
-    fn run(_req: NoArgs, _cx: &typed::Cx) -> Result<ManualList, ManualListErr> {
-        let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
-            return Ok(ManualList { items: Vec::new() });
-        };
-        let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
-            let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
-            (
-                kind,
-                crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
-            )
-        });
-        Ok(manual_of(
-            agent,
-            &accounts_product(agent),
-            mcp.as_ref().map(|(k, r)| (*k, r)),
-        ))
+impl crate::wire::typed::Handle for ManualListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ManualList, ManualListErr>> + Send + 'static {
+        async move {
+            let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
+                return Ok(ManualList { items: Vec::new() });
+            };
+            let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
+                let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
+                (
+                    kind,
+                    crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
+                )
+            });
+            Ok(manual_of(
+                agent,
+                &accounts_product(agent),
+                mcp.as_ref().map(|(k, r)| (*k, r)),
+            ))
+        }
     }
 }
 

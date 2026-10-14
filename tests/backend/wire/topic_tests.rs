@@ -149,14 +149,15 @@ fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
         crate::stream::topic_body::body_now(Topic::RotationStrategies, None, &crate::Tz::default()),
         {
-            use crate::wire::typed::Blocking;
-            crate::faces::rotation_view_face::RotationStrategies::run(
+            use crate::wire::typed::Handle;
+            crate::wire::spec::finish(crate::faces::rotation_view_face::RotationStrategies::run(
                 Default::default(),
-                &crate::wire::typed::Cx {
+                crate::wire::typed::Cx {
                     tz: crate::Tz::default(),
                     until: None,
+                    needs: (),
                 },
-            )
+            ))
             .ok()
             .and_then(|r| serde_json::to_value(r).ok())
         },
@@ -169,16 +170,17 @@ fn a_computed_body_is_the_reask_reply() {
             &crate::Tz::default()
         ),
         {
-            use crate::wire::typed::Blocking as _;
-            crate::faces::feature_face::TasksListCmd::run(
+            use crate::wire::typed::Handle as _;
+            crate::wire::spec::finish(crate::faces::feature_face::TasksListCmd::run(
                 crate::faces::feature_face::TasksListReq {
                     sid: "no-such-sid".to_string(),
                 },
-                &crate::wire::typed::Cx {
+                crate::wire::typed::Cx {
                     tz: crate::Tz::default(),
                     until: None,
+                    needs: (),
                 },
-            )
+            ))
             .ok()
             .and_then(|t| serde_json::to_value(t).ok())
         },

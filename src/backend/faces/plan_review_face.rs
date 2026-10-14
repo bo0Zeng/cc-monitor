@@ -5,21 +5,13 @@
 //! - `plan-unack {workspace, slice, key}`：撤掉（8 秒撤销那一下）；同上推一帧。
 
 use crate::plan::needs;
+use crate::plan::wire;
 use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
 type Answer = Result<Value, Fail>;
-
-fn bad(what: &str) -> Fail {
-    Fail::new("bad_args", crate::common::contract::malformed(what))
-}
-
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, Fail> {
-    args.get(k)
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(&format!("missing `{k}` (a string)")))
-}
 
 fn slice_of<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
     doc.get("slices")?
@@ -61,12 +53,8 @@ fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
     Ok(json!({"key": key, "acked": acked, "needCount": n}))
 }
 
-fn ack(args: &Value, own: &crate::platform::fs::Own) -> Answer {
-    let (ws, slice, key) = (
-        str_arg(args, "workspace")?,
-        str_arg(args, "slice")?,
-        str_arg(args, "key")?,
-    );
+fn ack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
+    let (ws, slice, key) = (req.workspace.as_str(), req.slice.as_str(), req.key.as_str());
     let doc = last(ws)?;
     let sl = slice_of(&doc, slice)
         .ok_or_else(|| Fail::new("no_such_need", copy_text("bePlan.review.noSuchNeed", &[])))?;
@@ -75,24 +63,92 @@ fn ack(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     after_ack(ws, key, true)
 }
 
-fn unack(args: &Value, own: &crate::platform::fs::Own) -> Answer {
-    let (ws, slice, key) = (
-        str_arg(args, "workspace")?,
-        str_arg(args, "slice")?,
-        str_arg(args, "key")?,
-    );
-    crate::plan::review::answer_unack(own, ws, slice, key)?;
-    after_ack(ws, key, false)
+fn unack(req: &PlanAckReq, own: &crate::platform::fs::Own) -> Answer {
+    crate::plan::review::answer_unack(own, &req.workspace, &req.slice, &req.key)?;
+    after_ack(&req.workspace, &req.key, false)
 }
 
-/// 帧面入口：命令名从 `r.cmd` 来。
-pub(crate) fn answer(cmd: &str, args: &Value, own: &crate::platform::fs::Own) -> Answer {
-    match cmd {
-        "plan-ack" => ack(args, own)
-            .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>),
-        "plan-unack" => unack(args, own)
-            .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>),
-        other => Err(bad(&format!("unknown command `{other}`"))),
+/// `plan-ack` · `plan-unack` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanAckReq {
+    /// 工作区根。
+    pub(crate) workspace: String,
+    /// 片名。
+    pub(crate) slice: String,
+    /// 那一条的键（`plan-read` 里 `needs[].key`）。
+    pub(crate) key: String,
+}
+
+typed::codes! {
+    /// `plan-ack` 的码。
+    pub(crate) enum PlanAckErr {
+        IoFailed = "io_failed",
+        NoSuchNeed = "no_such_need",
+        NotAckable = "not_ackable",
+        NotRead = "not_read",
+        ReviewUnreadable = "review_unreadable",
+    }
+}
+
+typed::codes! {
+    /// `plan-unack` 的码（没有也不算错）。
+    pub(crate) enum PlanUnackErr {
+        IoFailed = "io_failed",
+        NotRead = "not_read",
+        ReviewUnreadable = "review_unreadable",
+    }
+}
+
+/// `plan-ack`：认可一条要你看（读—改—写后端自己那份小文件 ⇒ 阻塞档、写自家状态）。
+pub(crate) struct PlanAckCmd;
+
+impl Command for PlanAckCmd {
+    const NAME: &'static str = "plan-ack";
+    type Req = PlanAckReq;
+    type Reply = wire::PlanAckReply;
+    type Err = PlanAckErr;
+}
+
+impl Handle for PlanAckCmd {
+    type Needs = typed::needs::Own;
+    fn run(
+        req: PlanAckReq,
+        cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanAckReply, PlanAckErr>> + Send + 'static
+    {
+        async move {
+            ack(&req, &cx.needs)
+                .and_then(crate::faces::plan_face::wired)
+                .map_err(|f| typed::of_fail(f, PlanAckErr::IoFailed))
+        }
+    }
+}
+
+/// `plan-unack`：撤掉一条认可（同上）。
+pub(crate) struct PlanUnackCmd;
+
+impl Command for PlanUnackCmd {
+    const NAME: &'static str = "plan-unack";
+    type Req = PlanAckReq;
+    type Reply = wire::PlanAckReply;
+    type Err = PlanUnackErr;
+}
+
+impl Handle for PlanUnackCmd {
+    type Needs = typed::needs::Own;
+    fn run(
+        req: PlanAckReq,
+        cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanAckReply, PlanUnackErr>> + Send + 'static
+    {
+        async move {
+            unack(&req, &cx.needs)
+                .and_then(crate::faces::plan_face::wired)
+                .map_err(|f| typed::of_fail(f, PlanUnackErr::IoFailed))
+        }
     }
 }
 

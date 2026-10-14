@@ -1,6 +1,5 @@
 //! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*` · `login-*` · `manual-list`。
 
-use crate::stream::inbound::LocalFiles;
 use crate::wire::spec::{arg, both, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
@@ -46,54 +45,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "一个会话或一份策略此刻的轮换",
     ),
     // 写 —— 设置 · 存 · 还原 · 换一份 · 新会话用哪份 · 拖出来的顺序 · 现在用 · 策略文件加 / 复制 / 改名 / 删。
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationSettings>(
-        "改一份设置",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationSave>(
-        "存设置",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationRevert>(
-        "丢掉会话里没存的设置",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationUse>(
-        "会话换一份策略",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationForNew>(
-        "新会话用哪份策略",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationTemp>(
-        "排接下来先用谁",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationUseNow>(
-        "现在用这个号",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyAdd>(
-        "加一份策略",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyCopy>(
-        "复制一份策略",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyRename>(
-        "给策略改名",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyDelete>(
-        "删一份策略",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyTz>(
-        "给策略设时区",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationSettings>("改一份设置"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationSave>("存设置"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationRevert>("丢掉会话里没存的设置"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationUse>("会话换一份策略"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationForNew>("新会话用哪份策略"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationTemp>("排接下来先用谁"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationUseNow>("现在用这个号"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyAdd>("加一份策略"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyCopy>("复制一份策略"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyRename>("给策略改名"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyDelete>("删一份策略"),
+    crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationStrategyTz>("给策略设时区"),
     // 算术 —— 24 小时条上拖出一段（分段的算术，不是换号的想法）。
     crate::wire::typed::blocking::<crate::faces::rotation_edit_face::RotationDayPaint>(
         "在 24 小时条上刷一段",
@@ -178,57 +141,21 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 改账号库的那几条（typed：入参 · 成品 · 码表都从 `cmd_wire::accounts` 与 `faces::accounts_face` 的类型来）：本体 `accounts/manage/`，
     //   帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了改配置文件、重生成别名）。
     //   写经这台的文件管理面（[`LocalFiles`]）与分派那一层递的写句柄（key 表）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsInit>(
-        "建账号库",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsAdd>(
-        "新建一个号",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsRemove>(
-        "删一个号",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsSetDefault>(
-        "设默认号",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsRepair>(
-        "修复账号库（幂等）",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsRollback>(
-        "按一份备份还原",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsVerify>(
-        "核对账号库",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsLoginCmd>(
-        "在终端里登录一个号的那一行",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsInit>("建账号库"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsAdd>("新建一个号"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsRemove>("删一个号"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsSetDefault>("设默认号"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsRepair>("修复账号库（幂等）"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsRollback>("按一份备份还原"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsVerify>("核对账号库"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsLoginCmd>("在终端里登录一个号的那一行"),
     // 各号共用的用户级 MCP（本体 `accounts/manage/mcp_share_exec.rs`）：读各号的配置文件、只改那一个键、写回共享集合 ⇒ 阻塞档。
     //   成品只有名字与号名，不带定义里的任何值。
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsMcpRead>(
-        "这台各账号共用的用户级 MCP 此刻的样子",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsMcpRemove>(
-        "从各账号共用的用户级 MCP 里删一条",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsMcpPick>(
-        "两边都改了的那一条用哪一版",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsMcpRead>("这台各账号共用的用户级 MCP 此刻的样子"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsMcpRemove>("从各账号共用的用户级 MCP 里删一条"),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsMcpPick>("两边都改了的那一条用哪一版"),
     // 停 / 开各号之间的同步（只改共享集合那份文件里那一格；开回来那一刻同步一趟）。
-    crate::wire::typed::with_own::<crate::faces::accounts_face::AccountsMcpSync>(
-        "停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::accounts_face::AccountsMcpSync>("停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）"),
     // 在 app 里登录一个号 · 一个号里的一个 MCP 服务器（本体 `accounts/sign_in.rs`，帧面宿主 `faces/login_face.rs`）：核心起那一家的登录子命令、转链接、递码，
     //   令牌那一家自己写。`login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 硬臂（`dispatch` 带本连接的号调它）；
     //   作业自己收了（本机浏览器回调登完 · 那一家先退了）推一帧 `changed {login, key: 作业号}` 给那条连接。

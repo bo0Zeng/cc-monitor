@@ -360,11 +360,17 @@ impl crate::wire::typed::Command for SshConfigImport {
     type Err = ImportErr;
 }
 
-impl crate::wire::typed::Blocking for SshConfigImport {
-    fn run(req: SshImportReq, _cx: &crate::wire::typed::Cx) -> Result<SshImported, ImportErr> {
-        let mut groups = import();
-        mark_in_list(&mut groups, &req.known);
-        Ok(SshImported { groups })
+impl crate::wire::typed::Handle for SshConfigImport {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: SshImportReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<SshImported, ImportErr>> + Send + 'static {
+        async move {
+            let mut groups = import();
+            mark_in_list(&mut groups, &req.known);
+            Ok(SshImported { groups })
+        }
     }
 }
 

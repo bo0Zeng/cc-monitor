@@ -266,12 +266,13 @@ impl crate::wire::typed::Command for ExitPolicyRead {
     type Err = ExitReadErr;
 }
 
-impl crate::wire::typed::Blocking for ExitPolicyRead {
+impl crate::wire::typed::Handle for ExitPolicyRead {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<ExitPolicy, ExitReadErr> {
-        Ok(answer_read())
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ExitPolicy, ExitReadErr>> + Send + 'static {
+        async move { Ok(answer_read()) }
     }
 }
 
@@ -292,13 +293,18 @@ impl crate::wire::typed::Command for ExitPolicySetCmd {
     type Err = ExitSetErr;
 }
 
-impl crate::wire::typed::Owning for ExitPolicySetCmd {
+impl crate::wire::typed::Handle for ExitPolicySetCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: ExitPolicySet,
-        _cx: &crate::wire::typed::Cx,
-        own: &Own,
-    ) -> Result<ExitPolicy, ExitSetErr> {
-        answer_set(&req, own).map_err(|f| crate::wire::typed::of_fail(f, ExitSetErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ExitPolicy, ExitSetErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            answer_set(&req, own).map_err(|f| crate::wire::typed::of_fail(f, ExitSetErr::IoFailed))
+        }
     }
 }
 

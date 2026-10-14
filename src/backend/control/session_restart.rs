@@ -149,6 +149,15 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
 
 /// 失败信封里按码定形的 `data`（`account_unavailable` 那一形是 [`la::AccountUnavailable`]，与起会话那几条同一份）。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "RestartRefused"
+    )
+)]
 #[serde(untagged)]
 pub(crate) enum Refused {
     /// `ambiguous`：在跑的那几个终端名。
@@ -435,6 +444,17 @@ impl crate::wire::typed::Codes for RestartErr {
             data,
             ..crate::wire::spec::Fail::new(&code, message)
         }
+    }
+    #[cfg(test)]
+    fn data_shapes() -> Vec<(&'static str, crate::wire::typed::tests::Ty)> {
+        use crate::wire::typed::tests::ty_of;
+        vec![
+            ("account_unavailable", ty_of::<la::AccountUnavailable>()),
+            ("ambiguous", ty_of::<Refused>()),
+            ("session_already_live", ty_of::<Refused>()),
+            ("stop_failed", ty_of::<Refused>()),
+            ("start_failed", ty_of::<Refused>()),
+        ]
     }
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         if RESTART_CODES.contains(&code) {

@@ -789,11 +789,8 @@ mod tests {
         );
     }
 
-    /// 递 [`crate::platform::fs::Face`] 的那一档（typed 的 `Facing`，登记那一行写 `typed::facing`）只有文件管理那一族用；用它的命令恰好是
+    /// 递 [`crate::platform::fs::Face`] 的那一种能力（处理器写 `type Needs = needs::Face`）只有文件管理那一族用；用它的命令恰好是
     /// 文件管理写面登记的那几张命令表的并（写面 · 上传提交 · 解压）—— 两侧异源：一侧是命令表里的档位（现打），一侧是写面自己的表。
-    /// 命令表按族分住的那个目录。
-    const REGISTRY_DIR: &str = "stream/inbound/registry/";
-
     #[test]
     fn only_the_file_manager_commands_are_handed_the_face() {
         use crate::stream::inbound::REGISTRY;
@@ -816,26 +813,7 @@ mod tests {
         );
         assert_eq!(
             got, want,
-            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里 typed 的 `Facing` 那一档）"
-        );
-        // 档位的名字只许住文件管理那一族的命令表（别族一写就红，不等到上面那条相等）。
-        let root = crate::guard_support::src_root();
-        let mut users: Vec<String> = Vec::new();
-        for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if rel.starts_with(REGISTRY_DIR)
-                && guard_core::production_code(&src).contains("typed::facing::<")
-            {
-                users.push(rel);
-            }
-        }
-        assert_eq!(
-            users,
-            vec!["stream/inbound/registry/file_manager.rs".to_string()]
+            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里要 `needs::Face` 的那几条）"
         );
     }
 
