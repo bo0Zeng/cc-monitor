@@ -5,6 +5,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { planWorld, type PlanWorldOpts } from "../fake/plan";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { byText, click, mainReady, sleep, type, waitFor } from "./helpers";
 
 const TABS = 12;
@@ -41,9 +42,9 @@ export const PLAN_SCENES: Scene[] = [
     await mainReady(TABS);
     await waitFor(".plan-trigger");
   }, {}),
-  plan("plan-03-filter-open", "计划 · 过滤 没做完", "子头过滤点「没做完」：只留没做完的格与它们的上级", async () => {
+  plan("plan-03-filter-open", "计划 · 过滤 未做完", "子头过滤点「未做完」：只留未做完的格与它们的上级", async () => {
     await openPlan();
-    await click(await byText(".plan-view .plan-filter", "没做完"));
+    await click(await byText(".plan-view .plan-filter", copyText("plan.filter.open")));
     await sleep(300);
   }),
   plan("plan-04-slices-offline", "计划 · 多片切换 · 那台离线", "切到 devbox 那一片，之后 devbox 离线：保留最后读到的、整体变淡、顶上一条［重新连接］；［整张图］灰着（只在本机）", async () => {
