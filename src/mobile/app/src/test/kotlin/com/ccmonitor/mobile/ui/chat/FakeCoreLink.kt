@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.LiveFrame
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -25,6 +26,12 @@ internal class FakeCoreLink :
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
     override val epoch = MutableStateFlow(0L)
+    private val liveFlow = MutableSharedFlow<LiveFrame>(extraBufferCapacity = 64)
+    override val live: SharedFlow<LiveFrame> = liveFlow.asSharedFlow()
+
+    /** 流上来一帧活卡（照线上那一形，经 [LiveFrame.of] 解）。 */
+    suspend fun live(frame: Map<String, Any?>) = liveFlow.emit(LiveFrame.of(frame + ("kind" to LiveFrame.KIND))!!)
+
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }

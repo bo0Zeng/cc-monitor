@@ -105,6 +105,9 @@ class ResidentFeed(
     /** 流上的 `line` 帧。满了 ⇒ 这里停收（核心那一侧跟着停读、SSH 窗口停发），不丢。 */
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
 
+    private val liveFlow = MutableSharedFlow<LiveFrame>(extraBufferCapacity = LINE_BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val live: SharedFlow<LiveFrame> = liveFlow.asSharedFlow()
+
     private val fromFlow = MutableSharedFlow<WatchFrom>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val from: SharedFlow<WatchFrom> = fromFlow.asSharedFlow()
 
@@ -205,6 +208,7 @@ class ResidentFeed(
         tableFlow.value = next
         frame.str("kind")?.let(changeFlow::tryEmit)
         TurnEnd.of(frame)?.let(turnEndFlow::tryEmit)
+        if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
         if (next.needsResync) reconnect()

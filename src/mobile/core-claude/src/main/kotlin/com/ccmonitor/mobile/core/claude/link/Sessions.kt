@@ -5,9 +5,11 @@ import com.ccmonitor.mobile.core.claude.link.wire.FirstSay
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
+import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewReply
 import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
@@ -92,8 +94,43 @@ object SessionModel {
         model: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "model" to model, "client" to CLIENT)
 
-    /** 结局（`done` · `unsure` · `refused`）＋ 那台写好的那一句。 */
+    /** 结局（`done` · `unsure` · `refused`）＋ 读回的显示名 ＋ 那台写好的那一句。 */
     fun of(data: Any?): ModelSwitched? = Wire.bind<ModelSwitched>(data)
+}
+
+/** `session-permission`：中途给一条会话切权限档（那台按那一家的循环键、读回到了为止；在等人不按）。 */
+object SessionPermission {
+    const val COMMAND: String = "session-permission"
+
+    /** [mode] 是那台 `session-new-facts` 那一家 `permissionModes` 里的原值。 */
+    fun args(
+        sid: String,
+        mode: String,
+    ): Map<String, Any?> = mapOf("sid" to sid, "mode" to mode, "client" to CLIENT)
+
+    /** 结局 ＋ 读回那一档写给人看的字 ＋ 那台写好的那一句。 */
+    fun of(data: Any?): ModeSwitched? = Wire.bind<ModeSwitched>(data)
+}
+
+/** `session-commands`：一条会话能用的斜杠命令与 Skill（那台按那条会话的目录与号现扫，字也是它写的）。 */
+object SessionCommandList {
+    const val COMMAND: String = "session-commands"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid)
+
+    fun of(data: Any?): SessionCommands? = Wire.bind<SessionCommands>(data)
+}
+
+/** `session-say`：往一条会话说一句（那台判：在等人不送 · 终端没了按记下的号恢复再交）。结局同 [TerminalInput]。 */
+object SessionSay {
+    const val COMMAND: String = "session-say"
+
+    fun args(
+        sid: String,
+        text: String,
+    ): Map<String, Any?> = mapOf("sid" to sid, "text" to text, "client" to CLIENT)
+
+    fun of(data: Any?): TerminalInput.Result? = TerminalInput.of(data)
 }
 
 /** `terminal-input`：往一条会话所在的终端送字或送键（那台过身份门、判送没送到）。 */
