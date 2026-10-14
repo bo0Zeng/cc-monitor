@@ -652,34 +652,42 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-入参 `TransferUploadReq` · 回包 `TransferUploaded`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `TransferUploadReq` · 回包 `TransferOpened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type OpenState = "opened" | "skipped" | "failed";
+type OpenedItem = { key: string, state: OpenState, 
+/**
+ * 传输单 id（`xfer-<n>`）。
+ */
+id?: string, 
+/**
+ * 上传：暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
+ */
+staged?: string, 
+/**
+ * 下载：本机落点。
+ */
+path?: WirePath, 
+/**
+ * 下载保留两份时另起的那个名。
+ */
+new_name?: WirePath, 
+/**
+ * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
+ */
+code?: string, reason?: string, detail?: string, };
+type TransferOpened = { items: Array<OpenedItem>, };
 type TransferUploadReq = { 
 /**
  * 拨号请求（同 `link-open` 的 `dial`）：后端拨号核心读它。
  */
-dial: Record<string, unknown>, 
-/**
- * 本机一份普通文件的路径。
- */
-local_path: string, 
-/**
- * 那台后端的 `$HOME`（同 [`TransferUploadAsk::home`]）。
- */
-home?: string, };
-type TransferUploaded = { 
-/**
- * 传输单 id（`xfer-<n>`）：订阅 `transfer/<id>` 即起跑。
- */
-id: string, 
-/**
- * 暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
- */
-key: string, };
+dial: Record<string, unknown>, items: Array<UploadItem>, home?: string, };
+type UploadItem = { local_path: string, };
+type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `io_failed` · `busy` · `too_many_transfers`
+码：`bad_args`
 
 #### `transfer-download`
 
@@ -690,28 +698,106 @@ key: string, };
 入参 `TransferDownloadReq` · 回包 `TransferOpened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type TransferDownloadReq = { 
+type Decide = "overwrite" | "skip" | "keep_both";
+type DownloadItem = { remote_path: string, name?: WirePath, };
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
+type OpenState = "opened" | "skipped" | "failed";
+type OpenedItem = { key: string, state: OpenState, 
 /**
- * 拨号请求（同 [`TransferUploadReq::dial`]）。
+ * 传输单 id（`xfer-<n>`）。
  */
-dial: Record<string, unknown>, 
+id?: string, 
 /**
- * 远端路径。
+ * 上传：暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
  */
-remote_path: string, 
+staged?: string, 
 /**
- * 本机落点（同 [`TransferDownloadAsk::local_path`]）：开单时当场过路径解析，起跑时再过一次。
+ * 下载：本机落点。
  */
-local_path: WirePath, };
-type TransferOpened = { 
+path?: WirePath, 
 /**
- * 传输单 id：订阅 `transfer/<id>` 即起跑。
+ * 下载保留两份时另起的那个名。
  */
-id: string, };
+new_name?: WirePath, 
+/**
+ * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
+ */
+code?: string, reason?: string, detail?: string, };
+type TransferDownloadReq = { dial: Record<string, unknown>, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+type TransferOpened = { items: Array<OpenedItem>, };
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `refused` · `too_many_transfers`
+码：`bad_args` · `refused` · `exists`
+
+#### `transfer-copy`
+
+两台之间复制一组。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+入参 `TransferCopyReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
+type CopyFrom = { remote_path: string, };
+type Decide = "overwrite" | "skip" | "keep_both";
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
+type TransferCopyReq = { 
+/**
+ * 源那台的拨号请求。
+ */
+from: Record<string, unknown>, 
+/**
+ * 落点那台的拨号请求。
+ */
+to: Record<string, unknown>, items: Array<CopyFrom>, 
+/**
+ * 落点那台上的目录（绝对路径）。
+ */
+to_dir: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `exists` · `unreachable` · `sftp_home_mismatch`
 
 #### `transfer-start`
 

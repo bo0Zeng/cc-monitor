@@ -702,8 +702,12 @@ impl comms_inward::chan::router::Backends for XferHost {
             }
         }
         let answer = match op.0.as_str() {
-            "transfer-upload" => serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }),
-            "transfer-download" => serde_json::json!({ "id": "x-down" }),
+            "transfer-upload" => {
+                serde_json::json!({ "items": [{ "key": "0", "state": "opened", "id": "x-up", "staged": "k".repeat(32) }] })
+            }
+            "transfer-download" => {
+                serde_json::json!({ "items": [{ "key": "0", "state": "opened", "id": "x-down" }] })
+            }
             "files-home" => serde_json::json!({ "path": "/srv/a.bin" }),
             "files-stat" => serde_json::json!({
                 "path": "/srv/a.bin", "kind": "file", "size": 3, "readonly": false,
@@ -841,8 +845,8 @@ async fn the_openers_the_window_sends_keep_their_wire_bytes() {
     assert_eq!(
         got,
         [
-            r#"transfer-upload {"home":"/srv/a.bin","local_path":"/home/u/a.bin"}"#,
-            r#"transfer-download {"local_path":"/tmp/a b","remote_path":"/srv/a b"}"#,
+            r#"transfer-upload {"home":"/srv/a.bin","items":[{"local_path":"/home/u/a.bin"}]}"#,
+            r#"transfer-download {"items":[{"name":"a b","remote_path":"/srv/a b"}],"local_dir":"/tmp","on_exists":"overwrite"}"#,
         ],
         "开单发出去的字节变了"
     );
@@ -886,7 +890,7 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
     let got = &got[1..];
     assert_eq!(
         got[0].1,
-        serde_json::json!({ "local_path": "/home/u/a.bin", "home": "/srv/a.bin" })
+        serde_json::json!({ "items": [{ "local_path": "/home/u/a.bin" }], "home": "/srv/a.bin" })
     );
     assert_eq!(got[1].1, serde_json::json!("transfer/x-up"));
     assert_eq!(
@@ -1012,7 +1016,7 @@ async fn a_download_opens_and_watches_and_never_talks_to_the_file_backend() {
     assert_eq!(got[0].0, "transfer-download");
     assert_eq!(
         got[0].1,
-        serde_json::json!({ "remote_path": "/srv/a.bin", "local_path": "/tmp/a.bin" })
+        serde_json::json!({ "items": [{ "remote_path": "/srv/a.bin", "name": "a.bin" }], "local_dir": "/tmp", "on_exists": "overwrite" })
     );
     assert_eq!(
         got[1],

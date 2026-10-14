@@ -562,13 +562,23 @@ async fn upload_once(
     let stop = board.cancels().stop_token();
     // 问得到后端的 `$HOME` 就带上：传输台连上之后与 SFTP 起始目录比（不一致 ⇒ 一个字节不写）。
     let ask = cmd_wire::transfer::TransferUploadAsk {
-        local_path: p.local_path.clone(),
+        items: vec![cmd_wire::transfer::UploadItem {
+            local_path: p.local_path.clone(),
+        }],
         home: home.map(str::to_string),
     };
-    let cmd_wire::transfer::TransferUploaded { id, key } =
-        super::source::ask_typed(line, origin, &ask, OPEN_BUDGET)
-            .await
-            .map_err(Once::Failed)?;
+    let opened = super::source::ask_typed(line, origin, &ask, OPEN_BUDGET)
+        .await
+        .map_err(Once::Failed)?;
+    let (id, key) = match super::source::opened_one(opened).map_err(Once::Failed)? {
+        (id, Some(key)) => (id, key),
+        (_, None) => {
+            return Err(Once::Failed(super::source::Failed::local(copy_text(
+                "rsFilewinSource.said.badReply",
+                &[],
+            ))))
+        }
+    };
     // 记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
     board.note_staged(&key);
     let name = p.name.clone();

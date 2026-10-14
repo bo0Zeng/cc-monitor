@@ -521,7 +521,17 @@ fn dispatch(
         }
         // 同一台上一组一条那三条：带票的那一组的进度走**本连接的应答通道**（`files-batch` 帧）⇒ 先挂上本连接听那张票，
         //   本体照旧是命令表里那一行（文件管理写面那一档，CLI 面同一份；CLI 面没有人听，不发进度）。
-        "files-copy" | "files-delete" | "files-chmod" => listened(req, replies, given),
+        "files-copy" | "files-delete" | "files-chmod" => {
+            listened(req, replies, |req| by_registry(req, given))
+        }
+        // 两台之间复制一组：同上一臂挂本连接听票；本体在阻塞线程上（连两台 ＋ 逐个文件搬），写本机暂存经分派这一层造的写句柄。
+        "transfer-copy" => listened(req, replies, |req| {
+            let face = crate::platform::fs::Face::issue();
+            Disposition::SpawnBlocking(
+                req,
+                Box::new(move |r: Request| crate::control::transfer_copy::answer(face, r)),
+            )
+        }),
         "cancel" => {
             let target = req
                 .args
@@ -606,7 +616,11 @@ fn by_registry(req: Request, given: &Given) -> Disposition {
 
 /// `files-copy` · `files-delete` · `files-chmod`：入参里带了票 ⇒ 本连接听那张票的进度（按变更合并：堵住时只留最新那一格），
 /// 这一问答完就不听了（重连带同一张票再问的那一条连接自己再挂一次）。
-fn listened(req: Request, replies: &mpsc::Sender<Frame>, given: &Given) -> Disposition {
+fn listened(
+    req: Request,
+    replies: &mpsc::Sender<Frame>,
+    make: impl FnOnce(Request) -> Disposition,
+) -> Disposition {
     let ear = req.args.get("ticket").and_then(|t| t.as_str()).map(|t| {
         let (tx, mut rx) = tokio::sync::watch::channel::<Option<Frame>>(None);
         let out = replies.clone();
@@ -620,7 +634,7 @@ fn listened(req: Request, replies: &mpsc::Sender<Frame>, given: &Given) -> Dispo
                 }
             }
         });
-        crate::control::files_batch::listen(
+        crate::common::batch_book::listen(
             t,
             Box::new(move |p| {
                 tx.send_replace(Some(Frame::FilesBatch {
@@ -632,7 +646,7 @@ fn listened(req: Request, replies: &mpsc::Sender<Frame>, given: &Given) -> Dispo
             }),
         )
     });
-    match by_registry(req, given) {
+    match make(req) {
         Disposition::SpawnBlocking(req, run) => Disposition::SpawnBlocking(
             req,
             Box::new(move |r: Request| {

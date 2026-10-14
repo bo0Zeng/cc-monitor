@@ -924,7 +924,7 @@ pub struct Failed {
 }
 
 impl Failed {
-    fn local(said: String) -> Self {
+    pub(crate) fn local(said: String) -> Self {
         Self {
             code: None,
             said,
@@ -1109,6 +1109,34 @@ pub async fn ask_one<C: cmd_wire::files::Call<Reply = cmd_wire::batch::BatchRepl
     t: std::time::Duration,
 ) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
     one_of(ask_typed(line, origin, req, t).await?)
+}
+
+/// 开单一组只一项的回包 → 那一项的传输单 id ＋ 暂存件的键（上传才有）；没开成 ⇒ 那一项的码与那一句。
+pub fn opened_one(
+    r: cmd_wire::transfer::TransferOpened,
+) -> Result<(String, Option<String>), Failed> {
+    use cmd_wire::transfer::OpenState;
+    let Some(o) = r.items.into_iter().next() else {
+        return Err(Failed::local(copy_text(
+            "rsFilewinSource.said.badReply",
+            &[],
+        )));
+    };
+    match (o.state, o.id) {
+        (OpenState::Opened, Some(id)) => Ok((id, o.staged)),
+        _ => {
+            let detail = o.detail.unwrap_or_default();
+            let (said, rest) = match detail.split_once('\n') {
+                Some((a, b)) => (a.to_string(), b.to_string()),
+                None => (detail, String::new()),
+            };
+            Err(Failed {
+                code: o.code,
+                said,
+                detail: rest,
+            })
+        }
+    }
 }
 
 /// 一组只一项的回包 → 那一项（同 [`ask_one`]）。

@@ -70,6 +70,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::frame::<crate::control::transfer::TransferDownload>(
         "开一张下载单",
     ),
+    // 两台之间复制一组：进度走本连接的应答通道（`files_batch` 帧）⇒ 帧面硬臂，在阻塞线程上做完再回。
+    crate::wire::typed::frame_blocking::<crate::control::transfer_copy::TransferCopy>(
+        "两台之间复制一组",
+    ),
     CommandSpec {
         name: "transfer-start",
         summary: "传输单起跑",

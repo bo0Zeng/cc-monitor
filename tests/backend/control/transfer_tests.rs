@@ -568,8 +568,65 @@ fn dial() -> serde_json::Value {
 
 fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
     match f {
-        Frame::Reply { ok, code, data, .. } => (*ok, code.clone(), data.clone()),
+        Frame::Reply { ok, code, data, .. } => {
+            // 开单两条收一组：下面那些判据问的是一项的开法 ⇒ 一组一项那一项没开成就当整条没开成，开了就交那一项（`key` ＝ 暂存件的键）。
+            match data
+                .as_ref()
+                .and_then(|d| d.get("items"))
+                .and_then(|i| i.get(0))
+            {
+                Some(it) if it["state"] == "failed" => {
+                    (false, it["code"].as_str().map(str::to_string), None)
+                }
+                Some(it) => {
+                    let mut v = serde_json::json!({ "id": it["id"] });
+                    if let Some(k) = it.get("staged") {
+                        v["key"] = k.clone();
+                    }
+                    (true, None, Some(v))
+                }
+                None => (*ok, code.clone(), data.clone()),
+            }
+        }
         other => panic!("不是应答帧：{other:?}"),
+    }
+}
+
+/// 一项的开单问法 ⇒ 一组一项（上传：`items: [{local_path}]`；下载：落点拆成目录 ＋ 落名、同名照盖）。缺的格照缺（判「缺一格 ⇒ bad_args」）。
+fn batched(cmd: &str, a: &serde_json::Value) -> serde_json::Value {
+    let mut o = a.as_object().cloned().unwrap_or_default();
+    let mut item = serde_json::Map::new();
+    if cmd == TRANSFER_UPLOAD {
+        if let Some(l) = o.remove("local_path") {
+            item.insert("local_path".into(), l);
+        }
+    } else {
+        if let Some(r) = o.remove("remote_path") {
+            item.insert("remote_path".into(), r);
+        }
+        if let Some(l) = o.remove("local_path") {
+            let bytes = crate::common::path_wire::from_json(&l).unwrap_or_default();
+            let p = crate::common::path_wire::to_path_buf(&bytes);
+            let wire = |q: &Path| crate::files::raw::to_json(crate::files::raw::path_bytes(q));
+            o.insert(
+                "local_dir".into(),
+                wire(p.parent().unwrap_or(Path::new("/"))),
+            );
+            item.insert(
+                "name".into(),
+                wire(Path::new(p.file_name().unwrap_or_default())),
+            );
+            o.insert("on_exists".into(), serde_json::json!("overwrite"));
+        }
+    }
+    o.insert("items".into(), serde_json::json!([item]));
+    serde_json::Value::Object(o)
+}
+
+impl Desk {
+    /// 一项的开单问法经答口问（同 [`batched`]）。
+    fn ask1(&self, cmd: &str, id: &str, a: &serde_json::Value) -> Frame {
+        self.answer_wire(cmd, id, &batched(cmd, a))
     }
 }
 
@@ -580,7 +637,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let desk = Desk::new(tx, crate::platform::fs::Face::issue());
     let tmp = Tmp::dir("desk");
     let local = tmp.file("g.bin", b"hello");
-    let (ok, _, data) = reply_of(&desk.answer_wire(
+    let (ok, _, data) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r1",
         &serde_json::json!({"dial": dial(), "local_path": local}),
@@ -592,35 +649,36 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let tid = data["id"].as_str().unwrap().to_string();
     assert!(tid.starts_with("xfer-"));
     // 同一份文件第二张票 ⇒ busy。
-    let (ok, code, _) = reply_of(&desk.answer_wire(
+    let (ok, code, _) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r2",
         &serde_json::json!({"dial": dial(), "local_path": local}),
     ));
     assert_eq!((ok, code.as_deref()), (false, Some("busy")));
     // 缺字段 / 不是文件。
-    let (_, code, _) = reply_of(&desk.answer_wire(
+    let (_, code, _) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r3",
         &serde_json::json!({"local_path": local}),
     ));
     assert_eq!(code.as_deref(), Some("bad_args"));
-    let (_, code, _) = reply_of(&desk.answer_wire(
+    let (_, code, _) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r4",
         &serde_json::json!({"dial": dial(), "local_path": tmp.0.to_string_lossy()}),
     ));
-    assert_eq!(code.as_deref(), Some("bad_args"));
+    // 不是普通文件：一组里那一项没开成（`refused`），不是整条入参不对。
+    assert_eq!(code.as_deref(), Some("refused"));
     // 下载落点过不了路径解析（父目录不在）⇒ refused。从前这里的语料是一份会话文件，今天那一形放行。
     let a = serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("nope/abc-1.jsonl").to_string_lossy()});
-    let (_, code, _) = reply_of(&desk.answer_wire(TRANSFER_DOWNLOAD, "r5", &a));
+    let (_, code, _) = reply_of(&desk.ask1(TRANSFER_DOWNLOAD, "r5", &a));
     assert_eq!(code.as_deref(), Some("refused"));
     // 另一向：一个规整的本机落点 ⇒ 开得出单（〔SR1b 死值验〕只判「踩线 ⇒ refused」的话，
     //   围栏换成「一律拒」本条照绿 —— 那一刀当场没砍中，补这一向）。另起一张台，不动上面那张的册数。
     let (tx2, _rx2) = mpsc::channel(8);
     let desk2 = Desk::new(tx2, crate::platform::fs::Face::issue());
     let a = serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("dl.bin").to_string_lossy()});
-    let (ok, code, data) = reply_of(&desk2.answer_wire(TRANSFER_DOWNLOAD, "r5b", &a));
+    let (ok, code, data) = reply_of(&desk2.ask1(TRANSFER_DOWNLOAD, "r5b", &a));
     assert!(ok, "规整的下载落点开不出单：{code:?}");
     assert!(data.unwrap()["id"]
         .as_str()
@@ -635,7 +693,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     assert!(reply_of(&desk.stop("r8", &serde_json::json!({"id": tid}))).0);
     // 摘了之后同一份文件又能开单。
     assert!(
-        reply_of(&desk.answer_wire(
+        reply_of(&desk.ask1(
             TRANSFER_UPLOAD,
             "r9",
             &serde_json::json!({"dial": dial(), "local_path": local})
@@ -654,7 +712,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     let local = tmp.file("h.bin", b"x");
     // 端口 1：本机上一定断开（拒绝连接，立刻失败，不等期限）。
     let d = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u","keyPath":"/nonexistent"}});
-    let (_, _, data) = reply_of(&desk.answer_wire(
+    let (_, _, data) = reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r1",
         &serde_json::json!({"dial": d, "local_path": local}),
@@ -723,7 +781,7 @@ fn dropping_the_desk_cancels_every_ticket() {
     let desk = Desk::new(tx, crate::platform::fs::Face::issue());
     let tmp = Tmp::dir("drop");
     let local = tmp.file("i.bin", b"x");
-    reply_of(&desk.answer_wire(
+    reply_of(&desk.ask1(
         TRANSFER_UPLOAD,
         "r1",
         &serde_json::json!({"dial": dial(), "local_path": local}),
@@ -964,6 +1022,13 @@ fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
 fn pinned(f: &Frame, tmp: &Tmp) -> String {
     let mut s = serde_json::to_string(f).unwrap();
     if let Frame::Reply { data: Some(d), .. } = f {
+        // 一组一项：那一项的票号与暂存件的键。
+        let d = d.get("items").and_then(|i| i.get(0)).unwrap_or(d);
+        if let Some(v) = d.get("staged").and_then(serde_json::Value::as_str) {
+            if crate::control::files_commit::is_key(v) {
+                s = s.replace(v, "<key>");
+            }
+        }
         if let Some(v) = d.get("id").and_then(serde_json::Value::as_str) {
             if v.strip_prefix("xfer-")
                 .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
@@ -991,9 +1056,8 @@ fn pinned(f: &Frame, tmp: &Tmp) -> String {
     s
 }
 
-/// 开单两条经答口（`answer_wire`，帧面硬臂进来的那一处）回的帧：成功两形 ＋ 失败信封
-/// （`bad_args` 两种 · `io_failed` 带原话 · `refused` · `busy` · `too_many_transfers`）。换形前后逐字节相同，
-/// 只有入参解不出来的那几格原话换成解码器那一句（换 typed 时有意改的；多一个键从照收变成拒，`u7`）。
+/// 开单两条经答口（`answer_wire`，帧面硬臂进来的那一处）回的帧：开了单 · 一项没开成（`io_failed` 带原话 · `refused` · `busy` ·
+/// `too_many_transfers` 都在那一项上）· 整条入参不对（`bad_args` 两种）。开单换成收一组时有意改了形：回包是逐项，一项没开成不再是整条失败。
 #[cfg(unix)]
 #[tokio::test]
 async fn the_two_openers_answer_with_the_same_bytes() {
@@ -1003,10 +1067,8 @@ async fn the_two_openers_answer_with_the_same_bytes() {
     let local = tmp.file("g.bin", b"hello");
     let other = tmp.file("h.bin", b"world");
     let gone = tmp.path("gone.bin").to_string_lossy().into_owned();
-    let up =
-        |id: &str, a: serde_json::Value| pinned(&desk.answer_wire(TRANSFER_UPLOAD, id, &a), &tmp);
-    let down =
-        |id: &str, a: serde_json::Value| pinned(&desk.answer_wire(TRANSFER_DOWNLOAD, id, &a), &tmp);
+    let up = |id: &str, a: serde_json::Value| pinned(&desk.ask1(TRANSFER_UPLOAD, id, &a), &tmp);
+    let down = |id: &str, a: serde_json::Value| pinned(&desk.ask1(TRANSFER_DOWNLOAD, id, &a), &tmp);
     let mut got = vec![
         up(
             "u1",
@@ -1055,10 +1117,10 @@ async fn the_two_openers_answer_with_the_same_bytes() {
     let full = Desk::new(tx2, crate::platform::fs::Face::issue());
     for i in 0..MAX_TICKETS_PER_CONNECTION {
         let a = serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.path(&format!("f{i}")).to_string_lossy()});
-        assert!(reply_of(&full.answer_wire(TRANSFER_DOWNLOAD, "f", &a)).0);
+        assert!(reply_of(&full.ask1(TRANSFER_DOWNLOAD, "f", &a)).0);
     }
     got.push(pinned(
-        &full.answer_wire(
+        &full.ask1(
             TRANSFER_DOWNLOAD,
             "d5",
             &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.path("over").to_string_lossy()}),
@@ -1066,18 +1128,18 @@ async fn the_two_openers_answer_with_the_same_bytes() {
         &tmp,
     ));
     let want = [
-        r#"{"kind":"reply","id":"u1","ok":true,"data":{"id":"xfer-<n>","key":"<key>"}}"#,
-        r#"{"kind":"reply","id":"u2","ok":true,"data":{"id":"xfer-<n>","key":"<key>"}}"#,
-        r#"{"kind":"reply","id":"u3","ok":false,"code":"busy","message":"同一文件正在上传到该机 · 传完再来","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：busy"}"#,
+        r#"{"kind":"reply","id":"u1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","staged":"<key>","state":"opened"}]}}"#,
+        r#"{"kind":"reply","id":"u2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","staged":"<key>","state":"opened"}]}}"#,
+        r#"{"kind":"reply","id":"u3","ok":true,"data":{"items":[{"code":"busy","detail":"同一文件正在上传到该机 · 传完再来","key":"0","reason":"被占用","state":"failed"}]}}"#,
         r#"{"kind":"reply","id":"u4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：missing field `dial`"}"#,
-        r#"{"kind":"reply","id":"u5","ok":false,"code":"bad_args","message":"<tmp> 不是普通文件 · 不可传","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args"}"#,
-        r#"{"kind":"reply","id":"u6","ok":false,"code":"io_failed","message":"读取失败 · 本机 <tmp>/gone.bin · 路径不存在","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：io_failed\n原话：No such file or directory (os error 2)"}"#,
-        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `dial`, `local_path`, `home`"}"#,
-        r#"{"kind":"reply","id":"d1","ok":true,"data":{"id":"xfer-<n>"}}"#,
-        r#"{"kind":"reply","id":"d2","ok":true,"data":{"id":"xfer-<n>"}}"#,
-        r#"{"kind":"reply","id":"d3","ok":false,"code":"refused","message":"解析 <tmp>/nope 失败 · 路径不存在","detail":"时刻：<at>\n<machine>\n命令：transfer-download\n码：refused"}"#,
+        r#"{"kind":"reply","id":"u5","ok":true,"data":{"items":[{"code":"refused","detail":"<tmp> 不是普通文件 · 不可传","key":"0","reason":"被拒","state":"failed"}]}}"#,
+        r#"{"kind":"reply","id":"u6","ok":true,"data":{"items":[{"code":"io_failed","detail":"读取失败 · 本机 <tmp>/gone.bin · 路径不存在\nNo such file or directory (os error 2)","key":"0","reason":"路径不存在","state":"failed"}]}}"#,
+        r#"{"kind":"reply","id":"u7","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-upload\n码：bad_args\n原话：unknown field `via`, expected one of `dial`, `items`, `home`"}"#,
+        r#"{"kind":"reply","id":"d1","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dl.bin","state":"opened"}]}}"#,
+        r#"{"kind":"reply","id":"d2","ok":true,"data":{"items":[{"id":"xfer-<n>","key":"0","path":"<tmp>/dÿ.bin","state":"opened"}]}}"#,
+        r#"{"kind":"reply","id":"d3","ok":true,"data":{"items":[{"code":"refused","detail":"解析 <tmp>/nope 失败 · 路径不存在","key":"0","reason":"被拒","state":"failed"}]}}"#,
         r#"{"kind":"reply","id":"d4","ok":false,"code":"bad_args","message":"请求格式不对","detail":"时刻：<at>\n<machine>\n命令：transfer-download\n码：bad_args\n原话：missing field `remote_path`"}"#,
-        r#"{"kind":"reply","id":"d5","ok":false,"code":"too_many_transfers","message":"传输已达上限 64","detail":"时刻：<at>\n<machine>\n命令：transfer-download\n码：too_many_transfers"}"#,
+        r#"{"kind":"reply","id":"d5","ok":true,"data":{"items":[{"code":"too_many_transfers","detail":"传输已达上限 64","key":"0","reason":"超出上限","state":"failed"}]}}"#,
     ];
     assert_eq!(got, want, "开单两条回的字节变了");
 }
@@ -1090,4 +1152,33 @@ fn hex_of(p: &Path) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// 下载一组落到本机一个目录：本机落点有同名而没答 ⇒ 一单不开、回 `exists` 带同名清单；保留两份 ⇒ 另起名、撞上往后试。
+#[tokio::test]
+async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request() {
+    let (tx, _rx) = mpsc::channel(64);
+    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
+    let tmp = Tmp::dir("dl-group");
+    tmp.file("a.txt", b"old");
+    tmp.file("a (2).txt", b"old2");
+    let dir = tmp.0.to_string_lossy().into_owned();
+    let ask = |on: &str| {
+        serde_json::json!({"dial": dial(), "local_dir": dir, "on_exists": on,
+            "items": [{"remote_path": "/r/a.txt"}, {"remote_path": "/r/b.txt"}]})
+    };
+    let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g1", &ask("ask"));
+    let Frame::Reply { ok, code, .. } = &f else {
+        panic!("{f:?}")
+    };
+    assert!(!ok && code.as_deref() == Some("exists"), "{f:?}");
+    assert_eq!(desk.len(), 0, "有同名而没答 ⇒ 一单都不开");
+    let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g2", &ask("keep_both"));
+    let Frame::Reply { data: Some(d), .. } = &f else {
+        panic!("{f:?}")
+    };
+    assert_eq!(d["items"][0]["state"], "opened");
+    assert_eq!(d["items"][0]["new_name"], "a (3).txt");
+    assert_eq!(d["items"][1]["state"], "opened");
+    assert_eq!(desk.len(), 2);
 }

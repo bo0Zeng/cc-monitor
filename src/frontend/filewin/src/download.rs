@@ -291,12 +291,19 @@ pub async fn pull_one_at(
     board: &DownloadBoard,
 ) -> Result<(), super::source::Failed> {
     let stop = board.cancels().stop_token();
+    // 一组一项：存盘框给的落点拆成目录 ＋ 落名；存盘框已经问过盖不盖 ⇒ 同名照盖。
+    let (dir, name) = split_dest(&dest);
     let ask = cmd_wire::transfer::TransferDownloadAsk {
-        remote_path: remote_path.to_string(),
-        local_path: dest,
+        items: vec![cmd_wire::transfer::DownloadItem {
+            remote_path: remote_path.to_string(),
+            name: Some(name),
+        }],
+        local_dir: dir,
+        on_exists: Some(cmd_wire::batch::OnExists::Overwrite),
+        decide: None,
     };
-    let cmd_wire::transfer::TransferOpened { id } =
-        super::source::ask_typed(line, origin, &ask, super::transfer::OPEN_BUDGET).await?;
+    let opened = super::source::ask_typed(line, origin, &ask, super::transfer::OPEN_BUDGET).await?;
+    let (id, _) = super::source::opened_one(opened)?;
     let sink = board.clone();
     super::source::watch(
         line,
@@ -307,6 +314,24 @@ pub async fn pull_one_at(
     )
     .await?;
     Ok(())
+}
+
+/// 本机落点（原始字节）拆成目录 ＋ 最后那一段名字（按字节切 `/`；没有 `/` ⇒ 目录是空的，后端照实拒）。
+pub fn split_dest(
+    dest: &cmd_wire::files::WirePath,
+) -> (cmd_wire::files::WirePath, cmd_wire::files::WirePath) {
+    let b = dest.bytes();
+    match b.iter().rposition(|&c| c == b'/') {
+        Some(0) => (
+            cmd_wire::files::WirePath(b"/".to_vec()),
+            cmd_wire::files::WirePath(b[1..].to_vec()),
+        ),
+        Some(i) => (
+            cmd_wire::files::WirePath(b[..i].to_vec()),
+            cmd_wire::files::WirePath(b[i + 1..].to_vec()),
+        ),
+        None => (cmd_wire::files::WirePath(Vec::new()), dest.clone()),
+    }
 }
 
 #[cfg(test)]

@@ -843,6 +843,7 @@ fn typed_handler_files_of(
         "typed::async_own::<",
         "typed::facing::<",
         "typed::frame::<",
+        "typed::frame_blocking::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];

@@ -229,7 +229,7 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
                 let own = own?.clone();
                 Prepared::Async(Box::new(move |r| f(r, own)))
             }
-            super::typed::TypedRun::Frame => return None,
+            super::typed::TypedRun::Frame | super::typed::TypedRun::FrameBlocking => return None,
         },
         Run::Builtin => return None,
     })

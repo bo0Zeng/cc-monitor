@@ -831,11 +831,14 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let r = crate::sftp_pool::transfer_call(
         cfg.clone(),
         crate::sftp_pool::TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": up }),
+        &serde_json::json!({ "items": [{ "local_path": up }] }),
     )
     .await
     .expect("开单（上传）");
-    let (id, key) = (r["id"].as_str().unwrap(), r["key"].as_str().unwrap());
+    let (id, key) = (
+        r["items"][0]["id"].as_str().unwrap(),
+        r["items"][0]["staged"].as_str().unwrap(),
+    );
     let last = crate::sftp_pool::watch_ticket(&origin, id)
         .expect("订阅")
         .collect::<Vec<_>>()
@@ -857,11 +860,15 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let r = crate::sftp_pool::transfer_call(
         cfg.clone(),
         crate::sftp_pool::TRANSFER_DOWNLOAD,
-        &serde_json::json!({ "remote_path": s("dl_remote"), "local_path": dl_local }),
+        &serde_json::json!({
+            "items": [{ "remote_path": s("dl_remote"), "name": std::path::Path::new(&dl_local).file_name().unwrap().to_string_lossy() }],
+            "local_dir": std::path::Path::new(&dl_local).parent().unwrap().to_string_lossy(),
+            "on_exists": "overwrite",
+        }),
     )
     .await
     .expect("开单（下载）");
-    let last = crate::sftp_pool::watch_ticket(&origin, r["id"].as_str().unwrap())
+    let last = crate::sftp_pool::watch_ticket(&origin, r["items"][0]["id"].as_str().unwrap())
         .expect("订阅")
         .collect::<Vec<_>>()
         .await

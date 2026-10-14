@@ -1,12 +1,14 @@
 //! `control/files_batch.rs` 的判据：同一台上一组一条（复制 · 删除 · 改权限）。全在本机临时目录上真跑。
 
 use super::*;
+use crate::common::batch_book::{listen, stop};
 use cmd_wire::batch::{Decide, ItemState, OnExists};
 use cmd_wire::files::{
     ChmodItem, CopyItem, DeleteItem, FilesChmodReq, FilesCopyReq, FilesDeleteReq, WirePath,
 };
 use std::fs;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// 一个这次运行独占的临时目标根。
 fn temp_root(tag: &str) -> PathBuf {

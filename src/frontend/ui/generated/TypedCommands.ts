@@ -283,10 +283,10 @@ import type { TerminalProcessesReq } from "./TerminalProcessesReq";
 import type { TerminalSshReq } from "./TerminalSshReq";
 import type { TerminalsList } from "./TerminalsList";
 import type { TerminalsListReq } from "./TerminalsListReq";
+import type { TransferCopyReq } from "./TransferCopyReq";
 import type { TransferDownloadReq } from "./TransferDownloadReq";
 import type { TransferOpened } from "./TransferOpened";
 import type { TransferUploadReq } from "./TransferUploadReq";
-import type { TransferUploaded } from "./TransferUploaded";
 import type { UserInputs } from "./UserInputs";
 import type { UserInputsReq } from "./UserInputsReq";
 import type { VerifyReport } from "./VerifyReport";
@@ -465,6 +465,7 @@ export interface TypedCommands {
   "terminal-processes": { req: TerminalProcessesReq; reply: Processes; code: "bad_args" };
   "terminal-ssh": { req: TerminalSshReq; reply: SshCommand; code: "bad_args" | "bad_jump" | "refused" | "no_ssh_client" | "unobservable" };
   "terminals-list": { req: TerminalsListReq; reply: TerminalsList; code: "bad_args" | "unobservable" | "child_timed_out" };
-  "transfer-download": { req: TransferDownloadReq; reply: TransferOpened; code: "bad_args" | "refused" | "too_many_transfers" };
-  "transfer-upload": { req: TransferUploadReq; reply: TransferUploaded; code: "bad_args" | "io_failed" | "busy" | "too_many_transfers" };
+  "transfer-copy": { req: TransferCopyReq; reply: BatchReply; code: "bad_args" | "exists" | "unreachable" | "sftp_home_mismatch" };
+  "transfer-download": { req: TransferDownloadReq; reply: TransferOpened; code: "bad_args" | "refused" | "exists" };
+  "transfer-upload": { req: TransferUploadReq; reply: TransferOpened; code: "bad_args" };
 }

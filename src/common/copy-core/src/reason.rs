@@ -47,6 +47,8 @@ pub fn code_reason(code: &str, raw: Option<&str>) -> String {
         "stale" => copy_text("reason.code.stale", &[]),
         "no_unix_mode" => copy_text("reason.code.unsupported", &[]),
         "bad_name" => copy_text("reason.code.badName", &[]),
+        "busy" => io_reason(std::io::ErrorKind::ResourceBusy),
+        "too_many_transfers" => copy_text("reason.code.overLimit", &[]),
         _ => io_reason(os_kind(raw.unwrap_or_default())),
     }
 }

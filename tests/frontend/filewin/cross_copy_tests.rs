@@ -47,10 +47,12 @@ impl comms_inward::chan::router::Backends for Rig {
                 serde_json::json!({ "path": match o { "A" => "/home/a", "B" => "/home/b", _ => "/home/me" } }),
             ),
             ("B", "files-stat") => Err(refused("not_found")),
-            (_, "transfer-download") => Ok(serde_json::json!({ "id": "x-down" })),
-            (_, "transfer-upload") => {
-                Ok(serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }))
-            }
+            (_, "transfer-download") => Ok(
+                serde_json::json!({ "items": [{ "key": "0", "state": "opened", "id": "x-down" }] }),
+            ),
+            (_, "transfer-upload") => Ok(
+                serde_json::json!({ "items": [{ "key": "0", "state": "opened", "id": "x-up", "staged": "k".repeat(32) }] }),
+            ),
             // 写面那几条照各自的回包类型答。
             (_, "files-mkdir") => Ok(serde_json::json!({ "path": "/x" })),
             (_, "files-chmod") => Ok(
@@ -170,14 +172,18 @@ async fn a_cross_copy_pulls_from_a_pushes_to_b_and_cleans_the_local_staging() {
         "提交之后才清本机暂存"
     );
     let dl = &args_of(&log, "A", "transfer-download")[0];
-    assert_eq!(dl["remote_path"], "/srv/a.bin");
-    let staged = dl["local_path"].as_str().expect("落点").to_string();
+    assert_eq!(dl["items"][0]["remote_path"], "/srv/a.bin");
+    let staged = format!(
+        "{}/{}",
+        dl["local_dir"].as_str().expect("落点目录"),
+        dl["items"][0]["name"].as_str().expect("落名")
+    );
     assert!(
         staged.starts_with("/home/me/.cc-monitor/staging/") && staged.ends_with(".part"),
         "本机暂存落点不在本机后端的暂存区：{staged}"
     );
     assert_eq!(
-        args_of(&log, "B", "transfer-upload")[0]["local_path"],
+        args_of(&log, "B", "transfer-upload")[0]["items"][0]["local_path"],
         staged.as_str(),
         "传的不是下的那一份"
     );
@@ -273,8 +279,11 @@ async fn copying_to_this_machine_is_just_a_download_to_the_target() {
         "{o:?}"
     );
     assert_eq!(
-        args_of(&log, "A", "transfer-download")[0]["local_path"],
-        "/data/a.bin",
+        (
+            &args_of(&log, "A", "transfer-download")[0]["local_dir"],
+            &args_of(&log, "A", "transfer-download")[0]["items"][0]["name"],
+        ),
+        (&serde_json::json!("/data"), &serde_json::json!("a.bin")),
         "没直接下到落点"
     );
     let s = steps(&log);

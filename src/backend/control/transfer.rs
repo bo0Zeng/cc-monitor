@@ -54,8 +54,10 @@ use crate::dial::sftp::{self, Dial, Session};
 use crate::platform::fs::{Face, FaceFile, Ro};
 use crate::wire::typed::{self, codes};
 use crate::wire::{Frame, TransferEnd};
+use cmd_wire::batch::{Conflict, Conflicts, Decide};
+use cmd_wire::files as cwf;
 use cmd_wire::transfer::{
-    TransferDownloadReq, TransferOpened, TransferUploadReq, TransferUploaded,
+    OpenState, OpenedItem, TransferDownloadReq, TransferOpened, TransferUploadReq,
 };
 
 /// 开单：上传。
@@ -70,21 +72,15 @@ pub const TRANSFER_STOP: &str = "transfer-stop";
 pub(crate) struct TransferUpload;
 
 codes! {
-    /// `transfer-upload` 会回的码。
-    pub(crate) enum UploadErr {
-        /// 开单那一下读不到本机那一份（原话进复制详情）。
-        IoFailed = "io_failed",
-        /// 同一份文件已有一张票。
-        Busy = "busy",
-        /// 这条连接上的票满了。
-        TooMany = "too_many_transfers",
-    }
+    /// `transfer-upload` 会回的码（一项没开成不是整组没开成：读不到本机那一份 `io_failed` · 同一份已有一张票 `busy` ·
+    /// 票满了 `too_many_transfers` 都在那一项上）。
+    pub(crate) enum UploadErr {}
 }
 
 impl typed::Command for TransferUpload {
     const NAME: &'static str = "transfer-upload";
     type Req = TransferUploadReq;
-    type Reply = TransferUploaded;
+    type Reply = TransferOpened;
     type Err = UploadErr;
 }
 
@@ -94,10 +90,10 @@ pub(crate) struct TransferDownload;
 codes! {
     /// `transfer-download` 会回的码。
     pub(crate) enum DownloadErr {
-        /// 本机落点过不了路径解析。
+        /// 本机落点目录过不了路径解析。
         Refused = "refused",
-        /// 这条连接上的票满了。
-        TooMany = "too_many_transfers",
+        /// 本机落点有同名的、还没答怎么办（一单都没开）：`data` 是同名清单。
+        Exists = "exists" => Conflicts,
     }
 }
 
@@ -843,23 +839,48 @@ impl Desk {
         Ok(tid)
     }
 
-    /// `transfer-upload`：开单（不起跑）。
-    fn upload(&self, req: TransferUploadReq) -> Result<TransferUploaded, UploadErr> {
+    /// `transfer-upload`：一组逐项开单（不起跑）。一项没开成那一项回 `failed`（码 ＋ 原因词 ＋ 原话），别的照开。
+    fn upload(&self, req: TransferUploadReq) -> Result<TransferOpened, UploadErr> {
         let dial = Dial::parse(&req.dial).map_err(UploadErr::BadArgs)?;
-        let local = req.local_path.as_str();
+        let items = req
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, it)| {
+                let key = i.to_string();
+                match self.open_upload(&dial, &it.local_path, req.home.clone()) {
+                    Ok((id, staged)) => OpenedItem {
+                        id: Some(id),
+                        staged: Some(staged),
+                        ..opened(key, OpenState::Opened)
+                    },
+                    Err((code, said, raw)) => not_opened(key, code, said, raw),
+                }
+            })
+            .collect();
+        Ok(TransferOpened { items })
+    }
+
+    /// 上传的一项开单：读不到本机那一份 ⇒ `io_failed`（原话另带）；不是普通文件 ⇒ `refused`。
+    fn open_upload(
+        &self,
+        dial: &Dial,
+        local: &str,
+        home: Option<String>,
+    ) -> Result<(String, String), (&'static str, String, Option<String>)> {
         let meta = Ro::metadata(local).map_err(|e| {
-            // 开单那一下就读不到本机那份：应答带复制详情（系统原话不上句子）。
             let said = copy_text(
                 "beTransfer.local.readFailed",
                 &[("path", local), ("why", &io_reason(e.kind()))],
             );
-            UploadErr::IoFailed(crate::common::contract::joined(said, Some(e.to_string())))
+            ("io_failed", said, Some(e.to_string()))
         })?;
         if !meta.is_file() {
-            return Err(UploadErr::BadArgs(copy_text(
-                "beTransfer.local.notRegular",
-                &[("path", local)],
-            )));
+            return Err((
+                "refused",
+                copy_text("beTransfer.local.notRegular", &[("path", local)]),
+                None,
+            ));
         }
         let mtime_ns = meta
             .modified()
@@ -869,45 +890,122 @@ impl Desk {
             .unwrap_or(0);
         let key = staging_key(local, meta.len(), mtime_ns);
         let t = Ticket {
-            dial,
+            dial: dial.clone(),
             job: Some(Job::Upload {
-                local: req.local_path.clone(),
+                local: local.to_string(),
                 key: key.clone(),
-                home: req.home,
+                home,
             }),
             key: Some(key.clone()),
             cancel: Arc::new(Cancel::default()),
         };
-        let id = self
-            .register(t)
-            .map_err(typed::of_pair(UploadErr::BadArgs))?;
-        Ok(TransferUploaded { id, key })
+        let id = self.register(t).map_err(|(c, m)| (c, m, None))?;
+        Ok((id, key))
     }
 
-    /// `transfer-download`：开单；本机落点当场过路径解析。
+    /// `transfer-download`：一组落到本机一个目录。同名在本机落点那一侧先探：没答的 ⇒ 一单不开、回 `exists` 带同名清单；
+    /// 保留两份 ⇒ 另起 `名 (2).ext`（撞上往后试）；落点当场过路径解析，起跑时再过一次。
     fn download(&self, req: TransferDownloadReq) -> Result<TransferOpened, DownloadErr> {
         let dial = Dial::parse(&req.dial).map_err(DownloadErr::BadArgs)?;
-        // 本机落点收字符串或 `{"b16": …}`（有损名下载在 Linux 上按原始字节落名）；空的不算给了。
-        if req.local_path.bytes().is_empty() {
+        if req.local_dir.bytes().is_empty() {
             return Err(DownloadErr::BadArgs(crate::common::contract::malformed(
-                "missing `local_path` (a string or {\"b16\": …})",
+                "missing `local_dir` (a string or {\"b16\": …})",
             )));
         }
-        let local = crate::common::path_wire::to_path_buf(req.local_path.bytes());
-        land_check(&local).map_err(DownloadErr::Refused)?;
-        let t = Ticket {
-            dial,
-            job: Some(Job::Download {
-                remote: req.remote_path,
-                local,
-            }),
-            key: None,
-            cancel: Arc::new(Cancel::default()),
-        };
-        let id = self
-            .register(t)
-            .map_err(typed::of_pair(DownloadErr::BadArgs))?;
-        Ok(TransferOpened { id })
+        let dir = crate::common::path_wire::to_path_buf(req.local_dir.bytes());
+        let on_exists = req.on_exists.unwrap_or_default();
+        // 每一项的落名：给了照给的，没给照远端那一段名字。
+        let names: Vec<OsString> = req
+            .items
+            .iter()
+            .map(|it| match &it.name {
+                Some(n) => crate::common::path_wire::to_path_buf(n.bytes()).into_os_string(),
+                None => OsString::from(it.remote_path.rsplit('/').next().unwrap_or_default()),
+            })
+            .collect();
+        let mut ask = Vec::new();
+        let mut choices: Vec<Option<Option<Decide>>> = Vec::with_capacity(names.len());
+        for (i, name) in names.iter().enumerate() {
+            let key = i.to_string();
+            match Ro::symlink_metadata(dir.join(name)) {
+                Err(_) => choices.push(None),
+                Ok(m) => {
+                    let choice =
+                        crate::common::batch_book::choice_of(&key, on_exists, req.decide.as_ref());
+                    if choice.is_none() {
+                        let there = if m.is_dir() {
+                            cwf::FileKind::Dir
+                        } else {
+                            cwf::FileKind::File
+                        };
+                        ask.push(Conflict {
+                            key,
+                            name: cwf::WirePath(
+                                Path::new(name).as_os_str().as_encoded_bytes().to_vec(),
+                            ),
+                            kind: cwf::FileKind::File,
+                            size: None,
+                            mtime: None,
+                            there,
+                            there_size: m.is_file().then(|| m.len()),
+                            there_mtime: None,
+                            dir_into: m.is_dir(),
+                        });
+                    }
+                    choices.push(Some(choice));
+                }
+            }
+        }
+        if !ask.is_empty() {
+            let n = ask.len().to_string();
+            return Err(DownloadErr::Exists(
+                copy_text("beFiles.batch.clash", &[("n", &n)]),
+                Conflicts { conflicts: ask },
+            ));
+        }
+        let items = req
+            .items
+            .into_iter()
+            .zip(names)
+            .zip(choices)
+            .enumerate()
+            .map(|(i, ((it, name), choice))| {
+                let key = i.to_string();
+                let landed = match choice {
+                    None | Some(Some(Decide::Overwrite)) => Some((dir.join(&name), None)),
+                    Some(None) | Some(Some(Decide::Skip)) => None,
+                    Some(Some(Decide::KeepBoth)) => mint_local(&dir, &name)
+                        .map(|p| (p.clone(), p.file_name().map(OsStr::to_os_string))),
+                };
+                let Some((local, new_name)) = landed else {
+                    return opened(key, OpenState::Skipped);
+                };
+                if let Err(m) = land_check(&local) {
+                    return not_opened(key, "refused", m, None);
+                }
+                let t = Ticket {
+                    dial: dial.clone(),
+                    job: Some(Job::Download {
+                        remote: it.remote_path,
+                        local: local.clone(),
+                    }),
+                    key: None,
+                    cancel: Arc::new(Cancel::default()),
+                };
+                match self.register(t) {
+                    Ok(id) => OpenedItem {
+                        id: Some(id),
+                        path: Some(cwf::WirePath(local.as_os_str().as_encoded_bytes().to_vec())),
+                        new_name: new_name.map(|n| {
+                            cwf::WirePath(Path::new(&n).as_os_str().as_encoded_bytes().to_vec())
+                        }),
+                        ..opened(key, OpenState::Opened)
+                    },
+                    Err((c, m)) => not_opened(key, c, m, None),
+                }
+            })
+            .collect();
+        Ok(TransferOpened { items })
     }
 
     /// `transfer-stop`：撤。没起跑的票当场摘掉；起跑了的由它自己收场（撤删 / 撤留）后摘掉。
@@ -987,6 +1085,41 @@ impl Desk {
         });
         ok(id, None)
     }
+}
+
+/// 开单的一项：只有键与那一样（别的格缺席）。
+fn opened(key: String, state: OpenState) -> OpenedItem {
+    OpenedItem {
+        key,
+        state,
+        id: None,
+        staged: None,
+        path: None,
+        new_name: None,
+        code: None,
+        reason: None,
+        detail: None,
+    }
+}
+
+/// 没开成的那一项：码 ＋ 原因词 ＋ 那一句与原话进复制详情。
+fn not_opened(key: String, code: &str, said: String, raw: Option<String>) -> OpenedItem {
+    OpenedItem {
+        code: Some(code.to_string()),
+        reason: Some(copy_core::code_reason(code, raw.as_deref())),
+        detail: Some(match raw {
+            Some(r) => format!("{said}\n{r}"),
+            None => said,
+        }),
+        ..opened(key, OpenState::Failed)
+    }
+}
+
+/// 保留两份：本机落点目录里第一个没被占的 `名 (k).ext`（k 从 2 起）。
+fn mint_local(dir: &Path, name: &OsStr) -> Option<PathBuf> {
+    (2..=999u32)
+        .map(|k| dir.join(crate::common::batch_book::minted(Path::new(name), k)))
+        .find(|p| Ro::symlink_metadata(p).is_err())
 }
 
 /// 一趟传输此刻的样子（整份快照，合并掉中间几格不丢信息）。

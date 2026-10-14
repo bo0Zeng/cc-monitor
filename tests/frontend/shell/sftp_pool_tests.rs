@@ -89,13 +89,13 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
                 Some("transfer-upload") => {
                     n += 1;
                     format!(
-                        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"id":"xfer-{n}","key":"00112233445566778899aabbccddeeff"}}}}"#
+                        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"items":[{{"key":"0","state":"opened","id":"xfer-{n}","staged":"00112233445566778899aabbccddeeff"}}]}}}}"#
                     )
                 }
                 Some("transfer-download") => {
                     n += 1;
                     format!(
-                        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"id":"xfer-{n}"}}}}"#
+                        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"items":[{{"key":"0","state":"opened","id":"xfer-{n}"}}]}}}}"#
                     )
                 }
                 _ => format!(r#"{{"kind":"reply","id":{id:?},"ok":true}}"#),
@@ -175,18 +175,18 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
         cfg("中继·上传"),
         TRANSFER_UPLOAD,
         // `home` 原样转给传输台（它连上之后比 SFTP 起始目录）。
-        &serde_json::json!({ "local_path": "/tmp/x.bin", "home": "/home/u" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "home": "/home/u" }),
     )
     .await
     .expect("开单");
-    assert_eq!(v["id"], "xfer-1");
+    assert_eq!(v["items"][0]["id"], "xfer-1");
     assert_eq!(
-        v["key"].as_str().map(str::len),
+        v["items"][0]["staged"].as_str().map(str::len),
         Some(32),
         "键没原样带回窗口"
     );
     let req = rig.next("transfer-upload").await;
-    assert_eq!(req["args"]["local_path"], "/tmp/x.bin");
+    assert_eq!(req["args"]["items"][0]["local_path"], "/tmp/x.bin");
     assert_eq!(
         req["args"]["home"], "/home/u",
         "后端的 home 没原样转给传输台"
@@ -236,7 +236,7 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
     transfer_call(
         cfg("中继·撤"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/y.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/y.bin" }] }),
     )
     .await
     .expect("开单");
@@ -260,7 +260,7 @@ async fn a_stale_watch_dropping_late_leaves_a_newer_ticket_with_the_same_id_alon
     transfer_call(
         cfg("中继·重号"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/z.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }] }),
     )
     .await
     .expect("开单");
@@ -271,11 +271,14 @@ async fn a_stale_watch_dropping_late_leaves_a_newer_ticket_with_the_same_id_alon
     let v = transfer_call(
         cfg("中继·重号"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/z.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }] }),
     )
     .await
     .expect("再开单");
-    assert_eq!(v["id"], "xfer-1", "量具：新的那一趟该撞上旧的票号");
+    assert_eq!(
+        v["items"][0]["id"], "xfer-1",
+        "量具：新的那一趟该撞上旧的票号"
+    );
     drop(old);
     let fresh = watch_ticket(&origin, "xfer-1");
     assert!(
@@ -294,7 +297,7 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
     transfer_call(
         cfg("中继·断"),
         TRANSFER_DOWNLOAD,
-        &serde_json::json!({ "remote_path": "/srv/a", "local_path": "/tmp/ccm-sr1b-dl-target" }),
+        &serde_json::json!({ "items": [{ "remote_path": "/srv/a", "name": "ccm-sr1b-dl-target" }], "local_dir": "/tmp" }),
     )
     .await
     .expect("开单");
@@ -317,7 +320,7 @@ async fn bad_subscriptions_say_why_in_place() {
     transfer_call(
         cfg("中继·坏"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/z.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/z.bin" }] }),
     )
     .await
     .expect("开单");
@@ -348,7 +351,7 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     let (code, e) = transfer_call(
         cfg("中继·旧"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/q.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }] }),
     )
     .await
     .expect_err("老后端不该开得了单");
@@ -366,7 +369,7 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     let (code, e) = transfer_call(
         cfg("中继·无"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/q.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }] }),
     )
     .await
     .expect_err("本机后端不在也开得了单？");
@@ -399,12 +402,12 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     transfer_call(
         cfg("中继·会话落点"),
         TRANSFER_DOWNLOAD,
-        &serde_json::json!({ "remote_path": "/srv/whatever.txt", "local_path": session }),
+        &serde_json::json!({ "items": [{ "remote_path": "/srv/whatever.txt" }], "local_dir": session }),
     )
     .await
     .expect("🔴 往会话文件那个位置上下载，开不出单");
     let sent = rig.next("transfer-download").await;
-    assert_eq!(sent["args"]["local_path"], session, "落点没有原样转给后端");
+    assert_eq!(sent["args"]["local_dir"], session, "落点没有原样转给后端");
 }
 
 /// 解帧：后端 `wire_tests::transfer_frames_have_exactly_these_bytes` 那几形**逐字节**的线上串（异源：后端金标准）
@@ -482,19 +485,19 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
     let cases = [
         (
             TRANSFER_UPLOAD,
-            serde_json::json!({ "local_path": "/tmp/x.bin" }),
+            serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }] }),
         ),
         (
             TRANSFER_UPLOAD,
-            serde_json::json!({ "local_path": "/tmp/x.bin", "home": "/home/u" }),
+            serde_json::json!({ "items": [{ "local_path": "/tmp/x.bin" }], "home": "/home/u" }),
         ),
         (
             TRANSFER_DOWNLOAD,
-            serde_json::json!({ "remote_path": "/srv/a b", "local_path": "/tmp/a b" }),
+            serde_json::json!({ "items": [{ "remote_path": "/srv/a b", "name": "a b" }], "local_dir": "/tmp" }),
         ),
         (
             TRANSFER_DOWNLOAD,
-            serde_json::json!({ "remote_path": "/srv/a", "local_path": { "b16": "2f746d702fff" } }),
+            serde_json::json!({ "items": [{ "remote_path": "/srv/a", "name": { "b16": "ff" } }], "local_dir": "/tmp" }),
         ),
     ];
     let mut got = Vec::new();
@@ -519,10 +522,13 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
     }
     for (op, payload) in [
         (TRANSFER_UPLOAD, serde_json::json!({})),
-        (TRANSFER_UPLOAD, serde_json::json!({ "local_path": 7 })),
+        (
+            TRANSFER_UPLOAD,
+            serde_json::json!({ "items": [{ "local_path": 7 }] }),
+        ),
         (
             TRANSFER_DOWNLOAD,
-            serde_json::json!({ "local_path": "/tmp/a" }),
+            serde_json::json!({ "items": [{ "name": "/tmp/a" }], "local_dir": "/tmp" }),
         ),
         (
             TRANSFER_UPLOAD,
@@ -536,13 +542,13 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         got.push(format!("{op} {payload} => {code} {said}"));
     }
     let want = [
-        r#"transfer-upload {"dial":<dial>,"local_path":"/tmp/x.bin"} => {"id":"xfer-1","key":"00112233445566778899aabbccddeeff"}"#,
-        r#"transfer-upload {"dial":<dial>,"home":"/home/u","local_path":"/tmp/x.bin"} => {"id":"xfer-2","key":"00112233445566778899aabbccddeeff"}"#,
-        r#"transfer-download {"dial":<dial>,"local_path":"/tmp/a b","remote_path":"/srv/a b"} => {"id":"xfer-3"}"#,
-        r#"transfer-download {"dial":<dial>,"local_path":{"b16":"2f746d702fff"},"remote_path":"/srv/a"} => {"id":"xfer-4"}"#,
+        r#"transfer-upload {"dial":<dial>,"items":[{"local_path":"/tmp/x.bin"}]} => {"items":[{"id":"xfer-1","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
+        r#"transfer-upload {"dial":<dial>,"home":"/home/u","items":[{"local_path":"/tmp/x.bin"}]} => {"items":[{"id":"xfer-2","key":"0","staged":"00112233445566778899aabbccddeeff","state":"opened"}]}"#,
+        r#"transfer-download {"dial":<dial>,"items":[{"name":"a b","remote_path":"/srv/a b"}],"local_dir":"/tmp"} => {"items":[{"id":"xfer-3","key":"0","state":"opened"}]}"#,
+        r#"transfer-download {"dial":<dial>,"items":[{"name":{"b16":"ff"},"remote_path":"/srv/a"}],"local_dir":"/tmp"} => {"items":[{"id":"xfer-4","key":"0","state":"opened"}]}"#,
         r#"transfer-upload {} => bad_args 请求格式不对 · transfer-upload"#,
-        r#"transfer-upload {"local_path":7} => bad_args 请求格式不对 · transfer-upload"#,
-        r#"transfer-download {"local_path":"/tmp/a"} => bad_args 请求格式不对 · transfer-download"#,
+        r#"transfer-upload {"items":[{"local_path":7}]} => bad_args 请求格式不对 · transfer-upload"#,
+        r#"transfer-download {"items":[{"name":"/tmp/a"}],"local_dir":"/tmp"} => bad_args 请求格式不对 · transfer-download"#,
         r#"transfer-upload {"home":"/h","local_path":"/tmp/x.bin","via":1} => bad_args 请求格式不对 · transfer-upload"#,
         r#"transfer-start {"id":"xfer-1"} => bad_args 请求格式不对 · transfer-start 不是传输命令"#,
     ];

@@ -271,12 +271,15 @@ pub(crate) enum TypedRun {
     /// 帧面硬臂（要碰本连接的票表与应答通道）：分派在 `dispatch` 那条硬臂，就地做完、回一帧（经 [`answer`]）。
     /// 同 [`super::Run::Builtin`]：只在帧面（CLI 面不派生）、不进 [`super::spec::prepare`]。
     Frame,
+    /// 同 [`TypedRun::Frame`]，只是那条硬臂把本体交给阻塞线程（开跑之后打不断；结局晚一点才有，进度走本连接）：
+    /// 两台之间复制一组。分派在 `dispatch` 那条硬臂，本体经 [`outcome`]。
+    FrameBlocking,
 }
 
 impl Typed {
     /// 这一份是不是帧面硬臂那一档（[`TypedRun::Frame`]）。
     pub(crate) fn on_frame_arm(&self) -> bool {
-        matches!(self.run, TypedRun::Frame)
+        matches!(self.run, TypedRun::Frame | TypedRun::FrameBlocking)
     }
 }
 
@@ -389,6 +392,14 @@ fn run_async_own<C: AsyncOwn>(r: Request, own: crate::platform::Own) -> DataFut 
     })
 }
 
+/// 帧面硬臂那一档里交给阻塞线程的那几条（进度走本连接、结局晚一点才有）：入参按类型收 → `run` → 回包（失败照码表投）。
+pub(crate) fn outcome<C: Command>(
+    args: &serde_json::Value,
+    run: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
+) -> Outcome {
+    take::<C::Req>(args).and_then(|req| settle::<C>(run(req)))
+}
+
 /// 帧面硬臂那一档（[`TypedRun::Frame`]）的一发：入参按类型收 → `run` → 应答帧（成功带回包；失败照码表投，详情里带命令名）。
 /// `dispatch` 的硬臂调本体时都经这里（本体签名里只有类型，没有 `args`）。
 pub(crate) fn answer<C: Command>(
@@ -412,6 +423,11 @@ pub(crate) fn answer<C: Command>(
 /// 帧面硬臂那一档的一行登记（本体在 `dispatch` 那条硬臂里经 [`answer`] 调）。
 pub(crate) const fn frame<C: Command>(summary: &'static str) -> CommandSpec {
     spec::<C>(summary, TypedRun::Frame)
+}
+
+/// 帧面硬臂、本体在阻塞线程上的一行登记（本体在 `dispatch` 那条硬臂里经 [`outcome`] 调）。
+pub(crate) const fn frame_blocking<C: Command>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::FrameBlocking)
 }
 
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。

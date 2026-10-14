@@ -10615,6 +10615,18 @@
       "zh": "已存在",
       "args": []
     },
+    "beTransferCopy.local.noHome": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无主目录",
+      "args": []
+    },
+    "beTransferCopy.from.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取失败 · {path} · 路径不存在",
+      "args": ["path"]
+    },
     "beFilesWrite.copyTree.kindLink": {
       "kind": "body",
       "role": "片段",
@@ -28020,6 +28032,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "名称无效",
+      "args": []
+    },
+    "reason.code.overLimit": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "超出上限",
       "args": []
     },
     "reason.spawn.notInstalled": {

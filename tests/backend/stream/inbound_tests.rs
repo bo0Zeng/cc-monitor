@@ -942,6 +942,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "transfer-download",
         "transfer-start",
         "transfer-stop",
+        // 两台之间复制一组：硬臂交阻塞线程（连两台 ＋ 逐个文件搬）⇒ 阻塞档、打不断（撤走 `files-batch-stop`）。
+        "transfer-copy",
         // 终端实时预览：订上那一下是异步档、起 tmux 那几下自己挪进阻塞线程池；回执 · 退订就地记账 ⇒ 不阻塞。
         "terminal-follow",
         "terminal-follow-ack",

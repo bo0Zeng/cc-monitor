@@ -244,7 +244,7 @@ impl Async for FilesBatchStop {
         _cx: Cx,
     ) -> impl std::future::Future<Output = Result<FilesBatchStopReply, FilesBatchStopErr>> + Send + 'static
     {
-        let stopping = crate::control::files_batch::stop(&req.ticket);
+        let stopping = crate::common::batch_book::stop(&req.ticket);
         async move { Ok(FilesBatchStopReply { stopping }) }
     }
 }

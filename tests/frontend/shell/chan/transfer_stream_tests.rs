@@ -86,11 +86,11 @@ async fn open_upload(label: &str) -> String {
     let v = crate::sftp_pool::transfer_call(
         cfg(label),
         crate::sftp_pool::TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/ccm-sr1b-chan.bin" }),
+        &serde_json::json!({ "items": [{ "local_path": "/tmp/ccm-sr1b-chan.bin" }] }),
     )
     .await
     .expect("开单");
-    v["id"].as_str().expect("票号").to_string()
+    v["items"][0]["id"].as_str().expect("票号").to_string()
 }
 
 /// 🔴🔴 **生产句柄对 `transfer/<id>` 真的出帧**，而且那些帧说的就是本机后端推上来的那几格。

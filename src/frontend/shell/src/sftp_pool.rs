@@ -29,7 +29,7 @@ use crate::backend_route::{route_call_error, Routed};
 use crate::inbound_client::InboundClient;
 use crate::stream_source::RemoteConfig;
 
-/// 开单：上传。载荷 `cmd_wire::transfer::TransferUploadAsk`，回 `TransferUploaded`（`key` 是暂存件的键，提交时交给远端后端）。
+/// 开单：上传。载荷 `cmd_wire::transfer::TransferUploadAsk`，回 `TransferOpened`（逐项；上传那几项带 `staged` ＝ 暂存件的键，提交时交给远端后端）。
 pub const TRANSFER_UPLOAD: &str =
     <cmd_wire::transfer::TransferUploadAsk as cmd_wire::files::Call>::NAME;
 /// 开单：下载。载荷 `cmd_wire::transfer::TransferDownloadAsk`，回 `TransferOpened`。
@@ -171,13 +171,10 @@ fn ask_of<A: serde::de::DeserializeOwned>(
 }
 
 /// 按后端那一份类型转给本机后端，回包按类型解（解不出 ⇒ 没回传输编号），登记一个中继。
-async fn relay<R: cmd_wire::files::Call>(
+async fn relay<R: cmd_wire::files::Call<Reply = cmd_wire::transfer::TransferOpened>>(
     cfg: &RemoteConfig,
     req: R,
-) -> Result<serde_json::Value, (String, String)>
-where
-    R::Reply: Opened,
-{
+) -> Result<serde_json::Value, (String, String)> {
     let args = serde_json::to_value(&req).map_err(|e| ("bad_args".to_string(), e.to_string()))?;
     let client = crate::dial_host::local_backend_accepting(R::NAME)
         .await
@@ -193,32 +190,20 @@ where
             copy_text("rsSftpPool.call.noTicket", &[("v", &v.to_string())]),
         )
     })?;
-    let (tx, _rx) = watch::channel::<Snap>(Snap::default());
-    relays().insert(
-        opened.ticket().to_string(),
-        Relay {
-            origin: crate::origin::Origin(cfg.origin_label()),
-            owner: Arc::downgrade(&client),
-            state: Arc::new(tx),
-            watched: false,
-        },
-    );
+    // 一组里开了单的每一项各登记一个中继（没开成 · 跳过的那几项没有票）。
+    for id in opened.items.iter().filter_map(|it| it.id.as_deref()) {
+        let (tx, _rx) = watch::channel::<Snap>(Snap::default());
+        relays().insert(
+            id.to_string(),
+            Relay {
+                origin: crate::origin::Origin(cfg.origin_label()),
+                owner: Arc::downgrade(&client),
+                state: Arc::new(tx),
+                watched: false,
+            },
+        );
+    }
     serde_json::to_value(&opened).map_err(|e| ("backend".to_string(), e.to_string()))
-}
-
-/// 开单回包里的传输单 id（两条回包各一个类型，都带它）。
-trait Opened: serde::Serialize + serde::de::DeserializeOwned {
-    fn ticket(&self) -> &str;
-}
-impl Opened for cmd_wire::transfer::TransferUploaded {
-    fn ticket(&self) -> &str {
-        &self.id
-    }
-}
-impl Opened for cmd_wire::transfer::TransferOpened {
-    fn ticket(&self) -> &str {
-        &self.id
-    }
 }
 
 /// 订阅那一格的守卫：**流被丢掉 = 停订**。没收场就经开它的那条流发 `transfer-stop`；无论如何把中继摘掉 ——

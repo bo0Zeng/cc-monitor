@@ -443,6 +443,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "login-finish"
                 | "login-cancel"
                 | "manual-list"
+                // 两台之间复制一组：硬臂交阻塞线程（连两台 ＋ 逐个文件搬）。
+                | "transfer-copy"
         );
         let is_blocking = spec.run.blocking();
         assert_eq!(
@@ -478,6 +480,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "needs-ask"
                 // 在 app 里登录一个号：作业跟着本连接走（连接断了就杀），作业收了的那一帧走本连接的应答通道（`accounts/sign_in.rs`）。
                 | "login-start"
+                // 两台之间复制一组：进度帧走本连接的应答通道（`control/transfer_copy.rs`）。
+                | "transfer-copy"
         );
         assert_eq!(
             is_builtin, expected_builtin,
@@ -716,6 +720,8 @@ fn every_registered_command_declares_its_run_kind() {
         "transfer-download",
         "transfer-start",
         "transfer-stop",
+        // 两台之间复制一组：帧面硬臂、本体在阻塞线程上。
+        "transfer-copy",
         // 终端实时预览三条：内建（硬臂；订上那一下在异步档里挪进阻塞线程池）。
         "terminal-follow",
         "terminal-follow-ack",
@@ -857,7 +863,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
                     .collect::<Vec<_>>(),
             )
             // 撤一组复制 · 删除 · 改权限（`control/files_batch.rs`）：写那一族的，只立旗、不碰盘。
-            .chain([crate::control::files_batch::STOP])
+            .chain([crate::common::batch_book::STOP])
             .map(str::to_string)
             .collect();
     assert!(
@@ -910,7 +916,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             "`{name}` 不是 typed 的那一档 —— 写的这一族入参 · 回包 · 码都从类型来"
         );
         // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上（撤一组那一条不写盘、不经写面那一扇，不在这里调）。
-        if name == crate::control::files_batch::STOP {
+        if name == crate::common::batch_book::STOP {
             continue;
         }
         if let Err(crate::control::files_write::WriteFail {
