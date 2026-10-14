@@ -23,7 +23,7 @@ Handshake sent once when a client connects。
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
-| `uncancellable` | [string]? | `commands` 里**撤不动**的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
+| `uncancellable` | [string]? | `commands` 里**撤不动**、又不是 typed 的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
 | `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
 
 ### `line`

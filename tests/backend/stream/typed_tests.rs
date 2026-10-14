@@ -13,6 +13,8 @@ pub(crate) struct Shape {
     pub(crate) codes: &'static [&'static str],
     /// `(TS 名, 声明)`，按名排、去重：入参与回包本身 ＋ 它们递归引到的每个具名类型。
     pub(crate) decls: Vec<(String, String)>,
+    /// 开跑之后撤不动（阻塞档）。登记那一档定，[`typed`] 填；算进指纹：两端指纹对得上 ⇒ 撤不撤得动也一致。
+    pub(crate) uncancellable: bool,
 }
 
 pub(crate) fn shape_of<C: Command>() -> Shape {
@@ -46,6 +48,7 @@ pub(crate) fn shape_of<C: Command>() -> Shape {
         reply: C::Reply::name(&cfg),
         codes: <C::Err as Codes>::ALL,
         decls: c.1.into_iter().collect(),
+        uncancellable: false,
     }
 }
 
@@ -53,10 +56,11 @@ impl Shape {
     /// 形状指纹：名 · 声明 · 码表逐行拼起来的 FNV-1a 32 位，8 位十六进制（两端比的就是它）。
     pub(crate) fn fingerprint(&self) -> String {
         let mut text = format!(
-            "req {}\nreply {}\ncodes {}\n",
+            "req {}\nreply {}\ncodes {}\ncancel {}\n",
             self.req,
             self.reply,
-            self.codes.join(",")
+            self.codes.join(","),
+            if self.uncancellable { "no" } else { "yes" }
         );
         for (name, decl) in &self.decls {
             text.push_str(&format!("{name}\n{decl}\n"));
@@ -75,7 +79,13 @@ fn typed() -> Vec<(&'static str, Shape)> {
     let mut v: Vec<(&'static str, Shape)> = REGISTRY
         .iter()
         .filter_map(|s| match s.run {
-            Run::Typed(t) => Some((s.name, (t.shape)())),
+            Run::Typed(t) => Some((
+                s.name,
+                Shape {
+                    uncancellable: s.run.blocking(),
+                    ..(t.shape)()
+                },
+            )),
             _ => None,
         })
         .collect();
@@ -101,15 +111,22 @@ fn the_shapes_table_is_what_the_types_say() {
         "登记表里一条 typed 命令都没有 —— 本条在空转"
     );
     let mut table = String::new();
+    let mut stuck = String::new();
     for (name, shape) in &rows {
         table.push_str(&format!("    (\"{name}\", \"{}\"),\n", shape.fingerprint()));
+        if shape.uncancellable {
+            stuck.push_str(&format!("    \"{name}\",\n"));
+        }
     }
     let want = format!(
         "//! 每条 typed 命令的形状指纹：入参 · 回包的 TS 声明（连同它们引到的每个类型）＋ 错误码，合起来的 FNV-1a 32 位，8 位十六进制。\n\
 //! 🔴 由后端判据 `stream::inbound::typed::tests::the_shapes_table_is_what_the_types_say` 从类型现算写出（不一致就重写这份并红）：别手改。\n\
 \n\
-/// `(命令, 形状指纹)`，按命令名排。\n\
+/// `(命令, 形状指纹)`，按命令名排。指纹里算进了撤不撤得动（见 [`UNCANCELLABLE`]）。\n\
 pub const SHAPES: &[(&str, &str)] = &[\n{table}];\n\
+\n\
+/// typed 命令里开跑之后撤不动的那几条（阻塞档），按命令名排。客户端撤单时读本侧这一份：指纹对得上才会发，对上了两边必然一致。\n\
+pub const UNCANCELLABLE: &[&str] = &[\n{stuck}];\n\
 \n\
 /// 这条命令在本份编进来的形状指纹；不是 typed 命令 ⇒ `None`。\n\
 pub fn shape_of(cmd: &str) -> Option<&'static str> {{\n    SHAPES.iter().find(|(c, _)| *c == cmd).map(|(_, h)| *h)\n}}\n"

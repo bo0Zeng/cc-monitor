@@ -217,6 +217,41 @@ fn withdraw_is_asked_only_when_the_peer_offers_cancel_for_that_op() {
     assert!(o.admits("ping") && !o.admits("pong"));
 }
 
+/// typed 命令撤不撤得动看本侧编进来的指纹表（`cmd_wire::shapes::UNCANCELLABLE`；撤不撤得动算进了指纹，
+/// 指纹对得上才会发，对上了两边必然一致）；hello 那一栏只说不是 typed 的那几条，它列了 typed 命令也不认。
+#[test]
+fn typed_commands_take_cancellability_from_the_shapes_table() {
+    use cmd_wire::shapes::{SHAPES, UNCANCELLABLE};
+    let ops = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let stuck = UNCANCELLABLE
+        .first()
+        .copied()
+        .expect("至少一条 typed 阻塞档");
+    let free = SHAPES
+        .iter()
+        .map(|(c, _)| *c)
+        .find(|c| !UNCANCELLABLE.contains(c))
+        .expect("至少一条 typed 可撤的");
+    let o = Offer::new(
+        ops(&[stuck, free, "ping", WITHDRAW_OP]),
+        Vec::new(),
+        Vec::new(),
+    );
+    assert_eq!(o.withdraw(stuck), Withdraw::NotOffered, "{stuck}");
+    assert_eq!(o.withdraw(free), Withdraw::Asked, "{free}");
+    let o = Offer::new(
+        ops(&[free, "ping", WITHDRAW_OP]),
+        Vec::new(),
+        ops(&[free, "ping"]),
+    );
+    assert_eq!(o.withdraw(free), Withdraw::Asked, "typed 命令以指纹表为准");
+    assert_eq!(
+        o.withdraw("ping"),
+        Withdraw::NotOffered,
+        "不是 typed 的照 hello 那一栏"
+    );
+}
+
 /// hello / resync 里那两格：坏项逐项丢、不丢整份；缺格 ⇒ 空。`shapes` 里值不是串的那一项丢掉。
 #[test]
 fn offer_facts_drop_bad_items_one_by_one() {

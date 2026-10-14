@@ -451,8 +451,15 @@ impl Offer {
     }
 
     /// 这个 op 的请求**已发出**、被本地撤掉之后，对端那一半的处置。
+    /// 撤不撤得动：typed 命令看本侧编进来的指纹表（`cmd_wire::shapes::UNCANCELLABLE`；它算进了指纹，
+    /// 指纹对得上才会发 ⇒ 两边一致）；别的看对端交的那一栏。
     pub fn withdraw(&self, op: &str) -> Withdraw {
-        if self.admits(WITHDRAW_OP) && !self.uncancellable.iter().any(|o| o == op) {
+        let stuck = if cmd_wire::shapes::shape_of(op).is_some() {
+            cmd_wire::shapes::UNCANCELLABLE.contains(&op)
+        } else {
+            self.uncancellable.iter().any(|o| o == op)
+        };
+        if self.admits(WITHDRAW_OP) && !stuck {
             Withdraw::Asked
         } else {
             Withdraw::NotOffered
