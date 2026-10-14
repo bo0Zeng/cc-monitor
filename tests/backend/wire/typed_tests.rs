@@ -56,14 +56,50 @@ pub(crate) fn ty_of<T: ts_rs::TS + 'static>() -> Ty {
     }
 }
 
+/// [`super::Codes::Data`] 的那一份 TS 形状：元组逐位一个；[`super::Each`] ＝ 每个码同一形（`n` ＝ 码数）。
+pub(crate) trait DataTys {
+    fn tys(n: usize) -> Vec<Ty>;
+}
+
+impl<T: ts_rs::TS + 'static> DataTys for super::Each<T> {
+    fn tys(n: usize) -> Vec<Ty> {
+        (0..n).map(|_| ty_of::<T>()).collect()
+    }
+}
+
+macro_rules! data_tys {
+    ($($t:ident),*) => {
+        impl<$($t: ts_rs::TS + 'static),*> DataTys for ($($t,)*) {
+            fn tys(_: usize) -> Vec<Ty> {
+                vec![$(ty_of::<$t>()),*]
+            }
+        }
+    };
+}
+data_tys!();
+data_tys!(A);
+data_tys!(A, B);
+data_tys!(A, B, C);
+data_tys!(A, B, C, D);
+data_tys!(A, B, C, D, E);
+data_tys!(A, B, C, D, E, F);
+
 pub(crate) fn shape_of<C: Command>() -> Shape {
     let (req, reply) = (ty_of::<C::Req>(), ty_of::<C::Reply>());
     let mut decls = req.decls;
     decls.extend(reply.decls);
+    let codes = <C::Err as Codes>::DATA;
+    let tys = <<C::Err as Codes>::Data as DataTys>::tys(codes.len());
+    assert_eq!(
+        tys.len(),
+        codes.len(),
+        "`{}`：带 `data` 的码与 `data` 的类型对不上位",
+        C::NAME
+    );
     let mut data = Vec::new();
-    for (code, ty) in <C::Err as Codes>::data_shapes() {
+    for (code, ty) in codes.iter().zip(tys) {
         decls.extend(ty.decls);
-        data.push((code, ty.name));
+        data.push((*code, ty.name));
     }
     Shape {
         req: req.name,

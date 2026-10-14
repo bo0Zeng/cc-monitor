@@ -445,17 +445,14 @@ impl crate::wire::typed::Codes for RestartErr {
             ..crate::wire::spec::Fail::new(&code, message)
         }
     }
-    #[cfg(test)]
-    fn data_shapes() -> Vec<(&'static str, crate::wire::typed::tests::Ty)> {
-        use crate::wire::typed::tests::ty_of;
-        vec![
-            ("account_unavailable", ty_of::<la::AccountUnavailable>()),
-            ("ambiguous", ty_of::<Refused>()),
-            ("session_already_live", ty_of::<Refused>()),
-            ("stop_failed", ty_of::<Refused>()),
-            ("start_failed", ty_of::<Refused>()),
-        ]
-    }
+    const DATA: &'static [&'static str] = &[
+        "account_unavailable",
+        "ambiguous",
+        "session_already_live",
+        "stop_failed",
+        "start_failed",
+    ];
+    type Data = (la::AccountUnavailable, Refused, Refused, Refused, Refused);
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         if RESTART_CODES.contains(&code) {
             Ok(RestartErr((code.to_string(), said, None)))

@@ -34,6 +34,19 @@ pub(crate) trait Command: 'static {
     type Err: Codes;
 }
 
+/// [`Codes::Data`] 的约束：测试档要算得出 TS 形状（`tests::DataTys`）；发布二进制里它什么都不要求。
+#[cfg(test)]
+pub(crate) trait DataTypes: tests::DataTys {}
+#[cfg(test)]
+impl<T: tests::DataTys> DataTypes for T {}
+#[cfg(not(test))]
+pub(crate) trait DataTypes {}
+#[cfg(not(test))]
+impl<T> DataTypes for T {}
+
+/// [`Codes::Data`] 那一格：[`Codes::DATA`] 里每个码都带 `T` 这一形。
+pub(crate) struct Each<T>(std::marker::PhantomData<T>);
+
 /// 不收入参的那几条命令的入参：缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`。
 #[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -54,9 +67,10 @@ pub(crate) trait Codes: Sized {
     fn into_fail(self) -> Fail;
     /// 下层交上来的码 ⇒ 这一条的那个变体（只认不带 `data` 的那几种）；不在码表里 ⇒ 原样交回那一句（调用方定落哪一格）。
     fn of_code(code: &str, said: String) -> Result<Self, String>;
-    /// 带 `data` 的那几个码与 `data` 的类型（测试档：形状指纹与协议参考算进它）。
-    #[cfg(test)]
-    fn data_shapes() -> Vec<(&'static str, tests::Ty)>;
+    /// 带 `data` 的那几个码（声明次序）。
+    const DATA: &'static [&'static str];
+    /// 那几个码的 `data` 类型：元组，与 [`Codes::DATA`] 逐位对上（[`Each`] ＝ 每个码都带同一形）。测试档拿它算形状指纹与协议参考。
+    type Data: DataTypes;
 }
 
 /// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码在这一条的码表里 ⇒ 照交；不在 ⇒ 落 `fallback`
@@ -188,10 +202,8 @@ macro_rules! codes {
                     $($arms)*
                 }
             }
-            #[cfg(test)]
-            fn data_shapes() -> Vec<(&'static str, $crate::wire::typed::tests::Ty)> {
-                vec![$(($dcode, $crate::wire::typed::tests::ty_of::<$dty>()),)*]
-            }
+            const DATA: &'static [&'static str] = &[$($dcode),*];
+            type Data = ($($dty,)*);
         }
     };
 }
