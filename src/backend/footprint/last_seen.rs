@@ -255,14 +255,16 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
         )
     })?;
     let mut at_ms = now_ms;
-    locked_edit(own, &dir, &file, |all| match kept_at(all, &origin, kind, &value, shape) {
-        Some(was) => {
-            at_ms = was;
-            false
-        }
-        None => {
-            record(all, origin, kind, &value, shape, now_ms);
-            true
+    locked_edit(own, &dir, &file, |all| {
+        match kept_at(all, &origin, kind, &value, shape) {
+            Some(was) => {
+                at_ms = was;
+                false
+            }
+            None => {
+                record(all, origin, kind, &value, shape, now_ms);
+                true
+            }
         }
     })?;
     Ok(LastSeenWritten { at_ms })
