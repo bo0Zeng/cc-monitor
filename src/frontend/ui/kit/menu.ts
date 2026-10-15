@@ -266,6 +266,8 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     };
     const openSub = (focusFirst: boolean): void => {
       clear();
+      // 主菜单的入场动画带 transform：没走完时 fixed 的子菜单按主菜单算坐标 ⇒ 先让它走完再摆。
+      for (const a of o.root.getAnimations?.() ?? []) a.finish();
       placeSub(wrap, fly);
       wrap.dataset.subOpen = "true";
       btn.setAttribute("aria-expanded", "true");
