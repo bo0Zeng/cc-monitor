@@ -21,7 +21,6 @@ vi.mock("@tauri-apps/api/core", async () => {
 });
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
@@ -142,7 +141,6 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
       at: "2026-09-10T00:00:01.000Z",
       blocks: [{ type: "text", text: "答一句" }],
       autoReply: false,
-      endsTurn: false,
     }),
     userLine(2, "u2", "再问"),
   ];

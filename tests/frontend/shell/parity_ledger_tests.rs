@@ -57,8 +57,6 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("open_log_file", "app.logs", Side::Both),
     // 设置窗「现在重启」：重起 cc-monitor 自己（不吃 origin，本机远端无从分）⇒ `Both`，归已有能力 `app.config`（「要重启才生效」那几项改的都是本机配置）。
     ("restart_app", "app.config", Side::Both),
-    // 系统通知（「一轮完成」「需手动」）：出在 monitor 面前这台的桌面上，哪台的会话都一样 ⇒ `Both`，归已有能力 `app.window.self`。
-    ("notify_desktop", "app.window.self", Side::Both),
     // 写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，哪台的内容都一样 ⇒ `Both`，归已有能力 `app.window.self`。
     ("clipboard_write", "app.window.self", Side::Both),
     // 读系统剪贴板（登录抽屉［粘贴］）：同上，剪贴板是面前这台桌面的 ⇒ `Both`。
@@ -640,7 +638,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
     // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 41;
+    // - **−1**（`notify_desktop`，`Both`：界面不再发系统通知）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

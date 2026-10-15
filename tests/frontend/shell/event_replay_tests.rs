@@ -460,7 +460,6 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
                     "listed",
                     "snapshot_inflight",
                     "watch",
-                    "turn_end",
                 ]
                 .into_iter()
                 .find(|k| v.get(*k).is_some())
@@ -1173,11 +1172,6 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             path: "/p".into(),
             seq: 3,
         }),
-        F::TurnEnd(b::SessionTurnEndPayload {
-            session_id: "s".into(),
-            title: "t".into(),
-            body: "b".into(),
-        }),
     ];
     let key = |f: &F| -> String {
         let v = serde_json::to_value(f).unwrap();
@@ -1482,66 +1476,15 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
     );
 }
 
-/// 一轮结束（那台的 `turn_end` 帧，在不在看都来）⇒ 会话流一格 `turn_end`（credit 0 也交），只给那台、订了那个会话的订阅。
-#[tokio::test]
-async fn a_turn_end_reaches_that_machines_subscribers_of_that_session_without_credit() {
-    let (r, rec) = hub();
-    r.origin_seen(&local(), true);
-    r.subscribe("w", 1, &local(), "session-lines", None, 0);
-    r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 0);
-    r.subscribe(
-        "far",
-        1,
-        &crate::origin::Origin("box".into()),
-        "session-lines",
-        None,
-        0,
-    );
-    r.ready_point(None).await;
-    rec.clear();
-    r.on_turn_end(
-        &local(),
-        crate::ui_contract::SessionTurnEndPayload {
-            session_id: "a".into(),
-            title: "T".into(),
-            body: "B".into(),
-        },
-    );
-    let got: Vec<(String, String, String, String)> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(label, _, items)| {
-            items.iter().filter_map(move |i| match i {
-                WItem::Frame { body, .. } => {
-                    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                    let t = v.get("turn_end")?;
-                    let s = |k: &str| t[k].as_str().map(str::to_string);
-                    Some((label.clone(), s("session_id")?, s("title")?, s("body")?))
-                }
-                _ => None,
-            })
-        })
-        .collect();
-    let want = |s: &str| s.to_string();
-    assert_eq!(
-        got,
-        vec![(want("w"), want("a"), want("T"), want("B"))],
-        "标题与正文原样带进界面"
-    );
-}
-
 /// 造好的 Codex 样本真走过后端 watcher 的那几帧（`tests/__fixtures__/codex-session-stream.golden.jsonl`，后端
-/// `watcher_writer_tests::the_codex_sample_walks_into_the_golden_frames` 写）：壳逐行解得开（宣告 · 行 · 一轮结束），
-/// 两次一轮结束各成这台会话流的一格 `turn_end`（系统通知认它）—— 与 Claude 那一家同一条路，壳里不认是哪一家。
-#[tokio::test]
-async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
+/// `watcher_writer_tests::the_codex_sample_walks_into_the_golden_frames` 写）：壳逐行解得开（宣告 · 行）——
+/// 与 Claude 那一家同一条路，壳里不认是哪一家。
+#[test]
+fn the_codex_sample_frames_decode() {
     const GOLDEN: &str = include_str!("../../__fixtures__/codex-session-stream.golden.jsonl");
     use crate::stream_source::{parse_frame, InboundFrame};
     let mut added = Vec::new();
     let mut lines = 0;
-    let mut ends = Vec::new();
     let (mut announced_text, mut working_text) = (None, None);
     for l in GOLDEN.lines() {
         match parse_frame(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}")) {
@@ -1566,7 +1509,6 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
                 working_text.get_or_insert(activity.activity_text.clone());
             }
             InboundFrame::Line { .. } => lines += 1,
-            InboundFrame::TurnEnd(turn) => ends.push(turn),
             _ => {}
         }
     }
@@ -1577,42 +1519,7 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
         announced_text, working_text,
         "宣告那一帧判不出却先说了运行中"
     );
-    let (sid, path) = &added[0];
+    let (_, path) = &added[0];
     assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
     assert_eq!(lines, 6);
-    let ended: Vec<&str> = ends.iter().map(|t| t.session_id.as_str()).collect();
-    assert_eq!(
-        ended,
-        vec![sid.as_str(), sid.as_str()],
-        "两轮各一次一轮结束"
-    );
-    assert!(
-        ends.iter()
-            .all(|t| !t.title.is_empty() && !t.body.is_empty()),
-        "通知那两行后端写好"
-    );
-    let (r, rec) = hub();
-    r.origin_seen(&local(), true);
-    r.subscribe("w", 1, &local(), "session-lines", None, 0);
-    r.ready_point(None).await;
-    rec.clear();
-    for t in ends {
-        r.on_turn_end(&local(), t);
-    }
-    let got: Vec<String> = rec
-        .0
-        .lock()
-        .unwrap()
-        .iter()
-        .flat_map(|(_, _, items)| {
-            items.iter().filter_map(|i| match i {
-                WItem::Frame { body, .. } => {
-                    let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                    Some(v.get("turn_end")?["session_id"].as_str()?.to_string())
-                }
-                _ => None,
-            })
-        })
-        .collect();
-    assert_eq!(got, vec![sid.clone(), sid.clone()]);
 }

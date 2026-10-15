@@ -84,12 +84,11 @@ describe("跟着一个会话", () => {
       frame(0, { watch: { session_id: "s1", path: "/p/s1.jsonl", seq: 40 } }),
       frame(1, { watch: { session_id: "s9", path: "/p/s9.jsonl", seq: 7 } }),
       frame(2, { watch: { session_id: "s1", path: "/p/s1.jsonl", seq: -1 } }),
-      frame(3, { turn_end: { session_id: "s1", title: "T", body: "B" } }),
       frame(4, { line: line("s1", 40) }),
     ]);
     warn.mockRestore();
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 40)] }, { t: "from", path: "/p/s1.jsonl", seq: 40 }]);
-    expect(rec.wants, "watch · turn_end 不吃 credit：只还那一行").toEqual([1]);
+    expect(rec.wants, "watch 不吃 credit：只还那一行").toEqual([1]);
     h.stop();
   });
 });

@@ -189,7 +189,7 @@ export function backendPool({ repo, sandbox }) {
     else {
       // 预读演成一直没读完：这几个会话宣告之后的格不往壳那一跳交（后端预读没完成时压着的就是这几种，另加「读完了」那一帧本身）。
       for (const sid of held) if (!/^[0-9a-f-]+$/.test(sid)) throw new Error(`primeHeld 里的 sid 形状不对：${sid}`);
-      const kinds = "session_primed|session_status|line|session_runs|session_branch|turn_end";
+      const kinds = "session_primed|session_status|line|session_runs|session_branch";
       const pat = `"kind":"(${kinds})","(sid|session_id)":"(${held.join("|")})"`;
       sh.push(`${backend} | grep --line-buffered -v -E ${q(pat)}`);
     }

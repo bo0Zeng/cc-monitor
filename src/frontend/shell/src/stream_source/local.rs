@@ -71,8 +71,6 @@ pub(crate) enum LocalStep {
     Remove { sid: String },
     /// 本机的某样东西变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `changed`）。
     Changed { topic: String, cell: String },
-    /// 一轮结束（交那台的会话流一格）。
-    TurnEnd(crate::ui_contract::SessionTurnEndPayload),
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -200,7 +198,6 @@ pub(crate) fn local_step(item: LocalItem) -> LocalStep {
         LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
             LocalStep::Notice { sid, path, change }
         }
-        LocalItem::Frame(InboundFrame::TurnEnd(turn)) => LocalStep::TurnEnd(turn),
         // 「X 变了」：界面按主题 · key 取（隐藏那一格变了也走这里，主题 `session_hidden`）。
         LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
             LocalStep::Changed { topic, cell }
@@ -286,9 +283,6 @@ pub(crate) async fn consume_local(
                         crate::machine_table::refresh();
                     }
                     replay.changed(&crate::origin::Origin(label.clone()), &topic, cell)
-                }
-                LocalStep::TurnEnd(turn) => {
-                    replay.on_turn_end(&crate::origin::Origin(label.clone()), turn)
                 }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,

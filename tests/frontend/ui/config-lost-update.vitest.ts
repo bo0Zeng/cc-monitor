@@ -76,8 +76,6 @@ const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
   resumeCommandPresets: [],
-  notifyTurnEnd: true,
-  notifyNeeds: true,
   // `forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。
 };
 const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };

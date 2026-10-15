@@ -6,7 +6,6 @@
 #   2 Doze / App Standby / am kill / force-stop：退后台 → 进那个状态 → 桌面那侧来几句 → 回前台；量「回前台 → 重连」「回前台 → 收齐」。
 #   3 网：模拟器控制台的限速 · 延迟 · 断数据（先量它们管不管用）＋ 模拟器里的 netem（慢）· iptables（静默断）；量「网回来 → 看到新话」。
 #     静默断网 15 秒 · 90 秒：网回来 CCM_DEVICE_REJOIN（默认 10）秒内要重连上，晚了就红（断 90 秒改前要 56 秒）。
-#   4 通知：后台时那台来一条需手动 ⇒ 出通知 · 点它进那一条；一轮完成的通知点进去也得是那一条。
 #   6 终端是逃生口：那台常驻后端起不来（rig.sh backend off）、SSH 照通 ⇒ 静默断网 30 秒（长过 SSH 保活判死）之后，
 #     开着的终端 CCM_DEVICE_REJOIN ＋ 5 秒内照样回来（在终端里 touch 一个文件、台架里看得到它）。
 #   7 冷启动时断网：飞行模式下杀掉再开 App（SSH 一次都没通过）→ 关飞行模式 ⇒ CCM_DEVICE_REJOIN ＋ 10 秒内对话列表自己出来，不靠谁再点一下
@@ -33,7 +32,7 @@ OUT = smoke.OUT
 PKG = smoke.PKG
 ARM = os.environ.get("CCM_DEVICE_ARM") == "1"
 BREAK = os.environ.get("CCM_DEVICE_BREAK", "")
-ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4 5 6 7").split()
+ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 5 6 7").split()
 # 回前台 / 网回来之后多久还没收齐就判红（秒）。
 WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
 # 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
@@ -782,95 +781,6 @@ def item7():
         airplane(False)
 
 
-# ── 4 通知 ──
-
-def notifications():
-    """这个包现在挂着的通知：[(标题, 正文)]（照 dumpsys notification 的 extras）。"""
-    out = adb("shell", "dumpsys", "notification", "--noredact")
-    got = []
-    for block in out.split("NotificationRecord(")[1:]:
-        if f"pkg={PKG}" not in block[:400]:
-            continue
-        title = re.search(r"android\.title=String \((.*?)\)\n", block)
-        text = re.search(r"android\.text=String \((.*?)\)\n", block)
-        got.append((title.group(1) if title else "", text.group(1) if text else ""))
-    return got
-
-
-def tap_notification(word):
-    """拉下通知栏、点含 [word] 的那条；点不到 ⇒ False。"""
-    adb("shell", "cmd", "statusbar", "expand-notifications")
-    time.sleep(2)
-    ok = tap(word, must=False)
-    if not ok:
-        adb("shell", "cmd", "statusbar", "collapse")
-    time.sleep(3)
-    return ok
-
-
-def on_session(marker, other):
-    """屏上是那一条：看得到 [marker]、看不到 [other]（另一条会话独有的那句）。"""
-    for _ in range(6):
-        if ui.find(marker) is not None:
-            return ui.find(other) is None
-        fling_down()
-        time.sleep(0.5)
-    return False
-
-
-def item4():
-    reds = []
-    other = f"needs{D}"
-    # 另起一条（桌面那侧起），让「进对的那一条」有得分：手机此刻开着的是 state["title"] 那一条。
-    smoke.sh(f"tmux new -d -s {other} -c ~/work claude; sleep 3; tmux send-keys -t {other} '{D} other' Enter")
-    time.sleep(8)
-    smoke.to_chat()
-    to_session(state["title"])
-    home()
-    before = notifications()
-    send(other, f"ask {D} needs")
-    t0 = time.time()
-    seen = None
-    while time.time() - t0 < 30:
-        new = [n for n in notifications() if n not in before]
-        hit = [n for n in new if t("needs.bar.unknown") in " ".join(n) or "等批准" in " ".join(n)]
-        if hit:
-            seen = hit[0]
-            break
-        time.sleep(1)
-    nums["后台需手动：来了 → 出通知"] = round(time.time() - t0, 1) if seen else "没出"
-    if not seen:
-        reds.append(f"后台时那台来了需手动，30s 内没出通知（挂着的：{notifications()}）")
-    else:
-        if not tap_notification(seen[0]):
-            reds.append(f"通知栏里点不到「{seen[0]}」")
-        elif not on_session(f"{D} needs", f"{D} start"):
-            reds.append("点需手动的通知没进那一条会话")
-    # 放行，让那一轮走完：一轮完成的通知（这个有）点进去也得是那一条。
-    home()
-    rig("tmux", "send-keys", "-t", other, "y", "Enter")
-    t1 = time.time()
-    done = None
-    finish = t("turnNotify.finish.title", tab="").rstrip(" ·")
-    while time.time() - t1 < 30:
-        hit = [n for n in notifications() if finish in n[0] and n not in before]
-        if hit:
-            done = hit[0]
-            break
-        time.sleep(1)
-    nums["后台一轮完成：答完 → 出通知"] = round(time.time() - t1, 1) if done else "没出"
-    if not done:
-        reds.append("后台时那一轮完成了，30s 内没出完成通知")
-    else:
-        if not tap_notification(finish):
-            reds.append("通知栏里点不到完成通知")
-        elif not on_session(f"替身收到：ask {D} needs", f"替身收到：{D} start"):
-            reds.append(f"点完成通知（{done[0]}）没进那一条会话，落在了别处")
-    if reds:
-        raise Red("；".join(reds))
-    return f"需手动通知 {nums['后台需手动：来了 → 出通知']}s · 完成通知 {nums['后台一轮完成：答完 → 出通知']}s，点进去都是那一条"
-
-
 def as_root():
     """读别的进程的 maps（第 1 项）· 打 tc / iptables（第 3 项）都要 adbd 是 root（google_apis 镜像给；Play 商店镜像不给）。"""
     if adb("shell", "id", "-u").strip() == "0":
@@ -910,13 +820,13 @@ def walk():
             adb("shell", "pm", "clear", PKG)
             adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     if "name" in state:
-        for k, name, fn in (("2", "2-Doze待机杀后台", item2), ("3", "3-断网限速", item3), ("4", "4-通知", item4),
+        for k, name, fn in (("2", "2-Doze待机杀后台", item2), ("3", "3-断网限速", item3),
                             ("5", "5-慢链路跳板", item5), ("6", "6-后端起不来终端照回", item6),
                             ("7", "7-冷启动断网自己接上", item7)):
             if k in ITEMS:
                 item(name, fn)
     else:
-        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知"), ("5", "5-慢链路跳板"), ("6", "6-后端起不来终端照回"), ("7", "7-冷启动断网自己接上")):
+        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("5", "5-慢链路跳板"), ("6", "6-后端起不来终端照回"), ("7", "7-冷启动断网自己接上")):
             if k in ITEMS:
                 rows.append((name, "红", "准备那一步没成（没连通 / 新会话答不回）", "0s", []))
     netem(None)

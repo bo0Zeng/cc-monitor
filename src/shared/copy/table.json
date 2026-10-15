@@ -5923,18 +5923,6 @@
       "zh": "本机不支持切到终端",
       "args": []
     },
-    "turnNotify.finish.body": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已回到等输入",
-      "args": []
-    },
-    "turnNotify.finish.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "本轮完成 · {tab}",
-      "args": ["tab"]
-    },
     "machineAliases.ps.saveFailed": {
       "kind": "error",
       "role": "报错",
@@ -7895,18 +7883,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "快捷键…",
-      "args": []
-    },
-    "settingsPanel.behavior.turnNotify": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "一轮完成 · 系统通知",
-      "args": []
-    },
-    "settingsPanel.behavior.notifyHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "仅主窗口不在前台时",
       "args": []
     },
     "settingsPanel.terminal.label": {
@@ -23830,18 +23806,6 @@
       "zh": "cc-monitor · 需手动 {n}",
       "args": ["n"]
     },
-    "needs.notify.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "{title} · {machine} · {kind}",
-      "args": ["title", "machine", "kind"]
-    },
-    "settingsPanel.behavior.notifyNeeds": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "需手动 · 系统通知",
-      "args": []
-    },
     "sessionHead.attach.none": {
       "kind": "error",
       "role": "报错",
@@ -29994,12 +29958,6 @@
       "zh": "SSH 连接保活",
       "args": [],
       "limited": ["SSH", "连接"]
-    },
-    "mobKeepAlive.channel.done": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "Claude 任务完成",
-      "args": []
     },
     "mobSettings.entry.hosts": {
       "kind": "action",

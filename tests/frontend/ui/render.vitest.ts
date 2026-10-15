@@ -394,7 +394,6 @@ describe("D1 · 数学也 lazy", () => {
         at: "2026-01-01T00:00:00Z",
         blocks: [{ type: "thinking", text: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }],
         autoReply: false,
-        endsTurn: false,
       } as never,
       { parentPath: "/p/s.jsonl", origin: "<local>", toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: true } as never,
     );

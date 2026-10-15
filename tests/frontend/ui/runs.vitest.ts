@@ -23,7 +23,6 @@ vi.mock("@tauri-apps/api/core", async () => {
 });
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
@@ -128,7 +127,6 @@ function dispatch(seq: number, tool: string, label: string): never {
     at: "2026-09-10T00:00:00.000Z",
     blocks: [{ type: "tool_use", id: tool, name: "Spawn", input: {} }],
     autoReply: false,
-    endsTurn: false,
     cards: { [tool]: "agent" },
     runs: { [tool]: { label, kind: "Explore" } },
   }) as never;

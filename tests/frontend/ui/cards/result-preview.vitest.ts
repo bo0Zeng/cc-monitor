@@ -21,7 +21,6 @@ const use = {
   blocks: [{ type: "tool_use", id: "t1", name: "Bash" }],
   steps: { t1: { tool: "Bash", arg: "ls", known: true } },
   autoReply: false,
-  endsTurn: false,
 } as unknown as LineRecord;
 const result = (content: unknown, preview?: string): LineRecord =>
   ({

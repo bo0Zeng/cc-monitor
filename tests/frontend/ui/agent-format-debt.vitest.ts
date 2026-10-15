@@ -2,7 +2,7 @@
  * 界面里认着某一家记录格式的地方 —— **欠账表**（只许缩短；今天已清零）。
  *
  * 规矩：会话是哪一家、那一家的记录长什么样，都是后端的事（加一家 agent 只改后端 `agents/<名>/`）；界面只读后端给的成品
- * （通用记录 `LineRecord`：`t` 分类、`autoReply` · `endsTurn` · `error` 都是后端判好的；主线外清单是后端给的）。
+ * （通用记录 `LineRecord`：`t` 分类、`autoReply` · `error` 都是后端判好的；主线外清单是后端给的）。
  * 记录帧换形（10-09）之后界面不再认 Claude 盘上的格：自动应答的 `<synthetic>` · 链上的 `parentUuid` · 一轮结束的 `stop_reason`
  * · 报错标记 `isApiErrorMessage` · 排队记录 `queue-operation` · 标题记录 `ai-title` —— 全进 ZERO，一处都不许回来。
  * 盘上命中 == 登记（两向）；多一处 ⇒ 红（不许新长）；少了 ⇒ 红（修掉了就把登记减掉）。

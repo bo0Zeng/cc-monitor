@@ -614,8 +614,6 @@ pub(crate) struct RecordFace {
     pub(crate) is_session_file: fn(&Path) -> bool,
     /// 这一家的记录树（会话按项目目录分、住在家目录下）：根在哪 · 新会话文件怎么命名。`None` ＝ 这一家的会话不住记录树。
     pub(crate) tree: Option<RecordTree>,
-    /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
-    pub(crate) turn_end: Option<fn(&Line<'_>) -> Option<String>>,
     /// 这一行说这条会话此刻进到哪一态（一轮开始 ⇒ 在跑 · 一轮完了 / 中止 ⇒ 闲着）；不说 ⇒ `None`。
     /// 没有进程状态文件的那一家靠它（[`LocalFace::activity_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
     pub(crate) activity: Option<fn(&Line<'_>) -> Option<SessionActivity>>,

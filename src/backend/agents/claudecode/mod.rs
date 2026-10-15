@@ -63,7 +63,6 @@ pub(crate) mod steps;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
 pub(crate) mod text;
 // skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
-pub(crate) mod turn;
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
 ///
@@ -248,7 +247,6 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         root: paths::projects_root,
         file_name: records::session_file_name,
     }),
-    turn_end: Some(turn::turn_end_uuid_of),
     // 此刻在干什么由进程状态文件说（`LocalFace.activity_of`），记录不说。
     activity: None,
     class: Some(record_of::class_of),

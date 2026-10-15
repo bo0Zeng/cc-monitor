@@ -14,7 +14,7 @@ import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 每台一条常驻流（[ResidentFeed]），进程级（聊天 · 列表 · 用量 · 完成通知共用同一条）。流本身在嵌的核心里，
+ * 每台一条常驻流（[ResidentFeed]），进程级（聊天 · 列表 · 用量共用同一条）。流本身在嵌的核心里，
  * **它就是手机上唯一那条重连循环**；SSH 那层（终端 · 文件）跟着它走。这里只接几根线：
  * - 这台的拨号请求（[HostConnector.dialOf]，SSH 那层连上过就一直在）⇒ 交核心；有拨号请求的每一台都起一条（[HostConnector.dialing]）。
  * - 它报的 SSH 够没够着（与流通不通分开：常驻后端起不来时也照样够着）⇒ 原样转给 SSH 那层（[HostConnector.loopReached]）；

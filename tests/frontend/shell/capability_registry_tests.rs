@@ -14,7 +14,7 @@ const ALLOWED: &[(&str, &str)] = &[
     (
         "notification:default",
         "notification 插件往每个页面里注入一层 `window.Notification`，加载时就问一次权限 —— 不给这一格每个窗口一开就是一条 \
-             「not allowed」。界面自己不经插件的 JS 发通知（走壳命令 `notify_desktop`，`platform/notify.rs`；Windows 那一臂在壳里用插件）",
+             「not allowed」。界面不发通知；壳自己发（`platform/notify.rs`；Windows 那一臂在壳里用插件）",
     ),
     ("core:window:allow-minimize", "最小化"),
     ("core:window:allow-set-title", "窗口标题写「cc-monitor · 需手动 N」（任务栏、Alt+Tab 里看得见谁在等你）"),

@@ -2611,9 +2611,9 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
     });
 }
 
-/// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
+/// 一行交出去：`Line` 帧。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
-/// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
+/// 这一行在渲染模型里是什么，问注册表里流式那一家的记录解释面（`agents::record_face`）；
 /// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（不算：调用方读完这一趟再 `settle_chain`）。回：运行表变没变。
 fn send_line(
     session_id: &str,
@@ -2622,22 +2622,17 @@ fn send_line(
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) -> bool {
-    // 一行只从文本解一次（瓶颈 #8）：成品 · 链事实 · 运行簿 · 轮次结束 · 此刻在干什么都吃这一份；
+    // 一行只从文本解一次（瓶颈 #8）：成品 · 链事实 · 运行簿 · 此刻在干什么都吃这一份；
     //   这一路几问都要整行 ⇒ 先解好（只要几格的那几问从这一份里取，不再各自解文本）。
     let parsed = crate::agents::Line::whole(&line.raw, line.start);
     feed_chain(state, Path::new(path_str), &parsed);
     let root = state.root_of(Path::new(path_str));
     let face = root.map(|i| state.roots[i].face);
     let translated = face.and_then(|f| (f.parse)(&parsed).ok().flatten());
-    // §2.1 不变量并存：Line 逐行照发**每一条**；turn-end 是额外的边沿信号，不替代、不过滤 Line。
     let rec = root
         .map(|i| state.roots[i].runs.main_record(session_id, &parsed))
         .unwrap_or_default();
-    // 子运行的记录（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束 ⇒ 不报轮次边沿。
-    let turn_uuid = face
-        .and_then(|f| f.turn_end)
-        .and_then(|t| t(&parsed))
-        .filter(|_| !rec.in_run);
+    // 子运行的记录（适配层 `run_of` 答得出）不说主运行此刻在干什么。
     let activity = face
         .and_then(|f| f.activity)
         .and_then(|f| f(&parsed))
@@ -2683,15 +2678,6 @@ fn send_line(
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐手机端 LineFramer）
         rid: rec.rid,
     });
-    // **先 Line 后 TurnEnd**：对齐手机端 β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
-    // TurnEnd 不带 byte_offset（只 Line 带）。
-    if let Some(uuid) = turn_uuid {
-        sink.send(Frame::turn_end(
-            session_id.to_string(),
-            uuid,
-            &state.name_face(session_id),
-        ));
-    }
     // 这一行说此刻进到哪一态（没有进程状态文件的那一家，适配层照记录事件翻）⇒ 变了才发一帧 `session_status`。
     if let Some(a) = activity {
         note_activity(session_id, a, state, sink);

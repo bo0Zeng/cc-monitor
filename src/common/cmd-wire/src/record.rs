@@ -87,8 +87,6 @@ pub enum Body {
         model: Option<String>,
         /// 代理那一侧自动写的应答（不是模型说的，不建卡）。
         auto_reply: bool,
-        /// 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
-        ends_turn: bool,
         /// 工具调用 id ⇒ 卡型（普通工具卡不列）。
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         #[cfg_attr(
@@ -834,7 +832,6 @@ mod lenient_tests {
                 blocks: vec![],
                 model: None,
                 auto_reply: false,
-                ends_turn: false,
                 cards: BTreeMap::new(),
                 steps: BTreeMap::new(),
                 runs: BTreeMap::new(),

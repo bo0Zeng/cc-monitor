@@ -55,10 +55,6 @@ model?: string,
  */
 autoReply: boolean, 
 /**
- * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
- */
-endsTurn: boolean, 
-/**
  * 工具调用 id ⇒ 卡型（普通工具卡不列）。
  */
 cards?: { [key in string]: ToolCard }, 

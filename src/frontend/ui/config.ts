@@ -59,8 +59,6 @@ export const CONFIG_KEY_OWNERS = {
   // 通用页那一格恢复命令 · 恢复默认进不进 tmux（搬走的那一族）。
   resumeCommand: PREFS_MIGRATION,
   resumeInTmux: PREFS_MIGRATION,
-  notifyTurnEnd: "src/frontend/ui/behavior.ts",
-  notifyNeeds: "src/frontend/ui/behavior.ts",
   // 本机那一格恢复命令（搬走的那一族）。
   localResumeCommand: PREFS_MIGRATION,
   // src/frontend/ui/settings/terminal-row.ts 写（设置 → 通用 → 终端）；壳的平台层 `platform/terminal.rs` 开终端时读（只读）。

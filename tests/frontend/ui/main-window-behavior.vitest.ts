@@ -50,7 +50,6 @@ vi.mock("../../../src/frontend/ui/tasks-panel", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/tasks-panel")>()),
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 // 顶栏远端文件：两台可去的机器；开文件窗口记一笔。
 const files = vi.hoisted(() => ({ opened: [] as string[] }));
 vi.mock("../../../src/frontend/ui/remote-config", async (orig) => ({
@@ -446,7 +445,6 @@ function toolCalls(calls: { id: string; name: string; input: unknown }[], cards:
     atMs: Date.UTC(2026, 0, 1, 2, 2),
     blocks: calls.map((c) => ({ type: "tool_use", ...c })),
     autoReply: false,
-    endsTurn: false,
     cards,
   } as never;
 }

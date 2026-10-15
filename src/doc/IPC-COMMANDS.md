@@ -19,7 +19,7 @@ Handshake sent once when a client connects。
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
 | `claude_dir` | string | ⚠ **冻结兼容字段，不是欠账** |
 | `homes` | [AgentHome]? | 本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`） |
-| `emits` | [string]? | 本 backend **会发射的帧 kind 集** （snake_case，如 "session_status"/"turn_end"） |
+| `emits` | [string]? | 本 backend **会发射的帧 kind 集** （snake_case，如 "session_status"/"line"） |
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
@@ -104,17 +104,6 @@ A session file went away。
 | `sid` | string | 会话 id |
 | `cause` | RemovalCause? | 这个 sid 是「死了」还是「被顶替了」 |
 | `by` | string? | 被顶替时（`cause: superseded`），顶替它的那条会话的 sid：同一个进程、同一个终端里另起的那份记录（`/clear` · `/branch`），随后是它的 `session_added` |
-
-### `turn_end`
-
-turn-end 边沿（一轮 assistant 完成）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `session_id` | string | 会话 id |
-| `uuid` | string | 这一轮最后那条 assistant 记录的 uuid |
-| `title` | Words | 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（`NameFace`） |
-| `body` | Words | 通知的正文（写好的字） |
 
 ### `overflow`
 
@@ -4550,10 +4539,6 @@ model?: string,
  */
 autoReply: boolean, 
 /**
- * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
- */
-endsTurn: boolean, 
-/**
  * 工具调用 id ⇒ 卡型（普通工具卡不列）。
  */
 cards?: { [key in string]: ToolCard }, 
@@ -4899,10 +4884,6 @@ model?: string,
  */
 autoReply: boolean, 
 /**
- * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
- */
-endsTurn: boolean, 
-/**
  * 工具调用 id ⇒ 卡型（普通工具卡不列）。
  */
 cards?: { [key in string]: ToolCard }, 
@@ -5224,10 +5205,6 @@ model?: string,
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
 autoReply: boolean, 
-/**
- * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
- */
-endsTurn: boolean, 
 /**
  * 工具调用 id ⇒ 卡型（普通工具卡不列）。
  */
@@ -5554,10 +5531,6 @@ model?: string,
  * 代理那一侧自动写的应答（不是模型说的，不建卡）。
  */
 autoReply: boolean, 
-/**
- * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
- */
-endsTurn: boolean, 
 /**
  * 工具调用 id ⇒ 卡型（普通工具卡不列）。
  */

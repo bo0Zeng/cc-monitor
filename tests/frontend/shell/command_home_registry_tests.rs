@@ -125,11 +125,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("open_log_file", Own::Log, "日志"),
     (
-        "notify_desktop",
-        Own::Window,
-        "系统通知（「一轮完成」「需手动」）：通知出在 monitor 面前这台的桌面上，界面判要不要发，壳只发（`platform/notify.rs`）",
-    ),
-    (
         "clipboard_write",
         Own::Window,
         "写系统剪贴板（全产品的复制）：剪贴板是 monitor 面前这台桌面的，经系统接口写、回真成败（`clipboard.rs`）",

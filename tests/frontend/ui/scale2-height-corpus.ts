@@ -154,7 +154,6 @@ function apiError(i: number, text: string): LineRecord {
     at: "2026-09-18T12:34:56.000Z",
     blocks: [{ type: "text", text }],
     autoReply: false,
-    endsTurn: false,
     error: { status: 529 },
   } as unknown as LineRecord;
 }

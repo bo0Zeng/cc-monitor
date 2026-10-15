@@ -33,8 +33,6 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     is_session_file: history::is_session_file,
     // 会话按日期分、不住按项目分的记录树（历史由合成历史面并进来）。
     tree: None,
-    // 一轮结束：`task_complete` 那一行（判法只在 `record::turn_end_id`）。
-    turn_end: Some(record::turn_end_id),
     // 没有进程状态文件 ⇒ 此刻在干什么照记录里的事件翻（判法只在 `record::activity_of`）。
     activity: Some(record::activity_of),
     // 骨架那一问：照整条翻译的类（这一家的会话不大，不另写一份便宜判法 ⇒ 与翻译恒一致）。

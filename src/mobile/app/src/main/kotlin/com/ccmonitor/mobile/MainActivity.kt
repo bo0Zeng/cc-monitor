@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** API33+ 未授予 POST_NOTIFICATIONS 时申请；保活通知和完成通知都要它。 */
+    /** API33+ 未授予 POST_NOTIFICATIONS 时申请；保活通知要它。 */
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED

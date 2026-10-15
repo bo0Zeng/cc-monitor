@@ -138,12 +138,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "{t=reply}.endsTurn",
-          "type": "bool"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "{t=reply}.error.reason",
           "type": "enum"
         },

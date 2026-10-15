@@ -2271,8 +2271,8 @@ mod capability_ledger_guard;
 
 /// phase②（backend-08）：本 backend **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
 /// 手机端门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
-/// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。`turn_end` 待其帧
-/// 发射接线（backend-08+）后加入——**在此登记 = 承诺后端真发该帧**，勿提前声明未接线的帧。
+/// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。
+/// **在此登记 = 承诺后端真发该帧**，勿提前声明未接线的帧。
 pub const EMITS: &[&str] = &[
     "line",
     "session_added",
@@ -2284,7 +2284,6 @@ pub const EMITS: &[&str] = &[
     // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "session_state",
     "overflow",
-    "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     // tmux 快照不上线：只喂这台的会话账本。
     // 「X 变了 ⇒ 重读」那一种（主题表 `wire/topic.rs`：账号清单 · 配置文件 · 任务清单由 watcher 发，额度 · 轮换 · 规则 · 计划走 tap 那条；登记 = 承诺真发，已接线）。
     "changed",

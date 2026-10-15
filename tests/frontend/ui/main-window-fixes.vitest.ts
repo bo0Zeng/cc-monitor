@@ -54,7 +54,6 @@ vi.mock("../../../src/frontend/ui/tasks-panel", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/tasks-panel")>()),
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 // 子运行的记录按页读：判据换成假的那一页（`pages.load(from)`）。
 const pages = vi.hoisted(() => ({ load: null as null | ((from: number) => Promise<unknown>), calls: 0 }));
 vi.mock("../../../src/frontend/ui/record-reads", async (orig) => ({

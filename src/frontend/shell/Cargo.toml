@@ -115,7 +115,7 @@ win-manifest = { path = "../../common/win-manifest" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-# Batch14-F42：turn-end 系统通知（Windows toast / Linux notify）
+# 系统通知（`platform/notify.rs`：Linux 以外经这个插件）
 tauri-plugin-notification = "2"
 # 单实例：第二次启动把第一个的主窗拉到前台、自己退出。Windows 用 user 级互斥量，Linux 用会话总线上的名字（zbus）。
 tauri-plugin-single-instance = "2"

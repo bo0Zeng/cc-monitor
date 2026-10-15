@@ -98,10 +98,9 @@ fn tap() -> Option<tokio::sync::mpsc::Receiver<LocalItem>> {
 
 /// 每一种帧一行手写线上 JSON（**不从实现生成**）。
 ///
-/// ⚠ 一种不在表里、理由写清：`turn_end` 认识但不消费（本就不进任何吸收点）。
 /// tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
 ///
-/// ⇒ 表的种类 ＋ 这两种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
+/// ⇒ 表的种类 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
 const FRAMES: &[(&str, &str)] = &[
     (
         "hello",
@@ -206,9 +205,8 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 刻意不喂的那一种（认识但不消费）== parse_frame 的全部臂。
-    let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
-    fed.insert("turn_end".into());
+    // 两向：表里的种类 == parse_frame 的全部臂。
+    let fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     let all = crate::guard_support::parse_frame_kinds();
     assert_eq!(
         fed, all,

@@ -17,33 +17,22 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.ccmonitor.mobile.MainActivity
-import com.ccmonitor.mobile.core.claude.link.TurnEnd
-import com.ccmonitor.mobile.core.claude.link.TurnEnds
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
-import com.ccmonitor.mobile.core.ssh.countsAsActive
-import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ui.chat.ChatController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
 /**
  * SSH 保活前台服务。会话连上时启动，挂一条常驻通知降低后台被杀的概率（部分 ROM 仍会杀，靠重连兜底）。
  * 没有活动会话也没有在飞轮次时自停。网回来 · 网变了的回调不在这里（App 一起来就挂上，见 `CcMonitorApp`）。
- *
- * 连接期间，对每台连着的机器收它常驻流上的 `turn_end` 帧（[HostBackends]，与「对话」一屏同一条流）：
- * app 在后台（[AppForeground]）时，一轮完成就发一条本地通知。判哪条算一轮结束在后端，折成一轮一条在 [TurnEnds]。
  */
 class SshKeepAliveService : Service() {
     private val manager: SshConnectionManager by inject() // 只用会话计数，不管连接生死
@@ -51,15 +40,9 @@ class SshKeepAliveService : Service() {
     /** 断连接经网关：[onTaskRemoved] 走 [HostConnector.disconnectAll]。 */
     private val connector: HostConnector by inject()
 
-    /** 每台一条常驻流；完成通知读它的 `turn_end`。 */
-    private val backends: HostBackends by inject()
-
     /** 存活判据要问它有没有在飞轮次，见 [onCreate]。 */
     private val chatController: ChatController by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-    /** 每台主机一个完成通知的收听者，key 是连接 id（＝ hostId）。 */
-    private val watchers = mutableMapOf<String, Job>()
 
     @Volatile private var started = false // startForeground 成功前不许 stopSelf，否则会崩
 
@@ -79,9 +62,8 @@ class SshKeepAliveService : Service() {
         super.onCreate()
         createChannel()
         scope.launch {
-            // 存活判据是「有活动会话或有在飞轮次」。连接是惰性的，活动会话为 0 是常态；只看会话数的话服务会当场自停，
-            // 离开 app 等回复时通知永远不来，也没有任何地方报错。在飞轮次由应用级的 `ChatController` 持有，
-            // 不能由本服务的 watcher 持有（watcher 自己也挂在活动会话上）。
+            // 存活判据是「有活动会话或有在飞轮次」。连接是惰性的，活动会话为 0 是常态（重连那一段也是 0）；只看会话数的话
+            // 离开 app 等回复时服务会当场自停、进程跟着可能被收走。在飞轮次由应用级的 `ChatController` 持有。
             combine(manager.sessions, chatController.hasInFlightTurn) { _, inFlight ->
                 manager.activeCount() to inFlight
             }.collectLatest { (n, inFlight) ->
@@ -92,23 +74,6 @@ class SshKeepAliveService : Service() {
                     if (started) stopFor(reason)
                 } else {
                     notify(n)
-                }
-            }
-        }
-        // watcher 管理。用 collect 不用 collectLatest：watcher 要跨 sessions 变化存活。
-        scope.launch {
-            manager.sessions.collect { map ->
-                // 哪些主机起 watcher，用与保活计数同一个谓词 countsAsActive()（名义状态；流断了由 [HostBackends] 自己重接）。
-                val toWatch =
-                    map.entries
-                        .filter { it.value.countsAsActive() }
-                        .map { it.key }
-                        .toSet()
-                toWatch.forEach { id ->
-                    if (watchers[id]?.isActive != true) watchers[id] = watchHost(id)
-                }
-                watchers.entries.filter { it.key !in toWatch }.map { it.key }.forEach { id ->
-                    watchers.remove(id)?.cancel()
                 }
             }
         }
@@ -181,55 +146,6 @@ class SshKeepAliveService : Service() {
         stopSelf()
     }
 
-    // ─── 一轮完成的通知 ───
-
-    /** 收一台的 `turn_end`：常驻流没接就接上（断了它自己重接），折成一轮一条，app 在后台才发。 */
-    private fun watchHost(hostId: String): Job {
-        val backend = backends.of(hostId)
-        backend.ensure()
-        return scope.launch {
-            TurnEnds.rounds(backend.turnEnds).collect { round ->
-                if (!AppForeground.isForeground) notifyRoundDone(hostId, round)
-            }
-        }
-    }
-
-    /**
-     * 每条会话一个通知 id：同一会话的多次完成复用同一个 id（替换，不刷屏）。从 [DONE_NOTIF_ID] 往上分配。
-     * 注意：这个 map 只增不删，`size` 单调才保证 id 唯一。
-     */
-    private val doneNotifIds = mutableMapOf<String, Int>()
-
-    private fun doneNotifIdFor(slot: String): Int = doneNotifIds.getOrPut(slot) { DONE_NOTIF_ID + doneNotifIds.size }
-
-    /**
-     * 标题与正文照抄 `turn_end` 帧上后端写好的那两行（叫这条会话什么由后端定，与桌面同一格）；
-     * 前面加那台的名字（这台机器表里的叫法，后端不知道），与桌面远端会话同一个规矩。
-     */
-    private fun notifyRoundDone(
-        hostId: String,
-        round: TurnEnd,
-    ) {
-        val machine = manager.sessions.value[hostId]?.label ?: hostId
-        val tap =
-            PendingIntent.getActivity(
-                this,
-                1,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-        val n =
-            NotificationCompat
-                .Builder(this, DONE_CHANNEL_ID)
-                .setContentTitle("[$machine] ${round.title}")
-                .setContentText(round.body)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
-                .setAutoCancel(true)
-                .setContentIntent(tap)
-                .build()
-        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(doneNotifIdFor("$hostId/${round.sid}"), n)
-    }
-
     private fun notify(n: Int) =
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIF_ID, buildNotification(n))
 
@@ -254,13 +170,9 @@ class SshKeepAliveService : Service() {
     private fun createChannel() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, copyText("mobKeepAlive.channel.keepAlive"), NotificationManager.IMPORTANCE_LOW))
-        // 完成通知渠道：DEFAULT 出声并进状态栏，不强弹 heads-up。
-        nm.createNotificationChannel(NotificationChannel(DONE_CHANNEL_ID, copyText("mobKeepAlive.channel.done"), NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     override fun onDestroy() {
-        watchers.values.forEach { it.cancel() }
-        watchers.clear()
         scope.cancel()
         super.onDestroy()
     }
@@ -269,8 +181,6 @@ class SshKeepAliveService : Service() {
         private const val TAG = "SshKeepAlive"
         private const val CHANNEL_ID = "ssh_keepalive"
         private const val NOTIF_ID = 1001
-        private const val DONE_CHANNEL_ID = "claude_done"
-        private const val DONE_NOTIF_ID = 1002 // 完成通知 id 的分配基址（见 doneNotifIdFor）
     }
 }
 

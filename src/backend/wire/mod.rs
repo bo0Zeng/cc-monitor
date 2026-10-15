@@ -416,7 +416,7 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,
         /// phase②（backend-08，additive）：本 backend **会发射的帧 kind 集**
-        /// （snake_case，如 "session_status"/"turn_end"）。手机端据此**门控消费**（emits 含该 kind →
+        /// （snake_case，如 "session_status"/"line"）。手机端据此**门控消费**（emits 含该 kind →
         /// 期待/依赖该帧；不含 → 不依赖、回退 β/watchdog）。纯发射声明、无对应旗标。空/缺 → 省略。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         emits: Vec<String>,
@@ -592,7 +592,7 @@ pub enum Frame {
     /// 这条会话的记录读完了（宣告之后后台那一趟预读做完）：从这一帧起它的 `line` 帧从第 `lines` 行起、连续地来。
     ///
     /// 宣告（`session_added`）不等记录：会话一认出来就报；预读在后台线程池里做，做完才发这一帧。在它之前，这条会话的
-    /// `line` · `turn_end` · `session_runs` · `session_branch` 一帧都不发。`lines` 是此刻那份记录（`path`，同 `session_added`
+    /// `line` · `session_runs` · `session_branch` 一帧都不发。`lines` 是此刻那份记录（`path`，同 `session_added`
     /// 那一格的取法）已计完的完整行数 L —— 客户端补 `[0, L)`（快照）、接实时 `[L, …)`，并拿它核快照拉全了没有。
     /// 会话没有记录（刚起还没写首行）⇒ 两格都缺：之后的行天然从 0 起全量到。
     SessionPrimed {
@@ -669,24 +669,6 @@ pub enum Frame {
         /// 随后是它的 `session_added`。客户端照它跟到新会话，不自己拿 `pid` 对。不是顶替 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         by: Option<String>,
-    },
-    /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
-    /// 不 dedup**——每见一条 turn-end 记录（判词住适配层，见 `agents/claudecode/turn.rs`）
-    /// 发一帧；手机端（`src/mobile`：`TurnEndDebouncer.kt` 的 rolling-latest + debounce(1200ms) ＋ `SshKeepAliveService.kt` 的
-    /// `baselineByPath`）塌合同 turn 的多记录、
-    /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
-    /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
-    /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
-    /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
-    TurnEnd {
-        /// 会话 id。
-        session_id: String,
-        /// 这一轮最后那条 assistant 记录的 uuid。
-        uuid: String,
-        /// 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（[`NameFace`]）。只经 [`Frame::turn_end`] 来。
-        title: Words,
-        /// 通知的正文（写好的字）。
-        body: Words,
     },
     // 这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
     //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
@@ -1130,19 +1112,6 @@ impl TransferEnd {
 }
 
 impl Frame {
-    /// 一轮结束那一帧：通知的两行在这里一处写。叫这条会话什么用标签页那一格（[`NameFace`]，同一个 `session_label`）。
-    pub(crate) fn turn_end(session_id: String, uuid: String, name: &NameFace) -> Frame {
-        Frame::TurnEnd {
-            title: Words(copy_core::copy_text(
-                "turnNotify.finish.title",
-                &[("tab", name.label())],
-            )),
-            body: Words(copy_core::copy_text("turnNotify.finish.body", &[])),
-            session_id,
-            uuid,
-        }
-    }
-
     /// 成功、不带数据的那一种应答。
     pub(crate) fn ok(id: &str) -> Frame {
         Frame::Reply {
@@ -1232,8 +1201,6 @@ impl Frame {
         match self {
             // 内容帧：行确实还在远端 jsonl 里，重开会话/重读就补上。
             Frame::Line { .. } => true,
-            // 派生自某一行 jsonl（轮次判词只看那条记录）⇒ 与 `Line` 同命。
-            Frame::TurnEnd { .. } => true,
 
             // ↓ 以下都是「丢了别处没有」或「拿不准」，一律按不可恢复算。
             //
@@ -1303,7 +1270,6 @@ impl Frame {
             | Frame::SessionStatus { .. }
             | Frame::SessionState { .. }
             | Frame::SessionRemoved { .. }
-            | Frame::TurnEnd { .. }
             | Frame::Overflow { .. }
             | Frame::Reply { .. }
             | Frame::Cancelled { .. }
@@ -1333,7 +1299,6 @@ impl Frame {
             Frame::SessionStatus { sid, .. } => ("session_status", Some(sid.clone())),
             Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
             Frame::SessionState { sid, .. } => ("session_state", Some(sid.clone())),
-            Frame::TurnEnd { session_id, .. } => ("turn_end", Some(session_id.clone())),
             Frame::Overflow { .. } => ("overflow", None),
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),

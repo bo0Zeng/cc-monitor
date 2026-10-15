@@ -1,5 +1,5 @@
 //! Claude 一行 ⇒ 通用记录：各类全格 ＋ 最少格（金样 `tests/__fixtures__/record.golden.jsonl`，手机端照它比）· 自动应答按型号认 ·
-//! 报错带原因与状态码 · 一轮结束与帧 `turn_end` 同判 · 不进界面的几类不出记录。夹具是结构占位，不采真正文。
+//! 报错带原因与状态码 · 不进界面的几类不出记录。夹具是结构占位，不采真正文。
 use super::*;
 use crate::agents::record::{BodyExt as _, RecordExt as _};
 
@@ -275,23 +275,6 @@ fn an_auto_reply_is_known_by_its_model_not_its_text() {
     };
     assert!(!auto_reply);
     assert_eq!(error.map(|e| e.status), Some(Some(429)));
-}
-
-#[test]
-fn ends_turn_agrees_with_the_turn_end_frame() {
-    for (name, raw) in CASES {
-        if let Some(Record {
-            body: Body::Reply { ends_turn, .. },
-            ..
-        }) = one(raw)
-        {
-            assert_eq!(
-                ends_turn,
-                super::super::turn::turn_end_uuid_of(&crate::agents::Line::new(raw, 0)).is_some(),
-                "{name}"
-            );
-        }
-    }
 }
 
 #[test]

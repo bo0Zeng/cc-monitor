@@ -105,7 +105,6 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
   behaviorIn: vi.fn(() => ({
     autoFollowUserActive: false,
     bringMonitorToFrontOnUserActive: false,
-    notifyTurnEnd: false,
     resumeCommand: "",
     resumeCommandPresets: [],
     resumeInTmux: false,

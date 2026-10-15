@@ -981,18 +981,6 @@ def walk():
         if answer_key() is not None:
             raise Step.Fail("别处答完了钉条还在")
 
-    with Step("5-一轮完成的通知"):
-        name = tmux_name_of(f"{T} new session")
-        adb("shell", "input", "keyevent", "3")
-        time.sleep(2)
-        rig("tmux", "send-keys", "-t", name or "", f"{T} notify", "Enter")
-        end = time.time() + 20
-        while time.time() < end and t("turnNotify.finish.title", tab="").rstrip(" ·") not in adb("shell", "dumpsys", "notification", "--noredact"):
-            time.sleep(1)
-        if time.time() >= end:
-            raise Step.Fail("没出完成通知")
-        launch()
-
     with Step("6-断网再连"):
         name = tmux_name_of(f"{T} new session")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
@@ -1008,7 +996,7 @@ def walk():
         if not wait(f"替身收到：{T} offline", 60):
             raise Step.Fail("网回来之后没补上断开那段")
         to_bottom()
-        missing = [t for t in (f"替身收到：{T} notify", f"替身收到：{T} offline") if ui.find(t) is None]
+        missing = [t for t in (f"替身收到：{T} offline",) if ui.find(t) is None]
         if missing:
             raise Step.Fail(f"漏了：{missing}")
         if not adb("shell", "pidof", PKG).strip():

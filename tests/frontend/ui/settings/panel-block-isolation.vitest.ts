@@ -124,8 +124,6 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
   behaviorIn: vi.fn(() => ({
     autoFollowUserActive: false,
     bringMonitorToFrontOnUserActive: false,
-    notifyTurnEnd: false,
-    notifyNeeds: false,
     resumeCommandPresets: behaviorStub.presets,
   })),
   setBehavior: vi.fn().mockResolvedValue(undefined),
@@ -306,7 +304,7 @@ describe("通用页 · 行为与恢复", () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     vi.mocked(setBehavior).mockRejectedValueOnce(new Error("盘满了-xyz"));
-    const { thumb, row } = sw(copyText("settingsPanel.behavior.notifyNeeds"));
+    const { thumb, row } = sw(copyText("settingsPanel.behavior.autoFollow"));
     thumb.click();
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));

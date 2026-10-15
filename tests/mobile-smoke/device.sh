@@ -4,13 +4,12 @@
 #   ① 正式包（arm64-v8a，混淆过）经 ARM 转译在 x86_64 镜像上装 · 开 · 连上 · 进一条会话；
 #   ② Doze / App Standby / 杀后台之后回前台，重连、断开期间来的话收齐；
 #   ③ 模拟器控制台断网 · 限速 · 加延迟，量回来到看到新话的时间；
-#   ④ 后台时来一条需手动：出通知、点通知进那一条会话；
 #   ⑤ 慢链路（模拟器里 netem 往返 1.5 秒）＋ 一跳跳板（台架第二台 sshd）：接得上；断网之后常驻流 · SSH 那层（文件页）都几秒内站住。
 #   ⑦ 飞行模式下冷启动 App、之后关飞行模式：落地那一屏（新建会话）读到那台、对话列表都自己出来（网回来的回调 App 一起来就挂上）。
 #   ⑥ 那台常驻后端起不来（rig.sh backend off）、SSH 照通：断网之后终端照样回来（终端是逃生口，不跟着后端卡住）。
 # 用法：bash tests/mobile-smoke/device.sh
 #   CCM_DEVICE_BREAK=reconnect  看台架会红：回前台前把台架 sshd（监听的与已连上的）停掉，重连必失败 ⇒ ②③ 必红。
-#   CCM_DEVICE_ITEMS="1 2 3 4 5 6 7"  挑哪几项（默认全走；1 不走时 2–4 照样先导钥匙 · 加机器）。
+#   CCM_DEVICE_ITEMS="1 2 3 5 6 7"  挑哪几项（默认全走；1 不走时其余几项照样先导钥匙 · 加机器）。
 #   CCM_DEVICE_APK=<路径>        用现成的正式包（不编）；默认编 assembleRelease。
 # 端口与冒烟、别的几路错开（都能用 CCM_SMOKE_* 改）：sshd 22452 · 跳板 sshd 22453 · 中转 28818 · adb 5167 · 模拟器 5670；台架目录 .build/mobile-device/。
 # 正式包没正式签名（keystore 不在树里）⇒ 用台架目录里现造的一把测试钥匙签（apksigner），包里的字节与正式包一样，只是签名不同；
@@ -31,7 +30,7 @@ eval "$(bash "$here/emu.sh" env)"
 pkg=com.ccmonitor.mobile
 apks=$root/.build/mobile/app/outputs/apk
 
-# 镜像有没有 ARM 转译：照模拟器自己报的 ABI 表（没有 arm64-v8a ⇒ 第 1 项「没核」，2–4 改装混淆过的 x86_64 包照样走）。
+# 镜像有没有 ARM 转译：照模拟器自己报的 ABI 表（没有 arm64-v8a ⇒ 第 1 项「没核」，其余几项改装混淆过的 x86_64 包照样走）。
 abis=$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')
 if [[ ",$abis," == *",arm64-v8a,"* ]]; then
   arm=1
@@ -56,7 +55,7 @@ if [[ ",$abis," == *",arm64-v8a,"* ]]; then
   apk=$signed
 else
   arm=0
-  echo "device: 镜像报的 ABI 是「$abis」，没有 arm64-v8a（没有 ARM 转译）⇒ 第 1 项没核，2–4 用混淆过的 x86_64 包" >&2
+  echo "device: 镜像报的 ABI 是「$abis」，没有 arm64-v8a（没有 ARM 转译）⇒ 第 1 项没核，其余几项用混淆过的 x86_64 包" >&2
   # shellcheck disable=SC1091
   (cd "$root/src/mobile" && . ./scripts/env.sh >/dev/null && "${heavy[@]}" ./gradlew --no-daemon -q :app:assembleMinified)
   apk=$apks/minified/app-minified.apk

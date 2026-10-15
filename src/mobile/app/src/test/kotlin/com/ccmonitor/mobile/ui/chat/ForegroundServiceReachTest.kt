@@ -13,8 +13,7 @@ import java.io.File
  *
  * `SshKeepAliveService` 的存活条件是「有活动会话 或 有在飞轮次」，后者由应用级的
  * `ChatController.hasInFlightTurn` 持有。服务得有人起：若只有终端屏（`SessionScreen`）调
- * `startForegroundService`，只走聊天屏的用户就从没起过它，「离开 app 后回复完成推送」
- * 不报错、就是不通知。
+ * `startForegroundService`，只走聊天屏的用户就从没起过它，离开 app 等回复时连接没人保，也不报错。
  *
  * ### 为什么是扫源码
  *
@@ -52,7 +51,7 @@ class ForegroundServiceReachTest {
             files.filter { codeOnly(it.readText()).contains("startForegroundService") }.map { it.name }.toSet()
         assertTrue("前提：终端屏本来就有（否则这条判据的参照系不成立）", "SessionScreen.kt" in starters)
         assertTrue(
-            "聊天屏也必须起前台保活服务，否则新界面上「离开 app 后回复完成推送」不成立。实得：$starters",
+            "聊天屏也必须起前台保活服务，否则新界面上离开 app 等回复时连接没人保。实得：$starters",
             "ChatRoute.kt" in starters,
         )
     }

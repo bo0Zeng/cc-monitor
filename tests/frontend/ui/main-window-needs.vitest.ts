@@ -10,7 +10,7 @@ import { resolve } from "node:path";
  *
  * 夹具只造结构（sid · 路径 · 占位工具名），不采会话正文。
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TabStore } from "../../../src/frontend/ui/tab-store";
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
@@ -19,7 +19,7 @@ import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
-import { NeedsWatch, NOTIFY_WAIT_MS } from "../../../src/frontend/ui/needs-bar";
+import { NeedsTitle } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
@@ -331,61 +331,16 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 });
 
-describe("「需手动」· 窗口标题 · 系统通知（消息流底部那一块见 answer-block.vitest.ts）", () => {
-  describe("窗口标题与通知", () => {
-    beforeEach(() => vi.useFakeTimers());
-    afterEach(() => vi.useRealTimers());
-    const rig = (focused: boolean) => {
-      const titles: string[] = [];
-      const sent: [string, string][] = [];
-      let now = NOW;
-      const w = new NeedsWatch({
-        setTitle: (t) => titles.push(t),
-        isFocused: () => focused,
-        enabled: async () => true,
-        send: async (t, b) => void sent.push([t, b]),
-        now: () => now,
-      });
-      return { w, titles, sent, tick: (ms: number) => (now += ms) };
-    };
-
-    it("★ 标题：`cc-monitor · 需手动 N`，0 个时只有 `cc-monitor`；变了才写", () => {
-      const r = rig(true);
-      r.w.observe([tab("a")], 0);
-      r.w.observe([tab("a")], 0);
-      r.w.observe([tab("a", { activity: waiting }), tab("b", { activity: waiting })], 2);
-      // N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）：会话没变、会话外多了一项 ⇒ 标题跟着变。
-      r.w.observe([tab("a", { activity: waiting }), tab("b", { activity: waiting })], 3);
-      expect(r.titles).toEqual([copyText("needs.windowTitle.base"), copyText("needs.windowTitle.count", { n: 2 }), copyText("needs.windowTitle.count", { n: 3 })]);
-    });
-
-    it("★ 通知：一个会话**开始**等你、主窗口不在前台才发一条；种类没到先等它（不先发一条需手动）；同一次等待不重发", async () => {
-      const r = rig(false);
-      const t = tab("a", { activity: waiting });
-      r.w.observe([t], 1);
-      await vi.runAllTimersAsync();
-      expect(r.sent, "种类还没到：先不发").toEqual([]);
-      t.needs = approve();
-      r.w.observe([t], 1);
-      await vi.runAllTimersAsync();
-      r.w.observe([t], 1);
-      await vi.runAllTimersAsync();
-      expect(r.sent).toEqual([[copyText("needs.notify.title", { title: "a", machine: copyText("sessionFace.machine.local"), kind: copyText("beSession.needs.approve") }), "rm -rf build/"]]);
-      // 种类一直不来 ⇒ 等满 NOTIFY_WAIT_MS 照发活动信号带来的那个字（核心写的）。
-      const old = tab("b", { activity: waiting });
-      r.w.observe([old], 1);
-      r.tick(NOTIFY_WAIT_MS);
-      r.w.observe([old], 1);
-      await vi.runAllTimersAsync();
-      expect(r.sent.at(-1)?.[0]).toContain(copyText("beSession.activity.needsYou"));
-    });
-
-    it("主窗口在前台 ⇒ 不发", async () => {
-      const r = rig(true);
-      r.w.observe([tab("a", { activity: waiting, needs: approve() })], 1);
-      await vi.runAllTimersAsync();
-      expect(r.sent).toEqual([]);
-    });
+describe("「需手动」· 窗口标题（消息流底部那一块见 answer-block.vitest.ts）", () => {
+  it("★ 标题：`cc-monitor · 需手动 N`，0 个时只有 `cc-monitor`；变了才写", () => {
+    const titles: string[] = [];
+    const w = new NeedsTitle((t) => titles.push(t));
+    w.observe(0);
+    w.observe(0);
+    w.observe(2);
+    // N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）：会话没变、会话外多了一项 ⇒ 标题跟着变。
+    w.observe(3);
+    expect(titles).toEqual([copyText("needs.windowTitle.base"), copyText("needs.windowTitle.count", { n: 2 }), copyText("needs.windowTitle.count", { n: 3 })]);
   });
 });
 

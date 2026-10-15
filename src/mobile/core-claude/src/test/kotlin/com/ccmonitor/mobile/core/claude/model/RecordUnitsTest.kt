@@ -51,7 +51,7 @@ class RecordUnitsTest {
 
     @Test
     fun `工具结果：正文 · 出错 · 核心给的 patch 原样带上`() {
-        val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "endsTurn" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
+        val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
         val call = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(reply)), cases.getValue("said-full"))).first() as RenderUnit.ToolCall
         assertEquals("line a\nline b", call.resultText)
         assertEquals(false, call.pending)

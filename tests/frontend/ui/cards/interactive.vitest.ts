@@ -45,7 +45,6 @@ describe("交互等待类工具：不许被折进过程那几步", () => {
       at: "2026-01-01T00:00:00.000Z",
       blocks: [{ type: "tool_use", id: "t1", name: "AskUserQuestion", input: { questions: [{ question: "q?", options: [{ label: "x" }] }] } }],
       autoReply: false,
-      endsTurn: false,
       ...(cards ? { cards } : {}),
     }) as never;
 
@@ -91,7 +90,6 @@ describe("交互卡：按核心那一格（`steps[id].ask`）建，不认入参�
       cards: { t1: "interactive" },
       steps: { t1: { tool: "AskUserQuestion", known: true, ask: asked("改哪一处", ["甲"]) } },
       autoReply: false,
-      endsTurn: false,
     } as unknown as LineRecord;
     const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: false };
     const r = renderMessage(rec, ctx as never);

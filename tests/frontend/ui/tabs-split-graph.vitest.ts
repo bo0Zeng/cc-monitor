@@ -126,7 +126,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-stream-view.ts",
     "src/frontend/ui/tasks-panel.ts", // ensureTab：初始 task 快照
     "src/frontend/ui/terminal-front.ts", // bringActiveTerminalToFront 的 OS 门
-    "src/frontend/ui/turn-notify.ts", // onLine：轮次结束通知
     "src/frontend/ui/views/facts-source.ts", // ensureTab：每个 tab 一份会话事实的数据源（问后端 `history-facts`）
   ],
   // ① 形状：只有类型。

@@ -9,16 +9,9 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 两家都落聊天屏、都能送字（送字走 `terminal-input`，不分哪家）；落点只看新界面开没开。产品名是那台给的。
+ * 产品名是那台给的（落点不分哪家，见 `LaunchLandingTest`）。
  */
 class AgentArchetypeTest {
-    @Test
-    fun theStartupLandingIsTheSameForEveryAgent() {
-        fun launch(host: String?) = launchDestination(landingHostId = host, newConversationId = { "s-new" })
-        assertEquals("没有上次那台机器时先去服务器列表", Screen.Hosts.route, launch(null))
-        assertEquals("有 ⇒ 聊天屏上空的新对话（Claude、Codex 一样）", Screen.Chat.of("h1", "s-new", isNew = true), launch("h1"))
-    }
-
     /**
      * `app/src/main` 里没有新的硬写产品名上屏。
      *

@@ -227,9 +227,6 @@ pub enum InboundFrame {
     TerminalScreen { ticket: String, cell: String },
     /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"why": 停因, "said": 那一句}`（同名原样，两格都得是串）。
     TerminalFollowEnd { ticket: String, cell: String },
-    /// 一轮对话收尾（`turn_end`；在不在看都发）⇒ 交那台的会话流一格（系统通知认它，不认行：没在看的会话行不上流）。
-    /// 通知的标题与正文是后端写好的（后端 `wire::Frame::turn_end`），原样带进界面。
-    TurnEnd(crate::ui_contract::SessionTurnEndPayload),
 }
 
 /// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
@@ -770,15 +767,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     serde_json::Value::Object(body).to_string(),
                 )
                 .ok_or_else(|| bad(k, "body is not an object"))?,
-            })
-        }
-        // `uuid` 照样判形状（不用：一轮只报一次由后端保证，去抖在界面）。
-        "turn_end" => {
-            req_str(obj, k, "uuid")?;
-            InboundFrame::TurnEnd(crate::ui_contract::SessionTurnEndPayload {
-                session_id: req_str(obj, k, "session_id")?,
-                title: req_str(obj, k, "title")?,
-                body: req_str(obj, k, "body")?,
             })
         }
         _ => return Err(Unread::UnknownKind(kind.to_string())),

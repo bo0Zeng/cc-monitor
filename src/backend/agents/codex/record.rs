@@ -36,9 +36,9 @@ pub enum CodexRecordKind {
     AgentMail,
     /// event_msg task_started/turn_started（一轮开始）。
     TurnStarted,
-    /// event_msg task_complete/turn_complete —— **turn-end 边沿**（F3；uuid=turn_id）。
+    /// event_msg task_complete/turn_complete（一轮完了）。
     TurnComplete,
-    /// event_msg turn_aborted —— 中止轮（手机端决策：静默不发 TurnEnd）。
+    /// event_msg turn_aborted（中止轮）。
     TurnAborted,
     /// event_msg user_message。
     UserMessage,
@@ -83,22 +83,6 @@ pub fn classify(v: &Value) -> CodexRecordKind {
         },
         _ => K::Other, // 未知顶层 type（未来新增记录种类）
     }
-}
-
-/// **一轮的结束**（注册表 `RecordFace.turn_end`，帧 `turn_end` 的判法；这一家只这一处）：`event_msg` 的 `task_complete`
-/// （旧名 `turn_complete`，[`classify`] 归一）⇒ 那一轮的 `turn_id`（帧里的 `uuid`，客户端按它去重）。
-/// 中止轮（`turn_aborted`）不算（静默，与手机端同一个决定）；没带 `turn_id` ⇒ 不报（没有去重键）。
-/// 先过子串闸：原文里连 `_complete` 都没有的行（绝大多数）零解析直接回。
-pub(crate) fn turn_end_id(line: &crate::agents::Line<'_>) -> Option<String> {
-    if !line.text().contains("_complete") {
-        return None;
-    }
-    let v = line.value()?;
-    if classify(v) != CodexRecordKind::TurnComplete {
-        return None;
-    }
-    let (_, payload) = unwrap_envelope(v)?;
-    payload.get("turn_id")?.as_str().map(str::to_string)
 }
 
 /// **此刻在干什么**（注册表 `RecordFace.activity`；这一家没有进程状态文件，只有记录里的事件说得出）：
@@ -500,7 +484,7 @@ pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Transl
 /// | rollout | 通用记录 |
 /// |---|---|
 /// | `response_item.message`（user / developer 角色，或别家来信）· `agent_message` · `inter_agent_communication` | `said`（谁说的本家判，[`message_said`]） |
-/// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物；`endsTurn` 恒假：一轮的结束是另一条事件） |
+/// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物） |
 /// | 工具调用的输出 | `said`（工具结果） |
 /// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录） |
 /// | 事件 · 元记录 | 无记录 |
@@ -608,7 +592,6 @@ fn reply(blocks: Vec<Block>) -> Body {
         blocks,
         model: None,
         auto_reply: false,
-        ends_turn: false,
         cards: Default::default(),
         steps: Default::default(),
         runs: Default::default(),

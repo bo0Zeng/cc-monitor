@@ -104,10 +104,9 @@ import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
 import { SessionHead, terminalActsOf } from "./session-head";
-import { NeedsWatch } from "./needs-bar";
+import { NeedsTitle } from "./needs-bar";
 import { AnswerBlock } from "./answer-block";
 import { answerNeeds } from "./answer-reads";
-import { notifySend } from "./turn-notify";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -252,7 +251,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const planNeeds = new PlanNeedsBook();
   const manualBook = new ManualBook();
   // 窗口标题的 N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）。`tabs` 建好之后才会被调到（标签页栏那一次刷新排在下一个微任务里）。
-  const paintNeedsTitle = (): void => needsWatch.observe(tabs.tabsInOrder(), tabs.needsCount());
+  const paintNeedsTitle = (): void => needsTitle.observe(tabs.needsCount());
 
   // 会话头（主区顶上 40px）与「需手动」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
@@ -305,15 +304,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
   });
   streamRoot.appendChild(answerBlock.el);
-  const needsWatch = new NeedsWatch({
-    setTitle: (title) => {
-      document.title = title;
-      void getCurrentWindow().setTitle(title).catch((e: unknown) => console.warn("set title failed:", e));
-    },
-    isFocused: () => document.hasFocus(),
-    enabled: async () => (await getBehavior()).notifyNeeds,
-    send: notifySend,
-    now: () => Date.now(),
+  const needsTitle = new NeedsTitle((title) => {
+    document.title = title;
+    void getCurrentWindow().setTitle(title).catch((e: unknown) => console.warn("set title failed:", e));
   });
 
   const tabs = new TabManager(
@@ -981,8 +974,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     onStreamGap: (origin) => tabs.onStreamGap(origin),
     // 一个会话刚进了那台那条流的「在看」名单 ⇒ 没在看那段没上流的补上（`TabManager.onSessionWatch`）。
     onSessionWatch: (origin, p) => tabs.onSessionWatch(origin, p),
-    // 一轮结束（在不在看都来）⇒ 系统通知。
-    onTurnEnd: (origin, turn) => tabs.onTurnEnd(origin, turn),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
     // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。

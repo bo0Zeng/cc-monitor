@@ -703,7 +703,6 @@ const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace
         sid: no_sid,
         is_session_file: |_| false,
         tree: None,
-        turn_end: None,
         activity: None,
         class: None,
         chain: None,
