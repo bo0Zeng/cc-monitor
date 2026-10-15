@@ -38,6 +38,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
+import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -54,6 +55,7 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import com.ccmonitor.mobile.ui.session.TerminalOps
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -80,6 +82,8 @@ fun ChatRoute(
     draftCwd: String? = null,
     /** 顶栏「⋯」→ 轮换：这条会话（sid）的轮换屏。 */
     onOpenRotation: (String) -> Unit = {},
+    /** 顶栏「⋯」→ 在终端里打开：终端屏开一个标签，附着这个 tmux 会话（名字是那台名单上的）。 */
+    onOpenTerminal: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 先把连接建起来；持有挂在对话上，由 `ChatController.sessionFor(hostId = …)` 负责。
@@ -109,6 +113,7 @@ fun ChatRoute(
     }
     val picker = vm.picker
     val needs = rememberChatNeeds(open.key, backends.of(hostId), sid, host.machine)
+    val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
     val needsUi by needs.desk.state.collectAsStateWithLifecycle()
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
@@ -117,7 +122,10 @@ fun ChatRoute(
                 ChatTopBar(
                     title = if (state.drafting) copyText("newSession.title.plain") else product,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onRotation = state.sid?.takeIf { !state.drafting }?.let { s -> { onOpenRotation(s) } },
+                    sid = state.sid?.takeIf { !state.drafting },
+                    findTerminal = { s -> terminals.list().getOrNull()?.let { TerminalsList.holding(it, s) }?.name },
+                    onTerminal = onOpenTerminal,
+                    onRotation = onOpenRotation,
                 )
             },
         ) { inner ->
@@ -213,7 +221,8 @@ private fun rememberProductName(
 }
 
 /**
- * 聊天屏的顶栏：左上 ☰ 拉出抽屉；右上 ⋯ 只放对这条对话本身做的事（今天一项：轮换）。还没起好的新建会话（[onRotation] 为 `null`）不画 ⋯。
+ * 聊天屏的顶栏：左上 ☰ 拉出抽屉；右上 ⋯ 只放对这条会话本身做的事：在终端里打开（那台名单上有它所在的终端才有，第二行是那个 tmux 会话名；
+ * 答不了的需手动从这里进终端）· 轮换。还没起好的新建会话（[sid] 为 `null`）不画 ⋯。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -221,9 +230,15 @@ private fun ChatTopBar(
     /** 这台那一家写给人看的名字（那台给的）。不写主机名，界面上不出现「连接」那套说法。 */
     title: String,
     onOpenDrawer: () -> Unit,
-    onRotation: (() -> Unit)?,
+    sid: String?,
+    /** 那条会话所在的 tmux 会话名（问那台的终端名单）；不在任何终端里 · 问不到 ⇒ `null`。 */
+    findTerminal: suspend (String) -> String?,
+    onTerminal: (String) -> Unit,
+    onRotation: (String) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    var terminal by remember(sid) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     TopAppBar(
         navigationIcon = {
             PhIconButton(
@@ -237,15 +252,33 @@ private fun ChatTopBar(
         title = { Text(title, style = MaterialTheme.typography.titleMedium) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
         actions = {
-            if (onRotation != null) {
+            if (sid != null) {
                 IconButton(
-                    onClick = { menu = true },
+                    onClick = {
+                        menu = true
+                        scope.launch { terminal = findTerminal(sid) }
+                    },
                     modifier = Modifier.semantics { contentDescription = copyText("history.row.more") }.testTag(ChatTestTags.MORE),
                 ) { Text(MORE_GLYPH, style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    terminal?.let { name ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(copyText("sessionHead.act.openTerm"))
+                                    Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            },
+                            modifier = Modifier.testTag(ChatTestTags.MORE_TERMINAL),
+                            onClick = {
+                                menu = false
+                                onTerminal(name)
+                            },
+                        )
+                    }
                     DropdownMenuItem(text = { Text(copyText("mobChat.more.rotation")) }, onClick = {
                         menu = false
-                        onRotation()
+                        onRotation(sid)
                     })
                 }
             }

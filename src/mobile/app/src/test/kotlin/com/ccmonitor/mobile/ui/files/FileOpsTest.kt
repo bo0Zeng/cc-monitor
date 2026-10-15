@@ -14,7 +14,7 @@ import java.security.MessageDigest
 
 /**
  * 文件屏的读写全问那台后端（`files-*`）：手机不判能不能做、不写出错那句，失败原样带回那台写好的那一句与复制详情。
- * 上传一块一块进暂存区再提交（不覆盖）；下载按块读回；删目录一段一段删到没剩。
+ * 上传一块一块进暂存区再提交（不覆盖）；下载按块读回；删一项（目录连同里面）是一组里的一项、一问做完；打开一个路径先问那台它是什么。
  */
 class FileOpsTest {
     private val dir = RemotePath.of("/w")
@@ -80,6 +80,21 @@ class FileOpsTest {
             val e = FileOps(no) { "box" }.delete(dir, RemotePath.of("/w/d").name, isDir = true).exceptionOrNull() as FileOps.Failed
             assertEquals("删除失败 ×1", e.problem.text)
             assertEquals("EACCES", e.problem.detail)
+        }
+
+    @Test
+    fun openingAPathAsksTheBackendWhatItIsDirsAreEnteredFilesOpenInTheirFolder() =
+        runTest {
+            val kinds = mapOf("/w/src" to "dir", "/w/src/a.kt" to "file")
+            val link =
+                FakeCoreLink().apply {
+                    answer = { _, a -> kinds[a!!["path"]]?.let { Reply.Ok(mapOf("path" to a["path"], "kind" to it, "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(CoreFailure("not_found", "不在", "")) }
+                }
+            val ops = FileOps(link) { "box" }
+            assertEquals(FileOps.Opening.Dir(RemotePath.of("/w/src")), ops.open("/w/src").getOrThrow())
+            assertEquals(FileOps.Opening.File(RemotePath.of("/w/src"), RemotePath.of("/w/src/a.kt")), ops.open("/w/src/a.kt").getOrThrow())
+            assertEquals(listOf("files-stat"), link.calls.map { it.first }.distinct())
+            assertEquals("不在", (ops.open("/w/nope").exceptionOrNull() as FileOps.Failed).problem.text)
         }
 
     @Test

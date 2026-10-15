@@ -23,7 +23,15 @@ sealed class Screen(
     data object Identities : Screen("identities")
 
     // 按 tab key 路由，hostId/cd/launcherId 由 SessionTabManager.get(key) 提供；VM 经 per-key store 保活。
-    data object Session : Screen("session/{key}")
+    data object Session : Screen("session/{key}?open={open}") {
+        /** 文件 tab 进来时要打开的那个路径（可缺）。 */
+        const val ARG_OPEN = "open"
+
+        fun of(
+            key: String,
+            open: String,
+        ): String = "session/$key?$ARG_OPEN=" + URLEncoder.encode(open, "UTF-8").replace("+", "%20")
+    }
 
     // 终端 tab 总览。注意：与 [Conversations]（Claude 对话总览）是两件事，
     // 后者的路由刻意不用 `sessions*` 前缀以免混淆。

@@ -17,6 +17,7 @@ import com.ccmonitor.mobile.core.claude.link.FilesStat
 import com.ccmonitor.mobile.core.claude.link.FilesWriteText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.problem
@@ -80,6 +81,24 @@ class FileOps(
         name: RemotePath,
         isDir: Boolean,
     ): Result<Unit> = batch(FilesDelete.COMMAND, FilesDelete.args(dir, name, isDir), TREE_MS)
+
+    /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进它所在的目录、开它。 */
+    suspend fun open(text: String): Result<Opening> {
+        val path = RemotePath.of(text)
+        return ask(FilesStat.COMMAND, FilesStat.args(path), FilesStat::kindOf).map { if (it == FileKind.DIR) Opening.Dir(path) else Opening.File(path.parent, path) }
+    }
+
+    /** 打开一个路径落在哪。 */
+    sealed interface Opening {
+        data class Dir(
+            val dir: RemotePath,
+        ) : Opening
+
+        data class File(
+            val dir: RemotePath,
+            val file: RemotePath,
+        ) : Opening
+    }
 
     /** 此刻的权限位；那台没有这一说 ⇒ `null`。 */
     suspend fun mode(path: RemotePath): Result<Long?> =

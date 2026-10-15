@@ -136,12 +136,23 @@ private fun NavGraphBuilder.sessionRoute(
     nav: NavHostController,
     tabManager: SessionTabManager,
 ) {
-    composable(Screen.Session.route) { entry ->
+    composable(
+        Screen.Session.route,
+        arguments =
+            listOf(
+                navArgument(Screen.Session.ARG_OPEN) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+    ) { entry ->
         val key = entry.arguments?.getString("key") ?: return@composable
         // 文件 tab「在此打开终端」开一个终端 tab。
         HostedSession(
             tabManager,
             key,
+            openPath = entry.arguments?.getString(Screen.Session.ARG_OPEN),
             onGone = { nav.popBackStack() },
             onOpenTerminalTab = { hid, path ->
                 nav.navigate("session/${tabManager.open(hid, SessionTabManager.TabTarget.Terminal(cd = path))}")
@@ -221,6 +232,8 @@ private fun NewSessionHostPickerScreen(
 private fun HostedSession(
     tabManager: SessionTabManager,
     key: String,
+    /** 文件 tab 进来时要打开的那个路径（可缺）。 */
+    openPath: String?,
     onGone: () -> Unit,
     onOpenTerminalTab: (hostId: String, path: String) -> Unit,
     onOpenTmuxTab: (hostId: String, tmuxName: String) -> Unit,
@@ -260,6 +273,7 @@ private fun HostedSession(
                     open.hostId,
                     onOpenTerminal = { path -> onOpenTerminalTab(open.hostId, path) },
                     onShowTabs = { showTabs = true },
+                    openPath = openPath,
                 )
         }
     }
@@ -390,7 +404,7 @@ private fun RotationRoute(
         sid = sid,
         machine = name,
         onBack = { nav.popBackStack() },
-        onOpenFile = { nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Files)}") },
+        onOpenFile = { path -> nav.navigate(Screen.Session.of(tabManager.open(hostId, SessionTabManager.TabTarget.Files), path)) },
     )
 }
 
@@ -441,6 +455,7 @@ private fun NavGraphBuilder.chatRoutes(
             draftCwd = entry.arguments?.getString(Screen.Chat.ARG_CWD),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
+            onOpenTerminal = { name -> nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(tmuxSession = name))}") },
         )
     }
 }
