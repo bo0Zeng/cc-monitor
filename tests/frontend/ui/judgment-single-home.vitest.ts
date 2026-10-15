@@ -739,6 +739,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     unread_text: NONE,
     unread: NONE,
     mend_line_frame: NONE,
+    // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
+    //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
+    decode: NONE,
+    as_wire: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
   },

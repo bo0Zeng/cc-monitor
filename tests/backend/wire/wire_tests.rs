@@ -2230,10 +2230,11 @@ fn the_written_faces_are_built_in_one_place_only() {
                         continue;
                     }
                     let line = &before[before.rfind('\n').map_or(0, |i| i + 1)..];
-                    let decl = ["struct ", "enum ", "impl ", " for ", "trait "]
+                    // 类型声明 · 实现头 · 返回类型那一处不是造。
+                    if ["struct", "enum", "impl", "for", "trait", "->"]
                         .iter()
-                        .any(|k| line.contains(k));
-                    if decl || line.contains("->") {
+                        .any(|k| guard_core::contains_word(line, k))
+                    {
                         continue;
                     }
                     let fun = before
