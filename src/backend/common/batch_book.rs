@@ -17,9 +17,6 @@ use cmd_wire::batch::{BatchOutcome, BatchReply, Decide, ItemState};
 use cmd_wire::files as wire;
 use copy_core::copy_text;
 
-/// 撤一组那一条的线上名。
-pub(crate) const STOP: &str = "files-batch-stop";
-
 /// 最多记几张票。
 pub(crate) const KEEP: usize = 64;
 /// 票的上限长度（界面给的是一个 UUID）。
