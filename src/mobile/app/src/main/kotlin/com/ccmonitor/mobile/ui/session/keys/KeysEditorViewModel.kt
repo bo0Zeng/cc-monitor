@@ -15,18 +15,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 
-/** 编辑页要画的：组（照先后）· 全部按键 · 两个总时长 · 终端当前那一组。 */
+/** 编辑页要画的：组（照先后）· 全部按键 · 两个总时长 · 终端当前那一组 · 升级那一次没转过来的那几颗。 */
 data class KeysState(
     val groups: List<KeyGroup> = emptyList(),
     val keys: List<TermKey> = emptyList(),
     val doubleTapMs: Int? = null,
     val longPressMs: Int? = null,
     val currentGroup: String? = null,
+    val unconverted: List<TermKey> = emptyList(),
     val loaded: Boolean = false,
 ) {
     fun keysOf(groupId: String): List<TermKey> = keys.filter { it.groupId == groupId }.sortedWith(compareBy({ it.sortOrder }, { it.id }))
-
-    val unconverted: List<TermKey> get() = keys.filter { !it.unconverted.isNullOrEmpty() }
 
     fun groupName(id: String): String? = groups.firstOrNull { it.id == id }?.name
 }
@@ -48,6 +47,7 @@ class KeysEditorViewModel(
             settings.observeKeyLongPressMs(),
             settings.observeCurrentKeyGroup(),
         ) { g, k, d, l, c -> KeysState(g, k, d, l, c, loaded = true) }
+            .combine(dao.observeUnconverted()) { s, u -> s.copy(unconverted = u) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_MS), KeysState())
 
     private companion object {
