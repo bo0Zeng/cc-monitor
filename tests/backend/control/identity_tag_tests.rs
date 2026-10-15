@@ -199,7 +199,7 @@ fn the_env_key_this_file_reads_is_one_named_constant() {
 /// 「不在 tmux 会话里：程序退了只能 resume」。
 #[test]
 fn container_maps_every_tag_outcome_to_the_hand_written_table() {
-    use crate::wire::{SessionContainer, TerminalHost};
+    use crate::wire::SessionContainer;
     let hosted = |t: &str| {
         Some(SessionContainer::Tmux {
             terminal: Some(t.into()),

@@ -247,7 +247,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::wire::{
         AgentHome, LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo,
-        RunState, RunWhy, SessionContainer, SessionFate, TerminalHost, TransferEnd, Unavailable,
+        RunState, RunWhy, SessionContainer, SessionFate, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
@@ -1570,7 +1570,7 @@ fn removal_cause_is_additive_on_the_wire() {
 /// - `{"host":"tmux","terminal":…}` / `{"host":"tmux"}`（句柄算不出就不写那一格）/ `{"host":"none"}`。
 #[test]
 fn session_added_container_is_an_object_with_host_and_terminal() {
-    use crate::wire::{SessionContainer, TerminalHost};
+    use crate::wire::SessionContainer;
     let frame = |c: Option<SessionContainer>| {
         to_line(&Frame::SessionAdded(crate::wire::SessionAdded {
             sid: "s".into(),
