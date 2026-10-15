@@ -30114,6 +30114,512 @@
       "zh": "推送公钥",
       "args": []
     },
+    "mobKeys.tool.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "更多",
+      "args": []
+    },
+    "mobKeys.more.switchGroup": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "切换组",
+      "args": []
+    },
+    "mobKeys.more.edit": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "编辑按键",
+      "args": []
+    },
+    "mobKeys.group.count": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 颗",
+      "args": ["n"]
+    },
+    "mobKeys.group.new": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建组",
+      "args": []
+    },
+    "mobKeys.group.rename": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "改名",
+      "args": []
+    },
+    "mobKeys.group.moveLeft": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "左移",
+      "args": []
+    },
+    "mobKeys.group.moveRight": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "右移",
+      "args": []
+    },
+    "mobKeys.group.delete": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "删除组",
+      "args": []
+    },
+    "mobKeys.group.nameField": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "组名",
+      "args": []
+    },
+    "mobKeys.group.nameDup": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已有组「{name}」",
+      "args": ["name"]
+    },
+    "mobKeys.group.create": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "创建",
+      "args": []
+    },
+    "mobKeys.add.key": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "按键",
+      "args": []
+    },
+    "mobKeys.add.modifier": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "修饰键",
+      "args": []
+    },
+    "mobKeys.edit.newTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "新建按键",
+      "args": []
+    },
+    "mobKeys.edit.cap": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "键帽",
+      "args": []
+    },
+    "mobKeys.edit.capAuto": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "自动：{x}",
+      "args": ["x"]
+    },
+    "mobKeys.edit.capFollow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "照单击",
+      "args": []
+    },
+    "mobKeys.edit.group": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "所在组",
+      "args": []
+    },
+    "mobKeys.edit.save": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "保存",
+      "args": []
+    },
+    "mobKeys.edit.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "更多",
+      "args": []
+    },
+    "mobKeys.edit.revert": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "还原默认",
+      "args": []
+    },
+    "mobKeys.edit.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除按键",
+      "args": []
+    },
+    "mobKeys.trigger.tap": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "单击",
+      "args": []
+    },
+    "mobKeys.trigger.double": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "双击",
+      "args": []
+    },
+    "mobKeys.trigger.long": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "长按",
+      "args": []
+    },
+    "mobKeys.bind.none": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "没设",
+      "args": []
+    },
+    "mobKeys.bind.input": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "送输入",
+      "args": []
+    },
+    "mobKeys.bind.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "App 动作",
+      "args": []
+    },
+    "mobKeys.natural.tap": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "必填",
+      "args": []
+    },
+    "mobKeys.natural.double": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：连按两下等于两次单击",
+      "args": []
+    },
+    "mobKeys.natural.longRepeat": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：按住连发",
+      "args": []
+    },
+    "mobKeys.natural.longOnce": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：等于单击一次",
+      "args": []
+    },
+    "mobKeys.natural.longEither": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：能连发的键按住连发，其余等于单击一次",
+      "args": []
+    },
+    "mobKeys.double.cost": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已设双击：单击晚 {ms} ms 才送 · 连按两下不再送两次",
+      "args": ["ms"]
+    },
+    "mobKeys.double.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "副功能先放长按：不拖慢单击",
+      "args": []
+    },
+    "mobKeys.dur.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "时长",
+      "args": []
+    },
+    "mobKeys.dur.double": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "双击判定时长",
+      "args": []
+    },
+    "mobKeys.dur.long": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "长按时长",
+      "args": []
+    },
+    "mobKeys.dur.followSys": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跟系统",
+      "args": []
+    },
+    "mobKeys.dur.followAll": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跟总的",
+      "args": []
+    },
+    "mobKeys.dur.custom": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "另设",
+      "args": []
+    },
+    "mobKeys.dur.sysNow": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "系统当前 {ms} ms",
+      "args": ["ms"]
+    },
+    "mobKeys.dur.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "单击等这么久确认没有第二下\n调短则单击更快，两下点慢会认成两次单击",
+      "args": []
+    },
+    "mobKeys.dur.range": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "超出 {min}–{max} ms",
+      "args": ["min", "max"]
+    },
+    "mobKeys.mod.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "修饰键",
+      "args": []
+    },
+    "mobKeys.mod.tap": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "下一次按下带上 {mod}",
+      "args": ["mod"]
+    },
+    "mobKeys.mod.double": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "锁住 · 再点即解开",
+      "args": []
+    },
+    "mobKeys.mod.long": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "按住期间一直带上",
+      "args": []
+    },
+    "mobKeys.mod.scope": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "软键盘和键条上的键都算",
+      "args": []
+    },
+    "mobKeys.rec.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "录入",
+      "args": []
+    },
+    "mobKeys.rec.undo": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "退一步",
+      "args": []
+    },
+    "mobKeys.rec.clear": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "清空",
+      "args": []
+    },
+    "mobKeys.rec.done": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "完成",
+      "args": []
+    },
+    "mobKeys.rec.mods": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "修饰键",
+      "args": []
+    },
+    "mobKeys.rec.modsTip": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "点亮后带给下一个键",
+      "args": []
+    },
+    "mobKeys.rec.specials": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "特殊键",
+      "args": []
+    },
+    "mobKeys.rec.ime": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "字母数字用软键盘",
+      "args": []
+    },
+    "mobKeys.rec.same": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{a} 与 {b} 送出相同",
+      "args": ["a", "b"]
+    },
+    "mobKeys.rec.cannot": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{a} 无法送出 · 未录入",
+      "args": ["a"]
+    },
+    "mobKeys.action.needTmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需 tmux",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobKeys.err.actionNoTmux": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{action}不可用 · {host} 无 tmux",
+      "args": ["action", "host"],
+      "limited": ["tmux"]
+    },
+    "mobKeys.err.groupGone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "目标组已删除",
+      "args": []
+    },
+    "mobKeys.err.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑",
+      "args": []
+    },
+    "mobKeys.empty.group": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "「{name}」无按键",
+      "args": ["name"]
+    },
+    "mobKeys.empty.none": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无按键组",
+      "args": []
+    },
+    "mobKeys.empty.noneHint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "新建组后键条显示在终端下方",
+      "args": []
+    },
+    "mobKeys.migrate.bar": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 颗未能转换",
+      "args": ["n"]
+    },
+    "mobKeys.migrate.view": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查看",
+      "args": []
+    },
+    "mobKeys.migrate.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未能转换",
+      "args": []
+    },
+    "mobKeys.migrate.tapUnparsed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "内容无法识别 · 单击未设",
+      "args": []
+    },
+    "mobKeys.migrate.longUnparsed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "内容无法识别 · 长按未设",
+      "args": []
+    },
+    "mobKeys.migrate.noRepeat": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "长按连发 · 该键不能连发 · 长按未设",
+      "args": []
+    },
+    "mobKeys.migrate.ok": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭",
+      "args": []
+    },
+    "mobKeys.done.deleteKey": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除按键 {cap}",
+      "args": ["cap"]
+    },
+    "mobKeys.done.deleteGroup": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除组「{name}」 · {n} 颗",
+      "args": ["name", "n"]
+    },
+    "mobKeys.reset.menu": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "恢复默认按键",
+      "args": []
+    },
+    "mobKeys.reset.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "恢复默认按键",
+      "args": []
+    },
+    "mobKeys.reset.changed": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "改动",
+      "args": []
+    },
+    "mobKeys.reset.deleted": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobKeys.reset.back": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "{names} 回到默认",
+      "args": ["names"]
+    },
+    "mobKeys.reset.groups": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "组{names}",
+      "args": ["names"]
+    },
+    "mobKeys.reset.keys": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "改过的 {n} 颗",
+      "args": ["n"]
+    },
+    "mobKeys.reset.confirm": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "恢复默认",
+      "args": []
+    },
     "mobTmux.dialog.title": {
       "kind": "title",
       "role": "确认框",

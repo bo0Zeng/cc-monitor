@@ -22,6 +22,7 @@ private val KEY_GLYPHS =
         "→" to Ph.ArrowRight,
         "⇌" to Ph.ArrowsLeftRight,
         "⏎" to Ph.ArrowElbowDownLeft,
+        "⌫" to Ph.Backspace,
         "＋" to Ph.Plus,
         "+" to Ph.Plus,
     )

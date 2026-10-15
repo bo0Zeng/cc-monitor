@@ -28,6 +28,8 @@ class RowHeightsTest {
             "session/SessionTabsSheet.kt" to mapOf("SessionTabRowItem" to "rowSingle"),
             "session/CommandPalette.kt" to mapOf("PaletteRow" to "rowSingle"),
             "session/TmuxManager.kt" to mapOf("TmuxSessionRow" to "rowDouble"),
+            "session/keys/KeysEditorScreen.kt" to mapOf("KeyRow" to "rowDouble"),
+            "session/keys/KeySheets.kt" to mapOf("SheetRow" to "rowSingle"),
         )
 
     /** `fun name(` 起、到配对的那个 `}` 止（代码里，注释与字面量已去掉）。 */

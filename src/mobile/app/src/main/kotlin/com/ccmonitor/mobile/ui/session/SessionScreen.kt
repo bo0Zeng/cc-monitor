@@ -21,14 +21,17 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -44,9 +47,13 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.data.db.AppAction
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.KeyDao
+import com.ccmonitor.mobile.core.data.db.KeyGroup
 import com.ccmonitor.mobile.core.data.db.KeyMod
+import com.ccmonitor.mobile.core.data.db.appActionName
+import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ssh.SessionStatus
@@ -54,6 +61,7 @@ import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarController
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
@@ -87,7 +95,22 @@ fun SessionScreen(
     tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
-) = SessionContent(hostId, cd, tmuxSession, onAttachInNewTab, onShowTabs)
+    onEditKeys: () -> Unit, // 进编辑按键页（⋯「编辑按键」· 绑了「编辑按键」的触发 · 空组那一行）
+) {
+    val hostRepo = koinInject<HostRepository>()
+    val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
+    CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
+        SessionContent(hostId, cd, tmuxSession, onAttachInNewTab, onShowTabs)
+    }
+}
+
+/** 终端屏深处的键条要用、又不该一层层往下传的两样：进编辑按键页 · 这台叫什么（「抓屏不可用 · devbox 无 tmux」）。 */
+private data class KeysEnv(
+    val onEditKeys: () -> Unit,
+    val hostLabel: String,
+)
+
+private val LocalKeysEnv = staticCompositionLocalOf<KeysEnv> { error("LocalKeysEnv not provided") }
 
 @Composable
 private fun SessionContent(
@@ -691,17 +714,17 @@ private fun TerminalBottomControls(
     val settings = koinInject<SettingsRepository>()
     val groups by remember { keyDao.observeGroups() }.collectAsState(initial = emptyList())
     val savedGroup by remember { settings.observeCurrentKeyGroup() }.collectAsState(initial = null)
-    val longPressMs by remember { settings.observeKeyLongPressMs() }.collectAsState(initial = null)
     // 当前组记在这台手机上；没记过 · 那组已删 ⇒ 第一组。一个组都没有 ⇒ 键条整条不画。
     val current = groups.firstOrNull { it.id == savedGroup } ?: groups.firstOrNull()
     var showPalette by rememberSaveable { mutableStateOf(false) }
-    val mods by session.modifiers.collectAsState() // 粘性 Ctrl / Alt 的点亮态
+    var showMore by rememberSaveable { mutableStateOf(false) }
+    val env = LocalKeysEnv.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val onPaste: () -> Unit = {
         scope.launch { clipboard.pastePlainText()?.takeIf { it.isNotEmpty() }?.let { session.send(it.toByteArray()) } }
     }
-    val switchTo: (String) -> Unit = { id -> scope.launch { settings.setCurrentKeyGroup(id) } }
+    val nav = KeyBarNav(groups, current, { id -> scope.launch { settings.setCurrentKeyGroup(id) } }, LocalAppSnackbar.current, env)
     val actions =
         KeyActions(
             supportsTmux = supportsTmux,
@@ -712,41 +735,90 @@ private fun TerminalBottomControls(
             onCapture = onCapture,
             onPushKey = onPushKey,
             onShowKeyboard = showKeyboard,
-            onEditKeys = {},
-            // 切到下一组照组的先后轮转（切换组的列表也照这一份）。
-            onNextGroup = {
-                if (groups.isNotEmpty()) switchTo(groups[(groups.indexOf(current) + 1).mod(groups.size)].id)
-            },
-            onGotoGroup = { id -> if (groups.any { it.id == id }) switchTo(id) },
+            onEditKeys = env.onEditKeys,
+            onNextGroup = nav::next,
+            onGotoGroup = nav::goto,
+            onNeedsTmux = nav::needsTmux,
         )
     TerminalToolbar(
         supportsTmux = supportsTmux,
         onShowTabs = onShowTabs,
         onCommandPalette = { showPalette = true },
         onTmuxSessions = onShowTmux,
+        onMore = { showMore = true },
     )
-    current?.let { g ->
-        ExtraKeysRow(
-            groupId = g.id,
-            dispatch = { dispatchBinding(it, session::send, actions) },
-            onModifier = { m ->
-                when (m) {
-                    KeyMod.CTRL -> session.toggleCtrl()
-                    KeyMod.ALT -> session.toggleAlt()
-                    KeyMod.SHIFT -> {}
-                }
-            },
-            ctrlActive = mods.ctrl,
-            altActive = mods.alt,
-            longPressMs = longPressMs,
-            groupName = { id -> groups.firstOrNull { it.id == id }?.name },
-        )
-    }
+    KeyBar(session, keyDao, settings, nav, actions, showMore, onDismissMore = { showMore = false })
     // 命令面板：模型、抓屏、tmux 会话、推公钥整合成可搜索的动作。
     if (showPalette) {
         val paletteActions = terminalPaletteActions(supportsTmux, models, onModel, onCapture, onShowTmux, onPushKey)
         CommandPalette(actions = paletteActions, onDismiss = { showPalette = false })
     }
+}
+
+/**
+ * 键条上切组与出错的那几样。切到下一组照组的先后轮转（切换组的列表也照这一份）；切到某一组而那组已删 ⇒
+ * 出错的 toast 不自己走（点了才关），带「编辑」；要 tmux 的在没 tmux 的那台上点了 ⇒ 说一句。
+ */
+private class KeyBarNav(
+    val groups: List<KeyGroup>,
+    val current: KeyGroup?,
+    val switchTo: (String) -> Unit,
+    private val snackbar: AppSnackbarController,
+    private val env: KeysEnv,
+) {
+    fun next() {
+        if (groups.isNotEmpty()) switchTo(groups[(groups.indexOf(current) + 1).mod(groups.size)].id)
+    }
+
+    fun goto(id: String) {
+        if (groups.any { it.id == id }) {
+            switchTo(id)
+        } else {
+            snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
+        }
+    }
+
+    fun needsTmux(a: AppAction) = snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to appActionName(a), "host" to env.hostLabel))
+}
+
+/** ⋯ 抽屉 ＋ 键条（当前那一组）；当前组没有按键 ⇒ 一行灰字 ＋「编辑按键」。 */
+@Composable
+private fun KeyBar(
+    session: TerminalSession,
+    keyDao: KeyDao,
+    settings: SettingsRepository,
+    nav: KeyBarNav,
+    actions: KeyActions,
+    showMore: Boolean,
+    onDismissMore: () -> Unit,
+) {
+    val env = LocalKeysEnv.current
+    val allKeys by remember { keyDao.observeAllKeys() }.collectAsState(initial = null)
+    val longPressMs by remember { settings.observeKeyLongPressMs() }.collectAsState(initial = null)
+    val mods by session.modifiers.collectAsState() // 粘性 Ctrl / Alt 的点亮态
+    val counts = allKeys.orEmpty().groupingBy { it.groupId }.eachCount()
+    val current = nav.current
+    if (showMore) TerminalMoreSheet(nav.groups, counts, current, onSwitch = nav.switchTo, onEditKeys = env.onEditKeys, onDismiss = onDismissMore)
+    current ?: return
+    if (allKeys != null && counts[current.id] == null) {
+        EmptyGroupLine(current.name, env.onEditKeys)
+        return
+    }
+    ExtraKeysRow(
+        groupId = current.id,
+        dispatch = { dispatchBinding(it, session::send, actions) },
+        onModifier = { m ->
+            when (m) {
+                KeyMod.CTRL -> session.toggleCtrl()
+                KeyMod.ALT -> session.toggleAlt()
+                KeyMod.SHIFT -> {}
+            }
+        },
+        ctrlActive = mods.ctrl,
+        altActive = mods.alt,
+        longPressMs = longPressMs,
+        groupName = { id -> nav.groups.firstOrNull { it.id == id }?.name },
+    )
 }
 
 /**
@@ -771,3 +843,24 @@ internal fun terminalPaletteActions(
             add(PaletteAction(copyText("mobPalette.group.key"), copyText("mobPalette.item.key")) { onPushKey() })
         }
     }
+
+/** 当前组没有按键：键条位置一行灰字「「git」无按键」＋ 一颗文字按钮「编辑按键」（C16 至多一颗）。 */
+@Composable
+private fun EmptyGroupLine(
+    name: String,
+    onEditKeys: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    Row(
+        Modifier.fillMaxWidth().background(tokens.bg2).padding(start = tokens.spacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            copyText("mobKeys.empty.group", "name" to name),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        SecondaryButton(onClick = onEditKeys) { Text(copyText("mobKeys.action.editKeys")) }
+    }
+}

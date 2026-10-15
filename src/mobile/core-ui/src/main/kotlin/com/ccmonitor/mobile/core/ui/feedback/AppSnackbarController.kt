@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 全应用的操作结果反馈 + 撤销。
@@ -116,7 +117,42 @@ class AppSnackbarController internal constructor(
             if (r == SnackbarResult.ActionPerformed) onUndo()
         }
     }
+
+    /**
+     * 可撤销的动作做完后：结果 ＋「撤销」，撤销窗恰好 [windowMs]（不随 M3 的 Long 档那 10 秒走）。窗一过提示自己收起。
+     */
+    fun showUndoFor(
+        message: String,
+        windowMs: Long,
+        undoLabel: String = copyText("kit.toast.undo"),
+        onUndo: suspend () -> Unit,
+    ) {
+        scope.launch { if (hostState.showFor(windowMs, message, undoLabel) == SnackbarResult.ActionPerformed) onUndo() }
+    }
+
+    /** 出错、且不许自己走的那种（点了才关）：带一个可选的动作（如「编辑」）。 */
+    fun showSticky(
+        message: String,
+        actionLabel: String? = null,
+        onAction: () -> Unit = {},
+    ) {
+        scope.launch {
+            val r = hostState.showSnackbar(message, actionLabel, withDismissAction = true, duration = SnackbarDuration.Indefinite)
+            if (r == SnackbarResult.ActionPerformed) onAction()
+        }
+    }
 }
+
+/**
+ * 显示一条带动作的提示，最多 [windowMs]：到点自己收起（回 Dismissed），点了动作回 ActionPerformed。
+ * 计时走协程的时钟，不靠 SnackbarHost 的那份（那份只有 Short · Long · Indefinite 三档）。
+ */
+suspend fun SnackbarHostState.showFor(
+    windowMs: Long,
+    message: String,
+    actionLabel: String,
+): SnackbarResult =
+    withTimeoutOrNull(windowMs) { showSnackbar(message, actionLabel, duration = SnackbarDuration.Indefinite) } ?: SnackbarResult.Dismissed
 
 /** 一条反馈：屏上那一句 ＋ 只进复制详情的原话（可空）。 */
 @Immutable

@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
 
 /**
  * App 动作束：键条上绑了 App 动作的触发经 [invoke] 触达终端屏已有的回调。
- * 要 tmux 的那几个（[AppAction.NEEDS_TMUX]）在没有 tmux 的服务器上点了无害。
+ * 要 tmux 的那几个（[AppAction.NEEDS_TMUX]）在没有 tmux 的服务器上点了不做、交给 [onNeedsTmux] 说一句。
  */
 class KeyActions(
     val supportsTmux: Boolean,
@@ -25,9 +25,10 @@ class KeyActions(
     val onEditKeys: () -> Unit,
     val onNextGroup: () -> Unit,
     val onGotoGroup: (String) -> Unit,
+    val onNeedsTmux: (AppAction) -> Unit = {},
 ) {
     fun invoke(b: KeyBinding.App) {
-        if (b.action in AppAction.NEEDS_TMUX && !supportsTmux) return
+        if (b.action in AppAction.NEEDS_TMUX && !supportsTmux) return onNeedsTmux(b.action)
         when (b.action) {
             AppAction.NEXT_GROUP -> onNextGroup()
             AppAction.GOTO_GROUP -> b.groupId?.let(onGotoGroup)
