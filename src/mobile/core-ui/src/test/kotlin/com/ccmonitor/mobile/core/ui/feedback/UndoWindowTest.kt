@@ -46,15 +46,4 @@ class UndoWindowTest {
             runCurrent()
             assertEquals(1, undone)
         }
-
-    @Test
-    fun undoAfterTheActionGetsTheSameWindow() =
-        runTest {
-            val host = SnackbarHostState()
-            controller(host).showUndoAfter({}, "m", "u") {}
-            runCurrent()
-            advanceTimeBy(UNDO_WINDOW_MS + 1)
-            runCurrent()
-            assertNull(host.currentSnackbarData)
-        }
 }

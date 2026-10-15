@@ -75,25 +75,6 @@ class AppSnackbarController internal constructor(
     }
 
     /**
-     * 先把动作做完，再报结果并给撤销。
-     *
-     * 与 [showUndo] 的区别：后者要求调用方自己先做完动作；调用方若用
-     * `viewModelScope.launch { … }` 投出去就立刻调 [showUndo]，会在动作完成前就宣告成功。
-     * 这个方法把动作也放进控制器的 root scope 里 await：报的是真结果，动作本身也不随屏死。
-     */
-    fun showUndoAfter(
-        action: suspend () -> Unit,
-        message: String,
-        undoLabel: String = copyText("kit.toast.undo"),
-        onUndo: suspend () -> Unit,
-    ) {
-        scope.launch {
-            action()
-            if (undoWindow(message, undoLabel) == SnackbarResult.ActionPerformed) onUndo()
-        }
-    }
-
-    /**
      * 做完一个可撤销的动作后调它：显示结果 + 一个「撤销」，撤销窗恰好 [UNDO_WINDOW_MS]，窗一过提示自己收起。
      *
      * @param onUndo 点撤销时执行。调用方自己持有恢复所需的数据（如被删掉的那条记录），
