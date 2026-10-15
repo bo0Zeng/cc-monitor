@@ -58,7 +58,9 @@ pub(crate) use caps::until_of;
 pub(crate) use caps::{cap_of, MARGIN_MS};
 pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
-pub use doors::{fill_account_colors, migrate_aliases, watch_account_mcp, watch_rotation};
+pub use doors::{
+    fill_account_colors, migrate_aliases, share_on_demand_dirs, watch_account_mcp, watch_rotation,
+};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};
 use sniff::sniff_id;

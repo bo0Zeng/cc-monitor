@@ -243,3 +243,77 @@ fn the_shared_dirs_claude_makes_on_demand_are_linked_before_the_shared_store_has
         assert!(p.ops.contains(&ln("c", n)), "{n}：{:?}", p.ops);
     }
 }
+
+/// 升级那一步只碰按需才建的那几项：谁都没有 ⇒ 建、两个号都链；一个号有实体 ⇒ 挪进共享库、两个号都链；
+/// 两个号各有一份 ⇒ 建一份空的、两个号都不动；接好之后 ⇒ 空计划。别的共享项缺链接它不管（那是修复的事）。
+#[test]
+fn the_upgrade_step_touches_only_the_on_demand_dirs_and_settles_to_nothing() {
+    let acct = |n: &str| format!("/h/.cc-monitor/accounts/{n}");
+    let text = r#"{"version":1,"sharedStore":"/h/.claude","accounts":[{"name":"z","email":"","configDir":"/h/.cc-monitor/accounts/z","isDefault":true},{"name":"b","email":"","configDir":"/h/.cc-monitor/accounts/b","isDefault":false}]}"#;
+    let two = |z: DirState, b: DirState| {
+        let mut s = snap(z);
+        s.manifest_text = Some(text.into());
+        s.manifest = Some(Manifest::parse(text));
+        s.dirs.insert(acct("b"), b);
+        s.shared.entries.remove("agents");
+        s.shared.entries.remove("plans");
+        s
+    };
+    let bare = || {
+        let mut d = healthy();
+        d.entries.remove("agents");
+        d.entries.remove("plans");
+        d.entries.remove("skills");
+        d
+    };
+    let with = |n: &str| {
+        let mut d = bare();
+        d.entries.insert(n.into(), Item::Dir { mode: Some(0o700) });
+        d
+    };
+    let mk = |n: &str| Op::MkDir(format!("/h/.claude/{n}"));
+    let ln = |who: &str, n: &str| Op::Link {
+        target: format!("/h/.claude/{n}"),
+        at: format!("{}/{n}", acct(who)),
+    };
+    let p = plan_shared_on_demand(&two(bare(), bare())).unwrap();
+    assert_eq!(
+        p.ops,
+        vec![
+            mk("agents"),
+            mk("plans"),
+            ln("z", "agents"),
+            ln("z", "plans"),
+            ln("b", "agents"),
+            ln("b", "plans"),
+        ],
+        "缺的 skills 链接不归它管"
+    );
+    let p = plan_shared_on_demand(&two(with("plans"), bare())).unwrap();
+    assert_eq!(
+        p.ops,
+        vec![
+            mk("agents"),
+            Op::Move {
+                from: format!("{}/plans", acct("z")),
+                to: "/h/.claude/plans".into()
+            },
+            ln("z", "agents"),
+            ln("z", "plans"),
+            ln("b", "agents"),
+            ln("b", "plans"),
+        ]
+    );
+    let p = plan_shared_on_demand(&two(with("agents"), with("agents"))).unwrap();
+    assert!(p.ops.contains(&mk("agents")), "{:?}", p.ops);
+    assert!(
+        !p.ops.contains(&ln("z", "agents")) && !p.ops.contains(&ln("b", "agents")),
+        "两份实体被动了：{:?}",
+        p.ops
+    );
+    // 接好之后：空计划。
+    assert_eq!(
+        plan_shared_on_demand(&snap(healthy())).unwrap(),
+        Plan::default()
+    );
+}

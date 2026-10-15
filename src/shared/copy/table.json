@@ -592,6 +592,18 @@
       "zh": "共享链接 {item} 已断 · 点「修复」重建",
       "args": ["item"]
     },
+    "beAcctVerify.global.ownCopiesSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
+    "beAcctVerify.global.ownCopies": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{item} 该各号共用 · {names} 各有一份自己的、没有合并\n要共用就把内容并进共享库里的 {item}、删掉号里的，再点「修复」",
+      "args": ["item", "names"]
+    },
     "beAcctVerify.acct.linkEntity": {
       "kind": "error",
       "role": "报错",

@@ -1363,3 +1363,71 @@ fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_
     assert_eq!(t.read(&acct("lab", "plans/a-plan.md")), "计划（夹具句）");
     assert_eq!(t.read(".claude/plans/a-plan.md"), "计划（夹具句）");
 }
+
+/// ★ 升级那一步（常驻那一个起来时，`shared_on_demand_here`）：旧账号库里没有 agents · plans 那两条链接、lab 里留着一份自己的 plans ⇒
+/// 不等人点修复：plans 挪进共享库、agents 在共享库里建出来，两个号都链上；之后体检一条都不报这两项（不报缺链接、也不提示）。
+/// 接好之后再调不动盘（不另留备份）。两个号各有一份自己的 agents ⇒ 不合并、两个号都不动，体检不报致命，只一条提示点名这两个号。
+#[test]
+fn the_upgrade_step_links_the_on_demand_shared_dirs_so_the_checkup_has_nothing_to_say_about_them() {
+    let t = two_accounts("od-up");
+    let acct = |n: &str, rel: &str| format!(".cc-monitor/accounts/{n}/{rel}");
+    let old_layout = |t: &Tmp| {
+        for n in ["lab", "x"] {
+            for d in ["agents", "plans"] {
+                std::fs::remove_file(t.p(&acct(n, d))).unwrap();
+            }
+        }
+        for d in ["agents", "plans"] {
+            std::fs::remove_dir_all(t.p(&format!(".claude/{d}"))).unwrap();
+        }
+    };
+    let about = |v: &Value, item: &str| -> Vec<String> {
+        ["fail", "warn"]
+            .iter()
+            .flat_map(|l| checks(v, l))
+            .filter(|c| c.contains(item))
+            .collect()
+    };
+    old_layout(&t);
+    t.write(&acct("lab", "plans/a-plan.md"), "计划（夹具句）");
+    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(t.0.clone()));
+    assert_eq!(t.read(".claude/plans/a-plan.md"), "计划（夹具句）");
+    for n in ["lab", "x"] {
+        for d in ["agents", "plans"] {
+            assert!(t.is_link(&acct(n, d)), "{n}/{d} 没链上");
+        }
+    }
+    let v = verify(&t);
+    assert_eq!(v["pass"], true, "{v}");
+    for d in ["agents", "plans"] {
+        assert!(
+            about(&v, d).is_empty(),
+            "升级后体检还在说 {d}：{:?}",
+            about(&v, d)
+        );
+    }
+    let settled = tree(&t.0);
+    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(t.0.clone()));
+    assert_eq!(tree(&t.0), settled, "接好之后再调又动了盘");
+
+    // 两个号各有一份自己的 agents：不合并。
+    let u = two_accounts("od-two");
+    old_layout(&u);
+    u.write(&acct("lab", "agents/a.md"), "甲（夹具句）");
+    u.write(&acct("x", "agents/b.md"), "乙（夹具句）");
+    crate::accounts::manage::wire::shared_on_demand_here(&HomeDoor(u.0.clone()));
+    for n in ["lab", "x"] {
+        assert!(!u.is_link(&acct(n, "agents")), "{n} 那份被动了");
+        assert!(u.is_link(&acct(n, "plans")), "{n}/plans 没链上");
+    }
+    assert_eq!(u.read(&acct("lab", "agents/a.md")), "甲（夹具句）");
+    assert_eq!(u.read(&acct("x", "agents/b.md")), "乙（夹具句）");
+    let v = verify(&u);
+    assert_eq!(v["pass"], true, "两份各自的只提示、不报致命：{v}");
+    let said = about(&v, "agents");
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(
+        checks(&v, "warn").contains(&said[0]) && said[0].contains("lab") && said[0].contains('x'),
+        "{said:?}"
+    );
+}

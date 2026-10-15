@@ -244,6 +244,7 @@ async fn main() {
         );
         if resident {
             inbound::fill_account_colors();
+            inbound::share_on_demand_dirs();
         }
     };
     if off_thread {

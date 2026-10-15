@@ -468,6 +468,63 @@ pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Refusal> {
     Ok(plan)
 }
 
+/// 按需才建的那几个共享库里还没有 ⇒ 恰好一个号里有一份实体目录：挪进共享库当共用的那一份；否则建一份空的
+/// （两个号以上各有一份 ⇒ 不替人合并，核对照「各有一份」提示）。回挪过来的那几个 `(号的目录, 项)`（那个号随后照样链回去）。
+fn lift_on_demand<'a>(plan: &mut Plan, s: &Snapshot, m: &Manifest) -> Vec<(String, &'a str)> {
+    let r = s.roots();
+    let mut lifted = Vec::new();
+    for n in shared_on_demand() {
+        if s.shared.get(n).exists() {
+            continue;
+        }
+        let holders: Vec<&Account> = own_dirs(s, m)
+            .filter(|a| matches!(s.dir(&a.config_dir).get(n), Item::Dir { .. }))
+            .collect();
+        match holders.as_slice() {
+            [one] => {
+                plan.ops.push(Op::Move {
+                    from: join(&one.config_dir, n),
+                    to: join(&r.shared, n),
+                });
+                lifted.push((one.config_dir.clone(), *n));
+            }
+            _ => plan.ops.push(Op::MkDir(join(&r.shared, n))),
+        }
+    }
+    lifted
+}
+
+/// 清单里账号库管得着、不是共享库本身、目录在的那几个号。
+fn own_dirs<'a>(s: &'a Snapshot, m: &'a Manifest) -> impl Iterator<Item = &'a Account> + 'a {
+    let r = s.roots();
+    m.managed()
+        .filter(move |a| a.config_dir != r.shared && r.controls(&a.config_dir))
+        .filter(move |a| s.dir(&a.config_dir).is_dir())
+}
+
+/// **按需才建的共用目录接上**（升级那一步，常驻那一个起来时做）：共享库里没有 ⇒ 建（恰好一个号里有实体 ⇒ 挪进去），
+/// 每个号缺的那一条链补上（挪走的那个号链回去）；两个号以上各有一份的那几个号不动（核对提示，不替人合并）。
+/// 只碰 [`shared_on_demand`] 那几项；接好之后再算 ⇒ 空计划（不写、不留备份）。
+pub(crate) fn plan_shared_on_demand(s: &Snapshot) -> Result<Plan, Refusal> {
+    let m = need_manifest(s)?;
+    let r = s.roots();
+    let mut plan = Plan::default();
+    let lifted = lift_on_demand(&mut plan, s, m);
+    for a in own_dirs(s, m) {
+        let c = &a.config_dir;
+        for n in shared_on_demand() {
+            let moved = lifted.iter().any(|(from, it)| from == c && it == n);
+            if moved || !s.dir(c).get(n).exists() {
+                plan.ops.push(Op::Link {
+                    target: join(&r.shared, n),
+                    at: join(c, n),
+                });
+            }
+        }
+    }
+    Ok(plan)
+}
+
 /// **修复**（幂等）：目录改回 `0700` · 身份本体改回 `0600` · 缺的共享链接补上 · 指错的改指 · 不再属于共享集的残链清掉
 /// （身份那几项若还是链向共享库的链接 ⇒ 复制成这个号自己的一份，不是删掉）· 清单里的邮箱按各号 `.claude.json` 刷新。
 /// 共享项在号的目录里是一份实体文件 ⇒ 不动它，只提示（那是这个号自己的改动，合并与否由人定）。
@@ -477,29 +534,7 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
     let mut plan = Plan::default();
     let mut next = m.clone();
     let items = share_items(&s.shared);
-    // 按需才建的那几个共享库里还没有：恰好一个号里有一份实体目录 ⇒ 挪进共享库当共用的那一份；否则建一份空的
-    // （两个号以上各有一份 ⇒ 不替人合并，下面那一步照「共享项在号里是实体」提示）。
-    let mut lifted: Vec<(String, &str)> = Vec::new();
-    for n in shared_on_demand() {
-        if s.shared.get(n).exists() {
-            continue;
-        }
-        let holders: Vec<&Account> = m
-            .managed()
-            .filter(|a| a.config_dir != r.shared && r.controls(&a.config_dir))
-            .filter(|a| matches!(s.dir(&a.config_dir).get(n), Item::Dir { .. }))
-            .collect();
-        match holders.as_slice() {
-            [one] => {
-                plan.ops.push(Op::Move {
-                    from: join(&one.config_dir, n),
-                    to: join(&r.shared, n),
-                });
-                lifted.push((one.config_dir.clone(), n));
-            }
-            _ => plan.ops.push(Op::MkDir(join(&r.shared, n))),
-        }
-    }
+    let lifted = lift_on_demand(&mut plan, s, m);
     for a in m.managed() {
         let c = &a.config_dir;
         if !r.controls(c) {

@@ -253,3 +253,24 @@ fn the_remote_settings_sync_stamp_is_per_account_not_a_missing_link() {
     assert_eq!(r.fails, 1, "{:?}", r.checks);
     assert!(fails(&r)[0].contains(SYNCED_AT), "{:?}", fails(&r));
 }
+
+/// 按需才建的共用目录在号里是自己的一份（起来时那一步不替人合并的那一形）：不报致命，一条提示点名是哪一项；
+/// 别的共享项在号里是实体照旧致命。
+#[test]
+fn an_own_copy_of_an_on_demand_shared_dir_is_a_note_not_a_fail() {
+    let mut z = all_linked();
+    z.insert("agents".into(), Item::Dir { mode: Some(0o700) });
+    let r = verify(&snap(z), &[]);
+    assert!(r.pass, "{:?}", r.checks);
+    let warns: Vec<&str> = r
+        .checks
+        .iter()
+        .filter(|c| c.level == CheckLevel::Warn && c.text.contains("agents"))
+        .map(|c| c.text.as_str())
+        .collect();
+    assert_eq!(warns.len(), 1, "{:?}", r.checks);
+    assert!(warns[0].contains('z'), "{warns:?}");
+    let mut z = all_linked();
+    z.insert("skills".into(), Item::Dir { mode: Some(0o700) });
+    assert!(!verify(&snap(z), &[]).pass);
+}

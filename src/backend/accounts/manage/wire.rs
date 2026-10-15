@@ -298,6 +298,40 @@ pub(crate) fn colors_here(d: &dyn Door) {
     }
 }
 
+/// 这台的账号库接上那一家按需才建的共用目录（升级那一步，[`layout::plan_shared_on_demand`]）：拿账号库那把锁、照计划做（留一份备份，同别的改动）；
+/// 已经接好（空计划）· 没有账号库 · 做不了多账号 ⇒ 不动。只由占着常驻的那一个进程起来时调（同补号色）；写不成只出声。
+pub(crate) fn shared_on_demand_here(d: &dyn Door) {
+    let run = || -> Result<usize, Refusal> {
+        supported()?;
+        let home = home_of(d)?;
+        let _held = lock(&home)?;
+        let snap = scan::scan(&home, &[], &[]);
+        if snap.manifest().is_none() {
+            return Ok(0);
+        }
+        snap.roots().check().map_err(|e| ("refused", e))?;
+        let plan = layout::plan_shared_on_demand(&snap)?;
+        if plan.ops.is_empty() {
+            return Ok(0);
+        }
+        let r = snap.roots().clone();
+        let zero_email = snap.email_of(&home).unwrap_or_default().to_string();
+        let render =
+            |m: &super::model::Manifest| m.render(&r.shared, &zero_email, &exec::utc_stamp(true));
+        exec::apply(d, &r, &plan, snap.manifest_text.as_deref(), &render, None)?;
+        Ok(plan.ops.len())
+    };
+    match run() {
+        Ok(0) => {}
+        Ok(n) => tracing::info!("[accounts] 账号库接上按需才建的共用目录（{n} 步）"),
+        Err(e) => tracing::warn!(
+            "[accounts] 账号库接按需才建的共用目录不成：{} {}",
+            e.code,
+            e.message
+        ),
+    }
+}
+
 fn rollback(
     d: &dyn Door,
     snap: &Snapshot,
