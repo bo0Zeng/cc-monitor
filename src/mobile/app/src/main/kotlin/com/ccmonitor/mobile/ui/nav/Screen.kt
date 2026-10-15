@@ -61,6 +61,9 @@ sealed class Screen(
 
     data object Settings : Screen("settings")
 
+    /** 编辑按键（终端屏 ⋯「编辑按键」· 绑了「编辑按键」的触发进来；只有这一页）。 */
+    data object Keys : Screen("keys")
+
     /** 轮换屏：一条会话的（[sid]）· 这台新会话用的那份（[sid] 缺）。 */
     data object Rotation : Screen("rotation/{hostId}?sid={sid}") {
         fun of(
@@ -73,9 +76,4 @@ sealed class Screen(
 
     /** 设置 → 机器与账号 → 轮换：当前服务器（上次那台）新会话用的那份。 */
     data object RotationHere : Screen("settings/rotation")
-
-    // 自定义按钮编辑器：全局按钮从设置进，主机专属按钮从主机编辑器进。
-    data object ButtonSettings : Screen("settings/buttons")
-
-    data object HostButtons : Screen("host/{id}/buttons")
 }

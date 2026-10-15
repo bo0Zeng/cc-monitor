@@ -12,7 +12,7 @@ import java.io.File
 /**
  * 设置里的「终端」一节，而且入口被删时真的有东西会红。
  *
- * 「九条路由还在」恒绿于「入口被删」：路由在 `NavHost` 里，设置面上那一行没了它照样过。
+ * 「七条路由还在」恒绿于「入口被删」：路由在 `NavHost` 里，设置面上那一行没了它照样过。
  * 分辨力在「入口是一份数据（[settingsEntries]）、设置屏只渲染这份数据」那两条上。
  *
  * 「入口还在」≠「入口够得着」：设置面那一列不滚的话，「终端」节落在屏幕下沿之外，
@@ -21,19 +21,15 @@ import java.io.File
  */
 class SettingsEntriesTest {
     /**
-     * 设置里「终端」一节只有两条：全局自定义按钮与服务器列表。
-     * 「打开终端」在抽屉里；所有功能只有一处入口，设置里不许出现它。
+     * 设置里「终端」一节只有服务器列表。
+     * 「打开终端」在抽屉里、按键只在终端屏里改；所有功能只有一处入口，设置里不许出现它们。
      */
     @Test
-    fun theTerminalSectionKeepsButtonsAndServersButNotTheTerminalItself() {
+    fun theTerminalSectionKeepsServersButNotTheTerminalItself() {
         val entries = settingsEntries()
         assertEquals("节标题就是这两个字", "终端", SECTION_TERMINAL)
         assertTrue("「打开终端」在抽屉里：$entries", entries.none { it.route == Screen.SessionsOverview.route || it.title == "打开终端" })
-
-        val buttons = entries.singleOrNull { it.route == Screen.ButtonSettings.route }
-        assertTrue("自定义按钮那个入口一条都不许丢：$entries", buttons != null)
-        assertEquals("它在「终端」这一节", "终端", buttons!!.section)
-        assertEquals("文案逐字", copyText("mobSettings.entry.buttons"), buttons.title)
+        assertEquals("「终端」这一节只有服务器列表：$entries", listOf(copyText("mobSettings.entry.hosts")), entries.filter { it.section == "终端" }.map { it.title })
 
         val hosts = entries.singleOrNull { it.route == Screen.Hosts.route }
         assertTrue("服务器列表那个入口也在终端节里：$entries", hosts != null && hosts.section == "终端")
@@ -55,16 +51,16 @@ class SettingsEntriesTest {
     }
 
     /**
-     * 终端与服务器那九条路由一条不少地注册在 `AppNavHost` 里（降级不是删除）。
+     * 终端与服务器那七条路由一条不少地注册在 `AppNavHost` 里（降级不是删除）。
      *
      * 这一条恒绿于「入口被删」：它只看路由在不在，看不见设置面上那一行。
      * 它防的是另一个 bug：为了让主线干净而真的删掉一条路由。
-     * 分辨力的那一半在 [theTerminalSectionKeepsButtonsAndServersButNotTheTerminalItself]，两条缺一不可。
+     * 分辨力的那一半在 [theTerminalSectionKeepsServersButNotTheTerminalItself]，两条缺一不可。
      */
     @Test
-    fun allNineTerminalAndServerRoutesAreRegistered() {
+    fun allSevenTerminalAndServerRoutesAreRegistered() {
         val registered = registeredRoutes()
-        val nine =
+        val seven =
             listOf(
                 Screen.Session.route,
                 Screen.SessionsOverview.route,
@@ -73,23 +69,19 @@ class SettingsEntriesTest {
                 Screen.HostEdit.route,
                 "host/new",
                 Screen.Identities.route,
-                Screen.HostButtons.route,
-                Screen.ButtonSettings.route,
             )
-        assertEquals("这张清单本身就该是九条", 9, nine.size)
-        assertEquals("九条不许有重复", 9, nine.toSet().size)
-        for (r in nine) {
+        assertEquals("这张清单本身就该是七条", 7, seven.size)
+        assertEquals("七条不许有重复", 7, seven.toSet().size)
+        for (r in seven) {
             assertTrue("路由「$r」不见了：挪入口，不删入口。已注册的是：$registered", r in registered)
         }
         // 路由串本身也不许被改名：改名 = 书签/代码里的那条路失效，等于删了它
         assertEquals("sessions", Screen.SessionsOverview.route)
         assertEquals("sessions/new", Screen.NewSessionHostPicker.route)
-        assertEquals("settings/buttons", Screen.ButtonSettings.route)
-        assertEquals("host/{id}/buttons", Screen.HostButtons.route)
     }
 
     /**
-     * 阴性对照：证明上面那条「九条路由还在」抓不住入口被删。
+     * 阴性对照：证明上面那条「七条路由还在」抓不住入口被删。
      *
      * 它是「路由普查与入口在不在互相独立」的可执行形式。独立性一旦被打破
      * （比如有人把那条改成也读 [settingsEntries]），本条会红，提醒后来者：路由普查从来就不是入口的守卫。
@@ -97,7 +89,7 @@ class SettingsEntriesTest {
     @Test
     fun theRouteCensusCannotSeeAMissingEntrance() {
         val registered = registeredRoutes()
-        // 造一份「入口被删光」的表：九条路由的注册情况一个字都不变
+        // 造一份「入口被删光」的表：七条路由的注册情况一个字都不变
         val noEntrances = emptyList<SettingsEntry>()
         assertTrue("路由普查读的是 AppNavHost，与入口表无关", Screen.SessionsOverview.route in registered)
         assertTrue(
@@ -330,8 +322,6 @@ class SettingsEntriesTest {
                 "Chat" to Screen.Chat.route,
                 "NewSessionHostPicker" to Screen.NewSessionHostPicker.route,
                 "Settings" to Screen.Settings.route,
-                "ButtonSettings" to Screen.ButtonSettings.route,
-                "HostButtons" to Screen.HostButtons.route,
                 "Rotation" to Screen.Rotation.route,
                 "RotationHere" to Screen.RotationHere.route,
             )

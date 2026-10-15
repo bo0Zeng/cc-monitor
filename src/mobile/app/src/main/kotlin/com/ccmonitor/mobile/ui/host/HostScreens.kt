@@ -382,7 +382,6 @@ private enum class HostEditLoad { Loading, Loaded, NotFound }
 fun HostEditorScreen(
     hostId: String?,
     onDone: () -> Unit,
-    onEditButtons: () -> Unit = {}, // 进本机按钮编辑器（只对已保存的主机可用）
     // 新加的一台写进库之后调用（加完进这台上空的新对话）。null 则保存后照 onDone 退回。只对新建生效。
     onAdded: ((Host) -> Unit)? = null,
 ) {
@@ -562,11 +561,6 @@ fun HostEditorScreen(
 
         // 那台的 cc-monitor：装 / 更新 / 核对版本（只对已保存的主机给：要它的连接）。
         existing?.let { BackendRow(it.id) }
-
-        // 本机自定义按钮编辑器入口；只对已保存的主机给，因为要 host id 作专属作用域。
-        if (existing != null) {
-            SecondaryButton(onClick = onEditButtons) { Text(copyText("mobHostEdit.buttons.edit")) }
-        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton(onClick = onDone) { Text(copyText("kit.dialog.cancel")) }

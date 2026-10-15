@@ -47,7 +47,7 @@ import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
 import com.ccmonitor.mobile.ui.session.SessionsOverviewScreen
-import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
+import com.ccmonitor.mobile.ui.session.keys.KeysEditorScreen
 import com.ccmonitor.mobile.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -104,22 +104,15 @@ private fun AppNavGraph(
             )
         }
         rotationRoutes(nav, tabManager)
-        composable(Screen.ButtonSettings.route) {
-            ButtonSettingsScreen(hostId = null, onBack = { nav.popBackStack() })
-        }
-        composable(Screen.HostButtons.route) { entry ->
-            val id = entry.arguments?.getString("id") ?: return@composable
-            ButtonSettingsScreen(hostId = id, onBack = { nav.popBackStack() })
-        }
         sessionRoute(nav, tabManager)
         composable(Screen.Identities.route) { IdentityScreen(onBack = { nav.popBackStack() }) }
+        composable(Screen.Keys.route) { KeysEditorScreen(onBack = { nav.popBackStack() }) }
         composable("host/new") { AddHostRoute(nav) }
         composable(Screen.HostEdit.route) { entry ->
             val id = entry.arguments?.getString("id") ?: return@composable
             HostEditorScreen(
                 hostId = id,
                 onDone = { nav.popBackStack() },
-                onEditButtons = { nav.navigate("host/$id/buttons") },
             )
         }
     }
@@ -143,6 +136,7 @@ private fun NavGraphBuilder.sessionRoute(
             tabManager,
             key,
             onGone = { nav.popBackStack() },
+            onEditKeys = { nav.navigate(Screen.Keys.route) },
             onOpenTerminalTab = { hid, path ->
                 nav.navigate("session/${tabManager.open(hid, SessionTabManager.TabTarget.Terminal(cd = path))}")
             },
@@ -222,6 +216,7 @@ private fun HostedSession(
     tabManager: SessionTabManager,
     key: String,
     onGone: () -> Unit,
+    onEditKeys: () -> Unit,
     onOpenTerminalTab: (hostId: String, path: String) -> Unit,
     onOpenTmuxTab: (hostId: String, tmuxName: String) -> Unit,
     onSwitchTab: (key: String) -> Unit,
@@ -253,6 +248,7 @@ private fun HostedSession(
                     target.tmuxSession, // 进终端 tab 首连即敲那台渲出的那一行，接回该会话
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
+                    onEditKeys = onEditKeys,
                 )
             // 「在此打开终端」开新终端 tab，不替换当前 文件 tab。
             SessionTabManager.TabTarget.Files ->
@@ -509,7 +505,6 @@ private fun AddHostRoute(nav: NavHostController) {
     HostEditorScreen(
         hostId = null,
         onDone = { nav.popBackStack() },
-        onEditButtons = {},
         onAdded = { host ->
             scope.launch {
                 settings.setLastHost(host.id)

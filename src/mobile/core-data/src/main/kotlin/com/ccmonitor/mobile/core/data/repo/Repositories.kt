@@ -10,6 +10,7 @@ import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.db.Settings
 import com.ccmonitor.mobile.core.data.db.SettingsDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 class HostRepository(
     private val dao: HostDao,
@@ -81,9 +82,34 @@ class SettingsRepository(
 
     suspend fun setLastHost(hostId: String?) = dao.upsert(Settings(KEY_LAST_HOST, hostId?.trim()?.ifEmpty { null }))
 
+    /** 键条当前显示哪一组（记在这台手机上，下次开终端还是这一组）。没记过 · 那组已删 ⇒ 用的地方取第一组。 */
+    fun observeCurrentKeyGroup(): Flow<String?> = dao.observe(KEY_CURRENT_KEY_GROUP)
+
+    suspend fun setCurrentKeyGroup(groupId: String?) = dao.upsert(Settings(KEY_CURRENT_KEY_GROUP, groupId))
+
+    /** 双击判定时长（总的那一份，毫秒）；null ＝ 跟系统。 */
+    fun observeKeyDoubleTapMs(): Flow<Int?> = dao.observe(KEY_KEYS_DOUBLE_TAP_MS).map { it?.toIntOrNull() }
+
+    suspend fun setKeyDoubleTapMs(ms: Int?) = dao.upsert(Settings(KEY_KEYS_DOUBLE_TAP_MS, ms?.also { require(it in DOUBLE_TAP_MS_RANGE) }?.toString()))
+
+    /** 长按时长（总的那一份，毫秒）；null ＝ 跟系统。 */
+    fun observeKeyLongPressMs(): Flow<Int?> = dao.observe(KEY_KEYS_LONG_PRESS_MS).map { it?.toIntOrNull() }
+
+    suspend fun setKeyLongPressMs(ms: Int?) = dao.upsert(Settings(KEY_KEYS_LONG_PRESS_MS, ms?.also { require(it in LONG_PRESS_MS_RANGE) }?.toString()))
+
     companion object {
         /** 上次进的那台机器（全局单键）。 */
         const val KEY_LAST_HOST = "last_host"
+
+        const val KEY_CURRENT_KEY_GROUP = "keys_current_group"
+        const val KEY_KEYS_DOUBLE_TAP_MS = "keys_double_tap_ms"
+        const val KEY_KEYS_LONG_PRESS_MS = "keys_long_press_ms"
+
+        /** 另设的双击判定时长许的范围（总的与单颗同一个）；越界不夹回去，交给填的地方标红。 */
+        val DOUBLE_TAP_MS_RANGE = 100..1000
+
+        /** 另设的长按时长许的范围。 */
+        val LONG_PRESS_MS_RANGE = 200..2000
     }
 }
 
