@@ -52,6 +52,8 @@ export const REAL_OPS = new Set([
   "prefs-set",
   // 改注解（星标 · 改名 · 隐藏）：真后端写台架盘上那一份，它的观测那一侧照新注解重判隐藏、推 `changed/session_hidden`。
   "history-annotate",
+  // 终端里敲 ccm 走到哪（别名页最上那一句）：那台后端现问终端的 PATH、判、出句子。
+  "ccm-probe",
 ]);
 
 /**
