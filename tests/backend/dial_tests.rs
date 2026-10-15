@@ -1049,23 +1049,3 @@ fn the_backend_installs_its_own_host_into_the_dial_core() {
         crate::control::files_commit::STAGING_DIR
     );
 }
-
-/// 本后端的生产代码从不装「任意路径都许写」那一种规矩（那是手机文件屏的）：远端写只许部署那两处。
-#[test]
-fn the_backend_never_names_the_anywhere_write_rule() {
-    let root = crate::guard_support::src_root();
-    let needle = format!("WriteRules::{}", "Anywhere");
-    let mut hits = Vec::new();
-    for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-        let rel = guard_core::module_address(&root, &path);
-        if rel.starts_with("ssh-dial/") {
-            continue; // 规矩的定义住拨号核心
-        }
-        if crate::guard_support::production_code(&src).contains(needle.as_str()) {
-            hits.push(rel);
-        }
-    }
-    assert!(hits.is_empty(), "后端生产代码点名了任意路径写：{hits:?}");
-    // 正控：拨号核心那一份里确有这个名字（针没写坏）。
-    assert!(include_str!("../../src/backend/ssh-dial/sftp.rs").contains(needle.as_str()));
-}

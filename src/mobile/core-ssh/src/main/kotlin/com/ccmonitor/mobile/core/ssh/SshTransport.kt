@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.core.ssh
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import kotlinx.coroutines.flow.Flow
 import java.io.Closeable
-import java.io.File
 
 /**
  * SSH 连接能力抽象。[RustTransport] 是唯一的生产实现；[SshConnectionManager] 的代号 · 持有 · 跟着共用循环换连接靠它能在 JVM 上测。
@@ -49,49 +48,6 @@ interface SshTransport :
 
     /** 握着的那条被核心收了（对端断 · 保活判死）时叫 [f] 一次；自己 [close] 的不叫。 */
     fun onDrop(f: () -> Unit) = Unit
-
-    suspend fun sftpList(path: String = "."): List<SftpEntry>
-
-    suspend fun sftpRealPath(path: String): String
-
-    suspend fun sftpDownload(
-        remotePath: String,
-        local: File,
-    )
-
-    suspend fun sftpUpload(
-        local: File,
-        remotePath: String,
-    )
-
-    suspend fun sftpRename(
-        from: String,
-        to: String,
-    )
-
-    suspend fun sftpDelete(
-        path: String,
-        isDir: Boolean,
-    )
-
-    suspend fun sftpMkdir(path: String)
-
-    suspend fun sftpReadText(
-        path: String,
-        maxBytes: Int = 256 * 1024,
-    ): String
-
-    /** 读供编辑的全量文本。过大（超过 maxBytes）或疑似二进制（含 NUL）返回 null：拒绝编辑，免得截断或乱码写坏。 */
-    suspend fun sftpReadTextForEdit(
-        path: String,
-        maxBytes: Int = 256 * 1024,
-    ): String?
-
-    /** 以 UTF-8 覆写远端文件（WRITE|CREAT|TRUNC）。 */
-    suspend fun sftpWriteText(
-        remotePath: String,
-        text: String,
-    )
 }
 
 /** 单地址便捷入口：委托给多地址 [connect]，单元素列表不竞速。 */

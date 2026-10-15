@@ -200,7 +200,7 @@ fn injection_attempts_arrive_as_plain_args_in_bash() {
             book.problems
         );
         let r = profile::resolve(&book, "evil", &[]).expect("合得下来");
-        let crate::control::ccm::argv::Parsed::Opts(o) = r.parsed else {
+        let crate::ccm_line::argv::Parsed::Opts(o) = r.parsed else {
             panic!()
         };
         assert_eq!(
@@ -354,7 +354,7 @@ fn the_generated_file_is_byte_stable() {
 /// 本文件的夹具把 ccm 选项与 claude 的词混写 ⇒ 这里换成 `<交给 claude 的…> -- <ccm 自己的…>` 排列，
 /// 意图逐词不变。哪个词是 ccm 的、跟几个值，问 ccm 自己的解析器（缺值的照原样只放那一个词）。
 fn al(name: &str, args: &[&str]) -> Alias {
-    use crate::control::ccm::argv;
+    use crate::ccm_line::argv;
     let words: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let (mut left, mut right) = (Vec::new(), Vec::new());
     let mut i = 0;

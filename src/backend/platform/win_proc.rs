@@ -60,7 +60,7 @@ const PROCESS_TERMINATE: u32 = 0x0000_0001;
 
 /// 开一个进程句柄的三种结局 —— **三种，不压成 `Option`**：
 /// 「没权限」与「不在了」在判活里方向相反（前者是存在，后者是死），压成一个 `None` 就是
-/// 「一个值装了两件事」（`lib.rs::TmuxPlatform` 头注那条病）。
+/// 「一个值装了两件事」（`platform/tmux.rs::TmuxPlatform` 头注那条病）。
 pub(crate) enum Opened {
     /// 开到了。句柄归调用方，`Drop` 时关（`OwnedHandle`）。
     Handle(OwnedHandle),

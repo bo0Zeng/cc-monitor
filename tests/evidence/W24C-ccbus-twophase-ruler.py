@@ -100,6 +100,10 @@ EXPECTED_TAGS = [
     "K1", "K2", "K3", "K4", "K5",
     # 〔保活 09-24〕设计:保活是调用方(本体零提及 ＋ 调用方不循环 ＋ 真跑)
     "K6",
+    # 〔10-14 spawn1〕敲门经后端 session-say(带看见的那一屏)· 读不到会话编号只入收件箱 · can_peer 回执 · codex 词典
+    "K7",
+    # 〔10-14 spawn1〕cc-spawn --as <别名> ⇒ 原样交成 ccm @<别名>
+    "K8",
 ]
 
 # ── 登记:静态面的那些数 ─────────────────────────────────────────────────────
@@ -492,14 +496,14 @@ def behavioral(tmp):
     rc_c, _, _ = run(["cc-commit", "tester", tok6], wenv)
     caps = subprocess.run(
         ["bash", "-c", f'. "{SCRIPTS}/cc-bus-adapt.sh"; ccbus_adapt_load && store_caps && os_caps; '
-                       f'os_send_keys x y; echo "send_rc=$?"'],
+                       f'os_pane_identity x; echo "id_rc=$?"'],
         env=wenv, capture_output=True, text=True).stdout
     log = (b6.home / "log" / "bus.log").read_text(encoding="utf-8") if (b6.home / "log" / "bus.log").exists() else ""
     if (rc == 0 and rc_c == 0 and b6.pos() == "2"
-            and "shared_lock=no" in caps and "deliver=none" in caps and "send_rc=13" in caps
+            and "shared_lock=no" in caps and "identity=none" in caps and "id_rc=13" in caps
             and "DEGRADE lock:shared→exclusive" in log):
         ok("B10", "Windows 那一侧:两阶段口整段跑通(pos→2)· `shared_lock=no` 自陈 · "
-                  "共享锁退化成排他且 bus.log 里留了 DEGRADE · 投递 os_send_keys 显式 rc=13(不假装投递)")
+                  "共享锁退化成排他且 bus.log 里留了 DEGRADE · 读窗格身份 os_pane_identity 显式 rc=13(不假装敲门)")
     else:
         bad("B10", f"Windows 那一侧不对:peek={rc} commit={rc_c} pos={b6.pos()} "
                    f"caps={caps.strip()[:120]!r} 降级日志={'有' if 'DEGRADE' in log else '无'}")
@@ -569,11 +573,26 @@ KINDS_REGISTERED = {"msg", "urgent", "fyi", "keepalive"}
 # ⚠ T1 那句抄的是 printf 的**格式串**:`\\n` 是两个字符(渲染时才变换行),与 kinds 表里的写法同一口径。
 OLD_T1_PREFIX = "你收到新的 cc-bus 消息,请先处理完再结束本轮:\\n"
 OLD_T2 = "🔔 cc-bus: 你有来自 {from} 的新消息,运行 cc-recv 读取并按内容处理"
+PANE_SID = "11111111-2222-4333-8444-555555555555"
+# tmux 替身:读窗格身份那一问答「根进程 4242 ＋ 窗格上的会话编号」(`W24C_PANE_SID` 可换,空 ⇒ 没打标记);
+# 谁要是还往窗格里打字(send-keys),记进 `W24C_SHIMLOG` —— 判据要它恒空。
 SHIM_TMUX = (
     "#!/usr/bin/env bash\n"
-    'if [ "$1" = display-message ]; then echo 4242; exit 0; fi\n'
+    'if [ "$1" = display-message ]; then printf \'4242 %s\\n\' "${W24C_PANE_SID-' + PANE_SID + '}"; exit 0; fi\n'
     'if [ "$1" = send-keys ]; then printf \'%s\\037\' "$@" >> "$W24C_SHIMLOG"; printf \'\\036\' >> "$W24C_SHIMLOG"; fi\n'
     "exit 0\n"
+)
+# 后端替身(`CCM_BIN`):只认 `-- --terminal-preview` / `-- --session-say`,stdin 一段 JSON;每一问记进 `W24C_CCMLOG`。
+# `W24C_NO_SCREEN` 设了 ⇒ 看不到那一屏(预览失败);`W24C_SAY` ⇒ 说那一句的结局(缺省 delivered)。
+SHIM_CCM = (
+    "#!/usr/bin/env bash\n"
+    'a=$(cat); printf \'%s\\037%s\\036\' "$2" "$a" >> "$W24C_CCMLOG"\n'
+    'case "$2" in\n'
+    '  --terminal-preview) [ -n "${W24C_NO_SCREEN:-}" ] && { echo \'{"code":"no_such_session"}\' >&2; exit 2; }\n'
+    '                      echo \'{"screen":"00ff00ff00ff00ff","cols":80,"rows":24}\' ;;\n'
+    '  --session-say) printf \'{"result":"%s"}\\n\' "${W24C_SAY:-delivered}" ;;\n'
+    '  *) exit 2 ;;\n'
+    "esac\n"
 )
 
 
@@ -686,22 +705,31 @@ def kinds_bus(tmp, name, kinds_text=None):
     shim.mkdir(exist_ok=True)
     (shim / "tmux").write_text(SHIM_TMUX, encoding="utf-8")
     (shim / "tmux").chmod(0o755)
-    log = Path(tmp) / f"{name}-shim.log"
-    env = b.env(CC_BUS_ID="alice", PATH=f"{shim}:{os.environ['PATH']}", W24C_SHIMLOG=str(log),
-                CCBUS_NUDGE_DEBOUNCE="0")
+    (shim / "ccm").write_text(SHIM_CCM, encoding="utf-8")
+    (shim / "ccm").chmod(0o755)
+    log = Path(tmp) / f"{name}-ccm.log"
+    env = b.env(CC_BUS_ID="alice", PATH=f"{shim}:{os.environ['PATH']}",
+                W24C_SHIMLOG=str(Path(tmp) / f"{name}-tmux.log"), W24C_CCMLOG=str(log),
+                CCM_BIN=str(shim / "ccm"), CCBUS_NUDGE_DEBOUNCE="0")
     return b, env, log
 
 
-def knocks(log):
-    """shim 记下的 send-keys 里**打字**的那几次(去掉单独的 Enter)。"""
+def ccm_calls(log):
+    """后端替身记下的每一问:(子命令, 入参 JSON)。"""
+    import json
     if not log.exists():
         return []
     out = []
     for call in log.read_text(encoding="utf-8").split("\x1e"):
         a = call.split("\x1f")
-        if len(a) >= 4 and a[0] == "send-keys" and a[3] != "Enter":
-            out.append(a[3])
+        if len(a) == 2:
+            out.append((a[0], json.loads(a[1]) if a[1].strip() else {}))
     return out
+
+
+def knocks(log):
+    """经后端说出去的那几句(`session-say` 的 `text`)。"""
+    return [req.get("text") for cmd, req in ccm_calls(log) if cmd == "--session-say"]
 
 
 def bob_inbox(b):
@@ -827,10 +855,10 @@ def check_k5(tmp):
     sd = cp / "scripts"
     (sd / "cc-bus-agent-mute.sh").write_text(
         "agent_caps() { printf 'agent=mute can_block=no can_nudge=no can_readback=no\\n'; }\n"
-        "agent_block_reason() { return 13; }\nagent_submit_enter() { return 1; }\n", encoding="utf-8")
+        "agent_block_reason() { return 13; }\nagent_self_sid() { printf ''; }\n", encoding="utf-8")
     (sd / "cc-bus-agent-noblock.sh").write_text(
         "agent_caps() { printf 'agent=noblock can_block=no can_nudge=yes can_readback=yes\\n'; }\n"
-        "agent_block_reason() { return 13; }\nagent_submit_enter() { return 1; }\n", encoding="utf-8")
+        "agent_block_reason() { return 13; }\nagent_self_sid() { printf ''; }\n", encoding="utf-8")
     b, env, log = kinds_bus(tmp, "k5a")
     p = subprocess.run([str(sd / "cc-send"), "bob", "x"], env=dict(env, CCBUS_ADAPT_AGENT="mute"),
                        capture_output=True, text=True)
@@ -919,6 +947,97 @@ def preflight():
     return True
 
 
+def check_k7(tmp):
+    """〔10-14〕敲门不再往窗格里打字:经后端 `session-say`(先 `terminal-preview` 拿那一屏的指纹、带着它说);
+    会话编号先看登记的第 5 列、没有再读窗格身份(核第 4 列 pid);读不到 ⇒ 只入收件箱。claude 词典 can_peer ⇒ 回执提一句;codex 词典装得上。"""
+    import json
+    # a) 静态:通用层与 POSIX 适配面里都没有 send-keys 了(往窗格里打字那一档整条退出)
+    typed = {f: src(f).count("send-keys") for f in ("cc-bus-lib.sh", "cc-bus-adapt-posix.sh", "cc-bus-adapt.sh")}
+    a_ok = not any(typed.values())
+    # b) 读窗格身份 ⇒ 先预览、再带着那一屏的指纹说;一个字都没往窗格里打
+    b, env, log = kinds_bus(tmp, "k7b")
+    rc, _, _ = run(["cc-send", "bob", "x"], env)
+    calls = ccm_calls(log)
+    tlog = Path(tmp) / "k7b-tmux.log"
+    b_ok = (rc == 0 and [c for c, _ in calls] == ["--terminal-preview", "--session-say"]
+            and calls[0][1].get("sid") == PANE_SID and calls[1][1].get("sid") == PANE_SID
+            and calls[1][1].get("seen_screen") == "00ff00ff00ff00ff"
+            and calls[1][1].get("text") == OLD_T2.replace("{from}", "alice")
+            and not (tlog.exists() and tlog.read_text(encoding="utf-8")))
+    # c) 窗格上没有身份标记 ⇒ 不敲、只入收件箱、记一笔
+    b3, env3, log3 = kinds_bus(tmp, "k7c")
+    rc3, _, _ = run(["cc-send", "bob", "x"], dict(env3, W24C_PANE_SID=""))
+    l3 = (b3.home / "log" / "bus.log").read_text(encoding="utf-8")
+    c_ok = rc3 == 0 and not ccm_calls(log3) and len(bob_inbox(b3)) == 1 and "NUDGE nosid bob" in l3
+    # d) 登记里有第 5 列 ⇒ 用它,不读窗格
+    b4, env4, log4 = kinds_bus(tmp, "k7d")
+    (b4.home / "agents.tsv").write_text("bob\tbob:0.0\t2026-10-14\t4242\tsid-from-register\n", encoding="utf-8")
+    run(["cc-send", "bob", "x"], dict(env4, W24C_PANE_SID=""))
+    d_ok = [r.get("sid") for _, r in ccm_calls(log4)] == ["sid-from-register"] * 2
+    # e) 看不到那一屏 ⇒ 不说;那台不送(在等人)⇒ 记一笔、不算敲过
+    b5, env5, log5 = kinds_bus(tmp, "k7e")
+    run(["cc-send", "bob", "x"], dict(env5, W24C_NO_SCREEN="1"))
+    l5 = (b5.home / "log" / "bus.log").read_text(encoding="utf-8")
+    b6, env6, log6 = kinds_bus(tmp, "k7f")
+    run(["cc-send", "bob", "x"], dict(env6, W24C_SAY="refused"))
+    l6 = (b6.home / "log" / "bus.log").read_text(encoding="utf-8")
+    e_ok = (not knocks(log5) and "NUDGE noscreen" in l5 and len(bob_inbox(b5)) == 1
+            and "NUDGE refused" in l6 and not (b6.home / "state" / "nudge-bob").exists())
+    # f) 登记时的窗格根进程对不上(名字被别人占了)⇒ 不认它的身份、不敲
+    b7, env7, log7 = kinds_bus(tmp, "k7g")
+    (b7.home / "agents.tsv").write_text("bob\tbob:0.0\t2026-10-14\t9999\n", encoding="utf-8")
+    run(["cc-send", "bob", "x"], env7)
+    f_ok = not ccm_calls(log7) and "NUDGE stale bob" in (b7.home / "log" / "bus.log").read_text(encoding="utf-8")
+    # g) can_peer:claude 词典 ⇒ 回执(stderr)提一句原生通道,消息照投;codex 词典 ⇒ 不提,三档照降级链
+    b8, env8, _ = kinds_bus(tmp, "k7h")
+    _, _, err8 = run(["cc-send", "bob", "x"], env8)
+    b9, env9, _ = kinds_bus(tmp, "k7i")
+    rc9, _, err9 = run(["cc-send", "bob", "x"], dict(env9, CCBUS_ADAPT_AGENT="codex"))
+    _, out9, _ = bash_lib('printf "%s %s %s" "$(ccbus_degrade block)" "$(ccbus_degrade nudge)" "$(ccbus_degrade inbox)"',
+                          dict(env9, CCBUS_ADAPT_AGENT="codex"))
+    g_ok = ("同机 Claude 之间可用 SendMessage" in err8 and len(bob_inbox(b8)) == 1
+            and rc9 == 0 and "SendMessage" not in err9 and out9 == "block nudge inbox")
+    if a_ok and b_ok and c_ok and d_ok and e_ok and f_ok and g_ok:
+        ok("K7", "敲门经后端说一句(真跑七形):通用层 ＋ POSIX 适配面零 send-keys · 先预览再带着那一屏的指纹说 · "
+                 "窗格没身份 ⇒ 只入收件箱并记 nosid · 登记第 5 列优先 · 看不到那一屏 / 那台不送 ⇒ 不算敲过 · "
+                 "窗格根进程对不上 ⇒ 不敲 · claude 回执提 SendMessage、codex 词典不提且三档照降级链")
+    else:
+        bad("K7", f"敲门那一格不对:a零打字={a_ok}({typed}) b={b_ok}({calls}) c={c_ok} d={d_ok}({ccm_calls(log4)}) "
+                  f"e={e_ok} f={f_ok} g={g_ok}({err8.strip()[-60:]!r} {err9.strip()[-60:]!r} {out9!r})")
+
+
+def check_k8(tmp):
+    """cc-spawn `--as <别名>` ⇒ 交给 ccm 的那一串以 `@<别名>` 打头(合并只住 ccm);不给 ⇒ 不带;形状不对的别名当场 rc=2、ccm 一次都不叫。"""
+    d = Path(tmp) / "k8"
+    (d / "proj").mkdir(parents=True, exist_ok=True)
+    stub = d / "ccm"
+    log = d / "argv.log"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = -- ] && [ "$2" = --ccm-probe ]; then echo "capabilities=detach,tmux-size,tmux-base,bus-register"; exit 0; fi\n'
+        'printf \'%s\\037\' "$@" >> "$K8_LOG"; printf \'\\036\' >> "$K8_LOG"; echo "ccm-session=proj_cc"\n',
+        encoding="utf-8")
+    stub.chmod(0o755)
+    env = dict(os.environ, CCM_BIN=str(stub), K8_LOG=str(log), CC_BUS_HOME=str(d / "bus"))
+    def spawn(*a):
+        if log.exists():
+            log.unlink()
+        rc = subprocess.run([str(SCRIPTS / "cc-spawn"), *a], env=env, capture_output=True, text=True).returncode
+        calls = [c.split("\x1f")[:-1] for c in log.read_text(encoding="utf-8").split("\x1e") if c] if log.exists() else []
+        return rc, calls
+    rc1, c1 = spawn("--as", "cct", str(d / "proj"), "任务")
+    rc2, c2 = spawn(str(d / "proj"))
+    rc3, c3 = spawn("--as", "../x", str(d / "proj"))
+    a_ok = rc1 == 0 and len(c1) == 1 and c1[0][0] == "@cct" and "--tmux-base=proj_cc" in c1[0] and "任务" in c1[0]
+    b_ok = rc2 == 0 and len(c2) == 1 and not any(w.startswith("@") for w in c2[0])
+    c_ok = rc3 == 2 and not c3
+    if a_ok and b_ok and c_ok:
+        ok("K8", "cc-spawn --as <别名> ⇒ ccm 收到的第一个词是 @<别名>、cc-spawn 自己的那几项照常在 `--` 右边;"
+                 "不给 --as 不带;形状不对的别名 rc=2 且一次都没叫 ccm")
+    else:
+        bad("K8", f"--as 那一格不对:a={a_ok}({rc1} {c1}) b={b_ok}({rc2} {c2}) c={c_ok}({rc3} {c3})")
+
+
 def main():
     print(f"# `w24c` 步 24c —— cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧(量于 `{SCRIPTS}`)")
     print()
@@ -928,7 +1047,7 @@ def main():
     check_k1(); check_k2()
     with tempfile.TemporaryDirectory(prefix="w24c-") as tmp:
         behavioral(tmp)
-        check_k3(tmp); check_k4(tmp); check_k5(tmp); check_k6(tmp)
+        check_k3(tmp); check_k4(tmp); check_k5(tmp); check_k6(tmp); check_k7(tmp); check_k8(tmp)
     print()
     # ── 反空真的锚:**标签集合两向对拍**,不是"数够了就行" ──────────────────
     got, want = set(PASSED) | set(FAILED), set(EXPECTED_TAGS)

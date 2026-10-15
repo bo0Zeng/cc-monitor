@@ -1,11 +1,11 @@
 package com.ccmonitor.mobile.ui.common
 
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalClipboard
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import kotlinx.coroutines.launch
 
@@ -21,5 +21,5 @@ fun CopyDetailButton(
     if (detail.isNullOrBlank()) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    TextButton(onClick = { scope.launch { clipboard.copyPlainText(text + "\n" + detail) } }) { Text(copyText("detail.act.copy")) }
+    SecondaryButton(onClick = { scope.launch { clipboard.copyPlainText(text + "\n" + detail) } }) { Text(copyText("detail.act.copy")) }
 }

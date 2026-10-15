@@ -327,12 +327,12 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
 fn an_unknown_flag_does_not_kick_the_backend_out_of_stream_mode() {
     let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     assert!(
-        !super::is_query_mode(&v(&["--some-future-flag"])),
+        !crate::stream::cli::is_query_mode(&v(&["--some-future-flag"])),
         "未知 flag 把后端踢进了查询模式 ⇒ exit 2、无 hello ⇒ monitor 重连死循环\n\
              （2026-07-09 事故的形状；实测过 `--some-future-flag` 会 rc=2）"
     );
     assert!(
-        !super::is_query_mode(&v(&["--a", "--b"])),
+        !crate::stream::cli::is_query_mode(&v(&["--a", "--b"])),
         "多个未知 flag 同理"
     );
 }
@@ -341,8 +341,8 @@ fn an_unknown_flag_does_not_kick_the_backend_out_of_stream_mode() {
 #[test]
 fn an_unknown_bare_argument_still_goes_to_the_error_path() {
     let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    assert!(super::is_query_mode(&v(&["/some/path"])));
-    assert!(super::is_query_mode(&v(&["--future", "bare"])));
+    assert!(crate::stream::cli::is_query_mode(&v(&["/some/path"])));
+    assert!(crate::stream::cli::is_query_mode(&v(&["--future", "bare"])));
 }
 
 /// 已登记的子命令照旧进查询模式（回归）。
@@ -350,7 +350,7 @@ fn an_unknown_bare_argument_still_goes_to_the_error_path() {
 fn listed_subcommands_still_enter_query_mode() {
     for c in SUBCOMMANDS {
         assert!(
-            super::is_query_mode(&[c.to_string()]),
+            crate::stream::cli::is_query_mode(&[c.to_string()]),
             "{c} 不再进查询模式了 —— 它会静默变成起了个流"
         );
     }
@@ -430,7 +430,7 @@ fn retired_oneshot_subcommands_are_not_subcommands_anymore() {
         );
         assert!(!crate::stream::cli::handles(f), "`{f}` 派生臂还认它");
         assert!(
-            !super::is_query_mode(&[f.to_string()]),
+            !crate::stream::cli::is_query_mode(&[f.to_string()]),
             "`{f}` 单敲还进查询模式"
         );
     }
@@ -441,7 +441,7 @@ fn retired_oneshot_subcommands_are_not_subcommands_anymore() {
 fn a_retired_oneshot_with_arguments_answers_unknown_command() {
     for f in RETIRED_ONESHOTS {
         let args = vec![f.to_string(), "/x.jsonl".to_string()];
-        assert!(super::is_query_mode(&args));
+        assert!(crate::stream::cli::is_query_mode(&args));
         let mut err: Vec<u8> = Vec::new();
         let rc = crate::stream::cli::refuse_unknown_to(&args, &mut err, &crate::Tz::default());
         let line = String::from_utf8(err).unwrap();

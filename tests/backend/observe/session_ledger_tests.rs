@@ -45,6 +45,7 @@ fn removed(sid: &str, cause: RemovalCause) -> Ev {
     Frame::SessionRemoved {
         sid: sid.into(),
         cause,
+        by: None,
     }
     .into()
 }
@@ -158,6 +159,7 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
     let (pass, extra) = l.on_frame(&Frame::SessionRemoved {
         sid: "a".into(),
         cause: RemovalCause::Gone,
+        by: None,
     });
     assert!(pass && extra.is_empty(), "摘除本身照发，去向等观测");
     assert!(l.awaits_observation(), "要一份摘除之后才起的观测");

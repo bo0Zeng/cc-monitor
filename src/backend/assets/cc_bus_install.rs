@@ -77,6 +77,10 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/scripts/cc-bus-agent-claude.sh"),
     ),
     (
+        "scripts/cc-bus-agent-codex.sh",
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-agent-codex.sh"),
+    ),
+    (
         "scripts/cc-commit",
         include_bytes!("../../shared/cc-bus/scripts/cc-commit"),
     ),

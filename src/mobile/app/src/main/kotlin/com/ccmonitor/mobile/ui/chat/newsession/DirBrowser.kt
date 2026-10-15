@@ -55,7 +55,7 @@ class DirBrowser(
 
     private suspend fun home(): String? {
         val r = link.call(FilesHome.COMMAND, emptyMap(), READ_MS)
-        return (r as? Reply.Ok)?.let { FilesHome.of(it.data) }.also { if (it == null) fail(r, FilesHome.COMMAND) }
+        return (r as? Reply.Ok)?.let { FilesHome.text(it.data) }.also { if (it == null) fail(r, FilesHome.COMMAND) }
     }
 
     private fun go(where: suspend () -> String?) {
@@ -65,7 +65,7 @@ class DirBrowser(
             scope.launch {
                 val path = where() ?: return@launch
                 val r = link.call(FilesLs.COMMAND, FilesLs.dirs(path), READ_MS)
-                val dirs = (r as? Reply.Ok)?.let { FilesLs.of(it.data) }
+                val dirs = (r as? Reply.Ok)?.let { FilesLs.dirsOf(it.data) }
                 if (dirs == null) {
                     _state.update { it.copy(path = path) }
                     fail(r, FilesLs.COMMAND)

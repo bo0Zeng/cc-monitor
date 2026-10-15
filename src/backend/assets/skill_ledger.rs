@@ -107,10 +107,7 @@ fn valid_digest(d: &str) -> bool {
 /// 这台机器上记录文件的路径。家目录：`HOME`，没有再退 `USERPROFILE`；都没有 ⇒ `None`（不猜）。
 pub fn ledger_path() -> Option<PathBuf> {
     let home = crate::platform::paths::home_dir()?;
-    Some(
-        home.join(crate::control::exit_policy::DIR_NAME)
-            .join(FILE_NAME),
-    )
+    Some(home.join(crate::common::own_dir::DIR_NAME).join(FILE_NAME))
 }
 
 /// 读一次。三态：没有（还没装过）/ 读得懂 / 读不懂（**不覆盖**）。

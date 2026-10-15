@@ -25,7 +25,7 @@
  *
  * ## 🔴 三个会让尺子静默给出错答案的地方（都踩过，逐条钉住）
  *
- * 1. **CSS 注释里的散文会被当成代码。** `src/frontend/ui/styles/tokens.css` 的头注逐字写着
+ * 1. **CSS 注释里的散文会被当成代码。** `src/shared/theme/tokens.css` 的头注逐字写着
  *    「z-index 只许写 `var(--z-*)`」—— 不剥注释就会多出一个叫 `--z-` 的「未定义变量」，
  *    而它根本不存在。⇒ `stripCssComments` 是承重的，判据那边有一条自检盯着它真的剥掉了东西。
  * 2. **同名局部变量跨函数串味。** `src/frontend/ui/tabs.ts` 里 `wrap` / `list` 这两个名字在

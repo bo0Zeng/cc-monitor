@@ -96,7 +96,7 @@ const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
 // （〔用@09-11 `K33`〕「后端只有一个…**不要有什么 bash 脚本**」），
 // per-agent 适配表搬进了后端本体。**三写点还是三个，第二份换了语言与住址。**
 const CCM = "src/backend/control/ccm/mod.rs";
-const CCM_FILES = ["mod.rs", "argv.rs", "plan.rs"].map((f) => `src/backend/control/ccm/${f}`);
+const CCM_FILES = ["control/ccm/mod.rs", "ccm_line/argv.rs", "control/ccm/plan.rs"].map((f) => `src/backend/${f}`);
 const ADAPTER_INDEX = "src/backend/agents/mod.rs";
 const BACKEND_RESUME = (agent: string) =>
   `src/backend/agents/${agent}/resume.rs`;

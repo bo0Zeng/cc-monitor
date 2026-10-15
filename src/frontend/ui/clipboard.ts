@@ -11,3 +11,8 @@ import { commands } from "./ipc/commands";
 export async function writeClipboard(text: string): Promise<void> {
   await commands.clipboard_write({ text });
 }
+
+/** 读系统剪贴板里的文字（登录抽屉［粘贴］）；读不出就抛（壳回的 `SaidError`）。 */
+export async function readClipboard(): Promise<string> {
+  return commands.clipboard_read();
+}

@@ -1,12 +1,17 @@
 //! 客户端那一侧（手机嵌的 Rust 核心）按类型解回包：「命令 ⇒ 回包类型」那一张表（[`decode_reply`]）。
-//! 表里的类型都住本包（[`crate::session`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
+//! 表里的类型都住本包（[`crate::session`] · [`crate::files`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
 //! （后端判据按 TS 名对，[`reply_names`]）。表里没有的命令照原样交（回包类型还住后端那几族）。
 
+use crate::files::{
+    FilesChmodReply, FilesDeleteReply, FilesPathBytesReply, FilesPathReply, FilesStageChunkReply,
+    FilesWrittenReply, LsReply, ReadChunkReply, ReadTextReply, StatReply,
+};
 use crate::listing::HistoryListReply;
 use crate::needs::NeedsList;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::session::{
-    Killed, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionNew, TailPlan, TerminalsList,
+    Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands,
+    SessionNew, TailPlan, TerminalsList,
 };
 use serde::Serialize;
 
@@ -45,15 +50,31 @@ macro_rules! replies {
 }
 
 replies! {
+    "files-chmod" => FilesChmodReply,
+    "files-commit-upload" => FilesPathBytesReply,
+    "files-create" => FilesPathBytesReply,
+    "files-delete" => FilesDeleteReply,
+    "files-home" => FilesPathReply,
+    "files-ls" => LsReply,
+    "files-mkdir" => FilesPathReply,
+    "files-read-chunk" => ReadChunkReply,
+    "files-read-text" => ReadTextReply,
+    "files-rename" => FilesPathReply,
+    "files-stage-chunk" => FilesStageChunkReply,
+    "files-stat" => StatReply,
+    "files-write-text" => FilesWrittenReply,
     "history-lines" => HistoryLines<OrUnread>,
     "history-list" => HistoryListReply,
     "history-read" => HistoryRead<OrUnread>,
     "history-tail" => TailPlan,
     "kill" => Killed,
     "launch-render-cli" => Rendered,
+    "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
     "session-new" => SessionNew,
     "session-new-facts" => NewFacts,
+    "session-permission" => ModeSwitched,
+    "session-say" => Sent,
     "sessions-needs" => NeedsList,
     "terminal-input" => Sent,
     "terminal-preview" => Preview,

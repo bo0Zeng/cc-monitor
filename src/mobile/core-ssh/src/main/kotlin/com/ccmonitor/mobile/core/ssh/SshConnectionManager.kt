@@ -350,7 +350,7 @@ class SshConnectionManager(
         closeInBackground(doomed) // 物理关闭在锁外后台做
     }
 
-    /** 强制断开（用户断连、SFTP 收尾、disconnectAll）：无视持有者，清集并真断开。 */
+    /** 强制断开（用户断连、disconnectAll）：无视持有者，清集并真断开。 */
     fun disconnect(id: String) {
         val doomed =
             synchronized(lockFor(id)) {

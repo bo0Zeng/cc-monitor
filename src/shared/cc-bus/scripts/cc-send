@@ -45,6 +45,9 @@ fi
 #   读得到)。所以这里既不改退出码也不改投递,只在 stderr 上问一句名字是不是打错了。
 if ! awk -F'\t' -v id="$to" '$1==id{f=1} END{exit !f}' "$BUS/agents.tsv" 2>/dev/null; then
   echo "cc-send: ⚠ '$to' 不在已登记名单里(cc-list 看不到它)——消息照发,但**今天没有进程会读它的收件箱**;名字打错了吗?" >&2
+elif [ "$(ccbus_cap agent_caps can_peer)" = yes ]; then
+  # 发方与收方都是够得着同机同家的那一家(词典的 can_peer):提一句原生通道,消息照投(不拒、不替它改道)。
+  echo "cc-send: 同机 Claude 之间可用 SendMessage" >&2
 fi
 
 ts=$(date -Iseconds)

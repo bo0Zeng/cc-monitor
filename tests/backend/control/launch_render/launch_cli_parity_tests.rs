@@ -158,7 +158,7 @@ fn shell_words(line: &str) -> Vec<String> {
 }
 
 /// （「`ccm` 就是后端本身」）：渲染器搬进后端之后，与 `ccm` 那套 argv 的**唯一解析口**同在一个 crate ——
-/// 渲出来的每一行 `ccm …`（夹具里全部 ok 用例）都得被 `control::ccm::argv::parse` 收下（异源：渲染一侧 vs 解析一侧）。
+/// 渲出来的每一行 `ccm …`（夹具里全部 ok 用例）都得被 `ccm_line::argv::parse` 收下（异源：渲染一侧 vs 解析一侧）。
 /// 它是 `protocol_doc_guard::TERMINAL_SURFACE_FILES` 里 `ccm_invocation.rs` 那一格的接盘判据（那份文件的 `--旗标` 是终端面，不是 wire 面）。
 #[test]
 fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
@@ -177,7 +177,7 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
             c.name,
             c.out
         );
-        let parsed = crate::control::ccm::argv::parse(&words[1..]);
+        let parsed = crate::ccm_line::argv::parse(&words[1..]);
         assert!(
             parsed.is_ok(),
             "渲染器吐的「{}」那一行 `ccm` 自己不认：{}（{:?}）",

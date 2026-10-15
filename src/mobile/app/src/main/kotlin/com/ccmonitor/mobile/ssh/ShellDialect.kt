@@ -28,12 +28,6 @@ sealed interface ShellDialect {
 
     /** 切工作目录命令。 */
     fun cd(path: String): String
-
-    /**
-     * SFTP 路径（恒用 `/`，Windows 上常是 `/C:/Users/...`）转成本 shell `cd` 能用的路径。
-     * POSIX 原样；Windows 去掉盘符前的 `/`。
-     */
-    fun sftpCwdToShell(sftpPath: String): String
 }
 
 /** POSIX（bash/sh）：单引号 `'...'`（内嵌 `'` → `'\''`）。复用既有 [shQuote]。 */
@@ -44,8 +38,6 @@ data object PosixDialect : ShellDialect {
     override fun quote(s: String): String = shQuote(s)
 
     override fun cd(path: String): String = "cd ${quote(path)}"
-
-    override fun sftpCwdToShell(sftpPath: String): String = sftpPath
 }
 
 /**
@@ -61,10 +53,6 @@ data object PowerShellDialect : ShellDialect {
     override fun quote(s: String): String = "'" + s.replace("'", "''") + "'"
 
     override fun cd(path: String): String = "cd ${quote(path)}"
-
-    // `/C:/Users` → `C:/Users`；盘符根 `/C:`（面包屑能走到，没有尾斜杠）→ `C:`；`/foo` 这类原样。
-    override fun sftpCwdToShell(sftpPath: String): String =
-        if (Regex("""^/[A-Za-z]:(/|$)""").containsMatchIn(sftpPath)) sftpPath.substring(1) else sftpPath
 }
 
 /** 按 [com.ccmonitor.mobile.core.data.db.Host.os] 取方言。 */

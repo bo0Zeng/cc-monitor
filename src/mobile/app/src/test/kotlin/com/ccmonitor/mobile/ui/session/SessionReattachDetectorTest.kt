@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.session
 import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
 import com.ccmonitor.mobile.core.ssh.SessionStatus
-import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshTransport
@@ -18,7 +17,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * [SessionReattachDetector] 的断链恢复场景。断挂检测只依赖 flow 与 lambda，所以能在纯 JVM 上确定性驱动。
@@ -48,47 +46,6 @@ class SessionReattachDetectorTest {
         override fun execStream(command: String): Flow<ByteArray> = error("unused")
 
         override suspend fun execCapture(command: String): ExecResult = error("unused")
-
-        override suspend fun sftpList(path: String): List<SftpEntry> = error("unused")
-
-        override suspend fun sftpRealPath(path: String): String = error("unused")
-
-        override suspend fun sftpDownload(
-            remotePath: String,
-            local: File,
-        ) = error("unused")
-
-        override suspend fun sftpUpload(
-            local: File,
-            remotePath: String,
-        ) = error("unused")
-
-        override suspend fun sftpRename(
-            from: String,
-            to: String,
-        ) = error("unused")
-
-        override suspend fun sftpDelete(
-            path: String,
-            isDir: Boolean,
-        ) = error("unused")
-
-        override suspend fun sftpMkdir(path: String) = error("unused")
-
-        override suspend fun sftpReadText(
-            path: String,
-            maxBytes: Int,
-        ): String = error("unused")
-
-        override suspend fun sftpReadTextForEdit(
-            path: String,
-            maxBytes: Int,
-        ): String? = error("unused")
-
-        override suspend fun sftpWriteText(
-            remotePath: String,
-            text: String,
-        ) = error("unused")
     }
 
     /** 接线脚手架：可变 live/opened + 输入流 + detector；后台常订 reattachNeeded 保 WhileSubscribed 计算。 */

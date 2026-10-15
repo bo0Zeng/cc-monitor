@@ -133,6 +133,14 @@ pub(crate) fn agent_facts(kind: &'static str) -> AgentFacts {
         kind: kind.to_string(),
         text: face.map_or(kind, |f| f.display_name).to_string(),
         models: face.and_then(|f| f.models).map(picks).unwrap_or_default(),
+        model_default: face.and_then(|f| f.model_default).map(|c| Pick {
+            value: c.value.to_string(),
+            text: (c.text)(),
+        }),
+        model_note: face
+            .and_then(|f| f.model_switch)
+            .and_then(|m| m.note)
+            .map(|n| n()),
         permission_modes: face
             .and_then(|f| f.permission)
             .map(|p| picks(p.modes))

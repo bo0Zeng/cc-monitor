@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.core.claude.link
 /**
  * 流上的 `live_card` 帧（`IPC-COMMANDS.md`「`live_card`」，后端 `stream/live.rs` 出的成品）：某个会话某个运行里正在说的那一次上游应答，
  * 一张一张地开、长、撤。只发 `stream-watch` 名单里的会话。对账 · 缺口 · 截头 · 挤谁全在后端，这里只认几种 `op`。
- * 按名字取（同 [RecordLine]）：帧的类型住后端 `stream::wire`，还不在 `cmd-wire`。
+ * 按名字取（同 [RecordLine]）：帧的类型住后端 `wire`，还不在 `cmd-wire`。
  */
 data class LiveFrame(
     val sid: String,

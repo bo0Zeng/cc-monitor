@@ -1701,6 +1701,12 @@
       "zh": "Sonnet · 1M 上下文",
       "args": []
     },
+    "beSessionNew.model.default": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "默认",
+      "args": []
+    },
     "beSessionNew.model.opusPlan": {
       "kind": "action",
       "role": "菜单项",
@@ -1767,6 +1773,36 @@
       "zh": "换模型结果未知\n未读到新的模型",
       "args": []
     },
+    "beSessionSwitch.why.running": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "本轮结束后可换模型",
+      "args": []
+    },
+    "beSessionSwitch.why.waiting": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先答完需手动",
+      "args": []
+    },
+    "beSessionSwitch.why.ended": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话已退出",
+      "args": []
+    },
+    "beSessionModel.name.versioned": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{family} {version}",
+      "args": ["family", "version"]
+    },
+    "beSessionModel.note.savesDefault": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "换模型也改此号以后新会话的默认",
+      "args": []
+    },
     "beSessionModel.switch.unsupported": {
       "kind": "error",
       "role": "报错",
@@ -1795,6 +1831,18 @@
       "kind": "body",
       "role": "片段",
       "zh": "换模型",
+      "args": []
+    },
+    "beSessionCommands.mark.needsArgs": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "带参数",
+      "args": []
+    },
+    "beSessionCommands.mark.confirm": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "先确认",
       "args": []
     },
     "beSessionCommands.scope.builtin": {
@@ -13960,6 +14008,12 @@
       "zh": "登录账号",
       "args": []
     },
+    "login.sheet.mcp": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "登录 MCP 服务器",
+      "args": []
+    },
     "login.act.open": {
       "kind": "action",
       "role": "按钮",
@@ -13988,6 +14042,12 @@
       "kind": "action",
       "role": "按钮",
       "zh": "重新开始",
+      "args": []
+    },
+    "login.sheet.auto": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "登录页完成后自动结束",
       "args": []
     },
     "login.paste.code": {
@@ -15442,10 +15502,70 @@
       "args": [],
       "limited": ["ccm"]
     },
+    "beCcm.print.from": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "来自",
+      "args": []
+    },
+    "beCcm.print.row": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "{item}  {value}  · {from}",
+      "args": ["item", "value", "from"]
+    },
+    "beCcm.from.flag": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "命令行",
+      "args": []
+    },
+    "beCcm.from.alias": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "别名 {name}",
+      "args": ["name"]
+    },
+    "beCcm.from.inherit": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "继承",
+      "args": []
+    },
+    "beCcm.from.default": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "默认",
+      "args": []
+    },
+    "beCcm.item.cwd": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "工作目录",
+      "args": []
+    },
+    "beCcm.item.parent": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "主会话",
+      "args": []
+    },
+    "beCcm.value.here": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "当前终端",
+      "args": []
+    },
+    "beCcm.value.noAccount": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不指定",
+      "args": []
+    },
     "beCcm.usage.body": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，无法识别就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（不知道账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是主目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条匹配的算；\n                     两边都可用 ~，链接解开再比；都不匹配才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是主目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令，另起几行注释写每一项来自哪里\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（已手动设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -19487,30 +19607,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "extPage.mcp.login": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "去登录",
-      "args": []
-    },
-    "extPage.mcp.loginHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "复制 {cmd} · 在该号的会话里粘贴、选中 {name} 登录",
-      "args": ["cmd", "name"]
-    },
-    "extPage.mcp.copied": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已复制 {cmd}",
-      "args": ["cmd"]
-    },
-    "extPage.mcp.copyFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "复制 {cmd} 失败",
-      "args": ["cmd"]
-    },
     "beExt.apply.changed": {
       "kind": "error",
       "role": "报错",
@@ -22877,6 +22973,24 @@
       "zh": "下一个需手动的会话",
       "args": []
     },
+    "needs.panel.empty": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无需手动事项",
+      "args": []
+    },
+    "needs.panel.offline": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} 离线 · 未计入",
+      "args": ["machine"]
+    },
+    "needs.panel.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} · 需手动清单无法读取",
+      "args": ["machine"]
+    },
     "tabBar.machineDown.body": {
       "kind": "body",
       "role": "说明",
@@ -23986,9 +24100,9 @@
       "zh": "另有终端窗口 ×{n} · 输入会混在一起",
       "args": ["n"]
     },
-    "terminal.input.placeholder": {
-      "kind": "control",
-      "role": "占位",
+    "terminal.input.keysHint": {
+      "kind": "body",
+      "role": "悬停",
       "zh": "回车送出 · Shift+回车换行 · Ctrl+回车仅送字",
       "args": [],
       "waive": {
@@ -25450,6 +25564,12 @@
       "zh": "重新登录…",
       "args": []
     },
+    "acctPage.menu.loginTerminal": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "在终端里登录…",
+      "args": []
+    },
     "acctPage.menu.copyCommands": {
       "kind": "action",
       "role": "菜单项",
@@ -25823,12 +25943,6 @@
       "kind": "body",
       "role": "toast",
       "zh": "已新建 {name} · {machine}",
-      "args": ["name", "machine"]
-    },
-    "acctPage.new.doneLogin": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已新建 {name} · {machine} · 登录窗口已开",
       "args": ["name", "machine"]
     },
     "acctPage.new.failed": {
@@ -27974,6 +28088,12 @@
       "zh": "无法写入剪贴板",
       "args": []
     },
+    "rsShellCmd.clipboard.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法读取剪贴板",
+      "args": []
+    },
     "rsShellCmd.autoLaunch.readNoDir": {
       "kind": "error",
       "role": "报错",
@@ -29150,10 +29270,10 @@
       "zh": "已是最早",
       "args": []
     },
-    "mobChat.input.placeholder": {
+    "chat.input.placeholder": {
       "kind": "control",
       "role": "占位",
-      "zh": "说点什么…",
+      "zh": "发消息…",
       "args": []
     },
     "mobChat.input.stop": {
@@ -29166,6 +29286,24 @@
       "kind": "action",
       "role": "按钮",
       "zh": "发送",
+      "args": []
+    },
+    "mobChat.more.rotation": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "轮换",
+      "args": []
+    },
+    "mobRot.top.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "轮换",
+      "args": []
+    },
+    "mobRot.cards.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "长按拖动改默认优先级",
       "args": []
     },
     "mobReading.bash.title": {
@@ -29359,10 +29497,22 @@
       "zh": "终端",
       "args": []
     },
+    "mobSettings.section.machine": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "机器与账号",
+      "args": []
+    },
+    "mobSettings.entry.rotation": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "轮换",
+      "args": []
+    },
     "mobKit.act.back": {
       "kind": "action",
       "role": "按钮",
-      "zh": "← 返回",
+      "zh": "返回",
       "args": []
     },
     "mobSsh.conn.unavailable": {
@@ -29423,12 +29573,6 @@
       "role": "报错",
       "zh": "认证失败",
       "args": []
-    },
-    "mobSsh.read.truncated": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "…（已截断，共 {n} 字节）",
-      "args": ["n"]
     },
     "mobSsh.log.waitOther": {
       "kind": "body",
@@ -29507,6 +29651,12 @@
       "zh": "删除",
       "args": []
     },
+    "mobButtons.add.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "添加按钮",
+      "args": []
+    },
     "mobTabs.overview.title": {
       "kind": "title",
       "role": "标题",
@@ -29522,26 +29672,32 @@
     "mobTabs.overview.new": {
       "kind": "action",
       "role": "按钮",
-      "zh": "+ 新会话",
+      "zh": "新会话",
       "args": []
     },
     "mobTabs.overview.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "无打开的会话\n点「+ 新会话」选主机连接",
+      "zh": "无打开的会话\n点「新会话」选主机连接",
       "args": [],
       "limited": ["连接"]
     },
-    "mobTabs.row.sftp": {
+    "mobTabs.row.files": {
       "kind": "body",
       "role": "片段",
-      "zh": "SFTP 文件",
+      "zh": "文件",
       "args": []
     },
     "mobTabs.row.close": {
       "kind": "action",
       "role": "按钮",
-      "zh": "× 关闭",
+      "zh": "关闭",
+      "args": []
+    },
+    "mobTabs.open.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "会话 tab",
       "args": []
     },
     "mobTabs.sheet.title": {
@@ -30304,7 +30460,7 @@
     "mobButtonSettings.group.back": {
       "kind": "action",
       "role": "按钮",
-      "zh": "← 组列表",
+      "zh": "返回组列表",
       "args": []
     },
     "mobButtonSettings.group.empty": {
@@ -30360,6 +30516,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "删",
+      "args": []
+    },
+    "mobButtonSettings.row.up": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "上移",
+      "args": []
+    },
+    "mobButtonSettings.row.down": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下移",
       "args": []
     },
     "mobButtonSettings.groupDelete.title": {
@@ -30469,6 +30637,12 @@
     "mobIdentity.add.title": {
       "kind": "title",
       "role": "确认框",
+      "zh": "添一把钥匙",
+      "args": []
+    },
+    "mobIdentity.fab.aria": {
+      "kind": "action",
+      "role": "按钮",
       "zh": "添一把钥匙",
       "args": []
     },
@@ -30592,6 +30766,12 @@
       "zh": "会话",
       "args": []
     },
+    "mobHosts.fab.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建主机",
+      "args": []
+    },
     "mobHosts.delete.body": {
       "kind": "body",
       "role": "确认框",
@@ -30615,6 +30795,12 @@
       "role": "按钮",
       "zh": "编辑",
       "args": []
+    },
+    "mobHosts.row.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "{label} · 更多",
+      "args": ["label"]
     },
     "mobHosts.row.files": {
       "kind": "action",
@@ -30775,109 +30961,13 @@
       "zh": "无 · 直连",
       "args": []
     },
-    "mobSftp.fab.upload": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上传",
-      "args": []
-    },
-    "mobSftp.load.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "SFTP 错误",
-      "args": []
-    },
-    "mobSftp.edit.tooBig": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "文件过大或非文本，不可编辑",
-      "args": []
-    },
-    "mobSftp.upload.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "上传失败 · {name}",
-      "args": ["name"]
-    },
-    "mobSftp.bar.mkdir": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新建目录",
-      "args": []
-    },
-    "mobSftp.bar.sortSize": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "排序 · 大小",
-      "args": []
-    },
-    "mobSftp.bar.sortName": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "排序 · 名称",
-      "args": []
-    },
-    "mobSftp.bar.terminal": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "终端",
-      "args": []
-    },
-    "mobSftp.bookmark.deleted": {
+    "mobFiles.bookmark.deleted": {
       "kind": "body",
       "role": "toast",
       "zh": "已删除书签「{label}」",
       "args": ["label"]
     },
-    "mobSftp.rename.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "重命名",
-      "args": []
-    },
-    "mobSftp.rename.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "重命名",
-      "args": []
-    },
-    "mobSftp.mkdir.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "新建目录",
-      "args": []
-    },
-    "mobSftp.mkdir.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "创建",
-      "args": []
-    },
-    "mobSftp.delete.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "删除",
-      "args": []
-    },
-    "mobSftp.delete.dirBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除目录 “{name}”（仅限空目录）",
-      "args": ["name"]
-    },
-    "mobSftp.delete.fileBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除文件 “{name}”",
-      "args": ["name"]
-    },
-    "mobSftp.delete.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "删除",
-      "args": []
-    },
-    "mobSftp.preview.empty": {
+    "mobFiles.preview.empty": {
       "kind": "body",
       "role": "空态",
       "zh": "（空文件）",
@@ -30886,125 +30976,71 @@
         "C-L4": "文件是空的时的占位，括号把它和真内容分开"
       }
     },
-    "mobSftp.edit.title": {
+    "mobFiles.edit.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "编辑 {name}",
       "args": ["name"]
     },
-    "mobSftp.edit.save": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "保存",
-      "args": []
-    },
-    "mobSftp.overwrite.title": {
+    "mobFiles.overwrite.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "覆盖远端文件",
       "args": []
     },
-    "mobSftp.overwrite.body": {
+    "mobFiles.overwrite.body": {
       "kind": "body",
       "role": "确认框",
       "zh": "将以 UTF-8 覆写 “{name}”（{chars} 字符 / {bytes} 字节）\n此操作不可撤销",
       "args": ["name", "chars", "bytes"]
     },
-    "mobSftp.overwrite.ok": {
+    "mobFiles.overwrite.ok": {
       "kind": "action",
       "role": "确认框",
       "zh": "确认覆盖",
       "args": []
     },
-    "mobSftp.overwrite.back": {
+    "mobFiles.overwrite.back": {
       "kind": "action",
       "role": "确认框",
       "zh": "返回编辑",
       "args": []
     },
-    "mobSftp.menu.preview": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "预览",
-      "args": []
-    },
-    "mobSftp.menu.edit": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "编辑",
-      "args": []
-    },
-    "mobSftp.menu.download": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "下载",
-      "args": []
-    },
-    "mobSftp.menu.rename": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重命名",
-      "args": []
-    },
-    "mobSftp.menu.delete": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "删除",
-      "args": []
-    },
-    "mobSftp.mkdir.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "新建目录失败",
-      "args": []
-    },
-    "mobSftp.rename.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "重命名失败",
-      "args": []
-    },
-    "mobSftp.delete.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "删除失败 · {name}",
-      "args": ["name"]
-    },
-    "mobSftp.download.done": {
+    "mobFiles.download.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已下载到 {path}",
       "args": ["path"]
     },
-    "mobSftp.download.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "下载失败",
-      "args": []
-    },
-    "mobSftp.upload.done": {
+    "mobFiles.upload.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已上传 {name}",
       "args": ["name"]
     },
-    "mobSftp.read.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "读取失败 · {path}",
-      "args": ["path"]
-    },
-    "mobSftp.save.done": {
+    "mobFiles.save.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已保存",
       "args": []
     },
-    "mobSftp.save.failed": {
+    "mobFiles.list.truncated": {
       "kind": "body",
-      "role": "toast",
-      "zh": "保存失败",
-      "args": []
+      "role": "说明",
+      "zh": "前 {n} / 共 {total} 项",
+      "args": ["n", "total"]
+    },
+    "mobFiles.local.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取所选文件失败 · {name}",
+      "args": ["name"]
+    },
+    "mobFiles.local.writeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "存到本机失败 · {path}",
+      "args": ["path"]
     },
     "mobConnect.jump.missing": {
       "kind": "error",

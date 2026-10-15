@@ -40,6 +40,8 @@ pub struct CliRenderRequest {
 
 impl CliRenderRequest {
     /// 填上不上线的那三格：启动命令 · 模型表照这台的偏好，默认启动器问适配层（认不出那一家 ⇒ 空，渲的时候照拒）。
+    ///
+    /// 〔继承表〕启动命令 · 模型那一格（照这台，不随主会话）。
     pub(crate) fn with_prefs(mut self, prefs: &crate::control::machine_prefs::Prefs) -> Self {
         self.default_launcher =
             crate::agents::launch_face_among(crate::agents::REGISTRY, &self.agent)
@@ -87,7 +89,7 @@ pub(crate) fn render_ccm_launch(
     req: &CliRenderRequest,
     account: &Settled,
 ) -> Result<String, String> {
-    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::platform::tmux::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();

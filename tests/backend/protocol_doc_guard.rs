@@ -31,6 +31,16 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     //    ⚠ 漏登它的后果逐字写在本名单头注里：那份文件里的 `--子命令` **全部不受
     //      IPC-PROTOCOL.md 对拍约束**，而对拍判据照常报绿。
     ("lib.rs", include_str!("../../src/backend/lib.rs")),
+    // const1：`lib.rs` 里那几个旗标的字面量（流模式显式词 · 子命令后面的选项词）住址挪了 —— 词进 `wire/cli_words.rs`，
+    //   答题 hook 那个子命令的词进 `agents/asks.rs`（写进 hook 设置的是适配层）。同 `lib.rs` 那一行：本判据自己算出来的。
+    (
+        "wire/cli_words.rs",
+        include_str!("../../src/backend/wire/cli_words.rs"),
+    ),
+    (
+        "agents/asks.rs",
+        include_str!("../../src/backend/agents/asks.rs"),
+    ),
     // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
     // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
@@ -119,9 +129,9 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 /// 只登记不接住 = 把一片扫描面静默挖空，那正是本文件头注里 D 审计一击即破的那一族。
 const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
     (
-        "control/ccm/argv.rs",
+        "ccm_line/argv.rs",
         "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
-         （由 `control::ccm::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
+         （由 `ccm_line::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
          它们是终端命令面、不是 wire 协议面。",
     ),
     // `ccm …` 调用行的渲染器（从 monitor 搬进后端）：它**写**那套终端旗标给用户的 shell 跑，不是后端分派的 argv。
@@ -172,6 +182,13 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
     ),
     (
         "control/cc_bus.rs",
+        "src/shared/cc-bus/scripts/cc-register",
+        &["--sid"],
+        "ccm 起会话的收尾登记上 cc-bus 时（`control/cc_bus.rs::REGISTER_SID`，`plan::render_container_tail` 用），这一发知道会话编号就带上它：\
+         登记那一格的第 5 列，敲门按它经后端说一句。是 cc-register 的命令面，不是后端的子命令。",
+    ),
+    (
+        "control/cc_bus.rs",
         "src/shared/cc-bus/scripts/cc-agents",
         &["--tsv"],
         "`bus-state` 转调 `cc-agents --tsv`（机器可读的派生台账）。是 cc-agents 的命令面，不是后端的子命令。",
@@ -210,11 +227,18 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
 ];
 
 /// 子进程认、而后端**刻意不发**的旗标 —— 每条带理由（②那一向的另一半）。
-pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[(
-    "src/shared/cc-bus/scripts/cc-spawn",
-    "--new",
-    "P4b 之后 cc-spawn **默认就是新建**，`--new` 是为兼容外面的老调用方保留的 no-op；后端没有理由发它。",
-)];
+pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[
+    (
+        "src/shared/cc-bus/scripts/cc-spawn",
+        "--new",
+        "P4b 之后 cc-spawn **默认就是新建**，`--new` 是为兼容外面的老调用方保留的 no-op；后端没有理由发它。",
+    ),
+    (
+        "src/shared/cc-bus/scripts/cc-spawn",
+        "--as",
+        "照一条别名起（交成 `ccm @<别名>`）是给终端里与 agent 自己用的；`bus-spawn` 的入参里没有别名这一格，后端不发它。",
+    ),
+];
 
 /// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
 /// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。
@@ -543,7 +567,7 @@ mod tests {
         // 🔴 **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
         //    剖分把那条判据搬去了 `tests/backend/control/ccm_tests.rs`，剖分器**按原语义
         //    重定向**了它的 `include_str!`，于是那一行今天逐字是
-        //    `include_str!("../../../src/backend/control/ccm/argv.rs")` ⇒ 整串针失配
+        //    `include_str!("../../../src/backend/ccm_line/argv.rs")` ⇒ 整串针失配
         //    （现打红：「接盘判据不再扫 `argv.rs` 了」）。
         //    ⇒ 针改成**只认路径的收尾文件名**：它认的是「有一处 include 读的是 argv.rs」，
         //      而不是「那条相对路径逐字长这样」。前者是事实，后者是位置。
@@ -581,8 +605,10 @@ mod tests {
         );
         for (f, why) in TERMINAL_SURFACE_FILES {
             assert!(
-                f.starts_with("control/ccm/") || *f == "control/launch_render/ccm_invocation.rs",
-                "`{f}` 不在 `control/ccm/` 下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
+                f.starts_with("ccm_line/")
+                    || f.starts_with("control/ccm/")
+                    || *f == "control/launch_render/ccm_invocation.rs",
+                "`{f}` 不在 ccm 那一族（`ccm_line/` · `control/ccm/`）下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
             );
             assert!(
                 why.len() > 40,

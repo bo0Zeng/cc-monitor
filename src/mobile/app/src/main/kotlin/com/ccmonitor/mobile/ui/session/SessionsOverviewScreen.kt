@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.BackButton
+import com.ccmonitor.mobile.core.ui.icon.IconTextButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import org.koin.compose.koinInject
 
 /**
@@ -49,15 +54,15 @@ fun SessionsOverviewScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onBack) { Text(copyText("mobKit.act.back")) }
-                Text(copyText("mobTabs.overview.title", "n" to sessions.size), style = MaterialTheme.typography.titleLarge)
+                BackButton(onBack)
+                Text(copyText("mobTabs.overview.title", "n" to sessions.size), style = MaterialTheme.typography.titleMedium)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // 关闭全部：多 tab 保活时的显式收口，断开所有连接，停掉前台服务耗电。
                 if (sessions.isNotEmpty()) {
-                    TextButton(onClick = { sessions.forEach { tabManager.close(it.key) } }) { Text(copyText("mobTabs.overview.closeAll")) }
+                    SecondaryButton(onClick = { sessions.forEach { tabManager.close(it.key) } }) { Text(copyText("mobTabs.overview.closeAll")) }
                 }
-                TextButton(onClick = onNewSession) { Text(copyText("mobTabs.overview.new")) }
+                IconTextButton(Ph.Plus, copyText("mobTabs.overview.new"), onClick = onNewSession)
             }
         }
         if (sessions.isEmpty()) {
@@ -68,28 +73,29 @@ fun SessionsOverviewScreen(
             LazyColumn(Modifier.fillMaxSize()) {
                 items(sessions, key = { it.key }) { s ->
                     val label = hosts.firstOrNull { it.id == s.hostId }?.label ?: s.hostId
-                    // 区分 tab 目标：终端 shell 还是 SFTP 文件浏览。
-                    val isSftp = s.target is SessionTabManager.TabTarget.Sftp
+                    // 区分 tab 目标：终端 shell 还是 文件浏览。
+                    val isFiles = s.target is SessionTabManager.TabTarget.Files
                     Row(
                         Modifier.fillMaxWidth().clickable { onOpen(s.key) }.padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        PhIcon(if (isFiles) Ph.FolderSimple else Ph.TerminalWindow, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(Modifier.weight(1f)) {
-                            Text("${if (isSftp) "📁" else "▷"}  $label", style = MaterialTheme.typography.titleMedium)
+                            Text(label, style = MaterialTheme.typography.bodyMedium)
                             // 终端 tab 副标题：有 label 先显 label，其次 tmux 会话名（attach tab 的名），都没有则显 cd。
                             val term = s.target as? SessionTabManager.TabTarget.Terminal
                             val tmuxName = term?.tmuxSession
                             val sub =
                                 when {
-                                    isSftp -> copyText("mobTabs.row.sftp")
+                                    isFiles -> copyText("mobTabs.row.files")
                                     s.label != null -> s.label + (tmuxName?.let { " · tmux: $it" } ?: "")
                                     tmuxName != null -> "tmux: $tmuxName"
                                     else -> term?.cd
                                 }
                             sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
-                        TextButton(onClick = { tabManager.close(s.key) }) { Text(copyText("mobTabs.row.close")) }
+                        PhIconButton(Ph.X, copyText("mobTabs.row.close"), onClick = { tabManager.close(s.key) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }

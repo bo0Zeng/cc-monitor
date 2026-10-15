@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use super::profile::{self, Book, Change, Profile, ProfileEdit};
 use super::{door, links, Door, Shell};
-use crate::control::ccm::argv::{self, flag, Origin};
+use crate::ccm_line::argv::{self, flag, Origin};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 表单那几格 · 标签
@@ -725,12 +725,7 @@ pub(crate) struct ProfilesBook {
 }
 
 /// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
-/// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。
-pub(crate) fn answer_read(d: &dyn Door, tz: &crate::Tz) -> Answer<ProfilesBook> {
-    read_with(d, crate::control::terminals::tmux_here(), tz)
-}
-
-/// [`answer_read`] 的本体：有没有 tmux 是参数（判据喂定值，不去探这台）。
+/// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。有没有 tmux 由宿主探好交进来（`faces::profiles_face`；判据喂定值）。
 pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Answer<ProfilesBook> {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
@@ -934,9 +929,18 @@ impl Resolved {
     }
 }
 
-/// `profiles-resolve` → [`Resolved`]（`lineShort` ＝ 「等于」那一格的短形，[`crate::control::ccm::plan::render_short`]）。`edit`：按表单那一刻算（未存）；
-/// `at`：假设在这个目录敲（缺省家目录）。
-pub(crate) fn answer_resolve(d: &dyn Door, req: &ProfilesResolveReq) -> Answer<Resolved> {
+/// 把合好的意图渲成「等于」那一行：`(意图, 家目录, 假设在哪敲)` → `(整行, 短形)`；渲不出 ⇒ 那一句。
+/// 起会话那一整套计划与渲染住控制面（`control::ccm::preview_resolved`），由宿主交进来（`faces::profiles_face`）。
+pub(crate) type RenderLine =
+    fn(argv::Parsed, &str, Option<&str>) -> Result<(String, String), String>;
+
+/// `profiles-resolve` → [`Resolved`]（`lineShort` ＝ 「等于」那一格的短形）。`edit`：按表单那一刻算（未存）；
+/// `at`：假设在这个目录敲（缺省家目录）。`render` 见 [`RenderLine`]。
+pub(crate) fn answer_resolve(
+    d: &dyn Door,
+    req: &ProfilesResolveReq,
+    render: RenderLine,
+) -> Answer<Resolved> {
     let name = req.name.as_str();
     let store = super::load(d).map_err(refused)?;
     let (book, problem_text) = match &req.edit {
@@ -959,14 +963,11 @@ pub(crate) fn answer_resolve(d: &dyn Door, req: &ProfilesResolveReq) -> Answer<R
     match profile::resolve(&book, target, &[]) {
         Ok(r) => {
             let rows = rows_of(&book, &r.chain, &r.origins);
-            let (line, line_short, line_error) = match crate::control::ccm::preview_resolved(
-                r.parsed,
-                &store.home,
-                req.at.as_deref(),
-            ) {
-                Ok((l, short)) => (Some(l), Some(short), None),
-                Err(e) => (None, None, Some(e)),
-            };
+            let (line, line_short, line_error) =
+                match render(r.parsed, &store.home, req.at.as_deref()) {
+                    Ok((l, short)) => (Some(l), Some(short), None),
+                    Err(e) => (None, None, Some(e)),
+                };
             Ok(Resolved {
                 chain: r.chain,
                 rows,
@@ -1489,7 +1490,7 @@ pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<Profi
 // 帧命令（typed）：经这台的文件管理面读写 ⇒ 阻塞档，带文件面
 // ═══════════════════════════════════════════════════════════════════════════
 
-use crate::wire::typed::{of_pair, Command, Cx, Files, NoArgs, WithFiles};
+use crate::wire::typed::{of_pair, Command, Cx, Files, WithFiles};
 
 crate::wire::typed::codes! {
     /// 配置文件那几条只读的码：读没成 · 表单写不成配置（那一句说清哪一样）。
@@ -1503,39 +1504,6 @@ crate::wire::typed::codes! {
     pub(crate) enum ProfilesWriteErr {
         Refused = "refused",
         Stale = "stale",
-    }
-}
-
-/// `profiles-read`：读回配置文件整份（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct ProfilesRead;
-
-impl Command for ProfilesRead {
-    const NAME: &'static str = "profiles-read";
-    const TAKES_INPUT: bool = false;
-    type Req = NoArgs;
-    type Reply = ProfilesBook;
-    type Err = ProfilesErr;
-}
-
-impl WithFiles for ProfilesRead {
-    fn run(_req: NoArgs, cx: &Cx, files: Files) -> Result<ProfilesBook, ProfilesErr> {
-        answer_read(files, &cx.tz).map_err(of_pair(ProfilesErr::Refused))
-    }
-}
-
-/// `profiles-resolve`：一段合下来的合并表与「等于」那一行（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
-pub(crate) struct ProfilesResolve;
-
-impl Command for ProfilesResolve {
-    const NAME: &'static str = "profiles-resolve";
-    type Req = ProfilesResolveReq;
-    type Reply = Resolved;
-    type Err = ProfilesErr;
-}
-
-impl WithFiles for ProfilesResolve {
-    fn run(req: ProfilesResolveReq, _cx: &Cx, files: Files) -> Result<Resolved, ProfilesErr> {
-        answer_resolve(files, &req).map_err(of_pair(ProfilesErr::Refused))
     }
 }
 

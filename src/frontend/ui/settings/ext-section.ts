@@ -14,7 +14,8 @@
  * - 要加钩子的那一个（自带的 cc-bus）：抽屉里每台一行钩子状态与要加的内容，问那台后端（`hooks-diag`，抽屉打开时问一次），
  *   界面不读那份配置文件、也不写它。
  * - MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行：问那一台自己的后端（`mcp-read`，每次读完表各台问一次），
- *   哪一种、那一句、悬停那一截、［去登录］复制的命令、原话都是它写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
+ *   哪一种、那一句、悬停那一截、原话都是它写好的；停用不画（按项目记的，一格一台说不清是哪个项目）。
+ *   需登录那一条的［登录…］：那台 `manual-list` 里同名同范围的那几项各一颗（解法 `fix` 是那台写好的 `login-start` 入参），开登录抽屉。
  * - 做完之后重读那张表（远端那台先让本机后端对它同步一趟），点自己变；不轮询。
  */
 import { copyText } from "../copy-table";
@@ -48,8 +49,9 @@ import {
   type McpRead,
 } from "../ext-reads";
 import { copyDetailButton, sayFailure } from "../kit/detail";
-import { writeClipboard } from "../clipboard";
-import { toast, failToast } from "../kit/toast";
+import { readManual, type ManualItem } from "../login-reads";
+import { openLoginDrawer } from "../login-drawer";
+import { accountAvatarEl } from "../account-color";
 
 type KindFilter = "all" | "skill" | "mcp";
 
@@ -233,6 +235,8 @@ export class ExtSection {
   /** 各台的 MCP 列表（按 `machineKey`；那台后端 `mcp-read` 答的，带写好的需登录 / 断开）· 那一串（一字不差 ⇒ 不重画）。 */
   private mcp = new Map<string, McpRead>();
   private mcpWire = new Map<string, string>();
+  /** 各台会话外的需手动里那几项 MCP 登录（按 `machineKey`；那台有需登录的 MCP 时才问 `manual-list`）。 */
+  private mcpFix = new Map<string, Extract<ManualItem, { kind: "mcpLogin" }>[]>();
   /** 备注正在改（那一段草稿；`null` = 没在改）· 写备注那一问没成时那一句。 */
   private noteDraft: string | null = null;
   private noteError: string | null = null;
@@ -325,6 +329,7 @@ export class ExtSection {
       if (!keep.has(k)) {
         this.mcp.delete(k);
         this.mcpWire.delete(k);
+        this.mcpFix.delete(k);
         changed = true;
       }
     }
@@ -338,15 +343,23 @@ export class ExtSection {
         } catch {
           got = null;
         }
+        // 有需登录的那一条 ⇒ 问那台它的解法（`manual-list`）；问不到 ⇒ 不画［登录…］（只说需登录那一句）。
+        let fix: Extract<ManualItem, { kind: "mcpLogin" }>[] = [];
+        if (got?.entries.some((e) => e.login !== null)) {
+          const man = await readManual(originOf(m));
+          if (man.t === "ok") fix = man.items.filter((i): i is Extract<ManualItem, { kind: "mcpLogin" }> => i.kind === "mcpLogin");
+        }
         if (this.list !== list) return;
-        const wire = got === null ? "" : JSON.stringify(got);
+        const wire = got === null ? "" : JSON.stringify([got, fix]);
         if ((this.mcpWire.get(key) ?? "") === wire) return;
         if (got === null) {
           this.mcp.delete(key);
           this.mcpWire.delete(key);
+          this.mcpFix.delete(key);
         } else {
           this.mcp.set(key, got);
           this.mcpWire.set(key, wire);
+          this.mcpFix.set(key, fix);
         }
         this.repaintMcp();
       }),
@@ -651,7 +664,7 @@ export class ExtSection {
     }
     line.appendChild(top);
     const mcp = this.mcpEntry(r, m);
-    if (mcp) this.mcpLines(line, r, mcp);
+    if (mcp) this.mcpLines(line, m, mcp);
     if (!bring && c.note) line.appendChild(el("div", "settings-hint", c.note));
     if (!only || only.note !== null || (r.kind === "skill" && only.dir !== null)) {
       const places = el("div", "ext-places");
@@ -669,17 +682,28 @@ export class ExtSection {
     return line;
   }
 
-  /** 抽屉里那台下面的 MCP 那一行（两种都没有 ⇒ 不画）：需登录那一句 ＋［去登录］；断开那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
-  private mcpLines(line: HTMLElement, r: ExtRow, e: McpEntry): void {
+  /** 抽屉里那台下面的 MCP 那一行（两种都没有 ⇒ 不画）：需登录那一句 ＋［登录…］（开登录抽屉）；断开那一句 ＋ 原话 ＋［复制详情］。字都是那台后端写好的。 */
+  private mcpLines(line: HTMLElement, m: ExtMachine, e: McpEntry): void {
     const login = e.login;
     if (login) {
       const box = el("div", "ext-mcp is-login");
       box.appendChild(el("div", "ext-mcp-said")).append(el("span", "ext-mcp-pip"), login.said);
+      // 那台清单里同名同范围的那几项：各一颗［登录…］（几个号都要登 ⇒ 前面带那个号的号牌）。没有解法的那一项写它的 `why`。
+      const items = (this.mcpFix.get(machineKey(m)) ?? []).filter((i) => i.server === e.name && i.scope === e.scope);
+      const origin = originOf(m);
       const acts = el("div", "ext-mcp-acts");
-      const go = button(copyText("extPage.mcp.login"), () => void this.copyLogin(login.copy));
-      go.dataset.action = "mcp-login";
-      acts.append(go, el("span", "settings-hint", copyText("extPage.mcp.loginHint", { cmd: login.copy, name: r.name })));
-      box.appendChild(acts);
+      for (const it of items) {
+        const fix = it.fix;
+        if (fix === null) {
+          acts.appendChild(el("span", "settings-hint", it.why ?? ""));
+          continue;
+        }
+        const go = button(copyText("newSession.account.login"), () => void openLoginDrawer({ origin, target: fix.args, onDone: () => this.loadNow() }));
+        go.dataset.action = "mcp-login";
+        if (items.length > 1 && it.account !== null) go.prepend(accountAvatarEl(it.account, { size: 14, origin }));
+        acts.appendChild(go);
+      }
+      if (acts.childElementCount > 0) box.appendChild(acts);
       line.appendChild(box);
     }
     const failed = e.failed;
@@ -693,17 +717,6 @@ export class ExtSection {
       }
       line.appendChild(box);
     }
-  }
-
-  /** ［去登录］：复制那条命令（不跳窗），toast 一句。 */
-  private async copyLogin(cmd: string): Promise<void> {
-    try {
-      await writeClipboard(cmd);
-    } catch (e) {
-      failToast(copyText("extPage.mcp.copyFailed", { cmd }), e, { level: "error" });
-      return;
-    }
-    toast(copyText("extPage.mcp.copied", { cmd }), "", { level: "success" });
   }
 
   /** 那台上的一处：在哪 · 态 · 「卸载」（有才给）· skill 有目录的 ⇒ 本机「在文件夹中显示」、远端「在文件窗口里打开」。 */

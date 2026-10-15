@@ -13,18 +13,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,7 +51,11 @@ import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 
 /** 输入那一圈要的几样动作（聊天屏往会话里做的事都经 [ChatSession]）。 */
 data class ChatInputActions(
@@ -62,7 +69,7 @@ data class ChatInputActions(
 )
 
 /**
- * 输入区（稿 `能用门槛` 第 4–6 节）：chip 上方那一行 · 输入框 · 下面一排［+］· 模型 · 权限档 ……… 发送 / 停止。
+ * 输入区：chip 上方那一行 · 输入框 · 下面一排［+］· 模型 · 权限档 ……… 发送 / 停止。
  * 新建会话（还没 sid）只有输入框与发送：草稿里的那几颗 chip 归新建会话那一屏。
  */
 @Composable
@@ -76,16 +83,26 @@ internal fun ChatInputArea(
     val open = state.sid != null
     val busy = state.model.pending != null || state.permission.pending != null
     val tokens = LocalAppTokens.current
-    Surface(tonalElevation = 2.dp) {
+    // 输入区是骨架（`--bg-2`），输入框底 `--field-bg`、边 `--border-medium`、聚焦 `--accent`；➤ / ■ 是这一屏唯一的主按钮。
+    Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             state.note?.let { NoteLine(it) }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.fillMaxWidth().testTag(ChatTestTags.INPUT),
-                placeholder = { Text(copyText("mobChat.input.placeholder")) },
+                placeholder = { Text(copyText("chat.input.placeholder"), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 singleLine = false,
                 maxLines = INPUT_MAX_LINES,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                shape = RoundedCornerShape(tokens.radius.l),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = tokens.fieldBg,
+                        unfocusedContainerColor = tokens.fieldBg,
+                        focusedBorderColor = tokens.accent,
+                        cursorColor = tokens.accent,
+                    ),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -94,13 +111,13 @@ internal fun ChatInputArea(
             ) {
                 if (open) {
                     val plus = copyText("mobPlus.sheet.title")
-                    TextButton(
+                    SecondaryButton(
                         onClick = {
                             actions.loadCommands()
                             sheet = InputSheet.Plus
                         },
                         modifier = Modifier.semantics { contentDescription = plus }.testTag(ChatTestTags.PLUS),
-                    ) { Text(PLUS_GLYPH, style = MaterialTheme.typography.titleLarge) }
+                    ) { PhIcon(Ph.Plus, contentDescription = null) }
                     SwitchChipView(state.model, copyText("session.model.title"), enabled = !busy, tag = ChatTestTags.MODEL_CHIP) {
                         actions.loadPicks()
                         sheet = InputSheet.Models
@@ -207,7 +224,7 @@ private fun SwitchChipView(
             } else {
                 null
             },
-        trailingIcon = { Text(CARET_GLYPH) },
+        trailingIcon = { PhIcon(Ph.CaretDown, contentDescription = null, size = Touch.iconInline) },
     )
 }
 
@@ -226,16 +243,42 @@ private fun SendOrStop(
 ) {
     // 运行中且框里没字 ⇒ 停止；二选一，不并存。输入框永远不锁。
     if (running && draft.isBlank()) {
-        TextButton(onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text(copyText("mobChat.input.stop")) }
+        SendButton(Ph.Stop, copyText("mobChat.input.stop"), enabled = true, onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP))
     } else {
-        Button(
+        SendButton(
+            Ph.PaperPlaneRight,
+            copyText("mobChat.input.send"),
+            enabled = draft.isNotBlank(),
             onClick = {
                 actions.send(draft)
                 clear()
             },
-            enabled = draft.isNotBlank(),
             modifier = Modifier.testTag(ChatTestTags.SEND),
-        ) { Text(copyText("mobChat.input.send")) }
+        )
+    }
+}
+
+/** 发送 / 停止：主按钮（`--accent-strong` 底 ＋ 白图标），命中区 48 dp；没字时灰掉（0.45）。无障碍名照文案表。 */
+@Composable
+private fun SendButton(
+    icon: Ph,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FilledIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.size(Touch.target).semantics { contentDescription = label },
+        shape = RoundedCornerShape(LocalAppTokens.current.radius.m),
+        colors =
+            IconButtonDefaults.filledIconButtonColors(
+                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = LocalAppTokens.current.disabledAlpha),
+                disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = LocalAppTokens.current.disabledAlpha),
+            ),
+    ) {
+        PhIcon(icon, contentDescription = null)
     }
 }
 
@@ -308,8 +351,8 @@ private fun PlusRows(
     say: (String) -> Unit,
     confirmClear: (String) -> Unit,
 ) {
-    SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}  $NEXT_GLYPH", enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
-    SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}  $NEXT_GLYPH", enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
+    SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}", next = true, enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
+    SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}", next = true, enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
     val acts = plusActions(list)
     if (acts.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = LocalAppTokens.current.spacing.xs))
     acts.forEach { a ->
@@ -328,7 +371,7 @@ private fun CommandList(
 ) {
     val skills = at == InputSheet.Skills
     Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = back) { Text(copyText("mobKit.act.back")) }
+        SecondaryButton(onClick = back) { Text(copyText("mobKit.act.back")) }
         Text(
             if (skills) copyText("mobPlus.row.skills") else copyText("mobPlus.row.commands"),
             style = MaterialTheme.typography.titleMedium,
@@ -387,7 +430,7 @@ private fun ClearDialog(
         modifier = Modifier.testTag(ChatTestTags.CLEAR_DIALOG),
         title = { Text(copyText("session.clear.title")) },
         text = { Text(copyText("session.clear.body")) },
-        dismissButton = { TextButton(onClick = onCancel, modifier = Modifier.focusRequester(cancel)) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onCancel, modifier = Modifier.focusRequester(cancel)) { Text(copyText("kit.dialog.cancel")) } },
         confirmButton = { Button(onClick = onClear, modifier = Modifier.testTag(ChatTestTags.CLEAR_OK)) { Text(copyText("session.clear.ok")) } },
     )
     LaunchedEffect(Unit) { runCatching { cancel.requestFocus() } }
@@ -423,6 +466,8 @@ private fun SheetRow(
     text: String,
     sub: String? = null,
     end: String? = null,
+    /** 点了进下一层 ⇒ 行尾画一颗 caret。 */
+    next: Boolean = false,
     enabled: Boolean = true,
     tag: String? = null,
     onClick: () -> Unit,
@@ -443,15 +488,13 @@ private fun SheetRow(
             sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
         end?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (next) PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 private const val INPUT_MAX_LINES = 4
 private const val LIST_MAX_HEIGHT = 480
 private const val SLASH = "/"
-private const val PLUS_GLYPH = "+"
-private const val CARET_GLYPH = "▾"
-private const val NEXT_GLYPH = "›"
 private const val CHECK_GLYPH = "✓"
 
 /** 那一家内置的压缩 · 清空两条命令名（见 [plusActions] 的缺口注）。 */

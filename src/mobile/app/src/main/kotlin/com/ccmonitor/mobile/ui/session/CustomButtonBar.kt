@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,8 +32,11 @@ import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
 import com.ccmonitor.mobile.core.data.db.CustomButtonType
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
-import com.ccmonitor.mobile.core.ui.theme.monoBody
+import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -69,7 +71,7 @@ fun CustomButtonBar(
     Row(
         modifier
             .fillMaxWidth()
-            .background(tokens.surfaceHigh)
+            .background(tokens.bg2)
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
@@ -77,7 +79,7 @@ fun CustomButtonBar(
         buttons.forEach { b ->
             Chip(
                 label = b.label,
-                bg = tokens.accentSoft,
+                bg = tokens.card,
                 onClick = { dispatch(b) }, // 按 type 派发（命令/按键码/转义/内建）
                 onLongClick = { deleteTarget = b },
                 // 工具条内建动作（▤ tab/命令/tmux 等 builtin）用 TextButton 式扁平样式；
@@ -85,7 +87,7 @@ fun CustomButtonBar(
                 flat = CustomButtonType.fromDb(b.type) == CustomButtonType.BUILTIN,
             )
         }
-        Chip(label = "＋", bg = tokens.surfaceRaised, onClick = { showAdd = true })
+        AddChip(onClick = { showAdd = true })
     }
 
     if (showAdd) {
@@ -109,12 +111,12 @@ fun CustomButtonBar(
             title = { Text(copyText("mobButtons.delete.title")) },
             text = { Text(copyText("mobButtons.delete.body", "label" to target.label)) },
             confirmButton = {
-                TextButton(onClick = {
+                SecondaryButton(onClick = {
                     scope.launch { dao.delete(target) }
                     deleteTarget = null
                 }) { Text(copyText("mobButtons.delete.ok")) }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(copyText("kit.dialog.cancel")) } },
+            dismissButton = { SecondaryButton(onClick = { deleteTarget = null }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
 }
@@ -126,18 +128,25 @@ private fun Chip(
     bg: Color,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    flat: Boolean = false, // 扁平变体：透明底加主色字，即工具条内建动作的 TextButton 样式
+    flat: Boolean = false, // 扁平变体：透明底 ＋ `--text-2` 字，即工具条内建动作的次按钮样式
 ) {
+    val tokens = LocalAppTokens.current
     Box(
         modifier =
             Modifier
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(tokens.radius.m))
                 .background(if (flat) Color.Transparent else bg)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .defaultMinSize(minWidth = 44.dp, minHeight = 36.dp)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = monoBody, color = if (flat) MaterialTheme.colorScheme.primary else Color.Unspecified)
+        KeyCapLabel(label, style = monoSmall, color = if (flat) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
     }
+}
+
+/** 按钮条末尾的「加一个」：plus 图标，无障碍名照文案表。 */
+@Composable
+private fun AddChip(onClick: () -> Unit) {
+    PhIconButton(Ph.Plus, copyText("mobButtons.add.aria"), onClick = onClick, tint = MaterialTheme.colorScheme.onSurfaceVariant)
 }

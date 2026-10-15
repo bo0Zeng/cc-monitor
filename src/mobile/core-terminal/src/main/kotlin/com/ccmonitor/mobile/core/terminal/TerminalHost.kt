@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.sp
 import org.connectbot.terminal.SelectionController
 import org.connectbot.terminal.Terminal
 import org.connectbot.terminal.TerminalEmulator
-import org.connectbot.terminal.TerminalEmulatorFactory
 
 /*
  * core-terminal：termlib 的薄封装。termlib 的配置/构造只在这个模块（:app 不直接 new/配置 termlib）；
@@ -22,34 +21,6 @@ import org.connectbot.terminal.TerminalEmulatorFactory
 fun TerminalPalette.toAnsiIntArray(): IntArray = IntArray(16) { ansi[it].toArgb() }
 
 /**
- * 创建并记住一个按 [palette] 配色的 TerminalEmulator。
- * onKeyboardInput：用户键入产生的字节（真实场景写到 SSH channel）。
- */
-@Composable
-fun rememberTerminalEmulator(
-    rows: Int = 24,
-    cols: Int = 80,
-    palette: TerminalPalette = OneHalfDarkPalette,
-    onKeyboardInput: (ByteArray) -> Unit = {},
-): TerminalEmulator =
-    remember(palette) {
-        TerminalEmulatorFactory
-            .create(
-                initialRows = rows,
-                initialCols = cols,
-                defaultForeground = palette.foreground,
-                defaultBackground = palette.background,
-                onKeyboardInput = onKeyboardInput,
-            ).apply {
-                applyColorScheme(
-                    ansiColors = palette.toAnsiIntArray(),
-                    defaultForeground = palette.foreground.toArgb(),
-                    defaultBackground = palette.background.toArgb(),
-                )
-            }
-    }
-
-/**
  * 包 termlib [Terminal]，套用 [palette] 的前/背景色。等宽用系统 MONOSPACE。
  * 字号经 termlib 内建 pinch 缩放（[initialFontSize]/[minFontSize]/[maxFontSize]）。
  * pinch 结束会把缩放折算进真实字号并经 [onFontSizeChanged] 上报，:app 持久化后回喂 [initialFontSize]。
@@ -58,7 +29,7 @@ fun rememberTerminalEmulator(
 fun CcMonitorTerminal(
     emulator: TerminalEmulator,
     modifier: Modifier = Modifier,
-    palette: TerminalPalette = OneHalfDarkPalette,
+    palette: TerminalPalette,
     keyboardEnabled: Boolean = false,
     showSoftKeyboard: Boolean = true,
     initialFontSize: TextUnit = 13.sp,

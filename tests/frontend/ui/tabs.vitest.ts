@@ -5139,6 +5139,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     retries: [],
     permissionMode: null,
     permissionModeText: null,
+    modelText: null,
     tokens: null,
     cost: null,
     bgTasks: [],
@@ -6621,7 +6622,7 @@ describe("ui3 · 组成块：落点反馈看块、窄栏悬停带组名", () => 
   });
 
   it("块的样子：`--group-fill` 是 3% 白；组是淡底 ＋ 细边 ＋ 圆角 8，组员不缩进、没有引导线", () => {
-    const tokens = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/tokens.css"), "utf8");
+    const tokens = readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8");
     expect(tokens).toMatch(/--group-fill:\s*#ffffff08;/);
     const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles.css"), "utf8");
     const rule = (sel: string): string => {
@@ -6660,6 +6661,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     retries: [],
     permissionMode: null,
     permissionModeText: null,
+    modelText: null,
     tokens: null,
     cost: null,
     bgTasks: [],

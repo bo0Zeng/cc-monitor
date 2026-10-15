@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.drawer
 
+import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
 import com.ccmonitor.mobile.ui.nav.Screen
@@ -32,7 +33,7 @@ class DrawerTest {
             entries.map { it.item },
         )
         assertEquals(listOf("新对话", "对话", "文件", "终端"), entries.map { it.label })
-        assertEquals("只有第一项「新对话」是强调色", listOf(true, false, false, false), entries.map { it.accent })
+        assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
         assertEquals("顶上的名字", "cc-monitor", DRAWER_TITLE)
         assertEquals("「最近」小标题", "最近", RECENT_HEADER)
         assertEquals("底行", "服务器 · devbox", serverRowLabel("devbox"))
@@ -85,7 +86,7 @@ class DrawerTest {
     fun theChatScreenOpensTheDrawerAndTheNavLayerFollowsIt() {
         val route = codeOnly(source("ChatRoute.kt"))
         assertTrue("聊天屏要包在抽屉里", route.contains("ChatDrawer("))
-        assertTrue("顶栏左上是 ☰", route.contains("Text(DRAWER_OPEN_GLYPH"))
+        assertTrue("顶栏左上是 list 图标", route.contains("Ph.List"))
         val drawer = codeOnly(source("AppDrawer.kt"))
         assertTrue("抽屉画的是那份数据", drawer.contains("drawerEntries()"))
         assertTrue("从左边缘右滑也能拉出", drawer.contains("gesturesEnabled = true"))
@@ -140,7 +141,8 @@ class DrawerTest {
     @Test
     fun theEntrancesTheDrawerReplacedAreGone() {
         val route = codeOnly(source("ChatRoute.kt"))
-        assertFalse("聊天屏 ⋮ 菜单没有项了 ⇒ 不画", route.contains("DropdownMenu"))
+        assertEquals("聊天屏 ⋯ 菜单只放对这条对话本身做的事（今天只有轮换）", 1, Regex("DropdownMenuItem\\(").findAll(route).count())
+        assertTrue(route.contains("copyText(\"mobChat.more.rotation\")"))
         for (gone in listOf("onOpenConversations", "onNewConversation", "onSwitchHost", "onOpenSettings")) {
             assertFalse("聊天屏不再有 $gone 这个入口", route.contains(gone))
         }

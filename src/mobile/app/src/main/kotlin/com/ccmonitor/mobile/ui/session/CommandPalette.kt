@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
 /**
@@ -44,11 +45,6 @@ data class PaletteAction(
      */
     val run: (() -> Unit)?,
 )
-
-/**
- * [PaletteRow] 的高度下界 ＝ Material3 的最小触控目标。
- */
-val PALETTE_ROW_MIN_HEIGHT = 48.dp
 
 /**
  * 列表区至多占屏高的比例。用比例而不是绝对 dp，高屏上列表才能用满下半屏。
@@ -135,7 +131,7 @@ fun CommandPalette(
                         Text(
                             group,
                             style = monoSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                         )
                         items.forEach { a ->
@@ -161,8 +157,8 @@ private fun PaletteRow(
             .fillMaxWidth()
             // 只读条目呈现但不可点（见 [PaletteAction.run]）
             .clickable(enabled = action.run != null, onClick = onPick)
-            // padding 撑不出触控下界（字号一小行就矮），下界显式写成 [PALETTE_ROW_MIN_HEIGHT]。
-            .heightIn(min = PALETTE_ROW_MIN_HEIGHT)
+            // padding 撑不出触控下界（字号一小行就矮），下界取适配层的单行高。
+            .heightIn(min = Touch.rowSingle)
             .padding(vertical = 10.dp),
     ) {
         Text(

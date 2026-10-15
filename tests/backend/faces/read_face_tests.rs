@@ -1979,7 +1979,7 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
         v
     };
     let elsewhere = facts_with(&[], false);
-    let hooked = facts_with(&[crate::ANSWER_HOOK_FLAG, "claude"], false);
+    let hooked = facts_with(&[crate::agents::asks::ANSWER_HOOK_FLAG, "claude"], false);
     let noted = facts_with(&[], true);
     let _ = std::fs::remove_dir_all(&home);
     let said = copy_core::copy_text("beAsk.manual.offElsewhere", &[]);
@@ -2263,5 +2263,43 @@ fn history_facts_refuses_what_its_request_type_does_not_have() {
             "{args} ⇒ {got:?}"
         );
     }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// `history-facts` 的 `modelText`：最后一条带用量的回复写的模型原值，由那一家的模型那一处写成字（同 `permissionModeText` 那一形）；
+/// 认不出那个值 ⇒ `null`。
+#[test]
+fn facts_name_the_model_of_the_last_reply() {
+    let home = scratch("model-text");
+    let dir = home.join("projects").join("-m");
+    std::fs::create_dir_all(&dir).unwrap();
+    let facts_of = |name: &str, model: &str| {
+        let p = dir.join(format!("{name}.jsonl"));
+        let body = [
+            r#"{"type":"user","uuid":"m-1","cwd":"/m","message":{"content":"q"}}"#.to_string(),
+            format!(
+                r#"{{"type":"assistant","uuid":"m-2","parentUuid":"m-1","message":{{"model":"{model}","usage":{{"input_tokens":1}},"content":[{{"type":"text","text":"a"}}]}}}}"#
+            ),
+        ]
+        .map(|r| format!("{r}\n"))
+        .concat();
+        std::fs::write(&p, body).unwrap();
+        answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({"path": p.to_string_lossy()}),
+            &Default::default(),
+        )
+        .unwrap()
+    };
+    let named = facts_of("a", "claude-opus-4-5-20251101");
+    assert_eq!(named["agent"], "claude", "{named}");
+    assert_eq!(
+        named["modelText"],
+        serde_json::json!(crate::agents::model_text("claude", "claude-opus-4-5-20251101").unwrap()),
+        "{named}"
+    );
+    let odd = facts_of("b", "m-odd");
+    assert_eq!(odd["modelText"], serde_json::Value::Null, "{odd}");
     let _ = std::fs::remove_dir_all(&home);
 }

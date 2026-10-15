@@ -29,6 +29,7 @@ import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.dialectFor
 import com.ccmonitor.mobile.ssh.initialCommands
 import com.ccmonitor.mobile.ssh.resolveTmuxSession
+import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -148,7 +149,7 @@ class SessionViewModel(
     val executor: RemoteExecutor = manager.commandExecutor(hostId)
 
     /**
-     * 只取本主机的会话状态（distinctUntilChanged，别的会话或 SFTP 变动不触发整屏重组）。
+     * 只取本主机的会话状态（distinctUntilChanged，别的会话或文件屏变动不触发整屏重组）。
      * 初值取构造时的真实快照：新 tab 为 null（终端屏对 null 不显示断线条幅）；复用已连主机的 tab 为 CONNECTED；
      * 构造时已 ERROR 则条幅立刻显示。写死 CONNECTING 会让每次 Connected 首帧误闪「连接已断开」。
      */
@@ -363,6 +364,7 @@ class SessionViewModel(
             onResizeRemote = { cols, rows -> shell.resize(cols, rows) },
             rows = 24,
             cols = 80,
+            palette = AppTerminalPalette,
             remoteChannel = shell,
         )
 

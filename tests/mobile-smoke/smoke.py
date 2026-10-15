@@ -5,6 +5,7 @@
 # 每一步只看手机屏上与台架记录里看得到的东西（不读 App 内部）；判不出的写「看不出」，不当过。
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -220,19 +221,65 @@ def tap_in_row(label, button):
 
 
 def open_import():
-    """钥匙页点「+」开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
+    """钥匙页点悬浮的「+」（按无障碍名找）开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
     for _ in range(3):
-        tap("+")
+        tap(t("mobIdentity.fab.aria"))
         if wait(t("mobIdentity.add.import"), 4):
             break
     tap(t("mobIdentity.add.import"))
     time.sleep(1)
 
 
+
+def type_key(key):
+    """把整把私钥敲进「粘贴那段私钥」那一格，敲完读回框里的字逐字核：输入法偶尔把一行 base64 换成词（实测过），
+    对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
+    want = "\n".join(key)
+    # 先把屏上键盘停掉：没有输入法时 `input text` 的按键直接进框，联想 · 纠错插不进来（停不掉也照敲，读回照核）。
+    #   调用方先 [stop_ime]，点完「搬进来」再 [restore_ime]：中途放回来它会再弹出来，收它的那一下返回键可能把框一起关掉。
+    _type_key(key, want)
+
+
+_IME = ""
+
+
+def stop_ime():
+    """停掉屏上键盘（钥匙那一框用）：按键直接进框，也不再有键盘盖住框里的按钮。"""
+    global _IME
+    _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
+    if _IME and _IME != "null":
+        adb("shell", "ime", "disable", _IME)
+
+
+def restore_ime():
+    """[type_key] 停掉的屏上键盘放回来。"""
+    if _IME and _IME != "null":
+        adb("shell", "ime", "enable", _IME)
+        adb("shell", "ime", "set", _IME)
+
+
+def _type_key(key, want):
+    for _ in range(3):
+        for line in key:
+            typed(line)
+            adb("shell", "input", "keyevent", "66")
+        end = time.time() + 20
+        got = ""
+        while time.time() < end:
+            got = next((n.get("text") for n in ui.nodes() if "END OPENSSH" in (n.get("text") or "")), "") or ""
+            if got.strip() == want.strip():
+                return
+            time.sleep(1)
+        adb("shell", "input", "keycombination", "113", "29")
+        adb("shell", "input", "keyevent", "67")
+        time.sleep(1)
+    bad = next((f"第 {i + 1} 行 {g!r}" for i, (w, g) in enumerate(zip(want.split("\n"), got.split("\n"))) if w != g), "行数不一样")
+    raise Step.Fail(f"钥匙敲不进框里（三回都与原文不一致：{bad[:160]}）")
+
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
-    tap("+")
+    tap(t("mobHosts.fab.aria"))
     time.sleep(1.5)
     tap(t("mobHostEdit.field.name")); typed(name)
     tap(t("mobHostEdit.field.host")); typed(host_alias())
@@ -310,6 +357,140 @@ def switch_model(name):
         raise Step.Fail(f"没看到那台写好的那一句「{said}」")
 
 
+def long_press(text):
+    n = ui.find(text)
+    if n is None:
+        raise Step.Fail(f"屏上找不到「{text}」")
+    x, y = ui.center(n)
+    adb("shell", "input", "swipe", str(x), str(y), str(x), str(y), "900")
+    time.sleep(1.5)
+
+
+def tap_last(text):
+    """同一个字有几处（对话框标题与确认键同字）时点最后一处：确认键在最下。"""
+    hits = [n for n in ui.nodes() if text == n.get("text")]
+    if not hits:
+        raise Step.Fail(f"屏上找不到「{text}」")
+    adb("shell", "input", "tap", *map(str, ui.center(hits[-1])))
+
+
+def files_page():
+    """文件页那几步：列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 上传 · 下载；读写都问那台后端（台架盘上看结果）。"""
+    d = f"files{T}"
+    # 上几趟留下的先清掉（台架家里的），这一趟那一份要在第一屏里。
+    sh(f"rm -rf ~/work/files* && mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
+    drawer(t("mobDrawer.item.files"))
+    if not wait("work", 30):
+        raise Step.Fail("家目录没列出来")
+    tap("work")
+    if not wait(d, 15):
+        raise Step.Fail("进不了 work")
+    tap(d)
+    if not wait("a.txt", 15):
+        raise Step.Fail(f"进不了 {d}")
+    long_press("a.txt")
+    tap(t("rsFilewinWorkspace.label.preview"))
+    if not wait(f"hello {T}", 15):
+        raise Step.Fail("预览没出那一份的字")
+    shot("11-预览")
+    tap(t("mobKit.act.close")); time.sleep(1)
+    mk = t("rsFilewinWriteops.label.mkdir")
+    tap(mk); time.sleep(1)
+    typed(f"new{T}"); hide_keyboard()
+    tap_last(mk)
+    if not wait(f"new{T}", 15) or "new" + T not in sh(f"ls ~/work/{d}"):
+        raise Step.Fail("新建目录没落到那台")
+    long_press(f"new{T}")
+    rn = t("rsFilewinWriteops.label.rename")
+    tap(rn); time.sleep(1)
+    for _ in range(12):
+        adb("shell", "input", "keyevent", "67")
+    typed(f"ren{T}"); hide_keyboard()
+    tap_last(rn)
+    if not wait(f"ren{T}", 15) or "ren" + T not in sh(f"ls ~/work/{d}"):
+        raise Step.Fail("改名没落到那台")
+    long_press(f"ren{T}")
+    de = t("rsFilewinWriteops.label.delete")
+    tap(de); time.sleep(1)
+    tap_last(de)
+    time.sleep(3)
+    if "ren" + T in sh(f"ls ~/work/{d}"):
+        raise Step.Fail("删除没落到那台")
+    # 下载：点文件 ⇒ 存进 App 自己的外部文件目录。
+    tap("a.txt")
+    if not wait(t("mobFiles.download.done", path="")[:3], 20):
+        raise Step.Fail("下载没说做成")
+    got = adb("shell", "cat", f"/sdcard/Android/data/{PKG}/files/a.txt")
+    if f"hello {T}" not in got:
+        raise Step.Fail(f"下载下来的不是那一份：{got[:80]!r}")
+    # 上传：系统选文件那一屏里点台架推进去的那一份。
+    up = f"up{T}.txt"
+    open(os.path.join(OUT, up), "w").write(f"up {T}\n")
+    adb("push", os.path.join(OUT, up), f"/sdcard/Download/{up}")
+    adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", f"file:///sdcard/Download/{up}")
+    time.sleep(2)
+    # 下载那条提示在的时候按钮让开（可能整个被盖住），等它收起再点。
+    if not wait(t("rsFilewinUpload.label.upload"), 15):
+        raise Step.Fail("找不到上传按钮")
+    tap(t("rsFilewinUpload.label.upload"))
+    if not wait(up, 15):
+        tap("Downloads", must=False) or tap("Download", must=False)
+        if not wait(up, 10):
+            raise Step.Fail("选文件那一屏里找不到推进去的那一份")
+    tap(up)
+    end = time.time() + 30
+    while time.time() < end and f"up {T}" not in sh(f"cat ~/work/{d}/{up} 2>/dev/null; true"):
+        time.sleep(1)
+    if time.time() >= end:
+        raise Step.Fail("上传没落到那台")
+    if not wait(up, 10):
+        raise Step.Fail("上传完列表里没有它")
+
+
+# 轮换屏那一步用的两份策略（合成的：照号牌顺序用；一格「权重容差」）。写进台架家里的策略目录（不是真家目录）。
+SMOKE_STRATEGY = """// 照号牌顺序用（冒烟台架）。
+/*--- rotation
+{
+  "format": 5,
+  "tz": "UTC",
+  "settings": { "accounts": [{ "id": "work" }, { "id": "team" }, { "id": "lab" }], "close": 25 },
+  "form": [
+    { "key": "close", "kind": "percent", "scope": "all", "min": 0, "max": 100, "default": 25,
+      "label": { "zh": "权重容差" }, "help": { "zh": "冒烟台架的一格" } }
+  ]
+}
+---*/
+fn decide(ctx) {
+  let order = [];
+  let why = #{};
+  for r in ctx.settings.accounts { order.push(r.id); why[r.id] = "照号牌顺序"; }
+  #{ order: order, why: why, hold_until: (), wake: #{ at: (), when: [] }, memo: () }
+}
+"""
+
+
+def frames(cmd, args, within=20000):
+    out = subprocess.run([sys.executable, os.path.join(here, "frames.py"), cmd, json.dumps(args), str(within)],
+                         capture_output=True, text=True).stdout
+    return json.loads(out or "{}")
+
+
+def seed_rotation():
+    """台架里的账号库（work · team · lab）与两份策略；跨趟留着，再跑一遍不出错就行。"""
+    frames("accounts-init", {"name": "work"})
+    for n in ("team", "lab"):
+        frames("accounts-add", {"name": n, "kind": "subscription"})
+    import base64
+    b = base64.b64encode(SMOKE_STRATEGY.encode()).decode()
+    sh(f"mkdir -p ~/.cc-monitor/strategies && for n in smoke-a smoke-b; do echo {b} | base64 -d > ~/.cc-monitor/strategies/$n.rhai; done")
+
+
+def lane_head(text):
+    """时间轴里号名那一列的 [text]（同名的号牌在上面，取最靠下、靠左的那一个）。"""
+    ns = [n for n in ui.nodes() if n.get("text") == text and ui.center(n)[0] < 300]
+    return max(ns, key=lambda n: ui.center(n)[1], default=None)
+
+
 def main():
     tidy_tmux(walk)
 
@@ -322,9 +503,32 @@ def walk():
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
 
+    only = os.environ.get("CCM_SMOKE_ONLY")
+    if only == "files":
+        # 只走文件页（台架里已有 smokebox、钥匙已导；调样子 · 截图用）。
+        with Step("1-加机器连上"):
+            launch(fresh=True)
+            tap(t("mobIdentity.page.title")); time.sleep(1)
+            open_import()
+            tap(t("mobIdentity.import.name")); typed("smoke")
+            tap(t("mobIdentity.import.pem")); time.sleep(0.5)
+            for line in key:
+                typed(line)
+                adb("shell", "input", "keyevent", "66")
+            hide_keyboard(); tap(t("mobIdentity.import.ok"))
+            if not wait("SHA256:", 10):
+                raise Step.Fail("整把钥匙没导进来")
+            tap(t("mobKit.act.back")); time.sleep(1)
+            add_host("smokebox")
+            drawer(t("mobDrawer.item.chats"))
+        with Step("11-文件页"):
+            files_page()
+        return report()
+
     with Step("1-加机器连上"):
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
+        stop_ime()
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
@@ -335,16 +539,18 @@ def walk():
         # 拒的那一句是条长提示（带「复制详情」）：它在的时候「+」要让开、不被盖住，接着点得到。
         if not wait(t("detail.act.copy"), 5):
             raise Step.Fail("拒了却没出那条提示")
-        if fab_under_notice("+", t("detail.act.copy")):
+        if fab_under_notice(t("mobIdentity.fab.aria"), t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
-        for line in key:
-            typed(line)
-            adb("shell", "input", "keyevent", "66")
+        # `input text` 敲进去是异步的、输入法还可能改字：type_key 读回框里的字逐字核过才往下走。
+        type_key(key)
         tap(t("mobIdentity.import.ok"))
-        if not wait("SHA256:", 10):
+        # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
+        ok = wait("SHA256:", 40)
+        restore_ime()
+        if not ok:
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
         add_host("smokebox")
@@ -388,7 +594,7 @@ def walk():
         tap(t("mobNewSession.dir.pick"))
         if not wait(f"~/work/{T}dir", 10):
             raise Step.Fail("选了目录，chip 没换成它")
-        tap(t("mobChat.input.placeholder")); typed(f"{T} new session")
+        tap(t("chat.input.placeholder")); typed(f"{T} new session")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} new session", 40):
@@ -397,7 +603,7 @@ def walk():
             raise Step.Fail("那条会话没起在选的目录里")
 
     with Step("4-聊天屏"):
-        tap(t("mobChat.input.placeholder")); typed(f"{T} long")
+        tap(t("chat.input.placeholder")); typed(f"{T} long")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(t("cards.thinking.title"), 20):
@@ -587,11 +793,102 @@ def walk():
         tap(names["codex"])
         time.sleep(1)
         hide_keyboard()
-        tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
+        tap(t("chat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} codex", 40):
             raise Step.Fail("Codex 答不回来")
+
+    with Step("11-文件页"):
+        launch()
+        files_page()
+
+    report()
+
+
+def report():
+    with Step("12-轮换屏"):
+        # 从会话进轮换屏（聊天屏「⋯」→ 轮换）· 换策略 · 长按号名拖到最上那条成临时条目 · 改一格 · 存；每一样都核那台的记录。
+        seed_rotation()
+        started = frames("session-new", {"agent": "claude", "cwd": "~/work", "place": "tmux", "local": False, "ticket": f"{T}rot",
+                                         "prompt": f"{T} rotation", "rotation": {"strategy": "smoke-a"}}, 45000)
+        sid = (started.get("data") or {}).get("sid")
+        if not sid:
+            raise Step.Fail(f"台架起不了带轮换的会话：{started!r}"[:300])
+        launch()
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} rotation", 40):
+            raise Step.Fail("对话列表里没有那条带轮换的会话")
+        tap(f"{T} rotation")
+        time.sleep(3)
+        tap(t("history.row.more"))
+        time.sleep(1)
+        tap(t("mobChat.more.rotation"))
+        if not wait("smoke-a", 20):
+            raise Step.Fail("轮换屏没画出那条会话用的策略")
+        if not wait(t("rot.h.cards"), 10) or ui.find(t("mobRot.cards.hint")) is None:
+            raise Step.Fail("轮换屏没画出轮换账号那一块")
+        shot("12a-轮换屏")
+        tap("smoke-a")
+        if not wait("smoke-b", 10):
+            raise Step.Fail("策略抽屉里没有 smoke-b")
+        tap("smoke-b")
+        end = time.time() + 20
+        while time.time() < end and ((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("strategy") or {}).get("id") != "smoke-b":
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("选了 smoke-b，那台记的那条会话没换过去")
+        if not wait("smoke-b", 10):
+            raise Step.Fail("换了策略，屏上没跟着换")
+        to_bottom()
+        time.sleep(1)
+        head = lane_head("team")
+        top = next((n for n in ui.nodes() if n.get("content-desc") == t("rot.h.sim")), None)
+        if head is None or top is None:
+            raise Step.Fail("模拟里找不到 team 那一行或最上那条")
+        (x1, y1), (x2, y2) = ui.center(head), ui.center(top)
+        adb("shell", "input", "draganddrop", str(x1), str(y1), str(x2), str(y2), "1500")
+        end = time.time() + 20
+        while time.time() < end and "team" not in (((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("decision") or {}).get("temp") or []):
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("拖了 team 到最上那条，那台没记成临时条目")
+        if not wait(t("rot.sim.manual", n=1), 10):
+            raise Step.Fail("排了临时条目，模拟的小标题没出「手动 1 段」")
+        shot("12b-临时条目")
+        adb("shell", "input", "swipe", "540", "700", "540", "1600", "200")
+        time.sleep(1)
+        box = ui.find("25")
+        if box is None:
+            raise Step.Fail("找不到「权重容差」那一格的数")
+        adb("shell", "input", "tap", *map(str, ui.center(box)))
+        time.sleep(0.5)
+        adb("shell", "input", "keyevent", "123")
+        for _ in range(4):
+            adb("shell", "input", "keyevent", "67")
+        typed("30")
+        adb("shell", "input", "keyevent", "66")
+        if not wait(t("rot.top.save"), 15):
+            raise Step.Fail("改了一格，底部没出没存条")
+        shot("12c-没存")
+        tap(t("rot.top.save"))
+        end = time.time() + 20
+        while time.time() < end and not re.search(r'"close":\s*30(\.0)?\b', sh("cat ~/.cc-monitor/strategies/smoke-b.rhai")):
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("点了存，smoke-b 那份文件里没写进 30")
+        hide_keyboard()
+        if wait(t("rot.top.save"), 3):
+            raise Step.Fail("存完没存条还在")
+        # 另一个进口：设置 → 机器与账号 → 轮换（这台新会话用的那份），点得到。
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("mobSettings.entry.rotation"), 10):
+            raise Step.Fail("设置里没有「机器与账号 → 轮换」")
+        tap(t("mobSettings.entry.rotation"))
+        if not wait(t("rot.top.here", machine="smokebox"), 15):
+            raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
 
     print()
     print("| 步 | 结果 | 用时 | 截图 |")

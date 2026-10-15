@@ -21,7 +21,7 @@ use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use toml_edit::{Array, DocumentMut, Item, Table, Value};
 
-use crate::control::ccm::argv::{self, flag, Die, Layer, Origin, Parsed};
+use crate::ccm_line::argv::{self, flag, Die, Layer, Origin, Parsed};
 
 /// 「基于」那一项的键（命令行上是 `@名`）。
 pub(crate) const FROM_KEY: &str = "from";
@@ -137,10 +137,10 @@ fn line_at(raw: &str, at: usize) -> usize {
         + 1
 }
 
-/// 这个名字能不能当一段配置的名字：两种 shell 都认得的命令名，而且不是 ccm 自己（[`crate::control::ccm::is_own_name`]）。
+/// 这个名字能不能当一段配置的名字：两种 shell 都认得的命令名，而且不是 ccm 自己（[`crate::ccm_line::is_own_name`]）。
 pub(crate) fn name_ok(name: &str) -> Result<(), String> {
     use crate::platform::shell::dialect::Shell;
-    if crate::control::ccm::is_own_name(name) {
+    if crate::ccm_line::is_own_name(name) {
         return Err(copy_text("beProfile.name.own", &[("name", name)]));
     }
     if !Shell::Posix.dialect().name_is_valid(name)
@@ -389,6 +389,8 @@ pub(crate) fn chain<'a>(book: &'a Book, name: &str) -> Result<Vec<&'a Profile>, 
 
 /// **继承合并的入口**：ccm 起会话（`@名` / 被叫成那个名字）、`--ccm-print`、设置窗的合并预览都从这里拿。
 /// `args` 是命令行当场给的（`[交给 agent 的…] -- [ccm 选项…]`），盖在合并结果最上面；合并规则只住 `argv::parse_layered`。
+///
+/// 〔继承表〕别名那一格：只认这一发自己的 `@名`，不随主会话。
 pub(crate) fn resolve(book: &Book, name: &str, args: &[String]) -> Result<Resolved, String> {
     let chain = chain(book, name)?;
     let layers: Vec<Layer> = chain.iter().map(|p| p.layer()).collect();

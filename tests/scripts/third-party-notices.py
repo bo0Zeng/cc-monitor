@@ -52,6 +52,8 @@ VENDORED_FILES = [
      "src/mobile/libs/LICENSES/libvterm-MIT.txt", "编进 termlib aar 的 libjni_cb_term.so"),
     ("JetBrains Mono", "2.305", "OFL-1.1", "src/mobile/core-ui/src/main/res/font/",
      "src/mobile/libs/LICENSES/JetBrainsMono-OFL-1.1.txt", "jetbrains_mono_regular.ttf · jetbrains_mono_medium.ttf"),
+    ("Phosphor Icons", "2.1", "MIT", "src/mobile/core-ui/src/main/res/font/phosphor_regular.ttf",
+     "src/mobile/libs/LICENSES/Phosphor-MIT.txt", "Phosphor regular 图标字体的子集（只留手机用到的码位，src/mobile/scripts/phosphor-subset.py 从 egui-phosphor 0.14.0 自带的那份做）"),
     ("Gradle Wrapper", "8.14.3", "Apache-2.0", "src/mobile/gradle/wrapper/gradle-wrapper.jar",
      "src/mobile/libs/LICENSES/Apache-2.0.txt", "手机端构建用的 Gradle 启动器，不进 app"),
 ]

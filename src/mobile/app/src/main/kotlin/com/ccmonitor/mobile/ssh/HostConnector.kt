@@ -3,11 +3,13 @@ package com.ccmonitor.mobile.ssh
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
+import com.ccmonitor.mobile.core.ssh.SessionState
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.map
  * - 持有与放手：[retain] / [release]。holder token 由调用方自己铸，本类不持状态。
  * - 句柄：[connection]。
  * - 共用那条重连循环（常驻流）那几根线：[dialOf] · [dialing]（它照什么拨、哪几台要它）· [loopReached]（它报够没够着，SSH 那层跟着换）。
+ * - 各台的名义状态：[states]（只读）。
  * - 强制全断：[disconnectAll]。
  *
  * 不提供单机强断 `disconnect(id)`：生产代码里没人要。
@@ -103,6 +106,9 @@ class HostConnector(
         hostId: String,
         reached: Boolean,
     ) = manager.loopReached(hostId, reached)
+
+    /** 各台此刻的连接状态（名义状态，只读；服务器列表行首那颗点读它）。 */
+    fun states(): StateFlow<Map<String, SessionState>> = manager.sessions
 
     /**
      * 不管持有者，断开全部连接：清持有者集、纪元加一作废在飞的 connect，物理 `close` 派到后台。

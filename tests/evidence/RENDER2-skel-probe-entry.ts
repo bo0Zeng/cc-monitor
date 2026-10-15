@@ -9,7 +9,7 @@
  */
 import "../../src/frontend/ui/styles/layers.css";
 import "../../src/frontend/ui/styles/reset.css";
-import "../../src/frontend/ui/styles/tokens.css";
+import "../../src/shared/theme/tokens.css";
 import "../../src/frontend/ui/styles/layout.css";
 import "../../src/frontend/ui/styles/shared.css";
 import "../../src/frontend/ui/styles.css";

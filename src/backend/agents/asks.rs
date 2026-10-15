@@ -5,6 +5,11 @@
 use super::{AskIn, AskKind};
 pub(crate) use cmd_wire::needs::{Ask, AskRun, Choice, NoteNeed, Question, QuestionOption};
 
+/// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
+pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
+/// 那一家的 hook 叫 ccm 的那几个词（打头的 `--`：后面是后端的词），后面再接那一家的 kind。
+pub const ANSWER_HOOK_WORDS: [&str; 2] = ["--", ANSWER_HOOK_FLAG];
+
 /// ccm 起会话时**挂不上**答题 hook（用户自己给的会话级设置读不出 / 不是那一家认的形）⇒ 起的那个进程环境里带这个变量；
 /// 会话事实读那个进程的环境认出「这条会话只能在终端里答批准」（`answerOff`）。
 pub(crate) const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
@@ -107,7 +112,10 @@ pub(crate) fn started_elsewhere(
     let Some(cmdline) = cmdline else {
         return false;
     };
-    has_ask_face && !plugin_here && !noted && !cmdline.contains(crate::ANSWER_HOOK_FLAG)
+    has_ask_face
+        && !plugin_here
+        && !noted
+        && !cmdline.contains(crate::agents::asks::ANSWER_HOOK_FLAG)
 }
 
 /// 「这条会话在这里答不了」那一句（会话事实的 `answerOff` · `needs.manualText`）：照环境里那个值说原因。

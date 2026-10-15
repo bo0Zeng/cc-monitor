@@ -2,7 +2,7 @@
 //!
 //! 两个口**二选一**，修饰词都认任意位置：
 //! - stdin：默认读到 EOF；带 [`STDIN_LINE_FLAG`] ⇒ 只读一行（给 stdin 关不掉的调用方）。开着却 [`STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`。
-//! - argv：[`crate::ARGS_B64_FLAG`] `<base64 的 JSON>`（给写不了 stdin 的调用方）。给了它就不碰 stdin；与 [`STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
+//! - argv：[`crate::wire::cli_words::ARGS_B64_FLAG`] `<base64 的 JSON>`（给写不了 stdin 的调用方）。给了它就不碰 stdin；与 [`STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
 //!
 //! 上限：stdin [`MAX_CLI_STDIN`]；argv [`MAX_ARGS_B64_LEN`]。超了 `args_too_large`，不截断。会回的码全集是 [`READ_ARGS_CODES`]。
 //!
@@ -16,10 +16,10 @@ use std::time::Duration;
 /// 截半的 JSON 会报成「解析失败」，真实原因却是「太大了」⇒ 多读一个字节，超了就说超了。
 pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
 
-/// 「只读一行 stdin」那个修饰词住 [`crate::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
-pub(crate) use crate::STDIN_LINE_FLAG;
+/// 「只读一行 stdin」那个修饰词住 [`crate::wire::cli_words::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
+pub(crate) use crate::wire::cli_words::STDIN_LINE_FLAG;
 
-/// argv 形载荷口 [`crate::ARGS_B64_FLAG`] 的值（base64 编码后）的上限。
+/// argv 形载荷口 [`crate::wire::cli_words::ARGS_B64_FLAG`] 的值（base64 编码后）的上限。
 ///
 /// 系统先卡一道：Linux 单个参数 ≤ `MAX_ARG_STRLEN`（32 页 ＝ 131072 字节，含结尾 NUL）；经 ssh 时整行命令是登录 shell `-c` 的
 /// **一个**参数 ⇒ 同一个上限管整行（载荷之外还有后端路径与几个旗标）。Windows 一整行命令 ≤ 32767 个字符，更紧。
@@ -35,7 +35,7 @@ pub(crate) const MAX_ARGS_B64_LEN: usize = 131_068;
 /// 远端登录 shell 还没起完它就已经在管道里）。第一个字节到了之后照旧读到 EOF / 换行，不再计时。
 pub(crate) const STDIN_QUIET: Duration = Duration::from_millis(1000);
 
-/// 入参从哪个口来：argv 上的修饰词决定，**位置无关**（同 [`crate::TEXT_FLAG`]）。
+/// 入参从哪个口来：argv 上的修饰词决定，**位置无关**（同 [`crate::wire::cli_words::TEXT_FLAG`]）。
 #[derive(Debug, PartialEq, Eq)]
 enum Source<'a> {
     Stdin { one_line: bool },
@@ -63,12 +63,18 @@ fn source_of(opts: &[String]) -> Result<Source<'_>, (&'static str, String)> {
     let mut b64: Option<&str> = None;
     let mut i = 0;
     while i < opts.len() {
-        if opts[i] == crate::ARGS_B64_FLAG {
+        if opts[i] == crate::wire::cli_words::ARGS_B64_FLAG {
             let Some(v) = opts.get(i + 1) else {
-                return Err(bad_args(&format!("{} needs a value", crate::ARGS_B64_FLAG)));
+                return Err(bad_args(&format!(
+                    "{} needs a value",
+                    crate::wire::cli_words::ARGS_B64_FLAG
+                )));
             };
             if b64.replace(v.as_str()).is_some() {
-                return Err(bad_args(&format!("{} given twice", crate::ARGS_B64_FLAG)));
+                return Err(bad_args(&format!(
+                    "{} given twice",
+                    crate::wire::cli_words::ARGS_B64_FLAG
+                )));
             }
             i += 2;
             continue;
@@ -78,7 +84,7 @@ fn source_of(opts: &[String]) -> Result<Source<'_>, (&'static str, String)> {
     match b64 {
         Some(_) if one_line => Err(bad_args(&format!(
             "give the args either on stdin ({STDIN_LINE_FLAG}) or in argv ({}), not both",
-            crate::ARGS_B64_FLAG
+            crate::wire::cli_words::ARGS_B64_FLAG
         ))),
         Some(v) => Ok(Source::Argv(v)),
         None => Ok(Source::Stdin { one_line }),
@@ -92,7 +98,7 @@ fn decode_argv(b64: &str) -> Result<String, (&'static str, String)> {
             "args_too_large",
             contract::malformed(&format!(
                 "{} value over the {MAX_ARGS_B64_LEN}-byte cap, refused (not truncated); send larger args on stdin",
-                crate::ARGS_B64_FLAG
+                crate::wire::cli_words::ARGS_B64_FLAG
             )),
         ));
     }
@@ -100,7 +106,10 @@ fn decode_argv(b64: &str) -> Result<String, (&'static str, String)> {
     String::from_utf8(bytes).map_err(|e| {
         (
             "bad_request",
-            contract::malformed(&format!("{} is not UTF-8: {e}", crate::ARGS_B64_FLAG)),
+            contract::malformed(&format!(
+                "{} is not UTF-8: {e}",
+                crate::wire::cli_words::ARGS_B64_FLAG
+            )),
         )
     })
 }
@@ -142,7 +151,7 @@ fn read_stdin_within<R: Read + Send + 'static>(
             contract::malformed(&format!(
                 "stdin is open but sent nothing within {} ms; pass the args with {} <base64 JSON>, or close stdin",
                 quiet.as_millis(),
-                crate::ARGS_B64_FLAG
+                crate::wire::cli_words::ARGS_B64_FLAG
             )),
         )),
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(gone()),

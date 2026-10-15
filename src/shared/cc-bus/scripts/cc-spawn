@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# cc-spawn [--tool <agent>] <目录> [初始任务...]  在该目录开一个独立的 agent 会话(不给 --tool 就是默认那一家)、自动上总线、返回其 id。
+# cc-spawn [--tool <agent>] [--as <别名>] <目录> [初始任务...]  在该目录开一个独立的 agent 会话(不给 --tool 就是默认那一家)、自动上总线、返回其 id。
+# `--as <别名>` ⇒ 原样交成 `ccm @<别名> …`:那条别名的号 · 启动器 · agent 等照它;这一趟当场给的(目录 · 起完不接进去 · 登记 · --account)照常盖在上面。
 # 产物是【独立历史 + 原生读该目录文件】的长驻协作 agent(区别于 subagent:同上下文、一次性)。
 # 收掉用 cc-kill <id>;看它用 tmux attach -t <id>;跟它聊用 cc-send <id> "..."。
 set -euo pipefail
@@ -10,12 +11,14 @@ set -euo pipefail
 #   留一个没人读的变量比删掉更坏 —— 下一个人会以为本脚本还按「自己住哪」找东西。
 # 旗标可在 <目录> 前任意顺序出现。
 tool=""
+alias=""
 acct=""
 use_base=0
 while true; do
   case "${1:-}" in
     --new)  shift;;                                               # P4b 后**默认就是新建**,本旗标是 no-op。保留它是因为外面可能有人在传——让它报错等于把别人的脚本弄坏
     --tool) tool="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --tool 需要参数" >&2; exit 2; };;  # 派生哪一家(认不认由 ccm 按后端注册表判)
+    --as)   alias="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --as 需要一个别名" >&2; exit 2; };;  # 照哪条别名起(认不认由 ccm 按这台的别名表判)
     # L2(unify-launch B03 审计):显式指定账号。**不加这个的话** ccm 会落 manifest 的默认号,
     # 于是从驾驶舱点两下就在默认账号上起真 agent 烧额度,而用户无从选择也无从得知用了哪个号。
     # ccm 本来就支持 --account/--base,这里只是转发——**不改 ccm 本体**(账本红线)。
@@ -27,7 +30,8 @@ while true; do
 done
 # ⚠ 用法串里**不再宣传 `--new`**:它今天是 no-op(默认就是新建),宣传一个什么都不做的旗标
 #   等于让人以为不加它会有别的行为。旗标本身仍然接受,见上面的 case 臂。
-dir="${1:?用法: cc-spawn [--tool <agent>] <目录> [初始任务...]}"; shift || true
+dir="${1:?用法: cc-spawn [--tool <agent>] [--as <别名>] <目录> [初始任务...]}"; shift || true
+case "$alias" in ''|*[!A-Za-z0-9_-]*) [ -z "$alias" ] || { echo "cc-spawn: 别名 '$alias' 形状不对(只许 [A-Za-z0-9_-])" >&2; exit 2; } ;; esac
 task="$*"
 
 # 哪一家:本脚本不认名字、不猜 —— 原样交给 ccm(`--ccm-agent`),认法在后端注册表那一处:
@@ -49,24 +53,20 @@ LAUNCH="${CCSPAWN_LAUNCH:-}"
 #    ⚠ **必须 `-f` 而不能只 `-x`**:`[ -x <目录> ]` 为真,而查找次序里那几档都可能是目录
 #    (历史实测:`~/.claude/skills/` 下全是目录,装个名叫 `ccm` 的 skill 就会劫持解析)。
 #    `CCM_BIN` 可显式覆盖(测试钩子),语义一个字没变。
-CCM_BIN="${CCM_BIN:-}"
-if [ -z "$CCM_BIN" ]; then
-  # 后端本身就是 `~/.cc-monitor/bin/ccm`（旧的 `cc-monitor-backend` 落点退役了）。
-  for _x in "$HOME/.cc-monitor/bin/ccm" \
-            "$(command -v cc-monitor-backend 2>/dev/null)" \
-            "$(command -v ccm 2>/dev/null)"; do
-    if [ -n "$_x" ] && [ -f "$_x" ] && [ -x "$_x" ]; then CCM_BIN="$_x"; break; fi
-  done
-  unset _x
-  [ -n "$CCM_BIN" ] || {
+# 查找次序只住 `cc-bus-adapt.sh` 的 `ccbus_ccm_bin`(敲门也经它找后端)。
+# shellcheck source=cc-bus-adapt.sh
+. "$(cd "$(dirname "$(readlink -f "$0")")" && pwd)/cc-bus-adapt.sh"
+CCM_BIN=$(ccbus_ccm_bin) || {
     echo "cc-spawn: 找不到后端(~/.cc-monitor/bin/ccm / PATH 上的 cc-monitor-backend 或 ccm 都没有)" >&2
     echo "  后端由 cc-monitor 客户端自己释放到 ~/.cc-monitor/bin/;或用 CCM_BIN=<路径> 显式指定。" >&2
     exit 2; }
-fi
 
 # **怎么把它当 `ccm` 叫**:后端分流只看 argv、不看文件名 ⇒ 找到的那份叫什么都一样,
 #   照 `ccm [交给 claude 的…] -- [ccm 自己的…]` 叫它就行(从前名字不是 `ccm` 时要多垫一个 `ccm` 子命令词,那一形不在了)。
 ccm_prefix=("$CCM_BIN")
+# 照别名起:`@<别名>` 打头(合并规则只住 ccm:别名链父 → 子,`--` 右边当场给的最后盖)。能力探针不带它。
+spawn_prefix=("$CCM_BIN")
+[ -n "$alias" ] && spawn_prefix+=("@$alias")
 
 # **能力协商**(B02 审计重要-7):cc-spawn 硬依赖 `--detach` 等四项,而用户盘上 PATH 前面
 # 完全可能还躺着一份**旧的 bash `ccm` 副本**(`~/.local/bin/ccm`,实测那份就没有 --detach)。
@@ -191,7 +191,7 @@ _rc=0
 #   并发实测:原本 3 个**响亮失败**变成 3 个**假成功**(都报同一个名字,而会话只有 1 个)。
 #   **比修之前更坏** ⇒ 用 `cmd && rc=0 || rc=$?` 这种直接取法。
 for _try in 1 2 3 4 5; do
-  _out=$("${ccm_prefix[@]}" ${passthru[@]+"${passthru[@]}"} -- "${ccm_args[@]}") && _rc=0 || _rc=$?
+  _out=$("${spawn_prefix[@]}" ${passthru[@]+"${passthru[@]}"} -- "${ccm_args[@]}") && _rc=0 || _rc=$?
   [ "$_rc" = 0 ] && break
   [ "$_rc" = 3 ] || break               # 不是撞名 ⇒ 立刻停,别掩盖真错误
   [ "$_try" = 5 ] || sleep 0.2

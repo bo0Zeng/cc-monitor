@@ -30,6 +30,29 @@ bash tests/mobile-smoke/smoke.sh
 - `frames.py <命令> '<JSON 入参>' [期限毫秒]`：经台架开一条常驻流问一句（和手机同一条路）；`frames.py watch <秒>` 只看流上的帧。
 - `ui.py dump|tap|has|wait|text|key|shot`：按字找控件点、截屏。
 - `fake-agent.py`：替身。句里带 `long` ⇒ 一大段回答；带 `ask` ⇒ 停在批准框上（需手动），终端里再敲一行才往下走；敲进来 `/model <值>` ⇒ 只落那一家换模型的读回（第 9 步换模型用）。`CCM_SMOKE_STEP`（每条记录间隔）· `CCM_SMOKE_BOOT`（起到能收第一句之前停多久）。
-- `smoke.py`：十步（加机器连上 · 对话列表 · 新建会话（目录 chip → 浏览… → 选这个目录）· 聊天屏（后跟两小步：输入框下的模型 chip · ［+］面板的命令 / 清空先确认 / 压缩）· 完成通知 · 断网再连 · 换网 · 杀进程再开 · 终端屏（含命令面板换模型）· Codex（新建会话的 agent chip 选它）），每步只看屏上和台架记录里看得到的。
+- `smoke.py`：十二步（加机器连上 · 对话列表 · 新建会话（目录 chip → 浏览… → 选这个目录）· 聊天屏（后跟两小步：输入框下的模型 chip · ［+］面板的命令 / 清空先确认 / 压缩）· 完成通知 · 断网再连 · 换网 · 杀进程再开 · 终端屏（含命令面板换模型）· Codex（新建会话的 agent chip 选它）· 文件页（列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 下载 · 上传，结果在台架盘上核）· 轮换屏（台架里种三个号与两份策略、起一条带轮换的会话；聊天屏「⋯」进 → 换策略 → 长按号名拖到最上那条成临时条目 → 改一格 → 存，再从设置 → 机器与账号 → 轮换进一次）），每步只看屏上和台架记录里看得到的。
 
 收：`bash tests/mobile-smoke/emu.sh down; bash tests/mobile-smoke/rig.sh down`（台架目录留着，删掉 `.build/mobile-smoke/` 即全清）。
+
+## 真机代测（`device.sh`）
+
+真机上才看得出的几样，能在模拟器上代的都挪到这里，和冒烟那十步分开跑（冒烟走主路，这里只核真机那几样）：
+
+```sh
+bash tests/mobile-smoke/device.sh                         # 四项全走
+CCM_DEVICE_ITEMS="2 3" bash tests/mobile-smoke/device.sh  # 挑几项
+CCM_DEVICE_BREAK=reconnect bash tests/mobile-smoke/device.sh  # 看台架会红：回前台 / 网回来前把台架 sshd 停掉，2 · 3 必红
+```
+
+| 项 | 做什么 | 判 |
+|---|---|---|
+| 1 正式包经 ARM 转译 | 编 `assembleRelease`（arm64-v8a、R8 混淆）、用台架目录里现造的测试钥匙签（正式 keystore 不在树里），装进 x86_64 镜像；导钥匙 · 加机器 · 新建会话 | 系统报包的 ABI 是 arm64-v8a · 进程里有 `libndk_translation` · arm64 的 `libmobcore.so` 映进来了 · 新会话答回。镜像 ABI 表里没有 arm64-v8a ⇒ 「没核」，2–4 改装混淆过的 x86_64 包 |
+| 2 Doze / Standby / 杀后台 | 退后台 → `deviceidle force-idle`（先 `battery unplug`、灭屏）· `set-standby-bucket rare` · `am kill` · `am force-stop` → 桌面那侧隔 4 秒来三句、再等 20 秒 → 回前台 | 回前台后 60 秒（`CCM_DEVICE_WITHIN`）内三句的回答都在。量「回前台 → 重连」（`commands.log` 里第一条新进来的命令）与「回前台 → 收齐」 |
+| 3 网 | 先成对量模拟器控制台 `network delay` · `network speed` · `gsm data off` 管不管用；再在模拟器里（只动模拟器自己，不碰宿主网络；弱网台架 `tests/e2e/weak-net/` 是两个容器之间的，模拟器放不进去，这里借它「改前 / 改后成对读数」的规矩，造不出就红）：`tc netem` 造慢网（400±100ms · 64kbit，只管出方向），`iptables` 两个方向丢掉与宿主之间的包造静默断网（网卡还在、连接收不到 RST）15 秒 · 90 秒 | 慢网下回答上屏；断网期间来的那句在网回来 60 秒内上屏。量「网回来 → 重连」「网回来 → 看到」 |
+| 4 通知 | 另起一条会话，手机开着别的那条、退后台；那条来需手动 ⇒ 出通知、点它进那一条；放行后一轮完成的通知点进去也得是那一条 | 通知照 `dumpsys notification`，点完看屏上是不是那一条 |
+
+每项末尾那一屏亮暗各一张（`<项>-亮.png` · `<项>-暗.png`）、量的数与每项结果在 `.build/mobile-device/shots/device-results.json`（`CCM_SMOKE_OUT` 可改）。
+
+端口与冒烟、别的几路错开：sshd `22452` · 中转 `28818` · adb `5167` · 模拟器 `5670`（`CCM_SMOKE_PORT` · `CCM_SMOKE_RELAY_PORT` · `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT` 可改），台架目录 `.build/mobile-device/`（AVD 也在它下面，和冒烟那台互不相干）。收：先 `eval` 同样那几格再 `emu.sh down; rig.sh down`。
+
+只有用户那台手机核得了的（这里不代）：厂商 ROM 自己的杀后台 · 真 Wi-Fi ↔ 蜂窝切换 · 用户的输入法 · 用户那把签名覆盖装。

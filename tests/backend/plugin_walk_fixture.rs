@@ -1167,7 +1167,7 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).expect("chmod");
             assert!(
-                !crate::plugin::discover::is_executable(&f),
+                !crate::platform::fs::is_executable(&f),
                 "没有执行位的文件被当成可执行文件了"
             );
             let err2 = crate::plugin::discover::find(&name, &fixed, false, hint)

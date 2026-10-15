@@ -3,12 +3,11 @@ package com.ccmonitor.mobile.core.ssh
 import com.ccmonitor.mobile.core.remote.ExecResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
-import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * [SshTransport] 测试替身。connect 行为由 [connectBehavior] 注入（成功、delay、throw、[awaitClose] 阻塞）；
- * shell 与 sftp 一律抛，manager 的测试不碰它们。
+ * shell 一律抛，manager 的测试不碰它们。
  */
 class FakeTransport(
     private val connectBehavior: suspend FakeTransport.(ConnectionConfig) -> Unit = {},
@@ -81,7 +80,7 @@ class FakeTransport(
         closeSignal.complete(Unit)
     }
 
-    private fun nope(): Nothing = throw NotImplementedError("FakeTransport 仅供 manager 逻辑测，未实现 shell/sftp")
+    private fun nope(): Nothing = throw NotImplementedError("FakeTransport 仅供 manager 逻辑测，未实现 shell")
 
     override suspend fun openShell(
         term: String,
@@ -92,47 +91,6 @@ class FakeTransport(
     override fun execStream(command: String): Flow<ByteArray> = nope()
 
     override suspend fun execCapture(command: String): ExecResult = nope()
-
-    override suspend fun sftpList(path: String): List<SftpEntry> = nope()
-
-    override suspend fun sftpRealPath(path: String): String = nope()
-
-    override suspend fun sftpDownload(
-        remotePath: String,
-        local: File,
-    ) = nope()
-
-    override suspend fun sftpUpload(
-        local: File,
-        remotePath: String,
-    ) = nope()
-
-    override suspend fun sftpRename(
-        from: String,
-        to: String,
-    ) = nope()
-
-    override suspend fun sftpDelete(
-        path: String,
-        isDir: Boolean,
-    ) = nope()
-
-    override suspend fun sftpMkdir(path: String) = nope()
-
-    override suspend fun sftpReadText(
-        path: String,
-        maxBytes: Int,
-    ): String = nope()
-
-    override suspend fun sftpReadTextForEdit(
-        path: String,
-        maxBytes: Int,
-    ): String? = nope()
-
-    override suspend fun sftpWriteText(
-        remotePath: String,
-        text: String,
-    ) = nope()
 
     private companion object {
         val NEXT_IDENTITY = AtomicInteger(0)

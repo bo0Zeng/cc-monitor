@@ -21,7 +21,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,9 +56,14 @@ import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.service.AppForeground
 import com.ccmonitor.mobile.service.SshKeepAliveService
@@ -68,6 +72,7 @@ import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
+import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -165,11 +170,11 @@ private fun ErrorContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text(copyText("mobSession.connect.failed"), color = MaterialTheme.colorScheme.error)
+        ErrorLine(copyText("mobSession.connect.failed"))
         // 下层给的原话（或这一侧判出的原因）不上屏，进复制详情；连接日志照旧给原文。
         CopyDetailButton(copyText("mobSession.connect.failed"), message)
         if (log.isNotEmpty()) ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
-        TextButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
+        SecondaryButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
     }
 }
 
@@ -180,7 +185,7 @@ private fun ErrorContent(
 @Composable
 private fun SessionStateTabButton(onShowTabs: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-        TextButton(onClick = onShowTabs) { Text("▤ tab") } // ▤ 是排版符号，不是 emoji
+        PhIconButton(Ph.Tabs, copyText("mobTabs.open.aria"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -199,7 +204,7 @@ private fun NeedIdentityContent(
         Text(copyText("mobSession.identity.pickTitle"), style = MaterialTheme.typography.titleMedium)
         Text(copyText("mobSession.identity.pickHint"), style = MaterialTheme.typography.bodySmall)
         identities.forEach { id ->
-            TextButton(onClick = { onPick(id.id) }) { Text(id.label.ifBlank { id.id }) }
+            SecondaryButton(onClick = { onPick(id.id) }) { Text(id.label.ifBlank { id.id }) }
         }
     }
 }
@@ -227,7 +232,7 @@ private fun HostKeyChangedContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text(copyText("mobHostKey.page.title"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+        Text(copyText("mobHostKey.page.title"), style = MaterialTheme.typography.titleMedium, color = LocalAppTokens.current.errorText)
         Text(
             copyText("hostIdentity.changed.body"),
             style = MaterialTheme.typography.bodyMedium,
@@ -248,7 +253,7 @@ private fun HostKeyChangedContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
+        SecondaryButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
     }
 
     if (confirming) {
@@ -258,12 +263,12 @@ private fun HostKeyChangedContent(
             // 二次确认的文案说清后果，而不是只问「确定吗」。
             text = { Text(copyText("hostIdentity.trust.consequence")) },
             confirmButton = {
-                TextButton(onClick = {
+                SecondaryButton(onClick = {
                     confirming = false
                     onTrustNew()
                 }) { Text(copyText("mobHostKey.trust.ok")) }
             },
-            dismissButton = { TextButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
+            dismissButton = { SecondaryButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
 }
@@ -301,7 +306,7 @@ private fun ConnectLogView(
                 "${ev.host}:${ev.port}  ${ev.message}",
                 color =
                     if (ev.stage == SshConnectEvent.Stage.ERROR) {
-                        MaterialTheme.colorScheme.error
+                        LocalAppTokens.current.errorText
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
@@ -384,16 +389,17 @@ private fun DroppedBanner(
     status: SessionStatus?,
     onReconnect: () -> Unit,
 ) {
+    // 错误条：`--card` 底（errorContainer）＋ 左 3 dp `--error` 条，字用正文色。
     Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 12.dp),
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(end = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
+        ErrorLine(
             if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped"),
-            color = MaterialTheme.colorScheme.onErrorContainer,
+            modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
-        TextButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
+        SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
     }
 }
 
@@ -589,13 +595,13 @@ private fun PushKeyDialog(
                 } else {
                     Text(copyText("mobKeyPush.dialog.hint"), style = MaterialTheme.typography.bodySmall)
                     identities.forEach { id ->
-                        TextButton(onClick = { onPick(id) }) { Text(id.label.ifBlank { id.id }) }
+                        SecondaryButton(onClick = { onPick(id) }) { Text(id.label.ifBlank { id.id }) }
                     }
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -616,8 +622,8 @@ private fun CaptureDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { TextButton(onClick = onCopy) { Text(copyText("mobCapture.dialog.copy")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = onCopy) { Text(copyText("mobCapture.dialog.copy")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -654,6 +660,7 @@ private fun TerminalTab(
         CcMonitorTerminal(
             emulator = session.emulator,
             modifier = Modifier.fillMaxWidth().weight(1f),
+            palette = AppTerminalPalette,
             keyboardEnabled = true,
             showSoftKeyboard = true,
             initialFontSize = fontSize.sp,

@@ -136,7 +136,7 @@ class NewSessionPicker(
 
     /** 那台的家目录（路径里缩成 `~`）；问不到 ⇒ 路径原样。 */
     private suspend fun loadHome() {
-        val home = (link.call(FilesHome.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { FilesHome.of(it.data) } ?: return
+        val home = (link.call(FilesHome.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { FilesHome.text(it.data) } ?: return
         _state.update { it.copy(home = home) }
     }
 

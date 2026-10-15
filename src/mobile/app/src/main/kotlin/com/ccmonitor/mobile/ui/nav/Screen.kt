@@ -61,6 +61,19 @@ sealed class Screen(
 
     data object Settings : Screen("settings")
 
+    /** 轮换屏：一条会话的（[sid]）· 这台新会话用的那份（[sid] 缺）。 */
+    data object Rotation : Screen("rotation/{hostId}?sid={sid}") {
+        fun of(
+            hostId: String,
+            sid: String? = null,
+        ): String = "rotation/$hostId" + (sid?.let { "?sid=$it" } ?: "")
+
+        const val ARG_SID = "sid"
+    }
+
+    /** 设置 → 机器与账号 → 轮换：当前服务器（上次那台）新会话用的那份。 */
+    data object RotationHere : Screen("settings/rotation")
+
     // 自定义按钮编辑器：全局按钮从设置进，主机专属按钮从主机编辑器进。
     data object ButtonSettings : Screen("settings/buttons")
 

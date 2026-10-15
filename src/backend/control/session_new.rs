@@ -419,7 +419,7 @@ fn start(
     preset_args.extend(permission_args);
     // 起的时候就交的第一句：交给那一家的那一半末尾、`--` 之后（开头是 `-` 也不会被当成旗标）。
     if let Some(text) = &prompt {
-        preset_args.extend([super::ccm::argv::flag::END.to_string(), text.clone()]);
+        preset_args.extend([crate::ccm_line::argv::flag::END.to_string(), text.clone()]);
     }
     let resumed = forked.clone();
     let sid = forked.or_else(|| preset.clone());

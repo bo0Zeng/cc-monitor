@@ -1,6 +1,7 @@
 //! 帧命令两端必须对上的那几样（契约类：只放形状，不放判定）。
 //!
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
+//! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
@@ -15,6 +16,7 @@ pub mod accounts;
 pub mod cells;
 pub mod files;
 pub mod listing;
+pub mod live;
 pub mod machine;
 pub mod needs;
 pub mod record;

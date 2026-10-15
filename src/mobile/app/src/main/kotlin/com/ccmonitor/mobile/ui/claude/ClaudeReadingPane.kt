@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.diff.structuredPatchToDiff
@@ -44,7 +44,11 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
@@ -149,7 +153,7 @@ private fun UnreadLine(
                 Text(it, style = monoSmall, color = tokens.textFaint)
             }
             Spacer(Modifier.weight(1f))
-            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
+            PhIcon(if (expanded) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = tokens.textFaint)
         }
         AnimatedVisibility(expanded) {
             Column(Modifier.padding(bottom = tokens.spacing.xs)) {
@@ -170,21 +174,21 @@ private fun SlashCommandCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(tokens.surfaceRaised)
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.bg2)
             .matchHighlight(matched)
             .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("/", style = monoSmall, color = tokens.textFaint)
+        Text("/", style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(tokens.spacing.sm))
-        Text(unit.name, style = monoBody, color = MaterialTheme.colorScheme.primary)
+        Text(unit.name, style = monoBody.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface)
         if (unit.args.isNotEmpty()) {
             Spacer(Modifier.width(tokens.spacing.sm))
             Text(
                 unit.args,
                 style = monoSmall,
-                color = tokens.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -203,12 +207,13 @@ private fun BashInputCard(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(tokens.surfaceHigh)
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.bg2)
             .matchHighlight(matched)
             .padding(tokens.spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("❯", style = monoBody, color = tokens.success)
+        PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(tokens.spacing.sm))
         Text(unit.command, style = monoBody, color = MaterialTheme.colorScheme.onSurface)
     }
@@ -236,27 +241,37 @@ private fun BashOutputCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(tokens.surfaceRaised)
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.bg2)
             .matchHighlight(matched)
             .padding(tokens.spacing.md),
     ) {
-        Text("▤ " + copyText("mobReading.bash.title"), style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PhIcon(Ph.TerminalWindow, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(tokens.spacing.xs))
+            Text(copyText("mobReading.bash.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (unit.stdout.isNotEmpty()) {
             Spacer(Modifier.padding(top = tokens.spacing.xs))
             Text(shownStdout, style = monoBody, color = MaterialTheme.colorScheme.onSurface)
         }
         if (collapsible) {
-            Text(
-                if (expanded) "▾ " + copyText("mobReading.bash.collapse") else "▸ " + copyText("mobReading.bash.expand", "n" to outLines),
-                style = monoSmall,
-                color = tokens.textFaint,
-                modifier = Modifier.clickable { expanded = !expanded }.padding(top = tokens.spacing.xs),
-            )
+            Row(
+                Modifier.clickable { expanded = !expanded }.padding(top = tokens.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Caret(expanded)
+                Spacer(Modifier.width(tokens.spacing.xs))
+                Text(
+                    if (expanded) copyText("mobReading.bash.collapse") else copyText("mobReading.bash.expand", "n" to outLines),
+                    style = monoSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (unit.stderr.isNotEmpty()) {
             Spacer(Modifier.padding(top = tokens.spacing.xs))
-            Text(unit.stderr, style = monoBody, color = MaterialTheme.colorScheme.error)
+            Text(unit.stderr, style = monoBody, color = tokens.errorText)
         }
     }
 }
@@ -272,8 +287,8 @@ private fun CompactSummaryCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(tokens.surfaceRaised)
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.card)
             .matchHighlight(matched),
     ) {
         Row(
@@ -283,17 +298,17 @@ private fun CompactSummaryCard(
                 .padding(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(copyText("mobReading.compact.title"), style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+            Text(copyText("mobReading.compact.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(tokens.spacing.sm))
-            Text(copyText("mobReading.compact.size", "n" to unit.text.length), style = monoSmall, color = tokens.textFaint)
+            Text(copyText("mobReading.compact.size", "n" to unit.text.length), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
-            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
+            Caret(expanded)
         }
         AnimatedVisibility(expanded) {
             Text(
                 unit.text,
                 style = monoBody,
-                color = tokens.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = tokens.spacing.md, end = tokens.spacing.md, bottom = tokens.spacing.md),
             )
         }
@@ -320,7 +335,18 @@ private fun rememberExpandable(
 /** 搜索命中卡片的高亮边框。 */
 @Composable
 private fun Modifier.matchHighlight(matched: Boolean): Modifier =
-    if (matched) border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)) else this
+    if (matched) border(2.dp, LocalAppTokens.current.accent, RoundedCornerShape(LocalAppTokens.current.radius.xl)) else this
+
+/** 展开 / 收起的那个尖：Phosphor caret-right / caret-down，行内 16 dp、`--text-2`。 */
+@Composable
+private fun Caret(expanded: Boolean) {
+    PhIcon(
+        if (expanded) Ph.CaretDown else Ph.CaretRight,
+        contentDescription = null,
+        size = Touch.iconInline,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
 
 @Composable
 private fun UserTextCard(
@@ -332,8 +358,8 @@ private fun UserTextCard(
     Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(tokens.accentSoft)
+            .clip(RoundedCornerShape(tokens.radius.xl))
+            .background(tokens.card)
             .matchHighlight(matched)
             .padding(tokens.spacing.md),
     ) {
@@ -346,11 +372,11 @@ private fun UserTextCard(
                     line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 DeliveryState.FAILED ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.error) }
-                        TextButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("terminal.input.retry"), style = monoSmall) }
+                        line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
+                        SecondaryButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("terminal.input.retry"), style = monoSmall) }
                     }
                 DeliveryState.FAILED_PERMANENT ->
-                    line?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.error) }
+                    line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
                 null -> Unit
             }
         }
@@ -368,7 +394,7 @@ private fun AssistantMarkdownCard(
         MarkdownText(unit.markdown, modifier = Modifier.fillMaxWidth())
         if (codeBlocks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
+                SecondaryButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
                     Text(if (codeBlocks.size == 1) copyText("mobReading.code.copy") else copyText("mobReading.code.copyN", "n" to codeBlocks.size), style = monoSmall)
                 }
             }
@@ -387,20 +413,20 @@ private fun ThinkingCard(
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(tokens.radius.l))
                 .clickable { expanded = !expanded }
                 .padding(vertical = tokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
+            Caret(expanded)
             Spacer(Modifier.width(tokens.spacing.xs))
-            Text(copyText("cards.thinking.title"), style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+            Text(copyText("cards.thinking.title"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         AnimatedVisibility(expanded) {
             Text(
                 unit.text,
                 style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-                color = tokens.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = tokens.spacing.lg, top = tokens.spacing.xs),
             )
         }
@@ -428,8 +454,8 @@ private fun ToolCallCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(tokens.surfaceRaised)
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.card)
             .matchHighlight(matched),
     ) {
         Row(
@@ -439,15 +465,15 @@ private fun ToolCallCard(
                 .padding(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+            Box(Modifier.size(tokens.dotSize).clip(CircleShape).background(statusColor))
             Spacer(Modifier.width(tokens.spacing.sm))
-            Text(unit.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(unit.name, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface)
             if (summary.isNotEmpty()) {
                 Spacer(Modifier.width(tokens.spacing.sm))
                 Text(
                     summary,
                     style = monoSmall,
-                    color = tokens.textFaint,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -455,10 +481,10 @@ private fun ToolCallCard(
             }
             Spacer(Modifier.weight(1f))
             unit.resultLine?.let {
-                Text(it, style = monoSmall, color = tokens.textFaint, maxLines = 1)
+                Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 Spacer(Modifier.width(tokens.spacing.sm))
             }
-            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
+            Caret(expanded)
         }
         AnimatedVisibility(expanded) {
             Column(
@@ -471,7 +497,7 @@ private fun ToolCallCard(
                 if (patchDiff != null) {
                     // structuredPatch 保真 diff（真行号加上下文）。
                     unit.patchFilePath?.let { path ->
-                        Text(path, style = monoSmall, color = tokens.textFaint, modifier = Modifier.padding(bottom = tokens.spacing.xs))
+                        Text(path, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = tokens.spacing.xs))
                     }
                     DiffView(patchDiff)
                 }
@@ -481,10 +507,10 @@ private fun ToolCallCard(
                     Text(
                         result.take(MAX_RESULT_CHARS),
                         style = monoBody,
-                        color = if (unit.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        color = if (unit.isError) tokens.errorText else MaterialTheme.colorScheme.onSurface,
                     )
                     if (result.length > MAX_RESULT_CHARS) {
-                        Text(copyText("mobReading.tool.truncated"), style = monoSmall, color = tokens.textFaint)
+                        Text(copyText("mobReading.tool.truncated"), style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else if (unit.pending) {
                     Text(copyText("mobReading.tool.running"), style = monoSmall, color = tokens.warn)

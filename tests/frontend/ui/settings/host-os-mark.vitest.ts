@@ -23,7 +23,7 @@ describe("data-host-os", () => {
   });
 
   it("Linux 上等宽字体的缺省是通用名 monospace（别处照旧那一串）", () => {
-    const css = readFileSync("src/frontend/ui/styles/tokens.css", "utf8");
+    const css = readFileSync("src/shared/theme/tokens.css", "utf8");
     const rule = /:root\[data-host-os="linux"\]\s*\{\s*--font-mono:\s*monospace;\s*\}/;
     expect(css).toMatch(rule);
     expect(css).toMatch(/^\s*--font-mono: "JetBrains Mono", Consolas, monospace;$/m);

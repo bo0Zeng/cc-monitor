@@ -60,16 +60,10 @@ def log(msg):
         pass
 
 
-def clean_env():
-    """交给 ccm 的环境：去掉本进程从某个 claude 会话里继承来的那几格，免得发到别的号 / 别的中转上。"""
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if not (
-            k.startswith(("CCM_", "CLAUDE_CODE_", "ANTHROPIC_"))
-            or k in ("CLAUDE_CONFIG_DIR", "TMUX", "TMUX_PANE")
-        )
-    }
+def ccm_env():
+    """交给 ccm 的环境：就是本进程的（新会话从调用方拿什么由 ccm 那一张继承表定：号照 --account-dir、中转按这一发重新问、
+    嵌套标记清掉；在某条会话里跑时这一发记成它的子会话，轮换不跟随它），只多这一发自己要的两格。"""
+    env = dict(os.environ)
     env["MAX_THINKING_TOKENS"] = "0"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
     return env
@@ -79,7 +73,7 @@ def quota_read():
     p = subprocess.run(
         # 看的人就在这一台：回包里的「几点」按这台的钟写（不带 ⇒ 后端按 UTC 写）。
         [CCM, "--", "--quota-read", "--tz", "local"],
-        env=clean_env(), cwd=HOME, capture_output=True, text=True, timeout=60,
+        cwd=HOME, capture_output=True, text=True, timeout=60,
     )
     if p.returncode != 0:
         raise RuntimeError(f"quota-read 退出码 {p.returncode}: {p.stderr.strip()[:200]}")
@@ -109,7 +103,7 @@ def send(name, system, text, model):
     ]
     try:
         p = subprocess.run(
-            argv, env=clean_env(), cwd=WORK_DIR, stdin=subprocess.DEVNULL,
+            argv, env=ccm_env(), cwd=WORK_DIR, stdin=subprocess.DEVNULL,
             capture_output=True, text=True, timeout=SEND_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:

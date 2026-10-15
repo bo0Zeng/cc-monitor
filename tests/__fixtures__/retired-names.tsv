@@ -1,7 +1,11 @@
 # 删掉的名字（判据名 · 函数 · 命令 · 模块）：仓里除了本表与 CHANGELOG.md，哪儿都不许再出现，按标识符整词认。
 # 判据 `tests/common/guard-core/retired_names_tests.rs`。一行一个名字；删了一个符号、不想它回来，就加一行。
+Anywhere
 AppAssumesPresent
 BothHomeRelative
+SftpScreen
+SftpUi
+SftpViewModel
 a_capability_line_has_landed
 a_config_dir_that_names_no_account_is_refused_instead_of_falling_back
 a_directory_we_cannot_list_is_an_error_not_a_blank_window
@@ -158,6 +162,17 @@ safe_managed_path_requires_a_marker
 scan_legacy_profiles
 scan_t_targets
 send_keys_now_routes_through_the_backend
+sftpCwdToShell
+sftpDelete
+sftpDownload
+sftpList
+sftpMkdir
+sftpReadText
+sftpReadTextForEdit
+sftpRealPath
+sftpRename
+sftpUpload
+sftpWriteText
 sftp_cancel_transfer
 sftp_move_ledger
 sftp_read_text_for_edit

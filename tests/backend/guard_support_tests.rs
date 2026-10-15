@@ -82,7 +82,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
     for anchor in [
         format!("const BUILD{}", "_ID"),
         format!("const STREAM{}", "_FLAGS"),
-        format!("fn split_stream{}", "_flags"),
+        format!("const SUBCOMMAND{}", "_OPTIONS"),
         format!("mod obser{}", "ve;"),
         format!("mod contr{}", "ol;"),
     ] {

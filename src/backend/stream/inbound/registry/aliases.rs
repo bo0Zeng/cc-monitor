@@ -8,11 +8,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "启动文件候选（接入那一格）",
         &LocalFiles,
     ),
-    crate::wire::typed::with_files::<crate::assets::aliases::page::ProfilesRead>(
+    crate::wire::typed::with_files::<crate::faces::profiles_face::ProfilesRead>(
         "读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填",
         &LocalFiles,
     ),
-    crate::wire::typed::with_files::<crate::assets::aliases::page::ProfilesResolve>(
+    crate::wire::typed::with_files::<crate::faces::profiles_face::ProfilesResolve>(
         "一段合下来的合并表与「等于」那一行（可按未存的表单算）",
         &LocalFiles,
     ),

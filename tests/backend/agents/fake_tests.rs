@@ -216,6 +216,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         processes: None,
         launch: None,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
@@ -439,6 +440,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
         processes: None,
         launch,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
@@ -459,7 +461,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
 /// 通用层若在哪一格上按名字认人，本假 agent 那一行就会答错。
 #[test]
 fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
-    use crate::control::ccm::argv::{self, Parsed};
+    use crate::ccm_line::argv::{self, Parsed};
     use crate::control::ccm::plan::{self, AccountTable, Env, Plan};
     let reg = registry_with_fake();
     let env = Env {
@@ -671,6 +673,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         processes: None,
         launch: None,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,

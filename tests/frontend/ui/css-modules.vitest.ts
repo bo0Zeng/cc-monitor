@@ -52,7 +52,7 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
 const GLOBAL_STYLESHEETS: readonly { file: string; why: string }[] = [
   { file: "src/frontend/ui/styles/layers.css", why: "层声明，三窗第一个链" },
   { file: "src/frontend/ui/styles/reset.css", why: "最小重置，元素选择器（`§4`）" },
-  { file: "src/frontend/ui/styles/tokens.css", why: "`:root` 令牌（`§2`）" },
+  { file: "src/shared/theme/tokens.css", why: "`:root` 令牌（`§2`）" },
   { file: "src/frontend/ui/styles/layout.css", why: "`#app` 网格与格子认领（id 选择器）" },
   { file: "src/frontend/ui/styles/shared.css", why: "三窗共用 chrome（旧，待迁）" },
   { file: "src/frontend/ui/styles.css", why: "tab 管理 ＋ 渲染栈（旧，待迁；路径被仓外判据与真引擎探针按名读）" },

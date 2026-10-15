@@ -5,7 +5,7 @@
 //!
 //! 买到：临时目录上真读真判 —— 四态逐行相等（原样走 AS1 的 `diff`）· 「不同没说盖 ⇒ 整趟拒」（原样走 AS1 的 `plan`）·
 //! 装不过去的（来源读不出原文 / 这台那一份盖不了）勾了就拒 · 可疑项四种逐条相等、闭集两向相等 · 回传的 CAS 期望只含这一趟拷的路径。
-//! 买不到：🔴 真 Windows（执行位借 `plugin::discover::is_executable`，非 unix 恒 false）· 真远端（两台都是本机临时目录）。
+//! 买不到：🔴 真 Windows（执行位借 `platform::fs::is_executable`，非 unix 恒 false）· 真远端（两台都是本机临时目录）。
 
 use super::*;
 use crate::assets::mcp_sync::There;

@@ -8,6 +8,13 @@
     pointer-events: none;
   }
 
+  .drawerScrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--overlay-backdrop);
+  }
+
   .drawer {
     position: fixed;
     top: 0;
@@ -56,5 +63,12 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  .drawerFoot {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: var(--space-4);
   }
 }

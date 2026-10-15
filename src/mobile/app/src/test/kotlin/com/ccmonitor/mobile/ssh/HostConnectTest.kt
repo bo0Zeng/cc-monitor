@@ -53,7 +53,7 @@ class HostConnectTest {
     @Test fun noOverrideTmuxWithWd() =
         assertEquals(listOf("tmux -u new-session -A -s 'main' -c '/home/pi'"), host(wd = "/home/pi", tmux = true).initialCommands())
 
-    // === workingDir（「在 SFTP 目录打开终端」）：override 强制 cd，优先于 defWd ===
+    // === workingDir（「在文件屏当前目录打开终端」）：override 强制 cd，优先于 defWd ===
     @Test fun overrideNoTmux() =
         assertEquals(listOf("cd '/srv/app'"), host().initialCommands(LaunchSpec(workingDir = "/srv/app")))
 

@@ -188,8 +188,8 @@ pub(crate) fn answer_read_at(
                 path: rel.clone(),
                 text,
                 bytes: Ro::metadata(abs).map(|m| m.len()).unwrap_or(0),
-                // 读执行位是平台原语：借插件口那一份（`plugin::discover::is_executable`，非 unix 上恒 false）。
-                exec: crate::plugin::discover::is_executable(abs),
+                // 读执行位是平台原语：借插件口那一份（`platform::fs::is_executable`，非 unix 上恒 false）。
+                exec: crate::platform::fs::is_executable(abs),
                 why,
             }
         })
@@ -371,7 +371,7 @@ pub(crate) fn answer_plan_with(
     if Ro::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         let (paths, skipped) = walk(&dir)?;
         for (rel, abs) in paths {
-            let exec = crate::plugin::discover::is_executable(&abs);
+            let exec = crate::platform::fs::is_executable(&abs);
             match read_text(&abs) {
                 (Some(t), _) => {
                     here.insert(rel.clone(), json!({ "text": t, "exec": exec }));

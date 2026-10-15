@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
-# cc-register <id>  把"当前 tmux pane"登记为 agent <id> 的地址
+# cc-register [--sid <会话编号>] [<id>]  把"当前 tmux pane"登记为 agent <id> 的地址(第 5 列记会话编号,敲门按它经后端说一句)
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+sid=""
+if [ "${1:-}" = --sid ]; then sid="${2:-}"; shift 2 2>/dev/null || { echo "cc-register: --sid 需要参数" >&2; exit 2; }; fi
 # 无参则从 tmux 自动认领身份(cc-whoami);不在 tmux/无身份则静默不登记(非 bus 成员)
-if [ -n "${1:-}" ]; then id="$1"; else id=$("$SELFDIR/cc-whoami") || exit 0; fi
+if [ -n "${1:-}" ]; then id="$1"; else
+  id=$("$SELFDIR/cc-whoami") || exit 0
+  # 自己登记自己(agent 的钩子里跑):会话编号问 agent 词典(那一家导给子进程的「我是哪个会话」)。
+  # ⚠ 替别的窗格登记(给了 <id>,如 ccm 起会话的收尾)不读它:那时环境里的是调用方那条会话的编号。
+  if [ -z "$sid" ]; then
+    # shellcheck source=cc-bus-adapt.sh
+    . "$SELFDIR/cc-bus-adapt.sh"
+    if ccbus_adapt_load 2>/dev/null; then sid=$(agent_self_sid); fi
+  fi
+fi
+case "$sid" in *[!A-Za-z0-9_-]*) echo "cc-register: 会话编号 '$sid' 形状不对,不记这一格" >&2; sid="" ;; esac
 # id 会拼进文件路径,做白名单校验防路径穿越
 case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-register: 非法/空 id '$id'" >&2; exit 2;; esac
 mkdir -p "$BUS/inbox" "$BUS/state" "$BUS/log"
@@ -23,7 +35,8 @@ target=$(tmux -u display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_in
 # **被打进了陌生占用者的屏幕**,而真正的收件人一次也没被敲。
 #(在 shell 里那行会被当命令执行;在编辑器里会被插进正文。)
 #
-# ⇒ 记下**登记那一刻 pane 的根进程 pid**,敲门前核一次:对不上就别敲(见 route_nudge)。
+# ⇒ 记下**登记那一刻 pane 的根进程 pid**,敲门前读窗格身份时核一次:对不上就别敲(见 route_nudge)。
+# 第 5 列是会话编号(登记那一刻说得出才有;空 ⇒ 敲门时从窗格读一次身份标记)。
 # ⚠ 只增一列、不改前三列:老表(用户盘上有 07-18 起的 86 行)第 4 列为空 ⇒ 按老行为敲,
 #   不制造假跳过;新登记的才有得核。
 pane_pid=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null || true)
@@ -57,7 +70,7 @@ touch "$BUS/agents.tsv"
   else
     : > "$tmpf"
   fi
-  printf '%s\t%s\t%s\t%s\n' "$id" "$target" "$(date -Iseconds)" "$pane_pid" >> "$tmpf"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$target" "$(date -Iseconds)" "$pane_pid" "$sid" >> "$tmpf"
   mv "$tmpf" "$BUS/agents.tsv"
 ) 9>>"$BUS/agents.tsv.lock"
 touch "$BUS/inbox/$id.jsonl"

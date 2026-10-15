@@ -594,7 +594,7 @@ mod g6_reach {
     ///
     /// # 这一条**从活体退成了合成**，两件事一起记
     ///
-    /// 原先它钉的是一个**活体**：`plugin/discover.rs::is_executable` 的 `#[cfg(not(unix))]`
+    /// 原先它钉的是一个**活体**：当时住插件口、今住 `fs/mod.rs::is_executable` 的那个函数的 `#[cfg(not(unix))]`
     /// 块体是一个裸 `true`。那一处 `K-R52` 已经修掉（改成保守方向的 `false`），
     /// 于是本条当场红了 —— **那是它干对了活**（它的失败文案逐字写着「要么它被修好了
     /// （好事 —— 同轮摘登记）」）。这里就是那一次摘登记。
@@ -637,17 +637,18 @@ mod g6_reach {
         // ③ 曾经的那个活体今天**真的**是诚实取值了，不是被绕开、也不是判红条件被改松。
         //    🔴 这一条是 `K-R52` 摘活体时补的：没有它，上面两条在
         //    「判红条件被改松」时也会全绿，而那与「病治好了」在输出上一模一样。
-        let discover = production_code(include_str!("../../../src/backend/plugin/discover.rs"));
+        //    const1 起那个函数（`is_executable`）下沉进了 `platform/fs/mod.rs`（人群之内，本护栏本体也扫它）；本条跟着读新住址。
+        let discover = production_code(include_str!("../../../src/backend/platform/fs/mod.rs"));
         // Windows 那一臂有了真实现（只认 `.exe`，`windows_launchable_name`）；
         //   「保守取值」那一臂的门从 `not(unix)` 收窄成 `not(any(unix, windows))`，本条跟着认新门。
         let body = block_of(&discover, "#[cfg(not(any(unix, windows)))]");
         assert!(
             fabricates(&body).is_empty(),
-            "`plugin/discover.rs` 的非 unix 臂又开始编乐观答案了：{body}"
+            "`is_executable` 的非 unix 臂又开始编乐观答案了：{body}"
         );
         assert!(
             body.contains("false"),
-            "`plugin/discover.rs` 的非 unix 臂不再是那个保守取值 `false` 了 —— \n\
+            "`is_executable` 的非 unix 臂不再是那个保守取值 `false` 了 —— \n\
              它现在是：{body}\n\
              ⇒ 要么换了别的**诚实**取值（那就回来把这条断言改成新的那个），\n\
              要么判红条件被改松了（坏事）。别让这一格靠「什么都不写」变绿。"

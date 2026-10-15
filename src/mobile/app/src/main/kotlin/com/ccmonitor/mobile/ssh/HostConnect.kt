@@ -13,7 +13,7 @@ import com.ccmonitor.mobile.core.ssh.ReconnectPolicy
 /**
  * 把 [Host] 的全部可连地址（[endpoints]）展开成竞速用的 [ConnectionConfig] 列表。
  * 放在 app：只有这一层同时看得到 core-data 的 [Host] 和 core-ssh 的 [ConnectionConfig]。
- * 终端和 SFTP 共用，免得两处构造字段走样。
+ * 终端和文件屏共用，免得两处构造字段走样。
  */
 fun Host.toConnectionConfigs(
     auth: AuthMethod,
@@ -78,7 +78,7 @@ suspend fun resolveAuthMethod(
 }
 
 /**
- * 主机认证分派的唯一来源，终端和 SFTP 都走它：有密码（`passwordEnc`）先用密码，
+ * 主机认证分派的唯一来源，终端和文件屏都走它：有密码（`passwordEnc`）先用密码，
  * 否则按身份（`authRef`，或本次连接临时选的 [pendingIdentityId]）走 [resolveAuthMethod]。
  */
 suspend fun resolveHostAuth(

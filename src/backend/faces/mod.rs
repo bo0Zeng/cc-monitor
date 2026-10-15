@@ -18,6 +18,7 @@ pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的�
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）
 pub mod plan_review_face; // 帧面 `plan-ack` · `plan-unack`：计划认可（记在后端自己的 `plan-review.json`）
+pub(crate) mod profiles_face; // 配置文件那两条要问控制面的（typed）：profiles-read（有没有 tmux）· profiles-resolve（渲 ccm 那一行）；本体在 assets/aliases/page.rs
 pub(crate) mod project; // 通用投影 `project(成品, 声明)`：出口在请求信封里交的 `view`（cells · omit）照格目录校验、挑格去格，只这一处
 pub mod quota_probe_face; // 帧面 `quota-probe`：用某个号查一次额度（起官方客户端报用量、读法住适配层），记进同一本额度账
 pub(crate) mod quota_read; // `quota-read` 的成品（有类型：每号 ＝ 原数 ＋ 显示态 ＋ 写好的几行 · 5h 那一格 · 开窗那一判；顶上 ＋ 号名表）

@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { cssDeclarations, type CssDecl } from "../../evidence/S30-css-conventions.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
-const TOKENS = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/tokens.css"), "utf8");
+const TOKENS = readFileSync(resolve(REPO_ROOT, "src/shared/theme/tokens.css"), "utf8");
 
 /** 令牌的第一处声明值（`:root` 里那一条；减弱动效那段在后面，不取）。 */
 function token(name: string, src = TOKENS): string {
@@ -88,7 +88,7 @@ describe("对比度实算", () => {
 
 // ───────────────────────── 字面量 ─────────────────────────
 
-const DECLS: CssDecl[] = cssDeclarations(REPO_ROOT).filter((d) => !d.file.endsWith("/styles/tokens.css"));
+const DECLS: CssDecl[] = cssDeclarations(REPO_ROOT).filter((d) => !d.file.endsWith("/shared/theme/tokens.css"));
 
 /** 令牌之外许写字面量的，逐条（文件 · 选择器 · 属性）。 */
 const ALLOWED: Readonly<Record<string, string>> = {

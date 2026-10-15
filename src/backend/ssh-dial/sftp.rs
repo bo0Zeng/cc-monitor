@@ -61,10 +61,8 @@ const ROOTS_HOME: &str = ".cc-monitor";
 pub enum WriteRules {
     /// 一个字节都不许写（没装宿主那一套时的缺省：宁可写不成，不许写错地方）。
     ReadOnly,
-    /// 部署：只许 [`REMOTE_WRITE_ROOTS`] 那两处（后端）；建出来的目录当场收成 `dir_mode`（后端交它自家目录那一个权限位）。
+    /// 部署：只许 [`REMOTE_WRITE_ROOTS`] 那两处（后端 · 手机）；建出来的目录当场收成 `dir_mode`（宿主交后端自家目录那一个权限位）。
     Deploy { dir_mode: u32 },
-    /// 用户自己管文件（手机的文件屏）：任意路径，权限按服务端默认。
-    Anywhere,
 }
 
 /// files 链路上一行请求的上限（请求都是短 JSON；`put` 的字节不走行）。
@@ -490,7 +488,6 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
                 &[("path", path.trim())],
             )))
         }
-        WriteRules::Anywhere => return Ok(path.trim().to_string()),
         WriteRules::Deploy { .. } => {}
     }
     let (rel, root) = fence_lexical(&s.home, path, intent).map_err(fenced)?;
@@ -832,16 +829,11 @@ pub async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
 pub async fn make_dirs(s: &Session, path: &str) -> Result<(), Refusal> {
     let rel = match crate::env::get().files {
         WriteRules::Deploy { .. } => fence_lexical(&s.home, path, Intent::Dir).map_err(fenced)?.0,
-        _ => fenced_remote(s, path, Intent::Dir).await?,
+        WriteRules::ReadOnly => fenced_remote(s, path, Intent::Dir).await?,
     };
-    // 绝对路径（只有任意路径那一种规矩会交来）从 `/` 起逐级建。
-    let mut cur = if rel.starts_with('/') {
-        "/".to_string()
-    } else {
-        String::new()
-    };
+    let mut cur = String::new();
     for comp in rel.split('/').filter(|c| !c.is_empty()) {
-        if !cur.is_empty() && !cur.ends_with('/') {
+        if !cur.is_empty() {
             cur.push('/');
         }
         cur.push_str(comp);

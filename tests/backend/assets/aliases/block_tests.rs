@@ -978,7 +978,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 /// 往 `render_cc_code` 的拼装处加回一段 `$env:PATH = "<我们的 bin 目录>;$env:PATH"` ⇒ 本条红。
 #[test]
 fn the_powershell_block_never_touches_the_session_path_again() {
-    let word = crate::control::ccm::SUBCOMMAND_WORD;
+    let word = crate::ccm_line::SUBCOMMAND_WORD;
     {
         let out = render_cc_code(std::path::Path::new("/_"));
         // ── 地板①：这份东西本身得是真的 ──────────────────────────────
@@ -1027,7 +1027,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
 #[test]
 fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     use super::super::{first_aliases, render_line};
-    let word = crate::control::ccm::SUBCOMMAND_WORD;
+    let word = crate::ccm_line::SUBCOMMAND_WORD;
     let cc_of = |sh: Shell| {
         first_aliases(sh)
             .into_iter()

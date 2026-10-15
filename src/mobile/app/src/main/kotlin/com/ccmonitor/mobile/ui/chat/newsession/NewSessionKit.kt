@@ -30,18 +30,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ccmonitor.mobile.core.ui.theme.AcctPalette
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 
 /*
  * 新建会话那几屏共用的小件：chip · 抽屉头 · 抽屉里的一行 · 号牌 · 状态点。chip 画出来 36 dp 高、命中区 48；抽屉一行 52。
- * 字符图标（▾ ✓ ›）等 mobtheme 换成 Phosphor。
+ * 展开 · 下一层用 Phosphor 的 caret；勾选那一颗仍是字（不在图标表里）。
  */
 
-internal const val CARET = "▾"
 internal const val CHECK = "✓"
-internal const val MORE = "›"
 
 /** 顶栏下那一排里的一颗：点开底部抽屉。画出来 36 dp 高，命中区照 M3 的 48（`Surface(onClick)` 自带）。 */
 @Composable
@@ -64,7 +64,7 @@ internal fun Chip(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             content()
-            Text(CARET, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+            PhIcon(Ph.CaretDown, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -112,7 +112,7 @@ internal fun PickRow(
     trail: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val tokens = LocalAppTokens.current
-    val bg = if (selected) tokens.accentSoft else Color.Transparent
+    val bg = if (selected) tokens.selectedBg else Color.Transparent
     Row(
         modifier
             .fillMaxWidth()
@@ -148,7 +148,8 @@ internal fun AccountBadge(
     color: Int?,
     size: Int = 22,
 ) {
-    val (bg, ink) = AcctPalette[(color ?: 0).mod(AcctPalette.size)]
+    val acct = LocalAppTokens.current.acct
+    val (bg, ink) = acct[(color ?: 0).mod(acct.size)]
     Box(Modifier.size(size.dp).background(bg, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
         Text(badgeText(name), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
     }

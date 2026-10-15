@@ -7,11 +7,11 @@
 //! 容器收尾先自检对「确认放在 ccm 收尾最前面」。账号四条路 / quote / `set -f` / BOM 那几条是普通单测，没有逐字原文。〔JA1 点址 2026-09-24〕
 
 use super::*;
-use crate::control::ccm::argv::Parsed;
+use crate::ccm_line::argv::Parsed;
 
 /// 本文件的夹具把 ccm 选项写在前 ⇒ 喂解析器之前换成 `--` 切分的排列（意图逐词不变）。
-fn parse(a: &[String]) -> Result<Parsed, crate::control::ccm::argv::Die> {
-    crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::mixed_to_split(a))
+fn parse(a: &[String]) -> Result<Parsed, crate::ccm_line::argv::Die> {
+    crate::ccm_line::argv::parse(&crate::ccm_line::argv::tests::mixed_to_split(a))
 }
 
 /// Claude 找上游读的那个变量（夹具照它那一家填 `Env::base_url_env`）。
@@ -1859,9 +1859,9 @@ fn a_resume_of_a_session_two_processes_are_writing_is_refused() {
 // ── 起会话只有 ccm 一处：monitor 交来的三个选项 ＋ 中转地址在最终 exec 那一处定 ──
 
 /// 原排列直接喂解析器（新选项不走上面那个换排列的夹具）。
-fn plan_split(args: &[&str], env: &Env) -> Result<Plan, crate::control::ccm::argv::Die> {
+fn plan_split(args: &[&str], env: &Env) -> Result<Plan, crate::ccm_line::argv::Die> {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    match crate::control::ccm::argv::parse(&a)? {
+    match crate::ccm_line::argv::parse(&a)? {
         Parsed::Opts(o) => build(&o, env, &AccountTable::default(), None),
         other => panic!("{other:?}"),
     }
@@ -1929,10 +1929,7 @@ fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms
         vec!["--", "--account-dir", "/h/x", "--base"],
     ] {
         let a: Vec<String> = bad.iter().map(|s| s.to_string()).collect();
-        assert!(
-            crate::control::ccm::argv::parse(&a).is_err(),
-            "{bad:?} 该被拒"
-        );
+        assert!(crate::ccm_line::argv::parse(&a).is_err(), "{bad:?} 该被拒");
     }
 }
 
@@ -2040,7 +2037,7 @@ fn a_stale_session_mark_alone_does_not_make_a_resume_rejoin() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let Parsed::Opts(o) = crate::control::ccm::argv::parse(&a).unwrap() else {
+    let Parsed::Opts(o) = crate::ccm_line::argv::parse(&a).unwrap() else {
         panic!()
     };
     let mut e = env();
@@ -2076,8 +2073,7 @@ fn cwd_if_goes_where_the_first_exact_match_says() {
         e.pwd = pwd.to_string();
         let mut a = vec!["--".to_string()];
         a.extend(right.iter().map(|s| s.to_string()));
-        match crate::control::ccm::argv::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
-        {
+        match crate::ccm_line::argv::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0)) {
             Parsed::Opts(o) => resolve_cwd(&o, &e),
             other => panic!("{other:?}"),
         }
@@ -2110,12 +2106,12 @@ fn cwd_if_goes_where_the_first_exact_match_says() {
     assert_eq!(at(&["--cwd-if", "~", "docs"], &home), docs);
     let bad = ["--", "--cwd-if", "rel", "/x"].map(String::from);
     assert!(
-        crate::control::ccm::argv::parse(&bad).is_err_and(|x| x.0.contains("--cwd-if")),
+        crate::ccm_line::argv::parse(&bad).is_err_and(|x| x.0.contains("--cwd-if")),
         "相对的「在哪」该在解析期就拒"
     );
     let half = ["--", "--cwd-if", "~"].map(String::from);
     assert!(
-        crate::control::ccm::argv::parse(&half).is_err(),
+        crate::ccm_line::argv::parse(&half).is_err(),
         "只给了一个目录"
     );
 }
@@ -2130,8 +2126,7 @@ fn cwd_expands_a_leading_tilde_like_cwd_if() {
     let at = |right: &[&str]| -> String {
         let mut a = vec!["--".to_string()];
         a.extend(right.iter().map(|s| s.to_string()));
-        match crate::control::ccm::argv::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0))
-        {
+        match crate::ccm_line::argv::parse(&a).unwrap_or_else(|x| panic!("{right:?}：{}", x.0)) {
             Parsed::Opts(o) => resolve_cwd(&o, &e),
             other => panic!("{other:?}"),
         }
@@ -2259,6 +2254,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         processes: None,
         launch: Some(crate::agents::fake::LAUNCH),
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,

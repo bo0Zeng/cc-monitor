@@ -30,7 +30,7 @@ fun appendAuthorizedKeyCommand(publicKeyOpenSsh: String): String {
 
 /** 一次「连接后进入」的意图；重连时原样重放。全空 = 只开 shell。 */
 data class LaunchSpec(
-    /** 进入后 cd 的目录，优先于 host.defaultWorkingDir（如「在 SFTP 目录打开终端」）。 */
+    /** 进入后 cd 的目录，优先于 host.defaultWorkingDir（如「在文件屏当前目录打开终端」）。 */
     val workingDir: String? = null,
     /** tmux 会话名（host 为 tmux 时用）；null → [DEFAULT_TMUX_SESSION]。 */
     val tmuxSession: String? = null,

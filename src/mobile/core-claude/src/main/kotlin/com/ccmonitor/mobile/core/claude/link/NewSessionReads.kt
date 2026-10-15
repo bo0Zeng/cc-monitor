@@ -1,9 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.DirChecked
-import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LoginStarted
-import com.ccmonitor.mobile.core.claude.link.wire.LsReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -82,37 +80,6 @@ object RotationStrategies {
             .map(String::trim)
             .firstOrNull(String::isNotEmpty)
             .orEmpty()
-}
-
-/** `files-ls`：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
-object FilesLs {
-    const val COMMAND: String = "files-ls"
-
-    fun dirs(path: String): Map<String, Any?> = mapOf("path" to path, "dirs_only" to true)
-
-    data class Dir(
-        val path: String,
-    ) {
-        val name: String get() = path.trimEnd('/').substringAfterLast('/').ifEmpty { path }
-    }
-
-    /** 一层里的文件夹；路径不是字（那台用 `b16` 交的、读不成字的名字）⇒ 不列。形状对不上 ⇒ `null`。 */
-    fun of(data: Any?): List<Dir>? = Wire.bind<LsReply>(data)?.entries?.mapNotNull { (it.path as? String)?.let(::Dir) }
-
-    /** 上一级；根 ⇒ `null`。 */
-    fun parent(path: String): String? {
-        val p = path.trimEnd('/')
-        if (p.isEmpty()) return null
-        val cut = p.lastIndexOf('/')
-        return if (cut <= 0) "/" else p.substring(0, cut)
-    }
-}
-
-/** `files-home`：那台这个用户的家目录。 */
-object FilesHome {
-    const val COMMAND: String = "files-home"
-
-    fun of(data: Any?): String? = Wire.bind<FilesPathReply>(data)?.path as? String
 }
 
 /** 在 app 里登录一个号：`login-start` 起那一家的登录、交回链接；粘回来的那一段经 `login-finish` 交给它；`login-cancel` 收。 */

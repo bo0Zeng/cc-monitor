@@ -269,7 +269,7 @@ fn the_stream_view_refuses_products_the_stream_does_not_carry() {
 fn attach_line_carries_tz_and_view_and_nothing_else() {
     assert_eq!(
         attach_flags(r#"{"attach":true}"#),
-        Ok(Some(crate::StreamWants::default()))
+        Ok(Some(crate::stream::inbound::views::StreamWants::default()))
     );
     // 看的那一台的时区：认得 ⇒ 那个时区；认不得 ⇒ UTC。
     let sh = crate::Tz::named("Asia/Shanghai").unwrap();

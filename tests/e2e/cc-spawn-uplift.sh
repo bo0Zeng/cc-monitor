@@ -418,46 +418,45 @@ chmod 644 "$CC_BUS_HOME/agents.tsv"
 chk "★ 旧表读不动时**拒绝登记**，别人的地址一条不少" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^r[abc]_cc$')" "3"
 
-echo "[20] 【08-13】敲门不许打进**别人的**屏幕"
-# ★ 真事故：地址是**名字型**的（`proj_cc:0.0`），而名字会被重用 —— `cc-spawn` 就按目录
-#   基名取会话名。agent 退出后同名会话被别的进程占着，再给它发消息 ⇒ 敲门文字（**带 Enter**）
-#   被打进陌生占用者的屏幕（在 shell 里那行会被当命令执行），而真正的收件人一次也没被敲。
-# ⇒ 登记时记下 pane 的根进程 pid（第 4 列），敲门前核一次。
-# ⚠ 判据要**两个方向都钉**：活着的必须照敲、陌生人必须零打扰。只钉后者的话，
-#   把敲门整个删掉也能"通过"。
+echo "[20] 【08-13 · 10-14 换法】敲门经后端往那条会话说一句；不许敲到**别人**；读不到会话只入收件箱"
+# ★ 真事故（08-13）：地址是**名字型**的（`proj_cc:0.0`），而名字会被重用 —— agent 退出后同名会话被别的进程占着，
+#   敲门文字（**带 Enter**）被打进陌生占用者的屏幕。
+# 10-14 起敲门不再往窗格里打字：会话编号（登记第 5 列 → 没有 ⇒ 窗格上后端打的身份标记 `@ccm_sid`，核第 4 列 pid）
+#   交给后端 `--terminal-preview`（拿那一屏的指纹）＋ `--session-say`（带着它说）。本套件的 CCM_BIN 就是本树的后端。
+# ⚠ 判据要**两个方向都钉**：认得出的必须照敲、陌生人必须零打扰。只钉后者的话，把敲门整个删掉也能"通过"。
+_SID_LIVE=11111111-2222-4333-8444-555555555551
+_SID_OLD=11111111-2222-4333-8444-555555555552
 tmux new-session -d -s live_cc -c /tmp 'cat'
+tmux set-option -p -t live_cc @ccm_sid "$_SID_LIVE"
 _lp="$(tmux list-panes -t '=live_cc' -F '#{pane_id}' | head -1)"
 TMUX_PANE="$_lp" bash "$REPO/src/shared/cc-bus/scripts/cc-register" live_cc >/dev/null 2>&1
 chk "登记行带第 4 列（pane 根进程 pid，纯数字）" \
   "$(awk -F'\t' '$1=="live_cc"{print ($4 ~ /^[0-9]+$/) ? "yes" : "no"}' "$CC_BUS_HOME/agents.tsv")" "yes"
 bash "$REPO/src/shared/cc-bus/scripts/cc-send" live_cc "给活着的它" >/dev/null 2>&1
 wall_until "tmux capture-pane -t 'live_cc:0.0' -p | grep -q '🔔 cc-bus'" || true
-chk "★ 方向一：活着的 agent **照样被敲**" \
+chk "★ 方向一：认得出会话的 agent **照样被敲**（经后端说一句）" \
   "$( [ "$(tmux capture-pane -t 'live_cc:0.0' -p | grep -c '🔔 cc-bus')" -gt 0 ] && echo yes || echo no)" "yes"
 
 tmux new-session -d -s reuse_cc -c /tmp 'cat'
 _rp="$(tmux list-panes -t '=reuse_cc' -F '#{pane_id}' | head -1)"
 TMUX_PANE="$_rp" bash "$REPO/src/shared/cc-bus/scripts/cc-register" alpha_cc >/dev/null 2>&1
 tmux kill-session -t '=reuse_cc'
-tmux new-session -d -s reuse_cc -c /tmp 'cat'     # 陌生占用者，同名会话
+tmux new-session -d -s reuse_cc -c /tmp 'cat'     # 陌生占用者，同名会话（还是 ccm 起的、带着它自己的身份）
+tmux set-option -p -t reuse_cc @ccm_sid 11111111-2222-4333-8444-555555555553
 bash "$REPO/src/shared/cc-bus/scripts/cc-send" alpha_cc "只该给 alpha_cc 看的" >/dev/null 2>&1
 # 零打扰是个「没发生」：等它记下「核过、名字被别人占了」那一笔（定了不敲）之后再看屏幕。
 wall_until "grep -q 'NUDGE stale alpha_cc' '$CC_BUS_HOME/log/bus.log' 2>/dev/null" || true
 chk "★ 方向二：同名会话被陌生人占着 ⇒ **零打扰**" \
   "$(tmux capture-pane -t 'reuse_cc:0.0' -p | grep -c '🔔 cc-bus')" "0"
-# ⚠ 两个坑一次踩齐（本套件当场演示了）：`grep -c` 没命中时**既打印 0 又返回 1**。
-#   ① 写 `|| echo 0` ⇒ 再追加一个 0，读数变成 "0\n0"；
-#   ② 什么都不写 ⇒ 这里 `set -e` 是**开着**的（见上方 `:338`），赋值失败当场杀掉整套，
-#      表现为「最后一格和合计行凭空消失」——不是红，是**没跑完**。
-#   ⇒ 用本文件既有的 `|| true`（它不打印任何东西），再用 `${_n:-0}` 兜住文件不存在。
+# ⚠ `grep -c` 没命中时**既打印 0 又返回 1**：用 `|| true`（不打印）再 `${_n:-0}` 兜住（本段 `set -e` 开着）。
 _n="$(grep -c 'NUDGE stale alpha_cc' "$CC_BUS_HOME/log/bus.log" 2>/dev/null || true)"
 chk "  且记了一笔（不是静默跳过）" "${_n:-0}" "1"
 chk "  投递不受影响（收件箱照收）" \
   "$(wc -l < "$CC_BUS_HOME/inbox/alpha_cc.jsonl" 2>/dev/null || echo 0)" "1"
 
-# 老表兼容：用户盘上那 86 行是 **3 列**（最早 07-18）。第 4 列为空 ⇒ 按老行为敲，
-# **不许**把它们全判成 stale（那等于把所有存量 agent 的敲门一次性关掉）。
+# 老表兼容：用户盘上那 86 行是 **3 列**（最早 07-18）。第 4 列为空 ⇒ 不核 pid，窗格上有身份照敲。
 tmux new-session -d -s old_cc -c /tmp 'cat'
+tmux set-option -p -t old_cc @ccm_sid "$_SID_OLD"
 printf 'old_cc\told_cc:0.0\t2026-07-18T07:26:31-07:00\n' > "$CC_BUS_HOME/agents.tsv"
 bash "$REPO/src/shared/cc-bus/scripts/cc-send" old_cc "老表照样要敲" >/dev/null 2>&1
 wall_until "tmux capture-pane -t 'old_cc:0.0' -p | grep -q '🔔 cc-bus'" || true
@@ -465,6 +464,17 @@ chk "★ 老 3 列表（无第 4 列）**仍被敲到**" \
   "$( [ "$(tmux capture-pane -t 'old_cc:0.0' -p | grep -c '🔔 cc-bus')" -gt 0 ] && echo yes || echo no)" "yes"
 _n="$(grep -c 'NUDGE stale old_cc' "$CC_BUS_HOME/log/bus.log" 2>/dev/null || true)"
 chk "  且没有假 stale" "${_n:-0}" "0"
+
+# 10-14：窗格里没有会话（不是经 ccm 起的、裸 tmux 里登记的）⇒ 不敲、只入收件箱、记一笔。
+tmux new-session -d -s bare_cc -c /tmp 'cat'
+_bp="$(tmux list-panes -t '=bare_cc' -F '#{pane_id}' | head -1)"
+TMUX_PANE="$_bp" bash "$REPO/src/shared/cc-bus/scripts/cc-register" bare_cc >/dev/null 2>&1
+bash "$REPO/src/shared/cc-bus/scripts/cc-send" bare_cc "裸窗格" >/dev/null 2>&1
+wall_until "grep -q 'NUDGE nosid bare_cc' '$CC_BUS_HOME/log/bus.log' 2>/dev/null" || true
+chk "★ 读不到会话编号 ⇒ **零打字**" "$(tmux capture-pane -t 'bare_cc:0.0' -p | grep -c '🔔 cc-bus')" "0"
+_n="$(grep -c 'NUDGE nosid bare_cc' "$CC_BUS_HOME/log/bus.log" 2>/dev/null || true)"
+chk "  且记了一笔「只入收件箱」" "${_n:-0}" "1"
+chk "  收件箱照收" "$(wc -l < "$CC_BUS_HOME/inbox/bare_cc.jsonl" 2>/dev/null || echo 0)" "1"
 
 echo "[21] 【08-13】收掉 agent 时**不许杀掉占了同一个名字的无辜进程**"
 # ★★ 真事故（比敲门那条重得多：那条是打扰，这条是**销毁**）：`cc-kill` 按**名字**杀

@@ -242,7 +242,11 @@ impl Facts for PhoneFacts {
     }
 }
 
-/// 装上手机那一套（一个进程一次）：钥匙在本表 · host key 回调进 Kotlin · 没有 agent · 远端写任意路径（文件屏）。
+/// 部署建目录收成的权限位：与后端交的 `own_dir::PRIVATE_DIR_MODE` 同值（本 crate 够不着后端，后端那边有一条判据钉相等）。
+const DEPLOY_DIR_MODE: u32 = 0o700;
+
+/// 装上手机那一套（一个进程一次）：钥匙在本表 · host key 回调进 Kotlin · 没有 agent ·
+/// 远端写只许部署那两处（文件屏走那台后端的 `files-*`，不经手机的 SFTP 写）。
 fn install_env() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -251,7 +255,9 @@ fn install_env() {
             host_keys: Box::new(PhoneHostKeys),
             agent: None,
             facts: Box::new(PhoneFacts),
-            files: WriteRules::Anywhere,
+            files: WriteRules::Deploy {
+                dir_mode: DEPLOY_DIR_MODE,
+            },
         });
     });
 }
@@ -840,6 +846,20 @@ mod tests {
         let mut got = Vec::<u8>::new();
         assert!(!super::ack_within(&mut r, &mut |b: &[u8]| got.extend_from_slice(b)).await);
         assert!(got.is_empty());
+    }
+
+    /// 手机进程装的写规矩是部署那一种（只许后端那两处，建出来的目录收成只给本人）：文件屏走那台后端的 `files-*`，
+    /// 手机自己经 SFTP 只剩部署要写的那两处。
+    #[test]
+    fn the_phone_installs_the_deploy_write_rule() {
+        super::install_env();
+        assert!(ssh_dial::env::installed());
+        assert_eq!(
+            ssh_dial::env::get().files,
+            ssh_dial::sftp::WriteRules::Deploy {
+                dir_mode: super::DEPLOY_DIR_MODE
+            }
+        );
     }
 
     /// 身份那一行是 JSON、带拨号核心的 ack 协议版本与它认得的用法（PTY · 握着连接那两种也在）。

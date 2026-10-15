@@ -25,10 +25,10 @@ fn synth_home_unknown() -> Option<PathBuf> {
 
 #[rustfmt::skip]
 const SYNTH_REGISTRY: &[Adapter] = &[
-    Adapter { kind: "alpha",   home: synth_home_present, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-    Adapter { kind: "ghost",   home: synth_home_absent, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-    Adapter { kind: "nameless", home: synth_home_unknown, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-    Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "alpha",   home: synth_home_present, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, clear_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "ghost",   home: synth_home_absent, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, clear_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "nameless", home: synth_home_unknown, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, clear_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, clear_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
 ];
 
 /// `S5-Y1`：**看得见 = home 目录存在**。整条链喂合成注册表，一次验四种形态。
@@ -284,6 +284,7 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
         processes: None,
         launch,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,
@@ -561,18 +562,19 @@ fn export_bindings_agent_profile_table() {
 /// ★ ccm 不再做 resume 的决定（之后它是 claude 的壳；从 monitor `agent_profile_parity_tests.rs` 搬来）。
 #[test]
 fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
-    let dir = crate::guard_support::repo_root().join("src/backend/control/ccm");
-    let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
-        .iter()
-        .map(|f| {
-            std::fs::read_to_string(dir.join(f))
-                .unwrap_or_else(|e| panic!("读不到 control/ccm/{f}：{e}"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    let src = crate::guard_support::repo_root().join("src/backend");
+    let ccm: String = [
+        "control/ccm/mod.rs",
+        "ccm_line/argv.rs",
+        "control/ccm/plan.rs",
+    ]
+    .iter()
+    .map(|f| std::fs::read_to_string(src.join(f)).unwrap_or_else(|e| panic!("读不到 {f}：{e}")))
+    .collect::<Vec<_>>()
+    .join("\n");
     assert!(
         ccm.len() > 5000,
-        "control/ccm 三份只有 {} 字节，抽错了？",
+        "ccm 那三份只有 {} 字节，抽错了？",
         ccm.len()
     );
     assert!(
@@ -756,6 +758,7 @@ fn two_families() -> Vec<Adapter> {
         processes: None,
         launch: None,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,

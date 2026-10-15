@@ -535,7 +535,7 @@ fn tail_args(it: &Item, b: &Batch) -> Vec<String> {
         }
     }
     if let Some(text) = it.say.as_ref().filter(|_| b.takes_first_say()) {
-        out.extend([super::ccm::argv::flag::END.to_string(), text.clone()]);
+        out.extend([crate::ccm_line::argv::flag::END.to_string(), text.clone()]);
     }
     out
 }

@@ -2,12 +2,11 @@
 //! 所以：读此刻的档 · 不是 ⇒ 按一下 · 等它重画 · 再读，到了为止，最多按一圈。在等人不按；认不出 · 不在循环里 · 按了没变都照实说「结果未知」。
 
 use crate::agents::ModeSwitch;
-use crate::common::cells::Words;
 use crate::common::contract::malformed;
 use crate::control::terminals::{self, no_said, CmdErr, On, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
 use crate::wire::typed::{self, Blocking, Command, Cx};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// 按一下之后最多等几次重画（每次至多 `terminal_follow::REDRAW_WAIT`）：重画了、读到的档却还没变 ⇒ 再等一次。
 const REDRAWS_PER_PRESS: usize = 4;
@@ -28,28 +27,8 @@ pub(crate) struct SessionPermissionReq {
     pub(crate) client: Option<String>,
 }
 
-/// `session-permission` 的回包。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ModeSwitched {
-    /// 结局。
-    pub(crate) result: SwitchResult,
-    /// 最后读到的档（原值）；没读 · 认不出 ⇒ `null`。
-    pub(crate) mode: Option<&'static str>,
-    /// 同一档写给人看的字（同会话事实 `permissionModeText` 那一处：`PermissionFace::text_of`）；没读到 · 这一档没有字 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "string | null"))]
-    pub(crate) mode_text: Option<Words>,
-    /// `refused` 的原因（同 `terminal-input`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) why: Option<Refused>,
-    /// `unsure` · `refused` 时给人看的那一句。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) said: Option<String>,
-}
+/// `session-permission` 的回包：线上形住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::ModeSwitched;
 
 /// 切模型 · 切档的结局：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::SwitchResult;
@@ -100,7 +79,7 @@ fn reply(
 ) -> ModeSwitched {
     ModeSwitched {
         result,
-        mode,
+        mode: mode.map(str::to_string),
         mode_text: None,
         why,
         said,
@@ -269,7 +248,7 @@ fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
         watch: None,
     };
     let mut got = switch_with(&req.mode, &sw, waiting, &mut io)?;
-    got.mode_text = got.mode.and_then(|m| perm.text_of(m)).map(Words);
+    got.mode_text = got.mode.as_deref().and_then(|m| perm.text_of(m));
     Ok(got)
 }
 

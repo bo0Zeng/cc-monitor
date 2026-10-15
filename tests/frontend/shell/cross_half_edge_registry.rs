@@ -183,6 +183,12 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
+        "tests/frontend/shell/stream_source/stream_flag_gate_tests.rs",
+        "src/backend/wire/cli_words.rs",
+        "同上一条（`the_stream_flags_monitor_sends_are_all_strippable`）的另一半：`STREAM_FLAGS` 那张表住 `lib.rs`，表里那个显式词 `STREAM_FLAG_EXPLICIT` 的字面量住 `wire/cli_words.rs`（const1 从 `lib.rs` 挪过去）—— 两份都读，才抠得出后端认得的全集。",
+    ),
+    (
+        "monitor→backend",
         "tests/frontend/shell/remote_resident_tests.rs",
         "src/backend/control/resident.rs",
         "〔替 HX1 那一行〕**两个期限的先后**：那台停一次的最长时间（`resident::STOP_GRACE_MS ＋ KILL_WAIT_MS`，一次性子命令 `--resident-stop` 里）\

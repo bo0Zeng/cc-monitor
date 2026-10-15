@@ -9,10 +9,10 @@
 //!
 //! # 本文件不许出现 ccm 旗标的字面量
 //!
-//! 旗标名的唯一住址是 [`super::argv::flag`]。由
+//! 旗标名的唯一住址是 [`crate::ccm_line::argv::flag`]。由
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
-use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
+use crate::ccm_line::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
@@ -50,11 +50,173 @@ fn relay_word(url: &str) -> String {
 ///
 /// 我们的中转地址属于某一个号（路由里带着账号段）：它是外层 shell / 上一趟 ccm 留下的，
 /// 不是这一发的 ⇒ 不认（容器路不转进 pane，直路按这一发的目标账号重问）。用户自己的端点 ⇒ 照旧不动。
+///
+/// 〔继承表〕中转地址那一格：只有用户自己的端点往下传。
 fn user_base_url(env: &Env) -> Option<&str> {
     env.inherited_base_url
         .as_deref()
         .filter(|v| !v.is_empty() && !crate::accounts::upstream_select::endpoint::ours(v))
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 继承表：新会话从调用方（终端 · 某条会话的 shell · cc-spawn）拿什么
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 继承表的一格是哪一项。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Item {
+    /// 工作目录。
+    Cwd,
+    /// 账号。
+    Account,
+    /// 轮换（换号那一份设置）。
+    Rotation,
+    /// 中转地址。
+    Relay,
+    /// 主会话（会话血缘）。
+    Parent,
+    /// 嵌套标记 · 各家「我是哪个会话」的变量。
+    Nested,
+    /// 启动命令 · 模型 · 进不进 tmux。
+    MachinePrefs,
+    /// 机器级环境（`CCM_ENV` 那一串）。
+    MachineEnv,
+    /// 别名。
+    Alias,
+    /// 其余环境变量。
+    OtherEnv,
+    /// 后端自己的载体（常驻开关 · 诊断文件 · 后端内部那几族）。
+    BackendCarriers,
+}
+
+/// 一格在一条路上怎么来。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Pass {
+    /// 原样从调用方拿。
+    Caller,
+    /// 从调用方拿，显式写进窗格里那一条命令（tmux 边界会把环境吃掉，不写就没了）。
+    Carried,
+    /// 不看调用方的，这一发自己定（重新问 · 只认这一发自己写的）。
+    Fresh,
+    /// 照这台的设置，不随主会话。
+    Machine,
+    /// 那台 tmux 的环境（不搬调用方的）。
+    Pane,
+    /// 清掉，不往下传。
+    Cleared,
+}
+
+/// 谁能改这一格（`Flags` 是这一发就能改的 ccm 选项：「来自」照它去合并结果里找；界面起会话时把这台偏好渲成这几个旗标交进来）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Change {
+    /// 这几个 ccm 选项（命令行或别名里写）。
+    Flags(&'static [&'static str]),
+    /// 这一发的 `@名`。
+    AliasName,
+    /// 设置里（这台的 · 会话自己的那一份）。
+    Settings,
+    /// 改不了。
+    Nobody,
+}
+
+/// 继承表的一行：哪一项 · 直路怎么来 · tmux 路怎么来 · 谁能改 · 判它的函数（`crate::` 开头的全路径，头注带「〔继承表〕」）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Inherit {
+    pub(crate) item: Item,
+    pub(crate) direct: Pass,
+    pub(crate) tmux: Pass,
+    pub(crate) change: Change,
+    /// 只有判据读它（两向对拍）。
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) judge: &'static str,
+}
+
+/// **继承表**：新会话从调用方拿什么，一格一行。判还是那几个函数判，这张表是它们唯一的出处与说明；
+/// 判据两向对拍（表里每一格点名的函数在、头注带「〔继承表〕」；带它的函数每一个都在表里）。`--ccm-print` 的「来自」一节按它的项写。
+///
+/// - 密钥不靠继承走：我们的中转钥匙在 exec 那一刻从这台钥匙文件读进来插上，打印出来的命令里没有；继承来的我们那一形地址不认（[`Item::Relay`]）。
+/// - 用户自己设的环境变量（含他自己的密钥）不按名字猜着剥：直路照继承，tmux 路不搬（[`Item::OtherEnv`]）。
+///   tmux 路要一样就得把调用方整份环境写进 tmux 命令或键入的那一行，等于把密钥摊在进程表与窗格回滚里 ⇒ 两条路这一格就是不一样。
+/// - 轮换：新会话照「新会话用」那一份，不跟随主会话（血缘今天只记下，轮换不读它）。
+pub(crate) const INHERIT: &[Inherit] = &[
+    Inherit {
+        item: Item::Cwd,
+        direct: Pass::Caller,
+        tmux: Pass::Carried,
+        change: Change::Flags(&[flag::CWD, flag::CWD_IF]),
+        judge: "crate::control::ccm::plan::resolve_cwd",
+    },
+    Inherit {
+        item: Item::Account,
+        direct: Pass::Caller,
+        tmux: Pass::Carried,
+        change: Change::Flags(&[flag::ACCOUNT, flag::ACCOUNT_DIR, flag::BASE]),
+        judge: "crate::control::ccm::plan::resolve_account",
+    },
+    Inherit {
+        item: Item::Rotation,
+        direct: Pass::Fresh,
+        tmux: Pass::Fresh,
+        change: Change::Settings,
+        judge: "crate::accounts::quota::rules::book::Book::saw",
+    },
+    Inherit {
+        item: Item::Relay,
+        direct: Pass::Fresh,
+        tmux: Pass::Fresh,
+        change: Change::Nobody,
+        judge: "crate::control::ccm::plan::user_base_url",
+    },
+    Inherit {
+        item: Item::Parent,
+        direct: Pass::Caller,
+        tmux: Pass::Carried,
+        change: Change::Nobody,
+        judge: "crate::control::ccm::plan::parent_from",
+    },
+    Inherit {
+        item: Item::Nested,
+        direct: Pass::Cleared,
+        tmux: Pass::Cleared,
+        change: Change::Nobody,
+        judge: "crate::control::ccm::plan::nested_of",
+    },
+    Inherit {
+        item: Item::MachinePrefs,
+        direct: Pass::Machine,
+        tmux: Pass::Machine,
+        change: Change::Flags(&[flag::LAUNCHER, flag::TMUX, flag::TMUX_BASE]),
+        judge: "crate::control::launch_render::wire::CliRenderRequest::with_prefs",
+    },
+    Inherit {
+        item: Item::MachineEnv,
+        direct: Pass::Machine,
+        tmux: Pass::Pane,
+        change: Change::Settings,
+        judge: "crate::control::ccm::plan::machine_env",
+    },
+    Inherit {
+        item: Item::Alias,
+        direct: Pass::Fresh,
+        tmux: Pass::Carried,
+        change: Change::AliasName,
+        judge: "crate::assets::aliases::profile::resolve",
+    },
+    Inherit {
+        item: Item::OtherEnv,
+        direct: Pass::Caller,
+        tmux: Pass::Pane,
+        change: Change::Nobody,
+        judge: "crate::control::ccm::plan::carried_into_pane",
+    },
+    Inherit {
+        item: Item::BackendCarriers,
+        direct: Pass::Cleared,
+        tmux: Pass::Cleared,
+        change: Change::Nobody,
+        judge: "crate::platform::child_env::is_internal",
+    },
+];
 
 /// 这一趟能看见的**外界**。做成结构体的唯一理由：让整条计划面可以在单测里跑，
 /// **一个字节都不碰这台机器**（`K31`「只能做产品，不能动机器」）。
@@ -127,6 +289,8 @@ pub(crate) struct Sideload {
 }
 
 /// 环境里认出调用方那个会话（[`Env::inherited_parent`]）：各家登记的变量按注册序，头一个有值、值过段闸的。
+///
+/// 〔继承表〕主会话那一格。
 pub(crate) fn parent_from(get: &dyn Fn(&str) -> Option<String>) -> Option<(String, String)> {
     crate::agents::self_sid_envs().into_iter().find_map(|k| {
         get(k)
@@ -144,6 +308,13 @@ pub(crate) fn mint_origin() -> String {
     format!("{:016x}", h.finish())
 }
 
+/// 起 agent 前要 eval 的机器级环境串：这台设的 `CCM_ENV`，没设 ⇒ 内置默认（[`crate::ccm_line::argv::Defaults::ENV`]）。
+///
+/// 〔继承表〕机器级环境那一格。
+pub(crate) fn machine_env(get: impl Fn(&str) -> Option<String>) -> String {
+    get("CCM_ENV").unwrap_or_else(|| crate::ccm_line::argv::Defaults::ENV.to_string())
+}
+
 /// 问中转地址的那一只手：`(适配器 id, 这一发用哪个号)` ⇒ 不带钥匙的地址（`None` = 不注入）或拒的那一句。
 pub(crate) type RelayAsk = fn(
     &str,
@@ -153,15 +324,13 @@ pub(crate) type RelayAsk = fn(
 impl Env {
     /// 从真实进程取一份。**只读环境**，不写任何东西。
     ///
-    /// 优先级：**环境变量 > 内置默认**（默认值住 [`super::argv::Defaults`]，这里一个字面量都不许再写）。
+    /// 优先级：**环境变量 > 内置默认**（默认值住 [`crate::ccm_line::argv::Defaults`]，这里一个字面量都不许再写）。
     pub(crate) fn from_process(process_argv: &[String]) -> Self {
-        use super::argv::Defaults;
         // 家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
         //   （`exit_policy::policy_path` · `asset_catalog`）。从前只认 `HOME`：Windows 上
         //   默认没有它 ⇒ 账号库落到当前盘的根上，找不到号还说「不在那个文件里」。
         let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-        let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {
             pwd: std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
@@ -170,7 +339,7 @@ impl Env {
             // 找上游那个变量名与它的继承值，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             base_url_env: String::new(),
             inherited_base_url: None,
-            ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
+            ccm_env: machine_env(get),
             accts_manifest: accts_manifest_under(&home),
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             inherited_config_dir: None,
@@ -216,15 +385,13 @@ impl Env {
 
     /// 同 [`Env::for_preview`]，家目录由调用方给（设置窗那一页按这台文件管理面答的家目录算）。
     pub(crate) fn for_preview_in(home: String) -> Self {
-        use super::argv::Defaults;
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-        let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {
             pwd: home.clone(),
             tmux: None,
             base_url_env: String::new(),
             inherited_base_url: None,
-            ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
+            ccm_env: machine_env(get),
             accts_manifest: accts_manifest_under(&home),
             inherited_config_dir: None,
             account_env: String::new(),
@@ -744,18 +911,42 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
 /// `--cwd` 与 `--cwd-if` 两边同一种写法：打头的 `~` 先换成家目录（[`expand_home`]），相对的再按当前目录补成绝对。
 /// `--cwd-if <在哪> <进哪>` 先比：按写的顺序，**正好**站在「在哪」（不含子目录）的第一条 ⇒ 进「进哪」；
 /// 两边先展开 `~`、解开链接再比（大小写按这台的文件系统，`platform::paths::path_key`）。都没对上才轮到 `--cwd` / 当前目录。
+///
+/// 〔继承表〕工作目录那一格。
 pub(crate) fn resolve_cwd(o: &Opts, env: &Env) -> String {
+    cwd_and_why(o, env).0
+}
+
+/// 工作目录落在哪条上（`--ccm-print` 的「来自」照它写）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CwdWhy {
+    /// `--cwd-if` 那一条对上了。
+    Rule,
+    /// `--cwd` 给的。
+    Given,
+    /// 调用方的当前目录。
+    Caller,
+}
+
+/// [`resolve_cwd`] 的本体：落到哪个目录 ＋ 落在哪条上。
+pub(crate) fn cwd_and_why(o: &Opts, env: &Env) -> (String, CwdWhy) {
     let here = same_dir_key(&env.pwd);
     let hit = o
         .cwd_if
         .iter()
         .find(|(at, _)| !env.pwd.is_empty() && same_dir_key(&expand_home(at, &env.home)) == here);
     if let Some((_, to)) = hit {
-        return absolute_from(&expand_home(to, &env.home), &env.pwd);
+        return (
+            absolute_from(&expand_home(to, &env.home), &env.pwd),
+            CwdWhy::Rule,
+        );
     }
     match &o.cwd_spec {
-        CwdSpec::Explicit(d) => absolute_from(&expand_home(d, &env.home), &env.pwd),
-        CwdSpec::Auto => env.pwd.clone(),
+        CwdSpec::Explicit(d) => (
+            absolute_from(&expand_home(d, &env.home), &env.pwd),
+            CwdWhy::Given,
+        ),
+        CwdSpec::Auto => (env.pwd.clone(), CwdWhy::Caller),
     }
 }
 
@@ -841,6 +1032,8 @@ fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
 ///   · **裸终端那一支**（都没给 ⇒ 落 manifest `isDefault`）= 「就用那个」。
 /// ⚠ **09-11 那三句读法（「已知病灶」/「归待问用户」/「判不了不自批」）已经过期**，
 /// 别再照它把一个定了的问题重新打开。要改行为的落点仍然只在这个函数，别处没有第二处。
+///
+/// 〔继承表〕账号那一格。
 pub(crate) fn resolve_account(
     o: &Opts,
     env: &Env,
@@ -1169,18 +1362,7 @@ pub(crate) fn build_among(
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
         // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
         // 中转地址只转用户自己的端点：我们的中转那一形属于外层的号，pane 里那一趟按目标账号自己问（见直路）。
-        if account.is_empty() && !o.use_base && o.account_dir.is_empty() {
-            if let Some(v) = env
-                .inherited_config_dir
-                .as_deref()
-                .filter(|v| !v.is_empty())
-            {
-                payload = format!("{}{payload}", posix::export(&env.account_env, &sq(v)));
-            }
-        }
-        if let Some(v) = user_base_url(env) {
-            payload = format!("{}{payload}", posix::export(&env.base_url_env, &sq(v)));
-        }
+        payload = format!("{}{payload}", carried_into_pane(o, env, &account));
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
         let exports = &payload[..payload.len() - bare.len()];
@@ -1394,6 +1576,28 @@ pub(crate) fn build_among(
     }))
 }
 
+/// 容器路要显式写进窗格那一条命令的继承值（`export …; ` 前缀；tmux 的 `update-environment` 默认列表不含它们，外层那句 `export`
+/// 在 tmux 进程边界上会被整个吃掉）：账号目录变量（这一发没另选号时）· 用户自己的上游端点。别的一个都不搬 ——
+/// 搬调用方整份环境就要把值写进 tmux 命令或键入的那一行，等于把密钥摊在进程表与窗格回滚里。
+///
+/// 〔继承表〕其余环境变量那一格（tmux 路只带这两样，其余照那台 tmux 的环境）。
+fn carried_into_pane(o: &Opts, env: &Env, account: &str) -> String {
+    let mut out = String::new();
+    if let Some(v) = user_base_url(env) {
+        out.push_str(&posix::export(&env.base_url_env, &sq(v)));
+    }
+    if account.is_empty() && !o.use_base && o.account_dir.is_empty() {
+        if let Some(v) = env
+            .inherited_config_dir
+            .as_deref()
+            .filter(|v| !v.is_empty())
+        {
+            out.push_str(&posix::export(&env.account_env, &sq(v)));
+        }
+    }
+    out
+}
+
 /// 换了启动器那一支：答题插件能不能经环境交下去 ⇒ `(变量名, 整串值)`，或挂不上的原因。
 fn sideload_of(
     face: Option<crate::agents::PluginFace>,
@@ -1470,6 +1674,174 @@ impl SettingsAt {
             SettingsAt::Inline(i) => words[i] = format!("{flag}={v}"),
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `--ccm-print` 的「来自」一节：继承表里这一发有值的那几项，每一项一行（值 · 从哪来）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 一项从哪来。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// 命令行上这一发给的。
+    Flag,
+    /// 别名里写的（那一段的名字）。
+    Alias(String),
+    /// 从调用方继承的。
+    Inherit,
+    /// 都没给，照默认。
+    Default,
+}
+
+/// 「来自」一节的一行：项名 · 值 · 从哪来。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FromRow {
+    pub(crate) label: String,
+    pub(crate) value: String,
+    pub(crate) from: Source,
+}
+
+/// 这几个旗标里最后落下的那一个来自哪一层（`origins` 由合并那一处交来，命令行那一层名字是空串）。没写 ⇒ `None`。
+fn given_by(origins: &[crate::ccm_line::argv::Origin], flags: &[&str]) -> Option<Source> {
+    origins
+        .iter()
+        .rev()
+        .find(|g| flags.contains(&g.flag))
+        .map(|g| match g.layer.as_str() {
+            "" => Source::Flag,
+            name => Source::Alias(name.to_string()),
+        })
+}
+
+/// 「来自」那几行（只给起会话的两形：直路 · 容器路；接回 / 接上已在跑的不起新会话，一行都不写）。按 [`INHERIT`] 的项与次序写：
+/// 这一发有值的那几项各一行；哪几个旗标改得了它照表里那一格（`change`）去合并结果里找最后落下的那一层；
+/// 都没写 ⇒ 那一格在这条路上是从调用方拿的（`Caller` · `Carried`）就是「继承」，否则「默认」。
+/// 值与这一发的计划同源：工作目录 · 号照 [`cwd_and_why`] / [`resolve_account`] 现判（同一份 `o` / `env` / `table` ⇒ 与计划逐字一样）。
+pub(crate) fn from_rows(
+    o: &Opts,
+    origins: &[crate::ccm_line::argv::Origin],
+    env: &Env,
+    table: &AccountTable,
+    plan: &Plan,
+) -> Vec<FromRow> {
+    let tmux_name = match plan {
+        Plan::Container(c) => Some(c.name.clone()),
+        Plan::Direct(_) => None,
+        Plan::Attach { .. } | Plan::Rejoin { .. } => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for r in INHERIT {
+        let flags: &[&str] = match r.change {
+            Change::Flags(f) => f,
+            Change::AliasName | Change::Settings | Change::Nobody => &[],
+        };
+        let pass = if tmux_name.is_some() {
+            r.tmux
+        } else {
+            r.direct
+        };
+        let implicit = || match pass {
+            Pass::Caller | Pass::Carried => Source::Inherit,
+            Pass::Fresh | Pass::Machine | Pass::Pane | Pass::Cleared => Source::Default,
+        };
+        let given = |only: &[&str]| {
+            let these: Vec<&str> = flags.iter().copied().filter(|f| only.contains(f)).collect();
+            given_by(origins, &these)
+        };
+        let mut push =
+            |label: String, value: String, from: Source| out.push(FromRow { label, value, from });
+        match r.item {
+            Item::Cwd => {
+                let (cwd, why) = cwd_and_why(o, env);
+                let from = match why {
+                    CwdWhy::Rule => given(&[flag::CWD_IF]),
+                    CwdWhy::Given => given(&[flag::CWD]),
+                    CwdWhy::Caller => None,
+                };
+                push(
+                    copy_text("beCcm.item.cwd", &[]),
+                    cwd,
+                    from.unwrap_or_else(implicit),
+                );
+            }
+            Item::Account if !env.account_env.is_empty() => {
+                let (dir, name) = resolve_account(o, env, table).unwrap_or_default();
+                let inherited = env
+                    .inherited_config_dir
+                    .as_deref()
+                    .filter(|v| !v.is_empty());
+                let none = || copy_text("beCcm.value.noAccount", &[]);
+                let (value, from) = match (given(flags), inherited) {
+                    (Some(f), _) if o.use_base => (none(), f),
+                    (Some(f), _) => (if name.is_empty() { dir } else { name }, f),
+                    (None, Some(d)) => (d.to_string(), implicit()),
+                    (None, None) if !name.is_empty() => (name, Source::Default),
+                    (None, None) => (none(), Source::Default),
+                };
+                push(copy_text("beProfile.slot.account", &[]), value, from);
+            }
+            Item::Parent => {
+                if let Some((_, sid)) = &env.inherited_parent {
+                    push(copy_text("beCcm.item.parent", &[]), sid.clone(), implicit());
+                }
+            }
+            Item::MachinePrefs => {
+                let launcher = if o.launcher.is_empty() {
+                    crate::agents::launch_face_among(crate::agents::REGISTRY, &o.agent)
+                        .map_or("", |f| f.default_launcher)
+                        .to_string()
+                } else {
+                    o.launcher.clone()
+                };
+                push(
+                    copy_text("beProfile.slot.launcher", &[]),
+                    launcher,
+                    given(&[flag::LAUNCHER]).unwrap_or_else(implicit),
+                );
+                let at = tmux_name
+                    .clone()
+                    .unwrap_or_else(|| copy_text("beCcm.value.here", &[]));
+                push(
+                    copy_text("beProfile.slot.tmux", &[]),
+                    at,
+                    given(&[flag::TMUX, flag::TMUX_BASE]).unwrap_or_else(implicit),
+                );
+            }
+            Item::Account
+            | Item::Rotation
+            | Item::Relay
+            | Item::Nested
+            | Item::MachineEnv
+            | Item::Alias
+            | Item::OtherEnv
+            | Item::BackendCarriers => {}
+        }
+    }
+    out
+}
+
+/// 「来自」那一节的字：每一行打头一个 `#`（混进那条命令一起交给 shell 也只是注释）。
+pub(crate) fn render_from(rows: &[FromRow]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut out = format!("# {}\n", copy_text("beCcm.print.from", &[]));
+    for r in rows {
+        let from = match &r.from {
+            Source::Flag => copy_text("beCcm.from.flag", &[]),
+            Source::Alias(name) => copy_text("beCcm.from.alias", &[("name", name)]),
+            Source::Inherit => copy_text("beCcm.from.inherit", &[]),
+            Source::Default => copy_text("beCcm.from.default", &[]),
+        };
+        out.push_str(&format!(
+            "# {}\n",
+            copy_text(
+                "beCcm.print.row",
+                &[("item", &r.label), ("value", &r.value), ("from", &from)]
+            )
+        ));
+    }
+    out
 }
 
 /// 同一条计划写成 `shell` 那种方言（`--ccm-print` · 别名预览）：PowerShell 只有直路那一形（Windows 上没有 tmux，
@@ -1629,8 +2001,18 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
         seq.push_str(&format!(
             "; {{ _p=$(tmux -u list-panes -t {t} -F '#{{pane_id}}' 2>/dev/null | head -1)"
         ));
+        // 这一发知道会话编号（`--ccm-sid`）⇒ 一并登记（第 5 列；敲门按它经后端说一句）；不知道 ⇒ 敲门时从窗格读身份标记。
+        let sid = if c.ccm_sid.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "{} {} ",
+                crate::control::cc_bus::REGISTER_SID,
+                sq(&c.ccm_sid)
+            )
+        };
         seq.push_str(&format!(
-            "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {} >/dev/null",
+            "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {sid}{} >/dev/null",
             sq(&format!("{}/cc-register", b.scripts_dir)),
             sq(&c.name)
         ));
@@ -1715,6 +2097,8 @@ fn render_direct(d: &Direct) -> String {
 
 /// 直路那一趟要清掉的环境（唯一一处，打印出来的那一行与真跑那一趟都按它）：那一家的嵌套标记 ∪ 各家「我是哪个会话」的变量
 /// （`agents::self_sid_envs`；起子进程原语对每个子进程也摘它们 —— 不写进打印那一行，`--ccm-print` 跑出来的环境就比真跑多一个父会话号）。
+///
+/// 〔继承表〕嵌套标记 · 会话编号变量那一格。
 pub(crate) fn nested_of(face_nested: &[&str]) -> Vec<String> {
     let mut out: Vec<String> = face_nested.iter().map(|s| s.to_string()).collect();
     for k in crate::agents::self_sid_envs() {
@@ -1783,3 +2167,7 @@ fn render_direct_ps(d: &Direct) -> String {
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/plan_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/control/ccm/inherit_tests.rs"]
+mod inherit_tests;

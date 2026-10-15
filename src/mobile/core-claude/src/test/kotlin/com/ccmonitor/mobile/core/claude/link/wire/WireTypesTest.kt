@@ -319,7 +319,7 @@ class WireTypesTest {
                 return fields(t.substring(1, t.length - 1))
             }
 
-            /** 顶层（`{}` `<>` `()` 之外、字符串之外）按 [sep] 切。 */
+            /** 顶层（`{}` `<>` `()` `[]` 之外、字符串之外）按 [sep] 切。 */
             private fun split(
                 s: String,
                 sep: Char,
@@ -332,8 +332,8 @@ class WireTypesTest {
                     if (ch == '"') quoted = !quoted
                     if (!quoted) {
                         when (ch) {
-                            '{', '<', '(' -> depth++
-                            '}', '>', ')' -> depth--
+                            '{', '<', '(', '[' -> depth++
+                            '}', '>', ')', ']' -> depth--
                         }
                     }
                     if (ch == sep && depth == 0 && !quoted) {
@@ -347,15 +347,15 @@ class WireTypesTest {
                 return parts.map(String::trim)
             }
 
-            /** 顶层逗号切格（`{}` `<>` `()` 里的不切）。 */
+            /** 顶层逗号切格（`{}` `<>` `()` `[]`（元组）里的不切）。 */
             private fun fields(inner: String): Map<String, Field> {
                 val parts = mutableListOf<String>()
                 var depth = 0
                 val cur = StringBuilder()
                 for (ch in inner) {
                     when (ch) {
-                        '{', '<', '(' -> depth++
-                        '}', '>', ')' -> depth--
+                        '{', '<', '(', '[' -> depth++
+                        '}', '>', ')', ']' -> depth--
                     }
                     if (ch == ',' && depth == 0) {
                         parts += cur.toString()

@@ -12,13 +12,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
 import java.security.KeyStore
 import java.util.Base64
 
 /**
  * 端到端：模拟器上的 [RustTransport]（手机嵌的 Rust 核心）连一台**私起的 sshd**（冒烟台架 `tests/mobile-smoke/rig.sh`，
- * 只听宿主机回环的私有口，模拟器经它的网关够到它），走一遍连上 · exec · 长 exec · PTY 改窗口 · SFTP · TOFU · Keystore 签名。
+ * 只听宿主机回环的私有口，模拟器经它的网关够到它），走一遍连上 · exec · 长 exec · PTY 改窗口 · TOFU · Keystore 签名。
  *
  * 参数（instrumentation，`-Pandroid.testInstrumentationRunnerArguments.<名>=…`）：`sshHost`（模拟器那一侧宿主机的网关地址）· `sshPort` ·
  * `sshKey`（台架登录钥匙的 PEM，base64）。没给 `sshKey` / `sshHost` ⇒ 整份跳过（入口脚本 `scripts/android-test.sh` 不起台架时就是这样）。
@@ -82,30 +81,6 @@ class RustTransportTest {
         val text = sh.input.readBytes().toString(Charsets.UTF_8)
         assertTrue(text, text.contains("40 120"))
         sh.close()
-    }
-
-    @Test
-    fun files_round_trip_through_sftp() {
-        val t = connected()
-        val home = runBlocking { t.sftpRealPath(".") }
-        val dir = "$home/work/rust-sftp-${System.nanoTime()}"
-        runBlocking {
-            t.sftpMkdir(dir)
-            t.sftpWriteText("$dir/a.txt", "你好\n")
-            assertEquals("你好\n", t.sftpReadTextForEdit("$dir/a.txt"))
-            val local = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "up.bin")
-            local.writeBytes(ByteArray(70_000) { (it % 251).toByte() })
-            t.sftpUpload(local, "$dir/b.bin")
-            val back = File(local.parentFile, "down.bin")
-            t.sftpDownload("$dir/b.bin", back)
-            assertTrue(back.readBytes().contentEquals(local.readBytes()))
-            t.sftpRename("$dir/a.txt", "$dir/c.txt")
-            val names = t.sftpList(dir).map { it.name to it.isDir }.toSet()
-            assertEquals(setOf("c.txt" to false, "b.bin" to false), names)
-            t.sftpDelete("$dir/c.txt", isDir = false)
-            t.sftpDelete("$dir/b.bin", isDir = false)
-            t.sftpDelete(dir, isDir = true)
-        }
     }
 
     /** 首见记下（鉴权过了才落库）；之后按记下的那一把严格比；那一把被换了 ⇒ 拒并带新旧指纹。 */

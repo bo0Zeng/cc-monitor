@@ -40,6 +40,17 @@ pub fn library() -> LibraryRead {
     std::sync::Arc::new(library_at)
 }
 
+/// 交给登录盯防的那一份：账号库里每个号的配置目录（`accounts::quota::nodes::watch_logins_here` 起时递进去）。
+pub(crate) fn account_dirs() -> crate::accounts::quota::nodes::AccountDirs {
+    std::sync::Arc::new(|home| {
+        library_at(home)
+            .accounts
+            .into_iter()
+            .filter_map(|a| a.dir)
+            .collect()
+    })
+}
+
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::quota::rules::{book, shelf};

@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.ui.session
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +15,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,15 +27,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ui.icon.IconTextButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import org.koin.compose.koinInject
 
 /**
- * 会话 tab 面板（[ModalBottomSheet]），由终端 / SFTP 工具条左端的按钮唤出；工具条在 `imePadding()` 内，键盘弹起也够得着。
+ * 会话 tab 面板（[ModalBottomSheet]），由终端 / 文件屏工具条左端的按钮唤出；工具条在 `imePadding()` 内，键盘弹起也够得着。
  * 列出全部已开 tab（类型符 ▷/📁、可读标签、当前高亮、× 关闭）；点击经 [onSwitchTab] 切换
  * （导航在 AppNavHost：launchSingleTop + popUpTo，点当前 tab 直接短路）。
  * 底部「＋」二选：[onNewTerminalTab] 为当前主机强制新开终端 tab（forceNew=true）；
- * [onNewSftpTab] 打开或聚焦当前主机的 SFTP tab（forceNew=false，每主机至多一个）。
+ * [onNewFilesTab] 打开或聚焦当前主机的文件 tab（forceNew=false，每主机至多一个）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +49,7 @@ fun SessionTabsSheet(
     currentKey: String?,
     onSwitchTab: (key: String) -> Unit,
     onNewTerminalTab: () -> Unit,
-    onNewSftpTab: () -> Unit,
+    onNewFilesTab: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val tabManager = koinInject<SessionTabManager>()
@@ -54,15 +58,13 @@ fun SessionTabsSheet(
     val hosts by hostRepo.observeAll().collectAsState(initial = emptyList())
     // 可读标签兜底链，加上 forceNew 同名副本的渲染期编号（·2/·3）；元数据与去重键不掺渲染修饰。
     // 编号对含类型符的完整显示文本做：forceNew 的副本类型符相同，仍会编号；
-    // 同主机一个终端加一个 SFTP，类型符已能区分，不编号。
+    // 同主机一个终端加一个文件 tab，类型符已能区分，不编号。
+    // 编号按「类型 ＋ 名字」做（类型是行首那颗图标，不进字）。
     val labels =
         remember(sessions, hosts) {
-            numberDuplicates(
-                sessions.map { s ->
-                    val symbol = if (s.target is SessionTabManager.TabTarget.Sftp) "📁" else "▷"
-                    "$symbol ${tabBaseLabel(s, hosts.firstOrNull { it.id == s.hostId }?.label ?: s.hostId)}"
-                },
-            )
+            val bases = sessions.map { s -> tabBaseLabel(s, hosts.firstOrNull { it.id == s.hostId }?.label ?: s.hostId) }
+            val numbered = numberDuplicates(sessions.mapIndexed { i, s -> "${s.target is SessionTabManager.TabTarget.Files}\u0000${bases[i]}" })
+            numbered.map { it.substringAfter('\u0000') }
         }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
@@ -78,6 +80,7 @@ fun SessionTabsSheet(
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp).padding(top = 8.dp)) {
                     itemsIndexed(sessions, key = { _, s -> s.key }) { i, s ->
                         SessionTabRowItem(
+                            icon = if (s.target is SessionTabManager.TabTarget.Files) Ph.FolderSimple else Ph.TerminalWindow,
                             text = labels[i],
                             selected = s.key == currentKey,
                             onClick = { onSwitchTab(s.key) },
@@ -91,8 +94,8 @@ fun SessionTabsSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onNewTerminalTab) { Text("＋ " + copyText("mobTabs.sheet.newTerminal")) }
-                TextButton(onClick = onNewSftpTab) { Text("＋ " + copyText("mobTabs.sheet.newFiles")) }
+                IconTextButton(Ph.Plus, copyText("mobTabs.sheet.newTerminal"), onClick = onNewTerminalTab)
+                IconTextButton(Ph.Plus, copyText("mobTabs.sheet.newFiles"), onClick = onNewFilesTab)
             }
         }
     }
@@ -101,22 +104,28 @@ fun SessionTabsSheet(
 /** 单行 tab 条目——点主体切换，点 × 关闭（内层 clickable 优先消费，故 × 不触发切换）；当前 tab 高亮。 */
 @Composable
 private fun SessionTabRowItem(
+    icon: Ph,
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    // 当前项：选中淡底 ＋ accent 图标（同抽屉）。
+    val tokens = LocalAppTokens.current
+    val bg = if (selected) tokens.selectedBg else Color.Transparent
+    val fg = MaterialTheme.colorScheme.onSurface
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .heightIn(min = Touch.rowSingle)
+            .clip(RoundedCornerShape(tokens.radius.m))
             .background(bg)
             .clickable(onClick = onClick)
-            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
     ) {
+        PhIcon(icon, contentDescription = null, tint = if (selected) tokens.accent else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             text,
             color = fg,
@@ -125,14 +134,7 @@ private fun SessionTabRowItem(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(50))
-                .clickable(onClick = onClose)
-                .padding(horizontal = 10.dp, vertical = 2.dp),
-        ) {
-            Text("×", color = fg, style = MaterialTheme.typography.labelLarge)
-        }
+        PhIconButton(Ph.X, copyText("mobTabs.row.close"), onClick = onClose, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -24,7 +24,8 @@ use copy_core::said::Said;
 
 /// `--resident-ensure` 起子进程时的流模式起参（每条连接要什么按它自己那一行 attach 定）。与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
 /// 打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）；流模式显式词（零参数是起会话）。
-pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &["--", crate::STREAM_FLAG_EXPLICIT];
+pub(crate) const DEFAULT_STREAM_ARGS: &[&str] =
+    &["--", crate::wire::cli_words::STREAM_FLAG_EXPLICIT];
 
 /// 宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`wire::drain::DRAIN_DEADLINE`）：
 /// 后端先把「哪几条没做完」说出来、自己退；强杀只兜它连那一步都走不到的情形。关系由 `resident_tests` 钉住。
