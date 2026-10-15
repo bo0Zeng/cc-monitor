@@ -930,9 +930,8 @@ fn row_view(j: &Job, offline: bool) -> View {
     v
 }
 
-/// 画那张表，回这一帧按了哪颗按钮 ＋ 把每一行都摆下要多高（表头 ＋ 这一帧真排出来的各行；调用方下一帧照它定表高、夹到上限，超了在表里滚）。
+/// 画那张表，回这一帧按了哪颗按钮 ＋ 各行比表的可见区高出多少（这一帧真排出来的；负 ＝ 有空余。调用方下一帧照它改表高、夹到上限，超了在表里滚）。
 pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> (Option<Act>, f32) {
-    let top = ui.max_rect().top();
     let jobs = progress.jobs();
     let mut act = None;
     let mut clear = false;
@@ -972,7 +971,7 @@ pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> (Optio
     if collapse {
         progress.set_open(false);
     }
-    (act, rows.inner_rect.top() - top + rows.content_size.y)
+    (act, rows.content_size.y - rows.inner_rect.height())
 }
 
 #[cfg(test)]

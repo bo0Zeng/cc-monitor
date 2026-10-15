@@ -97,7 +97,7 @@ pub struct Workspace {
     undo_tag: u64,
     /// 空格弹出的「看一眼」浮层（预览栏关着 / 窄档时；跟焦点那一栏的光标）。`None` ＝ 收着。
     pub peek: Option<super::preview::Preview>,
-    /// 「进度」表上一帧真排出来要多高（不含边框；[`super::progress::table_ui`] 量的）。
+    /// 「进度」表下一帧多高（照 [`super::progress::table_ui`] 量出来差多少补上）。
     pub(super) progress_h: f32,
     /// 焦点是不是键盘走过去的（按了 Tab ⇒ 是；按了鼠标 ⇒ 不是）：是才画焦点环。
     pub kb_nav: bool,

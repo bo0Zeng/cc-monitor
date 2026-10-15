@@ -1105,20 +1105,20 @@ impl Workspace {
         // 「进度」表（窗口底部一块，可拖高；在状态栏之上、左栏之下 ⇒ 横贯整个窗口宽）。
         if self.progress.is_open() && !self.progress.is_empty() {
             let mut act = None;
-            // 表照上一帧真排出来的高度长（含失败摊开的那几行），到窗高六成为止；再多在表里滚。高度变了 ⇒ 再画一帧。
+            // 表照这一帧真排出来的各行长高（含失败摊开的那几行）：差多少下一帧补多少，到窗高六成为止；再多在表里滚。高度变了 ⇒ 再画一帧。
             let max = (ctx.content_rect().height() * 0.6).max(120.0);
             let offline = self.link.offline();
-            let frame = bar_frame(&ctx);
-            let edge = frame.total_margin().sum().y;
-            let mut want = self.progress_h;
+            let h = self.progress_h.clamp(80.0, max);
+            let mut short = 0.0;
             egui::Panel::bottom("filewin-progress")
-                .frame(frame)
-                .exact_size((self.progress_h + edge).clamp(80.0, max))
+                .frame(bar_frame(&ctx))
+                .exact_size(h)
                 .show(ui, |ui| {
-                    (act, want) = super::progress::table_ui(ui, &self.progress, offline);
+                    (act, short) = super::progress::table_ui(ui, &self.progress, offline);
                 });
-            if (want - self.progress_h).abs() > 0.5 {
-                self.progress_h = want;
+            let next = (h + short).clamp(80.0, max);
+            if (next - self.progress_h).abs() > 0.5 {
+                self.progress_h = next;
                 ctx.request_repaint();
             }
             if let Some(a) = act {

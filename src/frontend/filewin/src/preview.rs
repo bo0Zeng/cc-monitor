@@ -422,13 +422,22 @@ impl Preview {
                 return;
             }
             if DECODABLE.contains(&ext.as_str()) {
+                // 预览放不下：查看页放得下 ⇒ 指向头上的「查看」；连查看页也放不下 ⇒ 与查看页同一句（下载到本机再打开）。
                 if r.size > IMAGE_MAX_BYTES {
+                    let (key, limit) = if r.size > super::picture::PICTURE_MAX_BYTES {
+                        (
+                            "rsFilewinImgview.state.tooBig",
+                            super::picture::PICTURE_MAX_BYTES,
+                        )
+                    } else {
+                        ("rsFilewinPreview.decide.imageTooBig", IMAGE_MAX_BYTES)
+                    };
                     self.view = View::Idle(copy_text(
-                        "rsFilewinPreview.decide.imageTooBig",
+                        key,
                         &[
                             ("name", &name.to_string()),
                             ("size", &copy_core::size_text(r.size)),
-                            ("limit", &copy_core::size_text(IMAGE_MAX_BYTES)),
+                            ("limit", &copy_core::size_text(limit)),
                         ],
                     ));
                     return;
