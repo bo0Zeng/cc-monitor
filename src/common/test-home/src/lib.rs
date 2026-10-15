@@ -7,7 +7,7 @@
 //! 登记的那个真家（或没设），就把 `HOME` · `USERPROFILE` · `XDG_*` 指到这个进程自己的临时目录；`CCM_DATA_DIR` 指在真家里 ⇒ 摘掉。
 //! 判据自己给的家（例如起子进程时 `env_clear()` 再设的 `HOME`）照用。
 //! 换家的同时，外面那个会话带进来的状态（`CLAUDE_CONFIG_DIR` 指着真账号目录 · `TMUX` / `TMUX_PANE` 指着默认 tmux ·
-//! `CCM_*` / `ANTHROPIC_*` 一族指着真数据目录、真端口、真上游）一并摘掉：清单只在 [`leaked`] 一处。自己给了家的（台架 ·
+//! `CCM_*` / `ANTHROPIC_*` 一族指着真数据目录、真端口、真上游）一并摘掉：清单是仓里那一张会话变量表（见 [`leaked`]）。自己给了家的（台架 ·
 //! 判据 `env_clear()` 后起的子进程）环境是给的那一方配的，照用（父判据给子进程设的 `CCM_RELAY_PORT` 之类不摘）。
 //!
 //! 判据要真家的只能自己显式去拿账号数据库那一格；本 crate 不给。
@@ -17,25 +17,28 @@ use std::path::{Path, PathBuf};
 /// 已经换过家的标记（值 ＝ 沙箱根）：判据起的子进程继承它 ⇒ 子进程里不再换。
 pub const SANDBOX_MARK: &str = "RUST_TEST_SANDBOX_HOME";
 
-/// 这个变量是外面那个会话漏进来的状态 ⇒ 测试进程起来时摘掉。**唯一一份清单。**
-/// 摘：`CLAUDE_CONFIG_DIR` · `CLAUDE_CODE_*` · `TMUX` · `TMUX_PANE` · `CCM_*` · `ANTHROPIC_*`。
-/// 留：台架 / 人交给判据的输入（`CCM_E2E_*` · `CCM_SHOTS_*` · `CCM_FILEWIN_*` · `CCM_REGEN_*` · `CCM_BLESS*` · `CCM_PWSH` ·
-/// `CCM_CJK_FONT`），它们只有判据自己读，不指向任何真东西；外加 `CCM_SANDBOX`（「这是一次沙箱跑」的标记，只会让后端更不碰真家）。
+/// 会话继承来的环境变量表（仓里 `tests/scripts/session-vars`，跑测试的脚本也读这一张）：一行一个名字，`*` 结尾按前缀认，
+/// `!` 起头是族里照留的判据输入。
+const SESSION_VARS: &str = include_str!("../../../../tests/scripts/session-vars");
+
+/// 这个变量是外面那个会话漏进来的状态 ⇒ 测试进程起来时摘掉。清单只在 [`SESSION_VARS`] 那一张表。
 pub fn leaked(name: &str) -> bool {
-    const EXACT: &[&str] = &["CLAUDE_CONFIG_DIR", "TMUX", "TMUX_PANE"];
-    const FAMILY: &[&str] = &["CCM_", "ANTHROPIC_", "CLAUDE_CODE_"];
-    const INPUTS: &[&str] = &[
-        "CCM_E2E_",
-        "CCM_SHOTS_",
-        "CCM_FILEWIN_",
-        "CCM_REGEN_",
-        "CCM_BLESS",
-        "CCM_PWSH",
-        "CCM_CJK_FONT",
-        "CCM_SANDBOX",
-    ];
-    (EXACT.contains(&name) || FAMILY.iter().any(|p| name.starts_with(p)))
-        && !INPUTS.iter().any(|p| name.starts_with(p))
+    let hit = |p: &str| match p.strip_suffix('*') {
+        Some(prefix) => name.starts_with(prefix),
+        None => name == p,
+    };
+    let rules = SESSION_VARS
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'));
+    let (mut take, mut keep) = (false, false);
+    for r in rules {
+        match r.strip_prefix('!') {
+            Some(k) => keep |= hit(k),
+            None => take |= hit(r),
+        }
+    }
+    take && !keep
 }
 
 /// 后端的数据目录变量（与 `creds_core::store::DATA_DIR_ENV` 同名；本 crate 不依赖它，免得测试档多一层依赖）。
