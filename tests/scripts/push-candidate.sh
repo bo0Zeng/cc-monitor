@@ -5,14 +5,15 @@
 #   ③ 全部 job 绿 ⇒ 主仓 main `merge --ff-only w8/<名>` 并推 origin main；
 #      有红 ⇒ 停下，打印红的 job、链接与失败日志落在哪；main 不动。
 # 主仓 = 这个仓的主工作树（`git worktree list` 的第一棵），它一直在 main 上，脚本不切分支。
-# 私人扫描（要推的那一段提交的说明与改动）：私人词表不进仓 —— 取 PRIVATE_SCAN 指的那份 private-scan.sh，没设就找 PATH 上的；
-#   都没有 ⇒ 跳过并说明（这台机器上没有词表，扫不了）。
+# 私人扫描（要推的那一段提交的说明与改动）：私人词表与扫描脚本都不进仓，只认 PATH 上的 private-scan.sh；找不到 ⇒ 拒推。
 # 环境变量（一般不用设）：PUSH_FIND_MIN 等 run 出现的分钟数（默认 10）· PUSH_WAIT_MIN 等跑完的分钟数（默认 60）·
 #   GATE_STATE_DIR 失败日志落在它下面的 logs/（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate）。
 set -euo pipefail
-case "${1:-}" in -h|--help) sed -n '2,11p' "$0"; exit 0 ;; esac
+case "${1:-}" in -h|--help) sed -n '2,10p' "$0"; exit 0 ;; esac
 name=${1:?用法：bash tests/scripts/push-candidate.sh <合并工作树名>（推的是 w8/<名>）}
 br="w8/$name"
+scan=$(command -v private-scan.sh) \
+  || { echo "push: PATH 上没有 private-scan.sh —— 要推的提交扫不了私人标识，不推；扫描脚本放上 PATH 再来" >&2; exit 1; }
 find_min=${PUSH_FIND_MIN:-10}; wait_min=${PUSH_WAIT_MIN:-60}
 logdir=${GATE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate}/logs
 main_tree=$(git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
@@ -29,12 +30,7 @@ git show "$sha:.github/workflows/ci.yml" | grep -qE '^    branches: \[[^]]*\bnex
   || die "$br 的 ci.yml 的 push 触发里没有 next ⇒ 推候选分支不会起 CI；这棵树要先带上「CI 认候选分支」那一改"
 gh auth status >/dev/null 2>&1 || die "gh 没登录（gh auth status）"
 # 要推出去的这一段提交：说明与改动里不许有私人标识（树里干净不够——旧提交里的会跟着历史出去）
-scan=${PRIVATE_SCAN:-$(command -v private-scan.sh || true)}
-if [ -n "$scan" ] && [ -f "$scan" ]; then
-  bash "$scan" --history "origin/main..$sha" || die "要推的提交历史里有私人标识（见上）；main 没动"
-else
-  echo "push: 跳过私人扫描 —— 没有扫描脚本（PRIVATE_SCAN 没设、PATH 上也没有 private-scan.sh）；私人词表不进仓，只在有它的机器上扫"
-fi
+bash "$scan" --history "origin/main..$sha" || die "要推的提交历史里有私人标识（见上）；main 没动"
 
 short=${sha:0:9}
 echo "push: $br @ $short → origin/next（强推）"
