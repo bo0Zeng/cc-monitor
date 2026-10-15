@@ -107,7 +107,6 @@ pub(crate) fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
         windows_seen,
         show,
     };
-    let v = serde_json::to_value(&head).unwrap_or_default();
     let five_hour = (head.show.kind != Kind::Api).then(|| {
         let none = copy_core::copy_text("acct.val.none", &[]);
         let text = head
@@ -119,20 +118,22 @@ pub(crate) fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
         Words(quota_rows::five_hour(&text))
     });
     QuotaAccount {
-        rows: quota_rows::seen_block(&v),
+        rows: quota_rows::seen_block(&head),
         five_hour,
-        warm: quota_rows::stamped(quota_rows::warm_of(&v, true, clock.now), clock),
+        warm: quota_rows::stamped(
+            quota_rows::warm_of(head.show.login, Some(&head.show), clock.now),
+            clock,
+        ),
         head,
     }
 }
 
 /// 没出过数的一个号 ⇒ 成品那一条。
 pub(crate) fn unseen_of(head: UnseenHead, clock: &TextClock) -> QuotaUnseen {
-    let v = serde_json::to_value(&head).unwrap_or_default();
     QuotaUnseen {
-        rows: quota_rows::unseen_block(&v),
+        rows: quota_rows::unseen_block(&head),
         five_hour: None,
-        warm: quota_rows::stamped(quota_rows::warm_of(&v, false, clock.now), clock),
+        warm: quota_rows::stamped(quota_rows::warm_of(head.login, None, clock.now), clock),
         head,
     }
 }
