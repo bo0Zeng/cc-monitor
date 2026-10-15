@@ -484,6 +484,11 @@ async function drawer(): Promise<Record<string, unknown>> {
       await step(steps, "frame", () => be.paint(active.origin, active.sid, screen(k)));
       await sleep(Math.max(0, 33 - (performance.now() - t)));
     }
+    // 最后那一屏真到了抽屉（不然量的是一块不动的画面）：真后端一帧在途等回执，中间的可以并掉，末一屏不会丢。
+    const last = `(149s ·`;
+    for (const t0 = performance.now(); !$("#bottom-drawer pre")?.textContent?.includes(last); await sleep(50)) {
+      if (performance.now() - t0 > 10_000) throw new Error("替身窗格换了屏，抽屉 10 s 没画出最后那一屏");
+    }
     await step(steps, "close", () => key("`", { ctrl: true, code: "Backquote" }));
     await sleep(300);
   });
