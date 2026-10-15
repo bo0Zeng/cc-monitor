@@ -500,10 +500,6 @@ def frames(cmd, args, within=20000):
 SMOKE_ALIAS = "smk"
 
 
-def tmux_sessions():
-    return [l for l in rig("tmux", "list-sessions", "-F", "#{session_name}").stdout.splitlines() if l]
-
-
 def seed_alias():
     """台架那台的一条别名（起在 tmux 里、名字自动取），经别名页那条写命令建；已有就不再建。"""
     book = (frames("profiles-read", {}).get("data") or {})
