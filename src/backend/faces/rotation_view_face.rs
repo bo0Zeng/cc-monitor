@@ -12,9 +12,9 @@ use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotBadCell, RotHint, RotLogRow, RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg,
-    RotAccount, RotPastUse, RotPlate, RotRefused, RotStrategyError, RotStrategyItem, RotationStrategiesReply,
-    RotationViewReply,
+    RotAccount, RotBadCell, RotHint, RotLogRow, RotNote, RotOldFile, RotPast, RotPastLane,
+    RotPastSeg, RotPastUse, RotPlate, RotRefused, RotStrategyError, RotStrategyItem,
+    RotationStrategiesReply, RotationViewReply,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -427,8 +427,18 @@ pub(crate) fn view_with(
             // 不轮换 ⇒ 只有开会话的那个号（号列表之外，只为它那一枚号牌）。
             accounts: (!session.start.is_empty())
                 .then(|| RotAccount {
-                    fact: ctx.hop.fact_one(&agent, &ctx.hop.library(), &session.start, &ctx.row(&agent), now, tz),
-                    plate: plate_of(&session.start, &crate::observe::accounts_query::account_colors()),
+                    fact: ctx.hop.fact_one(
+                        &agent,
+                        &ctx.hop.library(),
+                        &session.start,
+                        &ctx.row(&agent),
+                        now,
+                        tz,
+                    ),
+                    plate: plate_of(
+                        &session.start,
+                        &crate::observe::accounts_query::account_colors(),
+                    ),
                 })
                 .into_iter()
                 .collect(),

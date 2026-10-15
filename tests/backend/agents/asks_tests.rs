@@ -39,12 +39,23 @@ fn each_choice_carries_the_row_it_goes_in() {
     }];
     assert_eq!(
         rows(&product_of("a", &a, 1)),
-        [("allow", Main), ("always-0", Main), ("deny", Hold), ("deny-note", Hold), ("deny-stop", Hold), ("release", Release)]
+        [
+            ("allow", Main),
+            ("always-0", Main),
+            ("deny", Hold),
+            ("deny-note", Hold),
+            ("deny-stop", Hold),
+            ("release", Release)
+        ]
     );
     let plan = product_of("a", &ask_in(AskKind::Plan), 1);
     assert_eq!(rows(&plan).last(), Some(&("plan-keep", Hold)));
     assert!(rows(&plan)[..3].iter().all(|(_, r)| *r == Main));
-    assert_eq!(rows(&product_of("a", &ask_in(AskKind::Question), 1)), [("dismiss", Main)], "没有题 ⇒ 不回答是唯一那一项");
+    assert_eq!(
+        rows(&product_of("a", &ask_in(AskKind::Question), 1)),
+        [("dismiss", Main)],
+        "没有题 ⇒ 不回答是唯一那一项"
+    );
     let mut q = ask_in(AskKind::Question);
     q.questions = vec![AskQuestion {
         header: None,
@@ -52,7 +63,10 @@ fn each_choice_carries_the_row_it_goes_in() {
         multi: false,
         options: Vec::new(),
     }];
-    assert_eq!(rows(&product_of("a", &q, 1)), [("answer", Main), ("dismiss", Release)]);
+    assert_eq!(
+        rows(&product_of("a", &q, 1)),
+        [("answer", Main), ("dismiss", Release)]
+    );
 }
 
 /// 批准：允许在前、「以后不再问」那几条按建议序居中（`always-<i>`、字里带那条建议）、三种拒在后；只有「拒并附言」要附言。

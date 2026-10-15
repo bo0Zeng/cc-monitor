@@ -291,7 +291,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let plate = &v.accounts[0].plate;
     assert_eq!(
         (plate.color, plate.label.0.as_str(), plate.text.0.as_str()),
-        (crate::accounts::manage::model::color_fallback("a"), "a", "a")
+        (
+            crate::accounts::manage::model::color_fallback("a"),
+            "a",
+            "a"
+        )
     );
     assert_eq!(v.listed, 1);
     assert_eq!(
@@ -333,8 +337,16 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
-    let only: Vec<_> = v.accounts.iter().map(|a| (a.fact.account.as_str(), a.plate.text.0.as_str())).collect();
-    assert_eq!((only, v.listed), (vec![("a", "a")], 0), "只带开会话那个号的号牌，不算在号列表里");
+    let only: Vec<_> = v
+        .accounts
+        .iter()
+        .map(|a| (a.fact.account.as_str(), a.plate.text.0.as_str()))
+        .collect();
+    assert_eq!(
+        (only, v.listed),
+        (vec![("a", "a")], 0),
+        "只带开会话那个号的号牌，不算在号列表里"
+    );
 }
 
 /// ★ 设置页那一形：照交来的草稿判、推演（不写盘）；草稿不合声明 ⇒ `refused` 带那几格；没有那一份 ⇒ `no_strategy`。

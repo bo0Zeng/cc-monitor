@@ -260,19 +260,40 @@ fn landed(outcome: &'static str, why: Option<&str>, session: Option<&str>) -> An
 #[test]
 fn resuming_to_attach_lands_on_a_tmux_session_or_says_why_not() {
     let ok = |a: Option<Answer>| resume_with(&|| a.clone()).map(|r| r.session);
-    assert_eq!(ok(Some(landed("done", None, Some("proj-cc")))).unwrap(), "proj-cc");
-    assert_eq!(ok(Some(landed("skipped", Some("running"), Some("proj-cc")))).unwrap(), "proj-cc");
-    assert_eq!(ok(Some(landed("skipped", Some("ambiguous"), Some("a-cc")))).unwrap(), "a-cc");
+    assert_eq!(
+        ok(Some(landed("done", None, Some("proj-cc")))).unwrap(),
+        "proj-cc"
+    );
+    assert_eq!(
+        ok(Some(landed("skipped", Some("running"), Some("proj-cc")))).unwrap(),
+        "proj-cc"
+    );
+    assert_eq!(
+        ok(Some(landed("skipped", Some("ambiguous"), Some("a-cc")))).unwrap(),
+        "a-cc"
+    );
     let code = |a: Option<Answer>| {
         let f = crate::wire::typed::Codes::into_fail(resume_with(&|| a.clone()).unwrap_err());
         (f.code, f.message)
     };
     let said = |w| crate::control::terminals::no_said(w);
     assert_eq!(
-        code(Some(answer("skipped", Some(crate::control::session_batch::ALREADY_LIVE)))),
+        code(Some(answer(
+            "skipped",
+            Some(crate::control::session_batch::ALREADY_LIVE)
+        ))),
         ("elsewhere".to_string(), said(Refused::Elsewhere))
     );
-    for a in [Some(answer("failed", Some("start_failed"))), Some(answer("skipped", Some("record_gone"))), Some(landed("done", None, None)), None] {
-        assert_eq!(code(a), ("not_resumed".to_string(), said(Refused::NotResumed)));
+    assert_eq!(code(Some(answer("skipped", Some("no_tmux")))).0, "no_tmux");
+    for a in [
+        Some(answer("failed", Some("start_failed"))),
+        Some(answer("skipped", Some("record_gone"))),
+        Some(landed("done", None, None)),
+        None,
+    ] {
+        assert_eq!(
+            code(a),
+            ("not_resumed".to_string(), said(Refused::NotResumed))
+        );
     }
 }

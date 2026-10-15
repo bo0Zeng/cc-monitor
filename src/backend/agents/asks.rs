@@ -3,7 +3,9 @@
 //! 而那两层彼此不引。
 
 use super::{AskIn, AskKind};
-pub(crate) use cmd_wire::needs::{Ask, AskRun, Choice, ChoiceRow, NoteNeed, Question, QuestionOption};
+pub(crate) use cmd_wire::needs::{
+    Ask, AskRun, Choice, ChoiceRow, NoteNeed, Question, QuestionOption,
+};
 
 /// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
 pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";

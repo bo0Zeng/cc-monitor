@@ -87,7 +87,12 @@ impl crate::wire::typed::Handle for SessionSay {
 
 /// 恢复的生产那一份（恢复再送 · 恢复再附着同一份）：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
 /// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。`say` ＝ 随起交的第一句。任一找不到 ⇒ `None`（不恢复）。
-pub(crate) fn resume_here(sid: &str, client: Option<&str>, say: Option<&str>, files: Files) -> Option<Answer> {
+pub(crate) fn resume_here(
+    sid: &str,
+    client: Option<&str>,
+    say: Option<&str>,
+    files: Files,
+) -> Option<Answer> {
     use crate::observe::history_query as hq;
     let home = crate::history::listing::agent_home();
     let path = hq::session_record(&home, sid).ok()?;
@@ -143,6 +148,8 @@ typed::codes! {
         Elsewhere = "elsewhere",
         /// 没恢复成（记录找不到 · 号选不了 · 起不来 …）。
         NotResumed = "not_resumed",
+        /// 这台没有 tmux（恢复要在 tmux 里起）。
+        NoTmux = "no_tmux",
     }
 }
 
@@ -166,7 +173,9 @@ impl crate::wire::typed::Handle for SessionResume {
         let (_cx, files) = cx.split();
         async move {
             if !shell_quote_core::session_id_ok(&req.sid) {
-                return Err(SessionResumeErr::BadArgs(malformed("`sid` must be a session id")));
+                return Err(SessionResumeErr::BadArgs(malformed(
+                    "`sid` must be a session id",
+                )));
             }
             resume_with(&|| resume_here(&req.sid, req.client.as_deref(), None, files))
         }
@@ -174,20 +183,33 @@ impl crate::wire::typed::Handle for SessionResume {
 }
 
 /// `session-resume` 的本体：起成了 · 本来就在 tmux 里跑 ⇒ 落在的那个；另有活进程在写 ⇒ `elsewhere`；别的 ⇒ `not_resumed`。
-pub(crate) fn resume_with(resume: &dyn Fn() -> Option<Answer>) -> Result<Resumed, SessionResumeErr> {
+pub(crate) fn resume_with(
+    resume: &dyn Fn() -> Option<Answer>,
+) -> Result<Resumed, SessionResumeErr> {
     let a = resume();
-    let landed = a.as_ref().and_then(|a| match (a.outcome, a.why.as_deref()) {
-        ("done", _) | ("skipped", Some("running" | "ambiguous")) => a.session.clone(),
-        _ => None,
-    });
+    let landed = a
+        .as_ref()
+        .and_then(|a| match (a.outcome, a.why.as_deref()) {
+            ("done", _) | ("skipped", Some("running" | "ambiguous")) => a.session.clone(),
+            _ => None,
+        });
     if let Some(session) = landed {
         return Ok(Resumed { session });
     }
     if let Some(a) = &a {
-        tracing::warn!("[session-resume] {} 恢复没成：{} {:?} {}", a.sid, a.outcome, a.why, a.detail);
+        tracing::warn!(
+            "[session-resume] {} 恢复没成：{} {:?} {}",
+            a.sid,
+            a.outcome,
+            a.why,
+            a.detail
+        );
     }
     Err(match a.as_ref().and_then(|a| a.why.as_deref()) {
         Some(batch::ALREADY_LIVE) => SessionResumeErr::Elsewhere(no_said(Refused::Elsewhere)),
+        Some("no_tmux") => {
+            SessionResumeErr::NoTmux(copy_core::copy_text("profilesPage.form.noTmux", &[]))
+        }
         _ => SessionResumeErr::NotResumed(no_said(Refused::NotResumed)),
     })
 }
