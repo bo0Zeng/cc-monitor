@@ -1180,12 +1180,7 @@ fn w4_ts_forms_are_told_apart() {
         ok(dt < 3000, \"slow\");\n";
     assert_eq!(
         forms_of(&ts_hits(red)),
-        vec![
-            "ts-timeout",
-            "ts-trailing",
-            "ts-waitfor",
-            "ts-upper"
-        ]
+        vec!["ts-timeout", "ts-trailing", "ts-waitfor", "ts-upper"]
     );
     let green = "it(\"a\", { timeout: WALL_CEILING_MS }, async () => {});\n\
         await vi.waitFor(() => expect(x).toBe(1), { timeout: WALL_CEILING_MS });\n\

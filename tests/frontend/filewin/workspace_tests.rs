@@ -942,7 +942,8 @@ async fn screenshot_for_the_shots_tool() {
         .insert(dir.join("main.rs").to_string_lossy().to_string(), code);
     if scene.starts_with("plan") {
         be.offered.push(crate::plan::CMD_PLAN_FILES.to_string());
-        be.plan_reply = Some(serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
+        be.plan_reply = Some(
+            serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
                 {"name": "main.rs", "id": "A2-1", "title": "下单入口", "statusCode": "done", "block": "下单流程",
                  "signAtText": "09:18", "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
                 {"name": "Cargo.toml", "id": "A1-1", "title": "打包配置", "statusCode": "done", "block": null,
@@ -953,7 +954,8 @@ async fn screenshot_for_the_shots_tool() {
                  "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
                 {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": "dropped", "block": null,
                  "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
-            ]}));
+            ]}),
+        );
     }
     let wired = wire_up("devbox", be).await;
     let mut w = window_on(&wired, &d);

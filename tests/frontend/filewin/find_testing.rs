@@ -1080,7 +1080,9 @@ impl FakeBackend {
                     Some(serde_json::json!({ "path": at, "bytes": bytes, "sha256": sha })),
                 )
             }
-            "plan-files" if self.plan_reply.is_some() => (true, None, None, self.plan_reply.clone()),
+            "plan-files" if self.plan_reply.is_some() => {
+                (true, None, None, self.plan_reply.clone())
+            }
             other => (
                 false,
                 Some("unknown_command".into()),
