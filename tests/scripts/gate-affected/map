@@ -111,6 +111,7 @@ src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链�
 # ── 后端那棵 ─────────────────────────────────────────────────────────────────────────
 src/backend/**                  backendrs,e2e  后端 crate：e2e 全部套件的被测对象就是它编出来的二进制
 src/backend/ssh-dial/**         mobile  拨号核心：手机嵌的 Rust 核心（src/mobile/core-rs）链它，手机那一格编那份 .so
+src/backend/deploy/**           mobile  装 / 升级后端的判定与编排：手机嵌的 Rust 核心（src/mobile/core-rs）链它，手机那一格编那份 .so
 src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单（成员 · 手机那两份 profile · 打补丁版 russh）：手机那份 .so 也照它编
 src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依赖版本也锁在这里
 src/vendor/**                   backendrs,e2e  后端链的 vendored russh

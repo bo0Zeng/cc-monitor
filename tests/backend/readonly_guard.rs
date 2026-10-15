@@ -2772,6 +2772,14 @@ mod g6_dependency_signoff {
              多出来的 0 处写面；远端写面同上一行。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
         ),
+        (
+            "deploy",
+            DEPS,
+            MEASURED_CLEAN,
+            "装 / 升级远端后端的判定与编排（与 ssh-dial 并列、后端与手机同一份）：仓内 crate，住本 crate 目录底下（`deploy/`）⇒ \
+             源码在本护栏的人群里。本机写面现打 0 处（要放的字节由宿主经 `Load` 读来，本 crate 不碰本机文件系统）；\
+             远端那几下（建目录 · 放 ＋ 读回 · 删残件）全经 `ssh-dial/sftp.rs` 的原语，写面记在 ssh-dial 那一行",
+        ),
         // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
@@ -3026,7 +3034,7 @@ mod g6_dependency_signoff {
             "路径编成 UTF-16 并补长路径前缀（纯变换；Windows 那一半只取绝对路径）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
-            // 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住 `control/deploy_plan.rs`。
+            // 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半住后端 `deploy` crate。
             "deploy-contract",
             DEPS,
             MEASURED_CLEAN,

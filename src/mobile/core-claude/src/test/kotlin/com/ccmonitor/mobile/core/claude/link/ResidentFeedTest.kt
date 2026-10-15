@@ -24,6 +24,7 @@ class ResidentFeedTest {
         val calls = mutableListOf<Triple<String, String, Long>>()
         val watches = mutableListOf<Pair<String, Boolean>>()
         val kicks = mutableListOf<Boolean>()
+        val deploys = mutableListOf<String>()
         var opened: Triple<String, String, String>? = null
 
         override fun open(
@@ -67,6 +68,14 @@ class ResidentFeedTest {
             retry: Boolean,
         ) {
             kicks += retry
+        }
+
+        override fun deploy(
+            handle: Long,
+            slots: String,
+        ): Boolean {
+            deploys += slots
+            return true
         }
 
         fun emit(
@@ -116,6 +125,42 @@ class ResidentFeedTest {
             core.emit("state", """{"state":"up","epoch":2,"notice":null}""")
             assertEquals(LinkState.Up(null), f.state.value)
             assertEquals(2L, f.epoch.value)
+        }
+
+    @Test
+    fun `核心点名装一次会好的是哪一种：断着没装 ⇒ 安装 · 老后端 ⇒ 更新 · 通着旧了 ⇒ 更新；没点名 ⇒ 没有`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            core.emit("state", """{"state":"down","problem":{"text":"远端 cc-monitor 未装","detail":""},"needs_hand":true,"fix":"install"}""")
+            assertEquals(LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), f.state.value)
+            core.emit("state", """{"state":"down","problem":{"text":"box 后端要更新","detail":""},"needs_hand":true,"fix":"update"}""")
+            assertEquals(Fix.UPDATE, (f.state.value as LinkState.Down).fix)
+            core.emit("state", """{"state":"up","epoch":1,"notice":{"text":"box 后端要更新","detail":""},"fix":"update"}""")
+            assertEquals(LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE), f.state.value)
+            core.emit("state", """{"state":"down","problem":{"text":"box 离线","detail":""},"needs_hand":false}""")
+            assertEquals(null, (f.state.value as LinkState.Down).fix)
+        }
+
+    @Test
+    fun `装后端：包里那几格交给核心；核心交回的每一步 · 结局 · 失败原样落（话是核心写好的）`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            f.deploy { """[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]""" }
+            assertEquals(listOf("""[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]"""), core.deploys)
+            core.emit("deploy", """{"step":"place","text":"安装 cc-monitor → box","bar":true}""")
+            assertEquals(Deploying.Step("安装 cc-monitor → box", bar = true), f.deploying.value)
+            core.emit("deploy", """{"done":"deploy","text":"已安装后端 p10g-mine"}""")
+            assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
+            core.emit("state", """{"state":"up","epoch":3,"notice":null}""")
+            assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
+            core.emit("state", """{"state":"up","epoch":4,"notice":{"text":"box 后端要更新","detail":""},"fix":"update"}""")
+            assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
+            core.emit("deploy", """{"failed":"io_failed","text":"上传后校验失败","detail":"d"}""")
+            assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
+            core.emit("deploy", """{"what":1}""")
+            assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
         }
 
     @Test

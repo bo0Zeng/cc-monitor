@@ -3,6 +3,8 @@ package com.ccmonitor.mobile.ui.overview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.cache.ListCache
+import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -43,13 +45,15 @@ class ConversationsViewModel(
     private val backend: ResidentFeed,
     private val machine: String,
     private val cache: ListCache = ListCache.None,
+    /** 给这台装 / 更新后端（判定与做法在核心；包里那几格由 App 解出来交过去）。 */
+    private val deployBackend: () -> Unit = {},
 ) : ViewModel() {
     private val list = MutableStateFlow<Fetched<HistoryListPage>>(Fetched.Loading)
     private val needs = MutableStateFlow<Fetched<List<NeedsRow>>>(Fetched.Loading)
     private val cached = MutableStateFlow<HistoryListPage?>(null)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs, cached) { link, table, l, n, c -> view(link, table, l, n, needsAt, c) }
+        combine(backend.state, backend.table, list, needs, combine(cached, backend.deploying, ::Pair)) { link, table, l, n, (c, d) -> view(link, table, l, n, needsAt, c, d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
@@ -80,6 +84,9 @@ class ConversationsViewModel(
     fun retry() {
         if (backend.state.value is LinkState.Down) backend.reconnect() else refetchAll()
     }
+
+    /** ［安装］/［更新］/［核对版本］：核心点名的那一种修法。 */
+    fun deploy() = deployBackend()
 
     private fun refetchAll() {
         fetchList()
@@ -154,6 +161,10 @@ data class ConversationsUiState(
     val linkProblem: Problem? = null,
     /** 通着、但要人动手的那一句（那台后端旧了：照用对得上的那几条，屏上排在需手动最前）；没有 ⇒ `null`。 */
     val linkNotice: Problem? = null,
+    /** 核心点名「装一次会好」的那一种（问题条上给［安装］/［更新］）；没点名 ⇒ `null`。 */
+    val fix: Fix? = null,
+    /** 装 / 更新后端这一趟走到哪了（核心写好的话）；没装过 ⇒ `null`。 */
+    val deploying: Deploying? = null,
     val connecting: Boolean = true,
     val needs: List<NeedsItem> = emptyList(),
     val needsProblem: Problem? = null,
@@ -219,14 +230,26 @@ internal fun view(
     needsAt: Long = 0,
     /** 本地缓存里上次那一份；那台这一份还没到（没连上 · 在问 · 没问成）时先画它。 */
     cached: HistoryListPage? = null,
+    deploying: Deploying? = null,
 ): ConversationsUiState {
     val answer = (list as? Fetched.Got)?.value ?: cached
-    if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(), connecting = false, listLoading = false, sections = sectionsOf(cached, table))
-    if (link == LinkState.Connecting) return ConversationsUiState(sections = sectionsOf(cached, table))
+    if (link is LinkState.Down) {
+        return ConversationsUiState(
+            linkProblem = link.problem(),
+            fix = link.fix,
+            deploying = deploying,
+            connecting = false,
+            listLoading = false,
+            sections = sectionsOf(cached, table),
+        )
+    }
+    if (link == LinkState.Connecting) return ConversationsUiState(deploying = deploying, sections = sectionsOf(cached, table))
     val labels = answer?.rows?.associate { it.sessionId to it.label }.orEmpty()
     return ConversationsUiState(
         connecting = false,
         linkNotice = (link as? LinkState.Up)?.notice(),
+        fix = (link as? LinkState.Up)?.fix,
+        deploying = deploying,
         needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt, SessionDot.live(it.needs.tone)) },
         needsProblem = (needs as? Fetched.Failed)?.problem,
         sections = sectionsOf(answer, table),

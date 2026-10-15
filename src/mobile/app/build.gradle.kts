@@ -101,6 +101,35 @@ android {
     }
 }
 
+// 给远端装的两份后端进 assets（`backends/cc-monitor-backend-<arch>`）：取 `src/frontend/shell/embedded-backends/`（桌面同一个目录）。
+// 哪几格 · 是不是这一版由 `:core-claude:genEmbeddedBuild` 看字节判（几份不同版 · 与 `BUILD_ID` 不同 ⇒ 那一步让构建失败）⇒ 先跑它。
+// 一份都没铺 ⇒ assets 里没有这一目录，装后端那一步说「这一版没带」。按压缩存；真要装时 App 把那一格解到私有目录（每版一次）。
+abstract class StageBackends : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val backends: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun stage() {
+        val dest = outDir.get().asFile.resolve("backends")
+        outDir.get().asFile.deleteRecursively()
+        backends.files.filter { it.isFile }.forEach { it.copyTo(dest.resolve(it.name), overwrite = true) }
+    }
+}
+
+val stageBackends =
+    tasks.register<StageBackends>("stageBackends") {
+        dependsOn(":core-claude:genEmbeddedBuild")
+        backends.from(listOf("x86_64", "aarch64").map { rootProject.file("../frontend/shell/embedded-backends/cc-monitor-backend-$it") })
+    }
+
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(stageBackends, StageBackends::outDir) }
+}
+
 // prism4j 带进 org.jetbrains:annotations-java5，与主 annotations 重复，排除掉免 duplicate-class。
 configurations.all {
     exclude(group = "org.jetbrains", module = "annotations-java5")

@@ -486,6 +486,146 @@ def lane_head(text):
     return max(ns, key=lambda n: ui.center(n)[1], default=None)
 
 
+ROOT = os.path.join(here, "..", "..")
+MACHINE = "smokebox"
+
+
+def build_id():
+    """源码里这一版的身份（`src/backend/lib.rs` 的 `BUILD_ID`）。"""
+    src = open(os.path.join(ROOT, "src", "backend", "lib.rs"), encoding="utf-8").read()
+    return src.split('pub const BUILD_ID: &str = "', 1)[1].split('"', 1)[0]
+
+
+def landing_id():
+    """台架落点那一份字节自报的身份（扫戳，同远端那条 grep；没有 ⇒ None）。"""
+    out = sh("LC_ALL=C grep -aoE '<<ccm-build-id:[A-Za-z0-9_.-]+:ccm-build-id>>' ~/.cc-monitor/bin/ccm 2>/dev/null | sort -u")
+    ids = [ln.split(":", 1)[1].rsplit(":", 1)[0] for ln in out.split() if ln]
+    return ids[0] if len(ids) == 1 else None
+
+
+def older_backend():
+    """一份「旧版」后端：本树编的那份，身份换成同长度的更早一格（`p10o-…` ⇒ `p10n-…`；只改字面，别的一字不动）。"""
+    mine = build_id()
+    m = re.fullmatch(r"p(\d+)([b-z])-(.+)", mine)
+    if m is None:
+        raise Step.Fail(f"这一版的身份 {mine!r} 拼不出同长度的更早一格")
+    old = f"p{m[1]}{chr(ord(m[2]) - 1)}-{m[3]}"
+    src = os.environ.get("CCM_SMOKE_BACKEND", os.path.join(ROOT, ".build", "backend", "debug", "cc-monitor-backend"))
+    dest = os.path.join(BOX, "bin", "ccm-older")
+    open(dest, "wb").write(open(src, "rb").read().replace(mine.encode(), old.encode()))
+    os.chmod(dest, 0o755)
+    return dest, old
+
+
+def commands():
+    """台架记下的每条进来的命令：`(时刻秒, 命令)`（时刻是本机钟，同 `time.time()` 那一天）。"""
+    out = []
+    for ln in open(os.path.join(BOX, "logs", "commands.log"), encoding="utf-8", errors="replace"):
+        hms, _, cmd = ln.rstrip("\n").partition(" ")
+        try:
+            h, m, sec = hms.split(":")
+            out.append((int(h) * 3600 + int(m) * 60 + float(sec), cmd))
+        except ValueError:
+            continue
+    return out
+
+
+def today_secs(t_wall):
+    lt = time.localtime(t_wall)
+    return lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec + (t_wall % 1)
+
+
+def wait_any(texts, secs):
+    end = time.time() + secs
+    while time.time() < end:
+        if any(ui.find(x) is not None for x in texts):
+            return True
+        time.sleep(1)
+    return False
+
+
+def deploy_and_time(button, name):
+    """点［安装］/［更新］：等它装完、换常驻、接上。回 `(点下 → 问那台, 问那台 → 换常驻)` 两段秒数（台架命令记录的时刻）；
+    点下之后连着截几张（过程那几句一闪而过，截下来挑着看）。"""
+    before = sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace"))
+    tapped = time.time()
+    tap(button)
+    for i in range(10):
+        shot(f"{name}-过程-{i}")
+        time.sleep(0.3)
+    end = time.time() + 300
+    done_word = t("rsSftp.deploy.done", buildId="", machine="", path="", reason="").split(" ")[0]
+    while time.time() < end:
+        texts = [n.get("text") or "" for n in ui.nodes()]
+        if any(x.startswith(done_word) for x in texts):
+            break
+        failed = [x for x in texts if "失败" in x or "未安装" in x]
+        if failed:
+            raise Step.Fail(f"没装上：{failed[0]}")
+        time.sleep(0.5)
+    else:
+        raise Step.Fail("五分钟没等到「已安装后端」那一句")
+    cmds = [(at, c) for at, c in commands() if at >= today_secs(tapped) - 1]
+    replaced = [at for at, c in cmds if c.endswith("--resident-ensure --replace")]
+    if sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace")) <= before or not replaced:
+        raise Step.Fail("装完没换常驻（台架没收到 --resident-ensure --replace）")
+    if landing_id() != build_id():
+        raise Step.Fail(f"落点那一份自报 {landing_id()!r}，不是这一版 {build_id()!r}")
+    asked = [at for at, c in cmds if c == "uname -s -m"]
+    first = (asked[0] - today_secs(tapped)) if asked else None
+    trip = (replaced[0] - asked[0]) if asked else None
+    size = os.path.getsize(os.path.join(ROOT, "src", "frontend", "shell", "embedded-backends", "cc-monitor-backend-x86_64"))
+    print(f"   点下 → 问那台 {first:.1f} s（解包 ＋ 交给核心）· 问那台 → 换常驻 {trip:.1f} s（计划 ＋ 放 {size / 1e6:.1f} MB ＋ 读回）", flush=True)
+    return first, trip
+
+
+def deploy_steps():
+    """装后端两步：那台没有后端 ⇒［安装］⇒ 接上；那台是旧版 ⇒［更新］⇒ 换常驻、接上的是这一版。"""
+    with Step("1b-装后端"):
+        if not wait(t("remoteHealth.head.notDeployed"), 30):
+            raise Step.Fail("没装的那一台没说「未装」")
+        deploy_and_time(t("machineState.fix.install"), "1b")
+        if not wait_any([t("history.section.today"), t("history.list.empty")], 60):
+            raise Step.Fail("装完没接上（对话列表没出来）")
+    with Step("1c-升级后端"):
+        old_bin, old_id = older_backend()
+        rig("land", old_bin)
+        if not wait(t("peerVersion.said.old", machine=MACHINE), 60):
+            raise Step.Fail(f"那台是旧版 {old_id}，却没说要更新")
+        shot("1c-要更新")
+        deploy_and_time(t("machineState.fix.update"), "1c")
+        end = time.time() + 60
+        while time.time() < end and ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
+            time.sleep(1)
+        if ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
+            raise Step.Fail("换了常驻还说要更新（接上的不是这一版）")
+    with Step("1d-主机设置核对版本"):
+        # 主机设置里那一行：通着、已是这一版 ⇒ 按钮是「核对版本」，按下去说「已是最新」、一个字节不写、不换常驻。
+        before = sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace"))
+        drawer(t("mobDrawer.server.named", name=""))
+        time.sleep(1.5)
+        tap_in_row(MACHINE, t("mobHosts.row.edit"))
+        for _ in range(4):
+            if ui.find(t("mobHostEdit.backend.check")) is not None:
+                break
+            adb("shell", "input", "swipe", "540", "1600", "540", "700", "400")
+            time.sleep(1)
+        tap(t("mobHostEdit.backend.check"))
+        up_to_date = t("rsSftp.deploy.upToDate", buildId=build_id(), machine="", path="").split(" ")[0]
+        end = time.time() + 60
+        while time.time() < end and not any((n.get("text") or "").startswith(up_to_date) for n in ui.nodes()):
+            time.sleep(1)
+        if not any((n.get("text") or "").startswith(up_to_date) for n in ui.nodes()):
+            raise Step.Fail("核对版本没说「已是最新」")
+        if sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace")) != before:
+            raise Step.Fail("同版也换了常驻")
+        shot("1d-主机设置")
+        # 回那台的对话列表（后面几步从那里接着走）。
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1.5)
+        drawer(t("mobDrawer.item.chats"))
+
+
 def main():
     # 深浅：CCM_SMOKE_NIGHT=yes|no 时先把模拟器切到那一套（截图两套各走一趟用）；不设不动。
     if os.environ.get("CCM_SMOKE_NIGHT") in ("yes", "no"):
@@ -495,6 +635,28 @@ def main():
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
 
     only = os.environ.get("CCM_SMOKE_ONLY")
+    if only == "deploy":
+        # 只走装后端那两步（调样子 · 截图 · 量上传用）。
+        with Step("1-加机器连上"):
+            rig("land", "none")
+            launch(fresh=True)
+            tap(t("mobIdentity.page.title")); time.sleep(1)
+            open_import()
+            tap(t("mobIdentity.import.name")); typed("smoke")
+            tap(t("mobIdentity.import.pem")); time.sleep(0.5)
+            for line in key:
+                typed(line)
+                adb("shell", "input", "keyevent", "66")
+            tap(t("mobIdentity.import.ok"))
+            if not wait("SHA256:", 10):
+                raise Step.Fail("整把钥匙没导进来")
+            tap(t("mobKit.act.back")); time.sleep(1)
+            add_host(MACHINE)
+            drawer(t("mobDrawer.item.chats"))
+            if not wait(t("machineState.fix.install"), 30):
+                raise Step.Fail("那台没有后端，问题条上没给［安装］")
+        deploy_steps()
+        return report()
     if only == "files":
         # 只走文件页（台架里已有 smokebox、钥匙已导；调样子 · 截图用）。
         with Step("1-加机器连上"):
@@ -517,6 +679,8 @@ def main():
         return report()
 
     with Step("1-加机器连上"):
+        # 那台先没有后端：手机自己装（下一步）。
+        rig("land", "none")
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
         stop_ime()
@@ -544,10 +708,12 @@ def main():
         if not ok:
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
-        add_host("smokebox")
+        add_host(MACHINE)
         drawer(t("mobDrawer.item.chats"))
-        if not (wait(t("history.section.today"), 30) or wait(t("history.list.empty"), 5)):
-            raise Step.Fail("对话列表没出来（没连上）")
+        if not wait(t("machineState.fix.install"), 30):
+            raise Step.Fail("那台没有后端，问题条上没给［安装］")
+
+    deploy_steps()
 
     with Step("2-对话列表"):
         sh(f'tmux new -d -s seed{T} -c ~/work claude; sleep 3; tmux send-keys -t seed{T} "{T} seed" Enter; '

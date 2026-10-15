@@ -230,10 +230,13 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
         Some(&bin),
     )
     .await;
-    assert_eq!(v["readback"]["len"], bin.len(), "{v}");
-    assert!(
-        v["readback"]["first_diff"].is_null(),
-        "读回逐字节应当相同：{v}"
+    // `verify` ⇒ 读回比对（`put_verified`）：过了只回一个空对象，落点上是那一份字节。
+    assert!(v.get("code").is_none(), "读回逐字节应当相同：{v}");
+    assert_eq!(
+        fs.lock()
+            .unwrap()
+            .bytes(".cc-monitor/bin/cc-monitor-backend"),
+        Some(bin.clone())
     );
     // 再放一次（盖掉旧的）：旧的改名成 `.bak` 再删，临时件上位 —— 目录里只剩那一份。
     let v = ask(
@@ -243,7 +246,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
         Some(b"new"),
     )
     .await;
-    assert!(v["readback"].is_null(), "{v}");
+    assert!(v.get("code").is_none(), "{v}");
     // 暂存区一份。
     let v = ask(
         &mut w,
@@ -838,4 +841,101 @@ async fn the_files_link_lists_resolves_renames_and_removes_empty_dirs() {
         .unwrap()
         .files
         .contains_key(".cc-monitor/staging/b.txt"));
+}
+
+// ═══ 放 ＋ 读回（`put_verified`：读回不对当场删）══════════════════════════════════════════
+
+/// 读回逐字节相同 ⇒ 过；落点上是那一份。
+#[tokio::test]
+async fn a_verified_put_that_reads_back_the_same_bytes_passes() {
+    let fs = rig::home(true, false);
+    let s = rig::session_on(fs.clone()).await;
+    let bin = rig::corpus(70_000);
+    super::put_verified(&s, ".cc-monitor/bin/ccm", &bin, 0o700)
+        .await
+        .expect("读回相同该过");
+    assert_eq!(fs.lock().unwrap().bytes(".cc-monitor/bin/ccm"), Some(bin));
+}
+
+/// 要求：「读回不对就删」。等长、首字节翻了一位（只比长度查不出来）⇒ 失败那一句说清坏在哪 ＋ 已删掉；落点上不留那一份。
+#[tokio::test]
+async fn a_verified_put_that_reads_back_wrong_bytes_removes_what_it_put() {
+    let fs = rig::home(true, false);
+    fs.lock().unwrap().corrupt_reads = true;
+    let s = rig::session_on(fs.clone()).await;
+    let bin = rig::corpus(70_000);
+    let e = super::put_verified(&s, ".cc-monitor/bin/ccm", &bin, 0o700)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&e, Refusal::Io { said, .. } if copy_core::copy_matches("rsSftp.upload.badRemoved", said)
+            && said.contains(&copy_core::copy_text("rsSftp.verify.contentDiffers", &[
+                ("path", ".cc-monitor/bin/ccm"), ("expectedLen", &bin.len().to_string()), ("at", "0")]))),
+        "{e:?}"
+    );
+    assert_eq!(
+        fs.lock().unwrap().bytes(".cc-monitor/bin/ccm"),
+        None,
+        "传坏的那一份还在"
+    );
+    assert!(
+        fs.lock()
+            .unwrap()
+            .mutated
+            .iter()
+            .any(|(v, p)| v == "remove" && p == ".cc-monitor/bin/ccm"),
+        "没删落点那一份：{:?}",
+        fs.lock().unwrap().mutated
+    );
+}
+
+/// 读回不对、删也删不掉 ⇒ 那一句照实说「未删掉」，删那一步的原话进详情；不许说成「已删掉」。
+#[tokio::test]
+async fn a_bad_readback_that_cannot_be_removed_says_so() {
+    let fs = rig::home(true, false);
+    let s = rig::session_on(fs.clone()).await;
+    let bin = rig::corpus(5_000);
+    {
+        let mut g = fs.lock().unwrap();
+        g.corrupt_reads = true;
+        g.refuse_remove = true;
+    }
+    let e = super::put_verified(&s, ".cc-monitor/bin/ccm", &bin, 0o700)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&e, Refusal::Io { said, raw: Some(_) } if copy_core::copy_matches("rsSftp.upload.badKept", said)),
+        "{e:?}"
+    );
+}
+
+/// 判读回的话（随判定从 monitor `sftp_tests` 搬来，期望不变）：等长一字节不同要指出位置；截短 · 读不回各一句；逐字节相同才过。
+#[test]
+fn the_readback_verdict_names_what_went_wrong() {
+    let want = b"#!/bin/sh\nexec ccm \"$@\"\n";
+    let mut bad = want.to_vec();
+    let k = want.len() / 2;
+    bad[k] ^= 1;
+    let e = super::verify_readback("/r/x", want, Some(&bad)).unwrap_err();
+    assert!(
+        copy_core::copy_matches_with(
+            "rsSftp.verify.contentDiffers",
+            &[("at", &k.to_string())],
+            &e
+        ),
+        "要指出位置：{e}"
+    );
+    assert!(e.contains("/r/x"), "{e}");
+    let e = super::verify_readback("/r/x", &[0u8; 10], Some(&[0u8; 5])).unwrap_err();
+    assert!(
+        copy_core::copy_matches_with("rsSftp.verify.lengthDiffers", &[("expectedLen", "10")], &e),
+        "{e}"
+    );
+    let e = super::verify_readback("/r/x", &[0u8; 10], None).unwrap_err();
+    assert!(
+        copy_core::copy_matches("rsSftp.verify.unreadable", &e),
+        "{e}"
+    );
+    assert!(super::verify_readback("/r/d", &[0, 0xff, 7], Some(&[0, 0xff, 7])).is_ok());
+    assert!(super::verify_readback("/r/d", &[], Some(&[])).is_ok());
 }

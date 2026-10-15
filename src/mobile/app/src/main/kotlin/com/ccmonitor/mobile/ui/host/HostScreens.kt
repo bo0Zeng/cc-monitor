@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,12 +41,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
@@ -66,7 +70,12 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.HostBackends
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.DeployStepLine
+import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.StatusDot
+import com.ccmonitor.mobile.ui.common.deployLabel
+import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -551,6 +560,9 @@ fun HostEditorScreen(
             onSelect = { proxyJumpHostId = it },
         )
 
+        // 那台的 cc-monitor：装 / 更新 / 核对版本（只对已保存的主机给：要它的连接）。
+        existing?.let { BackendRow(it.id) }
+
         // 本机自定义按钮编辑器入口；只对已保存的主机给，因为要 host id 作专属作用域。
         if (existing != null) {
             SecondaryButton(onClick = onEditButtons) { Text(copyText("mobHostEdit.buttons.edit")) }
@@ -634,6 +646,50 @@ private fun SwitchRow(
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(end = 8.dp))
         // 开关开 ＝ `--accent`（不是主按钮那个 `--accent-strong`）。
         Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = LocalAppTokens.current.accent))
+    }
+}
+
+/** 测试标签（冒烟按它点）。 */
+object HostEditTags {
+    const val DEPLOY = "host-edit-deploy"
+}
+
+/**
+ * 主机设置里那一行：标题 ＋ 一颗按钮（核心点名的那一种：安装 / 更新；没点名 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。
+ * 按下去才连那台（这一屏在就持有那条连接），连上就叫核心装；判定 · 做法 · 话都在核心，同对话屏问题条那几句。
+ */
+@Composable
+private fun BackendRow(hostId: String) {
+    val backends = koinInject<HostBackends>()
+    val feed = remember(hostId) { backends.of(hostId) }
+    val link by feed.state.collectAsState()
+    val deploying by feed.deploying.collectAsState()
+    // 按过几下：按过一次起，这一屏在就持有那条连接（装到一半屏还在，连接不许随按钮放手）。
+    var presses by remember { mutableIntStateOf(0) }
+    var conn: HostLink? = null
+    if (presses > 0) {
+        val held by rememberHostLink(hostId, "deploy-$hostId")
+        conn = held
+        LaunchedEffect(held, presses) { if (held == HostLink.Ready) backends.deploy(hostId) }
+    }
+    val fix = (link as? LinkState.Down)?.fix ?: (link as? LinkState.Up)?.fix
+    val step = deploying as? Deploying.Step
+    Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
+    SecondaryButton(
+        onClick = { presses++ },
+        enabled = step == null && conn != HostLink.Connecting,
+        modifier = Modifier.testTag(HostEditTags.DEPLOY),
+    ) { Text(deployLabel(fix)) }
+    (conn as? HostLink.Failed)?.let { Text(it.why, color = MaterialTheme.colorScheme.error) }
+    when (val d = deploying) {
+        is Deploying.Step -> DeployStepLine(d)
+        is Deploying.Done -> Text(d.text, style = monoSmall, color = LocalAppTokens.current.textFaint)
+        is Deploying.Failed ->
+            Column {
+                Text(d.said.text, color = MaterialTheme.colorScheme.error)
+                CopyDetailButton(d.said.text, d.said.detail)
+            }
+        null -> Unit
     }
 }
 

@@ -197,7 +197,22 @@ fn feeds() -> &'static Mutex<HashMap<i64, Arc<Feed<PhoneLink>>>> {
     F.get_or_init(Default::default)
 }
 
-fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
+/// 每台此刻 SSH 那层的拨号请求（Kotlin 交的那一份；装后端那一趟在同一条池连接上开它自己的几条用法）。
+fn bases() -> &'static Mutex<HashMap<i64, serde_json::Value>> {
+    static B: OnceLock<Mutex<HashMap<i64, serde_json::Value>>> = OnceLock::new();
+    B.get_or_init(Default::default)
+}
+
+/// 这台此刻的拨号请求（SSH 那层没通 ⇒ `None`）。
+pub(crate) fn base(h: i64) -> Option<serde_json::Value> {
+    bases()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&h)
+        .cloned()
+}
+
+pub(crate) fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -222,8 +237,23 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     })
 }
 
+/// 状态那一行；通着、但那台旧了（`notice`）⇒ 另点名 `fix: update`（同断着时的 `fix`：［更新后端］按得了）。
 pub fn state_json(s: &State) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| r#"{"state":"connecting"}"#.into())
+    let mut v =
+        serde_json::to_value(s).unwrap_or_else(|_| serde_json::json!({"state": "connecting"}));
+    if let (
+        State::Up {
+            notice: Some(_), ..
+        },
+        Some(o),
+    ) = (s, v.as_object_mut())
+    {
+        o.insert(
+            "fix".into(),
+            serde_json::to_value(resident_client::feed::Fix::Update).unwrap_or_default(),
+        );
+    }
+    v.to_string()
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
@@ -259,11 +289,16 @@ pub fn ssh(h: i64, base: Option<&str>) -> bool {
     let Some(f) = feed(h) else { return false };
     match base {
         None => {
+            bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
             f.set_transport(None);
             true
         }
         Some(b) => match serde_json::from_str::<serde_json::Value>(b) {
             Ok(v) if v.is_object() => {
+                bases()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(h, v.clone());
                 f.set_transport(Some(Arc::new(PhoneLink::new(v))));
                 true
             }
@@ -309,6 +344,7 @@ pub fn kick(h: i64, retry: bool) {
 }
 
 pub fn close(h: i64) {
+    bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
     if let Some(f) = feeds().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) {
         f.close();
     }
@@ -563,6 +599,7 @@ mod tests {
             problem: Problem::new("box 离线", ""),
             needs_hand: true,
             unsupported: false,
+            fix: None,
         }))
         .unwrap();
         assert_eq!(k, "state");

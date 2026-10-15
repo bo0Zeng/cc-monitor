@@ -20,7 +20,7 @@
 //! 用户「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/ssh-dial/sftp.rs`，
 //! 与其它 SSH 同一条连接），**远端写只许两处**（`~/.cc-monitor/staging/` · `~/.cc-monitor/bin/`）。
 //! **部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
-//! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，判定住后端那一份、两侧对上的形状住契约 crate `deploy-contract`）；
+//! （帧命令 `deploy-plan`，帧面 `src/backend/control/deploy_plan.rs`、判定住后端 `deploy` crate、两侧对上的形状住契约 crate `deploy-contract`）；
 //! 本模块只**照计划放字节**（取这一版带着的那一格 · 身份戳自检 · mkdir · 原子上传 ＋ 读回判定 · 删旧落点），
 //! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。
 //! 原子上传的序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）住后端
@@ -31,88 +31,24 @@
 use crate::copy_table::copy_text;
 use crate::detail::Said;
 
-use crate::dial_host::{Readback, RemoteFs};
+use crate::dial_host::RemoteFs;
 use crate::stream_source::RemoteConfig;
 
-/// 判定一次远端上传的读回结果。**纯函数，可测**——远端往返塞不进单测，
-/// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
+/// 上传 + **读回逐字节比对**，读回不对当场删掉传坏的那一份 —— 三步都在本机后端（`files` 链路 `put` 的 `verify` 那一格 ⇒
+/// 拨号核心 `ssh-dial/sftp.rs::put_verified`，手机那一趟装用的是同一份）；那一句（坏在哪 · 删没删掉）也是那边写好的，这里原样带回。
 ///
-/// 按字节而不是按字符串：`deploy_remote_backend` 上传的是**可执行二进制**。
-/// 读回那一趟住本机后端（它就在远端文件旁边，不必把 MB 级的字节再拉回界面），
-/// 它交回的是**比对的事实**（读回长度 · 首个差异的偏移，读不回 ⇒ `None`）；判不判通过、话怎么说仍住这里。
-pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Result<(), String> {
-    let Some((got_len, first_diff)) = readback else {
-        return Err(copy_text(
-            "rsSftp.verify.unreadable",
-            &[("path", &path.to_string())],
-        ));
-    };
-    if got_len == expected_len {
-        let Some(at) = first_diff else {
-            return Ok(());
-        };
-        return Err(copy_text(
-            "rsSftp.verify.contentDiffers",
-            &[
-                ("path", &path.to_string()),
-                ("expectedLen", &expected_len.to_string()),
-                ("at", &at.to_string()),
-            ],
-        ));
-    }
-    Err(copy_text(
-        "rsSftp.verify.lengthDiffers",
-        &[
-            ("path", &path.to_string()),
-            ("expectedLen", &expected_len.to_string()),
-            ("gotLen", &got_len.to_string()),
-        ],
-    ))
-}
-
-/// 上传 + **读回逐字节比对**。
+/// ## 为什么这一步此前不存在（T04 审计①）
 ///
-/// ## 为什么这个函数此前不存在（T04 审计①）
-///
-/// 当时 `deploy_remote_backend` 的**全部**上传
-/// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
-/// install.sh）——写完**直接写版本标记**，中间没有任何读回。
-/// 〔今天只剩后端二进制那一份：那几份脚本随账号库改由后端 `accounts/manage/` 自己建一起退役、删出仓。〕
-///
-/// 而 T04 第二步我论证「备份→写→读回比对→回滚这个范式已共享（5 处），所以不用抽」
-/// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。
-/// 我那套"五套机制"框架恰好把这个洞盖住了：把"范式已共享"当成了"范式已覆盖"。
-///
-/// 后果具体：传输损坏的后端二进制照样被写上正确的 `.build_id` 标记 →
-/// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
-/// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
-/// 上传与读回都经本机后端（`RemoteFs::put`，`verify` 那一格）；判定照旧是 [`verify_readback`]。
-///
-/// **读回不对 ⇒ 当场删掉传坏的那一份。** 从前断这条链靠「标记写在校验之后」；后端那条路的旁挂标记
-/// 退役之后（身份读字节自己的戳），一份传坏的字节若恰好还带着对的戳，下次会被判「已是这一版」⇒ 坏字节永久驻留。
-/// 删掉它，下次就是「落点没有 ⇒ 装」。删不掉也要说出来（那一份还在）。
+/// 当时 `deploy_remote_backend` 的**全部**上传写完**直接写版本标记**，中间没有任何读回 ⇒ 传输损坏的后端二进制照样被写上
+/// 正确的标记 → 下次判「已是最新，跳过」→ **坏二进制永久驻留**，而用户看到的是部署成功。今天旁挂标记退役（身份读字节自己的戳），
+/// 一份传坏的字节若恰好还带着对的戳一样会被判「已是这一版」⇒ 读回不对就删，下次就是「落点没有 ⇒ 装」。
 pub(crate) async fn upload_verified(
     fs: &RemoteFs,
     remote_path: &str,
     bytes: &[u8],
     mode: u32,
 ) -> Result<(), Said> {
-    let back = fs.put(remote_path, bytes, mode, true).await?;
-    let Err(bad) = verify_readback(remote_path, bytes.len() as u64, back) else {
-        return Ok(());
-    };
-    Err(match fs.remove(remote_path).await {
-        Ok(_) => copy_text("rsSftp.upload.badRemoved", &[("bad", &bad.to_string())]).into(),
-        // 删也没删成：那一句说清两件事，删那一步的详情（本机后端写的原话）跟着走。
-        Err(e) => {
-            let step = e.said.clone();
-            Said::restate(
-                copy_text("rsSftp.upload.badKept", &[("bad", &bad.to_string())]),
-                e,
-            )
-            .with_item(copy_core::detail::Label::Hop, &step)
-        }
-    })
+    fs.put(remote_path, bytes, mode, true).await
 }
 
 /// 远端那台要的那一份后端（字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
@@ -131,7 +67,7 @@ pub(crate) const STAMP_MARKS: deploy_contract::Marks<'static> = deploy_contract:
     close: deploy_contract::STAMP_CLOSE,
 };
 
-/// 部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `control/deploy_plan.rs`）；本 crate 里还要它的几处从这里拿同一份名字。
+/// 部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `deploy` crate）；本 crate 里还要它的几处从这里拿同一份名字。
 pub use deploy_contract::DeployAction;
 
 /// **本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。

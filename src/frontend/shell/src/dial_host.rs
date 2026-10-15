@@ -720,9 +720,6 @@ const FILES_PUT_DEADLINE: Duration = Duration::from_secs(600);
 /// 其余几问（`home` · `read` · `remove` · `mkdirs`）等应答的上限：各是一两个 SFTP 往返。
 const FILES_ASK_DEADLINE: Duration = Duration::from_secs(60);
 
-/// 读回来的那一份与期望的比对结论（后端算的）：`None` = 读不回来；`Some((读回长度, 首个差异))`。
-pub(crate) type Readback = Option<(u64, Option<u64>)>;
-
 /// 部署用的远端文件句柄：一条开在本机后端里的 `files` 链路。**只有这几问，写只许两处。**
 ///
 /// 丢掉它 = 关链路 = 后端收掉那条 sftp 通道（那条 SSH 连接不跟着断）。
@@ -811,29 +808,21 @@ impl RemoteFs {
     // `read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（已退役）⇒ 删了。
     //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。
 
-    /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对，回结论。
+    /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对、读回不对当场删掉
+    /// 并回那一句（`put_verified`）。
     pub(crate) async fn put(
         &self,
         path: &str,
         bytes: &[u8],
         mode: u32,
         verify: bool,
-    ) -> Result<Readback, Said> {
-        let v = self
-            .ask(
-                serde_json::json!({"op": "put", "path": path, "size": bytes.len(), "mode": mode, "verify": verify}),
-                Some(bytes),
-            )
-            .await?;
-        let rb = v.get("readback").filter(|r| !r.is_null());
-        Ok(rb.map(|r| {
-            (
-                r.get("len")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0),
-                r.get("first_diff").and_then(serde_json::Value::as_u64),
-            )
-        }))
+    ) -> Result<(), Said> {
+        self.ask(
+            serde_json::json!({"op": "put", "path": path, "size": bytes.len(), "mode": mode, "verify": verify}),
+            Some(bytes),
+        )
+        .await
+        .map(|_| ())
     }
 
     /// 删一份（不在 ⇒ `false`）。

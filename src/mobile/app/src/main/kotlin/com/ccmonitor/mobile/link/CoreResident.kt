@@ -41,4 +41,9 @@ object CoreResident : ResidentCore {
         handle: Long,
         retry: Boolean,
     ) = Core.residentKick(handle, retry)
+
+    override fun deploy(
+        handle: Long,
+        slots: String,
+    ): Boolean = Core.deploy(handle, slots)
 }
