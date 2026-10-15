@@ -281,13 +281,28 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
         answer_annotate_at(&own_of(&p), &json!({"sid": "fresh", "patch": patch}), now)
     };
     let e = at(json!({"autoAnswer": {"afterMin": 10, "say": " 继续 "}}), 1).unwrap();
-    assert_eq!(e["entry"]["autoAnswer"], json!({"afterMin": 10, "say": "继续"}));
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 10, "say": "继续"})
+    );
     let e = at(json!({"autoAnswer": {"afterMin": 5}}), 2).unwrap();
-    assert_eq!(e["entry"]["autoAnswer"], json!({"afterMin": 5, "say": "继续"}), "只换分钟");
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 5, "say": "继续"}),
+        "只换分钟"
+    );
     let e = at(json!({"starred": true}), 3).unwrap();
-    assert_eq!(e["entry"]["autoAnswer"], json!({"afterMin": 5, "say": "继续"}), "没给的格不动");
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 5, "say": "继续"}),
+        "没给的格不动"
+    );
     let e = at(json!({"autoAnswer": {"afterMin": 5, "say": "  "}}), 4).unwrap();
-    assert_eq!(e["entry"]["autoAnswer"], json!({"afterMin": 5}), "空白 ⇒ 缺省那一句");
+    assert_eq!(
+        e["entry"]["autoAnswer"],
+        json!({"afterMin": 5}),
+        "空白 ⇒ 缺省那一句"
+    );
     assert_eq!(
         auto_answer_at(&p, "fresh"),
         Some(cmd_wire::needs::AutoAnswer {
@@ -297,16 +312,22 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
     );
     let before = std::fs::read(&p).unwrap();
     assert_eq!(
-        at(json!({"autoAnswer": {"afterMin": crate::control::asks::AUTO_MAX_MIN + 1}}), 5)
-            .unwrap_err()
-            .code,
+        at(
+            json!({"autoAnswer": {"afterMin": crate::control::asks::AUTO_MAX_MIN + 1}}),
+            5
+        )
+        .unwrap_err()
+        .code,
         "bad_args"
     );
     assert_eq!(std::fs::read(&p).unwrap(), before, "拒了也写了");
     let e = at(json!({"autoAnswer": {"afterMin": 0}}), 6).unwrap();
     assert!(e["entry"].get("autoAnswer").is_none(), "{e}");
     let disk: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
-    assert!(disk["entries"]["fresh"].get("autoAnswer").is_none(), "{disk}");
+    assert!(
+        disk["entries"]["fresh"].get("autoAnswer").is_none(),
+        "{disk}"
+    );
     assert_eq!(auto_answer_at(&p, "fresh"), None);
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }

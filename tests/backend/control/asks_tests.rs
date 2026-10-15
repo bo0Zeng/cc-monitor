@@ -435,7 +435,12 @@ async fn pass(min: u64, secs: u64) {
 #[tokio::test(start_paused = true)]
 async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
     let sid = "t-auto-due";
-    let h = hang(9101, hook_of(sid, "AskUserQuestion"), on(10, Some("照推荐的来"))).await;
+    let h = hang(
+        9101,
+        hook_of(sid, "AskUserQuestion"),
+        on(10, Some("照推荐的来")),
+    )
+    .await;
     pass(9, 59).await;
     assert!(!h.is_finished(), "没到点不答");
     assert_eq!(pending(sid).len(), 1);
@@ -493,8 +498,7 @@ async fn a_human_who_answers_first_wins_and_nothing_is_said_for_them() {
     pass(10, 0).await;
     let got = h.await.unwrap().decision.unwrap();
     assert_eq!(
-        got["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Which?"],
-        "A",
+        got["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Which?"], "A",
         "人的答案"
     );
     assert_eq!(answered(sid), None, "人答了 ⇒ 不留自动答的记录");

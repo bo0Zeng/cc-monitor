@@ -15,8 +15,10 @@ pub mod hook;
 
 use crate::agents::asks::{product_of, Ask, NoteNeed};
 use crate::agents::{AskIn, PlanMode, Verdict};
-pub(crate) use cmd_wire::needs::{AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer};
 use crate::common::cells::Words;
+pub(crate) use cmd_wire::needs::{
+    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer,
+};
 use copy_core::copy_text;
 use serde::Serialize;
 use serde_json::Value;
