@@ -1,0 +1,38 @@
+# 会话继承来的环境变量：跑测试与门禁之前摘掉。全仓只这一张表。
+# 读它的两处：`session-scrub.sh`（`heavy.sh` 与 `quick-check.sh` 起被测命令前）· `src/common/test-home`（测试二进制起来时，`HOME` 是真家才摘）。
+# 一行一个名字；以 `*` 结尾的是一族（按前缀认）；以 `!` 起头的是族里照留的：台架或人交给判据的输入，只有判据自己读，不指向真东西。
+# 外面写死的工具代理（cargo 的 `CARGO_HOME` 配置 · `npm_config_proxy` · gradle 的 `gradle.properties`）不在表里，照用。
+
+# Claude Code 与 Codex 自己的：配置目录指着真账号，会话号 · 令牌 · 「在 agent 里跑」的标记会改变被测命令的行为
+CLAUDECODE
+CLAUDE_*
+AI_AGENT
+CODEX_*
+
+# tmux 的：`TMUX` 一有值，tmux 客户端就连到外面那台 server。`TMUX_TMPDIR` 不在表里：摘掉它也只是回到默认那台，
+# 隔离靠调用方另给一个私有的（quick-check 的沙箱 · 门禁换掉的 `/tmp/tmux-<uid>`），摘了反倒把给好的那个丢掉
+TMUX
+TMUX_PANE
+
+# cc-monitor 自己的（连同它带的 cc-bus）：数据目录 · 监听口 · 中转口 · 常驻开关都指着真的那一份
+CCM_*
+CC_BUS_*
+!CCM_E2E_*
+!CCM_SHOTS_*
+!CCM_FILEWIN_*
+!CCM_REGEN_*
+!CCM_BLESS*
+!CCM_PWSH
+!CCM_CJK_FONT
+!CCM_SANDBOX
+
+# 上游与代理的：真上游的地址与钥匙；通用代理变量会把判据连本机假上游的请求也送进代理
+ANTHROPIC_*
+HTTP_PROXY
+HTTPS_PROXY
+ALL_PROXY
+NO_PROXY
+http_proxy
+https_proxy
+all_proxy
+no_proxy

@@ -6,12 +6,15 @@
 //! - 每一份都在，且不写家目录的绝对路径（锁 · 槽位 · 日志走 `GATE_STATE_DIR`，仓根走 `git rev-parse`）；
 //! - 带 `--help` 的几份能跑、退 0、印用法；
 //! - 挑格那一半拿仓里这张表对仓里这份 `gate.sh` 出得了计划（表过期它退 2，这条就红）；
-//! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；
+//! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
+//!   （表 `session-vars`）；
+//! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
 //! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
 //!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
 
 #[cfg(all(test, unix))]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
 
@@ -25,6 +28,10 @@ mod tests {
         "tests/scripts/push-candidate.sh",
         "tests/scripts/quick-check.sh",
         "tests/scripts/bump-build-id.sh",
+        "tests/scripts/session-vars",
+        "tests/scripts/session-scrub.sh",
+        "tests/scripts/base.sh",
+        "tests/scripts/generated-drift.sh",
     ];
 
     /// 带 `--help` 的入口。
@@ -201,6 +208,67 @@ mod tests {
         let out = run(&["false"]);
         assert_eq!(out.status.code(), Some(1), "命令的退出码没照传");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 外面会话带进来的变量（值随便）：会话变量表 `tests/scripts/session-vars` 每一条各取一个名字（一族取 `<前缀>PROBE`），
+    /// 外加单跑测试只换 HOME 时读到真号 pidfile 的那几样（表被删空也红）；第二项是表里族中照留的判据输入。
+    fn outer_session() -> (Vec<String>, Vec<String>) {
+        let table = std::fs::read_to_string(root().join("tests/scripts/session-vars")).unwrap();
+        let name = |r: &str| match r.strip_suffix('*') {
+            Some(p) => format!("{p}PROBE"),
+            None => r.to_string(),
+        };
+        let (mut outer, mut kept): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+        for r in table.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+            match r.strip_prefix('!') {
+                Some(k) => kept.push(name(k)),
+                None => outer.push(name(r)),
+            }
+        }
+        for k in ["CLAUDE_CONFIG_DIR", "TMUX", "TMUX_PANE", "CCM_DATA_DIR"] {
+            if !outer.iter().any(|o| o == k) {
+                outer.push(k.to_string());
+            }
+        }
+        (outer, kept)
+    }
+
+    /// ★ 带着外面会话的变量起 `heavy.sh`，命令那一侧一样都看不见，判据输入照到；三个起命令的出口（已在重活里 · 没有 flock · 拿到槽位）各走一遍。
+    #[test]
+    fn heavy_hides_the_outer_session_from_the_command() {
+        let (outer, kept) = outer_session();
+        const BASE: &[&str] = &["bash", "sh", "seq", "sleep", "mkdir", "echo", "cat", "true", "false"];
+        for (tag, tools, held) in [
+            ("held", [BASE, &["flock"]].concat(), Some("1")),
+            ("noflock", BASE.to_vec(), None),
+            ("slot", [BASE, &["flock"]].concat(), None),
+        ] {
+            let d = scratch(&format!("heavy-scrub-{tag}"));
+            let bin = tool_bin(&d, &tools);
+            let mut c = Command::new(bin.join("bash"));
+            c.arg(root().join("tests/scripts/heavy.sh"))
+                .args(["bash", "-c", "compgen -e"])
+                .current_dir(&d)
+                .env("PATH", &bin)
+                .env("GATE_STATE_DIR", d.join("state"))
+                .env_remove("HEAVY_HELD");
+            if let Some(h) = held {
+                c.env("HEAVY_HELD", h);
+            }
+            for k in outer.iter().chain(&kept) {
+                c.env(k, "outer-session");
+            }
+            let out = c.output().unwrap();
+            let said = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success(), "{tag}：{said}{}", String::from_utf8_lossy(&out.stderr));
+            let seen: BTreeSet<&str> = said.lines().collect();
+            let left: Vec<&String> = outer.iter().filter(|k| seen.contains(k.as_str())).collect();
+            assert!(left.is_empty(), "{tag}：heavy 起的命令看见了外面会话的变量：{left:?}");
+            for k in kept.iter().map(String::as_str).chain(["PATH", "GATE_STATE_DIR"]) {
+                assert!(seen.contains(k), "{tag}：{k} 不是会话状态，不该摘：{said}");
+            }
+            let _ = std::fs::remove_dir_all(&d);
+        }
     }
 
     /// 只放 `tools` 那几样（本机找得到的才放）的一个 PATH 目录。
@@ -390,7 +458,7 @@ mod tests {
         write(
             &d,
             "src/mobile/gradlew",
-            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
+            "#!/bin/sh\necho \"$@\" > ../../gradlew-args\nenv | cut -d= -f1 > ../../gradlew-env\nmkdir -p ../../.build/mobile/app/test-results/t\necho '<testsuite name=\"x\" tests=\"3\" failures=\"0\">' > ../../.build/mobile/app/test-results/t/TEST-x.xml\n",
         );
         assert!(Command::new("chmod")
             .args(["+x", "src/mobile/gradlew"])
@@ -398,7 +466,7 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        write(&d, ".gitignore", ".build/\ngradlew-args\n");
+        write(&d, ".gitignore", ".build/\ngradlew-args\ngradlew-env\n");
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         git(&d, &["checkout", "-q", "-b", "work"]);
@@ -406,9 +474,13 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "work"]);
         let script = root().join("tests/scripts/quick-check.sh");
+        let (outer, kept) = outer_session();
         let run = |arg: &str| {
-            Command::new("bash")
-                .arg(&script)
+            let mut c = Command::new("bash");
+            for k in outer.iter().chain(&kept) {
+                c.env(k, "outer-session");
+            }
+            c.arg(&script)
                 .arg(arg)
                 .current_dir(&d)
                 .env("JAVA_HOME", d.join("no-jdk"))
@@ -429,6 +501,14 @@ mod tests {
             String::from_utf8_lossy(&out.stderr)
         );
         let args = std::fs::read_to_string(d.join("gradlew-args")).ok();
+        // 被测那一侧（gradle）看不见外面会话的变量，判据输入照到。
+        if let Ok(seen) = std::fs::read_to_string(d.join("gradlew-env")) {
+            let seen: BTreeSet<&str> = seen.lines().collect();
+            let left: Vec<&String> = outer.iter().filter(|k| seen.contains(k.as_str())).collect();
+            assert!(left.is_empty(), "quick-check 起的 gradle 看见了外面会话的变量：{left:?}");
+            let lost: Vec<&String> = kept.iter().filter(|k| !seen.contains(k.as_str())).collect();
+            assert!(lost.is_empty(), "判据输入没传到 gradle：{lost:?}");
+        }
         let _ = std::fs::remove_dir_all(&d);
         (plan, said, args)
     }
@@ -854,5 +934,93 @@ mod tests {
                 "pm clear 没成（`{says}` / {rc}）还接着跑了设备测：{calls:#?}"
             );
         }
+    }
+
+    /// 一棵三层的假仓：main 上一个提交 → 合并用的分支 `mg` 再改一份手机读的文件 → 本路分支 `lane` 从 `mg` 开、只改界面。
+    /// 返回 (仓, main 那一个, mg 那一个)。
+    fn three_tier_repo(tag: &str) -> (PathBuf, String, String) {
+        let d = scratch(tag);
+        let head = |d: &Path| {
+            let o = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(d).output().unwrap();
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        };
+        git(&d, &["init", "-q", "-b", "main"]);
+        write(&d, "README", "base\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "base"]);
+        let a = head(&d);
+        git(&d, &["checkout", "-q", "-b", "mg"]);
+        write(&d, "src/mobile/app/X.kt", "other lane\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "other lane"]);
+        let b = head(&d);
+        git(&d, &["checkout", "-q", "-b", "lane"]);
+        write(&d, "src/frontend/ui/x.ts", "mine\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "mine"]);
+        (d, a, b)
+    }
+
+    /// ★ 「这棵树自己改了哪些」的起点（`base.sh`，quick-check 挑手机那一套与 gate-affected 挑格都用它）：
+    /// 分支设了上游 ⇒ 与上游的 merge-base；没设 ⇒ origin/main；再没有 ⇒ main。上游比 origin/main 先认。
+    /// 连着 quick-check 的计划核：别的路在合并分支上改了手机读的文件，本路设了上游就不该因此跑手机那一套。
+    #[test]
+    fn the_base_is_the_branch_upstream_then_origin_main_then_main() {
+        let (d, a, b) = three_tier_repo("base");
+        let base = |d: &Path| {
+            let o = bash(&root().join("tests/scripts/base.sh"), &[], d);
+            assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+            String::from_utf8_lossy(&o.stdout).trim().to_string()
+        };
+        let plan = |d: &Path| {
+            let o = bash(&root().join("tests/scripts/quick-check.sh"), &["--mobile-plan"], d);
+            String::from_utf8_lossy(&o.stdout).into_owned()
+        };
+        assert_eq!(base(&d), format!("{a} main"));
+        let p = plan(&d);
+        assert!(p.contains("MOBILE: 跑 —— 改到 src/mobile/app/X.kt"), "对着 main 算，别的路那一份也算进来：{p}");
+        git(&d, &["update-ref", "refs/remotes/origin/main", &b]);
+        assert_eq!(base(&d), format!("{b} origin/main"));
+        git(&d, &["update-ref", "refs/remotes/origin/main", &a]);
+        git(&d, &["branch", "-q", "--set-upstream-to=mg"]);
+        assert_eq!(base(&d), format!("{b} mg"), "设了上游却没先认上游");
+        let p = plan(&d);
+        assert!(p.contains("MOBILE: 跳过 —— 相对 mg 没改到"), "别的路改的手机文件算到了本路头上：{p}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// ★ 生成物落在提交外（`generated-drift.sh`，quick-check 末尾与门禁 `generated` 格调它）：每个登记的生成物目录里
+    /// 改过的 · 删掉的 · 没跟踪的逐份印出、退 1；生成物目录外的改动不算；干净 ⇒ 退 0 不出声；不在 git 仓里 ⇒ 退 2。
+    #[test]
+    fn generated_drift_names_every_uncommitted_file_in_each_generated_dir() {
+        let d = scratch("gen-drift");
+        let drift = |d: &Path| bash(&root().join("tests/scripts/generated-drift.sh"), &[], d);
+        let o = drift(&d);
+        assert_eq!(o.status.code(), Some(2), "不在 git 仓里却没说判不了");
+        git(&d, &["init", "-q", "-b", "main"]);
+        for dir in crate::ts_export_guard::REGISTERED {
+            write(&d, &format!("{dir}/Kept.ts"), "1\n");
+            write(&d, &format!("{dir}/Gone.ts"), "1\n");
+        }
+        write(&d, "src/other/x.ts", "1\n");
+        git(&d, &["add", "-A"]);
+        git(&d, &["commit", "-q", "-m", "base"]);
+        let o = drift(&d);
+        assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stdout));
+        assert!(o.stdout.is_empty());
+        let mut want = BTreeSet::new();
+        for dir in crate::ts_export_guard::REGISTERED {
+            write(&d, &format!("{dir}/Kept.ts"), "2\n");
+            std::fs::remove_file(d.join(format!("{dir}/Gone.ts"))).unwrap();
+            write(&d, &format!("{dir}/New.ts"), "1\n");
+            want.extend(["Kept.ts", "Gone.ts", "New.ts"].map(|f| format!("{dir}/{f}")));
+        }
+        write(&d, "src/other/x.ts", "2\n");
+        let o = drift(&d);
+        let said = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(1), "{said}");
+        let got: BTreeSet<String> = said.lines().map(|l| l[3..].to_string()).collect();
+        assert_eq!(got, want, "印出来的与没提交的生成物对不上");
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

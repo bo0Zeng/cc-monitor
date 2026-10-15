@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// 登记的生成物目录（仓根相对）。
-const REGISTERED: &[&str] = &["src/frontend/ui/generated", "src/comms/ui/generated"];
+/// 登记的生成物目录（仓根相对）。都叫 `generated`：`tests/scripts/generated-drift.sh` 按这个名字找没提交的生成物（判据在 `flow_scripts_guard`）。
+pub(crate) const REGISTERED: &[&str] = &["src/frontend/ui/generated", "src/comms/ui/generated"];
 
 /// 一个 `derive(ts_rs::TS)` 的类型。
 #[derive(Debug)]

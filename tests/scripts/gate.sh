@@ -17,6 +17,8 @@ gate_tmux_snap() {
   gate_tmux_q "$1" display -p '#{pid}' \; show-hooks -g \; list-sessions -F '#{session_name}' \
     \; show-options -t gate-fake \; show-hooks -t gate-fake 2>&1
 }
+# 换的是 `/tmp/tmux-<uid>`：`TMUX_TMPDIR` 一有值，裸调的 tmux 就去它指的那里找 server、绕开这一层。
+unset TMUX_TMPDIR
 if [ -z "${GATE_TMUX_HOME:-}" ] && [ "${GITHUB_ACTIONS:-}" != true ]; then
   command -v bwrap >/dev/null 2>&1 || { echo "GATE: FAIL —— 这台机器上没有 bwrap（装 bubblewrap）：换不了 tmux 目录，不许裸跑（测试会落到用户默认的 tmux 上）"; exit 2; }
   gate_tmux_uid="$(id -u)"
@@ -747,7 +749,8 @@ gate_shellcheck() {
            "$n" "$([ "$self" -eq 1 ] && echo || echo 不)"
     return 1
   fi
-  out="$(LC_ALL=C.UTF-8 shellcheck --severity=error "${files[@]}" 2>&1)"
+  # 一份一个进程、按核数并起（串着跑九十来份要二十秒上下）；`-f gcc` 一条一行，并发的输出不会拼进别人的那一段。
+  out="$(printf '%s\0' "${files[@]}" | LC_ALL=C.UTF-8 xargs -0 -n 1 -P "$(nproc)" shellcheck --severity=error -f gcc 2>&1)"
   rc=$?
   printf '%s\n' "$out" | head -80
   if [ "$rc" -ne 0 ]; then
@@ -1125,17 +1128,16 @@ run_gate androidbuild '不是数出来的数：拨号核心（`ssh-dial`）对 `
 gate_lane 前端 after cargo backend
 
 # ── `generated`：改了 Rust 不跑生成，这里红 ──
-# 与 `ci.yml` 那条「生成物必须最新」同形：`git diff` 已提交的 `src/frontend/ui/generated/`。
+# 判据本体 `tests/scripts/generated-drift.sh`（quick-check 末尾也调它）：每个 `generated/` 目录下与 HEAD 不同或还没跟踪的文件。
 # 位置是承重的：必须在 `cargo` 与 `backend` 两格都跑完之后（「前端」道 after 它俩）—— 两格的 `cargo test --lib` 里都有 ts-rs 导出测试，跑过它们生成物才按当前 Rust 源重写过；
 #   排在前面判的是没重写的树，恒绿；与它们并发则读到截了一半的文件（ts-rs 截断再写）。
-# 看不见的：全新的生成物文件（untracked，由 `generated-boundary-guard.vitest.ts` 的目录清单接）· 内容对不对 · 有没有提交。
+# 看不见的：内容对不对（只比 HEAD）。
 # 本格不走 `run_gate`，`gate_wants` / `gate_cell` 手接；漏接会让收据少一格，`K-G4C-gate-receipt.py` 的两向相等当场分叉。
 gate_exec_generated() {
   gate_now_ms > "$GATE_K.t0"
-  ( gate_yield git diff --quiet --exit-code -- src/frontend/ui/generated/ )
+  ( gate_yield bash tests/scripts/generated-drift.sh ) > "$GATE_K.out" 2>&1
   printf '%s' "$?" > "$GATE_K.rc"
   gate_now_ms > "$GATE_K.t1"
-  git diff --stat -- src/frontend/ui/generated/ > "$GATE_K.out" 2>&1
 }
 gate_judge_generated() {
   local gen_rc
@@ -1145,13 +1147,13 @@ gate_judge_generated() {
   case "$gen_rc" in
     0) printf '  ok   %-14s %s\n' "generated" "与 Rust 源一致（cargo 与 backend 两格跑完之后再判的；$(gate_took generated)）" ;;
     1)
-      printf '  FAIL %-14s %s\n' "generated" "src/frontend/ui/generated/ 与 Rust 源不一致："
+      printf '  FAIL %-14s %s\n' "generated" "生成物与 Rust 源不一致（下面这几份与提交的不同或没跟踪）："
       printf '%s\n' "$GATE_C_OUT"
-      fails+=("generated（改了带 ts_rs::TS 的类型 ⇒ 跑 npm run gen:types 并把 src/frontend/ui/generated/ 一起提交）")
+      fails+=("generated（改了带 ts_rs::TS 的类型 ⇒ 跑 npm run gen:types 并把 generated/ 下这几份一起提交）")
       ;;
     *)
-      # 退出码既不是 0 也不是 1（如 128：不在 git 仓里）⇒ **判不了**。不许当成绿。
-      fails+=("generated（git diff 退出码 $gen_rc —— 判不了，不许当成绿）")
+      # 退出码既不是 0 也不是 1（2：不在 git 仓里）⇒ **判不了**。不许当成绿。
+      fails+=("generated（退出码 $gen_rc —— 判不了，不许当成绿：$GATE_C_OUT）")
       ;;
   esac
 }
