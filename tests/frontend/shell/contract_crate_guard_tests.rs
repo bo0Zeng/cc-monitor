@@ -34,6 +34,7 @@ enum Class {
 const CRATES: &[(&str, Class, &str)] = &[
     ("acct-core", Class::Decision, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）是裁决；界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
     ("cmd-wire", Class::Contract, "帧命令两端对上的形状：机器名（`Machine`，线上一个字符串）· typed 命令的形状指纹表（后端 hello 交出去、客户端比）· 文件管理那一族的入参与回包（文件窗口照它发、照它解）· 会话族手机问的那几条的回包（手机嵌的 Rust 核心照它解）；不裁决"),
+    ("chunk-core", Class::Contract, "分块传那一套问法：块多大 · 块号连着 · 整份摘要怎么算 · 读到哪为止；文件窗口与手机嵌的核心照同一份问，不裁决（同名 · 能不能写都由那台判）"),
     ("copy-core", Class::Contract, "文案表：两侧按同一个键取同一句（`copy_text` / `copy_static`），不裁决"),
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
     ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `control/deploy_plan.rs`）"),

@@ -207,14 +207,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （`SNAPSHOT_MAX_BYTES` / `MAX_SESSION_BYTES`）。",
     ),
     (
-        "CHUNK_RAW",
-        "**步长**不是上限：文件窗口上传块形每一块读多少原始字节（`filewin/chunk_upload.rs`，b16 翻倍后一行仍远小于后端入方向一行 \
-             `MAX_LINE_BYTES`）。它不限任何字节总量（整份文件多大都一块一块送完）、不截任何东西。",
-    ),
-    (
-        "PULL_CHUNK",
-        "**步长**不是上限：非 UTF-8 名的下载每一块向那台后端要多少原始字节（`filewin/lossy_pull.rs`，== 后端 \
-             `READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。它不限整份多大（一块一块读到 `eof`）、不截任何东西。",
+        "CHUNK",
+        "**步长**不是上限：分块传每一块多少原始字节（`common/chunk-core`，文件窗口与手机同一份；== 后端 \
+             `READ_CHUNK_MAX_BYTES`，读两侧源码钉相等；b16 翻倍后一行仍远小于后端入方向一行 `MAX_LINE_BYTES`）。\
+             它不限整份多大（一块一块送完 / 读到 `eof`）、不截任何东西。",
     ),
     (
         "OWN_FILE_MODE",

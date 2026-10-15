@@ -12,6 +12,8 @@ members = [
     "../../common/acct-core",
     # 帧命令两端对上的那几样：机器名 · typed 命令的形状指纹表（后端 · monitor 同一份）。
     "../../common/cmd-wire",
+    # 分块传的循环（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心同一份。
+    "../../common/chunk-core",
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
@@ -61,7 +63,7 @@ categories = ["development-tools", "visualization"]
 default-run = "cc-monitor"
 
 # 「monitor 源码树」的判据人群：本包 `src/` ＋ 下面这几包 —— monitor 的代码搬进去的、只有前端链的兄弟包
-#   （通道 · 前端宿主原语 · 开窗契约 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
+#   （通道 · 前端宿主原语 · 开窗契约 · 分块传那一圈 · 文件窗口）。`guard_core::walk_tree` / `module_address` 按它收 / 认，按人群扫的判据搬家前后逐条同一群；
 #   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
 [package.metadata.guard]
 population = [
@@ -70,6 +72,7 @@ population = [
     "../../common/host-core",
     "../../common/filewin-contract",
     "../../common/win-manifest",
+    "../../common/chunk-core",
     "../filewin",
 ]
 

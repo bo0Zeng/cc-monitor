@@ -6,24 +6,15 @@
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
 //! |---|---|---|
 //! | [`a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_the_file`] | 传输台答 `sftp_home_mismatch` ⇒ 这一件改走块形、`via_backend` 记下原因；块拼回来 == 本机那份、提交带 `chunks` / `bytes` / 整份摘要 | 期望是本机文件自己的字节与 `sha2` 现算的摘要 |
-//! | [`hex_is_lowercase_and_byte_exact`] | 十六进制与 `format!("{:02x}")` 逐字相同 | 期望由标准库现算 |
 
-use super::*;
 use crate::transfer::tests::{xfer_rig, Ends};
 use sha2::Digest as _;
-
-#[test]
-fn hex_is_lowercase_and_byte_exact() {
-    let b: Vec<u8> = (0u8..=255).collect();
-    let want: String = b.iter().map(|x| format!("{x:02x}")).collect();
-    assert_eq!(hex(&b), want);
-}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_the_file() {
     let dir = std::env::temp_dir().join(format!("ccm-cu-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("临时目录");
-    let body: Vec<u8> = (0..(CHUNK_RAW * 2 + 1000))
+    let body: Vec<u8> = (0..(chunk_core::CHUNK * 2 + 1000))
         .map(|i| (i * 7 % 251) as u8)
         .collect();
     let local = dir.join("big.bin");
