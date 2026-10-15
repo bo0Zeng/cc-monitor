@@ -48,7 +48,6 @@
               "type": "text"
             }
           ],
-          "endsTurn": false,
           "id": "r-2",
           "t": "reply"
         },
@@ -99,7 +98,6 @@
               "type": "text"
             }
           ],
-          "endsTurn": false,
           "id": "r-2",
           "t": "reply"
         },
@@ -155,7 +153,6 @@
               "type": "text"
             }
           ],
-          "endsTurn": false,
           "id": "r-2",
           "t": "reply"
         }
@@ -198,7 +195,6 @@
               "type": "text"
             }
           ],
-          "endsTurn": false,
           "id": "s-2",
           "t": "reply"
         },

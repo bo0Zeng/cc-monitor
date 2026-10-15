@@ -21,7 +21,6 @@ describe("派出卡建出来就交给上下文标运行状态", () => {
       cards: { t1: "agent" },
       runs: { t1: { label: "补测试", kind: "general-purpose" } },
       autoReply: false,
-      endsTurn: false,
     } as unknown as LineRecord;
     renderMessage(rec, ctx as never);
     expect(onRunCard).toHaveBeenCalledTimes(1);

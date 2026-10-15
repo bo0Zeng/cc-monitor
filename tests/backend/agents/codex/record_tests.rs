@@ -290,7 +290,6 @@ fn maps_message_to_said_and_reply() {
         &r.body,
         Body::Reply {
             auto_reply: false,
-            ends_turn: false,
             ..
         }
     ));

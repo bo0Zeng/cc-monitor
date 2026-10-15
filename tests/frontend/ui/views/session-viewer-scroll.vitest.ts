@@ -230,7 +230,6 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
       at: ts(seq),
       blocks: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }],
       autoReply: false,
-      endsTurn: false,
     });
   const res = (seq: number, uuid: string, id: string, out: string, kind?: "handback"): RigPayload =>
     line(seq, {
@@ -287,7 +286,6 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
         at: ts(1),
         blocks: [{ type: "tool_use", id: "t1", name: "Spawn", input: {} }],
         autoReply: false,
-        endsTurn: false,
         cards: { t1: "agent" },
         runs: { t1: { label: "扫目录", kind: "Explore" } },
       }),

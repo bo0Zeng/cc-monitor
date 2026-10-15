@@ -842,7 +842,6 @@ mod specimens {
                 ],
                 model: some("m"),
                 auto_reply: false,
-                ends_turn: true,
                 cards: one("c", ToolCard::Command),
                 steps: [
                     (

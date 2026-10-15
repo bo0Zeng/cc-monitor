@@ -134,7 +134,6 @@ function toolUseRec(id: string, name: string, recId: string): LineRecord {
     at: "2026-09-18T12:00:00.000Z",
     blocks: [{ type: "tool_use", id, name, input: { command: "echo hi" } }],
     autoReply: false,
-    endsTurn: false,
   };
 }
 

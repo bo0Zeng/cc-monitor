@@ -89,7 +89,6 @@ describe("长回复建卡", () => {
       at: "2026-01-01T00:00:00.000Z",
       blocks: [{ type: "text", text }],
       autoReply: false,
-      endsTurn: false,
     }) as never;
 
   it("建卡时只同步排第一片；点「显示全部」之后一片一跳地补（点的那一下同步零片），补完按钮收掉、正文一字不少", async () => {

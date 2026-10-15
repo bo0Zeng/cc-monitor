@@ -470,7 +470,7 @@ describe("〔RENDER2〕第二级估高", () => {
       s.view,
       asked.map((seq) => ({
         seq,
-        rec: { agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false, endsTurn: false } as never,
+        rec: { agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false } as never,
       })),
     );
     expect(seen).toEqual([asked.length]);
@@ -509,7 +509,6 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
             { type: "tool_use", id: "x", name: "Read", input: {} },
           ],
           autoReply: false,
-          endsTurn: false,
         },
         { o: 0, n: 1, t: "reply", u: "b", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
       ],
@@ -525,7 +524,7 @@ describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
 // 要求：「列宽变化只重算已精算过的」＋「今天列宽只量一次（`COL_W`），列宽变了只重算精算过的那一步（`relayout`）还没有入口」；同一行。
 describe("〔P3〕列宽变了", () => {
   const rec = (seq: number) =>
-    ({ agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false, endsTurn: false }) as never;
+    ({ agent: "claude", t: "reply", id: `u${seq}`, blocks: [{ type: "text", text: "x".repeat(200) }], autoReply: false }) as never;
 
   it("SkeletonView.relayout：每行高 == 新列宽下的第一级；精算过的那几行进待重交；占位改高、视口钉住；差不到 1px 不动", () => {
     const s = setup(3000, 2990);

@@ -697,7 +697,7 @@ def main():
             raise Step.Fail("App 没了（换网闪退）")
 
     with Step("8-杀进程"):
-        # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 回到那一条、核心重接、先取尾巴，被杀那段的话照样在。
+        # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 核心重接、先取尾巴，被杀那段的话照样在。
         name = tmux_name_of(f"{T} new session")
         adb("shell", "am", "force-stop", PKG)
         time.sleep(2)
@@ -706,10 +706,6 @@ def main():
         rig("tmux", "send-keys", "-t", name or "", f"{T} while dead", "Enter")
         time.sleep(4)
         launch()
-        # 重开回到上次在看的那一条（不经列表）：那一条独有的那句在屏上。
-        to_bottom()
-        if not wait(f"替身收到：{T} offline", 30):
-            raise Step.Fail("重开没回到上次在看的那一条")
         drawer(t("mobDrawer.item.chats"))
         if not wait(f"{T} new session", 30):
             raise Step.Fail("重开之后对话列表里没有那条会话")

@@ -73,7 +73,7 @@ function brief(text: string): unknown {
 }
 function say(uuid: string, text: string): unknown {
   return {
-    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "text", text }], model: "m", autoReply: false, endsTurn: false },
+    record: { agent: "claude", t: "reply", id: uuid, at: "2026-10-01T10:01:00Z", blocks: [{ type: "text", text }], model: "m", autoReply: false },
   };
 }
 
@@ -239,7 +239,6 @@ describe("agent 窗口", () => {
         blocks: [{ type: "tool_use", id: "t9", name: "Spawn", input: {} }],
         model: "m",
         autoReply: false,
-        endsTurn: false,
         cards: { t9: "agent" },
         runs: { t9: { label: "孙", kind: "Explore" } },
       },

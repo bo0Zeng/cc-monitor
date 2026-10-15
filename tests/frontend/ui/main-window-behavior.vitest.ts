@@ -445,7 +445,6 @@ function toolCalls(calls: { id: string; name: string; input: unknown }[], cards:
     atMs: Date.UTC(2026, 0, 1, 2, 2),
     blocks: calls.map((c) => ({ type: "tool_use", ...c })),
     autoReply: false,
-    endsTurn: false,
     cards,
   } as never;
 }

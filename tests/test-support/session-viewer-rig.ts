@@ -229,7 +229,6 @@ export function assistantLine(seq: number, id: string, text: string): RigPayload
     at: atOf(seq),
     blocks: [{ type: "text", text }],
     autoReply: false,
-    endsTurn: false,
   });
 }
 

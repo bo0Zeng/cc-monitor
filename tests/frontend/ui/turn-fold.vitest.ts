@@ -545,7 +545,7 @@ describe("轮次刻度", () => {
 // 系统注入（「谁说的」稿 A ⑤）：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散重试 · 后台通知的相邻合并）。
 describe("系统注入的旁注细条", () => {
   const tool = (uuid: string, id: string) =>
-    ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false, endsTurn: false }) as never;
+    ({ agent: "claude", t: "reply", id: uuid, at: "2026-01-01T02:02:00.000Z", blocks: [{ type: "tool_use", id, name: "Read", input: {} }], autoReply: false }) as never;
   const injected = (uuid: string, body?: string) =>
     ({ agent: "claude", t: "said", id: uuid, at: "2026-01-01T02:02:30.000Z", blocks: [{ type: "text", text: "x" }], who: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
 

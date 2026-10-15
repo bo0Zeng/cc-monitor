@@ -3,7 +3,7 @@
 //! | 盘上 | 通用记录 |
 //! |---|---|
 //! | `user` | `said`：`who` · `message.content` ⇒ `blocks` · 工具结果的一句 ⇒ `results` · `cwd` |
-//! | `assistant` | `reply`；`isApiErrorMessage` ⇒ `error{reason, status}`；`message.model == "<synthetic>"`（且不是报错）⇒ `autoReply`；一轮结束 ⇒ `endsTurn` |
+//! | `assistant` | `reply`；`isApiErrorMessage` ⇒ `error{reason, status}`；`message.model == "<synthetic>"`（且不是报错）⇒ `autoReply` |
 //! | `system` · `subtype == "api_error"` | `retry` |
 //! | `ai-title` / `custom-title` | `title{by: agent / user}` |
 //! | `queue-operation` · `remove` · 人说的 | `queued` |
@@ -177,8 +177,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
                 status: api_error_status,
             });
             let auto_reply = is_auto_reply(error.is_some(), message.model.as_deref());
-            let ends_turn =
-                message.stop_reason.as_deref() == Some("end_turn") && !is_api_error_message;
             Some(rec_of(
                 uuid,
                 Some(timestamp),
@@ -186,7 +184,6 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
                     blocks: blocks_of(&message.content),
                     model: message.model.filter(|m| m != AUTO_REPLY_MODEL),
                     auto_reply,
-                    ends_turn,
                     cards: tool_cards,
                     steps: tool_steps,
                     runs: child_runs,

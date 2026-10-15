@@ -484,7 +484,7 @@ pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Transl
 /// | rollout | 通用记录 |
 /// |---|---|
 /// | `response_item.message`（user / developer 角色，或别家来信）· `agent_message` · `inter_agent_communication` | `said`（谁说的本家判，[`message_said`]） |
-/// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物；`endsTurn` 恒假：一轮的结束是另一条事件） |
+/// | `response_item.message`（assistant 角色）· `reasoning` · 工具调用 | `reply`（`autoReply` 恒假：没考据到等价物） |
 /// | 工具调用的输出 | `said`（工具结果） |
 /// | 认不出的顶层类型 · 认不出的 `response_item` 子型 | `unread`（写好的一句 ＋ 原文摘录） |
 /// | 事件 · 元记录 | 无记录 |
@@ -592,7 +592,6 @@ fn reply(blocks: Vec<Block>) -> Body {
         blocks,
         model: None,
         auto_reply: false,
-        ends_turn: false,
         cards: Default::default(),
         steps: Default::default(),
         runs: Default::default(),

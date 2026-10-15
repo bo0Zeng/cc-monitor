@@ -13,7 +13,6 @@ const folded = {
   blocks: [{ type: "tool_use", id: "t1", name: "Grep" }],
   steps: { t1: { tool: "Grep", arg: "x", known: true } },
   autoReply: false,
-  endsTurn: false,
 } as unknown as LineRecord;
 const full = { ...folded, blocks: [{ type: "tool_use", id: "t1", name: "Grep", input: { pattern: "ZQ-INPUT" } }] } as unknown as LineRecord;
 

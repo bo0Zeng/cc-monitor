@@ -141,7 +141,6 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
       at: "2026-09-10T00:00:01.000Z",
       blocks: [{ type: "text", text: "答一句" }],
       autoReply: false,
-      endsTurn: false,
     }),
     userLine(2, "u2", "再问"),
   ];

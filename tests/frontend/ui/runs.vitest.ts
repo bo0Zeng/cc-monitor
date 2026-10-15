@@ -127,7 +127,6 @@ function dispatch(seq: number, tool: string, label: string): never {
     at: "2026-09-10T00:00:00.000Z",
     blocks: [{ type: "tool_use", id: tool, name: "Spawn", input: {} }],
     autoReply: false,
-    endsTurn: false,
     cards: { [tool]: "agent" },
     runs: { [tool]: { label, kind: "Explore" } },
   }) as never;
