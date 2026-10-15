@@ -20,14 +20,13 @@
 //! 只抓**上限**：下限（`took >= 600ms`）与静窗（「这 400 毫秒里不许有事件」）机器忙只会让它更长 / 更弱，不会误红，不管。
 //! 一秒以下的等待当轮询片或静窗（逐条看过：`recv_timeout(400ms)` 后面都是 `.is_err()` / `Timeout =>`）。
 //!
-//! 「睡一会儿再断言」：不在轮询圈里的 `sleep(…)`、同一块往后五句之内有断言（rs-sleep）·
+//! 「睡一会儿再看」：不在轮询圈里的 `sleep(…)` 一律算（rs-sleep）·
 //! e2e 里前台的 `sleep N` 不在轮询圈里（sh-sleep）· 拿圈数 × 睡眠当期限的 Rust 轮询圈（rs-poll，换成 `wall::rounds()`）。
 //! 等一件事 ⇒ 等它成立；造时间差 ⇒ 直接写 mtime / 把钟拨给被测函数；看「没发生」⇒ 先等一个说明「定了」的正面迹象
 //! （收尾记号、同一条输入口打进去的记号、终局应答），等不到这种迹象的静窗才登记进例外表。
 //!
 //! 买不到：
-//! - Rust 里睡眠藏在别的函数里（`settle()` 里睡、调用处断言）、隔了五句以上才断言的，认不出；
-//!   TS 不在这里：测试源里 `setTimeout` / `setInterval` 只许 0，由 eslint 拦（`eslint.config.js`，基线 0 由 `eslint-baseline` 数着）；
+//! - TS 不在这里：测试源里 `setTimeout` / `setInterval` 只许 0，由 eslint 拦（`eslint.config.js`，基线 0 由 `eslint-baseline` 数着）；
 //! - 期限藏进函数参数、跨文件常量、`format!` 拼出来的，认不出（同文件里 `let` / `const` 绑的认得出）；
 //! - 被测系统自己的期限（喂给被测代码的 `deadline: …`、`arrive_within_ms`、`connectTimeoutMs`）不是判据的期限，不在这几形里
 //!   （喂给 `set_read_timeout` / `Instant::now() + …` 的算，那几处要么换成兜底的数、要么登记成「被测期限」）；
@@ -117,7 +116,7 @@ const FORMS: &[(&str, &str, &str)] = &[
     (
         "rs-sleep",
         "rs",
-        "不在轮询圈里的 `sleep(…)`，同一块里往后五句之内有断言：睡一会儿再断言（等事件 ⇒ 等条件；造时间差 ⇒ 注入钟 / 直接写 mtime）",
+        "不在轮询圈里的 `sleep(…)`：睡一会儿再看（等事件 ⇒ 等条件；造时间差 ⇒ 注入钟 / 直接写 mtime / 让后一件等前一件的信号）",
     ),
     (
         "sh-sleep",
@@ -158,17 +157,52 @@ const EXEMPT: &[(&str, &str, &str, &str)] = &[
         "实景那一趟里「真双击认不认得出那一行」那一维判不了、只印读数登记：`row_clicks` 可能一直是 0，只给它看一眼的窗；不判红绿",
     ),
     (
-        "tests/frontend/shell/local_backend_tests.rs",
+        "tests/backend/observe/one_wait_tests.rs",
         "rs-sleep",
-        "std::thread::sleep(std::time::Duration::from_millis(500));",
-        "静窗：判「关掉 stdin 写端之后后端不许死」——没有一个说明「它已经读到 EOF、要死早死了」的正面迹象可等；\
-         机器忙只会让这半秒更弱（漏报），不会误红",
+        "std::thread::sleep(Duration::from_millis(",
+        "写的那条线程晚一点才写，让被测的等先挂上：判的是「来了当场回」，等的上限是兜底的数；机器忙只让写更晚、等照样等到，不误红",
     ),
     (
-        "tests/e2e/inbound-backend-frames.sh",
-        "sh-sleep",
-        "sleep 0.4",
-        "静窗：同上（关写端之后后端不许死），e2e 那一份",
+        "tests/backend/runs_guard.rs",
+        "rs-sleep",
+        "std::thread::sleep(Duration::from_millis(300));",
+        "同上：事件晚一点才来，判「没有期限就只被事件叫醒」；被测的等没有墙钟上限，机器忙不误红",
+    ),
+    (
+        "tests/backend/observe/search_query_index_tests.rs",
+        "rs-sleep",
+        "std::thread::sleep(std::time::Duration::from_millis(2));",
+        "打乱几件的完成先后：判的是结果仍按原序；睡不睡、睡多久只让乱序更可能，不影响红绿",
+    ),
+    (
+        "tests/backend/relay/server_tests.rs",
+        "rs-sleep",
+        "std::thread::sleep(std::time::Duration::from_secs(5));",
+        "假上游答完之后把连接多握一会儿（演「答了不关」的上游）：是夹具的行为，不是判据在等",
+    ),
+    (
+        "tests/frontend/filewin/hover_sweep_tests.rs",
+        "rs-sleep",
+        "std::thread::sleep(std::time::Duration::from_secs(secs));",
+        "真窗口台架量帧的窗长：开着窗口跑满这几秒再关，读数只印不判",
+    ),
+    (
+        "tests/frontend/filewin/workspace_tests.rs",
+        "rs-sleep",
+        "std::thread::sleep(std::time::Duration::from_",
+        "真窗口速度台的分段：每段跑满定长再记 CPU / 帧数读数，按键之间留拍；读数只印不判",
+    ),
+    (
+        "tests/frontend/filewin/rows_tests.rs",
+        "rs-sleep",
+        "sleep(",
+        "真窗口实景那一趟的 xdotool 节拍（移过去 · 点下去之间留拍，像人点）：那一维只印读数登记、不判红绿",
+    ),
+    (
+        "tests/frontend/filewin/shell_keys_tests.rs",
+        "rs-sleep",
+        "sleep(",
+        "同上：真窗口按键那一趟的 xdotool 节拍，两段打字之间要隔过「停一秒重来」那个窗",
     ),
     (
         "tests/frontend/shell/dial_host_tests.rs",
@@ -795,7 +829,8 @@ pub(super) fn rs_poll_hits(src: &str) -> Vec<Hit> {
 // ───────────────────── 睡一会儿再断言（10-11 tools2 补） ─────────────────────
 
 /// `at` 往外一层层找包着它的 `{`（在抹掉串与注释的文本上数括号），返回每一层 `{` 前面那段头
-/// （从上一个 `;` / `{` / `}` 到这个 `{`），由里往外；碰到函数 / 闭包 / async 块那一层为止（含它）。
+/// （从上一个 `;` / `{` / `}` 到这个 `{`），由里往外；碰到函数那一层为止（含它）。闭包与 async 块照样往外找：
+/// 轮询圈里的一片常常包在 `rounds().any(|_| { … })` / `find_map(|_| …or_else(|| { … }))` 这种闭包里。
 fn rs_enclosing_heads(masked: &str, at: usize) -> Vec<String> {
     let b = masked.as_bytes();
     let mut heads = Vec::new();
@@ -820,7 +855,7 @@ fn rs_enclosing_heads(masked: &str, at: usize) -> Vec<String> {
         let Some(o) = open else { return heads };
         let from = masked[..o].rfind([';', '{', '}']).map_or(0, |k| k + 1);
         let head = masked[from..o].to_string();
-        let stop = re!(r"\bfn\b|\||\basync\b").is_match(&head);
+        let stop = re!(r"\bfn\b").is_match(&head);
         heads.push(head);
         if stop {
             return heads;
@@ -829,38 +864,13 @@ fn rs_enclosing_heads(masked: &str, at: usize) -> Vec<String> {
     }
 }
 
-/// `from` 起（一条语句的末尾之后）同一块里往后至多 `n` 句（块收尾就停）。
-fn rs_next_statements(masked: &str, from: usize, n: usize) -> &str {
-    let mut depth = 0i32;
-    let mut semis = 0;
-    for (k, c) in masked[from..].char_indices() {
-        match c {
-            '{' | '(' | '[' => depth += 1,
-            '}' | ')' | ']' => {
-                depth -= 1;
-                if depth < 0 {
-                    return &masked[from..from + k];
-                }
-            }
-            ';' if depth == 0 => {
-                semis += 1;
-                if semis >= n {
-                    return &masked[from..from + k];
-                }
-            }
-            _ => {}
-        }
-    }
-    &masked[from..]
-}
-
-/// rs-sleep：不在轮询圈里的一次 `sleep(…)`（`thread::sleep` · `tokio::time::sleep` · 绑成 `sleep` 的闭包），
-/// 同一块里往后五句之内有断言 ⇒ 「睡一会儿再断言」。虚拟时间（`start_paused` / `time::pause()`）里的不算。
+/// rs-sleep：不在轮询圈里的一次 `sleep(…)`（`thread::sleep` · `tokio::time::sleep` · 绑成 `sleep` 的闭包）⇒ 一律算
+/// 「睡一会儿再看」（后面紧跟断言、藏进辅助函数、隔几句才判，都是这一形）。轮询圈 ＝ `loop` / `while` / `for` / `wall::rounds()` 那一圈。
+/// 虚拟时间（`start_paused` / `time::pause()`）里的不算。
 pub(super) fn rs_sleep_hits(src: &str) -> Vec<Hit> {
     let masked = crate::mask_all_literals(src).unwrap_or_else(|| src.to_string());
     let call = re!(r"\bsleep\s*\(");
-    let poll = re!(r"\b(loop|while|for)\b");
-    let assert = re!(r"\b(?:debug_|prop_)?assert(?:_eq|_ne|_matches)?!|\bpanic!");
+    let poll = re!(r"\b(loop|while|for)\b|\brounds\(\)|\(0\.\.[\w_]+\)\.(any|all|find|find_map)\(");
     let mut v = Vec::new();
     for m in call.find_iter(&masked) {
         let ls = masked[..m.start()].rfind('\n').map_or(0, |k| k + 1);
@@ -878,18 +888,11 @@ pub(super) fn rs_sleep_hits(src: &str) -> Vec<Hit> {
         {
             continue; // 轮询圈里的一片：等的是圈的条件，上限归 rs-wait 那几形
         }
-        let span = paren_span(&masked, m.end() - 1);
-        let after = m.end() - 1 + span.len();
-        let end = masked[after..]
-            .find(';')
-            .map_or(masked.len(), |e| after + e + 1);
-        if assert.is_match(rs_next_statements(&masked, end, 5)) {
-            v.push(Hit {
-                form: "rs-sleep",
-                line: line_at(src, m.start()),
-                text: line_text(src, m.start()),
-            });
-        }
+        v.push(Hit {
+            form: "rs-sleep",
+            line: line_at(src, m.start()),
+            text: line_text(src, m.start()),
+        });
     }
     v
 }
@@ -1242,7 +1245,7 @@ fn w4_shell_forms_are_told_apart() {
 }
 
 #[test]
-fn w4_sleep_then_assert_is_told_apart() {
+fn w4_sleep_outside_a_poll_is_told_apart() {
     let red = "fn a() {\n\
         std::thread::sleep(Duration::from_millis(50));\n\
         assert!(done.load(SeqCst));\n\
@@ -1255,11 +1258,12 @@ fn w4_sleep_then_assert_is_told_apart() {
     fn c() {\n\
         let sleep = |ms: u64| std::thread::sleep(Duration::from_millis(ms));\n\
         sleep(300);\n\
-        assert_ne!(a, b);\n\
-    }\n";
+    }\n\
+    fn settle(c: &C) { c.close(); std::thread::sleep(Duration::from_millis(200)); }\n\
+    fn e() { let h = std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(50)); tx.send(1).unwrap(); }); h.join().unwrap(); }\n";
     assert_eq!(
         forms_of(&rs_sleep_hits(red)),
-        vec!["rs-sleep", "rs-sleep", "rs-sleep"]
+        vec!["rs-sleep", "rs-sleep", "rs-sleep", "rs-sleep", "rs-sleep"]
     );
     let green = "fn a() {\n\
         loop {\n\
@@ -1268,11 +1272,8 @@ fn w4_sleep_then_assert_is_told_apart() {
         }\n\
         assert!(ok());\n\
         while t0.elapsed() < CEILING { match x() { Some(_) => std::thread::sleep(Duration::from_millis(5)), None => break } }\n\
-        assert!(y);\n\
-        let h = std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(50)); tx.send(1).unwrap(); });\n\
-        assert!(z);\n\
-        std::thread::sleep(Duration::from_millis(50));\n\
-        h.join().unwrap();\n\
+        let up = guard_core::wall::rounds().any(|_| { let hit = ok(); if !hit { std::thread::sleep(Duration::from_millis(20)); } hit });\n\
+        assert!(up);\n\
     }\n\
     #[tokio::test(start_paused = true)]\nasync fn p() { tokio::time::sleep(Duration::from_secs(5)).await; assert!(fired()); }\n\
     fn d() { let s = \"sleep(1); assert!(x)\"; }\n";

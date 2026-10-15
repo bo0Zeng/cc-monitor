@@ -20,7 +20,7 @@ async fn peer(lines: &'static [&'static str]) -> tokio::io::DuplexStream {
             }
         }
         // 留着不关，让读那一头自己决定。
-        tokio::time::sleep(Duration::from_secs(3600)).await;
+        std::future::pending::<()>().await;
     });
     mine
 }
