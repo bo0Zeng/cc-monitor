@@ -5,6 +5,7 @@
  * - 锚在一点（右键）：从那一点往右下放；放不下就翻到左 / 上。
  * - 锚在触发物上：先放在指定那一侧（下 / 上 / 右 / 左）隔 `gap`；那一侧放不下翻到对面；两边都放不下 ⇒ 挑空多的那边。
  *   另一条轴按对齐（左端 / 居中 / 右端，侧放时是顶 / 中 / 底）：左端对齐放不下 ⇒ 改右端对齐（贴着触发物往里收），反之亦然。
+ * - 竖着放而上下两边都放不下 ⇒ 高限到空多的那一边、内滚（不夹到窗顶盖住触发物）。
  * - 最后夹进窗口、贴边内缩 8px。
  *
  * 右端对齐算出的是左边那条边，不是一个点：不能再按右键菜单的规矩往左整翻一个宽（否则贴着窗口右边的触发物，菜单落到窗口中间）。
@@ -82,9 +83,25 @@ export function anchorBox(el: HTMLElement, last: Box | null): Box {
 /** 把浮层摆到触发物旁（量它自己的大小、按窗口算），回这次用的触发物外接框（下次重排时触发物没了就用它）。 */
 export function placeBeside(float: HTMLElement, anchor: HTMLElement, at: { side: Side; align: Align; gap: number }, last: Box | null = null): Box {
   const rect = anchorBox(anchor, last);
-  const { width, height } = float.getBoundingClientRect();
-  putAt(float, placeFloat({ rect, ...at }, { width, height }, { width: window.innerWidth, height: window.innerHeight }));
+  float.style.maxHeight = "";
+  float.style.overflowY = "";
+  const view = { width: window.innerWidth, height: window.innerHeight };
+  const size = float.getBoundingClientRect();
+  const cap = capHeight(rect, at, size.height, view.height);
+  if (cap !== null) {
+    float.style.maxHeight = `${cap}px`;
+    float.style.overflowY = "auto";
+  }
+  putAt(float, placeFloat({ rect, ...at }, { width: size.width, height: cap ?? size.height }, view));
   return rect;
+}
+
+/** 竖着放（下 / 上）而上下两边都放不下 ⇒ 高限到空多的那一边（内滚、仍贴着触发物）；放得下或横着放 ⇒ `null`。 */
+export function capHeight(rect: Box, at: { side: Side; gap: number }, height: number, viewHeight: number): number | null {
+  if (at.side !== "below" && at.side !== "above") return null;
+  const below = viewHeight - EDGE - (rect.bottom + at.gap);
+  const above = rect.top - at.gap - EDGE;
+  return height <= below || height <= above ? null : Math.max(below, above);
 }
 
 /** 写进 `left / top`（`position: fixed` 的浮层）。 */
