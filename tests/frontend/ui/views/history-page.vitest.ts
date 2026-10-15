@@ -9,7 +9,7 @@
  * 6. 删除只问一次（R2-2-2）；在跑的不问、直接说「运行中 · 先结束」。
  * 7. 分叉挂在父会话下（默认收起，「1 个分叉 ▸」）；父会话被筛掉 ⇒ 后端带来的 `context` 行淡显（R5W-H05）。
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -137,9 +137,9 @@ function rawAsks(): number {
   return invokeMock.mock.calls.filter((c) => c[0] === "chan_call" && (c[1] as ChanCallArgs).op === "history-list" && (c[1] as ChanCallArgs).origin === "dev").length;
 }
 
+/** 钟往前拨 `ms`（只假 `setTimeout`：页里的两处停顿 —— 敲字之后 · 方向键走行之后 —— 拨到界上判，不真等）。 */
 const flush = async (ms = 0): Promise<void> => {
-  await new Promise((r) => setTimeout(r, ms));
-  await new Promise((r) => setTimeout(r, 0));
+  await vi.advanceTimersByTimeAsync(ms);
 };
 
 async function opened(): Promise<HistoryView> {
@@ -155,6 +155,7 @@ const byText = (sel: string, text: string): HTMLElement | undefined =>
   [...document.querySelectorAll<HTMLElement>(sel)].find((e) => (e.textContent ?? "").includes(text));
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   // jsdom 没有布局：滚到哪一行量不了，这里只要它不抛。
   Element.prototype.scrollIntoView = () => {};
   document.body.replaceChildren();
@@ -202,6 +203,9 @@ beforeEach(() => {
     return undefined;
   });
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("开页 · 每台一问 · 按时间", () => {
   it("开页即给焦点；本机与 dev 各问一次；行按 at 并成一列、分段；远端行带机器标签", async () => {
@@ -229,9 +233,9 @@ describe("开页 · 每台一问 · 按时间", () => {
     const input = document.querySelector<HTMLInputElement>(".history-search")!;
     input.value = "标题";
     input.dispatchEvent(new Event("input"));
-    await flush(50);
-    expect(calls("history-list")).toEqual([]);
-    await flush(150);
+    await flush(149);
+    expect(calls("history-list"), "还没停够就问了").toEqual([]);
+    await flush(1);
     expect(calls("history-list").map((a) => [a.origin ?? "", a.query])).toEqual([
       ["", "标题"],
       ["dev", "标题"],
