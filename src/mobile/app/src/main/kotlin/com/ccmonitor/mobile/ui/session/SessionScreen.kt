@@ -46,7 +46,6 @@ import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.KeyDao
-import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ssh.SessionStatus
@@ -691,11 +690,12 @@ private fun TerminalBottomControls(
     val settings = koinInject<SettingsRepository>()
     val groups by remember { keyDao.observeGroups() }.collectAsState(initial = emptyList())
     val savedGroup by remember { settings.observeCurrentKeyGroup() }.collectAsState(initial = null)
+    val doubleTapMs by remember { settings.observeKeyDoubleTapMs() }.collectAsState(initial = null)
     val longPressMs by remember { settings.observeKeyLongPressMs() }.collectAsState(initial = null)
     // 当前组记在这台手机上；没记过 · 那组已删 ⇒ 第一组。一个组都没有 ⇒ 键条整条不画。
-    val current = groups.firstOrNull { it.id == savedGroup } ?: groups.firstOrNull()
+    val current = currentGroup(groups, savedGroup)
     var showPalette by rememberSaveable { mutableStateOf(false) }
-    val mods by session.modifiers.collectAsState() // 粘性 Ctrl / Alt 的点亮态
+    val mods by session.modifiers.states.collectAsState()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val onPaste: () -> Unit = {
@@ -713,11 +713,8 @@ private fun TerminalBottomControls(
             onPushKey = onPushKey,
             onShowKeyboard = showKeyboard,
             onEditKeys = {},
-            // 切到下一组照组的先后轮转（切换组的列表也照这一份）。
-            onNextGroup = {
-                if (groups.isNotEmpty()) switchTo(groups[(groups.indexOf(current) + 1).mod(groups.size)].id)
-            },
-            onGotoGroup = { id -> if (groups.any { it.id == id }) switchTo(id) },
+            onNextGroup = { nextGroupId(groups, savedGroup)?.let(switchTo) },
+            onGotoGroup = { id -> groups.any { it.id == id }.also { if (it) switchTo(id) } },
         )
     TerminalToolbar(
         supportsTmux = supportsTmux,
@@ -728,16 +725,10 @@ private fun TerminalBottomControls(
     current?.let { g ->
         ExtraKeysRow(
             groupId = g.id,
-            dispatch = { dispatchBinding(it, session::send, actions) },
-            onModifier = { m ->
-                when (m) {
-                    KeyMod.CTRL -> session.toggleCtrl()
-                    KeyMod.ALT -> session.toggleAlt()
-                    KeyMod.SHIFT -> {}
-                }
-            },
-            ctrlActive = mods.ctrl,
-            altActive = mods.alt,
+            dispatch = { dispatchBinding(it, session::send, actions, session.modifiers::take) },
+            onModifier = { m, g -> session.modifiers.on(m.term(), g) },
+            mods = mods,
+            doubleTapMs = doubleTapMs,
             longPressMs = longPressMs,
             groupName = { id -> groups.firstOrNull { it.id == id }?.name },
         )

@@ -14,10 +14,7 @@ import java.io.OutputStream
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
-/**
- * 粘性修饰键状态（extra-keys 行点 Ctrl/Alt → 修饰下一个软键盘按键；termlib 软键盘本身无 Ctrl/Alt）。
- * [shift] 只给键条上的组合键用，软键盘粘性路径恒为 false。
- */
+/** 一次按下实际带上的修饰（软键盘与键条取同一份，见 [ModifierLatch.take]）。 */
 data class KeyModifiers(
     val ctrl: Boolean = false,
     val alt: Boolean = false,
@@ -26,8 +23,63 @@ data class KeyModifiers(
     val any: Boolean get() = ctrl || alt || shift
 }
 
+enum class Mod { CTRL, ALT, SHIFT }
+
+/** 修饰键的样子：点亮一次 · 锁住 · 按住期间。 */
+enum class ModState { OFF, ONCE, LOCKED, HELD }
+
+/** 键条上修饰键的手势：单击 · 双击锁住 · 长按按下 · 长按松开。 */
+enum class ModGesture { TAP, LOCK, HOLD, RELEASE }
+
+/** 三颗修饰键各自的底态（[base]：OFF / ONCE / LOCKED）与是否按住着。 */
+data class ModStates(
+    private val base: Map<Mod, ModState> = emptyMap(),
+    private val held: Set<Mod> = emptySet(),
+) {
+    fun of(m: Mod): ModState =
+        when {
+            base[m] == ModState.LOCKED -> ModState.LOCKED
+            m in held -> ModState.HELD
+            else -> base[m] ?: ModState.OFF
+        }
+
+    internal fun on(
+        m: Mod,
+        g: ModGesture,
+    ): ModStates =
+        when (g) {
+            ModGesture.TAP -> copy(base = base + (m to if ((base[m] ?: ModState.OFF) == ModState.OFF) ModState.ONCE else ModState.OFF))
+            ModGesture.LOCK -> copy(base = base + (m to ModState.LOCKED))
+            ModGesture.HOLD -> copy(held = held + m)
+            ModGesture.RELEASE -> copy(held = held - m)
+        }
+
+    internal val effective: KeyModifiers
+        get() = KeyModifiers(ctrl = of(Mod.CTRL) != ModState.OFF, alt = of(Mod.ALT) != ModState.OFF, shift = of(Mod.SHIFT) != ModState.OFF)
+
+    /** 带过一次：点亮一次的熄掉，锁住与按住的不动。 */
+    internal fun used(): ModStates = copy(base = base.filterValues { it != ModState.ONCE })
+}
+
 /**
- * 把粘性修饰应用到一次软键盘输入（纯函数）。只对单字节按键生效（不破坏 IME 组字/emoji/粘贴多字节）。
+ * 修饰键三态：单击点亮、下一次按下带上后自己熄（再单击一下也熄）；双击锁住、再单击一下解开；长按按住期间一直带。
+ * 软键盘的输入与键条上的键都经 [take] 取，所以两边都算。
+ */
+class ModifierLatch {
+    private val _states = MutableStateFlow(ModStates())
+    val states: StateFlow<ModStates> = _states.asStateFlow()
+
+    fun on(
+        m: Mod,
+        g: ModGesture,
+    ) = _states.update { it.on(m, g) }
+
+    /** 这一下带上的修饰；点亮一次的随之熄掉（原子地取并清，不与界面线程的 [on] 互相丢）。 */
+    fun take(): KeyModifiers = _states.getAndUpdate { it.used() }.effective
+}
+
+/**
+ * 把修饰应用到一次软键盘输入（纯函数）。只对单字节按键生效（不破坏 IME 组字/emoji/粘贴多字节）。
  * Shift = 小写字母→大写（'a'→'A'，非字母不动）；Ctrl+key = 标准控制码（仅字母与 `@ [ \ ] ^ _ 空格 ?`，见
  * [ctrlControlCode]，其余不变）；Alt/Meta = 前缀 ESC(0x1B)。叠加序：Shift→Ctrl→Alt。无修饰或多字节 → 原样。
  */
@@ -84,15 +136,8 @@ class TerminalSession(
     private val _streamClosed = MutableStateFlow(false)
     val streamClosed: StateFlow<Boolean> = _streamClosed.asStateFlow()
 
-    // 粘性修饰键（Ctrl/Alt）：UI 点亮后修饰下一个软键盘按键，用后即清（one-shot）。StateFlow 供行高亮同步。
-    private val _modifiers = MutableStateFlow(KeyModifiers())
-    val modifiers: StateFlow<KeyModifiers> = _modifiers.asStateFlow()
-
-    /** 切换粘性 Ctrl（点亮=下一个软键盘键组合 Ctrl）。 */
-    fun toggleCtrl() = _modifiers.update { it.copy(ctrl = !it.ctrl) }
-
-    /** 切换粘性 Alt（点亮=下一个软键盘键前缀 ESC/Meta）。 */
-    fun toggleAlt() = _modifiers.update { it.copy(alt = !it.alt) }
+    /** 修饰键（Ctrl · Alt · Shift）：键条上点亮 / 锁住 / 按住，软键盘与键条的下一下都带上。 */
+    val modifiers = ModifierLatch()
 
     private val writeExecutor =
         Executors.newSingleThreadExecutor { r ->
@@ -113,10 +158,7 @@ class TerminalSession(
                 defaultForeground = palette.foreground,
                 defaultBackground = palette.background,
                 onKeyboardInput = { raw ->
-                    // 原子地取当前粘性修饰并清空（getAndUpdate=CAS，不与 UI 线程 toggle 的 .update{} 竞争丢失一次点亮）；
-                    // 用取到的旧值组合本次按键（one-shot）。
-                    val mods = _modifiers.getAndUpdate { KeyModifiers() }
-                    val bytes = applyKeyModifiers(raw, mods)
+                    val bytes = applyKeyModifiers(raw, modifiers.take())
                     submit {
                         output.write(bytes)
                         output.flush()
