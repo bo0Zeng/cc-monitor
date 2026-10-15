@@ -5162,15 +5162,10 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
   };
-  /**
-   * 后台 tab 的第一趟会话事实排在当前那一趟之后、空闲时一个一个要（`tab-cold-reads.ts`；jsdom 没有 requestIdleCallback，走 200 ms 的兜底）：
-   * 等 `n` 个后台 tab 都轮到。
-   */
-  const idleTurns = async (n = 1): Promise<void> => {
-    for (let i = 0; i < n; i++) {
-      await new Promise((r) => setTimeout(r, 220));
-      await settle();
-    }
+  /** 后台 tab 的第一趟会话事实排在当前那一趟之后、空闲时才要（`tab-cold-reads.ts`）：等到 `sid` 那一问真发出去、答落下来。 */
+  const idleTurn = async (sid: string): Promise<void> => {
+    await vi.waitFor(() => expect(asked.some((a) => a.path.endsWith(`/${sid}.jsonl`)), `后台 ${sid} 那一趟没轮到`).toBe(true), UNTIL_CEILING);
+    await settle();
   };
   /** 记下每一问的 `(origin, path, prior)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
   let asked: { origin: string; path: string; prior: unknown }[] = [];
@@ -5273,7 +5268,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("f3", 0));
     tm.onLine(line("fr", 0, "pi"));
     await settle();
-    await idleTurns(); // fr 是后台 tab：它的第一趟空闲时才轮到
+    await idleTurn("fr"); // 后台 tab
     const tab = home(tm).store.tabs.get("f3")!;
     tm.updateName("f3", "我的功能", "proj");
     expect(tab.title).toBe("↳ [proj] 我的功能");
@@ -5321,7 +5316,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onBatchEnd();
     await settle();
     expect(asked.map((a) => a.path), "批结束当场只问当前那一个").toEqual(["/home/u/proj/b1.jsonl"]);
-    await idleTurns();
+    await idleTurn("b2");
     expect(asked.map((a) => a.path).sort()).toEqual(["/home/u/proj/b1.jsonl", "/home/u/proj/b2.jsonl"]);
     expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src");
   });
@@ -5331,7 +5326,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("s-local", 0));
     tm.onLine(line("s-remote", 0, "devbox"));
     await settle();
-    await idleTurns(); // s-remote 是后台 tab
+    await idleTurn("s-remote");
     expect(tm.peekSession("s-local")!.recentFiles).toEqual(["/proj/b.rs", "/proj/a.ts"]); // F91b：尾 = 最近改
     expect(asked.find((a) => a.path.includes("s-remote"))?.origin).toBe("devbox"); // 远端问的是那台
   });
@@ -6404,11 +6399,11 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
         .map((a) => a.from);
     for (let s = 0; s < 10; s++) tm.onLine(line("wr", s));
     tm.switchTo("wr");
-    await new Promise((r) => setTimeout(r, 200)); // 停够了才要第一趟（`STAY_MS`）
+    // 停够了（`STAY_MS`）才要第一趟：等那一问真发出去。
+    await vi.waitFor(() => expect(asks("history-turns"), "切进来第一趟轮次从 0").toContain(0), UNTIL_CEILING);
     for (let k = 0; k < 5; k++) await settle();
     const t0 = home(tm).store.tabs.get("wr")!;
     await t0.outline.refresh();
-    expect(asks("history-turns"), "切进来第一趟轮次从 0").toContain(0);
     tm.switchTo("front");
     const turnsBefore = asks("history-turns").length;
     const inputsBefore = asks("history-user-inputs").length;
@@ -6417,7 +6412,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     const t = home(tm).store.tabs.get("wr")!;
     expect(t, "缺得多却没重来正文").not.toBe(t0);
     tm.switchTo("wr");
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(asks("history-turns").length, "重来之后没再要轮次").toBeGreaterThan(turnsBefore), UNTIL_CEILING);
     await t.outline.refresh();
     for (let k = 0; k < 5; k++) await settle();
     const turnsAfter = asks("history-turns").slice(turnsBefore);
@@ -6426,9 +6421,8 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(turnsAfter, "重来之后轮次又从 0 整份要").not.toContain(0);
     expect(inputsAfter, "重来之后大纲又从 0 整份要").not.toContain(0);
     expect(t.turnFold.all.map((x) => x.at), "轮次没接过来").toEqual([100]);
-    // 切回别的 tab、等排着的那几脚（停留判定 · 下一帧补批）看到它不在眼前自己退掉 —— 不然负载高时它们落进下一条判据的调用记录里
+    // 收尾切回别的 tab：补批的下一帧复检只认「当前是不是它」，主人拆掉之后它还会接着往下问（那一问会落进下一条判据的调用记录）。
     tm.switchTo("front");
-    await new Promise((r) => setTimeout(r, 250));
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
@@ -6777,7 +6771,8 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     coldStart();
     await settle();
     tm.switchTo("C");
-    await new Promise((r) => setTimeout(r, 200)); // 停住（过了 STAY_MS）
+    // 停住了（`STAY_MS`）C 的第一趟会话事实才插到最前：等它真发出去。B 只能经空闲回调轮到，这里的空闲回调不自己跑 ⇒ 之后再判「B 还在排着」是确定的。
+    await vi.waitFor(() => expect(cold.some((c) => c.sid === "C" && c.op === "history-facts"), "停住了 C 的会话事实没插到前面").toBe(true), UNTIL_CEILING);
     await settle();
     const sids = [...new Set(cold.map((c) => c.sid))];
     expect(sids.slice(0, 2), "C 插到 B 前面").toEqual(["A", "C"]);
