@@ -4833,6 +4833,20 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(asks().length).toBe(2);
   });
 
+  it("主人拆掉以后，排着的补批复检不再往下问", async () => {
+    vi.mocked(invoke).mockImplementation(answerAll("dz"));
+    tm.onLine(mk("head", 1)); // 首个 tab ⇒ active
+    tm.onLine(mk("dz", 300)); // 后台 tab：账本空、想往下问
+    tm.switchTo("dz");
+    oneFrame(); // 切进来那一脚：问 [100, 300)
+    await new Promise((r) => setTimeout(r, 0)); // 那一问落下来：补上屏、排下一帧复检
+    expect(frames.length, "前提：落下来之后排了下一帧复检").toBeGreaterThan(0);
+    tm.dispose();
+    vi.mocked(invoke).mockClear();
+    await settle();
+    expect(asks(), "拆掉之后又问了").toEqual([]);
+  });
+
   it("★ L3：问回来的那一段全是不显示的记录（floor 不动）⇒ 下一问接着往下、不原地重问；问到第 0 行为止、之后再踢也不问", async () => {
     // 后端答：那一段一条可显示的都没有（seq 里本来就有不显示的记录占的号）
     vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) => {
@@ -6438,8 +6452,6 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(turnsAfter, "重来之后轮次又从 0 整份要").not.toContain(0);
     expect(inputsAfter, "重来之后大纲又从 0 整份要").not.toContain(0);
     expect(t.turnFold.all.map((x) => x.at), "轮次没接过来").toEqual([100]);
-    // 收尾切回别的 tab：补批的下一帧复检只认「当前是不是它」，主人拆掉之后它还会接着往下问（那一问会落进下一条判据的调用记录）。
-    tm.switchTo("front");
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
