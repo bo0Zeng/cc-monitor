@@ -122,7 +122,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "src/local_backend_host.rs",
         "adopt_with",
         "wait-for-condition",
-        "那一处 `sleep` 住 `adopt_with`（交给 `wait_listening` 的那一拍停顿）。两个调用方：\
+        "那一处 `sleep` 住 `adopt_with`（交给 `wait_listening` 的两次探问之间的停顿）。两个调用方：\
              ① `probe_and_attach_after_spawn` 等**刚脱离起来的那个 backend** 听上口，期限由发起方给（`AFTER_SPAWN_LISTEN_WITHIN`，60 秒）；\
              那个进程先退了当场报、听上了就走，到期限照实报等了多久、等的是哪个口。\
              ② `adopt_existing` 不等：只问一次，没人就是真没人。**一次性条件，不是节拍器。**\
