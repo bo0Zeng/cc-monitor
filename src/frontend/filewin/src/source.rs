@@ -1308,6 +1308,27 @@ pub async fn watch_link(line: &Line, origin: &Origin, mut on: impl FnMut(LinkSee
     }
 }
 
+/// 订「那台的计划变了」那条流（[`super::plan::PLAN_CHANGED_KIND`]）到它关掉为止；来一格（或丢了几格）就调一次 `on`。
+/// 对端说「没有这条流」/ 流关了 ⇒ 回（窗口照旧只在列目录时问一次）。
+pub async fn watch_plan(line: &Line, origin: &Origin, mut on: impl FnMut()) {
+    use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
+    use futures::StreamExt as _;
+    let mut sub = line.subscribe(
+        origin,
+        &Kind(super::plan::PLAN_CHANGED_KIND.to_string()),
+        None,
+        WATCH_CREDIT,
+    );
+    while let Some(item) = sub.next().await {
+        match item {
+            Item::Frame { .. } | Item::Gap { .. } => on(),
+            Item::Seen { .. } | Item::Unseen { .. } => {}
+            Item::Closed { .. } => return,
+        }
+        sub.want(1);
+    }
+}
+
 /// 「重新连接」：叫醒那台的连接循环（[`filewin_contract::LINK_RETRY_OP`]，monitor 自己接；回 `{}`）。连没连上看 [`watch_link`]，
 /// 这一下本身没送到 ⇒ 记一行（断线条照旧摆着，人可以再点）。
 pub async fn kick_link(line: &Line, origin: &Origin) {

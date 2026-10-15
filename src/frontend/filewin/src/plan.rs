@@ -3,12 +3,70 @@
 //! 判定全在那台的后端（`plan-files`：这个目录归哪一片、每份文件归哪一格、谁也声明了它）；这里只把回包摊成按名字查的一张表、排版。
 //! 别处的目录（不在任何一片里）回包 `slice: null` ⇒ 什么都不多。无主要 pb 给 `unowned`，没给之前「无主」两个字不出。
 //! 「在计划里看」经通道交给 monitor（[`filewin_contract::PLAN_OPEN_OP`]）：把主窗口拉到前面、切到计划页、选中那一格。
+//! 计划变了（那台推 `changed/plan`，[`PlanWatch`]）⇒ 每个标签页重问一次 `plan-files`：只换「格」一列与预览头那一块，不重列、不重排、不丢选中。
 
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
 /// 那条线上命令的名字（后端 `plan` 族）。
 pub const CMD_PLAN_FILES: &str = "plan-files";
+
+/// 那台的计划变了那条流：后端的 `changed` 帧、主题 `plan`（monitor 按主题原样扇出）。格体 `{key, rev, body}` 窗口不读 ——
+/// 变了就重问 `plan-files`，归谁、什么状态照旧只由那一问答。
+pub const PLAN_CHANGED_KIND: &str = "changed/plan";
+
+/// 那台的计划变过几次（整扇窗一份，每个标签页拿同一份；[`PLAN_CHANGED_KIND`] 那条流写进来）。
+#[derive(Clone, Default)]
+pub struct PlanWatch(std::sync::Arc<std::sync::Mutex<PlanWatchInner>>);
+
+#[derive(Default)]
+struct PlanWatchInner {
+    /// 流上来过几格（丢了几格那一种也算一次：丢的那几格里可能有变）。
+    ticks: u64,
+    /// 已经起了那条订阅。
+    watching: bool,
+}
+
+impl PlanWatch {
+    fn lock(&self) -> std::sync::MutexGuard<'_, PlanWatchInner> {
+        match self.0.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    /// 变过几次。
+    pub fn ticks(&self) -> u64 {
+        self.lock().ticks
+    }
+
+    /// 起那条订阅（整扇窗一次；流关了就停：之后列目录那一趟照旧顺带问一次）。
+    pub fn watch(
+        &self,
+        rt: &tokio::runtime::Handle,
+        line: super::source::Line,
+        origin: super::source::Origin,
+        ctx: Option<egui::Context>,
+    ) {
+        {
+            let mut g = self.lock();
+            if g.watching {
+                return;
+            }
+            g.watching = true;
+        }
+        let me = self.clone();
+        rt.spawn(async move {
+            super::source::watch_plan(&line, &origin, || {
+                me.lock().ticks += 1;
+                if let Some(c) = &ctx {
+                    c.request_repaint();
+                }
+            })
+            .await;
+        });
+    }
+}
 
 /// 那一格的状态（后端的 `statusCode`）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

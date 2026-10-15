@@ -183,3 +183,8 @@ export const KIND_COLORS = 7;
 export function shortId(id: string): string {
   return id.length <= 12 ? id : `${id.slice(0, 6)}…${id.slice(-4)}`;
 }
+
+/** 新开的一片还没有图：读好了（不是读不成那两种）、一格都没有（pb 只记了名字与领域，顶块等某个会话 claim 才建）。 */
+export function isFresh(slice: Pick<PlanSlice, "bare" | "error" | "cells">): boolean {
+  return !slice.bare && !slice.error && slice.cells.length === 0;
+}

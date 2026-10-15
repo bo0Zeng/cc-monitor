@@ -28684,6 +28684,36 @@
       "zh": "添加工作区…",
       "args": []
     },
+    "plan.fresh.title": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "{name} · {domain} · 无图",
+      "args": ["name", "domain"]
+    },
+    "plan.fresh.titleBare": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "{name} · 无图",
+      "args": ["name"]
+    },
+    "plan.fresh.hint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "会话里 pb claim 建顶块，图随之出现",
+      "args": []
+    },
+    "plan.fresh.newSession": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "起新会话…",
+      "args": []
+    },
+    "plan.fresh.newNote": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "工作目录预填 {dir}，开口那句留空",
+      "args": ["dir"]
+    },
     "plan.addWs.title": {
       "kind": "title",
       "role": "确认框",

@@ -109,10 +109,14 @@ pub struct Workspace {
     pub progress: super::progress::Progress,
     /// 那台此刻连没连着（每个标签页拿同一份）。
     pub link: super::chrome::LinkState,
+    /// 那台的计划变过几次（`changed/plan` 那条流）；变了 ⇒ 每个标签页重问一次归属。
+    pub plan_watch: super::plan::PlanWatch,
     /// 解好的图（每个标签页 · 预览 · 「看一眼」拿同一份，[`super::picture`]）。
     pub pictures: super::picture::Pictures,
     /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
     link_ups: u64,
+    /// 上一次照着重问过的那个次数。
+    plan_ticks: u64,
     /// 关窗那一问摆着（稿 17）。
     closing_ask: bool,
     /// 那一问答了「全部保存后关闭」：每一页存成了就关。
@@ -321,6 +325,8 @@ impl Workspace {
             link,
             pictures,
             link_ups: 0,
+            plan_watch: Default::default(),
+            plan_ticks: 0,
             closing_ask: false,
             close_after_save: false,
             force_close: false,
@@ -1090,6 +1096,24 @@ impl Workspace {
         }
     }
 
+    /// 起「那台的计划变了」那条订阅（整扇窗一次，拿焦点那一栏的线）；变过 ⇒ 每个标签页重问一次归属（不重列、不动次序与选中）。
+    pub fn settle_plan(&mut self, ctx: Option<egui::Context>) {
+        let f = self.focus;
+        let p = self.pane_on(f);
+        if let (Some(rt), Some(line)) = (p.rt.clone(), p.line.clone()) {
+            self.plan_watch.watch(&rt, line, p.source.origin(), ctx);
+        }
+        let ticks = self.plan_watch.ticks();
+        if ticks != self.plan_ticks {
+            self.plan_ticks = ticks;
+            for s in &self.sides {
+                for t in &s.tabs {
+                    t.pane.refresh_plan();
+                }
+            }
+        }
+    }
+
     /// 起「那台连没连着」那条订阅（整扇窗一次，拿焦点那一栏的线）；断了又连上 ⇒ 每个标签页重列一遍（过期那一屏换成新的）。
     pub fn settle_link(&mut self, ctx: Option<egui::Context>) {
         let f = self.focus;
@@ -1161,6 +1185,8 @@ impl Workspace {
         self.settle_progress();
         // ── 那台连没连着：订一次那条流；断了又连上 ⇒ 每个标签页重列一遍 ──
         self.settle_link(Some(ctx.clone()));
+        // ── 那台的计划变了：订一次那条流；变了 ⇒ 每个标签页重问一次「格」一列 ──
+        self.settle_plan(Some(ctx.clone()));
         // ── 窗口的框：工具条 · 命令栏 · 状态栏 · 「进度」表 · 左栏（`chrome.rs`）──
         self.chrome_ui(ui);
         // ── 预览（右侧一块，跟焦点那一栏）──
