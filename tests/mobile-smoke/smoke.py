@@ -207,6 +207,52 @@ def open_import():
     time.sleep(1)
 
 
+
+def type_key(key):
+    """把整把私钥敲进「粘贴那段私钥」那一格，敲完读回框里的字逐字核：输入法偶尔把一行 base64 换成词（实测过），
+    对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
+    want = "\n".join(key)
+    # 先把屏上键盘停掉：没有输入法时 `input text` 的按键直接进框，联想 · 纠错插不进来（停不掉也照敲，读回照核）。
+    #   调用方先 [stop_ime]，点完「搬进来」再 [restore_ime]：中途放回来它会再弹出来，收它的那一下返回键可能把框一起关掉。
+    _type_key(key, want)
+
+
+_IME = ""
+
+
+def stop_ime():
+    """停掉屏上键盘（钥匙那一框用）：按键直接进框，也不再有键盘盖住框里的按钮。"""
+    global _IME
+    _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
+    if _IME and _IME != "null":
+        adb("shell", "ime", "disable", _IME)
+
+
+def restore_ime():
+    """[type_key] 停掉的屏上键盘放回来。"""
+    if _IME and _IME != "null":
+        adb("shell", "ime", "enable", _IME)
+        adb("shell", "ime", "set", _IME)
+
+
+def _type_key(key, want):
+    for _ in range(3):
+        for line in key:
+            typed(line)
+            adb("shell", "input", "keyevent", "66")
+        end = time.time() + 20
+        got = ""
+        while time.time() < end:
+            got = next((n.get("text") for n in ui.nodes() if "END OPENSSH" in (n.get("text") or "")), "") or ""
+            if got.strip() == want.strip():
+                return
+            time.sleep(1)
+        adb("shell", "input", "keycombination", "113", "29")
+        adb("shell", "input", "keyevent", "67")
+        time.sleep(1)
+    bad = next((f"第 {i + 1} 行 {g!r}" for i, (w, g) in enumerate(zip(want.split("\n"), got.split("\n"))) if w != g), "行数不一样")
+    raise Step.Fail(f"钥匙敲不进框里（三回都与原文不一致：{bad[:160]}）")
+
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
@@ -460,7 +506,7 @@ def main():
             for line in key:
                 typed(line)
                 adb("shell", "input", "keyevent", "66")
-            tap(t("mobIdentity.import.ok"))
+            hide_keyboard(); tap(t("mobIdentity.import.ok"))
             if not wait("SHA256:", 10):
                 raise Step.Fail("整把钥匙没导进来")
             tap(t("mobKit.act.back")); time.sleep(1)
@@ -473,6 +519,7 @@ def main():
     with Step("1-加机器连上"):
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
+        stop_ime()
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
@@ -488,15 +535,13 @@ def main():
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
-        for line in key:
-            typed(line)
-            adb("shell", "input", "keyevent", "66")
-        # `input text` 敲进去是异步的（输入法排着队一行行吃）：等最后一行真进了框再按「搬进来」，机器忙时不等就交上去半把钥匙。
-        if not wait(key[-1].split()[-1], 20):
-            raise Step.Fail("钥匙敲不进框里")
+        # `input text` 敲进去是异步的、输入法还可能改字：type_key 读回框里的字逐字核过才往下走。
+        type_key(key)
         tap(t("mobIdentity.import.ok"))
         # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
-        if not wait("SHA256:", 40):
+        ok = wait("SHA256:", 40)
+        restore_ime()
+        if not ok:
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
         add_host("smokebox")
