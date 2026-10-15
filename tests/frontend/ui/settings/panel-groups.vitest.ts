@@ -147,6 +147,14 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
   }),
   setBehavior: vi.fn().mockResolvedValue(undefined),
 }));
+// 「终端」那一行（判定在壳的平台层）：这里只看它挂在通用页哪一组。
+vi.mock("../../../../src/frontend/ui/settings/terminal-row", () => ({
+  buildTerminalRow: async () => {
+    const row = document.createElement("div");
+    row.dataset.anchor = "terminal";
+    return row;
+  },
+}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
@@ -207,7 +215,8 @@ describe("S2 设置面板分页结构", () => {
     await tick();
     // 🔴 两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
     //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
-    expect(pageTitles("general")).toEqual([copyText("settingsPanel.group.behavior"), copyText("settingsPanel.group.resume")]);
+    // 通用页一组「行为」：两个开关 ＋（要挑终端的平台上）「终端」那一行；启动程序 · 恢复到 tmux 里住各台「这台上的 cc-monitor」。
+    expect(pageTitles("general")).toEqual([copyText("settingsPanel.group.behavior")]);
     expect(pageTitles("appearance")).toEqual([copyText("settingsPanel.group.fonts"), copyText("settingsPanel.group.colors"), copyText("settingsPanel.group.keybindings")]);
     // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
     expect(pageTitles("logs")).toEqual([]);
@@ -260,6 +269,20 @@ describe("S2 设置面板分页结构", () => {
    * 两向：本机页上**有**（`.machine-aliases`），「应用」页上**没有**任何一块别名
    * （从前那两块的类名 `.ccm-acct-alias` / `.ccm-alias-gen` 一个都不许剩在那一页）。
    */
+  it("通用页只有「行为」一组：「终端」那一行挂在两个开关下面，不另起一组", async () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    document.querySelector<HTMLButtonElement>('[id="settings-tab-general"]')!.click();
+    await tick();
+    await tick();
+    const term = document.querySelector<HTMLElement>('.settings-page[data-route-id="general"] [data-anchor="terminal"]');
+    expect(term, "终端那一行没挂上").toBeTruthy();
+    const group = term!.closest<HTMLElement>(".settings-group")!;
+    expect(group.querySelector(".settings-switch-row"), "终端那一行不在开关那一组里").toBeTruthy();
+    expect(group.parentElement!.querySelector(":scope > .settings-group-title")!.textContent).toBe(copyText("settingsPanel.group.behavior"));
+  });
+
   it("★ AL1：本机页挂着「别名」，「通用」页上一块别名都没有", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
