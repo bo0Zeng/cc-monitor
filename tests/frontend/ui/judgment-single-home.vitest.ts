@@ -702,6 +702,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
+  // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心共用；界面不分块传，没有孪生。
+  "chunk-core": {
+    CHUNK: NONE,
+    key_of: NONE,
+    hex: NONE,
+    new: NONE,
+    sent: NONE,
+    finish: NONE,
+  },
   "cmd-wire": {
     LOCAL: "J36",
     // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。

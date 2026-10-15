@@ -3,8 +3,7 @@
 //! （`control::ccm::preview_resolved`）由这里交进去。两边只在这里接上：资产域不认识控制面（`layering_guard` 的 assets ↛ control）。
 
 use crate::assets::aliases::page::{
-    answer_resolve, form_of_line, read_with, ProfileForm, ProfilesBook, ProfilesErr,
-    ProfilesFromLineReq, ProfilesResolveReq, Resolved,
+    answer_resolve, read_with, ProfilesBook, ProfilesErr, ProfilesResolveReq, Resolved,
 };
 use crate::wire::typed::{of_pair, Command, NoArgs};
 
@@ -59,25 +58,5 @@ impl crate::wire::typed::Handle for ProfilesResolve {
             answer_resolve(files, &req, crate::control::ccm::preview_resolved)
                 .map_err(of_pair(ProfilesErr::Refused))
         }
-    }
-}
-
-/// `profiles-from-line`：一条自由命令行 ⇒ 别名表单（判法住 `assets::aliases::page::form_of_line`；不读不写盘）。
-pub(crate) struct ProfilesFromLine;
-
-impl Command for ProfilesFromLine {
-    const NAME: &'static str = "profiles-from-line";
-    type Req = ProfilesFromLineReq;
-    type Reply = ProfileForm;
-    type Err = ProfilesErr;
-}
-
-impl crate::wire::typed::Handle for ProfilesFromLine {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: ProfilesFromLineReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<ProfileForm, ProfilesErr>> + Send + 'static {
-        async move { form_of_line(&req).map_err(of_pair(ProfilesErr::Refused)) }
     }
 }

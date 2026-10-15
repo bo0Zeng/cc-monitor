@@ -42,7 +42,7 @@ import type { RotationViewReply } from "../../../src/frontend/ui/generated/Rotat
 const LIST: RotationStrategiesReply = { strategies: [{ id: "按权重轮换", description: "说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }], forNew: "按权重轮换", oldScripts: 0 };
 const VIEW: RotationViewReply = {
   now: 1,
-  nowText: "00:00",
+  nowText: "00:00", title: null,
   strategy: LIST.strategies[0],
   form: [{ key: "close", kind: "percent", scope: "all", min: 0, max: 100, default: 25, label: "夹具·容差" }],
   settings: { accounts: [{ id: "work" }], close: 25 },

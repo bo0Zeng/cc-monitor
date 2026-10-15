@@ -1673,6 +1673,26 @@ impl crate::wire::typed::Handle for ProfilesWrite {
     }
 }
 
+/// `profiles-from-line`：一条自由命令行 ⇒ 别名表单（判法 [`form_of_line`]；不读不写盘）。
+pub(crate) struct ProfilesFromLine;
+
+impl Command for ProfilesFromLine {
+    const NAME: &'static str = "profiles-from-line";
+    type Req = ProfilesFromLineReq;
+    type Reply = ProfileForm;
+    type Err = ProfilesErr;
+}
+
+impl crate::wire::typed::Handle for ProfilesFromLine {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: ProfilesFromLineReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfileForm, ProfilesErr>> + Send + 'static {
+        async move { form_of_line(&req).map_err(of_pair(ProfilesErr::Refused)) }
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/assets/aliases/page_tests.rs"]
 mod tests;

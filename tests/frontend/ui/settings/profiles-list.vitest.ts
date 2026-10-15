@@ -41,6 +41,7 @@ const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}):
   said: `说：${name}`,
   form: form(name, from),
   accountShape: null,
+  start: `ccm @${name}`,
   ...over,
 });
 

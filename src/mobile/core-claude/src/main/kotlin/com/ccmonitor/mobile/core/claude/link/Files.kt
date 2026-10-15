@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
 import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
+import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
 import com.ccmonitor.mobile.core.claude.link.wire.LsReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadChunkReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadTextReply
@@ -149,20 +150,20 @@ object FilesLs {
             if (bySize) put("sort", mapOf("by" to "size"))
         }
 
+    /** 有一格路径读不出 ⇒ 整份不认（`null`）。 */
     fun of(data: Any?): Listing? {
         val r = Wire.bind<LsReply>(data) ?: return null
-        val entries =
-            r.entries.map { e ->
-                Entry(
-                    RemotePath.of(e.path) ?: return null,
-                    RemotePath.of(e.name) ?: return null,
-                    e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true),
-                    e.size,
-                    e.mtimeText,
-                )
-            }
-        val crumbs = r.crumbs.map { c -> (RemotePath.of(c.name) ?: return null).shown to (RemotePath.of(c.path) ?: return null) }
-        return Listing(entries, r.truncated, r.total, r.up?.let { RemotePath.of(it) ?: return null }, crumbs)
+        val entries = r.entries.map(::entryOf)
+        val crumbs = r.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
+        val up = r.up?.let { RemotePath.of(it) }
+        if (null in entries || null in crumbs || (r.up != null && up == null)) return null
+        return Listing(entries.filterNotNull(), r.truncated, r.total, up, crumbs.filterNotNull())
+    }
+
+    private fun entryOf(e: LsEntry): Entry? {
+        val path = RemotePath.of(e.path) ?: return null
+        val rel = RemotePath.of(e.name) ?: return null
+        return Entry(path, rel, e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true), e.size, e.mtimeText)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
