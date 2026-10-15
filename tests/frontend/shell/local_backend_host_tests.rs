@@ -4631,3 +4631,67 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         "叫停被记成了一次死亡（前 {base:?} / 后 {after:?}）"
     );
 }
+
+/// 刚起的后端晚 3 秒才听上口（冷启动 · 机器忙）：照样等到、接上；假钟每一拍走 20ms，不真等。
+#[test]
+fn a_backend_that_starts_listening_three_seconds_late_is_still_attached() {
+    let t0 = std::time::Instant::now();
+    let clock = std::cell::Cell::new(t0);
+    let up_at = t0 + std::time::Duration::from_secs(3);
+    let got = super::wait_listening(
+        std::path::Path::new("/run/x/backend.sock"),
+        || Ok((clock.get() >= up_at).then_some("ours")),
+        || None,
+        Some(super::AFTER_SPAWN_LISTEN_WITHIN),
+        || clock.get(),
+        || clock.set(clock.get() + std::time::Duration::from_millis(20)),
+    );
+    assert_eq!(got.map_err(|e| e.said), Ok(Some("ours")));
+    assert!(clock.get() >= up_at, "没等到它听上就回了");
+}
+
+/// 真起不来时照实报：进程先退了 ⇒ 当场报它怎么退的（不等满期限）；一直活着却不听 ⇒ 到期限报等了多久、等的是哪个口。
+#[test]
+fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
+    let sock = std::path::Path::new("/run/x/backend.sock");
+    let t0 = std::time::Instant::now();
+    let tick = std::time::Duration::from_millis(20);
+
+    let clock = std::cell::Cell::new(t0);
+    let dies_at = t0 + std::time::Duration::from_millis(100);
+    let exited = super::wait_listening::<()>(
+        sock,
+        || Ok(None),
+        || (clock.get() >= dies_at).then(|| "exit status: 3".to_string()),
+        Some(super::AFTER_SPAWN_LISTEN_WITHIN),
+        || clock.get(),
+        || clock.set(clock.get() + tick),
+    )
+    .expect_err("进程退了还当它听上了");
+    assert_eq!(
+        exited.said,
+        copy_core::copy_text(
+            "rsLocalBackendHost.afterSpawn.exited",
+            &[("path", "/run/x/backend.sock"), ("how", "exit status: 3")]
+        )
+    );
+    assert!(clock.get() < t0 + std::time::Duration::from_secs(1), "进程退了还等满期限才报");
+
+    let clock = std::cell::Cell::new(t0);
+    let within = std::time::Duration::from_secs(60);
+    let silent = super::wait_listening::<()>(
+        sock,
+        || Ok(None),
+        || None,
+        Some(within),
+        || clock.get(),
+        || clock.set(clock.get() + tick),
+    )
+    .expect_err("一直没人听还当它听上了");
+    assert!(clock.get() >= t0 + within, "没到期限就报了");
+    assert!(
+        silent.said.contains("/run/x/backend.sock") && silent.said.contains("60"),
+        "报错没说等的是哪个口、等了多久：{}",
+        silent.said
+    );
+}

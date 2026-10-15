@@ -1027,7 +1027,7 @@ fn start_detached(
         });
     }
     // 起来了之后自己连上去 —— **走与「接管」完全同一条路**，不另写一份。
-    match probe_and_attach_after_spawn(&sock, extra_env) {
+    match probe_and_attach_after_spawn(&sock, extra_env, AFTER_SPAWN_LISTEN_WITHIN) {
         Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
         Err(e) => {
             // 起来了但断开 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
@@ -1046,21 +1046,14 @@ fn start_detached(
     }
 }
 
-/// 等刚起的那个后端把套接字绑上 —— **次数与间隔都有上限**。
-///
-/// `spawn()` 返回时子进程可能还没跑到绑那一步；没人在听的套接字上连一下是**立刻**失败的，不等。
-///
-/// # 它是 `wait-for-condition`，不是节拍器
-///
-/// 等的是**一次性条件**（那个套接字起没起来），有明确上限（`LISTEN_WAIT_TRIES` ×
-/// `LISTEN_WAIT_INTERVAL_MS` ≈ 1 秒），等到就走、等不到就如实报错，**不无限重试**。
-/// **登记住址** `tests/frontend/shell/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
-/// 这一类要求「说清等什么、上限是多少」）。
-///
-/// ⚠ 上限为什么是这个量级：对端**就在本机**，从 `execve` 到绑上是毫秒级；
-/// 1 秒高两个量级。给得再大只会让「那个进程起来就崩了」这一格拖着不报错。
-const LISTEN_WAIT_TRIES: u32 = 50;
+/// 等刚起的那个后端听上口：等的是**那件事本身**（套接字上连得上、握得上手），每隔 [`LISTEN_WAIT_INTERVAL_MS`] 问一次。
+/// 三个出口：听上了 ⇒ 接上；那个进程先退了 ⇒ 当场照实报它怎么退的（不等满期限）；到发起方给的期限还没人 ⇒ 报等了多久、等的是哪个口。
+/// **登记住址** `tests/frontend/shell/rust_timer_registry.rs`（`wait-for-condition` 那一类：说清等什么、上限是多少）。
 const LISTEN_WAIT_INTERVAL_MS: u64 = 20;
+
+/// 刚起完之后等它听上的期限（发起方 [`start_detached`] 交给 [`probe_and_attach_after_spawn`]）。
+/// 本机冷启动（大二进制头一回从盘上读进来、机器正忙）能到几秒；进程退了当场就报，宽一点不拖慢「起来就崩」那一格。
+const AFTER_SPAWN_LISTEN_WITHIN: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// 接管已有实例的结果。
 enum Adopt {
@@ -1075,7 +1068,7 @@ enum Adopt {
 /// 认已有实例并接上它。只有一支会等：**还没人在听**、而我们刚亲手 spawn 完（`wait_for_bind` = true）。
 /// 接管路上遇到它就是「真没人」，立刻回 [`Adopt::None`]。别的一律不重试 —— 对不上、接不上，重试只是把一个确定的坏消息拖晚。
 fn adopt_existing(sock: &std::path::Path, env: &[(String, String)]) -> Adopt {
-    adopt_with(sock, env, false)
+    adopt_with(sock, env, None)
 }
 
 /// 刚起完之后连上去。**与接管走同一条路**，差别只有一句：
@@ -1083,8 +1076,9 @@ fn adopt_existing(sock: &std::path::Path, env: &[(String, String)]) -> Adopt {
 fn probe_and_attach_after_spawn(
     sock: &std::path::Path,
     env: &[(String, String)],
+    within: std::time::Duration,
 ) -> Result<(), Said> {
-    match adopt_with(sock, env, true) {
+    match adopt_with(sock, env, Some(within)) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
         Adopt::None => Err(copy_text(
@@ -1096,41 +1090,84 @@ fn probe_and_attach_after_spawn(
 }
 
 /// `env` = 这一趟交给（或会交给）后端的那份环境 —— 身份比对的第三项（[`hello_verdict`]）。
-fn adopt_with(sock: &std::path::Path, env: &[(String, String)], wait_for_bind: bool) -> Adopt {
-    let mut last: Said = copy_text("rsLocalBackendHost.adopt.nobody", &[]).into();
-    for _ in 0..LISTEN_WAIT_TRIES {
-        match probe_listen_socket(sock, env) {
-            Probe::Stranger(why) => return Adopt::Refused(why),
-            Probe::Nobody => {
-                if !wait_for_bind {
-                    return Adopt::None;
-                }
-                last = copy_text(
-                    "rsLocalBackendHost.adopt.notYet",
-                    &[("path", &sock.display().to_string())],
-                )
-                .into();
-            }
-            Probe::Ours(conn, hello) => {
-                return match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
-                    Ok(()) => Adopt::Attached,
-                    Err(e) => Adopt::Refused(e),
-                }
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
+/// `wait` = None ⇒ 接管路上问一次（没人就是真没人）；Some(期限) ⇒ 刚亲手起了一个，等它听上（[`wait_listening`]）。
+fn adopt_with(
+    sock: &std::path::Path,
+    env: &[(String, String)],
+    wait: Option<std::time::Duration>,
+) -> Adopt {
+    let got = wait_listening(
+        sock,
+        || match probe_listen_socket(sock, env) {
+            Probe::Nobody => Ok(None),
+            Probe::Ours(conn, hello) => Ok(Some((conn, hello))),
+            Probe::Stranger(why) => Err(why),
+        },
+        detached_exit,
+        wait,
+        std::time::Instant::now,
+        || std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS)),
+    );
+    match got {
+        Ok(None) => Adopt::None,
+        Ok(Some((conn, hello))) => match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
+            Ok(()) => Adopt::Attached,
+            Err(e) => Adopt::Refused(e),
+        },
+        Err(why) => Adopt::Refused(why),
     }
-    Adopt::Refused(Said::restate(
-        copy_text(
-            "rsLocalBackendHost.adopt.waited",
-            &[
-                ("last", &last.said),
-                ("tries", &LISTEN_WAIT_TRIES.to_string()),
-                ("interval", &LISTEN_WAIT_INTERVAL_MS.to_string()),
-            ],
-        ),
-        last,
-    ))
+}
+
+/// 问 `sock` 上有没有我们的后端在听（`probe`：`Ok(None)` 没人 · `Ok(Some)` 是我们的 · `Err` 有人占着但不是）。
+/// `wait` = None ⇒ 只问一次。Some(期限) ⇒ 没人就隔一拍（`pause`）再问：先退了（`exited` 交出它怎么退的）⇒ 当场报；
+/// 到期限（按 `now` 量）还没人 ⇒ 报等了多久、等的是哪个口。钟与停顿由调用方交（判据里换成假的）。
+pub(crate) fn wait_listening<T>(
+    sock: &std::path::Path,
+    mut probe: impl FnMut() -> Result<Option<T>, Said>,
+    mut exited: impl FnMut() -> Option<String>,
+    wait: Option<std::time::Duration>,
+    now: impl Fn() -> std::time::Instant,
+    mut pause: impl FnMut(),
+) -> Result<Option<T>, Said> {
+    let Some(within) = wait else {
+        return probe();
+    };
+    let path = sock.display().to_string();
+    let deadline = now() + within;
+    loop {
+        if let Some(t) = probe()? {
+            return Ok(Some(t));
+        }
+        if let Some(how) = exited() {
+            return Err(copy_text(
+                "rsLocalBackendHost.afterSpawn.exited",
+                &[("path", &path), ("how", &how)],
+            )
+            .into());
+        }
+        if now() >= deadline {
+            let last: Said = copy_text("rsLocalBackendHost.adopt.notYet", &[("path", &path)]).into();
+            return Err(Said::restate(
+                copy_text(
+                    "rsLocalBackendHost.adopt.waited",
+                    &[("last", &last.said), ("secs", &within.as_secs().to_string())],
+                ),
+                last,
+            ));
+        }
+        pause();
+    }
+}
+
+/// 刚亲手起的那个后端退了没有：退了 ⇒ 它怎么退的（退出码 / 信号，原样）；还在 · 不是我们起的 ⇒ None。
+fn detached_exit() -> Option<String> {
+    let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+    let c = g.as_mut()?.child.as_mut()?;
+    match c.try_wait() {
+        Ok(Some(status)) => Some(status.to_string()),
+        Ok(None) => None,
+        Err(e) => Some(e.to_string()),
+    }
 }
 
 /// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**
