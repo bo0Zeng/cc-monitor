@@ -2,7 +2,7 @@
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { describe, it, expect, beforeEach } from "vitest";
 import { accountAvatarEl, accountColorOf } from "../../../src/frontend/ui/account-color";
-import { putAccounts } from "../../../src/frontend/ui/app-store";
+import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
 import { LOCAL_ORIGIN, type Origin } from "../../../src/frontend/ui/ipc/origin";
 
@@ -26,7 +26,7 @@ function acct(name: string, color: number): Account {
 }
 
 function put(origin: Origin, accounts: Account[]): void {
-  putAccounts(origin, { origin, available: true, error: null, oldBackend: false, meta: null, accounts, notice: null } as AccountsState);
+  putIn(appStore.accounts, origin, { origin, available: true, error: null, oldBackend: false, meta: null, accounts, notice: null } as AccountsState);
 }
 
 const slotClasses = (el: HTMLElement): string[] => [...el.classList].filter((c) => /^acct-c\d$/.test(c));

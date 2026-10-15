@@ -24,7 +24,7 @@ vi.mock("../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn().mockReso
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../../../src/frontend/ui/accounts-decode";
 import { deriveUi } from "../../../src/frontend/ui/accounts";
-import { __resetAccountsCacheForTest, accountsAgentProfile, checkTrust, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
+import { accountsAgentProfile, checkTrust, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
 import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { REPO_ROOT } from "../../test-support/repo-root";
@@ -46,7 +46,6 @@ const golden = JSON.parse(
 
 beforeEach(() => {
   invokeMock.mockReset();
-  __resetAccountsCacheForTest();
 });
 
 /** 这一趟唯一那一发 `chan_call` 的 `(origin, op, 请求体)`。 */

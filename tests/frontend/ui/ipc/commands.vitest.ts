@@ -121,7 +121,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { TabManager } from "../../../../src/frontend/ui/tabs";
 import type { TabSessionActions } from "../../../../src/frontend/ui/tab-session-actions";
-import { __resetAccountsCacheForTest } from "../../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { historyCalls, launchRenderShim, localLaunchCalls, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -525,7 +524,6 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
   beforeEach(() => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim(() => Promise.resolve(undefined)))));
-    __resetAccountsCacheForTest();
     document.body.replaceChildren();
     document.querySelectorAll("[role=menu]").forEach((n) => n.remove());
   });

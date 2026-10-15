@@ -24,7 +24,7 @@ import * as opsMod from "../../../src/frontend/ui/account-ops";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../../../src/frontend/ui/account-commands";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { putAccounts } from "../../../src/frontend/ui/app-store";
+import { appStore, putIn } from "../../../src/frontend/ui/app-store";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -33,7 +33,12 @@ beforeEach(() => {
   readRemoteConfigMock.mockReset();
   fetchAccountsMock.mockReset();
   invokeMock.mockReset().mockResolvedValue(undefined);
-  vi.spyOn(readsMod, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+  // 替身守真身的约定：问回来那一份放进 store（画的那几处只读 store）。
+  vi.spyOn(readsMod, "fetchAccounts").mockImplementation(async (origin) => {
+    const st = (await fetchAccountsMock(origin)) as AccountsState;
+    putIn(appStore.accounts, origin, st);
+    return st;
+  });
   // F10 Phase D 审计排障发现：多条既有测试打开 chip 菜单后从不显式关闭（`toggleMenu` 把菜单
   // append 到 `document.body`，不像 tabs.ts 的上下文菜单那样每次开新的前先关旧的）——留下的
   // 陈旧 `.account-picker` 菜单会一直挂在全局 DOM 里，后面用 `document.querySelector(...)`
@@ -155,7 +160,6 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
       state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"),
     );
     const setDef = vi.spyOn(opsMod, "accountsSetDefault").mockResolvedValue({} as never);
-    vi.spyOn(readsMod, "invalidateAccountsCache").mockImplementation(() => {});
     let changed = 0;
     const chip = new AccountChip({ openSettings: () => {}, onDefaultChanged: () => (changed += 1) });
     await chip.refresh();
@@ -248,7 +252,7 @@ describe("account-ux U8 chip 头像休眠", () => {
     const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }, "wei"));
     expect(chip.element.textContent).toContain("wei");
     const fetches = fetchAccountsMock.mock.calls.length;
-    putAccounts("devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
+    putIn(appStore.accounts, "devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }, "amy"));
     expect(chip.element.textContent).toContain("amy");
     expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });
@@ -328,7 +332,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
   it("★ 没有远端 + 本机也没有 manifest ⇒ chip 隐藏（不许冒出一句远端口吻的假话）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // 本机没启用多账号：`available:true` 但 `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled。
-    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue({
+    fetchAccountsMock.mockResolvedValue({
       origin: "<local>",
       available: true,
       error: null,
@@ -358,7 +362,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
   it("★ 本机那一档不渲染「刷新用量」那个静默死按钮", async () => {
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
+    fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }, "acct-a"),
     );
     const chip = new AccountChip({ openSettings: () => {} });
@@ -393,11 +397,11 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
 //    `account-chip.ts` 之外的生产消费方**恰好 1 处**，就是 `main.ts:558`
 //    （chip 内部还有一处 `applyDefaultByName`，那是它自己的事）。**读数不是判据。**
 describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来", () => {
-  /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给。 */
+  /** 起一个「没有远端」的 chip，本机账号由 `fetchAccounts(<local>)` 给。 */
   async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
+    fetchAccountsMock.mockResolvedValue(
       state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }),
     );
     const chip = new AccountChip({ openSettings: () => {} });
@@ -459,7 +463,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled ⇒ `refresh` 把 state 清回 null 并隐藏。
-    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue({
+    fetchAccountsMock.mockResolvedValue({
       ...state({ accounts: []}),
       meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
     } as unknown as AccountsState);

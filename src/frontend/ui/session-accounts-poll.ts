@@ -1,8 +1,7 @@
 /**
  * 账号刷新那一圈里能单测的部分（`main.ts` 是入口、没有 export，只剩接线）：扇出有上限、请求不叠加。
  *
- * - 会话账号归属的刷新显式 `force`：这里是那份缓存的写者，缓存给别的读者（chip 菜单、tab 徽章）用；
- *   账号列表（`fetchAccounts`，30s TTL）默认不 force —— 它只在迁移 / 登录时变，区别是数据变化率。
+ * - 每一轮都问那几台（会话 ↔ 账号 · 账号清单 · 上次用的号），界面不存一份；聚出来那份快照由接线层放进 store。
  * - 事件驱动、零定时器（{@link createEventRefresher}）：「会话 ↔ 账号」只在会话起停时变，起停本来就有事件；
  *   刷新的时机 = 长连接握手完成 / 那台账号清单变了（`changed/accounts` 流里的 `seen` / 帧，见 `changed-stream.ts`）· 会话起停 · 本界面切号。
  *   代价：另一个 monitor 改了默认账号、这台又没有会话起停时，这边要等下一次握手 / 起停 / 操作才刷新。
@@ -46,8 +45,8 @@ export async function mapWithLimit<T, R>(
 }
 
 export interface HostFetchers {
-  fetchSessionAccounts(origin: string, force?: boolean): Promise<SessionAccount[]>;
-  fetchAccounts(origin: string, force?: boolean): Promise<AccountsState>;
+  fetchSessionAccounts(origin: string): Promise<SessionAccount[]>;
+  fetchAccounts(origin: string): Promise<AccountsState>;
   currentAccountForBadge(state: AccountsState): Account | null;
   /** 那台记着的「每条会话上次用哪个号起的」（`history-last-accounts`，会话跑在哪台就问哪台）。 */
   lastAccounts(origin: string): Promise<Record<string, string>>;
@@ -68,15 +67,11 @@ export interface AccountRows {
 async function oneHost(
   h: RemoteHostConfig,
   f: HostFetchers,
-  forceAccounts: boolean,
 ): Promise<{ origin: string; sessions: SessionAccount[]; state: AccountsState; last: Record<string, string> }> {
   const origin = h.label || h.host;
   const [sessions, state, last] = await Promise.all([
-    // ★ 显式 force：刷新者是这个缓存的**写者**，见模块头注。
-    f.fetchSessionAccounts(origin, true),
-    // ★ 默认不 force（账号列表 30s TTL，变化率低）；长连接刚握手完时才 force ——
-    //   那之前缓存里可能是一份「没有控制通道」的不可用结果，不 force 会把它再端 30 秒。
-    forceAccounts ? f.fetchAccounts(origin, true) : f.fetchAccounts(origin),
+    f.fetchSessionAccounts(origin),
+    f.fetchAccounts(origin),
     // 问不到（通道没起 / 那台读不懂那份记录）⇒ 这台一条都不算（徽章退到「—」，不猜）。
     f.lastAccounts(origin).catch((e: unknown) => {
       console.warn(`history-last-accounts @${origin} failed:`, e);
@@ -95,9 +90,8 @@ export async function collectAccountRows(
   hosts: readonly RemoteHostConfig[],
   f: HostFetchers,
   limit: number = HOST_FANOUT_LIMIT,
-  forceAccounts = false,
 ): Promise<AccountRows> {
-  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f, forceAccounts));
+  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f));
 
   const out: AccountRows = {
     rows: [],
@@ -123,12 +117,11 @@ export async function collectAccountRows(
  * - **零定时器**：只在 {@link EventRefresher.request} 时跑。
  * - **不叠加**：在飞时再来的请求合并成**一次**补跑（跑完立刻再跑一轮，拿到最新）；
  *   启动时一批 远端 `live` 格 涌进来只会多跑一轮，不会摞 N 轮。
- * - `force` 在合并时取「或」：任何一次要求 force，补跑那一轮就 force。
  * - `run` 抛错由这里接住（有身份地失败，计进 `failures`），不留 unhandled rejection，
  *   也不把「在飞」焊死。
  */
 export interface EventRefresher {
-  request(force?: boolean): void;
+  request(): void;
   /** 在飞时进来、被合并掉的请求数（判据用）。 */
   readonly coalesced: number;
   /** `run` 抛错的次数。 */
@@ -136,18 +129,17 @@ export interface EventRefresher {
 }
 
 export function createEventRefresher(
-  run: (force: boolean) => Promise<void>,
+  run: () => Promise<void>,
   onError: (e: unknown) => void = (e) => console.warn("session-accounts refresh failed:", e),
 ): EventRefresher {
   let inFlight = false;
   let pending = false;
-  let pendingForce = false;
   let coalesced = 0;
   let failures = 0;
-  const loop = async (force: boolean): Promise<void> => {
+  const loop = async (): Promise<void> => {
     inFlight = true;
     try {
-      await run(force);
+      await run();
     } catch (e) {
       failures += 1;
       onError(e);
@@ -155,21 +147,18 @@ export function createEventRefresher(
       inFlight = false;
     }
     if (pending) {
-      const f = pendingForce;
       pending = false;
-      pendingForce = false;
-      await loop(f);
+      await loop();
     }
   };
   return {
-    request(force = false): void {
+    request(): void {
       if (inFlight) {
         pending = true;
-        pendingForce = pendingForce || force;
         coalesced += 1;
         return;
       }
-      void loop(force);
+      void loop();
     },
     get coalesced(): number {
       return coalesced;

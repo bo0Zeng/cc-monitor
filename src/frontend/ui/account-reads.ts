@@ -1,13 +1,12 @@
 /**
- * **账号域的读面**：经通道问那台机器（本机也一样）的后端，带 per-origin TTL 缓存 ＋ 手动刷新。
+ * **账号域的读面**：经通道问那台机器（本机也一样）的后端。界面不存一份：每一次要用都问那台，推来「变了」也是重问。
  *
  * 三条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
- * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求「一个判定只有一个家」）：
- * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收、缓存」。
+ * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收」。
  */
-import { putAccounts } from "./app-store";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { appStore, putIn } from "./app-store";
+import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidFrom } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
@@ -16,36 +15,18 @@ import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 import { recallSeen, rememberSeen } from "./last-seen";
 
-const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
-const SESSION_ACCOUNTS_TTL_MS = 8_000; // 会话账号归属随起停变，照 tabs.ts tmuxCache 的 8s
-interface CacheEntry<T> {
-  at: number;
-  value: T;
-}
-const accountsCache = new Map<string, CacheEntry<AccountsState>>();
-const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
-
-/** 每台最近一次答成的那一份 ＋ 时刻（这次运行里、这个窗口里；那台没问到时画「上次的」。这次运行里还没答成过 ⇒ 问本机后端记着的那一份，跨重启还在）。 */
-const lastGood = new Map<string, { meta: NonNullable<AccountsState["meta"]>; accounts: AccountsState["accounts"]; atMs: number }>();
-
 /**
- * 取那台机器（**本机也一样**）的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
+ * 问那台机器（**本机也一样**）的账号状态：每次都发 `accounts-list`，答回来那一份放进 store（画的那几处订它）。
  *
  * **走通道，后端出成品**：`chan.call(origin, "accounts-list", {agent}, …)` —— 帧命令直接问那台机器的后端
  * （本机那台由 `<local>` 那条长连接答），应答就是界面要的形状（[`decodeAccountsList`] 按形状收，不解释）。
- * 在此之前是两条 Tauri 命令（远端 `list_remote_accounts` 走帧面、本机 `list_local_accounts` 每次 exec 一次性后端），
- * monitor 在两条路上各把行解析一遍、本机那条另并一次 apikey 表 —— 那一份解释与并表整个挪进了后端
- * （`observe/accounts_query.rs::list_product`，规则住 `acct-core`），远端从此也并上**它自己**那份表。
  *
  * `agent`：这次起会话的是哪一家（适配器 id）。并表只认那一家的行，后端不猜 ⇒ 由这里带过去。
  * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到 / 形状对不上）⇒ `available:false` ＋ 一句人话（通道那一层的说法
- * 住 `ipc/chan-caller.ts::saidFrom`，不在账号面再写一份）；「不可用」不是错误（前端据此降级，不弹错）。
+ * 住 `ipc/chan-caller.ts::saidFrom`，不在账号面再写一份）＋ 本机后端记着的那台上次那一份（`last`，只给「画上次的」用）；
+ * 「不可用」不是错误（前端据此降级，不弹错）。
  */
-export async function fetchAccounts(origin: Origin, force = false): Promise<AccountsState> {
-  const now = Date.now();
-  const cached = accountsCache.get(origin);
-  if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;
-
+export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
   let state: AccountsState;
   try {
     const body = jsonBody({ agent: launchAgentId() });
@@ -63,12 +44,8 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
       notice: got.notice,
     };
-    if (got.meta !== null) {
-      lastGood.set(origin, { meta: got.meta, accounts: got.accounts, atMs: now });
-      void rememberSeen(origin, "accounts", raw);
-    }
+    if (got.meta !== null) void rememberSeen(origin, "accounts", raw);
   } catch (e) {
-    if (!lastGood.has(origin)) await recallLastGood(origin);
     state = {
       origin,
       available: false,
@@ -77,23 +54,23 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       meta: null,
       accounts: [],
       notice: null,
-      last: lastGood.get(origin) ?? null,
+      last: await recallLast(origin),
     };
   }
-  accountsCache.set(origin, { at: now, value: state });
-  putAccounts(origin, state); // 每台的账号快照只住 store 一处，读者订阅它
+  putIn(appStore.accounts, origin, state); // 画的那几处订它
   return state;
 }
 
-/** 本机后端记着的那台上次那一份 ⇒ 收进 `lastGood`（收不下 / 没有 ⇒ 不动）。 */
-async function recallLastGood(origin: Origin): Promise<void> {
+/** 本机后端记着的那台上次那一份（收不下 / 没有 ⇒ `null`；本机那台不记）。 */
+async function recallLast(origin: Origin): Promise<AccountsState["last"]> {
   const seen = await recallSeen(origin, "accounts");
-  if (seen === null) return;
+  if (seen === null) return null;
   try {
     const got = decodeAccountsList(seen.value);
-    if (got.meta !== null) lastGood.set(origin, { meta: got.meta, accounts: got.accounts, atMs: seen.atMs });
+    return got.meta === null ? null : { meta: got.meta, accounts: got.accounts, atMs: seen.atMs };
   } catch {
     // 记着的那份形状对不上（旧版记的）⇒ 当没有。
+    return null;
   }
 }
 
@@ -127,44 +104,21 @@ export function accountsAgentProfile(): AgentProfileRow | null {
 }
 
 /**
- * 取**这台机器**的账号状态 —— 就是 `fetchAccounts(LOCAL_ORIGIN, …)`：本机与远端同一条路、同一个缓存键空间。
- *
- * 〔来历〕L3a 起它是 `fetchAccounts` 的本地对侧（`list_local_accounts`：`N-F1c` 之后 exec 一次本机后端的
- * `--list-accounts`，另在 monitor 里并一次本机 apikey 表）；C4b 把缓存键统一成 `LOCAL_ORIGIN`；C4c 把两条路合成一条
- * （问 `<local>` 那条长连接的 `accounts-list`，并表挪进后端）。名字留着：设置页 / chip / 起会话三处读作「这台机器的账号」。
- */
-export async function fetchLocalAccounts(force = false): Promise<AccountsState> {
-  return fetchAccounts(LOCAL_ORIGIN, force);
-}
-
-/**
- * 那台机器（**本机也一样**）上正在跑的会话各属于哪个账号（带 TTL 缓存；`force` 绕过缓存）。
+ * 那台机器（**本机也一样**）上正在跑的会话各属于哪个账号：每次都问那台。
  *
  * **走通道**：`chan.call(origin, "accounts-sessions", …)` —— 帧命令直接问那台机器的后端，
- * 本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）。在此之前是两条 Tauri 命令
- * （远端那条走帧面 · 本机那条每次 exec 一个本机后端），
- * 各在 Rust 里把同一种行解析一遍 —— 两条命令与那两份解析一起退役，行的解释只剩 [`parseSessionAccountLines`] 一处。
+ * 本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）；行的解释只在 [`parseSessionAccountLines`] 一处。
  *
- * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到）一律按「这一次没问出来」：空表、`console.warn`，
- * 不猜 —— 与旧那两条的 `available:false ⇒ 空表` 同形（调用方从来只看行）。
+ * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到）一律按「这一次没问出来」：空表、`console.warn`，不猜。
  */
-export async function fetchSessionAccounts(
-  origin: Origin,
-  force = false,
-): Promise<SessionAccount[]> {
-  const now = Date.now();
-  const cached = sessionAccountsCache.get(origin);
-  if (!force && cached && now - cached.at < SESSION_ACCOUNTS_TTL_MS) return cached.value;
+export async function fetchSessionAccounts(origin: Origin): Promise<SessionAccount[]> {
   try {
     const empty = jsonBody({});
     const budget = budgetWithin(SESSION_ACCOUNTS_BUDGET_MS);
     const reply = await chan.call(origin, "accounts-sessions", empty, budget);
-    const value = parseSessionAccountLines(linesOf(reply));
-    sessionAccountsCache.set(origin, { at: now, value });
-    return value;
+    return parseSessionAccountLines(linesOf(reply));
   } catch (e) {
     console.warn(`fetchSessionAccounts(${origin}) failed:`, e);
-    sessionAccountsCache.set(origin, { at: now, value: [] });
     return [];
   }
 }
@@ -263,22 +217,4 @@ export async function checkTrust(
       error: saidFrom(e, origin),
     };
   }
-}
-
-/** 手动刷新：清某台（或全部）缓存，下次 fetch 必重发。 */
-export function invalidateAccountsCache(origin?: string): void {
-  if (origin) {
-    accountsCache.delete(origin);
-    sessionAccountsCache.delete(origin);
-  } else {
-    accountsCache.clear();
-    sessionAccountsCache.clear();
-  }
-}
-
-/** 测试专用：清空所有内存缓存。 */
-export function __resetAccountsCacheForTest(): void {
-  accountsCache.clear();
-  lastGood.clear();
-  sessionAccountsCache.clear();
 }

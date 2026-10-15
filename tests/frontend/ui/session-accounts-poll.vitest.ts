@@ -64,30 +64,24 @@ describe("mapWithLimit", () => {
 function fanoutProbe(): {
   f: HostFetchers;
   peak: () => number;
-  sessionForced: boolean[];
-  accountsForced: (boolean | undefined)[];
 } {
   let live = 0;
   let peak = 0;
-  const sessionForced: boolean[] = [];
-  const accountsForced: (boolean | undefined)[] = [];
   const f: HostFetchers = {
-    async fetchSessionAccounts(origin, force) {
-      sessionForced.push(force === true);
+    async fetchSessionAccounts(origin) {
       live += 1;
       peak = Math.max(peak, live);
       await new Promise((r) => setTimeout(r, 2));
       live -= 1;
       return [session(origin)];
     },
-    async fetchAccounts(origin, force) {
-      accountsForced.push(force);
+    async fetchAccounts(origin) {
       return state(origin);
     },
     currentAccountForBadge: (s) => s.accounts[0] ?? null,
     lastAccounts: async () => ({}),
   };
-  return { f, peak: () => peak, sessionForced, accountsForced };
+  return { f, peak: () => peak };
 }
 
 describe("collectAccountRows —— 扇出", () => {
@@ -169,28 +163,6 @@ describe("collectAccountRows —— 扇出", () => {
     expect([...out.readyOrigins]).toEqual(["good"]);
   });
 
-  it("★ 〔C1〕长连接刚握手完（forceAccounts）⇒ 账号清单也 force；默认仍不 force", async () => {
-    const forced = fanoutProbe();
-    await collectAccountRows([host("a"), host("b")], forced.f, undefined, true);
-    expect(forced.accountsForced).toEqual([true, true]);
-    const plain = fanoutProbe();
-    await collectAccountRows([host("a"), host("b")], plain.f);
-    expect(plain.accountsForced.every((x) => x !== true)).toBe(true);
-  });
-
-  it("★ 意图判据：session-accounts 强制刷新，accounts 走 TTL", async () => {
-    const { f, sessionForced, accountsForced } = fanoutProbe();
-    await collectAccountRows([host("a"), host("b")], f);
-    expect(
-      sessionForced,
-      "轮询是 session-accounts 缓存的**写者**，必须显式 force —— " +
-        "今天它靠「TTL 8s < 周期 10s」这个巧合恒 miss，谁把 TTL 调到 12s 就会把这条轮询变成空转",
-    ).toEqual([true, true]);
-    expect(
-      accountsForced.every((x) => x !== true),
-      "accounts 列表 30s TTL 是**刻意**的（只在迁移/登录时变），不该跟着一起 force",
-    ).toBe(true);
-  });
 });
 
 describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
@@ -224,28 +196,6 @@ describe("createEventRefresher（C1：替掉 10 秒轮询）", () => {
     await new Promise((res) => setTimeout(res, 0));
     await new Promise((res) => setTimeout(res, 0));
     expect(runs, "五次请求应合并成恰好一次补跑（拿到最新），不是 0 次也不是 5 次").toBe(2);
-  });
-
-  it("★ force 在合并时取「或」", async () => {
-    const seen: boolean[] = [];
-    let release!: () => void;
-    const gate = new Promise<void>((r) => (release = r));
-    let first = true;
-    const r = createEventRefresher(async (force) => {
-      seen.push(force);
-      if (first) {
-        first = false;
-        await gate;
-      }
-    });
-    r.request();
-    r.request(false);
-    r.request(true);
-    r.request(false);
-    release();
-    await new Promise((res) => setTimeout(res, 0));
-    await new Promise((res) => setTimeout(res, 0));
-    expect(seen).toEqual([false, true]);
   });
 
   it("★ run 抛错不会把「在飞」焊死，且有身份地计数", async () => {

@@ -401,16 +401,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     togglePanel: openAcctPanel,
     // 切号后立刻重算一次：currentByOrigin 只由下面那个事件驱动的刷新器喂，不主动刷的话
     // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
-    onDefaultChanged: () => accountsRefresher.request(true),
+    onDefaultChanged: () => accountsRefresher.request(),
   };
   const accountChip = new AccountChip(accountChipDeps);
   status.append(statusDivider, accountChip.element); // 还没有当前会话：账号排在竖线后（有会话时挪到前面那一组）
   void accountChip.refresh();
 
-  // 账号徽章数据管道：对每台远端拉 session-accounts（哪条会话属于哪个号）＋ 账号邮箱，聚合喂 tabs。走 accounts store 的 8s TTL 缓存 ＋ available:false 降级。
+  // 账号徽章数据管道：对每台远端拉 session-accounts（哪条会话属于哪个号）＋ 账号邮箱，聚合喂 tabs。每一轮都问那几台（界面不存一份）＋ available:false 降级。
   // 序号门：每次进入 ++refreshSeq，写快照前若已被更晚一次推大 ⇒ 丢弃本次（慢的旧快照不覆盖新快照）。
   let refreshSeq = 0;
-  const refreshSessionAccounts = async (forceAccounts: boolean): Promise<void> => {
+  const refreshSessionAccounts = async (): Promise<void> => {
     const mySeq = ++refreshSeq;
     try {
       const cfg = await readRemoteConfig();
@@ -430,8 +430,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       const { rows, emailByName, readyOrigins, currentByOrigin, lastByS } = await collectAccountRows(
         cfg.hosts,
         { fetchSessionAccounts, fetchAccounts, currentAccountForBadge, lastAccounts },
-        undefined,
-        forceAccounts,
       );
       if (mySeq !== refreshSeq) return; // 晚到的旧快照不覆盖新快照
       appStore.sessionAccounts.set({ rows, emailByName, lastByS, readyOrigins, currentByOrigin });
@@ -440,16 +438,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   };
   // 刷新由事件驱动、零定时器（「会话 ↔ 账号」只在会话起停时变；理由在 `session-accounts-poll.ts` 头注）：
-  //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 强制刷账号清单，
+  //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 重问账号清单，
   //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 经通道订的 `changed/accounts`；
   //   · 远端 `live` 格 / `ended` 格：会话起停；
   //   · 本 UI 切号：上面 `onDefaultChanged`。
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();
-  // 「某台长连接握手完成 / 那台账号清单变了」⇒ 强制刷账号清单 ＋ chip：经通道订每台的 `changed/accounts`（下面 `bindEvents` 的 `changed` ＋ `onChanged`）。
+  // 「某台长连接握手完成 / 那台账号清单变了」⇒ 重问账号清单 ＋ chip：经通道订每台的 `changed/accounts`（下面 `bindEvents` 的 `changed` ＋ `onChanged`）。
   const onAccountsChanged = (): void => {
-    accountsRefresher.request(true);
-    void accountChip.refresh(true);
+    accountsRefresher.request();
+    void accountChip.refresh();
   };
   // 会话起停：下面 `bindEvents` 的 `onRemoteSessionAdded` / `onSessionEnded` 里各请一次。
 
@@ -537,7 +535,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
-    void accountChip.refresh(true); // 远端配置 / 默认账号可能变了，刷新账号 chip
+    void accountChip.refresh(); // 远端配置 / 默认账号可能变了，刷新账号 chip
   });
   // 竖直 tab 栏右缘拖拽调宽（`tab-bar-width.ts`，宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆）。
   mountTabBarResizer();
@@ -910,7 +908,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onBatchEnd();
     },
     // 那台的某样东西变了（主题表住后端）⇒ 各管各的重问：
-    //   账号清单 ⇒ 强制刷账号清单 ＋ chip（那台的长连接又通了也算）· 任务清单 ⇒ 重问 `tasks-list` ·
+    //   账号清单 ⇒ 重问账号清单 ＋ chip（那台的长连接又通了也算）· 任务清单 ⇒ 重问 `tasks-list` ·
     //   额度 / 会话轮换 / 规则表 ⇒ `acct-center.ts`（画的那几处订 store）· 计划 ⇒ 计划页开着就重问（摘要没变不问）与「需手动」那一侧。
     onChanged: (origin, topic, change) => {
       switch (topic) {

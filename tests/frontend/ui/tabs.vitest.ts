@@ -169,7 +169,6 @@ import {
   recordReadCalls,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
-import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
 import { failToast, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import {
@@ -1830,7 +1829,6 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     expect(open).toHaveBeenCalledWith("r2", "devbox");
   });
   it("远端：一级项 ＋ flyout（最上面「恢复」· 运行于两项单选 · 在此目录新建会话）；点单选只挪勾、菜单不关；「恢复」按勾着的那一组起", async () => {
-    invalidateAccountsCache();
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.resolve([]) : cmd === "tmux_name_mint" ? Promise.resolve("proj-cc") : Promise.resolve(undefined),
     ));
@@ -1865,7 +1863,6 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
   });
 
   it("本机：同一个组件（不再是单独一项）；在 tmux 里 ⇒ 本机那一条（交本机后端在 tmux 里起再接进去）", async () => {
-    invalidateAccountsCache();
     vi.mocked(callStart).mockResolvedValue([{ sid: "l1", outcome: "done", why: null, detail: "", session: "p-cc", bus: null, cmd: null }] as never);
     await openArchived("l1", LOCAL_ORIGIN);
     expect(menuLabels()).toEqual(expect.arrayContaining([RESUME, TMUX, DIRECT]));
@@ -1876,7 +1873,6 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
   });
 
   it("那台只有一个可选号：账号组照出（那个号 ＋ 基座）；勾基座再「恢复」⇒ useBase（#75 逃生口不退化）", async () => {
-    invalidateAccountsCache();
     accounts("z");
     await openArchived();
     expect(menuLabels()).toEqual(expect.arrayContaining(["z", BASE]));
@@ -1887,11 +1883,9 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item(RESUME)!.click();
     await settle();
     expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "base" }, preflight: expect.any(Function) });
-    invalidateAccountsCache();
   });
 
   it("两个号：勾 b ⇒ 真的用 b 起（不是跟随）；勾 z ＋ 在 tmux 里 ⇒ tmux 那条且带 z（账号 × 方式两组正交）", async () => {
-    invalidateAccountsCache();
     accounts("z", "b");
     await openArchived();
     item("b")!.click();
@@ -1905,35 +1899,29 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item(RESUME)!.click();
     await settle();
     expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([expect.objectContaining({ sid: "r1", account: { kind: "named", name: "z" } })]);
-    invalidateAccountsCache();
   });
 
   // 账号名允许 `__base__`（账号也能在 app 之外写进账号库）：它是一个号，不是基座 —— 基座在类型上是另一支（`name: null`）。
   it("真实账号恰好叫 __base__ ⇒ 当成账号而非基座", async () => {
-    invalidateAccountsCache();
     accounts("z", "__base__");
     await openArchived();
     item("__base__")!.click();
     item(RESUME)!.click();
     await settle();
     expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", expect.objectContaining({ account: { kind: "named", name: "__base__" } }));
-    invalidateAccountsCache();
   });
 
   it("那台没开多账号 ⇒ 账号组不出", async () => {
-    invalidateAccountsCache();
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts" ? Promise.resolve({ available: false, error: null, meta: null, accounts: [] }) : Promise.resolve(undefined),
     )));
     await openArchived();
     const heads = [...flyout().querySelectorAll('[role="presentation"]')].map((e) => e.textContent);
     expect(heads).toEqual([copyText("resumeMenu.group.run")]);
-    invalidateAccountsCache();
   });
 
   // 用户手快：号还没到就已悬停展开了「恢复 ▸」；号一到整项换掉，flyout 不许无故收起。
   it("号到达前已悬停展开 flyout ⇒ 号到了之后 flyout 仍展开", async () => {
-    invalidateAccountsCache();
     vi.useFakeTimers();
     try {
       let resolveAccounts!: (v: unknown) => void;
@@ -1961,13 +1949,11 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
       expect(newWrap!.dataset.subOpen).toBe("true"); // 没有无故收起
     } finally {
       vi.useRealTimers();
-      invalidateAccountsCache();
     }
   });
 
   // tab 栏可拖到 340px 宽，窄窗下 flyout 会溢出右边界：右侧放不下 ⇒ 往左翻。
   it("右侧空间不够时 flyout 往左翻，够用时不翻", async () => {
-    invalidateAccountsCache();
     const origInnerWidth = window.innerWidth;
     const origGBCR = HTMLElement.prototype.getBoundingClientRect;
     try {
@@ -1997,7 +1983,6 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     } finally {
       HTMLElement.prototype.getBoundingClientRect = origGBCR;
       Object.defineProperty(window, "innerWidth", { value: origInnerWidth, configurable: true });
-      invalidateAccountsCache();
     }
   });
 });
