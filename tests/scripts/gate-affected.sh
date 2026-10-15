@@ -2,12 +2,12 @@
 # 按改动挑格跑门禁：`git diff --name-only <基>...HEAD` 改到的路径 → 受影响的格（映射表 tests/scripts/gate-affected/map，理由逐行写在表里）
 #   ＋ 恒跑的便宜格，用 gate.sh 的 GATE_ONLY 跑、出收据，再跑私人扫描。表不认识的路径 ⇒ 整趟退回全量（等于 gate-clean.sh）。
 # 用法：在干净的树里 `bash tests/scripts/gate-affected.sh [--base <ref>] [--trust-ci] [--dry-run]`
-#   --base <ref>  跟谁比（默认 main；取 merge-base，所以树上先 merge 过 main 也只算这棵树自己的改动）
+#   --base <ref>  跟谁比（取 merge-base，只算这棵树自己的改动）；不给 ⇒ base.sh 那一个：分支上游，没设就 origin/main
 #   --trust-ci    合并工作树推候选分支 next 之前用（push-candidate.sh 推 next、等 CI 全绿才快进 main）：CI 会跑的格这一趟不跑，只跑
 #                 恒跑的便宜格 ＋ 被改到的、本机才有的格（muslbuild 等）＋ @keep-local 那几格 ＋ 被改到被测对象的 e2e 套件（逐套现算）；
 #                 先跑一遍 tests/scripts/quick-check.sh（两棵树整套 cargo test --lib ＋ 整套 vitest）兜跨路冲突
 #   --dry-run     只印挑格的计划，不跑
-# 规矩照 gate-clean.sh：工作树必须干净；清掉会话继承来的 CCM_* / CLAUDE_* / ANTHROPIC_* / TMUX*；排门禁锁；拿到锁时负载 > 核数 × 0.6 就串跑。
+# 规矩照 gate-clean.sh：工作树必须干净；经 heavy.sh 跑（它摘掉会话继承来的变量，表在 session-vars）；排门禁锁；拿到锁时负载 > 核数 × 0.6 就串跑。
 # 门禁锁 · 槽位在 GATE_STATE_DIR（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate，几棵树共用一把锁）。
 # 私人扫描：私人词表与扫描脚本都不进仓，只认 PATH 上的 private-scan.sh；找不到 ⇒ 开跑前就停（没判的不许说绿）。
 # 收据：挑格跑的写 .build/gate-affected-receipt.json（裁决是 PARTIAL，不许拿它出货）；退回全量的写默认的 .build/gate-receipt.json。
@@ -15,7 +15,7 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 state=${GATE_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate}
-base_ref=main; trust=; dry=
+base_ref=; trust=; dry=
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) base_ref=${2:?--base 要一个 ref}; shift 2 ;;
@@ -34,7 +34,12 @@ if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
   echo "gate-affected: 工作树不干净 —— 门禁判的是盘上这棵树，挑格按的是提交过的改动；先提交（或 stash）再跑"
   git status --short | head -10; exit 2
 fi
-base=$(git merge-base HEAD "$base_ref") || { echo "gate-affected: 找不到 $base_ref 与 HEAD 的 merge-base"; exit 2; }
+if [ -n "$base_ref" ]; then
+  base=$(git merge-base HEAD "$base_ref") || { echo "gate-affected: 找不到 $base_ref 与 HEAD 的 merge-base"; exit 2; }
+else
+  line=$(bash "$HERE/base.sh") || { echo "gate-affected: 找不到起点（没有上游 · origin/main · main）—— 用 --base 指一个"; exit 2; }
+  base=${line%% *}; base_ref=${line#* }
+fi
 mkdir -p .build "$state"
 plan_file=.build/gate-affected-plan.txt
 { echo "gate-affected 计划 —— HEAD $(git log --oneline -1 | cut -c1-70)"
@@ -46,10 +51,6 @@ cat "$plan_file"
 mode=$(sed -n 's/^PLAN-MODE: //p' "$plan_file"); cells=$(sed -n 's/^PLAN-CELLS: //p' "$plan_file")
 [ -n "$dry" ] && exit 0
 
-scrub=()
-while IFS='=' read -r k _; do
-  case "$k" in CCM_*|CLAUDE_CONFIG_DIR|CLAUDE_CODE_*|ANTHROPIC_*|TMUX|TMUX_PANE|TMUX_TMPDIR) scrub+=(-u "$k") ;; esac
-done < <(env)
 # 每路 cargo 并行数：几十棵树同时编时，一路多给 job 只是多占内存、抢别人的时间片。
 jobs=${CARGO_BUILD_JOBS:-4}
 fails=()
@@ -66,7 +67,7 @@ if [ ${#fails[@]} -eq 0 ]; then
   if [ "$mode" = full ]; then only_env=(); receipt=.build/gate-receipt.json
   else only_env=(GATE_ONLY="$cells"); receipt=.build/gate-affected-receipt.json; fi
   # 门禁放进自己的 systemd scope（heavy.sh），内存吃紧时只杀这一份（10-10 14:53）。
-  env "${scrub[@]}" CARGO_BUILD_JOBS="$jobs" "${only_env[@]}" GATE_RECEIPT="$receipt" GATE_STATE_DIR="$state" HEAVY_MEM_HIGH=18G HEAVY_MEM_MAX=22G \
+  env CARGO_BUILD_JOBS="$jobs" "${only_env[@]}" GATE_RECEIPT="$receipt" GATE_STATE_DIR="$state" HEAVY_MEM_HIGH=18G HEAVY_MEM_MAX=22G \
     bash "$HERE/heavy.sh" flock "$state/gate.lock" bash -c '
       cores=$(nproc); load=$(cut -d" " -f1 /proc/loadavg)
       if [ -z "${GATE_SERIAL:-}" ] && awk -v l="$load" -v c="$cores" "BEGIN{exit !(l > c*0.6)}"; then

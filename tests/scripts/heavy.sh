@@ -15,16 +15,19 @@
 #      IOWeight 要用户管理器委派了 io 控制器，没委派的机器上落不下，所以不写。
 # 没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）⇒ 不封顶、直接跑，stderr 说一声；nice / ionice 照加；槽位照排（没有 flock 就不排）。
 # gradle 要带 --no-daemon（守护进程会留在 scope 里、一直占着槽位）。
+# 起命令前摘掉会话继承来的环境变量（经 session-scrub.sh，表在 session-vars）：被测那一侧看不见外面会话的配置目录 · tmux · 真端口 · 上游。
 # 环境变量：HEAVY_SLOTS（默认 3）· HEAVY_MEM_HIGH（默认 12G）· HEAVY_MEM_MAX（默认 14G）·
 #   GATE_STATE_DIR 槽位所在（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate，槽位在它下面的 heavy-slots/，几棵树共用）。
 set -u
 case "${1:-}" in
-  -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
   '') echo "用法：heavy.sh <命令…>" >&2; exit 2 ;;
 esac
 # 已经在一份重活里（外层 heavy 拿了槽位、起了 scope，比如 gate-affected 经 heavy 跑 quick-check、quick-check 里又经 heavy 跑 gradle）
 #   ⇒ 直接跑：再排一个槽位会和外层互等（三份外层占满三个槽位、各自等第四个），内存也已经被外层那个 scope 封顶。
-[ -n "${HEAVY_HELD:-}" ] && exec "$@"
+here=${BASH_SOURCE[0]%/*}; [ "$here" = "${BASH_SOURCE[0]}" ] && here=.
+scrub=(bash "$here/session-scrub.sh")
+[ -n "${HEAVY_HELD:-}" ] && exec "${scrub[@]}" "$@"
 slots=${HEAVY_SLOTS:-3}
 max=${HEAVY_MEM_MAX:-14G}
 high=${HEAVY_MEM_HIGH:-12G}
@@ -43,7 +46,7 @@ fi
 # 让着人：nice / ionice 有就加，没有说一声（Windows 的 Git Bash 两样都没有）。
 if command -v nice >/dev/null 2>&1; then scope+=(nice -n 10); else echo "heavy: 没有 nice ⇒ CPU 优先级不降" >&2; fi
 if command -v ionice >/dev/null 2>&1; then scope+=(ionice -c 3); else echo "heavy: 没有 ionice ⇒ IO 优先级不降" >&2; fi
-command -v flock >/dev/null 2>&1 || { echo "heavy: 没有 flock ⇒ 不排槽位" >&2; export HEAVY_HELD=0; exec "${scope[@]}" "$@"; }
+command -v flock >/dev/null 2>&1 || { echo "heavy: 没有 flock ⇒ 不排槽位" >&2; export HEAVY_HELD=0; exec "${scrub[@]}" "${scope[@]}" "$@"; }
 waited=0
 while :; do
   for i in $(seq 1 "$slots"); do
@@ -51,7 +54,7 @@ while :; do
     if flock -n 9; then
       [ "$waited" -gt 0 ] && echo "heavy: 等了 ${waited} 秒拿到槽位 $i" >&2
       export HEAVY_HELD=$i
-      exec "${scope[@]}" "$@"
+      exec "${scrub[@]}" "${scope[@]}" "$@"
     fi
     exec 9>&-
   done
