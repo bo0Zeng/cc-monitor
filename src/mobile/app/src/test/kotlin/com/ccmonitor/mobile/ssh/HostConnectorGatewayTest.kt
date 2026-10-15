@@ -302,6 +302,7 @@ class HostConnectorGatewayTest {
          * | `release` | `AppModule`（同上）+ 两个 VM + `HostLink` |
          * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
          * | `disconnectAll` | `SshKeepAliveService.onTaskRemoved` |
+         * | `statusOf` | `HostLink`（接不上之后 SSH 那层跟着共用循环接上了 ⇒ 放行） |
          * | `dialOf` · `loopReached` | `HostBackends`（共用那条重连循环照这台的拨号请求拨 · 它报够没够着、SSH 那层跟着换连接） |
          *
          * 这里只问「住址集变了没」；「凡调 retain 的生产文件必须也调 release」由
@@ -316,6 +317,7 @@ class HostConnectorGatewayTest {
                 "disconnectAll" to setOf(KEEP_ALIVE),
                 "dialOf" to setOf(HOST_BACKENDS),
                 "loopReached" to setOf(HOST_BACKENDS),
+                "statusOf" to setOf(HOST_LINK),
             )
 
         /**

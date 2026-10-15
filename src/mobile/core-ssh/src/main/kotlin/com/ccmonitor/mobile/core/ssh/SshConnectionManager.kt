@@ -130,18 +130,45 @@ class SshConnectionManager(
         } catch (ce: CancellationException) {
             closeInBackground(listOf(conn))
             throw ce // 协程被取消：不标 ERROR，交给结构化取消
+        } catch (e: HostUnreachedException) {
+            failed(id, hostId, label, conn, myGen, e, reached = false)
+            throw e
         } catch (e: Exception) {
-            closeInBackground(listOf(conn)) // 失败也关，防半开链路泄漏
-            synchronized(lockFor(id)) {
-                // 未被新的 disconnect 取代时才标 ERROR，否则会复活已被移除的会话条目。
-                if (stateFor(id).generation == myGen) put(SessionState(id, hostId, label, SessionStatus.ERROR, e.message ?: e.toString()))
-            }
+            failed(id, hostId, label, conn, myGen, e, reached = true)
             throw e
         } finally {
             // 按值比较清在飞登记，不误清更新一次 connect 的登记。
             synchronized(lockFor(id)) { stateFor(id).let { if (it.connecting === conn) it.connecting = null } }
         }
         return finalizeConnected(id, hostId, label, conn, myGen)
+    }
+
+    /**
+     * 没连成的收尾：关掉（防半开链路泄漏），未被新的 disconnect 取代时标 ERROR（否则会复活已被移除的会话条目）。
+     * 没够着那一台（[reached] 为假，网不通）：拨号请求照样交给共用那条（它自己再拨，够着了报、这一层跟着接上）；
+     * 这一条留作同一份身份的底（关掉的、本地标志是死的），跟着换时照它 again()。那台拒了的（认证 · 钥匙变了）不交。
+     */
+    @Suppress("LongParameterList")
+    private fun failed(
+        id: String,
+        hostId: String,
+        label: String,
+        conn: SshTransport,
+        myGen: Int,
+        e: Exception,
+        reached: Boolean,
+    ) {
+        closeInBackground(listOf(conn))
+        synchronized(lockFor(id)) {
+            val st = stateFor(id)
+            if (st.generation != myGen) return
+            put(SessionState(id, hostId, label, SessionStatus.ERROR, e.message ?: e.toString()))
+            val req = conn.dialRequest
+            if (!reached && req != null) {
+                if (st.connection == null) st.connection = conn
+                dials.update { it + (id to req) }
+            }
+        }
     }
 
     /**
@@ -200,8 +227,14 @@ class SshConnectionManager(
         reached: Boolean,
     ) {
         stateFor(id).reached = reached
+        reachedNow.update { it + (id to reached) }
         if (reached) follow(id)
     }
+
+    private val reachedNow = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
+    /** 共用那条最近一次报的：这台 SSH 够没够着（[loopReached]）。终端停在出错页时，它从没够着变成够着那一下就重挂。 */
+    fun reachedOf(id: String): Flow<Boolean> = reachedNow.map { it[id] == true }.distinctUntilChanged()
 
     private val lost = MutableSharedFlow<String>(extraBufferCapacity = LOST_BUFFER)
 

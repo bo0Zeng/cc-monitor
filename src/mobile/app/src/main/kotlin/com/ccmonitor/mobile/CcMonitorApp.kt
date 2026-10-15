@@ -2,6 +2,8 @@ package com.ccmonitor.mobile
 
 import android.app.Activity
 import android.app.Application
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Bundle
 import com.ccmonitor.mobile.core.data.di.dataModule
 import com.ccmonitor.mobile.core.ssh.di.sshModule
@@ -28,7 +30,10 @@ class CcMonitorApp : Application() {
                 modules(dataModule, sshModule, appModule)
             }.koin
         // 维护前台标志，并在回到前台时交给每台的常驻流（共用那条重连循环）。
-        registerForegroundTracking(koin.get())
+        val backends = koin.get<HostBackends>()
+        registerForegroundTracking(backends)
+        // 网回来 · 网变了：App 一起来就挂上、直接交给那条重连循环，不等保活服务（它要连上过才起：冷启动时断网就没人重拨）。
+        registerNetwork(backends)
 
         // 只在 debug 构建播种演示主机和身份；dev key 资产也只在 src/debug。
         if (BuildConfig.DEBUG) {
@@ -42,6 +47,17 @@ class CcMonitorApp : Application() {
      * 断着的当场重接；SSH 那层跟着它换连接）。网络恢复由 [com.ccmonitor.mobile.service.SshKeepAliveService] 交同一个口；
      * 纯回前台（同网络下服务端 idle 超时、NAT 重绑静默掐断）只能靠这里。可以在主线程调：只是转一句话。
      */
+    private fun registerNetwork(backends: HostBackends) {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return
+        runCatching {
+            cm.registerDefaultNetworkCallback(
+                object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) = backends.wake()
+                },
+            )
+        }
+    }
+
     private fun registerForegroundTracking(backends: HostBackends) {
         val tracker =
             ForegroundTracker(

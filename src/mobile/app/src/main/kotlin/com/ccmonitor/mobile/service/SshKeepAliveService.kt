@@ -9,8 +9,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.net.ConnectivityManager
-import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -42,7 +40,7 @@ import org.koin.android.ext.android.inject
 
 /**
  * SSH 保活前台服务。会话连上时启动，挂一条常驻通知降低后台被杀的概率（部分 ROM 仍会杀，靠重连兜底）。
- * 没有活动会话也没有在飞轮次时自停；网络恢复时把这件事交给每台的常驻流（[HostBackends.wake]，共用那条重连循环；SSH 那层跟着它换连接）。
+ * 没有活动会话也没有在飞轮次时自停。网回来 · 网变了的回调不在这里（App 一起来就挂上，见 `CcMonitorApp`）。
  *
  * 连接期间，对每台连着的机器收它常驻流上的 `turn_end` 帧（[HostBackends]，与「对话」一屏同一条流）：
  * app 在后台（[AppForeground]）时，一轮完成就发一条本地通知。判哪条算一轮结束在后端，折成一轮一条在 [TurnEnds]。
@@ -59,7 +57,6 @@ class SshKeepAliveService : Service() {
     /** 存活判据要问它有没有在飞轮次，见 [onCreate]。 */
     private val chatController: ChatController by inject()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var netCallback: ConnectivityManager.NetworkCallback? = null
 
     /** 每台主机一个完成通知的收听者，key 是连接 id（＝ hostId）。 */
     private val watchers = mutableMapOf<String, Job>()
@@ -81,7 +78,6 @@ class SshKeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        registerNetwork()
         scope.launch {
             // 存活判据是「有活动会话或有在飞轮次」。连接是惰性的，活动会话为 0 是常态；只看会话数的话服务会当场自停，
             // 离开 app 等回复时通知永远不来，也没有任何地方报错。在飞轮次由应用级的 `ChatController` 持有，
@@ -262,24 +258,9 @@ class SshKeepAliveService : Service() {
         nm.createNotificationChannel(NotificationChannel(DONE_CHANNEL_ID, copyText("mobKeepAlive.channel.done"), NotificationManager.IMPORTANCE_DEFAULT))
     }
 
-    private fun registerNetwork() {
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val cb =
-            object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    backends.wake() // 常驻流交核心：连着的当场问活、断着的当场重拨（判法只在核心）
-                }
-            }
-        runCatching {
-            cm.registerDefaultNetworkCallback(cb)
-            netCallback = cb
-        }
-    }
-
     override fun onDestroy() {
         watchers.values.forEach { it.cancel() }
         watchers.clear()
-        netCallback?.let { cb -> runCatching { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(cb) } }
         scope.cancel()
         super.onDestroy()
     }

@@ -162,12 +162,18 @@ def tmux_name_of(text):
     return None
 
 
+_alias = []
+
+
 def host_alias():
-    """模拟器里够到宿主机的那个地址 ＝ 模拟器的网关（问模拟器自己，不写死）。"""
+    """模拟器里够到宿主机的那个地址 ＝ 模拟器的网关（问模拟器自己，不写死；问到一次就记着：飞行模式下问不出来）。"""
+    if _alias:
+        return _alias[0]
     route = adb("shell", "ip", "route", "get", "8.8.8.8").split()
     if "via" not in route:
         raise Step.Fail(f"问不出模拟器的网关：{' '.join(route)}")
-    return route[route.index("via") + 1]
+    _alias.append(route[route.index("via") + 1])
+    return _alias[0]
 
 
 def fab_under_notice(fab_text, notice_text):

@@ -3,10 +3,13 @@ package com.ccmonitor.mobile.ssh
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
+import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * 主机连接的生与死都经这里，别处只拿句柄。
@@ -88,6 +91,9 @@ class HostConnector(
 
     /** 有拨号请求的那几台：每台要有一条共用循环在跑。 */
     val dialing: Flow<Set<String>> get() = manager.dialing
+
+    /** 这台的名义状态（语义见 [SshConnectionManager.sessions]）：建连门停在「接不上」时，它进到「连着」就放行。 */
+    fun statusOf(hostId: String): Flow<SessionStatus?> = manager.sessions.map { it[hostId]?.status }.distinctUntilChanged()
 
     /** 握着的那条死了的那几台（语义见 [SshConnectionManager.holdLost]）：交给共用那条再拨。 */
     val holdLost: Flow<String> get() = manager.holdLost

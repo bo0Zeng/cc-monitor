@@ -87,6 +87,34 @@ class FollowSharedLoopTest {
             assertEquals(listOf(id), lost)
         }
 
+    /**
+     * 冷启动时网不通：头一次就没够着那台（[HostUnreachedException]）⇒ 拨号请求照样交给共用那条（它在核心里自己再拨），
+     * 它报够着之后这一层在同一份身份上接上 —— 网回来自己接上，不靠谁再点一下。没够着之外的失败（认证 · 钥匙变了）不交。
+     */
+    @Test
+    fun aFirstConnectThatNeverReachedTheHostStillHandsTheDialToTheSharedLoop() =
+        runTest {
+            val made = mutableListOf<FakeTransport>()
+            var offline = true
+            val m = testManager(made) { if (offline) throw HostUnreachedException("拨号超时") }
+            assertTrue(runCatching { m.connect(id, id, "box", testCfg("a")) }.isFailure)
+            assertEquals(SessionStatus.ERROR, m.sessions.value[id]?.status)
+            assertEquals(made.single().dialRequest, m.dialOf(id).first())
+            offline = false
+            m.loopReached(id, true)
+            advanceUntilIdle()
+            assertEquals(SessionStatus.CONNECTED, m.sessions.value[id]?.status)
+            assertSame(made.single().derived.single(), m.connection(id))
+        }
+
+    @Test
+    fun aFirstConnectRefusedByTheHostIsNotHandedOn() =
+        runTest {
+            val m = testManager { throw java.io.IOException("认证没过") }
+            assertTrue(runCatching { m.connect(id, id, "box", testCfg("a")) }.isFailure)
+            assertNull(m.dialOf(id).first())
+        }
+
     @Test
     fun aLoopThatHasNotReachedTheHostIsNotFollowed() =
         runTest {

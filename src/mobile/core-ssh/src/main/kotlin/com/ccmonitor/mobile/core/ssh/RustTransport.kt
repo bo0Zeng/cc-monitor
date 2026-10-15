@@ -112,7 +112,7 @@ class RustTransport(
                 link.awaitAck { onEvent?.invoke(eventOf(it, first)) }
             } catch (e: IOException) {
                 link.close()
-                throw e
+                throw HostUnreachedException(e.message ?: copyText("mobSsh.conn.unavailable"), e)
             }
         if (!ack.optBoolean("ok")) {
             link.close()
@@ -381,6 +381,8 @@ class RustTransport(
                 expectedFingerprint = known.firstOrNull { it.keyType == type }?.let { fingerprintOf(it.publicKeyBase64) }.orEmpty(),
                 offeredFingerprint = ack.optString("fingerprint"),
             )
+        } else if (ack.optString("reason") in UNREACHED) {
+            HostUnreachedException(ack.optString("error").ifEmpty { copyText("mobSsh.log.connectFailed") })
         } else {
             IOException(ack.optString("error").ifEmpty { copyText("mobSsh.log.connectFailed") })
         }
@@ -415,6 +417,9 @@ class RustTransport(
         const val STDERR_TAIL = 4096
         const val MAX_FILE_BYTES = 64L shl 20
         const val FILE_MODE = 0x1A4 // 0644
+
+        /** 拨号核心 ack 里「没够着那一台」的那几个原因码（`ssh-dial` 的 `why`：解析 · 拨不通 · 一步都没动到期限 · 跳板那一台断了）。 */
+        val UNREACHED = setOf("resolve", "unreachable", "timeout", "jump")
 
         /** SSH 公钥 blob（base64）⇒ `SHA256:<无填充 base64>`（与 OpenSSH / 核心报的同形）。 */
         fun fingerprintOf(blobB64: String): String {

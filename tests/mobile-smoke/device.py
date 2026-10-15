@@ -9,6 +9,8 @@
 #   4 通知：后台时那台来一条需手动 ⇒ 出通知 · 点它进那一条；一轮完成的通知点进去也得是那一条。
 #   6 终端是逃生口：那台常驻后端起不来（rig.sh backend off）、SSH 照通 ⇒ 静默断网 30 秒（长过 SSH 保活判死）之后，
 #     开着的终端 CCM_DEVICE_REJOIN ＋ 5 秒内照样回来（在终端里 touch 一个文件、台架里看得到它）。
+#   7 冷启动时断网：飞行模式下杀掉再开 App（SSH 一次都没通过）→ 关飞行模式 ⇒ CCM_DEVICE_REJOIN ＋ 10 秒内对话列表自己出来，不靠谁再点一下
+#     （网回来的回调 App 一起来就挂上、交给那条重连循环；拨号请求没够着那一台也照样交给它）。
 #   5 慢链路 ＋ 跳板：台架起第二台 sshd 当跳板（rig.sh hop），加一台经它的机器；模拟器里 netem 往返 1.5 秒：
 #     新加那一台要接得上（新建会话答得回）；慢链路上断 20 秒 · 正常网上断 90 秒，网回来 CCM_DEVICE_REJOIN 秒内常驻流要重连上、
 #     文件页（SSH 那层）要列得出来（判的时候减掉连着时量的那一回：量法本身进抽屉 · 点开 · 按 3 秒一轮找字要十来秒）。
@@ -31,7 +33,7 @@ OUT = smoke.OUT
 PKG = smoke.PKG
 ARM = os.environ.get("CCM_DEVICE_ARM") == "1"
 BREAK = os.environ.get("CCM_DEVICE_BREAK", "")
-ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4 5 6").split()
+ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4 5 6 7").split()
 # 回前台 / 网回来之后多久还没收齐就判红（秒）。
 WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
 # 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
@@ -707,6 +709,40 @@ def item6():
         rig("backend", "on")
 
 
+# ── 7 冷启动时断网 ──
+
+def airplane(on):
+    adb("shell", "cmd", "connectivity", "airplane-mode", "enable" if on else "disable")
+
+
+def item7():
+    try:
+        smoke.to_chat()
+        adb("shell", "am", "force-stop", PKG)
+        airplane(True)
+        time.sleep(3)
+        if nc_ms() is not None:
+            raise Red("飞行模式下模拟器照样连得通台架（没断成）")
+        adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+        time.sleep(20)  # 断着网起来：等头一次连接报完没连上
+        if ui.find(t("history.section.today")) is not None:
+            raise Red("断着网，对话列表却出来了（没断成）")
+        airplane(False)
+        t0 = time.time()
+        got = None
+        while time.time() - t0 < WITHIN:
+            if ui.find(t("history.section.today")) is not None or ui.find(t("history.list.empty")) is not None:
+                got = round(time.time() - t0, 1)
+                break
+            time.sleep(1)
+        nums["冷启动时断网：网回来 → 对话列表自己出来"] = got if got is not None else f"{WITHIN:.0f}s 没出来"
+        if got is None or got > REJOIN + 10:
+            raise Red(f"冷启动时断网：网回来 {got}s 对话列表才自己出来（要 ≤ {REJOIN + 10:.0f}s，不点［重试］）")
+        return f"网回来 {got}s 自己接上"
+    finally:
+        airplane(False)
+
+
 # ── 4 通知 ──
 
 def notifications():
@@ -836,11 +872,12 @@ def walk():
             adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     if "name" in state:
         for k, name, fn in (("2", "2-Doze待机杀后台", item2), ("3", "3-断网限速", item3), ("4", "4-通知", item4),
-                            ("5", "5-慢链路跳板", item5), ("6", "6-后端起不来终端照回", item6)):
+                            ("5", "5-慢链路跳板", item5), ("6", "6-后端起不来终端照回", item6),
+                            ("7", "7-冷启动断网自己接上", item7)):
             if k in ITEMS:
                 item(name, fn)
     else:
-        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知"), ("5", "5-慢链路跳板"), ("6", "6-后端起不来终端照回")):
+        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知"), ("5", "5-慢链路跳板"), ("6", "6-后端起不来终端照回"), ("7", "7-冷启动断网自己接上")):
             if k in ITEMS:
                 rows.append((name, "红", "准备那一步没成（没连通 / 新会话答不回）", "0s", []))
     netem(None)

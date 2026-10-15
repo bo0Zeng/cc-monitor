@@ -22,6 +22,8 @@ import kotlinx.coroutines.launch
  * @param terminalDropped 当前 shell 流是否已断（VM 从 uiState 派生传入）。
  * @param status VM 的会话状态流——[reattachNeeded] 的 combine 借其变化（RECONNECTING→CONNECTED）驱动重查 live 连接。
  * @param liveConnection 读现有一条 live 连接（`= { manager.connection(hostId) }`）——重挂前提 + 断因基准之一。
+ * @param answers 断的那一刻本地标志还活着时，问那条连接还答不答得上（一次往返，期限在核心里）：答得上才是用户 exit。
+ *   shell 先收到「连接没了」、握着的那条晚一步的那种，本地标志一时还是活的，只看标志会把连接死当成 exit。
  * @param shellOpenedOn 读当前 shell 开在哪条 transport（VM 持 @Volatile，经 provider 读）——断因分类基准。
  */
 internal class SessionReattachDetector(
@@ -29,6 +31,7 @@ internal class SessionReattachDetector(
     private val terminalDropped: StateFlow<Boolean>,
     status: StateFlow<SessionStatus?>,
     private val liveConnection: () -> SshTransport?,
+    private val answers: suspend (SshTransport) -> Boolean,
     private val shellOpenedOn: () -> SshTransport?,
 ) {
     /**
@@ -65,7 +68,7 @@ internal class SessionReattachDetector(
                 val opened = shellOpenedOn()
                 val live = liveConnection()
                 // exit 特征：断的那一刻其连接仍是当前活着的同一对象（只关远端通道、SSH transport 未死）。
-                val droppedOnSameLiveConn = opened != null && live === opened && live.isConnected
+                val droppedOnSameLiveConn = dropped && opened != null && live === opened && live.isConnected && answers(live)
                 // update{} 原子读改写，与 notifyNewShellOpened 的写不丢更新。
                 shellExited.update { prev -> updateShellExited(prev, dropped, droppedOnSameLiveConn) }
             }

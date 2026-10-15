@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.copy.copyText
@@ -174,7 +175,13 @@ class SessionViewModel(
      * 新 shell 建成时经 [SessionReattachDetector.notifyNewShellOpened] 复位。
      */
     private val reattachDetector =
-        SessionReattachDetector(viewModelScope, terminalDropped, status, { hostConnector.connection(hostId) }) { shellOpenedOn }
+        SessionReattachDetector(
+            viewModelScope,
+            terminalDropped,
+            status,
+            { hostConnector.connection(hostId) },
+            { t -> runCatching { t.execCapture("true").exitStatus == 0 }.getOrDefault(false) },
+        ) { shellOpenedOn }
 
     private val rejoined = MutableStateFlow(false)
 
@@ -216,6 +223,14 @@ class SessionViewModel(
             manager.sessions.map { it[hostId]?.status }.distinctUntilChanged().collect { cur ->
                 if (rejoinedWhileErrored(prev, cur, _uiState.value is SessionUiState.Error)) rejoined.value = true
                 prev = cur
+            }
+        }
+        // 停在出错页、共用那条报 SSH 从没够着变成够着（握着的那条没断、这一层不用换的那种也算）⇒ 同样重挂一次。
+        viewModelScope.launch {
+            var before = false
+            manager.reachedOf(hostId).collect { now ->
+                if (now && !before && _uiState.value is SessionUiState.Error) rejoined.value = true
+                before = now
             }
         }
     }
@@ -278,6 +293,7 @@ class SessionViewModel(
             )
         } catch (e: Exception) {
             runCatching { created?.close() }
+            Log.w(TAG, "终端没接上：${e.message}", e)
             // 没成的这一段里 SSH 那层已经跟着共用循环换上了另一条（进「连着」那一下赶在这一次失败之前）⇒ 同样重挂一次。
             hostConnector.connection(hostId)?.takeIf { it !== tried && it.isConnected }?.let { rejoined.value = true }
             SessionUiState.Error(e.message ?: e.toString())
@@ -395,5 +411,9 @@ class SessionViewModel(
         // release 而不是 disconnect：同主机还有别的 tab 持有时不断。
         runCatching { session?.close() }
         hostConnector.release(hostId, holderToken)
+    }
+
+    private companion object {
+        const val TAG = "Session"
     }
 }
