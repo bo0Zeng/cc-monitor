@@ -376,6 +376,7 @@ fn u9_our_three_sessions_keep_every_setting() {
         refused_until: None,
         barred: None,
         rate: [None, None],
+        per_pct: [None, None],
     };
     let sig = |c: &str| Sigma {
         start: "p1".into(),

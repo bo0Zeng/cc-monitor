@@ -168,3 +168,38 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
         }
     });
 }
+
+/// ★ 流里说出这一发用量的那几件经 hub 记进进程里那一本每发用量（额度账量「1% ≈ 多少」只从这里数到用量）。
+/// 号名与会话名每个进程各一个，不跟别的判据在那一本里串。
+#[test]
+fn usage_in_the_stream_reaches_the_process_spend_book() {
+    let hub = TapHub::default();
+    let sid = format!("s-tap-spend-{}", std::process::id());
+    let acct = format!("tap-spend-{}", std::process::id());
+    let book = crate::accounts::quota::spend::book();
+    let w = |used: f64| crate::agents::QuotaWindow {
+        name: "five_hour".into(),
+        used: Some(used),
+        resets_at: Some(2_000_000_000),
+        warned_at: None,
+    };
+    let send = |input: u64| {
+        book.answered(Some(&sid), "claude-code", &acct);
+        hub.offer(TapEvent {
+            stream: sid.clone(),
+            owner: String::new(),
+            resp: 0,
+            n: 0,
+            body: TapBody::Data(format!(
+                r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{input}}}}}}}"#
+            )),
+        });
+    };
+    book.pace("claude-code", &acct, &w(0.10));
+    send(1_000);
+    book.pace("claude-code", &acct, &w(0.11));
+    for _ in 0..5 {
+        send(10_000);
+    }
+    assert_eq!(book.pace("claude-code", &acct, &w(0.15)), Some(12_500));
+}

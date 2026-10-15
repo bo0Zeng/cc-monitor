@@ -2409,6 +2409,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "accounts[].windows[].tokensPerPct",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "candidates[].account",
           "type": "string"
         },

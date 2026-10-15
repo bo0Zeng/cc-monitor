@@ -53,7 +53,7 @@ fn decide(ctx) { … }
 - **头**（`/*--- rotation … ---*/`）：`format` · `tz` · `settings` · `form`。头里**没有** `name` · `line`（写了 ⇒ 读不懂、形状不对）。后端存设置只重写这一块，说明和代码一个字节不动。
 - `settings`：这份策略自己的设置，形状它自己定；号列表固定在 `settings.accounts`（`{start: true}` ＝ 开会话用的号），**号列表的先后就是默认优先级**（权重同权时照它）。
 - `form`：设置怎么画、怎么校验。格的种类：`percent` · `minutes` · `toggle` · `choice` · `daySegments`；`scope: all` 画在总体设置，`each` 画在每个号下面（`inherit: true` ＝ 号没另设就跟总体）。`label` 用短的正式名字（用量上限 · 权重容差 · 强制切换阈值 · 耗尽后启用 · 启用延迟 · 单次用量上限），定义写在 `help` 里；不用第二人称，不写讲结构的字。
-- `ctx`：`now` · `clock`（策略时区的本地分钟）· `start` · `current` · `settings` · `memo`（上一判交的，原样带回）· `accounts[{id, pos, kind, sendable, used, resets, refusedUntil, rate}]`。没有文件 · 网络 · 钟 · 随机数。
+- `ctx`：`now` · `clock`（策略时区的本地分钟）· `start` · `current` · `settings` · `memo`（上一判交的，原样带回）· `accounts[{id, pos, kind, sendable, used, resets, refusedUntil, rate, tokensPerPct}]`（`rate` 用速、点 / 分；`tokensPerPct` 1% ≈ 多少用量、折合输入 token，套餐不同就不一样大，余量跨号比时乘它；两样都是这个号自己量出来的，量不到 ⇒ `()`）。没有文件 · 网络 · 钟 · 随机数。
 - `decide(ctx)` 交回 `#{order: [号…], why: #{号: "一句"}, hold_until?, wake: #{at?, when: [#{acct, w, used_at_least}]}, memo?}`。后端照 `order` 第一个事实上发得出去的号用：**在用的号排第一就是不换**。
 
 **换谁、什么时候换**（常见的写法，全在策略自己的代码里）：

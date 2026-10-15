@@ -24,6 +24,7 @@ fn acct(id: &str, used5h: f64, reset5h: Option<u64>) -> Acct {
         refused_until: None,
         barred: None,
         rate: [None, None],
+        per_pct: [None, None],
     }
 }
 

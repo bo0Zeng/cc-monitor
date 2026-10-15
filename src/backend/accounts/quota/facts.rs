@@ -1,4 +1,4 @@
-//! ★ 轮换的**事实 F**：每个号的用量 · 重置 · 用速 · 被拒 · 超额 · 登录。
+//! ★ 轮换的**事实 F**：每个号的用量 · 重置 · 用速 · 1% ≈ 多少用量 · 被拒 · 超额 · 登录。
 //! 只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变；上限、余量、「能不能用」里跟设置有关的那一半不在这里（在判的那一层）。
 //!
 //! 拼装只有一处（[`crate::accounts::upstream_select::rotate::Hop::facts`]，它手上有额度账与账号库）；这里是形状与纯函数。
@@ -110,17 +110,23 @@ fn standing(
     (!login_ok).then_some((WhyNot::Login, None))
 }
 
-/// 一个语义位此刻的窗口事实（`rate` 由调用方按窗口原名问额度账）。
+/// 一个窗口在额度账上量出来的那两样（按窗口原名问；调用方交）：用速（点 / 分）· 1% ≈ 多少用量。
+pub(crate) struct Measured<'a> {
+    pub(crate) rate: &'a dyn Fn(&str) -> Option<f64>,
+    pub(crate) per_pct: &'a dyn Fn(&str) -> Option<u64>,
+}
+
+/// 一个语义位此刻的窗口事实（量出来的那两样由调用方按窗口原名问额度账）。
 fn win_of(
     r: Option<&QuotaReading>,
     slot: &str,
     now: u64,
     slot_of: &dyn Fn(&str) -> Option<&'static str>,
-    rate: &dyn Fn(&str) -> Option<f64>,
+    m: &Measured<'_>,
     when: &dyn Fn(u64) -> String,
 ) -> WinFact {
     let w = window_fact(r, slot, now, slot_of);
-    // 用速取那一位上用得最多的那个窗口（同 window_fact 的取法）。
+    // 量出来的那两样取那一位上用得最多的那个窗口（同 window_fact 的取法）。
     let name = r.and_then(|r| {
         r.windows
             .iter()
@@ -134,7 +140,8 @@ fn win_of(
         used: w.used,
         resets: w.resets,
         resets_text: w.resets.map(when),
-        rate: name.as_deref().and_then(rate),
+        rate: name.as_deref().and_then(m.rate),
+        tokens_per_pct: name.as_deref().and_then(m.per_pct),
     }
 }
 
@@ -148,7 +155,7 @@ pub(crate) fn fact_of(
     login: LoginState,
     now: u64,
     slot_of: &dyn Fn(&str) -> Option<&'static str>,
-    rate: &dyn Fn(&str) -> Option<f64>,
+    m: &Measured<'_>,
     when: &dyn Fn(u64) -> String,
 ) -> Fact {
     let st = standing(r, kind, login == LoginState::Ok, now);
@@ -169,8 +176,8 @@ pub(crate) fn fact_of(
     Fact {
         account: account.to_string(),
         kind,
-        w5h: win_of(r, "5h", now, slot_of, rate, when),
-        w7d: win_of(r, "7d", now, slot_of, rate, when),
+        w5h: win_of(r, "5h", now, slot_of, m, when),
+        w7d: win_of(r, "7d", now, slot_of, m, when),
         login,
         seen_at,
         blocked,

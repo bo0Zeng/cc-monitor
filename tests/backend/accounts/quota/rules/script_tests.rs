@@ -40,6 +40,7 @@ fn ctx_of(now: u64) -> Ctx<'static> {
             resets: [Some(now + 3600), None],
             refused_until: None,
             rate: [Some(0.5), None],
+            per_pct: [None, None],
         }],
     }
 }
@@ -54,6 +55,19 @@ fn every_upgrade_material_reads() {
             .unwrap_or_else(|e| panic!("{id} 跑不通：{e:?}"));
         assert_eq!(v.order, ["a"], "{id}");
     }
+}
+
+/// ★ 策略读得到每号「1% ≈ 多少用量」：量到的那一窗是那个数，量不到的那一窗是 `()`（不给假数）。
+#[test]
+fn a_strategy_reads_the_size_of_one_percent_and_nothing_where_unmeasured() {
+    let f = parse(&with_code(
+        r#"fn decide(ctx) { let p = ctx.accounts[0].tokensPerPct; #{ order: ["a"], why: #{ a: `${p.w5h}|${type_of(p.w7d)}` } } }"#,
+    ))
+    .expect("编得过");
+    let mut c = ctx_of(1);
+    c.accounts[0].per_pct = [Some(25_000), None];
+    let v = f.decide(&c).expect("跑得通");
+    assert_eq!(v.why, [("a".to_string(), "25000|()".to_string())]);
 }
 
 /// ★ 存设置只重写头：代码一个字节都不动；再读回来头就是新的那份。
@@ -239,6 +253,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             refused_until: None,
             barred: None,
             rate: [Some(0.5), None],
+            per_pct: [None, None],
         },
         Acct {
             id: "b".into(),
@@ -248,6 +263,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             refused_until: None,
             barred: None,
             rate: [None, None],
+            per_pct: [None, None],
         },
         Acct {
             id: "c".into(),
@@ -257,6 +273,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             refused_until: None,
             barred: None,
             rate: [None, None],
+            per_pct: [None, None],
         },
     ];
     assert_eq!(fixtures().len(), 3, "材料没读到");

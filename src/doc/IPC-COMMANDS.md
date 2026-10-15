@@ -2086,6 +2086,11 @@ seenAtText?: string,
  */
 seenAtRelText?: string, from: QuotaSource, 
 /**
+ * 这个号这个窗口「1% ≈ 多少用量」（折合输入 token：各类 token 按那一家的价比折）：中转数到的每发用量 ÷ 读数涨的点数；
+ * 量不到（读数没动 · 样本太少 · 只有一次读数 · 量出来超过 7 天）⇒ 缺。
+ */
+tokensPerPct?: number, 
+/**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */
 resetSinceSeen?: boolean, };
@@ -2214,7 +2219,11 @@ type WinFact = { open: boolean, used: number, resets?: number,
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
  */
-resetsText?: string, rate?: number, };
+resetsText?: string, rate?: number, 
+/**
+ * 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
+ */
+tokensPerPct?: number, };
 ```
 
 码：`bad_args`
@@ -2592,7 +2601,11 @@ type WinFact = { open: boolean, used: number, resets?: number,
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
  */
-resetsText?: string, rate?: number, };
+resetsText?: string, rate?: number, 
+/**
+ * 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
+ */
+tokensPerPct?: number, };
 type Words = string;
 ```
 

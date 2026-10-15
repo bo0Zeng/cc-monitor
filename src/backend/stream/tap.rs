@@ -48,8 +48,12 @@ impl TapPort for TapHub {
         crate::observe::relay_marks::note(stream, marks);
     }
 
-    /// 交给活卡（锁里只做内存里的事）。恒收：号已由 tee 占掉，卡上的缺口由活卡判。
+    /// 说出了这一发用量的那几件先记进每发用量的累计（额度账量「1% ≈ 多少」用）；再交给活卡（锁里只做内存里的事）。
+    /// 恒收：号已由 tee 占掉，卡上的缺口由活卡判。
     fn offer(&self, ev: TapEvent) -> bool {
+        if let crate::relay::TapBody::Data(d) = &ev.body {
+            crate::accounts::quota::spend::book().heard(&ev.stream, d);
+        }
         self.live().tap(ev);
         true
     }

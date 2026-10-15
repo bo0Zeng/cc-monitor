@@ -13,6 +13,7 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
         refused_until: None,
         barred: None,
         rate: [rate, None],
+        per_pct: [None, None],
     }
 }
 

@@ -398,10 +398,9 @@ impl Hop {
         n
     }
 
-    /// 判一次、落账、记进缓存；回这一判。
-    fn run(
+    /// 判一次（不落账）；回这一判。
+    fn judge(
         &self,
-        own: &Own,
         a: &Turn<'_>,
         s: &Session,
         loaded: &Loaded,
@@ -412,9 +411,24 @@ impl Hop {
         if let Some(e) = &d.strategy_error {
             tracing::warn!("[rotate] 策略「{}」这一判走了兜底：{}", loaded.id, e.msg);
         }
-        let n = self.settle(own, a.sid, s, &d, facts, a.now);
+        self.cache.lock().unwrap_or_else(|e| e.into_inner()).runs += 1;
+        d
+    }
+
+    /// 这一判成了（换到的号备好了料 · 停发）⇒ 落账、记进缓存（带着 `tried` 判的不缓存：下一发照事实重判）。
+    #[allow(clippy::too_many_arguments)]
+    fn commit(
+        &self,
+        own: &Own,
+        a: &Turn<'_>,
+        s: &Session,
+        loaded: &Loaded,
+        d: &Decision,
+        facts: &[Acct],
+        tried: &[String],
+    ) {
+        let n = self.settle(own, a.sid, s, d, facts, a.now);
         let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        c.runs += 1;
         if tried.is_empty() {
             c.map.insert(
                 a.sid.to_string(),
@@ -430,7 +444,6 @@ impl Hop {
         } else {
             c.forget(a.sid);
         }
-        d
     }
 
     /// 缓存里这个会话的结论还作数吗（作数 ⇒ 那个结论）。
@@ -479,7 +492,8 @@ impl Hop {
         Some(hit.pick.clone())
     }
 
-    /// 照结论备料：停发 ⇒ 这一家的「用满」回包；换到的号接不上 ⇒ 记进 `tried` 再判（同 429），还是没有 ⇒ 照开会话用的号走。
+    /// 照结论备料：停发 ⇒ 这一家的「用满」回包；换到的号接不上 ⇒ 记进 `tried`、照同一份会话与事实再判（同 429），还是没有 ⇒ 照开会话用的号走。
+    /// 只有成了的那一判落账（`judged` ＝ 这一判与它看的事实；照缓存来的 ⇒ 空）：接不上的号没换成，不记。
     #[allow(clippy::too_many_arguments)]
     fn go_for(
         &self,
@@ -489,20 +503,26 @@ impl Hop {
         s: &Session,
         loaded: &Loaded,
         mut pick: Pick,
+        mut judged: Option<(Decision, Vec<Acct>)>,
         mut tried: Vec<String>,
     ) -> Go {
-        let mut s = s.clone();
+        let commit = |judged: &Option<(Decision, Vec<Acct>)>, tried: &[String]| {
+            if let Some((d, facts)) = judged {
+                self.commit(own, a, s, loaded, d, facts, tried);
+            }
+        };
         for _ in 0..PREPARE_TRIES {
             match pick {
                 Pick::Hold {
                     until: Some(at),
                     account,
                 } => {
+                    commit(&judged, &tried);
                     let Some(reply) = crate::agents::limit_reply_of(a.agent) else {
                         return Go::Start;
                     };
                     // 回包里卡着的那个窗口：在这一刻重置的那一窗（先看到时最早恢复的那个号）。
-                    let facts = self.accts(&s, &loaded.settings, a.row, a.now);
+                    let facts = self.accts(s, &loaded.settings, a.row, a.now);
                     let win = |f: &Acct| (0..2).find(|w| f.resets[*w] == Some(at));
                     let w = facts
                         .iter()
@@ -513,15 +533,24 @@ impl Hop {
                         reply: reply(at, a.now, w.map(|w| if w == 0 { "5h" } else { "7d" })),
                     };
                 }
-                Pick::Hold { until: None, .. } => return Go::Start,
+                Pick::Hold { until: None, .. } => {
+                    commit(&judged, &tried);
+                    return Go::Start;
+                }
                 Pick::Use(x) => match self.prepare(own, a, lib, &x) {
-                    Ok(go) => return go,
+                    Ok(go) => {
+                        commit(&judged, &tried);
+                        return go;
+                    }
                     Err(_) => {
                         tried.push(x);
-                        let facts = self.accts(&s, &loaded.settings, a.row, a.now);
-                        let d = self.run(own, a, &s, loaded, &facts, &tried);
-                        apply(&mut s, &d, &facts, a.now, None);
-                        pick = d.pick;
+                        let facts = match judged.take() {
+                            Some((_, f)) => f,
+                            None => self.accts(s, &loaded.settings, a.row, a.now),
+                        };
+                        let d = self.judge(a, s, loaded, &facts, &tried);
+                        pick = d.pick.clone();
+                        judged = Some((d, facts));
                     }
                 },
             }
@@ -546,17 +575,15 @@ impl Hop {
             return Go::Start;
         }
         let loaded = self.load(&s.strategy);
-        let (pick, s) = match self.cached(a, &s, &loaded) {
-            Some(p) => (p, s),
+        let (pick, judged) = match self.cached(a, &s, &loaded) {
+            Some(p) => (p, None),
             None => {
                 let facts = self.accts(&s, &loaded.settings, a.row, a.now);
-                let d = self.run(own, a, &s, &loaded, &facts, &[]);
-                let mut n = s.clone();
-                apply(&mut n, &d, &facts, a.now, None);
-                (d.pick, n)
+                let d = self.judge(a, &s, &loaded, &facts, &[]);
+                (d.pick.clone(), Some((d, facts)))
             }
         };
-        self.go_for(own, a, &lib, &s, &loaded, pick, Vec::new())
+        self.go_for(own, a, &lib, &s, &loaded, pick, judged, Vec::new())
     }
 
     /// ★ 回包被拒：在同一发里带着 `tried`（这一发已经发过的号）再判一次（算法 #27）。别的请求刚把这个会话换走了 ⇒ 跟上它。
@@ -596,7 +623,7 @@ impl Hop {
         if !tried.iter().any(|t| t == heard_from) {
             tried.push(heard_from.to_string());
         }
-        let d = self.run(own, a, &s, &loaded, &facts, &tried);
+        let d = self.judge(a, &s, &loaded, &facts, &tried);
         // 号列表里的号事实上一个都发不出去 ⇒ 上游那份拒绝就是真的「用满」，原样交回（不另造一份）；
         // 有号发得出去、只是策略此刻不用它们 ⇒ 停发，回我们那份「用满」（重置时刻照策略交的）。
         let pool: Vec<&Acct> = {
@@ -623,11 +650,11 @@ impl Hop {
             .iter()
             .all(|x| tried.contains(&x.id) || !standing::sendable(x, a.now));
         if all_shut && matches!(d.pick, Pick::Hold { .. }) {
+            self.commit(own, a, &s, &loaded, &d, &facts, &tried);
             return None;
         }
-        let mut n = s.clone();
-        apply(&mut n, &d, &facts, a.now, None);
-        Some(self.go_for(own, a, &lib, &n, &loaded, d.pick, tried))
+        let pick = d.pick.clone();
+        Some(self.go_for(own, a, &lib, &s, &loaded, pick, Some((d, facts)), tried))
     }
 }
 

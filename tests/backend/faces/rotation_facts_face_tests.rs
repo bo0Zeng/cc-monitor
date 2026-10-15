@@ -83,6 +83,7 @@ fn closed() -> WinFact {
         resets: None,
         resets_text: None,
         rate: None,
+        tokens_per_pct: None,
     }
 }
 

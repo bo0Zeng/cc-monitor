@@ -395,6 +395,7 @@ impl Hop {
         };
         let o = self.quota.entry(agent, id);
         let rate = |name: &str| o.as_ref().and_then(|o| o.rate(name, now));
+        let per_pct = |name: &str| o.as_ref().and_then(|o| o.tokens_per_pct(name, now));
         crate::accounts::quota::facts::fact_of(
             id,
             o.as_ref().map(|o| &o.reading),
@@ -403,7 +404,10 @@ impl Hop {
             self.show_facts(agent, lib, id, row).login,
             now,
             &slot,
-            &rate,
+            &crate::accounts::quota::facts::Measured {
+                rate: &rate,
+                per_pct: &per_pct,
+            },
             &when,
         )
     }

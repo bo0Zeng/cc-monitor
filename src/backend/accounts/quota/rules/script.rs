@@ -221,6 +221,10 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
             m.insert("resets".into(), pair(opt(a.resets[0]), opt(a.resets[1])));
             m.insert("refusedUntil".into(), opt(a.refused_until));
             m.insert("rate".into(), pair(optf(a.rate[0]), optf(a.rate[1])));
+            m.insert(
+                "tokensPerPct".into(),
+                pair(opt(a.per_pct[0]), opt(a.per_pct[1])),
+            );
             Dynamic::from(m)
         })
         .collect();

@@ -242,6 +242,7 @@ pub(crate) fn specimen() -> QuotaRead {
             seen_at_text: None,
             seen_at_rel_text: None,
             from: Source::Headers,
+            tokens_per_pct: Some(25_000),
             reset_since_seen: true,
         }],
         usage: crate::accounts::quota::show::Usage {
