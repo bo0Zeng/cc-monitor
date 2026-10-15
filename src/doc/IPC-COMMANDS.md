@@ -9883,7 +9883,7 @@ seen_screen?: string, };
 
 终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-resume`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-resume` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
 入参 `SessionResumeReq` · 回包 `Resumed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -9900,7 +9900,7 @@ sid: string,
 client?: string, };
 ```
 
-码：`bad_args` · `elsewhere` · `not_resumed`
+码：`bad_args` · `elsewhere` · `not_resumed` · `no_tmux`
 
 #### `terminal-follow`
 
@@ -12682,6 +12682,7 @@ needs: string | null, };
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
+| `--session-resume` | ＝ 帧命令 `session-resume`：终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话 |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
