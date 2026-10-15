@@ -1038,11 +1038,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// session-commands 多 compact / clear · session_removed 多 by · history-facts 多 modelText ⇒ 形状指纹表再跟着变。
 /// session-say 多一格可选的 seen_screen（cc-bus 带：发的那一端看过的那一屏，用来判送没送对；桌面 · 手机不带）⇒ 形状指纹表再跟着变。
 ///
-/// p10p-one-handle：命令执行收成一种写法，后端每条命令都 typed（账号 7 条 · 帧面硬臂 14 条 · ping · resident-verdict 新进），
+/// p10p-batch-hide：命令执行收成一种写法，后端每条命令都 typed（账号 7 条 · 帧面硬臂 14 条 · ping · resident-verdict 新进），
 /// 都进形状指纹；错误码带的 data 也进指纹。新 typed 的那几条入参多一个键 ⇒ bad_args，码表以 bad_args 打头；
 /// resync 回包不再带恒空的 uncancellable；quota-read 的 state 成枚举（冻结格摘要跟着变）。
-/// 版本门：对面认这一问、形状对不上 ⇒ 当旧版、照实说要更新。子命令集不变。
-pub const BUILD_ID: &str = "p10p-one-handle";
+/// 版本门：对面认这一问、形状对不上 ⇒ 当旧版、照实说要更新。
+/// 子命令集多 --files-batch-stop · --plan-pb-check、通道多 files-batch-stop · plan-pb-check · transfer-copy：files-copy / -delete / -chmod 收一组
+/// （入参 items ＋ 可选票，回 BatchReply；删目录不再分趟、没有 remaining）· 两台之间复制一组 · 撤一组 · 进度帧 files_batch；
+/// transfer-upload 收一组、先在落点探同名；同名清单的时刻字由后端写。会话帧 · 清单 · 需手动每行多 hidden（不隐藏为 null）、
+/// 推帧主题 session_hidden、history-annotate 回包带 prev；偏好多 childTab · bgTab · pbDir；ccm 多 --tab · --no-rotation。
+pub const BUILD_ID: &str = "p10p-batch-hide";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
