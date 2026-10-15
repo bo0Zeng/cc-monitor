@@ -62,6 +62,34 @@ class ProductsTest {
     }
 
     @Test
+    fun `会话表：能不能换照帧上的 switch 抄（宣告 · 状态 · 离开活），被顶替的记下顶替它的那一条`() {
+        val breaks = mutableListOf<String>()
+        var t = SessionTable().step(golden("session_added")[0], breaks::add)
+        assertEquals(Switches(CanSwitch("先答完需手动"), CanSwitch("先答完需手动")), t.sessions.getValue("s1").switch)
+        t = t.step(golden("session_status")[1], breaks::add)
+        assertEquals(Switches(CanSwitch(null), CanSwitch(null)), t.sessions.getValue("s1").switch)
+        assertTrue(
+            t.sessions
+                .getValue("s1")
+                .switch!!
+                .model.can,
+        )
+        t = t.step(golden("session_state")[0], breaks::add)
+        assertEquals(
+            CanSwitch("会话已退出"),
+            t.fates
+                .getValue("s1")
+                .switch
+                ?.model,
+        )
+        val (superseded, gone) = golden("session_removed")
+        assertEquals(mapOf("s1" to "s2"), t.step(superseded, breaks::add).successors)
+        assertTrue("不是顶替 ⇒ 不记", t.step(gone, breaks::add).successors.isEmpty())
+        assertNull("认不出的形 ⇒ 不猜", Switches.of(mapOf("model" to mapOf("can" to "no"), "permission" to mapOf("can" to "yes"))))
+        assertTrue(breaks.toString(), breaks.isEmpty())
+    }
+
+    @Test
     fun `会话表：缺必填格报出来、表不动`() {
         val breaks = mutableListOf<String>()
         val t = SessionTable().step(mapOf("kind" to "session_added", "sid" to "s"), breaks::add)

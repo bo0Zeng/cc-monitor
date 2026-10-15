@@ -176,6 +176,17 @@ def tree(d):
 def code_of(r):
     return r.get("code") or ""
 
+def outcomes(r):
+    """一组那几条（复制 · 删 · 改权限）的逐项结局：`[(state, code)]`；没回包 ⇒ 空。"""
+    return [(o.get("state"), o.get("code")) for o in ((r.get("data") or {}).get("outcomes") or [])]
+
+def all_done(r):
+    return r.get("ok") and outcomes(r) and all(st == "done" for st, _ in outcomes(r))
+
+def opened_items(r):
+    """开单那两条（上传 · 下载）的逐项：`[{key, state, id, staged, path, code…}]`。"""
+    return (r.get("data") or {}).get("items") or []
+
 A = Backend(home, "local")
 if A.hello is None:
     bad("本机沙箱后端发出 hello", open(os.path.join(work, "local.stderr"), "rb").read()[-400:])
@@ -200,13 +211,13 @@ check(r.get("ok") and open(os.path.join(root, "d/c.txt"), "rb").read() == b"put-
 r = A.ask("files-put", {"root": root, "rel": "d/c.txt", "content": "put-3\n", "expect": "stale\n"})
 check(not r.get("ok") and open(os.path.join(root, "d/c.txt"), "rb").read() == b"put-2\n",
       "files-put 的 expect 对不上 ⇒ 拒，盘上照旧", r)
-r = A.ask("files-copy", {"root": root, "from": "d", "to": "d2", "recursive": True})
-check(r.get("ok") and open(os.path.join(root, "d2/b.txt"), "rb").read() == b"hello\n"
+r = A.ask("files-copy", {"root": root, "items": [{"from": "d", "to": "d2"}]})
+check(all_done(r) and open(os.path.join(root, "d2/b.txt"), "rb").read() == b"hello\n"
       and open(os.path.join(root, "d2/c.txt"), "rb").read() == b"put-2\n", "files-copy 复制目录", r)
-r = A.ask("files-delete", {"root": root, "rel": "d2/b.txt"})
-check(r.get("ok") and not os.path.exists(os.path.join(root, "d2/b.txt")), "files-delete 删一份文件", r)
-r = A.ask("files-delete", {"root": root, "rel": "d2", "recursive": True})
-check(r.get("ok") and not os.path.exists(os.path.join(root, "d2")), "files-delete 递归删目录", r)
+r = A.ask("files-delete", {"root": root, "items": [{"rel": "d2/b.txt"}]})
+check(all_done(r) and not os.path.exists(os.path.join(root, "d2/b.txt")), "files-delete 删一份文件", r)
+r = A.ask("files-delete", {"root": root, "items": [{"rel": "d2", "recursive": True}]})
+check(all_done(r) and not os.path.exists(os.path.join(root, "d2")), "files-delete 递归删目录", r)
 
 # 解压：包放进根里，解到一个新目录
 buf = io.BytesIO()
@@ -257,11 +268,16 @@ for cmd, args, what in [
     ("files-mkdir", {"root": root, "rel": "out-link/dir"}, "建目录穿过链接"),
     ("files-put", {"root": root, "rel": "out-link/p.txt", "content": "x", "expect": None}, "存穿过链接"),
     ("files-rename", {"root": root, "from": "up.bin", "to": "out-link/moved.bin"}, "改名到根外"),
-    ("files-copy", {"root": root, "from": "up.bin", "to": "out-link/copied.bin"}, "复制到根外"),
 ]:
     r = A.ask(cmd, args)
     check(not r.get("ok") and code_of(r) in ("refused", "bad_args", "bad_path"),
           f"{cmd} {what} ⇒ 拒（{code_of(r) or '没拒'}）", r)
+# 一组那一条：整组照答，越界的那一项自己记成没做成（码 refused · bad_args · bad_path），不是整组被拒。
+r = A.ask("files-copy", {"root": root, "items": [{"from": "up.bin", "to": "out-link/copied.bin"}]})
+got = outcomes(r)
+check((not r.get("ok") and code_of(r) in ("refused", "bad_args", "bad_path"))
+      or (len(got) == 1 and got[0][0] == "failed" and got[0][1] in ("refused", "bad_args", "bad_path")),
+      f"files-copy 复制到根外 ⇒ 那一项拒（{got or code_of(r) or '没拒'}）", r)
 check(tree(outside) == before_out and not os.path.exists(os.path.join(work, "escape.txt")),
       "根外一个字节没多")
 open(os.path.join(root, "keep.txt"), "wb").write(b"keep\n")
@@ -288,31 +304,43 @@ else:
     payload = os.urandom(300 * 1024)
     open(src, "wb").write(payload)
     dl_root = os.path.join(root, "dl"); os.makedirs(dl_root)
-    r = A.ask("transfer-download", {"dial": dial, "remote_path": src, "local_path": os.path.join(dl_root, "got.bin")})
-    tid = (r.get("data") or {}).get("id")
+    r = A.ask("transfer-download", {"dial": dial, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
+    it = (opened_items(r) or [{}])[0]
+    tid = it.get("id") if it.get("state") == "opened" else None
     s = A.ask("transfer-start", {"id": tid}) if tid else {}
     end = A.transfer_end(tid) if tid and s.get("ok") else None
     check(end and end.get("state") == "done" and open(os.path.join(dl_root, "got.bin"), "rb").read() == payload
           and not [n for n in os.listdir(dl_root) if n.endswith(".part")],
           "transfer-download：落点逐字节对、.part 不留", (r, s, end))
-    # 下载落点是用户自己选的那一条路径（根 = 它的父目录），不收相对路径、不收以 `..` 收尾的那一段。
-    for lp, what in [("rel/x.bin", "相对路径"), (os.path.join(dl_root, ".."), "最后一段是 ..")]:
-        r = A.ask("transfer-download", {"dial": dial, "remote_path": src, "local_path": lp})
-        check(not r.get("ok"), f"transfer-download 落点{what} ⇒ 开单就拒（{code_of(r) or '没拒'}）", r)
+    # 本机落点那一侧先探同名：已在、又没答 ⇒ 一单不开、回 exists 带同名清单（本机那一侧，这里测得到）。
+    r = A.ask("transfer-download", {"dial": dial, "local_dir": dl_root, "items": [{"remote_path": src, "name": "got.bin"}]})
+    names = [c.get("name") for c in ((r.get("data") or {}).get("conflicts") or [])]
+    check(not r.get("ok") and code_of(r) == "exists" and names == ["got.bin"],
+          "transfer-download 落点已有同名、没答 ⇒ exists 带那一项、一单不开", r)
+    # 落点不收相对的目录、不收以 `..` 收尾的落名：整组被拒或那一项没开成，都不许开出单来。
+    for args, what in [({"local_dir": "rel", "items": [{"remote_path": src}]}, "目录是相对路径"),
+                       ({"local_dir": dl_root, "items": [{"remote_path": src, "name": ".."}]}, "落名是 .."),]:
+        r = A.ask("transfer-download", dict(args, dial=dial))
+        items = opened_items(r)
+        refused = not r.get("ok") or (items and all(i.get("state") != "opened" and not i.get("id") for i in items))
+        check(refused, f"transfer-download {what} ⇒ 不开单（{code_of(r) or [i.get('code') for i in items]}）", r)
     check(sorted(os.listdir(dl_root)) == ["got.bin"], "被拒的那几单一个字节没落")
     # 上传：本机一份 → 远端暂存区 → 远端那台沙箱后端提交上位
     local_up = os.path.join(work, "local-up.bin")
     upbody = os.urandom(200 * 1024)
     open(local_up, "wb").write(upbody)
-    r = A.ask("transfer-upload", {"dial": dial, "local_path": local_up})
-    d = r.get("data") or {}
-    s = A.ask("transfer-start", {"id": d.get("id")}) if d.get("id") else {}
-    end = A.transfer_end(d.get("id")) if s.get("ok") else None
+    # 上传先在远端落点探同名（问远端那台的后端 `files-stat`）。本套件的远端只给 sftp、没有后端可问 ⇒ 探不到就当没有同名、照开单；
+    # 「远端已有同名 ⇒ exists 带清单」那一半在这里测不到，由 `control/transfer` 的判据（替身落点）判。这里判开单 · 传 · 提交那一半。
+    rroot = os.path.join(remote_home, "target"); os.makedirs(rroot)
+    r = A.ask("transfer-upload", {"dial": dial, "remote_dir": rroot, "items": [{"local_path": local_up}]})
+    it = (opened_items(r) or [{}])[0]
+    tid = it.get("id") if it.get("state") == "opened" else None
+    s = A.ask("transfer-start", {"id": tid}) if tid else {}
+    end = A.transfer_end(tid) if tid and s.get("ok") else None
     check(end and end.get("state") == "done" and end.get("sha256") == hashlib.sha256(upbody).hexdigest(),
           "transfer-upload：传完、摘要对", (r, s, end))
     B = Backend(remote_home, "remote")
-    rroot = os.path.join(remote_home, "target"); os.makedirs(rroot)
-    rr = B.ask("files-commit-upload", {"root": rroot, "rel": "landed.bin", "key": d.get("key"),
+    rr = B.ask("files-commit-upload", {"root": rroot, "rel": "landed.bin", "key": it.get("staged"),
                                        "overwrite": False, "expect": {"sha256": (end or {}).get("sha256")}})
     check(rr.get("ok") and open(os.path.join(rroot, "landed.bin"), "rb").read() == upbody,
           "远端那台沙箱后端把暂存件提交上位，逐字节对", rr)

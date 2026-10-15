@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.ui.chat.needs.AwaitingStep
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -38,11 +39,13 @@ fun ChatScreen(
     onLoadOlder: () -> Unit = {},
     /** 重发一条失败的消息（传本地 key）。 */
     onRetrySend: (String) -> Unit = {},
+    /** 流里在等的那一步（那张工具卡上标它）。 */
+    awaiting: AwaitingStep? = null,
     /** 需手动那一块（钉条 ＋ 答题抽屉），贴在输入框上方。 */
     needs: @Composable () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize()) {
-        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend)
+        ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend, awaiting = awaiting)
         needs()
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
         ChatInputArea(state = state, actions = actions)
@@ -60,6 +63,7 @@ fun ChatTranscript(
     modifier: Modifier = Modifier,
     onLoadOlder: () -> Unit = {},
     onRetrySend: (String) -> Unit = {},
+    awaiting: AwaitingStep? = null,
 ) {
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -110,6 +114,7 @@ fun ChatTranscript(
             onCopyCode = { clipboard.setText(AnnotatedString(it)) },
             onRetrySend = onRetrySend,
             trailer = { liveCards(state.live) },
+            stepBadge = { id -> awaiting?.takeIf { it.call == id }?.text },
         )
 
         state.failedWhy?.let {

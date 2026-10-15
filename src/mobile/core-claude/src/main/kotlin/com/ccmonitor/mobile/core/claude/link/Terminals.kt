@@ -41,6 +41,12 @@ object TerminalsList {
             Row(t.terminal, t.name, t.title, attached = t.clients.isNotEmpty(), agent = t.session?.agent, sid = t.session?.sid)
         }
 
+    /** 里面跑着 [sid] 那条会话的那一行（名单上的 `session.sid`，那台认的）；没有 ⇒ `null`。 */
+    fun holding(
+        rows: List<Row>,
+        sid: String,
+    ): Row? = rows.firstOrNull { it.sid == sid }
+
     /** 名字一模一样的那一行的句柄；没有 ⇒ `null`。 */
     fun handleOf(
         rows: List<Row>,

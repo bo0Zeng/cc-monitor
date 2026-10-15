@@ -694,7 +694,7 @@ private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
     val got by androidx.compose.runtime.produceState(emptyList<AgentFacts>(), hostId) {
         if (hostId == null) return@produceState
         val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap(), AGENTS_MS)
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }.orEmpty()
+        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data)?.agents }.orEmpty()
     }
     return got
 }
