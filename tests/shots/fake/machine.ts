@@ -2,7 +2,6 @@
  * 机器与设置那一族的合成答法：后端状态、ccm 入口、ssh 配置、tmux、足迹、数据位置、日志 …
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
-import { hms } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
@@ -156,60 +155,6 @@ export function machineOps(): Record<string, OpHandler> {
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),
       reach: w.machines.slice(1).map((origin) => ({ origin, machine: null })),
     }),
-    // 画面带颜色段（列按字符计，同后端）：边框与说明暗、工具名粗、路径蓝、「Building…」那一行橙（真彩，同 Claude Code 自己的色）、「accept edits」品红。
-    "terminal-preview": () => ({
-      lines: (
-        [
-          ["● Bash(pytest -q)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
-          ["  ⎿  213 passed in 9.41s", [{ from: 2, to: 24, fg: "bright-black" }]],
-          ["", []],
-          ["● Bash(npm run build)", [{ from: 0, to: 1, fg: "green" }, { from: 2, to: 6, bold: true }]],
-          ["  ⎿  Running…", [{ from: 2, to: 13, fg: "bright-black" }]],
-          ["     vite v6.2.0 building for production...", [{ from: 5, to: 43, fg: "bright-black" }]],
-          ["     transforming (812) src/orders/client.ts", [{ from: 5, to: 24, fg: "bright-black" }, { from: 24, to: 44, fg: "blue" }]],
-          ["     ✓ 812 modules transformed.", [{ from: 5, to: 6, fg: "green" }]],
-          ["", []],
-          ["✶ Building… (14s · ↑ 1.2k tokens · esc to interrupt)", [{ from: 0, to: 11, fg: "#d97757" }, { from: 12, to: 52, fg: "bright-black" }]],
-          ["", []],
-          ["╭──────────────────────────────────────────────╮", [{ from: 0, to: 48, fg: "bright-black" }]],
-          ["│ >                                            │", [{ from: 0, to: 1, fg: "bright-black" }, { from: 47, to: 48, fg: "bright-black" }]],
-          ["╰──────────────────────────────────────────────╯", [{ from: 0, to: 48, fg: "bright-black" }]],
-          ["  ⏵⏵ accept edits on (shift+tab to cycle)", [{ from: 2, to: 20, fg: "magenta" }, { from: 21, to: 41, fg: "bright-black" }]],
-        ] as [string, object[]][]
-      ).map(([text, spans]) => ({ text, spans })),
-      screen: "00000000000000a1",
-      captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
-      captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
-    }),
-    // 终端名单：每个没结束的会话一个 tmux 终端；第一个会话有一个终端窗口连着，别的在后台。
-    "terminals-list": (o, _r, w) => ({
-      complete: true,
-      terminals: w.sessions
-        .filter((x) => !x.ended && !x.outsideTmux && x.origin === o)
-        .map((x, i) => {
-          const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
-          return {
-            terminal: `tmux-${name}`,
-            host: "tmux",
-            tmux_name: name,
-            title: name,
-            program: "claude",
-            cwd: x.cwd,
-            session: { sid: x.sid, agent: "claude" },
-            started_by: { client: "ccm", mine: true },
-            clients: i === 0 ? [{ kind: "terminal-window", since: 1_700_000_000, last_activity: 1_700_000_100 }] : [],
-            input: "shared",
-            state: "running",
-            last_activity: 1_700_000_100,
-            can: { input: true, end: true },
-          };
-        }),
-    }),
-    "terminal-input": () => ({ result: "delivered" }),
-    // 终端实时画面：订上 · 回执 · 退订都答好（画面那一格由假后端的订阅推，`backend.ts`）。
-    "terminal-follow": () => ({}),
-    "terminal-follow-ack": () => ({}),
-    "terminal-unfollow": () => ({}),
     // 文件与数据：devbox 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
     // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。
@@ -285,14 +230,6 @@ export function machineOps(): Record<string, OpHandler> {
         ],
       };
     },
-    "sessions-where": (_o, req, w) => ({
-      results: (req.sids as string[]).map((sid) => {
-        const s = w.sessions.find((x) => x.sid === sid);
-        if (!s || s.ended) return { sid, standing: "none", names: [], terminals: [] };
-        const name = `cc-${s.cwd.split(/[/\\]/).pop()}`;
-        return { sid, standing: s.idle ? "idle" : "running", names: [name], terminals: [{ host: "tmux", terminal: `tmux-${name}` }] };
-      }),
-    }),
   };
 }
 

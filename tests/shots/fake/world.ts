@@ -10,6 +10,7 @@ import { machineCommands, machineOps } from "./machine";
 import { ACCOUNTS } from "./ops";
 import { blankDisk, putAccounts, putMcp, type LiveSession, type MachineDisk } from "../disk";
 import { putProfiles } from "../disk/profiles";
+import { CLAUDE_SCREEN } from "../disk/screen";
 
 export const LOCAL = "<local>";
 export const REMOTES = ["devbox", "gpu-01", "win-laptop"];
@@ -221,7 +222,7 @@ export function defaultWorld(): World {
 /** claude 在 pidfile 里写的原词（`agents/claudecode/pidfile.rs` 认的那一套）。 */
 const PIDFILE_STATUS = { working: "busy", needs_you: "waiting", idle: "idle", background_work: "shell" } as const;
 
-/** 一个会话的替身怎么配（`real/pool.mjs`）：活着的写 pidfile；已结束的开页之后收场；可重连的只留挂着标签的那个 tmux 窗格。 */
+/** 一个会话的替身怎么配（`real/pool.mjs`）：活着的写 pidfile；已结束的开页之后收场；可重连的只留挂着标签的那个 tmux 窗格；住在 tmux 里的窗格印着 Claude Code 那一屏。 */
 export function liveOf(s: SessionSpec): LiveSession {
   // 进程起在它记录的第一条之前（pidfile 的 `startedAt`）：缺省是开页那一刻，记录里更早起的后台命令就被后端当成上一个进程留下的、不算。
   const first = s.convo?.firstAt;
@@ -231,7 +232,7 @@ export function liveOf(s: SessionSpec): LiveSession {
     ...(first !== undefined ? { startedAt: first - 5_000 } : {}),
     kind: s.background ? "bg" : "interactive",
     ...(s.name ? { name: s.name } : {}),
-    ...(s.outsideTmux ? { tmux: false as const } : {}),
+    ...(s.outsideTmux ? { tmux: false as const } : { screen: CLAUDE_SCREEN }),
     ...(s.activity ? { status: PIDFILE_STATUS[s.activity] } : {}),
     ...(s.waitingFor ? { waitingFor: s.waitingFor } : {}),
     ...(s.waitingSinceMs ? { statusUpdatedAt: s.waitingSinceMs } : {}),
@@ -257,7 +258,11 @@ export function diskOf(w: World): Record<string, MachineDisk> {
         Object.assign(files, s.convo.files());
         Object.assign(mtimes, s.convo.mtimes());
       }
-      return [m, { ...d, files, mtimes, live: [...d.live, ...mine.map(liveOf)] }];
+      // 每台头一个住在 tmux 里的会话连着一个终端窗口，别的在后台。
+      const live = mine.map(liveOf);
+      const shown = live.find((l) => l.tmux !== false && l.fate !== "ended");
+      if (shown) shown.windows = 1;
+      return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
     }),
   );
 }
