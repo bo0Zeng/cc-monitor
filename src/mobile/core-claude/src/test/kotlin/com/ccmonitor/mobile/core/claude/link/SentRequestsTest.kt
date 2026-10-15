@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -34,7 +35,8 @@ class SentRequestsTest {
             FilesStat.COMMAND to listOf(FilesStat.args(bin)),
             FilesWriteText.COMMAND to listOf(FilesWriteText.args(dir, bin, "x", SHA)),
             HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
-            HistoryList.COMMAND to listOf(null),
+            HistoryAnnotate.COMMAND to listOf(HistoryAnnotate.hide("s", Hide.ON), HistoryAnnotate.hide("s", Hide.OFF), HistoryAnnotate.hide("s", null)),
+            HistoryList.COMMAND to listOf(HistoryList.args(false), HistoryList.args(true)),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
             HistoryTail.COMMAND to listOf(HistoryTail.args("/p/s.jsonl", 50)),
             Kill.COMMAND to listOf(Kill.args("demo")),

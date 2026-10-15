@@ -59,9 +59,7 @@ class ConversationsViewModel(
     private val showHidden = MutableStateFlow(false)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs, combine(cached, backend.deploying, showHidden, ::Triple)) { link, table, l, n, (c, d, h) ->
-            view(link, table, l, n, needsAt, c, d, h)
-        }
+        combine(backend.state, backend.table, list, needs, combine(cached, backend.deploying, showHidden, ::Triple)) { link, table, l, n, (c, d, h) -> view(link, table, l, n, needsAt, c, d, h) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
