@@ -117,13 +117,6 @@ export function machineOps(): Record<string, OpHandler> {
         { id: "fwd-2", origin: "gpu-01", localPort: 16006, remoteHost: "localhost", remotePort: 6006, state: "running", connCount: 0 },
       ],
     }),
-    "ssh-config-import": () => ({
-      groups: [
-        { label: "devbox", host: "192.0.2.11", port: 22, user: "user", keyPath: null, addresses: ["devbox.example.com:22"], jump: null, members: [{ alias: "devbox", host: "192.0.2.11", port: 22, proxyJump: null }, { alias: "devbox-wan", host: "devbox.example.com", port: 22, proxyJump: null }], inList: true },
-        { label: "build-02", host: "192.0.2.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "192.0.2.31", port: 2222, proxyJump: "bastion" }], inList: false },
-        { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
-      ],
-    }),
     // 接入那一格：~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（链接那一条恒是你写的生效）。
     "aliases-read": () => ({
       home: HOME,
@@ -145,9 +138,6 @@ export function machineOps(): Record<string, OpHandler> {
           blockLines: 4,
         },
       ],
-    }),
-    "aliases-block-render": () => ({
-      text: '# === cc-monitor remote ccm BEGIN v2 ===\nexport PATH="$HOME/.cc-monitor/bin:$PATH"\nif [ -r "$HOME/.cc-monitor/aliases.sh" ]; then . "$HOME/.cc-monitor/aliases.sh"; fi\n# === cc-monitor remote ccm END ===',
     }),
     "ccm-print": () => ({ line: "cd ~ && exec claude" }),
     "assets-sync": (_o, _r, w) => ({

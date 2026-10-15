@@ -281,6 +281,8 @@ export function backendPool({ repo, sandbox }) {
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
     };
+    const passwd = path.join(dir, "passwd");
+    writeFileSync(passwd, `root:x:0:0:root:/root:/bin/sh\nuser:x:${process.getuid()}:${process.getgid()}:user:${H}:/bin/sh\n`);
     const box = [
       "--ro-bind", "/", "/",
       "--tmpfs", "/home",
@@ -288,6 +290,10 @@ export function backendPool({ repo, sandbox }) {
       "--bind", path.join(dir, "tmux"), `${H}/.shots-tmux`,
       "--bind", path.join(dir, "run"), `${H}/.shots-run`,
       "--tmpfs", "/tmp",
+      // 系统那一份 ssh 配置不进来；账号表只有沙箱里这一个用户（`ssh -G` 照账号表找家目录与缺省用户名：
+      // 读的是台架盘上的 `~/.ssh/config`、缺省用户名是 `user`，不随跑截图那台机器变、不带出它的登录名）。
+      "--tmpfs", "/etc/ssh",
+      "--ro-bind", passwd, "/etc/passwd",
       "--ro-bind", bin, "/tmp/ccm-shots/cc-monitor-backend",
       "--dev", "/dev",
       // 自成一个进程命名空间：沙箱的头一个进程一退（壳杀那一台 · 台架收场），替身与 tmux 跟着全没。

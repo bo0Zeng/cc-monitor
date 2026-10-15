@@ -268,6 +268,24 @@ export function diskOf(w: World): Record<string, MachineDisk> {
 }
 
 /** 每台一样的账号库（`ops.ts::ACCOUNTS`）。额度账 · 轮换账本缺省没有（中转还没见过回包）。 */
+const SSH_CONFIG = [
+  "Host devbox",
+  "  HostName 10.0.0.11",
+  "  User user",
+  "Host devbox-wan",
+  "  HostName devbox.example.com",
+  "  User user",
+  "Host build-02",
+  "  HostName 192.0.2.31",
+  "  Port 2222",
+  "  User ci",
+  "  ProxyJump bastion",
+  "Host bastion",
+  "  HostName bastion.example.com",
+  "  User user",
+  "",
+].join("\n");
+
 export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
   return Object.fromEntries(
     machines.map((m) => {
@@ -275,6 +293,8 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
       putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
       // 设置窗「别名与配置文件」那一页（devbox）：一台典型机器的配置文件。
       if (m === "devbox") putProfiles(d, "normal");
+      // 本机的 ~/.ssh/config（「从 ~/.ssh/config 选」那一页：真后端逐个 `ssh -G`）：devbox 两个别名并成一组、与机器表里那台同址（已在列表）· build-02 经 bastion 跳。用户名都写明（不落到跑截图那台的登录名）。
+      if (m === LOCAL) d.files[".ssh/config"] = SSH_CONFIG;
       // 扩展页 MCP 那几张：本机与 devbox 用户级配了 github；本机两个号 8 分钟前连它碰到要登录（devbox 那边的断开是活会话 4 说的）。
       if (m === LOCAL || m === "devbox") {
         const at = Date.now() - 8 * 60_000;

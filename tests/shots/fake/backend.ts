@@ -65,6 +65,10 @@ export const REAL_OPS = new Set([
   "terminal-follow-ack",
   "terminal-unfollow",
   "sessions-where",
+  // 「从 ~/.ssh/config 选」：真后端读台架盘上那一份、逐个 `ssh -G`（沙箱里没有系统那一份 ssh 配置）。
+  "ssh-config-import",
+  // 别名块预览（往一份空文件里装一次会写成什么）：真后端照那份启动文件的方言写。
+  "aliases-block-render",
 ]);
 
 /**
