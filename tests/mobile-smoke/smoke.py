@@ -212,6 +212,19 @@ def type_key(key):
     """把整把私钥敲进「粘贴那段私钥」那一格，敲完读回框里的字逐字核：输入法偶尔把一行 base64 换成词（实测过），
     对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
     want = "\n".join(key)
+    # 先把屏上键盘停掉：没有输入法时 `input text` 的按键直接进框，联想 · 纠错插不进来（停不掉也照敲，读回照核）。
+    ime = adb("shell", "settings", "get", "secure", "default_input_method").strip()
+    if ime and ime != "null":
+        adb("shell", "ime", "disable", ime)
+    try:
+        _type_key(key, want)
+    finally:
+        if ime and ime != "null":
+            adb("shell", "ime", "enable", ime)
+            adb("shell", "ime", "set", ime)
+
+
+def _type_key(key, want):
     for _ in range(3):
         for line in key:
             typed(line)
@@ -226,7 +239,8 @@ def type_key(key):
         adb("shell", "input", "keycombination", "113", "29")
         adb("shell", "input", "keyevent", "67")
         time.sleep(1)
-    raise Step.Fail(f"钥匙敲不进框里（三回都与原文不一致：{got[:120]!r}）")
+    bad = next((f"第 {i + 1} 行 {g!r}" for i, (w, g) in enumerate(zip(want.split("\n"), got.split("\n"))) if w != g), "行数不一样")
+    raise Step.Fail(f"钥匙敲不进框里（三回都与原文不一致：{bad[:160]}）")
 
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
