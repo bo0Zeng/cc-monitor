@@ -107,6 +107,8 @@ def commands_after(t0):
             at = time.mktime(time.strptime(day + hms, "%Y-%m-%d %H:%M:%S")) + float("0." + frac)
         except ValueError:
             continue
+        if at > time.time() + 60:  # 记录只带时分秒：比此刻还晚的是前一天的（台架跨了零点）
+            at -= 86400
         if at >= t0:
             out.append((at, cmd))
     return out
@@ -232,10 +234,10 @@ def prepare():
     tap(t("mobKit.act.back")); time.sleep(1)
     smoke.add_host("devbox")
     smoke.drawer(t("mobDrawer.item.chats"))
-    if not (wait(t("history.section.today"), 40) or wait(t("history.list.empty"), 5)):
+    if not wait_listed(45):
         raise Red("对话列表没出来（没连上）")
     smoke.drawer(t("mobDrawer.item.newChat"))
-    tap(t("mobChat.input.placeholder")); smoke.typed(f"{D} start")
+    tap(t("chat.input.placeholder")); smoke.typed(f"{D} start")
     smoke.hide_keyboard()
     tap(t("mobChat.input.send"))
     if not wait(f"替身收到：{D} start", 60):
@@ -523,7 +525,7 @@ def add_host_via(name, host, port, jump=None):
     """加一台机器：地址 · 口 · 钥匙 smoke；jump ＝ 经哪一台已加的机器跳（屏上那一行「名字 (地址)」）。存完落在它的新建会话屏。"""
     smoke.to_chat()
     smoke.drawer(t("mobDrawer.server.named", name=""))
-    tap("+")
+    tap(t("mobHosts.fab.aria"))
     time.sleep(1.5)
     tap(t("mobHostEdit.field.name")); smoke.typed(name)
     tap(t("mobHostEdit.field.host")); smoke.typed(host)
@@ -614,13 +616,13 @@ def item5():
     title = f"{D} slow"
     # 对话列表出来 ＝ 常驻流接上了（新建会话屏只在打开那一刻问一次那台，没接上就停在「离线」，不拿它判）。
     smoke.drawer(t("mobDrawer.item.chats"))
-    ready = wait(t("history.section.today"), 180)
+    ready = wait_listed(180)
     up_at = time.time() - t0 if ready else None
     answered = None
     if ready:
         smoke.drawer(t("mobDrawer.item.newChat"))
         wait("Claude Code", 60)
-        tap(t("mobChat.input.placeholder")); smoke.typed(title)
+        tap(t("chat.input.placeholder")); smoke.typed(title)
         smoke.hide_keyboard()
         tap(t("mobChat.input.send"))
         answered = till_visible(f"替身收到：{title}", t0, 180)
@@ -744,8 +746,21 @@ def back_by_itself(label, ready):
     return got
 
 
+# 对话列表出来了：照分区标题认（台架家里的会话跨了日子就不在「今天」那一格）· 或者「没有对话」那一句。
+LISTED = [t(f"history.section.{k}") for k in ("today", "yesterday", "week", "month")] + [t("history.list.empty")]
+
+
 def listed():
-    return ui.find(t("history.section.today")) is not None or ui.find(t("history.list.empty")) is not None
+    return any(ui.find(w) is not None for w in LISTED)
+
+
+def wait_listed(secs):
+    end = time.time() + secs
+    while time.time() < end:
+        if listed():
+            return True
+        time.sleep(1)
+    return False
 
 
 def item7():
@@ -753,9 +768,9 @@ def item7():
     try:
         # ① 落地那一屏（新建会话那一张）：断着网读不到那台 ⇒ 那一句；网回来那一句自己消失、还在这一屏。
         cold_offline()
-        if ui.find(failed) is None:
+        if not wait(failed, WITHIN):
             raise Red("断着网冷启动，落地那一屏没说读不到那台（没断成，或落地不在新建会话）")
-        landed = back_by_itself("落地那一屏的新建会话信息", lambda: ui.find(failed) is None and ui.find(t("mobChat.input.placeholder")) is not None)
+        landed = back_by_itself("落地那一屏的新建会话信息", lambda: ui.find(failed) is None and ui.find(t("chat.input.placeholder")) is not None)
         # ② 断着网时进对话列表：网回来列表自己出来。
         cold_offline()
         smoke.drawer(t("mobDrawer.item.chats"))

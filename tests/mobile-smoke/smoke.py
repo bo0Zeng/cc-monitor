@@ -75,6 +75,15 @@ def tap(text, nth=0, must=True):
     return True
 
 
+# 文件屏一问（提交上传 · 列目录）的期限（秒，产品里的数）。
+FILES_ASK_S = 20
+
+
+def busy():
+    """屏上有一条忙线（进度条）在：文件屏在等那台回话。"""
+    return any(n.get("class") == "android.widget.ProgressBar" for n in ui.nodes())
+
+
 def wait(text, secs=30):
     end = time.time() + secs
     while time.time() < end:
@@ -101,7 +110,9 @@ def shot(name):
 
 
 def launch(fresh=False):
-    adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+    # `am start -W` 等到那一屏画出第一帧才回（事件）：机器忙时冷启动要几十秒，之后再找字不按秒数猜。
+    adb("shell", "am", "start", "-W", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
+        "-n", f"{PKG}/.MainActivity")
     if fresh:
         if not wait(t("mobDrawer.server.bare"), 20):
             raise Step.Fail("App 没起来")
@@ -443,8 +454,15 @@ def files_page():
         time.sleep(1)
     if time.time() >= end:
         raise Step.Fail("上传没落到那台")
-    if not wait(up, 10):
-        raise Step.Fail("上传完列表里没有它")
+    # 落到那台之后手机还要等提交那一问回话、再重列一次（各一问，期限各 20 秒、在产品里），两问都在路上时屏上那条忙线不收：
+    # 等它收（＝回包到了、重列完了）再看列表，不按秒数猜机器多快。
+    end = time.time() + 2 * FILES_ASK_S
+    while time.time() < end and busy():
+        time.sleep(1)
+    if busy():
+        raise Step.Fail("上传落到那台之后，提交 · 重列两问的期限都过了，忙线还在")
+    if ui.find(up) is None:
+        raise Step.Fail("上传完、重列也回来了，列表里没有它")
 
 
 # 轮换屏那一步用的两份策略（合成的：照号牌顺序用；一格「权重容差」）。写进台架家里的策略目录（不是真家目录）。
