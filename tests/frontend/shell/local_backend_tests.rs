@@ -811,7 +811,7 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 ///
 /// 〔`D2 §G-1` 的陈账，09-01 收 —— 此前只写在件文件里，**被守对象这一侧一个字都没有**。〕
 /// 本条由 `#[cfg(embedded_backends)]` 门着。**实测的现象**（`D2` 复审 09-01，我没重打，
-/// 住址 `audits/K-R7-D2.md#§G-1`）：同一个 `CARGO_TARGET_DIR` 里把
+/// 当时实测）：同一个 `CARGO_TARGET_DIR` 里把
 /// `src/frontend/shell/embedded-backends/` 从「无」加成「有」，**`build.rs` 不重跑** ⇒
 /// 读出的是「无 emb」那一档的数（`1208/0/10`），`touch build.rs` 之后才是 `1211/0/11`。
 /// ⚠⚠ **两档的输出面长得一模一样，这个坑看不出来。**
@@ -1098,7 +1098,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 // 🔴 `K-R69` / `KR69D1`：**本机那条 `ccm` 入口，与远端那条同源**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 要求：「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
+/// 要求：「不要的三样：③ 与后端重复的第二份字节」·「旧文件清」。
 /// 真跑一趟 `resolve_or_extract`（字节只有内嵌那一个来源）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节。
 #[test]
 fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {

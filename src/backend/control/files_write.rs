@@ -701,7 +701,7 @@ pub fn change_mode_reporting(
 ///   Windows 臂照旧就地写（`swap_in` 自己那一支，保 ACE —— 认过）。
 /// 🔴上面前两格代价**不认**：目标 `nlink > 1`（有硬链接）或属主不是后端这个用户 ⇒
 ///   **退回就地写**（保住硬链接与属主），并记一行「这一次不是原子写，因为 …」（[`in_place_reason`]）。
-///   xattr / ACL 不跟过来那一格仍是已知代价（记录 `HX1.md` §6）。
+///   xattr / ACL 不跟过来那一格仍是已知代价。
 pub fn overwrite_text(
     face: &Face,
     root: &Path,

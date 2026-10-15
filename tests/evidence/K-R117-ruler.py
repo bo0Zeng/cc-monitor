@@ -118,7 +118,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 这里原来是 `ccm.install` / `ccm.uninstall` / `ccm.install-ui` 三格（归 ①，理由逐字
     #   「`ccm` 就是后端的 CLI 入口 …… ⇒ 装 ccm 与装后端是同一个动作」）。MC1 之后那三条命令装 / 卸 / 预览的是
     #   **别名块**（`install_remote_alias_block` · `aliases_block_*`），入口那一半并进了「部署后端」按钮 ⇒ 按
-    #   改名改归 ②，住下面 ② 那一段（`AL1d.md §5` 第 2 条）。
+    #   改名改归 ②，住下面 ② 那一段。
     # 🔴 `K-R135`（`R85`/`R87`/`R88`）：用户级 PATH 那一格（现在状态 · 加 · 撤）。
     # 归 ① 而不是 ②：② 是「生成 rc 片段**让用户自己填**」，而这一格是**用户点一下、产品就执行**
     # （`R85` 逐字「应该让用户手动点击加，也能管理删除」）。它是「装 ccm」这件事的**后半** ——
@@ -311,7 +311,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
 #    而本区最贵的病正是「数与名单不同句」。⇒ 这里**只钉名单**，份数一律 `len()` 现算，
 #    表里一个基数字面量都不许有。
 #
-# 🔴 **它挡路的时候，合法出路只有一条**（`references/testing.md` 判据硬规则 11/12）：
+# 🔴 **它挡路的时候，合法出路只有一条**：
 #    S1–S5 哪一件把自己那一组的落点收掉了，**同一拍**把那一件那一行的名单改小 ——
 #    「降不动就是没做完」。**不许改成 `<=`、不许把名单改大来让今天好过。**
 #    ⇒ 重裁落点逐行写在第三栏。
@@ -371,7 +371,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
 #    ⇒ `K-R131` 把目标收成**一处住址**：下面这三张表。**散文里不许再出现第二份目标。**
 #
 # 🔴 **「全盘目标」这个数的出处**（`KR131D1`：现打出处，不许说「大家都这么写」）：
-#    `DECISIONS.md#R63` **裁定三**〔`src: 用@09-13`，用户逐字〕——
+#    用户原话 ——
 #      「现在应该只有安装后端, 以及bash命令等等 / 然后就是安装mcp功能\skill等等 /
 #        不要拆成什么多个」
 #    ⇒ R63 裁定三把它落成三条：一处「安装后端」· 一处「生成 bash/PowerShell 那段让用户
@@ -488,7 +488,7 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 #
 #   · `src-tauri/src/parity_ledger.rs` —— 🔴 **本尺子判不了，而且是结构性的**：
 #     那 22 条命令名**就是从这份文件解析出来的**（`parse_ledger`）⇒ 拿它回头判这份文件
-#     恒真，是教科书式的空真（`references/testing.md` 判据硬规则 7）。
+#     恒真，是教科书式的空真。
 #     **它的闸在别处**：`§S5c` 的闭集判定 —— 在 `parity_ledger.rs` 里改掉一个命令名，
 #     现打人群就变了，而 `SPLIT_GROUPS` 是**字面量名单**、不会跟着变 ⇒ `R8a` 两向点名当场红。
 #     ⇒ 这一份**有闸，只是闸不在本节**。本节逐字印出这句话，别让它读成「三份都判了」。
@@ -998,7 +998,7 @@ def section_frontend_goal_closure():
       `R11d` `FRONTEND_GOAL_PER_ITEM` 的键集 == `SPLIT_GROUPS` 的键集（两向）——
              新切出一组而没给它目标，或给一个不存在的组写目标，都当场红。
 
-    ⚠ **诚实边界（`references/testing.md` 判据硬规则 10）：这一节只读本文件自己的三张表，
+    ⚠ **诚实边界：这一节只读本文件自己的三张表，
       一行被测树都不读。** ⇒ 它**够不着**「目标定得对不对」，也**不会**因为产品代码变了而红；
       它买到的只有一样：**这四条算术关系没人能悄悄写歪**。
       「目标定得对不对」是人的判断，依据逐条写在表的第三栏里（同 `CAP_ARCHIVE` 的 `B1` 口径）。
@@ -1008,7 +1008,7 @@ def section_frontend_goal_closure():
     print(head("§S5f 收工目标的算术闭合"))
     print("  🔴 **目标只许有一处住址** —— 就是这三张表。`FRONTEND_PIN` 第三栏只写"
           "「谁来改」，不写目标；散文里再出现一份目标就是 `K-R131` 治的那个病本身。")
-    print(f"  全盘目标（`FRONTEND_GOAL_OVERALL`，出处 `DECISIONS.md#R63` 裁定三）"
+    print(f"  全盘目标（`FRONTEND_GOAL_OVERALL`）"
           f"**{len(FRONTEND_GOAL_OVERALL)} 处**：")
     for f, (place, why_id, why) in FRONTEND_GOAL_OVERALL.items():
         print(f"    {place:<34s}{f}")

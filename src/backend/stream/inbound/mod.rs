@@ -824,7 +824,7 @@ mod caps_tests;
 mod machine_family_tests;
 
 // 退出排空的判据（闸本体 · 真子进程 ＋ 真信号 · 接线）。
-// 〔p3q 门禁 winchk-backend 红后补〕判据里用了 `std::os::unix` / `libc::kill` / FIFO —— 只在 unix 上编；Windows 那一形的排空没量（HX1.md 买不到）。
+// 〔p3q 门禁 winchk-backend 红后补〕判据里用了 `std::os::unix` / `libc::kill` / FIFO —— 只在 unix 上编；Windows 那一形的排空没量。
 #[cfg(all(test, unix))]
 #[path = "../../../../tests/backend/stream/drain_tests.rs"]
 mod drain_tests;

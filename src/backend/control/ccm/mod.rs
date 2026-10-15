@@ -711,7 +711,7 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 /// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
 /// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
-/// `detach` / `tmux-size` / `tmux-base` / `bus-register` …（`RT1.md §8` F7），而那几条在 Windows 上
+/// `detach` / `tmux-size` / `tmux-base` / `bus-register` …，而那几条在 Windows 上
 /// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
 /// [`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
 /// （「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。

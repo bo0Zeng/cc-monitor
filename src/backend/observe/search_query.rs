@@ -234,7 +234,7 @@ fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> 
 }
 
 /// 〔第一问〕后端一起来就后台建索引（一条一次性线程，不是定时器；建完就退）。
-/// 只在内存（理由同 `SX1.md §1`，不落盘）；远端流后端与本机常驻后端同一个调用点（`main.rs`）。
+/// 只在内存（不落盘：搜索结果随进程走，重开就重算）；远端流后端与本机常驻后端同一个调用点（`main.rs`）。
 pub fn warm_in_background(agent_home: PathBuf) {
     let spawned = std::thread::Builder::new()
         .name("search-warm".into())

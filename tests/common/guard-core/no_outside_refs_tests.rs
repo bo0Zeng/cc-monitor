@@ -13,10 +13,10 @@
 //! 第二张网（施工说法）：开发过程的阶段名「第 N 波」与施工记录名 `4d-…`。同一个人群，命中集 == ∅；
 //! 测试声明行（`it(` · `test(` · `describe(` · `bench(` 打头）不扫 —— 测试名不改。
 //!
-//! 第三张网（只报不拦）：仓里没有的那份 `.md` · 工单 / 裁决编号 · 指向已摘掉的代码全景目录。
+//! 第三张网（只报不拦）：工单 / 裁决编号 · 指向已摘掉的代码全景目录（仓里没有的 `.md` 已清到零、并进了 `net()`）。
 //! 今天存量太大，它只把命中清单与数打出来（`cargo test -p guard-core --lib unblocked -- --nocapture`），
 //! 不让门禁红；它自己的合成夹具照样判网眼有没有坏。
-//! 什么时候改成拦：产品代码（`src/`）与 `src/doc` 里这三形清到零的那个提交里，把三眼并进 `net()`，
+//! 什么时候改成拦：产品代码（`src/`）与 `src/doc` 里这两形清到零的那个提交里，把两眼并进 `net()`，
 //! 本条改成命中集 == ∅（测试与 `tests/evidence/` 同拍清，或那时按目录分两步收）。
 //!
 //! 第五张网（施工过程的叫法）：派活的那一方 · 施工分支与合并分支的代号 · 带日期的「用户 MM-DD」· 「合并」那棵树 ·
@@ -49,7 +49,9 @@ pub(super) fn repo() -> PathBuf {
 
 /// 词表：点名仓外东西的那几类词 `(类, 前半, 后半)`，并进 [`net`]。每个词拆两段、运行期拼；词边界一律写成 ASCII 字符类（`\b` 认 Unicode，整张网会掉出快路径、慢四十倍）；那个单字用 `\x{7A3F}` 写，说明里也不写出它。
 /// - 设计：那个单字（`\x{7A3F}`：设计的名字 · 节号 · 照着它做 · 它上面画的）。放过不指设计的合成词：草～ · 定～ · 初～ · 旁～ · 底～ · 手～ · 原～ · 文～ · 投～ · 弃～ · ～纸；
-/// - 设计文件名：汉字打头的 `.md`（`hdoc` 组）。名字是仓里一份 `.md` 的放过（与 `doc` 组同一口径），产品自己的盘上文件名与夹具里用户的文件名（[`NOT_A_POINTER_HAN_MD`]）放过；
+/// - 仓里没有的 `.md`（`mdoc` 组）：按名字去仓里找，跟踪着的 `.md` 里没有这个名字就算指向仓外。带目录的只看最后一段；
+///   紧挨引号 · 点 · 反斜杠的不算（字符串里的夹具文件名 · `tokens.spacing.md` 这类代码）；别的程序的 · 本仓现生成的 ·
+///   产品盘上的与夹具里用户的文件名（[`NOT_A_POINTER_MD`]）放过；
 /// - 调查记录 · 派活单（「任务」＋「书」· 带反引号的那个英文词 · 带连字符的文件名）· 草稿目录 · 本机路径（开发记录住的那个目录）；
 /// - 施工说法：「主会话」＋「批」· 「题」＋「面」（「主会话」＋「定」归第五张网）；
 /// - 设计规范编号：「规」＋「范」后面紧跟条目编号或 §（产品里说「规范化」「按规范」的不算）。
@@ -60,9 +62,9 @@ pub(super) fn repo() -> PathBuf {
 const OUTSIDE_WORDS: &[(&str, &str, &str)] = &[
     ("设计", "(^|[^草定初旁底手原文投弃])", r"\x{7A3F}([^纸]|$)"),
     (
-        "设计文件名",
-        r"(?P<hdoc>\p{Han}[\p{Han}A-Za-z0-9_-]*)\.",
-        "md",
+        "仓里没有的 .md",
+        r#"(^|[^A-Za-z0-9_."'\\\p{Han}-])(?P<mdoc>\p{Han}[\p{Han}A-Za-z0-9_-]*|[A-Za-z0-9_][A-Za-z0-9_-]+)\."#,
+        r#"md([^A-Za-z0-9_"']|$)"#,
     ),
     ("调查记录", "调", "研"),
     ("派活单", "\u{4efb}\u{52a1}", "书"),
@@ -77,10 +79,23 @@ const OUTSIDE_WORDS: &[(&str, &str, &str)] = &[
     ("设计规范编号", "规", r"范 ?(`?[A-Z][0-9]|§)"),
 ];
 
-/// 形状像设计文件名、却不是指路的汉字 `.md`：计划功能在工作区里读写的那几份（图 · 排期 · 签收）·
-/// 夹具里用户自己的文件（笔记 · 任务）。
-const NOT_A_POINTER_HAN_MD: &[&str] =
-    &["图", "排期", "\u{7b7e}\u{6536}", "笔记", "\u{4efb}\u{52a1}"];
+/// 形状像「仓里没有的 `.md`」、却不是指路的名字。
+const NOT_A_POINTER_MD: &[&str] = &[
+    "CLAUDE",       // Claude Code 读的项目说明
+    "AGENTS",       // Codex 读的项目说明
+    "RELEASE_BODY", // 发版流水线现生成的 Release 正文
+    // 计划功能在工作区里读写的那几份
+    "图",
+    "排期",
+    "\u{7b7e}\u{6536}",
+    // 夹具里用户自己的文件
+    "笔记",
+    "\u{4efb}\u{52a1}",
+    "notes",
+    "users-own",
+    "config",
+    "three",
+];
 
 /// 检测网。每个网眼拆两段、运行期拼 ⇒ 本文件里没有一处完整的网眼。
 /// `doc` 组是「大写打头、带连字符的名字 ＋ §」那一眼：名字是仓里一份 `.md` 的就放过。
@@ -212,12 +227,8 @@ fn first_process_word(net: &Regex, line: &str) -> Option<usize> {
     net.find(&scrubbed).map(|m| m.start())
 }
 
-/// 第三张网的三形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
-fn unblocked_eyes() -> [(&'static str, Regex); 3] {
-    let md = format!(
-        r"(?:^|[^A-Za-z0-9_./-])(?P<md>[A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*)\.{}\b",
-        "md"
-    );
+/// 第三张网的两形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
+fn unblocked_eyes() -> [(&'static str, Regex); 2] {
     let ticket = [
         (r"\bK-", r"R\d+"),
         (r"\bKR\d+", r"D\d+\b"),
@@ -230,7 +241,6 @@ fn unblocked_eyes() -> [(&'static str, Regex); 3] {
     .map(|(a, b)| format!("{a}{b}"))
     .join("|");
     [
-        ("仓里没有的 .md", Regex::new(&md).expect("md 网眼")),
         ("工单 / 裁决编号", Regex::new(&ticket).expect("编号网眼")),
         (
             "已摘掉的代码全景目录",
@@ -239,33 +249,14 @@ fn unblocked_eyes() -> [(&'static str, Regex); 3] {
     ]
 }
 
-/// 别的程序的文件名与本仓生成的文件名：形状像「仓里没有的 `.md`」，但不是指路。
-const NOT_A_POINTER_MD: &[&str] = &[
-    "CLAUDE",       // Claude Code 读的项目说明
-    "AGENTS",       // Codex 读的项目说明
-    "RELEASE_BODY", // 发版流水线现生成的 Release 正文
-];
-
 /// 功能键名：形状像编号，是键。
 const FUNCTION_KEYS: &[&str] = &["F10", "F11", "F12"];
 
 /// 一行里第三张网第 `eye` 形的第一处命中（字节偏移）。
-fn first_unblocked_hit(
-    eye: usize,
-    rx: &Regex,
-    in_repo_docs: &BTreeSet<String>,
-    line: &str,
-) -> Option<usize> {
-    rx.captures_iter(line).find_map(|c| {
-        let all = c.get(0).expect("整段匹配");
-        let spared = match eye {
-            0 => c.name("md").is_some_and(|d| {
-                in_repo_docs.contains(d.as_str()) || NOT_A_POINTER_MD.contains(&d.as_str())
-            }),
-            1 => FUNCTION_KEYS.contains(&all.as_str()),
-            _ => false,
-        };
-        (!spared).then(|| all.start())
+fn first_unblocked_hit(eye: usize, rx: &Regex, line: &str) -> Option<usize> {
+    rx.find_iter(line).find_map(|m| {
+        let spared = eye == 0 && FUNCTION_KEYS.contains(&m.as_str());
+        (!spared).then(|| m.start())
     })
 }
 
@@ -284,8 +275,8 @@ fn first_outside_pointer(
         let spared = c
             .name("doc")
             .is_some_and(|d| in_repo_docs.contains(d.as_str()))
-            || c.name("hdoc").is_some_and(|d| {
-                in_repo_docs.contains(d.as_str()) || NOT_A_POINTER_HAN_MD.contains(&d.as_str())
+            || c.name("mdoc").is_some_and(|d| {
+                in_repo_docs.contains(d.as_str()) || NOT_A_POINTER_MD.contains(&d.as_str())
             });
         (!spared).then(|| c.get(0).expect("整段匹配").start())
     })
@@ -428,6 +419,13 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         format!("// Phosphor 线形，规{} V9 只用线形一套", "范"), // 33 ✔
         format!("\"source\": \"新写法 规{} §4\"", "范"), // 34 ✔ § 节号
         "// 路径规范化 · 按规范写 · 规范的写法 · 命名规范 CI".to_string(), // 35 ✘ 普通的「规范」
+        format!("// 住址 `{}.md#R{}`", "DECISIONS", "28"), // 36 ✔ 仓里没有的 .md
+        format!("// 见 `src/doc/{}.md`", "INVARIANTS"), // 37 ✘ 仓里有
+        format!("// 读数在 `{}.md`", "PR-S6"),     // 38 ✔ 带连字符，仓里没有
+        format!("// 项目说明 `{}.md`", "CLAUDE"),  // 39 ✘ 别的程序的文件
+        format!("// 见 `references/{}.md` 规则 7", "testing"), // 40 ✔ 小写、带目录，仓里没有
+        format!("write(root.join(\"{}.md\"), \"x\")", "a"), // 41 ✘ 字符串里的夹具文件名
+        format!("padding(tokens.spacing.{})", "md"), // 42 ✘ 代码里的成员名
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -438,10 +436,10 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
     assert_eq!(
         got,
         BTreeSet::from([
-            1, 4, 5, 7, 8, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 25, 26, 27, 28, 29, 32, 33, 34,
+            1, 4, 5, 7, 8, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 25, 26, 27, 28, 29, 32, 33, 34, 36, 38, 40,
         ]),
-        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8、10、11、14–17、20–23、25–29、32–34；\
-         该放过 2、3、6、9、12、13、18、19、24、30、31、35）—— 网坏了，全仓那条零命中不作数"
+        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8、10、11、14–17、20–23、25–29、32–34、36、38、40；\
+         该放过 2、3、6、9、12、13、18、19、24、30、31、35、37、39、41、42）—— 网坏了，全仓那条零命中不作数"
     );
 }
 
@@ -684,7 +682,6 @@ fn unblocked_outside_pointers_are_reported_not_blocked() {
         "人群只有 {} 份 —— `git ls-files` 口径坏了，报出来的数不作数",
         texts.len()
     );
-    let docs = in_repo_docs(&texts);
     let area = |rel: &str| -> &'static str {
         if rel.starts_with("src/doc/") {
             "src/doc"
@@ -705,7 +702,7 @@ fn unblocked_outside_pointers_are_reported_not_blocked() {
         let mut files = BTreeSet::new();
         for (rel, text) in &texts {
             for (n, line) in text.lines().enumerate() {
-                if let Some(at) = first_unblocked_hit(i, rx, &docs, line) {
+                if let Some(at) = first_unblocked_hit(i, rx, line) {
                     lines.push(format!("{rel}:{}: {}", n + 1, snippet(line, at)));
                     *by_area.entry(area(rel)).or_default() += 1;
                     files.insert(rel.as_str());
@@ -734,25 +731,13 @@ fn unblocked_outside_pointers_are_reported_not_blocked() {
     println!("== 第三张网合计（只报不拦）\n{}", summary.join("\n"));
 }
 
-/// 合成夹具：三形各该抓的抓到、该放过的放过（行号集相等）。只报不拦那条的数靠它才作数。
+/// 合成夹具：两形各该抓的抓到、该放过的放过（行号集相等）。只报不拦那条的数靠它才作数。
 #[test]
-fn the_unblocked_net_catches_its_three_shapes_and_spares_the_rest() {
+fn the_unblocked_net_catches_its_two_shapes_and_spares_the_rest() {
     let eyes = unblocked_eyes();
-    let docs: BTreeSet<String> = ["INVARIANTS", "README"].map(String::from).into();
-    let cases: [(usize, Vec<String>, BTreeSet<usize>); 3] = [
+    let cases: [(usize, Vec<String>, BTreeSet<usize>); 2] = [
         (
             0,
-            vec![
-                format!("// 住址 `{}.md#R{}`", "DECISIONS", "28"), // 1 ✔ 仓里没有
-                format!("// 见 `src/doc/{}.md`", "INVARIANTS"),    // 2 ✘ 仓里有
-                format!("// 读数在 `{}.md`", "PR-S6"),             // 3 ✔ 带连字符，仓里没有
-                format!("// 项目说明 `{}.md`", "CLAUDE"),          // 4 ✘ 别的程序的文件
-                format!("// 小写的 `{}.md` 不算", "notes"),        // 5 ✘ 不是大写名
-            ],
-            BTreeSet::from([1, 3]),
-        ),
-        (
-            1,
             vec![
                 format!("// 🔴 `K-R{}`：先让它自己说一遍", "70"), // 1 ✔
                 format!("// `KR{}D2` 那条", "120"),               // 2 ✔
@@ -767,10 +752,13 @@ fn the_unblocked_net_catches_its_three_shapes_and_spares_the_rest() {
             BTreeSet::from([1, 2, 3, 4, 5]),
         ),
         (
-            2,
+            1,
             vec![
-                format!("规格住 `{}-picture/doc/agents/claude-code.md`", "code"), // 1 ✔
-                "代码全景已经摘掉了".to_string(),                                 // 2 ✘
+                format!(
+                    "规格住 `{}-picture/doc/agents/claude-code.{}`",
+                    "code", "md"
+                ), // 1 ✔
+                "代码全景已经摘掉了".to_string(), // 2 ✘
             ],
             BTreeSet::from([1]),
         ),
@@ -780,7 +768,7 @@ fn the_unblocked_net_catches_its_three_shapes_and_spares_the_rest() {
         let got: BTreeSet<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| first_unblocked_hit(eye, rx, &docs, l).is_some())
+            .filter(|(_, l)| first_unblocked_hit(eye, rx, l).is_some())
             .map(|(i, _)| i + 1)
             .collect();
         assert_eq!(

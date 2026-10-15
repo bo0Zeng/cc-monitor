@@ -879,8 +879,7 @@ fn the_real_probe_asks_this_binarys_own_platform() {
 
 /// 〔`INVARIANTS §49`〕**codex 的 cc-bus 身份配方读会话名时，那个 tmux 客户端是 UTF-8 客户端。**
 ///
-/// 要求住址：`INVARIANTS §49`「本仓每一处按格式串读 tmux 打印通道的调用点，起的 tmux 客户端都必须是 UTF-8 客户端」·
-/// `TL2.md §9.1` 3（`BUS_ID_RECIPE` 读 `#S` 是五处真违反之一）。
+/// 要求住址：`INVARIANTS §49`「本仓每一处按格式串读 tmux 打印通道的调用点，起的 tmux 客户端都必须是 UTF-8 客户端」（`BUS_ID_RECIPE` 读 `#S` 是五处真违反之一）。
 ///
 /// 真跑：隔离 socket（显式 `-S` ＋ `-f /dev/null`，不碰默认 socket）起一个**中文名**会话，pane 里整条命令跑在
 /// `LC_ALL=C` 下（tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`）。生产那一段配方原样执行，

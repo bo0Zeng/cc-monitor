@@ -6,7 +6,7 @@ import type { PsExecPolicy } from "./PsExecPolicy";
  * 一份候选启动文件（rc / `$PROFILE`）的状态。
  *
  * 从前叫 `AccountAliasRc`，只答「接没接上别名文件」；别名块（`cc` / `cct` ·
- * `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选（`AL1d.md §1.2`）。
+ * `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选。
  * 今天一份候选、一次扫描，两件事都在这一格上（`block`）。
  */
 export type AliasStartupFile = { 

@@ -29,7 +29,7 @@
 //! 两种方言的别名块都自带那一行（POSIX：`src/shared/ccm-aliases.sh` 最后一行；PowerShell：`src/shared/cc.ps1.tpl`
 //! 结尾那一行，补上 —— 从前那一侧不带，两边不对称），文件不在就什么都不做 ⇒ 装了别名块的人什么都不用做。
 //! 本模块**不再往 rc 里写那一行**：从前 [`install_in`] 会把它装进人指定的那份 rc（另一对围栏），
-//! 与别名块那一行是同一件事的第二个写处（`AL1d.md §5` 第 4 条）。今天那一步**降级成检查**：选了 rc 就看它接没接上，
+//! 与别名块那一行是同一件事的第二个写处。今天那一步**降级成检查**：选了 rc 就看它接没接上，
 //! 没接上就说「装上别名块就接上了」并给出那一行、由人自己决定（提供检测，不代装）。
 //! 盘上已有的旧围栏那一块不读、不删、不写清理代码（两处 source 同一份文件是幂等的，只多点一次）。
 //! 别名文件的写**不在本进程落盘**：经本机后端的文件管理那一面（`user_files::edit` → `files-peek` / `files-put`），
@@ -81,7 +81,7 @@ const FILE_END: &str = "# === cc-monitor aliases END ===";
 /// 一份候选启动文件（rc / `$PROFILE`）的状态。
 ///
 /// 从前叫 `AccountAliasRc`，只答「接没接上别名文件」；别名块（`cc` / `cct` ·
-/// `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选（`AL1d.md §1.2`）。
+/// `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选。
 /// 今天一份候选、一次扫描，两件事都在这一格上（`block`）。
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(
@@ -117,7 +117,7 @@ pub(crate) struct StartupFile {
 ///
 /// **逐段**拼：`our_alias_file_rel` 是 `/` 分隔的（交给后端的 `rel` 就是它，那一侧不动），
 /// 而这里拼的是**给人看、也写进 `$PROFILE` 那一行**的那台机器上的绝对路径。整串一次拼在 Windows 上
-/// 会得到 `C:\Users\user\.cc-monitor/aliases.ps1`（真机读数，`RT1.md §8` F8）—— 两种分隔符混着。
+/// 会得到 `C:\Users\user\.cc-monitor/aliases.ps1`（真机读数）—— 两种分隔符混着。
 /// `home` 是**那台机器**的后端答的字符串，拼法跟它自己的分隔符走（`user_files::join_under`）：
 /// 从前 `Path::join` 用的是 monitor 这台的分隔符 —— Windows 上的 monitor 拼远端 `/home/user` 会得到 `/home/user\.cc-monitor\aliases.sh`。
 pub(crate) fn alias_file_in(home: &str, shell: Shell) -> String {
@@ -775,7 +775,7 @@ pub(crate) fn collision_note(name: &str, shell: Shell) -> Option<String> {
 }
 
 /// 候选启动文件的现状。列哪几份由方言答（POSIX 只列在的；PowerShell 的 `$PROFILE` 不在也列）——
-/// 🔴 **`$PROFILE` 在哪，全仓只有 `ShellDialect::startup_candidates` 答**（`AL1d.md §2.3`）。
+/// 🔴 **`$PROFILE` 在哪，全仓只有 `ShellDialect::startup_candidates` 答**。
 /// `extra` 是人另指的那一份（已过围栏；不在也列），与方言给的重了就不重复列。
 ///
 /// 每份读**一次**：别名文件那一行接没接上（`sourced`）与别名块的现状（`block`）出自同一次读。

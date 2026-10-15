@@ -147,7 +147,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
             ] {
                 assert!(
                     cmd.contains(need),
-                    "「{which}」少了 `{need}` —— 要读未展开的原值与原类型、按原类型写回、写完广播（`WIN3.md §2` K）。\n{cmd}"
+                    "「{which}」少了 `{need}` —— 要读未展开的原值与原类型、按原类型写回、写完广播。\n{cmd}"
                 );
             }
             for landmine in [
@@ -158,7 +158,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
                 assert!(
                     !cmd.contains(landmine),
                     "「{which}」出现了 `{landmine}`：它读回展开值 / 按 `REG_SZ` 写 / 顺手滤掉空项 \
-                     ⇒ `%VAR%` 被冻成字面、`REG_EXPAND_SZ` 变 `REG_SZ`、多出或丢掉空项（`WIN3.md §2` K）。\n{cmd}"
+                     ⇒ `%VAR%` 被冻成字面、`REG_EXPAND_SZ` 变 `REG_SZ`、多出或丢掉空项。\n{cmd}"
                 );
             }
         }
@@ -202,7 +202,7 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
     // （`§0c`：`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定），
     // 而「现在状态」那一格**根本不可能靠用户去跑** ——
     // `R88` 就是为这件事推翻 `R87`「不需要起进程」那句假前提的。
-    // ⇒ `testing.md` 规则 12：反向锚点的出路是**重新裁定**，不是删掉。
+    // ⇒ 反向锚点的出路是**重新裁定**，不是删掉。
     //
     // 🔴 **先量人群再翻正**（`R88` 点名要求的那一步）：上一轮那条断言的分母
     // **不是整份文件，是 `production_code()` 剥完之后的生产段**。现打：整份文件

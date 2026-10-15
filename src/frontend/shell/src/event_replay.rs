@@ -25,7 +25,7 @@
 //!
 //! 修剪不分档：按行号取得回，「无处可回」不存在。
 //!
-//! ⚠ **仍然没有上界的那一维是会话数**（`CF2.md §2.2`）：单会话 ≤ `KEEP + SLACK` 条，缓冲里有几个会话
+//! ⚠ **仍然没有上界的那一维是会话数**：单会话 ≤ `KEEP + SLACK` 条，缓冲里有几个会话
 //! 由「宣告过多少个 × 前端关没关（[`EventReplay::forget`]）× monitor 重启」决定。
 //! 读数（长度 / 会话数 / 修剪次数）见 [`EventReplay::stats`] 与每次修剪的 `[replay]` 日志行。
 //!
@@ -58,7 +58,7 @@ use std::sync::Arc;
 /// 订阅流的出口：把一串格交给某个 webview 上的某条订阅。
 ///
 /// 生产那一份是 `chan/webview.rs::WebviewSink`（`emit_to` 那个 webview 的 Tauri 事件 —— 与起停事件同一条
-/// 投递队列，先后不乱，理由见 `CF2.md §3.2`）；判据用一个记录器替它。**调用时本文件不持锁。**
+/// 投递队列，先后不乱）；判据用一个记录器替它。**调用时本文件不持锁。**
 pub trait ItemSink: Send + Sync {
     fn deliver(&self, label: &str, sub: u64, items: Vec<Item>);
 }
@@ -848,7 +848,7 @@ impl EventReplay {
     /// 说不了的在流里原位说（`Closed{Peer}`）；那台机器此刻看不见 ⇒ 第一格 `Unseen`，订阅照样成立。
     ///
     /// - 同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载后编号从头来；旧页面的订阅不留成孤儿）。
-    /// - `from` 给了 ⇒ `Closed{Peer(bad_args)}`：webview 这一跳没有续传（`CF2.md §3.6`），不装作续上了。
+    /// - `from` 给了 ⇒ `Closed{Peer(bad_args)}`：webview 这一跳没有续传，不装作续上了。
     /// - 整台机器那一形：这个 webview 还没过就绪点 ⇒ 等就绪点；过了 ⇒ 当场交留存。一个会话那一形：当场交。
     pub fn subscribe(
         self: &Arc<Self>,

@@ -2713,7 +2713,7 @@ fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
 }
 
-/// P2⁗（`GP1.md §5`）：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
+/// P2⁗：现值那一趟**真上线**：挂一台合成后端（它按盘上真文件答 `files-stat`，`mode` 取真权限位），逐项问、按序交回；
 /// 不在的那一项 ⇒ `None`（读不到，不猜）。异源：期望的权限位是本测试自己 `set_permissions` 设下去的。
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

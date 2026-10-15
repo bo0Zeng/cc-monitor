@@ -4,7 +4,7 @@
 //! —— 本族判诊断配置的默认值、`logging.rs::build_env_filter` 认哪些级别、`logging.rs::find_latest_log_file` 指到哪一份；
 //! 写回 `diagnostics` 不丢同文件别的字段，对 `INVARIANTS §2.1` 那张表里 `config.json` 的「真相 · 全用户手填」。
 //! 〔JA1 点址 2026-09-24〕`diagnostics_legacy_config_missing_field_uses_defaults` 从前在测试里逐字重写了
-//! `logging.rs::read_diagnostics_from_config` 那条链、不在执行链上；今天改调生产函数，且「缺 `diagnostics` 键」那一支只有它量（`TL1.md` 件 1）。
+//! `logging.rs::read_diagnostics_from_config` 那条链、不在执行链上；今天改调生产函数，且「缺 `diagnostics` 键」那一支只有它量。
 
 use super::*;
 
@@ -22,7 +22,7 @@ fn diagnostics_default_is_user_friendly() {
 
 /// 一份没有 `diagnostics` 键的 `config.json`（别的设置都在）⇒ 诊断设置取默认值。
 ///
-/// 从前这里把 `read_diagnostics_from_config` 那条链在测试里逐字重写了一遍、没调生产函数（`JA1.md §3.3`）；
+/// 从前这里把 `read_diagnostics_from_config` 那条链在测试里逐字重写了一遍、没调生产函数；
 /// 今天经临时目录真读一份文件。「缺这个键」那一支只有本条走：`write_then_read_diagnostics_roundtrip` 走的是「键在」那一支。
 #[test]
 fn diagnostics_legacy_config_missing_field_uses_defaults() {

@@ -151,7 +151,7 @@ pub(crate) fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
 // ═══════════════════════════════════════════════════════════════════════════
 // **tmux 会话名的形状 —— 全仓唯一一份**。
 //
-// 此前三份、规则互不相同（`DUP1.md §0.3`）：后端 `ccm/plan.rs::validate_tmux_name`（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符）·
+// 此前三份、规则互不相同：后端 `ccm/plan.rs::validate_tmux_name`（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符）·
 // monitor 载荷 `TmuxTarget::check`（`Raw` 只放行 `[A-Za-z0-9_-]`、却放过前导 `-`；`Quoted` 拒控制符与欺骗字符）·
 // 界面 `shell-quote.ts` 两个谓词 ＋ `launch-requests.ts` 两处内联式子（F01「不把 glob 建进名字」在载荷那条路上只有界面那一道）。
 // 今天两条规则住这里，按「这个名字是不是本工具要**建**的」分：

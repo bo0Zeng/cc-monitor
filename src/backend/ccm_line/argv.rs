@@ -61,7 +61,7 @@ pub(crate) enum CwdSpec {
 
 /// 每个参数的默认值，唯一住址。
 ///
-/// `--account` 不给 ⇒ 落 manifest 的默认账号（`DECISIONS.md#R28`）；成对的另一半：调用方已经选好的号不许被静默换掉
+/// `--account` 不给 ⇒ 落 manifest 的默认账号；成对的另一半：调用方已经选好的号不许被静默换掉
 /// （`plan::resolve_account` 的继承那一支）。
 pub(crate) struct Defaults;
 

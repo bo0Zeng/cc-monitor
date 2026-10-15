@@ -214,7 +214,7 @@ struct FakeUpstream {
     /// ⚠ 它是一个**读数，不是一处被吞掉的错**：判据读得到它，
     /// [`a_peer_that_left_costs_the_stub_one_connection_not_its_listener`]
     /// 就是拿它先证「这一趟真的走到了那一支」，再去证 `listener` 还活着 ——
-    /// 少了这个数，那一条判据的后半截是**空真**（`testing.md` 四⑷）。
+    /// 少了这个数，那一条判据的后半截是**空真**。
     aborted: Arc<AtomicU64>,
 }
 
@@ -521,7 +521,7 @@ fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
         std::io::ErrorKind::ConnectionReset,
         std::io::ErrorKind::ConnectionAborted,
     ];
-    // ★ 地板（`testing.md` 三⑺）：两边**一样多**。闭集加了第四种而这里没跟上 ⇒ 红；
+    // ★ 地板：两边**一样多**。闭集加了第四种而这里没跟上 ⇒ 红；
     //   闭集被摘掉一种 ⇒ 也红。**现算两边的 `len()`，不写死那个基数**。
     assert_eq!(
         cases.len(),
@@ -539,7 +539,7 @@ fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
             "头一发没拿到响应（{kind:?}）：{first:?}"
         );
 
-        // 采集面自检（`testing.md` 四⑷）：桩**真的**走到了「对端走了」那一支。
+        // 采集面自检：桩**真的**走到了「对端走了」那一支。
         // 少了这一步，下面「listener 还活着」是空真 —— 它根本没撞上那一形。
         // ⚠ 这是一个**单向**条件（记上了就不会再变回去）⇒ 机器越慢它只是多等几轮，
         //   判不出两种结果。这里治的正是「靠来得及」的判据，别在这里把它请回来。
@@ -4028,7 +4028,7 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     );
 }
 
-/// ③ 带 `Origin` ⇒ 403（体里说 Origin）；`Host` 非回环 / 缺 ⇒ 421；claude CLI 现打的那一形头（`RK1.md §5.1`）⇒ 放行。
+/// ③ 带 `Origin` ⇒ 403（体里说 Origin）；`Host` 非回环 / 缺 ⇒ 421；claude CLI 现打的那一形头 ⇒ 放行。
 ///    拒掉的一发都不到上游。
 #[test]
 fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {

@@ -306,7 +306,7 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
     );
 }
 
-/// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
+/// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
     (
         "stream_source/run.rs",

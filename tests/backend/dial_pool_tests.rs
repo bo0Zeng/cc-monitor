@@ -284,7 +284,7 @@ fn the_stream_count_follows_stream_permits_only() {
     assert_eq!(b.streams(), 0);
 }
 
-// ═══ **按需智能多开**（`NT1.md §2`）════════════════════════════════════
+// ═══ **按需智能多开**════════════════════════════════════
 
 /// ★ P1 ＋ P5（收）：主连接上**有长流** ⇒ 一趟传输 ⇒ 多开一条批量连接（拨号次数 == 2、`Extra(Bulk)`、落在第 2 条）；
 /// 随后一条查询落回主连接。传输走了 ⇒ 批量连接**还活着**（被主连接托着，下一趟传输复用它、不再拨）；
@@ -428,7 +428,7 @@ async fn a_second_bulk_connection_is_never_dialed() {
     assert_eq!(fifth.await.unwrap(), How::Reused);
 }
 
-/// ★ S1（`NT1.md §3`）：停着的空闲会话**连同它那一格**停在连接里；别的放置借不到格时，池**先挤掉它**、还出那一格，
+/// ★ S1：停着的空闲会话**连同它那一格**停在连接里；别的放置借不到格时，池**先挤掉它**、还出那一格，
 /// 再放 —— 不因为一个空位多开一条（拨号次数仍 == 1）。
 #[tokio::test]
 async fn a_parked_idle_session_is_squeezed_out_before_anyone_dials() {
@@ -478,7 +478,7 @@ async fn parked_sessions_are_looked_up_where_a_transfer_may_land() {
     assert!(pool.transfer_candidates("另一个身份").is_empty());
 }
 
-/// ★ W1（`NT1.md §4`）：在一条连接上等远端回话的那一段**被丢了**（链路被关 ⇒ 任务被 abort）⇒ 这条连接从族里摘掉，
+/// ★ W1：在一条连接上等远端回话的那一段**被丢了**（链路被关 ⇒ 任务被 abort）⇒ 这条连接从族里摘掉，
 /// 下一条放置拨新的；**等到了**（`done`）⇒ 不动。两向。摘掉 ≠ 关掉：手里还攥着它的照样活着。
 #[tokio::test]
 async fn an_interrupted_wait_on_a_connection_evicts_it_and_a_finished_one_does_not() {

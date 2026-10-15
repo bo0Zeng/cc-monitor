@@ -731,7 +731,7 @@ fn backend() -> &'static ToolSpec {
 ///
 /// 守的是**申报**（这张表说不说得出那三份）。「那三份是不是同一次构建出来的」
 /// **本条不判，而且今天没有任何东西判得了** —— `.build_id` 三者从同一处源码常量抠，
-/// 恒等，那句恒等一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
+/// 恒等，那句恒等一格证据都不提供。
 #[test]
 fn the_backend_is_one_thing_landing_in_several_places() {
     let t = backend();
@@ -883,7 +883,7 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
 /// 这一条是 [`Provisioning::of_tool`] 那条聚合规则（「全部载体都是
 /// `NotInstalledByUs` 才算不是装出来的」）的门禁：混合的那一形一出现，
 /// 那条规则就得**重裁**，而不是让它静默地选一边
-/// （`references/testing.md` 硬规则 11：钉「今天恰好如此」的判据要写清去哪儿重裁）。
+/// （钉「今天恰好如此」的判据要写清去哪儿重裁）。
 #[test]
 fn carriers_do_not_mix_ours_and_not_ours() {
     for t in TOOLS.iter() {
@@ -1309,7 +1309,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
             None => unregistered.push(format!("{} · {:?} × {n}", k.0, k.1)),
             // 🔴 **逐格等号，不是 `<=`** —— 只判「涨了」的话，
             //    「把上限调上去让今天好过」这一手是**静默通过**的
-            //    （`references/testing.md` 硬规则 12 明禁那一手，而纪律这一档
+            //    （规则明禁那一手，而纪律这一档
             //     在本仓已经被证伪过）。等号让那一手当场红。
             Some(cap) if n != cap => grown.push(format!(
                 "{} · {:?}：登记 {cap}，盘上 {n}（{}）",
@@ -1345,7 +1345,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         grown.is_empty(),
         "\n旧名字的处数与登记对不上（这张账逐格按**等号**认）：\n  {}\n\n\
              ⇒ **涨了**：别再往盘上加旧名，也别把上限调上去让今天好过\n\
-             （`references/testing.md` 硬规则 12 逐字：把上限调上去不是出路）。\n\
+             （把上限调上去不是出路）。\n\
              ⇒ **少了**：好事 —— 把那一行的数**改小**，让这张账继续说真话。",
         grown.join("\n  ")
     );

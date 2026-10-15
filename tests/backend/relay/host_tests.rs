@@ -671,7 +671,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     let k = TAP_EVENTS.len() as u64;
 
     // ① 容量 1、不读：第一件进去之后全满 ⇒ 只剩第 0 号；收尾那一件也投不进（尾巴也会丢 ——
-    //    接收侧拿「0 号之后再没有东西」判不出断没断，那一格由前端的撤卡规则兜，见 TAP.md §4）。
+    //    接收侧拿「0 号之后再没有东西」判不出断没断，那一格由前端的撤卡规则兜）。
     let up = fake_upstream_with(body.clone());
     let hub = std::sync::Arc::new(Taps::default());
     let mut rx = hub.attach_bounded(1);

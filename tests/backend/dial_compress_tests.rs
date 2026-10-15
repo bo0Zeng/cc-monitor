@@ -14,7 +14,7 @@ use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-/// ★ Z1：判准的真值表。**期望逐格取自 `NT1.md §1.1` 那三行字**（异源于实现）：
+/// ★ Z1：判准的真值表。**期望逐格手写**（异源于实现）：
 /// 回环 ⇒ 不压；读得到 ⇒ 到门槛才压；读不到 ⇒ 压。
 #[test]
 fn the_compression_judge_answers_exactly_this_table() {

@@ -290,7 +290,7 @@ fn an_rc_that_sources_it_via_home_var_is_recognized() {
 }
 
 /// ★★**两种方言对称：别名块里恰好一行接上别名文件**（「source 那一行只许一处装」；
-/// `AL1d.md §5` 第 4 条：从前 PowerShell 的别名块不接，那一侧只剩代装那一处）。
+/// 从前 PowerShell 的别名块不接，那一侧只剩代装那一处）。
 ///
 /// 人群：POSIX 别名块 = `block::CCM_WRAPPER_SNIPPET`（就是 `src/shared/ccm-aliases.sh`）；PowerShell 别名块 =
 /// `block::render_block`。每一份里「那种方言认得出的接上行」恰好一行（零 = 不接，二 = 两处）。
@@ -689,7 +689,7 @@ fn the_block_state_rides_on_the_candidates_it_was_installed_into() {
     let hit = after.iter().find(|c| c.block.present).unwrap();
     assert!(hit.exists, "{hit:?}");
     // 同一次读：装了别名块就接上了别名文件（块结尾那一行）—— 与 POSIX 对称；
-    //   从前这里断言「仍是假」（PowerShell 的别名块不接，那一侧只有代装那一处，`AL1d.md §5` 第 4 条）。
+    //   从前这里断言「仍是假」（PowerShell 的别名块不接，那一侧只有代装那一处）。
     assert!(hit.sourced, "{hit:?}");
 }
 
@@ -829,7 +829,7 @@ fn the_fence_is_lexical_then_measures_this_machines_disk() {
     }
 }
 
-/// 🔴 候选**经门**、按各自方言的列法列（表第一行；`AL2.md §2.4`）：
+/// 🔴 候选**经门**、按各自方言的列法列（表第一行）：
 /// POSIX 只列在的（盘上只放 `.zshrc` ⇒ 候选恰好这一份）；PowerShell 5.1 两份恒列、7 的两份目录在才列 ——
 /// 「目录在不在」问的是门（`stat_kind`），不是 monitor 这台的盘（替身门恰好落在同一块盘上，所以另数一遍门被问了什么）。
 #[test]
@@ -854,7 +854,7 @@ fn the_candidates_are_listed_by_each_dialects_rule_through_the_door() {
     assert_eq!(rc_candidates_in(&h.0, Shell::PowerShell, None).len(), 4);
 }
 
-/// 🔴 **U1**：在盘上、可那台后端读不了的候选 **照列、带原话**，不吞成「没有别名块」（`AL2.md §2.6`；「出声不静默」）。
+/// 🔴 **U1**：在盘上、可那台后端读不了的候选 **照列、带原话**，不吞成「没有别名块」（「出声不静默」）。
 /// 反向：读得了的那一份 `unreadable` 为空；整趟读回口不因一份读不了的 rc 失败。
 #[test]
 fn an_unreadable_candidate_is_listed_with_the_backends_words() {

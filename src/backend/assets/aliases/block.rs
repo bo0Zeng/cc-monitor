@@ -87,7 +87,7 @@ pub(crate) enum Wins {
 /// 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
 ///
 /// 别名块与别名文件那一行 source 装进的是**同一批**启动文件，候选从前却有两份来历
-/// （`AL1d.md §1.2`）⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
+/// ⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
 /// 由 [`block_state`] 在读回口那一次扫描里一起算出来。
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(
@@ -250,7 +250,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
 /// 全是**字符串**上的判断（与 `user_files::rel_under` 同一种算法）：`home` 是**那台机器**的后端答的
 /// （`files-home`），而那台可能不是 monitor 这台 —— `std::path::Path::is_absolute` 在 Windows 上把 `/home/user/.bashrc`
-/// 判成相对（没有盘符），`Path::join` 又用本机分隔符（`AL2.md §2.5`）。
+/// 判成相对（没有盘符），`Path::join` 又用本机分隔符。
 pub(crate) fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
     let expanded = if raw == "~" {
         home.to_string()

@@ -91,8 +91,7 @@ const OBS_UNOBSERVABLE: &str = "unobservable";
 /// 97 是任意选的哨兵值（tmux 只用 0/1）。
 const TMUX_PROBE_NO_TMUX_RC: i32 = 97;
 
-/// P1：`tmux ls` 一次观测的四态分类（**P0 实测定死**，见
-/// `.claude/planned-build/zero-poll-liveness/features/P0-machine-facts.md` §3 ④）。
+/// P1：`tmux ls` 一次观测的四态分类（**P0 实测定死**）。
 ///
 /// P0 实测的状态空间（隔离 socket）：
 /// - rc=0 + stdout 非空 → 有会话

@@ -503,7 +503,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "`BORN_ON_FRAME` 那一条：后端出成品 `{path, size, text, truncated}`（`read_face.rs::log_tail`，读本进程被交的那份诊断文件）；\
          前端 `src/frontend/ui/settings/backend-section.ts::readBackendLog` 按形状收，monitor 这一侧零发送点",
     ),
-    // `C4b.md §6.6` A 组第一批：后端已是成品、monitor 只在转的那一条。
+    // A 组第一批：后端已是成品、monitor 只在转的那一条。
     // 生在帧面上、界面直接问的第二条。
     (
         "history-facts",
@@ -522,7 +522,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          只在转、核两格 —— 核验搬到唯一的消费者 `src/frontend/ui/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\
          命令与发送端（`frame_query::record`）删了",
     ),
-    // `C4b.md §6.6` A 组第二批：`app.backend-policy`（S5 进主线后前置满足）。
+    // A 组第二批：`app.backend-policy`（S5 进主线后前置满足）。
     (
         "exit-policy-read",
         "问那台机器「退出行为」那个值：monitor 那条命令（`backend_exit_policy`）只在拦空白名 ＋ 转 ＋ 原样交回，\
@@ -605,7 +605,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "给一个号配 key：推 id 住后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答",
     ),
     // skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
-    // `C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏（今天走终端管理那一条）。
+    // A 组 `tmux.manage` 第一格：抓一屏（今天走终端管理那一条）。
     (
         "terminal-preview",
         "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\

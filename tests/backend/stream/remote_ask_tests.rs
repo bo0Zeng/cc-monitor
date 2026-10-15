@@ -327,7 +327,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 
 /// 交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），
 /// 命令原样、用法是 capture —— 生产那一个对面（`DialRemote`）就是拿这份请求去跑 `dial::uses::run` 的。
-/// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（读数见 `W5-AUX.md §7`，不进门禁）。
+/// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（不进门禁）。
 #[test]
 fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
     let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});

@@ -572,7 +572,7 @@ const PS_TAIL: &str = " $RemainingArgs";
 /// 分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
 const PS_END: &str = " '--'";
 
-/// 〔`WIN3.md §2` M/N〕**PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
+/// **PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
 /// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
 ///
 /// 别名参数也每个都走它、不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有 `--%`（停止解析）与 `--x=a.b` 在 `.` 处被劈开两个坑。

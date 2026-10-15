@@ -1878,7 +1878,7 @@ cc-monitor 是只读监视窗口，主视图不接受文本输入，组合键多
 
 - **聚合**：本地 jsonl-watcher 照常跑，远端是**附加**数据源（不替代本地）；只显示**活跃**会话（远端 `sessions/<PID>.json` + 进程存活，镜像本地判活逻辑），不拉历史会话。
 - **设置 → 远端 (SSH)**：从 `~/.ssh/config` **下拉选主机别名**自动填 host/port/user/key（走 `ssh -G`）；**测试连接**按钮（显示 host key 指纹 + 一键固化为严格校验）；支持 **ssh-agent**（免填私钥路径）。
-- 远端需一个轻量 daemon（在目标机原生 `cargo build`，见 [`src/doc/REMOTE-PHASE0-DEPLOY.md`](src/doc/REMOTE-PHASE0-DEPLOY.md)）。**只读、零侵入**，仅 publickey / agent 认证。
+- 远端需一个轻量 daemon（在目标机原生 `cargo build`）。**只读、零侵入**，仅 publickey / agent 认证。
 - **实验性边界**：断线不自动重连（断开后远端 Tab 自动归档，需重启重连）；远端的历史浏览 / 全文搜索暂仍读**本地**数据；不支持密码登录。后续版本补齐（见 issue #15 的 Phase 1 backlog）。
 
 ### 新增 — Edit/Write/MultiEdit 工具调用渲染为行级 diff 卡（issue #14）
@@ -2517,7 +2517,7 @@ v1.7.12 改 right-anchored 后，靠左的 `?`（如"PowerShell 集成"标题旁
 
 - **删未用依赖**：`Cargo.toml` 的 `anyhow` + `thiserror` 全仓 grep 0 引用，纯死依赖。删了减编译时间 + 包体积。
 - **`opener:allow-open-path` scope** 维持 `**`：考虑过收紧到 `$DOCUMENT/WindowsPowerShell/**` 但会破坏"Custom 路径"功能（用户可能选 Documents 外的位置）。
-- 文档更新：发版后另起一次文档大重整（src/doc/CONTRIBUTING.md / ARCHITECTURE.md / IPC-PROTOCOL.md / INVARIANTS.md / STATE-MATRIX.md / DEVELOPMENT.md / BUILDING.md / RELEASING.md 等），覆盖测试列表 + 关键设计理由 + 跨进程协议 schema + 全局不变量。
+- 文档更新：发版后另起一次文档大重整（src/doc/CONTRIBUTING.md / ARCHITECTURE.md / IPC-PROTOCOL.md / INVARIANTS.md / DEVELOPMENT.md / BUILDING.md / RELEASING.md 等），覆盖测试列表 + 关键设计理由 + 跨进程协议 schema + 全局不变量。
 
 ## [1.7.12] — 2026-05-24
 

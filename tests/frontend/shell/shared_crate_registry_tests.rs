@@ -917,7 +917,7 @@ fn the_windows_cross_target_signal_covers_only_the_backend() {
 /// `K-R114` 给 `release.yml` 加了 `workflow_dispatch`（`KU27`：在那之前，想验一次发版流水线
 /// 改得对不对，唯一的办法是真推一个 `v*` tag）⇒ **本条当场红**。
 /// 那一件**判不了这条**（三条边界住**另一个工作区**，且翻正属重新裁定）⇒ 交 PM。
-/// 重判落在 `DECISIONS.md#R73`，**依据是那一趟真跑的 CI（run `34861383050`），不是读配置推的**：
+/// 重判的**依据是那一趟真跑的 CI（run `34861383050`），不是读配置推的**：
 /// - **`3w` 翻正** —— 那趟**真跑了**版本 guard（逐字 `Version self-consistent: 3.7.0`）；
 /// - **`3y` 翻正** —— 那趟**真编了** Windows 面；
 /// - **`3x` 不翻正** —— 它压在 **`ci.yml`** 上，而那一件**一个字没动 `ci.yml`**。

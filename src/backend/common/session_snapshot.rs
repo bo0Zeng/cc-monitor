@@ -4,7 +4,7 @@
 //! 1. 问它一次 = 它更新一次。[`SessionSnapshot::query`] 没有「只读缓存」这条路 —— 先探一次、再把探回来的那份存下来并返回，拿到的值恒是这一刻的。
 //!    watcher 用 [`SessionSnapshot::publish`] 把它焐热，但焐热的值不会被 `query` 交出去。退化成读缓存 = 拿陈值判活 = 把刚死的会话报成活的
 //!    （`bus-list` 会把敲门文字打进陌生占用者的屏幕）。
-//! 2. 铸名避让只能问它：[`TakenNames`] 的字段是模块私有的 ⇒ 本模块之外造不出一份「已占用的名字」（`DECISIONS.md#R52`）。
+//! 2. 铸名避让只能问它：[`TakenNames`] 的字段是模块私有的 ⇒ 本模块之外造不出一份「已占用的名字」。
 //!
 //! 住 `common/`：control（Gate 判活与铸名）与 observe（watcher 发布）都要，而 `control/` 不许引用 `observe/`；
 //! 平台无关（起的是 `tmux` 这个跨平台程序）、无域知识（只认「会话名 + `@ccm_sid`」两个字段）。

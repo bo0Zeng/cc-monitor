@@ -10,7 +10,7 @@
 //!
 //! # 进门三问（[`admit`]，顺序固定，都在读请求体之前）
 //!
-//! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带（`RK1.md §5.1`）；
+//! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带；
 //! 2. `Host` 不是回环字面量（或没有、或不止一个）⇒ [`Verdict::NotLoopbackHost`]（**421**，防 DNS rebinding）；
 //! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`tokens_match`]，与后端控制口同一份）。
 //!    钥匙只在路径第一段。门上有两把（[`Keys`]）：全权那一把（[`Scope::All`]）与只许直通那一把（[`Scope::Passthrough`]）。

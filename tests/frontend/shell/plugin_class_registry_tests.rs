@@ -571,7 +571,7 @@ fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() 
     assert!(
         leftovers.is_empty(),
         "本模块的生产段除了那三行桩还有东西 —— 分类表变成了运行期数据结构：\n  {}\n\
-             ⇒ `E4` 那张表**还没获批**（`DECISIONS.md#ED1`）。它今天的身份是\
+             ⇒ `E4` 那张表**还没获批**。它今天的身份是\
              「今天的形态长这样」的判据语料，不是「将来必须这样」的裁定。\n\
              真获批了要落地的是 `EF02`–`EF06`，不是把这张表搬进生产段。",
         leftovers.join("\n  ")
