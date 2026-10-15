@@ -3350,24 +3350,25 @@ impl E2eSandbox {
     /// 「上一个宿主退了」= 把进程内那点状态清掉，**但不碰那个进程**；
     /// 它手里那个 `Child` **当场**交给沙箱看着。
     fn forget_like_a_host_that_exited(&self) {
-        // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：
-        //   那条流还挂着，下一个宿主拿到的是 `stream-busy`。
-        //   〔实测：第一版就是这么写的，`KPY2` 当场红在「第二个宿主没有认出已有实例」。〕
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
-            crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
-            // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**。
-            //   要让对面知道我们走了，得真的关掉写半边 —— 那才是后端那边的 EOF。
-            c.close_write();
-            c.shutdown();
-            // 关写半边是**入队**的（`WriteJob::CloseWrite`）⇒ 给写任务一拍把它送出去。
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
+        // 先把手里那个 `Child` 拿走（流一断，读端收尾会去收尸 ⇒ 晚了就被它拿走了）。
         let taken = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(h) = &taken {
             self.remember(h.pid);
         }
         if let Some(c) = taken.and_then(|h| h.child) {
             self.kept.lock().unwrap_or_else(|e| e.into_inner()).push(c);
+        }
+        // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：那条流还挂着，下一个宿主认不出已有实例。
+        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+            crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
+            // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**；关写半边才是后端那边的 EOF。
+            //   等到后端处理完这条流结束（它收掉这条流、我们的读端见了底）。
+            let ended = c.close_write();
+            c.shutdown();
+            let done = tauri::async_runtime::block_on(async move {
+                tokio::time::timeout(guard_core::wall::CEILING, ended).await
+            });
+            assert!(done.is_ok(), "关了写半边，到兜底上限后端还没收掉这条流");
         }
     }
 

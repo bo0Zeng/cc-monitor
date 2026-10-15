@@ -905,6 +905,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
                 crate::local_lines::deliver(f).await;
             }
         }
+        client.note_read_end();
         // 告诉本机内容消费者这条流结束了。
         crate::local_lines::stream_ended().await;
         // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
