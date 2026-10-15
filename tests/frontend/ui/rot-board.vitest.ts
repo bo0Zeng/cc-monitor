@@ -5,16 +5,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { board, textOf, type BoardActs, type BoardState } from "../../../src/frontend/ui/rot-board";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { RotAccount } from "../../../src/frontend/ui/generated/RotAccount";
+import type { Fact } from "../../../src/frontend/ui/generated/Fact";
 import type { RotFormCell } from "../../../src/frontend/ui/generated/RotFormCell";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
 const NOW = 1_800_000_000;
-const fact = (account: string, u5: number, u7: number, blocked = false): RotAccount => ({
+const fact = (account: string, u5: number, u7: number, blocked = false): Fact => ({
   account,
-  color: 5,
-  label: account,
   kind: "sub",
   w5h: { open: true, used: u5, resets: NOW + 3600, resetsText: "18:30" },
   w7d: { open: true, used: u7 },
@@ -48,6 +46,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     start: "work",
     current: "team",
     accounts: [fact("work", 94, 40, true), fact("team", 58, 30), fact("lab", 35, 20), fact("api", 0, 0)],
+    plates: { work: { color: 5, label: "work" }, team: { color: 5, label: "team" }, lab: { color: 5, label: "lab" }, api: { color: 5, label: "api" } },
     listed: 3,
     decision: { pick: "team", order: ["team", "lab"], why: [], fromTemp: false, skipped: [], temp: [] },
     timeline: {
@@ -134,7 +133,7 @@ describe("第一行与说明", () => {
   });
 
   it("★ 不轮换的会话：第一行 ＋ 一行「只用开会话的号 work」，号牌 · 设置 · 模拟都不出", () => {
-    const root = draw(view({ strategy: null, form: [], decision: null, timeline: null, accounts: [], listed: 0 }), state(), acts());
+    const root = draw(view({ strategy: null, form: [], decision: null, timeline: null, accounts: [], plates: {}, listed: 0 }), state(), acts());
     expect(root.textContent).toContain(copyText("rot.none.desc"));
     expect(root.textContent).toContain("work");
     expect(root.querySelector("[data-account]")).toBeNull();
@@ -156,7 +155,7 @@ describe("第一行与说明", () => {
 
 describe("号色 · 号名照视图里那一格", () => {
   it("★ 号牌的号色与号名都照 rotation-view 每个号带的那两格（不另问账号清单去对）", () => {
-    const v = view({ accounts: [{ ...fact("work", 94, 40), color: 6, label: "夹具·号名" }, fact("team", 58, 30), fact("lab", 35, 20)] });
+    const v = view({ plates: { work: { color: 6, label: "夹具·号名" }, team: { color: 1, label: "team" }, lab: { color: 2, label: "lab" } } });
     const root = draw(v, state(), acts());
     const card = [...root.querySelectorAll<HTMLElement>(".acct-avatar")].find((e) => e.parentElement?.textContent?.includes("夹具·号名"));
     expect(card, "画了视图里的号名").toBeDefined();

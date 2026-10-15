@@ -1,11 +1,11 @@
 //! `rotation.json` 第三版：只存会话那一侧的事 —— 用哪份策略（加改过的设置）· 用户拖出来的顺序 ·
 //! 策略上一判交的 `memo` 与叫醒 · 换号记录（[`Book::saw`] 记新会话 · [`Session::push_log`] 记换号）。没有任何换号的想法：上限、软硬这些都在策略文件的设置里。
 
+/// 换号记录（盘上那一份 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
+pub(crate) use cmd_wire::rotation::{RotLog as Log, RotLogCause as Cause};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
-/// 换号记录（盘上那一份 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::{RotLog as Log, RotLogCause as Cause};
 
 /// 这一版的版本号。
 pub(crate) const BOOK_VERSION: u64 = 3;

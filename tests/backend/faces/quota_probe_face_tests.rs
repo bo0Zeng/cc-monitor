@@ -213,10 +213,7 @@ fn bad_args_unknown_accounts_and_api_keys_never_start_anything() {
     let ctx = home.ctx();
     let code = |args: Value| home.probe(&ctx, args).expect_err("应拒").code;
     assert_eq!(code(json!({"account": "b"})), "bad_args");
-    assert_eq!(
-        code(json!({"agent": "claude", "account": "_"})),
-        "bad_args"
-    );
+    assert_eq!(code(json!({"agent": "claude", "account": "_"})), "bad_args");
     assert_eq!(
         code(json!({"agent": "claude", "account": "b", "x": 1})),
         "bad_args"

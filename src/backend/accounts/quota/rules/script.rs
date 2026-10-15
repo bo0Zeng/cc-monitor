@@ -3,10 +3,10 @@
 
 use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
 use crate::accounts::quota::strategy::{Fail, FailKind};
-use rhai::{Dynamic, Map, AST};
-use serde::{Deserialize, Serialize};
 /// 头里能写成一句、也能分语言写的字（线上形住 `cmd-wire`）。
 pub(crate) use cmd_wire::rotation::StrategyText as Text;
+use rhai::{Dynamic, Map, AST};
+use serde::{Deserialize, Serialize};
 
 /// 头那一段的开头与结尾。
 const HEAD_OPEN: &str = "/*--- rotation\n";

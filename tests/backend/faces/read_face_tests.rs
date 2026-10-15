@@ -2377,12 +2377,22 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
     let agent = q.accounts[0].head.agent.clone();
     with_quota(&mut list, &q, &agent);
     let cells = |l: &crate::observe::accounts_query::AccountsList| {
-        l.accounts.iter().map(|r| r.quota.as_ref().map(|w| w.0.clone())).collect::<Vec<_>>()
+        l.accounts
+            .iter()
+            .map(|r| r.quota.as_ref().map(|w| w.0.clone()))
+            .collect::<Vec<_>>()
     };
-    assert_eq!(cells(&list), [q.accounts[0].five_hour.as_ref().map(|w| w.0.clone()), None]);
+    assert_eq!(
+        cells(&list),
+        [q.accounts[0].five_hour.as_ref().map(|w| w.0.clone()), None]
+    );
     with_quota(&mut list, &q, "another-agent");
     assert_eq!(cells(&list), [None, None], "别家的同名号不对上");
     q.five_hour = Some(cmd_wire::cells::Words("5h 读不到".into()));
     with_quota(&mut list, &q, &agent);
-    assert_eq!(cells(&list), [Some("5h 读不到".into()), Some("5h 读不到".into())], "账读不出 ⇒ 顶上那一格");
+    assert_eq!(
+        cells(&list),
+        [Some("5h 读不到".into()), Some("5h 读不到".into())],
+        "账读不出 ⇒ 顶上那一格"
+    );
 }

@@ -300,7 +300,7 @@ class LoginDrawer {
     row.className = s.ldLinks;
     // 那一家自己已在这台开了登录页 ⇒ 不再当主动作（再点才开第二页）。
     const opened = step.t === "ready" && step.started.opened;
-    const open = button({ label: copyText(opened ? "login.act.reopen" : "login.act.open"), kind: opened ? "ghost" : "primary", icon: "front", onClick: () => (step.t === "ready" ? void this.openPage(step.started.url) : undefined) });
+    const open = button({ label: opened ? copyText("login.act.reopen") : copyText("login.act.open"), kind: opened ? "ghost" : "primary", icon: "front", onClick: () => (step.t === "ready" ? void this.openPage(step.started.url) : undefined) });
     open.dataset.action = "login-open";
     row.appendChild(open);
     if (step.t !== "ready") {

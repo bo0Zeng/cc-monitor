@@ -671,21 +671,8 @@ mod tests {
             ("control/fork_launch.rs", "AccountFact", "同上，号那一格的值（`null` ＝ 账号 0）"),
             (
                 "observe/accounts_query.rs",
-                "Badge",
-                "`accounts-list` 每个号那一枚徽章（命令应答里的一块），不是流协议帧",
-            ),
-            (
-                "observe/accounts_query.rs",
                 "AccountsListReq",
-                "typed 帧命令 `accounts-list` 的入参（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
-            ),
-            ("observe/accounts_query.rs", "AccountsList", "同上，回包"),
-            ("observe/accounts_query.rs", "ListMeta", "同上，回包的 `meta`"),
-            ("observe/accounts_query.rs", "AccountRow", "同上，回包每个号一行"),
-            (
-                "observe/accounts_query.rs",
-                "ScannedAccount",
-                "同上，每个号一行里扫清单得出的那几格（`flatten` 进 `AccountRow`）",
+                "typed 帧命令 `accounts-list` 的入参（形状从类型生成进协议参考与 TS；回包住 `cmd-wire`），命令应答不是流协议帧",
             ),
             (
                 "observe/accounts_query.rs",

@@ -60,12 +60,10 @@ pub(crate) fn facts_with(
     now: u64,
     tz: &crate::Tz,
 ) -> RotationFactsReply {
-    let agent = req
-        .agent
-        .as_deref()
-        .map_or(crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT, |k| {
-            crate::agents::pick_route(Some(k)).unwrap_or(k)
-        });
+    let agent = req.agent.as_deref().map_or(
+        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+        |k| crate::agents::pick_route(Some(k)).unwrap_or(k),
+    );
     let row = |a: &str| (ctx.rows)(agent, a);
     RotationFactsReply {
         now,

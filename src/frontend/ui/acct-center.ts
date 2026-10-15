@@ -13,6 +13,7 @@ import { readQuota, tookQuota } from "./quota-reads";
 import type { QuotaRead } from "./acct-words";
 import { readSessionView } from "./rotation-view-reads";
 import { pushedProducts, type Changed } from "./changed-stream";
+import { invalidateAccountsCache } from "./account-reads";
 
 /** 每台此刻有 tab 的会话。 */
 const known = new Map<Origin, Set<string>>();
@@ -64,6 +65,8 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
  */
 export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_strategies", change: Changed): void {
   if (topic === "quota") {
+    // 账号清单每号带「5h 那一格」：额度变了，下一次问清单不拿缓存。
+    invalidateAccountsCache(origin);
     const p = pushedProducts(change, (v) => tookQuota(v as QuotaRead));
     const q = p.got.get(null);
     if (q !== undefined) putIn(appStore.quota, origin, q);

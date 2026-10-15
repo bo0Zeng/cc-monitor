@@ -286,12 +286,14 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
     );
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
-    assert_eq!(v.accounts[0].fact.account, "a", "号列表里的在前");
+    assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
     // 每个号带号色与号名（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处。
+    let plate = &v.plates["a"];
     assert_eq!(
-        (v.accounts[0].color, v.accounts[0].label.0.as_str()),
+        (plate.color, plate.label.0.as_str()),
         (crate::accounts::manage::model::color_fallback("a"), "a")
     );
+    assert_eq!(v.plates.len(), v.accounts.len(), "每个号一枚");
     assert_eq!(v.listed, 1);
     assert_eq!(
         v.decision.as_ref().and_then(|d| d.pick.as_deref()),

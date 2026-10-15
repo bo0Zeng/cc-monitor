@@ -3,10 +3,10 @@
 //! 再带 `scope: each` 的那几格。号牌不分排（§2.5），号列表的先后就是号牌的先后。
 
 use super::script::Text;
-use serde::Deserialize;
-use serde_json::Value;
 /// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::rotation::{FormCell as Cell, FormKind as Kind, FormScope as Scope};
+use serde::Deserialize;
+use serde_json::Value;
 
 /// 号列表那一格的键（固定，不进 `form`）。
 pub(crate) const ACCOUNTS: &str = "accounts";

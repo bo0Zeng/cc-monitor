@@ -130,7 +130,10 @@ pub struct SlotShow {
     pub text: Words,
     /// 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
     #[serde(default = "plain")]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"plain\" | \"fail\" | \"warn\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"plain\" | \"fail\" | \"warn\"")
+    )]
     pub tone: Tone,
 }
 
@@ -161,7 +164,10 @@ pub struct QuotaShow {
     pub sub_id: Option<String>,
     /// 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<WindowShow>>"))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(optional, as = "Option<Vec<WindowShow>>")
+    )]
     pub windows: Vec<WindowShow>,
     /// 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：`usage_of` 写。
     pub usage: Usage,
@@ -193,7 +199,10 @@ pub struct Usage {
     pub text: Words,
     /// 语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 快满 ⇒ `warn`；否则 `plain`。
     #[serde(default = "plain")]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"plain\" | \"fail\" | \"warn\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"plain\" | \"fail\" | \"warn\"")
+    )]
     pub tone: Tone,
     /// 重置那一刻（只给出口那一下写 `reset`，不上线）。
     #[serde(skip)]
@@ -604,7 +613,10 @@ pub struct UnseenUsage {
     pub window: Option<Words>,
     pub value: Words,
     pub text: Words,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "\"plain\" | \"fail\" | \"warn\""))]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"plain\" | \"fail\" | \"warn\"")
+    )]
     pub tone: Tone,
 }
 

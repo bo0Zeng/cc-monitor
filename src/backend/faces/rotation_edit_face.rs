@@ -8,14 +8,15 @@ use crate::accounts::upstream_select::turn;
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
 use crate::wire::typed::Command;
+pub(crate) use cmd_wire::rotation::{
+    RotBadStrategy, RotConflict, RotDone, RotInUse, RotSeg, RotStrategyId, RotStrategyRev,
+    RotUnusable, RotationDayPaintReply, RotationSaveReply, RotationSettingsReply,
+    RotationTempReply,
+};
 use copy_core::copy_text;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
-pub(crate) use cmd_wire::rotation::{
-    RotBadStrategy, RotConflict, RotDone, RotInUse, RotSeg, RotStrategyId, RotStrategyRev, RotUnusable,
-    RotationDayPaintReply, RotationSaveReply, RotationSettingsReply, RotationTempReply,
-};
 
 /// 写哪一份：一个会话（会话面板）· 一份策略（设置页）。
 #[derive(Debug, Clone, Deserialize)]

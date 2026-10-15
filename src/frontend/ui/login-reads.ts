@@ -10,8 +10,8 @@
  *
  * 判 · 拼句 · 能不能接着粘全在后端：失败回包的 `data.again` 说「接着粘 · 重新开始 · 没法再来」，这里只把它原样交出去，不按码分。
  */
-import { chan, ChanError, type CallError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
+import { ChanError, type CallError } from "../../comms/inward/chan";
+import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { saidOfTransport } from "./control-said";
 import { copyText } from "./copy-table";
@@ -93,10 +93,7 @@ function againOf(data: unknown): LoginAgainHow {
  */
 export async function loginStart(origin: Origin, target: LoginStartReq): Promise<LoginStarted> {
   try {
-    const body = jsonBody({ ...target, browserHere: isLocalOrigin(origin) });
-    const budget = budgetWithin(START_BUDGET_MS);
-    const reply = await chan.call(origin, "login-start", body, budget);
-    return readJson(reply) as LoginStarted;
+    return await callTyped(origin, "login-start", { ...target, browserHere: isLocalOrigin(origin) }, budgetWithin(START_BUDGET_MS));
   } catch (e) {
     throw failedOf(origin, e);
   }

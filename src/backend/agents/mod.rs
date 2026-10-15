@@ -482,7 +482,6 @@ pub(crate) fn pick_kind_among(
     pick_among(registry, name, |kind, _| kind)
 }
 
-
 /// [`pick_kind_among`] 在生产注册表上。
 pub(crate) fn pick_kind(name: Option<&str>) -> Result<(&'static str, LaunchFace), String> {
     pick_kind_among(REGISTRY, name)

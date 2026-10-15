@@ -7,16 +7,17 @@ use crate::accounts::quota::rules::decide::Pick;
 use crate::accounts::quota::rules::{form, past, script, shelf, simulate};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::accounts::upstream_select::turn::{self, Loaded};
+use crate::common::cells::Words;
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
+pub(crate) use cmd_wire::rotation::{
+    RotBadCell, RotHint, RotLogRow, RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg,
+    RotPastUse, RotPlate, RotRefused, RotStrategyError, RotStrategyItem, RotationStrategiesReply,
+    RotationViewReply,
+};
 use serde::Deserialize;
 use serde_json::Value;
-use crate::common::cells::Words;
-pub(crate) use cmd_wire::rotation::{
-    RotAccount, RotBadCell, RotHint, RotLogRow, RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg, RotPastUse,
-    RotRefused, RotStrategyError, RotStrategyItem, RotationStrategiesReply, RotationViewReply,
-};
 
 /// `rotation-strategies` 的入参。
 #[derive(Debug, Default, Deserialize)]
@@ -395,7 +396,11 @@ pub(crate) fn view_with(
     if session.strategy.id.is_empty() {
         let mut hints = Vec::new();
         if let Some(e) = ctx.hop.store.unreadable() {
-            hints.push(note_of(RotHint::BookUnreadable { text: e.said }, "", FailWhy::Other));
+            hints.push(note_of(
+                RotHint::BookUnreadable { text: e.said },
+                "",
+                FailWhy::Other,
+            ));
         }
         return Ok(RotationViewReply {
             now,
@@ -407,6 +412,7 @@ pub(crate) fn view_with(
             start: session.start.clone(),
             current: session.current.clone(),
             accounts: Vec::new(),
+            plates: Default::default(),
             listed: 0,
             decision: None,
             timeline: None,
@@ -507,23 +513,29 @@ pub(crate) fn view_with(
         .map_or(0, Vec::len)
         .min(listed_ids.len());
     let lib = ctx.hop.library();
-    let colors = crate::observe::accounts_query::account_colors();
-    let accounts = listed_ids
+    let accounts: Vec<crate::accounts::quota::facts::Fact> = listed_ids
         .iter()
         .map(|id| {
-            let fact = all_facts
+            all_facts
                 .iter()
                 .find(|f| f.account == *id)
                 .cloned()
-                .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz));
-            RotAccount {
+                .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz))
+        })
+        .collect();
+    let colors = crate::observe::accounts_query::account_colors();
+    let plates = accounts
+        .iter()
+        .map(|f| {
+            let id = &f.account;
+            let plate = RotPlate {
                 color: colors
                     .get(id)
                     .copied()
                     .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(id)),
                 label: Words(crate::accounts::quota::name_words::account_text(id)),
-                fact,
-            }
+            };
+            (id.clone(), plate)
         })
         .collect();
     let dirty = match &req.target {
@@ -576,6 +588,7 @@ pub(crate) fn view_with(
         start: session.start.clone(),
         current: session.current.clone(),
         accounts,
+        plates,
         listed,
         decision: Some(decision_of(&d)),
         timeline: Some(timeline_of(

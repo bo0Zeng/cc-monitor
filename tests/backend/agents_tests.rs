@@ -326,8 +326,15 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
 #[test]
 fn the_wire_names_an_agent_only_by_its_kind() {
     let route = crate::agents::claudecode::UPSTREAM.route_id;
-    assert_ne!(route, crate::agents::claudecode::AGENT_KIND, "两个名字今天确实不同（否则这条判不出东西）");
-    assert_eq!(pick_route(Some(crate::agents::claudecode::AGENT_KIND)), Ok(route));
+    assert_ne!(
+        route,
+        crate::agents::claudecode::AGENT_KIND,
+        "两个名字今天确实不同（否则这条判不出东西）"
+    );
+    assert_eq!(
+        pick_route(Some(crate::agents::claudecode::AGENT_KIND)),
+        Ok(route)
+    );
     assert!(pick_route(Some(route)).is_err(), "路由名不当线上名认");
     assert_eq!(kind_of_route(route), crate::agents::claudecode::AGENT_KIND);
     assert_eq!(kind_of_route("gone-agent"), "gone-agent");

@@ -30,7 +30,7 @@ import type { RotFormCell } from "./generated/RotFormCell";
 import type { RotSeg } from "./generated/RotSeg";
 import type { RotTempOp } from "./generated/RotTempOp";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
-import type { RotAccount } from "./generated/RotAccount";
+import type { RotPlate } from "./generated/RotPlate";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import type { StrategyText } from "./generated/StrategyText";
 import s from "./rot-board.module.css";
@@ -111,9 +111,9 @@ function at(e: HTMLElement, x: number, w?: number): void {
   if (w !== undefined) e.style.setProperty("--rot-w", String(w));
 }
 
-/** 视图里的这个号（后端带好号色 · 号名）；视图里没有 ⇒ `undefined`。 */
-function acctIn(view: RotationViewReply | null | undefined, account: string): RotAccount | undefined {
-  return view?.accounts.find((a) => a.account === account);
+/** 视图里这个号的号牌（后端带好号色 · 号名）；视图里没有 ⇒ `undefined`。 */
+function acctIn(view: RotationViewReply | null | undefined, account: string): RotPlate | undefined {
+  return view?.plates[account];
 }
 
 /** 号名：照视图里那一格；视图里没有的号照原名。 */
