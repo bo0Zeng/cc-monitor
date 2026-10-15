@@ -822,6 +822,10 @@ fn the_production_entry_hands_the_stdio_consumer_down() {
 /// ⇒ 换 emb 状态之后 `touch src/frontend/shell/build.rs`，或**直接换一个全新的 target 目录名**。
 /// ⚠ 机制**我没有实验证明**；`local_backend_host.rs` 那条姊妹测试的同名小节里记着两条候选，
 /// 其中「`rerun-if-changed` 只在文件存在时登记」那条**现打对不上源码**（那一行是无条件的）。
+/// stdio 流模式后端读到 EOF、照开之后 stderr 那一行的记号（后端 `main.rs` 同名常量）。
+#[cfg(all(embedded_backends, target_os = "linux", target_arch = "x86_64"))]
+const STDIN_EOF_KEPT: &str = "stdin-eof-kept";
+
 #[cfg(all(embedded_backends, target_os = "linux", target_arch = "x86_64"))]
 #[test]
 #[ignore = "K-R7：起真 backend ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
@@ -830,6 +834,30 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let shim = crate::local_backend_host::tests::demand_tmux_shim(
         "本条起真后端，而后端一上来就往它连得到的 tmux server 装全局 hook",
     );
+    // 后端的 stderr 经 `drain_child_stderr_into_log`（另一条线程）进本进程的日志 ⇒ 装一个全局的收集者，判据等后端说的那一行。
+    #[derive(Clone, Default)]
+    struct Said(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for Said {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let said_log = Said::default();
+    let sink = said_log.clone();
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::fmt()
+            .with_writer(move || sink.clone())
+            .with_ansi(false)
+            .with_max_level(tracing::Level::INFO)
+            .finish(),
+    )
+    .expect("前提：本条要独占全局日志口（e2e 那一趟一次只跑这几条）");
+    tracing::callsite::rebuild_interest_cache();
+    let backend_said = |needle: &str| String::from_utf8_lossy(&said_log.0.lock().unwrap()).contains(needle);
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
@@ -946,11 +974,19 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     // P2-Y3：关写端**不许**把后端带走（C8 裁定「默认不 kill、backend 继续跑」）。
     // 单独观测，不顺带看一眼 —— 件里 §0d 把这条从「推断」改成了实测，就是这个意思。
     let pid = h.current_pid().expect("已经收到 hello 了，进程必然在");
-    client.close_write();
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // stdio 这条载体上后端读到 EOF 不收流（读端不会见底）⇒ 不等 `close_write` 交的那一点，等后端说「读到 EOF、照开」那一行。
+    drop(client.close_write());
+    let said = guard_core::wall::rounds().any(|_| {
+        let got = backend_said(STDIN_EOF_KEPT);
+        if !got {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        got
+    });
     let alive = Path::new(&format!("/proc/{pid}")).exists();
     crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
     cleanup(&h);
+    assert!(said, "关掉 stdin 写端之后，到兜底上限没等到后端说「读到 EOF、照开」（`{STDIN_EOF_KEPT}`）");
     assert!(
         alive,
         "关掉 stdin 写端之后后端（pid={pid}）没了。\n\
