@@ -603,12 +603,11 @@ fn run_with(
             //   3. 通过则回 `#{session_id}` 句柄 —— **后面一律对句柄下手，不对名字**，
             //      名字在窗口期内被重新绑定也打不到别人身上（见 `gate` 模块头注）。
             //
-            // ⚠ 顺序不可反：`admit` 必须在 `type_payload` **之前**。
-            // 由 `the_send_into_arm_admits_before_it_types` 钉住。
+            //   键入只收门发的令牌（`TypeAt::Admitted`）⇒ 不过门编不过。
             //   带了 `ccm_sid` ⇒ 句柄是挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），身份也按它判。
-            let handle =
+            let at =
                 super::gate::admit(&req.name, &t, req.ccm_sid.as_deref(), req.client.as_deref())?;
-            type_payload(&handle, &req.name, &req.payload, false, tmux)?;
+            type_payload(TypeAt::Admitted(&at), &req.name, &req.payload, false, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -721,13 +720,19 @@ fn run_with(
                     &["set-option", "-t", &t, "@ccm_client", client],
                 );
             }
-            type_payload(&t, &req.name, &req.payload, true, tmux)?;
+            type_payload(TypeAt::JustMade(&t), &req.name, &req.payload, true, tmux)?;
             Ok(LaunchOutcome {
                 created: true,
                 typed: true,
             })
         }
     }
+}
+
+/// 往哪键入：门发的令牌（`send-into`），或本趟刚建成的那个会话的精确目标（`create-or-attach`，只在 `new-session` 成功之后）。
+enum TypeAt<'a> {
+    Admitted(&'a super::gate::Admitted),
+    JustMade(&'a str),
 }
 
 /// 键入载荷。失败 ⇒ `typed_unconfirmed`：**会话在，载荷未必落**。
@@ -744,12 +749,16 @@ fn run_with(
 /// `name`：说给人听的那个 tmux 会话名（`target` 是精确目标或句柄）。
 /// `created`：会话是本趟新建的（失败时带回去，命令行那一处据此决定收不收）。
 fn type_payload(
-    target: &str,
+    at: TypeAt<'_>,
     name: &str,
     payload: &str,
     created: bool,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<(), LaunchFail> {
+    let target = match at {
+        TypeAt::Admitted(a) => a.handle(),
+        TypeAt::JustMade(t) => t,
+    };
     // 一串里先退出窗格模式、再送（见上）。
     #[rustfmt::skip]
     let sent = tmux(&["copy-mode", "-q", "-t", target, ";", "send-keys", "-t", target, payload, "Enter"]);
@@ -787,13 +796,14 @@ pub(crate) fn check_input_text(text: &str) -> Result<(), CmdErr> {
 
 /// 送一段**字面字**（终端管理 L1 送字那一半）：单行 `send-keys -l`（不解释成键名）；多行按粘贴送
 /// （`paste-buffer -p`：程序开了括号粘贴就带上，用完即删那个缓冲）。`enter` ⇒ 之后再补一个回车键。
-/// `target` 由调用方过完门交来（句柄，不是名字）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
+/// 只收门发的令牌（[`super::gate::admit_probed`]）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
 pub(crate) fn type_literal(
-    target: &str,
+    at: &super::gate::Admitted,
     text: &str,
     enter: bool,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<Ran, CmdErr> {
+    let target = at.handle();
     let sent = if text.contains('\n') {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let buf = format!(
@@ -815,13 +825,13 @@ pub(crate) fn type_literal(
     tmux(&["send-keys", "-t", target, "Enter"])
 }
 
-/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。
+/// 送一个键（`key` 是 tmux 的键名，来自终端管理那张有限键表；不收任意串）。只收门发的令牌。
 pub(crate) fn press_key(
-    target: &str,
+    at: &super::gate::Admitted,
     key: &str,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
 ) -> Result<Ran, CmdErr> {
-    tmux(&["send-keys", "-t", target, key])
+    tmux(&["send-keys", "-t", at.handle(), key])
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。

@@ -225,7 +225,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/control/gate_rules.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
       // monitor `tmux.rs` 那一格（Gate 1 调 gate-core 恰一处 · 私有谓词不许长回来）随整份文件删了：
-      //   monitor 生产段零处够门，由 `tests/frontend/shell/gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` 钉。
+      //   monitor 不依赖后端 crate，够不到门；送键与杀只收后端门发的令牌（`control/gate.rs`）。
     ],
   },
   J7: {

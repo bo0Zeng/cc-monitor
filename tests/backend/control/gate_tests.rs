@@ -412,10 +412,13 @@ fn both_gates_always_probe_before_they_act() {
     // 放行时交出来的句柄：`admit` 交会话句柄，或那个会话里挂着请求 sid 的窗格句柄；
     // `admit_destructive` 交「整个会话」（会话句柄）或「这几个窗格」（同会话句柄 ＋ 窗格句柄）。
     for (sig, handle_out) in [
-        ("pub(crate) fn admit(", "Ok(at.unwrap_or(p.session_id))"),
+        (
+            "pub(crate) fn admit(",
+            "admit_probed(name, who, at, requester)",
+        ),
         (
             "pub(crate) fn admit_destructive(",
-            "Ok(EndAt::Session(p.session_id))",
+            "Ok(Doomed(EndAt::Session(p.session_id)))",
         ),
     ] {
         let at = guard_core::find_pinned(&prod, sig).unwrap_or_else(|e| {

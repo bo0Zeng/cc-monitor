@@ -437,30 +437,6 @@ fn the_payload_is_still_only_shape_checked() {
     }
 }
 
-/// ★ **生产接线（顺序钉）**：`admit` 必须在 `type_payload` **之前**。
-///
-/// 这条与上面那条不是重复：上面钉「过不过门」，这条钉「门在不在路上」。
-/// 反过来（先键入再核验）＝ 门形同虚设、而两条测试都会因为「函数被调用了」而绿。
-/// 顺序错的形态在本仓出现过（`launch_wire` 的 env 顺序），是**最容易被 review 漏掉**的一类。
-#[test]
-fn the_send_into_arm_admits_before_it_types() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    let arm = arm_of(&src, "Mode::SendInto =>");
-    let admit_at = arm.find("gate::admit").expect("分支里没有 `gate::admit`");
-    let type_at = arm.find("type_payload").expect("分支里没有 `type_payload`");
-    assert!(
-        admit_at < type_at,
-        "`type_payload` 排在 `gate::admit` 前面 —— 载荷先打出去了，门再判就没意义了"
-    );
-    // 键入的目标必须是 `admit` 回的**句柄**，不是名字/`t`。见 `gate` 模块头注的 TOCTOU 那段。
-    assert!(
-        arm.contains("type_payload(&handle"),
-        "键入的目标不是 `admit` 回的句柄 —— 对名字下手就把 TOCTOU 窗口放回来了"
-    );
-}
-
 /// ★ `create-or-attach` **刻意不过门**，且理由必须仍然成立：
 /// 它只在 `new-session` 成功（＝会话是本次刚建的）时才键入；
 /// 建失败但会话已存在时**早返回、根本不键入**。

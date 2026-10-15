@@ -377,12 +377,12 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 送键与杀会话只走后端（界面经 `src/frontend/ui/tmux-control.ts` 说 `kill` / `launch`；monitor 一道门都没有、生产段一处 `kill-session` 都没有）。三道门都在后端：
 
 1. **Gate 1（恒强制）**：目标名过 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符）；入口 `kill.rs::admit_existing_name`（kill · capture 共用）与 `src/backend/control/launch.rs::parse_request`。空目标（`=:` 会被当成当前会话）是唯一真正危险的默认值。
-2. **Gate 2（身份，并集）**：`control/gate.rs::admit`：`is_ccm_tmux_name` 前缀命中**或** `@ccm_sid` 已设（只认事实，不认 `_expect`）。判定本体只有 `control/gate_rules.rs` 一份。
+2. **Gate 2（身份，并集）**：`control/gate.rs::admit`：`is_ccm_tmux_name` 前缀命中**或** `@ccm_sid` 已设（只认事实，不认 `_expect`）。判定本体在 `control/gate_rules.rs`。
 3. **Gate 3（只对 kill）**：`control/gate.rs::admit_destructive`：会话只有一个 window 才许 kill（长出了别的 window ⇒ 有独立于本工具的用户活动）。
 
 **原子 verify ＋ act**：`control/gate.rs::probe` 一次 `display-message -p -t <目标>` 取回 `session_id` · `@ccm_sid` · `session_windows`，判完之后对拿回来的 `#{session_id}` 句柄下命令，不另按名字发第二条（两次往返之间的窗口可被抢跑）。所有形态都先 probe 一次。后端不在 ⇒ 明确失败（文案 `tmuxControl.channel.*`），不走另一条路做掉。
 
-**谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路）· `gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own`。
+**谁在守**：`tests/e2e/backend-gate2-acceptance.sh`（真后端 ＋ 真 tmux、私有 `-L` socket，用例逐行来自判定表 `gate2-golden.tsv`）· `tmux_backend_gate_guard_tests.rs`（monitor 侧零第二条路）· 类型：送键（`launch::type_literal` · `press_key` · `send-into` 那一臂）只收 `gate::Admitted`、结束会话只收 `gate::Doomed`，两样字段私有、不能复制，只有 `control/gate.rs` 造得出 ⇒ 不过门的送键 / 杀编不过。
 
 ## 35. 维度的 `applies` 绝不能条件性跳过 `cliFlags` 的 `null` 安全网（F05 / unify-launch）
 

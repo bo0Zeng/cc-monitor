@@ -3,7 +3,7 @@
 //!
 //! # 杀的是句柄不是名字
 //!
-//! `admit_destructive` 回的是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
+//! `admit_destructive` 回的令牌里是 `#{session_id}`（tmux 的 `$N`，server 生命周期内唯一、不复用），之后 `kill-session -t '$3'`：
 //! 名字在窗口期内被重新绑定到别的会话也杀不到别人（同 `super::gate` 头注的 TOCTOU 分析）。
 //!
 //! # 杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
@@ -139,17 +139,22 @@ fn run_expecting(
     requester: Option<&str>,
 ) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     let target = super::launch::exact_target(name);
-    // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到句柄。
-    // 门在 kill 之前（`the_kill_path_admits_before_it_kills` 钉住）。
-    let end = super::gate::admit_destructive(name, &target, sid, requester)?;
-    // 结束整个会话，还是只结束挂着那个 sid 的几个窗格（会话里还跑着别的 claude）。都对放行时拿到的句柄下手。
-    let (handle, only) = match end {
-        super::gate::EndAt::Session(h) => (h, None),
-        super::gate::EndAt::Panes(h, ps) => (h, Some(ps)),
+    // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
+    end(
+        name,
+        super::gate::admit_destructive(name, &target, sid, requester)?,
+    )
+}
+
+/// 结束门放行的那一处：只收门发的令牌，对令牌里的句柄下手（整个会话，或只挂着那个 sid 的几个窗格）。
+fn end(name: &str, doomed: super::gate::Doomed) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    let (handle, only) = match doomed.at() {
+        super::gate::EndAt::Session(h) => (h.as_str(), None),
+        super::gate::EndAt::Panes(h, ps) => (h.as_str(), Some(ps.as_slice())),
     };
     let mut argv: Vec<&str> = Vec::new();
-    match &only {
-        None => argv.extend(["kill-session", "-t", &handle]),
+    match only {
+        None => argv.extend(["kill-session", "-t", handle]),
         Some(ps) => {
             for (i, p) in ps.iter().enumerate() {
                 if i > 0 {
@@ -160,7 +165,7 @@ fn run_expecting(
         }
     }
     // 杀之前记下要走的那几个 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
-    let panes = pane_pids(&handle, only.as_deref());
+    let panes = pane_pids(handle, only);
     let out = Child::new("tmux")
         .args(&argv)
         .run(KILL_TMUX_WITHIN)

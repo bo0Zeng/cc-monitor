@@ -929,18 +929,17 @@ fn send_on(
         // 那个窗格此刻挂的已经不是名单里那个 sid 了。
         return Ok(refused(Refused::NotKnown));
     }
-    match gate::identity(&row.name, &p, requester.as_deref()) {
-        Who::Pass => {}
-        Who::OtherClient => return Ok(refused(Refused::NotYours)),
-        Who::NotOurs => return Ok(refused(Refused::NotManaged)),
-    }
+    // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。令牌只有门发得出。
+    let at = match gate::admit_probed(&row.name, p, row.pane.clone(), requester.as_deref()) {
+        Ok(at) => at,
+        Err(Who::OtherClient) => return Ok(refused(Refused::NotYours)),
+        Err(_) => return Ok(refused(Refused::NotManaged)),
+    };
     if !takes(row) {
         return Ok(refused(Refused::Ended));
     }
-    // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
-    let at = row.pane.clone().unwrap_or(p.session_id);
     if let Some(seen) = seen {
-        let now = screen_now(on, &at)?;
+        let now = screen_now(on, at.handle())?;
         if now != seen {
             return Ok(input_reply(
                 SentResult::Refused,
@@ -958,7 +957,7 @@ fn send_on(
         return Ok(input_reply(SentResult::Delivered, None, None));
     }
     // tmux 回了非零：会话还在 ⇒ 不知道送没送到（不重发）；不在了 ⇒ 已经没了。
-    match gate::probe_with(on.cmd(), &at)? {
+    match gate::probe_with(on.cmd(), at.handle())? {
         Some(_) => Ok(input_reply(SentResult::Unsure, None, None)),
         None => Ok(refused(Refused::Ended)),
     }

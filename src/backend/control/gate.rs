@@ -283,7 +283,31 @@ pub(crate) fn identity(name: &str, p: &Probed, requester: Option<&str>) -> Who {
     }
 }
 
-/// **过门。** 通过则返回后续该用的目标句柄（`#{session_id}`；给了 `sid` ⇒ 挂着它的那个窗格的 `#{pane_id}`）。
+/// 过了门的目标（`#{session_id}` 或 `#{pane_id}` 句柄）：字段私有、不能复制 ⇒ 只有本模块造得出，送键只收它。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Admitted(String);
+
+impl Admitted {
+    /// 对它下命令用的 tmux 句柄。
+    pub(crate) fn handle(&self) -> &str {
+        &self.0
+    }
+}
+
+/// 已探回的 `p`（`at` ＝ 要落的那个窗格，没有 ⇒ 会话）过身份门：放行 ⇒ 令牌；不放 ⇒ 哪一种不放。
+pub(crate) fn admit_probed(
+    name: &str,
+    p: Probed,
+    at: Option<String>,
+    requester: Option<&str>,
+) -> Result<Admitted, Who> {
+    match identity(name, &p, requester) {
+        Who::Pass => Ok(Admitted(at.unwrap_or(p.session_id))),
+        no => Err(no),
+    }
+}
+
+/// **过门。** 通过则返回令牌：后续该用的目标句柄（`#{session_id}`；给了 `sid` ⇒ 挂着它的那个窗格的 `#{pane_id}`）。
 ///
 /// `name` 是用户/调用方给的会话名（Gate 2 的本地半支按它判）；
 /// `target` 是 `launch::exact_target(name)` 产出的精确目标（`=name:`）。
@@ -300,7 +324,7 @@ pub(crate) fn admit(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<String, CmdErr> {
+) -> Result<Admitted, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
@@ -309,7 +333,7 @@ pub(crate) fn admit(
     };
     // 给了 sid ⇒ 落在挂着它的那个窗格、身份也按它判（活动窗格是谁不算数）；哪个窗格都不挂它 ⇒ 此刻跑的已经不是那条会话。
     let (who, at) = match sid {
-        None => (p.clone(), None),
+        None => (p, None),
         Some(s) => {
             let panes = panes_on(None, &p.session_id);
             let Some(c) = carrier(&panes, s) else {
@@ -320,20 +344,20 @@ pub(crate) fn admit(
             };
             let at = Probed {
                 ccm_sid: c.sid.clone(),
-                ..p.clone()
+                ..p
             };
             (at, Some(c.pane.clone()))
         }
     };
-    match identity(name, &who, requester) {
-        Who::Pass => Ok(at.unwrap_or(p.session_id)),
-        Who::NotOurs => Err((
-            "wrong_owner",
-            copy_text("beGate.admit.notOurs", &[("name", name)]),
-        )),
-        Who::OtherClient => Err((
+    match admit_probed(name, who, at, requester) {
+        Ok(a) => Ok(a),
+        Err(Who::OtherClient) => Err((
             "wrong_owner",
             copy_text("beGate.admit.otherClient", &[("name", name)]),
+        )),
+        Err(_) => Err((
+            "wrong_owner",
+            copy_text("beGate.admit.notOurs", &[("name", name)]),
         )),
     }
 }
@@ -351,7 +375,7 @@ pub(crate) fn admit_destructive(
     target: &str,
     sid: Option<&str>,
     requester: Option<&str>,
-) -> Result<EndAt, CmdErr> {
+) -> Result<Doomed, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
@@ -397,7 +421,7 @@ pub(crate) fn admit_destructive(
         }
     }
     if !only.is_empty() {
-        return Ok(EndAt::Panes(p.session_id, only));
+        return Ok(Doomed(EndAt::Panes(p.session_id, only)));
     }
     if p.windows != 1 {
         return Err((
@@ -408,11 +432,22 @@ pub(crate) fn admit_destructive(
             ),
         ));
     }
-    Ok(EndAt::Session(p.session_id))
+    Ok(Doomed(EndAt::Session(p.session_id)))
+}
+
+/// 破坏性动作的令牌：字段私有、不能复制 ⇒ 只有本模块造得出，结束会话只收它。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Doomed(EndAt);
+
+impl Doomed {
+    /// 放行之后落在哪。
+    pub(crate) fn at(&self) -> &EndAt {
+        &self.0
+    }
 }
 
 /// 破坏性动作放行之后落在哪。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum EndAt {
     /// 整个会话（`#{session_id}` 句柄）。
     Session(String),
