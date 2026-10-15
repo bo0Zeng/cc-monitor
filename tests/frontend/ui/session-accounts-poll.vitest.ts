@@ -115,16 +115,10 @@ describe("collectAccountRows —— 扇出", () => {
   });
 
   it("rows 按 host 顺序拼，不按完成顺序", async () => {
-    // 第一台最后答：等另外两台都答完、再让一拍 —— 若按完成顺序拼，它会排到最后
-    let others = 2;
-    let othersDone!: () => void;
-    const othersAnswered = new Promise<void>((r) => (othersDone = r));
     const f: HostFetchers = {
+      // 第一台多让几拍（宏任务）再答，另两台当场答 ⇒ 同时在飞时它必然最后答完 —— 若按完成顺序拼，它会排到最后
       async fetchSessionAccounts(origin) {
-        if (origin === "h0") {
-          await othersAnswered;
-          await new Promise((r) => setTimeout(r, 0));
-        } else if (--others === 0) othersDone();
+        if (origin === "h0") for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
         return [session(origin)];
       },
       async fetchAccounts(origin) {
