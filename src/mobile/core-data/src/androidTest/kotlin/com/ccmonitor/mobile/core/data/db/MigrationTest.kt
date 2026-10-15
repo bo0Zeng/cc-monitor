@@ -467,10 +467,34 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→17 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    /** 17→18：续点多一格文件身份，旧行是空串（下一次从头读一回）；别的格与别的表原样。 */
     @Test
-    fun migrateAll1To17Validates() {
+    fun migrate17To18GivesOldAnchorsAnEmptyFileAndKeepsTheRest() {
+        helper.createDatabase(dbName, 17).apply {
+            execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
+            execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 18, true, MIGRATION_17_18)
+        db.query("SELECT path, `offset`, seq, file FROM sync_anchors WHERE hostId='h1' AND scope='s1'").use { c ->
+            assertTrue("续点那一行应还在", c.moveToFirst())
+            assertEquals(listOf("/p", "10", "1", ""), (0 until c.columnCount).map { c.getString(it) })
+        }
+        db.query("SELECT COUNT(*) FROM record_pages").use { c ->
+            c.moveToFirst()
+            assertEquals(1, c.getInt(0))
+        }
+        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("h1", c.getString(0))
+        }
+    }
+
+    /** 全链路 1→18 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    @Test
+    fun migrateAll1To18Validates() {
         helper.createDatabase(dbName, 1).close()
-        helper.runMigrationsAndValidate(dbName, 17, true, *ALL_MIGRATIONS)
+        helper.runMigrationsAndValidate(dbName, 18, true, *ALL_MIGRATIONS)
     }
 }

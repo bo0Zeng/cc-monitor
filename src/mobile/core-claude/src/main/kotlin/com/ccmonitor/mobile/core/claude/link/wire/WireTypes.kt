@@ -161,6 +161,7 @@ data class TailPlan(
     @Json(name = "split_at") val splitAt: Long,
     @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
+    val file: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -255,6 +256,7 @@ data class ReadRow(
 data class HistoryLinesPage(
     val next: Long,
     val eof: Boolean,
+    val end: Long,
     val lines: List<LineRow>,
 )
 
@@ -262,6 +264,7 @@ data class HistoryLinesPage(
 @JsonClass(generateAdapter = true)
 data class LineRow(
     val seq: Long,
+    val end: Long?,
     val record: LineRecord,
 )
 

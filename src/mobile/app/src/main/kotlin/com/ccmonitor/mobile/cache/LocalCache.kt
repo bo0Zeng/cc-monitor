@@ -35,12 +35,12 @@ private class RoomChatCache(
 
     private fun RawPage.row(sid: String) = RecordPage(hostId, sid, start, end, RawJson.write(rows), now())
 
-    private fun Anchor.row(sid: String) = SyncAnchor(hostId, sid, path, offset, seq)
+    private fun Anchor.row(sid: String) = SyncAnchor(hostId, sid, path, offset, seq, file)
 
     override suspend fun load(sid: String): CachedRecords? {
         val pages = dao.pages(hostId, sid).map { it.raw() ?: return null }
         if (pages.isEmpty()) return null
-        return CachedRecords(pages, dao.anchor(hostId, sid)?.let { Anchor(it.path, it.offset, it.seq) })
+        return CachedRecords(pages, dao.anchor(hostId, sid)?.let { Anchor(it.path, it.offset, it.seq, it.file) })
     }
 
     override suspend fun viewed(sid: String) = dao.viewed(hostId, sid, now())

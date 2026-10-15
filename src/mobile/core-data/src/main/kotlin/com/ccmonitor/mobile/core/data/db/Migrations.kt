@@ -258,6 +258,14 @@ val MIGRATION_16_17 =
         }
     }
 
+// 续点多一格文件身份（`history-tail` 的 `file`）：旧行给空串 ⇒ 与那台的身份对不上 ⇒ 那一条下一次从头读一回。别的表一字不动。
+val MIGRATION_17_18 =
+    object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `sync_anchors` ADD COLUMN `file` TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
@@ -276,4 +284,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_14_15,
         MIGRATION_15_16,
         MIGRATION_16_17,
+        MIGRATION_17_18,
     )

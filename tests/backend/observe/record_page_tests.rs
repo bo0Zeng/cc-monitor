@@ -5,7 +5,7 @@ fn record_lines<'b>(
     reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
-    lines: impl IntoIterator<Item = (&'b [u8], u64)>,
+    lines: impl IntoIterator<Item = (&'b [u8], u64, Option<u64>)>,
 ) -> (Vec<Value>, u64) {
     let (got, next) = super::record_lines(reader, path, seq, lines);
     (
@@ -508,10 +508,21 @@ fn adjacent_unread_lines_fold_into_one() {
     );
 
     let p = std::path::Path::new("/x/projects/-p/s.jsonl");
-    let lines: Vec<(&[u8], u64)> = page.lines().map(|l| (l.as_bytes(), 0)).collect();
+    // 第 i 行的末端记成 100 + i：并好的那一条末端跟到被并的最后一行（第 3 行）。
+    let lines: Vec<(&[u8], u64, Option<u64>)> = page
+        .lines()
+        .enumerate()
+        .map(|(i, l)| (l.as_bytes(), 0, Some(100 + i as u64)))
+        .collect();
     let (out, next) = record_lines(&mut rd(&face), p, 10, lines);
     let seqs: Vec<u64> = out.iter().map(|l| l["seq"].as_u64().unwrap()).collect();
     assert_eq!(seqs, [10, 14, 15, 16], "并好的那一条用第一行的行号");
+    let ends: Vec<u64> = out.iter().map(|l| l["end"].as_u64().unwrap()).collect();
+    assert_eq!(
+        ends,
+        [103, 104, 105, 106],
+        "并好的那一条末端是被并的最后一行的"
+    );
     assert_eq!(next, 17);
     assert_eq!(out[0]["record"]["count"], 3);
 
