@@ -231,10 +231,19 @@ class FilesViewModel(
         _progress.value = if (total > 0) (got.toFloat() / total).coerceIn(0f, 1f) else null
     }
 
-    /** 预览：读那一份文本。没成 ⇒ 已说那一句。 */
-    suspend fun readText(entry: FilesLs.Entry): Result<FilesReadText.Text> {
+    /** 照那道门读那一份文本（预览 · 编辑）：门不许 ⇒ 说那台写好的那一句、不读；没成 ⇒ 已说那一句。 */
+    suspend fun readText(
+        entry: FilesLs.Entry,
+        gate: FilesLs.Open?,
+    ): Result<FilesReadText.Text> {
+        val cap = gate?.cap
+        if (cap == null) {
+            val said = gate?.said ?: copyText("rsFilewinSource.gates.unlisted")
+            _events.tryEmit(Notice(said))
+            return Result.failure(IllegalStateException(said))
+        }
         _busy.value = true
-        return ops.readText(entry.path).also {
+        return ops.readText(entry.path, cap).also {
             _busy.value = false
             it.onFailure(::say)
         }

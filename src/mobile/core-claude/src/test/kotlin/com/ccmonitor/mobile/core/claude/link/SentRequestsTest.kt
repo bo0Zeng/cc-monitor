@@ -28,7 +28,7 @@ class SentRequestsTest {
             FilesLs.COMMAND to listOf(FilesLs.args(bin), FilesLs.dirs("/w")),
             FilesMkdir.COMMAND to listOf(FilesMkdir.args(dir, "d")),
             FilesReadChunk.COMMAND to listOf(FilesReadChunk.args(bin, 0L)),
-            FilesReadText.COMMAND to listOf(FilesReadText.args(bin)),
+            FilesReadText.COMMAND to listOf(FilesReadText.args(bin, 262_144L)),
             FilesRename.COMMAND to listOf(FilesRename.args(dir, bin, "b")),
             FilesStageChunk.COMMAND to listOf(FilesStageChunk.args("k", 0L, byteArrayOf(0, -1), 2)),
             FilesStat.COMMAND to listOf(FilesStat.args(bin)),

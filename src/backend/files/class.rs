@@ -10,8 +10,6 @@ pub const PREVIEW_TEXT_MAX_BYTES: u64 = 64 * 1024;
 pub const PREVIEW_IMAGE_MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// 查看页读一张图的上限：一块 256 KiB 一趟，32 MiB 是 128 趟（远端上十几秒到半分钟，再大该下载到本机看）。
 pub const VIEW_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
-/// 编辑上限 ＝ 读一趟的天花板：打得开的就存得回（`files-commit-text` 收的也是这个数）。
-pub const EDIT_MAX_BYTES: u64 = super::READ_TEXT_MAX_BYTES as u64;
 
 const TEXT: &[&str] = &[
     "txt", "md", "markdown", "log", "csv", "tsv", "rst", "ini", "cfg", "conf", "env", "org", "adoc",
@@ -169,19 +167,21 @@ pub fn gates_of(name: &[u8], size: u64) -> Gates {
             Gate::Cap(VIEW_IMAGE_MAX_BYTES)
         }
     });
-    // 编辑「太大」报多了多少字节：边界附近两个四舍过的大小会写成同一个数，什么都没说。
-    let edit = if size > EDIT_MAX_BYTES {
+    // 编辑上限 ＝ 读一趟的天花板：打得开的就存得回（`files-commit-text` 收的也是这个数）。
+    // 「太大」报多了多少字节：边界附近两个四舍过的大小会写成同一个数，什么都没说。
+    let cap = super::READ_TEXT_MAX_BYTES as u64;
+    let edit = if size > cap {
         Gate::No(copy_text(
             "beFilesOpen.edit.tooBig",
             &[
                 ("size", &size_text(size)),
                 ("bytes", &size.to_string()),
-                ("limit", &size_text(EDIT_MAX_BYTES)),
-                ("over", &(size - EDIT_MAX_BYTES).to_string()),
+                ("limit", &size_text(cap)),
+                ("over", &(size - cap).to_string()),
             ],
         ))
     } else {
-        Gate::Cap(EDIT_MAX_BYTES)
+        Gate::Cap(cap)
     };
     Gates {
         preview,

@@ -839,7 +839,7 @@ fn browse(req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
     })
 }
 /// `files.read.text` 一趟最多肯交多少字节：一帧应答整个进内存、整个过线的天花板（JSON 转义最坏 ×6 = 48 MiB，
-/// 仍在 monitor 读后端一行 · 通道一帧 64 MiB 之内）。编辑上限就是它（[`class::EDIT_MAX_BYTES`]）；
+/// 仍在 monitor 读后端一行 · 通道一帧 64 MiB 之内）。编辑上限就是它（[`class::gates_of`]）；
 /// 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`，不偷偷夹小。
 pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 

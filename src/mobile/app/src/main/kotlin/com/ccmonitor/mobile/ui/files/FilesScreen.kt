@@ -182,8 +182,8 @@ private fun entryActions(
     return remember(vm) {
         EntryActions(
             download = { e -> vm.download(e, context.getExternalFilesDir(null)) },
-            preview = { e -> scope.launch { vm.readText(e).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
-            startEdit = { e -> scope.launch { vm.readText(e).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
+            preview = { e -> scope.launch { vm.readText(e, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
+            startEdit = { e -> scope.launch { vm.readText(e, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { e -> scope.launch { onDialog(FilesDialog.Chmod(e, vm.modeText(e))) } },
         )
     }
@@ -442,7 +442,9 @@ private fun EntryMenu(
         text = {
             Column {
                 if (!entry.isDir) {
-                    SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    if (entry.preview != null) {
+                        SecondaryButton(onClick = { then(actions.preview) }) { Text(copyText("rsFilewinWorkspace.label.preview")) }
+                    }
                     SecondaryButton(onClick = { then(actions.startEdit) }) { Text(copyText("rsFilewinEditor.label.edit")) }
                     SecondaryButton(onClick = { then(actions.download) }) { Text(copyText("rsFilewinDownload.label.download")) }
                 }

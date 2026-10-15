@@ -3,6 +3,8 @@
 use super::*;
 use cmd_wire::files::{FileClass as C, Gate, PreviewGate};
 
+const EDIT_MAX_BYTES: u64 = super::super::READ_TEXT_MAX_BYTES as u64;
+
 #[test]
 fn the_class_comes_from_the_name_and_links_draw_what_they_point_at() {
     let cases: &[(&str, bool, bool, bool, C)] = &[
