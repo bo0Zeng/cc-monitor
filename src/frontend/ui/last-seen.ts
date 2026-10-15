@@ -1,7 +1,7 @@
 /**
  * 离线那台的上次值：每台最近一次读成的那一份（账号清单 · 「文件与数据」那一份）交本机后端记下（`last-seen-write`，
  * 写它自己的 `~/.cc-monitor/last-seen.json`），断开时问回来（`last-seen-read`）画「上次的」——跨重启还在。
- * 界面不自己写文件；本机那台不记（问不到本机后端时也问不到这一份）。同一份内容这次运行里只交一次。
+ * 界面不自己写文件、不记交过什么：同一份不写盘由本机后端自己比。本机那台不记（问不到本机后端时也问不到这一份）。
  * 机器从列表删掉（撤销条到点）⇒ 交本机后端清掉那台（`last-seen-write` 带 `forget`）。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
@@ -13,20 +13,13 @@ import type { LastSeen } from "./generated/LastSeen";
 export type { SeenKind };
 
 const BUDGET_MS = 10_000;
-/** 这次运行里交过的那一份（键 ＝ 机器 ＋ 种类），同样的不再交。 */
-const sent = new Map<string, string>();
 
 /** 读成了一份 ⇒ 交本机后端记下（失败只进日志：它只是缓存）。 */
 export async function rememberSeen(origin: Origin, kind: SeenKind, value: unknown): Promise<void> {
   if (isLocalOrigin(origin) || !isObj(value)) return;
-  const key = `${origin}\u0000${kind}`;
-  const text = JSON.stringify(value);
-  if (sent.get(key) === text) return;
-  sent.set(key, text);
   try {
     await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, kind, value }, budgetWithin(BUDGET_MS));
   } catch (e) {
-    sent.delete(key);
     console.warn(`[last-seen] ${origin} 的 ${kind} 没记下：`, e);
   }
 }
@@ -46,15 +39,9 @@ export async function recallSeen<K extends SeenKind>(origin: Origin, kind: K): P
 /** 那台从列表删掉了 ⇒ 交本机后端清掉它的上次值（失败只进日志：它只是缓存，最多 64 台、超了丢最旧）。 */
 export async function forgetSeen(origin: Origin): Promise<void> {
   if (isLocalOrigin(origin)) return;
-  for (const k of [...sent.keys()]) if (k.startsWith(`${origin}\u0000`)) sent.delete(k);
   try {
     await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, forget: true }, budgetWithin(BUDGET_MS));
   } catch (e) {
     console.warn(`[last-seen] ${origin} 的上次值没清掉：`, e);
   }
-}
-
-/** 仅供测试：清掉「交过的」那份记忆。 */
-export function __resetLastSeenForTests(): void {
-  sent.clear();
 }
