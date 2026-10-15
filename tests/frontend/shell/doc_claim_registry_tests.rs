@@ -1426,6 +1426,10 @@ fn every_repo_path_in_the_durable_docs_exists() {
             "aliases.sh",
             "`~/.cc-monitor/` 里照别名配置生成的那份文件的名字（INVARIANTS §2.1 的数据文件表），不是仓里的脚本",
         ),
+        (
+            "private-scan.sh",
+            "私人扫描脚本连同私人词表都不进仓：门禁与推送只认 PATH 上叫这个名字的命令，文档讲的正是这个名字",
+        ),
     ];
     let (files, dirs) = tracked_files_and_dirs();
     let basenames: std::collections::BTreeSet<&str> = files

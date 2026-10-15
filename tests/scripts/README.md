@@ -9,7 +9,7 @@
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零） |
 | [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
 | [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
-| [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）：两棵 Rust 树的排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest，测试一律在 `.build/` 下的一次性沙箱里跑（换 HOME 与 TMUX_TMPDIR、清掉会话变量）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红；红了把失败测试的 panic 原话印出来，整趟输出存 `.build/quick-check/`。这棵树相对 `main` 改到了手机读的东西（`src/mobile/` · 金样 `tests/__fixtures__/` · `src/backend/lib.rs` · 文案表 `src/shared/copy/`）才加跑手机那一套（ktlint · detekt · JVM 单测，经 `heavy.sh`、gradle 带 `--no-daemon`），没改到就跳过并说一声；`--mobile` 只跑这一段，`--mobile-plan` 只印跑不跑 |
+| [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）：两棵 Rust 树的排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest · 后端那棵改到的包跑 clippy（系统钟 · 定时器那几类 lint 定成 deny，只有它拦得住），测试一律在 `.build/` 下的一次性沙箱里跑（换 HOME 与 TMUX_TMPDIR、清掉会话变量）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红；红了把失败测试的 panic 原话印出来，整趟输出存 `.build/quick-check/`。这棵树相对 `main` 改到了手机读的东西（`src/mobile/` · 金样 `tests/__fixtures__/` · `src/backend/lib.rs` · 文案表 `src/shared/copy/`）才加跑手机那一套（ktlint · detekt · JVM 单测，经 `heavy.sh`、gradle 带 `--no-daemon`），没改到就跳过并说一声；`--mobile` 只跑这一段，`--mobile-plan` 只印跑不跑 |
 | [`gate-clean.sh`](gate-clean.sh) | 全量门禁的入口（打发版标签前那一趟）：清掉会话继承来的 `CCM_*` · `CLAUDE_*` · `ANTHROPIC_*` · `TMUX*`，经 `heavy.sh` 排门禁锁跑 `gate.sh`；拿到锁时负载高于核数 × 0.6 就串跑 |
 | [`gate-affected.sh`](gate-affected.sh) | 按改动挑格跑门禁：`git diff <基>...HEAD` 改到的路径照 [`gate-affected/map`](gate-affected/map)（路径 → 格组，每行带理由）挑格，挑格那一半是 [`gate-affected/plan.py`](gate-affected/plan.py)（`--dry-run` 只印计划；表与 `gate.sh` 对不上就停）。`--trust-ci` 是合并用的工作树推候选分支之前那一趟：先 `quick-check.sh`，CI 会跑的格交给 CI，只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件。裁决恒是 PARTIAL，末行 `AFFECTED: OK` / `AFFECTED: 红` |
 | [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的排队；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
@@ -28,7 +28,7 @@
 | 层 | 入口 | 跑什么 | 不在这一层 |
 |---|---|---|---|
 | 写的时候 | 增量编 ＋ 只跑改到的那几块（`cargo test --lib -- <模块>` · `vitest run <文件>`） | 改到的那几条 | 其余一切 |
-| 交回前 | `quick-check.sh` | 两棵树排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest；改到手机读的东西才加 ktlint · detekt · 手机 JVM 单测 | e2e · 编译格 · 设备测 |
+| 交回前 | `quick-check.sh` | 两棵树排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest · 后端那棵改到的包的 clippy；改到手机读的东西才加 ktlint · detekt · 手机 JVM 单测 | e2e · 编译格 · 设备测 |
 | 推候选分支前 | `gate-affected.sh --trust-ci` | 上一层 ＋ 恒跑的便宜格 ＋ 被改到的本机才有的格（改了 `src/mobile/` 就含 `android-device`）＋ 被改到被测对象的 e2e 套件 | CI 会跑的格 |
 | 发版前 | `gate-clean.sh`（全量） | `gate.sh` 每一格，含 `android-device`：模拟器上的设备测（androidTest，见下） | 只能手跑的那几样 |
 | CI | `.github/workflows/ci.yml` | 两棵树 cargo · clippy · vitest · 覆盖率 · e2e · 手机 JVM 单测与 release 构建 · Windows 真测 | 设备测（runner 上没有 KVM 模拟器） |

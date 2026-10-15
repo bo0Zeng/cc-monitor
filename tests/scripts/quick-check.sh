@@ -3,6 +3,8 @@
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh`
 #   跑：两棵 Rust 树的排版 · tsc · 后端那棵整套 `cargo test --workspace --lib`（后端 ＋ 拨号核心） · 壳那棵 workspace 整套 `cargo test --workspace --lib`
 #       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）· 整套 vitest。
+#   后端那棵的 clippy（系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）：照门禁 `clippy-backend` 那一格的参数，只跑相对 main 改到的包
+#     （clippy_pkgs；一个都没改到就跳过并说一声，找不到 main 就三个都跑）。
 #   不按名字挑判据（10-10 起）：从前只跑名字带 guard / registry / ledger … 的那些，漏了一百多份读金样 / 冻结表的判据，
 #     推上去 CI 才红。现在两棵树与 vitest 都是整套。
 #   旧用法里跟着的 cargo 过滤词照收、不再用（整套本来就全跑到）。
@@ -23,13 +25,16 @@ cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
 mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
-# 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
-mobile_touch() {
+# 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
+clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/" "ssh-dial:src/backend/ssh-dial/" "mobcore:src/mobile/core-rs/rust/")
+# 这棵树（连没提交的）相对 main 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
+touched() {
   local base
   base=$(git merge-base HEAD main 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null) || { echo '?'; return; }
-  { git -c core.quotepath=false diff --name-only "$base" -- "${mobile_reads[@]}"
-    git -c core.quotepath=false ls-files --others --exclude-standard -- "${mobile_reads[@]}"; } | head -1
+  { git -c core.quotepath=false diff --name-only "$base" -- "$@"
+    git -c core.quotepath=false ls-files --others --exclude-standard -- "$@"; } | head -1
 }
+mobile_touch() { touched "${mobile_reads[@]}"; }
 if [ "$mode" = plan ]; then
   hit=$(mobile_touch)
   echo "MOBILE-READS: ${mobile_reads[*]}"
@@ -91,6 +96,16 @@ mobile_step() {
     n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
     echo "mobile: ${n:-0} passed"'
 }
+# 后端那棵的 clippy：改到的包才跑（见头注）
+clippy_step() {
+  local spec paths pkgs=()
+  for spec in "${clippy_pkgs[@]}"; do
+    read -ra paths <<< "${spec#*:}"
+    [ -n "$(touched "${paths[@]}")" ] && pkgs+=(-p "${spec%%:*}")
+  done
+  if [ ${#pkgs[@]} -eq 0 ]; then printf '  --   %-16s 跳过：相对 main 没改到后端那棵的包\n' clippy-backend; return; fi
+  step clippy-backend runcargo bash -c 'cd src/backend && cargo clippy --all-targets "$@"' _ "${pkgs[@]}"
+}
 verdict() {
   echo
   echo "  墙钟 $((SECONDS-t_all))s · 负载 $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null) · 整趟输出 ${log#"$root"/}"
@@ -119,6 +134,7 @@ else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
   printf '%s\n' "${hit:-$(printf '%s\n' "$out" | tail -5)}" | sed 's/^/       /'
   printf '%s\n' "$out" | panics; fails+=(backend); fi
 
+clippy_step
 # 壳那棵 workspace 整套 --lib（全部成员）
 step shell        runcargo bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -q'
 # 界面：整套 vitest
