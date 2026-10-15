@@ -356,7 +356,7 @@ fn a_pending_upload_targets_the_current_remote_directory_with_forward_slashes() 
 ///
 /// 上一版这里钉的是「上传走 `sftp_pool` 那条既有命令」。**今天反过来**：
 /// 窗口进程一行 SFTP 都不碰——上传经通道开单、订阅、再经后端提交。
-/// 买的是：这一层**只剩**通道那几个口（整组开单 · 提交 · 「复制为」借的那一问探测各恰好一处），自己开连接 / 分块写 /
+/// 买的是：这一层**只剩**通道那几个口（整组开单 · 提交各恰好一处），自己开连接 / 分块写 /
 /// 直调池子传输命令的痕迹一个都没有。行为那一半由下面 `an_upload_opens_watches_then_commits…` 那一族判。
 #[test]
 fn the_real_adapters_speak_only_through_the_channel() {
@@ -368,12 +368,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    for needle in [
-        "files::StatReq {",
-        "UploadItem {",
-        "\"files-commit-upload\"",
-        "pub fn lanes()",
-    ] {
+    for needle in ["UploadItem {", "\"files-commit-upload\"", "pub fn lanes()"] {
         assert_eq!(
             prod.matches(needle).count(),
             1,

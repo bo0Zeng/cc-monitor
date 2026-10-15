@@ -16,7 +16,6 @@
 //!   「the full, non-elided text of the input job」⇒ 一段被列宽省略号截断的文字，
 //!   这里读回来仍是全文。本量具证明的是「这一帧**真的把这句话拿去排版了**」。
 //! - **颜色买不到**（`Shape::Text` 上那个「覆盖文字颜色」的字段这里没读）。
-//!   「警告档」那一维由 [`super::outcome_notice`] 的相等断言钉，不由这把尺子钉。
 //! - **真机上看得见买不到** —— 本机 `XDG_SESSION_TYPE=tty`，没有图形会话。
 
 use super::*;

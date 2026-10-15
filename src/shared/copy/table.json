@@ -10565,18 +10565,6 @@
       "zh": "已取消",
       "args": []
     },
-    "rsFilewinCopy.ui.keep": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "跳过",
-      "args": []
-    },
-    "rsFilewinCopy.ui.overwrite": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "覆盖",
-      "args": []
-    },
     "beFilesWrite.name.empty": {
       "kind": "error",
       "role": "原因格",
@@ -10919,12 +10907,6 @@
       "zh": "目标 {rel} 无文件名",
       "args": ["rel"]
     },
-    "rsFilewinCopy.ui.askOverwriteMany": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "同名 {n}",
-      "args": ["n"]
-    },
     "rsFilewinCopy.batch.listSep": {
       "kind": "body",
       "role": "片段",
@@ -10936,36 +10918,6 @@
       "role": "报错",
       "zh": "{name} 名字无法读取 · 本批未执行",
       "args": ["name"]
-    },
-    "rsFilewinCopy.ui.askOverwrite": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "{name} 已存在",
-      "args": ["name"]
-    },
-    "rsFilewinCopy.args.notSameDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "复制只在同一目录内做 · {from} 与 {to} 不在同一目录",
-      "args": ["from", "to"]
-    },
-    "rsFilewinCopy.outcome.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已复制 · {bytes} 字节 · 在该机上复制 · 未经本机",
-      "args": ["bytes"]
-    },
-    "rsFilewinCopy.outcome.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "复制失败 · {said}",
-      "args": ["said"]
-    },
-    "rsFilewinCopy.outcome.skipped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "上次 · 未覆盖 · 未改动",
-      "args": []
     },
     "rsFilewinCopy.label.copy": {
       "kind": "action",
@@ -23018,30 +22970,6 @@
       "role": "进度",
       "zh": "已停 · {name}",
       "args": ["name"]
-    },
-    "rsFilewinProgress.copy.running": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "复制 {n} 项",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.copy.runningOne": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "复制 {name}",
-      "args": ["name"]
-    },
-    "rsFilewinProgress.copy.done": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "已复制 {n} 项",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.copy.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "复制失败 ×{n}",
-      "args": ["n"]
     },
     "rsFilewinProgress.size.running": {
       "kind": "body",
