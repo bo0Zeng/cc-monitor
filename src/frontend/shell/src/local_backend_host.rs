@@ -1065,7 +1065,7 @@ enum Adopt {
     Refused(Said),
 }
 
-/// 认已有实例并接上它。只有一支会等：**还没人在听**、而我们刚亲手 spawn 完（`wait_for_bind` = true）。
+/// 认已有实例并接上它：只问一次，没人在听就是真没人（等的那一支只在刚亲手起完之后，[`probe_and_attach_after_spawn`]）。
 /// 接管路上遇到它就是「真没人」，立刻回 [`Adopt::None`]。别的一律不重试 —— 对不上、接不上，重试只是把一个确定的坏消息拖晚。
 fn adopt_existing(sock: &std::path::Path, env: &[(String, String)]) -> Adopt {
     adopt_with(sock, env, None)
@@ -1110,10 +1110,12 @@ fn adopt_with(
     );
     match got {
         Ok(None) => Adopt::None,
-        Ok(Some((conn, hello))) => match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
-            Ok(()) => Adopt::Attached,
-            Err(e) => Adopt::Refused(e),
-        },
+        Ok(Some((conn, hello))) => {
+            match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
+                Ok(()) => Adopt::Attached,
+                Err(e) => Adopt::Refused(e),
+            }
+        }
         Err(why) => Adopt::Refused(why),
     }
 }
@@ -1146,11 +1148,15 @@ pub(crate) fn wait_listening<T>(
             .into());
         }
         if now() >= deadline {
-            let last: Said = copy_text("rsLocalBackendHost.adopt.notYet", &[("path", &path)]).into();
+            let last: Said =
+                copy_text("rsLocalBackendHost.adopt.notYet", &[("path", &path)]).into();
             return Err(Said::restate(
                 copy_text(
                     "rsLocalBackendHost.adopt.waited",
-                    &[("last", &last.said), ("secs", &within.as_secs().to_string())],
+                    &[
+                        ("last", &last.said),
+                        ("dur", &copy_core::format_elapsed(within)),
+                    ],
                 ),
                 last,
             ));

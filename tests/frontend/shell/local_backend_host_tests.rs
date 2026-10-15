@@ -4675,7 +4675,10 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
             &[("path", "/run/x/backend.sock"), ("how", "exit status: 3")]
         )
     );
-    assert!(clock.get() < t0 + std::time::Duration::from_secs(1), "进程退了还等满期限才报");
+    assert!(
+        clock.get() < t0 + std::time::Duration::from_secs(1),
+        "进程退了还等满期限才报"
+    );
 
     let clock = std::cell::Cell::new(t0);
     let within = std::time::Duration::from_secs(60);
@@ -4690,7 +4693,8 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
     .expect_err("一直没人听还当它听上了");
     assert!(clock.get() >= t0 + within, "没到期限就报了");
     assert!(
-        silent.said.contains("/run/x/backend.sock") && silent.said.contains("60"),
+        silent.said.contains("/run/x/backend.sock")
+            && silent.said.contains(&copy_core::format_elapsed(within)),
         "报错没说等的是哪个口、等了多久：{}",
         silent.said
     );
