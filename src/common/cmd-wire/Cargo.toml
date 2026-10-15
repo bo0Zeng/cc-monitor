@@ -15,6 +15,8 @@ serde_json = "1"
 ts-rs = { version = "12.0.1", optional = true }
 
 [dev-dependencies]
+# 判据按「原文照转」那一种解 `line` 帧（记录那一格是 `RawValue`，同壳的快路）。
+serde_json = { version = "1", features = ["raw_value"] }
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../test-home" }
 ts-rs = "12.0.1"
