@@ -67,7 +67,7 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
         .unwrap_or_else(|e| panic!("常驻载体没用 LOCAL_STREAM_ARGS：{e}"));
 }
 
-/// 远端那条流：没开「显示后台会话」⇒ bg 会话的宣告与它后面的行 · 状态 · 一轮结束都藏、去向那一帧之后摘；交互会话一帧不藏。
+/// 远端那条流：没开「显示后台会话」⇒ bg 会话的宣告与它后面的行 · 状态都藏、去向那一帧之后摘；交互会话一帧不藏。
 /// 开着 ⇒ 什么都不藏。
 #[test]
 fn the_remote_stream_hides_background_sessions_like_the_local_one() {
@@ -82,11 +82,6 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
             r#"{{"kind":"line","session_id":"{sid}","path":"/p","seq":0,"byte_offset":1}}"#
         ))
     };
-    let turn = |sid: &str| {
-        frame(&format!(
-            r#"{{"kind":"turn_end","session_id":"{sid}","uuid":"u","title":"t","body":"b"}}"#
-        ))
-    };
     let state = |sid: &str| {
         frame(&format!(
             r#"{{"kind":"session_state","sid":"{sid}","state":"ended","state_text":"x","state_hint":"x","state_tone":"plain"}}"#
@@ -95,10 +90,8 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     let mut off = crate::stream_source::local::BgHide::new(false);
     assert!(off.hides(&added("bg1", true)));
     assert!(off.hides(&line("bg1")));
-    assert!(off.hides(&turn("bg1")));
     assert!(!off.hides(&added("i1", false)));
     assert!(!off.hides(&line("i1")));
-    assert!(!off.hides(&turn("i1")));
     assert!(off.hides(&state("bg1")), "去向那一帧也藏");
     assert!(
         !off.hides(&line("bg1")),

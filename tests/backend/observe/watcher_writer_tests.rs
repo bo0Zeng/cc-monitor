@@ -113,7 +113,7 @@ fn drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<Frame> {
     v
 }
 
-/// 帧的简写：`added:<kind>` · `line:<seq>` · `turn_end:<uuid>` · `removed:<cause>`；别的帧不记。
+/// 帧的简写：`added:<kind>` · `line:<seq>` · `removed:<cause>`；别的帧不记。
 fn brief(frames: &[Frame]) -> Vec<String> {
     frames
         .iter()
@@ -125,7 +125,6 @@ fn brief(frames: &[Frame]) -> Vec<String> {
                 Some(format!("added:{agent_kind}"))
             }
             Frame::Line { seq, .. } => Some(format!("line:{seq}")),
-            Frame::TurnEnd { uuid, .. } => Some(format!("turn_end:{uuid}")),
             Frame::SessionRemoved { cause, .. } => Some(format!("removed:{cause:?}")),
             _ => None,
         })
@@ -147,7 +146,7 @@ fn closed(p: &Path) -> crate::platform::writers::OpenBatch {
 }
 
 /// 有进程开着它写 ⇒ 宣告（帧上说是哪一家；判活与 pidfile 那一路同一档，不标 heuristic）；已有的行不重放（宣告带行数 L，
-/// `[0, L)` 客户端按骨架补，与 pidfile 那一路同一条）；之后追加的行与一轮结束由文件事件那一路照常上流。
+/// `[0, L)` 客户端按骨架补，与 pidfile 那一路同一条）；之后追加的行由文件事件那一路照常上流。
 #[test]
 fn a_record_being_written_is_announced_with_its_line_count_and_then_streams() {
     let mut r = rig("announce");
@@ -189,7 +188,7 @@ fn a_record_being_written_is_announced_with_its_line_count_and_then_streams() {
         .write_all(more.as_bytes())
         .unwrap();
     process_jsonl(&r.record, &mut r.state, &mut r.sink);
-    assert_eq!(brief(&drain(&mut r.rx)), vec!["line:3", "turn_end:t2"]);
+    assert_eq!(brief(&drain(&mut r.rx)), vec!["line:3"]);
     // 已在跟的那一份又被打开（我们自己读它、别人读它）⇒ 什么都不出。
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     assert!(drain(&mut r.rx).is_empty());
@@ -214,35 +213,6 @@ fn a_reader_holding_the_record_announces_nothing() {
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     assert!(brief(&drain(&mut r.rx)).is_empty());
     gone(c);
-    std::fs::remove_dir_all(&r.dir).ok();
-}
-
-/// 这条流说了只看别的会话：这一条的行不上流，一轮结束照样上（桌面 · 手机的「一轮完成」通知认它）。
-#[test]
-fn an_unwatched_session_still_says_its_turn_end() {
-    let mut r = rig("unwatched");
-    let _ = watch_sessions(
-        0,
-        crate::wire::WatchAsk {
-            sids: vec!["someone-else".to_string()],
-            branch: vec![],
-        },
-        &mut r.state,
-        &mut r.sink,
-    );
-    let w = writer(&r.record);
-    on_writers(opened(&r.record), &mut r.state, &mut r.sink);
-    assert_eq!(brief(&drain(&mut r.rx)), vec!["added:codex"]);
-    let more = "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"t2\"}}\n";
-    std::fs::OpenOptions::new()
-        .append(true)
-        .open(&r.record)
-        .unwrap()
-        .write_all(more.as_bytes())
-        .unwrap();
-    process_jsonl(&r.record, &mut r.state, &mut r.sink);
-    assert_eq!(brief(&drain(&mut r.rx)), vec!["turn_end:t2"]);
-    gone(w);
     std::fs::remove_dir_all(&r.dir).ok();
 }
 
@@ -322,8 +292,7 @@ fn the_startup_scan_finds_a_session_already_being_written() {
 }
 
 /// 造好的 Codex 样本（宣告 · 之后两轮各：一轮开始 ＋ 一句话 ＋ 一轮结束；此刻在干什么跟着翻）真走一遍 watcher，线上那几行就是这份金样
-/// （路径里的临时目录换成 `/r`，宣告上写者的 pid 换成 0）。
-/// 壳（`tests/frontend/shell/codex_stream_tests.rs`）与界面（`tests/frontend/ui/codex-turn-notify.vitest.ts`）读同一份往下走到系统通知。
+/// （路径里的临时目录换成 `/r`，宣告上写者的 pid 换成 0）。壳（`event_replay_tests`）与界面（`tabs.vitest.ts`）读同一份。
 /// 重打是显式动作：`REGOLD_CODEX_STREAM=1` 跑本条写盘；不设就只比。钟面（`timeText`）在推出去那一下才按看的那一台写（`Frame::stamp`），这里拿到的帧没有它。
 pub(crate) const CODEX_STREAM_GOLDEN: &str = "tests/__fixtures__/codex-session-stream.golden.jsonl";
 

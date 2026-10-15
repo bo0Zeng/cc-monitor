@@ -754,14 +754,6 @@ mod tests {
                 "ListingHead",
                 "**只读不出**：扫历史清单时读 CLI 记录行的窄探针（记录文件 schema 里要的那几格），不上线",
             ),
-            (
-                "agents/claudecode/turn.rs",
-                "Probe",
-                "**只读不出**：turn-end 判词读 CLI 记录行的窄探针（记录文件 schema 的五格），不上线",
-            ),
-            ("agents/claudecode/turn.rs", "ProbeMessage", "同上，`message` 里那一格"),
-            ("agents/claudecode/turn.rs", "LooseBool", "同上，形状不对当缺"),
-            ("agents/claudecode/turn.rs", "LooseStr", "同上，形状不对当缺"),
         ];
 
         let files: &[(&str, &str)] = &[
@@ -812,10 +804,6 @@ mod tests {
             (
                 "agents/codex/parse.rs",
                 include_str!("../../src/backend/agents/codex/parse.rs"),
-            ),
-            (
-                "agents/claudecode/turn.rs",
-                include_str!("../../src/backend/agents/claudecode/turn.rs"),
             ),
             (
                 "history/listing_scan.rs",

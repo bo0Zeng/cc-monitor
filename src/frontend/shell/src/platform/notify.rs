@@ -1,4 +1,4 @@
-//! 系统通知的平台那一半：壳里发系统通知只有这一个家（界面经 `desktop_notify::notify_desktop`，壳自己经 [`show`]）。
+//! 系统通知：壳里发系统通知只有这一个家 [`show`]（本机后端起不来时说下一步）。
 //!
 //! Linux：经会话总线直接说 freedesktop 通知协议，**全进程一条长连接**（第一次发时连上），一条线程收这条连接上的
 //! `NotificationClosed` / `ActivationToken` / `ActionInvoked`，按通知 id 分发（点通知本身 ⇒ 拿桌面随点击发来的激活令牌把主窗口

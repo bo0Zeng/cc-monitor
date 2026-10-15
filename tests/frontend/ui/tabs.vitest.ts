@@ -140,10 +140,6 @@ vi.mock("../../../src/frontend/ui/tab-batch-run", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/tab-batch-run")>();
   return { ...real, callStart: vi.fn(), callStop: vi.fn() };
 });
-// Batch14-F42：turn-end 通知与渲染独立,tabs 测试里 mock 成空壳(单独在 turn-notify.vitest 测)。
-vi.mock("../../../src/frontend/ui/turn-notify", () => ({
-  turnEndNotifier: { observe: vi.fn() },
-}));
 // ↗ 浮层［更新］就地部署：部署那一处住共用模块（`backend-deploy.ts`，它自己的判据住 `backend-deploy.vitest.ts`），这里换成 spy，判的是浮层接上它、就地说过程与结局。
 vi.mock("../../../src/frontend/ui/backend-deploy", () => ({ updateBackendOf: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
@@ -4286,13 +4282,10 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     await settle();
     const rendered = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq).sort((x, y) => x - y);
     expect(rendered).toEqual([98, 99, 100, 101, 102, 103, 104]);
-    // 🔴 取回的是**历史**：按重放语义建卡 —— sink 不接 onRealUserInput（历史 user 卡不许自动切 tab）；
-    //    系统通知只认流里的 `turn_end` 格，取回的行一条都不经过它
+    // 🔴 取回的是**历史**：按重放语义建卡 —— sink 不接 onRealUserInput（历史 user 卡不许自动切 tab）
     for (const c of spy.mock.calls.filter((c) => (c[0] as { seq: number }).seq >= 100 && (c[0] as { seq: number }).seq <= 102)) {
       expect((c[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeUndefined();
     }
-    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
-    expect(vi.mocked(turnEndNotifier.observe), "取回的历史行弹了系统通知").not.toHaveBeenCalled();
     // 150 不在这一段里 ⇒ 没被要
     expect(ranges.some((c) => c.seqBase === 150)).toBe(false);
   });
@@ -4339,19 +4332,16 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     expect(t.window.peek(1)[0].seq).toBe(800);
     // ② monitor 重放缓冲不再要前端登记（每个会话都只留尾巴）⇒ 零次
     expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "replay_keep_tail_only")).toEqual([]);
-    // ③ 滚到被丢掉的那段：按偏移要回来；这些行**见过**（旁路账早记过）⇒ 只建卡，不再走 onLine
+    // ③ 滚到被丢掉的那段：按偏移要回来、只建卡
     const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
-    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
     spy.mockClear();
-    vi.mocked(turnEndNotifier.observe).mockClear();
     t.skeleton!.ensure(300, 2); // [298, 303)
     await settle();
     expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range")).toEqual([
       { origin: "<local>", jsonlPath: "/p/big.jsonl", offset: 2980, until: 3030, seqBase: 298 },
     ]);
     expect(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq)).toEqual([298, 299, 300, 301, 302]);
-    expect(vi.mocked(turnEndNotifier.observe), "见过的行又走了一遍 onLine 旁路").not.toHaveBeenCalled();
   });
 
   it("大纲跳转：点到还在占位里的一条 ⇒ 先按 uuid→seq 物化那一段再跳", async () => {
@@ -6289,9 +6279,8 @@ describe("栏里的键盘 · 右键「分组 ▸」", () => {
   });
 });
 
-// 〔流只发要看的会话〕主窗口报「在看哪个会话」；会话刚进那台那条流的名单（`watch` 格）⇒ 没在看那段没上流的补上；
-// 一轮结束认 `turn_end` 格（在不在看都来）。
-describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · 一轮结束", () => {
+// 〔流只发要看的会话〕主窗口报「在看哪个会话」；会话刚进那台那条流的名单（`watch` 格）⇒ 没在看那段没上流的补上。
+describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -6439,40 +6428,6 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     tm.onSessionWatch("box", { session_id: "wc", path: "/p/wc.jsonl", seq: 40 });
     await settle();
     expect(lineReads()).toEqual([]);
-  });
-
-  it("一轮结束（turn_end 格）⇒ 照抄格上写好的标题 · 正文报通知（远端前面加机器名）；没有 tab / 别的机器上的同名会话不报", async () => {
-    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
-    vi.mocked(turnEndNotifier.observe).mockClear();
-    tm.ensureTab("wt", null, "/p/wt.jsonl", LOCAL_ORIGIN);
-    tm.ensureTab("far", null, "/p/far.jsonl", "box");
-    const turn = (session_id: string) => ({ session_id, title: `T-${session_id}`, body: "B" });
-    tm.onTurnEnd(LOCAL_ORIGIN, turn("wt"));
-    tm.onTurnEnd("box", turn("wt"));
-    tm.onTurnEnd(LOCAL_ORIGIN, turn("nobody"));
-    tm.onTurnEnd("box", turn("far"));
-    expect(vi.mocked(turnEndNotifier.observe).mock.calls, "远端的照标签栏加 [那台]，本机不加").toEqual([
-      ["wt", "T-wt", "B"],
-      ["far", "[box] T-far", "B"],
-    ]);
-  });
-
-  it("Codex 样本（后端真走过 watcher 的那几帧，壳那一跳同一份金样）⇒ 它那个 tab 两轮各报一次通知", async () => {
-    const { turnEndNotifier } = await import("../../../src/frontend/ui/turn-notify");
-    vi.mocked(turnEndNotifier.observe).mockClear();
-    const frames = readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/codex-session-stream.golden.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l) as { kind: string; sid?: string; session_id?: string; path?: string; title?: string; body?: string });
-    const announced = frames.filter((f) => f.kind === "session_added");
-    expect(announced).toHaveLength(1);
-    const codexSid = announced[0].sid!;
-    tm.ensureTab(codexSid, null, announced[0].path!, LOCAL_ORIGIN);
-    const ends = frames.filter((f) => f.kind === "turn_end");
-    for (const f of ends) tm.onTurnEnd(LOCAL_ORIGIN, { session_id: f.session_id!, title: f.title!, body: f.body! });
-    expect(ends.every((f) => typeof f.title === "string" && f.title !== "" && typeof f.body === "string")).toBe(true);
-    expect(vi.mocked(turnEndNotifier.observe).mock.calls).toEqual(ends.map((f) => [codexSid, f.title, f.body]));
-    expect(ends).toHaveLength(2);
   });
 
   it("Codex 样本 ⇒ 它那个 tab 的活动跟着一轮走：一轮开始在跑、一轮完了空闲（帧上那几格照抄）", () => {

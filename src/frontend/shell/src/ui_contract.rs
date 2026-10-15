@@ -160,8 +160,6 @@ pub enum SessionStreamFrame {
     /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格，壳原样转）：它的这份记录从第 `seq` 行起上流，
     /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一刻按它修成「连着的」（见 `event_replay::on_watch_from`）。
     Watch(SessionWatchPayload),
-    /// 一轮结束（那台后端 `turn_end`，在不在看都发）：系统通知认它，不认行（没在看的会话行不上流）。
-    TurnEnd(SessionTurnEndPayload),
 }
 
 impl SessionStreamFrame {
@@ -183,8 +181,7 @@ impl SessionStreamFrame {
             | SessionStreamFrame::SnapshotInflight(_)
             | SessionStreamFrame::Runs(_)
             | SessionStreamFrame::Branch(_)
-            | SessionStreamFrame::Watch(_)
-            | SessionStreamFrame::TurnEnd(_) => false,
+            | SessionStreamFrame::Watch(_) => false,
         }
     }
 
@@ -211,7 +208,6 @@ impl SessionStreamFrame {
             SessionStreamFrame::Runs(p) => Some(&p.session_id),
             SessionStreamFrame::Branch(p) => Some(&p.session_id),
             SessionStreamFrame::Watch(p) => Some(&p.session_id),
-            SessionStreamFrame::TurnEnd(p) => Some(&p.session_id),
             SessionStreamFrame::Batch(_)
             | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
@@ -263,18 +259,6 @@ pub struct SessionWatchPayload {
 pub struct WatchedSession {
     pub origin: crate::origin::Origin,
     pub session_id: String,
-}
-
-/// [`SessionStreamFrame::TurnEnd`] 的体。
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionTurnEndPayload {
-    pub session_id: String,
-    /// 通知的标题（后端写好的字，照抄）。
-    pub title: String,
-    /// 通知的正文（后端写好的字，照抄）。
-    pub body: String,
 }
 
 /// [`SessionStreamFrame::SnapshotInflight`] 的体。

@@ -260,8 +260,6 @@ export class SettingsPanel {
   private autoFollowSw!: SwitchHandle;
   private bringFrontSw!: SwitchHandle;
   private showBgSw!: SwitchHandle;
-  private notifyTurnEndSw!: SwitchHandle;
-  private notifyNeedsSw!: SwitchHandle;
   /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
   private behaviorNow: BehaviorConfig | null = null;
   /** 「终端」那一行的位置（通用页「恢复会话」那一组；只在要挑终端的平台上画）。 */
@@ -376,8 +374,6 @@ export class SettingsPanel {
     this.showBgSw.set(behavior.showBgSessions);
     // 记下打开设置时的值：真改了才供货（每次拨动都标会变成噪音）。
     this.showBgOriginal = behavior.showBgSessions;
-    this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
-    this.notifyNeedsSw.set(behavior.notifyNeeds);
     this.syncInputs();
   }
 
@@ -389,7 +385,7 @@ export class SettingsPanel {
 
   /** 行为那几个开关（读配置时整组禁用）。 */
   private behaviorSwitches(): SwitchHandle[] {
-    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw];
+    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw];
   }
 
   /** 拨一个开关：按读回的那份改这一格再存；没读回 / 存失败 ⇒ `false`（拇指退回）。 */
@@ -1231,7 +1227,7 @@ export class SettingsPanel {
     return sw;
   }
 
-  /** 通用页「行为」：五个开关，拨了马上生效、马上存。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
+  /** 通用页「行为」：三个开关，拨了马上生效、马上存。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
   private buildBehaviorGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
@@ -1245,12 +1241,6 @@ export class SettingsPanel {
     );
     this.showBgSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.showHiddenTasks"), copyText("settingsPanel.behavior.showHiddenTasksHelp"), (on) => ({
       showBgSessions: on,
-    }));
-    this.notifyTurnEndSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.turnNotify"), copyText("settingsPanel.behavior.notifyHelp"), (on) => ({
-      notifyTurnEnd: on,
-    }));
-    this.notifyNeedsSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.notifyNeeds"), copyText("settingsPanel.behavior.notifyHelp"), (on) => ({
-      notifyNeeds: on,
     }));
     return group;
   }

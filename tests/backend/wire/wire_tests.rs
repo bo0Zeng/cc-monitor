@@ -397,11 +397,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 by: None,
             },
         ],
-        both(Frame::turn_end(
-            s("s1"),
-            s("u1"),
-            &crate::history::search_rules::name_face(&Default::default()),
-        )),
         [
             Frame::Overflow {
                 dropped: 7,
@@ -977,35 +972,6 @@ fn b64_matches_the_rfc_4648_test_vectors() {
     }
 }
 
-/// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid","title","body"}`，**无 byte_offset**
-/// （只 Line 带）。uuid = 客户端 dedup 键；title · body 是通知那两行（核心写好，桌面与手机照抄）。
-#[test]
-fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
-    let named = crate::history::search_rules::LabelFacts {
-        title: Some("notes".into()),
-        ..Default::default()
-    };
-    let line = to_line(&Frame::turn_end(
-        "sid-9".into(),
-        "u-abc".into(),
-        &crate::history::search_rules::name_face(&named),
-    ))
-    .expect("serialize");
-    let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
-    assert_eq!(v["kind"], "turn_end");
-    assert_eq!(v["session_id"], "sid-9");
-    assert_eq!(v["uuid"], "u-abc");
-    assert_eq!(
-        v["title"],
-        copy_core::copy_text("turnNotify.finish.title", &[("tab", "notes")])
-    );
-    assert_eq!(
-        v["body"],
-        copy_core::copy_text("turnNotify.finish.body", &[])
-    );
-    assert!(v.get("byte_offset").is_none(), "TurnEnd 不带 byte_offset");
-}
-
 /// 叫这条会话什么那两格：名字（`session_label`）＋ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
 #[test]
 fn the_name_face_carries_the_name_and_the_project() {
@@ -1069,17 +1035,11 @@ fn hello_with(emits: Vec<String>) -> Frame {
 /// phase②：Hello.emits 加法式：非空 ⇒ 数组在线上；空 ⇒ 省略。手机端门控读 emits 判「backend 发不发某帧」。
 #[test]
 fn hello_emits_serializes_when_present_and_omits_when_empty() {
-    let line = to_line(&hello_with(vec![
-        "session_status".into(),
-        "turn_end".into(),
-    ]))
-    .expect("serialize");
+    let line =
+        to_line(&hello_with(vec!["session_status".into(), "line".into()])).expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
     assert_eq!(v["kind"], "hello");
-    assert_eq!(
-        v["emits"],
-        serde_json::json!(["session_status", "turn_end"])
-    );
+    assert_eq!(v["emits"], serde_json::json!(["session_status", "line"]));
     let line = to_line(&hello_with(vec![])).expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
     assert!(v.get("emits").is_none(), "空 emits 必须被 skip（additive）");
@@ -1747,10 +1707,6 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("overflow", "dropped", "number"),
     ("overflow", "lost", "array"),
     ("overflow", "lost_truncated", "bool"),
-    ("turn_end", "session_id", "string"),
-    ("turn_end", "uuid", "string"),
-    ("turn_end", "title", "string"),
-    ("turn_end", "body", "string"),
     // 〔第二个前端 live1 10-13〕**活卡**（聊天屏的逐字长出，核心拼好的成品）。`live_frames_have_exactly_these_bytes` 钉的是字节，
     // 本表钉的是**有人在读它**。⚠ 一份样本只带得动一种 `op`：取整卡（`open`）那一支；增量与撤卡那几种的字节由逐字节判据钉。
     ("live_card", "sid", "string"),
@@ -1781,7 +1737,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
 fn every_frame_the_second_frontend_reads() -> Vec<Value> {
     let s = Some("x".to_string());
     let frames = vec![
-        hello_with(vec!["turn_end".into()]),
+        hello_with(vec!["line".into()]),
         Frame::Line {
             session_id: "s".into(),
             path: "/p".into(),
@@ -1799,11 +1755,6 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             }],
             lost_truncated: true,
         },
-        Frame::turn_end(
-            "s".into(),
-            "u".into(),
-            &crate::history::search_rules::name_face(&Default::default()),
-        ),
         Frame::LiveCard(crate::wire::LiveCard {
             sid: "s".into(),
             run: s.clone(),

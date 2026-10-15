@@ -87,7 +87,7 @@ pub enum Body {
         model: Option<String>,
         /// 代理那一侧自动写的应答（不是模型说的，不建卡）。
         auto_reply: bool,
-        /// 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
+        /// 这条是一轮的结束（`end_turn` 收尾、不是报错）。
         ends_turn: bool,
         /// 工具调用 id ⇒ 卡型（普通工具卡不列）。
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

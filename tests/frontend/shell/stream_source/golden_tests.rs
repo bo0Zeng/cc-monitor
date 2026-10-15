@@ -40,7 +40,6 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::Probe { .. } => "probe",
         InboundFrame::TerminalScreen { .. } => "terminal_screen",
         InboundFrame::TerminalFollowEnd { .. } => "terminal_follow_end",
-        InboundFrame::TurnEnd { .. } => "turn_end",
     }
 }
 

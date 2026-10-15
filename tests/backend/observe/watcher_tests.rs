@@ -1340,57 +1340,11 @@ fn a_pidfile_in_the_hidden_dir_is_not_announced() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// backend-09：`process_jsonl` 对 turn-end 记录发 **Line 后紧跟 TurnEnd**；非 turn-end 只发 Line；
-/// **畸形行照发 Line、不 panic、无 TurnEnd**（§2.1 逐行转发 + turn-end 是 raw 之外额外边沿）。
-#[test]
-fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
-    let dir = std::env::temp_dir().join(format!("ccm-turnend-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
-    let mut sink = FrameSink::new(tx);
-    let mut state = ReaderState::new(dir.clone());
-    let path = dir.join("sess-1.jsonl");
-    state.active_sids.insert("sess-1".to_string()); // process_jsonl 门控
-                                                    // 三行：非 turn-end user / turn-end assistant / 畸形。
-    let content = concat!(
-        r#"{"type":"user","message":{}}"#,
-        "\n",
-        r#"{"type":"assistant","uuid":"u-2","message":{"stop_reason":"end_turn"}}"#,
-        "\n",
-        "not json at all",
-        "\n",
-    );
-    std::fs::write(&path, content).unwrap();
-    process_jsonl(&path, &mut state, &mut sink);
-    // 帧序：Line(user,seq0) / Line(end_turn,seq1) → TurnEnd(u-2) / Line(畸形,seq2)。
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::Line { seq: 0, .. })),
-        "user 行 Line"
-    );
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::Line { seq: 1, .. })),
-        "end_turn 行 Line **先**发"
-    );
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid, .. }) if session_id == "sess-1" && uuid == "u-2"),
-        "Line 后紧跟 TurnEnd(u-2)"
-    );
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::Line { seq: 2, .. })),
-        "畸形行照发 Line、不 panic"
-    );
-    assert!(
-        rx.try_recv().is_err(),
-        "无多余帧（畸形行不产 TurnEnd、user 行不产 TurnEnd）"
-    );
-    std::fs::remove_dir_all(&dir).ok();
-}
-
 /// 叫这条会话什么跟着读到的记录走（没在看的会话行不上流，照读、照记）：人说的第一句 ⇒ 名字变成它（一帧 `session_status`）；
-/// 来了标题记录 ⇒ 换成标题；一轮结束的通知标题用同一个名字。项目那一格一直带着。
+/// 来了标题记录 ⇒ 换成标题。项目那一格一直带着。
 #[test]
 fn the_session_name_follows_the_records_even_when_nobody_watches() {
-    let dir = std::env::temp_dir().join(format!("ccm-turnend-title-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ccm-name-follows-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
     let mut sink = FrameSink::new(tx);
@@ -1428,7 +1382,6 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
                 Frame::SessionStatus { name_face, .. } => {
                     got.push(serde_json::to_value(&name_face).unwrap())
                 }
-                Frame::TurnEnd { title, .. } => got.push(serde_json::json!(title.0)),
                 Frame::Line { .. } => panic!("没在看的会话行上了流"),
                 _ => {}
             }
@@ -1445,17 +1398,14 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
         r#"{"type":"user","uuid":"u-1","timestamp":"2026-10-09T01:30:01.000Z","message":{"role":"user","content":"修一下登录"}}"#,
         r#"{"type":"user","uuid":"u-2","timestamp":"2026-10-09T01:30:02.000Z","message":{"role":"user","content":"第二句不算"}}"#,
         r#"{"type":"custom-title","customTitle":"登录修复","sessionId":"sess-1"}"#,
-        r#"{"type":"assistant","uuid":"a-3","message":{"stop_reason":"end_turn"}}"#,
     ];
     std::fs::write(&path, lines.map(|l| format!("{l}\n")).concat()).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    let finish = |tab: &str| copy_core::copy_text("turnNotify.finish.title", &[("tab", tab)]);
     assert_eq!(
         names(&mut rx),
         vec![
             serde_json::json!({"label": "修一下登录", "label_project": "proj"}),
             serde_json::json!({"label": "登录修复", "label_project": "proj"}),
-            serde_json::json!(finish("登录修复")),
         ]
     );
     std::fs::remove_dir_all(&dir).ok();
@@ -2607,11 +2557,10 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
 
     // 排空后下一次 send 会先补 Overflow。
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::turn_end(
-        "x".into(),
-        "u".into(),
-        &crate::history::search_rules::name_face(&Default::default()),
-    ));
+    sink.send(Frame::SessionFileGone {
+        session_id: "x".into(),
+        path: "p".into(),
+    });
     match rx.try_recv() {
         Ok(Frame::Overflow {
             dropped,
@@ -2669,11 +2618,10 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     assert!(sink.subs[0].lost_truncated, "截断了就要说出来，不许静默");
 
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
-    sink.send(Frame::turn_end(
-        "x".into(),
-        "u".into(),
-        &crate::history::search_rules::name_face(&Default::default()),
-    ));
+    sink.send(Frame::SessionFileGone {
+        session_id: "x".into(),
+        path: "p".into(),
+    });
     match rx.try_recv() {
         Ok(Frame::Overflow {
             lost,
@@ -4091,10 +4039,9 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     );
 }
 
-/// 子运行那一条（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束：主运行那条发 `TurnEnd`，子运行那条不发；
-/// 两条的 `line` 都带上对账键（`RecordFace::response_id`）。守的要求：子 agent 的事归它自己的运行，不进主运行。
+/// 主运行与子运行（适配层 `run_of` 答得出）那两条的 `line` 都带上各自的对账键（`RecordFace::response_id`）。
 #[test]
-fn a_sub_runs_turn_end_is_not_the_main_runs() {
+fn main_and_sub_run_lines_carry_their_own_reply_key() {
     let (tx, mut rx) = mpsc::channel::<Frame>(16);
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(PathBuf::from("/p"));
@@ -4113,11 +4060,10 @@ fn a_sub_runs_turn_end_is_not_the_main_runs() {
     while let Ok(f) = rx.try_recv() {
         got.push(match f {
             Frame::Line { rid, .. } => format!("line {}", rid.unwrap_or_default()),
-            Frame::TurnEnd { uuid, .. } => format!("turn_end {uuid}"),
             other => format!("{other:?}"),
         });
     }
-    assert_eq!(got, vec!["line m1", "turn_end u-main", "line m2"]);
+    assert_eq!(got, vec!["line m1", "line m2"]);
 }
 
 /// 实时流：排队那一句的 `record.at` 是打字时刻（打字那一行早先在同一份记录里流过）；打字那一行自己不出成品；
@@ -4697,7 +4643,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// read8c（瓶颈 #8 实时那一半）：实时读进来的一行只从文本解析一次 —— 成品 · 链事实 · 运行簿 · 轮次结束都吃同一份。
+/// read8c（瓶颈 #8 实时那一半）：实时读进来的一行只从文本解析一次 —— 成品 · 链事实 · 运行簿都吃同一份。
 /// 语料是占位字的人话 / 回复（含一轮结束那一形）。
 #[cfg(target_os = "linux")]
 #[test]
@@ -4727,10 +4673,6 @@ fn a_live_line_is_parsed_from_text_once() {
         kinds.iter().filter(|k| **k == "line").count(),
         3,
         "{kinds:?}"
-    );
-    assert!(
-        kinds.contains(&"turn_end"),
-        "一轮结束那一行没报出来：{kinds:?}"
     );
     assert_eq!(
         parses, 3,

@@ -14,7 +14,7 @@ import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 每台一条常驻流（[ResidentFeed]），进程级（聊天 · 列表 · 用量 · 完成通知共用同一条）。流本身在嵌的核心里；
+ * 每台一条常驻流（[ResidentFeed]），进程级（聊天 · 列表 · 用量共用同一条）。流本身在嵌的核心里；
  * 这里只接几根线：SSH 那层此刻的拨号请求（[HostConnector.linkOf]）· 这台叫什么 · 流断了叫 SSH 那层探活（[HostConnector.probeStale]）。
  */
 class HostBackends(

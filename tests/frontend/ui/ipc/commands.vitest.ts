@@ -109,7 +109,6 @@ vi.mock("../../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => ({ resumeCommand: "" }),
 }));

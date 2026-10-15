@@ -5,8 +5,7 @@
  *
  * -：「3. 前端不许从流上攒全会话事实 —— `onLine` 上的旁路记账员只剩『真事件』那两个。」
  * -：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** / **『刚刚发生了什么』＝ 事件 ＝ 留在流上**」；
- *   那张表里标「**事件，留在流上**」的原有两行：`turnEndNotifier.observe`（轮次结束 → 系统通知）·
- *   compact 完成那一个（唤醒换号重启编排；换号重启整条下沉后端之后它没了，等压缩摘要由那台自己盯记录）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
+ *   那张表里标「**事件，留在流上**」的原有一行：compact 完成那一个（唤醒换号重启编排；换号重启整条下沉后端之后它没了，等压缩摘要由那台自己盯记录）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
  *   `noteTouchedFiles` · `applyForkedFrom`）由 STC 改成问后端（`history-facts`，阶段 C）。
  *
  * ## 两条判据
@@ -17,7 +16,7 @@
  *   （如 `const uuid = (payload.message as …).uuid`；函数调用的返回值不算 —— `ensureTab(…)` 返回的是 tab，不是记录）。
  * - 登记表每行写类：`入口`（建 tab · 两道去重 · 线上表示法换算）· `真事件` · `活卡定稿`（TAP 那一格：jsonl 那一轮到了 ⇒
  *   撤掉同 `message.id` 的活卡，）· `渲染管线`。**没有「记账员」这一类。**
- * - 另两条：登记表里 `真事件` 类的事件名集合 == 设计原文里还挂在 `onLine` 上的那几样（今天是空集：轮次结束改认 `turn_end` 格）；
+ * - 另两条：登记表里 `真事件` 类的事件名集合 == 设计原文里还挂在 `onLine` 上的那几样（今天是空集）；
  *   各类恰好这些行（`渲染管线` 只有 `this.view.ingest` 一行 —— 管线内部的 sink 不在那张表的射程里，见「买不到」）。
  * - 正控：同一个抽取器对一段内嵌样本抽得出 `noteAgents(tab, payload.message)` 与经别名的 `f(m)`，抽不出 `g(tab)`。
  *
@@ -58,7 +57,7 @@ const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, 
 
 /**
  * 表里标「事件，留在流上」的那几行（异源：设计原文，不是上面那张表）—— 今天一行都不挂在 `onLine` 上：
- * compact 完成随换号重启下沉了后端；轮次结束（10-10 流只发要看的会话）改认会话流的 `turn_end` 格（没在看的会话行不上流，认行就漏报）。
+ * compact 完成随换号重启下沉了后端。
  */
 const DESIGN_TRUE_EVENTS: string[] = [];
 

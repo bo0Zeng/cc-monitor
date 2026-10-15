@@ -60,7 +60,7 @@ class SshLink(
 
 /**
  * 一台机器的常驻流：接 · 断了再接 · 握手 · 版本门 · 在看名单 · 一问一答**整条在核心里**（`resident-client`，桌面同一份）。
- * 这里只把核心交回来的事落成手机这一侧的几条流：会话表（流上的会话帧折出来）· 记录行 · 轮次结束 · 每帧的 `kind` · 此刻通不通。
+ * 这里只把核心交回来的事落成手机这一侧的几条流：会话表（流上的会话帧折出来）· 记录行 · 每帧的 `kind` · 此刻通不通。
  *
  * - [ssh] 是 SSH 那层此刻的那一条（`null` ＝ 没通）；换了一条就把它的拨号请求交给核心（它在新的上重接）。
  * - 核心说流断了、SSH 还在（`lost`）⇒ 叫 [onLost]（让 SSH 那层去探活：多半是 SSH 先死了）。
@@ -99,11 +99,6 @@ class ResidentFeed(
 
     /** 流上的 `changed` 帧（哪一样变了 · 哪一个）：出口照它重读那一份。 */
     val changed: SharedFlow<Changed> = changedFlow.asSharedFlow()
-
-    private val turnEndFlow = MutableSharedFlow<TurnEnd>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-
-    /** 流上的 `turn_end` 帧（逐帧，未折；折成一轮一条在 [TurnEnds]）。 */
-    val turnEnds: SharedFlow<TurnEnd> = turnEndFlow.asSharedFlow()
 
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = LINE_BUFFER)
 
@@ -212,7 +207,6 @@ class ResidentFeed(
         val next = tableFlow.value.step(frame, onBreak)
         tableFlow.value = next
         frame.str("kind")?.let(changeFlow::tryEmit)
-        TurnEnd.of(frame)?.let(turnEndFlow::tryEmit)
         Changed.of(frame)?.let(changedFlow::tryEmit)
         if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。

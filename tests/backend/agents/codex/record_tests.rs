@@ -558,68 +558,6 @@ fn codex_records_carry_the_clock_face_too() {
     }
 }
 
-/// Codex 一轮结束（`task_complete` / 旧名 `turn_complete`）⇒ 注册表里这一家的记录解释面答得出 `turn_end`（那一轮的 `turn_id`）——
-/// 流式 watcher 发 `turn_end` 帧问的就是这一格，桌面与手机的完成通知都认那一帧。中止轮 · 别的行 · 没带 `turn_id` 的不报。
-#[test]
-fn a_codex_turn_complete_answers_turn_end_through_the_registry() {
-    let face = crate::agents::record_face(super::super::AGENT_KIND).expect("Codex 有记录解释面");
-    let turn_end = face
-        .turn_end
-        .expect("Codex 的记录解释面不报一轮结束 ⇒ 它的会话收不到完成通知");
-    let line = |v: serde_json::Value| v.to_string();
-    let ev = |payload: serde_json::Value| {
-        line(json!({"timestamp": "t", "type": "event_msg", "payload": payload}))
-    };
-    assert_eq!(
-        turn_end(&crate::agents::Line::new(
-            &ev(json!({"type": "task_complete", "turn_id": "t1"})),
-            0
-        )),
-        Some("t1".to_string())
-    );
-    assert_eq!(
-        turn_end(&crate::agents::Line::new(
-            &ev(json!({"type": "turn_complete", "turn_id": "t2"})),
-            0
-        )),
-        Some("t2".to_string())
-    );
-    assert_eq!(
-        turn_end(&crate::agents::Line::new(
-            &ev(json!({"type": "turn_aborted", "turn_id": "t3"})),
-            0
-        )),
-        None
-    );
-    assert_eq!(
-        turn_end(&crate::agents::Line::new(
-            &ev(json!({"type": "task_complete"})),
-            0
-        )),
-        None
-    );
-    assert_eq!(
-        turn_end(&crate::agents::Line::new(
-            &ev(json!({"type": "task_started", "turn_id": "t4"})),
-            0
-        )),
-        None
-    );
-    assert_eq!(
-        turn_end(&crate::agents::Line::new(
-            &line(
-                json!({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "task_complete"}]}})
-            ),
-            0
-        )),
-        None
-    );
-    assert_eq!(
-        turn_end(&crate::agents::Line::new("not json _complete", 0)),
-        None
-    );
-}
-
 /// 金样重写开关（人读过「现打」再落盘）。
 const CODEX_REGEN: &str = "CCM_REGEN_CODEX_RECORD_GOLDEN";
 
@@ -695,14 +633,13 @@ fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
     assert!(shown >= 3, "样本里进界面的行塌了：{shown}");
 }
 
-/// read8c：同一行交给这一家的几问（成品 · 一轮结束 · 此刻在干什么）共用一份解析 —— 从文本只解一次。
+/// read8c：同一行交给这一家的几问（成品 · 此刻在干什么）共用一份解析 —— 从文本只解一次。
 #[test]
 fn the_three_asks_on_one_line_share_one_parse() {
     let raw = json!({"timestamp": "t", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t1"}}).to_string();
     let line = crate::agents::Line::new(&raw, 0);
     crate::agents::LINE_PARSES.with(|c| c.set(0));
     let _ = translated(&line);
-    assert_eq!(turn_end_id(&line).as_deref(), Some("t1"));
     assert_eq!(
         activity_of(&line),
         Some(crate::agents::SessionActivity::Idle)

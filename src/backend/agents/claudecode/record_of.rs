@@ -178,7 +178,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
             });
             let auto_reply = is_auto_reply(error.is_some(), message.model.as_deref());
             let ends_turn =
-                super::turn::ends_turn(message.stop_reason.as_deref(), is_api_error_message);
+                message.stop_reason.as_deref() == Some("end_turn") && !is_api_error_message;
             Some(rec_of(
                 uuid,
                 Some(timestamp),

@@ -658,18 +658,6 @@ def main():
         if not pane_has(name, "> /compact", 20):
             raise Step.Fail("压缩上下文没送进那个会话")
 
-    with Step("5-一轮完成的通知"):
-        name = tmux_name_of(f"{T} new session")
-        adb("shell", "input", "keyevent", "3")
-        time.sleep(2)
-        rig("tmux", "send-keys", "-t", name or "", f"{T} notify", "Enter")
-        end = time.time() + 20
-        while time.time() < end and t("turnNotify.finish.title", tab="").rstrip(" ·") not in adb("shell", "dumpsys", "notification", "--noredact"):
-            time.sleep(1)
-        if time.time() >= end:
-            raise Step.Fail("没出完成通知")
-        launch()
-
     with Step("6-断网再连"):
         name = tmux_name_of(f"{T} new session")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
@@ -685,7 +673,7 @@ def main():
         if not wait(f"替身收到：{T} offline", 60):
             raise Step.Fail("网回来之后没补上断开那段")
         to_bottom()
-        missing = [t for t in (f"替身收到：{T} notify", f"替身收到：{T} offline") if ui.find(t) is None]
+        missing = [t for t in (f"替身收到：{T} offline",) if ui.find(t) is None]
         if missing:
             raise Step.Fail(f"漏了：{missing}")
         if not adb("shell", "pidof", PKG).strip():
@@ -709,7 +697,7 @@ def main():
             raise Step.Fail("App 没了（换网闪退）")
 
     with Step("8-杀进程"):
-        # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 核心重接、先取尾巴，被杀那段的话照样在。
+        # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 回到那一条、核心重接、先取尾巴，被杀那段的话照样在。
         name = tmux_name_of(f"{T} new session")
         adb("shell", "am", "force-stop", PKG)
         time.sleep(2)
@@ -718,6 +706,10 @@ def main():
         rig("tmux", "send-keys", "-t", name or "", f"{T} while dead", "Enter")
         time.sleep(4)
         launch()
+        # 重开回到上次在看的那一条（不经列表）：那一条独有的那句在屏上。
+        to_bottom()
+        if not wait(f"替身收到：{T} offline", 30):
+            raise Step.Fail("重开没回到上次在看的那一条")
         drawer(t("mobDrawer.item.chats"))
         if not wait(f"{T} new session", 30):
             raise Step.Fail("重开之后对话列表里没有那条会话")

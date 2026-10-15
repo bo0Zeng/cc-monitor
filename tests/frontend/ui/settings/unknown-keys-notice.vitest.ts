@@ -145,7 +145,7 @@ describe("P12：那条常驻条（`createUnknownKeysBar`）", () => {
   });
 
   it("★ 反空真：配置干净 ⇒ 条是藏着的、正文是空的（不是「永远亮着」）", async () => {
-    store.cfg = { theme: {}, notifyTurnEnd: true, autoFollowUserActive: false }; // 原来第三个键是已退役的 forceLaunchPayloadRenderer
+    store.cfg = { theme: {}, showBgSessions: true, autoFollowUserActive: false };
     const bar = createUnknownKeysBar();
     await tick();
     expect(
@@ -203,7 +203,7 @@ describe("🔴 P12：真·用户那一侧 —— 打开设置就看得见", () =
   });
 
   it("★★ 反空真对照：配置干净 ⇒ 面板上**没有**那句话", async () => {
-    store.cfg = { theme: {}, notifyTurnEnd: true };
+    store.cfg = { theme: {}, showBgSessions: true };
     const panel = new SettingsPanel();
     await panel.open();
     await tick();

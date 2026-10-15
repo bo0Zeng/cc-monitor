@@ -1199,9 +1199,8 @@ export class TabStreamView {
 
   /**
    * 按偏移取回的**历史**行喂进 `onLine` —— 必须按**重放**的语义喂，不能按 live：
-   * live 语义下历史 user 卡会触发 `userActive`（自动切 tab / 拉前 monitor）、
-   * 历史的轮次结束会弹系统通知。
-   * ⇒ 对这一个 tab 走一遍批：`inBatch` 置位（`userActive` / `turnEndNotifier` 都认它）；
+   * live 语义下历史 user 卡会触发 `userActive`（自动切 tab / 拉前 monitor）。
+   * ⇒ 对这一个 tab 走一遍批：`inBatch` 置位（`userActive` 认它）；
    * 喂完把批期缓冲的中部插入一次挂载、按已有的主线外清单重折（增量读不知道之后的回退，清单由实时帧给）；
    * 再记一笔「又长了」（批期里每行那一笔都没去要）：过程的划段 · 会话事实按补上的这段重要 —— 不然新补的卡按补之前那一份
    * 归进还开着的那一段过程（在等批准 / 在跑的那一轮的尾巴），折着看不见。

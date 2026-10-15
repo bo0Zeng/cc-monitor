@@ -38,7 +38,7 @@ value class ChatSessionKey(
 /**
  * 应用级的对话持有者（单例，见 `di/AppModule.kt`）。
  *
- * 下行活在这里而不在 ViewModel 里：离开聊天屏不断流，离开 app 后回复完成照样能推送。
+ * 下行活在这里而不在 ViewModel 里：离开聊天屏不断流。
  * 应用级的东西不会自己消失，所以有 [release]，并由 [MAX_SESSIONS] 兜上限：
  * 超出时逐出最旧且不在飞的那个，逐出会通报，见 [evictedCount]。
  */

@@ -55,7 +55,7 @@ model?: string,
  */
 autoReply: boolean, 
 /**
- * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
+ * 这条是一轮的结束（`end_turn` 收尾、不是报错）。
  */
 endsTurn: boolean, 
 /**

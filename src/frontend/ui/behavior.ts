@@ -58,9 +58,6 @@ function readPresets(raw: unknown): string[] {
   return out;
 }
 
-const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
-const KEY_NOTIFY_NEEDS = "notifyNeeds";
-
 export interface BehaviorConfig {
   /** 用户在 claude 里敲键发送消息时自动切到对应 monitor tab。默认 true。 */
   autoFollowUserActive: boolean;
@@ -80,13 +77,6 @@ export interface BehaviorConfig {
    * 生效值住各台后端（`prefs.json` 的 `launchers`，经 `machine-prefs.ts`），恢复进不进 tmux 也在那里。
    */
   resumeCommandPresets: string[];
-  /**
-   * Claude 完成一轮（stop_reason==end_turn）且窗口在后台时发系统通知。
-   * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
-   */
-  notifyTurnEnd: boolean;
-  /** 有会话开始等你（批准 / 回答 / 计划）且主窗口不在前台时发系统通知。默认 true；与上一格分开。 */
-  notifyNeeds: boolean;
 }
 
 const DEFAULTS: BehaviorConfig = {
@@ -94,8 +84,6 @@ const DEFAULTS: BehaviorConfig = {
   bringMonitorToFrontOnUserActive: false,
   showBgSessions: true,
   resumeCommandPresets: [],
-  notifyTurnEnd: true,
-  notifyNeeds: true,
 };
 
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
@@ -124,14 +112,6 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
         ? (cfg[KEY_SHOW_BG] as boolean)
         : DEFAULTS.showBgSessions,
     resumeCommandPresets: readPresets(cfg[KEY_RESUME_PRESETS]),
-    notifyTurnEnd:
-      typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
-        ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
-        : DEFAULTS.notifyTurnEnd,
-    notifyNeeds:
-      typeof cfg[KEY_NOTIFY_NEEDS] === "boolean"
-        ? (cfg[KEY_NOTIFY_NEEDS] as boolean)
-        : DEFAULTS.notifyNeeds,
   };
 }
 
@@ -142,8 +122,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
     setAt([KEY_BRING_FRONT], next.bringMonitorToFrontOnUserActive),
     setAt([KEY_SHOW_BG], next.showBgSessions),
     setAt([KEY_RESUME_PRESETS], next.resumeCommandPresets),
-    setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
-    setAt([KEY_NOTIFY_NEEDS], next.notifyNeeds),
   ]);
 }
 

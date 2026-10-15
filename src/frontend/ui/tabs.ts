@@ -13,7 +13,6 @@ import { runLabel } from "./runs";
 
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
-import type { SessionTurnEndPayload } from "./generated/SessionTurnEndPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -24,7 +23,6 @@ import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
 import type { AgentsPanel } from "./agents-panel";
-import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
 import {
   terminalFrontAvailable,
@@ -454,17 +452,6 @@ export class TabManager {
     for (const t of this.store.tabs.values()) {
       if (t.origin === origin) this.view.recoverFromGap(t);
     }
-  }
-
-  /**
-   * 那台一个会话一轮结束（会话流的 `turn_end` 格，在不在看都来）⇒ 系统通知，标题 · 正文照抄格上后端写好的（没有 tab 的会话不报）。
-   * 远端的照标签栏的规矩在前面加 `[那台]`（后端不知道看的人管那台叫什么）；本机不加。
-   */
-  onTurnEnd(origin: Origin, turn: SessionTurnEndPayload): void {
-    const tab = this.store.tabs.get(turn.session_id);
-    if (!tab || tab.origin !== origin) return;
-    const title = isRemoteOrigin(origin) ? `[${origin}] ${turn.title}` : turn.title;
-    turnEndNotifier.observe(turn.session_id, title, turn.body);
   }
 
   /**

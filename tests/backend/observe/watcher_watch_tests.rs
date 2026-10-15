@@ -105,12 +105,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
         });
     }
     assert_eq!(kinds, vec![format!("runs {A}")]);
-    // 摘要那几格（状态 · 轮次边沿 · 文件重读 / 不在了）不挑：没在看的会话照发。
-    sink.send(Frame::turn_end(
-        B.into(),
-        "u".into(),
-        &crate::history::search_rules::name_face(&Default::default()),
-    ));
+    // 摘要那几格（状态 · 文件重读 / 不在了）不挑：没在看的会话照发。
     sink.send(Frame::SessionFileGone {
         session_id: B.into(),
         path: "p".into(),
@@ -119,7 +114,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     while rx.try_recv().is_ok() {
         n += 1;
     }
-    assert_eq!(n, 2, "摘要帧不按在看的名单挑");
+    assert_eq!(n, 1, "摘要帧不按在看的名单挑");
     std::fs::remove_dir_all(&dir).ok();
 }
 

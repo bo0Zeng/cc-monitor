@@ -51,7 +51,6 @@ pub mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
 mod data_paths;
-mod desktop_notify; // 系统通知那一条命令（平台那一半在 platform/notify.rs）
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod event_replay;
 mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
@@ -840,7 +839,6 @@ pub fn run() {
             footprint_client::footprint_client_facts,
             diagnostics_report::diagnostics_report,
             app_restart::restart_app,
-            desktop_notify::notify_desktop,
             clipboard::clipboard_write,
             clipboard::clipboard_read,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。

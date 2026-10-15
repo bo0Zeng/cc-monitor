@@ -9,7 +9,7 @@ class RotationTest {
     fun `changed 帧：topic · key 照线上读；别的帧不是它`() {
         assertEquals(Changed("rotation", "s1"), Changed.of(mapOf("kind" to "changed", "topic" to "rotation", "key" to "s1")))
         assertEquals(Changed("rotation_strategies", null), Changed.of(mapOf("kind" to "changed", "topic" to "rotation_strategies")))
-        assertNull(Changed.of(mapOf("kind" to "turn_end", "topic" to "rotation")))
+        assertNull(Changed.of(mapOf("kind" to "session_status", "topic" to "rotation")))
     }
 
     @Test

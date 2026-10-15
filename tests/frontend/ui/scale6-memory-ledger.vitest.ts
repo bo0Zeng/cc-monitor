@@ -62,9 +62,6 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({
   fetchSessionTasks: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("../../../src/frontend/ui/turn-notify", () => ({
-  turnEndNotifier: { observe: vi.fn() },
-}));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi
     .fn()
