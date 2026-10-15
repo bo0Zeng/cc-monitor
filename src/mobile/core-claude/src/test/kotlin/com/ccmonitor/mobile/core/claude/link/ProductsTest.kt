@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.Hidden
+import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import org.junit.Assert.assertEquals
@@ -91,8 +91,21 @@ class ProductsTest {
     @Test
     fun `history-list：行上隐藏那一格照收（后端写好的那一句）；入参只在「显示已隐藏」开着时带 hidden`() {
         val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "atText" to "", "sectionText" to "", "projectPath" to "", "jsonlPath" to "", "agent" to "claude", "status" to "ended", "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
-        assertEquals(Hidden("由 a 启动 · 子会话默认隐藏"), HistoryList.ofRows(rows)?.rows?.single()?.hidden)
-        assertNull(HistoryList.of(Fixtures.json("history-list.golden.json"))!!.rows.first().hidden)
+        assertEquals(
+            Hidden("由 a 启动 · 子会话默认隐藏"),
+            HistoryList
+                .ofRows(rows)
+                ?.rows
+                ?.single()
+                ?.hidden,
+        )
+        assertNull(
+            HistoryList
+                .of(Fixtures.json("history-list.golden.json"))!!
+                .rows
+                .first()
+                .hidden,
+        )
         assertEquals(mapOf("hidden" to true), HistoryList.args(showHidden = true))
         assertNull("关着 ⇒ 不带（缺省不出）", HistoryList.args(showHidden = false))
     }

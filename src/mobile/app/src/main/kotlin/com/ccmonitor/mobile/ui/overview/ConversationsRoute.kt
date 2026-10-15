@@ -16,10 +16,10 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,10 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarController
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
-import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens

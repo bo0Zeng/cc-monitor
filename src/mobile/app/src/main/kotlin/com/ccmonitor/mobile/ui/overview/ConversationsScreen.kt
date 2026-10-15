@@ -75,7 +75,7 @@ private fun RowMenu(
             listOf(
                 SheetAction(
                     if (hidden) Ph.Eye else Ph.EyeSlash,
-                    copyText(if (hidden) "history.menu.unhide" else "history.menu.hide"),
+                    if (hidden) copyText("history.menu.unhide") else copyText("history.menu.hide"),
                     onClick = { onHide(item) },
                 ),
             ),
