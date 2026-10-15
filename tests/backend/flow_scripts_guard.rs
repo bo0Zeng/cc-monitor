@@ -7,7 +7,7 @@
 //! - 带 `--help` 的几份能跑、退 0、印用法；
 //! - 挑格那一半拿仓里这张表对仓里这份 `gate.sh` 出得了计划（表过期它退 2，这条就红）；
 //! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
-//!   （表 `session-vars`）；
+//!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
 //! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
 //!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
@@ -285,6 +285,124 @@ mod tests {
                 assert!(seen.contains(k), "{tag}：{k} 不是会话状态，不该摘：{said}");
             }
             let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
+    /// ★ e2e 各套最前面 source 的 `sandbox-env.sh` 照同一张表摘：带着外面会话的变量 source 它，之后一样都看不见，判据输入照到。
+    #[test]
+    fn the_e2e_sandbox_env_hides_the_outer_session_by_the_same_table() {
+        let (outer, kept) = outer_session();
+        let d = scratch("sandbox-env-scrub");
+        let mut c = Command::new("bash");
+        c.args(["-c", ". tests/e2e/sandbox-env.sh && compgen -e"])
+            .current_dir(root())
+            .env("TMPDIR", &d);
+        for k in outer.iter().chain(&kept) {
+            c.env(k, "outer-session");
+        }
+        let out = c.output().unwrap();
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{said}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let seen: BTreeSet<&str> = said.lines().collect();
+        let left: Vec<&String> = outer.iter().filter(|k| seen.contains(k.as_str())).collect();
+        assert!(
+            left.is_empty(),
+            "sandbox-env.sh 之后还看得见外面会话的变量：{left:?}"
+        );
+        for k in &kept {
+            assert!(
+                seen.contains(k.as_str()),
+                "{k} 是判据输入，sandbox-env.sh 不该摘：{said}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// 枚举环境变量的（`compgen -e` · 读 `env` 的输出）全仓只有 `session-scrub.sh`：别处要摘照它的 `--list`，不另抄一份前缀。
+    #[test]
+    fn only_session_scrub_enumerates_the_environment() {
+        let listed = Command::new("git")
+            .args(["-c", "core.quotepath=false", "ls-files", "-z"])
+            .current_dir(root())
+            .output()
+            .unwrap();
+        let enumerates = |text: &str| {
+            text.lines().any(|l| {
+                let l = l.trim_start();
+                !l.starts_with('#')
+                    && (l.contains("compgen -e") || l.contains("<(env)") || l.contains("$(env)"))
+            })
+        };
+        let hits: Vec<String> = listed
+            .stdout
+            .split(|b| *b == 0)
+            .filter_map(|p| std::str::from_utf8(p).ok())
+            .filter(|p| p.ends_with(".sh") || p.ends_with(".yml") || p.ends_with(".py"))
+            .filter(|p| std::fs::read_to_string(root().join(p)).is_ok_and(|t| enumerates(&t)))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            hits,
+            vec!["tests/scripts/session-scrub.sh".to_string()],
+            "这几份自己枚举环境变量（另抄了一份要摘的名单）：改成照 `session-scrub.sh --list` 摘"
+        );
+        // 正控：每一种写法都认得出。
+        for w in ["for k in $(compgen -e); do", "done < <(env)", "x=$(env)"] {
+            assert!(enumerates(w), "{w}");
+        }
+    }
+
+    /// 「生成物有没有落在提交外」全仓只 `generated-drift.sh` 一份：CI 那一步 · `npm run check:types` 都调它，别处不再自己 `git diff` 某个生成目录。
+    #[test]
+    fn every_generated_drift_check_calls_the_one_script() {
+        let own = |p: &str| {
+            std::fs::read_to_string(root().join(p))
+                .unwrap()
+                .lines()
+                .filter(|l| !l.trim_start().starts_with('#'))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let diffs_generated = |text: &str| {
+            text.lines().any(|l| {
+                (l.contains("git diff") || l.contains("git status") || l.contains("git -C"))
+                    && l.contains("generated")
+            })
+        };
+        let listed = Command::new("git")
+            .args(["-c", "core.quotepath=false", "ls-files", "-z"])
+            .current_dir(root())
+            .output()
+            .unwrap();
+        let hits: Vec<String> = listed
+            .stdout
+            .split(|b| *b == 0)
+            .filter_map(|p| std::str::from_utf8(p).ok())
+            .filter(|p| {
+                [".sh", ".yml", ".json", ".py", ".mjs"]
+                    .iter()
+                    .any(|e| p.ends_with(e))
+            })
+            .filter(|p| !p.contains("/generated/") && !p.starts_with("tests/__fixtures__/"))
+            .filter(|p| {
+                std::fs::read_to_string(root().join(p)).is_ok_and(|_| diffs_generated(&own(p)))
+            })
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            hits,
+            vec!["tests/scripts/generated-drift.sh".to_string()],
+            "这几份自己比生成目录：改成调 `tests/scripts/generated-drift.sh`"
+        );
+        for p in [".github/workflows/ci.yml", "package.json"] {
+            assert!(
+                own(p).contains("generated-drift.sh"),
+                "{p} 没调 generated-drift.sh"
+            );
         }
     }
 

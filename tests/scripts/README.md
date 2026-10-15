@@ -10,7 +10,7 @@
 | [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
 | [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
 | [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（`hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`，经 `gate.sh` 的 `GATE_ONLY` 跑，收据另存、不盖门禁那份）· 两棵树整套 `cargo test --lib` · 整套 vitest · 末尾核生成物（`generated-drift.sh`）。测试一律在 `.build/` 下的一次性沙箱里跑（每一步经 `session-scrub.sh` 摘掉会话变量，再换 HOME 与 TMUX_TMPDIR）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红；红了把失败测试的 panic 原话印出来，整趟输出存 `.build/quick-check/`。这棵树相对起点（`base.sh`）改到了手机读的东西（`src/mobile/` · 金样 `tests/__fixtures__/` · `src/backend/lib.rs` · 文案表 `src/shared/copy/` 等）才加跑手机那一套（ktlint · detekt · JVM 单测，经 `heavy.sh`、gradle 带 `--no-daemon`），没改到就跳过并说一声；`--mobile` 只跑这一段，`--mobile-plan` 只印跑不跑 |
-| [`session-vars`](session-vars) | 会话继承来的环境变量表，全仓只这一张：Claude Code 与 Codex 的 · tmux 的 · cc-monitor 自己的（连 cc-bus）· 上游与代理的；族里照留的判据输入（`CCM_E2E_*` · `CCM_REGEN_*` · `CCM_BLESS*` …）以 `!` 标出。`session-scrub.sh` 与 `src/common/test-home`（测试二进制起来时）读它 |
+| [`session-vars`](session-vars) | 会话继承来的环境变量表，全仓只这一张：Claude Code 与 Codex 的 · tmux 的 · cc-monitor 自己的（连 cc-bus）· 上游与代理的；族里照留的判据输入（`CCM_E2E_*` · `CCM_REGEN_*` · `CCM_BLESS*` …）以 `!` 标出。`session-scrub.sh`（`gate.sh` · `sandbox-env.sh` · 手机台架照它的 `--list`）与 `src/common/test-home`（测试二进制起来时）读它 |
 | [`session-scrub.sh`](session-scrub.sh) | 摘掉表里的变量再起命令：`heavy.sh` 每个出口、`quick-check.sh` 每一步都经它，于是经它们跑的一切测试与门禁都看不见外面会话的配置目录 · tmux · 真端口 · 上游；`--list` 只印这一刻会摘哪几个 |
 | [`base.sh`](base.sh) | 「这棵树自己改了哪些」的起点：HEAD 与分支上游（没设上游就 origin/main，再没有就 main）的 merge-base。quick-check 挑手机那一套、gate-affected 挑格都用它 |
 | [`generated-drift.sh`](generated-drift.sh) | 生成物有没有落在提交外：每个 `generated/` 目录下与 HEAD 不同或没跟踪的文件逐份印出、退 1。quick-check 末尾与门禁 `generated` 格调它（cargo test 现写生成物，只在工作树里对、没提交的，合并以后才红） |
@@ -48,7 +48,7 @@
 判据 `tests/common/guard-core/wall_ceiling_tests.rs` 扫门禁跑的测试源，别处写数字期限就红，例外逐条登记理由。
 
 **会话变量**：在 Claude Code 会话或 tmux 里起的 shell 继承着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_*` 等，单跑测试只换 HOME 时会读到真号的状态。
-表只在 `session-vars` 一处：经 `heavy.sh` / `quick-check.sh` 起的命令先摘掉它们（`session-scrub.sh`），测试二进制起来时 `src/common/test-home` 再按同一张表摘一次（`HOME` 是真家时）。
+表只在 `session-vars` 一处，枚举环境的只有 `session-scrub.sh`：经 `heavy.sh` / `quick-check.sh` 起的命令先经它摘掉；`gate.sh` · e2e 的 `sandbox-env.sh` · 手机台架的登录口照它的 `--list` 摘；测试二进制起来时 `src/common/test-home` 再按同一张表摘一次（`HOME` 是真家时）。
 `TMUX_TMPDIR` 不在表里：摘掉只是回到默认那台，私有的那个由调用方给（quick-check 的沙箱；门禁换掉 `/tmp/tmux-<uid>`，并自己 unset 它）。
 抓依赖用的代理走各工具自己的配置（`CARGO_HOME` 下的 cargo 配置 · `npm_config_proxy` · `gradle.properties`），通用的 `HTTP(S)_PROXY` 一族照摘。
 

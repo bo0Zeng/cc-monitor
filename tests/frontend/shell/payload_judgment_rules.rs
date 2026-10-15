@@ -11,7 +11,7 @@
 //!
 //! 两件事：
 //! 1. [`export_bindings_judgment_rules`]：`npm run gen:types`（= `cargo test --lib export_bindings`）重写生成物；
-//!    门禁第六格 `generated` 的 `git diff --exit-code` 盖住它 ⇒ 改了规则不重跑生成就红。
+//!    门禁 `generated` 格（`generated-drift.sh`）盖住它 ⇒ 改了规则不重跑生成就红。
 //!    ⚠ 刻意**没有**「盘上那份 == 现算的」那条读回判据：同一趟 `cargo test` 里生成器与它并行跑，读到的可能是写到一半的文件
 //!    （死值验时实测到生成器先把刀后的式子写了回去）—— 「生成物不陈旧」只交给门禁那一格的 `git diff`。
 //! 2. [`the_shared_golden_agrees_with_the_one_rule`]：共用金样 `tests/__fixtures__/identifier-rules.golden.json`

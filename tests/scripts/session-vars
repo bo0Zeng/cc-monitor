@@ -1,5 +1,6 @@
 # 会话继承来的环境变量：跑测试与门禁之前摘掉。全仓只这一张表。
-# 读它的两处：`session-scrub.sh`（`heavy.sh` 与 `quick-check.sh` 起被测命令前）· `src/common/test-home`（测试二进制起来时，`HOME` 是真家才摘）。
+# 读它的两处：`session-scrub.sh`（`heavy.sh` 与 `quick-check.sh` 起被测命令前；`gate.sh` · e2e 的 `sandbox-env.sh` · 手机台架的登录口照它的 `--list` 摘）·
+#   `src/common/test-home`（测试二进制起来时，`HOME` 是真家才摘）。
 # 一行一个名字；以 `*` 结尾的是一族（按前缀认）；以 `!` 起头的是族里照留的：台架或人交给判据的输入，只有判据自己读，不指向真东西。
 # 外面写死的工具代理（cargo 的 `CARGO_HOME` 配置 · `npm_config_proxy` · gradle 的 `gradle.properties`）不在表里，照用。
 

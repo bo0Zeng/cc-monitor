@@ -3131,7 +3131,7 @@ fn every_sandboxed_backend_start_carries_the_sandbox_mark() {
         (
             "tests/e2e/sandbox-env.sh",
             include_str!("../../e2e/sandbox-env.sh"),
-            "unset _ccm_sandbox_k",
+            "unset _ccm_sandbox_k _ccm_sandbox_names",
         ),
     ] {
         let lines: Vec<&str> = text
