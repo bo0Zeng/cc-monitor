@@ -946,7 +946,12 @@ def walk():
 
     def step_badge():
         """流里在等的那一步：工具卡上那一枚是那台写好的「等批准」（needs.call 认的那一步）。"""
-        if not wait(t("beSession.needs.approve"), 15):
+        want = t("beSession.needs.approve")  # 钉条头一行里也有这几个字：只认字正好是它的那一枚
+        end = time.time() + 20
+        while time.time() < end and not any(n.get("text") == want for n in ui.nodes()):
+            adb("shell", "input", "swipe", "540", "1500", "540", "500", "150")
+            time.sleep(1)
+        if not any(n.get("text") == want for n in ui.nodes()):
             raise Step.Fail("流里那张在等的工具卡上没有「等批准」")
         shot("4d-工具卡等批准")
 
