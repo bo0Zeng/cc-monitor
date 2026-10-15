@@ -106,14 +106,13 @@ const ACCOUNTS_BUDGET_MS = 30_000;
 const TRUST_BUDGET_MS = 30_000;
 
 /**
- * 账号库那一家（适配器 id，后端并 apikey 表时认它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
- * **值从后端来**：生成物里的 `DEFAULT_AGENT`（注册表里声明默认的那一家）与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表）；
- * 起会话那一侧写进中转路由键第 1 段的就是它。表里没有 ⇒ 抛（不回落到任何一家）。
+ * 账号库那一家（线上的 kind，每条命令收的 `agent` 都是它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
+ * **值从后端来**：生成物里的 `DEFAULT_AGENT`（注册表里声明默认的那一家）。表里没有 ⇒ 抛（不回落到任何一家）。
  */
 export function launchAgentId(): string {
   const got = lookupAgentProfile(DEFAULT_AGENT);
   if (!got.known) throw new Error(got.message);
-  return got.facts.adapterId;
+  return got.facts.agent;
 }
 
 /** 账号页那一家的画像（与 [`launchAgentId`] 同一个出处）：叫法 · 认得的模型。查不到 ⇒ `null`。 */
@@ -124,7 +123,7 @@ export function accountsAgentProfile(): AgentProfileRow | null {
   } catch {
     return null;
   }
-  return AGENT_PROFILE_TABLE.find((r) => r.adapterId === id) ?? null;
+  return AGENT_PROFILE_TABLE.find((r) => r.agent === id) ?? null;
 }
 
 /**

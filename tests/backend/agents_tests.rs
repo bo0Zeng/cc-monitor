@@ -313,25 +313,24 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
             )
         );
     }
-    // 适配器 id 那一个值域同一条规则（名单换成适配器 id）。
-    let adapter = |n: Option<&str>| pick_adapter_among(&reg, n).map(|(_, f)| f.adapter_id);
-    assert_eq!(adapter(Some("")), Ok("claude-code"));
-    assert_eq!(adapter(Some("codex")), Ok("codex"));
-    assert_eq!(
-        adapter(Some("claude")),
-        Err(copy_core::copy_text(
-            "beAgents.pick.unknown",
-            &[("agent", "claude"), ("known", "claude-code / codex / fake")]
-        )
-        .to_string()),
-        "适配器 id 那一问把 wire kind 也认了"
-    );
     // 生产那张：入口共用的两个口与默认那一家对得上。
     assert_eq!(pick_kind(None).map(|(k, _)| k), Ok(default_kind()));
     assert_eq!(
-        pick_adapter(Some("")).ok(),
+        pick_route(Some("")).ok(),
         default_launch_among(REGISTRY).map(|(_, f)| f.adapter_id)
     );
+}
+
+/// ★ 同一家线上只有一个名字：每条命令收的 `agent` 都是 kind（同 `session-new-facts` 给的那一格），路由名只在后端里面。
+/// 收的那一头 kind ⇒ 路由名、路由名本身不认；出的那一头路由名 ⇒ kind（账上留着的别家旧条目照原样）。
+#[test]
+fn the_wire_names_an_agent_only_by_its_kind() {
+    let route = crate::agents::claudecode::UPSTREAM.route_id;
+    assert_ne!(route, crate::agents::claudecode::AGENT_KIND, "两个名字今天确实不同（否则这条判不出东西）");
+    assert_eq!(pick_route(Some(crate::agents::claudecode::AGENT_KIND)), Ok(route));
+    assert!(pick_route(Some(route)).is_err(), "路由名不当线上名认");
+    assert_eq!(kind_of_route(route), crate::agents::claudecode::AGENT_KIND);
+    assert_eq!(kind_of_route("gone-agent"), "gone-agent");
 }
 
 /// ★ `resume_kind` 那一列不是凭空写的：夹具说 flag 的必须以 `--` 开头，说 subcommand 的必须不以 `--` 开头（从 monitor 搬来）。
@@ -454,8 +453,6 @@ const TABLE_HEADER: &str = r#"// 本文件由 `src/backend/agents/mod.rs` 的注
 export type AgentProfileRow = {
   /** 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。 */
   agent: string;
-  /** 后端适配器 id（起会话那一发交回，上游选择按它挑那一行）。 */
-  adapterId: string;
   defaultLauncher: string;
   launcherAlias: string | null;
   resumeKind: "flag" | "subcommand";
@@ -495,7 +492,6 @@ fn render_row(kind: &str, f: &LaunchFace, has_accounts: bool) -> String {
     let list: Vec<String> = f.nested_env.iter().map(|s| ts_str(s)).collect();
     let fields = [
         ("agent", ts_str(kind)),
-        ("adapterId", ts_str(f.adapter_id)),
         ("defaultLauncher", ts_str(f.default_launcher)),
         (
             "launcherAlias",

@@ -10,7 +10,7 @@ pub(crate) use cmd_wire::rotation::RotationFactsReply;
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RotationFactsReq {
-    /// 哪一家（适配器 id）；缺 ⇒ 有账号库的那一家。
+    /// 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) agent: Option<String>,
@@ -63,7 +63,9 @@ pub(crate) fn facts_with(
     let agent = req
         .agent
         .as_deref()
-        .unwrap_or(crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT);
+        .map_or(crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT, |k| {
+            crate::agents::pick_route(Some(k)).unwrap_or(k)
+        });
     let row = |a: &str| (ctx.rows)(agent, a);
     RotationFactsReply {
         now,

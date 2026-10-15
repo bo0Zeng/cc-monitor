@@ -5,12 +5,12 @@ use copy_core::copy_text;
 
 use crate::accounts::upstream_select::endpoint;
 
-/// `relay-optin`：入参 `{agent}`（适配器 id）→ 那一家的 `{state, note, missing, source, snippet, listening}`。
+/// `relay-optin`：入参 `{agent}`（线上的 kind）→ 那一家的 `{state, note, missing, source, snippet, listening}`。
 ///
 /// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（`endpoint::decide_launch`，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
 /// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
 pub(crate) fn answer_optin(req: &OptinReq) -> Result<endpoint::Optin, (&'static str, String)> {
-    let agent = crate::agents::pick_adapter(Some(&req.agent)).map_err(|say| ("bad_args", say))?;
+    let agent = crate::agents::pick_route(Some(&req.agent)).map_err(|say| ("bad_args", say))?;
     let home = crate::platform::paths::home_dir()
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
     let face = crate::agents::settings_env_face(agent)

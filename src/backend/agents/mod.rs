@@ -442,7 +442,7 @@ pub(crate) fn default_kind() -> &'static str {
     default_launch_among(REGISTRY).map_or("", |(kind, _)| kind)
 }
 
-/// 收 agent 名字的入口用哪一家：**全仓只有这一种认法**（[`pick_kind_among`] 认 wire 上的 kind，[`pick_adapter_among`] 认适配器 id）。
+/// 收 agent 名字的入口用哪一家：**全仓只有这一种认法**（[`pick_kind_among`] 认 wire 上的 kind；要路由名的 [`pick_route`] 也先认 kind）。
 ///
 /// - 没写 / 写空（两侧空白不算字）⇒ 注册表里声明默认（[`LaunchFace::is_default`]）的那一家；
 /// - 写了注册表里由我们起的一家 ⇒ 就是它（大小写敏感）；
@@ -482,22 +482,24 @@ pub(crate) fn pick_kind_among(
     pick_among(registry, name, |kind, _| kind)
 }
 
-/// 按适配器 id 认（上游选择那几问的 `agent`：`accounts-list` · `launch-local`）。规则见 [`pick_among`]。
-pub(crate) fn pick_adapter_among(
-    registry: &[Adapter],
-    id: Option<&str>,
-) -> Result<(&'static str, LaunchFace), String> {
-    pick_among(registry, id, |_, f| f.adapter_id)
-}
 
 /// [`pick_kind_among`] 在生产注册表上。
 pub(crate) fn pick_kind(name: Option<&str>) -> Result<(&'static str, LaunchFace), String> {
     pick_kind_among(REGISTRY, name)
 }
 
-/// [`pick_adapter_among`] 在生产注册表上；回那一家的适配器 id。
-pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
-    pick_adapter_among(REGISTRY, id).map(|(_, f)| f.adapter_id)
+/// 线上的 kind（每条命令收的 `agent` 都是它）⇒ 那一家在后端里面的路由名（中转路由键第 1 段 · 额度账 · 轮换簿 · apikey 表按它记）。
+/// 规则同 [`pick_kind`]（空 ⇒ 默认那一家；认不出 ⇒ 那一句）。路由名不上线：出口一律换回 kind（[`kind_of_route`]）。
+pub(crate) fn pick_route(kind: Option<&str>) -> Result<&'static str, String> {
+    pick_kind(kind).map(|(_, f)| f.adapter_id)
+}
+
+/// 路由名 ⇒ 线上的 kind（回包里的 `agent` 都写它）；注册表里没有这个路由名 ⇒ 照原样（账上留着的别家旧条目）。
+pub(crate) fn kind_of_route(route: &str) -> &str {
+    REGISTRY
+        .iter()
+        .find(|a| a.launch.is_some_and(|f| f.adapter_id == route))
+        .map_or(route, |a| a.kind)
 }
 
 /// `kind` 那一家的 shell wrapper 名（[`LaunchFace::launcher_alias`]）。认不出 / 没有 ⇒ `None`。

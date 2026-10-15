@@ -82,7 +82,9 @@ impl crate::wire::typed::Handle for RotationTry {
             let agent = req
                 .agent
                 .as_deref()
-                .unwrap_or(crate::faces::rotation_face::LIBRARY_AGENT);
+                .map_or(crate::faces::rotation_face::LIBRARY_AGENT, |k| {
+                    crate::agents::pick_route(Some(k)).unwrap_or(k)
+                });
             let row = ctx.row(agent);
             let now = crate::accounts::quota::now_unix();
             let facts: Vec<Acct> = ctx

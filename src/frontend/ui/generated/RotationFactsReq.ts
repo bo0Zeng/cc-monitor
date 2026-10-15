@@ -5,6 +5,6 @@
  */
 export type RotationFactsReq = { 
 /**
- * 哪一家（适配器 id）；缺 ⇒ 有账号库的那一家。
+ * 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
  */
 agent?: string, };

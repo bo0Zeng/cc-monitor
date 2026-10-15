@@ -267,7 +267,7 @@ function goldenCell(agent: string, key: string): string {
 function tableValues(): string[] {
   const out: string[] = [];
   for (const r of AGENT_PROFILE_TABLE) {
-    out.push(r.agent, r.adapterId, r.defaultLauncher, r.resumeToken);
+    out.push(r.agent, r.defaultLauncher, r.resumeToken);
     if (r.launcherAlias !== null) out.push(r.launcherAlias);
     out.push(...r.nestedEnvVars);
   }
@@ -396,7 +396,7 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
   it(
     "★ 界面生产段（剥注释、扣掉生成物）里一个 agent 名字的串字面量都没有；名单与「不指定时是谁」都取生成物",
     () => {
-      const names = [...new Set(AGENT_PROFILE_TABLE.flatMap((r) => [r.agent, r.adapterId]))];
+      const names = [...new Set(AGENT_PROFILE_TABLE.map((r) => r.agent))];
       const quoted = (n: string) => new RegExp(`["'\`]${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'\`]`);
       // 正控：从前派生那一栏的写法必须被认出；问生成物的写法不许被认出。
       const bad = `for (const v of ["${AGENT_PROFILE_TABLE[0]!.agent}", "x"]) {}`;

@@ -5,7 +5,7 @@
  */
 export type QuotaProbeReq = { 
 /**
- * 路由第 1 段：哪一家。
+ * 哪一家（线上的 kind）。
  */
 agent: string, 
 /**

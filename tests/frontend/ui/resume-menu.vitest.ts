@@ -37,7 +37,7 @@ const quota = (accounts: { account: string; pct?: number; state?: string; kind?:
     path: null,
     now: 1_800_000_000,
     accounts: accounts.map((a) => ({
-      agent: "claude-code",
+      agent: "claude",
       account: a.account,
       seenAt: 1_800_000_000,
       kind: a.kind ?? "sub",

@@ -140,10 +140,17 @@ pub(crate) fn unseen_of(head: UnseenHead, clock: &TextClock) -> QuotaUnseen {
 /// ★ 出口：交进来的原数与显示态 ⇒ `quota-read` 的成品（唯一一处；生产与金样都走它）。
 pub(crate) fn reply_of(
     base: Base,
-    seen: Vec<Seen>,
-    unseen: Vec<UnseenHead>,
+    mut seen: Vec<Seen>,
+    mut unseen: Vec<UnseenHead>,
     clock: &TextClock,
 ) -> QuotaRead {
+    // 账上记的是路由名；线上的 `agent` 一律是 kind（同 `session-new-facts` 给的那一格）。
+    for s in &mut seen {
+        s.agent = crate::agents::kind_of_route(&s.agent).to_string();
+    }
+    for u in &mut unseen {
+        u.agent = crate::agents::kind_of_route(&u.agent).to_string();
+    }
     let text = quota_rows::head_text(
         base.state,
         seen.is_empty() && unseen.is_empty(),

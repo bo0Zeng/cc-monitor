@@ -259,7 +259,7 @@ impl crate::wire::typed::Handle for AccountsListCmd {
            + 'static {
         async move {
             let agent =
-                crate::agents::pick_adapter(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
+                crate::agents::pick_route(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
             let rows = crate::accounts::upstream_select::file_face::machine_rows();
             let v = crate::observe::accounts_query::list_product(
                 &rows,

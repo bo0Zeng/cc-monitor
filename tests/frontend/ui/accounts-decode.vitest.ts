@@ -86,9 +86,9 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
 });
 
 describe("账号页那一家的画像", () => {
-  it("与起会话交的适配器 id 同一个出处：叫法与认得的模型都读后端生成的画像表（不写死）", () => {
+  it("与每条命令交的 agent（线上的 kind）同一个出处：叫法与认得的模型都读后端生成的画像表（不写死）", () => {
     const p = accountsAgentProfile();
-    const row = AGENT_PROFILE_TABLE.find((r) => r.adapterId === launchAgentId());
+    const row = AGENT_PROFILE_TABLE.find((r) => r.agent === launchAgentId());
     expect(p, "查不到账号页那一家的画像").not.toBeNull();
     expect(p).toBe(row);
     expect(p!.models?.length, "那一家认得的模型一个都没有（下拉只剩「默认」）").toBeGreaterThan(0);
@@ -129,7 +129,7 @@ describe("请求：两问经通道说对的帧命令、对的请求体", () => {
     const st = await fetchAccounts(LOCAL_ORIGIN);
     const { origin, op, body } = onlyChanCall();
     expect([origin, op]).toEqual(["<local>", "accounts-list"]);
-    expect(body).toEqual({ agent: "claude-code" });
+    expect(body).toEqual({ agent: "claude" });
     expect(st.available).toBe(true);
     expect(st.accounts).toHaveLength(3);
     expect(deriveUi(st).kind).toBe("ready");

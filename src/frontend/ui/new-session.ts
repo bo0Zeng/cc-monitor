@@ -124,7 +124,7 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     name: a.name,
     isDefault: a.name === def,
     ready: a.selectable,
-    quota: prof.known ? fiveHourCell(q, prof.facts.adapterId, a.name) : null,
+    quota: prof.known ? fiveHourCell(q, prof.facts.agent, a.name) : null,
     origin,
   }));
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];
