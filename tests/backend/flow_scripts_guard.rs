@@ -661,10 +661,9 @@ mod tests {
         )
         .unwrap_or_else(|e| panic!("ktlint 检查任务没摘出构建缓存：{e}"));
         let body: String = code[at..].lines().take(2).collect::<Vec<_>>().join("\n");
-        assert!(
-            body.contains("outputs.cacheIf { false }"),
-            "ktlint 检查任务那一段没写 `outputs.cacheIf {{ false }}`：{body}"
-        );
+        if let Err(e) = guard_core::find_pinned(&body, "outputs.cacheIf { false }") {
+            panic!("ktlint 检查任务那一段没写 `outputs.cacheIf {{ false }}`：{e}\n{body}");
+        }
     }
 
     /// 模拟器台架不替人挑 adb 端口：没给 `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT`（缺哪一个都算）⇒ `up` · `down` · `env` 都拒、退 2，
