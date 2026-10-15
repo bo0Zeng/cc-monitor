@@ -107,7 +107,13 @@ fn the_log_stops_itself_at_the_cap_with_one_closing_line() {
     let text = std::fs::read_to_string(&file).expect("读回日志");
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 4, "三帧 ＋ 一行停了：{text}");
-    assert!(lines[..3].iter().all(|l| l.starts_with("frame=")), "{text}");
+    for (i, l) in lines[..3].iter().enumerate() {
+        assert_eq!(
+            l.split(' ').next(),
+            Some(format!("frame={}", i + 1).as_str()),
+            "{text}"
+        );
+    }
     assert_eq!(lines[3], "stopped=cap frames=3", "{text}");
     assert_eq!(MAX_FRAMES, 100_000, "上限改了 ⇒ 头注里那句「约多大」同拍改");
     let _ = std::fs::remove_dir_all(&dir);

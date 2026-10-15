@@ -53,11 +53,6 @@ impl FrameLog {
 
     /// 往这份文件追加（没有就建）。
     pub fn to_file(path: &std::path::Path) -> std::io::Result<Self> {
-        Self::capped(path, MAX_FRAMES)
-    }
-
-    /// 同 [`FrameLog::to_file`]，记满 `cap` 帧就停。
-    pub(crate) fn capped(path: &std::path::Path, cap: u64) -> std::io::Result<Self> {
         let f = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -66,7 +61,7 @@ impl FrameLog {
             out: Some(std::io::BufWriter::new(f)),
             started: Some(std::time::Instant::now()),
             frames: 0,
-            cap,
+            cap: MAX_FRAMES,
             last: None,
         })
     }
@@ -104,12 +99,18 @@ impl FrameLog {
             pointer.map_or_else(|| "none".to_string(), |p| format!("{:.1},{:.1}", p.x, p.y)),
             if why.is_empty() { "-".to_string() } else { why.join("|") },
         );
-        if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
-            self.out = None;
-            return;
-        }
-        if self.frames >= self.cap {
-            let _ = writeln!(out, "stopped=cap frames={}", self.frames).and_then(|()| out.flush());
+        // 记满了 ⇒ 这一行后面跟一行「停了」，之后关掉。
+        let stop = self.frames >= self.cap;
+        let tail = if stop {
+            format!("\nstopped=cap frames={}", self.frames)
+        } else {
+            String::new()
+        };
+        if writeln!(out, "{line}{tail}")
+            .and_then(|()| out.flush())
+            .is_err()
+            || stop
+        {
             self.out = None;
         }
     }
@@ -125,6 +126,14 @@ impl FrameLog {
     /// 记过几帧（关着恒 0）。
     pub(crate) fn frames(&self) -> u64 {
         self.frames
+    }
+
+    /// 同 [`FrameLog::to_file`]，记满 `cap` 帧就停。
+    pub(crate) fn capped(path: &std::path::Path, cap: u64) -> std::io::Result<Self> {
+        Ok(Self {
+            cap,
+            ..Self::to_file(path)?
+        })
     }
 }
 
