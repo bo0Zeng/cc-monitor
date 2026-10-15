@@ -6,9 +6,9 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
+import com.ccmonitor.mobile.core.claude.link.wire.RotPlate
 import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
 import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
-import com.ccmonitor.mobile.core.claude.link.wire.RotPlate
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem

@@ -26,8 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
+import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon

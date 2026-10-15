@@ -105,7 +105,7 @@ internal fun Cards(
         }
     }
     ui.open?.let { a -> AccountPane(ui, view, board, a) }
-    if (adding) AddSheet(view, ui, board) { adding = false }
+    if (adding) AddSheet(view, board) { adding = false }
 }
 
 /** 长按（先震一下）再拖：拖的时候号牌浮起；松在哪张号牌上 ⇒ 排到它前头。 */
@@ -232,7 +232,6 @@ private fun AddCard(
 @Composable
 private fun AddSheet(
     view: RotationViewReply,
-    ui: RotationUi,
     board: RotationBoard,
     onDismiss: () -> Unit,
 ) {

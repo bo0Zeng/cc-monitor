@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.AccountsList
-import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.AccountsSetDefault
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesHome
@@ -10,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.SessionNewDir
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyItem
 import com.ccmonitor.mobile.core.copy.copyText

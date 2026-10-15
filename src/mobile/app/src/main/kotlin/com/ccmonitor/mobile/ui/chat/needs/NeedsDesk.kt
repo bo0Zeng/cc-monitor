@@ -149,6 +149,9 @@ fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
 
 private const val DENY_STOP = "deny-stop"
 
+/** 交题目答案的那一项（带 picks 交）。 */
+private const val ANSWER = "answer"
+
 /**
  * 一条会话的需手动（聊天屏那一块）：sid 有了就问 `sessions-needs` 取这一条；那台推 `changed {needs, key=sid}`、这条会话的会话帧变了、
  * 换了一条流 ⇒ 去抖后重问。答走 `needs-answer`（同桌面那一条，不送键）：

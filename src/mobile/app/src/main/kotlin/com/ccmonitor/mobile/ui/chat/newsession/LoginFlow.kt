@@ -82,7 +82,10 @@ class LoginFlow(
     }
 
     /** 失败回包里那台说的「还能怎么办」；没说 ⇒ 重新开始。 */
-    private fun again(r: Reply): LoginAgainHow = (r as? Reply.Failed)?.failure?.data?.let { Wire.bind<LoginAgain>(it) }?.again ?: LoginAgainHow.RESTART
+    private fun again(r: Reply): LoginAgainHow {
+        val data = (r as? Reply.Failed)?.failure?.data ?: return LoginAgainHow.RESTART
+        return Wire.bind<LoginAgain>(data)?.again ?: LoginAgainHow.RESTART
+    }
 
     private fun said(
         r: Reply,

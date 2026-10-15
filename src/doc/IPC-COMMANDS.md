@@ -2393,7 +2393,11 @@ type RotationStrategiesReq = Record<symbol, never>;
 入参 `RotationViewReq` · 回包 `RotationViewReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Fact = { 
+type FactBlocked = { why: FactWhy, until?: number, text: string, };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type QuotaKind = "sub" | "api";
+type RotAccount = { plate: RotPlate, 
 /**
  * 路由第 2 段。
  */
@@ -2406,10 +2410,6 @@ seenAt?: number,
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };
-type FactBlocked = { why: FactWhy, until?: number, text: string, };
-type FactWhy = "refused" | "overage" | "used" | "login" | "key";
-type LoginState = "ok" | "needsLogin" | "needsKey";
-type QuotaKind = "sub" | "api";
 type RotBadCell = { cell: string, code: string, };
 type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
 /**
@@ -2444,7 +2444,7 @@ type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
-type RotPlate = { color: number, label: Words, };
+type RotPlate = { color: number, label: Words, text: Words, };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
@@ -2559,13 +2559,9 @@ dirty: boolean,
  */
 start: string, current: string, 
 /**
- * 每个号的事实，照号列表的先后（列表里没有的接在后面）。
+ * 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
  */
-accounts: Array<Fact>, 
-/**
- * `accounts` 里每个号的号牌（号色 · 号名），按号 id。
- */
-plates: { [key in string]: RotPlate }, 
+accounts: Array<RotAccount>, 
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
@@ -6002,7 +5998,12 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
@@ -6304,7 +6305,12 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
@@ -9872,6 +9878,29 @@ seen_screen?: string, };
 ```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
+
+#### `session-resume`
+
+终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-resume`
+
+入参 `SessionResumeReq` · 回包 `Resumed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Resumed = { session: string, };
+type SessionResumeReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 自报的前端（同 `session-say`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `elsewhere` · `not_resumed`
 
 #### `terminal-follow`
 

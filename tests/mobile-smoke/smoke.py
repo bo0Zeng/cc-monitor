@@ -1021,6 +1021,31 @@ def walk():
         adb("shell", "input", "keyevent", "4")
         time.sleep(2)
 
+    with Step("4i-恢复后再附着"):
+        # 那条会话的终端没了 ⇒ ⋯ 里那一项第二行写「恢复后在新终端中显示」，点了那台先恢复它、终端屏再附着到它落在的那个 tmux 会话。
+        old = tmux_name_of(f"{T} new session")
+        rig("tmux", "kill-session", "-t", f"={old}")
+        before = set(tmux_sessions())
+        hide_keyboard()
+        tap(t("history.row.more"))
+        if not wait(t("terminal.empty.endedHint"), 15):
+            raise Step.Fail("终端没了，⋯ 里那一项第二行不是「恢复后在新终端中显示」")
+        shot("4i-菜单")
+        tap(t("terminal.empty.endedHint"))
+
+        def landed():
+            rows = rig("tmux", "list-sessions", "-F", "#{session_name} #{session_attached}").stdout.splitlines()
+            return [r.rsplit(" ", 1)[0] for r in rows if r.rsplit(" ", 1)[-1] != "0" and r.rsplit(" ", 1)[0] not in before]
+
+        end = time.time() + 45
+        while time.time() < end and not landed():
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail("点了没恢复出新终端、也没附着上")
+        shot("4i-终端屏")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(2)
+
     with Step("5-一轮完成的通知"):
         name = tmux_name_of(f"{T} new session")
         adb("shell", "input", "keyevent", "3")

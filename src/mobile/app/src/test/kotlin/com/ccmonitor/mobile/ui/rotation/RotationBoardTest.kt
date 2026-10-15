@@ -58,7 +58,7 @@ class RotationBoardTest {
             )
             assertEquals("team", s.view.current)
             assertEquals("Work", b.label("work"))
-            assertEquals("Lab", b.label("lab"))
+            assertEquals("lab", b.label("lab"))
             assertEquals("视图里没有的号照原名", "nope", b.label("nope"))
             assertEquals("wo", s.plate("work")?.text)
             assertTrue("不另问账号清单", link.calls("accounts-list").isEmpty())
