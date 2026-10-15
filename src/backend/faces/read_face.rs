@@ -252,27 +252,51 @@ impl crate::wire::typed::Handle for AccountsListCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: crate::observe::accounts_query::AccountsListReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<
         Output = Result<crate::observe::accounts_query::AccountsList, AccountsListErr>,
     > + Send
            + 'static {
         async move {
+            let (kind, _) =
+                crate::agents::pick_kind(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
             let agent =
-                crate::agents::pick_route(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
+                crate::agents::pick_route(Some(kind)).map_err(AccountsListErr::BadArgs)?;
             let rows = crate::accounts::upstream_select::file_face::machine_rows();
-            let v = crate::observe::accounts_query::list_product(
+            let mut v = crate::observe::accounts_query::list_product(
                 &rows,
                 agent,
                 crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
                 crate::relay::our_relay_listening(relay_route_core::PORT),
             );
+            let quota = crate::faces::rotation_face::quota_read_with(
+                &crate::faces::rotation_face::Ctx::here(),
+                crate::accounts::quota::now_unix(),
+                &cx.tz,
+            );
+            with_quota(&mut v, &quota, kind);
             let size = serde_json::to_string(&v).map_or(0, |t| t.len());
             if size > LINES_CAP_BYTES {
                 return Err(AccountsListErr::TooLarge(too_large(size).1));
             }
             Ok(v)
         }
+    }
+}
+
+/// 每个号带上它「5h 那一格」（同 `quota-read` 那一格，唯一一处：账读不出 ⇒ 顶上那一格；没出过数 · 按量号 ⇒ 没有）。
+pub(crate) fn with_quota(
+    v: &mut crate::observe::accounts_query::AccountsList,
+    q: &crate::faces::quota_read::QuotaRead,
+    kind: &str,
+) {
+    for r in &mut v.accounts {
+        r.quota = q.five_hour.clone().or_else(|| {
+            q.accounts
+                .iter()
+                .find(|a| a.head.agent == kind && a.head.account == r.scanned.name)
+                .and_then(|a| a.five_hour.clone())
+        });
     }
 }
 

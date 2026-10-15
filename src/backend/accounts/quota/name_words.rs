@@ -29,6 +29,16 @@ pub(crate) fn account_text(name: &str) -> String {
     }
 }
 
+/// 号牌上那一两个字（号色那一格里画的）：字母数字开头 ⇒ 前两个字；别的 ⇒ 第一个字；空名 ⇒ `?`。
+pub(crate) fn plate_text(name: &str) -> String {
+    let mut cs = name.chars();
+    match cs.next() {
+        None => "?".to_string(),
+        Some(c) if c.is_ascii_alphanumeric() => name.chars().take(2).collect(),
+        Some(c) => c.to_string(),
+    }
+}
+
 /// 一个语义位在人眼里叫什么：`5h` · `7d` 各一个字；认不出的照原样。
 pub(crate) fn slot_text(w: &str) -> String {
     match w {

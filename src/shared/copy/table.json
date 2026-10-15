@@ -14020,6 +14020,12 @@
       "zh": "打开登录页",
       "args": []
     },
+    "accounts.row.missing": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "号目录不在",
+      "args": []
+    },
     "login.act.reopen": {
       "kind": "action",
       "role": "按钮",

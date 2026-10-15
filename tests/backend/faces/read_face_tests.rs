@@ -2357,3 +2357,32 @@ fn facts_name_the_model_of_the_last_reply() {
     assert_eq!(odd["modelText"], serde_json::Value::Null, "{odd}");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// ★ 账号清单每号带的「5h 那一格」就是 `quota-read` 那一格（同一份成品里取，按 kind ＋ 号名对）：账读不出 ⇒ 顶上那一格；
+/// 别家的同名号 · 账上没有的号 ⇒ 没有。
+#[test]
+fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
+    let row = |name: &str| {
+        serde_json::json!({"name": name, "label": name, "email": "", "configDir": "/d", "isDefault": false, "mode": "isolated",
+            "exists": true, "loggedIn": true, "authKind": "subscription", "authReady": true, "selectable": true, "color": 0,
+            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null})
+    };
+    let mut list: crate::observe::accounts_query::AccountsList = serde_json::from_value(serde_json::json!({
+        "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": 2,
+            "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null, "home": null},
+        "accounts": [row("a"), row("z")], "notice": null}))
+    .expect("清单形状");
+    let mut q = crate::faces::quota_read::specimen();
+    q.five_hour = None;
+    let agent = q.accounts[0].head.agent.clone();
+    with_quota(&mut list, &q, &agent);
+    let cells = |l: &crate::observe::accounts_query::AccountsList| {
+        l.accounts.iter().map(|r| r.quota.as_ref().map(|w| w.0.clone())).collect::<Vec<_>>()
+    };
+    assert_eq!(cells(&list), [q.accounts[0].five_hour.as_ref().map(|w| w.0.clone()), None]);
+    with_quota(&mut list, &q, "another-agent");
+    assert_eq!(cells(&list), [None, None], "别家的同名号不对上");
+    q.five_hour = Some(cmd_wire::cells::Words("5h 读不到".into()));
+    with_quota(&mut list, &q, &agent);
+    assert_eq!(cells(&list), [Some("5h 读不到".into()), Some("5h 读不到".into())], "账读不出 ⇒ 顶上那一格");
+}

@@ -77,7 +77,7 @@ fn a_plan_change_becomes_one_changed_frame() {
     });
 }
 
-/// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
+/// ★ 订阅节点：事实那几种 ⇒ 推 `changed {quota}` 与 `changed {accounts}`（清单每号带「5h 那一格」）；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
 /// 策略那一种 ⇒ `changed {rotation_strategies}`。没订那条通道的连接永远不推。
 #[test]
 fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
@@ -92,11 +92,11 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
         t.nodes = Some(tx.subscribe());
         let mut got = Vec::new();
         for (source, sid, n) in [
-            (Source::Reading, None, 1),
-            (Source::QuotaFile, None, 1),
-            (Source::Logins, None, 1),
-            (Source::Login, None, 1),
-            (Source::Refused, Some("s9"), 2),
+            (Source::Reading, None, 2),
+            (Source::QuotaFile, None, 2),
+            (Source::Logins, None, 2),
+            (Source::Login, None, 2),
+            (Source::Refused, Some("s9"), 3),
             (Source::Book, Some("s1"), 1),
             (Source::Strategies, None, 1),
         ] {
@@ -109,14 +109,20 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
             }
         }
         let q = |s| (s, Topic::Quota, None);
+        let a = |s| (s, Topic::Accounts, None);
         assert_eq!(
             got,
             vec![
                 q(Source::Reading),
+                a(Source::Reading),
                 q(Source::QuotaFile),
+                a(Source::QuotaFile),
                 q(Source::Logins),
+                a(Source::Logins),
                 q(Source::Login),
+                a(Source::Login),
                 q(Source::Refused),
+                a(Source::Refused),
                 (Source::Refused, Topic::Rotation, Some("s9".to_string())),
                 (Source::Book, Topic::Rotation, Some("s1".to_string())),
                 (Source::Strategies, Topic::RotationStrategies, None),

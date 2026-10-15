@@ -23,13 +23,11 @@ import { copyText } from "./copy-table";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
-import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf, lookupAgentProfile } from "./agent-profile";
+import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf } from "./agent-profile";
 import { fetchAccounts } from "./account-reads";
 import type { Account } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import { appStore } from "./app-store";
-import { refreshQuota } from "./acct-center";
-import { fiveHourCell, accountLabel } from "./acct-words";
+import { accountLabel } from "./acct-words";
 import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
@@ -117,14 +115,11 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     return null;
   }
   if (list.length === 0) return null;
-  if (!appStore.quota.get().has(origin)) await refreshQuota(origin).catch(() => {});
-  const q = appStore.quota.get().get(origin);
-  const prof = lookupAgentProfile(agent);
   const opts = list.map((a) => ({
     name: a.name,
     isDefault: a.name === def,
     ready: a.selectable,
-    quota: prof.known ? fiveHourCell(q, prof.facts.agent, a.name) : null,
+    quota: a.quota ?? null,
     origin,
   }));
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];

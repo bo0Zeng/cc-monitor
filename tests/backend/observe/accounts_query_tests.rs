@@ -1458,6 +1458,9 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
         assert_eq!(o.remove("keyMasked"), Some(serde_json::Value::Null));
         assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
         assert!(o.remove("badge").is_some(), "帧面每个号带徽章");
+        assert!(o.remove("plate").is_some(), "帧面每个号带号牌字");
+        assert!(o.remove("quota").is_some(), "帧面每个号带「5h 那一格」");
+        assert!(o.remove("unselectable").is_some(), "帧面每个号带选不了的那一句");
     }
     assert_eq!(
         product["meta"], cli_meta,
@@ -2540,4 +2543,37 @@ fn each_row_carries_the_label_people_see() {
         ]
     );
     let _ = fs::remove_dir_all(&root);
+}
+
+/// ★ 选不了的那一句只出自一处、说的是四条里没过的那一条（不隔离 · 号目录不在 · 按量号没配 key · 订阅号没登录）；
+/// 选得了 · 账号 0（不经选号）⇒ 没有。号牌字照名字取（字母数字开头两个字 · 别的一个字 · 空名 `?`）。
+#[test]
+fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
+    let row = |mode: &str, exists: bool, api: bool, ready: bool, dir: Option<&str>| ScannedAccount {
+        name: "n".into(),
+        label: "n".into(),
+        email: String::new(),
+        config_dir: dir.map(str::to_string),
+        is_default: false,
+        mode: mode.into(),
+        exists,
+        logged_in: ready,
+        auth_kind: if api { acct_core::AUTH_KIND_API_KEY } else { acct_core::AUTH_KIND_SUBSCRIPTION }.into(),
+        auth_ready: ready,
+        selectable: acct_core::account_selectable(mode, ready, exists, dir.is_some()),
+        color: 0,
+    };
+    let why = |a: ScannedAccount| unselectable_of(&a, a.auth_kind == acct_core::AUTH_KIND_API_KEY);
+    let t = |k: &str| Some(copy_core::copy_text(k, &[]));
+    assert_eq!(why(row("isolated", true, false, true, Some("/d"))), None, "选得了");
+    assert_eq!(why(row("isolated", true, false, false, None)), None, "账号 0");
+    assert_eq!(why(row("in-place", true, false, true, Some("/d"))), t("accounts.badge.inPlace"));
+    assert_eq!(why(row("isolated", false, false, true, Some("/d"))), t("accounts.row.missing"));
+    assert_eq!(why(row("isolated", true, true, false, Some("/d"))), t("acct.tag.key"));
+    assert_eq!(why(row("isolated", true, false, false, Some("/d"))), t("acct.tag.login"));
+    use crate::accounts::quota::name_words::plate_text;
+    assert_eq!(
+        ["work", "w", "工作", "", "0"].map(plate_text),
+        ["wo", "w", "工", "?", "0"].map(str::to_string)
+    );
 }

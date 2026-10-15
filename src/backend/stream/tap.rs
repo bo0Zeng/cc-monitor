@@ -277,8 +277,10 @@ async fn node_moved(
     match r.recv().await {
         Ok(n) => {
             let mut out = Vec::new();
+            // 账号清单每号带「5h 那一格」⇒ 额度的事实变了，清单那一份也跟着变。
             if n.source.is_fact() {
                 out.push((Topic::Quota, None));
+                out.push((Topic::Accounts, None));
             }
             if n.source == Source::Strategies {
                 out.push((Topic::RotationStrategies, None));
@@ -290,6 +292,7 @@ async fn node_moved(
         }
         Err(RecvError::Lagged(_)) => Some(vec![
             (Topic::Quota, None),
+            (Topic::Accounts, None),
             (Topic::RotationStrategies, None),
         ]),
         Err(RecvError::Closed) => None,

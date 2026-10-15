@@ -14,7 +14,7 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
-import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, badgeText, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
+import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest } from "../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -241,19 +241,6 @@ describe("sessionBadge source 字段（account-ux U1/U5）", () => {
   });
 });
 
-describe("badgeText", () => {
-  it("ASCII 取前 2", () => {
-    expect(badgeText("zeng")).toBe("ze");
-    expect(badgeText("b")).toBe("b");
-  });
-  it("非 ASCII 取 1 个 code point", () => {
-    expect(badgeText("张三")).toBe("张");
-  });
-  it("空 → ?", () => {
-    expect(badgeText("")).toBe("?");
-  });
-});
-
 describe("sessionBadge（§3 优先级）", () => {
   const emailBy = new Map([["z", "z@example.test"]]);
   function live(rows: SessionAccount[]): Map<string, SessionAccount> {
@@ -268,7 +255,7 @@ describe("sessionBadge（§3 优先级）", () => {
     const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: true }]);
     const b = sessionBadge("s1", "devbox", m, emailBy);
     expect(b?.known).toBe(true);
-    expect(b?.text).toBe("z");
+    expect(b?.account).toBe("z");
     expect(b?.tooltip).toContain("z@example.test");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
@@ -276,11 +263,11 @@ describe("sessionBadge（§3 优先级）", () => {
     const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: null, account: null, bare: true, alive: true }]);
     const b = sessionBadge("s1", "devbox", m, emailBy);
     expect(b?.known).toBe(false);
-    expect(b?.text).toBe("—");
+    expect(b?.account).toBeNull();
   });
   it("会话不在 live 表里 → —", () => {
     const b = sessionBadge("s1", "devbox", new Map(), emailBy);
-    expect(b?.text).toBe("—");
+    expect(b?.account).toBeNull();
   });
   it("探测到但已死 → —（不贴陈旧账号）", () => {
     const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: false }]);
@@ -453,13 +440,13 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
       { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/z", account: "z", bare: false, alive: true },
     ]);
     const b = sessionBadge("s1", "devbox", m, emailBy, new Map([["s1", "b"]]));
-    expect(b?.text).toBe("z");
+    expect(b?.account).toBe("z");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
   it("无 live 但有 lastAccount → 用源②，标注上次 + 带邮箱", () => {
     const b = sessionBadge("s1", "devbox", new Map(), emailBy, new Map([["s1", "b"]]));
     expect(b?.known).toBe(true);
-    expect(b?.text).toBe("b");
+    expect(b?.account).toBe("b");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.last"));
     expect(b?.tooltip).toContain("b@example.org");
   });
@@ -468,12 +455,12 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
       { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/z", account: "z", bare: false, alive: false },
     ]);
     const b = sessionBadge("s1", "devbox", m, emailBy, new Map([["s1", "b"]]));
-    expect(b?.text).toBe("b");
+    expect(b?.account).toBe("b");
     expect(b?.tooltip).toContain(copyText("resumeMenu.account.last"));
   });
   it("都无 → —（含不传 lastAccountByS 也安全）", () => {
-    expect(sessionBadge("s1", "devbox", new Map(), emailBy, new Map())?.text).toBe("—");
-    expect(sessionBadge("s1", "devbox", new Map(), emailBy)?.text).toBe("—");
+    expect(sessionBadge("s1", "devbox", new Map(), emailBy, new Map())?.account).toBeNull();
+    expect(sessionBadge("s1", "devbox", new Map(), emailBy)?.account).toBeNull();
   });
   it("本地会话（origin null）源②也不显", () => {
     expect(sessionBadge("s1", LOCAL_ORIGIN, new Map(), emailBy, new Map([["s1", "b"]]))).toBeNull();

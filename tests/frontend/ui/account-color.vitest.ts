@@ -1,4 +1,5 @@
 // 号色：账号库里的事实（那台后端加号时分、存进清单），界面只画 `accounts-list` 每号的 `color`，不自己按名字算。
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { describe, it, expect, beforeEach } from "vitest";
 import { accountAvatarEl, accountColorOf } from "../../../src/frontend/ui/account-color";
 import { putAccounts } from "../../../src/frontend/ui/app-store";
@@ -60,10 +61,11 @@ describe("号色照那台账号库给的那一格画", () => {
 
 describe("accountAvatarEl（头像元素）", () => {
   it("类含 .acct-avatar + 缩写文本 + aria-hidden", () => {
-    put(LOCAL_ORIGIN, [acct("zhang", 3)]);
+    put(LOCAL_ORIGIN, [{ ...acct("zhang", 3), plate: "核牌" }]);
     const el = accountAvatarEl("zhang");
     expect(el.classList.contains("acct-avatar")).toBe(true);
-    expect(el.textContent).toBe("zh"); // badgeText：ASCII 取前 2
+    expect(el.textContent, "号牌字照那台后端写好的那一格").toBe("核牌");
+    expect(accountAvatarEl("nobody").textContent, "库里没有 ⇒ 不另取").toBe(copyText("accounts.sessionBadge.none"));
     expect(el.getAttribute("aria-hidden")).toBe("true");
   });
   it("ghost=true → 加 .ghost（幽灵态）", () => {

@@ -2,6 +2,7 @@
 //! 表里的类型都住本包（[`crate::session`] · [`crate::files`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
 //! （后端判据按 TS 名对，[`reply_names`]）。表里没有的命令照原样交（回包类型还住后端那几族）。
 
+use crate::accounts::AccountsList;
 use crate::files::{
     FilesChmodReply, FilesDeleteReply, FilesPathBytesReply, FilesPathReply, FilesStageChunkReply,
     FilesWrittenReply, LsReply, ReadChunkReply, ReadTextReply, StatReply,
@@ -56,6 +57,7 @@ macro_rules! replies {
 }
 
 replies! {
+    "accounts-list" => AccountsList,
     "files-chmod" => FilesChmodReply,
     "files-commit-upload" => FilesPathBytesReply,
     "files-create" => FilesPathBytesReply,
