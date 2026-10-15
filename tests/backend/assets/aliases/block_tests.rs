@@ -569,9 +569,9 @@ fn install_preserves_existing_user_content() {
     assert!(after.contains("# === cc-monitor BEGIN"));
     assert!(!after.is_empty());
 
-    // 备份由后端做（`files-put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
+    // 备份由后端做（`Door::put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
     //   这一侧钉的是「要了备份」—— 用户的 profile 不许在没有备份的情况下被改。
-    // 门就是本进程的 `files-put` ⇒ 直接看盘：旁边真留了一份备份。
+    // 门就是本进程的 `Door::put` ⇒ 直接看盘：旁边真留了一份备份。
     let parent = p.parent().unwrap();
     let stem = p.file_name().unwrap().to_string_lossy().to_string();
     let backups = std::fs::read_dir(parent)
@@ -892,7 +892,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 
     // 扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
-    // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
+    // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `Door::peek`）；这里的门是落在临时目录上的替身。
     let door = super::super::tests::HomeDoor(td.0.clone());
     let names = ["cc".to_string(), "zz".to_string()];
     let cands = super::super::rc_candidates_via(
@@ -1346,7 +1346,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
     );
 }
 
-/// 🔴 **别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
+/// 🔴 **别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `Door::put`）。
 ///
 /// 要求：「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
 /// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」。

@@ -204,19 +204,6 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
 
 // ═══════════════════════════ ③ §14 ═══════════════════════════
 
-/**
- * **绕过 `src/frontend/ui/local-storage.ts` 接入层直写的存储 key**（`LS_KEYS` 里没有它们）。
- *
- * ⚠ §14 要的是**前缀**，这两个前缀都对。登记它们的理由是**另一半**：
- * `src/frontend/ui/local-storage.ts` 头注逐字「新加 key 必须先在这里注册，否则模块内 grep 不到无法定位」，
- * 而 §14 的附带契约（Batch5-F19）要求「非主窗视图写共享 key 前必须显式隔离」——
- * 那个审视动作**只发生在接入层的 `LS_KEYS` 旁边**。绕过去的 key 没人会想起来审。
- * ⇒ 这一格只许降。
- */
-// 2 → 1：`cc-monitor.tab-bar-w` 进了 `LS_KEYS.tabBarWidth`（从 `main.ts` 直写收进 `tab-bar-width.ts`）。
-// 1 → 0：`cc-monitor.boot-id` 删了（「要重启」那条改记在会话存储里，重启即清，不再靠启动标识判）。
-const OFF_LEDGER_KEYS: readonly string[] = [];
-
 describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor.`", () => {
   const KEYS = storageKeys(SOURCES);
 
@@ -243,13 +230,13 @@ describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor
     ).toEqual([]);
   });
 
-  it("★ 绕过接入层直写的 key == 登记表（只许降）", () => {
+  it("★ 绕过接入层直写的 key == 零", () => {
     expect(
       [...new Set(KEYS.filter((k) => !k.registered).map((k) => k.key))].sort(),
       "新增了一个绕过 `src/frontend/ui/local-storage.ts` 的直写 key。\n" +
         "★ §14 的附带契约（Batch5-F19：非主窗视图写共享 key 前必须显式隔离）那个审视动作\n" +
-        "只发生在 `LS_KEYS` 旁边 —— 绕过去的 key 没人会想起来审。收口进 `LS_KEYS`，别加进这张表。",
-    ).toEqual([...OFF_LEDGER_KEYS].sort());
+        "只发生在 `LS_KEYS` 旁边 —— 绕过去的 key 没人会想起来审。收口进 `LS_KEYS`。",
+    ).toEqual([]);
   });
 });
 

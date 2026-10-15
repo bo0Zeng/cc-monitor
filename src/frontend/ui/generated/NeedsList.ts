@@ -6,6 +6,6 @@ import type { NeedsRow } from "./NeedsRow";
  */
 export type NeedsList = { 
 /**
- * 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+ * 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
  */
 waiting: Array<NeedsRow>, };

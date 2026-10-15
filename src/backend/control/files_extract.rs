@@ -717,12 +717,6 @@ pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
         purpose: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
            every entry is path-checked first; see IPC-PROTOCOL `files-extract`",
     },
-    // [`land_link`] 的帧面入口（写一条符号链接，目标文本原样）。
-    ManageCommand {
-        name: "files-link",
-        purpose: "create one symbolic link at root/rel whose target text is `target` verbatim (like `cp -P`); \
-           the link path is resolved under root; an existing entry there is refused; see IPC-PROTOCOL `files-link`",
-    },
 ];
 
 /// `fresh` 那一形最多往后试几个编号（`名 (2)` … `名 (FRESH_TRIES + 1)`）。
@@ -804,7 +798,7 @@ fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTree
     })
 }
 
-/// `files-link {root, rel, target}` → `{path}`。
+/// `Door::link {root, rel, target}` → `{path}`。
 fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Fail> {
     let root = non_empty(&req.root, "root")?;
     let rel = non_empty(&req.rel, "rel")?;

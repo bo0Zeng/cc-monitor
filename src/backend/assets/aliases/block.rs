@@ -341,7 +341,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // ## 机制
 //
-// 落盘在后端 `files-put`：原样写字节、不加 BOM，写出来的是**不带 BOM 的 UTF-8**。
+// 落盘在后端 `Door::put`：原样写字节、不加 BOM，写出来的是**不带 BOM 的 UTF-8**。
 // 而 **Windows PowerShell 5.1 把不带 BOM 的 `.ps1` 按系统 ANSI 代码页解**
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
 // **落单的前导字节**，它把紧随其后的换行吃掉 ⇒ 下一行被并进注释。
@@ -362,7 +362,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // BOM 是 Microsoft 自己对 PS 5.1 脚本的建议编码，PS 5.1 / PS 7 / Notepad / VSCode
 // 都认。⚠ **不能加在落盘那一层** —— 那一层还有别的用户（项目 `.mcp.json`、别名那份 shell 脚本；
-// 今天那一层是后端的 `files-put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
+// 今天那一层是后端的 `Door::put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
 // ⇒ 分岔点放在**方言**这一层（[`encode_for_disk`] / [`strip_bom`]），与
 // 「写什么」那一处分岔（[`plan_install`]）同一条线。
 
@@ -404,7 +404,7 @@ pub(crate) fn render_cc_code(monitor_data_dir: &Path) -> String {
 /// idempotent 安装：把别名块写到 profile / rc，已有块则原地替换。用户在 BEGIN/END 块外的内容完全不动。
 ///
 /// v1.7.10 那四道安全加固（先备份 · 真原子替换 · 写后回读 · 盘上有字节却读到空就中止）
-/// **住后端**（`files-put` ／ `files-peek`，本机与远端同一份规则）——
+/// **住后端**（`Door::put` ／ `Door::peek`，本机与远端同一份规则）——
 /// 本进程不再落盘。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]，读写经 `door`。
 /// ⚠ 内容与盘上逐字相同时**一个字节都不写**。
 pub(crate) fn install_to_profile(d: &dyn Door, path: &Path) -> Result<(), String> {

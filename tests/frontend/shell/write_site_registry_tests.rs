@@ -517,10 +517,9 @@ const MOVED_OUT: &[&str] = &[
 ];
 
 /// ② 的针：本机写原语（`WRITE_CALLS`）＋ 委托出去的写（通用原子写 / 旧的回读回滚写入器）＋ SFTP 上传原语。
-/// **运行时拼**（写成字面量会被别的判据当成靶子，见 `remote_write_registry_tests::write_prims` 头注）。
-/// ⚠ SFTP 会话上的 `.rename(` / `.remove_file(` 那一族**不在这里**：持 SFTP 会话的文件由
-///   `remote_write_registry` 逐处申报（它的人群就是「拿得到会话的那几份」），本条再数一遍只会与
-///   `Door::rename` 这种经后端的调用撞名。
+/// **运行时拼**（写成字面量会被别的判据当成靶子）。
+/// ⚠ SFTP 会话上的 `.rename(` / `.remove_file(` 那一族**不在这里**：monitor 拿不到 SFTP 会话（依赖清单里没有 SSH crate），
+///   数它们只会与 `Door::rename` 这种经后端的调用撞名。
 fn moved_out_needles() -> Vec<String> {
     let mut v: Vec<String> = WRITE_CALLS.iter().map(|s| s.to_string()).collect();
     // ⚠ 名字也**运行时拼**：其中两个是已删的旧名，写成字面量会让死名普查把它们当成活名。
@@ -535,23 +534,11 @@ fn moved_out_needles() -> Vec<String> {
     v
 }
 
-/// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
-/// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
-/// **今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
-/// 注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，写经 `Own`；文件原地不动）⇒
-/// 搬走写盘的这几份文件里，连 monitor 自己的状态也一行都不写了。表留着：新长一处「写自己的状态」时第一个要表态的地方。
-const OWN_STATE_LINES: &[(&str, &str, &str)] = &[];
-
-fn moved_out_hits(file: &str, prod: &str) -> Vec<String> {
+fn moved_out_hits(prod: &str) -> Vec<String> {
     let needles = moved_out_needles();
     prod.lines()
         .map(str::trim)
         .filter(|l| needles.iter().any(|n| l.contains(n.as_str())))
-        .filter(|l| {
-            !OWN_STATE_LINES
-                .iter()
-                .any(|(f, line, _)| *f == file && l == line)
-        })
         .map(str::to_string)
         .collect()
 }
@@ -567,17 +554,8 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         let prod = guard_core::production_code(&raw);
         guard_core::assert_no_test_code(f, &prod);
         scanned += 1;
-        for hit in moved_out_hits(f, &prod) {
+        for hit in moved_out_hits(&prod) {
             offenders.push(format!("  {f}: {hit}"));
-        }
-        for (lf, line, what) in OWN_STATE_LINES {
-            if lf == f {
-                assert_eq!(
-                    prod.lines().filter(|l| l.trim() == *line).count(),
-                    1,
-                    "登记的自有状态写（{what}）在 `{f}` 里不是恰好一行 —— 改了就同轮改登记"
-                );
-            }
         }
     }
     assert_eq!(scanned, MOVED_OUT.len());
@@ -585,7 +563,7 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         offenders.is_empty(),
         "这些文件的写已经交给那台机器的后端了，生产段却又长出了写原语：\n{}\n\n\
          用户逐字「现在只允许后端的文件管理部分写文件」（也管本机）。\n\
-         ⇒ 改用 `user_files::edit` / `Door`（`files-peek` / `files-put` …），别在 monitor 进程里落盘。",
+         ⇒ 写经那台后端（文件管理面），别在 monitor 进程里落盘。",
         offenders.join("\n")
     );
     // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
@@ -595,7 +573,7 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         guard_core::production_code(&raw)
     );
     assert_eq!(
-        moved_out_hits("profile_installer.rs", &poisoned).len(),
+        moved_out_hits(&poisoned).len(),
         1,
         "正控没过 —— 针或剥法坏了，本条空转"
     );

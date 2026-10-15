@@ -32,7 +32,7 @@
 //! 与别名块那一行是同一件事的第二个写处。今天那一步**降级成检查**：选了 rc 就看它接没接上，
 //! 没接上就说「装上别名块就接上了」并给出那一行、由人自己决定（提供检测，不代装）。
 //! 盘上已有的旧围栏那一块不读、不删、不写清理代码（两处 source 同一份文件是幂等的，只多点一次）。
-//! 别名文件的写**不在本进程落盘**：经本机后端的文件管理那一面（`user_files::edit` → `files-peek` / `files-put`），
+//! 别名文件的写**不在本进程落盘**：经本机后端的文件管理那一面（`user_files::edit` → `Door::peek` / `Door::put`），
 //! 备份 · 原子替换 · 回读 · 回滚那一份规则住后端。
 
 //!
@@ -409,7 +409,7 @@ fn read_profiles(d: &dyn Door, home: &str, path: &str) -> Result<Option<String>,
     match look(d, home, path)? {
         Look::Text(t) => Ok(Some(t)),
         Look::Absent => Ok(None),
-        // 那一句是 files-peek 的成品句（带路径 ＋ 原因词），原样交出去，不再套一层「读取失败」。
+        // 那一句是 Door::peek 的成品句（带路径 ＋ 原因词），原样交出去，不再套一层「读取失败」。
         Look::Unreadable(said) => Err(said),
     }
 }
@@ -648,7 +648,7 @@ pub(crate) fn sync_outputs(
 /// `profile_installer::fence_on`（只许落在 home 之内）、并进候选一起扫；过不了围栏 ⇒ `Err`。
 ///
 /// **事实全问这台的文件管理面**（「怎么读到这个事实 → 下沉」）：
-/// home（`files-home`）· 别名文件（`files-peek`）· 候选各一次（`files-peek`，PS 7 那两份的目录 `files-stat`）。
+/// home（`files-home`）· 别名文件（`Door::peek`）· 候选各一次（`Door::peek`，PS 7 那两份的目录 `files-stat`）。
 /// 门就是本进程的 `files-*`（[`door`]），`origin` 退役。
 pub(crate) fn read_via(
     d: &dyn Door,
@@ -675,7 +675,7 @@ enum Look {
     Unreadable(String),
 }
 
-/// 先 `files-peek`；它报错时再问一次 `files-stat`：那台答「这个路径读不到」⇒ 当不在（`files-peek` 在**父目录不在**时
+/// 先 `Door::peek`；它报错时再问一次 `files-stat`：那台答「这个路径读不到」⇒ 当不在（`Door::peek` 在**父目录不在**时
 /// 也报错 —— 它先解父目录 —— 而那一形就是「不在」），答得出 ⇒ 在但读不了、带回 `peek` 的原话。
 /// ⚠ `files-stat` 的「读不到」与「不存在」分不开（权限不够也是它）⇒ 权限不够的那一份会被说成「不在」—— 那一形今天从
 /// peek 那一步就先报了原话，走不到这里的只有 `stat` 也读不到的那几种。
@@ -882,7 +882,7 @@ fn write_alias_file(
 }
 
 /// 本模块写盘的唯一一口：`~/.cc-monitor` 下我们自己的文件（别名文件 · 配置文件）经这台的文件管理面
-/// （`files-peek` / `files-put`：原子替换 · 内容比对 · 回读 · 回滚）。`plan` 拿到盘上此刻那一份（`None` ＝ 不在），
+/// （`Door::peek` / `Door::put`：原子替换 · 内容比对 · 回读 · 回滚）。`plan` 拿到盘上此刻那一份（`None` ＝ 不在），
 /// 回要写的全文（`None` ＝ 不写）。不留备份文件（配置文件的历史由那份文件自己的写法管：按条目改、手写的留着）。
 fn write_ours(
     d: &dyn Door,
@@ -968,7 +968,7 @@ pub(crate) fn answer_block_render(
     Ok(BlockText { text })
 }
 
-/// `aliases-block-install {rcPath}` → `{}`（幂等，整块替换；经这台的 `files-put`）。
+/// `aliases-block-install {rcPath}` → `{}`（幂等，整块替换；经这台的 `Door::put`）。
 pub(crate) fn answer_block_install(
     d: &dyn Door,
     req: &BlockReq,

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 /**
  * 主窗口的标签页栏 · 「需手动」· 会话头：一个会话读成什么、谁在等你、去哪答。
  *
@@ -169,30 +167,22 @@ describe("一个会话读成什么（session-face）", () => {
     expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null, atMs: null } }))).toBeNull();
   });
 
-  it("★ `Ctrl+J`：照核心的先后（危险度在前、同一档等得久的在前、不知道等了多久的排这一档最后、同档按条上顺序）；当前就是 ⇒ 下一个、转回头；没有 ⇒ null", () => {
+  it("★ `Ctrl+J`：照核心给的先答序（小的先答；本机收到之后又等的照减，不知道等了多久的不减；同序按条上顺序）；当前就是 ⇒ 下一个、转回头；没有 ⇒ null", () => {
+    // 先答序是后端给的（危险度那一档在高位，同一档里等得越久越小）；这里只摆几份。
     const tabs = [
       tab("a"),
-      tab("b", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 10_000, receivedAt: NOW } }),
+      tab("b", { activity: waiting, needs: { ...approve(), rank: 1_000_000_990_000, waitedMs: 10_000, receivedAt: NOW } }),
       tab("c", { activity: waiting }),
-      tab("d", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 90_000, receivedAt: NOW } }),
-      tab("e", { activity: waiting, needs: { ...approve(), rank: 0, waitedMs: 1_000, receivedAt: NOW } }),
+      tab("d", { activity: waiting, needs: { ...approve(), rank: 1_000_000_910_000, waitedMs: 90_000, receivedAt: NOW } }),
+      tab("e", { activity: waiting, needs: { ...approve(), rank: 999_000, waitedMs: 1_000, receivedAt: NOW } }),
       // 早收到的那一份：收到时等了 5s，之后本机又走了 120s ⇒ 此刻等了 125s，排在 d 前面（不拿别的机器的钟比）。
-      tab("f", { activity: waiting, needs: { ...approve(), rank: 1, waitedMs: 5_000, receivedAt: NOW - 120_000 } }),
+      tab("f", { activity: waiting, needs: { ...approve(), rank: 1_000_000_995_000, waitedMs: 5_000, receivedAt: NOW - 120_000 } }),
+      // 不知道等了多久：早收到也不减，仍排这一档最后。
+      tab("g", { activity: waiting, needs: { ...approve(null), rank: 1_000_000_999_999, waitedMs: null, receivedAt: NOW - 120_000 } }),
     ];
     const order = needsOrder(tabs, NOW);
-    expect(order).toEqual(["e", "f", "d", "b", "c"]);
+    expect(order).toEqual(["e", "f", "d", "b", "g", "c"]);
     expect([nextNeedsStep(order, "a", null, 0), nextNeedsStep(order, "e", null, 0), nextNeedsStep(order, "c", null, 0), nextNeedsStep([], "a", null, 0)]).toEqual([{ sid: "e" }, { sid: "f" }, { sid: "e" }, null]);
-  });
-
-  it("★ 先后对核心那一处的共用金样（needs-order.golden.json，Rust needs_first 读同一份）", () => {
-    const golden = JSON.parse(readFileSync(resolve(__dirname, "../../__fixtures__/needs-order.golden.json"), "utf8")) as {
-      cases: { name: string; needs: { id: string; rank: number; waitedMs: number | null }[]; want: string[] }[];
-    };
-    expect(golden.cases.length).toBeGreaterThanOrEqual(4);
-    for (const c of golden.cases) {
-      const tabs = c.needs.map((n) => tab(n.id, { activity: waiting, needs: { ...approve(), rank: n.rank, waitedMs: n.waitedMs, receivedAt: NOW } }));
-      expect(needsOrder(tabs, NOW), c.name).toEqual(c.want);
-    }
   });
 
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {

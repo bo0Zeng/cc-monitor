@@ -4222,7 +4222,7 @@ fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ★ 配置文件（`profiles.toml`）那道耳朵，真 debouncer：直接写 · 写旁名再换名上位（设置窗与 `files-put` 的写法）都听得见；
+/// ★ 配置文件（`profiles.toml`）那道耳朵，真 debouncer：直接写 · 写旁名再换名上位（设置窗与 `Door::put` 的写法）都听得见；
 /// 同目录别的文件不算；目录起步不在、后建出来也听得见。
 #[cfg(target_os = "linux")]
 #[test]

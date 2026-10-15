@@ -1242,7 +1242,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-preview",
     "--mcp-sync-apply",
     "--cc-bus-install",
-    "--files-link",
     "--cc-bus-install-state",
     "--skill-install-apply",
     "--aliases-read",
@@ -1333,10 +1332,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 存盘装不进一行时的两步（逐块进暂存区 ＋ 读回拼起来原地覆盖）。登记理由同上。
     "--files-stage-chunk",
     "--files-commit-text",
-    // 用户文件的读改写 ＋ 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
+    // 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-delete-session",
-    "--files-peek",
-    "--files-put",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",

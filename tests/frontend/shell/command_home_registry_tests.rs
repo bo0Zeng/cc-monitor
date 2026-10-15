@@ -1,12 +1,12 @@
-//! 「Tauri 命令分两张封闭表「monitor 自己的事」（逐行理由）与「待迁」（逐行卡在哪），命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」。
+//! 「Tauri 命令只剩 monitor 自己的事（逐行理由）；命令实现经 `inbound_client` / `BackendDoor` 碰到后端的不许留在 monitor」。
 //!
 //! 分母只数「前端对后端」的 IPC（产物来自某台后端的）；窗口 · 本机 monitor 配置 · 日志 · 拉前 · 本机后端的起停与引导
 //! 是 monitor 自己的事，外加通信层面 A 客户端本身与「放字节」。
 //!
 //! 三条判据：
-//! 1. 两表不相交、并集 == `lib.rs` 的 `generate_handler!`（两向）。
+//! 1. 「monitor 自己的事」== `lib.rs` 的 `generate_handler!`（两向）。
 //! 2. 「monitor 自己的事」里不许碰后端的那几类（窗口 / 开终端 / 拉前 / 配置 / 日志 / 重放缓冲），
-//!    实现传递可达 `client_for` / `BackendDoor` ⇒ 红（它该进「待迁」）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
+//!    实现传递可达 `client_for` / `BackendDoor` ⇒ 红（判定该进后端）。通道 · 起停 · 放字节三类碰后端就是它们的本分。
 //! 3. 可达性量得出：真树上 `chan_call`（经 `chan::host` 跨文件到 `client_for`）必须被量到、`load_config` 必须量不到；
 //!    合成夹具上「`use` 进来的函数 → 别的文件 → 类型的方法 → `BackendDoor`」必须量到。
 //!
@@ -215,32 +215,8 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
 ];
 
-/// 「待迁」：命令 · 卡在哪。今天为空（「哪一路」那一格随 `Lane` 一起收了）。
-const PENDING: &[(&str, &str)] = &[
-    // MIG-1：会话 / tmux 账本 ＋ ssh 配置解读进后端。
-    // `~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
-    // 测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局。
-    // 本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
-    // 列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
-    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。迁走七条：`new_local_session` · `resume_history_session` ·
-    //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · 远端 `ccm` 探针。
-    // MIG-3a：资产与 D 组。
-    // 别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
-    // cc-bus 装 · 三态那两条 Tauri 命令已迁：进了那台后端（`cc-bus-install` / `-state`，今天只经扩展页的枢纽问）。
-    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
-    //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
-    // 漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
-    //   monitor 自己那本（hello 里不认识的能力 token）随 hello 的 `capabilities` 一起删了。
-    // 原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
-    // 公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
-    // 端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
-    // 撤单那一条（`chan_cancel`）进 `Channel`。
-    // `open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
-    //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
-];
-
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op（`chan/host.rs::HOST_OPS`）：
-/// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（「monitor 自己的事」还是「待迁」），照 `MONITOR_OWN` 的写法两向登记。
+/// op · 哪一类 · 理由。它们不是 Tauri 命令，却是同一个问题（是不是「monitor 自己的事」），照 `MONITOR_OWN` 的写法两向登记。
 const CHANNEL_OWN: &[(&str, Own, &str)] = &[
     (
         "transfer-upload",
@@ -795,34 +771,25 @@ fn monitor_tree() -> BTreeMap<String, String> {
 // ---------------------------------------------------------------- 判据
 
 #[test]
-fn the_two_tables_are_disjoint_and_cover_every_tauri_command() {
+fn every_tauri_command_is_a_monitor_own_command() {
     let files = monitor_tree();
     let reg: BTreeSet<String> = registered(&files["lib.rs"], &files).into_keys().collect();
     let own: BTreeSet<String> = MONITOR_OWN.iter().map(|(c, _, _)| c.to_string()).collect();
-    let pending: BTreeSet<String> = PENDING.iter().map(|(c, _)| c.to_string()).collect();
     assert_eq!(own.len(), MONITOR_OWN.len(), "「monitor 自己的事」有重行");
-    assert_eq!(pending.len(), PENDING.len(), "「待迁」有重行");
-    let both: Vec<_> = own.intersection(&pending).collect();
-    assert!(both.is_empty(), "同一条命令两张表都有：{both:?}");
-    let listed: BTreeSet<String> = own.union(&pending).cloned().collect();
-    let missing: Vec<_> = reg.difference(&listed).collect();
-    let stale: Vec<_> = listed.difference(&reg).collect();
+    let missing: Vec<_> = reg.difference(&own).collect();
+    let stale: Vec<_> = own.difference(&reg).collect();
     assert!(
         missing.is_empty() && stale.is_empty(),
-        "`generate_handler!` 与两表不等：注册了没登记 {missing:?} · 登记了已不在 {stale:?}\n\
-         迁走一条 ⇒ 从「待迁」删；新加一条 ⇒ 写进其中一张并写理由"
+        "`generate_handler!` 与「monitor 自己的事」不等：注册了没登记 {missing:?} · 登记了已不在 {stale:?}\n\
+         新加一条 ⇒ 判定进后端、monitor 只留开窗 / 起停 / 放字节这一类，写进表里并写理由"
     );
-    let reasons = MONITOR_OWN
-        .iter()
-        .map(|(c, _, w)| (c, w))
-        .chain(PENDING.iter().map(|(c, w)| (c, w)));
-    for (c, why) in reasons {
+    for (c, _, why) in MONITOR_OWN {
         assert!(!why.trim().is_empty(), "`{c}` 那一行没写理由");
     }
 }
 
 #[test]
-fn a_monitor_own_command_that_reaches_a_backend_belongs_in_pending() {
+fn a_monitor_own_command_of_a_local_kind_does_not_reach_a_backend() {
     let files = monitor_tree();
     let reg = registered(&files["lib.rs"], &files);
     let touching = Graph::build(&files).touching(&reg);
@@ -837,7 +804,7 @@ fn a_monitor_own_command_that_reaches_a_backend_belongs_in_pending() {
         .collect();
     assert!(
         wrong.is_empty(),
-        "这几条记成 monitor 自己的事，实现却经 `client_for` / `BackendDoor` 碰到后端 ⇒ 挪进「待迁」：\n{}",
+        "这几条记成 monitor 自己的事，实现却经 `client_for` / `BackendDoor` 碰到后端 ⇒ 判定该进后端：\n{}",
         wrong.join("\n")
     );
 }

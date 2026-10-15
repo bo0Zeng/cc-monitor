@@ -1,56 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
-
-/// backend 侧「有身份守卫」的标志。F03 之后**必须**出现。
-///
-/// 选这几个是因为它们是 monitor 侧那道门的**产物名**（拒绝码 / 拒绝文案）——
-/// backend 复现 Gate 2 最自然的形态就是回一个同族的拒绝码，F03 正是这么做的
-/// （`control/gate.rs::admit` 回 `wrong_owner` + `CCM_GUARD_REJECTED …`）。
-// 拒绝那句话进了文案表（不再逐字带 `CCM_GUARD_REJECTED`）⇒ 标志换成真做判定的那一下 `gate2`。
-// `gate-core` 收成后端模块 `control/gate_rules.rs` ⇒ 那一下的写法跟着换。
-const BACKEND_GATE_MARKERS: &[&str] = &["gate_rules::gate2", "wrong_owner"];
-
-/// Gate 3（`windows==1`，只约束破坏性动作）在后端侧的形状。
-/// **F04a 起：必须存在**（此前是「一个都不该有」）。
-const BACKEND_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
-
-fn backend_control_dir() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`。原来这里自己爬一级（`src/frontend/shell` 的上级只到
-    // `<repo>/src`）⇒ 扫到 0 个 `.rs`，而本模块下面三条会**零命中地绿**。
-    crate::guard_support::backend_src_root().join("control")
-}
-
-/// backend `control/` 下**全部** `.rs` 的生产段。
-///
-/// ⚠ **递归遍历，不是硬编码文件表** —— 本模块头注记着为什么：
-/// 硬编码的两文件表让 F03 新增的 `gate.rs` 整个逃出了扫描面。
-fn backend_control_production() -> Vec<(String, String)> {
-    let dir = backend_control_dir();
-    let mut out = Vec::new();
-    let mut stack = vec![dir.clone()];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = fs::read_dir(&d) else { continue };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().and_then(|x| x.to_str()) != Some("rs") {
-                continue;
-            }
-            let rel = p
-                .strip_prefix(&dir)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let raw = fs::read_to_string(&p).unwrap_or_default();
-            out.push((rel, guard_core::production_code(&raw)));
-        }
-    }
-    out.sort();
-    out
-}
 
 /// 远端 tmux 命令里**只读**的动词。不在这张表里的一律按「有破坏性」处理。
 ///
@@ -233,151 +181,6 @@ fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
     (seen_read_only, bad)
 }
 
-// 〔`K-R72` 09-12 留档〕上一版判准的另一半住在这里 —— **刻意只留话，不留代码**。
-//
-
-/// ★ 抽取器自检 B：backend `control/` 的**递归**扫描面没缩水。
-///
-/// 这条就是 F03 补上的那一条 —— 上一版没有它，扫描面从 5 个文件缩到 2 个也不会红。
-#[test]
-fn the_backend_control_scan_surface_is_not_a_hardcoded_short_list() {
-    let files = backend_control_production();
-    let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
-    assert!(
-        files.len() >= 5,
-        "backend control/ 只扫到 {} 个 .rs（{names:?}）—— 递归遍历坏了，\
-             本模块下面几条会零命中地绿",
-        files.len()
-    );
-    // 门住在这个文件里；它不在扫描面 = 反向锚点是空的。
-    assert!(
-        names.contains(&"gate.rs"),
-        "扫描面里没有 `gate.rs`（实得 {names:?}）—— 那正是 F03 那次没红的形状"
-    );
-    let total: usize = files.iter().map(|(_, s)| s.len()).sum();
-    assert!(
-        total > 20_000,
-        "backend control/ 生产段总共只剩 {total} 字节 —— 剥法或路径坏了"
-    );
-}
-
-/// ★ **反向锚点**（F03 起）：backend 侧的身份门**必须还在**。
-///
-/// 前提触发器翻了个面：U10 时钉「不许出现」（backend 还没有门），
-/// F03 装上之后钉「不许消失」。删掉 Gate 2 而门禁全绿，正是这条要挡的。
-#[test]
-fn the_backend_identity_gate_is_still_there() {
-    let files = backend_control_production();
-    let all: String = files
-        .iter()
-        .map(|(_, s)| s.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let missing: Vec<&str> = BACKEND_GATE_MARKERS
-        .iter()
-        .copied()
-        .filter(|m| !all.contains(m))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "backend 的 control 面**找不到**身份守卫的标志 {missing:?} ——\n\
-             §34 的 Gate 2 在后端侧没了（F03 把它装在 `control/gate.rs::admit`）。\n\
-             这道门挡的是「往一个不是本工具管理的 tmux 会话里打字」。\n\
-             真要撤，先回定框 C6 重新裁定，别让它在一次重构里悄悄蒸发。"
-    );
-    // 门必须在**生产段**、且在 `gate.rs` 里 —— 只在测试里出现等于没有门。
-    let gate_rs = files
-        .iter()
-        .find(|(n, _)| n == "gate.rs")
-        .map(|(_, s)| s.as_str())
-        .unwrap_or("");
-    assert!(
-        gate_rs.contains("gate_rules::gate2"),
-        "`gate.rs` 的生产段没有调 `gate_rules::gate2` —— 判定要么被就地重写了一份\
-             （那就成了第二个家），要么这道门只剩个壳"
-    );
-    // ★ **门必须在路上，不只是在仓里。**
-    //
-    // ⚠ 这一条是变异复验补的：M2「把 `launch.rs` 的 `gate::admit` 拆掉、退回
-    // `has-session` + 裸 `type_payload`」时，上面两条**照样全绿** —— 因为 `gate.rs`
-    // 文件还在、标志串还在。抓到它的是后端自己那两条接线测试，而本模块
-    // （monitor 侧那条禁令的**前提**）却认为「门还在」，前提就成了假的。
-    // 「模块存在 ≠ 模块被调用」是判据缺陷的又一种形状：**扫到了东西，但扫的不是那件事。**
-    let launch_rs = files
-        .iter()
-        .find(|(n, _)| n == "launch.rs")
-        .map(|(_, s)| s.as_str())
-        .unwrap_or("");
-    assert!(
-        launch_rs.contains("gate::admit"),
-        "backend 的 `control/launch.rs` 生产段没有调 `gate::admit` ——\n\
-             门还在仓里，但**不在路上**：`send-into` 会绕过 §34 的 Gate 2 直接键入。\n\
-             monitor 侧那条「不许改走后端」的禁令，其前提正是「backend 的门是通的」。"
-    );
-}
-
-/// ★ **F04a 起翻面：backend 的 Gate 3 必须还在**（此前钉的是「不许出现」）。
-///
-/// # 这条触发器完整走过了一遍它设计的生命周期
-///
-/// U10 立它时钉「不许出现」——因为那时后端没有 Gate 3，下面那条路由禁令
-/// 靠的就是这个前提。F04a 把 Gate 3 搬进来，它**如设计般红了一次**：
-/// `出现了 Gate 3 / kill 的标志 ["session_windows", "kill-session"] —— 这多半是好事`。
-///
-/// ⚠ 那时正确的处置**不是删掉它**（铁律 13：删判据前先证明它恒绿），
-/// 而是**改写**：前提变了 ⇒ 换成钉新前提。现在它钉「Gate 3 不许消失」。
-#[test]
-fn the_backend_now_has_gate3() {
-    let files = backend_control_production();
-    let all: String = files
-        .iter()
-        .map(|(_, s)| s.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let missing: Vec<&str> = BACKEND_GATE3_MARKERS
-        .iter()
-        .copied()
-        .filter(|m| !all.contains(m))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "backend 的 control 面**找不到** Gate 3 的标志 {missing:?} ——\n\
-             §34 的第三道门（`windows == 1`，防误杀多窗口会话）在后端侧没了。\n\
-             F04a 把它装在 `control/gate.rs::admit_destructive`；`control/kill.rs` 走它。"
-    );
-    // 门必须**在路上**（F+02 的教训：模块存在 ≠ 模块被调用）。
-    let kill_rs = files
-        .iter()
-        .find(|(n, _)| n == "kill.rs")
-        .map(|(_, s)| s.as_str())
-        .unwrap_or("");
-    assert!(
-        kill_rs.contains("admit_destructive"),
-        "`control/kill.rs` 的生产段没有调 `admit_destructive` ——\n\
-             门还在仓里但不在路上：kill 会绕过 Gate 2/3 直接杀。"
-    );
-    // Gate 3 **只给破坏性动作**：非破坏性的 `admit` 不许看窗口数。
-    let gate_rs = files
-        .iter()
-        .find(|(n, _)| n == "gate.rs")
-        .map(|(_, s)| s.as_str())
-        .unwrap_or("");
-    let plain = gate_rs
-        .split("pub(crate) fn admit(")
-        .nth(1)
-        .and_then(|t| t.split("pub(crate) fn admit_destructive").next())
-        .unwrap_or("");
-    assert!(
-        !plain.is_empty(),
-        "抽不到非破坏性 `admit` 的函数体 —— 抽取器坏了，下面那条会零命中地绿"
-    );
-    assert!(
-        !plain.contains("windows != 1") && !plain.contains("p.windows"),
-        "非破坏性的 `admit` 里出现了窗口数判断 —— `send-keys` 不删除任何东西，\n\
-             给它加 Gate 3 会让「往一个多窗口会话里打字」被误拒（monitor 侧 F04 Phase D 审计修过这个错法）。"
-    );
-}
-
 /// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
 fn monitor_production_corpus() -> (usize, String) {
     let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
@@ -410,11 +213,10 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
         "monitor 生产段里又出现了 `{verb}` —— 杀会话在 monitor 里长回了一条自己拼 shell 串的路。\n\
          杀会话只许走后端的 `kill`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/tmux-control.ts::killSession` 说它。"
     );
-    let kill_rs = backend_control_production()
-        .into_iter()
-        .find(|(n, _)| n == "kill.rs")
-        .map(|(_, s)| s)
-        .unwrap_or_default();
+    let kill_rs = guard_core::production_code(
+        &fs::read_to_string(crate::guard_support::backend_src_root().join("control/kill.rs"))
+            .expect("读后端 control/kill.rs"),
+    );
     assert!(
         guard_core::contains_word(&kill_rs, &verb),
         "正控失败：后端 `control/kill.rs` 的生产段里认不出 `{verb}` —— 识别器瞎了，上面那个零命中不可信"

@@ -1,6 +1,6 @@
-//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）· 缺格表与目录不重。
+//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）。
 //!
-//! 格目录的测试档那一半也住这里：整份目录（[`catalog`]）· 冻结格（[`FROZEN`]）· 缺格表（[`PENDING`]）。
+//! 格目录的测试档那一半也住这里：整份目录（[`catalog`]）· 冻结格（[`FROZEN`]）。
 //! 判据 · 金样 `cells-catalog.golden.json` · `build_id_guard` 的冻结格指纹读它；生产里只有 `view` 投影读成品名与路径（[`PRODUCTS`]）。
 //! 原先的帧命令 `cells-catalog` 没有调用方，第 8 批删了。
 
@@ -29,29 +29,7 @@ impl Frozen {
     }
 }
 
-/// 已经判了要补、还没落地的一格。
-#[derive(Debug, Clone, Copy, serde::Serialize)]
-pub(crate) struct Pending {
-    pub(crate) product: &'static str,
-    pub(crate) path: &'static str,
-    pub(crate) kind: &'static str,
-}
-
-/// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。今天一条都不缺；机制留着，下一张缺格清单进这里。
-///
-/// 已落地 / 不补的（这里不再登记）：
-/// - G1 会话灯「后台任务运行中」那一档 ⇒ `activity` 的闭集多了 `backgroundWork`（不是新格），字与语气在 `activity_text` · `activity_tone`。
-/// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
-/// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
-///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
-///   字与序跟着种类走，不另挂在 `session_status` 上。
-/// - G4 上下文的字 ⇒ `facts.usage.contextText`（判得出上限写百分比、判不出只写用了多少）· `limitText` · `promptTokensText` ·
-///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
-/// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
-///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
-pub(crate) const PENDING: &[Pending] = &[];
-
-/// 整份目录（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
+/// 整份目录（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}]}`。
 pub(crate) fn catalog() -> serde_json::Value {
     let products: Vec<serde_json::Value> = PRODUCTS
         .iter()
@@ -66,7 +44,7 @@ pub(crate) fn catalog() -> serde_json::Value {
             serde_json::json!({"name": p.name, "cells": cells})
         })
         .collect();
-    serde_json::json!({"products": products, "pending": PENDING})
+    serde_json::json!({"products": products})
 }
 
 /// 每件成品哪几格冻结（[`PRODUCTS`] 每件恰好一行，判据钉）：两个前端（桌面界面 · 手机）都照它读的那几格 —— 删 / 改名 / 换类型 ⇒ 判据红
@@ -618,24 +596,6 @@ fn a_cell_is_text_only_when_its_type_says_so() {
     assert_eq!(kind("record", "{t=title}.text"), "value");
     assert_eq!(kind("facts", "lastSay.text"), "value");
     assert_eq!(catalog_of("facts")["usage.limitFrom"].ty, "enum");
-}
-
-/// 缺格表：每一行的成品在目录里、那一格还不在（落地了就删那一行）。表空着也是真话（今天一格都不缺）。
-#[test]
-fn pending_cells_are_not_in_the_catalog_yet() {
-    for c in PENDING {
-        assert!(
-            PRODUCTS.iter().any(|p| p.name == c.product),
-            "缺格表里的成品 {} 不在目录里",
-            c.product
-        );
-        assert!(
-            !catalog_of(c.product).contains_key(c.path),
-            "{}.{} 已经落地 —— 从 PENDING 里删掉那一行",
-            c.product,
-            c.path
-        );
-    }
 }
 
 /// 金样重写开关（人读过「现打」再落盘）。

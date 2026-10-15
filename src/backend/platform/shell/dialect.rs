@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! 「这个 shell 怎么写 / 文件落在哪 / 名字怎么认」 → 这里（翻译官）
-//! 「一条别名合不合格 / 有一条不合格整批不写 / 围栏怎么拼 / 写的序列」 → 通用层（account_aliases · fenced_block · 后端 files-put）
+//! 「一条别名合不合格 / 有一条不合格整批不写 / 围栏怎么拼 / 写的序列」 → 通用层（account_aliases · fenced_block · 后端 Door::put）
 //! ```
 //!
 //! 通用层持有的是**结构**（名字 ＋ 一组 ccm 参数），不持有任何一种 shell 的文本 —— 一旦持有一段 POSIX 脚本，
@@ -109,7 +109,7 @@ pub(crate) struct Call<'a> {
 /// 一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，表第一行）。
 ///
 /// 方言**只给路径与列法**，一个字节的盘都不读：在不在、里面是什么由**那台机器的后端**答
-/// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `files-peek` / `files-stat`）——
+/// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `Door::peek` / `files-stat`）——
 /// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StartupCandidate {

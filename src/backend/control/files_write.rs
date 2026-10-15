@@ -97,7 +97,7 @@ pub enum WriteRefusal {
     /// target 轴的现推读的就是它（待拍 3）。
     Unsupported(String),
     /// 读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
-    /// （`files-put` 的 `expect` 对不上）⇒ 一个字节没写。调用方该**重读重算**，不是重试同一份。
+    /// （`Door::put` 的 `expect` 对不上）⇒ 一个字节没写。调用方该**重读重算**，不是重试同一份。
     Stale(String),
     /// 同 [`WriteRefusal::Io`]，句子只说原因词、下层原话另带（进复制详情，不上句子）。线上码同 `io_failed`。
     IoSaid { said: String, raw: String },
@@ -125,7 +125,7 @@ pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
     /// 线上错误码。**闭集四个**，与各条错误枚举（`stream/inbound/files_write_face.rs`）的码对得上
-    /// （第三个只有 `files-chmod` 会回，也只有它声明；第四个 `stale` 只有 `files-put` 会回
+    /// （第三个只有 `files-chmod` 会回，也只有它声明；第四个 `stale` 只有 `Door::put` 会回
     /// ——`files-delete` 带 `expect` 那一形也回它，也声明了）。
     pub fn code(&self) -> &'static str {
         match self {
@@ -486,8 +486,8 @@ pub fn delete_entry(
 
 /// **带 CAS 的删一份文件**：盘上那份逐字节 == `expect` 才删，否则一个字节不动。
 ///
-/// 读改写那一族（`files-put` 的 `expect`）缺的最后一格：调用方「读到的是这一份 ⇒ 删它」，
-/// 从前只能先 `files-peek` 核、再 `files-delete` 删，核与删之间整整一趟往返的窗。
+/// 读改写那一族（`Door::put` 的 `expect`）缺的最后一格：调用方「读到的是这一份 ⇒ 删它」，
+/// 从前只能先 `Door::peek` 核、再 `files-delete` 删，核与删之间整整一趟往返的窗。
 /// 这里把「核」挪到删的同一个进程里、紧贴着删那一下（窗缩到本函数里那两行之间 —— TOCTOU 照旧如实登记，
 /// 同本模块头注诚实边界第 1 条）。
 ///
@@ -798,7 +798,7 @@ pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String>
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 编辑器存盘带 CAS（`expect`），比的是摘要：它**仍是 CAS**（比的是「我看的时候那一份」），
-// 只是换了表示 —— 逐字节形（`files-put` / `files-delete`）留给小写。为什么编辑器要摘要形：存盘分块那一支本来就是
+// 只是换了表示 —— 逐字节形（`Door::put` / `files-delete`）留给小写。为什么编辑器要摘要形：存盘分块那一支本来就是
 // 因为**一行装不下**（一行 1 MiB、编辑上限 8 MiB），逐字节的 `expect` 要么让装得进一行的门槛减半，
 // 要么让原文再分块送一遍（大文件存盘流量翻倍）。摘要定长，两支同形。
 //
@@ -1821,7 +1821,7 @@ pub struct Peeked {
     pub text: Option<String>,
 }
 
-/// `files-peek` 一趟肯交的上限。
+/// `Door::peek` 一趟肯交的上限。
 ///
 /// ⚠ 为什么不是 `files-read-text` 那个 8 MiB：读改写的写那一半要把**新内容 ＋ 读到的那一份**
 /// 装进同一行请求，而后端一行上限是 `inbound::MAX_LINE_BYTES`（1 MiB）。
@@ -2708,16 +2708,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         purpose: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
 `expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
     },
-    // ── 用户文件的读改写 ＋ 删历史会话（只管用户的文件、本机也管）──
-    ManageCommand {
-        name: "files-peek",
-        purpose: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
-    },
-    ManageCommand {
-        name: "files-put",
-        purpose: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
-               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份",
-    },
+    // ── 删历史会话 ──
     ManageCommand {
         name: "files-delete-session",
         purpose: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
@@ -2864,7 +2855,7 @@ fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply
     })
 }
 
-/// `files-write-text`：`content` · `expect`（摘要形 CAS）都**必给**：没有「不问就盖」这一形（同 `files-put`）。
+/// `files-write-text`：`content` · `expect`（摘要形 CAS）都**必给**：没有「不问就盖」这一形（同 `Door::put`）。
 fn write_text(
     face: &Face,
     req: wire::FilesWriteTextReq,
@@ -2881,7 +2872,7 @@ fn write_text(
     })
 }
 
-/// `files-peek`：读改写的读那一半（不写，不要句柄）。
+/// `Door::peek`：读改写的读那一半（不写，不要句柄）。
 fn peek(req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, WriteFail> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);
@@ -2893,7 +2884,7 @@ fn peek(req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, WriteFail> {
     })
 }
 
-/// `files-put`：🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」（缺席在解入参那一步就拒了）。
+/// `Door::put`：🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」（缺席在解入参那一步就拒了）。
 fn put(face: &Face, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, WriteFail> {
     let root = root_of(&req.root, "root")?;
     let rel = rel_of(&req.rel);

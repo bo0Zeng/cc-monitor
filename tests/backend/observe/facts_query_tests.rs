@@ -497,7 +497,7 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             )),
             head_code: Some("rm -rf build/".into()),
             tone: crate::common::cells::Tone::Need,
-            rank: 1,
+            rank: needs_rank(NeedsKind::Approve, Some(1)),
             waited_ms: Some(1),
             waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
             ask: None,
@@ -1272,7 +1272,7 @@ fn needs_carry_a_rank_riskier_first() {
         (vec![], Some(W::Dialog), NeedsKind::Choose),
         (vec![], None, NeedsKind::Unknown),
     ];
-    let ranks: Vec<u8> = order
+    let ranks: Vec<u64> = order
         .into_iter()
         .map(|(p, w, kind)| {
             let n = needs_of(&p, Some(&wait(w))).unwrap();
@@ -1280,13 +1280,10 @@ fn needs_carry_a_rank_riskier_first() {
             n.rank
         })
         .collect();
-    assert_eq!(
-        ranks,
-        (0..8).collect::<Vec<u8>>(),
-        "序按危险度从 0 起、一种一个"
+    assert!(
+        ranks.windows(2).all(|w| w[0] < w[1]),
+        "序按危险度一种一档、越危险越小：{ranks:?}"
     );
-    let v = serde_json::to_value(needs_of(&[], Some(&wait(Some(W::Goal)))).unwrap()).unwrap();
-    assert_eq!(v["rank"], 3);
 }
 
 /// ★ **「已等多久」在那台算**：起点（`sinceMs`，那台 pidfile 的钟）与读 pidfile 那一刻（同一台的钟）相减，
@@ -1330,50 +1327,36 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
     );
 }
 
-/// ★ 先答哪个只住 [`needs_first`]：对共用金样 `tests/__fixtures__/needs-order.golden.json` 逐条排（桌面 `Ctrl+J`
-/// 那一个读口 `session-face.ts::needsFirst` 读同一份）。
+/// ★ 先答哪个只住 [`needs_rank`]（出口只按 `rank` 排）：危险度那一档在前；同一档等得久的在前；
+/// 不知道等了多久的排这一档最后（比等了 0 毫秒的还后）；全都一样照原来的次序（稳定排序）。
 #[test]
-fn needs_first_agrees_with_the_shared_order_golden() {
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/needs-order.golden.json")).unwrap();
-    let cases = golden["cases"].as_array().unwrap();
-    assert!(cases.len() >= 4, "金样读空了");
-    for c in cases {
-        let mut got: Vec<(String, Needs)> = c["needs"]
-            .as_array()
-            .unwrap()
+fn needs_rank_orders_by_danger_then_waited_unknown_last() {
+    let tier = |t: usize| NEEDS_BY_DANGER[t];
+    // `(名, [(id, 危险度那一档, 已等多久)], 应得的次序)`
+    #[allow(clippy::type_complexity)]
+    let cases: &[(&str, &[(&str, usize, Option<u64>)], &[&str])] = &[
+        ("危险度在前", &[("a", 3, Some(900_000)), ("b", 1, Some(1_000))], &["b", "a"]),
+        ("同一档等得久的在前", &[("a", 1, Some(1_000)), ("b", 1, Some(90_000))], &["b", "a"]),
+        (
+            "不知道等了多久的排这一档最后",
+            &[("a", 1, None), ("b", 1, Some(0)), ("c", 0, None)],
+            &["c", "b", "a"],
+        ),
+        (
+            "全都一样照原来的次序",
+            &[("a", 2, None), ("b", 2, None), ("c", 2, Some(7)), ("d", 2, Some(7))],
+            &["c", "d", "a", "b"],
+        ),
+        ("等得再久也跨不到上一档", &[("a", 1, Some(u64::MAX)), ("b", 0, None)], &["b", "a"]),
+    ];
+    for (name, needs, want) in cases {
+        let mut got: Vec<(&str, u64)> = needs
             .iter()
-            .map(|n| {
-                (
-                    n["id"].as_str().unwrap().to_string(),
-                    Needs {
-                        kind: NeedsKind::Approve,
-                        tool: None,
-                        call: None,
-                        what: None,
-                        since_ms: None,
-                        text: crate::common::cells::Words(String::new()),
-                        head: crate::common::cells::Words(String::new()),
-                        head_code: None,
-                        tone: crate::common::cells::Tone::Need,
-                        rank: u8::try_from(n["rank"].as_u64().unwrap()).unwrap(),
-                        waited_ms: n["waitedMs"].as_u64(),
-                        waited_text: None,
-                        ask: None,
-                        manual_text: None,
-                    },
-                )
-            })
+            .map(|(id, t, w)| (*id, needs_rank(tier(*t), *w)))
             .collect();
-        got.sort_by(|a, b| needs_first(&a.1, &b.1));
-        let ids: Vec<&str> = got.iter().map(|(i, _)| i.as_str()).collect();
-        let want: Vec<&str> = c["want"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
-        assert_eq!(ids, want, "{}", c["name"]);
+        got.sort_by_key(|(_, r)| *r);
+        let ids: Vec<&str> = got.iter().map(|(i, _)| *i).collect();
+        assert_eq!(ids, *want, "{name}");
     }
 }
 
