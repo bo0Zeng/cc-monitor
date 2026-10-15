@@ -18,11 +18,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-/// 一条会话的状态：`live` 在跑 · `ended` 已结束 · `unknown` 这条路上答不了（合成历史没有 pidfile）。
-/// 历史清单的行与全文搜索的命中同一个函数。
-pub(crate) fn status_of(is_live: Option<bool>) -> &'static str {
+/// 一条会话的状态：`live` 在跑 · `reconnectable` 不在跑、tmux 里还挂着它（会话账本说的）· `ended` 已结束 ·
+/// `unknown` 这条路上答不了（合成历史没有 pidfile）。历史清单的行与全文搜索的命中同一个函数。
+pub(crate) fn status_of(is_live: Option<bool>, reconnectable: bool) -> &'static str {
     match is_live {
         Some(true) => "live",
+        Some(false) if reconnectable => "reconnectable",
         Some(false) => "ended",
         None => "unknown",
     }

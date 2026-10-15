@@ -4561,7 +4561,9 @@ impl FrameSink {
             return;
         };
         let (raw, observation) = observation_parts(obs);
-        for f in l.on_tmux(&raw, observation) {
+        let out = l.on_tmux(&raw, observation);
+        crate::history::live::set_reconnectable(l.reconnectable());
+        for f in out {
             self.fan(f);
         }
     }
@@ -4575,7 +4577,11 @@ impl FrameSink {
             return;
         }
         let (pass, extra) = match self.ledger.as_mut() {
-            Some(l) => l.on_frame(&frame),
+            Some(l) => {
+                let got = l.on_frame(&frame);
+                crate::history::live::set_reconnectable(l.reconnectable());
+                got
+            }
             None => (true, Vec::new()),
         };
         if pass {

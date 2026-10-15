@@ -2604,6 +2604,10 @@ type RotationViewReply = { now: number,
  */
 nowText: string, 
 /**
+ * 会话那一形：这条会话叫什么（同历史清单那一格：改过的 ＞ 标题 ＞ 第一句；这台记录树里找不到 ⇒ 会话 id 前 8 位）；设置页 ⇒ `null`。
+ */
+title: string | null, 
+/**
  * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
  */
 strategy: RotStrategyItem | null, 
@@ -4143,7 +4147,11 @@ title: string, startedAt: number, updatedAt: number, jsonlPath: string,
 /**
  * 判不了活（合成历史没有 pidfile）⇒ `null`。
  */
-isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+isLive: boolean | null, 
+/**
+ * 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
+ */
+reconnectable?: boolean, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */
@@ -4174,9 +4182,9 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` · `ended` · `unknown`（活不活只出这一格）。
+ * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
  */
-status: "live" | "ended" | "unknown", can: Can, 
+status: "live" | "reconnectable" | "ended" | "unknown", can: Can, 
 /**
  * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
  */

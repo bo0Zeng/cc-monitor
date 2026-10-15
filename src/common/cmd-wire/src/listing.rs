@@ -70,10 +70,10 @@ pub struct HistoryRow {
     pub label: Words,
     /// 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
     pub untitled: bool,
-    /// `live` · `ended` · `unknown`（活不活只出这一格）。
+    /// `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
     #[cfg_attr(
         any(test, feature = "ts"),
-        ts(type = "\"live\" | \"ended\" | \"unknown\"")
+        ts(type = "\"live\" | \"reconnectable\" | \"ended\" | \"unknown\"")
     )]
     pub status: String,
     pub can: Can,
@@ -196,6 +196,10 @@ pub struct RawRow {
     pub jsonl_path: String,
     /// 判不了活（合成历史没有 pidfile）⇒ `null`。
     pub is_live: Option<bool>,
+    /// 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub reconnectable: bool,
     pub message_count_approx: u32,
     pub is_bg: bool,
     pub starred: bool,

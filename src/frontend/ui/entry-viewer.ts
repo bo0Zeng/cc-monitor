@@ -147,7 +147,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
     return;
   }
   const r = row;
-  let live: boolean | null = r.status === "live" ? true : r.status === "ended" ? false : null;
+  let live: boolean | null = r.status === "live" ? true : r.status === "unknown" ? null : false;
   const win = getCurrentWindow();
   const paint = (): void => {
     void win.setTitle(windowTitle(r, live)).catch(() => {});

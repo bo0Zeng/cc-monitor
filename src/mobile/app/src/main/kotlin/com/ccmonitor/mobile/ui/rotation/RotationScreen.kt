@@ -77,7 +77,8 @@ fun RotationScreen(
     val ui by board.state.collectAsState()
     val linkState by feed.state.collectAsState()
     val table by feed.table.collectAsState()
-    val title = sid?.let { table.sessions[it]?.name }.orEmpty()
+    // 会话那一形顶栏第二行：那台写好的会话名（`rotation-view` 的 `title`）。
+    val title = ui.view?.title.orEmpty()
     val snackbar = LocalAppSnackbar.current
     LaunchedEffect(ui.failure) {
         ui.failure?.let {

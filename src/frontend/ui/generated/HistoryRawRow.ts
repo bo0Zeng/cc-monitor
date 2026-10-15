@@ -12,7 +12,11 @@ title: string, startedAt: number, updatedAt: number, jsonlPath: string,
 /**
  * 判不了活（合成历史没有 pidfile）⇒ `null`。
  */
-isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+isLive: boolean | null, 
+/**
+ * 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
+ */
+reconnectable?: boolean, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */

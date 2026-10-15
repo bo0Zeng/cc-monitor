@@ -648,6 +648,7 @@ enum class BatchItemState {
 data class RotationViewReply(
     val now: Long,
     val nowText: String,
+    val title: String?,
     val strategy: RotStrategyItem?,
     val form: List<RotFormCell>,
     val settings: Any?,
