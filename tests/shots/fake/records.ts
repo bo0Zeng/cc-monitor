@@ -292,6 +292,12 @@ export class Convo {
     return this;
   }
 
+  /** 那一家说某个 MCP 服务器连不上（「延后加载的工具变了」那种附件，`failedMcpServers` 一项，照 Claude Code 落盘的原词）。 */
+  mcpFailed(name: string, error: string): this {
+    this.push("attachment", 5, { attachment: { type: "deferred_tools_delta", failedMcpServers: [{ name, error }] } });
+    return this;
+  }
+
   /** 后端认不出的一行（新版 Claude 写了一种这一版不认的记录）。 */
   unknown(kind = "shots-unknown-kind"): this {
     this.lines.push({ type: kind, uuid: nextUuid(), timestamp: this.at(5), sessionId: this.sid });

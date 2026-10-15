@@ -1,7 +1,6 @@
 /**
  * 帧命令的默认答法（按 op 名）。形状照后端的跨语言金样（`tests/__fixtures__/*.golden.json`）与界面那一侧的解码器。
  */
-import { hm } from "./clock";
 import type { OpHandler } from "./types";
 
 export const ACCOUNTS = [
@@ -57,27 +56,6 @@ export function defaultOps(): Record<string, OpHandler> {
     ),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
     // 起新会话框那三问：那台最近用过的目录（它上面那几个会话的目录）· 有 tmux · 只有一家能起；分叉那一形照源会话给三格。
-    "session-new-facts": (origin, req, w) => {
-      const mine = w.sessions.filter((s) => s.origin === origin);
-      const src = w.sessions.find((s) => s.sid === req.forkOf);
-      return {
-        recent: [...new Set(mine.map((s) => s.cwd))].map((cwd, i) => ({ cwd, lastMs: Date.now() - i * 60_000, lastText: "09:30" })),
-        tmux: !/win/.test(origin),
-        agents: [{ kind: "claude", text: "Claude Code", models: [], modelDefault: null, modelNote: null, permissionModes: [] }],
-        fork: src
-          ? {
-              agent: "claude",
-              launch: {
-                cwd: { kind: "known", value: src.cwd, from: "record" },
-                account: src.ended ? { kind: "unknown", why: "exited" } : { kind: "known", value: "personal", from: "process" },
-                terminal: src.ended ? { kind: "unknown", why: "exited" } : { kind: "known", value: { host: "tmux", terminal: "tmux:orders-cc" }, from: "terminal_list" },
-              },
-              turn: 9,
-              startText: hm(Date.now() - 3_600_000),
-            }
-          : null,
-      };
-    },
     "session-new-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
     "session-new": (_o, req) => ({
       outcome: req.place === "tmux" ? "started" : "open",

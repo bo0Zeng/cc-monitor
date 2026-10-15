@@ -8,7 +8,7 @@ import { defaultCommands } from "./commands";
 import { putHistory } from "./history";
 import { machineCommands, machineOps } from "./machine";
 import { ACCOUNTS } from "./ops";
-import { blankDisk, putAccounts, type LiveSession, type MachineDisk } from "../disk";
+import { blankDisk, putAccounts, putMcp, type LiveSession, type MachineDisk } from "../disk";
 import { putProfiles } from "../disk/profiles";
 
 export const LOCAL = "<local>";
@@ -199,7 +199,7 @@ export function defaultWorld(): World {
     s1,
     session(2, LOCAL, "/home/user/work/web-console", waitingConvo(sidOf(2)), { activity: "needs_you", waitingFor: "permission prompt", waitingSinceMs: Date.now() - 120_000 }),
     session(3, LOCAL, "/home/user/work/notes", smallConvo(sidOf(3), "/home/user/work/notes", "周报草稿", "把这周的提交整理成周报。", "整理好了，按模块分了三段。"), { activity: "idle", ended: true }),
-    session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000), { activity: "working" }),
+    session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000).mcpFailed("github", "Connection failed: connect ECONNREFUSED 127.0.0.1:7801"), { activity: "working" }),
     session(5, "devbox", "/srv/app/gateway", smallConvo(sidOf(5), "/srv/app/gateway", "网关限流配置", "给 /api/search 加每用户限流。", "已加：每用户每秒 5 次，突发 10。"), { activity: "idle", background: true }),
     session(6, "gpu-01", "/data/train/ranker", smallConvo(sidOf(6), "/data/train/ranker", "排序模型训练脚本", "训练脚本加断点续训。", "加好了：每 500 步存一次，启动时自动找最新的检查点。", 96_000), { activity: "idle", idle: true }),
     session(7, "win-laptop", "C:\\Users\\user\\work\\desktop-app", smallConvo(sidOf(7), "C:\\Users\\user\\work\\desktop-app", "安装包签名", "安装包要加代码签名。", "签名步骤加进打包脚本了，证书从环境变量读。"), { activity: "idle" }),
@@ -270,6 +270,11 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
       putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
       // 设置窗「别名与配置文件」那一页（devbox）：一台典型机器的配置文件。
       if (m === "devbox") putProfiles(d, "normal");
+      // 扩展页 MCP 那几张：本机与 devbox 用户级配了 github；本机两个号 8 分钟前连它碰到要登录（devbox 那边的断开是活会话 4 说的）。
+      if (m === LOCAL || m === "devbox") {
+        const at = Date.now() - 8 * 60_000;
+        putMcp(d, { github: { type: "http", url: "https://example.invalid/mcp" } }, m === LOCAL ? ["personal", "work"].map((account) => ({ account, atMs: at, server: "github" })) : []);
+      }
       return [m, d];
     }),
   );
