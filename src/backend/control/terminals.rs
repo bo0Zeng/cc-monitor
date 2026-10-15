@@ -22,7 +22,6 @@ use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Who};
 use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
-use serde_json::Value;
 
 /// 列名单 · 问尺寸那几发只读 tmux 的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const READ_TMUX_WITHIN: Deadline = Deadline::secs(5);
@@ -409,16 +408,6 @@ pub(crate) fn target(terminal: Option<&str>, sid: Option<&str>) -> Result<Target
         (None, Some(s)) if ok(s) => Ok(Target::Sid(s.to_string())),
         _ => Err(bad_target()),
     }
-}
-
-/// 同 [`target`]，从帧面原样的 `args` 里取（终端实时预览 `terminal-follow` 那一条还是内建档）：两格不是串 ⇒ `bad_target`。
-pub(crate) fn target_of(args: &Value) -> Result<Target, CmdErr> {
-    let text = |k: &str| match args.get(k) {
-        None => Ok(None),
-        Some(Value::String(s)) => Ok(Some(s.as_str())),
-        Some(_) => Err(bad_target()),
-    };
-    target(text("terminal")?, text("sid")?)
 }
 
 fn bad_target() -> CmdErr {

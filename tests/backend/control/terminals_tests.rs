@@ -1,5 +1,5 @@
 use super::*;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::process::Command;
 
 // 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`），回包是写上线的那一份 JSON。
@@ -154,11 +154,8 @@ fn each_pane_that_carries_a_sid_is_its_own_terminal() {
         ]
     );
     assert_eq!(rows[1].program, "bash", "没挂 sid 的会话看它当前的窗格");
-    let t = |v: Value| target_of(&v).expect("形状对");
-    assert_eq!(
-        find(&rows, &t(json!({ "sid": "sid-b" }))),
-        Found::One(&rows[3])
-    );
+    let t = |h: Option<&str>, s: Option<&str>| target(h, s).expect("形状对");
+    assert_eq!(find(&rows, &t(None, Some("sid-b"))), Found::One(&rows[3]));
     // 结束得了：同会话里还有别的 claude ⇒ 只关这一个窗格（不看窗口数）。
     let mut wide = rows[2].clone();
     wide.windows = 3;
@@ -168,17 +165,17 @@ fn each_pane_that_carries_a_sid_is_its_own_terminal() {
 /// 目标恰好给一个；句柄与 sid 只在名单里对，对不上就是「不在名单」，同一个 sid 落在两个终端上不猜。
 #[test]
 fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
-    for bad in [
-        json!({}),
-        json!({ "terminal": "tmux-1", "sid": "s" }),
-        json!({ "terminal": "" }),
-        json!({ "terminal": 1 }),
-        json!({ "sid": "x".repeat(300) }),
+    let long = "x".repeat(300);
+    for (h, s) in [
+        (None, None),
+        (Some("tmux-1"), Some("s")),
+        (Some(""), None),
+        (None, Some(long.as_str())),
     ] {
         assert_eq!(
-            target_of(&bad).map_err(|e| e.code),
+            target(h, s).map_err(|e| e.code),
             Err("bad_target".to_string()),
-            "{bad}"
+            "{h:?} {s:?}"
         );
     }
     let rows = vec![
@@ -186,23 +183,13 @@ fn a_target_is_one_handle_or_one_sid_from_the_list_and_nothing_else() {
         row("$2", "b-cc", "s2", "", "claude"),
         row("$3", "c-cc", "s2", "", "claude"),
     ];
-    let t = |v: Value| target_of(&v).expect("形状对");
-    assert_eq!(
-        find(&rows, &t(json!({ "terminal": "tmux-1" }))),
-        Found::One(&rows[0])
-    );
-    assert_eq!(
-        find(&rows, &t(json!({ "sid": "s1" }))),
-        Found::One(&rows[0])
-    );
-    assert_eq!(find(&rows, &t(json!({ "sid": "s2" }))), Found::Ambiguous);
+    let t = |h: Option<&str>, s: Option<&str>| target(h, s).expect("形状对");
+    assert_eq!(find(&rows, &t(Some("tmux-1"), None)), Found::One(&rows[0]));
+    assert_eq!(find(&rows, &t(None, Some("s1"))), Found::One(&rows[0]));
+    assert_eq!(find(&rows, &t(None, Some("s2"))), Found::Ambiguous);
     // 任意 tmux 目标串不是句柄：一律「不在名单」，到不了 tmux。
     for raw in ["$1", "=a-cc:", "a-cc", "%0", "tmux-1 ", "tmux-9"] {
-        assert_eq!(
-            find(&rows, &t(json!({ "terminal": raw }))),
-            Found::NotKnown,
-            "{raw}"
-        );
+        assert_eq!(find(&rows, &t(Some(raw), None)), Found::NotKnown, "{raw}");
     }
 }
 
@@ -382,7 +369,8 @@ fn the_products_match_the_golden() {
     );
 
     let p = &g["terminal-preview"];
-    assert!(target_of(&p["request"]).is_ok());
+    let req = &p["request"];
+    assert!(target(req["terminal"].as_str(), req["sid"].as_str()).is_ok());
     let geo = &p["geometry"];
     let view = View {
         text: p["capture"].as_str().unwrap().into(),
@@ -412,7 +400,10 @@ fn the_products_match_the_golden() {
 
     let i = &g["terminal-input"];
     for r in i["requests"].as_array().unwrap() {
-        assert!(target_of(r).is_ok() && input_of(r).is_ok(), "{r}");
+        assert!(
+            target(r["terminal"].as_str(), r["sid"].as_str()).is_ok() && input_of(r).is_ok(),
+            "{r}"
+        );
     }
     let built = [
         input_reply("delivered", None, None),
