@@ -70,6 +70,7 @@ pub(crate) struct CtxAcct {
     pub(crate) resets: [Option<u64>; 2],
     pub(crate) refused_until: Option<u64>,
     pub(crate) rate: [Option<f64>; 2],
+    pub(crate) per_pct: [Option<u64>; 2],
 }
 
 /// 会话状态 Σ（后端存）。
@@ -149,6 +150,7 @@ pub(crate) fn ctx_of<'a>(
                 resets: x.resets.map(|r| r.filter(|r| *r > t)),
                 refused_until: x.refused_until.filter(|u| *u > t),
                 rate: x.rate,
+                per_pct: x.per_pct,
             })
             .collect(),
     }

@@ -99,6 +99,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
             },
         )]
         .into(),
+        per_pct: Default::default(),
     };
     assert_eq!(on_disk(&path).accounts, vec![want.clone()]);
     assert_eq!(l.entry("claude-code", "q"), Some(want.clone()));
@@ -541,6 +542,64 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
             prev: None
         },
         "窗口重置了还留着上一窗的采样"
+    );
+    std::fs::remove_dir_all(&d).ok();
+}
+
+/// ★ 每号「1% ≈ 多少用量」：中转那一路的读数 ＋ 流里数到的用量 ⇒ 量出来那一刻记进账、落盘、显示态带上；
+/// 量到之前账上没有这一格（不猜）；量出来超过 7 天就不作数。
+#[test]
+fn the_size_of_one_percent_is_measured_kept_and_aged() {
+    let d = temp_dir("perpct");
+    let path = d.join(FILE_NAME);
+    let own = crate::platform::fs::Own::issue_data_at(&d);
+    let l = Ledger::with_nodes(Some(path.clone()), tokio::sync::broadcast::channel(16).0);
+    let t = 1_800_000_000;
+    let reset = t + 18_000;
+    let sid = Some("s-perpct");
+    let seen = |used: f64, at: u64| {
+        record_seen(
+            &l,
+            &own,
+            sid,
+            "claude-code",
+            "q",
+            reading_until(used, reset),
+            at,
+        );
+    };
+    let used = |input: u64| {
+        l.spend().heard(
+            "s-perpct",
+            &format!(
+                r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{input}}}}}}}"#
+            ),
+        );
+    };
+    seen(0.10, t);
+    used(1_000);
+    seen(0.11, t + 60);
+    for i in 0..5 {
+        seen(0.11, t + 120 + i);
+        used(10_000);
+    }
+    assert!(
+        on_disk(&path).accounts[0].per_pct.is_empty(),
+        "量到之前账上有了这一格"
+    );
+    seen(0.15, t + 600);
+    let o = &on_disk(&path).accounts[0];
+    assert_eq!(o.tokens_per_pct("five_hour", t + 600), Some(12_500));
+    let key = |_: &str| None;
+    assert_eq!(
+        crate::accounts::quota::show::windows_of(o, &key, t + 600)[0].tokens_per_pct,
+        Some(12_500),
+        "显示态没带上"
+    );
+    assert_eq!(
+        o.tokens_per_pct("five_hour", t + 600 + PER_PCT_KEPT + 1),
+        None,
+        "过了 7 天还作数"
     );
     std::fs::remove_dir_all(&d).ok();
 }

@@ -1,7 +1,8 @@
 //! 要求：上游原始流在后端按上游协议折成归一事件，界面只收归一事件（「原始 SSE 在后端折成归一事件，界面只收归一事件」）。
 //!
-//! 两条：① 四种认得的事件各折成哪一件、其余一律不出（期望手写）；② 台架夹具（`tests/__fixtures__/tap-bench.json`，
-//! 合成的一轮）：折出来按对账键拼的正文 == 同一轮记录里同 id 的文字块按块序拼起来（流与记录对得上）。
+//! 三条：① 四种认得的事件各折成哪一件、其余一律不出（期望手写）；② 台架夹具（`tests/__fixtures__/tap-bench.json`，
+//! 合成的一轮）：折出来按对账键拼的正文 == 同一轮记录里同 id 的文字块按块序拼起来（流与记录对得上）；
+//! ③ 每发用量：开头那一件按价比折输入 · 缓存读写，收尾前那一件折输出，别的事件不说。
 
 use super::*;
 use crate::agents::{BlockKind, StreamEv};
@@ -103,4 +104,33 @@ fn the_bench_round_folds_into_the_same_text_its_records_carry() {
         "夹具里一条带对账键的记录都没有 —— 本条空转"
     );
     assert_eq!(by_rid, from_records, "流折出来的正文与记录对不上");
+}
+
+#[test]
+fn usage_is_read_from_the_opening_and_closing_events_only() {
+    let start = r#"{"type":"message_start","message":{"id":"m1","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":1}}}"#;
+    assert_eq!(
+        spent(start),
+        Some(Spent {
+            units: 10.0 + 125.0 + 100.0,
+            opens: true
+        })
+    );
+    let tiers = r#"{"type":"message_start","message":{"usage":{"input_tokens":0,"cache_creation_input_tokens":300,"cache_creation":{"ephemeral_5m_input_tokens":100,"ephemeral_1h_input_tokens":200},"cache_read_input_tokens":0}}}"#;
+    assert_eq!(spent(tiers).map(|s| s.units), Some(125.0 + 400.0));
+    let delta = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10,"output_tokens":40}}"#;
+    assert_eq!(
+        spent(delta),
+        Some(Spent {
+            units: 200.0,
+            opens: false
+        })
+    );
+    for silent in [
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"\"usage\""}}"#,
+        r#"{"type":"message_stop"}"#,
+        "not json \"usage\"",
+    ] {
+        assert_eq!(spent(silent), None, "{silent}");
+    }
 }

@@ -213,4 +213,5 @@ fn fold(data: &str) -> Vec<StreamEv> {
 pub(crate) const STREAM: StreamFace = StreamFace {
     fold,
     fold_clipped: |_| Vec::new(),
+    spent: None,
 };

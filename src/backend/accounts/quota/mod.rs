@@ -10,6 +10,7 @@ pub(crate) mod nodes;
 pub(crate) mod rotation;
 pub(crate) mod rules;
 pub(crate) mod show;
+pub(crate) mod spend;
 pub(crate) mod strategy;
 
 /// ★ 派生事实「已重置、未计时」的唯一判法：这个窗口（或卡着的那一处）说的重置时刻已经过了 ⇒ 之后没再看到它，

@@ -26,6 +26,10 @@ pub struct WinFact {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub rate: Option<f64>,
+    /// 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub tokens_per_pct: Option<u64>,
 }
 
 /// 事实上用不了的原因（跟设置无关的那几种）。

@@ -938,6 +938,16 @@ pub(crate) struct StreamFace {
     pub(crate) fold: fn(&str) -> Vec<StreamEv>,
     /// 一件被截断的事件（只有开头那一截）⇒ 只从开头认得出的那几格（类型 · 应答标识）；认不出 ⇒ 空。不许出字。
     pub(crate) fold_clipped: fn(&str) -> Vec<StreamEv>,
+    /// 一件事件里说出的这一发用量（[`Spent`]）；没说 ⇒ `None`。`None` 这一格 ＝ 这个协议的流说不出用量。
+    pub(crate) spent: Option<fn(&str) -> Option<Spent>>,
+}
+
+/// 一件流事件里说出的这一发用量：折合输入 token（各类 token 按那一家的价比折成输入 token 计）；
+/// `opens` ＝ 这一件是一发应答的开头（数「几发」用）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Spent {
+    pub(crate) units: f64,
+    pub(crate) opens: bool,
 }
 
 /// 归一流事件（界面只收这个，不收任何一家的原始事件）。
@@ -2065,6 +2075,15 @@ pub(crate) fn login_of(route_id: &str) -> Option<LoginFace> {
 
 /// 一家的额度读法（见 [`DefaultUpstream::quota`]）。
 pub(crate) type QuotaRead = fn(u16, &[(String, String)], u64) -> Option<QuotaReading>;
+
+/// 路由名 ⇒ 这一家上游的流里怎么读出每发用量（[`StreamFace::spent`]）。
+pub(crate) fn spent_of(route_id: &str) -> Option<fn(&str) -> Option<Spent>> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.stream?.spent)
+}
 
 /// 路由第 1 段 → 那一家的额度读法。
 pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {

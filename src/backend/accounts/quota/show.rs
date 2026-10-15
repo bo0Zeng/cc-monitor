@@ -231,6 +231,7 @@ pub(crate) fn windows_of(
                 resets_at: w.resets_at,
                 seen_at: seen.at,
                 from: seen.from,
+                tokens_per_pct: o.tokens_per_pct(&w.name, now),
                 reset_since_seen: reset,
             }
         })

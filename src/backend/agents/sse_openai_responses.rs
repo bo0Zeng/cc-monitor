@@ -8,7 +8,11 @@ use super::{BlockKind, StreamEv};
 use serde_json::Value;
 
 /// 这个协议的流面（走这个协议的那几家在 `DefaultUpstream::stream` 里登记它）。
-pub(crate) const FACE: super::StreamFace = super::StreamFace { fold, fold_clipped };
+pub(crate) const FACE: super::StreamFace = super::StreamFace {
+    fold,
+    fold_clipped,
+    spent: None,
+};
 
 /// 一个原始事件 ⇒ 零或一个归一事件。
 pub(crate) fn fold(data: &str) -> Vec<StreamEv> {

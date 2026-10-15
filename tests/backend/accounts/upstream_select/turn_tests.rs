@@ -441,6 +441,7 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
         refused_until: None,
         barred: None,
         rate: [rate, None],
+        per_pct: [None, None],
     }
 }
 

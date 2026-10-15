@@ -8,6 +8,8 @@
 //! - 「变了」只看显示得出来的几格（各窗口取整的百分比 · 重置时刻 · 状态 · 被拒 · 卡在哪 · 超额）：变了才推一帧、才立刻落盘；
 //!   没变的观测只刷新内存里的时刻，盘上那份的时刻至多落后 [`PERSIST_EVERY`] 秒。
 //! - 很久没流量的号照实只有「最后一次看到是几点」，不编。
+//! - 每个窗口另记「1% ≈ 多少用量」（[`Observed::per_pct`]）：只有中转那一路量得出（[`super::spend`]），量出来那一刻记下；
+//!   换了窗口照留（同一个号的 1% 一样大），量出来超过 [`PER_PCT_KEPT`] 秒就不作数（套餐可能换了）。
 
 use crate::agents::QuotaReading;
 use crate::common::said::Said;
@@ -41,7 +43,20 @@ pub(crate) struct Observed {
     /// 各窗口用量的走势（窗口名 → …）：估「几点到」只按它（[`Observed::eta`]）。只在账上，不上 `quota-read`。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) trend: BTreeMap<String, Trend>,
+    /// 各窗口量出来的「1% ≈ 多少用量」（窗口名 → …）：读只经 [`Observed::tokens_per_pct`]。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) per_pct: BTreeMap<String, PerPct>,
 }
+
+/// 量出来的「1% ≈ 多少用量」：折合输入 token（[`crate::agents::Spent`]）与量出来的时刻。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct PerPct {
+    pub(crate) tokens: u64,
+    pub(crate) at: u64,
+}
+
+/// 量出来的「1% ≈ 多少」过了这么多秒就不作数（套餐可能换了；再量到就换新的）。
+pub(crate) const PER_PCT_KEPT: u64 = 7 * 86_400;
 
 /// 一个窗口用量的走势：此刻这个值头一次看到的时刻 ＋ 同一窗口里上一个**不同**的值（又看到一次同一个值不算新采样：说不出涨多快）。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -65,7 +80,12 @@ pub(crate) const EST_FRESH: u64 = 30 * 60;
 const SAME_WINDOW_SLACK: u64 = 300;
 
 fn same_window(a: &crate::agents::QuotaWindow, b: &crate::agents::QuotaWindow) -> bool {
-    matches!((a.resets_at, b.resets_at), (Some(x), Some(y)) if x.abs_diff(y) <= SAME_WINDOW_SLACK)
+    same_reset(a.resets_at, b.resets_at)
+}
+
+/// 两个重置时刻是不是同一个窗口的（唯一判法；说不出 ⇒ 不是）。
+pub(crate) fn same_reset(a: Option<u64>, b: Option<u64>) -> bool {
+    matches!((a, b), (Some(x), Some(y)) if x.abs_diff(y) <= SAME_WINDOW_SLACK)
 }
 
 /// 新读数 `new`（`at` 看到的）进来之后这个窗口的走势：值没变 ⇒ 照旧；同一窗口里值变了 ⇒ 旧值成了上一次；
@@ -122,6 +142,14 @@ impl Observed {
         Some((u1 - p.used) * 100.0 / ((t.since - p.since) as f64 / 60.0))
     }
 
+    /// ★ 这个窗口「1% ≈ 多少用量」（折合输入 token）：量到过、还没过 [`PER_PCT_KEPT`] ⇒ 那个数；否则 `None`（不猜）。
+    pub(crate) fn tokens_per_pct(&self, name: &str, now: u64) -> Option<u64> {
+        self.per_pct
+            .get(name)
+            .filter(|p| now.saturating_sub(p.at) <= PER_PCT_KEPT)
+            .map(|p| p.tokens)
+    }
+
     /// 一个窗口几点、从哪看到的（没列 ⇒ 这一条的时刻、回包头）。
     pub(crate) fn window_seen(&self, name: &str) -> WindowSeen {
         self.windows_seen.get(name).copied().unwrap_or(WindowSeen {
@@ -131,7 +159,7 @@ impl Observed {
     }
 }
 
-/// ★ 合并的唯一判法：`add` 的窗口逐个并进 `into`（同名窗口看到得晚的那份留下，一样晚 ⇒ `add` 的）；
+/// ★ 合并的唯一判法：`add` 的窗口逐个并进 `into`（同名窗口看到得晚的那份留下，一样晚 ⇒ `add` 的；「1% ≈ 多少」同样量得晚的留下）；
 /// `headers` ⇒ 状态 · 被拒 · 卡在哪 · 超额那几格也换成 `add` 的（只有回包头说得出它们）。
 pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
     let mut meta: BTreeMap<String, WindowSeen> = into
@@ -163,6 +191,11 @@ pub(crate) fn merge(into: &mut Observed, add: &Observed, headers: bool) {
                 into.reading.windows.push(w.clone());
                 meta.insert(w.name.clone(), m);
             }
+        }
+    }
+    for (k, p) in &add.per_pct {
+        if into.per_pct.get(k).is_none_or(|q| q.at <= p.at) {
+            into.per_pct.insert(k.clone(), *p);
         }
     }
     if headers {
@@ -229,16 +262,30 @@ pub(crate) struct Ledger {
     state: Mutex<State>,
     /// 显示变了往哪发节点（生产是进程里那一条；判据各给自己的一条）。
     nodes: super::nodes::Nodes,
+    /// 每发用量的累计（生产是进程里那一本，tap 口往里记；判据各开各的）。
+    spend: std::sync::Arc<super::spend::Spend>,
 }
 
 impl Ledger {
     /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。节点发到进程里那一条。
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
-        Self::with_nodes(path, super::nodes::bus().clone())
+        Self::open(
+            path,
+            super::nodes::bus().clone(),
+            super::spend::book().clone(),
+        )
     }
 
-    /// 同 [`Self::at`]，节点发到给的那一条（判据各用自己的一条，不跟并行的判据串）。
+    /// 同 [`Self::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
     pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
+        Self::open(path, nodes, Default::default())
+    }
+
+    fn open(
+        path: Option<PathBuf>,
+        nodes: super::nodes::Nodes,
+        spend: std::sync::Arc<super::spend::Spend>,
+    ) -> Self {
         let mut mem = BTreeMap::new();
         if let Some(Read::Present(book)) = path.as_deref().map(read_at) {
             for e in book.accounts {
@@ -255,7 +302,13 @@ impl Ledger {
                 stamp,
             }),
             nodes,
+            spend,
         }
+    }
+
+    /// 每发用量的那一本（判据往里喂流事件）。
+    pub(crate) fn spend(&self) -> &super::spend::Spend {
+        &self.spend
     }
 
     /// 用的那一刻比一次盘上的戳：别人写过 ⇒ 读进来、按窗口并进内存（内存里中转那几格照旧 —— 回包头只有中转这一个写者）。
@@ -345,6 +398,15 @@ pub(crate) fn record_seen(
     now: u64,
 ) {
     let key = (agent.to_string(), account.to_string());
+    ledger.spend.answered(sid, agent, account);
+    let per_pct = reading
+        .windows
+        .iter()
+        .filter_map(|w| {
+            let tokens = ledger.spend.pace(agent, account, w)?;
+            Some((w.name.clone(), PerPct { tokens, at: now }))
+        })
+        .collect();
     let heard = Observed {
         agent: key.0.clone(),
         account: key.1.clone(),
@@ -352,6 +414,7 @@ pub(crate) fn record_seen(
         reading,
         windows_seen: BTreeMap::new(),
         trend: BTreeMap::new(),
+        per_pct,
     };
     let (changed, persist, entry) = {
         let mut g = ledger.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -431,6 +494,7 @@ pub(crate) fn record_probe(
         },
         windows_seen,
         trend: BTreeMap::new(),
+        per_pct: BTreeMap::new(),
     };
     let before = ledger.entry(agent, account);
     let (written, at) = write_merged(own, &probed, false)?;
