@@ -53,7 +53,7 @@ describe("mapWithLimit", () => {
     await mapWithLimit(Array.from({ length: 12 }, (_, i) => i), 3, async () => {
       live += 1;
       peak = Math.max(peak, live);
-      await new Promise((r) => setTimeout(r, 1));
+      await new Promise((r) => setTimeout(r, 0));
       live -= 1;
     });
     expect(peak).toBe(3);
@@ -76,7 +76,7 @@ function fanoutProbe(): {
       sessionForced.push(force === true);
       live += 1;
       peak = Math.max(peak, live);
-      await new Promise((r) => setTimeout(r, 2));
+      await new Promise((r) => setTimeout(r, 0));
       live -= 1;
       return [session(origin)];
     },
@@ -115,10 +115,16 @@ describe("collectAccountRows —— 扇出", () => {
   });
 
   it("rows 按 host 顺序拼，不按完成顺序", async () => {
+    // 第一台最后答：等另外两台都答完、再让一拍 —— 若按完成顺序拼，它会排到最后
+    let others = 2;
+    let othersDone!: () => void;
+    const othersAnswered = new Promise<void>((r) => (othersDone = r));
     const f: HostFetchers = {
-      // 第一台最慢 —— 若按完成顺序拼，它会排到最后
       async fetchSessionAccounts(origin) {
-        await new Promise((r) => setTimeout(r, origin === "h0" ? 20 : 1));
+        if (origin === "h0") {
+          await othersAnswered;
+          await new Promise((r) => setTimeout(r, 0));
+        } else if (--others === 0) othersDone();
         return [session(origin)];
       },
       async fetchAccounts(origin) {
