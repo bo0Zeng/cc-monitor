@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +69,8 @@ fun ClaudeReadingPane(
     onRetrySend: (String) -> Unit = {},
     // 正文尾巴上不进时间线的那一块（聊天屏的活卡）。
     trailer: LazyListScope.() -> Unit = {},
+    // 一次工具调用（tool_use id）此刻在等人 ⇒ 卡上那枚标的字（那台写好的）；不在等 ⇒ null。
+    stepBadge: (String) -> String? = { null },
 ) {
     val tokens = LocalAppTokens.current
     // 整个面共享一个 Markwon 实例，避免每张卡重建解析器。
@@ -89,7 +92,7 @@ fun ClaudeReadingPane(
                     is RenderUnit.UserText -> UserTextCard(unit, matched, onRetrySend)
                     is RenderUnit.AssistantMarkdown -> AssistantMarkdownCard(unit, matched, onCopyCode)
                     is RenderUnit.Thinking -> ThinkingCard(unit, matched)
-                    is RenderUnit.ToolCall -> ToolCallCard(unit, matched)
+                    is RenderUnit.ToolCall -> ToolCallCard(unit, matched, stepBadge(unit.toolUseId))
                     // 斜杠命令、bash 输入输出、compact 摘要各有自己的卡片。
                     is RenderUnit.SlashCommand -> SlashCommandCard(unit, matched)
                     is RenderUnit.BashInput -> BashInputCard(unit, matched)
@@ -437,6 +440,7 @@ private fun ThinkingCard(
 private fun ToolCallCard(
     unit: RenderUnit.ToolCall,
     matched: Boolean,
+    badge: String?,
 ) {
     val tokens = LocalAppTokens.current
     // 交互工具（AskUserQuestion / ExitPlanMode）默认展开：在等人决定，折叠会被误以为模型还在跑。
@@ -484,6 +488,10 @@ private fun ToolCallCard(
                 Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 Spacer(Modifier.width(tokens.spacing.sm))
             }
+            badge?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = tokens.warn, maxLines = 1, modifier = Modifier.testTag(READING_STEP_BADGE))
+                Spacer(Modifier.width(tokens.spacing.sm))
+            }
             Caret(expanded)
         }
         AnimatedVisibility(expanded) {
@@ -526,3 +534,6 @@ private const val MAX_RESULT_CHARS = 4000
 private val INTERACTIVE_TOOLS = setOf("AskUserQuestion", "ExitPlanMode")
 
 private fun isInteractiveTool(name: String): Boolean = name in INTERACTIVE_TOOLS
+
+/** 工具卡上「等批准」那一枚（冒烟按它认）。 */
+const val READING_STEP_BADGE = "reading-step-badge"

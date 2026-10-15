@@ -2,12 +2,14 @@ package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveFrame
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
+import com.ccmonitor.mobile.core.claude.link.Switches
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 internal class FakeCoreLink :
     CoreLink,
     SessionWatch {
+    override val state = MutableStateFlow<LinkState>(LinkState.Up())
     override val table = MutableStateFlow(SessionTable())
     private val lineFlow = MutableSharedFlow<RecordLine>(extraBufferCapacity = 64)
     override val lines: SharedFlow<RecordLine> = lineFlow.asSharedFlow()
@@ -82,10 +85,11 @@ internal class FakeCoreLink :
         tone: Tone = Tone.PLAIN,
         path: String? = "/p/$sid.jsonl",
         running: Boolean = tone == Tone.NOW,
+        switch: Switches? = null,
     ) {
         table.value =
             table.value.copy(
-                sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd, activity = Toned("空闲", tone), running = running)),
+                sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd, activity = Toned("空闲", tone), running = running, switch = switch)),
             )
     }
 

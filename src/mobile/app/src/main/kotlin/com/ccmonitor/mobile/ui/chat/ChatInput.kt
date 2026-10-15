@@ -46,8 +46,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.CommandScope
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.SessionAct
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
@@ -89,7 +89,7 @@ internal fun ChatInputArea(
     // 输入区是骨架（`--bg-2`），输入框底 `--field-bg`、边 `--border-medium`、聚焦 `--accent`；➤ / ■ 是这一屏唯一的主按钮。
     Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
-            state.note?.let { NoteLine(it) }
+            chipLine(state)?.let { (text, warn) -> NoteLine(text, warn) }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = edited(draft, it, actions.editDraft) },
@@ -121,11 +121,11 @@ internal fun ChatInputArea(
                         },
                         modifier = Modifier.semantics { contentDescription = plus }.testTag(ChatTestTags.PLUS),
                     ) { PhIcon(Ph.Plus, contentDescription = null) }
-                    SwitchChipView(state.model, copyText("session.model.title"), enabled = !busy, tag = ChatTestTags.MODEL_CHIP) {
+                    SwitchChipView(state.model, copyText("session.model.title"), enabled = !busy && state.model.blocked == null, tag = ChatTestTags.MODEL_CHIP) {
                         actions.loadPicks()
                         sheet = InputSheet.Models
                     }
-                    SwitchChipView(state.permission, copyText("session.permission.title"), enabled = !busy, tag = ChatTestTags.PERMISSION_MODE) {
+                    SwitchChipView(state.permission, copyText("session.permission.title"), enabled = !busy && state.permission.blocked == null, tag = ChatTestTags.PERMISSION_MODE) {
                         actions.loadPicks()
                         sheet = InputSheet.Modes
                     }
@@ -173,8 +173,11 @@ private fun InputSheets(
     fill: (String) -> Unit,
 ) {
     when (sheet) {
-        InputSheet.Models -> PickSheet(copyText("session.model.title"), state.picks, { it.models }, state.model.value, { set(null) }) { actions.switchModel(it) }
-        InputSheet.Modes -> PickSheet(copyText("session.permission.title"), state.picks, { it.modes }, state.permission.value, { set(null) }) { actions.switchPermission(it) }
+        InputSheet.Models ->
+            PickSheet(copyText("session.model.title"), state.picks, { listOfNotNull(it.modelDefault) + it.models }, state.model.value, { it.modelNote }, { set(null) }) {
+                actions.switchModel(it)
+            }
+        InputSheet.Modes -> PickSheet(copyText("session.permission.title"), state.picks, { it.modes }, state.permission.value, { null }, { set(null) }) { actions.switchPermission(it) }
         InputSheet.Plus, InputSheet.Commands, InputSheet.Skills ->
             PlusSheet(
                 at = sheet,
@@ -221,14 +224,24 @@ internal sealed interface InputSheet {
     ) : InputSheet
 }
 
-/** chip 上方那一行：那台写好的那一句（换的结局没成 · 动作没送到）。 */
+/**
+ * chip 上方那一行写什么（纯函数，判据读）：换的结局没成 · 动作没送到那一句（`true` ＝ 琥珀）优先；否则此刻不能换的那一句（灰）；
+ * 两颗为同一个原因不能换只写一遍。都没有 ⇒ `null`。
+ */
+internal fun chipLine(state: ChatUiState): Pair<String, Boolean>? =
+    state.note?.let { it to true } ?: (state.model.blocked ?: state.permission.blocked)?.let { it to false }
+
+/** chip 上方那一行：都是那台写好的那一句。 */
 @Composable
-private fun NoteLine(text: String) {
+private fun NoteLine(
+    text: String,
+    warn: Boolean,
+) {
     Text(
         text,
         modifier = Modifier.fillMaxWidth().padding(vertical = LocalAppTokens.current.spacing.xs).testTag(ChatTestTags.NOTE),
         style = MaterialTheme.typography.bodySmall,
-        color = LocalAppTokens.current.warn,
+        color = if (warn) LocalAppTokens.current.warn else MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -310,7 +323,7 @@ private fun SendButton(
     }
 }
 
-/** 模型 · 权限档的抽屉：那台给的那几项，上一次换成了的那一项勾上。点一项 ⇒ 收起、chip 原位转圈。 */
+/** 模型 · 权限档的抽屉：那台给的那几项（模型的第一项是那台的「默认」），上一次换成了的那一项勾上；底下一行灰字照那台的。点一项 ⇒ 收起、chip 原位转圈。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PickSheet(
@@ -318,6 +331,7 @@ private fun PickSheet(
     picks: Picks?,
     of: (Picks) -> List<NewSessionPick>,
     current: String?,
+    note: (Picks) -> String?,
     close: () -> Unit,
     pick: (NewSessionPick) -> Unit,
 ) {
@@ -327,21 +341,23 @@ private fun PickSheet(
             when {
                 picks == null -> SheetLine(copyText("newSession.facts.loading"))
                 picks.error != null -> SheetLine(picks.error)
-                else ->
+                else -> {
                     of(picks).forEach { p ->
                         SheetRow(p.text, end = if (p.value == current) CHECK_GLYPH else null) {
                             close()
                             pick(p)
                         }
                     }
+                    note(picks)?.let { SheetLine(it) }
+                }
             }
         }
     }
 }
 
 /**
- * ［+］面板：命令 › · Skill ›（那台给这条会话的那一份）；分隔线下两个一次性动作：压缩上下文（不确认）· 清空会话（先确认）。
- * 两个动作只在那份清单里有那条内置命令时画；先不先确认照那一条的 `confirm`（那台判的）。点命令 · Skill 只填进输入框。
+ * ［+］面板：命令 › · Skill ›（那台给这条会话的那一份）；分隔线下两个一次性动作：压缩上下文 · 清空会话。
+ * 在不在 · 说哪一句 · 先不先确认都照那份清单的 `compact` / `clear`（那台给的）。点命令 · Skill 只填进输入框。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -381,12 +397,9 @@ private fun PlusRows(
 ) {
     SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}", next = true, enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
     SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}", next = true, enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
-    val acts = plusActions(list)
+    val acts = oneShots(list)
     if (acts.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = LocalAppTokens.current.spacing.xs))
-    acts.forEach { a ->
-        val label = if (a.kind == PlusAction.Kind.COMPACT) copyText("mobPlus.row.compact") else copyText("mobPlus.row.clear")
-        SheetRow(label) { if (a.confirm) confirmClear(a.say) else say(a.say) }
-    }
+    acts.forEach { (label, a) -> SheetRow(label) { if (a.confirm) confirmClear(a.say) else say(a.say) } }
 }
 
 /** 命令 › · Skill › 那一页：命令按那台写的「住哪」分组；点一行只填进输入框。 */
@@ -413,7 +426,9 @@ private fun CommandList(
         } else {
             groupsOf(list.commands).forEach { (head, rows) ->
                 item(key = "head:$head") { SheetHead(head) }
-                items(rows, key = { "cmd:" + it.scope + it.name }) { c -> SheetRow(SLASH + c.name, sub = c.text) { fill(commandDraft(c)) } }
+                items(rows, key = { "cmd:" + it.scope + it.name }) { c ->
+                    SheetRow(SLASH + c.name, sub = c.text, end = commandMarks(c).joinToString(MARK_SEP).ifEmpty { null }) { fill(commandDraft(c)) }
+                }
             }
         }
         items(list.problems) { SheetLine(it) }
@@ -426,25 +441,12 @@ internal fun commandDraft(c: SessionCommand): String = "$SLASH${c.name} "
 /** 命令按那台写的「住哪」那一格分组，组序照清单里第一次出现的序（那台排好了：内置 · 本项目 · 用户级）。 */
 internal fun groupsOf(commands: List<SessionCommand>): List<Pair<String, List<SessionCommand>>> = commands.groupBy { it.scopeText }.toList()
 
-/** ［+］面板分隔线下那两个一次性动作。 */
-internal data class PlusAction(
-    val kind: Kind,
-    /** 经 `session-say` 说的那一句。 */
-    val say: String,
-    /** 先确认（那台给那条命令标的）。 */
-    val confirm: Boolean,
-) {
-    enum class Kind { COMPACT, CLEAR }
-}
+/** ［+］面板分隔线下那两个一次性动作：那份清单里给了哪一个画哪一个（行字是骨架，说的那一句与先不先确认是那台的）。 */
+internal fun oneShots(list: SessionCommands): List<Pair<String, SessionAct>> =
+    listOfNotNull(list.compact?.let { copyText("mobPlus.row.compact") to it }, list.clear?.let { copyText("mobPlus.row.clear") to it })
 
-/**
- * 那份清单里有没有压缩 · 清空那两条内置命令：有 ⇒ 画那一行、说它的 `/name`、照它的 `confirm` 先不先确认；没有 ⇒ 不画。
- * 〔后端缺口〕那台注册表里有「请求压缩的那一句」却不上线，「清空的那一句」也没有：这里只好按内置命令名认这两条，那台补上两格后改读它们。
- */
-internal fun plusActions(list: SessionCommands): List<PlusAction> =
-    listOf(PlusAction.Kind.COMPACT to BUILTIN_COMPACT, PlusAction.Kind.CLEAR to BUILTIN_CLEAR).mapNotNull { (kind, name) ->
-        list.commands.firstOrNull { it.scope == CommandScope.BUILTIN && it.name == name }?.let { PlusAction(kind, SLASH + it.name, it.confirm) }
-    }
+/** 一条命令行尾的标（那台写好的「带参数」「先确认」，有才画）。 */
+internal fun commandMarks(c: SessionCommand): List<String> = listOfNotNull(c.needsArgsText, c.confirmText)
 
 /** 清空会话的确认框：默认焦点在「取消」；「清空」用主按钮（原对话还在会话列表里，不是撤不回的事）。 */
 @Composable
@@ -524,7 +526,4 @@ private const val INPUT_MAX_LINES = 4
 private const val LIST_MAX_HEIGHT = 480
 private const val SLASH = "/"
 private const val CHECK_GLYPH = "✓"
-
-/** 那一家内置的压缩 · 清空两条命令名（见 [plusActions] 的缺口注）。 */
-private const val BUILTIN_COMPACT = "compact"
-private const val BUILTIN_CLEAR = "clear"
+private const val MARK_SEP = " · "

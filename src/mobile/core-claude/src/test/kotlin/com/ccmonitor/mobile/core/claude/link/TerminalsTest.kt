@@ -33,6 +33,13 @@ class TerminalsTest {
     }
 
     @Test
+    fun `一条会话在哪个终端里：认名单上里面跑着它的那一行（那台认的）；没有 ⇒ 没有`() {
+        val rows = TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!
+        assertEquals("demo-cc", TerminalsList.holding(rows, "sid-a")?.name)
+        assertNull(TerminalsList.holding(rows, "sid-zz"))
+    }
+
+    @Test
     fun `terminal-preview：抓纯文字一屏；应答按行拼回`() {
         assertEquals(mapOf("terminal" to "tmux-1", "color" to false), TerminalPreview.args("tmux-1"))
         assertEquals("line one\nline two", TerminalPreview.of(terminals.obj("terminal-preview")!!.obj("reply")))

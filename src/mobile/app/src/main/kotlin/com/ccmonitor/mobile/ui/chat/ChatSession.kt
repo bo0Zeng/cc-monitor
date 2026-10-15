@@ -16,15 +16,11 @@ import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
-import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionNew
-import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
-import com.ccmonitor.mobile.core.claude.link.SessionPermission
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
-import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
@@ -43,6 +39,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -102,12 +99,18 @@ data class SwitchChip(
     val value: String? = null,
     /** 正在换成的那一项（写它的字、转圈）；不在换 ⇒ `null`。 */
     val pending: NewSessionPick? = null,
+    /** 此刻不能换：那台写好的那一句（会话帧的 `switch`；那台离线 ⇒ 离线那一句）；能换 ⇒ `null`。 */
+    val blocked: String? = null,
 )
 
 /** 两个 chip 抽屉里列的：那台 `session-new-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
 data class Picks(
     val models: List<NewSessionPick> = emptyList(),
     val modes: List<NewSessionPick> = emptyList(),
+    /** 模型抽屉第一项「默认」（那台给的值与字）；那一家没有 ⇒ `null`。 */
+    val modelDefault: NewSessionPick? = null,
+    /** 模型抽屉底那一行灰字（那台写的）；没有 ⇒ `null`。 */
+    val modelNote: String? = null,
     val error: String? = null,
 )
 
@@ -172,6 +175,7 @@ class ChatSession(
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private val draft = target as? ChatTarget.Draft
+    private val chips = ChatChips(link, machine, scope, _state) { sid }
 
     /** 新建会话那一张的选项（机器以外的那几样：agent · 账号 · 轮换 · 目录）；已有的那条 ⇒ `null`。 */
     val picker: NewSessionPicker? = draft?.let { NewSessionPicker(link, machine, it.cwd, it.agent, scope) }
@@ -219,11 +223,41 @@ class ChatSession(
             draftAsked = true
             scope.launch { cache.draft(draftKey())?.let { _state.value = _state.value.copy(draft = it) } }
         }
+        if (!succeeding) {
+            succeeding = true
+            scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
+        }
         val s = sid ?: return
         if (follow == null) follow = scope.launch { attach(s) }
     }
 
     private var draftAsked = false
+    private var succeeding = false
+
+    /**
+     * 这条会话被顶替了（清空之后同一个进程另起一份记录，那台在 `session_removed.by` 里说是哪一条）⇒ 跟过去：换 sid、从新记录读起；
+     * 旧的那条照旧在会话列表里（已结束）。
+     */
+    private suspend fun succeed(by: String) {
+        lock.withLock {
+            if (sid == by) return
+            follow?.cancel()
+            attached = false
+            syncHold()
+            sid = by
+            path = null
+            head = 0L
+            nextSeq = 0L
+            tailLines = PAGE_LINES
+            anchorOffset = null
+            anchorPath = null
+            records.clear()
+            board.clear()
+            _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
+            publishLocked()
+            follow = scope.launch { attach(by, fresh = true) }
+        }
+    }
 
     /** 草稿存在哪一格：这条会话；新建会话还没起成 ⇒ 新建会话那一张。 */
     private fun draftKey(): String = sid ?: Draft.NEW
@@ -267,88 +301,18 @@ class ChatSession(
         }
     }
 
-    /**
-     * 换模型：那台送命令、从记录里读回换成了什么（`session-model`）。读回 `done` 才换字；没读回（`unsure` · 超时）· 被拒 ⇒ 回原字 ＋ chip 上方那一句。
-     * 已经在换（模型或权限档）⇒ 不再起一趟。
-     */
-    fun switchModel(pick: NewSessionPick) =
-        switching(pick, { it.model }, { st, c -> st.copy(model = c) }) { s ->
-            val r = link.call(SessionModel.COMMAND, SessionModel.args(s, pick.value), SWITCH_MS)
-            when {
-                r is Reply.Ok ->
-                    SessionModel.of(r.data)?.let { Switched(it.result, it.model, it.said) }
-                        ?: Switched.failed(unreadableReply(machine, SessionModel.COMMAND, r.data.toString()).text)
-                r == Reply.TimedOut -> Switched.failed(copyText("session.model.unsure"))
-                else -> Switched.failed(r.problem(machine, SessionModel.COMMAND)?.text)
-            }.orUnsure(copyText("session.model.unsure"))
-        }
+    /** 换模型（见 [ChatChips.switchModel]）。 */
+    fun switchModel(pick: NewSessionPick) = chips.switchModel(pick)
 
-    /** 切权限档（`session-permission`）：同 [switchModel]，读回的字是那一档写给人看的字。 */
-    fun switchPermission(pick: NewSessionPick) =
-        switching(pick, { it.permission }, { st, c -> st.copy(permission = c) }) { s ->
-            val r = link.call(SessionPermission.COMMAND, SessionPermission.args(s, pick.value), SWITCH_MS)
-            when {
-                r is Reply.Ok ->
-                    SessionPermission.of(r.data)?.let { Switched(it.result, it.modeText, it.said) }
-                        ?: Switched.failed(unreadableReply(machine, SessionPermission.COMMAND, r.data.toString()).text)
-                r == Reply.TimedOut -> Switched.failed(copyText("session.permission.unsure"))
-                else -> Switched.failed(r.problem(machine, SessionPermission.COMMAND)?.text)
-            }.orUnsure(copyText("session.permission.unsure"))
-        }
+    fun switchPermission(pick: NewSessionPick) = chips.switchPermission(pick)
 
-    /** 一趟换的结局：[text] 读回的字，[said] 那台那一句。 */
-    private data class Switched(
-        val result: ModeSwitchResult,
-        val text: String?,
-        val said: String?,
-    ) {
-        /** 没成却没那一句 ⇒ 补上「结果未知」那一句（unsure 时那台多半带着自己的那一句）。 */
-        fun orUnsure(unsure: String): Switched = if (result != ModeSwitchResult.DONE && said == null) copy(said = unsure) else this
-
-        companion object {
-            fun failed(said: String?) = Switched(ModeSwitchResult.UNSURE, null, said)
-        }
-    }
-
-    private fun switching(
-        pick: NewSessionPick,
-        chipOf: (ChatUiState) -> SwitchChip,
-        put: (ChatUiState, SwitchChip) -> ChatUiState,
-        ask: suspend (String) -> Switched,
-    ) {
-        val s = sid ?: return
-        val st = _state.value
-        if (st.model.pending != null || st.permission.pending != null) return
-        _state.value = put(st, chipOf(st).copy(pending = pick)).copy(note = null)
-        scope.launch {
-            val r = ask(s)
-            val now = _state.value
-            val was = chipOf(now).copy(pending = null)
-            val chip = if (r.result == ModeSwitchResult.DONE && r.text != null) was.copy(text = r.text, value = pick.value) else was
-            _state.value = put(now, chip).copy(note = if (r.result == ModeSwitchResult.DONE) r.said.takeIf { r.text == null } else r.said)
-        }
-    }
-
-    /** 抽屉里列什么：那台给这条会话那一家的模型与权限档（会话表里认那一家；认不出 ⇒ 那台列的第一家）。问过一次就不再问。 */
-    fun loadPicks() {
-        if (_state.value.picks?.error == null && _state.value.picks != null) return
-        val agent =
+    fun loadPicks() =
+        chips.loadPicks(
             sid?.let {
                 link.table.value.sessions[it]
                     ?.agentKind
-            } ?: draft?.agent
-        scope.launch {
-            val r = link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS)
-            val picks =
-                when (r) {
-                    is Reply.Ok ->
-                        SessionNewFacts.of(r.data)?.let { all -> SessionNewFacts.pick(all, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty()) } }
-                            ?: Picks(error = unreadableReply(machine, SessionNewFacts.COMMAND, r.data.toString()).text)
-                    else -> Picks(error = r.problem(machine, SessionNewFacts.COMMAND)?.text.orEmpty())
-                }
-            _state.value = _state.value.copy(picks = picks)
-        }
-    }
+            } ?: draft?.agent,
+        )
 
     /** ［+］面板打开：问那台这条会话能用的命令与 Skill（每开一次问一次：项目里的命令文件可能刚改过）。 */
     fun loadCommands() {
@@ -554,14 +518,14 @@ class ChatSession(
     private suspend fun attach(
         s: String,
         fresh: Boolean = false,
-    ) {
+    ) = coroutineScope {
         val events = Channel<Event>(Channel.UNLIMITED)
         val subscribed = CompletableDeferred<Unit>()
         val fromSubscribed = CompletableDeferred<Unit>()
-        scope.launch {
+        launch {
             link.lines.onSubscription { subscribed.complete(Unit) }.collect { if (it.sid == s) events.send(Event.Line(it)) }
         }
-        scope.launch {
+        launch {
             watch.from.onSubscription { fromSubscribed.complete(Unit) }.collect { if (it.sid == s) events.send(Event.From(it.seq)) }
         }
         subscribed.await()
@@ -569,13 +533,15 @@ class ChatSession(
         // 先上缓存（离线也看得到上次那几条），再跟那台对齐；刚起的那条没有可上的。
         if (!fresh) lock.withLock { restoreLocked(s) }
         cache.viewed(s)
-        scope.launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
+        launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
         followLive(s)
         attached = true
         syncHold()
         watchRunning(s)
-        val p = recordPath(s, fresh) ?: return
+        with(chips) { watch(s) }
+        val p = recordPath(s, fresh) ?: return@coroutineScope
         path = p
+        launch { chips.readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { reloadLocked(p) }
 
@@ -767,19 +733,19 @@ class ChatSession(
      * 这条会话的活卡：只收它主运行的（子运行的卡不进主线，同桌面主 tab）。换了一条流 ⇒ 这条连接上的号全作废、全撤，
      * 那台在新的那条上给名单里的会话补整卡。
      */
-    private fun followLive(s: String) {
-        scope.launch {
+    private fun CoroutineScope.followLive(s: String) {
+        launch {
             link.live.collect { f ->
                 if (f.sid == s && board.apply(f)) _state.value = _state.value.copy(live = board.cardsOf(s))
             }
         }
-        scope.launch {
+        launch {
             link.epoch.drop(1).collect { if (board.clear()) _state.value = _state.value.copy(live = emptyList()) }
         }
     }
 
-    private fun watchRunning(s: String) {
-        scope.launch {
+    private fun CoroutineScope.watchRunning(s: String) {
+        launch {
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
                 val running = t.sessions[s]?.running == true
@@ -885,8 +851,6 @@ class ChatSession(
         private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L
 
-        /** 换模型 · 切档等多久读回（那台送了命令要等那一家重画 / 写记录）；到点没读回 ⇒ 回原字、说结果未知。 */
-        private const val SWITCH_MS = 20_000L
         private const val READ_MS = 15_000L
 
         /** 改得了的拒因（画面变了 · 一时认不出）：给［再发一次］；会话已结束 · 不归这里管的 ⇒ 重试没用。 */

@@ -83,7 +83,7 @@ class ResidentFeed(
 ) : CoreLink,
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
-    val state: StateFlow<LinkState> = stateFlow.asStateFlow()
+    override val state: StateFlow<LinkState> = stateFlow.asStateFlow()
 
     private val sshFlow = MutableStateFlow(false)
 

@@ -52,15 +52,11 @@ export const REAL_OPS = new Set([
   "prefs-set",
   // 改注解（星标 · 改名 · 隐藏）：真后端写台架盘上那一份，它的观测那一侧照新注解重判隐藏、推 `changed/session_hidden`。
   "history-annotate",
+  // 起新会话框那一份事实（最近的目录 · 有没有 tmux · 各家 · 分叉那一形的起点与时刻字）：真后端照台架盘上的记录与那台的 tmux 答。
+  "session-new-facts",
+  // 各台的 MCP 列表与小标：真后端读台架盘上的用户级配置、各号的「要登录」那一笔与活会话记录里的断开。
+  "mcp-read",
 ]);
-
-/**
- * 一问里有几格交真后端答、其余还是场景合成的：这几格是核心写的字（那一家可选的模型 · 权限档与它们的字 · 抽屉底那一句），
- * 场景不许替它写；其余几格（最近的目录 · 有没有 tmux · 分叉源那三格）跟着机器页那一族还是合成的。
- */
-export const REAL_CELLS: Record<string, readonly string[]> = {
-  "session-new-facts": ["agents"],
-};
 
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
@@ -323,17 +319,6 @@ export class FakeBackend {
         });
     }
     const handler = this.world.ops[op];
-    const realCells = REAL_CELLS[op];
-    if (handler && realCells) {
-      return Promise.all([Promise.resolve().then(() => handler(origin, req, this.world)), this.real(origin, op, req, args.view)]).then(
-        ([own, body]) => {
-          const real = JSON.parse(dec.decode(body)) as Record<string, unknown>;
-          const v = { ...(own as Record<string, unknown>), ...Object.fromEntries(realCells.map((k) => [k, real[k]])) };
-          return enc.encode(JSON.stringify(v)).buffer;
-        },
-        (e: unknown) => Promise.reject(refusal(e, op)),
-      );
-    }
     if (!handler) {
       if (!this.world.quiet?.includes(op)) this.miss(`帧命令 ${op}`);
       return Promise.reject({ err: "Unsupported", body: [] });

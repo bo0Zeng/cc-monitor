@@ -23,17 +23,18 @@ internal fun monoMs(): Long = System.nanoTime() / NANOS_PER_MS
 
 private const val NANOS_PER_MS = 1_000_000L
 
-/**
- * 聊天屏的需手动：钉条（输入框上方）＋ 答题抽屉。[key] 同那条对话的 key（一条对话一份）。
- */
+/** 聊天屏那一块需手动的持有者。[key] 同那条对话的 key（一条对话一份）。 */
 @Composable
-fun ChatNeeds(
+fun rememberChatNeeds(
     key: String,
     feed: ResidentFeed,
     sid: Flow<String?>,
     machine: String,
-) {
-    val vm: NeedsViewModel = viewModel(key = "needs/$key") { NeedsViewModel(feed, sid, machine) }
+): NeedsViewModel = viewModel(key = "needs/$key") { NeedsViewModel(feed, sid, machine) }
+
+/** 聊天屏的需手动：钉条（输入框上方）＋ 答题抽屉。 */
+@Composable
+fun ChatNeeds(vm: NeedsViewModel) {
     val ui by vm.desk.state.collectAsStateWithLifecycle()
     val d = vm.desk
     ui.bar?.let { NeedsBarView(it, ::monoMs, onAnswer = d::open) }

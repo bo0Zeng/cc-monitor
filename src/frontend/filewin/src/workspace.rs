@@ -97,6 +97,8 @@ pub struct Workspace {
     undo_tag: u64,
     /// 空格弹出的「看一眼」浮层（预览栏关着 / 窄档时；跟焦点那一栏的光标）。`None` ＝ 收着。
     pub peek: Option<super::preview::Preview>,
+    /// 「进度」表下一帧多高（照 [`super::progress::table_ui`] 量出来差多少补上）。
+    pub(super) progress_h: f32,
     /// 焦点是不是键盘走过去的（按了 Tab ⇒ 是；按了鼠标 ⇒ 不是）：是才画焦点环。
     pub kb_nav: bool,
     /// 中档 / 窄档的左栏是一层盖在列表上的抽屉（不挤列表）：开着没有。宽档照旧用 `sidebar_open`。
@@ -317,6 +319,7 @@ impl Workspace {
             undo_for: Default::default(),
             undo_tag: 0,
             peek: None,
+            progress_h: 0.0,
             kb_nav: false,
             drawer_open: false,
             toasted: None,

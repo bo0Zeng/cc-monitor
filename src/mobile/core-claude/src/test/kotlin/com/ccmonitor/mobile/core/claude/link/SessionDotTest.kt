@@ -47,7 +47,7 @@ class SessionDotTest {
     fun `会话表折 session_state：记下去向与那一句；同一条再宣告 ⇒ 去向抹掉`() {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_state")[0], breaks::add)
-        assertEquals(SessionFate(SessionFate.State.RECONNECTABLE, "Claude 已退出"), t.fates["s1"])
+        assertEquals(SessionFate.State.RECONNECTABLE to "Claude 已退出", t.fates["s1"]?.let { it.state to it.text })
         assertFalse("去向不进活会话表", "s1" in t.sessions)
         t = t.step(golden("session_added")[0], breaks::add)
         assertNull("又活了 ⇒ 去向作废", t.fates["s1"])

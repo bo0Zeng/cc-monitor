@@ -61,6 +61,8 @@ sealed interface Deploying {
 
 /** 一台的常驻流对外的那几样：会话表 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */
 interface CoreLink {
+    /** 此刻通不通（核心判的）：断着 ⇒ 那台离线，屏上那几颗要连着那台的按钮都灰。 */
+    val state: StateFlow<LinkState>
     val table: StateFlow<SessionTable>
     val lines: SharedFlow<RecordLine>
 

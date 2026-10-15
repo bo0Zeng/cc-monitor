@@ -906,8 +906,8 @@ pub fn task_lines(v: &super::progress::View) -> Vec<String> {
     vec![v.detail.clone()]
 }
 
-/// 「进度」表一行占多高：一行小字 36；失败摊开的每多一行 ＋16。
-pub fn task_row_height(v: &super::progress::View) -> f32 {
+/// 「进度」表一行至少多高：一行小字 36；失败摊开的每多一行 ＋16（字排出来更高就照字）。
+fn task_row_height(v: &super::progress::View) -> f32 {
     36.0 + 16.0 * (task_lines(v).len().max(1) - 1) as f32
 }
 

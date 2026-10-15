@@ -32,13 +32,47 @@ data class LiveSession(
     val activity: Toned,
     /** 那台判得出它一轮在跑（帧上 `activity` 是 `working`）。判不出（`activity` 缺席：状态不明 · 读记录中）⇒ 不算在跑。聊天屏的停止键只认它。 */
     val running: Boolean = false,
+    /** 此刻能不能换模型 · 权限档（那台判的）；帧上没有这一格 ⇒ `null`（不灰，由两条命令自己照实回）。 */
+    val switch: Switches? = null,
 )
+
+/** 会话帧 `switch` 那一格：两样各自此刻能不能换。 */
+data class Switches(
+    val model: CanSwitch,
+    val permission: CanSwitch,
+) {
+    companion object {
+        /** `{model: {can, why?}, permission: {can, why?}}`；形状认不出 ⇒ `null`。 */
+        fun of(m: Map<String, Any?>?): Switches? {
+            m ?: return null
+            return Switches(CanSwitch.of(m.obj("model")) ?: return null, CanSwitch.of(m.obj("permission")) ?: return null)
+        }
+    }
+}
+
+/** 一样此刻能不能换：[why] 为 `null` ＝ 能换；不能 ⇒ 那台写好的那一句。 */
+data class CanSwitch(
+    val why: String?,
+) {
+    val can: Boolean get() = why == null
+
+    companion object {
+        fun of(m: Map<String, Any?>?): CanSwitch? =
+            when (m?.str("can")) {
+                "yes" -> CanSwitch(null)
+                "no" -> m.str("why")?.let(::CanSwitch)
+                else -> null
+            }
+    }
+}
 
 /** `session_state` 帧：一条会话离开「活」之后的去向（那台后端自己裁）＋ 写好的短名。 */
 data class SessionFate(
     val state: State,
     /** 「Claude 已退出」「已结束」（`state_text`，照抄）。 */
     val text: String,
+    /** 离开「活」之后能不能换（那台判的，帧上的 `switch`）；没有 ⇒ `null`。 */
+    val switch: Switches? = null,
 ) {
     /** 线上两个词（`reconnectable` · `ended`）；认不出 ⇒ `null`（不猜）。 */
     enum class State {
@@ -116,6 +150,8 @@ data class SessionTable(
     /** 后端说「清单报完了」（`sessions_replayed`）。 */
     val replayed: Boolean = false,
     val needsResync: Boolean = false,
+    /** 被顶替的会话 ⇒ 顶替它的那一条（`session_removed.by`：清空之后同一个进程另起的那一份记录）。 */
+    val successors: Map<String, String> = emptyMap(),
 ) {
     /** 喂一帧；不是会话帧 ⇒ 原样返回。缺必填格 ⇒ [onBreak] 报、表不动。 */
     fun step(
@@ -137,10 +173,14 @@ data class SessionTable(
         val sid = frame.str("sid") ?: return null
         val state = SessionFate.State.of(frame.str("state")) ?: return null
         val text = frame.str("state_text") ?: return null
-        return copy(fates = fates + (sid to SessionFate(state, text)))
+        return copy(fates = fates + (sid to SessionFate(state, text, Switches.of(frame.obj("switch")))))
     }
 
-    private fun removed(frame: Map<String, Any?>): SessionTable? = frame.str("sid")?.let { copy(sessions = sessions - it) }
+    private fun removed(frame: Map<String, Any?>): SessionTable? =
+        frame.str("sid")?.let { sid ->
+            val by = frame.str("by")
+            copy(sessions = sessions - sid, successors = if (by != null) successors + (sid to by) else successors)
+        }
 
     /**
      * 状态帧：改那一条的字与语气；带着 `path`（宣告以后记录才出现 · 换了一份，那台在那一行的 line 帧之前先发）⇒ 路径换成它。
@@ -155,6 +195,7 @@ data class SessionTable(
                 activity = Toned(text, toneOf(frame.str("activity_tone"))),
                 running = frame.str("activity") == RUNNING,
                 path = frame.str("path") ?: prior.path,
+                switch = Switches.of(frame.obj("switch")),
             )
         return copy(sessions = sessions + (sid to now))
     }
@@ -183,6 +224,7 @@ data class SessionTable(
                 attachable = m.bool("attachable"),
                 activity = Toned(text, toneOf(m.str("activity_tone"))),
                 running = m.str("activity") == RUNNING,
+                switch = Switches.of(m.obj("switch")),
             )
         }
 
