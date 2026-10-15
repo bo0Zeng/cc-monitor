@@ -1422,13 +1422,14 @@ type WirePath = string | { b16: string };
 入参 `NoArgs` · 回包 `QuotaRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type LoginState = "ok" | "needsLogin" | "needsKey";
 type NoArgs = Record<symbol, never>;
 type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
 /**
  * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, seenAt: number, seenAtText: Words, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, seenAt: number, seenAtText: Words, 
 /**
  * 别台的钟走在前面时才有。
  */
@@ -1465,7 +1466,7 @@ windows?: Array<WindowShow>,
  * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：`usage_of` 写。
  */
 usage: Usage, };
-type QuotaCandidate = { agent: string, account: string, kind: QuotaKind, };
+type QuotaCandidate = { agent: AgentKind, account: string, kind: QuotaKind, };
 type QuotaCell = { text: Words, tone: Tone, };
 type QuotaEarliestReturn = { account: string, at: number, atText: Words, atRelText?: Words, };
 type QuotaKind = "sub" | "api";
@@ -1561,7 +1562,7 @@ type QuotaUnseen = { rows: Array<Array<QuotaCell>>,
 /**
  * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */
@@ -1693,13 +1694,14 @@ type Words = string;
 入参 `QuotaProbeReq` · 回包 `Probed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type ProbeFrom = "usage";
 type ProbeState = "read" | "unreadable";
 type Probed = { 
 /**
- * 路由第 1 段：哪一家（同入参）。
+ * 哪一家（同入参，线上的 kind）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 账号库里的号（同入参）。
  */
@@ -1732,7 +1734,7 @@ type QuotaProbeReq = {
 /**
  * 哪一家（线上的 kind）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 账号库里的号（配置目录末段；账号 0 是 `0`）。
  */
@@ -1767,6 +1769,7 @@ warnedAt?: number, };
 入参 `RotationFactsReq` · 回包 `RotationFactsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Fact = { 
 /**
  * 路由第 2 段。
@@ -1797,7 +1800,7 @@ type RotationFactsReq = {
 /**
  * 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
  */
-agent?: string, };
+agent?: AgentKind, };
 type WinFact = { open: boolean, used: number, resets?: number, 
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
@@ -1816,6 +1819,7 @@ resetsText?: string, rate?: number, };
 入参 `RotationTryReq` · 回包 `RotationTryReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -1925,7 +1929,7 @@ useNow?: string,
 /**
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */
-agent?: string, };
+agent?: AgentKind, };
 ```
 
 码：`bad_args` · `bad_strategy`
@@ -2585,7 +2589,8 @@ type AccountsListReq = {
 /**
  * 这次起会话的是哪一家（线上的 kind，同 `session-new-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
  */
-agent: string, };
+agent: AgentKind, };
+type AgentKind = string;
 type Badge = { text: Words, warn: boolean, title: Words, };
 type ListMeta = { 
 /**
@@ -11050,6 +11055,7 @@ type PinnedDay = { origin: Origin, day: string, };
 入参 `OptinReq` · 回包 `Optin`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Optin = { 
 /**
  * `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
@@ -11075,7 +11081,7 @@ snippet: string | null,
  * 这台我们的中转此刻在不在听。
  */
 listening: boolean, };
-type OptinReq = { agent: string, };
+type OptinReq = { agent: AgentKind, };
 ```
 
 码：`bad_args` · `failed`
@@ -11211,23 +11217,56 @@ type Origin = string;
 入参 `ProbeReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
 type ProbeReq = { 
 /**
  * 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
  */
 ticket: string, 
 /**
- * 那台的配置：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …
+ * 那台的配置。
  */
-machine: Record<string, unknown>, 
+machine: MachineConfig, 
 /**
  * 已保存的那一份（可缺）。
  */
-saved?: Record<string, unknown>, 
+saved?: MachineConfig | null, 
 /**
  * 跳板那一台的配置（可缺）。
  */
-jump?: Record<string, unknown>, };
+jump?: MachineConfig | null, };
 ```
 
 码：`bad_args` · `bad_jump` · `failed`

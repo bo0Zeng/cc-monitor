@@ -2313,7 +2313,8 @@ fn the_list_product_says_who_is_selectable_and_who_is_the_default() {
         );
         // 起会话跟随（没有上次的号）：默认号选得了 ⇒ 它；否则不指定号。
         use crate::control::launch_account::{pick, Asked, Library, Picked};
-        let typed = super::list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
+        let typed =
+            super::list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
         let picked = pick(&Asked::Follow, &Library::of_product(&typed), None, None);
         let want_pick = case["effectiveDefault"]
             .as_str()

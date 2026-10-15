@@ -1236,7 +1236,8 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
         .as_str()
         .expect("id")
         .to_string();
-    let data = serde_json::json!({"added":0,"removed":0,"retagged":0,"watchers":1,"unavailable":[]});
+    let data =
+        serde_json::json!({"added":0,"removed":0,"retagged":0,"watchers":1,"unavailable":[]});
     assert!(client.route_reply(&id, true, None, None, None, Some(data)));
     caller.await.expect("task").expect("resync 答了");
 

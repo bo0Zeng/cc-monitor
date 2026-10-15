@@ -252,7 +252,8 @@ pub(crate) fn warm_of(login: LoginState, seen: Option<&QuotaShow>, now: i64) -> 
             .and_then(|t| i64::try_from(t).ok())
             .filter(|t| *t > now)
     };
-    let when = |x: Option<&SlotShow>| text_of(x.and_then(|x| x.resets_at_text.as_ref())).to_string();
+    let when =
+        |x: Option<&SlotShow>| text_of(x.and_then(|x| x.resets_at_text.as_ref())).to_string();
     let (s5, s7) = (slot_of(show, "5h"), slot_of(show, "7d"));
     if show.state == QuotaState::Refused {
         let limiting = show
@@ -284,7 +285,10 @@ pub(crate) fn warm_of(login: LoginState, seen: Option<&QuotaShow>, now: i64) -> 
             let pct = x.pct.unwrap_or(0).to_string();
             return wait(
                 at + WARM_MARGIN_S,
-                copy_text("acct.warm.ticking", &[("pct", &pct), ("at", &when(Some(x)))]),
+                copy_text(
+                    "acct.warm.ticking",
+                    &[("pct", &pct), ("at", &when(Some(x)))],
+                ),
             );
         }
         return send(copy_text("acct.warm.expired", &[]));

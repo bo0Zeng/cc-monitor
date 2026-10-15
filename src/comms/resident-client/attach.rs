@@ -89,8 +89,8 @@ impl Hello {
                 .unwrap_or_default()
         };
         // 能力事实的另两格：读法住 `Offer::facts_of` · `Offer::shapes_of`（monitor 解 hello 同调它们）。
-        let offer = Offer::new(strs("commands"), Offer::facts_of(obj))
-            .with_shapes(Offer::shapes_of(obj));
+        let offer =
+            Offer::new(strs("commands"), Offer::facts_of(obj)).with_shapes(Offer::shapes_of(obj));
         Some(Hello {
             v: obj
                 .get("v")

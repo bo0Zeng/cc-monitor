@@ -547,7 +547,10 @@ pub(crate) fn manual_of(
         .iter()
         .map(|a| &a.scanned)
         .filter(|a| {
-            signs_in && a.auth_kind == acct_core::AUTH_KIND_SUBSCRIPTION && a.exists && !a.auth_ready
+            signs_in
+                && a.auth_kind == acct_core::AUTH_KIND_SUBSCRIPTION
+                && a.exists
+                && !a.auth_ready
         })
         .map(|a| a.name.as_str())
         .map(|name| ManualItem::AccountLogin {

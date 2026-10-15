@@ -43,10 +43,7 @@ fn a_named_usable_account_is_used() {
 
 #[test]
 fn a_named_account_that_cannot_be_used_is_refused_with_the_default_as_alternative() {
-    let l = lib(vec![
-        acct("z", |a| a.auth_ready = false),
-        default_("b"),
-    ]);
+    let l = lib(vec![acct("z", |a| a.auth_ready = false), default_("b")]);
     assert_eq!(
         pick(&named("z"), &l, None, None),
         refused("z", false, true, Some("b"))
@@ -161,10 +158,7 @@ fn follow_uses_the_last_account_over_the_default() {
 
 #[test]
 fn follow_never_swaps_a_last_account_that_cannot_be_used() {
-    let l = lib(vec![
-        acct("z", |a| a.auth_ready = false),
-        default_("b"),
-    ]);
+    let l = lib(vec![acct("z", |a| a.auth_ready = false), default_("b")]);
     assert_eq!(
         pick(&Asked::Follow, &l, Some("z"), None),
         refused("z", true, true, Some("b"))

@@ -8,8 +8,8 @@
 
 use crate::platform::fs::{Own, OwnPath};
 use crate::wire::typed::codes;
+use cmd_wire::accounts::{AccountRow, AccountsList};
 use copy_core::copy_text;
-use crate::observe::accounts_query::{AccountRow, AccountsList};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;

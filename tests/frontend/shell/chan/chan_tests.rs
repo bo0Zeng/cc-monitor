@@ -141,14 +141,12 @@ impl Backends for Fake {
     /// 合成那台的能力事实：[`STUCK`] 撤不动（本侧那张表里的阻塞档、带对得上的指纹），`stall` 撤得动。
     fn offer(&self, _origin: &Origin) -> Option<Offer> {
         Some(
-            Offer::new(
-                vec!["cancel".into(), STUCK.into(), "stall".into()],
-                vec![],
-            )
-            .with_shapes(vec![(
-                STUCK.into(),
-                cmd_wire::shapes::shape_of(STUCK).unwrap().into(),
-            )]),
+            Offer::new(vec!["cancel".into(), STUCK.into(), "stall".into()], vec![]).with_shapes(
+                vec![(
+                    STUCK.into(),
+                    cmd_wire::shapes::shape_of(STUCK).unwrap().into(),
+                )],
+            ),
         )
     }
 }
