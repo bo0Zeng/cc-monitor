@@ -219,14 +219,15 @@ def prepare():
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
     smoke.launch(fresh=True)
     tap(t("mobIdentity.page.title")); time.sleep(1)
+    smoke.stop_ime()
     smoke.open_import()
     tap(t("mobIdentity.import.name")); smoke.typed("smoke")
     tap(t("mobIdentity.import.pem")); time.sleep(0.5)
-    for line in key:
-        smoke.typed(line)
-        adb("shell", "input", "keyevent", "66")
+    smoke.type_key(key)
     tap(t("mobIdentity.import.ok"))
-    if not wait("SHA256:", 10):
+    ok = wait("SHA256:", 40)
+    smoke.restore_ime()
+    if not ok:
         raise Red("钥匙没导进来")
     tap(t("mobKit.act.back")); time.sleep(1)
     smoke.add_host("devbox")
