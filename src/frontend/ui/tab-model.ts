@@ -22,6 +22,7 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import type { LineRecord } from "./generated/LineRecord";
 import type { SessionState } from "./tab-session-state";
 import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
+import type { SessionHidden, SessionLineage } from "./session-hidden";
 
 // 会话状态住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
 
@@ -86,6 +87,13 @@ export interface Tab {
    * 单值 ⇒ 「一个 tab 只属一个集合」结构上成立。与 `state` / `pinned` 正交（不变量 3）。
    */
   group: string | null;
+  /**
+   * **隐藏**那一格（后端判好的 `{by, said}`；不隐藏 ⇒ `null`）：会话宣告那一帧带来，推帧主题「会话隐藏」改它。
+   * 隐藏的会话不占标签页，活着的收在栏底「已隐藏 N」那一行（`tab-bar-view.ts`）；需手动 · 通知照常。界面不判它，只照它画。
+   */
+  hidden: SessionHidden | null;
+  /** 血缘（会话事实的 `startedBy` · `children`）：会话头「由 X 启动」「子会话 N」照它画。 */
+  lineage: SessionLineage;
   /**
    * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的；`doing` 为 null ＝ 那一家没说）＋ 在等什么 ＋ 核心写好的字与语气（说不清也有）。null ＝ 还没收到。
    */

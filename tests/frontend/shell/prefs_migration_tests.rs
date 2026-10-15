@@ -137,3 +137,24 @@ fn the_machine_table_goes_on_its_own_turn_and_the_original_stays_the_first_one()
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 「显示分身会话」那个旧开关：本机偏好写成了那一刻一并删掉（不再有人读它，留着会被当成认不出的键）。
+#[test]
+fn the_old_bg_switch_is_dropped() {
+    let d = tmpdir("dropbg");
+    let path = d.join("config.json");
+    std::fs::write(&path, r#"{"showBgSessions": false, "notifyNeeds": true}"#).unwrap();
+    assert_eq!(
+        finish_at(&path, &DROPPED_KEYS).unwrap(),
+        Finished::Removed(1)
+    );
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert!(v.get("showBgSessions").is_none(), "{v}");
+    assert_eq!(v["notifyNeeds"], true);
+    assert_eq!(
+        finish_at(&path, &DROPPED_KEYS).unwrap(),
+        Finished::NothingLeft
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

@@ -38,6 +38,8 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
             "resumeInTmux": true,
             "models": {"b": "sonnet"},
             "contextLimits": {"opus": 1000000},
+            "childTab": "hide",
+            "bgTab": "show",
             "agentHomes": {"claude": "/srv/c", "codex": "/srv/x"},
         })
     );
@@ -90,6 +92,26 @@ fn an_unreadable_prefs_file_is_reported_and_never_overwritten() {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), body, "读不懂的那份被盖了");
     }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 子会话 · 分身会话那两格：缺省子会话隐藏、分身显示；盘上没写 ⇒ 缺省；`prefs-set` 只动给了的那一格。
+#[test]
+fn the_two_tab_rules_default_child_hidden_bg_shown_and_patch_one_at_a_time() {
+    use cmd_wire::session::Tab;
+    let d = Prefs::default();
+    assert_eq!((d.child_tab, d.bg_tab), (Tab::Hide, Tab::Show));
+    let old: OnDisk =
+        serde_json::from_value(serde_json::json!({"version": 1, "resumeInTmux": true})).unwrap();
+    assert_eq!(
+        (old.prefs.child_tab, old.prefs.bg_tab),
+        (Tab::Hide, Tab::Show)
+    );
+    let set: PrefsSet = serde_json::from_value(serde_json::json!({"bgTab": "hide"})).unwrap();
+    let p = patched(d.clone(), &set);
+    assert_eq!((p.child_tab, p.bg_tab), (Tab::Hide, Tab::Hide));
+    let set: PrefsSet = serde_json::from_value(serde_json::json!({"childTab": "show"})).unwrap();
+    assert_eq!(patched(p, &set).rules().child_tab, Tab::Show);
+    assert!(serde_json::from_value::<PrefsSet>(serde_json::json!({"bgTab": "maybe"})).is_err());
 }
 
 /// 上限表交给会话事实那一形：子串小写。

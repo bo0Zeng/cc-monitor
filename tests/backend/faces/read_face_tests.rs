@@ -1674,8 +1674,65 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
     for r in rows {
         let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort();
-        assert_eq!(keys, vec!["needs", "sid"], "一行只有这两格：{r}");
+        assert_eq!(keys, vec!["hidden", "needs", "sid"], "一行只有这三格：{r}");
     }
+}
+
+/// ★ 「分身会话」关掉（这台偏好 `bgTab = hide`）时，分身会话的需手动**照样在**清单里（隐藏只是不占标签页），那一行带隐藏那一格说为什么；
+/// 交互会话不带。从前壳在帧进门处整条丢分身会话，连批准框一起丢：隐藏只管占不占标签页，在等人的会话照样要人答。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_hidden_background_session_still_lists_its_needs() {
+    let home = scratch("needs-bg-hidden");
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let mut kids = Vec::new();
+    let mut put_as = |sid: &str, kind: &str| {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("起始时刻");
+        std::fs::write(
+            pids.join(format!("{}.json", c.id())),
+            format!(r#"{{"pid":{},"sessionId":"{sid}","kind":"{kind}","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#, c.id()),
+        )
+        .unwrap();
+        kids.push(c);
+    };
+    put_as("s-bg", "bg");
+    put_as("s-fg", "interactive");
+    let here = crate::control::session_hidden::Here {
+        rules: crate::control::session_hidden::Rules {
+            child_tab: cmd_wire::session::Tab::Hide,
+            bg_tab: cmd_wire::session::Tab::Hide,
+        },
+        ..Default::default()
+    };
+    let list = serde_json::to_value(crate::faces::history_face::needs_with(
+        &home,
+        &here,
+        &Default::default(),
+    ))
+    .unwrap();
+    for mut c in kids {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    let _ = std::fs::remove_dir_all(&home);
+    let rows = list["waiting"].as_array().expect("waiting 是数组");
+    let row = |sid: &str| {
+        rows.iter()
+            .find(|r| r["sid"] == sid)
+            .unwrap_or_else(|| panic!("{sid} 不在需手动清单里：{list}"))
+    };
+    assert_eq!(row("s-bg")["hidden"]["by"], "bg", "{list}");
+    assert!(row("s-bg")["needs"].is_object(), "{list}");
+    assert_eq!(
+        row("s-fg").get("hidden"),
+        Some(&serde_json::Value::Null),
+        "不隐藏 ⇒ 格在、写 null：{list}"
+    );
 }
 
 /// 一份 `needs` 拆成「已等多久（毫秒）」与其余各格（已等的那两格随问的时刻变，单拿出来判）。
@@ -2011,7 +2068,15 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            crate::control::launch_account::leave_note(&own, c.id(), "acct", now + 1).unwrap();
+            crate::control::launch_account::leave_note(
+                &own,
+                c.id(),
+                Some("acct"),
+                false,
+                None,
+                now + 1,
+            )
+            .unwrap();
         }
         let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
         let body = format!(
@@ -2117,6 +2182,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                     }),
                 )
                 .expect("在等就有需手动"),
+                hidden: None,
             }],
         }
     };
@@ -2135,7 +2201,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 
@@ -2267,7 +2333,8 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        crate::control::launch_account::leave_plugin_note(&own, c.id(), None, now + 1).unwrap();
+        crate::control::launch_account::leave_note(&own, c.id(), None, true, None, now + 1)
+            .unwrap();
         let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
         let body = format!(
             r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,

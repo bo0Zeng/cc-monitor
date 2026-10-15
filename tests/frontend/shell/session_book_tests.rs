@@ -192,7 +192,28 @@ fn the_live_cell_carries_the_project_dir() {
     let first = |o: &Out| serde_json::to_string(&o.frames()[0]).unwrap();
     assert_eq!(
         first(&with),
-        r#"{"live":{"session_id":"a","origin":"pi","background":false,"attachable":null,"cwd":null,"project_dir":"/a/proj","name":null}}"#
+        r#"{"live":{"session_id":"a","origin":"pi","background":false,"attachable":null,"cwd":null,"project_dir":"/a/proj","name":null,"hidden":null}}"#
+    );
+}
+
+/// ★ 隐藏那一格（后端判好的 `{by, said}`）原样转给界面：分身会话不占标签页靠它，壳这里丢了它分身就冒进标签栏。期望值手写。
+#[test]
+fn the_live_cell_carries_the_hidden_cell_verbatim() {
+    let o = Out::Live {
+        origin: "pi".into(),
+        sid: "a".into(),
+        meta: LiveMeta {
+            background: true,
+            hidden: Some(cmd_wire::session::Hidden {
+                by: cmd_wire::session::HiddenBy::Bg,
+                said: "后端那一句".into(),
+            }),
+            ..Default::default()
+        },
+    };
+    assert_eq!(
+        serde_json::to_string(&o.frames()[0]).unwrap(),
+        r#"{"live":{"session_id":"a","origin":"pi","background":true,"attachable":null,"cwd":null,"project_dir":null,"name":null,"hidden":{"by":"bg","said":"后端那一句"}}}"#
     );
 }
 

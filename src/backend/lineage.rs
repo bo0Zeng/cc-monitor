@@ -131,10 +131,21 @@ impl Book {
             .retain(|_, p| now.saturating_sub(p.at) < DROP_AFTER);
     }
 
-    /// 这个会话的父（没记过 ⇒ `None`）。今天只有判据读它（环境继承那一轮才有生产里的读者）。
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// 这个会话的父（没记过 ⇒ `None`）：隐藏的判定（有主会话那一档）· 会话事实的「由谁启动」读它。
     pub(crate) fn parent_of(&self, sid: &str) -> Option<&str> {
         self.parents.get(sid).map(|p| p.parent.as_str())
+    }
+
+    /// 这个会话起的那几个，按记下的先后（同一刻按会话编号）：会话事实的「子会话」读它。
+    pub(crate) fn children_of(&self, sid: &str) -> Vec<&str> {
+        let mut kids: Vec<(u64, &str)> = self
+            .parents
+            .iter()
+            .filter(|(_, p)| p.parent == sid)
+            .map(|(k, p)| (p.at, k.as_str()))
+            .collect();
+        kids.sort();
+        kids.into_iter().map(|(_, k)| k).collect()
     }
 }
 

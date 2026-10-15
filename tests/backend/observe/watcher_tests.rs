@@ -2207,6 +2207,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });
@@ -2222,6 +2223,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });
@@ -2243,6 +2245,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });
@@ -2258,6 +2261,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });
@@ -2273,6 +2277,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });
@@ -2315,6 +2320,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         face: crate::wire::ActivityFace::of(None),
         name_face: crate::history::search_rules::name_face(&Default::default()),
         waiting_for: None,
+        hidden: None,
         container: None,
         pid: 0,
     });
@@ -4736,4 +4742,80 @@ fn a_live_line_is_parsed_from_text_once() {
         parses, 3,
         "3 行实时读进来从文本解析了 {parses} 次（该一行一次）"
     );
+}
+
+/// 隐藏那一格：宣告那一帧带着它（注解里点了「隐藏」的会话一宣告就带 `by: self`）；之后注解变了 ⇒ 重判，变了的那一条推一帧
+/// `changed {session_hidden, key: sid, body: {hidden}}`、记着的那一帧跟着换（之后接上来的连接拿新的）；没变 ⇒ 不推。
+#[test]
+fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-hidden-push-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    let pin = |on: bool| {
+        let mut t = crate::history::history_annotations::Table::new();
+        if on {
+            t.insert(
+                "sid-h".into(),
+                crate::history::history_annotations::Entry {
+                    hide: Some(crate::history::history_annotations::Hide::On),
+                    ..Default::default()
+                },
+            );
+        }
+        t
+    };
+    state.annotations = pin(true);
+    let path = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &path,
+        format!(r#"{{"pid":{pid},"sessionId":"sid-h","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    process_session_added(&path, &mut state, &mut sink);
+    let Ok(Frame::SessionAdded { hidden, .. }) = rx.try_recv() else {
+        panic!("该先宣告")
+    };
+    assert_eq!(hidden.map(|h| h.by), Some(cmd_wire::session::HiddenBy::Own));
+    while rx.try_recv().is_ok() {}
+    // 同一张表再读一遍 ⇒ 没变，不推。
+    state.reload_annotations(pin(true), &mut sink);
+    let mut pushed = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Changed {
+            topic, key, body, ..
+        } = f
+        {
+            pushed.push((topic, key, body));
+        }
+    }
+    assert!(pushed.is_empty(), "没变也推了：{pushed:?}");
+    // 取消隐藏（摘掉单个那一格、规则也不隐藏）⇒ 推一帧 `hidden: null`。
+    state.reload_annotations(pin(false), &mut sink);
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Changed {
+            topic, key, body, ..
+        } = f
+        {
+            pushed.push((topic, key, body));
+        }
+    }
+    assert_eq!(
+        pushed,
+        vec![(
+            crate::wire::topic::Topic::SessionHidden,
+            Some("sid-h".to_string()),
+            Some(serde_json::json!({ "hidden": null }))
+        )]
+    );
+    assert!(matches!(
+        state.added.get("sid-h"),
+        Some(Frame::SessionAdded { hidden: None, .. })
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
 }

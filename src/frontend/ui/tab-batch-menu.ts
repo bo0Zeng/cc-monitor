@@ -33,6 +33,9 @@ export interface TabBatchHost {
   foundGroup(sids: readonly string[]): void;
   leaveGroup(sids: readonly string[]): void;
   closeTabs(sids: readonly string[]): void;
+  /** 隐藏 · 取消隐藏（同单个右键那一项：交命令、撤销 toast；挪不挪等推帧）。 */
+  hide(sids: readonly string[]): void;
+  unhide(sids: readonly string[]): void;
 }
 
 /** 后端那两件（判据换替身）。 */
@@ -182,6 +185,13 @@ export function openBatchMenu(
       }),
     });
   }
+  // 隐藏 · 取消隐藏：做完的提示是那一口给的撤销 toast，不另出结果条。
+  const [hideable] = split(tabs, (t) => (t.hidden ?? null) === null, "");
+  const [unhideable] = split(tabs, (t) => (t.hidden ?? null) !== null, "");
+  items.push(
+    item(copyText("tabBatch.menu.hide", { n: hideable.length }), hideable.length, () => host.hide(hideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.hidden")),
+    item(copyText("tabBatch.menu.unhide", { n: unhideable.length }), unhideable.length, () => host.unhide(unhideable.map((t) => t.sessionId)), false, copyText("tabBatch.why.notHidden")),
+  );
   const [closable, notClosable] = split(tabs, (t) => isResumeOnly(t.state), copyText("tabBatch.why.live"));
   items.push(
     item(copyText("tabBatch.menu.close", { n: closable.length }), closable.length, () =>

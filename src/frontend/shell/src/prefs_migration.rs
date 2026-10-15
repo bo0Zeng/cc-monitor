@@ -8,6 +8,8 @@
 //! 搬走的那几个键：`resumeCommand`（通用页那一格）· `localResumeCommand`（本机那一格）· `resumeInTmux` · `contextLimits` ·
 //! `accounts`（只剩 `byMachine.<origin>.modelByAccount`，每号模型）· `claudeDir`（数据目录那一格，进本机 `agentHomes`）。机器表每台的 `resumeCommand` 那一格界面不再读写，
 //! 那一台下次存的时候自然没了（机器表那一格不拒多出来的键）。
+//!
+//! 不搬、直接删的：`showBgSessions`（「显示分身会话」开关；改由各台偏好 `bgTab` 管，[`DROPPED_KEYS`]）。
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
@@ -23,6 +25,10 @@ pub(crate) const MOVED_KEYS: [&str; 6] = [
     "accounts",
     "claudeDir",
 ];
+
+/// 不搬、直接删的那一个：「显示分身会话」开关（分身会话进不进标签页改由各台偏好 `bgTab` 管，隐藏的判定在后端）。
+/// 与 [`MOVED_KEYS`] 同一时刻删（本机 `prefs-read` 说 `ok`：那两格已在本机那一份里）。
+pub(crate) const DROPPED_KEYS: [&str; 1] = ["showBgSessions"];
 
 /// 搬进本机 `machines.json` 的那一个（机器表）：本机 `machines-read` 说 `ok` 才删（[`after_machines_read`]）。
 pub(crate) const MOVED_MACHINES: [&str; 1] = ["remote"];
@@ -133,6 +139,7 @@ pub(crate) fn after_local_ready() {
             }
         }
         finish_now(&MOVED_KEYS).await;
+        finish_now(&DROPPED_KEYS).await;
     });
 }
 

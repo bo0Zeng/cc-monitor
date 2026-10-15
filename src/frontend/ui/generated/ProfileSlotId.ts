@@ -3,4 +3,4 @@
 /**
  * 表单的哪一格（[`ProfileForm`] 里那一格的名字）。
  */
-export type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote";
+export type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";

@@ -32,6 +32,10 @@ pub(crate) mod flag {
     pub(crate) const CCM_VERSION: &str = "--ccm-version";
     pub(crate) const CCM_PROBE: &str = "--ccm-probe";
     pub(crate) const CCM_SID: &str = "--ccm-sid";
+    /// `--tab <show|hide>`：新会话进不进标签页（不给 ⇒ 照这台偏好，判定住 `control/session_hidden.rs`）。claude 没有同名旗标。
+    pub(crate) const TAB: &str = "--tab";
+    /// `--tab-from <别名>`：`--tab` 是哪个别名写的（ccm 往 tmux 里那一趟交下去用，那一趟的命令行里已经没有别名了）。
+    pub(crate) const TAB_FROM: &str = "--tab-from";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
     /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
@@ -107,6 +111,10 @@ pub(crate) struct Opts {
     pub(crate) agent: String,
     pub(crate) launcher: String,
     pub(crate) ccm_sid: String,
+    /// `--tab`；没给 ⇒ `None`。
+    pub(crate) tab: Option<cmd_wire::session::Tab>,
+    /// `--tab` 是哪个别名写的（合并那一处按来处填 · tmux 里那一趟由 `--tab-from` 交来）；空 ＝ 命令行当场给的 / 没给。
+    pub(crate) tab_from: String,
     /// `--account-dir`；空 = 没给。
     pub(crate) account_dir: String,
     pub(crate) print: bool,
@@ -181,6 +189,8 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         agent: Defaults::agent().to_string(),
         launcher: String::new(),
         ccm_sid: String::new(),
+        tab: None,
+        tab_from: String::new(),
         account_dir: String::new(),
         print: Defaults::PRINT,
         detach: Defaults::DETACH,
@@ -211,6 +221,8 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::CCM_VERSION,
     flag::CCM_PROBE,
     flag::CCM_SID,
+    flag::TAB,
+    flag::TAB_FROM,
     flag::ACCOUNT_DIR,
 ];
 
@@ -271,6 +283,8 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         | flag::LAUNCHER
         | flag::ATTACH
         | flag::CCM_SID
+        | flag::TAB
+        | flag::TAB_FROM
         | flag::ACCOUNT_DIR
         | flag::TMUX_SIZE => {
             let (v, n) = one()?;
@@ -313,6 +327,15 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         flag::LAUNCHER => o.launcher = v(0),
         flag::ATTACH => o.attach_name = v(0),
         flag::CCM_SID => o.ccm_sid = v(0),
+        flag::TAB => {
+            o.tab = Some(tab_of(&v(0)).ok_or_else(|| {
+                Die(copy_text(
+                    "beArgv.validate.badTab",
+                    &[("v", &format!("{:?}", v(0)))],
+                ))
+            })?)
+        }
+        flag::TAB_FROM => o.tab_from = v(0),
         flag::ACCOUNT_DIR => o.account_dir = v(0),
         flag::DETACH => o.detach = true,
         flag::TMUX_SIZE => o.tmux_size = v(0),
@@ -328,6 +351,21 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         }
     }
     Ok(None)
+}
+
+/// `--tab` 的值那个词（`show` · `hide`）：写进命令行与配置文件都是它。
+pub(crate) fn tab_word(t: cmd_wire::session::Tab) -> &'static str {
+    match t {
+        cmd_wire::session::Tab::Show => "show",
+        cmd_wire::session::Tab::Hide => "hide",
+    }
+}
+
+/// [`tab_word`] 反过来：认不得 ⇒ `None`。
+pub(crate) fn tab_of(word: &str) -> Option<cmd_wire::session::Tab> {
+    [cmd_wire::session::Tab::Show, cmd_wire::session::Tab::Hide]
+        .into_iter()
+        .find(|t| tab_word(*t) == word)
 }
 
 /// 这套 argv 的唯一解析口。
@@ -419,6 +457,10 @@ pub(crate) fn parse_layered(
     let mut origins = Vec::new();
     for (li, at, w) in rules.iter().chain(&kept) {
         apply_word(&mut o, w, *at)?;
+        // `--tab` 来自哪个别名：照合并下来的那一层记（命令行当场给的 ⇒ 空；`--tab-from` 明说了的不盖）。
+        if w.flag == flag::TAB && o.tab_from.is_empty() {
+            o.tab_from = name(*li);
+        }
         origins.push(Origin {
             flag: w.flag,
             vals: w.vals.clone(),
@@ -509,6 +551,9 @@ fn validate(o: &Opts) -> Result<(), Die> {
     if !o.bus_note.is_empty() && !o.bus_register {
         return die(&copy_text("beArgv.validate.noteNeedsRegister", &[]));
     }
+    if !o.tab_from.is_empty() && o.tab.is_none() {
+        return die(&copy_text("beArgv.validate.tabFromNeedsTab", &[]));
+    }
     check_values(o)
 }
 
@@ -548,6 +593,12 @@ pub(crate) fn check_values(o: &Opts) -> Result<(), Die> {
                 &[("at", &format!("{at:?}"))],
             ));
         }
+    }
+    if !o.tab_from.is_empty() && !shell_quote_core::account_name_ok(&o.tab_from) {
+        return die(copy_text(
+            "beArgv.validate.badTabFrom",
+            &[("name", &format!("{:?}", o.tab_from))],
+        ));
     }
     if !o.account.is_empty() && !shell_quote_core::account_name_ok(&o.account) {
         return die(copy_text(

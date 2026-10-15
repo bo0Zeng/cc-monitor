@@ -20,6 +20,8 @@ pub struct NeedsList {
 pub struct NeedsRow {
     pub sid: String,
     pub needs: Needs,
+    /// 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
+    pub hidden: Option<crate::session::Hidden>,
 }
 
 /// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。

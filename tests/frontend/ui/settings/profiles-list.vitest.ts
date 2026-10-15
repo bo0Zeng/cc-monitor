@@ -25,6 +25,7 @@ const form = (name: string, from: string | null): ProfileForm => ({
   detach: false,
   busRegister: false,
   busNote: null,
+  tab: null,
 });
 
 const row = (name: string, from: string | null, over: Partial<ProfileRow> = {}): ProfileRow => ({

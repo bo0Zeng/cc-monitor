@@ -68,6 +68,7 @@
           "from": null,
           "launcher": null,
           "name": "mycc",
+          "tab": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -106,6 +107,7 @@
           "from": "mycc",
           "launcher": null,
           "name": "mycct",
+          "tab": null,
           "tmux": {
             "mode": "auto",
             "name": ""
@@ -150,6 +152,7 @@
           "from": "mycct",
           "launcher": null,
           "name": "teamcct",
+          "tab": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -187,6 +190,7 @@
           "from": "mycct",
           "launcher": null,
           "name": "workcct",
+          "tab": null,
           "tmux": null,
           "tmuxSize": null
         },
@@ -224,6 +228,7 @@
           "from": null,
           "launcher": null,
           "name": "pcc",
+          "tab": null,
           "tmux": null,
           "tmuxSize": null
         },

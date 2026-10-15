@@ -7,7 +7,6 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
-import type { Prefs } from "../../../src/frontend/ui/generated/Prefs";
 
 const HOME = "/home/user";
 
@@ -48,9 +47,6 @@ function extList(w: World): unknown {
   } as never);
   return g;
 }
-
-/** 那台没设过偏好时后端照用的那一份（`control/machine_prefs.rs` 的 `Prefs::default()`）。 */
-export const PREFS_UNSET: Prefs = { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {} };
 
 export function machineOps(): Record<string, OpHandler> {
   return {
@@ -266,11 +262,6 @@ export function machineOps(): Record<string, OpHandler> {
     "machines-try": (o, r, w) => {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
       return { fault: tryMachineTable(r.edits as Record<string, unknown>[], w) };
-    },
-    // 那台的偏好（`prefs.json`）：场景写了那一台 ⇒ 答那一份；没写 ⇒ 照「没有这份」答、后端缺省那一份。
-    "prefs-read": (o, _r, w) => {
-      const p = w.prefs?.[o];
-      return { state: p ? "ok" : "absent", reason: null, detail: null, path: `${HOME}/.cc-monitor/prefs.json`, prefs: p ?? PREFS_UNSET };
     },
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);

@@ -9,7 +9,8 @@ import s from "./tabs.module.css";
 
 export interface TabsSpec<K extends string> {
   items: { key: K; label: string }[];
-  current: K;
+  /** 当前那一段；`null` ＝ 还不知道（一段都不选，Tab 键落在第一段）。只有分段按钮用得上（值从别处读回之前）。 */
+  current: K | null;
   onChange: (key: K) => void;
   /** 分栏的读屏名 / 分段按钮的读屏名（文案表）。 */
   label: string;
@@ -30,11 +31,11 @@ function strip<K extends string>(kind: "tabs" | "segmented", spec: TabsSpec<K>):
     b.addEventListener("click", () => pick(key, false));
     return b;
   });
-  const mark = (key: K): void => {
-    for (const b of buttons) {
+  const mark = (key: K | null): void => {
+    for (const [i, b] of buttons.entries()) {
       const on = b.dataset.key === key;
       b.setAttribute(kind === "tabs" ? "aria-selected" : "aria-checked", String(on));
-      b.tabIndex = on ? 0 : -1;
+      b.tabIndex = on || (key === null && i === 0) ? 0 : -1;
     }
   };
   let cur = spec.current;

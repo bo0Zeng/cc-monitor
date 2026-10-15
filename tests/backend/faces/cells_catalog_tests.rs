@@ -143,7 +143,8 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "rows[].agentTag",
             "rows[].starred",
             "rows[].customTitle",
-            "rows[].hidden",
+            "rows[].hidden.by",
+            "rows[].hidden.said",
             "notice",
             "truncated",
         ]),
@@ -325,6 +326,33 @@ fn corpus(name: &str) -> Vec<Value> {
                 u64::MAX / 2,
             ))
             .unwrap();
+            // 金样那份会话没有血缘（`parent` 是 null、`children` 空）⇒ 同上，用真判定现造一份：
+            // 主会话起它时写了 `--tab hide`、它起的子会话照偏好隐藏（两格都带隐藏那一格）。
+            let mut here = crate::control::session_hidden::Here::default();
+            for (kid, parent) in [("s-golden", "s-main"), ("s-kid", "s-golden")] {
+                here.lineage.parents.insert(
+                    kid.into(),
+                    crate::lineage::Parent {
+                        parent: parent.into(),
+                        agent: "claude".into(),
+                        at: 1,
+                    },
+                );
+            }
+            here.ledger.tabs.insert(
+                "s-main".into(),
+                crate::control::launch_account::LaunchTab {
+                    tab: cmd_wire::session::Tab::Hide,
+                    alias: None,
+                },
+            );
+            let (parent, children) = crate::faces::history_face::kin_of(
+                std::path::Path::new("/nonexistent-cells-catalog-home"),
+                "s-golden",
+                &here,
+            );
+            f["startedBy"] = serde_json::to_value(parent).unwrap();
+            f["children"] = serde_json::to_value(children).unwrap();
             let base: Option<crate::observe::facts_query::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
@@ -362,6 +390,17 @@ fn corpus(name: &str) -> Vec<Value> {
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
                     needs: needs.clone(),
+                    // 隐藏的会话照样在需手动清单里、带着那一格（真判定现造）。
+                    hidden: crate::control::session_hidden::judge(
+                        &crate::control::session_hidden::Facts {
+                            bg: true,
+                            rules: crate::control::session_hidden::Rules {
+                                child_tab: cmd_wire::session::Tab::Hide,
+                                bg_tab: cmd_wire::session::Tab::Hide,
+                            },
+                            ..Default::default()
+                        },
+                    ),
                 })
                 .unwrap(),
             ];

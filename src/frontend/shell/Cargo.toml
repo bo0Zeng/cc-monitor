@@ -221,6 +221,8 @@ acct-core = { path = "../../common/acct-core" }
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
+# 会话流那一帧（`ui_contract::SessionLivePayload`）嵌着 `cmd_wire::session::Hidden` ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
+cmd-wire = { path = "../../common/cmd-wire", features = ["ts"] }
 # 判据要的那几样（停一个本来就分开的写端 · 关写半边 · 数登记）：只在测试档开。
 resident-client = { path = "../../comms/resident-client", features = ["test-support"] }
 # 暂停时钟（`#[tokio::test(start_paused = true)]`）：拿「截止时刻」说事的测试用虚拟时钟，机器负载多高读数都一样。

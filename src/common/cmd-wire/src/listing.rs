@@ -2,6 +2,7 @@
 //! 两侧同一份：后端按这里的类型写（扫 · 并 · 筛 · 排在后端 `history/`），手机嵌的 Rust 核心按这里的类型解。
 
 use crate::cells::Words;
+use crate::session::{Hidden, Hide, LaunchTab, Rules};
 use crate::Machine;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -52,7 +53,8 @@ pub struct HistoryRow {
     pub is_bg: bool,
     pub starred: bool,
     pub custom_title: Option<String>,
-    pub hidden: bool,
+    /// 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
+    pub hidden: Option<Hidden>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_session_id: Option<String>,
@@ -144,6 +146,9 @@ pub struct Listing {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub annotations_notice: Option<String>,
+    /// 那台偏好里子会话 · 分身会话进不进标签页（隐藏的判定照那一台的）。
+    #[serde(default)]
+    pub rules: Rules,
 }
 
 /// 读不了的一个记录目录。
@@ -195,7 +200,14 @@ pub struct RawRow {
     pub is_bg: bool,
     pub starred: bool,
     pub custom_title: Option<String>,
-    pub hidden: bool,
+    /// 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub launch_tab: Option<LaunchTab>,
+    /// 主会话（那台的会话血缘）；没有 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub parent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_session_id: Option<String>,
@@ -258,8 +270,10 @@ pub struct Entry {
     pub starred: bool,
     #[serde(default, rename = "customTitle", alias = "custom_title")]
     pub custom_title: Option<String>,
-    #[serde(default)]
-    pub hidden: bool,
+    /// 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub hide: Option<Hide>,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,

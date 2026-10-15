@@ -87,7 +87,7 @@ pub(crate) enum LocalStep {
     Lost,
 }
 
-/// 本机那条流上的一件东西 ⇒ 交 `session_book` 的成品（**纯**）。藏起来的 bg 会话到不了这里（[`BgHide`] 那道门在前头）。
+/// 本机那条流上的一件东西 ⇒ 交 `session_book` 的成品（**纯**）。隐藏的会话照样到这里（隐不隐藏是帧上那一格，界面读；需手动不因隐藏而丢）。
 ///
 /// 与远端 `stream_source/run.rs::dispatch` 那几条臂交同一种成品（本机 ＝ 不走 ssh 的远端，`INVARIANTS §40`）。流断 ⇒ 这台的成品作废（说不清）。
 pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
@@ -105,6 +105,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
             activity,
             naming,
             waiting_for,
+            hidden,
             container,
             pid,
             ..
@@ -120,6 +121,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
                 activity: activity.clone(),
                 naming: naming.clone(),
                 waiting_for: waiting_for.clone(),
+                hidden: hidden.clone(),
                 container: container.clone(),
                 pid: *pid,
             },
@@ -169,7 +171,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
     }
 }
 
-/// 本机消费者的**纯分派核**：一件东西 ⇒ 怎么处置。藏起来的 bg 会话到不了这里（[`BgHide`] 那道门在前头）。
+/// 本机消费者的**纯分派核**：一件东西 ⇒ 怎么处置。
 pub(crate) fn local_step(item: LocalItem) -> LocalStep {
     match item {
         LocalItem::StreamEnded => LocalStep::StreamEnded,
@@ -199,66 +201,11 @@ pub(crate) fn local_step(item: LocalItem) -> LocalStep {
             LocalStep::Notice { sid, path, change }
         }
         LocalItem::Frame(InboundFrame::TurnEnd(turn)) => LocalStep::TurnEnd(turn),
-        // 「X 变了」：与 bg 藏不藏无关（界面按主题 · key 取，藏起来的会话本来就没有 tab）。
+        // 「X 变了」：界面按主题 · key 取（隐藏那一格变了也走这里，主题 `session_hidden`）。
         LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
             LocalStep::Changed { topic, cell }
         }
         LocalItem::Frame(_) => LocalStep::Skip,
-    }
-}
-
-/// **「bg 会话藏不藏」那一道门**，本机与远端两条流各过一次、同一份（本机 [`consume_local`]、远端 `run.rs` 的读循环）：
-/// 没开「显示后台会话」⇒ 宣告时记下它（是不是后台由后端判好，`session_added.background`；协议序保证宣告先于行），
-/// 它的行 · 状态 · 运行表 · 主线外 · 文件提示 · 一轮结束 · 去向一律不进；去向那一帧之后摘掉（摘除那一帧照过：它只是内容流的边界）。
-/// 每条流一个（流断 ⇒ 下一条流重新宣告，换新的）。
-pub(crate) struct BgHide {
-    show_bg: bool,
-    hidden: std::collections::HashSet<String>,
-}
-
-impl BgHide {
-    pub(crate) fn new(show_bg: bool) -> Self {
-        BgHide {
-            show_bg,
-            hidden: Default::default(),
-        }
-    }
-
-    /// 这一帧藏不藏（宣告那一帧顺手记账）。
-    pub(crate) fn hides(&mut self, f: &InboundFrame) -> bool {
-        match f {
-            InboundFrame::SessionAdded {
-                sid, background, ..
-            } => {
-                if *background && !self.show_bg {
-                    self.hidden.insert(sid.clone());
-                    true
-                } else {
-                    // 同一个 sid 原地翻回交互（极少见）⇒ 不再藏。
-                    self.hidden.remove(sid);
-                    false
-                }
-            }
-            InboundFrame::SessionState { sid, .. } => self.hidden.remove(sid),
-            InboundFrame::Line {
-                session_id: sid, ..
-            }
-            | InboundFrame::SessionStatus { sid, .. }
-            | InboundFrame::SessionRuns { sid, .. }
-            | InboundFrame::SessionBranch { sid, .. }
-            | InboundFrame::SessionFileNotice { sid, .. }
-            | InboundFrame::SessionPrimed { sid, .. } => self.hidden.contains(sid),
-            InboundFrame::TurnEnd(turn) => self.hidden.contains(&turn.session_id),
-            _ => false,
-        }
-    }
-
-    /// 本机那条流上的一件东西过这道门：藏 ⇒ `None`；流结束 · 丢行照过。
-    pub(crate) fn admit(&mut self, item: LocalItem) -> Option<LocalItem> {
-        match &item {
-            LocalItem::Frame(f) if self.hides(f) => None,
-            _ => Some(item),
-        }
     }
 }
 
@@ -279,11 +226,8 @@ pub(crate) async fn consume_local(
     replay: Arc<EventReplay>,
     health: HealthOut,
 ) {
-    let show_bg = crate::load_show_bg_sessions();
     loop {
         let mut intake = LineIntake::open(label.clone(), &replay, &health);
-        // 没开「显示后台会话」⇒ bg 会话连同它的行 · 状态 · 去向一起不进（远端那条流过同一道门）。
-        let mut bg = BgHide::new(show_bg);
         // 这条流交来第一件东西 ⇒ 本机那台「看得见」（订阅原位收 `Seen`）；流结束 ⇒ `Unseen`。
         let mut seen = false;
         loop {
@@ -296,9 +240,6 @@ pub(crate) async fn consume_local(
                 seen = true;
                 replay.origin_seen(&crate::origin::Origin(label.clone()), true);
             }
-            let Some(item) = bg.admit(item) else {
-                continue;
-            };
             // 本机起停的成品：先交 `session_book`。
             //   流断 / 去向那两件先冲掉残批再交（与远端同序：行先落、再说「离开了 / 看不见了」）。
             if matches!(

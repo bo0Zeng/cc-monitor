@@ -1,4 +1,5 @@
 import { makeYieldToMain } from "./yield-to-main";
+import type { SessionHidden } from "./session-hidden";
 import { commands } from "./ipc/commands";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -53,6 +54,8 @@ export interface EventHandlers {
       projectDir: string | null;
       background: boolean;
       name: string | null;
+      /** 隐藏那一格（后端判好；不隐藏 ⇒ `null`）。 */
+      hidden: SessionHidden | null;
     },
   ) => void;
   /** 远端会话宣告 → 建骨架 Tab（不等首行），附 pidfile 元信息。 */
@@ -68,6 +71,8 @@ export interface EventHandlers {
       /** 会话的项目目录（后端给的那一格；标题只认它）。 */
       projectDir: string | null;
       name: string | null;
+      /** 隐藏那一格（后端判好；不隐藏 ⇒ `null`）。 */
+      hidden: SessionHidden | null;
     },
   ) => void;
   /**
@@ -207,6 +212,7 @@ type QueueItem =
       projectDir: string | null;
       background: boolean;
       name: string | null;
+      hidden: SessionHidden | null;
     }
   // 远端会话宣告 —— 骨架 Tab 入口。走同一 queue 与 ended / started / 行保序（INVARIANT § 20）。
   | {
@@ -219,6 +225,7 @@ type QueueItem =
       cwd: string | null;
       projectDir: string | null;
       name: string | null;
+      hidden: SessionHidden | null;
     }
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: SessionContainer }
@@ -486,6 +493,7 @@ export async function bindEvents(
           projectDir: item.projectDir,
           background: item.background,
           name: item.name,
+          hidden: item.hidden,
         });
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
@@ -494,6 +502,7 @@ export async function bindEvents(
           cwd: item.cwd,
           projectDir: item.projectDir,
           name: item.name,
+          hidden: item.hidden,
         });
       } else if (item.kind === "container") {
         handlers.onSessionContainer?.(item.sessionId, item.container);
@@ -626,6 +635,8 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "live" in f) {
           // 会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
           const p = f.live;
+          // 隐藏那一格：后端判好、壳原样转来，界面照抄。
+          const hidden = p.hidden;
           if (isLocalOrigin(p.origin)) {
             queue.push({
               kind: "started",
@@ -634,6 +645,7 @@ export async function bindEvents(
               projectDir: p.project_dir ?? null,
               background: p.background,
               name: p.name ?? null,
+              hidden,
             });
           } else {
             queue.push({
@@ -645,6 +657,7 @@ export async function bindEvents(
               cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
               name: p.name ?? null,
+              hidden,
             });
           }
         } else if (f !== null && typeof f === "object" && "activity" in f) {

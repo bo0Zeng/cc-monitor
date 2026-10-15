@@ -235,8 +235,6 @@ export class SettingsPanel {
   private claudeDirRestart!: HTMLElement;
   /** 打开时 claudeDir 的快照（变了才提示重启）。 */
   private claudeDirOriginal: string = "";
-  /** 打开设置时 `showBgSessions` 的值（真改了才供货「重启后生效」）。 */
-  private showBgOriginal = true;
 
   /** 顶部状态提示行（保存成功 / 需重启 等）。 */
   private banner!: HTMLElement;
@@ -259,7 +257,6 @@ export class SettingsPanel {
   // 通用页「行为」那几个开关与「恢复」那一组（拨了马上存；存失败拇指退回 ＋ 行下一句）
   private autoFollowSw!: SwitchHandle;
   private bringFrontSw!: SwitchHandle;
-  private showBgSw!: SwitchHandle;
   private notifyTurnEndSw!: SwitchHandle;
   private notifyNeedsSw!: SwitchHandle;
   /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
@@ -373,9 +370,6 @@ export class SettingsPanel {
     this.behaviorNow = behavior;
     this.autoFollowSw.set(behavior.autoFollowUserActive);
     this.bringFrontSw.set(behavior.bringMonitorToFrontOnUserActive);
-    this.showBgSw.set(behavior.showBgSessions);
-    // 记下打开设置时的值：真改了才供货（每次拨动都标会变成噪音）。
-    this.showBgOriginal = behavior.showBgSessions;
     this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
     this.notifyNeedsSw.set(behavior.notifyNeeds);
     this.syncInputs();
@@ -389,7 +383,7 @@ export class SettingsPanel {
 
   /** 行为那几个开关（读配置时整组禁用）。 */
   private behaviorSwitches(): SwitchHandle[] {
-    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw];
+    return [this.autoFollowSw, this.bringFrontSw, this.notifyTurnEndSw, this.notifyNeedsSw];
   }
 
   /** 拨一个开关：按读回的那份改这一格再存；没读回 / 存失败 ⇒ `false`（拇指退回）。 */
@@ -415,11 +409,6 @@ export class SettingsPanel {
     }
     this.behaviorNow = next;
     this.updateBringFrontEnabled();
-    // `showBgSessions` 重启才生效（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
-    if (next.showBgSessions !== this.showBgOriginal) {
-      markRestartNeeded(copyText("settingsPanel.behavior.hiddenTasks"));
-      this.showBgOriginal = next.showBgSessions;
-    }
     this.onBehaviorChange?.(next); // 同窗（主窗口浮层）直接同步 TabManager
     this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
     return true;
@@ -1231,7 +1220,7 @@ export class SettingsPanel {
     return sw;
   }
 
-  /** 通用页「行为」：五个开关，拨了马上生效、马上存。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
+  /** 通用页「行为」：四个开关，拨了马上生效、马上存。「同时提到前台」挂在上一项下，上一项关着时禁用。 */
   private buildBehaviorGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
@@ -1243,9 +1232,6 @@ export class SettingsPanel {
       (on) => ({ bringMonitorToFrontOnUserActive: on }),
       true,
     );
-    this.showBgSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.showHiddenTasks"), copyText("settingsPanel.behavior.showHiddenTasksHelp"), (on) => ({
-      showBgSessions: on,
-    }));
     this.notifyTurnEndSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.turnNotify"), copyText("settingsPanel.behavior.notifyHelp"), (on) => ({
       notifyTurnEnd: on,
     }));

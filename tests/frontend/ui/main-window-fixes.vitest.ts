@@ -512,6 +512,8 @@ describe("切走再切回一个 tab：回到离开时的位置", () => {
 describe("上下文那一格：状态栏与监控板照抄同一份核心成品", () => {
   const facts = (limit: number, limitFrom: "relay" | "assumed"): SessionFacts => ({
     agent: "claude",
+    startedBy: null,
+    children: [],
     end: 1,
     rev: 7,
     forkedFrom: null,

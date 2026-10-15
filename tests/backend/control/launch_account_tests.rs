@@ -289,7 +289,7 @@ fn none_alive(_: u32) -> Option<Option<u64>> {
 #[test]
 fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
     let h = temp_home("adopt");
-    leave_note(&own_at(&h), 4242, "x", 1_000).unwrap();
+    leave_note(&own_at(&h), 4242, Some("x"), false, None, 1_000).unwrap();
     assert!(adopt(&own_at(&h), 4242, "s1", Some(990), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1").as_deref(), Some("x"));
     // 同一个进程原地换了 sid（`/clear`）⇒ 新 sid 也记得到。
@@ -298,6 +298,28 @@ fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
     // 已经记着同一个号 ⇒ 不再写。
     assert!(!adopt(&own_at(&h), 4242, "s2", Some(990), &none_alive).unwrap());
     assert!(h.join(NOTES_DIR).join("4242.json").exists());
+    let _ = std::fs::remove_dir_all(&h);
+}
+
+/// 起会话时给了 `--tab`（别名里写的带别名名）⇒ 便条带着它，认便条时记进启动台账的 `tabs`；没有号也照记（只为这一格留的便条）。
+#[test]
+fn a_note_carries_the_tab_into_the_launch_ledger() {
+    let h = temp_home("tab");
+    let tab = LaunchTab {
+        tab: cmd_wire::session::Tab::Hide,
+        alias: Some("cct".into()),
+    };
+    leave_note(&own_at(&h), 77, None, false, Some(tab.clone()), 1_000).unwrap();
+    assert!(adopt(&own_at(&h), 77, "s-tab", Some(990), &none_alive).unwrap());
+    let book = read_book(&h).unwrap();
+    assert_eq!(book.tabs.get("s-tab"), Some(&tab));
+    assert_eq!(book.sessions.get("s-tab"), None, "没有号的便条记了一个号");
+    // 已经记着同一格 ⇒ 不再写。
+    assert!(!adopt(&own_at(&h), 77, "s-tab", Some(990), &none_alive).unwrap());
+    // 没写 `--tab` 的那一份台账，盘上不多一格。
+    leave_note(&own_at(&h), 78, Some("x"), false, None, 1_000).unwrap();
+    assert!(adopt(&own_at(&h), 78, "s-plain", Some(990), &none_alive).unwrap());
+    assert_eq!(read_book(&h).unwrap().tabs.get("s-plain"), None);
     let _ = std::fs::remove_dir_all(&h);
 }
 
@@ -313,7 +335,7 @@ fn no_note_no_record() {
 #[test]
 fn a_note_older_than_the_process_is_a_reused_pid_and_does_not_count() {
     let h = temp_home("reused");
-    leave_note(&own_at(&h), 9, "x", 1_000).unwrap();
+    leave_note(&own_at(&h), 9, Some("x"), false, None, 1_000).unwrap();
     assert!(!adopt(&own_at(&h), 9, "s1", Some(1_001), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1"), None);
     let _ = std::fs::remove_dir_all(&h);
@@ -322,10 +344,10 @@ fn a_note_older_than_the_process_is_a_reused_pid_and_does_not_count() {
 #[test]
 fn stale_notes_of_other_processes_are_swept() {
     let h = temp_home("sweep");
-    leave_note(&own_at(&h), 11, "x", 1_000).unwrap(); // 进程不在了
-    leave_note(&own_at(&h), 12, "x", 1_000).unwrap(); // 在，但比便条晚起（pid 被复用）
-    leave_note(&own_at(&h), 13, "x", 1_000).unwrap(); // 在、对得上
-    leave_note(&own_at(&h), 14, "x", 1_000).unwrap(); // 在、起始时刻说不出
+    leave_note(&own_at(&h), 11, Some("x"), false, None, 1_000).unwrap(); // 进程不在了
+    leave_note(&own_at(&h), 12, Some("x"), false, None, 1_000).unwrap(); // 在，但比便条晚起（pid 被复用）
+    leave_note(&own_at(&h), 13, Some("x"), false, None, 1_000).unwrap(); // 在、对得上
+    leave_note(&own_at(&h), 14, Some("x"), false, None, 1_000).unwrap(); // 在、起始时刻说不出
     let alive = |p: u32| match p {
         12 => Some(Some(1_005)),
         13 => Some(Some(999)),
@@ -345,7 +367,7 @@ fn stale_notes_of_other_processes_are_swept() {
 fn an_unreadable_record_is_never_overwritten() {
     let h = temp_home("unreadable");
     std::fs::write(h.join(FILE_NAME), "{坏").unwrap();
-    leave_note(&own_at(&h), 5, "x", 1_000).unwrap();
+    leave_note(&own_at(&h), 5, Some("x"), false, None, 1_000).unwrap();
     assert!(adopt(&own_at(&h), 5, "s1", None, &none_alive).is_err());
     assert_eq!(std::fs::read_to_string(h.join(FILE_NAME)).unwrap(), "{坏");
     let _ = std::fs::remove_dir_all(&h);
@@ -360,7 +382,7 @@ fn concurrent_records_all_land() {
         for i in 0..N {
             let h = h.clone();
             s.spawn(move || {
-                leave_note(&own_at(&h), 50_000 + i, "x", 1_000).unwrap();
+                leave_note(&own_at(&h), 50_000 + i, Some("x"), false, None, 1_000).unwrap();
                 adopt(&own_at(&h), 50_000 + i, &format!("s{i}"), None, &|_| {
                     Some(None)
                 })

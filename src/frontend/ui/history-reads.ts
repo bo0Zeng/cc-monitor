@@ -10,13 +10,11 @@
  */
 import { budgetWithin, callTyped, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import type { Entry } from "./generated/Entry";
+import type { Annotated } from "./generated/Annotated";
 import type { Patch } from "./generated/Patch";
 
 // ─── 成品的形状 ───
 
-/** 一条注解（`history-annotate` 回的那一条）：形状从后端类型生成。 */
-export type EntryMetadata = Entry;
 
 const ANNOTATION_BUDGET_MS = 10_000;
 
@@ -35,11 +33,13 @@ export function historyReasonOf(e: unknown): string {
 
 // ─── 问 ───
 
-/** 改一条注解（星标 / 改名 / 隐藏）。缺格或 `null` = 不改；标题给空白串 = 清空。注解跟着会话住在那台：问的是会话所在那台（`origin`）。 */
-export async function annotate(origin: Origin, sessionId: string, patch: Patch): Promise<EntryMetadata> {
+/**
+ * 改一条注解（星标 / 改名 / 隐藏）。缺格或 `null` = 不改；标题给空白串 = 清空。注解跟着会话住在那台：问的是会话所在那台（`origin`）。
+ * 回改完的那一条 ＋ 改之前单个隐藏那一格（`prev`，撤销隐藏照它交回去）。
+ */
+export async function annotate(origin: Origin, sessionId: string, patch: Patch): Promise<Annotated> {
   const budget = budgetWithin(ANNOTATION_BUDGET_MS);
-  const { entry } = await callTyped(origin, "history-annotate", { sid: sessionId, patch }, budget);
-  return entry;
+  return callTyped(origin, "history-annotate", { sid: sessionId, patch }, budget);
 }
 
 /** 删会话之后连带删那一条注解（会话所在那台的；删不掉只记一行：孤儿注解不害人）。 */

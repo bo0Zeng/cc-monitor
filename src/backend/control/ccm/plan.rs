@@ -83,6 +83,8 @@ pub(crate) enum Item {
     MachineEnv,
     /// 别名。
     Alias,
+    /// 标签页（进不进标签栏、历史默认清单）。
+    Tab,
     /// 其余环境变量。
     OtherEnv,
     /// 后端自己的载体（常驻开关 · 诊断文件 · 后端内部那几族）。
@@ -201,6 +203,13 @@ pub(crate) const INHERIT: &[Inherit] = &[
         tmux: Pass::Carried,
         change: Change::AliasName,
         judge: "crate::assets::aliases::profile::resolve",
+    },
+    Inherit {
+        item: Item::Tab,
+        direct: Pass::Machine,
+        tmux: Pass::Machine,
+        change: Change::Flags(&[flag::TAB]),
+        judge: "crate::control::session_hidden::judge",
     },
     Inherit {
         item: Item::OtherEnv,
@@ -756,6 +765,8 @@ pub(crate) struct Direct {
     pub(crate) plugin_dirs: Option<(String, String)>,
     /// 同上那一支：插件目录里的每一份（相对路径, 内容）；exec 之前经写自家状态的句柄写进 [`crate::agents::asks::plugin_dir_under`]。
     pub(crate) plugin_files: Vec<(&'static str, String)>,
+    /// `--tab`（与写它的别名）：最后那一跳记进便条，观测侧认便条时落进启动台账。
+    pub(crate) tab: Option<crate::control::launch_account::LaunchTab>,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -1331,6 +1342,15 @@ pub(crate) fn build_among(
             opts.push(flag::CCM_SID.into());
             opts.push(o.ccm_sid.clone());
         }
+        // 标签页那一格随这一发走（别名在窗格那一趟的命令行里已经没有了 ⇒ 写它的那个别名一起交下去）。
+        if let Some(t) = o.tab {
+            opts.push(flag::TAB.into());
+            opts.push(crate::ccm_line::argv::tab_word(t).into());
+            if !o.tab_from.is_empty() {
+                opts.push(flag::TAB_FROM.into());
+                opts.push(o.tab_from.clone());
+            }
+        }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
         let inner_head = inner.clone();
@@ -1573,6 +1593,10 @@ pub(crate) fn build_among(
         answer_hook_off,
         plugin_dirs,
         plugin_files,
+        tab: o.tab.map(|tab| crate::control::launch_account::LaunchTab {
+            tab,
+            alias: (!o.tab_from.is_empty()).then(|| o.tab_from.clone()),
+        }),
     }))
 }
 
@@ -1806,6 +1830,18 @@ pub(crate) fn from_rows(
                     at,
                     given(&[flag::TMUX, flag::TMUX_BASE]).unwrap_or_else(implicit),
                 );
+            }
+            Item::Tab => {
+                if let Some(t) = o.tab {
+                    push(
+                        copy_text("beProfile.slot.tab", &[]),
+                        crate::assets::aliases::page::said_of(
+                            Some(flag::TAB),
+                            &[crate::ccm_line::argv::tab_word(t).to_string()],
+                        ),
+                        given(&[flag::TAB]).unwrap_or(Source::Flag),
+                    );
+                }
             }
             Item::Account
             | Item::Rotation

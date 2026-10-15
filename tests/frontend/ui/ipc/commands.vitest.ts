@@ -478,7 +478,7 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     return {
       agent: "claude", agentTag: null, sessionId: "s1", projectDir: "pd", projectPath: "/p", projectName: "P", group: "claude:/p",
       aiTitle: "T", firstUserExcerpt: "x", title: "T", label: "T", untitled: false, startedAt: 1, updatedAt: 1, at: 1,
-      jsonlPath: "/p/s1.jsonl", messageCountApprox: 1, isBg: false, starred: false, customTitle: null, hidden: false,
+      jsonlPath: "/p/s1.jsonl", messageCountApprox: 1, isBg: false, starred: false, customTitle: null, hidden: null,
       status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
     };
   }

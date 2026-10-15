@@ -2,6 +2,7 @@
 import type { Entry } from "./Entry";
 import type { HistoryFailedDir } from "./HistoryFailedDir";
 import type { HistoryRawRow } from "./HistoryRawRow";
+import type { Rules } from "./Rules";
 
 /**
  * 一台自己的清单（`raw` 那一形，也是远端那一支带回来的样子）：行 · 读不了的记录目录 · 那台自己的注解（或读不到它的那一句）。
@@ -10,4 +11,8 @@ export type HistoryListing = { rows: Array<HistoryRawRow>, failed: Array<History
 /**
  * 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
  */
-annotations?: { [key in string]: Entry }, annotationsNotice?: string, };
+annotations?: { [key in string]: Entry }, annotationsNotice?: string, 
+/**
+ * 那台偏好里子会话 · 分身会话进不进标签页（隐藏的判定照那一台的）。
+ */
+rules: Rules, };

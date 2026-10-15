@@ -2753,6 +2753,35 @@
   display: none;
 }
 
+/* 栏底「已隐藏 N」那一行（`tab-bar-view.ts::paintHiddenRow`）：组头与收着的分组同一个组件；不画块的框与底，
+   上沿一道细线把它与散的标签页分开；名字里已经带了数 ⇒ 不另写组员数；展开时行与标签页同形、缩进一格。 */
+.tab-group.tab-hidden {
+  margin: 6px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
+.tab-hidden .tab-group-name {
+  font-weight: normal;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tab-hidden .tab-group-count,
+.tab-hidden-icon {
+  display: none;
+}
+
+.tab-group.tab-hidden > .tab-group-list {
+  border-top: 0;
+}
+
+.tab-hidden .tab {
+  padding-left: 22px;
+}
+
 /* 复活出来的固定 tab 的**空态**。
    已结束的会话点进去**不能看内容，只能 resume**（裁定）⇒ 这块里
    一条记录都不会有。不放点东西进去，用户点它就是一片空白 —— 与坏了没有区别
@@ -2857,5 +2886,14 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group.is-collapsed .tab-group
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > .tab-group-count {
   order: 2;
+}
+/* 窄栏：「已隐藏」那一行只剩「隐藏」图标 ＋ 计数，点开是同一列的菜单（列表不在栏里展开）。 */
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-hidden .tab-group-head > .tab-hidden-icon,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-hidden .tab-group-head > .tab-group-count {
+  display: inline-grid;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-hidden .tab-group-head > .tab-group-caret,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-hidden .tab-group-list {
+  display: none;
 }
 }

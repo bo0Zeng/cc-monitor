@@ -21,11 +21,13 @@ import {
 } from "./tab-collections";
 import {
   getGroupOf,
+  getHiddenOpen,
   getPinned,
   getTabOrder,
   groupOfEdit,
   ORDER_CAP,
   isDegradedPin,
+  setHiddenOpen as writeHiddenOpen,
   setPinned,
   setTabOrder,
   type PinnedTab,
@@ -82,6 +84,8 @@ export class TabBarPrefs {
    * 留着「新建集合…」的话，点一下就把只含这一个的列表写回 `config.json`，用户已有的集合全没了 ⇒ 没拉过就不给入口。
    */
   collectionsLoaded = false;
+  /** 栏底「已隐藏」那一行展开着没有（`tabBar.hiddenOpen`，随组表一起读；缺省收着）。 */
+  hiddenOpen = false;
   /**
    * 这个实例拉过固定表没有。`persistPinned` 按当前 tab 重算整张表写回，没拉过就写 ⇒ 上次固定的全没了
    * ⇒ 没拉过就不给入口（右键菜单里那两项不出现）、也不落盘。
@@ -109,8 +113,9 @@ export class TabBarPrefs {
    * 其余存成意图，并立刻对已经在栏里的 tab 补一次归位（固定复活的骨架可能先到）。
    */
   async loadCollections(): Promise<void> {
-    const [table, groupOf] = await Promise.all([getCollections(), getGroupOf()]);
+    const [table, groupOf, hiddenOpen] = await Promise.all([getCollections(), getGroupOf(), getHiddenOpen()]);
     this.collections = table;
+    this.hiddenOpen = hiddenOpen;
     const ids = new Set(table.map((c) => c.id));
     this.savedGroupOf = new Map([...groupOf].filter(([, gid]) => ids.has(gid)));
     this.collectionsLoaded = true;
@@ -295,8 +300,24 @@ export class TabBarPrefs {
     return this.writeGroups([collectionsEdit(next)]);
   }
 
-  /** 要切到的标签页在收着的组里（Ctrl+J · 命令面板 · 通知）⇒ 那个组展开（不再自动收回）。回有没有展开。 */
+  /** 「已隐藏」那一行收 / 展：先改内存再落盘（落盘失败只记日志）。没拉过组表的实例（撕出来的查看窗）不落盘。 */
+  setHiddenOpen(on: boolean): Promise<void> {
+    if (this.hiddenOpen === on) return Promise.resolve();
+    this.hiddenOpen = on;
+    if (!this.collectionsLoaded) return Promise.resolve();
+    return writeHiddenOpen(on).catch((e: unknown) => console.warn("[tab-bar] 写「已隐藏」收展失败：", e));
+  }
+
+  /**
+   * 要切到的标签页在收着的组里（Ctrl+J · 命令面板 · 通知）⇒ 那个组展开（不再自动收回）；在收着的「已隐藏」那一行里 ⇒ 那一行展开。
+   * 回有没有展开。
+   */
   expandFor(sid: string): boolean {
+    if (this.store.tabs.get(sid)?.hidden != null) {
+      if (this.hiddenOpen) return false;
+      void this.setHiddenOpen(true);
+      return true;
+    }
     const col = this.groupOf(sid);
     if (!col?.collapsed) return false;
     void this.setCollapsed([col.id], false);

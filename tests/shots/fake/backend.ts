@@ -47,6 +47,11 @@ export const REAL_OPS = new Set([
   "history-last-accounts",
   "exit-policy-read",
   "needs-answer",
+  // 那台的偏好（`prefs.json`：启动命令 · 子会话 / 分身会话进不进标签栏 …）：真后端读写台架盘上那一份，缺省只在后端。
+  "prefs-read",
+  "prefs-set",
+  // 改注解（星标 · 改名 · 隐藏）：真后端写台架盘上那一份，它的观测那一侧照新注解重判隐藏、推 `changed/session_hidden`。
+  "history-annotate",
 ]);
 
 /**
@@ -55,7 +60,7 @@ export const REAL_OPS = new Set([
  * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
 
 /**

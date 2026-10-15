@@ -384,3 +384,115 @@ fn bus_registration_carries_the_session_id_when_the_launch_knows_it() {
         "{without}"
     );
 }
+
+/// 标签页那一格（继承表 `Item::Tab`）：不随调用方 —— 没写 `--tab` ⇒ 这一发不带（照这台偏好，观测侧判）；
+/// 命令行写了 ⇒ 便条带它、来自「命令行」；别名写了 ⇒ 带上别名的名字、来自「别名 <名>」；容器路把它（连同别名名）交给窗格那一趟。
+#[test]
+fn the_tab_slot_goes_with_the_launch_and_names_its_alias() {
+    use crate::control::launch_account::LaunchTab;
+    use cmd_wire::session::Tab;
+    let row = INHERIT
+        .iter()
+        .find(|r| r.item == Item::Tab)
+        .expect("标签页那一格在继承表里");
+    assert_eq!((row.direct, row.tmux), (Pass::Machine, Pass::Machine));
+    let plan_of = |layers: &[(&str, &[&str])], args: &[&str]| {
+        let layers: Vec<crate::ccm_line::argv::Layer> = layers
+            .iter()
+            .map(|(name, ccm)| crate::ccm_line::argv::Layer {
+                name: name.to_string(),
+                agent: Vec::new(),
+                ccm: ccm.iter().map(|s| s.to_string()).collect(),
+            })
+            .collect();
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let (parsed, origins) =
+            crate::ccm_line::argv::parse_layered(&layers, &a).expect("解析得动");
+        let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
+            panic!("该是起会话")
+        };
+        let t = AccountTable::default();
+        let plan = build(&o, &env(), &t, None).expect("算得出计划");
+        let rows = from_rows(&o, &origins, &env(), &t, &plan);
+        (plan, rows)
+    };
+    let tab_of = |p: &Plan| match p {
+        Plan::Direct(d) => d.tab.clone(),
+        _ => panic!("该是直路"),
+    };
+    let label = copy_core::copy_text("beProfile.slot.tab", &[]);
+    // 没写：不带、「来自」也不写这一行（由这台偏好判，不是这一发的事）。
+    let (p, rows) = plan_of(&[], &["--"]);
+    assert_eq!(tab_of(&p), None);
+    assert!(rows.iter().all(|r| r.label != label));
+    // 命令行。
+    let (p, rows) = plan_of(&[], &["--", "--tab", "hide"]);
+    assert_eq!(
+        tab_of(&p),
+        Some(LaunchTab {
+            tab: Tab::Hide,
+            alias: None
+        })
+    );
+    let r = rows
+        .iter()
+        .find(|r| r.label == label)
+        .expect("标签页那一行");
+    assert_eq!(r.from, Source::Flag);
+    // 别名；命令行当场写回 show 盖过它（单值后写的盖前面）。
+    let (p, rows) = plan_of(&[("cct", &["--tab", "hide"])], &["--"]);
+    assert_eq!(
+        tab_of(&p),
+        Some(LaunchTab {
+            tab: Tab::Hide,
+            alias: Some("cct".into())
+        })
+    );
+    assert_eq!(
+        rows.iter()
+            .find(|r| r.label == label)
+            .map(|r| r.from.clone()),
+        Some(Source::Alias("cct".into()))
+    );
+    let (p, _) = plan_of(&[("cct", &["--tab", "hide"])], &["--", "--tab", "show"]);
+    assert_eq!(
+        tab_of(&p),
+        Some(LaunchTab {
+            tab: Tab::Show,
+            alias: None
+        })
+    );
+    // 容器路：窗格那一趟的命令行里带 `--tab hide --tab-from cct`。
+    let (p, _) = plan_of(
+        &[("cct", &["--tab", "hide"])],
+        &["--", "--ccm-tmux=t", "--detach"],
+    );
+    let Plan::Container(c) = p else {
+        panic!("该是容器路")
+    };
+    assert!(
+        c.payload.contains("'--tab' 'hide' '--tab-from' 'cct'"),
+        "{}",
+        c.payload
+    );
+}
+
+/// `--tab` 只认 show · hide；`--tab-from` 要配 `--tab`、值要是能当别名的名字。
+#[test]
+fn the_tab_flag_takes_only_show_or_hide() {
+    let parse = |a: &[&str]| {
+        crate::ccm_line::argv::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    };
+    assert!(parse(&["--", "--tab", "hide"]).is_ok());
+    assert!(parse(&["--", "--tab=show"]).is_ok());
+    let Err(crate::ccm_line::argv::Die(m)) = parse(&["--", "--tab", "maybe"]) else {
+        panic!("认了一个不是 show / hide 的值")
+    };
+    assert_eq!(
+        m,
+        copy_core::copy_text("beArgv.validate.badTab", &[("v", "\"maybe\"")])
+    );
+    assert!(parse(&["--", "--tab-from", "cct"]).is_err());
+    assert!(parse(&["--", "--tab", "hide", "--tab-from", "a b"]).is_err());
+    assert!(parse(&["--", "--tab", "hide", "--tab-from", "cct"]).is_ok());
+}

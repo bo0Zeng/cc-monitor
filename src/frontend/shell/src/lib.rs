@@ -307,7 +307,7 @@ use tauri::{Emitter, Listener, Manager};
 ///
 /// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 backend **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由后端的 kind 交互性过滤处理
-/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::BgHide`），与本处嵌套环境清洗无关。
+/// （Batch6-F21；隐不隐藏由后端判好、帧上带 `hidden` 那一格，壳照转不丢），与本处嵌套环境清洗无关。
 /// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
@@ -969,19 +969,6 @@ pub fn run() {
                 //   （`the_exit_arm_collects_no_relay` 的零命中守卫数着这件事）。
             }
         });
-}
-
-/// Batch7-F24：读 config.json 顶层 `showBgSessions`（默认 true）。**OnceLock 缓存
-/// 首读**——本地 scan 过滤与远端 exec 参数（含每次重连）拿到同一个值，双端统一
-/// "重启生效"语义（审计 D：不缓存则远端在重连时活切换、与本地/文案不一致）。
-pub(crate) fn load_show_bg_sessions() -> bool {
-    static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *CACHE.get_or_init(|| {
-        config::load_config()
-            .ok()
-            .and_then(|v| v.get("showBgSessions").and_then(|b| b.as_bool()))
-            .unwrap_or(true)
-    })
 }
 
 /// SSH-remote（issue #15 / 多机 #30）：从 monitor 的 config.json 读 `remote` 段，构造

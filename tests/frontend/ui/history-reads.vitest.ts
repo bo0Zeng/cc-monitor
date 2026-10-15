@@ -27,17 +27,15 @@ describe("问的是谁、带了什么", () => {
     invokeMock.mockImplementation((_cmd: string, a: ChanCallArgs) =>
       Promise.resolve(
         a.op === "history-annotate"
-          ? chanReply({ entry: { starred: true, customTitle: null, hidden: false, updatedAt: 9 } })
+          ? chanReply({ entry: { starred: true, customTitle: null, hide: "on", updatedAt: 9 }, prev: null })
           : a.op === "history-forget"
             ? chanReply({ removed: true })
             : chanReply({ accounts: { s1: "a" } }),
       ),
     );
     expect(await annotate("dev", "s1", { customTitle: "" })).toEqual({
-      starred: true,
-      customTitle: null,
-      hidden: false,
-      updatedAt: 9,
+      entry: { starred: true, customTitle: null, hide: "on", updatedAt: 9 },
+      prev: null,
     });
     await forgetAnnotation("dev", "s1");
     expect(await lastAccounts("dev")).toEqual({ s1: "a" });

@@ -28,6 +28,8 @@ import { commands } from "../ipc/commands";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation, historyReasonOf } from "../history-reads";
+import { setHide } from "../session-hidden-cmds";
+import { undoHide } from "../session-hidden";
 import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
 import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
 import { SessionViewer, viewerPath, type ViewerHead } from "./session-viewer";
@@ -1037,12 +1039,15 @@ export class HistoryView {
   }
 
   private async hide(r: HistoryRow): Promise<void> {
+    // 隐藏 · 取消隐藏 · 撤销与标签栏同一个口、同一套词：隐藏交 `on`、取消隐藏交 `off`（明说要显示）、
+    //   撤销回到隐藏之前那一份单独设置（`undoHide`：原本没有 ⇒ `rule`）。
     const to = !r.hidden;
+    const origin = r.origin ?? LOCAL_ORIGIN;
     try {
-      await annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hidden: to });
+      const prev = await setHide(origin, r.sessionId, to ? "on" : "off");
       this.refresh(Boolean(r.origin), keyOf(r.origin));
       if (to)
-        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.origin ?? LOCAL_ORIGIN, r.sessionId, { hidden: false }).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
+        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void setHide(origin, r.sessionId, undoHide(prev)).then(() => this.refresh(Boolean(r.origin), keyOf(r.origin))), () => {});
     } catch (e) {
       failToast(copyText("history.hide.failed"), e);
     }
@@ -1253,7 +1258,8 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     isBg: sh.isBg,
     starred: false,
     customTitle: null,
-    hidden: false,
+    // 命中那一行不带隐藏那一格（全文搜索不判它）⇒ 按没隐藏画；它在清单里那一行到了照那一行。
+    hidden: null,
     status: sh.status,
     can: sh.can,
     ...(sh.origin ? { origin: sh.origin } : {}),

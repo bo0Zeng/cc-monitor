@@ -117,6 +117,8 @@ pub enum InboundFrame {
         /// 叫它什么（核心写的名字 ＋ 项目那一格）。
         naming: crate::session_book::NameCells,
         waiting_for: Option<String>,
+        /// 隐藏那一格（那台后端判好的 `{by, said}`；缺 / `null` ⇒ 不隐藏）。进 `session_book` 的活会话成品、原样转给界面。
+        hidden: Option<cmd_wire::session::Hidden>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
         /// 不认识的宿主 ⇒ `Other`（不吞）。
         /// 进 `session_book` 的活会话成品（本机那条流同一个口）。
@@ -514,6 +516,14 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 activity: activity_cells(obj, k)?,
                 naming: name_cells(obj, k)?,
                 waiting_for: opt("waiting_for"),
+                // 闭集（`cmd_wire::session::Hidden`）：缺 / `null` ⇒ 不隐藏；形状不对 ⇒ 整帧 `BadShape`（不猜成不隐藏）。
+                hidden: match obj.get("hidden") {
+                    None | Some(serde_json::Value::Null) => None,
+                    Some(v) => Some(
+                        serde_json::from_value(v.clone())
+                            .map_err(|_| bad(k, "`hidden` is not {by, said}"))?,
+                    ),
+                },
                 // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
                 container: match obj.get("container") {
                     None => None,

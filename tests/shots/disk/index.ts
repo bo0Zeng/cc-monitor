@@ -208,6 +208,12 @@ export function putLineage(d: MachineDisk, parents: Record<string, string>, at: 
   d.files[".cc-monitor/lineage.json"] = json({ origins: {}, parents: Object.fromEntries(Object.entries(parents).map(([sid, parent]) => [sid, { parent, agent: "claude-code", at: Math.round(at) }])) });
 }
 
+// ── 那台的偏好（`<家>/.cc-monitor/prefs.json`，第 1 版；只写给了的那几格，别的照后端缺省）──
+
+export function putPrefs(d: MachineDisk, prefs: Record<string, unknown>): void {
+  d.files[".cc-monitor/prefs.json"] = json({ version: 1, ...prefs });
+}
+
 // ── quota-warm 在跑（`<家>/.cc-monitor/quota-warm.json`：写它的那个进程的 pid ＋ 每号下一次开窗的时刻）──
 
 export function putWarm(d: MachineDisk, next: { account: string; at: number }[]): void {

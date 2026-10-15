@@ -229,12 +229,10 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     crate::machine_state::connecting(&host_label, "attach");
 }
 
-/// 一条连接上 monitor 这边的那几样（接上时开、断了就丢）：攒批 ＋ 静默窗 ＋ 旁路快照（[`LineIntake`]，本机那条流用的是同一个）· 后台会话过滤 · 认不出的帧记账。
+/// 一条连接上 monitor 这边的那几样（接上时开、断了就丢）：攒批 ＋ 静默窗 ＋ 旁路快照（[`LineIntake`]，本机那条流用的是同一个）· 认不出的帧记账。
 struct Conn {
     client: Arc<crate::inbound_client::InboundClient>,
     intake: LineIntake,
-    /// 没开「显示后台会话」⇒ 那台的 bg 会话（`session_added.background`）连同它的行 · 状态 · 去向一起不进（本机那条流同一个口径）。
-    bg: super::local::BgHide,
     /// 这条流上跳过了几帧认不出的。
     tally: crate::frame_tally::FrameTally,
     /// 解不出来的帧每种说一次（日志 ＋ 这台的健康信息）。
@@ -350,7 +348,6 @@ fn on_attached(
     let mut conn = Conn {
         client,
         intake: LineIntake::open(host_label.clone(), replay, health),
-        bg: super::local::BgHide::new(crate::load_show_bg_sessions()),
         tally: crate::frame_tally::FrameTally::new(format!("stream_source {host_label}")),
         unread: UnreadNotes::new(host_label.clone(), host_label.clone()),
     };
@@ -433,7 +430,6 @@ async fn dispatch(
         }
     };
     let frame = c.unread.take(line, &mut c.tally, &say_health);
-    let frame = frame.filter(|f| !c.bg.hides(f));
     let intake = &mut c.intake;
     // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则归档后迟到的行把 Tab 复活成僵尸 live。
     // SessionAdded / Overflow / 坏帧不作边界（多个小会话的 snapshot 才能聚成大批；行先于 Added 到达无妨：前端 ensureTab 见行即建）。
@@ -479,6 +475,7 @@ async fn dispatch(
             activity,
             naming,
             waiting_for,
+            hidden,
             container,
             // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这条流的声明去掉了它（`resident_client::attach::remote_stream_view`）。
             pid: _,
@@ -494,6 +491,7 @@ async fn dispatch(
                 activity,
                 naming,
                 waiting_for,
+                hidden,
                 container,
                 pid: None,
             },

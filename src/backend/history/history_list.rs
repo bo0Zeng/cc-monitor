@@ -114,7 +114,8 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         is_bg: v["isBg"].as_bool().unwrap_or(false),
         starred: false,
         custom_title: None,
-        hidden: false,
+        launch_tab: None,
+        parent: None,
         forked_from_session_id: fork.as_ref().map(|f| f.0.clone()),
         forked_from_message_uuid: fork.map(|f| f.1),
         project_dir: project_dir.to_string(),
@@ -142,7 +143,8 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         is_bg: false,
         starred: false,
         custom_title: None,
-        hidden: false,
+        launch_tab: None,
+        parent: None,
         forked_from_session_id: None,
         forked_from_message_uuid: None,
         project_dir: format!("{kind}:{}", s.cwd),
@@ -202,7 +204,21 @@ fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, Str
     .unwrap_or(Value::Null);
     let mut listing = listing_from(tree.unwrap_or_default(), &synth, &live, &last);
     with_own_annotations(&mut listing, &crate::history::history_annotations::load());
+    with_own_rules(
+        &mut listing,
+        &crate::control::session_hidden::Here::read_now(),
+    );
     Ok(listing)
+}
+
+/// **这台隐藏要的那几样并进它自己那份清单**（`raw` 那一形也带，同注解）：每行起会话时的 `--tab` · 主会话，整份带这台偏好那两格。
+/// 单个那一格就是注解（[`with_own_annotations`]）；判定在 [`answer_from`]（`control/session_hidden.rs`）。
+pub(crate) fn with_own_rules(listing: &mut Listing, here: &crate::control::session_hidden::Here) {
+    for r in &mut listing.rows {
+        r.launch_tab = here.ledger.tabs.get(&r.session_id).cloned();
+        r.parent = here.parent_of(&r.session_id).map(str::to_string);
+    }
+    listing.rules = here.rules;
 }
 
 /// [`machine_listing`] 的可喂夹具那一半（记录树分好的目录 · 合成历史 · 判活 · 上次的号由调用方给；不并注解）。
@@ -243,6 +259,7 @@ pub(crate) fn listing_from(
         failed,
         annotations: None,
         annotations_notice: None,
+        rules: Default::default(),
     }
 }
 
@@ -415,6 +432,9 @@ struct Finished {
     label: String,
     untitled: bool,
     status: &'static str,
+    /// 单个那一格（注解）：隐藏的判定在所有行都叫得出名字之后（[`answer_from`]），主会话的名字从同一份清单里取。
+    pin: Option<crate::history::history_annotations::Hide>,
+    hidden: Option<cmd_wire::session::Hidden>,
 }
 
 /// 并上这台的注解（那一台的行也并这台的：注解只住本机），判 `status` · `label` · `untitled`。
@@ -425,7 +445,6 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         .unwrap_or_default();
     raw.starred = meta.starred;
     raw.custom_title = meta.custom_title.clone();
-    raw.hidden = meta.hidden;
     // 显示的标题：用户改过的 ＞ 标题 ＞ 第一句；都没有 ⇒ `untitled`（界面写「没有说过话的会话」）。
     let untitled = meta.custom_title.is_none()
         && raw.ai_title.as_deref().is_none_or(str::is_empty)
@@ -443,6 +462,8 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         label,
         untitled,
         status,
+        pin: meta.hide,
+        hidden: None,
     }
 }
 
@@ -484,7 +505,7 @@ fn row_of(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> H
         is_bg: r.is_bg,
         starred: r.starred,
         custom_title: r.custom_title,
-        hidden: r.hidden,
+        hidden: f.hidden,
         forked_from_session_id: r.forked_from_session_id,
         forked_from_message_uuid: r.forked_from_message_uuid,
         project_dir: r.project_dir,
@@ -504,12 +525,32 @@ pub(crate) fn answer_from(
     tz: &crate::Tz,
 ) -> HistoryList {
     let t = ann.as_ref().ok().copied();
-    let all: Vec<Finished> = listing
+    let mut all: Vec<Finished> = listing
         .rows
         .iter()
         .cloned()
         .map(|r| finish_row(r, t))
         .collect();
+    // 隐藏：那一台的事实（注解 · 起会话时的 `--tab` · 分身 · 主会话）＋ 那一台的偏好，主会话叫什么照这份清单里它那一行（不在 ⇒ 编号头八位）。
+    let labels: BTreeMap<String, String> = all
+        .iter()
+        .map(|f| (f.raw.session_id.clone(), f.label.clone()))
+        .collect();
+    for f in &mut all {
+        let parent = f.raw.parent.as_deref().map(|p| {
+            labels
+                .get(p)
+                .cloned()
+                .unwrap_or_else(|| p.chars().take(8).collect())
+        });
+        f.hidden = crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+            pin: f.pin,
+            launch: f.raw.launch_tab.as_ref(),
+            bg: f.raw.is_bg,
+            parent: parent.as_deref(),
+            rules: listing.rules,
+        });
+    }
     let key = |f: &Finished| {
         if ask.by_created {
             f.raw.started_at
@@ -521,7 +562,7 @@ pub(crate) fn answer_from(
         if let Some(sid) = ask.sid.as_deref() {
             return f.raw.session_id == sid;
         }
-        (ask.hidden || !f.raw.hidden)
+        (ask.hidden || f.hidden.is_none())
             && ask.within_ms.is_none_or(|w| key(f) >= now_ms - w)
             && ask.query.as_deref().is_none_or(|q| hits(f, q))
     };
@@ -669,7 +710,10 @@ pub(crate) fn specimen() -> HistoryList {
             is_bg: false,
             starred: true,
             custom_title: Some(s("c")),
-            hidden: false,
+            hidden: crate::control::session_hidden::judge(&crate::control::session_hidden::Facts {
+                pin: Some(crate::history::history_annotations::Hide::On),
+                ..Default::default()
+            }),
             forked_from_session_id: Some(s("f")),
             forked_from_message_uuid: Some(s("u")),
             project_dir: s("-w"),
