@@ -90,7 +90,9 @@ impl Spend {
             Some((k, _)) => k.clone(),
             None => return,
         };
-        let Some(s) = crate::agents::spent_of(&crate::agents::kind_of_route(&key.0)).and_then(|f| f(data)) else {
+        let Some(s) =
+            crate::agents::spent_of(&crate::agents::kind_of_route(&key.0)).and_then(|f| f(data))
+        else {
             return;
         };
         let mut g = self.lock();
