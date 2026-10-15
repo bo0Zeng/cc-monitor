@@ -1037,7 +1037,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// 会话帧多 switch（此刻能不能换模型 · 权限档，那一句后端写）· session-new-facts 每家多 modelDefault / modelNote ·
 /// session-commands 多 compact / clear · session_removed 多 by · history-facts 多 modelText ⇒ 形状指纹表再跟着变。
 /// session-say 多一格可选的 seen_screen（cc-bus 带：发的那一端看过的那一屏，用来判送没送对；桌面 · 手机不带）⇒ 形状指纹表再跟着变。
-pub const BUILD_ID: &str = "p10o-login-busy";
+///
+/// p10p-one-handle：命令执行收成一种写法，后端每条命令都 typed（账号 7 条 · 帧面硬臂 14 条 · ping · resident-verdict 新进），
+/// 都进形状指纹；错误码带的 data 也进指纹。新 typed 的那几条入参多一个键 ⇒ bad_args，码表以 bad_args 打头；
+/// resync 回包不再带恒空的 uncancellable；quota-read 的 state 成枚举（冻结格摘要跟着变）。
+/// 版本门：对面认这一问、形状对不上 ⇒ 当旧版、照实说要更新。子命令集不变。
+pub const BUILD_ID: &str = "p10p-one-handle";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
