@@ -10,7 +10,7 @@
 use super::launch_account::{self as la, AccountAsk, AccountUnavailable, LaunchedAccount, Settled};
 use super::launch_render::{local, wire};
 use crate::platform::child::{Child, Deadline};
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 use std::collections::BTreeSet;
 
 /// 一批的上界：兜坏输入（一屏 tab 栏放不下这么多），不是兜格式。
@@ -240,16 +240,15 @@ impl Answer {
     fn done(sid: &str) -> Self {
         Self::new(sid, "done", None, String::new())
     }
-    /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，`crate::wire::said`；
+    /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，[`crate::control::kill::said`]；
     /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
     fn to_wire(self, cmd: &str) -> Outcome {
         let failed = self.outcome == "failed";
         let said = match (&self.why, failed && cmd == "sessions-stop") {
-            (Some(why), true) => crate::wire::said::reword(
-                "kill",
-                &json!({ "name": self.session.as_deref().unwrap_or_default() }),
+            (Some(why), true) => Some(crate::control::kill::said(
+                self.session.as_deref().unwrap_or_default(),
                 why,
-            ),
+            )),
             _ => None,
         };
         let copy_detail = match (&self.why, failed) {

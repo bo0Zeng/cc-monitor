@@ -847,39 +847,6 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
     );
 }
 
-/// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
-#[test]
-fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
-    let f = crate::wire::spec::Fail::from((
-        "kill_failed".to_string(),
-        "tmux: can't find window: demo-cc:2".to_string(),
-    ));
-    let crate::wire::Frame::Reply {
-        message, detail, ..
-    } = f.into_reply(
-        "i".into(),
-        "kill",
-        &serde_json::json!({ "name": "demo-cc" }),
-    )
-    else {
-        panic!("不是应答帧");
-    };
-    let message = message.unwrap();
-    let detail = detail.unwrap();
-    assert_eq!(
-        message,
-        copy_core::copy_text("tmuxControl.kill.failed", &[("target", "demo-cc")])
-    );
-    assert!(!message.contains("can't find window"), "{message}");
-    assert!(
-        detail.contains(&format!(
-            "{}：tmux: can't find window: demo-cc:2",
-            copy_core::copy_text("detail.label.raw", &[])
-        )),
-        "{detail}"
-    );
-}
-
 /// `stream-watch`：名单（连同要哪几个的主线外清单、手上各有什么）原样交给这条连接的 watcher（整份），它答的「从第几行起」原样回；
 /// `sids` 不是串数组 · `branch` 形状不对 ⇒ `bad_args`、不交。`branch` 可缺（＝ 一份都不要）。
 #[tokio::test]

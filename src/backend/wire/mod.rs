@@ -13,7 +13,6 @@ pub(crate) mod conn; // 连接本身那几条帧命令的类型（`ping` · `can
 pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
 pub mod listen; // K-P1：常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
-pub(crate) mod said; // 那几条命令被拒时给人看的那一句（界面那五张「码 → 句」表搬来）
 pub(crate) mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
 pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表（只此一处：名字 · 可丢性 · 小成品上限）
 pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；`main` 装 `stream::topic_body`）

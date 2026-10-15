@@ -70,3 +70,8 @@ pub(crate) mod terminal_follow;
 pub mod tmux_hook;
 // 传输台住本机常驻后端（文件管理写面的成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;
+
+// 那几条命令被拒时给人看的那一句（各条命令自己的「码 → 句」表）。
+#[cfg(test)]
+#[path = "../../../tests/backend/control/said_tests.rs"]
+mod said_tests;

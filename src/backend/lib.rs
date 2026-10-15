@@ -97,7 +97,7 @@ pub mod stream; // 进后端的口（最上层）：命令表 · 帧面与 CLI �
 #[cfg(test)]
 #[path = "../../tests/backend/test_home_guard.rs"]
 mod test_home_guard; // 每个有判据的 Rust crate 都引了 `src/common/test-home`（测试档的家一开始就是沙箱）
-pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸
+pub mod wire; // 帧面的协议零件（最底下那一层，只引 platform · common · agents · relay）：帧 · typed 命令 · 登记形状 · 复制详情 · 主题表 · 监听判定 · 收场闸
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds

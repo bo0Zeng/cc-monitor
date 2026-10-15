@@ -224,3 +224,32 @@ fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
     );
     assert!(e.raw.is_some(), "系统原话丢了");
 }
+
+/// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
+#[test]
+fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
+    let f = crate::wire::spec::Fail::from((
+        "kill_failed".to_string(),
+        "tmux: can't find window: demo-cc:2".to_string(),
+    ));
+    let crate::wire::Frame::Reply {
+        message, detail, ..
+    } = crate::wire::typed::Codes::into_fail(refused("demo-cc", f)).into_reply("i".into(), "kill")
+    else {
+        panic!("不是应答帧");
+    };
+    let message = message.unwrap();
+    let detail = detail.unwrap();
+    assert_eq!(
+        message,
+        copy_core::copy_text("tmuxControl.kill.failed", &[("target", "demo-cc")])
+    );
+    assert!(!message.contains("can't find window"), "{message}");
+    assert!(
+        detail.contains(&format!(
+            "{}：tmux: can't find window: demo-cc:2",
+            copy_core::copy_text("detail.label.raw", &[])
+        )),
+        "{detail}"
+    );
+}

@@ -4,7 +4,7 @@
  * # 判什么
  *
  * 下面 `TMUX_LAYER` 列的这几条是按代码读出来的：它们的 `{name}` / `{target}` 是 tmux 会话名，说的「会话」是 tmux 那一层
- * （`control/gate.rs::admit` · `admit_destructive` · `control/kill.rs` 认名字与 kill-session · `wire/said.rs` 的 wrong_owner）。
+ * （`control/gate.rs::admit` · `admit_destructive` · `control/kill.rs` 认名字与 kill-session · `control/kill.rs::said` 的 wrong_owner）。
  * 这几条里每个「会话」前面都得是「tmux 」；`AGENT_SIDE` 那几个片段说的是 agent 那一次运行（同一句里两层都提到），不算。
  * C-W8 原因词闭集里说 tmux 会话不在的那一格是「tmux 会话不存在」。
  *

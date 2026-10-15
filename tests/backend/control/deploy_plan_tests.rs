@@ -243,7 +243,7 @@ async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
         Some("uname : The term 'uname' is not recognized")
     );
     // 帧面那一格：原话进详情。
-    let frame = e.into_reply("7".into(), "deploy-plan", &Value::Null);
+    let frame = e.into_reply("7".into(), "deploy-plan");
     let wire = serde_json::to_value(&frame).unwrap();
     let detail = wire["detail"].as_str().unwrap_or_default();
     assert!(detail.contains("is not recognized"), "{detail}");
