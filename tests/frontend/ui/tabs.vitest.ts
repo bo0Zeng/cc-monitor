@@ -1984,8 +1984,8 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      // 右边 380 + 160 > 400 − 8 ⇒ 翻到那一项左侧：相对那一项的偏移 = −160。
-      expect(fly.style.left).toBe("-160px");
+      // 右边 380 + 160 > 400 − 8 ⇒ 翻到那一项左侧：视口里 200 − 160 = 40（子菜单是 fixed，写视口坐标）。
+      expect(fly.style.left).toBe("40px");
       resumeBtn.click();
       HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
         if (this === resumeWrap) return { left: 10, right: 50, top: 100, bottom: 128 } as DOMRect;
@@ -1993,7 +1993,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(fly.style.left).toBe("40px");
+      expect(fly.style.left).toBe("50px");
     } finally {
       HTMLElement.prototype.getBoundingClientRect = origGBCR;
       Object.defineProperty(window, "innerWidth", { value: origInnerWidth, configurable: true });

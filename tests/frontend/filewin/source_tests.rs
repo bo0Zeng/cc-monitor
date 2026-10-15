@@ -1373,7 +1373,7 @@ impl comms_inward::chan::router::Backends for RawLog {
     }
 }
 
-/// 文件窗口问读侧那几条（列目录 · 算大小 · 探在不在 · 读文本 · 搜索）发出去的**字节**：
+/// 文件窗口问读侧那几条（列目录 · 算大小 · 读文本 · 搜索）发出去的**字节**：
 /// 换形（`json!` 拼 → 按线上类型发）之前用旧代码跑出来钉成字面量，换形之后逐字节比。
 /// 路径两形都走：合法 UTF-8 ⇒ 字符串；有损 ⇒ `{"b16": …}`。（属性框 · 预览两处在各自的窗口判据里钉。）
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1386,7 +1386,6 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     for p in [&plain, &lossy] {
         let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, SortBy::default()).await;
         let _ = crate::size::size_remote(&line, &o, &p.path(), "n").await;
-        let _ = crate::transfer::probe_remote_at(&line, &o, p.path()).await;
         let _ = crate::editor::read_text_at(&line, &o, p).await;
     }
     let board = crate::find::SearchBoard::default();
@@ -1406,11 +1405,9 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     let want = [
         r#"files-ls {"limit":50000,"path":"/srv/a b"}"#.to_string(),
         r#"files-size {"path":"/srv/a b"}"#.to_string(),
-        r#"files-stat {"path":"/srv/a b"}"#.to_string(),
         r#"files-read-text {"max_bytes":8388608,"path":"/srv/a b"}"#.to_string(),
         r#"files-ls {"limit":50000,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
         r#"files-size {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
-        r#"files-stat {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
         r#"files-read-text {"max_bytes":8388608,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
         format!(
             r#"files-find {{"desc":false,"limit":100,"offset":3,"query":"q","seq":7,"sort":"relevance","stream":"{stream}","under":{{"b16":"2f7372762f64ff"}}}}"#

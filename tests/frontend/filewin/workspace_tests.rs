@@ -2292,7 +2292,6 @@ fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it()
 
 /// 「进度」表照行数长高：四趟在跑 ＋ 一趟上传失败（两个没成，自动摊开）⇒ 失败那一行与它底下每一句原因都整个画在表里，
 /// 不被状态栏压住、不在表的可见区外面。改值验：失败那一行不摊开（原因挤成一行截断）⇒ 本条红。
-/// ⚠ 无头帧里面板高度钉回旧的 214 本条照样绿（这一形只在真窗口的截图里看得出，`filewin-progress` 那一张）。
 #[test]
 fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
     use crate::progress::Trip;
@@ -2341,9 +2340,6 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
     let screen = egui::vec2(1280.0, 800.0);
     let painted = frames_at(&mut ws, screen, 6);
     assert!(ws.progress.is_open(), "有失败却没自动摊开「进度」表");
-    // 前提：这几行摆下来比旧的缺省表高（214）高 —— 不然本条量不出「表长高了」。
-    let want = crate::progress::table_height(&ws.progress, false);
-    assert!(want > 214.0, "前提不成立：表只要 {want} 高");
     // 表头「进度」那一行之下才是表的可见区：每一趟（含最上面那几趟在跑的）都整个在它下面 —— 表长高了，不是滚走了。
     let head = painted
         .iter()
@@ -2375,6 +2371,87 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
             at[0].bottom() <= floor && at[0].top() >= 0.0,
             "「{want}」被状态栏压住 / 在表外：{:?}（状态栏顶 {floor}）",
             at[0]
+        );
+    }
+}
+
+/// 「进度」表放得下就不滚：五趟在跑 ＋ 一趟上传失败（摊开两句）⇒ 每一行的每一段字都整个落在它那一层的裁剪框里
+/// （表的高度照这一帧真排出来的行高定，不是照估的行高；估矮了最底那一行被裁掉半截）。
+#[test]
+fn the_progress_table_is_tall_enough_that_no_row_is_clipped() {
+    use crate::progress::Trip;
+    let dir = "/srv/data";
+    let mut ws = Workspace::new(pane(dir, &["a.bin"]));
+    for k in 0..5 {
+        let down = crate::download::DownloadBoard::default();
+        ws.progress.add(
+            Trip::Download {
+                board: down.clone(),
+                name: format!("big-{k}.iso"),
+                src: format!("{dir}/big-{k}.iso"),
+                dest: format!("/tmp/big-{k}.iso"),
+            },
+            None,
+            None,
+        );
+        down.begin(&format!("big-{k}.iso"));
+        down.progress(1, 10);
+    }
+    let items: Vec<crate::transfer::Pending> = ["r-2.tar.gz", "r-3.tar.gz"]
+        .iter()
+        .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), dir))
+        .collect();
+    let failed = crate::transfer::DropBoard::default();
+    ws.progress.add(
+        Trip::Upload {
+            board: failed.clone(),
+            ask: crate::transfer::tests::upload_ask(&items),
+            items,
+            dir: "data".into(),
+        },
+        Some(dir.into()),
+        None,
+    );
+    failed.finish(crate::transfer::DropOutcome {
+        failed: vec![
+            (
+                "r-2.tar.gz".into(),
+                copy_core::copy_text("reason.io.full", &[]).into(),
+            ),
+            ("r-3.tar.gz".into(), "没有权限".into()),
+        ],
+        ..Default::default()
+    });
+    let ctx = egui::Context::default();
+    crate::theme::install(&ctx, &crate::theme::testing::default_theme());
+    let screen = egui::vec2(1280.0, 800.0);
+    let mut clipped: Vec<(String, egui::Rect, egui::Rect)> = Vec::new();
+    for k in 0..6 {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+            time: Some(k as f64),
+            ..Default::default()
+        };
+        let out = ctx.run_ui(input, |ui| ws.frame(ui));
+        clipped.clear();
+        for cs in &out.shapes {
+            let mut found = Vec::new();
+            crate::copy::testing::collect_text(&cs.shape, &mut found);
+            for (t, r) in found {
+                clipped.push((t, r, cs.clip_rect));
+            }
+        }
+        out.drop_without_applying_deltas();
+    }
+    let rows: Vec<&(String, egui::Rect, egui::Rect)> = clipped
+        .iter()
+        .filter(|(t, _, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
+        .collect();
+    assert!(rows.len() >= 7, "表里的行没画全：{clipped:?}");
+    for (t, r, clip) in rows {
+        assert!(
+            r.top() >= clip.top() - 0.5 && r.bottom() <= clip.bottom() + 0.5,
+            "「{t}」被裁掉了：字 {r:?} · 裁剪框 {clip:?}"
         );
     }
 }

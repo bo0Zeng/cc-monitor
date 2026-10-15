@@ -386,8 +386,8 @@ fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
     );
 }
 
-/// 🔴 **图片超上限照实说为什么不显示**（太大 ⇒ 一句话 ＋［下载］）：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
-/// 面板上那一句点名文件、它多大、上限多少、不预览；头上照样给「下载」。正控：恰好在上限上的那张照读。
+/// 🔴 **图片超预览上限照实说为什么不显示**：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
+/// 面板上那一句点名文件、它多大、上限多少、指向头上的「查看」（查看页放得下）；头上「查看」「下载」都在。正控：恰好在上限上的那张照读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     let (wired, mut w) = rig(
@@ -425,6 +425,11 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     for part in ["huge.png", size.as_str(), limit.as_str()] {
         assert!(said.contains(part), "那一句没说到 {part}：{said:?}");
     }
+    // 预览放不下、查看页放得下（查看上限 32 MB）⇒ 那一句指向头上的「查看」，不让人去下载。
+    assert!(
+        said.contains(crate::imgview::VIEW_LABEL.as_str()),
+        "查看页开得了的图，那一句没指向「查看」：{said:?}"
+    );
     // 面板真画出这一句，头上有「下载」。
     let ctx = egui::Context::default();
     let out = ctx.run_ui(
@@ -451,6 +456,12 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
             .any(|t| t == crate::download::DOWNLOAD_LABEL.as_str()),
         "超上限的图头上没给「下载」：{painted:?}"
     );
+    assert!(
+        painted
+            .iter()
+            .any(|t| t == crate::imgview::VIEW_LABEL.as_str()),
+        "超预览上限的图头上没给「查看」：{painted:?}"
+    );
     assert_eq!(p.fired(), 0, "说了不读却发了");
     // 正控：恰好在上限上的那张要读（摆成「正在读」）。
     w.apply_intent(
@@ -469,4 +480,31 @@ async fn an_image_over_the_cap_says_why_it_is_not_shown() {
     );
     assert!(p.fired() >= 1, "上限上的那张没去读");
     drop(wired);
+}
+
+/// 连查看页也放不下（超 [`crate::picture::PICTURE_MAX_BYTES`]）⇒ 预览那一句与查看页同一句：超过查看上限 · 可下载到本机再打开；不读。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_image_over_the_viewer_cap_points_to_download() {
+    let cap = crate::picture::PICTURE_MAX_BYTES;
+    let (_wired, mut w) = rig("fw-pv-hugeimg", vec![row("pano.png", cap + 1, false)]).await;
+    let mut p = Preview::default();
+    w.apply_intent(
+        Intent::Edge {
+            end: false,
+            extend: false,
+        },
+        0.0,
+        None,
+    );
+    p.follow(&w, None);
+    let want = copy_core::copy_text(
+        "rsFilewinImgview.state.tooBig",
+        &[
+            ("name", "pano.png"),
+            ("size", &copy_core::size_text(cap + 1)),
+            ("limit", &copy_core::size_text(cap)),
+        ],
+    );
+    assert_eq!(p.view(), &View::Idle(want));
+    assert_eq!(p.fired(), 0, "说了不读却发了");
 }

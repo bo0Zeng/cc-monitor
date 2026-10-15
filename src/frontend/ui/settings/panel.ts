@@ -262,7 +262,7 @@ export class SettingsPanel {
   private notifyNeedsSw!: SwitchHandle;
   /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
   private behaviorNow: BehaviorConfig | null = null;
-  /** 「终端」那一行的位置（通用页「恢复会话」那一组；只在要挑终端的平台上画）。 */
+  /** 「终端」那一行的位置（通用页「行为」那一组末尾；只在要挑终端的平台上画）。 */
   private readonly terminalSlot = document.createElement("div");
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** 见 `SettingsPanelOptions.windowMode`。 */
@@ -859,7 +859,6 @@ export class SettingsPanel {
 
     const generalPage = document.createElement("div");
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
-    generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.resume"), () => this.buildResumeGroup()));
 
     const logsPage = document.createElement("div");
     logsPage.appendChild(
@@ -1241,17 +1240,7 @@ export class SettingsPanel {
     this.notifyNeedsSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.notifyNeeds"), copyText("settingsPanel.behavior.notifyHelp"), (on) => ({
       notifyNeeds: on,
     }));
-    return group;
-  }
-
-  /**
-   * 通用页「恢复会话」：只剩「终端」那一行（这台桌面开哪个终端程序）。启动程序 · 恢复到 tmux 里住各台后端，
-   * 在每台机器页「这台上的 cc-monitor」里改（`machine-launch-rows.ts`）。
-   */
-  private buildResumeGroup(): HTMLElement {
-    const group = document.createElement("div");
-    group.className = "settings-group settings-headless";
-    // 「终端」那一行（判定在壳的平台层）：通用页第一次可见时问、问回来才画。
+    // 「终端」那一行跟在开关后面（判定在壳的平台层：通用页第一次可见时问、问回来才画；不用挑的平台上没有这一行）。
     group.appendChild(this.terminalSlot);
     return group;
   }

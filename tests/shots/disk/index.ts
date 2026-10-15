@@ -98,6 +98,18 @@ export function putAccounts(d: MachineDisk, accounts: AccountSpec[], opts: { zer
   if (Object.keys(keys).length > 0) d.files[".cc-monitor/apikey-credentials.json"] = json({ accounts: keys });
 }
 
+/**
+ * 用户级 MCP 配置（`~/.claude.json` 的 `mcpServers`，并进登录那一份身份里）＋ 哪几个号连它时碰到要登录（各号配置目录里
+ * `mcp-needs-auth-cache.json`，Claude Code 记的那一笔：服务器名 → `{timestamp}`；后端只认 15 分钟内的）。
+ */
+export function putMcp(d: MachineDisk, servers: Record<string, unknown>, needsAuth: { account: string; atMs: number; server: string }[] = []): void {
+  const cfg = JSON.parse(d.files[".claude.json"] ?? "{}") as Record<string, unknown>;
+  d.files[".claude.json"] = json({ ...cfg, mcpServers: servers });
+  const caches = new Map<string, Record<string, { timestamp: number }>>();
+  for (const n of needsAuth) caches.set(n.account, { ...(caches.get(n.account) ?? {}), [n.server]: { timestamp: n.atMs } });
+  for (const [account, cache] of caches) d.files[`${ACCTS}/${account}/mcp-needs-auth-cache.json`] = json(cache);
+}
+
 /** 订阅号登着：配置目录里一份 `.credentials.json`（令牌是占位串）＋ 那份配置里的账号身份（`oauthAccount.accountUuid`，按名字编的）。 */
 function signIn(d: MachineDisk, dir: string, config: string, name: string): void {
   d.files[`${dir}/.credentials.json`] = json({ claudeAiOauth: { accessToken: "placeholder", refreshToken: "placeholder", expiresAt: 4_102_444_800_000 } });

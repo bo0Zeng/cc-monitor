@@ -131,7 +131,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。
  * 下面「点进本机页 ⇒ 恰好 `MACHINE_PAGE_IPC`」那一条因此也在替它作证：本机页上多挂一块别名，一发都没多。
  */
-/** 通用页本身那一发：恢复组里「终端」那一行的事实（第一次可见时问）。 */
+/** 通用页本身那一发：「终端」那一行的事实（第一次可见时问）。 */
 const GENERAL_PAGE_IPC = ["terminal_choices"] as const;
 
 const APP_PAGE_IPC = [

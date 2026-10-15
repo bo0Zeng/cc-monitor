@@ -1,4 +1,4 @@
-// 设置 → 通用 → 恢复 →「终端」那一行：画的是壳交来的事实（自动 · 探到的 · 自定义），存的是 config.json 的 `terminal`。
+// 设置 → 通用 →「终端」那一行：画的是壳交来的事实（自动 · 探到的 · 自定义），存的是 config.json 的 `terminal`。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const ipc = vi.hoisted(() => ({ choices: vi.fn(), patch: vi.fn() }));

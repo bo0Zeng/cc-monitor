@@ -1077,7 +1077,7 @@ fn low12(m: Option<u32>) -> Option<u32> {
     m.filter(|m| *m <= 0o7777)
 }
 
-/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote_at`] 那一问、同一个期限），按入参顺序交回。
+/// 逐项问一次 `files-stat`（期限 [`super::transfer::PROBE_BUDGET`]），按入参顺序交回。
 pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {

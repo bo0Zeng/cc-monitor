@@ -447,20 +447,6 @@ where
 // 生产适配器：**一行自己的传输代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 「远端已经有这条路径了吗」—— 经通道问后端 `files-stat`（路径按字节）。「复制为」那一问借它。
-///
-/// ⚠ `stat` 失败一律按「不存在」读（不可读与不存在在这一步分不开，而按「存在」处理会**无端多问一次**）。
-pub async fn probe_remote_at(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    remote_path: cmd_wire::files::WirePath,
-) -> bool {
-    let req = cmd_wire::files::StatReq { path: remote_path };
-    super::source::ask_typed(line, origin, &req, PROBE_BUDGET)
-        .await
-        .is_ok()
-}
-
 /// 一次「那儿有没有东西」的往返上限（调用方给的期限）。
 pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 

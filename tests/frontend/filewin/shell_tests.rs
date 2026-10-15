@@ -446,19 +446,6 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     assert!(job.is_dir, "目录那一件没标成目录 —— 线上不会带 recursive");
 }
 
-/// 接不上就**出声**：远端源 ＋ 没有运行时 ⇒ 不许静默吞掉一趟复制。
-#[test]
-fn a_copy_with_no_runtime_says_so_instead_of_doing_nothing() {
-    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    let job = crate::copy::CopyJob::beside("/srv/data/a.bin", "/srv/data", "a.bin.copy")
-        .expect("这个名字应当是合法的");
-    assert!(!w.start_copy(job, None), "没有运行时却说起得来");
-    assert!(
-        w.listing.error.lock().unwrap().is_some(),
-        "一趟复制被吞了，屏幕上一句话都没有"
-    );
-}
-
 /// 🔴 名字不合法 ⇒ **框留着 ＋ 出声**，不静默收掉。
 ///
 /// 收掉的话用户点了「复制」什么都没发生，与「已经开始复制了」长得一模一样。
@@ -493,21 +480,6 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
     // 取消把框收掉。
     w.cancel_copy();
     assert!(w.copy_prompt().is_none());
-}
-
-/// 复制跑完一趟要重列目录（复制出来的那份得出现），而且**只重列一次**。
-#[test]
-fn finishing_a_copy_round_triggers_exactly_one_reload() {
-    // ⚠ 同 `finishing_a_drop_round_triggers_exactly_one_reload`：换了构造器，判的没变。
-    let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    assert!(!w.settle_finished_copies(), "一趟都没跑却说要重列");
-
-    w.copy_board.finish(crate::copy::CopyOutcome::Done {
-        asked: false,
-        bytes: 0,
-    });
-    assert!(w.settle_finished_copies(), "跑完一趟却不重列");
-    assert!(!w.settle_finished_copies(), "同一趟重列了第二次");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -2869,19 +2841,23 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-read-text")["path"],
         b16(b"/srv/d\xff/f\xfe")
     );
-    // 复制为（同目录，新名字 g）。
+    // 复制为（同目录，新名字 g）：一组一项（带票），同名由那台探（缺 `on_exists` ＝ 先探、有同名回 `exists`），窗口自己不问 `files-stat`。
+    let stats = wired.count("files-stat");
     assert!(w.begin_copy(0));
     w.copy_prompt.as_mut().unwrap().new_name = "g".into();
     assert!(w.confirm_copy(None));
     wait_for(&wired, "files-copy", 1).await;
+    let mut copy = last_args(&wired, "files-copy");
+    assert!(copy["ticket"].as_str().is_some(), "复制为没带票：{copy}");
+    copy.as_object_mut().unwrap().remove("ticket");
     assert_eq!(
-        last_args(&wired, "files-copy"),
-        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }], "on_exists": "ask" })
+        copy,
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }] })
     );
     assert_eq!(
-        last_args(&wired, "files-stat")["path"],
-        b16(b"/srv/d\xff/g"),
-        "探目标没按字节"
+        wired.count("files-stat"),
+        stats,
+        "复制为时窗口又自己探了同名"
     );
     // 删除（写面：根是当前目录的字节）。
     assert!(w.perform(Action::Delete, None));
@@ -3160,7 +3136,7 @@ fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     let mut paint = |ev: Vec<egui::Event>, acted: &mut Option<crate::progress::Act>| {
         t += 0.5;
         crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
-            if let Some(a) = crate::progress::table_ui(ui, &progress, false) {
+            if let Some(a) = crate::progress::table_ui(ui, &progress, false).0 {
                 *acted = Some(a);
             }
         })
