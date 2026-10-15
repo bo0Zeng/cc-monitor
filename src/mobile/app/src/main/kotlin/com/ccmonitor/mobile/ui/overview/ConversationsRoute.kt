@@ -15,6 +15,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -22,7 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarController
+import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
@@ -53,26 +60,59 @@ fun ConversationsRoute(
     val machine = rememberMachineName(hostId)
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val vm = machine?.let { conversationsViewModel(hostId, it) }
+    val state = vm?.state?.collectAsStateWithLifecycle()?.value
+    val snackbar = LocalAppSnackbar.current
+    var filtering by remember { mutableStateOf(false) }
+    if (filtering && vm != null && state != null) ConversationsFilterSheet(state.showHidden, vm::showHidden, onDismiss = { filtering = false })
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(
             modifier = modifier,
-            topBar = { ConversationsTopBar(machine, onOpenDrawer = { scope.launch { drawerState.open() } }) },
+            topBar = {
+                ConversationsTopBar(
+                    machine,
+                    filtered = state?.showHidden == true,
+                    onFilter = { filtering = true }.takeIf { vm != null },
+                    onOpenDrawer = { scope.launch { drawerState.open() } },
+                )
+            },
         ) { inner ->
             // 连没连上都先画清单：本地缓存里有上次那一份就照画（离线打开看得到），连上以后换成那台的。
-            if (machine != null) {
-                val vm = conversationsViewModel(hostId, machine)
-                val state by vm.state.collectAsStateWithLifecycle()
+            if (machine != null && vm != null && state != null) {
+                val onHide: (HistoryItem) -> Unit = { item -> scope.launch { toggleHidden(vm, snackbar, item) } }
                 when (val l = link) {
                     is HostLink.Failed ->
                         Column(Modifier.fillMaxSize().padding(inner)) {
                             HostLinkFailed(l.why)
-                            if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry)
+                            if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onHide)
                         }
-                    HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
-                    HostLink.Ready -> ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
+                    HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onHide, Modifier.fillMaxSize().padding(inner))
+                    HostLink.Ready -> ConversationsScreen(state, machine, onOpen, vm::retry, onHide, Modifier.fillMaxSize().padding(inner))
                 }
             }
         }
+    }
+}
+
+/**
+ * 长按菜单「隐藏 / 取消隐藏」：交单个那一格（`on` / `off`，与桌面历史同一个口）。隐藏成了给撤销，撤销把改之前那一格原样交回去；
+ * 取消隐藏是明说要显示，不给撤销。撤销在应用根部的反馈里跑（这一屏关了也照做）。
+ */
+private suspend fun toggleHidden(
+    vm: ConversationsViewModel,
+    snackbar: AppSnackbarController,
+    item: HistoryItem,
+) {
+    val hiding = item.hidden == null
+    when (val r = vm.setHide(item.sessionId, if (hiding) Hide.ON else Hide.OFF)) {
+        is Fetched.Got ->
+            if (hiding) {
+                snackbar.showUndo(copyText("history.hide.done", "label" to item.label)) {
+                    (vm.setHide(item.sessionId, r.value.prev) as? Fetched.Failed)?.let { snackbar.show(Notice(it.problem.text, it.problem.detail)) }
+                }
+            }
+        is Fetched.Failed -> snackbar.show(Notice(copyText("history.hide.failed"), listOf(r.problem.text, r.problem.detail).filter(String::isNotBlank).joinToString("\n")))
+        Fetched.Loading -> Unit
     }
 }
 
@@ -80,9 +120,17 @@ fun ConversationsRoute(
 @Composable
 private fun ConversationsTopBar(
     machine: String?,
+    filtered: Boolean,
+    onFilter: (() -> Unit)?,
     onOpenDrawer: () -> Unit,
 ) {
     TopAppBar(
+        actions = {
+            // 过滤（同桌面历史页的「筛选」）：开着哪一样 ⇒ 漏斗着强调色。
+            onFilter?.let {
+                PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = it, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
         navigationIcon = { PhIconButton(Ph.List, DRAWER_OPEN_DESCRIPTION, onClick = onOpenDrawer, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.sm)) {

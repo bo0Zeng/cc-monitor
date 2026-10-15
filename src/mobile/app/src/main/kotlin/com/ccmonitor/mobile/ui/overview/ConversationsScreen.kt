@@ -2,7 +2,8 @@
 
 package com.ccmonitor.mobile.ui.overview
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,15 +15,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.SessionDot
@@ -31,6 +40,9 @@ import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
+import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -44,6 +56,59 @@ object OverviewTags {
     const val LIST = "overview-list"
     const val EMPTY = "overview-empty"
     const val PROBLEM = "overview-problem"
+    const val HIDDEN = "overview-hidden"
+    const val SHOW_HIDDEN = "overview-show-hidden"
+}
+
+/** 长按一行（手机的右键菜单）：「隐藏」/「取消隐藏」；隐藏的那一行标题底下是那台写好的那一句（为什么隐藏）。 */
+@Composable
+private fun RowMenu(
+    item: HistoryItem,
+    onHide: (HistoryItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val hidden = item.hidden != null
+    ActionSheet(
+        title = item.label,
+        note = item.hidden,
+        actions =
+            listOf(
+                SheetAction(
+                    if (hidden) Ph.Eye else Ph.EyeSlash,
+                    copyText(if (hidden) "history.menu.unhide" else "history.menu.hide"),
+                    onClick = { onHide(item) },
+                ),
+            ),
+        onDismiss = onDismiss,
+    )
+}
+
+/** 漏斗拉起的过滤（同桌面历史页「筛选」里那一格）：眼下只有「显示已隐藏」。点一下就换，不另设应用键。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConversationsFilterSheet(
+    showHidden: Boolean,
+    onShowHidden: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = tokens.card, scrimColor = MaterialTheme.colorScheme.scrim, tonalElevation = 0.dp) {
+        Column(Modifier.fillMaxWidth().padding(bottom = tokens.spacing.lg)) {
+            Text(copyText("history.page.filter"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.rowSetting)
+                    .toggleable(value = showHidden, role = Role.Switch, onValueChange = onShowHidden)
+                    .padding(horizontal = tokens.spacing.lg)
+                    .testTag(OverviewTags.SHOW_HIDDEN),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(copyText("history.filter.showHidden"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(checked = showHidden, onCheckedChange = null)
+            }
+        }
+    }
 }
 
 /**
@@ -56,8 +121,11 @@ fun ConversationsScreen(
     machine: String,
     onOpen: (sessionId: String) -> Unit,
     onRetry: () -> Unit,
+    onHide: (HistoryItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var menuFor by remember { mutableStateOf<HistoryItem?>(null) }
+    menuFor?.let { RowMenu(it, onHide, onDismiss = { menuFor = null }) }
     Column(modifier.fillMaxSize()) {
         val whole = state.linkProblem ?: state.listProblem
         // 手上有上次那一份（本地缓存）⇒ 照画；离线 · 没问成的那一句排在最前。
@@ -68,7 +136,7 @@ fun ConversationsScreen(
                 Text(copyText("history.list.reading", "machines" to machine), style = monoSmall, modifier = Modifier.padding(16.dp))
             state.sections.isEmpty() && state.needs.isEmpty() ->
                 Text(copyText("history.list.empty"), style = monoSmall, modifier = Modifier.padding(16.dp).testTag(OverviewTags.EMPTY))
-            else -> ConversationsList(state, whole, onOpen, onRetry)
+            else -> ConversationsList(state, whole, onOpen, onRetry, onMenu = { menuFor = it })
         }
     }
 }
@@ -80,6 +148,7 @@ private fun ConversationsList(
     whole: Problem?,
     onOpen: (sessionId: String) -> Unit,
     onRetry: () -> Unit,
+    onMenu: (HistoryItem) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize().testTag(OverviewTags.LIST)) {
         whole?.let { p -> item { ProblemBar(p, onRetry) } }
@@ -87,7 +156,7 @@ private fun ConversationsList(
         state.needsProblem?.let { p -> item { ProblemBar(p, onRetry) } }
         needsSection(state.needs, onOpen)
         state.notice?.let { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }
-        for (s in state.sections) historySection(s, onOpen)
+        for (s in state.sections) historySection(s, onOpen, onMenu)
         if (state.truncated) {
             item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
         }
@@ -115,14 +184,17 @@ private fun LazyListScope.needsSection(
 private fun LazyListScope.historySection(
     s: HistorySection,
     onOpen: (String) -> Unit,
+    onMenu: (HistoryItem) -> Unit,
 ) {
     s.title?.let { t -> item { SectionHeader(t) } }
     items(s.rows, key = { it.sessionId }) { r ->
-        DotRow(r.dot, r.status?.text, onClick = { onOpen(r.sessionId) }) {
+        DotRow(r.dot, r.status?.text, onClick = { onOpen(r.sessionId) }, onLongClick = { onMenu(r) }) {
             Column(Modifier.weight(1f)) {
                 Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle())
                 r.status?.let { StatusText(it) }
             }
+            // 隐藏的行（开着「显示已隐藏」才在）：同桌面历史行的那颗小标。
+            r.hidden?.let { Text(copyText("history.row.hidden"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag(OverviewTags.HIDDEN)) }
             r.agentTag?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
@@ -150,18 +222,20 @@ private fun rowTitle() = MaterialTheme.typography.titleSmall
  * 一行：行首一颗状态点（固定一列宽）＋ 内容。双行（标题 ＋ 状态字），行高照适配层 [Touch.rowDouble]。
  * [label] 是点的读屏名（那一行的状态字）；没有 ⇒ 点不念。
  */
+@OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行打开，长按 ＝ 菜单
 @Composable
 private fun DotRow(
     dot: SessionDot?,
     label: String?,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = Touch.rowDouble)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
