@@ -1028,10 +1028,9 @@ def walk():
     with Step("6-断网再连"):
         name = tmux_name_of(f"{T} new session")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
-        flashed = []
-        for _ in range(3):
-            time.sleep(2)
-            flashed += [n.get("text") for n in ui.nodes() if "离线" in (n.get("text") or "")]
+        # 断着：两颗 chip 灰、上方那一行写那台离线（连接那一层判的，桌面同一句）；网回来那一行撤掉。
+        offline = t("newSession.machine.offline", machine=MACHINE)
+        said_offline = wait(offline, 20)
         rig("tmux", "send-keys", "-t", name or "", f"{T} offline", "Enter")
         time.sleep(6)
         adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
@@ -1045,8 +1044,10 @@ def walk():
             raise Step.Fail(f"漏了：{missing}")
         if not adb("shell", "pidof", PKG).strip():
             raise Step.Fail("App 没了（断网闪退）")
-        if flashed:
-            raise Step.Fail(f"闪了「离线」：{flashed[:1]}")
+        if not said_offline:
+            raise Step.Fail("断着时 chip 上方没写那台离线")
+        if ui.find(offline) is not None:
+            raise Step.Fail("网回来了还写着离线")
 
     with Step("7-换网"):
         # 换一张网（Wi-Fi 关掉 ⇒ 落到移动数据，再开回来）：SSH 那层重连换一条，常驻流在新的那条上当场重接；断着那段补上。
