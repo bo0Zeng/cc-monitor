@@ -2205,6 +2205,12 @@
       "zh": "本版 cc-monitor 未带 {os} / {arch} 的后端 · 无法装到 {machine} · 发布版带",
       "args": ["machine", "os", "arch"]
     },
+    "deploy.bytes.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取失败 · 本版带的后端 · {why} · 未安装",
+      "args": ["why"]
+    },
     "liveCard.state.streaming": {
       "kind": "body",
       "role": "状态",
@@ -8179,6 +8185,36 @@
       "role": "报错",
       "zh": "{path} 不存在",
       "args": ["path"]
+    },
+    "settingsPanel.pbDir.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "pb 路径",
+      "args": []
+    },
+    "settingsPanel.pbDir.placeholder": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "planned-build 插件根目录",
+      "args": []
+    },
+    "settingsPanel.pbDir.help": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "planned-build 插件根目录 · 填写后只认它 · 留空用已装的插件",
+      "args": []
+    },
+    "settingsPanel.pbDir.cleared": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已改用已装的插件",
+      "args": []
+    },
+    "settingsPanel.pbDir.saveFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "pb 路径未保存 · {why}",
+      "args": ["why"]
     },
     "settingsPanel.claudeDir.notDir": {
       "kind": "error",
@@ -15987,6 +16023,24 @@
       "zh": "要更新 · 计划不可用\nplanned-build 缺 {verb}",
       "args": ["verb"]
     },
+    "bePlan.command.humanOnly": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "pb {verb} 是用户命令，只许人发起 · 调用方带着 agent 身份，未起 pb",
+      "args": ["verb"]
+    },
+    "bePlan.command.taken": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "「{slice}」的仓库已接过",
+      "args": ["slice"]
+    },
+    "bePlan.command.noSlice": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "工作区里没有片「{slice}」",
+      "args": ["slice"]
+    },
     "bePlan.dump.notRun": {
       "kind": "error",
       "role": "报错",
@@ -16022,6 +16076,36 @@
       "role": "报错",
       "zh": "未装 planned-build",
       "args": []
+    },
+    "bePlan.face.pbDirGone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未找到 planned-build\n设置里填的 pb 路径 {dir} 下没有它 · 改填，或清空改用已装的插件",
+      "args": ["dir"]
+    },
+    "bePlan.pbDir.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{dir} 不存在",
+      "args": ["dir"]
+    },
+    "bePlan.pbDir.noEntry": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{dir} 下没有 planned-build · 填它的插件根目录（含 skills/planned-build）",
+      "args": ["dir"]
+    },
+    "bePlan.pbDir.notRunnable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{dir} 里的 planned-build 运行失败 · {why}",
+      "args": ["dir", "why"]
+    },
+    "bePlan.pbDir.ok": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "可用 · planned-build 在 {dir}",
+      "args": ["dir"]
     },
     "bePlan.face.notWorkspace": {
       "kind": "error",
@@ -16082,6 +16166,12 @@
       "role": "原因格",
       "zh": "会话已结束 · 复制此行，恢复会话后贴入",
       "args": []
+    },
+    "sessionState.planReturn.resume": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{session} 已结束 · 送出时先恢复它，此行当它的第一句",
+      "args": ["session"]
     },
     "bePlan.return.unknown": {
       "kind": "error",
@@ -25470,6 +25560,12 @@
       "zh": "更新",
       "args": []
     },
+    "machineState.fix.install": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "安装",
+      "args": []
+    },
     "machineState.fix.failed": {
       "kind": "title",
       "role": "标题",
@@ -28608,6 +28704,72 @@
       "zh": "整张图没打开",
       "args": []
     },
+    "plan.take.open": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "接过仓库…",
+      "args": []
+    },
+    "plan.take.hint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "pb take · 把 {path} 交给 pb 照规矩守",
+      "args": ["path"]
+    },
+    "plan.take.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "接过「{slice}」的仓库",
+      "args": ["slice"]
+    },
+    "plan.take.action": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "接过仓库",
+      "args": []
+    },
+    "plan.take.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "之后 pb 照规矩守 {path} · 不能退回只写文档",
+      "args": ["path"]
+    },
+    "plan.take.switchNote": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "「{slice}」不是工作区当前片 · 先切成它",
+      "args": ["slice"]
+    },
+    "plan.take.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "「{slice}」的仓库已接过 · {path}",
+      "args": ["slice", "path"]
+    },
+    "plan.take.switched": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "工作区当前片改为「{slice}」",
+      "args": ["slice"]
+    },
+    "plan.take.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "仓库没接过来",
+      "args": []
+    },
+    "plan.sub.docsOnly": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "只写文档",
+      "args": []
+    },
+    "plan.sub.docsOnlyHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "pb 只管图，{path} 由外面改、pb 不守 · 接过仓库之后照规矩守",
+      "args": ["path"]
+    },
     "plan.auto.label": {
       "kind": "control",
       "role": "标签",
@@ -28902,6 +29064,24 @@
       "zh": "送达未知 · 别重发",
       "args": []
     },
+    "plan.return.resumeSend": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复并退回",
+      "args": []
+    },
+    "plan.return.resumeTell": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复并送出",
+      "args": []
+    },
+    "plan.return.resumedSent": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已恢复 {session} 并送出",
+      "args": ["session"]
+    },
     "plan.return.copied": {
       "kind": "body",
       "role": "toast",
@@ -28991,6 +29171,36 @@
       "kind": "action",
       "role": "按钮",
       "zh": "添加工作区…",
+      "args": []
+    },
+    "plan.empty.setPb": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "填 pb 路径…",
+      "args": []
+    },
+    "plan.fresh.title": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "{name} · {domain} · 无图",
+      "args": ["name", "domain"]
+    },
+    "plan.fresh.titleBare": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "{name} · 无图",
+      "args": ["name"]
+    },
+    "plan.fresh.hint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "会话里 pb claim 建顶块，图随之出现",
+      "args": []
+    },
+    "plan.fresh.newSession": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "起新会话…",
       "args": []
     },
     "plan.addWs.title": {
@@ -29788,12 +29998,6 @@
       "zh": "Claude 任务完成",
       "args": []
     },
-    "mobSettings.entry.buttons": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "全局自定义按钮",
-      "args": []
-    },
     "mobSettings.entry.hosts": {
       "kind": "action",
       "role": "菜单项",
@@ -29897,39 +30101,11 @@
       "args": [],
       "limited": ["连接"]
     },
-    "mobSsh.log.probeExisting": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "检测到已有连接，校验可用性 …",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.existingDead": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "既有连接已失效，重新建立 …",
-      "args": [],
-      "limited": ["连接"]
-    },
     "mobSsh.log.reused": {
       "kind": "body",
       "role": "进度",
       "zh": "复用已有连接",
       "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.replaced": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "既有连接没有回话，已换上新连接",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.handshake.timeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接超时 · {dur} 内未连上",
-      "args": ["dur"],
       "limited": ["连接"]
     },
     "mobSsh.hostKey.changed": {
@@ -29968,30 +30144,6 @@
       "kind": "body",
       "role": "空态",
       "zh": "无匹配命令",
-      "args": []
-    },
-    "mobButtons.delete.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "删除按钮",
-      "args": []
-    },
-    "mobButtons.delete.body": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除「{label}」",
-      "args": ["label"]
-    },
-    "mobButtons.delete.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "删除",
-      "args": []
-    },
-    "mobButtons.add.aria": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "添加按钮",
       "args": []
     },
     "mobTabs.overview.title": {
@@ -30316,6 +30468,24 @@
       "zh": "已在 {machine} 建好别名 {name}",
       "args": ["machine", "name"]
     },
+    "mobNeeds.act.answer": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "答",
+      "args": []
+    },
+    "mobAsk.act.next": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下一题",
+      "args": []
+    },
+    "mobAsk.head.page": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{head} · {i}/{n}",
+      "args": ["head", "i", "n"]
+    },
     "mobCapture.dialog.title": {
       "kind": "title",
       "role": "确认框",
@@ -30355,12 +30525,6 @@
       "zh": "抓当前屏幕",
       "args": []
     },
-    "mobPalette.group.custom": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "自定义",
-      "args": []
-    },
     "mobPalette.group.tmux": {
       "kind": "title",
       "role": "标题",
@@ -30386,322 +30550,584 @@
       "zh": "推送公钥到本机 authorized_keys",
       "args": []
     },
-    "mobBuiltin.action.tabs": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "标签面板",
+    "mobKeys.seed.common": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "常用",
       "args": []
     },
-    "mobBuiltin.action.palette": {
+    "mobKeys.seed.bar": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "按钮栏",
+      "args": []
+    },
+    "mobKeys.action.nextGroup": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "切到下一组",
+      "args": []
+    },
+    "mobKeys.action.gotoGroup": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "切到某一组",
+      "args": []
+    },
+    "mobKeys.action.editKeys": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "编辑按键",
+      "args": []
+    },
+    "mobKeys.action.paste": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "粘贴",
+      "args": []
+    },
+    "mobKeys.action.tabs": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "标签页",
+      "args": []
+    },
+    "mobKeys.action.palette": {
       "kind": "action",
       "role": "菜单项",
       "zh": "命令面板",
       "args": []
     },
-    "mobBuiltin.action.tmux": {
+    "mobKeys.action.tmux": {
       "kind": "action",
       "role": "菜单项",
       "zh": "tmux 会话",
       "args": [],
       "limited": ["tmux"]
     },
-    "mobBuiltin.action.paste": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "粘贴",
-      "args": []
-    },
-    "mobBuiltin.action.capture": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "抓屏",
-      "args": []
-    },
-    "mobBuiltin.action.pushKey": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "推送公钥",
-      "args": []
-    },
-    "mobBuiltin.action.keyboard": {
+    "mobKeys.action.keyboard": {
       "kind": "action",
       "role": "菜单项",
       "zh": "软键盘",
       "args": []
     },
-    "mobBuiltin.action.ctrl": {
+    "mobKeys.action.capture": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "Ctrl 粘性",
+      "zh": "抓屏",
       "args": []
     },
-    "mobBuiltin.action.alt": {
+    "mobKeys.action.pushKey": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "Alt 粘性",
+      "zh": "推送公钥",
       "args": []
     },
-    "mobButtonGroup.name.main": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "按钮栏",
-      "args": []
-    },
-    "mobButtonGroup.name.fn": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "功能键",
-      "args": []
-    },
-    "mobButtonGroup.name.alt": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "第二排",
-      "args": []
-    },
-    "mobButtonGroup.name.vim": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "vim 键",
-      "args": []
-    },
-    "mobButtonEdit.longPress.none": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "无",
-      "args": []
-    },
-    "mobButtonEdit.longPress.repeat": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "连发",
-      "args": []
-    },
-    "mobButtonEdit.longPress.discrete": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "单发",
-      "args": []
-    },
-    "mobButtonEdit.purpose.text": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "输入文字",
-      "args": []
-    },
-    "mobButtonEdit.purpose.textHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "打一段字并回车执行（如 ls -la）",
-      "args": []
-    },
-    "mobButtonEdit.purpose.key": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "按一个键",
-      "args": []
-    },
-    "mobButtonEdit.purpose.keyHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "方向键 / Esc / Tab / 翻页 / Ctrl+C 等 · 从预设里选",
-      "args": [],
-      "waive": {
-        "C-W12": "说的是发给远端终端的组合键（按钮的载荷），不是 app 自己的快捷键"
-      }
-    },
-    "mobButtonEdit.purpose.action": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "App 动作",
-      "args": []
-    },
-    "mobButtonEdit.purpose.actionHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "粘贴 / 切模型 / 抓屏 / 标签面板 等内建功能",
-      "args": []
-    },
-    "mobButtonEdit.purpose.switch": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "切到按钮组",
-      "args": []
-    },
-    "mobButtonEdit.purpose.switchHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "点击换一排按钮（键排切到另一组）",
-      "args": []
-    },
-    "mobButtonEdit.dialog.newTitle": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "新建按钮",
-      "args": []
-    },
-    "mobButtonEdit.dialog.editTitle": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "编辑按钮",
-      "args": []
-    },
-    "mobButtonEdit.dialog.add": {
+    "mobKeys.tool.more": {
       "kind": "action",
-      "role": "确认框",
-      "zh": "添加",
+      "role": "按钮",
+      "zh": "更多",
       "args": []
     },
-    "mobButtonEdit.dialog.save": {
+    "mobKeys.more.switchGroup": {
       "kind": "action",
-      "role": "确认框",
+      "role": "菜单项",
+      "zh": "切换组",
+      "args": []
+    },
+    "mobKeys.more.edit": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "编辑按键",
+      "args": []
+    },
+    "mobKeys.group.count": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 颗",
+      "args": ["n"]
+    },
+    "mobKeys.group.new": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建组",
+      "args": []
+    },
+    "mobKeys.group.rename": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "改名",
+      "args": []
+    },
+    "mobKeys.group.moveLeft": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "左移",
+      "args": []
+    },
+    "mobKeys.group.moveRight": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "右移",
+      "args": []
+    },
+    "mobKeys.group.delete": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "删除组",
+      "args": []
+    },
+    "mobKeys.group.nameField": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "组名",
+      "args": []
+    },
+    "mobKeys.group.nameDup": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已有组「{name}」",
+      "args": ["name"]
+    },
+    "mobKeys.group.create": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "创建",
+      "args": []
+    },
+    "mobKeys.add.key": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "按键",
+      "args": []
+    },
+    "mobKeys.add.modifier": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "修饰键",
+      "args": []
+    },
+    "mobKeys.edit.newTitle": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "新建按键",
+      "args": []
+    },
+    "mobKeys.edit.cap": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "键帽",
+      "args": []
+    },
+    "mobKeys.edit.capAuto": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "自动：{x}",
+      "args": ["x"]
+    },
+    "mobKeys.edit.capFollow": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "照单击",
+      "args": []
+    },
+    "mobKeys.edit.group": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "所在组",
+      "args": []
+    },
+    "mobKeys.edit.save": {
+      "kind": "action",
+      "role": "按钮",
       "zh": "保存",
       "args": []
     },
-    "mobButtonEdit.field.label": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "按钮上显示的字",
+    "mobKeys.edit.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "更多",
       "args": []
     },
-    "mobButtonEdit.field.command": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "命令 · 自动加回车执行",
+    "mobKeys.edit.revert": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "还原默认",
       "args": []
     },
-    "mobButtonEdit.scope.global": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "全局",
+    "mobKeys.edit.delete": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "删除按键",
       "args": []
     },
-    "mobButtonEdit.scope.host": {
+    "mobKeys.trigger.tap": {
       "kind": "control",
       "role": "标签",
-      "zh": "本机",
+      "zh": "单击",
       "args": []
     },
-    "mobButtonEdit.longPress.title": {
-      "kind": "title",
-      "role": "标题",
+    "mobKeys.trigger.double": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "双击",
+      "args": []
+    },
+    "mobKeys.trigger.long": {
+      "kind": "control",
+      "role": "标签",
       "zh": "长按",
       "args": []
     },
-    "mobButtonEdit.longPress.payload": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "长按载荷 · 如 \\e\\e = 两下 Esc",
-      "args": [],
-      "waive": {
-        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见"
-      }
-    },
-    "mobButtonEdit.longPress.threshold": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "触发阈值 ms",
-      "args": []
-    },
-    "mobButtonEdit.longPress.interval": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "连发间隔 ms",
-      "args": []
-    },
-    "mobButtonEdit.key.pick": {
+    "mobKeys.bind.none": {
       "kind": "action",
       "role": "按钮",
-      "zh": "按键 {key}",
-      "args": ["key"]
-    },
-    "mobButtonEdit.key.custom": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "自定义",
+      "zh": "没设",
       "args": []
     },
-    "mobButtonEdit.key.customField": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "自定义转义序列 · 如 \\e[1;5D",
-      "args": [],
-      "waive": {
-        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见"
-      }
-    },
-    "mobButtonEdit.switch.target": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "目标组 · 点此 ⇄ 切到该组 · 可输新组名自建",
-      "args": [],
-      "waive": {
-        "C-W15": "输入框标签同时说明可输新组名自建：这一格既能选又能新建，不说就没人知道"
-      }
-    },
-    "mobButtonEdit.payload.keycode": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "基准键 · c 即 Ctrl+C · Tab/Enter/Esc/Space",
-      "args": [],
-      "waive": {
-        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见",
-        "C-W12": "说的是发给远端终端的组合键（按钮的载荷），不是 app 自己的快捷键"
-      }
-    },
-    "mobButtonEdit.payload.escape": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "转义序列 · \\e[A、\\x1b、\\t",
-      "args": [],
-      "waive": {
-        "C-W15": "输入框标签带载荷格式示例：示例给会写转义序列 / 按键码的人对照，拆到别处就看不见"
-      }
-    },
-    "mobButtonEdit.payload.command": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "命令 · 回车自动追加",
-      "args": []
-    },
-    "mobButtonEdit.preview.bytes": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "将发送字节 {bytes}",
-      "args": ["bytes"]
-    },
-    "mobButtonEdit.preview.builtin": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "内建动作 {action}",
-      "args": ["action"]
-    },
-    "mobButtonEdit.preview.keycode": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "将发送按键码（基准键 + 修饰）",
-      "args": []
-    },
-    "mobButtonEdit.preview.switch": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "切换到组 {group}",
-      "args": ["group"]
-    },
-    "mobButtonEdit.preview.command": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "将发送 {command}",
-      "args": ["command"]
-    },
-    "mobButtonEdit.builtin.pick": {
+    "mobKeys.bind.input": {
       "kind": "action",
       "role": "按钮",
-      "zh": "内建动作 {action}",
-      "args": ["action"],
-      "waive": {
-        "C-W15": "下拉按钮上显示当前选中的那个动作名"
-      }
+      "zh": "送输入",
+      "args": []
+    },
+    "mobKeys.bind.action": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "App 动作",
+      "args": []
+    },
+    "mobKeys.natural.tap": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "必填",
+      "args": []
+    },
+    "mobKeys.natural.double": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：连按两下等于两次单击",
+      "args": []
+    },
+    "mobKeys.natural.longRepeat": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：按住连发",
+      "args": []
+    },
+    "mobKeys.natural.longOnce": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：等于单击一次",
+      "args": []
+    },
+    "mobKeys.natural.longEither": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没设：能连发的键按住连发，其余等于单击一次",
+      "args": []
+    },
+    "mobKeys.double.cost": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已设双击：单击晚 {ms} ms 才送 · 连按两下不再送两次",
+      "args": ["ms"]
+    },
+    "mobKeys.double.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "副功能先放长按：不拖慢单击",
+      "args": []
+    },
+    "mobKeys.dur.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "时长",
+      "args": []
+    },
+    "mobKeys.dur.double": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "双击判定时长",
+      "args": []
+    },
+    "mobKeys.dur.long": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "长按时长",
+      "args": []
+    },
+    "mobKeys.dur.followSys": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跟系统",
+      "args": []
+    },
+    "mobKeys.dur.followAll": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跟总的",
+      "args": []
+    },
+    "mobKeys.dur.custom": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "另设",
+      "args": []
+    },
+    "mobKeys.dur.sysNow": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "系统当前 {ms} ms",
+      "args": ["ms"]
+    },
+    "mobKeys.dur.tip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "单击等这么久确认没有第二下\n调短则单击更快，两下点慢会认成两次单击",
+      "args": []
+    },
+    "mobKeys.dur.range": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "超出 {min}–{max} ms",
+      "args": ["min", "max"]
+    },
+    "mobKeys.mod.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "修饰键",
+      "args": []
+    },
+    "mobKeys.mod.tap": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "下一次按下带上 {mod}",
+      "args": ["mod"]
+    },
+    "mobKeys.mod.double": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "锁住 · 再点即解开",
+      "args": []
+    },
+    "mobKeys.mod.long": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "按住期间一直带上",
+      "args": []
+    },
+    "mobKeys.mod.scope": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "软键盘和键条上的键都算",
+      "args": []
+    },
+    "mobKeys.rec.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "录入",
+      "args": []
+    },
+    "mobKeys.rec.undo": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "退一步",
+      "args": []
+    },
+    "mobKeys.rec.clear": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "清空",
+      "args": []
+    },
+    "mobKeys.rec.done": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "完成",
+      "args": []
+    },
+    "mobKeys.rec.mods": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "修饰键",
+      "args": []
+    },
+    "mobKeys.rec.modsTip": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "点亮后带给下一个键",
+      "args": []
+    },
+    "mobKeys.rec.specials": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "特殊键",
+      "args": []
+    },
+    "mobKeys.rec.ime": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "字母数字用软键盘",
+      "args": []
+    },
+    "mobKeys.rec.same": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{a} 与 {b} 送出相同",
+      "args": ["a", "b"]
+    },
+    "mobKeys.rec.cannot": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{a} 无法送出 · 未录入",
+      "args": ["a"]
+    },
+    "mobKeys.action.needTmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需 tmux",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "mobKeys.err.actionNoTmux": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{action}不可用 · {host} 无 tmux",
+      "args": ["action", "host"],
+      "limited": ["tmux"]
+    },
+    "mobKeys.err.groupGone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "目标组已删除",
+      "args": []
+    },
+    "mobKeys.err.edit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "编辑",
+      "args": []
+    },
+    "mobKeys.empty.group": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "「{name}」无按键",
+      "args": ["name"]
+    },
+    "mobKeys.empty.none": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无按键组",
+      "args": []
+    },
+    "mobKeys.empty.noneHint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "新建组后键条显示在终端下方",
+      "args": []
+    },
+    "mobKeys.migrate.bar": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{n} 颗未能转换",
+      "args": ["n"]
+    },
+    "mobKeys.migrate.view": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查看",
+      "args": []
+    },
+    "mobKeys.migrate.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未能转换",
+      "args": []
+    },
+    "mobKeys.migrate.tapUnparsed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "内容无法识别 · 单击未设",
+      "args": []
+    },
+    "mobKeys.migrate.longUnparsed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "内容无法识别 · 长按未设",
+      "args": []
+    },
+    "mobKeys.migrate.noRepeat": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "长按连发 · 该键不能连发 · 长按未设",
+      "args": []
+    },
+    "mobKeys.migrate.ok": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "关闭",
+      "args": []
+    },
+    "mobKeys.done.deleteKey": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除按键 {cap}",
+      "args": ["cap"]
+    },
+    "mobKeys.done.deleteGroup": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已删除组「{name}」 · {n} 颗",
+      "args": ["name", "n"]
+    },
+    "mobKeys.reset.menu": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "恢复默认按键",
+      "args": []
+    },
+    "mobKeys.reset.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "恢复默认按键",
+      "args": []
+    },
+    "mobKeys.reset.changed": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "改动",
+      "args": []
+    },
+    "mobKeys.reset.deleted": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "删除",
+      "args": []
+    },
+    "mobKeys.reset.back": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "{names} 回到默认",
+      "args": ["names"]
+    },
+    "mobKeys.reset.groups": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "组{names}",
+      "args": ["names"]
+    },
+    "mobKeys.reset.keys": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "改过的 {n} 颗",
+      "args": ["n"]
+    },
+    "mobKeys.reset.confirm": {
+      "kind": "action",
+      "role": "确认框",
+      "zh": "恢复默认",
+      "args": []
     },
     "mobTmux.dialog.title": {
       "kind": "title",
@@ -30805,145 +31231,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "新建并附着",
-      "args": []
-    },
-    "mobButtonSettings.groups.titleGlobal": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "自定义按钮组",
-      "args": []
-    },
-    "mobButtonSettings.groups.titleHost": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "本机按钮组",
-      "args": []
-    },
-    "mobButtonSettings.groups.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "点进某组看/改它的按钮；键排上的 ⇄ 按钮在组间切换",
-      "args": []
-    },
-    "mobButtonSettings.groups.new": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新建组",
-      "args": []
-    },
-    "mobButtonSettings.restore.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已补回缺失的默认按键",
-      "args": []
-    },
-    "mobButtonSettings.restore.action": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "恢复默认按键",
-      "args": []
-    },
-    "mobButtonSettings.group.back": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "返回组列表",
-      "args": []
-    },
-    "mobButtonSettings.group.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "本组无按钮 · 点下方「新建按钮」",
-      "args": []
-    },
-    "mobButtonSettings.group.newButton": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新建按钮",
-      "args": []
-    },
-    "mobButtonSettings.row.summary": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "按钮 ×{n} · {where}",
-      "args": ["n", "where"]
-    },
-    "mobButtonSettings.row.deleteGroup": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "删组",
-      "args": []
-    },
-    "mobButtonSettings.newGroup.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "新建按钮组",
-      "args": []
-    },
-    "mobButtonSettings.newGroup.name": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "组名 · 如 常用 / git",
-      "args": [],
-      "limited": ["git"]
-    },
-    "mobButtonSettings.newGroup.create": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "创建",
-      "args": []
-    },
-    "mobButtonSettings.row.edit": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "编辑",
-      "args": []
-    },
-    "mobButtonSettings.row.delete": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "删",
-      "args": []
-    },
-    "mobButtonSettings.row.up": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上移",
-      "args": []
-    },
-    "mobButtonSettings.row.down": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "下移",
-      "args": []
-    },
-    "mobButtonSettings.groupDelete.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "删除「{group}」",
-      "args": ["group"]
-    },
-    "mobButtonSettings.groupDelete.body": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "该组的按钮 ×{n} 会被删除\n自建组撤销窗口一过就无法恢复\n内建组能用「恢复默认按键」补回，自建组不能",
-      "args": ["n"]
-    },
-    "mobButtonSettings.groupDelete.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已删除「{group}」的按钮 ×{n}",
-      "args": ["group", "n"]
-    },
-    "mobButtonSettings.where.main": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "工具条（终端顶部动作条）",
-      "args": []
-    },
-    "mobButtonSettings.where.keys": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "键盘上方键排（⇄ 可切到此组）",
       "args": []
     },
     "mobIdentity.op.failed": {
@@ -31322,10 +31609,16 @@
       "zh": "密码经设备 Keystore 加密后落库，不明文存储",
       "args": []
     },
-    "mobHostEdit.buttons.edit": {
+    "mobHostEdit.backend.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "cc-monitor",
+      "args": []
+    },
+    "mobHostEdit.backend.check": {
       "kind": "action",
       "role": "按钮",
-      "zh": "本机按钮",
+      "zh": "核对版本",
       "args": []
     },
     "mobHostEdit.page.save": {

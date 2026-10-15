@@ -7,7 +7,7 @@ import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.crypto.KeystoreCryptoBox
 import com.ccmonitor.mobile.core.data.db.ALL_MIGRATIONS
 import com.ccmonitor.mobile.core.data.db.AppDatabase
-import com.ccmonitor.mobile.core.data.db.seedDefaultButtons
+import com.ccmonitor.mobile.core.data.db.seedDefaultKeys
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
@@ -26,17 +26,17 @@ val dataModule =
             Room
                 .databaseBuilder(androidContext(), AppDatabase::class.java, "ccm.db")
                 .addMigrations(*ALL_MIGRATIONS)
-                // 新装也要种默认按键：迁移只在升级时跑。
+                // 新装也要种默认三组按键：迁移只在升级时跑。
                 .addCallback(
                     object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultButtons(db)
+                        override fun onCreate(db: SupportSQLiteDatabase) = seedDefaultKeys(db)
                     },
                 ).build()
         }
         single { get<AppDatabase>().hostDao() }
         single { get<AppDatabase>().identityDao() }
         single { get<AppDatabase>().knownHostDao() }
-        single { get<AppDatabase>().customButtonDao() }
+        single { get<AppDatabase>().keyDao() }
         single { get<AppDatabase>().bookmarkDao() }
         single { get<AppDatabase>().settingsDao() }
         single { get<AppDatabase>().cacheDao() }

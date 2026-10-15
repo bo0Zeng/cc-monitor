@@ -61,6 +61,8 @@ enum Peer {
     Hang,
     /// 握手成、交完头一帧之后**路断成黑洞**：问什么都不回、也不断（没有 EOF）。
     Mute { build: String },
+    /// 慢链路：开链路那一步隔 `gaps`（秒）报一步进展（拨号核心那几行 `progress`），报完照 `then` 回。
+    Slow { gaps: Vec<u64>, then: Box<Peer> },
 }
 
 #[derive(Default)]
@@ -89,7 +91,11 @@ struct T(Arc<Fake>);
 
 impl Transport for T {
     type Stream = tokio::io::DuplexStream;
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let f = Arc::clone(&self.0);
         Box::pin(async move {
             assert!(command.ends_with("-- --resident-attach"), "{command}");
@@ -97,12 +103,19 @@ impl Transport for T {
                 .lock()
                 .unwrap()
                 .push(tokio::time::Instant::now());
-            let peer = f
+            let mut peer = f
                 .attaches
                 .lock()
                 .unwrap()
                 .pop_front()
                 .unwrap_or(Peer::Absent);
+            if let Peer::Slow { gaps, then } = peer {
+                for g in gaps {
+                    tokio::time::sleep(Duration::from_secs(g)).await;
+                    progress.step();
+                }
+                peer = *then;
+            }
             if matches!(peer, Peer::Hang) {
                 return std::future::pending().await;
             }
@@ -132,9 +145,13 @@ struct D(Arc<Fake>);
 
 impl Transport for D {
     type Stream = tokio::io::DuplexStream;
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        progress: Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let t = T(Arc::clone(&self.0));
-        Box::pin(async move { t.stream(command).await })
+        Box::pin(async move { t.stream(command, progress).await })
     }
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
         let t = T(Arc::clone(&self.0));
@@ -197,7 +214,7 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         }
         Peer::Up { build, die_now } => (build, die_now),
         Peer::Mute { build } => (build, false),
-        Peer::Hang => unreachable!("没人回话的那一拨开不出链路"),
+        Peer::Hang | Peer::Slow { .. } => unreachable!("没人回话 / 还在拨的那一拨开不出链路"),
     };
     let _ = r
         .get_mut()
@@ -445,13 +462,6 @@ async fn a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer() {
         vec![2, 4, 8, 16, 30],
         "发完 hello 就死：退避照样涨（每轮都握上手也不清零）"
     );
-    assert!(
-        seen.lock()
-            .unwrap()
-            .iter()
-            .any(|e| matches!(e, Event::Lost)),
-        "接上过的流断了 ⇒ 请宿主探 SSH"
-    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -462,7 +472,7 @@ async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
         stdout: String::new(),
         stderr: "not found".into(),
     });
-    let (feed, _) = start(&f);
+    let (feed, seen) = start(&f);
     until("断在要人动手的那一步", || {
         matches!(
             feed.state(),
@@ -480,6 +490,15 @@ async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
         ),
         _ => unreachable!(),
     }
+    // 后端起不来，SSH 本身通着：这一条循环照样报「SSH 够着那一台」（终端 · 文件跟它走，不跟着后端卡住）。
+    assert!(feed.ssh_reached(), "常驻后端起不来、SSH 通 ⇒ SSH 够着");
+    assert!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Ssh(true))),
+        "SSH 够着那一刻要往外报"
+    );
     let tries = f.attach_at.lock().unwrap().len();
     tokio::time::sleep(Duration::from_secs(600)).await;
     assert_eq!(
@@ -778,7 +797,7 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
             ),
             Event::Gap => "gap".to_string(),
             Event::WatchFrom(w) => format!("from {}@{}", w[0].sid, w[0].seq),
-            Event::Lost => "lost".to_string(),
+            Event::Ssh(b) => format!("ssh {b}"),
         })
         .collect();
     // 名单报在连上之后、那台的第一帧与它谁先到不定 ⇒ 每条连接内只比集合，跨连接的先后照比。
@@ -801,6 +820,8 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
             "up 1".into(),
             "frame sessions_replayed".into(),
             "from s1@5".into(),
+            "ssh true".into(),
+            "ssh false".into(),
         ]),
         "第一条连接：{cells:?}"
     );
@@ -808,18 +829,23 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
         sorted(second),
         sorted(&[
             "down hand=false".into(),
-            "lost".into(),
             "connecting".into(),
             "attached".into(),
             "up 2".into(),
             "frame sessions_replayed".into(),
             "from s1@9".into(),
+            "ssh true".into(),
         ]),
         "断了 → 重连 → 续上：{cells:?}"
     );
     assert_eq!(
-        &first[..3],
-        &["connecting".to_string(), "attached".into(), "up 1".into()],
+        &first[..4],
+        &[
+            "connecting".to_string(),
+            "ssh true".into(),
+            "attached".into(),
+            "up 1".into()
+        ],
         "先接上（hello 与客户端先于 Up），再有帧"
     );
     assert_eq!(f.watches.lock().unwrap().len(), 2, "名单每条连接整份报一次");
@@ -848,20 +874,23 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         (p.text, k),
         (
             copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
-            FailKind::Install
+            FailKind::Install(Fix::Install)
         )
     );
     let (p, k) = fail(exec(&hello("p1a-old"), "", None));
     assert_eq!(
         (p.text, k),
-        (copy_core::backend_old("devbox"), FailKind::Install)
+        (
+            copy_core::backend_old("devbox"),
+            FailKind::Install(Fix::Update)
+        )
     );
     let (p, k) = fail(exec("", "sh: ccm: not found", Some(127)));
     assert_eq!(
         (p.text, k),
         (
             copy_text("remoteHealth.head.notDeployed", &[]),
-            FailKind::Install
+            FailKind::Install(Fix::Install)
         )
     );
     let (p, k) = fail(exec(
@@ -886,7 +915,11 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     ));
     assert_eq!(
         (p.text.as_str(), p.detail.as_str(), k),
-        ("x", "Permission denied (os error 13)", FailKind::Install)
+        (
+            "x",
+            "Permission denied (os error 13)",
+            FailKind::Install(Fix::Install)
+        )
     );
     let (p, _) = fail(exec("", "garbage", Some(1)));
     assert_eq!(p.text, copy_text("rsRemoteResident.ensure.noReason", &[]));
@@ -930,8 +963,19 @@ async fn a_dial_nobody_answers_is_dropped_in_time_and_retried_without_climbing()
         }
         a.push_back(upp(MINE));
     }
-    let (feed, _) = start(&f);
+    let (feed, seen) = start(&f);
+    tokio::time::sleep(DIAL_WITHIN * 3).await;
+    assert!(!feed.ssh_reached(), "一拨都没拨通 ⇒ SSH 没够着");
+    assert!(
+        !seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Ssh(true))),
+        "没拨通不许报够着"
+    );
     until("网回来那一拨接上了", || up(&feed)).await;
+    assert!(feed.ssh_reached());
     let every = (DIAL_WITHIN + RECONNECT_MIN).as_secs();
     assert_eq!(
         gaps_of(&f),
@@ -940,6 +984,48 @@ async fn a_dial_nobody_answers_is_dropped_in_time_and_retried_without_climbing()
     );
     assert_eq!(f.ensured.load(Ordering::SeqCst), 0, "拨不通 ⇒ 不 ensure");
     // 回过话的失败照旧涨：发完 hello 就死的那一形见 `a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer`。
+}
+
+/// **慢链路**（往返一秒以上、再隔跳板）：登录 ＋ 开 exec 合计远超 [`DIAL_WITHIN`]，但拨号核心一步一步在报进展 ——
+/// 每一步都重新计时，这一拨不丢、一次接上。
+#[tokio::test(start_paused = true)]
+async fn a_slow_dial_that_keeps_moving_is_not_dropped() {
+    let f = Arc::new(Fake::default());
+    let step = DIAL_WITHIN.as_secs() - 2;
+    f.attaches.lock().unwrap().push_back(Peer::Slow {
+        gaps: vec![step; 5],
+        then: Box::new(upp(MINE)),
+    });
+    let t0 = tokio::time::Instant::now();
+    let (feed, _) = start(&f);
+    until("慢链路接上了", || up(&feed)).await;
+    assert_eq!(
+        f.attach_at.lock().unwrap().len(),
+        1,
+        "一步一步在动的那一拨不该被丢下重拨"
+    );
+    assert!(t0.elapsed() >= Duration::from_secs(5 * step));
+}
+
+/// 动过几步、然后**一步都不动了**（拨到一半网断了）：从最后一步起 [`DIAL_WITHIN`] 丢下、隔下界再拨，同样不涨退避。
+#[tokio::test(start_paused = true)]
+async fn a_dial_that_stops_moving_is_dropped_its_window_after_the_last_step() {
+    let f = Arc::new(Fake::default());
+    {
+        let mut a = f.attaches.lock().unwrap();
+        a.push_back(Peer::Slow {
+            gaps: vec![6, 6],
+            then: Box::new(Peer::Hang),
+        });
+        a.push_back(upp(MINE));
+    }
+    let (feed, _) = start(&f);
+    until("再拨接上了", || up(&feed)).await;
+    assert_eq!(
+        gaps_of(&f),
+        vec![12 + (DIAL_WITHIN + RECONNECT_MIN).as_secs()],
+        "最后一步之后 {DIAL_WITHIN:?} 才丢、隔下界再拨"
+    );
 }
 
 /// **宿主报「网回来了 / 网变了 / 回前台」**（`wake`）· 换了一条 SSH（`set_transport`）· ［重试］（`reconnect`）：
@@ -993,13 +1079,6 @@ async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
         (HEARTBEAT_IDLE + PING_WITHIN + RECONNECT_MIN).as_secs(),
         "静了 {HEARTBEAT_IDLE:?} 问活、{PING_WITHIN:?} 没回话判死、隔下界重接"
     );
-    assert!(
-        seen.lock()
-            .unwrap()
-            .iter()
-            .any(|e| matches!(e, Event::Lost)),
-        "心跳判死同流断了：请宿主探 SSH"
-    );
     // 第二条照答：空闲十分钟不断，问活照问。
     tokio::time::sleep(Duration::from_secs(600)).await;
     assert_eq!(
@@ -1050,4 +1129,110 @@ async fn a_wake_while_up_asks_at_once() {
         2,
         "回了话 ⇒ 照用、不重接"
     );
+}
+
+/// 装不了后端的宿主（手机）断在「装一次会好」那几种 ⇒ 状态里点名要哪一种：没装 ⇒ `install`；不认这一版子命令的老后端 ⇒ `update`。
+/// 装得了的（桌面）下一轮自己装 ⇒ 不点名。
+#[tokio::test(start_paused = true)]
+async fn the_phone_is_told_whether_to_install_or_update() {
+    let absent = || Exec {
+        exit_status: Some(127),
+        stdout: String::new(),
+        stderr: "ccm: not found".into(),
+    };
+    let fix_of = |s: State| match s {
+        State::Down { fix, .. } => fix,
+        _ => None,
+    };
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(absent());
+    let (feed, _) = start(&f);
+    until("没装 ⇒ 要人动手", || {
+        matches!(
+            feed.state(),
+            State::Down {
+                needs_hand: true,
+                ..
+            }
+        )
+    })
+    .await;
+    assert_eq!(fix_of(feed.state()), Some(Fix::Install));
+    let v: serde_json::Value = serde_json::to_value(feed.state()).unwrap();
+    assert_eq!(v["fix"], "install", "{v}");
+
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(Exec {
+        exit_status: None,
+        stdout: hello("p0a-ancient"),
+        stderr: String::new(),
+    });
+    let (feed, _) = start(&f);
+    until("老后端 ⇒ 要人动手", || {
+        matches!(
+            feed.state(),
+            State::Down {
+                needs_hand: true,
+                ..
+            }
+        )
+    })
+    .await;
+    assert_eq!(fix_of(feed.state()), Some(Fix::Update));
+
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(absent());
+    f.attaches.lock().unwrap().push_back(Peer::Absent);
+    let seen_fix: Arc<Mutex<Vec<Option<Fix>>>> = Arc::default();
+    let s = Arc::clone(&seen_fix);
+    let feed = Feed::start(
+        cfg(),
+        Some(Arc::new(D(Arc::clone(&f)))),
+        sink(move |e| {
+            if let Event::State(State::Down { fix, .. }) = e {
+                s.lock().unwrap().push(fix);
+            }
+        }),
+    );
+    until("桌面断过一轮", || {
+        !seen_fix.lock().unwrap().is_empty()
+    })
+    .await;
+    assert!(
+        seen_fix.lock().unwrap().iter().all(Option::is_none),
+        "{:?}",
+        seen_fix.lock().unwrap()
+    );
+    feed.close();
+}
+
+/// 手机装完之后换常驻：在此刻那条 SSH 上跑一次 `--resident-ensure --replace`、成了就整份重接（接上的是新的那一位）；
+/// 接着时报那台 hello 的身份，断着时不报。没有 SSH ⇒ 不跑、说离线。
+#[tokio::test(start_paused = true)]
+async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp("p9z-old"));
+    let (feed, _) = start(&f);
+    until("接上旧的", || up(&feed)).await;
+    assert_eq!(feed.theirs().as_deref(), Some("p9z-old"));
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    feed.replace().await.expect("换装该成");
+    assert!(
+        f.captured
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.ends_with("-- --resident-ensure --replace")),
+        "{:?}",
+        f.captured.lock().unwrap()
+    );
+    until("接上新的", || feed.theirs().as_deref() == Some(MINE)).await;
+
+    let none: Arc<Feed<T>> = Feed::start(cfg(), None, sink(|_| {}));
+    let e = none.replace().await.unwrap_err();
+    assert_eq!(
+        e.text,
+        copy_core::copy_text("front.body.offline", &[("machine", "box")])
+    );
+    assert_eq!(none.theirs(), None);
 }

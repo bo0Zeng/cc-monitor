@@ -27,6 +27,8 @@ export interface FactsChange {
   peek: boolean;
   /** 血缘（由谁启动 · 子会话）变了。 */
   lineage: boolean;
+  /** 会话头上那两颗（模型 · 权限档）的字或那一档变了。 */
+  switchable: boolean;
 }
 
 /** 后端的一份成品 ⇒ tab 上的几样（整份替换，不合并；项目目录后端还没读到 ⇒ 不动 tab 上那一份）。 */
@@ -62,5 +64,10 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const lineage = tab.lineage === undefined || !sameLineage(tab.lineage, lin);
   tab.lineage = lin;
 
-  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek, lineage };
+  const switchable = tab.modelText !== f.modelText || tab.permissionMode !== f.permissionMode || tab.permissionModeText !== f.permissionModeText;
+  tab.modelText = f.modelText;
+  tab.permissionMode = f.permissionMode;
+  tab.permissionModeText = f.permissionModeText;
+
+  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek, lineage, switchable };
 }

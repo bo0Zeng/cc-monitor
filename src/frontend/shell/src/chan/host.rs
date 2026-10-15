@@ -12,8 +12,8 @@
 //!
 //! # 买不到的
 //!
-//! - 订阅三条流：`transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）· `link`（那台连没连着）·
-//!   `files-batch/<票>`（一组做到哪了，`files_batch_relay`）；别的 `kind`
+//! - 订阅四种流：`transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）· `link`（那台连没连着）·
+//!   `files-batch/<票>`（一组做到哪了，`files_batch_relay`）· `changed/<主题>`（那台推来的「X 变了」原样，判据 `changed_stream_tests`）；别的 `kind`
 //!   [`InboundBackends::subscribe`] 原位回 `Closed{Peer(…)}`，不装作订阅成功。
 //! - 对端撤活是尽力的：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client` 调用随之被丢 ⇒ 它的 `AbandonGuard`
 //!   补发一条 `cancel{target}`（判据 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。可取消档真停下；阻塞档照跑完。
@@ -215,6 +215,15 @@ impl InboundBackends {
         if kind.0 == filewin_contract::LINK_KIND {
             return link_stream(&origin);
         }
+        // 第三条：那台的某样东西变了（`changed/<主题>`，后端 `changed` 帧按主题原样交，主题不在这里认）。文件窗口订 `changed/plan`。
+        if let Some(rest) = kind.0.strip_prefix(crate::event_replay::CHANGED_KIND) {
+            if let Some(topic) = rest
+                .strip_prefix('/')
+                .filter(|t| !t.is_empty() && !t.contains('/'))
+            {
+                return changed_stream(&origin, topic);
+            }
+        }
         // 别的 `kind` 今天照旧没有流。对端原位说「没有这条流」，不装作订阅成功、也不静默挂着。
         let _ = (origin, from);
         let body = serde_json::to_vec(&serde_json::json!({
@@ -240,6 +249,40 @@ fn link_stream(origin: &Origin) -> BoxStream<'static, Item> {
                 return Some((link_item(now), (rx, Some(now), o)));
             }
             rx.changed().await.ok()?;
+        }
+    })
+    .boxed()
+}
+
+/// `changed/<主题>` 那条流：从订的这一刻起，那台推来的这个主题的每一格原样出一格（序号从 1 连续）；落后了 ⇒ 原位 `Gap`（不知道丢到哪）。
+fn changed_stream(origin: &Origin, topic: &str) -> BoxStream<'static, Item> {
+    use futures::StreamExt as _;
+    use tokio::sync::broadcast::error::RecvError;
+    let rx = crate::event_replay::changed_tap();
+    let (o, t) = (origin.as_wire_str().to_string(), topic.to_string());
+    futures::stream::unfold((rx, 0u64), move |(mut rx, seq)| {
+        let (o, t) = (o.clone(), t.clone());
+        async move {
+            loop {
+                match rx.recv().await {
+                    Ok(c) if c.origin.as_wire_str() == o && c.topic == t => {
+                        let item = Item::Frame {
+                            seq: seq + 1,
+                            body: Body(c.cell.into_bytes()),
+                        };
+                        return Some((item, (rx, seq + 1)));
+                    }
+                    Ok(_) => {}
+                    Err(RecvError::Lagged(_)) => {
+                        let item = Item::Gap {
+                            from_seq: seq + 1,
+                            to_seq: None,
+                        };
+                        return Some((item, (rx, seq)));
+                    }
+                    Err(RecvError::Closed) => return None,
+                }
+            }
         }
     })
     .boxed()
@@ -531,3 +574,7 @@ fn transfer_stream(origin: &Origin, id: &str, from: Option<Cursor>) -> BoxStream
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/chan/transfer_stream_tests.rs"]
 mod transfer_stream_tests;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/chan/changed_stream_tests.rs"]
+mod changed_stream_tests;

@@ -9,6 +9,10 @@ export type PlanCommandReq = {
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `view`。
+ * `continue` · `pause` · `take` · `view`。
  */
-cmd: "continue" | "pause" | "view", };
+cmd: "continue" | "pause" | "take" | "view", 
+/**
+ * `take` 接哪一片的仓库（片名）；别的动词不带。
+ */
+slice?: string | null, };

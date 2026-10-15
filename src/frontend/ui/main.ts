@@ -54,6 +54,9 @@ import { CommandBarView, type Command } from "./views/command-bar";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
+import { askFacts } from "./new-session-reads";
+import { switchModel, switchPermission } from "./session-writes";
+import { unavailableSaid } from "./control-said";
 import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
@@ -266,6 +269,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
       attach: (sid) => tabs.attachInTerminal(sid),
       reconnect: (origin) => tabs.reconnect(origin),
+      switching: {
+        active: () => tabs.activeTab(),
+        facts: (origin) => askFacts(origin, null),
+        send: (tab, kind, value) => (kind === "model" ? switchModel(tab.origin, tab.sessionId, value) : switchPermission(tab.origin, tab.sessionId, value)),
+        unavailable: (origin, op) => unavailableSaid(origin, op),
+        reread: (sid) => tabs.rereadFacts(sid),
+        toast: (title, detail, level) => void toast(title, detail, { level }),
+      },
       planMark: (tab) => {
         const b = planNeeds.sessionBlock(tab.origin, tab.sessionId);
         if (!b) return null;
@@ -469,7 +480,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     terminalPage.sessionChanged();
     paintTerminalActs();
     answerBlock.render();
-    usageHud.setActive(a.usage);
+    usageHud.setActive(a.usage, a.modelText);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);
@@ -846,14 +857,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onLine(e);
       recordFile.afterLine(e.session_id); // 又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
-    onSessionEnded: (sessionId) => {
+    onSessionEnded: (sessionId, sw) => {
       const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
-      tabs.archiveTab(sessionId);
+      tabs.archiveTab(sessionId, sw ?? null);
       accountsRefresher.request(); // 会话结束了
       if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
-    onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
+    onSessionIdle: (sessionId, sw) => tabs.markTmuxIdle(sessionId, sw ?? null),
     // 活会话的容器 · 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
     onOriginSessionsListed: (origin, all) => {
@@ -947,7 +958,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) => {
       tabs.updateName(e.session_id, e.label, e.label_project);
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone, e.activity_order);
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone, e.activity_order, e.switch);
     },
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {

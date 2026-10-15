@@ -3,10 +3,28 @@
 //! 只给小助手用（`platform/console.rs::helper_main` 的 tab 那一支，借着那个会话的控制台挂记号标题时现读）；
 //! 「名字列表 ＋ 记号 ⇒ 选第几个 / 为什么没选成」那条规则在 `bind.rs::pick_tab`，这里只读、只点。
 //! 窗口是不是 Windows Terminal 按窗口类名认（[`is_terminal_window`]）；别的终端程序不试。
+//! 切不了标签页时（窗口是终端那一级认出的：提权 · 读不到控制台）标签个数照进程树数（[`tab_count`]，monitor 这边现数）。
 
 /// Windows Terminal 顶层窗口的类名。
 #[cfg(windows)]
 pub const WT_WINDOW_CLASS: &str = "CASCADIA_HOSTING_WINDOW_CLASS";
+
+/// Windows Terminal 每个标签（分屏时每一格）底下挂的伪控制台宿主：终端进程的直接子进程。
+const PSEUDOCONSOLE_HOST: &str = "OpenConsole.exe";
+
+/// 进程表（`(进程号, 父进程号, 程序名)`）里 `owner` 名下的伪控制台宿主有几个 ⇒ 那个终端进程开着几个标签（分屏的多算，只会往多里数）。
+pub fn hosted_tabs(procs: &[(u32, u32, String)], owner: u32) -> usize {
+    procs
+        .iter()
+        .filter(|(_, ppid, name)| *ppid == owner && name.eq_ignore_ascii_case(PSEUDOCONSOLE_HOST))
+        .count()
+}
+
+/// 终端进程 `owner` 此刻开着几个标签：照进程树数（不用 UI Automation，提权的终端也数得出：进程快照不用打开那个进程）。
+/// 读不到 ⇒ 0。
+pub fn tab_count(owner: u32) -> usize {
+    hosted_tabs(&crate::platform::pid::processes(), owner)
+}
 
 /// 这个窗口是不是 Windows Terminal 的（按类名；读不到 ⇒ 不是）。
 #[cfg(windows)]

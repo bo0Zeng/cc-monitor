@@ -44,6 +44,9 @@ import { TabMenu, type TabMenuHost } from "../../../src/frontend/ui/tab-menu";
 import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import TABLE from "../../../src/shared/copy/table.json";
 
+/** 会话头那两颗（换模型 · 切权限档）这里不看：什么都不做的那一份。 */
+const NO_SWITCHING = { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() };
+
 const NOW = Date.parse("2026-10-14T12:00:00Z");
 const BG: SessionHidden = { by: "bg", said: "后端那一句·分身" };
 const SELF: SessionHidden = { by: "self", said: "后端那一句·单个" };
@@ -371,7 +374,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
     const parent = tab("p");
     const kid = tab("k1");
     const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: BG }, { sid: "gone", title: "子·二", live: false, hidden: null }] } });
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn() };
+    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -391,7 +394,7 @@ describe("会话头：「由 X 启动」「子会话 N」读会话事实那两�
 
   it("没有血缘、不隐藏 ⇒ 一颗都不出", () => {
     const t = tab("a");
-    const h = new SessionHead({ active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn() });
+    const h = new SessionHead({ active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING });
     h.render(NOW);
     expect(h.el.querySelectorAll("[data-head=hidden], [data-head=parent], [data-head=children]").length).toBe(0);
   });

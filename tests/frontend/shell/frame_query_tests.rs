@@ -250,7 +250,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
     // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
     ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
-    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · view（退出码与 pb 那一句在后端认）；计划页开关与［整张图］只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · take · view（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］只排版"),
+    ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
     // 「需手动」浮层与登录抽屉（`src/frontend/ui/login-reads.ts`）：会话外的需手动清单 · 在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
     ("manual-list", "帧命令：一台会话外的需手动（每项带写好的那一句与解法 `fix`）；侧栏「需手动」浮层与扩展页 MCP 那一行只排版"),
     ("login-start", "帧命令（内建档，跟着发起它的那条连接走）：起一趟登录，回登录链接 · 粘什么 · 会不会自己登完；登录抽屉只排版"),
@@ -432,6 +433,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-new-dir",
         "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
+    ),
+    // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
+    (
+        "session-model",
+        "typed：后端出成品 `ModelSwitched`（`faces/session_model_face.rs`：在等人不送、读回换成了什么）；前端 `src/frontend/ui/session-writes.ts::switchModel` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "session-permission",
+        "typed：后端出成品 `ModeSwitched`（`faces/session_mode_face.rs`：按那一家的循环键、读回到了为止）；前端 `src/frontend/ui/session-writes.ts::switchPermission` 按类型问，monitor 这一侧零发送点",
     ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (

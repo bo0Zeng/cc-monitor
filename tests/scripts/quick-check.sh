@@ -22,7 +22,7 @@ root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
-mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/deploy/ src/common/deploy-contract/ src/frontend/shell/embedded-backends/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
 # 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
 mobile_touch() {
   local base
@@ -102,7 +102,7 @@ echo "快检 $(git log --oneline -1 | cut -c1-60)"
 [ "$mode" = mobile ] && { mobile_step; verdict; }
 if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新树）⇒ npm ci"; run env npm_config_cache="$npm_cache" npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1 || { echo "QUICK: 红 —— npm ci 失败"; exit 1; }; fi
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
-step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial'
+step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial -p deploy'
 step tsc          run node_modules/.bin/tsc --noEmit
 
 # 后端那棵整套 --lib；版本号那一条若是唯一红的 ⇒ 记「待打版本号」

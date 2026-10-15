@@ -141,10 +141,12 @@ copy-core = { path = "../common/copy-core" }
 # 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
 # `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
 rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }
-# 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `control/deploy_plan.rs`。
+# 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `deploy` crate。
 deploy-contract = { path = "../common/deploy-contract" }
 # 拨号核心（竞速 · 跳板 · 鉴权 · 复用 · 用法 · SFTP 客户端）：手机同一份；本后端经 `dial/mod.rs::host` 装上自己那一套。
 ssh-dial = { path = "ssh-dial" }
+# 装 / 升级远端后端的判定与编排（与 ssh-dial 并列；手机 mobcore 链同一份）。
+deploy = { path = "deploy" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -366,7 +368,7 @@ strip = true
 # 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "ssh-dial", "../mobile/core-rs/rust"]
+members = [".", "ssh-dial", "deploy", "../mobile/core-rs/rust"]
 default-members = ["."]
 
 # ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──

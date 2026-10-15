@@ -60,9 +60,11 @@ fn a_shape_the_types_do_not_know_is_refused_not_passed_on() {
     assert!(checked::<PlanCmdReply>(serde_json::json!({"said": null, "path": null})).is_err());
     assert!(checked::<PlanWhyCode>(serde_json::json!({"kind": "later"})).is_err());
     assert_eq!(
-        checked::<PlanCmdReply>(serde_json::json!({"rc": 0, "said": "auto 开", "path": null}))
-            .unwrap(),
-        serde_json::json!({"rc": 0, "said": "auto 开", "path": null})
+        checked::<PlanCmdReply>(
+            serde_json::json!({"rc": 0, "said": "auto 开", "path": null, "took": null})
+        )
+        .unwrap(),
+        serde_json::json!({"rc": 0, "said": "auto 开", "path": null, "took": null})
     );
 }
 
@@ -72,13 +74,17 @@ fn ack_and_return_replies_pass_through_their_types_unchanged() {
     lossless::<PlanAckReply>(
         &serde_json::json!({"acked": true, "key": "red:悬空@B", "needCount": 1}),
     );
-    for (result, why) in [
-        ("delivered", None),
-        ("copy", Some("ended")),
-        ("refused", Some("waiting")),
+    for (result, why, resumed) in [
+        ("delivered", None, true),
+        ("copy", Some("ended"), false),
+        ("refused", Some("waiting"), false),
     ] {
         lossless::<PlanReturnReply>(&serde_json::json!({
-            "line": "人 · A1 甲功能：改", "to": null, "result": result, "why": why, "said": null, "screen": null
+            "line": "人 · A1 甲功能：改", "to": null, "result": result, "why": why, "said": null, "screen": null, "resumed": resumed
         }));
     }
+    lossless::<PlanCmdReply>(&serde_json::json!({
+        "rc": 0, "said": "接过来了", "path": null, "took": {"slice": "alpha", "path": "repos/alpha", "switched": true}
+    }));
+    lossless::<PlanPbCheck>(&serde_json::json!({"state": "no_entry", "said": "x"}));
 }

@@ -246,3 +246,15 @@ fn every_slice_carries_its_repo_path_or_falls_back_to_its_name() {
         "alpha"
     );
 }
+
+/// 只写文档（仓库还没接过来）：pb 给了 `docs_only: true` ⇒ `docsOnly: true`；没给（接过了 · 旧 pb）⇒ `false`。读不成的片也带。
+#[test]
+fn every_slice_says_whether_it_only_writes_docs() {
+    assert_eq!(made().doc["slices"][0]["docsOnly"], false);
+    let mut d = dump("/w");
+    d["slices"][0]["docs_only"] = serde_json::json!(true);
+    assert_eq!(make(&d, &who).doc["slices"][0]["docsOnly"], true);
+    let mut broken = dump_broken("/w");
+    broken["slices"][0]["docs_only"] = serde_json::json!(true);
+    assert_eq!(make(&broken, &who).doc["slices"][0]["docsOnly"], true);
+}

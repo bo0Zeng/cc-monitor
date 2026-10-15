@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.ui.overview
 
+import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
@@ -37,6 +39,19 @@ class ConversationsViewTest {
         )
 
     @Test
+    fun `装一次会好的那一种照核心点名带上（断着 · 通着旧了）；装到哪一步原样带上，连着的那一会儿也不丢`() {
+        val step = Deploying.Step("安装 cc-monitor → box", bar = true)
+        val down = view(LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), SessionTable(), list, Fetched.Loading, deploying = step)
+        assertEquals(Fix.INSTALL, down.fix)
+        assertEquals(step, down.deploying)
+        val old = view(LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE), SessionTable(), list, Fetched.Got(emptyList()))
+        assertEquals(Fix.UPDATE, old.fix)
+        assertEquals(Problem("box 后端要更新", ""), old.linkNotice)
+        assertEquals(step, view(LinkState.Connecting, SessionTable(), list, Fetched.Loading, deploying = step).deploying)
+        assertNull(view(LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).fix)
+    }
+
+    @Test
     fun `段头照核心写的、按先后连着归段，不重排`() {
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList()))
         assertEquals(listOf("今天", "昨天", "今天"), v.sections.map { it.title })
@@ -58,8 +73,8 @@ class ConversationsViewTest {
     fun `需手动照核心的先后、字照抄；清单里没有的不拿 sid 顶标题`() {
         val needs =
             listOf(
-                NeedsRow("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, 180_000L)),
-                NeedsRow("9", Needs("answer", "等回答", Tone.NEED, 1, null)),
+                NeedsRow("3", Needs("approve", "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, 180_000L, null, null)),
+                NeedsRow("9", Needs("answer", "等回答", "等回答", null, Tone.NEED, 1, null, null, null)),
             )
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs), needsAt = 1_000)
         assertEquals(listOf("3", "9"), v.needs.map { it.sessionId })
@@ -117,7 +132,7 @@ class ConversationsViewTest {
 
     @Test
     fun `需手动那几条的点照核心给的语气`() {
-        val needs = listOf(NeedsRow("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, null)))
+        val needs = listOf(NeedsRow("3", Needs("approve", "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, null, null, null)))
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
         assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
     }

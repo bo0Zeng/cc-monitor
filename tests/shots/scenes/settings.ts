@@ -5,8 +5,9 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
-import { putAccounts, putQuota } from "../disk";
+import { putAccounts, putPrefs, putQuota } from "../disk";
 import { ACCOUNTS } from "../fake/ops";
+import { PB_DIR_GOOD } from "../fake/machine";
 import { PROFILE_ACCOUNTS, PROFILES_FILE, putProfileAccounts, putProfiles, staleBook, type ProfilesLook } from "../disk/profiles";
 import { emit } from "@tauri-apps/api/event";
 import { byText, click, sleep, waitFor } from "./helpers";
@@ -413,6 +414,28 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(head);
     head.scrollIntoView({ block: "start" });
     await sleep(700);
+  }),
+  settings("settings-machine-local-pb-dir", "设置 · 本机 · pb 路径", "本机「这台上的 cc-monitor」里「pb 路径」那一行：设过的那个插件根目录（留空 ⇒ 用已装的插件）", async () => {
+    await go("machine:（本机）");
+    await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
+    await sleep(500);
+    (await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]')).scrollIntoView({ block: "center" });
+    await sleep(500);
+  }, () => {
+    const w = defaultWorld();
+    putPrefs(w.disk[LOCAL], { pbDir: PB_DIR_GOOD });
+    return w;
+  }),
+  settings("settings-machine-local-pb-dir-bad", "设置 · 本机 · pb 路径不能用", "「pb 路径」填一个底下没有 pb 的目录：那台说不能用、不存，行下是那台那一句", async () => {
+    await go("machine:（本机）");
+    await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
+    await sleep(500);
+    const row = await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]');
+    row.scrollIntoView({ block: "center" });
+    const input = row.querySelector("input")!;
+    input.value = "/opt/tools";
+    input.dispatchEvent(new Event("change"));
+    await sleep(800);
   }),
   settings("settings-machines-add", "设置 · 添加机器 · 自己填", "机器页点「添加机器」→「自己填」", async () => {
     await go("machines");

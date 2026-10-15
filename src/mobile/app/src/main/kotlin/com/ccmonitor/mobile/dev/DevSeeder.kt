@@ -1,8 +1,6 @@
 package com.ccmonitor.mobile.dev
 
 import android.content.Context
-import com.ccmonitor.mobile.core.data.db.CustomButton
-import com.ccmonitor.mobile.core.data.db.CustomButtonDao
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -12,13 +10,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * 只在 debug 构建用：首启没有主机时，把 assets 里的 dev key 导成身份，并建一台 NanoPi 主机和几条默认按钮。
+ * 只在 debug 构建用：首启没有主机时，把 assets 里的 dev key 导成身份，并建一台 NanoPi 主机。
  */
 class DevSeeder(
     private val context: Context,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
-    private val customButtonDao: CustomButtonDao,
 ) {
     suspend fun seedIfEmpty() =
         withContext(Dispatchers.IO) {
@@ -53,12 +50,5 @@ class DevSeeder(
                     extraAddresses = "203.0.113.1:22",
                 ),
             )
-            // 默认全局一键按钮（hostId=null）。
-            listOf(
-                CustomButton("btn-tmux", null, "tmux", "tmux new -A -s main", 0),
-                CustomButton("btn-ls", null, "ls", "ls -la", 1),
-                CustomButton("btn-git", null, "git", "git status", 2),
-                CustomButton("btn-clr", null, "clr", "clear", 3),
-            ).forEach { customButtonDao.upsert(it) }
         }
 }

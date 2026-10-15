@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.data.db
 
+import android.view.ViewConfiguration
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -152,19 +153,19 @@ val MIGRATION_11_12 =
 
 // custom_buttons 加 btnGroup（按键分组 main/fn/vim，功能键/vim/工具条成为可编辑行）并种默认键。
 // 列名不用 group（SQL 保留字）。存量行取 DEFAULT 'main'。
-// 种子经 seedDefaultButtons，与新装 onCreate 同源；INSERT OR IGNORE 固定 id，不碰已有行。
+// 种子是当年那一份旧默认键（seedLegacyButtons，原样留着）；INSERT OR IGNORE 固定 id，不碰已有行。
 val MIGRATION_12_13 =
     object : Migration(12, 13) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE `custom_buttons` ADD COLUMN `btnGroup` TEXT NOT NULL DEFAULT 'main'")
-            seedDefaultButtons(db)
+            seedLegacyButtons(db)
         }
     }
 
 // custom_buttons 加长按 4 列（longPressMode/Command/ThresholdMs/RepeatMs），DEFAULT 与实体 @ColumnInfo 逐字对齐；
 // 存量行的长按默认 none。
-// 末尾 seedDefaultButtons 补种新默认键（组切换 `⇌` / Ctrl·Alt·粘贴 builtin / alt 组）：INSERT OR IGNORE 固定 id，
-// 不覆盖用户改过或自建的按钮。新装走 onCreate，读同一份 DEFAULT_SEED_BUTTONS，结果一致且幂等。
+// 末尾 seedLegacyButtons 补种当年的新默认键（组切换 `⇌` / Ctrl·Alt·粘贴 builtin / alt 组）：INSERT OR IGNORE 固定 id，
+// 不覆盖用户改过或自建的按钮。
 // 先加列后种子，新种子行的长按列取列默认。
 val MIGRATION_13_14 =
     object : Migration(13, 14) {
@@ -173,7 +174,7 @@ val MIGRATION_13_14 =
             db.execSQL("ALTER TABLE `custom_buttons` ADD COLUMN `longPressCommand` TEXT NOT NULL DEFAULT ''")
             db.execSQL("ALTER TABLE `custom_buttons` ADD COLUMN `longPressThresholdMs` INTEGER NOT NULL DEFAULT 400")
             db.execSQL("ALTER TABLE `custom_buttons` ADD COLUMN `longPressRepeatMs` INTEGER NOT NULL DEFAULT 60")
-            seedDefaultButtons(db)
+            seedLegacyButtons(db)
         }
     }
 
@@ -258,9 +259,60 @@ val MIGRATION_16_17 =
         }
     }
 
-// 续点多一格文件身份（`history-tail` 的 `file`）：旧行给空串 ⇒ 与那台的身份对不上 ⇒ 那一条下一次从头读一回。别的表一字不动。
+// 键条换形：建「组」「按键」两张表，把旧按钮表的每一行照 convertLegacyButtons 转过去，再删旧表。别的表一字不动。
+// fn · alt · vim 成「常用」「shell」「vim」，main 组用户加的成「按钮栏」，只在某台显示的按机器各成一组（组名是机器名）；
+// 工具条那三颗内建丢掉（工具条现在是固定的）。认不出的几颗照实记下（「未能转换」），不猜。
+// 长按阈值和系统的一样就不另写：系统值在这台手机上现读。
 val MIGRATION_17_18 =
     object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `key_groups` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `term_keys` (`id` TEXT NOT NULL, `groupId` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, " +
+                    "`label` TEXT, `icon` TEXT, `modifier` TEXT, `tap` TEXT, `doubleTap` TEXT, `longPress` TEXT, `doubleTapMs` INTEGER, " +
+                    "`longPressMs` INTEGER, `defaultId` TEXT, `unconverted` TEXT, PRIMARY KEY(`id`))",
+            )
+            val hosts =
+                db.query("SELECT id, label, sortOrder FROM `hosts`").use { c ->
+                    generateSequence { if (c.moveToNext()) LegacyHost(c.getString(0), c.getString(1), c.getInt(2)) else null }.toList()
+                }
+            val rows =
+                db
+                    .query(
+                        "SELECT id, hostId, label, command, sortOrder, ctrl, alt, shift, type, btnGroup, longPressMode, longPressCommand, " +
+                            "longPressThresholdMs FROM `custom_buttons`",
+                    ).use { c ->
+                        generateSequence {
+                            if (!c.moveToNext()) return@generateSequence null
+                            LegacyButton(
+                                id = c.getString(0),
+                                hostId = if (c.isNull(1)) null else c.getString(1),
+                                label = c.getString(2),
+                                command = c.getString(3),
+                                sortOrder = c.getInt(4),
+                                ctrl = c.getInt(5) != 0,
+                                alt = c.getInt(6) != 0,
+                                shift = c.getInt(7) != 0,
+                                type = c.getString(8),
+                                btnGroup = c.getString(9),
+                                longPressMode = c.getString(10),
+                                longPressCommand = c.getString(11),
+                                longPressThresholdMs = c.getInt(12),
+                            )
+                        }.toList()
+                    }
+            val (groups, keys) = convertLegacyButtons(rows, hosts, ViewConfiguration.getLongPressTimeout())
+            insertKeyRows(db, groups, keys)
+            db.execSQL("DROP TABLE `custom_buttons`")
+        }
+    }
+
+// 续点多一格文件身份（`history-tail` 的 `file`）：旧行给空串 ⇒ 与那台的身份对不上 ⇒ 那一条下一次从头读一回。别的表一字不动。
+val MIGRATION_18_19 =
+    object : Migration(18, 19) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE `sync_anchors` ADD COLUMN `file` TEXT NOT NULL DEFAULT ''")
         }
@@ -285,4 +337,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_15_16,
         MIGRATION_16_17,
         MIGRATION_17_18,
+        MIGRATION_18_19,
     )

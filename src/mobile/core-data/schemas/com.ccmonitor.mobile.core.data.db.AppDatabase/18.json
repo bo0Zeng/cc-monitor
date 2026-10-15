@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 18,
-    "identityHash": "8ed415c98f9473fd2ff73e5e2095d445",
+    "identityHash": "20fcb9e1bd25e54fa1ff3546b0634966",
     "entities": [
       {
         "tableName": "hosts",
@@ -212,8 +212,8 @@
         }
       },
       {
-        "tableName": "custom_buttons",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `hostId` TEXT, `label` TEXT NOT NULL, `command` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `ctrl` INTEGER NOT NULL DEFAULT 0, `alt` INTEGER NOT NULL DEFAULT 0, `shift` INTEGER NOT NULL DEFAULT 0, `type` TEXT NOT NULL DEFAULT 'command', `btnGroup` TEXT NOT NULL DEFAULT 'main', `longPressMode` TEXT NOT NULL DEFAULT 'none', `longPressCommand` TEXT NOT NULL DEFAULT '', `longPressThresholdMs` INTEGER NOT NULL DEFAULT 400, `longPressRepeatMs` INTEGER NOT NULL DEFAULT 60, PRIMARY KEY(`id`))",
+        "tableName": "key_groups",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -222,19 +222,38 @@
             "notNull": true
           },
           {
-            "fieldPath": "hostId",
-            "columnName": "hostId",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "label",
-            "columnName": "label",
+            "fieldPath": "name",
+            "columnName": "name",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "command",
-            "columnName": "command",
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "term_keys",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `groupId` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `label` TEXT, `icon` TEXT, `modifier` TEXT, `tap` TEXT, `doubleTap` TEXT, `longPress` TEXT, `doubleTapMs` INTEGER, `longPressMs` INTEGER, `defaultId` TEXT, `unconverted` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "groupId",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -245,67 +264,54 @@
             "notNull": true
           },
           {
-            "fieldPath": "ctrl",
-            "columnName": "ctrl",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT"
           },
           {
-            "fieldPath": "alt",
-            "columnName": "alt",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
+            "fieldPath": "icon",
+            "columnName": "icon",
+            "affinity": "TEXT"
           },
           {
-            "fieldPath": "shift",
-            "columnName": "shift",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
+            "fieldPath": "modifier",
+            "columnName": "modifier",
+            "affinity": "TEXT"
           },
           {
-            "fieldPath": "type",
-            "columnName": "type",
-            "affinity": "TEXT",
-            "notNull": true,
-            "defaultValue": "'command'"
+            "fieldPath": "tap",
+            "columnName": "tap",
+            "affinity": "TEXT"
           },
           {
-            "fieldPath": "btnGroup",
-            "columnName": "btnGroup",
-            "affinity": "TEXT",
-            "notNull": true,
-            "defaultValue": "'main'"
+            "fieldPath": "doubleTap",
+            "columnName": "doubleTap",
+            "affinity": "TEXT"
           },
           {
-            "fieldPath": "longPressMode",
-            "columnName": "longPressMode",
-            "affinity": "TEXT",
-            "notNull": true,
-            "defaultValue": "'none'"
+            "fieldPath": "longPress",
+            "columnName": "longPress",
+            "affinity": "TEXT"
           },
           {
-            "fieldPath": "longPressCommand",
-            "columnName": "longPressCommand",
-            "affinity": "TEXT",
-            "notNull": true,
-            "defaultValue": "''"
+            "fieldPath": "doubleTapMs",
+            "columnName": "doubleTapMs",
+            "affinity": "INTEGER"
           },
           {
-            "fieldPath": "longPressThresholdMs",
-            "columnName": "longPressThresholdMs",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "400"
+            "fieldPath": "longPressMs",
+            "columnName": "longPressMs",
+            "affinity": "INTEGER"
           },
           {
-            "fieldPath": "longPressRepeatMs",
-            "columnName": "longPressRepeatMs",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "60"
+            "fieldPath": "defaultId",
+            "columnName": "defaultId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "unconverted",
+            "columnName": "unconverted",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -472,7 +478,7 @@
       },
       {
         "tableName": "sync_anchors",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`hostId` TEXT NOT NULL, `scope` TEXT NOT NULL, `path` TEXT NOT NULL, `offset` INTEGER NOT NULL, `seq` INTEGER NOT NULL, `file` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`hostId`, `scope`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`hostId` TEXT NOT NULL, `scope` TEXT NOT NULL, `path` TEXT NOT NULL, `offset` INTEGER NOT NULL, `seq` INTEGER NOT NULL, PRIMARY KEY(`hostId`, `scope`))",
         "fields": [
           {
             "fieldPath": "hostId",
@@ -503,13 +509,6 @@
             "columnName": "seq",
             "affinity": "INTEGER",
             "notNull": true
-          },
-          {
-            "fieldPath": "file",
-            "columnName": "file",
-            "affinity": "TEXT",
-            "notNull": true,
-            "defaultValue": "''"
           }
         ],
         "primaryKey": {
@@ -638,7 +637,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8ed415c98f9473fd2ff73e5e2095d445')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '20fcb9e1bd25e54fa1ff3546b0634966')"
     ]
   }
 }

@@ -342,6 +342,32 @@ fn activity_cells(o: &Obj, kind: &str) -> Result<crate::session_book::ActivityCe
         activity_tone: req_str(o, kind, "activity_tone")?,
         activity_order: u8::try_from(req_u64(o, kind, "activity_order")?)
             .map_err(|e| bad(kind, e.to_string()))?,
+        switch: switch_cells(o, kind)?,
+    })
+}
+
+/// `session_added` · `session_status` · `session_state` 上那一格「此刻能不能换模型 · 权限档」（那台核心的 `Switch`）的唯一解码口：
+/// 必有；每一样 `{can: "yes"}` · `{can: "no", why}`，别的形状 ⇒ 契约对不上。
+fn switch_cells(o: &Obj, kind: &str) -> Result<crate::session_book::SwitchCells, Unread> {
+    use crate::session_book::CanSwitch;
+    let sw = req(o, kind, "switch")?
+        .as_object()
+        .ok_or_else(|| bad(kind, "`switch` is not an object".to_string()))?;
+    let one = |key: &str| -> Result<CanSwitch, Unread> {
+        let c = req(sw, kind, key)?
+            .as_object()
+            .ok_or_else(|| bad(kind, format!("`switch.{key}` is not an object")))?;
+        match req_str(c, kind, "can")?.as_str() {
+            "yes" => Ok(CanSwitch::Yes),
+            "no" => Ok(CanSwitch::No {
+                why: req_str(c, kind, "why")?,
+            }),
+            other => Err(bad(kind, format!("`switch.{key}.can` is `{other}`"))),
+        }
+    };
+    Ok(crate::session_book::SwitchCells {
+        model: one("model")?,
+        permission: one("permission")?,
     })
 }
 
@@ -590,6 +616,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 text: req_str(obj, k, "state_text")?,
                 hint: req_str(obj, k, "state_hint")?,
                 tone: req_str(obj, k, "state_tone")?,
+                switch: switch_cells(obj, k)?,
             },
         },
         "overflow" => {

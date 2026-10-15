@@ -27,6 +27,10 @@ contextLimits: { [key in string]: number },
  */
 agentHomes: { [key in string]: string }, 
 /**
+ * planned-build 的插件根目录（绝对路径）；设了 ⇒ 计划那一族只认它，没设 ⇒ 认这台装着的插件。用的那一刻现读。
+ */
+pbDir: string | null, 
+/**
  * 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
  */
 childTab: Tab, 

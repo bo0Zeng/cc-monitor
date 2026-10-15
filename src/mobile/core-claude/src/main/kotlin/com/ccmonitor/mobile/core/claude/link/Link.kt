@@ -13,16 +13,50 @@ data class Said(
 sealed interface LinkState {
     data object Connecting : LinkState
 
-    /** 通着。[notice] ＝ 通着但要人动手的那一句（那台后端旧了：手机还装不了，照用对得上的那几条命令）。 */
+    /** 通着。[notice] ＝ 通着但要人动手的那一句（那台后端旧了：照用对得上的那几条命令）；[fix] ＝ 核心点名的修法（旧了 ⇒ 更新）。 */
     data class Up(
         val notice: Said? = null,
+        val fix: Fix? = null,
     ) : LinkState
 
-    /** 断着：那一句；[needsHand] ⇒ 不会自己好（没装 · 起不了常驻 · 不是我们的后端），等［重试］。 */
+    /** 断着：那一句；[needsHand] ⇒ 不会自己好（没装 · 起不了常驻 · 不是我们的后端），等［重试］；[fix] ⇒ 装一次会好、是哪一种。 */
     data class Down(
         val said: Said,
         val needsHand: Boolean,
+        val fix: Fix? = null,
     ) : LinkState
+}
+
+/** 装一次会好的那一种（核心点名，手机只照它挑按钮字）：那台没有我们的后端 · 有、但旧了。 */
+enum class Fix(
+    val wire: String,
+) {
+    INSTALL("install"),
+    UPDATE("update"),
+    ;
+
+    companion object {
+        fun of(wire: String?): Fix? = entries.firstOrNull { it.wire == wire }
+    }
+}
+
+/** 给一台装 / 更新后端这一趟走到哪了（话都是核心写好的）。 */
+sealed interface Deploying {
+    /** 在做：那一句；[bar] ⇒ 放字节那一步（屏上走一条进度条）。 */
+    data class Step(
+        val text: String,
+        val bar: Boolean,
+    ) : Deploying
+
+    /** 做完了：那一句（装上了 · 已是这一版 · 那台不比这一版旧）。 */
+    data class Done(
+        val text: String,
+    ) : Deploying
+
+    /** 没做成：那一句 ＋ 复制详情。 */
+    data class Failed(
+        val said: Said,
+    ) : Deploying
 }
 
 /** 一台的常驻流对外的那几样：会话表 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */

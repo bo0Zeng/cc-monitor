@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import com.ccmonitor.mobile.core.ssh.SessionStatus
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,5 +74,21 @@ class ShouldReattachTest {
             "exit 后连接重建，仍绝不重挂",
             shouldReattach(terminalDropped = true, userExited = userExited, liveConnActive = true),
         )
+    }
+
+    // ---- rejoinedWhileErrored：终端停在出错页、SSH 那层跟着共用循环换上了一条 ⇒ 重挂一次（终端是逃生口）----
+
+    @Test
+    fun anErroredTerminalRetriesOnceTheSshLayerIsBack() {
+        assertTrue(rejoinedWhileErrored(prev = SessionStatus.RECONNECTING, cur = SessionStatus.CONNECTED, errored = true))
+        assertTrue(rejoinedWhileErrored(prev = SessionStatus.ERROR, cur = SessionStatus.CONNECTED, errored = true))
+    }
+
+    @Test
+    fun onlyTheEdgeIntoConnectedCountsAndOnlyWhenErrored() {
+        // 一直连着（自己那一下开 shell 失败，比如远端拒开通道）不算：否则出错页会自己反复重试。
+        assertFalse(rejoinedWhileErrored(prev = SessionStatus.CONNECTED, cur = SessionStatus.CONNECTED, errored = true))
+        assertFalse(rejoinedWhileErrored(prev = SessionStatus.RECONNECTING, cur = SessionStatus.CONNECTED, errored = false))
+        assertFalse(rejoinedWhileErrored(prev = SessionStatus.CONNECTED, cur = SessionStatus.RECONNECTING, errored = true))
     }
 }

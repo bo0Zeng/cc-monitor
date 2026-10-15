@@ -27,33 +27,6 @@
         "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
       }
     ],
-    "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/ButtonEditDialog.kt": [
-      {
-        "text": "命令",
-        "use": "内部",
-        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
-      },
-      {
-        "text": "按键码",
-        "use": "内部",
-        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
-      },
-      {
-        "text": "转义",
-        "use": "内部",
-        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
-      },
-      {
-        "text": "内建",
-        "use": "内部",
-        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
-      },
-      {
-        "text": "切换",
-        "use": "内部",
-        "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
-      }
-    ],
     "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt": [
       {
         "text": "核心交的 {…} 认不出：{…}",

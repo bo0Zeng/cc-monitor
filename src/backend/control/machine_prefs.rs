@@ -1,4 +1,4 @@
-//! **这台的偏好**：对这台做事时怎么做 —— 每一家用哪条启动命令 · 恢复时进不进 tmux · 每个号默认用哪个模型 · 上下文上限表 ·
+//! **这台的偏好**：对这台做事时怎么做 —— 每一家用哪条启动命令 · 恢复时进不进 tmux · 每个号默认用哪个模型 · 上下文上限表 · pb 在哪 ·
 //! 子会话 / 分身会话进不进标签页（隐藏的判定读它，`control/session_hidden.rs`）。
 //! 住这台后端的家（`~/.cc-monitor/prefs.json`，[`relay_route_core::PREFS_REL`]），不住各个前端：手机直连这台，
 //! 从来不经过桌面那一份设置，偏好住在这里两端才拿到同一份。
@@ -44,6 +44,8 @@ pub(crate) struct Prefs {
     /// 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
     /// 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
     pub(crate) agent_homes: BTreeMap<String, String>,
+    /// planned-build 的插件根目录（绝对路径）；设了 ⇒ 计划那一族只认它，没设 ⇒ 认这台装着的插件。用的那一刻现读。
+    pub(crate) pb_dir: Option<String>,
     /// 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
     pub(crate) child_tab: cmd_wire::session::Tab,
     /// 分身会话（那一家在后台起的主会话副本）进不进标签页；缺省显示。
@@ -59,6 +61,7 @@ impl Default for Prefs {
             models: BTreeMap::new(),
             context_limits: BTreeMap::new(),
             agent_homes: BTreeMap::new(),
+            pb_dir: None,
             child_tab: rules.child_tab,
             bg_tab: rules.bg_tab,
         }
@@ -205,10 +208,13 @@ fn check(p: &Prefs) -> Result<(), String> {
             ));
         }
     }
+    if let Some(d) = p.pb_dir.as_deref().filter(|d| !agent_home_ok(d)) {
+        return Err(format!("`pbDir` is not an absolute path: {d:?}"));
+    }
     Ok(())
 }
 
-/// 数据目录那一格的值域：非空、绝对路径。
+/// 数据目录 · pb 路径那两格的值域：非空、绝对路径。
 pub(crate) fn agent_home_ok(d: &str) -> bool {
     !d.trim().is_empty() && Path::new(d.trim()).is_absolute()
 }
@@ -356,6 +362,10 @@ pub(crate) struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) bg_tab: Option<cmd_wire::session::Tab>,
+    /// pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) pb_dir: Option<String>,
 }
 
 /// 补丁打到 `p` 上（纯）。
@@ -390,7 +400,18 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
     if let Some(t) = s.bg_tab {
         p.bg_tab = t;
     }
+    if let Some(d) = &s.pb_dir {
+        p.pb_dir = Some(d.trim().to_string()).filter(|d| !d.is_empty());
+    }
     p
+}
+
+/// 这台设了的 pb 路径（读不懂 / 没设 ⇒ `None`）。
+pub(crate) fn pb_dir_now() -> Option<PathBuf> {
+    match read_now() {
+        Loaded::Present(p) => p.pb_dir.map(PathBuf::from),
+        Loaded::Absent | Loaded::Unreadable(_) => None,
+    }
 }
 
 /// 一句 ＋ 原话交给只装一句的那一层（投出去时拆回来）。

@@ -71,8 +71,9 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
     await bindEvents({ onSessionIdle, onSessionEnded } as never, STREAMS);
     // 抽取器自检：**没订到就零命中地绿** —— 本仓一路在治的那种空真。
     expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
-    streamFake.lifecycle([{ idle: { session_id: "sid-gray" } }]);
-    await vi.waitFor(() => expect(onSessionIdle).toHaveBeenCalledWith("sid-gray"), UNTIL_CEILING);
+    const gone = { model: { can: "no", why: "w" }, permission: { can: "no", why: "w" } };
+    streamFake.lifecycle([{ idle: { session_id: "sid-gray", text: null, hint: null, tone: null, switch: gone } }]);
+    await vi.waitFor(() => expect(onSessionIdle, "连同那台随去向带来的「此刻能不能换」").toHaveBeenCalledWith("sid-gray", gone), UNTIL_CEILING);
     // 反向：它不该顺手把 ended 也叫了（灰灯 ≠ 归档，两条路在后端就分开了）。
     expect(onSessionEnded).not.toHaveBeenCalled();
   });
@@ -93,8 +94,8 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
     const lines = src.split("\n").map((l) => l.trim());
     // 主窗：无条件把该 sid 置灰。
     expect(
-      lines.filter((l) => l === "onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),").length,
-      "main.ts 主窗少了那行 `onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),`。\n" +
+      lines.filter((l) => l === "onSessionIdle: (sessionId, sw) => tabs.markTmuxIdle(sessionId, sw ?? null),").length,
+      "main.ts 主窗少了那行 `onSessionIdle: (sessionId, sw) => tabs.markTmuxIdle(sessionId, sw ?? null),`。\n" +
         "① 没有 ⇒ 后端喊了灰灯、前端一个字不做（`#60` 的现象 1 就长这样）；\n" +
         "② 形状变了（接到别的函数）⇒ 灰灯变成归档或复活，UI 说的不是同一件事。",
     ).toBe(1);

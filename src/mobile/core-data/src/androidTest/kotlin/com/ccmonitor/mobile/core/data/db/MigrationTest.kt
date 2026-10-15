@@ -467,16 +467,123 @@ class MigrationTest {
         }
     }
 
-    /** 17→18：续点多一格文件身份，旧行是空串（下一次从头读一回）；别的格与别的表原样。 */
+    /**
+     * 17→18：旧按钮表的每一类照迁（旧默认 · 工具条上自己加的 · 只在某台显示的 · 认不出的 · 长按单发 / 连发），旧表删掉；
+     * 机器 · 钥匙 · 已知主机 · 书签 · 设置 · 缓存五张表一字不动。
+     */
     @Test
-    fun migrate17To18GivesOldAnchorsAnEmptyFileAndKeepsTheRest() {
+    fun migrate17To18MovesEveryKindOfOldButtonAndKeepsEverythingElse() {
         helper.createDatabase(dbName, 17).apply {
+            seedLegacyButtons(this) // 旧默认：fn · alt · vim 与工具条三颗
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,authRef,sortOrder,autoReconnect,passwordEnc) VALUES " +
+                    "('h1','devbox','example.com',2222,'dev','k1',1,1,'ENC'), ('h2','pi','example.org',22,'pi',NULL,0,0,NULL)",
+            )
+            execSQL(
+                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
+                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
+            )
+            val cols = "id,hostId,label,command,sortOrder,ctrl,alt,shift,type,btnGroup,longPressMode,longPressCommand,longPressThresholdMs,longPressRepeatMs"
+            execSQL(
+                "INSERT INTO custom_buttons ($cols) VALUES " +
+                    "('u-ls',NULL,'ls','ls -la',10,0,0,0,'command','main','none','',400,60)," + // 工具条上自己加的
+                    "('u-cc',NULL,'Ctrl+C','c',11,1,0,0,'keycode','main','discrete','d',650,60)," + // 带修饰 ＋ 长按单发
+                    "('u-odd',NULL,'alt screen','\\e[?1049h',12,0,0,0,'escape','main','none','',400,60)," + // 认不出
+                    "('u-rep',NULL,'make','make',13,0,0,0,'command','fn','repeat','',400,60)," + // 长按连发、不能连发
+                    "('h1-top','h1','top','top',0,0,0,0,'command','main','none','',400,60)," + // 只在 h1 显示
+                    "('h2-up','h2','up','\\e[A',0,0,0,0,'escape','fn','repeat','',400,60)," + // 只在 h2 显示
+                    "('orphan','gone','x','x',0,0,0,0,'command','main','none','',400,60)", // 机器已经删了
+            )
+            execSQL("INSERT INTO known_hosts (host,port,keyType,publicKeyBase64,addedAt) VALUES ('example.com',2222,'ssh-ed25519','AAAA',7)")
+            execSQL("INSERT INTO bookmarks (id,hostId,path,label,sortOrder) VALUES ('b1','h1','/srv','srv',0)")
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
+            execSQL("INSERT INTO sessions (hostId,sid,listRow,ord,viewedAt) VALUES ('h1','s1','{}',0,5)")
+            execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
+            execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
+            execSQL("INSERT INTO pending (id,hostId,sid,text,attachments,mintedAt,outcome,attempts) VALUES ('p1','h1',NULL,'hi',NULL,5,'pending',1)")
+            execSQL("INSERT INTO drafts (hostId,sid,text,cwd,account,model,permission,updatedAt) VALUES ('h1','','x','~',NULL,NULL,NULL,5)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 18, true, MIGRATION_17_18)
+
+        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='custom_buttons'").use { c ->
+            assertTrue("旧按钮表应已删掉", !c.moveToFirst())
+        }
+        val groups =
+            db.query("SELECT id, name FROM key_groups ORDER BY sortOrder").use { c ->
+                generateSequence { if (c.moveToNext()) c.getString(0) to c.getString(1) else null }.toList()
+            }
+        assertEquals(
+            listOf("kg-common" to "常用", "kg-shell" to "shell", "kg-vim" to "vim", "kg-bar" to "按钮栏", "kg-host-h2" to "pi", "kg-host-h1" to "devbox"),
+            groups,
+        )
+        val conv = KeyConverters()
+
+        fun key(id: String): Map<String, String?>? =
+            db.query("SELECT groupId, label, modifier, tap, longPress, longPressMs, unconverted FROM term_keys WHERE id=?", arrayOf(id)).use { c ->
+                if (!c.moveToFirst()) return@use null
+                (0 until c.columnCount).associate { c.getColumnName(it) to if (c.isNull(it)) null else c.getString(it) }
+            }
+        db.query("SELECT COUNT(*) FROM term_keys WHERE id LIKE 'ak-tb-%' OR id='orphan'").use { c ->
+            c.moveToFirst()
+            assertEquals("工具条三颗内建与机器已删的那颗不进按键", 0, c.getInt(0))
+        }
+        assertEquals("kg-common", key("ak-fn-esc")!!["groupId"])
+        assertEquals("ctrl", key("ak-fn-ctrl")!!["modifier"])
+        assertEquals(KeyBinding.App(AppAction.NEXT_GROUP), conv.textToBinding(key("ak-vim-switch")!!["tap"]))
+        assertEquals(KeyBinding.App(AppAction.EDIT_KEYS), conv.textToBinding(key("ak-vim-switch")!!["longPress"]))
+        val ls = key("u-ls")!!
+        assertEquals("kg-bar", ls["groupId"])
+        assertEquals("ls", ls["label"])
+        assertEquals(KeyBinding.Input(listOf(KeyPress.Text("ls -la"), KeyPress.Special(SpecialKey.ENTER))), conv.textToBinding(ls["tap"]))
+        val cc = key("u-cc")!!
+        assertEquals(KeyBinding.Input(listOf(KeyPress.Chord("c", setOf(KeyMod.CTRL)))), conv.textToBinding(cc["tap"]))
+        assertEquals(KeyBinding.Input(listOf(KeyPress.Chord("d", setOf(KeyMod.CTRL)))), conv.textToBinding(cc["longPress"]))
+        val sys = android.view.ViewConfiguration.getLongPressTimeout()
+        assertEquals("阈值和系统不同才另写", if (sys == 650) null else "650", cc["longPressMs"])
+        val odd = key("u-odd")!!
+        assertEquals(null, odd["tap"])
+        assertEquals(listOf(UnconvertedNote(UnconvertedNote.Issue.TAP_UNPARSED, "\\e[?1049h")), conv.textToNotes(odd["unconverted"]))
+        val rep = key("u-rep")!!
+        assertEquals("kg-common", rep["groupId"])
+        assertEquals(listOf(UnconvertedNote(UnconvertedNote.Issue.LONG_NO_REPEAT, "make")), conv.textToNotes(rep["unconverted"]))
+        assertEquals("kg-host-h1", key("h1-top")!!["groupId"])
+        val up = key("h2-up")!!
+        assertEquals("kg-host-h2", up["groupId"])
+        assertEquals("能连发的键长按没设、不算没转过来", null, up["unconverted"])
+
+        db.query("SELECT label, host, port, authRef, passwordEnc FROM hosts WHERE id='h1'").use { c ->
+            assertTrue("机器表应原样还在", c.moveToFirst())
+            assertEquals(listOf("devbox", "example.com", "2222", "k1", "ENC"), (0 until c.columnCount).map { c.getString(it) })
+        }
+        db.query("SELECT label, length(privateKeyEnc) FROM identities WHERE id='k1'").use { c ->
+            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
+            assertEquals("key", c.getString(0))
+            assertEquals(2, c.getInt(1))
+        }
+        for ((t, n) in listOf("known_hosts" to 1, "bookmarks" to 1, "settings" to 1, "sessions" to 1, "record_pages" to 1, "sync_anchors" to 1, "pending" to 1, "drafts" to 1)) {
+            db.query("SELECT COUNT(*) FROM $t").use { c ->
+                c.moveToFirst()
+                assertEquals("$t 应原样还在", n, c.getInt(0))
+            }
+        }
+        db.query("SELECT `rows`, `end` FROM record_pages WHERE sid='s1'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("[]", c.getString(0))
+            assertEquals(10, c.getInt(1))
+        }
+    }
+
+    /** 18→19：续点多一格文件身份，旧行是空串（下一次从头读一回）；别的格与别的表原样。 */
+    @Test
+    fun migrate18To19GivesOldAnchorsAnEmptyFileAndKeepsTheRest() {
+        helper.createDatabase(dbName, 18).apply {
             execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
             execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
             execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
             close()
         }
-        val db = helper.runMigrationsAndValidate(dbName, 18, true, MIGRATION_17_18)
+        val db = helper.runMigrationsAndValidate(dbName, 19, true, MIGRATION_18_19)
         db.query("SELECT path, `offset`, seq, file FROM sync_anchors WHERE hostId='h1' AND scope='s1'").use { c ->
             assertTrue("续点那一行应还在", c.moveToFirst())
             assertEquals(listOf("/p", "10", "1", ""), (0 until c.columnCount).map { c.getString(it) })
@@ -491,10 +598,18 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→18 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    /** 全链路 1→19 schema 校验（validateDroppedTables=true 严格比对导出 schema）；一路种过的旧默认键到头成了三组。 */
     @Test
-    fun migrateAll1To18Validates() {
+    fun migrateAll1To19Validates() {
         helper.createDatabase(dbName, 1).close()
-        helper.runMigrationsAndValidate(dbName, 18, true, *ALL_MIGRATIONS)
+        val db = helper.runMigrationsAndValidate(dbName, 19, true, *ALL_MIGRATIONS)
+        db.query("SELECT name FROM key_groups ORDER BY sortOrder").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
+            assertEquals(listOf("常用", "shell", "vim"), names)
+        }
+        db.query("SELECT COUNT(*) FROM term_keys").use { c ->
+            c.moveToFirst()
+            assertEquals("旧默认 40 颗里工具条那三颗不进按键、其余都在", 37, c.getInt(0))
+        }
     }
 }

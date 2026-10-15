@@ -7,7 +7,10 @@
 #   down  停 sshd、停台架里的常驻后端与 tmux 服务端（只认台架目录里的门牌与套接字）。
 #   env   印出台架那几格（家目录 · tmux 套接字 · 端口 · 登录钥匙），给驱动脚本 source。
 #   ssh   以台架的环境在台架里跑一条（和手机进来走同一个登录壳）—— 种历史会话、看台架里的状态用它。
+#   hop up|down  跳板那一台：同一套钥匙、同一个登录壳的第二个 sshd，听 CCM_SMOKE_HOP_PORT（默认 22423）；手机经它 direct-tcpip 到台架 sshd（ssh -J 那一形）。
 #   tmux  在台架的 tmux 服务端上敲一条（显式 -S，清掉继承来的 TMUX 那几格）—— 桌面那一侧接着打字就用它。
+#   land  none|<文件>：停台架里的常驻，落点删掉 / 换成那份（手机装后端 · 升级后端那两步用）。
+#   backend off|on  让那台的常驻后端起不来（停掉在跑的常驻、把落点那份挪开 ⇒ attach / ensure 都是 127）· 放回去；SSH 本身照通。
 #
 # 隔离：ssh 进来的每条命令都由台架的登录壳（up 时写进台架目录的 sshd/login.sh）换上台架的 HOME · TMUX_TMPDIR · PATH（替身 claude / codex 在前）·
 #   CCM_SANDBOX=1（后端要占真家目录的门牌就拒绝起）。sshd 只听 127.0.0.1（模拟器经它的网关、即宿主机够到它），
@@ -95,18 +98,53 @@ stop_resident() {
 }
 
 down() {
+  hop down
   if [ -f "$box/sshd/sshd.pid" ]; then kill "$(cat "$box/sshd/sshd.pid")" 2>/dev/null || true; rm -f "$box/sshd/sshd.pid"; fi
   stop_resident
   [ -S "$sock" ] && env -u TMUX -u TMUX_PANE tmux -S "$sock" kill-server 2>/dev/null || true
   say "台架停了（目录留着：$box）"
 }
 
+# 落点换一份（装后端那两步用）：先停台架里的常驻，再把落点删掉（`none`）或换成给的那份文件。
+land() {
+  stop_resident
+  case "${1:-}" in
+    none) rm -f "$home/.cc-monitor/bin/ccm"; say "落点删了（台架那台没有后端）" ;;
+    *) [ -f "$1" ] || { say "没有这份文件：$1"; exit 2; }; install -m 755 "$1" "$home/.cc-monitor/bin/ccm"; say "落点换成 $1" ;;
+  esac
+}
+
+hop() {
+  local hp=${CCM_SMOKE_HOP_PORT:-22423} cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
+  case "${1:-}" in
+    up)
+      [ -f "$box/sshd/sshd_config" ] || { say "先 rig.sh up"; exit 2; }
+      sed -e "s|^Port .*|Port $hp|" -e "s|^PidFile .*|PidFile $pid|" "$box/sshd/sshd_config" > "$cfg"
+      if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then say "跳板 sshd 已在跑"; else
+        /usr/sbin/sshd -f "$cfg" -E "$box/logs/hop-sshd.log"; sleep 0.5; say "跳板 sshd 起在 127.0.0.1:$hp（pid $(cat "$pid")）"; fi ;;
+    down) if [ -f "$pid" ]; then kill "$(cat "$pid")" 2>/dev/null || true; rm -f "$pid"; fi; say "跳板 sshd 停了" ;;
+    *) echo "用法：rig.sh hop up|down" >&2; exit 2 ;;
+  esac
+}
+
+backend() {
+  local bin=$home/.cc-monitor/bin
+  case "${1:-}" in
+    off) stop_resident; [ -f "$bin/ccm" ] && mv "$bin/ccm" "$bin/ccm.off"; say "常驻后端起不来了（落点挪开）" ;;
+    on) [ -f "$bin/ccm.off" ] && mv "$bin/ccm.off" "$bin/ccm"; say "常驻后端放回去了" ;;
+    *) echo "用法：rig.sh backend off|on" >&2; exit 2 ;;
+  esac
+}
+
 case "${1:-}" in
   up) up ;;
+  hop) shift; hop "$@" ;;
+  backend) shift; backend "$@" ;;
   down) down ;;
+  land) shift; land "$@" ;;
   env) printf 'SMOKE_BOX=%q\nSMOKE_HOME=%q\nSMOKE_SOCK=%q\nSMOKE_PORT=%q\nSMOKE_KEY=%q\n' "$box" "$home" "$sock" "$port" "$box/sshd/client_ed25519" ;;
   ssh) shift; exec ssh -F /dev/null -i "$box/sshd/client_ed25519" -p "$port" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile="$box/sshd/known_hosts" -o LogLevel=ERROR "$(id -un)@127.0.0.1" "$@" ;;
   tmux) shift; exec env -u TMUX -u TMUX_PANE tmux -S "$sock" "$@" ;;
-  *) echo "用法：rig.sh up|down|env|ssh|tmux <参数…>" >&2; exit 2 ;;
+  *) echo "用法：rig.sh up|down|env|ssh|hop up|down|backend off|on|land none|<文件>|tmux <参数…>" >&2; exit 2 ;;
 esac

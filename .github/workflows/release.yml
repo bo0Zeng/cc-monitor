@@ -769,7 +769,8 @@ jobs:
   #    今天还没有给远端上传 / 装后端那条路 ⇒ 本 job 不编、不塞后端。
   build-mobile:
     name: Build Android app (signed APK)
-    needs: [build-windows]
+    # 包里带给远端装的两份后端：同一趟 `build-backends` 编的那两份（`build-windows` 已对同一批 artifact 问过字节里的身份）。
+    needs: [build-backends, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -820,6 +821,25 @@ jobs:
           printf 'keyPassword=%s\n' "${ANDROID_KEY_PASSWORD//\\/\\\\}" >> "$props"
           [ -s "$ks" ] || { echo "::error::签名 keystore 是空的（secret ANDROID_KEYSTORE_B64 没给或解不出）—— 不打未签名的包冒充正式包"; exit 1; }
           echo "keystore 已还原到 runner 临时目录（$(stat -c %s "$ks") 字节）"
+
+      # 给远端装的两份后端进 APK 的 assets：放进 `:app` 读的那个目录（桌面同一个落点）。是不是这一版、两份是不是同一版，
+      # 由 Gradle 看字节判（`core-claude/build.gradle.kts` 的 genEmbeddedBuild，对不上就构建失败），这里不另写一份校验。缺文件仍然 fail。
+      - name: Download cross-compiled backends
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-backends
+          path: backend-artifacts
+
+      - name: Place embedded backends
+        run: |
+          set -euo pipefail
+          mkdir -p src/frontend/shell/embedded-backends
+          for a in x86_64 aarch64; do
+            bin=$(find backend-artifacts -name "cc-monitor-backend-$a" -type f | head -1)
+            [ -n "$bin" ] || { echo "backend artifact 缺失（$a）"; exit 1; }
+            cp "$bin" "src/frontend/shell/embedded-backends/cc-monitor-backend-$a"
+            echo "embedded $a placed"
+          done
 
       - name: Build signed release APK
         working-directory: src/mobile

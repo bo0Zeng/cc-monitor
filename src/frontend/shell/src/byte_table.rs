@@ -19,7 +19,7 @@
 //! - 字节落到哪（一个常量，与来源无关）；推上去怎么推（`sftp.rs` 部署）。
 //! - 那台机器上已有的那一份是谁（本机常驻后端出计划时读它字节里的身份戳）。
 
-// 表 B 的承诺是裁决（「判定只在后端」）⇒ 住后端 `control/deploy_plan.rs::promised`；本文件只剩表 A 的行与槽。
+// 表 B 的承诺是裁决（「判定只在后端」）⇒ 住后端 `deploy/lib.rs::promised`；本文件只剩表 A 的行与槽。
 //   本机后端引导那一刻问手上那份字节自己（`place-verdict`）。
 pub(crate) use deploy_contract::{Arch, Key, Os, Refusal, LINES};
 

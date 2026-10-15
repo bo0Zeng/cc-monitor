@@ -21,14 +21,17 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -39,24 +42,25 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.db.ButtonGroups
-import com.ccmonitor.mobile.core.data.db.CustomButton
-import com.ccmonitor.mobile.core.data.db.CustomButtonDao
 import com.ccmonitor.mobile.core.data.db.Identity
+import com.ccmonitor.mobile.core.data.db.KeyBinding
+import com.ccmonitor.mobile.core.data.db.KeyDao
+import com.ccmonitor.mobile.core.data.db.KeyGroup
+import com.ccmonitor.mobile.core.data.db.appActionName
+import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
-import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
+import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarController
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
@@ -70,7 +74,6 @@ import com.ccmonitor.mobile.ssh.appendAuthorizedKeyCommand
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.pastePlainText
-import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
 import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -91,7 +94,22 @@ fun SessionScreen(
     tmuxSession: String? = null, // 进终端 tab 首连即接回的会话名；普通 tab 为 null
     onAttachInNewTab: (name: String) -> Unit = {}, // tmux「附着」：开新终端 tab
     onShowTabs: () -> Unit = {}, // 唤出 tab 面板
-) = SessionContent(hostId, cd, tmuxSession, onAttachInNewTab, onShowTabs)
+    onEditKeys: () -> Unit, // 进编辑按键页（⋯「编辑按键」· 绑了「编辑按键」的触发 · 空组那一行）
+) {
+    val hostRepo = koinInject<HostRepository>()
+    val hostLabel by produceState(hostId, hostId) { value = hostRepo.get(hostId)?.label ?: hostId }
+    CompositionLocalProvider(LocalKeysEnv provides KeysEnv(onEditKeys, hostLabel)) {
+        SessionContent(hostId, cd, tmuxSession, onAttachInNewTab, onShowTabs)
+    }
+}
+
+/** 终端屏深处的键条要用、又不该一层层往下传的两样：进编辑按键页 · 这台叫什么（「抓屏不可用 · devbox 无 tmux」）。 */
+private data class KeysEnv(
+    val onEditKeys: () -> Unit,
+    val hostLabel: String,
+)
+
+private val LocalKeysEnv = staticCompositionLocalOf<KeysEnv> { error("LocalKeysEnv not provided") }
 
 @Composable
 private fun SessionContent(
@@ -140,7 +158,6 @@ private fun SessionContent(
         is SessionUiState.Error -> ErrorContent(s.message, vm, onShowTabs)
         is SessionUiState.Connected ->
             ConnectedContent(
-                hostId,
                 s,
                 vm,
                 onReconnect = { vm.retry() },
@@ -317,7 +334,6 @@ private fun ConnectLogView(
  */
 @Composable
 private fun ConnectedContent(
-    hostId: String,
     s: SessionUiState.Connected,
     vm: SessionViewModel,
     onReconnect: () -> Unit,
@@ -330,7 +346,6 @@ private fun ConnectedContent(
     // 公钥推送：命令面板「推送公钥」触发，选一个身份，把它的 OpenSSH 公钥追加到这台主机的 authorized_keys。
     var showKeyPush by remember { mutableStateOf(false) }
     ConnectedScaffold(
-        hostId = hostId,
         s = s,
         vm = vm,
         onReconnect = onReconnect,
@@ -357,7 +372,6 @@ private fun ConnectedContent(
 /** 已连接的主界面：掉线条幅 ＋ 终端。 */
 @Composable
 private fun ConnectedScaffold(
-    hostId: String,
     s: SessionUiState.Connected,
     vm: SessionViewModel,
     onReconnect: () -> Unit,
@@ -379,7 +393,7 @@ private fun ConnectedScaffold(
         if (dropped) DroppedBanner(status, onReconnect)
         if (!aliasPicked) LaunchAliasRow(aliases, vm::startAlias)
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            ConnectedTerminal(hostId, s, vm, onShowTmux, onPushKey, onCaptured, onShowTabs)
+            ConnectedTerminal(s, vm, onShowTmux, onPushKey, onCaptured, onShowTabs)
         }
     }
 }
@@ -407,7 +421,6 @@ private fun DroppedBanner(
 /** 终端与它的动作接线。 */
 @Composable
 private fun ConnectedTerminal(
-    hostId: String,
     s: SessionUiState.Connected,
     vm: SessionViewModel,
     onShowTmux: () -> Unit,
@@ -427,7 +440,6 @@ private fun ConnectedTerminal(
     val onCapture = rememberCaptureAction(vm.terminals, { currentTmux }, onCaptured)
     TerminalTab(
         session = s.session,
-        hostId = hostId,
         onShowTmux = onShowTmux,
         models = models,
         onModel = onSwitchModel,
@@ -628,11 +640,10 @@ private fun CaptureDialog(
     )
 }
 
-/** 终端 tab：termlib 渲染，加按钮条与 ExtraKeys。 */
+/** 终端 tab：termlib 渲染，加工具条与键条。 */
 @Composable
 private fun TerminalTab(
     session: TerminalSession,
-    hostId: String,
     onShowTmux: () -> Unit,
     models: List<NewSessionPick>,
     onModel: (String) -> Unit,
@@ -673,7 +684,6 @@ private fun TerminalTab(
         )
         TerminalBottomControls(
             session = session,
-            hostId = hostId,
             supportsTmux = supportsTmux,
             showKeyboard = showKeyboard,
             onShowTabs = onShowTabs,
@@ -686,11 +696,10 @@ private fun TerminalTab(
     }
 }
 
-/** 终端底部控件区：数据驱动的按钮条、ExtraKeys、命令面板。 */
+/** 终端底部控件区：固定工具条、键条（当前那一组）、命令面板。 */
 @Composable
 private fun TerminalBottomControls(
     session: TerminalSession,
-    hostId: String,
     supportsTmux: Boolean,
     showKeyboard: () -> Unit,
     onShowTabs: () -> Unit,
@@ -700,126 +709,124 @@ private fun TerminalBottomControls(
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
 ) {
-    // 命令面板「自定义」段的来源，与按钮条同源，只取 group='main'：fn / vim 组的单键（Esc、方向、hjkl…）
-    // 进面板只是噪声。
-    val customButtonDao = koinInject<CustomButtonDao>()
-    val customButtons by remember(hostId) {
-        customButtonDao.observeGroup(hostId, ButtonGroups.MAIN)
-    }.collectAsState(initial = emptyList())
-    // 「自定义」段也过 tmux 门控（与按钮条同一条 [visibleOn]），否则 `tmux 会话` / `抓屏` 这类内建动作
-    // 会在非 tmux 主机上冒出来。
-    val paletteButtons = customButtons.filter { it.visibleOn(supportsTmux) }
+    val keyDao = koinInject<KeyDao>()
+    val settings = koinInject<SettingsRepository>()
+    val groups by remember { keyDao.observeGroups() }.collectAsState(initial = emptyList())
+    val savedGroup by remember { settings.observeCurrentKeyGroup() }.collectAsState(initial = null)
+    val doubleTapMs by remember { settings.observeKeyDoubleTapMs() }.collectAsState(initial = null)
+    val longPressMs by remember { settings.observeKeyLongPressMs() }.collectAsState(initial = null)
+    // 当前组记在这台手机上；没记过 · 那组已删 ⇒ 第一组。一个组都没有 ⇒ 键条整条不画。
+    val current = currentGroup(groups, savedGroup)
     var showPalette by rememberSaveable { mutableStateOf(false) }
-    val mods by session.modifiers.collectAsState() // 粘性 Ctrl / Alt 的点亮态
-    // 粘贴动作，ExtraKeysRow 的粘贴键与内建 `paste` 共用。
+    var showMore by rememberSaveable { mutableStateOf(false) }
+    val env = LocalKeysEnv.current
+    val mods by session.modifiers.states.collectAsState()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val onPaste: () -> Unit = {
         scope.launch { clipboard.pastePlainText()?.takeIf { it.isNotEmpty() }?.let { session.send(it.toByteArray()) } }
     }
-    // 内建动作：type=builtin 的按钮经它触达这些回调。
-    val builtins =
-        terminalButtonBuiltins(
-            session,
-            supportsTmux,
-            onShowTabs,
-            { showPalette = true },
-            onShowTmux,
-            onPaste,
-            onCapture,
-            onPushKey,
-            showKeyboard,
+    val switchTo: (String) -> Unit = { id -> scope.launch { settings.setCurrentKeyGroup(id) } }
+    val actions =
+        KeyActions(
+            supportsTmux = supportsTmux,
+            onShowTabs = onShowTabs,
+            onCommandPalette = { showPalette = true },
+            onTmuxSessions = onShowTmux,
+            onPaste = onPaste,
+            onCapture = onCapture,
+            onPushKey = onPushKey,
+            onShowKeyboard = showKeyboard,
+            onEditKeys = env.onEditKeys,
+            onNextGroup = { nextGroupId(groups, savedGroup)?.let(switchTo) },
+            onGotoGroup = { id -> groups.any { it.id == id }.also { if (it) switchTo(id) } },
         )
-    // 近键盘那排显示哪个组，每个 tab 各记各的，默认 fn；switch 按钮经 dispatch 的 onSwitchGroup 改它。
-    var activeGroup by rememberSaveable { mutableStateOf(ButtonGroups.FN) }
-    // 长按 switch 按钮就地开按钮设置（全屏 Dialog，会话内模态，不走导航，免得穿多层回调）。
-    var showButtonSettings by remember { mutableStateOf(false) }
-    // 唯一的派发入口，按钮条、键排、命令面板共用，免得哪处漏传 builtins。
-    // 任意 switch 按钮点了都切近键盘那排的组。
-    val dispatch: (CustomButton) -> Unit = { dispatchButton(it, session::send, builtins, onSwitchGroup = { g -> activeGroup = g }) }
-    // 按钮条：`▤ tab` / `命令` / `tmux 会话` 是 main 组的内建种子，与用户按钮一起渲染、可编辑可重排。
-    // 能力位门控在渲染侧 [visibleOn]。按钮四类：命令 / 按键码 / 转义 / 内建，由 dispatchButton 按类型派发。
-    CustomButtonBar(hostId = hostId, dispatch = dispatch, supportsTmux = supportsTmux)
-    ExtraKeysRow(
-        hostId = hostId, // 查询范围：全局 + 本机
-        activeGroup = activeGroup,
-        dispatch = dispatch,
-        ctrlActive = mods.ctrl, // Ctrl 粘性按钮的点亮态
-        altActive = mods.alt,
-        onOpenButtonSettings = { showButtonSettings = true },
+    TerminalToolbar(
+        supportsTmux = supportsTmux,
+        onShowTabs = onShowTabs,
+        onCommandPalette = { showPalette = true },
+        onTmuxSessions = onShowTmux,
+        onMore = { showMore = true },
     )
-    // 命令面板：把模型、抓屏、自定义命令、tmux 会话整合成可搜索的动作。
-    if (showPalette) {
-        val actions =
-            terminalPaletteActions(supportsTmux, paletteButtons, models, onModel, onCapture, onShowTmux, onPushKey, dispatch)
-        CommandPalette(actions = actions, onDismiss = { showPalette = false })
+    KeyBar(keyDao, KeyBarNav(groups, current, switchTo, LocalAppSnackbar.current, env), showMore, onDismissMore = { showMore = false }) { g, nav ->
+        ExtraKeysRow(
+            groupId = g.id,
+            dispatch = { b -> dispatchBinding(b, session::send, actions, session.modifiers::take)?.let { f -> nav.fail(f, b) } },
+            onModifier = { m, gesture -> session.modifiers.on(m.term(), gesture) },
+            mods = mods,
+            doubleTapMs = doubleTapMs,
+            longPressMs = longPressMs,
+            groupName = { id -> groups.firstOrNull { it.id == id }?.name },
+        )
     }
-    // 按钮设置全屏 Dialog（hostId=null 即全局按钮），关掉即回终端。
-    if (showButtonSettings) {
-        Dialog(
-            onDismissRequest = { showButtonSettings = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            // 注意：Snackbar 不跨 window 绘制。Dialog 是独立 window，activity 根部那个宿主在这里看不见，
-            // 所以每个 window 的根部都要自己装一个，否则删按钮组的反馈与「撤销」一个像素都看不到。
-            AppSnackbarHostScaffold {
-                ButtonSettingsScreen(hostId = null, onBack = { showButtonSettings = false })
-            }
-        }
+    // 命令面板：模型、抓屏、tmux 会话、推公钥整合成可搜索的动作。
+    if (showPalette) {
+        val paletteActions = terminalPaletteActions(supportsTmux, models, onModel, onCapture, onShowTmux, onPushKey)
+        CommandPalette(actions = paletteActions, onDismiss = { showPalette = false })
     }
 }
 
 /**
- * 终端 tab 的内建动作。tmux 类动作（会话 / 抓屏 / 公钥）在不支持 tmux 的主机上点了也无害。
+ * 键条那一块要的：组（照先后）· 当前组 · 切组 · 做不成时那一句。做不成的出不自己走的 toast（点了才关）：
+ * 切到的组已删 ⇒ 带「编辑」；要 tmux 的在没 tmux 的那台上 ⇒ 写哪个动作、哪台。
  */
-private fun terminalButtonBuiltins(
-    session: TerminalSession,
-    supportsTmux: Boolean,
-    onShowTabs: () -> Unit,
-    onCommandPalette: () -> Unit,
-    onShowTmux: () -> Unit,
-    onPaste: () -> Unit,
-    onCapture: () -> Unit,
-    onPushKey: () -> Unit,
-    onShowKeyboard: () -> Unit,
-): ButtonBuiltins =
-    // tmux 门控在 ButtonBuiltins.invoke 里（按 TMUX_ONLY_BUILTINS），这里不必逐个包。
-    ButtonBuiltins(
-        supportsTmux = supportsTmux,
-        onShowTabs = onShowTabs,
-        onCommandPalette = onCommandPalette,
-        onTmuxSessions = onShowTmux,
-        onPaste = onPaste,
-        onCapture = onCapture,
-        onPushKey = onPushKey,
-        onShowKeyboard = onShowKeyboard,
-        onToggleCtrl = { session.toggleCtrl() },
-        onToggleAlt = { session.toggleAlt() },
-    )
+private class KeyBarNav(
+    val groups: List<KeyGroup>,
+    val current: KeyGroup?,
+    val switchTo: (String) -> Unit,
+    private val snackbar: AppSnackbarController,
+    private val env: KeysEnv,
+) {
+    fun fail(
+        f: KeyActionFail,
+        b: KeyBinding,
+    ) = when (f) {
+        KeyActionFail.GROUP_GONE -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
+        KeyActionFail.NO_TMUX -> {
+            val action = (b as? KeyBinding.App)?.action?.let(::appActionName).orEmpty()
+            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "host" to env.hostLabel))
+        }
+    }
+}
+
+/** ⋯ 抽屉 ＋ 键条（当前那一组，[row] 画）；当前组没有按键 ⇒ 一行灰字 ＋「编辑按键」；一个组都没有 ⇒ 整条不画。 */
+@Composable
+private fun KeyBar(
+    keyDao: KeyDao,
+    nav: KeyBarNav,
+    showMore: Boolean,
+    onDismissMore: () -> Unit,
+    row: @Composable (KeyGroup, KeyBarNav) -> Unit,
+) {
+    val env = LocalKeysEnv.current
+    val allKeys by remember { keyDao.observeAllKeys() }.collectAsState(initial = null)
+    val counts = allKeys.orEmpty().groupingBy { it.groupId }.eachCount()
+    val current = nav.current
+    if (showMore) TerminalMoreSheet(nav.groups, counts, current, onSwitch = nav.switchTo, onEditKeys = env.onEditKeys, onDismiss = onDismissMore)
+    current ?: return
+    if (allKeys != null && counts[current.id] == null) {
+        EmptyGroupLine(current.name, env.onEditKeys)
+        return
+    }
+    row(current, nav)
+}
 
 /**
- * 命令面板的动作集。依赖 tmux 的项（切模型 / 抓屏 / tmux 会话 / 公钥推送）按 `supportsTmux` 开关；
- * 自定义命令总在。
+ * 命令面板的动作集。依赖 tmux 的项（切模型 / 抓屏 / tmux 会话 / 公钥推送）按 `supportsTmux` 开关。
  */
 internal fun terminalPaletteActions(
     supportsTmux: Boolean,
-    customButtons: List<CustomButton>,
     models: List<NewSessionPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onShowTmux: () -> Unit,
     onPushKey: () -> Unit,
-    onCustom: (CustomButton) -> Unit,
 ): List<PaletteAction> =
     buildList {
         if (supportsTmux) {
             // 那台给的可选模型（名字照那台写好的字，副标题是原值）。
             models.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m.text, m.value) { onModel(m.value) }) }
             add(PaletteAction(copyText("mobPalette.group.capture"), copyText("mobPalette.item.capture")) { onCapture() })
-        }
-        // 副标题显示组合键（如 Ctrl+C）而不是裸键；动作带整个按钮，由调用方按修饰键编码。
-        customButtons.forEach { b -> add(PaletteAction(copyText("mobPalette.group.custom"), b.label, customButtonSubtitle(b)) { onCustom(b) }) }
-        if (supportsTmux) {
             add(PaletteAction(copyText("mobPalette.group.tmux"), copyText("mobPalette.item.tmux")) { onShowTmux() })
             // 公钥推送用的是 POSIX shell（mkdir / chmod / grep >> authorized_keys），严格说要的是 POSIX 能力而非 tmux；
             // 按操作系统定方言时两者总是同值，所以挂在 supportsTmux 上。
@@ -827,15 +834,23 @@ internal fun terminalPaletteActions(
         }
     }
 
-/** 命令面板里自定义按钮的副标题：有修饰键显示组合键（如 `Ctrl+C`），否则显示原命令。 */
-internal fun customButtonSubtitle(b: CustomButton): String =
-    if (!b.ctrl && !b.alt && !b.shift) {
-        b.command
-    } else {
-        buildString {
-            if (b.ctrl) append("Ctrl+")
-            if (b.alt) append("Alt+")
-            if (b.shift) append("Shift+")
-            append(b.command)
-        }
+/** 当前组没有按键：键条位置一行灰字「「git」无按键」＋ 一颗文字按钮「编辑按键」（C16 至多一颗）。 */
+@Composable
+private fun EmptyGroupLine(
+    name: String,
+    onEditKeys: () -> Unit,
+) {
+    val tokens = LocalAppTokens.current
+    Row(
+        Modifier.fillMaxWidth().background(tokens.bg2).padding(start = tokens.spacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            copyText("mobKeys.empty.group", "name" to name),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        SecondaryButton(onClick = onEditKeys) { Text(copyText("mobKeys.action.editKeys")) }
     }
+}

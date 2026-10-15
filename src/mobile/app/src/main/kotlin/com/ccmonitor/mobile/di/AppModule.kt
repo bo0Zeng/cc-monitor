@@ -5,6 +5,7 @@ import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
+import com.ccmonitor.mobile.link.BackendFiles
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.KnownHostDaoStore
@@ -19,7 +20,7 @@ import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
-import com.ccmonitor.mobile.ui.settings.ButtonSettingsViewModel
+import com.ccmonitor.mobile.ui.session.keys.KeysEditorViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
@@ -66,16 +67,23 @@ val appModule =
         // 每台一条常驻流（进程级）；「对话」一屏与抽屉「最近」共用同一个清单 VM。参数顺序 = `parametersOf(hostId, machine)`。
         single {
             val hosts = get<HostRepository>()
-            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id })
+            val files = BackendFiles(androidContext())
+            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, backendSlots = files::slots)
         }
         viewModel { params ->
             val hostId: String = params.get(0)
-            ConversationsViewModel(backend = get<HostBackends>().of(hostId), machine = params.get(1), cache = get<LocalCache>().list(hostId))
+            val backends = get<HostBackends>()
+            ConversationsViewModel(
+                backend = backends.of(hostId),
+                machine = params.get(1),
+                cache = get<LocalCache>().list(hostId),
+                deployBackend = { backends.deploy(hostId) },
+            )
         }
         // 本地缓存（会话列表 · 记录页 · 续点 · 待发 · 草稿）：那台成品原样落 Room。
         single { LocalCache(get()) }
         viewModel { IdentityViewModel(get()) }
-        viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
+        viewModel { KeysEditorViewModel(get(), get()) }
         viewModel { HostViewModel(get(), get(), get()) }
         // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
@@ -99,5 +107,5 @@ val appModule =
         single<KnownHostStore> { KnownHostDaoStore(get()) } // get()=KnownHostDao（dataModule 提供）
         single { HostConnector(get(), get(), get()) }
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
-        single { DevSeeder(androidContext(), get(), get(), get()) }
+        single { DevSeeder(androidContext(), get(), get()) }
     }

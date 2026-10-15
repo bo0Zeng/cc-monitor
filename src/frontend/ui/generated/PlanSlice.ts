@@ -19,6 +19,10 @@ export type PlanSlice = { name: string, domain: string | null,
  */
 path: string, current: boolean, 
 /**
+ * 只写文档：仓库还没接过来（`plan-command take` 接）。
+ */
+docsOnly: boolean, 
+/**
  * 这一刻读不成的那一句（pb 原样）。
  */
 error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 

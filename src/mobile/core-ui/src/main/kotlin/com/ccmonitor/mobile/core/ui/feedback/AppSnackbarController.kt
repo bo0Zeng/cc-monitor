@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 全应用的操作结果反馈 + 撤销。
@@ -74,27 +75,7 @@ class AppSnackbarController internal constructor(
     }
 
     /**
-     * 先把动作做完，再报结果并给撤销。
-     *
-     * 与 [showUndo] 的区别：后者要求调用方自己先做完动作；调用方若用
-     * `viewModelScope.launch { … }` 投出去就立刻调 [showUndo]，会在动作完成前就宣告成功。
-     * 这个方法把动作也放进控制器的 root scope 里 await：报的是真结果，动作本身也不随屏死。
-     */
-    fun showUndoAfter(
-        action: suspend () -> Unit,
-        message: String,
-        undoLabel: String = copyText("kit.toast.undo"),
-        onUndo: suspend () -> Unit,
-    ) {
-        scope.launch {
-            action()
-            val r = hostState.showSnackbar(message, undoLabel, duration = SnackbarDuration.Long)
-            if (r == SnackbarResult.ActionPerformed) onUndo()
-        }
-    }
-
-    /**
-     * 做完一个可撤销的动作后调它：显示结果 + 一个「撤销」。
+     * 做完一个可撤销的动作后调它：显示结果 + 一个「撤销」，撤销窗恰好 [UNDO_WINDOW_MS]，窗一过提示自己收起。
      *
      * @param onUndo 点撤销时执行。调用方自己持有恢复所需的数据（如被删掉的那条记录），
      *   这个控件不替谁记任何东西，只提供入口。
@@ -106,17 +87,32 @@ class AppSnackbarController internal constructor(
         undoLabel: String = copyText("kit.toast.undo"),
         onUndo: suspend () -> Unit,
     ) {
+        scope.launch { if (undoWindow(message, undoLabel) == SnackbarResult.ActionPerformed) onUndo() }
+    }
+
+    /** 撤销窗：计时走协程的时钟（M3 的 SnackbarHost 只有 Short · Long · Indefinite 三档），到点回 Dismissed。 */
+    private suspend fun undoWindow(
+        message: String,
+        undoLabel: String,
+    ): SnackbarResult =
+        withTimeoutOrNull(UNDO_WINDOW_MS) { hostState.showSnackbar(message, undoLabel, duration = SnackbarDuration.Indefinite) }
+            ?: SnackbarResult.Dismissed
+
+    /** 出错、且不许自己走的那种（点了才关）：带一个可选的动作（如「编辑」）。 */
+    fun showSticky(
+        message: String,
+        actionLabel: String? = null,
+        onAction: () -> Unit = {},
+    ) {
         scope.launch {
-            val r =
-                hostState.showSnackbar(
-                    message = message,
-                    actionLabel = undoLabel,
-                    duration = SnackbarDuration.Long, // 撤销要给足反应时间
-                )
-            if (r == SnackbarResult.ActionPerformed) onUndo()
+            val r = hostState.showSnackbar(message, actionLabel, withDismissAction = true, duration = SnackbarDuration.Indefinite)
+            if (r == SnackbarResult.ActionPerformed) onAction()
         }
     }
 }
+
+/** 撤得回的动作（直接做 ＋ 撤销）给的撤销窗，全 App 一个数。 */
+const val UNDO_WINDOW_MS: Long = 8_000L
 
 /** 一条反馈：屏上那一句 ＋ 只进复制详情的原话（可空）。 */
 @Immutable

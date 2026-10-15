@@ -104,7 +104,7 @@ pub(crate) fn scratch(tag: &str) -> PathBuf {
 }
 
 /// 在 `root` 底下造一个假 pb 插件：清单名字是 pb，入口脚本
-/// ① 把自己的 argv · 当前目录 · 环境里有没有 `PB_ID` 记进 `<root>/ran.json`；
+/// ① 把自己的 argv · 当前目录 · 环境里有没有 `PB_ID` 记进 `<root>/ran.json`（最近那一次），argv 另追加一行进 `<root>/runs.log`（每一次）；
 /// ② 当前目录（往上找）有 `.planned-build/` ⇒ 印出 `<那个目录>/dump.json`、退 0；没有 ⇒ stderr 一句、退 3。
 /// `rc` 给了就不管上面，直接以它退出（造「没有 dump」「别的失败」）。
 pub(crate) fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
@@ -123,6 +123,7 @@ pub(crate) fn fake_pb(root: &Path, name: &str, rc: Option<i32>) -> PathBuf {
         format!(
             r#"import json, os, sys
 open({ran:?}, "w").write(json.dumps({{"argv": sys.argv[1:], "cwd": os.getcwd(), "pb_id": "PB_ID" in os.environ}}))
+open({runs:?}, "a").write(json.dumps(sys.argv[1:]) + "\n")
 forced = {forced}
 if forced is not None:
     sys.stderr.write("forced\n"); sys.exit(forced)
@@ -136,6 +137,7 @@ while True:
     d = up
 "#,
             ran = ran.to_string_lossy(),
+            runs = root.join("runs.log").to_string_lossy(),
         ),
     )
     .unwrap();
@@ -149,4 +151,13 @@ pub(crate) fn workspace(root: &Path, doc: &Value) -> PathBuf {
     std::fs::write(root.join(".env"), r#"{"仓库": "alpha"}"#).unwrap();
     std::fs::write(root.join("dump.json"), doc.to_string()).unwrap();
     root.to_path_buf()
+}
+
+/// 假 pb 一次一次被起时带的参数（`runs.log`，没起过 ⇒ 空）。
+pub(crate) fn runs(root: &Path) -> Vec<Vec<String>> {
+    std::fs::read_to_string(root.join("runs.log"))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
 }

@@ -34,6 +34,7 @@ import {
 } from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
 import type { SessionActivity } from "./generated/SessionActivity";
+import type { SwitchCells } from "./generated/SwitchCells";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
@@ -634,7 +635,7 @@ export class TabManager {
       .map((r) => ({ label: runLabel(r), status: r.state }))
       .sort((x, y) => (x.status === "running" ? 0 : 1) - (y.status === "running" ? 0 : 1));
     return {
-      model: tab.usage?.model ?? null,
+      model: tab.modelText ?? tab.usage?.model ?? null,
       recentFiles: [...tab.touchedFiles],
       agents,
     };
@@ -670,6 +671,7 @@ export class TabManager {
       usage: t?.usage ?? null,
       unavailable: t?.facts.unavailableReason ?? null,
       projectDir: t?.projectDir ?? null,
+      modelText: t?.modelText ?? null,
     });
   }
 
@@ -782,6 +784,10 @@ export class TabManager {
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // 会话改动集
       usage: null, // HUD 与监控板的上下文那一格
+      modelText: null,
+      permissionMode: null,
+      permissionModeText: null,
+      switch: this.store.pendingSwitch.get(sessionId) ?? null,
       needs: null,
       backgroundWork: null,
       pending: [],
@@ -801,6 +807,7 @@ export class TabManager {
     };
     this.store.pendingActivity.delete(sessionId);
     this.store.pendingName.delete(sessionId);
+    this.store.pendingSwitch.delete(sessionId);
     this.view.wireTab(tab);
     // 归档信号早于建 Tab 到达 ⇒ 落实，免得重载后已结束的会话复活成关不掉的活 Tab。
     if (this.store.pendingArchive.delete(sessionId)) {
@@ -885,9 +892,10 @@ export class TabManager {
   }
 
   /** 会话退出且容器也没了 ⇒ 已结束，内容保留。 */
-  archiveTab(sessionId: string): void {
+  archiveTab(sessionId: string, sw: SwitchCells | null = null): void {
     this.live.dropTab(sessionId); // 结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
+    this.noteSwitch(sessionId, sw);
     if (!tab) {
       // Tab 还没建（归档信号早于行）⇒ 记下待归档、建 Tab 时落实；直接 return 会丢掉归档 → 僵尸活 Tab。
       this.store.pendingArchive.add(sessionId);
@@ -904,6 +912,21 @@ export class TabManager {
     this.refreshTabBar();
     this.emitTabStateProbe(tab);
     this.hider.reap(); // 隐藏的结束了 ⇒ 不留（正看着的切走再收）
+  }
+
+  /**
+   * 那台说的「此刻能不能换模型 · 权限档」落到 tab 上（Tab 还没建 ⇒ 暂存）；没带 ⇒ 不动。回「变没变」。
+   */
+  private noteSwitch(sessionId: string, sw: SwitchCells | null): boolean {
+    if (sw === null) return false;
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) {
+      this.store.pendingSwitch.set(sessionId, sw);
+      return false;
+    }
+    if (JSON.stringify(tab.switch) === JSON.stringify(sw)) return false;
+    tab.switch = sw;
+    return true;
   }
 
   /**
@@ -926,9 +949,10 @@ export class TabManager {
    * 远端 claude 退了、tmux 会话还在 ⇒ 可重连（不归档、不 forget）。Tab 未建 ⇒ 暂存待 `ensureTab` 落实；已结束的不回到可重连。
    * 离开可重连：`ensureTab`（主：又见行 / 重宣告）· `updateActivity`（又有活动）· `reviveTab`（本机）· `archiveTab`（tmux 真没了）。
    */
-  markTmuxIdle(sessionId: string): void {
+  markTmuxIdle(sessionId: string, sw: SwitchCells | null = null): void {
     this.live.dropTab(sessionId); // claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
+    this.noteSwitch(sessionId, sw);
     if (!tab) {
       this.store.pendingTmuxIdle.add(sessionId);
       return;
@@ -1361,15 +1385,18 @@ export class TabManager {
     text: string,
     tone: string,
     order: number,
+    sw: SwitchCells | null = null,
   ): void {
     const act = { doing, waitingFor, text, tone, order };
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
       this.store.pendingActivity.set(sessionId, act);
+      if (sw) this.store.pendingSwitch.set(sessionId, sw);
       return;
     }
     // 已结束不更新：磁盘残留的 PID 文件被重扫会推陈旧 activity。
     if (isResumeOnly(tab.state)) return;
+    const swChanged = this.noteSwitch(sessionId, sw);
     // 有活动 ＝ claude 活着 ⇒ 可重连回到活。必须在下面「无变化早退」之前：复活后首个 activity 未必与陈旧值不同。
     const clearedIdle = doing !== null && this.applyState(tab, "activity");
     if (
@@ -1379,7 +1406,7 @@ export class TabManager {
       tab.activity?.tone === act.tone &&
       tab.activity?.order === act.order
     ) {
-      if (clearedIdle) this.refreshTabBar();
+      if (clearedIdle || swChanged) this.refreshTabBar();
       return;
     }
     // 需手动的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
@@ -1402,8 +1429,8 @@ export class TabManager {
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
-    } else if (ch.writers || ch.needs || ch.peek || ch.lineage) this.refreshTabBar();
-    if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
+    } else if (ch.writers || ch.needs || ch.peek || ch.lineage || ch.switchable) this.refreshTabBar();
+    if ((ch.usage || ch.projectDir || ch.switchable) && sid === this.store.activeId) this.publishActive();
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */

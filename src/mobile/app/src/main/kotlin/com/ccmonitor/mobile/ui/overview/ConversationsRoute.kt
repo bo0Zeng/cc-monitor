@@ -66,10 +66,10 @@ fun ConversationsRoute(
                     is HostLink.Failed ->
                         Column(Modifier.fillMaxSize().padding(inner)) {
                             HostLinkFailed(l.why)
-                            if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry)
+                            if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onDeploy = vm::deploy)
                         }
-                    HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
-                    HostLink.Ready -> ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
+                    HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner), onDeploy = vm::deploy)
+                    HostLink.Ready -> ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner), onDeploy = vm::deploy)
                 }
             }
         }

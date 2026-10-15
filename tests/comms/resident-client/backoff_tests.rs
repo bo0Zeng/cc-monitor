@@ -98,6 +98,11 @@ fn both_ends_take_the_backoff_from_here() {
             src.contains("resident_client::feed::") && src.contains("Feed::start("),
             "{who}不再经本 crate 的 `Feed` 跑重连循环（{rel}）"
         );
+        // 拨号期限按拨号核心报的进展算：宿主只把进展行原样转给循环（要它 · 转它），不自己数哪一步。
+        assert!(
+            src.contains("progress.step()"),
+            "{who}没把拨号核心报的进展交给循环（{rel}）"
+        );
         // 判死（心跳问活）· 拨号期限只在循环里：宿主那一侧不许自己问活、自己给拨号掐表。
         for own in [
             "\"ping\"",
@@ -111,6 +116,17 @@ fn both_ends_take_the_backoff_from_here() {
                 "{who}又自己判死 / 掐拨号（`{own}`，{rel}）"
             );
         }
+    }
+    // 两端要进展行的是同一个请求格（拨号核心 `DialRequest::progress`），各在开长 exec 那一处要。
+    for (who, rel) in [
+        ("桌面", "src/frontend/shell/src/dial_host.rs"),
+        ("手机核心", "src/mobile/core-rs/rust/resident.rs"),
+    ] {
+        let src = guard_core::production_code(&read(rel));
+        assert!(
+            src.contains("\"progress\""),
+            "{who}开长 exec 时没要拨号核心的进展行（{rel}）"
+        );
     }
     // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来；逐文件扫在 `LinkLayerLivesInTheCoreScanTest`，这里只看落地那一份。
     let kt = read("src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt");

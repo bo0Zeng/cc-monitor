@@ -27,6 +27,7 @@ enum class Ph(
     HardDrives(0xE2A0),
     Key(0xE2D6),
     List(0xE2F0),
+    Lock(0xE2FA),
     PaperPlaneRight(0xE396),
     PencilSimple(0xE3B4),
     Play(0xE3D0),
@@ -39,6 +40,18 @@ enum class Ph(
     X(0xE4F6),
     Tabs(0xE778),
     TerminalWindow(0xEAE8),
+    ArrowCounterClockwise(0xE038),
+    Backspace(0xE0AE),
+    CaretLeft(0xE138),
+    Check(0xE182),
+    Clipboard(0xE196),
+    Command(0xE1C4),
+    DotsSixVertical(0xEAE2),
+    Keyboard(0xE2D8),
+    Rows(0xE5A2),
+    Selection(0xE69A),
+    Warning(0xE4E0),
+    WarningCircle(0xE4E2),
     ;
 
     val glyph: String get() = String(Character.toChars(codepoint))

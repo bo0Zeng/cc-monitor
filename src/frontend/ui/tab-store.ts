@@ -10,6 +10,7 @@
  */
 import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
+import type { SwitchCells } from "./generated/SwitchCells";
 import type { Tab, TabsSummary } from "./tab-model";
 import { isLive, isResumeOnly, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
@@ -26,14 +27,17 @@ export interface ActiveView {
   unavailable: string | null;
   /** 当前 tab 的项目目录（`Tab.projectDir`，后端给的那一格；独立窗口的顶栏标题读它）。 */
   projectDir: string | null;
+  /** 当前会话的模型写给人看的字（`Tab.modelText`，后端那一格；HUD 浮层里那一句照抄）。 */
+  modelText: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null };
+const NO_ACTIVE: ActiveView = { sid: null, usage: null, unavailable: null, projectDir: null, modelText: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
   JSON.stringify(a.usage) === JSON.stringify(b.usage) &&
   a.unavailable === b.unavailable &&
-  a.projectDir === b.projectDir;
+  a.projectDir === b.projectDir &&
+  a.modelText === b.modelText;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
   a.total === b.total && a.live === b.live && a.dead === b.dead && a.faces === b.faces;
 
@@ -100,6 +104,8 @@ export class TabStore {
    */
   readonly seenOrigins = new Set<string>();
   readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
+  /** 「此刻能不能换」早于建 Tab 到达（随活动那几格 · 去向那一帧）⇒ 暂存，建 Tab 时落实。 */
+  readonly pendingSwitch = new Map<string, SwitchCells>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
   readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();
 

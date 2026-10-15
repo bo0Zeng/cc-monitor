@@ -18,7 +18,7 @@
 //! 界面 → 后端  link-open：{"link","window","dial":DialRequest}
 //! link-data：stream 时是原样写进 SSH channel 的字节；capture 时不读；forward 时不读
 //! link-close：界面走了，收工
-//! 后端 → 界面  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）
+//! 后端 → 界面  stages=true 时先有若干行 {"stage":{…}}（与界面 `ConnectStage` 同形）；progress=true 时每过一步当场一行 {"progress":…}（`ssh_dial::step`）
 //! 然后恰好一行 ack（DialAck，`\n` 结尾）
 //! 其后按用法：stream 原样字节 · capture 一行 Captured 后结束 ·
 //! forward 每接进一条连接一行 {"accepted":n} ·

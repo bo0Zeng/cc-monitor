@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.core.claude.link
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -12,7 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 常驻流在 Kotlin 这一侧只剩落地：核心交的事（`state` · `frame` · `watch_from` · `lost` · `reply`）落成几条流，
+ * 常驻流在 Kotlin 这一侧只剩落地：核心交的事（`state` · `frame` · `watch_from` · `reply`）落成几条流，
  * 一问一答 · 在看名单 · ［重试］原样交给核心。重连 · 握手 · 版本门 · 退避都在核心里（`resident-client` 的判据管）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -24,6 +26,7 @@ class ResidentFeedTest {
         val calls = mutableListOf<Triple<String, String, Long>>()
         val watches = mutableListOf<Pair<String, Boolean>>()
         val kicks = mutableListOf<Boolean>()
+        val deploys = mutableListOf<String>()
         var opened: Triple<String, String, String>? = null
 
         override fun open(
@@ -69,6 +72,14 @@ class ResidentFeedTest {
             kicks += retry
         }
 
+        override fun deploy(
+            handle: Long,
+            slots: String,
+        ): Boolean {
+            deploys += slots
+            return true
+        }
+
         fun emit(
             kind: String,
             body: String,
@@ -77,8 +88,7 @@ class ResidentFeedTest {
 
     private fun TestScope.feed(
         core: FakeCore,
-        ssh: MutableStateFlow<SshLink?> = MutableStateFlow(SshLink("""{"host":"h"}""")),
-        lost: () -> Unit = {},
+        ssh: Flow<String?> = MutableStateFlow("""{"host":"h"}"""),
     ): ResidentFeed =
         ResidentFeed(
             scope = backgroundScope,
@@ -87,20 +97,33 @@ class ResidentFeedTest {
             ssh = ssh,
             mine = "p10g-mine",
             tz = "Asia/Shanghai",
-            onLost = lost,
         ).also { it.ensure() }
 
     @Test
-    fun `看一台：名字 · 这一版 · 时区交给核心；SSH 那层每换一条交一次（请求一字不差也交，没通交 null）`() =
+    fun `看一台：名字 · 这一版 · 时区交给核心；拨号请求变了才交（同一份身份上换一条不交，断开交 null）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            val ssh = MutableStateFlow<SshLink?>(SshLink("""{"host":"a"}"""))
+            val ssh = MutableSharedFlow<String?>(replay = 1).apply { tryEmit("""{"host":"a"}""") }
             feed(core, ssh)
             assertEquals(Triple("box", "p10g-mine", "Asia/Shanghai"), core.opened)
-            ssh.value = null
-            ssh.value = SshLink("""{"host":"a"}""")
-            ssh.value = SshLink("""{"host":"a"}""")
-            assertEquals(listOf("""{"host":"a"}""", null, """{"host":"a"}""", """{"host":"a"}"""), core.ssh)
+            ssh.emit("""{"host":"a"}""")
+            ssh.emit(null)
+            ssh.emit("""{"host":"b"}""")
+            assertEquals(listOf("""{"host":"a"}""", null, """{"host":"b"}"""), core.ssh)
+        }
+
+    /** SSH 够没够着与流通不通分开落：后端起不来（流断着要人动手）时 SSH 照样够着，SSH 那层跟它走。 */
+    @Test
+    fun `SSH 够没够着单独落，与流的状态不搅在一起`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            assertEquals(false, f.sshReached.value)
+            core.emit("ssh", "true")
+            core.emit("state", """{"state":"down","problem":{"text":"没装","detail":""},"needs_hand":true}""")
+            assertEquals(true, f.sshReached.value)
+            core.emit("ssh", "false")
+            assertEquals(false, f.sshReached.value)
         }
 
     @Test
@@ -116,6 +139,42 @@ class ResidentFeedTest {
             core.emit("state", """{"state":"up","epoch":2,"notice":null}""")
             assertEquals(LinkState.Up(null), f.state.value)
             assertEquals(2L, f.epoch.value)
+        }
+
+    @Test
+    fun `核心点名装一次会好的是哪一种：断着没装 ⇒ 安装 · 老后端 ⇒ 更新 · 通着旧了 ⇒ 更新；没点名 ⇒ 没有`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            core.emit("state", """{"state":"down","problem":{"text":"远端 cc-monitor 未装","detail":""},"needs_hand":true,"fix":"install"}""")
+            assertEquals(LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), f.state.value)
+            core.emit("state", """{"state":"down","problem":{"text":"box 后端要更新","detail":""},"needs_hand":true,"fix":"update"}""")
+            assertEquals(Fix.UPDATE, (f.state.value as LinkState.Down).fix)
+            core.emit("state", """{"state":"up","epoch":1,"notice":{"text":"box 后端要更新","detail":""},"fix":"update"}""")
+            assertEquals(LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE), f.state.value)
+            core.emit("state", """{"state":"down","problem":{"text":"box 离线","detail":""},"needs_hand":false}""")
+            assertEquals(null, (f.state.value as LinkState.Down).fix)
+        }
+
+    @Test
+    fun `装后端：包里那几格交给核心；核心交回的每一步 · 结局 · 失败原样落（话是核心写好的）`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            f.deploy { """[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]""" }
+            assertEquals(listOf("""[{"os":"Linux","arch":"x86_64","id":"p10g-mine","path":"/d/x"}]"""), core.deploys)
+            core.emit("deploy", """{"step":"place","text":"安装 cc-monitor → box","bar":true}""")
+            assertEquals(Deploying.Step("安装 cc-monitor → box", bar = true), f.deploying.value)
+            core.emit("deploy", """{"done":"deploy","text":"已安装后端 p10g-mine"}""")
+            assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
+            core.emit("state", """{"state":"up","epoch":3,"notice":null}""")
+            assertEquals(Deploying.Done("已安装后端 p10g-mine"), f.deploying.value)
+            core.emit("state", """{"state":"up","epoch":4,"notice":{"text":"box 后端要更新","detail":""},"fix":"update"}""")
+            assertEquals("又说要更新 ⇒ 装好那一句收起", null, f.deploying.value)
+            core.emit("deploy", """{"failed":"io_failed","text":"上传后校验失败","detail":"d"}""")
+            assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
+            core.emit("deploy", """{"what":1}""")
+            assertEquals(Deploying.Failed(Said("上传后校验失败", "d")), f.deploying.value)
         }
 
     @Test
@@ -151,11 +210,22 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `在看名单：每一处 hold 交一次、关掉交一次；核心交回的 from 原样发出去；断了请 SSH 那层探活`() =
+    fun `changed 帧出成主题 ＋ 键（出口据此重问那一份）；别的帧不出`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            var lost = 0
-            val f = feed(core, lost = { lost++ })
+            val f = feed(core)
+            val got = mutableListOf<Changed>()
+            backgroundScope.launch { f.changed.collect { got += it } }
+            core.emit("frame", """{"kind":"changed","topic":"needs","key":"s1"}""")
+            core.emit("frame", """{"kind":"sessions_replayed"}""")
+            assertEquals(listOf(Changed("needs", "s1")), got)
+        }
+
+    @Test
+    fun `在看名单：每一处 hold 交一次、关掉交一次；核心交回的 from 原样发出去`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
             val froms = mutableListOf<WatchFrom>()
             backgroundScope.launch { f.from.collect { froms += it } }
             val h = f.hold("s1")
@@ -164,8 +234,6 @@ class ResidentFeedTest {
             assertEquals(listOf("s1" to true, "s1" to false), core.watches)
             core.emit("watch_from", """[{"sid":"s1","path":"/p/s1.jsonl","seq":7}]""")
             assertEquals(listOf(WatchFrom("s1", "/p/s1.jsonl", 7)), froms)
-            core.emit("lost", "")
-            assertEquals(1, lost)
         }
 
     @Test
@@ -178,7 +246,7 @@ class ResidentFeedTest {
                     scope = backgroundScope,
                     core = core,
                     machine = { "box" },
-                    ssh = MutableStateFlow(SshLink("""{"host":"h"}""")),
+                    ssh = MutableStateFlow("""{"host":"h"}"""),
                     mine = "p10g-mine",
                     tz = "Asia/Shanghai",
                     onBreak = { broken += it },

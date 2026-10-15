@@ -92,7 +92,8 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // `contextLimit` 三条与 `contextPercent` 一条随函数删；前端只剩排版（`contextPercentOf`）与读设置表（`readContextLimits`）各一条。
   // 3 → 4：上限判不出时只写用了多少（`contextTokensText`）。
   // 读设置表那一条随 `readContextLimits` 删（上限表住各台后端 `prefs.json`，界面经 `prefs-read` 问）。
-  ["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts"],
+  // 🔴 原先这里有 `["test:context-limit", "tests/frontend/ui/views/context-limit.test.ts"]`。最后剩的 `normalizeModel`
+  // （界面自己剥模型名的后缀）换成照抄后端的 `modelText` ⇒ 模块与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:session-backend", "tests/session-backend.test.ts", 10]`。TS 座
   // `session-backend.ts` 零生产调用、删了 ⇒ 套件整删（**被测对象没了**，8 条测座本身）；外层 tmux 三格的字节由
   // 入库夹具 `tmux-outer-golden.json` ＋ Rust `payload_tests.rs` 接着（对照见）；

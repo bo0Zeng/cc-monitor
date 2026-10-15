@@ -56,8 +56,9 @@ class SessionReattachDetectorTest {
         val status = MutableStateFlow<SessionStatus?>(SessionStatus.CONNECTED)
         var live: SshTransport? = null
         var opened: SshTransport? = null
+        var answers = true
         val detector =
-            SessionReattachDetector(scope.backgroundScope, terminalDropped, status, { live }) { opened }
+            SessionReattachDetector(scope.backgroundScope, terminalDropped, status, { live }, { answers }) { opened }
 
         init {
             // reattachNeeded 是 WhileSubscribed(5s) → 需活跃订阅方才计算。挂后台常订（backgroundScope 不被 runTest 等待）。
@@ -88,6 +89,28 @@ class SessionReattachDetectorTest {
             h.status.value = SessionStatus.CONNECTED
             advanceUntilIdle()
             assertFalse("不诈尸：exit 后连接独立重建，断因闩不漂移，仍不重挂", h.detector.reattachNeeded.value)
+        }
+
+    // 断的那一刻本地标志还活着、可那条连接已经答不上了（shell 先收到连接没了、握着的那条晚一步）→ 判连接死，
+    // 不当用户 exit：SSH 那层跟着换上新的一条之后照样重挂（终端是逃生口）。
+    @Test
+    fun aDropOnAConnectionThatNoLongerAnswersIsNotAnExit() =
+        runTest(UnconfinedTestDispatcher()) {
+            val h = Harness(this)
+            val connA = FakeConn(isConnected = true)
+            h.opened = connA
+            h.live = connA
+            h.answers = false
+            h.detector.notifyNewShellOpened()
+            advanceUntilIdle()
+            h.terminalDropped.value = true
+            advanceUntilIdle()
+            h.live = FakeConn(isConnected = true)
+            h.status.value = SessionStatus.RECONNECTING
+            advanceUntilIdle()
+            h.status.value = SessionStatus.CONNECTED
+            advanceUntilIdle()
+            assertTrue("答不上的那条上断的 ⇒ 连接死、换上新的之后重挂", h.detector.reattachNeeded.value)
         }
 
     // 断在非当前活连接（原连接已死、后台重建出新 live 连接）→ 判连接死 → 有 live 连接可挂 → 重挂。

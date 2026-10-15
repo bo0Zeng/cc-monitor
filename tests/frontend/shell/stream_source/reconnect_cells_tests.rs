@@ -142,7 +142,11 @@ struct Fake(Arc<Remote>);
 
 impl Transport for Fake {
     type Stream = tokio::io::DuplexStream;
-    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+    fn stream(
+        &self,
+        command: String,
+        _progress: resident_client::feed::Progress,
+    ) -> Boxed<'_, Result<Self::Stream, Problem>> {
         let remote = Arc::clone(&self.0);
         Box::pin(async move {
             assert!(command.ends_with("--resident-attach"), "{command}");

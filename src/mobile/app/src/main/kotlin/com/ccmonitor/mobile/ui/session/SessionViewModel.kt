@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.core.claude.link.Profiles
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -173,10 +175,20 @@ class SessionViewModel(
      * 新 shell 建成时经 [SessionReattachDetector.notifyNewShellOpened] 复位。
      */
     private val reattachDetector =
-        SessionReattachDetector(viewModelScope, terminalDropped, status, { hostConnector.connection(hostId) }) { shellOpenedOn }
+        SessionReattachDetector(
+            viewModelScope,
+            terminalDropped,
+            status,
+            { hostConnector.connection(hostId) },
+            { t -> runCatching { t.execCapture("true").exitStatus == 0 }.getOrDefault(false) },
+        ) { shellOpenedOn }
 
-    /** 是否需要自动重挂交互 shell；终端屏在前台时据此重挂。 */
-    val reattachNeeded: StateFlow<Boolean> = reattachDetector.reattachNeeded
+    private val rejoined = MutableStateFlow(false)
+
+    /** 是否需要自动重挂交互 shell（shell 因连接死而断 · 停在出错页时 SSH 那层换上了一条）；终端屏在前台时据此重挂。 */
+    val reattachNeeded: StateFlow<Boolean> =
+        combine(reattachDetector.reattachNeeded, rejoined) { a, b -> a || b }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** 进终端 tab 要接回的会话名（首连与重连都敲那台渲出的那一行）；普通 tab 为 null。 */
     private val attachTo: String? = tmuxArg?.ifBlank { null }
@@ -252,6 +264,22 @@ class SessionViewModel(
     init {
         connect()
         viewModelScope.launch(io) { _moved.value = movedRepo.forHost(hostId) }
+        // 停在出错页、SSH 那层跟着共用循环换上了一条 ⇒ 记一下，终端屏在前台时重挂（[rejoinedWhileErrored]）。
+        viewModelScope.launch {
+            var prev = manager.sessions.value[hostId]?.status
+            manager.sessions.map { it[hostId]?.status }.distinctUntilChanged().collect { cur ->
+                if (rejoinedWhileErrored(prev, cur, _uiState.value is SessionUiState.Error)) rejoined.value = true
+                prev = cur
+            }
+        }
+        // 停在出错页、共用那条报 SSH 从没够着变成够着（握着的那条没断、这一层不用换的那种也算）⇒ 同样重挂一次。
+        viewModelScope.launch {
+            var before = false
+            manager.reachedOf(hostId).collect { now ->
+                if (now && !before && _uiState.value is SessionUiState.Error) rejoined.value = true
+                before = now
+            }
+        }
     }
 
     private fun connect() {
@@ -274,6 +302,7 @@ class SessionViewModel(
     @Suppress("TooGenericExceptionCaught")
     private suspend fun establishConnectedState(expectedGen: Int): SessionUiState {
         var created: TerminalSession? = null // 取消时要关掉它，否则 reader / writeExecutor 线程泄漏
+        var tried: SshTransport? = null // 这一次用的那条：没成时看 SSH 那层是不是已经换上了别的一条
         return try {
             val host = hostRepo.get(hostId) ?: error(copyText("mobSession.host.missing", "id" to hostId))
             // 认证、跳板、竞速都在 HostConnector 里；pendingIdentityId 是本次选定的身份。
@@ -284,6 +313,7 @@ class SessionViewModel(
                     onEvent = { ev -> _connectLog.update { it + ev } },
                     expectedGen = expectedGen, // 纪元守门，见 connect()
                 )
+            tried = conn
             val shell = conn.openShell("xterm-256color", 80, 24)
             val ts = terminalSessionFor(shell)
             created = ts
@@ -310,6 +340,9 @@ class SessionViewModel(
             )
         } catch (e: Exception) {
             runCatching { created?.close() }
+            Log.w(TAG, "终端没接上：${e.message}", e)
+            // 没成的这一段里 SSH 那层已经跟着共用循环换上了另一条（进「连着」那一下赶在这一次失败之前）⇒ 同样重挂一次。
+            hostConnector.connection(hostId)?.takeIf { it !== tried && it.isConnected }?.let { rejoined.value = true }
             SessionUiState.Error(e.message ?: e.toString())
         }
     }
@@ -410,6 +443,7 @@ class SessionViewModel(
 
     /** 重连：关掉旧会话，重建 shell。 */
     fun retry() {
+        rejoined.value = false
         runCatching { session?.close() }
         session = null
         connect()
@@ -420,5 +454,9 @@ class SessionViewModel(
         // release 而不是 disconnect：同主机还有别的 tab 持有时不断。
         runCatching { session?.close() }
         hostConnector.release(hostId, holderToken)
+    }
+
+    private companion object {
+        const val TAG = "Session"
     }
 }

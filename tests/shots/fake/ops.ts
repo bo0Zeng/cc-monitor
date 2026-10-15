@@ -56,14 +56,13 @@ export function defaultOps(): Record<string, OpHandler> {
       ]),
     ),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
-    // 起新会话框那三问：那台最近用过的目录（它上面那几个会话的目录）· 有 tmux · 只有一家能起；分叉那一形照源会话给三格。
+    // 起新会话框那三问：那台最近用过的目录（它上面那几个会话的目录）· 有 tmux；分叉那一形照源会话给三格。能起哪几家（连同可选的模型 · 权限档）交真后端答（`backend.ts::REAL_CELLS`）。
     "session-new-facts": (origin, req, w) => {
       const mine = w.sessions.filter((s) => s.origin === origin);
       const src = w.sessions.find((s) => s.sid === req.forkOf);
       return {
         recent: [...new Set(mine.map((s) => s.cwd))].map((cwd, i) => ({ cwd, lastMs: Date.now() - i * 60_000, lastText: "09:30" })),
         tmux: !/win/.test(origin),
-        agents: [{ kind: "claude", text: "Claude Code", models: [], modelDefault: null, modelNote: null, permissionModes: [] }],
         fork: src
           ? {
               agent: "claude",

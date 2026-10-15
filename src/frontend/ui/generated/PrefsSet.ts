@@ -28,4 +28,8 @@ childTab?: Tab,
 /**
  * 分身会话进不进标签页。
  */
-bgTab?: Tab, };
+bgTab?: Tab, 
+/**
+ * pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
+ */
+pbDir?: string, };

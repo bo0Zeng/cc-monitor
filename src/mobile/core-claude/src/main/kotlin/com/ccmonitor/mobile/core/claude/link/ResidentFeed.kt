@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `lost` · `reply`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `ssh` · `reply` · `deploy`）。
  */
 interface ResidentCore {
     fun open(
@@ -51,19 +52,20 @@ interface ResidentCore {
         handle: Long,
         retry: Boolean,
     )
-}
 
-/** SSH 那层的一条连接：它的拨号请求（JSON，不带用法）。按身份比 —— 重连过就是新的一个，哪怕请求一字不差。 */
-class SshLink(
-    val request: String,
-)
+    /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
+    fun deploy(
+        handle: Long,
+        slots: String,
+    ): Boolean
+}
 
 /**
  * 一台机器的常驻流：接 · 断了再接 · 握手 · 版本门 · 在看名单 · 一问一答**整条在核心里**（`resident-client`，桌面同一份）。
  * 这里只把核心交回来的事落成手机这一侧的几条流：会话表（流上的会话帧折出来）· 记录行 · 轮次结束 · 每帧的 `kind` · 此刻通不通。
  *
- * - [ssh] 是 SSH 那层此刻的那一条（`null` ＝ 没通）；换了一条就把它的拨号请求交给核心（它在新的上重接）。
- * - 核心说流断了、SSH 还在（`lost`）⇒ 叫 [onLost]（让 SSH 那层去探活：多半是 SSH 先死了）。
+ * - [ssh] 是这台的拨号请求（JSON，不带用法；`null` ＝ 没连上过 · 已断开）：按值比，变了才交给核心（它照新的重拨）。
+ *   这条流就是手机上唯一那条重连循环：池里那条死了它在核心里自己拨一条新的，SSH 那层跟着它的 [state] 换连接。
  * - 丢了会话帧（[SessionTable.needsResync]）⇒ 叫核心整份重来。
  * - 退避的数（2 → 30 s，活过 30 s 才清零）只在核心里，这里一个都不写。
  */
@@ -72,17 +74,21 @@ class ResidentFeed(
     private val core: ResidentCore,
     /** 这台在屏上的名字（核心的句子里称呼它）。 */
     private val machine: suspend () -> String,
-    private val ssh: Flow<SshLink?>,
+    private val ssh: Flow<String?>,
     /** 手上这一版的身份（版本门的对照物）。 */
     private val mine: String,
     /** 看的这一台的时区（IANA 名）。 */
     private val tz: String,
-    private val onLost: () -> Unit = {},
     private val onBreak: (String) -> Unit = {},
 ) : CoreLink,
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
     val state: StateFlow<LinkState> = stateFlow.asStateFlow()
+
+    private val sshFlow = MutableStateFlow(false)
+
+    /** SSH 够没够着那一台（拨通 · 认证过），与 [state] 分开：那台常驻后端起不来时照样是 `true`。SSH 那层（终端 · 文件）跟它走。 */
+    val sshReached: StateFlow<Boolean> = sshFlow.asStateFlow()
 
     private val tableFlow = MutableStateFlow(SessionTable())
     override val table: StateFlow<SessionTable> = tableFlow.asStateFlow()
@@ -116,6 +122,14 @@ class ResidentFeed(
     private val fromFlow = MutableSharedFlow<WatchFrom>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val from: SharedFlow<WatchFrom> = fromFlow.asSharedFlow()
 
+    private val deployFlow = MutableStateFlow<Deploying?>(null)
+
+    /** 装 / 更新后端这一趟（没装过 ⇒ `null`）：每一步 · 结局 · 失败，原样是核心交回的那一句。 */
+    val deploying: StateFlow<Deploying?> = deployFlow.asStateFlow()
+
+    /** SSH 那层此刻有没有交给核心（装后端要在那条连接上做：交过了再叫核心）。 */
+    private val sshGiven = MutableStateFlow(false)
+
     private val started = AtomicBoolean(false)
     private val opened = CompletableDeferred<Long>()
     private val replies = ConcurrentHashMap<Long, CompletableDeferred<Reply>>()
@@ -130,8 +144,11 @@ class ResidentFeed(
         scope.launch {
             val h = core.open(machine(), mine, tz) { kind, body -> inbox.trySend(kind to body) }
             opened.complete(h)
-            // 按身份比：SSH 那层重连过（网络换了 · 探活换上新的一条）⇒ 新的一个，核心当场在它上面重接，不等旧流自己断。
-            ssh.distinctUntilChanged { a, b -> a === b }.collect { core.ssh(h, it?.request) }
+            // 按值比：SSH 那层在同一份身份上换一条（跟着这条流换的那种）请求一字不差 ⇒ 不交，流不被打断。
+            ssh.distinctUntilChanged().collect {
+                core.ssh(h, it)
+                sshGiven.value = it != null
+            }
         }
     }
 
@@ -145,6 +162,17 @@ class ResidentFeed(
     fun wake() {
         ensure()
         scope.launch { core.kick(opened.await(), false) }
+    }
+
+    /** 给这台装 / 更新后端：[slots] 交出包里那几格解到的文件（解压可能要一会儿，在调用方的线程上做）。 */
+    fun deploy(slots: suspend () -> String) {
+        ensure()
+        scope.launch {
+            val h = opened.await()
+            // SSH 那层还没交到核心 ⇒ 等一会儿（等不到也照叫：核心照实说离线）。
+            withTimeoutOrNull(SSH_WAIT_MS) { sshGiven.first { it } }
+            core.deploy(h, slots())
+        }
     }
 
     override suspend fun call(
@@ -185,8 +213,9 @@ class ResidentFeed(
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
             "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
             "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
-            "lost" -> onLost()
+            "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
+            "deploy" -> onDeployLine(body)
             else -> broke(kind, body)
         }
     }
@@ -201,11 +230,14 @@ class ResidentFeed(
             "up" -> {
                 val e = m.num("epoch") ?: 0L
                 if (e != epochFlow.value) epochFlow.value = e
-                stateFlow.value = LinkState.Up(said("notice"))
+                stateFlow.value = LinkState.Up(said("notice"), Fix.of(m.str("fix")))
             }
-            "down" -> stateFlow.value = LinkState.Down(said("problem") ?: Said("", ""), m.bool("needs_hand") == true)
+            "down" -> stateFlow.value = LinkState.Down(said("problem") ?: Said("", ""), m.bool("needs_hand") == true, Fix.of(m.str("fix")))
             else -> broke("state", m.toString())
         }
+        // 「装好了」那一句只留到下一次出事（断了 · 又说要更新）；没装上那一句留着，等下一趟。
+        val now = stateFlow.value
+        if (deployFlow.value is Deploying.Done && (now is LinkState.Down || (now as? LinkState.Up)?.notice != null)) deployFlow.value = null
     }
 
     private suspend fun onFrame(frame: Map<String, Any?>) {
@@ -218,6 +250,22 @@ class ResidentFeed(
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
         if (next.needsResync) reconnect()
+    }
+
+    /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */
+    private fun onDeployLine(body: String) {
+        Json.obj(body)?.let(::deployOf)?.let { deployFlow.value = it } ?: broke("deploy", body)
+    }
+
+    /** `deploy` 那一行 ⇒ 一步 · 结局 · 失败；认不出 ⇒ `null`。 */
+    private fun deployOf(m: Map<String, Any?>): Deploying? {
+        val text = m.str("text") ?: return null
+        return when {
+            m.str("step") != null -> Deploying.Step(text, m.bool("bar") == true)
+            m.str("done") != null -> Deploying.Done(text)
+            m.str("failed") != null -> Deploying.Failed(Said(text, m.str("detail").orEmpty()))
+            else -> null
+        }
     }
 
     private fun onReply(body: String) {
@@ -246,6 +294,9 @@ class ResidentFeed(
 
         /** 核心到期限必回一句；它没回（不该有）时这边多等这么久就当断了。 */
         const val REPLY_GRACE_MS = 5_000L
+
+        /** 装后端之前等 SSH 那层交到核心，最多等这么久。 */
+        const val SSH_WAIT_MS = 15_000L
 
         /** `watch_from` 那一段：`[{sid, path, seq}]`。 */
         fun watchFromOf(body: String): List<WatchFrom>? =

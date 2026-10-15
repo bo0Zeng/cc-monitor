@@ -38,9 +38,12 @@ fun ChatScreen(
     onLoadOlder: () -> Unit = {},
     /** 重发一条失败的消息（传本地 key）。 */
     onRetrySend: (String) -> Unit = {},
+    /** 需手动那一块（钉条 ＋ 答题抽屉），贴在输入框上方。 */
+    needs: @Composable () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize()) {
         ChatTranscript(state = state, modifier = Modifier.weight(1f), onLoadOlder = onLoadOlder, onRetrySend = onRetrySend)
+        needs()
         // 送没送到贴在那条消息旁边（`UserText.deliveryText`），这里不另起横幅。
         ChatInputArea(state = state, actions = actions)
     }

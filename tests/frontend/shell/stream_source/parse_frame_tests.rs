@@ -390,7 +390,7 @@ fn garbage_non_json_returns_none() {
 /// 已知 kind + 额外未知字段：仍正常解析，多余字段被忽略（不 fail）。
 #[test]
 fn known_kind_with_extra_fields_still_parses() {
-    let line = r#"{"kind":"session_added","agent_kind":"claude","sid":"s-9","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","extra":"ignored","nested":{"a":1}}"#;
+    let line = r#"{"kind":"session_added","agent_kind":"claude","sid":"s-9","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","extra":"ignored","nested":{"a":1}}"#;
     let frame = parse_frame(line).expect("session_added with extras must parse");
     assert_eq!(
         frame,
@@ -407,6 +407,7 @@ fn known_kind_with_extra_fields_still_parses() {
                 activity_text: "T".into(),
                 activity_tone: "now".into(),
                 activity_order: 1,
+                switch: Default::default(),
             },
             naming: crate::session_book::NameCells {
                 label: "L".into(),
@@ -423,7 +424,7 @@ fn known_kind_with_extra_fields_still_parses() {
 /// session_added 附加元信息正确解析：读后端判好的 `background` / `activity`，不读 pidfile 原词（`session_kind` · `status`）。
 #[test]
 fn session_added_metadata_parses() {
-    let line = r#"{"kind":"session_added","agent_kind":"claude","sid":"s-bg","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl"}"#;
+    let line = r#"{"kind":"session_added","agent_kind":"claude","sid":"s-bg","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl"}"#;
     let frame = parse_frame(line).expect("must parse");
     assert_eq!(
         frame,
@@ -440,6 +441,7 @@ fn session_added_metadata_parses() {
                 activity_text: "T".into(),
                 activity_tone: "now".into(),
                 activity_order: 1,
+                switch: Default::default(),
             },
             naming: crate::session_book::NameCells {
                 label: "L".into(),
@@ -456,7 +458,7 @@ fn session_added_metadata_parses() {
 /// session_status 帧：读 `activity`（不读原词 `status`）；缺 ⇒ 说不清。
 #[test]
 fn session_status_frame_parses() {
-    let line = r#"{"kind":"session_status","sid":"s-1","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","status":"busy","activity":"needs_you","waiting_for":"permission prompt"}"#;
+    let line = r#"{"kind":"session_status","sid":"s-1","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"busy","activity":"needs_you","waiting_for":"permission prompt"}"#;
     assert_eq!(
         parse_frame(line),
         Ok(InboundFrame::SessionStatus {
@@ -466,6 +468,7 @@ fn session_status_frame_parses() {
                 activity_text: "T".into(),
                 activity_tone: "now".into(),
                 activity_order: 1,
+                switch: Default::default(),
             },
             naming: crate::session_book::NameCells {
                 label: "L".into(),
@@ -474,7 +477,7 @@ fn session_status_frame_parses() {
             waiting_for: Some("permission prompt".to_string()),
         })
     );
-    let line = r#"{"kind":"session_status","sid":"s-2","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","status":"busy"}"#;
+    let line = r#"{"kind":"session_status","sid":"s-2","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"busy"}"#;
     assert_eq!(
         parse_frame(line),
         Ok(InboundFrame::SessionStatus {
@@ -484,6 +487,7 @@ fn session_status_frame_parses() {
                 activity_text: "T".into(),
                 activity_tone: "now".into(),
                 activity_order: 1,
+                switch: Default::default(),
             },
             naming: crate::session_book::NameCells {
                 label: "L".into(),
@@ -494,13 +498,43 @@ fn session_status_frame_parses() {
     );
 }
 
+/// `switch`（此刻能不能换模型 · 权限档）原样收下：`no` 带那台写好的那一句；形状不对 ⇒ 整帧不认，不猜成能换。
+#[test]
+fn session_status_carries_the_switch_cells_as_the_core_wrote_them() {
+    use crate::session_book::{CanSwitch, SwitchCells};
+    let line = r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"no","why":"那台写的那一句"},"permission":{"can":"yes"}},"label":"L","activity":"working"}"#;
+    let Ok(InboundFrame::SessionStatus { activity, .. }) = parse_frame(line) else {
+        panic!("解不出：{line}");
+    };
+    assert_eq!(
+        activity.switch,
+        SwitchCells {
+            model: CanSwitch::No {
+                why: "那台写的那一句".into()
+            },
+            permission: CanSwitch::Yes,
+        }
+    );
+    for bad in [
+        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"no"},"permission":{"can":"yes"}},"label":"L"}"#,
+        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"maybe"},"permission":{"can":"yes"}},"label":"L"}"#,
+        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"}},"label":"L"}"#,
+        r#"{"kind":"session_state","sid":"s","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":true}"#,
+    ] {
+        assert!(
+            matches!(parse_frame(bad), Err(Unread::BadShape { .. })),
+            "该判形状不对：{bad}"
+        );
+    }
+}
+
 /// `activity` 认不出的词 · `background` 不是布尔 ⇒ 两端契约对不上（整帧不认），不猜。
 #[test]
 fn session_judgments_off_contract_are_bad_shape() {
     for line in [
-        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","activity":"busy"}"#,
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","activity":"waiting"}"#,
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","background":"true"}"#,
+        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","activity":"busy"}"#,
+        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","activity":"waiting"}"#,
+        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","background":"true"}"#,
     ] {
         assert!(parse_frame(line).is_err(), "认了一帧契约外的：{line}");
     }
@@ -510,7 +544,7 @@ fn session_judgments_off_contract_are_bad_shape() {
 #[test]
 fn the_hidden_cell_on_session_added_is_read_as_the_backend_wrote_it() {
     use cmd_wire::session::{Hidden, HiddenBy};
-    let base = r#""kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L""#;
+    let base = r#""kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L""#;
     let hidden_of = |extra: &str| match parse_frame(&format!("{{{base}{extra}}}")) {
         Ok(InboundFrame::SessionAdded { hidden, .. }) => Ok(hidden),
         Ok(other) => panic!("解成了别的：{other:?}"),
@@ -566,10 +600,11 @@ fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
         text: "t".into(),
         hint: "h".into(),
         tone: "plain".into(),
+        switch: Default::default(),
     };
     assert_eq!(
         parse_frame(
-            r#"{"kind":"session_state","sid":"abc","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#
+            r#"{"kind":"session_state","sid":"abc","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#
         ),
         Ok(InboundFrame::SessionState {
             sid: "abc".into(),
@@ -579,7 +614,7 @@ fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
     );
     assert_eq!(
         parse_frame(
-            r#"{"kind":"session_state","sid":"abc","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#
+            r#"{"kind":"session_state","sid":"abc","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#
         ),
         Ok(InboundFrame::SessionState {
             sid: "abc".into(),
@@ -721,7 +756,7 @@ fn session_added_container_is_an_open_union() {
     };
     assert_eq!(
         get(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":{"host":"tmux","terminal":"tmux-3-7"}}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":{"host":"tmux","terminal":"tmux-3-7"}}"#
         ),
         Some(SessionContainer::Hosted {
             host: TerminalHost::Tmux,
@@ -730,7 +765,7 @@ fn session_added_container_is_an_open_union() {
     );
     assert_eq!(
         get(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":{"host":"tmux"}}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":{"host":"tmux"}}"#
         ),
         Some(SessionContainer::Hosted {
             host: TerminalHost::Tmux,
@@ -739,28 +774,28 @@ fn session_added_container_is_an_open_union() {
     );
     assert_eq!(
         get(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":{"host":"none"}}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":{"host":"none"}}"#
         ),
         Some(SessionContainer::None)
     );
     assert_eq!(
         get(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L"}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L"}"#
         ),
         None
     );
     assert_eq!(
         get(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":{"host":"hosted","terminal":"h-1"}}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":{"host":"hosted","terminal":"h-1"}}"#
         ),
         Some(SessionContainer::Other {
             host: "hosted".into()
         })
     );
     for bad in [
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":"tmux"}"#,
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":{"terminal":"t"}}"#,
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","container":{"host":"tmux","terminal":1}}"#,
+        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":"tmux"}"#,
+        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":{"terminal":"t"}}"#,
+        r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","container":{"host":"tmux","terminal":1}}"#,
     ] {
         assert!(
             matches!(parse_frame(bad), Err(Unread::BadShape { .. })),
@@ -895,31 +930,31 @@ fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
     };
     assert_eq!(
         pid_of(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","pid":4242}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","pid":4242}"#
         ),
         Some(4242)
     );
     assert_eq!(
         pid_of(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L"}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L"}"#
         ),
         None
     );
     assert_eq!(
         pid_of(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","pid":-1}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","pid":-1}"#
         ),
         None
     );
     assert_eq!(
         pid_of(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","pid":"42"}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","pid":"42"}"#
         ),
         None
     );
     assert_eq!(
         pid_of(
-            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","pid":4294967296}"#
+            r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","pid":4294967296}"#
         ),
         None
     );
@@ -1026,7 +1061,7 @@ fn a_turn_end_carries_the_written_title_and_body() {
 /// 叫会话什么那两格（核心写的名字 ＋ 名字是起出来的才有的项目那一格）原样解进来；缺名字 ⇒ 形状不对（壳不补一个）。
 #[test]
 fn the_session_name_cells_come_from_the_core() {
-    let ok = r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"修一下","label_project":"proj"}"#;
+    let ok = r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"修一下","label_project":"proj"}"#;
     match parse_frame(ok).unwrap() {
         InboundFrame::SessionStatus { naming, .. } => assert_eq!(
             naming,
@@ -1040,7 +1075,7 @@ fn the_session_name_cells_come_from_the_core() {
     for line in [
         r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1}"#,
         r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1}"#,
-        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"x","label_project":1}"#,
+        r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"x","label_project":1}"#,
     ] {
         assert!(parse_frame(line).is_err(), "认了一帧契约外的：{line}");
     }

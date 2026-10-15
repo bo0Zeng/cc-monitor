@@ -8,7 +8,7 @@ use crate::files::{
     ReadChunkReply, ReadTextReply, StatReply,
 };
 use crate::listing::HistoryListReply;
-use crate::needs::NeedsList;
+use crate::needs::{Answered, NeedsList};
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::session::{
     Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands,
@@ -70,6 +70,7 @@ replies! {
     "history-tail" => TailPlan,
     "kill" => Killed,
     "launch-render-cli" => Rendered,
+    "needs-answer" => Answered,
     "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
     "session-new" => SessionNew,
@@ -96,6 +97,17 @@ mod tests {
             );
         }
         assert!(decode_reply("history-facts", serde_json::json!({})).is_none());
+    }
+
+    /// `needs-answer` 的回包按两端同一个类型（`needs::Answered`）解：闭集一个词，别的字解不开。
+    #[test]
+    fn needs_answer_reply_is_the_shared_type() {
+        let ok = serde_json::json!({"result": "answered"});
+        assert_eq!(decode_reply("needs-answer", ok.clone()), Some(Ok(ok)));
+        assert!(matches!(
+            decode_reply("needs-answer", serde_json::json!({"result": "maybe"})),
+            Some(Err(_))
+        ));
     }
 
     /// 缺一格 ⇒ 解不开；多出来的格不拦（回包不 deny_unknown_fields：新版多一格不算对不上，形状指纹另管）。
