@@ -36,6 +36,13 @@ subprojects {
         }
     }
 
+    // ktlint 的检查任务（runKtlintCheckOver*SourceSet）照内容进构建缓存，而它的产物里每条错写的是文件的绝对路径；
+    // 构建缓存在 gradle 的家目录下、几棵树共用 ⇒ 另一棵树检过同样内容，这一棵就取回那份产物，报错指到那棵树的文件。
+    // 摘出构建缓存（同一棵树里照样增量）；报告那一步的输入就是这份产物，跟着只在本树里命中。
+    tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>().configureEach {
+        outputs.cacheIf { false }
+    }
+
     extensions.configure<dev.detekt.gradle.extensions.DetektExtension> {
         // detekt 2.0 的扩展属性是惰性的（Property / RegularFileProperty），用 .set()。
         buildUponDefaultConfig.set(true)

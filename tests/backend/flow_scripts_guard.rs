@@ -644,6 +644,29 @@ mod tests {
         );
     }
 
+    /// ktlint 的检查任务（`runKtlintCheckOver*SourceSet`）把每条错的绝对路径写进它的产物，而它照内容进构建缓存
+    /// （缓存在 gradle 的家目录下，几棵树共用）：另一棵树检过同样的内容 ⇒ 这一棵取回那份产物，报错就指到那棵树的文件。
+    /// ⇒ 手机构建里这类任务不进构建缓存（同一棵树里照样增量）。
+    #[test]
+    fn ktlint_findings_are_never_restored_from_another_trees_cache() {
+        let gradle = std::fs::read_to_string(root().join("src/mobile/build.gradle.kts")).unwrap();
+        let code: String = gradle
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let at = guard_core::find_pinned(
+            &code,
+            "tasks.withType<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>().configureEach {",
+        )
+        .unwrap_or_else(|e| panic!("ktlint 检查任务没摘出构建缓存：{e}"));
+        let body: String = code[at..].lines().take(2).collect::<Vec<_>>().join("\n");
+        assert!(
+            body.contains("outputs.cacheIf { false }"),
+            "ktlint 检查任务那一段没写 `outputs.cacheIf {{ false }}`：{body}"
+        );
+    }
+
     /// 模拟器台架不替人挑 adb 端口：没给 `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT`（缺哪一个都算）⇒ `up` · `down` · `env` 都拒、退 2，
     /// 那一句点名两个变量，工具链不激活、adb 一下都不碰（落到一个默认口上会撞上别的台架、顺手起一个 adb server）。
     /// 两个都给了 ⇒ `env` 照给的口印。拿假的工具链与 adb 在临时目录里跑那份脚本。
