@@ -57,6 +57,7 @@ fn the_event_dispatch_has_no_catch_all_arm() {
     );
 }
 use super::*;
+use crate::wire::NameFaceExt as _;
 
 /// 夹具那一份发帧口：一条连接（号 0）、不带会话账本（生产那一份是 [`FrameSink::hub`]，连接经 `join` 接上来）。
 impl FrameSink {
@@ -1280,9 +1281,11 @@ fn sid_change_in_place_retires_old_sid() {
     };
     write("sid-1");
     process_session_added(&path, &mut state, &mut sink);
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-1"));
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })),
+        matches!(rx.try_recv(), Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })) if sid == "sid-1")
+    );
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionPrimed(_))),
         "读完那一帧紧跟着宣告（夹具没有池：就地读完）"
     );
 
@@ -1292,11 +1295,13 @@ fn sid_change_in_place_retires_old_sid() {
         // ★ S0：原地换 sid 的 removed 必须带 `Superseded`——monitor 靠它区分
         // 「死了（tmux 还在 ⇒ 灰点）」和「被顶替了（⇒ 直接归档）」。
         // 顶替它的是谁也说（`by`）：同一个进程、同一个终端里新起的那份记录，客户端照它跟过去，不自己拿 pid 对。
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause, by })
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, by }))
             if sid == "sid-1" && cause == RemovalCause::Superseded && by.as_deref() == Some("sid-2")),
         "old sid must be retired BEFORE the new announcement, naming the one that replaced it"
     );
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-2"));
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })) if sid == "sid-2")
+    );
     assert!(!state.active_sids.contains("sid-1"));
     assert!(state.active_sids.contains("sid-2"));
     assert_eq!(state.sessions.len(), 1);
@@ -1335,7 +1340,9 @@ fn a_pidfile_in_the_hidden_dir_is_not_announced() {
 
     write("sid-shown", "/x");
     process_session_added(&path, &mut state, &mut sink);
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-shown"));
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })) if sid == "sid-shown")
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1364,19 +1371,28 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
     process_jsonl(&path, &mut state, &mut sink);
     // 帧序：Line(user,seq0) / Line(end_turn,seq1) → TurnEnd(u-2) / Line(畸形,seq2)。
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::Line { seq: 0, .. })),
+        matches!(
+            rx.try_recv(),
+            Ok(Frame::Line(crate::wire::Line { seq: 0, .. }))
+        ),
         "user 行 Line"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::Line { seq: 1, .. })),
+        matches!(
+            rx.try_recv(),
+            Ok(Frame::Line(crate::wire::Line { seq: 1, .. }))
+        ),
         "end_turn 行 Line **先**发"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid, .. }) if session_id == "sess-1" && uuid == "u-2"),
+        matches!(rx.try_recv(), Ok(Frame::TurnEnd(crate::wire::TurnEnd { session_id, uuid, .. })) if session_id == "sess-1" && uuid == "u-2"),
         "Line 后紧跟 TurnEnd(u-2)"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::Line { seq: 2, .. })),
+        matches!(
+            rx.try_recv(),
+            Ok(Frame::Line(crate::wire::Line { seq: 2, .. }))
+        ),
         "畸形行照发 Line、不 panic"
     );
     assert!(
@@ -1425,11 +1441,13 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
         let mut got = Vec::new();
         while let Ok(f) = rx.try_recv() {
             match f {
-                Frame::SessionStatus { name_face, .. } => {
+                Frame::SessionStatus(crate::wire::SessionStatus { name_face, .. }) => {
                     got.push(serde_json::to_value(&name_face).unwrap())
                 }
-                Frame::TurnEnd { title, .. } => got.push(serde_json::json!(title.0)),
-                Frame::Line { .. } => panic!("没在看的会话行上了流"),
+                Frame::TurnEnd(crate::wire::TurnEnd { title, .. }) => {
+                    got.push(serde_json::json!(title.0))
+                }
+                Frame::Line(_) => panic!("没在看的会话行上了流"),
                 _ => {}
             }
         }
@@ -1487,9 +1505,11 @@ fn same_sid_two_pidfiles_refcount() {
     std::fs::write(&p1, &body).unwrap();
     std::fs::write(&p2, &body).unwrap();
     process_session_added(&p1, &mut state, &mut sink);
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid"));
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })),
+        matches!(rx.try_recv(), Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })) if sid == "shared-sid")
+    );
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionPrimed(_))),
         "读完那一帧紧跟着宣告（夹具没有池：就地读完）"
     );
     process_session_added(&p2, &mut state, &mut sink);
@@ -1511,7 +1531,7 @@ fn same_sid_two_pidfiles_refcount() {
     // 删第二个 → 归零 → Removed 恰一次
     process_session_removed(&p2, &mut state, &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause, by })
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, by }))
         if sid == "shared-sid" && cause == RemovalCause::Gone && by.is_none())
     );
     assert!(!state.active_sids.contains("shared-sid"));
@@ -1539,14 +1559,16 @@ fn plain_lifecycle_regression() {
     )
     .unwrap();
     process_session_added(&path, &mut state, &mut sink);
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "solo"));
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })),
+        matches!(rx.try_recv(), Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, .. })) if sid == "solo")
+    );
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionPrimed(_))),
         "读完那一帧紧跟着宣告（夹具没有池：就地读完）"
     );
     process_session_removed(&path, &mut state, &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause, by })
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, by }))
         if sid == "solo" && cause == RemovalCause::Gone && by.is_none())
     );
     assert!(state.sessions.is_empty() && state.active_sids.is_empty());
@@ -1585,12 +1607,12 @@ fn status_diff_emits_session_status_frame() {
     write("busy", None);
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionAdded {
+        Ok(Frame::SessionAdded(crate::wire::SessionAdded {
             sid,
             face,
             background,
             ..
-        }) => {
+        })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
                 face,
@@ -1602,7 +1624,7 @@ fn status_diff_emits_session_status_frame() {
         other => panic!("expected SessionAdded, got {other:?}"),
     }
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })),
+        matches!(rx.try_recv(), Ok(Frame::SessionPrimed(_))),
         "读完那一帧紧跟着宣告（夹具没有池：就地读完）"
     );
     // 同内容 modify → 静默
@@ -1612,12 +1634,12 @@ fn status_diff_emits_session_status_frame() {
     write("waiting", Some("permission prompt"));
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionStatus {
+        Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             sid,
             face,
             waiting_for,
             ..
-        }) => {
+        })) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(
                 face,
@@ -1632,11 +1654,11 @@ fn status_diff_emits_session_status_frame() {
     process_session_added(&pidfile, &mut state, &mut sink);
     assert!(matches!(
         rx.try_recv(),
-        Ok(Frame::SessionStatus {
+        Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             face,
             waiting_for: None,
             ..
-        }) if face == crate::wire::ActivityFace::of(Some(SessionActivity::Idle))
+        })) if face == crate::wire::ActivityFace::of(Some(SessionActivity::Idle))
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1674,23 +1696,23 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     .unwrap();
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionAdded { name_face, .. }) => assert_eq!(
+        Ok(Frame::SessionAdded(crate::wire::SessionAdded { name_face, .. })) => assert_eq!(
             serde_json::to_value(&name_face).unwrap(),
             serde_json::json!({"label": "甲", "label_project": "proj"})
         ),
         other => panic!("expected SessionAdded, got {other:?}"),
     }
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })),
+        matches!(rx.try_recv(), Ok(Frame::SessionPrimed(_))),
         "读完那一帧紧跟着宣告（夹具没有池：就地读完）"
     );
     state.reload_annotations(note(Some("甲")), &mut sink);
     assert!(rx.try_recv().is_err(), "名字没变不发帧");
     state.reload_annotations(note(Some("乙")), &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionStatus {
+        Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             name_face, face, ..
-        }) => {
+        })) => {
             assert_eq!(name_face.label(), "乙");
             assert_eq!(
                 face,
@@ -1702,7 +1724,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     }
     state.reload_annotations(note(None), &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionStatus { name_face, .. }) if name_face.label() == copy_core::copy_text("history.row.untitled", &[])),
+        matches!(rx.try_recv(), Ok(Frame::SessionStatus(crate::wire::SessionStatus { name_face, .. })) if name_face.label() == copy_core::copy_text("history.row.untitled", &[])),
         "改的名删了 ⇒ 落回下一档（记录里什么都没有 ⇒ 文案表那一句）"
     );
     std::fs::remove_dir_all(&dir).ok();
@@ -1736,7 +1758,7 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
     process_session_added(&pidfile, &mut state, &mut sink);
     // ① 宣告帧带 path（不等预读）
     match rx.try_recv() {
-        Ok(Frame::SessionAdded { sid, path, .. }) => {
+        Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, path, .. })) => {
             assert_eq!(sid, "tail-sid");
             assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
         }
@@ -1744,7 +1766,7 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
     }
     // ①' 预读读完那一帧带完整行数 L（快照完整性校验用）
     match rx.try_recv() {
-        Ok(Frame::SessionPrimed { sid, path, lines }) => {
+        Ok(Frame::SessionPrimed(crate::wire::SessionPrimed { sid, path, lines })) => {
             assert_eq!(sid, "tail-sid");
             assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
             assert_eq!(lines, Some(3), "读完那一帧带预读时的完整行数 L");
@@ -1761,9 +1783,9 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
     .unwrap();
     process_jsonl(&jsonl, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::Line {
+        Ok(Frame::Line(crate::wire::Line {
             seq, byte_offset, ..
-        }) => {
+        })) => {
             assert_eq!(seq, 3, "残行补全行的 seq 应为初扫完整行数 L=3");
             // 帧上不再带原文 ⇒ 由末端字节认出它就是补全的那一行（`{"torn":true}\n` 收尾处）。
             assert_eq!(byte_offset, 38);
@@ -1771,7 +1793,7 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
         other => panic!("expected Line, got {other:?}"),
     }
     match rx.try_recv() {
-        Ok(Frame::Line { seq, .. }) => assert_eq!(seq, 4),
+        Ok(Frame::Line(crate::wire::Line { seq, .. })) => assert_eq!(seq, 4),
         other => panic!("expected Line, got {other:?}"),
     }
     std::fs::remove_dir_all(&dir).ok();
@@ -1799,7 +1821,7 @@ fn with_bg_and_tail_only_combined() {
     .unwrap();
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionAdded { sid, path, .. }) => {
+        Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, path, .. })) => {
             assert_eq!(sid, "combo-sid");
             assert!(path.is_some());
         }
@@ -1808,7 +1830,10 @@ fn with_bg_and_tail_only_combined() {
     assert!(
         matches!(
             rx.try_recv(),
-            Ok(Frame::SessionPrimed { lines: Some(2), .. })
+            Ok(Frame::SessionPrimed(crate::wire::SessionPrimed {
+                lines: Some(2),
+                ..
+            }))
         ),
         "读完那一帧带 L"
     );
@@ -1837,13 +1862,13 @@ fn with_bg_announces_bg_with_metadata() {
     .unwrap();
     process_session_added(&path, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionAdded {
+        Ok(Frame::SessionAdded(crate::wire::SessionAdded {
             sid,
             background,
             cwd,
             name,
             ..
-        }) => {
+        })) => {
             assert_eq!(sid, "bg-sid");
             assert!(background, "后台会话那一格由适配层判好");
             assert_eq!(cwd.as_deref(), Some("/proj/x"));
@@ -1877,9 +1902,9 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
         let mut state = ReaderState::new(dir.join("projects"));
         process_session_added(&pidfile, &mut state, &mut sink);
         match rx.try_recv() {
-            Ok(Frame::SessionAdded {
+            Ok(Frame::SessionAdded(crate::wire::SessionAdded {
                 cwd, project_dir, ..
-            }) => (cwd, project_dir),
+            })) => (cwd, project_dir),
             other => panic!("expected SessionAdded, got {other:?}"),
         }
     };
@@ -1924,7 +1949,7 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut announced_path = Some(String::from("?"));
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionAdded { path, .. } = f {
+        if let Frame::SessionAdded(crate::wire::SessionAdded { path, .. }) = f {
             announced_path = path;
         }
     }
@@ -1935,7 +1960,7 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
     let want = rec.to_string_lossy().into_owned();
     let mut paths = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionStatus { sid, path, .. } = f {
+        if let Frame::SessionStatus(crate::wire::SessionStatus { sid, path, .. }) = f {
             assert_eq!(sid, "late-sid");
             paths.push(path);
         }
@@ -1953,7 +1978,10 @@ fn the_record_path_reaches_the_client_once_the_record_appears_after_the_announce
     process_jsonl(&rec, &mut state, &mut sink);
     while let Ok(f) = rx.try_recv() {
         assert!(
-            !matches!(f, Frame::SessionStatus { path: Some(_), .. }),
+            !matches!(
+                f,
+                Frame::SessionStatus(crate::wire::SessionStatus { path: Some(_), .. })
+            ),
             "路径没变就不再带：{f:?}"
         );
     }
@@ -2195,7 +2223,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     let mut sink = FrameSink::new(tx);
 
     // Fill both slots — these go through cleanly, no overflow owed.
-    sink.send(Frame::SessionAdded {
+    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -2210,8 +2238,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         hidden: None,
         container: None,
         pid: 0,
-    });
-    sink.send(Frame::SessionAdded {
+    }));
+    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "b".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -2226,14 +2254,14 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         hidden: None,
         container: None,
         pid: 0,
-    });
+    }));
     assert_eq!(
         sink.subs[0].dropped, 0,
         "nothing dropped while the channel had room"
     );
 
     // Channel is full now: three sends are dropped and counted.
-    sink.send(Frame::SessionAdded {
+    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "c".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -2248,8 +2276,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         hidden: None,
         container: None,
         pid: 0,
-    });
-    sink.send(Frame::SessionAdded {
+    }));
+    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "d".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -2264,8 +2292,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         hidden: None,
         container: None,
         pid: 0,
-    });
-    sink.send(Frame::SessionAdded {
+    }));
+    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "e".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -2280,35 +2308,38 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         hidden: None,
         container: None,
         pid: 0,
-    });
+    }));
     assert_eq!(sink.subs[0].dropped, 3);
 
     // Drain both queued frames (they are the first two, not the dropped ones).
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
 
     // Next send (channel now empty, cap 2): emits Overflow{3} into slot 1,
     // resets the counter, then the real frame into slot 2.
-    sink.send(Frame::SessionRemoved {
+    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
         sid: "f".into(),
         cause: RemovalCause::Gone,
         by: None,
-    });
+    }));
     assert_eq!(
         sink.subs[0].dropped, 0,
         "overflow signal flushed, counter reset"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::Overflow { dropped: 3, .. })),
+        matches!(
+            rx.try_recv(),
+            Ok(Frame::Overflow(crate::wire::Overflow { dropped: 3, .. }))
+        ),
         "overflow signal carries the dropped count and arrives first"
     );
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { .. })),
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(_))),
         "the real frame follows the overflow signal"
     );
 
     // Steady state: no spurious Overflow once recovered.
-    sink.send(Frame::SessionAdded {
+    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "g".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -2323,8 +2354,8 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         hidden: None,
         container: None,
         pid: 0,
-    });
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    }));
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
 }
 
 /// ★★ **「只数不建」必须与「建了再数」得出同一个数、同一个游标、同一批 seq**
@@ -2585,7 +2616,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
     let mut sink = FrameSink::new(tx);
 
     // 占满（cap 1）。
-    sink.send(Frame::Line {
+    sink.send(Frame::Line(crate::wire::Line {
         session_id: "occupy".into(),
         path: "/p".into(),
         seq: 0,
@@ -2593,9 +2624,9 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         cwd: None,
         byte_offset: 0,
         rid: None,
-    });
+    }));
     // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
-    sink.send(Frame::Line {
+    sink.send(Frame::Line(crate::wire::Line {
         session_id: "content-lost".into(),
         path: "/p".into(),
         seq: 1,
@@ -2603,33 +2634,33 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         cwd: None,
         byte_offset: 1,
         rid: None,
-    });
-    sink.send(Frame::SessionRemoved {
+    }));
+    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
         sid: "sid-gone".into(),
         cause: RemovalCause::Gone,
         by: None,
-    });
+    }));
     assert_eq!(sink.subs[0].dropped, 2, "两条都该计入 dropped");
 
     // 排空后下一次 send 会先补 Overflow。
-    assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
+    assert!(matches!(rx.try_recv(), Ok(Frame::Line(_))));
     sink.send(Frame::turn_end(
         "x".into(),
         "u".into(),
         &crate::history::search_rules::name_face(&Default::default()),
     ));
     match rx.try_recv() {
-        Ok(Frame::Overflow {
+        Ok(Frame::Overflow(crate::wire::Overflow {
             dropped,
             lost,
             lost_truncated,
-        }) => {
+        })) => {
             assert_eq!(dropped, 2);
             assert!(!lost_truncated, "才两条，远没到上限");
             assert_eq!(
                 lost,
                 vec![crate::wire::LostFrame {
-                    kind: "session_removed",
+                    kind: "session_removed".to_string(),
                     subject: Some("sid-gone".into()),
                 }],
                 "只有不可恢复的那条留身份；内容帧丢了别处还有，不该占位"
@@ -2646,7 +2677,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
 fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     let (tx, mut rx) = mpsc::channel::<Frame>(1);
     let mut sink = FrameSink::new(tx);
-    sink.send(Frame::Line {
+    sink.send(Frame::Line(crate::wire::Line {
         session_id: "occupy".into(),
         path: "/p".into(),
         seq: 0,
@@ -2654,14 +2685,14 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
         cwd: None,
         byte_offset: 0,
         rid: None,
-    });
+    }));
     let over = LOST_IDENTITY_CAP + 5;
     for i in 0..over {
-        sink.send(Frame::SessionRemoved {
+        sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
             sid: format!("sid-{i}"),
             cause: RemovalCause::Gone,
             by: None,
-        });
+        }));
     }
     assert_eq!(
         sink.subs[0].dropped, over as u64,
@@ -2674,18 +2705,18 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
     );
     assert!(sink.subs[0].lost_truncated, "截断了就要说出来，不许静默");
 
-    assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
+    assert!(matches!(rx.try_recv(), Ok(Frame::Line(_))));
     sink.send(Frame::turn_end(
         "x".into(),
         "u".into(),
         &crate::history::search_rules::name_face(&Default::default()),
     ));
     match rx.try_recv() {
-        Ok(Frame::Overflow {
+        Ok(Frame::Overflow(crate::wire::Overflow {
             lost,
             lost_truncated,
             ..
-        }) => {
+        })) => {
             assert_eq!(lost.len(), LOST_IDENTITY_CAP);
             assert!(lost_truncated, "标志要真的上线，不能只留在 sink 里");
         }
@@ -2702,7 +2733,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
 fn the_recoverability_table_has_no_catch_all_arm() {
     let src = guard_core::production_code(include_str!("../../../src/backend/wire/mod.rs"));
     let begin = src
-        .find("pub fn loss_is_recoverable")
+        .find("    fn loss_is_recoverable(&self) -> bool {")
         .expect("找不到 loss_is_recoverable —— 抽取器坏了，本条会零命中地绿");
     let end = src[begin..]
         .find("\n    }\n")
@@ -2814,7 +2845,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
             }
         }
         while let Ok(f) = rx.try_recv() {
-            if let Frame::SessionAdded { sid, .. } = f {
+            if let Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) = f {
                 added.push(sid);
             }
         }
@@ -3160,7 +3191,9 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let containers: Vec<Option<crate::wire::SessionContainer>> = frames
         .iter()
         .filter_map(|f| match f {
-            Frame::SessionAdded { container, .. } => Some(container.clone()),
+            Frame::SessionAdded(crate::wire::SessionAdded { container, .. }) => {
+                Some(container.clone())
+            }
             _ => None,
         })
         .collect();
@@ -3242,7 +3275,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
     let added: Vec<String> = frames
         .iter()
         .filter_map(|f| match f {
-            Frame::SessionAdded { sid, .. } => Some(sid.clone()),
+            Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => Some(sid.clone()),
             _ => None,
         })
         .collect();
@@ -3310,7 +3343,7 @@ fn loc1b_the_pid_rides_the_session_added_frame() {
         .unwrap();
         process_session_added(&path, &mut state, &mut sink);
         let got = match rx.try_recv() {
-            Ok(Frame::SessionAdded { sid, pid, .. }) => {
+            Ok(Frame::SessionAdded(crate::wire::SessionAdded { sid, pid, .. })) => {
                 assert_eq!(sid, format!("pid-{label}"));
                 pid
             }
@@ -3339,11 +3372,13 @@ fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         out.push(match f {
-            Frame::Line { seq, .. } => format!("line:{seq}"),
-            Frame::SessionFileGone { session_id, .. } => format!("gone:{session_id}"),
-            Frame::SessionFileReread {
+            Frame::Line(crate::wire::Line { seq, .. }) => format!("line:{seq}"),
+            Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. }) => {
+                format!("gone:{session_id}")
+            }
+            Frame::SessionFileReread(crate::wire::SessionFileReread {
                 session_id, why, ..
-            } => {
+            }) => {
                 format!("reread:{session_id}:{why:?}")
             }
             other => format!("other:{}", other.loss_identity().kind),
@@ -3459,10 +3494,10 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
 #[test]
 fn the_two_session_file_frames_have_exactly_these_bytes() {
     use crate::wire::{to_line, RereadWhy};
-    let gone = Frame::SessionFileGone {
+    let gone = Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: "s".into(),
         path: "/p/s.jsonl".into(),
-    };
+    });
     assert_eq!(
         to_line(&gone).unwrap(),
         "{\"kind\":\"session_file_gone\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\"}\n"
@@ -3471,11 +3506,11 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
         (RereadWhy::Truncated, "truncated"),
         (RereadWhy::Rewritten, "rewritten"),
     ] {
-        let f = Frame::SessionFileReread {
+        let f = Frame::SessionFileReread(crate::wire::SessionFileReread {
             session_id: "s".into(),
             path: "/p/s.jsonl".into(),
             why,
-        };
+        });
         assert_eq!(
             to_line(&f).unwrap(),
             format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\"}}\n")
@@ -3739,8 +3774,12 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
         let mut v: Vec<String> = Vec::new();
         while let Ok(f) = rx.try_recv() {
             v.push(match f {
-                Frame::SessionAdded { sid, .. } => format!("added {sid}"),
-                Frame::SessionRemoved { sid, .. } => format!("removed {sid}"),
+                Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => {
+                    format!("added {sid}")
+                }
+                Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => {
+                    format!("removed {sid}")
+                }
                 other => other.loss_identity().kind.to_string(),
             });
         }
@@ -3935,7 +3974,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     let one = resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a")).caught_up;
     let mut lines: Vec<String> = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Line { session_id, .. } = f {
+        if let Frame::Line(crate::wire::Line { session_id, .. }) = f {
             lines.push(session_id);
         }
     }
@@ -4118,8 +4157,10 @@ fn a_sub_runs_turn_end_is_not_the_main_runs() {
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
         got.push(match f {
-            Frame::Line { rid, .. } => format!("line {}", rid.unwrap_or_default()),
-            Frame::TurnEnd { uuid, .. } => format!("turn_end {uuid}"),
+            Frame::Line(crate::wire::Line { rid, .. }) => {
+                format!("line {}", rid.unwrap_or_default())
+            }
+            Frame::TurnEnd(crate::wire::TurnEnd { uuid, .. }) => format!("turn_end {uuid}"),
             other => format!("{other:?}"),
         });
     }
@@ -4153,7 +4194,7 @@ fn a_queued_line_on_the_live_stream_carries_the_moment_it_was_typed() {
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Line { record, .. } = f {
+        if let Frame::Line(crate::wire::Line { record, .. }) = f {
             got.push(record.map(|r| (r.id, r.at.unwrap_or_default())));
         }
     }
@@ -4333,9 +4374,9 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut branches = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch {
+        if let Frame::SessionBranch(crate::wire::SessionBranch {
             sid, path, at, off, ..
-        } = f
+        }) = f
         {
             assert_eq!(sid, "br-sid");
             assert_eq!(path, jsonl.to_string_lossy());
@@ -4349,7 +4390,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     process_jsonl(&jsonl, &mut state, &mut sink);
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { off, .. } = f {
+        if let Frame::SessionBranch(crate::wire::SessionBranch { off, .. }) = f {
             got.push(off);
         }
     }
@@ -4360,7 +4401,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     process_jsonl(&jsonl, &mut state, &mut sink);
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { at, off, .. } = f {
+        if let Frame::SessionBranch(crate::wire::SessionBranch { at, off, .. }) = f {
             got.push((at, off));
         }
     }
@@ -4456,7 +4497,7 @@ fn branch_lists(frames: &[Frame]) -> Vec<Vec<String>> {
     frames
         .iter()
         .filter_map(|f| match f {
-            Frame::SessionBranch { off, .. } => Some(off.clone()),
+            Frame::SessionBranch(crate::wire::SessionBranch { off, .. }) => Some(off.clone()),
             _ => None,
         })
         .collect()
@@ -4539,7 +4580,7 @@ fn queued_lines_without_forks_do_not_walk_the_chain() {
     std::fs::remove_dir_all(&dir).ok();
     let added = frames
         .iter()
-        .filter(|f| matches!(f, Frame::SessionAdded { .. }))
+        .filter(|f| matches!(f, Frame::SessionAdded(_)))
         .count();
     assert_eq!(
         (added, branch_lists(&frames).len()),
@@ -4562,7 +4603,7 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
     let branches = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut v = Vec::new();
         while let Ok(f) = rx.try_recv() {
-            if let Frame::SessionBranch { at, off, .. } = f {
+            if let Frame::SessionBranch(crate::wire::SessionBranch { at, off, .. }) = f {
                 v.push((at, off));
             }
         }
@@ -4605,7 +4646,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     let drain = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut v = Vec::new();
         while let Ok(f) = rx.try_recv() {
-            if let Frame::SessionBranch { at, off, sum, .. } = f {
+            if let Frame::SessionBranch(crate::wire::SessionBranch { at, off, sum, .. }) = f {
                 v.push((at, off.len() as u64, sum));
             }
         }
@@ -4735,7 +4776,7 @@ fn a_live_line_is_parsed_from_text_once() {
         "{kinds:?}"
     );
     assert!(
-        kinds.contains(&"turn_end"),
+        kinds.iter().any(|k| k == "turn_end"),
         "一轮结束那一行没报出来：{kinds:?}"
     );
     assert_eq!(
@@ -4778,7 +4819,7 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     )
     .unwrap();
     process_session_added(&path, &mut state, &mut sink);
-    let Ok(Frame::SessionAdded { hidden, .. }) = rx.try_recv() else {
+    let Ok(Frame::SessionAdded(crate::wire::SessionAdded { hidden, .. })) = rx.try_recv() else {
         panic!("该先宣告")
     };
     assert_eq!(hidden.map(|h| h.by), Some(cmd_wire::session::HiddenBy::Own));
@@ -4787,9 +4828,9 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     state.reload_annotations(pin(true), &mut sink);
     let mut pushed = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Changed {
+        if let Frame::Changed(crate::wire::Changed {
             topic, key, body, ..
-        } = f
+        }) = f
         {
             pushed.push((topic, key, body));
         }
@@ -4798,9 +4839,9 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     // 取消隐藏（摘掉单个那一格、规则也不隐藏）⇒ 推一帧 `hidden: null`。
     state.reload_annotations(pin(false), &mut sink);
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Changed {
+        if let Frame::Changed(crate::wire::Changed {
             topic, key, body, ..
-        } = f
+        }) = f
         {
             pushed.push((topic, key, body));
         }
@@ -4815,7 +4856,10 @@ fn the_announcement_carries_the_hidden_cell_and_a_change_is_pushed() {
     );
     assert!(matches!(
         state.added.get("sid-h"),
-        Some(Frame::SessionAdded { hidden: None, .. })
+        Some(Frame::SessionAdded(crate::wire::SessionAdded {
+            hidden: None,
+            ..
+        }))
     ));
     let _ = std::fs::remove_dir_all(&dir);
 }

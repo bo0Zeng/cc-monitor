@@ -32,8 +32,7 @@ fn same_bytes<R>(rel: &str, line: &str)
 where
     R: Serialize + for<'de> Deserialize<'de>,
 {
-    let f: Frame<R> =
-        decode(line).unwrap_or_else(|e| panic!("{rel} 这一行解不开（{e}）：{line}"));
+    let f: Frame<R> = decode(line).unwrap_or_else(|e| panic!("{rel} 这一行解不开（{e}）：{line}"));
     let back = serde_json::to_string(&f).unwrap();
     assert_eq!(back, line, "{rel} 这一行解开再写回变了");
 }
@@ -104,7 +103,8 @@ fn a_record_that_does_not_read_becomes_the_unread_one_and_the_frame_still_decode
 
 #[test]
 fn the_kind_need_not_come_first() {
-    let line = r#"{"session_id":"s","path":"/p","seq":1,"kind":"line","record":{"x":1},"byte_offset":9}"#;
+    let line =
+        r#"{"session_id":"s","path":"/p","seq":1,"kind":"line","record":{"x":1},"byte_offset":9}"#;
     let Frame::Line(l) = decode::<Box<serde_json::value::RawValue>>(line).unwrap() else {
         panic!("不是 line 帧");
     };

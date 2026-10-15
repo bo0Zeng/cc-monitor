@@ -63,6 +63,7 @@
 
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
+use crate::wire::{ActivityFaceExt as _, FrameMake as _, FrameRules as _};
 use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
@@ -1626,13 +1627,13 @@ impl ReaderState {
         };
         let name_face = self.name_face(sid);
         if name_face != before {
-            sink.send(Frame::SessionStatus {
+            sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: sid.to_string(),
                 face: crate::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for,
                 path: None,
-            });
+            }));
         }
     }
 
@@ -1658,9 +1659,9 @@ impl ReaderState {
         let mut sids: Vec<String> = self.added.keys().cloned().collect();
         sids.sort_unstable();
         for sid in sids {
-            let Some(Frame::SessionAdded {
+            let Some(Frame::SessionAdded(crate::wire::SessionAdded {
                 background, hidden, ..
-            }) = self.added.get(&sid)
+            })) = self.added.get(&sid)
             else {
                 continue;
             };
@@ -1668,7 +1669,9 @@ impl ReaderState {
             if &now == hidden {
                 continue;
             }
-            if let Some(Frame::SessionAdded { hidden, .. }) = self.added.get_mut(&sid) {
+            if let Some(Frame::SessionAdded(crate::wire::SessionAdded { hidden, .. })) =
+                self.added.get_mut(&sid)
+            {
                 hidden.clone_from(&now);
             }
             let body = serde_json::json!({ "hidden": now });
@@ -2336,10 +2339,10 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
         Look::Gone => {
             forget_cursor(state, &key);
             if state.gone.insert(key) {
-                sink.send(Frame::SessionFileGone {
+                sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
                     session_id,
                     path: path_str,
-                });
+                }));
             }
             return 0;
         }
@@ -2364,11 +2367,11 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             .remove(&key)
             .is_some_and(|c| !c.off().is_empty());
     if let Some(why) = reread {
-        sink.send(Frame::SessionFileReread {
+        sink.send(Frame::SessionFileReread(crate::wire::SessionFileReread {
             session_id: session_id.clone(),
             path: path_str.clone(),
             why,
-        });
+        }));
     }
     let mut n = 0;
     let mut runs_changed = adopt_runs(state, &session_id, path);
@@ -2495,13 +2498,13 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
         };
         let entry = state.sessions.values().find(|e| e.sid == sid);
         if let (
-            Frame::SessionAdded {
+            Frame::SessionAdded(crate::wire::SessionAdded {
                 face,
                 name_face,
                 waiting_for,
                 path,
                 ..
-            },
+            }),
             Some(e),
         ) = (&mut added, entry)
         {
@@ -2517,7 +2520,7 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
             }
         }
         let path = match &added {
-            Frame::SessionAdded { path, .. } => path.clone(),
+            Frame::SessionAdded(crate::wire::SessionAdded { path, .. }) => path.clone(),
             _ => None,
         };
         sink.send_to(id, added);
@@ -2526,13 +2529,13 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
         }
         sink.send_to(
             id,
-            Frame::SessionPrimed {
+            Frame::SessionPrimed(crate::wire::SessionPrimed {
                 sid: sid.clone(),
                 lines: path
                     .as_ref()
                     .map(|p| state.seqs.peek(&path_key(Path::new(p)).to_string_lossy())),
                 path,
-            },
+            }),
         );
         if state.book.has_runs(&sid) {
             sink.send_to(id, state.runs_frame(&sid));
@@ -2602,13 +2605,13 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
     let Some((activity, waiting_for)) = status else {
         return;
     };
-    sink.send(Frame::SessionStatus {
+    sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
         sid: session_id.to_string(),
         face: crate::wire::ActivityFace::of(activity),
         name_face: state.name_face(session_id),
         waiting_for,
         path: Some(path_str.to_string()),
-    });
+    }));
 }
 
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
@@ -2674,7 +2677,7 @@ fn send_line(
         None => (None, None),
     };
 
-    sink.send(Frame::Line {
+    sink.send(Frame::Line(crate::wire::Line {
         session_id: session_id.to_string(),
         path: path_str.to_string(),
         seq: line.seq,
@@ -2682,7 +2685,7 @@ fn send_line(
         cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐手机端 LineFramer）
         rid: rec.rid,
-    });
+    }));
     // **先 Line 后 TurnEnd**：对齐手机端 β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
     // TurnEnd 不带 byte_offset（只 Line 带）。
     if let Some(uuid) = turn_uuid {
@@ -2716,13 +2719,13 @@ fn note_activity(
     let Some((waiting_for, path)) = changed else {
         return;
     };
-    sink.send(Frame::SessionStatus {
+    sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
         sid: sid.to_string(),
         face: crate::wire::ActivityFace::of(Some(a)),
         name_face: state.name_face(sid),
         waiting_for,
         path,
-    });
+    }));
 }
 
 /// 读到的一条记录若改了叫这条会话什么（标题记录 · 还没有第一句时人说的第一句）⇒ 记账；名字真变了 ⇒ 一帧 `session_status`（带全）。
@@ -2952,13 +2955,13 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
             entry.activity = activity;
             let name_face = crate::history::search_rules::name_face(&entry.facts);
-            sink.send(Frame::SessionStatus {
+            sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: sid.clone(),
                 face: crate::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for: new_waiting,
                 path: None,
-            });
+            }));
         }
         // pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
         // 便条也再认一次（Windows 上起好进程才写便条，可能晚于第一次宣告）。
@@ -3126,7 +3129,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if reading {
         state.reading.insert(sid.clone());
     }
-    let added = Frame::SessionAdded {
+    let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
         background: a.background,
@@ -3147,7 +3150,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         container,
         // pid 与 verdict 核过的是同一个进程（见 `wire::Frame::SessionAdded::pid`）。
         pid,
-    };
+    });
     state.added.insert(sid.clone(), added.clone());
     sink.send(added);
     start_prime(&sid, &jsonls, fresh_name, state, sink);
@@ -3422,7 +3425,7 @@ fn retag_tracked(state: &ReaderState, only: Option<&str>) -> usize {
 /// 从「说不清」落到「已结束」。
 fn initial_session_scan(sessions: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     reconcile_sessions(sessions, state, sink, None);
-    sink.send(Frame::SessionsReplayed);
+    sink.send(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));
 }
 
 /// 起步那一下：先 `arm`（挂好事件耳朵），**再** [`initial_session_scan`]。回 `arm` 的结果（挂不上也照样扫完）。
@@ -3556,11 +3559,11 @@ fn retire_sid_if_unreferenced(
     if let Some(f) = state.retire_runs(sid) {
         sink.send(f);
     }
-    sink.send(Frame::SessionRemoved {
+    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
         sid: sid.to_string(),
         cause,
         by: by.map(str::to_string),
-    });
+    }));
 }
 
 /// 每一家的记录根走一遍，找这个 sid 的记录文件（宣告会话时把它已有的那几行带上）。
@@ -4128,11 +4131,11 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     let lines = path
         .as_ref()
         .map(|p| state.seqs.peek(&path_key(Path::new(p)).to_string_lossy()));
-    sink.send(Frame::SessionPrimed {
+    sink.send(Frame::SessionPrimed(crate::wire::SessionPrimed {
         sid: sid.clone(),
         path,
         lines,
-    });
+    }));
     if let Some(mut f) = facts {
         let custom = state.custom_title(&sid);
         state.renamed(
@@ -4161,13 +4164,13 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
             let e = state.sessions.values().find(|e| e.sid == sid);
             let (waiting_for, path) =
                 e.map_or((None, None), |e| (e.waiting_for.clone(), e.path.clone()));
-            sink.send(Frame::SessionStatus {
+            sink.send(Frame::SessionStatus(crate::wire::SessionStatus {
                 sid: sid.clone(),
                 face: crate::wire::ActivityFace::of(None),
                 name_face: state.name_face(&sid),
                 waiting_for,
                 path,
-            });
+            }));
         }
         _ => {}
     }
@@ -4696,7 +4699,7 @@ impl Sub {
 
     /// 这条连接要不要这一帧（只挑整行帧：名单外的会话不投）。
     fn wants(&self, frame: &Frame) -> bool {
-        if let Frame::SessionBranch { sid, .. } = frame {
+        if let Frame::SessionBranch(crate::wire::SessionBranch { sid, .. }) = frame {
             return self.branching.contains(sid);
         }
         match (&self.watching, frame.content_of()) {
@@ -4714,11 +4717,11 @@ impl Sub {
     /// shutdown (the sink drops this connection).
     fn push(&mut self, frame: Frame) {
         if self.dropped > 0 {
-            match self.tx.try_send(Frame::Overflow {
+            match self.tx.try_send(Frame::Overflow(crate::wire::Overflow {
                 dropped: self.dropped,
                 lost: self.lost.clone(),
                 lost_truncated: self.lost_truncated,
-            }) {
+            })) {
                 Ok(()) => {
                     tracing::warn!(
                         "recovered from frame-channel overflow; signalled {} dropped frame(s), \
@@ -4744,7 +4747,7 @@ impl Sub {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 self.dropped += 1;
-                if let Frame::SessionBranch { path, .. } = &frame {
+                if let Frame::SessionBranch(crate::wire::SessionBranch { path, .. }) = &frame {
                     self.branch_stale.insert(path.clone());
                 }
                 // **不可恢复的那些要留下身份**，否则客户端只知道

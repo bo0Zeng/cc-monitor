@@ -1,6 +1,7 @@
 //! 一条入方向命令的登记形状。各族的命令表（`registry/`）只 use 这一份。
 
 use crate::common::said::IntoNote as _;
+use crate::wire::FrameMake as _;
 use crate::wire::Request;
 
 /// 同步阻塞处理器（分派交进阻塞池：开跑之后打不断）。

@@ -147,6 +147,10 @@ struct TypeDef {
 fn type_defs(src: &str) -> Vec<TypeDef> {
     let mut out = Vec::new();
     for top in members_top(src) {
+        // 不出模块的（私有的解码零件）不进参考。
+        if !top.head.starts_with("pub") {
+            continue;
+        }
         let h = unpub(top.head.as_str());
         let (is_enum, rest) = if let Some(r) = h.strip_prefix("enum ") {
             (true, r)
@@ -669,12 +673,35 @@ fn one_line_attrs(src: &str) -> String {
 }
 
 fn frames(out: &mut String) {
-    let src = inline_reexports(&read("wire/mod.rs"));
+    // 帧的形状住 `cmd-wire` 那一份（`frame.rs`）；信封与别的零件住 `wire/mod.rs`（它对 `frame` 的那几行引用不再内联，整份在前面）。
+    let wire: String = read("wire/mod.rs")
+        .lines()
+        .filter(|l| !l.starts_with("pub use cmd_wire::frame::"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    // 记录那一格是类型参数（后端写的是 `Record`）。
+    let frame_src = std::fs::read_to_string(cmd_wire_file("frame"))
+        .expect("读不到 cmd-wire 的帧")
+        .replace("Option<R>", "Option<Record>");
+    let src = format!(
+        "{}\n{}",
+        one_line_attrs(&frame_src),
+        inline_reexports(&wire)
+    );
     let types = wire_types(&src);
     let frame = types
         .iter()
         .find(|t| t.name == "Frame")
-        .expect("wire.rs 里没有 `Frame`");
+        .expect("帧那一份里没有 `Frame`");
+    // 每种帧一个具名结构（`Hello(Hello)`）：字段与那一句取那个结构的。
+    let body_of = |head: &str| -> Option<&TypeDef> {
+        let inner = head.split_once('(')?.1.split(['<', ')']).next()?;
+        types.iter().find(|t| t.name == inner)
+    };
+    let bodies: Vec<String> = members(&frame.body)
+        .iter()
+        .filter_map(|v| body_of(&v.head).map(|t| t.name.clone()))
+        .collect();
     out.push_str("## 1. 出方向帧\n\n每一帧一行 JSON，`kind` 是下面的小标题。`?` ＝ 可缺（缺 ＝ 没有这一格，不是 `null`）。\n\n");
     let mut n = 0;
     for v in members(&frame.body) {
@@ -685,13 +712,14 @@ fn frames(out: &mut String) {
             .unwrap_or("")
             .to_string();
         let _ = writeln!(out, "### `{}`\n", snake(&name));
-        let doc = first_sentence(&v.docs);
+        let ty = body_of(&v.head);
+        let doc = first_sentence(ty.map_or(&v.docs, |t| &t.docs));
         if !doc.is_empty() {
             let _ = writeln!(out, "{doc}。\n");
         }
-        match &v.inner {
-            Some(body) => {
-                field_table(out, body, None);
+        match ty {
+            Some(t) => {
+                field_table(out, &t.body, None);
             }
             None => out.push_str("（无字段）\n"),
         }
@@ -701,7 +729,10 @@ fn frames(out: &mut String) {
     assert!(n >= 20, "只切出 {n} 种帧 —— 解析坏了");
 
     out.push_str("## 2. 信封与帧里用到的类型\n\n");
-    for t in types.iter().filter(|t| t.name != "Frame") {
+    for t in types
+        .iter()
+        .filter(|t| t.name != "Frame" && !bodies.contains(&t.name))
+    {
         render_type(out, t, &src);
     }
 }

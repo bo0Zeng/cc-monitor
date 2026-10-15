@@ -925,8 +925,7 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
         .as_str()
         .unwrap()
         .to_string();
-    let want = Some(SessionContainer::Hosted {
-        host: TerminalHost::Tmux,
+    let want = Some(SessionContainer::Tmux {
         terminal: Some(listed.clone()),
     });
     assert!(

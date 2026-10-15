@@ -105,10 +105,9 @@ impl Outcome {
     /// 放在观测侧就得让 `observe → control` 多一条跨层边（`layering_guard` 的登记表）；
     /// 调用方（`observe/watcher.rs::process_session_added`）今天只经 `tag(..)` 的返回值用它。
     pub(crate) fn container(&self) -> Option<crate::wire::SessionContainer> {
-        use crate::wire::{SessionContainer, TerminalHost};
+        use crate::wire::SessionContainer;
         match self {
-            Outcome::Tagged(t) | Outcome::AlreadyCurrent(t) => Some(SessionContainer::Hosted {
-                host: TerminalHost::Tmux,
+            Outcome::Tagged(t) | Outcome::AlreadyCurrent(t) => Some(SessionContainer::Tmux {
                 terminal: Some(t.clone()),
             }),
             Outcome::NotInTmux => Some(SessionContainer::None),

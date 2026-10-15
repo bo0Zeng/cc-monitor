@@ -536,11 +536,11 @@ impl RunBook {
             }
             None => (Vec::new(), Vec::new()),
         });
-        Frame::SessionRuns {
+        Frame::SessionRuns(crate::wire::SessionRuns {
             sid: sid.to_string(),
             runs,
             ended,
-        }
+        })
     }
 
     /// 全部会话按 `now` 判一次久未动静：回运行表变了的那几个会话（排好序）。

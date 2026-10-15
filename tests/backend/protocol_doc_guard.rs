@@ -961,13 +961,14 @@ mod tests {
         }
     }
 
-    /// F06c：`wire.rs` 的 `enum Frame` **段界内**的变体名 → 线上 `kind`（snake_case）。
+    /// F06c：`cmd-wire` 帧那一份（`frame.rs`）的 `enum Frame` **段界内**的变体名 → 线上 `kind`（snake_case）。
     ///
-    /// ⚠ **必须先框段界再数**：`wire.rs` 里不止一个枚举，
+    /// ⚠ **必须先框段界再数**：那份文件里不止一个枚举，
     /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
     fn frame_variants() -> Vec<String> {
-        let src =
-            crate::guard_support::production_code(include_str!("../../src/backend/wire/mod.rs"));
+        let src = crate::guard_support::production_code(include_str!(
+            "../../src/common/cmd-wire/src/frame.rs"
+        ));
         // 运行时拼，免得命中本文件自己的说明文字。
         let needle = format!("pub enum {}", "Frame");
         let at = src

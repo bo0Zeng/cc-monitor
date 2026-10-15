@@ -40,6 +40,7 @@
 //! - **契约里写明**：订着时那台 tmux 里多一个只读客户端 —— 用户自己配的 `client-attached` / `client-detached` 钩子会被它触发，
 //!   我们管不了；本仓自己装的钩子里没有客户端那一族（判据钉着）。
 
+use crate::wire::FrameMake as _;
 use copy_core::copy_text;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -811,11 +812,13 @@ impl Worker {
         }
         if let Step::End(why) = step {
             lock(&self.tickets).slots.remove(&self.ticket);
-            let _ = self.replies.blocking_send(Frame::TerminalFollowEnd {
-                ticket: self.ticket.clone(),
-                why,
-                said: end_said(why),
-            });
+            let _ = self.replies.blocking_send(Frame::TerminalFollowEnd(
+                crate::wire::TerminalFollowEnd {
+                    ticket: self.ticket.clone(),
+                    why,
+                    said: end_said(why),
+                },
+            ));
         }
     }
 
@@ -848,11 +851,13 @@ impl Worker {
         *seq += 1;
         *in_flight = true;
         *last = fp;
-        match self.replies.blocking_send(Frame::TerminalScreen {
-            ticket: self.ticket.clone(),
-            seq: *seq,
-            view,
-        }) {
+        match self
+            .replies
+            .blocking_send(Frame::TerminalScreen(crate::wire::TerminalScreen {
+                ticket: self.ticket.clone(),
+                seq: *seq,
+                view,
+            })) {
             Ok(()) => Step::Go,
             Err(_) => Step::Quit,
         }

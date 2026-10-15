@@ -19,15 +19,15 @@ Handshake sent once when a client connects。
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
 | `claude_dir` | string | ⚠ **冻结兼容字段，不是欠账** |
 | `homes` | [AgentHome]? | 本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`） |
-| `emits` | [string]? | 本 backend **会发射的帧 kind 集** （snake_case，如 "session_status"/"turn_end"） |
+| `emits` | [string]? | 本 backend **会发射的帧 kind 集**（snake_case） |
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
-| `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
-| `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
+| `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
+| `shapes` | {string: string}? | typed 命令的形状指纹 `{命令: 8 位十六进制}`（`crate::shapes::SHAPES`） |
 
 ### `line`
 
-会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
+会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -36,8 +36,8 @@ Handshake sent once when a client connects。
 | `seq` | number | 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset` |
 | `record` | Record? | 这一行的通用记录；缺 ＝ 不进界面、照占号 |
 | `cwd` | string? | 这条记录自己的工作目录 |
-| `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义**逐字节对齐手机端 `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
-| `rid` | string? | 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值） |
+| `byte_offset` | number? | 本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——语义逐字节对齐手机端 `LineFramer.endOffset`：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒ `tail -c +(N+1)` |
+| `rid` | string? | 这一行的对账键（适配层给；流的「开始」带同一个值） |
 
 ### `session_added`
 
@@ -52,11 +52,11 @@ A new session file appeared。
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
-| `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
-| `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
+| `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）；宣告时还没写首行 ⇒ 缺 |
+| `face` | ActivityFace | 宣告时此刻在干什么（`ActivityFace`，平铺在帧上） |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
-| `hidden` | Hidden? | 隐藏那一格（不占标签页，判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线（同这一帧别的可缺格；壳转给界面时补成 `null`） |
+| `hidden` | Hidden? | 隐藏那一格（不占标签页）；不隐藏 ⇒ 不上线 |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
 
@@ -80,7 +80,7 @@ A new session file appeared。
 | `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
 | `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
-| `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来（会话刚起、记录还没写出来）· 换了一份 ⇒ 发一帧带上最新的；没变 ⇒ 不上线（别的原因发的这一帧字节与本字段加进来之前一字不差） |
+| `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来 · 换了一份 ⇒ 带上最新的；没变 ⇒ 不上线 |
 
 ### `session_state`
 
@@ -90,10 +90,10 @@ A new session file appeared。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `state` | SessionFate | 离开「活」之后的去向 |
-| `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
+| `state_text` | Words | 那一种写好的短名 |
 | `state_hint` | Words | 悬停那一句 |
 | `state_tone` | Tone | 语气 |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形，`Switch::gone`） |
+| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形） |
 
 ### `session_removed`
 
@@ -103,7 +103,7 @@ A session file went away。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `cause` | RemovalCause? | 这个 sid 是「死了」还是「被顶替了」 |
-| `by` | string? | 被顶替时（`cause: superseded`），顶替它的那条会话的 sid：同一个进程、同一个终端里另起的那份记录（`/clear` · `/branch`），随后是它的 `session_added` |
+| `by` | string? | 被顶替时（`cause: superseded`），顶替它的那条会话的 sid；不是顶替 ⇒ 不上线 |
 
 ### `turn_end`
 
@@ -113,7 +113,7 @@ turn-end 边沿（一轮 assistant 完成）。
 |---|---|---|
 | `session_id` | string | 会话 id |
 | `uuid` | string | 这一轮最后那条 assistant 记录的 uuid |
-| `title` | Words | 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面）：「本轮完成 · 会话名」，会话名与标签页那一格同一个（`NameFace`） |
+| `title` | Words | 通知的标题（写好的字，桌面与手机照抄；机器名由看的那一端照标签页的规矩加在前面） |
 | `body` | Words | 通知的正文（写好的字） |
 
 ### `overflow`
@@ -124,7 +124,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `dropped` | number | 自上一次哨兵以来丢掉的帧数 |
 | `lost` | [LostFrame]? | 那批丢帧里**不可恢复**的那些的身份 |
-| `lost_truncated` | bool? | 身份表是**有界**的（见 `watcher.rs` 的 `LOST_IDENTITY_CAP`） |
+| `lost_truncated` | bool? | 身份表是**有界**的（后端 `watcher.rs` 的 `LOST_IDENTITY_CAP`） |
 
 ### `reply`
 
@@ -136,7 +136,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `ok` | bool | 成功与否 |
 | `code` | string? | 失败时的码（协议级或命令级） |
 | `message` | string? | 失败时给人看的那一句（不含下层原话与码：那些进 `detail`） |
-| `detail` | string? | 失败时「复制详情」那几行（句子下面的「项名：值」：时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制 |
+| `detail` | string? | 失败时「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话），后端写好、界面原样复制 |
 | `data` | JSON? | 命令的返回值（如 `resolve` 的 CommandPlan） |
 
 ### `cancelled`
@@ -149,7 +149,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `changed`
 
-**这台的某样东西变了，客户端重读那一份**（账号清单 · 配置文件 · 额度账 · 会话轮换 · 规则表 · 计划 · 任务清单 —— 主题表 `Topic`）。
+**这台的某样东西变了，客户端重读那一份**（主题 `Topic`）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -160,7 +160,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `sessions_replayed`
 
-**这台机器的活会话清单报完了**：`observe::watcher::watch_loop` 的 Phase 1 （同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**。
+**这台机器的活会话清单报完了**：观察那一侧第一趟扫完、对每个活会话发过 `session_added` 之后发**一次**。
 
 （无字段）
 
@@ -185,7 +185,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `link_data`
 
-**一条链路的下行字节**（`dial/link.rs`）。
+**一条链路的下行字节**。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -203,7 +203,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `transfer`
 
-**一趟传输此刻的样子**（`control/transfer.rs`，`transfer-start` 之后才出现）。
+**一趟传输此刻的样子**（`transfer-start` 之后才出现）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -214,20 +214,20 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `files_batch`
 
-**一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**（`common/batch_book.rs`，带票的那一组在做时才出现）。
+**一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `ticket` | string | 那一组的票（发起时交来的，本后端只当不透明的串回填） |
+| `ticket` | string | 那一组的票（发起时交来的，后端只当不透明的串回填） |
 | `done` | number | 做完了几项 |
 | `total` | number | 一共几项 |
-| `current` | PathBytes? | 手上那一项（根底下的相对段）；做完了缺席 |
+| `current` | WirePath? | 手上那一项（根底下的相对段）；做完了缺席 |
 | `bytes_done` | number? | 整组按字节已传几个（只有搬字节的那一种报：两台之间的复制）；不报 ⇒ 缺席 |
 | `bytes_total` | number? | 整组按字节一共几个（同 `bytes_done`，两格同在同缺） |
 
 ### `probe`
 
-**测试连接那一趟的一格进度**（`dial/probe.rs`，`remote-probe` 在跑时才出现）。
+**测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -236,13 +236,19 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `live_card`
 
-**活卡**（`crate::stream::live` 出的成品）：某个会话某个运行里正在说的那一次上游应答，一张一张地开、长、撤。
+`live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
 
-（无字段）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `run` | string? | 归哪个子运行；缺 ＝ 主运行（主 tab 只画主运行的） |
+| `card` | number | 卡号（本进程的段号，整台唯一） |
+| `n` | number | 这条连接上这张卡的第几帧：`open` 从 0 起，之后连续 |
+| `op` | LiveOp | 这一帧做什么 |
 
 ### `session_runs`
 
-一个会话的运行表（主运行之外的那几个子运行：标签 · 状态 · 最近一件事 · 派出它的那次工具调用）。
+一个会话的运行表（主运行之外的那几个子运行）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -252,7 +258,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `session_branch`
 
-一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
+一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -260,15 +266,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
 | `at` | number | 前几条照旧 |
 | `off` | [string] | 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止） |
-| `sum` | string | 清单前 `at + off.len()` 条的摘要（`branch_sum`）：客户端记下最后一帧的条数与它，在 `stream-watch` 的 `branch` 里原样交回，后端照它判手上那份前缀还对不对、只补缺的那一截（换一条连接也一样） |
+| `sum` | string | 清单前 `at + off.len()` 条的摘要：客户端在 `stream-watch` 的 `branch` 里原样交回，后端照它判手上那份前缀还对不对 |
 
 ### `terminal_screen`
 
-**一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
+**一个终端此刻的一整屏**（终端实时预览；`terminal-follow` 之后才出现）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `ticket` | string | 订阅票（`terminal-follow` 时客户端给的，本后端只当不透明的串回填） |
+| `ticket` | string | 订阅票（`terminal-follow` 时客户端给的，后端只当不透明的串回填） |
 | `seq` | number | 这条订阅里第几帧（从 1 连续） |
 | `view` | JSON | 那一屏（同 `terminal-preview` 的回话） |
 
@@ -284,27 +290,18 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ## 2. 信封与帧里用到的类型
 
-#### `RemovalCause`
+#### `SessionActivity`
 
-- `gone` —— 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind
-- `superseded` —— 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**
+一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
 
-#### `SessionContainer`
-
-`Frame::SessionAdded` 的 `container`：**这条活着的会话住在什么容器里**，词与 `terminals-list` 同一套。
-
-（手写序列化，形状见上面那一句。）
-
-#### `SessionFate`
-
-`Frame::SessionState` 的 `state`：**一条会话离开「活」之后是什么** ——那台机器的后端自己裁（`observe::session_ledger`：摘除原因 ＋ 它自己那份 tmux 快照），客户端只收成品、不再猜。
-
-- `reconnectable` —— claude 退了、它的 tmux 会话还在（`@ccm_sid` 仍挂着它）⇒ 接得回去
-- `ended` —— 进程没了、容器也没了（或被顶替了）⇒ 只能 resume
+- `working` —— 一轮在跑
+- `needs_you` —— 在等人（批准 · 回答 · 弹窗）
+- `idle` —— 闲着，等下一句输入
+- `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
 
 #### `ActivityFace`
 
-**活会话此刻在干什么的那几格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上）：那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）。
+**活会话此刻在干什么的那几格**（`session_added` · `session_status` 都带它，平铺在帧上）：那一态（`activity`，说不清 ⇒ 不上线）· 写好的字 · 语气 · 监控板组内的序（`activity_order`，小的在前）· 能不能换。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -312,11 +309,11 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `activity_text` | Words |  |
 | `activity_tone` | Tone |  |
 | `activity_order` | number |  |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（随那一态判，`Switch::live`） |
+| `switch` | Switch | 此刻能不能换模型 · 权限档（随那一态判） |
 
 #### `Switch`
 
-**此刻能不能换模型 · 权限档的唯一判定处**（会话帧上的 `switch`：`session_added` · `session_status` 随那一态带（`ActivityFace`）， `session_state` 带离开「活」那一形）。
+**此刻能不能换模型 · 权限档**（会话帧上的 `switch`）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -332,16 +329,43 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `NameFace`
 
-**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::history::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截（界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
+**这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` 与历史清单 · 全文搜索同一个函数算；`label_project` ＝ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `label` | Words |  |
 | `label_project` | Words? |  |
 
+#### `TerminalHost`
+
+终端住在哪种宿主里（线上 `host`）。
+
+- `tmux`
+
+#### `SessionContainer`
+
+`session_added` 的 `container`：**这条活着的会话住在什么容器里**，词与 `terminals-list` 同一套。
+
+- `host: "tmux"`，带 `terminal` string? —— 在 tmux 的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）
+- `host: "none"` —— 环境读得到、不在任何宿主里
+
+#### `SessionFate`
+
+`session_state` 的 `state`：**一条会话离开「活」之后是什么** —— 那台机器的后端自己裁，客户端只收成品、不再猜。
+
+- `reconnectable` —— claude 退了、它的 tmux 会话还在 ⇒ 接得回去
+- `ended` —— 进程没了、容器也没了（或被顶替了）⇒ 只能 resume
+
+#### `RemovalCause`
+
+`session_removed` 的 `cause`。
+
+- `gone` —— 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind
+- `superseded` —— 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**（直接归档，不再去查 tmux 快照）
+
 #### `LostFrame`
 
-一条**丢了就不可恢复**的帧的身份。
+一条**丢了就不可恢复**的帧的身份（`overflow.lost` 的一项）：给那些帧带上身份，让客户端能精确地重新问那几个主体。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -350,21 +374,21 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `AgentHome`
 
-`hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**。
+`hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**：agent 维度只在值里（`agent_kind`），不在字段名里。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `agent_kind` | string | 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间 |
 | `path` | string | 该 agent 在这台机器上的 home 目录（绝对路径） |
 
-#### `SessionActivity`
+#### `Unavailable`
 
-一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
+`hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**。
 
-- `working` —— 一轮在跑
-- `needs_you` —— 在等人（批准 · 回答 · 弹窗）
-- `idle` —— 闲着，等下一句输入
-- `background_work` —— 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `command` | string | 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`） |
+| `code` | string | 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`） |
 
 #### `Topic`
 
@@ -383,14 +407,20 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 
-#### `Unavailable`
+#### `RereadWhy`
 
-`hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**。
+`Frame::SessionFileReread` 的「为什么从头重读」。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `command` | string | 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`） |
-| `code` | string | 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`） |
+- `truncated` —— 变短了（比读到过的最长还短）
+- `rewritten` —— 没变短，但游标之前那一截被原地改写过（末尾指纹对不上）
+
+#### `TransferEnd`
+
+一趟传输怎么收场的（`Frame::Transfer` 的 `end`）。
+
+- `state: "done"`，带 `bytes` number · `sha256` string? —— 传完了
+- `state: "failed"`，带 `why` string · `code` string? · `detail` string? —— 失败（那一句 ＋ 复制详情）
+- `state: "cancelled"` —— 撤了（`transfer-stop` / 本机流断了）
 
 #### `FollowEnd`
 
@@ -409,56 +439,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `run` | string |  |
 | `tool` | string |  |
 | `state` | RunState |  |
-
-#### `LiveBlock`
-
-活卡里的一块。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `kind` | BlockKind |  |
-| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
-| `tool` | string? | 工具块的工具名 |
-
-#### `LiveCard`
-
-`Frame::Live` 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sid` | string | 会话 id |
-| `run` | string? | 归哪个子运行；缺 ＝ 主运行（主 tab 只画主运行的） |
-| `card` | number | 卡号（本进程的段号，整台唯一） |
-| `n` | number | 这条连接上这张卡的第几帧：`open` 从 0 起，之后连续 |
-| `op` | LiveOp | 这一帧做什么 |
-
-#### `LiveOp`
-
-活卡的一帧做什么（`op` 是标签）。
-
-- `op: "open"`，带 `rid` string · `phase` LivePhase · `clipped` bool · `blocks` [LiveBlock] —— 整张卡（新开 · 这条连接刚开始看这个会话 · 发件箱满过 · 正文截过一次头）：照它整张换
-- `op: "block"`，带 `i` number · `block` BlockKind · `tool` string? —— 第 `i` 块开始了（种类叫 `block`：`kind` 已是帧的标签）
-- `op: "text"`，带 `i` number · `s` string —— 第 `i` 块（文字块）接着一段字
-- `op: "awaiting"` —— 上游说完了，等写入记录
-- `op: "close"`，带 `why` LiveWhy —— 撤卡（为什么见 `LiveWhy`；客户端对哪种都一样：撤）
-
-#### `LivePhase`
-
-活卡此刻在哪一相。
-
-- `streaming` —— 上游还在说
-- `awaiting` —— 上游说完了，那一轮的记录还没到
-
-#### `LiveWhy`
-
-为什么撤卡。
-
-- `record` —— 那一轮的记录到了（整轮覆盖）
-- `broken` —— 上游断在半路（Esc 打断 · 上游断 · 抄流那一跳缺了号）
-- `error` —— 上游报错收尾
-- `evicted` —— 满了被挤掉（同一运行 2 张 · 整台 16 张）
-- `gone` —— 会话走了 / 子运行收场了
-- `unwatched` —— 出了这条连接的名单
 
 #### `RunInfo`
 
@@ -502,20 +482,51 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `quiet` —— 没有收场信号、它的记录久未再写（状态不明）
 - `orphaned` —— 派出它的会话退了，再也等不到收场信号（状态不明）
 
-#### `RereadWhy`
+#### `RunDid`
 
-`Frame::SessionFileReread` 的「为什么从头重读」。
+一个运行最近做的那件事（通用的值域；某一家的哪种记录算哪一件由那一家判）。
 
-- `truncated` —— 变短了（比读到过的最长还短）
-- `rewritten` —— 没变短，但游标之前那一截被原地改写过（末尾指纹对不上）
+- `t: "say"` —— 在写回复
+- `t: "think"` —— 在想
+- `t: "tool"`，带 `name` string —— 调用了一个工具
 
-#### `TransferEnd`
+#### `LiveBlock`
 
-一趟传输怎么收场的（`Frame::Transfer` 的 `end`）。
+活卡里的一块。
 
-- `state: "done"`，带 `bytes` number · `sha256` string? —— 传完了
-- `state: "failed"`，带 `why` string · `code` string? · `detail` string? —— 失败（那一句 ＋ 复制详情）
-- `state: "cancelled"` —— 撤了（`transfer-stop` / 本机流断了）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `kind` | BlockKind |  |
+| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
+| `tool` | string? | 工具块的工具名 |
+
+#### `LiveOp`
+
+活卡的一帧做什么（`op` 是标签）。
+
+- `op: "open"`，带 `rid` string · `phase` LivePhase · `clipped` bool · `blocks` [LiveBlock] —— 整张卡（新开 · 这条连接刚开始看这个会话 · 发件箱满过 · 正文截过一次头）：照它整张换
+- `op: "block"`，带 `i` number · `block` BlockKind · `tool` string? —— 第 `i` 块开始了（种类叫 `block`：`kind` 已是帧的标签）
+- `op: "text"`，带 `i` number · `s` string —— 第 `i` 块（文字块）接着一段字
+- `op: "awaiting"` —— 上游说完了，等写入记录
+- `op: "close"`，带 `why` LiveWhy —— 撤卡（为什么见 `LiveWhy`；客户端对哪种都一样：撤）
+
+#### `LivePhase`
+
+活卡此刻在哪一相。
+
+- `streaming` —— 上游还在说
+- `awaiting` —— 上游说完了，那一轮的记录还没到
+
+#### `LiveWhy`
+
+为什么撤卡。
+
+- `record` —— 那一轮的记录到了（整轮覆盖）
+- `broken` —— 上游断在半路（Esc 打断 · 上游断 · 抄流那一跳缺了号）
+- `error` —— 上游报错收尾
+- `evicted` —— 满了被挤掉（同一运行 2 张 · 整台 16 张）
+- `gone` —— 会话走了 / 子运行收场了
+- `unwatched` —— 出了这条连接的名单
 
 #### `WatchFrom`
 

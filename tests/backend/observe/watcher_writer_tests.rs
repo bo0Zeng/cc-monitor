@@ -118,15 +118,17 @@ fn brief(frames: &[Frame]) -> Vec<String> {
     frames
         .iter()
         .filter_map(|f| match f {
-            Frame::SessionAdded {
+            Frame::SessionAdded(crate::wire::SessionAdded {
                 sid, agent_kind, ..
-            } => {
+            }) => {
                 assert_eq!(sid, SID);
                 Some(format!("added:{agent_kind}"))
             }
-            Frame::Line { seq, .. } => Some(format!("line:{seq}")),
-            Frame::TurnEnd { uuid, .. } => Some(format!("turn_end:{uuid}")),
-            Frame::SessionRemoved { cause, .. } => Some(format!("removed:{cause:?}")),
+            Frame::Line(crate::wire::Line { seq, .. }) => Some(format!("line:{seq}")),
+            Frame::TurnEnd(crate::wire::TurnEnd { uuid, .. }) => Some(format!("turn_end:{uuid}")),
+            Frame::SessionRemoved(crate::wire::SessionRemoved { cause, .. }) => {
+                Some(format!("removed:{cause:?}"))
+            }
             _ => None,
         })
         .collect()
@@ -155,17 +157,17 @@ fn a_record_being_written_is_announced_with_its_line_count_and_then_streams() {
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let frames = drain(&mut r.rx);
     assert_eq!(brief(&frames), vec!["added:codex"]);
-    let Some(Frame::SessionAdded {
+    let Some(Frame::SessionAdded(crate::wire::SessionAdded {
         path,
         project_dir,
         cwd,
         ..
-    }) = frames.first()
+    })) = frames.first()
     else {
         unreachable!()
     };
     let lines = frames.iter().find_map(|f| match f {
-        Frame::SessionPrimed { lines, .. } => Some(*lines),
+        Frame::SessionPrimed(crate::wire::SessionPrimed { lines, .. }) => Some(*lines),
         _ => None,
     });
     assert_eq!(lines, Some(Some(3)), "读完那一帧带已有的完整行数");
@@ -383,7 +385,7 @@ fn the_codex_sample_walks_into_the_golden_frames() {
 fn activities(frames: &[Frame]) -> Vec<Option<String>> {
     frames
         .iter()
-        .filter(|f| matches!(f, Frame::SessionAdded { .. } | Frame::SessionStatus { .. }))
+        .filter(|f| matches!(f, Frame::SessionAdded(_) | Frame::SessionStatus(_)))
         .map(|f| {
             let v: serde_json::Value =
                 serde_json::from_str(crate::wire::to_line(f).unwrap().trim()).unwrap();
@@ -408,7 +410,7 @@ fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_worki
         "宣告不等记录（这一家没有进程状态文件 ⇒ 宣告时判不出）；读完记录停在 task_complete ⇒ 接着一帧说闲着"
     );
     // 判不出就照实说：宣告那一帧写的是「读记录中」，不先说一句读完才知道真假的（如「运行中」）。
-    let Some(Frame::SessionAdded { face, .. }) = first.first() else {
+    let Some(Frame::SessionAdded(crate::wire::SessionAdded { face, .. })) = first.first() else {
         unreachable!()
     };
     assert_eq!(

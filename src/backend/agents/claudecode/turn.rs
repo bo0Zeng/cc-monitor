@@ -4,7 +4,7 @@
 //! 字段坑：`isApiErrorMessage` → isApiError、`stop_reason` 嵌在 message 下。
 //! 「属于主运行」不在本判词里：子运行的记录归属由本家 `runs::run_of` 答、由通用 watcher 在发 `TurnEnd` 之前排除（子运行的轮次收尾 ≠ 主运行一轮结束）。
 //!
-//! `process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`（逐记录、backend 不去重）；去重在手机端
+//! `process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd(crate::wire::TurnEnd {sid,uuid})`（逐记录、backend 不去重）；去重在手机端
 //! （`TurnEndDebouncer.kt` 的 rolling-latest + debounce(1200ms) ＋ `SshKeepAliveService.kt` 的 `baselineByPath`：首见吞历史不通知、offset 续拉重放 uuid≤基线不通知）。
 //! backend 仍逐行转发每一条 Line（不因分类丢行）；turn-end 是在 raw 之外额外算的边沿信号，不替代、不过滤 Line。
 //!

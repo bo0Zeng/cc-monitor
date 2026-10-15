@@ -19,7 +19,7 @@ pub enum BlockKind {
     Other,
 }
 
-/// [`Frame::Live`] 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
+/// `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
