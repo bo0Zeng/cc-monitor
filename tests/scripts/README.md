@@ -13,7 +13,7 @@
 | [`session-vars`](session-vars) | 会话继承来的环境变量表，全仓只这一张：Claude Code 与 Codex 的 · tmux 的 · cc-monitor 自己的（连 cc-bus）· 上游与代理的；族里照留的判据输入（`CCM_E2E_*` · `CCM_REGEN_*` · `CCM_BLESS*` …）以 `!` 标出。`session-scrub.sh` 与 `src/common/test-home`（测试二进制起来时）读它 |
 | [`session-scrub.sh`](session-scrub.sh) | 摘掉表里的变量再起命令：`heavy.sh` 每个出口、`quick-check.sh` 每一步都经它，于是经它们跑的一切测试与门禁都看不见外面会话的配置目录 · tmux · 真端口 · 上游；`--list` 只印这一刻会摘哪几个 |
 | [`base.sh`](base.sh) | 「这棵树自己改了哪些」的起点：HEAD 与分支上游（没设上游就 origin/main，再没有就 main）的 merge-base。quick-check 挑手机那一套、gate-affected 挑格都用它 |
-| [`generated-drift.sh`](generated-drift.sh) | 生成物有没有落在提交外：每个 `generated/` 目录下与 HEAD 不同或没跟踪的文件逐份印出、退 1。quick-check 末尾与门禁 `generated` 格调它（cargo test 现写生成物，只在工作树里对、没提交的，合并树上才红） |
+| [`generated-drift.sh`](generated-drift.sh) | 生成物有没有落在提交外：每个 `generated/` 目录下与 HEAD 不同或没跟踪的文件逐份印出、退 1。quick-check 末尾与门禁 `generated` 格调它（cargo test 现写生成物，只在工作树里对、没提交的，合并以后才红） |
 | [`gate-clean.sh`](gate-clean.sh) | 全量门禁的入口（打发版标签前那一趟）：经 `heavy.sh`（摘会话变量）排门禁锁跑 `gate.sh`；拿到锁时负载高于核数 × 0.6 就串跑 |
 | [`gate-affected.sh`](gate-affected.sh) | 按改动挑格跑门禁：`git diff <基>...HEAD`（基默认取 `base.sh`，`--base` 可指）改到的路径照 [`gate-affected/map`](gate-affected/map)（路径 → 格组，每行带理由）挑格，挑格那一半是 [`gate-affected/plan.py`](gate-affected/plan.py)（`--dry-run` 只印计划；表与 `gate.sh` 对不上就停）。`--trust-ci` 是合并用的工作树推候选分支之前那一趟：先 `quick-check.sh`，CI 会跑的格交给 CI，只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件。裁决恒是 PARTIAL，末行 `AFFECTED: OK` / `AFFECTED: 红` |
 | [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：起命令前经 `session-scrub.sh` 摘掉会话变量；每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的排队；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
@@ -47,14 +47,14 @@
 判快慢的改计步数 / 计调用次数 / 注入钟（假定时器、虚拟时间），真要看速度的进速度台、不进门禁；要分「自己回来」与「挂住被掐」看退出码，不看用了几秒。
 判据 `tests/common/guard-core/wall_ceiling_tests.rs` 扫门禁跑的测试源，别处写数字期限就红，例外逐条登记理由。
 
-**会话变量**：几路施工的 shell 继承着主会话的 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_*` 等，单跑测试只换 HOME 时会读到真号的状态。
+**会话变量**：在 Claude Code 会话或 tmux 里起的 shell 继承着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_*` 等，单跑测试只换 HOME 时会读到真号的状态。
 表只在 `session-vars` 一处：经 `heavy.sh` / `quick-check.sh` 起的命令先摘掉它们（`session-scrub.sh`），测试二进制起来时 `src/common/test-home` 再按同一张表摘一次（`HOME` 是真家时）。
 `TMUX_TMPDIR` 不在表里：摘掉只是回到默认那台，私有的那个由调用方给（quick-check 的沙箱；门禁换掉 `/tmp/tmux-<uid>`，并自己 unset 它）。
 抓依赖用的代理走各工具自己的配置（`CARGO_HOME` 下的 cargo 配置 · `npm_config_proxy` · `gradle.properties`），通用的 `HTTP(S)_PROXY` 一族照摘。
 
 **起点**（`base.sh`）：「这棵树自己改了哪些」= HEAD 与分支上游的 merge-base。施工分支从合并用的分支开时带上游
-（`git worktree add --track -b w8/<路> <目录> w8/mg<N>`，或事后 `git branch --set-upstream-to=w8/mg<N>`）⇒ 只算本路自己的提交，不必先合 main；
-没设上游 ⇒ 对 origin/main（合并分支上别的路的改动也算进来，只会多跑、不会漏跑）。合并分支自己不设上游，对的就是 origin/main。
+（`git worktree add --track -b <分支> <目录> <合并用的分支>`，或事后 `git branch --set-upstream-to=<合并用的分支>`）⇒ 只算这条分支自己的提交，不必先合 main；
+没设上游 ⇒ 对 origin/main（合并用的分支上别的分支的改动也算进来，只会多跑、不会漏跑）。合并用的分支自己不设上游，对的就是 origin/main。
 
 **快检里的静态格**：门禁里只读盘上文本、合计十来秒的那几格进快检（`static_cells`，经 `gate.sh` 的 `GATE_ONLY` 跑同一份命令）。
 量过的数（24 核、负载二十多时）：`hooks` 0.3 秒 · `copy2` 1–5 秒 · `e2e-smoke` 0.2 秒 · `release-gate` 1 秒 · `platform` 0.2 秒 · `installface` 0.8 秒 ·

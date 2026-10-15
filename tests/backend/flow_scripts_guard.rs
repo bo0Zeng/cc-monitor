@@ -219,7 +219,11 @@ mod tests {
             None => r.to_string(),
         };
         let (mut outer, mut kept): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
-        for r in table.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        for r in table
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
             match r.strip_prefix('!') {
                 Some(k) => kept.push(name(k)),
                 None => outer.push(name(r)),
@@ -237,7 +241,9 @@ mod tests {
     #[test]
     fn heavy_hides_the_outer_session_from_the_command() {
         let (outer, kept) = outer_session();
-        const BASE: &[&str] = &["bash", "sh", "seq", "sleep", "mkdir", "echo", "cat", "true", "false"];
+        const BASE: &[&str] = &[
+            "bash", "sh", "seq", "sleep", "mkdir", "echo", "cat", "true", "false",
+        ];
         for (tag, tools, held) in [
             ("held", [BASE, &["flock"]].concat(), Some("1")),
             ("noflock", BASE.to_vec(), None),
@@ -260,11 +266,22 @@ mod tests {
             }
             let out = c.output().unwrap();
             let said = String::from_utf8_lossy(&out.stdout);
-            assert!(out.status.success(), "{tag}：{said}{}", String::from_utf8_lossy(&out.stderr));
+            assert!(
+                out.status.success(),
+                "{tag}：{said}{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
             let seen: BTreeSet<&str> = said.lines().collect();
             let left: Vec<&String> = outer.iter().filter(|k| seen.contains(k.as_str())).collect();
-            assert!(left.is_empty(), "{tag}：heavy 起的命令看见了外面会话的变量：{left:?}");
-            for k in kept.iter().map(String::as_str).chain(["PATH", "GATE_STATE_DIR"]) {
+            assert!(
+                left.is_empty(),
+                "{tag}：heavy 起的命令看见了外面会话的变量：{left:?}"
+            );
+            for k in kept
+                .iter()
+                .map(String::as_str)
+                .chain(["PATH", "GATE_STATE_DIR"])
+            {
                 assert!(seen.contains(k), "{tag}：{k} 不是会话状态，不该摘：{said}");
             }
             let _ = std::fs::remove_dir_all(&d);
@@ -505,7 +522,10 @@ mod tests {
         if let Ok(seen) = std::fs::read_to_string(d.join("gradlew-env")) {
             let seen: BTreeSet<&str> = seen.lines().collect();
             let left: Vec<&String> = outer.iter().filter(|k| seen.contains(k.as_str())).collect();
-            assert!(left.is_empty(), "quick-check 起的 gradle 看见了外面会话的变量：{left:?}");
+            assert!(
+                left.is_empty(),
+                "quick-check 起的 gradle 看见了外面会话的变量：{left:?}"
+            );
             let lost: Vec<&String> = kept.iter().filter(|k| !seen.contains(k.as_str())).collect();
             assert!(lost.is_empty(), "判据输入没传到 gradle：{lost:?}");
         }
@@ -936,12 +956,16 @@ mod tests {
         }
     }
 
-    /// 一棵三层的假仓：main 上一个提交 → 合并用的分支 `mg` 再改一份手机读的文件 → 本路分支 `lane` 从 `mg` 开、只改界面。
+    /// 一棵三层的假仓：main 上一个提交 → 合并用的分支 `merge` 再改一份手机读的文件 → 干活的分支 `work` 从 `merge` 开、只改界面。
     /// 返回 (仓, main 那一个, mg 那一个)。
     fn three_tier_repo(tag: &str) -> (PathBuf, String, String) {
         let d = scratch(tag);
         let head = |d: &Path| {
-            let o = Command::new("git").args(["rev-parse", "HEAD"]).current_dir(d).output().unwrap();
+            let o = Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(d)
+                .output()
+                .unwrap();
             String::from_utf8_lossy(&o.stdout).trim().to_string()
         };
         git(&d, &["init", "-q", "-b", "main"]);
@@ -949,12 +973,12 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         let a = head(&d);
-        git(&d, &["checkout", "-q", "-b", "mg"]);
+        git(&d, &["checkout", "-q", "-b", "merge"]);
         write(&d, "src/mobile/app/X.kt", "other lane\n");
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "other lane"]);
         let b = head(&d);
-        git(&d, &["checkout", "-q", "-b", "lane"]);
+        git(&d, &["checkout", "-q", "-b", "work"]);
         write(&d, "src/frontend/ui/x.ts", "mine\n");
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "mine"]);
@@ -963,7 +987,7 @@ mod tests {
 
     /// ★ 「这棵树自己改了哪些」的起点（`base.sh`，quick-check 挑手机那一套与 gate-affected 挑格都用它）：
     /// 分支设了上游 ⇒ 与上游的 merge-base；没设 ⇒ origin/main；再没有 ⇒ main。上游比 origin/main 先认。
-    /// 连着 quick-check 的计划核：别的路在合并分支上改了手机读的文件，本路设了上游就不该因此跑手机那一套。
+    /// 连着 quick-check 的计划核：别的路在合并分支上改了手机读的文件，这条分支设了上游就不该因此跑手机那一套。
     #[test]
     fn the_base_is_the_branch_upstream_then_origin_main_then_main() {
         let (d, a, b) = three_tier_repo("base");
@@ -973,19 +997,29 @@ mod tests {
             String::from_utf8_lossy(&o.stdout).trim().to_string()
         };
         let plan = |d: &Path| {
-            let o = bash(&root().join("tests/scripts/quick-check.sh"), &["--mobile-plan"], d);
+            let o = bash(
+                &root().join("tests/scripts/quick-check.sh"),
+                &["--mobile-plan"],
+                d,
+            );
             String::from_utf8_lossy(&o.stdout).into_owned()
         };
         assert_eq!(base(&d), format!("{a} main"));
         let p = plan(&d);
-        assert!(p.contains("MOBILE: 跑 —— 改到 src/mobile/app/X.kt"), "对着 main 算，别的路那一份也算进来：{p}");
+        assert!(
+            p.contains("MOBILE: 跑 —— 改到 src/mobile/app/X.kt"),
+            "对着 main 算，别的路那一份也算进来：{p}"
+        );
         git(&d, &["update-ref", "refs/remotes/origin/main", &b]);
         assert_eq!(base(&d), format!("{b} origin/main"));
         git(&d, &["update-ref", "refs/remotes/origin/main", &a]);
-        git(&d, &["branch", "-q", "--set-upstream-to=mg"]);
-        assert_eq!(base(&d), format!("{b} mg"), "设了上游却没先认上游");
+        git(&d, &["branch", "-q", "--set-upstream-to=merge"]);
+        assert_eq!(base(&d), format!("{b} merge"), "设了上游却没先认上游");
         let p = plan(&d);
-        assert!(p.contains("MOBILE: 跳过 —— 相对 mg 没改到"), "别的路改的手机文件算到了本路头上：{p}");
+        assert!(
+            p.contains("MOBILE: 跳过 —— 相对 merge 没改到"),
+            "别的路改的手机文件算到了这条分支头上：{p}"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -1006,7 +1040,12 @@ mod tests {
         git(&d, &["add", "-A"]);
         git(&d, &["commit", "-q", "-m", "base"]);
         let o = drift(&d);
-        assert_eq!(o.status.code(), Some(0), "{}", String::from_utf8_lossy(&o.stdout));
+        assert_eq!(
+            o.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&o.stdout)
+        );
         assert!(o.stdout.is_empty());
         let mut want = BTreeSet::new();
         for dir in crate::ts_export_guard::REGISTERED {

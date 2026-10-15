@@ -4,7 +4,7 @@
 #   跑：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的便宜格（static_cells，经 gate.sh 的 GATE_ONLY，收据另存不盖门禁那份）·
 #       后端那棵整套 `cargo test --workspace --lib`（后端 ＋ 拨号核心） · 壳那棵 workspace 整套 `cargo test --workspace --lib`
 #       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）· 整套 vitest · 末尾生成物有没有落在提交外（generated-drift.sh：cargo test 现写的
-#       `generated/` 与 HEAD 不同或没跟踪 ⇒ 红，逐份印出；合并树只看得见提交）。
+#       `generated/` 与 HEAD 不同或没跟踪 ⇒ 红，逐份印出；合并只看得见提交）。
 #   不按名字挑判据（10-10 起）：从前只跑名字带 guard / registry / ledger … 的那些，漏了一百多份读金样 / 冻结表的判据，
 #     推上去 CI 才红。现在两棵树与 vitest 都是整套。
 #   旧用法里跟着的 cargo 过滤词照收、不再用（整套本来就全跑到）。
