@@ -474,8 +474,10 @@ pub(crate) struct PlanReturnReply {
     pub screen: Option<String>,
 }
 
-/// `plan-files` 里一份文件（文件窗口「格」一列与预览头那一块）。读它的是文件窗口（Rust），不生成界面的类型。
+/// `plan-files` 里一份文件（文件窗口「格」一列与预览头那一块）。读它的是文件窗口（Rust）；生成的类型给协议参考与形状指纹。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct PlanFileOwner {
     /// 文件名（目录里的那一项）。
@@ -498,6 +500,8 @@ pub(crate) struct PlanFileOwner {
 
 /// 也声明同一份文件的另一格。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlanFileDup {
     pub id: String,
@@ -506,6 +510,8 @@ pub(crate) struct PlanFileDup {
 
 /// `plan-files` 的回包：这个目录落在哪一片的仓库里（不在 ⇒ `slice: null`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlanFiles {
     pub workspace: Option<String>,
@@ -517,14 +523,6 @@ pub(crate) struct PlanFiles {
     pub unowned: Option<Vec<String>>,
 }
 
-/// 帧面出口：一份按 JSON 拼的回包过一遍 `T`（线上那一份就是 `T` 的序列化）。对不上 ⇒ 拼的那一侧有错（程序员错误），回 `failed`。
-pub(crate) fn checked<T: Serialize + serde::de::DeserializeOwned>(
-    v: Value,
-) -> Result<Value, String> {
-    let t: T = serde_json::from_value(v).map_err(|e| e.to_string())?;
-    serde_json::to_value(t).map_err(|e| e.to_string())
-}
-
 #[cfg(test)]
 #[path = "../../../tests/backend/plan/wire_tests.rs"]
-mod tests;
+pub(crate) mod tests;

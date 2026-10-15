@@ -1,5 +1,6 @@
 //! 会话外的需手动清单：账号清单成品（夹具，照 `accounts-list` 那一份写）· MCP 读面（夹具）⇒ 每一项带写好的那一句和怎么解。夹具全是合成的。
 use super::*;
+use crate::wire::typed::Codes;
 use serde_json::json;
 
 fn row(name: &str, kind: &str, exists: bool, ready: bool) -> Value {
@@ -106,7 +107,16 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
     let accts = root.join("accts");
     std::fs::create_dir_all(&accts).unwrap();
     std::fs::write(accts.join("accounts.json"), "{not json").unwrap();
-    let product = list_product_with(&accts, None, &[], &[], "claude", "claude", false);
+    let product = serde_json::to_value(list_product_with(
+        &accts,
+        None,
+        &[],
+        &[],
+        "claude",
+        "claude",
+        false,
+    ))
+    .unwrap();
     let why = library_unreadable(&accts);
     assert_eq!(
         why.clone().map(Value::String),
@@ -128,7 +138,16 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
         None,
         "没有清单 ＝ 没启用多账号，不是读不懂"
     );
-    let absent = list_product_with(&nope, None, &[], &[], "claude", "claude", false);
+    let absent = serde_json::to_value(list_product_with(
+        &nope,
+        None,
+        &[],
+        &[],
+        "claude",
+        "claude",
+        false,
+    ))
+    .unwrap();
     assert_eq!(
         serde_json::to_value(manual_of("claude", &absent, None, None).expect("没有清单照列"))
             .unwrap(),
@@ -186,7 +205,7 @@ fn whether_the_browser_is_here_rides_beside_the_target() {
     let with = |v: Value| {
         let mut a = base.clone();
         a["browserHere"] = v;
-        LoginStartArgs::take(&a)
+        crate::wire::typed::take::<LoginStartArgs>(&a)
     };
     assert_eq!(
         with(json!(true)).expect("收"),
@@ -203,7 +222,7 @@ fn whether_the_browser_is_here_rides_beside_the_target() {
         }
     );
     assert_eq!(
-        LoginStartArgs::take(&base).expect("收"),
+        crate::wire::typed::take::<LoginStartArgs>(&base).expect("收"),
         LoginStartArgs {
             target,
             browser_here: false
@@ -216,7 +235,9 @@ fn whether_the_browser_is_here_rides_beside_the_target() {
     let mut extra = base.clone();
     extra["server"] = json!("x");
     assert_eq!(
-        LoginStartArgs::take(&extra).expect_err("拒").code,
+        crate::wire::typed::take::<LoginStartArgs>(&extra)
+            .expect_err("拒")
+            .code,
         "bad_args"
     );
 }
@@ -284,7 +305,7 @@ fn each_failure_says_what_can_be_done_next() {
     let seen = |rows: &[(String, Option<Value>)]| -> Vec<String> {
         rows.iter().map(|(c, _)| c.clone()).collect()
     };
-    assert_eq!(&LOGIN_START_CODES[1..], seen(&start).as_slice());
+    assert_eq!(&<LoginStartErr as Codes>::ALL[1..], seen(&start).as_slice());
     assert_eq!(
         &<LoginFinishErr as Codes>::ALL[1..],
         seen(&finish).as_slice()
@@ -306,15 +327,4 @@ fn each_failure_says_what_can_be_done_next() {
 fn a_mcp_name_that_could_pass_for_a_flag_is_never_listed() {
     assert!(!mcp_listed("claude", None, "--help"));
     assert!(!mcp_listed("claude", None, ""));
-}
-
-impl crate::guard_support::Shaped for LoginStarted {
-    fn samples() -> Vec<Self> {
-        vec![LoginStarted {
-            job: "login-1-0".into(),
-            url: "https://claude.com/cai/oauth/authorize?state=s".into(),
-            paste: PasteKind::Code,
-            auto: true,
-        }]
-    }
 }

@@ -3,11 +3,8 @@
 use crate::common::said::IntoNote as _;
 use crate::wire::Request;
 
-/// 处理器：拿走 [`Request`]，返回一个可以在**独立 task** 上跑的 future。
-pub(crate) type Handler = Box<dyn FnOnce(Request) -> BoxFut + Send>;
-/// 同步阻塞处理器（见 [`Disposition::SpawnBlocking`]）。
+/// 同步阻塞处理器（分派交进阻塞池：开跑之后打不断）。
 pub(crate) type BlockingHandler = Box<dyn FnOnce(Request) -> Outcome + Send>;
-pub(crate) type CmdResult = Result<Option<serde_json::Value>, (String, String)>;
 /// 一条命令的结局（应答那一帧由它出）：成功的返回值 · 失败（码 ＋ 原话 ＋ 按码定形的 `data`）。
 pub(crate) type Outcome = Result<Option<serde_json::Value>, Fail>;
 
@@ -119,39 +116,13 @@ impl Fail {
         crate::wire::Frame::failed(id, self.settle(cmd, args))
     }
 }
-pub(crate) type BoxFut =
-    std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
-/// 同 [`BoxFut`]，结局可带按码定形的 `data`。
+/// 异步处理器的 future（结局可带按码定形的 `data`）。
 pub(crate) type DataFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = Outcome> + Send + 'static>>;
-/// 异步处理器（失败可带 `data`）。
+/// 异步处理器（交给独立 task，`cancel` 能在 await 点打断）。
 pub(crate) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
 
-/// 一条命令**怎么跑**。三档，缺一不可：
-///
-/// - [`Run::Async`]：真异步，有 await 点 ⇒ `cancel` 能在那儿把它打断。
-/// - [`Run::Blocking`]：**同步阻塞**（起进程 / 扫全库）⇒ 进 `spawn_blocking` 的专用线程池。
-///   ⚠ 它**开跑之后打不断** —— 这一档不是「修好了取消」，是**停止假装能取消**：
-///   `cancel` 命中它时回 `not_cancellable`，而不是撒一条 `cancelled` 的谎。
-/// - [`Run::Builtin`]：`dispatch` 里的硬臂（`cancel` ＋链路四条）。它要 `replies`/`running`，
-///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
-///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
-///   否则「镜子 == 注册表」覆盖不到它。
-#[derive(Clone, Copy)]
-pub(crate) enum Run {
-    Async(fn(Request) -> BoxFut),
-    Blocking(fn(Request) -> CmdResult),
-    /// 同 [`Run::Blocking`]，只是失败可以带按码定形的 `data`（起会话那几条：选不了号时带上要的号与替代）。
-    BlockingData(fn(Request) -> Outcome),
-    /// 同 [`Run::BlockingData`]，只是要写后端自家状态（`~/.cc-monitor` 底下）：多收一个 [`crate::platform::Own`]。
-    /// `Request` 是从线上解出来的，装不进句柄 ⇒ 句柄由分派那一层递（它手里那一份是启动时造的）。只有写自家状态的那几族用这一档。
-    BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
-    /// 入参 · 回包 · 错误码都从 Rust 类型来的那一种（`typed.rs`）：阻塞还是异步由它自己那一份说。
-    Typed(super::typed::Typed),
-    Builtin,
-}
-
-/// 一条登记命令交出去跑的那一份。按档分派只此一处（[`prepare`]）：分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面都经它。
+/// 一条登记命令交出去跑的那一份。按档分派只此一处（[`invoke`]）：分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面都经它。
 pub(crate) enum Prepared {
     /// 真异步：交给独立 task，`cancel` 能在 await 点打断。
     Async(Box<dyn FnOnce(Request) -> DataFut + Send>),
@@ -159,124 +130,128 @@ pub(crate) enum Prepared {
     Blocking(Box<dyn FnOnce(Request) -> Outcome + Send>),
 }
 
-impl Run {
-    /// 这一档开跑之后打不打得断（阻塞档打不断：hello 的 `uncancellable` 由它派生）。
-    pub(crate) fn blocking(self) -> bool {
-        matches!(
-            self,
-            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_) | super::typed::TypedRun::Frame))
-    }
-
-    /// 帧面硬臂（`dispatch` 里那几条：要碰本连接的状态）：[`Run::Builtin`] 与 typed 的那一档（[`super::typed::TypedRun::Frame`]）。
-    /// 只在帧面（CLI 面不派生）、不进 [`prepare`]。
-    pub(crate) fn on_frame_arm(self) -> bool {
-        matches!(self, Run::Builtin) || matches!(self, Run::Typed(t) if t.on_frame_arm())
-    }
-
-    /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
-    pub(crate) fn writes(self) -> bool {
-        matches!(self, Run::BlockingOwn(_))
-            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_)) || t.hands_the_face())
-    }
+/// 分派那一层手里的能力：写自家状态的句柄（文件门 · 小成品重问那几处没有 ⇒ `None`）· 文件管理面 · 枢纽问这台自己那一跳。
+/// 后两样是这台的单例，由入方向那一层（`stream::inbound::hands`）装上；本模块不点它们的名。
+pub(crate) struct Hands<'a> {
+    pub(crate) own: Option<&'a crate::platform::Own>,
+    pub(crate) files: super::typed::Files,
+    pub(crate) hub: super::typed::Hub,
 }
 
-/// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
-/// 帧面硬臂那几条（[`Run::on_frame_arm`]）在分派的硬臂里，这里也是 `None`。
-/// 文件管理面的写句柄只在这一处造、只活这一问：[`prepare`] 的 `Facing` 那一档（帧面 · CLI 面），
-/// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
-pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
-    f(&crate::platform::fs::Face::issue())
+/// 一条命令要的能力（[`super::typed::Handle::Needs`]）：处理器拿到的那一份（`Given`）· 要不要写句柄 · 怎么从 [`Hands`] 里取。
+/// 取不到（要写句柄、手里没有）⇒ `None`：那条命令在这个入口交不出来。
+pub(crate) trait Needs: 'static {
+    type Given: Send + 'static;
+    /// 要写自家状态的句柄。
+    const WRITES: bool;
+    /// 要文件管理写句柄（改用户的文件）。
+    const FACE: bool;
+    fn give(h: &Hands) -> Option<Self::Given>;
 }
 
-pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Prepared> {
-    Some(match run {
-        Run::Async(f) => Prepared::Async(Box::new(move |r| {
-            Box::pin(async move { f(r).await.map_err(Fail::from) })
-        })),
-        Run::Blocking(f) => Prepared::Blocking(Box::new(move |r| f(r).map_err(Fail::from))),
-        Run::BlockingData(f) => Prepared::Blocking(Box::new(f)),
-        Run::BlockingOwn(f) => {
-            let own = own?.clone();
-            Prepared::Blocking(Box::new(move |r| f(r, &own)))
+/// 能力的那几样（[`Needs`]）。
+pub(crate) mod needs {
+    use super::{Hands, Needs};
+    use crate::wire::typed::{Files as Door, Hub as HubFn};
+
+    /// 什么都不要。
+    pub(crate) struct Nothing;
+    /// 这台的文件管理面（只读 · 起之前预标信任那几样写经它）。
+    pub(crate) struct Files;
+    /// 写自家状态的句柄（`~/.cc-monitor` 底下）。
+    pub(crate) struct Own;
+    /// 文件管理面 ＋ 写自家状态的句柄。
+    pub(crate) struct FilesOwn;
+    /// 文件管理写句柄（改用户的文件）：分派那一层造一份、只活这一问。
+    pub(crate) struct Face;
+    /// 写自家状态的句柄 ＋ 枢纽问这台自己那一跳。
+    pub(crate) struct OwnHub;
+
+    impl Needs for Nothing {
+        type Given = ();
+        const WRITES: bool = false;
+        const FACE: bool = false;
+        fn give(_: &Hands) -> Option<()> {
+            Some(())
         }
-        Run::Typed(t) => match t.run {
-            super::typed::TypedRun::Blocking(f) => Prepared::Blocking(Box::new(f)),
-            super::typed::TypedRun::BlockingFiles(f, files) => {
-                Prepared::Blocking(Box::new(move |r| f(r, files)))
-            }
-            super::typed::TypedRun::BlockingOwn(f, files) => {
-                let own = own?.clone();
-                Prepared::Blocking(Box::new(move |r| f(r, files, &own)))
-            }
-            super::typed::TypedRun::BlockingOwning(f) => {
-                let own = own?.clone();
-                Prepared::Blocking(Box::new(move |r| f(r, &own)))
-            }
-            // 文件管理写面：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
-            super::typed::TypedRun::BlockingFace(f) => {
-                Prepared::Blocking(Box::new(move |r| with_face(|face| f(r, face))))
-            }
-            super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
-            super::typed::TypedRun::AsyncFiles(f, files) => {
-                Prepared::Async(Box::new(move |r| f(r, files)))
-            }
-            super::typed::TypedRun::AsyncOwning(f, hub) => {
-                let own = own?.clone();
-                Prepared::Async(Box::new(move |r| f(r, own, hub)))
-            }
-            super::typed::TypedRun::AsyncOwn(f) => {
-                let own = own?.clone();
-                Prepared::Async(Box::new(move |r| f(r, own)))
-            }
-            super::typed::TypedRun::Frame => return None,
-        },
-        Run::Builtin => return None,
-    })
-}
-
-/// 载荷字段的向：请求里的（`args`）· 应答里的（`data`）· 两边都有。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Dir {
-    In,
-    Out,
-    Both,
-}
-
-/// 一条命令的一个载荷字段：线上名 ＋ 向 ＋ 一句话说明（协议文档 `IPC-COMMANDS.md` 由它生成）。
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Field {
-    pub(crate) name: &'static str,
-    // 这两格的读者只有协议文档生成器（`protocol_doc_gen.rs`，测试档），它写进 `src/doc/IPC-COMMANDS.md`。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) dir: Dir,
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) doc: &'static str,
-}
-
-/// 请求里的字段。
-pub(crate) const fn arg(name: &'static str, doc: &'static str) -> Field {
-    Field {
-        name,
-        dir: Dir::In,
-        doc,
+    }
+    impl Needs for Files {
+        type Given = Door;
+        const WRITES: bool = false;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<Door> {
+            Some(h.files)
+        }
+    }
+    impl Needs for Own {
+        type Given = crate::platform::Own;
+        const WRITES: bool = true;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<crate::platform::Own> {
+            h.own.cloned()
+        }
+    }
+    impl Needs for FilesOwn {
+        type Given = (Door, crate::platform::Own);
+        const WRITES: bool = true;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<Self::Given> {
+            Some((h.files, h.own?.clone()))
+        }
+    }
+    impl Needs for Face {
+        type Given = crate::platform::fs::Face;
+        const WRITES: bool = false;
+        const FACE: bool = true;
+        fn give(_: &Hands) -> Option<crate::platform::fs::Face> {
+            Some(super::issue_face())
+        }
+    }
+    impl Needs for OwnHub {
+        type Given = (crate::platform::Own, HubFn);
+        const WRITES: bool = true;
+        const FACE: bool = false;
+        fn give(h: &Hands) -> Option<Self::Given> {
+            Some((h.own?.clone(), h.hub))
+        }
     }
 }
-/// 应答里的字段。
-pub(crate) const fn out(name: &'static str, doc: &'static str) -> Field {
-    Field {
-        name,
-        dir: Dir::Out,
-        doc,
+
+/// 文件管理写句柄只在这一处造、只活这一问：[`needs::Face`] 那一份（帧面 · CLI 面），
+/// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
+fn issue_face() -> crate::platform::fs::Face {
+    crate::platform::fs::Face::issue()
+}
+
+/// 同 [`issue_face`]，句柄只活这一个闭包。
+pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
+    f(&issue_face())
+}
+
+/// 阻塞档的本体在调用方这条线程上跑完：本体是同步代码包成的 future，一次就完；
+/// 真等到了什么（不该有）就停在这条线程上等它醒（不借 tokio 的 `block_on`：枢纽那一跳会在异步任务里同步问本机一条阻塞命令）。
+pub(crate) fn finish<F: std::future::Future>(fut: F) -> F::Output {
+    struct Wake(std::thread::Thread);
+    impl std::task::Wake for Wake {
+        fn wake(self: std::sync::Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+    let waker = std::task::Waker::from(std::sync::Arc::new(Wake(std::thread::current())));
+    let mut cx = std::task::Context::from_waker(&waker);
+    let mut fut = std::pin::pin!(fut);
+    loop {
+        if let std::task::Poll::Ready(v) = fut.as_mut().poll(&mut cx) {
+            return v;
+        }
+        std::thread::park();
     }
 }
-/// 请求与应答里都有的字段。
-pub(crate) const fn both(name: &'static str, doc: &'static str) -> Field {
-    Field {
-        name,
-        dir: Dir::Both,
-        doc,
-    }
+
+/// 按声明把能力交进去、装成 [`Prepared`]：分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面都经这一处。
+/// 帧面硬臂那几条（[`super::typed::Typed::on_frame_arm`]）在分派的硬臂里，这里是 `None`；要写句柄、`hands` 里没有 ⇒ `None`。
+pub(crate) fn invoke(run: super::typed::Typed, hands: &Hands) -> Option<Prepared> {
+    (run.go)(hands)
 }
 
 /// typed 应答 → 应答 `data`（`serde_json::Value` 的对象按键排，与此前现拼的 `json!` 逐字节同形）。
@@ -303,20 +278,9 @@ pub(crate) struct CommandSpec {
     pub(crate) summary: &'static str,
     /// 本命令**自己**可能回的 code。**协议级 code 不许出现在这里**（由 R4 的零命中钉住）。
     pub codes: &'static [&'static str],
-    /// 本命令 `args` / `data` 的字段。空 = 无载荷（如 `ping`）。
-    pub(crate) fields: &'static [Field],
-    /// 这条命令**收不收入方向载荷**（CLI 面据此决定读不读 stdin）。
-    ///
-    /// 显式写、不从 `fields` 派生：`bus-list` 无输入却有输出字段，派生的话 CLI 面会挂住等 stdin。
+    /// 这条命令**收不收入方向载荷**（CLI 面据此决定读不读 stdin）：那条命令的 [`super::typed::Command::TAKES_INPUT`]。
     /// 真不真由行为判据验（`tests/e2e/backend-cc-bus.sh`：声明无输入的命令，在 stdin 不关时必须秒回）。
     pub(crate) takes_input: bool,
-    pub(crate) run: Run,
-}
-
-impl CommandSpec {
-    /// 全部字段名（`args` 与 `data` 合起来，登记次序）。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn field_names(&self) -> impl Iterator<Item = &'static str> {
-        self.fields.iter().map(|f| f.name)
-    }
+    /// 怎么跑 · 要什么能力 · 交出去跑的那一份（入参 · 回包 · 码表都从类型来，`typed.rs`）。
+    pub(crate) run: super::typed::Typed,
 }

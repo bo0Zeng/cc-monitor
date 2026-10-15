@@ -215,7 +215,7 @@ const APPLY_AGAIN: &str =
 /// 入参多一个键 ⇒ `bad_args`（入参照拒；回包不拒多的键，见 `hub_tests`）。经本进程那一行登记跑（同枢纽本机那一跳）。
 #[test]
 fn an_inner_request_with_an_extra_key_is_bad_args() {
-    use crate::wire::spec::{prepare, Prepared};
+    use crate::wire::spec::{invoke, Prepared};
     let cases = [
         ("skill-read", json!({ "name": "demo", "bogus": 1 })),
         (
@@ -237,7 +237,8 @@ fn an_inner_request_with_an_extra_key_is_bad_args() {
             .iter()
             .find(|s| s.name == cmd)
             .unwrap();
-        let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
+        let Some(Prepared::Blocking(run)) = invoke(spec.run, &crate::stream::inbound::hands(None))
+        else {
             panic!("{cmd} 不在阻塞档");
         };
         let req = crate::wire::Request {

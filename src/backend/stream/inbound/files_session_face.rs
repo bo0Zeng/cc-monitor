@@ -2,9 +2,8 @@
 //!
 //! 单住一份：引用图按文件算，这一份够得到适配层，写面其余几条那一份不该被它带上（族文件也不再放这份窄口：它点着别族的名字，会把整族判成够得到 tmux）。
 
-use crate::platform::fs::Face;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, codes, Command, Cx, Facing};
+use crate::wire::typed::{self, codes, Command};
 use cmd_wire::files as wire;
 
 /// 删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
@@ -36,17 +35,24 @@ impl Command for FilesDeleteSession {
     type Err = FilesDeleteSessionErr;
 }
 
-impl Facing for FilesDeleteSession {
+impl crate::wire::typed::Handle for FilesDeleteSession {
+    type Needs = crate::wire::typed::needs::Face;
     fn run(
         req: wire::FilesDeleteSessionReq,
-        _cx: &Cx,
-        face: &Face,
-    ) -> Result<wire::FilesPathReply, FilesDeleteSessionErr> {
-        crate::control::files_write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
-            typed::of_fail(
-                Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
-                FilesDeleteSessionErr::BadArgs,
-            )
-        })
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesDeleteSessionErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let face = &needs;
+
+            crate::control::files_write::delete_session_of(face, req, &SESSION_PORT).map_err(|f| {
+                typed::of_fail(
+                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    FilesDeleteSessionErr::BadArgs,
+                )
+            })
+        }
     }
 }

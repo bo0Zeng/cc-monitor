@@ -130,7 +130,7 @@ fn key_ids(t: &Tmp) -> Vec<String> {
 /// 门：写 key 那一口由调用方给，删 / 放回 / 在哪都落在临时目录那份表上。
 fn call_door(
     t: &Tmp,
-    set: &dyn Fn(&Value) -> file_face::FileFaceAnswer,
+    set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
     cmd: &str,
     args: Value,
 ) -> Answer {
@@ -206,8 +206,8 @@ pub(crate) fn answer(
 /// 写 key 那一口先记下入参，再真写进临时目录那份表。
 fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
     let table = key_table(t);
-    let set = |v: &Value| -> file_face::FileFaceAnswer {
-        keys.lock().unwrap().push(v.clone());
+    let set = |v: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
+        keys.lock().unwrap().push(serde_json::to_value(v).unwrap());
         file_face::answer_set_at(
             &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
             v,
@@ -691,7 +691,7 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
 fn a_key_that_does_not_land_is_said_not_swallowed() {
     let t = machine("api-fail");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
-    let key_set = |_: &Value| -> file_face::FileFaceAnswer {
+    let key_set = |_: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
         Err(crate::wire::spec::Fail::from((
             "io_failed",
             "盘满了".to_string(),

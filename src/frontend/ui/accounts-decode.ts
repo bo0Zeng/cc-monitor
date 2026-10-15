@@ -16,6 +16,52 @@ import { ReplyUnreadable } from "./ipc/chan-caller";
 // 账号种类的取值集只有一份（`acct_core::AUTH_KINDS`），这里读它现生成的那份，不手抄。
 import { AUTH_KINDS } from "./generated/judgment-rules";
 import { exactKeys, isObj } from "./ipc/decode";
+import type { AccountsList } from "./generated/AccountsList";
+import type { ListMeta } from "./generated/ListMeta";
+import type { AccountRow } from "./generated/AccountRow";
+import type { Badge } from "./generated/Badge";
+import type { Trust } from "./generated/Trust";
+
+/** 键表恰好是生成类型 `T` 的全部键（少一个 tsc 就红；多一个 / 拼错同样红）：严格收那几格的键集合跟着后端的类型走，不手抄第二份。 */
+type AllKeysOf<T, K extends readonly (keyof T)[]> = [Exclude<keyof T, K[number]>] extends [never] ? K : never;
+const keysOf =
+  <T>() =>
+  <const K extends readonly (keyof T)[]>(k: AllKeysOf<T, K>): readonly string[] =>
+    k as readonly string[];
+
+const TOP_KEYS = keysOf<AccountsList>()(["meta", "accounts", "notice"]);
+const META_KEYS = keysOf<ListMeta>()([
+  "enabled",
+  "acctsDir",
+  "manifestPath",
+  "updatedAt",
+  "sharedStore",
+  "count",
+  "error",
+  "unsupported",
+  "nextDefault",
+  "effectiveDefault",
+  "home",
+]);
+const ACCOUNT_KEYS = keysOf<AccountRow>()([
+  "name",
+  "label",
+  "email",
+  "configDir",
+  "isDefault",
+  "mode",
+  "exists",
+  "loggedIn",
+  "authKind",
+  "authReady",
+  "selectable",
+  "keyMasked",
+  "baseUrl",
+  "badge",
+  "color",
+]);
+const BADGE_KEYS = keysOf<Badge>()(["text", "warn", "title"]);
+const TRUST_KEYS = keysOf<Trust>()(["trusted", "known"]);
 
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
@@ -33,11 +79,11 @@ export function decodeAccountsList(v: unknown): {
   const bad = (what: string): never => {
     throw new ReplyUnreadable(`accounts-list reply: ${what}`);
   };
-  if (!isObj(v) || !exactKeys(v, ["meta", "accounts", "notice"])) return bad(copyText("accountsDecode.where.top"));
+  if (!isObj(v) || !exactKeys(v, TOP_KEYS)) return bad(copyText("accountsDecode.where.top"));
   const m = v.meta;
   if (
     !isObj(m) ||
-    !exactKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault", "effectiveDefault", "home"]) ||
+    !exactKeys(m, META_KEYS) ||
     typeof m.enabled !== "boolean" ||
     typeof m.acctsDir !== "string" ||
     typeof m.manifestPath !== "string" ||
@@ -57,23 +103,7 @@ export function decodeAccountsList(v: unknown): {
   const accounts: Account[] = v.accounts.map((a, i) => {
     if (
       !isObj(a) ||
-      !exactKeys(a, [
-        "name",
-        "label",
-        "email",
-        "configDir",
-        "isDefault",
-        "mode",
-        "exists",
-        "loggedIn",
-        "authKind",
-        "authReady",
-        "selectable",
-        "keyMasked",
-        "baseUrl",
-        "badge",
-        "color",
-      ]) ||
+      !exactKeys(a, ACCOUNT_KEYS) ||
       typeof a.name !== "string" ||
       typeof a.label !== "string" ||
       typeof a.email !== "string" ||
@@ -88,7 +118,7 @@ export function decodeAccountsList(v: unknown): {
       !nullableStr(a.keyMasked) ||
       !nullableStr(a.baseUrl) ||
       !isObj(a.badge) ||
-      !exactKeys(a.badge, ["text", "warn", "title"]) ||
+      !exactKeys(a.badge, BADGE_KEYS) ||
       typeof a.badge.text !== "string" ||
       typeof a.badge.warn !== "boolean" ||
       typeof a.badge.title !== "string" ||
@@ -135,7 +165,7 @@ export function decodeAccountsList(v: unknown): {
 export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
   if (
     !isObj(v) ||
-    !exactKeys(v, ["trusted", "known"]) ||
+    !exactKeys(v, TRUST_KEYS) ||
     typeof v.trusted !== "boolean" ||
     typeof v.known !== "boolean"
   ) {

@@ -269,7 +269,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     code: s("no_tmux"),
                 }],
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
-                uncancellable: vec![s("ping")],
                 shapes: Default::default(),
             },
             Frame::Hello {
@@ -282,7 +281,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 commands: vec![],
                 unavailable: vec![],
                 host_env: Default::default(),
-                uncancellable: vec![],
                 shapes: Default::default(),
             },
         ],
@@ -1064,7 +1062,6 @@ fn hello_with(emits: Vec<String>) -> Frame {
         commands: vec![],
         unavailable: vec![],
         host_env: Default::default(),
-        uncancellable: vec![],
         shapes: Default::default(),
     }
 }
@@ -1261,7 +1258,6 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
         commands: vec![],
         unavailable: vec![],
         host_env: Default::default(),
-        uncancellable: vec![],
         shapes: Default::default(),
     })
     .expect("填了 homes 的 hello 必须序列化得出来");
@@ -1324,7 +1320,6 @@ fn dg3_codex_fields_serialize_when_present() {
         commands: vec![],
         unavailable: vec![],
         host_env: Default::default(),
-        uncancellable: vec![],
         shapes: Default::default(),
     })
     .unwrap();
@@ -1385,7 +1380,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         commands: vec![],
         unavailable: vec![],
         host_env: Default::default(),
-        uncancellable: vec![],
         shapes: Default::default(),
     })
     .unwrap();
@@ -1457,7 +1451,6 @@ fn hello_unavailable_is_additive_present_and_absent() {
         commands: vec![],
         unavailable: vec![],
         host_env: Default::default(),
-        uncancellable: vec![],
         shapes: Default::default(),
     })
     .unwrap();
@@ -1484,7 +1477,6 @@ fn hello_unavailable_is_additive_present_and_absent() {
             code: "no_tmux".into(),
         }],
         host_env: Default::default(),
-        uncancellable: vec![],
         shapes: Default::default(),
     })
     .unwrap();
@@ -1702,7 +1694,6 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             commands: vec![],
             unavailable: vec![],
             host_env,
-            uncancellable: vec![],
             shapes: Default::default(),
         })
         .unwrap()
@@ -1730,35 +1721,6 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             .count(),
         1,
         "生产 hello 那一格不是「从真环境按名单回显」那一行"
-    );
-}
-
-/// `uncancellable`：空表省略（字节与既有冻结串相同）；有值落在最末（`host_env` 之后）。
-#[test]
-fn net2_uncancellable_is_additive_and_last() {
-    let hello = |uncancellable: Vec<String>| {
-        to_line(&Frame::Hello {
-            v: 1,
-            build_id: "b".into(),
-            host_arch: "x86_64".into(),
-            claude_dir: "/c".into(),
-            homes: vec![],
-            emits: vec![],
-            commands: vec![],
-            unavailable: vec![],
-            host_env: Default::default(),
-            uncancellable,
-            shapes: Default::default(),
-        })
-        .unwrap()
-    };
-    assert_eq!(
-        hello(vec![]),
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n"
-    );
-    assert_eq!(
-        hello(vec!["kill".into()]),
-        "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\"uncancellable\":[\"kill\"]}\n"
     );
 }
 

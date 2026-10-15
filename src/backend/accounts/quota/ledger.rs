@@ -542,13 +542,13 @@ fn merge_trend_fresh(o: &mut Observed) {
 pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
     let (state, why, accounts) = match path.map(read_at) {
         None => (
-            "unreadable",
+            ReadState::Unreadable,
             Some(Said::from(copy_text("beQuotaLedger.read.noHome", &[]))),
             vec![],
         ),
-        Some(Read::Absent) => ("absent", None, vec![]),
-        Some(Read::Present(b)) => ("present", None, b.accounts),
-        Some(Read::Unreadable(e)) => ("unreadable", Some(e), vec![]),
+        Some(Read::Absent) => (ReadState::Absent, None, vec![]),
+        Some(Read::Present(b)) => (ReadState::Present, None, b.accounts),
+        Some(Read::Unreadable(e)) => (ReadState::Unreadable, Some(e), vec![]),
     };
     let (reason, detail) = crate::wire::detail::unreadable("quota-read", why.as_ref());
     LedgerRead {
@@ -568,12 +568,33 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
     }
 }
 
+/// 额度账那份文件读到的三态（`quota-read` 的 `state`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaReadState"
+    )
+)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ReadState {
+    /// 读得懂。
+    Present,
+    /// 还没看到过任何回包。
+    Absent,
+    /// 文件读不出来 / 家推不出来。
+    Unreadable,
+}
+
 /// 额度账那份文件此刻读到的样子（`quota-read` 的底：文件三态 ＋ 每个号一条）。
 #[derive(Debug, Serialize)]
 pub(crate) struct LedgerRead {
-    pub(crate) state: &'static str,
-    pub(crate) reason: serde_json::Value,
-    pub(crate) detail: serde_json::Value,
+    pub(crate) state: ReadState,
+    pub(crate) reason: Option<String>,
+    pub(crate) detail: Option<String>,
     pub(crate) path: Option<String>,
     pub(crate) now: u64,
     pub(crate) accounts: Vec<Observed>,

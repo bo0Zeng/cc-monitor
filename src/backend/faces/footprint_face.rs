@@ -6,7 +6,7 @@
 use crate::footprint::agent_home_check;
 use crate::footprint::chores::marks;
 use crate::footprint::last_seen;
-use crate::wire::typed::{self, codes, Blocking, Command, Cx, Owning};
+use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// `agent-home-check` 自己的码（只有入参不对那一种：判出来的四态都是回包）。
@@ -23,12 +23,17 @@ impl Command for AgentHomeCheckCmd {
     type Err = AgentHomeCheckErr;
 }
 
-impl Blocking for AgentHomeCheckCmd {
+impl crate::wire::typed::Handle for AgentHomeCheckCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: agent_home_check::AgentHomeCheckReq,
-        _cx: &Cx,
-    ) -> Result<agent_home_check::AgentHomeCheck, AgentHomeCheckErr> {
-        agent_home_check::answer_check(&req).map_err(typed::of_pair(AgentHomeCheckErr::BadArgs))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<agent_home_check::AgentHomeCheck, AgentHomeCheckErr>>
+           + Send
+           + 'static {
+        async move {
+            agent_home_check::answer_check(&req).map_err(typed::of_pair(AgentHomeCheckErr::BadArgs))
+        }
     }
 }
 
@@ -52,13 +57,19 @@ impl Command for ChoresMarkCmd {
     type Err = ChoresMarkErr;
 }
 
-impl Owning for ChoresMarkCmd {
+impl crate::wire::typed::Handle for ChoresMarkCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: marks::ChoresMarkReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<marks::Marks, ChoresMarkErr> {
-        marks::answer_mark(&req, own).map_err(|f| typed::of_fail(f, ChoresMarkErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<marks::Marks, ChoresMarkErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            marks::answer_mark(&req, own).map_err(|f| typed::of_fail(f, ChoresMarkErr::IoFailed))
+        }
     }
 }
 
@@ -80,12 +91,16 @@ impl Command for LastSeenReadCmd {
     type Err = LastSeenReadErr;
 }
 
-impl Blocking for LastSeenReadCmd {
+impl crate::wire::typed::Handle for LastSeenReadCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: last_seen::LastSeenReadReq,
-        _cx: &Cx,
-    ) -> Result<last_seen::LastSeen, LastSeenReadErr> {
-        last_seen::answer_read(&req).map_err(|f| typed::of_fail(f, LastSeenReadErr::IoFailed))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<last_seen::LastSeen, LastSeenReadErr>> + Send + 'static
+    {
+        async move {
+            last_seen::answer_read(&req).map_err(|f| typed::of_fail(f, LastSeenReadErr::IoFailed))
+        }
     }
 }
 
@@ -109,13 +124,20 @@ impl Command for LastSeenWriteCmd {
     type Err = LastSeenWriteErr;
 }
 
-impl Owning for LastSeenWriteCmd {
+impl crate::wire::typed::Handle for LastSeenWriteCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: last_seen::LastSeenWriteReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<last_seen::LastSeenWritten, LastSeenWriteErr> {
-        last_seen::answer_write(&req, own)
-            .map_err(|f| typed::of_fail(f, LastSeenWriteErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<last_seen::LastSeenWritten, LastSeenWriteErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            last_seen::answer_write(&req, own)
+                .map_err(|f| typed::of_fail(f, LastSeenWriteErr::IoFailed))
+        }
     }
 }

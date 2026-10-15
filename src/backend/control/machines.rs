@@ -617,11 +617,10 @@ fn reply(l: &Loaded, path: Option<&Path>) -> MachinesReply {
         _ => None,
     };
     let (reason, detail) = crate::wire::detail::unreadable("machines-read", why);
-    let text = |v: Value| v.as_str().map(str::to_string);
     MachinesReply {
         state: l.state(),
-        reason: text(reason),
-        detail: text(detail),
+        reason,
+        detail,
         path: path.map(|p| p.display().to_string()),
         hosts: l.hosts(),
     }
@@ -749,14 +748,18 @@ impl crate::wire::typed::Command for MachinesRead {
     type Err = MachinesReadErr;
 }
 
-impl crate::wire::typed::Blocking for MachinesRead {
+impl crate::wire::typed::Handle for MachinesRead {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<MachinesReply, MachinesReadErr> {
-        Ok(answer_read_in(
-            crate::platform::paths::home_dir().as_deref(),
-        ))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<MachinesReply, MachinesReadErr>> + Send + 'static
+    {
+        async move {
+            Ok(answer_read_in(
+                crate::platform::paths::home_dir().as_deref(),
+            ))
+        }
     }
 }
 
@@ -770,15 +773,19 @@ impl crate::wire::typed::Command for MachinesTry {
     type Err = MachinesTryErr;
 }
 
-impl crate::wire::typed::Blocking for MachinesTry {
+impl crate::wire::typed::Handle for MachinesTry {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: MachinesEdits,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<MachinesTried, MachinesTryErr> {
-        Ok(answer_try_in(
-            crate::platform::paths::home_dir().as_deref(),
-            &req,
-        ))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<MachinesTried, MachinesTryErr>> + Send + 'static
+    {
+        async move {
+            Ok(answer_try_in(
+                crate::platform::paths::home_dir().as_deref(),
+                &req,
+            ))
+        }
     }
 }
 
@@ -792,18 +799,24 @@ impl crate::wire::typed::Command for MachinesSetCmd {
     type Err = MachinesSetErr;
 }
 
-impl crate::wire::typed::Owning for MachinesSetCmd {
+impl crate::wire::typed::Handle for MachinesSetCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: MachinesEdits,
-        _cx: &crate::wire::typed::Cx,
-        own: &Own,
-    ) -> Result<MachinesSet, MachinesSetErr> {
-        answer_set_in(
-            crate::platform::paths::home_dir().as_deref(),
-            own,
-            &req,
-            &pinned_day(crate::common::time::now()),
-        )
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<MachinesSet, MachinesSetErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            answer_set_in(
+                crate::platform::paths::home_dir().as_deref(),
+                own,
+                &req,
+                &pinned_day(crate::common::time::now()),
+            )
+        }
     }
 }
 

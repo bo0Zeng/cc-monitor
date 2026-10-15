@@ -13,12 +13,11 @@
 
 use crate::plan::{book, locate, watch, wire, Live, Whose};
 use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-
-type Answer = Result<Value, Fail>;
 
 fn bad(what: &str) -> Fail {
     Fail::new("bad_args", crate::common::contract::malformed(what))
@@ -170,10 +169,11 @@ pub(crate) fn read_fresh(ws: &str, tz: &crate::Tz) -> Result<Value, Fail> {
         .map_err(miss)
 }
 
-/// 出口过一遍线上类型（[`crate::plan::wire::checked`]）；对不上是拼的那一侧的错 ⇒ `failed`。
-pub(crate) fn wired<T: serde::Serialize + serde::de::DeserializeOwned>(v: Value) -> Answer {
-    wire::checked::<T>(v)
-        .map_err(|e| Fail::new("failed", copy_text("bePlan.face.shape", &[])).with_raw(Some(&e)))
+/// 出口按线上类型收（拼的是 `Value`）；对不上是拼的那一侧的错 ⇒ `failed`。
+pub(crate) fn wired<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, Fail> {
+    serde_json::from_value(v).map_err(|e| {
+        Fail::new("failed", copy_text("bePlan.face.shape", &[])).with_raw(Some(&e.to_string()))
+    })
 }
 
 fn miss(m: book::Miss) -> Fail {
@@ -187,64 +187,21 @@ fn miss(m: book::Miss) -> Fail {
     }
 }
 
-/// 帧面入口：命令名从 `r.cmd` 来。
-/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的时刻字按它写。
-pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    match cmd {
-        "plan-list" => list(args, tz),
-        "plan-read" => {
-            let ws = args
-                .get("workspace")
-                .and_then(Value::as_str)
-                .ok_or_else(|| bad("missing `workspace` (a string)"))?;
-            read_fresh(ws, tz).and_then(wired::<wire::PlanRead>)
-        }
-        "plan-cell-view" => {
-            let get = |k: &str| {
-                args.get(k)
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| bad(&format!("missing `{k}` (a string)")))
-            };
-            let (ws, slice, id) = (get("workspace")?, get("slice")?, get("id")?);
-            book::book()
-                .view(ws, slice, id)
-                .map(|v| json!({ "view": v }))
-                .ok_or_else(|| Fail::new("no_view", copy_text("bePlan.face.noView", &[])))
-        }
-        "plan-command" => command(args),
-        "plan-files" => files(args, tz),
-        other => Err(Fail::new(
-            "bad_args",
-            crate::common::contract::malformed(&format!("unknown command `{other}`")),
-        )),
-    }
-}
-
 /// `plan-command {workspace, cmd}`：以人的身份代敲 pb 的一条用户命令（[`crate::plan::command`]）。
 /// 写盘的是 pb；`continue` / `pause` 改了工作区 `.env` ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` 在成品里）。
-fn command(args: &Value) -> Answer {
-    let ws = args
-        .get("workspace")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `workspace` (a string)"))?;
-    let cmd = args
-        .get("cmd")
-        .and_then(Value::as_str)
+fn command(req: &PlanCommandReq) -> Result<wire::PlanCmdReply, Fail> {
+    let cmd = Some(req.cmd.as_str())
         .filter(|c| crate::plan::command::VERBS.contains(c))
         .ok_or_else(|| bad("`cmd` must be one of continue · pause · view"))?;
     let entry = entry()?;
-    crate::plan::command::run(&entry, Path::new(ws), cmd)
+    crate::plan::command::run(&entry, Path::new(&req.workspace), cmd)
         .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
         .and_then(wired::<wire::PlanCmdReply>)
 }
 
 /// `plan-files {dir}`：文件窗口反查（稿 06）。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
 /// 不为文件窗口走到的每个目录起一次 pb；目录在最深的那个工作区里才算。不在任何一片的仓库里 ⇒ `slice: null`（文件窗口什么都不多）。
-fn files(args: &Value, tz: &crate::Tz) -> Answer {
-    let dir = args
-        .get("dir")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `dir` (a string)"))?;
+fn files(dir: &str, tz: &crate::Tz) -> Result<wire::PlanFiles, Fail> {
     let b = book::book();
     let ws = b
         .workspaces()
@@ -267,22 +224,11 @@ fn files(args: &Value, tz: &crate::Tz) -> Answer {
     wired::<wire::PlanFiles>(out)
 }
 
-fn list(args: &Value, tz: &crate::Tz) -> Answer {
-    let fresh = args.get("fresh").and_then(Value::as_bool).unwrap_or(false);
+fn list(req: &PlanListReq, tz: &crate::Tz) -> Result<wire::PlanList, Fail> {
+    let fresh = req.fresh.unwrap_or(false);
     let mut dirs: Vec<String> =
         crate::observe::accounts_query::live_cwds(&crate::history::listing::agent_home());
-    if let Some(a) = args.get("dirs") {
-        let a = a
-            .as_array()
-            .ok_or_else(|| bad("`dirs` must be an array of strings"))?;
-        for d in a {
-            dirs.push(
-                d.as_str()
-                    .ok_or_else(|| bad("`dirs` must be an array of strings"))?
-                    .to_string(),
-            );
-        }
-    }
+    dirs.extend(req.dirs.iter().flatten().cloned());
     dirs.sort();
     dirs.dedup();
     let entry = match entry() {
@@ -333,6 +279,225 @@ fn list(args: &Value, tz: &crate::Tz) -> Answer {
         pb["version"] = v["pb"].clone();
     }
     wired::<wire::PlanList>(json!({ "pb": pb, "workspaces": workspaces }))
+}
+
+/// `plan-list` 的入参。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanListReq {
+    /// 另要问的目录（这台的路径）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) dirs: Option<Vec<String>>,
+    /// `true` ⇒ 认过的目录也重问 pb。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) fresh: Option<bool>,
+}
+
+/// `plan-read` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanReadReq {
+    /// 工作区根（`plan-list` 给的那个）。
+    pub(crate) workspace: String,
+}
+
+/// `plan-cell-view` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanCellViewReq {
+    /// 工作区根。
+    pub(crate) workspace: String,
+    /// 片名。
+    pub(crate) slice: String,
+    /// 格的编号。
+    pub(crate) id: String,
+}
+
+/// `plan-cell-view` 的回包：pb 印给站在这一格的 agent 的那一段，原样。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanCellView {
+    pub(crate) view: String,
+}
+
+/// `plan-command` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanCommandReq {
+    /// 工作区根。
+    pub(crate) workspace: String,
+    /// `continue` · `pause` · `view`。
+    #[cfg_attr(test, ts(type = "\"continue\" | \"pause\" | \"view\""))]
+    pub(crate) cmd: String,
+}
+
+/// `plan-files` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanFilesReq {
+    /// 那台机器上的绝对路径。
+    pub(crate) dir: String,
+}
+
+typed::codes! {
+    /// `plan-list` 的码：拼出来的成品对不上线上类型（拼的那一侧的错）。
+    pub(crate) enum PlanListErr {
+        Failed = "failed",
+    }
+}
+
+typed::codes! {
+    /// `plan-read` · `plan-command` 的码（起 pb 的那几种）。
+    pub(crate) enum PlanPbErr {
+        Failed = "failed",
+        NoPb = "no_pb",
+        NotWorkspace = "not_workspace",
+        PbUnsupported = "pb_unsupported",
+    }
+}
+
+typed::codes! {
+    /// `plan-command` 的码：同 [`PlanPbErr`]，另有 pb 拒了那一种。
+    pub(crate) enum PlanCommandErr {
+        Failed = "failed",
+        NoPb = "no_pb",
+        NotWorkspace = "not_workspace",
+        PbUnsupported = "pb_unsupported",
+        Refused = "refused",
+    }
+}
+
+typed::codes! {
+    /// `plan-cell-view` 的码：上一次读好的那一份里没有这一格的视角。
+    pub(crate) enum PlanCellViewErr {
+        NoView = "no_view",
+    }
+}
+
+/// `plan-list`：这台的 pb 工作区与片（起 pb ⇒ 阻塞档）。
+pub(crate) struct PlanListCmd;
+
+impl Command for PlanListCmd {
+    const NAME: &'static str = "plan-list";
+    type Req = PlanListReq;
+    type Reply = wire::PlanList;
+    type Err = PlanListErr;
+}
+
+impl Handle for PlanListCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanListReq,
+        cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanList, PlanListErr>> + Send + 'static
+    {
+        async move { list(&req, &cx.tz).map_err(|f| typed::of_fail(f, PlanListErr::Failed)) }
+    }
+}
+
+/// `plan-read`：一个工作区的成品（起 pb ⇒ 阻塞档）。
+pub(crate) struct PlanReadCmd;
+
+impl Command for PlanReadCmd {
+    const NAME: &'static str = "plan-read";
+    type Req = PlanReadReq;
+    type Reply = wire::PlanRead;
+    type Err = PlanPbErr;
+}
+
+impl Handle for PlanReadCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanReadReq,
+        cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanRead, PlanPbErr>> + Send + 'static {
+        async move {
+            read_fresh(&req.workspace, &cx.tz)
+                .and_then(wired::<wire::PlanRead>)
+                .map_err(|f| typed::of_fail(f, PlanPbErr::Failed))
+        }
+    }
+}
+
+/// `plan-cell-view`：一格的 agent 视角（读本子里那一份 ⇒ 阻塞档，同族）。
+pub(crate) struct PlanCellViewCmd;
+
+impl Command for PlanCellViewCmd {
+    const NAME: &'static str = "plan-cell-view";
+    type Req = PlanCellViewReq;
+    type Reply = PlanCellView;
+    type Err = PlanCellViewErr;
+}
+
+impl Handle for PlanCellViewCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanCellViewReq,
+        _cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<PlanCellView, PlanCellViewErr>> + Send + 'static
+    {
+        async move {
+            book::book()
+                .view(&req.workspace, &req.slice, &req.id)
+                .map(|view| PlanCellView { view })
+                .ok_or_else(|| PlanCellViewErr::NoView(copy_text("bePlan.face.noView", &[])))
+        }
+    }
+}
+
+/// `plan-command`：以人的身份代敲 pb 的用户命令（起 pb ⇒ 阻塞档）。
+pub(crate) struct PlanCommandCmd;
+
+impl Command for PlanCommandCmd {
+    const NAME: &'static str = "plan-command";
+    type Req = PlanCommandReq;
+    type Reply = wire::PlanCmdReply;
+    type Err = PlanCommandErr;
+}
+
+impl Handle for PlanCommandCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanCommandReq,
+        _cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanCmdReply, PlanCommandErr>> + Send + 'static
+    {
+        async move { command(&req).map_err(|f| typed::of_fail(f, PlanCommandErr::Failed)) }
+    }
+}
+
+/// `plan-files`：文件窗口反查（只读本子里那一份，不起 pb；读认可那份小文件 ⇒ 阻塞档）。
+pub(crate) struct PlanFilesCmd;
+
+impl Command for PlanFilesCmd {
+    const NAME: &'static str = "plan-files";
+    type Req = PlanFilesReq;
+    type Reply = wire::PlanFiles;
+    type Err = PlanListErr;
+}
+
+impl Handle for PlanFilesCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanFilesReq,
+        cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanFiles, PlanListErr>> + Send + 'static
+    {
+        async move { files(&req.dir, &cx.tz).map_err(|f| typed::of_fail(f, PlanListErr::Failed)) }
+    }
 }
 
 #[cfg(test)]

@@ -90,12 +90,12 @@ impl Failed {
 pub(crate) fn unreadable(
     cmd: &str,
     why: Option<&crate::common::said::Said>,
-) -> (serde_json::Value, serde_json::Value) {
+) -> (Option<String>, Option<String>) {
     match why {
-        None => (serde_json::Value::Null, serde_json::Value::Null),
+        None => (None, None),
         Some(s) => (
-            serde_json::Value::String(s.said.clone()),
-            serde_json::Value::String(of(Some(cmd), "unreadable", s.raw.as_deref())),
+            Some(s.said.clone()),
+            Some(of(Some(cmd), "unreadable", s.raw.as_deref())),
         ),
     }
 }

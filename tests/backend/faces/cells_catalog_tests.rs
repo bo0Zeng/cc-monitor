@@ -440,10 +440,10 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     let agent = "claude-code";
     let o: crate::accounts::quota::ledger::Observed = serde_json::from_value(serde_json::json!({
         "agent": agent, "account": "a", "seenAt": now + 120,
-        "reading": {"refused": false, "windows": [
-            {"name": "five_hour", "used": 0.6, "resetsAt": now + 3600},
+        "reading": {"status": "warning", "refused": false, "limiting": "five_hour", "windows": [
+            {"name": "five_hour", "used": 0.6, "resetsAt": now + 3600, "warnedAt": 0.5},
             {"name": "seven_day", "used": 0.2, "resetsAt": now - 10}
-        ]},
+        ], "overage": {"status": "rejected", "resetsAt": now + 7200, "disabled": "org_level_disabled", "inUse": false}},
         "windowsSeen": {"five_hour": {"at": now + 120, "from": "headers"}}
     }))
     .unwrap();
@@ -469,9 +469,9 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     );
     reply_of(
         Base {
-            state: "present",
-            reason: Value::Null,
-            detail: Value::Null,
+            state: crate::accounts::quota::ledger::ReadState::Present,
+            reason: None,
+            detail: None,
             path: Some("/q".into()),
             now,
             usable_now: vec!["a".into()],
@@ -481,8 +481,8 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             agent: o.agent.clone(),
             account: o.account.clone(),
             seen_at: o.seen_at,
-            reading: serde_json::to_value(&o.reading).unwrap(),
-            windows_seen: Some(serde_json::to_value(&o.windows_seen).unwrap()),
+            reading: o.reading.clone(),
+            windows_seen: o.windows_seen.clone(),
             show: sh,
         }],
         vec![UnseenHead {

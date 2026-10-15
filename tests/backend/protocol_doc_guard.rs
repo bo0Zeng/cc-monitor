@@ -676,9 +676,23 @@ mod tests {
             ),
             (
                 "observe/accounts_query.rs",
-                "BadgeFacts",
-                "**不上线**：徽章那一判照类型读回清单那一行的几格（读，不写）",
+                "AccountsListReq",
+                "typed 帧命令 `accounts-list` 的入参（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
             ),
+            ("observe/accounts_query.rs", "AccountsList", "同上，回包"),
+            ("observe/accounts_query.rs", "ListMeta", "同上，回包的 `meta`"),
+            ("observe/accounts_query.rs", "AccountRow", "同上，回包每个号一行"),
+            (
+                "observe/accounts_query.rs",
+                "ScannedAccount",
+                "同上，每个号一行里扫清单得出的那几格（`flatten` 进 `AccountRow`）",
+            ),
+            (
+                "observe/accounts_query.rs",
+                "Interrupts",
+                "typed 帧命令 `machine-interrupts` 的回包（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
+            ),
+            ("observe/accounts_query.rs", "Trust", "同上，`accounts-trust` 的回包"),
             (
                 "observe/accounts_query.rs",
                 "RawAccount",

@@ -282,7 +282,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     let total = crate::stream::inbound::install_total(&req);
     // 这几行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
     let outcome: Result<Option<serde_json::Value>, Fail> =
-        match crate::wire::spec::prepare(spec.run, Some(own)) {
+        match crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(Some(own))) {
             Some(crate::wire::spec::Prepared::Blocking(f)) => f(req),
             Some(crate::wire::spec::Prepared::Async(f)) => f(req).await,
             None => {

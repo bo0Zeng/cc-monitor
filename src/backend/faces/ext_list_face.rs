@@ -4,7 +4,7 @@
 use crate::assets::asset_catalog;
 use crate::assets::ext;
 use crate::faces::catalog_face::CatalogErr;
-use crate::wire::typed::{self, codes, Command, Cx, Files, Owning, WithFiles, WithOwn};
+use crate::wire::typed::{self, codes, Command};
 
 /// `ext-list`：这台现扫一次、记下（资产目录的写口从这里递进去），各台目录合成「条目 × 机器」。
 pub(crate) struct ExtListCmd;
@@ -16,18 +16,23 @@ impl Command for ExtListCmd {
     type Err = CatalogErr;
 }
 
-impl Owning for ExtListCmd {
+impl crate::wire::typed::Handle for ExtListCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: ext::ExtListReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<ext::ExtList, CatalogErr> {
-        ext::answer_list(
-            &req,
-            &|visit| asset_catalog::answer_current(visit, own),
-            &ext::reach_of(&crate::dial::remote_ask::REACH),
-        )
-        .map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ext::ExtList, CatalogErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            ext::answer_list(
+                &req,
+                &|visit| asset_catalog::answer_current(visit, own),
+                &ext::reach_of(&crate::dial::remote_ask::REACH),
+            )
+            .map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        }
     }
 }
 
@@ -59,14 +64,21 @@ impl Command for ExtUninstallPreviewCmd {
     type Err = UninstallPreviewErr;
 }
 
-impl WithFiles for ExtUninstallPreviewCmd {
+impl crate::wire::typed::Handle for ExtUninstallPreviewCmd {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: ext::ExtUninstallReq,
-        _cx: &Cx,
-        files: Files,
-    ) -> Result<ext::ExtUninstallCard, UninstallPreviewErr> {
-        ext::answer_uninstall_preview(files, &ext::Env::here(), &req)
-            .map_err(|f| typed::of_fail(f, UninstallPreviewErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ext::ExtUninstallCard, UninstallPreviewErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            ext::answer_uninstall_preview(files, &ext::Env::here(), &req)
+                .map_err(|f| typed::of_fail(f, UninstallPreviewErr::IoFailed))
+        }
     }
 }
 
@@ -102,19 +114,24 @@ impl Command for ExtUninstallApplyCmd {
     type Err = UninstallApplyErr;
 }
 
-impl WithOwn for ExtUninstallApplyCmd {
+impl crate::wire::typed::Handle for ExtUninstallApplyCmd {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: ext::ExtUninstallApplyReq,
-        _cx: &Cx,
-        files: Files,
-        own: &crate::platform::Own,
-    ) -> Result<ext::ExtDone, UninstallApplyErr> {
-        ext::answer_uninstall_apply(
-            files,
-            &ext::Env::here(),
-            &|a| crate::assets::skill_ledger::answer_record(a, own),
-            &req,
-        )
-        .map_err(|f| typed::of_fail(f, UninstallApplyErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ext::ExtDone, UninstallApplyErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            ext::answer_uninstall_apply(
+                files,
+                &ext::Env::here(),
+                &|a| crate::assets::skill_ledger::answer_record(a, own),
+                &req,
+            )
+            .map_err(|f| typed::of_fail(f, UninstallApplyErr::IoFailed))
+        }
     }
 }

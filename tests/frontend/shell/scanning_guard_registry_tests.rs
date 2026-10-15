@@ -170,13 +170,12 @@ fn test_regions(src: &str) -> String {
 /// # 横扫结论：「多条判据一起瞎」这一族**全仓已清**
 ///
 /// 起因是两次实测：`no_timer_guard` 的两道针被同一种改写一次穿两层；
-/// `inbound` 的两条判据开头是**同一句** `if spec.fields.is_empty() { continue; }`
-/// —— 一个声明就能同时关掉两条。由此命名了这个形态并横扫全仓，两轮口径：
+/// `inbound` 的两条判据开头曾是**同一句**「字段表空就跳过」—— 一个声明就能同时关掉两条（手写字段表后来整个删了：字段从类型来）。
+/// 由此命名了这个形态并横扫全仓，两轮口径：
 ///
 /// ① **判据之间共用同一个提前返回**（文本相同的 `if … { continue/return }`）：
 ///    全仓 4 种，其中三种是各自独立的文件过滤 / 自排除（`rel == SOLE_HOME` 在两个
-///    单例守卫里各指各的常量），**真正的共用开关只有 `spec.fields.is_empty()` 那一处**，
-///    已由 `inbound::declaring_zero_fields_needs_a_reason` 补上。
+///    单例守卫里各指各的常量），**真正的共用开关只有字段表空那一处**，随手写字段表一起删了。
 /// ② **多条判据共用同一个采集器**（它一坏就集体失明）：逐个核过
 ///    `rust_files` / `collect_ts` / `doc_files` / `backend_sources` / `layer_sources` /
 ///    `scan_files` / `platform_cfgs` / `backend_files` / `backend_control_production` …

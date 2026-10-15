@@ -2074,6 +2074,8 @@ pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {
 
 /// 限流器对一发的结论（各家的值翻成这三档）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum QuotaStatus {
     Allowed,
@@ -2084,18 +2086,23 @@ pub(crate) enum QuotaStatus {
 
 /// 一个额度窗口此刻的样子。
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct QuotaWindow {
     /// 窗口名（那一家读法表里的值，如 5 小时 · 7 天）。
     pub(crate) name: String,
     /// 已用比例（通常 0–1，可以超过 1）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) used: Option<f64>,
     /// 几点重置（unix 秒）。
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
     pub(crate) resets_at: Option<u64>,
     /// 越过了哪条预警线（比例）；没越过就没有。
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) warned_at: Option<f64>,
 }
 

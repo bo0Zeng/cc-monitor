@@ -20,8 +20,37 @@ use std::sync::Mutex;
 
 /// `needs-ask` 的应答：人的答案写成那一家要的那一整份（hook 原样打出去）；`null` ＝ 不给决定。
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct AskReply {
+    #[cfg_attr(test, ts(type = "unknown"))]
     pub(crate) decision: Option<Value>,
+}
+
+/// `needs-ask` 的入参：哪一家（线上的 kind）＋ 那一家的 hook 交来的那一份原样。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AskReq {
+    pub(crate) agent: String,
+    #[cfg_attr(test, ts(type = "unknown"))]
+    pub(crate) hook: Value,
+}
+
+crate::wire::typed::codes! {
+    /// `needs-ask` 没有别的码（不是要人答的那一种 ⇒ `{decision: null}`，不是失败）。
+    pub(crate) enum AskErr {}
+}
+
+/// `needs-ask`（帧面硬臂：挂的那条跟着本连接走；本体真异步，`cancel` 打断 ＝ 不给决定）。
+pub(crate) struct NeedsAsk;
+
+impl crate::wire::typed::Command for NeedsAsk {
+    const NAME: &'static str = "needs-ask";
+    type Req = AskReq;
+    type Reply = AskReply;
+    type Err = AskErr;
 }
 
 /// `needs-answer` 的应答。
@@ -135,26 +164,15 @@ impl Drop for Desk {
 
 /// `needs-ask` 的本体：`{agent, hook}` ⇒ 挂上、等人答 ⇒ `{decision}`（`null` ＝ 不给决定，hook 空手退）。
 /// 那一家没有答题口 · hook 输入不是要人答的那一种 ⇒ 立刻 `{decision: null}`（不挂）。
-pub(crate) async fn ask(conn: u64, args: &Value) -> Result<Value, (&'static str, String)> {
-    let agent = args.get("agent").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("needs-ask: `agent` must be a string"),
-        )
-    })?;
-    let hook = args.get("hook").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("needs-ask: `hook` is required"),
-        )
-    })?;
-    let reply = |decision| crate::wire::spec::wire(&AskReply { decision });
-    let Some(asked) = crate::agents::ask_face(agent).and_then(|f| (f.read)(hook)) else {
-        return reply(None);
+pub(crate) async fn ask(conn: u64, req: AskReq) -> AskReply {
+    let Some(asked) = crate::agents::ask_face(&req.agent).and_then(|f| (f.read)(&req.hook)) else {
+        return AskReply { decision: None };
     };
-    let rx = open(agent, asked, conn);
+    let rx = open(&req.agent, asked, conn);
     // 撤掉（连接断了 / 别处关了）⇒ 发端丢了 ⇒ 不给决定。
-    reply(rx.await.ok().flatten())
+    AskReply {
+        decision: rx.await.ok().flatten(),
+    }
 }
 
 /// 挂上一条（`conn` ＝ 它那条连接）。
@@ -392,10 +410,11 @@ impl crate::wire::typed::Command for NeedsAnswerCmd {
     type Err = AnswerErr;
 }
 
-impl crate::wire::typed::Async for NeedsAnswerCmd {
+impl crate::wire::typed::Handle for NeedsAnswerCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: AnswerReq,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Answered, AnswerErr>> + Send + 'static {
         std::future::ready(answer(req).map_err(crate::wire::typed::of_pair(AnswerErr::NotFound)))
     }

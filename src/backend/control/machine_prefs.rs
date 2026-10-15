@@ -279,11 +279,10 @@ fn reply(l: &Loaded, path: Option<&Path>) -> PrefsReply {
         _ => None,
     };
     let (reason, detail) = crate::wire::detail::unreadable("prefs-read", why);
-    let text = |v: serde_json::Value| v.as_str().map(str::to_string);
     PrefsReply {
         state: l.state(),
-        reason: text(reason),
-        detail: text(detail),
+        reason,
+        detail,
         path: path.map(|p| p.display().to_string()),
         prefs: l.prefs(),
     }
@@ -400,14 +399,17 @@ impl crate::wire::typed::Command for PrefsRead {
     type Err = PrefsReadErr;
 }
 
-impl crate::wire::typed::Blocking for PrefsRead {
+impl crate::wire::typed::Handle for PrefsRead {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<PrefsReply, PrefsReadErr> {
-        Ok(answer_read_in(
-            crate::platform::paths::home_dir().as_deref(),
-        ))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<PrefsReply, PrefsReadErr>> + Send + 'static {
+        async move {
+            Ok(answer_read_in(
+                crate::platform::paths::home_dir().as_deref(),
+            ))
+        }
     }
 }
 
@@ -421,13 +423,18 @@ impl crate::wire::typed::Command for PrefsSetCmd {
     type Err = PrefsSetErr;
 }
 
-impl crate::wire::typed::Owning for PrefsSetCmd {
+impl crate::wire::typed::Handle for PrefsSetCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: PrefsSet,
-        _cx: &crate::wire::typed::Cx,
-        own: &Own,
-    ) -> Result<PrefsReply, PrefsSetErr> {
-        answer_set_in(crate::platform::paths::home_dir().as_deref(), own, &req)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<PrefsReply, PrefsSetErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            answer_set_in(crate::platform::paths::home_dir().as_deref(), own, &req)
+        }
     }
 }
 

@@ -5,6 +5,7 @@
 
 use crate::plan::needs::{self, Returned};
 use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Command, Cx, Handle};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -19,12 +20,6 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
-}
-
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, Fail> {
-    args.get(k)
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(&format!("missing `{k}` (a string)")))
 }
 
 fn slice_of<'a>(doc: &'a Value, name: &str) -> Option<&'a Value> {
@@ -45,24 +40,20 @@ fn reply(line: &str, to: &Value, result: &str, why: Option<&str>, said: Option<S
 
 /// `plan-return` 的本体：`doc` 是此刻现读、标过的那一份。
 pub(crate) fn return_with(
-    args: &Value,
+    req: &PlanReturnReq,
     doc: &Value,
     send: Send,
     record: Record,
     now: u64,
 ) -> Answer {
-    let (ws, slice, id) = (
-        str_arg(args, "workspace")?,
-        str_arg(args, "slice")?,
-        str_arg(args, "id")?,
-    );
-    let text = str_arg(args, "text")?;
+    let (ws, slice, id) = (req.workspace.as_str(), req.slice.as_str(), req.id.as_str());
+    let text = req.text.as_str();
     if text.trim().is_empty() {
         return Err(bad("`text` is empty"));
     }
-    let role = match args.get("to") {
+    let role = match req.to.as_deref() {
         None => "owner",
-        Some(Value::String(s)) if s == "owner" || s == "signer" => s.as_str(),
+        Some(s) if s == "owner" || s == "signer" => s,
         Some(_) => return Err(bad("`to` must be `owner` or `signer`")),
     };
     let no_cell = || Fail::new("no_such_cell", copy_text("bePlan.review.noSuchCell", &[]));
@@ -112,10 +103,11 @@ pub(crate) fn return_with(
     input.insert("sid".into(), json!(sid));
     input.insert("text".into(), json!(line));
     input.insert("enter".into(), json!(true));
-    for k in ["client", "seen_screen"] {
-        if let Some(v) = args.get(k) {
-            input.insert(k.into(), v.clone());
-        }
+    if let Some(v) = &req.client {
+        input.insert("client".into(), json!(v));
+    }
+    if let Some(v) = &req.seen_screen {
+        input.insert("seen_screen".into(), json!(v));
     }
     let got = send(&Value::Object(input))?;
     let result = got
@@ -154,8 +146,8 @@ pub(crate) fn return_with(
     Ok(out)
 }
 
-fn give_back(args: &Value, own: &crate::platform::fs::Own) -> Answer {
-    let ws = str_arg(args, "workspace")?;
+fn give_back(req: &PlanReturnReq, own: &crate::platform::fs::Own) -> Answer {
+    let ws = req.workspace.as_str();
     // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
     // 送字那一份是本条现拼的（`return_with`）⇒ 按 `terminal-input` 的入参类型解一次，形状不对同那一条回 `bad_args`。
@@ -167,15 +159,81 @@ fn give_back(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(own, ws, sl, id, r)
     };
-    return_with(args, &doc, &send, &record, now_ms())
+    return_with(req, &doc, &send, &record, now_ms())
 }
 
-/// 帧面入口：命令名从 `r.cmd` 来。
-pub(crate) fn answer(cmd: &str, args: &Value, own: &crate::platform::fs::Own) -> Answer {
-    match cmd {
-        "plan-return" => give_back(args, own)
-            .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanReturnReply>),
-        other => Err(bad(&format!("unknown command `{other}`"))),
+/// `plan-return` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanReturnReq {
+    /// 工作区根。
+    pub(crate) workspace: String,
+    /// 片名。
+    pub(crate) slice: String,
+    /// 格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手）。
+    pub(crate) id: String,
+    /// 人的原话（换行并成空格）。
+    pub(crate) text: String,
+    /// `owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "\"owner\" | \"signer\""))]
+    pub(crate) to: Option<String>,
+    /// 自报的前端（过 `terminal-input` 那一道身份门）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) client: Option<String>,
+    /// 送之前看到的那一屏的指纹（同 `terminal-input`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) seen_screen: Option<String>,
+}
+
+typed::codes! {
+    /// `plan-return` 的码：现读计划（起 pb）· 判目标 · 送字（`terminal-input` 的本体，起 tmux）· 记一条退回。
+    pub(crate) enum PlanReturnErr {
+        BadTarget = "bad_target",
+        CaptureFailed = "capture_failed",
+        ChildTimedOut = "child_timed_out",
+        Failed = "failed",
+        IoFailed = "io_failed",
+        NoPb = "no_pb",
+        NoServer = "no_server",
+        NoSuchCell = "no_such_cell",
+        NoSuchSession = "no_such_session",
+        NoTarget = "no_target",
+        NoTmux = "no_tmux",
+        NotWorkspace = "not_workspace",
+        PbUnsupported = "pb_unsupported",
+        ReviewUnreadable = "review_unreadable",
+        Unobservable = "unobservable",
+    }
+}
+
+/// `plan-return`：把人的话送给负责那一格的会话（起 pb ＋ tmux ⇒ 阻塞档；记退回写自家状态）。
+pub(crate) struct PlanReturnCmd;
+
+impl Command for PlanReturnCmd {
+    const NAME: &'static str = "plan-return";
+    type Req = PlanReturnReq;
+    type Reply = crate::plan::wire::PlanReturnReply;
+    type Err = PlanReturnErr;
+}
+
+impl Handle for PlanReturnCmd {
+    type Needs = typed::needs::Own;
+    fn run(
+        req: PlanReturnReq,
+        cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<crate::plan::wire::PlanReturnReply, PlanReturnErr>>
+           + std::marker::Send
+           + 'static {
+        async move {
+            give_back(&req, &cx.needs)
+                .and_then(crate::faces::plan_face::wired)
+                .map_err(|f| typed::of_fail(f, PlanReturnErr::Failed))
+        }
     }
 }
 

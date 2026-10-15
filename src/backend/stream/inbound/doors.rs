@@ -1,6 +1,6 @@
 //! 本进程里几条帧命令对后端其余部分开的门：资产域够用户文件那一扇 · 两台之间枢纽问这台自己那一跳 · 各号 MCP 同步的监听器。
 
-use super::spec::{prepare, Prepared};
+use super::spec::{invoke, Prepared};
 use super::REGISTRY;
 use crate::common::door::{Door, Said};
 use crate::wire::Request;
@@ -90,7 +90,7 @@ impl crate::wire::typed::Here for LocalFrames {
             until: None,
         };
         // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
-        let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&self.own)) else {
+        let Some(Prepared::Blocking(run)) = invoke(spec.run, &super::hands(Some(&self.own))) else {
             return Err(("unknown_command".to_string(), cmd.to_string()));
         };
         run(req)

@@ -232,21 +232,24 @@ fn typed_commands_take_cancellability_from_the_shapes_table() {
         .map(|(c, _)| *c)
         .find(|c| !UNCANCELLABLE.contains(c))
         .expect("至少一条 typed 可撤的");
+    // 不是 typed 的那一种（今天的后端一条都没有了；比形状指纹还早的那一版后端才有）：取一个不在指纹表里的名字。
+    let old = "pre-typed-op";
+    assert!(cmd_wire::shapes::shape_of(old).is_none());
     let o = Offer::new(
-        ops(&[stuck, free, "ping", WITHDRAW_OP]),
+        ops(&[stuck, free, old, WITHDRAW_OP]),
         Vec::new(),
         Vec::new(),
     );
     assert_eq!(o.withdraw(stuck), Withdraw::NotOffered, "{stuck}");
     assert_eq!(o.withdraw(free), Withdraw::Asked, "{free}");
     let o = Offer::new(
-        ops(&[free, "ping", WITHDRAW_OP]),
+        ops(&[free, old, WITHDRAW_OP]),
         Vec::new(),
-        ops(&[free, "ping"]),
+        ops(&[free, old]),
     );
     assert_eq!(o.withdraw(free), Withdraw::Asked, "typed 命令以指纹表为准");
     assert_eq!(
-        o.withdraw("ping"),
+        o.withdraw(old),
         Withdraw::NotOffered,
         "不是 typed 的照 hello 那一栏"
     );

@@ -866,11 +866,3 @@ fn quota_read_hands_over_the_candidates_without_the_unnamed_account() {
         .collect();
     assert_eq!(ids, ["a", "api", "b", "c"], "{got}");
 }
-
-// ── 应答类型的样本（`every_command_declares_exactly_the_fields_it_puts_out` 读）──
-
-impl crate::guard_support::Shaped for crate::faces::quota_read::QuotaRead {
-    fn samples() -> Vec<Self> {
-        vec![crate::faces::quota_read::specimen()]
-    }
-}

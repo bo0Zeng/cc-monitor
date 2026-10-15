@@ -199,28 +199,3 @@ fn the_new_session_facts_wire_names_its_cells() {
         serde_json::json!({"cwd": "/a", "lastMs": 1, "lastText": "00:00"})
     );
 }
-
-impl crate::guard_support::Shaped for NewFacts {
-    fn samples() -> Vec<Self> {
-        vec![NewFacts {
-            recent: vec![RecentDir {
-                cwd: "/home/u/proj".into(),
-                last_ms: 1,
-                last_text: "00:00".into(),
-            }],
-            tmux: true,
-            agents: vec![agent_facts("claude")],
-            fork: Some(ForkFacts {
-                agent: "claude".into(),
-                launch: crate::control::fork_launch::infer(&crate::control::fork_launch::Source {
-                    live: true,
-                    cwd: Some("/home/u/proj".into()),
-                    account: Some(crate::control::fork_launch::AccountFact::Base),
-                    terminal: Some("tmux-3-7".into()),
-                }),
-                turn: Some(3),
-                start_text: Some("09:30".into()),
-            }),
-        }]
-    }
-}

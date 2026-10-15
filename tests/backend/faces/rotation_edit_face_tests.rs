@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::faces::rotation_view_face::tests::{now, seen, Home, S1, S2};
-use crate::wire::typed::Blocking;
+use crate::wire::typed::Handle;
 use serde_json::json;
 
 fn code_of(src: &str) -> String {
@@ -438,11 +438,12 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
 /// 24 小时条上刷一段（无状态的算术）：越界的分钟 ⇒ `bad_args`。
 #[test]
 fn day_paint_is_plain_arithmetic() {
-    let cx = crate::wire::typed::Cx {
+    let cx = || crate::wire::typed::Cx {
         tz: crate::Tz::default(),
         until: None,
+        needs: (),
     };
-    let got = RotationDayPaint::run(
+    let got = crate::wire::spec::finish(RotationDayPaint::run(
         RotationDayPaintReq {
             segs: vec![RotSeg {
                 from: 0,
@@ -453,8 +454,8 @@ fn day_paint_is_plain_arithmetic() {
             to: 1380,
             v: None,
         },
-        &cx,
-    )
+        cx(),
+    ))
     .expect("ok");
     assert_eq!(
         got.segs,
@@ -471,15 +472,15 @@ fn day_paint_is_plain_arithmetic() {
             }
         ]
     );
-    assert!(RotationDayPaint::run(
+    assert!(crate::wire::spec::finish(RotationDayPaint::run(
         RotationDayPaintReq {
             segs: Vec::new(),
             from: 0,
             to: 2000,
             v: Some(1.0)
         },
-        &cx
-    )
+        cx()
+    ))
     .is_err());
 }
 

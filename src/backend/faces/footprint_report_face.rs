@@ -5,7 +5,7 @@
 use crate::footprint::data::DataReport;
 use crate::footprint::rows::ConfigSurfaceReport;
 use crate::footprint::FootprintReq;
-use crate::wire::typed::{self, codes, Blocking, Command, Cx, Files, WithFiles};
+use crate::wire::typed::{self, codes, Command};
 
 codes! {
     /// 足迹那两条的码。
@@ -25,9 +25,14 @@ impl Command for FootprintCmd {
     type Err = FootprintErr;
 }
 
-impl Blocking for FootprintCmd {
-    fn run(req: FootprintReq, _cx: &Cx) -> Result<ConfigSurfaceReport, FootprintErr> {
-        crate::footprint::answer(&req).map_err(typed::of_pair(FootprintErr::Failed))
+impl crate::wire::typed::Handle for FootprintCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: FootprintReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ConfigSurfaceReport, FootprintErr>> + Send + 'static
+    {
+        async move { crate::footprint::answer(&req).map_err(typed::of_pair(FootprintErr::Failed)) }
     }
 }
 
@@ -41,8 +46,17 @@ impl Command for DataReportCmd {
     type Err = FootprintErr;
 }
 
-impl WithFiles for DataReportCmd {
-    fn run(req: FootprintReq, _cx: &Cx, files: Files) -> Result<DataReport, FootprintErr> {
-        crate::footprint::data_answer(files, &req).map_err(typed::of_pair(FootprintErr::Failed))
+impl crate::wire::typed::Handle for DataReportCmd {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: FootprintReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<DataReport, FootprintErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            crate::footprint::data_answer(files, &req).map_err(typed::of_pair(FootprintErr::Failed))
+        }
     }
 }

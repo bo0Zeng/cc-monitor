@@ -3,7 +3,11 @@
 //! 夹具只造**结构**（目录名、行数、字节边界），行内容是占位的最小 JSON —— 不采任何真会话正文。
 
 use super::*;
+use serde_json::Value;
 use std::path::{Path, PathBuf};
+
+/// 本族的应答：`data` 或 `(code, message)`（判据这一层按登记表那一层的做法走一遍之后的样子）。
+type Answer = Result<Value, (&'static str, String)>;
 
 /// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
 ///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
@@ -51,15 +55,43 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
             h::facts_at(home, r, &limits)
         }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
-            <super::BackendLog as crate::wire::typed::Blocking>::run(
+            crate::wire::spec::finish(<super::BackendLog as crate::wire::typed::Handle>::run(
                 r,
-                &crate::wire::typed::Cx {
+                crate::wire::typed::Cx {
                     tz: tz.clone(),
                     until: None,
+                    needs: (),
                 },
-            )
+            ))
         }),
-        _ => super::answer_at(home, cmd, args, tz),
+        "accounts-sessions" => via::<super::AccountsSessions>(args, |_| super::sessions_at(home)),
+        "machine-interrupts" => {
+            via::<super::MachineInterrupts>(args, |r| Ok(super::interrupts_at(home, &r)))
+        }
+        "accounts-trust" => via::<super::AccountsTrust>(args, |r| {
+            crate::wire::spec::finish(<super::AccountsTrust as crate::wire::typed::Handle>::run(
+                r,
+                crate::wire::typed::Cx {
+                    tz: tz.clone(),
+                    until: None,
+                    needs: (),
+                },
+            ))
+        }),
+        "accounts-list" => via::<super::AccountsListCmd>(args, |r| {
+            crate::wire::spec::finish(<super::AccountsListCmd as crate::wire::typed::Handle>::run(
+                r,
+                crate::wire::typed::Cx {
+                    tz: tz.clone(),
+                    until: None,
+                    needs: (),
+                },
+            ))
+        }),
+        other => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
+        )),
     }
 }
 
@@ -138,18 +170,40 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
             Some(blk[at..].split('"').next()?.to_string())
         })
         .collect();
-    // 读一份会话记录的那几条成了 typed（`faces/history_face.rs`）：名字从那个类型的 `impl Command` 里 `const NAME` 读。
-    let face = include_str!("../../../src/backend/faces/history_face.rs");
-    for (_, prod) in &families {
-        for (at, _) in prod.match_indices("::faces::history_face::") {
-            let rest = &prod[at + "::faces::history_face::".len()..];
-            let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
-            let imp = face
-                .find(&format!("impl Command for {ty} {{"))
-                .unwrap_or_else(|| panic!("`history_face.rs` 里没有 `impl Command for {ty}`"));
-            let key = "const NAME: &'static str = \"";
-            let n = face[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
-            got.push(face[n..].chars().take_while(|c| *c != '"').collect());
+    // 读一份会话记录的那几条（`faces/history_face.rs`）与账号那几条（本宿主）成了 typed：名字从那个类型的 `impl Command` 里 `const NAME` 读。
+    for (module, face) in [
+        (
+            "::faces::history_face::",
+            include_str!("../../../src/backend/faces/history_face.rs"),
+        ),
+        (
+            "::faces::read_face::",
+            include_str!("../../../src/backend/faces/read_face.rs"),
+        ),
+    ] {
+        for (_, prod) in &families {
+            for (at, _) in prod.match_indices(module) {
+                let rest = &prod[at + module.len()..];
+                // 只认 typed 那一行（`…::read_face::类型>`）；还交给 `read_face::answer` 的那几块上面数过了。
+                if !rest.starts_with(|c: char| c.is_ascii_uppercase()) {
+                    continue;
+                }
+                let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
+                // 这两条住同一份宿主、不读会话也不读账号（诊断那一族），不在本族里。
+                if ["BackendLog", "DriftReportCmd"].contains(&ty) {
+                    continue;
+                }
+                let imp = [
+                    format!("impl Command for {ty} {{"),
+                    format!("impl crate::wire::typed::Command for {ty} {{"),
+                ]
+                .iter()
+                .find_map(|h| face.find(h.as_str()))
+                .unwrap_or_else(|| panic!("`{module}` 里没有 `impl Command for {ty}`"));
+                let key = "const NAME: &'static str = \"";
+                let n = face[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
+                got.push(face[n..].chars().take_while(|c| *c != '"').collect());
+            }
         }
     }
     got.sort();

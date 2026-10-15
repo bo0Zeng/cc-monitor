@@ -113,41 +113,6 @@ fn t5_display_forms_follow_the_day_and_the_year() {
 }
 
 #[test]
-fn t6_reply_gets_a_text_next_to_every_time_cell() {
-    let now = days_from_civil(2026, 10, 7) * 86_400 + 12 * 3_600;
-    let mut v = serde_json::json!({
-        "now": now,
-        "earliestReturn": {"account": "b", "at": now + 600},
-        "accounts": [{
-            "seenAt": now - 60,
-            "reading": {"resetsAt": now + 86_400, "used": 0.4},
-            "slots": [{"slot": "5h", "pct": 40, "resetsAt": now + 3_600}, {"slot": "7d", "pct": 3}],
-        }],
-        "sessions": {"s": {"account": {"since": now - 120, "history": [{"at": now - 60, "fromResetsAt": now + 60}]}}},
-        "count": 3,
-    });
-    with_texts(&mut v, now, &Tz::default());
-    assert_eq!(v["earliestReturn"]["atText"], "12:10");
-    let a = &v["accounts"][0];
-    assert_eq!(a["seenAtText"], "11:59");
-    assert_eq!(a["reading"]["resetsAtText"], "10-08 12:00");
-    assert_eq!(a["slots"][0]["resetsAtText"], "13:00");
-    assert!(
-        a["slots"][1].get("resetsAtText").is_none(),
-        "没有时刻 ⇒ 不添"
-    );
-    let acc = &v["sessions"]["s"]["account"];
-    assert_eq!(acc["sinceText"], "11:58");
-    assert_eq!(acc["history"][0]["atText"], "11:59");
-    assert_eq!(acc["history"][0]["fromResetsAtText"], "12:01");
-    assert!(
-        v.get("nowText").is_none() && v.get("countText").is_none(),
-        "闭集之外的数不动"
-    );
-    assert!(a["reading"].get("usedText").is_none());
-}
-
-#[test]
 fn t7_clock_face_of_a_record_time() {
     let base = days_from_civil(2026, 10, 7) * 86_400;
     assert_eq!(hm(base + 9 * 3_600 + 5 * 60 + 59), "09:05");

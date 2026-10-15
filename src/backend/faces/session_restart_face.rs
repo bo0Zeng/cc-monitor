@@ -99,13 +99,13 @@ impl crate::wire::typed::Command for SessionRestart {
     type Err = restart::RestartErr;
 }
 
-impl crate::wire::typed::AsyncFiles for SessionRestart {
+impl crate::wire::typed::Handle for SessionRestart {
+    type Needs = crate::wire::typed::needs::Files;
     async fn run(
         req: restart::RestartReq,
-        cx: crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
+        cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> Result<restart::Restarted, restart::RestartErr> {
-        answer(req, cx.until, files)
+        answer(req, cx.until, cx.needs)
             .await
             .map_err(restart::RestartErr)
     }

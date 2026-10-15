@@ -2,7 +2,7 @@
 
 use super::cc_bus;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Blocking, Codes, Command, Cx, NoArgs};
+use crate::wire::typed::{self, Codes, Command, NoArgs};
 
 /// 本体回的那一对（码 ＋ 那一句）⇒ 这一条的码表。
 fn of<E: Codes>(fallback: fn(String) -> E) -> impl Fn((String, String)) -> E {
@@ -304,9 +304,13 @@ impl Command for BusListCmd {
     type Reply = BusList;
     type Err = BusReadErr;
 }
-impl Blocking for BusListCmd {
-    fn run(_req: NoArgs, _cx: &Cx) -> Result<BusList, BusReadErr> {
-        cc_bus::list_for_inbound().map_err(of(BusReadErr::Failed))
+impl crate::wire::typed::Handle for BusListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusList, BusReadErr>> + Send + 'static {
+        async move { cc_bus::list_for_inbound().map_err(of(BusReadErr::Failed)) }
     }
 }
 
@@ -319,9 +323,13 @@ impl Command for BusStateCmd {
     type Reply = BusState;
     type Err = BusReadErr;
 }
-impl Blocking for BusStateCmd {
-    fn run(_req: NoArgs, _cx: &Cx) -> Result<BusState, BusReadErr> {
-        cc_bus::state_for_inbound().map_err(of(BusReadErr::Failed))
+impl crate::wire::typed::Handle for BusStateCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusState, BusReadErr>> + Send + 'static {
+        async move { cc_bus::state_for_inbound().map_err(of(BusReadErr::Failed)) }
     }
 }
 
@@ -333,9 +341,13 @@ impl Command for BusInboxCmd {
     type Reply = BusInbox;
     type Err = BusIdErr;
 }
-impl Blocking for BusInboxCmd {
-    fn run(req: BusInboxReq, _cx: &Cx) -> Result<BusInbox, BusIdErr> {
-        cc_bus::inbox_for_inbound(&req).map_err(of(BusIdErr::Failed))
+impl crate::wire::typed::Handle for BusInboxCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusInboxReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusInbox, BusIdErr>> + Send + 'static {
+        async move { cc_bus::inbox_for_inbound(&req).map_err(of(BusIdErr::Failed)) }
     }
 }
 
@@ -347,9 +359,13 @@ impl Command for BusKillCmd {
     type Reply = BusKilled;
     type Err = BusIdErr;
 }
-impl Blocking for BusKillCmd {
-    fn run(req: BusKillReq, _cx: &Cx) -> Result<BusKilled, BusIdErr> {
-        cc_bus::kill_for_inbound(&req).map_err(of(BusIdErr::Failed))
+impl crate::wire::typed::Handle for BusKillCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusKillReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusKilled, BusIdErr>> + Send + 'static {
+        async move { cc_bus::kill_for_inbound(&req).map_err(of(BusIdErr::Failed)) }
     }
 }
 
@@ -361,9 +377,13 @@ impl Command for BusSendCmd {
     type Reply = BusSent;
     type Err = BusSendErr;
 }
-impl Blocking for BusSendCmd {
-    fn run(req: BusSendReq, _cx: &Cx) -> Result<BusSent, BusSendErr> {
-        cc_bus::send_for_inbound(&req).map_err(of(BusSendErr::Failed))
+impl crate::wire::typed::Handle for BusSendCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusSendReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusSent, BusSendErr>> + Send + 'static {
+        async move { cc_bus::send_for_inbound(&req).map_err(of(BusSendErr::Failed)) }
     }
 }
 
@@ -375,9 +395,14 @@ impl Command for BusBroadcastCmd {
     type Reply = BusBroadcast;
     type Err = BusBroadcastErr;
 }
-impl Blocking for BusBroadcastCmd {
-    fn run(req: BusBroadcastReq, _cx: &Cx) -> Result<BusBroadcast, BusBroadcastErr> {
-        cc_bus::broadcast_for_inbound(&req).map_err(of(BusBroadcastErr::Failed))
+impl crate::wire::typed::Handle for BusBroadcastCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusBroadcastReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusBroadcast, BusBroadcastErr>> + Send + 'static
+    {
+        async move { cc_bus::broadcast_for_inbound(&req).map_err(of(BusBroadcastErr::Failed)) }
     }
 }
 
@@ -389,8 +414,12 @@ impl Command for BusSpawnCmd {
     type Reply = BusSpawnedNow;
     type Err = BusIdErr;
 }
-impl Blocking for BusSpawnCmd {
-    fn run(req: BusSpawnReq, _cx: &Cx) -> Result<BusSpawnedNow, BusIdErr> {
-        cc_bus::spawn_for_inbound(&req).map_err(of(BusIdErr::Failed))
+impl crate::wire::typed::Handle for BusSpawnCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BusSpawnReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<BusSpawnedNow, BusIdErr>> + Send + 'static {
+        async move { cc_bus::spawn_for_inbound(&req).map_err(of(BusIdErr::Failed)) }
     }
 }

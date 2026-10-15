@@ -303,7 +303,7 @@ fn the_cli_entry_never_names_a_concrete_handler() {
         );
     }
     assert!(
-        prod.contains("prepare(spec.run, Some(own))")
+        prod.contains("invoke(spec.run, &crate::stream::inbound::hands(Some(own)))")
             && prod.contains("Prepared::Blocking(f)) => f(req)")
             && prod.contains("Prepared::Async(f)) => f(req).await"),
         "派发不再直接跑 `spec.run` 了 —— 「一份实现，两个入口」这个支点断在这里"

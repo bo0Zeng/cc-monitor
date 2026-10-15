@@ -1,19 +1,12 @@
 //! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
-use crate::stream::inbound::LocalFiles;
-use crate::wire::spec::{arg, out, CommandSpec, Run};
+use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
     //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
-    crate::wire::typed::with_files::<crate::faces::launch_face::LaunchLocal>(
-        "本机起会话那一行 `ccm …`",
-        &LocalFiles,
-    ),
-    crate::wire::typed::with_files::<crate::faces::launch_face::LaunchRenderCli>(
-        "远端起会话那一行 `ccm …`",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::launch_face::LaunchLocal>("本机起会话那一行 `ccm …`"),
+    crate::wire::typed::blocking::<crate::faces::launch_face::LaunchRenderCli>("远端起会话那一行 `ccm …`"),
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
     //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `ssh-dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
@@ -50,47 +43,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
         "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
     ),
-    crate::wire::typed::with_files::<crate::faces::session_say_face::SessionSay>(
-        "往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::session_say_face::SessionSay>("往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）"),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
-    CommandSpec {
-        name: "terminal-follow",
-        summary: "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
-        codes: &[
-            "bad_target",
-            "bad_args",
-            "not_known",
-            "ambiguous",
-            "no_tmux",
-            "tmux_too_old",
-            "too_many_follows",
-            "unobservable",
-            "child_timed_out",
-        ],
-        fields: &[out("live", "失败时：实时那一格落在哪 —— `snapshot_only`（这台只能快照：没装 tmux · tmux 低于 3.2）· `stopped`（别的）"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), arg("ticket", "订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它")],
-        takes_input: true,
-        // 本体 `control/terminal_follow.rs::Desk::follow`（`dispatch` 的硬臂带着本连接的票表调它；起 tmux ⇒ 登记在 `target_parity_guard::BUILTIN_HANDLER_FILE`）。
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "terminal-follow-ack",
-        summary: "订阅的第 `seq` 帧画完了（画面有变化就推下一帧）",
-        codes: &["bad_args", "not_known"],
-        fields: &[arg("seq", "画完的那一帧的序号"), arg("ticket", "订阅票")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "terminal-unfollow",
-        summary: "退订一个终端的画面（幂等，不发收尾帧）",
-        codes: &["bad_args"],
-        fields: &[arg("ticket", "订阅票；退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollow>(
+        "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
+    ),
+    crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollowAck>(
+        "订阅的第 `seq` 帧画完了（画面有变化就推下一帧）",
+    ),
+    crate::wire::typed::frame::<crate::control::terminal_follow::TerminalUnfollow>(
+        "退订一个终端的画面（幂等，不发收尾帧）",
+    ),
     // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
     //   本体 `control/ccm/mod.rs::TerminalNameMint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
     crate::wire::typed::blocking::<crate::control::ccm::TerminalNameMint>(
@@ -107,16 +71,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsWhere>(
         "一批会话各在这台哪个终端里",
     ),
-    crate::wire::typed::with_files::<crate::faces::session_batch_face::SessionsStart>(
-        "起 / 接回一批会话（逐个答）",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::session_batch_face::SessionsStart>("起 / 接回一批会话（逐个答）"),
     // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
     //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
-    crate::wire::typed::with_own::<crate::faces::session_new_face::SessionNew>(
-        "起一个新会话（全产品一个框、一个请求）",
-        &LocalFiles,
-    ),
+    crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNew>("起一个新会话（全产品一个框、一个请求）"),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
     crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewFacts>(
         "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
@@ -127,10 +85,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
     //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
-    crate::wire::typed::async_with_files::<crate::faces::session_restart_face::SessionRestart>(
-        "换号重启",
-        &LocalFiles,
-    ),
+    crate::wire::typed::asynchronous::<crate::faces::session_restart_face::SessionRestart>("换号重启"),
     crate::wire::typed::blocking::<crate::control::launch::Launch>(
         "建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）",
     ),

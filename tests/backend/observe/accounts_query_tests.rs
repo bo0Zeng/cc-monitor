@@ -24,9 +24,31 @@ fn write_manifest(accts: &Path, body: &str) {
 /// 清单的扫描本体摊成行：首行 meta、其后每号一行（不并 apikey 表）。下面几条判的是扫描（读 manifest · 判安全 · 判鉴权），不是哪一个出口。
 fn list_accounts(accts: &Path) -> Vec<String> {
     let (meta, rows) = scan_accounts(accts, &|_| false);
-    let mut out = vec![serde_json::Value::Object(meta).to_string()];
-    out.extend(rows.iter().map(serde_json::Value::to_string));
+    let mut out = vec![serde_json::to_string(&meta).unwrap()];
+    out.extend(rows.iter().map(|r| serde_json::to_string(r).unwrap()));
     out
+}
+
+/// 清单成品回成 `Value` 好按键看（帧里那一份写法）；盖住 `super::*` 里的同名口。
+fn list_product_with(
+    accts_dir: &Path,
+    home: Option<&Path>,
+    rows: &[String],
+    keys: &[crate::accounts::upstream_select::file_face::KeyFact],
+    agent: &str,
+    table_agent: &str,
+    relay_running: bool,
+) -> serde_json::Value {
+    serde_json::to_value(super::list_product_with(
+        accts_dir,
+        home,
+        rows,
+        keys,
+        agent,
+        table_agent,
+        relay_running,
+    ))
+    .unwrap()
 }
 
 fn meta(lines: &[String]) -> serde_json::Value {
@@ -1179,9 +1201,9 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
         "生产段里 `auth_kind_from_manifest(` 出现了不止一次"
     );
     assert_eq!(
-        prod.matches("\"authReady\"").count(),
+        prod.matches("auth_ready: ready").count(),
         1,
-        "`authReady` 这个键在生产段里被写了不止一处"
+        "`authReady` 这一格在生产段里被写了不止一处"
     );
     // 阴性对照式自检：本文件的生产段里**不许**出现 api-key 这个字面量
     // （分类规则住 acct-core；这里出现它就意味着有人在本地又判了一次）。
@@ -1294,7 +1316,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 ///
 /// | 格 | 断的是什么 | 翻掉它的形状 |
 /// |---|---|---|
-/// | ① | 帧命令 `accounts-sessions` 的 `lines` 那一格说明里的字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
+/// | ① | 帧命令 `accounts-sessions` 的回包类型说明里的字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
 /// | ② | 本文件头注把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠一个键」那句假话 |
 ///
 /// # ⚠ 它买不到什么
@@ -1303,13 +1325,19 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 /// 解释）它一个字都判不了 —— 那是评审的活。
 #[test]
 fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
-    // 协议参考的命令那一节从登记表的字段说明生成：`accounts-sessions` 的 `lines` 那一格就是这里的说明。
-    let row = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|c| c.name == "accounts-sessions")
-        .and_then(|c| c.fields.iter().find(|f| f.name == "lines"))
-        .map(|f| f.doc)
-        .expect("登记表里没有 `accounts-sessions` 的 `lines` 那一格");
+    // 协议参考的命令那一节从回包类型生成：`accounts-sessions` 的回包 `SessionLines` 的说明就是这里那一行。
+    let face = include_str!("../../../src/backend/faces/read_face.rs");
+    let end = face
+        .find("pub(crate) struct SessionLines {")
+        .expect("`read_face.rs` 里没有 `SessionLines`");
+    let row: String = face[..end]
+        .lines()
+        .rev()
+        .skip_while(|l| !l.trim_start().starts_with("///"))
+        .take_while(|l| l.trim_start().starts_with("///") || l.trim_start().starts_with("#["))
+        .filter(|l| l.trim_start().starts_with("///"))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
     let prod = production_text();
@@ -1413,7 +1441,12 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
     let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
-    let cli_meta = meta(&cli);
+    let mut cli_meta = meta(&cli);
+    // 扫描那一份与成品同一个类型：家目录那一格扫描不填（`null`），成品才填。
+    assert_eq!(
+        cli_meta.as_object_mut().unwrap().remove("home"),
+        Some(serde_json::Value::Null)
+    );
     // 成品比扫描多出的只有帧面那几格（家目录 · 每号 key 掩码与端点 · 徽章），其余逐格同一份扫描。
     let mut product = product;
     assert_eq!(
@@ -1547,15 +1580,24 @@ fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
     let dir = a.to_string_lossy().to_string();
     assert_eq!(
         trust_product_at(&accts, Some(&dir), "/w/p").unwrap(),
-        serde_json::json!({"trusted": true, "known": true})
+        Trust {
+            trusted: true,
+            known: true
+        }
     );
     assert_eq!(
         trust_product_at(&accts, Some(&dir), "/w/q").unwrap(),
-        serde_json::json!({"trusted": false, "known": true})
+        Trust {
+            trusted: false,
+            known: true
+        }
     );
     assert_eq!(
         trust_product_at(&accts, Some(&dir), "/w/r").unwrap(),
-        serde_json::json!({"trusted": false, "known": false})
+        Trust {
+            trusted: false,
+            known: false
+        }
     );
     // 与 CLI 那一臂逐格对拍（同一个函数，两个出口）。
     let cli: serde_json::Value =
@@ -2070,7 +2112,7 @@ fn the_machine_product_matches_the_cross_language_golden() {
             .collect();
         let forwards = c["forwards"].as_u64().unwrap() as u32;
         assert_eq!(
-            machine_product(&lines, forwards),
+            serde_json::to_value(machine_product(&lines, forwards)).unwrap(),
             c["reply"],
             "「{}」：现产的成品与金样对不上",
             c["name"]
@@ -2105,9 +2147,10 @@ fn app_exit_interrupts_follow_this_backends_own_exit_choice() {
     ];
     let zero =
         serde_json::json!({"relayedSessions":0,"relayedMaybe":0,"liveStreams":0,"forwards":0});
-    assert_eq!(app_exit_product(false, &lines, 3), zero);
+    let wire = |p: Interrupts| serde_json::to_value(p).unwrap();
+    assert_eq!(wire(app_exit_product(false, &lines, 3)), zero);
     assert_eq!(
-        app_exit_product(true, &lines, 3),
+        wire(app_exit_product(true, &lines, 3)),
         serde_json::json!({"relayedSessions":1,"relayedMaybe":0,"liveStreams":2,"forwards":3})
     );
 }
@@ -2346,15 +2389,23 @@ fn the_badge_is_written_by_the_core() {
 /// 清单的 `notice` 是几句「能用但有缺」并成的一句：凭据文件权限那一句并进去（KS11）；都没有 ⇒ `null`。
 #[test]
 fn the_list_notice_carries_the_credentials_file_warning_too() {
-    let base = |n: Option<&str>| serde_json::json!({"meta": {}, "accounts": [], "notice": n});
+    let empty = tmpdir("notice");
+    let base = |n: Option<&str>| {
+        let mut v =
+            super::list_product_with(&empty, None, &[], &[], "claude-code", "claude-code", false);
+        v.notice = n.map(str::to_string);
+        v
+    };
+    assert_eq!(with_notice(base(None), None).notice, None);
     assert_eq!(
-        with_notice(base(None), None)["notice"],
-        serde_json::Value::Null
+        with_notice(base(None), Some("宽".into())).notice.unwrap(),
+        "宽"
     );
-    assert_eq!(with_notice(base(None), Some("宽".into()))["notice"], "宽");
-    assert_eq!(with_notice(base(Some("缺")), None)["notice"], "缺");
+    assert_eq!(with_notice(base(Some("缺")), None).notice.unwrap(), "缺");
     assert_eq!(
-        with_notice(base(Some("缺")), Some("宽".into()))["notice"],
+        with_notice(base(Some("缺")), Some("宽".into()))
+            .notice
+            .unwrap(),
         copy_text(
             "beAccountsQuery.listProductAt.joined",
             &[("a", "缺"), ("b", "宽")]

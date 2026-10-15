@@ -28,6 +28,14 @@ fn lossless<T: Serialize + serde::de::DeserializeOwned>(v: &Value) {
     );
 }
 
+/// 一份按 JSON 拼的回包过一遍 `T`、再写回（判据比「过一遍不丢格」用）。对不上 ⇒ 原话。
+pub(crate) fn checked<T: Serialize + serde::de::DeserializeOwned>(
+    v: Value,
+) -> Result<Value, String> {
+    let t: T = serde_json::from_value(v).map_err(|e| e.to_string())?;
+    serde_json::to_value(t).map_err(|e| e.to_string())
+}
+
 #[test]
 fn a_full_read_a_stale_slice_and_a_bare_slice_all_pass_through_the_types_unchanged() {
     let b = crate::plan::book::Book::default();
@@ -72,23 +80,5 @@ fn ack_and_return_replies_pass_through_their_types_unchanged() {
         lossless::<PlanReturnReply>(&serde_json::json!({
             "line": "人 · A1 甲功能：改", "to": null, "result": result, "why": why, "said": null, "screen": null
         }));
-    }
-}
-
-/// `plan-command` 回包的样本（`every_command_declares_exactly_the_fields_it_puts_out` 读；可缺的格都填上 ＋ 一份都缺的）。
-impl crate::guard_support::Shaped for PlanCmdReply {
-    fn samples() -> Vec<Self> {
-        vec![
-            PlanCmdReply {
-                rc: 0,
-                said: Some("wrote /tmp/x.html".into()),
-                path: Some("/tmp/x.html".into()),
-            },
-            PlanCmdReply {
-                rc: 0,
-                said: None,
-                path: None,
-            },
-        ]
     }
 }

@@ -5,7 +5,7 @@
 use crate::assets::aliases::page::{
     answer_resolve, read_with, ProfilesBook, ProfilesErr, ProfilesResolveReq, Resolved,
 };
-use crate::wire::typed::{of_pair, Command, Cx, Files, NoArgs, WithFiles};
+use crate::wire::typed::{of_pair, Command, NoArgs};
 
 /// `profiles-read`：读回配置文件整份（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
 pub(crate) struct ProfilesRead;
@@ -18,10 +18,20 @@ impl Command for ProfilesRead {
     type Err = ProfilesErr;
 }
 
-impl WithFiles for ProfilesRead {
-    fn run(_req: NoArgs, cx: &Cx, files: Files) -> Result<ProfilesBook, ProfilesErr> {
-        read_with(files, crate::control::terminals::tmux_here(), &cx.tz)
-            .map_err(of_pair(ProfilesErr::Refused))
+impl crate::wire::typed::Handle for ProfilesRead {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        _req: NoArgs,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfilesBook, ProfilesErr>> + Send + 'static {
+        let (cx, needs) = cx.split();
+        async move {
+            let cx = &cx;
+            let files = needs;
+
+            read_with(files, crate::control::terminals::tmux_here(), &cx.tz)
+                .map_err(of_pair(ProfilesErr::Refused))
+        }
     }
 }
 
@@ -35,9 +45,18 @@ impl Command for ProfilesResolve {
     type Err = ProfilesErr;
 }
 
-impl WithFiles for ProfilesResolve {
-    fn run(req: ProfilesResolveReq, _cx: &Cx, files: Files) -> Result<Resolved, ProfilesErr> {
-        answer_resolve(files, &req, crate::control::ccm::preview_resolved)
-            .map_err(of_pair(ProfilesErr::Refused))
+impl crate::wire::typed::Handle for ProfilesResolve {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: ProfilesResolveReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Resolved, ProfilesErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            answer_resolve(files, &req, crate::control::ccm::preview_resolved)
+                .map_err(of_pair(ProfilesErr::Refused))
+        }
     }
 }

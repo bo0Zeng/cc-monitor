@@ -15,6 +15,7 @@
 //! - 真中转在不在：读宿主监听状态那一格（`relay::listen::our_relay_listening`，`host_tests`）。
 
 use super::*;
+use serde_json::Value;
 
 // 入参经 typed 那一处收（同分派），再交本体（盖住 `super::*` 里的同名口）。
 fn answer_optin(args: &Value) -> Result<Value, (&'static str, String)> {

@@ -20,7 +20,7 @@
 //! 买不到：Windows 上「原子挪过去」是覆盖既有文件的那一下改名（`Own::write`），没在真 Windows 上跑过。
 
 use crate::platform::fs::{Own, OwnLock, OwnPath};
-use crate::wire::typed::{codes, of_fail, Command, Cx, Owning};
+use crate::wire::typed::{codes, of_fail, Command};
 pub use cmd_wire::listing::{Entry, Table};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -319,9 +319,18 @@ impl Command for HistoryAnnotateCmd {
     type Err = AnnotationErr;
 }
 
-impl Owning for HistoryAnnotateCmd {
-    fn run(req: AnnotateReq, _cx: &Cx, own: &Own) -> Result<Annotated, AnnotationErr> {
-        annotate_at(own, req, now_ms())
+impl crate::wire::typed::Handle for HistoryAnnotateCmd {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: AnnotateReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Annotated, AnnotationErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            annotate_at(own, req, now_ms())
+        }
     }
 }
 
@@ -335,9 +344,18 @@ impl Command for HistoryForgetCmd {
     type Err = AnnotationErr;
 }
 
-impl Owning for HistoryForgetCmd {
-    fn run(req: ForgetReq, _cx: &Cx, own: &Own) -> Result<Forgotten, AnnotationErr> {
-        forget_at(own, req)
+impl crate::wire::typed::Handle for HistoryForgetCmd {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: ForgetReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Forgotten, AnnotationErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            forget_at(own, req)
+        }
     }
 }
 

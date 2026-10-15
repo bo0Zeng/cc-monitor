@@ -20,16 +20,22 @@ impl crate::wire::typed::Command for SessionNew {
     type Err = session_new::SessionNewErr;
 }
 
-impl crate::wire::typed::WithOwn for SessionNew {
+impl crate::wire::typed::Handle for SessionNew {
+    type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
         req: session_new::NewRequest,
-        _cx: &crate::wire::typed::Cx,
-        files: crate::wire::typed::Files,
-        own: &crate::platform::Own,
-    ) -> Result<session_new::SessionNew, session_new::SessionNewErr> {
-        // 带 `forkFrom` 时写分支记录：同 `session-fork`，在这里领一只只会新建的手。
-        answer(req, files, own, &crate::platform::fs::NewFile::issue())
-            .map_err(session_new::SessionNewErr)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<session_new::SessionNew, session_new::SessionNewErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let (files, own) = (needs.0, &needs.1);
+
+            // 带 `forkFrom` 时写分支记录：同 `session-fork`，在这里领一只只会新建的手。
+            answer(req, files, own, &crate::platform::fs::NewFile::issue())
+                .map_err(session_new::SessionNewErr)
+        }
     }
 }
 
@@ -78,15 +84,21 @@ impl crate::wire::typed::Command for SessionNewDir {
     type Err = session_new::SessionNewDirErr;
 }
 
-impl crate::wire::typed::Blocking for SessionNewDir {
+impl crate::wire::typed::Handle for SessionNewDir {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: session_new::SessionNewDirReq,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<session_new::DirChecked, session_new::SessionNewDirErr> {
-        let user_home = crate::platform::paths::home_dir();
-        super::session_batch_face::with_deps_as(None, "", None, |d| {
-            session_new::dir_answer(&req, d, user_home.as_deref())
-        })
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<session_new::DirChecked, session_new::SessionNewDirErr>,
+    > + Send
+           + 'static {
+        async move {
+            let user_home = crate::platform::paths::home_dir();
+            super::session_batch_face::with_deps_as(None, "", None, |d| {
+                session_new::dir_answer(&req, d, user_home.as_deref())
+            })
+        }
     }
 }
 
@@ -233,15 +245,24 @@ impl crate::wire::typed::Command for SessionNewFacts {
     type Err = NewFactsErr;
 }
 
-impl crate::wire::typed::Blocking for SessionNewFacts {
-    fn run(req: NewFactsReq, cx: &crate::wire::typed::Cx) -> Result<NewFacts, NewFactsErr> {
-        facts(&req, &cx.tz).map_err(|(code, said)| match code {
-            "bad_args" => NewFactsErr::BadArgs(said),
-            _ => {
-                debug_assert_eq!(code, "fork_failed");
-                NewFactsErr::ForkFailed(said)
-            }
-        })
+impl crate::wire::typed::Handle for SessionNewFacts {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: NewFactsReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<NewFacts, NewFactsErr>> + Send + 'static {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            facts(&req, &cx.tz).map_err(|(code, said)| match code {
+                "bad_args" => NewFactsErr::BadArgs(said),
+                _ => {
+                    debug_assert_eq!(code, "fork_failed");
+                    NewFactsErr::ForkFailed(said)
+                }
+            })
+        }
     }
 }
 

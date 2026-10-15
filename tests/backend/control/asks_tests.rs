@@ -305,12 +305,16 @@ fn needs_without_a_pending_request_say_only_in_the_terminal() {
 
 #[tokio::test]
 async fn an_agent_without_an_answer_door_gets_no_decision_at_once() {
-    let v = ask(9007, &json!({"agent": "nobody", "hook": {}}))
-        .await
-        .unwrap();
-    assert_eq!(v, json!({"decision": null}));
+    let v = ask(
+        9007,
+        crate::wire::typed::take(&json!({"agent": "nobody", "hook": {}})).unwrap(),
+    )
+    .await;
+    assert_eq!(serde_json::to_value(v).unwrap(), json!({"decision": null}));
     assert_eq!(
-        ask(9007, &json!({"hook": {}})).await.unwrap_err().0,
+        crate::wire::typed::take::<AskReq>(&json!({"hook": {}}))
+            .unwrap_err()
+            .code,
         "bad_args"
     );
 }
@@ -351,25 +355,6 @@ fn the_hook_client_calls_it_closed_only_after_leaving_waiting() {
     assert!(hook::closed_now(&[], started, &mut seen));
     let mut seen = false;
     assert!(!hook::closed_now(&[], started, &mut seen));
-}
-
-impl crate::guard_support::Shaped for AskReply {
-    fn samples() -> Vec<Self> {
-        vec![
-            AskReply {
-                decision: Some(json!({"hookSpecificOutput": {"decision": {"behavior": "allow"}}})),
-            },
-            AskReply { decision: None },
-        ]
-    }
-}
-
-impl crate::guard_support::Shaped for Answered {
-    fn samples() -> Vec<Self> {
-        vec![Answered {
-            result: AnswerResult::Answered,
-        }]
-    }
 }
 
 /// hook 认「是不是 ccm 起的那一个会话」：只有经环境那一路来的 hook（自己的环境里那个变量带着我们的插件目录）才要认 ——

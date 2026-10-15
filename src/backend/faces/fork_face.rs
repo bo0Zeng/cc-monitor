@@ -12,7 +12,7 @@
 
 use crate::control::fork_launch;
 use crate::control::fork_write::{ForkErr, ForkReq, Forked};
-use crate::wire::typed::{Blocking, Command, Cx};
+use crate::wire::typed::Command;
 use std::path::Path;
 
 /// `session-fork`：从某条消息处分叉出一个新会话。读整份 jsonl ⇒ 阻塞档。
@@ -25,14 +25,20 @@ impl Command for SessionFork {
     type Err = ForkErr;
 }
 
-impl Blocking for SessionFork {
-    fn run(req: ForkReq, _cx: &Cx) -> Result<Forked, ForkErr> {
-        let home = crate::history::listing::agent_home();
-        // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
-        let nf = crate::platform::fs::NewFile::issue();
-        crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {
-            launch_of(&home, source, sid)
-        })
+impl crate::wire::typed::Handle for SessionFork {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: ForkReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Forked, ForkErr>> + Send + 'static {
+        async move {
+            let home = crate::history::listing::agent_home();
+            // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
+            let nf = crate::platform::fs::NewFile::issue();
+            crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {
+                launch_of(&home, source, sid)
+            })
+        }
     }
 }
 

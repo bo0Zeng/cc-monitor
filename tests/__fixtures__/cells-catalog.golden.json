@@ -1965,8 +1965,110 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "accounts[].reading",
-          "type": "object"
+          "path": "accounts[].reading.limiting",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.overage.disabled",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.overage.inUse",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.overage.resetsAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].reading.overage.resetsAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].reading.overage.resetsAtText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.overage.status",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.refused",
+          "type": "bool"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.resetsAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].reading.resetsAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].reading.resetsAtText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.status",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.windows[].name",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.windows[].resetsAt",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].reading.windows[].resetsAtRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].reading.windows[].resetsAtText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.windows[].used",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].reading.windows[].warnedAt",
+          "type": "number"
         },
         {
           "frozen": true,
@@ -2133,8 +2235,26 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "accounts[].windowsSeen",
-          "type": "object"
+          "path": "accounts[].windowsSeen.*.at",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windowsSeen.*.atRelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windowsSeen.*.atText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "accounts[].windowsSeen.*.from",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -2290,7 +2410,7 @@
           "frozen": true,
           "kind": "value",
           "path": "state",
-          "type": "string"
+          "type": "enum"
         },
         {
           "frozen": true,

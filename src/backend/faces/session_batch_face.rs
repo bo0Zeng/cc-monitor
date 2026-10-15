@@ -8,7 +8,7 @@
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
 use crate::faces::launch_face::{pretrust_with, Files};
 
-use crate::wire::typed::{self, Blocking, Command, WithFiles};
+use crate::wire::typed::{self, Command};
 
 /// `client` ＝ 请求自报的前端（「哪个前端的会话」那一维）：杀与就地键入都带它过门。`agent` ＝ 批量起那一家（整批一格；停 / 问样子用不着挑号）。
 fn with_deps<T>(
@@ -145,9 +145,14 @@ impl Command for SessionsWhere {
     type Err = BatchErr;
 }
 
-impl Blocking for SessionsWhere {
-    fn run(req: batch::SidsReq, _cx: &typed::Cx) -> Result<batch::Whereabouts, BatchErr> {
-        with_deps(req.client.as_deref(), "", None, |d| batch::where_(&req, d))
+impl crate::wire::typed::Handle for SessionsWhere {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: batch::SidsReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<batch::Whereabouts, BatchErr>> + Send + 'static
+    {
+        async move { with_deps(req.client.as_deref(), "", None, |d| batch::where_(&req, d)) }
     }
 }
 
@@ -161,9 +166,13 @@ impl Command for SessionsStop {
     type Err = BatchErr;
 }
 
-impl Blocking for SessionsStop {
-    fn run(req: batch::SidsReq, _cx: &typed::Cx) -> Result<batch::Batched, BatchErr> {
-        with_deps(req.client.as_deref(), "", None, |d| batch::stop(&req, d))
+impl crate::wire::typed::Handle for SessionsStop {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: batch::SidsReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
+        async move { with_deps(req.client.as_deref(), "", None, |d| batch::stop(&req, d)) }
     }
 }
 
@@ -177,14 +186,19 @@ impl Command for SessionsStart {
     type Err = BatchErr;
 }
 
-impl WithFiles for SessionsStart {
+impl crate::wire::typed::Handle for SessionsStart {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: batch::SessionsStartReq,
-        _cx: &typed::Cx,
-        files: Files,
-    ) -> Result<batch::Batched, BatchErr> {
-        with_deps(req.client.as_deref(), &req.agent, Some(files), |d| {
-            batch::start(&req, d)
-        })
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<batch::Batched, BatchErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            with_deps(req.client.as_deref(), &req.agent, Some(files), |d| {
+                batch::start(&req, d)
+            })
+        }
     }
 }

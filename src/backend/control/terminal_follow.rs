@@ -53,11 +53,11 @@ use super::terminals::{self, On};
 use crate::wire::{FollowEnd, Frame};
 
 /// 订上。
-pub const FOLLOW: &str = "terminal-follow";
+pub const FOLLOW: &str = <TerminalFollow as crate::wire::typed::Command>::NAME;
 /// 第 `seq` 帧画完了。
-pub const FOLLOW_ACK: &str = "terminal-follow-ack";
+pub const FOLLOW_ACK: &str = <TerminalFollowAck as crate::wire::typed::Command>::NAME;
 /// 退订。
-pub const UNFOLLOW: &str = "terminal-unfollow";
+pub const UNFOLLOW: &str = <TerminalUnfollow as crate::wire::typed::Command>::NAME;
 
 /// 一条流连接上同时在册的订阅数上限（有界资源：每张票一个 tmux 客户端 ＋ 两条线程）。
 pub const MAX_FOLLOWS_PER_CONNECTION: usize = 8;
@@ -149,15 +149,157 @@ fn bad_args(detail: &str) -> CmdErr {
     CmdErr::new("bad_args", crate::common::contract::malformed(detail))
 }
 
-fn ticket_of(args: &Value) -> Option<String> {
-    match args.get("ticket") {
-        Some(Value::String(t)) if !t.is_empty() && t.len() <= MAX_TICKET_BYTES => Some(t.clone()),
-        _ => None,
+/// 票非空、不超长（客户端给的不透明串）。
+fn ticket_ok(t: &str) -> Result<(), CmdErr> {
+    if t.is_empty() || t.len() > MAX_TICKET_BYTES {
+        return Err(bad_args(
+            "`ticket` must be a non-empty string (at most 128 bytes)",
+        ));
     }
+    Ok(())
+}
+
+/// `terminal-follow` 的入参：订阅票 ＋ 目标（`terminal` 与 `sid` 恰给一个）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FollowReq {
+    /// 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它。
+    pub(crate) ticket: String,
+    /// 目标：名单里的句柄（与 `sid` 恰给一个）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) terminal: Option<String>,
+    /// 目标：会话 id（与 `terminal` 恰给一个）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) sid: Option<String>,
+}
+
+/// `terminal-follow-ack` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AckReq {
+    pub(crate) ticket: String,
+    /// 画完的那一帧的序号。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) seq: u64,
+}
+
+/// `terminal-unfollow` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UnfollowReq {
+    /// 退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）。
+    pub(crate) ticket: String,
+}
+
+/// `terminal-follow` 的码表：`bad_args` 打头；订不上的每一种都带 `data: {live}`（[`FollowErr`]）。
+const FOLLOW_CODES: &[&str] = &[
+    "bad_args",
+    "bad_target",
+    "not_known",
+    "ambiguous",
+    "no_tmux",
+    "tmux_too_old",
+    "too_many_follows",
+    "unobservable",
+    "child_timed_out",
+];
+
+/// `terminal-follow` 订不上：码 ＋ 那一句（原话跟着那一句走）。投出去时带上实时那一格落在「只能快照」还是「停了」
+/// （[`live_after_refusal`]；入参形状不对那一种不带）。
+#[derive(Debug)]
+pub(crate) struct FollowErr(&'static str, String);
+
+impl FollowErr {
+    /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
+    pub(crate) fn of(e: CmdErr) -> FollowErr {
+        crate::wire::typed::of_fail(e, |said| FollowErr("unobservable", said))
+    }
+}
+
+impl crate::wire::typed::Codes for FollowErr {
+    const ALL: &'static [&'static str] = FOLLOW_CODES;
+    fn into_fail(self) -> crate::wire::spec::Fail {
+        let FollowErr(code, said) = self;
+        let f = crate::wire::spec::Fail::new(code, said);
+        if code == "bad_args" {
+            return f;
+        }
+        crate::wire::spec::Fail {
+            data: serde_json::to_value(live_after_refusal(code)).ok(),
+            ..f
+        }
+    }
+    fn of_code(code: &str, said: String) -> Result<Self, String> {
+        match FOLLOW_CODES.iter().find(|c| **c == code) {
+            Some(c) => Ok(FollowErr(c, said)),
+            None => Err(said),
+        }
+    }
+    const DATA: &'static [&'static str] = FOLLOW_CODES.split_at(1).1;
+    type Data = crate::wire::typed::Each<Refused>;
+}
+
+crate::wire::typed::codes! {
+    /// `terminal-follow-ack` 的码：不认的票（停了 / 没订过）。
+    pub(crate) enum AckErr {
+        NotKnown = "not_known",
+    }
+}
+
+crate::wire::typed::codes! {
+    /// `terminal-unfollow` 没有别的码（幂等）。
+    pub(crate) enum UnfollowErr {}
+}
+
+/// `terminal-follow`（帧面硬臂：要碰本连接的票表与应答通道；订上那一下起几个 tmux ⇒ 挪进阻塞线程池）。
+pub(crate) struct TerminalFollow;
+
+impl crate::wire::typed::Command for TerminalFollow {
+    const NAME: &'static str = "terminal-follow";
+    type Req = FollowReq;
+    type Reply = ();
+    type Err = FollowErr;
+}
+
+/// `terminal-follow-ack`（帧面硬臂，就地记账）。
+pub(crate) struct TerminalFollowAck;
+
+impl crate::wire::typed::Command for TerminalFollowAck {
+    const NAME: &'static str = "terminal-follow-ack";
+    type Req = AckReq;
+    type Reply = ();
+    type Err = AckErr;
+}
+
+/// `terminal-unfollow`（帧面硬臂，就地记账、幂等）。
+pub(crate) struct TerminalUnfollow;
+
+impl crate::wire::typed::Command for TerminalUnfollow {
+    const NAME: &'static str = "terminal-unfollow";
+    type Req = UnfollowReq;
+    type Reply = ();
+    type Err = UnfollowErr;
 }
 
 /// 订不上之后实时那一格落在哪。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FollowLive"
+    )
+)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Live {
     /// 这台只能快照（没装 tmux · tmux 太老）。
@@ -167,7 +309,16 @@ pub(crate) enum Live {
 }
 
 /// `terminal-follow` 订不上时失败应答的 `data`（订上了不回 `data`：画面走 `terminal_screen` 帧）。
-#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FollowRefused"
+    )
+)]
 pub(crate) struct Refused {
     pub(crate) live: Live,
 }
@@ -214,29 +365,36 @@ impl Desk {
 
     /// 三条命令之一 ⇒ 一帧应答（判据与 CLI 式调用用；帧面分派里 `terminal-follow` 走阻塞线程池，见 [`Desk::follow`]）。
     pub(crate) fn answer_wire(&self, cmd: &str, id: &str, args: &Value, tz: &crate::Tz) -> Frame {
-        let r = match cmd {
-            FOLLOW => self.follow(args, tz),
-            FOLLOW_ACK => self.ack(args),
-            UNFOLLOW => self.unfollow(args),
-            other => Err(CmdErr::from((
+        use crate::wire::typed::answer;
+        match cmd {
+            FOLLOW => {
+                answer::<TerminalFollow>(id, args, |r| self.follow(&r, tz).map_err(FollowErr::of))
+            }
+            FOLLOW_ACK => answer::<TerminalFollowAck>(id, args, |r| {
+                self.ack(&r)
+                    .map_err(crate::wire::typed::of_fail_with(AckErr::NotKnown))
+            }),
+            UNFOLLOW => answer::<TerminalUnfollow>(id, args, |r| {
+                self.unfollow(&r)
+                    .map_err(crate::wire::typed::of_fail_with(UnfollowErr::BadArgs))
+            }),
+            other => Frame::refused(
+                id,
+                other,
                 "unknown_command",
-                crate::common::contract::malformed(&format!("unknown follow command `{other}`")),
-            ))),
-        };
-        match r {
-            Ok(()) => Frame::ok(id),
-            Err(f) => Frame::refused(id, cmd, &f.code, &f.message),
+                &crate::common::contract::malformed(&format!("unknown follow command `{other}`")),
+            ),
         }
     }
 
     /// 订上：占位 · 认终端（问一次名单）· 看 tmux 版本 · 起控制模式客户端 · 登记 · 起订阅线程（它当场推第一帧）。
     /// 会起几个 tmux ⇒ 帧面放进阻塞线程池。这张票退过 ⇒ 什么都不起、回 `Ok`。
     /// `tz` ＝ 看的那一台的时区（订阅那一问带来的）：之后推的每一帧的抓屏时刻按它写。
-    pub(crate) fn follow(&self, args: &Value, tz: &crate::Tz) -> Result<(), CmdErr> {
-        let Some(seat) = self.reserve(args)? else {
+    pub(crate) fn follow(&self, req: &FollowReq, tz: &crate::Tz) -> Result<(), CmdErr> {
+        let Some(seat) = self.reserve(&req.ticket)? else {
             return Ok(());
         };
-        let r = self.take_seat(&seat, args, tz);
+        let r = self.take_seat(&seat, req, tz);
         if r.is_err() {
             self.release(&seat);
         }
@@ -244,9 +402,9 @@ impl Desk {
     }
 
     /// 占位：查重 · 查上限 · 占上（一把锁里）。这张票退过 ⇒ `None`（订阅那一问到得比退订晚，不必再起）。
-    fn reserve(&self, args: &Value) -> Result<Option<Seat>, CmdErr> {
-        let ticket = ticket_of(args)
-            .ok_or_else(|| bad_args("`ticket` must be a non-empty string (at most 128 bytes)"))?;
+    fn reserve(&self, ticket: &str) -> Result<Option<Seat>, CmdErr> {
+        ticket_ok(ticket)?;
+        let ticket = ticket.to_string();
         let mut g = lock(&self.0.tickets);
         if let Some(at) = g.dropped.iter().position(|t| *t == ticket) {
             g.dropped.remove(at);
@@ -279,12 +437,12 @@ impl Desk {
     }
 
     /// 凭占位起：认终端 · 看版本 · 起控制模式客户端，再把占位换成真的；占位已经被退订摘掉 ⇒ 收掉刚起的客户端、回 `Ok`。
-    fn take_seat(&self, seat: &Seat, args: &Value, tz: &crate::Tz) -> Result<(), CmdErr> {
+    fn take_seat(&self, seat: &Seat, req: &FollowReq, tz: &crate::Tz) -> Result<(), CmdErr> {
         let me = &self.0;
         let on = On {
             socket: me.socket.as_deref(),
         };
-        let t = terminals::follow_target_on(on, args)?;
+        let t = terminals::follow_target_on(on, req.terminal.as_deref(), req.sid.as_deref())?;
         let (proc, out) = open_client(me.socket.as_deref(), &t.session)?;
         let (tx, rx) = smpsc::channel::<Ev>();
         let pending = Arc::new(AtomicBool::new(false));
@@ -318,8 +476,12 @@ impl Desk {
     }
 
     /// 帧面那一口：[`Desk::follow`] 挪进阻塞线程池做（起 tmux 那几下不占 worker，同换号重启那几步）。
-    pub(crate) async fn follow_off_worker(self, args: Value, tz: crate::Tz) -> Result<(), CmdErr> {
-        tokio::task::spawn_blocking(move || self.follow(&args, &tz))
+    pub(crate) async fn follow_off_worker(
+        self,
+        req: FollowReq,
+        tz: crate::Tz,
+    ) -> Result<(), CmdErr> {
+        tokio::task::spawn_blocking(move || self.follow(&req, &tz))
             .await
             .unwrap_or_else(|e| {
                 Err(CmdErr::new(
@@ -331,15 +493,10 @@ impl Desk {
     }
 
     /// 第 `seq` 帧画完了。不认的票（停了 / 没订过）⇒ `not_known`。
-    pub(crate) fn ack(&self, args: &Value) -> Result<(), CmdErr> {
-        let ticket =
-            ticket_of(args).ok_or_else(|| bad_args("`ticket` must be a non-empty string"))?;
-        let seq = args
-            .get("seq")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| bad_args("`seq` must be a positive integer"))?;
-        match lock(&self.0.tickets).slots.get(&ticket) {
-            Some(Slot::On(f)) if f.tx.send(Ev::Ack(seq)).is_ok() => Ok(()),
+    pub(crate) fn ack(&self, req: &AckReq) -> Result<(), CmdErr> {
+        ticket_ok(&req.ticket)?;
+        match lock(&self.0.tickets).slots.get(&req.ticket) {
+            Some(Slot::On(f)) if f.tx.send(Ev::Ack(req.seq)).is_ok() => Ok(()),
             _ => Err(CmdErr::from((
                 "not_known",
                 crate::common::contract::malformed(
@@ -350,9 +507,9 @@ impl Desk {
     }
 
     /// 退订（幂等）。正在起的 ⇒ 摘掉占位（起好的那一下自己收）；不在册的 ⇒ 记进「退过」（订阅那一问也许还在路上）。
-    pub(crate) fn unfollow(&self, args: &Value) -> Result<(), CmdErr> {
-        let ticket =
-            ticket_of(args).ok_or_else(|| bad_args("`ticket` must be a non-empty string"))?;
+    pub(crate) fn unfollow(&self, req: &UnfollowReq) -> Result<(), CmdErr> {
+        ticket_ok(&req.ticket)?;
+        let ticket = req.ticket.clone();
         let mut g = lock(&self.0.tickets);
         match g.slots.remove(&ticket) {
             Some(Slot::On(f)) => {

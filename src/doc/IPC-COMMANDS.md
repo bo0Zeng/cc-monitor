@@ -23,7 +23,6 @@ Handshake sent once when a client connects。
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
-| `uncancellable` | [string]? | `commands` 里**撤不动**、又不是 typed 的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
 | `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
 
 ### `line`
@@ -519,8 +518,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sids` | [string] |  |
-| `branch` | [BranchHeld]? |  |
+| `sids` | [string] | 在看的会话 id（空 ＝ 一个都不看） |
+| `branch` | [BranchHeld]? | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要） |
 
 #### `BranchHeld`
 
@@ -530,7 +529,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `sid` | string |  |
 | `path` | string? |  |
-| `at` | number? |  |
+| `at` | number? | 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`） |
 | `sum` | string? |  |
 
 #### `WatchReply`
@@ -581,9 +580,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `target` | → | 要撤的那条命令的 `id` |
+入参 `CancelReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CancelReq = { 
+/**
+ * 要撤的那条命令的 `id`；撤不存在的也回 `ok`。
+ */
+target: string, };
+```
+
+码：`bad_args`
 
 #### `stream-watch`
 
@@ -591,14 +598,42 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `branch` | → | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）：`[{sid, path?, at?, sum?}]`，`at` · `sum` 照手上最后一帧 `session_branch` 的 `at + off.len()` 与 `sum`，手上没有 ⇒ `at: 0` |
-| `sids` | → | 在看的会话 id（串数组；空 ＝ 一个都不看） |
-| `from` | ← | 刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回） |
-| `path` | ← | `from[]`：那份记录在那台机器上的绝对路径 |
-| `seq` | ← | `from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补 |
-| `sid` | ← | `from[]`：会话 id |
+入参 `WatchAsk` · 回包 `WatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BranchHeld = { sid: string, path?: string | null, 
+/**
+ * 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`）。
+ */
+at?: number, sum?: string | null, };
+type WatchAsk = { 
+/**
+ * 在看的会话 id（空 ＝ 一个都不看）。
+ */
+sids: Array<string>, 
+/**
+ * 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）。
+ */
+branch?: Array<BranchHeld>, };
+type WatchFrom = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 这份会话记录在那台机器上的绝对路径。
+ */
+path: string, 
+/**
+ * 这条流从这一行起发它。
+ */
+seq: number, };
+type WatchReply = { 
+/**
+ * 刚进名单的会话每份记录一格（先前就在名单里的不回）。
+ */
+from: Array<WatchFrom>, };
+```
 
 码：`bad_args`
 
@@ -608,11 +643,23 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键）；`use:"files"` 开 sftp 一问一答 |
-| `link` | → | 链路 id：客户端给、客户端负责唯一 |
-| `window` | → | 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内 |
+入参 `LinkOpenReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkOpenReq = { 
+/**
+ * 链路 id：客户端给、客户端负责唯一（1..=128 字节）。
+ */
+link: string, 
+/**
+ * 拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键；形状由拨号那一层解）；`use:"files"` 开 sftp 一问一答。
+ */
+dial: Record<string, unknown>, 
+/**
+ * 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内。
+ */
+window: number, };
+```
 
 码：`bad_args` · `unsupported_use` · `duplicate_link` · `too_many_links`
 
@@ -622,10 +669,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `data` | → | 无 |
-| `link` | → | 链路 id |
+入参 `LinkDataReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkDataReq = { link: string, 
+/**
+ * 一块上行字节（base64，解出来至多 32 KiB）。
+ */
+data: string, };
+```
 
 码：`bad_args` · `no_such_link` · `link_busy` · `link_closed`
 
@@ -635,10 +687,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | → | 客户端读走了多少字节（累计信用不超过 16 MiB） |
-| `link` | → | 链路 id |
+入参 `LinkCreditReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkCreditReq = { link: string, 
+/**
+ * 客户端读走了多少字节（累计信用不超过 16 MiB）。
+ */
+bytes: number, };
+```
 
 码：`bad_args` · `no_such_link`
 
@@ -648,9 +705,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `link` | → | 链路 id；关不存在的也回 `ok` |
+入参 `LinkCloseReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LinkCloseReq = { 
+/**
+ * 关不存在的也回 `ok`。
+ */
+link: string, };
+```
 
 码：`bad_args`
 
@@ -727,9 +790,15 @@ type WirePath = string | { b16: string };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 传输单 id；之后进度与终局走 `transfer` 帧 |
+入参 `TransferIdReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TransferIdReq = { 
+/**
+ * 传输单 id（开单那一条回的）。
+ */
+id: string, };
+```
 
 码：`bad_args` · `no_such_transfer` · `already_started`
 
@@ -739,9 +808,15 @@ type WirePath = string | { b16: string };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 传输单 id；撤不在册的也回 `ok` |
+入参 `TransferIdReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TransferIdReq = { 
+/**
+ * 传输单 id（开单那一条回的）。
+ */
+id: string, };
+```
 
 码：`bad_args`
 
@@ -750,6 +825,14 @@ type WirePath = string | { b16: string };
 问活：零载荷，回 `ok`。
 
 不收 `args` · 可撤 · CLI：`ccm -- --ping`
+
+入参 `NoArgs` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 ### 4.2 文件管理
 
@@ -1336,21 +1419,270 @@ type WirePath = string | { b16: string };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --quota-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
-| `candidates` | ← | 换号 · 加号那几处的候选 `{agent, account, kind}`：出过数的在前、没出过的在后，起会话时没说是哪个号的 `_` 不在里面（判断只住 `name_words::is_candidate`）；界面照它画，不另拼、不另滤 |
-| `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
-| `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
-| `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
-| `names` | ← | 号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d` |
-| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn） |
-| `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
-| `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
-| `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来） |
-| `unseen` | ← | 账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send\|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`） |
-| `text` | ← | 读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null` |
-| `usableNow` | ← | 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算） |
+入参 `NoArgs` · 回包 `QuotaRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type NoArgs = Record<symbol, never>;
+type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
+/**
+ * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
+ */
+fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, seenAt: number, seenAtText: Words, 
+/**
+ * 别台的钟走在前面时才有。
+ */
+seenAtRelText?: Words, 
+/**
+ * 那一条账的额度快照（原数照原样；时刻旁边的字已添）。
+ */
+reading: QuotaReadingShown, 
+/**
+ * 各窗口几点、从哪看到的（原数照原样；账上没记 ⇒ 缺）。
+ */
+windowsSeen?: { [key in string]: QuotaWindowSeen }, kind: QuotaKind, state: QuotaState, 
+/**
+ * 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
+ */
+stale: boolean, 
+/**
+ * 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。
+ */
+limiting?: string, 
+/**
+ * `5h` · `7d` 各一格（有数的才出）。
+ */
+slots: Array<SlotShow>, login: LoginState, 
+/**
+ * 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
+ */
+subId?: string, 
+/**
+ * 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
+ */
+windows?: Array<WindowShow>, 
+/**
+ * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
+ */
+usage: Usage, };
+type QuotaCandidate = { agent: string, account: string, kind: QuotaKind, };
+type QuotaCell = { text: Words, tone: Tone, };
+type QuotaEarliestReturn = { account: string, at: number, atText: Words, atRelText?: Words, };
+type QuotaKind = "sub" | "api";
+type QuotaNames = { accounts: { [key in string]: Words }, slots: { [key in string]: Words }, };
+type QuotaOverageShown = { status?: QuotaStatus, 
+/**
+ * 为什么不可用（那一家的原值）。
+ */
+disabled?: string, 
+/**
+ * 这一发正在用超额。
+ */
+inUse: boolean, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
+type QuotaRead = { 
+/**
+ * 那份文件读到的三态。
+ */
+state: QuotaReadState, 
+/**
+ * 只在 `unreadable` 时有：为什么读不出来（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答）。
+ */
+detail: string | null, 
+/**
+ * 那份文件的绝对路径（家推不出来时 `null`）。
+ */
+path: string | null, 
+/**
+ * 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）。
+ */
+now: number, 
+/**
+ * 每个出过数的号一条，按 `(agent, account)` 排。
+ */
+accounts: Array<QuotaAccount>, 
+/**
+ * 账号库里有、额度账上从没出过数的号。
+ */
+unseen: Array<QuotaUnseen>, 
+/**
+ * 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜。
+ */
+usableNow: Array<string>, 
+/**
+ * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（[`is_candidate`]）。界面只照它画，不另拼、不另滤。
+ */
+candidates: Array<QuotaCandidate>, 
+/**
+ * 被拒 / 超额在兜的号里最早回来的那个；没有、或都说不出时刻 ⇒ `null`。
+ */
+earliestReturn: QuotaEarliestReturn | null, 
+/**
+ * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`quota_rows::head_text`]）。
+ */
+text: Words | null, 
+/**
+ * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
+ */
+fiveHour: Words | null, 
+/**
+ * 号名 / 位名表（出口画号名 · 位名只照它）。
+ */
+names: QuotaNames, };
+type QuotaReadState = "present" | "absent" | "unreadable";
+type QuotaReadingShown = { 
+/**
+ * 限流器的结论；回包里没说 ⇒ 缺。
+ */
+status?: QuotaStatus, 
+/**
+ * 那一发被上游拒了（没被服务）。
+ */
+refused: boolean, 
+/**
+ * 此刻卡着的那个窗口名。
+ */
+limiting?: string, windows: Array<QuotaWindowRead>, overage?: QuotaOverageShown, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
+type QuotaSource = "headers" | "usage";
+type QuotaState = "ok" | "near" | "refused" | "overageInUse" | "unseen" | "resetSinceSeen";
+type QuotaStatus = "allowed" | "warning" | "rejected";
+type QuotaUnseen = { rows: Array<Array<QuotaCell>>, 
+/**
+ * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
+ */
+fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+/**
+ * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
+ */
+usage: QuotaUnseenUsage, };
+type QuotaUnseenUsage = { slot?: string, window?: Words, value: Words, text: Words, tone: Tone, };
+type QuotaWarm = { act: QuotaWarmAct, at?: number, 
+/**
+ * `at` 写给人看的样子（[`Warm::stamp`]）。
+ */
+atText?: Words, 
+/**
+ * `at` 距今。
+ */
+atRelText?: Words, 
+/**
+ * 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
+ */
+text: Words, };
+type QuotaWarmAct = "send" | "wait";
+type QuotaWindowRead = { name: string, 
+/**
+ * 已用比例（通常 0–1，可以超过 1）。
+ */
+used?: number, 
+/**
+ * 越过了哪条预警线（比例）；没越过就没有。
+ */
+warnedAt?: number, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
+type QuotaWindowSeen = { at: number, atText: Words, atRelText?: Words, from: QuotaSource, };
+type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
+/**
+ * `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
+ */
+resetsAtText?: string, 
+/**
+ * `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
+ */
+resetsAtRelText?: string, 
+/**
+ * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
+ */
+full?: boolean, 
+/**
+ * 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ */
+text: string, 
+/**
+ * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Usage = { 
+/**
+ * 画的是哪个语义位（卡着的那个；回包没说 ⇒ `5h`）；按量号 ⇒ 缺。
+ */
+slot?: string, 
+/**
+ * 那个语义位的字（`5h`）；按量号 ⇒ 缺。
+ */
+window?: string, 
+/**
+ * 用量那一格（`63%` · `✕` · `超额` · `—` · `被拒` · `按量`）。
+ */
+value: string, 
+/**
+ * 被拒时几点重置（`↻19:00`，出口那一下按钟写，[`QuotaShow::stamp`]）；没有 ⇒ 缺。
+ */
+reset?: string, 
+/**
+ * 连成一句（`5h 63%` · `5h ✕ ↻19:00` · `按量`）：下拉项右侧 · 切换那颗按钮。
+ */
+text: string, 
+/**
+ * 语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
+type WindowShow = { 
+/**
+ * 那一家的窗口名（`five_hour` · `seven_day` · `seven_day_<模型>` · …）。
+ */
+name: string, 
+/**
+ * 窗口键（`5h` · `7d` · `7d:<模型>`；轮换的上限 · 单段预算按它配）；不算用量窗口的（超额）⇒ 缺。
+ */
+key?: string, 
+/**
+ * 取整的百分比（已重置未计时 ⇒ 0）。
+ */
+pct?: number, 
+/**
+ * 几点重置；有 ＝ 这个窗口在计时。
+ */
+resetsAt?: number, 
+/**
+ * `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
+ */
+resetsAtText?: string, 
+/**
+ * `resets_at` 距今（同上，只在还没到时有）。
+ */
+resetsAtRelText?: string, seenAt: number, 
+/**
+ * `seen_at` 写给人看的样子（同上）。
+ */
+seenAtText?: string, 
+/**
+ * `seen_at` 距今（别台的钟走在前面时才有）。
+ */
+seenAtRelText?: string, from: QuotaSource, 
+/**
+ * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
+ */
+resetSinceSeen?: boolean, };
+type Words = string;
+```
+
+码：`bad_args`
 
 #### `quota-probe`
 
@@ -1358,16 +1690,71 @@ type WirePath = string | { b16: string };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 32 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-probe`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → ← | 账号库里的号（配置目录末段；账号 0 是 `0`） |
-| `agent` | → ← | 路由第 1 段：哪一家 |
-| `from` | ← | 恒 `"usage"` |
-| `now` | ← | 这台此刻的 unix 秒 |
-| `path` | ← | 额度账那份文件的绝对路径 |
-| `reason` | ← | 只在 `unreadable` 时有：哪一处读不懂（英文诊断） |
-| `state` | ← | `"read"`（读得懂、已记进额度账）· `"unreadable"`（输出对不上：**不猜、不写账**） |
-| `windows` | ← | 读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]` |
+入参 `QuotaProbeReq` · 回包 `Probed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ProbeFrom = "usage";
+type ProbeState = "read" | "unreadable";
+type Probed = { 
+/**
+ * 路由第 1 段：哪一家（同入参）。
+ */
+agent: string, 
+/**
+ * 账号库里的号（同入参）。
+ */
+account: string, 
+/**
+ * 这份读数从哪来。
+ */
+from: ProbeFrom, 
+/**
+ * 这台此刻的 unix 秒。
+ */
+now: number, 
+/**
+ * 读得懂（已记进额度账）· 输出对不上（不猜、不写账）。
+ */
+state: ProbeState, 
+/**
+ * 只在 `unreadable` 时有：哪一处读不懂（英文诊断）；`read` ⇒ `null`。
+ */
+reason: string | null, 
+/**
+ * 读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`。
+ */
+windows: Array<QuotaWindow>, 
+/**
+ * 额度账那份文件的绝对路径（家推不出来时 `null`）。
+ */
+path: string | null, };
+type QuotaProbeReq = { 
+/**
+ * 路由第 1 段：哪一家。
+ */
+agent: string, 
+/**
+ * 账号库里的号（配置目录末段；账号 0 是 `0`）。
+ */
+account: string, };
+type QuotaWindow = { 
+/**
+ * 窗口名（那一家读法表里的值，如 5 小时 · 7 天）。
+ */
+name: string, 
+/**
+ * 已用比例（通常 0–1，可以超过 1）。
+ */
+used?: number, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, 
+/**
+ * 越过了哪条预警线（比例）；没越过就没有。
+ */
+warnedAt?: number, };
+```
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
 
@@ -1610,6 +1997,7 @@ type FactBlocked = { why: FactWhy, until?: number, text: string, };
 type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type LoginState = "ok" | "needsLogin" | "needsKey";
 type QuotaKind = "sub" | "api";
+type RotBadCell = { cell: string, code: string, };
 type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
 /**
  * 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
@@ -1643,6 +2031,7 @@ type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
+type RotRefused = { cells: Array<RotBadCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -1790,6 +2179,8 @@ resetsText?: string, rate?: number, };
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused`
 
+失败带 `data` 的码：`refused` ⇒ `RotRefused`
+
 #### `rotation-settings`
 
 改一份设置。
@@ -1799,6 +2190,9 @@ resetsText?: string, rate?: number, };
 入参 `RotationSettingsReq` · 回包 `RotationSettingsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotBadCell = { cell: string, code: string, };
+type RotConflict = { rev: string, };
+type RotRefused = { cells: Array<RotBadCell>, };
 type RotWhere = { sid: string, } | { strategy: string, };
 type RotationSettingsReply = { 
 /**
@@ -1818,6 +2212,8 @@ ifRev?: string, };
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
 
+失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
+
 #### `rotation-save`
 
 存设置。
@@ -1827,6 +2223,9 @@ ifRev?: string, };
 入参 `RotationSaveReq` · 回包 `RotationSaveReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotBadCell = { cell: string, code: string, };
+type RotConflict = { rev: string, };
+type RotRefused = { cells: Array<RotBadCell>, };
 type RotSaveAs = { name: string, };
 type RotWhere = { sid: string, } | { strategy: string, };
 type RotationSaveReply = { id: string, rev: string, };
@@ -1846,6 +2245,8 @@ as?: RotSaveAs, };
 ```
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
+
+失败带 `data` 的码：`refused` ⇒ `RotRefused` · `conflict` ⇒ `RotConflict`
 
 #### `rotation-revert`
 
@@ -1929,11 +2330,15 @@ type RotationTempReq = { sid: string, op: RotTempOp, };
 入参 `RotationUseNowReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type RotDone = Record<symbol, never>;
+type RotUnusable = { why?: FactWhy, until?: number, };
 type RotationUseNowReq = { sid: string, account: string, };
 ```
 
 码：`bad_args` · `no_session` · `not_listed` · `unusable` · `io_failed`
+
+失败带 `data` 的码：`unusable` ⇒ `RotUnusable`
 
 #### `rotation-strategy-add`
 
@@ -1944,6 +2349,7 @@ type RotationUseNowReq = { sid: string, account: string, };
 入参 `RotationStrategyAddReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotBadStrategy = { line?: number, };
 type RotStrategyId = { id: string, };
 type RotationStrategyAddReq = { 
 /**
@@ -1957,6 +2363,8 @@ name: string, };
 ```
 
 码：`bad_args` · `bad_strategy` · `io_failed`
+
+失败带 `data` 的码：`bad_strategy` ⇒ `RotBadStrategy`
 
 #### `rotation-strategy-copy`
 
@@ -1982,11 +2390,14 @@ type RotationStrategyCopyReq = { id: string, name: string, };
 入参 `RotationStrategyRenameReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotConflict = { rev: string, };
 type RotStrategyId = { id: string, };
 type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
+
+失败带 `data` 的码：`conflict` ⇒ `RotConflict`
 
 #### `rotation-strategy-delete`
 
@@ -1998,10 +2409,13 @@ type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
 
 ```ts
 type RotDone = Record<symbol, never>;
+type RotInUse = { sids: Array<string>, };
 type RotationStrategyDeleteReq = { id: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `in_use` · `io_failed`
+
+失败带 `data` 的码：`in_use` ⇒ `RotInUse`
 
 #### `rotation-strategy-tz`
 
@@ -2012,11 +2426,14 @@ type RotationStrategyDeleteReq = { id: string, };
 入参 `RotationStrategyTzReq` · 回包 `RotStrategyRev`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type RotConflict = { rev: string, };
 type RotStrategyRev = { rev: string, };
 type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
+
+失败带 `data` 的码：`conflict` ⇒ `RotConflict`
 
 #### `rotation-day-paint`
 
@@ -2048,14 +2465,40 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --apikey-key-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | 推出来的账号 id |
-| `baseUrl` | → ← | 入（可选）：这个账号的第三方端点 |
-| `configDir` | → | 这个号的账号目录 |
-| `key` | → | 明文 |
-| `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
-| `path` | ← | 那份文件的绝对路径 |
+入参 `KeySetReq` · 回包 `KeySet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type KeySet = { 
+/**
+ * 推出来的账号 id。
+ */
+account: string, 
+/**
+ * 那份文件的绝对路径。
+ */
+path: string, 
+/**
+ * 这一行 key 的掩码（只留末四位）。
+ */
+masked: string, 
+/**
+ * 这一行此刻的端点（没配 ⇒ `null`）。
+ */
+baseUrl: string | null, };
+type KeySetReq = { 
+/**
+ * 这个号的账号目录。
+ */
+configDir: string, 
+/**
+ * 明文。
+ */
+key: string, 
+/**
+ * 这个账号的第三方端点：缺 / `null` / 空串 ＝ 不碰那一格（只配 key 时已有端点原样留着）。
+ */
+baseUrl?: string | null, };
+```
 
 码：`bad_args` · `bad_file` · `io_failed`
 
@@ -2065,12 +2508,101 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `accounts` | ← | 每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge, color}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）；`color` ＝ 号色（`--acct-c0..c7` 第几格，账号库里的事实：加号时分第一个空格、存在清单里，`Manifest::with_colors`），界面只画它 |
-| `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`） |
-| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`） |
-| `notice` | ← | 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null` |
+入参 `AccountsListReq` · 回包 `AccountsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountRow = { 
+/**
+ * API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
+ */
+keyMasked: string | null, 
+/**
+ * 同上，那一行的端点。
+ */
+baseUrl: string | null, 
+/**
+ * 账号菜单每一项右边那一枚徽章。
+ */
+badge: Badge, name: string, 
+/**
+ * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
+ */
+label: string, email: string, 
+/**
+ * `null` ＝ 账号 0（下游据此不注入配置目录那一格）。
+ */
+configDir: string | null, isDefault: boolean, 
+/**
+ * `isolated` · `in-place`。
+ */
+mode: string, exists: boolean, 
+/**
+ * 凭据文件在不在（不代表凭据有效；可用性看 `authReady`）。
+ */
+loggedIn: boolean, 
+/**
+ * `subscription` · `api-key`。
+ */
+authKind: string, authReady: boolean, 
+/**
+ * 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
+ */
+selectable: boolean, 
+/**
+ * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+ */
+color: number, };
+type AccountsList = { meta: ListMeta, 
+/**
+ * 每账号一行，清单次序。
+ */
+accounts: Array<AccountRow>, 
+/**
+ * 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）·
+ * 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
+ */
+notice: string | null, };
+type AccountsListReq = { 
+/**
+ * 这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+ */
+agent: string, };
+type Badge = { text: Words, warn: boolean, title: Words, };
+type ListMeta = { 
+/**
+ * 这台建了账号库（清单读得出）。
+ */
+enabled: boolean, acctsDir: string, manifestPath: string, updatedAt: string | null, 
+/**
+ * 账号 0 的配置目录（清单里写了才有）。
+ */
+sharedStore: string | null, 
+/**
+ * 清单里认得的号数。
+ */
+count: number, 
+/**
+ * 清单读不出的那一句。
+ */
+error: string | null, 
+/**
+ * 这台做不了多账号的那一句（做得了 ⇒ `null`）。
+ */
+unsupported: string | null, 
+/**
+ * 删掉默认号之后新会话默认谁（同删号那一条的答案）。
+ */
+nextDefault: string | null, 
+/**
+ * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
+ */
+effectiveDefault: string | null, 
+/**
+ * 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+ */
+home: string | null, };
+type Words = string;
+```
 
 码：`bad_args` · `too_large`
 
@@ -2080,14 +2612,36 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machine-interrupts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `appExit` | → | 可缺；`true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零 |
-| `forwards` | ← | 见 `machine` |
-| `liveStreams` | ← | 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新） |
-| `machine` | → | 可缺 |
-| `relayedMaybe` | ← | 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它） |
-| `relayedSessions` | ← | 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动） |
+入参 `MachineInterruptsReq` · 回包 `Interrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Interrupts = { 
+/**
+ * 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动）。
+ */
+relayedSessions: number, 
+/**
+ * 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它）。
+ */
+relayedMaybe: number, 
+/**
+ * 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新）。
+ */
+liveStreams: number, 
+/**
+ * 这台账上通往问的那台机器的转发（问的是重启 / 退出 cc-monitor ⇒ 账上全部）。
+ */
+forwards: number, };
+type MachineInterruptsReq = { 
+/**
+ * 数通往哪台的转发（缺 ⇒ 不数）。
+ */
+machine?: string | null, 
+/**
+ * `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
+ */
+appExit?: boolean | null, };
+```
 
 码：`bad_args`
 
@@ -2097,11 +2651,14 @@ v: number | null, };
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-sessions`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `lines` | ← | 每条运行中会话一行 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
+入参 `NoArgs` · 回包 `SessionLines`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`too_large`
+```ts
+type NoArgs = Record<symbol, never>;
+type SessionLines = { lines: Array<string>, };
+```
+
+码：`bad_args` · `too_large`
 
 #### `accounts-trust`
 
@@ -2109,12 +2666,29 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-trust`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `configDir` | → | 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**（读 agent 自己那份用户级配置，不收路径） |
-| `cwd` | → | 要预检的工作目录（必填） |
-| `known` | ← | 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认） |
-| `trusted` | ← | 这个账号接受过该目录的信任对话框 |
+入参 `AccountsTrustReq` · 回包 `Trust`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountsTrustReq = { 
+/**
+ * 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**
+ * （读 agent 自己那份用户级配置，不收路径）。
+ */
+configDir?: string | null, 
+/**
+ * 要预检的工作目录。
+ */
+cwd: string, };
+type Trust = { 
+/**
+ * 这个账号接受过该目录的信任对话框。
+ */
+trusted: boolean, 
+/**
+ * 这个账号的用户级配置里有该目录的记录（`false` ⇒ 首次进入，大概率会弹确认）。
+ */
+known: boolean, };
+```
 
 码：`bad_args` · `failed` · `manifest_unavailable` · `no_home` · `unknown_config_dir` · `unsafe_config_dir`
 
@@ -2799,20 +3373,24 @@ notes: Array<string>, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → | 账号库里的号（账号 0 是 `0`；`mcp` 那一种可为 `null`：那一家的默认配置目录） |
-| `agent` | → | 哪一家（同 `accounts-list` 的 `agent`） |
-| `browserHere` | → | 可缺：打开登录链接的浏览器在不在后端这台（桌面连本机交 `true`；手机 · 连远端交 `false`）；缺 ⇒ 按不在答。不进目标（`login-finish` 交回的 `target` 不带它） |
-| `kind` | → | 登录什么：`account`（一个号）· `mcp`（一个号里的一个 MCP 服务器） |
-| `projectDir` | → | `mcp` 那一种：那一条配置所属的项目目录（用户级 ⇒ `null`） |
-| `server` | → | `mcp` 那一种：服务器名（`mcp-read` 里那一条） |
-| `auto` | ← | 会不会自己登完：照 `browserHere` 答 —— 浏览器在这台 ⇒ 回调到那一家自己开的本机端口，登完推 `changed {login}`，粘码只是后备；不在 ⇒ `false`，回跳到不了这台，只能粘 |
-| `job` | ← | 作业号（`login-finish` · `login-cancel` 交它） |
-| `paste` | ← | 粘回来的是什么：`code`（登录页上给的那一段）· `redirectUrl`（浏览器回跳到本机的那一整条地址） |
-| `url` | ← | 登录链接（在浏览器里打开，不用内嵌网页） |
+入参 `LoginStartArgs` · 回包 `LoginStarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginAgain = { again: LoginAgainHow, };
+type LoginAgainHow = "paste" | "restart" | "none";
+type LoginStartArgs = { 
+/**
+ * 打开登录链接的浏览器在后端这台上（桌面连本机）：登录页回跳到这台的本机端口，那一家自己登完。
+ * 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
+ */
+browserHere?: boolean, } & ({ "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, });
+type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, };
+type PasteKind = "code" | "redirectUrl";
+```
 
 码：`bad_args` · `not_found` · `unsupported` · `failed`
+
+失败带 `data` 的码：`not_found` ⇒ `LoginAgain` · `unsupported` ⇒ `LoginAgain` · `failed` ⇒ `LoginAgain`
 
 #### `login-finish`
 
@@ -2823,6 +3401,8 @@ notes: Array<string>, };
 入参 `LoginFinishReq` · 回包 `LoginDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type LoginAgain = { again: LoginAgainHow, };
+type LoginAgainHow = "paste" | "restart" | "none";
 type LoginDone = { target: LoginStartReq, };
 type LoginFinishReq = { job: string, 
 /**
@@ -2833,6 +3413,8 @@ type LoginStartReq = { "kind": "account", agent: string, account: string, } | { 
 ```
 
 码：`bad_args` · `bad_paste` · `refused` · `no_job` · `child_timed_out`
+
+失败带 `data` 的码：`bad_paste` ⇒ `LoginAgain` · `refused` ⇒ `LoginAgain` · `no_job` ⇒ `LoginAgain` · `child_timed_out` ⇒ `LoginAgain`
 
 #### `login-cancel`
 
@@ -4981,11 +5563,12 @@ type Words = string;
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 哪一家（线上的 kind） |
-| `hook` | → | 那一家的 hook 交来的那一份原样 |
-| `decision` | ← | 人的答案写成那一家要的那一整份，hook 原样打到 stdout；`null` ＝ 不给决定（不是要人答的那一种 · 改到终端里答 · 别处关了），hook 空手退 |
+入参 `AskReq` · 回包 `AskReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskReply = { decision: unknown, };
+type AskReq = { agent: string, hook: unknown, };
+```
 
 码：`bad_args`
 
@@ -5823,11 +6406,7 @@ watchers: number,
 /**
  * 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
  */
-unavailable: Array<Unavailable>, 
-/**
- * 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
- */
-uncancellable: Array<string>, };
+unavailable: Array<Unavailable>, };
 type Unavailable = { 
 /**
  * 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
@@ -7879,6 +8458,23 @@ class: string, };
 
 ```ts
 type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -7915,6 +8511,8 @@ account: LaunchedAccount | null, };
 
 码：`bad_args` · `refused` · `account_unavailable`
 
+失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable`
+
 #### `launch-render-cli`
 
 远端起会话那一行 `ccm …`。
@@ -7925,6 +8523,23 @@ account: LaunchedAccount | null, };
 
 ```ts
 type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type CliRenderRequest = { 
 /**
  * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
@@ -7953,6 +8568,8 @@ type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_i
 ```
 
 码：`bad_args` · `refused` · `account_unavailable`
+
+失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable`
 
 #### `terminal-ssh`
 
@@ -8729,14 +9346,29 @@ seen_screen?: string, };
 
 收 `args` · 连接内就地做完 · 只在流上 · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `live` | ← | 失败时：实时那一格落在哪 —— `snapshot_only`（这台只能快照：没装 tmux · tmux 低于 3.2）· `stopped`（别的） |
-| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
-| `ticket` | → | 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它 |
+入参 `FollowReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `too_many_follows` · `unobservable` · `child_timed_out`
+```ts
+type FollowLive = "snapshot_only" | "stopped";
+type FollowRefused = { live: FollowLive, };
+type FollowReq = { 
+/**
+ * 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它。
+ */
+ticket: string, 
+/**
+ * 目标：名单里的句柄（与 `sid` 恰给一个）。
+ */
+terminal?: string | null, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string | null, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `too_many_follows` · `unobservable` · `child_timed_out`
+
+失败带 `data` 的码：`bad_target` ⇒ `FollowRefused` · `not_known` ⇒ `FollowRefused` · `ambiguous` ⇒ `FollowRefused` · `no_tmux` ⇒ `FollowRefused` · `tmux_too_old` ⇒ `FollowRefused` · `too_many_follows` ⇒ `FollowRefused` · `unobservable` ⇒ `FollowRefused` · `child_timed_out` ⇒ `FollowRefused`
 
 #### `terminal-follow-ack`
 
@@ -8744,10 +9376,15 @@ seen_screen?: string, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `seq` | → | 画完的那一帧的序号 |
-| `ticket` | → | 订阅票 |
+入参 `AckReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AckReq = { ticket: string, 
+/**
+ * 画完的那一帧的序号。
+ */
+seq: number, };
+```
 
 码：`bad_args` · `not_known`
 
@@ -8757,9 +9394,15 @@ seen_screen?: string, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `ticket` | → | 订阅票；退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起） |
+入参 `UnfollowReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type UnfollowReq = { 
+/**
+ * 退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）。
+ */
+ticket: string, };
+```
 
 码：`bad_args`
 
@@ -9194,6 +9837,23 @@ type StartMode = "tmux" | "window";
 
 ```ts
 type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type FirstSay = { 
 /**
  * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
@@ -9309,10 +9969,22 @@ cwd: string,
  * 第一句交进去的结局；没给第一句 ⇒ `null`。
  */
 prompt: FirstSay | null, };
+type SessionNewField = "agent" | "command" | "cwd" | "account" | "place" | "tmuxName";
 type SessionNewOutcome = "started" | "open";
+type SessionNewRefusal = { 
+/**
+ * 不行的那一格；整体的（起不来 · 分叉写不成 · 渲不出）⇒ `null`。
+ */
+field: SessionNewField | null, 
+/**
+ * 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
+ */
+unavailable: AccountUnavailable | null, };
 ```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
+
+失败带 `data` 的码：`bad_args` ⇒ `SessionNewRefusal` · `unknown_agent` ⇒ `SessionNewRefusal` · `bad_command` ⇒ `SessionNewRefusal` · `no_dir` ⇒ `SessionNewRefusal` · `account_unavailable` ⇒ `SessionNewRefusal` · `place_unavailable` ⇒ `SessionNewRefusal` · `bad_tmux_name` ⇒ `SessionNewRefusal` · `tmux_taken` ⇒ `SessionNewRefusal` · `unobservable` ⇒ `SessionNewRefusal` · `fork_failed` ⇒ `SessionNewRefusal` · `refused` ⇒ `SessionNewRefusal` · `start_failed` ⇒ `SessionNewRefusal` · `child_timed_out` ⇒ `SessionNewRefusal` · `launch_pending` ⇒ `SessionNewRefusal` · `no_strategy` ⇒ `SessionNewRefusal`
 
 #### `session-new-facts`
 
@@ -9469,6 +10141,23 @@ forkOf?: string, };
 入参 `RestartReq` · 回包 `Restarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
 type Arrival = "arrived" | "missed";
 type Compact = "done" | "timed_out" | "skipped" | "unsupported" | "failed";
 type LaunchedAccount = { name: string, configDir: string, 
@@ -9476,6 +10165,7 @@ type LaunchedAccount = { name: string, configDir: string,
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
  */
 model: string | null, };
+type RestartRefused = { names: Array<string>, } | { pids: Array<number>, stopped: boolean, } | { why: string, } | { terminal: string, why: string | null, stopped: boolean, };
 type RestartReq = { 
 /**
  * 会话 id。
@@ -9533,6 +10223,8 @@ account: LaunchedAccount | null, };
 ```
 
 码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed` · `child_timed_out`
+
+失败带 `data` 的码：`account_unavailable` ⇒ `AccountUnavailable` · `ambiguous` ⇒ `RestartRefused` · `session_already_live` ⇒ `RestartRefused` · `stop_failed` ⇒ `RestartRefused` · `start_failed` ⇒ `RestartRefused`
 
 #### `launch`
 
@@ -9747,13 +10439,33 @@ type Prefer = { host: string, port: number, };
 
 收 `args` · 可撤 · CLI：`ccm -- --resident-verdict`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `action` | ← | `replace`（换掉再接）· `attach`（接上它） |
-| `mine` | → | monitor 手上这一版后端自报的身份（非空） |
-| `older` | ← | 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」） |
-| `replaced` | → | 这一趟是不是已经换过一次 |
-| `theirs` | → | 那台 hello 报的 `build_id`（缺 ⇒ 空串） |
+入参 `VerdictReq` · 回包 `VerdictReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type VerdictAction = "replace" | "attach";
+type VerdictReply = { 
+/**
+ * 换掉再接 · 接上它。
+ */
+action: VerdictAction, 
+/**
+ * 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
+ */
+older: boolean, };
+type VerdictReq = { 
+/**
+ * monitor 手上这一版后端自报的身份（非空）。
+ */
+mine: string, 
+/**
+ * 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
+ */
+theirs: string, 
+/**
+ * 这一趟是不是已经换过一次。
+ */
+replaced: boolean, };
+```
 
 码：`bad_args`
 
@@ -10203,6 +10915,11 @@ fault: MachineFault | null, };
 
 ```ts
 type ElemKey = { fields: Array<string>, equals: string, };
+type Gone = { 
+/**
+ * 认出了不止一台（不猜是哪台）。
+ */
+ambiguous: boolean, };
 type Host = { 
 /**
  * 这台的名字（origin）；空 ⇒ 用 `host`。
@@ -10241,6 +10958,20 @@ jump: string,
  */
 connect: boolean, };
 type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachineFault = { 
+/**
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ */
+code: MachineFaultCode, 
+/**
+ * 出问题的那台的名字（`label` 非空取它、否则 `host`）。
+ */
+name: string, 
+/**
+ * 那一格下面的那一句（添加机器框 · 机器卡同读）。
+ */
+said: string, };
+type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken";
 type MachinesEdits = { edits: Array<MachineEdit>, };
 type MachinesReply = { 
 /**
@@ -10269,6 +11000,8 @@ type PinnedDay = { origin: Origin, day: string, };
 ```
 
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
+
+失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
 
 #### `relay-optin`
 
@@ -10437,21 +11170,27 @@ type Origin = string;
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `backendHello` | ← | 那台后端的一句（往返毫秒 · 版本 · 做不到几项） |
-| `backendOk` | ← | 那台后端答没答（hello ＋ `ping` 往返） |
-| `end` | ← | 结局，**最后一格** |
-| `endpoint` | ← | 实际连上的地址 |
-| `fingerprint` | ← | 那台的主机指纹（`sshOk:false` 时不给） |
-| `jump` | → | 跳板那一台的配置（可缺） |
-| `machine` | → | 那台的配置（可能还没保存）：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` … |
-| `message` | ← | 结局那一句 |
-| `reached` | ← | `ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了 |
-| `saved` | → | 已保存的那一份（可缺） |
-| `sshOk` | ← | SSH 握手 ＋ 鉴权过没过（结局 `end` 里） |
-| `stage` | ← | 拨号阶段行，与界面 `ConnectStage` 同形 |
-| `ticket` | → ← | 界面交来的票（1..=64 个 `[A-Za-z0-9-]`），进度帧 `probe` 原样回填 |
+入参 `ProbeReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ProbeReq = { 
+/**
+ * 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
+ */
+ticket: string, 
+/**
+ * 那台的配置：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …
+ */
+machine: Record<string, unknown>, 
+/**
+ * 已保存的那一份（可缺）。
+ */
+saved?: Record<string, unknown>, 
+/**
+ * 跳板那一台的配置（可缺）。
+ */
+jump?: Record<string, unknown>, };
+```
 
 码：`bad_args` · `bad_jump` · `failed`
 
@@ -10696,14 +11435,36 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dirs` | → | 可选：另要问的目录（串的数组） |
-| `fresh` | → | 可选布尔：`true` ⇒ 认过的目录也重问 |
-| `pb` | ← | `{state: ok\|missing\|unsupported, said, version}`：pb 装没装、认不认得它的输出 |
-| `workspaces` | ← | 每个工作区一格 `{workspace, repo, auto, rev, stale, needCount, bySession, slices: [{name, domain, current, progress, needCount, error, stale}]}` |
+入参 `PlanListReq` · 回包 `PlanList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args`
+```ts
+type PlanList = { pb: PlanPb, workspaces: Array<PlanListWorkspace>, };
+type PlanListReq = { 
+/**
+ * 另要问的目录（这台的路径）。
+ */
+dirs?: Array<string> | null, 
+/**
+ * `true` ⇒ 认过的目录也重问 pb。
+ */
+fresh?: boolean | null, };
+type PlanListSlice = { name: string, domain: string | null, current: boolean, progress: PlanProgress | null, needCount: number, error: string | null, stale: PlanStale | null, };
+type PlanListWorkspace = { workspace: string, repo: string | null, auto: boolean, rev: string, stale: PlanStale | null, needCount: number, bySession: { [key in string]: PlanSessionBlock }, slices: Array<PlanListSlice>, };
+type PlanPb = { state: "ok" | "missing" | "unsupported", said: string | null, version?: string, };
+type PlanProgress = { done: number, open: number, dropped: number, };
+type PlanSessionBlock = { slice: string, block: string, 
+/**
+ * 块根格（编号；点会话头那一枚标选中它）。
+ */
+cell: string | null, 
+/**
+ * 块根格的标题；顶块 ⇒ `null`。
+ */
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+```
+
+码：`bad_args` · `failed`
 
 #### `plan-read`
 
@@ -10711,15 +11472,143 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `workspace` | → | 工作区根（`plan-list` 给的那个） |
-| `rev` | ← | 这一份输出的摘要：变了才算计划变了 |
-| `readAt` | ← | 读到的时刻（epoch ms） |
-| `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
-| `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
-| `slices` | ← | 每片一格：`path` ＝ 仓库相对工作区根（pb 登记的；旧 pb 没给 ⇒ 片名）；读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null`；顶块（`project`）那一次记在片上的 `returned` |
-| `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
+入参 `PlanReadReq` · 回包 `PlanRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
+type PlanBlock = { id: string, cells: Array<string>, dir: string | null, owner: PlanWho | null, phase: string | null, 
+/**
+ * 站在哪一格（编号）。
+ */
+at: string | null, row: boolean, };
+type PlanCell = { id: string, title: string | null, kind: string | null, body: string | null, parent: string | null, children: Array<string>, edges: PlanEdges, pointedBy: PlanEdges, files: Array<PlanFile>, 
+/**
+ * pb 的原话（做完了 · 没做完 · 不做了）。
+ */
+status: string | null, 
+/**
+ * 状态的码；pb 给了别的字 ⇒ `null`。
+ */
+statusCode: "done" | "open" | "dropped" | null, 
+/**
+ * 没做完时的原因（pb 原话）。
+ */
+why: string | null, 
+/**
+ * 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
+ */
+whyCode: PlanWhyCode | null, signs: Array<PlanSign>, owner: PlanWho | null, 
+/**
+ * 签它的（上一级）；pb 没给 ⇒ `null`。
+ */
+signer: PlanWho | null, refs: PlanRefs, hasView: boolean, 
+/**
+ * 退回过 ⇒ 那一次的状态；没有 ⇒ `null`。
+ */
+returned: PlanReturned | null, };
+type PlanCheck = { unreadable: unknown[], red: Array<PlanRed>, undecidable: Array<PlanUndecidable>, };
+type PlanEdgeWords = { to: string | null, with: string | null, after: string | null, replaces: string | null, };
+type PlanEdges = { to: Array<string>, with: Array<string>, after: Array<string>, replaces: Array<string>, };
+type PlanFile = { path: string, 
+/**
+ * pb 的原话（在 · 缺 · 空 · 坏）。
+ */
+state: string | null, 
+/**
+ * 对账的码；认不出 ⇒ `null`。
+ */
+stateCode: "ok" | "missing" | "empty" | "broken" | null, note: string | null, 
+/**
+ * 同一份文件还挂在哪几格（编号）。
+ */
+alsoBy: Array<string>, };
+type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, };
+type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: string | null, cell: string | null, 
+/**
+ * 那一条牵着的会话（问人 · 停了的那一个）。
+ */
+sid: string | null, 
+/**
+ * 判据红那一条在 `check.red` 里的位置。
+ */
+red?: number, acked: boolean, };
+type PlanPhase = { name: string | null, does: string | null, marks: Array<string>, };
+type PlanProgress = { done: number, open: number, dropped: number, };
+type PlanRead = { pb: string | null, workspace: string, repo: string | null, auto: boolean, slices: Array<PlanSlice>, bySession: { [key in string]: PlanSessionBlock }, 
+/**
+ * 这一份输出的摘要：变了才算计划变了。
+ */
+rev: string, readAt: number, readAtText?: string, stale: PlanStale | null, needCount: number, };
+type PlanReadReq = { 
+/**
+ * 工作区根（`plan-list` 给的那个）。
+ */
+workspace: string, };
+type PlanRed = { rule: string | null, what: string | null, block: string | null, fix: string | null, };
+type PlanRef = { start: number, end: number, ids: Array<string>, };
+type PlanRefs = { title: Array<PlanRef>, body: Array<PlanRef>, };
+type PlanReturned = { 
+/**
+ * 退回那一刻（epoch ms）。
+ */
+at: number, atText?: string, to: PlanWho | null, state: "returned" | "unsure" | "landed", 
+/**
+ * 落地的那一种：底下多出新格 · 正文改了。
+ */
+by: "child" | "body" | null, child: PlanReturnedChild | null, };
+type PlanReturnedChild = { id: string, title: string | null, };
+type PlanSessionBlock = { slice: string, block: string, 
+/**
+ * 块根格（编号；点会话头那一枚标选中它）。
+ */
+cell: string | null, 
+/**
+ * 块根格的标题；顶块 ⇒ `null`。
+ */
+title: string | null, top: boolean, phase: string | null, at: string | null, atTitle: string | null, via: "session" | "subagent", };
+type PlanSign = { 
+/**
+ * pb 的 ISO 时刻。
+ */
+at: string | null, 
+/**
+ * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
+ */
+atText?: string, 
+/**
+ * 那一刻的毫秒（自 1970，排序用）；读不出时刻 ⇒ `null`。
+ */
+atMs: number | null, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+type PlanSlice = { name: string, domain: string | null, 
+/**
+ * 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
+ */
+path: string, current: boolean, 
+/**
+ * 这一刻读不成的那一句（pb 原样）。
+ */
+error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+/**
+ * 这一片要你看的数（没认可的，不含问人）。
+ */
+needCount: number, 
+/**
+ * 顶块（`project`）退回过 ⇒ 那一次此刻的状态；没退回过 ⇒ `null`（缺 ⇒ 同）。
+ */
+returned: PlanReturned | null, };
+type PlanStale = { said: string | null, raw: string | null, since: number, sinceText?: string, };
+type PlanUndecidable = { rule: string | null, why: string | null, };
+type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
+/**
+ * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ */
+sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+/**
+ * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
+ */
+needs: string | null, };
+type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" };
+```
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`
 
@@ -10729,12 +11618,24 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-cell-view`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 格的编号 |
-| `slice` | → | 片名 |
-| `view` | ← | 原样那一段 |
-| `workspace` | → | 工作区根 |
+入参 `PlanCellViewReq` · 回包 `PlanCellView`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanCellView = { view: string, };
+type PlanCellViewReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 格的编号。
+ */
+id: string, };
+```
 
 码：`bad_args` · `no_view`
 
@@ -10744,13 +11645,20 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `cmd` | → | `continue` · `pause` · `view` |
-| `workspace` | → | 工作区根 |
-| `rc` | ← | pb 的退出码（成了才回，恒 0） |
-| `said` | ← | pb 说的第一句 |
-| `path` | ← | `view` 写的那一页（那台机器上的路径）；别的 ⇒ `null` |
+入参 `PlanCommandReq` · 回包 `PlanCmdReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanCmdReply = { rc: number, said: string | null, path: string | null, };
+type PlanCommandReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * `continue` · `pause` · `view`。
+ */
+cmd: "continue" | "pause" | "view", };
+```
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported` · `refused`
 
@@ -10760,14 +11668,50 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-files`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dir` | → | 那台机器上的绝对路径（串） |
-| `workspace` | ← | 工作区根；不在任何工作区 ⇒ `null` |
-| `slice` | ← | 片名；不在任何一片的仓库（`<工作区>/<path>/`：pb 登记的位置，没登记 ⇒ 片名）里 ⇒ `null` |
-| `unreadable` | ← | 那一片此刻读不成的那一句（条目空） |
-| `entries` | ← | 每份声明过的文件 `{name, id, title, statusCode, status, block, signAtText, fileState, fileNote, dup: [{id, title}]}`（被几格声明 ⇒ 先声明的作主、其余进 `dup`） |
-| `unowned` | ← | 无主的那几份（要 pb 给；没给 ⇒ `null`） |
+入参 `PlanFilesReq` · 回包 `PlanFiles`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanFileDup = { id: string, title: string | null, };
+type PlanFileOwner = { 
+/**
+ * 文件名（目录里的那一项）。
+ */
+name: string, 
+/**
+ * 作主的那一格（排期上先声明它的那一格）。
+ */
+id: string, title: string | null, statusCode: string | null, status: string | null, 
+/**
+ * 那一格住的那一块（块根格的标题）；住顶块 ⇒ `null`。
+ */
+block: string | null, 
+/**
+ * 作数那一条签收的时刻（成了字）；没签过 ⇒ `null`。
+ */
+signAtText: string | null, 
+/**
+ * 对账：`ok` · `missing` · `empty` · `broken`。
+ */
+fileState: string | null, fileNote: string | null, 
+/**
+ * 也声明它的那几格（pb 判据红「两个节点声明同一个文件」）。
+ */
+dup: Array<PlanFileDup>, };
+type PlanFiles = { workspace: string | null, slice: string | null, 
+/**
+ * 那一片此刻读不成的那一句（条目空）。
+ */
+unreadable: string | null, entries: Array<PlanFileOwner>, 
+/**
+ * 无主的那几份（要 pb 给 `unowned`；没给 ⇒ `null`）。
+ */
+unowned: Array<string> | null, };
+type PlanFilesReq = { 
+/**
+ * 那台机器上的绝对路径。
+ */
+dir: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -10777,14 +11721,28 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-ack`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `key` | → | 那一条的键（`plan-read` 里 `needs[].key`） |
-| `slice` | → | 片名 |
-| `workspace` | → | 工作区根 |
-| `acked` | ← | `true` |
-| `key` | ← | 原样 |
-| `needCount` | ← | 这个工作区此刻要你看的数 |
+入参 `PlanAckReq` · 回包 `PlanAckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanAckReply = { acked: boolean, key: string, 
+/**
+ * 这个工作区此刻要人过目的数。
+ */
+needCount: number, };
+type PlanAckReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 那一条的键（`plan-read` 里 `needs[].key`）。
+ */
+key: string, };
+```
 
 码：`bad_args` · `io_failed` · `no_such_need` · `not_ackable` · `not_read` · `review_unreadable`
 
@@ -10794,14 +11752,28 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-unack`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `key` | → | 那一条的键 |
-| `slice` | → | 片名 |
-| `workspace` | → | 工作区根 |
-| `acked` | ← | `false` |
-| `key` | ← | 原样 |
-| `needCount` | ← | 这个工作区此刻要你看的数 |
+入参 `PlanAckReq` · 回包 `PlanAckReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanAckReply = { acked: boolean, key: string, 
+/**
+ * 这个工作区此刻要人过目的数。
+ */
+needCount: number, };
+type PlanAckReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 那一条的键（`plan-read` 里 `needs[].key`）。
+ */
+key: string, };
+```
 
 码：`bad_args` · `io_failed` · `not_read` · `review_unreadable`
 
@@ -10811,21 +11783,53 @@ type SshImported = { groups: Array<SshImportGroup>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-return` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 自报的前端（过 `terminal-input` 那一道身份门） |
-| `id` | → | 格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手） |
-| `line` | ← | 送出的那一行（后端拼；只读） |
-| `result` | ← | `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制） |
-| `said` | ← | `refused` / `copy` 时给人看的那一句 |
-| `screen` | ← | `screen-changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹（同 `terminal-input`） |
-| `slice` | → | 片名 |
-| `text` | → | 人的原话（换行并成空格） |
-| `to` | → | 可选：`owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有） |
-| `to` | ← | 送给的那一位（同 `plan-read` 里 `owner` 的形状） |
-| `why` | ← | `waiting`（在等你批准或回答）· `ended` · `unknown` · 或 `terminal-input` 的原因 |
-| `workspace` | → | 工作区根 |
+入参 `PlanReturnReq` · 回包 `PlanReturnReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanReturnReply = { line: string, to: PlanWho | null, 
+/**
+ * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
+ */
+result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, };
+type PlanReturnReq = { 
+/**
+ * 工作区根。
+ */
+workspace: string, 
+/**
+ * 片名。
+ */
+slice: string, 
+/**
+ * 格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手）。
+ */
+id: string, 
+/**
+ * 人的原话（换行并成空格）。
+ */
+text: string, 
+/**
+ * `owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有）。
+ */
+to?: "owner" | "signer", 
+/**
+ * 自报的前端（过 `terminal-input` 那一道身份门）。
+ */
+client?: string | null, 
+/**
+ * 送之前看到的那一屏的指纹（同 `terminal-input`）。
+ */
+seen_screen?: string | null, };
+type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
+/**
+ * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
+ */
+sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" | null, 
+/**
+ * 在等你时等的是哪一类（批准 · 回答 · 计划 · 说不清）。
+ */
+needs: string | null, };
+```
 
 码：`bad_args` · `bad_target` · `capture_failed` · `child_timed_out` · `failed` · `io_failed` · `no_pb` · `no_server` · `no_such_cell` · `no_such_session` · `no_target` · `no_tmux` · `not_workspace` · `pb_unsupported` · `review_unreadable` · `unobservable`
 

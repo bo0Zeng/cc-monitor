@@ -4,7 +4,7 @@
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Blocking, Codes, Command, NoArgs};
+use crate::wire::typed::{self, Command, NoArgs};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -33,38 +33,18 @@ pub(crate) enum LoginStartReq {
 
 /// `login-start` 的整份入参：登录什么（[`LoginStartReq`]，与它同一层）＋ 发起这一趟的浏览器在不在后端这台（`browserHere`）。
 /// 那一格不进目标：同一个目标从哪台浏览器发起都是同一份作业（新开就替掉旧的），`login-finish` 交回的目标也不带它。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct LoginStartArgs {
+    #[serde(flatten)]
     pub(crate) target: LoginStartReq,
     /// 打开登录链接的浏览器在后端这台上（桌面连本机）：登录页回跳到这台的本机端口，那一家自己登完。
     /// 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) browser_here: bool,
-}
-
-/// 入参里那一格的名字。
-const BROWSER_HERE: &str = "browserHere";
-
-impl LoginStartArgs {
-    /// 从 `args` 收：先摘下 `browserHere`（缺 ⇒ `false`；不是布尔 ⇒ `bad_args`），其余照 [`LoginStartReq`] 收（多一格照旧拒）。
-    pub(crate) fn take(args: &Value) -> Result<LoginStartArgs, Fail> {
-        let mut rest = args.clone();
-        let here = match rest.as_object_mut().and_then(|o| o.remove(BROWSER_HERE)) {
-            None => false,
-            Some(Value::Bool(b)) => b,
-            Some(other) => {
-                return Err(Fail::new(
-                    "bad_args",
-                    crate::common::contract::malformed(&format!(
-                        "`{BROWSER_HERE}` must be a boolean, got {other}"
-                    )),
-                ))
-            }
-        };
-        Ok(LoginStartArgs {
-            target: typed::take(&rest)?,
-            browser_here: here,
-        })
-    }
 }
 
 /// 粘回来的是什么。
@@ -159,28 +139,31 @@ impl LoginStartErr {
     }
 }
 
-/// `login-start` 的码表（登记表那一行用它，码不另写）。
-pub(crate) const LOGIN_START_CODES: &[&str] = <LoginStartErr as Codes>::ALL;
+/// `login-start`（帧面硬臂：作业跟着发起它的那条连接走；起子命令 ＋ 等它打印链接 ⇒ 阻塞档，`dispatch` 带本连接的号调 [`start`]）。
+pub(crate) struct LoginStart;
+
+impl Command for LoginStart {
+    const NAME: &'static str = "login-start";
+    type Req = LoginStartArgs;
+    type Reply = LoginStarted;
+    type Err = LoginStartErr;
+}
 
 /// 号在这台账号库里的样子（与 `accounts-list` 同一份成品）：配置目录（账号 0 ⇒ `None`）· 是不是 API 号。
 fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
-    let v = accounts_product(agent);
-    v["accounts"]
-        .as_array()?
-        .iter()
-        .find(|a| a["name"] == account)
+    accounts_product(agent)
+        .accounts
+        .into_iter()
+        .find(|a| a.scanned.name == account)
         .map(|a| {
             (
-                a["configDir"]
-                    .as_str()
-                    .filter(|d| !d.is_empty())
-                    .map(str::to_string),
-                a["authKind"] == acct_core::AUTH_KIND_API_KEY,
+                a.scanned.config_dir.filter(|d| !d.is_empty()),
+                a.scanned.auth_kind == acct_core::AUTH_KIND_API_KEY,
             )
         })
 }
 
-fn accounts_product(agent: &str) -> Value {
+fn accounts_product(agent: &str) -> crate::observe::accounts_query::AccountsList {
     let rows = crate::accounts::upstream_select::file_face::machine_rows();
     crate::observe::accounts_query::list_product(
         &rows,
@@ -289,17 +272,6 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
         .is_some_and(|r| r.entries.iter().any(|e| e.name == server))
 }
 
-/// 硬臂那一发：入参按类型收（同 typed 那一处）→ 本体 → 线上那一份。
-pub(crate) fn answer_start(
-    args: &Value,
-    conn: u64,
-    on_end: sign_in::OnEnd,
-) -> crate::wire::spec::Outcome {
-    let req = LoginStartArgs::take(args)?;
-    let got = start(&req, conn, None, on_end).map_err(Codes::into_fail)?;
-    crate::wire::spec::wire::<_, Fail>(&got).map(Some)
-}
-
 /// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -392,16 +364,22 @@ impl Command for LoginFinish {
     type Err = LoginFinishErr;
 }
 
-impl Blocking for LoginFinish {
-    fn run(req: LoginFinishReq, _cx: &typed::Cx) -> Result<LoginDone, LoginFinishErr> {
-        sign_in::finish(&req.job, &req.pasted)
-            .map_err(LoginFinishErr::of)
-            .and_then(|key| {
-                // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
-                serde_json::from_str(&key)
-                    .map(|target| LoginDone { target })
-                    .map_err(|_| LoginFinishErr::no_job())
-            })
+impl crate::wire::typed::Handle for LoginFinish {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: LoginFinishReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LoginDone, LoginFinishErr>> + Send + 'static {
+        async move {
+            sign_in::finish(&req.job, &req.pasted)
+                .map_err(LoginFinishErr::of)
+                .and_then(|key| {
+                    // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
+                    serde_json::from_str(&key)
+                        .map(|target| LoginDone { target })
+                        .map_err(|_| LoginFinishErr::no_job())
+                })
+        }
     }
 }
 
@@ -437,11 +415,18 @@ impl Command for LoginCancel {
     type Err = LoginCancelErr;
 }
 
-impl Blocking for LoginCancel {
-    fn run(req: LoginCancelReq, _cx: &typed::Cx) -> Result<LoginCancelled, LoginCancelErr> {
-        Ok(LoginCancelled {
-            was: sign_in::cancel(&req.job),
-        })
+impl crate::wire::typed::Handle for LoginCancel {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: LoginCancelReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LoginCancelled, LoginCancelErr>> + Send + 'static
+    {
+        async move {
+            Ok(LoginCancelled {
+                was: sign_in::cancel(&req.job),
+            })
+        }
     }
 }
 
@@ -514,24 +499,30 @@ impl Command for ManualListCmd {
     type Err = ManualListErr;
 }
 
-impl Blocking for ManualListCmd {
-    fn run(_req: NoArgs, _cx: &typed::Cx) -> Result<ManualList, ManualListErr> {
-        let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
-            return Ok(ManualList { items: Vec::new() });
-        };
-        let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
-            let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
-            (
-                kind,
-                crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
+impl crate::wire::typed::Handle for ManualListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ManualList, ManualListErr>> + Send + 'static {
+        async move {
+            let Some(agent) = crate::agents::sole_kind(|a| a.accounts.is_some()) else {
+                return Ok(ManualList { items: Vec::new() });
+            };
+            let mcp = crate::agents::sole_kind(|a| a.mcp.is_some()).map(|kind| {
+                let look = crate::accounts::manage::mcp_share_exec::mcp_look(kind);
+                (
+                    kind,
+                    crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
+                )
+            });
+            manual_of(
+                agent,
+                &serde_json::to_value(accounts_product(agent)).unwrap_or_default(),
+                crate::observe::accounts_query::library_unreadable_here(),
+                mcp.as_ref().map(|(k, r)| (*k, r)),
             )
-        });
-        manual_of(
-            agent,
-            &accounts_product(agent),
-            crate::observe::accounts_query::library_unreadable_here(),
-            mcp.as_ref().map(|(k, r)| (*k, r)),
-        )
+        }
     }
 }
 

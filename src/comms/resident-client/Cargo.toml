@@ -22,6 +22,8 @@ relay-route-core = { path = "../../common/relay-route-core" }
 
 [dev-dependencies]
 test-home = { path = "../../common/test-home" }
+# 判据里替身后端握手交的形状指纹：跟本侧编进来的同一份。
+cmd-wire = { path = "../../common/cmd-wire" }
 # 等条件的兜底上限（`wall::CEILING`）：全仓同一个数。
 guard-core = { path = "../../common/guard-core" }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }

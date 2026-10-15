@@ -9,6 +9,7 @@
 //! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住上面的 `crate::stream`。
 
 pub mod cli_words; // CLI 面的词：流模式显式词 · 子命令后面的选项词（与请求信封同名的那几格）· 帧命令名到子命令的拼法
+pub(crate) mod conn; // 连接本身那几条帧命令的类型（`ping` · `cancel` · `stream-watch`）
 pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
 pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
 pub mod listen; // K-P1：常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
@@ -478,13 +479,6 @@ pub enum Frame {
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,
-        /// `commands` 里**撤不动**、又不是 typed 的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`）。
-        /// 从 `inbound::REGISTRY` 的档位派生（`inbound::uncancellable`，一个家）；typed 那一半算进了 `shapes` 的指纹、
-        /// 客户端读本侧编进来的 `cmd_wire::shapes::UNCANCELLABLE`，这里不再列。客户端据此在本地撤单时
-        /// 说「那台停不了它、可能还在跑」，也不再为它补发一条注定被拒的撤单。
-        /// 空/缺 = 没有把握（旧后端）⇒ 客户端照旧补发、看回话。
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        uncancellable: Vec<String>,
         /// typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：
         /// 这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算）。客户端拿它自己编进来的那一张比：
         /// 对得上就直接按类型用，对不上就说「那台后端版本不同」、一个字节不发。没有 typed 命令 ⇒ 省略。
@@ -1438,38 +1432,56 @@ impl Frame {
 /// `stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流
 /// （`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct WatchFrom {
     /// 会话 id。
     pub sid: String,
     /// 这份会话记录在那台机器上的绝对路径。
     pub path: String,
     /// 这条流从这一行起发它。
+    #[cfg_attr(test, ts(type = "number"))]
     pub seq: u64,
 }
 
 /// `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
 pub struct WatchAsk {
+    /// 在看的会话 id（空 ＝ 一个都不看）。
     pub sids: Vec<String>,
+    /// 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub branch: Vec<BranchHeld>,
 }
 
 /// `stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。
 /// 手上什么都没有 ⇒ `at: 0`、不带 `path` / `sum`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
 pub struct BranchHeld {
     pub sid: String,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub path: Option<String>,
+    /// 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
     pub at: u64,
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub sum: Option<String>,
 }
 
 /// `stream-watch` 的应答。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct WatchReply {
     /// 刚进名单的会话每份记录一格（先前就在名单里的不回）。
     pub from: Vec<WatchFrom>,

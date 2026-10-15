@@ -53,7 +53,8 @@ fn run(doc: &Value, args: Value, reply: Value) -> (Answer, Vec<Value>, Vec<Rec>)
         kept.borrow_mut().push((ws.into(), sl.into(), id.into(), r));
         Ok(())
     };
-    let out = return_with(&args, doc, &send, &record, 42);
+    let req: PlanReturnReq = serde_json::from_value(args).expect("入参解得出");
+    let out = return_with(&req, doc, &send, &record, 42);
     (out, sent.into_inner(), kept.into_inner())
 }
 

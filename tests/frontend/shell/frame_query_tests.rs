@@ -41,19 +41,14 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             Some((blk[at..].split('"').next()?.to_string(), blk.to_string()))
         })
         .collect();
-    // typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：名字从那个类型住的文件里
+    // typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()` · 帧面硬臂那两档）：名字从那个类型住的文件里
     //   `impl Command for <类型>` 那一段的 `const NAME` 读；块 ＝ 那一行本身（点着它的家）。
     for (_, prod) in &families {
         for ctor in [
             "typed::blocking::<",
-            "typed::with_files::<",
-            "typed::with_own::<",
-            "typed::owning::<",
             "typed::asynchronous::<",
-            "typed::async_with_files::<",
-            "typed::async_owning::<",
-            "typed::async_own::<",
-            "typed::facing::<",
+            "typed::frame::<",
+            "typed::frame_blocking::<",
         ] {
             for (at, _) in prod.match_indices(ctor) {
                 let rest = &prod[at + ctor.len()..];

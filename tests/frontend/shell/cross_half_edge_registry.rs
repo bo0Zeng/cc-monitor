@@ -130,9 +130,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/stream/inbound/registry/accounts.rs",
-        "写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令表上 —— \
-         同一根针（帧命令名 `apikey-key-set`）在后端命令表账号那一族的登记里数得到，才说明零命中不是针瞎了",
+        "src/backend/faces/accounts_face.rs",
+        "写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令上 —— \
+         同一根针（帧命令名 `apikey-key-set`）在后端那条命令的宿主（`const NAME`）里数得到，才说明零命中不是针瞎了",
     ),
     (
         "monitor→backend",

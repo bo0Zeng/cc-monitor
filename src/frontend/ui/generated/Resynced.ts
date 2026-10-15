@@ -28,8 +28,4 @@ watchers: number,
 /**
  * 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
  */
-unavailable: Array<Unavailable>, 
-/**
- * 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
- */
-uncancellable: Array<string>, };
+unavailable: Array<Unavailable>, };

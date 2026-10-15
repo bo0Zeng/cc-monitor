@@ -107,13 +107,17 @@ impl crate::wire::typed::Command for TerminalProcesses {
     type Err = TerminalProcessesErr;
 }
 
-impl crate::wire::typed::Blocking for TerminalProcesses {
+impl crate::wire::typed::Handle for TerminalProcesses {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: TerminalProcessesReq,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<Processes, TerminalProcessesErr> {
-        answer_with(&req, crate::platform::connection_and_process_tables)
-            .map_err(|(_, said)| TerminalProcessesErr::BadArgs(said))
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Processes, TerminalProcessesErr>> + Send + 'static
+    {
+        async move {
+            answer_with(&req, crate::platform::connection_and_process_tables)
+                .map_err(|(_, said)| TerminalProcessesErr::BadArgs(said))
+        }
     }
 }
 

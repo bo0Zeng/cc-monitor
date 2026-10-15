@@ -8,7 +8,7 @@ use crate::control::terminals::{no_said, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::faces::session_mode_face::SwitchResult;
 use crate::wire::spec::Fail;
-use crate::wire::typed::{self, Async, Command, Cx};
+use crate::wire::typed::{self, Command};
 use copy_core::copy_text;
 use serde::Deserialize;
 
@@ -111,10 +111,11 @@ impl Command for SessionModel {
     type Err = SessionModelErr;
 }
 
-impl Async for SessionModel {
+impl crate::wire::typed::Handle for SessionModel {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: SessionModelReq,
-        _cx: Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<ModelSwitched, SessionModelErr>> + Send + 'static
     {
         async move {

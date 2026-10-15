@@ -1,15 +1,15 @@
 //! 命令表 · 历史会话与它的读面：`history-*` · `session-fork` · `resolve` · `tasks-list` · `resync`。
 
-use crate::wire::spec::{arg, out, CommandSpec, Run};
+use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
     //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
-    crate::wire::typed::owning::<crate::history::history_annotations::HistoryAnnotateCmd>(
+    crate::wire::typed::blocking::<crate::history::history_annotations::HistoryAnnotateCmd>(
         "改一条历史注解",
     ),
-    crate::wire::typed::owning::<crate::history::history_annotations::HistoryForgetCmd>(
+    crate::wire::typed::blocking::<crate::history::history_annotations::HistoryForgetCmd>(
         "删一条历史注解",
     ),
     // 「这台上每条会话上次用哪个号起的」（起会话账号记录，会话所在那台各问一次）。读不懂 ⇒ `unreadable`。
@@ -43,29 +43,31 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
     // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
     // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session_file`）。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>("这条会话的记录还在不在"),
+    crate::wire::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>(
+        "这条会话的记录还在不在",
+    ),
     // 按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryReadCmd>("按字节分页读一份会话"),
+    crate::wire::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
+        "按字节分页读一份会话",
+    ),
     // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/record_page.rs`）。同族同档、同一个只读宿主。
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryPageCmd>("按字节分页读，出记录行"),
+    crate::wire::typed::blocking::<crate::faces::history_face::HistoryPageCmd>(
+        "按字节分页读，出记录行",
+    ),
     // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
     // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryTurnsCmd>("一轮的摘要"),
-    crate::wire::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>("这台上需手动的会话清单"),
+    crate::wire::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>(
+        "这台上需手动的会话清单",
+    ),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
     //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `stream::cli::STREAM_ONLY`）。
-    CommandSpec {
-        name: "needs-ask",
-        summary: "答题 hook 挂一条待答请求、等人答（hook 客户端 `--answer-hook` 用；本连接断了 ⇒ 撤）",
-        codes: &["bad_args"],
-        fields: &[arg("agent", "哪一家（线上的 kind）"), arg("hook", "那一家的 hook 交来的那一份原样"), out("decision", "人的答案写成那一家要的那一整份，hook 原样打到 stdout；`null` ＝ 不给决定（不是要人答的那一种 · 改到终端里答 · 别处关了），hook 空手退")],
-        takes_input: true,
-        // 本体 `control::asks::ask`（`dispatch` 的硬臂带着本连接的号调它）。
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::control::asks::NeedsAsk>(
+        "答题 hook 挂一条待答请求、等人答（hook 客户端 `--answer-hook` 用；本连接断了 ⇒ 撤）",
+    ),
     // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
     crate::wire::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
         "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
@@ -76,7 +78,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryIndexCmd>("会话骨架索引"),
     crate::wire::typed::blocking::<crate::faces::history_face::UserInputsCmd>("「人说过的话」清单"),
-    crate::wire::typed::blocking::<crate::faces::history_face::HistoryTailCmd>("一份会话的尾段从哪个字节起"),
+    crate::wire::typed::blocking::<crate::faces::history_face::HistoryTailCmd>(
+        "一份会话的尾段从哪个字节起",
+    ),
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。

@@ -5,7 +5,7 @@ use crate::accounts::quota::rules::decide::{self, Pick, Sigma};
 use crate::accounts::quota::rules::script;
 use crate::accounts::quota::rules::simulate;
 use crate::accounts::quota::rules::Acct;
-use crate::wire::typed::{Blocking, Command, Cx};
+use crate::wire::typed::Command;
 
 /// `rotation-try` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -218,22 +218,32 @@ impl Command for RotationTry {
     type Err = RotationTryErr;
 }
 
-impl Blocking for RotationTry {
-    fn run(req: RotationTryReq, cx: &Cx) -> Result<RotationTryReply, RotationTryErr> {
-        let ctx = crate::faces::rotation_face::Ctx::here();
-        let agent = req
-            .agent
-            .as_deref()
-            .unwrap_or(crate::faces::rotation_face::LIBRARY_AGENT);
-        let row = ctx.row(agent);
-        let now = crate::accounts::quota::now_unix();
-        let facts: Vec<Acct> = ctx
-            .hop
-            .facts(agent, &row, now, &cx.tz)
-            .iter()
-            .map(Acct::of_fact)
-            .collect();
-        try_with(&req, &facts, now, &cx.tz)
+impl crate::wire::typed::Handle for RotationTry {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: RotationTryReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<RotationTryReply, RotationTryErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            let ctx = crate::faces::rotation_face::Ctx::here();
+            let agent = req
+                .agent
+                .as_deref()
+                .unwrap_or(crate::faces::rotation_face::LIBRARY_AGENT);
+            let row = ctx.row(agent);
+            let now = crate::accounts::quota::now_unix();
+            let facts: Vec<Acct> = ctx
+                .hop
+                .facts(agent, &row, now, &cx.tz)
+                .iter()
+                .map(Acct::of_fact)
+                .collect();
+            try_with(&req, &facts, now, &cx.tz)
+        }
     }
 }
 

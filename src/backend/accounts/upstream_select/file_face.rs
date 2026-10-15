@@ -61,9 +61,42 @@ pub(crate) fn machine_rows() -> Vec<String> {
     machine_path().map(|p| rows_at(&p)).unwrap_or_default()
 }
 
+/// `apikey-key-set` 的入参。明文只在 `key` 里（帧面：长连接入方向；派生 CLI 面：stdin），一进来就包成 `SecretKey`。
+/// 不收 `account`（账号 id 由这台后端按 `configDir` 推；不为旧形状留兼容）。
+#[derive(Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(Debug, serde::Serialize, ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct KeySetReq {
+    /// 这个号的账号目录。
+    pub(crate) config_dir: String,
+    /// 明文。
+    pub(crate) key: String,
+    /// 这个账号的第三方端点：缺 / `null` / 空串 ＝ 不碰那一格（只配 key 时已有端点原样留着）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) base_url: Option<String>,
+}
+
+/// `apikey-key-set` 的回包：盘上的事实（写完再读一遍）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct KeySet {
+    /// 推出来的账号 id。
+    pub(crate) account: String,
+    /// 那份文件的绝对路径。
+    pub(crate) path: String,
+    /// 这一行 key 的掩码（只留末四位）。
+    pub(crate) masked: String,
+    /// 这一行此刻的端点（没配 ⇒ `null`）。
+    pub(crate) base_url: Option<String>,
+}
+
 /// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。推不出路径 ⇒ 拒（一个字节不写）。
-pub(crate) fn answer_set(args: &Value, own: &Own) -> FileFaceAnswer {
-    answer_set_at(own, args)
+pub(crate) fn answer_set(req: &KeySetReq, own: &Own) -> Result<KeySet, Fail> {
+    answer_set_at(own, req)
 }
 
 /// 那份表在写句柄底下的落点（数据目录根上的 [`store::FILE_NAME`]，与 [`machine_path`] 同一处）。没有数据目录 ⇒ 拒。
@@ -73,35 +106,22 @@ fn own_file(own: &Own) -> Result<OwnPath, Fail> {
 }
 
 /// [`answer_set`] 的本体，写句柄是参数（判据拿落在临时目录上的那一份喂它，不碰真家目录）。
-pub(crate) fn answer_set_at(own: &Own, args: &Value) -> FileFaceAnswer {
+pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Fail> {
     let file = own_file(own)?;
     let path = file.as_path();
-    // 入参从 `account` 换成 `configDir`：账号 id 由**这台后端**按全仓唯一那份规则推
-    //   （`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。从前是 monitor 推好了交过来 ——
-    //   那一跳随写 key 改走 `chan.call` 一起退了（前端一个字都不推账号 id：`KH2C1`）。不为旧形状留兼容：还给 `account` ⇒ 拒。
-    let account_id = account_of(args)?;
+    // 账号 id 由**这台后端**按全仓唯一那份规则推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
+    let account_id = account_of(&req.config_dir)?;
     let account = account_id.as_str();
-    let plain = args.get("key").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `key` (string)"),
-        )
-    })?;
+    let plain = req.key.as_str();
     let key = SecretKey::new(plain);
     // Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
     //   （只配 key 时已有端点原样留着）；给了就先过**与装表同一个谓词**（`upstream_url_core::usable`：
     //   写得进去、却装不进表 ⇒ 那一行永远用不了），不对 ⇒ 整次不写（key 也不落）。
-    let base_url = match args.get("baseUrl") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(s)) if s.trim().is_empty() => None,
-        Some(Value::String(s)) => Some(s.trim()),
-        Some(_) => {
-            return Err(Fail::from((
-                "bad_args",
-                crate::common::contract::malformed("`baseUrl` must be a string when given"),
-            )))
-        }
-    };
+    let base_url = req
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     check_inputs(plain, base_url)?;
     write_at(own, &file, account, &key, base_url)?;
     // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码与端点。
@@ -121,34 +141,17 @@ pub(crate) fn answer_set_at(own: &Own, args: &Value) -> FileFaceAnswer {
             ],
         ),
     ))?;
-    Ok(json!({
-        "account": account,
-        "path": path.display().to_string(),
-        "masked": masked,
-        "baseUrl": base_url_now,
-    }))
+    Ok(KeySet {
+        account: account.to_string(),
+        path: path.display().to_string(),
+        masked,
+        base_url: base_url_now,
+    })
 }
 
 /// 入参里那个号的账号 id：按 `configDir` 推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
-/// 不收 `account`（不为旧形状留兼容）；推出来的 id 还要过装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404。
-fn account_of(args: &Value) -> Result<String, Fail> {
-    if args.get("account").is_some() {
-        return Err(Fail::from((
-            "bad_args",
-            crate::common::contract::malformed(
-                "`account` is not accepted; the account id is derived from `configDir`",
-            ),
-        )));
-    }
-    let config_dir = args
-        .get("configDir")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing `configDir` (string)"),
-            )
-        })?;
+/// 推出来的 id 还要过装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404。
+fn account_of(config_dir: &str) -> Result<String, Fail> {
     let account = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
         "bad_args",
         copy_text(
@@ -168,6 +171,26 @@ fn account_of(args: &Value) -> Result<String, Fail> {
     Ok(account)
 }
 
+/// 删号 · 回滚那两口（改账号库那几条的内层，不上线）入参里的 `configDir`；不收 `account`（不为旧形状留兼容）。
+fn config_dir_arg(args: &Value) -> Result<&str, Fail> {
+    if args.get("account").is_some() {
+        return Err(Fail::from((
+            "bad_args",
+            crate::common::contract::malformed(
+                "`account` is not accepted; the account id is derived from `configDir`",
+            ),
+        )));
+    }
+    args.get("configDir")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            Fail::from((
+                "bad_args",
+                crate::common::contract::malformed("missing `configDir` (string)"),
+            ))
+        })
+}
+
 /// 删号那一步：摘掉一个号那一行（账号 id 按 `configDir` 推，同 [`answer_set`]）。那一行本来就不在 ⇒ 一个字节不写。
 pub(crate) fn answer_drop(args: &Value, own: &Own) -> FileFaceAnswer {
     answer_drop_at(own, args)
@@ -176,7 +199,7 @@ pub(crate) fn answer_drop(args: &Value, own: &Own) -> FileFaceAnswer {
 /// [`answer_drop`] 的本体，写句柄是参数。
 pub(crate) fn answer_drop_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
-    let account = account_of(args)?;
+    let account = account_of(config_dir_arg(args)?)?;
     let dropped = rewrite_at(own, &file, &|cur| {
         let has = cur
             .get(store::ACCOUNTS_FIELD)
@@ -195,7 +218,7 @@ pub(crate) fn answer_restore(args: &Value, own: &Own) -> FileFaceAnswer {
 /// [`answer_restore`] 的本体，写句柄是参数。
 pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
-    let account = account_of(args)?;
+    let account = account_of(config_dir_arg(args)?)?;
     let from = args.get("from").and_then(Value::as_str).ok_or_else(|| {
         (
             "bad_args",

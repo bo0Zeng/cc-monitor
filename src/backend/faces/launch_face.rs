@@ -4,7 +4,7 @@
 use crate::common::door::Door;
 use crate::control::launch_account::{self as la, Facts, Library};
 use crate::control::launch_render::{self as lr, LaunchRenderErr, Rendered};
-use crate::wire::typed::{self, Command, WithFiles};
+use crate::wire::typed::Command;
 
 /// 起会话那几条要的文件管理面（起之前预标信任经它写）：生产那一份由命令表交（`stream/inbound` 的 `LocalFiles`）。
 /// 预标住这里不住 `session_batch_face`：渲那一行的两条（`launch-local` · `launch-render-cli`）不碰 tmux，引用不该连带过去。
@@ -33,12 +33,15 @@ pub(crate) fn pretrust_with(files: Option<Files>, agent: &str, dir: &str, cwd: &
 /// 这台的账号库（与 `accounts-list` 同一份成品：并上这台的 API key 表）。
 pub(crate) fn library_of(agent: &str) -> Library {
     let rows = crate::accounts::upstream_select::file_face::machine_rows();
-    Library::of_product(&crate::observe::accounts_query::list_product(
-        &rows,
-        agent,
-        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-        crate::relay::our_relay_listening(relay_route_core::PORT),
-    ))
+    Library::of_product(
+        &serde_json::to_value(crate::observe::accounts_query::list_product(
+            &rows,
+            agent,
+            crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+            crate::relay::our_relay_listening(relay_route_core::PORT),
+        ))
+        .unwrap_or_default(),
+    )
 }
 
 /// 某条会话上次用的号（这台家里那份记录）。
@@ -67,16 +70,21 @@ impl Command for LaunchLocal {
     type Err = LaunchRenderErr;
 }
 
-impl WithFiles for LaunchLocal {
+impl crate::wire::typed::Handle for LaunchLocal {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: lr::local::LocalLaunchRequest,
-        _cx: &typed::Cx,
-        files: Files,
-    ) -> Result<Rendered, LaunchRenderErr> {
-        let req = req.with_prefs(&crate::control::machine_prefs::read_now().prefs());
-        let v = with_facts(&req.agent, |facts| lr::answer_local(&req, facts))?;
-        pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
-        Ok(v)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Rendered, LaunchRenderErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            let req = req.with_prefs(&crate::control::machine_prefs::read_now().prefs());
+            let v = with_facts(&req.agent, |facts| lr::answer_local(&req, facts))?;
+            pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
+            Ok(v)
+        }
     }
 }
 
@@ -90,16 +98,21 @@ impl Command for LaunchRenderCli {
     type Err = LaunchRenderErr;
 }
 
-impl WithFiles for LaunchRenderCli {
+impl crate::wire::typed::Handle for LaunchRenderCli {
+    type Needs = crate::wire::typed::needs::Files;
     fn run(
         req: lr::wire::CliRenderRequest,
-        _cx: &typed::Cx,
-        files: Files,
-    ) -> Result<Rendered, LaunchRenderErr> {
-        let req = req.with_prefs(&crate::control::machine_prefs::read_now().prefs());
-        let v = with_facts(&req.agent, |facts| lr::answer_cli(&req, facts))?;
-        pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
-        Ok(v)
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Rendered, LaunchRenderErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let files = needs;
+
+            let req = req.with_prefs(&crate::control::machine_prefs::read_now().prefs());
+            let v = with_facts(&req.agent, |facts| lr::answer_cli(&req, facts))?;
+            pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
+            Ok(v)
+        }
     }
 }
 

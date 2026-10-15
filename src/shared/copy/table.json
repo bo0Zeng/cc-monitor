@@ -16536,12 +16536,6 @@
       "zh": "base_url 是明文 http 且主机非本机 · key 会明文上网\n改用 https 或把上游放到本机",
       "args": []
     },
-    "beUpstreamEndpoint.args.missingString": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "缺 {k} · 要字符串",
-      "args": ["k"]
-    },
     "beUpstreamEndpoint.optin.noHome": {
       "kind": "error",
       "role": "报错",

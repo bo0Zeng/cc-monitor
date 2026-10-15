@@ -5,7 +5,7 @@
 use crate::assets::asset_catalog;
 use crate::assets::ext;
 use crate::assets::skill_ledger;
-use crate::wire::typed::{self, codes, Command, Cx, NoArgs, Owning};
+use crate::wire::typed::{self, codes, Command, NoArgs};
 
 codes! {
     /// 资产目录那三条的码（`assets-catalog` · `-merge` · `ext-note-set`）。
@@ -28,13 +28,20 @@ impl Command for AssetsCatalogCmd {
     type Err = CatalogErr;
 }
 
-impl Owning for AssetsCatalogCmd {
+impl crate::wire::typed::Handle for AssetsCatalogCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         _req: NoArgs,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<asset_catalog::CatalogReply, CatalogErr> {
-        asset_catalog::answer_catalog(own).map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<asset_catalog::CatalogReply, CatalogErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            asset_catalog::answer_catalog(own).map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        }
     }
 }
 
@@ -48,13 +55,21 @@ impl Command for AssetsCatalogMergeCmd {
     type Err = CatalogErr;
 }
 
-impl Owning for AssetsCatalogMergeCmd {
+impl crate::wire::typed::Handle for AssetsCatalogMergeCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: asset_catalog::CatalogMergeReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<asset_catalog::CatalogReply, CatalogErr> {
-        asset_catalog::answer_merge(req, own).map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<asset_catalog::CatalogReply, CatalogErr>>
+           + Send
+           + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            asset_catalog::answer_merge(req, own)
+                .map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        }
     }
 }
 
@@ -68,14 +83,19 @@ impl Command for ExtNoteSetCmd {
     type Err = CatalogErr;
 }
 
-impl Owning for ExtNoteSetCmd {
+impl crate::wire::typed::Handle for ExtNoteSetCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: ext::ExtNoteReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<ext::ExtNote, CatalogErr> {
-        ext::answer_note(&req, &|k, t| asset_catalog::answer_note(k, t, own))
-            .map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ext::ExtNote, CatalogErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            ext::answer_note(&req, &|k, t| asset_catalog::answer_note(k, t, own))
+                .map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        }
     }
 }
 
@@ -103,13 +123,20 @@ impl Command for SkillInstallRecordCmd {
     type Err = RecordErr;
 }
 
-impl Owning for SkillInstallRecordCmd {
+impl crate::wire::typed::Handle for SkillInstallRecordCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: skill_ledger::RecordReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<skill_ledger::RecordReply, RecordErr> {
-        skill_ledger::answer_record(&req, own).map_err(|f| typed::of_fail(f, RecordErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<skill_ledger::RecordReply, RecordErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            skill_ledger::answer_record(&req, own)
+                .map_err(|f| typed::of_fail(f, RecordErr::IoFailed))
+        }
     }
 }
 
@@ -123,19 +150,24 @@ impl Command for ExtListHereCmd {
     type Err = CatalogErr;
 }
 
-impl Owning for ExtListHereCmd {
+impl crate::wire::typed::Handle for ExtListHereCmd {
+    type Needs = crate::wire::typed::needs::Own;
     fn run(
         req: ext::ExtListReq,
-        _cx: &Cx,
-        own: &crate::platform::Own,
-    ) -> Result<ext::ExtList, CatalogErr> {
-        // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
-        let here = |visit: bool| {
-            let (mut cat, problems) = asset_catalog::answer_current(visit, own)?;
-            let me = cat.self_id.clone();
-            cat.machines.retain(|id, _| *id == me);
-            Ok((cat, problems))
-        };
-        ext::answer_list(&req, &here, &[]).map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ext::ExtList, CatalogErr>> + Send + 'static {
+        let (_cx, needs) = cx.split();
+        async move {
+            let own = &needs;
+
+            // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
+            let here = |visit: bool| {
+                let (mut cat, problems) = asset_catalog::answer_current(visit, own)?;
+                let me = cat.self_id.clone();
+                cat.machines.retain(|id, _| *id == me);
+                Ok((cat, problems))
+            };
+            ext::answer_list(&req, &here, &[]).map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+        }
     }
 }

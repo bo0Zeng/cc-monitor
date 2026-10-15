@@ -1062,12 +1062,4 @@ fn a_row_carries_no_constant_purpose() {
         assert!(t.get("purpose").is_none(), "行里还有 `purpose`：{t}");
         assert_eq!(t["host"], "tmux", "`host` 该留着");
     }
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|c| c.name == "terminals-list")
-        .expect("没有 terminals-list");
-    assert!(
-        !spec.fields.iter().any(|f| f.name == "purpose"),
-        "terminals-list 的字段表还登记着 `purpose`"
-    );
 }

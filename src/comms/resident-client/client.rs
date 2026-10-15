@@ -223,6 +223,11 @@ impl InboundClient {
         self.offer_now().admits(cmd)
     }
 
+    /// 那台认这条命令、可它的形状与本侧对不上（[`Self::call`] 不会发它）。
+    pub fn shape_differs(&self, cmd: &str) -> bool {
+        self.offer_now().shape_differs(cmd)
+    }
+
     /// 一句话里怎么称呼这条连接通往的那台：本机说「本机」，远端说它的名字；没登记过（判据里直接造的客户端）⇒「该机」。
     fn machine_said(&self) -> String {
         match self.machine.get() {

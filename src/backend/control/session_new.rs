@@ -147,6 +147,9 @@ impl crate::wire::typed::Codes for SessionNewErr {
             raw,
         }
     }
+    /// 起不来的每一种都带 [`SessionNewRefusal`]（哪一格 · 选不了号那一形；整体的那几种 `field: null`）。
+    const DATA: &'static [&'static str] = SESSION_NEW_CODES;
+    type Data = crate::wire::typed::Each<SessionNewRefusal>;
     fn of_code(code: &str, said: String) -> Result<Self, String> {
         match SESSION_NEW_CODES.iter().find(|c| **c == code) {
             Some(c) => Ok(SessionNewErr((c, said, None, None))),

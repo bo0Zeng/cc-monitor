@@ -382,13 +382,12 @@ fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
         hits.is_empty(),
         "monitor 生产段又能叫出明文 key 的写口了：{hits:?}"
     );
-    // 正控 ①：同一根针在后端命令表（账号那一族）里数得到（针没瞎）。
-    let inbound = guard_core::production_code(include_str!(
-        "../../../src/backend/stream/inbound/registry/accounts.rs"
-    ));
+    // 正控 ①：同一根针在后端那条帧命令的宿主（账号那一族，`const NAME`）里数得到（针没瞎）。
+    let inbound =
+        guard_core::production_code(include_str!("../../../src/backend/faces/accounts_face.rs"));
     assert!(
         inbound.contains(needles[1].as_str()),
-        "正控失败：后端命令表里也数不到那条帧命令"
+        "正控失败：后端那条帧命令的宿主里也数不到它"
     );
     // 正控 ②：前端发送口恰好一处。
     let ts = include_str!("../../../src/frontend/ui/apikey-reads.ts");

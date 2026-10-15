@@ -582,7 +582,7 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
 /// 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，一次都不拨、可达表不动。
 #[tokio::test]
 async fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::wire::spec::{prepare, Prepared};
+    use crate::wire::spec::{invoke, Prepared};
     let d = temp_dir("extra");
     let own = crate::platform::fs::Own::issue_at(&d);
     let spec = crate::stream::inbound::REGISTRY
@@ -594,7 +594,9 @@ async fn an_extra_key_is_bad_args_on_the_frame_path() {
         json!({ "bogus": 1 }),
         json!({ "origin": "o-extra", "dial": dial("x"), "bogus": 1 }),
     ] {
-        let Some(Prepared::Async(run)) = prepare(spec.run, Some(&own)) else {
+        let Some(Prepared::Async(run)) =
+            invoke(spec.run, &crate::stream::inbound::hands(Some(&own)))
+        else {
             panic!("assets-sync 不在异步档");
         };
         let req = crate::wire::Request {

@@ -787,8 +787,12 @@ pub(crate) struct FollowTarget {
     pub(crate) pane: Option<String>,
 }
 
-pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget, CmdErr> {
-    let target = target_of(args)?;
+pub(crate) fn follow_target_on(
+    on: On<'_>,
+    terminal: Option<&str>,
+    sid: Option<&str>,
+) -> Result<FollowTarget, CmdErr> {
+    let target = target(terminal, sid)?;
     let Some((rows, _, _)) = rows_found_on(on)? else {
         return Err(CmdErr::from((
             "no_tmux",

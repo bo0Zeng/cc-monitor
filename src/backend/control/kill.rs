@@ -79,9 +79,13 @@ impl crate::wire::typed::Command for Kill {
     type Err = KillErr;
 }
 
-impl crate::wire::typed::Blocking for Kill {
-    fn run(req: KillReq, _cx: &crate::wire::typed::Cx) -> Result<Killed, KillErr> {
-        kill(&req).map_err(|f| crate::wire::typed::of_fail(f, KillErr::KillFailed))
+impl crate::wire::typed::Handle for Kill {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: KillReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Killed, KillErr>> + Send + 'static {
+        async move { kill(&req).map_err(|f| crate::wire::typed::of_fail(f, KillErr::KillFailed)) }
     }
 }
 

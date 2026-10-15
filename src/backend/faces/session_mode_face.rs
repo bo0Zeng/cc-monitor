@@ -5,7 +5,7 @@ use crate::agents::ModeSwitch;
 use crate::common::contract::malformed;
 use crate::control::terminals::{self, no_said, CmdErr, On, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq, TerminalPreviewReq};
-use crate::wire::typed::{self, Blocking, Command, Cx};
+use crate::wire::typed::{self, Command};
 use serde::Deserialize;
 
 /// 按一下之后最多等几次重画（每次至多 `terminal_follow::REDRAW_WAIT`）：重画了、读到的档却还没变 ⇒ 再等一次。
@@ -163,8 +163,7 @@ struct Live<'a> {
 
 impl ModeIo for Live<'_> {
     fn open(&mut self) -> Result<(), CmdErr> {
-        let t =
-            terminals::follow_target_on(On::default(), &serde_json::json!({ "sid": self.sid }))?;
+        let t = terminals::follow_target_on(On::default(), None, Some(&self.sid))?;
         self.watch = Some(crate::control::terminal_follow::Watch::open(None, &t)?);
         Ok(())
     }
@@ -207,9 +206,14 @@ impl Command for SessionPermission {
     type Err = SessionPermissionErr;
 }
 
-impl Blocking for SessionPermission {
-    fn run(req: SessionPermissionReq, _cx: &Cx) -> Result<ModeSwitched, SessionPermissionErr> {
-        answer(&req).map_err(|f| typed::of_fail(f, SessionPermissionErr::Unobservable))
+impl crate::wire::typed::Handle for SessionPermission {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: SessionPermissionReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ModeSwitched, SessionPermissionErr>> + Send + 'static
+    {
+        async move { answer(&req).map_err(|f| typed::of_fail(f, SessionPermissionErr::Unobservable)) }
     }
 }
 

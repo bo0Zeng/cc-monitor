@@ -63,9 +63,7 @@ pub use doors::{fill_account_colors, migrate_aliases, watch_account_mcp, watch_r
 use drain::{exit_after_drain_within, Drain};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-use spec::{
-    BlockingHandler, BoxFut, CommandSpec, DataFut, DataHandler, Fail, Handler, Outcome, Run,
-};
+use spec::{BlockingHandler, CommandSpec, DataHandler, Outcome};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
@@ -131,17 +129,10 @@ impl WatchDesk {
     }
 }
 
-/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给 [`Run::BlockingOwn`] 那几条）。
+/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给要写句柄的那几条：`Needs::WRITES`）。
 pub(crate) struct Given {
     pub(crate) watch: WatchDesk,
     pub(crate) own: crate::platform::Own,
-}
-
-/// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）；`branch` 可缺（＝ 一份主线外清单都不要），给了就是 `[{sid, path?, at?, sum?}]`。
-/// 别的形状 ⇒ `bad_args`。
-fn watch_ask(args: &serde_json::Value) -> Option<crate::wire::WatchAsk> {
-    args.get("sids")?.as_array()?;
-    serde_json::from_value(args.clone()).ok()
 }
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -301,10 +292,6 @@ async fn handle_line(
     match dispatch(req, replies, running, links, xfers, follows, given, asks) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
-        Disposition::Spawn(req, run) => {
-            let fut = move |r: Request| async move { run(r).await.map_err(Fail::from) };
-            spawn_handler(req, replies.clone(), running.clone(), fut, true, plan).await
-        }
         Disposition::SpawnData(req, run) => {
             spawn_handler(req, replies.clone(), running.clone(), run, true, plan).await
         }
@@ -335,7 +322,7 @@ async fn handle_line(
                 {
                     Ok(res) => res,
                     // 线程没回来（panic / 被取消）：句子说「程序出错」，那条 JoinError 进复制详情。
-                    Err(e) => Err(Fail::from((
+                    Err(e) => Err(spec::Fail::from((
                         "handler_panicked".to_string(),
                         copy_text("beInbound.handleLine.internal", &[]),
                     ))
@@ -364,16 +351,15 @@ async fn handle_line(
 /// 三档的分工：
 /// - [`Disposition::Done`]：已经在 `dispatch` 里**同步**做完了。非 async 意味着它做不了会阻塞的事。
 /// - [`Disposition::Reply`]：立刻回这一帧，**由调用方 await 发送**（保住背压，不像 `try_send` 会丢）。
-/// - [`Disposition::Spawn`]：交给独立 task。绝大多数命令走这里。
+/// - [`Disposition::SpawnData`]：交给独立 task。绝大多数命令走这里。
 enum Disposition {
     Done,
     Reply(Frame),
-    Spawn(Request, Handler),
-    /// 同 [`Disposition::Spawn`]，失败可带 `data`。
+    /// 交给独立 task（`cancel` 能在 await 点打断）。失败可带 `data`。
     SpawnData(Request, DataHandler),
     /// **同步阻塞**的处理器（起进程、扫全库）。走 `tokio::task::spawn_blocking`。
     ///
-    /// # 为什么必须与 [`Disposition::Spawn`] 分开（D 设计审计 · 视角 A · P5）
+    /// # 为什么必须与 [`Disposition::SpawnData`] 分开（D 设计审计 · 视角 A · P5）
     ///
     /// `launch` 的处理器是同步的，起 tmux 进程会真的阻塞。放在 `tokio::spawn` 上就是
     /// **占住一个 worker**；`main` 是裸 `#[tokio::main]`（worker 数 = 可用并行度），
@@ -408,83 +394,77 @@ fn dispatch(
             let push = replies.clone();
             Disposition::SpawnBlocking(
                 req,
-                Box::new(move |r: Request| {
-                    let on_end: crate::accounts::sign_in::OnEnd = Box::new(move |job, ended| {
-                        let body =
-                            serde_json::to_value(crate::faces::login_face::SignInState::of(ended))
+                crate::wire::typed::answer_blocking::<crate::faces::login_face::LoginStart, _>(
+                    move |r, _cx| {
+                        let on_end: crate::accounts::sign_in::OnEnd =
+                            Box::new(move |job, ended| {
+                                let body = serde_json::to_value(
+                                    crate::faces::login_face::SignInState::of(ended),
+                                )
                                 .ok();
-                        use crate::wire::topic::Topic;
-                        let _ = push.blocking_send(Frame::changed(
-                            Topic::Login,
-                            Some(job.to_string()),
-                            None,
-                            body,
-                        ));
-                        crate::accounts::sign_in::ring_manual();
-                    });
-                    crate::faces::login_face::answer_start(&r.args, asks, on_end)
-                }),
+                                use crate::wire::topic::Topic;
+                                let _ = push.blocking_send(Frame::changed(
+                                    Topic::Login,
+                                    Some(job.to_string()),
+                                    None,
+                                    body,
+                                ));
+                                crate::accounts::sign_in::ring_manual();
+                            });
+                        crate::faces::login_face::start(&r, asks, None, on_end)
+                    },
+                ),
             )
         }
         "needs-ask" => Disposition::SpawnData(
             req,
-            Box::new(move |r: Request| -> DataFut {
-                Box::pin(async move {
-                    crate::control::asks::ask(asks, &r.args)
-                        .await
-                        .map(Some)
-                        .map_err(Fail::from)
-                })
-            }),
+            crate::wire::typed::answer_async::<crate::control::asks::NeedsAsk, _, _>(
+                move |r, _cx| async move { Ok(crate::control::asks::ask(asks, r).await) },
+            ),
         ),
-        "stream-watch" => {
-            let Some(ask) = watch_ask(&req.args) else {
-                return Disposition::Reply(Frame::err(
-                    &req.id,
-                    "bad_args",
-                    &crate::common::contract::malformed(
-                        "stream-watch: `sids` must be an array of strings, `branch` an array of {sid, path?, at?, sum?}",
+        // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
+        "stream-watch" => match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
+            Err(f) => Disposition::Reply(f.into_reply(req.id, &req.cmd, &req.args)),
+            Ok(ask) => {
+                let answer = (given.watch.0)(ask);
+                Disposition::SpawnData(
+                    req,
+                    crate::wire::typed::answer_later::<crate::wire::conn::StreamWatch, _>(
+                        async move {
+                            // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
+                            Ok(crate::wire::WatchReply {
+                                from: answer.await.unwrap_or_default(),
+                            })
+                        },
                     ),
-                ));
-            };
-            let answer = (given.watch.0)(ask);
-            Disposition::SpawnData(
-                req,
-                Box::new(move |_r: Request| -> DataFut {
-                    Box::pin(async move {
-                        // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
-                        let from = answer.await.unwrap_or_default();
-                        Ok(serde_json::to_value(crate::wire::WatchReply { from }).ok())
-                    })
-                }),
-            )
-        }
+                )
+            }
+        },
         // 链路四条：要碰**本连接的链路表**与应答通道 ⇒ 与 `cancel` 同一档（硬臂、就地做完）。
         // ★ `link-data` **必须就地**（不 `spawn`）：同一条链路的上行块按到达顺序进队，
         //   交给独立 task 就不再保序。它成功时的应答由上行泵在写进管子之后发（背压）。
-        "link-open" => Disposition::Reply(links.open(&req.cmd, &req.id, &req.args)),
-        "link-data" => match links.data(&req.cmd, &req.id, &req.args) {
+        "link-open" => Disposition::Reply(links.open(&req.id, &req.args)),
+        "link-data" => match links.data(&req.id, &req.args) {
             Some(f) => Disposition::Reply(f),
             None => Disposition::Done,
         },
-        "link-credit" => Disposition::Reply(links.credit(&req.cmd, &req.id, &req.args)),
-        "link-close" => Disposition::Reply(links.close(&req.cmd, &req.id, &req.args)),
+        "link-credit" => Disposition::Reply(links.credit(&req.id, &req.args)),
+        "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
         // 传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
         //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
         // 测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；
         //   本体照旧是真异步、`cancel` 能在 await 点打断（交给通用的 spawn 那一路登记）。
         "remote-probe" => {
             let tx = replies.clone();
-            Disposition::Spawn(
+            Disposition::SpawnData(
                 req,
-                Box::new(move |r: Request| -> BoxFut {
-                    Box::pin(async move {
-                        crate::dial::probe::answer_probe(&r.args, &tx)
-                            .await
-                            .map(|()| None)
-                            .map_err(|(c, m)| (c.to_string(), m))
-                    })
-                }),
+                crate::wire::typed::answer_async::<crate::dial::probe::RemoteProbe, _, _>(
+                    move |r, _cx| async move {
+                        crate::dial::probe::answer_probe(&r, &tx).await.map_err(
+                            crate::wire::typed::of_pair(crate::dial::probe::ProbeErr::Failed),
+                        )
+                    },
+                ),
             )
         }
         "transfer-upload" | "transfer-download" | "transfer-start" | "transfer-stop" => {
@@ -500,19 +480,14 @@ fn dispatch(
             let desk = follows.clone();
             Disposition::SpawnData(
                 req,
-                Box::new(move |r: Request| -> DataFut {
-                    Box::pin(async move {
-                        desk.follow_off_worker(r.args, r.tz)
-                            .await
-                            .map(|()| None)
-                            .map_err(|mut f| {
-                                f.data = serde_json::to_value(
-                                    crate::control::terminal_follow::live_after_refusal(&f.code),
-                                )
-                                .ok();
-                                f
-                            })
-                    })
+                crate::wire::typed::answer_async::<
+                    crate::control::terminal_follow::TerminalFollow,
+                    _,
+                    _,
+                >(move |r, cx| async move {
+                    desk.follow_off_worker(r, cx.tz)
+                        .await
+                        .map_err(crate::control::terminal_follow::FollowErr::of)
                 }),
             )
         }
@@ -520,12 +495,10 @@ fn dispatch(
             Disposition::Reply(follows.answer_wire(&req.cmd, &req.id, &req.args, &req.tz))
         }
         "cancel" => {
-            let target = req
-                .args
-                .get("target")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
+            let target = match crate::wire::typed::take::<crate::wire::conn::CancelReq>(&req.args) {
+                Ok(c) => c.target,
+                Err(f) => return Disposition::Reply(f.into_reply(req.id, &req.cmd, &req.args)),
+            };
             // ★ **不可取消的命令要说实话，不许回一条撒谎的 `cancelled`。**
             //
             // D 设计审计（视角 A · P4）实测出的谎：`launch` 的处理器是**同步阻塞**的，
@@ -572,7 +545,7 @@ fn dispatch(
         // 名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
         // 在注册表这一侧不可表示；`hello.commands` 也从注册表派生（[`command_names`]），没有第二份名单。
         other => match lookup(other) {
-            Some(spec) => match spec::prepare(spec.run, Some(&given.own)) {
+            Some(spec) => match spec::invoke(spec.run, &hands(Some(&given.own))) {
                 Some(spec::Prepared::Async(f)) => Disposition::SpawnData(req, f),
                 Some(spec::Prepared::Blocking(f)) => Disposition::SpawnBlocking(req, f),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
@@ -595,23 +568,14 @@ fn dispatch(
     }
 }
 
-/// 撤不动的那几条里**不是 typed 的**：阻塞档开跑之后打不断，`cancel` 命中回 `not_cancellable`。
-/// hello 的 `uncancellable` 就是它 —— 与 `dispatch` 按档位分流读的是同一张表。typed 那一半算进了形状指纹、
-/// 由指纹表那份生成物说（`cmd_wire::shapes::UNCANCELLABLE`，客户端读本侧编进来的那一份），这里不再列。
-/// 按字母排：它是一个集合，次序与命令登记在哪一族无关。
-pub fn uncancellable() -> Vec<String> {
-    let mut names: Vec<String> = REGISTRY
-        .iter()
-        .filter(|s| s.run.blocking() && !matches!(s.run, Run::Typed(_)))
-        .map(|s| s.name.to_string())
-        .chain(BUILTIN_BLOCKING.iter().map(|n| n.to_string()))
-        .collect();
-    names.sort();
-    names
+/// 分派那一层手里的能力（[`spec::Hands`]）：写句柄由调用方递（没有 ⇒ `None`）；文件管理面 · 枢纽问这台自己那一跳是这台的单例，只在这里装。
+pub(crate) fn hands(own: Option<&crate::platform::Own>) -> spec::Hands<'_> {
+    spec::Hands {
+        own,
+        files: &LocalFiles,
+        hub: doors::hub_here,
+    }
 }
-
-/// 硬臂里走阻塞档的那几条（登记是 `Run::Builtin`，`dispatch` 交 `SpawnBlocking`）：同样开跑之后打不断。
-const BUILTIN_BLOCKING: &[&str] = &["login-start"];
 
 /// 命令表按族分住 `registry/` 下各一份（每份一张 `SPECS`），在编译期拼回一张 [`REGISTRY`]。
 pub(crate) mod registry {

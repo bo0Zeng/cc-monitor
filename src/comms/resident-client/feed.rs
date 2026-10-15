@@ -561,10 +561,14 @@ impl<T: Transport> Feed<T> {
     }
 
     /// 版本门（装不了后端的宿主，[`crate::gate`]）：问接上的那一台它比手上这一版旧不旧（判定在后端）。旧 ⇒ 照接、带一句「要更新」；
-    /// 同或新 ⇒ 不说。那台不认这一问 ⇒ 比这一问还早 ⇒ 当旧。问不成（超时 · 断了）⇒ 不说（下次接上再问）。
+    /// 同或新 ⇒ 不说。那台不认这一问 · 认、可这一问的形状与本侧对不上 ⇒ 比这一问（这一形）还早 ⇒ 当旧。问不成（超时 · 断了）⇒ 不说（下次接上再问）。
     async fn version_notice(&self, client: &InboundClient, theirs: &str) -> Option<Problem> {
         let asked = crate::gate::verdict_for(self.cfg.mine.as_deref(), |mine| async move {
-            if !client.accepts(crate::gate::VERDICT_CMD) {
+            // 不认这一问（比版本门还早）· 认、可这一问的形状与本侧对不上（版本门这一条改过形之前的那一版）⇒ 问不成，那台就是旧的：
+            //   照接、照实说要更新（两端同一版之前别的命令本来就不发，逐条由形状指纹拦）。
+            if !client.accepts(crate::gate::VERDICT_CMD)
+                || client.shape_differs(crate::gate::VERDICT_CMD)
+            {
                 return Ok(Verdict {
                     replace: true,
                     older: true,

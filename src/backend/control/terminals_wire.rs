@@ -2,7 +2,7 @@
 //! 本体在 [`super::terminals`]；这里只有形状与「怎么跑」那一层。两个前端共用（手机也在读）⇒ 回包的键与「有才出」那几格照换形前原样。
 
 use super::terminals::{self as t, CmdErr, On};
-use crate::wire::typed::{self, Blocking, Command, Cx};
+use crate::wire::typed::{self, Command};
 use serde::Deserialize;
 
 // ── 入参 ──────────────────────────────────────────────────────────────
@@ -163,14 +163,21 @@ impl Command for TerminalsListCmd {
     type Err = TerminalsListErr;
 }
 
-impl Blocking for TerminalsListCmd {
-    fn run(req: TerminalsListReq, _cx: &Cx) -> Result<TerminalsList, TerminalsListErr> {
-        // 名单这一条登记成「tmux 可选」（没装 ⇒ 空名单，不是错）：装了却起不来那一种（下层回 `no_tmux`）说成「列不出」，
-        //   不在这一条的码表里另立一个 `no_tmux`（`target_parity_guard` 钉着两句不许自相矛盾）。
-        t::list_on(On::default(), &req).map_err(|f| match f.code.as_str() {
-            "no_tmux" => TerminalsListErr::Unobservable(f.into_said()),
-            _ => typed::of_fail(f, TerminalsListErr::Unobservable),
-        })
+impl crate::wire::typed::Handle for TerminalsListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: TerminalsListReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<TerminalsList, TerminalsListErr>> + Send + 'static
+    {
+        async move {
+            // 名单这一条登记成「tmux 可选」（没装 ⇒ 空名单，不是错）：装了却起不来那一种（下层回 `no_tmux`）说成「列不出」，
+            //   不在这一条的码表里另立一个 `no_tmux`（`target_parity_guard` 钉着两句不许自相矛盾）。
+            t::list_on(On::default(), &req).map_err(|f| match f.code.as_str() {
+                "no_tmux" => TerminalsListErr::Unobservable(f.into_said()),
+                _ => typed::of_fail(f, TerminalsListErr::Unobservable),
+            })
+        }
     }
 }
 
@@ -184,10 +191,20 @@ impl Command for TerminalPreviewCmd {
     type Err = TerminalPreviewErr;
 }
 
-impl Blocking for TerminalPreviewCmd {
-    fn run(req: TerminalPreviewReq, cx: &Cx) -> Result<Preview, TerminalPreviewErr> {
-        t::preview_on(On::default(), &req, &cx.tz)
-            .map_err(|f| typed::of_fail(f, TerminalPreviewErr::CaptureFailed))
+impl crate::wire::typed::Handle for TerminalPreviewCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: TerminalPreviewReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Preview, TerminalPreviewErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move {
+            let cx = &cx;
+
+            t::preview_on(On::default(), &req, &cx.tz)
+                .map_err(|f| typed::of_fail(f, TerminalPreviewErr::CaptureFailed))
+        }
     }
 }
 
@@ -201,9 +218,13 @@ impl Command for TerminalInputCmd {
     type Err = TerminalInputErr;
 }
 
-impl Blocking for TerminalInputCmd {
-    fn run(req: TerminalInputReq, _cx: &Cx) -> Result<Sent, TerminalInputErr> {
-        input(&req).map_err(|f| typed::of_fail(f, TerminalInputErr::Unobservable))
+impl crate::wire::typed::Handle for TerminalInputCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: TerminalInputReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Sent, TerminalInputErr>> + Send + 'static {
+        async move { input(&req).map_err(|f| typed::of_fail(f, TerminalInputErr::Unobservable)) }
     }
 }
 

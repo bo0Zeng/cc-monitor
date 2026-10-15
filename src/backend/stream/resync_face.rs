@@ -3,7 +3,7 @@
 //! 住命令表这一层（`stream/`）：回包里 `uncancellable` 那一栏从命令表派生（功能不许引 `stream`）；不住 `stream/inbound/`：那一目录不许出现 `observe::`，`control/` 不许引用 `observe/`（`layering_guard`）。
 //! 用户按钮触发、不是节拍：零定时器铁律不变。
 
-use crate::wire::typed::{codes, Blocking, Command, Cx};
+use crate::wire::typed::{codes, Command};
 
 /// `resync` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -34,8 +34,6 @@ pub(crate) struct Resynced {
     pub(crate) watchers: usize,
     /// 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
     pub(crate) unavailable: Vec<crate::wire::Unavailable>,
-    /// 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
-    pub(crate) uncancellable: Vec<String>,
 }
 
 codes! {
@@ -53,22 +51,27 @@ impl Command for ResyncCmd {
     type Err = ResyncErr;
 }
 
-impl Blocking for ResyncCmd {
-    fn run(req: ResyncReq, _cx: &Cx) -> Result<Resynced, ResyncErr> {
-        if req.sid.as_deref() == Some("") {
-            return Err(ResyncErr::BadArgs(crate::common::contract::malformed(
-                "`sid` must be a non-empty string when given",
-            )));
+impl crate::wire::typed::Handle for ResyncCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: ResyncReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Resynced, ResyncErr>> + Send + 'static {
+        async move {
+            if req.sid.as_deref() == Some("") {
+                return Err(ResyncErr::BadArgs(crate::common::contract::malformed(
+                    "`sid` must be a non-empty string when given",
+                )));
+            }
+            let (d, watchers) = crate::observe::watcher::resync(req.sid.as_deref());
+            Ok(Resynced {
+                added: d.added,
+                removed: d.removed,
+                retagged: d.retagged,
+                caught_up: d.caught_up,
+                watchers,
+                unavailable: crate::unavailable_here(),
+            })
         }
-        let (d, watchers) = crate::observe::watcher::resync(req.sid.as_deref());
-        Ok(Resynced {
-            added: d.added,
-            removed: d.removed,
-            retagged: d.retagged,
-            caught_up: d.caught_up,
-            watchers,
-            unavailable: crate::unavailable_here(),
-            uncancellable: crate::stream::inbound::uncancellable(),
-        })
     }
 }

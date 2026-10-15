@@ -475,12 +475,14 @@ impl crate::wire::typed::Command for HistoryLastAccountsCmd {
     type Err = LastAccountsErr;
 }
 
-impl crate::wire::typed::Blocking for HistoryLastAccountsCmd {
+impl crate::wire::typed::Handle for HistoryLastAccountsCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: &crate::wire::typed::Cx,
-    ) -> Result<LastAccounts, LastAccountsErr> {
-        last_accounts_at(crate::platform::paths::data_home().as_deref())
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LastAccounts, LastAccountsErr>> + Send + 'static
+    {
+        async move { last_accounts_at(crate::platform::paths::data_home().as_deref()) }
     }
 }
 

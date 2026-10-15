@@ -97,10 +97,11 @@ impl crate::wire::typed::Command for ResolveCmd {
     type Err = ResolveErr;
 }
 
-impl crate::wire::typed::Async for ResolveCmd {
+impl crate::wire::typed::Handle for ResolveCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: ResumeSpec,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<CommandPlan, ResolveErr>> + Send + 'static {
         std::future::ready(
             resolve(crate::agents::REGISTRY, &req)

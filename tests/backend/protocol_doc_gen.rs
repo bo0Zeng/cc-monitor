@@ -1,11 +1,11 @@
 //! 协议参考 `src/doc/IPC-COMMANDS.md` 从代码生成：帧与出参读源码里的 serde 类型（字段说明取 `///` 第一句），
-//! 命令读 `inbound::REGISTRY`（一句话 · 字段 · 码 · 档位），CLI 子命令读 `SUBCOMMANDS` ＋ `CLI_ONLY_DOCS`。
+//! 命令读 `inbound::REGISTRY`（一句话 · 入参与回包的类型 · 码 · 档位），CLI 子命令读 `SUBCOMMANDS` ＋ `CLI_ONLY_DOCS`。
 //!
 //! 判据只有一条：重新生成 == 仓里那份。改了帧字段 / 命令登记之后红是预期的，重生成：
 //! `CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen`（在 `src/backend` 下）。
 
 use crate::stream::inbound::REGISTRY;
-use crate::wire::spec::{CommandSpec, Dir, Run};
+use crate::wire::spec::CommandSpec;
 use std::fmt::Write as _;
 
 const OUT: &str = "src/doc/IPC-COMMANDS.md";
@@ -714,14 +714,6 @@ fn protocol_codes(out: &mut String) {
     out.push('\n');
 }
 
-fn dir_mark(d: Dir) -> &'static str {
-    match d {
-        Dir::In => "→",
-        Dir::Out => "←",
-        Dir::Both => "→ ←",
-    }
-}
-
 /// 命令那一行「怎么跑」：收不收载荷 · 撤不撤得动 · CLI 面 · 依赖什么。
 fn traits_of(spec: &CommandSpec) -> String {
     let mut t = Vec::new();
@@ -785,22 +777,9 @@ fn command(out: &mut String, spec: &CommandSpec) {
     let _ = writeln!(out, "#### `{}`\n", spec.name);
     let _ = writeln!(out, "{}。\n", spec.summary.trim_end_matches('。'));
     let _ = writeln!(out, "{}\n", traits_of(spec));
-    if !spec.fields.is_empty() {
-        out.push_str("| 字段 | 向 | 说明 |\n|---|---|---|\n");
-        for f in spec.fields {
-            let _ = writeln!(
-                out,
-                "| `{}` | {} | {} |",
-                f.name,
-                dir_mark(f.dir),
-                f.doc.replace('|', "\\|")
-            );
-        }
-        out.push('\n');
-    }
-    // typed 命令：字段不手写，照它的类型写（入参 · 回包的 TS 声明，连同它们引到的类型）。
-    if let Run::Typed(t) = spec.run {
-        let shape = (t.shape)();
+    // 字段不手写，照它的类型写（入参 · 回包的 TS 声明，连同它们引到的类型）。
+    {
+        let shape = (spec.run.shape)();
         let _ = writeln!(
             out,
             "入参 `{}` · 回包 `{}`（类型从 Rust 生成，`generated/TypedCommands.ts`）：\n",
@@ -815,6 +794,14 @@ fn command(out: &mut String, spec: &CommandSpec) {
     if !spec.codes.is_empty() {
         let codes: Vec<String> = spec.codes.iter().map(|c| format!("`{c}`")).collect();
         let _ = writeln!(out, "码：{}\n", codes.join(" · "));
+    }
+    // 带 `data` 的码：`data` 的形状（声明在上面那一块里）。
+    {
+        let data = (spec.run.shape)().data;
+        if !data.is_empty() {
+            let d: Vec<String> = data.iter().map(|(c, t)| format!("`{c}` ⇒ `{t}`")).collect();
+            let _ = writeln!(out, "失败带 `data` 的码：{}\n", d.join(" · "));
+        }
     }
 }
 
@@ -983,7 +970,6 @@ fn the_parser_sees_every_frame_field() {
         "emits",
         "commands",
         "unavailable",
-        "uncancellable",
     ] {
         assert!(
             section.contains(&format!("| `{key}` |")),

@@ -31,7 +31,6 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Value};
 
 /// `history-read` 一页的目标字节数。
 ///
@@ -140,13 +139,19 @@ impl crate::wire::typed::Command for BackendLog {
     type Err = BackendLogErr;
 }
 
-impl crate::wire::typed::Blocking for BackendLog {
-    fn run(req: BackendLogReq, _cx: &crate::wire::typed::Cx) -> Result<LogTail, BackendLogErr> {
-        let max = req
-            .max_bytes
-            .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
-        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-            .map_err(crate::wire::typed::of_pair(BackendLogErr::Failed))
+impl crate::wire::typed::Handle for BackendLog {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: BackendLogReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<LogTail, BackendLogErr>> + Send + 'static {
+        async move {
+            let max = req
+                .max_bytes
+                .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
+            log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
+                .map_err(crate::wire::typed::of_pair(BackendLogErr::Failed))
+        }
     }
 }
 
@@ -166,10 +171,11 @@ impl crate::wire::typed::Command for DriftReportCmd {
     type Err = DriftReportErr;
 }
 
-impl crate::wire::typed::Async for DriftReportCmd {
+impl crate::wire::typed::Handle for DriftReportCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         _req: crate::wire::typed::NoArgs,
-        _cx: crate::wire::typed::Cx,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<crate::agents::drift::DriftReport, DriftReportErr>>
            + Send
            + 'static {
@@ -177,81 +183,221 @@ impl crate::wire::typed::Async for DriftReportCmd {
     }
 }
 
-/// 本族的应答：`data` 或 `(code, message)`。
-pub(crate) type Answer = Result<Value, (&'static str, String)>;
-
-/// 帧面入口：命令名从 `r.cmd` 来（与 `files::answer_wire` 同一形 —— 「登记的名字」与
-/// 「真正跑的那条」在类型上是同一个值）。
-pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    answer_at(&crate::history::listing::agent_home(), cmd, args, tz)
+/// `accounts-sessions` 的回包：每条运行中会话一行（`{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}` 那一行 JSON 原样）；
+/// `account:null` ＝ 查不到（不猜）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct SessionLines {
+    pub(crate) lines: Vec<String>,
 }
 
-/// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
-/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的钟面 · 命中时刻 · 行尾时刻都按它写。
-pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    use crate::observe::accounts_query;
-    match cmd {
-        // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
-        //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
-        "machine-interrupts" => {
-            let machine = opt_str_arg(args, "machine")?;
-            let lines = accounts_query::session_lines_for_frame(home);
-            if args.get("appExit").and_then(Value::as_bool) == Some(true) {
-                let kill = crate::control::exit_policy::read_now().kill_on_exit();
-                return Ok(accounts_query::app_exit_product(
-                    kill,
-                    &lines,
-                    crate::dial::forwards::running_all(),
-                ));
-            }
-            let forwards = machine.map_or(0, crate::dial::forwards::running_to_machine);
-            Ok(accounts_query::machine_product(&lines, forwards))
-        }
-        "accounts-sessions" => {
-            let rows = accounts_query::session_lines_for_frame(home);
-            let size: usize = rows.iter().map(|l| l.len() + 1).sum();
-            if size > LINES_CAP_BYTES {
-                return Err(too_large(size));
-            }
-            Ok(json!({ "lines": rows }))
-        }
-        "accounts-list" => {
-            let agent = crate::accounts::upstream_select::endpoint::agent_arg(args)?;
+crate::wire::typed::codes! {
+    /// `accounts-sessions` 的码：整份超过一帧装得下的（不截断：截断的清单会被当成完整的用）。
+    pub(crate) enum AccountsSessionsErr {
+        TooLarge = "too_large",
+    }
+}
+
+/// `accounts-sessions`：正在跑的会话各属哪个账号（读 pidfile ＋ 账号库 ⇒ 阻塞档）。
+pub(crate) struct AccountsSessions;
+
+impl crate::wire::typed::Command for AccountsSessions {
+    const NAME: &'static str = "accounts-sessions";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::wire::typed::NoArgs;
+    type Reply = SessionLines;
+    type Err = AccountsSessionsErr;
+}
+
+impl crate::wire::typed::Handle for AccountsSessions {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        _req: crate::wire::typed::NoArgs,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<SessionLines, AccountsSessionsErr>> + Send + 'static
+    {
+        async move { sessions_at(&crate::history::listing::agent_home()) }
+    }
+}
+
+/// [`AccountsSessions`] 的本体，家目录是参数（判据拿夹具喂它）。
+pub(crate) fn sessions_at(home: &std::path::Path) -> Result<SessionLines, AccountsSessionsErr> {
+    let lines = crate::observe::accounts_query::session_lines_for_frame(home);
+    let size: usize = lines.iter().map(|l| l.len() + 1).sum();
+    if size > LINES_CAP_BYTES {
+        return Err(AccountsSessionsErr::TooLarge(too_large(size).1));
+    }
+    Ok(SessionLines { lines })
+}
+
+crate::wire::typed::codes! {
+    /// `accounts-list` 的码：整份超过一帧装得下的。
+    pub(crate) enum AccountsListErr {
+        TooLarge = "too_large",
+    }
+}
+
+/// `accounts-list`：账号清单，并上这台机器自己那份 apikey 表（读 manifest ＋ 每个号 stat 一下 ⇒ 阻塞档）。
+pub(crate) struct AccountsListCmd;
+
+impl crate::wire::typed::Command for AccountsListCmd {
+    const NAME: &'static str = "accounts-list";
+    type Req = crate::observe::accounts_query::AccountsListReq;
+    type Reply = crate::observe::accounts_query::AccountsList;
+    type Err = AccountsListErr;
+}
+
+impl crate::wire::typed::Handle for AccountsListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: crate::observe::accounts_query::AccountsListReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::accounts_query::AccountsList, AccountsListErr>,
+    > + Send
+           + 'static {
+        async move {
+            let agent =
+                crate::agents::pick_adapter(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
             let rows = crate::accounts::upstream_select::file_face::machine_rows();
-            let v = accounts_query::list_product(
+            let v = crate::observe::accounts_query::list_product(
                 &rows,
                 agent,
                 crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
                 crate::relay::our_relay_listening(relay_route_core::PORT),
             );
-            let size = v.to_string().len();
+            let size = serde_json::to_string(&v).map_or(0, |t| t.len());
             if size > LINES_CAP_BYTES {
-                return Err(too_large(size));
+                return Err(AccountsListErr::TooLarge(too_large(size).1));
             }
             Ok(v)
         }
-        // 换号前的信任预检上帧面（替掉最后两条仍逐次拨号的子命令）。
-        //   `configDir` 缺席 / `null` ⇒ 账号 0；拒绝码原样（CLI 那一臂同一个函数）。
-        "accounts-trust" => {
-            let cwd = str_arg(args, "cwd")?;
-            let config_dir = match args.get("configDir") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(s)) => Some(s.as_str()),
-                Some(_) => {
-                    return Err((
-                        "bad_args",
-                        crate::common::contract::malformed(
-                            "`configDir` must be a string or null (null = account 0)",
-                        ),
-                    ))
-                }
-            };
-            accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
+    }
+}
+
+/// `machine-interrupts` 的入参。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct MachineInterruptsReq {
+    /// 数通往哪台的转发（缺 ⇒ 不数）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) machine: Option<String>,
+    /// `true` ⇒ 问的是「重启 / 退出 cc-monitor」：这台后端选了随它退出一起停才数会话与账上全部转发，否则全零。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) app_exit: Option<bool>,
+}
+
+crate::wire::typed::codes! {
+    /// `machine-interrupts` 没有别的码。
+    pub(crate) enum MachineInterruptsErr {}
+}
+
+/// `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
+/// 这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读（读 pidfile ⇒ 阻塞档）。
+pub(crate) struct MachineInterrupts;
+
+impl crate::wire::typed::Command for MachineInterrupts {
+    const NAME: &'static str = "machine-interrupts";
+    type Req = MachineInterruptsReq;
+    type Reply = crate::observe::accounts_query::Interrupts;
+    type Err = MachineInterruptsErr;
+}
+
+impl crate::wire::typed::Handle for MachineInterrupts {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: MachineInterruptsReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::accounts_query::Interrupts, MachineInterruptsErr>,
+    > + Send
+           + 'static {
+        async move { Ok(interrupts_at(&crate::history::listing::agent_home(), &req)) }
+    }
+}
+
+/// [`MachineInterrupts`] 的本体，家目录是参数（判据拿夹具喂它）。
+pub(crate) fn interrupts_at(
+    home: &std::path::Path,
+    req: &MachineInterruptsReq,
+) -> crate::observe::accounts_query::Interrupts {
+    use crate::observe::accounts_query;
+    let lines = accounts_query::session_lines_for_frame(home);
+    if req.app_exit == Some(true) {
+        let kill = crate::control::exit_policy::read_now().kill_on_exit();
+        return accounts_query::app_exit_product(
+            kill,
+            &lines,
+            crate::dial::forwards::running_all(),
+        );
+    }
+    let forwards = req
+        .machine
+        .as_deref()
+        .map_or(0, crate::dial::forwards::running_to_machine);
+    accounts_query::machine_product(&lines, forwards)
+}
+
+/// `accounts-trust` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct AccountsTrustReq {
+    /// 目标账号的 config dir（必须逐字 ∈ manifest，否则 `unknown_config_dir`）；**缺席或 `null` = 账号 0**
+    /// （读 agent 自己那份用户级配置，不收路径）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) config_dir: Option<String>,
+    /// 要预检的工作目录。
+    pub(crate) cwd: String,
+}
+
+crate::wire::typed::codes! {
+    /// `accounts-trust` 的码（拒绝码原样，CLI 那一臂同一个函数）。agent 那一层自己的码（读 / 解析那家的配置文件失败）
+    /// 不在表里：通用层不认任何一家 agent 的名字（`agent_boundary_guard`）⇒ 落 `failed`，原因那句原样带着。
+    pub(crate) enum AccountsTrustErr {
+        Failed = "failed",
+        ManifestUnavailable = "manifest_unavailable",
+        NoHome = "no_home",
+        UnknownConfigDir = "unknown_config_dir",
+        UnsafeConfigDir = "unsafe_config_dir",
+    }
+}
+
+/// `accounts-trust`：换号前的信任预检（读一份 manifest ＋ 一份用户级配置 ⇒ 阻塞档）。
+pub(crate) struct AccountsTrust;
+
+impl crate::wire::typed::Command for AccountsTrust {
+    const NAME: &'static str = "accounts-trust";
+    type Req = AccountsTrustReq;
+    type Reply = crate::observe::accounts_query::Trust;
+    type Err = AccountsTrustErr;
+}
+
+impl crate::wire::typed::Handle for AccountsTrust {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: AccountsTrustReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::accounts_query::Trust, AccountsTrustErr>,
+    > + Send
+           + 'static {
+        async move {
+            crate::observe::accounts_query::trust_product(req.config_dir.as_deref(), &req.cwd)
+                .map_err(|(c, m)| {
+                    crate::wire::typed::of_fail(
+                        crate::wire::spec::Fail::new(&c, m),
+                        AccountsTrustErr::Failed,
+                    )
+                })
         }
-        other => Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
-        )),
     }
 }
 
@@ -282,20 +428,6 @@ pub(crate) fn reader<'a>(
     crate::observe::record_page::Reader::new(face, lead_at, &lead, tz.clone())
 }
 
-/// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `stream/inbound/registry/accounts.rs`
-/// 那一块的 `codes` 同一张**；认不出的一律 `failed`（不把一个没登记的码漏上线）。
-fn trust_code(c: &str) -> &'static str {
-    // ⚠ agent 那一层自己的码（读 / 解析那家的配置文件失败）**不在表里**：通用层不认任何一家 agent 的名字
-    //   （`agent_boundary_guard`）⇒ 它们落 `failed`，原因那句原样带着。
-    const KNOWN: &[&str] = &[
-        "unsafe_config_dir",
-        "unknown_config_dir",
-        "manifest_unavailable",
-        "no_home",
-    ];
-    KNOWN.iter().find(|k| **k == c).copied().unwrap_or("failed")
-}
-
 pub(crate) fn too_large(size: usize) -> (&'static str, String) {
     too_large_at(size, LINES_CAP_BYTES)
 }
@@ -309,27 +441,6 @@ pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
             &[("size", &size.to_string()), ("cap", &cap.to_string())],
         ),
     )
-}
-
-fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(key).and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&format!("missing `{key}` (a string)")),
-        )
-    })
-}
-
-/// 可缺的串参数：缺 / `null` ⇒ `None`；在而不是串 ⇒ `bad_args`。
-fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'static str, String)> {
-    match args.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(v)) => Ok(Some(v)),
-        Some(_) => Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!("{key} must be a string")),
-        )),
-    }
 }
 
 #[cfg(test)]
