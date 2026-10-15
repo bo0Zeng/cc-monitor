@@ -213,15 +213,19 @@ def type_key(key):
     对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
     want = "\n".join(key)
     # 先把屏上键盘停掉：没有输入法时 `input text` 的按键直接进框，联想 · 纠错插不进来（停不掉也照敲，读回照核）。
-    #   键盘到点完「搬进来」之后才放回来（[restore_ime]）：中途放回来它会再弹出来，收它的那一下返回键可能把框一起关掉。
-    global _IME
-    _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
-    if _IME and _IME != "null":
-        adb("shell", "ime", "disable", _IME)
+    #   调用方先 [stop_ime]，点完「搬进来」再 [restore_ime]：中途放回来它会再弹出来，收它的那一下返回键可能把框一起关掉。
     _type_key(key, want)
 
 
 _IME = ""
+
+
+def stop_ime():
+    """停掉屏上键盘（钥匙那一框用）：按键直接进框，也不再有键盘盖住框里的按钮。"""
+    global _IME
+    _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
+    if _IME and _IME != "null":
+        adb("shell", "ime", "disable", _IME)
 
 
 def restore_ime():
@@ -497,11 +501,12 @@ def main():
     with Step("1-加机器连上"):
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
+        stop_ime()
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
-        hide_keyboard(); tap(t("mobIdentity.import.ok")); time.sleep(2)
+        tap(t("mobIdentity.import.ok")); time.sleep(2)
         if ui.find("imported") is not None:
             raise Step.Fail("只贴进一行的钥匙照样存下了")
         # 拒的那一句是条长提示（带「复制详情」）：它在的时候「+」要让开、不被盖住，接着点得到。
