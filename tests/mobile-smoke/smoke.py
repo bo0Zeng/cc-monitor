@@ -213,15 +213,22 @@ def type_key(key):
     对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
     want = "\n".join(key)
     # 先把屏上键盘停掉：没有输入法时 `input text` 的按键直接进框，联想 · 纠错插不进来（停不掉也照敲，读回照核）。
-    ime = adb("shell", "settings", "get", "secure", "default_input_method").strip()
-    if ime and ime != "null":
-        adb("shell", "ime", "disable", ime)
-    try:
-        _type_key(key, want)
-    finally:
-        if ime and ime != "null":
-            adb("shell", "ime", "enable", ime)
-            adb("shell", "ime", "set", ime)
+    #   键盘到点完「搬进来」之后才放回来（[restore_ime]）：中途放回来它会再弹出来，收它的那一下返回键可能把框一起关掉。
+    global _IME
+    _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
+    if _IME and _IME != "null":
+        adb("shell", "ime", "disable", _IME)
+    _type_key(key, want)
+
+
+_IME = ""
+
+
+def restore_ime():
+    """[type_key] 停掉的屏上键盘放回来。"""
+    if _IME and _IME != "null":
+        adb("shell", "ime", "enable", _IME)
+        adb("shell", "ime", "set", _IME)
 
 
 def _type_key(key, want):
@@ -507,9 +514,11 @@ def main():
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         # `input text` 敲进去是异步的、输入法还可能改字：type_key 读回框里的字逐字核过才往下走。
         type_key(key)
-        hide_keyboard(); tap(t("mobIdentity.import.ok"))
+        tap(t("mobIdentity.import.ok"))
         # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
-        if not wait("SHA256:", 40):
+        ok = wait("SHA256:", 40)
+        restore_ime()
+        if not ok:
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
         add_host("smokebox")
