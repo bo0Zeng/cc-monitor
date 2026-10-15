@@ -8,7 +8,6 @@
 
 use crate::common::cells::Words;
 use copy_core::copy_text;
-use std::collections::BTreeMap;
 
 /// 起会话时没说是哪个号 ⇒ 记成这个（是哪一份登录说不准；不等于账号 0）。
 pub(crate) const HOME_ACCOUNT: &str = "_";
@@ -39,21 +38,8 @@ pub(crate) fn slot_text(w: &str) -> String {
     }
 }
 
-/// 成品上的 `names` 那一格：`accounts` 只列与原名不同的号（今天只有 `_`），`slots` 列每个语义位。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaNames"
-    )
-)]
-pub(crate) struct Names {
-    pub(crate) accounts: BTreeMap<String, Words>,
-    pub(crate) slots: BTreeMap<String, Words>,
-}
+/// 成品上的 `names` 那一格（线上形住 `cmd-wire`）。
+pub(crate) use cmd_wire::quota::Names;
 
 /// 唯一一处造 [`Names`]。
 pub(crate) fn names() -> Names {

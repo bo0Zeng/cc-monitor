@@ -6,26 +6,9 @@
 //! 「采样那一格」只写几点（数旧带「旧」）：哪台采的是出口自己的事（它知道问的是哪台、那台叫什么）。
 
 use crate::common::cells::{Tone, Words};
+pub(crate) use cmd_wire::quota::{Cell, Rows, Warm, WarmAct};
 use copy_core::copy_text;
 use serde_json::Value;
-
-/// 行里的一格。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaCell"
-    )
-)]
-pub(crate) struct Cell {
-    pub(crate) text: Words,
-    pub(crate) tone: Tone,
-}
-
-pub(crate) type Rows = Vec<Vec<Cell>>;
 
 fn c(text: String) -> Cell {
     Cell {
@@ -221,61 +204,13 @@ const WARM_LOGIN_RETRY_S: i64 = 60 * 60;
 /// 额度账读不懂 ⇒ 过这么久再看。
 const WARM_UNREADABLE_RETRY_S: i64 = 15 * 60;
 
-/// 开窗那一判的一个号：`send`（发一句让 5h 窗口开始计时）· `wait`（睡到 `at`）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaWarmAct"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum WarmAct {
-    Send,
-    Wait,
-}
-
-/// `warm`：quota-warm 照它办（只执行、不判）。`at` 只在 `wait` 时有（旁边由出口写好 `atText`）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaWarm"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Warm {
-    pub(crate) act: WarmAct,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) at: Option<i64>,
-    /// `at` 写给人看的样子（[`Warm::stamp`]）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) at_text: Option<Words>,
-    /// `at` 距今。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) at_rel_text: Option<Words>,
-    /// 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
-    pub(crate) text: Words,
-}
-
-impl Warm {
-    /// 出口那一下：按钟写 `at` 旁边那两格。
-    pub(crate) fn stamp(mut self, clock: &crate::common::time::TextClock) -> Self {
-        if let Some(t) = self.at.and_then(|t| u64::try_from(t).ok()) {
-            self.at_text = Some(clock.text(t));
-            self.at_rel_text = clock.rel(t);
-        }
-        self
+/// 出口那一下：按钟写 `at` 旁边那两格。
+pub(crate) fn stamped(mut w: Warm, clock: &crate::common::time::TextClock) -> Warm {
+    if let Some(t) = w.at.and_then(|t| u64::try_from(t).ok()) {
+        w.at_text = Some(clock.text(t));
+        w.at_rel_text = clock.rel(t);
     }
+    w
 }
 
 fn slot_of<'a>(a: &'a Value, slot: &str) -> Option<&'a Value> {

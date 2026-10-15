@@ -74,12 +74,13 @@ function feed(origin: Origin): Promise<void> {
   return p;
 }
 
-/** 推来那一帧的 `body`（`{state: "done"}` · `{state: "failed", said, detail}`）；形状不对 ⇒ `null`（不收）。 */
+/** 推来那一帧的 `body`（`{state: "done"}` · `{state: "failed", said, detail, again}`）；形状不对 ⇒ `null`（不收）。 */
 function signInOf(v: unknown): SignInState | null {
   if (v === null || typeof v !== "object") return null;
-  const o = v as { state?: unknown; said?: unknown; detail?: unknown };
+  const o = v as { state?: unknown; said?: unknown; detail?: unknown; again?: unknown };
   if (o.state === "done") return { state: "done" };
-  if (o.state === "failed" && typeof o.said === "string") return { state: "failed", said: o.said, detail: typeof o.detail === "string" ? o.detail : null };
+  if (o.state === "failed" && typeof o.said === "string" && (o.again === "paste" || o.again === "restart" || o.again === "none"))
+    return { state: "failed", said: o.said, detail: typeof o.detail === "string" ? o.detail : null, again: o.again };
   return null;
 }
 
@@ -180,8 +181,8 @@ class LoginDrawer {
       this.finished();
       return;
     }
-    // 作业自己收了 ⇒ 粘不了了，只能重新开始（推来的那一帧不带 `again`，见交回「后端缺的格」）。
-    this.step = { t: "failed", said: st.said, detail: st.detail ?? "", again: "restart" };
+    // 作业自己收了：怎么办照那一帧的 `again`（作业没了，接着粘无从谈起 ⇒ 当重新开始画）。
+    this.step = { t: "failed", said: st.said, detail: st.detail ?? "", again: st.again === "none" ? "none" : "restart" };
     this.paint();
   }
 
@@ -297,7 +298,9 @@ class LoginDrawer {
   private links(step: Step): HTMLElement {
     const row = el("div");
     row.className = s.ldLinks;
-    const open = button({ label: copyText("login.act.open"), kind: "primary", icon: "front", onClick: () => (step.t === "ready" ? void this.openPage(step.started.url) : undefined) });
+    // 那一家自己已在这台开了登录页 ⇒ 不再当主动作（再点才开第二页）。
+    const opened = step.t === "ready" && step.started.opened;
+    const open = button({ label: copyText(opened ? "login.act.reopen" : "login.act.open"), kind: opened ? "ghost" : "primary", icon: "front", onClick: () => (step.t === "ready" ? void this.openPage(step.started.url) : undefined) });
     open.dataset.action = "login-open";
     row.appendChild(open);
     if (step.t !== "ready") {

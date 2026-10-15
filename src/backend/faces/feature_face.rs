@@ -191,7 +191,8 @@ fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpRe
         failed: &failed,
         now_s,
         tz: tz.clone(),
-        login_command: crate::agents::mcp_login_command(kind).unwrap_or(""),
+        kind,
+        project: req.project_dir.as_deref(),
     };
     capped(mcp_reply(&read, &say)).map_err(McpReadErr::TooLarge)
 }
@@ -219,13 +220,14 @@ fn too_large(size: usize) -> String {
     )
 }
 
-/// [`mcp_reply`] 写字要的：这台活会话里说断开的那几个 · 此刻（unix 秒）与看的那一台的时区 · 登录那一步复制的那条命令（那一家的）。
+/// [`mcp_reply`] 写字要的：这台活会话里说断开的那几个 · 此刻（unix 秒）与看的那一台的时区 · 读的是哪一家 · 哪个项目目录（项目级 · 本地级那几条的登录要它）。
 #[derive(Default)]
 pub(crate) struct McpSay<'a> {
     pub failed: &'a [crate::observe::accounts_query::LiveMcpFailed],
     pub now_s: i64,
     pub tz: crate::Tz,
-    pub login_command: &'static str,
+    pub kind: &'a str,
+    pub project: Option<&'a str>,
 }
 
 /// `mcp-read` 的回包。
@@ -279,14 +281,14 @@ pub(crate) enum McpMark {
     Failed,
 }
 
-/// 需登录时写好的字：抽屉那一句 · 悬停那一截 · 在那一家会话里登录要敲的那条命令。
+/// 需登录时写好的字：抽屉那一句 · 悬停那一截 · 每个要登的号怎么解（没设账号的那一份 ⇒ 一项、`account: null`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct McpLoginMark {
     pub said: String,
     pub tip: String,
-    pub copy: String,
+    pub fix: Vec<crate::faces::login_face::McpLoginFix>,
 }
 
 /// 断开时写好的字：抽屉那一句 · 悬停那一截 · 那一家的原话（没写 ⇒ `null`）。
@@ -325,10 +327,20 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
                         copy_text("beMcp.mark.loginTip", &[("accounts", &who)]),
                     )
                 };
+                // 用户级那一条不属于哪个项目：不带项目目录。
+                let project = (e.scope != "user").then_some(say.project).flatten();
+                let who: Vec<Option<String>> = if e.login_in.is_empty() {
+                    vec![None]
+                } else {
+                    e.login_in.iter().cloned().map(Some).collect()
+                };
                 McpLoginMark {
                     said,
                     tip,
-                    copy: say.login_command.to_string(),
+                    fix: who
+                        .into_iter()
+                        .map(|a| crate::faces::login_face::mcp_fix(say.kind, a, &e.name, project))
+                        .collect(),
                 }
             });
             let failed = (e.status != McpStatus::Disabled)

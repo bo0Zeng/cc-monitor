@@ -467,6 +467,12 @@ fn library_model(accts_dir: &Path) -> Option<crate::accounts::manage::model::Man
     crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}')).ok()
 }
 
+/// 这台账号库给每个号的号色（名 ⇒ 第几格；读不出 ⇒ 空表）：别处画号色（轮换那一页）与 `accounts-list` 同一份；
+/// 不在表里的号照 `color_fallback` 按名字算（同清单那一行）。
+pub(crate) fn account_colors() -> std::collections::BTreeMap<String, u8> {
+    colors_at(&resolve_accts_dir())
+}
+
 /// 清单里每个号的号色（名 ⇒ 第几格）：盘上有就照盘上；还没补过色的照补色那一处现算（`Manifest::with_colors`，
 /// 与常驻那一个补完写回去的同一份）。读不出 ⇒ 空表（行上按名字哈希兜底）。
 fn colors_at(accts_dir: &Path) -> std::collections::BTreeMap<String, u8> {

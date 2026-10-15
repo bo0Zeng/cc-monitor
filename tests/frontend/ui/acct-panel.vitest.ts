@@ -51,7 +51,7 @@ describe("账号面板", () => {
     appStore.quota.set(new Map([["<local>", null]]));
     openAccountPanel("s1", "<local>", host);
     expect(btn(copyText("acct.now.retry"))).toBeDefined();
-    appStore.quota.set(new Map([["<local>", { state: "present", reason: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, fiveHour: null }]]));
+    appStore.quota.set(new Map([["<local>", { state: "present", reason: null, detail: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, text: null, fiveHour: null, names: { accounts: {}, slots: {} } }]]));
     expect(btn(copyText("acct.now.retry"))).toBeUndefined();
     expect(panel().querySelector("[data-rot-cfg], [data-rc-row], [data-rot-switch]")).toBeNull();
   });

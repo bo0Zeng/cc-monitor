@@ -31,6 +31,6 @@ subId?: string,
  */
 windows?: Array<WindowShow>, 
 /**
- * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
+ * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：`usage_of` 写。
  */
 usage: Usage, };

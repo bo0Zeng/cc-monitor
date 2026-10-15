@@ -7,7 +7,7 @@ import type { Words } from "./Words";
  */
 export type QuotaWarm = { act: QuotaWarmAct, at?: number, 
 /**
- * `at` 写给人看的样子（[`Warm::stamp`]）。
+ * `at` 写给人看的样子（`Warm::stamp`）。
  */
 atText?: Words, 
 /**

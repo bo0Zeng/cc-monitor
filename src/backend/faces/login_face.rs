@@ -79,6 +79,8 @@ pub(crate) struct LoginStarted {
     pub(crate) url: String,
     pub(crate) paste: PasteKind,
     pub(crate) auto: bool,
+    /// 那一家自己在这台开了登录页（它那一形自己开浏览器、发起它的浏览器又在这台）⇒ 界面不再开第二页。
+    pub(crate) opened: bool,
 }
 
 /// 登录失败之后还能怎么办（`login-start` · `login-finish` 失败的 `data.again`）：由后端照码定，界面照它画，不按码去猜。
@@ -258,6 +260,7 @@ fn started(
         url: s.url,
         paste: PasteKind::of(face.paste),
         auto: args.browser_here,
+        opened: face.opens_browser && args.browser_here,
     }
 }
 
@@ -280,10 +283,11 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
 pub(crate) enum SignInState {
     /// 登成了。
     Done,
-    /// 登不成：那一句（原话进 `detail`）。
+    /// 登不成：那一句（原话进 `detail`）· 还能怎么办（作业自己收了 ⇒ 恒 `restart`）。
     Failed {
         said: String,
         detail: Option<String>,
+        again: LoginAgainHow,
     },
 }
 
@@ -294,6 +298,7 @@ impl SignInState {
             SignInEnd::Failed(s) => SignInState::Failed {
                 said: s.said.clone(),
                 detail: s.raw.clone(),
+                again: LoginAgainHow::Restart,
             },
         }
     }
@@ -572,7 +577,6 @@ pub(crate) fn manual_of(
         Some((k, m)) => (k, m.entries.as_slice()),
         None => ("", &[][..]),
     };
-    let mcp_signs_in = crate::agents::mcp_face(mcp_kind).is_some_and(|f| f.sign_in.is_some());
     for e in entries {
         if e.status != crate::agents::McpStatus::NeedsLogin {
             continue;
@@ -596,21 +600,7 @@ pub(crate) fn manual_of(
                 ),
                 None => copy_text("beManual.list.mcpLoginBare", &[("server", &e.name)]),
             };
-            let why = (!mcp_signs_in).then(|| {
-                copy_text(
-                    "beManual.list.mcpNoFix",
-                    &[("agent", &agent_name(mcp_kind))],
-                )
-            });
-            let fix = mcp_signs_in.then(|| ManualFix {
-                command: "login-start",
-                args: LoginStartReq::Mcp {
-                    agent: mcp_kind.to_string(),
-                    account: account.clone(),
-                    server: e.name.clone(),
-                    project_dir: None,
-                },
-            });
+            let McpLoginFix { fix, why, .. } = mcp_fix(mcp_kind, account.clone(), &e.name, None);
             items.push(ManualItem::McpLogin {
                 account,
                 server: e.name.clone(),
@@ -622,6 +612,45 @@ pub(crate) fn manual_of(
         }
     }
     Ok(ManualList { items })
+}
+
+/// 一个 MCP 服务器在一个号里要登录时怎么解（`manual-list` 那一项 · `mcp-read` 需登录那一格同一处写）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct McpLoginFix {
+    /// 在哪个号里；没设账号的那一份 ⇒ `null`。
+    pub(crate) account: Option<String>,
+    /// 在 app 里登：`login-start {kind: mcp}`；那一家不在 app 里登 MCP ⇒ `null`。
+    pub(crate) fix: Option<ManualFix>,
+    /// `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) why: Option<String>,
+}
+
+/// ★ `kind` 那一家在号 `account` 里登录 MCP 服务器 `server` 怎么解（唯一一处）。`project` ＝ 项目级 · 本地级那一条所在的项目目录。
+pub(crate) fn mcp_fix(
+    kind: &str,
+    account: Option<String>,
+    server: &str,
+    project: Option<&str>,
+) -> McpLoginFix {
+    let signs_in = crate::agents::mcp_face(kind).is_some_and(|f| f.sign_in.is_some());
+    McpLoginFix {
+        fix: signs_in.then(|| ManualFix {
+            command: "login-start",
+            args: LoginStartReq::Mcp {
+                agent: kind.to_string(),
+                account: account.clone(),
+                server: server.to_string(),
+                project_dir: project.map(str::to_string),
+            },
+        }),
+        why: (!signs_in)
+            .then(|| copy_text("beManual.list.mcpNoFix", &[("agent", &agent_name(kind))])),
+        account,
+    }
 }
 
 /// 这一家对用户的叫法（没有起会话那一面 ⇒ 它的 id）。

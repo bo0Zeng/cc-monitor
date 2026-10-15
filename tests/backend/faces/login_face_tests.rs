@@ -243,11 +243,33 @@ fn whether_the_browser_is_here_rides_beside_the_target() {
 }
 
 /// 会不会自己登完照 `browserHere` 答：浏览器不在这台 ⇒ 回跳到不了，只能粘（不说「会自己登完」）。
+/// 登录页是不是那一家自己开了（`opened`）：号那一形自己开浏览器，浏览器在这台才开得到人眼前；MCP 那一形带 `--no-browser`，从不自己开。
 #[test]
 fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
     let face = crate::agents::accounts_face("claude")
         .and_then(|f| f.sign_in)
         .expect("claude 在 app 里登");
+    let mcp = crate::agents::mcp_face("claude")
+        .and_then(|f| f.sign_in)
+        .expect("claude 在 app 里登 MCP");
+    for here in [true, false] {
+        let started_with = |face| {
+            let args = LoginStartArgs {
+                target: LoginStartReq::Account {
+                    agent: "claude".into(),
+                    account: "w".into(),
+                },
+                browser_here: here,
+            };
+            let s = sign_in::Started {
+                job: "login-1-0".into(),
+                url: "https://claude.com/cai/oauth/authorize?state=s".into(),
+            };
+            started(s, face, &args)
+        };
+        assert_eq!(started_with(face).opened, here, "号那一形");
+        assert!(!started_with(mcp).opened, "MCP 那一形");
+    }
     for here in [true, false] {
         let args = LoginStartArgs {
             target: LoginStartReq::Account {
@@ -327,4 +349,17 @@ fn each_failure_says_what_can_be_done_next() {
 fn a_mcp_name_that_could_pass_for_a_flag_is_never_listed() {
     assert!(!mcp_listed("claude", None, "--help"));
     assert!(!mcp_listed("claude", None, ""));
+}
+
+/// 推来的「作业自己收了、没登成」那一帧说还能怎么办：作业已经没了 ⇒ 只能从头再起（`again: restart`），界面不用自己推断。
+#[test]
+fn the_pushed_failure_says_it_must_restart() {
+    let ended = crate::accounts::sign_in::SignInEnd::Failed(crate::common::said::Said::with_raw(
+        "x".into(),
+        "tail",
+    ));
+    assert_eq!(
+        serde_json::to_value(SignInState::of(&ended)).unwrap(),
+        json!({"state": "failed", "said": "x", "detail": "tail", "again": "restart"})
+    );
 }

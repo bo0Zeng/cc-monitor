@@ -1,8 +1,8 @@
 //! 帧面 `rotation-facts`（typed）：这台这一家每个号此刻的事实（用量 · 重置 · 用速 · 被拒 · 超额 · 登录 · 用不了的那一句）。
 //! 只读；拼装只在 [`crate::accounts::upstream_select::rotate::Hop::facts`] 一处。`轮换-v5-分层.md` §1.1 · §1.9。
 
-use crate::accounts::quota::facts::Fact;
 use crate::wire::typed::Command;
+pub(crate) use cmd_wire::rotation::RotationFactsReply;
 
 /// `rotation-facts` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -14,19 +14,6 @@ pub(crate) struct RotationFactsReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) agent: Option<String>,
-}
-
-/// `rotation-facts` 的应答。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationFactsReply {
-    /// 这台此刻（unix 秒）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) now: u64,
-    /// 照账号库的先后。
-    pub(crate) accounts: Vec<Fact>,
 }
 
 crate::wire::typed::codes! {

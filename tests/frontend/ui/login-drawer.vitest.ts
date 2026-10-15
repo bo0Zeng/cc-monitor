@@ -35,7 +35,7 @@ const settle = async () => {
 
 const ACCOUNT = { kind: "account" as const, agent: "claude", account: "t1" };
 const MCP = { kind: "mcp" as const, agent: "claude", account: "w1", server: "s1", projectDir: null };
-const started = (over: Record<string, unknown> = {}) => ({ job: "job-1", url: "https://login.example/x?state=s", paste: "code", auto: true, ...over });
+const started = (over: Record<string, unknown> = {}) => ({ job: "job-1", url: "https://login.example/x?state=s", paste: "code", auto: true, opened: false, ...over });
 
 /** 每条帧命令怎么答（缺 ⇒ 当场答好）；记下每一发交了什么。 */
 let answer: Record<string, (req: unknown) => unknown> = {};
@@ -112,6 +112,16 @@ describe("开抽屉 ＝ 起登录", () => {
     await open(MCP, "gpu-01" as Origin);
     expect(drawer()!.querySelector('[data-part="auto"]')).toBeNull();
     expect(drawer()!.querySelector('[data-part="paste"] label')?.textContent).toBe(copyText("login.paste.redirectUrl"));
+  });
+
+  it("★ opened 真（那一家自己在这台开了登录页）⇒ 那一颗成了［再打开一次］、不当主动作，点了才开第二页", async () => {
+    answer["login-start"] = () => started({ opened: true });
+    await open();
+    expect(act("login-open").textContent).toContain(copyText("login.act.reopen"));
+    expect(opened).toEqual([]);
+    act("login-open").click();
+    await settle();
+    expect(opened).toEqual([started().url]);
   });
 
   it("［打开登录页］用系统浏览器开 url（不发命令）·［复制链接］进剪贴板", async () => {
@@ -220,7 +230,7 @@ describe("取消 · 推来的结局", () => {
     const push = (key: string, body: unknown) => feed!.onChanged(LOCAL_ORIGIN, "login", { cells: [{ key, rev: null, body }], all: false });
     push("job-other", { state: "done" });
     expect(drawer()).not.toBeNull();
-    push("job-1", { state: "failed", said: "核心·登录程序退了", detail: "登录程序退出时的输出" });
+    push("job-1", { state: "failed", said: "核心·登录程序退了", detail: "登录程序退出时的输出", again: "restart" });
     expect(drawer()!.querySelector('[data-again="restart"]')!.textContent).toContain("核心·登录程序退了");
     await open();
     push("job-1", { state: "done" });

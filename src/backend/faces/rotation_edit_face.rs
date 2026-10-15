@@ -1,7 +1,6 @@
 //! 帧面：轮换的写（typed，`轮换-v5-分层.md` §6.4 · §6.6 第 10 条）。设置整份交回、照策略的声明校验形状（后端不认格的意思）；
 //! 会话那一侧的写进 `rotation.json`，策略文件的写只重写头、代码一个字不动。外加一条无状态的算术：24 小时条上刷一段。
 
-use crate::accounts::quota::facts::FactWhy;
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Book, Session, Uses};
 use crate::accounts::quota::rules::{decide, form, script, shelf};
@@ -10,9 +9,13 @@ use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
 use crate::wire::typed::Command;
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
+pub(crate) use cmd_wire::rotation::{
+    RotBadStrategy, RotConflict, RotDone, RotInUse, RotSeg, RotStrategyId, RotStrategyRev, RotUnusable,
+    RotationDayPaintReply, RotationSaveReply, RotationSettingsReply, RotationTempReply,
+};
 
 /// 写哪一份：一个会话（会话面板）· 一份策略（设置页）。
 #[derive(Debug, Clone, Deserialize)]
@@ -23,21 +26,6 @@ pub(crate) enum RotWhere {
     Session { sid: String },
     Strategy { strategy: String },
 }
-
-/// 别处改过：此刻的版本。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotConflict {
-    pub(crate) rev: String,
-}
-
-/// 什么都不回的应答。
-#[derive(Debug, Default, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotDone {}
 
 fn gone(id: &str) -> String {
     copy_text("beRotation.strategy.gone", &[("name", id)])
@@ -104,16 +92,6 @@ pub(crate) struct RotationSettingsReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) if_rev: Option<String>,
-}
-
-/// `rotation-settings` 的应答。
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationSettingsReply {
-    /// 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
-    pub(crate) dirty: bool,
 }
 
 crate::wire::typed::codes! {
@@ -222,16 +200,6 @@ pub(crate) struct RotationSaveReq {
     #[serde(default, rename = "as")]
     #[cfg_attr(test, ts(optional, rename = "as"))]
     pub(crate) save_as: Option<RotSaveAs>,
-}
-
-/// `rotation-save` 的应答：写成的那一份。
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationSaveReply {
-    pub(crate) id: String,
-    pub(crate) rev: String,
 }
 
 crate::wire::typed::codes! {
@@ -570,14 +538,6 @@ pub(crate) struct RotationTempReq {
     pub(crate) op: RotTempOp,
 }
 
-/// `rotation-temp` 的应答：改完的那一排。
-#[derive(Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationTempReply {
-    pub(crate) temp: Vec<String>,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-temp` 自己的码。
     pub(crate) enum RotationTempErr {
@@ -661,20 +621,6 @@ pub(crate) fn temp_with(
 pub(crate) struct RotationUseNowReq {
     pub(crate) sid: String,
     pub(crate) account: String,
-}
-
-/// 「现在用」碰上那个号事实上发不出去：为什么 · 几点恢复（说不出 ⇒ 缺）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotUnusable {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) why: Option<FactWhy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) until: Option<u64>,
 }
 
 crate::wire::typed::codes! {
@@ -773,24 +719,6 @@ pub(crate) fn use_now_with(
 }
 
 // ── 策略文件：加 · 复制 · 改名 · 删 ─────────────────────────────────────────────────────────
-
-/// 写成的那一份。
-#[derive(Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotStrategyId {
-    pub(crate) id: String,
-}
-
-/// 读不懂：第几行（说得出才有）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotBadStrategy {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) line: Option<usize>,
-}
 
 /// `rotation-strategy-add` 的入参。
 #[derive(Debug, Deserialize)]
@@ -1010,14 +938,6 @@ pub(crate) struct RotationStrategyTzReq {
     pub(crate) if_rev: String,
 }
 
-/// `rotation-strategy-tz` 的应答：写成以后的版本。
-#[derive(Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotStrategyRev {
-    pub(crate) rev: String,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-tz` 自己的码。
     pub(crate) enum RotationStrategyTzErr {
@@ -1097,14 +1017,6 @@ pub(crate) struct RotationStrategyDeleteReq {
     pub(crate) id: String,
 }
 
-/// 删不了：哪几个活会话在用（空 ⇒ 是新会话用的那份）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotInUse {
-    pub(crate) sids: Vec<String>,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-strategy-delete` 自己的码。
     pub(crate) enum RotationStrategyDeleteErr {
@@ -1180,19 +1092,6 @@ pub(crate) fn delete_with(
 
 // ── rotation-day-paint ────────────────────────────────────────────────────────────────────
 
-/// 一段：一天里的分钟 `[from, to)` · 值。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotSeg {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
-    pub(crate) v: f64,
-}
-
 /// `rotation-day-paint` 的入参。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1208,14 +1107,6 @@ pub(crate) struct RotationDayPaintReq {
     /// 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) v: Option<f64>,
-}
-
-/// `rotation-day-paint` 的应答：照先后排好、连着一样的并成一段。
-#[derive(Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationDayPaintReply {
-    pub(crate) segs: Vec<RotSeg>,
 }
 
 crate::wire::typed::codes! {

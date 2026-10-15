@@ -44,7 +44,7 @@ unseen: Array<QuotaUnseen>,
  */
 usableNow: Array<string>, 
 /**
- * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（[`is_candidate`]）。界面只照它画，不另拼、不另滤。
+ * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（`is_candidate`）。界面只照它画，不另拼、不另滤。
  */
 candidates: Array<QuotaCandidate>, 
 /**
@@ -52,11 +52,11 @@ candidates: Array<QuotaCandidate>,
  */
 earliestReturn: QuotaEarliestReturn | null, 
 /**
- * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`quota_rows::head_text`]）。
+ * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（`quota_rows::head_text`）。
  */
 text: Words | null, 
 /**
- * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
+ * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，`quota_rows::head_five_hour`）；否则 `null`（每号自己那一格）。
  */
 fiveHour: Words | null, 
 /**

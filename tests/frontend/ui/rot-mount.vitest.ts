@@ -49,7 +49,7 @@ const VIEW: RotationViewReply = {
   dirty: true,
   start: "work",
   current: "team",
-  accounts: [{ account: "work", kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
+  accounts: [{ account: "work", color: 0, label: "work", kind: "sub", w5h: { open: true, used: 99 }, w7d: { open: true, used: 1 }, login: "ok", blocked: { why: "used", text: "后端写的那一句" } }],
   listed: 1,
   decision: null,
   timeline: null,

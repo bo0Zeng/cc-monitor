@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+/// 换号记录（盘上那一份 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
+pub(crate) use cmd_wire::rotation::{RotLog as Log, RotLogCause as Cause};
 
 /// 这一版的版本号。
 pub(crate) const BOOK_VERSION: u64 = 3;
@@ -82,56 +84,6 @@ pub(crate) struct WakeWhen {
     /// `5h` · `7d`。
     pub(crate) w: String,
     pub(crate) used_at_least: f64,
-}
-
-/// 一条换号记录：只记后端看得见的事；策略那一句 `why` 跟着存一份（显示用，后端不解）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(export, export_to = "../../frontend/ui/generated/", rename = "RotLog")
-)]
-pub(crate) struct Log {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) at: u64,
-    pub(crate) from: String,
-    pub(crate) to: String,
-    pub(crate) cause: Cause,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) why: Option<String>,
-}
-
-/// 后端看得见的换号原因。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "k", rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "RotLogCause"
-    )
-)]
-pub(crate) enum Cause {
-    /// 策略交的先后换了第一个。
-    Order,
-    /// 在用的号事实上发不出去了。
-    Unusable,
-    /// 照用户拖出来的顺序。
-    Temp,
-    /// 用户点了「现在用」。
-    UseNow,
-    /// 停发（`from == to`），到 `until`。
-    Hold {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional, type = "number"))]
-        until: Option<u64>,
-    },
-    /// 策略出错，走了兜底。
-    Error,
 }
 
 /// 「看见」的时刻隔多久才刷新一次（秒）。

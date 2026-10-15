@@ -4,6 +4,8 @@
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
+//! - [`quota`]：`quota-read` 的回包（额度账的显示态 · 写好的几行 · 开窗那一判）；
+//! - [`rotation`]：轮换那几条（`rotation-*`）的回包与失败带的 `data`；
 //! - [`cells`]：成品格的两种标记类型（写好的字 [`cells::Words`] · 语气 [`cells::Tone`]）；
 //! - [`session`] · [`needs`] · [`listing`] · [`record`]：手机问的那几条的回包（会话族 · 需手动 · 历史清单 · 读记录连同通用记录）；
 //! - [`replies`]：客户端那一侧按类型解回包的那一张表（[`replies::decode_reply`]）；
@@ -19,8 +21,10 @@ pub mod listing;
 pub mod live;
 pub mod machine;
 pub mod needs;
+pub mod quota;
 pub mod record;
 pub mod replies;
+pub mod rotation;
 pub mod session;
 pub mod shapes;
 pub mod transfer;

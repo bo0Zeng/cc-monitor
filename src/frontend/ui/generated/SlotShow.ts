@@ -5,7 +5,7 @@
  */
 export type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
+ * `resets_at` 写给人看的样子（出口那一下按钟写，`SlotShow::stamp`；内部与记账一律不填）。
  */
 resetsAtText?: string, 
 /**
@@ -17,7 +17,7 @@ resetsAtRelText?: string,
  */
 full?: boolean, 
 /**
- * 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ * 这一格的字（唯一写法 `slot_words`：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
  */
 text: string, 
 /**

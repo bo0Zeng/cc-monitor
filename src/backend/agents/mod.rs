@@ -1951,6 +1951,8 @@ pub(crate) struct SignInFace {
     pub(crate) terminal: bool,
     /// 粘回来的是什么（界面据此说「粘登录页上给的码」还是「粘浏览器地址栏里那一整条」）。
     pub(crate) paste: PasteShape,
+    /// 它自己在它那一台上开浏览器打开登录页（不带「别开浏览器」那一类旗标）。
+    pub(crate) opens_browser: bool,
 }
 
 /// 粘回来的那一段是什么（中立值；线上名由帧面那一份给）。
@@ -2072,17 +2074,8 @@ pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {
         .and_then(|u| u.quota)
 }
 
-/// 限流器对一发的结论（各家的值翻成这三档）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum QuotaStatus {
-    Allowed,
-    /// 还能用，但越过了某条预警线。
-    Warning,
-    Rejected,
-}
+/// 限流器对一发的结论（各家的值翻成这三档）：线上形住 `cmd-wire`（`quota-read` 带它）。
+pub(crate) use cmd_wire::quota::QuotaStatus;
 
 /// 一个额度窗口此刻的样子。
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

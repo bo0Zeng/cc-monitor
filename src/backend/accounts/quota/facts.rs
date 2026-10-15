@@ -5,24 +5,11 @@
 
 use super::show::LoginState;
 use crate::agents::QuotaReading;
-use serde::Serialize;
 
-/// 号的种类：线上 `sub` · `api`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaKind"
-    )
-)]
-pub enum Kind {
-    Sub,
-    Api,
-}
+/// 号的种类（线上 `sub` · `api`）：线上形住 `cmd-wire`。
+pub(crate) use cmd_wire::quota::Kind;
+/// 每个号的事实（`rotation-view` · `rotation-facts` 带它）：线上形住 `cmd-wire`。
+pub(crate) use cmd_wire::rotation::{Fact, FactBlocked, FactWhy, WinFact};
 
 fn live(t: Option<u64>, now: u64) -> bool {
     !super::reset_since_seen(t, now)
@@ -121,80 +108,6 @@ fn standing(
         }
     }
     (!login_ok).then_some((WhyNot::Login, None))
-}
-
-/// 一个窗口（`5h` / `7d`）的事实：在计时吗 · 用了多少（0–100）· 几点重置 · 用速（%/分，没根据 ⇒ 缺）。
-/// 一个语义位有几个窗口（按模型分的 7 天额度）⇒ 取用得最多的那个。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct WinFact {
-    pub open: bool,
-    pub used: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub resets: Option<u64>,
-    /// `resets` 写给人看的样子（按看的那一台的时区）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub resets_text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub rate: Option<f64>,
-}
-
-/// 事实上用不了的原因（跟设置无关的那几种）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum FactWhy {
-    /// 被拒（429 等），到 `until` 恢复。
-    Refused,
-    /// 订阅号满了、在付费超额上兜着。
-    Overage,
-    /// 某个窗口用到 100%。
-    Used,
-    /// 订阅号要重新登录。
-    Login,
-    /// 按量号这台没有 key。
-    Key,
-}
-
-/// 用不了：为什么 · 几点回来（说不出 ⇒ 缺）· 写好的那一句。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct FactBlocked {
-    pub why: FactWhy,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub until: Option<u64>,
-    pub text: String,
-}
-
-/// 一个号此刻的事实。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct Fact {
-    /// 路由第 2 段。
-    pub account: String,
-    pub kind: Kind,
-    pub w5h: WinFact,
-    pub w7d: WinFact,
-    pub login: LoginState,
-    /// 额度账上最后一次看到它（没出过数 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub seen_at: Option<u64>,
-    /// 事实上用不了 ⇒ 有；能用 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub blocked: Option<FactBlocked>,
 }
 
 /// 一个语义位此刻的窗口事实（`rate` 由调用方按窗口原名问额度账）。

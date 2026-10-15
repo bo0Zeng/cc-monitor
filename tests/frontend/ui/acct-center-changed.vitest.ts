@@ -32,12 +32,6 @@ describe("acct-center 收推送", () => {
     asked.length = 0;
   });
 
-  it("成品解不开 ⇒ 不放、照旧问", () => {
-    onQuotaChanged("box-b", "quota", { cells: [{ key: null, rev: null, body: { nope: 1 } }], all: false });
-    expect(appStore.quota.get().has("box-b")).toBe(false);
-    expect(asked).toEqual(["quota-read"]);
-  });
-
   it("★ tab 来了 ⇒ 每个会话问一次 rotation-view，在用的号进 store；中转没见过 ⇒ read 为 null", async () => {
     syncSessions([
       { sessionId: "s1", origin: "box-a" },

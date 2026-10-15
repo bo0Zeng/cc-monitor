@@ -12,7 +12,7 @@ import type { WindowShow } from "./WindowShow";
 import type { Words } from "./Words";
 
 /**
- * 出过数的一个号：账上那一条的原数 ＋ 显示态（[`AccountHead`]）＋ 照它写好的几格。
+ * 出过数的一个号：账上那一条的原数 ＋ 显示态（`AccountHead`）＋ 照它写好的几格。
  */
 export type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
 /**
@@ -52,6 +52,6 @@ subId?: string,
  */
 windows?: Array<WindowShow>, 
 /**
- * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
+ * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：`usage_of` 写。
  */
 usage: Usage, };
