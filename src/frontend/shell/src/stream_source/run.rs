@@ -335,6 +335,8 @@ pub(crate) async fn consume_remote(
             }
             // monitor 的在看名单经登记表上的客户端报（`stream_watch.rs`，本机远端同一处），不经循环 ⇒ 这一件不会来。
             Event::WatchFrom(_) => {}
+            // 桌面没有另一层 SSH 跟着它走（终端走本机后端那一套）⇒ 用不着。
+            Event::Ssh(_) => {}
         }
     }
 }

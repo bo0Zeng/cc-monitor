@@ -432,7 +432,7 @@ async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
         stdout: String::new(),
         stderr: "not found".into(),
     });
-    let (feed, _) = start(&f);
+    let (feed, seen) = start(&f);
     until("断在要人动手的那一步", || {
         matches!(
             feed.state(),
@@ -450,6 +450,15 @@ async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
         ),
         _ => unreachable!(),
     }
+    // 后端起不来，SSH 本身通着：这一条循环照样报「SSH 够着那一台」（终端 · 文件跟它走，不跟着后端卡住）。
+    assert!(feed.ssh_reached(), "常驻后端起不来、SSH 通 ⇒ SSH 够着");
+    assert!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Ssh(true))),
+        "SSH 够着那一刻要往外报"
+    );
     let tries = f.attach_at.lock().unwrap().len();
     tokio::time::sleep(Duration::from_secs(600)).await;
     assert_eq!(
@@ -748,6 +757,7 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
             ),
             Event::Gap => "gap".to_string(),
             Event::WatchFrom(w) => format!("from {}@{}", w[0].sid, w[0].seq),
+            Event::Ssh(b) => format!("ssh {b}"),
         })
         .collect();
     // 名单报在连上之后、那台的第一帧与它谁先到不定 ⇒ 每条连接内只比集合，跨连接的先后照比。
@@ -770,6 +780,8 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
             "up 1".into(),
             "frame sessions_replayed".into(),
             "from s1@5".into(),
+            "ssh true".into(),
+            "ssh false".into(),
         ]),
         "第一条连接：{cells:?}"
     );
@@ -782,12 +794,18 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
             "up 2".into(),
             "frame sessions_replayed".into(),
             "from s1@9".into(),
+            "ssh true".into(),
         ]),
         "断了 → 重连 → 续上：{cells:?}"
     );
     assert_eq!(
-        &first[..3],
-        &["connecting".to_string(), "attached".into(), "up 1".into()],
+        &first[..4],
+        &[
+            "connecting".to_string(),
+            "ssh true".into(),
+            "attached".into(),
+            "up 1".into()
+        ],
         "先接上（hello 与客户端先于 Up），再有帧"
     );
     assert_eq!(f.watches.lock().unwrap().len(), 2, "名单每条连接整份报一次");
@@ -898,8 +916,19 @@ async fn a_dial_nobody_answers_is_dropped_in_time_and_retried_without_climbing()
         }
         a.push_back(upp(MINE));
     }
-    let (feed, _) = start(&f);
+    let (feed, seen) = start(&f);
+    tokio::time::sleep(DIAL_WITHIN * 3).await;
+    assert!(!feed.ssh_reached(), "一拨都没拨通 ⇒ SSH 没够着");
+    assert!(
+        !seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Ssh(true))),
+        "没拨通不许报够着"
+    );
     until("网回来那一拨接上了", || up(&feed)).await;
+    assert!(feed.ssh_reached());
     let every = (DIAL_WITHIN + RECONNECT_MIN).as_secs();
     assert_eq!(
         gaps_of(&f),

@@ -103,6 +103,20 @@ class ResidentFeedTest {
             assertEquals(listOf("""{"host":"a"}""", null, """{"host":"b"}"""), core.ssh)
         }
 
+    /** SSH 够没够着与流通不通分开落：后端起不来（流断着要人动手）时 SSH 照样够着，SSH 那层跟它走。 */
+    @Test
+    fun `SSH 够没够着单独落，与流的状态不搅在一起`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            assertEquals(false, f.sshReached.value)
+            core.emit("ssh", "true")
+            core.emit("state", """{"state":"down","problem":{"text":"没装","detail":""},"needs_hand":true}""")
+            assertEquals(true, f.sshReached.value)
+            core.emit("ssh", "false")
+            assertEquals(false, f.sshReached.value)
+        }
+
     @Test
     fun `核心说的状态原样落：通着带一句要更新 · 断着要人动手 · epoch 跟着变`() =
         runTest(UnconfinedTestDispatcher()) {

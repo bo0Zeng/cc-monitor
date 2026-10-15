@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.core.ssh
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -69,6 +71,20 @@ class FollowSharedLoopTest {
             advanceUntilIdle()
             assertEquals(1, made.single().derived.size)
             assertEquals(SessionStatus.CONNECTED, m.sessions.value[id]?.status)
+        }
+
+    /** 握着的那条死了 ⇒ 报给共用那条（[SshConnectionManager.holdLost]：宿主报事、它当场再拨一拨），停在要人动手那一步的循环也被叫起来。 */
+    @Test
+    fun aDroppedHoldIsReportedSoTheSharedLoopDialsAgain() =
+        runTest {
+            val made = mutableListOf<FakeTransport>()
+            val m = testManager(made)
+            val lost = mutableListOf<String>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { m.holdLost.collect { lost += it } }
+            m.connect(id, id, "box", testCfg("a"))
+            made.single().simulateDrop()
+            advanceUntilIdle()
+            assertEquals(listOf(id), lost)
         }
 
     @Test

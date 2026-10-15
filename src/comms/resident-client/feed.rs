@@ -170,6 +170,9 @@ pub enum Event {
     Gap,
     /// `stream-watch` 应答里的 `from[]`。
     WatchFrom(Vec<WatchFrom>),
+    /// **SSH 够没够着那一台**（拨通 · 认证过、开得出 exec），与常驻流通不通分开报：那台常驻后端起不来时它照样是 `true`。
+    /// 手机 SSH 那层（终端 · 文件）跟它走 —— 终端是逃生口，不跟着后端卡住。变了才报。
+    Ssh(bool),
 }
 
 impl std::fmt::Debug for Event {
@@ -182,6 +185,7 @@ impl std::fmt::Debug for Event {
             Event::Frame(l) => f.debug_tuple("Frame").field(l).finish(),
             Event::Gap => f.write_str("Gap"),
             Event::WatchFrom(w) => f.debug_tuple("WatchFrom").field(w).finish(),
+            Event::Ssh(b) => f.debug_tuple("Ssh").field(b).finish(),
         }
     }
 }
@@ -251,6 +255,8 @@ pub struct Feed<T: Transport> {
     events: Sink,
     transport: tw::Sender<Option<Arc<T>>>,
     state: tw::Sender<State>,
+    /// SSH 够没够着那一台（[`Event::Ssh`]）。
+    reached: tw::Sender<bool>,
     client: Mutex<Option<Arc<InboundClient>>>,
     /// ［重试］· 回前台 · 网络变了 · 「起」：每按一下 +1。接上那一刻之前按的作废（不留到下一次断线白白跳过一轮退避）。
     kick: tw::Sender<u64>,
@@ -273,6 +279,7 @@ impl<T: Transport> Feed<T> {
             events,
             transport: tw::channel(transport).0,
             state: tw::channel(State::Connecting).0,
+            reached: tw::channel(false).0,
             client: Mutex::new(None),
             kick: tw::channel(0).0,
             cut: Mutex::new(None),
@@ -326,6 +333,18 @@ impl<T: Transport> Feed<T> {
 
     pub fn state(&self) -> State {
         self.state.borrow().clone()
+    }
+
+    /// SSH 此刻够没够着那一台（[`Event::Ssh`]；宿主收那件事，这里只给判据读）。
+    #[cfg(test)]
+    pub(crate) fn ssh_reached(&self) -> bool {
+        *self.reached.borrow()
+    }
+
+    async fn set_ssh(&self, reached: bool) {
+        if self.reached.send_replace(reached) != reached {
+            (self.events)(Event::Ssh(reached)).await;
+        }
     }
 
     /// 名单从空开始报（宿主起步时一次：一条会话都还没人看 ⇒ 那台一条都不发）。
@@ -410,6 +429,7 @@ impl<T: Transport> Feed<T> {
         let mut epoch = 0u64;
         loop {
             let Some(t) = ssh.borrow_and_update().clone() else {
+                self.set_ssh(false).await;
                 self.set_state(State::Down {
                     problem: self.offline(),
                     needs_hand: false,
@@ -469,6 +489,8 @@ impl<T: Transport> Feed<T> {
                     }
                     client.shutdown();
                     *lock(&self.client) = None;
+                    // 流断了：下面那条 SSH 多半也断了（心跳判死）；下一拨开得出 exec 再报够着。
+                    self.set_ssh(false).await;
                     self.set_state(State::Down {
                         problem: self.offline(),
                         needs_hand: false,
@@ -651,12 +673,21 @@ impl<T: Transport> Feed<T> {
         tokio::pin!(dial, cut);
         let stream = tokio::select! {
             got = &mut dial => match got {
-                Some(got) => got.map_err(AttachOr::Dial)?,
-                None => return Err(AttachOr::Unanswered),
+                Some(Ok(stream)) => stream,
+                Some(Err(p)) => {
+                    self.set_ssh(false).await;
+                    return Err(AttachOr::Dial(p));
+                }
+                None => {
+                    self.set_ssh(false).await;
+                    return Err(AttachOr::Unanswered);
+                }
             },
             () = &mut cut => return Err(AttachOr::Interrupted),
             _ = kicked.changed() => return Err(AttachOr::Interrupted),
         };
+        // exec 开出来了 ⇒ 拨通、认证过：SSH 够着那一台（后面常驻后端在不在是另一回事）。
+        self.set_ssh(true).await;
         attach::handshake(
             stream,
             self.cfg.tz.as_deref(),

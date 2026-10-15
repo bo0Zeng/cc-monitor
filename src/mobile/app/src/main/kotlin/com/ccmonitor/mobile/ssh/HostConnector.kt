@@ -89,7 +89,10 @@ class HostConnector(
     /** 有拨号请求的那几台：每台要有一条共用循环在跑。 */
     val dialing: Flow<Set<String>> get() = manager.dialing
 
-    /** 共用那条重连循环报这台够没够着（语义见 [SshConnectionManager.loopReached]）：只转发。 */
+    /** 握着的那条死了的那几台（语义见 [SshConnectionManager.holdLost]）：交给共用那条再拨。 */
+    val holdLost: Flow<String> get() = manager.holdLost
+
+    /** 共用那条重连循环报这台 SSH 够没够着（语义见 [SshConnectionManager.loopReached]）：只转发。 */
     fun loopReached(
         hostId: String,
         reached: Boolean,

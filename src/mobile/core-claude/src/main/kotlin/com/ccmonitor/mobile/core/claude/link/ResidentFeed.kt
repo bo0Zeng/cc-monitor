@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `reply`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `ssh` · `reply`）。
  */
 interface ResidentCore {
     fun open(
@@ -77,6 +77,11 @@ class ResidentFeed(
     SessionWatch {
     private val stateFlow = MutableStateFlow<LinkState>(LinkState.Connecting)
     val state: StateFlow<LinkState> = stateFlow.asStateFlow()
+
+    private val sshFlow = MutableStateFlow(false)
+
+    /** SSH 够没够着那一台（拨通 · 认证过），与 [state] 分开：那台常驻后端起不来时照样是 `true`。SSH 那层（终端 · 文件）跟它走。 */
+    val sshReached: StateFlow<Boolean> = sshFlow.asStateFlow()
 
     private val tableFlow = MutableStateFlow(SessionTable())
     override val table: StateFlow<SessionTable> = tableFlow.asStateFlow()
@@ -174,6 +179,7 @@ class ResidentFeed(
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
             "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
             "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
+            "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
             else -> broke(kind, body)
         }

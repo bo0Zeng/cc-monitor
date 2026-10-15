@@ -7,8 +7,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -189,7 +192,7 @@ class SshConnectionManager(
     fun dialOf(id: String): Flow<String?> = dials.map { it[id] }.distinctUntilChanged()
 
     /**
-     * 共用那条重连循环报：这台此刻够没够着（流通着，或停在要人动手的那一步——那一步也是登上了那一台才知道的）。
+     * 共用那条重连循环报：SSH 此刻够没够着这台（拨通 · 认证过，与常驻流通不通分开：那台常驻后端起不来也照样够着）。
      * 够着了、这一层握着的那条已死 ⇒ 在同一份拨号身份上换一条（池里复用它那条）。宿主只转发，这里不判。
      */
     fun loopReached(
@@ -200,7 +203,15 @@ class SshConnectionManager(
         if (reached) follow(id)
     }
 
-    /** 握着的那条死了（核心报的）：还是装着的那条 ⇒ 名义状态「重连中」；共用那条此刻够着 ⇒ 当场跟着换一条。 */
+    private val lost = MutableSharedFlow<String>(extraBufferCapacity = LOST_BUFFER)
+
+    /**
+     * 握着的那条死了的那几台（按 id）：交给共用那条重连循环当一件事（宿主报事 ⇒ 它当场再拨一拨；停在要人动手那一步的也被叫起来），
+     * 它拨通了再报够着、这一层跟着换。终端是逃生口：常驻后端起不来时也照这条路回来。
+     */
+    val holdLost: SharedFlow<String> = lost.asSharedFlow()
+
+    /** 握着的那条死了（核心报的）：还是装着的那条 ⇒ 名义状态「重连中」、报给共用那条；它此刻够着 ⇒ 当场跟着换一条。 */
     private fun dropped(
         id: String,
         conn: SshTransport,
@@ -213,6 +224,7 @@ class SshConnectionManager(
                 put(entry.copy(status = SessionStatus.RECONNECTING, error = null))
                 st.reached
             }
+        lost.tryEmit(id)
         if (follows) follow(id)
     }
 
@@ -337,4 +349,9 @@ class SshConnectionManager(
 
     /** 当前活跃会话数（CONNECTED），供保活服务出通知与自停。 */
     fun activeCount(): Int = _sessions.value.values.count { it.countsAsActive() }
+
+    private companion object {
+        /** 报「握着的那条死了」的缓冲：收的那一侧只转一句话，满了丢旧的也无妨（同一台再报一次就是）。 */
+        const val LOST_BUFFER = 16
+    }
 }

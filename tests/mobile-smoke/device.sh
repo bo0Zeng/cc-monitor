@@ -6,9 +6,10 @@
 #   ③ 模拟器控制台断网 · 限速 · 加延迟，量回来到看到新话的时间；
 #   ④ 后台时来一条需手动：出通知、点通知进那一条会话；
 #   ⑤ 慢链路（模拟器里 netem 往返 1.5 秒）＋ 一跳跳板（台架第二台 sshd）：接得上；断网之后常驻流 · SSH 那层（文件页）都几秒内站住。
+#   ⑥ 那台常驻后端起不来（rig.sh backend off）、SSH 照通：断网之后终端照样回来（终端是逃生口，不跟着后端卡住）。
 # 用法：bash tests/mobile-smoke/device.sh
 #   CCM_DEVICE_BREAK=reconnect  看台架会红：回前台前把台架 sshd（监听的与已连上的）停掉，重连必失败 ⇒ ②③ 必红。
-#   CCM_DEVICE_ITEMS="1 2 3 4 5"  挑哪几项（默认全走；1 不走时 2–4 照样先导钥匙 · 加机器）。
+#   CCM_DEVICE_ITEMS="1 2 3 4 5 6"  挑哪几项（默认全走；1 不走时 2–4 照样先导钥匙 · 加机器）。
 #   CCM_DEVICE_APK=<路径>        用现成的正式包（不编）；默认编 assembleRelease。
 # 端口与冒烟、别的几路错开（都能用 CCM_SMOKE_* 改）：sshd 22452 · 跳板 sshd 22453 · 中转 28818 · adb 5167 · 模拟器 5670；台架目录 .build/mobile-device/。
 # 正式包没正式签名（keystore 不在树里）⇒ 用台架目录里现造的一把测试钥匙签（apksigner），包里的字节与正式包一样，只是签名不同；

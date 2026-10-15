@@ -7,6 +7,8 @@
 #   3 网：模拟器控制台的限速 · 延迟 · 断数据（先量它们管不管用）＋ 模拟器里的 netem（慢）· iptables（静默断）；量「网回来 → 看到新话」。
 #     静默断网 15 秒 · 90 秒：网回来 CCM_DEVICE_REJOIN（默认 10）秒内要重连上，晚了就红（断 90 秒改前要 56 秒）。
 #   4 通知：后台时那台来一条需手动 ⇒ 出通知 · 点它进那一条；一轮完成的通知点进去也得是那一条。
+#   6 终端是逃生口：那台常驻后端起不来（rig.sh backend off）、SSH 照通 ⇒ 静默断网 30 秒（长过 SSH 保活判死）之后，
+#     开着的终端 CCM_DEVICE_REJOIN ＋ 5 秒内照样回来（在终端里 touch 一个文件、台架里看得到它）。
 #   5 慢链路 ＋ 跳板：台架起第二台 sshd 当跳板（rig.sh hop），加一台经它的机器；模拟器里 netem 往返 1.5 秒：
 #     新加那一台要接得上（新建会话答得回）；慢链路上断 20 秒 · 正常网上断 90 秒，网回来 CCM_DEVICE_REJOIN 秒内常驻流要重连上、
 #     文件页（SSH 那层）要列得出来（判的时候减掉连着时量的那一回：量法本身进抽屉 · 点开 · 按 3 秒一轮找字要十来秒）。
@@ -29,7 +31,7 @@ OUT = smoke.OUT
 PKG = smoke.PKG
 ARM = os.environ.get("CCM_DEVICE_ARM") == "1"
 BREAK = os.environ.get("CCM_DEVICE_BREAK", "")
-ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4 5").split()
+ITEMS = os.environ.get("CCM_DEVICE_ITEMS", "1 2 3 4 5 6").split()
 # 回前台 / 网回来之后多久还没收齐就判红（秒）。
 WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
 # 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
@@ -663,6 +665,48 @@ def item5():
     return "；".join(notes)
 
 
+# ── 6 终端是逃生口 ──
+
+def typed_in_terminal(path):
+    """在开着的终端里敲一行 touch，台架家里 secs 内出现那个文件 ⇒ True。"""
+    smoke.typed(f"touch {path}")
+    adb("shell", "input", "keyevent", "66")
+    time.sleep(1.5)
+    return rig("ssh", f"test -e {path} && echo y").stdout.strip() == "y"
+
+
+def item6():
+    rig("backend", "off")
+    try:
+        smoke.to_chat()
+        smoke.drawer(t("mobDrawer.item.terminal"))
+        time.sleep(4)
+        if not any(typed_in_terminal(f"~/work/{D}t6a") for _ in range(5)):
+            raise Red("常驻后端起不来时终端一开始就打不进字（SSH 本身是通的）")
+        cut_host(True)
+        time.sleep(2)
+        if nc_ms() is not None:
+            cut_host(False)
+            raise Red("断了之后模拟器照样连得通台架（没断成）")
+        time.sleep(30)
+        cut_host(False)
+        t0 = time.time()
+        back, n = None, 0
+        while time.time() - t0 < WITHIN:
+            n += 1
+            if typed_in_terminal(f"~/work/{D}t6b{n}"):
+                back = round(time.time() - t0, 1)
+                break
+        nums["常驻后端起不来、静默断网 30s：网回来 → 终端打得进字"] = back if back is not None else f"{WITHIN:.0f}s 没回来"
+        if back is None or back > REJOIN + 5:
+            raise Red(f"常驻后端起不来、SSH 通：网回来 {back}s 终端才回来（要 ≤ {REJOIN + 5:.0f}s）")
+        adb("shell", "input", "keyevent", "4")
+        return f"网回来 {back}s 终端回来"
+    finally:
+        cut_host(False)
+        rig("backend", "on")
+
+
 # ── 4 通知 ──
 
 def notifications():
@@ -792,11 +836,11 @@ def walk():
             adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     if "name" in state:
         for k, name, fn in (("2", "2-Doze待机杀后台", item2), ("3", "3-断网限速", item3), ("4", "4-通知", item4),
-                            ("5", "5-慢链路跳板", item5)):
+                            ("5", "5-慢链路跳板", item5), ("6", "6-后端起不来终端照回", item6)):
             if k in ITEMS:
                 item(name, fn)
     else:
-        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知"), ("5", "5-慢链路跳板")):
+        for k, name in (("2", "2-Doze待机杀后台"), ("3", "3-断网限速"), ("4", "4-通知"), ("5", "5-慢链路跳板"), ("6", "6-后端起不来终端照回")):
             if k in ITEMS:
                 rows.append((name, "红", "准备那一步没成（没连通 / 新会话答不回）", "0s", []))
     netem(None)

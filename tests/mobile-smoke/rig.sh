@@ -9,6 +9,7 @@
 #   ssh   以台架的环境在台架里跑一条（和手机进来走同一个登录壳）—— 种历史会话、看台架里的状态用它。
 #   hop up|down  跳板那一台：同一套钥匙、同一个登录壳的第二个 sshd，听 CCM_SMOKE_HOP_PORT（默认 22423）；手机经它 direct-tcpip 到台架 sshd（ssh -J 那一形）。
 #   tmux  在台架的 tmux 服务端上敲一条（显式 -S，清掉继承来的 TMUX 那几格）—— 桌面那一侧接着打字就用它。
+#   backend off|on  让那台的常驻后端起不来（停掉在跑的常驻、把落点那份挪开 ⇒ attach / ensure 都是 127）· 放回去；SSH 本身照通。
 #
 # 隔离：ssh 进来的每条命令都由台架的登录壳（up 时写进台架目录的 sshd/login.sh）换上台架的 HOME · TMUX_TMPDIR · PATH（替身 claude / codex 在前）·
 #   CCM_SANDBOX=1（后端要占真家目录的门牌就拒绝起）。sshd 只听 127.0.0.1（模拟器经它的网关、即宿主机够到它），
@@ -115,13 +116,23 @@ hop() {
   esac
 }
 
+backend() {
+  local bin=$home/.cc-monitor/bin
+  case "${1:-}" in
+    off) stop_resident; [ -f "$bin/ccm" ] && mv "$bin/ccm" "$bin/ccm.off"; say "常驻后端起不来了（落点挪开）" ;;
+    on) [ -f "$bin/ccm.off" ] && mv "$bin/ccm.off" "$bin/ccm"; say "常驻后端放回去了" ;;
+    *) echo "用法：rig.sh backend off|on" >&2; exit 2 ;;
+  esac
+}
+
 case "${1:-}" in
   up) up ;;
   hop) shift; hop "$@" ;;
+  backend) shift; backend "$@" ;;
   down) down ;;
   env) printf 'SMOKE_BOX=%q\nSMOKE_HOME=%q\nSMOKE_SOCK=%q\nSMOKE_PORT=%q\nSMOKE_KEY=%q\n' "$box" "$home" "$sock" "$port" "$box/sshd/client_ed25519" ;;
   ssh) shift; exec ssh -F /dev/null -i "$box/sshd/client_ed25519" -p "$port" -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile="$box/sshd/known_hosts" -o LogLevel=ERROR "$(id -un)@127.0.0.1" "$@" ;;
   tmux) shift; exec env -u TMUX -u TMUX_PANE tmux -S "$sock" "$@" ;;
-  *) echo "用法：rig.sh up|down|env|ssh|hop up|down|tmux <参数…>" >&2; exit 2 ;;
+  *) echo "用法：rig.sh up|down|env|ssh|hop up|down|backend off|on|tmux <参数…>" >&2; exit 2 ;;
 esac

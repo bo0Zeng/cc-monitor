@@ -107,3 +107,14 @@ internal fun shouldReattach(
     userExited: Boolean,
     liveConnActive: Boolean,
 ): Boolean = terminalDropped && !userExited && liveConnActive
+
+/**
+ * 终端停在出错那一页（上一次开 shell 没成：连接在断的那一段里），SSH 那层随后跟着共用那条重连循环换上了一条
+ * （名义状态进到「连着」那一刻）⇒ 重挂一次。终端是逃生口：常驻后端起不来时它也照这条路回来。
+ * 只认进到「连着」的那一下：一直连着却开不出 shell（远端拒开通道之类）不算，出错页不自己反复重试。
+ */
+internal fun rejoinedWhileErrored(
+    prev: SessionStatus?,
+    cur: SessionStatus?,
+    errored: Boolean,
+): Boolean = errored && prev != SessionStatus.CONNECTED && cur == SessionStatus.CONNECTED

@@ -2,7 +2,7 @@
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
 //! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
-//! `watch_from`（JSON 数组）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
+//! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
 
 use resident_client::client::CallError;
 use resident_client::feed::{
@@ -240,6 +240,7 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
             "watch_from",
             serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
         ),
+        Event::Ssh(reached) => ("ssh", reached.to_string()),
         Event::Attached { .. } | Event::Gap => return None,
     })
 }
@@ -602,6 +603,10 @@ mod tests {
             Some(("frame", "{\"kind\":\"x\"}".to_string()))
         );
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
+        assert_eq!(
+            event_of(&Event::Ssh(true)),
+            Some(("ssh", "true".to_string()))
+        );
     }
 
     /// ack 与 capture 那一行的读法。
