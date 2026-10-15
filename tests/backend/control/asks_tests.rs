@@ -411,7 +411,7 @@ fn on(min: u32, say: Option<&str>) -> Option<AutoAnswer> {
     })
 }
 
-/// 挂上（在别的任务里等），等它真挂上了再交回。
+/// 挂上（在别的任务里等），等它真挂上了（或已收场）再交回。
 async fn hang(
     conn: u64,
     req: AskReq,
@@ -419,7 +419,8 @@ async fn hang(
 ) -> tokio::task::JoinHandle<AskReply> {
     let sid = req.hook["session_id"].as_str().unwrap().to_string();
     let h = tokio::spawn(ask(conn, req, move |_| setting));
-    while pending(&sid).is_empty() {
+    // 挂上了，或已经收场（到点即答的那种：不在这里空转）。
+    while pending(&sid).is_empty() && !h.is_finished() {
         tokio::task::yield_now().await;
     }
     h
