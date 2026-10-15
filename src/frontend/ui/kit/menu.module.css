@@ -72,11 +72,8 @@
     }
   }
 
-  /* 子菜单：位置由 `place.ts` 算好写成相对那一项的偏移（右边放不下翻左、底下放不下往上收）。 */
+  /* 子菜单：fixed（同主菜单），视口坐标由 `place.ts` 算好写上（右边放不下翻左、底下放不下往上收）。 */
   .menu[data-sub="true"] {
-    position: absolute;
-    top: calc(-1 * var(--space-2));
-    left: 100%;
     visibility: hidden;
   }
 

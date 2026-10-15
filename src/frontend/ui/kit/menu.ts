@@ -345,7 +345,7 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
 
 /**
  * 子菜单摆在那一项右侧、顶对齐（往上让出面板内边距）；右边放不下翻左侧、底下放不下往上收 —— 同一处算出视口坐标，
- * 再写成相对那一项（`position: absolute` 的包）的偏移。没展开时量不到宽 ⇒ 按 160 算。
+ * 子菜单是 fixed、直接写它（主菜单限高内滚时不被裁掉）。没展开时量不到宽 ⇒ 按 160 算。
  */
 function placeSub(wrap: HTMLElement, fly: HTMLElement): void {
   const r = wrap.getBoundingClientRect();
@@ -366,7 +366,7 @@ function placeSub(wrap: HTMLElement, fly: HTMLElement): void {
     { width: size.width || 160, height: size.height },
     { width: window.innerWidth, height: window.innerHeight },
   );
-  putAt(fly, { left: at.left - r.left, top: at.top - r.top });
+  putAt(fly, at);
 }
 
 /** 单选组里勾挪到这一项（同一层、同组名的其余几项去勾）。 */

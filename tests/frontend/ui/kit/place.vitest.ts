@@ -106,8 +106,9 @@ describe("浮层贴着触发物", () => {
     const fly = wrap.querySelector<HTMLElement>('[role="menu"][data-sub]')!;
     boxes.set(wrap, { left: 784, top: 700, right: 1016, bottom: 728 });
     wrap.querySelector<HTMLButtonElement>(":scope > button")!.click();
-    // 视口里：左侧（784 − 240 = 544）· 顶对齐放不下 ⇒ 底端对齐那一项（728 − 300 = 428）；写成相对那一项的偏移。
-    expect(at(fly)).toEqual({ left: 544 - 784, top: 428 - 700 });
+    // 视口里：左侧（784 − 240 = 544）· 顶对齐放不下 ⇒ 底端对齐那一项（728 − 300 = 428）；子菜单是 fixed，直接写视口坐标
+    //（主菜单限高内滚时，子菜单不被它裁掉、也不把它撑出横向滚动）。
+    expect(at(fly)).toEqual({ left: 544, top: 428 });
   });
 
   it("右键点（一点）：右下放不下 ⇒ 往左上翻（与原先一样）", () => {
