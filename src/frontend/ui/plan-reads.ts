@@ -315,6 +315,7 @@ export function decodeSlice(v: unknown, what: string): PlanSlice {
     domain: strOrNull(o.domain, `${what}.domain`),
     path: str(o.path, `${what}.path`),
     current: bool(o.current, `${what}.current`),
+    docsOnly: bool(o.docsOnly, `${what}.docsOnly`),
     error: strOrNull(o.error, `${what}.error`),
     stale: staleOf(o.stale, `${what}.stale`),
   };
@@ -478,15 +479,33 @@ export async function fetchCellView(origin: Origin, workspace: string, slice: st
   return str(o.view, "view");
 }
 
-/** 以人的身份代敲的三条用户命令。 */
+/** 以人的身份代敲的几条（`take` 另走 [`takeRepo`]：要带片名）。 */
 export type PlanCmd = "continue" | "pause" | "view";
+
+function cmdReply(v: unknown): PlanCmdReply {
+  const o = obj(v, "reply");
+  let took: PlanCmdReply["took"] = null;
+  if (o.took !== null && o.took !== undefined) {
+    const t = obj(o.took, "took");
+    took = { slice: str(t.slice, "took.slice"), path: str(t.path, "took.path"), switched: bool(t.switched, "took.switched") };
+  }
+  return { rc: num(o.rc, "rc"), said: strOrNull(o.said, "said"), path: strOrNull(o.path, "path"), took };
+}
 
 /** 代敲一条用户命令（pb 拒 ⇒ 后端回拒绝，`PlanMiss` 带 pb 那一句）。 */
 export async function planCommand(origin: Origin, workspace: string, cmd: PlanCmd): Promise<PlanCmdReply> {
   const body = jsonBody({ workspace, cmd });
   const budget = budgetWithin(READ_BUDGET_MS);
-  const o = obj(await settle(chan.call(origin, "plan-command", body, budget)), "reply");
-  return { rc: num(o.rc, "rc"), said: strOrNull(o.said, "said"), path: strOrNull(o.path, "path") };
+  return cmdReply(await settle(chan.call(origin, "plan-command", body, budget)));
+}
+
+/** 接过一片的仓库（pb 的 `take`；不是此刻那一片后端先切过去）。回包的 `took` 说接到了哪一片。 */
+export async function takeRepo(origin: Origin, workspace: string, slice: string): Promise<PlanCmdReply> {
+  const body = jsonBody({ workspace, cmd: "take", slice });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const r = cmdReply(await settle(chan.call(origin, "plan-command", body, budget)));
+  if (!r.took) bad("take reply without took");
+  return r;
 }
 
 /** 认可一条 / 撤掉认可（只记在 cc-monitor，不写计划仓）。 */
@@ -502,7 +521,7 @@ const RETURN_RESULTS = new Set(["delivered", "unsure", "refused", "copy"]);
 /** 把人的话送给负责那一格的会话（后端拼那一行、判能不能送）。 */
 export async function returnCell(
   origin: Origin,
-  a: { workspace: string; slice: string; id: string; text: string; to: "owner" | "signer" },
+  a: { workspace: string; slice: string; id: string; text: string; to: "owner" | "signer"; resume?: boolean },
 ): Promise<PlanReturnReply> {
   const body = jsonBody(a);
   const budget = budgetWithin(READ_BUDGET_MS);
@@ -514,5 +533,6 @@ export async function returnCell(
     why: strOrNull(o.why, "why"),
     said: strOrNull(o.said, "said"),
     screen: strOrNull(o.screen, "screen"),
+    resumed: bool(o.resumed, "resumed"),
   };
 }

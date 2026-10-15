@@ -50,7 +50,7 @@ function extList(w: World): unknown {
 }
 
 /** 那台没设过偏好时后端照用的那一份（`control/machine_prefs.rs` 的 `Prefs::default()`）。 */
-export const PREFS_UNSET: Prefs = { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {} };
+export const PREFS_UNSET: Prefs = { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, pbDir: null };
 
 export function machineOps(): Record<string, OpHandler> {
   return {

@@ -1,13 +1,14 @@
 //! 计划读面（`plan-*`）的帧面宿主：把这台的事实拼成 [`crate::plan`] 要的几个口 ——
-//! pb 装在哪（各配置根底下的插件目录，问注册表）· 会话在哪些目录里（会话表）· 一个 id 是哪个会话（会话表 ＋ 记录树）。
+//! pb 在哪（这台偏好里设的路径；没设 ⇒ 各配置根底下的插件目录，问注册表）· 会话在哪些目录里（会话表）· 一个 id 是哪个会话（会话表 ＋ 记录树）。
 //!
 //! 命令：
 //! - `plan-list {dirs?, fresh?}`：这台的工作区与片。目录 ＝ 此刻活着的会话的工作目录 ∪ `dirs`；每个目录让 pb 自己往上找工作区
 //!   （认过的目录不再问，`fresh: true` 全部重问）。
 //! - `plan-read {workspace}`：一个工作区的成品（[`crate::plan::product`]，顶上带 `rev` · `readAt` · `stale`）。
 //! - `plan-cell-view {workspace, slice, id}`：一格的 `agent_view`（上一次读好的那一份里的）。
-//! - `plan-command {workspace, cmd: continue|pause|view}`：以人的身份代敲 pb 的用户命令（写盘的是 pb）。
+//! - `plan-command {workspace, cmd: continue|pause|take|view, slice?}`：以人的身份代敲 pb 的命令（写盘的是 pb）；`take` 接 `slice` 那一片的仓库。
 //! - `plan-files {dir}`：文件窗口反查（[`crate::plan::owners`]）：这个目录落在哪一片的仓库里、每份文件归哪一格。
+//! - `plan-pb-check {dir}`：这个路径能不能当 pb 用（[`locate::check`]），设置里存 pb 路径之前问。
 //!
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
@@ -45,10 +46,11 @@ fn config_roots() -> Vec<PathBuf> {
     roots
 }
 
-/// pb 的入口脚本；没装 ⇒ `no_pb`。
+/// pb 的入口脚本（这台设了路径只认它，没设认装着的插件）；找不到 ⇒ `no_pb`。
 fn entry() -> Result<PathBuf, Fail> {
-    locate::entry_among(&crate::agents::plugins(&config_roots()))
-        .ok_or_else(|| Fail::new("no_pb", copy_text("bePlan.face.noPb", &[])))
+    let set = crate::control::machine_prefs::pb_dir_now();
+    locate::pick(set.as_deref(), &crate::agents::plugins(&config_roots()))
+        .map_err(|m| Fail::new("no_pb", m.said()))
 }
 
 /// 生产的「这个 id 是谁」：活会话表（判活与在干什么同主窗口标签页）· 记录树里有它的记录 ⇒ 会话；
@@ -187,15 +189,46 @@ fn miss(m: book::Miss) -> Fail {
     }
 }
 
-/// `plan-command {workspace, cmd}`：以人的身份代敲 pb 的一条用户命令（[`crate::plan::command`]）。
-/// 写盘的是 pb；`continue` / `pause` 改了工作区 `.env` ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` 在成品里）。
-fn command(req: &PlanCommandReq) -> Result<wire::PlanCmdReply, Fail> {
+/// `plan-command {workspace, cmd, slice?}`：以人的身份代敲 pb 的一条命令（[`crate::plan::command`]）。
+/// 写盘的是 pb；改了工作区配置 ⇒ 盯盘那一路照常推 `changed {plan}`（`auto` · 只写文档 · 此刻那一片都在成品里）。
+/// `take` 先现读一次（起 pb），按那一片此刻只写不只写文档 · 是不是此刻那一片定敲哪几条。
+fn command(req: &PlanCommandReq, tz: &crate::Tz) -> Result<wire::PlanCmdReply, Fail> {
     let cmd = Some(req.cmd.as_str())
         .filter(|c| crate::plan::command::VERBS.contains(c))
-        .ok_or_else(|| bad("`cmd` must be one of continue · pause · view"))?;
+        .ok_or_else(|| bad("`cmd` must be one of continue · pause · take · view"))?;
+    if (cmd == "take") != req.slice.is_some() {
+        return Err(bad("`slice` goes with `take` and only with it"));
+    }
     let entry = entry()?;
-    crate::plan::command::run(&entry, Path::new(&req.workspace), cmd)
-        .map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
+    let ws = Path::new(&req.workspace);
+    let run = |args: &[&str]| crate::plan::command::run(&entry, ws, args);
+    let out = match req.slice.as_deref() {
+        Some(name) => {
+            let doc = read_fresh(&req.workspace, tz)?;
+            let sl = doc
+                .get("slices")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|s| s.get("name").and_then(Value::as_str) == Some(name))
+                .ok_or_else(|| {
+                    Fail::new(
+                        "no_such_slice",
+                        copy_text("bePlan.command.noSlice", &[("slice", name)]),
+                    )
+                })?;
+            let flag = |k: &str| sl.get(k).and_then(Value::as_bool) == Some(true);
+            let t = crate::plan::command::Taking {
+                slice: name,
+                path: sl.get("path").and_then(Value::as_str).unwrap_or(name),
+                docs_only: flag("docsOnly"),
+                current: flag("current"),
+            };
+            crate::plan::command::take_with(&t, &run)
+        }
+        None => run(&[cmd]),
+    };
+    out.map_err(|(code, said, raw)| Fail::new(code, said).with_raw(raw.as_deref()))
         .and_then(wired::<wire::PlanCmdReply>)
 }
 
@@ -337,9 +370,23 @@ pub(crate) struct PlanCellView {
 pub(crate) struct PlanCommandReq {
     /// 工作区根。
     pub(crate) workspace: String,
-    /// `continue` · `pause` · `view`。
-    #[cfg_attr(test, ts(type = "\"continue\" | \"pause\" | \"view\""))]
+    /// `continue` · `pause` · `take` · `view`。
+    #[cfg_attr(test, ts(type = "\"continue\" | \"pause\" | \"take\" | \"view\""))]
     pub(crate) cmd: String,
+    /// `take` 接哪一片的仓库（片名）；别的动词不带。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) slice: Option<String>,
+}
+
+/// `plan-pb-check` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlanPbCheckReq {
+    /// 要校验的插件根目录（那台机器上的绝对路径）。
+    pub(crate) dir: String,
 }
 
 /// `plan-files` 的入参。
@@ -370,10 +417,11 @@ typed::codes! {
 }
 
 typed::codes! {
-    /// `plan-command` 的码：同 [`PlanPbErr`]，另有 pb 拒了那一种。
+    /// `plan-command` 的码：同 [`PlanPbErr`]，另有 pb 拒了（或这一侧带着 agent 身份）· 没有那一片。
     pub(crate) enum PlanCommandErr {
         Failed = "failed",
         NoPb = "no_pb",
+        NoSuchSlice = "no_such_slice",
         NotWorkspace = "not_workspace",
         PbUnsupported = "pb_unsupported",
         Refused = "refused",
@@ -472,10 +520,10 @@ impl Handle for PlanCommandCmd {
     type Needs = typed::needs::Nothing;
     fn run(
         req: PlanCommandReq,
-        _cx: Cx<Self::Needs>,
+        cx: Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<wire::PlanCmdReply, PlanCommandErr>> + Send + 'static
     {
-        async move { command(&req).map_err(|f| typed::of_fail(f, PlanCommandErr::Failed)) }
+        async move { command(&req, &cx.tz).map_err(|f| typed::of_fail(f, PlanCommandErr::Failed)) }
     }
 }
 
@@ -497,6 +545,36 @@ impl Handle for PlanFilesCmd {
     ) -> impl std::future::Future<Output = Result<wire::PlanFiles, PlanListErr>> + Send + 'static
     {
         async move { files(&req.dir, &cx.tz).map_err(|f| typed::of_fail(f, PlanListErr::Failed)) }
+    }
+}
+
+/// `plan-pb-check`：一个路径能不能当 pb 用（起一次 pb ⇒ 阻塞档；不写盘）。
+pub(crate) struct PlanPbCheckCmd;
+
+impl Command for PlanPbCheckCmd {
+    const NAME: &'static str = "plan-pb-check";
+    type Req = PlanPbCheckReq;
+    type Reply = wire::PlanPbCheck;
+    type Err = PlanListErr;
+}
+
+impl Handle for PlanPbCheckCmd {
+    type Needs = typed::needs::Nothing;
+    fn run(
+        req: PlanPbCheckReq,
+        _cx: Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<wire::PlanPbCheck, PlanListErr>> + Send + 'static
+    {
+        async move {
+            let dir = Path::new(req.dir.trim());
+            if !dir.is_absolute() {
+                return Err(PlanListErr::BadArgs(crate::common::contract::malformed(
+                    "`dir` must be an absolute path",
+                )));
+            }
+            wired::<wire::PlanPbCheck>(locate::check(dir))
+                .map_err(|f| typed::of_fail(f, PlanListErr::Failed))
+        }
     }
 }
 

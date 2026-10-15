@@ -20,7 +20,7 @@ const read = (w: World, o: string) => w.ops["prefs-read"](o, {}, w) as { state: 
 describe("假后端的 prefs-read 照场景答", () => {
   it("自检：写了偏好的那台答那一份，没写的那台答「没有这份」与缺省", () => {
     const w = defaultWorld();
-    const mine = { launchers: { claude: "ccm --resume" }, resumeInTmux: true, models: { work: "claude-opus-4-1" }, contextLimits: { opus: 1_000_000 }, agentHomes: {} };
+    const mine = { launchers: { claude: "ccm --resume" }, resumeInTmux: true, models: { work: "claude-opus-4-1" }, contextLimits: { opus: 1_000_000 }, agentHomes: {}, pbDir: null };
     w.prefs = { devbox: mine };
     expect(read(w, "devbox")).toMatchObject({ state: "ok", prefs: mine });
     expect(read(w, "<local>")).toMatchObject({ state: "absent", prefs: PREFS_UNSET });

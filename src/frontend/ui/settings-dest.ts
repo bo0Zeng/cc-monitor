@@ -11,6 +11,7 @@
  * | 快捷键一览「改快捷键…」 | 外观 › 快捷键那一节 |
  * | 一台机器一直看不见时提示里的「打开设置」 | 那台的页 |
  * | 状态栏「待办 N」 | 文件与数据（「待办」那一栏是它的默认栏） |
+ * | 计划页「未装 planned-build」［填 pb 路径…］ | 那台 › pb 路径那一行 |
  *
  * ↗ 浮层「要更新」的［更新］不开设置：就地部署（`backend-deploy.ts`，与机器卡同一处）。
  *
@@ -37,6 +38,14 @@ export function machineOf(origin: Origin): SettingsTarget {
 /** 那台的上下文上限那一折（机器页「这台上的 cc-monitor」里）。 */
 export function contextLimitsOf(origin: Origin): SettingsTarget {
   return { machine: origin, anchor: "context-limits" };
+}
+
+/** pb 路径那一行的锚（机器页「这台上的 cc-monitor」里）。 */
+export const PB_DIR_ANCHOR = "pb-dir";
+
+/** 那台的 pb 路径那一行。 */
+export function pbDirOf(origin: Origin): SettingsTarget {
+  return { machine: origin, anchor: PB_DIR_ANCHOR };
 }
 
 /** 文件与数据（「待办」那一栏）。 */

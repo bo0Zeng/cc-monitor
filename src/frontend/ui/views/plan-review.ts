@@ -178,7 +178,10 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
   const owner = cell.owner;
   const signer = cell.signer === false ? null : cell.signer;
   const canSend = (w: PlanWho | null): boolean => w !== null && w.sid !== null && w.alive && w.activity !== "needs_you";
+  // 已结束、认得出 ⇒ 送出时先在它那台恢复它，这一行当它的第一句（后端 `resume`）。
+  const ended = (w: PlanWho | null): boolean => w !== null && w.sid !== null && !w.alive;
   let to: "owner" | "signer" = !canSend(owner) && canSend(signer) ? "signer" : "owner";
+  const target = (): PlanWho | null => (to === "owner" ? owner : signer);
   const box = document.createElement("div");
   box.className = s.rvForm;
 
@@ -248,15 +251,24 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
   line.className = `${s.rvLine} plan-return-line`;
   // 送出的那一行由后端拼（`bePlan.return.line`，同一条文案）；框里跟着输入预览同一条，送出后以后端回的为准。
   const preview = (): string => copyText("bePlan.return.line", { id: cell.id, title: cell.title, text: ta.value.split(/\s+/).filter(Boolean).join(" ") });
+  const resumeNote = document.createElement("div");
+  resumeNote.className = s.rvNote;
+  resumeNote.dataset.note = "resume";
+  const action = (): string =>
+    ended(target()) ? copyText(done ? "plan.return.resumeSend" : "plan.return.resumeTell") : copyText(done ? "plan.return.send" : "plan.return.sendTell");
   const sync = (): void => {
     line.textContent = preview();
+    const w = target();
+    resumeNote.hidden = !ended(w);
+    resumeNote.textContent = ended(w) ? copyText("plan.return.resumeNote", { session: host.sessionName(w) }) : "";
+    h.setAction(action());
     h.refresh();
   };
-  box.append(whatHead, ta, toHead, opts, ...switched, lineHead, line);
+  box.append(whatHead, ta, toHead, opts, ...switched, resumeNote, lineHead, line);
 
   const h = formDialog({
     title: done ? copyText("plan.return.title", { title: cell.title }) : copyText("plan.return.titleSend", { title: cell.title }),
-    action: done ? copyText("plan.return.send") : copyText("plan.return.sendTell"),
+    action: action(),
     body: box,
     wide: true,
     first: () => ta,
@@ -264,13 +276,16 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
     dirty: () => ta.value.trim() !== "",
     submit: async () => {
       try {
-        const r = await returnCell(host.origin(), { workspace: host.workspace(), slice: slice.name, id: cell.id, text: ta.value, to });
+        const resume = ended(target());
+        const r = await returnCell(host.origin(), { workspace: host.workspace(), slice: slice.name, id: cell.id, text: ta.value, to, ...(resume ? { resume } : {}) });
         if (r.result === "delivered" || r.result === "unsure") {
-          toast(r.result === "delivered" ? copyText("plan.return.sent", { session: host.sessionName(r.to) }) : copyText("plan.return.unsure"), "", { level: r.result === "delivered" ? "success" : "warn" });
+          const sent = r.resumed ? copyText("plan.return.resumedSent", { session: host.sessionName(r.to) }) : copyText("plan.return.sent", { session: host.sessionName(r.to) });
+          toast(r.result === "delivered" ? sent : copyText("plan.return.unsure"), "", { level: r.result === "delivered" ? "success" : "warn" });
           host.reread();
           return null;
         }
-        if (r.result === "copy") {
+        // 送不了（认不出 · 恢复没成）⇒ 给这一行去复制。
+        if (r.result === "copy" || (resume && r.result === "refused")) {
           const copy = button({
             label: copyText("plan.return.copyLine"),
             icon: "copy",

@@ -95,6 +95,7 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
             models: models(at),
             context_limits: limits.clone(),
             agent_homes: BTreeMap::new(),
+            pb_dir: None,
         }
     };
     let mut local = one(

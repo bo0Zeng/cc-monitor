@@ -31,4 +31,8 @@ client?: string | null,
 /**
  * 送之前看到的那一屏的指纹（同 `terminal-input`）。
  */
-seen_screen?: string | null, };
+seen_screen?: string | null, 
+/**
+ * `true` ⇒ 目标会话已结束时在这台恢复它、这一行当它的第一句（人点了［恢复并退回］）。
+ */
+resume?: boolean | null, };

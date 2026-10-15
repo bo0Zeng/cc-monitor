@@ -19,4 +19,8 @@ contextLimits?: { [key in string]: number },
 /**
  * 某一家的数据目录：`{kind: 路径}`，空串 ⇒ 删掉那一家（回到它自己的解析）。只动点到的那几家；改了要重启后端才生效。
  */
-agentHomes?: { [key in string]: string }, };
+agentHomes?: { [key in string]: string }, 
+/**
+ * pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
+ */
+pbDir?: string, };

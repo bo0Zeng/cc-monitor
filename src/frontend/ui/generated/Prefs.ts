@@ -24,4 +24,8 @@ contextLimits: { [key in string]: number },
  * 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
  * 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
  */
-agentHomes: { [key in string]: string }, };
+agentHomes: { [key in string]: string }, 
+/**
+ * planned-build 的插件根目录（绝对路径）；设了 ⇒ 计划那一族只认它，没设 ⇒ 认这台装着的插件。用的那一刻现读。
+ */
+pbDir: string | null, };
