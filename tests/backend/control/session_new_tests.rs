@@ -91,12 +91,18 @@ impl Rig {
             Ok(NEW.into())
         };
         let library = || {
-            la::Library::of_product(
-                &json!({ "meta": {"enabled": true, "effectiveDefault": "work"}, "accounts": [
-                    { "name": "work", "configDir": "/h/.cc/work", "isDefault": true, "mode": "isolated", "exists": true, "authReady": true, "selectable": true },
-                    { "name": "gone", "configDir": "/h/.cc/gone", "isDefault": false, "mode": "isolated", "exists": false, "authReady": false, "selectable": false },
-                ]}),
-            )
+            use crate::observe::accounts_query::test_support::{list, row_with};
+            la::Library::of_product(&list(vec![
+                row_with("work", |a| {
+                    a.config_dir = Some("/h/.cc/work".into());
+                    a.is_default = true;
+                }),
+                row_with("gone", |a| {
+                    a.config_dir = Some("/h/.cc/gone".into());
+                    a.exists = false;
+                    a.auth_ready = false;
+                }),
+            ]))
         };
         let last_of = |_: &str| self.last.map(str::to_string);
         let accounts = la::Facts {
@@ -413,7 +419,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         })
     };
     let no = |_: &str, _: Option<&str>| -> Result<(bool, String), String> { unreachable!() };
-    let library = || la::Library::of_product(&json!({}));
+    let library = la::Library::default;
     let accounts = la::Facts {
         has_accounts: false,
         library: &library,

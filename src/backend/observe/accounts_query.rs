@@ -1180,6 +1180,11 @@ pub(crate) fn trust_product_at(
 
 // ---------------------------------------------------------------- tests
 
+// 照类型造清单成品的夹具住测试树：起会话挑号 · 需手动清单几份判据共用。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/accounts_list_support.rs"]
+pub(crate) mod test_support;
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/accounts_query_tests.rs"]
 mod tests;

@@ -9,8 +9,8 @@
 use crate::platform::fs::{Own, OwnPath};
 use crate::wire::typed::codes;
 use copy_core::copy_text;
+use crate::observe::accounts_query::{AccountRow, AccountsList};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -42,18 +42,12 @@ pub(crate) struct Library {
 }
 
 impl Library {
-    /// `accounts-list` 的成品 `{meta, accounts, notice}` ⇒ 判定要的那一份（同一份扫描，不另读 manifest）。
-    pub(crate) fn of_product(v: &Value) -> Library {
-        let known = v["meta"]["enabled"].as_bool() == Some(true);
-        let accounts = v["accounts"]
-            .as_array()
-            .map(|a| a.iter().filter_map(candidate_of).collect())
-            .unwrap_or_default();
-        let default = v["meta"]["effectiveDefault"].as_str().map(str::to_string);
+    /// `accounts-list` 的成品 ⇒ 判定要的那一份（同一份扫描，不另读 manifest）。
+    pub(crate) fn of_product(v: &AccountsList) -> Library {
         Library {
-            known,
-            accounts,
-            default,
+            known: v.meta.enabled,
+            accounts: v.accounts.iter().filter_map(candidate_of).collect(),
+            default: v.meta.effective_default.clone(),
         }
     }
 
@@ -75,16 +69,16 @@ impl Library {
     }
 }
 
-fn candidate_of(a: &Value) -> Option<Candidate> {
-    let name = a["name"].as_str().filter(|n| !n.is_empty())?.to_string();
-    let config_dir = a["configDir"]
-        .as_str()
-        .filter(|d| !d.is_empty())
-        .map(str::to_string);
+fn candidate_of(a: &AccountRow) -> Option<Candidate> {
+    let a = &a.scanned;
+    if a.name.is_empty() {
+        return None;
+    }
+    let config_dir = a.config_dir.clone().filter(|d| !d.is_empty());
     // 能不能用是成品写好的那一格（`acct_core::account_selectable`），这里不另判。
-    let usable = a["selectable"].as_bool() == Some(true) && config_dir.is_some();
+    let usable = a.selectable && config_dir.is_some();
     Some(Candidate {
-        name,
+        name: a.name.clone(),
         config_dir,
         usable,
     })

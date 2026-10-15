@@ -1,39 +1,14 @@
 //! `control/launch_account.rs`：起会话挑号的规则表（逐条行为）＋ 那份记录（临时目录上真写真读、并发写不丢）。
 
 use super::*;
-use serde_json::json;
+use crate::observe::accounts_query::test_support::{list, row as ok, row_with as acct, unreadable};
+use crate::observe::accounts_query::{AccountRow, ScannedAccount};
 use std::path::PathBuf;
 
-fn acct(name: &str, f: impl FnOnce(&mut Value)) -> Value {
-    let mut a = json!({
-        "name": name, "email": format!("{name}@example.test"), "configDir": format!("/h/{name}"),
-        "isDefault": false, "mode": "isolated", "exists": true, "loggedIn": true,
-        "authKind": "subscription", "authReady": true,
-    });
-    f(&mut a);
-    a
-}
-fn ok(name: &str) -> Value {
-    acct(name, |_| {})
-}
-/// 成品那两格（`selectable` · `meta.effectiveDefault`）照清单成品的写法补上（规则住 `acct_core`；成品真写这两格由
+/// 成品那两格（`selectable` · `meta.effectiveDefault`）由夹具照成品的规则补上（成品真写这两格由
 /// `accounts_query_tests::the_list_product_says_who_is_selectable_and_who_is_the_default` 钉）。
-fn lib(mut accounts: Vec<Value>) -> Library {
-    for a in &mut accounts {
-        a["selectable"] = json!(acct_core::account_selectable(
-            a["mode"].as_str().unwrap_or(""),
-            a["authReady"] == json!(true),
-            a["exists"] == json!(true),
-            a["configDir"].is_string(),
-        ));
-    }
-    let default = acct_core::effective_default(&accounts, |a| a["isDefault"] == json!(true))
-        .map_or(Value::Null, |a| a["name"].clone());
-    Library::of_product(&json!({
-        "meta": { "enabled": true, "effectiveDefault": default },
-        "accounts": accounts,
-        "notice": null,
-    }))
+fn lib(accounts: Vec<AccountRow>) -> Library {
+    Library::of_product(&list(accounts))
 }
 fn take(name: &str) -> Picked {
     Picked::Account {
@@ -52,8 +27,8 @@ fn refused(requested: &str, pinned: bool, list_known: bool, alternative: Option<
 fn named(n: &str) -> Asked {
     Asked::Named(n.into())
 }
-fn default_(name: &str) -> Value {
-    acct(name, |a| a["isDefault"] = json!(true))
+fn default_(name: &str) -> AccountRow {
+    acct(name, |a| a.is_default = true)
 }
 
 // ───────── 点名 ─────────
@@ -69,7 +44,7 @@ fn a_named_usable_account_is_used() {
 #[test]
 fn a_named_account_that_cannot_be_used_is_refused_with_the_default_as_alternative() {
     let l = lib(vec![
-        acct("z", |a| a["authReady"] = json!(false)),
+        acct("z", |a| a.auth_ready = false),
         default_("b"),
     ]);
     assert_eq!(
@@ -83,14 +58,14 @@ fn each_unusable_shape_is_refused() {
     for (why, f) in [
         (
             "in-place",
-            (|a: &mut Value| a["mode"] = json!("in-place")) as fn(&mut Value),
+            (|a: &mut ScannedAccount| a.mode = "in-place".into()) as fn(&mut ScannedAccount),
         ),
-        ("auth not ready", |a| a["authReady"] = json!(false)),
-        ("dir missing", |a| a["exists"] = json!(false)),
-        ("empty dir", |a| a["configDir"] = json!("")),
+        ("auth not ready", |a| a.auth_ready = false),
+        ("dir missing", |a| a.exists = false),
+        ("empty dir", |a| a.config_dir = Some(String::new())),
         ("account 0", |a| {
-            a["configDir"] = Value::Null;
-            a["mode"] = json!("bare");
+            a.config_dir = None;
+            a.mode = "bare".into();
         }),
     ] {
         let got = pick(&named("z"), &lib(vec![acct("z", f)]), None, None);
@@ -101,8 +76,8 @@ fn each_unusable_shape_is_refused() {
 #[test]
 fn an_api_key_account_without_a_credentials_file_is_usable() {
     let l = lib(vec![acct("k", |a| {
-        a["authKind"] = json!("apikey");
-        a["loggedIn"] = json!(false);
+        a.auth_kind = "apikey".into();
+        a.logged_in = false;
     })]);
     assert_eq!(pick(&named("k"), &l, None, None), take("k"));
 }
@@ -153,7 +128,7 @@ fn settle_maps_follow_and_named_onto_pick_and_attaches_the_model() {
         account("b", None)
     );
     // 跟随却什么都选不上 ⇒ 不表态（不是显式账号 0）。
-    let none = || lib(vec![acct("z", |a| a["authReady"] = json!(false))]);
+    let none = || lib(vec![acct("z", |a| a.auth_ready = false)]);
     let f2 = Facts {
         has_accounts: true,
         library: &none,
@@ -187,7 +162,7 @@ fn follow_uses_the_last_account_over_the_default() {
 #[test]
 fn follow_never_swaps_a_last_account_that_cannot_be_used() {
     let l = lib(vec![
-        acct("z", |a| a["authReady"] = json!(false)),
+        acct("z", |a| a.auth_ready = false),
         default_("b"),
     ]);
     assert_eq!(
@@ -219,15 +194,15 @@ fn the_default_is_the_first_account_when_none_is_marked() {
 
 #[test]
 fn follow_without_a_last_account_and_an_unusable_default_is_base() {
-    let l = lib(vec![acct("z", |a| a["authReady"] = json!(false))]);
+    let l = lib(vec![acct("z", |a| a.auth_ready = false)]);
     assert_eq!(pick(&Asked::Follow, &l, None, None), Picked::Base);
 }
 
 #[test]
 fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
     let l = lib(vec![acct("z", |a| {
-        a["authReady"] = json!(false);
-        a["isDefault"] = json!(true);
+        a.auth_ready = false;
+        a.is_default = true;
     })]);
     assert_eq!(
         pick(&Asked::Follow, &l, Some("z"), None),
@@ -236,8 +211,8 @@ fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
     let l = lib(vec![
         ok("z"),
         acct("b", |a| {
-            a["isDefault"] = json!(true);
-            a["exists"] = json!(false);
+            a.is_default = true;
+            a.exists = false;
         }),
     ]);
     assert_eq!(
@@ -248,9 +223,7 @@ fn no_alternative_when_the_default_is_the_requested_one_or_unusable() {
 
 #[test]
 fn an_unreadable_list_refuses_named_and_pinned_and_offers_nothing() {
-    let l = Library::of_product(
-        &json!({ "meta": { "enabled": false, "error": "坏了" }, "accounts": [] }),
-    );
+    let l = Library::of_product(&unreadable("坏了"));
     assert_eq!(
         pick(&named("z"), &l, None, None),
         refused("z", false, false, None)

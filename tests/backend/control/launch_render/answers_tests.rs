@@ -8,12 +8,8 @@ use serde_json::Value;
 /// 判号要的事实：一个号 `z`（能用）、没有谁的上次记录。
 fn facts_of<T>(f: impl FnOnce(&Facts) -> T) -> T {
     let library = || {
-        Library::of_product(
-            &serde_json::json!({ "meta": {"enabled": true, "effectiveDefault": "z"}, "accounts": [{
-                "name": "z", "configDir": "/h/z", "isDefault": true, "mode": "isolated",
-                "exists": true, "authReady": true, "selectable": true,
-            }]}),
-        )
+        use crate::observe::accounts_query::test_support::{list, row};
+        Library::of_product(&list(vec![row("z")]))
     };
     f(&Facts {
         has_accounts: true,

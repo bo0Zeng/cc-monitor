@@ -6,7 +6,6 @@ use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Command, NoArgs};
 use copy_core::copy_text;
-use serde_json::Value;
 
 /// `login-start` 的入参：登录什么（同一个目标新开一份就替掉旧的；`login-finish` 成了原样交回）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -523,7 +522,7 @@ impl crate::wire::typed::Handle for ManualListCmd {
             });
             manual_of(
                 agent,
-                &serde_json::to_value(accounts_product(agent)).unwrap_or_default(),
+                &accounts_product(agent),
                 crate::observe::accounts_query::library_unreadable_here(),
                 mcp.as_ref().map(|(k, r)| (*k, r)),
             )
@@ -535,7 +534,7 @@ impl crate::wire::typed::Handle for ManualListCmd {
 /// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 回 `unreadable`，不列。
 pub(crate) fn manual_of(
     agent: &str,
-    accounts: &Value,
+    accounts: &crate::observe::accounts_query::AccountsList,
     unreadable: Option<String>,
     mcp: Option<(&str, &crate::agents::McpRead)>,
 ) -> Result<ManualList, ManualListErr> {
@@ -543,17 +542,14 @@ pub(crate) fn manual_of(
         return Err(ManualListErr::Unreadable(why));
     }
     let signs_in = crate::agents::accounts_face(agent).is_some_and(|f| f.sign_in.is_some());
-    let mut items: Vec<ManualItem> = accounts["accounts"]
-        .as_array()
-        .into_iter()
-        .flatten()
+    let mut items: Vec<ManualItem> = accounts
+        .accounts
+        .iter()
+        .map(|a| &a.scanned)
         .filter(|a| {
-            signs_in
-                && a["authKind"] == acct_core::AUTH_KIND_SUBSCRIPTION
-                && a["exists"] == true
-                && a["authReady"] == false
+            signs_in && a.auth_kind == acct_core::AUTH_KIND_SUBSCRIPTION && a.exists && !a.auth_ready
         })
-        .filter_map(|a| a["name"].as_str())
+        .map(|a| a.name.as_str())
         .map(|name| ManualItem::AccountLogin {
             agent: agent.to_string(),
             account: name.to_string(),

@@ -33,15 +33,12 @@ pub(crate) fn pretrust_with(files: Option<Files>, agent: &str, dir: &str, cwd: &
 /// 这台的账号库（与 `accounts-list` 同一份成品：并上这台的 API key 表）。
 pub(crate) fn library_of(agent: &str) -> Library {
     let rows = crate::accounts::upstream_select::file_face::machine_rows();
-    Library::of_product(
-        &serde_json::to_value(crate::observe::accounts_query::list_product(
-            &rows,
-            agent,
-            crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-            crate::relay::our_relay_listening(relay_route_core::PORT),
-        ))
-        .unwrap_or_default(),
-    )
+    Library::of_product(&crate::observe::accounts_query::list_product(
+        &rows,
+        agent,
+        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+        crate::relay::our_relay_listening(relay_route_core::PORT),
+    ))
 }
 
 /// 某条会话上次用的号（这台家里那份记录）。

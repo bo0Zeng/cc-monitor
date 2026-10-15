@@ -24,12 +24,11 @@ fn start(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
 fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
     let library = || {
-        la::Library::of_product(
-            &json!({ "meta": {"enabled": true, "effectiveDefault": "work"}, "accounts": [{
-                "name": "work", "configDir": "/h/.cc/work", "isDefault": false, "mode": "isolated",
-                "exists": true, "authReady": true, "selectable": true,
-            }]}),
-        )
+        la::Library::of_product(&crate::observe::accounts_query::test_support::list(vec![
+            crate::observe::accounts_query::test_support::row_with("work", |a| {
+                a.config_dir = Some("/h/.cc/work".into())
+            }),
+        ]))
     };
     f(&la::Facts {
         has_accounts: true,
