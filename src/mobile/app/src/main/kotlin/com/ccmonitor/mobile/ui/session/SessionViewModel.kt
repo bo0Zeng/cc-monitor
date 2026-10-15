@@ -221,7 +221,10 @@ class SessionViewModel(
         viewModelScope.launch {
             var prev = manager.sessions.value[hostId]?.status
             manager.sessions.map { it[hostId]?.status }.distinctUntilChanged().collect { cur ->
-                if (rejoinedWhileErrored(prev, cur, _uiState.value is SessionUiState.Error)) rejoined.value = true
+                val errored = _uiState.value is SessionUiState.Error
+                val again = rejoinedWhileErrored(prev, cur, errored)
+                Log.i(TAG, "$hostId：名义状态 $prev → $cur（出错页 $errored）${if (again) " ⇒ 重挂" else ""}")
+                if (again) rejoined.value = true
                 prev = cur
             }
         }
@@ -229,7 +232,9 @@ class SessionViewModel(
         viewModelScope.launch {
             var before = false
             manager.reachedOf(hostId).collect { now ->
-                if (now && !before && _uiState.value is SessionUiState.Error) rejoined.value = true
+                val errored = _uiState.value is SessionUiState.Error
+                Log.i(TAG, "$hostId：SSH ${if (now) "够着" else "没够着"}（出错页 $errored）${if (now && !before && errored) " ⇒ 重挂" else ""}")
+                if (now && !before && errored) rejoined.value = true
                 before = now
             }
         }
@@ -247,7 +252,9 @@ class SessionViewModel(
                 _uiState.value = SessionUiState.Connecting
                 _connectLog.value = emptyList()
                 if (!ensureIdentityBound()) return@launch // 无身份的主机先解决身份（自动绑 / 引导 / 快选）
+                Log.i(TAG, "$hostId：终端开连")
                 _uiState.value = withContext(io) { establishConnectedState(epoch) }
+                Log.i(TAG, "$hostId：终端${_uiState.value.javaClass.simpleName}")
             }
     }
 
@@ -400,6 +407,7 @@ class SessionViewModel(
 
     /** 重连：关掉旧会话，重建 shell。 */
     fun retry() {
+        Log.i(TAG, "$hostId：终端重挂")
         rejoined.value = false
         runCatching { session?.close() }
         session = null

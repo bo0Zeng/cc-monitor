@@ -715,30 +715,53 @@ def airplane(on):
     adb("shell", "cmd", "connectivity", "airplane-mode", "enable" if on else "disable")
 
 
+def cold_offline():
+    """飞行模式下冷启动 App，等头一次连接报完没连上。"""
+    smoke.to_chat()
+    adb("shell", "am", "force-stop", PKG)
+    airplane(True)
+    time.sleep(3)
+    if nc_ms() is not None:
+        raise Red("飞行模式下模拟器照样连得通台架（没断成）")
+    adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
+    time.sleep(20)
+
+
+def back_by_itself(label, ready):
+    """关飞行模式，量 ready() 自己成真要多久（不点［重试］）；超时 ⇒ 红。"""
+    airplane(False)
+    t0 = time.time()
+    got = None
+    while time.time() - t0 < WITHIN:
+        if ready():
+            got = round(time.time() - t0, 1)
+            break
+        time.sleep(1)
+    nums[f"冷启动时断网：网回来 → {label}自己出来"] = got if got is not None else f"{WITHIN:.0f}s 没出来"
+    if got is None or got > REJOIN + 10:
+        raise Red(f"冷启动时断网：网回来 {got}s {label}才自己出来（要 ≤ {REJOIN + 10:.0f}s，不点［重试］）")
+    return got
+
+
+def listed():
+    return ui.find(t("history.section.today")) is not None or ui.find(t("history.list.empty")) is not None
+
+
 def item7():
+    failed = t("newSession.facts.failed").split(" · ")[0]
     try:
-        smoke.to_chat()
-        adb("shell", "am", "force-stop", PKG)
-        airplane(True)
-        time.sleep(3)
-        if nc_ms() is not None:
-            raise Red("飞行模式下模拟器照样连得通台架（没断成）")
-        adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
-        time.sleep(20)  # 断着网起来：等头一次连接报完没连上
-        if ui.find(t("history.section.today")) is not None:
+        # ① 落地那一屏（新建会话那一张）：断着网读不到那台 ⇒ 那一句；网回来那一句自己消失、还在这一屏。
+        cold_offline()
+        if ui.find(failed) is None:
+            raise Red("断着网冷启动，落地那一屏没说读不到那台（没断成，或落地不在新建会话）")
+        landed = back_by_itself("落地那一屏的新建会话信息", lambda: ui.find(failed) is None and ui.find(t("mobChat.input.placeholder")) is not None)
+        # ② 断着网时进对话列表：网回来列表自己出来。
+        cold_offline()
+        smoke.drawer(t("mobDrawer.item.chats"))
+        if listed():
             raise Red("断着网，对话列表却出来了（没断成）")
-        airplane(False)
-        t0 = time.time()
-        got = None
-        while time.time() - t0 < WITHIN:
-            if ui.find(t("history.section.today")) is not None or ui.find(t("history.list.empty")) is not None:
-                got = round(time.time() - t0, 1)
-                break
-            time.sleep(1)
-        nums["冷启动时断网：网回来 → 对话列表自己出来"] = got if got is not None else f"{WITHIN:.0f}s 没出来"
-        if got is None or got > REJOIN + 10:
-            raise Red(f"冷启动时断网：网回来 {got}s 对话列表才自己出来（要 ≤ {REJOIN + 10:.0f}s，不点［重试］）")
-        return f"网回来 {got}s 自己接上"
+        got = back_by_itself("对话列表", listed)
+        return f"网回来 {landed}s 新建会话信息 · {got}s 对话列表自己出来"
     finally:
         airplane(False)
 

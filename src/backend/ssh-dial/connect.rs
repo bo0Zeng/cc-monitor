@@ -130,11 +130,14 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Hearing<S> {
     ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.inner).poll_flush(cx)
     }
+    /// 关不上（经跳板的隧道：外面那条已经没了）也算关了：russh 收场时先关流、关失败就不报断开，这条连接会一直算活着。
     fn poll_shutdown(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
-        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+        std::pin::Pin::new(&mut self.inner)
+            .poll_shutdown(cx)
+            .map(|_| Ok(()))
     }
 }
 

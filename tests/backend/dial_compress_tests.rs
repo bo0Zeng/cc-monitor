@@ -1000,3 +1000,136 @@ fn the_race_reason_word_follows_the_worst_stage() {
     assert_eq!(race_reason(Some("hostkey")), w("reason.io.unknown"));
     assert_eq!(race_reason(None), w("reason.io.unknown"));
 }
+
+/// 经跳板那一条隧道的样子：外面那条连接没了之后，读到头、写和关都回「断了」。
+struct CarrierGone {
+    inner: tokio::io::DuplexStream,
+    gone: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl CarrierGone {
+    fn broken(&self) -> bool {
+        self.gone.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+fn pipe_closed() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::BrokenPipe, "channel closed")
+}
+
+impl tokio::io::AsyncRead for CarrierGone {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.broken() {
+            return std::task::Poll::Ready(Ok(()));
+        }
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if r.is_pending() {
+            // 断的那一刻要叫醒在等的读（真隧道是外面那条连接收场时把收端关掉）。
+            let w = cx.waker().clone();
+            let gone = Arc::clone(&self.gone);
+            tokio::spawn(async move {
+                while !gone.load(std::sync::atomic::Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                w.wake();
+            });
+        }
+        r
+    }
+}
+
+impl tokio::io::AsyncWrite for CarrierGone {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        if self.broken() {
+            return std::task::Poll::Ready(Err(pipe_closed()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.broken() {
+            return std::task::Poll::Ready(Err(pipe_closed()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+#[derive(Clone)]
+struct LetIn;
+
+impl russh::server::Handler for LetIn {
+    type Error = russh::Error;
+    async fn auth_none(&mut self, _user: &str) -> Result<russh::server::Auth, Self::Error> {
+        Ok(russh::server::Auth::Accept)
+    }
+}
+
+/// ★ 经跳板的那条连接：外面那条没了（隧道读到头、关也关不上）⇒ 这条照样记成「没了」，握着它的链路（`use: hold`）跟着收工。
+/// 关不上不许吞掉「没了」那一下：否则握着的那条一直算活着，SSH 那层永远等不到它断、终端停在出错页回不来。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tunnelled_connection_is_marked_gone_when_its_carrier_dies() {
+    let (near, far) = tokio::io::duplex(64 * 1024);
+    let gone = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let key = russh::keys::PrivateKey::from(
+        russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[9u8; 32]),
+    );
+    let server_cfg = Arc::new(russh::server::Config {
+        keys: vec![key],
+        inactivity_timeout: None,
+        keepalive_interval: None,
+        auth_rejection_time: std::time::Duration::ZERO,
+        ..Default::default()
+    });
+    tokio::spawn(async move {
+        if let Ok(running) = russh::server::run_stream(server_cfg, far, LetIn).await {
+            let _ = running.await;
+        }
+    });
+    let heard = Arc::new(crate::pool::Heard::new());
+    let checker = Checker {
+        trust: Trust::default(),
+        observed: Arc::default(),
+        reported: Arc::default(),
+        stages: StageSink::new(false),
+        endpoint: "t:22".to_string(),
+        host: "t".to_string(),
+        port: 22,
+        heard: Arc::clone(&heard),
+    };
+    let road = Hearing::new(
+        CarrierGone {
+            inner: near,
+            gone: Arc::clone(&gone),
+        },
+        Arc::clone(&heard),
+    );
+    let mut h = russh::client::connect_stream(
+        config_with(false, false, std::time::Duration::from_millis(200)),
+        road,
+        checker,
+    )
+    .await
+    .expect("进程内服务端握手没过");
+    assert!(h.authenticate_none("u").await.expect("鉴权没回话").success());
+    let alive = tokio::time::timeout(std::time::Duration::from_millis(500), heard.gone()).await;
+    assert!(alive.is_err(), "正控：隧道好着的时候不许记成没了");
+    gone.store(true, std::sync::atomic::Ordering::SeqCst);
+    let got = tokio::time::timeout(guard_core::wall::CEILING, heard.gone()).await;
+    assert!(got.is_ok(), "隧道断了，这条连接到兜底上限还没记成「没了」（握着它的链路不会收工）");
+}

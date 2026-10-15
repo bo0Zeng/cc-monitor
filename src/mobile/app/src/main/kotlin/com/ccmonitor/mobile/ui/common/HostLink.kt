@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.common
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -80,7 +81,11 @@ fun rememberHostLink(
 
     // 接不上之后，SSH 那层跟着共用那条重连循环接上了（冷启动时断网、网回来 · 后端起不来时换上一条）⇒ 放行，不等人点［重试］。
     LaunchedEffect(hostId) {
-        connector.statusOf(hostId).collect { if (it == SessionStatus.CONNECTED && state.value is HostLink.Failed) state.value = HostLink.Ready }
+        connector.statusOf(hostId).collect {
+            val pass = it == SessionStatus.CONNECTED && state.value is HostLink.Failed
+            Log.i(TAG, "$hostId：名义状态 $it（门 ${state.value.javaClass.simpleName}）${if (pass) " ⇒ 放行" else ""}")
+            if (pass) state.value = HostLink.Ready
+        }
     }
 
     LaunchedEffect(hostId, holder, retainWhileComposed, attempt) {
@@ -111,6 +116,7 @@ fun rememberHostLink(
                 // 接不上要说出来，别退化成一片空白、看起来像「没有对话」
                 HostLink.Failed(e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName)
             }
+        Log.i(TAG, "$hostId：建连门 ${state.value.javaClass.simpleName}")
     }
     return state
 }
@@ -120,3 +126,5 @@ fun conversationsHolder(hostId: String): String = "conversations-$hostId"
 
 /** 聊天面的持有者标识。前缀 `chat-` 是约定，别改。 */
 fun chatHolder(sessionId: String): String = "chat-$sessionId"
+
+private const val TAG = "HostLink"

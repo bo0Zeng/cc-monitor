@@ -226,4 +226,25 @@ class NewSessionPickerTest {
             assertEquals("~", p.state.value.cwd)
             assertEquals(copyText("newSession.facts.failed", "machine" to "smokebox", "why" to copyText("front.body.timeout", "machine" to "smokebox")), p.state.value.factsFailed)
         }
+
+    @Test
+    fun `打开时那台离线、之后常驻流接上了 ⇒ 自己再问一遍（不等人重开这一张）；接上过、问到了 ⇒ 再换流不重问`() =
+        runTest {
+            val l = link()
+            val good = l.answer
+            l.answer = { _, _ -> Reply.LinkDown }
+            val p = picker(l)
+            assertTrue(p.state.value.factsFailed != null)
+            l.answer = good
+            l.epoch.value = 1
+            runCurrent()
+            assertNull(p.state.value.factsFailed)
+            assertEquals("/h/work/orders", p.state.value.cwd)
+            assertEquals("work", p.state.value.account)
+            l.answer = { _, _ -> Reply.LinkDown }
+            l.epoch.value = 2
+            runCurrent()
+            assertNull("问到了就不再问（换流不把填好的冲掉）", p.state.value.factsFailed)
+            assertEquals("work", p.state.value.account)
+        }
 }

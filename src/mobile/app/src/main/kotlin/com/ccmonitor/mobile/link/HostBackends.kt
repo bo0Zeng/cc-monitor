@@ -55,10 +55,15 @@ class HostBackends(
             mine = EmbeddedBuild.ID,
             tz = ZoneId.systemDefault().id,
             onBreak = ::onBreak,
-        ).also { f -> scope.launch { f.sshReached.collect { connector.loopReached(hostId, it) } } }
+        ).also { f ->
+            scope.launch { f.sshReached.collect { connector.loopReached(hostId, it) } }
+            // 这台常驻流每变一次记一行（进 logcat，台架照它看根子；不上屏）。
+            scope.launch { f.state.collect { Log.i(TAG, "$hostId：常驻流 ${it.toString().take(LOG_CAP)}") } }
+        }
     }
 
     private companion object {
         const val TAG = "HostBackend"
+        const val LOG_CAP = 200
     }
 }
