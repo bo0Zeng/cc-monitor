@@ -147,10 +147,6 @@ def drawer(item):
     else:
         tap(item)
     time.sleep(2)
-    # 点的那一下落在抽屉还在滑开的时候 ⇒ 抽屉没收：照旧开着（「文件」那一项还在屏上）就再点一次。
-    if ui.find(t("mobDrawer.item.files")) is not None and item != t("mobDrawer.item.files"):
-        tap_last(item) if sum(1 for n in ui.nodes() if item == n.get("text")) > 1 else tap(item)
-        time.sleep(2)
 
 
 class Step:
