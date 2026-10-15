@@ -1065,6 +1065,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）
     STAMP_CLOSE: NONE,
     build_order: NONE,
+    build_relation: NONE,
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,
     key_from_uname: NONE,
