@@ -2,7 +2,7 @@
 import type { QuotaSource } from "./QuotaSource";
 
 /**
- * 一个窗口（照原名）：窗口键 · 取整的百分比 · 几点重置 · 几点、从哪看到的 · 已重置未计时。
+ * 一个窗口（照原名）：窗口键 · 取整的百分比 · 几点重置 · 几点、从哪看到的 · 1% ≈ 多少用量 · 已重置未计时。
  */
 export type WindowShow = { 
 /**
@@ -37,6 +37,11 @@ seenAtText?: string,
  * `seen_at` 距今（别台的钟走在前面时才有）。
  */
 seenAtRelText?: string, from: QuotaSource, 
+/**
+ * 这个号这个窗口「1% ≈ 多少用量」（折合输入 token：各类 token 按那一家的价比折）：中转数到的每发用量 ÷ 读数涨的点数；
+ * 量不到（读数没动 · 样本太少 · 只有一次读数 · 量出来超过 7 天）⇒ 缺。
+ */
+tokensPerPct?: number, 
 /**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */

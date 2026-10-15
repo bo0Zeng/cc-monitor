@@ -8,4 +8,8 @@ export type WinFact = { open: boolean, used: number, resets?: number,
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
  */
-resetsText?: string, rate?: number, };
+resetsText?: string, rate?: number, 
+/**
+ * 这一窗「1% ≈ 多少用量」（折合输入 token；同额度账那一格）：量不到 ⇒ 缺。
+ */
+tokensPerPct?: number, };

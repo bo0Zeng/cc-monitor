@@ -121,6 +121,8 @@ pub(super) mod tests {
         "quota/rotation/migrate.rs",
         // 额度显示态（纯）：帧面宿主与上游选择出显示态时问它；它不认识上游选择与账号库管理。
         "quota/show.rs",
+        // 每发用量的累计（额度账量「1% ≈ 多少」用；tap 口往里记）：它不认识上游选择与账号库管理。
+        "quota/spend.rs",
         // 轮换策略的沙箱（Rhai 的上限 · 调用 · 失败的形）：判的时候调它。
         "quota/strategy/mod.rs",
     ];

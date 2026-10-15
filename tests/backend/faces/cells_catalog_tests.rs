@@ -444,7 +444,8 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             {"name": "five_hour", "used": 0.6, "resetsAt": now + 3600, "warnedAt": 0.5},
             {"name": "seven_day", "used": 0.2, "resetsAt": now - 10}
         ], "overage": {"status": "rejected", "resetsAt": now + 7200, "disabled": "org_level_disabled", "inUse": false}},
-        "windowsSeen": {"five_hour": {"at": now + 120, "from": "headers"}}
+        "windowsSeen": {"five_hour": {"at": now + 120, "from": "headers"}},
+        "perPct": {"five_hour": {"tokens": 25_000, "at": now + 120}}
     }))
     .unwrap();
     let slot = crate::agents::window_slot_of(agent).unwrap();

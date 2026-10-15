@@ -296,9 +296,9 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 | 块 | 住址 | 做什么 |
 |---|---|---|
-| 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`） |
+| 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`）。另记每窗口「1% ≈ 多少用量」：中转从应答流里数到的每发用量（`accounts/quota/spend.rs`，读法在流面 `spent`）÷ 读数涨的点数，量不到就空着 |
 | 轮换存储 | `accounts/quota/rotation.rs`（`~/.cc-monitor/rotation.json` 第三版）· `accounts/quota/rules/shelf.rs`（`~/.cc-monitor/strategies/`） | 每个会话按会话 id 存：用哪份策略（空 ⇒ 不轮换）· 改过的设置 · 拖出来的顺序 · 策略约的叫醒 · 换号记录；新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
-| 事实 | `accounts/quota/facts.rs`（拼装在 `upstream_select/rotate.rs` 的 `Hop::facts`） | 每个号的用量 · 重置 · 用速 · 被拒 · 超额 · 登录；只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变 |
+| 事实 | `accounts/quota/facts.rs`（拼装在 `upstream_select/rotate.rs` 的 `Hop::facts`） | 每个号的用量 · 重置 · 用速 · 1% ≈ 多少用量 · 被拒 · 超额 · 登录；只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变 |
 | 节点 | `accounts/quota/nodes.rs` | 事实或设置变了的那一刻（读数 · 被拒 · 续期失败 · `quota.json` · 账号库 · 策略目录 · 会话那一条）；全进程一条通道，判的缓存与推送只订它。重置这类已知时刻不走它，判的那一侧记成下一个节点时刻 |
 | 判 | `accounts/quota/rules/decide.rs`（`turn`，纯函数）· `rules/standing.rs` · 策略文件里的 `decide(ctx)` · 积木库 `src/shared/rotation/lib.rhai` | 「换不换、换谁」全在策略里；后端只照策略交的先后取第一个事实上发得出去的号（`standing`）、停发、兜底 |
 | 推演 | `accounts/quota/rules/simulate.rs` | 离散事件推演，每个事件点调的是同一个 `turn`；每号照自己量出来的用速涨，量不到不编数 |
