@@ -570,7 +570,7 @@ pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> Ta
 /// 拉前之前那一步：要不要试切标签页。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TabStep {
-    /// 不试（不是 Windows Terminal：经典控制台没有标签，别的终端程序不试）。
+    /// 不试（不是 Windows Terminal：经典控制台没有标签，别的终端程序不试 · 终端那一级认出的窗口只开着一个标签：不用切）。
     Skip,
     /// 借这个进程的控制台挂记号试。
     Try(u32),
@@ -579,11 +579,13 @@ pub(crate) enum TabStep {
 }
 
 /// 只在 Windows Terminal 的窗口（`is_wt`）、而且窗口是借某一级的控制台认出来的才试（记号挂在那个控制台上）；
-/// 终端那一级认出的窗口 ⇒ 试不了：提权 ⇒ 无权；否则 ⇒ 读不到控制台。
-pub(crate) fn tab_step(via: Via, is_wt: bool) -> TabStep {
+/// 终端那一级认出的窗口 ⇒ 试不了，但它只开着一个标签（`tabs` 照进程树数，只在这一支才数）⇒ 前面显示的就是它、不用切；
+/// 否则说为什么：提权 ⇒ 无权；不提权 ⇒ 读不到控制台。
+pub(crate) fn tab_step(via: Via, is_wt: bool, tabs: impl Fn() -> usize) -> TabStep {
     match (is_wt, via) {
         (false, _) => TabStep::Skip,
         (true, Via::Shown(pid)) => TabStep::Try(pid),
+        (true, Via::Owner { .. }) if tabs() == 1 => TabStep::Skip,
         (true, Via::Owner { elevated: true }) => TabStep::Miss(TabMiss::Elevated),
         (true, Via::Owner { elevated: false }) => TabStep::Miss(TabMiss::NoConsole),
     }
@@ -620,7 +622,10 @@ fn bring_pick(p: &Pick) -> FrontOutcome {
     if let Err(m) = verify_window(w.hwnd, w.owner_pid, w.owner_proc_start) {
         return m.outcome();
     }
-    let tab = match tab_step(p.via, crate::platform::wt_tabs::is_terminal_window(w.hwnd)) {
+    let is_wt = crate::platform::wt_tabs::is_terminal_window(w.hwnd);
+    let tab = match tab_step(p.via, is_wt, || {
+        crate::platform::wt_tabs::tab_count(w.owner_pid)
+    }) {
         TabStep::Skip => None,
         TabStep::Miss(why) => Some(why),
         TabStep::Try(pid) => match crate::platform::console::pick_tab(pid, w.hwnd) {
@@ -932,6 +937,33 @@ pub fn bring_local_window(claude_pid: u32, bind: &BindRegistry) -> FrontOutcome 
         Ok(p) => bring_pick(&p),
         Err(o) => o,
     }
+}
+
+/// 真机诊断子命令 `--ccm-pick <pid>` 的命令行解析（与 `platform::console::helper_request` 同族，纯函数、判据喂）：
+/// 紧跟程序名的是 `--ccm-pick`、后面恰好一个数 ⇒ 那个 claude 进程号；别的形（没参数 · 别的旗 · 没进程号 · 不是数 · 多了参数）⇒ `None`。
+pub fn pick_request(args: &[String]) -> Option<u32> {
+    let (flag, rest) = args.get(1..)?.split_first()?;
+    if flag != "--ccm-pick" {
+        return None;
+    }
+    match rest {
+        [pid] => pid.parse::<u32>().ok(),
+        _ => None,
+    }
+}
+
+/// 被当成 `--ccm-pick <pid>` 诊断子命令起的那一趟：照 ↗ 本机那一格的真路子（[`bring_local_window`]：进程链 → 认窗口 →
+/// 终端那一级提权了没有 → 拉前 · 核前台 · 切标签页）算一次结局，印成一行 JSON（`kind` 与界面同一套），做完就退、不起 monitor。
+/// 真机上核「为什么切不了 / 是不是因为提权」用：判据只能喂替身的读法，提权终端的真令牌要真机才有。
+pub fn pick_main() -> Option<i32> {
+    let pid = pick_request(&std::env::args().collect::<Vec<_>>())?;
+    let bind = BindRegistry::spawn(std::env::temp_dir().join("cc-monitor-pick-probe"));
+    let outcome = bring_local_window(pid, &bind);
+    println!(
+        "{}",
+        serde_json::to_string(&outcome).unwrap_or_else(|_| format!("{outcome:?}"))
+    );
+    Some(0)
 }
 
 fn run_heartbeat(this: Arc<BindRegistry>) {
