@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.AttachLine
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Kill
 import com.ccmonitor.mobile.core.claude.link.Profiles
+import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionNew
@@ -116,14 +117,15 @@ class TerminalOps(
     }
 
     /** 这台能用的别名（那台的 `profiles-read`，名字与顺序照那台）：终端屏「用哪个启动」那一排。 */
-    suspend fun aliases(): Result<List<String>> = ask(Profiles.READ, emptyMap(), Profiles::of).map { it.usable }
+    suspend fun aliases(): Result<List<Profiles.Alias>> = ask(Profiles.READ, emptyMap(), Profiles::of).map { it.usable }
 
     /**
      * 在这台建一段别名（别名页同一条写命令 `profiles-write`，指纹取刚读回的那一份）。建好 ⇒ 那台要说的「已开的终端要重读」那一句
      * （没有 ⇒ `null`）；被拒 ⇒ 失败（那台写好的那一句）。
      */
-    suspend fun makeAlias(form: Map<String, Any?>): Result<String?> =
-        ask(Profiles.READ, emptyMap(), Profiles::of).mapCatching { book ->
+    suspend fun makeAlias(m: MovedLaunch): Result<String?> =
+        ask(Profiles.FROM_LINE, Profiles.fromLineArgs(m.label.trim(), m.command.orEmpty(), m.workingDir, m.tmuxSession), Profiles::formOf).mapCatching { form ->
+            val book = ask(Profiles.READ, emptyMap(), Profiles::of).getOrThrow()
             ask(Profiles.WRITE, Profiles.createArgs(book.fingerprint, form), Profiles::written).getOrThrow().reload
         }
 

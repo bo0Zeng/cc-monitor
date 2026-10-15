@@ -42,18 +42,23 @@ class LaunchFromAliasesTest {
     private fun row(
         name: String,
         usable: Boolean,
-    ) = mapOf("name" to name, "from" to null, "usable" to usable, "said" to name, "kind" to "link")
+    ) = mapOf("name" to name, "from" to null, "usable" to usable, "said" to name, "kind" to "link", "start" to "'/h/.cc-monitor/bin/ccm' @$name")
 
-    private fun link(write: Reply = Reply.Ok(mapOf("wrote" to true, "fingerprint" to "fp2", "reload" to null))) =
-        FakeCoreLink().apply {
-            answer = { cmd, _ ->
-                when (cmd) {
-                    Profiles.READ -> Reply.Ok(book)
-                    Profiles.WRITE -> write
-                    else -> Reply.LinkDown
-                }
+    private val folded = mapOf("name" to "cc", "args" to "--resume x")
+
+    private fun link(
+        write: Reply = Reply.Ok(mapOf("wrote" to true, "fingerprint" to "fp2", "reload" to null)),
+        fromLine: Reply = Reply.Ok(folded),
+    ) = FakeCoreLink().apply {
+        answer = { cmd, _ ->
+            when (cmd) {
+                Profiles.READ -> Reply.Ok(book)
+                Profiles.WRITE -> write
+                Profiles.FROM_LINE -> fromLine
+                else -> Reply.LinkDown
             }
         }
+    }
 
     @Test
     fun theRowReadsTheAliasesOfThatMachineAndListsOnlyUsableOnes() =
@@ -61,33 +66,41 @@ class LaunchFromAliasesTest {
             val l = link()
             val names = TerminalOps(l, { "box" }).aliases().getOrThrow()
             assertEquals(listOf(emptyMap<String, Any?>()), l.calls(Profiles.READ))
-            assertEquals("名字照那台给的、顺序照那台的；用不了的与首建预览不列", listOf("work", "cx"), names)
+            assertEquals("名字照那台给的、顺序照那台的；用不了的与首建预览不列", listOf("work", "cx"), names.map { it.name })
+            assertEquals("按一个敲的是那台写好的那一行", "'/h/.cc-monitor/bin/ccm' @work", names.first().start)
         }
 
     @Test
-    fun pressingOneRunsCcmWithThatAlias() {
-        assertEquals("ccm @work", Profiles.startLine("work"))
-    }
-
-    @Test
-    fun makingTheAliasSendsTheAliasPageWriteWithTheFingerprintJustRead() =
+    fun makingTheAliasAsksThatMachineToFoldTheLineThenWritesItsFormWithTheFingerprintJustRead() =
         runTest {
             val l = link()
-            val form = mapOf("name" to "cc")
-            val r = TerminalOps(l, { "box" }).makeAlias(form)
+            val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "cc", "~/w", "dev", "claude --resume x"))
             assertTrue(r.isSuccess)
             assertNull("终端函数那份没改 ⇒ 没有要重读那一句", r.getOrThrow())
             assertEquals(
-                listOf(mapOf("changes" to listOf(mapOf("op" to "set", "was" to null, "form" to form)), "fingerprint" to "fp1")),
+                listOf(mapOf("name" to "cc", "line" to "claude --resume x", "cwd" to "~/w", "sessionName" to "dev")),
+                l.calls(Profiles.FROM_LINE),
+            )
+            assertEquals(
+                listOf(mapOf("changes" to listOf(mapOf("op" to "set", "was" to null, "form" to folded)), "fingerprint" to "fp1")),
                 l.calls(Profiles.WRITE),
             )
+        }
+
+    @Test
+    fun aLineThatMachineCannotFoldSaysWhatItSaidAndWritesNothing() =
+        runTest {
+            val l = link(fromLine = Reply.Failed(CoreFailure("refused", "这条命令建不了别名", "")))
+            val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "top", "/srv", null, "htop -d 5"))
+            assertTrue(r.exceptionOrNull()?.message.orEmpty().contains("这条命令建不了别名"))
+            assertEquals(emptyList<Any?>(), l.calls(Profiles.WRITE))
         }
 
     @Test
     fun aRefusedWriteSaysWhatThatMachineSaid() =
         runTest {
             val l = link(write = Reply.Failed(CoreFailure("refused", "名字已被占用", "细节")))
-            val r = TerminalOps(l, { "box" }).makeAlias(mapOf("name" to "cc"))
+            val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "cc", null, null, "claude"))
             assertTrue(r.isFailure)
             assertTrue(
                 r
@@ -99,20 +112,9 @@ class LaunchFromAliasesTest {
         }
 
     @Test
-    fun theOldEntryIsListedVerbatimAndOnlyClaudeOrCcmOnesGetAMakeButton() {
-        val cc = MovedLaunch("h", "cc", null, null, "claude")
+    fun theOldEntryIsListedVerbatim() {
         val cct = MovedLaunch("h", "cct", "~/w x", "cc", "claude --resume  'a b'")
-        val bare = MovedLaunch("h", "c2", null, null, "ccm")
         val top = MovedLaunch("h", "top", "/srv", null, "htop -d 5")
-        val ccmArgs = MovedLaunch("h", "c3", null, null, "ccm --ccm-tmux")
-        assertEquals(mapOf("name" to "cc"), cc.aliasForm())
-        assertEquals(
-            mapOf("name" to "cct", "cwd" to "~/w x", "tmux" to mapOf("mode" to "fixed", "name" to "cc"), "args" to "--resume  'a b'"),
-            cct.aliasForm(),
-        )
-        assertEquals(mapOf("name" to "c2"), bare.aliasForm())
-        assertNull("别的命令只列出、不建", top.aliasForm())
-        assertNull("ccm 带了自己的选项 ⇒ 只列出（选项怎么折成别名那几格只在那台）", ccmArgs.aliasForm())
         val shown = cct.shownValues()
         assertTrue("目录 · 会话名 · 命令原样在", shown.containsAll(listOf("~/w x", "cc", "claude --resume  'a b'")))
         assertTrue("复制的那一段带着原命令", cct.clipText().contains("claude --resume  'a b'"))

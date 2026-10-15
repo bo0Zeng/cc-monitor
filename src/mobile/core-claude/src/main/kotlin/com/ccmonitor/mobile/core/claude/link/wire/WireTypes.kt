@@ -913,6 +913,7 @@ data class ProfilesBook(
 data class ProfileRow(
     val name: String,
     val usable: Boolean,
+    val start: String,
 )
 
 @WireOf("ProfilesWriteDone")

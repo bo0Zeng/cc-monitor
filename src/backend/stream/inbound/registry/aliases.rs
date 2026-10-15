@@ -12,6 +12,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::profiles_face::ProfilesResolve>(
         "一段合下来的合并表与「等于」那一行（可按未存的表单算）",
     ),
+    crate::wire::typed::blocking::<crate::faces::profiles_face::ProfilesFromLine>(
+        "一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折）",
+    ),
     crate::wire::typed::blocking::<crate::assets::aliases::page::ProfilesImpactCmd>(
         "这几处改动会让哪几段合下来变（改前改后）",
     ),

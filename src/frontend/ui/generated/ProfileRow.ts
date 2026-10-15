@@ -20,4 +20,8 @@ said: string, form: ProfileForm,
 /**
  * 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
-accountShape: ProfileAccountShape | null, };
+accountShape: ProfileAccountShape | null, 
+/**
+ * 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
+ */
+start: string, };

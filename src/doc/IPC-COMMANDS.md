@@ -8486,7 +8486,11 @@ said: string, form: ProfileForm,
 /**
  * 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
-accountShape: ProfileAccountShape | null, };
+accountShape: ProfileAccountShape | null, 
+/**
+ * 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
+ */
+start: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
@@ -8607,6 +8611,42 @@ name: string, edit?: ProfileForm | null,
  * `~` 打头按这台家目录展开。
  */
 at?: string | null, };
+type Tab = "show" | "hide";
+```
+
+码：`bad_args` · `refused`
+
+#### `profiles-from-line`
+
+一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-from-line`
+
+入参 `ProfilesFromLineReq` · 回包 `ProfileForm`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ProfileAccountPick = { "kind": "account", name: string, } | { "kind": "base" };
+type ProfileCwdCase = { at: string, to: string, };
+type ProfileForm = { name: string, from: string | null, account: ProfileAccountPick | null, tmux: ProfileTmuxPick | null, cwdIf: Array<ProfileCwdCase> | null, cwd: string | null, agent: string | null, 
+/**
+ * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
+ */
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };
+type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
+type ProfilesFromLineReq = { name: string, 
+/**
+ * 那一条命令原样（写法同 shell：空白分词、引号里原样）。
+ */
+line: string, cwd?: string | null, 
+/**
+ * 起在这个固定名的 tmux 会话里（缺 ⇒ 照命令行）。
+ */
+sessionName?: string | null, };
 type Tab = "show" | "hide";
 ```
 
@@ -12564,6 +12604,7 @@ needs: string | null, };
 | `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |
 | `--prefs-set` | ＝ 帧命令 `prefs-set`：改这台的偏好，写完读回 |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
+| `--profiles-from-line` | ＝ 帧命令 `profiles-from-line`：一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
 | `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
 | `--profiles-resolve` | ＝ 帧命令 `profiles-resolve`：一段合下来的合并表与「等于」那一行（可按未存的表单算） |

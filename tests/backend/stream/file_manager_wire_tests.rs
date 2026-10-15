@@ -68,6 +68,14 @@ fn scrub(v: &mut Value, root: &str) {
                     *o = json!("<OWNER>");
                 }
             }
+            // 面包屑在夹具根之上那几段看临时目录落在哪（进程号也在里面），不是契约：只留根及以下那几段。
+            if let Some(Value::Array(c)) = m.get_mut("crumbs") {
+                c.retain(|seg| {
+                    seg["path"]
+                        .as_str()
+                        .is_some_and(|p| p.starts_with(root) && p != root)
+                });
+            }
             m.values_mut().for_each(|x| scrub(x, root));
         }
         _ => {}
