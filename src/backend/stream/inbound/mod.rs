@@ -286,8 +286,7 @@ async fn handle_line(
     let plan = match views::plan_of(&req) {
         Ok(p) => p,
         Err(f) => {
-            let (id, cmd, args) = (req.id.clone(), req.cmd.clone(), req.args.clone());
-            send(replies, f.into_reply(id, &cmd, &args)).await;
+            send(replies, f.into_reply(req.id.clone(), &req.cmd)).await;
             return;
         }
     };
@@ -426,7 +425,7 @@ fn dispatch(
         ),
         // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
         "stream-watch" => match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
-            Err(f) => Disposition::Reply(f.into_reply(req.id, &req.cmd, &req.args)),
+            Err(f) => Disposition::Reply(f.into_reply(req.id, &req.cmd)),
             Ok(ask) => {
                 let answer = (given.watch.0)(ask);
                 Disposition::SpawnData(
@@ -519,7 +518,7 @@ fn dispatch(
         "cancel" => {
             let target = match crate::wire::typed::take::<crate::wire::conn::CancelReq>(&req.args) {
                 Ok(c) => c.target,
-                Err(f) => return Disposition::Reply(f.into_reply(req.id, &req.cmd, &req.args)),
+                Err(f) => return Disposition::Reply(f.into_reply(req.id, &req.cmd)),
             };
             // ★ **不可取消的命令要说实话，不许回一条撒谎的 `cancelled`。**
             //
@@ -734,7 +733,6 @@ async fn spawn_handler<F, Fut>(
 {
     let id = req.id.clone();
     let cmd = req.cmd.clone();
-    let args = req.args.clone();
 
     // ── ★ 拒重复 `id` ─────────────────────────────────────────────────────
     //
@@ -786,7 +784,7 @@ async fn spawn_handler<F, Fut>(
                 detail: None,
                 data: plan.apply(data),
             },
-            Err(f) => f.into_reply(id_for_task.clone(), &cmd, &args),
+            Err(f) => f.into_reply(id_for_task.clone(), &cmd),
         };
         // 先摘登记再回应答：反过来的话，客户端收到应答后立刻发 cancel，
         // 可能命中一个已经跑完但还没摘掉的句柄，白 abort 一个空壳。

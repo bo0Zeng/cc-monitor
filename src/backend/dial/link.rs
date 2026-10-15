@@ -337,10 +337,10 @@ impl Table {
 
     /// `link-data`：解码、进那条链路的上行队列。`None` = 应答由上行泵在写进管子之后发。
     pub fn data(&self, id: &str, args: &serde_json::Value) -> Option<Frame> {
-        let refuse = |e| Some(crate::wire::typed::refuse::<LinkData>(id, args, e));
+        let refuse = |e| Some(crate::wire::typed::refuse::<LinkData>(id, e));
         let r: LinkDataReq = match crate::wire::typed::take(args) {
             Ok(r) => r,
-            Err(f) => return Some(f.into_reply(id.to_string(), LINK_DATA, args)),
+            Err(f) => return Some(f.into_reply(id.to_string(), LINK_DATA)),
         };
         if let Err(m) = link_ok(&r.link) {
             return refuse(LinkDataErr::BadArgs(m));

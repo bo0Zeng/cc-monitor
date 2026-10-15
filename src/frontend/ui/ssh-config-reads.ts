@@ -1,6 +1,6 @@
 /**
  * 「从 `~/.ssh/config` 导入」那一问**走通道，本机常驻后端出成品**：批量导入预览（同一台机器的多个地址聚成一组），
- * 帧命令 `ssh-config-import`，成品 `{groups:[…]}`。
+ * 帧命令 `ssh-config-import`，成品 `{groups:[…], partial}`（`partial`：有别名在期限内没读完，`groups` 只是读到的那一部分）。
  *
  * 解读与拨号同一个家（后端 `dial/ssh_config.rs`）；monitor 零 SSH。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  * 入参 · 回包都是后端类型生成的（`generated/`）；回包形状由握手时的形状指纹管，这里不逐格判。
@@ -8,6 +8,7 @@
 import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { SshImportGroup } from "./generated/SshImportGroup";
+import type { SshImported } from "./generated/SshImported";
 
 /** 批量导入预览的一组：聚合后的一台建议机器（含多地址与来源成员 · 是否已在机器列表里）。 */
 export type ImportGroup = SshImportGroup;
@@ -21,10 +22,9 @@ function said(e: unknown): Error {
 }
 
 /** 批量导入预览。`known` ＝ 机器列表里已有的那几台（后端据它标「已在列表里」）。 */
-export async function importSshHosts(known: { host: string; user: string; port: number }[]): Promise<ImportGroup[]> {
+export async function importSshHosts(known: { host: string; user: string; port: number }[]): Promise<SshImported> {
   try {
-    const { groups } = await callTyped(LOCAL_ORIGIN, "ssh-config-import", { known }, budgetWithin(SSH_IMPORT_BUDGET_MS));
-    return groups;
+    return await callTyped(LOCAL_ORIGIN, "ssh-config-import", { known }, budgetWithin(SSH_IMPORT_BUDGET_MS));
   } catch (e) {
     throw said(e);
   }

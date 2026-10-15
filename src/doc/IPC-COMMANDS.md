@@ -11950,7 +11950,11 @@ jump: string | null, members: Array<SshImportMember>,
 inList: boolean, };
 type SshImportMember = { alias: string, host: string, port: number, proxyJump: string | null, };
 type SshImportReq = { known: Array<KnownHost>, };
-type SshImported = { groups: Array<SshImportGroup>, };
+type SshImported = { groups: Array<SshImportGroup>, 
+/**
+ * 有别名在期限内没读完（整批的期限用完 · 那一发卡住）：`groups` 只是读到的那一部分。
+ */
+partial: boolean, };
 ```
 
 码：`bad_args`

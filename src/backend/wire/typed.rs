@@ -95,6 +95,25 @@ pub(crate) fn of_fail<E: Codes>(f: Fail, fallback: fn(String) -> E) -> E {
     })
 }
 
+/// 同 [`of_fail`]，那一句照这一条自己的「码 → 句」表换（`said` 按落定的码给句子；`None` ⇒ 照下层那句）：下层那句进原话。
+/// 码表外的码先落 `fallback` 那一格再查表（同投出去时的码）。
+pub(crate) fn of_fail_said<E: Codes>(
+    f: Fail,
+    fallback: fn(String) -> E,
+    said: impl FnOnce(&str) -> Option<String>,
+) -> E {
+    let code = if E::ALL.contains(&f.code.as_str()) {
+        f.code.clone()
+    } else {
+        fallback(String::new()).into_fail().code
+    };
+    let f = match said(&code) {
+        Some(s) => f.retold(s),
+        None => f,
+    };
+    of_fail(f, fallback)
+}
+
 /// 文件管理面（同 `faces::launch_face::Files`）：生产那一份住 `stream/inbound`（`LocalFiles`），由命令表那一行递进来
 /// —— 写面只有 `stream/inbound/` 够得着（`readonly_guard` 第三层），本文件不点它的名。
 pub(crate) type Files = &'static (dyn crate::common::door::Door + Sync);
@@ -331,17 +350,13 @@ pub(crate) fn answer<C: Command>(
             detail: None,
             data,
         },
-        Err(f) => f.into_reply(id.to_string(), C::NAME, args),
+        Err(f) => f.into_reply(id.to_string(), C::NAME),
     }
 }
 
 /// 一发失败的应答帧（码表里那一格）：硬臂那几条自己发应答的（`link-data` 成功那一下由上行泵回）失败时经它。
-pub(crate) fn refuse<C: Command>(
-    id: &str,
-    args: &serde_json::Value,
-    e: C::Err,
-) -> crate::wire::Frame {
-    e.into_fail().into_reply(id.to_string(), C::NAME, args)
+pub(crate) fn refuse<C: Command>(id: &str, e: C::Err) -> crate::wire::Frame {
+    e.into_fail().into_reply(id.to_string(), C::NAME)
 }
 
 /// 帧面硬臂那一档交给通用 spawn 那一路的一份（异步：`cancel` 能在 await 点打断）：入参按类型收 → 本体 future → 结局。

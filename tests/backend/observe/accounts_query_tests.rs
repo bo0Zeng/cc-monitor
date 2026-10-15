@@ -2028,6 +2028,50 @@ fn live_mcp_failed_takes_the_latest_word_from_live_sessions_only() {
     );
 }
 
+/// 扩展页每打开一次只读各条活会话记录新长出来的那一截（MCP 那一格接着上一次往下改）；记录变短了（换了一份）⇒ 从头读；
+/// 不在这一轮名单里的记录忘掉。夹具：读过一次之后把已读那一截改写成同长的另一个名字 —— 只读尾巴就看不见它。
+#[test]
+fn the_mcp_word_of_a_live_record_is_read_from_where_the_last_look_stopped() {
+    let delta = |name: &str| {
+        format!(
+            "{}\n",
+            serde_json::json!({"type": "attachment", "timestamp": "2026-10-09T10:00:00.000Z", "attachment": {"type": "deferred_tools_delta", "failedMcpServers": [{"name": name, "error": "e"}]}})
+        )
+    };
+    let names = |v: &[crate::observe::facts_query::McpTrouble]| -> Vec<String> {
+        v.iter().map(|m| m.name.clone()).collect()
+    };
+    let dir = tmpdir("mcp-tail");
+    let rec = dir.join("s.jsonl");
+    let mut book = McpBook::default();
+    fs::write(&rec, delta("m-a")).unwrap();
+    assert_eq!(names(&book.read(&rec).unwrap()), ["m-a"]);
+    // 已读那一截换成同长的 `m-z`，再长出一行「m-n 要登录」：只读尾巴 ⇒ 断开的还是 m-a。
+    let first = delta("m-z");
+    let second = format!(
+        "{}\n",
+        serde_json::json!({"type": "attachment", "timestamp": "2026-10-09T10:01:00.000Z", "attachment": {"type": "deferred_tools_delta", "needsAuthMcpServers": ["m-n"]}})
+    );
+    fs::write(&rec, format!("{first}{second}")).unwrap();
+    let got = book.read(&rec).unwrap();
+    assert_eq!(names(&got), ["m-a", "m-n"]);
+    // 半行（还在写）不算读过：补完那一行再读才算进去。
+    let half = delta("m-c");
+    let (h1, h2) = half.split_at(half.len() / 2);
+    fs::write(&rec, format!("{first}{second}{h1}")).unwrap();
+    assert_eq!(names(&book.read(&rec).unwrap()), ["m-a", "m-n"]);
+    fs::write(&rec, format!("{first}{second}{h1}{h2}")).unwrap();
+    assert_eq!(names(&book.read(&rec).unwrap()), ["m-c", "m-n"]);
+    // 变短了 ⇒ 从头读。
+    fs::write(&rec, delta("m-z")).unwrap();
+    assert_eq!(names(&book.read(&rec).unwrap()), ["m-z"]);
+    // 这一轮没看它 ⇒ 忘掉：之后同长换了内容也从头读（记着的话长度没变、一个字都不读，还说 m-z）。
+    book.keep_only(&[]);
+    fs::write(&rec, delta("m-y")).unwrap();
+    assert_eq!(names(&book.read(&rec).unwrap()), ["m-y"]);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// **`viaRelay` 答的是「这条活会话的进程环境里，上游地址是不是本机中转那一形」**：
 /// 带钥匙段的回环中转地址 ⇒ `true`；别的地址（直连 / 没带钥匙的旧形状）⇒ `false`；没设 ⇒ `false`；进程已死 ⇒ `null`。
 /// 而且**值本身不出参**（它带着中转钥匙）。守的要求：「`session_accounts` 多读 `ANTHROPIC_BASE_URL` ·

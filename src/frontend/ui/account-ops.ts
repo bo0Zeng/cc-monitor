@@ -58,7 +58,7 @@ const CHANGE_BUDGET_MS = 60_000;
 /** 只读 / 只算的那两条。 */
 const READ_BUDGET_MS = 20_000;
 
-/** 被拒：那一句由那台后端写好（契约对不上那一档也是，`src/backend/wire/said.rs`）；没说 ⇒ 原因不明。 */
+/** 被拒：那一句由那台后端写好（契约对不上那一档也是）；没说 ⇒ 原因不明。 */
 function refusals(): Refusals {
   return asSaid(() => copyText("accountOps.said.noReason"));
 }

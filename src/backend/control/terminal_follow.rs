@@ -220,8 +220,19 @@ pub(crate) struct FollowErr(&'static str, String);
 impl FollowErr {
     /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
     pub(crate) fn of(e: CmdErr) -> FollowErr {
-        crate::wire::typed::of_fail(e, |said| FollowErr("unobservable", said))
+        crate::wire::typed::of_fail_said(e, |said| FollowErr("unobservable", said), said)
     }
+}
+
+/// 订实时画面被拒成 `code` 时给人看的那一句；太老的 tmux（带版本）与满了（带上限）处理器那句就是成品 ⇒ `None`。
+pub(crate) fn said(code: &str) -> Option<String> {
+    Some(match code {
+        "tmux_too_old" | "too_many_follows" => return None,
+        "no_tmux" => copy_text("beTermFollow.refuse.noTmux", &[]),
+        "not_known" => copy_text("beTermFollow.refuse.gone", &[]),
+        "ambiguous" => copy_text("beTermFollow.refuse.ambiguous", &[]),
+        _ => copy_text("beTermFollow.refuse.other", &[]),
+    })
 }
 
 impl crate::wire::typed::Codes for FollowErr {

@@ -2,6 +2,7 @@
 //!
 //! 设了环境变量 [`ENV`]（值 = 一个文件路径）才开：之后每帧往那份文件追加一行，说这一帧为什么画、画面与字的布局比上一帧变没变。
 //! 没设 ⇒ [`FrameLog::off`]，[`FrameLog::record`] 第一句就回去：不读画面、不算哈希、不写任何东西。
+//! 开着忘了关：一扇窗记满 [`MAX_FRAMES`] 帧（一行约两百字节，约 20 MB）写一行 `stopped=cap frames=<n>` 就自己关掉。
 //!
 //! 一行长这样（空格分隔的 `键=值`，好 grep）：
 //! `frame=12 t_ms=3456 pass=0 events=1 pointer=512.0,88.5 ppp=1.50 paint=changed layout=same shapes=214 why=…`
@@ -18,12 +19,16 @@ use std::io::Write as _;
 /// 打开帧日志的环境变量（值 = 日志文件路径）。
 pub const ENV: &str = "CCM_FILEWIN_FRAME_LOG";
 
+/// 一扇窗最多记几帧。
+pub const MAX_FRAMES: u64 = 100_000;
+
 /// 帧日志。关着的那一形什么都不做。
 #[derive(Debug, Default)]
 pub struct FrameLog {
     out: Option<std::io::BufWriter<std::fs::File>>,
     started: Option<std::time::Instant>,
     frames: u64,
+    cap: u64,
     last: Option<(u64, u64)>,
 }
 
@@ -56,6 +61,7 @@ impl FrameLog {
             out: Some(std::io::BufWriter::new(f)),
             started: Some(std::time::Instant::now()),
             frames: 0,
+            cap: MAX_FRAMES,
             last: None,
         })
     }
@@ -93,7 +99,18 @@ impl FrameLog {
             pointer.map_or_else(|| "none".to_string(), |p| format!("{:.1},{:.1}", p.x, p.y)),
             if why.is_empty() { "-".to_string() } else { why.join("|") },
         );
-        if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
+        // 记满了 ⇒ 这一行后面跟一行「停了」，之后关掉。
+        let stop = self.frames >= self.cap;
+        let tail = if stop {
+            format!("\nstopped=cap frames={}", self.frames)
+        } else {
+            String::new()
+        };
+        if writeln!(out, "{line}{tail}")
+            .and_then(|()| out.flush())
+            .is_err()
+            || stop
+        {
             self.out = None;
         }
     }
@@ -109,6 +126,14 @@ impl FrameLog {
     /// 记过几帧（关着恒 0）。
     pub(crate) fn frames(&self) -> u64 {
         self.frames
+    }
+
+    /// 同 [`FrameLog::to_file`]，记满 `cap` 帧就停。
+    pub(crate) fn capped(path: &std::path::Path, cap: u64) -> std::io::Result<Self> {
+        Ok(Self {
+            cap,
+            ..Self::to_file(path)?
+        })
     }
 }
 

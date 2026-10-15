@@ -3,6 +3,7 @@
 
 use super::terminals::{self as t, CmdErr, On};
 use crate::wire::typed::{self, Command};
+use copy_core::copy_text;
 use serde::Deserialize;
 
 // ── 入参 ──────────────────────────────────────────────────────────────
@@ -202,8 +203,11 @@ impl crate::wire::typed::Handle for TerminalPreviewCmd {
         async move {
             let cx = &cx;
 
-            t::preview_on(On::default(), &req, &cx.tz)
-                .map_err(|f| typed::of_fail(f, TerminalPreviewErr::CaptureFailed))
+            t::preview_on(On::default(), &req, &cx.tz).map_err(|f| {
+                typed::of_fail_said(f, TerminalPreviewErr::CaptureFailed, |c| {
+                    Some(preview_said(c))
+                })
+            })
         }
     }
 }
@@ -224,7 +228,29 @@ impl crate::wire::typed::Handle for TerminalInputCmd {
         req: TerminalInputReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Sent, TerminalInputErr>> + Send + 'static {
-        async move { input(&req).map_err(|f| typed::of_fail(f, TerminalInputErr::Unobservable)) }
+        async move {
+            input(&req).map_err(|f| {
+                typed::of_fail_said(f, TerminalInputErr::Unobservable, |_| {
+                    Some(copy_text("terminalReads.input.refused", &[]))
+                })
+            })
+        }
+    }
+}
+
+/// 读画面被拒成 `code` 时给人看的那一句（终端的显示名后端不知道，界面放在句子旁边）。
+pub(crate) fn preview_said(code: &str) -> String {
+    match code {
+        "no_tmux" => copy_text("terminalReads.preview.noTmux", &[]),
+        "no_server" => copy_text("terminalReads.preview.noServer", &[]),
+        "no_such_session" => copy_text("terminalReads.preview.noSuchSession", &[]),
+        "capture_failed" => copy_text("terminalReads.preview.failed", &[]),
+        "bad_target" | "bad_args" => copy_text("terminalReads.preview.badTarget", &[]),
+        "not_known" => copy_text("terminalReads.preview.notKnown", &[]),
+        "ambiguous" => copy_text("terminalReads.preview.ambiguous", &[]),
+        "unobservable" => copy_text("terminalReads.preview.unobservable", &[]),
+        "child_timed_out" => copy_text("terminalReads.preview.childTimedOut", &[]),
+        _ => copy_text("terminalReads.preview.otherCode", &[]),
     }
 }
 

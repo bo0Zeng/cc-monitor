@@ -24825,6 +24825,12 @@
       "args": [],
       "limited": ["SSH"]
     },
+    "addMachine.ssh.partial": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "有的别名超过时限未读出，不在下面；关掉再打开此框会重读",
+      "args": []
+    },
     "addMachine.ssh.inList": {
       "kind": "body",
       "role": "片段",

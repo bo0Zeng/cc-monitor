@@ -462,6 +462,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "monitor 重放留存里全部会话合起来的正文字节（单会话另有条数上界 `REPLAY_TAIL_KEEP` ＋ `TRIM_SLACK`）",
         "截断+说清",
     ),
+    // 帧日志（查闪烁时才开）一扇窗最多记几帧（**条数，不是字节**）：记满写一行 `stopped=cap` 再关掉 ⇒ 「截断+说清」。
+    (
+        "src/frontend/filewin/src/frame_log.rs",
+        "MAX_FRAMES",
+        "文件窗口帧日志一扇窗最多记几帧（**条数，不是字节**；一行约两百字节）",
+        "截断+说清",
+    ),
     (
         "src/frontend/filewin/src/source.rs",
         "LS_LIMIT",

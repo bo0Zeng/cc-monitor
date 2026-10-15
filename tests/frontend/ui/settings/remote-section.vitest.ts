@@ -97,7 +97,7 @@ vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
     return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
   };
   return {
-    importSshHosts: ask("ssh-config-import", []),
+    importSshHosts: ask("ssh-config-import", { groups: [], partial: false }),
   };
 });
 import { loadConfig } from "../../../../src/frontend/ui/config";
@@ -944,7 +944,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
 
     it("★ 已在列表的那台灰着、勾不了；主按钮按勾上的数写「添加 1 台」；点之前一个字节都不写", async () => {
-      ipcReplies.set("ssh-config-import", sshGroups);
+      ipcReplies.set("ssh-config-import", { groups: sshGroups, partial: false });
       const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
       vi.mocked(saveConfig).mockClear();
       const dlg = await openAdd(sec);
@@ -958,7 +958,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
 
     it("★ 撞名当场说、主按钮禁用；改掉就能加，写盘一次、框关、新那台进列表", async () => {
-      ipcReplies.set("ssh-config-import", sshGroups.slice(1));
+      ipcReplies.set("ssh-config-import", { groups: sshGroups.slice(1), partial: false });
       const p = fakePages();
       const sec = await mount([mkH("gpu", "5.5.5.5")], p.host);
       vi.mocked(saveConfig).mockClear();
@@ -978,8 +978,25 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       ipcReplies.clear();
     });
 
+    it("★ 后端说只读到一部分 ⇒ 多一行说明、读到的照列；一组都没读到也留在这一栏（不说成没有 config）；读全了不说", async () => {
+      const partialNote = async (groups: typeof sshGroups, partial: boolean): Promise<HTMLElement> => {
+        document.body.replaceChildren();
+        ipcReplies.set("ssh-config-import", { groups, partial });
+        return openAdd(await mount([], fakePages().host));
+      };
+      let dlg = await partialNote(sshGroups.slice(1), true);
+      expect(dlg.querySelectorAll(".add-machine-row")).toHaveLength(1);
+      expect(dlg.querySelector<HTMLElement>('[data-partial="true"]')?.textContent).toBe(copyText("addMachine.ssh.partial"));
+      dlg = await partialNote([], true);
+      expect(dlg.querySelector<HTMLElement>('[data-partial="true"]')?.textContent).toBe(copyText("addMachine.ssh.partial"));
+      expect(dlg.textContent).not.toContain(copyText("addMachine.ssh.none"));
+      dlg = await partialNote(sshGroups.slice(1), false);
+      expect(dlg.querySelector('[data-partial="true"]'), "读全了还说只读到一部分").toBeNull();
+      ipcReplies.clear();
+    });
+
     it("★ 写失败：框不关、填的都在、框顶说没存上；卡收回去（列表里不多一台）", async () => {
-      ipcReplies.set("ssh-config-import", []);
+      ipcReplies.set("ssh-config-import", { groups: [], partial: false });
       const p = fakePages();
       const sec = await mount([mkH("a", "1.1.1.1")], p.host);
       const dlg = await openAdd(sec);
@@ -1045,9 +1062,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     afterEach(() => dispatcher.popOverlay(panel));
 
     it("添加机器", async () => {
-      ipcReplies.set("ssh-config-import", [
-        { label: "x", host: "h", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "x", host: "h", port: 22, proxyJump: null }] },
-      ]);
+      ipcReplies.set("ssh-config-import", {
+        groups: [{ label: "x", host: "h", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "x", host: "h", port: 22, proxyJump: null }] }],
+        partial: false,
+      });
       const sec = await mount([], fakePages().host);
       document.body.appendChild(sec.element);
       sec.headActions()[0]!.click();
