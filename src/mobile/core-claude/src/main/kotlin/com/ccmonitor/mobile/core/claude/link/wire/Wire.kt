@@ -32,4 +32,13 @@ object Wire {
         } catch (_: JsonDataException) {
             null
         }
+
+    /** 反过来：声明好的入参类出成线上那一份（交 `CoreLink.call` 的 `args`）；可空那一格为 null ⇒ 不交那个键。 */
+    inline fun <reified T : Any> args(value: T): Map<String, Any?> = args(T::class.java, value)
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> args(
+        type: Class<T>,
+        value: T,
+    ): Map<String, Any?> = moshi.adapter(type).toJsonValue(value) as Map<String, Any?>
 }

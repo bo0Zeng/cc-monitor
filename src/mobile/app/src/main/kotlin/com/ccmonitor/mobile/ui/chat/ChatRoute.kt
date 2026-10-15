@@ -45,6 +45,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
+import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.chatHolder
@@ -52,6 +53,7 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -89,6 +91,8 @@ fun ChatRoute(
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val backends = koinInject<HostBackends>()
+    val sid = remember(vm) { vm.state.map { it.sid } }
     // 在屏上才进这台的 stream-watch 名单（离屏 ⇒ 退出，列表页上名单是空的）。
     DisposableEffect(vm) {
         vm.visible(true)
@@ -131,6 +135,7 @@ fun ChatRoute(
                     actions = vm.actions,
                     onRetrySend = vm::retry,
                     onLoadOlder = vm::loadOlder,
+                    needs = { ChatNeeds(open.key, backends.of(hostId), sid, host.machine) },
                     modifier = Modifier.weight(1f),
                 )
             }
