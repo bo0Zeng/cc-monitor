@@ -92,7 +92,13 @@ class LaunchFromAliasesTest {
         runTest {
             val l = link(fromLine = Reply.Failed(CoreFailure("refused", "这条命令建不了别名", "")))
             val r = TerminalOps(l, { "box" }).makeAlias(MovedLaunch("h", "top", "/srv", null, "htop -d 5"))
-            assertTrue(r.exceptionOrNull()?.message.orEmpty().contains("这条命令建不了别名"))
+            assertTrue(
+                r
+                    .exceptionOrNull()
+                    ?.message
+                    .orEmpty()
+                    .contains("这条命令建不了别名"),
+            )
             assertEquals(emptyList<Any?>(), l.calls(Profiles.WRITE))
         }
 

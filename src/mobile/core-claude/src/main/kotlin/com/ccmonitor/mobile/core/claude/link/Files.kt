@@ -155,8 +155,9 @@ object FilesLs {
         val r = Wire.bind<LsReply>(data) ?: return null
         val entries = r.entries.map(::entryOf)
         val crumbs = r.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
-        val up = r.up?.let { RemotePath.of(it) }
-        if (null in entries || null in crumbs || (r.up != null && up == null)) return null
+        // 上一级缺 ＝ 到顶；给了却读不出 ⇒ 同那几格读不出。
+        val up = r.up?.let { RemotePath.of(it) ?: return null }
+        if (null in entries || null in crumbs) return null
         return Listing(entries.filterNotNull(), r.truncated, r.total, up, crumbs.filterNotNull())
     }
 
