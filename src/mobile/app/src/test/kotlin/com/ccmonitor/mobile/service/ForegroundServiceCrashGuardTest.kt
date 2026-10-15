@@ -41,7 +41,7 @@ class ForegroundServiceCrashGuardTest {
         val f = moduleFile("src/main/kotlin/com/ccmonitor/mobile/service/SshKeepAliveService.kt")
         assertTrue("前提：扫不到服务源文件（本判据会恒绿）：${f.absolutePath}", f.isFile)
         val text = f.readText()
-        assertTrue("前提：服务源文件得真有内容（实得 ${text.lineSequence().count()} 行）", text.lineSequence().count() > 300)
+        assertTrue("前提：服务源文件里得真有那个服务类（读到的不是它）", "class SshKeepAliveService : Service()" in text)
         return text
     }
 
