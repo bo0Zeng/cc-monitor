@@ -620,7 +620,6 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         homes: vec![],
         commands: vec!["ping".into()],
         unavailable: vec![],
-        uncancellable: vec![],
         // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
         shapes: cmd_wire::shapes::SHAPES
             .iter()

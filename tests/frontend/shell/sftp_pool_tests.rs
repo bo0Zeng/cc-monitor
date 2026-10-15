@@ -43,7 +43,6 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         homes: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
-        uncancellable: vec![],
         // 同一版的后端：typed 那几条（开单两条）的形状指纹照本侧编进来的那一份交。
         shapes: cmd_wire::shapes::SHAPES
             .iter()

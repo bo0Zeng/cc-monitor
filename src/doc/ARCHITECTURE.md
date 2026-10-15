@@ -283,7 +283,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - **命令表**：后端每条入方向命令一行 `CommandSpec`（名字 · 一句说明 · 错误码 · 入参与回包的每一格 · 跑在哪一档），按域分文件住 `src/backend/stream/inbound/registry/`；信封、取消、期限在 `stream/inbound/`。
 - **一张表两个面**：帧面（长连接上的 `{op, args}`）与 CLI 面（`ccm -- --<命令>`，入参从 stdin 读一段 JSON 或 `--args-b64`）从同一张表派生；只上帧面的登记为 `STREAM_ONLY`。CLI 面的子命令全表是 `lib.rs::SUBCOMMANDS`，其中不从命令表派生、只在 CLI 面的那几条说明在 `stream/inbound/cli_only.rs`。
 - **协议参考从代码生成**：`IPC-COMMANDS.md` 由 `tests/backend/protocol_doc_gen.rs` 从命令表与帧类型写出，判据是「重新生成 == 仓里那份」；改了命令或帧之后在 `src/backend` 下跑 `CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen`。
-- **握手**：hello 带 `commands`（这台接受的命令）· `unavailable`（接得下、这台做不到的，带码）· `uncancellable`（开跑之后撤不动的）；出口据它置灰，不猜。
+- **握手**：hello 带 `commands`（这台接受的命令）· `unavailable`（接得下、这台做不到的，带码）· `shapes`（每条 typed 命令的形状指纹，撤不撤得动算在里面）；出口据它置灰，不猜。
 - **调用方**：桌面界面经 `chan.call(origin, op, payload)`，回包解码写在各 `*-reads.ts`；手机经 `core-claude` 的 `FrameClient`；脚本与 skill 走 CLI 面。
 
 ### 3.3 中转与账号轮换

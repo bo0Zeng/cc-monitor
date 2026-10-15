@@ -370,7 +370,7 @@ pub const WITHDRAW_OP: &str = "cancel";
 /// 对端对补发的撤单回这个码 ⇒ 那一条它停不下来（阻塞档），会照跑完。
 pub const WITHDRAW_REFUSED: &str = "not_cancellable";
 
-/// 对端握手时交出的能力事实：接哪些 op · 哪几条在这台做不到（附码）· 哪几条撤不动。
+/// 对端握手时交出的能力事实：接哪些 op · 哪几条在这台做不到（附码）· typed 命令的形状指纹。
 /// 一条连接一份；「认不认 / 做不做得到 / 撤不撤得动」只问它。外部前端与 webview 拿的是它的拷贝（序列化形）。
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Offer {
@@ -378,9 +378,6 @@ pub struct Offer {
     /// `(op, 码)`：接得下、这台做不到；码与对端事后会回的同一个。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     unavailable: Vec<(String, String)>,
-    /// 撤不动的 op（对端开跑之后停不下）。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    uncancellable: Vec<String>,
     /// typed 命令的形状指纹 `(op, 指纹)`（`hello.shapes`）：跟本侧编进来的那一张（`cmd_wire::SHAPES`）比，对不上的 op 不发（[`Offer::shape_differs`]）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     shapes: Vec<(String, String)>,
@@ -398,16 +395,11 @@ pub enum Withdraw {
 }
 
 impl Offer {
-    /// 对端握手时交出的三格，原样收下。
-    pub fn new(
-        ops: Vec<String>,
-        unavailable: Vec<(String, String)>,
-        uncancellable: Vec<String>,
-    ) -> Self {
+    /// 对端握手时交出的两格，原样收下。
+    pub fn new(ops: Vec<String>, unavailable: Vec<(String, String)>) -> Self {
         Self {
             ops,
             unavailable,
-            uncancellable,
             shapes: Vec::new(),
         }
     }
@@ -451,14 +443,9 @@ impl Offer {
     }
 
     /// 这个 op 的请求**已发出**、被本地撤掉之后，对端那一半的处置。
-    /// 撤不撤得动：typed 命令看本侧编进来的指纹表（`cmd_wire::shapes::UNCANCELLABLE`；它算进了指纹，
-    /// 指纹对得上才会发 ⇒ 两边一致）；别的看对端交的那一栏。
+    /// 撤不撤得动看本侧编进来的那张表（`cmd_wire::shapes::UNCANCELLABLE`；它算进了指纹，指纹对得上才会发 ⇒ 两边一致）。
     pub fn withdraw(&self, op: &str) -> Withdraw {
-        let stuck = if cmd_wire::shapes::shape_of(op).is_some() {
-            cmd_wire::shapes::UNCANCELLABLE.contains(&op)
-        } else {
-            self.uncancellable.iter().any(|o| o == op)
-        };
+        let stuck = cmd_wire::shapes::UNCANCELLABLE.contains(&op);
         if self.admits(WITHDRAW_OP) && !stuck {
             Withdraw::Asked
         } else {
@@ -478,19 +465,13 @@ impl Offer {
             .unwrap_or_default()
     }
 
-    /// JSON 对象里 `unavailable`（`[{command, code}]`）/ `uncancellable`（`[op]`）两格 —— hello 与 `resync` 应答同形，
-    /// 读法只此一份。缺格 ⇒ 空（没把握）；坏项逐项丢，不丢整份。
-    pub fn facts_of(
-        obj: &serde_json::Map<String, serde_json::Value>,
-    ) -> (Vec<(String, String)>, Vec<String>) {
-        let items = |k: &str| {
-            obj.get(k)
-                .and_then(|c| c.as_array())
-                .cloned()
-                .unwrap_or_default()
-        };
-        let unavailable = items("unavailable")
-            .iter()
+    /// JSON 对象里 `unavailable`（`[{command, code}]`）那一格 —— hello 与 `resync` 应答同形，读法只此一份。
+    /// 缺格 ⇒ 空（没把握）；坏项逐项丢，不丢整份。
+    pub fn facts_of(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<(String, String)> {
+        obj.get("unavailable")
+            .and_then(|c| c.as_array())
+            .into_iter()
+            .flatten()
             .filter_map(|x| {
                 let o = x.as_object()?;
                 Some((
@@ -498,23 +479,13 @@ impl Offer {
                     o.get("code")?.as_str()?.to_string(),
                 ))
             })
-            .collect();
-        let uncancellable = items("uncancellable")
-            .iter()
-            .filter_map(|x| x.as_str().map(str::to_string))
-            .collect();
-        (unavailable, uncancellable)
+            .collect()
     }
 
     /// 「重新对齐」时那台交回的**当下**能力事实换掉握手那一刻的（例：握手后才装上 tmux）。
     /// 接哪些 op 不变（还是同一个二进制、同一条连接）。
-    pub fn refresh_facts(
-        &mut self,
-        unavailable: Vec<(String, String)>,
-        uncancellable: Vec<String>,
-    ) {
+    pub fn refresh_facts(&mut self, unavailable: Vec<(String, String)>) {
         self.unavailable = unavailable;
-        self.uncancellable = uncancellable;
     }
 }
 

@@ -80,7 +80,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
       const noChannel = { err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
       if (a.op === "resync") {
         calls.push({ name: "resync", args: { origin: a.origin, body } });
-        return bytes({ added: 0, removed: 0, retagged: 1, caught_up: 0, watchers: 1, unavailable: [], uncancellable: [] });
+        return bytes({ added: 0, removed: 0, retagged: 1, caught_up: 0, watchers: 1, unavailable: [] });
       }
       if (a.op === "backend-log") {
         calls.push({ name: "backend_log", args: { origin: a.origin } });

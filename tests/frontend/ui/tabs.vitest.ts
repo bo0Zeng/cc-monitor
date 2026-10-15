@@ -1494,7 +1494,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
         await gate;
         if (a.origin === "box") throw new Error(copyText("beServer.words.cantConnect"));
         const u = new TextEncoder().encode(
-          JSON.stringify({ added: 0, removed: 0, retagged: 0, caught_up: a.origin === "laptop" ? 2 : 0, watchers: 1, unavailable: [], uncancellable: [] }),
+          JSON.stringify({ added: 0, removed: 0, retagged: 0, caught_up: a.origin === "laptop" ? 2 : 0, watchers: 1, unavailable: [] }),
         );
         return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
       }

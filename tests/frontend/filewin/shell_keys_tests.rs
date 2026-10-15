@@ -1393,7 +1393,6 @@ fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
             *w.offer.lock().unwrap() = Some(comms_inward::chan::wire::Offer::new(
                 vec!["files-chmod".into()],
                 vec![("files-chmod".into(), "no_unix_mode".into())],
-                vec![],
             ));
         }
         let mut d = Drive::new();

@@ -246,19 +246,18 @@ impl InboundClient {
         self.offer.read().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// `resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有这两格（旧后端）⇒ 不动。
+    /// `resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有那一格（旧后端）⇒ 不动。
     fn take_fresh_facts(&self, data: Option<&Value>) {
         let Some(obj) = data.and_then(Value::as_object) else {
             return;
         };
-        if !obj.contains_key("unavailable") && !obj.contains_key("uncancellable") {
+        if !obj.contains_key("unavailable") {
             return;
         }
-        let (unavailable, uncancellable) = Offer::facts_of(obj);
         self.offer
             .write()
             .unwrap_or_else(|e| e.into_inner())
-            .refresh_facts(unavailable, uncancellable);
+            .refresh_facts(Offer::facts_of(obj));
     }
 
     /// 本连接内唯一的请求 `id`。

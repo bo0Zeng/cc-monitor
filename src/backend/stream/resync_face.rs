@@ -1,6 +1,6 @@
 //! **`resync`（手动对齐）的帧面宿主** —— 薄壳，本体在 `observe/watcher.rs::resync`。
 //!
-//! 住命令表这一层（`stream/`）：回包里 `uncancellable` 那一栏从命令表派生（功能不许引 `stream`）；不住 `stream/inbound/`：那一目录不许出现 `observe::`，`control/` 不许引用 `observe/`（`layering_guard`）。
+//! 住命令表这一层（`stream/`）：回包里 `unavailable` 那一栏从命令表派生（功能不许引 `stream`）；不住 `stream/inbound/`：那一目录不许出现 `observe::`，`control/` 不许引用 `observe/`（`layering_guard`）。
 //! 用户按钮触发、不是节拍：零定时器铁律不变。
 
 use crate::wire::typed::{codes, Command};
