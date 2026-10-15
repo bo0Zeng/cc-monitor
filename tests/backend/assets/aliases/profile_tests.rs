@@ -223,6 +223,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::ACCOUNT_DIR,
         // 往 tmux 里那一趟交下去的（别名在那一趟的命令行里已经没有了）：写进配置没意义。
         flag::TAB_FROM,
+        flag::NO_ROTATION,
     ];
     let keys: Vec<&str> = PROFILE_FLAGS.iter().map(|f| key_of(f)).collect();
     for k in &keys {

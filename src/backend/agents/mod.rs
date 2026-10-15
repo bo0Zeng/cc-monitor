@@ -1603,6 +1603,8 @@ pub(crate) enum IdentityClass {
 pub(crate) struct AccountsFace {
     /// 每个号各有一份的那几项：`(名, 原生根, 类别)`；共享库顶层其余每一项都链回共享库。
     pub(crate) identity: &'static [(&'static str, IdentityRoot, IdentityClass)],
+    /// 那一家按需才在配置根下建、各号该共用的目录：共享库里还没有也照样链（先在共享库里建出来）。
+    pub(crate) shared_on_demand: &'static [&'static str],
     /// 账号级配置文件的名字（原生根是家目录的那一份，账号 0 的住 `$HOME`）。
     pub(crate) config_file: &'static str,
     /// 那份配置文件里装用户级 MCP 的顶层键（账号之间同步的就是它，别的键不碰）。

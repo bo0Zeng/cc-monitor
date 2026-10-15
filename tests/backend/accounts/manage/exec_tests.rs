@@ -31,6 +31,12 @@ fn undo_runs_restores_first_then_deletes_each_in_reverse() {
         ]
     );
     assert_eq!(bad, ["REKEY\t/h/k.json", "REKEY\tk.json\t/h/x"]);
+    // 同一个路径先挪走（还原它）、又在原处建了链接（删它）⇒ 只还原，不在还原之后再把它删掉。
+    let (steps, _) = undo_steps("RESTORE\t/h/a\nDELETE\t/h/b\nDELETE\t/h/a\n");
+    assert_eq!(
+        steps,
+        vec![Undo::Restore("/h/a".into()), Undo::Delete("/h/b".into())]
+    );
 }
 
 #[test]

@@ -38,6 +38,8 @@ pub(crate) mod flag {
     pub(crate) const TAB_FROM: &str = "--tab-from";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
+    /// 这一发不轮换，只用起它的那个号（同 `session-new` 的 `rotation: {strategy: null}`）：起之前按这一发定好的会话ID记成「不轮换」。
+    pub(crate) const NO_ROTATION: &str = "--no-rotation";
     /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
     pub(crate) const END: &str = "--";
     /// 位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
@@ -86,6 +88,8 @@ impl Defaults {
     pub(crate) const PRINT: bool = false;
     /// 不给 `--bus-register` ⇒ 不登记 cc-bus。
     pub(crate) const BUS_REGISTER: bool = false;
+    /// 不给 `--no-rotation` ⇒ 照「新会话用」那一份轮换。
+    pub(crate) const NO_ROTATION: bool = false;
     // 工作目录不在这张表里：它的默认是恒等（上面 `CWD`），不替用户挑一个具体目录。
     // 账号库 manifest 的门牌号也不在：它是后端的家那一族（`plan::accts_manifest_under`），不是一个可以换的默认值。
     /// 起 agent 前要 eval 的机器级 env。
@@ -117,6 +121,8 @@ pub(crate) struct Opts {
     pub(crate) tab_from: String,
     /// `--account-dir`；空 = 没给。
     pub(crate) account_dir: String,
+    /// `--no-rotation`：这一发不轮换。
+    pub(crate) no_rotation: bool,
     pub(crate) print: bool,
     pub(crate) detach: bool,
     pub(crate) tmux_size: String,
@@ -192,6 +198,7 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         tab: None,
         tab_from: String::new(),
         account_dir: String::new(),
+        no_rotation: Defaults::NO_ROTATION,
         print: Defaults::PRINT,
         detach: Defaults::DETACH,
         tmux_size: String::new(),
@@ -224,6 +231,7 @@ pub(crate) const RIGHT_WORDS: &[&str] = &[
     flag::TAB,
     flag::TAB_FROM,
     flag::ACCOUNT_DIR,
+    flag::NO_ROTATION,
 ];
 
 /// 右边的一组词：一个认得的词连同它吃掉的值。几个词、值从哪来只住 [`word_at`]，含义只住 [`apply_word`] ——
@@ -338,6 +346,7 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         flag::TAB_FROM => o.tab_from = v(0),
         flag::ACCOUNT_DIR => o.account_dir = v(0),
         flag::DETACH => o.detach = true,
+        flag::NO_ROTATION => o.no_rotation = true,
         flag::TMUX_SIZE => o.tmux_size = v(0),
         flag::CCM_PRINT => o.print = true,
         flag::CCM_PROBE => return Ok(Some(Early::Probe)),
@@ -477,6 +486,18 @@ pub(crate) fn finish(mut o: Opts) -> Result<Opts, Die> {
     o.agent = kind.to_string();
     o.resumes = resume_sid(&o.passthru, face.resume_token).map(str::to_string);
     validate(&o)?;
+    // 不轮换是起之前按定好的会话ID记的：只有起新会话、且那一家认先定会话ID才记得上。
+    if o.no_rotation {
+        if o.resumes.is_some() || !o.attach_name.is_empty() {
+            return die(copy_text("beArgv.validate.noRotationNotNew", &[]));
+        }
+        if face.preset_sid.is_none() {
+            return die(copy_text(
+                "beArgv.validate.noRotationNoSid",
+                &[("agent", &o.agent.to_string())],
+            ));
+        }
+    }
     Ok(o)
 }
 

@@ -1070,10 +1070,18 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
         }),
         &mine,
     );
-    assert_eq!(
-        put(&fake),
-        Err(Unplaced::Said("不说自己是谁（夹具句）".into()))
-    );
+    // 比那一句与「本机」那一行；「时刻」那一行是放的那一刻读的钟，不拿测试这边另读的一次去比（跨了一秒就对不上）。
+    match put(&fake) {
+        Err(Unplaced::Said(s)) => {
+            assert_eq!(s.said, "不说自己是谁（夹具句）");
+            assert!(
+                s.detail.contains(&crate::detail::local_line()),
+                "复制详情里没有「本机」那一行：{}",
+                s.detail
+            );
+        }
+        other => panic!("它说「不」⇒ 该是那句话原样，实得 {other:?}"),
+    }
     assert_eq!(disk(), newer);
     assert!(no_partials());
     // 问不成 · 答话不成形 ⇒ 说清是问不成，不动、不猜

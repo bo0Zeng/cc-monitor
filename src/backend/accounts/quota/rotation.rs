@@ -486,6 +486,27 @@ pub(crate) fn relay_change<R>(
     store.change(own, f)
 }
 
+/// 起之前那一笔的本体：在 `store` 里给定好的 `sid` 记一条、用 `strategy`（空 ⇒ 不轮换）。面上的 `session-new`（`faces::rotation_face::preset_with`）与 ccm 的 `--no-rotation` 都走这一下。
+pub(crate) fn preset(
+    store: &RotationStore,
+    own: &Own,
+    sid: &str,
+    kind: &str,
+    strategy: &str,
+    now: u64,
+) -> Result<(), Said> {
+    let agent = crate::agents::pick_kind(Some(kind))
+        .map(|(_, f)| f.adapter_id.to_string())
+        .unwrap_or_else(|_| kind.to_string());
+    let zero = acct_core::BARE_ACCOUNT;
+    face_change(store, own, |b| {
+        b.sessions.insert(
+            sid.to_string(),
+            book::Session::fresh(&agent, zero, now, strategy),
+        );
+    })
+}
+
 /// 帧面那一路的写口（草稿 · 存 · 下拉换一份 · 拖出来的顺序 · 现在用 · 新会话用哪份）。
 pub(crate) fn face_change<R>(
     store: &RotationStore,

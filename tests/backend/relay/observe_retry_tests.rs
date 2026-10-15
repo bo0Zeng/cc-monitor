@@ -1134,6 +1134,48 @@ fn a_session_started_inside_a_swapped_one_keeps_the_account_it_names() {
     assert_eq!(home.session("s-warm").current, "a");
 }
 
+/// 「新会话用」设的是会换号的那一份时，额度预热那一发（`ccm --no-rotation` 起，起之前按定好的会话ID记成「不轮换」，
+/// 同 `session-new` 选了「不轮换」那一形）照样落在它点名的号上：那个号被拒就照实交回，不换。
+/// 正控：同一份设置下没先记的那一发照「新会话用」换到了 b。
+#[test]
+fn a_launch_that_says_no_rotation_stays_on_the_account_it_names_whatever_new_sessions_use() {
+    let home = Home::new("no-rotation");
+    home.set_default(&["b"], None);
+    let (up, got) = spawn_judging_upstream(a_refused_b_serves);
+    let relay = home.relay_tracing(up);
+    rotation::preset(
+        &RotationStore::at(Some(home.rotation_path())),
+        &home.own(),
+        "s-warm",
+        "claude",
+        "",
+        crate::accounts::quota::now_unix(),
+    )
+    .expect("起之前记一条");
+    let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
+    let resp = send_on(relay, path, "s-warm", "");
+    assert!(
+        resp.starts_with("HTTP/1.1 429"),
+        "点名的号被拒就照实交回，不替它换：{resp}"
+    );
+    assert_eq!(home.session("s-warm").current, "a");
+    assert!(send_on(relay, path, "s-other", "").starts_with("HTTP/1.1 200"));
+    assert_eq!(
+        home.session("s-other").current,
+        "b",
+        "正控没过：没记「不轮换」的那一发没照「新会话用」换号"
+    );
+    let got = got.lock().expect("lock");
+    assert_eq!(
+        got.iter()
+            .filter(|g| g.auth.as_deref() != Some(AGENT_TOKEN))
+            .count(),
+        1,
+        "只有正控那一发该走到 b：{:?}",
+        got.iter().map(|g| g.auth.clone()).collect::<Vec<_>>()
+    );
+}
+
 // ── 起会话时没说是哪个号（`_`）：请求体里的账号身份恰好对上账号库里一个号 ⇒ 按那个号记 ─────────────────
 
 const UUID_ZERO: &str = "00000000-3333-4333-8333-000000000000";

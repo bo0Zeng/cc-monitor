@@ -309,6 +309,7 @@ fn the_from_section_is_comment_lines_only() {
 }
 
 /// 额度预热不再自己剥一遍环境（那是继承表的第二份判法）：交给 ccm 的就是它自己的环境，只多它自己要的两格。
+/// 它那一发自己声明不轮换（ccm 的 `--no-rotation`）：「新会话用」设成会换号的那一份时也落在它点名的号上，不在脚本里另写判法。
 /// 前提核过（`relay::observe_retry_tests::a_session_started_inside_a_swapped_one_keeps_the_account_it_names`）：
 /// 在别的会话里起、点名一个号的那一发照那个号发，不跟着主会话换。
 #[test]
@@ -329,6 +330,10 @@ fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
             "预热自己要的 {own} 那一格不在了"
         );
     }
+    assert!(
+        code.contains(&format!("\"{}\"", crate::ccm_line::argv::flag::NO_ROTATION)),
+        "预热那一发没交 ccm 的「不轮换」"
+    );
     for stripped in [
         "\"CCM_\"",
         "\"ANTHROPIC_\"",
@@ -495,4 +500,83 @@ fn the_tab_flag_takes_only_show_or_hide() {
     assert!(parse(&["--", "--tab-from", "cct"]).is_err());
     assert!(parse(&["--", "--tab", "hide", "--tab-from", "a b"]).is_err());
     assert!(parse(&["--", "--tab", "hide", "--tab-from", "cct"]).is_ok());
+}
+
+/// `--no-rotation`：这一发不轮换（同 `session-new` 选了「不轮换」）。计划里带上要先记「不轮换」的那个会话ID，
+/// 交给那一家的那一串里带着同一个先定会话ID的旗标：透传里写了 ⇒ 用那个值、不另加；没写 ⇒ 铸一个，插在那一家自己的 `--` 之前。
+/// 接着的会话（`--resume`）· 接回（`--attach`）· 起的时候定不了会话ID的那一家 ⇒ 拒，不静默吃掉。
+/// 不带它 ⇒ 计划里没有这一格（照「新会话用」那一份）。tmux 路把它带进窗格里那一条 ccm，记由那一趟做。
+#[test]
+fn no_rotation_presets_the_session_id_it_hands_the_agent() {
+    let plan_of = |args: &[&str]| -> Result<Plan, String> {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let o = match crate::ccm_line::argv::parse(&a).map_err(|e| e.0)? {
+            crate::ccm_line::argv::Parsed::Opts(o) => o,
+            _ => panic!("该是起会话"),
+        };
+        build(&o, &env(), &AccountTable::default(), None).map_err(|e| e.0)
+    };
+    let direct = |args: &[&str]| match plan_of(args).expect("算得出计划") {
+        Plan::Direct(d) => d,
+        other => panic!("该是直路：{other:?}"),
+    };
+    let flag = crate::agents::claudecode::resume::SESSION_ID_FLAG;
+    let after = |argv: &[String]| {
+        let at = argv
+            .iter()
+            .position(|a| a == flag)
+            .expect("交出去的那一串里没有先定会话ID的旗标");
+        argv[at + 1].clone()
+    };
+    // 没写 ⇒ 铸一个，插在那一家自己的 `--` 之前。
+    let d = direct(&["-p", "--", "-x", "--", "--no-rotation"]);
+    let nr = d
+        .no_rotation
+        .clone()
+        .expect("计划里没有要记「不轮换」的那一格");
+    assert_eq!(nr.agent, "claude");
+    let sid = nr.sid;
+    assert!(shell_quote_core::session_id_ok(&sid), "{sid}");
+    assert_eq!(after(&d.argv), sid);
+    let end = d
+        .argv
+        .iter()
+        .position(|a| a == "--")
+        .expect("那一家自己的 --");
+    assert!(
+        d.argv.iter().position(|a| a == flag) < Some(end),
+        "{:?}",
+        d.argv
+    );
+    // 写了 ⇒ 用那个值，不另加。
+    let given = "0f0e0d0c-0b0a-4908-8706-050403020100";
+    let d = direct(&["-p", flag, given, "--", "--no-rotation"]);
+    assert_eq!(d.no_rotation.map(|n| n.sid).as_deref(), Some(given));
+    assert_eq!(
+        d.argv.iter().filter(|a| *a == flag).count(),
+        1,
+        "{:?}",
+        d.argv
+    );
+    // 不带 ⇒ 没有这一格，交出去的那一串里也没多出旗标。
+    let d = direct(&["-p", "--", "--cwd", "/p"]);
+    assert_eq!(d.no_rotation, None);
+    assert!(!d.argv.iter().any(|a| a == flag), "{:?}", d.argv);
+    // tmux 路：带进窗格里那一条 ccm（记由那一趟做）。
+    match plan_of(&["-p", "--", "--ccm-tmux=nr", "--detach", "--no-rotation"]).expect("算得出") {
+        Plan::Container(c) => assert!(
+            c.payload.contains(crate::ccm_line::argv::flag::NO_ROTATION),
+            "{}",
+            c.payload
+        ),
+        other => panic!("该是容器路：{other:?}"),
+    }
+    // 拒的几形。
+    for bad in [
+        &["--resume", "abc", "--", "--no-rotation"][..],
+        &["--", "--attach", "x", "--no-rotation"][..],
+        &["--", "--ccm-agent", "codex", "--no-rotation"][..],
+    ] {
+        assert!(plan_of(bad).is_err(), "{bad:?} 该拒");
+    }
 }

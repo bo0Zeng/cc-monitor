@@ -28,8 +28,8 @@ pub(crate) const FROM_KEY: &str = "from";
 /// 交给 agent 的那几个词（命令行上 `--` 左边那串）。
 pub(crate) const ARGS_KEY: &str = "args";
 
-/// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir`）每次取值都不同或是一次性的动作，
-/// 写成固定配置没意义；它们照样能在命令行 `--` 右边当场给。
+/// 能写进配置的 ccm 词。不收的（`new` · `--attach` · `--ccm-*` 诊断口 · `--ccm-sid` · `--account-dir` · `--no-rotation`）每次取值都不同或是一次性的动作
+/// （`--no-rotation` 是给程序起的那一发用的；常用的会话不轮换在轮换设置里定），写成固定配置没意义；它们照样能在命令行 `--` 右边当场给。
 pub(crate) const PROFILE_FLAGS: &[&str] = &[
     flag::CWD,
     flag::CWD_IF,

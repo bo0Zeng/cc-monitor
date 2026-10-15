@@ -838,7 +838,29 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                 )
             }
         }
-        Plan::Direct(d) => exec_direct(d, own),
+        Plan::Direct(d) => {
+            // 不轮换：起之前在轮换账本里给它记好（同 `session-new` 选了「不轮换」那一形）；记不成就不起 ——
+            // 起了就可能被「新会话用」那一份换号，正是这一发要避开的。
+            if let Some(nr) = &d.no_rotation {
+                let store = crate::accounts::quota::rotation::RotationStore::at(
+                    crate::accounts::quota::rotation::path_now(),
+                );
+                if let Err(e) = crate::accounts::quota::rotation::preset(
+                    &store,
+                    own,
+                    &nr.sid,
+                    &nr.agent,
+                    "",
+                    crate::accounts::quota::now_unix(),
+                ) {
+                    return die(&copy_text(
+                        "beCcm.execute.noRotationUnwritten",
+                        &[("why", &e.logged())],
+                    ));
+                }
+            }
+            exec_direct(d, own)
+        }
     }
 }
 

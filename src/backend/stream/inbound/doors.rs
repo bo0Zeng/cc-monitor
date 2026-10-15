@@ -132,6 +132,11 @@ pub fn fill_account_colors() {
     crate::accounts::manage::wire::colors_here(&LocalFiles);
 }
 
+/// 后端起来时那一次：账号库接上按需才建的共用目录（同补号色那一扇门）。只由 `main.rs` 在常驻那一个里调。
+pub fn share_on_demand_dirs() {
+    crate::accounts::manage::wire::shared_on_demand_here(&LocalFiles);
+}
+
 /// 后端起来时那一次别名清单迁移（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `main.rs` 调。
 pub fn migrate_aliases() {
     crate::assets::aliases::migrate_here(&LocalFiles);

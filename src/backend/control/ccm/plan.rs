@@ -139,7 +139,7 @@ pub(crate) struct Inherit {
 /// - 密钥不靠继承走：我们的中转钥匙在 exec 那一刻从这台钥匙文件读进来插上，打印出来的命令里没有；继承来的我们那一形地址不认（[`Item::Relay`]）。
 /// - 用户自己设的环境变量（含他自己的密钥）不按名字猜着剥：直路照继承，tmux 路不搬（[`Item::OtherEnv`]）。
 ///   tmux 路要一样就得把调用方整份环境写进 tmux 命令或键入的那一行，等于把密钥摊在进程表与窗格回滚里 ⇒ 两条路这一格就是不一样。
-/// - 轮换：新会话照「新会话用」那一份，不跟随主会话（血缘今天只记下，轮换不读它）。
+/// - 轮换：新会话照「新会话用」那一份，不跟随主会话（血缘今天只记下，轮换不读它）；`--no-rotation` 那一发不轮换。
 pub(crate) const INHERIT: &[Inherit] = &[
     Inherit {
         item: Item::Cwd,
@@ -159,7 +159,8 @@ pub(crate) const INHERIT: &[Inherit] = &[
         item: Item::Rotation,
         direct: Pass::Fresh,
         tmux: Pass::Fresh,
-        change: Change::Settings,
+        // 不写 ⇒ 照这台设置里「新会话用」那一份；`--no-rotation` ⇒ 这一发不轮换。
+        change: Change::Flags(&[flag::NO_ROTATION]),
         judge: "crate::accounts::quota::rules::book::Book::saw",
     },
     Inherit {
@@ -767,6 +768,15 @@ pub(crate) struct Direct {
     pub(crate) plugin_files: Vec<(&'static str, String)>,
     /// `--tab`（与写它的别名）：最后那一跳记进便条，观测侧认便条时落进启动台账。
     pub(crate) tab: Option<crate::control::launch_account::LaunchTab>,
+    /// `--no-rotation`：exec 之前在轮换账本里记一条「不轮换」。`None` ⇒ 不记。
+    pub(crate) no_rotation: Option<NoRotation>,
+}
+
+/// exec 之前要记成「不轮换」的那个会话：哪一家（线上的 kind）· 会话ID（也在 [`Direct::argv`] 里交给了那一家）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NoRotation {
+    pub(crate) agent: String,
+    pub(crate) sid: String,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -1351,6 +1361,10 @@ pub(crate) fn build_among(
                 opts.push(o.tab_from.clone());
             }
         }
+        // 不轮换由窗格里那一趟记（它定会话ID、交给那一家）。
+        if o.no_rotation {
+            opts.push(flag::NO_ROTATION.into());
+        }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
         let inner_head = inner.clone();
@@ -1567,6 +1581,29 @@ pub(crate) fn build_among(
     {
         argv.extend(words(url));
     }
+    // 不轮换（`--no-rotation`）：要先记「不轮换」的那个会话ID —— 透传里写了这一家先定会话ID的旗标就用那个值，
+    // 没写就铸一个、插在那一家自己的 `--` 之前交下去（定不了会话ID的那一家解析那一步已拒）。
+    let no_rotation = match face.and_then(|f| f.preset_sid).filter(|_| o.no_rotation) {
+        None => None,
+        Some(sid_flag) => {
+            let sid = match value_of(&passthru, sid_flag) {
+                Some(v) => v,
+                None => {
+                    let sid = crate::accounts::quota::rotation::new_session_id();
+                    let at = passthru
+                        .iter()
+                        .position(|a| a == flag::END)
+                        .unwrap_or(passthru.len());
+                    passthru.splice(at..at, [sid_flag.to_string(), sid.clone()]);
+                    sid
+                }
+            };
+            Some(NoRotation {
+                agent: o.agent.clone(),
+                sid,
+            })
+        }
+    };
     argv.extend(passthru);
 
     Ok(Plan::Direct(Direct {
@@ -1597,7 +1634,22 @@ pub(crate) fn build_among(
             tab,
             alias: (!o.tab_from.is_empty()).then(|| o.tab_from.clone()),
         }),
+        no_rotation,
     }))
+}
+
+/// 交给那一家的那一串里 `<旗标> <值>` / `<旗标>=<值>` 的值（那一家自己的 `--` 之后不看）。
+fn value_of(words: &[String], name: &str) -> Option<String> {
+    let mut it = words.iter().take_while(|w| *w != flag::END);
+    while let Some(w) = it.next() {
+        if w == name {
+            return it.next().cloned();
+        }
+        if let Some(v) = w.strip_prefix(name).and_then(|r| r.strip_prefix('=')) {
+            return Some(v.to_string());
+        }
+    }
+    None
 }
 
 /// 容器路要显式写进窗格那一条命令的继承值（`export …; ` 前缀；tmux 的 `update-environment` 默认列表不含它们，外层那句 `export`
@@ -1843,8 +1895,16 @@ pub(crate) fn from_rows(
                     );
                 }
             }
+            Item::Rotation => {
+                if let Some(f) = given(flags) {
+                    push(
+                        copy_text("beCcm.item.rotation", &[]),
+                        copy_text("beCcm.value.noRotation", &[]),
+                        f,
+                    );
+                }
+            }
             Item::Account
-            | Item::Rotation
             | Item::Relay
             | Item::Nested
             | Item::MachineEnv

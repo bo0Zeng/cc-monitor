@@ -8,7 +8,7 @@
 - 被拒（5h 或 7d 用满）⇒ 等到它重置；
 - 登录失效 ⇒ 记一行，过一阵再看。
 
-发法：官方 `claude -p` 经 ccm 起、走本机中转（额度账由中转记下），haiku · 不给工具 · 不起 MCP ·
+发法：官方 `claude -p` 经 ccm 起、走本机中转（额度账由中转记下）、这一发不轮换（ccm 的 --no-rotation），haiku · 不给工具 · 不起 MCP ·
 关掉思考 · 不落会话记录 · 系统提示词换成一句，工作目录用 `~/.cc-monitor/autostart`（后端在历史与会话列表里藏掉它）。
 实测一发（claude 2.1.289）：输入约 870 token（claude 自带、去不掉的那一段）· 输出 4 token。
 不换系统提示词时约 6.8k token：缓存热时按一成价算，可隔几小时才发一次时缓存早过期、要按写缓存价付 ⇒ 换掉更省。
@@ -100,6 +100,8 @@ def send(name, system, text, model):
         CCM, "-p", "--model", model, "--tools", "", "--no-session-persistence",
         "--setting-sources", "project", "--strict-mcp-config", "--output-format", "json",
         "--system-prompt", system, text, "--", "--account-dir", acct, "--cwd", WORK_DIR,
+        # 这一发不轮换：「新会话用」设成会换号的那一份时也落在点名的这个号上（不然预热白做）。
+        "--no-rotation",
     ]
     try:
         p = subprocess.run(

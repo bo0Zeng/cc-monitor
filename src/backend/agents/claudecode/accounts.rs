@@ -16,7 +16,8 @@ pub(crate) const CONFIG_FILE_NAME: &str = ".claude.json";
 ///
 /// 收哪些：Claude Code 在每个配置根里各写一份、共享会串号或互相覆盖的 —— 登录身份、按这个号从服务端取回的
 /// 设置与限额（连同记着「是给哪个身份取的」那份戳、远端设置上次同步的时刻）、这个号的 MCP 授权缓存与用量、各自的清理 / 更新记录、
-/// 状态目录（同意记录之类）与反馈草稿。判据拿一份号目录的结构（名字与类型）与本表两向相等。
+/// 状态目录（同意记录之类）与反馈草稿、还没发出去的遥测事件（`telemetry/`：发不出去先落盘、下回起来用这个号的登录补发，
+/// 共用就会拿别的号补发）。判据拿一份号目录的结构（名字与类型）与本表两向相等。
 pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
     (
         acct_core::CREDENTIALS_NAME,
@@ -67,11 +68,18 @@ pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
     ),
     ("state", IdentityRoot::ConfigDir, IdentityClass::State),
     ("feedback", IdentityRoot::ConfigDir, IdentityClass::State),
+    ("telemetry", IdentityRoot::ConfigDir, IdentityClass::State),
 ];
+
+/// Claude Code 按需才在配置根下建、各号该共用的目录：用户自建的子代理（`agents/`，同 `skills/` 是用户自己的配置）·
+/// 计划模式写的计划（`plans/`：会话记录共用，换个号接着那条会话也要找得到它的计划）。
+/// 共享库里还没有也照样链（先在共享库里建）—— 不链的话头一回用就在号里落一份实体，各号就分开了。
+pub(crate) const SHARED_ON_DEMAND: &[&str] = &["agents", "plans"];
 
 /// 注册表里 Claude 那一行的账号库布局（`agents::Adapter::accounts`）。
 pub(crate) const FACE: AccountsFace = AccountsFace {
     identity: NATIVE_IDENTITY,
+    shared_on_demand: SHARED_ON_DEMAND,
     config_file: CONFIG_FILE_NAME,
     user_mcp_key: super::assets::SERVERS_KEY,
     shared_root: shared_root_in,

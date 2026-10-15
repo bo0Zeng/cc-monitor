@@ -5,7 +5,9 @@
 //! 提示（`warn`）：还没登录 · 号里有意料之外的实体项 · 共享库本身的源头断了 · 身份本体哪儿都找不到 ·
 //! 共享库顶层有一份 `0600` 的文件却不在身份表里（它会被链给每个号）。
 
-use super::layout::{identity, is_excluded, is_identity, share_items};
+use super::layout::{
+    identity, is_excluded, is_identity, share_items, shared_found, shared_on_demand,
+};
 use super::model::Manifest;
 use super::scan::{join, Snapshot};
 use crate::platform::acct_view::Item;
@@ -134,6 +136,8 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
 
     let items = share_items(&s.shared);
     let mut emails: Vec<(String, String)> = Vec::new();
+    // 按需才建的共用目录在号里是自己的一份（两个号以上各有一份，起来时那一步不替人合并）：`(项, 哪几个号)`，最后一项一条提示。
+    let mut own_copies: Vec<(String, Vec<String>)> = Vec::new();
     for a in m.managed() {
         if !names.is_empty() && !names.contains(&a.name) {
             continue;
@@ -272,6 +276,12 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                         }
                     }
                     Item::Link { .. } => {}
+                    _ if shared_on_demand().contains(&it.as_str()) => {
+                        match own_copies.iter_mut().find(|(i, _)| i == it) {
+                            Some((_, names)) => names.push(a.name.clone()),
+                            None => own_copies.push((it.clone(), vec![a.name.clone()])),
+                        }
+                    }
                     _ => {
                         bad = true;
                         o.push(
@@ -282,7 +292,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                     }
                 }
             }
-            if items.is_empty() {
+            if shared_found(&s.shared).is_empty() {
                 o.push(
                     CheckLevel::Fail,
                     n,
@@ -336,6 +346,22 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 copy_text("beAcctVerify.acct.noEmail", &[]),
             ),
         }
+    }
+    for (item, names) in &own_copies {
+        o.push(
+            CheckLevel::Warn,
+            None,
+            copy_text(
+                "beAcctVerify.global.ownCopies",
+                &[
+                    ("item", item),
+                    (
+                        "names",
+                        &names.join(&copy_text("beAcctVerify.global.ownCopiesSep", &[])),
+                    ),
+                ],
+            ),
+        );
     }
 
     if emails.len() < 2 {
