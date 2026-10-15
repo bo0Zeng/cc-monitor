@@ -152,7 +152,7 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
         commit,
         &serde_json::json!({
             "key": stages[0]["key"], "root": "/tmp/dl", "rel": crate::source::wire_bytes(b"f\xfe"),
-            "overwrite": true, "expect": { "sha256": want_sha }, "chunks": 2, "bytes": body.len(),
+            "on_exists": "overwrite", "expect": { "sha256": want_sha }, "chunks": 2, "bytes": body.len(),
         })
     );
     assert_eq!(

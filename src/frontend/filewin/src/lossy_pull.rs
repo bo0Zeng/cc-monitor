@@ -125,7 +125,7 @@ pub async fn pull_by_bytes(
         root,
         rel,
         key,
-        overwrite,
+        on_exists: overwrite.then_some(cmd_wire::batch::OnExists::Overwrite),
         expect: w::Sha256Expect {
             sha256: w::Sha256Hex(digest),
         },

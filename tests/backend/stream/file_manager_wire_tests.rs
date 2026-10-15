@@ -444,7 +444,7 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
         (
             "commit-upload",
             "files-commit-upload",
-            json!({ "root": r, "rel": "up.bin", "key": k2, "overwrite": false, "expect": sha(b"\x00\x01zz"), "chunks": 2, "bytes": 4 }),
+            json!({ "root": r, "rel": "up.bin", "key": k2, "expect": sha(b"\x00\x01zz"), "chunks": 2, "bytes": 4 }),
         ),
     ];
     let mut got = BTreeMap::new();

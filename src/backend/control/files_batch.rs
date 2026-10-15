@@ -27,8 +27,7 @@ use crate::common::batch_book::{
 };
 use crate::platform::fs::{Face, Ro};
 
-/// 保留两份另起名时最多往后试到第几个。
-const MINT_TRIES: u32 = 999;
+use crate::common::batch_book::MINT_TRIES;
 /// 递归删一棵树一段删几条（段与段之间看撤的旗、报进度）。
 const DELETE_STRIDE: usize = 256;
 
@@ -52,7 +51,7 @@ fn failed(key: &str, f: WriteFail) -> BatchOutcome {
 // ═══ 复制 ═══════════════════════════════════════════════════════════════════════════
 
 /// 盘上那一格是什么（不跟链接）＋ 大小 · 修改时刻。
-fn look(p: &Path) -> Option<(wire::FileKind, Option<u64>, Option<i64>)> {
+pub(crate) fn look(p: &Path) -> Option<(wire::FileKind, Option<u64>, Option<i64>)> {
     let m = Ro::symlink_metadata(p).ok()?;
     let t = m.file_type();
     let kind = if t.is_dir() {

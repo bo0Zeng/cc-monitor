@@ -30,13 +30,13 @@
 //! ```text
 //! 开单  source::ask_batch(line, origin, "transfer-upload", {items, remote_dir, home?, decide?}) → TransferOpened{items}
 //! 起跑  source::watch(line, origin, "transfer/<id>", 撤的令牌, 进度回调)                         → 传完的字节数
-//! 提交  source::ask(line, origin, "files-commit-upload", {key, root, rel, overwrite})
+//! 提交  source::ask(line, origin, "files-commit-upload", {key, root, rel, on_exists?})
 //! ```
 //!
 //! - 传输台（SFTP 连接、池、车道闸、续传、暂存区）住本机常驻后端；窗口只经通道说 `call` / `subscribe`。
 //! - 上传**只写暂存区**；落进用户目录的那一下是**后端文件管理**那条提交命令（先过围栏）。
 //! - 覆盖不覆盖照开单回包那一项（[`Pending::overwrite`]：人在冲突框上答了「覆盖」的才是 `true`）；
-//!   其余一律 `false` ⇒ 目标在开单与提交之间冒出来了，后端拒，不静默盖掉。
+//!   其余提交不带 `on_exists`（＝ 问）⇒ 目标在开单与提交之间冒出来了，后端回 `exists`，不静默盖掉。
 
 use copy_core::copy_text;
 use std::future::Future;
@@ -96,7 +96,9 @@ impl Pending {
             root: self.root_path(),
             rel: cmd_wire::files::WirePath::from(self.name.as_str()),
             key: key.to_string(),
-            overwrite: self.overwrite,
+            on_exists: self
+                .overwrite
+                .then_some(cmd_wire::batch::OnExists::Overwrite),
             expect: cmd_wire::files::Sha256Expect {
                 sha256: cmd_wire::files::Sha256Hex(sha256),
             },

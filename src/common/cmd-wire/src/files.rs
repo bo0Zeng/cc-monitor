@@ -1381,7 +1381,11 @@ pub struct FilesCommitUploadReq {
     pub root: WirePath,
     pub rel: WirePath,
     pub key: String,
-    pub overwrite: bool,
+    /// 落点已有同名：同成组复制那一条（缺 ⇒ `ask`：码 `exists`、`data` 是同名清单，一个字节不动、块留着，改个答原样再交）。
+    /// 只有一件 ⇒ `skip` 不收（不放就别提交）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub on_exists: Option<crate::batch::OnExists>,
     pub expect: Sha256Expect,
     #[serde(
         default,

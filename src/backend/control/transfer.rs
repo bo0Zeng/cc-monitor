@@ -1349,7 +1349,7 @@ fn not_opened(key: String, code: &str, said: String, raw: Option<String>) -> Ope
 
 /// 保留两份：本机落点目录里第一个没被占的 `名 (k).ext`（k 从 2 起）。
 fn mint_local(dir: &Path, name: &OsStr) -> Option<PathBuf> {
-    (2..=999u32)
+    (2..=crate::common::batch_book::MINT_TRIES)
         .map(|k| dir.join(crate::common::batch_book::minted(Path::new(name), k)))
         .find(|p| Ro::symlink_metadata(p).is_err())
 }
