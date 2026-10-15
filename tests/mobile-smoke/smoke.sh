@@ -9,6 +9,8 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 export CCM_SMOKE_BOX=${CCM_SMOKE_BOX:-$root/.build/mobile-smoke/box}
+# 冒烟这一台的 adb · 模拟器口（与 device.sh · 门禁那一格错开；emu.sh 自己不落默认口）。
+export CCM_SMOKE_ADB_PORT=${CCM_SMOKE_ADB_PORT:-5137} CCM_SMOKE_EMU_PORT=${CCM_SMOKE_EMU_PORT:-5590}
 heavy=()
 [ -f "$root/tests/scripts/heavy.sh" ] && heavy=(bash "$root/tests/scripts/heavy.sh")
 (cd "$root/src/backend" && "${heavy[@]}" cargo build -q)

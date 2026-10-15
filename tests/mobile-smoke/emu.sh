@@ -5,13 +5,19 @@
 #         模拟器单独起一个封了内存的 scope（systemd-run --user --scope，MemoryHigh 6G / MemoryMax 8G），不占 heavy 的槽位。
 #   down  关模拟器、停私有 adb。
 #   env   印出要 source 的那几格（ANDROID_* · ANDROID_ADB_SERVER_PORT · ANDROID_SERIAL · PATH）。
-# 工具链照 src/mobile/scripts/env.sh（默认 $HOME/android-dev）。可改：CCM_SMOKE_AVD_HOME · CCM_SMOKE_ADB_PORT · CCM_SMOKE_EMU_PORT。
+# 端口不替人挑：CCM_SMOKE_ADB_PORT（私有 adb server）· CCM_SMOKE_EMU_PORT（模拟器）两个都要给，缺一个就拒、退 2
+#   （落到一个默认口上会撞上别的台架、顺手起一个 adb server）。各入口（smoke.sh · device.sh · 门禁那一格）自己定各自的口。
+# 工具链照 src/mobile/scripts/env.sh（默认 $HOME/android-dev）。可改：CCM_SMOKE_AVD_HOME。
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 box=${CCM_SMOKE_BOX:-$root/.build/mobile-smoke/box}
 avd_home=${CCM_SMOKE_AVD_HOME:-$box/../avd}
-adb_port=${CCM_SMOKE_ADB_PORT:-5137}
-emu_port=${CCM_SMOKE_EMU_PORT:-5590}
+if [ -z "${CCM_SMOKE_ADB_PORT:-}" ] || [ -z "${CCM_SMOKE_EMU_PORT:-}" ]; then
+  echo "emu: 要先给端口：CCM_SMOKE_ADB_PORT（adb server）与 CCM_SMOKE_EMU_PORT（模拟器）两个都要设（不落默认口）" >&2
+  exit 2
+fi
+adb_port=$CCM_SMOKE_ADB_PORT
+emu_port=$CCM_SMOKE_EMU_PORT
 image="system-images;android-36;google_apis;x86_64"
 
 activate() {

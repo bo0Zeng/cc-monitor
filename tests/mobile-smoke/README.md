@@ -21,18 +21,18 @@ bash tests/mobile-smoke/smoke.sh
 | 后端 | ssh 进来的每条命令由台架的登录壳（`rig.sh up` 写进台架目录）换上台架的 `HOME` · `TMUX_TMPDIR` · `PATH` · `CCM_SANDBOX=1` · 私有中转口；后端文件放在台架家里的 `~/.cc-monitor/bin/ccm`（本树编的那份） |
 | tmux | 台架自己的 server（`TMUX_TMPDIR` 在台架目录下）；从桌面那一侧打字用 `rig.sh tmux …`（显式 `-S`） |
 | agent | 不起真 claude / codex：`fake-agent.py` 装成这两个名字放在台架 `PATH` 最前，按那一家的原始记录格式写盘（pidfile · jsonl · Codex rollout），带初始提示词起、读终端里敲进来的行 |
-| 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 5137；单独一个 `systemd-run --user --scope`（MemoryHigh 6G / MemoryMax 8G） |
+| 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 5137 · 模拟器口 5590（`smoke.sh` 定的；`emu.sh` 自己不落默认口，没给 `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT` 就拒）；单独一个 `systemd-run --user --scope`（MemoryHigh 6G / MemoryMax 8G） |
 
 ## 几样零件
 
 - `rig.sh up|down|env|ssh|tmux`：台架本身。`ssh '<命令>'` 以台架环境跑一条（和手机进来同一个登录壳），每条进来的命令记在 `logs/commands.log`。
-- `emu.sh up|down|env`：模拟器。
+- `emu.sh up|down|env`：模拟器（要先给 `CCM_SMOKE_ADB_PORT` 与 `CCM_SMOKE_EMU_PORT`）。
 - `frames.py <命令> '<JSON 入参>' [期限毫秒]`：经台架开一条常驻流问一句（和手机同一条路）；`frames.py watch <秒>` 只看流上的帧。
 - `ui.py dump|tap|has|wait|text|key|shot`：按字找控件点、截屏。
 - `fake-agent.py`：替身。句里带 `long` ⇒ 一大段回答；带 `ask` ⇒ 停在批准框上（需手动），终端里再敲一行才往下走；敲进来 `/model <值>` ⇒ 只落那一家换模型的读回（第 9 步换模型用）。`CCM_SMOKE_STEP`（每条记录间隔）· `CCM_SMOKE_BOOT`（起到能收第一句之前停多久）。
 - `smoke.py`：十二步（加机器连上 · 对话列表 · 新建会话（目录 chip → 浏览… → 选这个目录）· 聊天屏（后跟两小步：输入框下的模型 chip · ［+］面板的命令 / 清空先确认 / 压缩）· 完成通知 · 断网再连 · 换网 · 杀进程再开 · 终端屏（含命令面板换模型）· Codex（新建会话的 agent chip 选它）· 文件页（列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 下载 · 上传，结果在台架盘上核）· 轮换屏（台架里种三个号与两份策略、起一条带轮换的会话；聊天屏「⋯」进 → 换策略 → 长按号名拖到最上那条成临时条目 → 改一格 → 存，再从设置 → 机器与账号 → 轮换进一次）），每步只看屏上和台架记录里看得到的。
 
-收：`bash tests/mobile-smoke/emu.sh down; bash tests/mobile-smoke/rig.sh down`（台架目录留着，删掉 `.build/mobile-smoke/` 即全清）。
+收：`CCM_SMOKE_ADB_PORT=5137 CCM_SMOKE_EMU_PORT=5590 bash tests/mobile-smoke/emu.sh down; bash tests/mobile-smoke/rig.sh down`（台架目录留着，删掉 `.build/mobile-smoke/` 即全清）。
 
 ## 真机代测（`device.sh`）
 

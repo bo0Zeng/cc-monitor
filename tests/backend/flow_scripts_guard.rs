@@ -644,6 +644,102 @@ mod tests {
         );
     }
 
+    /// 模拟器台架不替人挑 adb 端口：没给 `CCM_SMOKE_ADB_PORT` · `CCM_SMOKE_EMU_PORT`（缺哪一个都算）⇒ `up` · `down` · `env` 都拒、退 2，
+    /// 那一句点名两个变量，工具链不激活、adb 一下都不碰（落到一个默认口上会撞上别的台架、顺手起一个 adb server）。
+    /// 两个都给了 ⇒ `env` 照给的口印。拿假的工具链与 adb 在临时目录里跑那份脚本。
+    #[test]
+    fn the_emulator_rig_refuses_without_its_ports() {
+        let d = scratch("emu-ports");
+        let rig = d.join("tests/mobile-smoke");
+        std::fs::create_dir_all(&rig).unwrap();
+        std::fs::create_dir_all(d.join("src/mobile/scripts")).unwrap();
+        std::fs::create_dir_all(d.join("bin")).unwrap();
+        std::fs::copy(root().join("tests/mobile-smoke/emu.sh"), rig.join("emu.sh")).unwrap();
+        let log = d.join("calls");
+        std::fs::write(
+            d.join("src/mobile/scripts/env.sh"),
+            format!(
+                "echo \"env.sh\" >> '{}'\nexport ANDROID_HOME='{}'\n",
+                log.display(),
+                d.join("sdk").display()
+            ),
+        )
+        .unwrap();
+        let adb = d.join("bin/adb");
+        std::fs::write(
+            &adb,
+            format!("#!/bin/sh\necho \"adb $*\" >> '{}'\n", log.display()),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = format!(
+            "{}:{}",
+            d.join("bin").display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let run = |mode: &str, ports: &[(&str, &str)]| {
+            let _ = std::fs::remove_file(&log);
+            let mut c = Command::new("bash");
+            c.arg(rig.join("emu.sh"))
+                .arg(mode)
+                .current_dir(&d)
+                .env("PATH", &path)
+                .env("CCM_SMOKE_BOX", d.join("box"))
+                .env_remove("CCM_SMOKE_ADB_PORT")
+                .env_remove("CCM_SMOKE_EMU_PORT");
+            for (k, v) in ports {
+                c.env(k, v);
+            }
+            let out = c.output().unwrap();
+            let calls = std::fs::read_to_string(&log).unwrap_or_default();
+            (out, calls)
+        };
+        for mode in ["env", "up", "down"] {
+            for ports in [
+                &[][..],
+                &[("CCM_SMOKE_ADB_PORT", "5201")][..],
+                &[("CCM_SMOKE_EMU_PORT", "5702")][..],
+            ] {
+                let (out, calls) = run(mode, ports);
+                let err = String::from_utf8_lossy(&out.stderr);
+                assert_eq!(
+                    out.status.code(),
+                    Some(2),
+                    "{mode} {ports:?}：没给端口该拒、退 2：{err}"
+                );
+                assert!(
+                    err.contains("CCM_SMOKE_ADB_PORT") && err.contains("CCM_SMOKE_EMU_PORT"),
+                    "{mode} {ports:?}：那一句该点名两个变量：{err}"
+                );
+                assert!(out.stdout.is_empty(), "{mode} {ports:?}：拒了还印了东西");
+                assert!(
+                    calls.is_empty(),
+                    "{mode} {ports:?}：拒了还激活了工具链 / 碰了 adb：{calls}"
+                );
+            }
+        }
+        let (out, _) = run(
+            "env",
+            &[
+                ("CCM_SMOKE_ADB_PORT", "5201"),
+                ("CCM_SMOKE_EMU_PORT", "5702"),
+            ],
+        );
+        let said = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            said.contains("ANDROID_ADB_SERVER_PORT=5201")
+                && said.contains("ANDROID_SERIAL=emulator-5702"),
+            "{said}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// 设备测入口：gradle 每一趟都带 `--no-daemon`；跑之前先装上 app、`pm clear` 清它的数据，
     /// 而且 `pm clear` 真成了（退出码 0 ＋ 回 `Success`）才往下跑 —— 清不掉就红，不带着上一趟的数据跑
     /// （「从没连过服务器 ⇒ 落在服务器列表」那一支才走得到）。拿假的 gradlew / adb 在临时目录里跑那份脚本。
