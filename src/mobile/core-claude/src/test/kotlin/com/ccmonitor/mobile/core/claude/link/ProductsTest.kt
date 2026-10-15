@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.Hidden
+import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import org.junit.Assert.assertEquals
@@ -84,6 +86,40 @@ class ProductsTest {
     @Test
     fun `history-list：缺 label 的行 ⇒ 整份解不出，不拿 sid 顶标题`() {
         assertNull(HistoryList.of(mapOf("rows" to listOf(mapOf("sessionId" to "s")))))
+    }
+
+    @Test
+    fun `history-list：行上隐藏那一格照收（后端写好的那一句）；入参只在「显示已隐藏」开着时带 hidden`() {
+        val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "atText" to "", "sectionText" to "", "projectPath" to "", "jsonlPath" to "", "agent" to "claude", "status" to "ended", "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
+        assertEquals(
+            Hidden("由 a 启动 · 子会话默认隐藏"),
+            HistoryList
+                .ofRows(rows)
+                ?.rows
+                ?.single()
+                ?.hidden,
+        )
+        assertNull(
+            HistoryList
+                .of(Fixtures.json("history-list.golden.json"))!!
+                .rows
+                .first()
+                .hidden,
+        )
+        assertEquals(mapOf("hidden" to true), HistoryList.args(showHidden = true))
+        assertNull("关着 ⇒ 不带（缺省不出）", HistoryList.args(showHidden = false))
+    }
+
+    @Test
+    fun `history-annotate：单个那一格交 on · off，null 交 rule（回到规则）；回包的 prev 原样读出，撤销照它交回去`() {
+        assertEquals(mapOf("sid" to "s1", "patch" to mapOf("hide" to "on")), HistoryAnnotate.hide("s1", Hide.ON))
+        assertEquals(mapOf("sid" to "s1", "patch" to mapOf("hide" to "off")), HistoryAnnotate.hide("s1", Hide.OFF))
+        assertEquals(mapOf("sid" to "s1", "patch" to mapOf("hide" to "rule")), HistoryAnnotate.hide("s1", null))
+        assertEquals(Hide.OFF, HistoryAnnotate.of(mapOf("entry" to mapOf("starred" to false), "prev" to "off"))?.prev)
+        val none = HistoryAnnotate.of(mapOf("entry" to mapOf("starred" to false), "prev" to null))
+        assertNotNull(none)
+        assertNull(none!!.prev)
+        assertNull("认不出的字 ⇒ 解不出", HistoryAnnotate.of(mapOf("entry" to emptyMap<String, Any>(), "prev" to "maybe")))
     }
 
     @Test

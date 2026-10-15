@@ -41,6 +41,8 @@ fun ActionSheet(
     title: String?,
     actions: List<SheetAction>,
     onDismiss: () -> Unit,
+    /** 标题底下一句说明（那一项为什么是现在这样）；没有 ⇒ 不画。 */
+    note: String? = null,
 ) {
     val tokens = LocalAppTokens.current
     ModalBottomSheet(
@@ -52,6 +54,14 @@ fun ActionSheet(
         Column(Modifier.fillMaxWidth().padding(bottom = tokens.spacing.lg)) {
             title?.let {
                 Text(it, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm))
+            }
+            note?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = tokens.spacing.lg, end = tokens.spacing.lg, bottom = tokens.spacing.sm),
+                )
             }
             actions.forEachIndexed { i, a ->
                 if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

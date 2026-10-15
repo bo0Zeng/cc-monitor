@@ -337,7 +337,32 @@ data class HistoryRow(
     val agent: String,
     val agentTag: String?,
     val status: String,
+    val hidden: Hidden?,
 )
+
+/** 隐藏那一格（判定只住后端）：手机只读后端写好的那一句（长按菜单里说为什么隐藏）。不隐藏 ⇒ 行上是 `null`。 */
+@WireOf("Hidden")
+@JsonClass(generateAdapter = true)
+data class Hidden(
+    val said: String,
+)
+
+/** `history-annotate` 的回包：手机只读改之前单个隐藏那一格（撤销照它交回去，`null` ＝ 照规则）。 */
+@WireOf("Annotated")
+@JsonClass(generateAdapter = true)
+data class Annotated(
+    val prev: Hide?,
+)
+
+/** 单个隐藏那一格（历史注解 `hide`）。 */
+@JsonClass(generateAdapter = false)
+enum class Hide {
+    @Json(name = "on")
+    ON,
+
+    @Json(name = "off")
+    OFF,
+}
 
 /*
  * 读记录那两条（`history-read` · `history-lines`）连同通用记录本身（`cmd-wire::record`）。
