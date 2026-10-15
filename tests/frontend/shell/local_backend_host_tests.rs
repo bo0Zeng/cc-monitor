@@ -917,8 +917,8 @@ fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a st
 ///
 /// # 两半，缺一半都不成立
 ///
-/// ① **`backend/` 那半干净** —— 那条现成的 `the_backend_half_stays_platform_agnostic`
-///    在门① 里管着禁针（含 `std::os::unix`）。本条只**补它够不到的一格**：
+/// ① **`backend/` 那半干净** —— 那条现成的 `platform_home_guard::platform_forms_live_only_at_home`
+///    管着禁针（含 `std::os::unix`）。本条只**补它够不到的一格**：
 ///    整棵 `backend/` 里 `process_group(` 零命中。
 ///    ⚠ 那条判据查的是**禁针字面**，有人把脱离藏进一个跨平台包装 crate（或换个名字）
 ///    就零命中地绿 —— 所以下面②必须是**位置性**的，不能只查「文件里有这个词」。
@@ -930,20 +930,8 @@ fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a st
 #[test]
 fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ── ① `backend/` 那半 ──────────────────────────────────────────
-    // 🔴 那条平台无关判据（`the_backend_half_stays_platform_agnostic`）这一轮跟着
-    // `backend/mod.rs` 的测试段搬进了 `tests/frontend/shell/backend_tests.rs`，
-    // 生产段那份里一个字都不剩 ⇒ 旧的两段（先剥生产段、剥不到再读整份）**两段都落空**。
-    // ⇒ 语料直接点它今天真住的那份文件。
-    // ⚠ 顺带把原来那个 `unwrap_or_else` 兜底去掉：它当初存在的理由是
-    //   「判据与被测代码同住一份文件、而 `production_code` 会把判据剥掉」——
-    //   剖分之后判据与生产代码**物理不同文件**，兜底那一支恒不触发（`§4.1` 那一形）。
-    // `backend/` 目录没了：那两道判据改看逐个点名的那一组（`backend_client_guard_tests.rs::GUARDED`）。
-    let backend_tests = include_str!("backend_client_guard_tests.rs");
-    assert!(
-        backend_tests.contains("fn the_backend_half_stays_platform_agnostic"),
-        "`backend_client_guard_tests.rs` 里那条平台无关判据不在了 —— \n\
-             本条①整半就没了依靠，而脱离那几行随时可以搬进那一组。"
-    );
+    // 平台无关那一道由 `platform_home_guard::platform_forms_live_only_at_home` 判（人群含这一组）；本条只补 `process_group(`。
+    // `backend/` 目录没了：宿主无关那一道改看逐个点名的那一组（`backend_client_guard_tests.rs::GUARDED`）。
     let files: Vec<(std::path::PathBuf, String)> = crate::backend_client_guard::guarded_sources();
     assert!(
         files.len() >= 5 && files.iter().all(|(_, s)| !s.is_empty()),
@@ -959,10 +947,10 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
         hits.is_empty(),
         "`backend/` 里出现了 `process_group(`：{hits:?}\n\
              它来自 `std::os::unix::process::CommandExt`，而 `std::os::unix` 在\n\
-             `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
+             `platform_home_guard::platform_forms_live_only_at_home` 的禁针里 —— 那一层不认识平台。\n\
              ⇒ 脱离的落点只能是**宿主知识层**（`local_backend_host.rs`），\n\
              照 `platform::fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
-             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS` 是递减棘轮（今天 0 条，上限随之降到 0），壳里平台形态另只许住 `platform/`。"
+             ⚠ 没有平台例外表：壳里平台形态只许住 `platform/`。"
     );
 
     // ── ② 位置性 ────────────────────────────────────────────────────
@@ -1166,15 +1154,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
     // 那句默认拒绝**真的有两处** —— 一处管写盘落点、一处管起进程落点，两张表各一条。
     // 写死成 1 会让本条以「多了一处」的形式假红，而假红的判据最后会被人删掉。
     let pins: &[(&str, &str, usize, &str)] = &[
-        (
-            // 那条棘轮跟着测试段搬进了 `backend_tests.rs`。
-            "backend_client_guard_tests.rs",
-            // 〔合 P4b〕棘轮降到 0：那一行今天是 `is_empty()`（只收紧，不放宽）。
-            "PLATFORM_EXCEPTIONS.is_empty(),",
-            1,
-            "递减棘轮：平台例外只许少不许多。**正是被它堵着**才把脱离放进宿主层的 —— \
-                 松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",
-        ),
+        // 平台例外表那一针（`backend_client_guard_tests.rs`）随那张表数到 0 摘了：表连同那条判据删了，壳里平台形态只许住 `platform/`。
         // 🔴 **`write_site_registry.rs` 剖成了三份，下面按新住址逐条重排。**
         //
         // 原来这里是三行、盯同一份文件（`missing.is_empty(),` 写 2 次、两条地板各 1 次）。

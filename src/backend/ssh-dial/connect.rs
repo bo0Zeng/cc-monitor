@@ -25,6 +25,10 @@ use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink};
 /// 为什么是 10 秒（从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
 /// 要等它被判死才失败、才换到新连接上 —— 30 秒 × 3 时是 120 秒，界面 45 秒的握手期限先到。
 /// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "`K-P6b` 的拨号代理交给 `russh` 的 SSH 层 keepalive 间隔（`client::Config`）"
+)]
 const KEEPALIVE: Duration = Duration::from_millis(10_000);
 
 /// 同一个间隔，毫秒（「多久没收包算久」照它定：`uses::STALE_AFTER_MS`）。
@@ -36,6 +40,10 @@ pub const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
 pub const KEEPALIVE_MAX: usize = 1;
 
 /// 短命探活（`probe`）的 inactivity 上限 —— 测试连接那条不需要保活。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "短命探活（测试连接）交给 russh 的 inactivity 上限：一条连接没动静多久算断，不是周期唤醒"
+)]
 const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
 
 /// 握手鉴权都过了的一条 SSH 连接。

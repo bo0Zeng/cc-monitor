@@ -9,7 +9,7 @@
 //!   `{"attach":"refused","reason":"absent"|"unreachable"}` 再退（monitor 读第一行就分得出）。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
-//!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`）。
+//!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`clippy.toml` 的 `disallowed-methods`，调用处就地放行）。
 //!
 //! 门牌按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）⇒ 一台机器一个家一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。
 //! 套接字 · 目录独占锁 · 「谁在听」都住 `<家>/run/`，都由常驻后端自己写（本机远端一个写者）；没有钥匙（门由内核给：目录 `0700` ＋ 对端 uid，`own-chan`）。

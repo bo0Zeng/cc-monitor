@@ -162,6 +162,10 @@ fn take<'a>(
     stale_ms: u64,
     reclaimed: Option<(&'static str, &mut Reclaimed)>,
 ) -> Result<Option<Hold<'a>>, Said> {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "凭据文件那几把 mkdir 锁的过期门限（续期锁 `LoginFace::lock_stale_ms` · 整份写锁 `write_lock_stale_ms` · MCP 登录那一条的续期锁 `EntryLogins:…"
+    )]
     let stale = Duration::from_millis(stale_ms);
     if make(creds, &which)? {
         return Ok(Some(Hold(creds, which)));

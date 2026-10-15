@@ -56,7 +56,7 @@ use std::path::PathBuf;
 ///
 /// `spawn_managed.rs` 那个唯一出口的**入口名**，逐字。名单由 [`exit_entry_points`]
 /// 从源码派生 —— 写错一个字母就红。带 `ManagedSpawn` 的两行是**注入**形：
-/// 它们住 `backend/`，平台原语进不去（后端那半的禁针 ＋ 平台例外表的递减棘轮），
+/// 它们住 `backend/`，平台原语进不去（`platform_home_guard` 的禁针，没有例外表），
 /// ⇒ 起进程那一下由宿主注进来的那个闭包做，本层只负责把 `Command` 装好。
 ///
 /// # 第四列为什么必须逐条写

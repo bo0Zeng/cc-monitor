@@ -216,7 +216,7 @@ pub enum SuperviseEvent {
         /// `code` 在**被信号打死**时是 `None`，**信号号已经丢了** —— 而
         /// 「崩了」那一格恰恰要它（`backend_policy::exit_status` 逐字打 `signal N`）。
         /// 取信号号要 `std::os::unix::process::ExitStatusExt`，而
-        /// `the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`
+        /// `platform_home_guard::platform_forms_live_only_at_home` 的禁针含 `std::os::unix`
         /// ⇒ **这一层只能原样把它交上去**，由宿主层取。
         /// `None` = 连 `wait()` 都没成功（子进程句柄已被别处摘走）。
         status: Option<std::process::ExitStatus>,
@@ -353,7 +353,7 @@ pub type StdioSink = Arc<
 /// 前半句是 errno 的十进制，与 locale 无关。口径逐字取自 `launch.rs` 测试台那一处
 /// （`fn spawn_error_is_etxtbsy`），这里是把它**抬出来共用**，不是发明第二份。
 ///
-/// ⚠ **本层不许有平台 `cfg`**（`the_backend_half_stays_platform_agnostic` 的禁针）
+/// ⚠ **本层不许有平台 `cfg`**（`platform_home_guard::platform_forms_live_only_at_home` 的禁针）
 /// ⇒ 这里不写 `#[cfg(not(windows))]`。代价是**已知的**、写在这儿别装作没有：
 /// Windows 上 `io::Error` 的 `os error 26` 是 Win32 的 `ERROR_NOT_DOS_DISK`，
 /// 不是 `ETXTBSY`。撞上它的后果只是**多试几次（上限 [`SPAWN_ETXTBSY_TRIES`]）再换一句话**，
@@ -508,7 +508,7 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// ⚠ **`spawn` 是注入进来的**：起进程那一下要回答三个问题
 /// （要不要窗口 · 要不要随我死 · 错误往哪去），而那三个答案要落成**平台原语**
 /// （`creation_flags` / `process_group` / Job Object）—— 它们进不了本层
-/// （`the_backend_half_stays_platform_agnostic` 的禁针，而平台例外表有递减棘轮）。
+/// （`platform_home_guard::platform_forms_live_only_at_home` 的禁针，没有例外表）。
 /// ⇒ 本层只知道「起进程这一下由宿主给的这个东西来做」，形状照
 /// [`start_or_extract`] 的 `make_executable: &dyn Fn(...)`。
 pub fn spawn_with_etxtbsy_retry(

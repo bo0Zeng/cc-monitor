@@ -4,7 +4,7 @@
 //!
 //! # 诚实边界 10g：**没有判据钉「平台原语只许住这里」**
 //!
-//! `backend/mod.rs` 的 `the_backend_half_stays_platform_agnostic` 只扫 `backend/`，
+//! `platform_home_guard.rs::platform_forms_live_only_at_home` 只扫 `backend/`，
 //! 它保证的是「那半没有平台原语」，**不保证「平台原语都在本文件」**。
 //! 有人在 `backend/` 之外的别处再写一个 `#[cfg(unix)]`，**没有任何东西会红**。
 //! ⇒ 今天靠约定。解锁条件：backend 侧出现第二处平台原语时建 `backend/platform/`，

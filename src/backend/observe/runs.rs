@@ -25,6 +25,10 @@ pub(crate) const LINKS_KEEP: usize = 256;
 pub(crate) const RIDS_KEEP: usize = 512;
 /// 一个子运行没有任何收场信号、它的记录又这么久没再写 ⇒ 「状态不明」，不当它在跑。到点就判（watcher 有在跑的运行时
 /// 至多等到最早那个期限，[`next_event`]），读记录 / 出帧时也判。比一次前台工具调用最长的等待（10 分钟）再宽一截。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "子运行「久未再写 ⇒ 状态不明」的阈值（`observe::runs::STALE_AFTER`）"
+)]
 pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
 /// 失败收场的报错原话至多留几个字（运行表一变就整份重发）。
 pub(crate) const ERROR_CHARS: usize = 2000;
@@ -823,6 +827,10 @@ impl RunTrack {
 
 /// watcher 等下一个事件：`due` 有 ⇒ 至多等到那一刻，到点回 `Ok(None)`（调用方判一次久未动静、重算期限再等）；
 /// 没有 ⇒ 无期限地等。只醒在真期限上，不是节拍。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "子运行「久未动静 ⇒ 状态不明」要到点就判：会话空闲时不会再有它的文件事件，只靠事件判的话面板上的「在跑」永远冻住"
+)]
 pub(crate) fn next_event<T>(
     rx: &std::sync::mpsc::Receiver<T>,
     due: Option<SystemTime>,

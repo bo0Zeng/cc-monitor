@@ -157,7 +157,7 @@ pub(crate) fn open_for_stop(pid: u32) -> Opened {
 }
 
 /// **至多等 `ms` 毫秒**看它退没退（内核事件，不轮询）。只给一次性子命令 `--resident-stop` 用 ——
-/// 登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`。`Ok(true)` = 退了；`Ok(false)` = 期限到了还在。
+/// 登记在 `clippy.toml` 的 `disallowed-methods`，调用处就地放行。`Ok(true)` = 退了；`Ok(false)` = 期限到了还在。
 pub(crate) fn wait_within(h: &OwnedHandle, ms: u32) -> Result<bool, std::io::Error> {
     // SAFETY：句柄有效，且带 `SYNCHRONIZE`（由 `open_for_stop` 开出来的）。
     let r = unsafe { WaitForSingleObject(h.as_raw_handle(), ms) };

@@ -5,6 +5,28 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
 
+/** 界面「只一个口」那几条的语法树形状；`shellCall` = 连直呼壳命令 `clipboard_write` · `clipboard_read` 一起禁。 */
+function uiSingleDoors(shellCall) {
+  const clip = "剪贴板只经 `writeClipboard` · `readClipboard`（src/frontend/ui/clipboard.ts）：网页自己的剪贴板口在 WebView2 上会假报成功。";
+  const doors = [
+    { selector: "MemberExpression[property.name='clipboard']", message: clip },
+    { selector: "MemberExpression[property.value='clipboard']", message: clip },
+    { selector: "CallExpression[callee.property.name='writeText']", message: clip },
+    { selector: "CallExpression[callee.property.name='readText']", message: clip },
+    { selector: "Literal[value='/compact']", message: "请求压缩那一句住后端适配层（换号重启整条在后端做），界面不写它。" },
+    { selector: "TemplateElement[value.cooked='/compact']", message: "请求压缩那一句住后端适配层（换号重启整条在后端做），界面不写它。" },
+  ];
+  if (shellCall) {
+    doors.push(
+      { selector: "CallExpression[callee.property.name='clipboard_write']", message: clip },
+      { selector: "CallExpression[callee.name='clipboard_write']", message: clip },
+      { selector: "CallExpression[callee.property.name='clipboard_read']", message: clip },
+      { selector: "CallExpression[callee.name='clipboard_read']", message: clip },
+    );
+  }
+  return doors;
+}
+
 export default tseslint.config(
   {
     // Rust、产物、依赖、覆盖率报告、各类 config 自身不 lint。
@@ -52,6 +74,20 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  // 界面产品代码的几处「只一个口」：编进 lint 规则（按语法树认，注释与别名都不影响），`eslint .` 的基线是 0 ⇒ 写一处就红。
+  // 剪贴板只经 `src/frontend/ui/clipboard.ts`（壳命令 `clipboard_write` · `clipboard_read` 回系统接口的真成败）；网页自己的剪贴板口
+  //   在 WebView2 上剪贴板被占着时也回成功，界面就会说「已复制」而什么都没写进去。
+  // 换号重启整条在后端做：请求压缩用哪一句住后端适配层，界面不写那一句。
+  // 两块分开写：同一条规则后一块会整份盖掉前一块的选项，`clipboard.ts` 只少禁直呼壳命令那一条。
+  {
+    files: ["src/**/*.ts"],
+    ignores: ["src/frontend/ui/clipboard.ts"],
+    rules: { "no-restricted-syntax": ["error", ...uiSingleDoors(true)] },
+  },
+  {
+    files: ["src/frontend/ui/clipboard.ts"],
+    rules: { "no-restricted-syntax": ["error", ...uiSingleDoors(false)] },
   },
   {
     // 测试文件（tsx node 的 *.test.ts / jsdom 的 *.vitest.ts）：补 node 全局。

@@ -1508,7 +1508,7 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
     assert!(
         guard_core::contains_word(&prod, "CCM_TARGET_EXE_SUFFIX"),
         "生产段里不再引用那个编译期常量 —— 后缀要么被写死成空串（Windows 上退化），\
-             要么被改成现算的平台原语（当场撞 `the_backend_half_stays_platform_agnostic`）"
+             要么被改成现算的平台原语（当场撞 `platform_home_guard::platform_forms_live_only_at_home`）"
     );
 }
 

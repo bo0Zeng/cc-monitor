@@ -1332,7 +1332,7 @@ fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_eve
 /// ㈣ **计数会还** —— 一条正常连接走完之后 `inflight` 回到原值，否则上限会被慢慢耗光。
 ///
 /// ⚠⚠ **它证不了的那一半，写在这里**：真正能让半开连接**自己散掉**的是读/写期限，
-/// 而那要在生产段写 `Duration::from_*` ⇒ 要动 `no_timer_guard.rs::REGISTERED_DURATION_USES`，
+/// 而那要在生产段写 `Duration::from_*` ⇒ 要动 `clippy.toml` 的 `disallowed-methods`（就地放行），
 /// **那个文件这里不改**。⇒ 今天的性质是「**顶不满、拒绝有声**」，
 /// **不是**「半开连接会自己散」。交回理由见件文件 §8.20.4。
 #[test]

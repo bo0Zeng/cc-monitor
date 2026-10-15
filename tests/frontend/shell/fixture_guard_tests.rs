@@ -56,23 +56,7 @@ fn live_reference_corpus() -> Vec<(String, String)> {
 /// `fixture_guard.rs`。**这里不抄第二份。**
 #[test]
 fn every_fixture_has_a_live_reference() {
-    /// **豁免登记**：`(仓根相对路径, 为什么它掉光了活引用还能留在盘上)`。
-    ///
-    /// 🔴 **今天是空的，而「空」在这里是承重的**：它逐字的意思是
-    /// **盘上没有一份孤儿夹具**，不是「这一格没人看」。
-    ///
-    /// ⚠ 表名叫 `REGISTERED` 不是随手起的：`scanning_guard_registry` 那条纪律逐字
-    /// 「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的
-    /// 名字之一」—— 起了别的名字，`every_registry_guard_keeps_its_reverse_half`
-    /// **看不见本条**，而「它看过了、过了」与「它压根没去看」在输出上一模一样。
-    ///
-    /// ⚠ 往里加一行之前先问两遍：
-    /// ① **它为什么还在盘上？** 被测面退役了就把夹具一起删掉 —— `α3` 那一刀的账
-    ///    正是「清单腐了 ⇒ 该删的没删」，留着它就是把同一个坑再挖一次。
-    /// ② **它的正文干净吗？** 本仓那条「测试夹具采结构不采内容」的纪律**今天没有机检**
-    ///    （见模块头注），而 09-21 删掉的那一份正文里有真金额。
-    const REGISTERED: &[(&str, &str)] = &[];
-
+    // 没有豁免表（从前那张一直是空的、数到 0 删了）：孤儿夹具一份都不许有。
     let root = fg_repo_root();
     let fixtures = files_under(&root.join(FIXTURE_DIR), &root);
 
@@ -115,19 +99,8 @@ fn every_fixture_has_a_live_reference() {
         .cloned()
         .collect();
 
-    let want: std::collections::BTreeSet<String> =
-        REGISTERED.iter().map(|(p, _)| (*p).to_string()).collect();
-    assert_eq!(
-        want.len(),
-        REGISTERED.len(),
-        "`REGISTERED` 里有重复路径 —— 后一行会静默吃掉前一行"
-    );
-    let have: std::collections::BTreeSet<String> = orphans.iter().cloned().collect();
-
-    // ① **没登记的孤儿** —— 正题那一半。
-    let newly: Vec<&String> = have.difference(&want).collect();
     assert!(
-        newly.is_empty(),
+        orphans.is_empty(),
         "这几份夹具在活树里**一处引用都没有**：\n  {}\n\n\
          「活树」＝ `src` ＋ `tests`，减掉夹具目录自己 · `tests/evidence/`（量具与记录）\n\
          · 纯散文（`.md` / `.txt`）—— 三条排除各自的理由在 `counts_as_live_reference_site` 头注里。\n\
@@ -137,30 +110,9 @@ fn every_fixture_has_a_live_reference() {
             因为清单腐了没做成的事（按旧住址删 ⇒ 删了个不存在的文件，真文件静默留在盘上，\n\
             而它的正文里有真金额）；\n\
          ② **接上引用** —— 真有判据要用它就把它用起来。\n\
-         ⚠ **第三条路（往 `REGISTERED` 里加一行）不是省事的出口**：\n\
-            那张表要求同行写清「它为什么还在盘上」，而这个问题多半没有好答案。\n\
          ⚠ 只被 `tests/evidence/` 点着**不算活的**，这一条是承重的：\n\
             09-21 那份孤儿夹具就是只被那一棵点着（3 处），把它算进来本条对它就是瞎的。",
-        newly
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<_>>()
-            .join("\n  ")
-    );
-
-    // ② **反向那半 / 保鲜自检**：登记了却不再是孤儿（或者盘上没有了）⇒ 把那行删掉。
-    //   没有这一半，那张表会替真缺陷挡枪。
-    let stale: Vec<&String> = want.difference(&have).collect();
-    assert!(
-        stale.is_empty(),
-        "这几条豁免登记盘上已经不成立了 —— **把它们从 `REGISTERED` 里删掉**\n  {}\n\n\
-         （两种情形：那份夹具被删了，或者有人给它接上了活引用 —— 两样都是好事。）\n\
-         留着一条用不上的豁免，等于给下一份真孤儿预留一个免检章。",
-        stale
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<_>>()
-            .join("\n  ")
+        orphans.join("\n  ")
     );
 }
 
@@ -171,15 +123,8 @@ fn every_fixture_has_a_live_reference() {
 /// 而一条只有空表的判据说不出「反向那半还在不在」。
 #[test]
 fn every_fixture_address_in_the_live_tree_still_exists() {
-    /// **悬空登记**：`(仓根相对路径, 它点的基名, 为什么这条悬空地址刻意留着)`。
-    ///
-    /// 🔴 今天是空的。⚠ 这不等于全仓没有悬空地址：`tests/evidence/` 里现打有
-    /// **2 处**指着 09-21 删掉那份夹具（一份剪切脚本 ＋ 一份死值验记录）——
-    /// 那两处是**历史记录**，地址本该是历史，按构造不在本条人群里
-    /// （`tests/evidence/` 不算活树，理由在 `counts_as_live_reference_site` 头注）。
-    /// **这一句是射程说明，不是欠账。**
-    const SITES: &[(&str, &str, &str)] = &[];
-
+    // 没有悬空登记表（从前那张一直是空的、数到 0 删了）。`tests/evidence/` 里点着已删夹具的是历史记录，
+    // 按构造不在人群里（`counts_as_live_reference_site` 头注）。
     let root = fg_repo_root();
     let on_disk: std::collections::BTreeSet<String> = files_under(&root.join(FIXTURE_DIR), &root)
         .iter()
@@ -205,18 +150,9 @@ fn every_fixture_address_in_the_live_tree_still_exists() {
         addressed.len()
     );
 
-    let want: std::collections::BTreeSet<(String, String)> = SITES
-        .iter()
-        .map(|(p, b, _)| ((*p).to_string(), (*b).to_string()))
-        .collect();
-    let have: std::collections::BTreeSet<(String, String)> = addressed
+    let newly: Vec<String> = addressed
         .iter()
         .filter(|(_, base)| !on_disk.contains(base))
-        .cloned()
-        .collect();
-
-    let newly: Vec<String> = have
-        .difference(&want)
         .map(|(p, b)| format!("  {p}  点着 `{b}`，而 `{FIXTURE_DIR}` 下没有这份文件"))
         .collect();
     assert!(
@@ -227,16 +163,6 @@ fn every_fixture_address_in_the_live_tree_still_exists() {
          （写 `src/__fixtures__/`、真住址是 `tests/__fixtures__/`）⇒ 按旧住址删，\n\
          删了个不存在的文件，而真文件静默留在盘上。地址腐掉不会自己出声。",
         newly.join("\n")
-    );
-
-    let stale: Vec<String> = want
-        .difference(&have)
-        .map(|(p, b)| format!("  {p}  `{b}`"))
-        .collect();
-    assert_eq!(
-        stale,
-        Vec::<String>::new(),
-        "这几条悬空登记盘上已经不成立了 —— 把它们从 `SITES` 里删掉（多半是有人把地址改对了）"
     );
 }
 

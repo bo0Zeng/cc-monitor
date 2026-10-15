@@ -1087,6 +1087,10 @@ fn watch_loop(
     // the Ctrl+H history browser's job (Phase 1 for remote).
     let sock_dir = tmux_socket_dir();
     let armed = arm_then_scan(&sessions, &mut state, &mut sink, || {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "notify-debouncer 的事件合并窗口：它不产生唤醒，只决定「同一批文件事件攒多久再一起交付」"
+        )]
         let mut debouncer = match new_debouncer(
             Duration::from_millis(DEBOUNCE_MS),
             DebouncerSink(events_tx.clone()),

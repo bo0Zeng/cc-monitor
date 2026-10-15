@@ -33,6 +33,10 @@ pub(crate) const MAX_ARGS_B64_LEN: usize = 131_068;
 /// 为什么不能读到 EOF 才算：有的调用方关不掉 stdin（capture 那一跳 · 第二个前端的执行通道），读到 EOF 就是永远挂住。
 /// 为什么 1 s 够：载荷是起进程的同一刻写进管道的（本机 `printf … |`；远端经 ssh 时载荷跟着 exec 请求走同一条连接，
 /// 远端登录 shell 还没起完它就已经在管道里）。第一个字节到了之后照旧读到 EOF / 换行，不再计时。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "CLI 面读入参的静默窗（`cli_args::STDIN_QUIET`）：只交给那一次有界等待"
+)]
 pub(crate) const STDIN_QUIET: Duration = Duration::from_millis(1000);
 
 /// 入参从哪个口来：argv 上的修饰词决定，**位置无关**（同 [`crate::wire::cli_words::TEXT_FLAG`]）。
@@ -116,6 +120,10 @@ fn decode_argv(b64: &str) -> Result<String, (&'static str, String)> {
 
 /// stdin 那一形，带静默窗：读端交给一条线程读；[`STDIN_QUIET`]（测试传更短的）内第一个字节（或 EOF）没到 ⇒ `no_input`。
 /// 到了之后照旧 [`read_input`]（同一个上限、同一种拒法）。没读完就回码时那条线程留在那儿 —— 一次性进程马上就退。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "CLI 面读入参的静默窗（`cli_args::read_stdin_within`）：stdin 开着、却一直不写（关不掉 stdin 的调用方 —— capture 那一跳 · 只有 stdout 的执行通道）时，读…"
+)]
 fn read_stdin_within<R: Read + Send + 'static>(
     r: R,
     one_line: bool,

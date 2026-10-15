@@ -16,7 +16,15 @@ pub(crate) struct Armed<T = ()> {
 
 impl<T> Armed<T> {
     /// 等到 ⇒ 等到的那一份；`ms` 毫秒内没等到 ⇒ `None`。
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "换号重启等压缩摘要 / 等会话报出的一次有界等待：到了由文件事件（inotify）当场叫醒，没到就等到发起方给的期限、回「没等到」"
+    )]
     pub(crate) async fn fetch(self, ms: u64) -> Option<T> {
+        #[allow(
+            clippy::disallowed_methods,
+            reason = "一次性等待（`observe::one_wait::Armed::within`）的期限：值由发起方给（换号重启的界面把等压缩 / 等会话报出的期限交下来），只交给那一次有界等待（登记在 `REGISTERED_DEAD…"
+        )]
         let wait = std::time::Duration::from_millis(ms);
         tokio::time::timeout(wait, self.hit).await.ok()?.ok()
     }

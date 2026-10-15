@@ -21,7 +21,7 @@
 //!
 //! 1. 一台机器一个家一个常驻后端：目录独占锁抢不到就带 [`EXIT_ADDR_IN_USE`] 退出，绝不换个地方再起一个
 //!    （换地方 = 每台机 N 个 backend，中转口与全部 SSH 各 N 份）。宿主连上去先读 hello 比对，对不上就出声并拒绝。
-//! 2. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`no_timer_guard::backend_production_code_has_no_periodic_wakeups`）。
+//! 2. 一个定时器都没有：`accept` 与读一行都阻塞在内核事件上（`src/backend/clippy.toml` 的 `disallowed-methods`）。
 //! 3. 别的 uid 连进来（root 例外不了：内核报的就是它的 uid）⇒ 关掉、出声，hello 都不给。
 
 /// 宿主告诉后端「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算，宿主与后端同一个函数。

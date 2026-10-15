@@ -69,7 +69,7 @@ pub(crate) fn send_sigusr1(pid: u32) -> bool {
 
 /// **一个要被停的进程的把手** —— 「请它收尾 → 宽限期内等 → 强杀」三步都经它（`control/resident.rs::stop_pid`）。
 /// Linux 是 pidfd：信号经它发、退出经它等，拿到把手之后 pid 被复用也打不到别人；Windows 是进程句柄（没有「请它收尾」那一格）。
-/// 只给一次性子命令用：带期限的等待登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`。
+/// 只给一次性子命令用：带期限的等待登记在 `clippy.toml` 的 `disallowed-methods`，调用处就地放行。
 pub(crate) struct Stoppable {
     #[cfg(target_os = "linux")]
     fd: std::os::fd::OwnedFd,
@@ -207,6 +207,10 @@ impl Stoppable {
             // EINTR：一次性子命令没装信号处理器，几乎不会来；来了就再等一整段（至多三次，有界）。
             for _ in 0..3 {
                 // SAFETY：pfd 是栈上的一个合法 pollfd，nfds=1 与之匹配；fd 由 self 持有，等的期间不会被 close。
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "Linux 臂：在 pidfd 上至多等宽限期（`Stoppable::exited_within`），进程一退内核就叫醒；只在一次性子命令里用，常驻后端不走这里"
+                )]
                 let n = unsafe { libc::poll(&mut pfd, 1, ms) };
                 if n >= 0 {
                     return Ok(n > 0);

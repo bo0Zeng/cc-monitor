@@ -3,12 +3,12 @@
 //!
 //! | # | 判什么 |
 //! |---|---|
-//! | C1 | 生产段里除 `common/time.rs` 外，没有 `SystemTime::now` · `Utc::now` · `Local::now` · `Timestamp::now` · `Zoned::now`，也没有拿 `Instant` 去换算墙钟（同一行里 `SystemTime` 与 `elapsed(` / `Instant` 碰头）|
+//! | C1 | （已换成 clippy：`src/backend/clippy.toml` 的 `disallowed-methods` ＋ `Cargo.toml` 里定成 deny；别处直接问系统钟 clippy 红，起别名也认得出） |
 //! | C2 | 拨钟那一段只在特性 `shots` 下编：`Cargo.toml` 的 `shots = []` 不在 `default` 里；`common/time.rs` 里 `mod shots_clock` 紧跟在 `#[cfg(feature = "shots")]` 下；台架那个环境变量名只在那一段里出现，生产源码别处不提 |
 //! | C3 | 台架真在编它、真在交时刻：`tests/shots/real/pool.mjs` 按 `--features shots` 编后端、给每台后端设那个环境变量 |
 //! | C4 | 默认构建（本测试这一档）里特性没开；`now()` 就是系统钟 |
 //!
-//! 买不到：读的是源码文本；把系统钟包进别的名字（`use std::time::SystemTime as S; S::now()`）认不出。
+//! C2 · C3 读的是源码文本。
 //! 发版 / CI / 门禁里不许点名特性 `shots`，由壳那一侧的 `shots_feature_guard_tests::s3` 一并钉着（它扫的是全仓的工作流与门禁脚本）。
 
 use std::path::Path;
@@ -19,30 +19,8 @@ const MODULE: &str = "shots_clock";
 /// 台架交时刻的那个环境变量（unix 毫秒）。
 const ENV: &str = "CCM_SHOTS_NOW_MS";
 
-const WALL_CLOCK_CALLS: &[&str] = &[
-    "SystemTime::now",
-    "Utc::now",
-    "Local::now",
-    "Timestamp::now",
-    "Zoned::now",
-];
-
 fn read(p: &Path) -> String {
     std::fs::read_to_string(p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
-}
-
-/// 一份生产段里直接问系统钟的那几行。
-fn wall_clock_sites(prod: &str) -> Vec<String> {
-    guard_core::strip_comment_lines(prod)
-        .lines()
-        .filter(|l| {
-            let flat: String = l.chars().filter(|c| !c.is_whitespace()).collect();
-            WALL_CLOCK_CALLS.iter().any(|c| flat.contains(c))
-                || (flat.contains("SystemTime")
-                    && (flat.contains("elapsed(") || flat.contains("Instant")))
-        })
-        .map(|l| l.trim().to_string())
-        .collect()
 }
 
 fn production_files() -> Vec<(String, String)> {
@@ -58,56 +36,6 @@ fn production_files() -> Vec<(String, String)> {
             (rel, crate::guard_support::production_code(&src))
         })
         .collect()
-}
-
-#[test]
-fn c1_only_common_time_reads_the_wall_clock() {
-    let files = production_files();
-    assert!(files.len() > 200, "人群不空（读到 {} 份 .rs）", files.len());
-    assert!(
-        files.iter().any(|(rel, _)| rel == CLOCK_FILE),
-        "{CLOCK_FILE} 在人群里"
-    );
-    let mut bad = Vec::new();
-    for (rel, prod) in &files {
-        if rel == CLOCK_FILE {
-            continue;
-        }
-        for l in wall_clock_sites(prod) {
-            bad.push(format!("{rel}: {l}"));
-        }
-    }
-    assert!(
-        bad.is_empty(),
-        "后端的「现在」只有一处：改调 `crate::common::time::{{now, now_secs, now_ms}}`\n{bad:#?}"
-    );
-    // 那一处自己真在问系统钟（不然上面是在守一个空名字）。
-    let clock = &files.iter().find(|(rel, _)| rel == CLOCK_FILE).unwrap().1;
-    assert!(
-        !wall_clock_sites(clock).is_empty(),
-        "{CLOCK_FILE} 里有那一处取系统钟"
-    );
-}
-
-#[test]
-fn c1_the_shapes_are_recognised() {
-    assert_eq!(
-        wall_clock_sites("let t = std::time::SystemTime::now();").len(),
-        1
-    );
-    assert_eq!(wall_clock_sites("let t = SystemTime :: now ();").len(), 1);
-    assert_eq!(wall_clock_sites("let t = chrono::Utc::now();").len(), 1);
-    assert_eq!(wall_clock_sites("let z = jiff::Zoned::now();").len(), 1);
-    assert_eq!(
-        wall_clock_sites("let w = boot_wall + SystemTime::UNIX_EPOCH; t0.elapsed()").len(),
-        1
-    );
-    assert_eq!(
-        wall_clock_sites("let t = crate::common::time::now();").len(),
-        0
-    );
-    assert_eq!(wall_clock_sites("// SystemTime::now() 不许").len(), 0);
-    assert_eq!(wall_clock_sites("let d = t0.elapsed();").len(), 0);
 }
 
 #[test]

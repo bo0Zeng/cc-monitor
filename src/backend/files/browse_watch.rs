@@ -198,7 +198,7 @@ pub fn dir_for_event(path_bytes: &[u8]) -> Option<Vec<u8>> {
 /// 一个活着的监听器（盯盘原语 [`crate::platform::watch_file`] 那一份）。它一被丢掉，watch 就跟着没了 —— 调用方要拿住它。
 ///
 /// 一个时间窗都不传：去抖器要传时间窗，而零定时器护栏把秒级 `Duration` 构造钉成恰好等于登记表条数
-/// （`no_timer_guard::REGISTERED_DURATION_USES`）。原语把一阵动静并成一次回调；同一阵里同一个目录只重列一次（一次 `read_dir`，与盘的大小无关）。
+/// （`clippy.toml` 的 `disallowed-methods`，就地放行）。原语把一阵动静并成一次回调；同一阵里同一个目录只重列一次（一次 `read_dir`，与盘的大小无关）。
 pub struct BrowseWatcher {
     inner: crate::platform::watch_file::Watching,
 }

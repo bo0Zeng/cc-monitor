@@ -1,7 +1,7 @@
 // T03 的结构性守卫：「待贴配置文本」这件事**只有一个实现**。
 //
 // 守法是**白名单**（本会话已九次栽在黑名单上）：枚举全仓每一处写剪贴板（`writeClipboard`：界面写剪贴板只这一口，
-// 经壳拿真成败 —— `clipboard.ts`；网页自己的 `writeText` 全仓零处，由 `clipboard-single-home-guard.vitest.ts` 钉），
+// 经壳拿真成败 —— `clipboard.ts`；网页自己的 `writeText` 全仓零处，由 `eslint.config.js` 里那条 `no-restricted-syntax` 钉），
 // 要求它落在两张已知名单之一——族 A（待贴配置文本，必须走 `buildPasteBlock`）
 // 或族 B（复制点东西给人看，契约不同，已登记不收）。新增一处两边都不在 → 红。
 import { describe, it, expect } from "vitest";

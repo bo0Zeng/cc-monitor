@@ -1,0 +1,31 @@
+# 后端的「现在」只有一处：取当前墙钟一律调 `common::time::now`（及 `now_secs` · `now_ms`），别处直接问系统钟编不过
+#（`Cargo.toml` 的 `[lints.clippy]` 把这条定成 deny；按解析后的路径认，`use … as` 起别名也认得出）。
+# 只有一处，截图台架才能把「现在」给死。
+# 后端零定时器（判活由内核事件驱动）：sleep · 带期限的等待 · interval · 掐表 · 构造 `Duration`，每用一处就在那一处
+#   `#[allow(clippy::disallowed_methods, reason = "…")]` 写清它为什么不是定时器、什么时候能去掉。
+# 测试段放开（两个库根头上那一行 `cfg_attr(test, …)`）。本文件管后端与拨号核心两个包（各自的 `[lints.clippy]` 定成 deny）。
+disallowed-methods = [
+  { path = "std::time::SystemTime::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
+  { path = "jiff::Timestamp::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
+  { path = "jiff::Zoned::now", reason = "后端的「现在」只走 `crate::common::time::now`" },
+  { path = "std::thread::sleep", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::thread::park_timeout", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::sync::mpsc::Receiver::recv_timeout", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::sync::Condvar::wait_timeout", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::sync::Condvar::wait_timeout_while", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::time::Instant::now", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::sleep", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::sleep_until", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::interval", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::interval_at", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::timeout", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::timeout_at", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "tokio::time::Instant::now", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "libc::poll", reason = "后端零定时器：poll 的第三个参数是期限；-1 以外的值就是一次会自己醒来的等待，用一处在那一处放行并写理由" },
+  { path = "std::time::Duration::from_secs", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::time::Duration::from_millis", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::time::Duration::from_micros", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::time::Duration::from_nanos", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::time::Duration::from_secs_f32", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+  { path = "std::time::Duration::from_secs_f64", reason = "后端零定时器：会让线程 / 任务自己醒来的构件与它们要的期限，用一处就在那一处放行并写理由" },
+]

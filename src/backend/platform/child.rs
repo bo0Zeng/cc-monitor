@@ -38,6 +38,10 @@ use std::time::{Duration, Instant};
 pub(crate) struct Deadline(Duration);
 
 impl Deadline {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "起子进程原语的期限类型 `Deadline` 唯一造时长的地方：`Deadline` 只交给 `Child::run` 那一次有界等待，模块外拿不到它的时长（没有取值口），拿去做节拍做不到"
+    )]
     pub(crate) const fn millis(n: u64) -> Deadline {
         Deadline(Duration::from_millis(n))
     }
@@ -135,6 +139,10 @@ impl Span {
 }
 
 /// 读一次单调钟（后端生产段唯一一处）：只用来算总期限还剩多少，不驱动任何等待。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "起子进程原语的总期限（`Budget`）：一条阻塞档命令里连发几发时，各发共用剩下的时间 —— 装总期限时读一次、每发起之前读一次，只用来把那一次有界等待截短，不驱动任何循环、不产生节拍"
+)]
 fn now() -> Instant {
     std::time::Instant::now()
 }
@@ -365,6 +373,10 @@ impl Child {
     /// 起它、等它、收两条输出；**期限必填**。到点 ⇒ 杀整组（Windows：终止 Job）、收尸、回 `TimedOut`。
     /// 装着总期限（[`Budget`]）⇒ 只等「自己的期限」与「剩下的」里小的那个；没剩 ⇒ 不起、直接回 `TimedOut`。
     /// 被总期限截短的那一次超时，话里报总期限（整条命令等了这么久）。
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志；起子进程原语（`Child::run`）等子进程结束的一次有界等待：阻塞档命令起的 tmux / ssh / PowerShell 卡住时，没有它整条命令（或 watcher 的事件循环）就一直挂着"
+    )]
     pub(crate) fn run(self, within: Deadline) -> Result<Output, ChildFail> {
         let program = self.label();
         let (within, said) = match Span::here() {

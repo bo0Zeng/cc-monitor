@@ -25,7 +25,7 @@ pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 //
 // 值归后端 · 执行归通信层 · 说法归调用方：期限与端口号同是策略值，通信层自己没有任何期限常量。
 // 装它们的那两手在中转（`server::apply_downstream_deadline` 与 `upstream::connect`），收入参。
-// 两个值在 `no_timer_guard::REGISTERED_DURATION_USES` 里各占一行（恰好相等的断言）；不许搬回中转 crate（那边生产段零期限字面量）。
+// 两个值各在声明处就地放行 `clippy::disallowed_methods`（`clippy.toml`）并写理由；不许搬回中转 crate（那边生产段零期限字面量）。
 
 /// 下游那条 socket 的读写期限。`INFLIGHT_CONNECTIONS` 买「顶不满、拒绝有声」，这一条买「顶住的那些会自己散」：
 /// 没有它，256 条半开连接能把中转永久钉死，而它会礼貌地回 503，读起来像正常限流。
@@ -37,6 +37,10 @@ pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 /// 30 秒：对端就在本机（`listen()` 绑 `LOOPBACK`），回环上搬完一条最大请求体（`BODY_CAP` = 64 MiB）是零点零几秒的量级
 /// （按量级推，没实测）。设长则半开连接要很久才散、读起来像挂死；设短则负载高时合法的大请求体被掐掉、还不好查。
 /// 不跟上游用同一个数：下游请求在内存里已经拼好，慢是异常；上游是「模型在想」，慢是正常（见 [`UPSTREAM_DEADLINE`]）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "中转下游 socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（那个值今天住 `relay/listen.rs::DOWNSTREAM_DEADLINE` —— 按「期限值全部由后端交给它」搬出中转；…"
+)]
 pub(super) const DOWNSTREAM_DEADLINE: std::time::Duration =
     std::time::Duration::from_millis(30_000);
 
@@ -48,6 +52,10 @@ pub(super) const DOWNSTREAM_DEADLINE: std::time::Duration =
 /// 会多钉住一条线程那么久。不拿「上游会周期发 `ping`」当依据：这个数要在上游合法地整段沉默时也站得住。
 ///
 /// `TcpStream::connect` 本身没有连接期限：那一步有内核 SYN 重试上限与解析器自己的上限兜着（具体多少没量，只能说不是无界）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "中转上游 socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（同上，那个值今天住`relay/listen.rs::UPSTREAM_DEADLINE`；装它的那一手仍在 `relay/upstre…"
+)]
 pub(super) const UPSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(600_000);
 
 /// 起监听。返回真实绑定的地址（端口给 0 时由内核选，测试用）。

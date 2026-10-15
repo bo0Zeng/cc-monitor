@@ -23,6 +23,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// 续登录令牌那一发的期限。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "换号要续订阅号令牌时那一发的 socket 读写期限（`rotate::TOKEN_DEADLINE`，交给 `oauth::TokenEndpoint` → 中转的一问一答原语）：一次阻塞的上限，到点那一发报错返回、不…"
+)]
 const TOKEN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(15_000);
 
 /// 账号库里的一个号（换号要的那几格）。

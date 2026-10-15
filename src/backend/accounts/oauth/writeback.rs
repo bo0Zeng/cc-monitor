@@ -135,7 +135,15 @@ fn wait_and_write(own: crate::platform::fs::Own, dir: PathBuf, face: LoginFace, 
     if let Err(e) = &ears {
         tracing::warn!("[auth] 续期：号 {account} 的配置目录盯不上，只在期限到时再试一次：{e}");
     }
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "续成了、写回在等那一家放整份写锁时那一次有界等待的期限（`LoginFace::write_wait_ms`，交给 `rx.recv_timeout(within)`）：锁一放由文件事件当场叫醒，到期只再试一次写…"
+    )]
     let within = std::time::Duration::from_millis(face.write_wait_ms);
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "续期写回碰上那一家的整份写锁时那一次有界等待（`writeback::wait_and_write`）：新令牌先留在内存里照用，写锁目录被删 / 凭据文件被换的文件事件当场叫醒写回；一直没放开就要有个头，到期再试一次、照…"
+    )]
     let done = try_once() || (ears.is_ok() && rx.recv_timeout(within).is_ok()) || try_once();
     drop(ears);
     if !done {
