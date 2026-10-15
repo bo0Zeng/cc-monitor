@@ -37,6 +37,14 @@ import kotlinx.coroutines.launch
 data class NeedsUi(
     val bar: NeedsBar? = null,
     val sheet: AskSheet? = null,
+    /** 流里在等的那一步（工具卡上标它）；那台判不出是哪一步 · 不在等 ⇒ `null`。 */
+    val awaiting: AwaitingStep? = null,
+)
+
+/** 在等的那一步：记录里那次工具调用的 id（`needs.call`）＋ 卡上那枚标的字（`needs.text`，那台写好的「等批准」…）。 */
+data class AwaitingStep(
+    val call: String,
+    val text: String,
 )
 
 /** 钉条（输入框上方）：第一行那台写好的 [head] ＋ 已等，第二行等宽的 [line2]（答不了的那种是那台那一句，[code] 为假）。 */
@@ -340,6 +348,7 @@ class NeedsDesk(
                             receivedAt = receivedAt,
                         )
                     },
+                awaiting = n?.call?.let { AwaitingStep(it, n.text) },
             )
         }
 

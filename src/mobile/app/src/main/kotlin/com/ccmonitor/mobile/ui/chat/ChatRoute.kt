@@ -46,6 +46,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
+import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.chatHolder
@@ -107,6 +108,8 @@ fun ChatRoute(
         onDrawerAction(if (action == DrawerAction.NewConversation && cwd != null) DrawerAction.NewDraft(hostId, cwd) else action)
     }
     val picker = vm.picker
+    val needs = rememberChatNeeds(open.key, backends.of(hostId), sid, host.machine)
+    val needsUi by needs.desk.state.collectAsStateWithLifecycle()
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
@@ -135,7 +138,8 @@ fun ChatRoute(
                     actions = vm.actions,
                     onRetrySend = vm::retry,
                     onLoadOlder = vm::loadOlder,
-                    needs = { ChatNeeds(open.key, backends.of(hostId), sid, host.machine) },
+                    awaiting = needsUi.awaiting,
+                    needs = { ChatNeeds(needs) },
                     modifier = Modifier.weight(1f),
                 )
             }
