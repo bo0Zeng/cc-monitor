@@ -20,14 +20,14 @@
 //! 只抓**上限**：下限（`took >= 600ms`）与静窗（「这 400 毫秒里不许有事件」）机器忙只会让它更长 / 更弱，不会误红，不管。
 //! 一秒以下的等待当轮询片或静窗（逐条看过：`recv_timeout(400ms)` 后面都是 `.is_err()` / `Timeout =>`）。
 //!
-//! 「睡一会儿再断言」（10-11 tools2 补）：不在轮询圈里的 `sleep(…)`、同一块往后五句之内有断言（rs-sleep）·
+//! 「睡一会儿再断言」：不在轮询圈里的 `sleep(…)`、同一块往后五句之内有断言（rs-sleep）·
 //! e2e 里前台的 `sleep N` 不在轮询圈里（sh-sleep）· 拿圈数 × 睡眠当期限的 Rust 轮询圈（rs-poll，换成 `wall::rounds()`）。
 //! 等一件事 ⇒ 等它成立；造时间差 ⇒ 直接写 mtime / 把钟拨给被测函数；看「没发生」⇒ 先等一个说明「定了」的正面迹象
 //! （收尾记号、同一条输入口打进去的记号、终局应答），等不到这种迹象的静窗才登记进例外表。
 //!
 //! 买不到：
-//! - 睡眠藏在别的函数里（`settle()` 里睡、调用处断言）、隔了五句以上才断言的，认不出；TS 的 `await new Promise(r => setTimeout(r, N))`
-//!   之后 `expect` 那一形不在这里（`ts-poll` 只认圈）；
+//! - Rust 里睡眠藏在别的函数里（`settle()` 里睡、调用处断言）、隔了五句以上才断言的，认不出；
+//!   TS 不在这里：测试源里 `setTimeout` / `setInterval` 只许 0，由 eslint 拦（`eslint.config.js`，基线 0 由 `eslint-baseline` 数着）；
 //! - 期限藏进函数参数、跨文件常量、`format!` 拼出来的，认不出（同文件里 `let` / `const` 绑的认得出）；
 //! - 被测系统自己的期限（喂给被测代码的 `deadline: …`、`arrive_within_ms`、`connectTimeoutMs`）不是判据的期限，不在这几形里
 //!   （喂给 `set_read_timeout` / `Instant::now() + …` 的算，那几处要么换成兜底的数、要么登记成「被测期限」）；
@@ -75,11 +75,6 @@ const FORMS: &[(&str, &str, &str)] = &[
         "ts-waitfor",
         "ts",
         "`vi.waitFor` / `vi.waitUntil` 没给上限（默认 1 秒）或给了别的数",
-    ),
-    (
-        "ts-poll",
-        "ts",
-        "`for (… i < N …) await new Promise(r => setTimeout(r, M))`：拿循环次数 × 睡眠当期限",
     ),
     (
         "ts-upper",
@@ -149,12 +144,6 @@ const EXEMPT: &[(&str, &str, &str, &str)] = &[
         "sh-timeout",
         "timeout 4 script -qec \"$TMUX_BIN -L $SOCK attach -t '=cc-p1:'\"",
         "接上之后 attach 不会自己退，4 秒是收它的采样窗；判的是「窗里没出现 can't find」，忙机只会让窗里更空、不会误红",
-    ),
-    (
-        "tests/frontend/ui/tabs.vitest.ts",
-        "ts-poll",
-        "for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 20));",
-        "让过 rAF 自链那几拍（jsdom 里 rAF 也是定时器，约 16ms）：按定时器到期先后排队，机器忙只是整体往后推、先后不变，不按墙钟",
     ),
     (
         "tests/frontend/filewin/xvfb_rig.rs",
@@ -637,12 +626,6 @@ pub(super) fn ts_hits(src: &str) -> Vec<Hit> {
         if !ts_ceiling(paren_span(src, m.end() - 1)) {
             push("ts-waitfor", m.start());
         }
-    }
-    let poll = re!(
-        r"for\s*\([^;]*;[^;]*<\s*[0-9][0-9_]*[^;]*;[^)]*\)\s*\{?\s*await\s+new\s+Promise\s*\(\s*\(?\s*\w+\s*\)?\s*=>\s*setTimeout\s*\(\s*\w+\s*,\s*([1-9][0-9]*)\s*\)"
-    );
-    for c in poll.captures_iter(src) {
-        push("ts-poll", c.get(0).unwrap().start());
     }
     let took_re =
         re!(r"(?:const|let)\s+(\w+)\s*=\s*[^;\n]*(?:performance\.now\(\)|Date\.now\(\))\s*-\s*\w");
@@ -1193,7 +1176,6 @@ fn w4_ts_forms_are_told_apart() {
         it(\"b\", () => {\n\
         }, 60_000);\n\
         await vi.waitFor(() => expect(x).toBe(1));\n\
-        for (let i = 0; i < 200 && !ok(); i++) await new Promise((r) => setTimeout(r, 10));\n\
         const dt = Date.now() - t0;\n\
         ok(dt < 3000, \"slow\");\n";
     assert_eq!(
@@ -1202,7 +1184,6 @@ fn w4_ts_forms_are_told_apart() {
             "ts-timeout",
             "ts-trailing",
             "ts-waitfor",
-            "ts-poll",
             "ts-upper"
         ]
     );

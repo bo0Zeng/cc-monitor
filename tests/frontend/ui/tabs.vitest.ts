@@ -4741,13 +4741,24 @@ describe("〔U4b〕main.ts 接线", () => {
  */
 describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
   let tm: TabManager;
+  /** 帧换成手摇的（`fillAbove` 补完一批靠 rAF 自链复检）：用例收场时没摇的帧丢掉，不漏进下一条的计数。 */
+  let frames: FrameRequestCallback[] = [];
   beforeEach(() => {
     vi.clearAllMocks();
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
     tm = makeTM();
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.mocked(invoke).mockResolvedValue(undefined as never);
   });
+  /** 摇一帧：此刻排着的那几个回调跑一遍。 */
+  const oneFrame = (): void => {
+    const due = frames;
+    frames = [];
+    for (const cb of due) cb(0);
+  };
 
   const mk = (sid: string, seq: number, origin?: string) =>
     ({
@@ -4758,10 +4769,16 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       ...(origin ? { origin } : {}),
       record: { t: "reply", id: `${sid}-${seq}` } as never,
     }) as never;
-  // ⚠ 等的是 rAF（`fillAbove` 补完一批靠 `requestAnimationFrame` 自链复检，jsdom 里约 16ms 一拍）——
-  //   只让几个 0ms 宏任务过去等不到它：上一条的自链会漏进下一条的计数（首跑现打过一次）。
+  /** 一直摇到停：在途的读落下来（让几拍）、排着的帧跑完，连着几拍都没有新排的帧为止。 */
   const settle = async (): Promise<void> => {
-    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 20));
+    for (let quiet = 0; quiet < 3; ) {
+      await new Promise((r) => setTimeout(r, 0));
+      if (frames.length === 0) quiet++;
+      else {
+        quiet = 0;
+        oneFrame();
+      }
+    }
   };
   const asks = () => recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines");
   /** 后端答：`[from, until)` 里每一行都可显示（seq 就是行号）。 */
@@ -4792,7 +4809,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     tm.switchTo("lb"); // jsdom 恒不可滚 ⇒ R-2 踢一脚
-    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    oneFrame(); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(asks()).toEqual([{ origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300, leftMs: 60_000 }]);
     await settle();
     // 回来的 200 条补上了屏（渲染窗口向下扩到 100）；之后接着问 [0, 100)，到第 0 行为止
@@ -4872,7 +4889,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
     expect(asks().length, "连续两次失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
     home(tm).view.activate(t);
-    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    oneFrame(); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(3);
   });
 

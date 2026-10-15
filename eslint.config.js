@@ -97,6 +97,24 @@ export default tseslint.config(
     },
   },
   {
+    // 判据里不睡定时长：睡一会儿再判，机器一慢就红、一快就漏。等一件事 ⇒ `vi.waitFor` 等它本身；判到点前后 ⇒ 假时钟拨到界上两侧；
+    //   让别的先走 ⇒ `setTimeout(…, 0)` 让一拍。
+    files: ["tests/**/*.test.ts", "tests/**/*.vitest.ts", "tests/test-support/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...["setTimeout", "setInterval"].flatMap((name) => {
+          const notZero = ":not([arguments.1.type='Literal'][arguments.1.value=0])";
+          const message = `判据里不睡定时长（\`${name}\` 只许 0）：等事件用 \`vi.waitFor\`，判到点前后用假时钟。`;
+          return [
+            { selector: `CallExpression[callee.name='${name}'][arguments.length>1]${notZero}`, message },
+            { selector: `CallExpression[callee.property.name='${name}'][arguments.length>1]${notZero}`, message },
+          ];
+        }),
+      ],
+    },
+  },
+  {
     // E83（2026-08-01）：`tests/e2e/` 下那些 `.mjs`（wdio 配置、restart-shims、spec）**此前从没被 lint 过**。
     //
     // 病灶不是「它们脏」，是**作用面与配置意图对不上**：本文件的 `ignores` 明明是**仓级**的
