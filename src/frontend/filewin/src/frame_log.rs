@@ -2,6 +2,7 @@
 //!
 //! 设了环境变量 [`ENV`]（值 = 一个文件路径）才开：之后每帧往那份文件追加一行，说这一帧为什么画、画面与字的布局比上一帧变没变。
 //! 没设 ⇒ [`FrameLog::off`]，[`FrameLog::record`] 第一句就回去：不读画面、不算哈希、不写任何东西。
+//! 开着忘了关：一扇窗记满 [`MAX_FRAMES`] 帧（一行约两百字节，约 20 MB）写一行 `stopped=cap frames=<n>` 就自己关掉。
 //!
 //! 一行长这样（空格分隔的 `键=值`，好 grep）：
 //! `frame=12 t_ms=3456 pass=0 events=1 pointer=512.0,88.5 ppp=1.50 paint=changed layout=same shapes=214 why=…`
@@ -18,12 +19,16 @@ use std::io::Write as _;
 /// 打开帧日志的环境变量（值 = 日志文件路径）。
 pub const ENV: &str = "CCM_FILEWIN_FRAME_LOG";
 
+/// 一扇窗最多记几帧。
+pub const MAX_FRAMES: u64 = 100_000;
+
 /// 帧日志。关着的那一形什么都不做。
 #[derive(Debug, Default)]
 pub struct FrameLog {
     out: Option<std::io::BufWriter<std::fs::File>>,
     started: Option<std::time::Instant>,
     frames: u64,
+    cap: u64,
     last: Option<(u64, u64)>,
 }
 
@@ -48,6 +53,11 @@ impl FrameLog {
 
     /// 往这份文件追加（没有就建）。
     pub fn to_file(path: &std::path::Path) -> std::io::Result<Self> {
+        Self::capped(path, MAX_FRAMES)
+    }
+
+    /// 同 [`FrameLog::to_file`]，记满 `cap` 帧就停。
+    pub(crate) fn capped(path: &std::path::Path, cap: u64) -> std::io::Result<Self> {
         let f = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -56,6 +66,7 @@ impl FrameLog {
             out: Some(std::io::BufWriter::new(f)),
             started: Some(std::time::Instant::now()),
             frames: 0,
+            cap,
             last: None,
         })
     }
@@ -94,6 +105,11 @@ impl FrameLog {
             if why.is_empty() { "-".to_string() } else { why.join("|") },
         );
         if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
+            self.out = None;
+            return;
+        }
+        if self.frames >= self.cap {
+            let _ = writeln!(out, "stopped=cap frames={}", self.frames).and_then(|()| out.flush());
             self.out = None;
         }
     }

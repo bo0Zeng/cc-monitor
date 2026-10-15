@@ -90,3 +90,25 @@ fn each_frame_is_one_line_saying_whether_the_picture_and_the_text_layout_moved()
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 开着忘了关也不会把盘写满：记满上限那么多帧后写一行「停了」、之后不再写也不再读画面。
+#[test]
+fn the_log_stops_itself_at_the_cap_with_one_closing_line() {
+    let dir = scratch("cap");
+    let file = dir.join("frames.log");
+    let ctx = egui::Context::default();
+    let mut log = FrameLog::capped(&file, 3).expect("开得了日志文件");
+    for _ in 0..5 {
+        frame(&ctx, &mut log, None, "a");
+    }
+    assert!(!log.is_on(), "记满了还开着");
+    assert_eq!(log.frames(), 3, "记满之后还在数帧（也就还在读画面）");
+    drop(log);
+    let text = std::fs::read_to_string(&file).expect("读回日志");
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 4, "三帧 ＋ 一行停了：{text}");
+    assert!(lines[..3].iter().all(|l| l.starts_with("frame=")), "{text}");
+    assert_eq!(lines[3], "stopped=cap frames=3", "{text}");
+    assert_eq!(MAX_FRAMES, 100_000, "上限改了 ⇒ 头注里那句「约多大」同拍改");
+    let _ = std::fs::remove_dir_all(&dir);
+}
