@@ -1126,10 +1126,17 @@ async fn a_tunnelled_connection_is_marked_gone_when_its_carrier_dies() {
     )
     .await
     .expect("进程内服务端握手没过");
-    assert!(h.authenticate_none("u").await.expect("鉴权没回话").success());
+    assert!(h
+        .authenticate_none("u")
+        .await
+        .expect("鉴权没回话")
+        .success());
     let alive = tokio::time::timeout(std::time::Duration::from_millis(500), heard.gone()).await;
     assert!(alive.is_err(), "正控：隧道好着的时候不许记成没了");
     gone.store(true, std::sync::atomic::Ordering::SeqCst);
     let got = tokio::time::timeout(guard_core::wall::CEILING, heard.gone()).await;
-    assert!(got.is_ok(), "隧道断了，这条连接到兜底上限还没记成「没了」（握着它的链路不会收工）");
+    assert!(
+        got.is_ok(),
+        "隧道断了，这条连接到兜底上限还没记成「没了」（握着它的链路不会收工）"
+    );
 }

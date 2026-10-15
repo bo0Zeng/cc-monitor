@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
 import android.content.Intent
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -131,10 +130,7 @@ private fun SessionContent(
     LaunchedEffect(vm) {
         combine(vm.reattachNeeded, AppForeground.foreground) { needed, fg -> needed && fg }
             .distinctUntilChanged()
-            .collect {
-                Log.i("Session", "$hostId：重挂判据 $it")
-                if (it) vm.retry()
-            }
+            .collect { if (it) vm.retry() }
     }
 
     when (val s = state) {

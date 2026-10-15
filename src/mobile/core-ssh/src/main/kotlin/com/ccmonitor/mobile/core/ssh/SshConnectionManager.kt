@@ -38,8 +38,6 @@ class SshConnectionManager(
     private val transportFactory: (KnownHostStore?) -> SshTransport = { RustTransport(it) },
     // 跟着共用循环换连接 · 后台关连接的协程跑在哪；测试注入 TestDispatcher。
     reconnectDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    // 跟着共用那条换连接的每一步记一行（进 logcat，台架照它看根子；不上屏）。
-    private val log: (String) -> Unit = {},
 ) {
     private val _sessions = MutableStateFlow<Map<String, SessionState>>(emptyMap())
     val sessions: StateFlow<Map<String, SessionState>> = _sessions.asStateFlow()
@@ -121,9 +119,7 @@ class SshConnectionManager(
             throwIfEpochExpired(id, expectedGen) // 代号已变说明已被 disconnect：弃用
             myGen = st.generation // 之后 disconnect 自增代号即作废本次
             // 同一份配置上那条死了 ⇒ 同一份拨号身份上再来一条（常驻流照的那份拨号请求不变）；否则造一条新的。
-            val again = st.connection?.takeIf { st.configs == addressConfigs }?.again()
-            conn = again ?: transportFactory(knownHostStore)
-            log("$id：开连（${if (again != null) "同一份身份再握一条" else "新的一条"}）")
+            conn = st.connection?.takeIf { st.configs == addressConfigs }?.again() ?: transportFactory(knownHostStore)
             put(SessionState(id, hostId, label, SessionStatus.CONNECTING))
             st.configs = addressConfigs
             st.connecting = conn // disconnect 靠它关掉在飞的那一条
@@ -167,7 +163,6 @@ class SshConnectionManager(
             val st = stateFor(id)
             if (st.generation != myGen) return
             put(SessionState(id, hostId, label, SessionStatus.ERROR, e.message ?: e.toString()))
-            log("$id：没连成（${if (reached) "那台回了话" else "没够着"}）：${e.message}")
             val req = conn.dialRequest
             if (!reached && req != null) {
                 if (st.connection == null) st.connection = conn
@@ -200,7 +195,6 @@ class SshConnectionManager(
                 put(SessionState(id, hostId, label, SessionStatus.CONNECTED))
             }
         }
-        log("$id：连上了${if (ghostDiscard) "（期间被断开、弃用）" else ""}")
         if (ghostDiscard) {
             closeInBackground(listOf(conn))
             throw CancellationException("会话在连接期间已被断开")
@@ -233,7 +227,6 @@ class SshConnectionManager(
         reached: Boolean,
     ) {
         stateFor(id).reached = reached
-        log("$id：共用那条报 SSH ${if (reached) "够着" else "没够着"}")
         reachedNow.update { it + (id to reached) }
         if (reached) follow(id)
     }
@@ -260,14 +253,10 @@ class SshConnectionManager(
             synchronized(lockFor(id)) {
                 val st = stateFor(id)
                 val entry = _sessions.value[id]
-                if (st.connection !== conn || entry == null || !autoOf(st)) {
-                    log("$id：握着的那条死了，不管（${if (st.connection !== conn) "已不是装着的那条" else "没条目或不自动重连"}）")
-                    return
-                }
+                if (st.connection !== conn || entry == null || !autoOf(st)) return
                 put(entry.copy(status = SessionStatus.RECONNECTING, error = null))
                 st.reached
             }
-        log("$id：握着的那条死了（共用那条此刻${if (follows) "够着、跟着换" else "没够着、等它"}）")
         lost.tryEmit(id)
         if (follows) follow(id)
     }
@@ -278,24 +267,15 @@ class SshConnectionManager(
         val (cfgs, entry, gen) =
             synchronized(lockFor(id)) {
                 val dead = st.connection?.let { !it.isConnected } == true
-                val cfgs = st.configs?.takeIf { dead && autoOf(st) }
-                val entry = _sessions.value[id]
-                if (cfgs == null || entry == null) {
-                    log("$id：不跟（装着的那条${if (dead) "已死" else "活着或没有"} · 配置${if (st.configs == null) "没有" else "在"} · 条目${if (entry == null) "没有" else "在"}）")
-                    return
-                }
+                val cfgs = st.configs?.takeIf { dead && autoOf(st) } ?: return
+                val entry = _sessions.value[id] ?: return
                 Triple(cfgs, entry, st.generation)
             }
-        if (!st.following.compareAndSet(false, true)) {
-            log("$id：不跟（正在换）")
-            return
-        }
-        log("$id：跟着换一条")
+        if (!st.following.compareAndSet(false, true)) return
         scope.launch {
             try {
                 connect(id, entry.hostId, entry.label, cfgs, expectedGen = gen)
             } catch (ce: CancellationException) {
-                log("$id：这一次换落空（期间被断开）")
                 throw ce // 期间被断开（代号过期）· 收场：这一次落空
             } catch (
                 @Suppress("TooGenericExceptionCaught") ignored: Exception,
