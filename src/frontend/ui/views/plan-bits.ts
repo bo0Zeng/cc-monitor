@@ -25,7 +25,7 @@ export function phaseBadge(t: string): HTMLElement {
 }
 
 /**
- * 新开的一片还没有图那一屏：「名字 · 领域 · 无图」＋ 一行怎么让它有 ＋［起新会话…］（全产品那一个框，工作目录预填工作区根、开口那句留空）。
+ * 新开的一片还没有图那一屏：「名字 · 领域 · 无图」＋ 一行怎么让它有 ＋［起新会话…］（全产品那一个框，工作目录预填工作区根）。
  * `newSession` 收要预填的目录。
  */
 export function freshPane(slice: Pick<PlanSlice, "name" | "domain">, workspace: string, newSession: (cwd: string) => void): HTMLElement {
@@ -37,9 +37,5 @@ export function freshPane(slice: Pick<PlanSlice, "name" | "domain">, workspace: 
     action: go,
   });
   box.dataset.view = "fresh";
-  const note = document.createElement("div");
-  note.className = s.pbFreshNote;
-  note.textContent = copyText("plan.fresh.newNote", { dir: workspace });
-  box.appendChild(note);
   return box;
 }

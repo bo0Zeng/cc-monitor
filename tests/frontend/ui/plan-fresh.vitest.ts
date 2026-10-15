@@ -34,7 +34,7 @@ describe("无图那一屏", () => {
     expect(btn, "没有［起新会话…］").toBeTruthy();
     btn!.click();
     expect(opened).toEqual(["/work/ledger"]);
-    expect(el.textContent).toContain("plan.fresh.newNote(dir=/work/ledger)");
+    expect(el.textContent).not.toContain("/work/ledger");
   });
   it("pb 没给领域 ⇒ 标题不带那一段", () => {
     const el = freshPane(slice({ domain: null }), "/w", () => {});

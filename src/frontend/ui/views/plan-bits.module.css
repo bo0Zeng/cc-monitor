@@ -1,4 +1,4 @@
-/* 计划页的小件：阶段 / 领域那一枚小框 · 类色那几档（`data-kc` 由 `plan-bits.ts::setKindColor` 挂）· 无图那一屏按钮下那一行。 */
+/* 计划页的小件：阶段 / 领域那一枚小框 · 类色那几档（`data-kc` 由 `plan-bits.ts::setKindColor` 挂）。 */
 @layer components {
   :where([data-kc="0"]) { --kc: var(--plan-kind-0); }
   :where([data-kc="1"]) { --kc: var(--plan-kind-1); }
@@ -17,10 +17,5 @@
     font-size: var(--font-size-xs);
     line-height: 16px;
     white-space: nowrap;
-  }
-
-  .pbFreshNote {
-    color: var(--text-faint);
-    font-size: var(--font-size-xs);
   }
 }

@@ -28708,12 +28708,6 @@
       "zh": "起新会话…",
       "args": []
     },
-    "plan.fresh.newNote": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "工作目录预填 {dir}，开口那句留空",
-      "args": ["dir"]
-    },
     "plan.addWs.title": {
       "kind": "title",
       "role": "确认框",
