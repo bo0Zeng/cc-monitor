@@ -45,6 +45,7 @@ class ChatInputLogicTest {
         val waiting = ChatUiState(model = SwitchChip(blocked = "先答完需手动"), permission = SwitchChip(blocked = "先答完需手动"))
         assertEquals("先答完需手动" to false, chipLine(waiting))
         assertEquals("本轮结束后可换模型" to false, chipLine(ChatUiState(model = SwitchChip(blocked = "本轮结束后可换模型"))))
+        assertEquals("只有权限档不能换也写", "x" to false, chipLine(ChatUiState(permission = SwitchChip(blocked = "x"))))
         assertEquals("换模型结果未知" to true, chipLine(waiting.copy(note = "换模型结果未知")))
     }
 
