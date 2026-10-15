@@ -302,7 +302,7 @@ private fun MoreDurations(
     val longNow = effectiveMs(d.longPressMs, state.longPressMs, ViewConfiguration.getLongPressTimeout())
     Column {
         ValueRow(
-            label = { TipLabel(copyText("mobKeys.dur.double"), copyText("mobKeys.dur.tip"), MaterialTheme.typography.bodyMedium) },
+            label = { TipLabel(copyText("mobKeys.dur.double"), copyText("mobKeys.dur.tip"), MaterialTheme.typography.bodyMedium, onClick = { onOpen(true) }) },
             value = durationLine(d.doubleTapMs, doubleNow, single = true),
             onClick = { onOpen(true) },
             inset = false,

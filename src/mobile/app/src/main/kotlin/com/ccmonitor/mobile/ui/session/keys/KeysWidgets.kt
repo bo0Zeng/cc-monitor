@@ -150,7 +150,7 @@ internal fun NoteLine(
     }
 }
 
-/** 长按出说明的标签（手机上的悬停）：说明只在编辑页的标签上有。 */
+/** 长按出说明的标签（手机上的悬停）：说明只在编辑页的标签上有。单击照常交给 [onClick]（标签在一行里时就是那一行的点）。 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun TipLabel(
@@ -158,6 +158,7 @@ internal fun TipLabel(
     tip: String?,
     style: TextStyle,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
 ) {
     if (tip == null) {
         Text(text, style = style, modifier = modifier)
@@ -171,7 +172,7 @@ internal fun TipLabel(
         state = state,
         enableUserInput = false,
     ) {
-        Text(text, style = style, modifier = modifier.combinedClickable(onClick = {}, onLongClick = { scope.launch { state.show() } }))
+        Text(text, style = style, modifier = modifier.combinedClickable(onClick = onClick, onLongClick = { scope.launch { state.show() } }))
     }
 }
 

@@ -173,8 +173,10 @@ private fun EditingKey(
             }
         },
         onDelete = { k ->
-            onLeave()
-            scope.launch { ops.deleteKey(k) }
+            scope.launch {
+                ops.deleteKey(k)
+                onLeave()
+            }
             snackbar.showUndoFor(copyText("mobKeys.done.deleteKey", "cap" to k.cap(state::groupName)), UNDO_WINDOW_MS) { ops.undoDeleteKey(k) }
         },
         onRevert = { k -> scope.launch { onDraft(KeyDraft.of(ops.revert(k))) } },
@@ -549,7 +551,7 @@ private fun TotalDurations(
     Column(Modifier.fillMaxWidth().padding(top = tokens.spacing.md)) {
         SectionLabel(copyText("mobKeys.dur.title"), Modifier.padding(horizontal = tokens.spacing.lg))
         ValueRow(
-            label = { TipLabel(copyText("mobKeys.dur.double"), copyText("mobKeys.dur.tip"), MaterialTheme.typography.bodyMedium) },
+            label = { TipLabel(copyText("mobKeys.dur.double"), copyText("mobKeys.dur.tip"), MaterialTheme.typography.bodyMedium, onClick = { onTotal(true) }) },
             value = durationLine(state.doubleTapMs, state.doubleTapMs ?: ViewConfiguration.getDoubleTapTimeout(), single = false),
             onClick = { onTotal(true) },
         )
