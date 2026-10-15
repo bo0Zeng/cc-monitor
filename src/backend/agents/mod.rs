@@ -494,11 +494,11 @@ pub(crate) fn pick_route(kind: Option<&str>) -> Result<&'static str, String> {
 }
 
 /// 路由名 ⇒ 线上的 kind（回包里的 `agent` 都写它）；注册表里没有这个路由名 ⇒ 照原样（账上留着的别家旧条目）。
-pub(crate) fn kind_of_route(route: &str) -> &str {
+pub(crate) fn kind_of_route(route_id: &str) -> &str {
     REGISTRY
         .iter()
-        .find(|a| a.launch.is_some_and(|f| f.adapter_id == route))
-        .map_or(route, |a| a.kind)
+        .find(|a| a.launch.is_some_and(|f| f.adapter_id == route_id))
+        .map_or(route_id, |a| a.kind)
 }
 
 /// `kind` 那一家的 shell wrapper 名（[`LaunchFace::launcher_alias`]）。认不出 / 没有 ⇒ `None`。
