@@ -5,13 +5,14 @@ import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.KeyPress
 import com.ccmonitor.mobile.core.data.db.SpecialKey
 import com.ccmonitor.mobile.core.data.db.pressCap
-import com.ccmonitor.mobile.ui.session.pressBytes
+import com.ccmonitor.mobile.ui.session.PressVerdict
+import com.ccmonitor.mobile.ui.session.pressVerdict
 
 /**
  * 录入抽屉：修饰键点亮后带给下一下；特殊键点一下录一颗；软键盘打的字照原样录（连着打的字并成一段）。
  * 软键盘的退格是改字：删掉最后录进去的那一下（一段字就删最后一个字）。
  *
- * 带修饰的一下录之前先比字节（[verdictOf]）：修饰全不起作用 ⇒ 不录、说一句；与少几个修饰的那一下送出相同 ⇒ 录进去、也说一句。
+ * 带修饰的一下录之前先判（[pressVerdict]，照真正送出去的字节比）：修饰全不起作用 ⇒ 不录、说一句；与少几个修饰的那一下送出相同 ⇒ 录进去、也说一句。
  * 那一句只管刚录的那一下，下一次按下就换掉。
  */
 data class Recorder(
@@ -60,10 +61,10 @@ data class Recorder(
     }
 
     private fun record(p: KeyPress): Recorder =
-        when (val v = verdictOf(p)) {
-            Verdict.Ok -> copy(presses = presses + p, armed = emptySet(), note = null)
-            is Verdict.Same -> copy(presses = presses + p, armed = emptySet(), note = RecNote.Same(pressCap(p), pressCap(v.like)))
-            Verdict.Cannot -> copy(armed = emptySet(), note = RecNote.Cannot(pressCap(p)))
+        when (val v = pressVerdict(p)) {
+            PressVerdict.Sendable -> copy(presses = presses + p, armed = emptySet(), note = null)
+            is PressVerdict.SameAs -> copy(presses = presses + p, armed = emptySet(), note = RecNote.Same(pressCap(p), pressCap(v.press)))
+            PressVerdict.Unsendable -> copy(armed = emptySet(), note = RecNote.Cannot(pressCap(p)))
         }
 }
 
@@ -84,49 +85,6 @@ sealed interface RecNote {
         override val text: String get() = copyText("mobKeys.rec.cannot", "a" to a)
     }
 }
-
-sealed interface Verdict {
-    data object Ok : Verdict
-
-    /** 修饰一个都不起作用（送出去和不带修饰一样）。 */
-    data object Cannot : Verdict
-
-    /** 和少几个修饰的 [like] 送出相同。 */
-    data class Same(
-        val like: KeyPress,
-    ) : Verdict
-}
-
-/** 判一下带修饰的：照真正送出去的字节比，不另记一张表（字节怎么编只在 [pressBytes] 一处）。 */
-fun verdictOf(p: KeyPress): Verdict {
-    val mods = modsOf(p)
-    if (mods.isEmpty()) return Verdict.Ok
-    val bytes = pressBytes(p)
-    if (bytes.contentEquals(pressBytes(withMods(p, emptySet())))) return Verdict.Cannot
-    // 先比修饰多的（Ctrl-Alt-Shift-A 先找 Ctrl-Alt-A），找到最贴近的那一个。
-    val subsets = powerSet(mods).filter { it.isNotEmpty() && it != mods }.sortedByDescending { it.size }
-    return subsets.firstOrNull { bytes.contentEquals(pressBytes(withMods(p, it))) }?.let { Verdict.Same(withMods(p, it)) } ?: Verdict.Ok
-}
-
-private fun modsOf(p: KeyPress): Set<KeyMod> =
-    when (p) {
-        is KeyPress.Text -> emptySet()
-        is KeyPress.Special -> p.mods
-        is KeyPress.Chord -> p.mods
-    }
-
-private fun withMods(
-    p: KeyPress,
-    mods: Set<KeyMod>,
-): KeyPress =
-    when (p) {
-        is KeyPress.Text -> p
-        is KeyPress.Special -> p.copy(mods = mods)
-        is KeyPress.Chord -> if (mods.isEmpty()) KeyPress.Text(p.char) else p.copy(mods = mods)
-    }
-
-private fun powerSet(s: Set<KeyMod>): List<Set<KeyMod>> =
-    s.fold(listOf(emptySet())) { acc, m -> acc + acc.map { it + m } }
 
 /** 录入那排特殊键（就是内置清单）：常用的一排在前，F1–F12 收在最后一颗里。 */
 val RECORDER_SPECIALS: List<SpecialKey> =

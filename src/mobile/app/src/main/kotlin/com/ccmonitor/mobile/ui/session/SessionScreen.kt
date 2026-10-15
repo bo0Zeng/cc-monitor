@@ -47,11 +47,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
-import com.ccmonitor.mobile.core.data.db.AppAction
 import com.ccmonitor.mobile.core.data.db.Identity
+import com.ccmonitor.mobile.core.data.db.KeyBinding
 import com.ccmonitor.mobile.core.data.db.KeyDao
 import com.ccmonitor.mobile.core.data.db.KeyGroup
-import com.ccmonitor.mobile.core.data.db.KeyMod
 import com.ccmonitor.mobile.core.data.db.appActionName
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
@@ -714,17 +713,20 @@ private fun TerminalBottomControls(
     val settings = koinInject<SettingsRepository>()
     val groups by remember { keyDao.observeGroups() }.collectAsState(initial = emptyList())
     val savedGroup by remember { settings.observeCurrentKeyGroup() }.collectAsState(initial = null)
+    val doubleTapMs by remember { settings.observeKeyDoubleTapMs() }.collectAsState(initial = null)
+    val longPressMs by remember { settings.observeKeyLongPressMs() }.collectAsState(initial = null)
     // 当前组记在这台手机上；没记过 · 那组已删 ⇒ 第一组。一个组都没有 ⇒ 键条整条不画。
-    val current = groups.firstOrNull { it.id == savedGroup } ?: groups.firstOrNull()
+    val current = currentGroup(groups, savedGroup)
     var showPalette by rememberSaveable { mutableStateOf(false) }
     var showMore by rememberSaveable { mutableStateOf(false) }
     val env = LocalKeysEnv.current
+    val mods by session.modifiers.states.collectAsState()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val onPaste: () -> Unit = {
         scope.launch { clipboard.pastePlainText()?.takeIf { it.isNotEmpty() }?.let { session.send(it.toByteArray()) } }
     }
-    val nav = KeyBarNav(groups, current, { id -> scope.launch { settings.setCurrentKeyGroup(id) } }, LocalAppSnackbar.current, env)
+    val switchTo: (String) -> Unit = { id -> scope.launch { settings.setCurrentKeyGroup(id) } }
     val actions =
         KeyActions(
             supportsTmux = supportsTmux,
@@ -736,9 +738,8 @@ private fun TerminalBottomControls(
             onPushKey = onPushKey,
             onShowKeyboard = showKeyboard,
             onEditKeys = env.onEditKeys,
-            onNextGroup = nav::next,
-            onGotoGroup = nav::goto,
-            onNeedsTmux = nav::needsTmux,
+            onNextGroup = { nextGroupId(groups, savedGroup)?.let(switchTo) },
+            onGotoGroup = { id -> groups.any { it.id == id }.also { if (it) switchTo(id) } },
         )
     TerminalToolbar(
         supportsTmux = supportsTmux,
@@ -747,7 +748,17 @@ private fun TerminalBottomControls(
         onTmuxSessions = onShowTmux,
         onMore = { showMore = true },
     )
-    KeyBar(session, keyDao, settings, nav, actions, showMore, onDismissMore = { showMore = false })
+    KeyBar(keyDao, KeyBarNav(groups, current, switchTo, LocalAppSnackbar.current, env), showMore, onDismissMore = { showMore = false }) { g, nav ->
+        ExtraKeysRow(
+            groupId = g.id,
+            dispatch = { b -> dispatchBinding(b, session::send, actions, session.modifiers::take)?.let { f -> nav.fail(f, b) } },
+            onModifier = { m, gesture -> session.modifiers.on(m.term(), gesture) },
+            mods = mods,
+            doubleTapMs = doubleTapMs,
+            longPressMs = longPressMs,
+            groupName = { id -> groups.firstOrNull { it.id == id }?.name },
+        )
+    }
     // 命令面板：模型、抓屏、tmux 会话、推公钥整合成可搜索的动作。
     if (showPalette) {
         val paletteActions = terminalPaletteActions(supportsTmux, models, onModel, onCapture, onShowTmux, onPushKey)
@@ -756,8 +767,8 @@ private fun TerminalBottomControls(
 }
 
 /**
- * 键条上切组与出错的那几样。切到下一组照组的先后轮转（切换组的列表也照这一份）；切到某一组而那组已删 ⇒
- * 出错的 toast 不自己走（点了才关），带「编辑」；要 tmux 的在没 tmux 的那台上点了 ⇒ 说一句。
+ * 键条那一块要的：组（照先后）· 当前组 · 切组 · 做不成时那一句。做不成的出不自己走的 toast（点了才关）：
+ * 切到的组已删 ⇒ 带「编辑」；要 tmux 的在没 tmux 的那台上 ⇒ 写哪个动作、哪台。
  */
 private class KeyBarNav(
     val groups: List<KeyGroup>,
@@ -766,36 +777,29 @@ private class KeyBarNav(
     private val snackbar: AppSnackbarController,
     private val env: KeysEnv,
 ) {
-    fun next() {
-        if (groups.isNotEmpty()) switchTo(groups[(groups.indexOf(current) + 1).mod(groups.size)].id)
-    }
-
-    fun goto(id: String) {
-        if (groups.any { it.id == id }) {
-            switchTo(id)
-        } else {
-            snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
+    fun fail(
+        f: KeyActionFail,
+        b: KeyBinding,
+    ) = when (f) {
+        KeyActionFail.GROUP_GONE -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
+        KeyActionFail.NO_TMUX -> {
+            val action = (b as? KeyBinding.App)?.action?.let(::appActionName).orEmpty()
+            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "host" to env.hostLabel))
         }
     }
-
-    fun needsTmux(a: AppAction) = snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to appActionName(a), "host" to env.hostLabel))
 }
 
-/** ⋯ 抽屉 ＋ 键条（当前那一组）；当前组没有按键 ⇒ 一行灰字 ＋「编辑按键」。 */
+/** ⋯ 抽屉 ＋ 键条（当前那一组，[row] 画）；当前组没有按键 ⇒ 一行灰字 ＋「编辑按键」；一个组都没有 ⇒ 整条不画。 */
 @Composable
 private fun KeyBar(
-    session: TerminalSession,
     keyDao: KeyDao,
-    settings: SettingsRepository,
     nav: KeyBarNav,
-    actions: KeyActions,
     showMore: Boolean,
     onDismissMore: () -> Unit,
+    row: @Composable (KeyGroup, KeyBarNav) -> Unit,
 ) {
     val env = LocalKeysEnv.current
     val allKeys by remember { keyDao.observeAllKeys() }.collectAsState(initial = null)
-    val longPressMs by remember { settings.observeKeyLongPressMs() }.collectAsState(initial = null)
-    val mods by session.modifiers.collectAsState() // 粘性 Ctrl / Alt 的点亮态
     val counts = allKeys.orEmpty().groupingBy { it.groupId }.eachCount()
     val current = nav.current
     if (showMore) TerminalMoreSheet(nav.groups, counts, current, onSwitch = nav.switchTo, onEditKeys = env.onEditKeys, onDismiss = onDismissMore)
@@ -804,21 +808,7 @@ private fun KeyBar(
         EmptyGroupLine(current.name, env.onEditKeys)
         return
     }
-    ExtraKeysRow(
-        groupId = current.id,
-        dispatch = { dispatchBinding(it, session::send, actions) },
-        onModifier = { m ->
-            when (m) {
-                KeyMod.CTRL -> session.toggleCtrl()
-                KeyMod.ALT -> session.toggleAlt()
-                KeyMod.SHIFT -> {}
-            }
-        },
-        ctrlActive = mods.ctrl,
-        altActive = mods.alt,
-        longPressMs = longPressMs,
-        groupName = { id -> nav.groups.firstOrNull { it.id == id }?.name },
-    )
+    row(current, nav)
 }
 
 /**

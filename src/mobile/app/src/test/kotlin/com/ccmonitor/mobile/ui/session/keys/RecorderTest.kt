@@ -68,15 +68,6 @@ class RecorderTest {
     }
 
     @Test
-    fun verdictComparesRealBytes() {
-        assertEquals(Verdict.Ok, verdictOf(KeyPress.Chord("b", setOf(KeyMod.CTRL))))
-        assertEquals(Verdict.Ok, verdictOf(KeyPress.Special(SpecialKey.TAB, setOf(KeyMod.SHIFT))))
-        assertEquals(Verdict.Ok, verdictOf(KeyPress.Special(SpecialKey.LEFT, setOf(KeyMod.CTRL, KeyMod.ALT))))
-        assertEquals(Verdict.Cannot, verdictOf(KeyPress.Special(SpecialKey.ESC, setOf(KeyMod.CTRL))))
-        assertEquals(Verdict.Same(KeyPress.Chord("1", setOf(KeyMod.ALT))), verdictOf(KeyPress.Chord("1", setOf(KeyMod.CTRL, KeyMod.ALT))))
-    }
-
-    @Test
     fun theSpecialRowIsTheBuiltInListAndCoversEverySpecialKeyOnce() {
         assertEquals(SpecialKey.entries.toSet(), (RECORDER_SPECIALS + RECORDER_FKEYS).toSet())
         assertEquals(SpecialKey.entries.size, RECORDER_SPECIALS.size + RECORDER_FKEYS.size)

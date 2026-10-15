@@ -80,14 +80,6 @@ class KeysModelTest {
     }
 
     @Test
-    fun theDoubleCostUsesTheDurationThatIsActuallyInEffect() {
-        assertEquals(220, effectiveMs(220, 300, 400))
-        assertEquals(300, effectiveMs(null, 300, 400))
-        assertEquals(400, effectiveMs(null, null, 400))
-        assertEquals(copyText("mobKeys.double.cost", "ms" to 220), doubleCostLine(effectiveMs(220, 300, 400)))
-    }
-
-    @Test
     fun rowLinesNameTheTapAndOnlyTheTriggersThatAreSet() {
         val name = { id: String -> groups.firstOrNull { it.id == id }?.name }
         val sw = defaultKeys().first()

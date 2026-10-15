@@ -147,13 +147,6 @@ fun naturalHint(
             }
     }
 
-/** 这一颗实际生效的时长：这颗另设的 → 总的 → 系统的。 */
-fun effectiveMs(
-    own: Int?,
-    total: Int?,
-    system: Int,
-): Int = own ?: total ?: system
-
 /** 双击绑上之后当场那一句：单击晚多久才送。 */
 fun doubleCostLine(ms: Int): String = copyText("mobKeys.double.cost", "ms" to ms)
 

@@ -44,6 +44,9 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
+import com.ccmonitor.mobile.ui.session.GestureSpec
+import com.ccmonitor.mobile.ui.session.SystemTimings
+import com.ccmonitor.mobile.ui.session.gestureSpec
 
 /** 编辑一颗上叠着的那一个抽屉。 */
 private sealed interface Sheet {
@@ -282,7 +285,7 @@ private fun TriggerBlock(
         if (slot.binding == null) HintLine(naturalHint(t, draft.tap.binding))
         if (gone) NoteLine(copyText("mobKeys.err.groupGone"), warn = false)
         if (t == Trigger.DOUBLE && slot.binding != null) {
-            NoteLine(doubleCostLine(effectiveMs(draft.doubleTapMs, state.doubleTapMs, ViewConfiguration.getDoubleTapTimeout())), warn = true)
+            NoteLine(doubleCostLine(liveSpec(draft, state).doubleTapMs.toInt()), warn = true)
         }
     }
 }
@@ -298,8 +301,9 @@ private fun MoreDurations(
     HorizontalDivider(Modifier.padding(top = LocalAppTokens.current.spacing.sm), color = MaterialTheme.colorScheme.outlineVariant)
     IconTextButton(if (open) Ph.CaretDown else Ph.CaretRight, copyText("mobKeys.edit.more"), onClick = { open = !open })
     if (!open) return
-    val doubleNow = effectiveMs(d.doubleTapMs, state.doubleTapMs, ViewConfiguration.getDoubleTapTimeout())
-    val longNow = effectiveMs(d.longPressMs, state.longPressMs, ViewConfiguration.getLongPressTimeout())
+    val spec = liveSpec(d, state)
+    val doubleNow = spec.doubleTapMs.toInt()
+    val longNow = spec.longPressMs.toInt()
     Column {
         ValueRow(
             label = { TipLabel(copyText("mobKeys.dur.double"), copyText("mobKeys.dur.tip"), MaterialTheme.typography.bodyMedium, onClick = { onOpen(true) }) },
@@ -315,3 +319,15 @@ private fun MoreDurations(
         )
     }
 }
+
+/** 这一颗此刻生效的手势（时长与键条那头同一套取法：这颗另设的 → 总的 → 系统的）。 */
+private fun liveSpec(
+    d: KeyDraft,
+    state: KeysState,
+): GestureSpec =
+    gestureSpec(
+        d.toKey(null, endOf = { 0 }, newId = { "" }),
+        state.doubleTapMs,
+        state.longPressMs,
+        SystemTimings(ViewConfiguration.getDoubleTapTimeout(), ViewConfiguration.getLongPressTimeout(), ViewConfiguration.getKeyRepeatDelay()),
+    )

@@ -27,6 +27,7 @@ enum class Ph(
     HardDrives(0xE2A0),
     Key(0xE2D6),
     List(0xE2F0),
+    Lock(0xE2FA),
     PaperPlaneRight(0xE396),
     PencilSimple(0xE3B4),
     Play(0xE3D0),
