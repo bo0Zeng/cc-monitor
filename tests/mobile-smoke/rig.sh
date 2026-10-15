@@ -47,7 +47,7 @@ up() {
   cat > "$box/sshd/login.sh" <<EOF
 #!/bin/bash
 # sshd 的 ForceCommand：换上台架的环境再跑那条命令（没有命令 ⇒ 登录 shell）。
-for k in \$(compgen -e); do case "\$k" in CCM_*|CLAUDE*|ANTHROPIC_*|TMUX*|CC_BUS_*|CODEX_*) unset "\$k";; esac; done
+for k in \$(bash $(printf %q "$root/tests/scripts/session-scrub.sh") --list); do unset "\$k"; done
 export HOME=$(printf %q "$home") TMUX_TMPDIR=$(printf %q "$box/tmux") CCM_SANDBOX=1 CCM_SMOKE_BOX=$(printf %q "$box")
 export PATH=$(printf %q "$box/bin"):$(printf %q "$home/.cc-monitor/bin"):/usr/local/bin:/usr/bin:/bin SHELL=/bin/bash
 # 台架后端的中转口用私有的（默认那个口本机正在跑的后端占着）。替身起到能收第一句要多久：外面给了就带进来。

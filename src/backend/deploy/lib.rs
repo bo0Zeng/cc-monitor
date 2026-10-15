@@ -18,7 +18,10 @@ use std::future::Future;
 use std::pin::Pin;
 
 use copy_core::copy_text;
-use deploy_contract::{Arch, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity, Route, LINES};
+use deploy_contract::{
+    build_relation, Arch, BuildRelation, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity,
+    Route, LINES,
+};
 use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
 
@@ -147,16 +150,11 @@ pub fn interpret_target_probe(
     }
 }
 
-/// 「手上这一版比那台上的新」—— 两边都解得出序键（[`deploy_contract::build_order`]）、且这一版的严格大。解不出任何一边 ⇒ `false`（不可比 ⇒ 不换）。
-pub fn is_newer(mine: &str, theirs: &str) -> bool {
-    matches!((deploy_contract::build_order(mine), deploy_contract::build_order(theirs)), (Some(m), Some(t)) if m > t)
-}
-
 /// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**，不是源码常量。**纯函数**。
 ///
 /// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
 ///
-/// 「另一版」那一格按 [`deploy_contract::build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
+/// 「另一版」那一格按 [`deploy_contract::build_relation`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
 /// （两个不同版本的 monitor 连同一台远端，只升不降，不会每次连上互相换掉）。
 pub fn identity_decision(
     id: &RemoteIdentity,
@@ -175,10 +173,12 @@ pub fn identity_decision(
             &[],
         ))),
         RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
-        RemoteIdentity::Stamp(s) if is_newer(expected, s) => Ok(DeployAction::Deploy(copy_text(
-            "rsSftp.identity.other",
-            &[("s", &s.to_string()), ("expected", &expected.to_string())],
-        ))),
+        RemoteIdentity::Stamp(s) if build_relation(s, expected) == BuildRelation::Older => {
+            Ok(DeployAction::Deploy(copy_text(
+                "rsSftp.identity.other",
+                &[("s", &s.to_string()), ("expected", &expected.to_string())],
+            )))
+        }
         RemoteIdentity::Stamp(s) => Ok(DeployAction::Keep {
             theirs: s.clone(),
             why: copy_text(
@@ -450,7 +450,7 @@ pub struct Verdict {
 
 /// **纯函数**：`mine` = 手上这一版自报的身份 · `theirs` = 那台 hello 报的 · `replaced` = 这一趟已经换过一次。
 pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
-    let older = is_newer(mine, theirs);
+    let older = build_relation(theirs, mine) == BuildRelation::Older;
     Verdict {
         replace: older && !replaced,
         older,

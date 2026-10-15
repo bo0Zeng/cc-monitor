@@ -1,16 +1,11 @@
 # shellcheck shell=bash
-# 被 e2e 套件在最前面 source：**无条件**清掉从开发机会话继承来的环境变量 ——
-# `CCM_*`（本机后端的监听口 · 中转口 · stderr 日志 · 凭据落点，都指真 `~/.cc-monitor`）·
-# `CLAUDE*` · `ANTHROPIC_*` · `TMUX*` · `CC_BUS_*`。
-# 套件起的后端、claude 桩、tmux 只认套件自己给的环境：单跑（`npm run test:<套件>`）与经门禁跑同一个起点。
-# 漏一个会怎样：后端带着常驻开关去占真家里的门牌、把真 `stderr.log` 轮转掉（10-02 一趟门禁里真发生过）。
-# 清完之后带上「这是一次沙箱跑」的标记（`relay_route_core::SANDBOX_ENV`）：套件起的常驻后端若要占本账号真家目录里的门牌就拒绝起。
-for _ccm_sandbox_k in $(compgen -e); do
-  case "$_ccm_sandbox_k" in
-    CCM_*|CLAUDE*|ANTHROPIC_*|TMUX*|CC_BUS_*) unset "$_ccm_sandbox_k" ;;
-  esac
-done
-unset _ccm_sandbox_k
+# 被 e2e 套件在最前面 source：**无条件**摘掉从开发机会话继承来的环境变量（表在 `tests/scripts/session-vars`，全仓只那一张；
+# 族里照留的判据输入 `CCM_E2E_*` 等不摘）。套件起的后端、claude 桩、tmux 只认套件自己给的环境：单跑（`npm run test:<套件>`）与经门禁跑同一个起点。
+# 漏一个会怎样：后端带着常驻开关去占真家里的门牌、把真 `stderr.log` 轮转掉。
+# 摘完之后带上「这是一次沙箱跑」的标记（`relay_route_core::SANDBOX_ENV`）：套件起的常驻后端若要占本账号真家目录里的门牌就拒绝起。
+_ccm_sandbox_names=$(bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/session-scrub.sh" --list) || exit 2
+for _ccm_sandbox_k in $_ccm_sandbox_names; do unset "$_ccm_sandbox_k"; done
+unset _ccm_sandbox_k _ccm_sandbox_names
 export CCM_SANDBOX=1
 
 # tmux：这一趟一台私有的（共享原语的 shim 放进 PATH 最前、强插 `-L <本趟私有名>`）。套件自己不碰 tmux 也装 ——

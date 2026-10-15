@@ -184,7 +184,7 @@ class ResidentFeed(
         val h = withTimeoutOrNull(withinMs) { opened.await() } ?: return Reply.LinkDown
         val answer = CompletableDeferred<Reply>()
         // 编号由核心回，结局也由核心交（结局可能先于这里拿到编号 ⇒ 谁先到谁占那一格）。核心到期限必回一句；兜底多等一会儿。
-        val id = core.call(h, cmd, Json.line(args ?: emptyMap<String, Any?>()), withinMs)
+        val id = core.call(h, cmd, Json.args(args ?: emptyMap()), withinMs)
         if (id == 0L) return Reply.LinkDown
         val slot = replies.computeIfAbsent(id) { answer }
         return (withTimeoutOrNull(withinMs + REPLY_GRACE_MS) { slot.await() } ?: Reply.LinkDown).also { replies.remove(id) }

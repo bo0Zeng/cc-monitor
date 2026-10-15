@@ -115,6 +115,28 @@ fn hx2_build_order_reads_generation_and_letter_and_refuses_other_shapes() {
     }
 }
 
+/// B1a 后半：另一份相对手上这一版 —— 两边都解得出才分新旧；同序不同名 · 任一边解不出 ⇒ 不可比。
+#[test]
+fn hx2_relation_is_newer_or_older_only_when_both_orders_parse_and_differ() {
+    use BuildRelation::{Incomparable, Newer, Older};
+    let cases: &[(&str, &str, BuildRelation)] = &[
+        ("p3m-b", "p3n-a", Older),
+        ("p3z-b", "p4a-a", Older),
+        ("p3n-b", "p3m-a", Newer),
+        ("p12a-b", "p9z-a", Newer),
+        ("p3m-b", "p3m-a", Incomparable),
+        ("junk", "p3n-a", Incomparable),
+        ("p1a-x", "junk", Incomparable),
+    ];
+    for (theirs, mine, want) in cases {
+        assert_eq!(
+            build_relation(theirs, mine),
+            *want,
+            "{theirs:?} 对 {mine:?}"
+        );
+    }
+}
+
 // B1b（出过的每一个 `BUILD_ID` 都有序、历史表爬升）住后端 `deploy_plan_tests.rs`：它读的是后端源码里的历史表，
 //   放在后端那一侧不跨两半（`cross_half_edge_registry`）。
 

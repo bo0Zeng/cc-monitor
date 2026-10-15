@@ -66,7 +66,7 @@ cargo clippy --all-targets
 |---|---|---|
 | node 纯函数套件（`tests/**/*.test.ts`） | `npm test` 的前段（每套一个 `test:*` 脚本，`tsx` 跑） | diff · 报错卡 · bash 卡 · 格式化 · 历史缓存等纯逻辑。清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES` |
 | vitest ＋ jsdom（`tests/**/*.vitest.ts`） | `npm run test:dom`；单跑一份 `npx vitest run <文件>`；覆盖率 `npm run coverage` | DOM · 生命周期 · 通道替身协作：tab 门控与物化、账本、估高、设置面板等 |
-| 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求 `src/frontend/ui/generated/` 无差异） | 全部源码与测试文件 |
+| 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求各 `generated/` 与提交的一致、没有没跟踪的，`tests/scripts/generated-drift.sh`） | 全部源码与测试文件 |
 | lint | `npm run lint` · `npm run lint:css` | CI 里只作参考；eslint 基线由 `tests/frontend/ui/eslint-baseline.vitest.ts` 钉着 |
 
 `npm test` ＝ 全部 node 套件 ＋ vitest，即 CI frontend job 里的单测那一步；覆盖率的逐文件地板另跑 `node tests/scripts/assert-coverage-floors.mjs`。各套测试的条数以实跑为准，这里不抄。

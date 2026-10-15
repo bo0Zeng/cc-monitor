@@ -62,7 +62,6 @@ const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
 const DEPLOY_DECISIONS: &[(&str, &str)] = &[
     ("judge", DEPLOY_HOME),
     ("promised", DEPLOY_HOME),
-    ("is_newer", DEPLOY_HOME),
     ("identity_decision", DEPLOY_HOME),
     ("interpret_target_probe", DEPLOY_HOME),
     ("place_verdict", "src/backend/control/deploy_plan.rs"),

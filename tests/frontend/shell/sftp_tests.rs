@@ -397,7 +397,7 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
             "interpret_target_probe(",
             "identity_decision(",
             "legacy_verdict(",
-            "is_newer(",
+            "build_relation(",
             "connect_and_exec_capture(",
         ]
         .into_iter()
@@ -429,7 +429,7 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
     }
     // 正控：每一种判定写法都认得出来。
     assert_eq!(
-        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( legacy_verdict( is_newer( connect_and_exec_capture(").len(),
+        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( legacy_verdict( build_relation( connect_and_exec_capture(").len(),
         11
     );
 }

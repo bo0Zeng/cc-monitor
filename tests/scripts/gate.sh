@@ -52,16 +52,10 @@ if [ -n "${GATE_TMUX_HOME:-}" ] && [ "$(stat -c %d:%i "/tmp/tmux-$(id -u)/defaul
   exit 2
 fi
 
-# ── 换进挂载之后第一件事：无条件摘掉从开发机会话继承来的环境变量（按前缀，不按名单）─────────────────
-# `CCM_*` · `CLAUDE*` · `ANTHROPIC_*` · `TMUX*` · `CC_BUS_*` 是外面那个会话的状态（指真 `~/.cc-monitor`、真端口），
-# 测试一继承就会动到真东西；按前缀摘，新长的同族变量也跟着摘。要它们的测试自己设（e2e 各套另有 `tests/e2e/sandbox-env.sh`）。
-# 代价：`CCM_PWSH` 这类手测开关也一起摘了（那几条本来不在门禁里）。只印名字，不印值（里面有令牌）。
+# ── 换进挂载之后第一件事：无条件摘掉从开发机会话继承来的环境变量（表在同目录 `session-vars`，全仓只那一张）─────────────────
+# 那几样是外面那个会话的状态（指真 `~/.cc-monitor`、真端口、真账号），测试一继承就会动到真东西。只印名字，不印值（里面有令牌）。
 gate_scrubbed=()
-for gate_v in $(compgen -e); do
-  case "$gate_v" in
-    CCM_*|CLAUDE*|ANTHROPIC_*|TMUX*|CC_BUS_*) gate_scrubbed+=("$gate_v"); unset "$gate_v" ;;
-  esac
-done
+for gate_v in $(bash "$(dirname "$0")/session-scrub.sh" --list) ; do gate_scrubbed+=("$gate_v"); unset "$gate_v"; done
 unset gate_v
 # 摘完之后带上「这是一次沙箱跑」的标记（`relay_route_core::SANDBOX_ENV`）：门禁里起的常驻后端若要占本账号真家目录里的门牌就拒绝起。
 export CCM_SANDBOX=1

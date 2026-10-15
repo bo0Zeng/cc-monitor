@@ -40,9 +40,8 @@ use serde_json::Value;
 
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
 pub use deploy::{
-    identity_decision, interpret_target_probe, is_newer, judge, promised, resident_verdict,
-    stale_leftovers, DialFacing, Facing, Fut, Plan, TargetBinary, Verdict, LEFTOVER_STALE_SECS,
-    MARKS,
+    identity_decision, interpret_target_probe, judge, promised, resident_verdict, stale_leftovers,
+    DialFacing, Facing, Fut, Plan, TargetBinary, Verdict, LEFTOVER_STALE_SECS, MARKS,
 };
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。

@@ -14,6 +14,9 @@ internal object Json {
     /** 写成一行（moshi 不出裸换行）。 */
     fun line(value: Any?): String = any.toJson(value)
 
+    /** 一条命令的入参写成一行：值是 null 的键照写（后端有几格要显式交 null，缺了不认）。 */
+    fun args(value: Map<String, Any?>): String = any.serializeNulls().toJson(value)
+
     /** 解一行成 `Any` 形（不限对象）；不是 JSON ⇒ `null`。 */
     fun value(line: String): Any? = runCatching { any.fromJson(line) }.getOrNull()
 }
