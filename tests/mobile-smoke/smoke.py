@@ -723,6 +723,13 @@ def main():
         finally:
             adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
         time.sleep(8)
+        # 断着网起的进程里 SSH 一次都没通过：网回来没有谁替它重拨（重连那一条循环归 SSH 层），这里退回列表再点进来、由那一屏重新建连；
+        # 同一条对话还在（应用级持有），接上以后照缓存里的续点对齐，断着那段来的话补上。
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} new session", 30):
+            raise Step.Fail("网回来之后对话列表里没有那条会话")
+        tap(f"{T} new session")
+        time.sleep(3)
         to_bottom()
         if not wait(f"替身收到：{T} back online", 60):
             raise Step.Fail("网回来之后没跟上断着那段来的话")
