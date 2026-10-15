@@ -414,6 +414,20 @@ fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
 }
 
+/// ★ 线上只认 kind：起之前记那一笔时，后端里面的路由名当 `agent` 交来 ⇒ `bad_args`，账本里一条都不记。
+#[test]
+fn a_preset_session_does_not_take_a_route_name_as_an_agent() {
+    let home = Home::new("preset-route");
+    let ctx = home.ctx();
+    let route = crate::agents::claudecode::UPSTREAM.route_id;
+    assert_ne!(route, crate::agents::claudecode::AGENT_KIND);
+    assert_eq!(
+        preset_with(&ctx, &home.own(), S1, route, "", now()).map_err(|e| e.0),
+        Err("bad_args")
+    );
+    assert!(!ctx.hop.store.now().sessions.contains_key(S1));
+}
+
 /// ★ 新会话框选「不轮换」：起之前写成不轮换的会话（策略 id 空），不去策略目录里找。
 #[test]
 fn a_preset_session_can_be_written_as_not_rotating() {
