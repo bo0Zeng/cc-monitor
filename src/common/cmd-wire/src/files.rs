@@ -249,7 +249,7 @@ pub struct LsReq {
 
 /// `files-ls` 按哪一列排：`by` 那一列的第一下（名称 A 在前 · 大小大的在前 · 时间新的在前），`reverse` 只反那一列；
 /// 相持按名称小写、再按原字节。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -264,7 +264,7 @@ pub struct LsSort {
 }
 
 /// [`LsSort::by`] 的四列。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -272,6 +272,7 @@ pub struct LsSort {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum LsSortBy {
+    #[default]
     Name,
     Size,
     Mtime,
@@ -286,8 +287,15 @@ impl LsSortBy {
     }
 }
 
+impl LsSort {
+    /// 这一屏那一列是不是从大到小。
+    pub fn descending(self) -> bool {
+        self.by.first_down() != self.reverse
+    }
+}
+
 /// 一项按名字看是哪一种：图标 · 「类型」那一列 · 按类型排都看它（那台判）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -302,6 +310,7 @@ pub enum FileClass {
     Archive,
     Pdf,
     Link,
+    #[default]
     Other,
 }
 

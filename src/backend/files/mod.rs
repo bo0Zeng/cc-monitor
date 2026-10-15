@@ -475,7 +475,7 @@ fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
             Col::Type(c, e)
         }
     };
-    let col = if sort.by.first_down() != sort.reverse {
+    let col = if sort.descending() {
         Dir::Desc(std::cmp::Reverse(col))
     } else {
         Dir::Asc(col)

@@ -20891,6 +20891,12 @@
       "zh": "{kind} · {ext}",
       "args": ["kind", "ext"]
     },
+    "rsFilewinSource.gates.unlisted": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "读取上限未知 · 刷新列表后再打开",
+      "args": []
+    },
     "rsFilewinSource.sort.mtime": {
       "kind": "control",
       "role": "标签",

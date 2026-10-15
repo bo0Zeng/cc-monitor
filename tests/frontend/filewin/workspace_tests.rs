@@ -1903,6 +1903,7 @@ fn an_editor_on_the_right_side_stays_in_the_right_side() {
         name: "right.txt".into(),
         text: long,
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(right.settle_opened_edits());
     let mut d = Drive::new();
@@ -1972,6 +1973,7 @@ fn open_text(p: &mut FileWindow, text: &str) {
         name: "t.txt".into(),
         text: text.into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(p.settle_opened_edits());
 }

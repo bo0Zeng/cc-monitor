@@ -46,6 +46,7 @@ use copy_core::copy_text;
 use std::collections::BTreeSet;
 
 use super::source::Listed;
+use cmd_wire::files::FileClass;
 
 /// 一行在选中态里的**键**（理由住本模块头注 §四）。
 ///
@@ -764,12 +765,9 @@ pub fn picked_kind(picked: &[&Listed]) -> Picked {
         [r] if super::imgview::viewable(r) => Picked::Image,
         // 指向文件的链接按它指向的那一种（与列表上的图标同一个判法）。
         // 窗口解不开的图（svg · heic …）照旧当文本那一种（svg 本来就是文本；不是文本的由后端说）。
-        [r] => match super::kind::kind_of_name(&r.name, false, false) {
-            super::kind::Kind::Text
-            | super::kind::Kind::Code
-            | super::kind::Kind::Other
-            | super::kind::Kind::Image => Picked::Text,
-            super::kind::Kind::Archive => Picked::Archive,
+        [r] => match r.class {
+            FileClass::Text | FileClass::Code | FileClass::Other | FileClass::Image => Picked::Text,
+            FileClass::Archive => Picked::Archive,
             _ => Picked::File,
         },
         many if many.iter().all(|r| named(r)) => Picked::Many,
@@ -806,7 +804,7 @@ pub fn blocked(a: Action, picked: &[&Listed]) -> Option<String> {
         (!v.is_empty()).then(|| v.join(&copy_text("rsFilewinCopy.batch.listSep", &[])))
     };
     match (a, picked) {
-        (Action::Edit, [r]) => super::editor::why_not_editable_listed(r),
+        (Action::Edit, [r]) => super::editor::why_not_editable(r),
         (Action::Download, [_, _, ..]) => names(&|r: &Listed| r.opens_as_dir())
             .map(|n| copy_text("rsFilewinSelect.why.dirDownload", &[("names", &n)])),
         (Action::CrossCopy, [_, _, ..]) => names(&|r: &Listed| r.lossy_name)
