@@ -32,12 +32,18 @@ fn reach_tells_ours_other_absent_and_unknown_apart() {
     let landing = ours.join("ccm");
     let path = |dirs: &[&PathBuf]| std::env::join_paths(dirs).unwrap().into_string().unwrap();
 
-    assert_eq!(reach(Some(&path(&[&ours, &other])), &landing, false, &file), Reach::Ours);
+    assert_eq!(
+        reach(Some(&path(&[&ours, &other])), &landing, false, &file),
+        Reach::Ours
+    );
     assert_eq!(
         reach(Some(&path(&[&other, &ours])), &landing, false, &file),
         Reach::Other(other.join("ccm"))
     );
-    assert_eq!(reach(Some(&path(&[&h])), &landing, false, &file), Reach::Absent);
+    assert_eq!(
+        reach(Some(&path(&[&h])), &landing, false, &file),
+        Reach::Absent
+    );
     assert_eq!(reach(None, &landing, false, &file), Reach::Unknown);
     assert_eq!(reach(Some("  "), &landing, false, &file), Reach::Unknown);
 
@@ -47,7 +53,10 @@ fn reach_tells_ours_other_absent_and_unknown_apart() {
         let via = h.join("via");
         std::fs::create_dir_all(&via).unwrap();
         std::os::unix::fs::symlink(&landing, via.join("ccm")).unwrap();
-        assert_eq!(reach(Some(&path(&[&via])), &landing, false, &file), Reach::Ours);
+        assert_eq!(
+            reach(Some(&path(&[&via])), &landing, false, &file),
+            Reach::Ours
+        );
     }
     let _ = std::fs::remove_dir_all(&h);
 }
@@ -57,7 +66,10 @@ fn each_reach_has_its_own_verdict_and_sentence() {
     let shown = "$HOME/.cc-monitor/bin/ccm";
     let all = [
         (Reach::Ours, OnPathVerdict::Ours),
-        (Reach::Other(PathBuf::from("/opt/x/ccm")), OnPathVerdict::Other),
+        (
+            Reach::Other(PathBuf::from("/opt/x/ccm")),
+            OnPathVerdict::Other,
+        ),
         (Reach::Absent, OnPathVerdict::Absent),
         (Reach::Unknown, OnPathVerdict::Unknown),
     ];
@@ -75,7 +87,11 @@ fn each_reach_has_its_own_verdict_and_sentence() {
     let distinct: std::collections::BTreeSet<&String> = said[1..].iter().collect();
     assert_eq!(distinct.len(), 3, "三形的话合成了一句：{said:?}");
     // 走到别处 ⇒ 说出是哪一份、落点在哪；没有 ⇒ 说出落点在哪。
-    assert!(said[1].contains("/opt/x/ccm") && said[1].contains(shown), "{}", said[1]);
+    assert!(
+        said[1].contains("/opt/x/ccm") && said[1].contains(shown),
+        "{}",
+        said[1]
+    );
     assert!(said[2].contains(shown), "{}", said[2]);
 }
 

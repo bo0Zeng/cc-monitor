@@ -237,9 +237,14 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
     );
     // 这台的 `ccm` 会哪些（终端里敲它走到哪那一格随这台的 shell 变，只核形状）。
     let mut got = run_any("ccm-probe", json!({})).unwrap().expect("回包");
-    let here = got.as_object_mut().unwrap().remove("onPath").expect("onPath");
+    let here = got
+        .as_object_mut()
+        .unwrap()
+        .remove("onPath")
+        .expect("onPath");
     assert_eq!(
-        here.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()),
+        here.as_object()
+            .map(|o| o.keys().cloned().collect::<Vec<_>>()),
         Some(vec!["said".to_string(), "verdict".to_string()])
     );
     assert_eq!(

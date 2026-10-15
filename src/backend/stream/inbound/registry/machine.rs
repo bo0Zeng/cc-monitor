@@ -9,7 +9,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::ccm::CcmPrint>("一条别名实际会执行什么"),
     // **这台的 `ccm` 会哪些 ＋ 终端里敲它走到哪**：`ccm` 就是这台后端本身；那一格起一次登录 shell 问 `PATH`
     //   （在 `spawn_blocking` 里等，异步档 ⇒ 撤得动：撤了不等它，那个 shell 到期限自己收）。
-    crate::wire::typed::asynchronous::<crate::control::ccm::CcmProbe>("这台的 `ccm` 会哪些、终端里敲它走到哪"),
+    crate::wire::typed::asynchronous::<crate::control::ccm::CcmProbe>(
+        "这台的 `ccm` 会哪些、终端里敲它走到哪",
+    ),
     // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
     //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
     crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(

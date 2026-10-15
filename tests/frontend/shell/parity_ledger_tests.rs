@@ -633,7 +633,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
     // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
-    // - **−2**（`local_ccm_entry_status` / `cc_bus_ccm_precheck`，都 `Local`：终端里敲 ccm 走到哪进了那台后端 `ccm-probe`；装 cc-bus 前那道预检删了）。
+    // - **−2**（本机 ccm 那一格 · 装 cc-bus 前那道本机 ccm 预检，都 `Local`：前一条进了那台后端 `ccm-probe`，后一条删了）。
     const EXPECTED_LOCAL_OR_BOTH: usize = 39;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,

@@ -984,8 +984,10 @@ fn sweep_moved_aside(dir: &Path, name: &str) {
 
 /// 〔判定只在后端〕问手上这份字节「放不放」的那一口 —— **宿主注入**（起进程的三条策略是宿主知识，；
 /// 本层平台无关）。入参 = 暂存件的路径 · 帧命令 `place-verdict` 的入参；回 = 它的答，或没问成的那一形。生产 = `backend_once::ask_place_verdict`。
-pub type PlaceAsk<'a> =
-    &'a dyn Fn(&Path, &serde_json::Value) -> Result<serde_json::Value, crate::backend_once::OnceErr>;
+pub type PlaceAsk<'a> = &'a dyn Fn(
+    &Path,
+    &serde_json::Value,
+) -> Result<serde_json::Value, crate::backend_once::OnceErr>;
 
 /// 放不下来的两形（下一步不同，互不合并）。
 #[derive(Debug, Clone, PartialEq, Eq)]

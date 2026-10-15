@@ -162,17 +162,6 @@ export function machineOps(): Record<string, OpHandler> {
       text: '# === cc-monitor remote ccm BEGIN v2 ===\nexport PATH="$HOME/.cc-monitor/bin:$PATH"\nif [ -r "$HOME/.cc-monitor/aliases.sh" ]; then . "$HOME/.cc-monitor/aliases.sh"; fi\n# === cc-monitor remote ccm END ===',
     }),
     "ccm-print": () => ({ line: "cd ~ && exec claude" }),
-    // 终端里敲 ccm 走到的是 PATH 前面另一份（别名页最上那一句）。
-    "ccm-probe": () => ({
-      version: "7",
-      capabilities: ["tmux", "launcher"],
-      agents: ["claude", "codex"],
-      build: "shots",
-      onPath: {
-        verdict: "other",
-        said: copyText("beCcmProbe.onPath.other", { at: `${HOME}/.local/bin/ccm`, where: "$HOME/.cc-monitor/bin/ccm" }),
-      },
-    }),
     "assets-sync": (_o, _r, w) => ({
       self: null,
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),

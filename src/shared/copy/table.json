@@ -13301,7 +13301,7 @@
     "beCcmProbe.onPath.unknown": {
       "kind": "body",
       "role": "说明",
-      "zh": "问不出终端里的 PATH · 无法判断敲 ccm 走到哪一份",
+      "zh": "终端的 PATH 未查到 · 无法判断敲 ccm 走到哪一份",
       "args": [],
       "limited": ["ccm"]
     },
@@ -14699,7 +14699,7 @@
     "rsToolRegistry.env.loginShellWhy": {
       "kind": "body",
       "role": "说明",
-      "zh": "查终端里敲 ccm 走到哪时用登录 shell 读用户的 rc",
+      "zh": "查 ccm 时用登录 shell 读用户的 rc",
       "args": [],
       "limited": ["ccm"]
     },

@@ -76,7 +76,10 @@ pub(crate) fn fresh_terminal_path() -> Option<String> {
     }
     #[cfg(not(unix))]
     {
-        let cmd = powershell_on(PsHost::Desktop, &powershell::fresh_path_query(SESSION_PATH_MARK))?;
+        let cmd = powershell_on(
+            PsHost::Desktop,
+            &powershell::fresh_path_query(SESSION_PATH_MARK),
+        )?;
         ask_session_path(cmd, SESSION_PATH_WITHIN)
     }
 }

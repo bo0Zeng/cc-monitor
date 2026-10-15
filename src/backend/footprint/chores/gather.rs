@@ -105,9 +105,13 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::
     Facts {
         windows,
         needs_install,
-        stale_ccm: home_path
-            .as_deref()
-            .and_then(|h| stale_ccm(h, crate::platform::shell::session_shell_path().as_deref(), windows)),
+        stale_ccm: home_path.as_deref().and_then(|h| {
+            stale_ccm(
+                h,
+                crate::platform::shell::session_shell_path().as_deref(),
+                windows,
+            )
+        }),
         self_paste,
         clashes,
         dead,

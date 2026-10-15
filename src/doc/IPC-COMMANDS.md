@@ -10803,7 +10803,7 @@ args: Array<string>, };
 
 #### `ccm-probe`
 
-这台的 `ccm` 会哪些。
+这台的 `ccm` 会哪些、终端里敲它走到哪。
 
 不收 `args` · 可撤 · 只在流上
 
@@ -10826,8 +10826,14 @@ agents: Array<string>,
 /**
  * 这一份的 `BUILD_ID`。
  */
-build: string, };
+build: string, 
+/**
+ * 终端里敲 `ccm` 走到的是不是这一份，与那一句。
+ */
+onPath: OnPath, };
 type NoArgs = Record<symbol, never>;
+type OnPath = { verdict: OnPathVerdict, said: string, };
+type OnPathVerdict = "ours" | "other" | "absent" | "unknown";
 ```
 
 码：`bad_args`

@@ -9,7 +9,11 @@ fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static
 // 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
 fn answer_probe() -> serde_json::Value {
     let here = on_path::on_path(&on_path::Reach::Ours, "");
-    serde_json::to_value(super::answer_probe_for(crate::platform::tmux::TMUX_PLATFORM, here)).unwrap()
+    serde_json::to_value(super::answer_probe_for(
+        crate::platform::tmux::TMUX_PLATFORM,
+        here,
+    ))
+    .unwrap()
 }
 
 /// ★★ **`KR96D2` 死值验第一刀：铸名避让只许问那一张快照，且算完就定死。**

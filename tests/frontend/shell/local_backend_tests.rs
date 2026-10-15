@@ -986,7 +986,10 @@ struct FakeAsk {
 }
 
 impl FakeAsk {
-    fn new(answer: Result<serde_json::Value, crate::backend_once::OnceErr>, bytes: &[u8]) -> FakeAsk {
+    fn new(
+        answer: Result<serde_json::Value, crate::backend_once::OnceErr>,
+        bytes: &[u8],
+    ) -> FakeAsk {
         FakeAsk {
             answer,
             asked: Default::default(),
@@ -1086,9 +1089,13 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(no_partials());
     // 问不成 · 答话不成形 ⇒ 说清是问不成，不动、不猜
     for answer in [
-        Err(crate::backend_once::OnceErr::Spawn("exec format error".into())),
+        Err(crate::backend_once::OnceErr::Spawn(
+            "exec format error".into(),
+        )),
         Err(crate::backend_once::OnceErr::TimedOut),
-        Err(crate::backend_once::OnceErr::Unreadable("exit=Some(1)".into())),
+        Err(crate::backend_once::OnceErr::Unreadable(
+            "exit=Some(1)".into(),
+        )),
         Ok(serde_json::json!({ "action": "maybe", "why": "" })),
         Ok(serde_json::json!({ "action": "place" })),
     ] {
