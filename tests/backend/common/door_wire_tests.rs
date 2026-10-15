@@ -1,6 +1,7 @@
 //! 够用户文件的那扇门（`common/door.rs` 那几样）对这台文件管理面的每一问、每一种结局：换形前后逐字节不许变。
 //! 换形之前用旧代码（按名找命令、JSON 进 JSON 出）跑出来、钉成字面量（临时目录换 `<D>`）；没有重写开关。
 //! 只在 POSIX 跑（链接 · 权限位那几问 Windows 上是另一套结局）。
+//! 复制换成一组一条（10-14）时有意改了两格：目标已在那一句换成「同名 {n} 项」（整组先探、有同名一项不做）；「不带 recursive 复制目录」那一问删了（目录按源判，整棵复制）。
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 
@@ -66,22 +67,12 @@ fn every_door_answer_keeps_its_bytes() {
     note("mkdir", format!("{:?}", mkdir(&d, &b, "d")));
     note("mkdir again", format!("{:?}", mkdir(&d, &b, "d")));
     note("mkdir no parent", format!("{:?}", mkdir(&d, &b, "x/y")));
-    note(
-        "copy",
-        format!("{:?}", copy(&d, &b, "a.txt", "d/b.txt", false)),
-    );
+    note("copy", format!("{:?}", copy(&d, &b, "a.txt", "d/b.txt")));
     note(
         "copy again",
-        format!("{:?}", copy(&d, &b, "a.txt", "d/b.txt", false)),
+        format!("{:?}", copy(&d, &b, "a.txt", "d/b.txt")),
     );
-    note(
-        "copy dir flat",
-        format!("{:?}", copy(&d, &b, "d", "e", false)),
-    );
-    note(
-        "copy dir tree",
-        format!("{:?}", copy(&d, &b, "d", "e", true)),
-    );
+    note("copy dir tree", format!("{:?}", copy(&d, &b, "d", "e")));
     note("link", format!("{:?}", link(&d, &b, "d/l", "a.txt")));
     note("link again", format!("{:?}", link(&d, &b, "d/l", "a.txt")));
     note(
@@ -179,8 +170,7 @@ mkdir = Ok(())
 mkdir again = Err("写入失败 · <D>/d · 已存在")
 mkdir no parent = Err("解析 <D>/x 失败 · 路径不存在")
 copy = Ok(())
-copy again = Err("新建失败 · <D>/d/b.txt · 已存在")
-copy dir flat = Err("<D>/d 不是普通文件 · 复制目录要带 recursive")
+copy again = Err("同名 1 项")
 copy dir tree = Ok(())
 link = Ok(())
 link again = Err("写入失败 · <D>/d/l · 已存在")

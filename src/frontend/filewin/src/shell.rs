@@ -102,8 +102,8 @@
 //!   那一半（见 [`FileWindow::start_drop`] 与 [`super::transfer`]）；
 //!   往外拖（下载）做了（[`super::download`]）；窗口之间互拖没做。
 //! - （大文件编辑改流式）**仍然没做** —— 这一刀没有编辑面。
-//! - （拖入多文件先一次问完再并行）**第二刀做了**，
-//!   住 [`super::transfer::run_drop`]；三段的顺序就是那个函数的结构，判据钉的是顺序与并行度。
+//! - （拖入多文件先一次问完再并行）做了：整组一条开单（同名由后端在落点那台探、冲突框问一次），
+//!   开了单的并行传，住 [`super::transfer::run_drop`]；判据钉的是开单一次与并行度。
 
 use copy_core::copy_text;
 use copy_core::said::Said;
@@ -437,8 +437,17 @@ pub struct FileWindow {
     cross_prompt: Option<super::cross_copy::CrossPrompt>,
     /// 那一问里「放到」那一块小目录选择器（那台的文件夹；`cross_copy::DirPick`）。
     pub cross_pick: super::cross_copy::DirPick,
-    /// 复制到另一台那一趟的看板（盖不盖那一问 · 一条进度 · 结局）。
-    pub cross_board: super::cross_copy::CrossBoard,
+    /// 这个标签页起的、还没落地的那几组（一组一条命令：复制到另一栏 · 复制到另一台 · 删除 · 改权限）：
+    /// 冲突框画在这里，落地后重列目录。
+    pub batches: Vec<super::batch::BatchBoard>,
+    /// 框选按下那一刻的选中（Ctrl 框加进它 · Esc 回到它）；没在框选 ⇒ `None`。
+    band_base: Option<select::Selection>,
+    /// 下载多项：选目录框开着时要下的那几行。
+    pull_many: Vec<Listed>,
+    /// 窗口此刻是两栏（「复制到另一栏」那一项只在两栏时有）。由窗口那一级每帧写。
+    pub dual: bool,
+    /// 菜单上点了「复制到另一栏」：窗口那一级接（两栏的事归它）。
+    pub across_wanted: bool,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
     seen_copy_rounds: u64,
     /// `fonts.rs`：这个窗口的字体装没装上、复核没复核过。
@@ -577,7 +586,6 @@ pub struct FileWindow {
     /// 起过几摞上传 / 复制 / 跨机复制（与各自看板的 `rounds()` 比 ⇒ 那一类还有一趟没完）。
     drops_started: u64,
     copies_started: u64,
-    crosses_started: u64,
     /// 框里那一问做不成的原因（画在框里；框外列表上方那一行被暗底盖着）。框收掉就清。
     pub(super) prompt_error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
@@ -746,7 +754,11 @@ impl FileWindow {
             machines: Vec::new(),
             cross_prompt: None,
             cross_pick: Default::default(),
-            cross_board: super::cross_copy::CrossBoard::default(),
+            batches: Vec::new(),
+            band_base: None,
+            pull_many: Vec::new(),
+            dual: false,
+            across_wanted: false,
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
@@ -803,7 +815,6 @@ impl FileWindow {
             writes_started: 0,
             drops_started: 0,
             copies_started: 0,
-            crosses_started: 0,
             prompt_error: Arc::new(Mutex::new(None)),
             hit_rows: (u64::MAX, u64::MAX, Arc::new(Vec::new())),
             edit_tab: false,
@@ -1445,13 +1456,8 @@ impl FileWindow {
             .collect()
     }
 
-    /// 起一趟 `§5.4d`：**先一次问完，再并行传**。
-    ///
-    /// 🔴 三段的顺序不在这里，在 [`crate::transfer::run_drop`] 的结构里 ——
-    /// 这里只负责把「问谁 · 怎么问 · 怎么传」三个口接上去。
-    /// 接错了会被 `transfer_tests` 逮住的是**那个函数**，不是本函数；
-    /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
-    /// ⚠ 从前这句话是「没运行时 / 本机源」—— 本机源那一支不在了（见 `Source` 头注）。
+    /// 起一趟上传：整组一条开单（同名由后端在落点那台探，有同名冲突框问一次），开了单的并行传（[`crate::transfer::run_drop`]）。
+    /// 接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_drop(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
             return false;
@@ -1467,7 +1473,7 @@ impl FileWindow {
         self.start_drop_items(items, ctx)
     }
 
-    /// 同 [`Self::start_drop`]，只是这一摞的目标目录照它们自己带着的（「进度」表上「重试 n 个」「接着传」走这里）。
+    /// 同 [`Self::start_drop`]，只是这一摞的目标目录照它们自己带着的（「进度」表上「重试失败的」「继续」走这里）。
     pub fn start_drop_items(&mut self, items: Vec<Pending>, ctx: Option<egui::Context>) -> bool {
         if items.is_empty() {
             return false;
@@ -1486,60 +1492,53 @@ impl FileWindow {
         let board = self.board.fresh_like();
         self.board = board.clone();
         self.seen_rounds = 0;
-        // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
-        //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
-        board.attach(ctx);
-        board.set_total(items.len());
+        // 🔴 **把窗口交给看板**，它自己会在「进度动了 / 跑完了」时敲一下。
+        board.attach(ctx.clone());
         self.drops_started += 1;
         let dir = super::source::parent_dir(&items[0].remote_path);
+        // 开单那一问（同名冲突框挂在这个标签页上，与复制 · 下载同一个框）。
+        let ask = super::batch::BatchBoard::new(super::batch::Plan {
+            verb: super::batch::Verb::Upload,
+            cmd: super::transfer::CMD_UPLOAD,
+            args: serde_json::to_value(super::transfer::group_ask(&items, None, None))
+                .unwrap_or_default(),
+            names: items.iter().map(|p| p.name.clone()).collect(),
+            into: Some(dir.clone()),
+            machine: self.source.label(),
+        });
+        ask.attach(ctx);
+        self.batches.push(ask.clone());
         let id = self.progress.add(
             super::progress::Trip::Upload {
                 board: board.clone(),
                 items: items.clone(),
                 dir: super::source::remote_basename(&dir).to_string(),
+                ask: ask.clone(),
             },
             Some(dir),
             None,
         );
         self.track_job("upload", id);
         h.spawn(async move {
-            // 上传那一腿也经通道（开单 → 起跑并看 → 提交），拿同一条线 ＋ 同一个地址。
             let (up_line, up_origin) = (line.clone(), origin.clone());
-            let ask_board = board.clone();
             let up_board = board.clone();
-            let probe_board = board.clone();
+            let open_board = board.clone();
             let out = super::transfer::run_drop(
                 items,
                 super::transfer::lanes(),
-                move |p| {
-                    let line = line.clone();
-                    let origin = origin.clone();
-                    let seen = probe_board.clone();
-                    async move {
-                        // 在 ⇒ 顺手记下那台的大小与修改时间（同名那张表「那台」那一格）。
-                        let got =
-                            super::transfer::stat_remote_at(&line, &origin, p.path_wire()).await;
-                        if let Some(v) = &got {
-                            seen.note_there(&p.name, Some(v.size), v.mtime_text.clone());
-                        }
-                        got.is_some()
-                    }
+                move || async move {
+                    super::transfer::open_group(&line, &origin, &ask, &open_board).await
                 },
-                move |clashes| {
-                    let rx = ask_board.ask(clashes);
-                    async move { rx.await.unwrap_or_default() }
-                },
-                move |p| {
+                move |t| {
                     let (line, origin) = (up_line.clone(), up_origin.clone());
                     let b = up_board.clone();
-                    // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件
-                    //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
-                    //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
+                    // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件一件都不起
+                    //   （键由那道闸造并登记，理由住 `launch_unless_cancelled`）。
                     async move {
                         let desk = b.cancels();
-                        let name = p.name.clone();
+                        let name = t.item.name.clone();
                         super::transfer::launch_unless_cancelled(&desk, &name, |_id| async move {
-                            super::transfer::upload_remote(&line, &origin, &p, &b).await
+                            super::transfer::upload_remote(&line, &origin, &t, &b).await
                         })
                         .await
                     }
@@ -1644,6 +1643,15 @@ impl FileWindow {
             return false;
         }
         self.seen_rounds = now;
+        // 一摞全传成了 ⇒ 右下角一句回执；有失败的 · 停了的看「进度」表那一行。
+        if let Some(o) = self.board.last() {
+            if o.ok > 0 && o.failed.is_empty() && !self.board.cancels().is_cancelled() {
+                self.receipt = Some(copy_text(
+                    "rsFilewinProgress.upload.done",
+                    &[("n", &o.ok.to_string())],
+                ));
+            }
+        }
         self.reload();
         true
     }
@@ -1762,11 +1770,38 @@ impl FileWindow {
         true
     }
 
-    /// **一摞复制到这一栏**（「复制到另一栏」的按钮与拖，`Workspace::copy_to_other` 起在目标那一栏上）：
-    /// 三段在 [`super::copy::run_copy_batch`] 的结构里（逐件探 → 撞名目录整摞不做 → 撞名文件一次问完 → 逐件发），
-    /// 这里只接「问谁 · 怎么问 · 怎么起」三个口。参数是跨目录那一形（[`super::workspace::across_args`]）。
-    /// 〔FW34 那一版〕只收一件、只收文件；今天一件就是一摞里只有一件。
+    /// **一组复制到这一栏**（「复制到另一栏」的按钮 · 菜单 · 拖，`Workspace::copy_to_other` 起在目标那一栏上）：
+    /// 一条 `files-copy`（带票），同名由后端探、回 `exists` 就画冲突框（[`super::batch`]）。参数是跨目录那一形（[`super::workspace::across_req`]）。
     pub fn start_copy_batch(&mut self, jobs: Vec<CopyJob>, ctx: Option<egui::Context>) -> bool {
+        let req = match super::workspace::across_req(&jobs) {
+            Ok(r) => r,
+            Err(e) => {
+                *self.say_slot() = Some(e.into());
+                return false;
+            }
+        };
+        let plan = super::batch::Plan {
+            verb: super::batch::Verb::Copy,
+            cmd: super::copy::CMD_COPY,
+            args: serde_json::to_value(&req).unwrap_or_default(),
+            names: jobs.iter().map(|j| j.name.clone()).collect(),
+            into: Some(self.cwd.clone()),
+            machine: self.source.label(),
+        };
+        self.copies_started += 1;
+        let at = self.source.origin();
+        self.start_batch(plan, at, egui_phosphor::regular::COPY, ctx)
+    }
+
+    /// 起一组（[`super::batch::spawn`]）：「进度」表里一行（问的时候不画）、冲突框挂在这个标签页上、落地后重列目录。
+    /// `home` ＝ 那一组在哪台的后端里做（撤与断开都认它）。接不上（没运行时 · 没通道）⇒ 出声。
+    pub fn start_batch(
+        &mut self,
+        plan: super::batch::Plan,
+        home: super::source::Origin,
+        icon: &'static str,
+        ctx: Option<egui::Context>,
+    ) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.say_slot() = Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
             return false;
@@ -1775,40 +1810,55 @@ impl FileWindow {
             *self.say_slot() = Some(NO_LINE.to_string().into());
             return false;
         };
-        let origin = self.source.origin();
-        let first = jobs.first().map(|j| j.name.clone()).unwrap_or_default();
-        let board = self.fresh_copy_board(jobs.len(), &first);
+        let board = super::batch::BatchBoard::new(plan);
         board.attach(ctx);
-        self.copies_started += 1;
-        let total = jobs.len();
-        h.spawn(async move {
-            let (probe_line, probe_origin) = (line.clone(), origin.clone());
-            let ask_board = board.clone();
-            let run_board = board.clone();
-            let seq = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-            let out = super::copy::run_copy_batch(
-                jobs,
-                move |j| {
-                    let (l, o) = (probe_line.clone(), probe_origin.clone());
-                    async move { super::copy::probe_target(&l, &o, &j).await }
-                },
-                move |js| {
-                    let rx = ask_board.ask_many(js);
-                    async move { rx.await.unwrap_or(false) }
-                },
-                move |j, overwrite| {
-                    let (l, o, b) = (line.clone(), origin.clone(), run_board.clone());
-                    let k = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                    async move {
-                        b.begin(&format!("{}（{k}/{total}）", j.name));
-                        super::workspace::copy_across(&l, &o, &j, overwrite).await
-                    }
-                },
-            )
-            .await;
-            board.finish(out);
-        });
+        let id = self.progress.add(
+            super::progress::Trip::Batch {
+                board: board.clone(),
+                icon,
+            },
+            Some(self.cwd.clone()),
+            None,
+        );
+        self.track_job("batch", id);
+        self.batches.push(board.clone());
+        super::batch::spawn(&h, line, self.source.origin(), home, board);
         true
+    }
+
+    /// 这个标签页起的那几组落地了 ⇒ 重列目录（复制进来的要出现 · 删掉的要消失）、选中清掉。
+    pub fn settle_finished_batches(&mut self) -> bool {
+        use super::batch::Phase;
+        let before = self.batches.len();
+        let mut landed = false;
+        let mut said = None;
+        self.batches.retain(|b| match b.phase() {
+            Phase::Ended(r) => {
+                // 全成了 ⇒ 右下角一句回执（后端拼好的那一行）；有没成的看「进度」表那一行。
+                if r.outcomes
+                    .iter()
+                    .all(|o| o.state == cmd_wire::batch::ItemState::Done)
+                {
+                    said = Some(r.said);
+                }
+                landed = true;
+                false
+            }
+            Phase::Failed(_) => {
+                landed = true;
+                false
+            }
+            Phase::Dropped | Phase::Opened => false,
+            _ => true,
+        });
+        if let Some(t) = said {
+            self.receipt = Some(t);
+        }
+        if landed {
+            self.selection.clear_picked();
+            self.reload();
+        }
+        before != self.batches.len()
     }
 
     /// 机器上复制的一趟一块新看板（「进度」表里独立的一行）。
@@ -1893,32 +1943,52 @@ impl FileWindow {
         true
     }
 
-    /// 摆出「复制到另一台」那一问（机器名 ＋ 目标目录，空 ＝ 那台的 home）。回值 ＝ 真的摆出来了。
+    /// 摆出「复制到另一台」那一问（机器 ＋ 目标目录）：第 `idx` 那几行（文件与目录都行；目录整棵逐个文件）。回值 ＝ 真的摆出来了。
     pub fn begin_cross(&mut self, i: usize) -> bool {
+        self.begin_cross_rows(&[i])
+    }
+
+    /// 同 [`Self::begin_cross`]，一组。名字只有原始字节的那几项寻址不到（那一条按路径串寻址）⇒ 不摆、出声。
+    pub fn begin_cross_rows(&mut self, idx: &[usize]) -> bool {
         *self.prompt_error.lock().unwrap() = None;
-        let Some((name, src)) = self
-            .listing
-            .rows
-            .lock()
-            .unwrap()
-            .get(i)
-            .filter(|r| !r.opens_as_dir())
-            .map(|r| (r.name.clone(), self.row_path(r)))
-        else {
-            return false;
+        let rows: Vec<Listed> = {
+            let all = self.listing.rows.lock().unwrap();
+            idx.iter().filter_map(|&i| all.get(i).cloned()).collect()
         };
-        // 缺省机器：除开这一台、先挑别的远端，没有才是本机（下拉里改）；落点缺省那台上次选到的，没有就那台的主目录（选择器打开时去问）。
+        if rows.is_empty() {
+            return false;
+        }
+        let mut srcs = Vec::with_capacity(rows.len());
+        for r in &rows {
+            let p = self.row_path(r);
+            if p.is_lossy() {
+                self.key_notice = Some(copy_text(
+                    "rsFilewinWorkspace.copyToOther.unaddressable",
+                    &[("name", &r.name.to_string())],
+                ));
+                return false;
+            }
+            srcs.push(p);
+        }
+        let name = match rows.as_slice() {
+            [r] => r.name.clone(),
+            _ => copy_text(
+                "rsFilewinBatch.label.nItems",
+                &[("n", &rows.len().to_string())],
+            ),
+        };
+        // 缺省机器：除开这一台的第一台远端（本机不在这张表里：落到本机是「下载」）；落点缺省那台上次选到的，没有就那台的主目录。
         let here = self.source.origin().0;
-        let others: Vec<&String> = self.machines.iter().filter(|m| **m != here).collect();
-        let machine = others
+        let machine = self
+            .machines
             .iter()
-            .find(|m| m.as_str() != super::cross_copy::LOCAL_ORIGIN)
-            .or(others.first())
-            .map(|m| super::cross_copy::shown_machine(m))
+            .find(|m| **m != here && m.as_str() != super::cross_copy::LOCAL_ORIGIN)
+            .cloned()
             .unwrap_or_default();
         self.cross_prompt = Some(super::cross_copy::CrossPrompt {
             name,
-            src,
+            names: rows.iter().map(|r| r.name.clone()).collect(),
+            srcs,
             machine,
             dir: String::new(),
         });
@@ -1940,7 +2010,7 @@ impl FileWindow {
             *self.say_slot() = Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]).into());
             return false;
         }
-        // 落点 ＝ 选择器上选到的（还没读出来 ⇒ 空 ＝ 那台的主目录，`cross_copy::target_dir`）。
+        // 落点 ＝ 选择器上选到的（还没读出来 ⇒ 框留着、出声：落点要一条绝对路径）。
         let pick = self.cross_pick.shown();
         let p = if pick.machine == super::cross_copy::origin_of(&p.machine) && !pick.path.is_empty()
         {
@@ -1952,35 +2022,40 @@ impl FileWindow {
         } else {
             p
         };
-        let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.size.noRuntime", &[]).into());
+        if !p.dir.starts_with('/') {
+            *self.say_slot() =
+                Some(copy_text("rsFilewinCrossCopy.dir.notAbsolute", &[("dir", &p.dir)]).into());
             return false;
+        }
+        // 一组一条：`transfer-copy`（寻址 ＝ 这一台，`to` ＝ 落点那台）；在本机后端里做 ⇒ 撤与断开认本机。
+        let ask = cmd_wire::transfer::TransferCopyAsk {
+            to: p.machine.trim().to_string(),
+            items: p
+                .srcs
+                .iter()
+                .map(|s| cmd_wire::transfer::CopyFrom {
+                    remote_path: s.shown.clone(),
+                })
+                .collect(),
+            to_dir: p.dir.clone(),
+            on_exists: None,
+            decide: None,
+            ticket: None,
         };
-        let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string().into());
+        let plan = super::batch::Plan {
+            verb: super::batch::Verb::Copy,
+            cmd: super::cross_copy::CMD_CROSS,
+            args: serde_json::to_value(&ask).unwrap_or_default(),
+            names: p.names.clone(),
+            into: Some(format!("{}:{}", p.machine.trim(), p.dir)),
+            machine: self.source.label(),
+        };
+        let home = super::source::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
+        if !self.start_batch(plan, home, egui_phosphor::regular::ARROWS_LEFT_RIGHT, ctx) {
             return false;
-        };
+        }
         self.cross_prompt = None;
         *self.prompt_error.lock().unwrap() = None;
-        // 一趟一块新看板（「进度」表里独立的一行）。
-        self.cross_board = super::cross_copy::CrossBoard::default();
-        self.cross_board.attach(ctx);
-        self.crosses_started += 1;
-        let p = super::cross_copy::CrossPrompt {
-            machine: super::cross_copy::origin_of(&p.machine),
-            ..p
-        };
-        let id = self.progress.add(
-            super::progress::Trip::Cross {
-                board: self.cross_board.clone(),
-                name: p.name.clone(),
-                machine: super::cross_copy::shown_machine(&p.machine),
-            },
-            None,
-            None,
-        );
-        self.track_job("cross", id);
-        super::cross_copy::spawn(&h, line, self.source.origin(), p, self.cross_board.clone());
         true
     }
 
@@ -1998,7 +2073,7 @@ impl FileWindow {
         let machines: Vec<String> = self
             .machines
             .iter()
-            .filter(|m| **m != here)
+            .filter(|m| **m != here && m.as_str() != super::cross_copy::LOCAL_ORIGIN)
             .map(|m| super::cross_copy::shown_machine(m))
             .collect();
         let err = self.prompt_failure();
@@ -2502,76 +2577,55 @@ impl FileWindow {
         let origin = self.source.origin();
         let board = self.write_board.clone();
         board.attach(ctx);
-        // 这一摞里有文件夹要删 ⇒ 「进度」里一行（删大目录要一会儿）；只删文件的一下就完，不占一行。
-        let deletes: Vec<&WriteOp> = ops
-            .iter()
-            .filter(|o| matches!(o, WriteOp::Delete { .. }))
-            .collect();
-        if deletes
-            .iter()
-            .any(|o| matches!(o, WriteOp::Delete { is_dir: true, .. }))
-        {
-            let name = match deletes.first() {
-                Some(WriteOp::Delete { path, .. }) => {
-                    super::source::remote_basename(path).to_string()
-                }
-                _ => String::new(),
-            };
-            let no_stop = self.no_stop("files-delete");
-            let id = self.progress.add(
-                super::progress::Trip::Delete {
-                    board: board.clone(),
-                    base: board.rounds(),
-                    name,
-                    n: deletes.len(),
-                },
-                Some(self.cwd.clone()),
-                no_stop,
-            );
-            self.track_job("delete", id);
-        }
+        // 有文件夹要删 ⇒ 「进度」里一行（删大目录要一会儿；那一行撤得了）：确认之后、发那一组时由 `apply_all` 开。
+        let (progress, dir, machine) =
+            (self.progress.clone(), self.cwd.clone(), self.source.label());
         self.writes_started += 1;
         // 〔有损名全寻址〕写的对象恒是当前目录的直接子项 ⇒ 根就是当前目录；有损 ⇒ 根发字节。
         // 撤销那一摞带的是整条路径（字符串）⇒ 根照路径切，不借这一栏的字节根；当前目录是有损名 ⇒ 不给撤销（字符串寻址不到）。
         let root_raw = if quiet { None } else { self.cwd_raw.clone() };
         let undoable = root_raw.is_none();
-        // 做成了的那几件 ＋ 撤销它们的那几件（改权限：后端回的 `before`）—— 回执据它说、［撤销］据它做。
-        let kept: Arc<Mutex<(Vec<WriteOp>, Vec<WriteOp>)>> = Arc::default();
-        let sink = kept.clone();
         h.spawn(async move {
             let ask_board = board.clone();
+            // 做成了的那几件 ＋ 撤销它们的那几件（改权限：后端回的 `before`）—— 回执据它说、［撤销］据它做。
+            let mut done = Vec::new();
+            let mut undo = Vec::new();
+            let kept = std::sync::Mutex::new((&mut done, &mut undo));
             let out = super::writeops::run_writes(
                 ops,
                 move |asking| {
                     let rx = ask_board.ask(asking);
                     async move { rx.await.unwrap_or_default() }
                 },
-                move |op| {
-                    let line = line.clone();
-                    let origin = origin.clone();
-                    let root_raw = root_raw.clone();
-                    let sink = sink.clone();
-                    async move {
-                        let reply = super::writeops::apply_remote_coded(
-                            &line,
-                            &origin,
-                            &op,
-                            root_raw.as_deref(),
-                        )
-                        .await?;
-                        let mut k = sink.lock().unwrap();
-                        if let Some(u) =
-                            super::writeops::chmod_undo(&op, &reply).filter(|_| undoable)
-                        {
-                            k.1.push(u);
-                        }
-                        k.0.push(op);
-                        Ok(())
-                    }
+                |go| async {
+                    let all = super::writeops::apply_all(
+                        &line,
+                        &origin,
+                        go,
+                        root_raw.as_deref(),
+                        &progress,
+                        &dir,
+                        &machine,
+                    )
+                    .await;
+                    let mut k = kept.lock().unwrap();
+                    all.into_iter()
+                        .map(|(op, r)| {
+                            let r = r.map(|reply| {
+                                if let Some(u) =
+                                    super::writeops::chmod_undo(&op, &reply).filter(|_| undoable)
+                                {
+                                    k.1.push(u);
+                                }
+                                k.0.push(op.clone());
+                            });
+                            (op, r)
+                        })
+                        .collect()
                 },
             )
             .await;
-            let (done, undo) = std::mem::take(&mut *kept.lock().unwrap());
+            drop(kept);
             board.finish_with(out, done, undo, quiet);
         });
         true
@@ -2620,6 +2674,7 @@ impl FileWindow {
         let kind = match purpose {
             Purpose::Upload => PickKind::OpenFiles,
             // 建议名按本机平台改成合法的（Windows 不认的字换成 `_`），落在系统的「下载」文件夹。
+            Purpose::DownloadMany => PickKind::Folder,
             Purpose::Download => PickKind::SaveFile {
                 suggested_name: self
                     .pull_want
@@ -2665,6 +2720,12 @@ impl FileWindow {
                     self.start_drop(items, ctx);
                 }
             }
+            Purpose::DownloadMany => match picked.and_then(|v| v.into_iter().next()) {
+                Some(dir) => {
+                    self.start_pull_many(&dir.to_string_lossy(), ctx);
+                }
+                None => self.pull_many.clear(),
+            },
             Purpose::Download => {
                 let want = self.pull_want.take();
                 match (want, picked.and_then(|v| v.into_iter().next())) {
@@ -2675,6 +2736,71 @@ impl FileWindow {
                 }
             }
         }
+        true
+    }
+
+    /// 下载多项：先选一个本机目录（系统的选目录框），选好了一组一条（[`super::download::pull_many`]）。只收文件（菜单那张表管）。
+    pub fn begin_pull_many(&mut self, idx: &[usize]) -> bool {
+        let rows: Vec<Listed> = {
+            let all = self.listing.rows.lock().unwrap();
+            idx.iter().filter_map(|&i| all.get(i).cloned()).collect()
+        };
+        if rows.is_empty()
+            || rows
+                .iter()
+                .any(|r| !super::download::is_downloadable_listed(r))
+        {
+            self.key_notice = Some(select::refusal(Action::Download, rows.len()));
+            return false;
+        }
+        self.pull_many = rows;
+        self.start_pick(super::picker::Purpose::DownloadMany, None)
+    }
+
+    /// 选好了本机目录 ⇒ 起那一组。
+    pub fn start_pull_many(&mut self, dir: &str, ctx: Option<egui::Context>) -> bool {
+        let rows = std::mem::take(&mut self.pull_many);
+        let Some(h) = self.rt.clone() else {
+            *self.say_slot() = Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.say_slot() = Some(NO_LINE.to_string().into());
+            return false;
+        };
+        let ask = cmd_wire::transfer::TransferDownloadAsk {
+            items: rows
+                .iter()
+                .map(|r| cmd_wire::transfer::DownloadItem {
+                    remote_path: r.path.clone(),
+                    name: Some(cmd_wire::files::WirePath(name_bytes(r))),
+                })
+                .collect(),
+            local_dir: cmd_wire::files::WirePath::from(dir),
+            on_exists: None,
+            decide: None,
+        };
+        let board = super::batch::BatchBoard::new(super::batch::Plan {
+            verb: super::batch::Verb::Download,
+            cmd: super::batch::CMD_DOWNLOAD,
+            args: serde_json::to_value(&ask).unwrap_or_default(),
+            names: rows.iter().map(|r| r.name.clone()).collect(),
+            into: Some(dir.to_string()),
+            machine: self.source.label(),
+        });
+        board.attach(ctx);
+        self.batches.push(board.clone());
+        let srcs = rows
+            .iter()
+            .map(|r| (r.path.clone(), r.name.clone()))
+            .collect();
+        h.spawn(super::download::pull_many(
+            line,
+            self.source.origin(),
+            board,
+            self.progress.clone(),
+            srcs,
+        ));
         true
     }
 
@@ -4058,13 +4184,12 @@ impl FileWindow {
 
     /// 编辑面以外的那几个框有没有一个摆着。
     fn asking_up(&self) -> bool {
-        self.board.is_asking()
-            || self.copy_board.is_asking()
+        self.copy_board.is_asking()
             // 解压撞名那一问。
             || self.extract_board.is_asking()
             // 复制到另一台：填机器名那一问 · 盖不盖那一问。
             || self.cross_prompt.is_some()
-            || self.cross_board.is_asking()
+            || self.batches.iter().any(|b| b.is_asking())
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
@@ -4265,12 +4390,19 @@ impl FileWindow {
             (Action::View, [i]) => self.begin_view(*i),
             (Action::Copy, [i]) => self.begin_copy(*i),
             (Action::Download, [i]) => self.begin_pull(*i),
+            // 多项：选一个本机目录，一组一条 `transfer-download`。
+            (Action::Download, _) => self.begin_pull_many(&idx),
+            // 两栏的事归窗口那一级（`Workspace::copy_to_other`）。
+            (Action::Across, _) => {
+                self.across_wanted = true;
+                true
+            }
             // 一项或多项。
             (Action::Size, _) => self.start_sizes(&idx, ctx),
             // 恰好一份文件。
             (Action::Extract, [i]) => self.start_extract(*i, ctx),
-            // 恰好一份文件。
-            (Action::CrossCopy, [i]) => self.begin_cross(*i),
+            // 一项或多项（目录整棵）。
+            (Action::CrossCopy, _) => self.begin_cross_rows(&idx),
             (Action::Rename, [i]) => self.begin_rename(*i),
             // 一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
@@ -4332,6 +4464,32 @@ impl FileWindow {
         {
             let rows = self.listing.rows.lock().unwrap();
             self.selection.click(&rows, i, mods);
+        }
+        self.key_notice = None;
+        true
+    }
+
+    /// **胶水**：列表说「在框选」→ 选中跟着框变（按下那一刻的选中记下：Ctrl 框加进它、Esc 回到它）；松手 ⇒ 收。
+    pub fn apply_band(&mut self) -> bool {
+        if self.tally.band_cancel {
+            if let Some(b) = self.band_base.take() {
+                self.selection = b;
+            }
+            return true;
+        }
+        let Some((span, add)) = self.tally.band else {
+            return false;
+        };
+        let base = self
+            .band_base
+            .get_or_insert_with(|| self.selection.clone())
+            .clone();
+        {
+            let rows = self.listing.rows.lock().unwrap();
+            self.selection.band(&rows, &base, span, add);
+        }
+        if self.tally.band_end {
+            self.band_base = None;
         }
         self.key_notice = None;
         true
@@ -4440,10 +4598,13 @@ impl FileWindow {
         let plan = self
             .picked_owner()
             .map(|(_, o)| super::plan::menu_label(&o));
+        let dual = self.dual;
         let groups = select::menu_groups(kind, plan.is_some())
             .into_iter()
             .map(|g| {
                 g.into_iter()
+                    // 「复制到另一栏」只在两栏时有。
+                    .filter(|it| dual || *it != Item::Act(Action::Across))
                     .map(|it| {
                         let w = why
                             .iter()
@@ -4763,11 +4924,11 @@ impl FileWindow {
         self.props_ui(ui);
         // 后台那几趟（上传 · 下载 · 复制 · 解压 · 算大小 · 删除）的进度、停与结局不在这里画：
         //   它们是窗口底部「进度」表里的一行（`super::progress`，由 `Workspace` 画）。这里只剩每一趟开头那一问（模态，画在列表之前）。
-        let machine = self.source.label();
-        self.board.ui(ui, &machine);
         self.copy_board.ui(ui);
         self.extract_board.ui(ui);
-        self.cross_board.ui(ui);
+        for b in &self.batches {
+            super::batch::ask_ui(ui, b);
+        }
         self.cross_ui(ui);
         self.copy_ui(ui);
         // 🔴`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（「被围栏挡住那几句话」那一段删了）。
@@ -4790,6 +4951,7 @@ impl FileWindow {
         self.take_drops(&ui.ctx().clone());
         self.settle_finished_drops();
         self.settle_finished_copies();
+        self.settle_finished_batches();
         self.settle_finished_extracts();
         self.settle_finished_writes();
         self.settle_inline();
@@ -5049,6 +5211,7 @@ impl FileWindow {
         self.apply_click();
         // 🔴单击改选中 · 右键摆菜单。然后画菜单（它在最上层）。行上没有按钮：动作全走菜单与键盘（同一个 `perform`）。
         self.apply_pick_click();
+        self.apply_band();
         // 第八条胶水：拖起一行。
         self.apply_drag_start();
         let at = ui

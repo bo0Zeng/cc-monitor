@@ -173,6 +173,11 @@ const FRAMES: &[(&str, &str)] = &[
         "probe",
         r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
     ),
+    // 一组复制 · 删除 · 改权限的进度 —— 不是会话内容，就地记一行（窗口还没订这一口），不进内容通道。
+    (
+        "files_batch",
+        r#"{"kind":"files_batch","ticket":"no-such-ticket","done":1,"total":2}"#,
+    ),
     // 终端实时预览的一屏 / 收尾 —— 不是会话内容，就地交中继（`terminal_screen_relay`），不进内容通道。
     (
         "terminal_screen",

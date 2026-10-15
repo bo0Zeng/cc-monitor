@@ -212,6 +212,19 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `total` | number | 总字节 |
 | `end` | TransferEnd? | 只在最后一帧：这一趟怎么收场的 |
 
+### `files_batch`
+
+**一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**（`common/batch_book.rs`，带票的那一组在做时才出现）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `ticket` | string | 那一组的票（发起时交来的，本后端只当不透明的串回填） |
+| `done` | number | 做完了几项 |
+| `total` | number | 一共几项 |
+| `current` | PathBytes? | 手上那一项（根底下的相对段）；做完了缺席 |
+| `bytes_done` | number? | 整组按字节已传几个（只有搬字节的那一种报：两台之间的复制）；不报 ⇒ 缺席 |
+| `bytes_total` | number? | 整组按字节一共几个（同 `bytes_done`，两格同在同缺） |
+
 ### `probe`
 
 **测试连接那一趟的一格进度**（`dial/probe.rs`，`remote-probe` 在跑时才出现）。
@@ -725,34 +738,89 @@ link: string, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-入参 `TransferUploadReq` · 回包 `TransferUploaded`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `TransferUploadReq` · 回包 `TransferOpened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Conflict = { 
+/**
+ * 同 [`BatchOutcome::key`]。
+ */
+key: string, 
+/**
+ * 落点那一段名字。
+ */
+name: WirePath, 
+/**
+ * 要放过去的那一项是什么。
+ */
+kind: FileKind, 
+/**
+ * 要放过去的那一项的大小（文件）。
+ */
+size?: number, 
+/**
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
+ */
+mtime_text?: string, 
+/**
+ * 已在那儿的那一项是什么。
+ */
+there: FileKind, 
+/**
+ * 已在那儿的那一项的大小（文件）。
+ */
+there_size?: number, 
+/**
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
+ */
+there_mtime_text?: string, 
+/**
+ * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ */
+dir_into: boolean, };
+type Conflicts = { conflicts: Array<Conflict>, };
+type Decide = "overwrite" | "skip" | "keep_both";
+type FileKind = "dir" | "file" | "symlink" | "other";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
+type OpenState = "opened" | "skipped" | "failed";
+type OpenedItem = { key: string, state: OpenState, 
+/**
+ * 传输单 id（`xfer-<n>`）。
+ */
+id?: string, 
+/**
+ * 上传：暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
+ */
+staged?: string, 
+/**
+ * 下载：本机落点。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（下载：本机落名；上传：提交时远端那一段名字）。
+ */
+new_name?: WirePath, 
+/**
+ * 上传：提交时盖掉远端已有的同名（同名照答覆盖的那几项）。
+ */
+overwrite?: boolean, 
+/**
+ * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
+ */
+code?: string, reason?: string, detail?: string, };
+type TransferOpened = { items: Array<OpenedItem>, };
 type TransferUploadReq = { 
 /**
  * 拨号请求（同 `link-open` 的 `dial`）：后端拨号核心读它。
  */
-dial: Record<string, unknown>, 
-/**
- * 本机一份普通文件的路径。
- */
-local_path: string, 
-/**
- * 那台后端的 `$HOME`（同 [`TransferUploadAsk::home`]）。
- */
-home?: string, };
-type TransferUploaded = { 
-/**
- * 传输单 id（`xfer-<n>`）：订阅 `transfer/<id>` 即起跑。
- */
-id: string, 
-/**
- * 暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
- */
-key: string, };
+dial: Record<string, unknown>, items: Array<UploadItem>, remote_dir: WirePath, home?: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+type UploadItem = { local_path: string, };
+type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `io_failed` · `busy` · `too_many_transfers`
+码：`bad_args` · `exists`
+
+失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
 #### `transfer-download`
 
@@ -763,28 +831,82 @@ key: string, };
 入参 `TransferDownloadReq` · 回包 `TransferOpened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type TransferDownloadReq = { 
+type Conflict = { 
 /**
- * 拨号请求（同 [`TransferUploadReq::dial`]）。
+ * 同 [`BatchOutcome::key`]。
  */
-dial: Record<string, unknown>, 
+key: string, 
 /**
- * 远端路径。
+ * 落点那一段名字。
  */
-remote_path: string, 
+name: WirePath, 
 /**
- * 本机落点（同 [`TransferDownloadAsk::local_path`]）：开单时当场过路径解析，起跑时再过一次。
+ * 要放过去的那一项是什么。
  */
-local_path: WirePath, };
-type TransferOpened = { 
+kind: FileKind, 
 /**
- * 传输单 id：订阅 `transfer/<id>` 即起跑。
+ * 要放过去的那一项的大小（文件）。
  */
-id: string, };
+size?: number, 
+/**
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
+ */
+mtime_text?: string, 
+/**
+ * 已在那儿的那一项是什么。
+ */
+there: FileKind, 
+/**
+ * 已在那儿的那一项的大小（文件）。
+ */
+there_size?: number, 
+/**
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
+ */
+there_mtime_text?: string, 
+/**
+ * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ */
+dir_into: boolean, };
+type Conflicts = { conflicts: Array<Conflict>, };
+type Decide = "overwrite" | "skip" | "keep_both";
+type DownloadItem = { remote_path: string, name?: WirePath, };
+type FileKind = "dir" | "file" | "symlink" | "other";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
+type OpenState = "opened" | "skipped" | "failed";
+type OpenedItem = { key: string, state: OpenState, 
+/**
+ * 传输单 id（`xfer-<n>`）。
+ */
+id?: string, 
+/**
+ * 上传：暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
+ */
+staged?: string, 
+/**
+ * 下载：本机落点。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（下载：本机落名；上传：提交时远端那一段名字）。
+ */
+new_name?: WirePath, 
+/**
+ * 上传：提交时盖掉远端已有的同名（同名照答覆盖的那几项）。
+ */
+overwrite?: boolean, 
+/**
+ * 没开成的那一项的码 · 原因词 · 复制详情（同一组那几条的结局）。
+ */
+code?: string, reason?: string, detail?: string, };
+type TransferDownloadReq = { dial: Record<string, unknown>, items: Array<DownloadItem>, local_dir: WirePath, on_exists?: OnExists, decide?: { [key in string]: Decide }, };
+type TransferOpened = { items: Array<OpenedItem>, };
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `refused` · `too_many_transfers`
+码：`bad_args` · `refused` · `exists`
+
+失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
 #### `transfer-start`
 
@@ -821,6 +943,116 @@ id: string, };
 ```
 
 码：`bad_args`
+
+#### `transfer-copy`
+
+两台之间复制一组。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+入参 `TransferCopyReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
+type Conflict = { 
+/**
+ * 同 [`BatchOutcome::key`]。
+ */
+key: string, 
+/**
+ * 落点那一段名字。
+ */
+name: WirePath, 
+/**
+ * 要放过去的那一项是什么。
+ */
+kind: FileKind, 
+/**
+ * 要放过去的那一项的大小（文件）。
+ */
+size?: number, 
+/**
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
+ */
+mtime_text?: string, 
+/**
+ * 已在那儿的那一项是什么。
+ */
+there: FileKind, 
+/**
+ * 已在那儿的那一项的大小（文件）。
+ */
+there_size?: number, 
+/**
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
+ */
+there_mtime_text?: string, 
+/**
+ * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ */
+dir_into: boolean, };
+type Conflicts = { conflicts: Array<Conflict>, };
+type CopyFrom = { remote_path: string, };
+type Decide = "overwrite" | "skip" | "keep_both";
+type FileKind = "dir" | "file" | "symlink" | "other";
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
+type TransferCopyReq = { 
+/**
+ * 源那台的拨号请求。
+ */
+from: Record<string, unknown>, 
+/**
+ * 落点那台的拨号请求。
+ */
+to: Record<string, unknown>, items: Array<CopyFrom>, 
+/**
+ * 落点那台上的目录（绝对路径）。
+ */
+to_dir: string, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `exists` · `unreachable` · `sftp_home_mismatch`
+
+失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
 #### `ping`
 
@@ -892,52 +1124,227 @@ type WirePath = string | { b16: string };
 
 #### `files-delete`
 
-删一个文件或一个空目录。
+删一组（文件 · 空目录 · 显式递归的整棵）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-delete`
 
-入参 `FilesDeleteReq` · 回包 `FilesDeleteReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `FilesDeleteReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
 type DeleteExpect = { empty_dir: true } | string | { b16: string };
-type FilesDeleteReply = { path: WirePath, removed: number, remaining: number, };
-type FilesDeleteReq = { root: WirePath, rel: WirePath, recursive?: boolean, expect?: DeleteExpect, limit?: number, };
+type DeleteItem = { rel: WirePath, recursive?: boolean, expect?: DeleteExpect, };
+type FilesDeleteReq = { root: WirePath, items: Array<DeleteItem>, ticket?: string, };
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
+码：`bad_args` · `bad_path`
 
 #### `files-chmod`
 
-改 unix 权限位。
+一组改成同一个 unix 权限位。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-chmod` · 没有 unix 权限位的机器上做不到
 
-入参 `FilesChmodReq` · 回包 `FilesChmodReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `FilesChmodReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesChmodReply = { path: WirePath, mode: number, before?: number, };
-type FilesChmodReq = { root: WirePath, rel: WirePath, mode: number, };
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
+type ChmodItem = { rel: WirePath, };
+type FilesChmodReq = { root: WirePath, items: Array<ChmodItem>, mode: number, ticket?: string, };
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `no_unix_mode` · `refused`
+码：`bad_args` · `bad_path` · `no_unix_mode`
 
 #### `files-copy`
 
-同根内复制一份普通文件。
+同根内复制一组。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-copy`
 
-入参 `FilesCopyReq` · 回包 `FilesTreeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `FilesCopyReq` · 回包 `BatchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesCopyReq = { root: WirePath, from: WirePath, to: WirePath, overwrite?: boolean, recursive?: boolean, };
-type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+type BatchOutcome = { key: string, state: ItemState, 
+/**
+ * 落在哪（做完的那几项；保留两份时是另起的那个名）。
+ */
+path?: WirePath, 
+/**
+ * 保留两份时另起的那个名（只一段）。
+ */
+new_name?: WirePath, 
+/**
+ * 这一项落了几个字节（复制 · 传输）。
+ */
+bytes?: number, 
+/**
+ * 这一项复制了几份文件 · 几个目录（复制：目录那一项是整棵的数）。
+ */
+files?: number, dirs?: number, 
+/**
+ * 这一项删了几条（删除：整棵树按条数；撤在半路时是已删的那几条）。
+ */
+removed?: number, 
+/**
+ * 改权限之前的低 12 位（撤销 ＝ 拿它再改一次；读不到就缺席）。
+ */
+before?: number, 
+/**
+ * 没做成的那一项的码（同单条命令的码表：`refused` · `io_failed` · `stale` · `no_unix_mode` · `exists` …）。
+ */
+code?: string, 
+/**
+ * 原因词（闭集，同界面「失败 · X」那一格）。
+ */
+reason?: string, 
+/**
+ * 复制详情（下层那一句 ＋ 原话），不上界面那一行。
+ */
+detail?: string, };
+type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
+type Conflict = { 
+/**
+ * 同 [`BatchOutcome::key`]。
+ */
+key: string, 
+/**
+ * 落点那一段名字。
+ */
+name: WirePath, 
+/**
+ * 要放过去的那一项是什么。
+ */
+kind: FileKind, 
+/**
+ * 要放过去的那一项的大小（文件）。
+ */
+size?: number, 
+/**
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
+ */
+mtime_text?: string, 
+/**
+ * 已在那儿的那一项是什么。
+ */
+there: FileKind, 
+/**
+ * 已在那儿的那一项的大小（文件）。
+ */
+there_size?: number, 
+/**
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
+ */
+there_mtime_text?: string, 
+/**
+ * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ */
+dir_into: boolean, };
+type Conflicts = { conflicts: Array<Conflict>, };
+type CopyItem = { from: WirePath, to: WirePath, };
+type Decide = "overwrite" | "skip" | "keep_both";
+type FileKind = "dir" | "file" | "symlink" | "other";
+type FilesCopyReq = { root: WirePath, items: Array<CopyItem>, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused`
+码：`bad_args` · `bad_path` · `exists`
+
+失败带 `data` 的码：`exists` ⇒ `Conflicts`
+
+#### `files-batch-stop`
+
+撤一组复制 · 删除 · 改权限。
+
+收 `args` · 可撤 · CLI：`ccm -- --files-batch-stop`
+
+入参 `FilesBatchStopReq` · 回包 `FilesBatchStopReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesBatchStopReply = { stopping: boolean, };
+type FilesBatchStopReq = { ticket: string, };
+```
+
+码：`bad_args`
 
 #### `files-extract`
 
@@ -11995,13 +12402,14 @@ needs: string | null, };
 | `--ext-note-set` | ＝ 帧命令 `ext-note-set`：写 / 改 / 清一个扩展的备注 |
 | `--ext-uninstall-apply` | ＝ 帧命令 `ext-uninstall-apply`：从这台卸一个扩展 |
 | `--ext-uninstall-preview` | ＝ 帧命令 `ext-uninstall-preview`：从这台卸一个扩展之前那张卡 |
+| `--files-batch-stop` | ＝ 帧命令 `files-batch-stop`：撤一组复制 · 删除 · 改权限 |
 | `--files-browse` | ＝ 帧命令 `files-browse`：告诉后端「用户现在在看哪几个目录」 |
-| `--files-chmod` | ＝ 帧命令 `files-chmod`：改 unix 权限位 |
+| `--files-chmod` | ＝ 帧命令 `files-chmod`：一组改成同一个 unix 权限位 |
 | `--files-commit-text` | ＝ 帧命令 `files-commit-text`：按块读回、拼起来、覆盖写 |
 | `--files-commit-upload` | ＝ 帧命令 `files-commit-upload`：把暂存区里一份传完的上传件挪进目标 |
-| `--files-copy` | ＝ 帧命令 `files-copy`：同根内复制一份普通文件 |
+| `--files-copy` | ＝ 帧命令 `files-copy`：同根内复制一组 |
 | `--files-create` | ＝ 帧命令 `files-create`：在文件管理目标根底下新建一份此前不存在的文件 |
-| `--files-delete` | ＝ 帧命令 `files-delete`：删一个文件或一个空目录 |
+| `--files-delete` | ＝ 帧命令 `files-delete`：删一组（文件 · 空目录 · 显式递归的整棵） |
 | `--files-delete-session` | ＝ 帧命令 `files-delete-session`：删一份历史会话 |
 | `--files-extract` | ＝ 帧命令 `files-extract`：解压到一个新目录 |
 | `--files-find` | ＝ 帧命令 `files-find`：在常驻索引里查 |

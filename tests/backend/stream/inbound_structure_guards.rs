@@ -255,6 +255,8 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
                     .map(|c| c.name)
                     .collect::<Vec<_>>(),
             )
+            // 撤一组复制 · 删除 · 改权限（`control/files_batch.rs`）：写那一族的，只立旗、不碰盘。
+            .chain([crate::common::batch_book::STOP])
             .map(str::to_string)
             .collect();
     assert!(
@@ -302,7 +304,10 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             .iter()
             .find(|s| s.name == name)
             .unwrap_or_else(|| panic!("`{name}` 不在 REGISTRY 上 —— 上面那条应该先红"));
-        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上。
+        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上（撤一组那一条不写盘、不经写面那一扇，不在这里调）。
+        if name == crate::common::batch_book::STOP {
+            continue;
+        }
         if let Err(crate::control::files_write::WriteFail {
             code, said: msg, ..
         }) = crate::control::files_write::tests::ask(name, &serde_json::json!({}))

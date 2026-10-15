@@ -37,9 +37,10 @@ pub mod prefs_migration;
 // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;
 // 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。
+pub(crate) mod files_batch;
 pub mod files_upload_chunks;
-pub mod files_write;
-// 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
+pub mod files_write; // 同一台上一组一条（复制 · 删除 · 改权限）：探 · 问 · 做 · 逐项结局 · 票 · 进度 · 撤
+                     // 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
 pub(crate) mod fork_launch;
 pub mod fork_write;
 pub(crate) mod gate;
@@ -70,3 +71,4 @@ pub(crate) mod terminal_follow;
 pub mod tmux_hook;
 // 传输台住本机常驻后端（文件管理写面的成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;
+pub(crate) mod transfer_copy; // 两台之间复制一组（经本机中转，目录整棵、逐项结局）

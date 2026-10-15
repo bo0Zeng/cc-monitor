@@ -90,6 +90,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/files_upload_chunks.rs", "face.delete_file(&p).ok();", Why::CleanupAfterFailure, "拼暂存件失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回，块由 `drop_chunks` 收"),
     ("src/backend/control/files_write.rs", "face.delete_file(&side).ok();", Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
     ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（做得好的对照组）"),
+    ("src/backend/control/transfer_copy.rs", "let _ = crate::dial::sftp::remove(&self.to, &staging_part(&key)).await;", Why::CleanupAfterFailure, "一份文件没传成 ⇒ 删落点那台暂存区里的半截；删不掉只是暂存区里多一份，孤儿扫会收"),
+    ("src/backend/control/transfer_copy.rs", "let _ = self.face.delete_file(&at);", Why::CleanupAfterFailure, "本机中转那一份不论成败都删；删不掉只是暂存区里多一份，孤儿扫会收"),
+    ("src/backend/control/transfer_copy.rs", "let _ = face.make_dir_private(&at);", Why::CleanupAfterFailure, "建本机暂存区：建不成时下一步落暂存件那一下照实报错，不在这里先报"),
     ("src/backend/control/transfer.rs", "let _ = forward.await;", Why::Reap, "等进度转发任务收尾（它自己只往已结束的票上报数）"),
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),
     ("src/backend/control/transfer.rs", "let _ = sftp::remove(s, &part).await;", Why::CleanupAfterFailure, "撤了 ⇒ 删暂存区里的半截（用户说了不要）；删不掉只是暂存区里多一份，孤儿扫会收"),
@@ -235,9 +238,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/frontend/shell/src/config.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回"),
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
     ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/filewin/src/cross_copy.rs", "tx.send(overwrite).ok();", Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/filewin/src/cross_copy.rs", "let _ = write(line, &local, &delete_req(&staging, &rel)).await;", Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
-    ("src/frontend/filewin/src/cross_copy.rs", "let _ = write(line, &to, &delete_req(&bstaging, &format!(\"{k}.part\"))).await;", Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
     // `history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
     ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", Why::Reap, ""), // 原 `launch.rs`
     // 下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。

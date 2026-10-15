@@ -195,6 +195,30 @@ impl Selection {
         }
     }
 
+    /// 框选：`base` ＝ 按下那一刻的选中；框到第 `span` 那几行（含两端；`None` ＝ 框里一行都没有）。
+    /// `add`（按着 Ctrl）⇒ 加进 `base`；不然只留框到的。光标落在框的最后那一行，锚在第一行（之后 Shift 点从这里扩）。
+    pub fn band(
+        &mut self,
+        rows: &[Listed],
+        base: &Selection,
+        span: Option<(usize, usize)>,
+        add: bool,
+    ) {
+        let mut picked = if add {
+            base.picked.clone()
+        } else {
+            BTreeSet::new()
+        };
+        if let Some((a, b)) = span {
+            for r in rows.iter().take(b + 1).skip(a) {
+                picked.insert(pick_key(r).into_owned());
+            }
+            self.cursor = rows.get(b).map(|r| pick_key(r).into_owned());
+            self.anchor = rows.get(a).map(|r| pick_key(r).into_owned());
+        }
+        self.picked = picked;
+    }
+
     /// Ctrl+A：这一摞全选。光标不动（没有光标 ⇒ 放在第一行）。
     pub fn select_all(&mut self, rows: &[Listed]) {
         self.picked = rows.iter().map(|r| pick_key(r).into_owned()).collect();
@@ -491,8 +515,10 @@ pub enum Action {
     Size,
     /// 解压到这里（后端 `files-extract`）—— 恰好一份文件。
     Extract,
-    /// 复制到另一台机器（A 下到本机暂存 → 传到 B → B 提交）—— 恰好一份文件。
+    /// 复制到另一台机器（后端 `transfer-copy`：经本机中转，目录整棵逐个文件）—— 一项或多项。
     CrossCopy,
+    /// 复制到另一栏（双栏时）—— 多选那一种的菜单里才有（单选走命令栏 · 拖）。
+    Across,
     Rename,
     /// 改权限 —— 对一项或多项（头注 §三）。
     Chmod,
@@ -518,10 +544,20 @@ impl Action {
             Action::Edit => super::editor::EDIT_LABEL.to_string(),
             Action::View => super::imgview::VIEW_LABEL.to_string(),
             Action::Copy => super::copy::COPY_LABEL.to_string(),
+            Action::Download if n > 1 => copy_text(
+                "rsFilewinSelect.label.downloadMany",
+                &[("n", &n.to_string())],
+            ),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Size => super::size::SIZE_LABEL.to_string(),
             Action::Extract => super::extract::EXTRACT_LABEL.to_string(),
+            Action::CrossCopy if n > 1 => {
+                copy_text("rsFilewinSelect.label.crossMany", &[("n", &n.to_string())])
+            }
             Action::CrossCopy => super::cross_copy::CROSS_LABEL.to_string(),
+            Action::Across => {
+                copy_text("rsFilewinSelect.label.acrossMany", &[("n", &n.to_string())])
+            }
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
@@ -695,6 +731,11 @@ pub const MENU_TABLE: &[(Picked, &[&[Item]])] = &[
     (
         Picked::Many,
         &[
+            &[
+                Item::Act(A::Download),
+                Item::Act(A::CrossCopy),
+                Item::Act(A::Across),
+            ],
             &[Item::Act(A::Size), Item::Act(A::Chmod)],
             &[Item::Act(A::Delete)],
         ],
@@ -753,10 +794,23 @@ pub fn menu_groups(kind: Picked, planned: bool) -> Vec<Vec<Item>> {
     groups
 }
 
-/// 表里有、但**这一份**做不了的那一件 ⇒ 为什么（菜单上灰着、悬停说；键盘按了说同一句）。只有一格：编辑超上限。
+/// 表里有、但**这一份**做不了的那一件 ⇒ 为什么（菜单上灰着、悬停说哪几项为什么；键盘按了说同一句）。
+/// 编辑超上限 · 多选里有目录不能下载（下载只收文件）· 多选里名字只有原始字节的那几项不能复制到另一台（那一条按路径串寻址）。
 pub fn blocked(a: Action, picked: &[&Listed]) -> Option<String> {
+    let names = |hit: &dyn Fn(&Listed) -> bool| -> Option<String> {
+        let v: Vec<&str> = picked
+            .iter()
+            .filter(|r| hit(r))
+            .map(|r| r.name.as_str())
+            .collect();
+        (!v.is_empty()).then(|| v.join(&copy_text("rsFilewinCopy.batch.listSep", &[])))
+    };
     match (a, picked) {
         (Action::Edit, [r]) => super::editor::why_not_editable_listed(r),
+        (Action::Download, [_, _, ..]) => names(&|r: &Listed| r.opens_as_dir())
+            .map(|n| copy_text("rsFilewinSelect.why.dirDownload", &[("names", &n)])),
+        (Action::CrossCopy, [_, _, ..]) => names(&|r: &Listed| r.lossy_name)
+            .map(|n| copy_text("rsFilewinSelect.why.lossyCross", &[("names", &n)])),
         _ => None,
     }
 }
@@ -840,6 +894,7 @@ impl Action {
             Action::Size => ph::RULER,
             Action::Extract => ph::FILE_ZIP,
             Action::CrossCopy => ph::SWAP,
+            Action::Across => ph::COPY,
             Action::Rename => ph::PENCIL_SIMPLE,
             Action::Chmod => ph::LOCK_KEY,
             Action::Delete => ph::TRASH,

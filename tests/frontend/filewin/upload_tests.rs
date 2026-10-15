@@ -1,8 +1,8 @@
 //! 命令栏「上传」那颗按钮的判据（照稿 10-05：直接弹系统选文件框）。
 //!
 //! - 🔴 **挂载那一跳在执行链上**：真跑 `frame_body` ＋ 命令栏，合成一次点击点在画出来的「上传」上 ⇒ 选择框被问；
-//!   选到的那一份走拖入那一条（真回环 ＋ 真钥匙 ＋ 合成对端上逐步读回：先问「那儿有没有东西」、人答覆盖、
-//!   再开单 → 订阅 → 提交，提交带 `overwrite: true`）。
+//!   选到的那一份走拖入那一条（真回环 ＋ 真钥匙 ＋ 合成对端上逐步读回：整组一条开单、同名由对端探了回 `exists` ⇒
+//!   冲突框问一次、人答覆盖 ⇒ 同一组带 `decide` 再开单 → 订阅 → 提交，提交带 `overwrite: true`；窗口自己一次 `files-stat` 都不问）。
 //!
 //! ⚠ 买不到：真弹框（选择框是注入的假的）；真图形会话上的一次真点击（这里是合成事件）。
 
@@ -22,7 +22,7 @@ impl crate::picker::Picker for One {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() {
     use crate::copy::testing::rects_of;
-    let (line, origin, log) = xfer_rig(Ends::Done).await;
+    let (line, origin, log) = xfer_rig(Ends::Clash).await;
     let cfg = origin.0.clone();
     let mut w = crate::shell::FileWindow::seeded(
         crate::source::Source::remote(cfg),
@@ -55,15 +55,19 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     assert_eq!(at.len(), 1, "命令栏上「上传」不是恰好一颗：{at:?}");
     // ② 点它 ⇒ 系统选文件框（注入的）答那一份 ⇒ 下一帧接上、走拖入那一条。
     let _ = painted(&mut w, crate::rows::testing::click_at(at[0].center()));
-    tokio::time::timeout(guard_core::wall::CEILING, async {
-        while !w.board.is_asking() {
+    let asking = tokio::time::timeout(guard_core::wall::CEILING, async {
+        loop {
+            if let Some(b) = w.batches.iter().find(|b| b.is_asking()).cloned() {
+                return b;
+            }
             let _ = painted(&mut w, Vec::new());
             tokio::task::yield_now().await;
         }
     })
     .await
     .expect("同名那一问没摆出来 —— 没走拖入那一条");
-    assert!(w.board.settle(true));
+    assert_eq!(asking.conflicts().len(), 1, "冲突框照对端的同名清单画");
+    assert!(asking.answer(Some(cmd_wire::batch::Decide::Overwrite), false));
     tokio::time::timeout(guard_core::wall::CEILING, async {
         while !steps(&log).iter().any(|s| s == "files-commit-upload") {
             tokio::task::yield_now().await;
@@ -82,12 +86,23 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
     assert_eq!(
         names,
         [
-            "files-stat",
             "files-home",
+            "transfer-upload",
             "transfer-upload",
             "subscribe",
             "files-commit-upload"
-        ]
+        ],
+        "窗口不再自己探同名：整组一条开单，答过冲突框带 `decide` 再开一次"
+    );
+    let local_s = local.to_string_lossy().into_owned();
+    assert_eq!(
+        got[1].1,
+        serde_json::json!({"items": [{"local_path": local_s}], "remote_dir": "/srv", "home": "/srv/a.bin"})
+    );
+    assert_eq!(
+        got[2].1,
+        serde_json::json!({"items": [{"local_path": local_s}], "remote_dir": "/srv", "home": "/srv/a.bin",
+                           "decide": {"0": "overwrite"}})
     );
     assert_eq!(
         got[4].1["overwrite"],

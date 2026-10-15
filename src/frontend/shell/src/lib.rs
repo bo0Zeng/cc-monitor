@@ -118,6 +118,7 @@ mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod profile_installer;
 // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
+mod files_batch_relay; // 后端的 `files_batch` 帧（一组做到哪了）按票转给文件窗口订的 `files-batch/<票>`
 mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）

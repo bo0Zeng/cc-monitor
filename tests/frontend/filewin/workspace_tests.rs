@@ -15,7 +15,7 @@
 //! | [`copy_across_speaks_files_copy_with_a_common_root`] | 线上那一行 `files-copy` 的 `root` / `from` / `to` 逐格相等（合成后端） | 期望手写；实得是合成后端真收到的那一行 |
 //! | [`copy_across_refuses_what_it_cannot_do_and_sends_nothing`] | 没开双栏 / 没选 / 选中里有有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控：合法那一摞恰好两条） | 零命中读的是线上那本账 |
 //! | [`copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`] | 一摞（文件 ＋ 目录）⇒ 线上两行逐格相等，目录那行带 `recursive: true` | 期望手写；实得是合成后端真收到的 |
-//! | [`across_args_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
+//! | [`across_req_cuts_paths_at_the_common_directory`] | 公共前缀那一刀逐格相等（含只在根下相交的那一形） | 期望手写 |
 //! | [`dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_nothing`] | 〔「行拖到另一栏的手势」〕合成指针拖起左栏一行 ⇒ 拖着时画「复制 1 项到另一栏」、松在右栏 ⇒ 线上恰一条 `files-copy`（逐格相等）；阴性：拖回本栏松手 ⇒ 零条 | 实得是合成后端真收到的；期望手写 |
 //! | [`ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side`] | 〔标签页快捷键 ＋ `§6.3` 键盘四道闸〕Ctrl+T / Ctrl+W 只作用于焦点那一栏（两栏各自的标签数逐格相等）；有一问摆着 ⇒ 零作用；不按 Ctrl 的 T ⇒ 零作用 | 标签数读的是各栏自己的表；期望手写 |
 //!
@@ -337,6 +337,7 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
             board: board.clone(),
             items: Vec::new(),
             dir: "srv".into(),
+            ask: crate::transfer::tests::upload_ask(&[]),
         },
         Some("/srv".into()),
         None,
@@ -540,14 +541,40 @@ async fn across_rig(tag: &str) -> (crate::find::testing::Wired, Workspace) {
     (wired, ws)
 }
 
-async fn settle_copy(w: &FileWindow) {
+/// 等这一栏起的那一组落地，交回它（它的结局是后端那一行）。
+async fn settle_copy(w: &FileWindow) -> crate::batch::BatchBoard {
     for _ in guard_core::wall::rounds() {
-        if w.copy_board.rounds() > 0 {
-            return;
+        if let Some(b) = w.batches.iter().find(|b| {
+            matches!(
+                b.phase(),
+                crate::batch::Phase::Ended(_) | crate::batch::Phase::Failed(_)
+            )
+        }) {
+            return b.clone();
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("到兜底上限复制那一趟还没回话");
+    panic!("到兜底上限复制那一组还没回话");
+}
+
+/// 线上那几条 `files-copy` 的入参（票是窗口铸的 UUID：每一条都带着，值不比 ⇒ 摘掉再比）。
+fn copies_on_wire(wired: &crate::find::testing::Wired) -> Vec<serde_json::Value> {
+    wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-copy")
+        .map(|r| {
+            let mut a = r["args"].clone();
+            assert!(
+                a["ticket"].as_str().is_some_and(|t| t.len() == 36),
+                "一组没带票：{a}"
+            );
+            a.as_object_mut().unwrap().remove("ticket");
+            a
+        })
+        .collect()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -565,27 +592,18 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
     assert_eq!(ws.pane_on(0).picked_name(), Ok("x.txt".to_string()));
     assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     settle_copy(ws.pane_on(1)).await;
-    let copies: Vec<serde_json::Value> = wired
-        .log
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|r| r["cmd"] == "files-copy")
-        .map(|r| r["args"].clone())
-        .collect();
+    let copies = copies_on_wire(&wired);
     assert_eq!(
         copies,
         vec![serde_json::json!({
             "root": "/srv",
-            "from": "a/x.txt",
-            "to": "b/x.txt",
-            "overwrite": false,
+            "items": [{ "from": "a/x.txt", "to": "b/x.txt" }],
         })],
         "线上那一行与期望不等"
     );
-    // 结局落在**目标那一栏**（问与结局画在那一侧），源那一栏一趟都没跑。
-    assert_eq!(ws.pane_on(1).copy_board.rounds(), 1);
-    assert_eq!(ws.pane_on(0).copy_board.rounds(), 0);
+    // 结局落在**目标那一栏**（冲突框与结局画在那一侧），源那一栏一组都没起。
+    assert_eq!(ws.pane_on(1).batches.len(), 1);
+    assert!(ws.pane_on(0).batches.is_empty());
 }
 
 /// 做不了的那几形：没开双栏 / 一项都没选 / 选了有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控）。
@@ -645,11 +663,11 @@ async fn copy_across_refuses_what_it_cannot_do_and_sends_nothing() {
         "做不了的那几形上了线：{:?}",
         wired.cmds()
     );
-    // 正控：换回别的目录 ⇒ 两项（一个文件、一个目录）各恰好一条。
+    // 正控：换回别的目录 ⇒ 两项（一个文件、一个目录）一组一条。
     ws.pane_on_mut(1).navigate_to("/srv/b".into());
     assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
     settle_copy(ws.pane_on(1)).await;
-    assert_eq!(wired.count("files-copy"), 2);
+    assert_eq!(wired.count("files-copy"), 1);
 }
 
 /// 要求：「复制目录 · 批量复制」＋ `§6.3`「多选时要每一项都能…才给」。
@@ -663,36 +681,29 @@ async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() 
     ws.pane_on_mut(0)
         .apply_intent(crate::select::Intent::SelectAll, 0.0, None);
     assert!(ws.copy_to_other(None), "起不来：{:?}", ws.notice());
-    settle_copy(ws.pane_on(1)).await;
-    let copies: Vec<serde_json::Value> = wired
-        .log
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|r| r["cmd"] == "files-copy")
-        .map(|r| r["args"].clone())
-        .collect();
+    let b = settle_copy(ws.pane_on(1)).await;
+    let copies = copies_on_wire(&wired);
     assert_eq!(
         copies,
-        vec![
-            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false}),
-            serde_json::json!({"root": "/srv", "from": "a/d", "to": "b/d", "overwrite": false, "recursive": true}),
-        ],
-        "线上那两行与期望不等"
+        vec![serde_json::json!({"root": "/srv", "items": [
+            {"from": "a/x.txt", "to": "b/x.txt"},
+            {"from": "a/d", "to": "b/d"}
+        ]})],
+        "线上那一条与期望不等（一组一条）"
     );
-    let last = ws.pane_on(1).copy_board.last().expect("没有结局");
-    let said = crate::copy::outcome_notice(&last).text;
-    assert!(
-        said.contains(&copy_core::copy_text(
-            "rsFilewinCopy.outcome.batchDone",
-            &[("n", "2"), ("files", "4"), ("dirs", "2"), ("bytes", "84")]
-        )),
-        "结局那句没把两件加起来：{said}"
+    let crate::batch::Phase::Ended(r) = b.phase() else {
+        panic!("{:?}", b.phase())
+    };
+    let verb = copy_core::copy_text("beFiles.batch.verbCopy", &[]);
+    assert_eq!(
+        r.said,
+        copy_core::copy_text("beFiles.batch.done", &[("action", &verb), ("n", "2")]),
+        "结局那一行是后端拼好的，原样画"
     );
 }
 
 #[test]
-fn across_args_cuts_paths_at_the_common_directory() {
+fn across_req_cuts_paths_at_the_common_directory() {
     let job = |from: &str, to: &str| CopyJob {
         from: from.into(),
         to: to.into(),
@@ -709,13 +720,25 @@ fn across_args_cuts_paths_at_the_common_directory() {
         ("/x", "/y/x", ("/", "x", "y/x")),
     ];
     for (from, to, (root, f, t)) in cases {
-        let v = serde_json::to_value(across_args(&job(from, to), true).unwrap()).unwrap();
+        let v = serde_json::to_value(across_req(&[job(from, to)]).unwrap()).unwrap();
         assert_eq!(
             v,
-            serde_json::json!({ "root": root, "from": f, "to": t, "overwrite": true }),
+            serde_json::json!({ "root": root, "items": [{ "from": f, "to": t }] }),
             "{from} → {to}"
         );
     }
+    // 一组：根 ＝ 所有源与目标的公共上级，各项各自切。
+    let v = serde_json::to_value(
+        across_req(&[job("/srv/a/x", "/srv/b/x"), job("/srv/a/d/y", "/srv/b/y")]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({ "root": "/srv", "items": [
+            { "from": "a/x", "to": "b/x" },
+            { "from": "a/d/y", "to": "b/y" }
+        ] })
+    );
     assert_eq!(
         common_dir("/srv/ab", "/srv/a"),
         "/srv",
@@ -840,19 +863,10 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
     );
     d.frame(&mut ws, vec![press(right_mid, false)]);
     settle_copy(ws.pane_on(1)).await;
-    let copies: Vec<serde_json::Value> = wired
-        .log
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|r| r["cmd"] == "files-copy")
-        .map(|r| r["args"].clone())
-        .collect();
+    let copies = copies_on_wire(&wired);
     assert_eq!(
         copies,
-        vec![
-            serde_json::json!({"root": "/srv", "from": "a/x.txt", "to": "b/x.txt", "overwrite": false})
-        ],
+        vec![serde_json::json!({"root": "/srv", "items": [{"from": "a/x.txt", "to": "b/x.txt"}]})],
         "拖过去那一趟线上那一行与期望不等"
     );
 }
@@ -860,7 +874,7 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
 /// 〔有损名全寻址（）〕跨目录那一形按**字节**切：源在一个有损名目录里 ⇒ 根照样是按段比的公共前缀，
 /// 有损那一段发 `{"b16": …}`、合法 UTF-8 那一段照旧是字符串（期望手写）。
 #[test]
-fn across_args_cut_lossy_paths_by_their_bytes() {
+fn across_req_cuts_lossy_paths_by_their_bytes() {
     let job = CopyJob {
         from: "/srv/a\u{FFFD}/x".into(),
         to: "/srv/b/x".into(),
@@ -870,8 +884,8 @@ fn across_args_cut_lossy_paths_by_their_bytes() {
         to_raw: None,
     };
     assert_eq!(
-        serde_json::to_value(across_args(&job, false).unwrap()).unwrap(),
-        serde_json::json!({ "root": "/srv", "from": { "b16": "61ff2f78" }, "to": "b/x", "overwrite": false })
+        serde_json::to_value(across_req(&[job]).unwrap()).unwrap(),
+        serde_json::json!({ "root": "/srv", "items": [{ "from": { "b16": "61ff2f78" }, "to": "b/x" }] })
     );
 }
 
@@ -1059,6 +1073,7 @@ async fn screenshot_for_the_shots_tool() {
         w.progress.add(
             Trip::Upload {
                 board: up.clone(),
+                ask: crate::transfer::tests::upload_ask(&items),
                 items: items.clone(),
                 dir: "orders-service".into(),
             },
@@ -1081,24 +1096,32 @@ async fn screenshot_for_the_shots_tool() {
         );
         down.begin("logs-0930.zip");
         down.progress(58_000_000, 480_000_000);
-        let rm = crate::writeops::WriteBoard::default();
+        let rm = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Delete,
+            cmd: "files-delete",
+            args: serde_json::json!({}),
+            names: vec!["node_modules".into(), "dist".into()],
+            into: None,
+            machine: "devbox".into(),
+        });
         w.progress.add(
-            Trip::Delete {
-                board: rm,
-                base: 0,
-                name: "node_modules".into(),
-                n: 1,
+            Trip::Batch {
+                board: rm.clone(),
+                icon: egui_phosphor::regular::TRASH,
             },
             Some(d.clone()),
-            Some(copy_text(
-                "rsFilewinProgress.stop.uncancellable",
-                &[("machine", "devbox")],
-            )),
+            None,
         );
+        rm.progress(crate::batch::Tick {
+            done: 1,
+            total: 2,
+            bytes: None,
+        });
         let failed = crate::transfer::DropBoard::default();
         w.progress.add(
             Trip::Upload {
                 board: failed.clone(),
+                ask: crate::transfer::tests::upload_ask(&items),
                 items: items.clone(),
                 dir: "orders-service".into(),
             },
@@ -1120,23 +1143,178 @@ async fn screenshot_for_the_shots_tool() {
             ],
             ..Default::default()
         });
-        let cross = crate::cross_copy::CrossBoard::default();
+        let cross = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "transfer-copy",
+            args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
+                {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
+            names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
+            into: Some("gpu-01:/home/user/inbox".into()),
+            machine: "devbox".into(),
+        });
+        cross.set_route(
+            crate::source::Origin("devbox".into()),
+            crate::source::Origin("<local>".into()),
+        );
         w.progress.add(
-            Trip::Cross {
+            Trip::Batch {
                 board: cross.clone(),
-                name: "report.pdf".into(),
-                machine: "gpu-01".into(),
+                icon: egui_phosphor::regular::ARROWS_LEFT_RIGHT,
             },
             None,
             None,
         );
-        cross.finish(crate::cross_copy::Outcome::Done {
-            name: "report.pdf".into(),
-            machine: "gpu-01".into(),
-            path: "/home/user/inbox/report.pdf".into(),
-            bytes: 182_000,
+        cross.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+            outcomes: vec![
+                cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done),
+                cmd_wire::batch::BatchOutcome {
+                    reason: Some(copy_core::copy_text("reason.io.denied", &[])),
+                    detail: Some("那台说：Permission denied".into()),
+                    ..cmd_wire::batch::BatchOutcome::bare("1", cmd_wire::batch::ItemState::Failed)
+                },
+                cmd_wire::batch::BatchOutcome::bare("2", cmd_wire::batch::ItemState::Skipped),
+            ],
+            said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
+        }));
+        let cut = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "files-copy",
+            args: serde_json::json!({}),
+            names: (0..5).map(|i| format!("part-{i}.bin")).collect(),
+            into: Some("~/work/b".into()),
+            machine: "devbox".into(),
         });
+        w.progress.add(
+            Trip::Batch {
+                board: cut.clone(),
+                icon: egui_phosphor::regular::COPY,
+            },
+            Some(d.clone()),
+            None,
+        );
+        let t = crate::batch::Tick {
+            done: 2,
+            total: 5,
+            bytes: None,
+        };
+        cut.progress(t);
+        cut.set(crate::batch::Phase::Cut(crate::batch::cut_line(
+            &cut.plan(),
+            &t,
+        )));
         w.progress.settle(chrono_like_today_at(13, 41));
+    }
+    // 结局行那两颗：上传一摞停了（［继续］：没传的那几项再开单，续传先对尾块）· 复制到另一台部分失败（［重试失败的］）；
+    //   状态栏「已选 3 项 · 大小」（都是文件）。
+    if scene == "batch-end" {
+        use crate::progress::Trip;
+        let items: Vec<crate::transfer::Pending> =
+            ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"]
+                .iter()
+                .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), &d))
+                .collect();
+        let cross = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "transfer-copy",
+            args: serde_json::json!({"to": "gpu-01", "to_dir": "/home/user/inbox", "items": [
+                {"remote_path": "report.pdf"}, {"remote_path": "notes.md"}, {"remote_path": "assets"}]}),
+            names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
+            into: Some("gpu-01:/home/user/inbox".into()),
+            machine: "devbox".into(),
+        });
+        cross.set_route(
+            crate::source::Origin("devbox".into()),
+            crate::source::Origin("<local>".into()),
+        );
+        w.progress.add(
+            Trip::Batch {
+                board: cross.clone(),
+                icon: egui_phosphor::regular::ARROWS_LEFT_RIGHT,
+            },
+            None,
+            None,
+        );
+        cross.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+            outcomes: vec![
+                cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done),
+                cmd_wire::batch::BatchOutcome {
+                    reason: Some(copy_core::copy_text("reason.io.denied", &[])),
+                    detail: Some("那台说：Permission denied".into()),
+                    ..cmd_wire::batch::BatchOutcome::bare("1", cmd_wire::batch::ItemState::Failed)
+                },
+                cmd_wire::batch::BatchOutcome::bare("2", cmd_wire::batch::ItemState::Skipped),
+            ],
+            said: "复制 3 项 · 完成 1 · 跳过 1 · 失败 ×1".into(),
+        }));
+        let up = crate::transfer::DropBoard::default();
+        w.progress.add(
+            Trip::Upload {
+                board: up.clone(),
+                ask: crate::transfer::tests::upload_ask(&items),
+                items: items.clone(),
+                dir: "orders-service".into(),
+            },
+            Some(d.clone()),
+            None,
+        );
+        up.cancels().request();
+        let cancelled: crate::source::Failed = crate::transfer::CANCELLED.as_str().into();
+        up.finish(crate::transfer::DropOutcome {
+            ok: 1,
+            failed: vec![
+                ("release-2.tar.gz".into(), cancelled.clone()),
+                ("release-3.tar.gz".into(), cancelled),
+            ],
+            ..Default::default()
+        });
+        // 一趟下载在跑（表最底下那一行，只为让上面两行整行摆得下）。
+        let down = crate::download::DownloadBoard::default();
+        w.progress.add(
+            Trip::Download {
+                board: down.clone(),
+                name: "logs-0930.zip".into(),
+                src: vdir.join("logs-0930.zip").to_string_lossy().to_string(),
+                dest: "~/下载/logs-0930.zip".into(),
+            },
+            None,
+            None,
+        );
+        down.begin("logs-0930.zip");
+        down.progress(58_000_000, 480_000_000);
+        w.pick_also(&["Cargo.toml", "README.md"]);
+        w.progress.settle(chrono_like_today_at(13, 41));
+    }
+    // 一组复制全成 ⇒ 右下角回执（后端那一行原样）；「进度」表收着（没有失败不自己摊开）。
+    if scene == "batch-done" {
+        use crate::progress::Trip;
+        let all = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "files-copy",
+            args: serde_json::json!({}),
+            names: vec!["Cargo.toml".into(), "README.md".into()],
+            into: Some("~/work/b".into()),
+            machine: "devbox".into(),
+        });
+        w.progress.add(
+            Trip::Batch {
+                board: all.clone(),
+                icon: egui_phosphor::regular::COPY,
+            },
+            Some(d.clone()),
+            None,
+        );
+        all.set(crate::batch::Phase::Ended(cmd_wire::batch::BatchReply {
+            outcomes: (0..2)
+                .map(|i| {
+                    cmd_wire::batch::BatchOutcome::bare(
+                        i.to_string(),
+                        cmd_wire::batch::ItemState::Done,
+                    )
+                })
+                .collect(),
+            said: "已复制 2 项 → ~/work/b".into(),
+        }));
+        w.batches.push(all);
     }
     // 断线 · 过期（稿 18）：那条流说「离线」；摆着的那一屏是 13:40 列到的。
     if scene == "stale" {
@@ -1203,34 +1381,91 @@ async fn screenshot_for_the_shots_tool() {
         let i = row_of(&w, "main.rs");
         w.begin_chmod(i);
     }
-    // 上传遇到同名（稿 12）：本机三份、两份同名。
+    // 上传遇到同名（稿 12）：本机三份、两份同名 ⇒ 那台后端探了回同名清单，冲突框照它画（时刻是后端写好的字）。
     if scene == "upload-clash" {
         let local = base.join("..").join("..").join("local");
-        let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md"]
+        let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md", "notes.txt"]
             .iter()
             .filter_map(|n| {
                 crate::transfer::Pending::into_remote_dir(&local.join(n).to_string_lossy(), &d)
             })
             .collect();
-        for n in ["main.rs", "README.md"] {
-            let md = std::fs::metadata(dir.join(n)).unwrap();
-            w.board.note_there(
-                n,
-                Some(md.len()),
-                // 「那台」那一格是后端写好的短写法（合成场景替它按这台的钟写）。
-                md.modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|t| crate::source::mtime_text(t.as_secs()).short),
-            );
-        }
-        w.board.set_total(3);
-        std::mem::forget(w.board.ask(items));
+        let b = crate::batch::BatchBoard::new(crate::batch::Plan {
+            into: Some(d.clone()),
+            ..crate::transfer::tests::upload_ask(&items).plan()
+        });
+        let c = |key: &str, name: &str, size: u64, at: &str, there: u64, there_at: &str| {
+            cmd_wire::batch::Conflict {
+                key: key.into(),
+                name: cmd_wire::files::WirePath::from(name),
+                kind: cmd_wire::files::FileKind::File,
+                size: Some(size),
+                mtime_text: Some(at.into()),
+                there: cmd_wire::files::FileKind::File,
+                there_size: Some(there),
+                there_mtime_text: Some(there_at.into()),
+                dir_into: false,
+            }
+        };
+        std::mem::forget(b.ask(vec![
+            c("0", "main.rs", 2_380, "14:02", 1_940, "10-01 09:10"),
+            c("1", "README.md", 1_210, "11:47", 1_210, "09-28 18:03"),
+        ]));
+        w.batches.push(b);
     }
     // 复制到另一台（稿 13）：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
     if scene == "cross-copy" {
         let i = row_of(&w, "report.pdf");
         w.begin_cross(i);
+    }
+    // 多选右键菜单（按两栏摆）：一个文件夹 ＋ 两个文件 ⇒「下载 3 项」灰着（有目录）·「复制 3 项到另一台…」·「复制 3 项到另一栏」；算大小 · 改权限；删除。
+    if scene == "many-menu" {
+        w.dual = true;
+        // main.rs 开窗时已选着（光标那一行）⇒ 再 Ctrl 点上另两项。
+        w.pick_also(&["docs", "notes.txt"]);
+        let i = row_of(&w, "main.rs");
+        w.tally.menu_clicked = Some(i);
+        w.apply_menu_click(egui::pos2(440.0, 300.0));
+    }
+    // 冲突框：复制 3 项到另一栏、同名 3 项（两份文件 ＋ 一个目录：目录那一行写不合并）；默认「跳过同名」，「覆盖」危险样式。
+    if scene == "batch-ask" || scene == "batch-each" {
+        let b = crate::batch::BatchBoard::new(crate::batch::Plan {
+            verb: crate::batch::Verb::Copy,
+            cmd: "files-copy",
+            args: serde_json::json!({}),
+            names: vec!["report.pdf".into(), "notes.md".into(), "assets".into()],
+            into: Some("~/work/b".into()),
+            machine: "devbox".into(),
+        });
+        let c = |key: &str, name: &str, dir: bool, size: Option<u64>, there: Option<u64>| {
+            let kind = if dir {
+                cmd_wire::files::FileKind::Dir
+            } else {
+                cmd_wire::files::FileKind::File
+            };
+            cmd_wire::batch::Conflict {
+                key: key.into(),
+                name: cmd_wire::files::WirePath::from(name),
+                kind,
+                size,
+                mtime_text: size.map(|_| "14:02".to_string()),
+                there: kind,
+                there_size: there,
+                there_mtime_text: there.map(|_| "10-01 09:10".to_string()),
+                dir_into: dir,
+            }
+        };
+        std::mem::forget(b.ask(vec![
+            c("0", "report.pdf", false, Some(2_100_000), Some(1_800_000)),
+            c("1", "notes.md", false, Some(4_096), Some(4_096)),
+            c("2", "assets", true, None, None),
+        ]));
+        if scene == "batch-each" {
+            b.each(true);
+            b.pick("0", cmd_wire::batch::Decide::Overwrite);
+            b.pick("1", cmd_wire::batch::Decide::KeepBoth);
+        }
+        w.batches.push(b);
     }
     // 删除那一问（稿 09：一个文件夹 ＋ 两个文件 ⇒ 「删除 3 项」）。
     if scene == "delete-ask" {
@@ -1704,6 +1939,7 @@ fn closing_the_window_asks_once_listing_unsaved_pages_and_running_trips() {
             board: up,
             items: Vec::new(),
             dir: "l".into(),
+            ask: crate::transfer::tests::upload_ask(&[]),
         },
         Some("/l".into()),
         None,
@@ -1991,6 +2227,7 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
     ws.progress.add(
         Trip::Upload {
             board: failed.clone(),
+            ask: crate::transfer::tests::upload_ask(&items),
             items,
             dir: "data".into(),
         },

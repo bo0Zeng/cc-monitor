@@ -8,6 +8,8 @@
 /// 只往后追加的文件（会话记录）的增量读：读到哪了的账（[`append_read::Tailed`]）· 按块读（[`append_read::Blocks`]）。① observe（全文搜索的常驻索引 · watcher · 子运行 · 骨架）
 /// 与 history（历史清单的缓存）都用 · ② 读盘经 `platform::fs::Ro` · ③ 只认「一份只往后长的文件读到了哪」，不认里面是什么（原 `observe/fs.rs`）。
 pub(crate) mod append_read;
+// 一组一条那几条命令共用的票 · 进度 · 撤 · 同名怎么答 · 结局那一行（同台三条与两台之间的复制各引各的）。
+pub(crate) mod batch_book;
 /// 成品格的两种标记类型（写好的字 · 语气）。① observe（会话事实 · 过程行）· agents（通用记录）· stream（会话帧）都用 · ② 纯数据 ·
 /// ③ 只认「这一格是写好的字 / 语气」。
 pub(crate) mod cells;

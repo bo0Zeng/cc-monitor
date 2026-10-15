@@ -140,9 +140,9 @@ describe("新建账号表单", () => {
     expect(f.el.querySelector("[data-error]")).not.toBeNull();
     f.btn(copyText("acctNew.form.createLogin")).click();
     expect(f.seen).toEqual([]);
-    refuse = copyText("rsFilewinCrossCopy.ask.taken", { path: "team", machine: "devbox" });
+    refuse = copyText("beAcctPlan.add.taken", { name: "team" });
     await f.type(f.name, "team");
-    expect(f.el.textContent).toContain(copyText("rsFilewinCrossCopy.ask.taken", { path: "team", machine: "devbox" }));
+    expect(f.el.textContent).toContain(copyText("beAcctPlan.add.taken", { name: "team" }));
     expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(true);
   });
 

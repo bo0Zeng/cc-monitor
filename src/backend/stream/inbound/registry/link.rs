@@ -29,5 +29,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::frame::<crate::control::transfer::TransferStart>("传输单起跑"),
     crate::wire::typed::frame::<crate::control::transfer::TransferStop>("撤一张传输单"),
+    // 两台之间复制一组：进度走本连接的应答通道（`files_batch` 帧）⇒ 帧面硬臂，在阻塞线程上做完再回。
+    crate::wire::typed::frame_blocking::<crate::control::transfer_copy::TransferCopy>(
+        "两台之间复制一组",
+    ),
     crate::wire::typed::asynchronous::<crate::wire::conn::Ping>("问活：零载荷，回 `ok`"),
 ];

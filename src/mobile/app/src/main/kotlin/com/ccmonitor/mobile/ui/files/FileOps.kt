@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.files
 
+import com.ccmonitor.mobile.core.claude.link.Batch
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesChmod
 import com.ccmonitor.mobile.core.claude.link.FilesCommitUpload
@@ -73,17 +74,12 @@ class FileOps(
         typed: String,
     ): Result<Unit> = done(FilesRename.COMMAND, FilesRename.args(dir, from, typed))
 
-    /** 删一项；目录连同里面全部（一段一段删，删到没剩）。 */
+    /** 删一项；目录连同里面全部。 */
     suspend fun delete(
         dir: RemotePath,
         name: RemotePath,
         isDir: Boolean,
-    ): Result<Unit> {
-        while (true) {
-            val left = ask(FilesDelete.COMMAND, FilesDelete.args(dir, name, isDir), FilesDelete::remaining, TREE_MS).getOrElse { return Result.failure(it) }
-            if (left == 0L) return Result.success(Unit)
-        }
-    }
+    ): Result<Unit> = batch(FilesDelete.COMMAND, FilesDelete.args(dir, name, isDir), TREE_MS)
 
     /** 此刻的权限位；那台没有这一说 ⇒ `null`。 */
     suspend fun mode(path: RemotePath): Result<Long?> =
@@ -96,7 +92,7 @@ class FileOps(
         dir: RemotePath,
         name: RemotePath,
         mode: Long,
-    ): Result<Unit> = done(FilesChmod.COMMAND, FilesChmod.args(dir, name, mode))
+    ): Result<Unit> = batch(FilesChmod.COMMAND, FilesChmod.args(dir, name, mode))
 
     /**
      * 上传：本机那份逐块读，一块一块进那台的暂存区（同一个键），边读边算整份摘要；传完交提交（不覆盖，目标在就拒）。
@@ -163,6 +159,22 @@ class FileOps(
         }
         return n
     }
+
+    /** 一组只交一项的那几问：那一项没成 ⇒ 照后端写的那一句报。 */
+    private suspend fun batch(
+        command: String,
+        args: Map<String, Any?>,
+        withinMs: Long = WRITE_MS,
+    ): Result<Unit> =
+        ask(command, args, Batch::fateOf, withinMs).fold(
+            onSuccess = {
+                when (it) {
+                    Batch.Done -> Result.success(Unit)
+                    is Batch.Refused -> Result.failure(Failed(Problem(it.said, it.detail)))
+                }
+            },
+            onFailure = { Result.failure(it) },
+        )
 
     private suspend fun done(
         command: String,

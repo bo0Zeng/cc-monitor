@@ -48,7 +48,7 @@ impl Tape {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 正题一：**三段的顺序就是函数结构**（照 `run_drop` 的形状办）
+// 正题一：**三段的顺序就是函数结构**
 // ════════════════════════════════════════════════════════════════════════
 
 /// 🔴 探测 → **一次**问覆盖 → 才动手。三样一起判，少一样就漏一形：
@@ -119,7 +119,7 @@ async fn the_probe_and_the_question_both_come_before_anything_is_copied() {
     );
 }
 
-/// 目标不存在 ⇒ **不问**。弹一个空框是噪音，不是慎重（同 `run_drop`）。
+/// 目标不存在 ⇒ **不问**。弹一个空框是噪音，不是慎重。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_target_that_is_not_there_yet_asks_nobody() {
     let asked = AtomicUsize::new(0);
@@ -485,12 +485,14 @@ fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory
         serde_json::to_value(copy_args(&job(), true).unwrap()).unwrap(),
         serde_json::json!({
             "root": "/srv/data",
-            "from": "big.bin",
-            "to": "big.bin.copy",
-            "overwrite": true,
+            "items": [{ "from": "big.bin", "to": "big.bin.copy" }],
+            "on_exists": "overwrite",
         })
     );
-    assert_eq!(copy_args(&job(), false).unwrap().overwrite, Some(false));
+    assert_eq!(
+        copy_args(&job(), false).unwrap().on_exists,
+        Some(cmd_wire::batch::OnExists::Ask)
+    );
     let elsewhere = CopyJob {
         from: "/srv/data/big.bin".into(),
         to: "/srv/other/big.bin".into(),
@@ -530,7 +532,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
         wired.log.lock().unwrap().clone(),
         vec![serde_json::json!({
             "cmd": CMD_COPY,
-            "args": {"root": "/srv/data", "from": "big.bin", "to": "big.bin.copy", "overwrite": true},
+            "args": {"root": "/srv/data", "items": [{"from": "big.bin", "to": "big.bin.copy"}], "on_exists": "overwrite"},
         })],
         "线上那一行不是「根 ＋ 两个尾段 ＋ 覆盖策略」"
     );
@@ -565,7 +567,7 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
 /// ⚠ **判源码是代理，不是标的**（同 `transfer_tests` / `source_tests` 的如实标注）。
 ///
 /// 买的是：复制经 `source::ask_coded` 说后端那条命令（失败连码与复制详情一起交回）（窗口进程够后端的唯一一处），
-/// 探测借 `transfer::probe_remote`（「那儿有没有东西」只有一个口径）；
+/// 探测借 `transfer::probe_remote_at`（「那儿有没有东西」只有一个口径）；
 /// SFTP 池子、进度通道、取消台一样都不碰。买不到：一台真远端上那一趟真跑过。
 #[test]
 fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
@@ -577,8 +579,8 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         "生产段只剩 {} 字节 —— 剥法把它剥没了，下面几条在空转",
         prod.len()
     );
-    // 〔有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
-    for needle in ["source::ask_typed(", "transfer::probe_remote_at("] {
+    // 〔有损名全寻址〕探目标用 `probe_remote_at`（路径可以是字节）。
+    for needle in ["source::ask_one(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
@@ -605,160 +607,5 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         );
     }
     // 反空真：这把尺子认得出「有」。
-    assert!(prod.contains("source::ask_typed("));
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// 一摞复制（复制到另一栏的多选 / 目录）
-// 要求：「复制目录 · 批量复制」· `§6.3`「批量…走『一次问完』」「悄悄跳过其中一项正是…反面」。
-// ════════════════════════════════════════════════════════════════════════
-
-fn named(name: &str, is_dir: bool) -> CopyJob {
-    CopyJob {
-        from: format!("/srv/a/{name}"),
-        to: format!("/srv/b/{name}"),
-        name: name.to_string(),
-        is_dir,
-        from_raw: None,
-        to_raw: None,
-    }
-}
-
-/// 跑一摞：`there` 是目标已在的那几件；`answer` 是那一问的答复；`fail` 是后端会拒的那几件。
-/// 回 `(结局, 问了几次, 问的是哪几件, 发出去的 (名字, overwrite))`。
-async fn batch(
-    jobs: Vec<CopyJob>,
-    there: &[&str],
-    answer: bool,
-    fail: &[&str],
-) -> (CopyOutcome, usize, Vec<String>, Vec<(String, bool)>) {
-    let asked = std::sync::Arc::new(std::sync::Mutex::new((0usize, Vec::<String>::new())));
-    let sent = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, bool)>::new()));
-    let there: Vec<String> = there.iter().map(|s| s.to_string()).collect();
-    let fail: Vec<String> = fail.iter().map(|s| s.to_string()).collect();
-    let (a2, s2) = (asked.clone(), sent.clone());
-    let out = run_copy_batch(
-        jobs,
-        move |j| {
-            let hit = there.contains(&j.name);
-            async move { hit }
-        },
-        move |js| {
-            let mut g = a2.lock().unwrap();
-            g.0 += 1;
-            g.1 = js.iter().map(|j| j.name.clone()).collect();
-            async move { answer }
-        },
-        move |j, ow| {
-            s2.lock().unwrap().push((j.name.clone(), ow));
-            let bad = fail.contains(&j.name);
-            async move {
-                if bad {
-                    Err("后端原话".to_string())
-                } else {
-                    Ok(Copied {
-                        name: j.name.clone(),
-                        bytes: 10,
-                        files: if j.is_dir { 3 } else { 1 },
-                        dirs: if j.is_dir { 2 } else { 0 },
-                    })
-                }
-            }
-        },
-    )
-    .await;
-    let g = asked.lock().unwrap().clone();
-    let s = sent.lock().unwrap().clone();
-    (out, g.0, g.1, s)
-}
-
-#[tokio::test]
-async fn a_batch_with_a_clashing_directory_does_nothing_and_asks_nobody() {
-    let (out, asks, _, sent) = batch(
-        vec![named("f", false), named("d", true)],
-        &["f", "d"],
-        true,
-        &[],
-    )
-    .await;
-    assert!(
-        matches!(&out, CopyOutcome::Refused(w) if w.contains('d')),
-        "{out:?}"
-    );
-    assert_eq!((asks, sent.len()), (0, 0), "目录撞名还问了 / 还发了");
-}
-
-#[tokio::test]
-async fn a_batch_asks_once_about_exactly_the_clashing_files() {
-    let jobs = || vec![named("a", false), named("b", false), named("d", true)];
-    // 答「都不覆盖」：撞名那件跳过，其余照发、不带覆盖。
-    let (out, asks, which, sent) = batch(jobs(), &["b"], false, &[]).await;
-    assert_eq!((asks, which), (1, vec!["b".to_string()]));
-    assert_eq!(sent, vec![("a".into(), false), ("d".into(), false)]);
-    let CopyOutcome::Batch(r) = out else {
-        panic!("不是一摞的结局")
-    };
-    assert_eq!(r.skipped, vec!["b".to_string()]);
-    // 答「覆盖」：撞名那件带覆盖，其余照旧不带。
-    let (_, asks, _, sent) = batch(jobs(), &["b"], true, &[]).await;
-    assert_eq!(asks, 1);
-    assert_eq!(
-        sent,
-        vec![("a".into(), false), ("b".into(), true), ("d".into(), false)]
-    );
-    // 不撞名 ⇒ 一次都不问（弹一个空框是噪音）。
-    let (_, asks, _, sent) = batch(jobs(), &[], true, &[]).await;
-    assert_eq!((asks, sent.len()), (0, 3));
-}
-
-#[tokio::test]
-async fn a_failure_in_a_batch_is_named_and_does_not_stop_the_rest() {
-    let (out, _, _, sent) = batch(
-        vec![named("a", false), named("d", true), named("z", false)],
-        &[],
-        false,
-        &["a"],
-    )
-    .await;
-    assert_eq!(sent.len(), 3, "第一件失败之后后面的没发");
-    let n = outcome_notice(&out);
-    assert!(n.loud, "有失败却不是警告档");
-    assert!(
-        n.text.contains(&copy_core::copy_text(
-            "rsFilewinCopy.outcome.batchDone",
-            &[("n", "2"), ("files", "4"), ("dirs", "2"), ("bytes", "20")]
-        )) && n.text.contains(&copy_core::copy_text(
-            "rsFilewinCopy.outcome.batchFailed",
-            &[("name", "a"), ("why", "后端原话")]
-        )),
-        "{}",
-        n.text
-    );
-}
-
-/// 目录那一件线上多 `recursive: true`；文件那一件一个键都不多。应答解析：文件那件在旧后端（没有 `files` / `dirs`）上按「一个文件」记，目录那件缺键就报错。
-#[test]
-fn a_directory_job_says_recursive_and_its_reply_must_count() {
-    let f = CopyJob::beside("/srv/a/x", "/srv/a", "y").unwrap();
-    let d = CopyJob::beside("/srv/a/x", "/srv/a", "y")
-        .unwrap()
-        .dir(true);
-    assert_eq!(copy_args(&f, false).unwrap().recursive, None);
-    assert_eq!(copy_args(&d, false).unwrap().recursive, Some(true));
-    let new = cmd_wire::files::FilesTreeReply {
-        path: cmd_wire::files::WirePath::from("/srv/a/y"),
-        bytes: 9,
-        files: 3,
-        dirs: 2,
-        links: 0,
-    };
-    assert_eq!(
-        copied_from_reply(&d, &new),
-        Copied {
-            name: "y".into(),
-            bytes: 9,
-            files: 3,
-            dirs: 2
-        }
-    );
+    assert!(prod.contains("source::ask_one("));
 }

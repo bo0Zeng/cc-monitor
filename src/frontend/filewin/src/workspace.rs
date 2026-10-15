@@ -799,9 +799,8 @@ impl Workspace {
 
     /// 🔴 **复制到另一栏**：焦点那一栏选中的**那一摞**（文件与目录都行）→ 另一栏当前目录、同名。
     ///
-    /// 〔「复制目录 · 批量复制」〕此前只收「恰好一个文件」。今天走一摞复制
-    /// （[`super::copy::run_copy_batch`]：逐件探目标 → 撞名的目录整摞不做 → 撞名的文件一次问完 → 逐件发），
-    /// 后端 `files-copy`（目录带 `recursive: true`），**起在目标那一栏上** ⇒ 问与结局画在那一侧，跑完那一栏重列目录。
+    /// 一组一条 `files-copy`（[`across_req`]，带票；同名由后端探、冲突框问一次），
+    /// **起在目标那一栏上** ⇒ 冲突框与结局画在那一侧，跑完那一栏重列目录。
     /// `§6.3`：每一项都能复制才给（有损名那一项在，整摞不做、出声）。回值 ＝ 真的起来了。
     pub fn copy_to_other(&mut self, ctx: Option<egui::Context>) -> bool {
         if self.sides.len() != 2 {
@@ -850,6 +849,21 @@ impl Workspace {
             .collect();
         self.notice = None;
         self.pane_on_mut(other).start_copy_batch(jobs, ctx)
+    }
+
+    /// 每帧：标签页记下此刻是不是两栏；焦点那一栏的菜单上点了「复制到另一栏」⇒ 起那一组。
+    fn settle_across(&mut self, ctx: Option<egui::Context>) {
+        let dual = self.sides.len() == 2;
+        let mut want = false;
+        for side in &mut self.sides {
+            for t in &mut side.tabs {
+                t.pane.dual = dual;
+                want |= std::mem::take(&mut t.pane.across_wanted);
+            }
+        }
+        if want {
+            self.copy_to_other(ctx);
+        }
     }
 
     /// 标签上写什么：当前目录的最后一段（根就写 `/`）；手上有事的前面加「●」。
@@ -1135,6 +1149,23 @@ impl Workspace {
             Act::RetryDownload { src, dest } => {
                 self.pane_on_mut(f).start_pull(&src, &dest, false, ctx)
             }
+            // 另起的那一组寻址同一台：落在看着那台的那一栏（焦点那一栏优先）；那台已经没有标签页开着 ⇒ 做不了。
+            Act::RetryBatch {
+                plan,
+                icon,
+                at,
+                home,
+            } => {
+                let pane = if self.pane_on(f).source.origin() == at {
+                    Some(self.pane_on_mut(f))
+                } else {
+                    self.sides
+                        .iter_mut()
+                        .flat_map(|s| s.tabs.iter_mut().map(|t| &mut t.pane))
+                        .find(|p| p.source.origin() == at)
+                };
+                pane.is_some_and(|p| p.start_batch(plan, home, icon, ctx))
+            }
         }
     }
 
@@ -1157,6 +1188,8 @@ impl Workspace {
         // ── 导航键（Alt+← / → · 鼠标侧键 · F5 · Ctrl+L · Ctrl+F）· 开另一台那一问落地 ──
         self.apply_nav_keys(&ctx);
         self.settle_other();
+        // ── 两栏的事：每个标签页知道此刻是不是两栏（菜单上「复制到另一栏」只在两栏时有）；点了它 ⇒ 这一级接。──
+        self.settle_across(Some(ctx.clone()));
         // ── 「进度」表：新落地的那几趟记下时刻 · 失败就摊开 · 开它的标签页已经不管了的，由这一级重列目录 ──
         self.settle_progress();
         // ── 那台连没连着：订一次那条流；断了又连上 ⇒ 每个标签页重列一遍 ──
@@ -1592,18 +1625,22 @@ pub fn common_dir(a: &str, b: &str) -> String {
         .unwrap_or_else(|| "/".to_string())
 }
 
-/// 跨目录那一形的 `files-copy` 参数：`root` ＝ 两个父目录的公共前缀，`from` / `to` ＝ 各自相对它的那一段。
-///
-/// ⚠ 同目录那一形（「复制为」那个框）走的是 `copy::copy_args`，它**刻意拒**跨目录（防「当前目录」与
-///   「那一行的路径」写法不一致时拼到别处去）—— 这里是另一件事（用户明说「放到另一栏那个目录」），
-///   所以另起一个，不去放宽那一道。后端的 `from` / `to` 本来就收多段相对路径（逐段过词法围栏）。
-pub fn across_args(
-    job: &CopyJob,
-    overwrite: bool,
-) -> Result<cmd_wire::files::FilesCopyReq, String> {
-    // 〔有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同：`common_dir` 与它同一个按段比的口径）。
-    let (from, to) = (job.from_path(), job.to_path());
-    let root = super::source::common_dir_bytes(&from.parent().bytes(), &to.parent().bytes());
+/// 「复制到另一栏」那一组 → 一条 `files-copy`：根 ＝ 所有源与目标的公共上级（按**字节**按段比），各项 `from` / `to` 是根底下的相对段。
+/// 同名缺省问（后端先探整组，有同名回 `exists` 带同名清单）。某一条不在根底下 ⇒ 那一句（不发）。
+pub fn across_req(jobs: &[CopyJob]) -> Result<cmd_wire::files::FilesCopyReq, String> {
+    let paths: Vec<(super::source::RemotePath, super::source::RemotePath)> =
+        jobs.iter().map(|j| (j.from_path(), j.to_path())).collect();
+    let mut root: Option<Vec<u8>> = None;
+    for (f, t) in &paths {
+        for p in [f, t] {
+            let up = p.parent().bytes();
+            root = Some(match root {
+                None => up,
+                Some(r) => super::source::common_dir_bytes(&r, &up),
+            });
+        }
+    }
+    let root = root.unwrap_or_else(|| b"/".to_vec());
     let root_path = super::source::RemotePath::from_bytes(&root);
     let rel = |p: &super::source::RemotePath| -> Result<cmd_wire::files::WirePath, String> {
         let b = p.bytes();
@@ -1619,27 +1656,20 @@ pub fn across_args(
             )
         })
     };
+    let mut items = Vec::with_capacity(paths.len());
+    for (f, t) in &paths {
+        items.push(cmd_wire::files::CopyItem {
+            from: rel(f)?,
+            to: rel(t)?,
+        });
+    }
     Ok(cmd_wire::files::FilesCopyReq {
         root: root_path.path(),
-        from: rel(&from)?,
-        to: rel(&to)?,
-        overwrite: Some(overwrite),
-        recursive: super::copy::recursive_of(job),
+        items,
+        on_exists: None,
+        decide: None,
+        ticket: None,
     })
-}
-
-/// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（目录那一件是整棵）。
-pub async fn copy_across(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    job: &CopyJob,
-    overwrite: bool,
-) -> Result<super::copy::Copied, String> {
-    let req = across_args(job, overwrite)?;
-    let d = super::source::ask_typed(line, origin, &req, super::copy::COPY_BUDGET)
-        .await
-        .map_err(|f| f.said)?;
-    Ok(super::copy::copied_from_reply(job, &d))
 }
 
 impl eframe::App for Workspace {

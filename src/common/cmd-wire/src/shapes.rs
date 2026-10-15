@@ -54,13 +54,14 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("ext-note-set", "7b01ad09"),
     ("ext-uninstall-apply", "f151c682"),
     ("ext-uninstall-preview", "6b3309d1"),
+    ("files-batch-stop", "51d79434"),
     ("files-browse", "b441cbc1"),
-    ("files-chmod", "d3fc2654"),
+    ("files-chmod", "7daf6448"),
     ("files-commit-text", "29bc0876"),
     ("files-commit-upload", "ed399f3d"),
-    ("files-copy", "21c688ac"),
+    ("files-copy", "658236f9"),
     ("files-create", "ecae231d"),
-    ("files-delete", "f4633204"),
+    ("files-delete", "cc8c6dbb"),
     ("files-delete-session", "ffb9d070"),
     ("files-extract", "a7379265"),
     ("files-find", "6b5a1963"),
@@ -202,10 +203,11 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("terminal-ssh", "3f3647ff"),
     ("terminal-unfollow", "7ffb2c4f"),
     ("terminals-list", "8b48f403"),
-    ("transfer-download", "a6420ab2"),
+    ("transfer-copy", "75cff2a5"),
+    ("transfer-download", "ea994d2b"),
     ("transfer-start", "deec43c9"),
     ("transfer-stop", "7ae1c448"),
-    ("transfer-upload", "2ac7169f"),
+    ("transfer-upload", "6cbce9e4"),
 ];
 
 /// typed 命令里开跑之后撤不动的那几条（阻塞档），按命令名排。客户端撤单时读本侧这一份：指纹对得上才会发，对上了两边必然一致。
@@ -378,6 +380,7 @@ pub const UNCANCELLABLE: &[&str] = &[
     "terminal-processes",
     "terminal-ssh",
     "terminals-list",
+    "transfer-copy",
 ];
 
 /// 这条命令在本份编进来的形状指纹；不是 typed 命令 ⇒ `None`。

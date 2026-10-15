@@ -125,7 +125,7 @@ impl Run<'_> {
             Op::Isolate { from, at } => self.isolate(from, at),
             Op::Copy { from, to } => {
                 let tmp = format!("{to}.ccm-tmp-{}", std::process::id());
-                door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?, false)?;
+                door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?)?;
                 let landed = self
                     .chmod(&tmp, 0o600)
                     .and_then(|()| door::rename(d, &home, &self.rel(&tmp)?, &self.rel(to)?));
@@ -196,7 +196,7 @@ impl Run<'_> {
         self.backup(at)?;
         let tmp = format!("{at}.ccm-tmp-{}", std::process::id());
         let dir = matches!(src, Item::Dir { .. });
-        door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?, dir)?;
+        door::copy(d, &home, &self.rel(from)?, &self.rel(&tmp)?)?;
         let drop_tmp = |r: &Run| {
             if let Ok(rel) = r.rel(&tmp) {
                 let _ = door::remove(r.d, &r.r.home, &rel, dir);
@@ -266,8 +266,9 @@ fn place_copy(d: &dyn Door, home: &str, it: &Item, from: &str, to: &str) -> Resu
     let to_rel = door::rel_under(home, to)?;
     match it {
         Item::Link { target, .. } => door::link(d, home, &to_rel, target),
-        Item::File { .. } => door::copy(d, home, &door::rel_under(home, from)?, &to_rel, false),
-        Item::Dir { .. } => door::copy(d, home, &door::rel_under(home, from)?, &to_rel, true),
+        Item::File { .. } | Item::Dir { .. } => {
+            door::copy(d, home, &door::rel_under(home, from)?, &to_rel)
+        }
         Item::Absent | Item::Other => Err(copy_text("beAcctExec.copy.kind", &[("path", from)])),
     }
 }

@@ -1025,7 +1025,8 @@ pub struct FilesRenameReq {
     pub single: Option<bool>,
 }
 
-/// `files-delete`：删一个文件或一个空目录；`recursive` 显式才删整棵树（可带 `limit` 分趟）；`expect` 给了 ⇒ CAS。
+/// `files-delete`：删一组（同一个根底下）；单个就是一组里的一项。回包 [`crate::batch::BatchReply`]。
+/// `ticket` 给了 ⇒ 这台按票记这一组（连接断了照常做完，带同一张票再问回同一份结局）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1035,6 +1036,25 @@ pub struct FilesRenameReq {
 #[serde(deny_unknown_fields)]
 pub struct FilesDeleteReq {
     pub root: WirePath,
+    pub items: Vec<DeleteItem>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub ticket: Option<String>,
+}
+
+/// 删的一项：一个文件或一个空目录；`recursive` 显式才删整棵树；`expect` 给了 ⇒ CAS（不等 ⇒ 那一项 `stale`，一个字节不动）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct DeleteItem {
     pub rel: WirePath,
     #[serde(
         default,
@@ -1050,32 +1070,9 @@ pub struct FilesDeleteReq {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub expect: Option<DeleteExpect>,
-    #[serde(
-        default,
-        deserialize_with = "present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-    pub limit: Option<u64>,
 }
 
-/// `files-delete` 的回包：这一趟删了几条、还剩几条（不是 0 ⇒ 再发一趟同样的请求接着删）。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
-#[serde(deny_unknown_fields)]
-pub struct FilesDeleteReply {
-    pub path: WirePath,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub removed: u64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub remaining: u64,
-}
-
-/// `files-chmod`：改 unix 权限位（十进制、低 12 位）。
+/// `files-chmod`：一组改成同一个 unix 权限位（十进制、低 12 位）。回包 [`crate::batch::BatchReply`]（每项带 `before`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1085,11 +1082,18 @@ pub struct FilesDeleteReply {
 #[serde(deny_unknown_fields)]
 pub struct FilesChmodReq {
     pub root: WirePath,
-    pub rel: WirePath,
+    pub items: Vec<ChmodItem>,
     pub mode: u32,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub ticket: Option<String>,
 }
 
-/// `files-chmod` 的回包：`before` ＝ 改之前的低 12 位（读不到就缺席，不编一个数）。
+/// 改权限的一项。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1097,15 +1101,11 @@ pub struct FilesChmodReq {
     ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(deny_unknown_fields)]
-pub struct FilesChmodReply {
-    pub path: WirePath,
-    pub mode: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub before: Option<u32>,
+pub struct ChmodItem {
+    pub rel: WirePath,
 }
 
-/// `files-copy`：同根内复制；`overwrite` · `recursive` 显式。
+/// `files-copy`：同根内复制一组；目录整棵复制（不合并）。同名照 `on_exists`（缺 ⇒ `ask`），`decide` 逐项答。回包 [`crate::batch::BatchReply`]。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1115,22 +1115,41 @@ pub struct FilesChmodReply {
 #[serde(deny_unknown_fields)]
 pub struct FilesCopyReq {
     pub root: WirePath,
+    pub items: Vec<CopyItem>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub on_exists: Option<crate::batch::OnExists>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub decide: Option<std::collections::BTreeMap<String, crate::batch::Decide>>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub ticket: Option<String>,
+}
+
+/// 复制的一项：`from` 复制成 `to`（都是根底下的相对段）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct CopyItem {
     pub from: WirePath,
     pub to: WirePath,
-    #[serde(
-        default,
-        deserialize_with = "present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub overwrite: Option<bool>,
-    #[serde(
-        default,
-        deserialize_with = "present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub recursive: Option<bool>,
 }
 
 /// 落了一棵（复制 · 解压）：落点 ＋ 几份文件 · 几个目录 · 几条链接 · 字节之和。
@@ -1413,9 +1432,9 @@ calls! {
     FilesCreateReq => "files-create", FilesPathBytesReply;
     FilesMkdirReq => "files-mkdir", FilesPathReply;
     FilesRenameReq => "files-rename", FilesPathReply;
-    FilesDeleteReq => "files-delete", FilesDeleteReply;
-    FilesChmodReq => "files-chmod", FilesChmodReply;
-    FilesCopyReq => "files-copy", FilesTreeReply;
+    FilesDeleteReq => "files-delete", crate::batch::BatchReply;
+    FilesChmodReq => "files-chmod", crate::batch::BatchReply;
+    FilesCopyReq => "files-copy", crate::batch::BatchReply;
     FilesExtractReq => "files-extract", FilesTreeReply;
     FilesLinkReq => "files-link", FilesPathReply;
     FilesWriteTextReq => "files-write-text", FilesWrittenReply;

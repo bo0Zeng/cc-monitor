@@ -924,7 +924,7 @@ pub struct Failed {
 }
 
 impl Failed {
-    fn local(said: String) -> Self {
+    pub(crate) fn local(said: String) -> Self {
         Self {
             code: None,
             said,
@@ -1101,6 +1101,70 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
     })
 }
 
+/// 一组只一项那几条（复制 · 删除 · 改权限）：做成了 ⇒ 那一项的结局；没做成 ⇒ 那一项的码与那一句（复制详情是那一项的原话）。
+pub async fn ask_one<C: cmd_wire::files::Call<Reply = cmd_wire::batch::BatchReply>>(
+    line: &Line,
+    origin: &Origin,
+    req: &C,
+    t: std::time::Duration,
+) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
+    one_of(ask_typed(line, origin, req, t).await?)
+}
+
+/// 开单一组只一项的回包 → 那一项的传输单 id ＋ 暂存件的键（上传才有）；没开成 ⇒ 那一项的码与那一句。
+pub fn opened_one(
+    r: cmd_wire::transfer::TransferOpened,
+) -> Result<(String, Option<String>), Failed> {
+    use cmd_wire::transfer::OpenState;
+    let Some(o) = r.items.into_iter().next() else {
+        return Err(Failed::local(copy_text(
+            "rsFilewinSource.said.badReply",
+            &[],
+        )));
+    };
+    match (o.state, o.id) {
+        (OpenState::Opened, Some(id)) => Ok((id, o.staged)),
+        _ => {
+            let detail = o.detail.unwrap_or_default();
+            let (said, rest) = match detail.split_once('\n') {
+                Some((a, b)) => (a.to_string(), b.to_string()),
+                None => (detail, String::new()),
+            };
+            Err(Failed {
+                code: o.code,
+                said,
+                detail: rest,
+            })
+        }
+    }
+}
+
+/// 一组只一项的回包 → 那一项（同 [`ask_one`]）。
+pub fn one_of(r: cmd_wire::batch::BatchReply) -> Result<cmd_wire::batch::BatchOutcome, Failed> {
+    use cmd_wire::batch::ItemState;
+    let Some(o) = r.outcomes.into_iter().next() else {
+        return Err(Failed::local(r.said));
+    };
+    if o.state == ItemState::Done {
+        return Ok(o);
+    }
+    let detail = o.detail.clone().unwrap_or_default();
+    let (said, rest) = match detail.split_once('\n') {
+        Some((a, b)) => (a.to_string(), b.to_string()),
+        None if detail.is_empty() => (r.said, String::new()),
+        None => (detail, String::new()),
+    };
+    Err(Failed {
+        code: o.code.or_else(|| {
+            serde_json::to_value(o.state)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+        }),
+        said,
+        detail: rest,
+    })
+}
+
 /// 一份回包按那条命令的回包类型解（解不出 ⇒ 解码器那一句）。
 pub fn reply_of<C: cmd_wire::files::Call>(d: serde_json::Value) -> Result<C::Reply, String> {
     serde_json::from_value(d).map_err(|e| e.to_string())
@@ -1117,45 +1181,130 @@ pub async fn ask_coded_cancellable(
     t: std::time::Duration,
     cancel: comms_inward::chan::wire::CancelToken,
 ) -> Result<serde_json::Value, Failed> {
-    use comms_inward::chan::wire::{Body, Budget, Comms, Op};
+    ask_raw(line, origin, cmd, args, t, cancel)
+        .await
+        .map_err(|r| r.failed)
+}
+
+/// 一组一条那几条（复制 · 删除 · 改权限 · 两台之间的复制）：同 [`ask_coded`]，没成时多交两样 ——
+/// 对端带的 `data`（`exists` ⇒ 同名清单）与「通道那一跳断了」（那台可能已经在做 ⇒ 同一张票再问）。
+pub async fn ask_batch(
+    line: &Line,
+    origin: &Origin,
+    cmd: &str,
+    args: &serde_json::Value,
+    t: std::time::Duration,
+) -> Result<serde_json::Value, super::batch::Rebuff> {
+    ask_raw(
+        line,
+        origin,
+        cmd,
+        args,
+        t,
+        comms_inward::chan::wire::CancelToken::new(),
+    )
+    .await
+}
+
+/// 🔴 窗口进程里说 `call` 的那一处（[`ask_coded_cancellable`] · [`ask_batch`] 都是它的薄壳）。
+async fn ask_raw(
+    line: &Line,
+    origin: &Origin,
+    cmd: &str,
+    args: &serde_json::Value,
+    t: std::time::Duration,
+    cancel: comms_inward::chan::wire::CancelToken,
+) -> Result<serde_json::Value, super::batch::Rebuff> {
+    use comms_inward::chan::wire::{Body, Budget, CallError, Comms, Op};
+    let plain = |failed: Failed| super::batch::Rebuff {
+        failed,
+        data: None,
+        cut: false,
+    };
     let budget = Budget {
         until: std::time::Instant::now() + t,
         cancel,
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
-        Failed::here(
+        plain(Failed::here(
             copy_text("rsFilewinSource.ask.badArgs", &[]),
             origin,
             cmd,
             Some(&e.to_string()),
-        )
+        ))
     })?);
     let op = Op(cmd.to_string());
     let body = line
         .call(origin, &op, payload, budget)
         .await
-        .map_err(|e| Failed {
-            code: refused_code(&e),
-            said: said(origin, cmd, &e),
-            detail: detail_of(origin, cmd, &e),
+        .map_err(|e| super::batch::Rebuff {
+            failed: Failed {
+                code: refused_code(&e),
+                said: said(origin, cmd, &e),
+                detail: detail_of(origin, cmd, &e),
+            },
+            data: refused_data(&e),
+            cut: matches!(e, CallError::Hop { .. }),
         })?;
     let v: serde_json::Value = serde_json::from_slice(&body.0).map_err(|e| {
-        Failed::here(
+        plain(Failed::here(
             copy_text("rsFilewinSource.ask.unreadable", &[]),
             origin,
             cmd,
             Some(&e.to_string()),
-        )
+        ))
     })?;
     if v.is_null() {
-        return Err(Failed::here(
+        return Err(plain(Failed::here(
             copy_text("rsFilewinSource.said.badReply", &[]),
             origin,
             cmd,
             None,
-        ));
+        )));
     }
     Ok(v)
+}
+
+/// 订一条只出快照格的流（`files-batch/<票>`）到它关掉为止，每一格的 JSON 交给 `on`。撤 ＝ 调用方丢掉这个 future。
+pub async fn watch_cells(
+    line: &Line,
+    origin: &Origin,
+    kind: &str,
+    mut on: impl FnMut(serde_json::Value),
+) {
+    use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
+    use futures::StreamExt as _;
+    let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
+    while let Some(item) = sub.next().await {
+        match item {
+            Item::Frame { body, .. } => {
+                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&body.0) {
+                    on(v);
+                }
+            }
+            Item::Closed { .. } => return,
+            Item::Gap { .. } | Item::Seen { .. } | Item::Unseen { .. } => {}
+        }
+        sub.want(1);
+    }
+}
+
+/// 等那台连回来（`link` 那条流说「连着」为止；那条流不在 ⇒ 当场回，让调用方照旧再问一次）。
+pub async fn link_up(line: &Line, origin: &Origin) {
+    use comms_inward::chan::wire::{Comms, Item, Kind, Sub};
+    use futures::StreamExt as _;
+    let mut sub = line.subscribe(
+        origin,
+        &Kind(filewin_contract::LINK_KIND.to_string()),
+        None,
+        WATCH_CREDIT,
+    );
+    while let Some(item) = sub.next().await {
+        match item {
+            Item::Seen { .. } | Item::Closed { .. } => return,
+            Item::Frame { .. } | Item::Gap { .. } | Item::Unseen { .. } => sub.want(1),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1329,6 +1478,20 @@ pub async fn kick_link(line: &Line, origin: &Origin) {
 pub struct Watched {
     pub bytes: u64,
     pub sha256: Option<String>,
+}
+
+/// 对端拒了的那一形里，它带的 `data`（`exists` ⇒ 同名清单）。别的形一律 `None`。
+pub fn refused_data(e: &comms_inward::chan::wire::CallError) -> Option<serde_json::Value> {
+    use comms_inward::chan::wire::{CallError, PeerFault};
+    match e {
+        CallError::Peer {
+            why: PeerFault::Refused { body },
+        } => serde_json::from_slice::<serde_json::Value>(&body.0)
+            .ok()?
+            .get("data")
+            .cloned(),
+        _ => None,
+    }
 }
 
 /// 对端拒了的那一形里，它给的那个码。别的形一律 `None`（**不猜**）。

@@ -13,6 +13,7 @@
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
 
 pub mod accounts;
+pub mod batch;
 pub mod cells;
 pub mod files;
 pub mod listing;

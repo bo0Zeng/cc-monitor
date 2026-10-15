@@ -10541,51 +10541,6 @@
       "zh": "传输未交回校验值 · 无法比对 · 未写入目标 · 重开 app 再传",
       "args": []
     },
-    "rsFilewinTransfer.ui.overwriteNone": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "全部跳过",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.name": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "名字",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.here": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "本机",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.cancelAll": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "取消整批",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.overwriteChecked": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "覆盖勾选的 {n} 项",
-      "args": ["n"],
-      "waive": {
-        "C-W15": "压了换事实：「勾选的」「{n} 项」限定了覆盖哪些，去掉就成了全覆盖"
-      }
-    },
-    "rsFilewinTransfer.ui.askOnce": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "勾选的覆盖 · 未勾的跳过 · 不重名的照传 ×{n}",
-      "args": ["n"]
-    },
-    "rsFilewinTransfer.ui.askOverwrite": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "同名 {n} · {machine}",
-      "args": ["n", "machine"]
-    },
     "rsFilewinTransfer.label.cancel": {
       "kind": "action",
       "role": "按钮",
@@ -10652,11 +10607,71 @@
       "zh": "{path} 不是普通文件 · 复制目录要带 recursive",
       "args": ["path"]
     },
-    "beFilesWrite.copy.recursiveOverwrite": {
+    "beFiles.batch.verbCopy": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "复制",
+      "args": []
+    },
+    "beFiles.batch.verbDelete": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "删除",
+      "args": []
+    },
+    "beFiles.batch.verbChmod": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改权限",
+      "args": []
+    },
+    "beFiles.batch.done": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已{action} {n} 项",
+      "args": ["action", "n"]
+    },
+    "beFiles.batch.doneInto": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已{action} {n} 项 → {dir}",
+      "args": ["action", "n", "dir"]
+    },
+    "beFiles.batch.partial": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad}",
+      "args": ["action", "n", "ok", "skip", "bad"]
+    },
+    "beFiles.batch.stopped": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad} · 已取消 {left}",
+      "args": ["action", "n", "ok", "skip", "bad", "left"]
+    },
+    "beFiles.batch.clash": {
       "kind": "error",
       "role": "报错",
-      "zh": "程序出错",
+      "zh": "同名 {n} 项",
+      "args": ["n"]
+    },
+    "beFiles.batch.mintSpent": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已存在",
       "args": []
+    },
+    "beTransferCopy.local.noHome": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "无主目录",
+      "args": []
+    },
+    "beTransferCopy.from.missing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取失败 · {path} · 路径不存在",
+      "args": ["path"]
     },
     "beFilesWrite.copyTree.kindLink": {
       "kind": "body",
@@ -10904,36 +10919,6 @@
       "zh": " · ",
       "args": []
     },
-    "rsFilewinCopy.batch.dirClash": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "另一栏已有同名 · {names} · 目录不覆盖不合并 · 本批未执行",
-      "args": ["names"]
-    },
-    "rsFilewinCopy.outcome.refused": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "未复制 · {why}",
-      "args": ["why"]
-    },
-    "rsFilewinCopy.outcome.batchDone": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已复制 {n} 项 · 文件 {files} · 目录 {dirs} · {bytes} 字节 · 在该机上复制 · 未经本机",
-      "args": ["n", "files", "dirs", "bytes"]
-    },
-    "rsFilewinCopy.outcome.batchSkipped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": " · 未覆盖 {names}",
-      "args": ["names"]
-    },
-    "rsFilewinCopy.outcome.batchFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": " · {name} 复制失败 · {why}",
-      "args": ["name", "why"]
-    },
     "rsFilewinWorkspace.copyToOther.unaddressable": {
       "kind": "error",
       "role": "报错",
@@ -11071,6 +11056,181 @@
       "role": "原因格",
       "zh": "未选中",
       "args": []
+    },
+    "rsFilewinSelect.label.downloadMany": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "下载 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.label.crossMany": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "复制 {n} 项到另一台…",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.label.acrossMany": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "复制 {n} 项到另一栏",
+      "args": ["n"]
+    },
+    "rsFilewinSelect.why.dirDownload": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "目录不能下载：{names}",
+      "args": ["names"]
+    },
+    "rsFilewinSelect.why.lossyCross": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "名字无法识别 · 不能复制到另一台：{names}",
+      "args": ["names"]
+    },
+    "rsFilewinBatch.verb.copy": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "复制",
+      "args": []
+    },
+    "rsFilewinBatch.verb.delete": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "删除",
+      "args": []
+    },
+    "rsFilewinBatch.verb.chmod": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "改权限",
+      "args": []
+    },
+    "rsFilewinBatch.verb.download": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下载",
+      "args": []
+    },
+    "rsFilewinBatch.verb.upload": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "上传",
+      "args": []
+    },
+    "rsFilewinBatch.row.title": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{action} {n} 项",
+      "args": ["action", "n"]
+    },
+    "rsFilewinBatch.ask.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "{action} {n} 项到 {dir}",
+      "args": ["action", "n", "dir"]
+    },
+    "rsFilewinBatch.ask.count": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "同名 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinBatch.btn.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinBatch.btn.skip": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跳过同名",
+      "args": []
+    },
+    "rsFilewinBatch.btn.keepBoth": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "保留两份",
+      "args": []
+    },
+    "rsFilewinBatch.btn.overwrite": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "覆盖",
+      "args": []
+    },
+    "rsFilewinBatch.btn.retry": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "重试失败的",
+      "args": []
+    },
+    "rsFilewinBatch.btn.resume": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "继续",
+      "args": []
+    },
+    "rsFilewinBatch.btn.each": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "逐项选",
+      "args": []
+    },
+    "rsFilewinBatch.pick.skip": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "跳过",
+      "args": []
+    },
+    "rsFilewinBatch.pick.keepBoth": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "保留两份",
+      "args": []
+    },
+    "rsFilewinBatch.pick.overwrite": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "覆盖",
+      "args": []
+    },
+    "rsFilewinBatch.ask.dirNoMerge": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "目录不合并 · 跳过或保留两份",
+      "args": []
+    },
+    "rsFilewinBatch.meta.vs": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "{mine} → 已有 {there}",
+      "args": ["mine", "there"]
+    },
+    "rsFilewinBatch.why.exists": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "同名",
+      "args": []
+    },
+    "rsFilewinBatch.row.cut": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{machine} 连接已断开 · {action} {n} 项 · 完成 {ok} · 其余待核",
+      "args": ["machine", "action", "n", "ok"],
+      "limited": ["连接"]
+    },
+    "rsFilewinBatch.row.items": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "{done} / {total} 项",
+      "args": ["done", "total"]
+    },
+    "rsFilewinBatch.label.nItems": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n} 项",
+      "args": ["n"]
     },
     "rsFilewinSelect.label.deleteMany": {
       "kind": "action",
@@ -17327,53 +17487,11 @@
         "C-W15": "压了换事实：「到其他机器」是目的地，压成「复制…」就成了本机复制"
       }
     },
-    "rsFilewinCrossCopy.outcome.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已复制 {name} → {machine} · {path} · {human}",
-      "args": ["name", "machine", "path", "human"]
-    },
-    "rsFilewinCrossCopy.outcome.skipped": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未复制 {name} · {path} 已存在 · 已选不覆盖",
-      "args": ["name", "path"]
-    },
-    "rsFilewinCrossCopy.outcome.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "复制失败 · {name} · {why}",
-      "args": ["name", "why"]
-    },
-    "rsFilewinCrossCopy.ask.overwrite": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "覆盖",
-      "args": []
-    },
-    "rsFilewinCrossCopy.ask.skip": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "不复制",
-      "args": []
-    },
-    "rsFilewinCrossCopy.ask.taken": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "{path} 已存在 · {machine}",
-      "args": ["machine", "path"]
-    },
     "rsFilewinCrossCopy.dir.notAbsolute": {
       "kind": "error",
       "role": "报错",
       "zh": "目标目录须以 / 开头 · {dir}",
       "args": ["dir"]
-    },
-    "rsFilewinCrossCopy.target.unreachable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "查询 {machine} 的后端失败 · {why}",
-      "args": ["machine", "why"]
     },
     "rsFilewinCrossCopy.prompt.noMachine": {
       "kind": "error",
@@ -20697,8 +20815,14 @@
     "rsFilewinChrome.status.picked": {
       "kind": "body",
       "role": "说明",
-      "zh": " · 选中 {n} · {size}",
+      "zh": " · 已选 {n} 项 · {size}",
       "args": ["n", "size"]
+    },
+    "rsFilewinChrome.status.pickedN": {
+      "kind": "body",
+      "role": "说明",
+      "zh": " · 已选 {n} 项",
+      "args": ["n"]
     },
     "rsFilewinChrome.status.transfers": {
       "kind": "action",
@@ -22774,18 +22898,6 @@
       "zh": "重试",
       "args": []
     },
-    "rsFilewinProgress.action.retryN": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重试 ×{n}",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.action.resume": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "接着传",
-      "args": []
-    },
     "rsFilewinProgress.stop.uncancellable": {
       "kind": "body",
       "role": "进度",
@@ -22882,47 +22994,11 @@
       "zh": "已复制 {n} 项",
       "args": ["n"]
     },
-    "rsFilewinProgress.copy.skipped": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "跳过 {names}",
-      "args": ["names"]
-    },
     "rsFilewinProgress.copy.failed": {
       "kind": "error",
       "role": "原因格",
       "zh": "复制失败 ×{n}",
       "args": ["n"]
-    },
-    "rsFilewinProgress.cross.running": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "复制 {name} → {machine}",
-      "args": ["name", "machine"]
-    },
-    "rsFilewinProgress.cross.done": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已复制 {name} → {machine}",
-      "args": ["name", "machine"]
-    },
-    "rsFilewinProgress.cross.skipped": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "未覆盖 · {name}",
-      "args": ["name"]
-    },
-    "rsFilewinProgress.cross.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "复制 {name} 到 {machine} 失败",
-      "args": ["name", "machine"]
-    },
-    "rsFilewinProgress.cross.stopped": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已停 · {name} → {machine}",
-      "args": ["name", "machine"]
     },
     "rsFilewinProgress.size.running": {
       "kind": "body",
@@ -22935,30 +23011,6 @@
       "role": "进度",
       "zh": "解压 {name}",
       "args": ["name"]
-    },
-    "rsFilewinProgress.delete.running": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "删除 {n} 项",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.delete.runningOne": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "删除 {name}",
-      "args": ["name"]
-    },
-    "rsFilewinProgress.delete.done": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "已删除 {n} 项",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.delete.failed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{n} 项未删除",
-      "args": ["n"]
     },
     "rsFilewinProgress.detail.failedOne": {
       "kind": "body",
@@ -28237,6 +28289,36 @@
       "kind": "error",
       "role": "原因格",
       "zh": "原因不明",
+      "args": []
+    },
+    "reason.code.refused": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "被拒",
+      "args": []
+    },
+    "reason.code.stale": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "已在别处改过",
+      "args": []
+    },
+    "reason.code.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "不支持",
+      "args": []
+    },
+    "reason.code.badName": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "名称无效",
+      "args": []
+    },
+    "reason.code.overLimit": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "超出上限",
       "args": []
     },
     "reason.spawn.notInstalled": {

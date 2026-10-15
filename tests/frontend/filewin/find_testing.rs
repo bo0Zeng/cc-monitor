@@ -271,8 +271,6 @@ pub struct FakeBackend {
     pub grep_reply: Option<serde_json::Value>,
     /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
-    /// `files-delete` 一趟一趟回的「还剩几条」（取一个用一个；用完 ⇒ 不带这一格，即删完了）。
-    pub delete_left: std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<u64>>>,
     /// 路径换名（截图那几张）：`(窗口看到的前缀, 盘上真的前缀)` —— 进来的参数把前者换成后者再答，答出去的再换回来，
     /// 窗口里的面包屑就是一台真机器那样的 `/home/user/…`，看不到沙箱路径。
     pub alias: Option<(String, String)>,
@@ -294,7 +292,6 @@ impl FakeBackend {
             hold_rebuild: None,
             grep_reply: None,
             hold_grep: None,
-            delete_left: Default::default(),
             alias: None,
         }
     }
@@ -875,15 +872,25 @@ impl FakeBackend {
                         None,
                     );
                 }
-                // 应答照新后端：`files` / `dirs` 恒在；带 `recursive: true` ⇒ 按「一棵」回一组定值。
-                let tree = args.get("recursive").and_then(|v| v.as_bool()) == Some(true);
-                let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
+                // 应答照后端：逐项，每一项带 `files` / `dirs`；源名没有扩展名（合成目录 `a/d`）⇒ 按「一棵」回一组定值。
+                let items = args["items"].as_array().cloned().unwrap_or_default();
+                let outcomes: Vec<serde_json::Value> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(k, it)| {
+                        let from = it["from"].as_str().unwrap_or("");
+                        let tree = !crate::source::remote_basename(from).contains('.');
+                        let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
+                        serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "bytes": 42, "files": files, "dirs": dirs })
+                    })
+                    .collect();
+                let n = outcomes.len();
                 (
                     true,
                     None,
                     None,
                     Some(
-                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs, "links": 0 }),
+                        serde_json::json!({ "outcomes": outcomes, "said": said_done("beFiles.batch.verbCopy", n) }),
                     ),
                 )
             }
@@ -943,17 +950,19 @@ impl FakeBackend {
                         None,
                     );
                 }
-                let mut reply = serde_json::json!({ "path": root });
-                // 改权限：回改之前的位（撤销据它；合成值恒 0o644）。
-                if cmd == "files-chmod" {
-                    reply["mode"] = args.get("mode").cloned().unwrap_or_default();
-                    reply["before"] = serde_json::json!(0o644);
-                }
-                if cmd == "files-delete" {
-                    let n = self.delete_left.lock().unwrap().pop_front().unwrap_or(0);
-                    reply["removed"] = serde_json::json!(1);
-                    reply["remaining"] = serde_json::json!(n);
-                }
+                let n = args["items"].as_array().map_or(0, Vec::len);
+                let reply = match cmd {
+                    // 改权限：逐项，回改之前的位（撤销据它；合成值恒 0o644）。
+                    "files-chmod" => serde_json::json!({
+                        "outcomes": (0..n).map(|k| serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "before": 0o644 })).collect::<Vec<_>>(),
+                        "said": said_done("beFiles.batch.verbChmod", n),
+                    }),
+                    "files-delete" => serde_json::json!({
+                        "outcomes": (0..n).map(|k| serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "removed": 1 })).collect::<Vec<_>>(),
+                        "said": said_done("beFiles.batch.verbDelete", n),
+                    }),
+                    _ => serde_json::json!({ "path": root }),
+                };
                 (true, None, None, Some(reply))
             }
             // 新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，
@@ -1494,4 +1503,13 @@ pub fn wire(
     });
     let (rd, wr) = tokio::io::split(ours);
     comms_inward::chan::client::Client::over(rd, wr, frame)
+}
+
+/// 合成后端那一行（照后端：全成 ⇒ `beFiles.batch.done`）。
+fn said_done(verb: &str, n: usize) -> String {
+    let v = copy_core::copy_text(verb, &[]);
+    copy_core::copy_text(
+        "beFiles.batch.done",
+        &[("action", &v), ("n", &n.to_string())],
+    )
 }

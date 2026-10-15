@@ -77,6 +77,9 @@ pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-create" => one::<w::FilesCreateReq>(args),
         "files-mkdir" => one::<w::FilesMkdirReq>(args),
         "files-rename" => one::<w::FilesRenameReq>(args),
+        "files-delete" | "files-chmod" | "files-copy" if args.get("items").is_none() => {
+            one_item(wire_name, args)
+        }
         "files-delete" => one::<w::FilesDeleteReq>(args),
         "files-chmod" => one::<w::FilesChmodReq>(args),
         "files-copy" => one::<w::FilesCopyReq>(args),
@@ -94,6 +97,66 @@ pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
         other => panic!("`{other}` 不是文件管理写的那几条"),
     }
 }
+/// 下面那些判据问的是**一项**的行为（路径解析 · CAS · 递归 · 权限位）：复制 · 删除 · 改权限换成一组一条之后，
+/// 这里把一项的问法包成一组一项，那一项没成 ⇒ 交回它的码与那一句（同从前一条一项时的失败），成了 ⇒ 交那一项的结局。
+/// 只在判据这一侧；线上没有一项那一形。
+fn one_item(wire_name: &str, args: &serde_json::Value) -> Answer {
+    use serde_json::{json, Map, Value};
+    let mut top = Map::new();
+    let mut item = Map::new();
+    for (k, v) in args.as_object().cloned().unwrap_or_default() {
+        match (wire_name, k.as_str()) {
+            (_, "root") | ("files-chmod", "mode") => {
+                top.insert(k, v);
+            }
+            ("files-copy", "overwrite") => {
+                if v == json!(true) {
+                    top.insert("on_exists".into(), json!("overwrite"));
+                }
+            }
+            // 复制目录不再要显式开关（按源判）。
+            ("files-copy", "recursive") => {}
+            ("files-delete", "rel" | "recursive" | "expect")
+            | ("files-chmod", "rel")
+            | ("files-copy", "from" | "to") => {
+                item.insert(k, v);
+            }
+            _ => {
+                top.insert(k, v);
+            }
+        }
+    }
+    top.insert("items".into(), Value::Array(vec![Value::Object(item)]));
+    let v = ask(wire_name, &Value::Object(top))?;
+    let o = v["outcomes"][0].clone();
+    if o["state"] != json!("done") {
+        let code = match o["code"].as_str().unwrap_or("exists") {
+            "refused" => "refused",
+            "stale" => "stale",
+            "no_unix_mode" => "no_unix_mode",
+            "exists" => "exists",
+            "bad_name" => "bad_name",
+            "bad_path" => "bad_path",
+            _ => "io_failed",
+        };
+        let detail = o["detail"].as_str().unwrap_or_default().to_string();
+        let (said, raw) = match detail.split_once('\n') {
+            Some((a, b)) => (a.to_string(), Some(b.to_string())),
+            None => (detail, None),
+        };
+        return Err(WriteFail { code, said, raw });
+    }
+    let mut out = o.as_object().cloned().unwrap_or_default();
+    if let Some(m) = args.get("mode") {
+        out.insert("mode".into(), m.clone());
+    }
+    if let Some(n) = o.get("removed") {
+        out.insert("remaining".into(), json!(0));
+        out.insert("removed".into(), n.clone());
+    }
+    Ok(Value::Object(out))
+}
+
 fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     ask(wire_name, args)
 }
@@ -1328,20 +1391,17 @@ fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
     std::fs::write(root.join("a.md"), b"A").expect("铺 a");
     let r = root.to_str().expect("utf8");
     for (args, want) in [
-        (
-            serde_json::json!({"root": r, "from": "d", "to": "d2"}),
-            "refused",
-        ),
+        // 落点已在（这里是它自己）：整组先探，同名而没答 ⇒ `exists`。
         (
             serde_json::json!({"root": r, "from": "a.md", "to": "a.md"}),
-            "refused",
+            "exists",
         ),
         (
             serde_json::json!({"root": r, "from": "a.md", "to": "../x.md"}),
             "refused",
         ),
         (
-            serde_json::json!({"root": r, "from": "a.md", "to": "z.md", "overwrite": 1}),
+            serde_json::json!({"root": r, "from": "a.md", "to": "z.md", "on_exists": "always"}),
             "bad_args",
         ),
         (serde_json::json!({"root": r, "from": "a.md"}), "bad_args"),
@@ -1353,17 +1413,15 @@ fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
             Ok(v) => panic!("🔴 {args} 竟然成了：{v}"),
         }
     }
-    assert!(
-        !root.join("d2").exists() && !root.join("z.md").exists() && !base.join("x.md").exists()
-    );
+    assert!(!root.join("z.md").exists() && !base.join("x.md").exists());
     let v = answer_wire(
         "files-copy",
         &serde_json::json!({"root": r, "from": "a.md", "to": "c.md"}),
     )
     .expect("命令面上一趟干净的复制被拒了");
     // 回包就是那一份线上类型（多一格 · 少一格都解不回来）。
-    serde_json::from_value::<cmd_wire::files::FilesTreeReply>(v)
-        .expect("`files-copy` 回包照类型解得回来");
+    serde_json::from_value::<cmd_wire::batch::BatchOutcome>(v)
+        .expect("`files-copy` 那一项的结局照类型解得回来");
     assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -2569,44 +2627,6 @@ fn a_recursive_copy_that_fails_midway_undoes_what_it_built() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 命令面：不带 `recursive` 目录照旧 `refused`；与 `overwrite: true` 同给 ⇒ `bad_args`；带了 ⇒ 回的键 == 声明的 `fields`。
-#[test]
-fn the_command_face_copies_a_directory_only_when_asked() {
-    let base = temp_root("cptc");
-    let root = base.join("cfg");
-    plant_tree(&root);
-    let r = root.to_string_lossy().to_string();
-    let e = answer_wire(
-        "files-copy",
-        &serde_json::json!({"root": r, "from": "t", "to": "u"}),
-    )
-    .expect_err("不带 recursive 复制了目录");
-    assert_eq!(e.code, "refused", "{e:?}");
-    let e = answer_wire(
-        "files-copy",
-        &serde_json::json!({"root": r, "from": "t", "to": "u", "recursive": true, "overwrite": true}),
-    )
-    .expect_err("recursive ＋ overwrite 竟然收了");
-    assert_eq!(e.code, "bad_args", "{e:?}");
-    assert!(std::fs::symlink_metadata(root.join("u")).is_err());
-    let v = answer_wire(
-        "files-copy",
-        &serde_json::json!({"root": r, "from": "t", "to": "u", "recursive": true}),
-    )
-    .expect("带 recursive 的复制目录被拒");
-    serde_json::from_value::<cmd_wire::files::FilesTreeReply>(v.clone())
-        .expect("回包照类型解得回来");
-    assert_eq!(
-        (v["files"].as_u64(), v["dirs"].as_u64()),
-        (Some(3), Some(4))
-    );
-    assert_eq!(
-        std::fs::read(root.join("u/a/b/three.md")).expect("读"),
-        b"3"
-    );
-    std::fs::remove_dir_all(&base).ok();
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // 编辑器存盘的 CAS（摘要形 `expect: {"sha256": …}`）
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -2926,35 +2946,6 @@ fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
         assert_ne!(mode(r) & 0o044, 0, "{r} 被收紧了：{:o}", mode(r));
     }
     std::fs::remove_dir_all(&home).ok();
-}
-
-/// 删一棵大树不再一口气删到底：给了一趟删几条 ⇒ 删够了停在两条之间、说还剩几条；再发一趟接着删，删完为止。
-/// （此前窗口 120 秒等不到就报失败，而后端照删 —— 窗口说的与盘上的对不上。）
-#[test]
-#[cfg(unix)]
-fn a_recursive_delete_in_slices_stops_between_entries_and_says_how_many_are_left() {
-    let base = temp_root("rmtree-until");
-    let root = base.join("cfg");
-    std::fs::create_dir_all(&root).expect("建根");
-    let planted = plant_tree(&root);
-    let total = planted.len();
-    // 一趟只许删 0 条：照样删一条再停（一趟接一趟才删得完）。
-    let (_, removed, left) =
-        delete_tree_upto(&Face::issue(), &root, "t", Some(0)).expect("删够了不是失败");
-    assert_eq!((removed, left), (1, total - 1), "删够了没停在两条之间");
-    assert_eq!(
-        still_there(&root, &planted).len(),
-        total - 1,
-        "说删了一条，盘上少的不是一条"
-    );
-    // 帧面那一条：带 `limit` ⇒ 回 `remaining`；接着删到 0。
-    let args = |n: u64| serde_json::json!({ "root": root.to_string_lossy(), "rel": "t", "recursive": true, "limit": n });
-    let v = answer_wire("files-delete", &args(2)).expect("第二趟");
-    assert_eq!(v["remaining"], serde_json::json!(total - 3));
-    let v = answer_wire("files-delete", &args(1_000)).expect("第三趟");
-    assert_eq!(v["remaining"], serde_json::json!(0));
-    assert!(still_there(&root, &planted).is_empty(), "说删完了，树还在");
-    std::fs::remove_dir_all(&base).ok();
 }
 
 /// 名字规则两套（Windows · unix）逐条 == 手写的期望 `tests/__fixtures__/file-names.golden.json`（ok 全过、bad 各落在登记的那一档）。

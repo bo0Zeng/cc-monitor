@@ -62,12 +62,21 @@ class FilesTest {
         assertEquals(mapOf("root" to "/w", "rel" to "n.txt", "single" to true), FilesCreate.args(dir, "n.txt"))
         val from = RemotePath(bad).name
         assertEquals(mapOf("root" to "/w", "from" to mapOf("b16" to "78ff"), "to" to "ok", "single" to true), FilesRename.args(dir, from, "ok"))
-        assertEquals(mapOf("root" to "/w", "rel" to "f"), FilesDelete.args(dir, RemotePath.of("f"), recursive = false))
-        assertEquals(mapOf("root" to "/w", "rel" to "d", "recursive" to true, "limit" to FilesDelete.SLICE), FilesDelete.args(dir, RemotePath.of("d"), recursive = true))
-        assertEquals(3L, FilesDelete.remaining(mapOf("path" to "/w/d", "removed" to 5.0, "remaining" to 3.0)))
-        assertEquals(mapOf("root" to "/w", "rel" to "f", "mode" to 420L), FilesChmod.args(dir, RemotePath.of("f"), 420L))
+        assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f"))), FilesDelete.args(dir, RemotePath.of("f"), recursive = false))
+        assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "d", "recursive" to true))), FilesDelete.args(dir, RemotePath.of("d"), recursive = true))
+        assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f")), "mode" to 420L), FilesChmod.args(dir, RemotePath.of("f"), 420L))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
         assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
+    }
+
+    @Test
+    fun `一组只交一项：那一项做完才算成，没成带后端那一句与那一项的原话`() {
+        assertEquals(Batch.Done, Batch.fateOf(mapOf("outcomes" to listOf(mapOf("key" to "0", "state" to "done", "removed" to 3.0)), "said" to "已删除 1 项")))
+        assertEquals(
+            Batch.Refused("删除失败 ×1", "EACCES"),
+            Batch.fateOf(mapOf("outcomes" to listOf(mapOf("key" to "0", "state" to "failed", "code" to "io_failed", "detail" to "EACCES")), "said" to "删除失败 ×1")),
+        )
+        assertNull("解不出 ⇒ null", Batch.fateOf(mapOf("path" to "/w/d", "removed" to 5.0, "remaining" to 3.0)))
     }
 
     @Test

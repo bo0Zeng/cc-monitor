@@ -1,88 +1,42 @@
-//! 拖入多个文件 —— **先把覆盖确认一次问完，再并行起传输。**
-//!
-//! # 🔴 这条需求是从旧面板转过来的，转过来的理由在设计里，别当成新功能
-//!
-//! 旧面板 `src/sftp/panel.ts::uploadDropped` 是
+//! 拖入（或「上传」选到）的一摞本机文件 —— **一条命令开一组，同名由后端在落点那台探，窗口只问一次、再并行传。**
 //!
 //! ```text
-//! for (const localPath of paths) {
-//!     ... await commands.sftp_stat(...)          // 问
-//!     if (exists && !window.confirm(...)) continue;
-//!     await this.runTransfer(...)                 // 传
-//! }
+//! ① 开单    —— 整组一条 `transfer-upload`（带远端落点目录）；落点那台有同名而没答 ⇒ 回 `exists` 带同名清单
+//!              ⇒ 冲突框问一次（[`super::batch`]，与复制 · 下载同一个框）⇒ 带 `decide` 同一组再发；照答，跳过的不开单
+//! ② 并行传  —— 开了单的那几项**并行**起跑（有界）：订阅 `transfer/<id>` → 后端提交（名字与盖不盖照开单回包那一项说的）
 //! ```
 //!
-//! 两条毛病是**同一个** `for … await` 生出来的：
+//! 「先探 → 问 → 做」住后端一处（`control/transfer.rs` 的上传开单）；这一层不问 `files-stat`、不自己比同名。
 //!
-//! 1. **传输一件件来** ⇒ `sftp_pool` 那几格传输通道永远只用到 1 格。
-//! 2. **问答与传输交错** ⇒ 拖 10 个文件、第 7 个才冲突，用户已经等了 6 趟传输才被弹一次窗；
-//!    而那 6 趟已经在跑，答「取消」也收不回来。
+//! # 🔴 并行度**就是 [`run_drop`] 的结构**
 //!
-//! 裁定**不在旧面板上修**（那块面板按 `§6.6 C` 要退役），
-//! 转成原生窗口的一条需求。⇒ 本模块。
-//!
-//! # 🔴 三段的顺序**就是 [`run_drop`] 的结构**，不是一条注释
-//!
-//! ```text
-//! ① probe_all   —— 「远端已经有了吗」，一件一问，**并发**（有界）
-//! ② confirm     —— 把**全部**冲突项一次交给人，拿回「准传的那几件」
-//! ③ upload_all  —— **并行**起传输（有界）
-//! ```
-//!
-//! 判据钉的正是这个顺序与并行度，见 `tests/frontend/filewin/transfer_tests.rs`：
-//! · `confirm` 被调用**恰好一次**，且它拿到的是**全部**冲突项（相等断言）
-//! · 任何一次 `launch` 都排在那一次 `confirm` **之后**（时序号相比）
-//! · 4 件在 `lanes = 4` 下**真的同时在飞**（`Barrier` 凑齐才放行；串行实现会超时）
-//! · **阴性对照**：`lanes = 2` 下同一个 `Barrier` 必须凑不齐 ⇒ 那道闸是真的
+//! 判据钉的是：4 件在 `lanes = 4` 下**真的同时在飞**（`Barrier` 凑齐才放行；串行实现会超时）·
+//! **阴性对照**：`lanes = 2` 下同一个 `Barrier` 必须凑不齐 ⇒ 那道闸是真的（`tests/frontend/filewin/transfer_tests.rs`）。
 //!
 //! # ⚠ 买不到什么（逐条写明，别读宽）
 //!
-//! - **没有一趟真传输的读数。** 本仓红线不许起真连接
-//!   （`tests/frontend/shell/sftp_tests.rs` 逐字「跑不了真路」）。[`probe_remote`] / [`upload_remote`]
-//!   今天**经通道**说话（开单 · 订阅进度 · 后端提交），不自己开连接、不碰池子
-//!   （判据 `transfer_tests::the_real_adapters_speak_only_through_the_channel` 判源码，
-//!   `transfer_tests::an_upload_opens_watches_then_commits_with_the_humans_answer` 在真回环 ＋ 合成对端上判三步的顺序与载荷）。
-//!   传输台那一侧的读数：传输本体（真 SFTP 会话上）搬进了本机常驻后端，由后端
-//!   `tests/backend/control/transfer_tests.rs` 判；monitor 的中继由 `sftp_pool_tests` / `chan::host::transfer_stream_tests` 判。
-//! - **`lanes` 不是真正的闸。** 真正的闸在本机常驻后端里、按连接记（传输车道 ＋ 通道闸，
-//!   借不到就 `await`，那个 `await` 就是队列）。
-//!   本层这个数只为「别把一万条订阅一起堆起来」（[`WINDOW_TRANSFER_LANES`]）。
-//! 池里那道 4 条的车道闸随浏览离开 SFTP 退役了，本层这个数不再是它的副本 ——
-//!   判据改钉「一个窗口的一趟拖入占不满池子的通道闸」。
+//! - **没有一趟真传输的读数。** 本仓红线不许起真连接；[`upload_remote`] **经通道**说话（订阅进度 · 后端提交），
+//!   判据在真回环 ＋ 合成对端上判几步的顺序与载荷。传输本体由后端 `tests/backend/control/transfer_tests.rs` 判。
+//! - **`lanes` 不是真正的闸。** 真正的闸在本机常驻后端里、按连接记；本层这个数只为「别把一万条订阅一起堆起来」（[`WINDOW_TRANSFER_LANES`]）。
 //! - **不做断点续传的判断**：那在传输台那一侧（暂存件的尾块对拍），本模块看不见也不该看见。
-//! - ✅**「上传按钮」做了**：工具栏「上传」⇒ 问一句本机路径（一行一个）⇒ 交给 [`run_drop`]
-//!   （`upload.rs`；下面三件里 ① 拍了、② 仍然没有原生选文件框、③ 挂载只占 `shell.rs` 几行）。下面是当时停下的原话：
-//! - 🔴**「上传按钮」没做，停在这里 —— 做不动，不是漏了。**
-//!   今天只能把文件**拖**进窗口（[`run_drop`] 那一条）。加一颗按钮卡在三件事上，逐条：
-//!   ① **一道没拍的设计题**：跨机传输走后端帧面还是走 SFTP（与 `§8.5` 要一起裁）
-//!      —— 按钮背后接哪一条，取决于它。
-//!   ② **原生选文件框**：本包没有它的直接依赖（`rfd` 只作为 `tauri-plugin-dialog` 的传递依赖在锁文件里），
-//!      加依赖要动 `src/frontend/shell/Cargo.toml`；而且「能不能从 egui 那条线程弹出来」本机**验不了**
-//!      （`XDG_SESSION_TYPE=tty`，没有图形会话）。
-//!   ③ 按钮本身住 `shell.rs`。
-//!   ⇒ 选完文件之后要走的那一段（先问覆盖、一次问完、再并行起传输）**今天就是 [`run_drop`]**，
-//!   按钮只需要把「选出来的那几条本机路径」喂给它 —— 那一跳等上面三件都有了再接。
 //!
 //! # 🔴取消
 //!
 //! 取消要的不只是一颗按钮，还要**窗口说得出要取消哪一趟**：造键这一步在 [`CancelDesk::mint`]
-//! （**登记表与键同一个落点**），[`upload_remote`] **吃**一个 id。
+//! （**登记表与键同一个落点**），[`launch_unless_cancelled`] 那道闸挡住还没起的。
 //!
-//! # 🔴窗口进程**一行 SFTP 都不碰**了
-//!
-//! 用户逐字「**保留SFTP. 思考怎么干净**」＋「**现在只允许后端的文件管理部分写文件**」。
-//! 上面几节里「调池子那条既有命令」「同一个进程级连接池」的说法**是上一版的**，今天的形状是：
+//! # 🔴窗口进程**一行 SFTP 都不碰**
 //!
 //! ```text
-//! 开单  source::ask_typed(line, origin, TransferUploadAsk{local_path, home?}) → TransferUploaded{id, key}
-//! 起跑  source::watch(line, origin, "transfer/<id>", 撤的令牌, 进度回调)    → 传完的字节数
+//! 开单  source::ask_batch(line, origin, "transfer-upload", {items, remote_dir, home?, decide?}) → TransferOpened{items}
+//! 起跑  source::watch(line, origin, "transfer/<id>", 撤的令牌, 进度回调)                         → 传完的字节数
 //! 提交  source::ask(line, origin, "files-commit-upload", {key, root, rel, overwrite})
 //! ```
 //!
-//! - 传输台（SFTP 连接、池、车道闸、续传、暂存区）住 **monitor**；窗口只经通道说 `call` / `subscribe`。
+//! - 传输台（SFTP 连接、池、车道闸、续传、暂存区）住本机常驻后端；窗口只经通道说 `call` / `subscribe`。
 //! - 上传**只写暂存区**；落进用户目录的那一下是**后端文件管理**那条提交命令（先过围栏）。
-//! - 覆盖不覆盖由这一侧**显式**交给后端（[`Pending::overwrite`]：人在那一问里点了「覆盖」的才是 `true`）；
-//!   人没被问过的那几件一律 `false` ⇒ 目标在两问之间冒出来了，后端拒，不静默盖掉。
+//! - 覆盖不覆盖照开单回包那一项（[`Pending::overwrite`]：人在冲突框上答了「覆盖」的才是 `true`）；
+//!   其余一律 `false` ⇒ 目标在开单与提交之间冒出来了，后端拒，不静默盖掉。
 
 use copy_core::copy_text;
 use std::future::Future;
@@ -113,8 +67,8 @@ pub struct Pending {
     pub remote_path: String,
     /// 显示名（＝ 远端那一侧的 basename）。
     pub name: String,
-    /// 提交时交给后端的覆盖策略。**只有人在那一问里点了「覆盖」的那几件是 `true`**
-    /// （由 [`run_drop`] 在「一次问完」之后标上）；造出来时一律 `false`。
+    /// 提交时交给后端的覆盖策略。**只有人在冲突框上答了「覆盖」的那几件是 `true`**
+    /// （开单回包那一项说的，[`Pending::landed`] 标上）；造出来时一律 `false`。
     pub overwrite: bool,
     /// 〔非 UTF-8 目录〕目标目录的原始字节（目录名不是合法 UTF-8 时才有）：探在不在与提交都按字节寻址。
     pub remote_dir_raw: Option<Vec<u8>>,
@@ -140,7 +94,7 @@ impl Pending {
     ) -> cmd_wire::files::FilesCommitUploadReq {
         cmd_wire::files::FilesCommitUploadReq {
             root: self.root_path(),
-            rel: cmd_wire::files::WirePath::from(super::source::remote_basename(&self.remote_path)),
+            rel: cmd_wire::files::WirePath::from(self.name.as_str()),
             key: key.to_string(),
             overwrite: self.overwrite,
             expect: cmd_wire::files::Sha256Expect {
@@ -162,6 +116,21 @@ impl Pending {
             }
             None => cmd_wire::files::WirePath::from(self.remote_path.as_str()),
         }
+    }
+
+    /// 开单回包那一项说了怎么落：保留两份 ⇒ 换成那台另起的名字；答了覆盖 ⇒ 提交时盖。
+    pub fn landed(self, it: &cmd_wire::transfer::OpenedItem) -> Pending {
+        let mut p = self;
+        if let Some(n) = &it.new_name {
+            let name = String::from_utf8_lossy(n.bytes()).into_owned();
+            p.remote_path = format!(
+                "{}/{name}",
+                super::source::parent_dir(&p.remote_path).trim_end_matches('/')
+            );
+            p.name = name;
+        }
+        p.overwrite = it.overwrite;
+        p
     }
 
     /// 「把本机这个文件放到远端这个目录里」。
@@ -187,9 +156,7 @@ impl Pending {
 /// 一趟拖入跑完之后的读数。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DropOutcome {
-    /// 一次问完的时候，摆在人面前的冲突件数。
-    pub asked: usize,
-    /// 人答「不覆盖」而没传的件数。
+    /// 同名照答跳过而没传的件数。
     pub skipped: usize,
     /// 传成功的件数。
     pub ok: usize,
@@ -200,87 +167,118 @@ pub struct DropOutcome {
     pub redone: Vec<String>,
 }
 
-/// 🔴 **正题**：拖入那一摞的全过程。三段的顺序就是这个函数的结构。
+/// 整组开单那一问的结局（[`run_drop`] 的 `open` 交回）。
+#[derive(Clone, Debug, PartialEq)]
+pub enum Opened {
+    /// 后端逐项回了怎么落（开了单 · 照答跳过 · 没开成）。
+    Items(Vec<cmd_wire::transfer::OpenedItem>),
+    /// 冲突框上答了取消：一件都不传。
+    Dropped,
+    /// 整组没开成（那一句 ＋ 复制详情）：每一件都算没传成。
+    Failed(super::source::Failed),
+}
+
+/// 一件开了单的待传：落名与盖不盖已照回包标好（[`Pending::landed`]）· 传输单 id · 暂存件的键。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ticketed {
+    pub item: Pending,
+    pub id: String,
+    pub key: String,
+}
+
+/// 🔴 **正题**：拖入那一摞的全过程。
 ///
-/// - `probe`：一件一问「远端已经有了吗」。回 `true` = 已经有了（会覆盖）。
-/// - `confirm`：**一次**拿到全部冲突项，回「这几件准传」。⚠ 它是 `FnOnce` ——
-///   类型上就不许被调第二次，「一次问完」这件事有一半是编译器在守。
-/// - `launch`：真起一件传输。
-///
-/// ⚠ **不冲突的那几件也要等这一次问完**。那是刻意的：拖 10 个文件、2 个冲突，
-/// 若把 8 个不冲突的先放出去，用户答「全都别覆盖」时已经有 8 件在写对面盘了 ——
-/// 「先问完再动手」这句话就只剩一半。
-pub async fn run_drop<P, PFut, C, CFut, L, LFut>(
+/// - `open`：整组一条开单（同名由后端在落点那台探；有同名就在这一步里问一次、带答再发）—— 恰好调一次（`FnOnce`）。
+/// - `launch`：真起一件（订阅 → 提交）。开了单的那几件**并行**起（有界 `lanes`）。
+pub async fn run_drop<O, OFut, L, LFut>(
     items: Vec<Pending>,
     lanes: usize,
-    probe: P,
-    confirm: C,
+    open: O,
     launch: L,
 ) -> DropOutcome
 where
-    P: Fn(Pending) -> PFut,
-    PFut: Future<Output = bool>,
-    C: FnOnce(Vec<Pending>) -> CFut,
-    CFut: Future<Output = Vec<Pending>>,
-    L: Fn(Pending) -> LFut,
+    O: FnOnce() -> OFut,
+    OFut: Future<Output = Opened>,
+    L: Fn(Ticketed) -> LFut,
     LFut: Future<Output = Result<(), super::source::Failed>>,
 {
     if items.is_empty() {
         return DropOutcome::default();
     }
-    // ── ① 问「会不会覆盖」──────────────────────────────────────────────
-    let flags = bounded(lanes, items.clone(), |p| probe(p)).await;
-    let clashes: Vec<Pending> = items
-        .iter()
-        .zip(flags.iter())
-        .filter(|(_, hit)| **hit)
-        .map(|(p, _)| p.clone())
-        .collect();
-    let asked = clashes.len();
-
-    // ── ② 一次问完 ───────────────────────────────────────────────────
-    //    没有冲突就**不问** —— 弹一个空框是噪音，不是慎重。
-    let allowed: Vec<Pending> = if clashes.is_empty() {
-        Vec::new()
-    } else {
-        confirm(clashes).await
+    let mut out = DropOutcome::default();
+    let opened = match open().await {
+        Opened::Items(v) => v,
+        Opened::Dropped => return out,
+        Opened::Failed(f) => {
+            out.failed = items.into_iter().map(|p| (p.name, f.clone())).collect();
+            return out;
+        }
     };
-
-    // 准传的那一摞 = 不冲突的全部 ＋ 人点了「覆盖」的那几件。
-    // 后者**标上** `overwrite` —— 提交时后端据它决定「目标在就拒」还是「整份换掉」；
-    //   前者一律不标：人没被问过的，目标若在两问之间冒出来，后端拒，不替人盖。
-    let go: Vec<Pending> = items
-        .iter()
-        .zip(flags.iter())
-        .filter(|(p, hit)| !**hit || allowed.contains(p))
-        .map(|(p, hit)| Pending {
-            overwrite: *hit,
-            ..p.clone()
-        })
-        .collect();
-    let skipped = items.len() - go.len();
-
-    // ── ③ 并行起传输 ─────────────────────────────────────────────────
-    let results = bounded(lanes, go.clone(), |p| launch(p)).await;
-    let mut out = DropOutcome {
-        asked,
-        skipped,
-        ..Default::default()
-    };
-    for (p, r) in go.into_iter().zip(results.into_iter()) {
+    let mut go = Vec::new();
+    for it in &opened {
+        let Some(p) = it.key.parse::<usize>().ok().and_then(|i| items.get(i)) else {
+            continue;
+        };
+        match (it.state, &it.id, &it.staged) {
+            (cmd_wire::transfer::OpenState::Skipped, ..) => out.skipped += 1,
+            (cmd_wire::transfer::OpenState::Opened, Some(id), Some(key)) => go.push(Ticketed {
+                item: p.clone().landed(it),
+                id: id.clone(),
+                key: key.clone(),
+            }),
+            _ => out.failed.push((
+                p.name.clone(),
+                super::source::Failed {
+                    code: it.code.clone(),
+                    said: it.reason.clone().unwrap_or_default(),
+                    detail: it.detail.clone().unwrap_or_default(),
+                },
+            )),
+        }
+    }
+    let names: Vec<String> = go.iter().map(|t| t.item.name.clone()).collect();
+    let results = bounded(lanes, go, |t| launch(t)).await;
+    for (name, r) in names.into_iter().zip(results) {
         match r {
             Ok(()) => out.ok += 1,
-            Err(e) => out.failed.push((p.name, e)),
+            Err(e) => out.failed.push((name, e)),
         }
     }
     out
 }
 
+/// 整组开单那一问（[`run_drop`] 的 `open`）：经 [`super::batch::run`] 发 —— 有同名 ⇒ 冲突框问一次、带 `decide` 同一组再发；
+/// 问得到那台后端的 `$HOME` 就带上（传输台连上之后与 SFTP 起始目录比）。
+pub async fn open_group(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    ask: &super::batch::BatchBoard,
+    board: &DropBoard,
+) -> Opened {
+    let call = |mut args: serde_json::Value| async move {
+        if let Some(h) = board.backend_home(line, origin).await {
+            args["home"] = serde_json::Value::String(h);
+        }
+        super::source::ask_batch(line, origin, CMD_UPLOAD, &args, OPEN_BUDGET).await
+    };
+    let got = super::batch::run(ask, call, || async {}).await;
+    match (got, ask.phase()) {
+        (Some(v), _) => match serde_json::from_value::<cmd_wire::transfer::TransferOpened>(v) {
+            Ok(o) => Opened::Items(o.items),
+            Err(e) => Opened::Failed(super::source::Failed {
+                code: None,
+                said: copy_text("rsFilewinSource.said.badReply", &[]),
+                detail: e.to_string(),
+            }),
+        },
+        (None, super::batch::Phase::Failed(f)) => Opened::Failed(f),
+        (None, _) => Opened::Dropped,
+    }
+}
+
 /// 有界并发地把 `f` 跑在 `items` 上，**回值按输入顺序**。
 ///
-/// 🔴 顺序必须保住：上面靠 `items.zip(flags)` 把「第几件冲突」对回去，
-/// 乱序回来的话那个 `zip` 会把答案配错人 —— 那是最难看的一类错（覆盖了不该覆盖的）。
-/// ⇒ 用 `buffered`（保序）而**不是** `buffer_unordered`。
+/// 顺序保住（`buffered`）：结局按名字配回去。
 ///
 /// ⚠ 不用 `tokio::spawn` ⇒ future 不需要 `'static`/`Send`，
 /// 调用方（含判据）可以随手闭包捕获借用。
@@ -449,85 +447,111 @@ where
 // 生产适配器：**一行自己的传输代码都没有**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 「远端已经有这条路径了吗」—— 经通道问后端 `files-stat`。
+/// 「远端已经有这条路径了吗」—— 经通道问后端 `files-stat`（路径按字节）。「复制为」那一问借它。
 ///
-/// ⚠ `stat` 失败一律按「不存在」读（同旧面板 `uploadDropped` 的口径：
-/// 不可读与不存在在这一步分不开，而按「存在」处理会**无端多问一次**）。
-/// ⚠ 上一版问的是池子那条 `stat`（SFTP）；这一问不搬字节 ⇒ 它归后端，不归传输。
-pub async fn probe_remote(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    remote_path: &str,
-) -> bool {
-    probe_remote_at(line, origin, cmd_wire::files::WirePath::from(remote_path)).await
-}
-
-/// 同 [`probe_remote_at`]，在 ⇒ 交回那台 `files-stat` 的应答（同名那张表要那台的大小与修改时间）；不在 / 读不到 ⇒ `None`。
-pub async fn stat_remote_at(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    remote_path: cmd_wire::files::WirePath,
-) -> Option<cmd_wire::files::StatReply> {
-    let req = cmd_wire::files::StatReq { path: remote_path };
-    super::source::ask_typed(line, origin, &req, PROBE_BUDGET)
-        .await
-        .ok()
-}
-
-/// 〔有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径按字节给。
+/// ⚠ `stat` 失败一律按「不存在」读（不可读与不存在在这一步分不开，而按「存在」处理会**无端多问一次**）。
 pub async fn probe_remote_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     remote_path: cmd_wire::files::WirePath,
 ) -> bool {
-    stat_remote_at(line, origin, remote_path).await.is_some()
+    let req = cmd_wire::files::StatReq { path: remote_path };
+    super::source::ask_typed(line, origin, &req, PROBE_BUDGET)
+        .await
+        .is_ok()
 }
 
 /// 一次「那儿有没有东西」的往返上限（调用方给的期限）。
 pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// 开单那一条（窗口说给 monitor，monitor 补拨号请求转给本机后端的传输台）。
+pub const CMD_UPLOAD: &str = <cmd_wire::transfer::TransferUploadAsk as cmd_wire::files::Call>::NAME;
 /// 进度流的 `kind` 前缀（传输台那一侧 `sftp_pool::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
 pub const KIND_PREFIX: &str = "transfer/";
 /// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
 pub const CMD_COMMIT: &str = "files-commit-upload";
-/// 开单那一趟往返的上限（调用方给的期限）。开单只登记、不搬字节。
-pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+/// 开单那一趟往返的上限（调用方给的期限）：开单不搬字节，但整组的同名要在远端落点那台逐项探一遍。
+pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
 /// 提交那一趟往返的上限：后端那一侧是围栏的几次 `canonicalize` ＋ 一次同盘改名。
 pub const COMMIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// 真起一件上传 —— **开单 → 起跑并看 → 提交**，三步全经通道。
+/// 整组开单的那一份入参（同名照 `on_exists`；缺 ⇒ 后端先探、有同名回 `exists`）。落点目录取第一件的（一摞都落在同一个目录）。
+pub fn group_ask(
+    items: &[Pending],
+    home: Option<String>,
+    on_exists: Option<cmd_wire::batch::OnExists>,
+) -> cmd_wire::transfer::TransferUploadAsk {
+    cmd_wire::transfer::TransferUploadAsk {
+        items: items
+            .iter()
+            .map(|p| cmd_wire::transfer::UploadItem {
+                local_path: p.local_path.clone(),
+            })
+            .collect(),
+        remote_dir: items
+            .first()
+            .map(Pending::root_path)
+            .unwrap_or_else(|| cmd_wire::files::WirePath::from("/")),
+        home,
+        on_exists,
+        decide: None,
+    }
+}
+
+/// 真起一件上传 —— **起跑并看 → 提交**，全经通道（单子已在整组开单那一步开好）。
 ///
-/// 🔴 这里一行 SFTP 都没有：字节由 monitor 里的传输台搬进暂存区，
+/// 🔴 这里一行 SFTP 都没有：字节由本机后端的传输台搬进暂存区，
 /// 落进用户目录的那一下是后端文件管理的 `files-commit-upload`（先过围栏）。
-/// ⚠ 传输失败 ⇒ 不提交、暂存件留着（重拖一次从尾块接上）；撤 ⇒ 不提交、暂存件已删。
+/// ⚠ 传输失败 ⇒ 不提交、暂存件留着（再传一次从尾块接上）；撤 ⇒ 不提交、暂存件已删。
 pub async fn upload_remote(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    p: &Pending,
+    t: &Ticketed,
     board: &DropBoard,
 ) -> Result<(), super::source::Failed> {
-    // 这一窗已经改走后端链路 ⇒ 不再问 SFTP。
-    if board.via_backend().is_some() {
-        return super::chunk_upload::upload_by_chunks(line, origin, p, board).await;
-    }
-    let home = board.backend_home(line, origin).await;
-    let home = home.as_deref();
-    let first = match upload_once(line, origin, p, board, home).await {
-        // 提交时对不上整份摘要 ⇒ 远端已经删掉那份坏暂存件 ⇒ **从头重传一次**并出声。
+    let p = &t.item;
+    let first = match upload_once(line, origin, p, (&t.id, &t.key), board).await {
+        // 提交时对不上整份摘要 ⇒ 远端已经删掉那份坏暂存件 ⇒ **从头重传一次**并出声（这一件另开一张单）。
         //   只重一次：第二次还对不上，多半不是一次偶发的洞（盘 / 网络在持续出错），照原话报失败，不原地打转。
         Err(Once::Stale(_)) => {
             board.note_redone(&p.name);
-            upload_once(line, origin, p, board, home).await
+            match reopen(line, origin, p, board).await {
+                Ok((id, key)) => upload_once(line, origin, p, (&id, &key), board).await,
+                Err(f) => Err(Once::Failed(f)),
+            }
         }
         other => other,
     };
     match first {
-        // 连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件起改走后端链路分块写（出声一次）。
+        // 连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件改走后端链路分块写（出声一次）。
         Err(Once::Mismatch(why)) => {
             board.switch_to_backend(why);
             super::chunk_upload::upload_by_chunks(line, origin, p, board).await
         }
         other => other.map_err(Once::failed),
+    }
+}
+
+/// 一件另开一张单（从头重传那一支）：名字与盖不盖照这一件已定下的（同名已经答过，开单只为一张新票）。
+async fn reopen(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    p: &Pending,
+    board: &DropBoard,
+) -> Result<(String, String), super::source::Failed> {
+    let home = board.backend_home(line, origin).await;
+    let ask = group_ask(
+        std::slice::from_ref(p),
+        home,
+        Some(cmd_wire::batch::OnExists::Overwrite),
+    );
+    let opened = super::source::ask_typed(line, origin, &ask, OPEN_BUDGET).await?;
+    match super::source::opened_one(opened)? {
+        (id, Some(key)) => Ok((id, key)),
+        (_, None) => Err(super::source::Failed::local(copy_text(
+            "rsFilewinSource.said.badReply",
+            &[],
+        ))),
     }
 }
 
@@ -551,26 +575,15 @@ impl Once {
 /// 传输台收场码：SFTP 起始目录不是那台后端的 home（后端 `control/transfer.rs::SFTP_HOME_MISMATCH`，判据钉两份相等）。
 pub const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
 
-/// 开单 → 起跑并看 → 提交，一趟。提交带传输台交的整份摘要（`expect`），远端后端改名上位之前核它。
+/// 起跑并看 → 提交，一趟。提交带传输台交的整份摘要（`expect`），远端后端改名上位之前核它。
 async fn upload_once(
     line: &super::source::Line,
     origin: &super::source::Origin,
     p: &Pending,
+    (id, key): (&str, &str),
     board: &DropBoard,
-    home: Option<&str>,
 ) -> Result<(), Once> {
     let stop = board.cancels().stop_token();
-    // 问得到后端的 `$HOME` 就带上：传输台连上之后与 SFTP 起始目录比（不一致 ⇒ 一个字节不写）。
-    let ask = cmd_wire::transfer::TransferUploadAsk {
-        local_path: p.local_path.clone(),
-        home: home.map(str::to_string),
-    };
-    let cmd_wire::transfer::TransferUploaded { id, key } =
-        super::source::ask_typed(line, origin, &ask, OPEN_BUDGET)
-            .await
-            .map_err(Once::Failed)?;
-    // 记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
-    board.note_staged(&key);
     let name = p.name.clone();
     let sink = board.clone();
     let watched = super::source::watch_coded(
@@ -591,7 +604,7 @@ async fn upload_once(
     super::source::ask_typed(
         line,
         origin,
-        &p.commit_req(&key, sha256, None),
+        &p.commit_req(key, sha256, None),
         COMMIT_BUDGET,
     )
     .await
@@ -603,7 +616,7 @@ async fn upload_once(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 窗口那一侧的状态：**问什么 · 传到哪儿了**
+// 窗口那一侧的状态：**传到哪儿了**（同名那一问是 [`super::batch`] 的冲突框）
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 一摞拖入在窗口上的样子。**跨线程共享**（UI 线程画，tokio 那条写）。
@@ -624,12 +637,6 @@ pub struct DropBoard {
 
 #[derive(Default)]
 struct Board {
-    /// 正摆在人面前等答复的那几件（空 = 没在问）。
-    asking: Vec<Pending>,
-    /// 人勾了哪几件（与 `asking` 同长）。
-    ticks: Vec<bool>,
-    /// 答复往哪儿送。
-    answer: Option<tokio::sync::oneshot::Sender<Vec<Pending>>>,
     /// 在传的那几件：名字 → (已传, 总共)。
     progress: Vec<(String, u64, u64)>,
     /// 上一趟的结果（画在窗口上，不是 `println!`）。
@@ -638,54 +645,11 @@ struct Board {
     redone: Vec<String>,
     /// 那台后端的 `$HOME`（问过一次就记着；开单时交给传输台比 SFTP 起始目录）。
     backend_home: Option<String>,
-    /// 这一窗的上传改走后端链路分块写了 ⇒ 为什么（传输台原话；出声一次，之后不再问 SFTP）。
+    /// 这一窗的上传改走过后端链路分块写 ⇒ 为什么（传输台原话；跟着每一摞的那一行说一句）。
     via_backend: Option<String>,
-    /// 开过单的暂存件键（[`DropBoard::note_staged`]）。
-    staged: Vec<String>,
-    /// 同名那张表里「那台」那一格：名字 → (大小, 修改时间)，探「在不在」那一趟顺手记下（[`DropBoard::note_there`]）。
-    there: std::collections::HashMap<String, (Option<u64>, Option<String>)>,
-    /// 这一摞一共几件（「不重名的 n 个照传」那一句要它）。
-    total: usize,
 }
 
 impl DropBoard {
-    /// 摆出问题，并交出「答复送哪儿」那一头。
-    pub fn ask(&self, items: Vec<Pending>) -> tokio::sync::oneshot::Receiver<Vec<Pending>> {
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        {
-            let mut b = self.inner.lock().unwrap();
-            b.ticks = vec![true; items.len()]; // 缺省勾上：用户拖过来就是想传
-            b.asking = items;
-            b.answer = Some(tx);
-        }
-        self.poke(); // 问题要立刻画出来，别等下一次鼠标动
-        rx
-    }
-
-    pub fn is_asking(&self) -> bool {
-        !self.inner.lock().unwrap().asking.is_empty()
-    }
-
-    /// 这一摞一共几件（摆问题之前交来）。
-    pub fn set_total(&self, n: usize) {
-        self.inner.lock().unwrap().total = n;
-    }
-
-    /// 探「在不在」那一趟在那台看到的大小与修改时间（同名那张表「那台」那一格）。
-    pub fn note_there(&self, name: &str, size: Option<u64>, mtime: Option<String>) {
-        self.inner
-            .lock()
-            .unwrap()
-            .there
-            .insert(name.to_string(), (size, mtime));
-    }
-
-    /// 「取消整批」：一件都不传（不重名的也不传）—— 按下这一摞的「停」，再答「都不覆盖」。
-    pub fn settle_cancel(&self) -> bool {
-        self.desk.request();
-        self.settle(false)
-    }
-
     /// 这一摞的取消台。**同一份**（`CancelDesk` 内部全是 `Arc`）。
     pub fn cancels(&self) -> CancelDesk {
         self.desk.clone()
@@ -764,7 +728,7 @@ impl DropBoard {
             .count()
     }
 
-    /// 这一窗的上传是不是已经改走后端链路（`Some(为什么)`）。
+    /// 这一窗的上传改走过后端链路（`Some(为什么)`）。
     pub fn via_backend(&self) -> Option<String> {
         self.inner.lock().unwrap().via_backend.clone()
     }
@@ -786,26 +750,7 @@ impl DropBoard {
             .map(|(_, g, t)| (*g, *t))
     }
 
-    /// 记一份开过单的暂存件键（SFTP 那条路）。
-    pub fn note_staged(&self, key: &str) {
-        self.inner.lock().unwrap().staged.push(key.to_string());
-    }
-
-    /// 开过单的暂存件键（跨机复制半路失败时逐个删掉）；取走即清。
-    pub fn take_staged(&self) -> Vec<String> {
-        std::mem::take(&mut self.inner.lock().unwrap().staged)
-    }
-
-    /// 换一台目标机器之前：记着的 home / 改走后端链路那一句 / 暂存件键 / 进度都清掉（它们说的是上一台）。
-    pub fn reset_target(&self) {
-        let mut b = self.inner.lock().unwrap();
-        b.backend_home = None;
-        b.via_backend = None;
-        b.staged.clear();
-        b.progress.clear();
-    }
-
-    /// 那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比，照旧走 SFTP）。
+    /// 那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比）。
     pub async fn backend_home(
         &self,
         line: &super::source::Line,
@@ -828,132 +773,6 @@ impl DropBoard {
 
     pub fn last(&self) -> Option<DropOutcome> {
         self.inner.lock().unwrap().last.clone()
-    }
-
-    /// 人点了「确认」/「全部不覆盖」—— 把答复送出去，问题收掉。
-    ///
-    /// 回值 = 真的送出去了（重复点第二下不会送第二次；`oneshot` 也只收一次）。
-    pub fn settle(&self, overwrite: bool) -> bool {
-        let mut b = self.inner.lock().unwrap();
-        let Some(tx) = b.answer.take() else {
-            return false;
-        };
-        let allowed: Vec<Pending> = if overwrite {
-            b.asking
-                .iter()
-                .zip(b.ticks.iter())
-                .filter(|(_, t)| **t)
-                .map(|(p, _)| p.clone())
-                .collect()
-        } else {
-            Vec::new()
-        };
-        b.asking.clear();
-        b.ticks.clear();
-        drop(b);
-        tx.send(allowed).is_ok()
-    }
-
-    /// 画同名覆盖那一问（kit 的对话框，稿 12）：标题「同名 2 · devbox」· 一张表（☐ 名字 · 本机 · 那台，各写大小 · 时间）·
-    /// 「勾选的覆盖 · 未勾的跳过 · 不重名的 n 个照传」· ［取消整批］［全部跳过］（焦点）［覆盖勾选的 n 个］（危险）。
-    /// 进度、停与结局不在这里画：这一趟是窗口底部「进度」表里的一行（`super::progress`）。
-    pub fn ui(&self, ui: &mut egui::Ui, machine: &str) {
-        let (asking, mut ticks, there, total) = {
-            let b = self.inner.lock().unwrap();
-            (b.asking.clone(), b.ticks.clone(), b.there.clone(), b.total)
-        };
-        if asking.is_empty() {
-            return;
-        }
-        // 修改时间那一段：「这台」是这台盘上的文件（这台的钟排）；「那台」照抄那台后端写好的 `mtime_text`。
-        let side = |size: Option<u64>, when: Option<String>| {
-            let size = size.map(copy_core::size_text);
-            [size, when]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(&copy_text("rsFilewinRows.tip.sep", &[]))
-        };
-        let rows: Vec<super::kit::ClashRow> = asking
-            .iter()
-            .map(|p| {
-                let local = std::fs::metadata(&p.local_path).ok();
-                let here = side(
-                    local.as_ref().map(std::fs::Metadata::len),
-                    local
-                        .as_ref()
-                        .and_then(|m| m.modified().ok())
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| super::source::mtime_text(d.as_secs()).short),
-                );
-                let (sz, mt) = there.get(&p.name).cloned().unwrap_or((None, None));
-                super::kit::ClashRow {
-                    name: p.name.clone(),
-                    here,
-                    there: side(sz, mt),
-                }
-            })
-            .collect();
-        let n_on = ticks.iter().filter(|t| **t).count();
-        let others = total.saturating_sub(asking.len());
-        let mut changed = false;
-        let title = copy_text(
-            "rsFilewinTransfer.ui.askOverwrite",
-            &[("n", &asking.len().to_string()), ("machine", machine)],
-        );
-        let hit = super::kit::dialog(
-            ui.ctx(),
-            "filewin-overwrite",
-            &title,
-            |ui| {
-                let here = copy_text("rsFilewinTransfer.ui.here", &[]);
-                let name = copy_text("rsFilewinTransfer.ui.name", &[]);
-                changed = super::kit::clash_table(ui, [&name, &here, machine], &rows, &mut ticks);
-                ui.add_space(10.0);
-                let p = super::theme::palette(ui.ctx());
-                ui.label(
-                    egui::RichText::new(copy_text(
-                        "rsFilewinTransfer.ui.askOnce",
-                        &[("n", &others.to_string())],
-                    ))
-                    .color(p.text2),
-                );
-            },
-            &[
-                (
-                    copy_text("rsFilewinTransfer.ui.cancelAll", &[]),
-                    super::kit::Btn::Plain,
-                ),
-                (
-                    copy_text("rsFilewinTransfer.ui.overwriteNone", &[]),
-                    super::kit::Btn::Plain,
-                ),
-                (
-                    copy_text(
-                        "rsFilewinTransfer.ui.overwriteChecked",
-                        &[("n", &n_on.to_string())],
-                    ),
-                    super::kit::Btn::Danger,
-                ),
-            ],
-            1,
-            0,
-        );
-        if changed {
-            self.inner.lock().unwrap().ticks = ticks;
-        }
-        match hit {
-            Some(0) => {
-                self.settle_cancel();
-            }
-            Some(1) => {
-                self.settle(false);
-            }
-            Some(_) => {
-                self.settle(true);
-            }
-            None => {}
-        }
     }
 }
 

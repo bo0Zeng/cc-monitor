@@ -1182,17 +1182,11 @@ fn each_layer_of_a_channel_failure_says_something_different() {
 }
 
 /// 🔴 **那台送来的文件时间窗口不换算**：生产代码里叫本机钟的 [`mtime_text`] 的地方 == 下面这张登记表（逐文件计数，两向）。
-/// 登记的四处都是**这台自己的事**：断线于（`chrome.rs`）· 一件传输收尾于（`progress.rs`）· 保存于（`shell.rs`）·
-/// 上传撞名表「这台」那一格（`transfer.rs`，这台盘上的文件）。列表 · 搜索结果 · 属性 · 预览 · 撞名表「那台」那一格照抄后端写好的字，
-/// 谁把它们改回 `mtime_text(…)`，这里多出一处就红。
+/// 登记的三处都是**这台窗口自己记下的时刻**：断线于（`chrome.rs`）· 一件传输收尾于（`progress.rs`）· 保存于（`shell.rs`）。
+/// 列表 · 搜索结果 · 属性 · 预览 · 同名冲突框两头的时刻照抄后端写好的字，谁把它们改回 `mtime_text(…)`，这里多出一处就红。
 #[test]
 fn only_this_machines_own_moments_go_through_the_local_clock() {
-    const REGISTERED: &[(&str, usize)] = &[
-        ("chrome.rs", 1),
-        ("progress.rs", 1),
-        ("shell.rs", 1),
-        ("transfer.rs", 1),
-    ];
+    const REGISTERED: &[(&str, usize)] = &[("chrome.rs", 1), ("progress.rs", 1), ("shell.rs", 1)];
     let mut got: Vec<(String, usize)> =
         guard_core::scan_tree_excluding(&crate::guard_support::crate_src_root(), &["rs"], &[])
             .into_iter()
@@ -1392,7 +1386,7 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     for p in [&plain, &lossy] {
         let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, SortBy::default()).await;
         let _ = crate::size::size_remote(&line, &o, &p.path(), "n").await;
-        let _ = crate::transfer::stat_remote_at(&line, &o, p.path()).await;
+        let _ = crate::transfer::probe_remote_at(&line, &o, p.path()).await;
         let _ = crate::editor::read_text_at(&line, &o, p).await;
     }
     let board = crate::find::SearchBoard::default();

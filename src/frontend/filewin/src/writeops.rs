@@ -37,7 +37,7 @@
 //! | 一格通道预算（`6 − 4 = 2` 格永远留给浏览） | 那条不变量被拆成两份互不知情的预算 |
 //! | 池里那条连接 | 同一台远端被拨第二条 SSH（`super` 头注那一节） |
 //!
-//! # 🔴 三、两段（原来三段）的顺序**就是 [`run_writes`] 的结构** —— 照 [`super::transfer::run_drop`] 办
+//! # 🔴 三、两段（原来三段）的顺序**就是 [`run_writes`] 的结构**
 //!
 //! ```text
 //! ① confirm  —— 要动的那几件**一次**交给人（`FnOnce` ⇒ 一半由编译器守）
@@ -46,13 +46,12 @@
 //!
 //! 原来排在最前面的「① fence —— 围栏（本地、不过网）」那一段删了（理由住本模块头注 FN1 那一节）。
 //!
-//! ⚠ `confirm` 回来的那一摞由 `ops.iter().filter(|o| allowed.contains(o))` 过一遍
-//! （同 `run_drop` 那一行）⇒ **它没法凭空塞进一件调用方没交给它的操作**：
+//! ⚠ `confirm` 回来的那一摞由 `ops.iter().filter(|o| allowed.contains(o))` 过一遍 ⇒ **它没法凭空塞进一件调用方没交给它的操作**：
 //! 回值只起「准不准」的作用，不起「做什么」的作用。
 //!
-//! ## 为什么 ③ 是**串行**的（与 `run_drop` 刻意不同形）
+//! ## 为什么 ③ 是**串行**的（与上传那一路刻意不同形）
 //!
-//! `run_drop` 并行是因为传输走的是那 **4 条车道**，串行只用得到 1 条。
+//! 上传那一路（[`super::transfer::run_drop`]）并行是因为传输走的是那 **4 条车道**，串行只用得到 1 条。
 //! 而这四条命令走的是 `with_sftp`，吃的是**通道预算**（`SESSION_CHANNEL_CAP`）——
 //! 一次并发起 N 件小写操作，会把那句「2 格永远留给浏览」吃掉，
 //! 而换来的只是几个 packet 的延迟。⇒ **串行，并把理由写在这儿**。
@@ -67,7 +66,7 @@
 //! | 改名 | 不问 | 目标已存在时由服务端拒（SFTP 的 `RENAME` 不覆盖）；而且它**可逆** |
 //!
 //! ⚠ 「问过了」与「没问」在类型上分得开：`confirm` 是 `FnOnce`
-//! ⇒ **不许被调第二次**，这一半由编译器守（同 `run_drop` 的先例）。
+//! ⇒ **不许被调第二次**，这一半由编译器守。
 //!
 //! # ⚠ 这一刀**买不到**什么（逐条写明，别读宽）
 //!
@@ -250,24 +249,24 @@ pub struct WriteOutcome {
 ///
 /// - `confirm`：**一次**拿到「要问的那几件」，回「这几件准做」。⚠ 它是 `FnOnce`
 ///   —— 类型上就不许被调第二次，「一次问完」这件事有一半是编译器在守。
-/// - `apply`：真做一件。
+/// - `apply`：真做准做的那一摞（同一种的一组一条命令，[`apply_all`]），交回逐件的成败。
 ///
-/// ⚠ **不用问的那几件也要等这一次问完**。那是刻意的，同 [`super::transfer::run_drop`]：
+/// ⚠ **不用问的那几件也要等这一次问完**。那是刻意的：
 /// 若把它们先放出去，用户答「全都别做」时已经有几件写到对面盘上了 ——
 /// 「先问完再动手」就只剩一半。
 pub async fn run_writes<C, CFut, A, AFut>(ops: Vec<WriteOp>, confirm: C, apply: A) -> WriteOutcome
 where
     C: FnOnce(Vec<WriteOp>) -> CFut,
     CFut: Future<Output = Vec<WriteOp>>,
-    A: Fn(WriteOp) -> AFut,
-    AFut: Future<Output = Result<(), super::source::Failed>>,
+    A: FnOnce(Vec<WriteOp>) -> AFut,
+    AFut: Future<Output = Vec<(WriteOp, Result<(), super::source::Failed>)>>,
 {
     let mut out = WriteOutcome::default();
     if ops.is_empty() {
         return out;
     }
     // ── ① 一次问完 ────────────────────────────────────────────────────
-    //    没有要问的就**不问** —— 弹一个空框是噪音，不是慎重（同 `run_drop`）。
+    //    没有要问的就**不问** —— 弹一个空框是噪音，不是慎重。
     // 这一段之前原来还有「围栏（本地、不过网）」一段，删了。
     let asking: Vec<WriteOp> = ops.iter().filter(|o| o.needs_confirm()).cloned().collect();
     out.asked = asking.len();
@@ -279,7 +278,7 @@ where
 
     // 准做的那一摞 = 不用问的全部 ＋ 人点了「做」的那几件。
     //
-    // 🔴 `allowed.contains(o)` 这一行是**承重的**（同 `run_drop` 那一行）：
+    // 🔴 `allowed.contains(o)` 这一行是**承重的**：
     //    回值只起「准不准」的作用 ⇒ `confirm` 没法凭空塞进一件调用方**没交给它**的操作。
     let go: Vec<WriteOp> = ops
         .into_iter()
@@ -287,9 +286,9 @@ where
         .collect();
     out.skipped = out.asked - go.iter().filter(|o| o.needs_confirm()).count();
 
-    // ── ② 才动手。**串行**，理由住本模块头注 §三那一段。 ──────────────────
-    for op in go {
-        match apply(op.clone()).await {
+    // ── ② 才动手：准做的那一摞一次交出去（删除 · 改权限一组一条命令；新建 · 改名一件一条）。 ──
+    for (op, r) in apply(go).await {
+        match r {
             Ok(()) => out.ok += 1,
             Err(e) => out.failed.push((op.label(), e)),
         }
@@ -357,10 +356,10 @@ pub async fn apply_typed(
 pub enum Applied {
     /// 新建目录 · 改名：落点。
     Path(cmd_wire::files::FilesPathReply),
-    /// 删（整棵树时是最后那一趟）。
-    Deleted(cmd_wire::files::FilesDeleteReply),
-    /// 改权限。
-    Chmod(cmd_wire::files::FilesChmodReply),
+    /// 删（`files-delete` 一组一项的那一项）。
+    Deleted(cmd_wire::batch::BatchOutcome),
+    /// 改权限（同上；`before` 撤销用）。
+    Chmod(cmd_wire::batch::BatchOutcome),
 }
 
 /// 尾段：有损名发原始字节，否则发那一串。
@@ -413,23 +412,21 @@ async fn apply_named(
             };
             ask_typed(line, origin, &req, t).await.map(Applied::Path)
         }
-        // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析）；文件 ⇒ 不带（射程同此前）。
-        // 删一整棵树：一趟一段（`limit`），`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
-        // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。
+        // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析、按段删）；文件 ⇒ 不带（射程同此前）。
+        // 一组一项（`files-delete` 收一组）。
         WriteOp::Delete { path, is_dir, raw } => {
             let req = w::FilesDeleteReq {
                 root: root(parent_dir(path)),
-                rel: rel_wire(remote_basename(path), raw.as_deref()),
-                recursive: is_dir.then_some(true),
-                expect: None,
-                limit: is_dir.then_some(TREE_SLICE),
+                items: vec![w::DeleteItem {
+                    rel: rel_wire(remote_basename(path), raw.as_deref()),
+                    recursive: is_dir.then_some(true),
+                    expect: None,
+                }],
+                ticket: None,
             };
-            loop {
-                let d = ask_typed(line, origin, &req, t).await?;
-                if d.remaining == 0 {
-                    return Ok(Applied::Deleted(d));
-                }
-            }
+            super::source::ask_one(line, origin, &req, t)
+                .await
+                .map(Applied::Deleted)
         }
         WriteOp::Rename { from, to, raw } => {
             let dir = parent_dir(from);
@@ -455,11 +452,157 @@ async fn apply_named(
         WriteOp::Chmod { path, mode, raw } => {
             let req = w::FilesChmodReq {
                 root: root(parent_dir(path)),
-                rel: rel_wire(remote_basename(path), raw.as_deref()),
+                items: vec![w::ChmodItem {
+                    rel: rel_wire(remote_basename(path), raw.as_deref()),
+                }],
                 mode: *mode,
+                ticket: None,
             };
-            ask_typed(line, origin, &req, t).await.map(Applied::Chmod)
+            super::source::ask_one(line, origin, &req, t)
+                .await
+                .map(Applied::Chmod)
         }
+    }
+}
+
+/// 真做准做的那一摞：删除 · 改权限按同一个根（同一个权限位）收成一组一条命令（带票：做到一半断了带同一张票再问，
+/// 删一整棵树也撤得了 —— 有目录要删 ⇒ 「进度」里一行，那一行的「停」发 `files-batch-stop`）；新建 · 改名一件一条。
+/// 交回逐件的成败与那一件的应答（改权限的 `before` 撤销要用）。
+pub async fn apply_all(
+    line: &Line,
+    origin: &Origin,
+    ops: Vec<WriteOp>,
+    root_raw: Option<&[u8]>,
+    progress: &super::progress::Progress,
+    dir: &str,
+    machine: &str,
+) -> Vec<(WriteOp, Result<Applied, super::source::Failed>)> {
+    use cmd_wire::files as w;
+    let root = |shown: String| match root_raw {
+        Some(r) => w::WirePath(r.to_vec()),
+        None => w::WirePath::from(shown.as_str()),
+    };
+    let mut out = Vec::with_capacity(ops.len());
+    // 一组：(动词, 根, 权限位) ⇒ 那几件。
+    let mut groups: Vec<((super::batch::Verb, String, u32), Vec<WriteOp>)> = Vec::new();
+    for op in ops {
+        let key = match &op {
+            WriteOp::Delete { path, .. } => (super::batch::Verb::Delete, parent_dir(path), 0),
+            WriteOp::Chmod { path, mode, .. } => {
+                (super::batch::Verb::Chmod, parent_dir(path), *mode)
+            }
+            _ => {
+                let r = apply_named(line, origin, &op, root_raw, None).await;
+                out.push((op, r));
+                continue;
+            }
+        };
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, v)) => v.push(op),
+            None => groups.push((key, vec![op])),
+        }
+    }
+    for ((verb, at, mode), group) in groups {
+        let names: Vec<String> = group
+            .iter()
+            .map(|op| match op {
+                WriteOp::Delete { path, .. } | WriteOp::Chmod { path, .. } => {
+                    remote_basename(path).to_string()
+                }
+                _ => String::new(),
+            })
+            .collect();
+        let rel = |op: &WriteOp| match op {
+            WriteOp::Delete { path, raw, .. } | WriteOp::Chmod { path, raw, .. } => {
+                rel_wire(remote_basename(path), raw.as_deref())
+            }
+            _ => w::WirePath(Vec::new()),
+        };
+        let (cmd, args, tree) = match verb {
+            super::batch::Verb::Delete => {
+                let req = w::FilesDeleteReq {
+                    root: root(at),
+                    items: group
+                        .iter()
+                        .map(|op| w::DeleteItem {
+                            rel: rel(op),
+                            recursive: matches!(op, WriteOp::Delete { is_dir: true, .. })
+                                .then_some(true),
+                            expect: None,
+                        })
+                        .collect(),
+                    ticket: None,
+                };
+                let tree = req.items.iter().any(|i| i.recursive == Some(true));
+                ("files-delete", serde_json::to_value(&req), tree)
+            }
+            _ => {
+                let req = w::FilesChmodReq {
+                    root: root(at),
+                    items: group
+                        .iter()
+                        .map(|op| w::ChmodItem { rel: rel(op) })
+                        .collect(),
+                    mode,
+                    ticket: None,
+                };
+                ("files-chmod", serde_json::to_value(&req), false)
+            }
+        };
+        let board = super::batch::BatchBoard::new(super::batch::Plan {
+            verb,
+            cmd,
+            args: args.unwrap_or_default(),
+            names,
+            into: None,
+            machine: machine.to_string(),
+        });
+        if tree {
+            progress.add(
+                super::progress::Trip::Batch {
+                    board: board.clone(),
+                    icon: egui_phosphor::regular::TRASH,
+                },
+                Some(dir.to_string()),
+                None,
+            );
+        }
+        super::batch::go(line.clone(), origin.clone(), origin.clone(), board.clone()).await;
+        let phase = board.phase();
+        for (i, op) in group.into_iter().enumerate() {
+            let r = match &phase {
+                super::batch::Phase::Ended(reply) => {
+                    match reply.outcomes.iter().find(|o| o.key == i.to_string()) {
+                        Some(o) if o.state == cmd_wire::batch::ItemState::Done => Ok(match verb {
+                            super::batch::Verb::Chmod => Applied::Chmod(o.clone()),
+                            _ => Applied::Deleted(o.clone()),
+                        }),
+                        Some(o) => Err(super::source::one_of(only_one(reply, o))
+                            .err()
+                            .unwrap_or_default()),
+                        None => Err(super::source::Failed::from(reply.said.clone())),
+                    }
+                }
+                super::batch::Phase::Failed(f) => Err(f.clone()),
+                _ => Err(super::source::Failed::from(copy_text(
+                    "rsFilewinSource.said.cancelled",
+                    &[],
+                ))),
+            };
+            out.push((op, r));
+        }
+    }
+    out
+}
+
+/// 一组里没成的那一项 ⇒ 只有它的那一份回包（借 [`super::source::one_of`] 拆出码 · 那一句 · 详情）。
+fn only_one(
+    reply: &cmd_wire::batch::BatchReply,
+    o: &cmd_wire::batch::BatchOutcome,
+) -> cmd_wire::batch::BatchReply {
+    cmd_wire::batch::BatchReply {
+        outcomes: vec![o.clone()],
+        said: reply.said.clone(),
     }
 }
 
@@ -474,10 +617,6 @@ pub fn budget_for(op: &WriteOp) -> std::time::Duration {
 /// 删一整棵树的往返上限。后端那一趟在阻塞档（开跑之后打不断），上限十万条、
 /// 每条两次路径解析 ⇒ 给它比单件写宽一档的等待；**这个数只管「窗口等多久」**，不管后端跑多久。
 pub const TREE_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
-
-/// 删一整棵树时一趟让后端删几条（删够了停在两条之间、回还剩几条）：列一遍剩下的树 ＋ 删这一段
-/// 要落在一趟的等待（[`TREE_BUDGET`]）里；后端不看钟，一趟多大由这一侧定。
-pub const TREE_SLICE: u64 = 10_000;
 
 /// 删这一行的那一件（有损名带着原始字节）。窗口上「删除」那一跳（单删 · 批量删）只经这一处拼。
 pub fn delete_op(r: &Listed) -> WriteOp {
@@ -941,7 +1080,7 @@ fn low12(m: Option<u32>) -> Option<u32> {
     m.filter(|m| *m <= 0o7777)
 }
 
-/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote`] 那一问、同一个期限），按入参顺序交回。
+/// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote_at`] 那一问、同一个期限），按入参顺序交回。
 pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {

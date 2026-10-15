@@ -25,6 +25,8 @@ pub enum PickKind {
     OpenFiles,
     /// 下载：选一个保存位置（带着建议的文件名）。
     SaveFile { suggested_name: String },
+    /// 下载多项：选一个本机目录（缺省落在系统的「下载」文件夹）。
+    Folder,
 }
 
 /// 这一趟为谁选（结局落回哪一问）。
@@ -32,6 +34,8 @@ pub enum PickKind {
 pub enum Purpose {
     Upload,
     Download,
+    /// 下载多项（选目录）。
+    DownloadMany,
 }
 
 pub type PickFuture = Pin<Box<dyn Future<Output = Option<Vec<PathBuf>>> + Send>>;
@@ -58,6 +62,13 @@ impl Picker for NativePicker {
                     })
                     .set_file_name(suggested_name)
                     .save_file()
+                    .await
+                    .map(|h| vec![h.path().to_path_buf()]),
+                PickKind::Folder => downloads_dir()
+                    .map_or_else(rfd::AsyncFileDialog::new, |d| {
+                        rfd::AsyncFileDialog::new().set_directory(d)
+                    })
+                    .pick_folder()
                     .await
                     .map(|h| vec![h.path().to_path_buf()]),
             }

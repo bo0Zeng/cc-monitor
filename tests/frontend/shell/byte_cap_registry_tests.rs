@@ -100,10 +100,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**标志位**不是体量：同一道耳朵在记录根还不在时、在它最近一个已在的祖先上订的那几种（新建 · 移入 · 只认目录，`platform/writers/linux.rs`）。",
     ),
     (
-        "TREE_SLICE",
-        "**条数**不是字节：文件窗口删一整棵树时一趟让后端至多删几条（`filewin/writeops.rs`）；删够了后端停在两条之间、回还剩几条，窗口接着发下一趟，不限任何读写的体量。",
-    ),
-    (
         "MAX_OPERATIONS",
         "**操作数**不是字节：轮换策略一判在沙箱里至多走多少步（`accounts/quota/strategy/mod.rs`，20 万）；超了这一判照内置策略 1 排，不限任何读写的体量。",
     ),
@@ -219,11 +215,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "PULL_CHUNK",
         "**步长**不是上限：非 UTF-8 名的下载每一块向那台后端要多少原始字节（`filewin/lossy_pull.rs`，== 后端 \
              `READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。它不限整份多大（一块一块读到 `eof`）、不截任何东西。",
-    ),
-    (
-        "STAGING_MODE",
-        "**权限位**不是体量：文件窗口经那台后端自建暂存区时收成的 unix 权限（0o700，与后端 `PRIVATE_DIR_MODE` 同值），\
-             不限任何字节总量、不截任何东西。",
     ),
     (
         "OWN_FILE_MODE",

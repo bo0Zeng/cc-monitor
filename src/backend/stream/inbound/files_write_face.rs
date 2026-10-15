@@ -6,6 +6,7 @@
 use crate::platform::fs::Face;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, codes, Codes, Command};
+use cmd_wire::batch::{BatchReply, Conflicts, FilesBatchStopReply, FilesBatchStopReq};
 use cmd_wire::files as wire;
 
 /// 写的那几条共用：问本体，失败收进这一条的码表（原话跟着那一句走）。
@@ -159,26 +160,20 @@ impl crate::wire::typed::Handle for FilesRename {
 }
 
 codes! {
-    /// `files-delete` 的码。
+    /// `files-delete` 的码（一项没成不是整组没成：那一项的码在它的结局里）。
     pub(crate) enum FilesDeleteErr {
         /// 目标根是空的。
         BadPath = "bad_path",
-        /// 盘上这一步没成。
-        IoFailed = "io_failed",
-        /// 路径解析拒了。
-        Refused = "refused",
-        /// 盘上那一份跟读到的不一样了（一个字节没动）。
-        Stale = "stale",
     }
 }
 
-/// `files-delete`：删一个文件或一个空目录。
+/// `files-delete`：删一组（文件 · 空目录 · 显式递归的整棵）。
 pub(crate) struct FilesDelete;
 
 impl Command for FilesDelete {
     const NAME: &'static str = "files-delete";
     type Req = wire::FilesDeleteReq;
-    type Reply = wire::FilesDeleteReply;
+    type Reply = BatchReply;
     type Err = FilesDeleteErr;
 }
 
@@ -187,7 +182,7 @@ impl crate::wire::typed::Handle for FilesDelete {
     fn run(
         req: wire::FilesDeleteReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::FilesDeleteReply, FilesDeleteErr>> + Send + 'static
+    ) -> impl std::future::Future<Output = Result<BatchReply, FilesDeleteErr>> + Send + 'static
     {
         let (_cx, needs) = cx.split();
         async move {
@@ -199,26 +194,22 @@ impl crate::wire::typed::Handle for FilesDelete {
 }
 
 codes! {
-    /// `files-chmod` 的码。
+    /// `files-chmod` 的码（同 `files-delete`：一项的码在它的结局里）。
     pub(crate) enum FilesChmodErr {
         /// 目标根是空的。
         BadPath = "bad_path",
-        /// 盘上这一步没成。
-        IoFailed = "io_failed",
-        /// 这个平台没有 unix 权限位。
+        /// 这个平台没有 unix 权限位：一组里每一项都回它（那一项的结局里），整条不回 —— 登记在这里，平台那一维照它现推。
         NoUnixMode = "no_unix_mode",
-        /// 路径解析拒了 · 超出低 12 位。
-        Refused = "refused",
     }
 }
 
-/// `files-chmod`：改 unix 权限位。
+/// `files-chmod`：一组改成同一个 unix 权限位。
 pub(crate) struct FilesChmod;
 
 impl Command for FilesChmod {
     const NAME: &'static str = "files-chmod";
     type Req = wire::FilesChmodReq;
-    type Reply = wire::FilesChmodReply;
+    type Reply = BatchReply;
     type Err = FilesChmodErr;
 }
 
@@ -227,8 +218,7 @@ impl crate::wire::typed::Handle for FilesChmod {
     fn run(
         req: wire::FilesChmodReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::FilesChmodReply, FilesChmodErr>> + Send + 'static
-    {
+    ) -> impl std::future::Future<Output = Result<BatchReply, FilesChmodErr>> + Send + 'static {
         let (_cx, needs) = cx.split();
         async move {
             let face = &needs;
@@ -239,24 +229,22 @@ impl crate::wire::typed::Handle for FilesChmod {
 }
 
 codes! {
-    /// `files-copy` 的码。
+    /// `files-copy` 的码（同 `files-delete`：一项的码在它的结局里）。
     pub(crate) enum FilesCopyErr {
         /// 目标根是空的。
         BadPath = "bad_path",
-        /// 盘上这一步没成。
-        IoFailed = "io_failed",
-        /// 路径解析拒了 · 目标已在。
-        Refused = "refused",
+        /// 有同名的、还没答怎么办（一项都没做）：`data` 是同名清单。
+        Exists = "exists" => Conflicts,
     }
 }
 
-/// `files-copy`：同根内复制一份普通文件。
+/// `files-copy`：同根内复制一组。
 pub(crate) struct FilesCopy;
 
 impl Command for FilesCopy {
     const NAME: &'static str = "files-copy";
     type Req = wire::FilesCopyReq;
-    type Reply = wire::FilesTreeReply;
+    type Reply = BatchReply;
     type Err = FilesCopyErr;
 }
 
@@ -265,14 +253,48 @@ impl crate::wire::typed::Handle for FilesCopy {
     fn run(
         req: wire::FilesCopyReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::FilesTreeReply, FilesCopyErr>> + Send + 'static
-    {
-        let (_cx, needs) = cx.split();
+    ) -> impl std::future::Future<Output = Result<BatchReply, FilesCopyErr>> + Send + 'static {
+        let (cx, needs) = cx.split();
         async move {
+            let cx = &cx;
             let face = &needs;
 
-            ask(req, face, FilesCopyErr::BadArgs)
+            use crate::control::files_batch::CopyRefused;
+            crate::control::files_batch::copy(face, req, &cx.tz).map_err(|e| match e {
+                CopyRefused::Clash(said, data) => FilesCopyErr::Exists(said, data),
+                CopyRefused::Fail(f) => typed::of_fail(
+                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    FilesCopyErr::BadArgs,
+                ),
+            })
         }
+    }
+}
+
+codes! {
+    /// `files-batch-stop` 的码。
+    pub(crate) enum FilesBatchStopErr {}
+}
+
+/// `files-batch-stop`：撤一组（做完手上那一项就停，剩下的回 `cancelled`）。
+pub(crate) struct FilesBatchStop;
+
+impl Command for FilesBatchStop {
+    const NAME: &'static str = "files-batch-stop";
+    type Req = FilesBatchStopReq;
+    type Reply = FilesBatchStopReply;
+    type Err = FilesBatchStopErr;
+}
+
+impl crate::wire::typed::Handle for FilesBatchStop {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: FilesBatchStopReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<FilesBatchStopReply, FilesBatchStopErr>> + Send + 'static
+    {
+        let stopping = crate::common::batch_book::stop(&req.ticket);
+        async move { Ok(FilesBatchStopReply { stopping }) }
     }
 }
 

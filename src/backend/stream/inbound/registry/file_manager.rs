@@ -72,14 +72,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
     typed::blocking::<crate::stream::inbound::files_write_face::FilesMkdir>("新建一个目录"),
     typed::blocking::<crate::stream::inbound::files_write_face::FilesRename>("改名 / 同根内移动"),
     typed::blocking::<crate::stream::inbound::files_write_face::FilesDelete>(
-        "删一个文件或一个空目录",
+        "删一组（文件 · 空目录 · 显式递归的整棵）",
     ),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesChmod>("改 unix 权限位"),
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesChmod>(
+        "一组改成同一个 unix 权限位",
+    ),
     // 写面第七条：同根内复制。与上面五条同住一个模块、
     //   同一扇门、同档（同步文件 I/O，取消不掉）。它**不给 `Face` 添动词**：由 `O_EXCL` 新建 ＋
     //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesCopy>(
-        "同根内复制一份普通文件",
+    typed::blocking::<crate::stream::inbound::files_write_face::FilesCopy>("同根内复制一组"),
+    // 撤一组（复制 · 删除 · 改权限那三条带票的那一组）：只立旗，不碰盘。
+    typed::asynchronous::<crate::stream::inbound::files_write_face::FilesBatchStop>(
+        "撤一组复制 · 删除 · 改权限",
     ),
     // 解压：处理器住
     //   `control/files_extract.rs`，写经 `Face`。阻塞档（同步读包 ＋ 落盘）。

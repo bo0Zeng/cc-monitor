@@ -2,9 +2,10 @@
 //! 表里的类型都住本包（[`crate::session`] · [`crate::files`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
 //! （后端判据按 TS 名对，[`reply_names`]）。表里没有的命令照原样交（回包类型还住后端那几族）。
 
+use crate::batch::BatchReply;
 use crate::files::{
-    FilesChmodReply, FilesDeleteReply, FilesPathBytesReply, FilesPathReply, FilesStageChunkReply,
-    FilesWrittenReply, LsReply, ReadChunkReply, ReadTextReply, StatReply,
+    FilesPathBytesReply, FilesPathReply, FilesStageChunkReply, FilesWrittenReply, LsReply,
+    ReadChunkReply, ReadTextReply, StatReply,
 };
 use crate::listing::HistoryListReply;
 use crate::needs::NeedsList;
@@ -50,10 +51,10 @@ macro_rules! replies {
 }
 
 replies! {
-    "files-chmod" => FilesChmodReply,
+    "files-chmod" => BatchReply,
     "files-commit-upload" => FilesPathBytesReply,
     "files-create" => FilesPathBytesReply,
-    "files-delete" => FilesDeleteReply,
+    "files-delete" => BatchReply,
     "files-home" => FilesPathReply,
     "files-ls" => LsReply,
     "files-mkdir" => FilesPathReply,

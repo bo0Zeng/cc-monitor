@@ -80,13 +80,20 @@ fn a_delete_expect_is_an_empty_dir_mark_or_bytes_and_nothing_else() {
 #[test]
 fn optional_write_flags_refuse_null_but_may_be_left_out() {
     let base = r#""root":"/r","rel":"a""#;
-    let ok: FilesDeleteReq = serde_json::from_str(&format!("{{{base}}}")).unwrap();
-    assert_eq!((ok.recursive, ok.expect, ok.limit), (None, None, None));
-    for k in ["recursive", "expect", "limit"] {
-        let s = format!("{{{base},\"{k}\":null}}");
+    let ok: DeleteItem = serde_json::from_str(r#"{"rel":"a"}"#).unwrap();
+    assert_eq!((ok.recursive, ok.expect), (None, None));
+    for k in ["recursive", "expect"] {
+        let s = format!("{{\"rel\":\"a\",\"{k}\":null}}");
         assert!(
-            serde_json::from_str::<FilesDeleteReq>(&s).is_err(),
+            serde_json::from_str::<DeleteItem>(&s).is_err(),
             "`{k}: null` 该拒（今天就拒）"
+        );
+    }
+    for k in ["ticket", "on_exists", "decide"] {
+        let s = format!("{{\"root\":\"/r\",\"items\":[],\"{k}\":null}}");
+        assert!(
+            serde_json::from_str::<FilesCopyReq>(&s).is_err(),
+            "`{k}: null` 该拒"
         );
     }
     // `single` 历来收 `null`（当没给）。

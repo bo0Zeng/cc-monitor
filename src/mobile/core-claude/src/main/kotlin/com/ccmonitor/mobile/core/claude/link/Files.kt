@@ -1,7 +1,8 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
+import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
-import com.ccmonitor.mobile.core.claude.link.wire.FilesDeleteReply
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LsReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadChunkReply
@@ -272,32 +273,28 @@ object FilesRename {
     ): Map<String, Any?> = mapOf("root" to dir.wire, "from" to from.wire, "to" to typed, "single" to true)
 }
 
-/** `files-delete`：删一个文件，或一整个目录（一段一段删，回还剩几条；没剩才算删完）。 */
+/** `files-delete`：删一项（交成一组里的一项）；目录连同里面全部（`recursive`）。回包是一组的结局（[Batch]）。 */
 object FilesDelete {
     const val COMMAND: String = "files-delete"
-
-    /** 删目录时一趟让那台删几条（同桌面）。 */
-    const val SLICE: Long = 10_000L
 
     fun args(
         dir: RemotePath,
         name: RemotePath,
         recursive: Boolean,
     ): Map<String, Any?> =
-        buildMap {
-            put("root", dir.wire)
-            put("rel", name.wire)
-            if (recursive) {
-                put("recursive", true)
-                put("limit", SLICE)
-            }
-        }
-
-    /** 还剩几条；解不出 ⇒ `null`。 */
-    fun remaining(data: Any?): Long? = Wire.bind<FilesDeleteReply>(data)?.remaining
+        mapOf(
+            "root" to dir.wire,
+            "items" to
+                listOf(
+                    buildMap {
+                        put("rel", name.wire)
+                        if (recursive) put("recursive", true)
+                    },
+                ),
+        )
 }
 
-/** `files-chmod`：改 unix 权限位。 */
+/** `files-chmod`：改 unix 权限位（交成一组里的一项）。回包是一组的结局（[Batch]）。 */
 object FilesChmod {
     const val COMMAND: String = "files-chmod"
 
@@ -305,7 +302,25 @@ object FilesChmod {
         dir: RemotePath,
         name: RemotePath,
         mode: Long,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "rel" to name.wire, "mode" to mode)
+    ): Map<String, Any?> = mapOf("root" to dir.wire, "items" to listOf(mapOf("rel" to name.wire)), "mode" to mode)
+}
+
+/** 一组的回包（手机只交一项）：那一项做完 ⇒ [Done]；没成 ⇒ [Refused] 带后端写的那一句与那一项的原话；解不出 ⇒ `null`。 */
+object Batch {
+    sealed interface Fate
+
+    data object Done : Fate
+
+    data class Refused(
+        val said: String,
+        val detail: String,
+    ) : Fate
+
+    fun fateOf(data: Any?): Fate? {
+        val r = Wire.bind<BatchReply>(data) ?: return null
+        val one = r.outcomes.singleOrNull() ?: return null
+        return if (one.state == BatchItemState.DONE) Done else Refused(r.said, one.detail.orEmpty())
+    }
 }
 
 /** `files-stage-chunk`：上传的一块进那台的暂存区（同一份上传同一个 `key`，`seq` 从 0 数）。 */

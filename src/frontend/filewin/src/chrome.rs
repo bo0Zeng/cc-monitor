@@ -437,6 +437,7 @@ impl FileWindow {
             .map(|g| {
                 g.into_iter()
                     .filter(|a| !skip.contains(a))
+                    .filter(|a| self.dual || *a != super::select::Action::Across)
                     .map(|a| {
                         let it = Item::Act(a);
                         (
@@ -699,14 +700,17 @@ impl FileWindow {
         };
         let picked = self.picked_rows();
         if !picked.is_empty() && !self.showing_hits() {
-            let bytes: u64 = picked.iter().filter(|r| !r.is_dir).map(|r| r.size).sum();
-            s.push_str(&copy_text(
-                "rsFilewinChrome.status.picked",
-                &[
-                    ("n", &picked.len().to_string()),
-                    ("size", &copy_core::size_text(bytes)),
-                ],
-            ));
+            let n = picked.len().to_string();
+            // 大小只在都是文件时写：目录要算大小才知道多大。
+            s.push_str(&if picked.iter().any(|r| r.is_dir) {
+                copy_text("rsFilewinChrome.status.pickedN", &[("n", &n)])
+            } else {
+                let bytes: u64 = picked.iter().map(|r| r.size).sum();
+                copy_text(
+                    "rsFilewinChrome.status.picked",
+                    &[("n", &n), ("size", &copy_core::size_text(bytes))],
+                )
+            });
         }
         s
     }

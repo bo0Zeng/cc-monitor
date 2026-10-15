@@ -449,17 +449,23 @@ fn what_can_be_done_matches_a_hand_written_table() {
             // 带着字节 ⇒ 编辑 / 复制 / 下载也放开（线上走字节；下载在远端按字节拷进暂存区再下，`lossy_pull.rs`）。
             text.clone(),
         ),
-        ("两项全可写", vec![&file, &dir], vec![Size, Chmod, Delete]),
+        // 有目录 ⇒ 下载灰着（下载只收文件）；跨机复制目录整棵逐个文件 ⇒ 给。
+        (
+            "两项全可写",
+            vec![&file, &dir],
+            vec![CrossCopy, Across, Size, Chmod, Delete],
+        ),
         (
             "三项全可写",
             vec![&file, &dir, &huge],
-            vec![Size, Chmod, Delete],
+            vec![CrossCopy, Across, Size, Chmod, Delete],
         ),
         ("两项混着有损名", vec![&file, &lossy], vec![]),
+        // 名字只有原始字节的那一项 ⇒ 跨机灰着（那一条按路径串寻址）。
         (
             "两项混着带字节的有损名",
             vec![&file, &lossy_raw],
-            vec![Size, Chmod, Delete],
+            vec![Download, Across, Size, Chmod, Delete],
         ),
     ];
     for (what, picked, want) in cases {
@@ -594,7 +600,11 @@ fn each_kind_of_selection_gets_exactly_the_groups_in_the_table() {
             "多选",
             vec![&dir, &code, &tgz],
             Picked::Many,
-            vec![vec![I(Size), I(Chmod)], vec![I(Delete)]],
+            vec![
+                vec![I(Download), I(CrossCopy), I(Across)],
+                vec![I(Size), I(Chmod)],
+                vec![I(Delete)],
+            ],
         ),
         (
             "多选混着读不出的",
@@ -764,4 +774,80 @@ fn a_link_to_a_directory_opens_and_a_link_to_a_file_edits() {
         got.contains(&Action::Edit) && !got.contains(&Action::Open),
         "{got:?}"
     );
+}
+
+/// 多选那一种的菜单照表：头一组「下载 n 项 · 复制 n 项到另一台… · 复制 n 项到另一栏」，再「算大小 · 改权限」，危险那一组「删除」在最后。
+#[test]
+fn the_many_menu_offers_download_cross_and_across_by_the_table() {
+    let rows = five();
+    let picked: Vec<&Listed> = vec![&rows[0], &rows[1], &rows[2]];
+    assert_eq!(picked_kind(&picked), Picked::Many);
+    let g = menu_groups(Picked::Many, false);
+    assert_eq!(
+        g,
+        vec![
+            vec![
+                Item::Act(Action::Download),
+                Item::Act(Action::CrossCopy),
+                Item::Act(Action::Across)
+            ],
+            vec![Item::Act(Action::Size), Item::Act(Action::Chmod)],
+            vec![Item::Act(Action::Delete)],
+        ]
+    );
+    assert_eq!(Action::Download.label(3), "下载 3 项");
+    assert_eq!(Action::CrossCopy.label(3), "复制 3 项到另一台…");
+    assert_eq!(Action::Across.label(3), "复制 3 项到另一栏");
+    let can = actions_for(&picked);
+    for a in [Action::Download, Action::CrossCopy, Action::Across] {
+        assert!(can.contains(&a), "{a:?} 没给");
+    }
+}
+
+/// 某一项不行 ⇒ 那一行灰着、悬停说哪几项为什么：目录不能下载（跨机复制目录可以，整棵逐个文件）；名字读不出的不能复制到另一台。
+#[test]
+fn a_many_item_that_cannot_go_is_greyed_naming_which_ones() {
+    let rows = five();
+    let with_dir: Vec<&Listed> = vec![&rows[0], &rows[3]];
+    let why = blocked(Action::Download, &with_dir).expect("有目录 ⇒ 下载灰着");
+    assert_eq!(
+        why,
+        copy_core::copy_text("rsFilewinSelect.why.dirDownload", &[("names", "dir")])
+    );
+    assert!(
+        blocked(Action::CrossCopy, &with_dir).is_none(),
+        "目录能复制到另一台"
+    );
+    assert!(!actions_for(&with_dir).contains(&Action::Download));
+    let mut lossy = row("q?", false, 1, true);
+    lossy.raw_name = Some(b"q\xff".to_vec());
+    let with_lossy: Vec<&Listed> = vec![&rows[0], &lossy];
+    assert_eq!(picked_kind(&with_lossy), Picked::Many);
+    let why = blocked(Action::CrossCopy, &with_lossy).expect("名字读不出 ⇒ 跨机灰着");
+    assert!(why.contains("q?"), "{why}");
+    assert!(blocked(Action::Download, &with_lossy).is_none());
+}
+
+/// 框选：框到的那几行选中；按着 Ctrl ⇒ 加进按下之前的选中；框里一行都没有 ⇒ 不按 Ctrl 时清空。
+#[test]
+fn a_band_picks_the_rows_it_covers_and_ctrl_adds_to_what_was_there() {
+    let rows = five();
+    let mut s = Selection::default();
+    s.click(&rows, 0, egui::Modifiers::NONE);
+    let base = s.clone();
+    s.band(&rows, &base, Some((2, 4)), false);
+    assert_eq!(s.names(), set(&["c.bin", "dir", "zeta.txt"]));
+    assert_eq!(s.cursor(), Some("zeta.txt"));
+    s.band(&rows, &base, Some((2, 3)), true);
+    assert_eq!(
+        s.names(),
+        set(&["a.txt", "c.bin", "dir"]),
+        "Ctrl 框 ⇒ 加进已选"
+    );
+    s.band(&rows, &base, None, false);
+    assert!(s.is_empty());
+    // 锚在框的第一行：之后 Shift 点从那里扩。
+    s.band(&rows, &base, Some((1, 2)), false);
+    s.click(&rows, 4, SHIFT);
+    assert_eq!(s.names(), set(&["B.log", "c.bin", "dir", "zeta.txt"]));
 }

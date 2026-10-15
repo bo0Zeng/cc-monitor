@@ -38,6 +38,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::Transfer { .. } => "transfer",
         InboundFrame::LiveCard(_) => "live_card",
         InboundFrame::Probe { .. } => "probe",
+        InboundFrame::FilesBatch { .. } => "files_batch",
         InboundFrame::TerminalScreen { .. } => "terminal_screen",
         InboundFrame::TerminalFollowEnd { .. } => "terminal_follow_end",
         InboundFrame::TurnEnd { .. } => "turn_end",

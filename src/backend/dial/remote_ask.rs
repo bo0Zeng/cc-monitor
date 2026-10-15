@@ -226,6 +226,28 @@ pub async fn ask_json(
         code: Some("unreachable".to_string()),
         message: unreachable_message(machine),
     })?;
+    ask_via(&r.dial, machine, cmd, args, tz, remote).await
+}
+
+/// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）。
+pub async fn ask_dialed(
+    dial: &Value,
+    cmd: &str,
+    args: &Value,
+    tz: &crate::Tz,
+    remote: &dyn Remote,
+) -> Result<Value, Said> {
+    ask_via(dial, &copy_core::peer_machine(), cmd, args, tz, remote).await
+}
+
+async fn ask_via(
+    dial: &Value,
+    machine: &str,
+    cmd: &str,
+    args: &Value,
+    tz: &crate::Tz,
+    remote: &dyn Remote,
+) -> Result<Value, Said> {
     let flag = crate::wire::cli_words::cli_flag(cmd);
     let zone = tz.iana_name();
     let mut argv = vec![flag.as_str(), crate::wire::cli_words::STDIN_LINE_FLAG];
@@ -234,7 +256,7 @@ pub async fn ask_json(
     }
     let line = command_line(&argv);
     let out = remote
-        .run_coded(&r.dial, line, Some(format!("{args}\n")))
+        .run_coded(dial, line, Some(format!("{args}\n")))
         .await
         .map_err(|s| match s.code.as_deref() {
             Some(UNKNOWN_COMMAND) => Said {

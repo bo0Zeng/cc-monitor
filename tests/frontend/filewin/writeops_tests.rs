@@ -41,6 +41,32 @@ fn row(name: &str, is_dir: bool, lossy: bool) -> Listed {
 }
 
 /// 一台**时序台架**（形状照 `copy_tests::Tape` 与 `transfer_tests::Tape`）。
+
+/// 逐件的那一形 ⇒ `run_writes` 收的整摞那一形（判据照旧一件一件答）。
+fn each<'a, F, Fut>(
+    f: F,
+) -> impl FnOnce(
+    Vec<WriteOp>,
+) -> futures::future::LocalBoxFuture<
+    'a,
+    Vec<(WriteOp, Result<(), super::super::source::Failed>)>,
+>
+where
+    F: Fn(WriteOp) -> Fut + 'a,
+    Fut: std::future::Future<Output = Result<(), super::super::source::Failed>> + 'a,
+{
+    move |ops| {
+        Box::pin(async move {
+            let mut v = Vec::with_capacity(ops.len());
+            for op in ops {
+                let r = f(op.clone()).await;
+                v.push((op, r));
+            }
+            v
+        })
+    }
+}
+
 #[derive(Default)]
 struct Tape {
     seq: AtomicUsize,
@@ -118,10 +144,10 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
             asked.fetch_add(a.len(), O::SeqCst);
             async move { a } // 全答「做」
         },
-        |op| {
+        each(|op| {
             applied.0.lock().unwrap().push(op);
             async move { Ok(()) }
-        },
+        }),
     )
     .await;
     assert_eq!(
@@ -239,13 +265,13 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
             *seen.lock().unwrap() = a.clone();
             async move { a } // 全答「做」
         },
-        |_op| {
+        each(|_op| {
             let t = &tape;
             async move {
                 t.mark("apply");
                 Ok::<(), crate::source::Failed>(())
             }
-        },
+        }),
     )
     .await;
 
@@ -289,11 +315,14 @@ async fn nothing_is_touched_when_the_answer_is_no() {
     };
     let out = run_writes(
         vec![del.clone(), mkdir.clone()],
-        |_| async move { Vec::new() }, // 「都别做」
-        |op| {
-            applied.0.lock().unwrap().push(op);
-            async move { Ok(()) }
-        },
+        |_| async move { Vec::new() },
+        each(
+            // 「都别做」
+            |op| {
+                applied.0.lock().unwrap().push(op);
+                async move { Ok(()) }
+            },
+        ),
     )
     .await;
     assert_eq!(
@@ -326,10 +355,10 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
             asked.fetch_add(1, O::SeqCst);
             async move { Vec::new() }
         },
-        |op| {
+        each(|op| {
             applied.0.lock().unwrap().push(op);
             async move { Ok(()) }
-        },
+        }),
     )
     .await;
     assert_eq!(asked.load(O::SeqCst), 0, "没有危险件却弹了一个框");
@@ -355,11 +384,14 @@ async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
             is_dir: false,
             raw: None,
         }],
-        move |_| async move { vec![smuggled] }, // 答复里换了一件别的
-        |op| {
-            applied.0.lock().unwrap().push(op);
-            async move { Ok(()) }
-        },
+        move |_| async move { vec![smuggled] },
+        each(
+            // 答复里换了一件别的
+            |op| {
+                applied.0.lock().unwrap().push(op);
+                async move { Ok(()) }
+            },
+        ),
     )
     .await;
     assert_eq!(
@@ -380,7 +412,7 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
             path: "/srv/data/m".into(),
         }],
         |a| async move { a },
-        |_| async move { Err("新建目录失败: permission denied".into()) },
+        each(|_| async move { Err("新建目录失败: permission denied".into()) }),
     )
     .await;
     assert_eq!(out.ok, 0);
@@ -403,7 +435,7 @@ async fn an_empty_batch_does_nothing_at_all() {
             asked.fetch_add(1, O::SeqCst);
             async move { Vec::new() }
         },
-        |_| async move { Ok(()) },
+        each(|_| async move { Ok(()) }),
     )
     .await;
     assert_eq!(out, WriteOutcome::default());
@@ -747,9 +779,9 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let want = vec![
         serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录" } }),
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": "x.bin" } }),
+        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "x.bin" }] } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin" } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "rel": "y.bin", "mode": 0o640 } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": 0o640 } }),
     ];
     assert_eq!(got, want, "线上那四行与期望不等");
     // 改名跨目录 ⇒ 当场拒，一个字节不发（写面只有一个 `root`）。
@@ -819,10 +851,10 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let b16 = serde_json::json!({ "b16": "636166e92e747874" });
     let want = vec![
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": "build", "recursive": true, "limit": crate::writeops::TREE_SLICE } }),
-        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "rel": b16 } }),
+        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "build", "recursive": true }] } }),
+        serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": b16 }] } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt" } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "rel": b16, "mode": 0o600 } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": 0o600 } }),
     ];
     assert_eq!(got, want, "线上那几行与期望不等");
     // 往返上限：删目录那一件放宽，其余照旧。
@@ -1045,30 +1077,6 @@ fn gp1_a_late_answer_for_an_old_box_never_lands_on_the_new_one() {
 // P2⁗（现值那一趟真上线、按盘上真文件答）住 `shell_tests.rs::gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire`：
 // 它要在临时目录里铺真文件、设真权限位，本文件留在单元层（`test_tiers` 分区）。
 
-/// 删一个大目录：后端一趟只删一段、回「还剩几条」⇒ 窗口接着发同一个请求，直到删完才算成（此前一趟删到底，
-/// 窗口 120 秒等不到就报失败，而后端照删）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_big_directory_is_deleted_slice_by_slice_until_nothing_is_left() {
-    use crate::find::testing::{wire_up, Declared, FakeBackend};
-    let be = FakeBackend::new(&["files-delete"], Declared::default());
-    be.delete_left.lock().unwrap().extend([8_800, 120]);
-    let wired = wire_up("writeops-slices", be).await;
-    let origin = comms_inward::origin::Origin(wired.origin.clone());
-    let op = WriteOp::Delete {
-        path: "/srv/data/node_modules".into(),
-        is_dir: true,
-        raw: None,
-    };
-    super::apply_remote(&wired.line, &origin, &op)
-        .await
-        .expect("一段一段删完了却说没成");
-    assert_eq!(
-        wired.count("files-delete"),
-        3,
-        "还剩着就停了 / 删完了还在发"
-    );
-}
-
 /// 删除单独一问：标题按项数写 · 多于 8 项只列 8 个 ＋「另外 n 项」· 文件夹注明 · 「不可恢复」；
 /// 「取消」与 Esc 都不删（答复是空的一摞）。
 #[test]
@@ -1289,10 +1297,10 @@ fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
 #[test]
 fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
     let chmod_reply = |before: Option<u32>| {
-        crate::writeops::Applied::Chmod(cmd_wire::files::FilesChmodReply {
-            path: cmd_wire::files::WirePath::from("/s/run.sh"),
-            mode: 0o755,
+        crate::writeops::Applied::Chmod(cmd_wire::batch::BatchOutcome {
+            path: Some(cmd_wire::files::WirePath::from("/s/run.sh")),
             before,
+            ..cmd_wire::batch::BatchOutcome::bare("0", cmd_wire::batch::ItemState::Done)
         })
     };
     let op = WriteOp::Chmod {

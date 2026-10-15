@@ -125,7 +125,7 @@ fn the_toolbar_on_the_window_really_goes_back_and_the_keys_really_go_forward() {
     assert_eq!(ws.pane_on(0).cwd, "/a/b", "Alt+→ 没前进");
 }
 
-/// 状态栏那一行：项数 · 选中几项（文件大小合计，目录不算）；隐藏文件切成不显示 ⇒ 说另有几项没显示。
+/// 状态栏那一行：项数 · 已选几项（都是文件时带合计大小；有目录就只写几项）；隐藏文件切成不显示 ⇒ 说另有几项没显示。
 #[test]
 fn the_status_line_counts_items_selection_and_hidden_files() {
     let mut w = window(
@@ -142,13 +142,27 @@ fn the_status_line_counts_items_selection_and_hidden_files() {
         copy_text("rsFilewinChrome.status.count", &[("n", "4")])
     );
     w.apply_intent(crate::select::Intent::SelectAll, 0.0, None);
-    assert!(w.status_line().ends_with(&copy_text(
-        "rsFilewinChrome.status.picked",
-        &[
-            ("n", "4"),
-            ("size", &copy_core::size_text(1024 + 2048 + 10))
-        ]
-    )));
+    // 选中里有目录 ⇒ 只写几项（目录要算大小才知道多大）。
+    assert!(
+        w.status_line()
+            .ends_with(&copy_text("rsFilewinChrome.status.pickedN", &[("n", "4")])),
+        "{}",
+        w.status_line()
+    );
+    // 都是文件 ⇒ 几项 · 合计大小。
+    let mut files = window(
+        "/m",
+        vec![row("a.txt", false, 1024, 2), row("b.txt", false, 2048, 3)],
+    );
+    files.apply_intent(crate::select::Intent::SelectAll, 0.0, None);
+    assert!(
+        files.status_line().ends_with(&copy_text(
+            "rsFilewinChrome.status.picked",
+            &[("n", "2"), ("size", &copy_core::size_text(1024 + 2048))]
+        )),
+        "{}",
+        files.status_line()
+    );
     assert!(w.set_show_hidden(false));
     assert_eq!(w.listing.rows.lock().unwrap().len(), 3);
     assert_eq!(w.selection().len(), 3, "收起来的那一项该从选中里去掉");
