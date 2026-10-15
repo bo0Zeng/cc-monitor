@@ -400,8 +400,8 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
         // 链接要跟一次才知道指向的是不是目录（只列文件夹 · 目录在前都看它）；按大小 · 时间排要每一项的元数据。
         let md = (kind == FileKind::Symlink
             || matches!(sort.by, wire::LsSortBy::Size | wire::LsSortBy::Mtime))
-            .then(|| Ro::metadata(e.path()).ok())
-            .flatten();
+        .then(|| Ro::metadata(e.path()).ok())
+        .flatten();
         let dir_like = kind == FileKind::Dir || md.as_ref().is_some_and(|m| m.is_dir());
         if dirs_only && !dir_like {
             continue;
@@ -471,7 +471,8 @@ fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
         wire::LsSortBy::Name => Col::Text(lower.clone()),
         wire::LsSortBy::Size | wire::LsSortBy::Mtime => Col::Num(p.num),
         wire::LsSortBy::Type => {
-            let (c, e) = class::type_key(&name, p.kind == FileKind::Dir, p.kind == FileKind::Symlink);
+            let (c, e) =
+                class::type_key(&name, p.kind == FileKind::Dir, p.kind == FileKind::Symlink);
             Col::Type(c, e)
         }
     };
@@ -668,23 +669,23 @@ fn find(req: wire::FindReq, tz: &crate::common::time::Tz) -> Answer<wire::FindRe
                     .copied()
                     .unwrap_or(FileKind::Other);
                 wire::FilesFindHit {
-                path: wire_path(&h.path),
-                class: class::type_key(
-                    index::name_bytes(&h.path),
-                    kind == FileKind::Dir,
-                    kind == FileKind::Symlink,
-                )
-                .0,
-                kind,
-                location: wire_path(index::location_of(&h.path, start.as_deref())),
-                size: h.meta.size,
-                mtime_secs: h.meta.mtime_secs,
-                mtime_text: h
-                    .meta
-                    .mtime_secs
-                    .map(|t| crate::common::time::mtime_texts_now(t, tz).0),
-                marks: pairs(&matcher.marks(&h.path)),
-            }
+                    path: wire_path(&h.path),
+                    class: class::type_key(
+                        index::name_bytes(&h.path),
+                        kind == FileKind::Dir,
+                        kind == FileKind::Symlink,
+                    )
+                    .0,
+                    kind,
+                    location: wire_path(index::location_of(&h.path, start.as_deref())),
+                    size: h.meta.size,
+                    mtime_secs: h.meta.mtime_secs,
+                    mtime_text: h
+                        .meta
+                        .mtime_secs
+                        .map(|t| crate::common::time::mtime_texts_now(t, tz).0),
+                    marks: pairs(&matcher.marks(&h.path)),
+                }
             })
             .collect(),
         start: start.as_deref().map(wire_path),

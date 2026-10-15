@@ -3,10 +3,10 @@ use super::testing::{
     render_headless_with_events_and_text,
 };
 use super::*;
-use cmd_wire::files::FileClass;
 use crate::copy::testing::rects_of;
 use crate::corpus;
 use crate::source::Row;
+use cmd_wire::files::FileClass;
 
 /// 1280×800，与那趟原型同一个视口。
 fn screen() -> egui::Vec2 {

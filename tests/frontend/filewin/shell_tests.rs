@@ -3208,7 +3208,11 @@ fn a_listing_that_lands_after_the_sort_changed_is_dropped() {
     assert!(w.click_header(crate::source::SortBy::Size));
     let landed = vec![Listed::plain(file_row("a")), Listed::plain(file_row("b"))];
     assert!(
-        !store_listed_if_current(&w.listing, mine, Ok((landed, crate::source::Cut::default()))),
+        !store_listed_if_current(
+            &w.listing,
+            mine,
+            Ok((landed, crate::source::Cut::default()))
+        ),
         "出发时那一档的那一屏落了地"
     );
     assert!(names(&w).is_empty());

@@ -31,7 +31,6 @@ use std::sync::{Arc, Mutex};
 
 use super::shell::{FileWindow, NO_LINE};
 
-
 /// 面板上摆着的是什么。
 #[derive(Clone, PartialEq, Eq)]
 pub enum View {
@@ -497,10 +496,7 @@ impl Preview {
         match &self.head {
             Some(h) => {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(super::kind::icon(h.class))
-                        .color(p.text2),
-                    );
+                    ui.label(egui::RichText::new(super::kind::icon(h.class)).color(p.text2));
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(&h.name)

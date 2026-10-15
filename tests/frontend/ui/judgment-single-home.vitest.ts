@@ -754,6 +754,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     as_wire: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
+    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
+    descending: NONE,
   },
   "copy-core": {
     backend_old: "J22",

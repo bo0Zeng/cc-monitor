@@ -39,11 +39,24 @@ async fn write_text(
     content: &str,
     expect_sha256: &str,
 ) -> Result<Saved, SaveError> {
-    write_text_at(line, origin, &crate::source::RemotePath::plain(path), content, expect_sha256, CAP).await
+    write_text_at(
+        line,
+        origin,
+        &crate::source::RemotePath::plain(path),
+        content,
+        expect_sha256,
+        CAP,
+    )
+    .await
 }
 
 /// 一行，带着后端那道编辑门（`None` ＝ 问不出门的那一形）。
-fn row(name: &str, is_dir: bool, lossy: bool, edit: Option<cmd_wire::files::Gate>) -> crate::source::Listed {
+fn row(
+    name: &str,
+    is_dir: bool,
+    lossy: bool,
+    edit: Option<cmd_wire::files::Gate>,
+) -> crate::source::Listed {
     let mut l = crate::source::Listed::plain(crate::source::Row {
         name: name.to_string(),
         path: format!("/srv/data/{name}"),
@@ -71,7 +84,12 @@ fn an_open_gate_is_editable_with_nothing_to_explain() {
 /// 门不许 ⇒ 照摆后端写好的那一句（窗口不另写一句）；没有门 ⇒ 说读取上限未知。
 #[test]
 fn a_closed_gate_says_the_backends_sentence_and_a_missing_gate_says_unknown() {
-    let r = row("big.log", false, false, Some(cmd_wire::files::Gate::No("后端那一句".into())));
+    let r = row(
+        "big.log",
+        false,
+        false,
+        Some(cmd_wire::files::Gate::No("后端那一句".into())),
+    );
     assert_eq!(why_not_editable(&r).as_deref(), Some("后端那一句"));
     assert_eq!(edit_cap(&r), None);
     assert_eq!(

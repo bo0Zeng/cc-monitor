@@ -694,7 +694,11 @@ impl FakeBackend {
                             };
                             let col = if sort.reverse { col.reverse() } else { col };
                             let name = a.name.to_lowercase().cmp(&b.name.to_lowercase());
-                            let name = if sort.reverse && sort.by == B::Name { name.reverse() } else { name };
+                            let name = if sort.reverse && sort.by == B::Name {
+                                name.reverse()
+                            } else {
+                                name
+                            };
                             b.is_dir.cmp(&a.is_dir).then(col).then(name)
                         });
                         // 照线上类型拼（两端共用的那一份）：形状由类型定，不手写。
@@ -1660,20 +1664,15 @@ pub fn fake_gates(
     } else {
         Gate::Cap(EDIT)
     };
-    let label = |c: C| {
-        copy_text(
-            match c {
-                C::Folder => "beFilesKind.label.folder",
-                C::Text => "beFilesKind.label.text",
-                C::Code => "beFilesKind.label.code",
-                C::Image => "beFilesKind.label.image",
-                C::Archive => "beFilesKind.label.archive",
-                C::Pdf => "beFilesKind.label.pdf",
-                C::Link => "beFilesKind.label.link",
-                C::Other => "beFilesKind.label.other",
-            },
-            &[],
-        )
+    let label = |c: C| match c {
+        C::Folder => copy_text("beFilesKind.label.folder", &[]),
+        C::Text => copy_text("beFilesKind.label.text", &[]),
+        C::Code => copy_text("beFilesKind.label.code", &[]),
+        C::Image => copy_text("beFilesKind.label.image", &[]),
+        C::Archive => copy_text("beFilesKind.label.archive", &[]),
+        C::Pdf => copy_text("beFilesKind.label.pdf", &[]),
+        C::Link => copy_text("beFilesKind.label.link", &[]),
+        C::Other => copy_text("beFilesKind.label.other", &[]),
     };
     let type_text = match (class, ext.as_deref()) {
         (C::Pdf, _) | (_, None) => label(class),

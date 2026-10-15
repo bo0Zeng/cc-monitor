@@ -522,7 +522,9 @@ async fn over_the_cap_says_why_and_reads_nothing() {
     // 后端那道查看门说不许 ⇒ 摆出那一句、不读。
     let big = 32 * 1024 * 1024 + 1;
     let gated = crate::find::testing::fake_gates("a.png", false, big).2;
-    let said = gated.as_ref().unwrap().view.as_ref().unwrap().refused().unwrap().to_string();
+    let Some(cmd_wire::files::Gate::No(said)) = gated.as_ref().and_then(|g| g.view.clone()) else {
+        panic!("合成后端对 32 M 以上的图该给不许");
+    };
     {
         let mut rows = w.listing.rows.lock().unwrap();
         rows[a].row.size = big;

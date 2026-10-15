@@ -3095,11 +3095,7 @@ impl FileWindow {
                     "rsFilewinShell.edit.tooBig",
                     &[
                         ("n", &(p.text.len()).to_string()),
-                        (
-                            "limit",
-                            &(copy_core::size_text(p.cap))
-                                .to_string(),
-                        ),
+                        ("limit", &(copy_core::size_text(p.cap)).to_string()),
                     ],
                 )
                 .into(),
@@ -3121,9 +3117,15 @@ impl FileWindow {
         board.begin_save(&p.path);
         h.spawn(async move {
             let at = super::source::RemotePath::of(&p.path, p.raw_path.as_deref());
-            let r =
-                super::editor::write_text_at(&line, &origin, &at, &p.text, p.expect_sha256(), p.cap)
-                    .await;
+            let r = super::editor::write_text_at(
+                &line,
+                &origin,
+                &at,
+                &p.text,
+                p.expect_sha256(),
+                p.cap,
+            )
+            .await;
             board.deliver_save(r);
         });
         true
@@ -3849,10 +3851,7 @@ impl FileWindow {
             "rsFilewinEditPage.foot.size",
             &[
                 ("size", &copy_core::size_text(e.text.len() as u64)),
-                (
-                    "cap",
-                    &copy_core::size_text(e.cap),
-                ),
+                ("cap", &copy_core::size_text(e.cap)),
             ],
         ));
         let over = e.over_cap().then(|| {
@@ -4436,11 +4435,8 @@ impl FileWindow {
         } else {
             copy_core::size_text(row.size)
         };
-        self.write_board.describe(
-            &row.path,
-            super::kind::icon(row.class),
-            meta,
-        );
+        self.write_board
+            .describe(&row.path, super::kind::icon(row.class), meta);
     }
 
     /// 🔴 **胶水**：列表说「第 `i` 行被单击了（带着这几个修饰键）」→ 选中态跟着变。

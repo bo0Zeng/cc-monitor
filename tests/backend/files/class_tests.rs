@@ -27,7 +27,11 @@ fn the_class_comes_from_the_name_and_links_draw_what_they_point_at() {
             "{name}"
         );
     }
-    assert_eq!(type_key(b"to.png", false, true).0, C::Link, "按类型排时链接自成一种");
+    assert_eq!(
+        type_key(b"to.png", false, true).0,
+        C::Link,
+        "按类型排时链接自成一种"
+    );
 }
 
 #[test]
@@ -37,11 +41,20 @@ fn the_type_column_text_is_written_here() {
         t("a.rs", false, false, false, false),
         copy_text(
             "beFilesKind.type.withExt",
-            &[("kind", &copy_text("beFilesKind.label.code", &[])), ("ext", "RS")]
+            &[
+                ("kind", &copy_text("beFilesKind.label.code", &[])),
+                ("ext", "RS")
+            ]
         )
     );
-    assert_eq!(t("d", true, false, false, false), copy_text("beFilesKind.label.folder", &[]));
-    assert_eq!(t("x.pdf", false, false, false, false), copy_text("beFilesKind.label.pdf", &[]));
+    assert_eq!(
+        t("d", true, false, false, false),
+        copy_text("beFilesKind.label.folder", &[])
+    );
+    assert_eq!(
+        t("x.pdf", false, false, false, false),
+        copy_text("beFilesKind.label.pdf", &[])
+    );
     assert_eq!(
         t("l", false, true, true, false),
         copy_text(
@@ -49,7 +62,10 @@ fn the_type_column_text_is_written_here() {
             &[("kind", &copy_text("beFilesKind.label.folder", &[]))]
         )
     );
-    assert_eq!(t("l", false, true, false, true), copy_text("beFilesKind.type.linkBroken", &[]));
+    assert_eq!(
+        t("l", false, true, false, true),
+        copy_text("beFilesKind.type.linkBroken", &[])
+    );
 }
 
 #[test]
@@ -89,9 +105,18 @@ fn text_preview_is_allowed_up_to_its_cap_and_carries_the_syntax() {
 #[test]
 fn images_preview_and_view_each_up_to_their_own_cap() {
     let at = |n: u64| gates_of(b"p.png", n);
-    assert_eq!(at(PREVIEW_IMAGE_MAX_BYTES).preview, PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES));
-    assert!(matches!(at(PREVIEW_IMAGE_MAX_BYTES + 1).preview, PreviewGate::No(_)));
-    assert_eq!(at(VIEW_IMAGE_MAX_BYTES).view, Some(Gate::Cap(VIEW_IMAGE_MAX_BYTES)));
+    assert_eq!(
+        at(PREVIEW_IMAGE_MAX_BYTES).preview,
+        PreviewGate::Image(PREVIEW_IMAGE_MAX_BYTES)
+    );
+    assert!(matches!(
+        at(PREVIEW_IMAGE_MAX_BYTES + 1).preview,
+        PreviewGate::No(_)
+    ));
+    assert_eq!(
+        at(VIEW_IMAGE_MAX_BYTES).view,
+        Some(Gate::Cap(VIEW_IMAGE_MAX_BYTES))
+    );
     assert_eq!(
         at(VIEW_IMAGE_MAX_BYTES + 1).view,
         Some(Gate::No(copy_text(
@@ -117,7 +142,10 @@ fn images_preview_and_view_each_up_to_their_own_cap() {
 
 #[test]
 fn edit_is_allowed_up_to_the_read_ceiling_and_says_how_much_over() {
-    assert_eq!(gates_of(b"a.log", EDIT_MAX_BYTES).edit, Gate::Cap(EDIT_MAX_BYTES));
+    assert_eq!(
+        gates_of(b"a.log", EDIT_MAX_BYTES).edit,
+        Gate::Cap(EDIT_MAX_BYTES)
+    );
     let over = EDIT_MAX_BYTES + 3;
     assert_eq!(
         gates_of(b"a.log", over).edit,
@@ -168,7 +196,10 @@ fn ls_rows_carry_class_type_text_and_gates_and_sort_by_type() {
         reverse: false,
     }));
     // 目录那一摞：sub（文件夹）在链接 ldir 之前；文件：文本 · 代码 · 图片 · 链接。
-    assert_eq!(names(&by_type), ["sub", "ldir", "a.txt", "b.rs", "c.png", "lfile.txt"]);
+    assert_eq!(
+        names(&by_type),
+        ["sub", "ldir", "a.txt", "b.rs", "c.png", "lfile.txt"]
+    );
     let row = |n: &str| {
         by_type
             .entries
@@ -181,13 +212,19 @@ fn ls_rows_carry_class_type_text_and_gates_and_sort_by_type() {
     assert_eq!(row("ldir").gates, None, "指向目录的链接点得进去，不读");
     assert_eq!(row("ldir").class, C::Folder);
     assert_eq!(row("lfile.txt").class, C::Text);
-    assert_eq!(row("b.rs").type_text, type_text(b"b.rs", false, false, false, false));
+    assert_eq!(
+        row("b.rs").type_text,
+        type_text(b"b.rs", false, false, false, false)
+    );
     assert_eq!(row("b.rs").gates, Some(gates_of(b"b.rs", 11)));
     assert!(row("c.png").gates.unwrap().view.is_some());
     let reversed = ls(Some(cmd_wire::files::LsSort {
         by: cmd_wire::files::LsSortBy::Type,
         reverse: true,
     }));
-    assert_eq!(names(&reversed), ["ldir", "sub", "lfile.txt", "c.png", "b.rs", "a.txt"]);
+    assert_eq!(
+        names(&reversed),
+        ["ldir", "sub", "lfile.txt", "c.png", "b.rs", "a.txt"]
+    );
     let _ = std::fs::remove_dir_all(&d);
 }

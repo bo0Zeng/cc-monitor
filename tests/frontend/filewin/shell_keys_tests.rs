@@ -44,7 +44,8 @@ fn window(rows: Vec<Row>) -> FileWindow {
         Source::remote(synth_cfg("keys")),
         "/srv/data".to_string(),
         None,
-        rows.into_iter().map(|r| crate::find::testing::gated(r.into())),
+        rows.into_iter()
+            .map(|r| crate::find::testing::gated(r.into())),
     );
     *w.listing.error.lock().unwrap() = None;
     w

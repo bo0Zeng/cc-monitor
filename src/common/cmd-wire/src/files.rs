@@ -280,22 +280,17 @@ pub enum LsSortBy {
     Type,
 }
 
-impl LsSortBy {
-    /// 这一列第一下是不是大的在前（大小 · 时间）；名称 · 类型 A 在前。
-    pub fn first_down(self) -> bool {
-        matches!(self, LsSortBy::Size | LsSortBy::Mtime)
-    }
-}
-
 impl LsSort {
-    /// 这一屏那一列是不是从大到小。
+    /// 这一屏那一列是不是从大到小（第一下：大小 · 时间大的在前，名称 · 类型 A 在前；`reverse` 反过来）。
     pub fn descending(self) -> bool {
-        self.by.first_down() != self.reverse
+        matches!(self.by, LsSortBy::Size | LsSortBy::Mtime) != self.reverse
     }
 }
 
 /// 一项按名字看是哪一种：图标 · 「类型」那一列 · 按类型排都看它（那台判）。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -372,24 +367,6 @@ pub struct TextPreview {
 pub enum Gate {
     Cap(#[cfg_attr(any(test, feature = "ts"), ts(type = "number"))] u64),
     No(String),
-}
-
-impl Gate {
-    /// 许读多少（不许 ⇒ `None`）。
-    pub fn cap(&self) -> Option<u64> {
-        match self {
-            Gate::Cap(n) => Some(*n),
-            Gate::No(_) => None,
-        }
-    }
-
-    /// 不许的那一句（许 ⇒ `None`）。
-    pub fn refused(&self) -> Option<&str> {
-        match self {
-            Gate::Cap(_) => None,
-            Gate::No(s) => Some(s),
-        }
-    }
 }
 
 /// 面包屑的一段：这一段叫什么 · 点它去哪（[`LsReply::crumbs`]）。

@@ -31,7 +31,13 @@ const ARCHIVE: &[&str] = &[
     "rpm",
 ];
 /// 没有扩展名、但一看名字就是代码的那几个。
-const CODE_NAMES: &[&str] = &["makefile", "dockerfile", "justfile", "rakefile", "cmakelists.txt"];
+const CODE_NAMES: &[&str] = &[
+    "makefile",
+    "dockerfile",
+    "justfile",
+    "rakefile",
+    "cmakelists.txt",
+];
 
 /// 扩展名（ASCII 小写；`.bashrc` 这种只有前导点的不算；不是合法 UTF-8 ⇒ 不认）。
 pub fn ext_of(name: &[u8]) -> Option<String> {
@@ -45,7 +51,10 @@ pub fn class_of_name(name: &[u8], is_dir: bool) -> FileClass {
     if is_dir {
         return FileClass::Folder;
     }
-    if CODE_NAMES.iter().any(|n| name.eq_ignore_ascii_case(n.as_bytes())) {
+    if CODE_NAMES
+        .iter()
+        .any(|n| name.eq_ignore_ascii_case(n.as_bytes()))
+    {
         return FileClass::Code;
     }
     let Some(ext) = ext_of(name) else {
@@ -83,17 +92,16 @@ pub fn type_key(name: &[u8], is_dir: bool, link: bool) -> (FileClass, Option<Str
 }
 
 fn label(c: FileClass) -> String {
-    let key = match c {
-        FileClass::Folder => "beFilesKind.label.folder",
-        FileClass::Text => "beFilesKind.label.text",
-        FileClass::Code => "beFilesKind.label.code",
-        FileClass::Image => "beFilesKind.label.image",
-        FileClass::Archive => "beFilesKind.label.archive",
-        FileClass::Pdf => "beFilesKind.label.pdf",
-        FileClass::Link => "beFilesKind.label.link",
-        FileClass::Other => "beFilesKind.label.other",
-    };
-    copy_text(key, &[])
+    match c {
+        FileClass::Folder => copy_text("beFilesKind.label.folder", &[]),
+        FileClass::Text => copy_text("beFilesKind.label.text", &[]),
+        FileClass::Code => copy_text("beFilesKind.label.code", &[]),
+        FileClass::Image => copy_text("beFilesKind.label.image", &[]),
+        FileClass::Archive => copy_text("beFilesKind.label.archive", &[]),
+        FileClass::Pdf => copy_text("beFilesKind.label.pdf", &[]),
+        FileClass::Link => copy_text("beFilesKind.label.link", &[]),
+        FileClass::Other => copy_text("beFilesKind.label.other", &[]),
+    }
 }
 
 /// 「类型」那一列写什么：那一种的词，文件再跟上扩展名（`代码 · RS`）；链接写「链接 → 文件夹」，断的写「链接 · 目标不存在」。
@@ -121,8 +129,8 @@ pub fn type_text(name: &[u8], is_dir: bool, link: bool, link_dir: bool, broken: 
 pub fn gates_of(name: &[u8], size: u64) -> Gates {
     let class = class_of_name(name, false);
     let ext = ext_of(name);
-    let decodable = class == FileClass::Image
-        && ext.as_deref().is_some_and(|e| DECODABLE.contains(&e));
+    let decodable =
+        class == FileClass::Image && ext.as_deref().is_some_and(|e| DECODABLE.contains(&e));
     let preview = if decodable {
         if size > PREVIEW_IMAGE_MAX_BYTES {
             PreviewGate::No(copy_text(

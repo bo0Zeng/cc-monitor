@@ -134,14 +134,18 @@ impl Viewer {
 
     /// 列表那一行就超了上限 ⇒ 后端写好的那一句（不读）。
     pub fn refused(&self) -> Option<String> {
-        view_gate(&self.shot().listed)?.refused().map(str::to_string)
+        match view_gate(&self.shot().listed)? {
+            cmd_wire::files::Gate::No(said) => Some(said.clone()),
+            cmd_wire::files::Gate::Cap(_) => None,
+        }
     }
 
-    /// 读这一张许读多少（后端给的）。
+    /// 读这一张许读多少（后端给的；不许 ⇒ 0，那一张不读）。
     fn cap(&self) -> u64 {
-        view_gate(&self.shot().listed)
-            .and_then(cmd_wire::files::Gate::cap)
-            .unwrap_or(0)
+        match view_gate(&self.shot().listed) {
+            Some(cmd_wire::files::Gate::Cap(n)) => *n,
+            _ => 0,
+        }
     }
 
     /// 此刻的 `scale`（画面 `view` 点 · `ppp` 每点几个物理像素）。

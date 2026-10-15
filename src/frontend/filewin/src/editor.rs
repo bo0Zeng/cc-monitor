@@ -238,7 +238,6 @@ pub fn chunk_failed_notice(seq: usize, total: usize, why: &str) -> String {
     )
 }
 
-
 /// 行上那颗按钮。
 pub static EDIT_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.label.edit", &[]));
@@ -259,9 +258,10 @@ pub fn why_not_editable(l: &super::source::Listed) -> Option<String> {
     if l.lossy_name && l.raw_name.is_none() {
         return Some(copy_text("rsFilewinEditor.notEditable.badName", &[]));
     }
-    match &l.gates {
+    match l.gates.as_ref().map(|g| &g.edit) {
         None => Some(copy_text("rsFilewinSource.gates.unlisted", &[])),
-        Some(g) => g.edit.refused().map(str::to_string),
+        Some(w::Gate::No(said)) => Some(said.clone()),
+        Some(w::Gate::Cap(_)) => None,
     }
 }
 
@@ -272,7 +272,10 @@ pub fn editable(l: &super::source::Listed) -> bool {
 
 /// 打开这一行许读多少（后端那道编辑门给的；不许 ⇒ `None`）。
 pub fn edit_cap(l: &super::source::Listed) -> Option<u64> {
-    l.gates.as_ref()?.edit.cap()
+    match l.gates.as_ref()?.edit {
+        w::Gate::Cap(n) => Some(n),
+        w::Gate::No(_) => None,
+    }
 }
 
 /// 后端说「不可编辑」之后那句话（第九刀时是池子回了 `None`）。
@@ -761,7 +764,9 @@ pub async fn write_text_at(
     cap: u64,
 ) -> Result<Saved, SaveError> {
     if content.len() as u64 > cap {
-        return Err(SaveError::Failed(over_cap_notice(content.len(), cap).into()));
+        return Err(SaveError::Failed(
+            over_cap_notice(content.len(), cap).into(),
+        ));
     }
     let budget = super::writeops::WRITE_BUDGET;
     let room = "0".repeat(SHA256_HEX_LEN);
