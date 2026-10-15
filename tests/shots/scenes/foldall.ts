@@ -86,6 +86,21 @@ function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
   return w;
 }
 
+/** 头一轮一段过程很长（一连串读文件，高过一屏），第二轮在等批准：看展开的长过程末尾那一行与底部浮着的答题块。 */
+function tailWorld(): World {
+  const w = defaultWorld();
+  const c = new Convo(SID, CWD, "2026-10-01T09:00:00Z");
+  c.title("示例项目：配置读取整理");
+  c.user("把每个模块读配置的地方都看一遍。");
+  for (let i = 1; i <= 18; i++) c.tool("Read", { file_path: `${CWD}/src/m${i}.py` }, "def load_config():\n    return {}\n");
+  c.say("十八个模块都各自读了一份配置，内容一样。", 40_000, "end_turn");
+  c.user("把旧的读法删掉。");
+  c.tool("Bash", { command: "git rm src/m1.py", description: "删旧文件" }, null);
+  c.endAt(Date.now() - 60_000);
+  w.sessions[0] = session(1, LOCAL, CWD, c, { activity: "needs_you", waitingFor: "permission prompt", waitingSinceMs: Date.now() - 60_000 });
+  return w;
+}
+
 /** 长会话：很多轮（每轮思考 · 几步工具 · 中间的话 · 结论），尾部窗口装不下 ⇒ 上面由骨架占位顶着、滚到哪物化到哪。 */
 function longWorld(n = 90): World {
   const w = defaultWorld();
@@ -177,15 +192,15 @@ export const FOLDALL_SCENES: Scene[] = [
     await mainReady(7);
     await sleep(800);
   }), world: () => foldWorld("working") },
-  live("foldall-live-tail", "大折叠 · 实时窗口 · 长过程末尾", "点开第一轮（过程比一屏长）：左边一道竖线，末尾一行「收起这段过程」", async () => {
+  { ...live("foldall-live-tail", "大折叠 · 实时窗口 · 长过程末尾", "点开第一轮（十八步、过程比一屏长）：左边一道竖线，末尾一行「收起这段过程」；底部浮着的答题块有实底、压在记录上面", async () => {
     await mainReady(7);
     await scrollStream("top");
     document.querySelector<HTMLElement>(".stream.active .proc-line")?.click();
     await sleep(400);
-    const tail = document.querySelector<HTMLElement>(".stream.active .proc-tail");
-    tail?.scrollIntoView({ block: "center" });
+    const tail = await waitFor(".stream.active .proc-tail", 5000);
+    tail.scrollIntoView({ block: "center" });
     await sleep(600);
-  }, 700),
+  }, 700), world: tailWorld },
   { ...live("foldall-long-top", "大折叠 · 长会话 · 滚到最上面", "九十轮的长会话，上面由骨架占位顶着：滚到最上面，物化出来的轮照样每轮一行过程", async () => {
     await mainReady(7);
     await sleep(600);

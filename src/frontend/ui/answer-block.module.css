@@ -4,7 +4,8 @@
     position: absolute;
     bottom: var(--space-5);
     left: 50%;
-    z-index: var(--z-sticky);
+    /* 浮在流上：在场的那条流自己在 --z-sticky，同层时后建的流会盖住块（字透上来、点不着） */
+    z-index: var(--z-float);
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
