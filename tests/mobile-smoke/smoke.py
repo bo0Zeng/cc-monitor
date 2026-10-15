@@ -452,6 +452,24 @@ def frames(cmd, args, within=20000):
     return json.loads(out or "{}")
 
 
+SMOKE_ALIAS = "smk"
+
+
+def tmux_sessions():
+    return [l for l in rig("tmux", "list-sessions", "-F", "#{session_name}").stdout.splitlines() if l]
+
+
+def seed_alias():
+    """台架那台的一条别名（起在 tmux 里、名字自动取），经别名页那条写命令建；已有就不再建。"""
+    book = (frames("profiles-read", {}).get("data") or {})
+    if any(p.get("name") == SMOKE_ALIAS for p in book.get("profiles") or []):
+        return
+    r = frames("profiles-write", {"changes": [{"op": "set", "was": None, "form": {"name": SMOKE_ALIAS, "tmux": {"mode": "auto"}}}],
+                                  "fingerprint": book.get("fingerprint")})
+    if not (r.get("data") or {}).get("wrote"):
+        raise Step.Fail(f"台架建不了别名：{r!r}"[:300])
+
+
 def seed_rotation():
     """台架里的账号库（work · team · lab）与两份策略；跨趟留着，再跑一遍不出错就行。"""
     frames("accounts-init", {"name": "work"})
@@ -727,8 +745,63 @@ def main():
         if not wait(f"替身收到：{T} while dead", 60):
             raise Step.Fail("重开之后没有被杀那段的话")
 
-    with Step("9-终端屏"):
+    with Step("8b-离线打开"):
+        # 断着网重开 App：会话列表与那一条的最后一屏照本地缓存画（上次从那台读到的原样）；网回来跟上断着那段来的话。
         name = tmux_name_of(f"{T} new session")
+        adb("shell", "am", "force-stop", PKG)
+        adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
+        time.sleep(3)
+        try:
+            launch()
+            drawer(t("mobDrawer.item.chats"))
+            if not wait(f"{T} new session", 30):
+                raise Step.Fail("断网时对话列表是空的（没上本地缓存）")
+            shot("8b-离线列表")
+            tap(f"{T} new session")
+            time.sleep(3)
+            to_bottom()
+            if not wait(f"替身收到：{T} while dead", 20):
+                raise Step.Fail("断网时那一条的最后一屏没上本地缓存")
+            shot("8b-离线那一条")
+            rig("tmux", "send-keys", "-t", name or "", f"{T} back online", "Enter")
+            time.sleep(4)
+        finally:
+            adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
+        time.sleep(8)
+        # 断着网起的进程里 SSH 一次都没通过：网回来没有谁替它重拨（重连那一条循环归 SSH 层），这里退回列表再点进来、由那一屏重新建连；
+        # 同一条对话还在（应用级持有），接上以后照缓存里的续点对齐，断着那段来的话补上。
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} new session", 30):
+            raise Step.Fail("网回来之后对话列表里没有那条会话")
+        tap(f"{T} new session")
+        time.sleep(3)
+        to_bottom()
+        if not wait(f"替身收到：{T} back online", 60):
+            raise Step.Fail("网回来之后没跟上断着那段来的话")
+
+    with Step("9-终端屏"):
+        # 从别名起：台架那台配一条别名（别名页那条写命令），终端屏「用哪个启动」那一排列的是它（profiles-read），
+        # 点它 ⇒ 那个 shell 里敲 `ccm @名`、在台架 tmux 里起会话；再从 tmux 会话列表接进去，两侧打字都进那个会话、命令面板换模型。
+        seed_alias()
+        before = set(tmux_sessions())
+        drawer(t("mobDrawer.item.terminal"))
+        if not wait(SMOKE_ALIAS, 30):
+            raise Step.Fail(f"终端屏「用哪个启动」那一排没列出那台的别名 {SMOKE_ALIAS}")
+        shot("9a-终端屏-别名")
+        hide_keyboard()
+        tap(SMOKE_ALIAS)
+        end = time.time() + 30
+        while time.time() < end and not (set(tmux_sessions()) - before):
+            time.sleep(1)
+        fresh = sorted(set(tmux_sessions()) - before)
+        if not fresh:
+            raise Step.Fail(f"点了 {SMOKE_ALIAS}，台架 tmux 里没起新会话（ccm @{SMOKE_ALIAS} 没跑起来）")
+        name = fresh[0]
+        if not pane_has(name, "就绪", 30):
+            raise Step.Fail(f"别名起的会话 {name} 里替身没就绪")
+        if ui.find(SMOKE_ALIAS) is not None:
+            raise Step.Fail("按过一个别名之后那一排没收起")
+        adb("shell", "input", "keyevent", "4")
         drawer(t("mobDrawer.item.terminal"))
         time.sleep(2)
         hide_keyboard()

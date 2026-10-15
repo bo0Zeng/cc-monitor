@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
+import com.ccmonitor.mobile.core.claude.link.wire.ReadRow
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
@@ -239,6 +240,19 @@ object HistoryRead {
         val rows = p.rows.mapNotNull { r -> r.record?.let { it to (r.end ?: -1L) } }
         return Page(rows.map { it.first }, rows.map { it.second }, p.next, p.eof)
     }
+
+    /** 回包里的 `rows[]` 原样（缓存存的就是它）；不是那一形 ⇒ `null`。 */
+    fun rawRows(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("rows") as? List<*>)?.toList()
+
+    /** 缓存里那几格（`rows[]` 原样）⇒ 记录，与 [of] 同一个解码器；有一格解不出 ⇒ `null`（整页不认）。 */
+    fun decodeRows(rows: List<Any?>): List<LineRecord>? =
+        rows.map { Wire.bind<ReadRow>(it) ?: return null }.mapNotNull { it.record }
+
+    /** 一行记录（流上的 `line` · `history-lines` 的一格）照 `rows[]` 那一格的形装起来：`{end, record}`，[record] 原样。 */
+    fun row(
+        end: Long?,
+        record: Any?,
+    ): Map<String, Any?> = mapOf("end" to end, "record" to record)
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
@@ -258,11 +272,14 @@ object HistoryLines {
         /** 下一段从这一行起。 */
         val next: Long,
         val eof: Boolean,
+        /** 每条记录原样（与 [records] 一一对应；缓存存它）。 */
+        val raw: List<Any?> = emptyList(),
     )
 
     fun of(data: Any?): Page? {
         val p = Wire.bind<HistoryLinesPage>(data) ?: return null
-        return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof)
+        val raw = ((data as? Map<*, *>)?.get("lines") as? List<*>)?.map { (it as? Map<*, *>)?.get("record") }.orEmpty()
+        return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof, raw)
     }
 }
 
@@ -275,13 +292,15 @@ data class RecordLine(
     /** 这一行末尾在文件里的累计字节。 */
     val byteOffset: Long?,
     val record: LineRecord?,
+    /** [record] 原样（缓存存它）。 */
+    val raw: Any? = null,
 ) {
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
             val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
             return decoding {
-                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record)
+                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record, frame["record"])
             }
         }
     }

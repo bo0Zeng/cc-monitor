@@ -22,10 +22,10 @@ class SessionTabManagerTest {
     }
 
     @Test
-    fun openReusesSameHostCdLauncher() {
+    fun openReusesSameHostCd() {
         val m = SessionTabManager()
-        val k1 = m.open("h1", TabTarget.Terminal("/a", "L"))
-        val k2 = m.open("h1", TabTarget.Terminal("/a", "L")) // 相同 host + target → 复用（防列表点两次开重复）
+        val k1 = m.open("h1", TabTarget.Terminal("/a"))
+        val k2 = m.open("h1", TabTarget.Terminal("/a")) // 相同 host + target → 复用（防列表点两次开重复）
         assertEquals("相同 target 应复用同一 key", k1, k2)
         assertEquals(1, m.sessions.value.size)
     }
@@ -62,15 +62,15 @@ class SessionTabManagerTest {
         assertEquals(1, m.sessions.value.size)
     }
 
-    // Terminal target 的 cd/launcherId payload 正确落库、可回读（HostedSession 分派据此）。
+    // Terminal target 的 cd / tmuxSession payload 正确落库、可回读（HostedSession 分派据此）。
     @Test
     fun terminalTargetCarriesPayload() {
         val m = SessionTabManager()
-        val k = m.open("h1", TabTarget.Terminal(cd = "/proj", launcherId = "cc"))
+        val k = m.open("h1", TabTarget.Terminal(cd = "/proj", tmuxSession = "cc"))
         val target = m.get(k)?.target
         assertTrue(target is TabTarget.Terminal)
         assertEquals("/proj", (target as TabTarget.Terminal).cd)
-        assertEquals("cc", target.launcherId)
+        assertEquals("cc", target.tmuxSession)
     }
 
     // attach=新 tab：tmuxSession 进去重键：默认/异名 attach = 新 tab，同名 attach 复用。

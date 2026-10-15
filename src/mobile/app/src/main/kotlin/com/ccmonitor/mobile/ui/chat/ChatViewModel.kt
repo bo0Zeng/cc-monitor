@@ -40,6 +40,7 @@ class ChatViewModel(
             loadPicks = session::loadPicks,
             loadCommands = session::loadCommands,
             say = session::say,
+            editDraft = session::editDraft,
         )
 
     /** 聊天屏进 / 出（`stream-watch` 名单跟着它）。 */

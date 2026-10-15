@@ -37,7 +37,8 @@ up() {
     chmod 755 "$box/bin/$k"
   done
   # 台架家里的 shell 起步文件：只放 PATH（替身在前）；登录 shell 与交互 shell 都认它。
-  printf 'export PATH=%q:/usr/local/bin:/usr/bin:/bin\n' "$box/bin" > "$home/.profile"
+  # 台架家里的 ~/.cc-monitor/bin（ccm 与别名的链接）也在 PATH 里：同装好别名的那台，终端里敲 `ccm @名` 能找到。
+  printf 'export PATH=%q:%q:/usr/local/bin:/usr/bin:/bin\n' "$box/bin" "$home/.cc-monitor/bin" > "$home/.profile"
   cp "$home/.profile" "$home/.bashrc"
   printf '[ -f ~/.bashrc ] && . ~/.bashrc\n' > "$home/.bash_profile"
   cat > "$box/sshd/login.sh" <<EOF
@@ -45,7 +46,7 @@ up() {
 # sshd 的 ForceCommand：换上台架的环境再跑那条命令（没有命令 ⇒ 登录 shell）。
 for k in \$(compgen -e); do case "\$k" in CCM_*|CLAUDE*|ANTHROPIC_*|TMUX*|CC_BUS_*|CODEX_*) unset "\$k";; esac; done
 export HOME=$(printf %q "$home") TMUX_TMPDIR=$(printf %q "$box/tmux") CCM_SANDBOX=1 CCM_SMOKE_BOX=$(printf %q "$box")
-export PATH=$(printf %q "$box/bin"):/usr/local/bin:/usr/bin:/bin SHELL=/bin/bash
+export PATH=$(printf %q "$box/bin"):$(printf %q "$home/.cc-monitor/bin"):/usr/local/bin:/usr/bin:/bin SHELL=/bin/bash
 # 台架后端的中转口用私有的（默认那个口本机正在跑的后端占着）。替身起到能收第一句要多久：外面给了就带进来。
 export CCM_RELAY_PORT=${CCM_SMOKE_RELAY_PORT:-28788} CCM_SMOKE_BOOT=${CCM_SMOKE_BOOT:-2}
 cd "\$HOME"

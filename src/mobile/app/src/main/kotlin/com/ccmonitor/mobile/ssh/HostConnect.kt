@@ -26,12 +26,7 @@ fun Host.toConnectionConfigs(
             username = username,
             auth = auth,
             jumpVia = jumpVia,
-            reconnect =
-                ReconnectPolicy(
-                    auto = autoReconnect,
-                    onNetworkChange = reconnectOnNetworkChange,
-                    maxAttempts = maxReconnectAttempts,
-                ),
+            reconnect = ReconnectPolicy(auto = autoReconnect),
             // 工作目录和 tmux 由 [initialCommands] 在 shell 通道里发，不走 ConnectionConfig。
         )
     }
@@ -98,41 +93,40 @@ suspend fun resolveHostAuth(
 }
 
 /**
- * 连上之后在终端 shell 通道里依次要发的初始命令。
+ * 连上之后在终端 shell 通道里依次要发的初始命令（只开一个 shell，不跑别的：起会话走那台的别名，见终端屏「用哪个启动」）。
  *
- * - [LaunchSpec.workingDir] 非空 → 必定 cd 过去（优先于 defaultWorkingDir）。tmux 下先 `tmux new -A … [-c defWd]`
+ * - [workingDir] 非空 → 必定 cd 过去（优先于 defaultWorkingDir，如「在文件屏当前目录打开终端」）。tmux 下先 `tmux new -A … [-c defWd]`
  *   再 `cd <wd>`，因为 attach 到已有会话时 `-c` 被忽略。
  * - 没有 workingDir：tmux → `tmux new -A …`；否则有 defWd 就 `cd <defWd>`；都没有 → 空。
- * - [LaunchSpec.command] 非空 → 追加在最后。
  *
  * 这些照「用户在 ssh 里自己敲」执行：就是在那个 shell 里跑一条命令（[SessionBackend.enter]），不另拼 tmux 管理逻辑。
  */
-fun Host.initialCommands(spec: LaunchSpec = LaunchSpec()): List<String> {
+fun Host.initialCommands(
+    workingDir: String? = null,
+    tmuxSession: String? = null,
+): List<String> {
     val dialect = dialectFor(os)
-    val override = spec.workingDir?.trim()?.takeIf { it.isNotEmpty() }
+    val override = workingDir?.trim()?.takeIf { it.isNotEmpty() }
     val defWd = defaultWorkingDir?.trim()?.takeIf { it.isNotEmpty() }
     // 没有会话后端（Windows）就不进 tmux 分支，否则首条 `tmux new -A` 会卡到超时。
     val backend = dialect.sessionBackend
-    val tmuxSession = if (backend != null) resolveTmuxSession(spec) else null
-    val base =
-        when {
-            tmuxSession != null && backend != null ->
-                buildList {
-                    add(backend.enter(tmuxSession, defWd))
-                    override?.let { add(dialect.cd(it)) } // attach 后再 cd
-                }
-            override != null -> listOf(dialect.cd(override))
-            defWd != null -> listOf(dialect.cd(defWd))
-            else -> emptyList()
-        }
-    val extra = spec.command?.trim()?.takeIf { it.isNotEmpty() }
-    return if (extra != null) base + extra else base
+    val session = if (backend != null) resolveTmuxSession(tmuxSession) else null
+    return when {
+        session != null && backend != null ->
+            buildList {
+                add(backend.enter(session, defWd))
+                override?.let { add(dialect.cd(it)) } // attach 后再 cd
+            }
+        override != null -> listOf(dialect.cd(override))
+        defWd != null -> listOf(dialect.cd(defWd))
+        else -> emptyList()
+    }
 }
 
 /**
- * 本次启动用哪个 tmux 会话名，与 [initialCommands] 同源：launcher 显式指定（[LaunchSpec.tmuxSession]）
- * > 主机开了 auto-tmux（[DEFAULT_TMUX_SESSION]）> null（不进 tmux）。所以 cct 这类 launcher 在主机没开 auto-tmux 时也进 tmux。
+ * 本次启动用哪个 tmux 会话名，与 [initialCommands] 同源：显式给的（重连回到上次所在的那个）
+ * > 主机开了 auto-tmux（[DEFAULT_TMUX_SESSION]）> null（不进 tmux）。
  */
-fun Host.resolveTmuxSession(spec: LaunchSpec): String? =
-    spec.tmuxSession?.trim()?.takeIf { it.isNotEmpty() }
+fun Host.resolveTmuxSession(tmuxSession: String? = null): String? =
+    tmuxSession?.trim()?.takeIf { it.isNotEmpty() }
         ?: if (sessionManager == "tmux") DEFAULT_TMUX_SESSION else null

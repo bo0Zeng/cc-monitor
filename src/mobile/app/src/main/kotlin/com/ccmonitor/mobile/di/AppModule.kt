@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.di
 
 import android.util.Log
+import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
@@ -32,7 +33,8 @@ val appModule =
         viewModel {
             val open = it.get<ChatOpen>()
             val backends = get<HostBackends>()
-            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::of))
+            val cache = get<LocalCache>()
+            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::of, cache::chat))
         }
         // 应用级的对话持有者，tail 活在这里，不活在屏幕里。逐出要记日志，否则「对话怎么没了」无从查起。
         single {
@@ -67,23 +69,25 @@ val appModule =
             HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id })
         }
         viewModel { params ->
-            ConversationsViewModel(backend = get<HostBackends>().of(params.get(0)), machine = params.get(1))
+            val hostId: String = params.get(0)
+            ConversationsViewModel(backend = get<HostBackends>().of(hostId), machine = params.get(1), cache = get<LocalCache>().list(hostId))
         }
+        // 本地缓存（会话列表 · 记录页 · 续点 · 待发 · 草稿）：那台成品原样落 Room。
+        single { LocalCache(get()) }
         viewModel { IdentityViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
-        viewModel { HostViewModel(get(), get(), get(), get()) }
-        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession)`
+        viewModel { HostViewModel(get(), get(), get()) }
+        // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->
             SessionViewModel(
                 hostId = params.get(0),
                 cdArg = params.get(1),
-                launcherIdArg = params.get(2),
-                tmuxArg = params.get(3),
+                tmuxArg = params.get(2),
                 manager = get(),
                 hostRepo = get(),
                 identityRepo = get(),
-                launcherRepo = get(),
+                movedRepo = get(), // 迁移说明那一格：手机原来存的启动配置，每台列一次
                 hostConnector = get(),
                 backends = get(), // 这台的常驻流：终端那几件问那台核心
                 knownHostStore = get(), // TOFU 恢复路径
@@ -95,5 +99,5 @@ val appModule =
         single<KnownHostStore> { KnownHostDaoStore(get()) } // get()=KnownHostDao（dataModule 提供）
         single { HostConnector(get(), get(), get()) }
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
-        single { DevSeeder(androidContext(), get(), get(), get(), get()) }
+        single { DevSeeder(androidContext(), get(), get(), get()) }
     }

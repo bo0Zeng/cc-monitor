@@ -121,4 +121,18 @@ class ConversationsViewTest {
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
         assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
     }
+
+    @Test
+    fun `离线（流走不通 · 还在接）：照画本地缓存里上次那一份，离线那一句照说；连上问到了 ⇒ 换成那台这一份`() {
+        val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天")), null, false)
+        val down = view(LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
+        assertEquals(Problem("m 离线", "boom"), down.linkProblem)
+        assertEquals(listOf("1", "2"), down.recent.map { it.sessionId })
+        val connecting = view(LinkState.Connecting, SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
+        assertEquals(listOf("1", "2"), connecting.recent.map { it.sessionId })
+        val asking = view(LinkState.Up(), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
+        assertEquals("在问 ⇒ 先画上次那一份", listOf("1", "2"), asking.recent.map { it.sessionId })
+        val fresh = view(LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList()), cached = cached)
+        assertEquals("问到了 ⇒ 照那台这一份", listOf("1", "2", "3", "4"), fresh.recent.map { it.sessionId })
+    }
 }

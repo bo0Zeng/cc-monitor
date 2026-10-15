@@ -21,10 +21,8 @@ data class Host(
     // tmux / Claude 面
     val defaultWorkingDir: String? = null,
     val sessionManager: String? = null, // "tmux" | null
-    // 重连策略
+    // 断了要不要自己接回来（网络变了 · 重试几次不归这里：重连只有常驻流那一条循环）。
     val autoReconnect: Boolean = true,
-    val reconnectOnNetworkChange: Boolean = true,
-    val maxReconnectAttempts: Int = 0, // 0 = 无限
     // 经跳板机连接，指向另一个 Host 的 id（ssh -J A B）；null = 直连。
     val proxyJumpHostId: String? = null,
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。
@@ -175,22 +173,6 @@ data class Bookmark(
     val path: String,
     val label: String,
     val sortOrder: Int = 0,
-)
-
-/**
- * 启动配置：把「连上后手拼 cd/tmux/命令」存成一键可复用的项（cc/cct/进项目）。
- * 经 [com.ccmonitor.mobile.ssh.LaunchSpec] 消费：tmuxSession 非空→`tmux new -A -s <name>`；command 非空→进入后跑（如 claude）。
- */
-@Entity(tableName = "launchers")
-data class Launcher(
-    @PrimaryKey val id: String,
-    val hostId: String,
-    val label: String,
-    val workingDir: String? = null,
-    val tmuxSession: String? = null,
-    val command: String? = null,
-    val sortOrder: Int = 0,
-    val pinned: Boolean = false,
 )
 
 /** 应用级设置（键值表，增键不用迁移）。类型化访问经 SettingsRepository。 */

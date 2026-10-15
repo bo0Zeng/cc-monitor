@@ -35,7 +35,7 @@ class HostConnectTest {
         assertEquals(
             "「在此打开终端」到 Windows 主机：override cwd 走 PS cd",
             listOf("""cd 'C:\a b'"""),
-            host(os = "windows").initialCommands(LaunchSpec(workingDir = """C:\a b""")),
+            host(os = "windows").initialCommands(workingDir = """C:\a b"""),
         )
 
     @Test fun posixDefaultStillTmux() =
@@ -55,63 +55,37 @@ class HostConnectTest {
 
     // === workingDir（「在文件屏当前目录打开终端」）：override 强制 cd，优先于 defWd ===
     @Test fun overrideNoTmux() =
-        assertEquals(listOf("cd '/srv/app'"), host().initialCommands(LaunchSpec(workingDir = "/srv/app")))
+        assertEquals(listOf("cd '/srv/app'"), host().initialCommands(workingDir = "/srv/app"))
 
     @Test fun overrideNoTmuxBeatsDefWd() =
-        assertEquals(listOf("cd '/srv/app'"), host(wd = "/home/pi").initialCommands(LaunchSpec(workingDir = "/srv/app")))
+        assertEquals(listOf("cd '/srv/app'"), host(wd = "/home/pi").initialCommands(workingDir = "/srv/app"))
 
     @Test fun overrideTmuxNoDefWd() =
         assertEquals(
             listOf("tmux -u new-session -A -s 'main'", "cd '/srv/app'"),
-            host(tmux = true).initialCommands(LaunchSpec(workingDir = "/srv/app")),
+            host(tmux = true).initialCommands(workingDir = "/srv/app"),
         )
 
     @Test fun overrideTmuxWithDefWd() =
         assertEquals(
             listOf("tmux -u new-session -A -s 'main' -c '/home/pi'", "cd '/srv/app'"),
-            host(wd = "/home/pi", tmux = true).initialCommands(LaunchSpec(workingDir = "/srv/app")),
+            host(wd = "/home/pi", tmux = true).initialCommands(workingDir = "/srv/app"),
         )
 
-    @Test fun blankOverrideIgnored() = assertEquals(emptyList<String>(), host().initialCommands(LaunchSpec(workingDir = "   ")))
+    @Test fun blankOverrideIgnored() = assertEquals(emptyList<String>(), host().initialCommands(workingDir = "   "))
 
-    // === LaunchSpec.tmuxSession 覆盖默认会话名 ===
+    // === 显式会话名（重连回到上次所在的那个）覆盖默认会话名；主机没开 auto-tmux 也进 ===
     @Test fun tmuxSessionOverridesDefault() =
-        assertEquals(listOf("tmux -u new-session -A -s 'proj'"), host(tmux = true).initialCommands(LaunchSpec(tmuxSession = "proj")))
+        assertEquals(listOf("tmux -u new-session -A -s 'proj'"), host(tmux = true).initialCommands(tmuxSession = "proj"))
 
-    // === LaunchSpec.command 末尾追加（cd/tmux 之后）===
-    @Test fun commandAppendedAfterCd() =
-        assertEquals(
-            listOf("cd '/srv/app'", "claude"),
-            host().initialCommands(LaunchSpec(workingDir = "/srv/app", command = "claude")),
-        )
-
-    @Test fun commandAloneNoTmuxNoWd() =
-        assertEquals(listOf("htop"), host().initialCommands(LaunchSpec(command = "htop")))
-
-    @Test fun commandAppendedAfterTmux() =
-        assertEquals(
-            listOf("tmux -u new-session -A -s 'main'", "cc"),
-            host(tmux = true).initialCommands(LaunchSpec(command = "cc")),
-        )
-
-    @Test fun blankCommandIgnored() =
-        assertEquals(listOf("cd '/home/pi'"), host(wd = "/home/pi").initialCommands(LaunchSpec(command = "  ")))
-
-    // === launcher 的 tmuxSession 驱动 tmux（即使 host 未配 auto-tmux），如 cct ===
-    @Test fun launcherTmuxSessionDrivesTmuxOnNonTmuxHost() =
-        assertEquals(
-            listOf("tmux -u new-session -A -s 'cc'", "claude"),
-            host(tmux = false).initialCommands(LaunchSpec(tmuxSession = "cc", command = "claude")),
-        )
-
-    @Test fun launcherCcNoTmuxJustCommand() =
-        assertEquals(listOf("claude"), host(tmux = false).initialCommands(LaunchSpec(command = "claude")))
+    @Test fun explicitTmuxSessionDrivesTmuxOnNonTmuxHost() =
+        assertEquals(listOf("tmux -u new-session -A -s 'cc'"), host(tmux = false).initialCommands(tmuxSession = "cc"))
 
     // 非 tmux 主机不产生 tmux 命令（见 noOverridePlainCdWorkingDir 等）。
 
-    @Test fun resolveTmuxSessionPrefersSpecThenAutoTmux() {
-        assertEquals("proj", host(tmux = false).resolveTmuxSession(LaunchSpec(tmuxSession = "proj")))
-        assertEquals("main", host(tmux = true).resolveTmuxSession(LaunchSpec()))
-        assertEquals(null, host(tmux = false).resolveTmuxSession(LaunchSpec()))
+    @Test fun resolveTmuxSessionPrefersExplicitThenAutoTmux() {
+        assertEquals("proj", host(tmux = false).resolveTmuxSession("proj"))
+        assertEquals("main", host(tmux = true).resolveTmuxSession())
+        assertEquals(null, host(tmux = false).resolveTmuxSession())
     }
 }

@@ -3,7 +3,7 @@ package com.ccmonitor.mobile.ssh
 import com.ccmonitor.mobile.core.remote.shellQuote
 
 /*
- * 不属于 tmux 面的远端命令小件：全项目唯一的 quote、默认 tmux 会话名、推公钥命令、「连接后进入」的意图。
+ * 不属于 tmux 面的远端命令小件：全项目唯一的 quote、默认 tmux 会话名、推公钥命令。
  * tmux 命令族都在 [TmuxCommands]。
  */
 
@@ -27,13 +27,3 @@ fun appendAuthorizedKeyCommand(publicKeyOpenSsh: String): String {
     return "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && " +
         "if grep -qxF $q ~/.ssh/authorized_keys; then echo CCM_KEY_ALREADY; else printf '%s\\n' $q >> ~/.ssh/authorized_keys && echo CCM_KEY_ADDED; fi"
 }
-
-/** 一次「连接后进入」的意图；重连时原样重放。全空 = 只开 shell。 */
-data class LaunchSpec(
-    /** 进入后 cd 的目录，优先于 host.defaultWorkingDir（如「在文件屏当前目录打开终端」）。 */
-    val workingDir: String? = null,
-    /** tmux 会话名（host 为 tmux 时用）；null → [DEFAULT_TMUX_SESSION]。 */
-    val tmuxSession: String? = null,
-    /** 进入后要跑的命令；null → 不追加。 */
-    val command: String? = null,
-)

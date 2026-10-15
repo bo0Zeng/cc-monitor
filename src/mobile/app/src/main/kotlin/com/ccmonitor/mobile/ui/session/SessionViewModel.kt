@@ -2,12 +2,14 @@ package com.ccmonitor.mobile.ui.session
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
-import com.ccmonitor.mobile.core.data.repo.LauncherRepository
+import com.ccmonitor.mobile.core.data.repo.MovedLaunch
+import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.HostKeyChangedException
@@ -22,7 +24,6 @@ import com.ccmonitor.mobile.core.ssh.commandExecutor
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
-import com.ccmonitor.mobile.ssh.LaunchSpec
 import com.ccmonitor.mobile.ssh.PosixDialect
 import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -98,19 +99,17 @@ sealed interface SessionUiState {
 class SessionViewModel(
     private val hostId: String,
     cdArg: String?,
-    launcherIdArg: String?,
     tmuxArg: String?, // 进终端 tab 首连即接回的会话名（敲那台渲出的那一行）；普通 tab 为 null
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
-    private val launcherRepo: LauncherRepository,
+    private val movedRepo: MovedLaunchRepository, // 迁移说明那一格：手机原来存的启动配置，这一台的列一次
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
     backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束都问那台核心
     private val knownHostStore: KnownHostStore, // 主机钥匙变更的恢复：确认后 forget 再重连
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val cd: String? = cdArg?.ifBlank { null } // Koin 参数不传 null，空串当 null
-    private val launcherId: String? = launcherIdArg?.ifBlank { null } // 启动配置 id
 
     private val _uiState = MutableStateFlow<SessionUiState>(SessionUiState.Connecting)
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
@@ -201,11 +200,58 @@ class SessionViewModel(
     private val _notices = Channel<String>(Channel.BUFFERED)
     val notices: Flow<String> = _notices.receiveAsFlow()
 
+    /**
+     * 「用哪个启动」那一排：这台能用的别名（那台的 `profiles-read`，名字照那台给的）。进终端 tab（接回已有的会话）不出；
+     * 本 tab 按过一个之后收起（那个 shell 里已经起了会话）。
+     */
+    private val _aliases = MutableStateFlow<List<String>>(emptyList())
+    val aliases: StateFlow<List<String>> = _aliases.asStateFlow()
+
+    private val _aliasPicked = MutableStateFlow(false)
+    val aliasPicked: StateFlow<Boolean> = _aliasPicked.asStateFlow()
+
+    /** 这一台的迁移说明（手机原来存的启动配置，原样）；没有 ⇒ 空。关掉之后这一台的就没了（[ackMoved]）。 */
+    private val _moved = MutableStateFlow<List<MovedLaunch>>(emptyList())
+    val moved: StateFlow<List<MovedLaunch>> = _moved.asStateFlow()
+
+    private fun loadAliases() {
+        if (attachTo != null || _aliasPicked.value) return
+        viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
+    }
+
+    /** 按了「用哪个启动」里的 [name]：在这个 shell 里跑 `ccm @名`。 */
+    fun startAlias(name: String) {
+        val ts = session ?: return
+        ts.send("${Profiles.startLine(name)}\n".toByteArray())
+        _aliasPicked.value = true
+    }
+
+    /** 迁移说明里「建这条」：在这台建同名别名（别名页那条写命令），成败都说一句；建好了那一排重读。 */
+    fun makeAlias(m: MovedLaunch) {
+        val form = m.aliasForm() ?: return
+        viewModelScope.launch {
+            val machine = hostRepo.get(hostId)?.label ?: hostId
+            terminals
+                .makeAlias(form)
+                .onSuccess { reload ->
+                    _notices.trySend(listOfNotNull(copyText("mobLaunch.migrate.made", "machine" to machine, "name" to m.label), reload).joinToString("\n"))
+                    loadAliases()
+                }.onFailure { _notices.trySend(it.message.orEmpty()) }
+        }
+    }
+
+    /** 迁移说明关掉：这一台的不再出。 */
+    fun ackMoved() {
+        _moved.value = emptyList()
+        viewModelScope.launch(io) { movedRepo.ack(hostId) }
+    }
+
     // 本 tab 的持有者 token。retain / release 按 token 记账，强制断开清空持有者后重连可幂等地重新 retain。
     private val holderToken = UUID.randomUUID().toString()
 
     init {
         connect()
+        viewModelScope.launch(io) { _moved.value = movedRepo.forHost(hostId) }
     }
 
     private fun connect() {
@@ -286,7 +332,7 @@ class SessionViewModel(
 
     /**
      * 连接成功后的首发命令。进终端 tab：敲那台渲出的那一行（与桌面「命令已复制」同一条；找哪个窗格、怎么附着都在那台），
-     * 要不到 ⇒ 留在普通 shell、说一声。其余照「用户在 ssh 里自己敲」：启动配置 / 主机设置的工作目录 · tmux 会话 · 命令。
+     * 要不到 ⇒ 留在普通 shell、说一声。其余只开一个 shell：主机设置的工作目录 · tmux 会话（照「用户在 ssh 里自己敲」）。
      */
     private suspend fun sendStartupCommands(
         host: Host,
@@ -299,17 +345,12 @@ class SessionViewModel(
                 .onFailure { _notices.trySend(it.message.orEmpty()) }
             return
         }
-        // 有 launcherId 就用它的 LaunchSpec（工作目录 / tmux 会话 / 命令），否则只带 cd。
-        val launcher = launcherId?.let { launcherRepo.get(it) }
-        val baseSpec =
-            launcher?.let { LaunchSpec(it.workingDir, it.tmuxSession, it.command) }
-                ?: LaunchSpec(workingDir = cd)
-        // 重连时回到本 tab 上次所在的 tmux 会话，优先于 launcher 与默认；首连时为 null。
+        // 只开一个 shell（带 cd）：起会话走「用哪个启动」那一排（那台的别名）。重连时回到本 tab 上次所在的 tmux 会话。
         val lastTmux = _tmuxSession.value
-        val spec = if (lastTmux != null) baseSpec.copy(tmuxSession = lastTmux) else baseSpec
-        host.initialCommands(spec).forEach { ts.send("$it\n".toByteArray()) }
-        // 记下实际的 tmux 会话名（launcher 指定 > 自动 tmux > 无），与 initialCommands 同源。
-        host.resolveTmuxSession(spec)?.let { _tmuxSession.value = it }
+        host.initialCommands(workingDir = cd, tmuxSession = lastTmux).forEach { ts.send("$it\n".toByteArray()) }
+        // 记下实际的 tmux 会话名（上次所在 > 自动 tmux > 无），与 initialCommands 同源。
+        host.resolveTmuxSession(lastTmux)?.let { _tmuxSession.value = it }
+        loadAliases()
     }
 
     /**

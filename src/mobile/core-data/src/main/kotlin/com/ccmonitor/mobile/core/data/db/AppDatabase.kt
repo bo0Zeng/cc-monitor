@@ -11,10 +11,14 @@ import androidx.room.RoomDatabase
         KnownHost::class,
         CustomButton::class,
         Bookmark::class,
-        Launcher::class,
         Settings::class,
+        CachedSession::class,
+        RecordPage::class,
+        SyncAnchor::class,
+        PendingSend::class,
+        Draft::class,
     ],
-    version = 15,
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun bookmarkDao(): BookmarkDao
 
-    abstract fun launcherDao(): LauncherDao
-
     abstract fun settingsDao(): SettingsDao
+
+    abstract fun cacheDao(): CacheDao
 }

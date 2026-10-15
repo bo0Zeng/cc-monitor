@@ -5,8 +5,6 @@ import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
-import com.ccmonitor.mobile.core.data.db.Launcher
-import com.ccmonitor.mobile.core.data.db.LauncherDao
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import kotlinx.coroutines.Dispatchers
@@ -14,14 +12,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
- * 只在 debug 构建用：首启没有主机时，把 assets 里的 dev key 导成身份，并建一台 NanoPi 主机和几条默认按钮、启动配置。
+ * 只在 debug 构建用：首启没有主机时，把 assets 里的 dev key 导成身份，并建一台 NanoPi 主机和几条默认按钮。
  */
 class DevSeeder(
     private val context: Context,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
     private val customButtonDao: CustomButtonDao,
-    private val launcherDao: LauncherDao,
 ) {
     suspend fun seedIfEmpty() =
         withContext(Dispatchers.IO) {
@@ -63,10 +60,5 @@ class DevSeeder(
                 CustomButton("btn-git", null, "git", "git status", 2),
                 CustomButton("btn-clr", null, "clr", "clear", 3),
             ).forEach { customButtonDao.upsert(it) }
-            // 默认启动配置：cc 直开 claude，cct 在名为 cc 的 tmux 会话里开 claude。
-            listOf(
-                Launcher("lch-cc", "dev-nanopi", "cc", command = "claude", sortOrder = 0),
-                Launcher("lch-cct", "dev-nanopi", "cct", tmuxSession = "cc", command = "claude", sortOrder = 1),
-            ).forEach { launcherDao.upsert(it) }
         }
 }

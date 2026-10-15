@@ -30258,6 +30258,55 @@
       "zh": "关闭",
       "args": []
     },
+    "mobLaunch.migrate.title": {
+      "kind": "title",
+      "role": "确认框",
+      "zh": "启动配置换成别名",
+      "args": []
+    },
+    "mobLaunch.migrate.body": {
+      "kind": "body",
+      "role": "确认框",
+      "zh": "手机存的启动配置已停用，起会话改用别名\n旧的几条列在下面，可复制；关闭后不再出现",
+      "args": []
+    },
+    "mobLaunch.migrate.dir": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "目录 {dir}",
+      "args": ["dir"]
+    },
+    "mobLaunch.migrate.tmux": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "tmux 会话 {name}",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "mobLaunch.migrate.cmd": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "命令 {cmd}",
+      "args": ["cmd"]
+    },
+    "mobLaunch.migrate.copy": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "复制",
+      "args": []
+    },
+    "mobLaunch.migrate.make": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "建这条",
+      "args": []
+    },
+    "mobLaunch.migrate.made": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已在 {machine} 建好别名 {name}",
+      "args": ["machine", "name"]
+    },
     "mobCapture.dialog.title": {
       "kind": "title",
       "role": "确认框",

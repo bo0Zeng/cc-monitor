@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.ui.session
 import com.ccmonitor.mobile.core.claude.link.AttachLine
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Kill
+import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionNew
@@ -20,7 +21,7 @@ import com.ccmonitor.mobile.link.unreadableReply
 import java.util.UUID
 
 /**
- * 终端屏里要那台核心做的几件（列 · 结束 · 后台起 · 送字 · 抓屏 · 进终端那一行），都经这台的常驻流 [feed]。
+ * 终端屏里要那台核心做的几件（列 · 结束 · 后台起 · 送字 · 抓屏 · 进终端那一行 · 别名），都经这台的常驻流 [feed]。
  * 找哪个窗格、怎么附着、带不带 `-u` 全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
  * [machine] 是这台在手机上的名字（走不通时那一句里用）；[stored] 是这台存的那一家（线上 kind，主机设置里选的；没选 ⇒ `null`）。
  * 哪几家、叫什么、能换哪些模型都问那台（`session-new-facts`），手机一家都不认识。
@@ -113,6 +114,18 @@ class TerminalOps(
         val running = list().getOrNull()?.firstOrNull { it.name == name }?.agent
         return (running?.let { Result.success(it) } ?: agent()).mapCatching { a -> ask(AttachLine.COMMAND, AttachLine.args(a, name), AttachLine::of).getOrThrow() }
     }
+
+    /** 这台能用的别名（那台的 `profiles-read`，名字与顺序照那台）：终端屏「用哪个启动」那一排。 */
+    suspend fun aliases(): Result<List<String>> = ask(Profiles.READ, emptyMap(), Profiles::of).map { it.usable }
+
+    /**
+     * 在这台建一段别名（别名页同一条写命令 `profiles-write`，指纹取刚读回的那一份）。建好 ⇒ 那台要说的「已开的终端要重读」那一句
+     * （没有 ⇒ `null`）；被拒 ⇒ 失败（那台写好的那一句）。
+     */
+    suspend fun makeAlias(form: Map<String, Any?>): Result<String?> =
+        ask(Profiles.READ, emptyMap(), Profiles::of).mapCatching { book ->
+            ask(Profiles.WRITE, Profiles.createArgs(book.fingerprint, form), Profiles::written).getOrThrow().reload
+        }
 
     private suspend fun <T> ask(
         command: String,

@@ -198,6 +198,66 @@ val MIGRATION_14_15 =
         }
     }
 
+// 删 `launchers` 表（手机自己存的启动配置）：起会话改用那台的别名。旧行在删表之前原样写进设置表的迁移说明那一格
+// （`MovedLaunchRepository`：一条一段、一段五格），每台连上终端时列一次、可复制，「知道了」之后就没了。不留旧表。
+// char(30) / char(31) 与 `MovedLaunchRepository.RECORD` / `.FIELD` 是同一对分隔符；一行都没有 ⇒ 那一格为 NULL（没有可说的）。
+val MIGRATION_15_16 =
+    object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "INSERT OR REPLACE INTO `settings` (`key`, `value`) SELECT 'launch_moved', group_concat(" +
+                    "hostId || char(31) || label || char(31) || IFNULL(workingDir, '') || char(31) || " +
+                    "IFNULL(tmuxSession, '') || char(31) || IFNULL(command, ''), char(30)) " +
+                    "FROM (SELECT * FROM `launchers` ORDER BY hostId, sortOrder, label)",
+            )
+            db.execSQL("DROP TABLE `launchers`")
+        }
+    }
+
+// 加本地缓存五张表（会话列表 · 记录页 · 续点 · 待发 · 草稿：都装那台核心的成品原样）；hosts 去掉「网络变化时重连」「最多重连几次」两列
+// （重连只剩常驻流那一条循环，这两格没人读了）。别的表一字不动。
+// hosts 照 7→8 的做法重建（老 SQLite 没有 DROP COLUMN）：建新表、拷其余各格、换名；那两列的值丢掉，不留兼容。
+val MIGRATION_16_17 =
+    object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                    "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `extraAddresses` TEXT, " +
+                    "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
+                    "`sessionManager` TEXT, `autoReconnect` INTEGER NOT NULL, `proxyJumpHostId` TEXT, `passwordEnc` TEXT, " +
+                    "`os` TEXT, `agentKind` TEXT, PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "INSERT INTO `hosts_new` (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,os,agentKind) " +
+                    "SELECT id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,os,agentKind FROM `hosts`",
+            )
+            db.execSQL("DROP TABLE `hosts`")
+            db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `sessions` (`hostId` TEXT NOT NULL, `sid` TEXT NOT NULL, `listRow` TEXT, " +
+                    "`ord` INTEGER, `viewedAt` INTEGER, PRIMARY KEY(`hostId`, `sid`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `record_pages` (`hostId` TEXT NOT NULL, `sid` TEXT NOT NULL, `start` INTEGER NOT NULL, " +
+                    "`end` INTEGER NOT NULL, `rows` TEXT NOT NULL, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`hostId`, `sid`, `start`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `sync_anchors` (`hostId` TEXT NOT NULL, `scope` TEXT NOT NULL, `path` TEXT NOT NULL, " +
+                    "`offset` INTEGER NOT NULL, `seq` INTEGER NOT NULL, PRIMARY KEY(`hostId`, `scope`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `pending` (`id` TEXT NOT NULL, `hostId` TEXT NOT NULL, `sid` TEXT, `text` TEXT NOT NULL, " +
+                    "`attachments` TEXT, `mintedAt` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `attempts` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `drafts` (`hostId` TEXT NOT NULL, `sid` TEXT NOT NULL, `text` TEXT NOT NULL, `cwd` TEXT, " +
+                    "`account` TEXT, `model` TEXT, `permission` TEXT, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`hostId`, `sid`))",
+            )
+        }
+    }
+
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
@@ -214,4 +274,6 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_12_13,
         MIGRATION_13_14,
         MIGRATION_14_15,
+        MIGRATION_15_16,
+        MIGRATION_16_17,
     )

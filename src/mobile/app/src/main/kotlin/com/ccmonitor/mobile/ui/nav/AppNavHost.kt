@@ -206,9 +206,6 @@ private fun NewSessionHostPickerScreen(
         onIdentities = { nav.navigate(Screen.Identities.route) },
         onFiles = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Files)) },
         onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
-        onLaunch = { hostId, launcherId ->
-            openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(launcherId = launcherId), forceNew = true))
-        },
         onSessions = { nav.popBackStack() }, // 本页只从会话总览进，「会话」即返回
         newSessionMode = true,
         title = copyText("mobNav.newSession.title"),
@@ -253,7 +250,6 @@ private fun HostedSession(
                 SessionScreen(
                     open.hostId,
                     target.cd,
-                    target.launcherId,
                     target.tmuxSession, // 进终端 tab 首连即敲那台渲出的那一行，接回该会话
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
@@ -323,9 +319,6 @@ private fun NavGraphBuilder.hostsRoute(
                 nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Files)}")
             },
             onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
-            onLaunch = { hostId, launcherId ->
-                nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(launcherId = launcherId))}")
-            },
             onSessions = { nav.navigate(Screen.SessionsOverview.route) },
         )
     }

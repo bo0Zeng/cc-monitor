@@ -887,3 +887,24 @@ data class RotationSaveReply(
     val id: String,
     val rev: String,
 )
+
+@WireOf("ProfilesBook")
+@JsonClass(generateAdapter = true)
+data class ProfilesBook(
+    val fingerprint: String?,
+    val profiles: List<ProfileRow>,
+)
+
+@WireOf("ProfileRow")
+@JsonClass(generateAdapter = true)
+data class ProfileRow(
+    val name: String,
+    val usable: Boolean,
+)
+
+@WireOf("ProfilesWriteDone")
+@JsonClass(generateAdapter = true)
+data class ProfilesWriteDone(
+    val wrote: Boolean,
+    val reload: String?,
+)

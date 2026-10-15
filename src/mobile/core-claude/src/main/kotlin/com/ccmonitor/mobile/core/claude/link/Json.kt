@@ -13,6 +13,19 @@ internal object Json {
 
     /** 写成一行（moshi 不出裸换行）。 */
     fun line(value: Any?): String = any.toJson(value)
+
+    /** 解一行成 `Any` 形（不限对象）；不是 JSON ⇒ `null`。 */
+    fun value(line: String): Any? = runCatching { any.fromJson(line) }.getOrNull()
+}
+
+/**
+ * 本地缓存那一侧用：核心交来的成品原样写成一行 JSON、读回来再交给同一个解码器（[HistoryRead.decodeRows] · [HistoryList.of]）。
+ * 只搬不认：不挑格、不改格，手机不在缓存上另算一份。
+ */
+object RawJson {
+    fun write(value: Any?): String = Json.line(value)
+
+    fun read(text: String): Any? = Json.value(text)
 }
 
 /** 读一格：要什么类型就按什么类型取，类型不对 ⇒ `null`。 */

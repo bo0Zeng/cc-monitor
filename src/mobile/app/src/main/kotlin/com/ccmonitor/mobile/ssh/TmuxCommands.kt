@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ssh
 
 /**
- * 用户在 ssh 里自己会敲的那两条 tmux 命令，原样敲进终端（不另拼 tmux 管理逻辑）：主机设置 · 启动配置里的
+ * 用户在 ssh 里自己会敲的那两条 tmux 命令，原样敲进终端（不另拼 tmux 管理逻辑）：主机设置里的
  * 「连上就进某个会话」与 tmux 管理窗里的「新建」。纯函数，只造串不执行。带 `-u`：exec 通道与新开的 shell 里常常
  * 没有 UTF-8 的 locale，tmux 会把多字节字换成 `_`。
  *
