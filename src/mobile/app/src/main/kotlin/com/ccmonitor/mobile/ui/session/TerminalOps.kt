@@ -51,7 +51,7 @@ class TerminalOps(
             )
 
     /** 这台能起的几家（那台的 `session-new-facts`：名字 · 可选的模型都是那台给的）。 */
-    suspend fun agents(): Result<List<AgentFacts>> = ask(SessionNewFacts.COMMAND, emptyMap(), SessionNewFacts::of)
+    suspend fun agents(): Result<List<AgentFacts>> = ask(SessionNewFacts.COMMAND, emptyMap()) { SessionNewFacts.of(it)?.agents }
 
     /** 这台起会话用哪一家：存的那一家 · 那台列的第一家（线上 kind）。问不到 ⇒ 失败（那一句）。 */
     private suspend fun agent(): Result<String> =

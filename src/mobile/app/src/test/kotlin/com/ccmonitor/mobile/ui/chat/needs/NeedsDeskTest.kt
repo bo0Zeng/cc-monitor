@@ -44,9 +44,11 @@ class NeedsDeskTest {
     private fun needs(
         ask: String?,
         manual: String? = null,
+        call: String? = null,
     ): Map<String, Any?> =
         mapOf(
             "kind" to if (ask == null) "unknown" else "approve",
+            "call" to call,
             "text" to "等批准",
             "head" to "等批准 · Bash",
             "headCode" to "touch a.txt",
@@ -115,6 +117,21 @@ class NeedsDeskTest {
             assertEquals("touch a.txt", bar.line2)
             assertTrue("挂着请求 ⇒ 有［答］", bar.canAnswer)
             assertEquals(copyText("sessionFace.state.waiting", "kind" to "等批准 · Bash", "waited" to DurationFormat.waited(12_000L, 0L, 0L)!!), bar.firstLine(0L))
+        }
+
+    @Test
+    fun `流里在等的那一步：那台给了是哪个调用 ⇒ 交出调用 id 与那台写好的字；判不出 ⇒ 不标；不等了 ⇒ 撤掉`() =
+        runTest {
+            val r = rig(needs("approve", call = "toolu_1"))
+            assertEquals(AwaitingStep("toolu_1", "等批准"), r.desk.state.value.awaiting)
+            r.board.mine = needs("approve")
+            r.pushes.emit(Changed("needs", "s1"))
+            settle()
+            assertNull("判不出是哪一步 ⇒ 不标", r.desk.state.value.awaiting)
+            r.board.mine = null
+            r.pushes.emit(Changed("needs", "s1"))
+            settle()
+            assertNull(r.desk.state.value.awaiting)
         }
 
     @Test

@@ -1,6 +1,11 @@
 package com.ccmonitor.mobile.ui.chat
 
+import com.ccmonitor.mobile.core.claude.link.CanSwitch
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.Said
+import com.ccmonitor.mobile.core.claude.link.SessionFate
+import com.ccmonitor.mobile.core.claude.link.Switches
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -101,6 +106,59 @@ class ChatSessionMidTest {
         }
 
     @Test
+    fun `chip 的字：打开时照 history-facts 那台写好的两个字；换成过就以读回的为准`() =
+        runTest {
+            val link = FakeCoreLink()
+            val s =
+                existing(link) { cmd, _ ->
+                    when (cmd) {
+                        "history-facts" -> Reply.Ok(mapOf("modelText" to "Opus 4.5", "permissionModeText" to "自动接受编辑"))
+                        else -> null
+                    }
+                }
+            runCurrent()
+            assertEquals(listOf(mapOf("path" to "/p/s1.jsonl")), link.calls("history-facts"))
+            assertEquals("Opus 4.5", s.state.value.model.text)
+            assertEquals("自动接受编辑", s.state.value.permission.text)
+        }
+
+    @Test
+    fun `能不能换照会话帧的 switch；离开活了照那一帧带的；那台离线 ⇒ 两颗都灰、写离线那一句`() =
+        runTest {
+            val link = FakeCoreLink()
+            val s = existing(link) { _, _ -> null }
+            link.report("s1", "/h/proj", switch = Switches(CanSwitch("本轮结束后可换模型"), CanSwitch(null)))
+            runCurrent()
+            assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
+            assertNull(s.state.value.permission.blocked)
+            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束", Switches(CanSwitch("会话已退出"), CanSwitch("会话已退出")))))
+            runCurrent()
+            assertEquals("会话已退出", s.state.value.permission.blocked)
+            link.state.value = LinkState.Down(Said("", ""), needsHand = false)
+            runCurrent()
+            val off = copyText("newSession.machine.offline", "machine" to "box")
+            assertEquals(off to off, s.state.value.model.blocked to s.state.value.permission.blocked)
+        }
+
+    @Test
+    fun `被顶替（清空之后另起一份）⇒ 跟到顶替它的那一条、从新记录读`() =
+        runTest {
+            val link = FakeCoreLink()
+            file.records += FakeCoreLink.human("u1", "旧的那句")
+            val s = existing(link) { _, _ -> null }
+            runCurrent()
+            assertEquals(1, s.state.value.units.size)
+            file.records.clear()
+            link.report("s2", "/h/proj")
+            link.table.value = link.table.value.copy(sessions = link.table.value.sessions - "s1", successors = mapOf("s1" to "s2"))
+            runCurrent()
+            assertEquals("s2", s.state.value.sid)
+            assertEquals("旧记录那几条不留", 0, s.state.value.units.size)
+            assertEquals("/p/s2.jsonl", link.calls("history-tail").last()?.get("path"))
+            assertEquals(setOf("s2"), link.watching())
+        }
+
+    @Test
     fun `抽屉里列的是那台给这条会话那一家的模型与权限档`() =
         runTest {
             val link = FakeCoreLink()
@@ -109,14 +167,21 @@ class ChatSessionMidTest {
                     "recent" to emptyList<Any>(),
                     "agents" to
                         listOf(
-                            mapOf("kind" to "claude", "text" to "Claude Code", "models" to listOf(mapOf("value" to "opus", "text" to "Opus")), "permissionModes" to listOf(mapOf("value" to "plan", "text" to "规划模式"))),
+                            mapOf(
+                                "kind" to "claude",
+                                "text" to "Claude Code",
+                                "models" to listOf(mapOf("value" to "opus", "text" to "Opus")),
+                                "modelDefault" to mapOf("value" to "default", "text" to "默认"),
+                                "modelNote" to "换模型也改此号以后新会话的默认",
+                                "permissionModes" to listOf(mapOf("value" to "plan", "text" to "规划模式")),
+                            ),
                         ),
                 )
             val s = existing(link) { cmd, _ -> if (cmd == "session-new-facts") Reply.Ok(facts) else null }
             runCurrent()
             s.loadPicks()
             runCurrent()
-            assertEquals(Picks(listOf(opus), listOf(plan)), s.state.value.picks)
+            assertEquals(Picks(listOf(opus), listOf(plan), NewSessionPick("default", "默认"), "换模型也改此号以后新会话的默认"), s.state.value.picks)
             s.loadPicks()
             runCurrent()
             assertEquals("问到过就不再问", 1, link.calls("session-new-facts").size)

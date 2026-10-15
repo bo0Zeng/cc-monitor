@@ -17,18 +17,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -41,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -51,6 +51,8 @@ import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -66,6 +68,7 @@ object NeedsTags {
     const val GONE = "needs-gone"
     const val NOTE = "needs-note"
     const val OTHER = "needs-other"
+    const val OTHER_INPUT = "needs-other-input"
     const val CLOSE = "needs-close"
 
     fun choice(id: String) = "needs-choice-$id"
@@ -362,14 +365,22 @@ private fun QuestionPage(
     }
     val other = pick?.text.orEmpty()
     OptionRow(on = other.isNotBlank(), multi = q.multi, enabled = !sheet.locked, tag = NeedsTags.OTHER, onClick = {}) {
-        // 每一题一格，换题时跟着换（按题 id 记）。
-        OutlinedTextField(
+        // 每一题一格，换题时跟着换（按题 id 记）。输入框不另画框：选项行那一圈框就是它的框。
+        val muted = MaterialTheme.colorScheme.onSurfaceVariant
+        BasicTextField(
             value = other,
             onValueChange = act.other,
-            placeholder = { Text(copyText("askBlock.question.other")) },
             singleLine = true,
             enabled = !sheet.locked,
-            modifier = Modifier.weight(1f),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.weight(1f).testTag(NeedsTags.OTHER_INPUT),
+            decorationBox = { field ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (other.isEmpty()) Text(copyText("askBlock.question.other"), style = MaterialTheme.typography.bodyLarge, color = muted)
+                    field()
+                }
+            },
         )
     }
 }
@@ -396,7 +407,14 @@ private fun OptionRow(
             .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (multi) Checkbox(checked = on, onCheckedChange = null) else RadioButton(selected = on, onClick = null)
+        val mark =
+            when {
+                multi && on -> Ph.CheckSquare
+                multi -> Ph.Square
+                on -> Ph.RadioButton
+                else -> Ph.Circle
+            }
+        PhIcon(mark, contentDescription = null, tint = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(8.dp))
         content()
     }

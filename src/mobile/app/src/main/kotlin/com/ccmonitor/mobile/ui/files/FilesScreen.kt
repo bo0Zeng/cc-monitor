@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -123,6 +124,8 @@ fun FilesScreen(
     hostId: String,
     onOpenTerminal: (String) -> Unit = {},
     onShowTabs: () -> Unit = {},
+    /** 别处点名要打开的那个路径（那台上的全路径）；没有 ⇒ `null`。一个导航项只开一次（回到这一项不再开）。 */
+    openPath: String? = null,
 ) {
     val vm = koinViewModel<FilesViewModel> { parametersOf(hostId) }
     val snackbar = LocalAppSnackbar.current
@@ -130,6 +133,14 @@ fun FilesScreen(
     var dialog by remember { mutableStateOf<FilesDialog?>(null) }
 
     LaunchedEffect(vm) { vm.events.collect { snackbar.show(it) } }
+    LaunchedEffect(vm) { vm.opened.collect { (name, text) -> dialog = FilesDialog.Preview(name, text) } }
+    var opened by rememberSaveable(openPath) { mutableStateOf(false) }
+    LaunchedEffect(openPath) {
+        if (openPath != null && !opened) {
+            opened = true
+            vm.open(openPath)
+        }
+    }
 
     val actions = entryActions(vm) { dialog = it }
     val uploadLauncher = rememberUploadLauncher(vm)

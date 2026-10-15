@@ -77,6 +77,8 @@ data class AgentFacts(
     val kind: String,
     val text: String,
     val models: List<NewSessionPick>,
+    val modelDefault: NewSessionPick?,
+    val modelNote: String?,
     val permissionModes: List<NewSessionPick>,
 )
 
@@ -201,6 +203,7 @@ data class NeedsRow(
 @JsonClass(generateAdapter = true)
 data class Needs(
     val kind: String,
+    val call: String?,
     val text: String,
     val head: String,
     val headCode: String?,
@@ -532,6 +535,13 @@ data class ToolStep(
 
 // ── 会话中途：切权限档 · 这条会话能用的命令与 Skill（聊天屏输入那一圈读的） ──────────
 
+@WireOf("SessionFacts")
+@JsonClass(generateAdapter = true)
+data class SessionFacts(
+    val modelText: String?,
+    val permissionModeText: String?,
+)
+
 @WireOf("ModeSwitched")
 @JsonClass(generateAdapter = true)
 data class ModeSwitched(
@@ -546,6 +556,15 @@ data class SessionCommands(
     val commands: List<SessionCommand>,
     val skills: List<SessionSkill>,
     val problems: List<String>,
+    val compact: SessionAct?,
+    val clear: SessionAct?,
+)
+
+@WireOf("SessionAct")
+@JsonClass(generateAdapter = true)
+data class SessionAct(
+    val say: String,
+    val confirm: Boolean,
 )
 
 @WireOf("SessionCommand")
@@ -555,7 +574,8 @@ data class SessionCommand(
     val text: String?,
     val scope: CommandScope,
     val scopeText: String,
-    val confirm: Boolean,
+    val needsArgsText: String?,
+    val confirmText: String?,
 )
 
 @JsonClass(generateAdapter = false)
@@ -678,6 +698,7 @@ data class LsReply(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
+    val kind: FileKind,
     val mode: Long?,
 )
 

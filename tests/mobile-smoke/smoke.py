@@ -645,7 +645,10 @@ def deploy_steps():
         before = sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace"))
         drawer(t("mobDrawer.server.named", name=""))
         time.sleep(1.5)
-        tap_in_row(MACHINE, t("mobHosts.row.edit"))
+        # 编辑在主机行尾的 ⋯ 里：先点 ⋯，再在弹出的那一列里点「编辑」。
+        tap(t("mobHosts.row.more", label=MACHINE))
+        time.sleep(1)
+        tap(t("mobHosts.row.edit"))
         for _ in range(4):
             if ui.find(t("mobHostEdit.backend.check")) is not None:
                 break
@@ -892,14 +895,16 @@ def walk():
         """钉条上的［答］：只认字正好是它的那一颗（「答题口：」那类正文里也有这个字）。"""
         return next((n for n in ui.nodes() if n.get("text") == t("mobNeeds.act.answer")), None)
 
-    def ask_up(said, head, title=None):
-        """发一句让替身停在框上；钉条出来（那台写的那一行）⇒ 点［答］升起抽屉（[title] ＝ 抽屉头一行，给了就核）。"""
+    def ask_up(said, head, title=None, before=None):
+        """发一句让替身停在框上；钉条出来（那台写的那一行）⇒ 点［答］升起抽屉（[title] ＝ 抽屉头一行，给了就核；[before] 升抽屉之前先看一眼）。"""
         tap(t("chat.input.placeholder")); typed(said)
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(head, 30):
             raise Step.Fail(f"钉条没出来（{head}）")
         to_bottom()
+        if before:
+            before()
         key = answer_key()
         if key is None:
             raise Step.Fail("钉条上没有［答］（答题口没挂上？）")
@@ -942,8 +947,19 @@ def walk():
         if answer_key() is not None:
             raise Step.Fail("答完了钉条还在")
 
+    def step_badge():
+        """流里在等的那一步：工具卡上那一枚是那台写好的「等批准」（needs.call 认的那一步）。"""
+        want = t("beSession.needs.approve")  # 钉条头一行里也有这几个字：只认字正好是它的那一枚
+        end = time.time() + 20
+        while time.time() < end and not any(n.get("text") == want for n in ui.nodes()):
+            adb("shell", "input", "swipe", "540", "1500", "540", "500", "150")
+            time.sleep(1)
+        if not any(n.get("text") == want for n in ui.nodes()):
+            raise Step.Fail("流里那张在等的工具卡上没有「等批准」")
+        shot("4d-工具卡等批准")
+
     with Step("4d-答批准"):
-        ask_up(f"{T} ask go", t("needs.bar.approve", tool="Bash"))
+        ask_up(f"{T} ask go", t("needs.bar.approve", tool="Bash"), before=step_badge)
         always = t("beAsk.choice.allowAlways", rule=t("beAsk.rule.dirs", dirs="/w", scope=t("beAsk.scope.session")))
         for want in (t("beAsk.choice.allow"), always, t("beAsk.choice.denyStop")):
             if ui.find(want) is None:
@@ -981,6 +997,30 @@ def walk():
         if answer_key() is not None:
             raise Step.Fail("别处答完了钉条还在")
 
+    with Step("4h-在终端里打开"):
+        # ⋯ 里那一项：那台名单上认这条会话的终端（第二行是那个 tmux 会话名），点了终端屏开一个标签附着它。
+        name = tmux_name_of(f"{T} new session")
+        hide_keyboard()
+        tap(t("history.row.more"))
+        if not wait(t("sessionHead.act.openTerm"), 15):
+            raise Step.Fail("⋯ 里没有「在终端里打开」")
+        if not name or ui.find(name) is None:
+            raise Step.Fail(f"「在终端里打开」第二行不是那个 tmux 会话名（{name}）")
+        shot("4h-菜单")
+        tap(t("sessionHead.act.openTerm"))
+        def attached():
+            rows = rig("tmux", "list-sessions", "-F", "#{session_name} #{session_attached}").stdout.splitlines()
+            return any(r.rsplit(" ", 1)[0] == name and r.rsplit(" ", 1)[-1] != "0" for r in rows)
+
+        end = time.time() + 30
+        while time.time() < end and not attached():
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail(f"点了没附着到 {name}")
+        shot("4h-终端屏")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(2)
+
     with Step("5-一轮完成的通知"):
         name = tmux_name_of(f"{T} new session")
         adb("shell", "input", "keyevent", "3")
@@ -996,10 +1036,9 @@ def walk():
     with Step("6-断网再连"):
         name = tmux_name_of(f"{T} new session")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
-        flashed = []
-        for _ in range(3):
-            time.sleep(2)
-            flashed += [n.get("text") for n in ui.nodes() if "离线" in (n.get("text") or "")]
+        # 断着：两颗 chip 灰、上方那一行写那台离线（连接那一层判的，桌面同一句）；网回来那一行撤掉。
+        offline = t("newSession.machine.offline", machine=MACHINE)
+        said_offline = wait(offline, 20)
         rig("tmux", "send-keys", "-t", name or "", f"{T} offline", "Enter")
         time.sleep(6)
         adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
@@ -1013,8 +1052,10 @@ def walk():
             raise Step.Fail(f"漏了：{missing}")
         if not adb("shell", "pidof", PKG).strip():
             raise Step.Fail("App 没了（断网闪退）")
-        if flashed:
-            raise Step.Fail(f"闪了「离线」：{flashed[:1]}")
+        if not said_offline:
+            raise Step.Fail("断着时 chip 上方没写那台离线")
+        if ui.find(offline) is not None:
+            raise Step.Fail("网回来了还写着离线")
 
     with Step("7-换网"):
         # 换一张网（Wi-Fi 关掉 ⇒ 落到移动数据，再开回来）：SSH 那层重连换一条，常驻流在新的那条上当场重接；断着那段补上。
@@ -1061,6 +1102,8 @@ def walk():
             drawer(t("mobDrawer.item.chats"))
             if not wait(f"{T} new session", 30):
                 raise Step.Fail("断网时对话列表是空的（没上本地缓存）")
+            if not wait(t("newSession.machine.offline", machine=MACHINE), 10):
+                raise Step.Fail("断着那台的会话行没写离线")
             shot("8b-离线列表")
             tap(f"{T} new session")
             time.sleep(3)

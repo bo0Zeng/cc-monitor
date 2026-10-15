@@ -53,7 +53,7 @@ class ConversationsViewModel(
     private val cached = MutableStateFlow<HistoryListPage?>(null)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs, combine(cached, backend.deploying, ::Pair)) { link, table, l, n, (c, d) -> view(link, table, l, n, needsAt, c, d) }
+        combine(backend.state, backend.table, list, needs, combine(cached, backend.deploying, ::Pair)) { link, table, l, n, (c, d) -> view(machine, link, table, l, n, needsAt, c, d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
@@ -223,6 +223,8 @@ data class HistoryItem(
 )
 
 internal fun view(
+    /** 这台在屏上的名字（断着时每行那一句里称呼它）。 */
+    machine: String,
     link: LinkState,
     table: SessionTable,
     list: Fetched<HistoryListPage>,
@@ -240,10 +242,10 @@ internal fun view(
             deploying = deploying,
             connecting = false,
             listLoading = false,
-            sections = sectionsOf(cached, table),
+            sections = sectionsOf(cached, null, machine),
         )
     }
-    if (link == LinkState.Connecting) return ConversationsUiState(deploying = deploying, sections = sectionsOf(cached, table))
+    if (link == LinkState.Connecting) return ConversationsUiState(deploying = deploying, sections = sectionsOf(cached, table, machine))
     val labels = answer?.rows?.associate { it.sessionId to it.label }.orEmpty()
     return ConversationsUiState(
         connecting = false,
@@ -252,7 +254,7 @@ internal fun view(
         deploying = deploying,
         needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt, SessionDot.live(it.needs.tone)) },
         needsProblem = (needs as? Fetched.Failed)?.problem,
-        sections = sectionsOf(answer, table),
+        sections = sectionsOf(answer, table, machine),
         listLoading = list is Fetched.Loading,
         listProblem = (list as? Fetched.Failed)?.problem,
         notice = answer?.notice,
@@ -260,16 +262,22 @@ internal fun view(
     )
 }
 
-/** 清单 ⇒ 几段：段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。 */
+/**
+ * 清单 ⇒ 几段：段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。
+ * [table] 为 `null` ＝ 那台断着：此刻的状态谁都说不清 ⇒ 每行点画说不清、字写那台离线（断前的会话表与缓存里的状态都可能过时）。
+ */
 private fun sectionsOf(
     answer: HistoryListPage?,
-    table: SessionTable,
+    table: SessionTable?,
+    machine: String,
 ): List<HistorySection> {
     val sections = mutableListOf<HistorySection>()
+    val offline = Toned(copyText("newSession.machine.offline", "machine" to machine), Tone.PLAIN)
     for (r in answer?.rows.orEmpty()) {
-        val live = table.sessions[r.sessionId]
-        val fate = table.fates[r.sessionId]
-        val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, statusOf(live?.activity, fate?.text, r.status), SessionDot.of(live, fate, r.status))
+        val live = table?.sessions?.get(r.sessionId)
+        val fate = table?.fates?.get(r.sessionId)
+        val (status, dot) = if (table == null) offline to SessionDot.UNKNOWN else statusOf(live?.activity, fate?.text, r.status) to SessionDot.of(live, fate, r.status)
+        val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, status, dot)
         val last = sections.lastOrNull()
         if (last != null && last.title == r.sectionText) {
             sections[sections.size - 1] = last.copy(rows = last.rows + item)

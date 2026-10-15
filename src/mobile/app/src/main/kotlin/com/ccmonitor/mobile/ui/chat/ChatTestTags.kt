@@ -70,6 +70,9 @@ object ChatTestTags {
     /** 顶栏右上的 ⋯（对这条对话本身做的事）。 */
     const val MORE = "chat-more"
 
+    /** ⋯ 里「在终端里打开」那一项。 */
+    const val MORE_TERMINAL = "chat-more-terminal"
+
     /** 顶栏左上的 ☰，拉出抽屉。 */
     const val DRAWER_OPEN = "chat-drawer-open"
 }

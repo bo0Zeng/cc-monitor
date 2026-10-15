@@ -117,7 +117,7 @@ class NewSessionPicker(
 
     private suspend fun loadFacts() {
         val r = link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS)
-        val facts = (r as? Reply.Ok)?.let { SessionNewFacts.full(it.data) }
+        val facts = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }
         if (facts == null) {
             _state.update { it.copy(factsFailed = copyText("newSession.facts.failed", "machine" to machine, "why" to failed(r, SessionNewFacts.COMMAND))) }
             return
