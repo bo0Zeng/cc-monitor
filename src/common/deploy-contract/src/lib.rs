@@ -7,7 +7,7 @@
 //! |---|---|---|
 //! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
-//! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
+//! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] · [`build_relation`] |
 //! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `deploy` crate 一家（`src/backend/deploy/`，桌面后端与手机同一份）；
@@ -413,6 +413,25 @@ pub fn build_order(id: &str) -> Option<(u32, u8)> {
             Some((generation, *letter))
         }
         _ => None,
+    }
+}
+
+/// 另一份构建相对手上这一版。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildRelation {
+    Newer,
+    Older,
+    /// 任一边解不出序键，或同序不同名。
+    Incomparable,
+}
+
+/// `theirs`（那台上 / 口上占着的那一份）相对 `mine`（手上这一版）的新旧，按 [`build_order`] 比 —— 唯一实现：
+/// 部署只升不降（后端 `deploy`）与本机口上那一份别的构建（monitor 机器状态）都调它。**纯函数**。
+pub fn build_relation(theirs: &str, mine: &str) -> BuildRelation {
+    match (build_order(theirs), build_order(mine)) {
+        (Some(t), Some(m)) if t < m => BuildRelation::Older,
+        (Some(t), Some(m)) if t > m => BuildRelation::Newer,
+        _ => BuildRelation::Incomparable,
     }
 }
 

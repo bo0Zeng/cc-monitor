@@ -364,16 +364,11 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         .clone();
     let relation = match (channel, mine, foreign.as_deref()) {
         (true, Some(_), _) => VersionRelation::Same,
-        (false, Some(m), Some(theirs)) => {
-            match (
-                deploy_contract::build_order(theirs),
-                deploy_contract::build_order(m),
-            ) {
-                (Some(t), Some(o)) if t < o => VersionRelation::Older,
-                (Some(t), Some(o)) if t > o => VersionRelation::Newer,
-                _ => VersionRelation::Incomparable,
-            }
-        }
+        (false, Some(m), Some(theirs)) => match deploy_contract::build_relation(theirs, m) {
+            deploy_contract::BuildRelation::Older => VersionRelation::Older,
+            deploy_contract::BuildRelation::Newer => VersionRelation::Newer,
+            deploy_contract::BuildRelation::Incomparable => VersionRelation::Incomparable,
+        },
         (false, Some(_), None) => VersionRelation::Same,
         (_, None, _) => VersionRelation::Incomparable,
     };

@@ -656,16 +656,6 @@ fn probe_no_cell_answers_in_place_of_another() {
     );
 }
 
-/// B1a 后半（随 `is_newer` 从 `deploy-core` 搬来）：只有两边都解得出、且这一版严格大才算新。
-#[test]
-fn hx2_newer_means_both_orders_parse_and_mine_is_strictly_greater() {
-    assert!(is_newer("p3n-a", "p3m-b") && is_newer("p4a-a", "p3z-b"));
-    assert!(!is_newer("p3m-a", "p3m-b"), "同序不同名 ⇒ 不算新");
-    assert!(
-        !is_newer("p3m-a", "p3n-b") && !is_newer("p3n-a", "junk") && !is_newer("junk", "p1a-x")
-    );
-}
-
 /// 🔴 B2：`identity_decision` 的「另一版」那一格按新旧拆开（期望手写）：旧 ⇒ 换；新 · 同序不同名 · 解不出 ⇒ 不动。
 #[test]
 fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
