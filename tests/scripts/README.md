@@ -43,7 +43,7 @@
 判快慢的改计步数 / 计调用次数 / 注入钟（假定时器、虚拟时间），真要看速度的进速度台、不进门禁；要分「自己回来」与「挂住被掐」看退出码，不看用了几秒。
 判据 `tests/common/guard-core/wall_ceiling_tests.rs` 扫门禁跑的测试源，别处写数字期限就红，例外逐条登记理由。
 
-门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓：取环境变量 `PRIVATE_SCAN` 指的那份，没设就在 PATH 上找同名的扫描脚本，都没有就跳过并说一声。
+门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓，只认 PATH 上的 `private-scan.sh`：找不到时门禁开跑前就停（没判的不许说绿），推送拒推。
 
 PowerShell 别名块的模板是 `src/shared/cc.ps1.tpl`（不在本目录；后端编译时 `include_str!` 进去）：设置里装别名块时把它（`__ccm_bind` 自动打开 monitor · 窗口标签 ＋ 带标签的 `ssh` · 接上别名文件）写进用户 `$PROFILE` 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内。
 

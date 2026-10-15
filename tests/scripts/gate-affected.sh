@@ -9,7 +9,7 @@
 #   --dry-run     只印挑格的计划，不跑
 # 规矩照 gate-clean.sh：工作树必须干净；清掉会话继承来的 CCM_* / CLAUDE_* / ANTHROPIC_* / TMUX*；排门禁锁；拿到锁时负载 > 核数 × 0.6 就串跑。
 # 门禁锁 · 槽位在 GATE_STATE_DIR（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate，几棵树共用一把锁）。
-# 私人扫描：私人词表不进仓，扫描脚本也在仓外 —— 取 PRIVATE_SCAN 指的那份，没设就找 PATH 上的 private-scan.sh；都没有 ⇒ 跳过并说明（不算红）。
+# 私人扫描：私人词表与扫描脚本都不进仓，只认 PATH 上的 private-scan.sh；找不到 ⇒ 开跑前就停（没判的不许说绿）。
 # 收据：挑格跑的写 .build/gate-affected-receipt.json（裁决是 PARTIAL，不许拿它出货）；退回全量的写默认的 .build/gate-receipt.json。
 # 计划另存 .build/gate-affected-plan.txt。末行：`AFFECTED: OK …` / `AFFECTED: 红 …`。
 set -uo pipefail
@@ -25,6 +25,8 @@ while [ $# -gt 0 ]; do
     *) echo "gate-affected: 不认识的参数 $1" >&2; exit 2 ;;
   esac
 done
+[ -n "$dry" ] || scan=$(command -v private-scan.sh) \
+  || { echo "gate-affected: PATH 上没有 private-scan.sh —— 私人扫描判不了，门禁不能说绿；扫描脚本放上 PATH 再来"; exit 2; }
 root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 
@@ -74,9 +76,7 @@ if [ ${#fails[@]} -eq 0 ]; then
 fi
 
 echo; echo "── 私人扫描"
-scan=${PRIVATE_SCAN:-$(command -v private-scan.sh || true)}
-if [ -n "$scan" ] && [ -f "$scan" ]; then bash "$scan" . || fails+=("私人扫描")
-else echo "  跳过：没有私人扫描脚本（PRIVATE_SCAN 没设、PATH 上也没有 private-scan.sh）—— 私人词表不进仓，这一步只在有它的机器上跑"; fi
+bash "$scan" . || fails+=("私人扫描")
 
 echo
 if [ ${#fails[@]} -eq 0 ]; then

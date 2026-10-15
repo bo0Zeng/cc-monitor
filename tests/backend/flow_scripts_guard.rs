@@ -88,6 +88,56 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// 私人扫描只认 PATH 上的 `private-scan.sh`：门禁与推送都在做任何事之前找它，找不到就停（门禁不许落成 OK、推送拒推），
+    /// 并说缺的是哪一个；环境变量指过去的不算。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
+    #[test]
+    fn gate_and_push_stop_without_the_private_scan_on_path() {
+        const MISSING: &str = "PATH 上没有 private-scan.sh";
+        for (rel, args) in [
+            ("tests/scripts/gate-affected.sh", &[][..]),
+            ("tests/scripts/push-candidate.sh", &["x"][..]),
+        ] {
+            for on_path in [false, true] {
+                let d = scratch("pscan");
+                let bin = tool_bin(&d, &["bash", "git", "sed", "dirname", "cat", "mkdir"]);
+                let fake = d.join("fake-scan.sh");
+                std::fs::write(&fake, "exit 0\n").unwrap();
+                if on_path {
+                    use std::os::unix::fs::PermissionsExt;
+                    let on = bin.join("private-scan.sh");
+                    std::fs::copy(&fake, &on).unwrap();
+                    std::fs::set_permissions(&on, std::fs::Permissions::from_mode(0o755)).unwrap();
+                }
+                let out = Command::new(bin.join("bash"))
+                    .arg(root().join(rel))
+                    .args(args)
+                    .current_dir(&d)
+                    .env("PATH", &bin)
+                    .env("PRIVATE_SCAN", &fake)
+                    .env("GATE_STATE_DIR", d.join("state"))
+                    .env_remove("TMUX")
+                    .env_remove("TMUX_PANE")
+                    .output()
+                    .unwrap();
+                let said = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                assert!(
+                    !out.status.success(),
+                    "{rel}（PATH 上有扫描：{on_path}）在仓外跑竟退 0：{said}"
+                );
+                assert_eq!(
+                    said.contains(MISSING),
+                    !on_path,
+                    "{rel}（PATH 上有扫描：{on_path}）：缺扫描时该先停下并说「{MISSING}」，有它时不该这么说：{said}"
+                );
+                let _ = std::fs::remove_dir_all(&d);
+            }
+        }
+    }
+
     /// 挑格那一半拿仓里的表对仓里的 `gate.sh`：表里每个格名都得是 gate.sh 盘上的格，不然它退 2。
     #[test]
     fn the_plan_reads_this_map_against_this_gate() {

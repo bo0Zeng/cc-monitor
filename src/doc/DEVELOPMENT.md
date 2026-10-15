@@ -86,7 +86,7 @@ cargo clippy --all-targets
   - 合并用的工作树推送之前：`bash tests/scripts/gate-affected.sh --trust-ci`（按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <合并工作树名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。
   - 打发版标签之前：`bash tests/scripts/gate-clean.sh`（清掉会话变量、排门禁锁的全量一趟，`GATE: OK` 才打）。
   - 重活（编译 · 测试 · 门禁）经 `bash tests/scripts/heavy.sh <命令…>`：单独一个封顶内存的 systemd scope ＋ 槽位排队；没有 `systemd-run --user` 的机器上直接跑。
-  - 门禁锁 · 槽位 · 推送日志在 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）；私人扫描的脚本与词表不在仓里，`PRIVATE_SCAN` 指过去，没有就跳过。
+  - 门禁锁 · 槽位 · 推送日志在 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）；私人扫描的脚本与词表不在仓里，只认 PATH 上的 `private-scan.sh`，找不到时门禁不说绿、推送拒推。
 - `bash tests/scripts/verify-committed-state.sh`：从提交状态（不是工作树）编一次，逮「工作树里有、提交里漏了」的改动。提交推上 `main` 之前 CI 看不见它们，所以推之前在本机跑。
 
 ### 这些数不抄在文档里
