@@ -16,7 +16,6 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         homes: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
-        uncancellable: vec![],
         // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
         shapes: cmd_wire::shapes::SHAPES
             .iter()
@@ -1150,14 +1149,14 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 
 /// 握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
 /// ① `unavailable` 列了的命令 ⇒ 不发、回 `Unavailable{code}`（与那台事后回的码同一个）；没列的照发。
-/// ② `uncancellable` 列了的命令超时 ⇒ `NotOffered`、一条撤单都不补；没列的 ⇒ `Asked`、补一条。
+/// ② 本侧那张撤不动的表（`cmd_wire::shapes::UNCANCELLABLE`）里的命令超时 ⇒ `NotOffered`、一条撤单都不补；不在表里的 ⇒ `Asked`、补一条。
 /// 两侧异源：左边是真 hello 行经 `stream_source::parse_frame` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
     // `kill` · `launch` · `ping` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
     let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
     let line = format!(
-        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}},{{"command":7}}],"uncancellable":["launch",null],"shapes":{{"kill":"{}","launch":"{}","ping":"{}"}}}}"#,
+        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}},{{"command":7}}],"shapes":{{"kill":"{}","launch":"{}","ping":"{}"}}}}"#,
         shape("kill"),
         shape("launch"),
         shape("ping")
@@ -1237,7 +1236,8 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
         .as_str()
         .expect("id")
         .to_string();
-    let data = serde_json::json!({"added":0,"removed":0,"retagged":0,"watchers":1,"unavailable":[],"uncancellable":["resync"]});
+    let data =
+        serde_json::json!({"added":0,"removed":0,"retagged":0,"watchers":1,"unavailable":[]});
     assert!(client.route_reply(&id, true, None, None, None, Some(data)));
     caller.await.expect("task").expect("resync 答了");
 

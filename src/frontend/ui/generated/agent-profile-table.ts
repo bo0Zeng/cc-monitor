@@ -11,8 +11,6 @@
 export type AgentProfileRow = {
   /** 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。 */
   agent: string;
-  /** 后端适配器 id（起会话那一发交回，上游选择按它挑那一行）。 */
-  adapterId: string;
   defaultLauncher: string;
   launcherAlias: string | null;
   resumeKind: "flag" | "subcommand";
@@ -31,7 +29,6 @@ export type AgentProfileRow = {
 export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
   {
     agent: "claude",
-    adapterId: "claude-code",
     defaultLauncher: "claude",
     launcherAlias: "cc",
     resumeKind: "flag",
@@ -44,7 +41,6 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
   },
   {
     agent: "codex",
-    adapterId: "codex",
     defaultLauncher: "codex",
     launcherAlias: null,
     resumeKind: "subcommand",

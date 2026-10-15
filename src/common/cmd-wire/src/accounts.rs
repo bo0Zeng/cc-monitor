@@ -1,5 +1,5 @@
 //! 账号库那几条帧命令（`accounts-init` · `accounts-add` · `accounts-remove` · `accounts-set-default` · `accounts-repair` ·
-//! `accounts-rollback` · `accounts-verify` · `accounts-login-cmd` · `accounts-mcp-*`）的**线上形状** —— 两侧同一份：
+//! `accounts-rollback` · `accounts-verify` · `accounts-login-cmd` · `accounts-mcp-*` · `accounts-list`）的**线上形状** —— 两侧同一份：
 //! 后端按这里的入参严格收（多一个键 ⇒ 拒）、按这里的成品回；界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 
 use serde::{Deserialize, Serialize};
@@ -328,4 +328,108 @@ pub struct AccountMcpView {
     pub changed: Vec<String>,
     /// 提示（某个号读不出来 · 这一趟没写进去）。
     pub notes: Vec<String>,
+}
+
+// ── accounts-list 的回包 ──────────────────────────────────────────────────────────────────
+
+/// `accounts-list` 的回包：清单 ＋ 这台的 apikey 表并上去的那几格。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AccountsList {
+    pub meta: ListMeta,
+    /// 每账号一行，清单次序。
+    pub accounts: Vec<AccountRow>,
+    /// 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）·
+    /// 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
+    pub notice: Option<String>,
+}
+
+/// `AccountsList::meta`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct ListMeta {
+    /// 这台建了账号库（清单读得出）。
+    pub enabled: bool,
+    pub accts_dir: String,
+    pub manifest_path: String,
+    pub updated_at: Option<String>,
+    /// 账号 0 的配置目录（清单里写了才有）。
+    pub shared_store: Option<String>,
+    /// 清单里认得的号数。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub count: usize,
+    /// 清单读不出的那一句。
+    pub error: Option<String>,
+    /// 这台做不了多账号的那一句（做得了 ⇒ `null`）。
+    pub unsupported: Option<String>,
+    /// 删掉默认号之后新会话默认谁（同删号那一条的答案）。
+    pub next_default: Option<String>,
+    /// 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
+    pub effective_default: Option<String>,
+    /// 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+    pub home: Option<String>,
+}
+
+/// 扫清单得出的一个号（`AccountRow` 里除了并表那几格的部分）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedAccount {
+    pub name: String,
+    /// 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
+    pub label: String,
+    pub email: String,
+    /// `null` ＝ 账号 0（下游据此不注入配置目录那一格）。
+    pub config_dir: Option<String>,
+    pub is_default: bool,
+    /// `isolated` · `in-place`。
+    pub mode: String,
+    pub exists: bool,
+    /// 凭据文件在不在（不代表凭据有效；可用性看 `authReady`）。
+    pub logged_in: bool,
+    /// `subscription` · `api-key`。
+    pub auth_kind: String,
+    pub auth_ready: bool,
+    /// 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
+    pub selectable: bool,
+    /// 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+    pub color: u8,
+}
+
+/// `accounts-list` 每个号一行。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(rename_all = "camelCase")]
+pub struct AccountRow {
+    #[serde(flatten)]
+    #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
+    pub scanned: ScannedAccount,
+    /// API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
+    pub key_masked: Option<String>,
+    /// 同上，那一行的端点。
+    pub base_url: Option<String>,
+    /// 账号菜单每一项右边那一枚徽章。
+    pub badge: Badge,
+    /// 号牌上那一两个字（号色那一格里画的，唯一写法在后端）。
+    pub plate: crate::cells::Words,
+    /// 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
+    pub quota: Option<crate::cells::Words>,
+    /// 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
+    /// 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
+    pub unselectable: Option<crate::cells::Words>,
+}
+
+/// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Badge {
+    pub text: crate::cells::Words,
+    pub warn: bool,
+    pub title: crate::cells::Words,
 }

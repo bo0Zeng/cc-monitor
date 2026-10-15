@@ -6,26 +6,11 @@
 //! 「采样那一格」只写几点（数旧带「旧」）：哪台采的是出口自己的事（它知道问的是哪台、那台叫什么）。
 
 use crate::common::cells::{Tone, Words};
+use cmd_wire::quota::{
+    AccountHead, Kind, LoginState, QuotaShow, QuotaState, ResetsAt, SlotShow, UnseenHead,
+};
+pub(crate) use cmd_wire::quota::{Cell, Rows, Warm, WarmAct};
 use copy_core::copy_text;
-use serde_json::Value;
-
-/// 行里的一格。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaCell"
-    )
-)]
-pub(crate) struct Cell {
-    pub(crate) text: Words,
-    pub(crate) tone: Tone,
-}
-
-pub(crate) type Rows = Vec<Vec<Cell>>;
 
 fn c(text: String) -> Cell {
     Cell {
@@ -41,95 +26,99 @@ fn toned(text: String, tone: Tone) -> Cell {
     }
 }
 
-fn s<'a>(v: &'a Value, key: &str) -> &'a str {
-    v.get(key).and_then(Value::as_str).unwrap_or_default()
+fn text_of(w: Option<&Words>) -> &str {
+    w.map_or("", |w| w.0.as_str())
 }
 
 fn slot_label(slot: &str) -> Cell {
     c(crate::accounts::quota::name_words::slot_text(slot))
 }
 
-fn head(v: &Value) -> Vec<Cell> {
-    let account = s(v, "account");
+fn head(account: &str, kind: Kind, login: LoginState) -> Vec<Cell> {
     let mut row = vec![
         c(crate::accounts::quota::name_words::account_text(account)),
-        c(if s(v, "kind") == "api" {
+        c(if kind == Kind::Api {
             copy_text("acct.kind.api", &[])
         } else {
             copy_text("acct.kind.sub", &[])
         }),
     ];
-    match s(v, "login") {
-        "needsLogin" => row.push(toned(copy_text("acct.tag.login", &[]), Tone::Warn)),
-        "needsKey" => row.push(toned(copy_text("acct.tag.key", &[]), Tone::Warn)),
-        _ => {}
+    match login {
+        LoginState::NeedsLogin => row.push(toned(copy_text("acct.tag.login", &[]), Tone::Warn)),
+        LoginState::NeedsKey => row.push(toned(copy_text("acct.tag.key", &[]), Tone::Warn)),
+        LoginState::Ok => {}
     }
     row
 }
 
-/// 重置那一格与距今那一格（回包里那一时刻旁边写好的 `resetsAtText` · `resetsAtRelText`）；已过 ⇒ `↻.. 已过`、没有距今。
-fn reset_cells(of: &Value) -> Vec<Cell> {
-    if of.get("resetsAt").and_then(Value::as_i64).is_none() {
+/// 重置那一格与距今那一格（那一时刻旁边写好的字）；已过 ⇒ `↻.. 已过`、没有距今。
+fn reset_cells(at: Option<u64>, text: Option<&Words>, rel: Option<&Words>) -> Vec<Cell> {
+    if at.is_none() {
         return Vec::new();
     }
-    let at = s(of, "resetsAtText");
-    match of.get("resetsAtRelText").and_then(Value::as_str) {
+    let at = text_of(text);
+    match rel {
         Some(rel) => vec![
             c(copy_text("acct.reset.at", &[("at", at)])),
-            c(rel.to_string()),
+            c(rel.0.clone()),
         ],
         None => vec![c(copy_text("acct.reset.past", &[("at", at)]))],
     }
 }
 
-fn slot_row(a: &Value, slot: &str) -> Vec<Cell> {
-    let found = a
-        .get("slots")
-        .and_then(Value::as_array)
-        .and_then(|xs| xs.iter().find(|x| s(x, "slot") == slot));
-    let Some(x) = found else {
+fn slot_of<'a>(show: &'a QuotaShow, slot: &str) -> Option<&'a SlotShow> {
+    show.slots.iter().find(|x| x.slot == slot)
+}
+
+fn slot_row(show: &QuotaShow, slot: &str) -> Vec<Cell> {
+    let Some(x) = slot_of(show, slot) else {
         return vec![slot_label(slot), c(copy_text("acct.val.none", &[]))];
     };
-    let tone = serde_json::from_value(x.get("tone").cloned().unwrap_or(Value::Null))
-        .unwrap_or(Tone::Plain);
-    let mut row = vec![slot_label(slot), toned(s(x, "text").to_string(), tone)];
-    row.extend(reset_cells(x));
+    let mut row = vec![slot_label(slot), toned(x.text.0.clone(), x.tone)];
+    row.extend(reset_cells(
+        x.resets_at,
+        x.resets_at_text.as_ref(),
+        x.resets_at_rel_text.as_ref(),
+    ));
     row
 }
 
-fn state_row(a: &Value) -> Option<Vec<Cell>> {
-    let value = match s(a, "state") {
-        "refused" => toned(copy_text("acct.val.refusedOnly", &[]), Tone::Fail),
-        "resetSinceSeen" => c(copy_text("acct.val.none", &[])),
+fn state_row(show: &QuotaShow, reading: &ResetsAt) -> Option<Vec<Cell>> {
+    let value = match show.state {
+        QuotaState::Refused => toned(copy_text("acct.val.refusedOnly", &[]), Tone::Fail),
+        QuotaState::ResetSinceSeen => c(copy_text("acct.val.none", &[])),
         _ => return None,
     };
     let mut row = vec![c(copy_text("acct.row.state", &[])), value];
-    if let Some(r) = a.get("reading") {
-        row.extend(reset_cells(r));
-    }
+    row.extend(reset_cells(
+        reading.resets_at,
+        reading.resets_at_text.as_ref(),
+        reading.resets_at_rel_text.as_ref(),
+    ));
     Some(row)
 }
 
-fn seen_row(a: &Value) -> Vec<Cell> {
-    let at = s(a, "seenAtText");
-    let value = if a.get("stale").and_then(Value::as_bool).unwrap_or(false) {
+fn seen_row(a: &AccountHead) -> Vec<Cell> {
+    let at = &a.seen_at_text.0;
+    let value = if a.show.stale {
         toned(copy_text("acct.seen.staleShort", &[("at", at)]), Tone::Warn)
     } else {
-        c(at.to_string())
+        c(at.clone())
     };
     vec![c(copy_text("acct.row.seen", &[])), value]
 }
 
 /// 出过数的号那一段。
-pub(crate) fn seen_block(a: &Value) -> Rows {
-    let mut rows = vec![head(a)];
-    let limiting = s(a, "limiting");
-    let windowed = !limiting.is_empty()
-        && a.get("slots")
-            .and_then(Value::as_array)
-            .is_some_and(|xs| xs.iter().any(|x| s(x, "slot") == limiting));
-    if s(a, "kind") == "api" {
-        rows.push(state_row(a).unwrap_or_else(|| {
+pub(crate) fn seen_block(a: &AccountHead) -> Rows {
+    let show = &a.show;
+    let mut rows = vec![head(&a.account, show.kind, show.login)];
+    let windowed = show
+        .limiting
+        .as_deref()
+        .is_some_and(|l| !l.is_empty() && slot_of(show, l).is_some());
+    let reading = &a.reading.resets_at;
+    if show.kind == Kind::Api {
+        rows.push(state_row(show, reading).unwrap_or_else(|| {
             vec![
                 c(copy_text("acct.slot.both", &[])),
                 c(copy_text("acct.val.none", &[])),
@@ -137,12 +126,12 @@ pub(crate) fn seen_block(a: &Value) -> Rows {
             ]
         }));
     } else {
-        rows.push(slot_row(a, "5h"));
-        rows.push(slot_row(a, "7d"));
+        rows.push(slot_row(show, "5h"));
+        rows.push(slot_row(show, "7d"));
         if !windowed {
-            rows.extend(state_row(a));
+            rows.extend(state_row(show, reading));
         }
-        rows.push(if s(a, "state") == "overageInUse" {
+        rows.push(if show.state == QuotaState::OverageInUse {
             vec![
                 c(copy_text("acct.row.over", &[])),
                 toned(copy_text("acct.val.overOn", &[]), Tone::Warn),
@@ -160,9 +149,9 @@ pub(crate) fn seen_block(a: &Value) -> Rows {
 }
 
 /// 没出过数的号那一段：`— 无采样`（按量号 `5h/7d — 无采样`）。
-pub(crate) fn unseen_block(u: &Value) -> Rows {
-    let mut rows = vec![head(u)];
-    if s(u, "kind") == "api" {
+pub(crate) fn unseen_block(u: &UnseenHead) -> Rows {
+    let mut rows = vec![head(&u.account, u.kind, u.login)];
+    if u.kind == Kind::Api {
         rows.push(vec![
             c(copy_text("acct.slot.both", &[])),
             c(copy_text("acct.val.none", &[])),
@@ -221,71 +210,17 @@ const WARM_LOGIN_RETRY_S: i64 = 60 * 60;
 /// 额度账读不懂 ⇒ 过这么久再看。
 const WARM_UNREADABLE_RETRY_S: i64 = 15 * 60;
 
-/// 开窗那一判的一个号：`send`（发一句让 5h 窗口开始计时）· `wait`（睡到 `at`）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaWarmAct"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum WarmAct {
-    Send,
-    Wait,
-}
-
-/// `warm`：quota-warm 照它办（只执行、不判）。`at` 只在 `wait` 时有（旁边由出口写好 `atText`）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaWarm"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Warm {
-    pub(crate) act: WarmAct,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) at: Option<i64>,
-    /// `at` 写给人看的样子（[`Warm::stamp`]）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) at_text: Option<Words>,
-    /// `at` 距今。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) at_rel_text: Option<Words>,
-    /// 为什么这样办（「5h 83% ↻14:20」「被拒（7d）↻10-12 09:00」「无采样 · 发一句才知道」…）。
-    pub(crate) text: Words,
-}
-
-impl Warm {
-    /// 出口那一下：按钟写 `at` 旁边那两格。
-    pub(crate) fn stamp(mut self, clock: &crate::common::time::TextClock) -> Self {
-        if let Some(t) = self.at.and_then(|t| u64::try_from(t).ok()) {
-            self.at_text = Some(clock.text(t));
-            self.at_rel_text = clock.rel(t);
-        }
-        self
+/// 出口那一下：按钟写 `at` 旁边那两格。
+pub(crate) fn stamped(mut w: Warm, clock: &crate::common::time::TextClock) -> Warm {
+    if let Some(t) = w.at.and_then(|t| u64::try_from(t).ok()) {
+        w.at_text = Some(clock.text(t));
+        w.at_rel_text = clock.rel(t);
     }
+    w
 }
 
-fn slot_of<'a>(a: &'a Value, slot: &str) -> Option<&'a Value> {
-    a.get("slots")
-        .and_then(Value::as_array)
-        .and_then(|xs| xs.iter().find(|x| s(x, "slot") == slot))
-}
-
-/// ★ 一个号此刻要不要发一句让窗口开始计时（唯一一处；原住 quota-warm skill 的 `judge()`）。
-pub(crate) fn warm_of(a: &Value, seen: bool, now: i64) -> Warm {
+/// ★ 一个号此刻要不要发一句让窗口开始计时（唯一一处）：`seen` ＝ 出过数的号的显示态（没出过数 ⇒ `None`）。
+pub(crate) fn warm_of(login: LoginState, seen: Option<&QuotaShow>, now: i64) -> Warm {
     let wait = |at: i64, text: String| Warm {
         act: WarmAct::Wait,
         at: Some(at),
@@ -300,50 +235,59 @@ pub(crate) fn warm_of(a: &Value, seen: bool, now: i64) -> Warm {
         at_rel_text: None,
         text: Words(text),
     };
-    match s(a, "login") {
-        "needsLogin" => return wait(now + WARM_LOGIN_RETRY_S, copy_text("acct.tag.login", &[])),
-        "needsKey" => return wait(now + WARM_LOGIN_RETRY_S, copy_text("acct.tag.key", &[])),
-        _ => {}
+    match login {
+        LoginState::NeedsLogin => {
+            return wait(now + WARM_LOGIN_RETRY_S, copy_text("acct.tag.login", &[]))
+        }
+        LoginState::NeedsKey => {
+            return wait(now + WARM_LOGIN_RETRY_S, copy_text("acct.tag.key", &[]))
+        }
+        LoginState::Ok => {}
     }
-    if !seen {
+    let Some(show) = seen else {
         return send(copy_text("acct.warm.unseen", &[]));
-    }
-    let at_of = |x: Option<&Value>| x.and_then(|x| x.get("resetsAt")).and_then(Value::as_i64);
-    let (s5, s7) = (slot_of(a, "5h"), slot_of(a, "7d"));
-    if s(a, "state") == "refused" {
-        let limiting = Some(s(a, "limiting"))
+    };
+    let ahead = |x: Option<&SlotShow>| {
+        x.and_then(|x| x.resets_at)
+            .and_then(|t| i64::try_from(t).ok())
+            .filter(|t| *t > now)
+    };
+    let when =
+        |x: Option<&SlotShow>| text_of(x.and_then(|x| x.resets_at_text.as_ref())).to_string();
+    let (s5, s7) = (slot_of(show, "5h"), slot_of(show, "7d"));
+    if show.state == QuotaState::Refused {
+        let limiting = show
+            .limiting
+            .as_deref()
             .filter(|l| !l.is_empty())
             .unwrap_or("5h");
-        let blocker = slot_of(a, limiting).or(s5);
-        if let Some(at) = at_of(blocker).filter(|t| *t > now) {
-            let when = blocker.map_or("", |b| s(b, "resetsAtText"));
+        let blocker = slot_of(show, limiting).or(s5);
+        if let Some(at) = ahead(blocker) {
             return wait(
                 at + WARM_MARGIN_S,
-                copy_text("acct.warm.refused", &[("w", limiting), ("at", when)]),
+                copy_text(
+                    "acct.warm.refused",
+                    &[("w", limiting), ("at", &when(blocker))],
+                ),
             );
         }
     }
     if let Some(x) = s7 {
-        let full = x.get("pct").and_then(Value::as_u64).unwrap_or(0) >= 100;
-        if let Some(at) = at_of(Some(x)).filter(|t| full && *t > now) {
+        if let Some(at) = ahead(Some(x)).filter(|_| x.pct.unwrap_or(0) >= 100) {
             return wait(
                 at + WARM_MARGIN_S,
-                copy_text("acct.warm.weekFull", &[("at", s(x, "resetsAtText"))]),
+                copy_text("acct.warm.weekFull", &[("at", &when(Some(x)))]),
             );
         }
     }
     if let Some(x) = s5 {
-        if let Some(at) = at_of(Some(x)).filter(|t| *t > now) {
-            let pct = x
-                .get("pct")
-                .and_then(Value::as_u64)
-                .unwrap_or(0)
-                .to_string();
+        if let Some(at) = ahead(Some(x)) {
+            let pct = x.pct.unwrap_or(0).to_string();
             return wait(
                 at + WARM_MARGIN_S,
                 copy_text(
                     "acct.warm.ticking",
-                    &[("pct", &pct), ("at", s(x, "resetsAtText"))],
+                    &[("pct", &pct), ("at", &when(Some(x)))],
                 ),
             );
         }

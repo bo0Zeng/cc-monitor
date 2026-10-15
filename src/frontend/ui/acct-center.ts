@@ -9,9 +9,11 @@
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
-import { decodeQuotaRead, readQuota } from "./quota-reads";
+import { readQuota, tookQuota } from "./quota-reads";
+import type { QuotaRead } from "./acct-words";
 import { readSessionView } from "./rotation-view-reads";
 import { pushedProducts, type Changed } from "./changed-stream";
+import { invalidateAccountsCache } from "./account-reads";
 
 /** 每台此刻有 tab 的会话。 */
 const known = new Map<Origin, Set<string>>();
@@ -59,11 +61,13 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
 
 /**
  * 那台推来额度 / 会话轮换 / 策略目录变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_strategies`）。
- * 额度帧里带了成品 ⇒ 用同一个解码器收、直接放进 store；轮换那两种不带成品 ⇒ 重问。`all`（期间可能漏了）⇒ 那台全部重问。
+ * 额度帧里带了成品 ⇒ 同一处收下（同一条命令的回包，形状由指纹核过）、直接放进 store；轮换那两种不带成品 ⇒ 重问。`all`（期间可能漏了）⇒ 那台全部重问。
  */
 export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_strategies", change: Changed): void {
   if (topic === "quota") {
-    const p = pushedProducts(change, decodeQuotaRead);
+    // 账号清单每号带「5h 那一格」：额度变了，下一次问清单不拿缓存。
+    invalidateAccountsCache(origin);
+    const p = pushedProducts(change, (v) => tookQuota(v as QuotaRead));
     const q = p.got.get(null);
     if (q !== undefined) putIn(appStore.quota, origin, q);
     if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);

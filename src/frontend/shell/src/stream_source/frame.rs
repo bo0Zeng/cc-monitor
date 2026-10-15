@@ -80,8 +80,6 @@ pub enum InboundFrame {
         commands: Vec<String>,
         /// `hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
         unavailable: Vec<(String, String)>,
-        /// `hello.uncancellable`：撤不动的那几条。旧后端无此字段 ⇒ 空（没把握，照旧补发撤单）。
-        uncancellable: Vec<String>,
         /// `hello.shapes`：typed 命令的形状指纹。旧后端无此字段 ⇒ 空（typed 命令一律当对不上，见 `Offer::unavailable`）。
         shapes: Vec<(String, String)>,
     },
@@ -514,8 +512,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     })
                     .unwrap_or_default()
             };
-            // 能力事实的另两格：读法住 `Offer::facts_of`（`resync` 应答同形）。
-            let (unavailable, uncancellable) = crate::chan::wire::Offer::facts_of(obj);
+            // 能力事实那一格：读法住 `Offer::facts_of`（`resync` 应答同形）。
+            let unavailable = crate::chan::wire::Offer::facts_of(obj);
             InboundFrame::Hello {
                 v: req_u64(obj, k, "v")?,
                 build_id: req_str(obj, k, "build_id")?,
@@ -524,7 +522,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 homes,
                 commands: strings("commands"),
                 unavailable,
-                uncancellable,
                 shapes: crate::chan::wire::Offer::shapes_of(obj),
             }
         }

@@ -709,7 +709,7 @@ const fn concat_families<const N: usize>(families: &[&[CommandSpec]]) -> [Comman
     out
 }
 
-/// **单一事实源。** `dispatch` 从它查，`hello` 的 `commands` / `uncancellable` 从它派生。
+/// **单一事实源。** `dispatch` 从它查，`hello` 的 `commands` / `unavailable` · 形状指纹里撤不撤得动那一格从它派生。
 pub const REGISTRY: &[CommandSpec] =
     &concat_families::<{ registry_len(registry::FAMILIES) }>(registry::FAMILIES);
 

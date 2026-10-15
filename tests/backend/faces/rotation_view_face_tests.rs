@@ -287,6 +287,13 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     );
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
     assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
+    // 每个号带号色与号名（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处。
+    let plate = &v.plates["a"];
+    assert_eq!(
+        (plate.color, plate.label.0.as_str()),
+        (crate::accounts::manage::model::color_fallback("a"), "a")
+    );
+    assert_eq!(v.plates.len(), v.accounts.len(), "每个号一枚");
     assert_eq!(v.listed, 1);
     assert_eq!(
         v.decision.as_ref().and_then(|d| d.pick.as_deref()),
@@ -404,6 +411,20 @@ fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
         Err("no_strategy")
     );
     forget_preset_with(&ctx, &home.own(), S1);
+    assert!(!ctx.hop.store.now().sessions.contains_key(S1));
+}
+
+/// ★ 线上只认 kind：起之前记那一笔时，后端里面的路由名当 `agent` 交来 ⇒ `bad_args`，账本里一条都不记。
+#[test]
+fn a_preset_session_does_not_take_a_route_name_as_an_agent() {
+    let home = Home::new("preset-route");
+    let ctx = home.ctx();
+    let route = crate::agents::claudecode::UPSTREAM.route_id;
+    assert_ne!(route, crate::agents::claudecode::AGENT_KIND);
+    assert_eq!(
+        preset_with(&ctx, &home.own(), S1, route, "", now()).map_err(|e| e.0),
+        Err("bad_args")
+    );
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
 }
 
@@ -588,10 +609,10 @@ fn a_session_view_draws_what_already_happened() {
     assert!(s.past.is_none());
 }
 
-/// ★ 「时区不明」总带上看的那一台的时区：信封里说了 ⇒ 那个名；`local` ⇒ 这台系统的时区名；
-/// 那一侧也说不出（没带 · 认不得）⇒ 照实不带 `zone`，句子里说一句（不冒充成 UTC）。
+/// ★ 「时区不明」总带上一个时区（「设时区」设成它）：信封里说了 ⇒ 那个名；`local` ⇒ 这台系统的时区名；
+/// 那一侧说不出（没带 · 认不得 · 这台系统也读不出）⇒ `UTC`（分时段此刻就是按它算的，设成它只是把默认写明）。
 #[test]
-fn the_unknown_zone_hint_names_the_viewers_zone_or_says_it_cannot() {
+fn the_unknown_zone_hint_always_names_a_zone() {
     let home = Home::new("view-hint-tz");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
@@ -606,7 +627,7 @@ fn the_unknown_zone_hint_names_the_viewers_zone_or_says_it_cannot() {
     assert_eq!(
         named.hint,
         RotHint::TzUnknown {
-            zone: Some("Europe/Paris".into())
+            zone: "Europe/Paris".into()
         }
     );
     assert_eq!(named.text, copy_core::copy_text("beRotation.hint.tz", &[]));
@@ -614,19 +635,16 @@ fn the_unknown_zone_hint_names_the_viewers_zone_or_says_it_cannot() {
         let n = tz_hint(&crate::Tz::of(&unsaid));
         assert_eq!(
             n.hint,
-            RotHint::TzUnknown { zone: None },
-            "{unsaid}：说不出就不带"
+            RotHint::TzUnknown { zone: "UTC".into() },
+            "{unsaid}：说不出 ⇒ 照算的那一个"
         );
-        assert_eq!(
-            n.text,
-            copy_core::copy_text("beRotation.hint.tzNoZone", &[])
-        );
+        assert_eq!(n.text, copy_core::copy_text("beRotation.hint.tz", &[]));
     }
     let here = tz_hint(&crate::Tz::named(crate::common::time::TZ_HERE).expect("local"));
     assert_eq!(
         here.hint,
         RotHint::TzUnknown {
-            zone: crate::platform::local_tz::iana_name()
+            zone: crate::platform::local_tz::iana_name().unwrap_or_else(|| "UTC".into())
         },
         "「这一台」⇒ 这台系统的时区名"
     );
@@ -655,7 +673,7 @@ fn the_hints_carry_what_their_buttons_need() {
     assert!(
         v.hints.iter().any(|h| h.hint
             == RotHint::TzUnknown {
-                zone: Some("Asia/Shanghai".into())
+                zone: "Asia/Shanghai".into()
             }),
         "{:?}",
         v.hints

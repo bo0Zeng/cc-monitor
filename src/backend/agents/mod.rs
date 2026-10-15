@@ -442,7 +442,7 @@ pub(crate) fn default_kind() -> &'static str {
     default_launch_among(REGISTRY).map_or("", |(kind, _)| kind)
 }
 
-/// 收 agent 名字的入口用哪一家：**全仓只有这一种认法**（[`pick_kind_among`] 认 wire 上的 kind，[`pick_adapter_among`] 认适配器 id）。
+/// 收 agent 名字的入口用哪一家：**全仓只有这一种认法**（[`pick_kind_among`] 认 wire 上的 kind；要路由名的 [`pick_route`] 也先认 kind）。
 ///
 /// - 没写 / 写空（两侧空白不算字）⇒ 注册表里声明默认（[`LaunchFace::is_default`]）的那一家；
 /// - 写了注册表里由我们起的一家 ⇒ 就是它（大小写敏感）；
@@ -482,22 +482,38 @@ pub(crate) fn pick_kind_among(
     pick_among(registry, name, |kind, _| kind)
 }
 
-/// 按适配器 id 认（上游选择那几问的 `agent`：`accounts-list` · `launch-local`）。规则见 [`pick_among`]。
-pub(crate) fn pick_adapter_among(
-    registry: &[Adapter],
-    id: Option<&str>,
-) -> Result<(&'static str, LaunchFace), String> {
-    pick_among(registry, id, |_, f| f.adapter_id)
-}
-
 /// [`pick_kind_among`] 在生产注册表上。
 pub(crate) fn pick_kind(name: Option<&str>) -> Result<(&'static str, LaunchFace), String> {
     pick_kind_among(REGISTRY, name)
 }
 
-/// [`pick_adapter_among`] 在生产注册表上；回那一家的适配器 id。
-pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
-    pick_adapter_among(REGISTRY, id).map(|(_, f)| f.adapter_id)
+pub(crate) use cmd_wire::AgentKind;
+
+/// 一家在后端里面的路由名（中转路由键第 1 段 · 额度账 · 轮换簿 · apikey 表按它记）。不上线：没有 serde，
+/// 只从线上的 kind 换得出来（[`pick_route`]）；出口一律换回 kind（[`kind_of_route`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RouteId(&'static str);
+
+impl RouteId {
+    /// 存进账 · 表那一侧的那个串。
+    pub(crate) fn id(self) -> &'static str {
+        self.0
+    }
+}
+
+/// 线上的 kind（每条命令收的 `agent` 都是它）⇒ 那一家的路由名。规则同 [`pick_kind`]（空 ⇒ 默认那一家；认不出 ⇒ 那一句）。
+pub(crate) fn pick_route(kind: Option<&AgentKind>) -> Result<RouteId, String> {
+    pick_kind(kind.map(AgentKind::as_str)).map(|(_, f)| RouteId(f.adapter_id))
+}
+
+/// 账 · 表里记的路由名 ⇒ 线上的 kind（回包里的 `agent` 都写它）；注册表里没有这个路由名 ⇒ 照原样（账上留着的别家旧条目）。
+pub(crate) fn kind_of_route(route_id: &str) -> AgentKind {
+    AgentKind::new(
+        REGISTRY
+            .iter()
+            .find(|a| a.launch.is_some_and(|f| f.adapter_id == route_id))
+            .map_or(route_id, |a| a.kind),
+    )
 }
 
 /// `kind` 那一家的 shell wrapper 名（[`LaunchFace::launcher_alias`]）。认不出 / 没有 ⇒ `None`。
@@ -1953,6 +1969,8 @@ pub(crate) struct SignInFace {
     pub(crate) terminal: bool,
     /// 粘回来的是什么（界面据此说「粘登录页上给的码」还是「粘浏览器地址栏里那一整条」）。
     pub(crate) paste: PasteShape,
+    /// 它自己在它那一台上开浏览器打开登录页（不带「别开浏览器」那一类旗标）。
+    pub(crate) opens_browser: bool,
 }
 
 /// 粘回来的那一段是什么（中立值；线上名由帧面那一份给）。
@@ -2074,17 +2092,8 @@ pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {
         .and_then(|u| u.quota)
 }
 
-/// 限流器对一发的结论（各家的值翻成这三档）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum QuotaStatus {
-    Allowed,
-    /// 还能用，但越过了某条预警线。
-    Warning,
-    Rejected,
-}
+/// 限流器对一发的结论（各家的值翻成这三档）：线上形住 `cmd-wire`（`quota-read` 带它）。
+pub(crate) use cmd_wire::quota::QuotaStatus;
 
 /// 一个额度窗口此刻的样子。
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

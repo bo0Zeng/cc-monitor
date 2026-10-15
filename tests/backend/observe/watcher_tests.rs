@@ -3865,7 +3865,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         k
     };
     assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
-    // 五格计数 ＋ 两格能力事实（与 hello 同形：`[{command, code}]` · `[op]`）。
+    // 五格计数 ＋ 那一格能力事实（与 hello 同形：`[{command, code}]`）。
     for k in ["added", "removed", "retagged", "caught_up", "watchers"] {
         assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
     }
@@ -3877,11 +3877,6 @@ fn resync_face_reply_matches_the_cross_language_golden() {
             .iter()
             .all(|e| e["command"].is_string() && e["code"].is_string()),
         "`unavailable` 的项不是 {{command, code}}：{got}"
-    );
-    // 撤不动的那几条算进了形状指纹（每条命令都 typed），回包不再另列。
-    assert!(
-        got.get("uncancellable").is_none(),
-        "回包还另列着 `uncancellable`：{got}"
     );
     for bad in [
         serde_json::json!({"sid": 5}),

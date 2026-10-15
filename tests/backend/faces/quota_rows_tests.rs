@@ -1,6 +1,7 @@
 //! 额度每号几行 · 开窗那一判：对金样 `tests/__fixtures__/quota-text.golden.json`（每号每行每格 ＋ `--text` 整段字 ＋ 每号的 `warm`）。
 //! 回包照真出口走一遍：语义位那一格的字由显示态那一处写（`show.rs::slot_words`）· 时刻的字由出口写（`TextClock`）· 再添行与开窗。
 use super::*;
+use serde_json::Value;
 
 const REGEN: &str = "CCM_REGEN_QUOTA_ROWS";
 
@@ -67,6 +68,8 @@ fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
             let mut u = u.clone();
             u["usage"] = serde_json::json!({"value": "", "text": "", "tone": "plain"});
             let mut h: UnseenHead = serde_json::from_value(u).unwrap();
+            // 金样里记的是账上的路由名；造没出过数的号那一处（`rotation_face`）换成线上的 kind。
+            h.agent = crate::agents::kind_of_route(h.agent.as_str());
             h.usage = crate::accounts::quota::show::usage_of(
                 h.kind,
                 crate::accounts::quota::show::QuotaState::Unseen,
@@ -163,22 +166,49 @@ fn rows_text_and_warm_match_the_golden() {
 /// 开窗那一判的几条边：没见过数 ⇒ 发；登录拿不到 ⇒ 过一小时再看；在计时 ⇒ 睡到重置之后一分钟；7d 用满 ⇒ 睡到 7d 重置。
 #[test]
 fn warm_sends_only_when_the_window_is_not_ticking() {
+    use cmd_wire::quota::{Kind, LoginState, QuotaShow, QuotaState, SlotShow, Usage};
     let now = 1_000_000;
-    let w = |a: Value, seen: bool| warm_of(&a, seen, now);
+    let slot = |slot: &str, pct: u32, resets_at: i64| SlotShow {
+        slot: slot.to_string(),
+        pct: Some(pct),
+        resets_at: u64::try_from(resets_at).ok(),
+        resets_at_text: Some(Words("x".to_string())),
+        resets_at_rel_text: None,
+        full: false,
+        text: Words::default(),
+        tone: Tone::Plain,
+    };
+    let show = |slots: Vec<SlotShow>| QuotaShow {
+        kind: Kind::Sub,
+        state: QuotaState::Ok,
+        stale: false,
+        limiting: None,
+        slots,
+        login: LoginState::Ok,
+        sub_id: None,
+        windows: Vec::new(),
+        usage: Usage::default(),
+    };
+    assert_eq!(warm_of(LoginState::Ok, None, now).act, WarmAct::Send);
     assert_eq!(
-        w(serde_json::json!({"login": "ok"}), false).act,
-        WarmAct::Send
-    );
-    assert_eq!(
-        w(serde_json::json!({"login": "needsLogin"}), false).at,
+        warm_of(LoginState::NeedsLogin, None, now).at,
         Some(now + WARM_LOGIN_RETRY_S)
     );
-    let ticking = serde_json::json!({"login": "ok", "state": "ok", "slots": [{"slot": "5h", "pct": 40, "resetsAt": now + 600, "resetsAtText": "x"}]});
-    assert_eq!(w(ticking, true).at, Some(now + 600 + WARM_MARGIN_S));
-    let week = serde_json::json!({"login": "ok", "state": "ok", "slots": [{"slot": "5h", "pct": 1, "resetsAt": now + 60}, {"slot": "7d", "pct": 100, "resetsAt": now + 9000}]});
-    assert_eq!(w(week, true).at, Some(now + 9000 + WARM_MARGIN_S));
-    let expired = serde_json::json!({"login": "ok", "state": "ok", "slots": [{"slot": "5h", "pct": 90, "resetsAt": now - 5}]});
-    assert_eq!(w(expired, true).act, WarmAct::Send);
+    let ticking = show(vec![slot("5h", 40, now + 600)]);
+    assert_eq!(
+        warm_of(LoginState::Ok, Some(&ticking), now).at,
+        Some(now + 600 + WARM_MARGIN_S)
+    );
+    let week = show(vec![slot("5h", 1, now + 60), slot("7d", 100, now + 9000)]);
+    assert_eq!(
+        warm_of(LoginState::Ok, Some(&week), now).at,
+        Some(now + 9000 + WARM_MARGIN_S)
+    );
+    let expired = show(vec![slot("5h", 90, now - 5)]);
+    assert_eq!(
+        warm_of(LoginState::Ok, Some(&expired), now).act,
+        WarmAct::Send
+    );
 }
 
 /// 读不出那一句照读答的原因说（读的哪份 · 原因词）；没给原因才退回「原因不明」那一句。

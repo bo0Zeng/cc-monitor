@@ -376,7 +376,6 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         unavailable: unavailable_here(),
         // 回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
         host_env: wire::host_env_from(|name| std::env::var(name).ok()),
-        // 撤不动的那几条（阻塞档），从命令表派生。
         // typed 命令的形状指纹：编进来的那张表原样交出去（客户端拿它自己那张比）。
         shapes: cmd_wire::shapes::SHAPES
             .iter()

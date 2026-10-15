@@ -16,7 +16,7 @@
 use super::facts::{self, Kind};
 use crate::agents::{QuotaReading, QuotaStatus};
 use crate::common::cells::{Tone, Words};
-use serde::{Deserialize, Serialize};
+pub(crate) use cmd_wire::quota::{LoginState, QuotaShow, QuotaState, SlotShow, Usage, WindowShow};
 
 /// 「快满」的门槛（%）。
 pub(crate) const NEAR_DEFAULT: u8 = 80;
@@ -26,72 +26,6 @@ pub(crate) const STALE_AFTER: u64 = 30 * 60;
 
 /// 画出来的语义位，按这个次序出。
 const SLOTS: [&str; 2] = ["5h", "7d"];
-
-/// 显示态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum QuotaState {
-    Ok,
-    Near,
-    Refused,
-    OverageInUse,
-    Unseen,
-    ResetSinceSeen,
-}
-
-/// 这个号此刻拿不拿得到能用的登录：订阅号看凭据文件 ＋ 账号身份（`ok` / `needsLogin`）；按量号看这台 key 表里有没有它（`ok` / `needsKey`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub enum LoginState {
-    Ok,
-    /// 订阅号：要重新登录。
-    NeedsLogin,
-    /// 按量号：这台 key 表里没有它的 key（只对按量号出）。
-    NeedsKey,
-}
-
-/// 一个语义位（`5h` / `7d`）的那一格：取整的百分比 · 几点重置（说不出 ⇒ 缺）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct SlotShow {
-    pub slot: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub pct: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub resets_at: Option<u64>,
-    /// `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub resets_at_text: Option<Words>,
-    /// `resets_at` 距今（`+1h50m`；同上，只在还没到时有）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub resets_at_rel_text: Option<Words>,
-    /// 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub full: bool,
-    /// 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(type = "string"))]
-    pub text: Words,
-    /// 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
-    #[serde(default = "plain")]
-    #[cfg_attr(test, ts(type = "\"plain\" | \"fail\" | \"warn\""))]
-    pub tone: Tone,
-}
-
-fn plain() -> Tone {
-    Tone::Plain
-}
 
 /// ★ 一个语义位那一格写成什么字、什么语气（唯一一处：额度每号几行 · 账号面板 · 规则编辑器 · 起会话菜单都读它）。
 /// `here` ＝ 它是卡人的那一格（[`QuotaShow::limiting`]）。
@@ -153,105 +87,34 @@ pub(crate) fn slot_words(
     }
 }
 
-/// 一个号的显示态。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct QuotaShow {
-    pub kind: Kind,
-    pub state: QuotaState,
-    /// 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
-    pub stale: bool,
-    /// 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub limiting: Option<String>,
-    /// `5h` · `7d` 各一格（有数的才出）。
-    pub slots: Vec<SlotShow>,
-    pub login: LoginState,
-    /// 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub sub_id: Option<String>,
-    /// 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(test, ts(optional, as = "Option<Vec<WindowShow>>"))]
-    pub windows: Vec<WindowShow>,
-    /// 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
-    pub usage: Usage,
-}
-
-/// ★ 一个号用量那一格：窗口 · 值 · 几点重置 · 连成的一句 · 语气（唯一一处；出口照抄、不按显示态挑色）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct Usage {
-    /// 画的是哪个语义位（卡着的那个；回包没说 ⇒ `5h`）；按量号 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub slot: Option<String>,
-    /// 那个语义位的字（`5h`）；按量号 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub window: Option<Words>,
-    /// 用量那一格（`63%` · `✕` · `超额` · `—` · `被拒` · `按量`）。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub value: Words,
-    /// 被拒时几点重置（`↻19:00`，出口那一下按钟写，[`QuotaShow::stamp`]）；没有 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub reset: Option<Words>,
-    /// 连成一句（`5h 63%` · `5h ✕ ↻19:00` · `按量`）：下拉项右侧 · 切换那颗按钮。
-    #[cfg_attr(test, ts(type = "string"))]
-    pub text: Words,
-    /// 语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 快满 ⇒ `warn`；否则 `plain`。
-    #[serde(default = "plain")]
-    #[cfg_attr(test, ts(type = "\"plain\" | \"fail\" | \"warn\""))]
-    pub tone: Tone,
-    /// 重置那一刻（只给出口那一下写 `reset`，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(test, ts(skip, optional, type = "number"))]
-    pub resets_at: Option<u64>,
-}
-
-impl Default for Usage {
-    fn default() -> Self {
-        Usage {
-            slot: None,
-            window: None,
-            value: Words::default(),
-            reset: None,
-            text: Words::default(),
-            tone: Tone::Plain,
-            resets_at: None,
+/// 用量那一格连成一句（窗口 · 值 · 重置）。
+fn joined(u: &mut Usage) {
+    let v = u.value.0.as_str();
+    u.text = Words(match (&u.window, &u.reset) {
+        (None, None) => v.to_string(),
+        (None, Some(r)) => copy_core::copy_text("acct.usage.wv", &[("w", v), ("v", &r.0)]),
+        (Some(w), None) => copy_core::copy_text("acct.usage.wv", &[("w", &w.0), ("v", v)]),
+        (Some(w), Some(r)) => {
+            copy_core::copy_text("acct.usage.wvr", &[("w", &w.0), ("v", v), ("r", &r.0)])
         }
-    }
+    });
 }
 
-impl Usage {
-    fn joined(&mut self) {
-        let v = self.value.0.as_str();
-        self.text = Words(match (&self.window, &self.reset) {
-            (None, None) => v.to_string(),
-            (None, Some(r)) => copy_core::copy_text("acct.usage.wv", &[("w", v), ("v", &r.0)]),
-            (Some(w), None) => copy_core::copy_text("acct.usage.wv", &[("w", &w.0), ("v", v)]),
-            (Some(w), Some(r)) => {
-                copy_core::copy_text("acct.usage.wvr", &[("w", &w.0), ("v", v), ("r", &r.0)])
-            }
-        });
-    }
+/// 出口那一下：按钟写时刻旁边那几格（线上类型住 `cmd-wire`，字在这里写）。
+pub(crate) trait Stamp {
+    fn stamp(&mut self, clock: &crate::common::time::TextClock);
+}
 
-    /// 出口那一下：按钟写重置那一格，再连成一句。
-    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+impl Stamp for Usage {
+    /// 写重置那一格，再连成一句。
+    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
         self.reset = self.resets_at.map(|t| {
             Words(copy_core::copy_text(
                 "acct.reset.at",
                 &[("at", &clock.text(t).0)],
             ))
         });
-        self.joined();
+        joined(self);
     }
 }
 
@@ -308,58 +171,13 @@ pub(crate) fn usage_of(
             ..Usage::default()
         }
     };
-    u.joined();
+    joined(&mut u);
     u
 }
 
-/// 一个窗口（照原名）：窗口键 · 取整的百分比 · 几点重置 · 几点、从哪看到的 · 已重置未计时。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct WindowShow {
-    /// 那一家的窗口名（`five_hour` · `seven_day` · `seven_day_<模型>` · …）。
-    pub name: String,
-    /// 窗口键（`5h` · `7d` · `7d:<模型>`；轮换的上限 · 单段预算按它配）；不算用量窗口的（超额）⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub key: Option<String>,
-    /// 取整的百分比（已重置未计时 ⇒ 0）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional))]
-    pub pct: Option<u32>,
-    /// 几点重置；有 ＝ 这个窗口在计时。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub resets_at: Option<u64>,
-    /// `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub resets_at_text: Option<Words>,
-    /// `resets_at` 距今（同上，只在还没到时有）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub resets_at_rel_text: Option<Words>,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub seen_at: u64,
-    /// `seen_at` 写给人看的样子（同上）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub seen_at_text: Option<Words>,
-    /// `seen_at` 距今（别台的钟走在前面时才有）。
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    #[cfg_attr(test, ts(optional, type = "string"))]
-    pub seen_at_rel_text: Option<Words>,
-    pub from: super::ledger::Source,
-    /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub reset_since_seen: bool,
-}
-
-impl SlotShow {
+impl Stamp for SlotShow {
     /// 出口那一下：按钟写 `resets_at` 旁边那两格。
-    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
         if let Some(t) = self.resets_at {
             self.resets_at_text = Some(clock.text(t));
             self.resets_at_rel_text = clock.rel(t);
@@ -367,9 +185,9 @@ impl SlotShow {
     }
 }
 
-impl WindowShow {
+impl Stamp for WindowShow {
     /// 出口那一下：按钟写 `resets_at` · `seen_at` 旁边那几格。
-    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
         if let Some(t) = self.resets_at {
             self.resets_at_text = Some(clock.text(t));
             self.resets_at_rel_text = clock.rel(t);
@@ -379,9 +197,9 @@ impl WindowShow {
     }
 }
 
-impl QuotaShow {
+impl Stamp for QuotaShow {
     /// 出口那一下：每一格的时刻字按钟写好。
-    pub(crate) fn stamp(&mut self, clock: &crate::common::time::TextClock) {
+    fn stamp(&mut self, clock: &crate::common::time::TextClock) {
         self.slots.iter_mut().for_each(|s| s.stamp(clock));
         self.windows.iter_mut().for_each(|w| w.stamp(clock));
         self.usage.stamp(clock);

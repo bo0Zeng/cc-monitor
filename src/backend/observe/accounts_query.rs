@@ -41,6 +41,7 @@ use acct_core::{
     auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, CREDENTIALS_NAME,
     SUPPORTED_SCHEMA,
 };
+pub(crate) use cmd_wire::accounts::{AccountRow, AccountsList, Badge, ListMeta, ScannedAccount};
 pub(crate) use cmd_wire::needs::NeedsRow;
 use copy_core::copy_text;
 use relay_route_core::{ACCOUNTS_DIR_REL, ACCOUNTS_MANIFEST_NAME};
@@ -360,93 +361,25 @@ fn scan_accounts(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AccountsListReq {
-    /// 这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
-    pub(crate) agent: String,
+    /// 这次起会话的是哪一家（线上的 kind，同 `session-new-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+    pub(crate) agent: crate::agents::AgentKind,
 }
 
-/// `accounts-list` 的回包：清单 ＋ 这台的 apikey 表并上去的那几格。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct AccountsList {
-    pub(crate) meta: ListMeta,
-    /// 每账号一行，清单次序。
-    pub(crate) accounts: Vec<AccountRow>,
-    /// 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）·
-    /// 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
-    pub(crate) notice: Option<String>,
-}
-
-/// [`AccountsList::meta`]。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ListMeta {
-    /// 这台建了账号库（清单读得出）。
-    pub(crate) enabled: bool,
-    pub(crate) accts_dir: String,
-    pub(crate) manifest_path: String,
-    pub(crate) updated_at: Option<String>,
-    /// 账号 0 的配置目录（清单里写了才有）。
-    pub(crate) shared_store: Option<String>,
-    /// 清单里认得的号数。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) count: usize,
-    /// 清单读不出的那一句。
-    pub(crate) error: Option<String>,
-    /// 这台做不了多账号的那一句（做得了 ⇒ `null`）。
-    pub(crate) unsupported: Option<String>,
-    /// 删掉默认号之后新会话默认谁（同删号那一条的答案）。
-    pub(crate) next_default: Option<String>,
-    /// 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
-    pub(crate) effective_default: Option<String>,
-    /// 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
-    pub(crate) home: Option<String>,
-}
-
-/// 扫清单得出的一个号（[`AccountRow`] 里除了并表那几格的部分）。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ScannedAccount {
-    pub(crate) name: String,
-    /// 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
-    pub(crate) label: String,
-    pub(crate) email: String,
-    /// `null` ＝ 账号 0（下游据此不注入配置目录那一格）。
-    pub(crate) config_dir: Option<String>,
-    pub(crate) is_default: bool,
-    /// `isolated` · `in-place`。
-    pub(crate) mode: String,
-    pub(crate) exists: bool,
-    /// 凭据文件在不在（不代表凭据有效；可用性看 `authReady`）。
-    pub(crate) logged_in: bool,
-    /// `subscription` · `api-key`。
-    pub(crate) auth_kind: String,
-    pub(crate) auth_ready: bool,
-    /// 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
-    pub(crate) selectable: bool,
-    /// 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
-    pub(crate) color: u8,
-}
-
-/// `accounts-list` 每个号一行。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct AccountRow {
-    #[serde(flatten)]
-    #[cfg_attr(test, ts(flatten))]
-    pub(crate) scanned: ScannedAccount,
-    /// API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
-    pub(crate) key_masked: Option<String>,
-    /// 同上，那一行的端点。
-    pub(crate) base_url: Option<String>,
-    /// 账号菜单每一项右边那一枚徽章。
-    pub(crate) badge: Badge,
+/// ★ 选不了的那一句（唯一一处；判定本身是 `acct_core::account_selectable`，这里只说是四条里的哪一条没过）。
+/// 账号 0 不经选号 ⇒ 没有这一句。
+fn unselectable_of(a: &ScannedAccount, api_key: bool) -> Option<String> {
+    if a.selectable || a.config_dir.is_none() {
+        return None;
+    }
+    Some(if a.mode != "isolated" {
+        copy_text("accounts.badge.inPlace", &[])
+    } else if !a.exists {
+        copy_text("accounts.row.missing", &[])
+    } else if api_key {
+        copy_text("acct.tag.key", &[])
+    } else {
+        copy_text("acct.tag.login", &[])
+    })
 }
 
 /// 号目录里那份凭据文件的名字（「已登录」只 stat 它在不在；watcher 盯它出现 / 变了）。
@@ -465,6 +398,12 @@ fn library_model(accts_dir: &Path) -> Option<crate::accounts::manage::model::Man
     let bytes = Ro::read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
     let text = String::from_utf8(bytes).ok()?;
     crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}')).ok()
+}
+
+/// 这台账号库给每个号的号色（名 ⇒ 第几格；读不出 ⇒ 空表）：别处画号色（轮换那一页）与 `accounts-list` 同一份；
+/// 不在表里的号照 `color_fallback` 按名字算（同清单那一行）。
+pub(crate) fn account_colors() -> std::collections::BTreeMap<String, u8> {
+    colors_at(&resolve_accts_dir())
 }
 
 /// 清单里每个号的号色（名 ⇒ 第几格）：盘上有就照盘上；还没补过色的照补色那一处现算（`Manifest::with_colors`，
@@ -524,16 +463,6 @@ pub(crate) fn with_notice(mut v: AccountsList, more: Option<String>) -> Accounts
         None => more,
     });
     v
-}
-
-/// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Badge {
-    pub(crate) text: Words,
-    pub(crate) warn: bool,
-    pub(crate) title: Words,
 }
 
 /// ★ 徽章一处判（每一态只出自这里）：原地模式 ⇒ 不隔离；API key 号 ⇒ 这台 key 表里有没有它那一行 · 这台的中转在不在
@@ -644,6 +573,9 @@ pub(crate) fn list_product_with(
                 key_masked: fact.and_then(|k| k.masked.clone()),
                 base_url: fact.and_then(|k| k.base_url.clone()),
                 badge,
+                plate: Words(crate::accounts::quota::name_words::plate_text(&a.name)),
+                quota: None,
+                unselectable: unselectable_of(&a, api_key).map(Words),
                 scanned: a,
             }
         })
@@ -1268,6 +1200,11 @@ pub(crate) fn trust_product_at(
 }
 
 // ---------------------------------------------------------------- tests
+
+// 照类型造清单成品的夹具住测试树：起会话挑号 · 需手动清单几份判据共用。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/accounts_list_support.rs"]
+pub(crate) mod test_support;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/accounts_query_tests.rs"]

@@ -491,18 +491,15 @@ pub(crate) fn preset(
     store: &RotationStore,
     own: &Own,
     sid: &str,
-    kind: &str,
+    route: crate::agents::RouteId,
     strategy: &str,
     now: u64,
 ) -> Result<(), Said> {
-    let agent = crate::agents::pick_kind(Some(kind))
-        .map(|(_, f)| f.adapter_id.to_string())
-        .unwrap_or_else(|_| kind.to_string());
     let zero = acct_core::BARE_ACCOUNT;
     face_change(store, own, |b| {
         b.sessions.insert(
             sid.to_string(),
-            book::Session::fresh(&agent, zero, now, strategy),
+            book::Session::fresh(route.id(), zero, now, strategy),
         );
     })
 }

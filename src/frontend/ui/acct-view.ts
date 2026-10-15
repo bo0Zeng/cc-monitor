@@ -6,7 +6,7 @@
  */
 import { copyText } from "./copy-table";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import { accountLabel, type QuotaRead, type QuotaReadAccount } from "./acct-words";
+import { accountLabel, type QuotaAccount, type QuotaRead } from "./acct-words";
 import type { Usage } from "./generated/Usage";
 import type { SessionRotationEntry } from "./app-store";
 
@@ -35,7 +35,7 @@ export interface ChipModel {
 }
 
 /** 这台额度账里这个号那一条（这个会话那一家的、或只认号名的头一条）。 */
-function ledgerOfAny(quota: QuotaRead | null, account: string): QuotaReadAccount | undefined {
+function ledgerOfAny(quota: QuotaRead | null, account: string): QuotaAccount | undefined {
   return quota?.accounts.find((a) => a.account === account);
 }
 

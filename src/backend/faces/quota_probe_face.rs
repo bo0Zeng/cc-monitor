@@ -37,8 +37,8 @@ fn bad(detail: &str) -> crate::wire::spec::Fail {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct QuotaProbeReq {
-    /// 路由第 1 段：哪一家。
-    pub(crate) agent: String,
+    /// 哪一家（线上的 kind）。
+    pub(crate) agent: crate::agents::AgentKind,
     /// 账号库里的号（配置目录末段；账号 0 是 `0`）。
     pub(crate) account: String,
 }
@@ -101,16 +101,21 @@ pub(crate) fn answer_probe_with(
     now: u64,
     path: Option<&OsStr>,
 ) -> Answer {
-    let agent = Some(req.agent.as_str())
-        .filter(|a| crate::relay::segment_is_safe(a))
-        .ok_or_else(|| bad("`agent` must be a route id such as \"claude-code\""))?;
+    let agent = Some(&req.agent)
+        .filter(|a| !a.as_str().trim().is_empty())
+        .and_then(|a| crate::agents::pick_route(Some(a)).ok())
+        .ok_or_else(|| bad("`agent` must be an agent kind such as \"claude\""))?
+        .id();
     let account = Some(req.account.as_str())
         .filter(|a| account_ok(a))
         .ok_or_else(|| bad("`account` must be an account id"))?;
     let face = crate::agents::usage_of(agent).ok_or_else(|| {
         (
             "unsupported",
-            copy_text("beQuotaProbe.agent.unsupported", &[("agent", agent)]),
+            copy_text(
+                "beQuotaProbe.agent.unsupported",
+                &[("agent", req.agent.as_str())],
+            ),
         )
     })?;
     let lib = ctx.hop.library();
@@ -198,7 +203,7 @@ pub(crate) fn answer_probe_with(
     }
     let shown = book.map(|p| p.display().to_string());
     let probed = |state, reason, windows| Probed {
-        agent: agent.to_string(),
+        agent: req.agent.clone(),
         account: account.to_string(),
         from: ProbeFrom::Usage,
         now,
@@ -222,8 +227,8 @@ pub(crate) fn answer_probe_with(
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Probed {
-    /// 路由第 1 段：哪一家（同入参）。
-    pub(crate) agent: String,
+    /// 哪一家（同入参，线上的 kind）。
+    pub(crate) agent: crate::agents::AgentKind,
     /// 账号库里的号（同入参）。
     pub(crate) account: String,
     /// 这份读数从哪来。

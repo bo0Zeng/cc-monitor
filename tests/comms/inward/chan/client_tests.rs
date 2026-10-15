@@ -150,10 +150,10 @@ async fn an_unanswered_call_overruns_on_wait_and_posts_a_cancel() {
 #[tokio::test]
 async fn a_withdrawn_call_says_whether_the_peer_may_still_run_it() {
     let (c, mut r) = start();
+    let stuck = cmd_wire::shapes::UNCANCELLABLE[0];
     let offer = Offer::new(
-        vec![WITHDRAW_OP.into(), "ping".into(), "put".into()],
+        vec![WITHDRAW_OP.into(), "ping".into(), stuck.into()],
         Vec::new(),
-        vec!["put".into()],
     );
     let ask = tokio::spawn({
         let c = c.clone();
@@ -171,7 +171,7 @@ async fn a_withdrawn_call_says_whether_the_peer_may_still_run_it() {
     .unwrap();
     assert_eq!(ask.await.unwrap(), Ok(Some(offer)));
 
-    for (name, runs_on) in [("put", true), ("ping", false)] {
+    for (name, runs_on) in [(stuck, true), ("ping", false)] {
         let b = budget(WAIT);
         let cancel = b.cancel.clone();
         let call = tokio::spawn({

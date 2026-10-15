@@ -1214,7 +1214,6 @@ fn client_for_test(
         homes: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
-        uncancellable: vec![],
         // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
         shapes: commands
             .iter()

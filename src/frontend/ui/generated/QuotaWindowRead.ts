@@ -2,7 +2,7 @@
 import type { Words } from "./Words";
 
 /**
- * 快照里的一个窗口（[`QuotaWindow`]）＋ 重置时刻旁边写好的字。
+ * 快照里的一个窗口（`QuotaWindow`）＋ 重置时刻旁边写好的字。
  */
 export type QuotaWindowRead = { name: string, 
 /**

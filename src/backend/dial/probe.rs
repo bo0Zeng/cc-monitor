@@ -125,7 +125,7 @@ impl Cells<'_> {
     }
 }
 
-/// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存）· 已保存的那一份 · 跳板那一台（形状由拨号那一层解）。
+/// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存）· 已保存的那一份 · 跳板那一台。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -133,17 +133,16 @@ impl Cells<'_> {
 pub(crate) struct ProbeReq {
     /// 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
     pub(crate) ticket: String,
-    /// 那台的配置：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …
-    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
-    pub(crate) machine: Value,
+    /// 那台的配置。
+    pub(crate) machine: super::pick::MachineConfig,
     /// 已保存的那一份（可缺）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable, type = "Record<string, unknown>"))]
-    pub(crate) saved: Option<Value>,
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) saved: Option<super::pick::MachineConfig>,
     /// 跳板那一台的配置（可缺）。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable, type = "Record<string, unknown>"))]
-    pub(crate) jump: Option<Value>,
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) jump: Option<super::pick::MachineConfig>,
 }
 
 crate::wire::typed::codes! {
@@ -195,14 +194,18 @@ where
         ticket: ticket_ok(&req.ticket)?,
         out,
     };
-    // 那三台的配置照拨号那一层的形状交过去（它自己解）。
-    let args = json!({ "machine": req.machine, "saved": req.saved, "jump": req.jump });
-    let end = run(&args, serve, &cells).await?;
+    let pick = super::pick::Pick {
+        machine: &req.machine,
+        saved: req.saved.as_ref(),
+        jump: req.jump.as_ref(),
+        prefer: None,
+    };
+    let end = run(&pick, serve, &cells).await?;
     cells.push(json!({ "end": end })).await
 }
 
 async fn run<F, Fut>(
-    args: &Value,
+    pick: &super::pick::Pick<'_>,
     serve: F,
     cells: &Cells<'_>,
 ) -> Result<Value, (&'static str, String)>
@@ -210,21 +213,16 @@ where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
-    let (machine, _, _) = super::machine::from_args(args)?;
+    let (machine, _, _) = pick.machines()?;
     let command = format!(
         "{} -- {}",
         relay_route_core::BACKEND_LANDING_SHELL,
         crate::wire::cli_words::STREAM_FLAG_EXPLICIT
     );
-    let req = crate::dial::parse_request_value(&json!({
-        "machine": args.get("machine"),
-        "saved": args.get("saved"),
-        "jump": args.get("jump"),
-        "use": "stream",
-        "command": command,
-        "stages": true,
-        "probe": true,
-    }))?;
+    let req = pick.request(
+        "stream",
+        json!({ "command": command, "stages": true, "probe": true }),
+    )?;
     let (mut up_w, up_r) = tokio::io::duplex(64 * 1024);
     let (down_w, down_r) = tokio::io::duplex(256 * 1024);
     // 探完即丢 ⇒ 链路那一侧一起收（后端收掉那条链路；探针不进连接池 ⇒ 那条 SSH 连接随之关）。

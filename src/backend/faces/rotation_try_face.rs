@@ -6,6 +6,10 @@ use crate::accounts::quota::rules::script;
 use crate::accounts::quota::rules::simulate;
 use crate::accounts::quota::rules::Acct;
 use crate::wire::typed::Command;
+pub(crate) use cmd_wire::rotation::{
+    RotTryDecision, RotTryLane, RotTryLaneSeg, RotTryRow, RotTrySwitch, RotTryTick, RotTryTimeline,
+    RotTryUse, RotationTryReply,
+};
 
 /// `rotation-try` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -42,162 +46,7 @@ pub(crate) struct RotationTryReq {
     /// 哪一家（缺 ⇒ 有账号库的那一家）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) agent: Option<String>,
-}
-
-/// 策略说的一个号：一句为什么。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryRow {
-    pub(crate) account: String,
-    pub(crate) why: String,
-}
-
-/// 这一判。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryDecision {
-    /// 用哪个号（停发 ⇒ 缺）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) pick: Option<String>,
-    /// 停发到几点 · 到时恢复的号（停发才有）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) hold_until: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) hold_account: Option<String>,
-    /// 策略交的先后（此刻愿意用的号）。
-    pub(crate) order: Vec<String>,
-    /// 每个号一句（策略写的）。
-    pub(crate) why: Vec<RotTryRow>,
-    /// 这一号来自用户拖出来的顺序。
-    pub(crate) from_temp: bool,
-    pub(crate) skipped: Vec<String>,
-    pub(crate) temp: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) next_node: Option<u64>,
-    /// 策略这一判出错（走了兜底）：原话。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) strategy_error: Option<String>,
-}
-
-/// 「用哪个号」那一条的一段。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryUse {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) account: Option<String>,
-    pub(crate) from_temp: bool,
-    /// 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
-    pub(crate) cap_unknown: bool,
-    pub(crate) skipped: Vec<String>,
-}
-
-/// 每个号那一行的一段。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryLaneSeg {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
-    /// 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
-    pub(crate) sendable: bool,
-    /// 这一段开头两窗的用量（5 小时 · 7 天）。
-    pub(crate) used: [f64; 2],
-    pub(crate) reset: bool,
-    /// 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
-    pub(crate) from_text: String,
-    /// 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
-    pub(crate) left: f64,
-}
-
-/// 一个号那一行。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryLane {
-    pub(crate) account: String,
-    pub(crate) segs: Vec<RotTryLaneSeg>,
-}
-
-/// 一次换号。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTrySwitch {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) at: u64,
-    /// `at` 的钟面（`HH:MM`）。
-    pub(crate) at_text: String,
-    pub(crate) account: String,
-}
-
-/// 时间轴上的一格刻度：整点 · 钟面。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryTick {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) at: u64,
-    pub(crate) text: String,
-}
-
-/// 推演。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotTryTimeline {
-    /// 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
-    pub(crate) switches: Vec<RotTrySwitch>,
-    pub(crate) uses: Vec<RotTryUse>,
-    pub(crate) lanes: Vec<RotTryLane>,
-    pub(crate) truncated: bool,
-    /// 此刻之后的整点刻度（推 12 小时以内每 2 小时、更长每 4 小时，看的那一台的钟）。
-    pub(crate) ticks: Vec<RotTryTick>,
-}
-
-/// `rotation-try` 的应答。
-#[derive(Debug, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationTryReply {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) now: u64,
-    /// 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
-    pub(crate) description: String,
-    /// 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) source: Option<String>,
-    /// 试跑「现在用」碰上用不了：几点恢复（说不出 ⇒ `null`）；这时 `decision` 是不换的那一判。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number | null"))]
-    pub(crate) use_now_refused: Option<Option<u64>>,
-    pub(crate) decision: RotTryDecision,
-    pub(crate) timeline: RotTryTimeline,
+    pub(crate) agent: Option<crate::agents::AgentKind>,
 }
 
 crate::wire::typed::codes! {
@@ -230,10 +79,12 @@ impl crate::wire::typed::Handle for RotationTry {
             let cx = &cx;
 
             let ctx = crate::faces::rotation_face::Ctx::here();
-            let agent = req
-                .agent
-                .as_deref()
-                .unwrap_or(crate::faces::rotation_face::LIBRARY_AGENT);
+            let agent = match &req.agent {
+                None => crate::faces::rotation_face::LIBRARY_AGENT,
+                Some(k) => crate::agents::pick_route(Some(k))
+                    .map_err(RotationTryErr::BadArgs)?
+                    .id(),
+            };
             let row = ctx.row(agent);
             let now = crate::accounts::quota::now_unix();
             let facts: Vec<Acct> = ctx

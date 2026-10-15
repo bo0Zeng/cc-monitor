@@ -104,11 +104,14 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
     let got = facts_with(
         &c,
         &RotationFactsReq {
-            agent: Some("claude-code".into()),
+            agent: Some(crate::agents::AgentKind::new(
+                crate::agents::claudecode::AGENT_KIND,
+            )),
         },
         NOW,
         &crate::Tz::default(),
-    );
+    )
+    .expect("认得的 kind");
     assert_eq!(got.now, NOW);
     let names: Vec<&str> = got.accounts.iter().map(|f| f.account.as_str()).collect();
     assert_eq!(names, ["b", "c", "api"]);
@@ -164,7 +167,7 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
         reading(1.02, true),
         NOW,
     );
-    let got = facts_with(&c, &RotationFactsReq::default(), NOW, &crate::Tz::default());
+    let got = facts_with(&c, &RotationFactsReq::default(), NOW, &crate::Tz::default()).unwrap();
     let b = got.accounts[0].blocked.clone().expect("被拒");
     assert_eq!((b.why, b.until), (FactWhy::Refused, Some(NOW + 3_600)));
     let at = crate::common::time::fmt_at((NOW + 3_600) as i64, NOW as i64, &crate::Tz::default());
@@ -186,7 +189,8 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
         &RotationFactsReq::default(),
         NOW + 1,
         &crate::Tz::default(),
-    );
+    )
+    .unwrap();
     let b = got.accounts[0].blocked.clone().expect("用满");
     assert_eq!(b.why, FactWhy::Used);
     let _ = std::fs::remove_dir_all(&root);
@@ -204,4 +208,21 @@ fn it_is_registered_typed_and_refuses_fields_it_does_not_use() {
         "多一格该拒（解入参那一步回 bad_args）"
     );
     assert_eq!(spec.codes, ["bad_args"]);
+}
+
+/// ★ 线上只认 kind：后端里面记账用的路由名当 `agent` 交来 ⇒ `bad_args`，不当成那一家（轮换那两条同一个认法）。
+#[test]
+fn a_route_name_is_not_taken_as_an_agent() {
+    let route = crate::agents::claudecode::UPSTREAM.route_id;
+    assert_ne!(route, crate::agents::claudecode::AGENT_KIND);
+    for (cmd, args) in [
+        ("rotation-facts", serde_json::json!({ "agent": route })),
+        (
+            "rotation-try",
+            serde_json::json!({ "source": "", "agent": route }),
+        ),
+    ] {
+        let fail = crate::wire::typed::tests::ask(cmd, args).expect_err(cmd);
+        assert_eq!(fail.code, "bad_args", "{cmd}：{}", fail.message);
+    }
 }

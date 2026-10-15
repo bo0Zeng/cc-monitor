@@ -21,16 +21,11 @@ impl HelloFrame for InboundFrame {
             InboundFrame::Hello {
                 commands,
                 unavailable,
-                uncancellable,
                 shapes,
                 ..
             } => Some(
-                crate::chan::wire::Offer::new(
-                    commands.clone(),
-                    unavailable.clone(),
-                    uncancellable.clone(),
-                )
-                .with_shapes(shapes.clone()),
+                crate::chan::wire::Offer::new(commands.clone(), unavailable.clone())
+                    .with_shapes(shapes.clone()),
             ),
             _ => None,
         }

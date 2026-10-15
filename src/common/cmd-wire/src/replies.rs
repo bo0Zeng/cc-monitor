@@ -2,6 +2,7 @@
 //! 表里的类型都住本包（[`crate::session`] · [`crate::files`] · [`crate::needs`] · [`crate::listing`] · [`crate::record`] …），就是后端那条命令 `impl Command` 回的那一个
 //! （后端判据按 TS 名对，[`reply_names`]）。表里没有的命令照原样交（回包类型还住后端那几族）。
 
+use crate::accounts::AccountsList;
 use crate::batch::BatchReply;
 use crate::files::{
     FilesPathBytesReply, FilesPathReply, FilesStageChunkReply, FilesWrittenReply, LsReply,
@@ -9,7 +10,13 @@ use crate::files::{
 };
 use crate::listing::HistoryListReply;
 use crate::needs::{Answered, NeedsList};
+use crate::quota::QuotaRead;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
+use crate::rotation::{
+    RotDone, RotStrategyId, RotStrategyRev, RotationDayPaintReply, RotationFactsReply,
+    RotationSaveReply, RotationSettingsReply, RotationStrategiesReply, RotationTempReply,
+    RotationTryReply, RotationViewReply,
+};
 use crate::session::{
     Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands,
     SessionNew, TailPlan, TerminalsList,
@@ -51,6 +58,7 @@ macro_rules! replies {
 }
 
 replies! {
+    "accounts-list" => AccountsList,
     "files-chmod" => BatchReply,
     "files-commit-upload" => FilesPathBytesReply,
     "files-create" => FilesPathBytesReply,
@@ -71,6 +79,24 @@ replies! {
     "kill" => Killed,
     "launch-render-cli" => Rendered,
     "needs-answer" => Answered,
+    "quota-read" => QuotaRead,
+    "rotation-day-paint" => RotationDayPaintReply,
+    "rotation-facts" => RotationFactsReply,
+    "rotation-for-new" => RotDone,
+    "rotation-revert" => RotDone,
+    "rotation-save" => RotationSaveReply,
+    "rotation-settings" => RotationSettingsReply,
+    "rotation-strategies" => RotationStrategiesReply,
+    "rotation-strategy-add" => RotStrategyId,
+    "rotation-strategy-copy" => RotStrategyId,
+    "rotation-strategy-delete" => RotDone,
+    "rotation-strategy-rename" => RotStrategyId,
+    "rotation-strategy-tz" => RotStrategyRev,
+    "rotation-temp" => RotationTempReply,
+    "rotation-try" => RotationTryReply,
+    "rotation-use" => RotDone,
+    "rotation-use-now" => RotDone,
+    "rotation-view" => RotationViewReply,
     "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
     "session-new" => SessionNew,
@@ -108,6 +134,26 @@ mod tests {
             decode_reply("needs-answer", serde_json::json!({"result": "maybe"})),
             Some(Err(_))
         ));
+    }
+
+    /// `quota-read` 线上金样（后端真出口写的那几份）每一份都解得开、按类型重写回来一个字节不差（展平的几格 · 可缺的几格都对得上）。
+    #[test]
+    fn every_quota_read_golden_is_decoded_byte_for_byte() {
+        let g: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tests/__fixtures__/quota-read.golden.json"
+        ))
+        .unwrap();
+        let cases = g["cases"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for c in cases {
+            let reply = c["reply"].clone();
+            assert_eq!(
+                decode_reply("quota-read", reply.clone()),
+                Some(Ok(reply)),
+                "{}",
+                c["name"]
+            );
+        }
     }
 
     /// 缺一格 ⇒ 解不开；多出来的格不拦（回包不 deny_unknown_fields：新版多一格不算对不上，形状指纹另管）。

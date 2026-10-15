@@ -53,6 +53,12 @@ export interface Account {
    * 头像只照它画（`account-color.ts`）。线上恒有这一格，本地造的夹具可以不写（不写 ⇒ 画中性）。
    */
   color?: number;
+  /** 号牌上那一两个字（那台后端写好）。线上恒有这一格，本地造的夹具可以不写（不写 ⇒ 画「—」）。 */
+  plate?: string;
+  /** 这个号「5h 那一格」写好的字（同 `quota-read` 那一格）；没出过数 · 按量号 ⇒ `null`。线上恒有，夹具可以不写。 */
+  quota?: string | null;
+  /** 选不了的那一句（需登录 · 需 key · 不隔离 · 号目录不在）；选得了 · 账号 0 ⇒ `null`。线上恒有，夹具可以不写。 */
+  unselectable?: string | null;
 }
 
 /** 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。 */
@@ -192,14 +198,6 @@ export function detectAccountMismatch(
 }
 
 
-/** 账号徽章文本（tab 行用）：账号名首字符（ASCII 取前 2，其它取 1 个 code point）。 */
-export function badgeText(name: string): string {
-  const cps = Array.from(name);
-  if (cps.length === 0) return "?";
-  if (/^[A-Za-z0-9]/.test(name)) return name.slice(0, 2);
-  return cps[0];
-}
-
 /**
  * 会话 sid → 徽章信息（DESIGN §3 三源优先级）：
  *   源① live 探测（`/proc/<pid>/environ` 硬真相）——优先；
@@ -208,7 +206,6 @@ export function badgeText(name: string): string {
  * 本地会话（`LOCAL_ORIGIN`）不产徽章。
  */
 export interface SessionBadge {
-  text: string; // 显示文本；"—" = 未知
   known: boolean; // 是否确知账号
   tooltip: string;
   /** 徽章数据来源：'live' = 实时探测（实心头像）/ 'last' = 上次记录（幽灵头像）/ 'unknown' = 不猜。 */
@@ -229,7 +226,6 @@ export function sessionBadge(
   if (live && live.alive && live.account) {
     const email = emailByName.get(live.account) ?? "";
     return {
-      text: badgeText(live.account),
       known: true,
       tooltip: copyText("accounts.sessionBadge.live", { account: live.account, email: email ? ` · ${email}` : "" }),
       source: "live",
@@ -242,7 +238,6 @@ export function sessionBadge(
   if (last) {
     const email = emailByName.get(last) ?? "";
     return {
-      text: badgeText(last),
       known: true,
       tooltip: copyText("accounts.sessionBadge.last", { last, email: email ? ` · ${email}` : "" }),
       source: "last",
@@ -251,7 +246,6 @@ export function sessionBadge(
   }
   // 源③：都没有 → 未知，不猜。
   return {
-    text: copyText("accounts.sessionBadge.none"),
     known: false,
     tooltip: copyText("accounts.sessionBadge.noneHint"),
     source: "unknown",

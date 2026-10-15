@@ -23,7 +23,7 @@ function quota(p: Partial<QuotaShow> = {}): QuotaShow {
 
 /** 一个会话的 `rotation-view`：这几处只看 `start` · `current`。 */
 function entry(start: string, current: string): SessionRotationEntry {
-  const read = { now: NOW, nowText: "14:30", strategy: null, form: [], settings: {}, dirty: false, start, current, accounts: [], listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
+  const read = { now: NOW, nowText: "14:30", strategy: null, form: [], settings: {}, dirty: false, start, current, accounts: [], plates: {}, listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
   return { origin: "<local>", read };
 }
 
@@ -33,15 +33,18 @@ const LEDGER: QuotaRead = {
   path: null,
   now: NOW,
   accounts: [
-    { agent: "claude-code", account: "personal", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [["personal", copyText("acct.kind.sub")], ["5h", "63%", "↻13:50", "+1h50m"], ["7d", "41%", "↻10-07 12:00", "+3d"], [copyText("acct.row.over"), "—"], [copyText("acct.row.seen"), "11:58"]].map((r) => r.map((text) => ({ text, tone: "plain" as const }))), warm: { act: "wait" as const, text: "" }, fiveHour: "5h 63%", ...quota() },
-    { agent: "claude-code", account: "team", seenAt: NOW - 120, seenAtText: "11:58", reading: {}, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: "5h 4%", ...quota({ slots: [{ slot: "5h", pct: 4, resetsAt: NOW + 5400, resetsAtText: "13:30", text: "4%", tone: "plain" }], usage: { slot: "5h", window: "5h", value: "4%", text: "5h 4%", tone: "plain" } }) },
-    { agent: "claude-code", account: "api", seenAt: NOW - 120, seenAtText: "11:58", reading: { resetsAt: NOW + 720, resetsAtText: "12:12" }, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: null, ...quota({ kind: "api", state: "refused", slots: [], limiting: undefined, usage: { value: copyText("acct.val.refusedOnly"), reset: "↻12:12", text: "↻12:12", tone: "fail" } }) },
+    { agent: "claude", account: "personal", seenAt: NOW - 120, seenAtText: "11:58", reading: { refused: false, windows: [] }, rows: [["personal", copyText("acct.kind.sub")], ["5h", "63%", "↻13:50", "+1h50m"], ["7d", "41%", "↻10-07 12:00", "+3d"], [copyText("acct.row.over"), "—"], [copyText("acct.row.seen"), "11:58"]].map((r) => r.map((text) => ({ text, tone: "plain" as const }))), warm: { act: "wait" as const, text: "" }, fiveHour: "5h 63%", ...quota() },
+    { agent: "claude", account: "team", seenAt: NOW - 120, seenAtText: "11:58", reading: { refused: false, windows: [] }, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: "5h 4%", ...quota({ slots: [{ slot: "5h", pct: 4, resetsAt: NOW + 5400, resetsAtText: "13:30", text: "4%", tone: "plain" }], usage: { slot: "5h", window: "5h", value: "4%", text: "5h 4%", tone: "plain" } }) },
+    { agent: "claude", account: "api", seenAt: NOW - 120, seenAtText: "11:58", reading: { refused: true, windows: [], resetsAt: NOW + 720, resetsAtText: "12:12" }, rows: [], warm: { act: "wait" as const, text: "" }, fiveHour: null, ...quota({ kind: "api", state: "refused", slots: [], limiting: undefined, usage: { value: copyText("acct.val.refusedOnly"), reset: "↻12:12", text: "↻12:12", tone: "fail" } }) },
   ],
   unseen: [],
   usableNow: ["personal", "team"],
   candidates: [],
   earliestReturn: null,
+  detail: null,
+  text: null,
   fiveHour: null,
+  names: { accounts: {}, slots: {} },
 };
 
 const ledger = (p: Partial<QuotaShow>): QuotaRead => ({ ...LEDGER, accounts: LEDGER.accounts.map((a) => (a.account === "personal" ? { ...a, ...quota(p) } : a)) });

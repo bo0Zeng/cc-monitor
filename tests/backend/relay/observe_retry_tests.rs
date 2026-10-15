@@ -1147,7 +1147,7 @@ fn a_launch_that_says_no_rotation_stays_on_the_account_it_names_whatever_new_ses
         &RotationStore::at(Some(home.rotation_path())),
         &home.own(),
         "s-warm",
-        "claude",
+        crate::agents::pick_route(Some(&crate::agents::AgentKind::new("claude"))).unwrap(),
         "",
         crate::accounts::quota::now_unix(),
     )

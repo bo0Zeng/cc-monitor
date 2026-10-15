@@ -25,6 +25,8 @@ pub(crate) const FACE: SignInFace = SignInFace {
     said_bad_paste,
     terminal: false,
     paste: crate::agents::PasteShape::Code,
+    // 实测先打印 `Opening browser to sign in…`。
+    opens_browser: true,
 };
 
 /// 登录一个 MCP 服务器那一形（`claude mcp login <名> --no-browser`，cli-reference 有这一行；核心在最后接上服务器名）。
@@ -44,6 +46,7 @@ pub(crate) const MCP_FACE: SignInFace = SignInFace {
     said_bad_paste: mcp_said_bad_paste,
     terminal: true,
     paste: crate::agents::PasteShape::RedirectUrl,
+    opens_browser: false,
 };
 
 /// 一行里那条 MCP 授权链接：那台服务器自己的授权页（`https://`；`http://` 只认本机），带 `state` 与 `redirect_uri`；

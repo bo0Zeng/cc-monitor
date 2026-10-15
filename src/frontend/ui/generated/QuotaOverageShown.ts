@@ -3,7 +3,7 @@ import type { QuotaStatus } from "./QuotaStatus";
 import type { Words } from "./Words";
 
 /**
- * 超额那一档（[`QuotaOverage`]）＋ 重置时刻旁边写好的字。
+ * 超额那一档（`QuotaOverage`）＋ 重置时刻旁边写好的字。
  */
 export type QuotaOverageShown = { status?: QuotaStatus, 
 /**

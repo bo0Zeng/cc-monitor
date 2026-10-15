@@ -156,7 +156,8 @@ fn the_mcp_marks_are_written_once_on_the_backend() {
         failed: &failed,
         now_s: ms("2026-10-09T12:00:00Z") / 1000,
         tz: Default::default(),
-        login_command: "/mcp",
+        kind: "claude",
+        project: None,
     };
     assert_eq!(
         serde_json::to_value(mcp_reply(&read, &say)).unwrap(),

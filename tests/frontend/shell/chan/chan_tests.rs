@@ -45,6 +45,9 @@ fn budget(ms: u64) -> Budget {
 /// 句柄看见的一次 `call`：`(origin, op, payload, left, cancel)`。
 type Seen = (String, String, Vec<u8>, Duration, CancelToken);
 
+/// 本侧那张表里撤不动的一条（合成句柄对它永不回答）。
+const STUCK: &str = cmd_wire::shapes::UNCANCELLABLE[0];
+
 /// 合成后端句柄：记下它看见了什么，按 `op` / `kind` 演几种对端。
 #[derive(Default)]
 struct Fake {
@@ -135,13 +138,16 @@ impl Backends for Fake {
         }
     }
 
-    /// 合成那台的能力事实：`hang` 撤不动，`stall` 撤得动。
+    /// 合成那台的能力事实：[`STUCK`] 撤不动（本侧那张表里的阻塞档、带对得上的指纹），`stall` 撤得动。
     fn offer(&self, _origin: &Origin) -> Option<Offer> {
-        Some(Offer::new(
-            vec!["cancel".into(), "hang".into(), "stall".into()],
-            vec![],
-            vec!["hang".into()],
-        ))
+        Some(
+            Offer::new(vec!["cancel".into(), STUCK.into(), "stall".into()], vec![]).with_shapes(
+                vec![(
+                    STUCK.into(),
+                    cmd_wire::shapes::shape_of(STUCK).unwrap().into(),
+                )],
+            ),
+        )
     }
 }
 
@@ -734,15 +740,15 @@ fn the_client_implements_the_05_signature() {
 }
 
 /// 回环客户端拿到那台的 `Offer`（经真路由器）之后，本地撤单的结果说清
-/// 「那台可能还在跑」：撤不动的 `hang` ⇒ `runs_on: true`；撤得动的 `stall` ⇒ `false`。两侧异源：左边是真撤一次的结果，
-/// 右边是合成句柄交出的那份 `Offer` 里的名单。
+/// 「那台可能还在跑」：撤不动的 [`STUCK`] ⇒ `runs_on: true`；撤得动的 `stall` ⇒ `false`。两侧异源：左边是真撤一次的结果，
+/// 右边是本侧编进来的那张撤不动的表。
 #[tokio::test]
 async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
     let (fake, c) = rig();
     let origin = Origin("<local>".into());
     let got = c.offer(&origin, budget(5_000)).await.expect("问得到");
     assert_eq!(got, fake.offer(&origin));
-    for (op, runs_on) in [("hang", true), ("stall", false)] {
+    for (op, runs_on) in [(STUCK, true), ("stall", false)] {
         let before = fake.calls.lock().unwrap().len();
         let b = budget(10_000);
         let cancel = b.cancel.clone();
@@ -780,7 +786,7 @@ fn a_typed_command_whose_shape_differs_is_not_sent() {
     let old = "pre-typed-op";
     assert!(cmd_wire::shapes::shape_of(old).is_none());
     let offer = |shapes: Vec<(String, String)>| {
-        Offer::new(vec![op.to_string(), old.into()], vec![], vec![]).with_shapes(shapes)
+        Offer::new(vec![op.to_string(), old.into()], vec![]).with_shapes(shapes)
     };
     assert!(!offer(vec![(op.into(), mine.into())]).shape_differs(op));
     assert!(offer(vec![(op.into(), "00000000".into())]).shape_differs(op));
@@ -790,7 +796,7 @@ fn a_typed_command_whose_shape_differs_is_not_sent() {
         "不是 typed 的命令不看指纹"
     );
     assert!(
-        !Offer::new(vec![], vec![], vec![]).shape_differs(op),
+        !Offer::new(vec![], vec![]).shape_differs(op),
         "对端不接的命令归「不认」（Unsupported），不归这里"
     );
 }

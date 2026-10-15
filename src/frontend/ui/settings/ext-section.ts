@@ -49,7 +49,6 @@ import {
   type McpRead,
 } from "../ext-reads";
 import { copyDetailButton, sayFailure } from "../kit/detail";
-import { readManual, type ManualItem } from "../login-reads";
 import { openLoginDrawer } from "../login-drawer";
 import { accountAvatarEl } from "../account-color";
 
@@ -235,8 +234,6 @@ export class ExtSection {
   /** 各台的 MCP 列表（按 `machineKey`；那台后端 `mcp-read` 答的，带写好的需登录 / 断开）· 那一串（一字不差 ⇒ 不重画）。 */
   private mcp = new Map<string, McpRead>();
   private mcpWire = new Map<string, string>();
-  /** 各台会话外的需手动里那几项 MCP 登录（按 `machineKey`；那台有需登录的 MCP 时才问 `manual-list`）。 */
-  private mcpFix = new Map<string, Extract<ManualItem, { kind: "mcpLogin" }>[]>();
   /** 备注正在改（那一段草稿；`null` = 没在改）· 写备注那一问没成时那一句。 */
   private noteDraft: string | null = null;
   private noteError: string | null = null;
@@ -329,7 +326,6 @@ export class ExtSection {
       if (!keep.has(k)) {
         this.mcp.delete(k);
         this.mcpWire.delete(k);
-        this.mcpFix.delete(k);
         changed = true;
       }
     }
@@ -343,23 +339,15 @@ export class ExtSection {
         } catch {
           got = null;
         }
-        // 有需登录的那一条 ⇒ 问那台它的解法（`manual-list`）；问不到 ⇒ 不画［登录…］（只说需登录那一句）。
-        let fix: Extract<ManualItem, { kind: "mcpLogin" }>[] = [];
-        if (got?.entries.some((e) => e.login !== null)) {
-          const man = await readManual(originOf(m));
-          if (man.t === "ok") fix = man.items.filter((i): i is Extract<ManualItem, { kind: "mcpLogin" }> => i.kind === "mcpLogin");
-        }
         if (this.list !== list) return;
-        const wire = got === null ? "" : JSON.stringify([got, fix]);
+        const wire = got === null ? "" : JSON.stringify(got);
         if ((this.mcpWire.get(key) ?? "") === wire) return;
         if (got === null) {
           this.mcp.delete(key);
           this.mcpWire.delete(key);
-          this.mcpFix.delete(key);
         } else {
           this.mcp.set(key, got);
           this.mcpWire.set(key, wire);
-          this.mcpFix.set(key, fix);
         }
         this.repaintMcp();
       }),
@@ -688,8 +676,8 @@ export class ExtSection {
     if (login) {
       const box = el("div", "ext-mcp is-login");
       box.appendChild(el("div", "ext-mcp-said")).append(el("span", "ext-mcp-pip"), login.said);
-      // 那台清单里同名同范围的那几项：各一颗［登录…］（几个号都要登 ⇒ 前面带那个号的号牌）。没有解法的那一项写它的 `why`。
-      const items = (this.mcpFix.get(machineKey(m)) ?? []).filter((i) => i.server === e.name && i.scope === e.scope);
+      // 每个要登的号各一颗［登录…］（几个号都要登 ⇒ 前面带那个号的号牌）。没有解法的那一项写它的 `why`。
+      const items = login.fix;
       const origin = originOf(m);
       const acts = el("div", "ext-mcp-acts");
       for (const it of items) {

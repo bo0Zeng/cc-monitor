@@ -35,7 +35,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: (...a: unknown[]) => emit(...a),
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: (...a: unknown[]) => fetchAccounts(...a),
   invalidateAccountsCache: () => {},
-  launchAgentId: () => "claude-code",
+  launchAgentId: () => "claude",
   accountsAgentProfile: () => ({ displayName: "Claude Code", models: ["sonnet", "opus"] }),
 }));
 vi.mock("../../../../src/frontend/ui/quota-reads", () => ({ readQuota: (...a: unknown[]) => readQuota(...a) }));
@@ -102,7 +102,7 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
 const NOW = 1_800_000_000;
 function quota(refusedAt?: number): QuotaRead {
   const sub = (account: string, pct5: number, pct7: number, st = "ok") => ({
-    agent: "claude-code",
+    agent: "claude",
     account,
     seenAt: NOW - 60,
     seenAtText: "11:59",
@@ -124,7 +124,7 @@ function quota(refusedAt?: number): QuotaRead {
     reason: null,
     path: null,
     now: NOW,
-    accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude-code", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok", usage: { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } }],
+    accounts: [sub("work", 100, 78, "refused"), sub("personal", refusedAt ?? 63, 41, refusedAt === undefined ? "ok" : "refused"), { agent: "claude", account: "api", seenAt: NOW, kind: "api", state: "ok", stale: false, slots: [], login: "ok", usage: { value: copyText("acct.kind.api"), text: copyText("acct.kind.api"), tone: "plain" } }],
     unseen: [],
     usableNow: [],
     earliestReturn: null,
@@ -387,13 +387,13 @@ describe("登录与指路", () => {
     expect(go.textContent).toBe(copyText("newSession.account.login"));
     expect(rowOf(el, "work").querySelector('[data-action="acct-login"]'), "已登录的那一行没有").toBeNull();
     go.click();
-    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude-code", account: "team" } }));
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "team" } }));
     expect(openLoginWindow, "不开终端").not.toHaveBeenCalled();
     buttonNamed(rowOf(el, "work"), copyText("acctPage.row.more", { name: "work" })).click();
     const items = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")];
     expect(items.some((m) => m.textContent?.includes(copyText("acctPage.menu.loginTerminal"))), "终端那条路留在「⋯」里").toBe(true);
     items.find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
-    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude-code", account: "work" } }));
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "work" } }));
     expect(openLoginWindow).not.toHaveBeenCalled();
   });
 
@@ -496,7 +496,7 @@ describe("动作", () => {
     buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
     expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "team", kind: "subscription" });
-    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude-code", account: "team" } }));
+    expect(openLoginDrawer).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "devbox", target: { kind: "account", agent: "claude", account: "team" } }));
     expect(openLoginWindow).not.toHaveBeenCalled();
     expect(el.querySelector(".acct-new")).toBeNull();
   });

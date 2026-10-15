@@ -22,7 +22,7 @@ pct?: number,
  */
 resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
+ * `resets_at` 写给人看的样子（出口那一下按钟写，`WindowShow::stamp`；内部与记账一律不填）。
  */
 resetsAtText?: string, 
 /**

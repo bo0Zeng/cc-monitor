@@ -9,8 +9,7 @@
  *   （`inherit` 且号没另设 ⇒ 跟总体，画虚线）。改一格 ⇒ 整份新设置交 `acts.settings`（后端照声明校验）。
  * 判据：`tests/frontend/ui/rot-board.vitest.ts`。
  */
-import { accountLabel } from "./acct-words";
-import { accountAvatarEl, accountColorOf } from "./account-color";
+import { accountAvatarEl } from "./account-color";
 import { clockFace } from "./clock-face";
 import { copyText } from "./copy-table";
 import type { Origin } from "./ipc/origin";
@@ -31,6 +30,7 @@ import type { RotFormCell } from "./generated/RotFormCell";
 import type { RotSeg } from "./generated/RotSeg";
 import type { RotTempOp } from "./generated/RotTempOp";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
+import type { RotPlate } from "./generated/RotPlate";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import type { StrategyText } from "./generated/StrategyText";
 import s from "./rot-board.module.css";
@@ -111,9 +111,19 @@ function at(e: HTMLElement, x: number, w?: number): void {
   if (w !== undefined) e.style.setProperty("--rot-w", String(w));
 }
 
-/** 号的头像（照它那台账号库的号色）。 */
-function avatar(account: string, origin: Origin): HTMLElement {
-  return accountAvatarEl(account, { size: 16, origin });
+/** 视图里这个号的号牌（后端带好号色 · 号名）；视图里没有 ⇒ `undefined`。 */
+function acctIn(view: RotationViewReply | null | undefined, account: string): RotPlate | undefined {
+  return view?.plates[account];
+}
+
+/** 号名：照视图里那一格；视图里没有的号照原名。 */
+function nameIn(view: RotationViewReply | null | undefined, account: string): string {
+  return acctIn(view, account)?.label ?? account;
+}
+
+/** 号的头像（号色照视图里那一格；视图里没有 ⇒ 中性的头像）。 */
+function avatar(view: RotationViewReply | null | undefined, account: string, origin: Origin): HTMLElement {
+  return accountAvatarEl(account, { size: 16, origin, color: acctIn(view, account)?.color ?? null });
 }
 
 /** 策略写的字（一句，或分语言）。 */
@@ -252,9 +262,9 @@ function description(spec: BoardSpec): HTMLElement {
     if (v && spec.where === "session") {
       box.append(
         " ",
-        avatar(v.start, spec.origin),
+        avatar(spec.view, v.start, spec.origin),
         " ",
-        accountLabel(v.start),
+        nameIn(spec.view, v.start),
       );
     }
     return box;
@@ -288,7 +298,7 @@ function hints(spec: BoardSpec): HTMLElement[] {
     if (h.k === "strategyError" && h.path !== undefined) {
       const path = h.path;
       btns.push(hintButton(copyText("rot.hint.code"), () => acts.showFile(path), { act: "code" }));
-    } else if (h.k === "tzUnknown" && h.zone !== undefined) {
+    } else if (h.k === "tzUnknown") {
       const zone = h.zone;
       btns.push(hintButton(copyText("rot.hint.setTz"), () => acts.setTz(zone), { act: "tz", hint: copyText("rot.hint.setTzTip", { zone }) }));
     } else if (h.k === "oldScripts") {
@@ -363,8 +373,8 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     c.append(
       icon("drag", "compact"),
       el("span", (e) => (e.className = s.rotCardIx), String(i + 1)),
-      avatar(f.account, spec.origin),
-      el("span", (e) => (e.className = s.rotCardName), accountLabel(f.account)),
+      avatar(view, f.account, spec.origin),
+      el("span", (e) => (e.className = s.rotCardName), nameIn(view, f.account)),
       meters(f),
     );
     // 按下拖过 4px ⇒ 拖号牌改默认优先级（松在哪张号牌上 ⇒ 排到它前头）；没拖开 ⇒ 点：展开 / 收起这个号。
@@ -422,8 +432,8 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     openMenu(
       { el: add },
       rest.map((f) => ({
-        label: accountLabel(f.account),
-        avatar: avatar(f.account, spec.origin),
+        label: nameIn(view, f.account),
+        avatar: avatar(view, f.account, spec.origin),
         onClick: () =>
           spec.acts.settings(
             withRows(view.settings, [...rows, { id: f.account }]),
@@ -449,8 +459,8 @@ function accountPane(
   pane.dataset.account = account;
   const top = el("div", (e) => (e.className = s.rotPaneTop));
   top.append(
-    avatar(account, spec.origin),
-    el("b", (e) => (e.className = s.rotPaneName), accountLabel(account)),
+    avatar(view, account, spec.origin),
+    el("b", (e) => (e.className = s.rotPaneName), nameIn(view, account)),
   );
   const reset = f.w5h.resetsText
     ? copyText("rot.acct.reset", { at: f.w5h.resetsText })
@@ -475,7 +485,7 @@ function accountPane(
     const use = spec.acts.useNow;
     top.appendChild(
       button({
-        label: copyText("rot.acct.useNow", { account: accountLabel(account) }),
+        label: copyText("rot.acct.useNow", { account: nameIn(view, account) }),
         kind: "secondary",
         size: "compact",
         onClick: () => use(account),
@@ -920,7 +930,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       (e) => (e.className = s.rotSimSwitch),
       copyText("rot.sim.switch", {
         at: w.atText,
-        account: accountLabel(w.account),
+        account: nameIn(view, w.account),
       }),
     );
     at(k, x);
@@ -932,15 +942,15 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const top = el("div", (e) => (e.className = s.rotSimTop));
   const useColor = (seg: HTMLElement, account: string | undefined | null): void => {
     if (account) {
-      const slot = accountColorOf(account, spec.origin);
-      if (slot !== null) seg.dataset.c = String(slot);
+      const slot = acctIn(view, account)?.color;
+      if (slot !== undefined) seg.dataset.c = String(slot);
     } else seg.dataset.hold = "true";
   };
   // 接着此刻、跟推演第一段同一个号的那一段不再写号名（同一段只写一次，写在推演那一截）。
   const first = tl.uses[0];
   for (const u of past?.uses ?? []) {
     const joins = u.to === view.now && first !== undefined && first.from === view.now && (first.account ?? null) === (u.account ?? null);
-    const seg = el("span", (e) => (e.className = s.rotSimUse), joins ? "" : u.account ? accountLabel(u.account) : copyText("rot.sim.hold"));
+    const seg = el("span", (e) => (e.className = s.rotSimUse), joins ? "" : u.account ? nameIn(view, u.account) : copyText("rot.sim.hold"));
     place(seg, u.from, u.to);
     useColor(seg, u.account);
     seg.dataset.past = "true";
@@ -951,7 +961,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     const seg = el(
       "span",
       (e) => (e.className = s.rotSimUse),
-      u.account ? accountLabel(u.account) : copyText("rot.sim.hold"),
+      u.account ? nameIn(view, u.account) : copyText("rot.sim.hold"),
     );
     place(seg, u.from, u.to);
     useColor(seg, u.account);
@@ -962,7 +972,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       const k = el(
         "span",
         (e) => (e.className = s.rotSimSkip),
-        copyText("rot.sim.skip", { account: accountLabel(sk) }),
+        copyText("rot.sim.skip", { account: nameIn(view, sk) }),
       );
       at(k, X(u.from));
       top.appendChild(k);
@@ -982,10 +992,10 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   for (const lane of tl.lanes) {
     const head = el("span", (e) => (e.className = s.rotSimHead));
     head.append(
-      avatar(lane.account, spec.origin),
-      el("span", (e) => (e.className = s.rotSimName), accountLabel(lane.account)),
+      avatar(view, lane.account, spec.origin),
+      el("span", (e) => (e.className = s.rotSimName), nameIn(view, lane.account)),
     );
-    attachTooltip(head, accountLabel(lane.account));
+    attachTooltip(head, nameIn(view, lane.account));
     if (spec.acts.temp) {
       head.dataset.drag = "true";
       head.addEventListener("pointerdown", (e) => {

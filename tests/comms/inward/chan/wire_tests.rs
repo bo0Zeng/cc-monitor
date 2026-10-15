@@ -205,22 +205,10 @@ async fn reading_a_frame_tells_eof_from_truncation_from_garbage() {
     ));
 }
 
-/// 撤单那一问：对端交了撤单 op 且这一条不在撤不动那一栏 ⇒ 补发；否则一帧都不补。
+/// 撤单那一问：对端交了撤单 op 且这一条不在本侧那张撤不动的表里（`cmd_wire::shapes::UNCANCELLABLE`；它算进了指纹，
+/// 指纹对得上才会发 ⇒ 两边一致）⇒ 补发；否则一帧都不补。不在指纹表里的 op（比形状指纹还早的后端才有）⇒ 当撤得动。
 #[test]
-fn withdraw_is_asked_only_when_the_peer_offers_cancel_for_that_op() {
-    let ops = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let o = Offer::new(ops(&["ping", WITHDRAW_OP]), Vec::new(), ops(&["files-put"]));
-    assert_eq!(o.withdraw("ping"), Withdraw::Asked);
-    assert_eq!(o.withdraw("files-put"), Withdraw::NotOffered);
-    let old = Offer::new(ops(&["ping"]), Vec::new(), Vec::new());
-    assert_eq!(old.withdraw("ping"), Withdraw::NotOffered);
-    assert!(o.admits("ping") && !o.admits("pong"));
-}
-
-/// typed 命令撤不撤得动看本侧编进来的指纹表（`cmd_wire::shapes::UNCANCELLABLE`；撤不撤得动算进了指纹，
-/// 指纹对得上才会发，对上了两边必然一致）；hello 那一栏只说不是 typed 的那几条，它列了 typed 命令也不认。
-#[test]
-fn typed_commands_take_cancellability_from_the_shapes_table() {
+fn withdraw_is_asked_only_when_the_peer_offers_cancel_and_the_op_is_not_stuck() {
     use cmd_wire::shapes::{SHAPES, UNCANCELLABLE};
     let ops = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let stuck = UNCANCELLABLE
@@ -232,30 +220,18 @@ fn typed_commands_take_cancellability_from_the_shapes_table() {
         .map(|(c, _)| *c)
         .find(|c| !UNCANCELLABLE.contains(c))
         .expect("至少一条 typed 可撤的");
-    // 不是 typed 的那一种（今天的后端一条都没有了；比形状指纹还早的那一版后端才有）：取一个不在指纹表里的名字。
     let old = "pre-typed-op";
     assert!(cmd_wire::shapes::shape_of(old).is_none());
-    let o = Offer::new(
-        ops(&[stuck, free, old, WITHDRAW_OP]),
-        Vec::new(),
-        Vec::new(),
-    );
+    let o = Offer::new(ops(&[stuck, free, old, WITHDRAW_OP]), Vec::new());
     assert_eq!(o.withdraw(stuck), Withdraw::NotOffered, "{stuck}");
     assert_eq!(o.withdraw(free), Withdraw::Asked, "{free}");
-    let o = Offer::new(
-        ops(&[free, old, WITHDRAW_OP]),
-        Vec::new(),
-        ops(&[free, old]),
-    );
-    assert_eq!(o.withdraw(free), Withdraw::Asked, "typed 命令以指纹表为准");
-    assert_eq!(
-        o.withdraw(old),
-        Withdraw::NotOffered,
-        "不是 typed 的照 hello 那一栏"
-    );
+    assert_eq!(o.withdraw(old), Withdraw::Asked, "{old}");
+    let no_cancel = Offer::new(ops(&[free]), Vec::new());
+    assert_eq!(no_cancel.withdraw(free), Withdraw::NotOffered);
+    assert!(o.admits(free) && !o.admits("pong"));
 }
 
-/// hello / resync 里那两格：坏项逐项丢、不丢整份；缺格 ⇒ 空。`shapes` 里值不是串的那一项丢掉。
+/// hello / resync 里 `unavailable` 那一格与 hello 的 `shapes`：坏项逐项丢、不丢整份；缺格 ⇒ 空。`shapes` 里值不是串的那一项丢掉。
 #[test]
 fn offer_facts_drop_bad_items_one_by_one() {
     let v = serde_json::json!({
@@ -265,11 +241,10 @@ fn offer_facts_drop_bad_items_one_by_one() {
             7,
             {"command": "kill", "code": "unsupported"}
         ],
-        "uncancellable": ["files-put", 3, "files-delete"],
         "shapes": {"a": "h1", "b": 2}
     });
     let obj = v.as_object().unwrap();
-    let (unavailable, uncancellable) = Offer::facts_of(obj);
+    let unavailable = Offer::facts_of(obj);
     assert_eq!(
         unavailable,
         vec![
@@ -277,18 +252,17 @@ fn offer_facts_drop_bad_items_one_by_one() {
             ("kill".to_string(), "unsupported".to_string())
         ]
     );
-    assert_eq!(uncancellable, ["files-put", "files-delete"]);
     assert_eq!(
         Offer::shapes_of(obj),
         vec![("a".to_string(), "h1".to_string())]
     );
     let none = serde_json::Map::new();
-    assert_eq!(Offer::facts_of(&none), (Vec::new(), Vec::new()));
+    assert!(Offer::facts_of(&none).is_empty());
     assert!(Offer::shapes_of(&none).is_empty());
 
-    let mut o = Offer::new(vec!["tmux-ls".into()], unavailable, Vec::new());
+    let mut o = Offer::new(vec!["tmux-ls".into()], unavailable);
     assert_eq!(o.unavailable("tmux-ls"), Some("no_tmux"));
-    o.refresh_facts(Vec::new(), Vec::new());
+    o.refresh_facts(Vec::new());
     assert_eq!(o.unavailable("tmux-ls"), None);
     assert_eq!(o.ops(), ["tmux-ls"]);
 }

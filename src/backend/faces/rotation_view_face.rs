@@ -2,79 +2,22 @@
 //! 都只回成品：策略目录里每一份（名字 · 灰字 · 版本 · 读不懂的原因 · 哪几个会话在用）；一个会话（或设置页上的一份策略）此刻的
 //! 设置 · 声明 · 每个号的事实 · 这一判 · 推演 · 提示。界面照画，不判、不排、不算时刻。
 
-use crate::accounts::quota::facts::Fact;
 use crate::accounts::quota::rules::book::{self, Uses};
 use crate::accounts::quota::rules::decide::Pick;
 use crate::accounts::quota::rules::{form, past, script, shelf, simulate};
 use crate::accounts::quota::strategy::FailWhy;
 use crate::accounts::upstream_select::turn::{self, Loaded};
+use crate::common::cells::Words;
 use crate::faces::rotation_face::Ctx;
-use crate::faces::rotation_try_face::{decision_of, timeline_of, RotTryDecision, RotTryTimeline};
+use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
-use serde::{Deserialize, Serialize};
+pub(crate) use cmd_wire::rotation::{
+    RotBadCell, RotHint, RotLogRow, RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg,
+    RotPastUse, RotPlate, RotRefused, RotStrategyError, RotStrategyItem, RotationStrategiesReply,
+    RotationViewReply,
+};
+use serde::Deserialize;
 use serde_json::Value;
-
-/// 读不懂的那一份为什么：第几行（说得出才有）· 原话。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotStrategyError {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "number"))]
-    pub(crate) line: Option<usize>,
-    pub(crate) msg: String,
-    /// 哪一种常见的错（拼提示那一句用，不上线）。
-    #[serde(skip)]
-    #[cfg_attr(test, ts(skip))]
-    pub(crate) why: FailWhy,
-}
-
-impl RotStrategyError {
-    pub(crate) fn of(f: &crate::accounts::quota::strategy::Fail) -> Self {
-        Self {
-            line: f.line,
-            msg: f.msg.clone(),
-            why: f.why,
-        }
-    }
-
-    /// 出错的那种说法（文案表里的）。
-    fn why_text(&self) -> String {
-        match self.why {
-            FailWhy::DivZero => copy_core::copy_text("beRotation.why.divZero", &[]),
-            FailWhy::NoFn => copy_core::copy_text("beRotation.why.noFn", &[]),
-            FailWhy::Type => copy_core::copy_text("beRotation.why.type", &[]),
-            FailWhy::Limit => copy_core::copy_text("beRotation.why.limit", &[]),
-            FailWhy::Timeout => copy_core::copy_text("beRotation.why.timeout", &[]),
-            FailWhy::Index => copy_core::copy_text("beRotation.why.index", &[]),
-            FailWhy::Gone => copy_core::copy_text("beRotation.why.gone", &[]),
-            FailWhy::Other => copy_core::copy_text("beRotation.why.other", &[]),
-        }
-    }
-}
-
-/// 策略目录里的一份。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotStrategyItem {
-    pub(crate) id: String,
-    /// 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
-    pub(crate) description: String,
-    pub(crate) rev: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) error: Option<RotStrategyError>,
-    /// 此刻还活着、用着它的会话。
-    pub(crate) in_use: Vec<String>,
-    pub(crate) for_new: bool,
-    /// 这份的设置说明写法不合文案规矩（设置照样能用）。
-    pub(crate) words_bad: bool,
-    /// 文件头里没写时区（分时段按 UTC 算）。
-    pub(crate) tz_unknown: bool,
-}
 
 /// `rotation-strategies` 的入参。
 #[derive(Debug, Default, Deserialize)]
@@ -82,19 +25,6 @@ pub(crate) struct RotStrategyItem {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationStrategiesReq {}
-
-/// `rotation-strategies` 的应答。
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategiesReply {
-    /// 照 id 排。
-    pub(crate) strategies: Vec<RotStrategyItem>,
-    pub(crate) for_new: String,
-    /// `strategies/v3/` 里没有加载的第三版脚本几份。
-    pub(crate) old_scripts: usize,
-}
 
 crate::wire::typed::codes! {
     /// `rotation-strategies` 自己的码（只有入参不对那一种）。
@@ -141,7 +71,7 @@ pub(crate) fn item_of(
             .as_ref()
             .map_or_else(|_| String::new(), |f| f.about.clone()),
         rev: s.rev.clone(),
-        error: s.file.as_ref().err().map(RotStrategyError::of),
+        error: s.file.as_ref().err().map(error_of),
         in_use: book
             .in_use(&s.id)
             .into_iter()
@@ -205,134 +135,30 @@ pub(crate) struct RotationViewReq {
     pub(crate) hours: Option<u8>,
 }
 
-/// 提示（第一行下面那几条）：停发 · 策略出错 · 时区不明 · 旧格式没加载 · 说明写法不合规。字由第 4 刀照文案表写。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "k", rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum RotHint {
-    /// 停发：到几点 · 到时恢复的号。
-    Hold {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional, type = "number"))]
-        until: Option<u64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        account: Option<String>,
-        /// `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
-        #[serde(rename = "untilText", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        until_text: Option<String>,
-    },
-    /// 策略出错（这一判走了兜底：此刻的号发得出去就照用，否则照号列表的先后）。`path` ＝ 那份文件在那台上的路径（文件不在 ⇒ 缺）：「看代码」照它开。
-    StrategyError {
-        error: RotStrategyError,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        path: Option<String>,
-    },
-    /// 文件头里没写时区：分时段按 UTC 算。`zone` ＝ 看的那一台的时区名（请求信封的 `tz`；`local` ⇒ 这台系统的时区名）：
-    /// 「设时区」设成它。看的那一台也说不出 ⇒ 缺，不出按钮，提示那一句照实说（`beRotation.hint.tzNoZone`）。
-    TzUnknown {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        zone: Option<String>,
-    },
-    /// `strategies/v3/` 里有没加载的第三版脚本：几份 · 哪几份（「看是哪几份」列它们）。
-    OldScripts { n: usize, files: Vec<RotOldFile> },
-    /// 这边有没存的改动，而策略文件在别处被改了（「载入新的」·「留着这边的」）。没改动时不出：直接照新的走。
-    Newer,
-    /// 这份策略的设置说明写法不合文案规矩。
-    WordsBad,
-    /// `rotation.json` 读不懂（照上一份读懂的接着用，盘上那份不动）：那一句。
-    BookUnreadable { text: String },
+/// 读不懂的那一份为什么：第几行 · 原话（哪一种常见的错只拼提示那一句，不上线：[`why_text`]）。
+pub(crate) fn error_of(f: &crate::accounts::quota::strategy::Fail) -> RotStrategyError {
+    RotStrategyError {
+        line: f.line,
+        msg: f.msg.clone(),
+    }
 }
 
-/// `strategies/v3/` 里没加载的一份：文件名 · 在那台上的路径。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotOldFile {
-    pub(crate) name: String,
-    pub(crate) path: String,
+/// 出错的那种说法（文案表里的）。
+fn why_text(why: FailWhy) -> String {
+    match why {
+        FailWhy::DivZero => copy_core::copy_text("beRotation.why.divZero", &[]),
+        FailWhy::NoFn => copy_core::copy_text("beRotation.why.noFn", &[]),
+        FailWhy::Type => copy_core::copy_text("beRotation.why.type", &[]),
+        FailWhy::Limit => copy_core::copy_text("beRotation.why.limit", &[]),
+        FailWhy::Timeout => copy_core::copy_text("beRotation.why.timeout", &[]),
+        FailWhy::Index => copy_core::copy_text("beRotation.why.index", &[]),
+        FailWhy::Gone => copy_core::copy_text("beRotation.why.gone", &[]),
+        FailWhy::Other => copy_core::copy_text("beRotation.why.other", &[]),
+    }
 }
 
-/// 过去那一截最上那条的一段（照这个会话的换号记录）：号 ⇒ 用它；缺 ⇒ 停发。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotPastUse {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) account: Option<String>,
-}
-
-/// 过去那一截每号一行的一段：发得出去吗 · 开头是不是刚开了新窗 · 起点的钟面（重置那段写成 `↻HH:MM`，字由界面照文案表配）。
-/// 不带「剩多少」：只知道此刻的读数。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotPastSeg {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
-    pub(crate) sendable: bool,
-    pub(crate) reset: bool,
-    pub(crate) from_text: String,
-}
-
-/// 过去那一截一个号那一行（说不出的那几截不在 `segs` 里：空着）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotPastLane {
-    pub(crate) account: String,
-    pub(crate) segs: Vec<RotPastSeg>,
-}
-
-/// 时间轴过去那一截（`from` 到此刻）：最上那条 · 每号一行，号的先后同推演那几行。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotPast {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    pub(crate) uses: Vec<RotPastUse>,
-    pub(crate) lanes: Vec<RotPastLane>,
-}
-
-/// 一条提示：哪一种（界面照它挑颜色）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotNote {
-    pub(crate) hint: RotHint,
-    pub(crate) text: String,
-    /// 复制详情（出错那一条带原话；别的没有）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) detail: Option<String>,
-}
-
-/// 一条换号记录 ＋ 为什么那一句（策略写的；没写 ⇒ 后端看得见的原因）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotLogRow {
-    #[serde(flatten)]
-    #[cfg_attr(test, ts(flatten))]
-    pub(crate) log: book::Log,
-    pub(crate) because: String,
-}
-
-/// 提示写成一句（字照文案表）。`name` ＝ 那份策略的标题。出错那一句写第几行 · 哪一种（说法），原话进复制详情。
-fn note_of(hint: RotHint, name: &str) -> RotNote {
+/// 提示写成一句（字照文案表）。`name` ＝ 那份策略的标题；`why` ＝ 出错那一条是哪一种常见的错（第几行 · 说法进那一句，原话进复制详情）。
+fn note_of(hint: RotHint, name: &str, why: FailWhy) -> RotNote {
     let text = match &hint {
         RotHint::Hold {
             until_text: Some(at),
@@ -353,17 +179,15 @@ fn note_of(hint: RotHint, name: &str) -> RotNote {
                 &[
                     ("name", name),
                     ("line", &l.to_string()),
-                    ("why", &error.why_text()),
+                    ("why", &why_text(why)),
                 ],
             ),
             None => copy_core::copy_text(
                 "beRotation.hint.error",
-                &[("name", name), ("why", &error.why_text())],
+                &[("name", name), ("why", &why_text(why))],
             ),
         },
-        RotHint::TzUnknown { zone: Some(_) } => copy_core::copy_text("beRotation.hint.tz", &[]),
-        // 看的那一台也说不出自己的时区（信封没带 · 认不得 · 「这一台」读不出）⇒ 不出［设成 …］，句子里照实说。
-        RotHint::TzUnknown { zone: None } => copy_core::copy_text("beRotation.hint.tzNoZone", &[]),
+        RotHint::TzUnknown { .. } => copy_core::copy_text("beRotation.hint.tz", &[]),
         RotHint::Newer => copy_core::copy_text("beRotation.hint.newer", &[]),
         RotHint::OldScripts { n, .. } => {
             copy_core::copy_text("beRotation.hint.old", &[("n", &n.to_string())])
@@ -398,43 +222,6 @@ fn log_rows(log: &[book::Log]) -> Vec<RotLogRow> {
         .collect()
 }
 
-/// `rotation-view` 的应答。
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationViewReply {
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) now: u64,
-    /// `now` 的钟面（`HH:MM`，看的那一台的时区）。
-    pub(crate) now_text: String,
-    /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
-    pub(crate) strategy: Option<RotStrategyItem>,
-    /// 设置怎么画（策略的声明）。
-    pub(crate) form: Vec<form::Cell>,
-    /// 生效的设置（会话有草稿 ⇒ 草稿）。
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) settings: Value,
-    /// 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
-    pub(crate) dirty: bool,
-    /// 开会话用的号 · 此刻在用的号。
-    pub(crate) start: String,
-    pub(crate) current: String,
-    /// 每个号的事实，照号列表的先后（列表里没有的接在后面）。
-    pub(crate) accounts: Vec<Fact>,
-    /// 号列表里有几个（`accounts` 前这么多个是列表里的）。
-    pub(crate) listed: usize,
-    pub(crate) decision: Option<RotTryDecision>,
-    pub(crate) timeline: Option<RotTryTimeline>,
-    /// 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
-    pub(crate) past: Option<RotPast>,
-    /// 显示的这份设置照哪个版本（会话有草稿 ⇒ 草稿基于的；否则 ＝ 文件此刻的）：写的时候当 `ifRev`。
-    pub(crate) base_rev: String,
-    /// 换号记录（会话才有）。
-    pub(crate) log: Vec<RotLogRow>,
-    pub(crate) hints: Vec<RotNote>,
-}
-
 crate::wire::typed::codes! {
     /// `rotation-view` 自己的码。
     pub(crate) enum RotationViewErr {
@@ -445,25 +232,6 @@ crate::wire::typed::codes! {
         /// 交来的设置不合声明：`data.cells` 是哪几格。
         Refused = "refused" => RotRefused,
     }
-}
-
-/// 收不下的那几格（`rotation-view` · `rotation-settings` · `rotation-save` 同用）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotRefused {
-    pub(crate) cells: Vec<RotBadCell>,
-}
-
-/// 一格收不下：哪一格 · 短码（`type` · `range` · `of` · `unknown` · `dup` · `account` · `overlap` · `order`）。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotBadCell {
-    pub(crate) cell: String,
-    pub(crate) code: String,
 }
 
 /// 照那份策略的声明校验一份设置：收不下 ⇒ 那几格。
@@ -628,7 +396,11 @@ pub(crate) fn view_with(
     if session.strategy.id.is_empty() {
         let mut hints = Vec::new();
         if let Some(e) = ctx.hop.store.unreadable() {
-            hints.push(note_of(RotHint::BookUnreadable { text: e.said }, ""));
+            hints.push(note_of(
+                RotHint::BookUnreadable { text: e.said },
+                "",
+                FailWhy::Other,
+            ));
         }
         return Ok(RotationViewReply {
             now,
@@ -640,6 +412,7 @@ pub(crate) fn view_with(
             start: session.start.clone(),
             current: session.current.clone(),
             accounts: Vec::new(),
+            plates: Default::default(),
             listed: 0,
             decision: None,
             timeline: None,
@@ -671,7 +444,7 @@ pub(crate) fn view_with(
             id: loaded.id.clone(),
             description: String::new(),
             rev: String::new(),
-            error: loaded.broken().as_ref().map(RotStrategyError::of),
+            error: loaded.broken().as_ref().map(error_of),
             in_use: Vec::new(),
             for_new: book.for_new == loaded.id,
             words_bad: false,
@@ -693,9 +466,10 @@ pub(crate) fn view_with(
             }),
         });
     }
+    let why = d.strategy_error.as_ref().map_or(FailWhy::Other, |e| e.why);
     if let Some(e) = &d.strategy_error {
         hints.push(RotHint::StrategyError {
-            error: RotStrategyError::of(e),
+            error: error_of(e),
             path: loaded
                 .shelved
                 .as_ref()
@@ -705,7 +479,7 @@ pub(crate) fn view_with(
     }
     if item.tz_unknown {
         hints.push(RotHint::TzUnknown {
-            zone: tz.viewer_zone(),
+            zone: tz.viewer_zone().unwrap_or_else(|| "UTC".into()),
         });
     }
     if item.words_bad {
@@ -739,7 +513,7 @@ pub(crate) fn view_with(
         .map_or(0, Vec::len)
         .min(listed_ids.len());
     let lib = ctx.hop.library();
-    let accounts = listed_ids
+    let accounts: Vec<crate::accounts::quota::facts::Fact> = listed_ids
         .iter()
         .map(|id| {
             all_facts
@@ -747,6 +521,21 @@ pub(crate) fn view_with(
                 .find(|f| f.account == *id)
                 .cloned()
                 .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz))
+        })
+        .collect();
+    let colors = crate::observe::accounts_query::account_colors();
+    let plates = accounts
+        .iter()
+        .map(|f| {
+            let id = &f.account;
+            let plate = RotPlate {
+                color: colors
+                    .get(id)
+                    .copied()
+                    .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(id)),
+                label: Words(crate::accounts::quota::name_words::account_text(id)),
+            };
+            (id.clone(), plate)
         })
         .collect();
     let dirty = match &req.target {
@@ -799,6 +588,7 @@ pub(crate) fn view_with(
         start: session.start.clone(),
         current: session.current.clone(),
         accounts,
+        plates,
         listed,
         decision: Some(decision_of(&d)),
         timeline: Some(timeline_of(
@@ -814,7 +604,7 @@ pub(crate) fn view_with(
             RotTarget::Session { .. } => log_rows(&session.log),
             RotTarget::Strategy { .. } => Vec::new(),
         },
-        hints: hints.into_iter().map(|h| note_of(h, &name)).collect(),
+        hints: hints.into_iter().map(|h| note_of(h, &name, why)).collect(),
     })
 }
 

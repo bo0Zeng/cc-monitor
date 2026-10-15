@@ -534,7 +534,8 @@ describe("MCP：每台的小标与抽屉那一行", () => {
   const both = cell("same", [place(user, "same")]);
   const mcpList = () => ({ machines, problems: [], rows: [row("skill", "demo", [here, here]), row("mcp", "tracker", [both, both])] });
   const entry = (name: string, over: Record<string, unknown>) => ({ scope: "user", name, server: {}, sourcePath: "/h/.claude.json", status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
-  const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), copy: "/mcp" };
+  const fixArgs = { kind: "mcp" as const, agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
+  const login = { said: copyText("beMcp.mark.login", { accounts: "acct-a", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a" }), fix: [{ account: "acct-a", fix: { command: "login-start", args: fixArgs } }] };
   const failed = { said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err: refused" };
   const laterSaid = copyText("beMcp.mark.failed", { title: "会话-乙", time: "10:50" });
   const answers = () => {
@@ -575,17 +576,9 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(marks(t, "tracker").map(([m]) => m)).toEqual(["ext-dot-mark is-login", null]);
   });
 
-  it("★ 抽屉：需登录那一句 ＋［登录…］（那台 manual-list 里同名同范围那一项的解法，开登录抽屉、交它的 fix.args）；不复制 /mcp；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
+  it("★ 抽屉：需登录那一句 ＋［登录…］（那一格自己带的解法 `fix`，开登录抽屉、交它的 args；不另问 manual-list）；不复制 /mcp；连不上那一句 ＋ 原话 ＋［复制详情］", async () => {
     answers();
-    const args = { kind: "mcp", agent: "claude", account: "acct-a", server: "tracker", projectDir: null };
-    manualAnswers = {
-      "<local>": {
-        items: [
-          { kind: "mcpLogin", account: "acct-a", server: "tracker", scope: "user", said: "核心·MCP tracker 需登录", fix: { command: "login-start", args } },
-          { kind: "mcpLogin", account: "acct-a", server: "other", scope: "user", said: "核心·别的", fix: { command: "login-start", args: { ...args, server: "other" } } },
-        ],
-      },
-    };
+    const args = fixArgs;
     const s = await page([mcpList()]);
     open(s, "mcp/tracker");
     const [mine, theirs] = machineLines(s);
@@ -596,7 +589,8 @@ describe("MCP：每台的小标与抽屉那一行", () => {
     expect(theirs.querySelector('.ext-mcp.is-fail [data-part="copy-detail"]')).not.toBeNull();
     expect(theirs.querySelector(".ext-mcp.is-login")).toBeNull();
     const go = [...mine.querySelectorAll<HTMLButtonElement>('[data-action="mcp-login"]')];
-    expect(go.map((b) => b.textContent), "同名同范围那一项一颗").toEqual([copyText("newSession.account.login")]);
+    expect(go.map((b) => b.textContent), "每个要登的号一颗").toEqual([copyText("newSession.account.login")]);
+    expect(ops().filter(([, op]) => op === "manual-list"), "不另问 manual-list").toEqual([]);
     invokeMock.mockClear();
     go[0].click();
     await settle();

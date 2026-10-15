@@ -1,10 +1,19 @@
-//! 会话外的需手动清单：账号清单成品（夹具，照 `accounts-list` 那一份写）· MCP 读面（夹具）⇒ 每一项带写好的那一句和怎么解。夹具全是合成的。
+//! 会话外的需手动清单：账号清单成品（夹具，照类型造）· MCP 读面（夹具）⇒ 每一项带写好的那一句和怎么解。夹具全是合成的。
 use super::*;
 use crate::wire::typed::Codes;
-use serde_json::json;
+use serde_json::{json, Value};
 
-fn row(name: &str, kind: &str, exists: bool, ready: bool) -> Value {
-    json!({ "name": name, "authKind": kind, "exists": exists, "authReady": ready })
+fn row(
+    name: &str,
+    kind: &str,
+    exists: bool,
+    ready: bool,
+) -> crate::observe::accounts_query::AccountRow {
+    crate::observe::accounts_query::test_support::row_with(name, |a| {
+        a.auth_kind = kind.to_string();
+        a.exists = exists;
+        a.auth_ready = ready;
+    })
 }
 
 fn entry(
@@ -28,13 +37,13 @@ fn entry(
 /// 那一家不在 app 里登 MCP ⇒ `fix: null`（只能在会话里登，不列成「点了能解」），并带 `why`：为什么没有解法。
 #[test]
 fn the_manual_list_names_each_thing_and_how_to_fix_it() {
-    let accounts = json!({ "accounts": [
+    let accounts = crate::observe::accounts_query::test_support::list(vec![
         row("work", "subscription", true, false),
         row("0", "subscription", true, false),
         row("api", "api-key", true, false),
         row("gone", "subscription", false, false),
         row("ok", "subscription", true, true),
-    ]});
+    ]);
     let mcp = crate::agents::McpRead {
         entries: vec![
             entry("notes", crate::agents::McpStatus::NeedsLogin, &["work"]),
@@ -107,47 +116,21 @@ fn an_unreadable_account_library_is_said_not_listed_as_nothing() {
     let accts = root.join("accts");
     std::fs::create_dir_all(&accts).unwrap();
     std::fs::write(accts.join("accounts.json"), "{not json").unwrap();
-    let product = serde_json::to_value(list_product_with(
-        &accts,
-        None,
-        &[],
-        &[],
-        "claude",
-        "claude",
-        false,
-    ))
-    .unwrap();
+    let product = list_product_with(&accts, None, &[], &[], "claude", "claude", false);
     let why = library_unreadable(&accts);
-    assert_eq!(
-        why.clone().map(Value::String),
-        Some(product["meta"]["error"].clone()),
-        "同账号清单那一句"
-    );
+    assert_eq!(why, product.meta.error, "同账号清单那一句");
     let fail = manual_of("claude", &product, why, None)
         .expect_err("读不懂 ⇒ 不是空清单")
         .into_fail();
     assert_eq!(fail.code, "unreadable");
-    assert_eq!(
-        json!(fail.message),
-        product["meta"]["error"],
-        "那一句是为什么"
-    );
+    assert_eq!(Some(fail.message), product.meta.error, "那一句是为什么");
     let nope = root.join("nope");
     assert_eq!(
         library_unreadable(&nope),
         None,
         "没有清单 ＝ 没启用多账号，不是读不懂"
     );
-    let absent = serde_json::to_value(list_product_with(
-        &nope,
-        None,
-        &[],
-        &[],
-        "claude",
-        "claude",
-        false,
-    ))
-    .unwrap();
+    let absent = list_product_with(&nope, None, &[], &[], "claude", "claude", false);
     assert_eq!(
         serde_json::to_value(manual_of("claude", &absent, None, None).expect("没有清单照列"))
             .unwrap(),
@@ -243,11 +226,33 @@ fn whether_the_browser_is_here_rides_beside_the_target() {
 }
 
 /// 会不会自己登完照 `browserHere` 答：浏览器不在这台 ⇒ 回跳到不了，只能粘（不说「会自己登完」）。
+/// 登录页是不是那一家自己开了（`opened`）：号那一形自己开浏览器，浏览器在这台才开得到人眼前；MCP 那一形带 `--no-browser`，从不自己开。
 #[test]
 fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
     let face = crate::agents::accounts_face("claude")
         .and_then(|f| f.sign_in)
         .expect("claude 在 app 里登");
+    let mcp = crate::agents::mcp_face("claude")
+        .and_then(|f| f.sign_in)
+        .expect("claude 在 app 里登 MCP");
+    for here in [true, false] {
+        let started_with = |face| {
+            let args = LoginStartArgs {
+                target: LoginStartReq::Account {
+                    agent: "claude".into(),
+                    account: "w".into(),
+                },
+                browser_here: here,
+            };
+            let s = sign_in::Started {
+                job: "login-1-0".into(),
+                url: "https://claude.com/cai/oauth/authorize?state=s".into(),
+            };
+            started(s, face, &args)
+        };
+        assert_eq!(started_with(face).opened, here, "号那一形");
+        assert!(!started_with(mcp).opened, "MCP 那一形");
+    }
     for here in [true, false] {
         let args = LoginStartArgs {
             target: LoginStartReq::Account {
@@ -327,4 +332,17 @@ fn each_failure_says_what_can_be_done_next() {
 fn a_mcp_name_that_could_pass_for_a_flag_is_never_listed() {
     assert!(!mcp_listed("claude", None, "--help"));
     assert!(!mcp_listed("claude", None, ""));
+}
+
+/// 推来的「作业自己收了、没登成」那一帧说还能怎么办：作业已经没了 ⇒ 只能从头再起（`again: restart`），界面不用自己推断。
+#[test]
+fn the_pushed_failure_says_it_must_restart() {
+    let ended = crate::accounts::sign_in::SignInEnd::Failed(crate::common::said::Said::with_raw(
+        "x".into(),
+        "tail",
+    ));
+    assert_eq!(
+        serde_json::to_value(SignInState::of(&ended)).unwrap(),
+        json!({"state": "failed", "said": "x", "detail": "tail", "again": "restart"})
+    );
 }

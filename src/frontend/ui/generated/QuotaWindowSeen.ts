@@ -3,6 +3,6 @@ import type { QuotaSource } from "./QuotaSource";
 import type { Words } from "./Words";
 
 /**
- * 一个窗口几点 · 从哪看到的（[`WindowSeen`]）＋ 那一刻旁边写好的字。
+ * 一个窗口几点 · 从哪看到的（`WindowSeen`）＋ 那一刻旁边写好的字。
  */
 export type QuotaWindowSeen = { at: number, atText: Words, atRelText?: Words, from: QuotaSource, };

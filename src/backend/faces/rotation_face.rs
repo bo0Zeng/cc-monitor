@@ -198,7 +198,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
                 usable.push(a.id.clone());
             }
             UnseenHead {
-                agent: LIBRARY_AGENT.to_string(),
+                agent: crate::agents::kind_of_route(LIBRARY_AGENT),
                 account: a.id.clone(),
                 kind: sh.kind,
                 login: sh.login,
@@ -226,7 +226,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
 // ── session-new 起之前那一笔 ──────────────────────────────────────────────────────────
 
 /// `session-new` 带 `rotation: {strategy}`：起之前在这台的账本里给那个定好的 sid 记一条、用那一份（会话一报到就已经是它）。
-/// 策略目录里没有那一份 ⇒ `no_strategy`。`kind` ＝ 线上的那一家（记成它的适配器 id）。
+/// 策略目录里没有那一份 ⇒ `no_strategy`。`kind` ＝ 线上的那一家（记成它的路由名；认不出 ⇒ `bad_args`）。
 pub(crate) fn preset_with(
     ctx: &Ctx,
     own: &Own,
@@ -246,7 +246,9 @@ pub(crate) fn preset_with(
             copy_text("beRotation.strategy.gone", &[("name", strategy)]),
         ));
     }
-    rotation::preset(&ctx.hop.store, own, sid, kind, strategy, now)
+    let route = crate::agents::pick_route(Some(&crate::agents::AgentKind::new(kind)))
+        .map_err(|say| ("bad_args", say))?;
+    rotation::preset(&ctx.hop.store, own, sid, route, strategy, now)
         .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
 }
 

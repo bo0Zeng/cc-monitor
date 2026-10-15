@@ -4546,6 +4546,8 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
 #[test]
 fn a_local_backend_crash_reaches_the_ui_as_a_copy_keyed_sentence_not_a_log_line() {
     use std::os::unix::process::ExitStatusExt;
+    // 这一笔记在本机那台的死亡账上（进程里只有一份）：同别的读写那本账的几条一样拿那把锁，免得并行时多出一笔记到别人头上。
+    let _guard = crate::inbound_client::local_origin_test_lock();
     let got = crate::ui_error::tests::during(|| {
         note_detached_death(
             std::process::ExitStatus::from_raw(1 << 8),

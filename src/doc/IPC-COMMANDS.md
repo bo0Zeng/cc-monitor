@@ -1831,13 +1831,14 @@ type WirePath = string | { b16: string };
 入参 `NoArgs` · 回包 `QuotaRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type LoginState = "ok" | "needsLogin" | "needsKey";
 type NoArgs = Record<symbol, never>;
 type QuotaAccount = { rows: Array<Array<QuotaCell>>, 
 /**
  * 「5h 那一格」（恢复菜单 · 新会话框每个号后面那一格）；按量号 ⇒ `null`。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, seenAt: number, seenAtText: Words, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, seenAt: number, seenAtText: Words, 
 /**
  * 别台的钟走在前面时才有。
  */
@@ -1871,10 +1872,10 @@ subId?: string,
  */
 windows?: Array<WindowShow>, 
 /**
- * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：[`usage_of`] 写。
+ * 这个号用量那一格（状态栏按钮 · 切号下拉 · 「下一个」那一格同一份）：`usage_of` 写。
  */
 usage: Usage, };
-type QuotaCandidate = { agent: string, account: string, kind: QuotaKind, };
+type QuotaCandidate = { agent: AgentKind, account: string, kind: QuotaKind, };
 type QuotaCell = { text: Words, tone: Tone, };
 type QuotaEarliestReturn = { account: string, at: number, atText: Words, atRelText?: Words, };
 type QuotaKind = "sub" | "api";
@@ -1926,7 +1927,7 @@ unseen: Array<QuotaUnseen>,
  */
 usableNow: Array<string>, 
 /**
- * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（[`is_candidate`]）。界面只照它画，不另拼、不另滤。
+ * 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（`is_candidate`）。界面只照它画，不另拼、不另滤。
  */
 candidates: Array<QuotaCandidate>, 
 /**
@@ -1934,11 +1935,11 @@ candidates: Array<QuotaCandidate>,
  */
 earliestReturn: QuotaEarliestReturn | null, 
 /**
- * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`quota_rows::head_text`]）。
+ * 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（`quota_rows::head_text`）。
  */
 text: Words | null, 
 /**
- * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，[`quota_rows::head_five_hour`]）；否则 `null`（每号自己那一格）。
+ * 读不出 ⇒「5h 那一格」写好的字（`5h 读不到`，`quota_rows::head_five_hour`）；否则 `null`（每号自己那一格）。
  */
 fiveHour: Words | null, 
 /**
@@ -1970,15 +1971,15 @@ type QuotaUnseen = { rows: Array<Array<QuotaCell>>,
 /**
  * 没出过数 ⇒ 恒 `null`（这一格只给出过数的订阅号）。
  */
-fiveHour: Words | null, warm: QuotaWarm, agent: string, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
+fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind: QuotaKind, login: LoginState, subId?: string, 
 /**
  * 用量那一格（没出过数 ⇒ `5h —` / `按量`；同出过数的号那一格一个写法，只是没有重置那一格）。
  */
 usage: QuotaUnseenUsage, };
-type QuotaUnseenUsage = { slot?: string, window?: Words, value: Words, text: Words, tone: Tone, };
+type QuotaUnseenUsage = { slot?: string, window?: Words, value: Words, text: Words, tone: "plain" | "fail" | "warn", };
 type QuotaWarm = { act: QuotaWarmAct, at?: number, 
 /**
- * `at` 写给人看的样子（[`Warm::stamp`]）。
+ * `at` 写给人看的样子（`Warm::stamp`）。
  */
 atText?: Words, 
 /**
@@ -2006,7 +2007,7 @@ resetsAt?: number, resetsAtText?: Words, resetsAtRelText?: Words, };
 type QuotaWindowSeen = { at: number, atText: Words, atRelText?: Words, from: QuotaSource, };
 type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（出口那一下按钟写，[`SlotShow::stamp`]；内部与记账一律不填）。
+ * `resets_at` 写给人看的样子（出口那一下按钟写，`SlotShow::stamp`；内部与记账一律不填）。
  */
 resetsAtText?: string, 
 /**
@@ -2018,7 +2019,7 @@ resetsAtRelText?: string,
  */
 full?: boolean, 
 /**
- * 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
+ * 这一格的字（唯一写法 `slot_words`：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
  */
 text: string, 
 /**
@@ -2040,7 +2041,7 @@ window?: string,
  */
 value: string, 
 /**
- * 被拒时几点重置（`↻19:00`，出口那一下按钟写，[`QuotaShow::stamp`]）；没有 ⇒ 缺。
+ * 被拒时几点重置（`↻19:00`，出口那一下按钟写，`QuotaShow::stamp`）；没有 ⇒ 缺。
  */
 reset?: string, 
 /**
@@ -2069,7 +2070,7 @@ pct?: number,
  */
 resetsAt?: number, 
 /**
- * `resets_at` 写给人看的样子（出口那一下按钟写，[`WindowShow::stamp`]；内部与记账一律不填）。
+ * `resets_at` 写给人看的样子（出口那一下按钟写，`WindowShow::stamp`；内部与记账一律不填）。
  */
 resetsAtText?: string, 
 /**
@@ -2102,13 +2103,14 @@ type Words = string;
 入参 `QuotaProbeReq` · 回包 `Probed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type ProbeFrom = "usage";
 type ProbeState = "read" | "unreadable";
 type Probed = { 
 /**
- * 路由第 1 段：哪一家（同入参）。
+ * 哪一家（同入参，线上的 kind）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 账号库里的号（同入参）。
  */
@@ -2139,9 +2141,9 @@ windows: Array<QuotaWindow>,
 path: string | null, };
 type QuotaProbeReq = { 
 /**
- * 路由第 1 段：哪一家。
+ * 哪一家（线上的 kind）。
  */
-agent: string, 
+agent: AgentKind, 
 /**
  * 账号库里的号（配置目录末段；账号 0 是 `0`）。
  */
@@ -2176,6 +2178,7 @@ warnedAt?: number, };
 入参 `RotationFactsReq` · 回包 `RotationFactsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Fact = { 
 /**
  * 路由第 2 段。
@@ -2204,9 +2207,9 @@ now: number,
 accounts: Array<Fact>, };
 type RotationFactsReq = { 
 /**
- * 哪一家（适配器 id）；缺 ⇒ 有账号库的那一家。
+ * 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
  */
-agent?: string, };
+agent?: AgentKind, };
 type WinFact = { open: boolean, used: number, resets?: number, 
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
@@ -2225,6 +2228,7 @@ resetsText?: string, rate?: number, };
 入参 `RotationTryReq` · 回包 `RotationTryReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -2334,7 +2338,7 @@ useNow?: string,
 /**
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */
-agent?: string, };
+agent?: AgentKind, };
 ```
 
 码：`bad_args` · `bad_strategy`
@@ -2427,7 +2431,7 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
  */
-untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone?: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
 type RotNote = { hint: RotHint, text: string, 
@@ -2440,6 +2444,7 @@ type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
+type RotPlate = { color: number, label: Words, };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
@@ -2558,6 +2563,10 @@ start: string, current: string,
  */
 accounts: Array<Fact>, 
 /**
+ * `accounts` 里每个号的号牌（号色 · 号名），按号 id。
+ */
+plates: { [key in string]: RotPlate }, 
+/**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
 listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
@@ -2584,6 +2593,7 @@ type WinFact = { open: boolean, used: number, resets?: number,
  * `resets` 写给人看的样子（按看的那一台的时区）。
  */
 resetsText?: string, rate?: number, };
+type Words = string;
 ```
 
 码：`bad_args` · `no_session` · `no_strategy` · `refused`
@@ -2932,7 +2942,20 @@ baseUrl: string | null,
 /**
  * 账号菜单每一项右边那一枚徽章。
  */
-badge: Badge, name: string, 
+badge: Badge, 
+/**
+ * 号牌上那一两个字（号色那一格里画的，唯一写法在后端）。
+ */
+plate: Words, 
+/**
+ * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
+ */
+quota: Words | null, 
+/**
+ * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
+ * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
+ */
+unselectable: Words | null, name: string, 
 /**
  * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
  */
@@ -2973,9 +2996,10 @@ accounts: Array<AccountRow>,
 notice: string | null, };
 type AccountsListReq = { 
 /**
- * 这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+ * 这次起会话的是哪一家（线上的 kind，同 `session-new-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
  */
-agent: string, };
+agent: AgentKind, };
+type AgentKind = string;
 type Badge = { text: Words, warn: boolean, title: Words, };
 type ListMeta = { 
 /**
@@ -3793,7 +3817,11 @@ type LoginStartArgs = {
  * 缺 ⇒ 按「不在」答（说「会自己登完」却登不完是假话，反过来只是多留一个粘的框）。
  */
 browserHere?: boolean, } & ({ "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, });
-type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, };
+type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, 
+/**
+ * 那一家自己在这台开了登录页（它那一形自己开浏览器、发起它的浏览器又在这台）⇒ 界面不再开第二页。
+ */
+opened: boolean, };
 type PasteKind = "code" | "redirectUrl";
 ```
 
@@ -7650,8 +7678,23 @@ at?: RecordAt, } | { "op": "drop", dir: string, paths: Array<string>, } | { "op"
 入参 `McpReadReq` · 回包 `McpReadReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type ManualFix = { command: string, args: LoginStartReq, };
 type McpFailedMark = { said: string, tip: string, detail: string | null, };
-type McpLoginMark = { said: string, tip: string, copy: string, };
+type McpLoginFix = { 
+/**
+ * 在哪个号里；没设账号的那一份 ⇒ `null`。
+ */
+account: string | null, 
+/**
+ * 在 app 里登：`login-start {kind: mcp}`；那一家不在 app 里登 MCP ⇒ `null`。
+ */
+fix: ManualFix | null, 
+/**
+ * `fix` 为 `null` 时必有：为什么没有解法（写好的那一句）；有 `fix` ⇒ 缺。
+ */
+why?: string, };
+type McpLoginMark = { said: string, tip: string, fix: Array<McpLoginFix>, };
 type McpMark = "needsLogin" | "failed";
 type McpReadEntry = { 
 /**
@@ -11540,6 +11583,7 @@ type PinnedDay = { origin: Origin, day: string, };
 入参 `OptinReq` · 回包 `Optin`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentKind = string;
 type Optin = { 
 /**
  * `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
@@ -11565,7 +11609,7 @@ snippet: string | null,
  * 这台我们的中转此刻在不在听。
  */
 listening: boolean, };
-type OptinReq = { agent: string, };
+type OptinReq = { agent: AgentKind, };
 ```
 
 码：`bad_args` · `failed`
@@ -11701,23 +11745,56 @@ type Origin = string;
 入参 `ProbeReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
 type ProbeReq = { 
 /**
  * 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
  */
 ticket: string, 
 /**
- * 那台的配置：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …
+ * 那台的配置。
  */
-machine: Record<string, unknown>, 
+machine: MachineConfig, 
 /**
  * 已保存的那一份（可缺）。
  */
-saved?: Record<string, unknown>, 
+saved?: MachineConfig | null, 
 /**
  * 跳板那一台的配置（可缺）。
  */
-jump?: Record<string, unknown>, };
+jump?: MachineConfig | null, };
 ```
 
 码：`bad_args` · `bad_jump` · `failed`

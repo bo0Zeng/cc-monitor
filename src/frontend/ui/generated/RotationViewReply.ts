@@ -4,6 +4,7 @@ import type { RotFormCell } from "./RotFormCell";
 import type { RotLogRow } from "./RotLogRow";
 import type { RotNote } from "./RotNote";
 import type { RotPast } from "./RotPast";
+import type { RotPlate } from "./RotPlate";
 import type { RotStrategyItem } from "./RotStrategyItem";
 import type { RotTryDecision } from "./RotTryDecision";
 import type { RotTryTimeline } from "./RotTryTimeline";
@@ -40,6 +41,10 @@ start: string, current: string,
  * 每个号的事实，照号列表的先后（列表里没有的接在后面）。
  */
 accounts: Array<Fact>, 
+/**
+ * `accounts` 里每个号的号牌（号色 · 号名），按号 id。
+ */
+plates: { [key in string]: RotPlate }, 
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */

@@ -16,7 +16,7 @@ use serde::Serialize;
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum Topic {
-    /// 这台的账号清单（账号 manifest 被改写）。
+    /// 这台的账号清单（账号 manifest 被改写）。清单每号带的「5h 那一格」跟着额度走：那一格变了推的是 [`Topic::Quota`]。
     Accounts,
     /// 这台的配置文件（`~/.cc-monitor/profiles.toml`）。
     Profiles,

@@ -20,7 +20,10 @@
         "label": "zero",
         "name": "zero",
         "selectable": false,
-        "color": 3
+        "color": 3,
+        "plate": "ze",
+        "quota": null,
+        "unselectable": null
       },
       {
         "authKind": "subscription",
@@ -41,7 +44,10 @@
         "label": "a",
         "name": "a",
         "selectable": true,
-        "color": 0
+        "color": 0,
+        "plate": "a",
+        "quota": null,
+        "unselectable": null
       },
       {
         "authKind": "api-key",
@@ -62,7 +68,10 @@
         "label": "b",
         "name": "b",
         "selectable": true,
-        "color": 1
+        "color": 1,
+        "plate": "b",
+        "quota": null,
+        "unselectable": null
       }
     ],
     "meta": {

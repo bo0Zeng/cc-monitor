@@ -741,6 +741,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     mend_line_frame: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
+    // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
+    new: NONE,
+    as_str: NONE,
   },
   "copy-core": {
     backend_old: "J22",

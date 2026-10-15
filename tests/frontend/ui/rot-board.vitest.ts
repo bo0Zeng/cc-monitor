@@ -46,6 +46,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
     start: "work",
     current: "team",
     accounts: [fact("work", 94, 40, true), fact("team", 58, 30), fact("lab", 35, 20), fact("api", 0, 0)],
+    plates: { work: { color: 5, label: "work" }, team: { color: 5, label: "team" }, lab: { color: 5, label: "lab" }, api: { color: 5, label: "api" } },
     listed: 3,
     decision: { pick: "team", order: ["team", "lab"], why: [], fromTemp: false, skipped: [], temp: [] },
     timeline: {
@@ -132,7 +133,7 @@ describe("第一行与说明", () => {
   });
 
   it("★ 不轮换的会话：第一行 ＋ 一行「只用开会话的号 work」，号牌 · 设置 · 模拟都不出", () => {
-    const root = draw(view({ strategy: null, form: [], decision: null, timeline: null, accounts: [], listed: 0 }), state(), acts());
+    const root = draw(view({ strategy: null, form: [], decision: null, timeline: null, accounts: [], plates: {}, listed: 0 }), state(), acts());
     expect(root.textContent).toContain(copyText("rot.none.desc"));
     expect(root.textContent).toContain("work");
     expect(root.querySelector("[data-account]")).toBeNull();
@@ -149,6 +150,16 @@ describe("第一行与说明", () => {
     expect(said[0]).toContain("18:30 team");
     expect(said[0]).not.toContain("{dur}");
     expect(said[1]).toContain("说明写法不合规那一句");
+  });
+});
+
+describe("号色 · 号名照视图里那一格", () => {
+  it("★ 号牌的号色与号名都照 rotation-view 每个号带的那两格（不另问账号清单去对）", () => {
+    const v = view({ plates: { work: { color: 6, label: "夹具·号名" }, team: { color: 1, label: "team" }, lab: { color: 2, label: "lab" } } });
+    const root = draw(v, state(), acts());
+    const card = [...root.querySelectorAll<HTMLElement>(".acct-avatar")].find((e) => e.parentElement?.textContent?.includes("夹具·号名"));
+    expect(card, "画了视图里的号名").toBeDefined();
+    expect(card!.classList.contains("acct-c6")).toBe(true);
   });
 });
 
@@ -171,9 +182,8 @@ describe("提示里的按钮", () => {
     expect(tz.title).toBe(copyText("rot.hint.setTzTip", { zone: "Asia/Shanghai" }));
     tz.click();
     expect(a.setTz).toHaveBeenCalledWith("Asia/Shanghai");
-    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "夹具·出错那一句" }, { hint: { k: "tzUnknown" }, text: "时区" }] }), state(), acts());
+    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "夹具·出错那一句" }] }), state(), acts());
     expect(button(bare, copyText("rot.hint.code"))).toBeUndefined();
-    expect(button(bare, copyText("rot.hint.setTz"))).toBeUndefined();
   });
 
   it("★ 出错那一条带复制详情（原话，后端给的）；别的提示没有", () => {
@@ -181,7 +191,7 @@ describe("提示里的按钮", () => {
       view({
         hints: [
           { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" } }, text: "夹具·出错那一句", detail: "Division by zero: 1 / 0" },
-          { hint: { k: "tzUnknown" }, text: "时区那一句" },
+          { hint: { k: "tzUnknown", zone: "UTC" }, text: "时区那一句" },
         ],
       }),
       state(),

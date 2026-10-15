@@ -132,7 +132,8 @@ describe("mcp-read：每台问它自己的后端，写好的字照收", () => {
     ]);
     const m = (MCP.marked as McpReadReply).entries;
     expect(m.map((e) => e.mark)).toEqual(["needsLogin", "failed", "failed", null, null]);
-    expect(m[0].login).toEqual({ said: copyText("beMcp.mark.login", { accounts: "acct-a、acct-b", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a、acct-b" }), copy: "/mcp" });
+    const fix = (account: string) => ({ account, fix: { command: "login-start", args: { kind: "mcp", agent: "claude", account, server: "s-login", projectDir: null } } });
+    expect(m[0].login).toEqual({ said: copyText("beMcp.mark.login", { accounts: "acct-a、acct-b", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a、acct-b" }), fix: [fix("acct-a"), fix("acct-b")] });
     expect(m[1].failed).toEqual({ said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err-1" });
   });
   it("问的是那一台、不带项目目录", async () => {

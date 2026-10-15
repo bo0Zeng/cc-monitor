@@ -62,6 +62,7 @@ use std::path::{Path, PathBuf};
 const SUPPORT: &[&str] = &[
     "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
     "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
+    "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
     "tests/backend/common/streamed_read_support.rs", // 整份读按块几份判据共用：合成大记录 · 手里最多多少的上界
     "tests/backend/files/index_testing.rs",
     "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件

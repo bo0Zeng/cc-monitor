@@ -98,24 +98,8 @@ fn step(
     }
 }
 
-/// 一个窗口的数从哪来。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaSource"
-    )
-)]
-pub enum Source {
-    /// 中转经手的回包头。
-    Headers,
-    /// 官方客户端报的用量（`quota-probe`）。
-    Usage,
-}
+/// 一个窗口的数从哪来 · 那份文件读到的三态：线上形住 `cmd-wire`（`quota-read` 带它们）。
+pub(crate) use cmd_wire::quota::{ReadState, Source};
 
 /// 一个窗口几点、从哪看到的。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -566,27 +550,6 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
             })
             .collect(),
     }
-}
-
-/// 额度账那份文件读到的三态（`quota-read` 的 `state`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "QuotaReadState"
-    )
-)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum ReadState {
-    /// 读得懂。
-    Present,
-    /// 还没看到过任何回包。
-    Absent,
-    /// 文件读不出来 / 家推不出来。
-    Unreadable,
 }
 
 /// 额度账那份文件此刻读到的样子（`quota-read` 的底：文件三态 ＋ 每个号一条）。

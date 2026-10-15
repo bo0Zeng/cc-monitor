@@ -19,6 +19,7 @@ const read = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
   start: "work",
   current: "team",
   accounts: [],
+  plates: {},
   listed: 0,
   decision: null,
   timeline: null,
