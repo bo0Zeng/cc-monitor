@@ -930,18 +930,9 @@ fn row_view(j: &Job, offline: bool) -> View {
     v
 }
 
-/// 表要多高才把每一行（含失败摊开的那几行小字）都摆下：表头 32 ＋ 每行的高 ＋ 上下边距。调用方再夹到它的上限（超了在表里滚）。
-pub fn table_height(progress: &Progress, offline: bool) -> f32 {
-    32.0 + progress
-        .jobs()
-        .iter()
-        .filter(|j| j.shown())
-        .map(|j| super::kit::task_row_height(&row_view(j, offline)))
-        .sum::<f32>()
-        + 12.0
-}
-
-pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option<Act> {
+/// 画那张表，回这一帧按了哪颗按钮 ＋ 把每一行都摆下要多高（表头 ＋ 这一帧真排出来的各行；调用方下一帧照它定表高、夹到上限，超了在表里滚）。
+pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> (Option<Act>, f32) {
+    let top = ui.max_rect().top();
     let jobs = progress.jobs();
     let mut act = None;
     let mut clear = false;
@@ -956,7 +947,7 @@ pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    egui::ScrollArea::vertical()
+    let rows = egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
             for j in jobs.iter().filter(|j| j.shown()) {
@@ -981,7 +972,7 @@ pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option
     if collapse {
         progress.set_open(false);
     }
-    act
+    (act, rows.inner_rect.top() - top + rows.content_size.y)
 }
 
 #[cfg(test)]

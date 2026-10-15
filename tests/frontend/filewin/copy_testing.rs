@@ -36,7 +36,7 @@ pub fn text_in_frame(out: &egui::FullOutput) -> Vec<PaintedText> {
     found
 }
 
-fn collect_text(s: &egui::Shape, out: &mut Vec<PaintedText>) {
+pub fn collect_text(s: &egui::Shape, out: &mut Vec<PaintedText>) {
     match s {
         egui::Shape::Text(t) => out.push((
             t.galley.text().to_string(),

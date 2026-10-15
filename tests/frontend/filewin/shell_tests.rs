@@ -3136,7 +3136,7 @@ fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     let mut paint = |ev: Vec<egui::Event>, acted: &mut Option<crate::progress::Act>| {
         t += 0.5;
         crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
-            if let Some(a) = crate::progress::table_ui(ui, &progress, false) {
+            if let Some(a) = crate::progress::table_ui(ui, &progress, false).0 {
                 *acted = Some(a);
             }
         })
