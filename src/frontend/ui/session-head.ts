@@ -5,7 +5,7 @@
  * 右边那一排由用户自己排（默认：打开工作目录 · 切到终端 · 看它的终端 · 在新窗口打开 ·
  * 账号 · 显示 ▾ · 在会话里找）：存 `config.json` 的 `sessionHead.buttons`（这扇界面自己的偏好；删掉这个键 ＝ 恢复默认）。
  * 入口：按钮那一排右键（调整… · 从会话头移走「x」）·「⋯」最后一项 · 命令面板；编辑浮层见 `session-head-edit.ts`。
- * 本会话用不上的（远端无目录、不是 Windows 无 ↗、已结束无终端）不出、不留空位。窄时先藏目录、再藏状态一句（CSS 容器查询）；
+ * 本会话用不上的（远端无目录、不是 Windows 无 ↗、已结束无终端）不出、不留空位。窄时先藏目录、再藏状态一句与换模型 · 切权限档那两颗（CSS 容器查询）；
  * 还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组（不改设置，变宽就回来）。
  *
  * 「看它的终端」开底部抽屉的终端页（会话还有终端可去才出）。「显示 ▾」是两个流开关（过程默认展开 · 显示系统注入）合成的一颗。
@@ -13,6 +13,7 @@
  *
  * 标题后面按会话多几颗小标：被隐藏的 `已隐藏`（悬停是后端那一句）· 它是别的会话起的 `由 X 启动`（点了切回主会话）·
  * 它起过子会话 `子会话 N`（点开列子会话：名字 · 状态点 · 已隐藏标，点一行切过去）。血缘两格读会话事实（`history-facts`），界面不判。
+ * 状态一句之后是换模型 · 切权限档那两颗（`session-switch.ts`：字 · 清单 · 能不能换 · 结局那一句都照那台）。
  *
  * 只排版：一句话怎么写从 `session-face.ts` 取；做事的都交宿主（`TabManager` 那几条）。
  */
@@ -34,6 +35,7 @@ import { undoToast } from "./kit/toast";
 import { loadConfig, patchConfig, removeAt, setAt } from "./config";
 import { DEFAULT_HEAD_BUTTONS, headButtonsThatFit, sanitizeHeadButtons, type HeadButtonId } from "./session-head-buttons";
 import { HEAD_BUTTON_FACE, HeadEditor } from "./session-head-edit";
+import { SwitchChips, type SwitchHost } from "./session-switch";
 import s from "./session-head.module.css";
 
 /** `config.json` 里这扇界面自己那一格（登记在 `config.ts::CONFIG_KEY_OWNERS`）。 */
@@ -71,6 +73,8 @@ export interface SessionHeadHost {
   tabOf(sid: string): Tab | null;
   /** 切过去（同点标签页；在「已隐藏」里的那一行跟着展开）。 */
   switchTo(sid: string): void;
+  /** 换模型 · 切权限档那两颗要的（清单 · 交命令 · 握手说做不到的那一句 · toast）。 */
+  switching: SwitchHost;
 }
 
 /**
@@ -116,6 +120,8 @@ export class SessionHead {
   private readonly kin: HTMLSpanElement;
   private readonly extra: HTMLSpanElement;
   private readonly acts: HTMLSpanElement;
+  /** 换模型 · 切权限档那两颗（状态一句之后、按状态那一颗之前；不进自排清单、不收进「⋯」）。 */
+  private readonly chips: SwitchChips;
   private drawn: string | null = null;
   /** 盘上那一格（`null` ＝ 没设过 ⇒ 默认）。 */
   private saved: HeadButtonId[] | null = null;
@@ -161,7 +167,8 @@ export class SessionHead {
       if (t) this.host.more(b, t.sessionId, this.moreExtra());
     });
     this.moreBtn.dataset.head = "more";
-    this.el.append(this.dot, this.title, this.where, this.dir, this.state, this.plan, this.kin, sp, this.extra, this.acts);
+    this.chips = new SwitchChips(host.switching);
+    this.el.append(this.dot, this.title, this.where, this.dir, this.state, this.plan, this.kin, sp, this.chips.el, this.extra, this.acts);
     this.el.style.display = "none";
     // 窗口宽窄变了 ⇒ 重新看放不放得下（收进去的变宽就回来）。
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.fit()).observe(this.el);
@@ -327,6 +334,7 @@ export class SessionHead {
       }
       return;
     }
+    this.chips.render(tab);
     const d = dotOf(tab);
     const st = stateLine(tab, now);
     const remote = isRemoteOrigin(tab.origin);

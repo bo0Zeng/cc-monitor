@@ -10,7 +10,6 @@
  * - 再点 chip / Esc / 点外面 ⇒ 关浮层（kit 浮层的关法）。
  */
 
-import { normalizeModel } from "./views/context-limit";
 import { chip } from "./kit/chip";
 import type { IconName } from "./kit/icon";
 import { closePopover, openPopover, popoverOpenOn } from "./kit/popover";
@@ -37,6 +36,8 @@ export class UsageHud {
   private readonly label: HTMLSpanElement;
   /** 活跃会话的用量成品（后端那一份，照抄）；`null` ＝ 无活跃会话 / 还没有一轮回复。 */
   private usage: UsageFact | null = null;
+  /** 活跃会话的模型写给人看的字（后端那一格，照抄）。 */
+  private modelText: string | null = null;
   /** 活跃会话的会话事实要不到的原因（`null` = 可用）。非空时压过上面那一格（那一格可能是旧的）。 */
   private unavailable: string | null = null;
   host: UsageHudHost | null = null;
@@ -50,9 +51,10 @@ export class UsageHud {
     this.summaryElement = btn;
   }
 
-  /** 换成活跃会话的那一份用量（`null` ⇒ 不渲染）。 */
-  setActive(usage: UsageFact | null): void {
+  /** 换成活跃会话的那一份用量（`null` ⇒ 不渲染）与它的模型写给人看的字（后端 `modelText`；没有 ⇒ 写原值）。 */
+  setActive(usage: UsageFact | null, modelText: string | null = null): void {
     this.usage = usage;
+    this.modelText = modelText;
     this.render();
   }
 
@@ -111,7 +113,7 @@ export class UsageHud {
       return root;
     }
     const tok = u.promptTokensText;
-    const model = normalizeModel(u.model);
+    const model = this.modelText ?? u.model ?? "";
     const pct = u.percent;
     const settings = (): void => this.host?.openSettings();
     if (pct === null) {

@@ -32,6 +32,8 @@ vi.mock("../../../src/frontend/ui/terminal-front", () => ({ terminalFrontAvailab
 import { terminalFrontAvailable } from "../../../src/frontend/ui/terminal-front";
 
 const NOW = Date.parse("2026-10-05T12:00:00Z");
+/** 会话头那两颗（换模型 · 切权限档）要的宿主：这里不换，清单问不到。 */
+const NO_SWITCHING = { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() };
 
 function tab(sid: string, over: Partial<Tab> = {}): Tab {
   return {
@@ -389,13 +391,14 @@ describe("「需手动」· 窗口标题 · 系统通知（消息流底部那一
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn() };
+    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: () => null, switchTo: vi.fn(), switching: NO_SWITCHING };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
     return { h, host };
   };
-  const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
+  // 右边那一排（换模型 · 切权限档那两颗另有判据：`session-switch.vitest.ts`）。
+  const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button:not([data-switch])")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
   it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 显示 · 查找 · 更多", () => {
     const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", activity: waiting, needs: approve() }));
@@ -404,9 +407,9 @@ describe("会话头", () => {
     expect(h.el.textContent).toContain("/w/orders");
     // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
     expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
-    h.el.querySelectorAll("button")[1].click();
+    h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])")[1].click();
     expect(host.viewTerminal).toHaveBeenCalled();
-    h.el.querySelectorAll("button")[3].click();
+    h.el.querySelectorAll<HTMLButtonElement>("button:not([data-switch])")[3].click();
     expect(host.find).toHaveBeenCalled();
   });
 

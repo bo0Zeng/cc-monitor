@@ -1,6 +1,9 @@
 // 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `session-head.module.css` 渲染出的规范文本（逐字）。
 declare const classes: {
   readonly shActs: string;
+  readonly shChip: string;
+  readonly shChipCaret: string;
+  readonly shChipText: string;
   readonly shDir: string;
   readonly shEdit: string;
   readonly shEditFixed: string;
@@ -23,6 +26,7 @@ declare const classes: {
   readonly shPlanSlot: string;
   readonly shSp: string;
   readonly shState: string;
+  readonly shSw: string;
   readonly shTitle: string;
   readonly shWhere: string;
 };
