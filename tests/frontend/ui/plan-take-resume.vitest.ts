@@ -70,7 +70,7 @@ const host: ReviewHost = {
   reread: () => {},
 };
 const slice = { name: "ledger" } as unknown as PlanSlice;
-const target = (alive: boolean): ReturnTarget => ({ id: "A1", title: "导出", done: true, blockTitle: "顶块", owner: who(alive), signer: false });
+const target = (alive: boolean): ReturnTarget => ({ id: "A1", title: "导出", done: true, blockTitle: "底座", owner: who(alive), signer: false });
 
 async function sendReturn(alive: boolean): Promise<{ action: string; note: HTMLElement | null }> {
   reply = { line: "人 · A1 导出：改", to: who(true), result: "delivered", why: null, said: null, screen: null, resumed: !alive };
@@ -91,7 +91,7 @@ describe("退回框：接手已结束", () => {
     const { action, note } = await sendReturn(false);
     expect(action).toBe("plan.return.resumeSend");
     expect(note?.hidden).toBe(false);
-    expect(note?.textContent).toBe("plan.return.resumeNote(session=甲会话)");
+    expect(note?.textContent).toBe("sessionState.planReturn.resume(session=甲会话)");
     expect(calls).toHaveLength(1);
     expect(calls[0].body).toMatchObject({ id: "A1", to: "owner", resume: true });
   });

@@ -37,7 +37,10 @@ impl Missing {
     /// 给人看的那一句。
     pub(crate) fn said(&self) -> String {
         match self {
-            Missing::SetDir(d) => copy_text("bePlan.face.pbDirGone", &[("dir", &d.display().to_string())]),
+            Missing::SetDir(d) => copy_text(
+                "bePlan.face.pbDirGone",
+                &[("dir", &d.display().to_string())],
+            ),
             Missing::NotInstalled => copy_text("bePlan.face.noPb", &[]),
         }
     }
@@ -55,20 +58,28 @@ pub(crate) fn pick(set: Option<&Path>, plugins: &[(PathBuf, String)]) -> Result<
 /// pb 自己的几个模块都载得进来才算能用）。不写盘。
 pub(crate) fn check(dir: &Path) -> Value {
     let shown = dir.display().to_string();
-    let out = |state: &str, key: &str, why: Option<&str>| {
-        let mut args = vec![("dir", shown.as_str())];
-        args.extend(why.map(|w| ("why", w)));
-        json!({"state": state, "said": copy_text(key, &args)})
-    };
+    let out = |state: &str, said: String| json!({"state": state, "said": said});
     if !dir.is_dir() {
-        return out("missing", "bePlan.pbDir.missing", None);
+        return out(
+            "missing",
+            copy_text("bePlan.pbDir.missing", &[("dir", &shown)]),
+        );
     }
     let Some(entry) = entry_in(dir) else {
-        return out("no_entry", "bePlan.pbDir.noEntry", None);
+        return out(
+            "no_entry",
+            copy_text("bePlan.pbDir.noEntry", &[("dir", &shown)]),
+        );
     };
     match super::command::run_as(&entry, dir, &["help"], false) {
-        Ok(_) => out("ok", "bePlan.pbDir.ok", None),
-        Err((_, said, _)) => out("not_runnable", "bePlan.pbDir.notRunnable", Some(&said)),
+        Ok(_) => out("ok", copy_text("bePlan.pbDir.ok", &[("dir", &shown)])),
+        Err((_, why, _)) => out(
+            "not_runnable",
+            copy_text(
+                "bePlan.pbDir.notRunnable",
+                &[("dir", &shown), ("why", &why)],
+            ),
+        ),
     }
 }
 

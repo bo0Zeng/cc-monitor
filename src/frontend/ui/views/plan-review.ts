@@ -254,13 +254,15 @@ export function openReturn(host: ReviewHost, slice: PlanSlice, cell: ReturnTarge
   const resumeNote = document.createElement("div");
   resumeNote.className = s.rvNote;
   resumeNote.dataset.note = "resume";
-  const action = (): string =>
-    ended(target()) ? copyText(done ? "plan.return.resumeSend" : "plan.return.resumeTell") : copyText(done ? "plan.return.send" : "plan.return.sendTell");
+  const action = (): string => {
+    if (ended(target())) return done ? copyText("plan.return.resumeSend") : copyText("plan.return.resumeTell");
+    return done ? copyText("plan.return.send") : copyText("plan.return.sendTell");
+  };
   const sync = (): void => {
     line.textContent = preview();
     const w = target();
     resumeNote.hidden = !ended(w);
-    resumeNote.textContent = ended(w) ? copyText("plan.return.resumeNote", { session: host.sessionName(w) }) : "";
+    resumeNote.textContent = ended(w) ? copyText("sessionState.planReturn.resume", { session: host.sessionName(w) }) : "";
     h.setAction(action());
     h.refresh();
   };

@@ -39,7 +39,12 @@ pub(crate) fn run(entry: &Path, ws: &Path, args: &[&str]) -> Result<Value, Refus
 }
 
 /// [`run`] 的本体：`agent` ＝ 这一侧带着 agent 的身份 ⇒ 用户命令不起 pb、回拒。
-pub(crate) fn run_as(entry: &Path, ws: &Path, args: &[&str], agent: bool) -> Result<Value, Refused> {
+pub(crate) fn run_as(
+    entry: &Path,
+    ws: &Path,
+    args: &[&str],
+    agent: bool,
+) -> Result<Value, Refused> {
     let verb = args.first().copied().unwrap_or_default();
     if agent && USER_VERBS.contains(&verb) {
         return Err((

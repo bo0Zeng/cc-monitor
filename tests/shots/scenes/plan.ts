@@ -102,6 +102,21 @@ export const PLAN_SCENES: Scene[] = [
     await click(await byText('.plan-view [data-view="fresh"] button', "起新会话…"));
     await sleep(900);
   }, { fresh: true }),
+  plan("plan-14-docs-only", "计划 · 只写文档的那一片", "ledger 还没把仓库接过来：子头一枚「只写文档」，页头多一颗［接过仓库…］", async () => {
+    await openPlan();
+    await waitFor('.plan-view [data-act="take"]');
+  }, { docsOnly: true }),
+  plan("plan-15-take-confirm", "计划 · 接过仓库 · 问一句", "点［接过仓库…］：退不回 ⇒ 先问一句（之后 pb 照规矩守那个仓库）", async () => {
+    await openPlan();
+    await click('.plan-view [data-act="take"]');
+    await sleep(500);
+  }, { docsOnly: true }),
+  plan("plan-16-take-done", "计划 · 接过仓库之后", "点［接过仓库］：toast 说接到了哪一片 · 仓库在哪；重读之后「只写文档」与那颗按钮都没了", async () => {
+    await openPlan();
+    await click('.plan-view [data-act="take"]');
+    await click(await byText("[role=dialog] button", copyText("plan.take.action")));
+    await sleep(900);
+  }, { docsOnly: true }),
   plan("plan-21-leaf-done", "一格 · 叶子格 做完了", "点「解析模块」：在哪 · 头 · 位置 · 要做成什么样（话里的格换成标题链接）· 连着的 · 连着它的", async () => {
     await openPlan();
     await row("A2-1-1");
@@ -165,6 +180,13 @@ export const PLAN_SCENES: Scene[] = [
     await row("A4-1");
     await click(await byText(".plan-view .plan-cell button", "退回…"));
     await type(".plan-return-text", "收集 0 条时要退 5，现在退 0；补一条测试。");
+    await sleep(300);
+  }),
+  plan("plan-37-return-resume", "退回框 · 接手已结束", "「导出实现」点［说给负责的…］：接手的会话已结束 ⇒ 框里一句「送出时先恢复它」，主按钮［恢复并送出］", async () => {
+    await openPlan();
+    await row("A3-1");
+    await click(await byText(".plan-view .plan-cell button", "说给负责的…"));
+    await type(".plan-return-text", "导出先只做 CSV，别的格式下一轮。");
     await sleep(300);
   }),
   plan("plan-38-returned", "退回之后 · 等它改", "「检查脚本」顶上一条：已退回 · 送给工程底座 · 几点 · 等它在底下加一格或改正文", async () => {

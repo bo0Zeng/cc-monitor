@@ -250,7 +250,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("plan-return", "新帧命令：把人的话送给负责那一格的会话（拼行 · 判能不能送 · 送字 · 记已退回都在后端）；退回框只排版"),
     // 扩展页 MCP 小标与抽屉那一行（`src/frontend/ui/ext-reads.ts`）：按台问那台后端的 `mcp-read` 照抄。
     ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
-    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · view（退出码与 pb 那一句在后端认）；计划页开关与［整张图］只排版"),
+    ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · take · view（退出码与 pb 那一句在后端认）；计划页开关 ·［接过仓库…］·［整张图］只排版"),
+    ("plan-pb-check", "新帧命令：一个路径能不能当 pb 用（起 pb 看在后端，那一句后端写）；设置里 pb 路径那一行只排版"),
     // 「需手动」浮层与登录抽屉（`src/frontend/ui/login-reads.ts`）：会话外的需手动清单 · 在 app 里登录，判 · 拼句 · 还能怎么办（`again`）都在那台后端。
     ("manual-list", "帧命令：一台会话外的需手动（每项带写好的那一句与解法 `fix`）；侧栏「需手动」浮层与扩展页 MCP 那一行只排版"),
     ("login-start", "帧命令（内建档，跟着发起它的那条连接走）：起一趟登录，回登录链接 · 粘什么 · 会不会自己登完；登录抽屉只排版"),

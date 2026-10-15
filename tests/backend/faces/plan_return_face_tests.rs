@@ -240,7 +240,10 @@ fn a_resume_that_fails_says_why_and_keeps_nothing() {
         json!({"result": "refused", "why": "not_resumed", "said": "x", "resumed": false}),
     );
     let out = out.unwrap();
-    assert_eq!((out["result"].as_str(), out["why"].as_str()), (Some("refused"), Some("not_resumed")));
+    assert_eq!(
+        (out["result"].as_str(), out["why"].as_str()),
+        (Some("refused"), Some("not_resumed"))
+    );
     assert!(kept.is_empty());
     let mut a = args("A1");
     a["resume"] = json!(true);

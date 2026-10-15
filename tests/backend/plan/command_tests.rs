@@ -100,7 +100,10 @@ fn a_human_caller_passes_the_verb_and_its_args_through() {
     let ws = workspace(&root.join("ws"), &dump("/x"));
     let got = run_as(&entry, &ws, &["repo", "beta"], false).unwrap();
     assert_eq!(got["rc"], 0);
-    assert_eq!(runs(&root.join("pb")), vec![vec!["repo".to_string(), "beta".to_string()]]);
+    assert_eq!(
+        runs(&root.join("pb")),
+        vec![vec!["repo".to_string(), "beta".to_string()]]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -112,8 +115,20 @@ fn ok(said: &str) -> Result<Value, Refused> {
 #[test]
 fn taking_a_slice_already_taken_runs_nothing() {
     let run = |a: &[&str]| -> Result<Value, Refused> { panic!("ran {a:?}") };
-    let got = take_with(&Taking { slice: "alpha", path: "repos/alpha", docs_only: false, current: true }, &run).unwrap();
-    assert_eq!(got["took"], json!({"slice": "alpha", "path": "repos/alpha", "switched": false}));
+    let got = take_with(
+        &Taking {
+            slice: "alpha",
+            path: "repos/alpha",
+            docs_only: false,
+            current: true,
+        },
+        &run,
+    )
+    .unwrap();
+    assert_eq!(
+        got["took"],
+        json!({"slice": "alpha", "path": "repos/alpha", "switched": false})
+    );
     assert_eq!(got["rc"], 0);
     assert!(got["said"].as_str().unwrap().contains("alpha"));
 }
@@ -123,13 +138,29 @@ fn taking_a_slice_already_taken_runs_nothing() {
 fn taking_the_current_slice_runs_take_alone() {
     let ran = RefCell::new(Vec::<Vec<String>>::new());
     let run = |a: &[&str]| {
-        ran.borrow_mut().push(a.iter().map(|x| x.to_string()).collect());
+        ran.borrow_mut()
+            .push(a.iter().map(|x| x.to_string()).collect());
         ok("「alpha」的仓库接过来了（alpha）：从现在起照规矩守")
     };
-    let got = take_with(&Taking { slice: "alpha", path: "alpha", docs_only: true, current: true }, &run).unwrap();
+    let got = take_with(
+        &Taking {
+            slice: "alpha",
+            path: "alpha",
+            docs_only: true,
+            current: true,
+        },
+        &run,
+    )
+    .unwrap();
     assert_eq!(*ran.borrow(), vec![vec!["take".to_string()]]);
-    assert_eq!(got["took"], json!({"slice": "alpha", "path": "alpha", "switched": false}));
-    assert_eq!(got["said"], "「alpha」的仓库接过来了（alpha）：从现在起照规矩守");
+    assert_eq!(
+        got["took"],
+        json!({"slice": "alpha", "path": "alpha", "switched": false})
+    );
+    assert_eq!(
+        got["said"],
+        "「alpha」的仓库接过来了（alpha）：从现在起照规矩守"
+    );
 }
 
 /// 不是此刻的那一片：pb 只接此刻那一片 ⇒ 先 `repo <片名>` 切过去、再 `take`；回包说切了。
@@ -137,13 +168,26 @@ fn taking_the_current_slice_runs_take_alone() {
 fn taking_another_slice_switches_to_it_first() {
     let ran = RefCell::new(Vec::<Vec<String>>::new());
     let run = |a: &[&str]| {
-        ran.borrow_mut().push(a.iter().map(|x| x.to_string()).collect());
+        ran.borrow_mut()
+            .push(a.iter().map(|x| x.to_string()).collect());
         ok("好")
     };
-    let got = take_with(&Taking { slice: "beta", path: "repos/beta", docs_only: true, current: false }, &run).unwrap();
+    let got = take_with(
+        &Taking {
+            slice: "beta",
+            path: "repos/beta",
+            docs_only: true,
+            current: false,
+        },
+        &run,
+    )
+    .unwrap();
     assert_eq!(
         *ran.borrow(),
-        vec![vec!["repo".to_string(), "beta".to_string()], vec!["take".to_string()]]
+        vec![
+            vec!["repo".to_string(), "beta".to_string()],
+            vec!["take".to_string()]
+        ]
     );
     assert_eq!(got["took"]["switched"], true);
 }
@@ -156,7 +200,16 @@ fn a_refused_switch_stops_before_take() {
         *ran.borrow_mut() += 1;
         Err(("refused", "拒：x".into(), None))
     };
-    let e = take_with(&Taking { slice: "beta", path: "beta", docs_only: true, current: false }, &run).unwrap_err();
+    let e = take_with(
+        &Taking {
+            slice: "beta",
+            path: "beta",
+            docs_only: true,
+            current: false,
+        },
+        &run,
+    )
+    .unwrap_err();
     assert_eq!(e.0, "refused");
     assert_eq!(*ran.borrow(), 1);
 }

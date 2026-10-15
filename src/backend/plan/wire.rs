@@ -468,7 +468,10 @@ pub(crate) struct PlanTook {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct PlanPbCheck {
-    #[cfg_attr(test, ts(type = "\"ok\" | \"missing\" | \"no_entry\" | \"not_runnable\""))]
+    #[cfg_attr(
+        test,
+        ts(type = "\"ok\" | \"missing\" | \"no_entry\" | \"not_runnable\"")
+    )]
     pub state: String,
     pub said: String,
 }

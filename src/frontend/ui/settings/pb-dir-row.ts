@@ -28,17 +28,21 @@ export function pbDirRow(origin: Origin): { row: HTMLElement; load: () => void }
   const help = document.createElement("div");
   const intro = document.createElement("div");
   intro.textContent = copyText("settingsPanel.pbDir.help");
-  const said = document.createElement("div");
-  said.hidden = true;
-  help.append(intro, said);
+  const ok = document.createElement("div");
+  ok.className = "settings-hint";
+  ok.hidden = true;
+  const err = document.createElement("div");
+  err.className = "settings-row-error";
+  err.hidden = true;
+  help.append(intro, ok, err);
   const row = ccRow(copyText("settingsPanel.pbDir.label"), help, [input]);
   row.dataset.anchor = PB_DIR_ANCHOR;
   let saved = "";
 
   const say = (text: string, bad: boolean, detail = ""): void => {
-    said.className = bad ? "settings-row-error" : "settings-hint";
-    sayWithDetail(said, text, detail);
-    said.hidden = false;
+    sayWithDetail(bad ? err : ok, text, detail);
+    err.hidden = !bad;
+    ok.hidden = bad;
   };
 
   const save = async (): Promise<void> => {

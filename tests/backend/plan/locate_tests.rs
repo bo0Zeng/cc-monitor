@@ -59,7 +59,10 @@ fn checking_a_dir_names_what_is_wrong_with_it() {
     fake_pb(&d.join("good"), PLUGIN_NAME, Some(0));
     assert_eq!(check(&d.join("good"))["state"], "ok");
     for dir in ["nowhere", "plain", "broken", "good"] {
-        let said = check(&d.join(dir))["said"].as_str().unwrap_or_default().to_string();
+        let said = check(&d.join(dir))["said"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         assert!(!said.is_empty(), "{dir}");
     }
     let _ = std::fs::remove_dir_all(&d);

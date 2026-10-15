@@ -227,6 +227,7 @@ function ledgerSlice(): Record<string, unknown> {
     path: "repos/ledger",
     domain: "软件",
     current: true,
+    docsOnly: false,
     error: null,
     stale: null,
     kinds: SOFT_KINDS,
@@ -258,6 +259,7 @@ function surveySlice(): Record<string, unknown> {
     path: "export-survey",
     domain: "研究",
     current: false,
+    docsOnly: false,
     error: null,
     stale: null,
     kinds: [
@@ -294,6 +296,7 @@ function siteSlice(): Record<string, unknown> {
     path: "site",
     domain: "软件",
     current: true,
+    docsOnly: false,
     error: null,
     stale: null,
     kinds: SOFT_KINDS,
@@ -316,6 +319,7 @@ function freshSlice(): Record<string, unknown> {
     path: "invoice",
     domain: "软件",
     current: false,
+    docsOnly: false,
     error: null,
     stale: null,
     kinds: SOFT_KINDS,
@@ -354,7 +358,8 @@ function readOf(origin: string, slices: Record<string, unknown>[], auto: boolean
     auto,
     slices,
     bySession: origin === LOCAL ? LEDGER_BY_SESSION : {},
-    rev: `rev-${origin}`,
+    // 成品的摘要随 pb 的输出变（只写文档那一格变了 ⇒ 换一个）：计划页按它判要不要重读。
+    rev: `rev-${origin}${slices.some((x) => (x as { docsOnly?: boolean }).docsOnly) ? "-docs" : ""}`,
     readAt: Date.now() - 60_000,
     stale: null,
     needCount: slices.reduce((n, sl) => n + (sl.needCount as number), 0),
@@ -386,10 +391,13 @@ export interface PlanWorldOpts {
   topReturned?: "returned" | "landed";
   /** 本机那个工作区多一片新开的、还没有图的。 */
   fresh?: boolean;
+  /** ledger 那一片只写文档（仓库还没接过来）。 */
+  docsOnly?: boolean;
 }
 
 export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
   const acked = new Set<string>(o.acked ?? []);
+  let took = false;
   const ledger = (): Record<string, unknown> => {
     const sl = ledgerSlice();
     sl.needs = ledgerNeeds(o, acked);
@@ -401,6 +409,7 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
       const landed = o.topReturned === "landed";
       sl.returned = { at: Date.now() - 6 * 60_000, to: who(PLAN_SIDS.lead), state: o.topReturned, by: landed ? "child" : null, child: landed ? { id: "A6", title: "导出与导入对拍" } : null };
     }
+    if (o.docsOnly && !took) sl.docsOnly = true;
     if (o.sliceStale) sl.stale = { said: "图.md 第 142 行：元行缺 kind", raw: null, since: Date.now() - 5 * 60_000 };
     return sl;
   };
@@ -434,13 +443,18 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
     },
     "plan-return": (_origin, req) => {
       const line = `人 · ${String(req.id)} ${req.id === "project" ? "ledger" : "检查脚本"}：${String(req.text).split(/\s+/).filter(Boolean).join(" ")}`;
-      return { line, to: who(req.to === "signer" || req.id === "project" ? PLAN_SIDS.lead : PLAN_SIDS.base), result: "delivered", why: null, said: null, screen: null };
+      const to = req.id === "A3-1" ? PLAN_SIDS.export : req.to === "signer" || req.id === "project" ? PLAN_SIDS.lead : PLAN_SIDS.base;
+      return { line, to: who(to), result: "delivered", why: null, said: null, screen: null, resumed: req.resume === true };
     },
     "plan-command": (_origin, req) => {
-      if (req.cmd === "view") return { rc: 0, said: null, path: "/tmp/pb-读图-0000.html" };
+      if (req.cmd === "view") return { rc: 0, said: null, path: "/tmp/pb-读图-0000.html", took: null };
+      if (req.cmd === "take") {
+        took = true;
+        return { rc: 0, said: "「ledger」的仓库接过来了（repos/ledger）：从现在起照规矩守", path: null, took: { slice: req.slice, path: "repos/ledger", switched: false } };
+      }
       if (o.autoRefuse) throw new Refuse("refused", "pb 拒：这个工作区还没有顶块");
       auto = req.cmd === "continue";
-      return { rc: 0, said: null, path: null };
+      return { rc: 0, said: null, path: null, took: null };
     },
   };
 }

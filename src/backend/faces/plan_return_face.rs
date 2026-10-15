@@ -150,7 +150,11 @@ pub(crate) fn return_with(
     Ok(out)
 }
 
-fn give_back(req: &PlanReturnReq, files: crate::wire::typed::Files, own: &crate::platform::fs::Own) -> Answer {
+fn give_back(
+    req: &PlanReturnReq,
+    files: crate::wire::typed::Files,
+    own: &crate::platform::fs::Own,
+) -> Answer {
     let ws = req.workspace.as_str();
     // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;

@@ -8134,13 +8134,13 @@
     "settingsPanel.pbDir.help": {
       "kind": "body",
       "role": "说明",
-      "zh": "计划页找 planned-build 只认这里 · 留空 ⇒ 用已装的插件",
+      "zh": "planned-build 插件根目录 · 填写后只认它 · 留空用已装的插件",
       "args": []
     },
     "settingsPanel.pbDir.cleared": {
       "kind": "body",
-      "role": "状态",
-      "zh": "已清空 · 用已装的插件",
+      "role": "说明",
+      "zh": "已改用已装的插件",
       "args": []
     },
     "settingsPanel.pbDir.saveFailed": {
@@ -15756,19 +15756,19 @@
     "bePlan.command.humanOnly": {
       "kind": "error",
       "role": "报错",
-      "zh": "pb {verb} 是用户命令，只许人发起 · 这一趟带着 agent 的身份，未起 pb",
+      "zh": "pb {verb} 是用户命令，只许人发起 · 调用方带着 agent 身份，未起 pb",
       "args": ["verb"]
     },
     "bePlan.command.taken": {
       "kind": "body",
-      "role": "状态",
-      "zh": "「{slice}」的仓库早已接过",
+      "role": "说明",
+      "zh": "「{slice}」的仓库已接过",
       "args": ["slice"]
     },
     "bePlan.command.noSlice": {
       "kind": "error",
       "role": "报错",
-      "zh": "工作区里没有「{slice}」这一片",
+      "zh": "工作区里没有片「{slice}」",
       "args": ["slice"]
     },
     "bePlan.dump.notRun": {
@@ -15810,7 +15810,7 @@
     "bePlan.face.pbDirGone": {
       "kind": "error",
       "role": "报错",
-      "zh": "未找到 planned-build\n设置里填的 pb 路径 {dir} 下没有它 · 改那一格，或清空改用已装的插件",
+      "zh": "未找到 planned-build\n设置里填的 pb 路径 {dir} 下没有它 · 改填，或清空改用已装的插件",
       "args": ["dir"]
     },
     "bePlan.pbDir.missing": {
@@ -15828,13 +15828,13 @@
     "bePlan.pbDir.notRunnable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{dir} 里的 planned-build 跑不起来 · {why}",
+      "zh": "{dir} 里的 planned-build 运行失败 · {why}",
       "args": ["dir", "why"]
     },
     "bePlan.pbDir.ok": {
       "kind": "body",
-      "role": "状态",
-      "zh": "能用 · planned-build 在 {dir}",
+      "role": "说明",
+      "zh": "可用 · planned-build 在 {dir}",
       "args": ["dir"]
     },
     "bePlan.face.notWorkspace": {
@@ -15896,6 +15896,12 @@
       "role": "原因格",
       "zh": "会话已结束 · 复制此行，恢复会话后贴入",
       "args": []
+    },
+    "sessionState.planReturn.resume": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{session} 已结束 · 送出时先恢复它，此行当它的第一句",
+      "args": ["session"]
     },
     "bePlan.return.unknown": {
       "kind": "error",
@@ -28398,13 +28404,13 @@
     "plan.take.body": {
       "kind": "body",
       "role": "确认框",
-      "zh": "之后 pb 照规矩守 {path}：agent 只改各自写区里的文件 · 只往前走一次，接过之后回不到只写文档",
+      "zh": "之后 pb 照规矩守 {path} · 不能退回只写文档",
       "args": ["path"]
     },
     "plan.take.switchNote": {
       "kind": "body",
       "role": "确认框",
-      "zh": "「{slice}」不是工作区此刻的那一片 · 先切成它",
+      "zh": "「{slice}」不是工作区当前片 · 先切成它",
       "args": ["slice"]
     },
     "plan.take.done": {
@@ -28416,7 +28422,7 @@
     "plan.take.switched": {
       "kind": "body",
       "role": "toast",
-      "zh": "工作区此刻的那一片换成了「{slice}」",
+      "zh": "工作区当前片改为「{slice}」",
       "args": ["slice"]
     },
     "plan.take.failed": {
@@ -28742,12 +28748,6 @@
       "role": "按钮",
       "zh": "恢复并送出",
       "args": []
-    },
-    "plan.return.resumeNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{session} 已结束 · 送出时先恢复它，这一行当它的第一句",
-      "args": ["session"]
     },
     "plan.return.resumedSent": {
       "kind": "body",

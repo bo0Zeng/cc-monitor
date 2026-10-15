@@ -323,6 +323,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "终端页头上「仅快照」`this.snapTag`（`s.termTag`：不写 display）—— 那台能实时就收起",
   "src/frontend/ui/views/agent-window.ts::this.pill":
     "「↓ 新内容」那一枚 `this.pill`（kit 按钮，再挂 `sv.svPill`）—— 没有新内容时收起",
+  "src/frontend/ui/views/plan-review.ts::resumeNote":
+    "退回框里「接手已结束 · 送出时先恢复它」那一句 `resumeNote`（`s.rvNote`，自己不写 display）—— 选中的那一项不是已结束的会话时收起",
   "src/frontend/ui/views/plan.ts::this.subEl":
     "计划页子头 `this.subEl`（`s.pvSub`：display 只写在 `:not([hidden])` 上）—— 没选中片 / 那一片读不成又没读好过时收起",
   "src/frontend/ui/views/session-find.ts::this.box":
