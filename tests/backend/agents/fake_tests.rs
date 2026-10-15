@@ -230,7 +230,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
     assert_eq!(discovered[0].agent_kind, AGENT_KIND);
     assert_eq!(discovered[0].path, root.to_string_lossy());
 
-    let line = crate::wire::to_line(&crate::wire::Frame::Hello {
+    let line = crate::wire::to_line(&crate::wire::Frame::Hello(crate::wire::Hello {
         v: 1,
         build_id: "s6".into(),
         host_arch: "x86_64".into(),
@@ -242,7 +242,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         unavailable: vec![],
         host_env: Default::default(),
         shapes: Default::default(),
-    })
+    }))
     .expect("填了第三家的 hello 必须序列化得出来");
     assert_eq!(
         line,

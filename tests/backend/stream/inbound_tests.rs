@@ -453,7 +453,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .filter(|name| {
             matches!(
                 dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
-                Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
+                Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. }))
                     if c == "unknown_command"
             )
         })
@@ -470,7 +470,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     assert!(
         matches!(
             dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
-            Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
+            Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. })) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
     );
@@ -564,9 +564,9 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
 
     let f = rx.recv().await.expect("应当有应答");
     match f {
-        Frame::Reply {
+        Frame::Reply(crate::wire::Reply {
             id, ok, ref code, ..
-        } => {
+        }) => {
             assert_eq!(id, "c1");
             assert!(!ok, "对不可取消的命令发 cancel 不该回 ok");
             assert_eq!(

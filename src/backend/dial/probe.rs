@@ -116,10 +116,10 @@ pub(crate) struct Cells<'a> {
 impl Cells<'_> {
     async fn push(&self, cell: Value) -> Result<(), (&'static str, String)> {
         self.out
-            .send(Frame::Probe {
+            .send(Frame::Probe(crate::wire::Probe {
                 ticket: self.ticket.clone(),
                 cell,
-            })
+            }))
             .await
             .map_err(|_| ("failed", copy_text("beProbe.client.gone", &[])))
     }

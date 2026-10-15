@@ -33,7 +33,7 @@ use cc_monitor_backend::*;
 
 use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use wire::Frame;
+use wire::{Frame, FrameRules as _};
 
 /// watcher 看见、控制面去做的那两件事（观测侧不改世界，只在那一刻报一声；两处起 watcher 都接这一份）。
 const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions {
@@ -335,7 +335,7 @@ async fn main() {
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是手机端按精确字节在读的东西。
 fn build_hello(agent_home: &std::path::Path) -> Frame {
-    Frame::Hello {
+    Frame::Hello(wire::Hello {
         v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
@@ -382,7 +382,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
             .iter()
             .map(|(c, h)| (c.to_string(), h.to_string()))
             .collect(),
-    }
+    })
 }
 
 /// 今天那条路：**stdin/stdout 一对管道**。宿主一退读端就断，backend 153ms 内自己走。

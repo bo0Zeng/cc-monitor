@@ -31,9 +31,9 @@ fn rig(
 fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(u64, u64)> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Line {
+        if let Frame::Line(crate::wire::Line {
             seq, byte_offset, ..
-        } = f
+        }) = f
         {
             out.push((seq, byte_offset));
         }
@@ -79,8 +79,8 @@ fn frames(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         match f {
-            Frame::Line { seq, .. } => out.push(format!("{seq}")),
-            Frame::SessionFileReread { .. } => out.push("reread".to_string()),
+            Frame::Line(crate::wire::Line { seq, .. }) => out.push(format!("{seq}")),
+            Frame::SessionFileReread(_) => out.push("reread".to_string()),
             _ => {}
         }
     }

@@ -1,6 +1,7 @@
 //! 帧命令两端必须对上的那几样（契约类：只放形状，不放判定）。
 //!
 //! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
+//! - [`frame`]：后端发给客户端的帧（每种一个具名结构，记录那一格是类型参数）与一行解一帧的 [`frame::decode`]；
 //! - [`live`]：活卡（`live_card` 帧）的线上形与归一流里一块的种类（[`live::BlockKind`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
@@ -16,6 +17,7 @@ pub mod accounts;
 pub mod batch;
 pub mod cells;
 pub mod files;
+pub mod frame;
 pub mod listing;
 pub mod live;
 pub mod machine;

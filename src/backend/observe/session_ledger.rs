@@ -20,6 +20,7 @@
 //! `@ccm_sid` 打在**窗格**上：一个 tmux 会话里可以挂几个 sid，快照按会话句柄记它挂着的那一组。
 //! 不可观测的快照（没装 tmux · 观测失败）不收割、不推导；等裁的照它裁（它说的是「这一刻一个 `@ccm_sid` 都看不见」）。
 
+use crate::wire::FrameMake as _;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::wire::{Frame, RemovalCause, SessionFate};
@@ -76,14 +77,14 @@ impl SessionLedger {
     /// 一帧要发出去之前：`(它自己发不发, 紧跟它之后补发的帧)`。
     pub(crate) fn on_frame(&mut self, f: &Frame) -> (bool, Vec<Frame>) {
         match f {
-            Frame::SessionAdded { sid, .. } => {
+            Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => {
                 self.live.insert(sid.clone());
                 self.reconnectable.remove(sid);
                 self.pending.remove(sid);
                 self.miss.remove(sid);
                 (true, Vec::new())
             }
-            Frame::SessionRemoved { sid, cause, .. } => {
+            Frame::SessionRemoved(crate::wire::SessionRemoved { sid, cause, .. }) => {
                 if !self.live.remove(sid) {
                     return (true, Vec::new());
                 }
@@ -96,7 +97,7 @@ impl SessionLedger {
                     }
                 }
             }
-            Frame::SessionsReplayed => {
+            Frame::SessionsReplayed(_) => {
                 if self.tmux_seen {
                     self.listed = true;
                     (true, Vec::new())
@@ -198,7 +199,7 @@ impl SessionLedger {
         self.tmux_seen = true;
         if std::mem::take(&mut self.held_listed) {
             self.listed = true;
-            out.push(Frame::SessionsReplayed);
+            out.push(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));
         }
         out
     }
@@ -212,7 +213,7 @@ impl SessionLedger {
             .map(|sid| state(sid, SessionFate::Reconnectable))
             .collect();
         if self.listed {
-            out.push(Frame::SessionsReplayed);
+            out.push(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));
         }
         out
     }

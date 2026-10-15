@@ -64,15 +64,23 @@ fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
     }
 }
 
-/// 生产段造 `changed` 帧只经 `Frame::changed`（上限在那一处判）：别处写 `Frame::Changed {` 字面量 ⇒ 红。
+/// 生产段造 `changed` 帧只经 `Frame::changed`（上限在那一处判）：别处写 `Changed {` 结构字面量 ⇒ 红。
 #[test]
 fn changed_frames_are_built_in_one_place() {
     let root = crate::guard_support::src_root();
-    let needle = format!("{}::{} {{", "Frame", "Changed");
+    let needle = format!("{} {{", "Changed");
+    let literal = |code: &str| {
+        code.match_indices(&needle).any(|(at, _)| {
+            !code[..at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+    };
     let mut hits = Vec::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
         let code = crate::guard_support::production_code(&src);
-        if code.contains(&needle) {
+        if literal(&code) {
             hits.push(
                 path.strip_prefix(&root)
                     .unwrap_or(&path)

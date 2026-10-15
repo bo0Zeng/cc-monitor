@@ -22,7 +22,7 @@ where
     let mut cells = Vec::new();
     while let Some(f) = rx.recv().await {
         match f {
-            Frame::Probe { ticket, cell } => {
+            Frame::Probe(crate::wire::Probe { ticket, cell }) => {
                 assert_eq!(ticket, "t-1", "进度格要带交来的那张票");
                 cells.push(cell);
             }

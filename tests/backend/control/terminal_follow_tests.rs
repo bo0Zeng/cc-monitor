@@ -139,20 +139,22 @@ fn eventually(mut f: impl FnMut() -> bool) -> bool {
 
 fn screen_of(f: &Frame) -> (String, u64, Value) {
     match f {
-        Frame::TerminalScreen { ticket, seq, view } => (ticket.clone(), *seq, view.clone()),
+        Frame::TerminalScreen(crate::wire::TerminalScreen { ticket, seq, view }) => {
+            (ticket.clone(), *seq, view.clone())
+        }
         other => panic!("等的是一帧画面，来的是 {other:?}"),
     }
 }
 
 fn reply_ok(f: &Frame) -> bool {
-    matches!(f, Frame::Reply { ok: true, .. })
+    matches!(f, Frame::Reply(crate::wire::Reply { ok: true, .. }))
 }
 
 fn reply_code(f: &Frame) -> Option<String> {
     match f {
-        Frame::Reply {
+        Frame::Reply(crate::wire::Reply {
             ok: false, code, ..
-        } => code.clone(),
+        }) => code.clone(),
         _ => None,
     }
 }
@@ -429,7 +431,7 @@ fn a_closed_pane_ends_the_follow() {
     iso.tmux(&["kill-session", "-t", "=g-cc"]);
     let f = next_frame(&mut rx, Duration::from_secs(5)).expect("窗格没了却没说");
     match f {
-        Frame::TerminalFollowEnd { ticket, why, said } => {
+        Frame::TerminalFollowEnd(crate::wire::TerminalFollowEnd { ticket, why, said }) => {
             assert_eq!(ticket, "t1");
             assert_eq!(why, FollowEnd::Gone);
             assert_eq!(said, copy_text("beTermFollow.end.gone", &[]));

@@ -31,6 +31,7 @@
 //!
 //! 等信用是等信号量，等字节是等管子，收掉是 abort。
 
+use crate::wire::FrameMake as _;
 use copy_core::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -450,10 +451,10 @@ async fn pump_down(
                 Err(_) => break Some(copy_text("beLink.gone.bug", &[])),
             }
         }
-        let frame = Frame::LinkData {
+        let frame = Frame::LinkData(crate::wire::LinkData {
             link: link.clone(),
             data: b64_encode(&buf[..n]),
-        };
+        });
         if replies.send(frame).await.is_err() {
             // 连接没了：没人收，也就不必报 `link_end`。
             return;
@@ -461,10 +462,10 @@ async fn pump_down(
     };
     // 先报再摘：摘的时候会 abort 另外两个任务（不 abort 自己 —— 自己正要结束）。
     let _ = replies
-        .send(Frame::LinkEnd {
+        .send(Frame::LinkEnd(crate::wire::LinkEnd {
             link: link.clone(),
             error,
-        })
+        }))
         .await;
     if let Some(e) = lock(&links).remove(&link) {
         e.serve.abort();

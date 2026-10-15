@@ -498,7 +498,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     done.push(STAGES[0]);
 
     // ── ② 宣告：**真的走通用层**（塞进 `Hello.homes` 并序列化成一行）。
-    let line = crate::wire::to_line(&crate::wire::Frame::Hello {
+    let line = crate::wire::to_line(&crate::wire::Frame::Hello(crate::wire::Hello {
         v: 1,
         build_id: "s6".into(),
         host_arch: "x86_64".into(),
@@ -510,7 +510,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         unavailable: vec![],
         host_env: Default::default(),
         shapes: Default::default(),
-    })
+    }))
     .map_err(|_| Stop::MissingCapability {
         stage: STAGES[1],
         capability: "解析本机 home",

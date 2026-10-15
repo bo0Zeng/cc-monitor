@@ -37,6 +37,7 @@
 //!
 //! 撤 = 一面旗 ＋ 一个 `Notify`（等拨号那一段可以被当场打断）；进度 = `watch`（转发任务按变更合并，堵住时只合并不堆积）。
 
+use crate::wire::{FrameMake as _, TransferEndExt as _};
 use copy_core::{copy_text, io_reason};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -1371,12 +1372,12 @@ async fn forward_progress(
     loop {
         let p = rx.borrow_and_update().clone();
         let last = p.end.is_some();
-        let frame = Frame::Transfer {
+        let frame = Frame::Transfer(crate::wire::Transfer {
             id: id.clone(),
             got: p.got,
             total: p.total,
             end: p.end,
-        };
+        });
         if replies.send(frame).await.is_err() || last {
             return;
         }

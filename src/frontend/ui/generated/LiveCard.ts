@@ -5,7 +5,7 @@ import type { LivePhase } from "./LivePhase";
 import type { LiveWhy } from "./LiveWhy";
 
 /**
- * [`Frame::Live`] 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
+ * `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
  */
 export type LiveCard = { 
 /**

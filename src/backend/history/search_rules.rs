@@ -6,6 +6,7 @@
 //! CLI 注入的包装怎么剥是 Claude 记录格式的知识，住适配层 `agents/claudecode/text.rs`（通用层经注册表 `agents::TextFace` 够）。
 //! 全仓只有这一份，由 `search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home` 钉。
 
+use crate::wire::NameFaceExt as _;
 // ── 口径常量 ─────────────────────────────────────────────────────────────
 // ⚠ 这些数**就是口径**。任何一处再写一遍同样的字面量 = 又开了第二份口径，
 //   由 `search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home` 逐个字面量扫着。

@@ -879,7 +879,7 @@ fn on_a_real_tmux_a_line_for_a_session_goes_only_to_its_agent_not_to_the_shell_l
 #[cfg(target_os = "linux")]
 #[test]
 fn the_container_handle_is_the_list_handle_of_the_same_pane() {
-    use crate::wire::{SessionContainer, TerminalHost};
+    use crate::wire::SessionContainer;
     let iso = Iso::new("container");
     iso.session("box-cc", "", "");
     let o = iso.tmux(&["new-window", "-t", "=box-cc:", "cat"]);
@@ -925,8 +925,7 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
         .as_str()
         .unwrap()
         .to_string();
-    let want = Some(SessionContainer::Hosted {
-        host: TerminalHost::Tmux,
+    let want = Some(SessionContainer::Tmux {
         terminal: Some(listed.clone()),
     });
     assert!(

@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::relay::{TapBody, TapEvent};
+use crate::wire::TopicExt as _;
 
 /// 中转交来的事件经 hub 进了活卡：这条连接的写者取得到 `live` 帧（名单只报 A ⇒ B 的不来）。
 #[test]
@@ -54,12 +55,12 @@ fn a_plan_change_becomes_one_changed_frame() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::Changed {
+            Some(Frame::Changed(crate::wire::Changed {
                 topic: Topic::Plan,
                 key,
                 rev,
                 body,
-            }) => assert_eq!(
+            })) => assert_eq!(
                 (key.as_deref(), rev.as_deref(), body),
                 (
                     Some("/w"),
@@ -103,7 +104,9 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
             emit(&tx, source, sid);
             for _ in 0..n {
                 match tokio::time::timeout(guard_core::wall::CEILING, t.next()).await {
-                    Ok(Some(Frame::Changed { topic, key, .. })) => got.push((source, topic, key)),
+                    Ok(Some(Frame::Changed(crate::wire::Changed { topic, key, .. }))) => {
+                        got.push((source, topic, key))
+                    }
                     other => panic!("{source:?} 该推一帧：{other:?}"),
                 }
             }
@@ -158,12 +161,12 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
             .await
             .expect("该推一帧");
         match f {
-            Some(Frame::Changed {
+            Some(Frame::Changed(crate::wire::Changed {
                 topic: Topic::Rotation,
                 key,
                 body,
                 ..
-            }) => assert_eq!((key.as_deref(), body), (Some("s1"), None)),
+            })) => assert_eq!((key.as_deref(), body), (Some("s1"), None)),
             other => panic!("{other:?}"),
         }
     });

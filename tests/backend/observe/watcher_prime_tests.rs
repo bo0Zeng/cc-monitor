@@ -110,11 +110,13 @@ fn brief(frames: &[Frame]) -> Vec<String> {
     frames
         .iter()
         .map(|f| match f {
-            Frame::SessionAdded { sid, .. } => format!("added {sid}"),
-            Frame::SessionPrimed { sid, lines, .. } => format!("primed {sid} {lines:?}"),
-            Frame::Line {
+            Frame::SessionAdded(crate::wire::SessionAdded { sid, .. }) => format!("added {sid}"),
+            Frame::SessionPrimed(crate::wire::SessionPrimed { sid, lines, .. }) => {
+                format!("primed {sid} {lines:?}")
+            }
+            Frame::Line(crate::wire::Line {
                 session_id, seq, ..
-            } => format!("line {session_id} {seq}"),
+            }) => format!("line {session_id} {seq}"),
             other => other.loss_identity().kind.to_string(),
         })
         .collect()

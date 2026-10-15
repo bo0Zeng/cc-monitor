@@ -42,7 +42,7 @@ fn drain(rx: &mut mpsc::Receiver<Frame>) -> Vec<Frame> {
 fn bytes_of(frames: &[Frame], link: &str) -> Vec<u8> {
     let mut out = Vec::new();
     for f in frames {
-        if let Frame::LinkData { link: l, data } = f {
+        if let Frame::LinkData(crate::wire::LinkData { link: l, data }) = f {
             if l == link {
                 out.extend(b64_decode(data).expect("下行块不是合法 base64"));
             }
@@ -53,7 +53,7 @@ fn bytes_of(frames: &[Frame], link: &str) -> Vec<u8> {
 
 fn ended(frames: &[Frame], link: &str) -> Option<Option<String>> {
     frames.iter().find_map(|f| match f {
-        Frame::LinkEnd { link: l, error } if l == link => Some(error.clone()),
+        Frame::LinkEnd(crate::wire::LinkEnd { link: l, error }) if l == link => Some(error.clone()),
         _ => None,
     })
 }
@@ -83,7 +83,8 @@ async fn downstream_bytes_arrive_whole_and_in_order_then_the_link_ends() {
     assert_eq!(bytes_of(&frames, "L"), want, "下行字节不齐或乱序");
     assert!(
         frames.iter().all(|f| match f {
-            Frame::LinkData { data, .. } => b64_decode(data).unwrap().len() <= LINK_CHUNK_BYTES,
+            Frame::LinkData(crate::wire::LinkData { data, .. }) =>
+                b64_decode(data).unwrap().len() <= LINK_CHUNK_BYTES,
             _ => true,
         }),
         "有一块超过 LINK_CHUNK_BYTES"
@@ -96,7 +97,7 @@ async fn downstream_bytes_arrive_whole_and_in_order_then_the_link_ends() {
     assert_eq!(
         frames
             .iter()
-            .filter(|f| matches!(f, Frame::LinkEnd { .. }))
+            .filter(|f| matches!(f, Frame::LinkEnd(_)))
             .count(),
         1
     );
@@ -128,7 +129,10 @@ async fn without_credit_exactly_one_window_goes_out() {
     assert_eq!(ended(&first, "W"), None);
     let more = 777;
     let r = table.credit("c", &serde_json::json!({"link": "W", "bytes": more}));
-    assert!(matches!(r, Frame::Reply { ok: true, .. }));
+    assert!(matches!(
+        r,
+        Frame::Reply(crate::wire::Reply { ok: true, .. })
+    ));
     settle().await;
     let second = drain(&mut rx);
     assert_eq!(
@@ -200,7 +204,7 @@ async fn upstream_blocks_are_written_in_order_and_acked_after_the_write() {
     let acked: Vec<&str> = frames
         .iter()
         .filter_map(|f| match f {
-            Frame::Reply { id, ok: true, .. } => Some(id.as_str()),
+            Frame::Reply(crate::wire::Reply { id, ok: true, .. }) => Some(id.as_str()),
             _ => None,
         })
         .collect();
@@ -227,7 +231,7 @@ async fn an_upstream_flood_is_refused_as_busy() {
                     &serde_json::json!({"link": "B", "data": block}),
                 )
                 .map(|f| match f {
-                    Frame::Reply { code, .. } => code.unwrap_or_default(),
+                    Frame::Reply(crate::wire::Reply { code, .. }) => code.unwrap_or_default(),
                     _ => String::new(),
                 })
         })
@@ -254,7 +258,10 @@ async fn close_aborts_the_link_and_is_idempotent() {
     settle().await;
     assert_eq!(table.len(), 1);
     let r = table.close("x", &serde_json::json!({"link": "C"}));
-    assert!(matches!(r, Frame::Reply { ok: true, .. }));
+    assert!(matches!(
+        r,
+        Frame::Reply(crate::wire::Reply { ok: true, .. })
+    ));
     assert_eq!(table.len(), 0);
     settle().await;
     let gone = tokio::time::timeout(guard_core::wall::CEILING, drop_rx.recv()).await;
@@ -264,7 +271,7 @@ async fn close_aborts_the_link_and_is_idempotent() {
     );
     let again = table.close("y", &serde_json::json!({"link": "C"}));
     assert!(
-        matches!(again, Frame::Reply { ok: true, .. }),
+        matches!(again, Frame::Reply(crate::wire::Reply { ok: true, .. })),
         "再关一次不是幂等的"
     );
 }
@@ -304,7 +311,7 @@ async fn open_refuses_what_it_should_with_a_code() {
     let (tx, _rx) = mpsc::channel::<Frame>(16);
     let table = Table::new(tx);
     let code = |f: Frame| match f {
-        Frame::Reply { code, .. } => code.unwrap_or_default(),
+        Frame::Reply(crate::wire::Reply { code, .. }) => code.unwrap_or_default(),
         _ => String::new(),
     };
     let dial = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u"}});
@@ -382,7 +389,7 @@ async fn open_refuses_what_it_should_with_a_code() {
     );
     assert!(matches!(
         table.credit("a", &serde_json::json!({"link": "cr", "bytes": room})),
-        Frame::Reply { ok: true, .. }
+        Frame::Reply(crate::wire::Reply { ok: true, .. })
     ));
     let d = table.data("a", &serde_json::json!({"link": "nope", "data": "AAAA"}));
     assert_eq!(d.map(code).as_deref(), Some("no_such_link"));
@@ -419,7 +426,7 @@ async fn a_real_dial_to_a_dead_port_answers_one_failed_ack_on_the_link() {
         }),
     );
     assert!(
-        matches!(r, Frame::Reply { ok: true, .. }),
+        matches!(r, Frame::Reply(crate::wire::Reply { ok: true, .. })),
         "open 没回 ok：{r:?}"
     );
     let mut frames = Vec::new();

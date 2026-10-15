@@ -32,6 +32,7 @@
 //! 单行长度上限（不缓冲、不 OOM）· 未见 Hello 之前不许有 stdin（时序，机检钉住）·
 //! 坏行只回错误、**绝不结束进程**。
 
+use crate::wire::FrameMake as _;
 use crate::wire::{Frame, Request};
 use copy_core::copy_text;
 use std::collections::HashMap;
@@ -554,7 +555,7 @@ fn dispatch(
                 //
                 // 那是**控制面被数据面背压堵死**的优先级反转，恰好是"给应答开独立通道"
                 // 想解决的那件事。丢一条 cancel 应答，远比堵死读循环便宜。
-                let _ = replies.try_send(Frame::Cancelled { id: target });
+                let _ = replies.try_send(Frame::Cancelled(crate::wire::Cancelled { id: target }));
             }
             // 取消一个不存在的 id 是幂等的、不是错误。
             let _ = replies.try_send(Frame::ok(&req.id));
@@ -618,14 +619,14 @@ fn listened(
         crate::common::batch_book::listen(
             t,
             Box::new(move |p| {
-                tx.send_replace(Some(Frame::FilesBatch {
+                tx.send_replace(Some(Frame::FilesBatch(crate::wire::FilesBatch {
                     ticket: p.ticket.clone(),
                     done: p.done,
                     total: p.total,
                     current: p.current.clone(),
                     bytes_done: p.bytes.map(|b| b.0),
                     bytes_total: p.bytes.map(|b| b.1),
-                }));
+                })));
             }),
         )
     });
@@ -776,14 +777,14 @@ async fn spawn_handler<F, Fut>(
     let task = tokio::spawn(async move {
         let _ = gate_rx.await;
         let frame = match f(req).await {
-            Ok(data) => Frame::Reply {
+            Ok(data) => Frame::Reply(crate::wire::Reply {
                 id: id_for_task.clone(),
                 ok: true,
                 code: None,
                 message: None,
                 detail: None,
                 data: plan.apply(data),
-            },
+            }),
             Err(f) => f.into_reply(id_for_task.clone(), &cmd),
         };
         // 先摘登记再回应答：反过来的话，客户端收到应答后立刻发 cancel，

@@ -232,9 +232,9 @@ fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
         "kill_failed".to_string(),
         "tmux: can't find window: demo-cc:2".to_string(),
     ));
-    let crate::wire::Frame::Reply {
+    let crate::wire::Frame::Reply(crate::wire::Reply {
         message, detail, ..
-    } = crate::wire::typed::Codes::into_fail(refused("demo-cc", f)).into_reply("i".into(), "kill")
+    }) = crate::wire::typed::Codes::into_fail(refused("demo-cc", f)).into_reply("i".into(), "kill")
     else {
         panic!("不是应答帧");
     };

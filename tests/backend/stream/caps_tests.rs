@@ -115,7 +115,7 @@ fn caps_child() {
         );
         h.await.expect("读循环");
         while let Some(f) = rx.recv().await {
-            if let Frame::Reply { id, code, .. } = f {
+            if let Frame::Reply(crate::wire::Reply { id, code, .. }) = f {
                 let code = code.unwrap_or_else(|| "ok".into());
                 println!("CAPS {id} {code} {}", t0.elapsed().as_millis());
             }

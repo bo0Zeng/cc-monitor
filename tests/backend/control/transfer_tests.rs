@@ -568,7 +568,7 @@ fn dial() -> serde_json::Value {
 
 fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
     match f {
-        Frame::Reply { ok, code, data, .. } => {
+        Frame::Reply(crate::wire::Reply { ok, code, data, .. }) => {
             // 开单两条收一组：下面那些判据问的是一项的开法 ⇒ 一组一项那一项没开成就当整条没开成，开了就交那一项（`key` ＝ 暂存件的键）。
             match data
                 .as_ref()
@@ -818,7 +818,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
             .await
             .expect("终局帧 20 s 没来")
             .expect("通道关了");
-        if let Frame::Transfer { id, end, .. } = &f {
+        if let Frame::Transfer(crate::wire::Transfer { id, end, .. }) = &f {
             assert_eq!(id, &tid);
             let over = end.is_some();
             frames.push(f);
@@ -828,10 +828,10 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
         }
     }
     match frames.last() {
-        Some(Frame::Transfer {
+        Some(Frame::Transfer(crate::wire::Transfer {
             end: Some(TransferEnd::Failed { why, .. }),
             ..
-        }) => assert!(!why.is_empty()),
+        })) => assert!(!why.is_empty()),
         other => panic!("终局不是 failed：{other:?}"),
     }
     // 票在终局帧送出之后摘掉（给 spawn 那一侧一个调度点）。
@@ -897,12 +897,12 @@ async fn progress_frames_start_now_coalesce_and_end_with_the_final_one() {
     let first = rx.recv().await.unwrap();
     assert!(matches!(
         first,
-        Frame::Transfer {
+        Frame::Transfer(crate::wire::Transfer {
             got: 0,
             total: 0,
             end: None,
             ..
-        }
+        })
     ));
     for g in 1..=100u64 {
         ptx.send_modify(|p| {
@@ -927,11 +927,11 @@ async fn progress_frames_start_now_coalesce_and_end_with_the_final_one() {
         rest.len()
     );
     match rest.last() {
-        Some(Frame::Transfer {
+        Some(Frame::Transfer(crate::wire::Transfer {
             got: 100,
             end: Some(TransferEnd::Done { bytes: 100, .. }),
             ..
-        }) => {}
+        })) => {}
         other => panic!("最后一格不是终局：{other:?}"),
     }
 }
@@ -1112,7 +1112,7 @@ fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
 /// 一帧应答的线上字节，票号 · 键 · 夹具目录换成占位（它们每趟不同）。
 fn pinned(f: &Frame, tmp: &Tmp) -> String {
     let mut s = serde_json::to_string(f).unwrap();
-    if let Frame::Reply { data: Some(d), .. } = f {
+    if let Frame::Reply(crate::wire::Reply { data: Some(d), .. }) = f {
         // 一组一项：那一项的票号与暂存件的键。
         let d = d.get("items").and_then(|i| i.get(0)).unwrap_or(d);
         if let Some(v) = d.get("staged").and_then(serde_json::Value::as_str) {
@@ -1259,7 +1259,7 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
             "items": [{"remote_path": "/r/a.txt"}, {"remote_path": "/r/b.txt"}]})
     };
     let f = desk.answer_wire(TRANSFER_DOWNLOAD, "g1", &ask("ask"), &crate::Tz::default());
-    let Frame::Reply { ok, code, .. } = &f else {
+    let Frame::Reply(crate::wire::Reply { ok, code, .. }) = &f else {
         panic!("{f:?}")
     };
     assert!(!ok && code.as_deref() == Some("exists"), "{f:?}");
@@ -1270,7 +1270,7 @@ async fn a_download_group_asks_once_about_local_names_and_keeps_both_on_request(
         &ask("keep_both"),
         &crate::Tz::default(),
     );
-    let Frame::Reply { data: Some(d), .. } = &f else {
+    let Frame::Reply(crate::wire::Reply { data: Some(d), .. }) = &f else {
         panic!("{f:?}")
     };
     assert_eq!(d["items"][0]["state"], "opened");
@@ -1309,9 +1309,9 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
         v
     };
     let f = desk.upload_frame("u1", &ask(serde_json::Value::Null), &Here, &tz);
-    let Frame::Reply {
+    let Frame::Reply(crate::wire::Reply {
         ok, code, detail, ..
-    } = &f
+    }) = &f
     else {
         panic!("{f:?}")
     };
@@ -1345,7 +1345,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
         "只有 a.txt 同名；那台那一格按东京的钟写"
     );
     let item = |f: &Frame, i: usize| match f {
-        Frame::Reply { data: Some(d), .. } => d["items"][i].clone(),
+        Frame::Reply(crate::wire::Reply { data: Some(d), .. }) => d["items"][i].clone(),
         other => panic!("{other:?}"),
     };
     let f = desk.upload_frame("u2", &ask(serde_json::json!({"0": "skip"})), &Here, &tz);

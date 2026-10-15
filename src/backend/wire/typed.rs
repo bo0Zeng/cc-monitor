@@ -342,14 +342,14 @@ pub(crate) fn answer<C: Command>(
     run: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
 ) -> crate::wire::Frame {
     match take::<C::Req>(args).and_then(|req| settle::<C>(run(req))) {
-        Ok(data) => crate::wire::Frame::Reply {
+        Ok(data) => crate::wire::Frame::Reply(crate::wire::Reply {
             id: id.to_string(),
             ok: true,
             code: None,
             message: None,
             detail: None,
             data,
-        },
+        }),
         Err(f) => f.into_reply(id.to_string(), C::NAME),
     }
 }

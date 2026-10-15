@@ -15,7 +15,7 @@ impl tap::TapSource for Fed {
 }
 
 fn line(seq: u64) -> Frame {
-    Frame::Line {
+    Frame::Line(crate::wire::Line {
         session_id: "sid-w".into(),
         path: "/p.jsonl".into(),
         seq,
@@ -23,7 +23,7 @@ fn line(seq: u64) -> Frame {
         cwd: None,
         byte_offset: 0,
         rid: None,
-    }
+    })
 }
 
 fn tapf(n: u64) -> Frame {
@@ -94,16 +94,18 @@ async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
 /// 出方向的帧写出去那一下按这条流看的那一台的时区写钟面（`Frame::stamp`）；应答通道里的不动（答的那一下已按请求的 `tz` 写好）。
 #[tokio::test]
 async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
-    let runs = |text: Option<&str>| Frame::SessionRuns {
-        sid: "s".into(),
-        runs: vec![wire::RunInfo {
-            run: "r".into(),
-            // 2026-10-07T20:30:00Z
-            started_ms: Some(1_791_405_000_000),
-            started_text: text.map(str::to_string),
-            ..Default::default()
-        }],
-        ended: Vec::new(),
+    let runs = |text: Option<&str>| {
+        Frame::SessionRuns(crate::wire::SessionRuns {
+            sid: "s".into(),
+            runs: vec![wire::RunInfo {
+                run: "r".into(),
+                // 2026-10-07T20:30:00Z
+                started_ms: Some(1_791_405_000_000),
+                started_text: text.map(str::to_string),
+                ..Default::default()
+            }],
+            ended: Vec::new(),
+        })
     };
     let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(4);
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
@@ -124,14 +126,14 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
 /// 一页分页应答（`data` 里垫到一页那么大）。
 fn page(id: &str) -> Frame {
     let pad = "p".repeat(cc_monitor_backend::REPLY_PAGE_BYTES);
-    Frame::Reply {
+    Frame::Reply(crate::wire::Reply {
         id: id.into(),
         ok: true,
         code: None,
         message: None,
         detail: None,
         data: Some(serde_json::json!({ "pad": pad })),
-    }
+    })
 }
 
 /// 8a b：**大应答分页取到一半，同一台别的会话来了一行 ⇒ 它在下一页之前写出去**（按先后判，不按墙钟）。
