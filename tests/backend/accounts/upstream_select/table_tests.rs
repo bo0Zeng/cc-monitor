@@ -197,7 +197,7 @@ fn each_row_carries_its_own_auth_style_and_a_missing_one_means_the_default() {
 /// # 单断在这里是承重的
 ///
 /// 三条判断（认不出 / 矛盾 / 明文非回环）各有一格**只有它红**的夹具行，
-/// 而不是一格「全都坏」的行 —— 后者只买得到目录级塌陷。〔`brief` 9〕
+/// 而不是一格「全都坏」的行 —— 后者只买得到目录级塌陷。
 #[test]
 fn a_row_whose_auth_style_makes_no_sense_is_rejected_out_loud() {
     let (t, bad, _) = build(

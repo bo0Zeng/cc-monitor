@@ -1034,7 +1034,7 @@ fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
 /// - 显式 `--base` ⇒ 不注入（issue #75 逃生口）。
 /// - 都不传 ⇒ **只在调用方没有已选定账号时**才落 manifest 的 `isDefault`。
 ///
-/// ✅ **最后那一条已经裁了**（住址 `DECISIONS.md#R28`）——
+/// ✅ **最后那一条已经裁了**——
 /// 逐字：「把调用方选中的号静默换掉 / **不要这么做** / 不是有选默认账号吗? **就用那个**」。
 /// ⇒ 拆成本函数的两支，**两支都是裁定的一部分，缺一条这一裁就没落地**：
 ///   · **继承那一支**（`CLAUDE_CONFIG_DIR` 非空 ⇒ 保留，不覆盖）= 「不要静默换掉」。
@@ -1892,7 +1892,7 @@ pub(crate) fn render_for(plan: &Plan, shell: crate::platform::shell::dialect::Sh
 }
 
 /// **「等于」那一行的短形（唯一一处）**：设置页「敲 xx 等于」那一格照抄，整条脚本另在［复制］里（[`render_for`]）。
-/// tmux 那一形只写建哪个会话 ＋ 里面跑的是 ccm（`tmux new-session -d -s 名 … ccm [交给 agent 的] -- …`：ccm 自己的参数照稿省成 `…`）；直路只写进哪个目录、用哪份账号目录、跑什么
+/// tmux 那一形只写建哪个会话 ＋ 里面跑的是 ccm（`tmux new-session -d -s 名 … ccm [交给 agent 的] -- …`：ccm 自己的参数省成 `…`）；直路只写进哪个目录、用哪份账号目录、跑什么
 /// （环境的清与设、中转、cc-bus 身份那几段不写）；接回 ⇒ 接哪个会话。家目录写成 `~`；只给人看，词不加引号（带空白的才加）。
 pub(crate) fn render_short(plan: &Plan, home: &str) -> String {
     let word = |w: &str| -> String {

@@ -3,8 +3,8 @@
  * 会话状态的两个轴（`src/frontend/ui/tab-session-state.ts`）的判据。
  *
  * 设计与判据编号。本文件管：
- * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**（`U4.md §1.1`），不从实现生成。
- * 扩成 7 态 × 10 事件 = 70 格（`U4b.md §1.3`，T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
+ * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**，不从实现生成。
+ * 扩成 7 态 × 10 事件 = 70 格（T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
  * 加一行事件 `unseen`（那台机器看不见了）⇒ 7 × 11 = 77 格。
  * 容器开放联合：加一态「活·形式未知」与一行事件 `container-other` ⇒ 8 × 12 = 96 格。
  * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自那张表），
@@ -42,7 +42,7 @@ import {
 } from "../../../src/frontend/ui/tab-session-state";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-/** 八个态（列序 == `U4b.md §1.3` 那张转移表的列序）。 */
+/** 八个态（列序 == 转移表的列序）。 */
 const FROM: SessionState[] = [LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, ENDED, GONE, UNSEEN];
 const NAME = new Map<SessionState, string>([
   [LIVE, "活"],
@@ -56,7 +56,7 @@ const NAME = new Map<SessionState, string>([
 ]);
 const nameOf = (s: SessionState): string => NAME.get(s) ?? `〈不是八个常量之一：${JSON.stringify(s)}〉`;
 
-describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` 一行，逐格 == `U4b.md §1.3` ＋ `GP1.md §1`）", () => {
+describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` 一行，逐格 == 手写表）", () => {
   // 行 = 事件；列 = 此刻（活·没报 · 活·可接回 · 活·只能重开 · 活·形式未知 · 可重连 · 已结束 · 记录没了 · 说不清）。
   // 「=」表示不变（且必须是同一个对象：调用方靠它判「变没变」）。**手写自设计表，不从实现生成。**
   type Row = [string, string, string, string, string, string, string, string];
@@ -118,7 +118,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     expect(FROM.every((s) => Object.isFrozen(s))).toBe(true);
   });
 
-  it("★ 行为谓词在八个态上 == 设计（`U4b.md §1.3` 谓词；前三列是 U4b 新添的活态，行为必须 == 旧「活」；说不清不给恢复、只在右键菜单里关）", () => {
+  it("★ 行为谓词在八个态上 == 设计（前三列是 U4b 新添的活态，行为必须 == 旧「活」；说不清不给恢复、只在右键菜单里关）", () => {
     const row = (f: (s: SessionState) => boolean): boolean[] => FROM.map(f);
     expect({
       isResumeOnly: row(isResumeOnly),
@@ -137,7 +137,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
   });
 });
 
-describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 == `U4b.md §1.3` ＋）", () => {
+describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 == 手写表）", () => {
   it("★ 八个态逐格相等（期望串是本文件的字面量，被测串来自文案表）", () => {
     expect(FROM.map(stateView)).toEqual([
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: null },

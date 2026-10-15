@@ -360,7 +360,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     assert!(planted.contains(needle.as_str()));
 }
 
-/// 🔴 L4：**别人在锁里记了一条，这一趟记的不会把它盖掉**（审计 `E-compat.md` §E6：丢了补不回来）。
+/// 🔴 L4：**别人在锁里记了一条，这一趟记的不会把它盖掉**（丢了补不回来）。
 ///
 /// 要求：「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」；「装的时候记下写了哪些文件，卸只删这些」
 /// （记录丢一条 ⇒ 那一趟装的文件卸不掉）。

@@ -473,7 +473,7 @@ fn menu_items_are_only_drawn_by_the_kit() {
     );
 }
 
-/// 菜单项那一种写法画出来的样子（稿 `.mi`）：不画框 · 悬停一整条淡底 · 快捷键贴右端对成一列 · 危险项 `--error-text` ·
+/// 菜单项那一种写法画出来的样子：不画框 · 悬停一整条淡底 · 快捷键贴右端对成一列 · 危险项 `--error-text` ·
 /// 挡着的那一项点不动 · 组与组之间一道线。
 #[test]
 fn a_menu_row_is_icon_text_and_a_right_aligned_key_with_no_border() {

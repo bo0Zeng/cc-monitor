@@ -33,7 +33,7 @@ class HostBackends(
     private fun feed(hostId: String): ResidentFeed {
         val reported = ConcurrentHashMap.newKeySet<String>()
 
-        // 两端契约对不上：一种报一次（`架构.md` D4），进日志。
+        // 两端契约对不上：一种报一次，进日志。
         fun onBreak(what: String) {
             if (reported.add(what.substringBefore('：'))) Log.w(TAG, "$hostId：$what")
         }

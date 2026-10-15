@@ -82,7 +82,7 @@ import kotlin.math.roundToInt
 
 /**
  * 连接指定主机并渲染实时终端。连接编排在 [SessionViewModel]，这里只渲染。
- * 终端屏只有终端：看一条会话的正文回聊天屏（`界面.md`「终端」）。
+ * 终端屏只有终端：看一条会话的正文回聊天屏。
  */
 @Composable
 fun SessionScreen(

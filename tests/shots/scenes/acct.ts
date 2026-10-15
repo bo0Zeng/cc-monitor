@@ -1,6 +1,6 @@
 /**
  * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（读不出 · 未实时显示 · 底栏）· 右键「账号…」。
- * 轮换那几块（会话面板里的轮换 · 设置窗「轮换」· 换号条 · 停发提示）第 4 刀照 `轮换-v5` 的稿施工，场景随它一起加。
+ * 轮换那几块（会话面板里的轮换 · 设置窗「轮换」· 换号条 · 停发提示）此刻还没有，场景随它一起加。
  *
  * 账号库 · 额度账 · 轮换账本 · 血缘落成本机家目录里的原始文件（`acctDisk`），额度 · 在用的号的成品全是真后端读它们算的。
  * 号名是编的。时刻按此刻的钟现算。
@@ -56,7 +56,7 @@ interface AcctWorld {
 const now = (): number => Math.floor(Date.now() / 1000);
 const H1 = 3600;
 
-/** 稿里那一套号：work 起始 · personal 在用 · team · api（按量）。`at` 里的数是「距此刻多少秒」。 */
+/** 那一套号：work 起始 · personal 在用 · team · api（按量）。`at` 里的数是「距此刻多少秒」。 */
 function baseAccounts(): Acct[] {
   return [
     {
@@ -102,7 +102,7 @@ function abs(t: number | undefined): number | undefined {
   return t === undefined ? undefined : now() + Math.round(t);
 }
 
-/** 稿里的语义位 → claude 回包头里那个窗口的原名（额度账按原名记）。 */
+/** 语义位 → claude 回包头里那个窗口的原名（额度账按原名记）。 */
 const RAW_WINDOW: Record<string, string> = { "5h": "five_hour", "7d": "seven_day" };
 
 /** 一个号在额度账上那一条（中转从回包头记下的原始几格）：被拒 · 超额 · 预警只写回包说了什么，显示成什么样由真后端判。 */
@@ -397,7 +397,7 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-panel",
     "面板 · 本会话 · 第一屏",
-    "点状态栏按钮：底栏新会话默认 · 管理账号…（轮换那一块第 4 刀照稿施工，此刻空着）",
+    "点状态栏按钮：底栏新会话默认 · 管理账号…（轮换那一块此刻空着）",
     openPanel,
     world(() => {}),
   ),

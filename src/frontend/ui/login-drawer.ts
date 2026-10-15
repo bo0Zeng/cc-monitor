@@ -37,7 +37,7 @@ const PASTE: Record<PasteKind, { name: () => string; help: () => string }> = {
   redirectUrl: { name: () => copyText("login.paste.redirectUrl"), help: () => copyText("login.paste.redirectUrlHelp") },
 };
 
-/** 抽屉宽（稿：420）。 */
+/** 抽屉宽（420）。 */
 const WIDTH = 420;
 /** ［复制链接］原位勾一下多久。 */
 const COPIED_MS = 1500;

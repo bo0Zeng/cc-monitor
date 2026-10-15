@@ -63,7 +63,6 @@ ssh win11 "powershell -NoProfile -Command \"Get-Content \$env:USERPROFILE\e2e-ti
   overlay 开关（物理码 `browser.keys`）。无 fixture、无破坏性动作。
 - **E5b（会话相关，未落地——需 fixture）**：`button.tab` / `.tab-title` / `.live-dot`、
   右键 `.tab-context-menu`、archived tab 的 resume 项。落地路径：VM app 配 devbox 当远端
-  （E(b) key）+ devbox 跑 F-E1 的 fake-claude 造 idle tmux → 一个 tab 出现后再断言。见
-  `.claude/planned-build/auto-e2e/features/E5-tier2-dom.md` DoD E5b。
+  （E(b) key）+ devbox 跑 F-E1 的 fake-claude 造 idle tmux → 一个 tab 出现后再断言。
 - **不做（Tier3 手动 / hard-to-fixture）**：↗ 弹外链 · 真终端 · SFTP · 系统通知 · 真
   claude 真出内容。

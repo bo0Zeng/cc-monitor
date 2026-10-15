@@ -48,7 +48,7 @@ use plan::{AccountTable, Env, Plan};
 /// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）；`7` 起认 `@<名>` 与按被叫成的名字取配置文件里那一段。
 pub(crate) const CCM_VERSION: &str = "7";
 
-/// 认得的 agent。**闭集只有一处住址**（`brief` 13b）：注册表里带起会话事实的那几家
+/// 认得的 agent。**闭集只有一处住址**：注册表里带起会话事实的那几家
 /// （`agents::launchable_kinds`）。从前这里是一份手写的闭集常量，与注册表那一格是同一件事的两处。
 pub(crate) fn agents() -> Vec<&'static str> {
     crate::agents::launchable_kinds()
@@ -720,7 +720,7 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
 /// # `capabilities=` 答的是「**在这台机器上**做得到哪几条」
 ///
 /// 从前这一行是整张 [`CAPABILITIES`] 原样吐 —— 真 Win11 上 `ccm.exe --ccm-probe` 自报 `tmux` / `attach` /
-/// `detach` / `tmux-size` / `tmux-base` / `bus-register` …（`RT1.md §8` F7），而那几条在 Windows 上
+/// `detach` / `tmux-size` / `tmux-base` / `bus-register` …，而那几条在 Windows 上
 /// 一条都做不到（`TARGET_GAPS`）。⇒ 改吐本二进制那一档平台上的那一份：
 /// [`crate::ccm_launcher_with`]`(`[`crate::platform::tmux::TMUX_PLATFORM`]`)` —— 与能力账按 target 问的是**同一个函数**
 /// （「能力清单从实现派生」），不在这里另写名单。Linux 上逐字不变。

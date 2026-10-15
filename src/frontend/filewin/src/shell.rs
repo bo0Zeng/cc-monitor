@@ -230,7 +230,7 @@ pub struct Listing {
     pub open_fail: Arc<Mutex<Option<(super::source::OpenFail, String)>>>,
     /// 摆着的这一屏是什么时候列到的（UNIX 秒；0 ＝ 还没列到过）。断线条「离线 · 采样 13:40」那个时刻。
     pub landed: Arc<AtomicU64>,
-    /// 计划反查（稿 06）：这个目录落在某一片的仓库里 ⇒ 每份文件归哪一格（后端 `plan-files`）；不在 / 还没问到 ⇒ `None`。
+    /// 计划反查：这个目录落在某一片的仓库里 ⇒ 每份文件归哪一格（后端 `plan-files`）；不在 / 还没问到 ⇒ `None`。
     pub plan: Arc<Mutex<Option<super::plan::PlanDir>>>,
 }
 
@@ -523,7 +523,7 @@ pub struct FileWindow {
     pub progress: super::progress::Progress,
     /// 那台此刻连没连着（一扇窗一份，`Workspace` 交下来；`link` 那条流写进来）。断着 ⇒ 列表留着上次的内容、写类按钮灰。
     pub link: super::chrome::LinkState,
-    /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执（规范 `C13`）。
+    /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执。
     pub(super) receipt: Option<String>,
     /// 同 [`Self::receipt`] 那一句的［复制详情］整段（写操作没做成、带详情时才有；与那一句同一拍交走）。
     pub(super) receipt_copy: Option<String>,
@@ -590,11 +590,11 @@ pub struct FileWindow {
     pub(super) prompt_error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
     hit_rows: (u64, u64, Arc<Vec<super::rows::HitRow>>),
-    /// 这个标签页是一份文本的**编辑页**（稿 ⑤：标签上铅笔 ＋ 文件名，正文是编辑面、不是列表）。
+    /// 这个标签页是一份文本的**编辑页**（标签上铅笔 ＋ 文件名，正文是编辑面、不是列表）。
     pub edit_tab: bool,
     /// 这个目录视图挂在窗口里（`Workspace` 置）：打开一份文本 ⇒ 交给窗口开一个编辑页，不在这一页里开。
     pub(super) in_workspace: bool,
-    /// 这个标签页是一张图的**查看页**（稿 ⑬：标签上图片图标 ＋ 文件名，正文是画面、不是列表）。逻辑住 [`super::imgview`]。
+    /// 这个标签页是一张图的**查看页**（标签上图片图标 ＋ 文件名，正文是画面、不是列表）。逻辑住 [`super::imgview`]。
     pub view_tab: bool,
     /// 摆着的那一张（`None` ＝ 不是查看页）。**UI 线程自己的**。
     pub(super) viewing: Option<super::imgview::Viewer>,
@@ -2059,7 +2059,7 @@ impl FileWindow {
         true
     }
 
-    /// 画「复制到另一台」那一问（kit 的对话框，稿 13）：「复制到」下拉（别的机器 · 本机）·「放到」一块小目录选择器
+    /// 画「复制到另一台」那一问（kit 的对话框）：「复制到」下拉（别的机器 · 本机）·「放到」一块小目录选择器
     /// （面包屑 ＋ 那台的文件夹，单击选中、双击进去，右上「新建文件夹」）·「目标 gpu-01:/home/user/inbox」· ［取消］［复制到 gpu-01］。
     fn cross_ui(&mut self, ui: &mut egui::Ui) {
         let Some(mut p) = self.cross_prompt.clone() else {
@@ -3350,7 +3350,7 @@ impl FileWindow {
         n
     }
 
-    /// 🔴画**编辑页**（稿 ⑤：一份文本一个标签页；高度只随窗口变、绝不随内容长）：
+    /// 🔴画**编辑页**（一份文本一个标签页；高度只随窗口变、绝不随内容长）：
     /// 头条（面包屑 · 状态字 · 查找 · 保存 · ⋯）→ 条（盘上被改过 · 保存失败 · 断线）→ 编辑面（行号槽 ＋ 正文，横竖都在面里滚）；
     /// 查找条浮在编辑面右上；底条那一行住窗口的状态栏（[`Self::editor_status`]）。
     /// 键：Ctrl+S 保存（在存着时不起第二趟）· Ctrl+F 查找条 · Esc 只收查找条，**从不关编辑页**。
@@ -3737,7 +3737,7 @@ impl FileWindow {
     /// 关这一页那一问（改了没存）：取消 · 不保存 · 保存。
     fn edit_discard_ask(&mut self, ctx: &egui::Context, name: &str, acts: &mut EditActs) {
         let p = super::theme::palette(ctx);
-        // ── 关这一页那一问（改了没存；规范 `C10`）：取消 · 不保存 · 保存（焦点在「保存」）──
+        // ── 关这一页那一问（改了没存）：取消 · 不保存 · 保存（焦点在「保存」）──
         if self.asking_discard {
             let hit = super::kit::dialog(
                 &ctx,
@@ -3823,7 +3823,7 @@ impl FileWindow {
         }
     }
 
-    /// 编辑页在前台时状态栏那一行（稿 ⑤ 底条）：「行 12 · 列 5 · UTF-8 · LF · 41.6 KB / 8 MB」；
+    /// 编辑页在前台时状态栏那一行（底条）：「行 12 · 列 5 · UTF-8 · LF · 41.6 KB / 8 MB」；
     /// 大文件模式左端多「大文件模式 · 长行不换行 · 无查找替换」。超上限那一句另回（画在右端，`--error`）。
     pub fn editor_status(&self, ctx: &egui::Context) -> Option<(String, Option<String>)> {
         let e = self.editing.as_ref()?;
@@ -3878,7 +3878,7 @@ impl FileWindow {
         let Some(mut p) = self.write_prompt.clone().filter(|p| !p.is_inline()) else {
             return;
         };
-        // 改权限（规范 `C10`，稿 10）：标题「改权限 · deploy.sh」·「当前 644」· 3 × 3 勾 ·「数字写法」两边联动 · ［取消］［改权限］。
+        // 改权限：标题「改权限 · deploy.sh」·「当前 644」· 3 × 3 勾 ·「数字写法」两边联动 · ［取消］［改权限］。
         // 现值答回来了 ⇒ 九格与那一栏预填至多一次（`writeops::apply_prefill`）。
         self.mode_probe.attach(ui.ctx().clone());
         let readout = self.mode_probe.readout();
@@ -4096,7 +4096,7 @@ impl FileWindow {
     /// 这个标签页**关得了吗**（`None` ＝ 关得了）—— 关标签页 / 收右栏之前问它。
     ///
     /// 有一问摆着、有一份文本开着、在读写文本 ⇒ 说是哪一件。
-    /// 在传 / 在复制 / 在删的那几趟**不算**：它们是「进度」表里的行，不随标签页走，关了照跑（稿：目录标签页直接关）。
+    /// 在传 / 在复制 / 在删的那几趟**不算**：它们是「进度」表里的行，不随标签页走，关了照跑（目录标签页直接关）。
     pub fn busy_reason(&self) -> Option<String> {
         if self.editing.is_some() {
             return Some(copy_text("rsFilewinShell.busy.editorOpen", &[]).into());
@@ -4779,7 +4779,7 @@ impl FileWindow {
     }
 
     fn drop_zone_ui(&mut self, ui: &mut egui::Ui) {
-        // 从桌面拖着文件经过 ⇒ 列表区一层虚线框「松开上传 → 目录（n 个文件）」（稿 20）；松手那一下由 `take_drops` 接。
+        // 从桌面拖着文件经过 ⇒ 列表区一层虚线框「松开上传 → 目录（n 个文件）」；松手那一下由 `take_drops` 接。
         let hovering = ui.input(|i| i.raw.hovered_files.len());
         if hovering > 0 && self.focused && !self.modal_up() {
             let dir = super::source::remote_basename(&self.cwd).to_string();
@@ -5605,7 +5605,7 @@ fn find_row(
     use egui_phosphor::regular as ph;
     let mut act = None;
     let p = super::theme::palette(ui.ctx());
-    // 第一行：查找框（框内左侧放大镜、右侧「3 / 12」）· ↑ ↓ · ×；第二行：替换为 · 替换 · 全部替换（稿 03）。
+    // 第一行：查找框（框内左侧放大镜、右侧「3 / 12」）· ↑ ↓ · ×；第二行：替换为 · 替换 · 全部替换。
     ui.horizontal(|ui| {
         let r = ui.add(
             egui::TextEdit::singleline(&mut f.needle)

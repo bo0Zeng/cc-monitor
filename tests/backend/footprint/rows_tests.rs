@@ -927,7 +927,7 @@ fn destination_checks_still_run_under_every_host() {
 /// 与 `K-R63` 之前 `uninstallable` 的处境逐字同形。
 ///
 /// 为什么 `K-R63` 没顺手收它：那一件的两条 dod 逐字只说 `installable` / `uninstallable`
-/// 两格，多做一格是「比该做的宽了一格」（`brief` 第 17 条）。⇒ **登记在这里，等 PM 裁**，
+/// 两格，多做一格是「比该做的宽了一格」。⇒ **登记在这里，等 PM 裁**，
 /// 不靠人记得。
 #[test]
 fn declared_destinations_are_pinned_to_the_real_writers() {

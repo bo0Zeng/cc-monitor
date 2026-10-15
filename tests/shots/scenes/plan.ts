@@ -1,5 +1,5 @@
 /**
- * 计划页（设计稿 planned-build 01 · 02 · 03）：大纲 ＋ 概览 · 一格详情 · 各种状态 · 需手动 · 退回框 · 会话头那一枚标。
+ * 计划页：大纲 ＋ 概览 · 一格详情 · 各种状态 · 需手动 · 退回框 · 会话头那一枚标。
  */
 import type { Scene } from "./index";
 import type { World } from "../fake/types";

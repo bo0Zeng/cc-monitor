@@ -285,7 +285,7 @@ fn the_tree_walk_names_the_file_by_path_not_by_basename() {
 
 // ═══════════════════════════════════════════════════════════════════════
 // `K-R77`（09-12）：**「`#[cfg(test)]` 顶层再导出自己的测试模块」那道绕道** ——
-// 拆掉最后一处的同一拍给它上棘轮。裁定住 `DECISIONS.md#R36` 裁定二。
+// 拆掉最后一处的同一拍给它上棘轮。
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 顶层 = **列 0**（不带前导空白）且非空行。
@@ -441,7 +441,7 @@ fn detour_over_ceiling(today: usize, ceiling: usize) -> Option<usize> {
 /// ⚠ **这条前提本来就该变的时候，去哪里重新裁定**（判据纪律 11）：
 /// 只有一种情形该动它 —— 剥法**又**认不出某种可见性写法。那时先修
 /// `guard_core::strip_visibility`，**不是**回来抬这个 0。
-/// 真要给这道绕道开一个正当口子，走 `DECISIONS.md` 立一条裁定。
+/// 真要给这道绕道开一个正当口子，先立一条裁定、写明理由。
 ///
 /// # 它买不到什么（如实登记，别读成证明）
 ///
@@ -497,7 +497,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
                  修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
                  （盘上三处的先例：`stream_source/` 的 `dial_move_judge` · `local_backend_host.rs` 的\n\
                   `tests` · `readonly_guard.rs` 的 `g6_doctrine`，`K-R76`/`K-R77` 各拆过。）\n\
-                 ⚠ 真有正当理由要开口子 ⇒ 走 `DECISIONS.md` 立裁定，**不许**在这里抬 \
+                 ⚠ 真有正当理由要开口子 ⇒ 先立裁定，**不许**在这里抬 \
                  `DETOUR_CEILING`。",
             sites.len(),
             sites.join("\n")

@@ -3,7 +3,7 @@
 //! 守的要求（逐字）：
 //! - 要求：「**模型名**字符集 …… 定一个两侧同一份的规则（住共享 crate），真实模型名都放行。」
 //! -：「凡是有对应 `*-core` crate 的判定，TS 侧零实现」—— 前端要在写入点先说一句的那一格，
-//!   **不手抄规则**，读 monitor 从 `shell-quote-core` 那组常量现生成的 `src/frontend/ui/generated/judgment-rules.ts`（`DUP1.md §4 ①` 的甲）。
+//!   **不手抄规则**，读 monitor 从 `shell-quote-core` 那组常量现生成的 `src/frontend/ui/generated/judgment-rules.ts`。
 //! - `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 //!
 //! 同一份生成物又多两样：账号名（J18，`shell_quote_core::account_name_ok` 那组常量）·

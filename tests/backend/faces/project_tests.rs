@@ -23,7 +23,7 @@ fn golden_records() -> Vec<Value> {
         .collect()
 }
 
-/// 记录正文按需那一份（网络层调研 #2）：工具入参 · 工具结果正文 · 逐段改动。
+/// 记录正文按需那一份：工具入参 · 工具结果正文 · 逐段改动。
 fn body_on_demand() -> Value {
     json!({"omit": {"record": [
         "blocks[type=tool_use].input",

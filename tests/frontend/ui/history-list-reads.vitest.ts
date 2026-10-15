@@ -1,7 +1,7 @@
 /**
  * `src/frontend/ui/history-list-reads.ts` 的判据：历史页的平铺清单经通道问本机常驻后端，按类型收。
  *
- * 守的要求（设计稿「文件与历史」乙7 ①④）：一份跨项目的平铺清单，每行带「能做什么」；判定在后端，界面照类型读。
+ * 守的要求：一份跨项目的平铺清单，每行带「能做什么」；判定在后端，界面照类型读。
  *
  * 判据：
  * 1. **跨语言金样**：后端 `history_list_tests.rs::the_product_matches_the_cross_language_golden` 产出的成品

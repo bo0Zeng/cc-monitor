@@ -145,7 +145,7 @@ pub const FILES_BATCH_KIND_PREFIX: &str = "files-batch/";
 /// **monitor 自己接**：叫醒那台的连接循环，不等退避睡满。回 `{}`；连没连上看 [`LINK_KIND`] 那条流。
 pub const LINK_RETRY_OP: &str = "link-retry";
 
-/// 「在计划里看」（计划反查，设计稿 planned-build 06）：窗口在通道上 `call` 这一条（寻址 ＝ 那台），**monitor 自己接**：
+/// 「在计划里看」（计划反查）：窗口在通道上 `call` 这一条（寻址 ＝ 那台），**monitor 自己接**：
 /// 把主窗口拉到前面、切到计划页、选中那一格（片按机器区分：寻址就是那台）。参数 `{workspace, slice, id}`（[`plan_open_args`]）。
 pub const PLAN_OPEN_OP: &str = "plan-open";
 

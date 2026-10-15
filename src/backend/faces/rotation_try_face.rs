@@ -1,5 +1,5 @@
 //! 帧面 `rotation-try`（typed）：拿一份策略文件的原文（＋ 可选的设置 · 会话状态 · 时刻）照此刻的事实判一次、往后推演，不写盘不换号。
-//! skill 试跑与测试台用它。`轮换-v5-分层.md` §1.9。
+//! skill 试跑与测试台用它。
 
 use crate::accounts::quota::rules::decide::{self, Pick, Sigma};
 use crate::accounts::quota::rules::script;

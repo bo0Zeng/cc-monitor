@@ -12,7 +12,7 @@ pub(crate) const SHAPE: u64 = 1;
 /// 一次 dump 最多等多久。量过：252 格的研究盘 1.1 秒；留一个数量级给慢盘与远端。
 pub(crate) const DEADLINE_SECS: u64 = 20;
 
-/// pb 的退出码（TOOLS.md「退出码」那一节）：读不成 · 用法错。
+/// pb 的退出码：读不成 · 用法错。
 const RC_UNREADABLE: i32 = 3;
 const RC_USAGE: i32 = 4;
 

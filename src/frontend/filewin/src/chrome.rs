@@ -65,7 +65,7 @@ pub enum Cmd {
 pub static MORE_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.more", &[]));
 
-/// 窗口宽度档（规范 `I8` 与稿 ⑫；按缩放之后的逻辑宽度算）。
+/// 窗口宽度档（按缩放之后的逻辑宽度算）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
     Wide,
@@ -225,7 +225,7 @@ impl FileWindow {
                     ),
                     egui::StrokeKind::Inside,
                 );
-                // 右端那颗星（Phosphor 线形 STAR，规范 V9 只用线形一套）：当前目录在不在书签里只差颜色 ——
+                // 右端那颗星（Phosphor 线形 STAR，只用线形一套）：当前目录在不在书签里只差颜色 ——
                 // 不在 ⇒ `text2`（点了加）· 在 ⇒ `accent`（点了去，同浏览器）；有损目录 / 没接书签不画。
                 let star = match (&self.shelf, lossy) {
                     (Some(shelf), false) => Some(if shelf.contains(&self.cwd) {
@@ -950,7 +950,7 @@ impl Workspace {
             .exact_size(bar_h)
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).toolbar_ui(ui));
-        // 和那台断着 ⇒ 工具条下一条窗口级警告条（稿 18）：在重连 ⇒「devbox 断开 · 重新连接中…」；
+        // 和那台断着 ⇒ 工具条下一条窗口级警告条：在重连 ⇒「devbox 断开 · 重新连接中…」；
         //   一轮没连上 ⇒「devbox 离线 · 采样 13:40」＋［重新连接］（采样 ＝ 摆着的这一屏是什么时候列到的）。
         if let Some(seen) = self.link.seen().filter(|_| self.link.offline()) {
             let machine = self.pane_on(f).source.label();
@@ -1102,7 +1102,7 @@ impl Workspace {
             ctx.set_zoom_factor(1.0);
             self.zoom_reset();
         }
-        // 「进度」表（窗口底部一块，可拖高；在状态栏之上、左栏之下 ⇒ 横贯整个窗口宽，稿 11）。
+        // 「进度」表（窗口底部一块，可拖高；在状态栏之上、左栏之下 ⇒ 横贯整个窗口宽）。
         if self.progress.is_open() && !self.progress.is_empty() {
             let mut act = None;
             // 表照行数长高（含失败摊开的那几行），到窗高六成为止；再多在表里滚。
@@ -1126,7 +1126,7 @@ impl Workspace {
                 .exact_size(w)
                 .show(ui, |ui| self.sidebar_ui(ui));
         } else if !wide && self.drawer_open {
-            // 抽屉（稿 21 · 23 · 规范 `C11`）：盖在列表左边一层，不挤列表 —— 浮层底（`--card`）、外侧两角圆（对话框那一档）、
+            // 抽屉：盖在列表左边一层，不挤列表 —— 浮层底（`--card`）、外侧两角圆（对话框那一档）、
             // 对话框那一档投影；底下的内容区盖一层淡暗（`--overlay-dim`，仍看得见）。点别处 · Esc · 点了一项去别处 ⇒ 收。
             let room = ui.available_rect_before_wrap();
             let before = self.pane_on(f).cwd.clone();

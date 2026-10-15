@@ -1,6 +1,6 @@
 //! Claude Code 的答题口（注册表 `Adapter.asks` 那一格）：会话级 `PermissionRequest` hook 的输入怎么读、答案怎么写、起会话时怎么挂上。
 //!
-//! 实测（2.1.296，调研报告「答批准不送键」§真机实测 · 补验）：交互会话里这个 hook 与终端框并行、谁先答算谁的；
+//! 实测（2.1.296，真机上交互会话里答批准、不送键）：交互会话里这个 hook 与终端框并行、谁先答算谁的；
 //! 晚到的答案被丢、不会落到下一个框上；提问框要带 `updatedInput.answers` 才算答了；批计划要带原样 `updatedInput`，
 //! 「批准并切档」经 `updatedPermissions` 的 `setMode`；子 agent 的请求多 `agent_id` · `agent_type`，后台那种是 hook 先跑完框才出。
 //! exec 形必须写 `command`（只写 `args` 整份设置被跳过、开局还弹一个框）。

@@ -5,7 +5,7 @@ import type { AliasNameClash } from "./AliasNameClash";
  * 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
  *
  * 别名块与别名文件那一行 source 装进的是**同一批**启动文件，候选从前却有两份来历
- * （`AL1d.md §1.2`）⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
+ * ⇒ 今天只有一份：`account_aliases::StartupFile` 每份候选都带着这一格，
  * 由 [`block_state`] 在读回口那一次扫描里一起算出来。
  */
 export type AliasBlockState = { 

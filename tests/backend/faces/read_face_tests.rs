@@ -1034,7 +1034,7 @@ fn history_record_answers_present_absent_and_refuses_a_bad_sid() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// `history-record` 按**这次 resume 要用的账号根**查（`GP1.md §4`）。
+/// `history-record` 按**这次 resume 要用的账号根**查。
 ///
 /// 夹具两棵树：这台的家（`home`）与一个账号目录（`acct`），sid 只在账号目录里。
 /// 不带 `configDir` ⇒ 答不在（与改之前逐字同一问）；带了 ⇒ 答在，`root` == 那棵树的 `projects`（两向）。

@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.core.claude.model
 
 /**
- * 手机这边送出去、记录里还没出现的那一句的投递状态（`界面.md`「投递状态」；历史记录恒为 `null`）。
+ * 手机这边送出去、记录里还没出现的那一句的投递状态（历史记录恒为 `null`）。
  * 送到了的不挂标；记录里出现了这句人话 ⇒ 整句换成记录里那一条。
  */
 enum class DeliveryState {

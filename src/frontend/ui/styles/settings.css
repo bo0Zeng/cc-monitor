@@ -3283,7 +3283,7 @@ body.settings-window-mode .settings-panel {
 .cfg-pointer-text {
   flex: 1;
 }
-/* 指路条那几枚分类数小标签（稿 12），跟在那句话后面、按钮前面。 */
+/* 指路条那几枚分类数小标签，跟在那句话后面、按钮前面。 */
 .cfg-pointer-tags {
   display: inline-flex;
   gap: var(--space-2);

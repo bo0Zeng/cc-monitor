@@ -19,7 +19,7 @@ fn announce_all(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
 
 /// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
 /// 免得诊断把路径原样印进输出、让「输出里含某句话」靠路径恒真
-/// （`brief` 12 逐字点名的那一形）。
+/// （点名过的那一形）。
 fn tmpdir(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
         "ccm-rc-{}-{}-{tag}",
@@ -192,7 +192,7 @@ fn nothing_that_gets_announced_ever_carries_the_key() {
         !text.contains("sk-ant-CANARY-IN-ANNOUNCE"),
         "启动日志里出现了 key：{text}"
     );
-    // ⚠ 这里**删掉过一条断言**，经过记下来（它是 `brief` 12 逐字点名那一形的活样本）：
+    // ⚠ 这里**删掉过一条断言**，经过记下来（它是那一形的活样本）：
     //   第一版写的是 `assert!(!text.contains("26"))`，意思是「key 的长度也不许漏」。
     //   实测当场红 —— 因为**临时目录名里恰好有 `26`**（`/tmp/ccm-rc-803016-1787867…`），
     //   而这一行输出里本来就带着那条路径。⇒ **路径混进了断言**，

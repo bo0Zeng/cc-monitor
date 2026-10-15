@@ -66,7 +66,7 @@ describe("那台的上下文上限表", () => {
     expect(s.element.textContent).toContain(copyText("contextLimits.editor.badLine", { n: 1 }));
   });
 
-  it("照稿 35 折着：标题「高级：上下文上限」、右侧「已改 N」（N ＝ 覆盖几条，0 不写）；展开才见文本框；存了数跟着变；reveal() 展开", async () => {
+  it("折着：标题「高级：上下文上限」、右侧「已改 N」（N ＝ 覆盖几条，0 不写）；展开才见文本框；存了数跟着变；reveal() 展开", async () => {
     const s = new ContextLimitsSection("devbox");
     void s.load();
     await flush();

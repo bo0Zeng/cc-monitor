@@ -48,7 +48,7 @@ describe("estimateFromFacts / skeletonKind", () => {
 
   it("后端判为建卡的来源照常出高（斜杠命令 · 压缩摘要 · 派给子 agent 的活）", () => {
     for (const sp of ["slashCommand", "compactSummary", "agentTask"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
-    // 「谁说的」稿 A：agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条，照常出高。
+    // agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条，照常出高。
     for (const sp of ["agentMessage", "peerSession", "coordinator", "taskNotification", "interrupt"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
   });
 

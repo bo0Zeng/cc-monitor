@@ -3,7 +3,7 @@
  * 设置 → 机器 → 轮换。
  *
  * 账号库 · 额度账 · 轮换账本（第三版）· 策略文件落成本机家目录里的原始文件，`rotation-strategies` · `rotation-view` 全由真后端答
- * （真跑那份策略、真推演）。策略取 `rotation-weight.rhai`（照设计稿「我们的轮换」那份的写法，号名换成合成的）。
+ * （真跑那份策略、真推演）。策略取 `rotation-weight.rhai`（号名换成合成的）。
  * 号名 work · team · lab · personal · api 与会话都是合成的；时刻按此刻的钟现算。
  */
 import type { Scene } from "./index";
@@ -106,7 +106,7 @@ const order = (): string[] => [...document.querySelectorAll<HTMLElement>(`${PANE
 let dragFrom: string[] = [];
 
 
-/** 出错那份策略的代码：头之后第 7 行起，第 12 行除以 0（照稿上那一句的行号）。 */
+/** 出错那份策略的代码：头之后第 7 行起，第 12 行除以 0。 */
 const NIGHT_BROKEN = `fn decide(ctx) {
   let night = ctx.clock >= 22 * 60 || ctx.clock < 7 * 60;
   let order = if night { ["lab", "team"] } else { ["team", "lab"] };

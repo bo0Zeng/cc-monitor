@@ -6,7 +6,7 @@ import type { Speaker } from "./generated/Speaker";
 
 export type SpeakerKind = Speaker["kind"];
 
-/** 建卡的那几种来源（agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条，「谁说的」稿 A）；
+/** 建卡的那几种来源（agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条）；
  *  其余（系统注入 · 本地命令的输出回显）不建卡。 */
 const DRAWN: ReadonlySet<string> = new Set<SpeakerKind>([
   "human",

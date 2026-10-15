@@ -1,5 +1,5 @@
 /**
- * 历史页（`src/frontend/ui/views/history.ts`）的判据 —— 设计稿「文件与历史」乙4 ②③ · 乙5 · 乙2 那几条。
+ * 历史页（`src/frontend/ui/views/history.ts`）的判据。
  *
  * 1. 开页即给焦点（R5W-H08）；每台问一次 `history-list`（远端带 `origin`），哪台先答先画；行按 `at` 并成一列、按今天 / 昨天 … 分段。
  * 2. 敲字 ⇒ 停 150 ms 带 `query` 再问各台（后端搜全部会话，R2-2-5）；不在界面里过滤。

@@ -54,7 +54,7 @@ export const PROC_REVEAL_EVENT = "proc-reveal";
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 /** 过程里出了错的那一处（点「失败 ×N」滚到第一处）。 */
 const FAILED_SELECTOR = '.step-line[data-state="failed"], .card-api-error, [data-failed="1"]';
-/** 过程行占的高（还没建出一条可量时用）：稿上的 28 高 ＋ 12 下边距。 */
+/** 过程行占的高（还没建出一条可量时用）：28 高 ＋ 12 下边距。 */
 const LINE_PX_FALLBACK = 40;
 /** 连续要不到几次就不再要（同大纲 / 事实的口径）。 */
 const MAX_FAILURES = 3;
@@ -136,7 +136,7 @@ export class TurnFold {
   private expandedDefault: boolean;
   /**
    * 量过的过程行高（`linePx`）。每趟排版都会改过程行上的字（DOM 刚动过），这时再量就是一次强制排版 ⇒ 量出来就记着，
-   * 流尺寸变了（字号 / 缩放 / 列宽 —— `ro`）才作废重量。还没量到（一条都没建出来）⇒ `null`，用稿上的值、不记。
+   * 流尺寸变了（字号 / 缩放 / 列宽 —— `ro`）才作废重量。还没量到（一条都没建出来）⇒ `null`，用 28 ＋ 12、不记。
    */
   private linePxSeen: number | null = null;
   /** 默认开关换了、还没按新的排（`isStale`）。 */
@@ -397,7 +397,7 @@ export class TurnFold {
     }
     return { folded, lines: lines.sort((a, b) => a - b), linePx: this.linePx() };
   }
-  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 稿上的 28 ＋ 12）。量过就记着（`linePxSeen`）。 */
+  /** 一条过程行在流里占多高（量第一条建出来的：盒高 ＋ 下边距；还没有 ⇒ 28 ＋ 12）。量过就记着（`linePxSeen`）。 */
   private linePx(): number {
     if (this.linePxSeen !== null) return this.linePxSeen;
     const line = this.lines.values().next().value;
@@ -605,7 +605,7 @@ export function paintLine(line: HTMLElement, fold: FoldSegment, open: boolean, n
   line.dataset.phase = fold.phase;
   line.replaceChildren();
   line.appendChild(foldCaret());
-  // 在跑：转圈取「运行中」那一色（规范 V10 · --success），用 currentColor 跟着 .proc-run。
+  // 在跑：转圈取「运行中」那一色（--success），用 currentColor 跟着 .proc-run。
   if (fold.phase === "running") {
     const run = document.createElement("span");
     run.className = "proc-run";

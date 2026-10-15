@@ -1678,7 +1678,7 @@ fn loc1b_session_added_carries_the_pid() {
 // ═══ hello 回显宿主交来的那几格（`host_env`）═══════════════════════════════
 //
 // 要求：「常驻后端身份带数据目录（接错了拒并出声）」；`INVARIANTS §42` → `IPC-PROTOCOL.md §10` hello 那一行
-// （additive：空表省略、线上字节不变）。审计 `E-compat.md` §E10 · `GP1.md §7.6` 第 4 条。
+// （additive：空表省略、线上字节不变）。
 
 /// 🔴 I1a：回显恰是名单内被交了的那几格、原样（手写期望）；没交 / 空串的那一格不回显；常驻开关与无关变量即使在环境里也不回显。
 #[test]

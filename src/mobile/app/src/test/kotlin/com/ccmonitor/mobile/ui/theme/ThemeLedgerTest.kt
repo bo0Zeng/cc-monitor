@@ -20,7 +20,7 @@ import java.io.File
  * - ② 手机全部生产源码不写色值字面量：`Color(0x…)` · `Color(r, g, b)` · `Color.Red` 这类具名色（同网页「组件里不写色值」）。
  *   `Color.Transparent` / `Color.Unspecified` 不是色值，许用。
  *
- * 不防：映射到错的令牌（`primary` 映成 `--error`）—— 那是设计问题，截图对稿时看。
+ * 不防：映射到错的令牌（`primary` 映成 `--error`）—— 那是设计问题，看截图时查。
  */
 class ThemeLedgerTest {
     private val repo: File =

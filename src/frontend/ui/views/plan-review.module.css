@@ -1,4 +1,4 @@
-/* 计划「需手动」那一条 · 已退回 / 已落地 · 退回框（设计稿 planned-build 03）。 */
+/* 计划「需手动」那一条 · 已退回 / 已落地 · 退回框。 */
 @layer components {
   .rvBar {
     display: flex;

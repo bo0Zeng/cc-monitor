@@ -902,7 +902,7 @@ pub fn supervise_with_stdio(
 /// `launch_powershell_window`）⇒ **backend 直接把环境交给它开的窗口**，是这条原则最直接的形态。
 ///
 /// 另外三条候选都要**把一个后端事实塞进前端**（`payload.rs` 编译的 `EnvOp` 由 TS 经 wire 送来）
-/// —— 那正对着 **C2**（backend 是 monitor 自己的一半，不是外部依赖）。⇒ 裁 ⑤，理由进 `DECISIONS.md §2`。
+/// —— 那正对着 **C2**（backend 是 monitor 自己的一半，不是外部依赖）。⇒ 裁 ⑤。
 ///
 /// # 返回 `None` 的含义
 ///

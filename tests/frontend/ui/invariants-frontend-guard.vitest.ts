@@ -221,7 +221,7 @@ describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor
   const KEYS = storageKeys(SOURCES);
 
   it("分母：真的抽到了 key（09-22 实测 19 处）", () => {
-    // 地板 12 → 9：历史页照稿重做，旧历史页那三个 key（来源筛选 · 来源折叠 · 来源快照）删了、新加一个（历史页偏好）。
+    // 地板 12 → 9：历史页重做，旧历史页那三个 key（来源筛选 · 来源折叠 · 来源快照）删了、新加一个（历史页偏好）。
     expect(KEYS.length, `只抽到 ${KEYS.length} 个存储 key（10-06 实测 11）—— 抽取器坏了`).toBeGreaterThan(9);
     expect(KEYS.some((k) => k.registered), "`LS_KEYS` 那一族一个都没抽到 —— 接入层的块切错了").toBe(true);
   });

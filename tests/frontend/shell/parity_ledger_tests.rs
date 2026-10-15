@@ -39,7 +39,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // （远端用到才起那台的中转），判断只在 `payload::relay_endpoint_for` 一处 ⇒ `Both`。
     // 它接替了 RM1a 那条只对远端的 `relay_ensure`（零调用方；能力 `relay.machine` 随之退役）。
     // 别名只有一类（名字 ＋ 一组 ccm 参数），两跳 ＋ 读回口。
-    // `Local` → `Both`：六条都收 `origin`、事实经那台后端（`W5-ALIAS.md §2.2` 方案 ②）⇒ `alias.manage` 的欠账还掉。
+    // `Local` → `Both`：六条都收 `origin`、事实经那台后端 ⇒ `alias.manage` 的欠账还掉。
     ("open_settings_window", "app.window.settings", Side::Both),
     ("bring_monitor_to_front", "app.window.self", Side::Both),
     // devbench F03：skill 接入面（列出 skill / 读写那个「人手写的注入文件」）。

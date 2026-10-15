@@ -418,7 +418,7 @@ impl Provisioning {
     /// ⚠ **混合的那一形今天盘上不存在**（判据 `carriers_do_not_mix_ours_and_not_ours`
     /// 钉着，两向都判）。它**本来就该变的时候去哪儿重裁**：真出现一个「一半我们装、
     /// 一半别人的」的工具，那条判据会当场红并点名 —— 那时重裁的是这条聚合规则本身，
-    /// 不是把判据放宽（`references/testing.md` 硬规则 11 / 12）。
+    /// 不是把判据放宽。
     pub fn of_tool(t: &ToolSpec) -> Provisioning {
         let all_not_ours = t
             .carriers

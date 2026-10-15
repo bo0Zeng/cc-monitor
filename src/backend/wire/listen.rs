@@ -165,7 +165,7 @@ pub fn refusal_line(reason: &str) -> String {
 
 /// 这条连接给什么档。**把「谁占着流」这件事做成入参**，而不是去读一个全局 ——
 /// 入参才测得到「已经有人占着」那一支（否则那一支要真起两个客户端才走得到，
-/// 而那正是 `brief` 第 9 条说的**空真**）。
+/// 而那正是**空真**）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Admit {
     /// 交出流。

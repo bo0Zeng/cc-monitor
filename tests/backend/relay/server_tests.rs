@@ -157,7 +157,7 @@ fn two_accounts_no_key(base: &Base) -> RoutingTable {
 
 /// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
 /// 免得诊断把路径原样印进输出、让「输出里含某句话」靠路径恒真
-/// （`brief` 12 逐字点名的那一形；隔壁 `creds.rs` 的同名助手记着那次真事故）。
+/// （隔壁 `creds.rs` 的同名助手记着那次真事故）。
 fn tmpdir(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!(
         "ccm-rl-{}-{}-{tag}",
@@ -214,7 +214,7 @@ struct FakeUpstream {
     /// ⚠ 它是一个**读数，不是一处被吞掉的错**：判据读得到它，
     /// [`a_peer_that_left_costs_the_stub_one_connection_not_its_listener`]
     /// 就是拿它先证「这一趟真的走到了那一支」，再去证 `listener` 还活着 ——
-    /// 少了这个数，那一条判据的后半截是**空真**（`testing.md` 四⑷）。
+    /// 少了这个数，那一条判据的后半截是**空真**。
     aborted: Arc<AtomicU64>,
 }
 
@@ -245,7 +245,7 @@ impl FakeUpstream {
 /// 响度一个分贝都没降：降了就成了把量具关掉。
 ///
 /// ⚠ 成员表的**唯一住址**是 [`PEER_LEFT_KINDS`]，这里只读它，不再写第二遍
-/// （`brief` 13b：闭集只许有一个住址）。
+/// （闭集只许有一个住址）。
 fn peer_is_gone(e: &std::io::Error) -> bool {
     PEER_LEFT_KINDS.contains(&e.kind())
 }
@@ -521,8 +521,8 @@ fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
         std::io::ErrorKind::ConnectionReset,
         std::io::ErrorKind::ConnectionAborted,
     ];
-    // ★ 地板（`testing.md` 三⑺）：两边**一样多**。闭集加了第四种而这里没跟上 ⇒ 红；
-    //   闭集被摘掉一种 ⇒ 也红。**现算两边的 `len()`，不写死那个基数**（`brief` 13b）。
+    // ★ 地板：两边**一样多**。闭集加了第四种而这里没跟上 ⇒ 红；
+    //   闭集被摘掉一种 ⇒ 也红。**现算两边的 `len()`，不写死那个基数**。
     assert_eq!(
         cases.len(),
         PEER_LEFT_KINDS.len(),
@@ -539,7 +539,7 @@ fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
             "头一发没拿到响应（{kind:?}）：{first:?}"
         );
 
-        // 采集面自检（`testing.md` 四⑷）：桩**真的**走到了「对端走了」那一支。
+        // 采集面自检：桩**真的**走到了「对端走了」那一支。
         // 少了这一步，下面「listener 还活着」是空真 —— 它根本没撞上那一形。
         // ⚠ 这是一个**单向**条件（记上了就不会再变回去）⇒ 机器越慢它只是多等几轮，
         //   判不出两种结果。这里治的正是「靠来得及」的判据，别在这里把它请回来。
@@ -3225,7 +3225,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
     let creds = dir.join("apikey-credentials.json");
 
     // ★ 两条 —— 一条量不出「拿 A 的 key 发 B 的请求」，那是本族最坏的失效形态。
-    //   id 取中性名：断言里用的是 key 那个值，不是目录名（`brief` 12 那条）。
+    //   id 取中性名：断言里用的是 key 那个值，不是目录名。
     std::fs::write(
         &creds,
         creds_text_the_write_side_would_produce(&[("row-one", "KEY-ONE"), ("row-two", "KEY-TWO")]),
@@ -4028,7 +4028,7 @@ fn rk1_the_door_refuses_without_the_key_and_that_is_not_a_404() {
     );
 }
 
-/// ③ 带 `Origin` ⇒ 403（体里说 Origin）；`Host` 非回环 / 缺 ⇒ 421；claude CLI 现打的那一形头（`RK1.md §5.1`）⇒ 放行。
+/// ③ 带 `Origin` ⇒ 403（体里说 Origin）；`Host` 非回环 / 缺 ⇒ 421；claude CLI 现打的那一形头 ⇒ 放行。
 ///    拒掉的一发都不到上游。
 #[test]
 fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {

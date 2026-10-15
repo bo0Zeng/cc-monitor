@@ -402,7 +402,7 @@ let undoSeq = 0;
 let quiet: { undo: () => void; at: number; timer: ReturnType<typeof setTimeout> } | null = null;
 
 /**
- * 不值得出提示条的小动作（只排了顺序）：不出 toast，`Ctrl+Z` 在 8 秒内照样撤得回（规范 I11 · I14）。
+ * 不值得出提示条的小动作（只排了顺序）：不出 toast，`Ctrl+Z` 在 8 秒内照样撤得回。
  */
 export function silentUndo(undo: () => void): void {
   if (quiet) clearTimeout(quiet.timer);

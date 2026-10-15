@@ -324,7 +324,7 @@ fn a_busy_tab_refuses_to_close_and_says_why() {
     assert_eq!(ws.tabs_on(0), 1);
 }
 
-/// 稿：关一个还有传输在跑的目录标签页 ⇒ **直接关**，传输照跑（它是「进度」表里的一行，不挂在标签页上）；
+/// 关一个还有传输在跑的目录标签页 ⇒ **直接关**，传输照跑（它是「进度」表里的一行，不挂在标签页上）；
 /// 那一趟落地 ⇒ 正开在那个目录的标签页由窗口这一级重列（开它的那个标签页已经不在了）。
 #[test]
 fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going() {
@@ -381,7 +381,7 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
     assert_eq!(ws.progress.running(), 0);
 }
 
-/// 稿 18：和那台断了 ⇒ 工具条下一条警告条（重连中 ⇒「devbox 断开 · 重新连接中…」，没按钮；一轮没连上 ⇒
+/// 和那台断了 ⇒ 工具条下一条警告条（重连中 ⇒「devbox 断开 · 重新连接中…」，没按钮；一轮没连上 ⇒
 /// 「devbox 离线 · 采样 HH:MM」＋［重新连接］，时刻 ＝ 摆着那一屏列到的时刻）；列表照常摆着、F5 不把它换成一句「断开」；
 /// 写类那几件说「离线 · 只读」做不了；又连上 ⇒ 条没了、每个标签页重列一遍。
 #[test]
@@ -973,7 +973,7 @@ async fn screenshot_for_the_shots_tool() {
     let target = match scene.as_str() {
         "empty" => vdir.join("empty-dir").to_string_lossy().to_string(),
         "missing" => vdir.join("gone").to_string_lossy().to_string(),
-        // 查看页那两张（稿 ⑬）：docs 里有两张真解得开的图。
+        // 查看页那两张：docs 里有两张真解得开的图。
         "view" | "view-menu" => vdir.join("docs").to_string_lossy().to_string(),
         _ => d.clone(),
     };
@@ -1061,7 +1061,7 @@ async fn screenshot_for_the_shots_tool() {
         w.write_prompt_mut().unwrap().text.clear();
         w.confirm_write(None);
     }
-    // 「进度」表（稿 11）：两趟在跑（上传一摞 · 下载）· 删除一个文件夹（那台撤不动 ⇒「停」灰着）· 上传失败 · 复制到另一台完成。
+    // 「进度」表：两趟在跑（上传一摞 · 下载）· 删除一个文件夹（那台撤不动 ⇒「停」灰着）· 上传失败 · 复制到另一台完成。
     if scene == "progress" {
         use crate::progress::Trip;
         let items: Vec<crate::transfer::Pending> =
@@ -1316,7 +1316,7 @@ async fn screenshot_for_the_shots_tool() {
         }));
         w.batches.push(all);
     }
-    // 断线 · 过期（稿 18）：那条流说「离线」；摆着的那一屏是 13:40 列到的。
+    // 断线 · 过期：那条流说「离线」；摆着的那一屏是 13:40 列到的。
     if scene == "stale" {
         w.link.set(crate::source::LinkSeen::Down);
         let at = chrono_like_today_at(13, 40);
@@ -1333,7 +1333,7 @@ async fn screenshot_for_the_shots_tool() {
             .position(|r| r.name == name)
             .unwrap()
     };
-    // 就地改名填错（稿 07）：main.rs 改成 Cargo.toml、回车 ⇒ 后端回「已存在」（合成后端照盘上真文件判）。
+    // 就地改名填错：main.rs 改成 Cargo.toml、回车 ⇒ 后端回「已存在」（合成后端照盘上真文件判）。
     if scene == "rename-error" {
         let i = row_of(&w, "main.rs");
         w.begin_rename(i);
@@ -1364,7 +1364,7 @@ async fn screenshot_for_the_shots_tool() {
             detail,
         });
     }
-    // 就地新建文件夹 ＋ 上一次改名的回执（稿 08）。
+    // 就地新建文件夹 ＋ 上一次改名的回执。
     if scene == "new-folder" {
         w.begin_mkdir();
         w.receipt_undo = Some((
@@ -1376,12 +1376,12 @@ async fn screenshot_for_the_shots_tool() {
             }],
         ));
     }
-    // 改权限（稿 10）：main.rs 上「⋯ → 权限」；现值答回来之后（帧里）勾上三个执行位。
+    // 改权限：main.rs 上「⋯ → 权限」；现值答回来之后（帧里）勾上三个执行位。
     if scene == "chmod" {
         let i = row_of(&w, "main.rs");
         w.begin_chmod(i);
     }
-    // 上传遇到同名（稿 12）：本机三份、两份同名 ⇒ 那台后端探了回同名清单，冲突框照它画（时刻是后端写好的字）。
+    // 上传遇到同名：本机三份、两份同名 ⇒ 那台后端探了回同名清单，冲突框照它画（时刻是后端写好的字）。
     if scene == "upload-clash" {
         let local = base.join("..").join("..").join("local");
         let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md", "notes.txt"]
@@ -1413,7 +1413,7 @@ async fn screenshot_for_the_shots_tool() {
         ]));
         w.batches.push(b);
     }
-    // 复制到另一台（稿 13）：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
+    // 复制到另一台：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
     if scene == "cross-copy" {
         let i = row_of(&w, "report.pdf");
         w.begin_cross(i);
@@ -1467,7 +1467,7 @@ async fn screenshot_for_the_shots_tool() {
         }
         w.batches.push(b);
     }
-    // 删除那一问（稿 09：一个文件夹 ＋ 两个文件 ⇒ 「删除 3 项」）。
+    // 删除那一问。
     if scene == "delete-ask" {
         let i = w
             .listing
@@ -1499,7 +1499,7 @@ async fn screenshot_for_the_shots_tool() {
         w.pick_also(&["main.rs", "notes.txt"]);
         w.perform(crate::select::Action::Delete, None);
     }
-    // 计划反查那两张（稿 06 第 1 · 3 张）：目录落在一片的仓库里 ⇒ 「格」一列 ＋ 预览头「归属」；右键多「在计划里看」。
+    // 计划反查那两张：目录落在一片的仓库里 ⇒ 「格」一列 ＋ 预览头「归属」；右键多「在计划里看」。
     //   合成后端不答 `plan-files`（那一问回错 ⇒ 当不在片里）⇒ 等它落空之后照真后端的回包形状摆上一份（中性例子）。
     if scene.starts_with("plan") {
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -1567,7 +1567,7 @@ async fn screenshot_for_the_shots_tool() {
                 if self.n == 5 && self.preview {
                     self.ws.set_preview(true);
                 }
-                // 编辑页那几张（稿 03 · 05 · 06 · 17）：目录页上开 main.rs ⇒ 同一栏开出编辑页；之后改一行（未保存）。
+                // 编辑页那几张：目录页上开 main.rs ⇒ 同一栏开出编辑页；之后改一行（未保存）。
                 if self.n == 3 && self.scene.starts_with("edit")
                     || self.n == 3 && self.scene == "close-window"
                 {
@@ -1662,7 +1662,7 @@ async fn screenshot_for_the_shots_tool() {
                     pane.tally.menu_clicked = i;
                     pane.apply_menu_click(egui::pos2(380.0, 230.0));
                 }
-                // 稿 02：Ctrl 点选三项（目录 · 代码 · 压缩包）、在压缩包上右键 ⇒ 多选那一种的菜单；
+                // Ctrl 点选三项（目录 · 代码 · 压缩包）、在压缩包上右键 ⇒ 多选那一种的菜单；
                 // 空白处右键 ⇒ 对这个目录的菜单。
                 if self.n == 25 && (self.scene == "multi-menu" || self.scene == "blank-menu") {
                     let pane = self.ws.pane_on_mut(0);
@@ -1870,7 +1870,7 @@ fn open_text(p: &mut FileWindow, text: &str) {
     assert!(p.settle_opened_edits());
 }
 
-/// 🔴 稿 17：点 × 关窗 —— 什么都不会丢 ⇒ 直接关；开着一份没改过的文本照样直接关；
+/// 🔴 点 × 关窗 —— 什么都不会丢 ⇒ 直接关；开着一份没改过的文本照样直接关；
 /// 有没保存的编辑页 / 还在跑的那几趟 ⇒ 拦下、摆「关闭文件窗口 · devbox」按族列出（未保存 · 传输中），
 /// 按钮「取消」·「全部保存后关闭」（只在有没保存的时出现）·「仍然关闭」；「取消」⇒ 作罢；那一问摆着时再点一次 × ⇒ 照关；「仍然关闭」⇒ 关。
 #[test]
@@ -2071,7 +2071,7 @@ fn rect_shapes(out: &egui::FullOutput) -> Vec<egui::epaint::RectShape> {
     acc
 }
 
-/// 🔴 **窄档左栏抽屉照规范 `C11` 画**（720 宽开着抽屉）：浮层底（`--card`）· 外侧两角圆、贴边两角方 ·
+/// 🔴 **窄档左栏抽屉**（720 宽开着抽屉）：浮层底（`--card`）· 外侧两角圆、贴边两角方 ·
 /// 对话框那一档投影（`--shadow-modal`）· 底下的内容区盖一层 `--overlay-dim`，比抽屉宽（盖到抽屉以外），且先于抽屉画（压在下面）。
 #[test]
 fn the_narrow_drawer_floats_with_a_shadow_over_a_dimmed_list() {
@@ -2146,7 +2146,7 @@ fn a_new_tab_or_side_keeps_a_non_utf8_directory_by_its_bytes() {
     );
 }
 
-/// 稿 ⑤：目录页上打开一份文本 ⇒ **在同一栏开一个编辑页**（标签上是那个文件名，目录页还是目录页）；
+/// 目录页上打开一份文本 ⇒ **在同一栏开一个编辑页**（标签上是那个文件名，目录页还是目录页）；
 /// 同一份再开一次 ⇒ 切过去、不开第二份；另一份 ⇒ 另一页；另一栏照样能开自己的编辑页（左边改、右边翻目录）。
 #[test]
 fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it() {

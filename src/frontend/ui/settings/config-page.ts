@@ -1,5 +1,5 @@
 /**
- * 机器页「别名与配置文件」那一栏：一张清单，每项一行，点开就地做（`设计稿/机器配置-v2.md` §5 方案 A）。
+ * 机器页「别名与配置文件」那一栏：一张清单，每项一行，点开就地做。
  *
  * - 页首一句：这一页每一项都是你点了才改；要你自己动手的在「文件与数据 → 待办」。
  * - 「终端」组：别名（含接上 / 卸载 ccm；默认展开）· Windows 终端（只本机 Windows）—— 都由 `machine-aliases.ts` 建。
@@ -235,7 +235,7 @@ function buildDataPointers(spec: ConfigPageSpec, onSelfPaste: (c: { state: strin
           dot.className = "data-dot";
           dot.dataset.tone = r.chores > 0 ? "bad" : "muted";
           const text = r.chores > 0 ? copyText("cfgPage.pointer.chores", { machine, n: r.chores, m: optional }) : copyText("cfgPage.pointer.optional", { machine, m: optional });
-          // 稿 12：那几枚分类数小标签（要做 · 待定 · 要装 · 可选），与「文件与数据」同一套。
+          // 那几枚分类数小标签（要做 · 待定 · 要装 · 可选），与「文件与数据」同一套。
           const tags = document.createElement("span");
           tags.className = "data-summary cfg-pointer-tags";
           tags.append(...countTags(r.todo, ["must", "decide", "install", "optional"]));

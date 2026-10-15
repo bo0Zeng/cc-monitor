@@ -101,7 +101,7 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   // 下面五条是新补的两族里**今天还没有消费者**的部分。
   // 设计要的是「族补齐」（免得下一个人再去猜 `--input-bg` 这种名字），
   // 消费者要等到那些控件下一次被动到时才自然接上 ⇒ 预留是刻意的，不是腐。
-  // 规范 V1–V12 新立的令牌里，通用组件还没接上的（组件件落地一个摘一个）。
+  // 新立的那批令牌里，通用组件还没接上的（组件件落地一个摘一个）。
   "--dur-float-out": NEW_TOKEN,
 } as const;
 
@@ -470,7 +470,7 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
 // 以及同节「**没判的**：一般形式『同一个状态名不得同时出现在两种载体里』今天没有判据」—— 本格补的就是这一句。
 // 量具 `tests/evidence/S30-css-conventions.ts::stateCarriers`（两种形的定义与取法写在那边的头注）。
 //
-// 🔴 立格时现打逮到三处，**当拍改掉，没有登记**（外观不变：选择器特异度逐条同档或无竞争者，见 `W5-AUX.md §2`）：
+// 🔴 立格时现打逮到三处，**当拍改掉，没有登记**（外观不变：选择器特异度逐条同档或无竞争者）：
 //   · 名字形 `conf`：`views/panorama.ts` 把置信档拼成 `conf-<值>` 类名族，而全景图里同一个状态名走 `data-conf` ⇒ 改走 `data-conf`；
 //   · 名字形 `kind`：`views/history.ts` · `settings/data-section.ts` 拼 `kind-<值>` 类名族，而另三处走 `data-kind` ⇒ 改走 `data-kind`；
 //   · 同一处写两遍：`settings/remote-section.ts` 的缺口行把 `g.kind` 同时拼进类名 `remote-gap-<kind>` 又写进 `data-kind` ⇒ 类名那一份摘掉。

@@ -705,7 +705,7 @@ const BREAKING_MARK: &str = "会改变已有行为";
 /// # 为什么只跟**一处**比，而不是把七处都读一遍
 ///
 /// 「七处」今天已经各有各的家，本条只接最后那一段，**不再复述一份锚点表**
-/// （`brief` 13b：闭集只许有一个住址）：
+/// （闭集只许有一个住址）：
 ///
 /// | 谁 ↔ 谁 | 由谁守 |
 /// |---|---|
@@ -726,7 +726,7 @@ const BREAKING_MARK: &str = "会改变已有行为";
 ///
 /// 1. 🔴 **「该不该有 breaking 段」本条判不了，也不判** —— 机器分不出「这一版真的没有
 ///    破坏性变更」与「有而没写」。硬要求每一节都有，只会把它变成谁都会写的一句空话，
-///    而 `references/writing.md` 第三节逐字反对这一形（那种闸的真阳率压不住噪声）。
+///    而这一形不该做（那种闸的真阳率压不住噪声）。
 ///    ⇒ **这一档登记为「不在射程」，不是「做到了」。**
 /// 2. breaking 段靠 [`BREAKING_MARK`] 这个**约定词**认。换一种说法另起一节 ⇒ 本条静默。
 ///    挡这一形的是下面那条**地板**（全文至少一处），它只保证「这个约定没被整份抹掉」，
@@ -745,7 +745,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
     const SUB_MARK: &str = "### ";
 
     // 🔴 **要发的那个版本号从 `src/frontend/shell/Cargo.toml` 编译期注入**，本条不自己再抠一遍锚点
-    //    —— 同一个值不许长出第二个住址（`brief` 13b）。
+    //    —— 同一个值不许长出第二个住址。
     let shipping = env!("CARGO_PKG_VERSION");
     let changelog = read_repo_file("CHANGELOG.md");
 
@@ -854,7 +854,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
 /// （`v2.19.0` `v2.19.1` `v2.20.0` `v2.21.0` `v2.22.0` `v2.22.2` `v3.3.0` `v3.4.0`
 /// `v3.5.0` `v3.6.0` ＋ 自称的那一个），其中 **10 个是历史沿革，本来就该停在旧号上**。
 /// ⇒ 本条只钉**紧跟在那两个锚点之后**的那一个。
-/// **把整段收进人群 = 下次发版红一片**，那不是守，是拆（`testing.md` 判据硬规则 4：
+/// **把整段收进人群 = 下次发版红一片**，那不是守，是拆（
 /// 扫描面按**语义**划，不按「碰巧只有它长这样」划）。
 /// 同理，`README.md` 与 `README.en.md` 里那两句「v3.6.0 与 v3.7.0 的实际产物是 `en-US`」
 /// 是 09-10 落的**历史订正**，**刻意不在射程里**。
@@ -863,7 +863,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
 ///
 /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 同一条路：
 /// `env!("CARGO_PKG_VERSION")`（＝ `src/frontend/shell/Cargo.toml` 的 `version`，编译期注入）——
-/// **不抠第二份权威源锚点**（`brief` 13b）。它与另外五处的一致由
+/// **不抠第二份权威源锚点**。它与另外五处的一致由
 /// [`the_release_version_is_the_same_in_all_six_places`] 守，与 `Cargo.lock` 的一致由
 /// 门禁 `winchk` 那一格的 `cargo check --locked` 守。
 ///
@@ -954,14 +954,14 @@ fn the_docs_self_reported_release_is_the_version_we_ship() {
 /// 本条只钉 npm 自己写的那两处「**这个包是谁、什么版本**」：
 ///   ① 文件顶层的 `version`（紧跟顶层 `name` 那一个）；
 ///   ② `packages` 里 `""` 这个键（npm 用它表示**根包自己**）底下的 `version`。
-/// ⇒ 锚点按**语义**划，不按「碰巧只有它长这样」划（`references/testing.md` 判据硬规则 4）。
+/// ⇒ 锚点按**语义**划，不按「碰巧只有它长这样」划。
 ///
 /// # 跟谁比
 ///
 /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 和
 /// [`the_docs_self_reported_release_is_the_version_we_ship`] 同一条路：
 /// `env!("CARGO_PKG_VERSION")`（＝ `src/frontend/shell/Cargo.toml` 的 `version`，编译期注入），
-/// **不抠第二份权威源锚点**（`brief` 13b）。它与 `package.json` 那个权威源的一致由
+/// **不抠第二份权威源锚点**。它与 `package.json` 那个权威源的一致由
 /// [`the_release_version_is_the_same_in_all_six_places`] 守。
 /// ⇒ **三段接起来**才等于「lockfile == `package.json`」；少任何一段都不等于。
 ///

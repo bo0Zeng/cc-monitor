@@ -320,7 +320,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
             // 🔴 这里原来还有第三条：`staged/cc-monitor-backend-<arch>.build_id`，
             //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
             //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
-            //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
+            //    `K-R68`），身份改从字节里扫。
             //    ⇒ 接替它的不是一条**按 arch** 的判据（校验那一步是 `foreach ($a in …)`，
             //      路径里带的是变量不是字面 arch，按 arch 去 grep 只会零命中地红），
             //      而是这个 arch 出现在那个 `foreach` 的清单里 ＋ 循环外那两条（见下）。
@@ -982,7 +982,7 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
     assert!(put < bad && bad < rm, "次序不是「传 → 判 → 删」：\n{body}");
 }
 
-/// 🔴 **A1：别名块的真相不住 `sftp.rs`**（`audit/B-decouple.md` §2 第 12 条：
+/// 🔴 **A1：别名块的真相不住 `sftp.rs`**（
 /// 「别名块真相从 `sftp.rs` 搬到别名域；`sftp.rs` 已不做 SFTP」；「渲染 · 读回 · 启动文件归方言，
 /// 写入 … 那台机器后端的文件管理那一面」—— 部署那一族管不着别名块）。
 ///
@@ -1021,7 +1021,7 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
 //
 // 要求：「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」；
 // 它改写规矩 2「对就复用，不对就换」与「恰一个戳 ≠ ⇒ 换」那一格。
-// 审计 `E-compat.md` §E3（两个不同版本的 monitor 连同一台远端，互相重部署）。
+// 守的：两个不同版本的 monitor 连同一台远端，不许互相重部署。
 
 /// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
 #[test]

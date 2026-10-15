@@ -48,7 +48,7 @@ scrub=()
 while IFS='=' read -r k _; do
   case "$k" in CCM_*|CLAUDE_CONFIG_DIR|CLAUDE_CODE_*|ANTHROPIC_*|TMUX|TMUX_PANE|TMUX_TMPDIR) scrub+=(-u "$k") ;; esac
 done < <(env)
-# 每路 cargo 并行数：几十棵树同时编时，一路多给 job 只是多占内存、抢别人的时间片（量法与读数见 流程-10-09.md §4）。
+# 每路 cargo 并行数：几十棵树同时编时，一路多给 job 只是多占内存、抢别人的时间片。
 jobs=${CARGO_BUILD_JOBS:-4}
 fails=()
 

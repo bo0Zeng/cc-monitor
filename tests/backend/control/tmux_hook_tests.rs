@@ -167,7 +167,7 @@ fn notify_rejects_bad_args() {
 // ═══ hook 槽位按实例一格、起时清死槽 ═══════════════════════════════════
 //
 // 要求：「tmux hook 槽位按实例区分、起时清死 pid 的槽」；`INVARIANTS §41.1`（hook → `--tmux-notify` → SIGUSR1）
-// 与 `§41.2`（starttime 不符即静默 no-op —— 本族「死槽」的判准是同一条身份校验）。审计 `E-compat.md` §E5。
+// 与 `§41.2`（starttime 不符即静默 no-op —— 本族「死槽」的判准是同一条身份校验）。
 // 不碰真 tmux server（`C7i`）：执行器是一张内存 hook 表（逐条解释 `set-hook -g` / `-gu` / `show-hooks -g`）。
 
 /// 内存里的 tmux：`(事件, 槽) → 命令`。`hijack` 在第 N 次「装」的调用之后把那一格整格改成别人（撞格那一形：

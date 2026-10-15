@@ -8,7 +8,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::quota_probe_face::QuotaProbe>(
         "用某个号查一次额度",
     ),
-    // 轮换第五版：每个号此刻的事实（typed，`轮换-v5-分层.md` §1.1）。只读。
+    // 轮换第五版：每个号此刻的事实（typed）。只读。
     crate::wire::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
         "每个号此刻的事实",
     ),
@@ -16,7 +16,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::rotation_try_face::RotationTry>(
         "试跑一份策略",
     ),
-    // 轮换第五版（`轮换-v5-分层.md` §6.6 第 10 条）：读 —— 策略目录 · 界面四块要的全部。
+    // 轮换第五版：读 —— 策略目录 · 界面四块要的全部。
     crate::wire::typed::blocking::<crate::faces::rotation_view_face::RotationStrategies>(
         "策略目录",
     ),

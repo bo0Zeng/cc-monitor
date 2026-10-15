@@ -786,7 +786,7 @@ fn picked(ctx: &egui::Context) -> Option<(usize, usize)> {
 
 /// 窗口那条路：下一个 ⇒ 选中第一处、再下一个 ⇒ 第二处、上一个 ⇒ 回第一处；没有 ⇒ 查找栏上说「没找到」、选区不动；
 /// 替换 ⇒ 换掉选中那一处并选中下一处；全部替换 ⇒ 说换了几处、编辑框的字逐字等于手写期望。
-/// 查找条平时收着（编辑页稿 ⑤），Ctrl+F 才浮出来、真画在编辑面上。
+/// 查找条平时收着，Ctrl+F 才浮出来、真画在编辑面上。
 #[test]
 fn find_and_replace_walk_the_editor_text_through_the_window() {
     let (mut w, ctx) = window_editing("x=1\nx=2\ny=3\n");

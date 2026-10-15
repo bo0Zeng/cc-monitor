@@ -34,7 +34,7 @@ object SizeFormat {
 }
 
 /**
- * 短时长（文案规范 N5）· 距今 · 会走的钟：与核心 `copy_core::short_duration` / `rel_duration` · 桌面 `duration-format.ts`
+ * 短时长 · 距今 · 会走的钟：与核心 `copy_core::short_duration` / `rel_duration` · 桌面 `duration-format.ts`
  * 同一个写法，三侧对 `tests/__fixtures__/short-duration.golden.json`。核心写好的 `{text, from, to?}` 钟只在这里按此刻填 `{dur}`。
  */
 object DurationFormat {

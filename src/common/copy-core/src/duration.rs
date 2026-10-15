@@ -47,7 +47,7 @@ pub fn format_elapsed(d: std::time::Duration) -> String {
     format_duration(u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// 短时长（文案规范 N5 那一种写法）：`<1s` · `45s` · `6m` · `1h50m` · `2h` · `3d`（不满 1 秒写 `<1s`，满 24 小时只写天）；秒以下舍去、分钟以下舍去。单位格住表里 `durationFormat.short.*`。
+/// 短时长的写法：`<1s` · `45s` · `6m` · `1h50m` · `2h` · `3d`（不满 1 秒写 `<1s`，满 24 小时只写天）；秒以下舍去、分钟以下舍去。单位格住表里 `durationFormat.short.*`。
 /// **会走的钟与距今都只经它写**：会话状态一句里那一截（「后台任务运行中 · make test-all · 12m」）· 已等多久 `waitedText` · 距今 `…RelText`（[`rel_duration`]）；
 /// 出口那一侧的读口（桌面 `duration-format.ts::fmtDur` · 手机端 `DurationFormat.short`）与它各对金样 `tests/__fixtures__/short-duration.golden.json`。
 pub fn short_duration(ms: u64) -> String {

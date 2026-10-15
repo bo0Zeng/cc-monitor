@@ -196,7 +196,7 @@ export function renderContentRecord(
 
   switch (result.kind) {
     case "skip": {
-      // 系统注入（「谁说的」稿 A）：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
+      // 系统注入：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
       // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
       const injected = message.t === "said" && message.who.speaker.kind === "system" ? message.who.speaker.body : undefined;
       if (typeof injected === "string" && injected !== "") {
@@ -221,7 +221,7 @@ export function renderContentRecord(
     }
 
     case "card": {
-      // 后台任务通知（「谁说的」稿 A）：左邻居也是通知 ⇒ 并进它（时段取两头、逐条留在展开里）。
+      // 后台任务通知：左邻居也是通知 ⇒ 并进它（时段取两头、逐条留在展开里）。
       if (isNoticeLine(result.element)) {
         const prev = sink.timeline.peekPrev(payload.seq);
         if (prev && isNoticeLine(prev.element)) {

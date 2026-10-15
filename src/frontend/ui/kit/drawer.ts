@@ -17,7 +17,7 @@ export interface DrawerSpec {
   /** 标题右边一段灰字（对象 · 机器：`orders · 本机`）。 */
   sub?: string;
   body: HTMLElement;
-  /** 宽：360–480（默认 440，额度稿的账号面板）。 */
+  /** 宽：360–480（默认 440，账号面板那一宽）。 */
   width?: number;
   /** 离窗口底边留多少 px 不盖（主窗口的状态栏：再点状态栏那颗按钮就能关）。 */
   bottom?: number;

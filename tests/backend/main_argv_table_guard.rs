@@ -240,7 +240,7 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
 
     // ★ 表侧也要有反空真地板：`SUBCOMMANDS` 被掏瘪 ⇒ 下面那个循环跑零圈、
-    //   主断言**零命中地绿**（`testing.md` 硬规则 7：先证够得到，再问有没有违例）。
+    //   主断言**零命中地绿**（先证够得到，再问有没有违例）。
     //   地板取 **10**，与 `build_id_guard::subcommand_fingerprint` 那条**同一个数**
     //   （不另发明一个），而今天实测 26 —— 压得低是刻意的：删掉一两条子命令时
     //   要让上面/下面那几条真判据先说话，别先撞上这道自检。

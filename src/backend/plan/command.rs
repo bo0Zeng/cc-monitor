@@ -15,7 +15,7 @@ pub(crate) const VERBS: [&str; 3] = ["continue", "pause", "view"];
 /// 一条最多等多久（`view` 要把整张图画成一页，量过与 `dump` 同量级）。
 pub(crate) const DEADLINE_SECS: u64 = 20;
 
-/// pb 的退出码（TOOLS.md「退出码」那一节）：拒 · 读不成 · 用法错。
+/// pb 的退出码：拒 · 读不成 · 用法错。
 const RC_REFUSED: i32 = 2;
 const RC_UNREADABLE: i32 = 3;
 const RC_USAGE: i32 = 4;

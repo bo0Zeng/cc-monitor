@@ -1,5 +1,5 @@
 //! 帧面 `rotation-facts`（typed）：这台这一家每个号此刻的事实（用量 · 重置 · 用速 · 被拒 · 超额 · 登录 · 用不了的那一句）。
-//! 只读；拼装只在 [`crate::accounts::upstream_select::rotate::Hop::facts`] 一处。`轮换-v5-分层.md` §1.1 · §1.9。
+//! 只读；拼装只在 [`crate::accounts::upstream_select::rotate::Hop::facts`] 一处。
 
 use crate::accounts::quota::facts::Fact;
 use crate::wire::typed::Command;

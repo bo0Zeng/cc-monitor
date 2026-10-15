@@ -205,7 +205,7 @@ fn transcalled_today() -> Vec<String> {
 ///
 /// # ⚠ 它买不到什么
 ///
-/// **不判那条理由说得对不对**（`writing.md`：住址级判得了，语义判不了）。
+/// **不判那条理由说得对不对**（住址级判得了，语义判不了）。
 /// 它买到的是「这一族里没有一条是**没人裁过**就躺在那儿的」。
 #[test]
 fn every_shelled_out_command_carries_a_written_ruling() {

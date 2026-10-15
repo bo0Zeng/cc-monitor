@@ -282,8 +282,7 @@ fn tmux_server_query_yields_nothing_without_a_server() {
 
 // ---------- P1（zero-poll-liveness）：tmux 观测四态 ----------
 
-/// 纯分类：四态各自的判据。**P0 实测的状态空间**（见
-/// `.claude/planned-build/zero-poll-liveness/features/P0-machine-facts.md` §3 ④）。
+/// 纯分类：四态各自的判据。**P0 实测的状态空间**。
 #[test]
 fn tmux_probe_classifies_four_states() {
     // rc=0 + 非空 → 有会话

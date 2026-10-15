@@ -78,7 +78,7 @@ export function width(line: string): number {
 }
 const widest = (zh: string): number => Math.max(...zh.split("\n").map(width));
 
-/** 命令行（ccm 的帮助与 stderr）豁免长度、时长写法与句号（规范 §2.14）。 */
+/** 命令行（ccm 的帮助与 stderr）豁免长度、时长写法与句号。 */
 const isCli = (e: Entry): boolean => e.role === "命令行";
 
 const HAN = /[㐀-䶿一-鿿]/;

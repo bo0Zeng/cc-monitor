@@ -90,7 +90,7 @@ fn search_end_to_end_and_rejects_traversal() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// 设计稿「文件与历史」乙6（PARSE 10-02 定）：agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）搜得到，
+/// agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）搜得到，
 /// 命中种类单列 `report`；`scope` 认 `report`（只要它）、`user` 不含它（只要人说的）。正控：人说的那一条照旧是 `user`。
 #[test]
 fn agent_reports_are_searchable_as_their_own_kind() {

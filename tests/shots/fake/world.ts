@@ -268,7 +268,7 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
     machines.map((m) => {
       const d = blankDisk();
       putAccounts(d, ACCOUNTS.map((a) => ({ name: a.name, kind: a.authKind === "api-key" ? "api" : "sub", email: a.email || undefined, isDefault: a.isDefault, baseUrl: a.baseUrl })));
-      // 设置窗「别名与配置文件」那一页（devbox）：照设计稿那台的配置文件。
+      // 设置窗「别名与配置文件」那一页（devbox）：一台典型机器的配置文件。
       if (m === "devbox") putProfiles(d, "normal");
       return [m, d];
     }),

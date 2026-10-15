@@ -8,7 +8,7 @@ use copy_core::copy_text;
 
 use super::theme::{metrics, palette};
 
-/// 条的语气（规范 `C15`）：出错 · 警告 · 说明。
+/// 条的语气：出错 · 警告 · 说明。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Error,
@@ -36,7 +36,7 @@ impl Tone {
     }
 }
 
-/// 一条横贯的条（规范 `C15`）：左 3px 语气色 ＋ 图标 ＋ 一句话 ＋ 右端几个动作。回这一帧点了第几个动作。
+/// 一条横贯的条：左 3px 语气色 ＋ 图标 ＋ 一句话 ＋ 右端几个动作。回这一帧点了第几个动作。
 pub fn banner(ui: &mut Ui, tone: Tone, text: &str, actions: &[String]) -> Option<usize> {
     banner_with_detail(ui, tone, text, actions, None)
 }
@@ -197,7 +197,7 @@ pub fn marked(ui: &Ui, text: &str, marks: &[(usize, usize)], color: Color32) -> 
     job
 }
 
-/// 开关按钮（规范 `C21`）：开着 ＝ `--state-active` 底 ＋ 图标强调色 ＋ 字主色；关着 ＝ 幽灵按钮。`label` 空 ⇒ 只画图标。
+/// 开关按钮：开着 ＝ `--state-active` 底 ＋ 图标强调色 ＋ 字主色；关着 ＝ 幽灵按钮。`label` 空 ⇒ 只画图标。
 pub fn toggle(ui: &mut Ui, icon: &str, label: &str, on: bool) -> egui::Response {
     let p = palette(ui.ctx());
     let icon_c = if on { p.accent } else { p.text2 };
@@ -233,10 +233,10 @@ pub fn ghost(ui: &mut Ui, icon: &str, label: &str, enabled: bool, why: &str) -> 
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 菜单（规范 `C12`）：窗口里每一个弹出的菜单都只经这一处画项
+// 菜单：窗口里每一个弹出的菜单都只经这一处画项
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 菜单上的一行（稿 `.mi`）：图标 ＋ 字 ＋ 右端淡色快捷键；悬停一层淡底，不画框。
+/// 菜单上的一行：图标 ＋ 字 ＋ 右端淡色快捷键；悬停一层淡底，不画框。
 ///
 /// 🔴 窗口里**菜单项只许这样写**（判据 `kit_tests::menu_items_are_only_drawn_by_the_kit` 扫整个包）：
 /// 菜单的内容是一串 [`Entry`]（数据），不是一个往里塞按钮的闭包 —— 塞不进按钮，也就画不成「一项一颗带框的按钮」。
@@ -310,7 +310,7 @@ pub fn grouped(groups: Vec<Vec<MenuRow>>) -> (Vec<Entry>, Vec<(usize, usize)>) {
     (out, at)
 }
 
-/// 菜单一行的高 · 左右内边距 · 图标格宽 · 图标与字的间距 · 字与快捷键至少隔多宽 · 菜单最窄（稿 `.menu` `.mi`）。
+/// 菜单一行的高 · 左右内边距 · 图标格宽 · 图标与字的间距 · 字与快捷键至少隔多宽 · 菜单最窄。
 pub const MENU_ROW_H: f32 = 28.0;
 const MENU_PAD: f32 = 10.0;
 const MENU_ICON_W: f32 = 16.0;
@@ -492,7 +492,7 @@ pub fn select_field(
     hit
 }
 
-/// 标签页（规范 `C5` 下划线式 ＋ 图标 ＋ ×（悬停与当前才显）＋ 6px 忙点）。回 `(点了, 点了 ×)`。
+/// 标签页（下划线式 ＋ 图标 ＋ ×（悬停与当前才显）＋ 6px 忙点）。回 `(点了, 点了 ×)`。
 pub fn tab(
     ui: &mut Ui,
     icon: &str,
@@ -674,7 +674,7 @@ pub enum SideMark {
     Warn,
 }
 
-/// 一条回执（规范 `C13`：右下角、8 秒、悬停停表；可带一个动作）。
+/// 一条回执（右下角、8 秒、悬停停表；可带一个动作）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toast {
     pub text: String,
@@ -785,7 +785,7 @@ impl Toasts {
     }
 }
 
-/// 列表加载那几行骨架（规范 `C19`）。
+/// 列表加载那几行骨架。
 pub fn skeleton_rows(ui: &mut Ui, n: usize) {
     let p = palette(ui.ctx());
     let m = metrics(ui.ctx());
@@ -829,7 +829,7 @@ pub fn empty_state(ui: &mut Ui, icon: &str, text: &str, actions: &[String]) -> O
     hit
 }
 
-/// 进度条（规范 `C14`）：底 `--border-soft`、填 `--accent`；`None` ⇒ 不确定进度（来回走的一小段）。
+/// 进度条：底 `--border-soft`、填 `--accent`；`None` ⇒ 不确定进度（来回走的一小段）。
 pub fn progress(ui: &mut Ui, width: f32, frac: Option<f32>) {
     let p = palette(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 4.0), egui::Sense::hover());
@@ -894,7 +894,7 @@ pub fn table_head(ui: &mut Ui, title: &str, action: &str, acted: &mut bool, coll
     );
 }
 
-/// 「进度」表一行底下那几行小字：失败的那一行摊开（每个没成的一行，稿 11「每个一句」）；别的态一行。
+/// 「进度」表一行底下那几行小字：失败的那一行摊开（每个没成的一行、每个一句）；别的态一行。
 pub fn task_lines(v: &super::progress::View) -> Vec<String> {
     if v.detail.is_empty() {
         return Vec::new();
@@ -911,7 +911,7 @@ pub fn task_row_height(v: &super::progress::View) -> f32 {
     36.0 + 16.0 * (task_lines(v).len().max(1) - 1) as f32
 }
 
-/// 「进度」表的一行（稿 11：图标 22 ｜ 标题 ＋ 一行小字 ｜ 进度条 240 ｜ 读数 150 右对齐等宽 ｜ 按钮）。回这一帧按下的动作。
+/// 「进度」表的一行（图标 22 ｜ 标题 ＋ 一行小字 ｜ 进度条 240 ｜ 读数 150 右对齐等宽 ｜ 按钮）。回这一帧按下的动作。
 pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super::progress::Act> {
     use super::progress::State;
     let p = palette(ui.ctx());
@@ -1139,7 +1139,7 @@ pub fn path_list(
     hit
 }
 
-/// 对话框一颗按钮的样子（规范 `C10`）：普通 · 主按钮（强调色底）· 危险（错误色底）。
+/// 对话框一颗按钮的样子：普通 · 主按钮（强调色底）· 危险（错误色底）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Btn {
     Plain,
@@ -1147,7 +1147,7 @@ pub enum Btn {
     Danger,
 }
 
-/// 对话框（规范 `C10`）：压暗的底 ＋ 居中一块（浮层底、圆角、最宽 480 且不超过窗宽 − 48）：
+/// 对话框：压暗的底 ＋ 居中一块（浮层底、圆角、最宽 480 且不超过窗宽 − 48）：
 /// 标题（16 / 600）＋ 正文（调用方画）＋ 右下一排按钮。`focus` ＝ 打开时焦点在第几颗；Esc / 点压暗的底 ⇒ 当作点了第 `cancel` 颗。
 /// 回这一帧点了第几颗。
 pub fn dialog(
@@ -1174,7 +1174,7 @@ pub fn dialog(
             ui.scope(body);
             ui.add_space(14.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // 按钮之间的间距是对话框自己的（规范 `C10` 一处）：正文改过 `item_spacing` 也漏不到这一排。
+                // 按钮之间的间距是对话框自己的（一处）：正文改过 `item_spacing` 也漏不到这一排。
                 ui.spacing_mut().item_spacing.x = metrics(ui.ctx()).space[2];
                 let mut first_frame_focus = None;
                 for (i, (label, look)) in buttons.iter().enumerate().rev() {
@@ -1209,7 +1209,7 @@ pub fn dialog(
     hit
 }
 
-/// 对话框里那一块清单的一行（稿 09：图标 ＋ 名字 ｜ 右端一格次级字）。
+/// 对话框里那一块清单的一行（图标 ＋ 名字 ｜ 右端一格次级字）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListRow {
     pub icon: &'static str,
@@ -1264,7 +1264,7 @@ pub fn list_box(ui: &mut Ui, rows: &[ListRow], more: Option<&str>) {
         });
 }
 
-/// 从桌面拖进来时列表区那一层（稿 20）：淡强调色底 ＋ 一圈强调色虚线 ＋ 正中一句「松开上传 → 目录（n 个文件）」。画在最上层，不挤动列表。
+/// 从桌面拖进来时列表区那一层：淡强调色底 ＋ 一圈强调色虚线 ＋ 正中一句「松开上传 → 目录（n 个文件）」。画在最上层，不挤动列表。
 pub fn drop_zone(ctx: &egui::Context, rect: egui::Rect, text: &str) {
     let p = palette(ctx);
     let painter = ctx.layer_painter(egui::LayerId::new(
@@ -1293,7 +1293,7 @@ pub fn drop_zone(ctx: &egui::Context, rect: egui::Rect, text: &str) {
     );
 }
 
-/// 键盘走到的那个控件画 2px 强调色外环（规范 `I4`）；鼠标点出来的不画（`keyboard` 假）。
+/// 键盘走到的那个控件画 2px 强调色外环；鼠标点出来的不画（`keyboard` 假）。
 pub fn focus_ring(ctx: &egui::Context, keyboard: bool) {
     if !keyboard {
         return;
@@ -1317,7 +1317,7 @@ pub fn focus_ring(ctx: &egui::Context, keyboard: bool) {
     );
 }
 
-/// 就地输入那一格下面挂的出错句（稿 07：浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。
+/// 就地输入那一格下面挂的出错句（浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。
 /// 回值 ＝ 那块占的地方（就地那一格据它认「点在红字块里」⇒ 不算点别处）。
 pub fn inline_error(
     ctx: &egui::Context,

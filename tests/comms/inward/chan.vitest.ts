@@ -309,7 +309,7 @@ describe("〔CF2〕webview 通道客户端 · subscribe", () => {
   });
 
   it("★ S5 信用报不上去：`chan_want` 抛了 ⇒ 原位交一格 `closed{ours: Broken}`、撤单、之后的格不再交", async () => {
-    // 〔`audit/E-compat.md §3.3`「`chan_want` 失败被吞 ⇒ 订阅拿不到信用，静默停流」〕
+    // 〔`chan_want` 失败被吞 ⇒ 订阅拿不到信用，静默停流〕
     // 要求：「`subscribe` 不会失败」—— 说不了的在流里原位说。
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "chan_want") throw new Error("ipc down");

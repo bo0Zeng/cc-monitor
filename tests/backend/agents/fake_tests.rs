@@ -289,7 +289,7 @@ fn the_twelve_reverse_derived_capabilities_are_enough_to_finish_the_pipeline() {
 ///
 /// ⚠ 对照着看的是**通用层今天的反应**：同样是"这家的布局它不认识"，
 /// 用量聚合那条查询 / 全文搜索 / 会话归属一律 **零输出**
-/// （实测读数见 `PR-S6.md`）—— 那正是**静默**。两者的差就是 `L2` 要补的东西。
+/// （实测过）—— 那正是**静默**。两者的差就是 `L2` 要补的东西。
 #[test]
 fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
     let root = build_fixture("hole");

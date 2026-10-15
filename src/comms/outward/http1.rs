@@ -43,7 +43,7 @@ impl RequestHead {
     /// 先前这里是 `…parse().ok()`，于是「**没有这个头**」与「**有这个头但读不懂**」
     /// 挤进了同一个 `None`，而调用点把 `None` 当成「没有请求体」
     /// ⇒ 一发 `Content-Length: 7abc` + 7 字节体 ⇒ **请求体被静默丢掉**、
-    /// 上游收到空体、下游拿到一条正常的 200，全程零日志零 4xx（D3 实测，住址 `audits/K-H1-D3.md#6.1`）。
+    /// 上游收到空体、下游拿到一条正常的 200，全程零日志零 4xx（D3 实测）。
     /// 中转搬的正是 `POST /v1/messages` 的载荷，丢了它 claude 当场坏而门禁全绿。
     /// ⇒ 今天两件事分成两张脸，`Unparsable` 由调用方回 **400**。
     pub fn content_length(&self) -> BodyLen {

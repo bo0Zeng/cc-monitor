@@ -44,7 +44,7 @@ const WATCH_REACTIONS: observe::watcher::Reactions = observe::watcher::Reactions
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
 //（同上面 `stream_flag_tests` 那一块的理由）。
 
-// `K-P4`：拉窗构件的**落点判据**（PM 09-04 裁的那一条，见 `K-P4-PM.md §五㈠`）。
+// `K-P4`：拉窗构件的**落点判据**（PM 09-04 裁的那一条）。
 //
 // # 它管的是哪一维 —— 与已有三道护栏**不重叠**
 //
