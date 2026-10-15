@@ -113,19 +113,14 @@ describe("浮层贴着触发物", () => {
 
   it("★ 主菜单入场动画（带 transform）还没走完就开子菜单 ⇒ 先把入场动画走完再摆（不然 fixed 的子菜单按主菜单算坐标、偏出去）", () => {
     openMenu({ x: 100, y: 100 }, [{ label: "项五", submenu: [{ label: "work" }] }]);
-    const order: string[] = [];
-    const finish = vi.fn(() => order.push("finish"));
-    (menuEl() as unknown as { getAnimations: () => { finish: () => void }[] }).getAnimations = () => [{ finish }];
     const wrap = menuEl().querySelector<HTMLElement>(':scope > [role="none"]')!;
-    const fly = wrap.querySelector<HTMLElement>('[role="menu"][data-sub]')!;
+    // 走完那一刻子菜单还没摆（没展开）：先走完、再摆。
+    const openAtFinish: (string | undefined)[] = [];
+    (menuEl() as unknown as { getAnimations: () => { finish: () => void }[] }).getAnimations = () => [{ finish: () => openAtFinish.push(wrap.dataset.subOpen) }];
     boxes.set(wrap, { left: 100, top: 120, right: 340, bottom: 148 });
-    const orig = HTMLElement.prototype.getBoundingClientRect;
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      if (this === fly) order.push("measure");
-      return orig.call(this);
-    });
     wrap.querySelector<HTMLButtonElement>(":scope > button")!.click();
-    expect(order[0], `先后：${order.join(" → ")}`).toBe("finish");
+    expect(openAtFinish).toEqual([undefined]);
+    expect(wrap.dataset.subOpen).toBe("true");
   });
 
   it("右键点（一点）：右下放不下 ⇒ 往左上翻（与原先一样）", () => {
