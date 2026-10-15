@@ -150,6 +150,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test) // ViewModel 测试：runTest + Dispatchers.setMain
+    testImplementation(libs.moshi) // 读跨语言金样（tests/__fixtures__）
 
     // Compose UI 测试。注意：androidTest 也要 platform(bom)，BOM 不跨 configuration 传递，漏了 ui-test-junit4 解析不到版本。
     androidTestImplementation(platform(libs.androidx.compose.bom))

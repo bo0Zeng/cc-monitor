@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 手机冒烟主路（模拟器 ＋ 沙箱后端，替身 agent）：从清空的 App 起，一步一步走，每步截屏、记时，末尾一张表。
+# 手机冒烟主路（模拟器 ＋ 沙箱后端，替身 agent）：从清空的 App 起，一步一步走（十步 ＋ 在聊天里答的 4d–4g），每步截屏、记时，末尾一张表。
 # 前提：rig.sh up（沙箱 sshd ＋ 后端）· emu.sh up（模拟器）· debug 包已装；环境照 emu.sh env。入口是同目录 smoke.sh。
 # 第 4 步后两小步（4b 模型 chip · 4c ［+］面板）走聊天屏输入那一圈。
 # 每一步只看手机屏上与台架记录里看得到的东西（不读 App 内部）；判不出的写「看不出」，不当过。
@@ -675,6 +675,100 @@ def main():
         tap(t("mobPlus.row.compact"))
         if not pane_has(name, "> /compact", 20):
             raise Step.Fail("压缩上下文没送进那个会话")
+
+    # 4d–4g：在聊天里答（会话是第 3 步手机起的：ccm 起会话时垫了答题 hook，替身照真的那样把请求交给它）。
+    def answer_key():
+        """钉条上的［答］：只认字正好是它的那一颗（「答题口：」那类正文里也有这个字）。"""
+        return next((n for n in ui.nodes() if n.get("text") == t("mobNeeds.act.answer")), None)
+
+    def ask_up(said, head, title=None):
+        """发一句让替身停在框上；钉条出来（那台写的那一行）⇒ 点［答］升起抽屉（[title] ＝ 抽屉头一行，给了就核）。"""
+        tap(t("chat.input.placeholder")); typed(said)
+        hide_keyboard()
+        tap(t("mobChat.input.send"))
+        if not wait(head, 30):
+            raise Step.Fail(f"钉条没出来（{head}）")
+        to_bottom()
+        key = answer_key()
+        if key is None:
+            raise Step.Fail("钉条上没有［答］（答题口没挂上？）")
+        adb("shell", "input", "tap", *map(str, ui.center(key)))
+        time.sleep(1.5)
+        if title and not wait(title, 5):
+            raise Step.Fail(f"抽屉头一行不是「{title}」")
+
+    def tap_still(text):
+        """抽屉在往上滑时点会点空（落在遮罩上 ⇒ 收起、不算答）：等那一项连着两次都在同一处再点。"""
+        last = None
+        for _ in range(10):
+            n = ui.find(text)
+            b = ui.bounds(n) if n is not None else None
+            if b is not None and b == last:
+                adb("shell", "input", "tap", *map(str, ui.center(n)))
+                return
+            last = b
+            time.sleep(0.5)
+        raise Step.Fail(f"「{text}」一直没停稳")
+
+    def answered(said, want):
+        """那一步的结果里落了答题口给的决定（替身原样写进记录），这一轮跟着答完。"""
+        end = time.time() + 30
+        while time.time() < end:
+            log = sh("cat ~/.claude/projects/*/*.jsonl 2>/dev/null; true")
+            if f"替身收到：{said}" in log:
+                break
+            time.sleep(1)
+        def said_by_hook(ln):
+            try:
+                content = (json.loads(ln).get("message") or {}).get("content")
+            except ValueError:
+                return False
+            return any("答题口：" in str(c.get("content")) and want in str(c.get("content")) for c in content if isinstance(c, dict)) if isinstance(content, list) else False
+
+        rec = [ln for ln in log.splitlines() if said_by_hook(ln)]
+        if not rec:
+            raise Step.Fail(f"记录里没有答题口给的「{want}」")
+        if answer_key() is not None:
+            raise Step.Fail("答完了钉条还在")
+
+    with Step("4d-答批准"):
+        ask_up(f"{T} ask go", t("needs.bar.approve", tool="Bash"))
+        always = t("beAsk.choice.allowAlways", rule=t("beAsk.rule.dirs", dirs="/w", scope=t("beAsk.scope.session")))
+        for want in (t("beAsk.choice.allow"), always, t("beAsk.choice.denyStop")):
+            if ui.find(want) is None:
+                raise Step.Fail(f"抽屉里没有「{want}」")
+        shot("4d-批准抽屉")
+        tap_still(always)
+        answered(f"{T} ask go", '"behavior": "allow"')
+
+    with Step("4e-答提问"):
+        ask_up(f"{T} quiz go", t("needs.bar.answer"), t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
+        tap_still("Red")
+        shot("4e-提问第一题")
+        tap_still(t("mobAsk.act.next")); time.sleep(1)
+        tap_still("Pear")
+        tap_still(t("beAsk.choice.answer"))
+        answered(f"{T} quiz go", '"Which color?": "Red"')
+
+    with Step("4f-批计划"):
+        ask_up(f"{T} plan go", t("needs.bar.plan"))
+        if ui.find(t("beAsk.choice.planAuto")) is None:
+            raise Step.Fail("抽屉里没有「自动模式」")
+        shot("4f-批计划抽屉")
+        tap_still(t("beAsk.choice.planManual"))
+        answered(f"{T} plan go", '"mode": "default"')
+
+    with Step("4g-别处先答了"):
+        name = tmux_name_of(f"{T} ask go")
+        ask_up(f"{T} ask again", t("needs.bar.approve", tool="Bash"))
+        rig("tmux", "send-keys", "-t", name or "", "y", "Enter")  # 终端那一侧先答了
+        if not wait(t("askBlock.gone.elsewhere"), 20):
+            raise Step.Fail("抽屉里没出「已在终端答过或已关闭」")
+        shot("4g-别处先答了")
+        tap_still(t("mobKit.act.close"))
+        time.sleep(1)
+        if answer_key() is not None:
+            raise Step.Fail("别处答完了钉条还在")
 
     with Step("5-一轮完成的通知"):
         name = tmux_name_of(f"{T} new session")

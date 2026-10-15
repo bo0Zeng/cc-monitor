@@ -30307,6 +30307,24 @@
       "zh": "已在 {machine} 建好别名 {name}",
       "args": ["machine", "name"]
     },
+    "mobNeeds.act.answer": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "答",
+      "args": []
+    },
+    "mobAsk.act.next": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下一题",
+      "args": []
+    },
+    "mobAsk.head.page": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{head} · {i}/{n}",
+      "args": ["head", "i", "n"]
+    },
     "mobCapture.dialog.title": {
       "kind": "title",
       "role": "确认框",

@@ -151,6 +151,18 @@ class ResidentFeedTest {
         }
 
     @Test
+    fun `changed 帧出成主题 ＋ 键（出口据此重问那一份）；别的帧不出`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val got = mutableListOf<Changed>()
+            backgroundScope.launch { f.changed.collect { got += it } }
+            core.emit("frame", """{"kind":"changed","topic":"needs","key":"s1"}""")
+            core.emit("frame", """{"kind":"sessions_replayed"}""")
+            assertEquals(listOf(Changed("needs", "s1")), got)
+        }
+
+    @Test
     fun `在看名单：每一处 hold 交一次、关掉交一次；核心交回的 from 原样发出去；断了请 SSH 那层探活`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
