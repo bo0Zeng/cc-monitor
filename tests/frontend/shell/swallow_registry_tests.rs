@@ -193,6 +193,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // 一台的常驻流（手机那一侧的循环）睡退避时一起等「SSH 换了一条」：等到了就重接，结果本身没有信息量（发端没了 ⇒ 也该醒）。
     ("src/comms/resident-client/feed.rs", "let _ = ssh.changed().await;", Why::Signal, ""),
     ("src/comms/resident-client/feed.rs", "let _ = kicks.changed().await;", Why::Signal, ""),
+    ("src/frontend/shell/src/event_replay.rs", "let _ = CHANGED_TAP.send(seen);", Why::PeerGone, "「X 变了」另交旁听口一份：此刻没有文件窗口在订 ⇒ 没人收（订上之后的每一格照常收到）"),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),

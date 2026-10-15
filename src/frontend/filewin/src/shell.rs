@@ -1068,6 +1068,13 @@ impl FileWindow {
         });
     }
 
+    /// 计划变了：只重问这个目录归哪一格（不重列）。落地按此刻这一趟列目录的号：之后又列了一趟 ⇒ 这一问作废、由那一趟顺带问。
+    pub fn refresh_plan(&self) {
+        if let Some(h) = &self.rt {
+            self.reload_plan(h, self.listing.epoch.load(Ordering::SeqCst));
+        }
+    }
+
     /// 单选的那一份文件归的那一格（`(文件名, 那一格)`）；多选 · 文件夹 · 不归 ⇒ `None`。
     pub fn picked_owner(&self) -> Option<(String, super::plan::Owner)> {
         let plan = self.listing.plan.lock().unwrap();

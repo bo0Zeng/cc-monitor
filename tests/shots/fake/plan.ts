@@ -309,6 +309,28 @@ function siteSlice(): Record<string, unknown> {
   };
 }
 
+/** 新开的一片：pb 只记了名字与领域，还没有一格（顶块等某个会话 claim 才建）。 */
+function freshSlice(): Record<string, unknown> {
+  return {
+    name: "invoice",
+    path: "invoice",
+    domain: "软件",
+    current: false,
+    error: null,
+    stale: null,
+    kinds: SOFT_KINDS,
+    phases: SOFT_PHASES,
+    done: false,
+    top: [],
+    progress: null,
+    blocks: [],
+    check: { unreadable: [], red: [], undecidable: [] },
+    cells: [],
+    archived: [],
+    needs: [],
+  };
+}
+
 export const LEDGER_WS = "/home/user/work/ledger";
 
 /** 本机那个工作区：会话 ⇒ 它接手的那一块（后端 `product::by_session`）。 */
@@ -362,6 +384,8 @@ export interface PlanWorldOpts {
   returned?: "returned" | "landed";
   /** 顶块（project）退回过：等它改 / 已落地（记在片上）。 */
   topReturned?: "returned" | "landed";
+  /** 本机那个工作区多一片新开的、还没有图的。 */
+  fresh?: boolean;
 }
 
 export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
@@ -382,7 +406,7 @@ export function planOps(o: PlanWorldOpts = {}): Record<string, OpHandler> {
   };
   let auto = false;
   let devboxAsked = 0;
-  const reads = (origin: string): Record<string, unknown> => (origin === LOCAL ? readOf(LOCAL, [ledger(), surveySlice()], auto) : readOf(origin, [siteSlice()], false));
+  const reads = (origin: string): Record<string, unknown> => (origin === LOCAL ? readOf(LOCAL, [ledger(), surveySlice(), ...(o.fresh ? [freshSlice()] : [])], auto) : readOf(origin, [siteSlice()], false));
   const summary = (sl: Record<string, unknown>): Record<string, unknown> => ({ name: sl.name, domain: sl.domain, current: sl.current, progress: sl.progress, needCount: sl.needCount, error: sl.error, stale: sl.stale });
   return {
     "plan-list": (origin, req) => {

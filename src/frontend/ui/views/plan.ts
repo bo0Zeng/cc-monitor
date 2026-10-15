@@ -36,6 +36,7 @@ import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
   cellIndex,
+  isFresh,
   kidsDone,
   kindSlot,
   lastSign,
@@ -50,7 +51,8 @@ import {
 import { CellDetail } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
-import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
+import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
+import { openNewSession } from "../new-session";
 import s from "./plan.module.css";
 
 /** 记在本机的界面偏好（不是数据）。 */
@@ -607,6 +609,11 @@ export class PlanView {
     const parts: (HTMLElement | Text)[] = [];
     const where = document.createElement("span");
     where.textContent = joinSep(isRemoteOrigin(cur.origin) ? cur.origin : copyText("control.machine.local"), cur.workspace);
+    // 无图：子头只留在哪（没有顶块可写、没有格可过滤）。
+    if (isFresh(slice)) {
+      this.subEl.replaceChildren(where);
+      return;
+    }
     parts.push(where, sep());
     const top = topBlock(slice);
     if (top) {
@@ -697,6 +704,13 @@ export class PlanView {
     if (slice.bare) {
       pane.appendChild(emptyState({ icon: "warning", text: copyText("plan.strip.sliceUnreadable", { reason: slice.error ?? "" }) }));
       this.bodyEl.replaceChildren(tree, pane);
+      return;
+    }
+    // 新开的一片还没有图：整页一屏（没有大纲可画）。
+    if (isFresh(slice)) {
+      const ref = this.current!;
+      this.bodyEl.className = s.pvWhole;
+      this.bodyEl.replaceChildren(freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd })));
       return;
     }
     tree.append(this.outline(slice), this.legend(slice));

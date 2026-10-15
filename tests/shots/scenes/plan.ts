@@ -1,5 +1,5 @@
 /**
- * 计划页（设计稿 planned-build 01 · 02 · 03）：大纲 ＋ 概览 · 一格详情 · 各种状态 · 需手动 · 退回框 · 会话头那一枚标。
+ * 计划页：大纲 ＋ 概览 · 一格详情 · 各种状态 · 需手动 · 退回框 · 会话头那一枚标 · 新开的一片还没有图。
  */
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
@@ -90,6 +90,18 @@ export const PLAN_SCENES: Scene[] = [
     await click(".plan-view [role='switch']");
     await sleep(700);
   }, { autoRefuse: true }),
+  plan("plan-12-fresh", "计划 · 新开的一片还没有图", "切到 invoice（pb 只记了名字与领域）：整页一句「invoice · 软件 · 无图」＋ 怎么让它有 ＋［起新会话…］（工作目录预填工作区根）", async () => {
+    await openPlan();
+    await click(await byText(".plan-view .plan-slice", "invoice"));
+    await waitFor('.plan-view [data-view="fresh"]');
+    await sleep(400);
+  }, { fresh: true }),
+  plan("plan-13-fresh-new", "计划 · 无图 · 起新会话", "无图那一屏点［起新会话…］：全产品那一个起新会话框，工作目录是工作区根", async () => {
+    await openPlan();
+    await click(await byText(".plan-view .plan-slice", "invoice"));
+    await click(await byText('.plan-view [data-view="fresh"] button', "起新会话…"));
+    await sleep(900);
+  }, { fresh: true }),
   plan("plan-21-leaf-done", "一格 · 叶子格 做完了", "点「解析模块」：在哪 · 头 · 位置 · 要做成什么样（话里的格换成标题链接）· 连着的 · 连着它的", async () => {
     await openPlan();
     await row("A2-1-1");

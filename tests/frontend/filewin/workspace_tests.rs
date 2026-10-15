@@ -588,6 +588,100 @@ async fn copy_across_speaks_files_copy_with_a_common_root() {
     assert_eq!(ws.pane_on(0).copy_board.rounds(), 0);
 }
 
+/// 一份 `plan-files` 回包（中性例子）：`x.txt` 归「读入模块」、状态与标题由用例给。
+fn plan_reply(title: &str, status: &str) -> serde_json::Value {
+    serde_json::json!({"workspace": "/srv", "slice": "alpha", "unreadable": null, "unowned": null, "entries": [
+        {"name": "x.txt", "id": "A1", "title": title, "statusCode": status, "block": null,
+         "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
+    ]})
+}
+
+/// 计划变了（那台推 `changed/plan`）⇒ 每个标签页重问一次 `plan-files`：「格」一列换成新的；列表不重列、次序与选中不动。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_plan_change_re_asks_the_owners_and_keeps_the_rows_and_the_pick() {
+    let mut be = FakeBackend::new(&["plan-files"], Declared::default());
+    be.plan_push = Some(tokio::sync::broadcast::channel(16).0);
+    *be.plan_reply.lock().unwrap() = Some(plan_reply("读入模块", "open"));
+    let (push, subs, reply) = (
+        be.plan_push.clone().unwrap(),
+        be.plan_subs.clone(),
+        be.plan_reply.clone(),
+    );
+    let wired = wire_up("pb47-plan-change", be).await;
+    let left = window_on(&wired, "/srv/a");
+    *left.listing.rows.lock().unwrap() =
+        vec![subdir("d", "/srv/a").into(), file("x.txt", "/srv/a").into()];
+    let mut ws = two_sides(left, window_on(&wired, "/srv/b"));
+    ws.focus_side(0);
+    for _ in 0..2 {
+        ws.pane_on_mut(0).apply_intent(
+            crate::select::Intent::Step {
+                by: 1,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+    }
+    assert_eq!(ws.pane_on(0).picked_name(), Ok("x.txt".to_string()));
+    let title = |ws: &Workspace| {
+        ws.pane_on(0)
+            .listing
+            .plan
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|p| p.owner("x.txt").map(|o| (o.title.clone(), o.status)))
+    };
+    // 订上那条流（整扇窗一次）。
+    for _ in guard_core::wall::rounds() {
+        ws.settle_plan(None);
+        if subs.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        subs.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "没订 changed/plan，或订了不止一条"
+    );
+    assert_eq!(wired.count("plan-files"), 0, "还没变就问了");
+    // 计划变了：那一格做完了、标题也改了。
+    *reply.lock().unwrap() = Some(plan_reply("读入与校验", "done"));
+    push.send(r#"{"key":"/srv","rev":"r2","body":{"needs":0}}"#.to_string())
+        .unwrap();
+    for _ in guard_core::wall::rounds() {
+        ws.settle_plan(None);
+        if title(&ws).is_some() && wired.count("plan-files") >= 2 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        title(&ws),
+        Some(("读入与校验".to_string(), crate::plan::Status::Done)),
+        "「格」一列没跟着变"
+    );
+    assert_eq!(wired.count("plan-files"), 2, "两个标签页各问一次");
+    assert_eq!(wired.count("files-ls"), 0, "计划变了不该重列目录");
+    let names: Vec<String> = ws
+        .pane_on(0)
+        .listing
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| r.name.clone())
+        .collect();
+    assert_eq!(names, ["d", "x.txt"], "次序动了");
+    assert_eq!(
+        ws.pane_on(0).picked_name(),
+        Ok("x.txt".to_string()),
+        "选中丢了"
+    );
+}
+
 /// 做不了的那几形：没开双栏 / 一项都没选 / 选了有损名 / 两栏同目录 ⇒ 出声、线上零条（带正控）。
 /// 〔FW34 那一版〕「选了目录」「选了两项」也在这里 —— 今天那两形**做得了**（见下一条），从阴性挪成了正控。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
