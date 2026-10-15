@@ -1,10 +1,10 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.AccountsList
+import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.AccountsSetDefault
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesHome
-import com.ccmonitor.mobile.core.claude.link.QuotaRead
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.SessionNew
@@ -41,7 +41,7 @@ data class NewSessionUi(
     val recent: List<RecentRow> = emptyList(),
     /** 读不到那台的新建会话信息那一句；`null` ＝ 读到了 / 还在读。 */
     val factsFailed: String? = null,
-    val accounts: List<AccountsList.Account> = emptyList(),
+    val accounts: List<AccountRow> = emptyList(),
     /** 这一张用哪个号；那台没开多账号 ⇒ `null`。 */
     val account: String? = null,
     /** 那台的新会话默认号。 */
@@ -49,8 +49,6 @@ data class NewSessionUi(
     /** 那台的家目录（路径缩成 `~` 用）。 */
     val home: String? = null,
     val accountsFailed: String? = null,
-    /** 号名 ⇒ 那台写好的「5h 那一格」。 */
-    val quota: Map<String, String> = emptyMap(),
     /** 轮换策略目录；还没问（账号抽屉没开过）⇒ `null`。 */
     val strategies: List<RotStrategyItem>? = null,
     /** 这一张用哪份（`null` ＝ 不轮换）。 */
@@ -152,22 +150,17 @@ class NewSessionPicker(
             val kept = s.account?.takeIf { keep && a(list.accounts, it)?.selectable == true }
             s.copy(
                 accounts = list.accounts,
-                defaultAccount = list.effectiveDefault,
-                account = kept ?: list.effectiveDefault?.takeIf { d -> list.accounts.any { it.name == d } },
-                home = s.home ?: list.home,
+                defaultAccount = list.meta.effectiveDefault,
+                account = kept ?: list.meta.effectiveDefault?.takeIf { d -> list.accounts.any { it.name == d } },
+                home = s.home ?: list.meta.home,
                 accountsFailed = null,
             )
         }
     }
 
-    /** 账号抽屉打开：问一次账号 · 额度 · 轮换。 */
+    /** 账号抽屉打开：问一次账号（每号带 5h 那一格）· 轮换。 */
     fun openAccounts() {
         scope.launch { loadAccounts(keep = true) }
-        scope.launch {
-            val r = link.call(QuotaRead.COMMAND, null, READ_MS)
-            val q = (r as? Reply.Ok)?.let { QuotaRead.of(it.data) } ?: return@launch
-            _state.update { s -> s.copy(quota = q.accounts.mapNotNull { a -> a.fiveHour?.let { a.account to it } }.toMap()) }
-        }
         scope.launch {
             val r = link.call(RotationStrategies.COMMAND, emptyMap(), READ_MS)
             val list = (r as? Reply.Ok)?.let { RotationStrategies.of(it.data) }
@@ -242,7 +235,7 @@ class NewSessionPicker(
     }
 
     private fun a(
-        list: List<AccountsList.Account>,
+        list: List<AccountRow>,
         name: String,
     ) = list.firstOrNull { it.name == name }
 

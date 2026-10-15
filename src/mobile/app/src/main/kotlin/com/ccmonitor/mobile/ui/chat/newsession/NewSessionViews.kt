@@ -26,7 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.AccountsList
+import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -77,7 +77,7 @@ fun NewSessionBar(
             if (ui.showAccountChip) {
                 Chip(onClick = { onOpen(NewSessionSheet.Account) }, tag = NewSessionTags.ACCOUNT) {
                     val a = ui.accounts.firstOrNull { it.name == ui.account }
-                    a?.let { AccountBadge(it.name, it.color, size = 18) }
+                    a?.let { AccountBadge(it.plate, it.color, size = 18) }
                     Text(a?.label ?: ui.account.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                 }
             }
@@ -223,7 +223,7 @@ fun AccountSheet(
 
 @Composable
 private fun AccountRow(
-    a: AccountsList.Account,
+    a: AccountRow,
     ui: NewSessionUi,
     onPick: () -> Unit,
     onSetDefault: () -> Unit,
@@ -234,16 +234,16 @@ private fun AccountRow(
         PickRow(
             title = a.label,
             tag = NewSessionTags.ROW,
-            second = if (a.selectable) null else copyText("newSession.account.needLogin"),
+            second = a.unselectable,
             selected = a.name == ui.account,
             enabled = a.selectable,
             onClick = onPick,
             onLongClick = { if (a.selectable && a.name != ui.defaultAccount) menu = true },
-            lead = { AccountBadge(a.name, a.color) },
+            lead = { AccountBadge(a.plate, a.color) },
             trail = {
                 if (a.name == ui.defaultAccount) DefaultTag()
                 if (a.selectable) {
-                    ui.quota[a.name]?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    a.quota?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else {
                     OutlinedButton(onClick = onLogin) { Text(copyText("newSession.account.login")) }
                 }

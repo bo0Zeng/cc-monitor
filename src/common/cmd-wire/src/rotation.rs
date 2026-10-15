@@ -606,10 +606,8 @@ pub struct RotationViewReply {
     /// 开会话用的号 · 此刻在用的号。
     pub start: String,
     pub current: String,
-    /// 每个号的事实，照号列表的先后（列表里没有的接在后面）。
-    pub accounts: Vec<Fact>,
-    /// `accounts` 里每个号的号牌（号色 · 号名），按号 id。
-    pub plates: std::collections::BTreeMap<String, RotPlate>,
+    /// 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
+    pub accounts: Vec<RotAccount>,
     /// 号列表里有几个（`accounts` 前这么多个是列表里的）。
     pub listed: usize,
     pub decision: Option<RotTryDecision>,
@@ -767,11 +765,23 @@ pub struct RotationDayPaintReply {
     pub segs: Vec<RotSeg>,
 }
 
-/// `rotation-view` 里一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）。
+/// `rotation-view` 里的一个号：事实 ＋ 号牌。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotAccount {
+    #[serde(flatten)]
+    #[cfg_attr(any(test, feature = "ts"), ts(flatten))]
+    pub fact: Fact,
+    pub plate: RotPlate,
+}
+
+/// 一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）· 号牌字（同 `accounts-list` 那一格）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotPlate {
     pub color: u8,
     pub label: Words,
+    pub text: Words,
 }

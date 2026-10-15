@@ -286,14 +286,13 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
     );
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
-    assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
-    // 每个号带号色与号名（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处。
-    let plate = &v.plates["a"];
+    assert_eq!(v.accounts[0].fact.account, "a", "号列表里的在前");
+    // 每个号身上带号牌（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处，号牌字同号行那一格。
+    let plate = &v.accounts[0].plate;
     assert_eq!(
-        (plate.color, plate.label.0.as_str()),
-        (crate::accounts::manage::model::color_fallback("a"), "a")
+        (plate.color, plate.label.0.as_str(), plate.text.0.as_str()),
+        (crate::accounts::manage::model::color_fallback("a"), "a", "a")
     );
-    assert_eq!(v.plates.len(), v.accounts.len(), "每个号一枚");
     assert_eq!(v.listed, 1);
     assert_eq!(
         v.decision.as_ref().and_then(|d| d.pick.as_deref()),
@@ -334,6 +333,8 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
+    let only: Vec<_> = v.accounts.iter().map(|a| (a.fact.account.as_str(), a.plate.text.0.as_str())).collect();
+    assert_eq!((only, v.listed), (vec![("a", "a")], 0), "只带开会话那个号的号牌，不算在号列表里");
 }
 
 /// ★ 设置页那一形：照交来的草稿判、推演（不写盘）；草稿不合声明 ⇒ `refused` 带那几格；没有那一份 ⇒ `no_strategy`。

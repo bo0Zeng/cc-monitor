@@ -13,7 +13,7 @@ use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
     RotBadCell, RotHint, RotLogRow, RotNote, RotOldFile, RotPast, RotPastLane, RotPastSeg,
-    RotPastUse, RotPlate, RotRefused, RotStrategyError, RotStrategyItem, RotationStrategiesReply,
+    RotAccount, RotPastUse, RotPlate, RotRefused, RotStrategyError, RotStrategyItem, RotationStrategiesReply,
     RotationViewReply,
 };
 use serde::Deserialize;
@@ -133,6 +133,19 @@ pub(crate) struct RotationViewReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) hours: Option<u8>,
+}
+
+/// 一个号的号牌：号色照账号库（库里没有 ⇒ 按名补的那一格）· 号名 · 号牌字（与 `accounts-list` 那一行同一处写法）。
+fn plate_of(id: &str, colors: &std::collections::BTreeMap<String, u8>) -> RotPlate {
+    use crate::accounts::quota::name_words::{account_text, plate_text};
+    RotPlate {
+        color: colors
+            .get(id)
+            .copied()
+            .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(id)),
+        label: Words(account_text(id)),
+        text: Words(plate_text(id)),
+    }
 }
 
 /// 读不懂的那一份为什么：第几行 · 原话（哪一种常见的错只拼提示那一句，不上线：[`why_text`]）。
@@ -411,8 +424,14 @@ pub(crate) fn view_with(
             dirty: false,
             start: session.start.clone(),
             current: session.current.clone(),
-            accounts: Vec::new(),
-            plates: Default::default(),
+            // 不轮换 ⇒ 只有开会话的那个号（号列表之外，只为它那一枚号牌）。
+            accounts: (!session.start.is_empty())
+                .then(|| RotAccount {
+                    fact: ctx.hop.fact_one(&agent, &ctx.hop.library(), &session.start, &ctx.row(&agent), now, tz),
+                    plate: plate_of(&session.start, &crate::observe::accounts_query::account_colors()),
+                })
+                .into_iter()
+                .collect(),
             listed: 0,
             decision: None,
             timeline: None,
@@ -513,29 +532,16 @@ pub(crate) fn view_with(
         .map_or(0, Vec::len)
         .min(listed_ids.len());
     let lib = ctx.hop.library();
-    let accounts: Vec<crate::accounts::quota::facts::Fact> = listed_ids
+    let colors = crate::observe::accounts_query::account_colors();
+    let accounts: Vec<RotAccount> = listed_ids
         .iter()
-        .map(|id| {
-            all_facts
+        .map(|id| RotAccount {
+            fact: all_facts
                 .iter()
                 .find(|f| f.account == *id)
                 .cloned()
-                .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz))
-        })
-        .collect();
-    let colors = crate::observe::accounts_query::account_colors();
-    let plates = accounts
-        .iter()
-        .map(|f| {
-            let id = &f.account;
-            let plate = RotPlate {
-                color: colors
-                    .get(id)
-                    .copied()
-                    .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(id)),
-                label: Words(crate::accounts::quota::name_words::account_text(id)),
-            };
-            (id.clone(), plate)
+                .unwrap_or_else(|| ctx.hop.fact_one(&agent, &lib, id, &row, now, tz)),
+            plate: plate_of(id, &colors),
         })
         .collect();
     let dirty = match &req.target {
@@ -588,7 +594,6 @@ pub(crate) fn view_with(
         start: session.start.clone(),
         current: session.current.clone(),
         accounts,
-        plates,
         listed,
         decision: Some(decision_of(&d)),
         timeline: Some(timeline_of(

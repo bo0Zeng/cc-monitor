@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.wire.Needs
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoice
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsNote
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsQuestion
 import com.ccmonitor.mobile.core.copy.DurationFormat
@@ -127,41 +128,26 @@ data class ChoiceRow(
 )
 
 /**
- * 选项分段（照那台排好的次序，不重排）：允许那一族 · 拒绝那一族另起一段 · 改到终端里答排末尾。哪一项进哪一段按选项 id
- * （协议里的闭集，`control::asks::verdict_of`；同桌面 `answer-block.ts` 的 `rowOf`），不按字。提问那一种：「提交答案」一段、其余文字按钮。
+ * 选项分段（照那台排好的次序，不重排）：哪一项进哪一段照那台给的 `row`（照做 · 不照做 · 放开这一条），不按 id 认、不按字。
+ * 照做那一段第一项实心；「拒绝并停下」红字描边；放开那一段文字按钮。
  */
 fun choiceGroups(ask: NeedsAsk): List<List<ChoiceRow>> {
-    val groups = linkedMapOf<Int, MutableList<ChoiceRow>>()
+    val groups = sortedMapOf<NeedsChoiceRow, MutableList<ChoiceRow>>()
     for (c in ask.choices) {
-        val seg =
-            when {
-                c.id == RELEASE -> SEG_RELEASE
-                ask.questions.isNotEmpty() && c.id != ANSWER -> SEG_RELEASE
-                c.id in SECOND -> SEG_SECOND
-                else -> SEG_MAIN
-            }
-        val list = groups.getOrPut(seg) { mutableListOf() }
+        val list = groups.getOrPut(c.row) { mutableListOf() }
         val look =
             when {
-                seg == SEG_RELEASE -> ChoiceLook.QUIET
+                c.row == NeedsChoiceRow.RELEASE -> ChoiceLook.QUIET
                 c.id == DENY_STOP -> ChoiceLook.DANGER
-                seg == SEG_MAIN && list.isEmpty() -> ChoiceLook.PRIMARY
+                c.row == NeedsChoiceRow.MAIN && list.isEmpty() -> ChoiceLook.PRIMARY
                 else -> ChoiceLook.OUTLINE
             }
         list += ChoiceRow(c, look, if (c.note == NeedsNote.NONE) c.text else copyText("askBlock.choice.more", "label" to c.text))
     }
-    return groups.toSortedMap().values.toList()
+    return groups.values.toList()
 }
 
-private const val SEG_MAIN = 0
-private const val SEG_SECOND = 1
-private const val SEG_RELEASE = 2
-private const val RELEASE = "release"
-private const val ANSWER = "answer"
 private const val DENY_STOP = "deny-stop"
-
-/** 另起一段的那几项：拒绝一族 ＋ 批计划的「继续规划」。 */
-private val SECOND = setOf("deny", "deny-note", DENY_STOP, "plan-keep")
 
 /**
  * 一条会话的需手动（聊天屏那一块）：sid 有了就问 `sessions-needs` 取这一条；那台推 `changed {needs, key=sid}`、这条会话的会话帧变了、

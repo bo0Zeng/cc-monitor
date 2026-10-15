@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.ui.rotation
 
-import com.ccmonitor.mobile.core.claude.link.wire.Fact
+import com.ccmonitor.mobile.core.claude.link.wire.RotAccount
 import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
 import com.ccmonitor.mobile.core.claude.link.wire.RotNote
 import com.ccmonitor.mobile.core.claude.link.wire.RotTryLaneSeg
@@ -34,14 +34,14 @@ fun hintText(
 }
 
 /** 号展开头一行：`5h {u5}% · 7d {u7}%`（· `↻{重置钟面}`，那台写好的）。 */
-fun acctLine(f: Fact): String =
+fun acctLine(f: RotAccount): String =
     listOfNotNull(
         copyText("rot.acct.line", "u5" to f.w5h.used.roundToLong(), "u7" to f.w7d.used.roundToLong()),
         f.w5h.resetsText?.let { copyText("rot.acct.reset", "at" to it) },
     ).joinToString(copyText("kit.text.sep"))
 
 /** 号牌长按看的那一句：两窗用量。 */
-fun cardHover(f: Fact): String = copyText("rot.card.hover", "u5" to f.w5h.used.roundToLong(), "u7" to f.w7d.used.roundToLong())
+fun cardHover(f: RotAccount): String = copyText("rot.card.hover", "u5" to f.w5h.used.roundToLong(), "u7" to f.w7d.used.roundToLong())
 
 /** 时间轴每号一行里一段的字：发不出去 ⇒ 空；重置那段 `↻{fromText}`；此刻那段 `剩 {left}%`（同桌面）。 */
 fun laneText(

@@ -390,8 +390,11 @@ class ChatSessionTest {
                     "accounts-list" ->
                         ok(
                             mapOf(
-                                "accounts" to listOf("work", "personal").map { mapOf("name" to it, "configDir" to "/a/$it", "mode" to "isolated", "selectable" to true) },
-                                "meta" to mapOf("effectiveDefault" to "work"),
+                                "accounts" to
+                                    listOf("work", "personal").map {
+                                        mapOf("name" to it, "label" to it, "color" to 0.0, "plate" to it.take(2), "quota" to null, "unselectable" to null, "configDir" to "/a/$it", "mode" to "isolated", "selectable" to true)
+                                    },
+                                "meta" to mapOf("effectiveDefault" to "work", "home" to null),
                             ),
                         )
                     "session-new" -> start

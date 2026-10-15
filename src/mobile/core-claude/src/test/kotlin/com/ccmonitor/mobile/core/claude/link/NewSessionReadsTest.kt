@@ -52,29 +52,35 @@ class NewSessionReadsTest {
     }
 
     @Test
-    fun `accounts-list：每号名 · 号色 · 能不能选；这台的默认 · 家目录照 meta；缺名 ⇒ 解不出`() {
+    fun `accounts-list：照类型解，号牌字 · 5h 那一格 · 选不了的那一句照那台写的；这台的默认 · 家目录照 meta；缺格 ⇒ 解不出`() {
+        val row = { name: String, dir: String?, mode: String, ok: Boolean, color: Int ->
+            mapOf(
+                "name" to name,
+                "label" to name.uppercase(),
+                "configDir" to dir,
+                "mode" to mode,
+                "selectable" to ok,
+                "color" to color,
+                "plate" to "夹" + name,
+                "quota" to if (ok) "5h 41%" else null,
+                "unselectable" to if (ok) null else "需登录",
+            )
+        }
         val data =
             mapOf(
-                "accounts" to
-                    listOf(
-                        mapOf("name" to "0", "configDir" to null, "mode" to "base", "selectable" to true, "loggedIn" to true, "color" to null),
-                        mapOf("name" to "work", "label" to "工作号", "configDir" to "/a/work", "mode" to "isolated", "selectable" to true, "loggedIn" to true, "color" to 0.0),
-                        mapOf("name" to "team", "configDir" to "/a/team", "mode" to "isolated", "selectable" to false, "loggedIn" to false, "color" to 1.0),
-                    ),
-                "meta" to mapOf("enabled" to true, "effectiveDefault" to "work", "home" to "/h"),
-                "notice" to null,
+                "accounts" to listOf(row("0", null, "in-place", true, 0), row("work", "/a/work", "isolated", true, 3), row("team", "/a/team", "isolated", false, 1)),
+                "meta" to mapOf("effectiveDefault" to "work", "home" to "/h"),
             )
         val a = AccountsList.of(data)!!
-        assertEquals("work", a.effectiveDefault)
-        assertEquals("/h", a.home)
-        assertEquals(listOf("work", "team"), a.accounts.map { it.name })
-        assertEquals("账号 0（不是隔离的号）不列（同桌面新建会话框）", null, a.accounts.firstOrNull { it.name == "0" })
-        assertEquals(listOf(0, 1), a.accounts.map { it.color })
-        assertEquals("号名上屏照那台写的 label；没有 ⇒ 号名", listOf("工作号", "team"), a.accounts.map { it.label })
-        assertEquals(listOf(true, false), a.accounts.map { it.selectable })
+        assertEquals("work", a.meta.effectiveDefault)
+        assertEquals("/h", a.meta.home)
+        assertEquals("账号 0（不是隔离的号）不列（同桌面新建会话框）", listOf("work", "team"), a.accounts.map { it.name })
+        assertEquals(listOf(3, 1), a.accounts.map { it.color })
+        assertEquals(listOf("夹work", "夹team"), a.accounts.map { it.plate })
+        assertEquals(listOf("5h 41%", null), a.accounts.map { it.quota })
+        assertEquals(listOf(null, "需登录"), a.accounts.map { it.unselectable })
         assertEquals(mapOf("agent" to "claude"), AccountsList.args("claude"))
-        assertNull(AccountsList.of(data + ("accounts" to listOf(mapOf("configDir" to "/a/x", "mode" to "isolated")))))
-        assertTrue("没开多账号 ⇒ 一个号都不列", AccountsList.of(mapOf("accounts" to emptyList<Any>(), "meta" to mapOf("enabled" to false)))!!.accounts.isEmpty())
+        assertNull("缺号牌字 ⇒ 契约对不上", AccountsList.of(data + ("accounts" to listOf(row("x", "/a/x", "isolated", true, 0) - "plate"))))
     }
 
     @Test

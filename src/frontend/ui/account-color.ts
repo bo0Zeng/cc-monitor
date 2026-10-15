@@ -26,17 +26,17 @@ export function accountPlateOf(name: string, origin: Origin = LOCAL_ORIGIN): str
 /**
  * 账号头像元素——圆角方块 `.acct-avatar.acct-c<号色>` + 号牌字（那台后端写好的 `plate`）。
  * 不透明填充 + 自带 ink（styles.css 的 --acct-cN/--acct-inkN），主题无关。chip / tab 徽章共用。
- * `origin` ＝ 号在哪一台（缺省本机）；`color` ＝ 那份成品自己带的号色（给了就照它，不另查账号清单；`null` ⇒ 中性）；size 可选覆盖边长（px，默认走 CSS）；ghost=true 走幽灵态（lastAccount 软来源，描边淡填充）。
+ * `origin` ＝ 号在哪一台（缺省本机）；`color` · `plate` ＝ 那份成品自己带的号色 · 号牌字（给了就照它，不另查账号清单；号色 `null` ⇒ 中性）；size 可选覆盖边长（px，默认走 CSS）；ghost=true 走幽灵态（lastAccount 软来源，描边淡填充）。
  */
 export function accountAvatarEl(
   name: string,
-  opts: { size?: number; ghost?: boolean; origin?: Origin; color?: number | null } = {},
+  opts: { size?: number; ghost?: boolean; origin?: Origin; color?: number | null; plate?: string } = {},
 ): HTMLSpanElement {
   const slot = opts.color !== undefined ? opts.color : accountColorOf(name, opts.origin);
   const el = document.createElement("span");
   el.className = `acct-avatar${opts.ghost ? " ghost" : ""}`;
   if (slot !== null) el.className += ` acct-c${slot}`;
-  el.textContent = accountPlateOf(name, opts.origin);
+  el.textContent = opts.plate ?? accountPlateOf(name, opts.origin);
   el.setAttribute("aria-hidden", "true");
   if (opts.size) {
     el.style.width = `${opts.size}px`;

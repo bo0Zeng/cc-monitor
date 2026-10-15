@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
 import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.SessionResume
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
@@ -114,6 +115,9 @@ class TerminalOps(
         val running = list().getOrNull()?.firstOrNull { it.name == name }?.agent
         return (running?.let { Result.success(it) } ?: agent()).mapCatching { a -> ask(AttachLine.COMMAND, AttachLine.args(a, name), AttachLine::of).getOrThrow() }
     }
+
+    /** 先让那台恢复 [sid] 那条会话（终端没了），回它落在哪个 tmux 会话；没成 ⇒ 失败（那台那一句）。 */
+    suspend fun resume(sid: String): Result<String> = ask(SessionResume.COMMAND, SessionResume.args(sid), SessionResume::of)
 
     /** 这台能用的别名（那台的 `profiles-read`，名字与顺序照那台）：终端屏「用哪个启动」那一排。 */
     suspend fun aliases(): Result<List<String>> = ask(Profiles.READ, emptyMap(), Profiles::of).map { it.usable }
