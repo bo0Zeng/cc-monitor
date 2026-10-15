@@ -29444,39 +29444,11 @@
       "args": [],
       "limited": ["连接"]
     },
-    "mobSsh.log.probeExisting": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "检测到已有连接，校验可用性 …",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.existingDead": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "既有连接已失效，重新建立 …",
-      "args": [],
-      "limited": ["连接"]
-    },
     "mobSsh.log.reused": {
       "kind": "body",
       "role": "进度",
       "zh": "复用已有连接",
       "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.replaced": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "既有连接没有回话，已换上新连接",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.handshake.timeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接超时 · {dur} 内未连上",
-      "args": ["dur"],
       "limited": ["连接"]
     },
     "mobSsh.hostKey.changed": {

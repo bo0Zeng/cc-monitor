@@ -57,19 +57,19 @@ class RustTransportTest {
         assertEquals("hi\n", r.stdout)
         assertEquals(3, r.exitStatus)
         assertTrue(r.stderrTail, r.stderrTail.contains("oops"))
-        assertTrue(runBlocking { t.probeAlive(WALL_CEILING_MS) })
     }
 
-    /** 流式 exec 与常驻流交给核心的那一份拨号请求：连着才有，照它开的链路复用这一条连接。 */
+    /** 流式 exec 与常驻流交给核心的那一份拨号请求：连上过就有（关了也还在），照它开的链路复用这一条连接；同一份身份上再握的那条请求一字不差。 */
     @Test
-    fun a_stream_rides_the_same_connection_and_the_dial_request_is_there_while_connected() {
+    fun a_stream_rides_the_same_connection_and_the_dial_request_outlives_the_hold() {
         val t = connected()
         val out = runBlocking { withTimeout(WALL_CEILING_MS) { t.execStream("printf 'a\\nb\\n'").toList() } }
         assertEquals("a\nb\n", out.joinToString("") { it.toString(Charsets.UTF_8) })
         val req = org.json.JSONObject(t.dialRequest ?: error("连着却没有拨号请求"))
         assertTrue(req.toString(), req.has("host") && !req.has("use"))
         t.close()
-        assertEquals(null, t.dialRequest)
+        assertEquals(req.toString(), t.dialRequest)
+        assertEquals(req.toString(), t.again()?.dialRequest)
     }
 
     @Test

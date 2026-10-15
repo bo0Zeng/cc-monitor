@@ -1,8 +1,8 @@
 //! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同一条循环），
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
-//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）· `watch_from`（JSON 数组）·
-//! `lost`（流断了、请 Kotlin 探一次 SSH）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
+//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
+//! `watch_from`（JSON 数组）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
 
 use resident_client::client::CallError;
 use resident_client::feed::{
@@ -240,7 +240,6 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
             "watch_from",
             serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
         ),
-        Event::Lost => ("lost", String::new()),
         Event::Attached { .. } | Event::Gap => return None,
     })
 }
@@ -570,7 +569,7 @@ mod tests {
         assert_eq!(v, fine);
     }
 
-    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样 · 断了只是一个记号。
+    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样。
     #[test]
     fn events_are_tagged_and_frames_go_through_untouched() {
         let (k, b) = event_of(&Event::State(State::Up {
@@ -602,7 +601,6 @@ mod tests {
             event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
             Some(("frame", "{\"kind\":\"x\"}".to_string()))
         );
-        assert_eq!(event_of(&Event::Lost).unwrap().0, "lost");
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
     }
 

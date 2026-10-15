@@ -103,10 +103,11 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "resident-client/feed.rs",
-        "attach_on",
+        "dial_within",
         "wait-for-condition",
-        "开常驻流那一拨的拨号期限（`resident-client`，桌面与手机同一条）：拨号核心每报一步进展就把这一觉往后挪 10 s（`DIAL_WITHIN`），\
-             一步都没来的 10 s 才醒、丢下这一拨；链路开出来 · 宿主报事即止。等的是「这一拨还在不在动」，不是节拍器。",
+        "开链路的拨号期限，全仓只这一处（`resident-client`）：开常驻流那一拨（桌面与手机同一条）与手机 SSH 那层开的每一条链路（嵌的核心在 ack 之前套它）。\
+             拨号核心每报一步进展就把这一觉往后挪 10 s（`DIAL_WITHIN`），一步都没来的 10 s 才醒、丢下这一拨；链路开出来即止。\
+             等的是「这一拨还在不在动」，不是节拍器。",
     ),
     (
         "resident-client/feed.rs",

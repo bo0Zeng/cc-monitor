@@ -320,17 +320,9 @@ pub fn open_link(request: &str, on_data: OnData) -> Result<i64, String> {
             }
         }
     });
-    // 下行：读到的块原样交给 Kotlin；链路收工 ⇒ 交一个「没了」。
-    rt.spawn(async move {
-        let mut buf = vec![0u8; 32 * 1024];
-        loop {
-            match down_r.read(&mut buf).await {
-                Ok(0) | Err(_) => break,
-                Ok(n) => on_data(id, Some(&buf[..n])),
-            }
-        }
-        on_data(id, None);
-    });
+    // ack 之前照共用循环那一个期限（[`ack_within`]）：要拨号核心报进展。
+    let mut req = req;
+    req.progress = true;
     let task = rt.spawn(async move {
         let stages = ssh_dial::StageSink::new(req.stages);
         let control = ssh_dial::uses::Control {
@@ -338,6 +330,22 @@ pub fn open_link(request: &str, on_data: OnData) -> Result<i64, String> {
         };
         ssh_dial::uses::run_with(&req, &stages, up_r, &mut down_w, control).await;
         let _ = down_w.shutdown().await;
+    });
+    let dialing = task.abort_handle();
+    // 下行：ack 之前那一段经 [`ack_within`]（到期限一步都没动 ⇒ 那一拨收掉）；之后读到的块原样交给 Kotlin；链路收工 ⇒ 交一个「没了」。
+    rt.spawn(async move {
+        if ack_within(&mut down_r, &mut |b: &[u8]| on_data(id, Some(b))).await {
+            let mut buf = vec![0u8; 32 * 1024];
+            loop {
+                match down_r.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => on_data(id, Some(&buf[..n])),
+                }
+            }
+        } else {
+            dialing.abort();
+        }
+        on_data(id, None);
     });
     links().lock().unwrap_or_else(|e| e.into_inner()).insert(
         id,
@@ -348,6 +356,59 @@ pub fn open_link(request: &str, on_data: OnData) -> Result<i64, String> {
         },
     );
     Ok(id)
+}
+
+/// **Kotlin 开的每一条链路（握着的那条 · 终端 · 文件 · 一次性 exec），ack 之前那一段**：拨号核心报的进展行在这里吃掉、每一步重新计拨号期限
+/// （`resident_client::feed::dial_within`，共用循环开常驻流那一拨同一处；Kotlin 一个数都不写），阶段行与 ack 原样交给 `forward`。
+/// 回 `true` ＝ ack 交了（成或不成都是拨号核心的话）；一步都没来的那个期限 ⇒ 交一行没拨成的 ack（`reason: timeout`）、回 `false`，
+/// 调用方收掉那一拨（挂在 SYN · banner 上的那条不留着占这个身份的拨号锁）；没给 ack 就收工 ⇒ `false`。
+async fn ack_within<R: tokio::io::AsyncRead + Unpin>(
+    down: &mut R,
+    forward: &mut impl FnMut(&[u8]),
+) -> bool {
+    let progress = resident_client::feed::Progress::default();
+    let head = async {
+        loop {
+            let line = read_line(down).await?;
+            let v: serde_json::Value = serde_json::from_slice(&line).unwrap_or_default();
+            if v.get("progress").is_some() {
+                progress.step();
+                continue;
+            }
+            let mut whole = line;
+            whole.push(b'\n');
+            forward(&whole);
+            if v.get("stage").is_none() {
+                return Some(());
+            }
+        }
+    };
+    match resident_client::feed::dial_within(&progress, head).await {
+        Some(got) => got.is_some(),
+        None => {
+            let ack = serde_json::json!({
+                "ok": false,
+                "error": copy_core::copy_text("reason.dial.timeout", &[]),
+                "reason": "timeout",
+                "detail": format!("{}s", resident_client::backoff::DIAL_WITHIN.as_secs()),
+            });
+            forward(format!("{ack}\n").as_bytes());
+            false
+        }
+    }
+}
+
+/// 一字节一字节读一行（不含换行；ack 之后紧跟的是用法的字节，不许预读过头）。收工 ⇒ `None`。
+async fn read_line<R: tokio::io::AsyncRead + Unpin>(down: &mut R) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut one = [0u8; 1];
+    loop {
+        match down.read(&mut one).await {
+            Ok(0) | Err(_) => return None,
+            Ok(_) if one[0] == b'\n' => return Some(out),
+            Ok(_) => out.push(one[0]),
+        }
+    }
 }
 
 /// 往一条链路上行送字节。链路不在 ⇒ `false`。
@@ -709,6 +770,78 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentClose<'l>(
 
 #[cfg(test)]
 mod tests {
+    use resident_client::backoff::DIAL_WITHIN;
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
+
+    /// 喂一段拨号核心的下行（`(隔多久, 那一行)`），收 [`super::ack_within`] 交给 Kotlin 的那几行 ＋ 它的结局 ＋ 在虚拟钟上用了多久。
+    async fn head_of(script: Vec<(u64, &'static str)>) -> (Vec<String>, bool, Duration) {
+        let (mut w, mut r) = tokio::io::duplex(4096);
+        tokio::spawn(async move {
+            for (gap, line) in script {
+                tokio::time::sleep(Duration::from_secs(gap)).await;
+                if w.write_all(format!("{line}\n").as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+            std::future::pending::<()>().await;
+        });
+        let t0 = tokio::time::Instant::now();
+        let mut got = Vec::<u8>::new();
+        let acked = super::ack_within(&mut r, &mut |b: &[u8]| got.extend_from_slice(b)).await;
+        let lines = String::from_utf8(got)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        (lines, acked, t0.elapsed())
+    }
+
+    /// **Kotlin 开的每一条链路，ack 之前照共用循环那一个期限**（`resident_client::feed::dial_within`）：慢链路上每一步隔 8 秒、合计远超
+    /// 期限也照样等到 ack；进展行在核心里吃掉（Kotlin 一行也看不到），阶段行与 ack 原样交。
+    #[tokio::test(start_paused = true)]
+    async fn a_slow_dial_that_keeps_moving_reaches_its_ack_and_kotlin_sees_no_progress_lines() {
+        let (lines, acked, took) = head_of(vec![
+            (8, r#"{"progress":"tcp"}"#),
+            (8, r#"{"progress":"banner"}"#),
+            (1, r#"{"stage":{"kind":"won"}}"#),
+            (7, r#"{"progress":"auth"}"#),
+            (8, r#"{"ok":true}"#),
+        ])
+        .await;
+        assert!(acked, "{lines:?}");
+        assert_eq!(lines, vec![r#"{"stage":{"kind":"won"}}"#, r#"{"ok":true}"#]);
+        assert_eq!(took, Duration::from_secs(32));
+    }
+
+    /// 一步都不动的那一拨：最后一步之后 [`DIAL_WITHIN`] 交一行没拨成的 ack（原因 `timeout`，那一句是拨号超时那一句），回 `false`
+    /// （调用方收掉那一拨：挂在 SYN · banner 上的那一条不留着占这个身份的拨号锁）。
+    #[tokio::test(start_paused = true)]
+    async fn a_dial_that_stops_moving_gets_a_timeout_ack_one_window_after_its_last_step() {
+        let (lines, acked, took) = head_of(vec![(3, r#"{"progress":"tcp"}"#)]).await;
+        assert!(!acked);
+        assert_eq!(took, Duration::from_secs(3) + DIAL_WITHIN);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let ack: serde_json::Value = serde_json::from_str(&lines[0]).unwrap();
+        assert_eq!(ack["ok"], false);
+        assert_eq!(ack["reason"], "timeout");
+        assert_eq!(
+            ack["error"],
+            copy_core::copy_text("reason.dial.timeout", &[])
+        );
+    }
+
+    /// 链路没给 ack 就收工 ⇒ `false`，不另造一行（拨号核心自己的失败 ack 已经在它前面交了的那种不走这里）。
+    #[tokio::test(start_paused = true)]
+    async fn a_link_that_ends_before_its_ack_is_just_over() {
+        let (mut w, mut r) = tokio::io::duplex(64);
+        w.write_all(b"{\"progress\":\"tcp\"}\n").await.unwrap();
+        drop(w);
+        let mut got = Vec::<u8>::new();
+        assert!(!super::ack_within(&mut r, &mut |b: &[u8]| got.extend_from_slice(b)).await);
+        assert!(got.is_empty());
+    }
+
     /// 身份那一行是 JSON、带拨号核心的 ack 协议版本与它认得的用法（PTY · 握着连接那两种也在）。
     #[test]
     fn the_version_line_names_the_dial_core_it_carries() {

@@ -43,6 +43,23 @@ def sh(cmd):
     return rig("ssh", cmd).stdout
 
 
+def tmux_sessions():
+    """台架 tmux 里此刻的会话名（服务端没起 ⇒ 空）。"""
+    r = rig("tmux", "list-sessions", "-F", "#{session_name}")
+    return set(r.stdout.split()) if r.returncode == 0 else set()
+
+
+def tidy_tmux(run):
+    """跑 run()，末尾（红了 · 中途退出也算）收掉这一趟在台架 tmux 里新建的会话：台架目录跨趟留着，
+    不收的话一趟一趟攒下来，终端屏那一步的会话列表要翻好几屏、找不到这一趟那条。"""
+    before = tmux_sessions()
+    try:
+        run()
+    finally:
+        for name in sorted(tmux_sessions() - before):
+            rig("tmux", "kill-session", "-t", f"={name}")
+
+
 def adb(*a):
     return ui.adb(*a).stdout.decode("utf-8", "replace")
 
@@ -288,6 +305,10 @@ def switch_model(name):
 
 
 def main():
+    tidy_tmux(walk)
+
+
+def walk():
     # 深浅：CCM_SMOKE_NIGHT=yes|no 时先把模拟器切到那一套（截图两套各走一趟用）；不设不动。
     if os.environ.get("CCM_SMOKE_NIGHT") in ("yes", "no"):
         adb("shell", "cmd", "uimode", "night", os.environ["CCM_SMOKE_NIGHT"])

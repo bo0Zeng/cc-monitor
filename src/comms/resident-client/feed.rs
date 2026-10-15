@@ -11,7 +11,7 @@
 //! 什么时候接：
 //! - 宿主交了一条 SSH（[`Feed::set_transport`]）⇒ 当场接；换了一条 ⇒ 旧流关掉、在新的上接；交 `None` ⇒ 不接、停在断开。
 //! - 每一轮开拨之前先做宿主那一步（[`Transport::before_round`]，桌面：把这一版的后端放到那台）。
-//! - 流断了、SSH 还在 ⇒ 交一个 [`Event::Lost`]（让宿主去探 SSH：多半是它先死了），再按退避接（[`crate::backoff`]，活过 30 s 才清零）。
+//! - 流断了 ⇒ 按退避接（[`crate::backoff`]，活过 30 s 才清零）。下面那条 SSH 死没死不问宿主：再拨那一拨在拨号核心的池里自己换一条。
 //! - 开链路那一步 [`DIAL_WITHIN`] 里拨号核心一步进展都没报（静默断网；慢链路每过一步重新计时，[`Progress`]）⇒ 丢下、隔下界再拨，不涨退避；拨着的时候宿主报了事（[`Feed::wake`] · [`Feed::reconnect`] ·
 //!   换了一条 SSH）⇒ 丢下马上再拨。
 //! - 连着的时候判死靠流自己的心跳（[`HEARTBEAT_IDLE`] 没来字节就问活、[`PING_WITHIN`] 没回话就判死），不等 SSH 保活；
@@ -77,6 +77,21 @@ impl Progress {
     /// 等下一步（之前报过、还没被等走的那一步当场算）。
     async fn moved(&self) {
         self.0.notified().await;
+    }
+}
+
+/// **开链路的期限，全仓只这一处**：等 `dial` 的同时看 `progress`，每来一步重新计 [`DIAL_WITHIN`]；一步都没来的 [`DIAL_WITHIN`] ⇒ `None`
+/// （`dial` 随之被丢下）。共用循环开常驻流那一拨（[`Feed`]）与手机 SSH 那层开的每一条链路（终端 · 文件 · 握着的那条，嵌的核心在 ack 之前套它）同一个。
+pub async fn dial_within<F: Future>(progress: &Progress, dial: F) -> Option<F::Output> {
+    let quiet = tokio::time::sleep(DIAL_WITHIN);
+    tokio::pin!(dial, quiet);
+    loop {
+        tokio::select! {
+            got = &mut dial => return Some(got),
+            // 拨号核心报了一步进展 ⇒ 重新计时：一步都没来的 DIAL_WITHIN 才丢。
+            () = progress.moved() => quiet.as_mut().reset(tokio::time::Instant::now() + DIAL_WITHIN),
+            () = &mut quiet => return None,
+        }
     }
 }
 
@@ -155,8 +170,6 @@ pub enum Event {
     Gap,
     /// `stream-watch` 应答里的 `from[]`。
     WatchFrom(Vec<WatchFrom>),
-    /// 流断了、SSH 还在：请宿主探一次 SSH。
-    Lost,
 }
 
 impl std::fmt::Debug for Event {
@@ -169,7 +182,6 @@ impl std::fmt::Debug for Event {
             Event::Frame(l) => f.debug_tuple("Frame").field(l).finish(),
             Event::Gap => f.write_str("Gap"),
             Event::WatchFrom(w) => f.debug_tuple("WatchFrom").field(w).finish(),
-            Event::Lost => f.write_str("Lost"),
         }
     }
 }
@@ -463,7 +475,6 @@ impl<T: Transport> Feed<T> {
                         unsupported: false,
                     })
                     .await;
-                    (self.events)(Event::Lost).await;
                     (true, false, true)
                 }
                 Err(Fail {
@@ -632,19 +643,19 @@ impl<T: Transport> Feed<T> {
     ) -> Result<attach::Attached<T::Stream>, AttachOr> {
         let mut kicked = self.kick.subscribe();
         let progress = Progress::default();
-        let dial = t.stream(backend_command(ATTACH), progress.clone());
-        let quiet = tokio::time::sleep(DIAL_WITHIN);
+        let dial = dial_within(
+            &progress,
+            t.stream(backend_command(ATTACH), progress.clone()),
+        );
         let cut = cut.notified();
-        tokio::pin!(dial, quiet, cut);
-        let stream = loop {
-            tokio::select! {
-                got = &mut dial => break got.map_err(AttachOr::Dial)?,
-                // 拨号核心报了一步进展 ⇒ 重新计时：一步都没来的 DIAL_WITHIN 才丢。
-                () = progress.moved() => quiet.as_mut().reset(tokio::time::Instant::now() + DIAL_WITHIN),
-                () = &mut quiet => return Err(AttachOr::Unanswered),
-                () = &mut cut => return Err(AttachOr::Interrupted),
-                _ = kicked.changed() => return Err(AttachOr::Interrupted),
-            }
+        tokio::pin!(dial, cut);
+        let stream = tokio::select! {
+            got = &mut dial => match got {
+                Some(got) => got.map_err(AttachOr::Dial)?,
+                None => return Err(AttachOr::Unanswered),
+            },
+            () = &mut cut => return Err(AttachOr::Interrupted),
+            _ = kicked.changed() => return Err(AttachOr::Interrupted),
         };
         attach::handshake(
             stream,

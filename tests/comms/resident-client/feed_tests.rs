@@ -422,13 +422,6 @@ async fn a_backend_that_dies_right_after_hello_backs_off_and_does_not_hammer() {
         vec![2, 4, 8, 16, 30],
         "发完 hello 就死：退避照样涨（每轮都握上手也不清零）"
     );
-    assert!(
-        seen.lock()
-            .unwrap()
-            .iter()
-            .any(|e| matches!(e, Event::Lost)),
-        "接上过的流断了 ⇒ 请宿主探 SSH"
-    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -755,7 +748,6 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
             ),
             Event::Gap => "gap".to_string(),
             Event::WatchFrom(w) => format!("from {}@{}", w[0].sid, w[0].seq),
-            Event::Lost => "lost".to_string(),
         })
         .collect();
     // 名单报在连上之后、那台的第一帧与它谁先到不定 ⇒ 每条连接内只比集合，跨连接的先后照比。
@@ -785,7 +777,6 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
         sorted(second),
         sorted(&[
             "down hand=false".into(),
-            "lost".into(),
             "connecting".into(),
             "attached".into(),
             "up 2".into(),
@@ -1011,13 +1002,6 @@ async fn a_link_gone_silent_is_judged_dead_by_its_own_heartbeat() {
         gap,
         (HEARTBEAT_IDLE + PING_WITHIN + RECONNECT_MIN).as_secs(),
         "静了 {HEARTBEAT_IDLE:?} 问活、{PING_WITHIN:?} 没回话判死、隔下界重接"
-    );
-    assert!(
-        seen.lock()
-            .unwrap()
-            .iter()
-            .any(|e| matches!(e, Event::Lost)),
-        "心跳判死同流断了：请宿主探 SSH"
     );
     // 第二条照答：空闲十分钟不断，问活照问。
     tokio::time::sleep(Duration::from_secs(600)).await;

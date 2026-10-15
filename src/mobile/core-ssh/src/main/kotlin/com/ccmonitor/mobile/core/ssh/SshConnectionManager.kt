@@ -1,15 +1,11 @@
 package com.ccmonitor.mobile.core.ssh
 
-import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,34 +14,17 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-
-/** keepOrReplace 那场赛跑的两位选手。 */
-private const val PROBE = "probe"
-private const val FRESH = "fresh"
-
-/** 指数退避 `baseDelay shl n` 的 n 上限，防 Long 溢出（2^20×base 早已超过 maxDelay）。 */
-private const val MAX_BACKOFF_SHIFT = 20
 
 /**
- * 探活这么久还没回话才另拨一条新的、两边接着赛跑（[SshConnectionManager] 的 keepOrReplace）。健康的旧连接一个来回就回话，
- * 这一段内回了就不另拨（另拨的那两条会在那台多记两次登录）；黑洞上换上新连接只晚这一小段。
- */
-internal const val FRESH_AFTER_MS = 400L
-
-/**
- * 探活的兜底期限：只在「新起的那条也站不住」（网整个不通）时才走到它；平时谁先站住由对端回话定（[SshConnectionManager] 的 keepOrReplace）。
- */
-private const val PROBE_TIMEOUT_MS = 5_000L
-
-/**
- * 多 SSH 会话管理。按 id 持有 [SshConnection]，对外暴露 [sessions]；负责注册、状态、连断与重连。
- * 所有会话都计入 activeCount 并参与后台重连。
+ * 多 SSH 会话管理（终端 · 文件走的那一层）。按 id 持有 [SshTransport]，对外暴露 [sessions]；负责注册、状态、连与断。
+ *
+ * **重连不在这里**：手机上只有一条重连循环，是共用的那一条（嵌的核心里的常驻流，`resident-client`，桌面同一份：拨号按进展计时 ·
+ * 宿主报事就重拨 · 心跳判死）。这一层握着的那条死了（核心的保活判死 ⇒ [SshTransport.onDrop]）⇒ 名义状态「重连中」，
+ * 等共用那条报「够着那一台了」（[loopReached]）才在同一份拨号身份上换一条（[SshTransport.again]：池里有活的就复用）。
+ * 自己不拨、不判死、不退避；开链路的期限也在核心里（按进展算），这里一个数都不写。
  *
  * 注意：连接的生死只该经 app 层的 HostConnector 网关进出，别处不要直接调本类的
  * [connect] / [retain] / [release] / [disconnect] / [disconnectAll] / [connection]。
@@ -54,20 +33,20 @@ class SshConnectionManager(
     private val knownHostStore: KnownHostStore? = null,
     // 传输工厂：走手机嵌的 Rust 核心（[RustTransport]，拨号核心与后端同一份）；测试注入假实现。
     private val transportFactory: (KnownHostStore?) -> SshTransport = { RustTransport(it) },
-    // 重连协程的 dispatcher；测试注入 TestDispatcher。
+    // 跟着共用循环换连接 · 后台关连接的协程跑在哪；测试注入 TestDispatcher。
     reconnectDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _sessions = MutableStateFlow<Map<String, SessionState>>(emptyMap())
     val sessions: StateFlow<Map<String, SessionState>> = _sessions.asStateFlow()
 
-    // 每个 id 一份 [HostConnectionState]（锁、在飞连接、连接、配置、代号、持有者、去重标）。
+    // 每个 id 一份 [HostConnectionState]（锁、在飞连接、连接、配置、代号、持有者）。
     // computeIfAbsent 原子创建；条目永不移除：锁与代号必须跨 disconnect 稳定，disconnect 只清字段。
     private val states = ConcurrentHashMap<String, HostConnectionState>()
 
     /** 写路径与临界区用：原子取或建。只读查询用 `states[id]?.x`，别在陌生 id 上白建条目。 */
     private fun stateFor(id: String): HostConnectionState = states.computeIfAbsent(id) { HostConnectionState(it) }
 
-    // 两把锁：synchronized 短临界区锁串行化 connect 注册与 disconnect 清理；suspend 锁让同 id 的首连单飞。
+    // 两把锁：synchronized 短临界区锁串行化 connect 注册与 disconnect 清理；suspend 锁让同 id 的连接单飞。
     // disconnect 只用 [lockFor]，不等 [connectLockFor]，所以作废在飞 connect 不会被它阻塞。
     private fun lockFor(id: String): Any = stateFor(id).lock
 
@@ -75,20 +54,21 @@ class SshConnectionManager(
 
     private fun put(state: SessionState) = _sessions.update { it + (state.id to state) }
 
-    /** 单地址连接（委托给多地址版；竞速本身在 SshConnection 内）。 */
+    private val scope = CoroutineScope(SupervisorJob() + reconnectDispatcher)
+
+    /** 单地址连接（委托给多地址版；竞速本身在核心里）。 */
     suspend fun connect(
         id: String,
         hostId: String,
         label: String,
         config: ConnectionConfig,
         onEvent: ((SshConnectEvent) -> Unit)? = null,
-    ): SshTransport =
-        connect(id, hostId, label, listOf(config), onEvent)
+    ): SshTransport = connect(id, hostId, label, listOf(config), onEvent)
 
     /**
-     * 连接一个会话：造一个 transport，多地址竞速与跳板都在 [SshConnection] 内。全失败置 ERROR 并抛出。
-     * [onEvent] 透传连接阶段事件。
-     * [expectedGen] 非空时守重连纪元：进入首个临界区时代号已变（期间被 disconnect）就弃用，不写回任何状态。
+     * 连接一个会话：多地址竞速与跳板都在核心里。全失败置 ERROR 并抛出。[onEvent] 透传连接阶段事件。
+     * 已有活连接 ⇒ 复用。握着的那条已死、配置没变 ⇒ 在同一份拨号身份上再握一条（[SshTransport.again]），拨号请求不变。
+     * [expectedGen] 非空时守代号：进入首个临界区时代号已变（期间被 disconnect）就弃用，不写回任何状态。
      */
     suspend fun connect(
         id: String,
@@ -99,152 +79,22 @@ class SshConnectionManager(
         expectedGen: Int? = null,
     ): SshTransport {
         require(addressConfigs.isNotEmpty()) { "no address to connect" }
-        // 合成事件（复用、等待、失效提示）用第一个地址的 host/port，直接发给 [onEvent]，
-        // 不参与握手看门狗的进度判定。
         val first = addressConfigs.first()
-        val emit: (SshConnectEvent.Stage, String) -> Unit = { stage, msg ->
-            onEvent?.invoke(SshConnectEvent(first.host, first.port, stage, msg))
+        val emit: (String) -> Unit = { msg -> onEvent?.invoke(SshConnectEvent(first.host, first.port, SshConnectEvent.Stage.ESTABLISHED, msg)) }
+        states[id]?.connection?.takeIf { it.isConnected }?.let {
+            emit(copyText("mobSsh.log.reused"))
+            return it
         }
-        // 已有活连接就复用：同主机多个 tab 共享一条连接，各自 openShell。快路径不进锁；复用前让对端答（几百毫秒没回话才另拨一条，见 keepOrReplace）。
-        reusableOrReplaced(id, emit, onEvent)?.let { return it }
-        // 另一个 connect 在飞时提示在等。isLocked 只是快照，只用来出提示，不参与决策。
-        if (connectLockFor(id).isLocked) emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.waitOther"))
-        // 同 id 并发首连单飞：先到者建连接，后到者进锁复查见活连接即复用，不会各建一条互相顶掉。
+        if (connectLockFor(id).isLocked) onEvent?.invoke(SshConnectEvent(first.host, first.port, SshConnectEvent.Stage.TCP, copyText("mobSsh.log.waitOther")))
+        // 同 id 并发连接单飞：先到者建，后到者进锁复查见活连接即复用，不会各建一条互相顶掉。
         return connectLockFor(id).withLock {
-            // 锁内复查：先到者已建好就复用，也发合成事件。不再探测：刚建好的连接是新鲜的，锁内也不该做网络往返。
-            states[id]?.connection?.let {
-                if (it.isConnected) {
-                    emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.reusedConcurrent"))
-                    return@withLock it
-                }
+            states[id]?.connection?.takeIf { it.isConnected }?.let {
+                emit(copyText("mobSsh.log.reusedConcurrent"))
+                return@withLock it
             }
             doConnect(id, hostId, label, addressConfigs, onEvent, expectedGen)
         }
     }
-
-    /**
-     * 复用已有连接之前先问它还活不活。`isConnected` 只读本地标志，死 TCP 好一阵仍是 true，直接复用会卡死在 openShell。
-     * 问法见 [keepOrReplace]：旧的先回话 ⇒ 复用；新的先站住 ⇒ 已换上，回新的；两边都不成 ⇒ null，走锁里的真连接。
-     */
-    private suspend fun reusableOrReplaced(
-        id: String,
-        emit: (SshConnectEvent.Stage, String) -> Unit,
-        onEvent: ((SshConnectEvent) -> Unit)?,
-    ): SshTransport? {
-        val existing = states[id]?.connection ?: return null
-        if (!existing.isConnected) return null // 本地标志已死：走真 connect，finalizeConnected 会替换掉旧连接
-        emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.probeExisting"))
-        val kept = keepOrReplace(id, existing, onEvent) { emit(SshConnectEvent.Stage.TCP, copyText("mobSsh.log.existingDead")) }
-        when {
-            kept === existing -> emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.reused"))
-            kept != null -> emit(SshConnectEvent.Stage.ESTABLISHED, copyText("mobSsh.log.replaced"))
-        }
-        return kept
-    }
-
-    /**
-     * 旧连接还能不能用，让对端答，不靠等期限：先探活（对端回 CHANNEL_OPEN 的确认），[FRESH_AFTER_MS] 内没回话才另拨一条新连接，谁先站住用谁。
-     * - 旧的在那一小段里回了话 ⇒ 留旧的，一条都不另拨。
-     * - 旧的另拨之后才回话 ⇒ 留旧的，新起的那条当场关（多半还在 TCP / banner 那一步）。
-     * - 新的先认证完 ⇒ 旧的比新建一条还慢，留着也没用：装上新的（[linkOf] 换一条），旧的后台关。这样复用永远不慢于新建。
-     * - 旧的答「死」（对端回了 RST 一类）⇒ 等新的那条。
-     * - 两边都不成 ⇒ 摘掉旧的（替换，不自增代号），回 null，调用方照原来的路重连。
-     *
-     * 同一台同时只跑一场：回前台的探活与终端 tab 的复用撞上 ⇒ 后来的等同一场（[HostConnectionState.verifying]）。
-     * [onEvent] 只给开这一场的那位（新连接的逐阶段日志）；[onDead] 在判出旧的已死时调一次。
-     */
-    private suspend fun keepOrReplace(
-        id: String,
-        existing: SshTransport,
-        onEvent: ((SshConnectEvent) -> Unit)? = null,
-        onDead: () -> Unit = {},
-    ): SshTransport? {
-        val race =
-            synchronized(lockFor(id)) {
-                val st = stateFor(id)
-                st.verifying?.takeIf { it.isActive } ?: run {
-                    val cfgs = st.configs ?: return null
-                    val entry = _sessions.value[id] ?: return null
-                    val gen = st.generation
-                    reconnectScope
-                        .async { race(id, entry, existing, cfgs, gen, onEvent, onDead) }
-                        .also { st.verifying = it }
-                }
-            }
-        return race.await()
-    }
-
-    @Suppress("LongParameterList")
-    private suspend fun race(
-        id: String,
-        entry: SessionState,
-        existing: SshTransport,
-        cfgs: List<ConnectionConfig>,
-        gen: Int,
-        onEvent: ((SshConnectEvent) -> Unit)?,
-        onDead: () -> Unit,
-    ): SshTransport? {
-        val probe = reconnectScope.async { runCatching { existing.probeAlive(PROBE_TIMEOUT_MS) }.getOrDefault(false) }
-        // 先只等探活一小段：这一段里回了「活」⇒ 留旧的，不另拨；答「死」或还没回话 ⇒ 另拨一条，接着赛跑。
-        if (withTimeoutOrNull(FRESH_AFTER_MS) { probe.await() } == true) return stillInstalled(id, existing)
-        val fresh = freshIfCurrent(id, gen) ?: return null.also { probe.cancel() }
-        try {
-            val made = reconnectScope.async { runCatching { handshake(fresh, cfgs, onEvent, AtomicBoolean()) }.isSuccess }
-            val keepOld = keepOld(probe, made)
-            if (keepOld != true) onDead()
-            return when (keepOld) {
-                true -> {
-                    closeInBackground(listOf(fresh))
-                    stillInstalled(id, existing)
-                }
-                false -> {
-                    probe.cancel()
-                    runCatching { finalizeConnected(id, entry.hostId, entry.label, fresh, gen) }.getOrNull()
-                }
-                null -> {
-                    closeInBackground(listOf(fresh))
-                    evictDead(id, existing)
-                    null
-                }
-            }
-        } finally {
-            synchronized(lockFor(id)) { stateFor(id).let { if (it.racing === fresh) it.racing = null } }
-        }
-    }
-
-    /** 探活与新连接谁先站住：旧的回了「活」⇒ true（留旧的）；新的先认证完 ⇒ false（换上新的）；两边都不成 ⇒ null。 */
-    private suspend fun keepOld(
-        probe: Deferred<Boolean>,
-        made: Deferred<Boolean>,
-    ): Boolean? {
-        val first =
-            select {
-                probe.onAwait { PROBE to it }
-                made.onAwait { FRESH to it }
-            }
-        return when (first) {
-            PROBE to true -> true
-            FRESH to true -> false
-            PROBE to false -> false.takeIf { made.await() }
-            else -> true.takeIf { probe.await() }
-        }
-    }
-
-    /** 旧的那条还装着、本地标志也还活 ⇒ 它；否则 null（期间被断开 · 被换掉了）。 */
-    private fun stillInstalled(
-        id: String,
-        existing: SshTransport,
-    ): SshTransport? = existing.takeIf { states[id]?.connection === it && it.isConnected }
-
-    /** 代号没变（期间没被断开）⇒ 造一条新的、记成在赛跑的那条；变了 ⇒ null（先核再造，不留一条没人关的）。 */
-    private fun freshIfCurrent(
-        id: String,
-        gen: Int,
-    ): SshTransport? =
-        synchronized(lockFor(id)) {
-            val st = stateFor(id)
-            if (st.generation == gen) transportFactory(knownHostStore).also { st.racing = it } else null
-        }
 
     /**
      * 真正建连的临界区体，被 [connect] 的单飞锁包着。
@@ -259,39 +109,29 @@ class SshConnectionManager(
         onEvent: ((SshConnectEvent) -> Unit)?,
         expectedGen: Int?,
     ): SshTransport {
-        // 先造 transport（纯构造、无 socket），与 CONNECTING 一起原子登记为在飞连接，disconnect 之后必能关到它。
-        val conn = transportFactory(knownHostStore)
         val myGen: Int
+        val conn: SshTransport
         synchronized(lockFor(id)) {
             val st = stateFor(id)
             throwIfEpochExpired(id, expectedGen) // 代号已变说明已被 disconnect：弃用
             myGen = st.generation // 之后 disconnect 自增代号即作废本次
+            // 同一份配置上那条死了 ⇒ 同一份拨号身份上再来一条（常驻流照的那份拨号请求不变）；否则造一条新的。
+            conn = st.connection?.takeIf { st.configs == addressConfigs }?.again() ?: transportFactory(knownHostStore)
             put(SessionState(id, hostId, label, SessionStatus.CONNECTING))
             st.configs = addressConfigs
-            st.connecting = conn // disconnect 与看门狗靠它关掉阻塞中的握手
+            st.connecting = conn // disconnect 靠它关掉在飞的那一条
         }
-        val timedOut = AtomicBoolean(false)
-        // 注意：close() 是网络写（SSH_MSG_DISCONNECT），在主线程调会抛 NetworkOnMainThreadException，
-        // 传输只 catch IOException，socket、读线程和远端会话随之泄漏，外层 runCatching 又会把异常吞掉。
-        // connect 可能从主线程调进来，所以失败路径一律走 [closeInBackground]。
+        // 注意：close() 是网络写，在主线程调会抛 NetworkOnMainThreadException；connect 可能从主线程调进来，失败路径一律走 [closeInBackground]。
         try {
-            handshake(conn, addressConfigs, onEvent, timedOut)
+            conn.connect(addressConfigs, onEvent)
         } catch (ce: CancellationException) {
             closeInBackground(listOf(conn))
             throw ce // 协程被取消：不标 ERROR，交给结构化取消
         } catch (e: Exception) {
-            closeInBackground(listOf(conn)) // 失败也关，防半开 socket 与跳板链泄漏
+            closeInBackground(listOf(conn)) // 失败也关，防半开链路泄漏
             synchronized(lockFor(id)) {
                 // 未被新的 disconnect 取代时才标 ERROR，否则会复活已被移除的会话条目。
-                if (stateFor(id).generation == myGen) {
-                    val msg =
-                        if (timedOut.get()) {
-                            copyText("mobSsh.handshake.timeout", "dur" to DurationFormat.short(handshakeDeadlineMs(addressConfigs)))
-                        } else {
-                            e.message ?: e.toString()
-                        }
-                    put(SessionState(id, hostId, label, SessionStatus.ERROR, msg))
-                }
+                if (stateFor(id).generation == myGen) put(SessionState(id, hostId, label, SessionStatus.ERROR, e.message ?: e.toString()))
             }
             throw e
         } finally {
@@ -299,49 +139,6 @@ class SshConnectionManager(
             synchronized(lockFor(id)) { stateFor(id).let { if (it.connecting === conn) it.connecting = null } }
         }
         return finalizeConnected(id, hostId, label, conn, myGen)
-    }
-
-    /** 握手（TCP · banner/KEX · 认证），带看门狗；失败抛。看门狗到点 ⇒ [timedOut] 置位、强关 [conn]。 */
-    private suspend fun handshake(
-        conn: SshTransport,
-        addressConfigs: List<ConnectionConfig>,
-        onEvent: ((SshConnectEvent) -> Unit)?,
-        timedOut: AtomicBoolean,
-    ) {
-        // 握手看门狗：黑洞对端连上 TCP 后 banner/KEX 读会无限阻塞（传输层没有这一级超时），到点强关 transport 解阻塞。
-        // 进度判据是任一目标地址认证成功（ESTABLISHED），不是 isConnected：isConnected 要等所有输家清理完才为真，
-        // 期间赢家早已认证。只认目标地址，跳板的 ESTABLISHED 不算。
-        val handshakeDone = AtomicBoolean(false)
-        val targetHostPorts = addressConfigs.mapTo(HashSet()) { it.host to it.port }
-        val onEventGuarded: (SshConnectEvent) -> Unit = { ev ->
-            if (ev.stage == SshConnectEvent.Stage.ESTABLISHED && (ev.host to ev.port) in targetHostPorts) handshakeDone.set(true)
-            onEvent?.invoke(ev)
-        }
-        val deadlineMs = handshakeDeadlineMs(addressConfigs)
-        val watchdog =
-            reconnectScope.launch {
-                delay(deadlineMs)
-                if (!handshakeDone.get()) {
-                    timedOut.set(true)
-                    runCatching { conn.close() }
-                }
-            }
-        try {
-            conn.connect(addressConfigs, onEventGuarded)
-        } finally {
-            watchdog.cancel()
-        }
-    }
-
-    // 下限 connectTimeoutMs + 15s，防 connectTimeoutMs 调得比 handshakeTimeoutMs 还大时看门狗先于合法握手触发。
-    // 跳板 + 多地址是串行的，按地址数扩额；每次尝试的上界取 max(connectTimeoutMs, 30s)，
-    // 因为经隧道的尝试不走 socket.connect，上界是经隧道那一次握手自己的等待。
-    private fun handshakeDeadlineMs(addressConfigs: List<ConnectionConfig>): Long {
-        val first0 = addressConfigs.first()
-        val isSerialJump = first0.jumpVia != null && addressConfigs.size > 1
-        val perAttemptMs = if (isSerialJump) maxOf(first0.connectTimeoutMs.toLong(), 30_000L) else first0.connectTimeoutMs.toLong()
-        val serialFactor = if (isSerialJump) addressConfigs.size else 1
-        return maxOf(first0.handshakeTimeoutMs, perAttemptMs * serialFactor + 15_000)
     }
 
     /**
@@ -362,9 +159,9 @@ class SshConnectionManager(
             if (st.generation != myGen) {
                 ghostDiscard = true
             } else {
-                supersededOld = st.connection // 重连路径：旧连接锁外后台关
+                supersededOld = st.connection?.takeIf { it !== conn }
                 st.connection = conn
-                publishLink(id, conn)
+                conn.dialRequest?.let { req -> dials.update { it + (id to req) } }
                 put(SessionState(id, hostId, label, SessionStatus.CONNECTED))
             }
         }
@@ -372,25 +169,84 @@ class SshConnectionManager(
             closeInBackground(listOf(conn))
             throw CancellationException("会话在连接期间已被断开")
         }
+        conn.onDrop { dropped(id, conn) }
         supersededOld?.let { closeInBackground(listOf(it)) }
         return conn
     }
 
     fun connection(id: String): SshTransport? = states[id]?.connection // 只读，不创建条目
 
-    /** 每台此刻装着的那条连接（与 [HostConnectionState.connection] 同步改，只在 [lockFor] 内写）。 */
-    private val links = MutableStateFlow<Map<String, SshTransport>>(emptyMap())
+    /**
+     * 每台的拨号请求（JSON，不带用法）：连上过就一直在，直到断开（[disconnect] · 持有者放光）。握着的那条死了也还在 ——
+     * 共用那条重连循环照它在核心里自己拨（池里那条死了它拨一条新的），这一层再跟着它换。
+     */
+    private val dials = MutableStateFlow<Map<String, String>>(emptyMap())
 
-    private fun publishLink(
-        id: String,
-        conn: SshTransport?,
-    ) = links.update { if (conn == null) it - id else it + (id to conn) }
+    /** 有拨号请求的那几台（每台要有一条共用循环在跑）。 */
+    val dialing: Flow<Set<String>> = dials.map { it.keys }.distinctUntilChanged()
+
+    /** 这台的拨号请求（按值去重：同一份身份上换了一条，值不变）；没连上过 · 已断开 ⇒ `null`。 */
+    fun dialOf(id: String): Flow<String?> = dials.map { it[id] }.distinctUntilChanged()
 
     /**
-     * 这台此刻的活连接，可观测（同 [connection]）。值换了（按身份）＝ 换了一条：重连 · 探活判死后换上新的，
-     * 名义状态一直是「连着」也照样换（常驻流跟着它重接）。
+     * 共用那条重连循环报：这台此刻够没够着（流通着，或停在要人动手的那一步——那一步也是登上了那一台才知道的）。
+     * 够着了、这一层握着的那条已死 ⇒ 在同一份拨号身份上换一条（池里复用它那条）。宿主只转发，这里不判。
      */
-    fun linkOf(id: String): Flow<SshTransport?> = links.map { it[id] }.distinctUntilChanged { a, b -> a === b }
+    fun loopReached(
+        id: String,
+        reached: Boolean,
+    ) {
+        stateFor(id).reached = reached
+        if (reached) follow(id)
+    }
+
+    /** 握着的那条死了（核心报的）：还是装着的那条 ⇒ 名义状态「重连中」；共用那条此刻够着 ⇒ 当场跟着换一条。 */
+    private fun dropped(
+        id: String,
+        conn: SshTransport,
+    ) {
+        val follows =
+            synchronized(lockFor(id)) {
+                val st = stateFor(id)
+                val entry = _sessions.value[id]
+                if (st.connection !== conn || entry == null || !autoOf(st)) return
+                put(entry.copy(status = SessionStatus.RECONNECTING, error = null))
+                st.reached
+            }
+        if (follows) follow(id)
+    }
+
+    /** 跟着共用那条换一条：装着的那条已死、有配置、这台开着自动重连才换；同一台同时只换一次，没换成就等共用那条下一次报。 */
+    private fun follow(id: String) {
+        val st = states[id] ?: return
+        val (cfgs, entry, gen) =
+            synchronized(lockFor(id)) {
+                val dead = st.connection?.let { !it.isConnected } == true
+                val cfgs = st.configs?.takeIf { dead && autoOf(st) } ?: return
+                val entry = _sessions.value[id] ?: return
+                Triple(cfgs, entry, st.generation)
+            }
+        if (!st.following.compareAndSet(false, true)) return
+        scope.launch {
+            try {
+                connect(id, entry.hostId, entry.label, cfgs, expectedGen = gen)
+            } catch (ce: CancellationException) {
+                throw ce // 期间被断开（代号过期）· 收场：这一次落空
+            } catch (
+                @Suppress("TooGenericExceptionCaught") ignored: Exception,
+            ) {
+                // 没换成：状态已标 ERROR（那一句是核心的），等共用那条下一次报够着再换。
+            } finally {
+                st.following.set(false)
+            }
+        }
+    }
+
+    private fun autoOf(st: HostConnectionState): Boolean =
+        st.configs
+            ?.firstOrNull()
+            ?.reconnect
+            ?.auto != false
 
     // 持有者集在 [HostConnectionState.holders]：多 tab 共享同一 id 的连接，只在 lockFor 内访问。
     // 用集合而不是计数：强制断开清集后，存活的 VM 重新 retain 即可恢复持有。
@@ -398,9 +254,9 @@ class SshConnectionManager(
     /**
      * 登记一个持有者（会话屏或 tab，[holder] 是该 VM 的唯一 token），与 [release] 配对。按 holder 幂等，可安全重复 retain。
      *
-     * 返回当前重连纪元，调用方应把它作为随后 [connect] 的 expectedGen：强制断开若落在 retain 与 connect 之间，
-     * connect 会因纪元已变而弃用，不会装入一条无人持有的连接（那会让保活服务永不自停）。
-     * retain 与读纪元在同一把锁内原子完成。
+     * 返回当前代号，调用方应把它作为随后 [connect] 的 expectedGen：强制断开若落在 retain 与 connect 之间，
+     * connect 会因代号已变而弃用，不会装入一条无人持有的连接（那会让保活服务永不自停）。
+     * retain 与读代号在同一把锁内原子完成。
      */
     fun retain(
         id: String,
@@ -440,136 +296,36 @@ class SshConnectionManager(
     }
 
     /**
-     * 真断开的临界区体，调用方须已持 [lockFor]：自增代号作废在飞 connect，摘除连接，清配置与会话条目。
+     * 真断开的临界区体，调用方须已持 [lockFor]：自增代号作废在飞 connect，摘除连接，清配置 · 拨号请求 · 会话条目。
      * 锁内只改状态（`connection(id)` 立刻对外可见为 null），不在这里 close：close 是网络写，主线程上会泄漏。
      * 摘下的 transport 返回给调用方在锁外后台关。
      */
     private fun disconnectLocked(id: String): List<SshTransport> {
         val st = stateFor(id)
         st.generation++ // 作废任何在飞 connect 的注册
-        // 在飞连接也摘下来关：阻塞的握手不响应取消，关 socket 是唯一的解法，单飞锁随之释放。
-        val prevConnecting = st.connecting
-        val prevConnection = st.connection
-        val prevRacing = st.racing
+        val doomed = listOfNotNull(st.connecting, st.connection)
         st.connecting = null
         st.connection = null
-        st.racing = null
-        publishLink(id, null)
-        val doomed = listOfNotNull(prevConnecting, prevConnection, prevRacing)
-        st.configs = null // 防重连复活手动断开的会话
-        _sessions.update { it - id } // 不再是重连候选
+        dials.update { it - id } // 共用那条随之停在断开
+        st.configs = null // 防跟着共用循环复活手动断开的会话
+        _sessions.update { it - id }
         return doomed
     }
 
     /**
-     * 后台关 transport，不等结果。用本类长命的 [reconnectScope]，不用调用方的 scope：
+     * 后台关 transport，不等结果。用本类长命的 [scope]，不用调用方的 scope：
      * viewModelScope 在 onCleared 返回时就取消了，close 永远不会执行。
      */
     private fun closeInBackground(transports: List<SshTransport>) {
         if (transports.isEmpty()) return
-        reconnectScope.launch { transports.forEach { t -> runCatching { t.close() } } }
-    }
-
-    /**
-     * 探测判死后摘除死连接：按值比较，只在当前仍是它时才摘，不误摘并发换上的新连接；物理关闭走后台。
-     * 摘除是替换，不自增代号。
-     */
-    private fun evictDead(
-        id: String,
-        dead: SshTransport,
-    ) {
-        synchronized(lockFor(id)) {
-            stateFor(id).let {
-                if (it.connection === dead) {
-                    it.connection = null
-                    publishLink(id, null)
-                }
-            }
-        }
-        closeInBackground(listOf(dead))
+        scope.launch { transports.forEach { t -> runCatching { t.close() } } }
     }
 
     // 连接失败留下 ERROR 条目但没有连接的会话也要断：取「有连接的 id」与会话条目的并集。
     // 不用 states.keys：那里含已清空的条目，会白白加锁、自增代号。
     fun disconnectAll() = (states.filterValues { it.connection != null }.keys + _sessions.value.keys).toSet().forEach(::disconnect)
 
-    // 保活与重连
-    private val reconnectScope = CoroutineScope(SupervisorJob() + reconnectDispatcher)
-    // 重连的去重标在 [HostConnectionState.reconnecting]；探活那一场的单飞在 [HostConnectionState.verifying]。
-
-    /**
-     * 用存好的配置重连单个会话（尽力而为，按 id 去重防风暴）。
-     * 重建的是新连接：状态、SFTP 与新操作恢复，已有交互终端的旧流不会自动重挂。
-     */
-    private fun reconnect(st: SessionState) {
-        // 配置与代号必须在同一把锁内一起读：disconnect 落在两次读之间时，会拿断开前的配置配断开后的代号，
-        // 复活用户刚断开的会话。
-        val cfgs: List<ConnectionConfig>
-        val genAtStart: Int
-        synchronized(lockFor(st.id)) {
-            cfgs = stateFor(st.id).configs ?: return
-            genAtStart = stateFor(st.id).generation
-        }
-        val policy = cfgs.first().reconnect
-        if (!policy.auto) return // 该主机关了断线自动重连
-        if (!stateFor(st.id).reconnecting.compareAndSet(false, true)) return // 已在重连：跳过
-        reconnectScope.launch {
-            try {
-                reconnectWithBackoff(st, cfgs, policy, genAtStart)
-            } finally {
-                stateFor(st.id).reconnecting.set(false)
-            }
-        }
-    }
-
-    /**
-     * 退避重试：失败按指数退避（baseDelay × 2^(attempt-1)，上限 maxDelay）重试，到 [ReconnectPolicy.maxAttempts] 停（0 为无限）；
-     * 代号变了（用户断开）或已连上也停。
-     */
-    private suspend fun reconnectWithBackoff(
-        st: SessionState,
-        cfgs: List<ConnectionConfig>,
-        policy: ReconnectPolicy,
-        genAtStart: Int,
-    ) {
-        var attempt = 0
-        while (tryMarkReconnecting(st, genAtStart)) {
-            // 失败吞掉继续重试，但取消必须重抛。带 expectedGen：connect 首个临界区再核一次代号。
-            val established =
-                runCatching { connect(st.id, st.hostId, st.label, cfgs, expectedGen = genAtStart) }
-                    .onFailure { if (it is CancellationException) throw it }
-                    .isSuccess
-            if (established) return
-            attempt++
-            if (policy.maxAttempts in 1..attempt) return // 0 为无限
-            delay((policy.baseDelayMs shl (attempt - 1).coerceIn(0, MAX_BACKOFF_SHIFT)).coerceAtMost(policy.maxDelayMs))
-        }
-    }
-
-    /**
-     * 「仍需重连」的检查与标 RECONNECTING 在同一把锁内原子完成。分两步时，disconnect 插在中间会把一个
-     * RECONNECTING 幽灵条目写回 [_sessions]，没有连接、永不再重连、无人清理。返回 false 表示已断开或已连上。
-     */
-    internal fun tryMarkReconnecting(
-        st: SessionState,
-        genAtStart: Int,
-    ): Boolean =
-        synchronized(lockFor(st.id)) {
-            if (reconnectStillActive(st.id, genAtStart)) {
-                put(st.copy(status = SessionStatus.RECONNECTING))
-                true
-            } else {
-                false
-            }
-        }
-
-    /** 代号没被 disconnect 自增，且尚未连上：继续重连。 */
-    private fun reconnectStillActive(
-        id: String,
-        genAtStart: Int,
-    ): Boolean = stateFor(id).let { it.generation == genAtStart && it.connection?.isConnected != true }
-
-    /** 重连纪元守门：[expectedGen] 非空且当前代号已不同（期间被 disconnect）就抛取消。须在 [lockFor] 内调。 */
+    /** 代号守门：[expectedGen] 非空且当前代号已不同（期间被 disconnect）就抛取消。须在 [lockFor] 内调。 */
     private fun throwIfEpochExpired(
         id: String,
         expectedGen: Int?,
@@ -577,46 +333,6 @@ class SshConnectionManager(
         if (expectedGen != null && stateFor(id).generation != expectedGen) {
             throw CancellationException("重连纪元过期：会话已被断开")
         }
-    }
-
-    /** 对 ERROR 会话重连。 */
-    fun requestReconnectAll() {
-        _sessions.value.values
-            .filter { it.isErrorReconnectCandidate() }
-            .forEach { reconnect(it) }
-    }
-
-    /**
-     * 前台或网络恢复时，重连底层已死但状态仍是 CONNECTED 的会话。
-     * 本地 `isConnected` 对黑洞断网（无 FIN）好一阵仍是 true，所以本地标志还活着的会话让对端答（keepOrReplace：
-     * 先探活，几百毫秒没回话才另拨一条、谁先站住用谁），两边都不成才走退避重连；本地标志已死的直接重连。同一台同时只跑一场。
-     */
-    fun probeAndReconnectStale() {
-        _sessions.value.values
-            .filter {
-                states[it.id]
-                    ?.configs
-                    ?.firstOrNull()
-                    ?.reconnect
-                    ?.onNetworkChange != false
-            } // 尊重该主机的「网络变化时重连」
-            .filter {
-                states[it.id]
-                    ?.configs
-                    ?.firstOrNull()
-                    ?.reconnect
-                    ?.auto != false
-            } // 关了断线自动重连：不重连，也不探测
-            .forEach { st ->
-                val existing = states[st.id]?.connection
-                when {
-                    // 本地标志已死：直接重连。
-                    st.isStaleReconnectCandidate(existing?.isConnected == true) -> reconnect(st)
-                    // 本地标志仍活：让对端答（几百毫秒没回话才另拨一条，见 keepOrReplace）；两边都不成才走退避重连。
-                    existing != null && st.countsAsActive() ->
-                        reconnectScope.launch { if (keepOrReplace(st.id, existing) == null) reconnect(st) }
-                }
-            }
     }
 
     /** 当前活跃会话数（CONNECTED），供保活服务出通知与自停。 */

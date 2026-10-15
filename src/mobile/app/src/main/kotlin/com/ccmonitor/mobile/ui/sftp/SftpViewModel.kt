@@ -24,9 +24,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 
-// 复用连接前的探活超时，与会话侧 FASTPATH_PROBE_TIMEOUT_MS 同值：健康连接亚秒往返，5s 判死。
-private const val SFTP_PROBE_TIMEOUT_MS = 5_000L
-
 /** SFTP 屏状态（连接中 / 错误 / 就绪）。 */
 sealed interface SftpUi {
     data object Connecting : SftpUi
@@ -92,17 +89,13 @@ class SftpViewModel(
             // 每次幂等重 retain：覆盖所有重连点，强制断开清集后恢复本屏持有。
             // retain 的纪元交给 connect 守门：强制断开落在 retain 与建连之间时弃用，不成孤儿。
             val epoch = hostConnector.retain(hostId, holderToken)
-            // 只看 isConnected 不够：对端掉电的死 TCP（无 FIN）约 75s 内仍报 true，复用它会让 sftpList 卡死。
-            // 所以复用前主动探活（一次往返、5s 超时）；探活败就走真连接重建。没有现成连接时不空探。
-            hostConnector.connection(hostId)?.takeIf { it.isConnected && it.probeAliveOrFalse() } ?: run {
+            // 握着的那条死了由核心判（保活），黑洞上开通道时核心让旧的与新拨的一条赛跑；这里不另探。
+            hostConnector.connection(hostId)?.takeIf { it.isConnected } ?: run {
                 val host = hostRepo.get(hostId) ?: error(copyText("mobSession.host.missing", "id" to hostId))
                 // 认证、跳板、竞速都在 HostConnector 里。SFTP 没有选身份流（pendingIdentity=null）。
                 hostConnector.connect(host, expectedGen = epoch)
             }
         }
-
-    /** 探活：活=true；失败或抛错=false（视为死连接，走真连接重建）。 */
-    private suspend fun SshTransport.probeAliveOrFalse(): Boolean = runCatching { probeAlive(SFTP_PROBE_TIMEOUT_MS) }.getOrDefault(false)
 
     /**
      * 初次连接与 Error 态「重试」共用（ensureConn 会重连死连接）。首次(path=".")解析 home，重试保留当前目录。

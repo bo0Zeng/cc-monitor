@@ -20,13 +20,9 @@ sealed interface AuthMethod {
     ) : AuthMethod
 }
 
-/** 重连策略。 */
+/** 重连策略：断了要不要跟着共用那条重连循环换一条（怎么重连 · 隔多久只在共用那一处）。 */
 data class ReconnectPolicy(
     val auto: Boolean = true,
-    val onNetworkChange: Boolean = true,
-    val maxAttempts: Int = 0, // 0 = 无限
-    val baseDelayMs: Long = 2_000,
-    val maxDelayMs: Long = 30_000,
 )
 
 /** 一次 SSH 连接所需的配置。 */
@@ -37,11 +33,6 @@ data class ConnectionConfig(
     val auth: AuthMethod,
     // 工作目录与 tmux 不进连接层：由 app 在终端 shell 通道里发初始命令。
     val reconnect: ReconnectPolicy = ReconnectPolicy(),
-    val connectTimeoutMs: Int = 15_000,
-    // 整条握手（TCP、banner/KEX、认证）的看门狗上限：超时仍无任一目标地址认证成功，就强关在飞 transport 报超时。
-    // 与只管 TCP 的 [connectTimeoutMs] 不同：黑洞对端连上 TCP 后 banner 读会无限阻塞，传输层里没有这一级超时。
-    // manager 另以 connectTimeoutMs + 15s 为下限。
-    val handshakeTimeoutMs: Long = 45_000,
     // 经跳板机连接（ssh -J）：先连 [jumpVia] 并认证，再经其 direct-tcpip 隧道握手本目标。可嵌套成多跳；null 为直连。
     val jumpVia: ConnectionConfig? = null,
 )

@@ -63,7 +63,7 @@ class HostConnectorGatewayTest {
      *
      * 这条比上一条硬：它不问「调了哪支」，问「谁拿得到那个句柄」，拿得到就能 connect、close、disconnect。
      * 表里的文件要的都不是「连接的生死与句柄」，而是通道工厂（`commandChannel` / `commandExecutor`）、
-     * `sessions` / `activeCount` 状态流、或 `probeAndReconnectStale` 后台重连；逐条见 [MANAGER_REACHABLE]。
+     * `sessions` / `activeCount` 状态流；逐条见 [MANAGER_REACHABLE]。
      *
      * 它拦得住「又多一个文件够得着」，拦不住「已经够得着的那些在自己文件里直调生死」。
      */
@@ -302,7 +302,7 @@ class HostConnectorGatewayTest {
          * | `release` | `AppModule`（同上）+ 两个 VM + `HostLink` |
          * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
          * | `disconnectAll` | `SshKeepAliveService.onTaskRemoved` |
-         * | `linkOf` · `probeStale` | `HostBackends`（常驻流跟着 SSH 的连接重接：把它的拨号请求交给核心 · 流断了先叫 SSH 探活） |
+         * | `dialOf` · `loopReached` | `HostBackends`（共用那条重连循环照这台的拨号请求拨 · 它报够没够着、SSH 那层跟着换连接） |
          *
          * 这里只问「住址集变了没」；「凡调 retain 的生产文件必须也调 release」由
          * `ConnectorRetainReleasePairingTest` 管。网关没有 `disconnect(id)` 那一支：全仓零生产调用方。
@@ -314,8 +314,8 @@ class HostConnectorGatewayTest {
                 "release" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
                 "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK),
                 "disconnectAll" to setOf(KEEP_ALIVE),
-                "linkOf" to setOf(HOST_BACKENDS),
-                "probeStale" to setOf(HOST_BACKENDS),
+                "dialOf" to setOf(HOST_BACKENDS),
+                "loopReached" to setOf(HOST_BACKENDS),
             )
 
         /**
@@ -327,8 +327,7 @@ class HostConnectorGatewayTest {
          * | `core-ssh/…/di/SshModule.kt` | 它的 Koin 定义处（`single { SshConnectionManager(get()) }`） |
          * | `core-ssh/…/CommandChannel.kt` | `commandChannel` / `commandExecutor` 两支扩展函数（接收者隐式，按 `manager.` 扫看不见它） |
          * | `app/…/ssh/HostConnector.kt` | 网关 |
-         * | `app/…/CcMonitorApp.kt` | `probeAndReconnectStale` 接线（前台跟踪 ⇒ 后台重连，不是建/断） |
-         * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 / `probeAndReconnectStale` |
+         * | `app/…/service/SshKeepAliveService.kt` | `sessions` / `activeCount` / 通道工厂 |
          * | `app/…/ui/session/SessionViewModel.kt` | 通道工厂 + `sessions` |
          * | `app/…/ui/sftp/SftpScreen.kt` | 只有一行 import，供 KDoc 链接用；代码里不碰 |
          *
@@ -336,7 +335,6 @@ class HostConnectorGatewayTest {
          */
         private val MANAGER_REACHABLE =
             setOf(
-                "app/src/main/kotlin/com/ccmonitor/mobile/CcMonitorApp.kt",
                 KEEP_ALIVE,
                 GATEWAY,
                 SESSION_VM,

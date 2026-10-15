@@ -335,8 +335,6 @@ pub(crate) async fn consume_remote(
             }
             // monitor 的在看名单经登记表上的客户端报（`stream_watch.rs`，本机远端同一处），不经循环 ⇒ 这一件不会来。
             Event::WatchFrom(_) => {}
-            // 探 SSH 那一步在本机常驻后端的连接池里，这边不用做。
-            Event::Lost => {}
         }
     }
 }

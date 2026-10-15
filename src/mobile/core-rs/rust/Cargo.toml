@@ -34,3 +34,5 @@ jni = { version = "0.21", default-features = false }
 [dev-dependencies]
 # 单测里按墙钟等的那一处用兜底的那一个数（`guard_core::wall::CEILING`）。
 guard-core = { path = "../../../common/guard-core" }
+# 期限那几条判据在虚拟钟上走（`start_paused`）。
+tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }

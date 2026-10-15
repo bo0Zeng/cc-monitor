@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `lost` · `reply`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `reply`）。
  */
 interface ResidentCore {
     fun open(
@@ -53,17 +53,12 @@ interface ResidentCore {
     )
 }
 
-/** SSH 那层的一条连接：它的拨号请求（JSON，不带用法）。按身份比 —— 重连过就是新的一个，哪怕请求一字不差。 */
-class SshLink(
-    val request: String,
-)
-
 /**
  * 一台机器的常驻流：接 · 断了再接 · 握手 · 版本门 · 在看名单 · 一问一答**整条在核心里**（`resident-client`，桌面同一份）。
  * 这里只把核心交回来的事落成手机这一侧的几条流：会话表（流上的会话帧折出来）· 记录行 · 轮次结束 · 每帧的 `kind` · 此刻通不通。
  *
- * - [ssh] 是 SSH 那层此刻的那一条（`null` ＝ 没通）；换了一条就把它的拨号请求交给核心（它在新的上重接）。
- * - 核心说流断了、SSH 还在（`lost`）⇒ 叫 [onLost]（让 SSH 那层去探活：多半是 SSH 先死了）。
+ * - [ssh] 是这台的拨号请求（JSON，不带用法；`null` ＝ 没连上过 · 已断开）：按值比，变了才交给核心（它照新的重拨）。
+ *   这条流就是手机上唯一那条重连循环：池里那条死了它在核心里自己拨一条新的，SSH 那层跟着它的 [state] 换连接。
  * - 丢了会话帧（[SessionTable.needsResync]）⇒ 叫核心整份重来。
  * - 退避的数（2 → 30 s，活过 30 s 才清零）只在核心里，这里一个都不写。
  */
@@ -72,12 +67,11 @@ class ResidentFeed(
     private val core: ResidentCore,
     /** 这台在屏上的名字（核心的句子里称呼它）。 */
     private val machine: suspend () -> String,
-    private val ssh: Flow<SshLink?>,
+    private val ssh: Flow<String?>,
     /** 手上这一版的身份（版本门的对照物）。 */
     private val mine: String,
     /** 看的这一台的时区（IANA 名）。 */
     private val tz: String,
-    private val onLost: () -> Unit = {},
     private val onBreak: (String) -> Unit = {},
 ) : CoreLink,
     SessionWatch {
@@ -125,8 +119,8 @@ class ResidentFeed(
         scope.launch {
             val h = core.open(machine(), mine, tz) { kind, body -> inbox.trySend(kind to body) }
             opened.complete(h)
-            // 按身份比：SSH 那层重连过（网络换了 · 探活换上新的一条）⇒ 新的一个，核心当场在它上面重接，不等旧流自己断。
-            ssh.distinctUntilChanged { a, b -> a === b }.collect { core.ssh(h, it?.request) }
+            // 按值比：SSH 那层在同一份身份上换一条（跟着这条流换的那种）请求一字不差 ⇒ 不交，流不被打断。
+            ssh.distinctUntilChanged().collect { core.ssh(h, it) }
         }
     }
 
@@ -180,7 +174,6 @@ class ResidentFeed(
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
             "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
             "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
-            "lost" -> onLost()
             "reply" -> onReply(body)
             else -> broke(kind, body)
         }

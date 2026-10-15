@@ -9,7 +9,7 @@ package com.ccmonitor.mobile.core.rs
  *
  * 一台的**常驻流**（重连 · 握手 · 版本门 · 在看名单 · 一问一答，桌面同一份 `resident-client`）整条在核心里：[residentOpen] 看一台，
  * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
- * 它交的事经 [Sink.resident] 回来（`state` · `frame` · `watch_from` · `lost` · `reply`）。
+ * 它交的事经 [Sink.resident] 回来（`state` · `frame` · `watch_from` · `reply`）。
  *
  * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。
  */
@@ -39,7 +39,7 @@ object Core {
             key: String,
         )
 
-        /** 一台常驻流交的事：[kind] 是 `state` · `frame` · `watch_from` · `lost` · `reply`，[body] 是那一段文本（JSON 或原样一帧）。 */
+        /** 一台常驻流交的事：[kind] 是 `state` · `frame` · `watch_from` · `reply`，[body] 是那一段文本（JSON 或原样一帧）。 */
         fun resident(
             handle: Long,
             kind: String,

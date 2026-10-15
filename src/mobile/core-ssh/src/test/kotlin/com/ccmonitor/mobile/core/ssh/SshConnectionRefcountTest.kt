@@ -137,46 +137,27 @@ class SshConnectionRefcountTest {
             val t2 = mgr.connect("id", "h", "L", testCfg("good")) // tab 2 同 id
             assertSame("第 2 tab 应复用同一连接", t1, t2)
             advanceUntilIdle()
-            assertEquals("旧的当场回了话：不另拨", 1, produced.size)
+            assertEquals("复用不另拨", 1, produced.size)
             assertTrue("第 1 个连接未被顶掉", t1.isConnected)
         }
 
     @Test
     fun connectRebuildsWhenPriorConnectionDead() =
         runTest {
-            // 只复用活连接：连接掉了（isConnected=false）就完整重建。
+            // 只复用活连接：连接掉了（isConnected=false）就在同一份身份上再握一条（拨号请求不变，常驻流不被打断）。
             val produced = mutableListOf<FakeTransport>()
             val mgr = testManager(produced)
             mgr.retain("id", "a")
             mgr.connect("id", "h", "L", testCfg("good"))
             produced.single().simulateDrop() // 连接死
             mgr.connect("id", "h", "L", testCfg("good")) // 应重建（非复用死连接）
-            assertEquals("死连接不复用，重建了第 2 个 transport", 2, produced.size)
+            assertEquals("死连接不复用：同一份身份上再握了一条", 1, produced.single().derived.size)
+            assertSame(produced.single().derived.single(), mgr.connection("id"))
         }
 
-    @Test
-    fun releaseToZeroInterruptsReconnectLikeDisconnect() =
-        runTest {
-            // release 归零走 disconnectLocked 的代号自增，和 disconnect 一样中止在飞的退避重连、不复活会话。
-            val produced = mutableListOf<FakeTransport>()
-            var failAll = false
-            val mgr = testManager(produced) { if (failAll) error("boom") }
-            mgr.retain("id", "a")
-            mgr.connect("id", "h", "L", testCfgP("good", ReconnectPolicy(baseDelayMs = 1_000, maxDelayMs = 5_000, maxAttempts = 0)))
-            produced.single().simulateDrop()
-            failAll = true
-            mgr.probeAndReconnectStale()
-            runCurrent() // 第 1 次重连尝试失败 → 进入退避 delay
-            val before = produced.size
-            mgr.release("id", "a") // 无持有者 → gen++ → 退避循环下一轮应中止、不复活
-            advanceUntilIdle()
-            assertNull("release 归零后会话应移除", mgr.sessions.value["id"])
-            assertTrue("release 归零后不再新增重连尝试（gen++ 生效）", produced.size <= before)
-        }
+    // 复用时的合成事件
 
-    // 复用前的活性探测与合成事件
-
-    // 复用命中（探测通过）时发合成事件（「校验可用性」与合成 ESTABLISHED「复用已有连接」），连接日志不空；仍只建 1 条连接。
+    // 复用命中时发合成 ESTABLISHED「复用已有连接」，连接日志不空；仍只建 1 条连接。
     @Test
     fun fastPathReuseEmitsSyntheticEvents() =
         runTest {
@@ -185,66 +166,14 @@ class SshConnectionRefcountTest {
             val t1 = mgr.connect("id", "h", "L", testCfg("good"))
             val events = mutableListOf<SshConnectEvent>()
             val t2 = mgr.connect("id", "h", "L", testCfg("good"), onEvent = { events.add(it) })
-            assertSame("探测过 → 复用同一连接", t1, t2)
+            assertSame("活着 → 复用同一连接", t1, t2)
             advanceUntilIdle()
-            assertEquals("复用不换：旧的当场回了话，不另拨", 1, produced.size)
-            assertTrue(
-                "应发「校验可用性」提示（TCP）",
-                events.any { it.stage == SshConnectEvent.Stage.TCP && it.message.contains("校验可用") },
-            )
+            assertEquals("复用不另拨", 1, produced.size)
             assertTrue(
                 "应发合成 ESTABLISHED「复用已有连接」",
                 events.any { it.stage == SshConnectEvent.Stage.ESTABLISHED && it.message.contains("复用已有连接") },
             )
             assertTrue("合成事件带首地址 host:port", events.all { it.host == "good" && it.port == 22 })
-        }
-
-    // isConnected 仍为 true 的死 TCP（probeAlive=false）：摘除、后台关、走真 connect，全程有事件。
-    @Test
-    fun fastPathDiscardsStaleWhenProbeFails() =
-        runTest {
-            val produced = mutableListOf<FakeTransport>()
-            val mgr = testManager(produced)
-            mgr.connect("id", "h", "L", testCfg("good"))
-            produced.single().probeAliveResult = false // 死 TCP：本地标志 true、真实往返失败
-            val events = mutableListOf<SshConnectEvent>()
-            val t2 = mgr.connect("id", "h", "L", testCfg("good"), onEvent = { events.add(it) })
-            assertEquals("stale 不复用 → 重建第 2 条", 2, produced.size)
-            assertSame("拿到的是新建连接", produced[1], t2)
-            assertTrue("新连接是活的", t2.isConnected)
-            assertEquals(SessionStatus.CONNECTED, mgr.sessions.value["id"]?.status)
-            advanceUntilIdle() // 推进后台 close（closeInBackground 派发在 reconnectScope）
-            assertTrue("stale 旧连接被后台关闭", produced[0].closed)
-            assertTrue("verbose 非空", events.isNotEmpty())
-            assertTrue("应发「既有连接已失效」提示", events.any { it.message.contains("已失效") })
-            assertTrue(
-                "真 connect 事件随后流出（真 ESTABLISHED）",
-                events.any { it.stage == SshConnectEvent.Stage.ESTABLISHED && it.message.contains("fake established") },
-            )
-        }
-
-    // 摘除死连接是替换，不是断开：代号不变，带旧 expectedGen 的 connect 不被误弃；持有者与配置不动，
-    // release 归零仍能真断（持有者若被误清，release 会变成 no-op，连接滞留即暴露）。
-    @Test
-    fun staleDiscardIsReplaceNotDisconnect() =
-        runTest {
-            val produced = mutableListOf<FakeTransport>()
-            val mgr = testManager(produced)
-            mgr.retain("id", "a")
-            mgr.connect("id", "h", "L", testCfg("good")) // gen=0
-            produced[0].probeAliveResult = false
-            mgr.connect("id", "h", "L", testCfg("good")) // 摘除 stale + 重建
-            advanceUntilIdle()
-            assertTrue("stale 已被后台关闭", produced[0].closed)
-            // 代号未变：旧纪元（expectedGen=0）的 connect 仍被接受。
-            produced[1].simulateDrop()
-            val result = runCatching { mgr.connect("id", "h", "L", listOf(testCfg("good")), expectedGen = 0) }
-            assertTrue("stale 摘除不 gen++ → 旧纪元 connect 不被误弃", result.isSuccess)
-            assertEquals("drop 后旧纪元重连重建第 3 条", 3, produced.size)
-            // 持有者未损：单持有者 release 归零仍真断。
-            mgr.release("id", "a")
-            assertNull("release 归零仍真断（holders 未被 stale 摘除清掉）", mgr.connection("id"))
-            assertNull("会话条目随真断移除", mgr.sessions.value["id"])
         }
 
     // 单飞等待者不再静默排队：进锁前收到「另一连接尝试进行中」，锁内复查命中收到合成 ESTABLISHED；仍只建 1 条连接。
@@ -273,26 +202,5 @@ class SshConnectionRefcountTest {
                 "等待者收到锁内复查合成 ESTABLISHED（复用已有连接）",
                 eventsB.any { it.stage == SshConnectEvent.Stage.ESTABLISHED && it.message.contains("复用已有连接") },
             )
-        }
-
-    // 探测期间并发 disconnect(id)：不返回那条正被摘除的旧引用，改走真 connect。
-    // 用 gate 拉开探测在飞的窗口，让 disconnect 落在探测通过与复查之间。
-    @Test
-    fun fastPathDoesNotReuseStaleRefWhenDisconnectedMidProbe() =
-        runTest {
-            val produced = mutableListOf<FakeTransport>()
-            val mgr = testManager(produced)
-            mgr.connect("id", "h", "L", testCfg("good")) // produced[0]
-            val gate = CompletableDeferred<Unit>()
-            produced[0].probeGate = gate // 探测挂起在此 gate → 制造在飞窗口
-            val job = async { mgr.connect("id", "h", "L", testCfg("good")) }
-            runCurrent() // 进 reusableAfterProbe：isConnected 过 → probeAlive 挂在 gate 上
-            mgr.disconnect("id") // 探测在飞时并发断开
-            gate.complete(Unit) // 放行探测：返回 true，但复查发现已不是它，走真 connect
-            val t = job.await()
-            advanceUntilIdle()
-            assertEquals("中途 disconnect → 不复用陈旧引用，真建第 2 条", 2, produced.size)
-            assertSame("返回的是新建活连接", produced[1], t)
-            assertTrue("陈旧连接已被后台关闭", produced[0].closed)
         }
 }

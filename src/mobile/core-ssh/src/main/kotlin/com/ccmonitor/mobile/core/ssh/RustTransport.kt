@@ -19,7 +19,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -46,9 +45,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class RustTransport(
     private val knownHostStore: KnownHostStore? = null,
+    /** 照这一份拨号身份再握一条（[again]）；`null` ⇒ [connect] 照配置组一份新的。 */
+    private val preset: JSONObject? = null,
 ) : SshTransport {
     /** 拨号身份那一份请求（不带用法）：每条链路照它开，核心按它复用同一条连接。 */
-    @Volatile private var base: JSONObject? = null
+    @Volatile private var base: JSONObject? = preset
 
     @Volatile private var hold: RustLink? = null
     private val children: MutableSet<RustLink> = ConcurrentHashMap.newKeySet()
@@ -57,7 +58,17 @@ class RustTransport(
     private val closed = AtomicBoolean(false)
     private val watcher = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val drops = mutableListOf<() -> Unit>()
+
     override val isConnected: Boolean get() = !closed.get() && hold?.isOpen == true
+
+    override fun again(): SshTransport? = base?.let { RustTransport(knownHostStore, JSONObject(it.toString())) }
+
+    override fun onDrop(f: () -> Unit) {
+        synchronized(drops) { drops += f }
+        // 登记之前就已经收工了的那一条：当场叫（叫两次无妨：管理那一侧按「还是不是装着的那条」认）。
+        if (hold?.isOpen == false && !closed.get()) f()
+    }
 
     override suspend fun connect(
         configs: List<ConnectionConfig>,
@@ -65,6 +76,7 @@ class RustTransport(
     ) = withContext(Dispatchers.IO) {
         require(configs.isNotEmpty()) { "no address to connect" }
         val first = configs.first()
+        preset?.let { return@withContext holdOn(it, first, emptyList(), emptyList(), onEvent) }
         val known = knownOf(first.host, first.port)
         val req =
             JSONObject()
@@ -78,8 +90,23 @@ class RustTransport(
         base = JSONObject(req.toString())
         val chain = generateSequence(first) { it.jumpVia }.map { it.host to it.port }.toList()
         chain.forEach { RustCore.forgetSeen(it.first, it.second) }
+        holdOn(req, first, known, chain, onEvent)
+    }
+
+    /**
+     * 照 [req] 握一条连接（`use: hold`）、读到 ack。期限在核心里（按进展算，共用那条重连循环同一处），这里不等表。
+     * 握着的那条收工（对端断 · 保活判死 · 核心收场）⇒ [isConnected] 随之变假、[onDrop] 那几个各叫一次（自己 [close] 的不叫）。
+     * 三处 throw 都是有意的：链路没给 ack · ack 说没成 · 期间被关了。
+     */
+    @Suppress("ThrowsCount")
+    private suspend fun holdOn(
+        req: JSONObject,
+        first: ConnectionConfig,
+        known: List<KnownHostRecord>,
+        chain: List<Pair<String, Int>>,
+        onEvent: ((SshConnectEvent) -> Unit)?,
+    ) {
         val link = RustCore.open(JSONObject(req.toString()).put("use", "hold").put("stages", onEvent != null))
-        // 握手的期限在 [SshConnectionManager]（到点就 [close]：握着的那条随之收工，这里的读回「没了」）。
         val ack =
             try {
                 link.awaitAck { onEvent?.invoke(eventOf(it, first)) }
@@ -97,16 +124,10 @@ class RustTransport(
             throw IOException(copyText("mobSsh.conn.closedNew"))
         }
         hold = link
-        // 握着的那条链路收工（对端断 · 保活判死 · 核心收场）⇒ 读到「没了」，[isConnected] 随之变假。
-        watcher.launch { while (link.readChunk() != null) Unit }
-        Unit
-    }
-
-    override suspend fun probeAlive(timeoutMs: Long): Boolean {
-        if (!isConnected) return false
-        val ok = withTimeoutOrNull(timeoutMs) { runCatching { execCapture("true").exitStatus == 0 }.getOrDefault(false) } ?: false
-        if (!ok) close()
-        return ok
+        watcher.launch {
+            while (link.readChunk() != null) Unit
+            if (!closed.get()) synchronized(drops) { drops.toList() }.forEach { it() }
+        }
     }
 
     override suspend fun execCapture(command: String): ExecResult =
@@ -138,7 +159,7 @@ class RustTransport(
             awaitClose { link.close() }
         }.flowOn(Dispatchers.IO)
 
-    override val dialRequest: String? get() = base?.takeIf { isConnected }?.toString()
+    override val dialRequest: String? get() = base?.toString()
 
     override suspend fun openShell(
         term: String,

@@ -9,7 +9,7 @@
 #   4 通知：后台时那台来一条需手动 ⇒ 出通知 · 点它进那一条；一轮完成的通知点进去也得是那一条。
 #   5 慢链路 ＋ 跳板：台架起第二台 sshd 当跳板（rig.sh hop），加一台经它的机器；模拟器里 netem 往返 1.5 秒：
 #     新加那一台要接得上（新建会话答得回）；慢链路上断 20 秒 · 正常网上断 90 秒，网回来 CCM_DEVICE_REJOIN 秒内常驻流要重连上、
-#     文件页（SSH 那层）要列得出来。
+#     文件页（SSH 那层）要列得出来（判的时候减掉连着时量的那一回：量法本身进抽屉 · 点开 · 按 3 秒一轮找字要十来秒）。
 # CCM_DEVICE_BREAK=reconnect：回前台 / 网回来之前把台架 sshd（监听的与已连上的）停掉 ⇒ 2 · 3 必须红（看台架自己会红）。
 import json
 import os
@@ -638,8 +638,15 @@ def item5():
     for label, secs, shaped in (("slowcut20", 20, True), ("jumpcut90", 90, False)):
         if not shaped:
             netem(None)
-        re_at, files, got = cut_and_back(label, secs, name)
         what = f"{'慢链路' if shaped else '正常网'}断 {secs}s"
+        # 文件页那一格的量法本身要的那一段（进抽屉 · 点开 · 列一回 · 按 3 秒一轮找字）：同一种网况、连着没断的时候先量一回，判的时候减掉。
+        smoke.to_chat()
+        floor = files_listed(time.time(), WITHIN)
+        if floor is None:
+            netem(None)
+            raise Red(f"{what}那一格：连着的时候文件页都列不出来")
+        nums[f"{what}：连着时文件页点开 → 列出（量法本身那一段）"] = round(floor, 1)
+        re_at, files, got = cut_and_back(label, secs, name)
         nums[f"{what}：网回来 → 常驻流重连"] = re_at if re_at is not None else "没有新连进来的命令"
         nums[f"{what}：网回来 → 文件页列出（SSH 那层）"] = files if files is not None else "没列出"
         nums[f"{what}：网回来 → 看到断开时来的那句"] = got if got is not None else "没看到"
@@ -648,8 +655,8 @@ def item5():
         limit = REJOIN + (SLOW_RTT_MS / 1000 * 12 if shaped else 0)  # 慢链路上从头登录一趟本身就要十来个往返
         if got is None or got > limit:
             reds.append(f"{what}：网回来 {got}s 断开时来的那句才上屏（要 ≤ {limit:.0f}s）")
-        if files is None or files > limit + 5:  # 文件页那一格含进抽屉 · 点开的几秒
-            reds.append(f"{what}：网回来 {files}s 文件页才列出（要 ≤ {limit + 5:.0f}s）")
+        if files is None or files - floor > limit:  # 减掉量法本身那一段（连着时量的那一回）
+            reds.append(f"{what}：网回来 {files}s 文件页才列出（减掉量法本身 {floor:.1f}s 要 ≤ {limit:.0f}s）")
     netem(None)
     if reds:
         raise Red("；".join(reds + notes))
@@ -760,6 +767,10 @@ def as_root():
 
 
 def main():
+    smoke.tidy_tmux(walk)
+
+
+def walk():
     if not as_root():
         say("adbd 成不了 root：第 1 项读不到进程映射、第 3 项打不了 netem / iptables，这两项会红")
     adb("shell", "cmd", "uimode", "night", "no")
