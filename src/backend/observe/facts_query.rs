@@ -756,8 +756,7 @@ pub(crate) fn needs_rank(kind: NeedsKind, waited_ms: Option<u64>) -> u64 {
         .position(|k| *k == kind)
         .map_or(NEEDS_BY_DANGER.len(), |i| i) as u64;
     let last = NEEDS_TIER_SPAN - 1;
-    tier * NEEDS_TIER_SPAN
-        + waited_ms.map_or(last, |w| last - 1 - w.min(last - 1))
+    tier * NEEDS_TIER_SPAN + waited_ms.map_or(last, |w| last - 1 - w.min(last - 1))
 }
 
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。

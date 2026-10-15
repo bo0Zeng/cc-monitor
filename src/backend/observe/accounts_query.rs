@@ -898,7 +898,10 @@ pub(crate) fn live_needs(
         .collect::<Vec<_>>();
     // 先答哪个照核心那一处（同一档、同样久 ⇒ 按会话 id，稳定）。
     rows.sort_by(|a, b| {
-        a.needs.rank.cmp(&b.needs.rank).then_with(|| a.sid.cmp(&b.sid))
+        a.needs
+            .rank
+            .cmp(&b.needs.rank)
+            .then_with(|| a.sid.cmp(&b.sid))
     });
     rows
 }

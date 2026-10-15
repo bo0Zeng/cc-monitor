@@ -1335,8 +1335,16 @@ fn needs_rank_orders_by_danger_then_waited_unknown_last() {
     // `(名, [(id, 危险度那一档, 已等多久)], 应得的次序)`
     #[allow(clippy::type_complexity)]
     let cases: &[(&str, &[(&str, usize, Option<u64>)], &[&str])] = &[
-        ("危险度在前", &[("a", 3, Some(900_000)), ("b", 1, Some(1_000))], &["b", "a"]),
-        ("同一档等得久的在前", &[("a", 1, Some(1_000)), ("b", 1, Some(90_000))], &["b", "a"]),
+        (
+            "危险度在前",
+            &[("a", 3, Some(900_000)), ("b", 1, Some(1_000))],
+            &["b", "a"],
+        ),
+        (
+            "同一档等得久的在前",
+            &[("a", 1, Some(1_000)), ("b", 1, Some(90_000))],
+            &["b", "a"],
+        ),
         (
             "不知道等了多久的排这一档最后",
             &[("a", 1, None), ("b", 1, Some(0)), ("c", 0, None)],
@@ -1344,10 +1352,19 @@ fn needs_rank_orders_by_danger_then_waited_unknown_last() {
         ),
         (
             "全都一样照原来的次序",
-            &[("a", 2, None), ("b", 2, None), ("c", 2, Some(7)), ("d", 2, Some(7))],
+            &[
+                ("a", 2, None),
+                ("b", 2, None),
+                ("c", 2, Some(7)),
+                ("d", 2, Some(7)),
+            ],
             &["c", "d", "a", "b"],
         ),
-        ("等得再久也跨不到上一档", &[("a", 1, Some(u64::MAX)), ("b", 0, None)], &["b", "a"]),
+        (
+            "等得再久也跨不到上一档",
+            &[("a", 1, Some(u64::MAX)), ("b", 0, None)],
+            &["b", "a"],
+        ),
     ];
     for (name, needs, want) in cases {
         let mut got: Vec<(&str, u64)> = needs

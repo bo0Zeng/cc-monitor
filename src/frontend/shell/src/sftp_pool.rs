@@ -419,4 +419,3 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sftp_pool_tests.rs"]
 pub(crate) mod tests;
-
