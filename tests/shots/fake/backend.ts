@@ -182,6 +182,11 @@ export class FakeBackend {
     );
   }
 
+  /** 场景演「会话头菜单改了一格注解」：经真后端 `history-annotate`（同菜单交的那一条）。 */
+  async annotate(origin: string, sid: string, patch: Record<string, unknown>): Promise<void> {
+    await this.real(origin, "history-annotate", { sid, patch }, null);
+  }
+
   /** 那台真后端此刻给这个会话挂着的请求 id（没有 ⇒ `null`）。 */
   async askIdOf(origin: string, sid: string): Promise<string | null> {
     const ask = (await this.realNeeds(origin)).find((r) => r.sid === sid)?.needs.ask as { id?: string } | null | undefined;
