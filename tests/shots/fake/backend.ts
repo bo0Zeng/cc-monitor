@@ -151,9 +151,9 @@ export class FakeBackend {
   }
 
   /** 交给壳 `chan_call` 那一跳：成 ⇒ 原样字节；不成 ⇒ 壳交给页的那一形（`{err, body, detail}`，原样抛）。 */
-  private async real(origin: string, op: string, req: Record<string, unknown>, view: unknown): Promise<ArrayBuffer> {
+  private async real(origin: string, op: string, req: Record<string, unknown>, view: unknown, leftMs?: number): Promise<ArrayBuffer> {
     await this.ready;
-    const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null }) });
+    const r = await fetch("/__ccm/call", { method: "POST", body: JSON.stringify({ key: this.key, origin, op, args: req, view: view ?? null, leftMs }) });
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
@@ -176,7 +176,8 @@ export class FakeBackend {
    */
   hookAsk(origin: string, hook: Record<string, unknown>): void {
     // 答完 / 撤了才回；台架只记一笔（没挂上就看得见为什么）。
-    void this.real(origin, "needs-ask", { agent: "claude", hook }, null).then(
+    // 挂着等人答：这一跳的期限给到兜底上限（缺省 30 秒会在「没人答时自动答」到点之前把它撤掉）。
+    void this.real(origin, "needs-ask", { agent: "claude", hook }, null, WALL_CEILING_MS).then(
       (b) => console.info("[shots] needs-ask 收场：", dec.decode(b)),
       (e: unknown) => console.warn("[shots] needs-ask 没成：", JSON.stringify(e)),
     );
