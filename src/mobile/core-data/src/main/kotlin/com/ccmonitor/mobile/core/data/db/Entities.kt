@@ -21,10 +21,8 @@ data class Host(
     // tmux / Claude 面
     val defaultWorkingDir: String? = null,
     val sessionManager: String? = null, // "tmux" | null
-    // 重连策略
+    // 断了要不要自己接回来（网络变了 · 重试几次不归这里：重连只有常驻流那一条循环）。
     val autoReconnect: Boolean = true,
-    val reconnectOnNetworkChange: Boolean = true,
-    val maxReconnectAttempts: Int = 0, // 0 = 无限
     // 经跳板机连接，指向另一个 Host 的 id（ssh -J A B）；null = 直连。
     val proxyJumpHostId: String? = null,
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。

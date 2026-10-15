@@ -1,5 +1,11 @@
 package com.ccmonitor.mobile.ui.chat
 
+import com.ccmonitor.mobile.cache.Anchor
+import com.ccmonitor.mobile.cache.ChatCache
+import com.ccmonitor.mobile.cache.Pending
+import com.ccmonitor.mobile.cache.RawPage
+import com.ccmonitor.mobile.cache.Resume
+import com.ccmonitor.mobile.cache.resumeOf
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryLines
 import com.ccmonitor.mobile.core.claude.link.HistoryList
@@ -27,6 +33,8 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.data.db.Draft
+import com.ccmonitor.mobile.core.data.db.PendingOutcome
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPicker
@@ -35,6 +43,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 
 /** 聊天面的一帧 UI 状态。 */
 data class ChatUiState(
@@ -77,6 +87,8 @@ data class ChatUiState(
     val drafting: Boolean = false,
     /** 这条会话的工作目录（在它里面点「新建会话」⇒ 新的那张用它）；还不知道 ⇒ `null`。 */
     val cwd: String? = null,
+    /** 上次没发的草稿（本地存的）：输入框还空着时填进去；没有 ⇒ `null`。 */
+    val draft: String? = null,
 )
 
 /**
@@ -153,6 +165,8 @@ class ChatSession(
     private val machine: String,
     private val scope: CoroutineScope,
     private val arrivalMs: Long = ARRIVAL_MS,
+    /** 这台的本地缓存（记录页 · 续点 · 待发 · 草稿）：先上它、再跟那台对齐。 */
+    private val cache: ChatCache = ChatCache.None,
 ) {
     private val _state = MutableStateFlow(ChatUiState(sid = (target as? ChatTarget.Existing)?.sid, drafting = target is ChatTarget.Draft))
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
@@ -173,6 +187,13 @@ class ChatSession(
     private var nextSeq = 0L
     private var tailLines = PAGE_LINES
 
+    /** 已有最新一行之后的字节（续读从这里接）；补行没带字节 ⇒ `null`（下次从头读）。手上的记录是哪份文件的（[anchorPath]）。 */
+    private var anchorOffset: Long? = null
+    private var anchorPath: String? = null
+
+    /** 存草稿那一下（停手一会儿才存）：发出去之前先撤掉，免得删了的草稿又被写回来。 */
+    private var draftSave: Job? = null
+
     /** 在屏上 ⇒ 这一条在名单里（[holding]）。sid 还没有（新建会话起好之前）⇒ 起好再进。 */
     @Volatile private var shown = false
     private var holding: AutoCloseable? = null
@@ -180,30 +201,57 @@ class ChatSession(
     private var follow: Job? = null
     private val board = LiveBoard()
     private var starting: Job? = null
-    private var seq = 0
 
     private class Outgoing(
         val localId: String,
         val text: String,
         var delivery: DeliveryState?,
         var deliveryText: String?,
+        var attempts: Int = 1,
     ) {
         /** 这一句已随 `session-new` 交出去了（结局已标上）。 */
         var handed = false
     }
 
-    /** 开屏：已有的那条读最后一屏、跟上；新建会话什么都不问。 */
+    /** 开屏：先填上次没发的草稿；已有的那条先上缓存、再读最后一屏、跟上；新建会话什么都不问那台。 */
     fun open() {
+        if (!draftAsked) {
+            draftAsked = true
+            scope.launch { cache.draft(draftKey())?.let { _state.value = _state.value.copy(draft = it) } }
+        }
         val s = sid ?: return
         if (follow == null) follow = scope.launch { attach(s) }
     }
 
+    private var draftAsked = false
+
+    /** 草稿存在哪一格：这条会话；新建会话还没起成 ⇒ 新建会话那一张。 */
+    private fun draftKey(): String = sid ?: Draft.NEW
+
+    /** 输入框里的字变了：停手一会儿存下（空了 ⇒ 删）。 */
+    fun editDraft(text: String) {
+        draftSave?.cancel()
+        val key = draftKey()
+        draftSave =
+            scope.launch {
+                delay(DRAFT_SAVE_MS)
+                val c = picker?.takeIf { sid == null }?.chosen()
+                cache.saveDraft(key, text, c?.cwd, c?.account)
+            }
+    }
+
     fun send(text: String) {
         if (text.isBlank()) return
-        val o = Outgoing("local-${seq++}", text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"))
+        draftSave?.cancel()
+        val o = Outgoing("local-${UUID.randomUUID()}", text, DeliveryState.SENDING, copyText("mobChat.delivery.sending"))
         outgoing += o
         publish()
-        scope.launch { deliver(o) }
+        val key = draftKey()
+        scope.launch {
+            // 草稿变待发：删草稿与落待发同一个事务。
+            cache.promote(key, Pending(o.localId, sid, o.text, PendingOutcome.PENDING, o.attempts))
+            deliver(o)
+        }
     }
 
     /** 再发一次没送到的那一句（只有能改的原因才有这颗）。 */
@@ -211,8 +259,12 @@ class ChatSession(
         val o = outgoing.firstOrNull { it.localId == localId && it.delivery == DeliveryState.FAILED } ?: return
         o.delivery = DeliveryState.SENDING
         o.deliveryText = copyText("mobChat.delivery.sending")
+        o.attempts++
         publish()
-        scope.launch { deliver(o) }
+        scope.launch {
+            cache.settle(o.localId, PendingOutcome.PENDING, o.attempts)
+            deliver(o)
+        }
     }
 
     /**
@@ -333,6 +385,7 @@ class ChatSession(
 
     fun loadOlder() {
         val p = path ?: return
+        val s = sid ?: return
         if (_state.value.loadingOlder || head <= 0L) return
         _state.value = _state.value.copy(loadingOlder = true, historyError = null)
         scope.launch {
@@ -343,10 +396,11 @@ class ChatSession(
                     _state.value = _state.value.copy(loadingOlder = false)
                     return@withLock
                 }
-                val (t, page) = got
+                val (t, read) = got
                 tailLines = want
                 head = t.splitAt
-                records.addAll(0, page)
+                records.addAll(0, read.records)
+                cache.prepend(s, read.pages)
                 _state.value = _state.value.copy(loadingOlder = false, canLoadOlder = head > 0L)
                 publishLocked()
             }
@@ -418,7 +472,17 @@ class ChatSession(
         o.delivery = delivery
         o.deliveryText = text
         publish()
+        scope.launch { cache.settle(o.localId, outcomeOf(delivery), o.attempts) }
     }
+
+    /** 气泡下的标 ⇒ 落盘的那四种结局之一（照 `session-say` 的回包）。 */
+    private fun outcomeOf(d: DeliveryState?): String =
+        when (d) {
+            null -> PendingOutcome.DELIVERED
+            DeliveryState.SENDING -> PendingOutcome.PENDING
+            DeliveryState.UNSURE -> PendingOutcome.UNSURE
+            DeliveryState.FAILED, DeliveryState.FAILED_PERMANENT -> PendingOutcome.REFUSED
+        }
 
     private fun fail(
         o: Outgoing,
@@ -461,6 +525,7 @@ class ChatSession(
             mark(first, delivery, text)
         }
         sid = arrived
+        cache.bind(outgoing.map { it.localId }, arrived)
         _state.value = _state.value.copy(sid = arrived, cwd = answer.cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
@@ -501,12 +566,15 @@ class ChatSession(
         }
         subscribed.await()
         fromSubscribed.await()
+        // 先上缓存（离线也看得到上次那几条），再跟那台对齐；刚起的那条没有可上的。
+        if (!fresh) lock.withLock { restoreLocked(s) }
+        cache.viewed(s)
         scope.launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
         followLive(s)
         attached = true
         syncHold()
         watchRunning(s)
-        val p = (if (fresh) freshPath(s) else pathOf(s)) ?: return
+        val p = recordPath(s, fresh) ?: return
         path = p
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { reloadLocked(p) }
@@ -520,6 +588,27 @@ class ChatSession(
                 }
             }
         for (e in events) take(e)
+    }
+
+    /**
+     * 这条会话的记录文件。上次读过的那份（续点里记着）⇒ 照它接，不先问清单：离线时也挂得上，网回来（换了一条流）就整份对齐；
+     * 那样接上的，目录另问一次清单，问不到不说（正文那一侧自己会说断开了）。
+     */
+    private suspend fun recordPath(
+        s: String,
+        fresh: Boolean,
+    ): String? {
+        if (fresh) return freshPath(s)
+        val p =
+            link.table.value.sessions[s]
+                ?.path ?: anchorPath ?: pathOf(s) ?: return null
+        if (_state.value.cwd == null) {
+            link.table.value.sessions[s]
+                ?.cwd
+                ?.let { _state.value = _state.value.copy(cwd = it) }
+        }
+        if (_state.value.cwd == null && p == anchorPath) scope.launch { cwdOf(s) }
+        return p
     }
 
     /**
@@ -544,7 +633,42 @@ class ChatSession(
             }
         }
 
-    /** 一行：比已有的旧 ⇒ 重叠、不要；比已有的新、中间缺着 ⇒ 先补上。 */
+    /**
+     * 上次读到的（缓存里的页原样，交给与线上同一个解码器）先上屏 ＋ 续点；上次没送完的那几句照它们的结局挂回去。
+     * 有一页解不出 ⇒ 当没有缓存（照那台重读）。
+     */
+    private suspend fun restoreLocked(s: String) {
+        restorePendingLocked(s)
+        val cached = cache.load(s) ?: return publishLocked()
+        val got = cached.pages.map { HistoryRead.decodeRows(it.rows) ?: return publishLocked() }.flatten()
+        records.clear()
+        records.addAll(got)
+        head = cached.pages.first().start
+        cached.anchor?.let {
+            anchorPath = it.path
+            anchorOffset = it.offset
+            nextSeq = it.seq
+        }
+        _state.value = _state.value.copy(canLoadOlder = head > 0L)
+        publishLocked()
+    }
+
+    /** 待发里这条会话的那几句：送没送到照落盘那一格；上次还在等回包就没了 ⇒ 不知道送没送到（别重发）。 */
+    private suspend fun restorePendingLocked(s: String) {
+        val known = outgoing.map { it.localId }.toSet()
+        for (p in cache.pending(s)) {
+            if (p.id in known) continue
+            val (d, text) =
+                when (p.outcome) {
+                    PendingOutcome.DELIVERED -> null to null
+                    PendingOutcome.REFUSED -> failed(null)
+                    else -> unsure()
+                }
+            outgoing += Outgoing(p.id, p.text, d, text, p.attempts)
+        }
+    }
+
+    /** 一行：比已有的旧 ⇒ 重叠、不要；比已有的新、中间缺着 ⇒ 先补上。末页与续点跟着落盘。 */
     private suspend fun lineLocked(
         p: String,
         line: RecordLine,
@@ -553,19 +677,60 @@ class ChatSession(
         if (line.seq < nextSeq) return false
         line.record?.let { records += it }
         nextSeq = line.seq + 1
+        anchorOffset = line.byteOffset
+        sid?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq) }) }
         return true
     }
 
-    /** 整份重来：读最后一屏（[tailLines] 行）。没读成 ⇒ `false`（那一句已上屏）。 */
+    /**
+     * 对齐那台：读最后一屏（[tailLines] 行）。手上有续点、那台的文件没变短（`end` 不比续点小）、缺得不多 ⇒ 从续点往下读到 `end`、接在后面；
+     * 否则整份重来（变短 ＝ 文件被截过或换过，续点那个位置已经不在了，不从那里往后读）。没读成 ⇒ `false`（那一句已上屏），已有的不动。
+     */
     private suspend fun reloadLocked(p: String): Boolean {
         val t = readTail(p, tailLines) ?: return false
-        val page = readRange(p, t.splitAt, t.end) ?: return false
+        val s = sid ?: return false
+        val anchor = anchorOffset?.let { o -> anchorPath?.let { Anchor(it, o, nextSeq) } }
+        val ok =
+            when (val resume = resumeOf(anchor, records.isNotEmpty(), p, t.end, t.total, PAGE_LINES.toLong())) {
+                is Resume.Continue -> continueLocked(s, p, resume.from, t)
+                Resume.FromScratch -> scratchLocked(s, p, t)
+            }
+        if (!ok) return false
+        _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
+        publishLocked()
+        return true
+    }
+
+    /** 从续点 [from] 往下读到 `end`、接在后面。 */
+    private suspend fun continueLocked(
+        s: String,
+        p: String,
+        from: Long,
+        t: TailPlan,
+    ): Boolean {
+        val read = readRange(p, from, t.end) ?: return false
+        records.addAll(read.records)
+        nextSeq = t.total
+        anchorOffset = t.end
+        cache.append(s, read.pages.flatMap { it.rows }, Anchor(p, t.end, t.total))
+        return true
+    }
+
+    /** 整份重来：读最后一屏，手上的与缓存里的都换掉。 */
+    private suspend fun scratchLocked(
+        s: String,
+        p: String,
+        t: TailPlan,
+    ): Boolean {
+        val read = readRange(p, t.splitAt, t.end) ?: return false
         head = t.splitAt
         nextSeq = t.total
+        anchorOffset = t.end
+        anchorPath = p
         records.clear()
-        records.addAll(page)
-        _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null)
-        publishLocked()
+        records.addAll(read.records)
+        // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
+        cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, Anchor(p, t.end, t.total))
         return true
     }
 
@@ -588,6 +753,9 @@ class ChatSession(
                 (r as? Reply.Ok)?.let { HistoryLines.of(it.data) }
                     ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
             records += page.records
+            // 按行号补的没带字节 ⇒ 续点作废（下次从头读），这几格照样落末页。
+            anchorOffset = null
+            sid?.let { s -> cache.append(s, page.raw.map { HistoryRead.row(null, it) }, null) }
             more = page.next > nextSeq && !page.eof
             nextSeq = maxOf(nextSeq, page.next)
         }
@@ -620,6 +788,14 @@ class ChatSession(
         }
     }
 
+    /** 这条会话的目录（清单那一行的 `projectPath`）；问不到就算了。 */
+    private suspend fun cwdOf(s: String) {
+        val r = link.call(HistoryList.COMMAND, null, READ_MS) as? Reply.Ok ?: return
+        HistoryList.of(r.data)?.rows?.firstOrNull { it.sessionId == s }?.projectPath?.let { cwd ->
+            if (_state.value.cwd == null) _state.value = _state.value.copy(cwd = cwd)
+        }
+    }
+
     /** 那条会话的记录文件：会话表里有就用它，没有（不在跑了）问 `history-list`。 */
     private suspend fun pathOf(s: String): String? {
         link.table.value.sessions[s]?.let { live ->
@@ -646,24 +822,33 @@ class ChatSession(
             else -> null.also { readFailed(r.problem(machine, HistoryTail.COMMAND)?.text) }
         }
 
+    /** 读到的一段：记录 ＋ 每一问的 `rows[]` 原样（一问一页，缓存存它）。 */
+    private class Read(
+        val records: List<LineRecord>,
+        val pages: List<RawPage>,
+    )
+
     /** 读 `[from, until)` 里的记录，一页不够就接着读。 */
     private suspend fun readRange(
         p: String,
         from: Long,
         until: Long,
-    ): List<LineRecord>? {
+    ): Read? {
         val out = mutableListOf<LineRecord>()
+        val pages = mutableListOf<RawPage>()
         var at = from
         while (at < until) {
             val r = link.call(HistoryRead.COMMAND, HistoryRead.args(p, at, until), READ_MS)
+            val ok = r as? Reply.Ok
             val page =
-                (r as? Reply.Ok)?.let { HistoryRead.of(it.data) }
+                ok?.let { HistoryRead.of(it.data) }
                     ?: return null.also { readFailed(r.problem(machine, HistoryRead.COMMAND)?.text ?: unreadableReply(machine, HistoryRead.COMMAND, r.toString()).text) }
             out += page.records
+            pages += RawPage(at, page.next, HistoryRead.rawRows(ok.data).orEmpty())
             if (page.eof || page.next <= at) break
             at = page.next
         }
-        return out
+        return Read(out, pages)
     }
 
     private fun readFailed(text: String?) {
@@ -677,7 +862,11 @@ class ChatSession(
     /** 记录里出现了同一句人话 ⇒ 那一句的本地标消失；其余的接在记录后面。 */
     private fun publishLocked() {
         val said = records.filter { it.t == RecordKind.SAID || it.t == RecordKind.QUEUED }.mapNotNull { it.who?.text }.toMutableList()
-        outgoing.removeAll { o -> o.delivery != DeliveryState.FAILED && o.delivery != DeliveryState.FAILED_PERMANENT && said.remove(o.text) }
+        val seen = outgoing.filter { o -> o.delivery != DeliveryState.FAILED && o.delivery != DeliveryState.FAILED_PERMANENT && said.remove(o.text) }
+        if (seen.isNotEmpty()) {
+            outgoing.removeAll(seen)
+            scope.launch { cache.forget(seen.map { it.localId }) }
+        }
         val local = outgoing.map { RenderUnit.UserText(it.localId, it.text, null, it.delivery, it.deliveryText) }
         _state.value = _state.value.copy(units = RecordUnits.of(records) + local)
     }
@@ -685,6 +874,9 @@ class ChatSession(
     companion object {
         /** 打开一条先读最后这么多行；往上翻一次再多读这么多。 */
         const val PAGE_LINES = 60
+
+        /** 输入框停手这么久才存草稿。 */
+        private const val DRAFT_SAVE_MS = 500L
 
         /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
         const val ARRIVAL_MS = 45_000L

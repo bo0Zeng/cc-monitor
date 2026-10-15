@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.overview
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -57,15 +58,19 @@ fun ConversationsRoute(
             modifier = modifier,
             topBar = { ConversationsTopBar(machine, onOpenDrawer = { scope.launch { drawerState.open() } }) },
         ) { inner ->
-            when (val l = link) {
-                is HostLink.Failed -> HostLinkFailed(l.why, Modifier.padding(inner))
-                HostLink.Connecting -> Unit
-                HostLink.Ready ->
-                    if (machine != null) {
-                        val vm = conversationsViewModel(hostId, machine)
-                        val state by vm.state.collectAsStateWithLifecycle()
-                        ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
-                    }
+            // 连没连上都先画清单：本地缓存里有上次那一份就照画（离线打开看得到），连上以后换成那台的。
+            if (machine != null) {
+                val vm = conversationsViewModel(hostId, machine)
+                val state by vm.state.collectAsStateWithLifecycle()
+                when (val l = link) {
+                    is HostLink.Failed ->
+                        Column(Modifier.fillMaxSize().padding(inner)) {
+                            HostLinkFailed(l.why)
+                            if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry)
+                        }
+                    HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
+                    HostLink.Ready -> ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
+                }
             }
         }
     }
@@ -129,5 +134,5 @@ private fun HostLinkFailed(
     why: String,
     modifier: Modifier = Modifier,
 ) {
-    Text(why, modifier = modifier.fillMaxSize().padding(24.dp))
+    Text(why, modifier = modifier.padding(24.dp))
 }

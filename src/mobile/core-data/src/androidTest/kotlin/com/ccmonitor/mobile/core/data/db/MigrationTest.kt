@@ -400,10 +400,77 @@ class MigrationTest {
         }
     }
 
-    /** 全链路 1→16 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    /**
+     * 16→17：缓存五张表建好、能写能读；hosts 去掉两列重连格，其余各格原样；身份 · 按钮 · 设置 · 已知主机一字不动。
+     */
     @Test
-    fun migrateAll1To16Validates() {
+    fun migrate16To17AddsTheCacheTablesAndKeepsEverythingElse() {
+        helper.createDatabase(dbName, 16).apply {
+            execSQL(
+                "INSERT INTO hosts (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,reconnectOnNetworkChange,maxReconnectAttempts,proxyJumpHostId," +
+                    "passwordEnc,os,agentKind) VALUES ('h1','pi','example.com',2222,'pi','k1','backup.example:22','g',3,99,'~/w','tmux',0,0,5," +
+                    "'h0','ENC','posix','claude')",
+            )
+            execSQL(
+                "INSERT INTO identities (id,label,keyType,privateKeyEnc,publicKeyOpenSsh,fingerprintSha256,createdAt) " +
+                    "VALUES ('k1','key','ed25519',X'0102','ssh-ed25519 AAAA','SHA256:x',1)",
+            )
+            execSQL(
+                "INSERT INTO custom_buttons (id,hostId,label,command,sortOrder,ctrl,alt,shift,type,btnGroup) " +
+                    "VALUES ('b16','h1','my','ls',0,0,0,0,'command','main')",
+            )
+            execSQL("INSERT INTO known_hosts (host,port,keyType,publicKeyBase64,addedAt) VALUES ('example.com',2222,'ssh-ed25519','AAAA',7)")
+            execSQL("INSERT INTO settings (`key`,`value`) VALUES ('last_host','h1')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(dbName, 17, true, MIGRATION_16_17)
+        val hostCols =
+            "label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected,defaultWorkingDir,sessionManager," +
+                "autoReconnect,proxyJumpHostId,passwordEnc,os,agentKind"
+        db.query("SELECT $hostCols FROM hosts WHERE id='h1'").use { c ->
+            assertTrue("机器表应原样还在", c.moveToFirst())
+            val got = (0 until c.columnCount).map { if (c.isNull(it)) null else c.getString(it) }
+            assertEquals(
+                listOf("pi", "example.com", "2222", "pi", "k1", "backup.example:22", "g", "3", "99", "~/w", "tmux", "0", "h0", "ENC", "posix", "claude"),
+                got,
+            )
+        }
+        db.query("PRAGMA table_info(hosts)").use { c ->
+            val names = generateSequence { if (c.moveToNext()) c.getString(c.getColumnIndexOrThrow("name")) else null }.toList()
+            assertTrue("两列重连格应已删掉：$names", "reconnectOnNetworkChange" !in names && "maxReconnectAttempts" !in names)
+        }
+        db.query("SELECT label, length(privateKeyEnc) FROM identities WHERE id='k1'").use { c ->
+            assertTrue("身份（钥匙）应原样还在", c.moveToFirst())
+            assertEquals("key", c.getString(0))
+            assertEquals(2, c.getInt(1))
+        }
+        db.query("SELECT command FROM custom_buttons WHERE id='b16'").use { c ->
+            assertTrue("按钮应原样还在", c.moveToFirst())
+            assertEquals("ls", c.getString(0))
+        }
+        db.query("SELECT publicKeyBase64 FROM known_hosts WHERE host='example.com'").use { c -> assertTrue("已知主机应还在", c.moveToFirst()) }
+        db.query("SELECT `value` FROM settings WHERE `key`='last_host'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("h1", c.getString(0))
+        }
+        db.execSQL("INSERT INTO sessions (hostId,sid,listRow,ord,viewedAt) VALUES ('h1','s1','{}',0,5)")
+        db.execSQL("INSERT INTO record_pages (hostId,sid,start,`end`,`rows`,fetchedAt) VALUES ('h1','s1',0,10,'[]',5)")
+        db.execSQL("INSERT INTO sync_anchors (hostId,scope,path,`offset`,seq) VALUES ('h1','s1','/p',10,1)")
+        db.execSQL("INSERT INTO pending (id,hostId,sid,text,attachments,mintedAt,outcome,attempts) VALUES ('p1','h1',NULL,'hi',NULL,5,'pending',1)")
+        db.execSQL("INSERT INTO drafts (hostId,sid,text,cwd,account,model,permission,updatedAt) VALUES ('h1','','x','~',NULL,NULL,NULL,5)")
+        for (t in listOf("sessions", "record_pages", "sync_anchors", "pending", "drafts")) {
+            db.query("SELECT COUNT(*) FROM $t").use { c ->
+                c.moveToFirst()
+                assertEquals("$t 应能写能读", 1, c.getInt(0))
+            }
+        }
+    }
+
+    /** 全链路 1→17 schema 校验（validateDroppedTables=true 严格比对导出 schema）。 */
+    @Test
+    fun migrateAll1To17Validates() {
         helper.createDatabase(dbName, 1).close()
-        helper.runMigrationsAndValidate(dbName, 16, true, *ALL_MIGRATIONS)
+        helper.runMigrationsAndValidate(dbName, 17, true, *ALL_MIGRATIONS)
     }
 }

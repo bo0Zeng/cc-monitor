@@ -39,6 +39,7 @@ val dataModule =
         single { get<AppDatabase>().customButtonDao() }
         single { get<AppDatabase>().bookmarkDao() }
         single { get<AppDatabase>().settingsDao() }
+        single { get<AppDatabase>().cacheDao() }
 
         single<CryptoBox> { KeystoreCryptoBox(androidContext()) }
 

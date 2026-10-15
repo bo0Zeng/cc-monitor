@@ -211,6 +211,12 @@ object HistoryList {
 
     /** 核心按 `cmd-wire` 那一份解过的成品（平时那一形；`raw` 那一形手机不问）。 */
     fun of(data: Any?): HistoryListPage? = Wire.bind<HistoryListPage>(data)
+
+    /** 回包里的 `rows[]` 原样（缓存一行存一格）；不是那一形 ⇒ `null`。 */
+    fun rawRows(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("rows") as? List<*>)?.toList()
+
+    /** 缓存里那几行（原样）拼回一份清单，交给同一个解码器（[of]）；注解与截断那两格缓存不存。 */
+    fun ofRows(rows: List<Any?>): HistoryListPage? = of(mapOf("rows" to rows, "notice" to null, "truncated" to false))
 }
 
 /** `quota-read`：这台的额度账。每号一段 `rows`（写好的几行）· `fiveHour`（「5h 41%」那一格）· `warm`（开窗那一判）。 */

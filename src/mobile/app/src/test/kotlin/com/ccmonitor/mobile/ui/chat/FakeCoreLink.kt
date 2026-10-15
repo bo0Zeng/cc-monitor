@@ -51,7 +51,8 @@ internal class FakeCoreLink :
         sid: String,
         seq: Long,
         record: Map<String, Any?>?,
-    ) = lineFlow.emit(RecordLine(sid, "/p/$sid.jsonl", seq, null, record?.let { Wire.bind<LineRecord>(it) }))
+        byteOffset: Long? = null,
+    ) = lineFlow.emit(RecordLine(sid, "/p/$sid.jsonl", seq, byteOffset, record?.let { Wire.bind<LineRecord>(it) }, record))
 
     /** 此刻有人在看的会话（[hold] 的计数）。 */
     val held = mutableMapOf<String, Int>()

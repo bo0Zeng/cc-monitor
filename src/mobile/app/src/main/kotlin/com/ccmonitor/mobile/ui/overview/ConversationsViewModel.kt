@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.ui.overview
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.cache.ListCache
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -35,20 +36,24 @@ import kotlinx.coroutines.launch
  * 「对话」这一屏与抽屉「最近」：一台机器上的会话清单 ＋ 需手动的那几条 ＋ 每条此刻的状态字。
  * 全是核心的成品：清单与段头 · 时刻读 `history-list`，需手动读 `sessions-needs`（已排好），状态读会话帧的
  * `activity_text` / `activity_tone`。这里只挑格、按段头连着的几行归成一段（不判天、不排序）。
+ * 清单先上本地缓存（上次那一份 `rows[]` 原样，离线也看得到），连上以后照那台给的新的那一份覆盖、再存下。
  */
 @OptIn(FlowPreview::class)
 class ConversationsViewModel(
     private val backend: ResidentFeed,
     private val machine: String,
+    private val cache: ListCache = ListCache.None,
 ) : ViewModel() {
     private val list = MutableStateFlow<Fetched<HistoryListPage>>(Fetched.Loading)
     private val needs = MutableStateFlow<Fetched<List<NeedsRow>>>(Fetched.Loading)
+    private val cached = MutableStateFlow<HistoryListPage?>(null)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, needsAt) }
+        combine(backend.state, backend.table, list, needs, cached) { link, table, l, n, c -> view(link, table, l, n, needsAt, c) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
+        viewModelScope.launch { cached.value = cache.rows().takeIf { it.isNotEmpty() }?.let(HistoryList::ofRows) }
         backend.ensure()
         viewModelScope.launch {
             backend.state
@@ -83,7 +88,21 @@ class ConversationsViewModel(
 
     private fun fetchList() {
         // 手机只连这一台、直接问它的常驻：不带 origin / listing ⇒ 那台自己的清单并上它的注解（`history_list.rs` 头注）。
-        viewModelScope.launch { list.value = fetched(backend.call(HistoryList.COMMAND, null), HistoryList.COMMAND, HistoryList::of) }
+        viewModelScope.launch {
+            val reply = backend.call(HistoryList.COMMAND, null)
+            val got = fetched(reply, HistoryList.COMMAND, HistoryList::of)
+            list.value = got
+            // 存的是那台交来的那几行原样（按 sid 一行一格），不是这里挑过的格。
+            if (got is Fetched.Got && reply is Reply.Ok) {
+                HistoryList.rawRows(reply.data)?.let { raw ->
+                    cache.save(
+                        got.value.rows
+                            .map { it.sessionId }
+                            .zip(raw),
+                    )
+                }
+            }
+        }
     }
 
     /** 最近一份 `sessions-needs` 收到的本机时刻（「已等」从这里接着走）。 */
@@ -198,12 +217,31 @@ internal fun view(
     list: Fetched<HistoryListPage>,
     needs: Fetched<List<NeedsRow>>,
     needsAt: Long = 0,
+    /** 本地缓存里上次那一份；那台这一份还没到（没连上 · 在问 · 没问成）时先画它。 */
+    cached: HistoryListPage? = null,
 ): ConversationsUiState {
-    if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(), connecting = false, listLoading = false)
-    if (link == LinkState.Connecting) return ConversationsUiState()
-    val answer = (list as? Fetched.Got)?.value
+    val answer = (list as? Fetched.Got)?.value ?: cached
+    if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(), connecting = false, listLoading = false, sections = sectionsOf(cached, table))
+    if (link == LinkState.Connecting) return ConversationsUiState(sections = sectionsOf(cached, table))
     val labels = answer?.rows?.associate { it.sessionId to it.label }.orEmpty()
-    // 段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。
+    return ConversationsUiState(
+        connecting = false,
+        linkNotice = (link as? LinkState.Up)?.notice(),
+        needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt, SessionDot.live(it.needs.tone)) },
+        needsProblem = (needs as? Fetched.Failed)?.problem,
+        sections = sectionsOf(answer, table),
+        listLoading = list is Fetched.Loading,
+        listProblem = (list as? Fetched.Failed)?.problem,
+        notice = answer?.notice,
+        truncated = answer?.truncated == true,
+    )
+}
+
+/** 清单 ⇒ 几段：段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。 */
+private fun sectionsOf(
+    answer: HistoryListPage?,
+    table: SessionTable,
+): List<HistorySection> {
     val sections = mutableListOf<HistorySection>()
     for (r in answer?.rows.orEmpty()) {
         val live = table.sessions[r.sessionId]
@@ -216,17 +254,7 @@ internal fun view(
             sections += HistorySection(r.sectionText, listOf(item))
         }
     }
-    return ConversationsUiState(
-        connecting = false,
-        linkNotice = (link as? LinkState.Up)?.notice(),
-        needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt, SessionDot.live(it.needs.tone)) },
-        needsProblem = (needs as? Fetched.Failed)?.problem,
-        sections = sections,
-        listLoading = list is Fetched.Loading,
-        listProblem = (list as? Fetched.Failed)?.problem,
-        notice = answer?.notice,
-        truncated = answer?.truncated == true,
-    )
+    return sections
 }
 
 /** 一行的状态字：先会话帧、再去向那一句、再清单那一格的名字（文案表 `sessionState.*`，与桌面同一句）。 */

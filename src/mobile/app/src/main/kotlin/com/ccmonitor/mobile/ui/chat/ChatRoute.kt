@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
@@ -160,8 +161,12 @@ fun ChatController.sessionOf(
     open: ChatOpen,
     linkOf: (hostId: String) -> CoreLink,
     watchOf: (hostId: String) -> SessionWatch,
+    /** 那台的本地缓存（生产上是 `LocalCache.chat(hostId)`）。 */
+    cacheOf: (hostId: String) -> ChatCache = { ChatCache.None },
 ): ChatSession =
-    sessionFor(key = open.key, hostId = open.hostId) { scope -> ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope) }
+    sessionFor(key = open.key, hostId = open.hostId) { scope ->
+        ChatSession(linkOf(open.hostId), watchOf(open.hostId), open.target, open.machine, scope, cache = cacheOf(open.hostId))
+    }
 
 /** 这台在手机上的名字 ＋ 存的那一家；还没读到 ⇒ `null`。 */
 private data class ChatHost(

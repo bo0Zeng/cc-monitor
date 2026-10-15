@@ -700,6 +700,33 @@ def main():
         if not wait(f"替身收到：{T} while dead", 60):
             raise Step.Fail("重开之后没有被杀那段的话")
 
+    with Step("8b-离线打开"):
+        # 断着网重开 App：会话列表与那一条的最后一屏照本地缓存画（上次从那台读到的原样）；网回来跟上断着那段来的话。
+        name = tmux_name_of(f"{T} new session")
+        adb("shell", "am", "force-stop", PKG)
+        adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
+        time.sleep(3)
+        try:
+            launch()
+            drawer(t("mobDrawer.item.chats"))
+            if not wait(f"{T} new session", 30):
+                raise Step.Fail("断网时对话列表是空的（没上本地缓存）")
+            shot("8b-离线列表")
+            tap(f"{T} new session")
+            time.sleep(3)
+            to_bottom()
+            if not wait(f"替身收到：{T} while dead", 20):
+                raise Step.Fail("断网时那一条的最后一屏没上本地缓存")
+            shot("8b-离线那一条")
+            rig("tmux", "send-keys", "-t", name or "", f"{T} back online", "Enter")
+            time.sleep(4)
+        finally:
+            adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
+        time.sleep(8)
+        to_bottom()
+        if not wait(f"替身收到：{T} back online", 60):
+            raise Step.Fail("网回来之后没跟上断着那段来的话")
+
     with Step("9-终端屏"):
         # 从别名起：台架那台配一条别名（别名页那条写命令），终端屏「用哪个启动」那一排列的是它（profiles-read），
         # 点它 ⇒ 那个 shell 里敲 `ccm @名`、在台架 tmux 里起会话；再从 tmux 会话列表接进去，两侧打字都进那个会话、命令面板换模型。

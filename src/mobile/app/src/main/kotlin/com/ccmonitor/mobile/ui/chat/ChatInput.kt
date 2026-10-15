@@ -66,6 +66,8 @@ data class ChatInputActions(
     val loadPicks: () -> Unit = {},
     val loadCommands: () -> Unit = {},
     val say: (String) -> Unit = {},
+    /** 输入框里的字变了（本地存草稿）。 */
+    val editDraft: (String) -> Unit = {},
 )
 
 /**
@@ -80,6 +82,7 @@ internal fun ChatInputArea(
     // `rememberSaveable`：转屏会重建 Activity，`remember` 的草稿会丢光。
     var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var sheet by remember { mutableStateOf<InputSheet?>(null) }
+    RestoreDraft(state.draft, draft) { draft = it }
     val open = state.sid != null
     val busy = state.model.pending != null || state.permission.pending != null
     val tokens = LocalAppTokens.current
@@ -89,7 +92,7 @@ internal fun ChatInputArea(
             state.note?.let { NoteLine(it) }
             OutlinedTextField(
                 value = draft,
-                onValueChange = { draft = it },
+                onValueChange = { draft = edited(draft, it, actions.editDraft) },
                 modifier = Modifier.fillMaxWidth().testTag(ChatTestTags.INPUT),
                 placeholder = { Text(copyText("chat.input.placeholder"), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 singleLine = false,
@@ -132,7 +135,32 @@ internal fun ChatInputArea(
             }
         }
     }
-    InputSheets(sheet, state, actions, { sheet = it }) { text -> draft = TextFieldValue(text, TextRange(text.length)) }
+    InputSheets(sheet, state, actions, { sheet = it }) { text ->
+        draft = TextFieldValue(text, TextRange(text.length))
+        actions.editDraft(text)
+    }
+}
+
+/** 输入框改了一下：字变了才存草稿（只挪光标不算）。 */
+private fun edited(
+    was: TextFieldValue,
+    now: TextFieldValue,
+    save: (String) -> Unit,
+): TextFieldValue {
+    if (now.text != was.text) save(now.text)
+    return now
+}
+
+/** 上次没发的草稿（本地存的）：框里还空着才填，不盖掉已经打的字。 */
+@Composable
+private fun RestoreDraft(
+    saved: String?,
+    current: TextFieldValue,
+    set: (TextFieldValue) -> Unit,
+) {
+    LaunchedEffect(saved) {
+        if (saved != null && current.text.isEmpty()) set(TextFieldValue(saved, TextRange(saved.length)))
+    }
 }
 
 /** 此刻升起的那一个抽屉 / 确认框（[set] 换成别的或 `null` 收起；[fill] 把字填进输入框）。 */

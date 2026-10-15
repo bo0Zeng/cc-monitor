@@ -26,12 +26,7 @@ fun Host.toConnectionConfigs(
             username = username,
             auth = auth,
             jumpVia = jumpVia,
-            reconnect =
-                ReconnectPolicy(
-                    auto = autoReconnect,
-                    onNetworkChange = reconnectOnNetworkChange,
-                    maxAttempts = maxReconnectAttempts,
-                ),
+            reconnect = ReconnectPolicy(auto = autoReconnect),
             // 工作目录和 tmux 由 [initialCommands] 在 shell 通道里发，不走 ConnectionConfig。
         )
     }

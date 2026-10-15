@@ -60,23 +60,36 @@ fun ConversationsScreen(
 ) {
     Column(modifier.fillMaxSize()) {
         val whole = state.linkProblem ?: state.listProblem
+        // 手上有上次那一份（本地缓存）⇒ 照画；离线 · 没问成的那一句排在最前。
+        val cachedOnly = state.sections.isNotEmpty()
         when {
-            whole != null -> ProblemBar(whole, onRetry)
-            state.connecting || (state.listLoading && state.sections.isEmpty()) ->
+            whole != null && !cachedOnly -> ProblemBar(whole, onRetry)
+            !cachedOnly && (state.connecting || state.listLoading) ->
                 Text(copyText("history.list.reading", "machines" to machine), style = monoSmall, modifier = Modifier.padding(16.dp))
             state.sections.isEmpty() && state.needs.isEmpty() ->
                 Text(copyText("history.list.empty"), style = monoSmall, modifier = Modifier.padding(16.dp).testTag(OverviewTags.EMPTY))
-            else ->
-                LazyColumn(Modifier.fillMaxSize().testTag(OverviewTags.LIST)) {
-                    state.linkNotice?.let { p -> item { ProblemBar(p, onRetry) } }
-                    state.needsProblem?.let { p -> item { ProblemBar(p, onRetry) } }
-                    needsSection(state.needs, onOpen)
-                    state.notice?.let { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }
-                    for (s in state.sections) historySection(s, onOpen)
-                    if (state.truncated) {
-                        item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
-                    }
-                }
+            else -> ConversationsList(state, whole, onOpen, onRetry)
+        }
+    }
+}
+
+/** 清单本身：最前是离线 / 没问成的那一句（有的话）· 后端旧了那一句 · 需手动，下面一段一段。 */
+@Composable
+private fun ConversationsList(
+    state: ConversationsUiState,
+    whole: Problem?,
+    onOpen: (sessionId: String) -> Unit,
+    onRetry: () -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize().testTag(OverviewTags.LIST)) {
+        whole?.let { p -> item { ProblemBar(p, onRetry) } }
+        state.linkNotice?.let { p -> item { ProblemBar(p, onRetry) } }
+        state.needsProblem?.let { p -> item { ProblemBar(p, onRetry) } }
+        needsSection(state.needs, onOpen)
+        state.notice?.let { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }
+        for (s in state.sections) historySection(s, onOpen)
+        if (state.truncated) {
+            item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
         }
     }
 }
