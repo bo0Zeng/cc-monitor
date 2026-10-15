@@ -86,14 +86,13 @@ class FilesTest {
     }
 
     @Test
-    fun `上传：一块一块进暂存区（b16），整份摘要与块数交给提交；不覆盖`() {
+    fun `上传：一块一块进暂存区（b16），整份摘要与块数交给提交；同名怎么办不带（那台问）`() {
         assertEquals(mapOf("key" to "k", "seq" to 2L, "content" to mapOf("b16" to "00ff")), FilesStageChunk.args("k", 2L, byteArrayOf(0, -1), 2))
         assertEquals(
             mapOf(
                 "root" to "/w",
                 "rel" to "up.bin",
                 "key" to "k",
-                "overwrite" to false,
                 "expect" to mapOf("sha256" to "ab"),
                 "chunks" to 3L,
                 "bytes" to 9L,

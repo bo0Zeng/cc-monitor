@@ -30,7 +30,7 @@ class FileOpsTest {
             assertEquals(listOf(0L, 1L, 2L), chunks.map { it!!["seq"] })
             assertEquals("同一份上传同一个键", 1, chunks.map { it!!["key"] }.toSet().size)
             val commit = link.calls("files-commit-upload").single()!!
-            assertEquals(false, commit["overwrite"])
+            assertEquals("同名怎么办不带（＝ 那台问：回 exists）", false, "on_exists" in commit)
             assertEquals(3L, commit["chunks"])
             assertEquals(body.size.toLong(), commit["bytes"])
             assertEquals(chunks.first()!!["key"], commit["key"])

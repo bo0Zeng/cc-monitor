@@ -338,7 +338,6 @@ object FilesCommitUpload {
             "root" to dir.wire,
             "rel" to name,
             "key" to key,
-            "overwrite" to false,
             "expect" to mapOf("sha256" to sha256),
             "chunks" to chunks,
             "bytes" to bytes,
