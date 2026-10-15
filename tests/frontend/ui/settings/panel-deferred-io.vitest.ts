@@ -128,7 +128,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * 就是点名的那三块（日志 2 · 数据位置 1）。
  * 的 `dryRun` 预览）—— 那是「按账号生成命令」那一块的；它搬去了机器页「本机 → 工具 → 别名」，
  * 而且在那里**连「本机页可见」都不够**：它是个 `<details>`，第一次展开才发 I/O
- * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。
+ * （那几发由 `machine-aliases.vitest.ts` 钉）。
  * 下面「点进本机页 ⇒ 恰好 `MACHINE_PAGE_IPC`」那一条因此也在替它作证：本机页上多挂一块别名，一发都没多。
  */
 /** 通用页本身那一发：恢复组里「终端」那一行的事实（第一次可见时问）。 */

@@ -392,3 +392,12 @@ fn only_find_session_command_walks_path() {
         "{HOME} 里切 PATH 的应恰好一处（find_session_command 那一下）"
     );
 }
+
+/// Windows 上问新开终端的 `PATH` 那一句：标记成对夹住输出（读回只认 `parse_marked_path` 那一对）、标记按 PowerShell 字面量写。
+#[test]
+fn the_fresh_path_query_brackets_its_answer_with_the_mark() {
+    let q = super::powershell::fresh_path_query(super::SESSION_PATH_MARK);
+    let lit = super::dialect::ps_literal(super::SESSION_PATH_MARK);
+    assert_eq!(q.matches(lit.as_str()).count(), 2, "{q}");
+    assert!(q.contains("'Machine'") && q.contains("'User'"), "{q}");
+}

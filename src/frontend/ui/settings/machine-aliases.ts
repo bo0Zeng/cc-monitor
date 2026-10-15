@@ -31,7 +31,7 @@ import { SETTINGS_GO_EVENT } from "./events";
 import type { ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { toggleSwitch } from "../kit/switch";
-import { allowLocalScripts, installAliasBlock, readAliases, removeAliasBlock, renderAliasBlock } from "../alias-reads";
+import { allowLocalScripts, installAliasBlock, readAliases, readCcmOnPath, removeAliasBlock, renderAliasBlock } from "../alias-reads";
 import { buildProfilesList, type ProfileClash } from "./profiles-list";
 import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -39,7 +39,6 @@ import { cfgRow, type CfgDot, type CfgRow } from "./cfg-row";
 import { homeShort } from "../kit/path";
 import { hostFacts } from "./host-os";
 import { copyText } from "../copy-table";
-import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import { sayFailure, sayWithDetail } from "../kit/detail";
 
 /** 界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
@@ -254,7 +253,7 @@ function accessWarnText(cands: StartupFile[], on: StartupFile[]): string {
 
 export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   const shell = opts.platform;
-  // 只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
+  // 只本机挂的几格（平台格 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
   const local = isLocalOrigin(opts.origin());
   const group = el("div", "cfg");
   const row = cfgRow(copyText("machineAliases.manager.title"), true);
@@ -484,12 +483,12 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     renderAccess();
   };
 
-  /** 本机 ccm 那一格：我们那一份装下来了没有 ＋ 终端里敲 `ccm` 走到的是不是它（Windows 上问新开的 PowerShell）。 */
-  const paintLocalCcm = async (): Promise<void> => {
+  /** 那台终端里敲 `ccm` 走到的是不是 cc-monitor 放的那一份（判词与那一句由那台后端出）。 */
+  const paintCcmOnPath = async (): Promise<void> => {
     try {
-      const st = await askLocalCcm();
-      pathCcm.hidden = !st.message;
-      pathCcm.textContent = st.message;
+      const { said } = await readCcmOnPath(opts.origin());
+      pathCcm.hidden = !said;
+      pathCcm.textContent = said;
     } catch (e) {
       pathCcm.hidden = false;
       sayFailure(pathCcm, copyText("machineAliases.load.ccmFailed"), e);
@@ -498,8 +497,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 
   const load = async (): Promise<void> => {
     wrap.dataset.origin = opts.origin();
-    if (local) await paintLocalCcm();
-    await Promise.all([readBack(), profiles.load()]);
+    await Promise.all([paintCcmOnPath(), readBack(), profiles.load()]);
   };
 
   /** 「其它文件」：交给读回口过围栏、并进候选，然后选中它。过不了围栏 ⇒ 原话上屏，候选不动。 */
@@ -761,12 +759,4 @@ function buildPsExtras(row: CfgRow): PsExtras {
       void refreshPath();
     },
   };
-}
-
-/**
- * 问一次本机 `ccm` 那一格（判定与那句话在 monitor `ccm_probe::local_ccm_cell`）。调用方：别名管理器读回 ·
- * 本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存）。Windows 本机问新开的 PowerShell 里敲 `ccm` 走到哪。
- */
-export function askLocalCcm(fresh = false): Promise<LocalCcmEntry> {
-  return commands.local_ccm_entry_status(fresh);
 }

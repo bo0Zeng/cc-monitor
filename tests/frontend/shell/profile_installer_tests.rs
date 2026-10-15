@@ -55,22 +55,13 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
 
     // 真落点：`install_local_ccm_entry` 的 `dir` 实参是 `local_backend_host.rs` 算的 `extract_dir`。
     //
-    // ⚠ **比之前先把空白抹掉**：`ccm_probe.rs` 那一处是
-    // `h.join(".cc-monitor")\n            .join("bin")`（rustfmt 断的行）——
-    // 按原文 `contains` 会**漏掉它**，而漏掉的那一形正是「判据够不着」，
-    // 不是「那一处不存在」。这一刀是现打出来的：第一版就栽在这里。
+    // ⚠ **比之前先把空白抹掉**：rustfmt 会把 `.join(…)` 链断成几行，按原文 `contains` 会漏掉它。
     let squeeze = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
     let want = squeeze(&want);
-    let hosts: [(&str, &str); 2] = [
-        (
-            "local_backend_host.rs",
-            include_str!("../../../src/frontend/shell/src/local_backend_host.rs"),
-        ),
-        (
-            "ccm_probe.rs",
-            include_str!("../../../src/frontend/shell/src/ccm_probe.rs"),
-        ),
-    ];
+    let hosts: [(&str, &str); 1] = [(
+        "local_backend_host.rs",
+        include_str!("../../../src/frontend/shell/src/local_backend_host.rs"),
+    )];
     for (name, raw) in hosts {
         let prod = squeeze(&guard_core::production_code(raw));
         assert!(

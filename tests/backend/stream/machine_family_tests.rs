@@ -235,8 +235,13 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
         wire_of(&got).replace(&path, "<PATH>"),
         r#"{"detail":null,"killOnExit":false,"path":"<PATH>","reason":null,"said":"关 = 不主动停止 · 掉线后自行退出","state":"absent"}"#
     );
-    // 这台的 `ccm` 会哪些。
-    let got = run_any("ccm-probe", json!({})).unwrap();
+    // 这台的 `ccm` 会哪些（终端里敲它走到哪那一格随这台的 shell 变，只核形状）。
+    let mut got = run_any("ccm-probe", json!({})).unwrap().expect("回包");
+    let here = got.as_object_mut().unwrap().remove("onPath").expect("onPath");
+    assert_eq!(
+        here.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()),
+        Some(vec!["said".to_string(), "verdict".to_string()])
+    );
     assert_eq!(
         wire_of(&got).replace(crate::BUILD_ID, "<BUILD>"),
         r#"{"agents":["claude","codex"],"build":"<BUILD>","capabilities":["new","resume","attach","tmux","account","model","cwd","agent","launcher","ccm-sid","print","detach","tmux-size","tmux-base","bus-register","backend-discover","account-via-backend","base-url-across-tmux"],"version":"7"}"#

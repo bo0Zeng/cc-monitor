@@ -34,8 +34,7 @@
 #     而 `--print` 只字未提（实测 `cd '…' && exec codex`）。
 # - **B 组 `CCM_ENV`**：S10 七项里**唯一全仓零覆盖**的一项（摸底 `grep -rn CCM_ENV`
 #   只命中 ccm 自己与计划文档）。它是「真正非 shell 不可」的那一条，U9b 之后也必须还在。
-# - **C 组 `--ccm-probe` 契约**：`src/frontend/shell/src/ccm_probe.rs::parse_probe_output` 靠**字面** `name=ccm`
-#   判「装没装」，`src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
+# - **C 组 `--ccm-probe` 契约**：首行**字面** `name=ccm`（认得出这是 ccm 的名片），`src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
 #   渲不渲得出那一行 `ccm …`（渲不出来就拒，没有第二条路）。两处都只对**手写 fixture** 测过。
 #   ⚠ 精确说法（审计订正）：真脚本的 probe 输出**并非全无覆盖** —— `cc-spawn-uplift` 主流程
 #   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `ccm` 并对 `detach`/`tmux-size` 两项
@@ -293,7 +292,7 @@ BASE_EXTRA=()
 echo
 echo "===== C 组：--ccm-probe 是跨语言契约，两个消费方都只测过 fixture ====="
 PROBE="$("$CCM" -- --ccm-probe 2>&1)"
-ck "首行逐字 name=ccm（ccm_probe.rs::parse_probe_output 的判活依据）" "name=ccm" "$(printf '%s\n' "$PROBE" | head -1)"
+ck "首行逐字 name=ccm（名片的认法）" "name=ccm" "$(printf '%s\n' "$PROBE" | head -1)"
 ck "有 version= 行" "1" "$(printf '%s\n' "$PROBE" | grep -c '^version=')"
 CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"
 # 渲染器要求的能力从**源码里抽**，不手抄——手抄一份等于又造一个双写点。

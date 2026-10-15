@@ -489,27 +489,6 @@ describe("备注 · cc-bus 那一行", () => {
     expect(laptop.querySelector(".ext-hook-unsupported")?.textContent).toBe(copyText("extPage.hooks.unsupported"));
     expect(laptop.querySelectorAll(".ext-hook-state, .paste-block-out")).toHaveLength(0);
   });
-
-  it("cc-bus 装到本机之后：顺手问一次本机的命令够不够新，不够就在那一句后面说", async () => {
-    const list = listWith(demoMissing, [ccBus([cell("missing", [place(user, "missing")], bring({ fromName: "自带" })), demoMissing])]);
-    backend([list]);
-    const answer = invokeMock.getMockImplementation() as (cmd: string, a: ChanCallArgs) => Promise<unknown>;
-    invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => (cmd === "cc_bus_ccm_precheck" ? "本机 ccm 太旧" : answer(cmd, a)));
-    const s = new ExtSection();
-    document.body.replaceChildren(s.element);
-    s.loadNow();
-    await settle();
-    open(s, "skill/cc-bus");
-    await settle();
-    pick(s, "");
-    await settle();
-    installBtn(s).click();
-    await settle();
-    expect(invokeMock.mock.calls.filter(([c]) => c === "cc_bus_ccm_precheck")).toHaveLength(1);
-    expect(installBox(s).querySelector('[data-result=""]')?.textContent).toBe(
-      `${copyText("extPage.install.doneOne", { machine: copyText("extPage.machine.here"), said: copyText("extPage.done.written", { n: "1" }) })} ${copyText("extPage.done.warn", { said: "本机 ccm 太旧" })}`,
-    );
-  });
 });
 
 /** 一份源码里「比较指纹」的痕迹：出现摘要这个词，或拿记号去比。注释先剥掉。 */

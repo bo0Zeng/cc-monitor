@@ -2361,7 +2361,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
-        // `ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
         (
             "tests/backend/footprint/rows_tests.rs",
             "locality_is_derivable_from_destination_today",

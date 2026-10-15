@@ -1159,7 +1159,7 @@ fn resolve_backend_bin(
         &crate::platform::fs::make_executable,
         &crate::platform::fs::ensure_private_dir,
         // 放不放问手上那份字节自己（起进程的三条策略由宿主给）。
-        &crate::ccm_probe::ask_place_verdict,
+        &crate::backend_once::ask_place_verdict,
     ) {
         Resolved::Found(p) => Ok(p),
         Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
@@ -1234,8 +1234,8 @@ fn run_resident_stop_within(
     let handed = backend_env();
     // 三条策略：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
     // `Captured`（失败那一句 `{code,message}` 在 stderr 上，要读回来说给人听）。
-    // 等法与本机探针同一段（`ccm_probe::capture_full`：读线程 ＋ 带上限地等，到点杀掉收尸）。
-    let got = crate::ccm_probe::capture_full(
+    // 等法与问后端一次同一段（`backend_once::capture_full`：读线程 ＋ 带上限地等，到点杀掉收尸）。
+    let got = crate::backend_once::capture_full(
         deadline,
         &|| {
             let mut cmd = std::process::Command::new(bin);
@@ -1256,7 +1256,7 @@ fn run_resident_stop_within(
     );
     let out = match got {
         Ok(c) => c,
-        Err(crate::ccm_probe::CaptureFail::Spawn(e)) => {
+        Err(crate::backend_once::CaptureFail::Spawn(e)) => {
             return Err(Said::with_raw(
                 copy_text(
                     "rsLocalBackendHost.stop.spawnFailed",
@@ -1265,14 +1265,14 @@ fn run_resident_stop_within(
                 &e,
             ))
         }
-        Err(crate::ccm_probe::CaptureFail::TimedOut) => {
+        Err(crate::backend_once::CaptureFail::TimedOut) => {
             return Err(copy_text(
                 "rsLocalBackendHost.stop.timedOut",
                 &[("dur", &copy_core::format_elapsed(deadline))],
             )
             .into())
         }
-        Err(crate::ccm_probe::CaptureFail::Read(e)) => {
+        Err(crate::backend_once::CaptureFail::Read(e)) => {
             return Err(Said::with_raw(
                 copy_text("rsLocalBackendHost.stop.readFailed", &[]),
                 &e,
@@ -1497,7 +1497,7 @@ pub fn start_local_backend() -> StartOutcome {
         // 与常驻那条路交的是**同一份**（上面那个 `handed`）。
         handed,
         // 同上：放不放问手上那份字节自己。
-        &crate::ccm_probe::ask_place_verdict,
+        &crate::backend_once::ask_place_verdict,
     );
     if let Some(h) = sup {
         let mut g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());

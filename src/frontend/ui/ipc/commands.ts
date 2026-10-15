@@ -54,7 +54,6 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { Origin } from "../generated/Origin";
 import type { FrontOutcome } from "../generated/FrontOutcome";
 import type { WatchedSession } from "../generated/WatchedSession";
-import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
@@ -149,12 +148,6 @@ export const commands = {
   open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
     invoke<TerminalOpened>("open_local_terminal", args),
 
-  /** 本机那条 `ccm` 入口现在是什么样：我们放下去的那一份在哪、它自报什么身份、
-   *  你 PATH 上那个 `ccm` 是不是它，以及给人读的那句话。`LocalCcmEntry` 是生成物 ⇒ **桶③**。
-   *  只读：跑两次 `--ccm-probe`，一个字节都不写；`~/.local/bin/ccm` 下的旧份由用户自己删，产品不删。 */
-  local_ccm_entry_status: (fresh?: boolean) =>
-    invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
-
   /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
    *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。
    *  只经 `src/frontend/ui/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
@@ -210,8 +203,6 @@ export const commands = {
   footprint_client_facts: () =>
     invoke<Record<string, unknown>>("footprint_client_facts"),
 
-  /** 装出来的 `cc-spawn` 在本机跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。扩展页把 cc-bus 装到本机之后问一次。 */
-  cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
   list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),
 

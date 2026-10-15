@@ -40,7 +40,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("cc-bus-install", "6309fea1"),
     ("cc-bus-install-state", "a6000dce"),
     ("ccm-print", "7e7d016f"),
-    ("ccm-probe", "aa4a1d05"),
+    ("ccm-probe", "9cf46a4f"),
     ("chores-mark", "6039b73e"),
     ("data-report", "486af978"),
     ("deploy-plan", "ce9e6e34"),

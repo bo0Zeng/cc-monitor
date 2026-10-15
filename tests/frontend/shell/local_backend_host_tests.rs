@@ -661,7 +661,7 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
     .unwrap_or_else(|e| panic!("{e}"));
     // 等带期限（与本机探针同一段等法），交的环境与起它时同一份。
     for needle in [
-        "crate::ccm_probe::capture_full(",
+        "crate::backend_once::capture_full(",
         ".envs(handed.iter().cloned())",
     ] {
         guard_core::find_pinned(&run, needle).unwrap_or_else(|e| panic!("{e}"));

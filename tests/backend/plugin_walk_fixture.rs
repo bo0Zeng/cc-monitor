@@ -454,7 +454,7 @@ mod tests {
     ///
     /// 夹具是本进程刚写出来的：写的那一刻并行测试里别的线程恰好 fork，子进程在 exec 之前
     /// 还攥着那份写 fd ⇒ 此刻 execve 它 = `ETXTBSY`（门禁全量跑时现打逮到过一次）。
-    /// 认 `os error 26`（errno），不认 `Text file busy`（随 locale 变）；同 `ccm_probe_tests` 那一处。
+    /// 认 `os error 26`（errno），不认 `Text file busy`（随 locale 变）。
     /// 不能像 `identity_tag_tests` 那样改经 `/bin/sh` 起：这里要证的正是通用层真的 exec 了它。
     fn run_past_busy(
         bin: &Path,

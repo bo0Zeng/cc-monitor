@@ -128,8 +128,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("ccm.user-path", (B1, "R85+R87+R88",
                        "把我们那个 bin 目录放上**用户级** PATH，让三种终端都敲得到 `ccm`；"
                        "POSIX 那一侧的同一件事是写进 rc 的那个围栏块")),
-    ("ccm.status", (B1, "R64+K26+K-R111",
-                    "查装态（`K-R111`：该挪进安装面）")),
+    # `ccm.status` 摘了：终端里敲 `ccm` 走到哪那一格进了那台后端（`ccm-probe` 的 `onPath`），界面经通道直问，不再是 Tauri 命令。
     # 🔴 这张归档表的四个能力 id 跟着账本改了：
     #   `daemon.deploy` · `app.daemon-policy` · `daemon.lifecycle` · `daemon.status`
     #   → `backend.*`。判据自己红的时候说「**别改表去凑**」，核法照它给的两条：
@@ -148,8 +147,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
     #   （归档表留一个不存在的 id 会让 `R3b` 恒红）。「装 MCP」那一件的装口住 `tool_registry` 的 `project-mcp` 那一行（后端写口）。
     # `skill.install` 摘了（理由同上：装 / 卸进了被写那台后端，不再是 Tauri 命令）。装口住 `tool_registry` 的 `skill-install` 那一行。
-    ("cc-bus.deploy", (B3, "K34",
-                       "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
+    # `cc-bus.deploy` 摘了：装前那道本机 `ccm` 预检删了（`cc-spawn` 先找 cc-monitor 放的那份后端，PATH 上那份由别名页那一格说）。
     # `cc-bus.install-state` 摘了：三态进了本机后端（`cc-bus-install-state`），不再是 Tauri 命令。
     # `skill.inbox` 摘了：收件箱那一面进了那台后端（`skill-host-*`），不再是 Tauri 命令。
     # ─────────────────────────── 非装面 ───────────────────────────
@@ -247,8 +245,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "ccm_user_path_add",
         "ccm_user_path_remove",
         "ccm_user_path_status",
-        "local_ccm_entry_status",
-        # 远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`）；本机那一格是 `local_ccm_entry_status`。
+        # `local_ccm_entry_status` 摘了：那一格进了那台后端（`ccm-probe`），界面经通道直问。
     ), "§3-3 第二行：后端改动范围 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条，那几条归 S4。"
@@ -289,9 +286,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   一个字节没动 —— 它照样在两个方向上有牙（表指了盘上没有的命令 ⇒ 红；
         #   盘上多一条谁都没认领的命令 ⇒ 红）。动的只是这张**人的判断表**里的成员，
         #   因为它描述的那个现实变了。
-        # 装 · 三态 · 记账在本机后端（`cc-bus-install` / `-state`）；这里只有装前那道本机 `ccm` 预检
-        #   （归 `cc-bus.deploy`，调用点在 `cc-bus-section.ts`）。
-        "cc_bus_ccm_precheck",
+        # 装 · 三态 · 记账在本机后端（`cc-bus-install` / `-state`）；装前那道本机 `ccm` 预检删了。
         # MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
@@ -332,7 +327,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
             "量于 09-15 · 同上。`src/frontend/ui/launcher-diagnostics.ts` → "
             "`src/frontend/ui/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
-            "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
+            "用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
             "**份数没变（3 → 3），是换了一份**：`launcher-diagnostics.ts` 今天一条 S2 调用都没有了",
             "S2 收完本机半时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
@@ -353,9 +348,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`src/frontend/ui/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
-    ("S5", (("src/frontend/ui/settings/ext-section.ts",),
-            "份数不变、换了住处：cc-bus 的装口从驾驶舱（`src/frontend/ui/settings/cc-bus-section.ts`）搬进扩展页（③ 那一处），"
-            "装完那一句本机 `ccm` 够不够新（`cc_bus_ccm_precheck`）跟着过去。"
+    ("S5", ((),
+            "**1 → 0**：`src/frontend/ui/settings/ext-section.ts` 那一处（装完 cc-bus 问本机 `ccm` 够不够新）删了。"
             "**2 → 1**：`src/frontend/ui/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。**3 → 2**：`src/frontend/ui/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",

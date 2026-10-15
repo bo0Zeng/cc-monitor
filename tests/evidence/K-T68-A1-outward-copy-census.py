@@ -128,7 +128,6 @@ EXCLUDED_FILE_RE = re.compile(
 CC_BUS_INJECT_FILES = (
     "src/shared/cc-bus",
     "src/frontend/shell/src/cc_bus.rs",
-    "src/frontend/shell/src/cc_bus_deploy.rs",
 )
 
 # 🔴 修 bug（CP1 2026-09-24）：Rust 里 `'` 不一定开一个字符字面量 —— 生命周期 `'a`、

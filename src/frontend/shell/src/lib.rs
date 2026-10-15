@@ -46,7 +46,6 @@ mod ui_error;
 // 通信层面 A 的第一个进程外客户端那条路（末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
-mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 pub mod chan;
 mod clipboard; // 写系统剪贴板那一条命令（回真成败）：全产品的复制只这一口
 mod config;
@@ -143,7 +142,8 @@ mod sftp;
 // 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。本机会话内容也经本模块的
 // `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
 // 远端行带 origin=host 标签。
-mod ccm_probe;
+// 问自己放下去的那份后端一次（帧命令的 CLI 面）：本机后端自举那一问。
+mod backend_once;
 mod stream_source;
 // 每条长连接报「在看哪几个会话」（那台后端 `stream-watch`）：主窗口在看的 tab ∪ 查看窗跟着的会话。
 mod stream_watch;
@@ -911,13 +911,8 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            // 远端 `ccm` 探针那条命令退役：渲染进了那台后端，能力问它自己。
-            // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
-            ccm_probe::local_ccm_entry_status,
             // skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
-            // cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
-            cc_bus_deploy::cc_bus_ccm_precheck,
             // **主界面说 `call` 的那一跳**：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
             // 〔「撤单不许回退」〕撤单过 webview 那一跳（带编号撤那一问）。

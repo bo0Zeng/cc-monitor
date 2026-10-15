@@ -13,8 +13,6 @@ import { budgetWithin, callTyped, peerVersionSaid, saidFrom } from "../ipc/chan-
 import type { ExitPolicy } from "../generated/ExitPolicy";
 import type { LogTail } from "../generated/LogTail";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
-import { hostFacts } from "./host-os";
-import { askLocalCcm } from "./machine-aliases";
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -357,10 +355,6 @@ export class BackendSection {
     btn.disabled = true;
     try {
       const r = await resync(origin);
-      // 手动兜底：本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存（这台有没有那份缓存由壳说）。
-      if (isLocalOrigin(origin) && hostFacts().ccmPathCache) {
-        askLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
-      }
       toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {

@@ -23,34 +23,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           不在用户机器上跑。每台机器起一个真后端、两根管子交产品那条本机读循环 —— 台架要的就是壳的真代码接真后端。",
      "Hidden · JobKillOnClose · Inherit（台架看后端的 stderr）"),
     // 构建期（`build.rs`）那一行（vendor 新鲜度自检起 `git`）随 vendored 引擎整棵删了。
-    ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
-     "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
-          零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
-          而 shell 里的 `command -v` 那种探法只答得了「在不在」，答不了能力集，\
-          拿它当依据渲染就会在老 ccm 上渲出带未知 flag 的命令且**已经没有回落可走**（fail-open）。\
-          `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到。\
-          ⚠ **命令是参数**（D 阶段补审为了能测「挂住」而开）——生产侧唯一实参是 `CCM_PROBE_CMD`，\
-          由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」
-          ★ 三条策略为什么是这三格：探针绝不该在用户桌面上闪窗口；`-lic` 起出来的整棵树超时时要一起收（只杀 `bash` 漏得掉用户 rc 起的东西）；有用的字节只在 stdout 上。",
-     "Hidden · JobKillOnClose · Null"),
-    // ── Windows 那一形的「你 PATH 上那个 `ccm` 是谁」。
-    ("ccm_probe.rs", "probe_via_fresh_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <现拼 PATH 的常量串>` ＋ `powershell.exe -NonInteractive -Command <常量探测串>`（带那份 PATH、照常加载 profile）",
-     "同 `probe_with` 那一行问的是「终端里敲 `ccm` 走到哪」，Windows 上的终端是 PowerShell ⇒ 非起一个加载 profile 的 PowerShell 不可（profile 里的函数 / 别名与 PATH 一样决定走到哪）。\
-          第一跳只读注册表里机器级 ＋ 用户级 PATH（新开终端拿到的是这一份，本进程继承来的可能是改之前的），第二跳带着它问 `Get-Command ccm` ＋ 名片；\
-          两段脚本都是常量（`FRESH_PATH_PS` · `CCM_PROBE_PS`），零插值、不吃用户输入；一个字节都不写
-          ★ 三条策略为什么是这三格：同 `probe_with`：不闪窗口；超时收整棵（profile 里起了什么不知道）；有用的字节只在 stdout 上。",
-     "Hidden · JobKillOnClose · Null"),
-    // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
-    ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
-     "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\
-          上一行问的是「你 PATH 上那个是谁」（非走登录 shell 不可，PATH 就是 rc 决定的），\
-          这一行问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不起，\
-          也就不吃用户 rc 的任何影响。两张名片一比才判得出「你 PATH 上那个是旧的」，\
-          而**只比路径认不出同名不同物** —— 那正是要修的（用户 `~/.local/bin/ccm` 那份旧 bash）。\
-          ⚠ 参数是**路径**，来自 `local_backend::local_ccm_entry_name()` 拼出来的落点，\
-          不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）
-          ★ 三条策略为什么是这三格：同上一行逐字，只有 `Hidden` 那格更重：Windows 上问的是我们自己放下去的 `ccm.exe`（控制台子系统），不带 flag 就是每问一次身份闪一次黑框。",
-     "Hidden · JobKillOnClose · Null"),
     // ── 〔判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
     ("console.rs", "run_helper", "`<本二进制> --ccm-console <件> <进程号…>`（不经 shell）",
      "↗ 认窗口要借别人的控制台（`AttachConsole`），而挂控制台是整个进程的状态：monitor 自己挂着控制台时恒被拒（开发构建是控制台程序）\
@@ -58,10 +30,10 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           参数只有子命令名与进程号 / 窗口句柄（数），不吃用户输入；一个字节都不写
           ★ 三条策略为什么是这三格：`Hidden` —— 不闪窗口（开发构建是控制台程序，小助手起来自己先摘掉那个隐藏控制台）；          `Detached` —— 到点不掐、也不随 monitor 死：切标签页那一件挂着记号标题，掐断它记号就留在终端标题上，小助手自己有 2 秒预算、到点写回标题再退（`ask_helper` 只是不再等）；答话只在 stdout 上。",
      "Hidden · Detached · Null"),
-    ("ccm_probe.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
+    ("backend_once.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
      "本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
           ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
-          ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
+          ★ 三条策略为什么是这三格：`Hidden` —— Windows 上问的是控制台子系统的 `ccm.exe`，不带 flag 每问一次闪一次黑框；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
     // `dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
     //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。
