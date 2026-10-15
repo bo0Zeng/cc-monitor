@@ -26,7 +26,6 @@ data class SettingsEntry(
  */
 fun settingsEntries(): List<SettingsEntry> =
     listOf(
-        SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.buttons"), Screen.ButtonSettings.route),
         // 身份从服务器列表里进；这里给的是到服务器列表那一跳。
         SettingsEntry(SECTION_TERMINAL, copyText("mobSettings.entry.hosts"), Screen.Hosts.route),
         // 轮换看的是当前服务器（上次那台）新会话用的那份。

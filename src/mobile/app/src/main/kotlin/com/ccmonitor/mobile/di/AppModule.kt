@@ -19,7 +19,6 @@ import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
-import com.ccmonitor.mobile.ui.settings.ButtonSettingsViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
@@ -75,7 +74,6 @@ val appModule =
         // 本地缓存（会话列表 · 记录页 · 续点 · 待发 · 草稿）：那台成品原样落 Room。
         single { LocalCache(get()) }
         viewModel { IdentityViewModel(get()) }
-        viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
         viewModel { HostViewModel(get(), get(), get()) }
         // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, tmuxSession)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
@@ -99,5 +97,5 @@ val appModule =
         single<KnownHostStore> { KnownHostDaoStore(get()) } // get()=KnownHostDao（dataModule 提供）
         single { HostConnector(get(), get(), get()) }
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
-        single { DevSeeder(androidContext(), get(), get(), get()) }
+        single { DevSeeder(androidContext(), get(), get()) }
     }

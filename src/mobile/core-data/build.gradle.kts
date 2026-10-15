@@ -27,6 +27,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    implementation(libs.moshi) // 按键那几格小 JSON（流式读写）
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.tink.android)
     implementation(project(":core-rs")) // 软件 Ed25519 生成在手机嵌的 Rust 核心里

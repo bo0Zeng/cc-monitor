@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import org.connectbot.terminal.TerminalEmulator
 import org.connectbot.terminal.TerminalEmulatorFactory
-import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
@@ -17,7 +16,7 @@ import kotlin.concurrent.thread
 
 /**
  * 粘性修饰键状态（extra-keys 行点 Ctrl/Alt → 修饰下一个软键盘按键；termlib 软键盘本身无 Ctrl/Alt）。
- * [shift] 只给自定义按钮组合键用，软键盘粘性路径恒为 false。
+ * [shift] 只给键条上的组合键用，软键盘粘性路径恒为 false。
  */
 data class KeyModifiers(
     val ctrl: Boolean = false,
@@ -57,94 +56,6 @@ private fun ctrlControlCode(b: Int): Int? =
         b == '?'.code -> 0x7F // Ctrl+? = DEL
         else -> null
     }
-
-/** `\e`/`\\`/`\n`/`\r`/`\t` 等简单转义 → 字节。 */
-private val SIMPLE_ESCAPES = mapOf('e' to 0x1B, 'n' to 0x0A, 'r' to 0x0D, 't' to 0x09, '\\' to 0x5C)
-
-/** 是否位置 i 起是一个 `\X` 转义（反斜杠后还有字符）。 */
-private fun String.isEscapeAt(i: Int) = this[i] == '\\' && i + 1 < length
-
-/** 处理位置 i 的 `\X` 转义，写入 [out]，返回新索引。识别不了 → 反斜杠字面（前进 1，X 后续按普通字符处理）。 */
-private fun writeEscape(
-    out: ByteArrayOutputStream,
-    seq: String,
-    i: Int,
-): Int {
-    val c = seq[i + 1]
-    SIMPLE_ESCAPES[c]?.let {
-        out.write(it)
-        return i + 2
-    }
-    if (c == 'x') {
-        val hex = seq.substring(i + 2, minOf(i + 4, seq.length))
-        val v = hex.toIntOrNull(16)
-        if (hex.length == 2 && v != null) {
-            out.write(v)
-            return i + 4
-        }
-    }
-    out.write('\\'.code)
-    return i + 1
-}
-
-/**
- * 转义序列 → 原始字节（转义类型按钮用，纯函数）。识别 `\e`/`\x1b`=ESC、`\xNN`=单字节 hex、
- * `\n`/`\r`/`\t`、`\\`；未识别的 `\X`、无反斜杠的字面串（如 `[D`）原样按 UTF-8 透传。
- */
-fun escapeSequenceBytes(seq: String): ByteArray {
-    val out = ByteArrayOutputStream(seq.length)
-    var i = 0
-    while (i < seq.length) {
-        if (seq.isEscapeAt(i)) {
-            i = writeEscape(out, seq, i)
-        } else {
-            val start = i
-            while (i < seq.length && !seq.isEscapeAt(i)) i++ // 非转义运行整段按 UTF-8 透传，保代理对不劈半
-            out.write(seq.substring(start, i).toByteArray(Charsets.UTF_8))
-        }
-    }
-    return out.toByteArray()
-}
-
-/**
- * 自定义按钮的出线字节（纯函数）。
- * - 无修饰 → `command` 作命令行文本，末尾补 `\n`。
- * - 有修饰 → `command` 作单个基准键编码：命名键 tab/enter/esc/space（+ shift+Tab=backtab CSI Z），
- *   否则取首字符，经 [applyKeyModifiers] 加 Ctrl/Shift/Alt。组合键不补 `\n`（是按键，不是命令行）。
- * 基准键取首个码点、按 UTF-8 编码。非 ASCII 首字符没有单字节 chord 语义，多字节经 [applyKeyModifiers]
- * 的多字节守卫原样透传（不做 Ctrl/Alt 变换、不补回车，与 IME 多字节同规则）。
- */
-fun customButtonBytes(
-    command: String,
-    mods: KeyModifiers,
-): ByteArray {
-    if (!mods.any) return (command + "\n").toByteArray(Charsets.UTF_8)
-    resolveChordBytes(command, mods)?.let { return it }
-    if (command.isEmpty()) return ByteArray(0)
-    val first = command.substring(0, command.offsetByCodePoints(0, 1)) // 整码点（代理对不劈半）
-    return applyKeyModifiers(first.toByteArray(Charsets.UTF_8), mods)
-}
-
-/** 命名键 → 基准字节（+ shift+Tab 的 backtab CSI Z 特例）。识别不了返回 null（交回首字符路径）。 */
-private fun resolveChordBytes(
-    command: String,
-    mods: KeyModifiers,
-): ByteArray? {
-    val name = command.trim().lowercase()
-    // 「仅 Shift」用 data class 相等表达。
-    if (name == "tab" && mods == KeyModifiers(shift = true)) {
-        return byteArrayOf(0x1B, '['.code.toByte(), 'Z'.code.toByte()) // Shift+Tab = CSI Z（backtab）
-    }
-    val base =
-        when (name) {
-            "tab" -> 0x09
-            "enter", "return" -> 0x0D
-            "esc", "escape" -> 0x1B
-            "space" -> 0x20
-            else -> return null
-        }
-    return applyKeyModifiers(byteArrayOf(base.toByte()), mods)
-}
 
 /**
  * SSH 交互 shell 流 ↔ termlib emulator 的桥。只收原始流 + resize lambda，不依赖 core-ssh。

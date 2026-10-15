@@ -55,7 +55,7 @@ class KeyModifiersTest {
         assert(KeyModifiers(shift = true).any)
     }
 
-    // === Shift 分支 + customButtonBytes ===
+    // === Shift 分支 ===
 
     @Test
     fun shiftUppercasesLetterOnly() {
@@ -68,28 +68,6 @@ class KeyModifiersTest {
     fun ctrlShiftSameAsCtrl() {
         // Ctrl 忽略大小写 → Ctrl+Shift+C == Ctrl+C == 0x03。
         assertArrayEquals(b(0x03), applyKeyModifiers(b('c'.code), KeyModifiers(ctrl = true, shift = true)))
-    }
-
-    @Test
-    fun customButtonNoModifierIsCommandLine() {
-        // 无修饰 → 命令行文本 + 回车。
-        assertArrayEquals("ls -la\n".toByteArray(), customButtonBytes("ls -la", KeyModifiers()))
-    }
-
-    @Test
-    fun customButtonCtrlKeySendsControlCode() {
-        // Ctrl+C 按钮 → 0x03（不补回车）。
-        assertArrayEquals(b(0x03), customButtonBytes("c", KeyModifiers(ctrl = true)))
-        assertArrayEquals(b(0x1B, 'x'.code), customButtonBytes("x", KeyModifiers(alt = true))) // Alt+x
-        assertArrayEquals(b('A'.code), customButtonBytes("a", KeyModifiers(shift = true))) // Shift+a → 'A'
-    }
-
-    @Test
-    fun customButtonNamedKeys() {
-        assertArrayEquals(b(0x1B, '['.code, 'Z'.code), customButtonBytes("Tab", KeyModifiers(shift = true))) // Shift+Tab=backtab
-        assertArrayEquals(b(0x09), customButtonBytes("tab", KeyModifiers(ctrl = true))) // Ctrl+Tab：无标准 Ctrl 码 → 0x09 不变
-        assertArrayEquals(b(0x1B, 0x0D), customButtonBytes("enter", KeyModifiers(alt = true))) // Alt+Enter
-        assertArrayEquals(b(0x1B), customButtonBytes("esc", KeyModifiers(ctrl = true))) // Ctrl+Esc：无标准 Ctrl 码 → 0x1B 不变
     }
 
     // === Ctrl 限标准控制字符集（盲取 `& 0x1F` 会把 Ctrl+1→XON/Ctrl+3→XOFF，触发终端流控冻结）===
@@ -121,16 +99,5 @@ class KeyModifiersTest {
         }
         // Ctrl+Alt+数字：Ctrl 部分不变、Alt 仍前缀 ESC。
         assertArrayEquals(b(0x1B, '1'.code), applyKeyModifiers(b('1'.code), KeyModifiers(ctrl = true, alt = true)))
-    }
-
-    // === customButton 非 ASCII 首字符不被单字节截断 ===
-
-    @Test
-    fun customButtonNonAsciiFirstCharNotTruncated() {
-        // 截成单字节会把 '中'(U+4E2D) 变成 0x2D('-')；应整码点 UTF-8 原样透传（多字节守卫）。
-        assertArrayEquals("中".toByteArray(Charsets.UTF_8), customButtonBytes("中", KeyModifiers(ctrl = true)))
-        assertArrayEquals("你".toByteArray(Charsets.UTF_8), customButtonBytes("你好", KeyModifiers(alt = true))) // 只取首码点
-        assertArrayEquals("😀".toByteArray(Charsets.UTF_8), customButtonBytes("😀ok", KeyModifiers(ctrl = true))) // 代理对整码点
-        assertArrayEquals("ASCII 首字符行为不变", b(0x03), customButtonBytes("c", KeyModifiers(ctrl = true)))
     }
 }

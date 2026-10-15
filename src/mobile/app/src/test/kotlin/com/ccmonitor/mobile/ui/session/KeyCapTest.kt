@@ -11,14 +11,15 @@ class KeyCapTest {
     fun glyphNamesBecomeIcons() {
         assertEquals(Ph.ArrowUp to "", keyCapIcon("↑"))
         assertEquals(Ph.ArrowsLeftRight to "", keyCapIcon("⇌"))
-        assertEquals("种子里的「▤ tab」", Ph.Tabs to "tab", keyCapIcon("▤ tab"))
+        assertEquals(Ph.ArrowElbowDownLeft to "", keyCapIcon("⏎"))
+        assertEquals("「字符＋空格」开头", Ph.Plus to "new", keyCapIcon("+ new"))
     }
 
     @Test
     fun ordinaryNamesStayText() {
         assertNull(keyCapIcon("Esc"))
         assertNull(keyCapIcon("Ctrl+End"))
-        assertNull("字符不在头上不算", keyCapIcon(":w↵"))
+        assertNull("字符不在头上不算", keyCapIcon(":w⏎"))
         assertNull(keyCapIcon("↑↑"))
     }
 }

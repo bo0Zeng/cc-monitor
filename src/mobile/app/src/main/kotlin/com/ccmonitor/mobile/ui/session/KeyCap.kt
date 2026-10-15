@@ -21,13 +21,13 @@ private val KEY_GLYPHS =
         "←" to Ph.ArrowLeft,
         "→" to Ph.ArrowRight,
         "⇌" to Ph.ArrowsLeftRight,
-        "▤" to Ph.Tabs,
+        "⏎" to Ph.ArrowElbowDownLeft,
         "＋" to Ph.Plus,
         "+" to Ph.Plus,
     )
 
 /**
- * 按钮的名字是数据（种子 `DEFAULT_SEED_BUTTONS` 与用户自建的都存在库里）：名字整个是、或以「字符＋空格」开头的那几个图标字符，
+ * 键帽的字是数据（另写的存在库里，没另写的照单击自动写）：整个是、或以「字符＋空格」开头的那几个图标字符，
  * 画成 Phosphor 图标 ＋ 余下的字；其余照字画。返回 null ＝ 没有图标。库里的名字不改（改了要迁移，读屏照旧念原名）。
  */
 internal fun keyCapIcon(label: String): Pair<Ph, String>? {

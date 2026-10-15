@@ -2,8 +2,6 @@ package com.ccmonitor.mobile.core.data.db
 
 import androidx.room.Dao
 import androidx.room.Delete
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
@@ -62,40 +60,6 @@ interface KnownHostDao {
         host: String,
         port: Int,
     )
-}
-
-@Dao
-interface CustomButtonDao {
-    // 按分组渲染：CustomButtonBar 取 [ButtonGroups.MAIN]（用户按钮+工具条内建）；ExtraKeysRow 取活动组。
-    // 编辑器用 observeGlobal/observeHostOnly，全组可见。
-    // 注意：刻意不提供不按组过滤的渲染查询，否则 fn/vim 单键会混进命令面板。
-    // `, id` 二级键：sortOrder 相同时给确定的顺序。
-    @Query(
-        "SELECT * FROM custom_buttons WHERE (hostId IS NULL OR hostId = :hostId) AND btnGroup = :group ORDER BY sortOrder, id",
-    )
-    fun observeGroup(
-        hostId: String?,
-        group: String,
-    ): Flow<List<CustomButton>>
-
-    // 编辑器分区：全局按钮（hostId IS NULL）/ 某主机专属按钮。
-    // `, id` 二级键与 observeGroup 一致，编辑器里的顺序与渲染顺序对齐。
-    @Query("SELECT * FROM custom_buttons WHERE hostId IS NULL ORDER BY sortOrder, id")
-    fun observeGlobal(): Flow<List<CustomButton>>
-
-    @Query("SELECT * FROM custom_buttons WHERE hostId = :hostId ORDER BY sortOrder, id")
-    fun observeHostOnly(hostId: String): Flow<List<CustomButton>>
-
-    @Upsert
-    suspend fun upsert(button: CustomButton)
-
-    // 恢复默认按键：`IGNORE` 冲突策略即 `INSERT OR IGNORE`，固定 id 命中即跳过，不覆盖用户改过的同 id 行。
-    // 公开的 suspend 入口是 restoreDefaultButtons()（DefaultButtons.kt），复用 DEFAULT_SEED_BUTTONS。
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIgnore(buttons: List<CustomButton>)
-
-    @Delete
-    suspend fun delete(button: CustomButton)
 }
 
 @Dao

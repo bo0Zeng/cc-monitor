@@ -47,7 +47,6 @@ import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionTabsSheet
 import com.ccmonitor.mobile.ui.session.SessionsOverviewScreen
-import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
 import com.ccmonitor.mobile.ui.settings.SettingsScreen
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -104,13 +103,6 @@ private fun AppNavGraph(
             )
         }
         rotationRoutes(nav, tabManager)
-        composable(Screen.ButtonSettings.route) {
-            ButtonSettingsScreen(hostId = null, onBack = { nav.popBackStack() })
-        }
-        composable(Screen.HostButtons.route) { entry ->
-            val id = entry.arguments?.getString("id") ?: return@composable
-            ButtonSettingsScreen(hostId = id, onBack = { nav.popBackStack() })
-        }
         sessionRoute(nav, tabManager)
         composable(Screen.Identities.route) { IdentityScreen(onBack = { nav.popBackStack() }) }
         composable("host/new") { AddHostRoute(nav) }
@@ -119,7 +111,6 @@ private fun AppNavGraph(
             HostEditorScreen(
                 hostId = id,
                 onDone = { nav.popBackStack() },
-                onEditButtons = { nav.navigate("host/$id/buttons") },
             )
         }
     }
@@ -509,7 +500,6 @@ private fun AddHostRoute(nav: NavHostController) {
     HostEditorScreen(
         hostId = null,
         onDone = { nav.popBackStack() },
-        onEditButtons = {},
         onAdded = { host ->
             scope.launch {
                 settings.setLastHost(host.id)

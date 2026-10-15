@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.core.data.db
 
-import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -86,84 +85,6 @@ data class KnownHost(
     val publicKeyBase64: String,
     val addedAt: Long,
 )
-
-/** 自定义按钮 / 一键命令。hostId 为 null 表示全局按钮。 */
-@Entity(tableName = "custom_buttons")
-data class CustomButton(
-    @PrimaryKey val id: String,
-    val hostId: String? = null,
-    val label: String,
-    val command: String,
-    val sortOrder: Int = 0,
-    // 组合键修饰：任一为真时按钮发按键码（command 当基准键），否则发命令行文本（command+回车）。
-    // defaultValue 与迁移的 `ADD COLUMN ... NOT NULL DEFAULT 0` 逐字对齐，schema 校验才过。
-    @ColumnInfo(defaultValue = "0") val ctrl: Boolean = false,
-    @ColumnInfo(defaultValue = "0") val alt: Boolean = false,
-    @ColumnInfo(defaultValue = "0") val shift: Boolean = false,
-    // 按钮类型：command=命令行 / keycode=按键码含修饰 / escape=转义序列 / builtin=内建动作 / switch=组切换。
-    // command 列按 type 解释为载荷（switch 时是目标 btnGroup，点击切换活动键排，不发字节）。
-    // 注意：defaultValue 要带单引号 `'command'`，Room 不会自动加；迁移 SQL 同写 `DEFAULT 'command'`。
-    @ColumnInfo(defaultValue = "'command'") val type: String = "command",
-    // 按键分组，决定渲染归属：`main`=用户按钮 + 顶部工具条内建（CustomButtonBar）；
-    // `fn`/`alt`/`vim`=键排的组（ExtraKeysRow 渲染当前活动组，⇌ 按钮在组间切）。各组都可编辑。
-    // 列名用 btnGroup：group 是 SQL 保留字。
-    @ColumnInfo(defaultValue = "'main'") val btnGroup: String = "main",
-    // 每按钮长按：[longPressMode] none=无 / repeat=按住时每 [longPressRepeatMs] 重发 tap 命令 /
-    // discrete=按住到 [longPressThresholdMs] 发一次 [longPressCommand]（按本按钮 [type] 解释，如 escape 型 "\e\e"=两下 Esc）。
-    // 阈值与速率单位 ms。@ColumnInfo 的 defaultValue 与迁移 SQL 的 DEFAULT 逐字对齐。
-    @ColumnInfo(defaultValue = "'none'") val longPressMode: String = "none",
-    @ColumnInfo(defaultValue = "''") val longPressCommand: String = "",
-    @ColumnInfo(defaultValue = "400") val longPressThresholdMs: Int = 400,
-    @ColumnInfo(defaultValue = "60") val longPressRepeatMs: Int = 60,
-)
-
-/** [CustomButton.longPressMode] 的取值（自由 TEXT，未知值降级 NONE）。 */
-enum class LongPressMode {
-    NONE,
-    REPEAT,
-    DISCRETE,
-    ;
-
-    companion object {
-        fun fromDb(value: String): LongPressMode = entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: NONE
-    }
-}
-
-/**
- * [CustomButton.btnGroup] 的默认组名。写裸字符串拼错一个字母，那一排就静默变空，所以集中在这里。
- *
- * btnGroup 是自由字符串：用户可自建任意组，用 [CustomButtonType.SWITCH] 按钮在组间切换。
- * 这些常量只是种子与默认渲染的起点，渲染与编辑不限于这几组。
- */
-object ButtonGroups {
-    /** 用户按钮 + 顶部工具条内建 —— `CustomButtonBar` 与命令面板渲染。 */
-    const val MAIN = "main"
-
-    /** 功能键排（Esc/Tab/方向/Home/End）—— `ExtraKeysRow` 非 vim 态渲染。 */
-    const val FN = "fn"
-
-    /** vim 键排 —— 经 `⇌` 组切换按钮到达。 */
-    const val VIM = "vim"
-
-    /** 第二排（Alt/翻页/Ctrl+End 等）—— fn 组的 `⇌` 切到此，此组 `⇌` 再切到 vim（fn→alt→vim→fn 循环）。 */
-    const val ALT = "alt"
-}
-
-/** [CustomButton.type] 的解释（DB 存自由小写字符串，未知值降级 COMMAND）。 */
-enum class CustomButtonType {
-    COMMAND,
-    KEYCODE,
-    ESCAPE,
-    BUILTIN,
-
-    /** 组切换按钮：[CustomButton.command] 是目标 btnGroup，点击把活动键排切到该组，不发字节。 */
-    SWITCH,
-    ;
-
-    companion object {
-        fun fromDb(value: String): CustomButtonType = entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: COMMAND
-    }
-}
 
 /** SFTP 目录书签 / Pin。收藏常用远端目录，一键跳转 / 在此打开终端。 */
 @Entity(tableName = "bookmarks")

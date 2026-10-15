@@ -13,12 +13,9 @@ import java.io.File
  * 每个协议面一个网关类：别处只拿结构化结果，不拼字符串；网关之外的文件里不许出现 `"tmux "` 这类拼串。
  * 本文件是 tmux 这一面的机检落点。
  *
- * 白名单里有两类文件：网关 `ssh/TmuxCommands.kt`；以及用户内容（`ui/session/ButtonBuiltins.kt` ·
- * `ui/session/SessionScreen.kt` · `ui/session/TmuxManager.kt` · `core-data/.../DefaultButtons.kt` · `dev/DevSeeder.kt`）。
- * 后者里面的 `tmux` 字样是按钮的显示名 / 菜单项文案 / 种子按钮的默认命令，用户可编辑；把它们搬进网关
- * 等于把用户的字锁进协议层。一个按钮的标题不和远端说话，它经用户编辑后才变成一条命令，那时它是用户的命令。
- * 白名单给它们逐文件钉了次数：哪天某个 UI 文件里冒出第二处 `tmux …`，这条照样红一次
- * （重新过一遍眼：那到底是新文案，还是有人在 UI 层拼了条命令）。
+ * 白名单里只有网关 `ssh/TmuxCommands.kt`（按钮显示名 · 菜单文案里的「tmux」都在文案表里，不是源码字面量）。
+ * 白名单给它逐文件钉了次数：哪天别的文件里冒出一处 `tmux …`，这条照样红一次
+ * （重新过一遍眼：那到底是用户的字，还是有人在 UI 层拼了条命令）。
  *
  * 扫的是字符串字面量里面，不是整份源码：拼给远端的东西一定在字面量里，
  * 标识符与注释不在。全仓源码扫描类判据一律住 `app`，理由见 `NamespaceLiteralScanTest` 头注。
@@ -179,26 +176,20 @@ class TmuxSurfaceLiteralScanTest {
 
         private const val GATEWAY = "app/src/main/kotlin/com/ccmonitor/mobile/ssh/TmuxCommands.kt"
 
-        // ---- 用户内容（不是协议面，逐条写着这是谁的字）----
-        private const val SEEDER = "app/src/main/kotlin/com/ccmonitor/mobile/dev/DevSeeder.kt"
-
         /**
          * 定值钉：八个锚点在生产代码字符串字面量里的 file → 次数。
          *
          * | 文件 | 次 | 那是什么 |
          * |---|---|---|
          * | `TmuxCommands.kt` | 2/0/0/0/0 | 网关本身：只剩 `new-session -A`（有则接无则建）与 `new-session -d`（后台建） |
-         * | `DevSeeder.kt` | 1 | 种子按钮的默认命令 `CustomButton("btn-tmux", null, "tmux", "tmux new -A -s main")`：用户进按钮编辑就能改掉，是用户的字 |
          *
-         * 四个子命令锚点在生产代码里一次都没有（送字 · 抓屏 · 探前台 · 结束都是那台核心的命令）：
-         * 唯一的用户内容是 `DevSeeder` 那条种子命令（`new -A`，不在这几个锚点里）。
+         * 四个子命令锚点在生产代码里一次都没有（送字 · 抓屏 · 探前台 · 结束都是那台核心的命令）。
          * 按钮显示名 · 弹窗标题 · 面板项里的「tmux 会话」收进了文案表（`src/shared/copy/table.json`），不再是源码字面量。
          */
         private val PINNED_FRAGMENT_COUNTS =
             linkedMapOf(
                 TMUX_VERB to
                     mapOf(
-                        SEEDER to 1,
                         GATEWAY to 2,
                     ),
                 SEND_KEYS to emptyMap(),

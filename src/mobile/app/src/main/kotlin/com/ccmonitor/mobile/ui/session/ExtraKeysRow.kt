@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.session
 
+import android.view.ViewConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -27,47 +28,41 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.data.db.ButtonGroups
-import com.ccmonitor.mobile.core.data.db.CustomButton
-import com.ccmonitor.mobile.core.data.db.CustomButtonDao
-import com.ccmonitor.mobile.core.data.db.CustomButtonType
-import com.ccmonitor.mobile.core.data.db.LongPressMode
-import com.ccmonitor.mobile.core.data.db.SWITCH_KEY_LABEL
+import com.ccmonitor.mobile.core.data.db.KeyBinding
+import com.ccmonitor.mobile.core.data.db.KeyDao
+import com.ccmonitor.mobile.core.data.db.KeyMod
+import com.ccmonitor.mobile.core.data.db.cap
+import com.ccmonitor.mobile.core.data.db.isRepeatable
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.compose.koinInject
 
 /**
- * 终端 extra-keys 行：横向滚动，渲染当前活动组的 DB 按钮。
+ * 键条：横向滚动，画当前那一组的按键（一组一排，放不下就横滑）。
  *
- * 整排完全由 DB 驱动，没有硬编码的特殊 chip：组切换是 `switch` 类型（`command` = 目标组），
- * 粘贴与粘性 Ctrl/Alt 是 `builtin` 类型。全部经 [dispatch] 派发；`switch` 的 `onSwitchGroup` 由 SessionScreen
- * 接到 [activeGroup] 的 setter，点它整排就换成目标组。
- *
- * 每个按钮可配长按，按 `CustomButton.longPressMode` 分支（默认 `none` 只认 tap）：
- * - `repeat`：按住到阈值后每 `longPressRepeatMs` 重发 tap（如 `←` 连发）；
- * - `discrete`：按住到 `longPressThresholdMs` 发一次 `longPressCommand`，按本按钮 type 解释。
- * 阈值与速率按按钮单独存。`switch` 按钮长按固定为开按钮设置屏。
+ * 单击派发单击那一格；修饰键单击点亮 / 熄掉粘性修饰（[onModifier]）。长按：绑了长按 ⇒ 按住到时长发一次；
+ * 没绑、而单击能连发（[isRepeatable]）⇒ 按住连发；其余长按等于单击一次。长按时长取这一颗另设的，再取总的，再取系统的。
  *
  * 注意：组必须进 [key]。`collectAsState` 的 State 不带 key，只换 Flow 会残留上一组的键。
- * `Ctrl`/`Alt` 的点亮态由 [ctrlActive]/[altActive] 按 `command` 绑定（见 [litState]）。
  */
 @Composable
 fun ExtraKeysRow(
-    hostId: String,
-    activeGroup: String,
-    dispatch: (CustomButton) -> Unit,
+    groupId: String,
+    dispatch: (KeyBinding) -> Unit,
+    onModifier: (KeyMod) -> Unit,
     modifier: Modifier = Modifier, // Compose 约定：modifier 首个可选参
     ctrlActive: Boolean = false,
     altActive: Boolean = false,
-    onOpenButtonSettings: () -> Unit = {}, // switch 按钮长按开设置屏
+    longPressMs: Int? = null, // 总的那一份；null ＝ 跟系统
+    groupName: (String) -> String? = { null },
 ) {
     val tokens = LocalAppTokens.current
-    val dao = koinInject<CustomButtonDao>()
-    val keys by key(hostId, activeGroup) {
-        remember { dao.observeGroup(hostId, activeGroup) }.collectAsState(initial = emptyList())
+    val dao = koinInject<KeyDao>()
+    val keys by key(groupId) {
+        remember { dao.observeKeys(groupId) }.collectAsState(initial = emptyList())
     }
+    val systemLong = ViewConfiguration.getLongPressTimeout()
     Row(
         modifier
             .fillMaxWidth()
@@ -76,64 +71,50 @@ fun ExtraKeysRow(
             .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
-        // 活动组的 DB 按钮：tap 按 type 派发，长按按各按钮的 longPressMode。
-        // key(b.id)：按 id 匹配 slot，增删/重排不复用别人的 chip 状态。
-        keys.forEach { b ->
-            key(b.id) {
-                // switch 按钮长按开设置屏（固定 DISCRETE，不看存储的 longPressMode）；其余按各按钮配置。
-                val isSwitch = CustomButtonType.fromDb(b.type) == CustomButtonType.SWITCH
-                val onLong: () -> Unit =
-                    if (isSwitch) {
-                        onOpenButtonSettings
-                    } else {
-                        { dispatch(b.copy(command = b.longPressCommand)) } // discrete：长按载荷按本按钮 type 解释
-                    }
+        // key(k.id)：按 id 匹配 slot，增删 / 重排不复用别人的键帽状态。
+        keys.forEach { k ->
+            key(k.id) {
+                val mod = k.modifier
+                val tap = k.tap
+                val long = k.longPress
                 KeyChip(
-                    label = b.label,
-                    active = litState(b, ctrlActive, altActive),
-                    onTap = { dispatch(b) },
-                    longPressMode = if (isSwitch) LongPressMode.DISCRETE else LongPressMode.fromDb(b.longPressMode),
-                    thresholdMs = b.longPressThresholdMs.toLong(),
-                    repeatMs = b.longPressRepeatMs.toLong(),
-                    onLongPressDiscrete = onLong,
+                    label = k.cap(groupName),
+                    active = (mod == KeyMod.CTRL && ctrlActive) || (mod == KeyMod.ALT && altActive),
+                    onTap = {
+                        when {
+                            mod != null -> onModifier(mod)
+                            tap != null -> dispatch(tap)
+                        }
+                    },
+                    longPressMode =
+                        when {
+                            mod != null -> LongPress.NONE
+                            long != null -> LongPress.ONCE
+                            tap.isRepeatable() -> LongPress.REPEAT
+                            else -> LongPress.NONE
+                        },
+                    thresholdMs = (k.longPressMs ?: longPressMs ?: systemLong).toLong(),
+                    onLongPressOnce = { long?.let(dispatch) },
                 )
-            }
-        }
-        // 活动组不是 fn 且没有 switch 键（⇌ 指向了没有出口的自建组，或某组的 ⇌ 被删光）时补一个切回 fn 的逃生键，
-        // 键排永不会进得去出不来。加载中的瞬时空排会闪一下逃生键，无害。
-        if (activeGroup != ButtonGroups.FN && keys.none { CustomButtonType.fromDb(it.type) == CustomButtonType.SWITCH }) {
-            key("__escape_to_fn__") {
-                KeyChip(label = SWITCH_KEY_LABEL, onTap = { dispatch(CustomButton(id = "__escape__", label = SWITCH_KEY_LABEL, command = ButtonGroups.FN, type = "switch")) })
             }
         }
     }
 }
 
-/**
- * 粘性修饰键（`builtin` + command `toggle_ctrl`/`toggle_alt`）的点亮态；其余按钮一律不点亮。
- */
-internal fun litState(
-    b: CustomButton,
-    ctrlActive: Boolean,
-    altActive: Boolean,
-): Boolean {
-    if (CustomButtonType.fromDb(b.type) != CustomButtonType.BUILTIN) return false
-    return when (b.command.trim().lowercase()) {
-        "toggle_ctrl" -> ctrlActive
-        "toggle_alt" -> altActive
-        else -> false
-    }
-}
+/** 长按怎么做（由按键数据推出来，不存）。 */
+private enum class LongPress { NONE, REPEAT, ONCE }
+
+/** 按住连发的间隔。 */
+private const val REPEAT_MS = 50L
 
 @Composable
 private fun KeyChip(
     label: String,
     onTap: () -> Unit,
-    active: Boolean = false, // 粘性修饰键点亮态
-    longPressMode: LongPressMode = LongPressMode.NONE,
+    active: Boolean = false, // 修饰键点亮态
+    longPressMode: LongPress = LongPress.NONE,
     thresholdMs: Long = 400,
-    repeatMs: Long = 60,
-    onLongPressDiscrete: () -> Unit = {},
+    onLongPressOnce: () -> Unit = {},
 ) {
     val tokens = LocalAppTokens.current
     Box(
@@ -142,7 +123,7 @@ private fun KeyChip(
                 .clip(RoundedCornerShape(tokens.radius.m))
                 .background(if (active) tokens.selectedBg else tokens.card)
                 .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(tokens.radius.m))
-                .pressGestures(longPressMode, thresholdMs, repeatMs, onTap, onLongPressDiscrete)
+                .pressGestures(longPressMode, thresholdMs, REPEAT_MS, onTap, onLongPressOnce)
                 .defaultMinSize(minWidth = 40.dp, minHeight = 36.dp)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
@@ -152,24 +133,24 @@ private fun KeyChip(
 }
 
 /**
- * tap 加可配置长按的手势。`none` 只认 tap；`repeat` 按住到阈值后每 [repeatMs] 重发 [onTap]；
- * `discrete` 按住到 [thresholdMs] 发一次 [onLongPressDiscrete]。三种模式下阈值前松手都是普通 tap。
+ * 单击加长按的手势。NONE 只认单击；REPEAT 按住到时长后每 [repeatMs] 重发 [onTap]；
+ * ONCE 按住到 [thresholdMs] 发一次 [onLongPressOnce]。三种下时长前松手都是单击。
  * 回调经 [rememberUpdatedState] 保持最新，`pointerInput` 只按 mode/阈值/速率重启手势，不随重组重启。
  */
 @Composable
 private fun Modifier.pressGestures(
-    mode: LongPressMode,
+    mode: LongPress,
     thresholdMs: Long,
     repeatMs: Long,
     onTap: () -> Unit,
-    onLongPressDiscrete: () -> Unit,
+    onLongPressOnce: () -> Unit,
 ): Modifier {
     val tap by rememberUpdatedState(onTap)
-    val longDiscrete by rememberUpdatedState(onLongPressDiscrete)
+    val longOnce by rememberUpdatedState(onLongPressOnce)
     return pointerInput(mode, thresholdMs, repeatMs) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
-            if (mode == LongPressMode.NONE) {
+            if (mode == LongPress.NONE) {
                 if (waitForUpOrCancellation() != null) tap()
                 return@awaitEachGesture
             }
@@ -181,7 +162,7 @@ private fun Modifier.pressGestures(
                 return@awaitEachGesture
             }
             when (mode) {
-                LongPressMode.REPEAT -> {
+                LongPress.REPEAT -> {
                     tap() // 到阈值即首发
                     while (true) {
                         var u: PointerInputChange? = null
@@ -190,11 +171,11 @@ private fun Modifier.pressGestures(
                         tap()
                     }
                 }
-                LongPressMode.DISCRETE -> {
-                    longDiscrete()
+                LongPress.ONCE -> {
+                    longOnce()
                     waitForUpOrCancellation() // 吞掉本次抬起，避免再触发 tap
                 }
-                LongPressMode.NONE -> {}
+                LongPress.NONE -> {}
             }
         }
     }

@@ -1,9 +1,7 @@
 package com.ccmonitor.mobile.ui.session
 
-import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -82,35 +80,5 @@ class CommandPaletteTest {
             "列表上界太矮 ⇒ 重演写死 420dp 那个浪费（实得 $PALETTE_LIST_MAX_FRACTION）",
             PALETTE_LIST_MAX_FRACTION >= 0.5f,
         )
-    }
-
-    // === 命令面板里自定义按钮携修饰键（漏了的话 Ctrl+C 会误发 "c\n"）===
-
-    @Test
-    fun paletteCustomActionCarriesButtonWithModifiers() {
-        val btn = CustomButton(id = "b", hostId = "h", label = "中断", command = "c", ctrl = true)
-        var received: CustomButton? = null
-        val acts =
-            terminalPaletteActions(
-                supportsTmux = false, // 只保留自定义动作，隔离
-                customButtons = listOf(btn),
-                models = emptyList(),
-                onModel = {},
-                onCapture = {},
-                onShowTmux = {},
-                onPushKey = {},
-                onCustom = { received = it },
-            )
-        val custom = acts.single { it.group == "自定义" }
-        assertEquals("副标题应显示组合键而非裸键", "Ctrl+c", custom.subtitle)
-        custom.run!!() // 触发（面板点击）：run 可空（null=只读），终端面的动作恒非空
-        assertSame("面板动作应把整个按钮（含修饰键）交给 onCustom，供 customButtonBytes 编码", btn, received)
-    }
-
-    @Test
-    fun customButtonSubtitleShowsChordOrPlainCommand() {
-        assertEquals("git status", customButtonSubtitle(CustomButton("1", "h", "git", "git status")))
-        assertEquals("Ctrl+c", customButtonSubtitle(CustomButton("2", "h", "中断", "c", ctrl = true)))
-        assertEquals("Ctrl+Alt+Shift+x", customButtonSubtitle(CustomButton("3", "h", "x", "x", ctrl = true, alt = true, shift = true)))
     }
 }

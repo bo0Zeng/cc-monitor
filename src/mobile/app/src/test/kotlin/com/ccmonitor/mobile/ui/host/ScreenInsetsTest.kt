@@ -166,14 +166,12 @@ class ScreenInsetsTest {
          *
          * 启动判定那个屏一个像素都不画（composable 体内只有一个 `LaunchedEffect`），所以不在表里。
          * `HostScreens.kt` 里住着两个（服务器列表 ＋ 机器编辑器），所以它要 2 处。
-         * 按钮编辑器（`ButtonSettingsScreen.kt`）跟终端那一族在一起。
          */
         private val SCREENS_IN_THIS_GROUP =
             listOf(
                 HOST_SCREENS to 2,
                 "src/main/kotlin/com/ccmonitor/mobile/ui/identity/IdentityScreen.kt" to 1,
                 SETTINGS_SCREEN to 1,
-                "src/main/kotlin/com/ccmonitor/mobile/ui/settings/ButtonSettingsScreen.kt" to 1,
             )
 
         /** 会滚、而且屏上有输入框的那两个：「垫在滚动之前」这条只对它们有意义。 */
