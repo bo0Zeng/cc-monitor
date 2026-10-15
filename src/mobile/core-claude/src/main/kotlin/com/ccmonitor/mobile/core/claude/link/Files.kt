@@ -202,7 +202,7 @@ object FilesLs {
     }
 }
 
-/** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位）。 */
+/** `files-stat`：一个路径的元数据（改权限那一框要它此刻的权限位 · 打开一个路径要它是不是目录）。 */
 object FilesStat {
     const val COMMAND: String = "files-stat"
 
@@ -210,6 +210,9 @@ object FilesStat {
 
     /** unix 权限位；那台没有这一说 ⇒ `null`；解不出 ⇒ `null`。 */
     fun modeOf(data: Any?): Long? = Wire.bind<StatReply>(data)?.mode
+
+    /** 是什么（跟链接，那台判的）；解不出 ⇒ `null`。 */
+    fun kindOf(data: Any?): FileKind? = Wire.bind<StatReply>(data)?.kind
 }
 
 /** `files-read-text`：读一份文本（预览 · 编辑）。 */

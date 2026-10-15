@@ -203,7 +203,7 @@ private fun rememberProductName(
     val backends = koinInject<HostBackends>()
     val got by produceState("", hostId, stored) {
         val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap())
-        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }?.let { SessionNewFacts.pick(it, stored)?.text }.orEmpty()
+        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }?.let { SessionNewFacts.pick(it.agents, stored)?.text }.orEmpty()
     }
     return got
 }

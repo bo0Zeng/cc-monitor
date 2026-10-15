@@ -31,7 +31,7 @@ class NewSessionReadsTest {
     @Test
     fun `session-new-facts：最近的目录照那台给的序，带写好的时刻字`() {
         val facts =
-            SessionNewFacts.full(
+            SessionNewFacts.of(
                 mapOf(
                     "recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 2.0, "lastText" to "19:02"), mapOf("cwd" to "/h/b", "lastMs" to 1.0, "lastText" to "昨天")),
                     "tmux" to true,
@@ -40,7 +40,7 @@ class NewSessionReadsTest {
                 ),
             )!!
         assertEquals(listOf("/h/a" to "19:02", "/h/b" to "昨天"), facts.recent.map { it.cwd to it.lastText })
-        assertNull("最近一格缺 lastText ⇒ 解不出", SessionNewFacts.full(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
+        assertNull("最近一格缺 lastText ⇒ 解不出", SessionNewFacts.of(mapOf("recent" to listOf(mapOf("cwd" to "/h/a", "lastMs" to 1.0)), "agents" to emptyList<Any>())))
     }
 
     @Test

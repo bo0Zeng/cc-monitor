@@ -11,6 +11,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.ReadRow
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
+import com.ccmonitor.mobile.core.claude.link.wire.SessionFacts
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewReply
 import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
@@ -91,16 +92,23 @@ object SessionNew {
 object SessionNewFacts {
     const val COMMAND: String = "session-new-facts"
 
-    fun of(data: Any?): List<AgentFacts>? = Wire.bind<NewFacts>(data)?.agents
-
-    /** 整份（新建会话那几屏还要最近的目录）。 */
-    fun full(data: Any?): NewFacts? = Wire.bind<NewFacts>(data)
+    /** 整份：几家（[NewFacts.agents]）＋ 最近的目录。 */
+    fun of(data: Any?): NewFacts? = Wire.bind<NewFacts>(data)
 
     /** 这台存的那一家（线上 kind）；没存 · 那台不认 ⇒ 那台列的第一家；一家都没有 ⇒ `null`。 */
     fun pick(
         agents: List<AgentFacts>,
         stored: String?,
     ): AgentFacts? = agents.firstOrNull { it.kind == stored } ?: agents.firstOrNull()
+}
+
+/** `history-facts`：一条会话的事实（聊天屏只读 chip 上的两个显示字：此刻的模型 · 权限档，那台写好的）。 */
+object HistoryFacts {
+    const val COMMAND: String = "history-facts"
+
+    fun args(path: String): Map<String, Any?> = mapOf("path" to path)
+
+    fun of(data: Any?): SessionFacts? = Wire.bind<SessionFacts>(data)
 }
 
 /** `session-model`：中途给一条会话换模型（那台送命令、读回来认；在等人不送）。结局照那台写好的那一句说。 */

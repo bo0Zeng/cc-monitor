@@ -7,11 +7,13 @@ import com.ccmonitor.mobile.cache.RawPage
 import com.ccmonitor.mobile.cache.Resume
 import com.ccmonitor.mobile.cache.resumeOf
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.HistoryFacts
 import com.ccmonitor.mobile.core.claude.link.HistoryLines
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.HistoryTail
 import com.ccmonitor.mobile.core.claude.link.LiveBoard
+import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -43,10 +45,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
@@ -102,12 +106,18 @@ data class SwitchChip(
     val value: String? = null,
     /** 正在换成的那一项（写它的字、转圈）；不在换 ⇒ `null`。 */
     val pending: NewSessionPick? = null,
+    /** 此刻不能换：那台写好的那一句（会话帧的 `switch`；那台离线 ⇒ 离线那一句）；能换 ⇒ `null`。 */
+    val blocked: String? = null,
 )
 
 /** 两个 chip 抽屉里列的：那台 `session-new-facts` 给这条会话那一家的模型与权限档；问不到 ⇒ [error] 是那一句。 */
 data class Picks(
     val models: List<NewSessionPick> = emptyList(),
     val modes: List<NewSessionPick> = emptyList(),
+    /** 模型抽屉第一项「默认」（那台给的值与字）；那一家没有 ⇒ `null`。 */
+    val modelDefault: NewSessionPick? = null,
+    /** 模型抽屉底那一行灰字（那台写的）；没有 ⇒ `null`。 */
+    val modelNote: String? = null,
     val error: String? = null,
 )
 
@@ -219,11 +229,41 @@ class ChatSession(
             draftAsked = true
             scope.launch { cache.draft(draftKey())?.let { _state.value = _state.value.copy(draft = it) } }
         }
+        if (!succeeding) {
+            succeeding = true
+            scope.launch { link.table.collect { t -> sid?.let { t.successors[it] }?.let { by -> succeed(by) } } }
+        }
         val s = sid ?: return
         if (follow == null) follow = scope.launch { attach(s) }
     }
 
     private var draftAsked = false
+    private var succeeding = false
+
+    /**
+     * 这条会话被顶替了（清空之后同一个进程另起一份记录，那台在 `session_removed.by` 里说是哪一条）⇒ 跟过去：换 sid、从新记录读起；
+     * 旧的那条照旧在会话列表里（已结束）。
+     */
+    private suspend fun succeed(by: String) {
+        lock.withLock {
+            if (sid == by) return
+            follow?.cancel()
+            attached = false
+            syncHold()
+            sid = by
+            path = null
+            head = 0L
+            nextSeq = 0L
+            tailLines = PAGE_LINES
+            anchorOffset = null
+            anchorPath = null
+            records.clear()
+            board.clear()
+            _state.value = _state.value.copy(sid = by, live = emptyList(), canLoadOlder = false, historyError = null, failedWhy = null)
+            publishLocked()
+            follow = scope.launch { attach(by, fresh = true) }
+        }
+    }
 
     /** 草稿存在哪一格：这条会话；新建会话还没起成 ⇒ 新建会话那一张。 */
     private fun draftKey(): String = sid ?: Draft.NEW
@@ -342,7 +382,7 @@ class ChatSession(
             val picks =
                 when (r) {
                     is Reply.Ok ->
-                        SessionNewFacts.of(r.data)?.let { all -> SessionNewFacts.pick(all, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty()) } }
+                        SessionNewFacts.of(r.data)?.let { all -> SessionNewFacts.pick(all.agents, agent).let { Picks(it?.models.orEmpty(), it?.permissionModes.orEmpty(), it?.modelDefault, it?.modelNote) } }
                             ?: Picks(error = unreadableReply(machine, SessionNewFacts.COMMAND, r.data.toString()).text)
                     else -> Picks(error = r.problem(machine, SessionNewFacts.COMMAND)?.text.orEmpty())
                 }
@@ -554,14 +594,14 @@ class ChatSession(
     private suspend fun attach(
         s: String,
         fresh: Boolean = false,
-    ) {
+    ) = coroutineScope {
         val events = Channel<Event>(Channel.UNLIMITED)
         val subscribed = CompletableDeferred<Unit>()
         val fromSubscribed = CompletableDeferred<Unit>()
-        scope.launch {
+        launch {
             link.lines.onSubscription { subscribed.complete(Unit) }.collect { if (it.sid == s) events.send(Event.Line(it)) }
         }
-        scope.launch {
+        launch {
             watch.from.onSubscription { fromSubscribed.complete(Unit) }.collect { if (it.sid == s) events.send(Event.From(it.seq)) }
         }
         subscribed.await()
@@ -569,13 +609,15 @@ class ChatSession(
         // 先上缓存（离线也看得到上次那几条），再跟那台对齐；刚起的那条没有可上的。
         if (!fresh) lock.withLock { restoreLocked(s) }
         cache.viewed(s)
-        scope.launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
+        launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
         followLive(s)
         attached = true
         syncHold()
         watchRunning(s)
-        val p = recordPath(s, fresh) ?: return
+        watchSwitch(s)
+        val p = recordPath(s, fresh) ?: return@coroutineScope
         path = p
+        launch { readFacts(p) }
         // 读没成（那一句已上屏）⇒ 等换了一条流再整份重读；成了之后断开再接上 ⇒ 从断处补。
         var loaded = lock.withLock { reloadLocked(p) }
 
@@ -767,25 +809,58 @@ class ChatSession(
      * 这条会话的活卡：只收它主运行的（子运行的卡不进主线，同桌面主 tab）。换了一条流 ⇒ 这条连接上的号全作废、全撤，
      * 那台在新的那条上给名单里的会话补整卡。
      */
-    private fun followLive(s: String) {
-        scope.launch {
+    private fun CoroutineScope.followLive(s: String) {
+        launch {
             link.live.collect { f ->
                 if (f.sid == s && board.apply(f)) _state.value = _state.value.copy(live = board.cardsOf(s))
             }
         }
-        scope.launch {
+        launch {
             link.epoch.drop(1).collect { if (board.clear()) _state.value = _state.value.copy(live = emptyList()) }
         }
     }
 
-    private fun watchRunning(s: String) {
-        scope.launch {
+    private fun CoroutineScope.watchRunning(s: String) {
+        launch {
             link.table.collect { t ->
                 // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
                 val running = t.sessions[s]?.running == true
                 if (running != _state.value.running) _state.value = _state.value.copy(running = running)
             }
         }
+    }
+
+    /**
+     * 两颗 chip 此刻能不能换：照会话帧的 `switch`（不在会话表里了 ⇒ 离开「活」那一帧带的）；那台离线 ⇒ 两颗都灰、写离线那一句。
+     * 帧上没有这一格 ⇒ 不灰（由两条命令自己照实回）。
+     */
+    private fun CoroutineScope.watchSwitch(s: String) {
+        launch {
+            combine(link.state, link.table) { st, t -> st to t }.collect { (st, t) ->
+                val (model, permission) =
+                    if (st is LinkState.Down) {
+                        copyText("newSession.machine.offline", "machine" to machine).let { it to it }
+                    } else {
+                        val sw = t.sessions[s]?.switch ?: t.fates[s]?.switch
+                        sw?.model?.why to sw?.permission?.why
+                    }
+                val now = _state.value
+                if (now.model.blocked != model || now.permission.blocked != permission) {
+                    _state.value = now.copy(model = now.model.copy(blocked = model), permission = now.permission.copy(blocked = permission))
+                }
+            }
+        }
+    }
+
+    /** chip 上的两个字（那台从记录里读的此刻的模型 · 权限档）：还没换过（没有读回的字）才用它；问不到就算了，chip 写这颗是什么。 */
+    private suspend fun readFacts(p: String) {
+        val f = (link.call(HistoryFacts.COMMAND, HistoryFacts.args(p), READ_MS) as? Reply.Ok)?.let { HistoryFacts.of(it.data) } ?: return
+        val now = _state.value
+        _state.value =
+            now.copy(
+                model = if (now.model.text == null) now.model.copy(text = f.modelText) else now.model,
+                permission = if (now.permission.text == null) now.permission.copy(text = f.permissionModeText) else now.permission,
+            )
     }
 
     /** 这条会话的目录（清单那一行的 `projectPath`）；问不到就算了。 */

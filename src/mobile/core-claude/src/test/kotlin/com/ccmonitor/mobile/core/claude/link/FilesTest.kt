@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -67,6 +68,7 @@ class FilesTest {
         assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f")), "mode" to 420L), FilesChmod.args(dir, RemotePath.of("f"), 420L))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
         assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
+        assertEquals(FileKind.DIR, FilesStat.kindOf(mapOf("path" to "/w/d", "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
     }
 
     @Test
