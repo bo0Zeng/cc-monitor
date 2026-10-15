@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.core.claude.link
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -12,7 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 常驻流在 Kotlin 这一侧只剩落地：核心交的事（`state` · `frame` · `watch_from` · `lost` · `reply`）落成几条流，
+ * 常驻流在 Kotlin 这一侧只剩落地：核心交的事（`state` · `frame` · `watch_from` · `reply`）落成几条流，
  * 一问一答 · 在看名单 · ［重试］原样交给核心。重连 · 握手 · 版本门 · 退避都在核心里（`resident-client` 的判据管）。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -86,8 +88,7 @@ class ResidentFeedTest {
 
     private fun TestScope.feed(
         core: FakeCore,
-        ssh: MutableStateFlow<SshLink?> = MutableStateFlow(SshLink("""{"host":"h"}""")),
-        lost: () -> Unit = {},
+        ssh: Flow<String?> = MutableStateFlow("""{"host":"h"}"""),
     ): ResidentFeed =
         ResidentFeed(
             scope = backgroundScope,
@@ -96,20 +97,33 @@ class ResidentFeedTest {
             ssh = ssh,
             mine = "p10g-mine",
             tz = "Asia/Shanghai",
-            onLost = lost,
         ).also { it.ensure() }
 
     @Test
-    fun `看一台：名字 · 这一版 · 时区交给核心；SSH 那层每换一条交一次（请求一字不差也交，没通交 null）`() =
+    fun `看一台：名字 · 这一版 · 时区交给核心；拨号请求变了才交（同一份身份上换一条不交，断开交 null）`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            val ssh = MutableStateFlow<SshLink?>(SshLink("""{"host":"a"}"""))
+            val ssh = MutableSharedFlow<String?>(replay = 1).apply { tryEmit("""{"host":"a"}""") }
             feed(core, ssh)
             assertEquals(Triple("box", "p10g-mine", "Asia/Shanghai"), core.opened)
-            ssh.value = null
-            ssh.value = SshLink("""{"host":"a"}""")
-            ssh.value = SshLink("""{"host":"a"}""")
-            assertEquals(listOf("""{"host":"a"}""", null, """{"host":"a"}""", """{"host":"a"}"""), core.ssh)
+            ssh.emit("""{"host":"a"}""")
+            ssh.emit(null)
+            ssh.emit("""{"host":"b"}""")
+            assertEquals(listOf("""{"host":"a"}""", null, """{"host":"b"}"""), core.ssh)
+        }
+
+    /** SSH 够没够着与流通不通分开落：后端起不来（流断着要人动手）时 SSH 照样够着，SSH 那层跟它走。 */
+    @Test
+    fun `SSH 够没够着单独落，与流的状态不搅在一起`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            assertEquals(false, f.sshReached.value)
+            core.emit("ssh", "true")
+            core.emit("state", """{"state":"down","problem":{"text":"没装","detail":""},"needs_hand":true}""")
+            assertEquals(true, f.sshReached.value)
+            core.emit("ssh", "false")
+            assertEquals(false, f.sshReached.value)
         }
 
     @Test
@@ -208,11 +222,10 @@ class ResidentFeedTest {
         }
 
     @Test
-    fun `在看名单：每一处 hold 交一次、关掉交一次；核心交回的 from 原样发出去；断了请 SSH 那层探活`() =
+    fun `在看名单：每一处 hold 交一次、关掉交一次；核心交回的 from 原样发出去`() =
         runTest(UnconfinedTestDispatcher()) {
             val core = FakeCore()
-            var lost = 0
-            val f = feed(core, lost = { lost++ })
+            val f = feed(core)
             val froms = mutableListOf<WatchFrom>()
             backgroundScope.launch { f.from.collect { froms += it } }
             val h = f.hold("s1")
@@ -221,8 +234,6 @@ class ResidentFeedTest {
             assertEquals(listOf("s1" to true, "s1" to false), core.watches)
             core.emit("watch_from", """[{"sid":"s1","path":"/p/s1.jsonl","seq":7}]""")
             assertEquals(listOf(WatchFrom("s1", "/p/s1.jsonl", 7)), froms)
-            core.emit("lost", "")
-            assertEquals(1, lost)
         }
 
     @Test
@@ -235,7 +246,7 @@ class ResidentFeedTest {
                     scope = backgroundScope,
                     core = core,
                     machine = { "box" },
-                    ssh = MutableStateFlow(SshLink("""{"host":"h"}""")),
+                    ssh = MutableStateFlow("""{"host":"h"}"""),
                     mine = "p10g-mine",
                     tz = "Asia/Shanghai",
                     onBreak = { broken += it },

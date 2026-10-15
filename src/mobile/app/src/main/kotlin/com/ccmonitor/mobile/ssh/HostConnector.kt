@@ -4,24 +4,28 @@ import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.SessionState
+import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * 主机连接的生与死都经这里，别处只拿句柄。
  *
  * - 生：[connect]，解析认证、跳板、多地址，再交给 [SshConnectionManager.connect]（同主机 single-flight）。
  * - 持有与放手：[retain] / [release]。holder token 由调用方自己铸，本类不持状态。
- * - 句柄：[connection]；可观测的那一份：[linkOf]（重连过就换一条）；各台的名义状态：[states]（只读）。
- * - 探活：[probeStale]（常驻流断了时叫）。
+ * - 句柄：[connection]。
+ * - 共用那条重连循环（常驻流）那几根线：[dialOf] · [dialing]（它照什么拨、哪几台要它）· [loopReached]（它报够没够着，SSH 那层跟着换）。
+ * - 各台的名义状态：[states]（只读）。
  * - 强制全断：[disconnectAll]。
  *
  * 不提供单机强断 `disconnect(id)`：生产代码里没人要。
  * 别的文件仍会碰 [SshConnectionManager]，要的是通道工厂（`commandChannel` / `commandExecutor`）、
- * 会话计数和 `probeAndReconnectStale`，不是连接的生死，所以不收进这里。
+ * 会话计数，不是连接的生死，所以不收进这里。
  *
  * 收口是因为调用方在哪个线程、有几个，靠人记会记错：在主线程上连接时，失败路径的同步 `close()` 会成为
  * 主线程网络写，异常再被外层吞掉，连接就静默泄漏。
@@ -85,17 +89,26 @@ class HostConnector(
      */
     fun connection(hostId: String): SshTransport? = manager.connection(hostId)
 
-    /**
-     * 这台此刻的活连接，可观测（语义见 [SshConnectionManager.linkOf]）。值换了（按身份）＝ SSH 重连过、换了一条。
-     * 常驻流跟着它重接（`ResidentFeed`：交给核心的是它的拨号请求 `dialRequest`）。
-     */
-    fun linkOf(hostId: String): Flow<SshTransport?> = manager.linkOf(hostId)
+    /** 这台的拨号请求（语义见 [SshConnectionManager.dialOf]）：共用那条重连循环照它在核心里拨，握着的那条死了也还在。 */
+    fun dialOf(hostId: String): Flow<String?> = manager.dialOf(hostId)
+
+    /** 有拨号请求的那几台：每台要有一条共用循环在跑。 */
+    val dialing: Flow<Set<String>> get() = manager.dialing
+
+    /** 这台的名义状态（语义见 [SshConnectionManager.sessions]）：建连门停在「接不上」时，它进到「连着」就放行。 */
+    fun statusOf(hostId: String): Flow<SessionStatus?> = manager.sessions.map { it[hostId]?.status }.distinctUntilChanged()
+
+    /** 握着的那条死了的那几台（语义见 [SshConnectionManager.holdLost]）：交给共用那条再拨。 */
+    val holdLost: Flow<String> get() = manager.holdLost
+
+    /** 共用那条重连循环报这台 SSH 够没够着（语义见 [SshConnectionManager.loopReached]）：只转发。 */
+    fun loopReached(
+        hostId: String,
+        reached: Boolean,
+    ) = manager.loopReached(hostId, reached)
 
     /** 各台此刻的连接状态（名义状态，只读；服务器列表行首那颗点读它）。 */
     fun states(): StateFlow<Map<String, SessionState>> = manager.sessions
-
-    /** 叫 SSH 那层探一次活（对端没回话、新的一条先站住 ⇒ 换上新的，[linkOf] 随之换一条）。常驻流断了先问它：多半是 SSH 先死了。 */
-    fun probeStale() = manager.probeAndReconnectStale()
 
     /**
      * 不管持有者，断开全部连接：清持有者集、纪元加一作废在飞的 connect，物理 `close` 派到后台。

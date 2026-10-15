@@ -34,3 +34,9 @@ ring = "0.17"
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time"] }
 # 手写 JNI 的那一层（`JNIEnv` · 字符串 · 异常）。版本同方案试编那一份（0.21.1，本机缓存里有），缺省 feature 关掉（不要 invocation，不起 JVM）。
 jni = { version = "0.21", default-features = false }
+
+[dev-dependencies]
+# 单测里按墙钟等的那一处用兜底的那一个数（`guard_core::wall::CEILING`）。
+guard-core = { path = "../../../common/guard-core" }
+# 期限那几条判据在虚拟钟上走（`start_paused`）。
+tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time", "macros", "test-util"] }

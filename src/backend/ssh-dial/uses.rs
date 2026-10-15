@@ -312,8 +312,8 @@ impl Lease {
                             self.linked.endpoint,
                             self.linked.heard.silent_for()
                         );
-                        // 赛跑里那条新建的阶段与原因码不进这一趟（它多半会被丢掉）。
-                        let quiet = StageSink::new(false);
+                        // 赛跑里那条新建的阶段与原因码不进这一趟（它多半会被丢掉）；进展照报（这一趟在等它，它在动就是这一趟在动）。
+                        let quiet = stages.quiet();
                         match race(open, connect::establish(req, &quiet)).await {
                             Raced::Old(r) => Answered::Old(r),
                             Raced::New(fresh) => Answered::Replaced(Box::new(fresh), key),
@@ -353,7 +353,10 @@ impl Lease {
                 }
             };
             let e = match opened {
-                Ok(c) => return Ok((c, permit)),
+                Ok(c) => {
+                    stages.step(crate::step::CHANNEL);
+                    return Ok((c, permit));
+                }
                 Err(e) => e,
             };
             drop(permit);
@@ -432,7 +435,16 @@ where
     W: AsyncWrite + Unpin + Send,
 {
     async move {
-        let mut lease = match Lease::take(req, stages, lane_of(req.use_)).await {
+        // 要进展行 ⇒ 这一趟的阶段出口另接一头，ack 之前拨号那几段边等边把报来的那一步当场写出去（[`moving`]）。
+        let (live, mut steps) = if req.progress {
+            let (s, rx) = stages.reporting();
+            (s, Some(rx))
+        } else {
+            (stages.clone(), None)
+        };
+        let stages = &live;
+        let taken = moving(out, &mut steps, Lease::take(req, stages, lane_of(req.use_))).await;
+        let mut lease = match taken {
             Ok(l) => l,
             Err((e, fp)) => {
                 tracing::error!("dial: 拨号失败: {e}");
@@ -445,7 +457,47 @@ where
                 return;
             }
         };
-        serve(req, &mut lease, stages, input, out, control).await;
+        serve(req, &mut lease, stages, &mut steps, input, out, control).await;
+    }
+}
+
+/// ack 之前的一段（拿连接 · 开通道）：等 `fut` 的同时把报来的进展（[`StageSink::step`]）当场写成 `{"progress":…}` 行；
+/// `fut` 好了之后把已经报了、还没写的那几步补完再回（之后就是 ack）。不要进展行（`steps` 为 `None`）⇒ 就是等它。
+/// 写不出去（对面走了）⇒ 不再写，照等 `fut`（收场由写 ack 那一下发现）。
+async fn moving<W, F>(
+    out: &mut W,
+    steps: &mut Option<tokio::sync::mpsc::UnboundedReceiver<&'static str>>,
+    fut: F,
+) -> F::Output
+where
+    W: AsyncWrite + Unpin + Send,
+    F: std::future::Future,
+{
+    tokio::pin!(fut);
+    loop {
+        let Some(rx) = steps.as_mut() else {
+            return fut.await;
+        };
+        tokio::select! {
+            biased;
+            r = &mut fut => {
+                while let Ok(st) = rx.try_recv() {
+                    if write_line(out, &serde_json::json!({ "progress": st })).await.is_err() {
+                        break;
+                    }
+                }
+                return r;
+            }
+            got = rx.recv() => {
+                let wrote = match got {
+                    Some(st) => write_line(out, &serde_json::json!({ "progress": st })).await.is_ok(),
+                    None => false,
+                };
+                if !wrote {
+                    *steps = None;
+                }
+            }
+        }
     }
 }
 
@@ -454,6 +506,7 @@ async fn serve<R, W>(
     req: &DialRequest,
     lease: &mut Lease,
     stages: &StageSink,
+    steps: &mut Option<tokio::sync::mpsc::UnboundedReceiver<&'static str>>,
     mut input: R,
     out: &mut W,
     control: Control,
@@ -464,14 +517,15 @@ async fn serve<R, W>(
     match req.use_ {
         Use::Stream => {
             // `_permit`：这条长流占着这条连接的一格通道，直到本臂返回（`pool::Budget`）。
-            let (channel, _permit) = match lease.session_channel(req, stages).await {
-                Ok(c) => c,
-                Err(e) => {
-                    let fp = lease.linked.fingerprint.clone();
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
+            let (channel, _permit) =
+                match moving(out, steps, lease.session_channel(req, stages)).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let fp = lease.linked.fingerprint.clone();
+                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                        return;
+                    }
+                };
             let fail = |e: Said| DialAck::failed(e, lease.linked.fingerprint.clone());
             // want_reply = true：等远端确认 exec 成功再回 ack。
             let opened = exec(&channel, req.command.as_bytes().to_vec())
@@ -511,13 +565,14 @@ async fn serve<R, W>(
                 .await;
                 return;
             };
-            let (channel, _permit) = match lease.session_channel(req, stages).await {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
+            let (channel, _permit) =
+                match moving(out, steps, lease.session_channel(req, stages)).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                        return;
+                    }
+                };
             // 读半边收全，写半边被守着：本臂无论怎么收场（收全 · 提前收工 · 链路被关 ⇒ abort），远端那条通道都被关。
             let (mut rd, wr) = channel.split();
             let wr = CloseOnDrop::new(wr);
@@ -602,7 +657,7 @@ async fn serve<R, W>(
         Use::Files => {
             // sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。
             let fp = lease.linked.fingerprint.clone();
-            let session = match crate::sftp::open(lease, req, stages).await {
+            let session = match moving(out, steps, crate::sftp::open(lease, req, stages)).await {
                 Ok(s) => s,
                 Err(e) => {
                     // 拨号应答那一行：那一句进 `error`，SFTP 那一下的原话进 `detail`。
@@ -641,13 +696,14 @@ async fn serve<R, W>(
         Use::Shell => {
             let fp = lease.linked.fingerprint.clone();
             let pty = req.pty.clone().unwrap_or_default();
-            let (channel, _permit) = match lease.session_channel(req, stages).await {
-                Ok(c) => c,
-                Err(e) => {
-                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
-                    return;
-                }
-            };
+            let (channel, _permit) =
+                match moving(out, steps, lease.session_channel(req, stages)).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                        return;
+                    }
+                };
             // 读写两半分开：写半边被守着（无论怎么收场远端那条通道都被关），改窗口也走它。
             let (mut rd, wr) = channel.split();
             let wr = CloseOnDrop::new(wr);

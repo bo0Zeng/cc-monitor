@@ -15,7 +15,7 @@
 //!
 //! # 线上形状（与后端 `dial/mod.rs` 头注同一份，住那边，这里不抄第二份）
 //!
-//! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法（`files` 是一问一答，读应答那一行用 [`reply_line`]）。
+//! ack 之前零到多行 `{"stage":{…}}` · `{"progress":…}`（后者只在请求带 `progress` 时有，[`handshake`] 交 `on_step`）→ 恰好一行 ack → 之后按用法（`files` 是一问一答，读应答那一行用 [`reply_line`]）。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
 use copy_core::copy_text;
@@ -183,6 +183,7 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
     want: &str,
     cap: u64,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
+    on_step: &mut (dyn FnMut() + Send),
 ) -> Result<Ack, LinkError> {
     loop {
         let Some(line) = read_line_capped(r, cap).await? else {
@@ -190,6 +191,11 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
         };
         let v: serde_json::Value = serde_json::from_str(&line)
             .map_err(|e| LinkError::Garbled(format!("{e}: {line:?}")))?;
+        // 进展行（请求带 `progress` 才有）：拨号又过了一步，只交一个记号（哪一步不分支）。
+        if v.get("progress").is_some() {
+            on_step();
+            continue;
+        }
         if let Some(stage) = v.get("stage") {
             let stage: ConnectStage = serde_json::from_value(stage.clone())
                 .map_err(|e| LinkError::Garbled(format!("stage line: {e}: {line:?}")))?;

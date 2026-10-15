@@ -11,9 +11,13 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class FakeTransport(
     private val connectBehavior: suspend FakeTransport.(ConnectionConfig) -> Unit = {},
+    /** 拨号身份：[again] 出来的那一条与它同一个（拨号请求一字不差）。 */
+    private val identity: Int = NEXT_IDENTITY.incrementAndGet(),
 ) : SshTransport {
     val connectCalls = AtomicInteger(0)
-    val probeCalls = AtomicInteger(0) // 主动探测真正被调用的次数，供断言探测分支确实运行
+
+    /** 经 [again] 从这一条派生出去的那几条（SSH 那层跟着共用循环换连接时走它）。 */
+    val derived = mutableListOf<FakeTransport>()
 
     @Volatile
     var closed = false
@@ -35,18 +39,14 @@ class FakeTransport(
 
     override val isConnected: Boolean get() = alive && !closed
 
-    /** probeAlive 桩值。null（默认）走接口默认实现（isConnected）；false 模拟 isConnected 仍为 true 的死 TCP。 */
-    @Volatile
-    var probeAliveResult: Boolean? = null
+    private val drops = mutableListOf<() -> Unit>()
 
-    /** 非 null 时 probeAlive 先 await 它再出结果，用来拉开探测在飞的窗口、注入并发 disconnect。 */
-    @Volatile
-    var probeGate: CompletableDeferred<Unit>? = null
+    override val dialRequest: String get() = "{\"identity\":$identity}"
 
-    override suspend fun probeAlive(timeoutMs: Long): Boolean {
-        probeCalls.incrementAndGet()
-        probeGate?.await()
-        return probeAliveResult ?: isConnected
+    override fun again(): SshTransport = FakeTransport(connectBehavior, identity).also { synchronized(derived) { derived += it } }
+
+    override fun onDrop(f: () -> Unit) {
+        synchronized(drops) { drops += f }
     }
 
     override suspend fun connect(
@@ -66,9 +66,10 @@ class FakeTransport(
     /** 供 connectBehavior 用：挂起直到 [close] 被调用，相当于阻塞在 connect 的连接被关闭而中止。 */
     suspend fun awaitClose() = closeSignal.await()
 
-    /** 模拟底层连接掉线（不 close）：isConnected 变 false。 */
+    /** 模拟底层连接掉线（不 close）：isConnected 变 false，[onDrop] 登记的那几个各叫一次。 */
     fun simulateDrop() {
         alive = false
+        synchronized(drops) { drops.toList() }.forEach { it() }
     }
 
     override fun close() {
@@ -90,4 +91,8 @@ class FakeTransport(
     override fun execStream(command: String): Flow<ByteArray> = nope()
 
     override suspend fun execCapture(command: String): ExecResult = nope()
+
+    private companion object {
+        val NEXT_IDENTITY = AtomicInteger(0)
+    }
 }

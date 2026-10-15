@@ -16,6 +16,8 @@ struct Door {
     log: Arc<Mutex<Vec<String>>>,
     /// 开了 shell 的那几条通道（只回显它们：russh 服务端把隧道通道上的字节也报给 `data`，回显那些会把隧道搅坏）。
     shells: Arc<Mutex<Vec<russh::ChannelId>>>,
+    /// 有它 ⇒ 收到密码先等它放行再答（判据要停在「认证」那一步之前看进展行）。
+    gate: Option<Arc<tokio::sync::Notify>>,
 }
 
 impl Door {
@@ -32,6 +34,9 @@ impl russh::server::Handler for Door {
         _user: &str,
         password: &str,
     ) -> Result<russh::server::Auth, Self::Error> {
+        if let Some(g) = &self.gate {
+            g.notified().await;
+        }
         Ok(if self.password.as_deref() == Some(password) {
             russh::server::Auth::Accept
         } else {
@@ -199,6 +204,25 @@ async fn door_keyed(
     Arc<Mutex<Vec<String>>>,
     Arc<Mutex<Vec<russh::server::Handle>>>,
 ) {
+    door_full(password, key, host_keys, None).await
+}
+
+/// 收密码先等 `gate` 放行的那一台（只要口）。
+async fn door_gated(password: &str, gate: Arc<tokio::sync::Notify>) -> u16 {
+    door_full(Some(password), None, None, Some(gate)).await.0
+}
+
+#[allow(clippy::type_complexity)]
+async fn door_full(
+    password: Option<&str>,
+    key: Option<russh::keys::PublicKey>,
+    host_keys: Option<Vec<russh::keys::PrivateKey>>,
+    gate: Option<Arc<tokio::sync::Notify>>,
+) -> (
+    u16,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<russh::server::Handle>>>,
+) {
     test_host();
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -210,6 +234,7 @@ async fn door_keyed(
         key,
         log: Arc::clone(&log),
         shells: Arc::default(),
+        gate,
     };
     let keys = host_keys.unwrap_or_else(|| {
         vec![russh::keys::PrivateKey::from(
@@ -276,6 +301,94 @@ async fn open(
             return (v, rd, up_w, run);
         }
     }
+}
+
+/// 读一行（期限内）。
+async fn line_of(rd: &mut BufReader<tokio::io::DuplexStream>) -> serde_json::Value {
+    let mut line = String::new();
+    let n = tokio::time::timeout(guard_core::wall::CEILING, rd.read_line(&mut line))
+        .await
+        .expect("等一行超时")
+        .expect("读一行");
+    assert!(n > 0, "链路断了");
+    serde_json::from_str(&line).expect("不是 JSON")
+}
+
+/// 跑一趟带 `progress` 的拨号，逐行读：进展行的那一步记下、到 ack 为止；`at_step` 读到第几步时调一次 `poke`。
+async fn steps_until_ack(
+    req: DialRequest,
+    mut poke: impl FnMut(&[String]),
+) -> (Vec<String>, serde_json::Value) {
+    let (_up_w, up_r) = tokio::io::duplex(64 * 1024);
+    let (mut down_w, down_r) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        let stages = StageSink::new(req.stages);
+        crate::uses::run(&req, &stages, up_r, &mut down_w).await;
+    });
+    let mut rd = BufReader::new(down_r);
+    let mut steps = Vec::new();
+    loop {
+        let v = line_of(&mut rd).await;
+        match v.get("progress").and_then(serde_json::Value::as_str) {
+            Some(st) => {
+                steps.push(st.to_string());
+                poke(&steps);
+            }
+            None => return (steps, v),
+        }
+    }
+}
+
+/// ★ **进展行**（`progress: true`）：拨号每过一步当场写一行 `{"progress":…}`（不攒到 ack）—— 停在认证之前（服务端还没答密码）时
+/// 对面已经读到 TCP 连上 · 收到 SSH 头 · host key 过了那三步；放行之后认证过 · 通道开了，再是 ack。不要它的请求一行都不出。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_step_of_a_dial_is_written_the_moment_it_passes() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let port = door_gated("p", Arc::clone(&gate)).await;
+    register("live-p", TestCred::Password("p".into()));
+    let req = request(serde_json::json!({
+        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "live-p", "probe": true,
+        "use": "capture", "command": "uname", "capture": {"max_bytes": 1024}, "progress": true
+    }));
+    let (steps, ack) = steps_until_ack(req, |s| {
+        if s.len() == 3 {
+            assert_eq!(s, ["tcp", "banner", "hostkey"], "认证之前那几步要当场到");
+            gate.notify_one();
+        }
+    })
+    .await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    assert_eq!(steps, ["tcp", "banner", "hostkey", "auth", "channel"]);
+    let (port, _) = door(Some("p"), None).await;
+    let quiet = request(serde_json::json!({
+        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "live-p", "probe": true,
+        "use": "capture", "command": "uname", "capture": {"max_bytes": 1024}
+    }));
+    let (steps, ack) = steps_until_ack(quiet, |_| {}).await;
+    assert!(
+        steps.is_empty() && ack["ok"] == true,
+        "没要进展行却出了：{steps:?} {ack}"
+    );
+}
+
+/// 经跳板：跳板那一台与目标那一台各走一遍（中间多一步「隧道开出来了」）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_jumped_dial_reports_each_hop_and_the_tunnel() {
+    let (p_hop, _) = door(Some("h"), None).await;
+    let (p_target, _) = door(Some("t"), None).await;
+    register("step-h", TestCred::Password("h".into()));
+    register("step-t", TestCred::Password("t".into()));
+    let req = request(serde_json::json!({
+        "host": "127.0.0.1", "port": p_target, "user": "u", "key_path": "step-t", "probe": true,
+        "use": "capture", "command": "uname", "capture": {"max_bytes": 1024}, "progress": true,
+        "jump": {"host": "127.0.0.1", "port": p_hop, "user": "u", "key_path": "step-h", "label": "甲"}
+    }));
+    let (steps, ack) = steps_until_ack(req, |_| {}).await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    assert_eq!(
+        steps,
+        ["tcp", "banner", "hostkey", "auth", "tunnel", "banner", "hostkey", "auth", "channel"]
+    );
 }
 
 /// 读到 `want` 出现为止（期限内）。
@@ -625,4 +738,17 @@ async fn an_unstored_key_type_or_another_key_is_refused() {
     // 正控：记的正是那一把 ⇒ 过。
     let ack = dial_with_known(port, vec![key_line(&ed25519_key(11))]).await;
     assert_eq!(ack["ok"], true, "{ack}");
+}
+
+/// 赛跑里另拨的那一条用的那一份（[`StageSink::quiet`]）：阶段 · 原因码不进这一趟，进展照报到这一趟的那一头
+/// （这一趟在等它：它一步一步在动，循环就不该把这一拨当成「没人回话」丢下）。
+#[test]
+fn the_quiet_sink_of_a_raced_dial_still_reports_progress() {
+    let (live, mut steps) = StageSink::new(true).reporting();
+    let quiet = live.quiet();
+    quiet.step(crate::step::TCP);
+    quiet.note_why(crate::why::TIMEOUT);
+    quiet.emit(crate::Stage::Established);
+    assert_eq!(steps.try_recv().ok(), Some(crate::step::TCP));
+    assert_eq!(live.why(), None, "另拨那一条的原因码不进这一趟");
 }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -78,7 +79,7 @@ data class Chosen(
 )
 
 /**
- * 一张新建会话草稿的选项：打开就问那台一次（`session-new-facts` · `accounts-list`），四样默认值都是那台的；
+ * 一张新建会话草稿的选项：打开就问那台一次（`session-new-facts` · `accounts-list`；没问到 ⇒ 流接上了再问），四样默认值都是那台的；
  * 点 chip 只为改，改了才多交那一格。账号抽屉打开那一刻再问一次账号 · 额度 · 轮换（关了不再问）。手机不另记默认。
  */
 class NewSessionPicker(
@@ -97,11 +98,18 @@ class NewSessionPicker(
 
     init {
         scope.launch {
-            loadFacts()
-            loadHome()
-            loadAccounts()
+            val seen = link.epoch.value
+            load()
             loaded.complete(Unit)
+            // 打开时那台没问到（离线 · 还没接上）⇒ 常驻流接上了再问一遍，不等人重开这一张。
+            link.epoch.filter { it != seen }.collect { if (_state.value.factsFailed != null) load() }
         }
+    }
+
+    private suspend fun load() {
+        loadFacts()
+        loadHome()
+        loadAccounts()
     }
 
     /** 打开时那一问问完了（成没成都算）。 */

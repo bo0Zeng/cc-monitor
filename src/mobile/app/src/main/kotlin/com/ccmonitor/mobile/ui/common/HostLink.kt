@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.CancellationException
 import org.koin.compose.koinInject
@@ -75,6 +76,11 @@ fun rememberHostLink(
             connector.retain(hostId, holder)
             onDispose { connector.release(hostId, holder) }
         }
+    }
+
+    // 接不上之后，SSH 那层跟着共用那条重连循环接上了（冷启动时断网、网回来 · 后端起不来时换上一条）⇒ 放行，不等人点［重试］。
+    LaunchedEffect(hostId) {
+        connector.statusOf(hostId).collect { if (it == SessionStatus.CONNECTED && state.value is HostLink.Failed) state.value = HostLink.Ready }
     }
 
     LaunchedEffect(hostId, holder, retainWhileComposed, attempt) {

@@ -347,6 +347,7 @@ async fn open(
     req: &serde_json::Value,
     want: &str,
     on_stage: &mut (dyn FnMut(ConnectStage) + Send),
+    on_step: &mut (dyn FnMut() + Send),
 ) -> Result<(DialStream, Ack), Said> {
     // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
@@ -358,7 +359,7 @@ async fn open(
         .await
         .map_err(Said::from)?;
     let mut r = BufReader::new(Bounded::new(link, Some((due, ONE_SHOT_DEADLINE))));
-    let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage);
+    let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage, on_step);
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
         Ok(Ok(ack)) => ack,
         Ok(Err(LinkError::Refused {
@@ -662,10 +663,20 @@ fn settle_one(origin: &str, host: &str, verdict: PinVerdict) {
 
 /// **一条长 exec 字节流**（链路 `use:"stream"`：本机常驻后端在池里那条 SSH 连接上开一条 session 通道、exec `cmd`，
 /// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（重连循环经 `stream_source/run.rs::DeskLink` 开：`ccm -- --resident-attach`）。
-/// 出生带一次性总时限；接成流之后由调用方摘。
-pub(crate) async fn stream(cfg: &RemoteConfig, cmd: &str) -> Result<DialStream, Said> {
-    let req = request(cfg, "stream", serde_json::json!({ "command": cmd }))?;
-    open(cfg, &req, "stream", &mut |_| {}).await.map(|(s, _)| s)
+/// 出生带一次性总时限；接成流之后由调用方摘。拨号核心每过一步（进展行）调一次 `on_step`（重连循环拿它重新计拨号期限）。
+pub(crate) async fn stream(
+    cfg: &RemoteConfig,
+    cmd: &str,
+    on_step: &mut (dyn FnMut() + Send),
+) -> Result<DialStream, Said> {
+    let req = request(
+        cfg,
+        "stream",
+        serde_json::json!({ "command": cmd, "progress": true }),
+    )?;
+    open(cfg, &req, "stream", &mut |_| {}, on_step)
+        .await
+        .map(|(s, _)| s)
 }
 
 /// **收全一条 exec**：stdout / stderr / 退出码。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
@@ -683,7 +694,7 @@ pub(crate) async fn capture(
             "capture": { "max_bytes": max_bytes, "abort_marker": abort_marker },
         }),
     )?;
-    let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}).await?;
+    let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}, &mut || {}).await?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
     let got = ssh_link::captured(&mut link.r, cap)
@@ -731,7 +742,7 @@ impl RemoteFs {
     /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录（答得出 = 链路通了；值本身没人要）。
     pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, Said> {
         let req = request(cfg, "files", serde_json::json!({}))?;
-        let (link, _) = open(cfg, &req, "files", &mut |_| {}).await?;
+        let (link, _) = open(cfg, &req, "files", &mut |_| {}, &mut || {}).await?;
         let fs = RemoteFs {
             // 长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
             link: tokio::sync::Mutex::new(link.lives_long()),
