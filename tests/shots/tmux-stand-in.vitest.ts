@@ -58,7 +58,7 @@ describe("边界上的 tmux 替身", () => {
 
   // 只拿 `-V` 验转交（不连任何 server，碰不到用户的 tmux）。
   it("别的原样交真 tmux", () => {
-    const real = execFileSync("tmux", ["-V"], { encoding: "utf8" });
+    const real = execFileSync("env", ["-u", "TMUX", "-u", "TMUX_PANE", "tmux", "-L", "shots-stand-in", "-V"], { encoding: "utf8" });
     expect(run({ version: "3.1c", noServer: ["capture-pane"] }, ["-V"]).stdout).toBe(real);
   });
 });

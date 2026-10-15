@@ -268,9 +268,14 @@ export function diskOf(w: World): Record<string, MachineDisk> {
 }
 
 /** 每台一样的账号库（`ops.ts::ACCOUNTS`）。额度账 · 轮换账本缺省没有（中转还没见过回包）。 */
+/** 各台远端在机器表里的地址（`~/.ssh/config` 里 devbox 那一条与它同址）。 */
+function hostOf(label: string): string {
+  return `10.0.0.${11 + REMOTES.indexOf(label)}`;
+}
+
 const SSH_CONFIG = [
   "Host devbox",
-  "  HostName 10.0.0.11",
+  `  HostName ${hostOf("devbox")}`,
   "  User user",
   "Host devbox-wan",
   "  HostName devbox.example.com",
@@ -310,7 +315,7 @@ export function defaultConfig(): Record<string, unknown> {
     remote: {
       hosts: REMOTES.map((label, i) => ({
         label,
-        host: `10.0.0.${11 + i}`,
+        host: hostOf(label),
         port: 22,
         user: "user",
         keyPath: "~/.ssh/id_ed25519",
