@@ -726,7 +726,7 @@ private fun TerminalBottomControls(
         ExtraKeysRow(
             groupId = g.id,
             dispatch = { dispatchBinding(it, session::send, actions, session.modifiers::take) },
-            onModifier = { m, g -> session.modifiers.on(m.term(), g) },
+            onModifier = { m, gesture -> session.modifiers.on(m.term(), gesture) },
             mods = mods,
             doubleTapMs = doubleTapMs,
             longPressMs = longPressMs,

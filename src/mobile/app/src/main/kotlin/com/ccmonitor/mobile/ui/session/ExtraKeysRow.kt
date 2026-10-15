@@ -24,7 +24,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
@@ -172,19 +174,25 @@ private suspend fun PointerInputScope.driveGesture(
             }
         if (ev == null) {
             emit(g.advance(SystemClock.uptimeMillis()))
-            continue
-        }
-        val c = ev.changes.firstOrNull() ?: continue
-        when {
-            c.changedToDown() -> emit(g.down(c.uptimeMillis))
-            c.changedToUp() -> emit(if (c.isConsumed) g.cancel() else g.up(c.uptimeMillis))
-            !c.pressed -> {}
-            c.isConsumed || c.isOutOfBounds(size, extendedTouchPadding) -> emit(g.cancel())
-            // 键条横滑在 Main 那一趟里、比键帽晚，吃没吃掉移动要到 Final 那一趟才看得到。
-            awaitPointerEvent(PointerEventPass.Final).changes.any { it.isConsumed } -> emit(g.cancel())
+        } else {
+            ev.changes.firstOrNull()?.let { emit(onChange(it, g)) }
         }
     }
 }
+
+private suspend fun AwaitPointerEventScope.onChange(
+    c: PointerInputChange,
+    g: KeyGesture,
+): List<GestureOut> =
+    when {
+        c.changedToDown() -> g.down(c.uptimeMillis)
+        c.changedToUp() -> if (c.isConsumed) g.cancel() else g.up(c.uptimeMillis)
+        !c.pressed -> emptyList()
+        c.isConsumed || c.isOutOfBounds(size, extendedTouchPadding) -> g.cancel()
+        // 键条横滑在 Main 那一趟里、比键帽晚，吃没吃掉移动要到 Final 那一趟才看得到。
+        awaitPointerEvent(PointerEventPass.Final).changes.any { it.isConsumed } -> g.cancel()
+        else -> emptyList()
+    }
 
 /** 双击怎么认：NONE 不认（单击不等）；WAIT 单击等一个双击窗确认没有第二下；EAGER 单击当场出、窗内第二下再出双击（修饰键用）。 */
 internal enum class DoubleTap { NONE, WAIT, EAGER }
