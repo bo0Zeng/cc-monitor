@@ -15,12 +15,13 @@ import { copyText } from "../copy-table";
 import type { RemoteHostConfig } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
 import type { ImportGroup } from "../ssh-config-reads";
+import type { SshImported } from "../generated/SshImported";
 
 export interface AddMachineDeps {
   /** 这几台若现在加进去，机器表那一道过不过（后端试算；过 ⇒ `null`）。 */
   tryAdd: (cfgs: RemoteHostConfig[]) => Promise<MachineFault | null>;
-  /** 读 ~/.ssh/config（失败 ⇒ 抛）；每组带着后端判的「已在列表里」。 */
-  groups: () => Promise<ImportGroup[]>;
+  /** 读 ~/.ssh/config（失败 ⇒ 抛）；每组带着后端判的「已在列表里」，`partial` ＝ 有别名在期限内没读完。 */
+  imported: () => Promise<SshImported>;
   /** 写进去：成了 ⇒ `null`；没存上 ⇒ 一句原因。 */
   add: (cfgs: RemoteHostConfig[]) => Promise<string | null>;
 }
@@ -173,12 +174,19 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   };
 
   void deps
-    .groups()
-    .then((groups) => {
+    .imported()
+    .then(({ groups, partial }) => {
       for (const g of groups) {
         rows.push({ g, cfg: groupCfg(g), inList: g.inList, picked: !g.inList, split: false, name: null });
       }
-      if (rows.length === 0) {
+      // 只读到一部分：说一句（没读到的别名不在下面）；一组都没读到也留在这一栏，不当成没有 config。
+      if (partial) {
+        const more = document.createElement("div");
+        more.className = "add-machine-note";
+        more.dataset.partial = "true";
+        more.textContent = copyText("addMachine.ssh.partial");
+        sshNote.after(more);
+      } else if (rows.length === 0) {
         sshNote.textContent = copyText("addMachine.ssh.none");
         strip.querySelector<HTMLButtonElement>('[data-key="manual"]')?.click();
       }

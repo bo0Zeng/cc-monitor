@@ -316,13 +316,28 @@ pub(crate) fn ssh_g_exited(alias: &str, stderr: &[u8]) -> CmdErr {
     .with_raw(Some(&String::from_utf8_lossy(stderr)))
 }
 
-/// 批量导入：列全部别名、逐个 `ssh -G`（保序）、聚合成预览组。解析失败的别名跳过（best-effort）。
-pub(crate) fn import() -> Vec<ImportGroup> {
-    let resolved: Vec<(String, ResolvedHost)> = list_aliases()
+/// 批量导入：列全部别名、逐个 `ssh -G`（保序）、聚合成预览组（[`import_from`]）。
+pub(crate) fn import() -> (Vec<ImportGroup>, bool) {
+    import_from(list_aliases(), resolve)
+}
+
+/// 逐个解析、聚合成预览组；解析失败的别名跳过（best-effort）。第二格：有别名在期限内没读完（码 `child_timed_out`）⇒ 只交了一部分。
+pub(crate) fn import_from(
+    aliases: Vec<String>,
+    mut resolve: impl FnMut(&str) -> Result<ResolvedHost, CmdErr>,
+) -> (Vec<ImportGroup>, bool) {
+    let mut partial = false;
+    let resolved: Vec<(String, ResolvedHost)> = aliases
         .into_iter()
-        .filter_map(|a| resolve(&a).ok().map(|r| (a, r)))
+        .filter_map(|a| match resolve(&a) {
+            Ok(r) => Some((a, r)),
+            Err(e) => {
+                partial |= e.code == crate::platform::child::TIMED_OUT;
+                None
+            }
+        })
         .collect();
-    aggregate_ssh_hosts(resolved)
+    (aggregate_ssh_hosts(resolved), partial)
 }
 
 /// `ssh-config-import` 整条命令总期限的上限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）。
@@ -343,6 +358,8 @@ pub(crate) struct SshImportReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SshImported {
     pub(crate) groups: Vec<ImportGroup>,
+    /// 有别名在期限内没读完（整批的期限用完 · 那一发卡住）：`groups` 只是读到的那一部分。
+    pub(crate) partial: bool,
 }
 
 crate::wire::typed::codes! {
@@ -367,9 +384,9 @@ impl crate::wire::typed::Handle for SshConfigImport {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<SshImported, ImportErr>> + Send + 'static {
         async move {
-            let mut groups = import();
+            let (mut groups, partial) = import();
             mark_in_list(&mut groups, &req.known);
-            Ok(SshImported { groups })
+            Ok(SshImported { groups, partial })
         }
     }
 }

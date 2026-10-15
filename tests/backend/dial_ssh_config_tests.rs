@@ -241,7 +241,7 @@ fn the_import_product_matches_the_cross_language_golden() {
         }],
     );
     let got = serde_json::json!({
-        "ssh-config-import": serde_json::to_value(SshImported { groups }).unwrap(),
+        "ssh-config-import": serde_json::to_value(SshImported { groups, partial: false }).unwrap(),
     });
     assert_eq!(got, golden, "成品的线上形状变了 ⇒ 金样同拍改");
 }
@@ -319,4 +319,32 @@ fn a_failed_ssh_g_keeps_what_ssh_said_out_of_the_sentence() {
         e.raw.as_deref(),
         Some("ssh: Could not resolve hostname web")
     );
+}
+
+/// 期限内没读完的别名（整批的期限用完 · 那一发卡住，码 `child_timed_out`）⇒ 读到的照交、`partial` 为真；
+/// 别的读不出（配置写错 · 别名不合法）照「解析失败」跳过，不算只交了一部分。
+#[test]
+fn an_alias_that_ran_out_of_time_marks_the_import_partial() {
+    let timed_out = || {
+        Err(CmdErr::new(
+            crate::platform::child::TIMED_OUT,
+            "过了期限".into(),
+        ))
+    };
+    let (groups, partial) = import_from(vec!["pi".into(), "slow".into()], |a| match a {
+        "pi" => Ok(rh("pi.local", None, "pi", None)),
+        _ => timed_out(),
+    });
+    assert_eq!(
+        groups.iter().map(|g| g.label.as_str()).collect::<Vec<_>>(),
+        ["pi"]
+    );
+    assert!(partial, "有别名没在期限内读完，却没说只交了一部分");
+
+    let (groups, partial) = import_from(vec!["pi".into(), "bad".into()], |a| match a {
+        "pi" => Ok(rh("pi.local", None, "pi", None)),
+        _ => Err(ssh_g_exited("bad", b"")),
+    });
+    assert_eq!(groups.len(), 1);
+    assert!(!partial, "解析失败的别名不算没读完");
 }
