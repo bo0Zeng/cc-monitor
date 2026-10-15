@@ -320,6 +320,8 @@ pub(crate) struct PlanSlice {
     /// 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
     pub path: String,
     pub current: bool,
+    /// 只写文档：仓库还没接过来（`plan-command take` 接）。
+    pub docs_only: bool,
     /// 这一刻读不成的那一句（pb 原样）。
     pub error: Option<String>,
     pub stale: Option<PlanStale>,
@@ -437,7 +439,7 @@ pub(crate) struct PlanList {
     pub workspaces: Vec<PlanListWorkspace>,
 }
 
-/// `plan-command` 的回包：pb 的退出码 · 那一句 · `view` 写的页面路径。
+/// `plan-command` 的回包：pb 的退出码 · 那一句 · `view` 写的页面路径 · `take` 接到的那一片。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -445,6 +447,33 @@ pub(crate) struct PlanCmdReply {
     pub rc: i32,
     pub said: Option<String>,
     pub path: Option<String>,
+    /// `take` 才有：接到了哪一片。
+    pub took: Option<PlanTook>,
+}
+
+/// `plan-command take` 接到的那一片。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanTook {
+    pub slice: String,
+    /// 仓库相对工作区根在哪。
+    pub path: String,
+    /// `true` ⇒ 先把工作区配置里此刻那一片切成了它（pb 只接此刻那一片）。
+    pub switched: bool,
+}
+
+/// `plan-pb-check` 的回包：这个路径能不能当 pb 用 ＋ 给人看的那一句。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanPbCheck {
+    #[cfg_attr(
+        test,
+        ts(type = "\"ok\" | \"missing\" | \"no_entry\" | \"not_runnable\"")
+    )]
+    pub state: String,
+    pub said: String,
 }
 
 /// `plan-ack` / `plan-unack` 的回包。
@@ -459,7 +488,7 @@ pub(crate) struct PlanAckReply {
     pub need_count: u32,
 }
 
-/// `plan-return` 的回包：送出的那一行（后端拼）· 送给谁 · 结局。
+/// `plan-return` 的回包：送出的那一行（后端拼）· 送给谁 · 结局 · 是不是先在这台恢复了它。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -472,6 +501,8 @@ pub(crate) struct PlanReturnReply {
     pub why: Option<String>,
     pub said: Option<String>,
     pub screen: Option<String>,
+    /// `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；接手照旧是它。
+    pub resumed: bool,
 }
 
 /// `plan-files` 里一份文件（文件窗口「格」一列与预览头那一块）。读它的是文件窗口（Rust）；生成的类型给协议参考与形状指纹。

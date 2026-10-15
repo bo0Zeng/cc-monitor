@@ -20,7 +20,7 @@ import { skeletonRows } from "../kit/skeleton";
 import { toggleSwitch } from "../kit/switch";
 import { attachTooltip } from "../kit/tooltip";
 import { statusDot } from "../kit/status-dot";
-import { askText } from "../kit/dialog";
+import { askText, confirmDialog } from "../kit/dialog";
 import { toast, failToast } from "../kit/toast";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
@@ -31,11 +31,12 @@ import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import type { Tab } from "../tab-model";
 import { dotOf, titleParts } from "../session-face";
 import { dotLabel } from "../session-words";
-import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, PlanMiss, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
+import { ackNeed, fetchPlanList, fetchPlanRead, planCommand, PlanMiss, takeRepo, type PlanCell, type PlanNeed, type PlanList, type PlanRead, type PlanSlice, type PlanWho } from "../plan-reads";
 import type { PlanMoved } from "../changed-stream";
 import {
   blockRoots,
   cellIndex,
+  isFresh,
   kidsDone,
   kindSlot,
   lastSign,
@@ -50,7 +51,10 @@ import {
 import { CellDetail } from "./plan-cell";
 import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHost } from "./plan-review";
 import type { PlanNeedsBook } from "../plan-needs";
-import { phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
+import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
+import { openNewSession } from "../new-session";
+import { openSettingsWindow } from "../settings/open-settings";
+import { pbDirOf } from "../settings-dest";
 import s from "./plan.module.css";
 
 /** 记在本机的界面偏好（不是数据）。 */
@@ -507,6 +511,8 @@ export class PlanView {
         f.textContent = copyText("plan.auto.failed", { reason: this.autoFail });
         parts.push(f);
       }
+      const slice = this.currentSlice();
+      if (slice?.docsOnly) parts.push(this.takeButton(slice));
       parts.push(this.wholeButton());
     }
     parts.push(button({ label: copyText("plan.page.back"), kind: "ghost", onClick: () => this.close() }));
@@ -580,6 +586,41 @@ export class PlanView {
     return b;
   }
 
+  /** 只写文档的那一片：［接过仓库…］＝ 以人的身份代敲 pb 的 `take`（退不回 ⇒ 先问一句）；接到哪一片照回包说。 */
+  private takeButton(slice: PlanSlice): HTMLButtonElement {
+    const b = button({
+      label: copyText("plan.take.open"),
+      icon: "folder",
+      hint: copyText("plan.take.hint", { path: slice.path }),
+      onClick: () => void this.takeRepo(b, slice),
+    });
+    b.dataset.act = "take";
+    return b;
+  }
+
+  private async takeRepo(b: HTMLButtonElement, slice: PlanSlice): Promise<void> {
+    const cur = this.current;
+    if (!cur) return;
+    const ok = await confirmDialog({
+      title: copyText("plan.take.title", { slice: slice.name }),
+      action: copyText("plan.take.action"),
+      body: copyText("plan.take.body", { path: slice.path }),
+      note: slice.current ? undefined : copyText("plan.take.switchNote", { slice: slice.name }),
+    });
+    if (!ok) return;
+    b.disabled = true;
+    try {
+      const r = await takeRepo(cur.origin, cur.workspace, slice.name);
+      const took = r.took!;
+      toast(copyText("plan.take.done", { slice: took.slice, path: took.path }), took.switched ? copyText("plan.take.switched", { slice: took.slice }) : "", { level: "success" });
+      this.refresh(false, cur.origin);
+    } catch (e) {
+      failToast(copyText("plan.take.failed"), e instanceof PlanMiss ? e.said : e);
+    } finally {
+      b.disabled = false;
+    }
+  }
+
   private async openWhole(b: HTMLButtonElement): Promise<void> {
     const cur = this.current;
     if (!cur) return;
@@ -607,7 +648,14 @@ export class PlanView {
     const parts: (HTMLElement | Text)[] = [];
     const where = document.createElement("span");
     where.textContent = joinSep(isRemoteOrigin(cur.origin) ? cur.origin : copyText("control.machine.local"), cur.workspace);
-    parts.push(where, sep());
+    // 无图：子头只留在哪（没有顶块可写、没有格可过滤）。
+    if (isFresh(slice)) {
+      this.subEl.replaceChildren(where);
+      return;
+    }
+    parts.push(where);
+    if (slice.docsOnly) parts.push(this.docsOnlyBadge(slice));
+    parts.push(sep());
     const top = topBlock(slice);
     if (top) {
       parts.push(document.createTextNode(copyText("plan.sub.top")));
@@ -624,6 +672,14 @@ export class PlanView {
     }
     parts.push(spacer(), this.filterChips(slice));
     this.subEl.replaceChildren(...parts);
+  }
+
+  /** 「只写文档」：pb 只管图、仓库不守，接过来之前 agent 不写仓库。 */
+  private docsOnlyBadge(slice: PlanSlice): HTMLElement {
+    const b = phaseBadge(copyText("plan.sub.docsOnly"));
+    b.dataset.badge = "docs-only";
+    attachTooltip(b, () => copyText("plan.sub.docsOnlyHint", { path: slice.path }));
+    return b;
   }
 
   private filterChips(slice: PlanSlice): HTMLElement {
@@ -699,6 +755,13 @@ export class PlanView {
       this.bodyEl.replaceChildren(tree, pane);
       return;
     }
+    // 新开的一片还没有图：整页一屏（没有大纲可画）。
+    if (isFresh(slice)) {
+      const ref = this.current!;
+      this.bodyEl.className = s.pvWhole;
+      this.bodyEl.replaceChildren(freshPane(slice, ref.workspace, (cwd) => void openNewSession({ origin: ref.origin, cwd })));
+      return;
+    }
     tree.append(this.outline(slice), this.legend(slice));
     const cell = this.selected ? cellIndex(slice).get(this.selected) : undefined;
     if (!cell && this.selected) this.selected = null;
@@ -721,7 +784,12 @@ export class PlanView {
     const local = this.per.get(LOCAL_ORIGIN);
     if (local?.state === "ok" && local.list.pb.state !== "ok") {
       const [head, ...rest] = (local.list.pb.said ?? "").split("\n");
-      return emptyState({ icon: "warning", text: head, hint: rest.join(copyText("kit.text.sep")) || undefined });
+      // 找不到 pb ⇒ 去本机设置里填 pb 路径那一行。
+      const set: HTMLButtonElement | undefined =
+        local.list.pb.state === "missing"
+          ? button({ label: copyText("plan.empty.setPb"), kind: "ghost", onClick: () => void openSettingsWindow(set, pbDirOf(LOCAL_ORIGIN)) })
+          : undefined;
+      return emptyState({ icon: "warning", text: head, hint: rest.join(copyText("kit.text.sep")) || undefined, action: set });
     }
     const add = button({ label: copyText("plan.empty.add"), kind: "ghost", onClick: () => void this.addWorkspace() });
     return emptyState({ icon: "plan", text: copyText("plan.empty.text"), hint: copyText("plan.empty.hint"), action: add });

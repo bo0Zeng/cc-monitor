@@ -1,4 +1,5 @@
-//! 计划退回：先判能不能送（在等你 ⇒ 拒；已结束 / 认不出 ⇒ 只给复制）· 能送走送字那条路、送到了 / 送达未知记一条。
+//! 计划退回：先判能不能送（在等你 ⇒ 拒；已结束 / 认不出 ⇒ 只给复制；已结束而人点了恢复 ⇒ 恢复它再送）·
+//! 能送走说一句那条路、送到了 / 送达未知记一条。
 
 use super::*;
 use crate::plan::fixture::{dump, MAIN, SUB};
@@ -38,15 +39,21 @@ fn live(activity: crate::agents::SessionActivity) -> impl Fn(&str) -> Whose {
     }
 }
 
-type Sent = RefCell<Vec<Value>>;
+type Sent = RefCell<Vec<(Value, bool)>>;
 type Rec = (String, String, String, Returned);
 type Kept = RefCell<Vec<Rec>>;
 
 fn run(doc: &Value, args: Value, reply: Value) -> (Answer, Vec<Value>, Vec<Rec>) {
+    let (out, sent, kept) = run_resuming(doc, args, reply);
+    assert!(sent.iter().all(|(_, r)| !r), "没点恢复就不许恢复");
+    (out, sent.into_iter().map(|(v, _)| v).collect(), kept)
+}
+
+fn run_resuming(doc: &Value, args: Value, reply: Value) -> (Answer, Vec<(Value, bool)>, Vec<Rec>) {
     let sent: Sent = RefCell::new(Vec::new());
     let kept: Kept = RefCell::new(Vec::new());
-    let send = |a: &Value| {
-        sent.borrow_mut().push(a.clone());
+    let send = |a: &Value, resume: bool| {
+        sent.borrow_mut().push((a.clone(), resume));
         Ok(reply.clone())
     };
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
@@ -63,18 +70,19 @@ fn args(id: &str) -> Value {
 }
 
 #[test]
-fn a_working_owner_gets_the_line_through_terminal_input_and_the_return_is_kept() {
+fn a_working_owner_gets_the_line_said_to_it_and_the_return_is_kept() {
     let doc = doc_with(&live(crate::agents::SessionActivity::Working));
     let (out, sent, kept) = run(&doc, args("A1-2"), json!({"result": "delivered"}));
     let out = out.unwrap();
     assert_eq!(out["result"], "delivered");
     assert_eq!(out["line"], "人 · A1-2 甲的写出：单位写错了");
     assert_eq!(out["to"]["kind"], "subagent");
-    // 子 agent 接手 ⇒ 送进它的父会话那个终端。
+    assert_eq!(out["resumed"], false);
+    // 子 agent 接手 ⇒ 说给它的父会话。
     assert_eq!(
         sent,
         vec![
-            json!({"sid": MAIN, "text": "人 · A1-2 甲的写出：单位写错了", "enter": true, "client": "monitor", "seen_screen": "abc"})
+            json!({"sid": MAIN, "text": "人 · A1-2 甲的写出：单位写错了", "client": "monitor", "seen_screen": "abc"})
         ]
     );
     assert_eq!(kept.len(), 1);
@@ -126,13 +134,6 @@ fn an_owner_waiting_for_you_is_refused_without_typing_anything() {
 
 #[test]
 fn an_ended_or_unknown_owner_only_gets_a_line_to_copy() {
-    let ended = |id: &str| match id {
-        MAIN => Whose::Session {
-            sid: MAIN.into(),
-            live: None,
-        },
-        _ => Whose::Unknown,
-    };
     let doc = doc_with(&ended);
     // A2 归主会话（已结束）；A1 归子 agent（这张表里认不出）。
     let (out, sent, kept) = run(&doc, args("A2"), json!({"result": "delivered"}));
@@ -192,4 +193,61 @@ fn the_top_block_is_addressed_as_project_and_goes_to_its_owner() {
     let mut a = args("project");
     a["to"] = json!("signer");
     assert_eq!(run(&doc, a, json!({})).0.unwrap_err().code, "no_target");
+}
+
+fn ended(id: &str) -> Whose {
+    match id {
+        MAIN => Whose::Session {
+            sid: MAIN.into(),
+            live: None,
+        },
+        _ => Whose::Unknown,
+    }
+}
+
+/// 接手的会话已结束、人点了恢复（`resume: true`）⇒ 恢复它、那一行当它的第一句（不带看见的那一屏：那一屏已经不在了）；
+/// 回包说恢复了、接手照旧是它；送到了记一条退回。
+#[test]
+fn an_ended_owner_is_resumed_with_the_line_when_asked() {
+    let doc = doc_with(&ended);
+    let mut a = args("A2");
+    a["resume"] = json!(true);
+    let (out, sent, kept) = run_resuming(&doc, a, json!({"result": "delivered", "resumed": true}));
+    let out = out.unwrap();
+    assert_eq!(out["result"], "delivered");
+    assert_eq!(out["resumed"], true);
+    assert_eq!(out["to"]["sid"], MAIN);
+    assert_eq!(
+        sent,
+        vec![(
+            json!({"sid": MAIN, "text": "人 · A2 乙功能：单位写错了", "client": "monitor"}),
+            true
+        )]
+    );
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].3.to, MAIN);
+}
+
+/// 恢复没成 ⇒ 原因照回（恢复不了 · 另有进程在写它），不记退回；认不出的接手点了恢复也只给复制。
+#[test]
+fn a_resume_that_fails_says_why_and_keeps_nothing() {
+    let doc = doc_with(&ended);
+    let mut a = args("A2");
+    a["resume"] = json!(true);
+    let (out, _, kept) = run_resuming(
+        &doc,
+        a,
+        json!({"result": "refused", "why": "not_resumed", "said": "x", "resumed": false}),
+    );
+    let out = out.unwrap();
+    assert_eq!(
+        (out["result"].as_str(), out["why"].as_str()),
+        (Some("refused"), Some("not_resumed"))
+    );
+    assert!(kept.is_empty());
+    let mut a = args("A1");
+    a["resume"] = json!(true);
+    let (out, sent, _) = run_resuming(&doc, a, json!({"result": "delivered"}));
+    assert_eq!(out.unwrap()["result"], "copy");
+    assert!(sent.is_empty());
 }

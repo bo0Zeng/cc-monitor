@@ -85,7 +85,7 @@ impl crate::wire::typed::Handle for SessionSay {
 
 /// 恢复再送的生产那一份：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
 /// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。任一找不到 ⇒ `None`（不恢复）。
-fn resume_here(req: &SessionSayReq, files: Files) -> Option<Answer> {
+pub(crate) fn resume_here(req: &SessionSayReq, files: Files) -> Option<Answer> {
     use crate::observe::history_query as hq;
     let home = crate::history::listing::agent_home();
     let path = hq::session_record(&home, &req.sid).ok()?;

@@ -274,6 +274,12 @@ pub struct FakeBackend {
     /// 路径换名（截图那几张）：`(窗口看到的前缀, 盘上真的前缀)` —— 进来的参数把前者换成后者再答，答出去的再换回来，
     /// 窗口里的面包屑就是一台真机器那样的 `/home/user/…`，看不到沙箱路径。
     pub alias: Option<(String, String)>,
+    /// `plan-files` 回的那一份（`None` ⇒ 不在任何一片里：`slice: null`）；用例改它 ＝ 计划变了。
+    pub plan_reply: std::sync::Arc<std::sync::Mutex<Option<serde_json::Value>>>,
+    /// 给了 ⇒ 往订了 `changed/plan` 的那几条流推一格（格体原样），订上了几条记在 `plan_subs`；
+    /// 没给 ⇒ 那条流同别的流一样当场关（开着的流是窗口里一趟常驻的活，等「一趟都不在路上」的判据会等不完）。
+    pub plan_push: Option<tokio::sync::broadcast::Sender<String>>,
+    pub plan_subs: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl FakeBackend {
@@ -293,6 +299,9 @@ impl FakeBackend {
             grep_reply: None,
             hold_grep: None,
             alias: None,
+            plan_reply: Default::default(),
+            plan_push: None,
+            plan_subs: Default::default(),
         }
     }
 
@@ -387,6 +396,19 @@ impl FakeBackend {
         Option<serde_json::Value>,
     ) {
         match cmd {
+            // 计划反查：回用例给的那一份（判定在后端 `plan/owners.rs`，这里只供窗口排版）。
+            "plan-files" => (
+                true,
+                None,
+                None,
+                Some(
+                    self.plan_reply
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .unwrap_or_else(|| serde_json::json!({ "slice": null, "entries": [] })),
+                ),
+            ),
             // 按内容搜：回用例给的那一份成品（窗口侧只判收、画、跳；走树的正确性判在 `tests/backend/files/grep_tests.rs`）。
             "files-grep" => match &self.grep_reply {
                 Some(v) => (true, None, None, Some(v.clone())),
@@ -1290,9 +1312,28 @@ impl comms_inward::chan::router::Backends for Hosted {
     fn subscribe(
         &self,
         _origin: comms_inward::chan::wire::Origin,
-        _kind: comms_inward::chan::wire::Kind,
+        kind: comms_inward::chan::wire::Kind,
         _from: Option<comms_inward::chan::wire::Cursor>,
     ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        // `changed/plan`：用例经 `plan_push` 推的每一格原样交出去（同 monitor 那一侧的扇出）。
+        let push = self.be.lock().unwrap().plan_push.clone();
+        if let (true, Some(push)) = (kind.0 == crate::plan::PLAN_CHANGED_KIND, push) {
+            let be = self.be.lock().unwrap();
+            let rx = push.subscribe();
+            be.plan_subs
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            return Box::pin(futures::stream::unfold(
+                (rx, 0u64),
+                |(mut rx, seq)| async move {
+                    let cell = rx.recv().await.ok()?;
+                    let item = comms_inward::chan::wire::Item::Frame {
+                        seq: seq + 1,
+                        body: comms_inward::chan::wire::Body(cell.into_bytes()),
+                    };
+                    Some((item, (rx, seq + 1)))
+                },
+            ));
+        }
         Box::pin(futures::stream::iter([
             comms_inward::chan::wire::Item::Closed {
                 by: comms_inward::chan::wire::By::Ours(comms_inward::chan::wire::OursFault::Misuse),

@@ -41,6 +41,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
             "childTab": "hide",
             "bgTab": "show",
             "agentHomes": {"claude": "/srv/c", "codex": "/srv/x"},
+            "pbDir": null,
         })
     );
     assert_eq!(
@@ -55,7 +56,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 值域在写口拒（`bad_args`，一个字节不落）：启动命令带壳元字符 · 模型名不像模型 · 上限为 0 · 数据目录不是绝对路径。
+/// 值域在写口拒（`bad_args`，一个字节不落）：启动命令带壳元字符 · 模型名不像模型 · 上限为 0 · 数据目录 / pb 路径不是绝对路径。
 #[test]
 fn prefs_set_refuses_values_a_launch_could_not_use() {
     let home = scratch("check");
@@ -64,6 +65,7 @@ fn prefs_set_refuses_values_a_launch_could_not_use() {
         serde_json::json!({"models": {"a": "op us"}}),
         serde_json::json!({"contextLimits": {"opus": 0}}),
         serde_json::json!({"agentHomes": {"claude": "relative/dir"}}),
+        serde_json::json!({"pbDir": "relative/pb"}),
     ] {
         let e = set(&home, bad.clone()).unwrap_err();
         assert!(matches!(e, PrefsSetErr::BadArgs(_)), "{bad} ⇒ {e:?}");
@@ -138,4 +140,17 @@ fn the_agent_homes_become_each_familys_dir_env() {
         vec![(env, PathBuf::from("/srv/one"))]
     );
     assert_eq!(agent_home_envs(BTreeMap::new()), vec![]);
+}
+
+/// pb 路径：设了读回的就是它（两头空白去掉）；空串 ⇒ 删掉；补丁里没提 ⇒ 不动。
+#[test]
+fn the_pb_dir_is_set_trimmed_kept_and_cleared_by_an_empty_string() {
+    let home = scratch("pbdir");
+    let r = set(&home, serde_json::json!({"pbDir": "  /opt/pb  "})).unwrap();
+    assert_eq!(r.prefs.pb_dir.as_deref(), Some("/opt/pb"));
+    let r = set(&home, serde_json::json!({"resumeInTmux": true})).unwrap();
+    assert_eq!(r.prefs.pb_dir.as_deref(), Some("/opt/pb"));
+    let r = set(&home, serde_json::json!({"pbDir": ""})).unwrap();
+    assert_eq!(r.prefs.pb_dir, None);
+    let _ = std::fs::remove_dir_all(&home);
 }

@@ -213,6 +213,9 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
             .unwrap_or(&name);
         m.insert("path".into(), json!(path));
         m.insert("current".into(), json!(repo == Some(name.as_str())));
+        // 只写文档：仓库还没接过来（人 `pb take` 之后才守）；pb 没给 ⇒ 接过了。
+        let docs_only = sl.get("docs_only").and_then(Value::as_bool) == Some(true);
+        m.insert("docsOnly".into(), json!(docs_only));
         m.insert("error".into(), error);
         m.insert("stale".into(), Value::Null);
         m

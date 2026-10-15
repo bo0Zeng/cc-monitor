@@ -40,3 +40,16 @@ fn an_unknown_arg_is_refused() {
     .unwrap_err();
     assert_eq!(f.code, "bad_args");
 }
+
+/// `slice` 只跟 `take` 走：`take` 不带 · 别的动词带了 ⇒ `bad_args`（在起 pb 之前）。
+#[test]
+fn slice_goes_with_take_and_only_with_it() {
+    let f = ask("plan-command", json!({"workspace": "/w", "cmd": "take"})).unwrap_err();
+    assert_eq!(f.code, "bad_args");
+    let f = ask(
+        "plan-command",
+        json!({"workspace": "/w", "cmd": "pause", "slice": "a"}),
+    )
+    .unwrap_err();
+    assert_eq!(f.code, "bad_args");
+}

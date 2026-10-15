@@ -89,6 +89,25 @@ pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 /// 流名不叫命令名（命令是那台后端的 `terminal-follow`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const TERMINAL_SCREEN_KIND: &str = "terminal-screen";
 
+/// 那台推来的一格「某样东西变了」（[`EventReplay::changed`] 收到的那一份，原样）。
+#[derive(Debug, Clone)]
+pub struct Changed {
+    pub origin: crate::origin::Origin,
+    pub topic: String,
+    /// `{key?, rev?, body?}` 的文本，原样。
+    pub cell: String,
+}
+
+/// 旁听口：界面那几条订阅之外，文件窗口那一侧也要「X 变了」（整个进程一个；没人听 ⇒ 丢）。
+/// 跟不上的那一份 ⇒ 落后几格（收的那一侧当「丢了几格」）。
+static CHANGED_TAP: std::sync::LazyLock<tokio::sync::broadcast::Sender<Changed>> =
+    std::sync::LazyLock::new(|| tokio::sync::broadcast::channel(64).0);
+
+/// 订一份旁听：从此刻起每一格「X 变了」（哪台 · 哪个主题都在，收的那一侧自己挑）。
+pub fn changed_tap() -> tokio::sync::broadcast::Receiver<Changed> {
+    CHANGED_TAP.subscribe()
+}
+
 pub struct EventReplay {
     inner: Mutex<Inner>,
     /// 会话成品缓存（生产 = 进程里那一本 `session_book::book()`；判据各给一本自己的，不与并行的判据串味）。
@@ -1123,7 +1142,14 @@ impl EventReplay {
 
     /// 那台机器的后端说「某样东西变了」（`changed` 帧；本机远端两条流同一个口）⇒ 订了那台 `changed/<topic>` 的每条订阅收一格 `cell`
     /// （`{key?, rev?, body?}` 的文本，原样不解释；有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap` —— 与实时行同一套）。
+    /// 同一格另交一份给 [`changed_tap`]（文件窗口那一侧订的 `changed/<topic>` 从那里取，`chan/host.rs`）。
     pub fn changed(&self, origin: &crate::origin::Origin, topic: &str, cell: String) {
+        let seen = Changed {
+            origin: origin.clone(),
+            topic: topic.to_string(),
+            cell: cell.clone(),
+        };
+        let _ = CHANGED_TAP.send(seen);
         self.fan_out(
             SubKind::Changed,
             origin,

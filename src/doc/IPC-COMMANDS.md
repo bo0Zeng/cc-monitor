@@ -11191,6 +11191,10 @@ contextLimits: { [key in string]: number },
  */
 agentHomes: { [key in string]: string }, 
 /**
+ * planned-build 的插件根目录（绝对路径）；设了 ⇒ 计划那一族只认它，没设 ⇒ 认这台装着的插件。用的那一刻现读。
+ */
+pbDir: string | null, 
+/**
  * 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
  */
 childTab: Tab, 
@@ -11256,6 +11260,10 @@ contextLimits: { [key in string]: number },
  */
 agentHomes: { [key in string]: string }, 
 /**
+ * planned-build 的插件根目录（绝对路径）；设了 ⇒ 计划那一族只认它，没设 ⇒ 认这台装着的插件。用的那一刻现读。
+ */
+pbDir: string | null, 
+/**
  * 子会话（在会话里用 ccm 起的）进不进标签页；缺省隐藏。
  */
 childTab: Tab, 
@@ -11308,7 +11316,11 @@ childTab?: Tab,
 /**
  * 分身会话进不进标签页。
  */
-bgTab?: Tab, };
+bgTab?: Tab, 
+/**
+ * pb 的插件根目录：空串 ⇒ 删掉（回到认装着的插件）。
+ */
+pbDir?: string, };
 type Tab = "show" | "hide";
 ```
 
@@ -12101,6 +12113,10 @@ type PlanSlice = { name: string, domain: string | null,
  */
 path: string, current: boolean, 
 /**
+ * 只写文档：仓库还没接过来（`plan-command take` 接）。
+ */
+docsOnly: boolean, 
+/**
  * 这一刻读不成的那一句（pb 原样）。
  */
 error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
@@ -12157,26 +12173,62 @@ id: string, };
 
 #### `plan-command`
 
-以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径）。
+以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-command`
 
 入参 `PlanCommandReq` · 回包 `PlanCmdReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type PlanCmdReply = { rc: number, said: string | null, path: string | null, };
+type PlanCmdReply = { rc: number, said: string | null, path: string | null, 
+/**
+ * `take` 才有：接到了哪一片。
+ */
+took: PlanTook | null, };
 type PlanCommandReq = { 
 /**
  * 工作区根。
  */
 workspace: string, 
 /**
- * `continue` · `pause` · `view`。
+ * `continue` · `pause` · `take` · `view`。
  */
-cmd: "continue" | "pause" | "view", };
+cmd: "continue" | "pause" | "take" | "view", 
+/**
+ * `take` 接哪一片的仓库（片名）；别的动词不带。
+ */
+slice?: string | null, };
+type PlanTook = { slice: string, 
+/**
+ * 仓库相对工作区根在哪。
+ */
+path: string, 
+/**
+ * `true` ⇒ 先把工作区配置里此刻那一片切成了它（pb 只接此刻那一片）。
+ */
+switched: boolean, };
 ```
 
-码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported` · `refused`
+码：`bad_args` · `failed` · `no_pb` · `no_such_slice` · `not_workspace` · `pb_unsupported` · `refused`
+
+#### `plan-pb-check`
+
+一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-pb-check`
+
+入参 `PlanPbCheckReq` · 回包 `PlanPbCheck`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlanPbCheck = { state: "ok" | "missing" | "no_entry" | "not_runnable", said: string, };
+type PlanPbCheckReq = { 
+/**
+ * 要校验的插件根目录（那台机器上的绝对路径）。
+ */
+dir: string, };
+```
+
+码：`bad_args` · `failed`
 
 #### `plan-files`
 
@@ -12295,7 +12347,7 @@ key: string, };
 
 #### `plan-return`
 
-把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回。
+把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --plan-return` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
@@ -12306,7 +12358,11 @@ type PlanReturnReply = { line: string, to: PlanWho | null,
 /**
  * `delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）。
  */
-result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, };
+result: "delivered" | "unsure" | "refused" | "copy", why: string | null, said: string | null, screen: string | null, 
+/**
+ * `true` ⇒ 那个会话已结束、这一趟在这台按记下的号恢复了它，这一行是它的第一句；接手照旧是它。
+ */
+resumed: boolean, };
 type PlanReturnReq = { 
 /**
  * 工作区根。
@@ -12335,7 +12391,11 @@ client?: string | null,
 /**
  * 送之前看到的那一屏的指纹（同 `terminal-input`）。
  */
-seen_screen?: string | null, };
+seen_screen?: string | null, 
+/**
+ * `true` ⇒ 目标会话已结束时在这台恢复它、这一行当它的第一句（人点了［恢复并退回］）。
+ */
+resume?: boolean | null, };
 type PlanWho = { id: string, kind: "session" | "subagent" | "unknown", 
 /**
  * 主会话 ⇒ 它自己；子 agent ⇒ 父会话；认不出 ⇒ `null`。
@@ -12468,11 +12528,12 @@ needs: string | null, };
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
-| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的用户命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `view`（pb 画整张图写进系统临时目录，回页面路径） |
+| `--plan-command` | ＝ 帧命令 `plan-command`：以人的身份代敲 pb 的命令：`continue` · `pause`（开关自动接着做，管整个工作区）· `take`（接过一片的仓库，不是此刻那一片先切过去）· `view`（pb 画整张图写进系统临时目录，回页面路径）；这一侧带着 agent 身份 ⇒ 用户命令不代敲 |
 | `--plan-files` | ＝ 帧命令 `plan-files`：文件窗口反查：这个目录落在哪一片的仓库里、每份文件归哪一格（只看读好过的工作区，不起 pb） |
 | `--plan-list` | ＝ 帧命令 `plan-list`：这台的 pb 工作区与片（目录 ＝ 活会话的工作目录 ∪ `dirs`，pb 自己往上找工作区） |
+| `--plan-pb-check` | ＝ 帧命令 `plan-pb-check`：一个路径能不能当 pb 用（入口在 · 起得来），回给人看的那一句；设置里存 pb 路径之前问 |
 | `--plan-read` | ＝ 帧命令 `plan-read`：一个工作区的成品（几片的图 · 状态 · 签收 · 块 · 判据；接手与签收人对到会话；不带 agent_view） |
-| `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |
+| `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，认不出 ⇒ 只给复制，已结束 ⇒ 只给复制或（`resume`）在这台恢复它再送，能送走 `session-say`；送到了记一条已退回 |
 | `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
 | `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |

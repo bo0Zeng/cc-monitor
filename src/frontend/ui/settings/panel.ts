@@ -44,6 +44,7 @@ import {
 import { DataSection } from "./data-section";
 import { DataPage } from "./data-page";
 import { ContextLimitsSection } from "./context-limits-section"; // 那台的上下文上限表
+import { pbDirRow } from "./pb-dir-row"; // 那台的 pb 路径
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
@@ -791,17 +792,19 @@ export class SettingsPanel {
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
-        // 那台的偏好那几格（启动程序 · 恢复到 tmux 里 · 上下文上限）：这一页第一次可见才问那台。
+        // 那台的偏好那几格（启动程序 · 恢复到 tmux 里 · pb 路径 · 上下文上限）：这一页第一次可见才问那台。
         const launch = machineLaunchRows(origin, title);
+        const pb = pbDirRow(origin);
         const limits = new ContextLimitsSection(origin);
         limits.element.addEventListener(REVEAL_EVENT, () => limits.reveal());
         const load = (): void => {
           launch.load();
+          pb.load();
           void limits.load();
         };
         if (this.pagesLoaded.has(pageId)) load();
         else this.loadOnFirstVisit(pageId, load);
-        const rows = [...launch.rows, limits.element, ...(parts ? [parts.components] : [])];
+        const rows = [...launch.rows, pb.row, limits.element, ...(parts ? [parts.components] : [])];
         cc.push(this.backendSection.cellsFor(origin, { rows, trailing: parts?.uninstall }));
       } catch (e) {
         // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
