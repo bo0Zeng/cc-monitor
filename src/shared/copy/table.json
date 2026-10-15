@@ -15265,8 +15265,8 @@
     "rsLocalBackendHost.adopt.waited": {
       "kind": "error",
       "role": "报错",
-      "zh": "{last} · 已等 {tries}×{interval}ms",
-      "args": ["last", "tries", "interval"]
+      "zh": "{last} · 已等 {dur}",
+      "args": ["last", "dur"]
     },
     "rsLocalBackendHost.adopt.notYet": {
       "kind": "error",
@@ -15274,11 +15274,11 @@
       "zh": "{path} 上暂无后端在听",
       "args": ["path"]
     },
-    "rsLocalBackendHost.adopt.nobody": {
+    "rsLocalBackendHost.afterSpawn.exited": {
       "kind": "error",
-      "role": "原因格",
-      "zh": "没有后端在听",
-      "args": []
+      "role": "报错",
+      "zh": "后端未在 {path} 上听即退出（{how}）",
+      "args": ["path", "how"]
     },
     "rsLocalBackendHost.afterSpawn.neverListened": {
       "kind": "error",

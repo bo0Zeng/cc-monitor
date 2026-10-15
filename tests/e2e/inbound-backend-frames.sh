@@ -346,8 +346,9 @@ fi
 #
 # 于是这条反过来钉：关写端之后后端必须**还活着**。
 # 长连接（`stream_loop`）上如果哪天有人让 stdin EOF 顺手杀进程，读面会当场一起死。
+# 等后端说它读到 EOF、决定照开（stderr 里 `stdin-eof-kept` 那一行）之后再看活不活。
 exec 3>&-
-sleep 0.4
+wall_until 'grep -qF stdin-eof-kept "$ERR"' || { bad "关写端之后没等到后端说「读到 EOF、照开」"; tail -20 "$ERR"; }
 if kill -0 "$BACKEND_PID" 2>/dev/null; then ok "关写端后后端仍存活（stdin EOF ≠ 进程退出）"; else
   bad "关写端把后端弄死了 —— 长连接上这会把读面一起弄死"
 fi

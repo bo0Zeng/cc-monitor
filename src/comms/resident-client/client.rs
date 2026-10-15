@@ -32,7 +32,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 /// 待写队列容量。满了 [`InboundClient::call`] 会**等**（背压），不丢命令 ——
 /// 丢一条命令的后果是调用方永远等不到应答，比慢一点糟得多。
@@ -180,6 +180,7 @@ where
             pending: Mutex::new(HashMap::new()),
             machine: std::sync::OnceLock::new(),
             tz: std::sync::OnceLock::new(),
+            read_end: watch::channel(false).0,
         })
     }
 }
@@ -197,6 +198,8 @@ pub struct InboundClient {
     machine: std::sync::OnceLock<String>,
     /// 看的这一台的时区（IANA 名，[`InboundClient::set_viewer_tz`]）：每条请求信封都带；没给 ⇒ 不带（后端按 UTC 写）。
     tz: std::sync::OnceLock<String>,
+    /// 读那一半见了底（[`InboundClient::note_read_end`]）：对端收掉了这条流。
+    read_end: watch::Sender<bool>,
 }
 
 /// 登记表里的一格：等结局的那一头 ＋它若是补发的撤单，撤的是哪条命令（回「停不下来」时点名）。
@@ -463,12 +466,24 @@ impl InboundClient {
 
     /// 显式关掉写半边 —— backend 的入方向 reader 见 EOF 后寿终。只编进测试档。长连接上调它 = 之后再也发不出任何命令，而连接看起来一切正常；
     /// 做成一条要主动发的指令，是为了让这个区别在调用点显形。它不会让后端退出（见 [`WriteJob`]）。
+    /// 回的那个 future 到「对端处理完这条流结束」（它收掉这条流、读那一半见了底，[`InboundClient::note_read_end`]）才完成。
     #[cfg(any(test, feature = "test-support"))]
-    pub fn close_write(&self) {
+    pub fn close_write(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
         if self.writes.try_send(WriteJob::CloseWrite).is_err() {
             // 队列满 / 写任务已退。**说出来** —— 调用方会以为已经关了。
             tracing::debug!("inbound_client close_write 未能入队（写队列满或写任务已退）");
         }
+        let mut ended = self.read_end.subscribe();
+        async move {
+            if ended.wait_for(|e| *e).await.is_err() {
+                tracing::debug!("inbound_client 等「读到底」时这条连接已经拆了 ⇒ 当收掉了");
+            }
+        }
+    }
+
+    /// 读这条连接的那一方读到底了（对端收掉了这条流）时调一次。
+    pub fn note_read_end(&self) {
+        self.read_end.send_replace(true);
     }
 
     /// 断连：叫醒所有还在等的调用方（它们会拿到 [`CallError::Disconnected`]）。

@@ -430,7 +430,7 @@ async fn run_over_stdio(
     let (rx, attached) = poke.attach(&wants.tz);
     // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
     let tap_rx = tap::attach(tz.clone());
-    let inbound_task = inbound::spawn(
+    let mut inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
         watch_desk(&attached, &tap_rx),
@@ -458,15 +458,23 @@ async fn run_over_stdio(
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = drain::shutdown_listener();
     let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz, view);
-    tokio::pin!(writer);
-    let signalled = tokio::select! {
-        _ = &mut writer => {
-            tracing::info!("writer task ended (channel closed)");
-            false
-        }
-        _ = stop => {
-            tracing::info!("shutdown signal received; exiting");
-            true
+    tokio::pin!(writer, stop);
+    // 入方向读到 EOF（对端关了写半边）不退：只说一句（带 `STDIN_EOF_KEPT` 那个记号，判据等的就是它），接着等上面两件。
+    let mut reading = true;
+    let signalled = loop {
+        tokio::select! {
+            _ = &mut writer => {
+                tracing::info!("writer task ended (channel closed)");
+                break false;
+            }
+            _ = &mut stop => {
+                tracing::info!("shutdown signal received; exiting");
+                break true;
+            }
+            _ = &mut inbound_task, if reading => {
+                reading = false;
+                tracing::info!("{STDIN_EOF_KEPT}：入方向读到 EOF，流照开（只在写不出去或收到停机信号时退）");
+            }
         }
     };
     // P5：**显式告诉 reader 停** —— 删掉 8s ticker 之后，reader 那边的
@@ -483,6 +491,9 @@ async fn run_over_stdio(
     drop(reply_tx);
     drain::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
 }
+
+/// stdio 流模式入方向读到 EOF、照开之后 stderr 那一行的记号（e2e 与起真后端的判据等它，再判「还活着」）。
+const STDIN_EOF_KEPT: &str = "stdin-eof-kept";
 
 /// 这条连接的 `stream-watch` 口接到它在这台 watcher 上的那一份（名单按连接）。
 /// `stream-watch` 那一口：名单只有一份，同拍交给这条连接在 watcher 上的那一份（行 · 运行表 · 主线外清单）与活卡（`live` 帧）。

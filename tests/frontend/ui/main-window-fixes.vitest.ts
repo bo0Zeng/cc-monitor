@@ -494,18 +494,24 @@ describe("切走再切回一个 tab：回到离开时的位置", () => {
     const st = inside(tm).store;
     const sa = st.tabs.get("a")!.stream as unknown as { stuck: boolean; scrolled: number };
     const sb = st.tabs.get("b")!.stream as unknown as { stuck: boolean; scrolled: number };
-    const frames = () => new Promise((r) => setTimeout(r, 80));
-    tm.switchTo("b");
-    await frames();
-    sa.stuck = false; // a 里往上翻着
-    const a0 = sa.scrolled;
-    const b0 = sb.scrolled;
-    tm.switchTo("a");
-    await frames();
-    expect(sa.scrolled, "往上翻着的不许被拽到底").toBe(a0);
-    tm.switchTo("b");
-    await frames();
-    expect(sb.scrolled, "贴着底的照样贴底").toBeGreaterThan(b0);
+    // 回位推到下一帧、贴底的第二帧再落一次（`tabs.ts::switchTo`）⇒ 帧钟换成假的，排着的帧都跑完了再判。
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    try {
+      const frames = () => vi.runAllTimers();
+      tm.switchTo("b");
+      frames();
+      sa.stuck = false; // a 里往上翻着
+      const a0 = sa.scrolled;
+      const b0 = sb.scrolled;
+      tm.switchTo("a");
+      frames();
+      expect(sa.scrolled, "往上翻着的不许被拽到底").toBe(a0);
+      tm.switchTo("b");
+      frames();
+      expect(sb.scrolled, "贴着底的照样贴底").toBeGreaterThan(b0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

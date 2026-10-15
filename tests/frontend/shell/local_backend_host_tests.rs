@@ -3350,24 +3350,25 @@ impl E2eSandbox {
     /// 「上一个宿主退了」= 把进程内那点状态清掉，**但不碰那个进程**；
     /// 它手里那个 `Child` **当场**交给沙箱看着。
     fn forget_like_a_host_that_exited(&self) {
-        // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：
-        //   那条流还挂着，下一个宿主拿到的是 `stream-busy`。
-        //   〔实测：第一版就是这么写的，`KPY2` 当场红在「第二个宿主没有认出已有实例」。〕
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
-            crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
-            // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**。
-            //   要让对面知道我们走了，得真的关掉写半边 —— 那才是后端那边的 EOF。
-            c.close_write();
-            c.shutdown();
-            // 关写半边是**入队**的（`WriteJob::CloseWrite`）⇒ 给写任务一拍把它送出去。
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
+        // 先把手里那个 `Child` 拿走（流一断，读端收尾会去收尸 ⇒ 晚了就被它拿走了）。
         let taken = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(h) = &taken {
             self.remember(h.pid);
         }
         if let Some(c) = taken.and_then(|h| h.child) {
             self.kept.lock().unwrap_or_else(|e| e.into_inner()).push(c);
+        }
+        // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：那条流还挂着，下一个宿主认不出已有实例。
+        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+            crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
+            // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**；关写半边才是后端那边的 EOF。
+            //   等到后端处理完这条流结束（它收掉这条流、我们的读端见了底）。
+            let ended = c.close_write();
+            c.shutdown();
+            let done = tauri::async_runtime::block_on(async move {
+                tokio::time::timeout(guard_core::wall::CEILING, ended).await
+            });
+            assert!(done.is_ok(), "关了写半边，到兜底上限后端还没收掉这条流");
         }
     }
 
@@ -4628,5 +4629,73 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         (after.crashed, after.refused, after.misread),
         (base.crashed, base.refused, base.misread),
         "叫停被记成了一次死亡（前 {base:?} / 后 {after:?}）"
+    );
+}
+
+/// 刚起的后端晚 3 秒才听上口（冷启动 · 机器忙）：照样等到、接上；假钟每一拍走 20ms，不真等。
+#[test]
+fn a_backend_that_starts_listening_three_seconds_late_is_still_attached() {
+    let t0 = std::time::Instant::now();
+    let clock = std::cell::Cell::new(t0);
+    let up_at = t0 + std::time::Duration::from_secs(3);
+    let got = super::wait_listening(
+        std::path::Path::new("/run/x/backend.sock"),
+        || Ok((clock.get() >= up_at).then_some("ours")),
+        || None,
+        Some(super::AFTER_SPAWN_LISTEN_WITHIN),
+        || clock.get(),
+        || clock.set(clock.get() + std::time::Duration::from_millis(20)),
+    );
+    assert_eq!(got.map_err(|e| e.said), Ok(Some("ours")));
+    assert!(clock.get() >= up_at, "没等到它听上就回了");
+}
+
+/// 真起不来时照实报：进程先退了 ⇒ 当场报它怎么退的（不等满期限）；一直活着却不听 ⇒ 到期限报等了多久、等的是哪个口。
+#[test]
+fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
+    let sock = std::path::Path::new("/run/x/backend.sock");
+    let t0 = std::time::Instant::now();
+    let tick = std::time::Duration::from_millis(20);
+
+    let clock = std::cell::Cell::new(t0);
+    let dies_at = t0 + std::time::Duration::from_millis(100);
+    let exited = super::wait_listening::<()>(
+        sock,
+        || Ok(None),
+        || (clock.get() >= dies_at).then(|| "exit status: 3".to_string()),
+        Some(super::AFTER_SPAWN_LISTEN_WITHIN),
+        || clock.get(),
+        || clock.set(clock.get() + tick),
+    )
+    .expect_err("进程退了还当它听上了");
+    assert_eq!(
+        exited.said,
+        copy_core::copy_text(
+            "rsLocalBackendHost.afterSpawn.exited",
+            &[("path", "/run/x/backend.sock"), ("how", "exit status: 3")]
+        )
+    );
+    assert!(
+        clock.get() < t0 + std::time::Duration::from_secs(1),
+        "进程退了还等满期限才报"
+    );
+
+    let clock = std::cell::Cell::new(t0);
+    let within = std::time::Duration::from_secs(60);
+    let silent = super::wait_listening::<()>(
+        sock,
+        || Ok(None),
+        || None,
+        Some(within),
+        || clock.get(),
+        || clock.set(clock.get() + tick),
+    )
+    .expect_err("一直没人听还当它听上了");
+    assert!(clock.get() >= t0 + within, "没到期限就报了");
+    assert!(
+        silent.said.contains("/run/x/backend.sock")
+            && silent.said.contains(&copy_core::format_elapsed(within)),
+        "报错没说等的是哪个口、等了多久：{}",
+        silent.said
     );
 }

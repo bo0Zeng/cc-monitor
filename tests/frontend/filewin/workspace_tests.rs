@@ -1040,7 +1040,7 @@ async fn screenshot_for_the_shots_tool() {
     } else {
         Declared::default()
     };
-    let be = FakeBackend::new(&offered, declared)
+    let mut be = FakeBackend::new(&offered, declared)
         .homed(&base)
         .preindexed(&base)
         .aliased("/home/user", &base);
@@ -1048,6 +1048,23 @@ async fn screenshot_for_the_shots_tool() {
         .lock()
         .unwrap()
         .insert(dir.join("main.rs").to_string_lossy().to_string(), code);
+    if scene.starts_with("plan") {
+        be.offered.push(crate::plan::CMD_PLAN_FILES.to_string());
+        *be.plan_reply.lock().unwrap() = Some(
+            serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
+                {"name": "main.rs", "id": "A2-1", "title": "下单入口", "statusCode": "done", "block": "下单流程",
+                 "signAtText": "09:18", "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
+                {"name": "Cargo.toml", "id": "A1-1", "title": "打包配置", "statusCode": "done", "block": null,
+                 "signAtText": "09-20 14:22", "fileState": "ok", "fileNote": null, "dup": []},
+                {"name": "README.md", "id": "A1-2", "title": "说明文档", "statusCode": "open", "block": null,
+                 "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
+                {"name": "notes.txt", "id": "A3-1", "title": "库存客户端", "statusCode": "open", "block": "下单流程",
+                 "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
+                {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": "dropped", "block": null,
+                 "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
+            ]}),
+        );
+    }
     let wired = wire_up("devbox", be).await;
     let mut w = window_on(&wired, &d);
     w.machines = vec![
@@ -1594,22 +1611,17 @@ async fn screenshot_for_the_shots_tool() {
         w.perform(crate::select::Action::Delete, None);
     }
     // 计划反查那两张：目录落在一片的仓库里 ⇒ 「格」一列 ＋ 预览头「归属」；右键多「在计划里看」。
-    //   合成后端不答 `plan-files`（那一问回错 ⇒ 当不在片里）⇒ 等它落空之后照真后端的回包形状摆上一份（中性例子）。
+    //   合成后端照真后端的回包形状答 `plan-files`（中性例子）⇒ 等它落到窗口上。
     if scene.starts_with("plan") {
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-        let reply = serde_json::json!({"workspace": "/home/user/work", "slice": "orders-service", "unreadable": null, "unowned": null, "entries": [
-            {"name": "main.rs", "id": "A2-1", "title": "下单入口", "statusCode": "done", "block": "下单流程",
-             "signAtText": "09:18", "fileState": "ok", "fileNote": "1 KB", "dup": [{"id": "A3-2", "title": "重试策略"}]},
-            {"name": "Cargo.toml", "id": "A1-1", "title": "打包配置", "statusCode": "done", "block": null,
-             "signAtText": "09-20 14:22", "fileState": "ok", "fileNote": null, "dup": []},
-            {"name": "README.md", "id": "A1-2", "title": "说明文档", "statusCode": "open", "block": null,
-             "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
-            {"name": "notes.txt", "id": "A3-1", "title": "库存客户端", "statusCode": "open", "block": "下单流程",
-             "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []},
-            {"name": "report.pdf", "id": "A4", "title": "导出报表", "statusCode": "dropped", "block": null,
-             "signAtText": null, "fileState": "ok", "fileNote": null, "dup": []}
-        ]});
-        *w.listing.plan.lock().unwrap() = crate::plan::from_reply(&reply);
+        let mut landed = false;
+        for _ in guard_core::wall::rounds() {
+            if w.listing.plan.lock().unwrap().is_some() {
+                landed = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(landed, "到兜底上限 `plan-files` 的回包还没落到窗口上");
     }
     if scene == "view" || scene == "view-menu" {
         let i = row_of(&w, "architecture.png");

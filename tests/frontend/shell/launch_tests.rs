@@ -711,17 +711,22 @@ fn exec_terminal(dir: &std::path::Path) -> Vec<String> {
 }
 
 /// 轮询等一个文件落地（spawn 是异步的；上限宽松，判的是「有没有」不是快慢）。
+/// 写的那一侧先写 [`part`]、写完再改名过来 ⇒ 看得见就是写完了的。
 #[cfg(not(windows))]
 fn wait_for(path: &std::path::Path) -> bool {
     for _ in guard_core::wall::rounds() {
         if path.is_file() {
-            // 再等一拍，避免读到写了一半的内容。
-            std::thread::sleep(std::time::Duration::from_millis(20));
             return true;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     false
+}
+
+/// `path` 写到一半时的名字：写完 `mv` 成 `path`（同一目录里改名是原子的）。
+#[cfg(not(windows))]
+fn part(path: &std::path::Path) -> std::path::PathBuf {
+    path.with_extension("part")
 }
 
 /// 这里的中转前缀 —— 照后端生产那一形手写（monitor 这棵树够不着后端渲染器，见下面那条注释）。
@@ -884,9 +889,10 @@ fn the_spawned_process_really_gets_the_relay_prefix_through_the_terminal() {
     std::fs::write(dir.join(relay_route_core::KEY_FILE_REL), &fixture_key).expect("夹具钥匙");
     let expanded = url.replacen("8788/", &format!("8788/{fixture_key}/"), 1);
     let payload = format!(
-        "HOME='{}'; {prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
+        "HOME='{}'; {prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {part} && mv {part} {}",
         dir.display(),
-        seen.display()
+        seen.display(),
+        part = part(&seen).display()
     );
     // 反空真②：观测点在**进程那一侧**，起手它必须不存在。
     assert!(!seen.exists(), "起手观测文件就在了 —— 本条会读到上一趟的痕");
@@ -923,8 +929,9 @@ fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
     install_fake_terminal(
         &fake_term,
         &format!(
-            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{}'\n",
-            recorded.display()
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{part}' && mv '{part}' '{}'\n",
+            recorded.display(),
+            part = part(&recorded).display()
         ),
     );
 

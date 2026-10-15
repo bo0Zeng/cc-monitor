@@ -130,26 +130,11 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "src/local_backend_host.rs",
         "adopt_with",
         "wait-for-condition",
-        "〔`K-P1` 08-26；说法 08-27 补全，见下 ⚠⚠〕那一处 `sleep` 住 `adopt_with`，\
-             而 `adopt_with` 有**两个**调用方，等的是**两件不同的事**，共用同一条上限：\
-             ① `probe_and_attach_after_spawn`（`wait_for_bind = true`）等**刚脱离起来的那个 backend**\
-             把回环口 bind 上；\
-             ② `adopt_existing`（`wait_for_bind = false`）**根本没有 spawn** —— 它等的是\
-             `stream-busy` 那张牌被还回来（上一个 monitor 刚退、对面还没把那条流放回去）。\
-             不等它，用户会看到「换台电脑重开 monitor 就没有本机后端」。\
-             上限两条路共用：`LISTEN_WAIT_TRIES × LISTEN_WAIT_INTERVAL_MS` = 50×20ms ≈ **1 秒**，\
-             等到就走、等不到就如实报错（①那条还会把那个进程收掉）。**一次性条件，不是节拍器。**\
-             ⚠⚠ 〔`K-P1-D1` `重-4`〕本行原先只写了①，而它盖着的是两件事。\
-             **登记表的说法就是那条判据的诚实边界** —— 说法与代码不是一回事时，\
-             判据在替一个不存在的性质背书。⇒ 同轮补了\
-             `local_backend_host::the_timer_registry_names_every_caller_of_the_one_wait_here`\
-             钉住「这一行必须点到**每一个**调用方的名字」。\
-             ⚠ 为什么非等不可（这是**实测**出来的，不是推的）：`connect_timeout` 在**没人在听**的口上\
-             拿到 `ECONNREFUSED` 时**内核立刻返回**，它压根不等 —— 第一版据此写了「让内核等」，\
-             实测 0.00 秒就红了。⇒ 只有 `Probe::Nobody` 那一支重试；\
-             「口上是别人」不会自己变好，重试它只是把一个确定的坏消息拖晚。\
-             退役归：哪天改成「宿主自己 bind、把 fd 传给子进程」——那时竞态**根本不存在**\
-             （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
+        "那一处 `sleep` 住 `adopt_with`（交给 `wait_listening` 的两次探问之间的停顿）。两个调用方：\
+             ① `probe_and_attach_after_spawn` 等**刚脱离起来的那个 backend** 听上口，期限由发起方给（`AFTER_SPAWN_LISTEN_WITHIN`，60 秒）；\
+             那个进程先退了当场报、听上了就走，到期限照实报等了多久、等的是哪个口。\
+             ② `adopt_existing` 不等：只问一次，没人就是真没人。**一次性条件，不是节拍器。**\
+             ⚠ 为什么非问不可：`connect` 在没人在听的口上拿到 `ECONNREFUSED` 是内核立刻返回的，不会替我们等。",
     ),
     (
         // `early_failure` 随「起进程那一侧」留在 monitor（从前住窗口的 `shell.rs`）。
