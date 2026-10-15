@@ -226,17 +226,8 @@ pub(crate) fn preset_with(
             copy_text("beRotation.strategy.gone", &[("name", strategy)]),
         ));
     }
-    let agent = crate::agents::pick_kind(Some(kind))
-        .map(|(_, f)| f.adapter_id.to_string())
-        .unwrap_or_else(|_| kind.to_string());
-    let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
-    rotation::face_change(&ctx.hop.store, own, |b| {
-        b.sessions.insert(
-            sid.to_string(),
-            book::Session::fresh(&agent, zero, now, strategy),
-        );
-    })
-    .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
+    rotation::preset(&ctx.hop.store, own, sid, kind, strategy, now)
+        .map_err(|e| ("io_failed", crate::common::said::IntoNote::into_note(e)))
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号的；写不成只出声）。

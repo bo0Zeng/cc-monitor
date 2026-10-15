@@ -221,6 +221,7 @@ fn the_file_speaks_exactly_the_command_lines_words() {
         flag::CCM_PROBE,
         flag::CCM_SID,
         flag::ACCOUNT_DIR,
+        flag::NO_ROTATION,
     ];
     let keys: Vec<&str> = PROFILE_FLAGS.iter().map(|f| key_of(f)).collect();
     for k in &keys {
