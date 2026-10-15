@@ -119,7 +119,7 @@ pub async fn size_remote(
     Ok(sized_from_reply(name, r))
 }
 
-/// 窗口上的样子：在算哪一项 · 上一摞的结局。**跨线程共享**（UI 线程画，tokio 那条写）。形状照 [`super::copy::CopyBoard`]。
+/// 窗口上的样子：在算哪一项 · 上一摞的结局。**跨线程共享**（UI 线程画，tokio 那条写）。形状照 [`super::extract::ExtractBoard`]。
 #[derive(Clone, Default)]
 pub struct SizeBoard {
     inner: Arc<Mutex<Desk>>,

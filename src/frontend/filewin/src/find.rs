@@ -606,8 +606,7 @@ pub struct Shown {
 /// 每块板子一个搜索框名（同一进程里不重）。
 static NEXT_STREAM: AtomicU64 = AtomicU64::new(1);
 
-/// 搜索这件事的**共享落点** —— 形状照 [`super::shell::Listing`] 与
-/// [`super::copy::CopyBoard`] 办（UI 线程读，tokio 那条写）。
+/// 搜索这件事的**共享落点** —— 形状照 [`super::shell::Listing`] 办（UI 线程读，tokio 那条写）。
 ///
 /// 🔴 `epoch` 既是这一侧丢旧答案的号，也是发给后端的 `seq`：
 /// 用户打字比往返快，「t」的答案可能在「te」的答案之后才到 —— 号对不上就整份丢掉；
@@ -668,7 +667,7 @@ impl Default for SearchBoard {
 }
 
 impl SearchBoard {
-    /// 把窗口交给它，好让它在答案到了的时候敲一下（同 [`super::copy::CopyBoard::attach`]）。
+    /// 把窗口交给它，好让它在答案到了的时候敲一下。
     ///
     /// ⚠ **`None` 不会把已经交过的那个窗口摘掉**：发起口可以在没有 `Ui` 在手的地方被调（判据就是这么用的），
     /// 让 `None` 覆盖掉真窗口 ⇒ 答案回来时敲不动窗口，结果要等用户再动一下鼠标才出现。

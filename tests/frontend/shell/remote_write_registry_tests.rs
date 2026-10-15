@@ -420,12 +420,12 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
 ///
 /// 那一节写着「池子 **14** 条命令，窗口只接了 **6** 条」，接上了那一栏点名
 /// `sftp_list_dir` · `sftp_stat` · **`sftp_realpath`** · `sftp_upload` · `sftp_copy` ·
-/// **`copy_remote_path`**。逐条现打：
+/// 池子里那条零流量复制。逐条现打：
 ///
 /// | 那张表 | 现打 | 差在哪 |
 /// |---|---|---|
 /// | 池子 14 条 | **13** 条 | 第 14 个匹配是 `sftp_chmod` 头注里提到 `#[tauri::command]` 那句**散文** |
-/// | 窗口接了 6 条 | **4** 条 | `sftp_realpath` 在 `filewin/` 里**零处**（只有老面板 `panel.ts` 在用）；`copy_remote_path` **不是命令**，而且 `filewin/` 被判据明禁调它（理由住 `copy.rs` 头注：它的第一个参数是一条裸会话，绕过 `sftp_copy` 就同时丢掉围栏 ＋ 取消登记 ＋ 车道预算） |
+/// | 窗口接了 6 条 | **4** 条 | `sftp_realpath` 在 `filewin/` 里**零处**（只有老面板 `panel.ts` 在用）；池子那条零流量复制**不是命令**（它的第一个参数是一条裸会话，绕过 `sftp_copy` 就同时丢掉围栏 ＋ 取消登记 ＋ 车道预算） |
 ///
 /// ⇒ 那张表的「6 → 11」这个算式两侧都错。**真实读数是 4 → 9**（第七刀之后 **10**），
 /// 而本条就是那个数的住址。

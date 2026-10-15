@@ -213,7 +213,7 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
     // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
     // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。
-    // 11 → 12：`terminal` 那一键（设置 → 通用 → 恢复 → 终端，`src/frontend/ui/settings/terminal-row.ts`）。
+    // 11 → 12：`terminal` 那一键（设置 → 通用 → 终端，`src/frontend/ui/settings/terminal-row.ts`）。
     // 12 → 13：`sessionHead` 那一键（会话头按钮，`src/frontend/ui/session-head.ts`）。
     // 13 → 11：第 7 批这台的偏好搬到各台后端 ⇒ `accounts.ts` · `main.ts` · `local-machine-prefs.ts` 不再是主人，
     //   那几个键改登记给迁移那一段 `src/frontend/shell/src/prefs_migration.rs`（多它一个）。

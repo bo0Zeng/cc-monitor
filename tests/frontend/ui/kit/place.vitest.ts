@@ -76,6 +76,20 @@ describe("浮层贴着触发物", () => {
     expect(at(pop)).toEqual({ left: 1000 - 300, top: 744 - 4 - 200 });
   });
 
+  it("★ 菜单比上下两边都高（窄窗里会话头「⋯」）⇒ 仍贴着触发物下方 4px，高限到下面那一截、内滚；关了再开在大窗里限高撤掉", () => {
+    Object.defineProperty(window, "innerHeight", { value: 560, configurable: true });
+    floatSize = { width: 240, height: 519 };
+    const more = anchorAt({ left: 446, top: 6, right: 474, bottom: 34 });
+    openMenu({ el: more, align: "end" }, [{ label: "项一" }]);
+    expect(at(menuEl()).top).toBe(38);
+    expect(menuEl().style.maxHeight).toBe(`${560 - 8 - 38}px`);
+    expect(menuEl().style.overflowY).toBe("auto");
+    closeMenu();
+    Object.defineProperty(window, "innerHeight", { value: VIEW.height, configurable: true });
+    openMenu({ el: more, align: "end" }, [{ label: "项一" }]);
+    expect(menuEl().style.maxHeight).toBe("");
+  });
+
   it("★ 开着时触发物被重画掉（不在 DOM 里了、外接框全 0）、菜单项回来再排一次 ⇒ 位置不动，不飞到左上角", () => {
     const more = anchorAt({ left: 990, top: 6, right: 1018, bottom: 34 });
     openMenu({ el: more, align: "end" }, [{ id: "kill", label: "项三", pending: true }]);
@@ -92,8 +106,21 @@ describe("浮层贴着触发物", () => {
     const fly = wrap.querySelector<HTMLElement>('[role="menu"][data-sub]')!;
     boxes.set(wrap, { left: 784, top: 700, right: 1016, bottom: 728 });
     wrap.querySelector<HTMLButtonElement>(":scope > button")!.click();
-    // 视口里：左侧（784 − 240 = 544）· 顶对齐放不下 ⇒ 底端对齐那一项（728 − 300 = 428）；写成相对那一项的偏移。
-    expect(at(fly)).toEqual({ left: 544 - 784, top: 428 - 700 });
+    // 视口里：左侧（784 − 240 = 544）· 顶对齐放不下 ⇒ 底端对齐那一项（728 − 300 = 428）；子菜单是 fixed，直接写视口坐标
+    //（主菜单限高内滚时，子菜单不被它裁掉、也不把它撑出横向滚动）。
+    expect(at(fly)).toEqual({ left: 544, top: 428 });
+  });
+
+  it("★ 主菜单入场动画（带 transform）还没走完就开子菜单 ⇒ 先把入场动画走完再摆（不然 fixed 的子菜单按主菜单算坐标、偏出去）", () => {
+    openMenu({ x: 100, y: 100 }, [{ label: "项五", submenu: [{ label: "work" }] }]);
+    const wrap = menuEl().querySelector<HTMLElement>(':scope > [role="none"]')!;
+    // 走完那一刻子菜单还没摆（没展开）：先走完、再摆。
+    const openAtFinish: (string | undefined)[] = [];
+    (menuEl() as unknown as { getAnimations: () => { finish: () => void }[] }).getAnimations = () => [{ finish: () => openAtFinish.push(wrap.dataset.subOpen) }];
+    boxes.set(wrap, { left: 100, top: 120, right: 340, bottom: 148 });
+    wrap.querySelector<HTMLButtonElement>(":scope > button")!.click();
+    expect(openAtFinish).toEqual([undefined]);
+    expect(wrap.dataset.subOpen).toBe("true");
   });
 
   it("右键点（一点）：右下放不下 ⇒ 往左上翻（与原先一样）", () => {

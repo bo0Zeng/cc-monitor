@@ -110,7 +110,7 @@ use copy_core::said::Said;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::copy::{CopyBoard, CopyJob, CopyPrompt};
+use super::copy::{CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
@@ -416,8 +416,6 @@ pub struct FileWindow {
     /// 而把 `cwd` 也塞进 `Arc` 只为了让它能读，是把窗口状态搬到共享内存里去。
     /// ⇒ 换个方向：任务只记「我跑完了」，**换目录这件事一直留在 UI 线程手上**。
     seen_rounds: u64,
-    /// 第二段：零流量复制那一趟的状态机（**问覆盖 · 进度 · 裁决**）。
-    pub copy_board: CopyBoard,
     /// 算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
     pub size_board: super::size::SizeBoard,
     /// 解压那一趟的看板（在解哪一个 · 撞名那一问 · 结局）。
@@ -448,8 +446,6 @@ pub struct FileWindow {
     pub dual: bool,
     /// 菜单上点了「复制到另一栏」：窗口那一级接（两栏的事归它）。
     pub across_wanted: bool,
-    /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
-    seen_copy_rounds: u64,
     /// `fonts.rs`：这个窗口的字体装没装上、复核没复核过。
     ///
     /// 🔴 默认是 `NotInstalled` 而**不是**「一切正常」——
@@ -583,9 +579,8 @@ pub struct FileWindow {
     pub dragging: bool,
     /// 起过几摞写操作（与 `write_board.rounds()` 比 ⇒ 有没有还没回话的；关标签那一问用）。
     writes_started: u64,
-    /// 起过几摞上传 / 复制 / 跨机复制（与各自看板的 `rounds()` 比 ⇒ 那一类还有一趟没完）。
+    /// 起过几摞上传 / 跨机复制（与各自看板的 `rounds()` 比 ⇒ 那一类还有一趟没完）。
     drops_started: u64,
-    copies_started: u64,
     /// 框里那一问做不成的原因（画在框里；框外列表上方那一行被暗底盖着）。框收掉就清。
     pub(super) prompt_error: Arc<Mutex<Option<super::source::Failed>>>,
     /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
@@ -743,7 +738,6 @@ impl FileWindow {
             offer: Default::default(),
             board: DropBoard::default(),
             seen_rounds: 0,
-            copy_board: CopyBoard::default(),
             size_board: super::size::SizeBoard::default(),
             extract_board: super::extract::ExtractBoard::default(),
             seen_extract_rounds: 0,
@@ -759,7 +753,6 @@ impl FileWindow {
             pull_many: Vec::new(),
             dual: false,
             across_wanted: false,
-            seen_copy_rounds: 0,
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
             query: String::new(),
@@ -814,7 +807,6 @@ impl FileWindow {
             dragging: false,
             writes_started: 0,
             drops_started: 0,
-            copies_started: 0,
             prompt_error: Arc::new(Mutex::new(None)),
             hit_rows: (u64::MAX, u64::MAX, Arc::new(Vec::new())),
             edit_tab: false,
@@ -1722,58 +1714,12 @@ impl FileWindow {
             );
             return false;
         };
-        if !self.start_copy(job, ctx) {
+        // 一组一项：同名由后端探、回 `exists` 画同一个冲突框，结局是「进度」表里后端那一行。
+        if !self.start_copy_batch(vec![job], ctx) {
             return false;
         }
         self.copy_prompt = None;
         *self.prompt_error.lock().unwrap() = None;
-        true
-    }
-
-    /// 起一趟 `§5` 第二段：**先问会不会覆盖，再动手，回来把裁决摆出来。**
-    ///
-    /// 🔴 三段的顺序不在这里，在 [`super::copy::run_copy`] 的结构里 ——
-    /// 这里只负责把「问谁 · 怎么问 · 怎么起」三个口接上去（同 [`Self::start_drop`]）。
-    /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
-    pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
-        let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
-            return false;
-        };
-        let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string().into());
-            return false;
-        };
-        let origin = self.source.origin();
-        let board = self.fresh_copy_board(1, &job.name);
-        self.copies_started += 1;
-        // 🔴 把窗口交给看板（同 `start_drop`）：「在跑」与结局都是从 tokio 那条线程写进来的，
-        //    不敲一下，屏幕要等用户下次动鼠标才更新。
-        board.attach(ctx);
-        h.spawn(async move {
-            let (probe_line, probe_origin) = (line.clone(), origin.clone());
-            let ask_board = board.clone();
-            let run_board = board.clone();
-            let out = super::copy::run_copy(
-                job,
-                // 目录那一件不问覆盖（目录复制不合并）：目标已在由后端拒、原话摆出来。
-                move |j| async move {
-                    !j.is_dir && super::copy::probe_target(&probe_line, &probe_origin, &j).await
-                },
-                move |j| {
-                    let rx = ask_board.ask(j);
-                    async move { rx.await.unwrap_or(false) }
-                },
-                // 经通道问后端 `files-copy`；第二个参数是覆盖策略（问过且答了「覆盖」）。
-                //   后端这一趟取消不掉 ⇒ 不再走取消那道闸（理由住 `copy.rs` 头注）。
-                move |j, overwrite| async move {
-                    run_board.begin(&j.name);
-                    super::copy::copy_remote(&line, &origin, &j, overwrite).await
-                },
-            )
-            .await;
-            board.finish(out);
-        });
         true
     }
 
@@ -1795,7 +1741,6 @@ impl FileWindow {
             into: Some(self.cwd.clone()),
             machine: self.source.label(),
         };
-        self.copies_started += 1;
         let at = self.source.origin();
         self.start_batch(plan, at, egui_phosphor::regular::COPY, ctx)
     }
@@ -1868,26 +1813,7 @@ impl FileWindow {
         before != self.batches.len()
     }
 
-    /// 机器上复制的一趟一块新看板（「进度」表里独立的一行）。
-    fn fresh_copy_board(&mut self, n: usize, name: &str) -> CopyBoard {
-        let board = CopyBoard::default();
-        self.copy_board = board.clone();
-        self.seen_copy_rounds = 0;
-        let no_stop = self.no_stop(super::copy::CMD_COPY);
-        let id = self.progress.add(
-            super::progress::Trip::Copy {
-                board: board.clone(),
-                n,
-                name: name.to_string(),
-            },
-            Some(self.cwd.clone()),
-            no_stop,
-        );
-        self.track_job("copy", id);
-        board
-    }
-
-    /// 解压跑完一趟就重列当前目录（新目录要出现在列表里）。同 [`Self::settle_finished_copies`]。
+    /// 解压跑完一趟就重列当前目录（新目录要出现在列表里）。
     pub fn settle_finished_extracts(&mut self) -> bool {
         let now = self.extract_board.rounds();
         if now == self.seen_extract_rounds {
@@ -2230,21 +2156,7 @@ impl FileWindow {
         pick
     }
 
-    /// 复制跑完一趟就重列当前目录（新文件要出现在列表里）。同 [`Self::settle_finished_drops`]。
-    pub fn settle_finished_copies(&mut self) -> bool {
-        let now = self.copy_board.rounds();
-        if now == self.seen_copy_rounds {
-            return false;
-        }
-        self.seen_copy_rounds = now;
-        self.reload();
-        true
-    }
-
     /// 画「复制为」那个框。**模态** —— 名字没定下来之前不接别的。
-    ///
-    /// ⚠ 与 [`super::copy::CopyBoard::ui`] 分开两处，因为它们的状态住在两个地方：
-    /// 这个框是 UI 线程自己的，那一摞（问覆盖 / 进度 / 裁决）是跨线程的。
     fn copy_ui(&mut self, ui: &mut egui::Ui) {
         let Some(mut p) = self.copy_prompt.clone() else {
             return;
@@ -4191,9 +4103,8 @@ impl FileWindow {
 
     /// 编辑面以外的那几个框有没有一个摆着。
     fn asking_up(&self) -> bool {
-        self.copy_board.is_asking()
-            // 解压撞名那一问。
-            || self.extract_board.is_asking()
+        // 解压撞名那一问。
+        self.extract_board.is_asking()
             // 复制到另一台：填机器名那一问 · 盖不盖那一问。
             || self.cross_prompt.is_some()
             || self.batches.iter().any(|b| b.is_asking())
@@ -4708,9 +4619,7 @@ impl FileWindow {
     ///
     /// `eframe::App::ui` 的签名逐字要一个 `&mut eframe::Frame`
     /// （`eframe-0.36.2/src/epi.rs` 的 `trait App`），而那个类型在判据里**造不出来**
-    /// ⇒ 剥出来之前，这个窗口**每一帧真正画的那段代码一条判据都没有**
-    /// （现打：第一~三刀的判据全在零件上 —— `CopyBoard::ui` / `show_file_rows` /
-    ///  `outcome_notice` —— 而把这几个零件从这个函数里摘掉，那些判据一条都不会红）。
+    /// ⇒ 不剥出来，这个窗口**每一帧真正画的那段代码一条判据都没有**（判据只在零件上，把零件从这里摘掉也不红）。
     /// 这正是本仓那条「判据不在执行链上就等于不存在」。
     ///
     /// ⇒ 从此 `eframe::App::ui` 只剩一句委派，判据直接喂本函数。
@@ -4931,7 +4840,6 @@ impl FileWindow {
         self.props_ui(ui);
         // 后台那几趟（上传 · 下载 · 复制 · 解压 · 算大小 · 删除）的进度、停与结局不在这里画：
         //   它们是窗口底部「进度」表里的一行（`super::progress`，由 `Workspace` 画）。这里只剩每一趟开头那一问（模态，画在列表之前）。
-        self.copy_board.ui(ui);
         self.extract_board.ui(ui);
         for b in &self.batches {
             super::batch::ask_ui(ui, b);
@@ -4957,7 +4865,6 @@ impl FileWindow {
         self.settle_saved_edits();
         self.take_drops(&ui.ctx().clone());
         self.settle_finished_drops();
-        self.settle_finished_copies();
         self.settle_finished_batches();
         self.settle_finished_extracts();
         self.settle_finished_writes();

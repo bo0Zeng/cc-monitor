@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use copy_core::copy_text;
 
 use super::batch::{BatchBoard, Phase};
-use super::copy::{CopyBoard, CopyOutcome};
 use super::download::DownloadBoard;
 use super::extract::ExtractBoard;
 use super::size::SizeBoard;
@@ -41,13 +40,7 @@ pub enum Trip {
         src: String,
         dest: String,
     },
-    /// 在那台机器上复制（复制一份 · 复制到另一栏）。
-    Copy {
-        board: CopyBoard,
-        n: usize,
-        name: String,
-    },
-    /// 一组一条命令（复制到另一栏 · 复制到另一台 · 删除 · 改权限）：那块看板带着票、进度、冲突框与结局。
+    /// 一组一条命令（复制为 · 复制到另一栏 · 复制到另一台 · 删除 · 改权限）：那块看板带着票、进度、冲突框与结局。
     Batch {
         board: BatchBoard,
         icon: &'static str,
@@ -309,7 +302,6 @@ impl Progress {
                         }
                     }
                 }
-                Trip::Copy { name, .. } => put(transfers, (ph::COPY, name.clone(), String::new())),
                 Trip::Extract { name, .. } => put(
                     copy_text("rsFilewinWorkspace.closeAsk.extracting", &[]),
                     (ph::FILE_ZIP, name.clone(), String::new()),
@@ -390,7 +382,6 @@ impl Job {
     pub fn shown(&self) -> bool {
         match &self.trip {
             Trip::Upload { ask, .. } => !ask.is_asking() && ask.phase() != Phase::Dropped,
-            Trip::Copy { board, .. } => !board.is_asking(),
             Trip::Batch { board, .. } => !board.is_asking() && board.phase() != Phase::Dropped,
             Trip::Extract { board, .. } => !board.is_asking(),
             Trip::Download { .. } | Trip::Size { .. } => true,
@@ -402,9 +393,6 @@ impl Job {
         match &self.trip {
             Trip::Batch { board, .. } | Trip::Upload { ask: board, .. } => {
                 board.phase() == Phase::Dropped
-            }
-            Trip::Copy { board, .. } => {
-                board.rounds() > 0 && matches!(board.last(), Some(CopyOutcome::Skipped))
             }
             _ => false,
         }
@@ -431,11 +419,6 @@ impl Job {
                 (_, Some(super::download::Outcome::Done { .. })) => State::Done,
                 _ if board.cancels().is_cancelled() => State::Stopped,
                 _ => State::Failed,
-            },
-            Trip::Copy { board, .. } => match (board.rounds(), board.last()) {
-                (0, _) => State::Running,
-                (_, Some(CopyOutcome::Failed(_))) => State::Failed,
-                _ => State::Done,
             },
             Trip::Batch { board, .. } => match board.phase() {
                 Phase::Running | Phase::Asking | Phase::Cut(_) => State::Running,
@@ -491,13 +474,6 @@ impl Job {
             ),
             Trip::Download { name, .. } => {
                 copy_text("rsFilewinProgress.download.running", &[("name", name)])
-            }
-            Trip::Copy { n, name, .. } => {
-                if *n == 1 {
-                    copy_text("rsFilewinProgress.copy.runningOne", &[("name", name)])
-                } else {
-                    copy_text("rsFilewinProgress.copy.running", &[("n", &n.to_string())])
-                }
             }
             Trip::Batch { board, .. } => board.title(),
             Trip::Size { name, .. } => {
@@ -785,47 +761,6 @@ impl Job {
                     },
                 }
             }
-            Trip::Copy { board, .. } => match (state, board.last()) {
-                (State::Running, _) => View {
-                    state,
-                    icon: ph::COPY,
-                    title: self.title(),
-                    detail: board.running().unwrap_or_default(),
-                    frac: Some(None),
-                    nums: String::new(),
-                    copy: None,
-                    button: stop_button(self),
-                },
-                (_, o) => {
-                    let (title, detail) = match &o {
-                        Some(CopyOutcome::Done { bytes, .. }) => (
-                            copy_text("rsFilewinProgress.copy.done", &[("n", "1")]),
-                            copy_core::size_text(*bytes),
-                        ),
-                        Some(o) => (
-                            copy_text("rsFilewinProgress.copy.failed", &[("n", "1")]),
-                            super::copy::outcome_notice(o).text,
-                        ),
-                        None => (String::new(), String::new()),
-                    };
-                    View {
-                        state,
-                        icon: icon_for(ph::COPY),
-                        copy: match board.last() {
-                            Some(CopyOutcome::Failed(f)) => super::source::Failed::copy_body(
-                                &format!("{title}\n{detail}"),
-                                &f.detail,
-                            ),
-                            _ => None,
-                        },
-                        title,
-                        detail,
-                        frac: None,
-                        nums: ended,
-                        button: None,
-                    }
-                }
-            },
             Trip::Batch { board, icon } => {
                 let plan = board.plan();
                 let tick = board.tick();
@@ -995,18 +930,8 @@ fn row_view(j: &Job, offline: bool) -> View {
     v
 }
 
-/// 表要多高才把每一行（含失败摊开的那几行小字）都摆下：表头 32 ＋ 每行的高 ＋ 上下边距。调用方再夹到它的上限（超了在表里滚）。
-pub fn table_height(progress: &Progress, offline: bool) -> f32 {
-    32.0 + progress
-        .jobs()
-        .iter()
-        .filter(|j| j.shown())
-        .map(|j| super::kit::task_row_height(&row_view(j, offline)))
-        .sum::<f32>()
-        + 12.0
-}
-
-pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option<Act> {
+/// 画那张表，回这一帧按了哪颗按钮 ＋ 各行比表的可见区高出多少（这一帧真排出来的；负 ＝ 有空余。调用方下一帧照它改表高、夹到上限，超了在表里滚）。
+pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> (Option<Act>, f32) {
     let jobs = progress.jobs();
     let mut act = None;
     let mut clear = false;
@@ -1021,7 +946,7 @@ pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    egui::ScrollArea::vertical()
+    let rows = egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
             for j in jobs.iter().filter(|j| j.shown()) {
@@ -1046,7 +971,7 @@ pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option
     if collapse {
         progress.set_open(false);
     }
-    act
+    (act, rows.content_size.y - rows.inner_rect.height())
 }
 
 #[cfg(test)]
