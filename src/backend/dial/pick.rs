@@ -1,7 +1,7 @@
 //! 帧命令入参里「拨哪台」那几格的类型：那台的配置（[`MachineConfig`]）· 已保存的那一份 · 跳板那一台 · 上次赢的那条（[`Prefer`]）。
 //!
 //! 组请求只在 `ssh_dial::machine`（地址排序 · 指纹继承 · 跳板查无 / 环）；这里只把按类型收下的那几格交过去。
-//! 内建档那几条（`link-open` · `transfer-*` · 测试连接）的拨号还是线上原样那一份，经 `ssh_dial::machine::resolve` 读。
+//! 内建档那几条（`link-open` · `transfer-*`）的拨号还是线上原样那一份，经 `ssh_dial::machine::resolve` 读。
 
 use serde_json::{json, Value};
 

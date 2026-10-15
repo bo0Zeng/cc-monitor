@@ -150,7 +150,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("quota-probe", "4a59ea71"),
     ("quota-read", "ef50c36e"),
     ("relay-optin", "0bfe7134"),
-    ("remote-probe", "f9f87dc6"),
+    ("remote-probe", "80485660"),
     ("remote-reach", "819ea6be"),
     ("resident-verdict", "c3b80886"),
     ("resolve", "a25c2648"),
