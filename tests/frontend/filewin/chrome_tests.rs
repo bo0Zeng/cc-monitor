@@ -132,9 +132,9 @@ fn the_status_line_counts_items_selection_and_hidden_files() {
         "/m",
         vec![
             row("d", true, 4096, 1),
+            row(".env", false, 10, 4),
             row("a.txt", false, 1024, 2),
             row("b.txt", false, 2048, 3),
-            row(".env", false, 10, 4),
         ],
     );
     assert_eq!(
@@ -181,7 +181,7 @@ fn the_status_line_counts_items_selection_and_hidden_files() {
         .collect();
     assert_eq!(
         names,
-        ["d", "a.txt", "b.txt", ".env"],
+        ["d", ".env", "a.txt", "b.txt"],
         "并回来要回到它在那一屏里的位置"
     );
 }
