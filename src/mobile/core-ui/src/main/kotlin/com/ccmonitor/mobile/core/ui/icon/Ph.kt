@@ -17,6 +17,8 @@ enum class Ph(
     CaretDown(0xE136),
     CaretRight(0xE13A),
     Chats(0xE17C),
+    CheckSquare(0xE186),
+    Circle(0xE18A),
     Copy(0xE1CA),
     DotsThree(0xE1FE),
     File(0xE230),
@@ -32,6 +34,7 @@ enum class Ph(
     Play(0xE3D0),
     Plus(0xE3D4),
     PlusCircle(0xE3D6),
+    Square(0xE45E),
     Star(0xE46A),
     Stop(0xE46C),
     Trash(0xE4A6),
@@ -39,6 +42,7 @@ enum class Ph(
     X(0xE4F6),
     Tabs(0xE778),
     TerminalWindow(0xEAE8),
+    RadioButton(0xEB08),
     ;
 
     val glyph: String get() = String(Character.toChars(codepoint))

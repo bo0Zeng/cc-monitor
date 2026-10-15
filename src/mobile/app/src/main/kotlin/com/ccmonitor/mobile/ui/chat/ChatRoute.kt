@@ -47,6 +47,7 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
+import com.ccmonitor.mobile.ui.chat.needs.NeedsViewModel
 import com.ccmonitor.mobile.ui.chat.needs.rememberChatNeeds
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
 import com.ccmonitor.mobile.ui.common.HostLink
@@ -114,7 +115,6 @@ fun ChatRoute(
     val picker = vm.picker
     val needs = rememberChatNeeds(open.key, backends.of(hostId), sid, host.machine)
     val terminals = remember(hostId) { TerminalOps(backends.of(hostId), { host.machine }) }
-    val needsUi by needs.desk.state.collectAsStateWithLifecycle()
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawer) {
         Scaffold(
             modifier = modifier,
@@ -123,7 +123,13 @@ fun ChatRoute(
                     title = if (state.drafting) copyText("newSession.title.plain") else product,
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     sid = state.sid?.takeIf { !state.drafting },
-                    findTerminal = { s -> terminals.list().getOrNull()?.let { TerminalsList.holding(it, s) }?.name },
+                    findTerminal = { s ->
+                        terminals
+                            .list()
+                            .getOrNull()
+                            ?.let { TerminalsList.holding(it, s) }
+                            ?.name
+                    },
                     onTerminal = onOpenTerminal,
                     onRotation = onOpenRotation,
                 )
@@ -141,18 +147,30 @@ fun ChatRoute(
                 if (state.drafting && picker != null) {
                     NewSessionPane(hostId, host.machine, picker, onSwitchMachine = { id -> onDrawerAction(DrawerAction.NewDraft(id, null)) })
                 }
-                ChatScreen(
-                    state = state,
-                    actions = vm.actions,
-                    onRetrySend = vm::retry,
-                    onLoadOlder = vm::loadOlder,
-                    awaiting = needsUi.awaiting,
-                    needs = { ChatNeeds(needs) },
-                    modifier = Modifier.weight(1f),
-                )
+                ChatBody(vm, state, needs, Modifier.weight(1f))
             }
         }
     }
+}
+
+/** 正文 ＋ 需手动 ＋ 输入那一圈（需手动里在等的那一步也递给正文，那张工具卡上标它）。 */
+@Composable
+private fun ChatBody(
+    vm: ChatViewModel,
+    state: ChatUiState,
+    needs: NeedsViewModel,
+    modifier: Modifier,
+) {
+    val needsUi by needs.desk.state.collectAsStateWithLifecycle()
+    ChatScreen(
+        state = state,
+        actions = vm.actions,
+        onRetrySend = vm::retry,
+        onLoadOlder = vm::loadOlder,
+        awaiting = needsUi.awaiting,
+        needs = { ChatNeeds(needs) },
+        modifier = modifier,
+    )
 }
 
 /** 开一条对话要的那几样（DI 按类型取这一件，不按位置取几个裸串）。 */

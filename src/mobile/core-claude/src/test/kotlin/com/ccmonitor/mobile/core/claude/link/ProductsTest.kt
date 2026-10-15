@@ -68,9 +68,20 @@ class ProductsTest {
         assertEquals(Switches(CanSwitch("先答完需手动"), CanSwitch("先答完需手动")), t.sessions.getValue("s1").switch)
         t = t.step(golden("session_status")[1], breaks::add)
         assertEquals(Switches(CanSwitch(null), CanSwitch(null)), t.sessions.getValue("s1").switch)
-        assertTrue(t.sessions.getValue("s1").switch!!.model.can)
+        assertTrue(
+            t.sessions
+                .getValue("s1")
+                .switch!!
+                .model.can,
+        )
         t = t.step(golden("session_state")[0], breaks::add)
-        assertEquals(CanSwitch("会话已退出"), t.fates.getValue("s1").switch?.model)
+        assertEquals(
+            CanSwitch("会话已退出"),
+            t.fates
+                .getValue("s1")
+                .switch
+                ?.model,
+        )
         val (superseded, gone) = golden("session_removed")
         assertEquals(mapOf("s1" to "s2"), t.step(superseded, breaks::add).successors)
         assertTrue("不是顶替 ⇒ 不记", t.step(gone, breaks::add).successors.isEmpty())
