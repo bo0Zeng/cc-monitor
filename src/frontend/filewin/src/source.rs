@@ -723,17 +723,16 @@ pub const CMD_LS: &str = "files-ls";
 /// 每一行各挂一条**行为**断言。加一格 / 丢一格 / 说法漂了，三种都红。
 pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
     use cmd_wire::files::{FileKind, LinkTo};
-    let bytes = &v.path.0;
     // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
     //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
-    // 只看**名字那一段**（最后一个 `/` 之后；远端路径恒用 `/`）：目录有损而名字干净的那一行
+    // 只看**名字那一段**（那台按自己的分隔符切好的 `name`）：目录有损而名字干净的那一行
     //   名字照样能用（整条路径的字节由窗口按当前目录的字节拼，`FileWindow::row_path`）。
-    let cut = bytes.iter().rposition(|b| *b == b'/').map_or(0, |k| k + 1);
-    let lossy_name = std::str::from_utf8(&bytes[cut..]).is_err();
-    let path = String::from_utf8_lossy(bytes).to_string();
-    let name = remote_basename(&path).to_string();
+    let raw = &v.name.0;
+    let lossy_name = std::str::from_utf8(raw).is_err();
+    let path = String::from_utf8_lossy(&v.path.0).to_string();
+    let name = String::from_utf8_lossy(raw).to_string();
     // 有损名留住名字那一段的原始字节。
-    let raw_name = lossy_name.then(|| bytes[cut..].to_vec());
+    let raw_name = lossy_name.then(|| raw.clone());
     // 🔴 `kind` 落**两格**，不是一格：压成一个布尔就是「看不出哪个是符号链接」。
     let is_dir = v.kind == FileKind::Dir;
     let link = v.kind == FileKind::Symlink;
@@ -802,6 +801,7 @@ pub async fn list_via_backend_at(
         path: dir,
         limit: Some(limit as u64),
         dirs_only: None,
+        sort: None,
     };
     let r = ask_typed(line, origin, &req, std::time::Duration::from_secs(20)).await?;
     Ok(rows_from_ls_data(r, by))

@@ -297,7 +297,9 @@ fn answer_wire(_face: &Face, name: &str, args: &serde_json::Value) -> Answer {
 }
 /// 家由判据给的那三形（不改进程的 `HOME`）。
 fn answer_commit_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
-    via(args, |r| commit_upload_at(face, home, r, &crate::Tz::default()).map_err(CommitRefused::flat))
+    via(args, |r| {
+        commit_upload_at(face, home, r, &crate::Tz::default()).map_err(CommitRefused::flat)
+    })
 }
 fn answer_stage_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
     via(args, |r| stage_chunk_at(face, home, r))
@@ -861,7 +863,8 @@ fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
     let (home, root) = rig("fw1-digest");
     let body = b"the whole staged file".to_vec();
     let staged = stage(&home, KEY, &body);
-    let e = answer_commit_at(&Face::issue(),
+    let e = answer_commit_at(
+        &Face::issue(),
         &home,
         &serde_json::json!({"key": KEY, "root": root.to_string_lossy(), "rel": "a.bin"}),
     )
@@ -1120,7 +1123,10 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
             assert_eq!(c.conflicts.len(), 1);
             let one = &c.conflicts[0];
             assert_eq!((one.key.as_str(), one.name.bytes()), ("0", &b"a.txt"[..]));
-            assert_eq!((one.size, one.there_size, one.dir_into), (Some(11), Some(4), false));
+            assert_eq!(
+                (one.size, one.there_size, one.dir_into),
+                (Some(11), Some(4), false)
+            );
         }
         other => panic!("没答该回同名清单：{other:?}"),
     }
@@ -1134,9 +1140,19 @@ fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands(
     stage_chunk(&Face::issue(), &h, &key, 0, b"hello ").expect("块 0");
     stage_chunk(&Face::issue(), &h, &key, 1, b"world").expect("块 1");
     let got = at(req(Some("keep_both"))).expect("保留两份该成");
-    assert_eq!(got.path.bytes(), h.join("dst/a (2).txt").to_string_lossy().as_bytes());
-    assert_eq!(std::fs::read(h.join("dst/a (2).txt")).unwrap(), b"hello world");
-    assert_eq!(std::fs::read(h.join("dst/a.txt")).unwrap(), b"hello world", "保留两份不该碰原来那一份");
+    assert_eq!(
+        got.path.bytes(),
+        h.join("dst/a (2).txt").to_string_lossy().as_bytes()
+    );
+    assert_eq!(
+        std::fs::read(h.join("dst/a (2).txt")).unwrap(),
+        b"hello world"
+    );
+    assert_eq!(
+        std::fs::read(h.join("dst/a.txt")).unwrap(),
+        b"hello world",
+        "保留两份不该碰原来那一份"
+    );
     std::fs::remove_dir_all(&h).ok();
 }
 

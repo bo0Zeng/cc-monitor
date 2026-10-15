@@ -241,6 +241,53 @@ pub struct LsReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dirs_only: Option<bool>,
+    /// 按哪一列排（缺 ⇒ 名称）。目录（含指向目录的链接）恒在前；截断在排好之后。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub sort: Option<LsSort>,
+}
+
+/// `files-ls` 按哪一列排：`by` 那一列的第一下（名称 A 在前 · 大小大的在前 · 时间新的在前），`reverse` 只反那一列；
+/// 相持按名称小写、再按原字节。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct LsSort {
+    pub by: LsSortBy,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
+    pub reverse: bool,
+}
+
+/// [`LsSort::by`] 的三列。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum LsSortBy {
+    Name,
+    Size,
+    Mtime,
+}
+
+/// 面包屑的一段：这一段叫什么 · 点它去哪（[`LsReply::crumbs`]）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct Crumb {
+    pub name: WirePath,
+    pub path: WirePath,
 }
 
 /// `files-ls` 的一行。读不到元数据的那几格缺席（不是 0）。
@@ -253,6 +300,8 @@ pub struct LsReq {
 #[serde(deny_unknown_fields)]
 pub struct LsEntry {
     pub path: WirePath,
+    /// 末段名（那台按自己的分隔符切好）。
+    pub name: WirePath,
     pub kind: FileKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
@@ -287,7 +336,12 @@ pub struct LsEntry {
 )]
 #[serde(deny_unknown_fields)]
 pub struct LsReply {
+    /// 排好的（[`LsReq::sort`]）。
     pub entries: Vec<LsEntry>,
+    /// 上一级；到顶 ⇒ `null`。
+    pub up: Option<WirePath>,
+    /// 根到这一级的每一段，根在最前（那台按自己的路径规则切：Windows 的盘符那一段是 `C:\`）。
+    pub crumbs: Vec<Crumb>,
     /// 回送的比读到的少（被 `limit` 截了）。
     pub truncated: bool,
     /// 一共读到几项（含没回送的）。

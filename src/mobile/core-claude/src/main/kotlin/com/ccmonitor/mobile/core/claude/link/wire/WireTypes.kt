@@ -555,6 +555,7 @@ enum class FileKind {
 @JsonClass(generateAdapter = true)
 data class LsEntry(
     val path: Any,
+    val name: Any,
     val kind: FileKind,
     val size: Long?,
     @Json(name = "mtime_text") val mtimeText: String?,
@@ -565,8 +566,17 @@ data class LsEntry(
 @JsonClass(generateAdapter = true)
 data class LsReply(
     val entries: List<LsEntry>,
+    val up: Any?,
+    val crumbs: List<Crumb>,
     val truncated: Boolean,
     val total: Long,
+)
+
+@WireOf("Crumb")
+@JsonClass(generateAdapter = true)
+data class Crumb(
+    val name: Any,
+    val path: Any,
 )
 
 @WireOf("StatReply")

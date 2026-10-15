@@ -13,7 +13,18 @@ import org.junit.Test
 /** 浏览屏：只列文件夹（files-ls dirs_only）；点 ＝ 进去，↑ ＝ 上一级，长按 ＝ 选中它；「选这个目录」选的是选中的那个、没有就是这一层。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DirBrowserTest {
-    private fun dirs(vararg p: String) = mapOf("entries" to p.map { mapOf("path" to it, "kind" to "dir") }, "truncated" to false, "total" to p.size.toDouble(), "unreadable" to 0.0)
+    /** 那台答的一层：`up` 是它给的上一级（替身照路径切，手机不切）。 */
+    private fun dirs(
+        up: String?,
+        vararg p: String,
+    ) = mapOf(
+        "entries" to p.map { mapOf("path" to it, "name" to it.substringAfterLast('/'), "kind" to "dir") },
+        "up" to up,
+        "crumbs" to emptyList<Any>(),
+        "truncated" to false,
+        "total" to p.size.toDouble(),
+        "unreadable" to 0.0,
+    )
 
     private fun link() =
         FakeCoreLink().also { l ->
@@ -22,9 +33,9 @@ class DirBrowserTest {
                     "files-home" -> Reply.Ok(mapOf("path" to "/h"))
                     "files-ls" ->
                         when (args?.get("path")) {
-                            "/h/work" -> Reply.Ok(dirs("/h/work/billing", "/h/work/orders"))
-                            "/h/work/billing" -> Reply.Ok(dirs())
-                            "/h" -> Reply.Ok(dirs("/h/work"))
+                            "/h/work" -> Reply.Ok(dirs("/h", "/h/work/orders", "/h/work/billing"))
+                            "/h/work/billing" -> Reply.Ok(dirs("/h/work"))
+                            "/h" -> Reply.Ok(dirs("/", "/h/work"))
                             else -> Reply.Failed(CoreFailure("not_found", "路径不存在", "d"))
                         }
                     else -> Reply.LinkDown
@@ -41,7 +52,8 @@ class DirBrowserTest {
             runCurrent()
             assertEquals(mapOf("path" to "/h/work", "dirs_only" to true), l.calls("files-ls").last())
             assertEquals(
-                listOf("billing", "orders"),
+                "照那台排好的先后，不另排",
+                listOf("orders", "billing"),
                 b.state.value.dirs
                     .map { it.name },
             )

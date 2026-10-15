@@ -1487,14 +1487,61 @@ type WirePath = string | { b16: string };
 入参 `FilesCommitUploadReq` · 回包 `FilesPathBytesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, overwrite: boolean, expect: Sha256Expect, chunks?: number, bytes?: number, };
+type Conflict = { 
+/**
+ * 同 [`BatchOutcome::key`]。
+ */
+key: string, 
+/**
+ * 落点那一段名字。
+ */
+name: WirePath, 
+/**
+ * 要放过去的那一项是什么。
+ */
+kind: FileKind, 
+/**
+ * 要放过去的那一项的大小（文件）。
+ */
+size?: number, 
+/**
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
+ */
+mtime_text?: string, 
+/**
+ * 已在那儿的那一项是什么。
+ */
+there: FileKind, 
+/**
+ * 已在那儿的那一项的大小（文件）。
+ */
+there_size?: number, 
+/**
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
+ */
+there_mtime_text?: string, 
+/**
+ * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ */
+dir_into: boolean, };
+type Conflicts = { conflicts: Array<Conflict>, };
+type FileKind = "dir" | "file" | "symlink" | "other";
+type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, 
+/**
+ * 落点已有同名：同成组复制那一条（缺 ⇒ `ask`：码 `exists`、`data` 是同名清单，一个字节不动、块留着，改个答原样再交）。
+ * 只有一件 ⇒ `skip` 不收（不放就别提交）。
+ */
+on_exists?: OnExists, expect: Sha256Expect, chunks?: number, bytes?: number, };
 type FilesPathBytesReply = { path: WirePath, bytes: number, };
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
+码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale` · `exists`
+
+失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
 #### `files-browse`
 
@@ -1668,9 +1715,14 @@ type WirePath = string | { b16: string };
 入参 `LsReq` · 回包 `LsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Crumb = { name: WirePath, path: WirePath, };
 type FileKind = "dir" | "file" | "symlink" | "other";
 type LinkTo = "dir" | "file" | "missing";
-type LsEntry = { path: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+type LsEntry = { path: WirePath, 
+/**
+ * 末段名（那台按自己的分隔符切好）。
+ */
+name: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
 /**
  * 那台按本地钟写好的短写法。
  */
@@ -1687,7 +1739,19 @@ link_dir?: boolean,
  * 链接指向哪一种（只在链接上）。
  */
 link_to?: LinkTo, };
-type LsReply = { entries: Array<LsEntry>, 
+type LsReply = { 
+/**
+ * 排好的（[`LsReq::sort`]）。
+ */
+entries: Array<LsEntry>, 
+/**
+ * 上一级；到顶 ⇒ `null`。
+ */
+up: WirePath | null, 
+/**
+ * 根到这一级的每一段，根在最前（那台按自己的路径规则切：Windows 的盘符那一段是 `C:\`）。
+ */
+crumbs: Array<Crumb>, 
 /**
  * 回送的比读到的少（被 `limit` 截了）。
  */
@@ -1708,7 +1772,13 @@ limit?: number,
 /**
  * `true` ⇒ 只列文件夹（含指向目录的链接）；截断与计数都只数文件夹。
  */
-dirs_only?: boolean, };
+dirs_only?: boolean, 
+/**
+ * 按哪一列排（缺 ⇒ 名称）。目录（含指向目录的链接）恒在前；截断在排好之后。
+ */
+sort?: LsSort, };
+type LsSort = { by: LsSortBy, reverse?: boolean, };
+type LsSortBy = "name" | "size" | "mtime";
 type WirePath = string | { b16: string };
 ```
 

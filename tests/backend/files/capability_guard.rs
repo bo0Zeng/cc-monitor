@@ -805,6 +805,13 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&sub), "dirs_only": false }),
             serde_json::json!({ "path": p(&sub), "dirs_only": true }),
         ),
+        // 排序：同一个目录正着排与反着排，那一屏的先后必然不同。
+        (
+            "files.ls",
+            "sort",
+            serde_json::json!({ "path": p(&sub), "sort": {"by": "name"} }),
+            serde_json::json!({ "path": p(&sub), "sort": {"by": "name", "reverse": true} }),
+        ),
         (
             "files.stat",
             "path",
@@ -995,8 +1002,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 18 → 21（`files.find`：`needle` · `ignore_ascii_case` 两对走了；`query` · `under` · `offset` · `seq` · `stream` 五对来了）。
     // 21 → 24（`files.find` 的 `sort` · `desc` · `scope` 三对）。
     // 24 → 25（`files.ls` 的 `dirs_only` 一对）。
+    // 25 → 26（`files.ls` 的 `sort` 一对）。
     assert_eq!(
-        checked, 25,
+        checked, 26,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -1810,4 +1818,98 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
         (Some(short.as_str()), Some(full.as_str()))
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `files-ls` 的顺序由后端排：目录（含指向目录的链接）在前，再按那一列（名称小写 A 在前 · 大小大的在前 · 时间新的在前，
+/// `reverse` 只反那一列），截断在排好之后；每行带末段名，回包带上一级与根到这一级的每一段（按这台的分隔符切）。
+#[cfg(unix)]
+#[test]
+fn ls_orders_names_and_crumbs_on_the_backend() {
+    let d = f7a_dir("ls-order");
+    std::fs::create_dir_all(d.join("zdir")).unwrap();
+    std::fs::create_dir_all(d.join("Adir")).unwrap();
+    std::os::unix::fs::symlink(d.join("zdir"), d.join("mlink")).unwrap();
+    std::fs::write(d.join("b.txt"), vec![0u8; 30]).unwrap();
+    std::fs::write(d.join("A.txt"), vec![0u8; 10]).unwrap();
+    std::fs::write(d.join("c.txt"), vec![0u8; 20]).unwrap();
+    let ls = |extra: serde_json::Value| {
+        let mut args = serde_json::json!({ "path": path_json(&d) });
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        answer("files.ls", &args, &Default::default()).expect("ls 不该失败")
+    };
+    let names = |v: &serde_json::Value| -> Vec<String> {
+        v["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let by_name = ls(serde_json::json!({}));
+    assert_eq!(
+        names(&by_name),
+        ["Adir", "mlink", "zdir", "A.txt", "b.txt", "c.txt"]
+    );
+    assert_eq!(
+        names(&ls(serde_json::json!({"sort": {"by": "size"}}))),
+        ["Adir", "mlink", "zdir", "b.txt", "c.txt", "A.txt"],
+        "大小大的在前；目录相持按名称"
+    );
+    assert_eq!(
+        names(&ls(
+            serde_json::json!({"sort": {"by": "name", "reverse": true}})
+        )),
+        ["zdir", "mlink", "Adir", "c.txt", "b.txt", "A.txt"],
+        "反过来只反那一列，目录照旧在前"
+    );
+    let cut = ls(serde_json::json!({"limit": 4}));
+    assert_eq!(
+        names(&cut),
+        ["Adir", "mlink", "zdir", "A.txt"],
+        "截在排好之后"
+    );
+    assert_eq!(
+        (cut["truncated"].as_bool(), cut["total"].as_u64()),
+        (Some(true), Some(6))
+    );
+    // 上一级与各段。
+    let here = d.to_string_lossy().into_owned();
+    assert_eq!(
+        by_name["up"].as_str(),
+        d.parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .as_deref()
+    );
+    let crumbs: Vec<(String, String)> = by_name["crumbs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["name"].as_str().unwrap().to_string(),
+                c["path"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(crumbs.first().map(|c| c.0.as_str()), Some("/"));
+    assert_eq!(crumbs.last().map(|c| c.1.as_str()), Some(here.as_str()));
+    let mut acc = std::path::PathBuf::new();
+    for (name, path) in &crumbs {
+        acc.push(name);
+        assert_eq!(
+            acc.to_string_lossy(),
+            *path,
+            "每一段的路径 ＝ 前面各段接上它"
+        );
+    }
+    let root = answer(
+        "files.ls",
+        &serde_json::json!({ "path": "/" }),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(root["up"], serde_json::Value::Null, "到顶没有上一级");
+    std::fs::remove_dir_all(&d).ok();
 }

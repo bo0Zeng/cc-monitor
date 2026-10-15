@@ -6,7 +6,11 @@ import type { WirePath } from "./WirePath";
 /**
  * `files-ls` 的一行。读不到元数据的那几格缺席（不是 0）。
  */
-export type LsEntry = { path: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+export type LsEntry = { path: WirePath, 
+/**
+ * 末段名（那台按自己的分隔符切好）。
+ */
+name: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
 /**
  * 那台按本地钟写好的短写法。
  */

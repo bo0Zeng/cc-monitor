@@ -129,7 +129,7 @@ class FilesViewModel(
         viewModelScope.launch {
             _busy.value = true
             ops
-                .list(dir)
+                .list(dir, _sortBySize.value)
                 .onSuccess {
                     _listing.value = it
                     _cwd.value = dir
@@ -140,11 +140,13 @@ class FilesViewModel(
 
     private suspend fun refresh() {
         val dir = _cwd.value ?: return
-        ops.list(dir).onSuccess { _listing.value = it }.onFailure(::say)
+        ops.list(dir, _sortBySize.value).onSuccess { _listing.value = it }.onFailure(::say)
     }
 
+    /** 名称 ⇄ 大小：那台照它重排一遍。 */
     fun toggleSort() {
         _sortBySize.value = !_sortBySize.value
+        viewModelScope.launch { refresh() }
     }
 
     private fun say(e: Throwable) {
@@ -177,14 +179,14 @@ class FilesViewModel(
     fun rename(
         entry: FilesLs.Entry,
         typed: String,
-    ) = write { ops.rename(it, entry.path.name, typed) }
+    ) = write { ops.rename(it, entry.rel, typed) }
 
-    fun delete(entry: FilesLs.Entry) = write { ops.delete(it, entry.path.name, entry.isDir) }
+    fun delete(entry: FilesLs.Entry) = write { ops.delete(it, entry.rel, entry.isDir) }
 
     fun chmod(
         entry: FilesLs.Entry,
         mode: Long,
-    ) = write { ops.chmod(it, entry.path.name, mode) }
+    ) = write { ops.chmod(it, entry.rel, mode) }
 
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
     suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
@@ -246,7 +248,7 @@ class FilesViewModel(
     ): Result<Unit> {
         val dir = _cwd.value ?: return Result.failure(IllegalStateException("not listed yet"))
         _busy.value = true
-        val r = ops.writeText(dir, entry.path.name, text, sha256)
+        val r = ops.writeText(dir, entry.rel, text, sha256)
         r
             .onSuccess {
                 _events.tryEmit(Notice(copyText("mobFiles.save.done")))

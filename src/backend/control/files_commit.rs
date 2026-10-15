@@ -642,7 +642,7 @@ fn sweep_after(face: &Face, home: &Path, key: &str) {
 }
 
 crate::control::files_write::acts! {
-    FilesCommitUploadReq => FilesPathBytesReply, |r, f| commit_upload_of(f, r, &crate::Tz::default()).map_err(CommitRefused::flat);
+    FilesCommitUploadReq => FilesPathBytesReply, |r, f| commit_upload_of(f, r, &crate::common::time::Tz::default()).map_err(CommitRefused::flat);
     FilesStageChunkReq => FilesStageChunkReply, |r, f| stage_chunk_of(f, r);
     FilesCommitTextReq => FilesWrittenReply, |r, f| commit_text_of(f, r);
 }
@@ -664,9 +664,7 @@ impl CommitRefused {
     /// 只认码与那一句的出口（写面那张分派表 · 资产域的门）：同名照码 `exists` 交那一句。
     pub(crate) fn flat(self) -> Fail {
         match self {
-            CommitRefused::Clash(said, _) => {
-                WriteFail::from((super::files_write::EXISTS, said))
-            }
+            CommitRefused::Clash(said, _) => WriteFail::from((super::files_write::EXISTS, said)),
             CommitRefused::Fail(f) => f,
         }
     }
@@ -676,7 +674,7 @@ impl CommitRefused {
 pub(crate) fn commit_upload_of(
     face: &Face,
     req: wire::FilesCommitUploadReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<wire::FilesPathBytesReply, CommitRefused> {
     commit_upload_at(face, &home_dir()?, req, tz)
 }
@@ -690,7 +688,7 @@ pub fn commit_upload_at(
     face: &Face,
     home: &Path,
     req: wire::FilesCommitUploadReq,
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> Result<wire::FilesPathBytesReply, CommitRefused> {
     use cmd_wire::batch::OnExists;
     let root = root_of(&req.root, "root")?;
@@ -770,7 +768,7 @@ fn asked(
     req: &wire::FilesCommitUploadReq,
     dest: &Path,
     (there, there_size, there_mtime): (wire::FileKind, Option<u64>, Option<i64>),
-    tz: &crate::Tz,
+    tz: &crate::common::time::Tz,
 ) -> CommitRefused {
     use crate::common::batch_book::{key_of, moment_text};
     let size = req.bytes.or_else(|| {
@@ -779,7 +777,9 @@ fn asked(
             .and_then(|p| Ro::symlink_metadata(&p).ok())
             .map(|m| m.len())
     });
-    let name = dest.file_name().map_or_else(Default::default, |n| wire_of(Path::new(n)));
+    let name = dest
+        .file_name()
+        .map_or_else(Default::default, |n| wire_of(Path::new(n)));
     CommitRefused::Clash(
         copy_text("beFiles.batch.clash", &[("n", "1")]),
         cmd_wire::batch::Conflicts {

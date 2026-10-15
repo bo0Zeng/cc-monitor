@@ -73,11 +73,11 @@ class FileOpsTest {
     fun deletingAFolderIsOneAskAndARefusedItemSaysTheBackendSentence() =
         runTest {
             val ok = FakeCoreLink().apply { answer = { _, _ -> Reply.Ok(mapOf("outcomes" to listOf(mapOf("key" to "0", "state" to "done")), "said" to "已删除")) } }
-            FileOps(ok) { "box" }.delete(dir, RemotePath.of("/w/d").name, isDir = true).getOrThrow()
+            FileOps(ok) { "box" }.delete(dir, RemotePath.of("d"), isDir = true).getOrThrow()
             assertEquals(1, ok.calls("files-delete").size)
             assertEquals(listOf(mapOf("rel" to "d", "recursive" to true)), ok.calls("files-delete").single()!!["items"])
             val no = FakeCoreLink().apply { answer = { _, _ -> Reply.Ok(mapOf("outcomes" to listOf(mapOf("key" to "0", "state" to "failed", "detail" to "EACCES")), "said" to "删除失败 ×1")) } }
-            val e = FileOps(no) { "box" }.delete(dir, RemotePath.of("/w/d").name, isDir = true).exceptionOrNull() as FileOps.Failed
+            val e = FileOps(no) { "box" }.delete(dir, RemotePath.of("d"), isDir = true).exceptionOrNull() as FileOps.Failed
             assertEquals("删除失败 ×1", e.problem.text)
             assertEquals("EACCES", e.problem.detail)
         }
