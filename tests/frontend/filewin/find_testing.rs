@@ -269,6 +269,8 @@ pub struct FakeBackend {
     hold_rebuild: Option<std::sync::Arc<tokio::sync::Notify>>,
     /// `files-grep` 回的那一份成品（`None` ⇒ 按「这台后端拒」那一档：`unreadable`）。
     pub grep_reply: Option<serde_json::Value>,
+    /// `plan-files` 回的那一份（`None` ⇒ 不认这一问，窗口当不在任何一片里）。
+    pub plan_reply: Option<serde_json::Value>,
     /// 给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
     /// `files-delete` 一趟一趟回的「还剩几条」（取一个用一个；用完 ⇒ 不带这一格，即删完了）。
@@ -293,6 +295,7 @@ impl FakeBackend {
             disk: Default::default(),
             hold_rebuild: None,
             grep_reply: None,
+            plan_reply: None,
             hold_grep: None,
             delete_left: Default::default(),
             alias: None,
@@ -1077,6 +1080,7 @@ impl FakeBackend {
                     Some(serde_json::json!({ "path": at, "bytes": bytes, "sha256": sha })),
                 )
             }
+            "plan-files" if self.plan_reply.is_some() => (true, None, None, self.plan_reply.clone()),
             other => (
                 false,
                 Some("unknown_command".into()),

@@ -317,20 +317,25 @@ async fn an_empty_drop_touches_nothing() {
 /// 🔴 **保序**：答案要配回原来那一件。
 ///
 /// 失效形状最难看：用 `buffer_unordered` 之后 `items.zip(flags)` 把 A 的「已存在」
-/// 配到 B 头上 ⇒ **覆盖了一个不该覆盖的文件**。这里让探测的耗时与顺序**反着来**
-/// （第一件最慢），乱序实现会把 flag 配错。
+/// 配到 B 头上 ⇒ **覆盖了一个不该覆盖的文件**。这里让探测完成的先后与顺序**反着来**
+/// （第一件等第二件探完才答），乱序实现会把 flag 配错。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_probe_answers_stay_glued_to_the_item_that_asked() {
     let seen: std::sync::Mutex<Vec<Pending>> = std::sync::Mutex::new(Vec::new());
     let items = vec![p("slow-and-clashing"), p("fast-and-fresh")];
+    let fast_done = tokio::sync::Notify::new();
+    let fast_done = &fast_done;
     run_drop(
         items,
         4,
         |it| async move {
             if it.name.starts_with("slow") {
-                tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                tokio::time::timeout(guard_core::wall::CEILING, fast_done.notified())
+                    .await
+                    .expect("第二件一直没探完 —— 探测没有并发跑，本条判不了配没配错");
                 true
             } else {
+                fast_done.notify_one();
                 false
             }
         },
