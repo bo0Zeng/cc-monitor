@@ -196,6 +196,7 @@ export function backendPool({ repo, sandbox }) {
     const sock = `${H}/.shots-tmux/tmux-${process.getuid()}/default`;
     // 台架自己敲的 tmux 一律是真的那一个（边界上的替身只挡后端那几问，见下面 `tmuxShim`）。
     const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null "$@"; }`];
+    sh.push(`ln -s "$(readlink -f /bin/sh)" ${H}/.shots-setup/claude`);
     /**
      * 开页之后才收场的那几个（台架见到那台的清单之后收）：已结束 ⇒ 关掉它那个 tmux 会话（替身跟着没了）；
      * 可重连 ⇒ 只杀替身（claude 退了），窗格接着跑一个 shell、后端打过的标签还挂着。
@@ -228,8 +229,10 @@ export function backendPool({ repo, sandbox }) {
         doomed.push({ sid: l.sid, fate: "reconnectable", act: ["run-shell", `kill $(cat ${pf})`] });
       } else {
         // 替身印完那一屏就读一个命名管道、读到的原样印进窗格（台架往后再印一屏走它：`/__ccm/paint`）；pid 经 exec 不变。
+        // 它以 `claude` 的名字跑（指向 sh 的链接，读管道的 cat 是它的子进程）：后端按前台程序名认「agent 在跑」（`agents::is_agent_process`）。
+        // 不把 cat 本身改名：有的发行版 cat 是按自己名字分派的多合一程序，改了名就不是 cat 了。
         const fifo = `${H}/.shots-setup/${k}.paint`;
-        sh.push(`mkfifo ${fifo}`, `pid=$(${newSession(name, `${paint}exec cat 0<> ${fifo}`, "#{pane_pid}")})`);
+        sh.push(`mkfifo ${fifo}`, `pid=$(${newSession(name, `${paint}exec ${H}/.shots-setup/claude -c ${q(`cat 0<> ${fifo}; exit`)}`, "#{pane_pid}")})`);
         paints.set(l.sid, path.join(setup, `${k}.paint`));
       }
       if (l.fate === "ended") doomed.push({ sid: l.sid, fate: "ended", act: ["kill-session", "-t", `=${name}`] });
