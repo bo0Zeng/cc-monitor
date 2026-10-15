@@ -426,7 +426,7 @@ fn every_fn_touching_the_inner_field_is_classified() {
     }
 }
 
-/// `impl SecretKey` 里**每一个能把字符串带出去的 `pub fn`**，及它为什么可以存在。
+/// `impl SecretKey` 里**每一个能把字符串带出去的 fn（任何可见性）**，及它为什么可以存在。
 ///
 /// **默认拒绝**：不在这张表里的当场红。⚠ 加一行**就是在放宽**，
 /// 而 `KS2` 逐字：「真要多一处，**必须在件计划里单独说清那一处是什么**」。
@@ -463,7 +463,7 @@ const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
 ///
 /// # 今天的人群怎么画的（分母写清楚）
 ///
-/// 人群 = `impl SecretKey` 块里**每一个返回类型能装下字符串的 `pub fn`**
+/// 人群 = `impl SecretKey` 块里**每一个返回类型能装下字符串的 fn**（任何可见性）
 /// （返回 `&str` / `String` / `&String`）。**按返回类型画，不按函数体怎么写画** ——
 /// 函数体的写法有无穷多种，返回类型只有可数的几种，而「明文出得去」这件事
 /// **必然经过返回类型**（`&self` 方法要把内层字符串带出去，只能从返回值走）。
@@ -471,9 +471,7 @@ const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
 /// ⚠ **它认不出什么**（诚实边界，别读成「明文不可能出去」）：
 /// 1. 返回**别的类型**而里面裹着明文（`Vec<u8>` / 一个自定义结构体 / `impl Iterator<Item=char>`）——
 ///    本判据看不见。今天 `impl` 块里没有这一形（下面那条自检数了返回类型的总数）。
-/// 2. `pub` 之外的可见性（`pub(crate) fn`）—— 本判据只数 `pub fn`；
-///    但 crate 外拿不到它，而 crate 内只有 `store.rs` 一个消费者（由 §全断那条钉着）。
-/// 3. 有人给 `SecretKey` **在别处**写 `impl Deref<Target=str>` —— 那不在这个 `impl` 块里。
+/// 2. 有人给 `SecretKey` **在别处**写 `impl Deref<Target=str>` —— 那不在这个 `impl` 块里。
 ///    这一形由下面 `the_type_has_no_second_impl_block_that_hands_the_inner_string_out` 兜。
 #[test]
 fn every_string_returning_exit_is_registered_by_name() {
@@ -486,38 +484,27 @@ fn every_string_returning_exit_is_registered_by_name() {
         "impl 块的窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
     );
 
-    // 人群：块里每一个 `pub fn <名>(...) -> <返回类型>`。
+    // 人群：块里每一个 fn（任何可见性）里返回类型能装下字符串的那几个。
+    let fns = fns_in_block(block);
     let mut string_returning: Vec<String> = Vec::new();
-    let mut all_pub_fns = 0usize;
-    for seg in block.split("pub fn ").skip(1) {
-        all_pub_fns += 1;
-        let name = seg
-            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .next()
-            .unwrap_or("")
-            .to_string();
-        // 签名 = 到函数体左花括号为止。
-        let Some(sig_end) = seg.find('{') else {
-            continue;
-        };
-        let sig = &seg[..sig_end];
+    for (name, sig, _) in &fns {
         let ret = sig.split("->").nth(1).unwrap_or("").trim();
-        // 返回类型能装下字符串的那几种。
         if ret.contains("str") || ret.contains("String") {
-            string_returning.push(name);
+            string_returning.push(name.clone());
         }
     }
-    // 采集面自检：块里确实有一批 `pub fn`（切歪了就不是「零个出口」而是「没扫到」）。
+    // 采集面自检：块里确实有一批 fn（切歪了就不是「零个出口」而是「没扫到」）。
     assert!(
-        all_pub_fns >= 5,
-        "`impl SecretKey` 里只扫到 {all_pub_fns} 个 `pub fn` —— 取法坏了，本条在空转"
+        fns.len() >= 5,
+        "`impl SecretKey` 里只扫到 {} 个 fn —— 取法坏了，本条在空转",
+        fns.len()
     );
 
     let registered: Vec<&str> = STRING_RETURNING_EXITS.iter().map(|(n, _)| *n).collect();
     for name in &string_returning {
         assert!(
             registered.contains(&name.as_str()),
-            "`impl SecretKey` 里多了一个能把字符串带出去的 `pub fn`：`{name}`。\n\
+            "`impl SecretKey` 里多了一个能把字符串带出去的 fn：`{name}`。\n\
                  ⚠ 它**没有登记** —— `KS2` 逐字：加行是收紧、动断言是放宽，\n\
                  真要多一处**必须先在件计划里说清那一处是什么**，不许在实现里顺手把表加大。\n\
                  今天登记的是：{registered:?}"
@@ -533,7 +520,7 @@ fn every_string_returning_exit_is_registered_by_name() {
     assert_eq!(
         string_returning.len(),
         STRING_RETURNING_EXITS.len(),
-        "能把字符串带出去的 `pub fn` 有 {} 个，登记了 {} 个：{string_returning:?}",
+        "能把字符串带出去的 fn 有 {} 个，登记了 {} 个：{string_returning:?}",
         string_returning.len(),
         STRING_RETURNING_EXITS.len()
     );
