@@ -51,9 +51,15 @@ scrub=()
 while IFS='=' read -r k _; do
   case "$k" in CCM_*|CLAUDE_CONFIG_DIR|CLAUDE_CODE_*|ANTHROPIC_*|TMUX|TMUX_PANE|TMUX_TMPDIR) scrub+=(-u "$k") ;; esac
 done < <(env)
+# 每路测试的并行数：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤（10-15 量过：
+#   每路 8 个比默认省一到三成 CPU、墙钟持平；4 个墙钟变长）⇒ Rust 测试线程 · vitest worker · gradle worker
+#   都拿「核数 ÷ heavy 槽位数」那一份（槽位数照 HEAVY_SLOTS，默认与 heavy.sh 同一个数）。外面设了 RUST_TEST_THREADS /
+#   GATE_VITEST_WORKERS 就听外面的。
+share=$(( $(nproc) / ${HEAVY_SLOTS:-3} )); [ "$share" -ge 1 ] || share=1
 run() { env "${scrub[@]}" HOME="$box/home" TMUX_TMPDIR="$box/tmux" \
   CARGO_HOME="$cargo_home" RUSTUP_HOME="$rustup_home" \
-  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" "$@"; }
+  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" \
+  RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}" GATE_VITEST_WORKERS="${GATE_VITEST_WORKERS:-$share}" "$@"; }
 # 每路 cargo 并行数默认 4。要改就在外面设 CARGO_BUILD_JOBS。
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
 runcargo() { run nice -n 10 "$@"; }
@@ -86,7 +92,7 @@ mobile_step() {
       . ./scripts/env.sh >/dev/null || { echo "mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了"; exit 1; }
     else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
     rm -rf "$out"/*/test-results
-    ./gradlew --no-daemon --console=plain ktlintCheck detektDebug testDebugUnitTest \
+    ./gradlew --no-daemon --console=plain --max-workers='"$share"' ktlintCheck detektDebug testDebugUnitTest \
       :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain || exit $?
     n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
     echo "mobile: ${n:-0} passed"'

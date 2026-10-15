@@ -371,6 +371,19 @@ strip = true
 members = [".", "ssh-dial", "deploy", "../mobile/core-rs/rust"]
 default-members = ["."]
 
+# ── 测试档（dev 与继承它的 test）里给沙箱的策略引擎开优化：轮换一致性的推演（s22 · s26 · s36）跑在 Rhai 上，
+#    依赖不开优化时后端那个测试二进制的墙钟就是它们（10-15 量过：89–93 s → 30–36 s；冷编多一成）。只给这几样，
+#    工作区自己的 crate 照旧不开（内循环的增量编译不受影响）。判据：`build_features_tests.rs` 的
+#    `the_test_build_optimizes_the_dependencies_the_slowest_tests_run_on`（与表两向相等、每项都在 Cargo.lock 里）。──
+[profile.dev.package.rhai]
+opt-level = 3
+
+[profile.dev.package.smartstring]
+opt-level = 3
+
+[profile.dev.package.ahash]
+opt-level = 3
+
 # ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
 # release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——
 #   嵌在 App 进程里，panic 要在 JNI 边界上接住（`catch_unwind`），abort 会带走整个 App。
