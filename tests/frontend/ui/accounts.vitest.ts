@@ -15,7 +15,7 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest } from "../../../src/frontend/ui/account-reads";
+import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines } from "../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
@@ -78,7 +78,6 @@ function state(p: Partial<AccountsState>, effectiveDefault: string | null = null
 
 beforeEach(() => {
   vi.clearAllMocks();
-  __resetAccountsCacheForTest();
 });
 
 describe("deriveUi 降级矩阵（DESIGN §7）", () => {
@@ -275,59 +274,36 @@ describe("sessionBadge（§3 优先级）", () => {
   });
 });
 
-describe("fetchAccounts TTL 缓存", () => {
+describe("fetchAccounts：要用时问后端，界面不存一份", () => {
   // backend 的本机 origin（`<local>`）⇒ 问本机后端，不拿它去问远端。
   // 本机与远端同一条路：经通道问 `<local>` 那条长连接的 `accounts-list`（后端出成品）。
   it("A3 / C4c：`<local>` 经通道问本机后端（`accounts-list` 发给 `<local>`），不是拿 `<local>` 去问远端配置", async () => {
-    __resetAccountsCacheForTest();
     loadCfg.mockResolvedValue({});
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [acct({})] }))));
     const st = await fetchAccounts("<local>");
     expect(invokeMock).toHaveBeenCalledTimes(1);
     expect(accountReadCalls(invokeMock.mock.calls, "list_local_accounts")).toHaveLength(1);
     expect(st.available).toBe(true);
-    // 与 `fetchLocalAccounts` 共用同一格缓存（账号面的本机键），TTL 内不重发。
-    await fetchAccounts("<local>");
-    expect(invokeMock).toHaveBeenCalledTimes(1);
-    __resetAccountsCacheForTest();
   });
-  it("没问到 ⇒ 带着这次运行里那台最近一次答成的那一份（画「上次的」），此刻的事实照旧是不可用", async () => {
-    __resetAccountsCacheForTest();
+  it("★ 每一次要用都问一次后端（没有缓存、没有 force 这一说）：两次就是两问，第二次拿到的是后端此刻的答", async () => {
+    loadCfg.mockResolvedValue({});
+    let n = 0;
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [acct({ name: `z${++n}` })] }))));
+    await fetchAccounts("devbox");
+    const again = await fetchAccounts("devbox");
+    expect(invokeMock, "第二次拿了界面存的那一份").toHaveBeenCalledTimes(2);
+    expect(again.accounts.map((a) => a.name)).toEqual(["z2"]);
+  });
+  it("没问到 ⇒ 此刻的事实照旧是不可用（上次那份只问本机后端，见 `last-seen.vitest.ts`）", async () => {
     loadCfg.mockResolvedValue({});
     const meta = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null };
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta, accounts: [acct({})] }))));
-    const first = await fetchAccounts("devbox");
-    expect(first.available).toBe(true);
+    expect((await fetchAccounts("devbox")).available).toBe(true);
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject(copyText("beServer.words.cantConnect")))));
-    const down = await fetchAccounts("devbox", true);
+    const down = await fetchAccounts("devbox");
     expect(down.available).toBe(false);
     expect(down.accounts, "上次的混进了此刻的事实").toEqual([]);
-    expect(down.last?.accounts).toEqual(first.accounts);
-    expect(down.last?.meta).toEqual(first.meta);
-    expect((await fetchAccounts("nano", true)).last ?? null, "没答成过的那台也说有上次").toBeNull();
-    __resetAccountsCacheForTest();
-  });
-  it("首次 fetch 命中 invoke，TTL 内不重发", async () => {
-    loadCfg.mockResolvedValue({});
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null }, accounts: [acct({})] }))));
-    await fetchAccounts("devbox");
-    await fetchAccounts("devbox");
-    expect(invokeMock).toHaveBeenCalledTimes(1); // 第二次走缓存
-  });
-  it("force=true 强制重发", async () => {
-    loadCfg.mockResolvedValue({});
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [] }))));
-    await fetchAccounts("devbox");
-    await fetchAccounts("devbox", true);
-    expect(invokeMock).toHaveBeenCalledTimes(2);
-  });
-  it("invalidate 后重发", async () => {
-    loadCfg.mockResolvedValue({});
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: null, accounts: [] }))));
-    await fetchAccounts("devbox");
-    invalidateAccountsCache("devbox");
-    await fetchAccounts("devbox");
-    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(down.last ?? null, "本机后端没记着那台，界面也不另记一份").toBeNull();
   });
   it("invoke throw（远端没配）→ available:false 不崩", async () => {
     loadCfg.mockResolvedValue({});
@@ -344,6 +320,14 @@ describe("fetchSessionAccounts（经通道 `accounts-sessions`）", () => {
   it("那台没有控制通道 → 空数组（不猜）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     expect(await fetchSessionAccounts("devbox")).toEqual([]);
+  });
+  it("★ 每一次都问那台（界面不存一份）：两次两问", async () => {
+    invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>
+      Promise.resolve(isChanCall(cmd, args, "accounts-sessions") ? linesReply([]) : undefined),
+    ));
+    await fetchSessionAccounts("devbox");
+    await fetchSessionAccounts("devbox");
+    expect(invokeMock.mock.calls.filter((c) => isChanCall(String(c[0]), c[1], "accounts-sessions"))).toHaveLength(2);
   });
   it("后端答了几行 → 解回几行；问的是那台机器、那条帧命令、请求体是空对象", async () => {
     invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>

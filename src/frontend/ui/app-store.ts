@@ -72,8 +72,8 @@ export interface SessionRotationEntry {
 export const appStore = {
   /** 设置窗「当前在看哪台机器」（本机 = `LOCAL_ORIGIN`）。 */
   machine: new Slice<Origin>(LOCAL_ORIGIN),
-  /** 每台机器最近一次取回来的账号清单（`account-reads.ts` 每取回一次换一份；`null` = 那一问没结果）。 */
-  accounts: new Slice<ReadonlyMap<Origin, AccountsState | null>>(new Map()),
+  /** 每台机器最近一次问回来的账号清单（`account-reads.ts` 每问一次换一份）：只给同步画的那几处（头像号色 · 号牌字 · chip）读，要用清单的地方现问。 */
+  accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
   /** tab 栏账号徽章那份快照（`null` = 还没算过）。 */
   sessionAccounts: new Slice<SessionAccountsSnapshot | null>(null),
   /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果）。 */
@@ -87,13 +87,4 @@ export function putIn<K, V>(slice: Slice<ReadonlyMap<K, V>>, key: K, value: V): 
   const next = new Map(slice.get());
   next.set(key, value);
   slice.set(next);
-}
-
-/** 把某台的账号清单写进 `appStore.accounts`（整张表换一份新的，订阅者按自己那台取）。 */
-export function putAccounts(origin: Origin, state: AccountsState | null): void {
-  const cur = appStore.accounts.get();
-  if (cur.has(origin) && cur.get(origin) === state) return; // 缓存命中回的同一份 ⇒ 不算变
-  const next = new Map(cur);
-  next.set(origin, state);
-  appStore.accounts.set(next);
 }

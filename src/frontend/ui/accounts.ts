@@ -1,7 +1,7 @@
 // 多账号前端的账号模型（纯，零 IO）。账号 = 一个 CLAUDE_CONFIG_DIR。
 // 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）·
 // 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
-// 别处：经通道读 ＋ 缓存 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
+// 别处：经通道读 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
 import { machineName, peerVersionSaid } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 // 先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
@@ -99,7 +99,7 @@ export interface SessionAccount {
 
 /** 账号功能在某台远端的整体状态（UI 直接消费）。 */
 export interface AccountsState {
-  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。也是账号缓存的键 —— 两者从此是同一个值。 */
+  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
   origin: Origin;
   available: boolean;
   error: string | null;
@@ -110,7 +110,7 @@ export interface AccountsState {
   /** 能用但有缺时的人话说明（`available` 仍是 true）；null = 无缺。不出这一句，列表里少一行用户看不出来。 */
   notice: string | null;
   /**
-   * 这一次没问到（`available:false`）时，这次运行里那台最近一次答成的那一份＋ 答成的时刻：
+   * 这一次没问到（`available:false`）时，本机后端记着的那台上次答成的那一份 ＋ 答成的时刻（本机那台不记）：
    * 只给「画上次的 ＋ 采样 n 前」用，不当作此刻的事实（起会话、换默认一律不读它）。没有 ⇒ `null`。
    */
   last?: { meta: AccountsMeta; accounts: Account[]; atMs: number } | null;

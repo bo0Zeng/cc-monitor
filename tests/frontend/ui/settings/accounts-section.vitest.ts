@@ -34,7 +34,6 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: (...a: unknown[]) => emit(...a), listen: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: (...a: unknown[]) => fetchAccounts(...a),
-  invalidateAccountsCache: () => {},
   launchAgentId: () => "claude",
   accountsAgentProfile: () => ({ displayName: "Claude Code", models: ["sonnet", "opus"] }),
 }));
@@ -342,6 +341,17 @@ describe("各态", () => {
     expect(el.textContent).toContain(copyText("acctPage.never.title", { machine: "build-02" }));
     expect(el.textContent).toContain(copyText("acctPage.never.hint"));
     expect(buttonNamed(el, copyText("acctPage.head.new")).getAttribute("aria-disabled")).toBe("true");
+    expect(fetchAccounts).not.toHaveBeenCalled();
+  });
+
+  it("★ 机器表每一趟都问（界面不另存一份）：开着的时候那台从表里删了 ⇒ 刷新一下就是「未连接过」", async () => {
+    const el = await mount();
+    expect(rowOf(el, "work")).toBeTruthy();
+    readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ label: "gpu-01" }] });
+    fetchAccounts.mockClear();
+    buttonNamed(el, copyText("acctPage.head.refresh")).click();
+    await settle();
+    expect(el.textContent).toContain(copyText("acctPage.never.title", { machine: "devbox" }));
     expect(fetchAccounts).not.toHaveBeenCalled();
   });
 

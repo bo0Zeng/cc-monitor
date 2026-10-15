@@ -15,7 +15,7 @@ import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccoun
 import { openLoginWindow, loginInTmux } from "./account-login";
 import { machineHasTmux } from "../resume-defaults";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
-import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
+import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../account-reads";
 import { readPrefs, setPrefs } from "../machine-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
@@ -24,7 +24,7 @@ import type { QuotaShow } from "../generated/QuotaShow";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
 import { openOnMachine } from "../file-window";
-import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
+import { findHostByOrigin, readRemoteConfig } from "../remote-config";
 import { bindEvents } from "../events";
 import { openLoginDrawer } from "../login-drawer";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, validateAcctName, type VerifyReport } from "../account-ops";
@@ -89,8 +89,6 @@ export class AccountsSection {
   private subscribed = false;
   /** 宿主调过 `loadNow` 没有（之前切机器只记下，不发 I/O）。 */
   private loaded = false;
-  /** 机器表（这一次打开里读一次；问到表里没有的那台再重读一次）。 */
-  private hosts: Promise<RemoteHostConfig[] | null> | null = null;
 
   constructor(opts: AccountsSectionOptions = {}) {
     this.confirm = opts.confirm ?? confirmDialog;
@@ -111,7 +109,7 @@ export class AccountsSection {
       icon: "refresh",
       size: "compact",
       hint: copyText("acctPage.head.refresh"),
-      onClick: () => void this.reload(true),
+      onClick: () => void this.reload(),
     });
     right.append(this.newBtn, refresh);
     head.append(this.titleEl, this.subEl, right);
@@ -131,28 +129,17 @@ export class AccountsSection {
       if (!this.loaded || origin === this.origin) return;
       this.origin = origin;
       this.closeForm();
-      void this.reload(true);
+      void this.reload();
     });
   }
 
   /** 宿主在这一栏第一次可见时调（重开设置再调一次）。 */
   loadNow(): void {
     this.loaded = true;
-    this.hosts = null;
     this.origin = getCurrentMachine();
-    // 每次（重）开都看新读数：不吃账号缓存。
-    void this.reload(true);
+    // 每次（重）开都问那台。
+    void this.reload();
     void this.subscribe();
-  }
-
-  private readHosts(fresh = false): Promise<RemoteHostConfig[] | null> {
-    if (fresh || this.hosts === null) {
-      this.hosts = readRemoteConfig().then(
-        (c) => c.hosts,
-        () => null,
-      );
-    }
-    return this.hosts;
   }
 
   /** 每台订 `changed/accounts` ＋ `changed/quota`：一来就合并成一次重读（只重读此刻在看的那台）。 */
@@ -160,13 +147,13 @@ export class AccountsSection {
     if (this.subscribed) return;
     this.subscribed = true;
     // 机器表读不到：只订本机。
-    const origins: Origin[] = [LOCAL_ORIGIN, ...((await this.readHosts()) ?? []).map((h) => h.label)];
+    const origins: Origin[] = [LOCAL_ORIGIN, ...(await readRemoteConfig()).hosts.map((h) => h.label)];
     const pushed = (): void => {
       if (this.pushTimer !== null) clearTimeout(this.pushTimer);
       // 调度：合批 —— 后端推来的账号 / 额度变更：300ms 内几帧合成一次重读
       this.pushTimer = setTimeout(() => {
         this.pushTimer = null;
-        void this.reload(true, true);
+        void this.reload(true);
       }, PUSH_COALESCE_MS);
     };
     try {
@@ -186,7 +173,7 @@ export class AccountsSection {
   // ───────────────────────────── 读 ─────────────────────────────
 
   /** `quiet`：推来的 / 动作之后的那一趟不画骨架（原位换）。 */
-  private async reload(force: boolean, quiet = false): Promise<void> {
+  private async reload(quiet = false): Promise<void> {
     const my = ++this.seq;
     const origin = this.origin;
     this.titleEl.textContent = copyText("acctPage.head.title", { machine: machineName(origin) });
@@ -196,26 +183,24 @@ export class AccountsSection {
       this.body.replaceChildren(skeletonRows(3));
       this.body.setAttribute("aria-busy", "true");
     }
-    if (force) invalidateAccountsCache(origin);
-    const facts = await this.read(origin, force);
+    const facts = await this.read(origin);
     if (my !== this.seq) return;
     this.body.removeAttribute("aria-busy");
     this.facts = facts;
     this.paint(facts);
   }
 
-  private async read(origin: Origin, force: boolean): Promise<Facts> {
+  private async read(origin: Origin): Promise<Facts> {
     const empty = new Map<string, string[]>();
     if (!isLocalOrigin(origin)) {
-      let hosts = await this.readHosts();
-      // 表是空的（没配远端，或读不到）就不核：读不到不等于这台不在。同一次打开里刚加进机器表的那台：再读一次。
-      if (hosts !== null && hosts.length > 0 && findHostByOrigin(hosts, origin) === null) hosts = await this.readHosts(true);
-      if (hosts !== null && hosts.length > 0 && findHostByOrigin(hosts, origin) === null) {
+      // 机器表每一趟都问（表是本机后端的）；表是空的（没配远端，或读不到）就不核：读不到不等于这台不在。
+      const hosts = (await readRemoteConfig()).hosts;
+      if (hosts.length > 0 && findHostByOrigin(hosts, origin) === null) {
         const state: AccountsState = { origin, available: false, error: null, oldBackend: false, meta: null, accounts: [], notice: null };
         return { origin, state, quota: null, verify: null, commands: empty, unknown: true };
       }
     }
-    const state = await fetchAccounts(origin, force);
+    const state = await fetchAccounts(origin);
     if (!state.available || deriveUi(state).kind !== "ready") {
       return { origin, state, quota: null, verify: null, commands: empty, unknown: false };
     }
@@ -249,7 +234,7 @@ export class AccountsSection {
     if (!s.available) {
       setDisabled(this.newBtn, copyText("acctPage.offline.hover"));
       const last = s.last ?? null;
-      const retry = button({ label: copyText("acctPage.offline.retry"), size: "compact", onClick: () => void this.reload(true) });
+      const retry = button({ label: copyText("acctPage.offline.retry"), size: "compact", onClick: () => void this.reload() });
       const text = last
         ? copyText("acctPage.offline.bar", { machine, ago: spanNow(last.atMs, Date.now()) })
         : copyText("acctPage.offline.noLast", { machine, why: s.error ?? "" });
@@ -323,7 +308,7 @@ export class AccountsSection {
           });
           if (!yes) return;
           await accountsInit(origin, { name: n });
-          await this.reload(true);
+          await this.reload();
         } catch (e) {
           name.setError(saidOfControl(e));
         } finally {
@@ -383,7 +368,7 @@ export class AccountsSection {
     } catch (e) {
       failToast(copyText("acctPage.verify.failed", { machine }), e, { level: "error" });
     }
-    await this.reload(true, true);
+    await this.reload(true);
   }
 
   private async rollback(origin: Origin): Promise<void> {
@@ -397,7 +382,7 @@ export class AccountsSection {
     } catch (e) {
       failToast(copyText("acctPage.verify.failed", { machine }), e, { level: "error" });
     }
-    await this.reload(true, true);
+    await this.reload(true);
   }
 
   /** 表下一行「共用 MCP：别名与配置文件」：点了切到同一台的「别名与配置文件」栏。 */
@@ -699,7 +684,7 @@ export class AccountsSection {
     } catch (e) {
       failToast(copyText("acctPage.default.failed", { name: a.name }), e, { level: "error" });
     }
-    await this.reload(true, true);
+    await this.reload(true);
   }
 
   /** 删号（撤不回 ⇒ 确认框，默认焦点「取消」）：删的是默认号时多一句「之后新会话默认 X」（那台答的）。默认模型那一格一起删。 */
@@ -731,7 +716,7 @@ export class AccountsSection {
     } catch (e) {
       failToast(copyText("acctPage.remove.failed", { name: a.name }), e, { level: "error" });
     }
-    await this.reload(true, true);
+    await this.reload(true);
   }
 
   /** ［登录…］·「⋯ 重新登录…」：开登录抽屉（目标照这一行拼：那一家 ＋ 号名）。登成了那一行随推送自己变。 */
@@ -739,7 +724,7 @@ export class AccountsSection {
     const key = this.key(a.name, origin);
     this.noWindow.delete(key);
     this.waiting.delete(key);
-    openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: a.name }, onDone: () => void this.reload(true, true) });
+    openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: a.name }, onDone: () => void this.reload(true) });
     if (this.facts) this.paint(this.facts);
   }
 
@@ -820,13 +805,13 @@ export class AccountsSection {
     if (req.kind !== "api-key" && !req.credFile) {
       // 下一行照后端回的那几句（如「已开的终端要重读别名」），界面不另拼。
       toast(copyText("acctPage.new.done", { name: req.name, machine }), change.notes.join("\n"));
-      openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: req.name }, onDone: () => void this.reload(true, true) });
+      openLoginDrawer({ origin, target: { kind: "account", agent: launchAgentId(), account: req.name }, onDone: () => void this.reload(true) });
     } else {
       toast(copyText("acctPage.new.done", { name: req.name, machine }), [change.keyProblem, ...change.notes].filter((x): x is string => !!x).join("\n"), change.keyProblem ? { level: "error" } : {});
       if (change.keyProblem) this.open.add(key);
     }
     if (req.isDefault) void emit(SETTINGS_APPLIED_EVENT);
-    await this.reload(true, true);
+    await this.reload(true);
   }
 }
 

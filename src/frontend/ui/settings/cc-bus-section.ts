@@ -11,7 +11,7 @@ import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 // 查在线 · 发消息 · 收掉 · 派生 · 广播 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
-// 「可选账号」只有 `selectableAccounts` 一个判据；`fetchAccounts` 带缓存。
+// 「可选账号」只有 `selectableAccounts` 一个判据；`fetchAccounts` 每次问那台。
 import { selectableAccounts } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 // 本机 ＝ `LOCAL_ORIGIN`（与 Rust 侧逐字相同，跨语言钉住）。

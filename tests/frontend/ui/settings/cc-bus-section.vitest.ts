@@ -14,9 +14,7 @@ vi.mock("@tauri-apps/api/core", async () => {
   const { ccBusControlShim } = await import("../../../test-support/chan-fake");
   return { invoke: ccBusControlShim(mockInvoke) };
 });
-// **只 mock `fetchAccounts` 这一个导出**：它带 TTL 缓存，跨测试会泄漏上一条的结果
-// （实测：第一条测试的账号列表会被后面"取不到账号"那条读到）。它自己有测试，
-// 这里只需要它的返回值，不该顺带重测它的缓存。
+// **只 mock `fetchAccounts` 这一个导出**：它自己有测试，这里只需要它的返回值，不该顺带重测它怎么问那台。
 //
 // ⚠⚠ **K-A1 第四轮（`R4`）：这里原先是一份手抄的可选性规则**，逐字
 // `(st.accounts ?? []).filter((a) => a.mode === "isolated" && a.loggedIn && a.exists)`。
@@ -27,9 +25,8 @@ vi.mock("@tauri-apps/api/core", async () => {
 // （`loggedIn:false` / `authReady:true`）在真身里可选、在这份替身里不可选
 // ⇒ 本节的 DOM 判据从那天起是照着**过期的规则**断的（D 阶段审计 `R4` 实测）。
 // ⇒ 改成 `vi.importActual` 把**真身整个铺进来**，只覆盖 `fetchAccounts` 一个导出。
-// **排除了什么**：① 没有取消对 `fetchAccounts` 的 mock —— 上面那条 TTL 缓存泄漏的理由
-// 今天仍然成立（`__resetAccountsCacheForTest()` 那条路要求每个用例自己喂 tauri 命令，
-// 那是把本节从「DOM 行为」测成「accounts 的缓存」）；② 没有给它补一条判据钉住
+// **排除了什么**：① 没有取消对 `fetchAccounts` 的 mock —— 不 mock 就要每个用例自己喂 tauri 命令，
+// 那是把本节从「DOM 行为」测成「账号那一问」；② 没有给它补一条判据钉住
 // 「测试侧不许再手抄纯函数」—— 那要一条新的扫描面（人群是 `.vitest.` 文件本身），
 // 这里不改，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
 // `fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。

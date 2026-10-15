@@ -36,7 +36,7 @@ vi.mock("../../../src/comms/inward/chan", () => ({
 }));
 
 import { forgetSeen, recallSeen, rememberSeen, __resetLastSeenForTests } from "../../../src/frontend/ui/last-seen";
-import { fetchAccounts, __resetAccountsCacheForTest } from "../../../src/frontend/ui/account-reads";
+import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 
 const settle = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -47,7 +47,6 @@ beforeEach(() => {
   store.clear();
   reachable.clear();
   __resetLastSeenForTests();
-  __resetAccountsCacheForTest();
 });
 
 describe("上次值交本机后端记", () => {
@@ -63,20 +62,21 @@ describe("上次值交本机后端记", () => {
     expect(await recallSeen("devbox", "accounts")).toBeNull();
   });
 
-  it("★ 账号：读成了 ⇒ 记下；「重启」后那台问不到 ⇒ 照本机后端记着的那一份画上次的（带记下的时刻）", async () => {
+  it("★ 账号：读成了 ⇒ 记下；那台问不到 ⇒ 照本机后端记着的那一份画上次的（带记下的时刻）—— 同一次运行里也问本机后端，界面不另记一份", async () => {
     reachable.add("devbox");
-    const ok = await fetchAccounts("devbox", true);
+    const ok = await fetchAccounts("devbox");
     expect(ok.available).toBe(true);
     await settle();
     expect(store.get("devbox")?.accounts?.value).toEqual(accountsReply);
-    // 「重启」：界面这一侧的记忆都没了，那台这回断开。
-    __resetAccountsCacheForTest();
-    __resetLastSeenForTests();
+    // 同一次运行里那台断开：上次那份从本机后端来（时刻是它记下的那一刻），不是界面手里那份。
     reachable.clear();
-    const off = await fetchAccounts("devbox", true);
+    const off = await fetchAccounts("devbox");
     expect(off.available).toBe(false);
     expect(off.last?.atMs).toBe(42);
     expect(off.last?.meta.enabled).toBe(true);
+    // 「重启」：界面这一侧的记忆都没了，照样画得出上次的。
+    __resetLastSeenForTests();
+    expect((await fetchAccounts("devbox")).last?.atMs).toBe(42);
   });
 
   it("★ 删机器：交本机后端清掉那台（只带 origin ＋ forget）；之后问不到它；同名再加回来、同一份照样再交", async () => {

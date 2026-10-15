@@ -44,7 +44,7 @@ import { toast, undoToast } from "../kit/toast";
 import { forgetSeen } from "../last-seen";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
-import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
+import { fetchAccounts } from "../account-reads";
 import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
@@ -342,7 +342,7 @@ export class RemoteSection {
     const origin = row.dataset.origin ?? "";
     if (origin === "" || row.dataset.summaryAsked === link) return;
     row.dataset.summaryAsked = link;
-    const state = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
+    const state = await fetchAccounts(origin);
     const box = row.querySelector<HTMLElement>(".remote-machine-summary");
     if (box) box.textContent = accountsSummary(state, this.factsOfOrigin(origin).os);
   }

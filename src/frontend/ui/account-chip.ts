@@ -4,14 +4,14 @@
 // 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
 import { accountLabel } from "./acct-words";
 import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
-import { fetchAccounts, fetchLocalAccounts, invalidateAccountsCache } from "./account-reads";
+import { fetchAccounts } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { failToast } from "./kit/toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { appStore, putAccounts } from "./app-store";
+import { appStore } from "./app-store";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
 import { attachTooltip } from "./kit/tooltip";
 import { icon } from "./kit/icon";
@@ -193,8 +193,8 @@ export class AccountChip {
     this.element.setAttribute("aria-label", copyText("acct.chip.aria", { name: m.name }));
   }
 
-  /** 拉数据刷新 chip（初始 / 设置变更 / 手动）。force 透传给缓存。 */
-  async refresh(force = false): Promise<void> {
+  /** 问那台、刷新 chip（初始 / 设置变更 / 推来变了 / 手动）。 */
+  async refresh(): Promise<void> {
     try {
       const cfg = await readRemoteConfig();
       this.origin = cfg.hosts.some((h) => h.connect) ? pickPrimaryOrigin(cfg.hosts.filter((h) => h.connect)) : LOCAL_ORIGIN;
@@ -203,8 +203,8 @@ export class AccountChip {
     }
     // 没有远端不等于没有账号 ⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = isLocalOrigin(this.origin);
-    // 取回来的那一份进 store（`account-reads.ts` 取回时已写；同一份再写是空操作），`state` 读 store。
-    putAccounts(this.origin, this.local ? await fetchLocalAccounts(force) : await fetchAccounts(this.origin, force));
+    // 问回来的那一份进 store（`account-reads.ts` 问回时写），`state` 读 store。
+    await fetchAccounts(this.origin);
     this.bound = true;
     this.paint();
   }
@@ -252,17 +252,14 @@ export class AccountChip {
    * 「新会话默认」那个下拉锚到别处（账号面板底栏）：那台是 chip 绑的这台 ⇒ 同一份；别的台 ⇒ 现取那台的账号清单。
    */
   async openDefaultMenu(anchor: HTMLElement, origin: Origin): Promise<void> {
-    if (origin !== this.origin) {
-      const st = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
-      putAccounts(origin, st);
-    }
+    if (origin !== this.origin) await fetchAccounts(origin);
     await this.toggleMenu(anchor, origin);
   }
 
   /** 那台的新会话默认是哪个号（面板底栏那颗按钮上的字）；store 里还没有那台 ⇒ 现取一次（取回来面板随 store 重画）、这一次 `null`。 */
   defaultOf(origin: Origin): string | null {
     if (!appStore.accounts.get().has(origin)) {
-      void (isLocalOrigin(origin) ? fetchLocalAccounts() : fetchAccounts(origin)).then((st) => putAccounts(origin, st)).catch(() => putAccounts(origin, null));
+      void fetchAccounts(origin);
       return null;
     }
     const st = appStore.accounts.get().get(origin) ?? null;
@@ -297,11 +294,7 @@ export class AccountChip {
         { label: copyText("accountChip.menu.manage"), onClick: () => this.deps.openSettings() },
         {
           label: copyText("accountChip.menu.refresh"),
-          onClick: () => {
-            // 账号缓存的键就是 origin ⇒ 只清这一台。
-            invalidateAccountsCache(origin);
-            void this.refresh(true);
-          },
+          onClick: () => void this.refresh(),
         },
       );
     }
@@ -364,10 +357,9 @@ export class AccountChip {
     this.closeMenu();
     try {
       await accountsSetDefault(origin, a.name);
-      // 默认账号住那台的账号库清单：只清这一台的缓存。
-      invalidateAccountsCache(origin);
-      if (origin === this.origin) await this.refresh(true);
-      else putAccounts(origin, isLocalOrigin(origin) ? await fetchLocalAccounts(true) : await fetchAccounts(origin, true));
+      // 默认账号住那台的账号库清单：重问那一台。
+      if (origin === this.origin) await this.refresh();
+      else await fetchAccounts(origin);
       // 立刻重算会话账号（否则要等下一拍 10s 轮询，期间「对齐」会把会话打回刚被切走的旧账号）。
       this.deps.onDefaultChanged?.();
       // 选即生效、不另报：下拉合上、按钮上的字就是结果。
