@@ -518,6 +518,20 @@ describe("TabManager 生命周期", () => {
     expect(btn.dataset.light === "idle").toBe(true);
   });
 
+  it("★ 那台说的「此刻能不能换」随活动那几格 · 去向那一帧落到 tab 上（早于建 Tab ⇒ 暂存落实）；没带 ⇒ 不动", () => {
+    const busy = { model: { can: "no" as const, why: "核心·本轮结束后可换模型" }, permission: { can: "yes" as const } };
+    const gone = { model: { can: "no" as const, why: "核心·会话已退出" }, permission: { can: "no" as const, why: "核心·会话已退出" } };
+    tm.updateActivity("sw", "working", null, copyText("beSession.activity.working"), "now", 1, busy);
+    const tab = tm.ensureTab("sw", "/x", "p", LOCAL_ORIGIN);
+    expect(tab.switch).toEqual(busy);
+    tm.updateActivity("sw", "idle", null, copyText("beSession.activity.idle"), "plain", 3, { model: { can: "yes" }, permission: { can: "yes" } });
+    expect(tab.switch?.model).toEqual({ can: "yes" });
+    tm.archiveTab("sw", gone);
+    expect(tab.switch).toEqual(gone);
+    tm.archiveTab("sw", null);
+    expect(tab.switch, "壳自己补的已结束不带那一格 ⇒ 不动").toEqual(gone);
+  });
+
   it("归档信号早于 Tab 建立：进 pendingArchive，ensureTab 时落实归档", () => {
     tm.archiveTab("early");
     expect(home(tm).store.pendingArchive.has("early")).toBe(true);
@@ -5367,7 +5381,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1), UNTIL_CEILING);
-    expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null }]);
+    expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null, modelText: null }]);
   });
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {

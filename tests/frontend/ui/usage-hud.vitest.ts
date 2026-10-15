@@ -75,11 +75,11 @@ describe("状态栏「上下文」chip", () => {
     const hud = new UsageHud();
     hud.host = { openSettings: () => settings++, retry: () => {} };
     document.body.appendChild(hud.summaryElement);
-    hud.setActive(usage({ model: "claude-opus-5-5[1m]", limitFrom: "setting", limitFromText: "核心·设置" }));
+    hud.setActive(usage({ model: "claude-opus-5-5[1m]", limitFrom: "setting", limitFromText: "核心·设置" }), "核心·Opus 5.5");
     hud.summaryElement.click();
     const p = panel();
     expect(p?.textContent).toContain(copyText("usageHud.chip.ctx", { ctx: "核心·35" }));
-    expect(p?.textContent).toContain(copyText("usageHud.panel.usage", { tok: "核心·350k", limit: "核心·1M", model: "claude-opus-5-5" }));
+    expect(p?.textContent, "模型那一格照抄后端的 modelText，不自己剥后缀").toContain(copyText("usageHud.panel.usage", { tok: "核心·350k", limit: "核心·1M", model: "核心·Opus 5.5" }));
     expect(p?.textContent).toContain(copyText("usageHud.panel.from", { from: "核心·设置" }));
     expect(hud.summaryElement.getAttribute("aria-expanded")).toBe("true");
     hud.summaryElement.click();
@@ -97,7 +97,7 @@ describe("状态栏「上下文」chip", () => {
     hud.summaryElement.click();
     expect(panel()?.textContent).toContain(copyText("usageHud.panel.unknownLimit"));
     expect(panel()?.textContent).toContain(copyText("usageHud.panel.setLimit"));
-    expect(panel()?.textContent).toContain(copyText("usageHud.panel.tokensOnly", { tok: "核心·350k", model: "claude-opus-5-5" }));
+    expect(panel()?.textContent, "后端没给 modelText ⇒ 写原值").toContain(copyText("usageHud.panel.tokensOnly", { tok: "核心·350k", model: "claude-opus-5-5" }));
   });
 
   it("浮层开着时会话变成没有用量 ⇒ chip 不渲染、浮层一起关", () => {

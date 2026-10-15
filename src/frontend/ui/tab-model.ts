@@ -19,6 +19,7 @@ import type { FactsSource } from "./views/facts-source";
 import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionActivity } from "./generated/SessionActivity";
+import type { SwitchCells } from "./generated/SwitchCells";
 import type { LineRecord } from "./generated/LineRecord";
 import type { SessionState } from "./tab-session-state";
 import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
@@ -96,6 +97,16 @@ export interface Tab {
   touchedFiles: Set<string>;
   /** 本会话最新一轮的用量与上下文（后端 `history-facts` 的 `usage`：数 ＋ 写好的字，HUD 与监控板照抄）。null = 还没有（或事实还没到）。 */
   usage: UsageFact | null;
+  /** 模型写给人看的字（后端 `history-facts` 的 `modelText`，会话头 · HUD · 监控板照抄）；没有 ⇒ `null`。 */
+  modelText: string | null;
+  /** 此刻的权限档：原值（`permissionMode`，抽屉里勾哪一档）与写给人看的字（`permissionModeText`）；没有 ⇒ `null`。 */
+  permissionMode: string | null;
+  permissionModeText: string | null;
+  /**
+   * 此刻能不能换模型 · 权限档（那台核心判的会话帧 `switch`：随活动那几格来，离开「活」时随去向那一帧来）。
+   * 这次没收到过 ⇒ `null`（界面不判，交命令照实回）。
+   */
+  switch: SwitchCells | null;
   /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */

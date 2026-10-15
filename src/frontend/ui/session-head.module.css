@@ -99,6 +99,70 @@
     align-items: center;
   }
 
+  /* —— 换模型 · 切权限档那两颗：紧凑档 chip（同状态栏 chip），字后一颗小 ▾；不缩（目录 · 状态一句 · 标题先让），
+     各最多 12 字宽、更长的省略；灰着不可点 —— */
+  .shSw {
+    display: flex;
+    flex: none;
+    gap: var(--space-2);
+    align-items: center;
+    min-width: 0;
+  }
+
+  .shChip {
+    display: inline-flex;
+    flex: none;
+    gap: var(--space-2);
+    align-items: center;
+    min-width: 0;
+    max-width: 12em;
+    height: var(--control-h-compact);
+    padding: 0 var(--space-2) 0 var(--control-pad-x-compact);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .shChipCaret {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-2);
+  }
+
+  .shChip:hover {
+    background: var(--state-hover);
+  }
+
+  .shChip:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  .shChip[aria-disabled="true"] {
+    border-color: var(--border-soft);
+    background: transparent;
+    color: var(--text-faint);
+    cursor: default;
+  }
+
+  .shChip[aria-disabled="true"] .shChipCaret {
+    color: var(--text-faint);
+  }
+
+  .shChip[data-pending="true"] {
+    color: var(--text-2);
+  }
+
+  .shChipText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .shIb {
     display: inline-grid;
     place-items: center;
@@ -258,8 +322,10 @@
     }
   }
 
+  /* 再窄：状态一句与换模型 · 切权限档那两颗一起藏（都是这个会话此刻的事实；按钮先留着）。 */
   @container (width < 480px) {
-    .shState {
+    .shState,
+    .shSw {
       display: none;
     }
   }

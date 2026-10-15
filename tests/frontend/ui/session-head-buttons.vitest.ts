@@ -79,6 +79,8 @@ function rig(t: Tab | null = tab("a")): { h: SessionHead; host: { more: ReturnTy
       { label: copyText("stream.injected.toggle"), checked: shown.injected, onClick: () => clicked.push("injected") },
       { label: copyText("stream.proc.toggle"), checked: shown.proc, onClick: () => clicked.push("proc") },
     ]),
+    // 换模型 · 切权限档那两颗（判据另在 `session-switch.vitest.ts`）：这里不换，清单问不到。
+    switching: { active: () => null, facts: () => new Promise<never>(() => {}), send: vi.fn(), unavailable: () => null, reread: vi.fn(), toast: vi.fn() },
   };
   const h = new SessionHead(host as unknown as SessionHeadHost);
   document.body.appendChild(h.el);

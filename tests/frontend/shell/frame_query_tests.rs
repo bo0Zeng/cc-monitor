@@ -438,6 +438,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "session-new-dir",
         "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
+    // 会话中途换模型 · 切权限档：那台送那一家的那一行 / 按切档键、从记录里读回，界面直接说。
+    (
+        "session-model",
+        "typed：后端出成品 `ModelSwitched`（`faces/session_model_face.rs`：在等人不送、读回换成了什么）；前端 `src/frontend/ui/session-writes.ts::switchModel` 按类型问，monitor 这一侧零发送点",
+    ),
+    (
+        "session-permission",
+        "typed：后端出成品 `ModeSwitched`（`faces/session_mode_face.rs`：按那一家的循环键、读回到了为止）；前端 `src/frontend/ui/session-writes.ts::switchPermission` 按类型问，monitor 这一侧零发送点",
+    ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",

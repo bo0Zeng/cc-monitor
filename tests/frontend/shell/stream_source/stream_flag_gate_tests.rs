@@ -74,7 +74,7 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     let frame = |l: &str| crate::stream_source::parse_frame(l).expect("认得的帧");
     let added = |sid: &str, bg: bool| {
         frame(&format!(
-            r#"{{"kind":"session_added","agent_kind":"claude","sid":"{sid}","background":{bg},"activity_text":"x","activity_tone":"now","activity_order":1,"label":"L","pid":1}}"#
+            r#"{{"kind":"session_added","agent_kind":"claude","sid":"{sid}","background":{bg},"activity_text":"x","activity_tone":"now","activity_order":1,"switch":{{"model":{{"can":"yes"}},"permission":{{"can":"yes"}}}},"label":"L","pid":1}}"#
         ))
     };
     let line = |sid: &str| {
@@ -89,7 +89,7 @@ fn the_remote_stream_hides_background_sessions_like_the_local_one() {
     };
     let state = |sid: &str| {
         frame(&format!(
-            r#"{{"kind":"session_state","sid":"{sid}","state":"ended","state_text":"x","state_hint":"x","state_tone":"plain"}}"#
+            r#"{{"kind":"session_state","sid":"{sid}","state":"ended","state_text":"x","state_hint":"x","state_tone":"plain","switch":{{"model":{{"can":"yes"}},"permission":{{"can":"yes"}}}}}}"#
         ))
     };
     let mut off = crate::stream_source::local::BgHide::new(false);

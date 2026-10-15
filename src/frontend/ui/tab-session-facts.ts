@@ -24,6 +24,8 @@ export interface FactsChange {
   needs: boolean;
   /** 悬停卡的那两样（没结果的调用 · 最后一句）变了。 */
   peek: boolean;
+  /** 会话头上那两颗（模型 · 权限档）的字或那一档变了。 */
+  switchable: boolean;
 }
 
 /** 后端的一份成品 ⇒ tab 上的几样（整份替换，不合并；项目目录后端还没读到 ⇒ 不动 tab 上那一份）。 */
@@ -55,5 +57,10 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.lastSay = f.lastSay;
   tab.retries = new Map(f.retries.map((r) => [r.id, r.outcome]));
 
-  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek };
+  const switchable = tab.modelText !== f.modelText || tab.permissionMode !== f.permissionMode || tab.permissionModeText !== f.permissionModeText;
+  tab.modelText = f.modelText;
+  tab.permissionMode = f.permissionMode;
+  tab.permissionModeText = f.permissionModeText;
+
+  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek, switchable };
 }

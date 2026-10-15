@@ -87,6 +87,8 @@ pub struct FateWords {
     pub text: String,
     pub hint: String,
     pub tone: String,
+    /// 此刻能不能换模型 · 权限档（`session_state.switch`，离开「活」那一形）。
+    pub switch: SwitchCells,
 }
 
 pub const FATE_RECONNECTABLE: &str = "reconnectable";
@@ -144,6 +146,33 @@ pub struct ActivityCells {
     pub activity_text: String,
     pub activity_tone: String,
     pub activity_order: u8,
+    /// 此刻能不能换模型 · 权限档（那台核心判的，随那一态带）。
+    pub switch: SwitchCells,
+}
+
+/// 此刻能不能换模型 · 权限档那一格（那台核心的 `wire::Switch`，原样转交；界面照 `can` 灰不灰、照 `why` 写悬停）。
+/// 解码只一处（`stream_source::frame` 的 `switch_cells`）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+pub struct SwitchCells {
+    /// 换模型（`session-model`）。
+    pub model: CanSwitch,
+    /// 切权限档（`session-permission`）。
+    pub permission: CanSwitch,
+}
+
+/// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 那台写好的那一句}`。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub enum CanSwitch {
+    /// 能换。
+    #[default]
+    Yes,
+    /// 此刻不能。
+    No { why: String },
 }
 
 /// 叫这条会话什么那两格（那台核心的 `wire::NameFace`，原样转交）：名字（`session_label` 出的，标签页 · 历史清单 · 通知同一个）·
@@ -676,13 +705,14 @@ impl Out {
             Out::Left {
                 sid, fate, words, ..
             } => {
-                let (text, hint, tone) = match words {
+                let (text, hint, tone, switch) = match words {
                     Some(w) => (
                         Some(w.text.clone()),
                         Some(w.hint.clone()),
                         Some(w.tone.clone()),
+                        Some(w.switch.clone()),
                     ),
-                    None => (None, None, None),
+                    None => (None, None, None, None),
                 };
                 vec![match fate {
                     Fate::Reconnectable => F::Idle(b::SessionIdlePayload {
@@ -690,12 +720,14 @@ impl Out {
                         text,
                         hint,
                         tone,
+                        switch,
                     }),
                     Fate::Ended => F::Ended(b::SessionEndedPayload {
                         session_id: sid.clone(),
                         text,
                         hint,
                         tone,
+                        switch,
                     }),
                 }]
             }
