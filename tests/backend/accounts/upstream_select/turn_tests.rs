@@ -430,6 +430,37 @@ fn two_sends_in_the_same_second_judging_the_same_switch_log_it_once() {
     );
 }
 
+/// ★ 换到的号接不上（令牌过期、续期被拒）⇒ 那一号没换成、不记：记录里不出「a → b」再接一条（同一秒两条，其中一条是没发生的）。
+/// 这份策略里 a 过了上限、b 接不上 ⇒ 这一发停下；记录里只有那一条停发、在用的号仍是 a。
+#[test]
+fn a_switch_whose_account_cannot_be_reached_is_not_logged() {
+    let home = Home::new("unreached", [None, None]);
+    home.strategy(Some(50), false);
+    let far_past = (now() - 3_600) * 1000;
+    std::fs::write(
+        home.root.join("accts/b/.credentials.json"),
+        format!("{{\"claudeAiOauth\":{{\"accessToken\":\"fake-access-of-b\",\"refreshToken\":\"fake-refresh\",\"expiresAt\":{far_past}}}}}"),
+    )
+    .expect("creds");
+    let hop = home.hop();
+    let own = home.own();
+    let t = now();
+    home.seen(&hop.quota, None, "a", 0.6, t);
+    assert_ne!(which(&steer(&hop, &own, t + 1)), "b", "b 接不上还发给了它");
+    let s = home.session();
+    let log: Vec<(&str, &str)> = s
+        .log
+        .iter()
+        .map(|l| (l.from.as_str(), l.to.as_str()))
+        .collect();
+    assert_eq!(
+        (s.current.as_str(), log),
+        ("a", vec![("a", "a")]),
+        "没换成的那一号记进了换号记录：{:?}",
+        s.log
+    );
+}
+
 // ── 推演的用速：只量、不借、量不到不编数 ───────────────────────────────────────────────
 
 fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quota::rules::Acct {
