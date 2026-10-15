@@ -2320,7 +2320,10 @@ fn the_progress_table_is_tall_enough_that_no_row_is_clipped() {
     );
     failed.finish(crate::transfer::DropOutcome {
         failed: vec![
-            ("r-2.tar.gz".into(), "磁盘满".into()),
+            (
+                "r-2.tar.gz".into(),
+                copy_core::copy_text("reason.io.full", &[]).into(),
+            ),
             ("r-3.tar.gz".into(), "没有权限".into()),
         ],
         ..Default::default()

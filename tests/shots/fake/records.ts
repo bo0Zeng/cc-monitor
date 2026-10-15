@@ -292,7 +292,7 @@ export class Convo {
     return this;
   }
 
-  /** 那一家说某个 MCP 服务器连不上（「延后加载的工具变了」那种附件，`failedMcpServers` 一项，照 Claude Code 落盘的原词）。 */
+  /** MCP 服务器断开的附件：`deferred_tools_delta` 的 `failedMcpServers` 一项（字段照落盘原样）。 */
   mcpFailed(name: string, error: string): this {
     this.push("attachment", 5, { attachment: { type: "deferred_tools_delta", failedMcpServers: [{ name, error }] } });
     return this;
