@@ -8132,12 +8132,6 @@
       "zh": "行为",
       "args": []
     },
-    "settingsPanel.group.resume": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "恢复会话",
-      "args": []
-    },
     "settingsPanel.claudeDir.pickTitle": {
       "kind": "body",
       "role": "悬停",
