@@ -475,7 +475,9 @@ impl InboundClient {
         }
         let mut ended = self.read_end.subscribe();
         async move {
-            let _ = ended.wait_for(|e| *e).await;
+            if ended.wait_for(|e| *e).await.is_err() {
+                tracing::debug!("inbound_client 等「读到底」时这条连接已经拆了 ⇒ 当收掉了");
+            }
         }
     }
 

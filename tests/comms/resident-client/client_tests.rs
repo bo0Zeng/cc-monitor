@@ -63,7 +63,10 @@ async fn close_write_is_done_when_the_reader_says_the_stream_ended() {
     assert_eq!(peer.read_line(&mut rest).await.unwrap(), 0, "对端该见 EOF");
     let mut ended = std::pin::pin!(ended);
     let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
-    assert!(ended.as_mut().poll(&mut cx).is_pending(), "读端还没说读到底就完成了");
+    assert!(
+        ended.as_mut().poll(&mut cx).is_pending(),
+        "读端还没说读到底就完成了"
+    );
     client.note_read_end();
     tokio::time::timeout(Duration::from_secs(5), ended)
         .await

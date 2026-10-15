@@ -857,7 +857,8 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     )
     .expect("前提：本条要独占全局日志口（e2e 那一趟一次只跑这几条）");
     tracing::callsite::rebuild_interest_cache();
-    let backend_said = |needle: &str| String::from_utf8_lossy(&said_log.0.lock().unwrap()).contains(needle);
+    let backend_said =
+        |needle: &str| String::from_utf8_lossy(&said_log.0.lock().unwrap()).contains(needle);
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
@@ -986,7 +987,10 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let alive = Path::new(&format!("/proc/{pid}")).exists();
     crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
     cleanup(&h);
-    assert!(said, "关掉 stdin 写端之后，到兜底上限没等到后端说「读到 EOF、照开」（`{STDIN_EOF_KEPT}`）");
+    assert!(
+        said,
+        "关掉 stdin 写端之后，到兜底上限没等到后端说「读到 EOF、照开」（`{STDIN_EOF_KEPT}`）"
+    );
     assert!(
         alive,
         "关掉 stdin 写端之后后端（pid={pid}）没了。\n\
