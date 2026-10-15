@@ -68,6 +68,8 @@ fn through_the_exit(reply: &Value, tz: &crate::Tz) -> Value {
             let mut u = u.clone();
             u["usage"] = serde_json::json!({"value": "", "text": "", "tone": "plain"});
             let mut h: UnseenHead = serde_json::from_value(u).unwrap();
+            // 金样里记的是账上的路由名；造没出过数的号那一处（`rotation_face`）换成线上的 kind。
+            h.agent = crate::agents::kind_of_route(h.agent.as_str());
             h.usage = crate::accounts::quota::show::usage_of(
                 h.kind,
                 crate::accounts::quota::show::QuotaState::Unseen,

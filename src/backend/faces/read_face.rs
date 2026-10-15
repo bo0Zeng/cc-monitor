@@ -258,9 +258,11 @@ impl crate::wire::typed::Handle for AccountsListCmd {
     > + Send
            + 'static {
         async move {
-            let (kind, _) =
-                crate::agents::pick_kind(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
-            let agent = crate::agents::pick_route(Some(kind)).map_err(AccountsListErr::BadArgs)?;
+            let (kind, _) = crate::agents::pick_kind(Some(req.agent.as_str()))
+                .map_err(AccountsListErr::BadArgs)?;
+            let agent = crate::agents::pick_route(Some(&req.agent))
+                .map_err(AccountsListErr::BadArgs)?
+                .id();
             let rows = crate::accounts::upstream_select::file_face::machine_rows();
             let mut v = crate::observe::accounts_query::list_product(
                 &rows,
@@ -293,7 +295,7 @@ pub(crate) fn with_quota(
         r.quota = q.five_hour.clone().or_else(|| {
             q.accounts
                 .iter()
-                .find(|a| a.head.agent == kind && a.head.account == r.scanned.name)
+                .find(|a| a.head.agent.as_str() == kind && a.head.account == r.scanned.name)
                 .and_then(|a| a.five_hour.clone())
         });
     }

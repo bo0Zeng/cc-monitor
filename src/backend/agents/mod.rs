@@ -487,18 +487,33 @@ pub(crate) fn pick_kind(name: Option<&str>) -> Result<(&'static str, LaunchFace)
     pick_kind_among(REGISTRY, name)
 }
 
-/// 线上的 kind（每条命令收的 `agent` 都是它）⇒ 那一家在后端里面的路由名（中转路由键第 1 段 · 额度账 · 轮换簿 · apikey 表按它记）。
-/// 规则同 [`pick_kind`]（空 ⇒ 默认那一家；认不出 ⇒ 那一句）。路由名不上线：出口一律换回 kind（[`kind_of_route`]）。
-pub(crate) fn pick_route(kind: Option<&str>) -> Result<&'static str, String> {
-    pick_kind(kind).map(|(_, f)| f.adapter_id)
+pub(crate) use cmd_wire::AgentKind;
+
+/// 一家在后端里面的路由名（中转路由键第 1 段 · 额度账 · 轮换簿 · apikey 表按它记）。不上线：没有 serde，
+/// 只从线上的 kind 换得出来（[`pick_route`]）；出口一律换回 kind（[`kind_of_route`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RouteId(&'static str);
+
+impl RouteId {
+    /// 存进账 · 表那一侧的那个串。
+    pub(crate) fn id(self) -> &'static str {
+        self.0
+    }
 }
 
-/// 路由名 ⇒ 线上的 kind（回包里的 `agent` 都写它）；注册表里没有这个路由名 ⇒ 照原样（账上留着的别家旧条目）。
-pub(crate) fn kind_of_route(route_id: &str) -> &str {
-    REGISTRY
-        .iter()
-        .find(|a| a.launch.is_some_and(|f| f.adapter_id == route_id))
-        .map_or(route_id, |a| a.kind)
+/// 线上的 kind（每条命令收的 `agent` 都是它）⇒ 那一家的路由名。规则同 [`pick_kind`]（空 ⇒ 默认那一家；认不出 ⇒ 那一句）。
+pub(crate) fn pick_route(kind: Option<&AgentKind>) -> Result<RouteId, String> {
+    pick_kind(kind.map(AgentKind::as_str)).map(|(_, f)| RouteId(f.adapter_id))
+}
+
+/// 账 · 表里记的路由名 ⇒ 线上的 kind（回包里的 `agent` 都写它）；注册表里没有这个路由名 ⇒ 照原样（账上留着的别家旧条目）。
+pub(crate) fn kind_of_route(route_id: &str) -> AgentKind {
+    AgentKind::new(
+        REGISTRY
+            .iter()
+            .find(|a| a.launch.is_some_and(|f| f.adapter_id == route_id))
+            .map_or(route_id, |a| a.kind),
+    )
 }
 
 /// `kind` 那一家的 shell wrapper 名（[`LaunchFace::launcher_alias`]）。认不出 / 没有 ⇒ `None`。

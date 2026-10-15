@@ -46,7 +46,7 @@ pub(crate) struct RotationTryReq {
     /// 哪一家（缺 ⇒ 有账号库的那一家）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) agent: Option<String>,
+    pub(crate) agent: Option<crate::agents::AgentKind>,
 }
 
 crate::wire::typed::codes! {
@@ -79,12 +79,12 @@ impl crate::wire::typed::Handle for RotationTry {
             let cx = &cx;
 
             let ctx = crate::faces::rotation_face::Ctx::here();
-            let agent = req
-                .agent
-                .as_deref()
-                .map_or(crate::faces::rotation_face::LIBRARY_AGENT, |k| {
-                    crate::agents::pick_route(Some(k)).unwrap_or(k)
-                });
+            let agent = match &req.agent {
+                None => crate::faces::rotation_face::LIBRARY_AGENT,
+                Some(k) => crate::agents::pick_route(Some(k))
+                    .map_err(RotationTryErr::BadArgs)?
+                    .id(),
+            };
             let row = ctx.row(agent);
             let now = crate::accounts::quota::now_unix();
             let facts: Vec<Acct> = ctx

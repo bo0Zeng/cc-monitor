@@ -362,7 +362,7 @@ fn scan_accounts(
 #[serde(deny_unknown_fields)]
 pub(crate) struct AccountsListReq {
     /// 这次起会话的是哪一家（线上的 kind，同 `session-new-facts` 给的那一格；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
-    pub(crate) agent: String,
+    pub(crate) agent: crate::agents::AgentKind,
 }
 
 /// ★ 选不了的那一句（唯一一处；判定本身是 `acct_core::account_selectable`，这里只说是四条里的哪一条没过）。

@@ -10,7 +10,9 @@ use crate::accounts::upstream_select::endpoint;
 /// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（`endpoint::decide_launch`，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
 /// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
 pub(crate) fn answer_optin(req: &OptinReq) -> Result<endpoint::Optin, (&'static str, String)> {
-    let agent = crate::agents::pick_route(Some(&req.agent)).map_err(|say| ("bad_args", say))?;
+    let agent = crate::agents::pick_route(Some(&req.agent))
+        .map_err(|say| ("bad_args", say))?
+        .id();
     let home = crate::platform::paths::home_dir()
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
     let face = crate::agents::settings_env_face(agent)
@@ -28,13 +30,13 @@ pub(crate) fn answer_optin(req: &OptinReq) -> Result<endpoint::Optin, (&'static 
     ))
 }
 
-/// `relay-optin` 的入参：哪一家的那一份（适配器 id；空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家）。
+/// `relay-optin` 的入参：哪一家的那一份（线上的 kind；空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OptinReq {
-    pub(crate) agent: String,
+    pub(crate) agent: crate::agents::AgentKind,
 }
 
 crate::wire::typed::codes! {

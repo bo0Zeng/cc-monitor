@@ -198,7 +198,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
                 usable.push(a.id.clone());
             }
             UnseenHead {
-                agent: LIBRARY_AGENT.to_string(),
+                agent: crate::agents::kind_of_route(LIBRARY_AGENT),
                 account: a.id.clone(),
                 kind: sh.kind,
                 login: sh.login,

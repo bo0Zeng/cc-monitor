@@ -9,7 +9,7 @@ use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::ledger::{ReadState, WindowSeen};
 use crate::accounts::quota::name_words::{is_candidate, names};
 use crate::accounts::quota::show::{QuotaShow, Stamp};
-use crate::agents::{QuotaOverage, QuotaReading, QuotaWindow};
+use crate::agents::{kind_of_route, QuotaOverage, QuotaReading, QuotaWindow};
 use crate::common::cells::Words;
 use crate::common::time::TextClock;
 use crate::faces::quota_rows;
@@ -63,7 +63,7 @@ fn window_seen_shown(w: &WindowSeen, clock: &TextClock) -> WindowSeenShown {
     }
 }
 
-/// 出过数的一个号交进出口的样子（时刻字还没写）。
+/// 出过数的一个号交进出口的样子（时刻字还没写）。`agent` 是账上记的路由名，出口换成线上的 kind。
 pub(crate) struct Seen {
     pub(crate) agent: String,
     pub(crate) account: String,
@@ -98,7 +98,7 @@ pub(crate) fn account_of(s: Seen, clock: &TextClock) -> QuotaAccount {
             .collect()
     });
     let head = AccountHead {
-        agent: s.agent,
+        agent: kind_of_route(&s.agent),
         account: s.account,
         seen_at: s.seen_at,
         seen_at_text: clock.text(s.seen_at),
@@ -141,17 +141,10 @@ pub(crate) fn unseen_of(head: UnseenHead, clock: &TextClock) -> QuotaUnseen {
 /// ★ 出口：交进来的原数与显示态 ⇒ `quota-read` 的成品（唯一一处；生产与金样都走它）。
 pub(crate) fn reply_of(
     base: Base,
-    mut seen: Vec<Seen>,
-    mut unseen: Vec<UnseenHead>,
+    seen: Vec<Seen>,
+    unseen: Vec<UnseenHead>,
     clock: &TextClock,
 ) -> QuotaRead {
-    // 账上记的是路由名；线上的 `agent` 一律是 kind（同 `session-new-facts` 给的那一格）。
-    for s in &mut seen {
-        s.agent = crate::agents::kind_of_route(&s.agent).to_string();
-    }
-    for u in &mut unseen {
-        u.agent = crate::agents::kind_of_route(&u.agent).to_string();
-    }
     let text = quota_rows::head_text(
         base.state,
         seen.is_empty() && unseen.is_empty(),
@@ -159,11 +152,11 @@ pub(crate) fn reply_of(
     );
     let candidates = seen
         .iter()
-        .map(|s| (&s.agent, &s.account, s.show.kind))
-        .chain(unseen.iter().map(|u| (&u.agent, &u.account, u.kind)))
+        .map(|s| (kind_of_route(&s.agent), &s.account, s.show.kind))
+        .chain(unseen.iter().map(|u| (u.agent.clone(), &u.account, u.kind)))
         .filter(|(_, a, _)| is_candidate(a))
         .map(|(agent, account, kind)| Candidate {
-            agent: agent.clone(),
+            agent,
             account: account.clone(),
             kind,
         })
@@ -304,7 +297,7 @@ pub(crate) fn specimen() -> QuotaRead {
             show,
         }],
         vec![UnseenHead {
-            agent: "agent".into(),
+            agent: crate::agents::AgentKind::new("agent"),
             account: "b".into(),
             kind: Kind::Sub,
             login: LoginState::NeedsLogin,

@@ -316,7 +316,7 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
     // 生产那张：入口共用的两个口与默认那一家对得上。
     assert_eq!(pick_kind(None).map(|(k, _)| k), Ok(default_kind()));
     assert_eq!(
-        pick_route(Some("")).ok(),
+        pick_route(Some(&AgentKind::new(""))).ok().map(RouteId::id),
         default_launch_among(REGISTRY).map(|(_, f)| f.adapter_id)
     );
 }
@@ -332,12 +332,18 @@ fn the_wire_names_an_agent_only_by_its_kind() {
         "两个名字今天确实不同（否则这条判不出东西）"
     );
     assert_eq!(
-        pick_route(Some(crate::agents::claudecode::AGENT_KIND)),
+        pick_route(Some(&AgentKind::new(crate::agents::claudecode::AGENT_KIND))).map(RouteId::id),
         Ok(route)
     );
-    assert!(pick_route(Some(route)).is_err(), "路由名不当线上名认");
-    assert_eq!(kind_of_route(route), crate::agents::claudecode::AGENT_KIND);
-    assert_eq!(kind_of_route("gone-agent"), "gone-agent");
+    assert!(
+        pick_route(Some(&AgentKind::new(route))).is_err(),
+        "路由名不当线上名认"
+    );
+    assert_eq!(
+        kind_of_route(route),
+        AgentKind::new(crate::agents::claudecode::AGENT_KIND)
+    );
+    assert_eq!(kind_of_route("gone-agent"), AgentKind::new("gone-agent"));
 }
 
 /// ★ `resume_kind` 那一列不是凭空写的：夹具说 flag 的必须以 `--` 开头，说 subcommand 的必须不以 `--` 开头（从 monitor 搬来）。

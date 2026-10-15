@@ -2374,7 +2374,7 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
     .expect("清单形状");
     let mut q = crate::faces::quota_read::specimen();
     q.five_hour = None;
-    let agent = q.accounts[0].head.agent.clone();
+    let agent = q.accounts[0].head.agent.as_str().to_string();
     with_quota(&mut list, &q, &agent);
     let cells = |l: &crate::observe::accounts_query::AccountsList| {
         l.accounts

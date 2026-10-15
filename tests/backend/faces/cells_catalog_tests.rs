@@ -486,7 +486,7 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
             show: sh,
         }],
         vec![UnseenHead {
-            agent: agent.into(),
+            agent: crate::agents::AgentKind::new(agent),
             account: "b".into(),
             kind: u.kind,
             login: u.login,

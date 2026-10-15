@@ -13,7 +13,7 @@ pub(crate) struct RotationFactsReq {
     /// 哪一家（线上的 kind）；缺 ⇒ 有账号库的那一家。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
-    pub(crate) agent: Option<String>,
+    pub(crate) agent: Option<crate::agents::AgentKind>,
 }
 
 crate::wire::typed::codes! {
@@ -43,32 +43,29 @@ impl crate::wire::typed::Handle for RotationFacts {
             let cx = &cx;
 
             let ctx = crate::faces::rotation_face::Ctx::here();
-            Ok(facts_with(
-                &ctx,
-                &req,
-                crate::accounts::quota::now_unix(),
-                &cx.tz,
-            ))
+            facts_with(&ctx, &req, crate::accounts::quota::now_unix(), &cx.tz)
         }
     }
 }
 
-/// 本体（测试给假的账号库 · 额度账 · 钟）。
+/// 本体（测试给假的账号库 · 额度账 · 钟）。认不出的 kind ⇒ `bad_args`。
 pub(crate) fn facts_with(
     ctx: &crate::faces::rotation_face::Ctx,
     req: &RotationFactsReq,
     now: u64,
     tz: &crate::Tz,
-) -> RotationFactsReply {
-    let agent = req.agent.as_deref().map_or(
-        crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-        |k| crate::agents::pick_route(Some(k)).unwrap_or(k),
-    );
+) -> Result<RotationFactsReply, RotationFactsErr> {
+    let agent = match &req.agent {
+        None => crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+        Some(k) => crate::agents::pick_route(Some(k))
+            .map_err(RotationFactsErr::BadArgs)?
+            .id(),
+    };
     let row = |a: &str| (ctx.rows)(agent, a);
-    RotationFactsReply {
+    Ok(RotationFactsReply {
         now,
         accounts: ctx.hop.facts(agent, &row, now, tz),
-    }
+    })
 }
 
 #[cfg(test)]

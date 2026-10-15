@@ -407,7 +407,7 @@ pub struct QuotaAccount {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct AccountHead {
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub account: String,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub seen_at: u64,
@@ -582,7 +582,7 @@ pub struct QuotaUnseen {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct UnseenHead {
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub account: String,
     pub kind: Kind,
     pub login: LoginState,
@@ -644,7 +644,7 @@ impl From<Usage> for UnseenUsage {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
-    pub agent: String,
+    pub agent: crate::AgentKind,
     pub account: String,
     pub kind: Kind,
 }
