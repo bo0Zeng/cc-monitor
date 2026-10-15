@@ -89,13 +89,12 @@ class AppSnackbarController internal constructor(
     ) {
         scope.launch {
             action()
-            val r = hostState.showSnackbar(message, undoLabel, duration = SnackbarDuration.Long)
-            if (r == SnackbarResult.ActionPerformed) onUndo()
+            if (undoWindow(message, undoLabel) == SnackbarResult.ActionPerformed) onUndo()
         }
     }
 
     /**
-     * 做完一个可撤销的动作后调它：显示结果 + 一个「撤销」。
+     * 做完一个可撤销的动作后调它：显示结果 + 一个「撤销」，撤销窗恰好 [UNDO_WINDOW_MS]，窗一过提示自己收起。
      *
      * @param onUndo 点撤销时执行。调用方自己持有恢复所需的数据（如被删掉的那条记录），
      *   这个控件不替谁记任何东西，只提供入口。
@@ -107,28 +106,16 @@ class AppSnackbarController internal constructor(
         undoLabel: String = copyText("kit.toast.undo"),
         onUndo: suspend () -> Unit,
     ) {
-        scope.launch {
-            val r =
-                hostState.showSnackbar(
-                    message = message,
-                    actionLabel = undoLabel,
-                    duration = SnackbarDuration.Long, // 撤销要给足反应时间
-                )
-            if (r == SnackbarResult.ActionPerformed) onUndo()
-        }
+        scope.launch { if (undoWindow(message, undoLabel) == SnackbarResult.ActionPerformed) onUndo() }
     }
 
-    /**
-     * 可撤销的动作做完后：结果 ＋「撤销」，撤销窗恰好 [windowMs]（不随 M3 的 Long 档那 10 秒走）。窗一过提示自己收起。
-     */
-    fun showUndoFor(
+    /** 撤销窗：计时走协程的时钟（M3 的 SnackbarHost 只有 Short · Long · Indefinite 三档），到点回 Dismissed。 */
+    private suspend fun undoWindow(
         message: String,
-        windowMs: Long,
-        undoLabel: String = copyText("kit.toast.undo"),
-        onUndo: suspend () -> Unit,
-    ) {
-        scope.launch { if (hostState.showFor(windowMs, message, undoLabel) == SnackbarResult.ActionPerformed) onUndo() }
-    }
+        undoLabel: String,
+    ): SnackbarResult =
+        withTimeoutOrNull(UNDO_WINDOW_MS) { hostState.showSnackbar(message, undoLabel, duration = SnackbarDuration.Indefinite) }
+            ?: SnackbarResult.Dismissed
 
     /** 出错、且不许自己走的那种（点了才关）：带一个可选的动作（如「编辑」）。 */
     fun showSticky(
@@ -143,16 +130,8 @@ class AppSnackbarController internal constructor(
     }
 }
 
-/**
- * 显示一条带动作的提示，最多 [windowMs]：到点自己收起（回 Dismissed），点了动作回 ActionPerformed。
- * 计时走协程的时钟，不靠 SnackbarHost 的那份（那份只有 Short · Long · Indefinite 三档）。
- */
-suspend fun SnackbarHostState.showFor(
-    windowMs: Long,
-    message: String,
-    actionLabel: String,
-): SnackbarResult =
-    withTimeoutOrNull(windowMs) { showSnackbar(message, actionLabel, duration = SnackbarDuration.Indefinite) } ?: SnackbarResult.Dismissed
+/** 撤得回的动作（直接做 ＋ 撤销）给的撤销窗，全 App 一个数。 */
+const val UNDO_WINDOW_MS: Long = 8_000L
 
 /** 一条反馈：屏上那一句 ＋ 只进复制详情的原话（可空）。 */
 @Immutable

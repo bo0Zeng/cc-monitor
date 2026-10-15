@@ -1,10 +1,8 @@
-package com.ccmonitor.mobile.ui.session.keys
+package com.ccmonitor.mobile.core.ui.feedback
 
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import com.ccmonitor.mobile.core.ui.feedback.showFor
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -13,38 +11,50 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** 删一颗 · 删一组的撤销窗是 8 秒：到点提示自己收起；窗里点撤销回 ActionPerformed。假时钟，不按墙钟。 */
+/** 撤得回的动作给的撤销窗全 App 一个数（8 秒）：到点提示自己收起、不再撤；窗里点撤销照做。假时钟，不按墙钟。 */
 @OptIn(ExperimentalCoroutinesApi::class)
 class UndoWindowTest {
+    private fun TestScope.controller(host: SnackbarHostState) = AppSnackbarController(host, backgroundScope) {}
+
     @Test
-    fun theUndoWindowClosesAfterEightSeconds() =
+    fun theUndoWindowIsEightSecondsAndThenCloses() =
         runTest {
             val host = SnackbarHostState()
-            var r: SnackbarResult? = null
-            launch { r = host.showFor(UNDO_WINDOW_MS, "m", "u") }
+            var undone = 0
+            controller(host).showUndo("m", "u") { undone++ }
             runCurrent()
             advanceTimeBy(UNDO_WINDOW_MS - 1)
             runCurrent()
             assertNotNull("窗没到不许收", host.currentSnackbarData)
-            assertNull(r)
             advanceTimeBy(2)
             runCurrent()
             assertNull("到点收起", host.currentSnackbarData)
-            assertEquals(SnackbarResult.Dismissed, r)
+            assertEquals(0, undone)
             assertEquals(8_000L, UNDO_WINDOW_MS)
         }
 
     @Test
-    fun undoInsideTheWindowIsReported() =
+    fun undoInsideTheWindowRuns() =
         runTest {
             val host = SnackbarHostState()
-            var r: SnackbarResult? = null
-            launch { r = host.showFor(UNDO_WINDOW_MS, "m", "u") }
+            var undone = 0
+            controller(host).showUndo("m", "u") { undone++ }
             runCurrent()
             advanceTimeBy(7_000)
             runCurrent()
             host.currentSnackbarData!!.performAction()
             runCurrent()
-            assertEquals(SnackbarResult.ActionPerformed, r)
+            assertEquals(1, undone)
+        }
+
+    @Test
+    fun undoAfterTheActionGetsTheSameWindow() =
+        runTest {
+            val host = SnackbarHostState()
+            controller(host).showUndoAfter({}, "m", "u") {}
+            runCurrent()
+            advanceTimeBy(UNDO_WINDOW_MS + 1)
+            runCurrent()
+            assertNull(host.currentSnackbarData)
         }
 }

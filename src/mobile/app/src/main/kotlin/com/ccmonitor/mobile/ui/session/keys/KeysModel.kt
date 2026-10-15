@@ -274,6 +274,3 @@ fun durationLine(
         }
     return "$effective ms · $how"
 }
-
-/** 删一颗 · 删一组之后撤销窗开多久。 */
-const val UNDO_WINDOW_MS: Long = 8_000L

@@ -92,7 +92,7 @@ private sealed interface Overlay {
 /**
  * 编辑按键：全屏，← 回终端。顶上一排组 tab（最右 ＋ 新建组，长按拖动排先后）；组名那一行 ⋯（改名 · 左移 · 右移 · 删除组）；
  * 每颗一行（拖动柄 · 键帽 · 单击做什么 · 设了的双击 / 长按）；最底下一节两个总时长；底部「＋ 修饰键」「＋ 按键」。
- * 顶栏 ⋯ 只有「恢复默认按键」。删一颗 · 删一组直接删、给 8 秒撤销；恢复默认撤不回 ⇒ 确认框。
+ * 顶栏 ⋯ 只有「恢复默认按键」。删一颗 · 删一组直接删、给 撤销；恢复默认撤不回 ⇒ 确认框。
  */
 @Composable
 fun KeysEditorScreen(onBack: () -> Unit) {
@@ -149,7 +149,7 @@ fun KeysEditorScreen(onBack: () -> Unit) {
     EditorOverlay(overlay, state, current, vm.ops, onDone = { overlay = null }, onCreated = { tab = it })
 }
 
-/** 编辑一颗那一页接到读写上：存了回到那一组；删了直接删、给 8 秒撤销；还原默认就地换成默认那样。 */
+/** 编辑一颗那一页接到读写上：存了回到那一组；删了直接删、给 撤销；还原默认就地换成默认那样。 */
 @Composable
 private fun EditingKey(
     draft: KeyDraft,
@@ -177,20 +177,20 @@ private fun EditingKey(
                 ops.deleteKey(k)
                 onLeave()
             }
-            snackbar.showUndoFor(copyText("mobKeys.done.deleteKey", "cap" to k.cap(state::groupName)), UNDO_WINDOW_MS) { ops.undoDeleteKey(k) }
+            snackbar.showUndo(copyText("mobKeys.done.deleteKey", "cap" to k.cap(state::groupName))) { ops.undoDeleteKey(k) }
         },
         onRevert = { k -> scope.launch { onDraft(KeyDraft.of(ops.revert(k))) } },
     )
 }
 
-/** 删一组（连组里的按键）直接删，给 8 秒撤销；撤销把组和按键照原样放回原位。 */
+/** 删一组（连组里的按键）直接删，给 撤销；撤销把组和按键照原样放回原位。 */
 private suspend fun deleteGroupWithUndo(
     ops: KeyOps,
     g: KeyGroup,
     snackbar: AppSnackbarController,
 ) {
     val gone = ops.deleteGroup(g)
-    snackbar.showUndoFor(copyText("mobKeys.done.deleteGroup", "name" to g.name, "n" to gone.size), UNDO_WINDOW_MS) { ops.undoDeleteGroup(g, gone) }
+    snackbar.showUndo(copyText("mobKeys.done.deleteGroup", "name" to g.name, "n" to gone.size)) { ops.undoDeleteGroup(g, gone) }
 }
 
 /** 叠在编辑页上的那一个框 / 抽屉。 */
