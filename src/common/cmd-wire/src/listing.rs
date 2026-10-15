@@ -274,6 +274,10 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub hide: Option<Hide>,
+    /// 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+    #[serde(default, rename = "autoAnswer", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub auto_answer: Option<crate::needs::AutoAnswer>,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub updated_at: i64,

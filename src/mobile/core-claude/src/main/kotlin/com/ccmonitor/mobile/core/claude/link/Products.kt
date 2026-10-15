@@ -241,7 +241,10 @@ data class SessionTable(
 object SessionsNeeds {
     const val COMMAND: String = "sessions-needs"
 
-    fun of(data: Any?): List<NeedsRow>? = Wire.bind<NeedsList>(data)?.waiting
+    fun of(data: Any?): List<NeedsRow>? = list(data)?.waiting
+
+    /** 整份（在等的 ＋ 替人答过的那几条）。 */
+    fun list(data: Any?): NeedsList? = Wire.bind<NeedsList>(data)
 }
 
 /**

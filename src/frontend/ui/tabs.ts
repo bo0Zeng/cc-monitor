@@ -53,6 +53,7 @@ import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabHide } from "./tab-hide";
 import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
 import { setHide } from "./session-hidden-cmds";
+import { annotate } from "./history-reads";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
 import type { ManualBook } from "./manual-book";
@@ -394,6 +395,14 @@ export class TabManager {
       close: (sid) => this.closeTab(sid),
       hide: (sids) => this.hider.hide(sids),
       unhide: (sids) => this.hider.unhide(sids),
+      autoAnswer: (sid, min) => {
+        const t = this.store.tabs.get(sid);
+        if (!t) return;
+        annotate(t.origin, sid, { autoAnswer: { afterMin: min } }).then(
+          () => void t.facts.refresh(),
+          (e: unknown) => failToast(copyText("tabMenu.autoAnswer.failed"), e),
+        );
+      },
       openCwd: (sid) => void this.openTabCwd(sid),
       front: (sid) => this.frontFor(sid),
       viewTerminal: (sid) => {
@@ -789,6 +798,8 @@ export class TabManager {
       permissionModeText: null,
       switch: this.store.pendingSwitch.get(sessionId) ?? null,
       needs: null,
+      autoAnswer: null,
+      autoAnswered: null,
       backgroundWork: null,
       pending: [],
       lastSay: null,

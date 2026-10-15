@@ -73,6 +73,8 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
     writers: [],
     unread: 0,
     needs: null,
+    autoAnswer: null,
+    autoAnswered: null,
     backgroundWork: null,
     pending: [],
     lastSay: null,

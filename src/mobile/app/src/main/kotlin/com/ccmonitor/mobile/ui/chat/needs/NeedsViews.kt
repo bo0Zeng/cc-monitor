@@ -63,6 +63,7 @@ import kotlinx.coroutines.delay
 object NeedsTags {
     const val BAR = "needs-bar"
     const val ANSWER = "needs-answer"
+    const val ANSWERED = "needs-answered"
     const val SHEET = "needs-sheet"
     const val DETAIL = "needs-detail"
     const val GONE = "needs-gone"
@@ -142,6 +143,26 @@ fun NeedsBarView(
             ) { Text(copyText("mobNeeds.act.answer")) }
         }
     }
+}
+
+/** 替人答过的那一行（钉条那一格）：灰字一行，不是在等 ⇒ 不用琥珀、没有按钮。 */
+@Composable
+fun NeedsAnsweredView(
+    said: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        said,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 6.dp)
+                .testTag(NeedsTags.ANSWERED),
+    )
 }
 
 /** 琥珀淡底（琥珀边 ＋ 10% 底）。 */

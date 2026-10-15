@@ -13,6 +13,7 @@
  *
  * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）。别处先答了 ⇒ 块淡出收起、留一行（稳定态，
  * 下一条请求来了 / 切走才没）：点了才知道的（already_answered · closed_elsewhere）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
+ * 没人答、那台替人答了（会话事实 `autoAnswered`）⇒ 同一行写核心那一句，切走再回来也在，那条会话下一次挂上提问才换掉。
  */
 import type { Tab } from "./tab-model";
 import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
@@ -92,7 +93,7 @@ export class AnswerBlock {
     const shown = this.shown;
     if (shown && (shown.sid !== sid || n?.ask?.id !== shown.id)) {
       this.shown = null;
-      if (shown.sid === sid && !shown.ours && !this.goneLine) this.goneLine = { sid: shown.sid, ask: shown.id, said: copyText("askBlock.gone.elsewhere") };
+      if (shown.sid === sid && !shown.ours && !this.goneLine) this.goneLine = { sid: shown.sid, ask: shown.id, said: tab?.autoAnswered ?? copyText("askBlock.gone.elsewhere") };
     }
     if (this.goneLine) {
       // 点了才知道的那一种：请求还在（等重读）⇒ 淡出的块 ＋ 那一行照旧。
@@ -102,6 +103,11 @@ export class AnswerBlock {
         return;
       }
       this.goneLine = null;
+    }
+    // 上一条提问没人答、那台替人答过：同一行（核心那一句），下一条请求来了才换掉。
+    if (tab && !n && tab.autoAnswered) {
+      this.drawGone(tab.autoAnswered);
+      return;
     }
     if (!tab || !n) {
       if (this.drawn !== "") {
