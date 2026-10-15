@@ -5,7 +5,7 @@
 //! 提示（`warn`）：还没登录 · 号里有意料之外的实体项 · 共享库本身的源头断了 · 身份本体哪儿都找不到 ·
 //! 共享库顶层有一份 `0600` 的文件却不在身份表里（它会被链给每个号）。
 
-use super::layout::{identity, is_excluded, is_identity, share_items};
+use super::layout::{identity, is_excluded, is_identity, share_items, shared_found};
 use super::model::Manifest;
 use super::scan::{join, Snapshot};
 use crate::platform::acct_view::Item;
@@ -282,7 +282,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                     }
                 }
             }
-            if items.is_empty() {
+            if shared_found(&s.shared).is_empty() {
                 o.push(
                     CheckLevel::Fail,
                     n,

@@ -1330,3 +1330,36 @@ fn account_colors_are_assigned_on_add_kept_on_remove_and_filled_in_once() {
     crate::accounts::manage::wire::colors_here(&HomeDoor(t.0.clone()));
     assert_eq!(t.read(path), text, "补过再调不动盘");
 }
+
+/// 号里留着一份自己的计划目录（Claude Code 头一回用时共享库里还没有，就建在了号里）：修复把那一份挪进共享库、两个号都链上，
+/// 核对转绿；回滚把号里那一份照备份取回，共享库里挪过去的那一份留着（回滚只删账号库里的东西）。
+#[test]
+fn repair_lifts_the_one_account_copy_of_an_on_demand_shared_dir_into_the_shared_store() {
+    let t = two_accounts("lift");
+    let acct = |n: &str, rel: &str| format!(".cc-monitor/accounts/{n}/{rel}");
+    for n in ["lab", "x"] {
+        std::fs::remove_file(t.p(&acct(n, "plans"))).unwrap();
+    }
+    std::fs::remove_dir_all(t.p(".claude/plans")).unwrap();
+    t.write(&acct("lab", "plans/a-plan.md"), "计划（夹具句）");
+    assert_eq!(verify(&t)["pass"], false, "号里那一份实体该报");
+    let fixed = ok(&t, "accounts-repair", json!({}));
+    assert_eq!(
+        t.read(".claude/plans/a-plan.md"),
+        "计划（夹具句）",
+        "{fixed}"
+    );
+    for n in ["lab", "x"] {
+        assert!(t.is_link(&acct(n, "plans")), "{n} 没链上");
+        assert_eq!(t.read(&acct(n, "plans/a-plan.md")), "计划（夹具句）");
+    }
+    let v = verify(&t);
+    assert_eq!(v["pass"], true, "{v}");
+    ok(&t, "accounts-rollback", json!({}));
+    assert!(
+        !t.is_link(&acct("lab", "plans")),
+        "回滚之后号里那一份没取回"
+    );
+    assert_eq!(t.read(&acct("lab", "plans/a-plan.md")), "计划（夹具句）");
+    assert_eq!(t.read(".claude/plans/a-plan.md"), "计划（夹具句）");
+}

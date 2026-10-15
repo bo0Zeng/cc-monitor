@@ -84,7 +84,12 @@ impl Run<'_> {
     /// 记一行撤销并立刻落盘（整份重写 `undo.tsv`，比对上一次写进去的那一份）。
     fn record(&mut self, lines: &[(&str, &str)]) -> Result<(), String> {
         let before = self.undo.clone();
-        for (op, p) in lines {
+        // 回滚只删账号库里的东西（[`delete_one`]）⇒ 账号库外这一趟新建的（共享库里按需建的目录 · 挪进共享库的那一份）不记删：
+        // 回滚留着它（Claude Code 自己头一回用也会建它），号里那一份照备份取回。
+        for (op, p) in lines
+            .iter()
+            .filter(|(op, p)| *op != "DELETE" || is_under(p, &self.r.accts))
+        {
             self.undo.push_str(&format!("{op}\t{p}\n"));
         }
         let rel = self.rel(&join(&self.bk, UNDO_NAME))?;
@@ -396,6 +401,7 @@ pub(crate) fn backup_id_ok(id: &str) -> bool {
 }
 
 /// 撤销清单 ⇒ 回滚要做的那几条（**纯**）：先还原（倒序）、再删（倒序）—— 先救数据再清新建的。认不出的行原样报出来。
+/// 同一个路径既要还原又要删（先挪走、再在原处建了一条链接）⇒ 只还原：它在这一趟之前就在，不是这一趟新建的。
 pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
     let mut restore = Vec::new();
     let mut delete = Vec::new();
@@ -418,6 +424,14 @@ pub(crate) fn undo_steps(text: &str) -> (Vec<Undo>, Vec<String>) {
             _ => bad.push(line.to_string()),
         }
     }
+    let restored: Vec<String> = restore
+        .iter()
+        .filter_map(|u| match u {
+            Undo::Restore(p) => Some(p.clone()),
+            _ => None,
+        })
+        .collect();
+    delete.retain(|u| !matches!(u, Undo::Delete(p) if restored.contains(p)));
     restore.reverse();
     delete.reverse();
     restore.extend(delete);

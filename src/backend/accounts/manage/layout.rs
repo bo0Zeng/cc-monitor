@@ -2,7 +2,8 @@
 //! 一个字节都不写；执行在 [`super::exec`]。
 //!
 //! 布局：每个号一个配置目录（`0700`）。Claude 的身份文件（[`identity`]）每个号各一份（凭据 `0600`），
-//! 共享库顶层其余每一项都是一条链回共享库的符号链接（改一处，各号同时看见）。
+//! 共享库顶层其余每一项都是一条链回共享库的符号链接（改一处，各号同时看见）；那一家按需才建、各号该共用的几个目录
+//! （[`shared_on_demand`]）共享库里还没有也照样链（先在共享库里建出来）。
 
 use super::model::{Account, Manifest, ACCOUNT_ZERO};
 use super::scan::{is_under, join, DirState, Snapshot};
@@ -75,14 +76,42 @@ pub(crate) fn is_excluded(name: &str) -> bool {
     SHARE_EXCLUDE_EXACT.contains(&name) || name.ends_with(".bak") || name.contains(".bak-")
 }
 
-/// 共享库里要链给每个号的那几项（排好序）：顶层全部，减去身份那几项与排除的那几项。
-pub(crate) fn share_items(shared: &DirState) -> Vec<String> {
+/// 那一家按需才建、各号该共用的那几个目录：共享库里还没有也照样链（计划里先在共享库建出来）。
+pub(crate) fn shared_on_demand() -> &'static [&'static str] {
+    face().map_or(&[], |f| f.shared_on_demand)
+}
+
+/// 共享库顶层此刻有的、要链给各号的那几项：顶层全部，减去身份那几项 · 排除的那几项 · 按需才建的那几个
+/// （那几个是这边建的空目录，不算「共享库里有东西」）。
+pub(crate) fn shared_found(shared: &DirState) -> Vec<String> {
     shared
         .entries
         .keys()
-        .filter(|n| !is_identity(n) && !is_excluded(n))
+        .filter(|n| !is_identity(n) && !is_excluded(n) && !shared_on_demand().contains(&n.as_str()))
         .cloned()
         .collect()
+}
+
+/// 要链给每个号的那几项（排好序）：共享库顶层此刻有的（[`shared_found`]）∪ 按需才建的那几个（[`shared_on_demand`]）。
+pub(crate) fn share_items(shared: &DirState) -> Vec<String> {
+    let mut items = shared_found(shared);
+    for n in shared_on_demand() {
+        if !items.iter().any(|i| i == n) {
+            items.push((*n).to_string());
+        }
+    }
+    items.sort_unstable();
+    items
+}
+
+/// 按需才建的那几个共享库里还没有 ⇒ 先建（同一份计划里只建一次）。
+fn seed_shared(plan: &mut Plan, s: &Snapshot) {
+    for n in shared_on_demand() {
+        let at = join(&s.roots().shared, n);
+        if !s.shared.get(n).exists() && !plan.ops.contains(&Op::MkDir(at.clone())) {
+            plan.ops.push(Op::MkDir(at));
+        }
+    }
 }
 
 /// 计划里的一步。路径一律绝对。
@@ -186,14 +215,14 @@ fn check_name(name: &str) -> Result<(), Refusal> {
 
 /// 一个号该有的共享链接（只计划新建的那几条）。
 fn link_all(plan: &mut Plan, s: &Snapshot, cfg: &str) {
-    let items = share_items(&s.shared);
-    if items.is_empty() {
+    if shared_found(&s.shared).is_empty() {
         plan.notes.push(copy_text(
             "beAcctPlan.links.noneShared",
             &[("shared", &s.roots().shared)],
         ));
     }
-    for it in items {
+    seed_shared(plan, s);
+    for it in share_items(&s.shared) {
         plan.ops.push(Op::Link {
             target: join(&s.roots().shared, &it),
             at: join(cfg, &it),
@@ -448,6 +477,29 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
     let mut plan = Plan::default();
     let mut next = m.clone();
     let items = share_items(&s.shared);
+    // 按需才建的那几个共享库里还没有：恰好一个号里有一份实体目录 ⇒ 挪进共享库当共用的那一份；否则建一份空的
+    // （两个号以上各有一份 ⇒ 不替人合并，下面那一步照「共享项在号里是实体」提示）。
+    let mut lifted: Vec<(String, &str)> = Vec::new();
+    for n in shared_on_demand() {
+        if s.shared.get(n).exists() {
+            continue;
+        }
+        let holders: Vec<&Account> = m
+            .managed()
+            .filter(|a| a.config_dir != r.shared && r.controls(&a.config_dir))
+            .filter(|a| matches!(s.dir(&a.config_dir).get(n), Item::Dir { .. }))
+            .collect();
+        match holders.as_slice() {
+            [one] => {
+                plan.ops.push(Op::Move {
+                    from: join(&one.config_dir, n),
+                    to: join(&r.shared, n),
+                });
+                lifted.push((one.config_dir.clone(), n));
+            }
+            _ => plan.ops.push(Op::MkDir(join(&r.shared, n))),
+        }
+    }
     for a in m.managed() {
         let c = &a.config_dir;
         if !r.controls(c) {
@@ -494,6 +546,15 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
                         target: want,
                         at: join(c, it),
                     }),
+                    _ if lifted
+                        .iter()
+                        .any(|(from, n)| from == c && *n == it.as_str()) =>
+                    {
+                        plan.ops.push(Op::Link {
+                            target: want,
+                            at: join(c, it),
+                        })
+                    }
                     _ => plan.notes.push(copy_text(
                         "beAcctPlan.repair.entity",
                         &[("name", &a.name), ("item", it)],
@@ -507,7 +568,8 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
                 if !is_under(target, &r.shared) || *target == r.shared {
                     continue;
                 }
-                let in_shared = s.shared.get(base).exists();
+                let in_shared =
+                    s.shared.get(base).exists() || shared_on_demand().contains(&base.as_str());
                 if is_identity(base) {
                     plan.ops.push(if in_shared {
                         Op::Isolate {
