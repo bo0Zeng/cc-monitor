@@ -4,13 +4,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { autoAnswerItems, AUTO_ANSWER_MINUTES } from "../../../src/frontend/ui/tab-menu";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { fmtDur } from "../../../src/frontend/ui/duration-format";
 
 describe("没人答时自动答 ▸", () => {
-  it("关着 ⇒ 勾在「关」；几档的字照文案表；点一档交那一档", () => {
+  it("关着 ⇒ 勾在「关」；几档照短时长写；点一档交那一档", () => {
     const set = vi.fn<(min: number) => void>();
     const items = autoAnswerItems({ autoAnswer: null }, set);
     expect(items.map((i) => [i.label, i.checked, i.radio])).toEqual(
-      AUTO_ANSWER_MINUTES.map((m) => [m === 0 ? copyText("tabMenu.autoAnswer.off") : copyText("tabMenu.autoAnswer.after", { n: m }), m === 0, "autoAnswer"]),
+      AUTO_ANSWER_MINUTES.map((m) => [m === 0 ? copyText("tabMenu.autoAnswer.off") : fmtDur(m * 60), m === 0, "autoAnswer"]),
     );
     items[0].onClick!();
     expect(set, "点着勾的那一档不交").not.toHaveBeenCalled();
@@ -22,7 +23,7 @@ describe("没人答时自动答 ▸", () => {
     const set = vi.fn<(min: number) => void>();
     const items = autoAnswerItems({ autoAnswer: 7 }, set);
     const on = items.filter((i) => i.checked).map((i) => i.label);
-    expect(on).toEqual([copyText("tabMenu.autoAnswer.after", { n: 7 })]);
+    expect(on).toEqual([fmtDur(7 * 60)]);
     expect(items.length).toBe(AUTO_ANSWER_MINUTES.length + 1);
     items[0].onClick!();
     expect(set).toHaveBeenCalledWith(0);

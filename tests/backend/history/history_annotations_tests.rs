@@ -280,21 +280,25 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
     let at = |patch: Value, now: i64| {
         answer_annotate_at(&own_of(&p), &json!({"sid": "fresh", "patch": patch}), now)
     };
-    let e = at(json!({"autoAnswer": {"afterMin": 10, "say": " 继续 "}}), 1).unwrap();
+    let e = at(
+        json!({"autoAnswer": {"afterMin": 10, "say": " 往下做 "}}),
+        1,
+    )
+    .unwrap();
     assert_eq!(
         e["entry"]["autoAnswer"],
-        json!({"afterMin": 10, "say": "继续"})
+        json!({"afterMin": 10, "say": "往下做"})
     );
     let e = at(json!({"autoAnswer": {"afterMin": 5}}), 2).unwrap();
     assert_eq!(
         e["entry"]["autoAnswer"],
-        json!({"afterMin": 5, "say": "继续"}),
+        json!({"afterMin": 5, "say": "往下做"}),
         "只换分钟"
     );
     let e = at(json!({"starred": true}), 3).unwrap();
     assert_eq!(
         e["entry"]["autoAnswer"],
-        json!({"afterMin": 5, "say": "继续"}),
+        json!({"afterMin": 5, "say": "往下做"}),
         "没给的格不动"
     );
     let e = at(json!({"autoAnswer": {"afterMin": 5, "say": "  "}}), 4).unwrap();
@@ -329,6 +333,30 @@ fn the_auto_answer_cell_is_written_kept_and_removed() {
         "{disk}"
     );
     assert_eq!(auto_answer_at(&p, "fresh"), None);
+    let _ = std::fs::remove_dir_all(p.parent().unwrap());
+}
+
+/// 改了「没人答时自动答」那一格 ⇒ 推 `changed {needs, key: sid}`（出口照它重读会话事实）；只改别的格不推。
+#[test]
+fn changing_the_auto_answer_cell_pushes_needs_for_that_session() {
+    let p = temp_copy("auto-push");
+    let mut rx = crate::control::asks::changes().subscribe();
+    let pushed = |rx: &mut tokio::sync::broadcast::Receiver<String>, sid: &str| {
+        let mut hit = false;
+        while let Ok(s) = rx.try_recv() {
+            hit |= s == sid;
+        }
+        hit
+    };
+    let at = |sid: &str, patch: Value| {
+        answer_annotate_at(&own_of(&p), &json!({"sid": sid, "patch": patch}), 1).unwrap()
+    };
+    at("auto-push-a", json!({"starred": true}));
+    assert!(!pushed(&mut rx, "auto-push-a"), "只改星标不推");
+    at("auto-push-a", json!({"autoAnswer": {"afterMin": 5}}));
+    assert!(pushed(&mut rx, "auto-push-a"));
+    at("auto-push-a", json!({"autoAnswer": {"afterMin": 0}}));
+    assert!(pushed(&mut rx, "auto-push-a"), "关掉也推");
     let _ = std::fs::remove_dir_all(p.parent().unwrap());
 }
 

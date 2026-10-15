@@ -35,6 +35,7 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { ActionId } from "./keybindings/actions";
 import { terminalFrontAvailable } from "./terminal-front";
 import { fullTitle } from "./session-face";
+import { fmtDur } from "./duration-format";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
 const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "launch" };
@@ -128,7 +129,7 @@ export interface TabMenuHost {
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
   close(sid: string): void;
-  /** 「没人答时自动答」那一格（`history-annotate {autoAnswer}`；`0` ＝ 关）：交了重读会话事实，没交成说一句。 */
+  /** 「没人答时自动答」那一格（`history-annotate {autoAnswer}`；`0` ＝ 关）：只交命令（那台推帧、会话事实跟着重读），没交成说一句。 */
   autoAnswer(sid: string, min: number): void;
   /** 隐藏 · 取消隐藏（与批量菜单同一口：交命令、给撤销 toast；栏上那一格等推帧来了才挪）。 */
   hide(sids: readonly string[]): void;
@@ -151,7 +152,7 @@ export function autoAnswerItems(t: Pick<Tab, "autoAnswer">, set: (min: number) =
   const now = t.autoAnswer ?? 0;
   const mins = AUTO_ANSWER_MINUTES.includes(now) ? AUTO_ANSWER_MINUTES : [...AUTO_ANSWER_MINUTES, now].sort((a, b) => a - b);
   return mins.map((m) => ({
-    label: m === 0 ? copyText("tabMenu.autoAnswer.off") : copyText("tabMenu.autoAnswer.after", { n: m }),
+    label: m === 0 ? copyText("tabMenu.autoAnswer.off") : fmtDur(m * 60),
     radio: "autoAnswer",
     checked: m === now,
     onClick: () => {

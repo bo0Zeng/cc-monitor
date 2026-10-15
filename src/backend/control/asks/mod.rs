@@ -121,7 +121,8 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
 }
 
-fn moved(sid: &str) {
+/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 推 `changed {needs, key: sid}`。
+pub(crate) fn moved(sid: &str) {
     let _ = changes().send(sid.to_string());
 }
 
@@ -235,8 +236,10 @@ fn open_id(
 /// 「没人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
 pub(crate) const AUTO_MAX_MIN: u32 = 30;
 
-/// 替人答的那一句的缺省（交给那一家的话，不是界面文案）。
-pub(crate) const AUTO_SAY: &str = "不要卡着，按你推荐的做，继续";
+/// 替人答的那一句的缺省（交给那一家的话）。
+pub(crate) fn auto_say() -> String {
+    copy_text("beAsk.auto.say", &[])
+}
 
 /// 那一句至多几个字。
 const AUTO_SAY_MAX: usize = 500;
@@ -276,7 +279,7 @@ pub(crate) fn auto_checked(a: AutoAnswer) -> Result<Option<AutoAnswer>, String> 
 /// 等满了：还挂着 ⇒ 每一题答成「其他」＋ 那一句（没读出题的那一种 ⇒ 不回答、附那一句），收场、留记录 ⇒ 那一家要的那一份；
 /// 已经不在（有人先答了 · 撤了）/ 那一家写不出 ⇒ `None`。
 fn answer_for_nobody(id: &str, auto: &AutoAnswer) -> Option<Value> {
-    let say = auto.say.clone().unwrap_or_else(|| AUTO_SAY.to_string());
+    let say = auto.say.clone().unwrap_or_else(auto_say);
     let mut b = book();
     let o = b.open.get(id)?;
     let verdict = if o.product.questions.is_empty() {
@@ -304,7 +307,13 @@ fn answer_for_nobody(id: &str, auto: &AutoAnswer) -> Option<Value> {
         sid.clone(),
         Words(copy_text(
             "beAsk.auto.answered",
-            &[("min", &auto.after_min.to_string()), ("say", &say)],
+            &[
+                (
+                    "dur",
+                    &copy_core::format_duration(u64::from(auto.after_min) * 60_000),
+                ),
+                ("say", &say),
+            ],
         )),
     );
     while b.answered.len() > SETTLED_KEEP {

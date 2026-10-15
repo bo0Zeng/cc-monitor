@@ -363,7 +363,10 @@ fn corpus(name: &str) -> Vec<Value> {
             off["autoAnswer"] = serde_json::json!(10);
             off["autoAnswered"] = serde_json::json!(copy_core::copy_text(
                 "beAsk.auto.answered",
-                &[("min", "10"), ("say", crate::control::asks::AUTO_SAY)]
+                &[
+                    ("dur", &copy_core::format_duration(600_000)),
+                    ("say", &crate::control::asks::auto_say())
+                ]
             ));
             out.push(off);
             for n in dressed_needs(base) {

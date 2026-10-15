@@ -511,6 +511,7 @@ pub(crate) fn annotate_at(
         Some(HideAsk::Off) => entry.hide = Some(Hide::Off),
         Some(HideAsk::Rule) => entry.hide = None,
     }
+    let auto_changed = patch.auto_answer.is_some();
     if let Some(mut a) = patch.auto_answer {
         // 没给那一句 ⇒ 留着原来那一句（只换分钟）；给了空白 ⇒ 回到缺省。
         if a.say.is_none() {
@@ -523,6 +524,10 @@ pub(crate) fn annotate_at(
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
         .map_err(|e| err(crate::wire::spec::Fail::from(("io_failed", e))))?;
+    // 会话事实里那一格（`autoAnswer`）跟着变：出口照推帧重读，不自己去问。
+    if auto_changed {
+        crate::control::asks::moved(sid);
+    }
     Ok(Annotated { entry, prev })
 }
 

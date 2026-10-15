@@ -4786,7 +4786,7 @@
     "tabMenu.autoAnswer.tip": {
       "kind": "body",
       "role": "悬停",
-      "zh": "只管提问：等满还没人答，每一题答「其他」＋ 一句话 · 批准与计划照常等人",
+      "zh": "只答提问 · 等满没人答就替人答一句；批准与计划照常等人",
       "args": []
     },
     "tabMenu.autoAnswer.off": {
@@ -4794,12 +4794,6 @@
       "role": "菜单项",
       "zh": "关",
       "args": []
-    },
-    "tabMenu.autoAnswer.after": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "{n} 分钟",
-      "args": ["n"]
     },
     "tabMenu.autoAnswer.failed": {
       "kind": "error",
@@ -18367,8 +18361,14 @@
     "beAsk.auto.answered": {
       "kind": "body",
       "role": "说明",
-      "zh": "{min} 分钟没人答，已自动答：{say}",
-      "args": ["min", "say"]
+      "zh": "{dur}没人答，已自动答：{say}",
+      "args": ["dur", "say"]
+    },
+    "beAsk.auto.say": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "不要卡着，按推荐的做，继续",
+      "args": []
     },
     "beAsk.answer.closed": {
       "kind": "error",

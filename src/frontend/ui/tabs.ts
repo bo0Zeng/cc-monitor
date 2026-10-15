@@ -52,8 +52,7 @@ import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload"
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabHide } from "./tab-hide";
 import { NO_LINEAGE, type SessionHidden } from "./session-hidden";
-import { setHide } from "./session-hidden-cmds";
-import { annotate } from "./history-reads";
+import { setAutoAnswer, setHide } from "./session-hidden-cmds";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView, type PlanNeeds } from "./tab-bar-view";
 import type { ManualBook } from "./manual-book";
@@ -398,10 +397,7 @@ export class TabManager {
       autoAnswer: (sid, min) => {
         const t = this.store.tabs.get(sid);
         if (!t) return;
-        annotate(t.origin, sid, { autoAnswer: { afterMin: min } }).then(
-          () => void t.facts.refresh(),
-          (e: unknown) => failToast(copyText("tabMenu.autoAnswer.failed"), e),
-        );
+        setAutoAnswer(t.origin, sid, min).catch((e: unknown) => failToast(copyText("tabMenu.autoAnswer.failed"), e));
       },
       openCwd: (sid) => void this.openTabCwd(sid),
       front: (sid) => this.frontFor(sid),

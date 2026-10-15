@@ -31,7 +31,7 @@ pub enum Topic {
     Plan,
     /// 这台某个会话的任务清单（`key` ＝ sid）。
     Tasks,
-    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）。
+    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）。
     Needs,
     /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。
     Login,

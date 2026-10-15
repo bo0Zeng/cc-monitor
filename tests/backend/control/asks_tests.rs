@@ -458,7 +458,10 @@ async fn a_question_nobody_answers_gets_the_sentence_when_the_time_is_up() {
     assert!(pending(sid).is_empty());
     let said = copy_core::copy_text(
         "beAsk.auto.answered",
-        &[("min", "10"), ("say", "照推荐的来")],
+        &[
+            ("dur", &copy_core::format_duration(600_000)),
+            ("say", "照推荐的来"),
+        ],
     );
     assert_eq!(answered(sid).map(|w| w.0), Some(said.clone()));
     assert!(answered_rows()
@@ -481,7 +484,7 @@ async fn without_its_own_sentence_it_says_the_default_one() {
     let got = h.await.unwrap().decision.unwrap();
     assert_eq!(
         got["hookSpecificOutput"]["decision"]["updatedInput"]["answers"]["Which?"],
-        AUTO_SAY
+        auto_say()
     );
 }
 
@@ -549,8 +552,8 @@ fn the_setting_is_checked_before_it_is_written() {
     assert_eq!(auto_checked(on(0, Some("x")).unwrap()), Ok(None), "0 ＝ 关");
     assert!(auto_checked(on(AUTO_MAX_MIN + 1, None).unwrap()).is_err());
     assert_eq!(
-        auto_checked(on(3, Some("  继续  ")).unwrap()),
-        Ok(on(3, Some("继续")))
+        auto_checked(on(3, Some("  往下做  ")).unwrap()),
+        Ok(on(3, Some("往下做")))
     );
     assert_eq!(auto_checked(on(3, Some("   ")).unwrap()), Ok(on(3, None)));
     assert!(auto_checked(on(3, Some(&"字".repeat(501))).unwrap()).is_err());
