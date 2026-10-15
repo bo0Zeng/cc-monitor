@@ -213,13 +213,13 @@ pub(crate) fn record_lines<'b>(
     reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
-    lines: impl IntoIterator<Item = (&'b [u8], u64)>,
+    lines: impl IntoIterator<Item = (&'b [u8], u64, Option<u64>)>,
 ) -> (Vec<RecordLine>, u64) {
     let sid = (reader.face.sid)(path).unwrap_or_default();
     let path_str = path.to_string_lossy();
     let mut next = seq;
     let mut out: Vec<RecordLine> = Vec::new();
-    for (body, start) in lines {
+    for (body, start, end) in lines {
         if !super::history_query::line_counts(body) {
             continue;
         }
@@ -228,6 +228,7 @@ pub(crate) fn record_lines<'b>(
         if let Some((record, cwd)) = reader.interpret(body, start) {
             if let Some(prev) = out.last_mut() {
                 if fold_unread(&mut prev.record, &record) {
+                    prev.end = end;
                     continue;
                 }
             }
@@ -235,6 +236,7 @@ pub(crate) fn record_lines<'b>(
                 session_id: sid.clone(),
                 path: path_str.to_string(),
                 seq: at,
+                end,
                 cwd,
                 record,
             });
@@ -251,7 +253,7 @@ pub(crate) fn record_lines_of_page(
     offset: u64,
     bytes: &[u8],
 ) -> (Vec<RecordLine>, u64) {
-    record_lines(reader, path, seq, split_starts(offset, bytes))
+    record_lines(reader, path, seq, split_lines_full(offset, bytes))
 }
 
 /// 一页子运行记录（`history-run`，`offset` 是这一页在文件里的起点）：出了记录的每一条给 `{record, rid?}`；

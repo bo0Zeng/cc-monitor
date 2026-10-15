@@ -1498,14 +1498,61 @@ type WirePath = string | { b16: string };
 入参 `FilesCommitUploadReq` · 回包 `FilesPathBytesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, overwrite: boolean, expect: Sha256Expect, chunks?: number, bytes?: number, };
+type Conflict = { 
+/**
+ * 同 [`BatchOutcome::key`]。
+ */
+key: string, 
+/**
+ * 落点那一段名字。
+ */
+name: WirePath, 
+/**
+ * 要放过去的那一项是什么。
+ */
+kind: FileKind, 
+/**
+ * 要放过去的那一项的大小（文件）。
+ */
+size?: number, 
+/**
+ * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
+ */
+mtime_text?: string, 
+/**
+ * 已在那儿的那一项是什么。
+ */
+there: FileKind, 
+/**
+ * 已在那儿的那一项的大小（文件）。
+ */
+there_size?: number, 
+/**
+ * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
+ */
+there_mtime_text?: string, 
+/**
+ * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ */
+dir_into: boolean, };
+type Conflicts = { conflicts: Array<Conflict>, };
+type FileKind = "dir" | "file" | "symlink" | "other";
+type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, 
+/**
+ * 落点已有同名：同成组复制那一条（缺 ⇒ `ask`：码 `exists`、`data` 是同名清单，一个字节不动、块留着，改个答原样再交）。
+ * 只有一件 ⇒ `skip` 不收（不放就别提交）。
+ */
+on_exists?: OnExists, expect: Sha256Expect, chunks?: number, bytes?: number, };
 type FilesPathBytesReply = { path: WirePath, bytes: number, };
+type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
+码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale` · `exists`
+
+失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
 #### `files-browse`
 
@@ -1679,9 +1726,14 @@ type WirePath = string | { b16: string };
 入参 `LsReq` · 回包 `LsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type Crumb = { name: WirePath, path: WirePath, };
 type FileKind = "dir" | "file" | "symlink" | "other";
 type LinkTo = "dir" | "file" | "missing";
-type LsEntry = { path: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+type LsEntry = { path: WirePath, 
+/**
+ * 末段名（那台按自己的分隔符切好）。
+ */
+name: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
 /**
  * 那台按本地钟写好的短写法。
  */
@@ -1698,7 +1750,19 @@ link_dir?: boolean,
  * 链接指向哪一种（只在链接上）。
  */
 link_to?: LinkTo, };
-type LsReply = { entries: Array<LsEntry>, 
+type LsReply = { 
+/**
+ * 排好的（[`LsReq::sort`]）。
+ */
+entries: Array<LsEntry>, 
+/**
+ * 上一级；到顶 ⇒ `null`。
+ */
+up: WirePath | null, 
+/**
+ * 根到这一级的每一段，根在最前（那台按自己的路径规则切：Windows 的盘符那一段是 `C:\`）。
+ */
+crumbs: Array<Crumb>, 
 /**
  * 回送的比读到的少（被 `limit` 截了）。
  */
@@ -1719,7 +1783,13 @@ limit?: number,
 /**
  * `true` ⇒ 只列文件夹（含指向目录的链接）；截断与计数都只数文件夹。
  */
-dirs_only?: boolean, };
+dirs_only?: boolean, 
+/**
+ * 按哪一列排（缺 ⇒ 名称）。目录（含指向目录的链接）恒在前；截断在排好之后。
+ */
+sort?: LsSort, };
+type LsSort = { by: LsSortBy, reverse?: boolean, };
+type LsSortBy = "name" | "size" | "mtime";
 type WirePath = string | { b16: string };
 ```
 
@@ -2544,6 +2614,10 @@ type RotationViewReply = { now: number,
  * `now` 的钟面（`HH:MM`，看的那一台的时区）。
  */
 nowText: string, 
+/**
+ * 会话那一形：这条会话叫什么（同历史清单那一格：改过的 ＞ 标题 ＞ 第一句；这台记录树里找不到 ⇒ 会话 id 前 8 位）；设置页 ⇒ `null`。
+ */
+title: string | null, 
 /**
  * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
  */
@@ -4084,7 +4158,11 @@ title: string, startedAt: number, updatedAt: number, jsonlPath: string,
 /**
  * 判不了活（合成历史没有 pidfile）⇒ `null`。
  */
-isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
+isLive: boolean | null, 
+/**
+ * 不在跑、claude 退了而 tmux 里还挂着它（那台的会话账本说的）；否 ⇒ 缺。
+ */
+reconnectable?: boolean, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
  * 起会话时给了 `--tab` 的那一格（那台的启动台账）；没给 ⇒ 缺。
  */
@@ -4115,9 +4193,9 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` · `ended` · `unknown`（活不活只出这一格）。
+ * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
  */
-status: "live" | "ended" | "unknown", can: Can, 
+status: "live" | "reconnectable" | "ended" | "unknown", can: Can, 
 /**
  * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
  */
@@ -4811,6 +4889,10 @@ next: number,
  */
 eof: boolean, 
 /**
+ * `[from, next)` 里最后一个可计行之后那个字节（一行都没交 ⇒ `from` 之前最后一个可计行之后）：续点 ＝（路径 · 它 · `next`）。
+ */
+end: number, 
+/**
  * `[from, next)` 里进界面的那些（不进界面的照占号、不出现）。
  */
 lines: Array<RecordLine>, };
@@ -4944,6 +5026,10 @@ path: string,
  * 行号（可计行，从 0 起）。
  */
 seq: number, 
+/**
+ * 这一行（含 `\n`）之后那个字节；相邻认不出的几行并成这一条时 ＝ 最后那一行之后。没 `\n` 收尾的残尾 ⇒ `null`。
+ */
+end: number | null, 
 /**
  * 那一行记的工作目录；没有 ⇒ `null`。
  */
@@ -5600,6 +5686,10 @@ path: string,
  * 行号（可计行，从 0 起）。
  */
 seq: number, 
+/**
+ * 这一行（含 `\n`）之后那个字节；相邻认不出的几行并成这一条时 ＝ 最后那一行之后。没 `\n` 收尾的残尾 ⇒ `null`。
+ */
+end: number | null, 
 /**
  * 那一行记的工作目录；没有 ⇒ `null`。
  */
@@ -6798,7 +6888,11 @@ split_at: number,
 /**
  * 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
  */
-end: number, };
+end: number, 
+/**
+ * 这份文件的身份：第一个可计行的摘要（16 位十六进制）；一行都没有 ⇒ 空串。同一路径换了一份 ⇒ 变；只往后长 ⇒ 不变。
+ */
+file: string, };
 ```
 
 码：`bad_args` · `failed`
@@ -8411,7 +8505,11 @@ said: string, form: ProfileForm,
 /**
  * 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
  */
-accountShape: ProfileAccountShape | null, };
+accountShape: ProfileAccountShape | null, 
+/**
+ * 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
+ */
+start: string, };
 type ProfileSlotId = "account" | "tmux" | "cwdIf" | "cwd" | "agent" | "args" | "launcher" | "tmuxSize" | "detach" | "busRegister" | "busNote" | "tab";
 type ProfileTmuxMode = "auto" | "fixed" | "base";
 type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
@@ -8532,6 +8630,42 @@ name: string, edit?: ProfileForm | null,
  * `~` 打头按这台家目录展开。
  */
 at?: string | null, };
+type Tab = "show" | "hide";
+```
+
+码：`bad_args` · `refused`
+
+#### `profiles-from-line`
+
+一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-from-line`
+
+入参 `ProfilesFromLineReq` · 回包 `ProfileForm`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ProfileAccountPick = { "kind": "account", name: string, } | { "kind": "base" };
+type ProfileCwdCase = { at: string, to: string, };
+type ProfileForm = { name: string, from: string | null, account: ProfileAccountPick | null, tmux: ProfileTmuxPick | null, cwdIf: Array<ProfileCwdCase> | null, cwd: string | null, agent: string | null, 
+/**
+ * 交给 agent 的那串（一格文本，写法同 shell：空白分词、引号里原样）。
+ */
+args: string | null, launcher: string | null, tmuxSize: string | null, detach: boolean, busRegister: boolean, busNote: string | null, 
+/**
+ * 标签页：显示 / 隐藏（`null` ＝ 继承）。
+ */
+tab: Tab | null, };
+type ProfileTmuxMode = "auto" | "fixed" | "base";
+type ProfileTmuxPick = { mode: ProfileTmuxMode, name: string, };
+type ProfilesFromLineReq = { name: string, 
+/**
+ * 那一条命令原样（写法同 shell：空白分词、引号里原样）。
+ */
+line: string, cwd?: string | null, 
+/**
+ * 起在这个固定名的 tmux 会话里（缺 ⇒ 照命令行）。
+ */
+sessionName?: string | null, };
 type Tab = "show" | "hide";
 ```
 
@@ -12554,6 +12688,7 @@ needs: string | null, };
 | `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |
 | `--prefs-set` | ＝ 帧命令 `prefs-set`：改这台的偏好，写完读回 |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
+| `--profiles-from-line` | ＝ 帧命令 `profiles-from-line`：一条自由命令行折成别名表单（头一个词是哪一家的启动器 · ccm 照它自己的解析器折） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
 | `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
 | `--profiles-resolve` | ＝ 帧命令 `profiles-resolve`：一段合下来的合并表与「等于」那一行（可按未存的表单算） |

@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
@@ -32,21 +33,21 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.copyPlainText
 import kotlinx.coroutines.launch
 
-/** 终端屏「用哪个启动」那一排：这台的别名（名字照那台给的），点一个 ⇒ 这个 shell 里跑 `ccm @名`。 */
+/** 终端屏「用哪个启动」那一排：这台的别名（名字照那台给的），点一个 ⇒ 这个 shell 里敲那台写好的那一行。 */
 @Composable
 internal fun LaunchAliasRow(
-    names: List<String>,
-    onPick: (String) -> Unit,
+    names: List<Profiles.Alias>,
+    onPick: (Profiles.Alias) -> Unit,
 ) {
     if (names.isEmpty()) return
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        names.forEach { name ->
+        names.forEach { a ->
             AssistChip(
-                onClick = { onPick(name) },
-                label = { Text(name, style = monoSmall) },
+                onClick = { onPick(a) },
+                label = { Text(a.name, style = monoSmall) },
                 leadingIcon = { PhIcon(Ph.Play, contentDescription = null, size = Touch.iconInline) },
             )
         }
@@ -54,7 +55,7 @@ internal fun LaunchAliasRow(
 }
 
 /**
- * 迁移说明（每台只出一次）：手机原来存的启动配置原样列出、可复制；`claude` / `ccm` 那一类给「建这条」（在那台建同名别名）。
+ * 迁移说明（每台只出一次）：手机原来存的启动配置原样列出、可复制；带命令的给「建这条」（在那台建同名别名；建不建得了由那台判，不成照那台那一句说）。
  * 关掉 ⇒ 这一台的不再出。
  */
 @Composable
@@ -83,7 +84,7 @@ internal fun MovedLaunchDialog(
                             SecondaryButton(onClick = { scope.launch { clipboard.copyPlainText(m.clipText()) } }) {
                                 Text(copyText("mobLaunch.migrate.copy"))
                             }
-                            if (m.aliasForm() != null && m !in made) {
+                            if (!m.command.isNullOrBlank() && m !in made) {
                                 SecondaryButton(onClick = {
                                     made = made + m
                                     onMake(m)

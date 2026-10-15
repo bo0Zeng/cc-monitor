@@ -161,6 +161,7 @@ data class TailPlan(
     @Json(name = "split_at") val splitAt: Long,
     @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
+    val file: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -364,6 +365,7 @@ data class ReadRow(
 data class HistoryLinesPage(
     val next: Long,
     val eof: Boolean,
+    val end: Long,
     val lines: List<LineRow>,
 )
 
@@ -371,6 +373,7 @@ data class HistoryLinesPage(
 @JsonClass(generateAdapter = true)
 data class LineRow(
     val seq: Long,
+    val end: Long?,
     val record: LineRecord,
 )
 
@@ -661,6 +664,7 @@ enum class FileKind {
 @JsonClass(generateAdapter = true)
 data class LsEntry(
     val path: Any,
+    val name: Any,
     val kind: FileKind,
     val size: Long?,
     @Json(name = "mtime_text") val mtimeText: String?,
@@ -671,8 +675,17 @@ data class LsEntry(
 @JsonClass(generateAdapter = true)
 data class LsReply(
     val entries: List<LsEntry>,
+    val up: Any?,
+    val crumbs: List<Crumb>,
     val truncated: Boolean,
     val total: Long,
+)
+
+@WireOf("Crumb")
+@JsonClass(generateAdapter = true)
+data class Crumb(
+    val name: Any,
+    val path: Any,
 )
 
 @WireOf("StatReply")
@@ -744,6 +757,7 @@ enum class BatchItemState {
 data class RotationViewReply(
     val now: Long,
     val nowText: String,
+    val title: String?,
     val strategy: RotStrategyItem?,
     val form: List<RotFormCell>,
     val settings: Any?,
@@ -1009,6 +1023,7 @@ data class ProfilesBook(
 data class ProfileRow(
     val name: String,
     val usable: Boolean,
+    val start: String,
 )
 
 @WireOf("ProfilesWriteDone")

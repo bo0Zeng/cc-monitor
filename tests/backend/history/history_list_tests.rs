@@ -938,3 +938,28 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
     assert!(find(&v, S3)["hidden"].is_null());
     assert!(find(&v, S5)["hidden"].is_null());
 }
+
+/// 不在跑、而会话账本说它可重连（tmux 里还挂着它）⇒ 那一行 `reconnectable`、状态 `reconnectable`；在跑的照 `live`；
+/// 账本没说的照 `ended`。
+#[test]
+fn a_session_the_ledger_calls_reconnectable_is_listed_as_reconnectable() {
+    let sid = "9e9e9e9e-0000-4000-8000-000000000001";
+    let other = "9e9e9e9e-0000-4000-8000-000000000002";
+    let v = |s: &str| json!({"sessionId": s, "cwd": "/w/a", "jsonlPath": "/x.jsonl"});
+    let none = LiveSet(Default::default());
+    crate::history::live::set_reconnectable(&[sid.to_string()].into_iter().collect());
+    let r = session_row(&v(sid), "-w-a", &none).unwrap();
+    let o = session_row(&v(other), "-w-a", &none).unwrap();
+    let live = session_row(
+        &v(sid),
+        "-w-a",
+        &LiveSet([sid.to_string()].into_iter().collect()),
+    )
+    .unwrap();
+    crate::history::live::set_reconnectable(&Default::default());
+    assert!(r.reconnectable && !o.reconnectable && !live.reconnectable);
+    assert_eq!(
+        [&r, &o, &live].map(|x| crate::history::listing::status_of(x.is_live, x.reconnectable)),
+        ["reconnectable", "ended", "live"]
+    );
+}

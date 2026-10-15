@@ -334,6 +334,73 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
     })
 }
 
+/// `profiles-from-line` 的入参：手机原来存的那一条启动配置（名字 · 命令 · 在哪个目录起 · 固定的会话名）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ProfilesFromLineReq {
+    pub(crate) name: String,
+    /// 那一条命令原样（写法同 shell：空白分词、引号里原样）。
+    pub(crate) line: String,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) cwd: Option<String>,
+    /// 起在这个固定名的 tmux 会话里（缺 ⇒ 照命令行）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) session_name: Option<String>,
+}
+
+/// 一条自由命令行 ⇒ 别名表单（[`ProfilesFromLineReq`]）：头一个词是哪一家的启动器 ⇒ 后面那串原样交那一家；
+/// 是 `ccm` ⇒ 照 ccm 自己的解析器切两半、折成表单（与旧别名清单一次性迁移同一条路：[`super::edit_of_alias`]）；
+/// 别的 ⇒ 那一句。命令行里没写目录 · tmux ⇒ 照给的那两格填。
+pub(crate) fn form_of_line(req: &ProfilesFromLineReq) -> Answer<ProfileForm> {
+    let words = super::form::split_box(&req.line)
+        .map_err(|()| refused(copy_text("beAliasForm.passthru.unbalanced", &[])))?;
+    let Some((head, rest)) = words.split_first() else {
+        return Err(refused(copy_text("beProfile.line.notALaunch", &[])));
+    };
+    let name = req.name.trim().to_string();
+    let mut f = if head == crate::ccm_line::SUBCOMMAND_WORD {
+        let a = super::Alias::new(&name, rest.to_vec());
+        let text = profile::apply_changes(Some(""), &[Change::Set(super::edit_of_alias(&a, None))])
+            .map_err(refused)?;
+        let book = profile::parse_book(&text);
+        book.find(&name)
+            .map(form_of)
+            .ok_or_else(|| refused(copy_text("beProfile.line.notALaunch", &[])))?
+    } else if let Some(a) = crate::agents::REGISTRY
+        .iter()
+        .find(|a| a.launch.is_some_and(|l| l.default_launcher == head))
+    {
+        ProfileForm {
+            name: name.clone(),
+            agent: (a.kind != crate::agents::default_kind()).then(|| a.kind.to_string()),
+            args: (!rest.is_empty()).then(|| super::form::join_box(rest)),
+            ..ProfileForm::default()
+        }
+    } else {
+        return Err(refused(copy_text("beProfile.line.notALaunch", &[])));
+    };
+    let given = |v: &Option<String>| {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    if f.cwd.is_none() {
+        f.cwd = given(&req.cwd);
+    }
+    if f.tmux.is_none() {
+        f.tmux = given(&req.session_name).map(|name| TmuxPick {
+            mode: TmuxMode::Fixed,
+            name,
+        });
+    }
+    Ok(f)
+}
+
 /// 一段配置 ⇒ 表单（自己写了的那几格有值，其余继承）。
 pub(crate) fn form_of(p: &Profile) -> ProfileForm {
     let mut f = ProfileForm {
@@ -560,9 +627,11 @@ pub(crate) struct ProfileOut {
     form: ProfileForm,
     /// 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
     account_shape: Option<AccountShape>,
+    /// 在这台终端里起它的那一行（[`super::start_line`]）：终端屏照抄、敲进去。
+    start: String,
 }
 
-fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> ProfileOut {
+fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str, ccm: &str) -> ProfileOut {
     let resolved = profile::resolve(book, &p.name, &[]);
     let problem = resolved.as_ref().err().map(|e| ProblemOut {
         line: book
@@ -626,6 +695,7 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
         form: form_of(p),
         account_shape: super::accounts::shape_of(book, p)
             .map(|(account, tmux)| AccountShape { account, tmux }),
+        start: super::start_line(&p.name, shell, ccm),
     }
 }
 
@@ -748,11 +818,12 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
     let shell = here_shell();
     let path = profile::path_in(&store.home);
     let alias_file = super::alias_file_in(&store.home, shell);
+    let ccm = door::join_under(&store.home, relay_route_core::BACKEND_LANDING_REL);
     let profiles: Vec<ProfileOut> = store
         .book
         .profiles
         .iter()
-        .map(|p| profile_out(&store.book, p, shell, &alias_file))
+        .map(|p| profile_out(&store.book, p, shell, &alias_file, &ccm))
         .collect();
     let file_problem = store
         .book
@@ -772,7 +843,7 @@ pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Ans
         let b = profile::parse_book(&text);
         b.profiles
             .iter()
-            .map(|p| profile_out(&b, p, shell, &alias_file))
+            .map(|p| profile_out(&b, p, shell, &alias_file, &ccm))
             .collect()
     } else {
         Vec::new()
@@ -1599,6 +1670,26 @@ impl crate::wire::typed::Handle for ProfilesWrite {
 
             answer_write(files, &req).map_err(of_pair(ProfilesWriteErr::Refused))
         }
+    }
+}
+
+/// `profiles-from-line`：一条自由命令行 ⇒ 别名表单（判法 [`form_of_line`]；不读不写盘）。
+pub(crate) struct ProfilesFromLine;
+
+impl Command for ProfilesFromLine {
+    const NAME: &'static str = "profiles-from-line";
+    type Req = ProfilesFromLineReq;
+    type Reply = ProfileForm;
+    type Err = ProfilesErr;
+}
+
+impl crate::wire::typed::Handle for ProfilesFromLine {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: ProfilesFromLineReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<ProfileForm, ProfilesErr>> + Send + 'static {
+        async move { form_of_line(&req).map_err(of_pair(ProfilesErr::Refused)) }
     }
 }
 

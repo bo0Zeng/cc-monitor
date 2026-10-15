@@ -787,6 +787,7 @@ name = "cc-monitor-filewin"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "chunk-core",
  "cmd-wire",
  "comms-inward",
  "copy-core",
@@ -873,6 +874,16 @@ dependencies = [
  "num-traits",
  "serde",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "chunk-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "serde_json",
+ "sha2",
+ "test-home",
 ]
 
 [[package]]

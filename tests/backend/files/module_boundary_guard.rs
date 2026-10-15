@@ -354,6 +354,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "一组一条那几条共用的票 · 进度 · 撤：一组做的时候手里那一份（看撤的旗 · 报进度）",
     ),
     (
+        "common::batch_book::MINT_TRIES",
+        Kind::Common,
+        "一组一条那几条共用的「保留两份」起名上界（复制 · 上传提交同一个）",
+    ),
+    (
         "common::batch_book::cancel_rest",
         Kind::Common,
         "一组一条那几条共用的票 · 进度 · 撤：撤了 ⇒ 剩下那几项都回 cancelled",
@@ -468,6 +473,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::time::Tz",
         Kind::Common,
         "看的那一台的时区：修改时间那两格按请求带来的它写",
+    ),
+    (
+        "common::time::Tz::default",
+        Kind::Common,
+        "写面那张分派表里没有请求信封的那一路（门 · 判据）：上传提交的同名清单时刻按缺省时区写",
     ),
     (
         "common::time::now",
@@ -592,6 +602,17 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_batch::CopyRefused",
         Door::Command,
     ),
+    // 上传的提交：同名要问那一形同样带同名清单（`exists` 带 `data`），不经 `Act` 那一扇。
+    (
+        "stream/inbound/files_write_face.rs",
+        "control::files_commit::commit_upload_of",
+        Door::Command,
+    ),
+    (
+        "stream/inbound/files_write_face.rs",
+        "control::files_commit::CommitRefused",
+        Door::Command,
+    ),
     ("lib.rs", "files::capability_names", Door::Ledger),
 ];
 
@@ -690,8 +711,9 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
         // 7 → 7：写的那几条换成类型，三面各一个 `answer_wire` 换成 `control::files_write::answer` ＋ 选本体的 `control::files_write::Act`
         //   ＋ 删会话那一条的本体 `control::files_write::delete_session_of`（它要门递的那两问）。
         // 7 → 9：一组一条（`control::files_batch`）：复制带同名清单的入口 `copy` ＋ 它的拒绝类型 `CopyRefused`（票 · 进度 · 撤住 `common/batch_book.rs`）。
-        command, 9,
-        "命令注册那一处够到的入口从 9 个变成了 {command} 个 —— \
+        // 9 → 11：上传提交同名要问那一形带同名清单：`files_commit::commit_upload_of` ＋ 它的拒绝类型 `CommitRefused`。
+        command, 11,
+        "命令注册那一处够到的入口从 11 个变成了 {command} 个 —— \
          读（`files::answer` ＋ `files::Ask`）／ 写 · 上传提交 · 解压（`control::files_write::answer` ＋ `control::files_write::Act`）／ 删会话（`control::files_write::delete_session_of`），\
          〔SR1b 09-24 +3，layer11 −3〕传输台归原生那一块，三格出列。\
          〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。〔FILES3 +1〕按内容搜那个可撤的入口 `files::answer_grep_cancellable`。\

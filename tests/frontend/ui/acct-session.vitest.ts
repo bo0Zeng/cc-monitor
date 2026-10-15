@@ -11,7 +11,7 @@ import type { RotationViewReply } from "../../../src/frontend/ui/generated/Rotat
 const NOW = 1_800_000_000;
 const read = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
   now: NOW,
-  nowText: "14:30",
+  nowText: "14:30", title: null,
   strategy: null,
   form: [],
   settings: {},

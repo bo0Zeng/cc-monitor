@@ -105,10 +105,11 @@ internal class FakeCoreLink :
     }
 
     /**
-     * 一份会话记录的替身：第 i 行（行号 i）占字节 `[10i, 10i+10)`、每行都进界面。照它答 history-tail · history-read · history-lines。
+     * 一份会话记录的替身：第 i 行（行号 i）占字节 `[10i, 10i+10)`、每行都进界面；文件身份 [id]。照它答 history-tail · history-read · history-lines。
      */
     class File(
         val records: MutableList<Map<String, Any?>> = mutableListOf(),
+        var id: String = "f1",
     ) {
         fun answer(
             cmd: String,
@@ -118,7 +119,7 @@ internal class FakeCoreLink :
             return when (cmd) {
                 "history-tail" -> {
                     val from = (n - (args!!["n"] as Long)).coerceAtLeast(0)
-                    Reply.Ok(mapOf("end" to n * W, "split_at" to from * W, "tail_from" to from, "total" to n))
+                    Reply.Ok(mapOf("end" to n * W, "split_at" to from * W, "tail_from" to from, "total" to n, "file" to id))
                 }
                 "history-read" -> {
                     val a = (args!!["offset"] as Long) / W
@@ -128,7 +129,14 @@ internal class FakeCoreLink :
                 "history-lines" -> {
                     val a = args!!["from"] as Long
                     val b = minOf(args["until"] as Long, n)
-                    Reply.Ok(mapOf("lines" to (a until b).map { mapOf("seq" to it, "record" to records[it.toInt()]) }, "next" to b, "eof" to (b >= n)))
+                    Reply.Ok(
+                        mapOf(
+                            "lines" to (a until b).map { mapOf("seq" to it, "end" to (it + 1) * W, "record" to records[it.toInt()]) },
+                            "next" to b,
+                            "eof" to (b >= n),
+                            "end" to b * W,
+                        ),
+                    )
                 }
                 else -> null
             }

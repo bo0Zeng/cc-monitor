@@ -204,6 +204,11 @@ impl SessionLedger {
         out
     }
 
+    /// 此刻可重连的那几条（历史清单那一行照它分出 `reconnectable`，[`crate::history::live::set_reconnectable`]）。
+    pub(crate) fn reconnectable(&self) -> &BTreeSet<String> {
+        &self.reconnectable
+    }
+
     /// 一条连接半路接上来时它该补的那一份账（账本整台一份，它没看见之前那些帧）：可重连的各一帧 ·
     /// 清单已经报完了 ⇒ 一帧 `sessions_replayed`（排在最后，同起步那一趟的次序）。等裁的不补：裁了照常发给每条连接。
     pub(crate) fn snapshot(&self) -> Vec<Frame> {

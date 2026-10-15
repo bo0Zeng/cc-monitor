@@ -1251,6 +1251,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--aliases-block-remove",
     "--profiles-read",
     "--profiles-resolve",
+    "--profiles-from-line",
     "--profiles-impact",
     "--profiles-bases",
     "--profiles-write",

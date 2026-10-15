@@ -187,9 +187,10 @@ class ChatSession(
     private var nextSeq = 0L
     private var tailLines = PAGE_LINES
 
-    /** 已有最新一行之后的字节（续读从这里接）；补行没带字节 ⇒ `null`（下次从头读）。手上的记录是哪份文件的（[anchorPath]）。 */
+    /** 已有最新一行之后的字节（续读从这里接）；不知道 ⇒ `null`（下次从头读）。手上的记录是哪份文件的（[anchorPath] · 身份 [anchorFile]）。 */
     private var anchorOffset: Long? = null
     private var anchorPath: String? = null
+    private var anchorFile: String = ""
 
     /** 存草稿那一下（停手一会儿才存）：发出去之前先撤掉，免得删了的草稿又被写回来。 */
     private var draftSave: Job? = null
@@ -647,6 +648,7 @@ class ChatSession(
         cached.anchor?.let {
             anchorPath = it.path
             anchorOffset = it.offset
+            anchorFile = it.file
             nextSeq = it.seq
         }
         _state.value = _state.value.copy(canLoadOlder = head > 0L)
@@ -678,7 +680,7 @@ class ChatSession(
         line.record?.let { records += it }
         nextSeq = line.seq + 1
         anchorOffset = line.byteOffset
-        sid?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq) }) }
+        sid?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq, anchorFile) }) }
         return true
     }
 
@@ -689,9 +691,9 @@ class ChatSession(
     private suspend fun reloadLocked(p: String): Boolean {
         val t = readTail(p, tailLines) ?: return false
         val s = sid ?: return false
-        val anchor = anchorOffset?.let { o -> anchorPath?.let { Anchor(it, o, nextSeq) } }
+        val anchor = anchorOffset?.let { o -> anchorPath?.let { Anchor(it, o, nextSeq, anchorFile) } }
         val ok =
-            when (val resume = resumeOf(anchor, records.isNotEmpty(), p, t.end, t.total, PAGE_LINES.toLong())) {
+            when (val resume = resumeOf(anchor, records.isNotEmpty(), p, t.file, t.end, t.total, PAGE_LINES.toLong())) {
                 is Resume.Continue -> continueLocked(s, p, resume.from, t)
                 Resume.FromScratch -> scratchLocked(s, p, t)
             }
@@ -712,7 +714,7 @@ class ChatSession(
         records.addAll(read.records)
         nextSeq = t.total
         anchorOffset = t.end
-        cache.append(s, read.pages.flatMap { it.rows }, Anchor(p, t.end, t.total))
+        cache.append(s, read.pages.flatMap { it.rows }, Anchor(p, t.end, t.total, t.file))
         return true
     }
 
@@ -727,10 +729,11 @@ class ChatSession(
         nextSeq = t.total
         anchorOffset = t.end
         anchorPath = p
+        anchorFile = t.file
         records.clear()
         records.addAll(read.records)
         // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
-        cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, Anchor(p, t.end, t.total))
+        cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, Anchor(p, t.end, t.total, t.file))
         return true
     }
 
@@ -753,11 +756,12 @@ class ChatSession(
                 (r as? Reply.Ok)?.let { HistoryLines.of(it.data) }
                     ?: return false.also { readFailed(r.problem(machine, HistoryLines.COMMAND)?.text ?: unreadableReply(machine, HistoryLines.COMMAND, r.toString()).text) }
             records += page.records
-            // 按行号补的没带字节 ⇒ 续点作废（下次从头读），这几格照样落末页。
-            anchorOffset = null
-            sid?.let { s -> cache.append(s, page.raw.map { HistoryRead.row(null, it) }, null) }
             more = page.next > nextSeq && !page.eof
             nextSeq = maxOf(nextSeq, page.next)
+            // 续点跟到这一段最后一个可计行之后；每格带它那一行之后的字节落末页。
+            anchorOffset = page.end
+            val anchor = anchorPath?.takeIf { it == p }?.let { Anchor(it, page.end, nextSeq, anchorFile) }
+            sid?.let { s -> cache.append(s, page.raw.mapIndexed { i, r -> HistoryRead.row(page.ends.getOrNull(i), r) }, anchor) }
         }
         nextSeq = maxOf(nextSeq, until)
         return true

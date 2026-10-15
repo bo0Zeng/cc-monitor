@@ -684,6 +684,7 @@ impl FakeBackend {
                                 path: cmd_wire::files::WirePath::from(
                                     remote_form(&r.path).as_str(),
                                 ),
+                                name: cmd_wire::files::WirePath::from(r.name.as_str()),
                                 kind: if r.is_dir {
                                     cmd_wire::files::FileKind::Dir
                                 } else {
@@ -705,6 +706,8 @@ impl FakeBackend {
                             Some(
                                 serde_json::to_value(cmd_wire::files::LsReply {
                                     entries,
+                                    up: None,
+                                    crumbs: Vec::new(),
                                     truncated: false,
                                     total,
                                     unreadable: 0,

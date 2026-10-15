@@ -522,9 +522,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // 别名文件里每条只有名字（`名字() { ccm @名字 "$@"; }`），规则住配置文件；名字先过 `profile::name_ok`
     //   （两种 shell 都认得的命令名 `[A-Za-z_][A-Za-z0-9_]*`），过不了的那一段不进别名文件。
+    //   「在终端里起它」那一行（`render_start`）同一个名字，另引 ccm 的落点（家目录 ＋ 固定段）。
     (
         "src/backend/platform/shell/dialect.rs",
-        &["word"],
+        &["render_start", "word"],
         &[("src/backend/assets/aliases/profile.rs", "name_ok")],
         "",
         "我们那份别名文件的路径",

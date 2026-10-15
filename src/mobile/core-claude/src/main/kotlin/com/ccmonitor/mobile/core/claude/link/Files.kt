@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
 import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
+import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
 import com.ccmonitor.mobile.core.claude.link.wire.LsReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadChunkReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadTextReply
@@ -21,7 +22,7 @@ import java.nio.charset.CodingErrorAction
 
 /**
  * 那台的一个路径，按原始字节存（`cmd-wire` 的 `WirePath`）：合法 UTF-8 上线是那一串，否则 `{"b16": …}`。
- * 末段 · 上一级 · 面包屑只认 `/`（同桌面 `filewin-contract` 的 `parent_dir` / `remote_basename`）。
+ * 末段 · 上一级 · 面包屑由那台按自己的分隔符切好交来（`files-ls` 的 `name` · `up` · `crumbs`），这里不切。
  */
 class RemotePath(
     bytes: ByteArray,
@@ -39,39 +40,6 @@ class RemotePath(
     /** 上线那一形。 */
     val wire: Any = text ?: mapOf(HEX_KEY to hex(raw))
 
-    /** 末段（尾斜杠不算）。 */
-    val name: RemotePath get() = RemotePath(trimmed().let { t -> t.copyOfRange(t.lastIndexOf(SLASH) + 1, t.size) })
-
-    /** 上一级；根的上一级是根。 */
-    val parent: RemotePath
-        get() {
-            val t = trimmed()
-            val at = t.lastIndexOf(SLASH)
-            return if (at <= 0) ROOT else RemotePath(t.copyOfRange(0, at))
-        }
-
-    /** 面包屑：`(那一段的字, 到那一段为止的路径)`，绝对路径首段是 `/`；不是绝对路径 ⇒ 整串一段。 */
-    fun crumbs(): List<Pair<String, RemotePath>> {
-        if (raw.firstOrNull() != SLASH) return listOf(shown to this)
-        val out = mutableListOf("/" to ROOT)
-        var at = 0
-        while (at < raw.size) {
-            val end = raw.indexOf(SLASH, at + 1).let { if (it < 0) raw.size else it }
-            if (end > at + 1) {
-                val upTo = RemotePath(raw.copyOfRange(0, end))
-                out += upTo.name.shown to upTo
-            }
-            at = end
-        }
-        return out
-    }
-
-    private fun trimmed(): ByteArray {
-        var n = raw.size
-        while (n > 0 && raw[n - 1] == SLASH) n--
-        return raw.copyOfRange(0, n)
-    }
-
     override fun equals(other: Any?): Boolean = other is RemotePath && raw.contentEquals(other.raw)
 
     override fun hashCode(): Int = raw.contentHashCode()
@@ -79,9 +47,7 @@ class RemotePath(
     override fun toString(): String = shown
 
     companion object {
-        private const val SLASH = '/'.code.toByte()
         private const val HEX_KEY = "b16"
-        private val ROOT = RemotePath("/".toByteArray())
 
         fun of(text: String): RemotePath = RemotePath(text.toByteArray(Charsets.UTF_8))
 
@@ -92,11 +58,6 @@ class RemotePath(
                 is Map<*, *> -> (wire[HEX_KEY] as? String)?.let(::unhex)?.let(::RemotePath)
                 else -> null
             }
-
-        private fun ByteArray.indexOf(
-            b: Byte,
-            from: Int,
-        ): Int = (from until size).firstOrNull { this[it] == b } ?: -1
 
         private fun strict(b: ByteArray): String? =
             try {
@@ -154,31 +115,56 @@ object FilesLs {
 
     data class Entry(
         val path: RemotePath,
-        val name: String,
+        /** 末段（那台切好的，原样字节：写的那几问的 `rel`）。 */
+        val rel: RemotePath,
         /** 目录，或跟得过去的指向目录的链接。 */
         val isDir: Boolean,
         val size: Long?,
         /** 那台按它的钟写好的短写法。 */
         val mtime: String?,
-    )
+    ) {
+        /** 屏上那一串名字。 */
+        val name: String get() = rel.shown
+    }
 
     data class Listing(
+        /** 那台排好的先后，照画。 */
         val entries: List<Entry>,
         /** 截了（那台读到的比回送的多）。 */
         val truncated: Boolean,
         val total: Long,
+        /** 上一级；到顶 ⇒ `null`。 */
+        val up: RemotePath? = null,
+        /** 面包屑：根到这一级每一段 `(字, 路径)`，根在最前。 */
+        val crumbs: List<Pair<String, RemotePath>> = emptyList(),
     )
 
-    fun args(dir: RemotePath): Map<String, Any?> = mapOf("path" to dir.wire, "limit" to LIMIT)
+    /** 列一层；[bySize] ⇒ 按大小排（大的在前），否则按名称。目录恒在前（那台排）。 */
+    fun args(
+        dir: RemotePath,
+        bySize: Boolean = false,
+    ): Map<String, Any?> =
+        buildMap {
+            put("path", dir.wire)
+            put("limit", LIMIT)
+            if (bySize) put("sort", mapOf("by" to "size"))
+        }
 
+    /** 有一格路径读不出 ⇒ 整份不认（`null`）。 */
     fun of(data: Any?): Listing? {
         val r = Wire.bind<LsReply>(data) ?: return null
-        val entries =
-            r.entries.map { e ->
-                val p = RemotePath.of(e.path) ?: return null
-                Entry(p, p.name.shown, e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true), e.size, e.mtimeText)
-            }
-        return Listing(entries, r.truncated, r.total)
+        val entries = r.entries.map(::entryOf)
+        val crumbs = r.crumbs.map { c -> RemotePath.of(c.name)?.let { n -> RemotePath.of(c.path)?.let { n.shown to it } } }
+        // 上一级缺 ＝ 到顶；给了却读不出 ⇒ 同那几格读不出。
+        val up = r.up?.let { RemotePath.of(it) ?: return null }
+        if (null in entries || null in crumbs) return null
+        return Listing(entries.filterNotNull(), r.truncated, r.total, up, crumbs.filterNotNull())
+    }
+
+    private fun entryOf(e: LsEntry): Entry? {
+        val path = RemotePath.of(e.path) ?: return null
+        val rel = RemotePath.of(e.name) ?: return null
+        return Entry(path, rel, e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true), e.size, e.mtimeText)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
@@ -186,19 +172,20 @@ object FilesLs {
 
     data class Dir(
         val path: String,
-    ) {
-        val name: String get() = path.trimEnd('/').substringAfterLast('/').ifEmpty { path }
-    }
+        val name: String,
+    )
 
-    /** [dirs] 那一问的一层文件夹；路径读不成字（那台用 `b16` 交的）⇒ 不列。形状对不上 ⇒ `null`。 */
-    fun dirsOf(data: Any?): List<Dir>? = Wire.bind<LsReply>(data)?.entries?.mapNotNull { (it.path as? String)?.let(::Dir) }
+    /** [dirs] 那一问的一层：那台排好的文件夹 ＋ 上一级（到顶 ⇒ `null`）。 */
+    data class Dirs(
+        val dirs: List<Dir>,
+        val up: String?,
+    )
 
-    /** 上一级；根 ⇒ `null`。 */
-    fun parent(path: String): String? {
-        val p = path.trimEnd('/')
-        if (p.isEmpty()) return null
-        val cut = p.lastIndexOf('/')
-        return if (cut <= 0) "/" else p.substring(0, cut)
+    /** [dirs] 那一问的回包；路径或名字读不成字（那台用 `b16` 交的）的那一行不列。形状对不上 ⇒ `null`。 */
+    fun dirsOf(data: Any?): Dirs? {
+        val r = Wire.bind<LsReply>(data) ?: return null
+        val dirs = r.entries.mapNotNull { e -> (e.path as? String)?.let { p -> (e.name as? String)?.let { Dir(p, it) } } }
+        return Dirs(dirs, r.up as? String)
     }
 }
 
@@ -351,7 +338,6 @@ object FilesCommitUpload {
             "root" to dir.wire,
             "rel" to name,
             "key" to key,
-            "overwrite" to false,
             "expect" to mapOf("sha256" to sha256),
             "chunks" to chunks,
             "bytes" to bytes,

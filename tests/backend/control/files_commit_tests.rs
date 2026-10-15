@@ -297,7 +297,9 @@ fn answer_wire(_face: &Face, name: &str, args: &serde_json::Value) -> Answer {
 }
 /// 家由判据给的那三形（不改进程的 `HOME`）。
 fn answer_commit_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
-    via(args, |r| commit_upload_at(face, home, r))
+    via(args, |r| {
+        commit_upload_at(face, home, r, &crate::Tz::default()).map_err(CommitRefused::flat)
+    })
 }
 fn answer_stage_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
     via(args, |r| stage_chunk_at(face, home, r))
@@ -306,20 +308,19 @@ fn answer_commit_text_at(face: &Face, home: &Path, args: &serde_json::Value) -> 
     via(args, |r| commit_text_at(face, home, r))
 }
 
-/// ★ 线上那一面：覆盖策略**必须显式给**（不给 ⇒ `bad_args`，不默认成哪一边）；
-/// 未知命令名 ⇒ `bad_args`；命令表与分派两向对得上。
+/// ★ 线上那一面：整份摘要**必须显式给**（不给 ⇒ `bad_args`）；未知命令名 ⇒ `bad_args`；命令表与分派两向对得上。
 #[test]
-fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
+fn the_wire_face_requires_an_explicit_digest_and_knows_only_its_command() {
     let (e, diag) = crate::common::contract::tests::diag(|| {
         answer_wire(
             &Face::issue(),
             "files-commit-upload",
             &serde_json::json!({"key": KEY, "root": "/tmp", "rel": "a"}),
         )
-        .expect_err("没给 overwrite 该拒")
+        .expect_err("没给 expect 该拒")
     });
     assert_eq!(e.code, "bad_args");
-    assert!(diag.contains("overwrite"), "{}", e.said);
+    assert!(diag.contains("expect"), "{}", e.said);
     assert_eq!(
         COMMIT_COMMANDS.iter().map(|c| c.name).collect::<Vec<_>>(),
         vec![
@@ -421,7 +422,6 @@ fn a_successful_commit_is_the_event_that_sweeps() {
             "key": KEY,
             "root": root.to_string_lossy(),
             "rel": "landed.bin",
-            "overwrite": false,
             "expect": {"sha256": content_sha256(b"payload")},
         }),
     )
@@ -863,9 +863,10 @@ fn the_commit_checks_the_whole_staged_file_against_the_digest_it_is_given() {
     let (home, root) = rig("fw1-digest");
     let body = b"the whole staged file".to_vec();
     let staged = stage(&home, KEY, &body);
-    let e = answer_commit_at(&Face::issue(),
+    let e = answer_commit_at(
+        &Face::issue(),
         &home,
-        &serde_json::json!({"key": KEY, "root": root.to_string_lossy(), "rel": "a.bin", "overwrite": false}),
+        &serde_json::json!({"key": KEY, "root": root.to_string_lossy(), "rel": "a.bin"}),
     )
     .expect_err("没给 expect 竟然上位了");
     assert_eq!(e.code, "bad_args");
@@ -1015,7 +1016,7 @@ fn the_commit_face_assembles_chunks_when_asked() {
     stage_chunk(&Face::issue(), &h, &key, 1, b"world").expect("块 1");
     let args = |sha: &str, rel: &str| {
         serde_json::json!({
-            "key": key, "root": h.join("dst").to_string_lossy(), "rel": rel, "overwrite": false,
+            "key": key, "root": h.join("dst").to_string_lossy(), "rel": rel,
             "expect": {"sha256": sha}, "chunks": 2, "bytes": 11,
         })
     };
@@ -1054,7 +1055,7 @@ fn the_commit_face_lands_under_a_byte_named_rel() {
     let key = "d".repeat(32);
     stage_chunk(&Face::issue(), &h, &key, 0, b"raw").expect("块 0");
     let args = serde_json::json!({
-        "key": key, "root": h.join("dst").to_string_lossy(), "rel": {"b16": "66fe"}, "overwrite": false,
+        "key": key, "root": h.join("dst").to_string_lossy(), "rel": {"b16": "66fe"},
         "expect": {"sha256": crate::files::content_sha256(b"raw")}, "chunks": 1, "bytes": 3,
     });
     answer_commit_at(&Face::issue(), &h, &args).expect("字节名的提交被拒");
@@ -1091,4 +1092,92 @@ fn a_placeholder_failure_gives_the_advice_that_fits_its_reason() {
         )
     );
     assert_ne!(denied, exists);
+}
+
+/// 同名照成组复制那一条：没答（缺 `on_exists` ＝ `ask`）⇒ 码 `exists`、同名清单一项（键 `0` · 名字 · 已在那一份的大小），
+/// 拼块之前就回 ⇒ 块一个没收、目标一个字节没动；同一份入参改答 `overwrite` 再交 ⇒ 盖掉；`keep_both` ⇒ 另起名落下。
+#[test]
+fn a_clash_is_asked_before_assembling_and_the_same_request_with_an_answer_lands() {
+    let h = std::env::temp_dir().join(format!("ccm-fc-ask-{}", std::process::id()));
+    std::fs::remove_dir_all(&h).ok();
+    std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
+    std::fs::create_dir_all(h.join("dst")).expect("铺目标");
+    std::fs::write(h.join("dst/a.txt"), b"old!").unwrap();
+    let key = "e".repeat(32);
+    let sha = crate::files::content_sha256(b"hello world");
+    let req = |on: Option<&str>| {
+        let mut v = serde_json::json!({
+            "key": key, "root": h.join("dst").to_string_lossy(), "rel": "a.txt",
+            "expect": {"sha256": sha}, "chunks": 2, "bytes": 11,
+        });
+        if let Some(on) = on {
+            v["on_exists"] = on.into();
+        }
+        crate::wire::typed::take::<wire::FilesCommitUploadReq>(&v).unwrap()
+    };
+    let at = |r| commit_upload_at(&Face::issue(), &h, r, &crate::Tz::default());
+    stage_chunk(&Face::issue(), &h, &key, 0, b"hello ").expect("块 0");
+    stage_chunk(&Face::issue(), &h, &key, 1, b"world").expect("块 1");
+    match at(req(None)) {
+        Err(CommitRefused::Clash(_, c)) => {
+            assert_eq!(c.conflicts.len(), 1);
+            let one = &c.conflicts[0];
+            assert_eq!((one.key.as_str(), one.name.bytes()), ("0", &b"a.txt"[..]));
+            assert_eq!(
+                (one.size, one.there_size, one.dir_into),
+                (Some(11), Some(4), false)
+            );
+        }
+        other => panic!("没答该回同名清单：{other:?}"),
+    }
+    assert_eq!(std::fs::read(h.join("dst/a.txt")).unwrap(), b"old!");
+    assert_eq!(chunks_left(&h, &key).len(), 2, "问之前就拼掉了块");
+    let e = at(req(Some("skip"))).expect_err("只一件，skip 不收");
+    assert_eq!(CommitRefused::flat(e).code, "bad_args");
+    at(req(Some("overwrite"))).expect("答了盖该成");
+    assert_eq!(std::fs::read(h.join("dst/a.txt")).unwrap(), b"hello world");
+
+    stage_chunk(&Face::issue(), &h, &key, 0, b"hello ").expect("块 0");
+    stage_chunk(&Face::issue(), &h, &key, 1, b"world").expect("块 1");
+    let got = at(req(Some("keep_both"))).expect("保留两份该成");
+    assert_eq!(
+        got.path.bytes(),
+        h.join("dst/a (2).txt").to_string_lossy().as_bytes()
+    );
+    assert_eq!(
+        std::fs::read(h.join("dst/a (2).txt")).unwrap(),
+        b"hello world"
+    );
+    assert_eq!(
+        std::fs::read(h.join("dst/a.txt")).unwrap(),
+        b"hello world",
+        "保留两份不该碰原来那一份"
+    );
+    std::fs::remove_dir_all(&h).ok();
+}
+
+/// 拼好之后上位那一步才撞同名（探的时候还不在）⇒ 也回同名清单；块已收、暂存件在 ⇒ 同一份入参改答再交不重拼、照那一份提交。
+#[test]
+fn a_clash_after_assembling_is_asked_too_and_the_resend_reuses_the_staged_file() {
+    let h = std::env::temp_dir().join(format!("ccm-fc-race-{}", std::process::id()));
+    std::fs::remove_dir_all(&h).ok();
+    std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
+    std::fs::create_dir_all(h.join("dst")).expect("铺目标");
+    let key = "f".repeat(32);
+    stage_chunk(&Face::issue(), &h, &key, 0, b"abc").expect("块 0");
+    // 上一次那一趟已经拼好（块收了、暂存件在），目标随后冒出来。
+    crate::control::files_upload_chunks::assemble_part(&Face::issue(), &h, &key, 1, 3).expect("拼");
+    std::fs::write(h.join("dst/r.bin"), b"zz").unwrap();
+    let v = |on: &str| {
+        crate::wire::typed::take::<wire::FilesCommitUploadReq>(&serde_json::json!({
+            "key": key, "root": h.join("dst").to_string_lossy(), "rel": "r.bin", "on_exists": on,
+            "expect": {"sha256": crate::files::content_sha256(b"abc")}, "chunks": 1, "bytes": 3,
+        }))
+        .unwrap()
+    };
+    let at = |r| commit_upload_at(&Face::issue(), &h, r, &crate::Tz::default());
+    assert!(matches!(at(v("ask")), Err(CommitRefused::Clash(..))));
+    at(v("overwrite")).expect("暂存件在、块已收 ⇒ 照那一份提交");
+    assert_eq!(std::fs::read(h.join("dst/r.bin")).unwrap(), b"abc");
+    std::fs::remove_dir_all(&h).ok();
 }

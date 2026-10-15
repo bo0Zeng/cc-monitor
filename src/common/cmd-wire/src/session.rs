@@ -952,7 +952,7 @@ pub struct BusFailed {
 /// 尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
 ///
 /// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
@@ -971,6 +971,8 @@ pub struct TailPlan {
     /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub end: u64,
+    /// 这份文件的身份：第一个可计行的摘要（16 位十六进制）；一行都没有 ⇒ 空串。同一路径换了一份 ⇒ 变；只往后长 ⇒ 不变。
+    pub file: String,
 }
 
 #[cfg(test)]

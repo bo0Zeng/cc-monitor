@@ -90,6 +90,7 @@
         ],
         "problem": null,
         "said": "当前终端 · 在 ~ 敲进 ~/projects/notes",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @mycc",
         "usable": true
       },
       {
@@ -129,6 +130,7 @@
         ],
         "problem": null,
         "said": "+ tmux · 自动取名",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @mycct",
         "usable": true
       },
       {
@@ -173,6 +175,7 @@
         ],
         "problem": null,
         "said": "账号 team",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @teamcct",
         "usable": true
       },
       {
@@ -206,6 +209,7 @@
           "message": "workcct 写错 · 当前不可用 · 行 15 · 未知选项 tmux-sise"
         },
         "said": "",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @workcct",
         "usable": false
       },
       {
@@ -264,6 +268,7 @@
         ],
         "problem": null,
         "said": "当前终端 · 不用账号 · 进 /srv/p · 交给 agent --model opus",
+        "start": "'<HOME>/.cc-monitor/bin/ccm' @pcc",
         "usable": true
       }
     ],
@@ -360,6 +365,10 @@
   },
   "codes": {
     "profiles-bases": [
+      "bad_args",
+      "refused"
+    ],
+    "profiles-from-line": [
       "bad_args",
       "refused"
     ],

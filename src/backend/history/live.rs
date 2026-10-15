@@ -88,3 +88,24 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
 #[cfg(test)]
 #[path = "../../../tests/backend/history/live_tests.rs"]
 mod tests;
+
+/// 此刻可重连的那几条（claude 退了、tmux 里还挂着它）：会话账本（`observe::session_ledger`，整台一份）每变一次交一份来，
+/// 历史清单那一行的 `status` 照它分出 `reconnectable`。没有在跑的流（一次性子命令）⇒ 空：那几条照「已结束」。
+static RECONNECTABLE: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// 会话账本交来的那一份（整份换）。
+pub(crate) fn set_reconnectable(now: &std::collections::BTreeSet<String>) {
+    let mut g = RECONNECTABLE.lock().unwrap_or_else(|e| e.into_inner());
+    if *g != *now {
+        g.clone_from(now);
+    }
+}
+
+/// 这一条此刻可重连。
+pub(crate) fn reconnectable(sid: &str) -> bool {
+    RECONNECTABLE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(sid)
+}

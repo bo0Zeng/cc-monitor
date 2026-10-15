@@ -163,6 +163,9 @@ pub(crate) trait ShellDialect: Sync {
     /// 一条（通用层判过合格的）别名在这个 shell 里的写法：名字 ＋ 预置参数 ＋ 把调用时的参数原样接在 `rest` 那一边。
     fn render_alias(&self, call: Call, name: &str, argv: &[String], rest: RestTo) -> String;
 
+    /// 在终端里敲的那一行：按绝对路径叫 `program`（不靠 `PATH`）、带一个词 `word`（通用层判过合格的 `@名`）。
+    fn render_start(&self, program: &str, word: &str) -> String;
+
     /// 把我们那份文件的正文（BOM 已剥）读回成一条条。注释 / 空行跳过；认不出的原文带原因。
     fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed>;
 
@@ -456,6 +459,11 @@ impl ShellDialect for Posix {
         copy_text("rsShellDialect.posix.header", &[])
     }
 
+    /// `'<路径>' @名`。
+    fn render_start(&self, program: &str, word: &str) -> String {
+        format!("{} {word}", shell_quote_core::posix_quote(program))
+    }
+
     /// `名字() { ccm <参数…> "$@"; }`。`"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：
     /// 调用时再给的参数接在后面、后者胜。
     fn render_alias(&self, call: Call, name: &str, argv: &[String], rest: RestTo) -> String {
@@ -708,6 +716,15 @@ impl ShellDialect for PowerShell {
 
     fn file_header(&self) -> String {
         copy_text("rsShellDialect.ps.header", &[])
+    }
+
+    /// `& '<路径>.exe' '@名'`（`@` 打头在 PowerShell 里是展开，要引）。
+    fn render_start(&self, program: &str, word: &str) -> String {
+        format!(
+            "& {} {}",
+            ps_literal(&format!("{program}.exe")),
+            ps_literal(word)
+        )
     }
 
     /// `function 名字 { param…; <有守卫的 __ccm_bind>; & ccm <预置> $RemainingArgs['--' <ccm 选项>] }`（交给 ccm 时 `$RemainingArgs` 在最后）。

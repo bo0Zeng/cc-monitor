@@ -27472,6 +27472,15 @@
       "zh": "开",
       "args": []
     },
+    "beProfile.line.notALaunch": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这条命令无法建成别名 · 只认 Claude 的启动命令或 ccm",
+      "args": [],
+      "limited": [
+        "ccm"
+      ]
+    },
     "beProfile.form.tmuxName": {
       "kind": "error",
       "role": "报错",

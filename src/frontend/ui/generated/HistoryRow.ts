@@ -20,9 +20,9 @@ label: Words,
  */
 untitled: boolean, 
 /**
- * `live` · `ended` · `unknown`（活不活只出这一格）。
+ * `live` 在跑 · `reconnectable` claude 退了、tmux 里还挂着它 · `ended` 已结束 · `unknown` 说不清（活不活只出这一格）。
  */
-status: "live" | "ended" | "unknown", can: Can, 
+status: "live" | "reconnectable" | "ended" | "unknown", can: Can, 
 /**
  * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
  */

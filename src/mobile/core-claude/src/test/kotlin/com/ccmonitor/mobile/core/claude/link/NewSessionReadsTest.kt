@@ -103,28 +103,28 @@ class NewSessionReadsTest {
     }
 
     @Test
-    fun `files-ls：只列文件夹；路径是那台写好的全路径，名字照末段；读不成字的路径不列`() {
+    fun `files-ls：只列文件夹；路径 · 名字 · 上一级都是那台写好的；读不成字的不列`() {
         assertEquals(mapOf("path" to "/h/work", "dirs_only" to true), FilesLs.dirs("/h/work"))
         val got =
             FilesLs.dirsOf(
                 mapOf(
                     "entries" to
                         listOf(
-                            mapOf("path" to "/h/work/billing", "kind" to "dir"),
-                            mapOf("path" to mapOf("b16" to "ff"), "kind" to "dir"),
-                            mapOf("path" to "/h/work/notes", "kind" to "symlink", "link_dir" to true),
+                            mapOf("path" to "/h/work/billing", "name" to "billing", "kind" to "dir"),
+                            mapOf("path" to mapOf("b16" to "ff"), "name" to mapOf("b16" to "ff"), "kind" to "dir"),
+                            mapOf("path" to "/h/work/notes", "name" to "notes", "kind" to "symlink", "link_dir" to true),
                         ),
+                    "up" to "/h",
+                    "crumbs" to emptyList<Any>(),
                     "truncated" to false,
                     "total" to 3.0,
                     "unreadable" to 0.0,
                 ),
             )!!
-        assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.map { it.path })
-        assertEquals(listOf("billing", "notes"), got.map { it.name })
+        assertEquals(listOf("/h/work/billing", "/h/work/notes"), got.dirs.map { it.path })
+        assertEquals(listOf("billing", "notes"), got.dirs.map { it.name })
+        assertEquals("/h", got.up)
         assertNull(FilesLs.dirsOf(mapOf("entries" to listOf(mapOf("kind" to "dir")))))
-        assertEquals("/h/work", FilesLs.parent("/h/work/billing"))
-        assertEquals("/", FilesLs.parent("/h"))
-        assertNull("根没有上一级", FilesLs.parent("/"))
     }
 
     @Test

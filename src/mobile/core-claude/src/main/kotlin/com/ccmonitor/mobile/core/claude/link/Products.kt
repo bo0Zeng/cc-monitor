@@ -82,7 +82,8 @@ enum class SessionDot {
 
         /**
          * 一条会话的点：流上活着 ⇒ 照语气；离开活了 ⇒ 照 `session_state` 的去向（可重连 ⇒ 已退出，只能恢复 ⇒ 已结束）；
-         * 流上没有它 ⇒ 照 `history-list` 那一行的 `status`（`ended` · `unknown` 说不清 · `live` 还没报到 ⇒ 同还没收到语气）。认不出 ⇒ `null`（不画）。
+         * 流上没有它 ⇒ 照 `history-list` 那一行的 `status`（`reconnectable` ⇒ 已退出 · `ended` · `unknown` 说不清 · `live` 还没报到 ⇒ 同还没收到语气）。
+         * 认不出 ⇒ `null`（不画）。
          */
         fun of(
             live: LiveSession?,
@@ -97,6 +98,7 @@ enum class SessionDot {
             }
             return when (listed) {
                 "live" -> RUNNING
+                "reconnectable" -> EXITED
                 "ended" -> ENDED
                 "unknown" -> UNKNOWN
                 else -> null

@@ -586,10 +586,12 @@ codes! {
         BadPath = "bad_path",
         /// 盘上这一步没成。
         IoFailed = "io_failed",
-        /// 路径解析拒了 · 目标已在而没让覆盖。
+        /// 路径解析拒了。
         Refused = "refused",
         /// 暂存件的摘要对不上。
         Stale = "stale",
+        /// 落点有同名、还没答怎么办（一个字节没动）：`data` 是同名清单（一项）。
+        Exists = "exists" => Conflicts,
     }
 }
 
@@ -611,11 +613,17 @@ impl crate::wire::typed::Handle for FilesCommitUpload {
     ) -> impl std::future::Future<Output = Result<wire::FilesPathBytesReply, FilesCommitUploadErr>>
            + Send
            + 'static {
-        let (_cx, needs) = cx.split();
+        let (cx, needs) = cx.split();
         async move {
             let face = &needs;
-
-            ask(req, face, FilesCommitUploadErr::BadArgs)
+            use crate::control::files_commit::CommitRefused;
+            crate::control::files_commit::commit_upload_of(face, req, &cx.tz).map_err(|e| match e {
+                CommitRefused::Clash(said, data) => FilesCommitUploadErr::Exists(said, data),
+                CommitRefused::Fail(f) => typed::of_fail(
+                    Fail::new(f.code, f.said).with_raw(f.raw.as_deref()),
+                    FilesCommitUploadErr::BadArgs,
+                ),
+            })
         }
     }
 }

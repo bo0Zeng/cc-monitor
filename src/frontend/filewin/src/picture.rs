@@ -3,7 +3,7 @@
 //!
 //! # 一、读：后端按块给字节，窗口解码
 //!
-//! 经后端 `files-read-chunk` 逐块读回（每块 [`super::lossy_pull::PULL_CHUNK`]，到后端那一条的上限），
+//! 经后端 `files-read-chunk` 逐块读回（每块 [`chunk_core::CHUNK`]，到后端那一条的上限），
 //! 整份不超过调用方给的上限（超了就停、出声：读的途中文件变大了）；读完在后台那条线上解码，
 //! 最长边过了 `side`（[`MAX_SIDE`] 与这块显卡认的最大贴图边取小）就先等比缩，原图多大照记。
 //!
@@ -205,7 +205,7 @@ impl Pictures {
                 &cmd_wire::files::ReadChunkReq {
                     path: l.wire.clone(),
                     offset: bytes.len() as u64,
-                    len: super::lossy_pull::PULL_CHUNK,
+                    len: chunk_core::CHUNK as u64,
                 },
                 super::chunk_upload::CHUNK_BUDGET,
             )

@@ -711,7 +711,7 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
     let t = tmp("pin-seed", None);
     assert_eq!(
         wire_in(&without_path_facts(read(&t)), &t),
-        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"fingerprint":null,"home":"<HOME>","migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busNote":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tab":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busNote":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tab":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","usable":true}],"tmux":true}"#
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"fingerprint":null,"home":"<HOME>","migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busNote":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tab":null,"tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","start":"'<HOME>/.cc-monitor/bin/ccm' @cc","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busNote":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tab":null,"tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","start":"'<HOME>/.cc-monitor/bin/ccm' @cct","usable":true}],"tmux":true}"#
     );
 
     let t = tmp(
@@ -794,5 +794,61 @@ fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
             "stale",
             "<HOME>/.cc-monitor/profiles.toml 在本页读取后被别处改过 · 本次未写入".to_string()
         )
+    );
+}
+
+/// 每段带「在这台终端里起它」那一行：ccm 的绝对路径（家目录下的落点，按这台的 shell 引好）＋ `@名`；
+/// 不靠 `PATH` 里有那个目录。
+#[cfg(unix)]
+#[test]
+fn every_profile_says_the_line_that_starts_it_in_a_terminal_here() {
+    let t = tmp("start", Some(BOOK));
+    let r = read(&t);
+    let ccm = t.0.join(relay_route_core::BACKEND_LANDING_REL);
+    let want = format!(
+        "{} @cct",
+        shell_quote_core::posix_quote(&ccm.to_string_lossy())
+    );
+    assert_eq!(prof(&r, "cct")["start"], json!(want));
+    for p in r["profiles"].as_array().unwrap() {
+        let name = p["name"].as_str().unwrap();
+        assert!(
+            p["start"].as_str().unwrap().ends_with(&format!(" @{name}")),
+            "{p}"
+        );
+    }
+}
+
+/// 一条自由命令行 ⇒ 别名表单：头一个词是那一家的启动器 ⇒ 后面那串原样交它；是 `ccm` ⇒ 照 ccm 的解析器折成表单
+/// （ccm 选项进各格、`--` 左边交 agent）；目录 · 会话名照给的填；别的 ⇒ 拒、那一句。
+#[test]
+fn a_free_command_line_folds_into_the_alias_form_on_the_backend() {
+    let form = |v: Value| -> Result<Value, (&'static str, String)> {
+        wired(super::form_of_line(&taken::<ProfilesFromLineReq>(&v)?))
+    };
+    let plain = form(
+        json!({"name": "w", "line": "claude --model opus", "cwd": "~/w", "sessionName": "dev"}),
+    )
+    .unwrap();
+    assert_eq!(plain["name"], "w");
+    assert_eq!(plain["args"], "--model opus");
+    assert_eq!(plain["cwd"], "~/w");
+    assert_eq!(plain["tmux"], json!({"mode": "fixed", "name": "dev"}));
+    let bare = form(json!({"name": "b", "line": "ccm"})).unwrap();
+    assert_eq!(
+        (bare["args"].clone(), bare["account"].clone()),
+        (Value::Null, Value::Null)
+    );
+    let ccm =
+        form(json!({"name": "c", "line": "ccm --verbose -- --account team --ccm-tmux"})).unwrap();
+    assert_eq!(ccm["args"], "--verbose");
+    assert_eq!(ccm["account"], json!({"kind": "account", "name": "team"}));
+    assert_eq!(ccm["tmux"]["mode"], "auto");
+    let (code, said) = form(json!({"name": "x", "line": "htop"})).expect_err("别的命令建不了");
+    assert_eq!(code, "refused");
+    assert!(!said.is_empty());
+    assert!(
+        form(json!({"name": "x", "line": "claude \"open"})).is_err(),
+        "引号没配对"
     );
 }

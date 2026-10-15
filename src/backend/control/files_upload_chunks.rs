@@ -14,6 +14,7 @@ use copy_core::{copy_text, io_reason};
 use std::path::Path;
 
 /// 把 `<key>.0.chunk` … `<key>.<chunks-1>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建），总长必须恰好 `bytes`、不多一块。
+/// 这一键已经拼过（暂存件在、块都收了：上一次提交在上位那一步撞了同名）⇒ 不再拼，照那一份提交（整份摘要照核）。
 pub fn assemble_part(
     face: &Face,
     home: &Path,
@@ -21,6 +22,16 @@ pub fn assemble_part(
     chunks: u64,
     bytes: u64,
 ) -> Result<(), WriteRefusal> {
+    let dir = home.join(STAGING_DIR);
+    let regular = |name: String| {
+        is_key(key)
+            && resolve_in_root(&dir, name)
+                .ok()
+                .is_some_and(|p| Ro::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_file()))
+    };
+    if regular(format!("{key}.part")) && !regular(chunk_name(key, 0)) {
+        return Ok(());
+    }
     let r = assemble(face, home, key, chunks, bytes);
     drop_chunks(face, home, key);
     r

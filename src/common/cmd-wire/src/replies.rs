@@ -113,9 +113,9 @@ mod tests {
     /// 缺一格 ⇒ 解不开；多出来的格不拦（回包不 deny_unknown_fields：新版多一格不算对不上，形状指纹另管）。
     #[test]
     fn a_missing_cell_is_refused_and_the_rewrite_is_the_same_bytes() {
-        let tail = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30});
+        let tail = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30, "file": "0123456789abcdef"});
         assert_eq!(decode_reply("history-tail", tail.clone()), Some(Ok(tail)));
-        let short = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10});
+        let short = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30});
         assert!(matches!(decode_reply("history-tail", short), Some(Err(_))));
         let refused = serde_json::json!({"result": "refused", "why": "not_yours", "said": "x"});
         assert_eq!(

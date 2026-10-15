@@ -408,6 +408,8 @@ pub(crate) struct RotationViewReply {
     pub(crate) now: u64,
     /// `now` 的钟面（`HH:MM`，看的那一台的时区）。
     pub(crate) now_text: String,
+    /// 会话那一形：这条会话叫什么（同历史清单那一格：改过的 ＞ 标题 ＞ 第一句；这台记录树里找不到 ⇒ 会话 id 前 8 位）；设置页 ⇒ `null`。
+    pub(crate) title: Option<String>,
     /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
     pub(crate) strategy: Option<RotStrategyItem>,
     /// 设置怎么画（策略的声明）。
@@ -433,6 +435,21 @@ pub(crate) struct RotationViewReply {
     /// 换号记录（会话才有）。
     pub(crate) log: Vec<RotLogRow>,
     pub(crate) hints: Vec<RotNote>,
+}
+
+/// 会话那一形顶栏写的名字（[`RotationViewReply::title`]）。
+fn title_of(target: &RotTarget) -> Option<String> {
+    let RotTarget::Session { sid } = target else {
+        return None;
+    };
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
+    Some(crate::history::session_hidden::title_here(
+        sid,
+        &annotations,
+    ))
 }
 
 crate::wire::typed::codes! {
@@ -633,6 +650,7 @@ pub(crate) fn view_with(
         return Ok(RotationViewReply {
             now,
             now_text: face(now, tz),
+            title: title_of(&req.target),
             strategy: None,
             form: Vec::new(),
             settings: Value::Object(Default::default()),
@@ -792,6 +810,7 @@ pub(crate) fn view_with(
     Ok(RotationViewReply {
         now,
         now_text: face(now, tz),
+        title: title_of(&req.target),
         strategy: Some(item),
         form: head.map(|h| h.form.clone()).unwrap_or_default(),
         settings: loaded.settings.clone(),

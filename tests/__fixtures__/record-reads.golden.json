@@ -7,11 +7,13 @@
     ]
   },
   "history-lines": {
+    "end": 273,
     "eof": true,
     "from": 1,
     "lines": [
       {
         "cwd": "/w",
+        "end": 152,
         "path": "<home>/projects/-golden/r.jsonl",
         "record": {
           "agent": "claude",
@@ -37,6 +39,7 @@
       },
       {
         "cwd": null,
+        "end": 273,
         "path": "<home>/projects/-golden/r.jsonl",
         "record": {
           "agent": "claude",
@@ -63,6 +66,7 @@
     "lines": [
       {
         "cwd": "/w",
+        "end": 152,
         "path": "<home>/projects/-golden/r.jsonl",
         "record": {
           "agent": "claude",
@@ -88,6 +92,7 @@
       },
       {
         "cwd": null,
+        "end": 273,
         "path": "<home>/projects/-golden/r.jsonl",
         "record": {
           "agent": "claude",
