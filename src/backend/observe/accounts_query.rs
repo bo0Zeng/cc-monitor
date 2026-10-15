@@ -669,10 +669,54 @@ pub(crate) struct LiveMcpFailed {
     pub title: String,
 }
 
+/// 各条活会话记录里 MCP 那一格读到了哪：记录 ⇒ （读过的字节数 · 那一格）。扩展页每打开一次只读各条记录新长出来的那一截。
+#[derive(Debug, Default)]
+pub(crate) struct McpBook(
+    std::collections::BTreeMap<PathBuf, (u64, Vec<super::facts_query::McpTrouble>)>,
+);
+
+impl McpBook {
+    /// 这条记录此刻的 MCP 那一格：从上次读到的地方接着读（记录比上次读到的短 ⇒ 换了一份，从头读）。
+    pub(crate) fn read(
+        &mut self,
+        path: &Path,
+    ) -> std::io::Result<Vec<super::facts_query::McpTrouble>> {
+        use std::io::{Seek, SeekFrom};
+        let mut file = Ro::open(path)?;
+        let len = file.metadata()?.len();
+        let (at, mcp) = self.0.entry(path.to_path_buf()).or_default();
+        if len < *at {
+            *at = 0;
+            mcp.clear();
+        }
+        file.seek(SeekFrom::Start(*at))?;
+        *at += super::facts_query::mcp_from(std::io::BufReader::new(file), mcp)?;
+        Ok(mcp.clone())
+    }
+
+    /// 只留这几条（这一轮不活了的那几条忘掉）。
+    pub(crate) fn keep_only(&mut self, live: &[PathBuf]) {
+        self.0.retain(|p, _| live.contains(p));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// 本进程那一本（常驻后端里跨请求留着；一次性 CLI 进程里每次都是空的，等于从头读）。
+static MCP_BOOK: std::sync::Mutex<Option<McpBook>> = std::sync::Mutex::new(None);
+
 /// 这台此刻活着的交互会话（`homes` 各号的家里的 pidfile；判活同 [`live_session_ids`]，后台任务不算）里，
 /// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
-/// 每条会话只读 MCP 那一格（`facts_query::mcp_of`）；标题取历史清单的缓存（`history::listing::session_title_of`）。
+/// 每条会话只读 MCP 那一格、只读新长出来的那一截（[`McpBook`]）；标题取历史清单的缓存（`history::listing::session_title_of`）。
 pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
+    let mut book = MCP_BOOK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let book = book.get_or_insert_with(McpBook::default);
+    let mut seen: Vec<PathBuf> = Vec::new();
     let mut out: Vec<LiveMcpFailed> = Vec::new();
     for home in homes {
         for (pid, v) in pidfiles(home) {
@@ -691,10 +735,8 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
             let Ok(path) = super::history_query::session_record(home, sid) else {
                 continue;
             };
-            let Ok(file) = Ro::open(&path) else {
-                continue;
-            };
-            let Ok(said) = super::facts_query::mcp_of(std::io::BufReader::new(file)) else {
+            seen.push(path.clone());
+            let Ok(said) = book.read(&path) else {
                 continue;
             };
             let mut title: Option<String> = None;
@@ -721,6 +763,7 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
             }
         }
     }
+    book.keep_only(&seen);
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out
 }
