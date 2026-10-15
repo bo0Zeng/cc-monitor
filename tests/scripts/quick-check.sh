@@ -73,7 +73,7 @@ step() { local name=$1; shift; local t0=$SECONDS out
   if [ $rc -eq 0 ] && [ "${n:-1}" = 0 ]; then printf '  红   %-16s 0 条跑到\n' "$name"; fails+=("$name"); return; fi
   if [ $rc -eq 0 ]; then printf '  ok   %-16s %ss%s\n' "$name" $((SECONDS-t0)) "${n:+ · $n 条}"
   else printf '  红   %-16s %ss\n' "$name" $((SECONDS-t0))
-    hit=$(printf '%s\n' "$out" | grep -E "^ FAIL |^  FAIL |FAILED|panicked|Diff in|^error|error\[E|error TS|AssertionError" | head -25)
+    hit=$(printf '%s\n' "$out" | grep -E "^ FAIL |^  \\| |FAILED|panicked|Diff in|^error|error\[E|error TS|AssertionError" | head -25)
     printf '%s\n' "${hit:-$(printf '%s\n' "$out" | tail -5)}" | sed 's/^/       /'
     printf '%s\n' "$out" | panics; fails+=("$name"); fi; }
 
