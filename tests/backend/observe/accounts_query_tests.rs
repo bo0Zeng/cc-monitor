@@ -2065,9 +2065,10 @@ fn the_mcp_word_of_a_live_record_is_read_from_where_the_last_look_stopped() {
     // 变短了 ⇒ 从头读。
     fs::write(&rec, delta("m-z")).unwrap();
     assert_eq!(names(&book.read(&rec).unwrap()), ["m-z"]);
-    // 这一轮没看它 ⇒ 忘掉。
+    // 这一轮没看它 ⇒ 忘掉：之后同长换了内容也从头读（记着的话长度没变、一个字都不读，还说 m-z）。
     book.keep_only(&[]);
-    assert!(book.is_empty());
+    fs::write(&rec, delta("m-y")).unwrap();
+    assert_eq!(names(&book.read(&rec).unwrap()), ["m-y"]);
     let _ = fs::remove_dir_all(&dir);
 }
 

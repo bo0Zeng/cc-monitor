@@ -698,11 +698,6 @@ impl McpBook {
     pub(crate) fn keep_only(&mut self, live: &[PathBuf]) {
         self.0.retain(|p, _| live.contains(p));
     }
-
-    #[cfg(test)]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
 }
 
 /// 本进程那一本（常驻后端里跨请求留着；一次性 CLI 进程里每次都是空的，等于从头读）。
