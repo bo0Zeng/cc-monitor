@@ -243,7 +243,7 @@ where
     out
 }
 
-/// 整组开单那一问（[`run_drop`] 的 `open`）：经 [`super::batch::run`] 发 —— 有同名 ⇒ 冲突框问一次、带 `decide` 同一组再发；
+/// 整组开单那一问（[`run_drop`] 的 `open`）：经 `batch_core::run` 发 —— 有同名 ⇒ 冲突框问一次、带 `decide` 同一组再发；
 /// 问得到那台后端的 `$HOME` 就带上（传输台连上之后与 SFTP 起始目录比）。
 pub async fn open_group(
     line: &super::source::Line,
@@ -257,7 +257,7 @@ pub async fn open_group(
         }
         super::source::ask_batch(line, origin, CMD_UPLOAD, &args, OPEN_BUDGET).await
     };
-    let got = super::batch::run(ask, call, || async {}).await;
+    let got = batch_core::run(ask, call, || async {}).await;
     match (got, ask.phase()) {
         (Some(v), _) => match serde_json::from_value::<cmd_wire::transfer::TransferOpened>(v) {
             Ok(o) => Opened::Items(o.items),
@@ -267,7 +267,7 @@ pub async fn open_group(
                 detail: e.to_string(),
             }),
         },
-        (None, super::batch::Phase::Failed(f)) => Opened::Failed(f),
+        (None, batch_core::Phase::Failed(f)) => Opened::Failed(f),
         (None, _) => Opened::Dropped,
     }
 }

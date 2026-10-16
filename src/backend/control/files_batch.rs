@@ -23,9 +23,10 @@ use super::files_write::{
     WriteRefusal,
 };
 use crate::common::batch_book::{
-    cancel_rest, choice_of, key_of, minted, moment_text, mtime_secs, said_of, ticketed, Run,
+    cancel_rest, choice_of, key_of, minted, moment_text, mtime_secs, ticketed, Run,
 };
 use crate::platform::fs::{Face, Ro};
+use batch_core::said_of;
 
 use crate::common::batch_book::MINT_TRIES;
 /// 递归删一棵树一段删几条（段与段之间看撤的旗、报进度）。

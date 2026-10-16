@@ -49,11 +49,11 @@ pub async fn upload_by_chunks(
     p: &super::transfer::Pending,
     board: &super::transfer::DropBoard,
 ) -> Result<(), super::source::Failed> {
-    use super::source::{ask_typed, Failed};
+    use super::source::{ask_typed, failed_here, Failed};
     let key = chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes());
     // 本机那份读不到：句子只说原因词，系统原话进复制详情。
     let local_err = |e: std::io::Error| {
-        Failed::here(
+        failed_here(
             copy_text(
                 "beTransfer.local.readFailed",
                 &[

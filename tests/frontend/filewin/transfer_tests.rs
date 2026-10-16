@@ -750,8 +750,8 @@ pub(crate) fn t1(item: Pending) -> Ticketed {
 
 /// 整组开单那一问（同 `shell.rs` 起一摞时那样摆：开单那一条 ＋ 整组的入参）。
 pub(crate) fn upload_ask(items: &[Pending]) -> crate::batch::BatchBoard {
-    crate::batch::BatchBoard::new(crate::batch::Plan {
-        verb: crate::batch::Verb::Upload,
+    crate::batch::BatchBoard::new(batch_core::Plan {
+        verb: batch_core::Verb::Upload,
         cmd: CMD_UPLOAD,
         args: serde_json::to_value(group_ask(items, None, None)).unwrap(),
         names: items.iter().map(|p| p.name.clone()).collect(),

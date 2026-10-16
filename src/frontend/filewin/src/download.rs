@@ -319,7 +319,7 @@ pub async fn pull_many(
             .await
         }
     };
-    let Some(v) = super::batch::run(&board, call, || async {}).await else {
+    let Some(v) = batch_core::run(&board, call, || async {}).await else {
         return;
     };
     let Ok(opened) = serde_json::from_value::<cmd_wire::transfer::TransferOpened>(v) else {

@@ -14,7 +14,8 @@ use std::sync::{Arc, Mutex};
 
 use copy_core::copy_text;
 
-use super::batch::{BatchBoard, Phase};
+use super::batch::BatchBoard;
+use batch_core::Phase;
 use super::download::DownloadBoard;
 use super::extract::ExtractBoard;
 use super::size::SizeBoard;
@@ -73,7 +74,7 @@ pub enum Act {
     Resume(Vec<Pending>),
     /// 一组里没成的那几项另起一组（另一张票）：`at` ＝ 寻址的那台，`home` ＝ 在哪台的后端里做（同原来那一组）。
     RetryBatch {
-        plan: super::batch::Plan,
+        plan: batch_core::Plan,
         icon: &'static str,
         at: super::source::Origin,
         home: super::source::Origin,
@@ -284,20 +285,20 @@ impl Progress {
                 Trip::Batch { board, icon } => {
                     let name = board.title();
                     match board.plan().verb {
-                        super::batch::Verb::Copy => {
+                        batch_core::Verb::Copy => {
                             let right = copy_text(
                                 "rsFilewinWorkspace.closeAsk.copy",
                                 &[("pct", &pct(j).to_string())],
                             );
                             put(transfers, (*icon, name, right));
                         }
-                        super::batch::Verb::Delete => put(
+                        batch_core::Verb::Delete => put(
                             copy_text("rsFilewinWorkspace.closeAsk.deleting", &[]),
                             (*icon, name, String::new()),
                         ),
-                        super::batch::Verb::Chmod
-                        | super::batch::Verb::Download
-                        | super::batch::Verb::Upload => {
+                        batch_core::Verb::Chmod
+                        | batch_core::Verb::Download
+                        | batch_core::Verb::Upload => {
                             put(transfers, (*icon, name, String::new()))
                         }
                     }
@@ -779,11 +780,11 @@ impl Job {
                         state,
                         icon: icon_for(icon),
                         title: r.said.clone(),
-                        detail: super::batch::failed_lines(&plan, &r).join(&sep),
+                        detail: batch_core::failed_lines(&plan, &r).join(&sep),
                         frac: None,
                         nums: ended,
-                        copy: super::batch::copy_details(&plan, &r),
-                        button: super::batch::retry_plan(&plan, &r).zip(board.route()).map(
+                        copy: batch_core::copy_details(&plan, &r),
+                        button: batch_core::retry_plan(&plan, &r).zip(board.route()).map(
                             |(plan, (at, home))| {
                                 (
                                     copy_text("rsFilewinBatch.btn.retry", &[]),

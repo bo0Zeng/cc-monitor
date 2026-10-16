@@ -1479,8 +1479,8 @@ impl FileWindow {
         self.drops_started += 1;
         let dir = super::source::parent_dir(&items[0].remote_path);
         // 开单那一问（同名冲突框挂在这个标签页上，与复制 · 下载同一个框）。
-        let ask = super::batch::BatchBoard::new(super::batch::Plan {
-            verb: super::batch::Verb::Upload,
+        let ask = super::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Upload,
             cmd: super::transfer::CMD_UPLOAD,
             args: serde_json::to_value(super::transfer::group_ask(&items, None, None))
                 .unwrap_or_default(),
@@ -1711,8 +1711,8 @@ impl FileWindow {
         names: Vec<String>,
         ctx: Option<egui::Context>,
     ) -> bool {
-        let plan = super::batch::Plan {
-            verb: super::batch::Verb::Copy,
+        let plan = batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: super::copy::CMD_COPY,
             args: serde_json::to_value(&req).unwrap_or_default(),
             names,
@@ -1727,7 +1727,7 @@ impl FileWindow {
     /// `home` ＝ 那一组在哪台的后端里做（撤与断开都认它）。接不上（没运行时 · 没通道）⇒ 出声。
     pub fn start_batch(
         &mut self,
-        plan: super::batch::Plan,
+        plan: batch_core::Plan,
         home: super::source::Origin,
         icon: &'static str,
         ctx: Option<egui::Context>,
@@ -1758,7 +1758,7 @@ impl FileWindow {
 
     /// 这个标签页起的那几组落地了 ⇒ 重列目录（复制进来的要出现 · 删掉的要消失）、选中清掉。
     pub fn settle_finished_batches(&mut self) -> bool {
-        use super::batch::Phase;
+        use batch_core::Phase;
         let before = self.batches.len();
         let mut landed = false;
         let mut said = None;
@@ -1953,8 +1953,8 @@ impl FileWindow {
             decide: None,
             ticket: None,
         };
-        let plan = super::batch::Plan {
-            verb: super::batch::Verb::Copy,
+        let plan = batch_core::Plan {
+            verb: batch_core::Verb::Copy,
             cmd: super::cross_copy::CMD_CROSS,
             args: serde_json::to_value(&ask).unwrap_or_default(),
             names: p.names.clone(),
@@ -2505,19 +2505,21 @@ impl FileWindow {
                     )
                     .await;
                     let mut k = kept.lock().unwrap();
-                    all.into_iter()
+                    let mut applied = Vec::new();
+                    let out = all
+                        .into_iter()
                         .map(|(op, r)| {
                             let r = r.map(|reply| {
-                                if let Some(u) =
-                                    super::writeops::chmod_undo(&op, &reply).filter(|_| undoable)
-                                {
-                                    k.1.push(u);
-                                }
                                 k.0.push(op.clone());
+                                applied.push((op.clone(), reply));
                             });
                             (op, r)
                         })
-                        .collect()
+                        .collect();
+                    if undoable {
+                        k.1.extend(super::writeops::chmod_undo(&applied));
+                    }
+                    out
                 },
             )
             .await;
@@ -2672,8 +2674,8 @@ impl FileWindow {
             on_exists: None,
             decide: None,
         };
-        let board = super::batch::BatchBoard::new(super::batch::Plan {
-            verb: super::batch::Verb::Download,
+        let board = super::batch::BatchBoard::new(batch_core::Plan {
+            verb: batch_core::Verb::Download,
             cmd: super::batch::CMD_DOWNLOAD,
             args: serde_json::to_value(&ask).unwrap_or_default(),
             names: rows.iter().map(|r| r.name.clone()).collect(),

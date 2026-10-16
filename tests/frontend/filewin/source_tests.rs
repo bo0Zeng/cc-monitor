@@ -903,13 +903,18 @@ fn every_place_that_joins_a_remote_path_is_declared() {
         ("source.rs", "child_bytes", "拼路径的那一处"),
         ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
         (
-            "source.rs",
+            "batch-core/lib.rs",
             "common_dir_bytes",
             "两条路径按段比出来的公共前缀",
         ),
+        (
+            "batch-core/lib.rs",
+            "copy_plan",
+            "手机「复制到…」：选中那几项的名字拼进源目录与目标目录（手机没有这一侧的路径类型）",
+        ),
         ("corpus.rs", "synth_paths", "合成语料铺字节，不是远端路径"),
         (
-            "batch.rs",
+            "batch-core/lib.rs",
             "name_of",
             "一项的键（序号 / 相对段）写成给人看的名字，不寻址",
         ),
@@ -942,6 +947,7 @@ fn sites_match(patterns: &[&str], declared: &[(&str, &str, &str)], what: &str) {
             repo.join("src/common/filewin-contract/src"),
             "filewin-contract/",
         ),
+        (repo.join("src/common/batch-core/src"), "batch-core/"),
     ];
     for (dir, label) in &trees {
         for (path, src) in guard_core::scan_tree_excluding(dir, &["rs"], &[]) {
@@ -1146,7 +1152,7 @@ fn a_failure_carries_the_detail_the_peer_wrote_or_the_window_writes_its_own() {
         !here.contains(&format!("{}：", label("detail.label.local"))),
         "{here}"
     );
-    let own = Failed::here(
+    let own = failed_here(
         "x".into(),
         &Origin("devbox".into()),
         "files-ls",
