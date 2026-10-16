@@ -206,9 +206,7 @@ describe("KR45D1 点一下跳过去", () => {
 
     const inDom = streamOf(v).querySelectorAll("[data-id]").length;
     expect(inDom).toBe(150); // TAIL_INITIAL：首屏只渲染末尾 150 条
-    expect(rowsOf(v).length).toBe(200); // 而清单是 200 条 —— 分母 = 全部 200 条用户输入
-    // 分水岭：清单条数 > DOM 里的卡数 ⇒ 它确实不是扫 DOM 扫出来的
-    expect(rowsOf(v).length).toBeGreaterThan(inDom);
+    expect(rowsOf(v).length).toBe(200); // 而清单是全部 200 条 ⇒ 它不是扫 DOM 扫出来的
 
     expect(cardOf(v, "u1")).toBeNull(); // 第 1 条还没取回
     rowsOf(v)[0].click();

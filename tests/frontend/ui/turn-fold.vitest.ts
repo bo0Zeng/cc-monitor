@@ -409,7 +409,7 @@ describe("按段折叠", () => {
         content.appendChild(card("card-assistant", `late${k}`));
         await new Promise((r) => setTimeout(r, 0));
       }
-      expect(setFolds.mock.calls.length).toBeGreaterThan(3);
+      expect(setFolds.mock.calls.length, "首趟 ＋ 五张后到的卡各一趟").toBe(6);
       expect(setFolds.mock.lastCall?.[0].linePx).toBe(28);
       expect(reads).toBe(1);
     } finally {

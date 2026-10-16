@@ -429,7 +429,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     await settleOutline();
     const { recordReadCalls } = await import("../../../test-support/chan-fake");
     const ranges = recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");
-    expect(ranges.length, "正文真的是按偏移要回来的").toBeGreaterThan(0);
+    expect(ranges, "正文是按偏移要回来的").toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", offset: 2700, until: 3310, seqBase: 270 }]);
     expect(el.querySelector('[data-id="u300"]'), "取回之后卡建出来了").not.toBeNull();
     expect(row.dataset.unjumpable, "等到了卡却标成跳不过去 ⇒ 同步那一下就去找了").toBeUndefined();
   });

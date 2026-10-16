@@ -330,7 +330,7 @@ describe("主窗口第 2 批：每轮的摘要", () => {
       ["t-3", ["plain", "plain", "fail"], "idle"],
     ]);
     expect(t.turns[0].folds[0].span).toEqual({ text: "", from: null, to: null });
-    expect(t.turns[1].at).toBeGreaterThan(0);
+    expect(t.turns[1].at, "第二轮的起点偏移").toBe(1222);
   });
 
   it("★ 要不到 ⇒ available:false（不猜）；入参照类型发", async () => {
@@ -396,6 +396,6 @@ describe("8a b：分页取", () => {
       { path: "/p/s.jsonl", offset: 0, limit: index.count + 1 },
       { path: "/p/s.jsonl", offset: 300, limit: 1 },
     ]);
-    expect(some.rows.length).toBeGreaterThanOrEqual(index.count + 1);
+    expect(some.rows.length, "两页都整页收下").toBe(2 * index.count);
   });
 });

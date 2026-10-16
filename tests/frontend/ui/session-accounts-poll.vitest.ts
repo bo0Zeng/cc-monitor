@@ -85,27 +85,10 @@ function fanoutProbe(): {
 }
 
 describe("collectAccountRows —— 扇出", () => {
-  it("★ 十台远端的扇出有上限，而不是一次全放出去", async () => {
-    const { f, peak } = fanoutProbe();
-    await collectAccountRows(
-      Array.from({ length: 10 }, (_, i) => host(`h${i}`)),
-      f,
-    );
-    expect(
-      peak(),
-      `同时在飞 ${peak()} 台 —— 上限 ${HOST_FANOUT_LIMIT} 没生效。` +
-        "无上限扇出正是报告 I-5 那一条：一次按键最终对每台各发一轮 SSH。",
-    ).toBeLessThanOrEqual(HOST_FANOUT_LIMIT);
-  });
-
-  it("★ 也不是退回串行 —— 峰值必须真的用满上限（反向判据）", async () => {
+  it("★ 十台远端同时在飞的恰好是上限那么多台：不一次全放出去（每台各一轮 SSH），也不退回串行", async () => {
     const { f, peak } = fanoutProbe();
     await collectAccountRows(Array.from({ length: 10 }, (_, i) => host(`h${i}`)), f);
-    expect(
-      peak(),
-      "峰值 1 = 还是一台一台来。写「该限流」的判据时必须同时写一条「不许限成串行」的，" +
-        "否则把上限设成 1 也能过。",
-    ).toBe(HOST_FANOUT_LIMIT);
+    expect(peak(), "峰值多于上限 ⇒ 上限没生效；峰值 1 ⇒ 还是一台一台来").toBe(HOST_FANOUT_LIMIT);
   });
 
   it("rows 按 host 顺序拼，不按完成顺序", async () => {

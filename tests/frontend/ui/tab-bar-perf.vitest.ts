@@ -373,7 +373,7 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
       move(132);
       expect(flush(), "同一个落点").toBe(0);
       move(250); // 换到另一格
-      expect(flush()).toBeGreaterThan(0);
+      expect(flush(), "换了一格 ⇒ 线挪一次").toBe(1);
       expect(line.style.top, "线挪到了新那一格的上沿").toBe(`${6 * 40 - 1}px`);
     } finally {
       mo.disconnect();
