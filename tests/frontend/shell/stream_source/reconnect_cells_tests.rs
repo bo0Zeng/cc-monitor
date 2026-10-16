@@ -66,12 +66,26 @@ impl Remote {
         let ends = self.ends();
         let start = |i: usize| if i == 0 { 0 } else { ends[i - 1] };
         match cmd {
+            // 那台的判法只取这里用得到的那一支：交来的那一份同一路径、没越过 ⇒ 从它接着；否则尾段。第一页就是整段。
             "history-tail" => {
                 let total = ends.len();
+                let end = ends.last().copied().unwrap_or(0);
                 let n = args["n"].as_u64().unwrap() as usize;
                 let tail_from = total.saturating_sub(n);
-                serde_json::json!({"total": total, "tail_from": tail_from,
-                    "split_at": start(tail_from), "end": ends.last().copied().unwrap_or(0)})
+                let held = &args["held"];
+                let resume = held["path"] == PATH
+                    && held["next"].as_u64().is_some_and(|k| k as usize <= total);
+                let (how, from) = if resume {
+                    ("resume", held["next"].as_u64().unwrap() as usize)
+                } else {
+                    ("tail", tail_from)
+                };
+                let rows: Vec<serde_json::Value> = (from..total)
+                    .map(|i| serde_json::json!({"end": ends[i], "hash": i, "record": {"t": format!("r{i}")}, "cwd": "/w"}))
+                    .collect();
+                serde_json::json!({"total": total, "tail_from": tail_from, "split_at": start(tail_from), "end": end,
+                    "how": how, "from": from, "rows": rows, "next": end, "eof": true,
+                    "held": {"path": PATH, "next": total, "next_byte": end, "mark": ""}})
             }
             "history-read" => {
                 let offset = args["offset"].as_u64().unwrap();

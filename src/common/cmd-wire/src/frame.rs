@@ -343,6 +343,8 @@ pub struct SessionState {
     pub state_hint: Words,
     /// 语气。
     pub state_tone: Tone,
+    /// 监控板组内的序（与活会话的 `activity_order` 同一把尺、排在它们之后；小的在前）。
+    pub state_order: u8,
     /// 此刻能不能换模型 · 权限档（离开「活」那一形）。
     pub switch: Switch,
 }

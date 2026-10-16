@@ -86,12 +86,12 @@ export class TabStore {
    * 归档信号（ended 格）早于这个 sid 的 Tab 建出来时记在这里，ensureTab 建 Tab 时落实。
    * ended 与行同一条队列，正常路径下不会先到；这一层兜「ended 先于该 sid 任何行」的异常序（§ 17a）。
    */
-  readonly pendingArchive = new Set<string>();
+  readonly pendingArchive = new Map<string, number | null>();
   /**
    * 灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive）：F5 后重发的 idle 可能早于骨架建 Tab，不暂存灰灯就丢了。
-   * ensureTab 建 Tab 时落实（同时有 pendingArchive ⇒ 归档优先）。
+   * ensureTab 建 Tab 时落实（同时有 pendingArchive ⇒ 归档优先）。两张表的值都是那一帧带的监控板序。
    */
-  readonly pendingTmuxIdle = new Set<string>();
+  readonly pendingTmuxIdle = new Map<string, number | null>();
   /** 红绿灯信号早于 Tab 建出来时暂存（activity 格当场派，而建 Tab 的行走异步队列）。ensureTab 时落实。 */
   /**
    * 容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实

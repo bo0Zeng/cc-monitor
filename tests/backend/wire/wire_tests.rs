@@ -1195,18 +1195,20 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::wire::SessionFate;
-    for (state, word, name, hint) in [
+    for (state, word, name, hint, order) in [
         (
             SessionFate::Reconnectable,
             "reconnectable",
             "sessionState.reconnectable.name",
             "sessionState.reconnectable.tooltip",
+            4,
         ),
         (
             SessionFate::Ended,
             "ended",
             "sessionState.ended.name",
             "sessionState.ended.tooltip",
+            5,
         ),
     ] {
         let (name, hint) = (
@@ -1216,7 +1218,7 @@ fn mig1_session_state_has_exactly_these_bytes() {
         let ended = copy_core::copy_text("beSessionSwitch.why.ended", &[]);
         assert_eq!(
             to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"state_order\":{order},\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
         );
     }
 }
@@ -1841,5 +1843,33 @@ fn the_written_faces_are_built_in_one_place_only() {
     assert_eq!(
         seen, want,
         "会话帧那几格写好的字只许经后端 `wire` 的构造口造（`ActivityFace::of` · `Switch::live` / `gone` · `NameFace::of_parts`）"
+    );
+}
+
+/// 监控板组内一把尺：可重连 · 已结束的 `session_state` 带序，都排在任何活会话的序（`activity_order`）之后；
+/// 界面只按这一格排、不再自己按状态分段。
+#[test]
+fn the_fates_sort_after_every_live_session_on_one_ruler() {
+    use crate::agents::SessionActivity as A;
+    let live: std::collections::BTreeSet<u64> = [
+        None,
+        Some(A::NeedsYou),
+        Some(A::Working),
+        Some(A::BackgroundWork),
+        Some(A::Idle),
+    ]
+    .into_iter()
+    .map(|a| u64::from(crate::wire::ActivityFace::of(a).activity_order))
+    .collect();
+    let fate = |f| {
+        serde_json::to_value(Frame::session_state("s".into(), f)).unwrap()["state_order"].as_u64()
+    };
+    assert_eq!(live, [0, 1, 2, 3].into());
+    assert_eq!(
+        (
+            fate(crate::wire::SessionFate::Reconnectable),
+            fate(crate::wire::SessionFate::Ended)
+        ),
+        (Some(4), Some(5))
     );
 }

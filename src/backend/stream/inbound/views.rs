@@ -15,6 +15,10 @@ pub(crate) const PLACES: &[(&str, &[(&str, &str)])] = &[
         "history-read",
         &[("rows[]", "read_row"), ("rows[].record", "record")],
     ),
+    (
+        "history-tail",
+        &[("rows[]", "read_row"), ("rows[].record", "record")],
+    ),
     ("history-page", &[("lines[].record", "record")]),
     ("history-lines", &[("lines[].record", "record")]),
     ("history-run", &[("rows[].record", "record")]),

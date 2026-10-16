@@ -38,7 +38,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-lines" => via::<h::HistoryLinesCmd>(args, |r| h::lines_at(home, r, tz)),
         "history-run" => via::<h::HistoryRunCmd>(args, |r| h::run_at(home, r, tz)),
         "history-branch" => via::<h::HistoryBranchCmd>(args, |r| h::branch_at(home, r)),
-        "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r)),
+        "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r, tz)),
         "history-record" => via::<h::HistoryRecordCmd>(args, |r| h::record_at(home, r)),
         "sessions-needs" => via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home))),
         "history-index" => via::<h::HistoryIndexCmd>(args, |r| h::index_at(home, r)),
@@ -2174,7 +2174,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     assert_eq!(
         tail,
-        r#"{"end":273,"file":"dfb90402727f63bf","split_at":55,"tail_from":1,"total":3}"#
+        r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"text":"a","type":"text"}],"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
     );
     assert_eq!(needs, r#"{"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。

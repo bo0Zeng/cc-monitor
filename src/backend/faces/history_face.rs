@@ -11,6 +11,7 @@ use crate::wire::typed::{codes, of_pair, Command, NoArgs};
 pub(crate) use cmd_wire::needs::NeedsList;
 /// 这两条的回包住 `cmd-wire`（手机按同一份解，记录那一格按完整记录）；后端写的那一份记录是原样的一团（缺省 `Value`）。
 pub(crate) use cmd_wire::record::{HistoryLines, HistoryRead};
+pub(crate) use cmd_wire::session::{Held, HistoryTail, TailHow};
 use std::path::Path;
 
 use super::read_face::{
@@ -533,7 +534,7 @@ pub(crate) fn branch_page(
 
 // ───────────────────────── history-tail ─────────────────────────
 
-/// `history-tail` 的入参：要最新几行。
+/// `history-tail` 的入参：要最新几行 ＋ 手上那一份（上一次回的 `held`，之后实时行推过的）。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -541,26 +542,30 @@ pub(crate) fn branch_page(
 pub(crate) struct HistoryTailReq {
     /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
-    /// 要最新几行。
+    /// 要最新几行（也是「缺得比这还多就不读那一截」的那条线）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) n: u64,
+    /// 上一次回的那一份（缺 ⇒ 手上什么都没有）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) held: Option<Held>,
 }
 
 codes! {
     /// `history-tail` 的码。
     pub(crate) enum HistoryTailErr {
-        /// 读不动（含围栏外）。
+        /// 读不动（含围栏外 · 一行比续读上限还长）。
         Failed = "failed",
     }
 }
 
-/// `history-tail`：一份会话的尾段从哪个字节起（正文另走 `history-read` 分页拉）。
+/// `history-tail`：一份会话的尾段在哪、手上那一份续不续得上，连同那一段的第一页正文一问交回（再往后走 `history-read` 分页）。
 pub(crate) struct HistoryTailCmd;
 
 impl Command for HistoryTailCmd {
     const NAME: &'static str = "history-tail";
     type Req = HistoryTailReq;
-    type Reply = TailPlan;
+    type Reply = HistoryTail;
     type Err = HistoryTailErr;
 }
 
@@ -568,20 +573,92 @@ impl crate::wire::typed::Handle for HistoryTailCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
         req: HistoryTailReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<TailPlan, HistoryTailErr>> + Send + 'static {
-        async move { tail_at(&home(), req) }
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<HistoryTail, HistoryTailErr>> + Send + 'static
+    {
+        let (cx, ()) = cx.split();
+        async move { tail_at(&home(), req, &cx.tz) }
     }
 }
 
+/// 手上那一份 × 这一次的图 ⇒ 怎么接。`holds` 核记号（只在要核时调）。**纯函数**。
+///
+/// 没交 · 换了路径 ⇒ 尾段；比这一次的图长（行数 / 字节任一越过）⇒ 变短了；记号那一段不再是那一段 ⇒ 被改写；
+/// 缺的比 `n` 还多 ⇒ 不读那一截；其余从 `held.next` 接着读。记号是空串（那一刻一行都没有 · 那一行太长）⇒ 不核。
+pub(crate) fn how_of(
+    held: Option<&Held>,
+    path: &str,
+    plan: &TailPlan,
+    n: u64,
+    holds: impl FnOnce(&str) -> bool,
+) -> TailHow {
+    let Some(h) = held.filter(|h| h.path == path) else {
+        return TailHow::Tail;
+    };
+    if h.next > plan.total || h.next_byte > plan.end {
+        return TailHow::Truncated;
+    }
+    if !h.mark.is_empty() && !holds(&h.mark) {
+        return TailHow::Rewritten;
+    }
+    if plan.total - h.next > n {
+        return TailHow::Handoff;
+    }
+    TailHow::Resume
+}
+
 /// [`HistoryTailCmd`] 的本体，家目录是参数。
-pub(crate) fn tail_at(home: &Path, req: HistoryTailReq) -> Result<TailPlan, HistoryTailErr> {
-    history_query::tail_now(
+pub(crate) fn tail_at(
+    home: &Path,
+    req: HistoryTailReq,
+    tz: &crate::Tz,
+) -> Result<HistoryTail, HistoryTailErr> {
+    let failed = HistoryTailErr::Failed;
+    let path = req.path;
+    let tail = history_query::tail_now(home, &path, usize::try_from(req.n).unwrap_or(usize::MAX))
+        .map_err(failed)?;
+    let plan = tail.plan;
+    let mark = |start: u64, end: u64| {
+        history_query::mark_at(home, &path, start, end, LINE_CAP_BYTES).map_err(failed)
+    };
+    let how = how_of(req.held.as_ref(), &path, &plan, req.n, |m| {
+        history_query::mark_span(m)
+            .and_then(|(s, e)| mark(s, e).ok().flatten())
+            .is_some_and(|now| now == m)
+    });
+    let (from, at) = match (how, req.held.as_ref()) {
+        (TailHow::Resume, Some(h)) => (h.next, h.next_byte),
+        (TailHow::Handoff, _) => (plan.total, plan.end),
+        _ => (plan.tail_from, plan.split_at),
+    };
+    let page = read_at(
         home,
-        &req.path,
-        usize::try_from(req.n).unwrap_or(usize::MAX),
+        HistoryReadReq {
+            path: path.clone(),
+            offset: Some(at),
+            until: Some(plan.end),
+        },
+        tz,
     )
-    .map_err(HistoryTailErr::Failed)
+    .map_err(|e| failed(crate::wire::typed::Codes::into_fail(e).message))?;
+    let mark = match tail.last {
+        Some(last) => mark(last, plan.end)?.unwrap_or_default(),
+        None => String::new(),
+    };
+    Ok(HistoryTail {
+        held: Held {
+            path,
+            next: plan.total,
+            next_byte: plan.end,
+            mark,
+        },
+        plan,
+        how,
+        from,
+        rows: page.rows,
+        next: page.next,
+        eof: page.eof,
+    })
 }
 
 // ───────────────────────── history-record ─────────────────────────

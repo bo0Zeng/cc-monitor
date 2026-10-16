@@ -464,6 +464,25 @@ describe("TabManager 生命周期", () => {
     expect(tab.activity).toBeNull();
   });
 
+  it("★ 监控板的序照帧上那一格：活着照 activity 的序；可重连 · 已结束照那台去向帧带的序（旧序 0 不留）；壳自己补的已结束 · 说不清没有序", () => {
+    const order = (sid: string) => tm.snapshotSessions().find((x) => x.sessionId === sid)?.order;
+    tm.ensureTab("od", "/x", "p", LOCAL_ORIGIN);
+    tm.updateActivity("od", "needs_you", null, copyText("beSession.activity.needsYou"), "need", 0);
+    expect(order("od")).toBe(0);
+    tm.markTmuxIdle("od", null, 4);
+    expect(order("od")).toBe(4);
+    tm.archiveTab("od", null, 5);
+    expect(order("od")).toBe(5);
+    tm.ensureTab("od2", "/x", "p", LOCAL_ORIGIN);
+    tm.updateActivity("od2", "idle", null, copyText("beSession.activity.idle"), "plain", 3);
+    tm.archiveTab("od2");
+    expect(order("od2")).toBeNull();
+    tm.ensureTab("od3", "/x", "p", LOCAL_ORIGIN);
+    tm.updateActivity("od3", "working", null, copyText("beSession.activity.working"), "now", 1);
+    tm.markOriginUnseen(LOCAL_ORIGIN);
+    expect(order("od3")).toBeNull();
+  });
+
   it("F91 红绿灯状态转移清陈旧类（activityLightClass 重构守护：两 toggle 每次都跑）", () => {
     // 守 F91 把 tab-bar 红绿灯抽到 session-status.ts 后仍逐字节等价：状态转移必须清掉旧的
     // 对立类（若哪天把两个 classList.toggle 之一改成条件执行，本测会红）。
@@ -710,7 +729,7 @@ describe("TabManager 生命周期", () => {
   });
 
   it("reviveTab 在 Tab 尚不存在时也清 pendingArchive（不误归档后续新 Tab）", () => {
-    home(tm).store.pendingArchive.add("s12");
+    home(tm).store.pendingArchive.set("s12", null);
     tm.reviveTab("s12"); // Tab 还没建
     expect(home(tm).store.pendingArchive.has("s12")).toBe(false);
     const tab = tm.ensureTab("s12", "/x", "p", LOCAL_ORIGIN);
