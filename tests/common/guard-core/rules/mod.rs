@@ -20,6 +20,8 @@ use std::time::Instant;
 mod bind_guard;
 #[path = "filewin_panic_points.rs"]
 mod filewin_panic_points;
+#[path = "fnv_one_home.rs"]
+mod fnv_one_home;
 #[path = "raw_said_guard.rs"]
 mod raw_said_guard;
 #[path = "search_kou_jing_guard.rs"]

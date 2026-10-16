@@ -362,7 +362,7 @@ fn a_config_path_longer_than_260_characters_is_written() {
 }
 
 /// 🔴 C-L3：monitor 那一份锁与后端第四层那一份是**同一种锁**（两份各一，读后端源码对拍，异源）：
-/// unix 都锁**目录**（monitor：std `File::lock`；后端：`libc::flock(LOCK_EX)`）；Windows 互斥量名字的格式串与 FNV 两个常数逐字相等。
+/// unix 都锁**目录**（monitor：std `File::lock`；后端：`libc::flock(LOCK_EX)`）；Windows 互斥量名字的格式串逐字相等、摘要调同一个函数。
 #[test]
 fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let mine = guard_core::production_code(include_str!(
@@ -371,8 +371,7 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let theirs = guard_core::production_code(include_str!("../../../src/backend/platform/lock.rs"));
     for needle in [
         "format!(\"{namespace}\\\\ccm-own-state-{h:016x}\")",
-        "let mut h: u64 = 0xcbf2_9ce4_8422_2325;",
-        "h = h.wrapping_mul(0x1000_0000_01b3);",
+        "cmd_wire::fnv::fnv1a64_wide(",
         "for ns in [\"Global\", \"Local\"] {",
     ] {
         assert_eq!(

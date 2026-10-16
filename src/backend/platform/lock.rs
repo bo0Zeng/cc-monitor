@@ -97,15 +97,11 @@ extern "system" {
     fn CloseHandle(handle: std::os::windows::io::RawHandle) -> i32;
 }
 
-/// 互斥量的名字：路径（大小写折叠后）的 FNV-1a 摘要。**纯函数**。
+/// 互斥量的名字：路径（大小写折叠后）的 [`cmd_wire::fnv::fnv1a64_wide`]（与 monitor 那一份同一种拼法）。**纯函数**。
 #[cfg(windows)]
 fn mutex_name(namespace: &str, dir: &Path) -> Vec<u16> {
     let key = super::paths::path_key(dir);
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in key.to_string_lossy().as_bytes() {
-        h ^= u64::from(*b);
-        h = h.wrapping_mul(0x1000_0000_01b3);
-    }
+    let h = cmd_wire::fnv::fnv1a64_wide(key.to_string_lossy().as_bytes());
     format!("{namespace}\\ccm-own-state-{h:016x}")
         .encode_utf16()
         .chain(std::iter::once(0))

@@ -150,15 +150,11 @@ extern "system" {
     fn CloseHandle(handle: std::os::windows::io::RawHandle) -> i32;
 }
 
-/// 互斥量的名字（与后端 `platform/lock.rs::mutex_name` 逐字同一种拼法：小写路径的 FNV-1a）。
+/// 互斥量的名字（与后端 `platform/lock.rs::mutex_name` 同一种拼法：小写路径的 [`cmd_wire::fnv::fnv1a64_wide`]）。
 #[cfg(windows)]
 fn dir_lock_name(namespace: &str, dir: &Path) -> Vec<u16> {
     let key = dir.to_string_lossy().to_ascii_lowercase();
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in key.as_bytes() {
-        h ^= u64::from(*b);
-        h = h.wrapping_mul(0x1000_0000_01b3);
-    }
+    let h = cmd_wire::fnv::fnv1a64_wide(key.as_bytes());
     format!("{namespace}\\ccm-own-state-{h:016x}")
         .encode_utf16()
         .chain(std::iter::once(0))

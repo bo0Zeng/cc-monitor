@@ -31,9 +31,7 @@ use std::path::Path;
 /// 选它而不选 `DefaultHasher`：摘要要**跨进程**比（快照那一刻的后端与续传那一刻的后端可以是两个进程、两个版本），
 /// 而 `DefaultHasher` 不承诺跨 Rust 版本稳定。不是安全用途（只防「断线期间文件被改写」那种非恶意的变化）。
 pub(crate) fn line_hash(body: &[u8]) -> u64 {
-    body.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &b| {
-        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
+    cmd_wire::fnv::fnv1a64(body)
 }
 
 /// 一页原始字节 ⇒ 逐行 `(正文, 起点, 末端)`：正文去掉 `\n` 与行尾 `\r`；起点 ＝ 这一行第一个字节的偏移；

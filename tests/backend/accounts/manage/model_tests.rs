@@ -207,3 +207,11 @@ fn past_eight_accounts_the_name_hash_is_the_fallback() {
     assert_eq!(m.find("team").unwrap().color, Some(color_fallback("team")));
     assert!(color_fallback("team") < COLOR_SLOTS);
 }
+
+/// 兜底号色会存进清单：钉几个另行独立算出的格（换了算法 ⇒ 同一个号兜底到别的格）。
+#[test]
+fn color_fallback_slots_are_pinned() {
+    for (name, slot) in [("team", 4), ("lab", 4), ("x", 7), ("work", 0), ("b", 5)] {
+        assert_eq!(color_fallback(name), slot, "{name}");
+    }
+}

@@ -500,16 +500,8 @@ fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, CmdErr>
 /// 预览给出它；送字送键时带回来比，画面变了就不送。
 pub(crate) fn fingerprint(plain_lines: &[String], rows: u32) -> String {
     let skip = plain_lines.len().saturating_sub(rows as usize);
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for (i, l) in plain_lines[skip..].iter().enumerate() {
-        if i > 0 {
-            h = (h ^ u64::from(b'\n')).wrapping_mul(0x0100_0000_01b3);
-        }
-        for b in l.trim_end().bytes() {
-            h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-    format!("{h:016x}")
+    let shown: Vec<&str> = plain_lines[skip..].iter().map(|l| l.trim_end()).collect();
+    format!("{:016x}", cmd_wire::fnv::fnv1a64(shown.join("\n").as_bytes()))
 }
 
 /// 抓回来的原文按行切（去掉最后那个换行带出来的空行）。

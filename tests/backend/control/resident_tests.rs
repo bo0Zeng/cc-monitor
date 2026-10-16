@@ -318,12 +318,8 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
     let port: u16 = line.trim().parse().expect("口号");
     let pid = old.id();
     let exe = crate::platform::proc::exe_of(pid).expect("exe");
-    std::fs::write(
-        relay_route_core::legacy_listen_pid_for(&dh),
-        format!("{pid}\n{exe}\n"),
-    )
-    .unwrap();
-    std::fs::write(dh.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
+    std::fs::write(legacy_listen_pid_for(&dh), format!("{pid}\n{exe}\n")).unwrap();
+    std::fs::write(dh.join(LEGACY_LISTEN_TOKEN_NAME), "old").unwrap();
     assert!(
         std::net::TcpListener::bind(("127.0.0.1", port)).is_err(),
         "前提：旧版占着那个口"
@@ -336,8 +332,8 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
         std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
         "旧版停了，口却没空出来 —— 新版接不上中转"
     );
-    assert!(!relay_route_core::legacy_listen_pid_for(&dh).exists());
-    assert!(!dh.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME).exists());
+    assert!(!legacy_listen_pid_for(&dh).exists());
+    assert!(!dh.join(LEGACY_LISTEN_TOKEN_NAME).exists());
     // 顺序：同一条线程里先 `retire_legacy`，后 `host_relay`。
     let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let at = main
@@ -351,4 +347,13 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
         "停旧版与接中转不在同一条线程里 —— 顺序就钉不住了"
     );
     let _ = std::fs::remove_dir_all(&dh);
+}
+
+/// 旧版常驻后端的进程记录名按家算口：钉一个另行独立算出的口（与旧版算的不是同一个 ⇒ 找不到还在跑的旧版）。
+#[test]
+fn legacy_listen_record_port_is_pinned() {
+    assert_eq!(
+        legacy_listen_pid_for(Path::new("/h/d")),
+        Path::new("/h/d/listen-56233.pid")
+    );
 }
