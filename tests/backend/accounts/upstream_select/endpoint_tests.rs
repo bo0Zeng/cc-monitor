@@ -268,7 +268,7 @@ fn the_exec_time_key_comes_from_the_home_key_file_and_goes_into_the_first_segmen
 }
 
 // ── 直接敲的 claude 也走中转（可选、用户自己贴）──────────────────────────
-// 要求（用户原话）：「往每个号的 settings.json 里写 env / 这个可以变成可选, 像是生成命令一样让用户自己粘贴」——
+// 要求：「往每个号的 settings.json 里写 env / 这个可以变成可选, 像是生成命令一样让用户自己粘贴」——
 //   后端只读那台的 `~/.claude/settings.json` 判装没装、对不对，生成的地址指向的端口与钥匙等于那台中转当前的值。
 // 异源：钥匙文件与设置文件由本判据现写进临时家目录；期望的地址是手写字面量（不由构造口现算）。
 

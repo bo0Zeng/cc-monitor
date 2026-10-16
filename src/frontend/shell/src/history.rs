@@ -1,4 +1,4 @@
-//! 历史会话的 monitor 这一侧：一件事都不做（只剩判据）。
+//! 历史会话的 monitor 这一侧：一件事都不做（清单 · 注解 · 删除都在那台后端）。
 //!
 //! ## 清单与注解不在这里
 //!
@@ -12,10 +12,3 @@
 //!
 //! 用户明确选了「物理删除」。前端二次确认后经通道直说那台机器的后端 `files-delete-session`（monitor 那条转交删了）；
 //! 删完那条注解由界面交会话所在那台的后端 `history-forget` 连带删（注解跟着会话住在那台）。Claude Code 自己也不再能 resume 这个会话。
-
-// === 历史清单与注解搬进了本机常驻后端 ===
-//
-
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/history_tests.rs"]
-mod tests;

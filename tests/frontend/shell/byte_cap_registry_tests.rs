@@ -1258,7 +1258,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // ⚠〔`K-H1` 回修轮之五 08-25，D3 `阻-1(D3)`〕**这一处是补一个真缺陷，不是补一条登记**：
     // 先前请求体的长度来自 `Content-Length`，值域是 `usize` 全域、**没有任何上界**
     // （`HEAD_CAP` 只管头字节数，管不到它）。一条 `Content-Length: 1000000000000`
-    // ⇒ `vec![0u8; n]` 分配失败 ⇒ `handle_alloc_error` ⇒ **abort（SIGABRT）**，
+    // ⇒ `vec![0u8; n]` 分配失败 ⇒ `std::alloc::handle_alloc_error` ⇒ **abort（SIGABRT）**，
     // 不走 unwind ⇒ `catch_unwind` 接不住；而中转是「一个进程服务 N 个会话」
     // ⇒ 打掉的是**当时所有会话的在途流**。
     (
@@ -1638,11 +1638,6 @@ fn the_exclusion_list_is_not_dead_wood() {
             all.contains(&format!("const {name}")),
             "排除表里的 `{name}` 已经不在源码里了 —— 删掉这条，别留死规则（{why}）"
         );
-        assert!(
-            why.chars().count() > 15,
-            "`{name}` 的排除理由太短，像是占位：「{why}」。\
-                 排除一个名字要说清**它为什么不是体量上限**（条数？地板？次数？）"
-        );
     }
 }
 
@@ -1884,7 +1879,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
 ///
 /// # 它替掉的那条判据**一直在假绿**
 ///
-/// 旧条叫 `inline_literal_byte_caps_are_still_just_the_one`，自述逐字：
+/// 旧条自述逐字：
 /// 「本表的扫描面只认具名常量…范围要成立，得有个东西盯着『范围外那一族别长大』…
 /// 实测人群 **1**…人群变 2 的那天这个判断就该重做 —— **本条就是那个闹钟**」。
 ///

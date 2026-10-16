@@ -4,7 +4,7 @@
 //! - stdin：默认读到 EOF；带 [`STDIN_LINE_FLAG`] ⇒ 只读一行（给 stdin 关不掉的调用方）。开着却 [`STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`。
 //! - argv：[`crate::wire::cli_words::ARGS_B64_FLAG`] `<base64 的 JSON>`（给写不了 stdin 的调用方）。给了它就不碰 stdin；与 [`STDIN_LINE_FLAG`] 一起给 ⇒ `bad_args`。
 //!
-//! 上限：stdin [`MAX_CLI_STDIN`]；argv [`MAX_ARGS_B64_LEN`]。超了 `args_too_large`，不截断。会回的码全集是 [`READ_ARGS_CODES`]。
+//! 上限：stdin [`MAX_CLI_STDIN`]；argv [`MAX_ARGS_B64_LEN`]。超了 `args_too_large`，不截断。
 //!
 //! 单独住一个文件：从前 `resolve_query` 也引它（不引挂着整张命令表的 `stream::cli`）；那条手写臂 10-11 删了，读入参的口留在这里。
 
@@ -45,17 +45,6 @@ enum Source<'a> {
     Stdin { one_line: bool },
     Argv(&'a str),
 }
-
-/// [`read_args`] 会回的码，一个不多一个不少（`cli_args_tests` 对着本文件的生产源码两向钉住）。
-/// 别的入口借这一处读入参时（`--resolve`）拿它算自己的码全集。读它的只有判据（测试档）。
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const READ_ARGS_CODES: &[&str] = &[
-    "bad_args",
-    "bad_request",
-    "args_too_large",
-    "no_input",
-    "stdin_read_failed",
-];
 
 pub(crate) fn bad_args(why: &str) -> (&'static str, String) {
     ("bad_args", contract::malformed(why))

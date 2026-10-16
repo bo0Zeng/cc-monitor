@@ -118,7 +118,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     // `tests/frontend/shell/remote_relay_tests.rs → src/backend/stream/inbound/mod.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // `tests/frontend/shell/apikey_remote_tests.rs → src/backend/stream/inbound/mod.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
-    //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
+    //   （monitor 里零处叫得出那条帧命令，由 `creds_store_exits::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
         "tests/frontend/shell/config_tests.rs",
@@ -126,27 +126,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "`config.json` 的跨进程锁（monitor `platform::fs::hold_dir_lock`）与后端第四层那把（`platform/lock.rs::hold`）\
          是两个 crate 各一份的**同一种锁**（两个 crate 没有能放平台原语的共享落点）——「同一种」只能同时读两份源码对拍：\
          unix 都锁目录、Windows 互斥量名字的拼法逐字相同；只读一侧就成了自己跟自己比",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/faces/accounts_face.rs",
-        "写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令上 —— \
-         同一根针（帧命令名 `apikey-key-set`）在后端那条命令的宿主（`const NAME`）里数得到，才说明零命中不是针瞎了",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/accounts/upstream_select/file_face.rs",
-        "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
-         要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
-    ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/platform/fs/own.rs",
-        "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
-         要落在真写者身上 —— 后端那份写口经自有状态原子写那一处（`platform/fs/own.rs`）出生即只给本人，同一把针在这里数得到，才说明零命中不是针瞎了",
     ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_core::addr::backend_registry_sources`），不再是编译期边。

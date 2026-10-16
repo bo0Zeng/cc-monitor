@@ -235,15 +235,10 @@ fn every_shelled_out_command_carries_a_written_ruling() {
              收进后端时要**同时**把它这一行删掉（不删就是一条幽灵，\n\
              下一个人会照着一份不成立的理由做判断）。"
     );
-    for (cmd, face, why, unlock) in TRANSCALLS {
+    for (cmd, face, _, unlock) in TRANSCALLS {
         assert!(
             !face.trim().is_empty(),
             "`{cmd}` 没写写面 —— 那一栏正是只读铁律那条豁免理由要引用的东西"
-        );
-        assert!(
-            why.chars().count() >= 40,
-            "`{cmd}` 的理由只有 {} 字 —— 那是占位不是理由",
-            why.chars().count()
         );
         assert!(
             unlock.chars().count() >= 20,

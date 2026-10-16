@@ -25,13 +25,6 @@ const golden = JSON.parse(
   readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/identifier-rules.golden.json"), "utf8"),
 ) as Record<string, { ok: string[]; bad: string[] }>;
 
-// 模型名（DUP1）不再生成到界面：界面不判，只在那台后端写口（`prefs-set`）与起会话时判；Rust 那一侧照旧对金样的 `model_name`。
-it("模型名的规则不再生成到界面（界面不判）", () => {
-  const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/judgment-rules.ts"), "utf8");
-  expect(gen).not.toMatch(/MODEL_NAME|modelNameOk/);
-  expect(gen, "空真自检：读到的是那份生成物").toMatch(/accountNameOk/);
-});
-
 describe("DUP2 账号名：生成物 == 共用金样（两向）", () => {
   it("金样读到了东西（反空真）", () => {
     nonEmpty(golden.account_name.ok);

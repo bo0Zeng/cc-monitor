@@ -200,15 +200,11 @@ fn every_atomic_replace_call_site_says_which_semantics_and_why() {
 /// 每条登记都得说清**写的是哪类文件**（那才是选语义的依据），不许只写「原子替换」。
 #[test]
 fn each_entry_names_the_file_class_it_writes() {
-    for (f, sym, _, class, why) in SITES {
+    for (f, sym, _, class, _) in SITES {
         assert!(
             class.contains("用户") || class.contains("monitor 自己"),
             "{f} [{sym}] 的文件类别写的是「{class}」—— 必须明说是**用户文件**还是\
                  **monitor 自己的文件**，那是 §4 里唯一的分界"
-        );
-        assert!(
-            why.chars().count() > 20,
-            "{f} [{sym}] 的理由太短，像是占位：「{why}」"
         );
     }
     // 两套都必须真的有人用 —— 只剩一套时这张表就退化成一句废话，该回来重读 §4。

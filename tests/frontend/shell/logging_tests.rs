@@ -242,7 +242,7 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// 用户原话「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
+/// 要求「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
 #[test]
 fn monitor_and_backend_logs_live_side_by_side_under_logs() {
     let root = std::path::Path::new("/d");

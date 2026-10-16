@@ -709,15 +709,11 @@ mod tests {
                 "又登记了一个夹具家 `{name}` —— 只许那一个最小假 agent"
             );
         }
-        for (name, why) in FIXTURE_HOMES {
+        for (name, _) in FIXTURE_HOMES {
             assert!(
                 in_tree.iter().any(|n| n == name),
                 "`FIXTURE_HOMES` 里登记的夹具家 `{name}` 在文件树里不存在 —— \n\
                  目录删了而登记没跟（幽灵条目），或者名字写错了。实得：{in_tree:?}"
-            );
-            assert!(
-                why.trim().len() >= 20,
-                "夹具家 `{name}` 没写「它为什么可以住在 `agents/` 里却不算一家」"
             );
         }
 

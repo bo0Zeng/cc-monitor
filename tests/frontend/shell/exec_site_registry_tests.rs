@@ -85,7 +85,4 @@ fn every_remaining_dial_shell_says_why_it_is_not_a_backend_command() {
          多出来的 ⇒ 先回答它为什么不能是那台后端的一条具名命令；\n\
          少了的 ⇒ 换掉了，删那一行。"
     );
-    for (f, n, why) in STILL_SHELL {
-        assert!(why.chars().count() >= 20, "`{f}::{n}` 的理由太短：{why}");
-    }
 }

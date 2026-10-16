@@ -106,7 +106,7 @@ use walkdir::WalkDir;
 // - **轮询 A**（本功能消掉）：循环 tick 2s（`recv_timeout` 的超时值本身）驱动的判活扫描，
 //   遍历 `state.sessions` 调 `session_alive` 检「pidfile 还在但 PID 已死」+ PID 复用。
 // - ~~**轮询 B**：`TMUX_EMIT_INTERVAL` = 8s 的 `tmux ls`~~ **P5 已删**。P2 曾把它从
-//   "主循环里的节流判断"搬进一条独立 ticker 线程（见 `spawn_tmux_ticker`），
+//   "主循环里的节流判断"搬进一条独立 ticker 线程，
 //   使主循环**现在**就是最终形态；P5 删 ticker 线程即可，不必再动循环结构。
 
 /// P2：`watch_loop` 消费的统一事件。
@@ -1180,8 +1180,6 @@ fn watch_loop(
     // P3：对 tmux server 的认知 + 已挂过的 socket 目录 watch（只加一次）。
     let mut server = ServerState::Unknown;
     let mut watched_socket: Option<PathBuf> = None;
-    // P2：轮询 B（8s）从"主循环里的节流判断"搬进独立 ticker 线程 ⇒ 主循环变成最终形态。
-    // **P5 删掉这一行 + `spawn_tmux_ticker` 即可**（并按 `WatchEvent::Shutdown` 的注释接停机信号）。
     initial_tmux_probe(&events_tx);
 
     // P2：**无超时** `recv()`——本循环没有节拍（轮询 A 已由 pidfd 取代）。唯一的期限：有在跑的子运行时，至多等到

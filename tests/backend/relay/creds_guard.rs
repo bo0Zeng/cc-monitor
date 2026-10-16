@@ -4,7 +4,7 @@
 //!
 //! 由类型与三棵树判据接走：`SecretKey` 字段私有、`Debug` 只印遮蔽形、不实现 `Display`；
 //! 落盘与续期两个出口只对 `creds-core` 可见（本 crate 调不到，编译器挡）；
-//! 换头那个出口跨 crate 调，处数由 `creds_store_tests::PLAINTEXT_EXIT_SITES` 扫三棵树数（恰好 1 处）。
+//! 换头那个出口跨 crate 调，处数由 `creds_store_exits::PLAINTEXT_EXIT_SITES` 扫三棵树数（恰好 1 处）。
 //!
 //! # 为什么 `KS4` 留着（类型挡不住）
 //!

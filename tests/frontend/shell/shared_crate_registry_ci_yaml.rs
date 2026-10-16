@@ -13,7 +13,7 @@ pub(crate) fn yml() -> String {
 ///
 /// ⚠ 住在这里而不是各判据自己写一遍：`ci.yml` 怎么读、怎么剔注释是**一个事实**（E3）。
 /// 08-08 `e2e_gate_registry` 要用同一件事时，`structural_scan` 的「剥注释转换器必须登记」
-/// 当场逮住了那份新拷贝 —— 于是把原来住在 `mod tests` 里的 `ci_live_lines` 搬到这里，
+/// 当场逮住了那份新拷贝 —— 于是把原来住在 `mod tests` 里的那份读法搬到这里，
 /// **是收口不是新增**（共享原语 `guard_core::strip_comment_lines` 接不住这一半：
 /// 它认的是 `//` / `/*` 那套 Rust/TS 形态，而 YAML 的注释是 `#`）。
 pub(crate) fn live_lines() -> String {

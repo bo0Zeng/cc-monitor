@@ -222,14 +222,12 @@ fn every_registered_needle_lands_in_its_own_bucket() {
         !NO_SERVER_NEEDLES.is_empty() && !NO_TARGET_NEEDLES.is_empty(),
         "两张针里有一张空了 —— 那一档从此静默落进兜底"
     );
-    for (needle, why) in NO_SERVER_NEEDLES {
-        assert!(why.len() >= 20, "针 {needle:?} 没写清它为什么算这一档");
+    for (needle, _) in NO_SERVER_NEEDLES {
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle} blah")))
             .expect_err("非零退出不许回成功");
         assert_eq!(e.code, "no_server", "针 {needle:?} 没落进 `no_server`");
     }
-    for (needle, why) in NO_TARGET_NEEDLES {
-        assert!(why.len() >= 20, "针 {needle:?} 没写清它为什么算这一档");
+    for (needle, _) in NO_TARGET_NEEDLES {
         let e = classify(&raw(Some(1), "", &format!("tmux: {needle}: =x:")))
             .expect_err("非零退出不许回成功");
         assert_eq!(

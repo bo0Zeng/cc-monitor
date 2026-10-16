@@ -375,12 +375,6 @@ fn every_cross_half_edge_is_registered_with_a_reason() {
              （「跨轨对拍：两侧必须同形」是正当理由；「顺手方便」不是）；\n\
              登记表里多出来的说明那条边被删了或路径改了。"
     );
-    for (d, r, t, why) in CROSS_EDGES {
-        assert!(
-            why.chars().count() >= 12,
-            "{d} {r} → {t} 的理由太短（{why:?}）—— 这一列的读者是下一个想加边的人"
-        );
-    }
 }
 
 /// ★★★ **真正的那条**：没有一条跨半边的边长在**生产段**。

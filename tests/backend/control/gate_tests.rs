@@ -198,6 +198,16 @@ fn the_underflow_predicate_catches_the_real_dirty_bytes() {
 /// 判定表的**唯一源头**：后端这一轨与 e2e 各自独立读它（monitor 那一轨随 monitor 侧的门删了）。
 const GOLDEN: &str = include_str!("../../__fixtures__/gate2-golden.tsv");
 
+/// 夹具 `expect` 那一列的名字：显式写字面量，不跟着 `Debug` 漂。
+fn gate2_wire_name(g: crate::control::gate_rules::Gate2) -> &'static str {
+    use crate::control::gate_rules::Gate2;
+    match g {
+        Gate2::AllowedByName => "allowed_by_name",
+        Gate2::AllowedByRemoteSid => "allowed_by_remote_sid",
+        Gate2::Rejected => "rejected",
+    }
+}
+
 fn golden_rows() -> Vec<(String, String, Option<String>, String)> {
     GOLDEN
         .lines()
@@ -241,7 +251,7 @@ fn the_golden_table_is_actually_read_from_the_monitor_side_fixture() {
 fn the_backend_side_agrees_with_the_golden_table() {
     let mut bad = Vec::new();
     for (id, name, sid, want) in golden_rows() {
-        let got = crate::control::gate_rules::gate2(&name, sid.as_deref()).as_str();
+        let got = gate2_wire_name(crate::control::gate_rules::gate2(&name, sid.as_deref()));
         if got != want {
             bad.push(format!(
                 "  {id}: name={name:?} sid={sid:?} 期望={want} 实得={got}"

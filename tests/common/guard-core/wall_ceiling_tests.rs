@@ -27,7 +27,7 @@
 //!
 //! 买不到：
 //! - TS 不在这里：测试源里 `setTimeout` / `setInterval` 只许 0，由 eslint 拦（`eslint.config.js`，基线 0 由 `eslint-baseline` 数着）；
-//! - 期限藏进函数参数、跨文件常量、`format!` 拼出来的，认不出（同文件里 `let` / `const` 绑的认得出）；
+//! - 期限藏进跨文件常量、`format!` 拼出来的，认不出（同文件里 `let` / `const` 绑的认得出）；藏进函数参数的只认 `…_ms` / `…_secs` 形参收整数字面量那一形（rs-ms-arg）；
 //! - 被测系统自己的期限（喂给被测代码的 `deadline: …`、`arrive_within_ms`、`connectTimeoutMs`）不是判据的期限，不在这几形里
 //!   （喂给 `set_read_timeout` / `Instant::now() + …` 的算，那几处要么换成兜底的数、要么登记成「被测期限」）；
 //! - e2e 里带秒数参数的自家等待函数（`wait_line … 12`）只认得出函数体里那一圈，调用处的数认不出 —— 今天几份都改成了不收秒数；
@@ -112,6 +112,11 @@ const FORMS: &[(&str, &str, &str)] = &[
         "rs-poll",
         "rs",
         "`for _ in 0..N { … break … sleep(…) }` / `(0..N).any(|_| … sleep(…))`：拿圈数 × 睡眠当期限（换成 `guard_core::wall::rounds()`）",
+    ),
+    (
+        "rs-ms-arg",
+        "rs",
+        "期限藏进形参：函数拿形参 `…_ms` / `…_secs` 造 `Duration` 或比量出来的耗时，调用处给了 ≥ 1 秒的整数字面量（删除条件：全仓不再有这种形参）",
     ),
     (
         "rs-sleep",
@@ -302,7 +307,7 @@ fn read(rel: &str) -> String {
 }
 
 /// 一份文件里要扫的那段正文（注释剥掉；Rust · TS · Kotlin 行号不变）。Rust 的 `src/` 只取测试段。
-fn body(rel: &str, lang: &str, raw: &str) -> String {
+fn body_of(rel: &str, lang: &str, raw: &str) -> String {
     match lang {
         "rs" => {
             let t = if rel.starts_with("src/") {
@@ -986,6 +991,102 @@ pub(super) fn sh_sleep_hits(src: &str) -> Vec<Hit> {
     v
 }
 
+/// `span`（`(…)` 带括号）里的顶层实参，各自去掉首尾空白。
+fn top_args(span: &str) -> Vec<&str> {
+    let inner = &span[1..span.len().saturating_sub(1).max(1)];
+    let mut out = Vec::new();
+    let (mut depth, mut from) = (0i32, 0usize);
+    for (i, c) in inner.char_indices() {
+        match c {
+            '(' | '[' | '{' | '<' => depth += 1,
+            ')' | ']' | '}' | '>' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(inner[from..i].trim());
+                from = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if !inner[from..].trim().is_empty() {
+        out.push(inner[from..].trim());
+    }
+    out
+}
+
+/// rs-ms-arg 的一侧：期限形参。名以 `_ms` / `_secs` 结尾，且函数体里拿它造 `Duration`（`from_millis(p` / `from_secs(p`）
+/// 或与量出来的耗时（`elapsed` / `waited`）比。回 `(函数名, 第几个实参, 是不是秒)`；方法（带 `self`）不认。
+pub(super) fn rs_deadline_params(src: &str) -> Vec<(String, usize, bool)> {
+    let def = re!(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>]*>)?\s*\(");
+    let mut out = Vec::new();
+    for c in def.captures_iter(src) {
+        let open = c.get(0).unwrap().end() - 1;
+        let sig = paren_span(src, open);
+        let params = top_args(sig);
+        if params.first().is_some_and(|p| p.contains("self")) {
+            continue;
+        }
+        let after = open + sig.len();
+        let Some(brace) = src[after..].find('{').map(|i| after + i) else {
+            continue;
+        };
+        let body = brace_span(src, brace);
+        for (i, p) in params.iter().enumerate() {
+            let name = p
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .trim_start_matches("mut ")
+                .trim();
+            let secs = name.ends_with("_secs");
+            if !(secs || name.ends_with("_ms")) {
+                continue;
+            }
+            let used = body.contains(&format!("from_millis({name}"))
+                || body.contains(&format!("from_secs({name}"))
+                || body.lines().any(|l| {
+                    crate::contains_word(l, name) && (l.contains("elapsed") || l.contains("waited"))
+                });
+            if used {
+                out.push((c[1].to_string(), i, secs));
+            }
+        }
+    }
+    out
+}
+
+/// rs-ms-arg 的另一侧：调 `params` 里那几个函数时，期限那一格给了 ≥ 1 秒的整数字面量。
+pub(super) fn rs_ms_arg_hits(src: &str, params: &[(String, usize, bool)]) -> Vec<Hit> {
+    let mut v = Vec::new();
+    for (name, at, secs) in params {
+        for (start, _) in src.match_indices(name.as_str()) {
+            let end = start + name.len();
+            let before = src[..start].chars().next_back();
+            if before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+                || src[..start].trim_end().ends_with("fn")
+                || !src[end..].trim_start().starts_with('(')
+            {
+                continue;
+            }
+            let open = end + src[end..].find('(').unwrap_or(0);
+            let args = top_args(paren_span(src, open));
+            let Some(arg) = args.get(*at) else { continue };
+            if !re!(r"^[0-9][0-9_]*$").is_match(arg) {
+                continue;
+            }
+            let ms = num(arg) * if *secs { 1000.0 } else { 1.0 };
+            if ms >= 1000.0 {
+                v.push(Hit {
+                    form: "rs-ms-arg",
+                    line: line_at(src, start),
+                    text: line_text(src, start),
+                });
+            }
+        }
+    }
+    v
+}
+
 fn hits_for(lang: &str, src: &str) -> Vec<Hit> {
     match lang {
         "rs" => [rs_hits(src), rs_poll_hits(src), rs_sleep_hits(src)].concat(),
@@ -1001,11 +1102,26 @@ fn hits_for(lang: &str, src: &str) -> Vec<Hit> {
 fn all_hits() -> (usize, Vec<(String, Hit)>) {
     let mut n = 0;
     let mut v = Vec::new();
+    let mut bodies = Vec::new();
     for rel in files() {
         let Some(lang) = lang_of(&rel) else { continue };
         n += 1;
         let raw = read(&rel);
-        for h in hits_for(lang, &body(&rel, lang, &raw)) {
+        let b = body_of(&rel, lang, &raw);
+        bodies.push((rel, lang, b));
+    }
+    // 期限形参跨文件认：定义在台架里、调用在各份测试里。
+    let params: Vec<(String, usize, bool)> = bodies
+        .iter()
+        .filter(|(_, lang, _)| *lang == "rs")
+        .flat_map(|(_, _, b)| rs_deadline_params(b))
+        .collect();
+    for (rel, lang, b) in &bodies {
+        let mut hs = hits_for(lang, b);
+        if *lang == "rs" {
+            hs.extend(rs_ms_arg_hits(b, &params));
+        }
+        for h in hs {
             v.push((rel.clone(), h));
         }
     }
@@ -1241,7 +1357,7 @@ fn w4_shell_forms_are_told_apart() {
     );
     let green = "timeout \"$WALL_CEILING_S\" \"$X\" a\nfor i in $(seq 30); do echo $i; done\n# timeout 5 x\n\
         for ((i=0; i<WALL_CEILING_S*2; i++)); do sleep 0.5; done\nwall_until '[ -f x ]'\n";
-    assert_eq!(sh_hits(&body("tests/e2e/x.sh", "sh", green)), vec![]);
+    assert_eq!(sh_hits(&body_of("tests/e2e/x.sh", "sh", green)), vec![]);
 }
 
 #[test]
@@ -1278,6 +1394,33 @@ fn w4_sleep_outside_a_poll_is_told_apart() {
     #[tokio::test(start_paused = true)]\nasync fn p() { tokio::time::sleep(Duration::from_secs(5)).await; assert!(fired()); }\n\
     fn d() { let s = \"sleep(1); assert!(x)\"; }\n";
     assert_eq!(rs_sleep_hits(green), vec![]);
+}
+
+#[test]
+fn w4_a_deadline_hidden_in_a_ms_parameter_is_told_apart() {
+    let rig = "fn wait_for(x: &str, budget_ms: u64) -> bool {\n\
+        let mut waited = 0;\n\
+        while waited < budget_ms { waited += 100; }\n\
+        false\n\
+    }\n\
+    fn hold(stamp_ms: u64) -> u64 { stamp_ms + 1 }\n\
+    fn nap(d_secs: u64) { std::thread::sleep(Duration::from_secs(d_secs)); }\n";
+    let params = rs_deadline_params(rig);
+    assert_eq!(
+        params,
+        vec![
+            ("wait_for".to_string(), 1, false),
+            ("nap".to_string(), 0, true)
+        ],
+        "期限形参认错了（`stamp_ms` 是数据不是期限）"
+    );
+    let red = "fn t() {\n    wait_for(\"a\", 20_000);\n    nap(5);\n}\n";
+    assert_eq!(
+        forms_of(&rs_ms_arg_hits(red, &params)),
+        vec!["rs-ms-arg", "rs-ms-arg"]
+    );
+    let green = "fn t() {\n    wait_for(\"a\", 500);\n    hold(20_000);\n    wait_for(\"a\", CEILING_MS);\n    x.wait_for(\"a\", 9_000);\n}\n";
+    assert_eq!(rs_ms_arg_hits(green, &params), vec![]);
 }
 
 #[test]

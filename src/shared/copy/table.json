@@ -14283,30 +14283,6 @@
       "args": [],
       "limited": ["Claude Code"]
     },
-    "rsToolRegistry.envTier.appOnlyChecks": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "app 只查",
-      "args": []
-    },
-    "rsToolRegistry.envTier.userInstallsWePrompt": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "自行安装 · 缺失时会提示",
-      "args": []
-    },
-    "rsToolRegistry.envTier.appShipsNoInstallerYet": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "不能在此装 · 需自行安装",
-      "args": []
-    },
-    "rsToolRegistry.envTier.appInstalls": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "app 装的",
-      "args": []
-    },
     "rsToolRegistry.provisioning.notAnInstall": {
       "kind": "body",
       "role": "片段",
@@ -15561,12 +15537,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "此机器非 Unix · 不能脱离当前进程单独跑 · 未启动",
-      "args": []
-    },
-    "bePidwatch.noDeathEventsHere.say": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "后端在此系统上意外退出时无人发现 · 也不会自动重启\n只有 Linux 和 Windows 上能看住它",
       "args": []
     },
     "beSshAgent.connect.unsupported": {

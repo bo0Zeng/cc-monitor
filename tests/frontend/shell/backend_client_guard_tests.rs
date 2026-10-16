@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 /// 删了的两份（`tmux.rs` · `gate2_parity.rs`，子步 1）不在。**加一份调后端的客户端 / 宿主进来就在这里加一行。**
 const GUARDED: &[&str] = &[
     "src/frontend/shell/src/backend_control.rs",
-    "src/frontend/shell/src/cc_bus.rs",
     "src/frontend/shell/src/frame_query.rs",
     "src/frontend/shell/src/inbound_client.rs",
     "src/frontend/shell/src/local_backend.rs",

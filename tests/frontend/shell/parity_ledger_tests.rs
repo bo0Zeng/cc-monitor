@@ -619,7 +619,7 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`find_in_session`，`Both`，归已有能力 `history.read-session`）。
     // - **+1**（`probe_session_record`，`Both`，归已有能力 `history.read-session`）。
     // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
-    // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
+    // - **−2**（`remote_reconcile` / 机器表试算，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
     // - **−1**（`notify_desktop`，`Both`：界面不再发系统通知）。
     // - **−2**（本机 ccm 那一格 · 装 cc-bus 前那道本机 ccm 预检，都 `Local`：前一条进了那台后端 `ccm-probe`，后一条删了）。

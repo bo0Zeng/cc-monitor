@@ -5,28 +5,6 @@
     "res/values/strings.xml 不归这张表：app_name 由清单 android:label 引用，系统要求住在资源里，照留。"
   ],
   "files": {
-    "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/chat/ChatMenu.kt": [
-      {
-        "text": "管道",
-        "use": "词表",
-        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
-      },
-      {
-        "text": "路由",
-        "use": "词表",
-        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
-      },
-      {
-        "text": "实例",
-        "use": "词表",
-        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
-      },
-      {
-        "text": "进程",
-        "use": "词表",
-        "why": "聊天屏上屏文案的禁词表（ChatMenuTest 读它），不显示"
-      }
-    ],
     "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt": [
       {
         "text": "核心交的 {…} 认不出：{…}",

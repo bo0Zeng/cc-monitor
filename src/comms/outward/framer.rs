@@ -36,9 +36,7 @@ pub struct LineFramer {
 
 /// 分帧器自己记的账：判据拿它做相等断言。
 ///
-/// ⚠ **常开，不是 `#[cfg(test)]`**：测试专用支撑项在 `src/backend` 上有一道只许降的棘轮
-/// （`structural_scan_tests.rs::the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself`），
-/// 第一版按 `cfg(test)` 罩了四处，当场把那道棘轮顶破。代价是每次找 / 搬 / 喂各多一次整数加法。
+/// 常开，不是 `#[cfg(test)]`：生产树里不放测试专用支撑项。代价是每次找 / 搬 / 喂各多一次整数加法。
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ledger {
     /// 一共喂进来多少字节。

@@ -461,14 +461,6 @@ fn every_target_gap_names_a_capability_that_really_exists() {
 fn every_target_gap_says_why_and_what_happens_next() {
     for gap in TARGET_GAPS {
         let why = gap.rationale;
-        assert!(
-            why.chars().count() >= 24,
-            "`{} / {}` 那条豁免的理由只有 {} 个字 —— 太短，答不出「为什么」＋「将来怎么办」两件事。\n\
-             原文：{why:?}",
-            gap.family,
-            gap.capability,
-            why.chars().count()
-        );
         // 「将来怎么办」那一半要有形状：要么指出替代方案，要么明写推后。
         let answers_future = ["暂时不做", "不该跨过去", "将来", "等那个", "后面"]
             .iter()

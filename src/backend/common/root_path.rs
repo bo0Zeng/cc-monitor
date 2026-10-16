@@ -1,7 +1,7 @@
 //! 「这一段拼到根上之后还在不在根底下」的两道路径解析：词法（纯路径算术，不碰盘）＋ 父目录解链接后再判一次。
 //! 文件管理那一块的写面（`control/files_write.rs` 等）与原生那一块的传输台（`control/transfer.rs`，下载的本机落点）
 //! 每一处改动的路径都先过它；两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。
-//! 它只答落点在不在根底下，**不问落点是谁的数据**（用户原话「文件管理器全部都可以改. 不需要任何围栏」）。
+//! 它只答落点在不在根底下，**不问落点是谁的数据**（要求：「文件管理器全部都可以改. 不需要任何围栏」）。
 //! 判据住 `tests/backend/control/files_write_tests.rs`（经写面的再导出跑）。
 
 use crate::platform::fs::{Resolved, Ro};

@@ -1,4 +1,4 @@
-//! 守的要求（用户原话）：「产物（cc-monitor 仓）不能引用任何仓外的东西；产物文档只描述现状，不能引用任何开发文档。」
+//! 守的要求：「产物（cc-monitor 仓）不能引用任何仓外的东西；产物文档只描述现状，不能引用任何开发文档。」
 //!
 //! 网眼包括仓外的开发记录目录、工作树目录与草稿目录，以及词表 `OUTSIDE_WORDS` 那几类词（设计 · 调查记录 · 派活单 · 草稿目录 · 本机路径 · 施工说法 · 设计规范编号）；
 //! 家目录绝对路径归 `private_shape_guard`（只许中性名字）。
@@ -552,7 +552,7 @@ fn the_process_names_net_catches_build_names_and_spares_product_words() {
         "fn net2_uncancellable_is_additive_and_last() {".to_string(), // 9 ✘ 测试函数名
         "pub(crate) fn gate2(name: &str) -> Gate2 {".to_string(),    // 10 ✘ 代码名
         "// 上传那一路与复制这一路问的是同一件事".to_string(),       // 11 ✘ 不是施工那一路
-        "// 用户原话：「本地要和远端一样」".to_string(),             // 12 ✘ 不带日期
+        "// 要求：「本地要和远端一样」".to_string(),                 // 12 ✘ 不带日期
         format!("// 不在这一路的写{}", "区"),                        // 13 ✔
         format!("// ⚠ 逼出 `BUILD_ID` bump，本{}不 bump。", "路"),   // 14 ✔
         "// 本路径不存在 ⇒ 报错；本路由表只读".to_string(),          // 15 ✘ 本路径 · 本路由

@@ -4718,3 +4718,22 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
         );
     }
 }
+
+/// 凭据文件的位置只跟着家走：起本机后端时交的那份环境里没有任何一格另指它的位置（后端按家推 `creds_core::store::credentials_path`）。
+#[test]
+fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
+    let envs = super::backend_env_from(&|_| None);
+    let names: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["CCM_RELAY_PORT"],
+        "交给本机后端的环境多了一格：{envs:?}"
+    );
+    // 正控：设了家那一格，它出现在交出去的环境里。
+    let iso = super::backend_env_from(&|k| {
+        (k == crate::config::DATA_DIR_ENV).then(|| "/iso/home".to_string())
+    });
+    assert!(iso
+        .iter()
+        .any(|(k, v)| k == crate::config::DATA_DIR_ENV && v == "/iso/home"));
+}

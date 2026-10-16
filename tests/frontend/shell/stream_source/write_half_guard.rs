@@ -15,7 +15,7 @@
 //! `the_shared_stripper_keeps_the_part_this_guard_must_scan` 判的不是产品性质，
 //! 是「剥法没把我要扫的那一段剥掉」。那一形值得推广到每条源码扫描型守卫。
 
-use crate::structural_scan::ScanReport;
+use guard_core::ScanReport;
 
 /// 生产段。**用共享的 `guard_core::production_code`，不自己写便宜近似。**
 ///
@@ -177,7 +177,7 @@ fn stream_source_never_writes_to_a_stream_itself() {
     // 却实实在在把字节写进了流。08-07 实测：加这么一处，全仓 **976 条判据一条不红**。
     //
     // ⚠ 这次为什么可以枚举：`copy` 家族是 **tokio 的一个封闭上游 API 集合**
-    // （`copy` / `copy_buf` / `copy_bidirectional` / `copy_bidirectional_with_sizes`），
+    // （`copy` / `copy_buf` / `copy_bidirectional` / `tokio::io::copy_bidirectional_with_sizes`），
     // 版本升级才会变，而且变了会**编译期**报出来。
     // 这与「枚举写法拼写」不是一回事 —— 后者的空间是无限的，这个是有边界的。
     let copy_family: Vec<String> = ["copy", "copy_buf", "copy_bidirectional"]

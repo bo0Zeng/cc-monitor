@@ -30,11 +30,6 @@
 
 use crate::platform::win_proc::{self, Opened};
 
-/// 这一份看守**会**在进程退出时调 `on_dead` —— `mod.rs::death_events_available` 的 Windows 那一格
-/// 读的就是它。它是一句**声明**，背书它的是 `tests/backend/platform/pidwatch_windows_shape_tests.rs`
-/// （判死路径与 `linux.rs` 逐形相等）；真机那一维没有读数。
-pub(crate) const WAKES_ON_EXIT: bool = true;
-
 /// 给一个进程挂看守，进程终止时调 `on_dead`。**零轮询** —— 线程阻塞在一个不带超时的等待上，
 /// 由**内核**在目标进程终止时唤醒（同 `linux.rs` 那条）。
 ///

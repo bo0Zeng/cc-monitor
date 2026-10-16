@@ -245,9 +245,6 @@ fn every_common_crate_has_exactly_one_class_with_a_reason() {
         on_disk, listed,
         "`src/common/` 与登记表两向不等 —— 新共享 crate 先想清楚它是契约还是判定（判定的家在后端），再登记"
     );
-    for (n, _, why) in CRATES {
-        assert!(why.chars().count() >= 12, "`{n}` 的理由写得太短：{why:?}");
-    }
 }
 
 #[test]

@@ -1,11 +1,6 @@
 /// ★ **`mod` 声明区不许出现连续重复的 `#[cfg(test)]`**。
 ///
-/// # 它逮的是痕迹，不是病本身（这一点要说清）
-///
-/// 本文件 `:61-66` 那条警告自己写过真风险：「插在这里、不要插在上面那条注释与
-/// `#[cfg(test)]` 之间…U1a 初版就插错了位置，把属性与 `mod structural_scan;` 的配对拆开
-/// —— `structural_scan` 当场变成无条件编译……而 CI 的 `cargo build` 没有 `-D warnings`
-/// ⇒ **不会红**」。
+/// 属性被插错位置（插在一条注释与它配对的 `mod` 之间）的那个 `mod` 会变成无条件编译，而 CI 的 `cargo build` 不带 `-D warnings`。
 ///
 /// 08-10 实测：那个失效模式**又发生过两次** —— `lockfile_conflict_guard` 上方叠了 2 个
 /// `#[cfg(test)]`、`parity_ledger` 上方叠了 3 个（`git blame` 显示来自 4 个不同 commit）。
@@ -22,7 +17,7 @@ fn no_duplicated_cfg_test_attributes_in_the_mod_block() {
     let dup = format!("#[cfg({0})]\n#[cfg({0})]", "test");
     // 抽取器自检：本文件必须真的有 `mod` 声明与 cfg 属性，否则整条空转。
     assert!(
-        src.contains("mod structural_scan;") && src.contains(&format!("#[cfg({})]", "test")),
+        src.contains("mod ccm_cli_contract;") && src.contains(&format!("#[cfg({})]", "test")),
         "抽不到 `mod` 声明区或 cfg 属性 —— 抽取器坏了，本条会零命中地绿"
     );
     assert!(

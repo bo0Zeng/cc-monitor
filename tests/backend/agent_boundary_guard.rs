@@ -51,8 +51,7 @@ mod tests {
         "wire/mod.rs",
         "stream/inbound/mod.rs",
         // ── 以下由 `S3` 加入 ──────────────────────────────────────────
-        // `platform/` 整层：`S3` 把 `proc_claude_config_dir` 参数化成 `proc_env_var(pid, name)`
-        // 之后，这一层再没有任何一个 agent 的名字。⚠ 这是**整层**进表，不是挑干净的进 ——
+        // `platform/` 整层：读进程环境只经 `proc_env_var(pid, name)`，这一层没有任何一个 agent 的名字。⚠ 这是**整层**进表，不是挑干净的进 ——
         // 「唯一允许平台原语的层」恰恰最不该认识某个 agent 叫什么。
         "platform/proc.rs",
         "platform/liveness.rs",

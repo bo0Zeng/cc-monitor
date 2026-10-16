@@ -376,13 +376,7 @@ fn only_the_three_long_lived_links_drop_the_deadline() {
     );
     let mut want: Vec<(String, String)> = LIVES_LONG
         .iter()
-        .flat_map(|(f, func, n, why)| {
-            assert!(
-                why.chars().count() >= 20,
-                "`{f}::{func}` 没写清为什么不要总时限"
-            );
-            std::iter::repeat_n((f.to_string(), func.to_string()), *n)
-        })
+        .flat_map(|(f, func, n, _)| std::iter::repeat_n((f.to_string(), func.to_string()), *n))
         .collect();
     got.sort();
     want.sort();

@@ -427,7 +427,7 @@ fn prose_paths_are_rejected() {
     assert!(every_declared_path_resolves().violations.is_empty());
 }
 
-// 原先这里有一条 `locality_is_derivable_from_destination_today`，**删了**（T02 审计重要 1）。
+// 原先这里有一条按落点推本地 / 远端的判据，**删了**（T02 审计重要 1）。
 // 审计实测它是**同义反复**：`PathResolution::Remote` 只由 `RemoteHomeRelative` 臂产生、
 // 且必然产生，所以 `matches!(res, Remote(_)) == remote` 对任意输入恒真——把 `ccm` 的
 // `destination` 翻成 `LocalHomeRelative`（会让两行从"远端未确定"变成去 stat 本机 `~/.bashrc`）
@@ -1136,7 +1136,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
             e.tier,
             EnvTier::UserInstallsWePrompt,
             "`{id}` 不在「{}」那一档 —— 先查闭集，别改断言",
-            EnvTier::UserInstallsWePrompt.label()
+            format!("{:?}", EnvTier::UserInstallsWePrompt)
         );
     }
 
@@ -1246,10 +1246,8 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     let seen: BTreeSet<EnvTier> = rows.iter().map(|r| r.tier).collect();
     assert!(
         seen.len() >= 3,
-        "这一页上只出现了 {} 档（{:?}）—— 分母是 {} 档",
+        "这一页上只出现了 {} 档（{seen:?}）",
         seen.len(),
-        seen.iter().map(|t| t.label()).collect::<Vec<_>>(),
-        EnvTier::ALL.len()
     );
 
     // ③ 欠装口那一档：「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），

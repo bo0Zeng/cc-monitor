@@ -17,10 +17,10 @@
 //!
 //! # 交什么（一份判定，三件事）
 //!
-//! 1. **差异**：每个条目名一行，四态闭集 [`STATES`]（`new` · `same` · `differs` · `only-there`）。
+//! 1. **差异**：每个条目名一行，四态闭集（`new` · `same` · `differs` · `only-there`）。
 //!    相等 = JSON 值相等（对象键序无关）。
-//! 2. **可疑项**：只看 stdio 那四个字段（`command` · `args[i]` · `env.<键>` · `cwd`），种类闭集 [`SUSPECT_KINDS`]，
-//!    每条带一格**这台机器上的事实**（[`THERE`]）。规则住 [`candidates`]（纯）与 [`judge`]（纯，事实是参数）。
+//! 2. **可疑项**：只看 stdio 那四个字段（`command` · `args[i]` · `env.<键>` · `cwd`），种类是闭集，
+//!    每条带一格**这台机器上的事实**（`present` · `absent` · `foreign` · `unknown`）。规则住 [`candidates`]（纯）与 [`judge`]（纯，事实是参数）。
 //! 3. **写哪几条**（给了 `take` 才答）：`differs` 的必须在 `overwrite` 里点名，否则**整趟拒**（`needs_consent`）——
 //!    「对面有不同就问盖不盖」这一问不许被界面静默跳过；`only-there` 永远不碰（没有「镜像删除」）。
 //!
@@ -36,16 +36,6 @@ use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::Path;
-
-/// 差异的四态（线上名）。**闭集**：界面文案表按它逐键给字（跨半边两向相等）。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const STATES: &[&str] = &["new", "same", "differs", "only-there"];
-/// 可疑项的三种（线上名）。闭集，同上。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const SUSPECT_KINDS: &[&str] = &["abs-path", "command-missing", "command-relative"];
-/// 可疑项在这台机器上的事实（线上名）。闭集，同上。`command-relative` 那一种不探，这一格是 `null`。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const THERE: &[&str] = &["present", "absent", "foreign", "unknown"];
 
 /// 本族的应答。
 

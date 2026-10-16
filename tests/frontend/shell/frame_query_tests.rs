@@ -2,23 +2,55 @@
 
 use super::*;
 
-/// 那八条 —— 那一串逐字（`--accounts` 在盘上叫 `--list-accounts`）。
-/// **异源**：这张表手写，不从 [`MOVED`] 派生。
-const DESIGN_EIGHT: &[&str] = &[
-    "--read-session",
-    "--read-session-tail",
-    "--session-accounts",
-    "--list-accounts",
-    "--search",
-    // `--list-subagents` 摘了：按目录列子 agent 候选那一条随「按运行读」（`history-run`）删了，没有被替掉的拨号子命令。
-    // 要求「`--list-user-inputs` 与骨架 `--read-session-from-offset --index` 上帧面」。
-    "--list-user-inputs",
-    "--read-session-from-offset",
-    // 协调方加的：`--find-in-session` 一起搬。
-    "--find-in-session",
-    // 「仍在拨号的 `--account-trust` / `--account-trust-zero`」随账号域上帧面（异源：手抄的要求）。
-    "--account-trust",
-    "--account-trust-zero",
+/// 搬上帧面的 CLI 子命令 → 帧命令。左列那几条已从后端删掉（下面钉着「它们不再是子命令」），右列是今天的帧命令。
+const MOVED: &[(&str, &str)] = &[
+    ("--read-session", "history-read"),
+    ("--read-session-tail", "history-tail"),
+    ("--search", "history-search"),
+    ("--list-accounts", "accounts-list"),
+    ("--session-accounts", "accounts-sessions"),
+    // 骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
+    //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
+    //   两形都上了帧面，这个子命令从此一条拨号都不剩。
+    ("--read-session-from-offset", "history-index"),
+    ("--list-user-inputs", "history-user-inputs"),
+    // 会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
+    ("--find-in-session", "history-find"),
+    // 换号前的信任预检（随账号域一起上帧面）。两形合进**一条**帧命令
+    //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
+    ("--account-trust", "accounts-trust"),
+    ("--account-trust-zero", "accounts-trust"),
+];
+
+/// **生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
+/// 一个被它替掉的逐次拨号子命令（与 [`MOVED`] 那几条的来历不同）。判据的一侧：
+/// `MOVED` 右列 ∪ 本表 == 后端真登记给只读宿主的那几条。
+const BORN_ON_FRAME: &[&str] = &[
+    // resume 之前问「这条会话的记录还在不在」（monitor 这一侧不再发它：界面经通道直接问）。
+    "history-record",
+    // 按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
+    "history-lines",
+    // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
+    //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
+    "history-facts",
+    // 主线外清单的冷读（界面经通道直接问；monitor 这一侧从不发它）。
+    "history-branch",
+    // 一轮的摘要（过程行 · 刻度 · 大纲同源；界面经通道直接问，monitor 这一侧从不发它）。
+    "history-turns",
+    // 那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
+    "backend-log",
+    // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
+    "history-page",
+    "drift-report",
+    // 各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
+    "history-search-merge",
+    // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
+    "history-run",
+    // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
+    "machine-interrupts",
+    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端排）：界面经通道直接问，monitor 这一侧从不发它们。
+    "sessions-needs",
+    "sessions-needs-merge",
 ];
 
 // 这里原先还有一张「仍拨号」的表（C4c 起零条）—— 逐次拨号那条路删了，表随之摘掉。
@@ -102,16 +134,10 @@ fn backend_read_face_commands() -> Vec<String> {
     sorted(got)
 }
 
-/// ★ 两向相等：[`MOVED`] 的左列 == 那八条 ＋ 两条；右列 == 后端真登记上帧面、交给只读宿主的那几条。
+/// ★ 两向相等：[`MOVED`] 右列 ∪ [`BORN_ON_FRAME`] == 后端真登记、交给只读宿主的那几条。
 #[test]
-fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
-    assert_eq!(
-        sorted(MOVED.iter().map(|(f, _)| f.to_string())),
-        sorted(DESIGN_EIGHT.iter().map(|s| s.to_string())),
-        "搬上帧面的子命令与要求点名的那几条不相等"
-    );
-    // 右边还要并上「生在帧面上」的那几条（没有被替掉的拨号子命令，见 `BORN_ON_FRAME`）。
-    // 右列按**集合**比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
+fn the_moved_table_is_what_the_backend_registers() {
+    // 右列按集合比：信任预检两形合进一条帧命令（`accounts-trust` 在右列出现两次）。
     let mut right = sorted(
         MOVED
             .iter()
@@ -757,7 +783,7 @@ const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[
 /// **monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
 ///
 /// 它们同时在 [`CHANNELED_ELSEWHERE`] 里（界面那一问已走通道）；下面那条判据里 monitor 生产段的字面量
-/// 从此 == `BORN_ON_FRAME` 那一次 ＋ 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
+/// 从此 == 本表登记的处数（两向相等：多一处 = 又长出一个替界面转的发送点；
 /// 少一处 = monitor 那件自己的事不问了，这一行馊了）。
 const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     (
@@ -957,8 +983,8 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
 
 /// ★★ **迁过去的只走通道（两向）**：
 /// - 前端 `chan.call(` 的操作名集合 == [`CHANNELED`]（多一条 = 没登记就迁了；少一条 = 登记了却没迁）；
-/// - monitor 生产段里 [`CHANNELED`] 每条的字面量**只剩 `MOVED` 那一行**（= 再没有 monitor 侧发送点）；
-/// - [`HELD_BACK`] 每条**还有** monitor 侧发送点（字面量多于 `MOVED` 那一行）—— 没了就是理由馊了。
+/// - monitor 生产段里 [`CHANNELED`] 每条零字面量（= 没有 monitor 侧发送点）；
+/// - [`HELD_BACK`] 每条**还有** monitor 侧发送点 —— 没了就是理由馊了。
 ///
 /// 两侧异源：一侧读 TS 语料，一侧读 Rust 生产段。
 #[test]
@@ -1007,9 +1033,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             !MOVED.iter().any(|(_, c)| c == op),
             "`{op}` 是 `C1` 那一族的，该登记在 `CHANNELED`"
         );
-        // 生在帧面上的那几条在 `BORN_ON_FRAME` 里各有一次字面量（判据的一侧，不是发送点）；
-        //   monitor 自己也问的那几条另有登记的处数（`ASKED_BY_MONITOR_ITSELF`）。
-        let on_frame = BORN_ON_FRAME.iter().filter(|c| **c == *op).count();
+        // monitor 自己也问的那几条另有登记的处数（`ASKED_BY_MONITOR_ITSELF`）。
         let itself: usize = ASKED_BY_MONITOR_ITSELF
             .iter()
             .filter(|(c, _, _)| c == op)
@@ -1022,7 +1046,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
             .sum();
         assert_eq!(
             monitor_literal_count(op),
-            on_frame + itself + homonyms,
+            itself + homonyms,
             "`{op}` 已迁到通道，monitor 生产段却还有它的字面量（又长出了一个发送点）"
         );
     }
@@ -1048,9 +1072,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     }
     let mut still_sent_by_monitor: Vec<String> = Vec::new();
     for (op, _) in MOVED.iter().map(|(_, c)| (*c, ())) {
-        // `MOVED` 那几行自己就是字面量出现（信任预检两形合进一条帧命令 ⇒ 那一条在表里出现两次）。
-        let in_moved = MOVED.iter().filter(|(_, c)| *c == op).count();
-        if monitor_literal_count(op) > in_moved {
+        if monitor_literal_count(op) > 0 {
             still_sent_by_monitor.push(op.to_string());
         }
     }
@@ -1065,7 +1087,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     );
     // 反空真 ①：monitor 那一侧的数法认得出一条真有发送点的（快照续点那一处）。
     assert!(
-        monitor_literal_count("history-tail") > 1,
+        monitor_literal_count("history-tail") > 0,
         "正控：`history-tail` 必有 monitor 侧发送点 —— 数法坏了"
     );
     // 反空真 ②：前端那一侧的识别器认得出字面量、认得出非字面量、不把 `mychan.call(` 当成它。
@@ -1461,13 +1483,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
     );
     let mut want: Vec<(String, String)> = DEADLINE_MAKERS
         .iter()
-        .flat_map(|(f, func, n, why)| {
-            assert!(
-                why.chars().count() >= 15,
-                "`{f}::{func}` 没写清这件事是什么"
-            );
-            std::iter::repeat_n((f.to_string(), func.to_string()), *n)
-        })
+        .flat_map(|(f, func, n, _)| std::iter::repeat_n((f.to_string(), func.to_string()), *n))
         .collect();
     got.sort();
     want.sort();

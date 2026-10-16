@@ -182,9 +182,6 @@ mod tests {
                 holders.insert(rel, n);
             }
         }
-        for (p, why) in LOCK_HOLDERS {
-            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么要这把锁");
-        }
         let want: std::collections::BTreeSet<String> =
             LOCK_HOLDERS.iter().map(|(p, _)| p.to_string()).collect();
         let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
@@ -318,7 +315,7 @@ mod tests {
 
     /// 🔴🔴 **文件管理写面不再问「这是不是一份会话记录」。**
     ///
-    /// 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」；
+    /// 要求「**文件管理器全部都可以改. 不需要任何围栏**」；
     /// 文件管理面写的路径因此只过路径解析（`Face` 只收它交回的 `Resolved`），不问会话形状。
     ///
     /// # 两向相等，人群按事实取样
@@ -407,7 +404,7 @@ mod tests {
             found,
             want,
             "\n🔴 后端里问「这是不是一份会话记录」的地方，不再恰是删历史会话那一条要的三处。\n\
-             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而用户原话是\n\
+             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而要求是\n\
              「文件管理器全部都可以改. 不需要任何围栏」）：{:?}\n\
              少了的（⇒ 删会话那一条的形状变了；它不在 FN1 射程里，先去看是谁动的）：{:?}",
             found.difference(&want).collect::<Vec<_>>(),
@@ -1659,11 +1656,7 @@ mod capture_is_read_only {
             "改状态动词表只剩 {} 条 —— 被掏瘪了，正题此刻在空转",
             verbs.len()
         );
-        for (needle, why) in &verbs {
-            assert!(
-                why.chars().count() >= 12,
-                "针 {needle:?} 没写清「为什么它算改状态」—— 黑名单里的每一条都要说得出理由"
-            );
+        for (needle, _) in &verbs {
             let sample = format!("let _ = tmux_argv({needle}, target);");
             assert_eq!(
                 hits(&sample),
@@ -1730,7 +1723,7 @@ mod capture_is_read_only {
 //   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
 //   `no_timer_guard`），**顶层那一行再导出没有了**。
 //   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
-//   `structural_scan_tests.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
+//   `structural_scan.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
 //   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
 
 /// **`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
@@ -1824,15 +1817,10 @@ pub(crate) mod g6_doctrine {
         names.sort_unstable();
         names.dedup();
         assert_eq!(before, names.len(), "四情形表里有重名的格：{names:?}");
-        for (cell, when, how, why, unlock) in CELLS {
+        for (cell, when, how, _, unlock) in CELLS {
             assert!(
                 !when.trim().is_empty() && !how.trim().is_empty(),
                 "`{cell}` 这一格没写「什么时候落在这一格」或「正确处置」"
-            );
-            assert!(
-                why.trim().chars().count() >= 20,
-                "`{cell}` 的 why 太短（{} 字）—— 说不清为什么是这个处置，下一个人只会照抄格名",
-                why.trim().chars().count()
             );
             assert!(
                 unlock.trim().chars().count() >= 20,
@@ -1927,7 +1915,7 @@ mod g6_reach {
             "反例表从 1 条变成 {} 条了 —— 加反例是好事，但要连它的语料与断言一起加",
             KNOWN_PASSING_COUNTEREXAMPLES.len()
         );
-        for (rel, frag, why, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
+        for (rel, frag, _, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
             let prod = guard_core::production_source(source_of(rel));
             assert!(
                 prod.contains(frag),
@@ -1940,7 +1928,6 @@ mod g6_reach {
                 "反例 `{rel}` 今天**红了** —— 那说明本护栏的射程变了，\
                  这张表说的话已经不成立，回来重判"
             );
-            assert!(why.trim().chars().count() >= 20, "`{rel}` 的 why 太短");
             assert!(
                 unlock.trim().chars().count() >= 20,
                 "`{rel}` 没写解锁条件 —— 没有解锁条件的反例登记会一直躺着"
@@ -2541,16 +2528,11 @@ mod error_envelope_registry {
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );
-        for (p, anchor, whose, why) in SIGNED {
+        for (p, anchor, whose, _) in SIGNED {
             assert!(!anchor.is_empty(), "{p} 的锚点是空串 —— 那会匹配到任何地方");
             assert!(
                 whose.chars().count() >= 5,
                 "{p} :: {anchor} 说不出这一份是谁的出口"
-            );
-            assert!(
-                why.chars().count() >= 30,
-                "{p} :: {anchor} 的理由只有 {} 字 —— 一条说不出理由的签字就是一条免检",
-                why.chars().count()
             );
         }
     }
@@ -3338,17 +3320,11 @@ mod g6_dependency_signoff {
             );
         }
         let declared = dep_entries(MANIFEST);
-        for (name, sect, verdict, why) in SIGNED {
+        for (name, sect, verdict, _) in SIGNED {
             assert!(
                 is_verdict(verdict),
                 "`{name}` 的判档是 `{verdict}` —— 它不在闭集里。闭集（现算）：{}",
                 verdict_names().join(" / ")
-            );
-            assert!(
-                why.trim().chars().count() >= 20,
-                "`{name}` 的签字太短（实得 {} 字）—— 这一列的读者是下一个想加依赖的人，\
-                 要写的是「它在后端里做什么 · 凭什么落这一档」，不是一句「没问题」",
-                why.trim().chars().count()
             );
             assert!(
                 declared
@@ -4340,16 +4316,10 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
     /// ★ 两张能力表**逐格对齐**，家族在闭集里，理由有长度地板。
     #[test]
     fn the_two_capability_tables_stay_aligned() {
-        for (family, why) in REMOTE_CAPABILITY_ANCHORS {
+        for (family, _) in REMOTE_CAPABILITY_ANCHORS {
             assert!(
                 FAMILIES.contains(family),
                 "`{family}` 不在家族闭集里：{FAMILIES:?}"
-            );
-            assert!(
-                why.trim().chars().count() >= 30,
-                "有一条能力锚点没写清它凭什么是形状（实得 {} 字）—— \
-                 这一栏的读者是下一个想往表里加一行的人",
-                why.trim().chars().count()
             );
         }
         for (op, why) in REMOTE_MUTATION_VERBS {

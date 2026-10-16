@@ -33,7 +33,7 @@
  *    起会话事实里的 `has_identity` · `needs_bus_id`（`agents/mod.rs` 的 `LaunchFace`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有源头、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
- *    下面 `the_gaps_are_named_not_forgotten` 把这三项**逐个点名钉住**：
+ *    下面「缺项逐个点名」那一条把这三项**逐个点名钉住**：
  *    哪天有人给 golden 加了 key，那一格会红，提醒把它接进对拍。
  * 2. 抽取是**文本匹配**，不是执行 shell / 编译 Rust。有人把 `resume_flag` 改写成
  *    完全不同的写法（比如查一个数组），抽取器会**抽不到**而不是抽错 ——
