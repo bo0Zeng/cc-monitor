@@ -271,7 +271,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
         origin: "<local>".into(),
         sid: "done".into(),
         fate: Fate::Ended,
-        words: None,
+        words: words("done", "T"),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -1037,15 +1037,20 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
     );
 }
 
+/// 那台答的去向（`text` 是那台写的短名）。
+fn words(sid: &str, text: &str) -> crate::session_book::FateWords {
+    crate::session_book::FateWords::of(crate::guard_support::session_state(sid, "ended", text))
+}
+
 fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
-    crate::ui_contract::SessionStreamFrame::Ended(crate::ui_contract::SessionEndedPayload {
-        session_id: sid.into(),
-        text: None,
-        hint: None,
-        tone: None,
-        order: None,
-        switch: None,
-    })
+    crate::session_book::Out::Left {
+        origin: "<local>".into(),
+        sid: sid.into(),
+        fate: cmd_wire::frame::SessionFate::Ended,
+        words: words(sid, "T"),
+    }
+    .frames()
+    .remove(0)
 }
 
 /// ★ 就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后；手里有没说的丢失时，起停那一格之前原位先给 `Gap`。
@@ -1064,7 +1069,7 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
         origin: "<local>".into(),
         sid: "b".into(),
         fate: Fate::Ended,
-        words: None,
+        words: words("b", "T"),
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
@@ -1083,6 +1088,60 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
         vec!["gap", "ended"],
         "没 credit 也照交起停（先原位说丢在哪）"
     );
+}
+
+/// 手上留着的 ＝ 留存里那台有行的会话：多一条 · 少一条都叫醒名单那一侧重报；同一条多进几行不叫。
+#[tokio::test]
+async fn what_is_kept_follows_the_retention_and_wakes_the_list() {
+    let (r, _rec) = hub();
+    let mut ticks = r.watch_changes();
+    ticks.borrow_and_update();
+    r.on_line_batch_awaited(lines("x", 0..2)).await;
+    assert!(ticks.has_changed().unwrap(), "多了一条没叫");
+    ticks.borrow_and_update();
+    assert_eq!(r.kept(&local()), BTreeSet::from(["x".to_string()]));
+    r.on_line_batch_awaited(lines("x", 2..3)).await;
+    assert!(!ticks.has_changed().unwrap(), "同一条多几行不该叫");
+    r.forget("x");
+    assert!(ticks.has_changed().unwrap(), "少了一条没叫");
+    assert!(r.kept(&local()).is_empty());
+}
+
+/// ★ 「已结束」只由那台答：那台报完了清单、留存有 x、账里没有 x ⇒ 重放不替它说；那台答了 x 已结束 ⇒
+/// 交界面的 `ended` 那一格只有一格，字是那台写的那句。
+#[tokio::test]
+async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
+    use crate::session_book::In;
+    use cmd_wire::frame::SessionFate as Fate;
+    let ((r, rec), book) = hub_with_book();
+    r.origin_seen(&local(), true);
+    book.write().step(In::Listed {
+        origin: "<local>".into(),
+    });
+    r.on_line_batch_awaited(lines("x", 0..1)).await;
+    r.subscribe("w", 1, &local(), "session-lines", None, 100);
+    r.ready_point(None).await;
+    let out = book.write().step(In::Left {
+        origin: "<local>".into(),
+        sid: "x".into(),
+        fate: Fate::Ended,
+        words: words("x", "那台写的"),
+    });
+    r.on_lifecycle("<local>", out.iter().flat_map(|o| o.frames()).collect());
+    let ended: Vec<serde_json::Value> = rec
+        .all()
+        .iter()
+        .filter_map(|i| match i {
+            WItem::Frame { body, .. } => {
+                let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                v.get("ended").cloned()
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ended.len(), 1, "只该有那台答的那一格：{ended:?}");
+    assert_eq!(ended[0]["session_id"], "x");
+    assert_eq!(ended[0]["text"], "那台写的");
 }
 
 /// ★ 起停那几格没 credit 也照交、照扣（credit 可欠）：欠着的时候行照丢、原位 `Gap`；还清之后下一行照交。
@@ -1128,14 +1187,7 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
         origin: crate::origin::Origin::local(),
         all: false,
     });
-    let other = F::Ended(b::SessionEndedPayload {
-        session_id: "other".into(),
-        text: None,
-        hint: None,
-        tone: None,
-        order: None,
-        switch: None,
-    });
+    let other = ended("other");
     assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
     assert!(!listed.reaches(Some("mine")) && listed.reaches(None));
     assert!(!other.reaches(Some("mine")) && other.reaches(Some("other")));

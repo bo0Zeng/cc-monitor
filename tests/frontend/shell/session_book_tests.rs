@@ -1,7 +1,7 @@
 //! 「monitor 只收成品帧」· 「`Unseen` 不许被显示成已结束」—— `session_book` 只记账、不裁决。
 //!
 //! 钉两件：① 交进来的成品原样交出去（顺序不变），monitor 自己只说「连接断了 ⇒ 当时活的 / 可重连的说不清」；
-//! ② F5 重放计划：骨架在前、终局在后，有行却没成品的按「那台报完清单没有」分已结束 / 说不清。
+//! ② F5 重放计划：骨架在前、终局在后；有行却没成品的：那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说（去向由那台后端答）。
 use super::*;
 
 fn meta(cwd: &str) -> cmd_wire::frame::SessionAdded {
@@ -17,11 +17,15 @@ fn live(o: &str, s: &str) -> In {
 }
 
 fn left(o: &str, s: &str, fate: SessionFate) -> In {
+    let state = match fate {
+        SessionFate::Reconnectable => "reconnectable",
+        SessionFate::Ended => "ended",
+    };
     In::Left {
         origin: o.into(),
         sid: s.into(),
         fate,
-        words: None,
+        words: FateWords::of(crate::guard_support::session_state(s, state, "T")),
     }
 }
 
@@ -132,15 +136,14 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
             r#"unseen zz ["far"]"#,
             "left pi/r Reconnectable",
             "left pi/e Ended",
-            // 那台报完了清单 ⇒ 不在清单里 = 已结束。
-            "left pi/gone Ended",
+            // 那台报完了清单、这条没被说过（`gone`）⇒ 不说：去向由那台后端答（这里补一句就是 monitor 自己在裁）。
             "listed pi",
         ]
     );
 }
 
 /// 〔「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）；旁路快照被撤时
-/// 没说过的那一条：那台报完了清单 ⇒ 已结束，没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）。
+/// 没说过的那一条：那台没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）；报完了 ⇒ 不说（那台答）。
 #[test]
 fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     let mut b = Book::default();
@@ -171,7 +174,7 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     b.step(In::Listed {
         origin: "pi".into(),
     });
-    assert_eq!(said(b.settle_again("pi", "q")), vec!["left q Ended"]);
+    assert!(b.settle_again("pi", "q").is_empty(), "报完了、没说过的不说");
     assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
 

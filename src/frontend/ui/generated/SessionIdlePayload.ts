@@ -9,4 +9,4 @@ export type SessionIdlePayload = { session_id: string,
 /**
  * 同 [`SessionEndedPayload`] 那五格。
  */
-text: string | null, hint: string | null, tone: string | null, order: number | null, switch: SwitchCells | null, };
+text: string, hint: string, tone: string, order: number, switch: SwitchCells, };

@@ -354,7 +354,7 @@ pub fn watch(h: i64, sid: &str, holding: bool) {
     };
     let moved = if holding { w.hold(sid) } else { w.release(sid) };
     if moved {
-        desk.set(w.sids());
+        desk.set(w.sids(), Default::default());
     }
 }
 

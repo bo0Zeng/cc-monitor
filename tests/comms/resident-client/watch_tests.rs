@@ -81,7 +81,7 @@ async fn settle() {
 async fn a_new_link_is_told_only_what_its_attach_line_did_not_carry() {
     let peer = Arc::new(Peer::default());
     let desk = Desk::new(|_| vec![], |_| {});
-    desk.set(set(&["s1"]));
+    desk.set(set(&["s1"]), set(&[]));
     // 没有 attach 行的载体（stdio）：接上即报。
     desk.up(&link(&peer), None);
     settle().await;
@@ -91,7 +91,7 @@ async fn a_new_link_is_told_only_what_its_attach_line_did_not_carry() {
         serde_json::json!(["s1"])
     );
     // 名单没变、连接没换 ⇒ 不报。
-    desk.set(set(&["s1"]));
+    desk.set(set(&["s1"]), set(&[]));
     settle().await;
     assert_eq!(peer.asks.lock().unwrap().len(), 1, "没变不报");
     // 新连接的 attach 行带过此刻那份 ⇒ 不报。
@@ -102,7 +102,7 @@ async fn a_new_link_is_told_only_what_its_attach_line_did_not_carry() {
     assert_eq!(peer.asks.lock().unwrap().len(), 1, "attach 行带过的不再问");
     // 握手中名单变了（attach 行写出之后、接上之前）⇒ 接上后补报一次、是最新那份。
     let carried = desk.ask_for_attach();
-    desk.set(set(&["s1", "s2"]));
+    desk.set(set(&["s1", "s2"]), set(&[]));
     desk.up(&link(&peer), Some(&carried));
     settle().await;
     let asks = peer.asks.lock().unwrap().clone();
@@ -122,9 +122,9 @@ async fn quick_changes_end_on_the_latest_and_never_overtake() {
     desk.up(&link(&peer), None);
     settle().await;
     assert_eq!(peer.asks.lock().unwrap().len(), 1, "接上即报（空名单）");
-    desk.set(set(&["a"]));
-    desk.set(set(&["a", "b"]));
-    desk.set(set(&["a", "b", "c"]));
+    desk.set(set(&["a"]), set(&[]));
+    desk.set(set(&["a", "b"]), set(&[]));
+    desk.set(set(&["a", "b", "c"]), set(&[]));
     settle().await;
     assert_eq!(
         peer.asks.lock().unwrap().len(),
@@ -154,10 +154,10 @@ async fn the_from_rows_go_to_the_host() {
     let got: Arc<Mutex<Vec<Vec<WatchFrom>>>> = Arc::default();
     let g = Arc::clone(&got);
     let desk = Desk::new(|_| vec![], move |rows| g.lock().unwrap().push(rows));
-    desk.set(set(&["a"]));
+    desk.set(set(&["a"]), set(&[]));
     desk.up(&link(&peer), None);
     settle().await;
-    desk.set(set(&["a", "b"]));
+    desk.set(set(&["a", "b"]), set(&[]));
     settle().await;
     assert_eq!(peer.asks.lock().unwrap().len(), 2);
     assert_eq!(
@@ -188,7 +188,7 @@ async fn the_branch_lists_held_ride_along_on_both_paths() {
         },
         |_| {},
     );
-    desk.set(set(&["a"]));
+    desk.set(set(&["a"]), set(&[]));
     assert_eq!(
         serde_json::to_value(desk.ask_for_attach()).unwrap(),
         serde_json::json!({ "sids": ["a"], "branch": [
@@ -202,7 +202,7 @@ async fn the_branch_lists_held_ride_along_on_both_paths() {
         serde_json::json!([{ "sid": "a", "path": "/p/a.jsonl", "at": 12, "sum": "00ff" }])
     );
     let bare = Desk::new(|_| vec![], |_| {});
-    bare.set(set(&["a"]));
+    bare.set(set(&["a"]), set(&[]));
     assert_eq!(
         serde_json::to_value(bare.ask_for_attach()).unwrap(),
         serde_json::json!({ "sids": ["a"], "branch": [] })
@@ -214,6 +214,30 @@ async fn the_branch_lists_held_ride_along_on_both_paths() {
         })
         .unwrap(),
         serde_json::json!({ "sid": "b", "at": 0 })
+    );
+}
+
+/// 手上留着的随名单一起交（attach 行与报的那一问都带）；只它变了也重报一次。
+#[tokio::test(start_paused = true)]
+async fn what_is_kept_rides_along_and_a_change_in_it_alone_reports_again() {
+    let peer = Arc::new(Peer::default());
+    let desk = Desk::new(|_| vec![], |_| {});
+    desk.set(set(&["a"]), set(&["x"]));
+    assert_eq!(
+        serde_json::to_value(desk.ask_for_attach()).unwrap()["kept"],
+        serde_json::json!(["x"])
+    );
+    desk.up(&link(&peer), None);
+    settle().await;
+    desk.set(set(&["a"]), set(&["x"]));
+    settle().await;
+    desk.set(set(&["a"]), set(&["x", "y"]));
+    settle().await;
+    let asks = peer.asks.lock().unwrap().clone();
+    assert_eq!(
+        asks.iter().map(|a| a["kept"].clone()).collect::<Vec<_>>(),
+        vec![serde_json::json!(["x"]), serde_json::json!(["x", "y"])],
+        "没变不报；只多了一条留着的也报"
     );
 }
 

@@ -547,7 +547,7 @@ async fn from_link_open_to_up_takes_one_round_trip() {
             }
         });
         let d = self::desk();
-        d.set(["s1".to_string()].into());
+        d.set(["s1".to_string()].into(), Default::default());
         if desk {
             Feed::start(cfg(), Some(Arc::new(D(Arc::clone(&f)))), d, events);
         } else {
@@ -707,7 +707,7 @@ async fn every_new_link_carries_the_watch_list_on_its_attach_line() {
     let f = Arc::new(Fake::default());
     f.attaches.lock().unwrap().push_back(upp(MINE));
     let d = desk();
-    d.set(["s1".to_string()].into());
+    d.set(["s1".to_string()].into(), Default::default());
     let (feed, _) = start_with(&f, Arc::clone(&d));
     until("流接上了", || up(&feed)).await;
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -732,7 +732,10 @@ async fn every_new_link_carries_the_watch_list_on_its_attach_line() {
         f.attach_lines.lock().unwrap().len() == 3
     })
     .await;
-    d.set(["s1".to_string(), "s2".to_string()].into());
+    d.set(
+        ["s1".to_string(), "s2".to_string()].into(),
+        Default::default(),
+    );
     gate.notify_one();
     until("补报了最新那份", || {
         f.watches
@@ -940,7 +943,7 @@ async fn a_drop_then_reconnect_hands_over_exactly_these_cells() {
         a.push_back(upp(MINE));
     }
     let d = desk();
-    d.set(["s1".to_string()].into());
+    d.set(["s1".to_string()].into(), Default::default());
     let (feed, seen) = start_with(&f, d);
     let ups = |seen: &Seen| {
         seen.lock()

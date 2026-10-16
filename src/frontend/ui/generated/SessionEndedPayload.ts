@@ -3,14 +3,14 @@ import type { SwitchCells } from "./SwitchCells";
 
 export type SessionEndedPayload = { session_id: string, 
 /**
- * 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）；壳自己补的「已结束」没有 ⇒ `None`。
+ * 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）。
  */
-text: string | null, hint: string | null, tone: string | null, 
+text: string, hint: string, tone: string, 
 /**
- * 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）；壳自己补的「已结束」没有 ⇒ `None`（排在那台最后）。
+ * 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）。
  */
-order: number | null, 
+order: number, 
 /**
- * 此刻能不能换模型 · 权限档（`session_state.switch`）；壳自己补的「已结束」没有 ⇒ `None`。
+ * 此刻能不能换模型 · 权限档（`session_state.switch`）。
  */
-switch: SwitchCells | null, };
+switch: SwitchCells, };

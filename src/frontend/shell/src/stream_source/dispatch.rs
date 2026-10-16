@@ -179,7 +179,7 @@ pub(crate) async fn apply(
                 origin: at,
                 sid,
                 fate: state,
-                words: Some(crate::session_book::FateWords::of(s)),
+                words: crate::session_book::FateWords::of(s),
             });
         }
         Ordered::Overflow(o) => on_overflow(origin, health, &o),

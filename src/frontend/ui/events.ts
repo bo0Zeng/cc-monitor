@@ -34,7 +34,7 @@ export type {
 export interface EventHandlers {
   /** 一行记录。payload 带 seq，RecordTimeline 按 seq 排进 DOM，先到后到不影响画面。 */
   onLine: (e: JsonlLinePayload) => void;
-  /** 会话已结束；`sw` ＝ 那台随去向带来的「此刻能不能换」（壳自己补的已结束没有 ⇒ `null`）。 */
+  /** 会话已结束；`sw` · `order` ＝ 那台随去向带来的「此刻能不能换」与组内序。 */
   onSessionEnded: (sessionId: string, sw?: SwitchCells | null, order?: number | null) => void;
   /**
    * 远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux），不归档。后端在会话没了而 `@ccm_sid` 还在时发 `idle` 格（与 ended 格对同一 sid 二选一）。

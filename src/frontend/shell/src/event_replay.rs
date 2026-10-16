@@ -153,6 +153,8 @@ struct Inner {
     /// 重放补电平读它、不回头读 `stream_source` 那把计数锁 —— 交电平的那一边是「持计数锁 → 要本锁」，
     /// 这边再「持本锁 → 要计数锁」就是两条线程互等（截图台架偶发整条流停住，抓栈就是这一对）。
     snapshot_level: u32,
+    /// 留存里「哪几条有行」变了（多了 · 少了一条）还没告诉名单那一侧（[`EventReplay::kept`]）。
+    kept_moved: bool,
 }
 
 /// 终端画面流撤掉了：`(哪台, 票)`。
@@ -529,6 +531,7 @@ impl EventReplay {
                 screen_dropped: None,
                 main_watch: BTreeSet::new(),
                 snapshot_level: 0,
+                kept_moved: false,
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
@@ -615,6 +618,7 @@ impl EventReplay {
                     &mut inner,
                     &(notice.origin.clone(), notice.session_id.clone()),
                 );
+                self.tell_kept(&mut inner);
             }
             let Some(sink) = inner.sink.clone() else {
                 return;
@@ -673,6 +677,7 @@ impl EventReplay {
         let (sink, plans) = {
             let mut inner = self.inner.lock();
             hold(&mut inner, self.book, &payloads);
+            self.tell_kept(&mut inner);
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
@@ -1253,7 +1258,26 @@ impl EventReplay {
         out
     }
 
-    /// 「在看」可能变了就醒的那个收端（`stream_watch` 拿它等）。
+    /// 那台手上留着的会话：留存里那台有行的那几条（随名单报给那台，那台不在说的它答已结束）。
+    pub fn kept(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
+        let origin = origin.as_wire_str();
+        self.inner
+            .lock()
+            .tails
+            .iter()
+            .filter(|(k, t)| k.0 == origin && !t.lines.is_empty())
+            .map(|(k, _)| k.1.clone())
+            .collect()
+    }
+
+    /// 留存里有行的那几条变了 ⇒ 名单那一侧重报（与「在看」同一个收端）。
+    fn tell_kept(&self, inner: &mut Inner) {
+        if std::mem::take(&mut inner.kept_moved) {
+            self.watch_moved();
+        }
+    }
+
+    /// 「在看」或手上留着的可能变了就醒的那个收端（`stream_watch` 拿它等）。
     pub fn watch_changes(&self) -> tokio::sync::watch::Receiver<u64> {
         self.watch_tick.subscribe()
     }
@@ -1282,6 +1306,7 @@ impl EventReplay {
                     w.seq,
                 );
             }
+            self.tell_kept(&mut inner);
         }
         let frames: Vec<SessionStreamFrame> =
             from.into_iter().map(SessionStreamFrame::Watch).collect();
@@ -1301,6 +1326,7 @@ impl EventReplay {
         for k in keys {
             drop_tail(&mut inner, &k);
         }
+        self.tell_kept(&mut inner);
     }
 
     /// 读数口（日志与判据用）。
@@ -1354,6 +1380,7 @@ fn drop_tail(inner: &mut Inner, key: &TailKey) -> usize {
         return 0;
     };
     inner.held_bytes -= t.bytes;
+    inner.kept_moved |= !t.lines.is_empty();
     if !t.lines.is_empty() {
         tracing::info!(
             "event_replay drop [{}] {}: {} entries / {} bytes",
@@ -1374,6 +1401,7 @@ fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
     if below.is_some_and(|b| b + 1 >= seq) {
         return;
     }
+    let had = !t.lines.is_empty();
     let mut freed = 0;
     t.lines.retain(|p| {
         let keep = p.seq >= seq;
@@ -1384,7 +1412,9 @@ fn cut_to_contiguous(inner: &mut Inner, key: &TailKey, seq: u64) {
     });
     t.bytes -= freed;
     t.floor = Some(t.floor.map_or(seq, |f| f.max(seq)));
+    let emptied = had && t.lines.is_empty();
     inner.held_bytes -= freed;
+    inner.kept_moved |= emptied;
 }
 
 /// 进留存的唯一入口：修尾巴（[`push_and_trim`]）＋ 总量超了就丢（[`evict_over_cap`]）。
@@ -1405,12 +1435,14 @@ fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
     inner.tick += 1;
     let tick = inner.tick;
     let mut over: Vec<TailKey> = Vec::new();
+    let mut fresh = false;
     for p in payloads {
         let key = tail_key(p);
         let t = inner.tails.entry(key.clone()).or_default();
         if t.floor.is_some_and(|f| p.seq < f) {
             continue;
         }
+        fresh |= t.lines.is_empty();
         let size = held_size(p);
         t.lines.push_back(p.clone());
         t.bytes += size;
@@ -1420,6 +1452,7 @@ fn push_and_trim(inner: &mut Inner, payloads: &[JsonlLinePayload]) {
         }
         inner.held_bytes += size;
     }
+    inner.kept_moved |= fresh;
     for key in over {
         trim_to_tail(inner, &key);
     }

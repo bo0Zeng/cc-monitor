@@ -6,6 +6,7 @@
 //! - 应答 `from[]`（刚进名单的会话从第几行起上流）原样交宿主，由看着那一条的去补 `[已有, seq)`。
 //!
 //! 名单从空开始（一条都还没人看 ⇒ 那台一条都不发）。读主线外清单的宿主（桌面）经 `held` 交回手上各份有什么，那台只补缺的；不读的（手机）交空的。
+//! 手上留着记录的会话（`kept`，桌面的重放留存）随名单一起交、一起报：那台不在说的它答一句已结束；不留的（手机）交空的。
 
 use crate::client::InboundClient;
 use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
@@ -36,11 +37,13 @@ pub struct Desk {
 
 #[derive(Default)]
 struct Now {
+    /// 此刻在看的 ＋ 手上留着的。
     sids: BTreeSet<String>,
+    kept: BTreeSet<String>,
     /// 当前那条连接（弱引用：连接走了就不报）。
     link: Weak<InboundClient>,
-    /// 那条连接已经知道的那一份（attach 行带过的 · 报过的）；`None` ＝ 它还什么都不知道（全发）。
-    told: Option<BTreeSet<String>>,
+    /// 那条连接已经知道的那一份（attach 行带过的 · 报过的：在看的 ＋ 手上留着的）；`None` ＝ 它还什么都不知道（全发）。
+    told: Option<(BTreeSet<String>, BTreeSet<String>)>,
 }
 
 impl Desk {
@@ -59,12 +62,13 @@ impl Desk {
         desk
     }
 
-    /// 宿主：此刻在看这几条（整份换）。没变不惊动。
-    pub fn set(&self, sids: BTreeSet<String>) {
+    /// 宿主：此刻在看这几条 ＋ 手上留着这几条（都整份换）。没变不惊动。
+    pub fn set(&self, sids: BTreeSet<String>, kept: BTreeSet<String>) {
         let moved = {
             let mut n = lock(&self.now);
-            let moved = n.sids != sids;
+            let moved = n.sids != sids || n.kept != kept;
             n.sids = sids;
+            n.kept = kept;
             moved
         };
         if moved {
@@ -77,9 +81,13 @@ impl Desk {
         lock(&self.now).sids.clone()
     }
 
-    /// 连接那一侧：要写 attach 行了 ⇒ 此刻的名单 ＋ 各条手上的清单。
+    /// 连接那一侧：要写 attach 行了 ⇒ 此刻的名单 ＋ 各条手上的清单 ＋ 手上留着的。
     pub fn ask_for_attach(&self) -> WatchAsk {
-        self.ask(self.sids())
+        let (sids, kept) = {
+            let n = lock(&self.now);
+            (n.sids.clone(), n.kept.clone())
+        };
+        self.ask(sids, kept)
     }
 
     /// 连接那一侧：接上了；`carried` ＝ 它的 attach 行带过的那一份（这条载体没有 attach 行 ⇒ `None`）。
@@ -88,35 +96,41 @@ impl Desk {
         {
             let mut n = lock(&self.now);
             n.link = Arc::downgrade(client);
-            n.told = carried.map(|a| a.sids.iter().cloned().collect());
+            n.told = carried.map(|a| {
+                (
+                    a.sids.iter().cloned().collect(),
+                    a.kept.iter().cloned().collect(),
+                )
+            });
         }
         self.poke.notify_one();
     }
 
-    fn ask(&self, sids: BTreeSet<String>) -> WatchAsk {
+    fn ask(&self, sids: BTreeSet<String>, kept: BTreeSet<String>) -> WatchAsk {
         let branch = (self.held)(&sids);
         WatchAsk {
             sids: sids.into_iter().collect(),
             branch,
-            kept: Vec::new(),
+            kept: kept.into_iter().collect(),
         }
     }
 
     /// 当前连接还不知道此刻的名单 ⇒ 报到它知道为止（报的时候又变了 ⇒ 接着报最新那份）。
     async fn flush(&self) {
         loop {
-            let (client, sids) = {
+            let (client, now) = {
                 let mut n = lock(&self.now);
                 let Some(client) = n.link.upgrade() else {
                     return;
                 };
-                if n.told.as_ref() == Some(&n.sids) {
+                let now = (n.sids.clone(), n.kept.clone());
+                if n.told.as_ref() == Some(&now) {
                     return;
                 }
-                n.told = Some(n.sids.clone());
-                (client, n.sids.clone())
+                n.told = Some(now.clone());
+                (client, now)
             };
-            let args = serde_json::to_value(self.ask(sids)).unwrap_or_default();
+            let args = serde_json::to_value(self.ask(now.0, now.1)).unwrap_or_default();
             match client.call(WATCH_CMD, args, WATCH_BUDGET).await {
                 Ok(data) => {
                     let from = match data.map(serde_json::from_value::<WatchReply>) {

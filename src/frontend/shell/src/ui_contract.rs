@@ -296,15 +296,15 @@ pub enum BatchEdge {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionEndedPayload {
     pub session_id: String,
-    /// 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）；壳自己补的「已结束」没有 ⇒ `None`。
-    pub text: Option<String>,
-    pub hint: Option<String>,
-    pub tone: Option<String>,
-    /// 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）；壳自己补的「已结束」没有 ⇒ `None`（排在那台最后）。
-    pub order: Option<u8>,
-    /// 此刻能不能换模型 · 权限档（`session_state.switch`）；壳自己补的「已结束」没有 ⇒ `None`。
-    #[cfg_attr(test, ts(as = "Option<SwitchCells>"))]
-    pub switch: Option<cmd_wire::frame::Switch>,
+    /// 那台核心写好的短名 · 悬停那一句 · 语气（`session_state` 带来的）。
+    pub text: String,
+    pub hint: String,
+    pub tone: String,
+    /// 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）。
+    pub order: u8,
+    /// 此刻能不能换模型 · 权限档（`session_state.switch`）。
+    #[cfg_attr(test, ts(as = "SwitchCells"))]
+    pub switch: cmd_wire::frame::Switch,
 }
 
 /// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
@@ -315,12 +315,12 @@ pub struct SessionEndedPayload {
 pub struct SessionIdlePayload {
     pub session_id: String,
     /// 同 [`SessionEndedPayload`] 那五格。
-    pub text: Option<String>,
-    pub hint: Option<String>,
-    pub tone: Option<String>,
-    pub order: Option<u8>,
-    #[cfg_attr(test, ts(as = "Option<SwitchCells>"))]
-    pub switch: Option<cmd_wire::frame::Switch>,
+    pub text: String,
+    pub hint: String,
+    pub tone: String,
+    pub order: u8,
+    #[cfg_attr(test, ts(as = "SwitchCells"))]
+    pub switch: cmd_wire::frame::Switch,
 }
 
 /// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。

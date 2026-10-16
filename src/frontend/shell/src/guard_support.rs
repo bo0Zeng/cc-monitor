@@ -258,6 +258,20 @@ pub(crate) fn our_hello(commands: &[&str]) -> crate::stream_source::Frame {
     })
 }
 
+/// 判据用的一帧去向（`state` 取线上那一形：`reconnectable` / `ended`），`text` 是那台写的短名。
+pub(crate) fn session_state(sid: &str, state: &str, text: &str) -> cmd_wire::frame::SessionState {
+    serde_json::from_value(serde_json::json!({
+        "sid": sid,
+        "state": state,
+        "state_text": text,
+        "state_hint": "H",
+        "state_tone": "plain",
+        "state_order": 5,
+        "switch": {"model": {"can": "yes"}, "permission": {"can": "yes"}},
+    }))
+    .expect("判据造的去向解不开")
+}
+
 /// 判据用的一条活会话宣告：后端会写的最少那几格（字 · 语气 · 序 · 能不能换 · 名字 · pid），`extra` 里的格盖上去。
 pub(crate) fn session_added(sid: &str, extra: serde_json::Value) -> cmd_wire::frame::SessionAdded {
     let mut v = serde_json::json!({

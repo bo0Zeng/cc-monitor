@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 use cmd_wire::frame::{SessionAdded, SessionFate, SessionState, SessionStatus};
 
 /// 去向那一种写好的字与语气（那台核心写的 `session_state.state_text` · `state_hint` · `state_tone` · `switch`，原样转交）。
-/// 壳自己补的「已结束」（那台报完清单、这条不在）没有这一份 ⇒ `None`。
+/// 去向只由那台裁（手上留着、那台不在说的，那台也答一句已结束），每一份都带这几格。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FateWords {
     pub text: cmd_wire::cells::Words,
@@ -46,7 +46,7 @@ impl FateWords {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Product {
     Live(SessionAdded),
-    Left(SessionFate, Option<FateWords>),
+    Left(SessionFate, FateWords),
 }
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
@@ -65,7 +65,7 @@ pub enum In {
         origin: String,
         sid: String,
         fate: SessionFate,
-        words: Option<FateWords>,
+        words: FateWords,
     },
     /// `sessions_replayed`：那台的活会话清单报完了（可重连的也已报过）。
     Listed { origin: String },
@@ -106,7 +106,7 @@ pub enum Out {
         origin: String,
         sid: String,
         fate: SessionFate,
-        words: Option<FateWords>,
+        words: FateWords,
     },
     /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一刻：前端据此收空组、说记住的那一格没出现）。
     Listed { origin: String, all: bool },
@@ -384,7 +384,7 @@ impl Book {
     /// **F5 重放计划**（纯）：`buffered` = 重放缓冲里有行的 `(sid, 它所在的那台)`。
     ///
     /// - `before`：活会话重宣告（骨架 ＋ 初始灯 ＋ 容器，本机远端同一形）；
-    /// - `after`：全部可重连的 · 有行却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台报完了清单 ⇒ 已结束，没报完 ⇒ 说不清）·
+    /// - `after`：全部可重连的 · 有行却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说，那台答）·
     ///   报完了清单的那几台再说一次「报完了」（排在最后：前端处理它时活着的已经翻回活）。
     pub fn replay(&self, buffered: &[(String, String)]) -> Replay {
         let mut r = Replay::default();
@@ -438,12 +438,8 @@ impl Book {
                     fate: SessionFate::Ended,
                     words: words.clone(),
                 }),
-                None if b.is_some_and(|b| b.listed) => settled.push(Out::Left {
-                    origin: origin.clone(),
-                    sid: sid.clone(),
-                    fate: SessionFate::Ended,
-                    words: None,
-                }),
+                // 那台报完了清单、这条没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
+                None if b.is_some_and(|b| b.listed) => {}
                 None => unseen.entry(origin.clone()).or_default().push(sid.clone()),
             }
         }
@@ -522,16 +518,13 @@ impl Out {
             Out::Left {
                 sid, fate, words, ..
             } => {
-                let (text, hint, tone, order, switch) = match words {
-                    Some(w) => (
-                        Some(w.text.0.clone()),
-                        Some(w.hint.0.clone()),
-                        Some(b::tone_word(w.tone)),
-                        Some(w.order),
-                        Some(w.switch.clone()),
-                    ),
-                    None => (None, None, None, None, None),
-                };
+                let (text, hint, tone, order, switch) = (
+                    words.text.0.clone(),
+                    words.hint.0.clone(),
+                    b::tone_word(words.tone),
+                    words.order,
+                    words.switch.clone(),
+                );
                 vec![match fate {
                     SessionFate::Reconnectable => F::Idle(b::SessionIdlePayload {
                         session_id: sid.clone(),
@@ -576,7 +569,7 @@ impl Out {
 impl Book {
     /// 旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
     /// 原样再说一次它现在是什么（原先这里恒补「已结束」，那是 monitor 自己在裁）。活着 ⇒ 不说；这条连接上没说过 ⇒ 说不清。
-    /// 没说过它、而那台已报完清单 ⇒ 不在清单里 = 已结束；还没报完 ⇒ 机器级说不清（见 [`Self::unseen_block`]）。
+    /// 没说过它：那台还没报完清单 ⇒ 机器级说不清（见 [`Self::unseen_block`]）；报完了 ⇒ 不说（去向由那台答）。
     pub fn settle_again(&self, origin: &str, sid: &str) -> Vec<Out> {
         let b = self.origins.get(origin);
         match b.and_then(|b| b.sessions.get(sid)) {
@@ -587,12 +580,7 @@ impl Book {
                 fate: *fate,
                 words: words.clone(),
             }],
-            None if b.is_some_and(|b| b.listed) => vec![Out::Left {
-                origin: origin.to_string(),
-                sid: sid.to_string(),
-                fate: SessionFate::Ended,
-                words: None,
-            }],
+            None if b.is_some_and(|b| b.listed) => Vec::new(),
             None => self.unseen_block(origin, vec![sid.to_string()]),
         }
     }
