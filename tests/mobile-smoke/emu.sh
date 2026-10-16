@@ -2,7 +2,8 @@
 # 冒烟台架的模拟器：无头、KVM，AVD 放台架目录（磁盘上，不放 /tmp 内存盘），adb 用私有端口（不碰本机正在跑的 adb 与真手机）。
 # 用法：bash tests/mobile-smoke/emu.sh up|down|env
 #   up    没有 AVD 就建（要 SDK 里已装 emulator 与 system-images;android-36;google_apis;x86_64），起模拟器、等开机完。
-#         模拟器单独起一个封了内存的 scope（systemd-run --user --scope，MemoryHigh 6G / MemoryMax 8G），不占 heavy 的槽位。
+#         模拟器单独起一个封了内存的 scope（systemd-run --user --scope，MemoryMax 8G），不占 heavy 的槽位。
+#         不设 MemoryHigh：模拟器一开机就到 6G 上下，设在那附近的回收节流会把它的线程压在 D 态、adb shell 不回。
 #   down  关模拟器、停私有 adb。
 #   env   印出要 source 的那几格（ANDROID_* · ANDROID_ADB_SERVER_PORT · ANDROID_SERIAL · PATH）。
 # 端口不替人挑：CCM_SMOKE_ADB_PORT（私有 adb server）· CCM_SMOKE_EMU_PORT（模拟器）两个都要给，缺一个就拒、退 2
@@ -35,7 +36,7 @@ up() {
     echo no | avdmanager create avd -n smoke -k "$image" -d pixel_6 --force >/dev/null
   fi
   if ! timeout 5 adb -s "$ANDROID_SERIAL" get-state >/dev/null 2>&1; then
-    setsid systemd-run --user --scope --quiet -p MemoryHigh=6G -p MemoryMax=8G -- \
+    setsid systemd-run --user --scope --quiet -p MemoryMax=8G -- \
       emulator -avd smoke -port "$emu_port" -no-window -no-audio -no-boot-anim -no-snapshot \
       -gpu swiftshader_indirect -accel on -memory 4096 > "$box/logs/emulator.log" 2>&1 &
   fi
