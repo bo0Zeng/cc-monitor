@@ -310,18 +310,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J12: {
     what: "cc-bus agent id 形状",
     // 唯一一份进共享 crate（`shell_quote_core::bus_id_ok`，规则逐字不变）：
-    //   monitor 读收件箱（`cc_bus.rs::is_valid_bus_id` 是它的再导出）· 后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
+    //   后端 `bus-send` / `bus-kill` / `bus-spawn` 入口
     //   在交给 `cc-send` / `cc-kill` / `cc-spawn` 之前判（拒码 `bad_id`）。界面那一份（发 / 收 / 查在线 / 派生账号名）删了；
     //   `INVARIANTS §47` 那两格改写成「后端交给 cc-bus 之前」（报用户，用户可推翻）。
     homes: ["shell-quote-core::bus_id_ok"],
     status: "zero",
     defs: ["isValidBusId", "refuseBadId"],
     needles: [{ text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/frontend/ui/cc-bus-control.ts" }],
-    // 两半各自接的是共享那一个（后端入口 · monitor 再导出），谁也没有自己再写一份字符集。
+    // 后端入口接的是共享那一个，没有自己再写一份字符集。
     rustNeedles: [
       { file: "src/backend/control/cc_bus.rs", text: "shell_quote_core::bus_id_ok(v)", count: 1 },
-      { file: "src/frontend/shell/src/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
-      { file: "src/frontend/shell/src/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
     ],
   },
   J13: {
@@ -1056,7 +1054,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 规则的一部分（放行的标点），现生成进 `judgment-rules.ts`（生成物不是孪生）⇒ NONE。
     ACCOUNT_NAME_EXTRA: NONE,
     account_name_ok: "J18",
-    // cc-bus agent id（从 monitor `cc_bus.rs` 搬来，两半共用）。
+    // cc-bus agent id（共享 crate 一份）。
     bus_id_ok: "J12",
     // 握手目录名（bash / zsh 接入块写终端记录、monitor `bind.rs` 读的契约）：TS 侧零处写握手文件 ⇒ NONE。
     AWAIT_SUBDIR: NONE,

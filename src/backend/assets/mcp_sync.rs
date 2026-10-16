@@ -17,10 +17,10 @@
 //!
 //! # 交什么（一份判定，三件事）
 //!
-//! 1. **差异**：每个条目名一行，四态闭集 [`STATES`]（`new` · `same` · `differs` · `only-there`）。
+//! 1. **差异**：每个条目名一行，四态闭集（`new` · `same` · `differs` · `only-there`）。
 //!    相等 = JSON 值相等（对象键序无关）。
-//! 2. **可疑项**：只看 stdio 那四个字段（`command` · `args[i]` · `env.<键>` · `cwd`），种类闭集 [`SUSPECT_KINDS`]，
-//!    每条带一格**这台机器上的事实**（[`THERE`]）。规则住 [`candidates`]（纯）与 [`judge`]（纯，事实是参数）。
+//! 2. **可疑项**：只看 stdio 那四个字段（`command` · `args[i]` · `env.<键>` · `cwd`），种类是闭集，
+//!    每条带一格**这台机器上的事实**（`present` · `absent` · `foreign` · `unknown`）。规则住 [`candidates`]（纯）与 [`judge`]（纯，事实是参数）。
 //! 3. **写哪几条**（给了 `take` 才答）：`differs` 的必须在 `overwrite` 里点名，否则**整趟拒**（`needs_consent`）——
 //!    「对面有不同就问盖不盖」这一问不许被界面静默跳过；`only-there` 永远不碰（没有「镜像删除」）。
 //!

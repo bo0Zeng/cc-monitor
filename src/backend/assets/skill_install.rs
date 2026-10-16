@@ -25,9 +25,6 @@ use crate::assets::hub_wire::{
 use crate::assets::mcp_sync::{self, Facts, State};
 use crate::common::said::IntoNote as _;
 
-/// skill 可疑项的种类（线上名）。**闭集**：界面文案表按它逐键给字。
-pub const SUSPECT_KINDS: &[&str] = &["abs-path", "binary", "command-missing", "executable"];
-
 // 上限与目录摘要同两个数（`asset_catalog::SKILL_MAX_FILES` / `SKILL_MAX_FILE_BYTES`，不另起一份）：
 // 文件数超了整趟拒（装一半的 skill 比不装更坏）；单个文件超了那一个 `text = null` ＋ `why`（装不过去，说出来）。
 use crate::assets::asset_catalog::{

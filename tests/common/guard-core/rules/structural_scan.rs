@@ -454,7 +454,7 @@ fn the_detour_ratchet_reaches_both_trees() {
         }
     }
     // 三棵树各自非空：合起来一条挡不住「一棵塌了另一棵涨了」。
-    for (tree, n) in [("monitor", monitor), ("后端", backend), ("测试", tests)] {
+    for (tree, n) in [("monitor", monitor), ("backend", backend), ("tests", tests)] {
         assert!(n > 0, "{tree}那棵树一份 .rs 都没收到 —— 掉出语料面了");
     }
     // 点名：三份真长过绕道的文件必须都在语料里（地板是数，这一条是**住址**）。

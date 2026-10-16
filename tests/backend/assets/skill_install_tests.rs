@@ -256,6 +256,9 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// skill 可疑项的种类（线上名）：界面文案表按它逐键给字。
+const SUSPECT_KINDS: &[&str] = &["abs-path", "binary", "command-missing", "executable"];
+
 #[test]
 fn suspects_follow_the_written_rules_and_the_closed_set_both_ways() {
     let facts = FakeFacts {
