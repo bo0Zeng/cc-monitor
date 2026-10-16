@@ -277,6 +277,7 @@ impl Ledger {
     }
 
     /// 同 [`Self::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
+    #[cfg(test)]
     pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
         Self::open(path, nodes, Default::default())
     }
@@ -307,6 +308,7 @@ impl Ledger {
     }
 
     /// 每发用量的那一本（判据往里喂流事件）。
+    #[cfg(test)]
     pub(crate) fn spend(&self) -> &super::spend::Spend {
         &self.spend
     }
