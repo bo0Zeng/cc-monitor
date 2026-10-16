@@ -385,7 +385,8 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
 /// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 认旧入口），也零处碰旁挂标记。带正控。
 #[test]
 fn the_deploy_paths_only_place_bytes_the_backend_decides() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let decisions = |code: &str| -> Vec<&'static str> {
         [
             "probe_key(",
@@ -487,7 +488,8 @@ fn the_plan_decoder_reads_the_golden() {
 /// 计划里的残件（后端判的）在**每次连上**的那条路上照删：自动部署与手动部署两个入口各恰好一处（在执行链上，不只是解码得出来）。
 #[test]
 fn the_planned_leftovers_are_swept_on_every_connect() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
@@ -515,7 +517,8 @@ fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
         "解码器没把 ack 的逐地址指纹收进来：{:?}",
         p.ack
     );
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let body = dp1_body(&prod, "async fn ask_plan_for(");
     guard_core::find_pinned(
         &body,
@@ -603,7 +606,8 @@ fn deploy_paths_use_verified_upload_for_content() {
 /// 生产段里**零处**再造入口（shim 的记号只许作为「认旧的」出现在 `ccm_legacy.rs`）；落点常量与后端那一侧同源（`relay_route_core`）。
 #[test]
 fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
@@ -860,7 +864,8 @@ fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
 /// 体内零 `Ok(None)` · 零 `debug!`；表拒绝恰好交成 `DeployError::Refused` 一处。
 #[test]
 fn the_auto_deploy_never_refuses_silently() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
     let sig = body.lines().next().unwrap_or_default();
     assert!(
@@ -911,7 +916,8 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
 /// 这里钉 monitor 这一侧真的要了那一格：部署的上传恰一处 `fs.put(remote_path, bytes, mode, true)`（`verify` 开着），自己不再判、不再删。
 #[test]
 fn a_bad_readback_removes_the_upload_it_just_made() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let body = dp1_body(&prod, "pub(crate) async fn upload_verified(");
     guard_core::find_pinned(&body, "fs.put(remote_path, bytes, mode, true)")
         .unwrap_or_else(|e| panic!("部署的上传没开读回比对（{e}）：\n{body}"));
@@ -931,7 +937,8 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
 /// 它钉的是「这几样搬走了、没搬回来」，不是「`deploy.rs` 里没有任何与 rc 有关的东西」。
 #[test]
 fn the_alias_block_truth_no_longer_lives_in_sftp() {
-    let sftp = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let sftp =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     // 别名块的真相再搬一次：进了那台后端（`src/backend/assets/aliases/block.rs`）。
     let alias_home =
         guard_core::production_code(include_str!("../../../src/backend/assets/aliases/block.rs"));
@@ -965,7 +972,8 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
 /// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
 #[test]
 fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let f = guard_core::find_pinned(&prod, "pub async fn ensure_backend_deployed(")
         .expect("自动部署那个函数不在了");
     let body = &prod[f..];

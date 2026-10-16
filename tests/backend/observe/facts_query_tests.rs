@@ -1357,28 +1357,63 @@ fn ranked(rank: u8, waited_ms: Option<u64>) -> Needs {
 /// 每一例的几条拆在两台上交进来（期望手写，跨台照样比）。
 #[test]
 fn needs_merge_orders_across_machines_by_the_one_rule() {
-    type Case<'a> = (&'a str, &'a [(&'a str, &'a str, u8, Option<u64>)], &'a [&'a str]);
+    type Case<'a> = (
+        &'a str,
+        &'a [(&'a str, &'a str, u8, Option<u64>)],
+        &'a [&'a str],
+    );
     let cases: &[Case] = &[
-        ("危险度在前", &[("devbox", "a", 3, Some(900_000)), ("<local>", "b", 1, Some(1000))], &["b", "a"]),
-        ("同一档等得久的在前", &[("<local>", "a", 1, Some(1000)), ("devbox", "b", 1, Some(90_000))], &["b", "a"]),
+        (
+            "危险度在前",
+            &[
+                ("devbox", "a", 3, Some(900_000)),
+                ("<local>", "b", 1, Some(1000)),
+            ],
+            &["b", "a"],
+        ),
+        (
+            "同一档等得久的在前",
+            &[
+                ("<local>", "a", 1, Some(1000)),
+                ("devbox", "b", 1, Some(90_000)),
+            ],
+            &["b", "a"],
+        ),
         (
             "不知道等了多久的排这一档最后",
-            &[("<local>", "a", 1, None), ("devbox", "b", 1, Some(5)), ("devbox", "c", 0, None)],
+            &[
+                ("<local>", "a", 1, None),
+                ("devbox", "b", 1, Some(5)),
+                ("devbox", "c", 0, None),
+            ],
             &["c", "b", "a"],
         ),
         (
             "全都一样照给的台序与台内的先后",
-            &[("<local>", "a", 2, None), ("<local>", "b", 2, None), ("devbox", "c", 2, Some(7)), ("devbox", "d", 2, Some(7)), ("devbox", "e", 2, None)],
+            &[
+                ("<local>", "a", 2, None),
+                ("<local>", "b", 2, None),
+                ("devbox", "c", 2, Some(7)),
+                ("devbox", "d", 2, Some(7)),
+                ("devbox", "e", 2, None),
+            ],
             &["c", "d", "a", "b", "e"],
         ),
     ];
     for (name, rows, want) in cases {
         let mut machines: Vec<NeedsMachine> = Vec::new();
         for (m, sid, rank, waited) in *rows {
-            let row = cmd_wire::needs::NeedsRow { sid: sid.to_string(), needs: ranked(*rank, *waited), hidden: None };
+            let row = cmd_wire::needs::NeedsRow {
+                sid: sid.to_string(),
+                needs: ranked(*rank, *waited),
+                hidden: None,
+            };
             match machines.iter_mut().find(|x| x.origin.0 == *m) {
                 Some(x) => x.waiting.push(row),
-                None => machines.push(NeedsMachine { origin: cmd_wire::Machine(m.to_string()), waiting: vec![row] }),
+                None => machines.push(NeedsMachine {
+                    origin: cmd_wire::Machine(m.to_string()),
+                    waiting: vec![row],
+                }),
             }
         }
         let got = merge_needs(machines);

@@ -179,12 +179,20 @@ pub(crate) fn read_at(path: &Path, req: &LastSeenReadReq) -> Answer<LastSeen> {
 }
 
 /// 盘上那一项 ⇒ 是这一版（指纹对得上、解得回回包类型）就原样，否则读不懂。
-fn seen_of<T: DeserializeOwned + Serialize>(mine: Option<&Value>, kind: SeenKind) -> Option<Seen<T>> {
+fn seen_of<T: DeserializeOwned + Serialize>(
+    mine: Option<&Value>,
+    kind: SeenKind,
+) -> Option<Seen<T>> {
     let e = mine?.get(kind.key())?;
     let at_ms = e.get("atMs")?.as_u64()?;
-    let this_version = e.get("shape").and_then(Value::as_str) == cmd_wire::shapes::shape_of(kind.cmd());
+    let this_version =
+        e.get("shape").and_then(Value::as_str) == cmd_wire::shapes::shape_of(kind.cmd());
     Some(
-        match e.get("value").filter(|_| this_version).and_then(strict::<T>) {
+        match e
+            .get("value")
+            .filter(|_| this_version)
+            .and_then(strict::<T>)
+        {
             Some(value) => Seen::Kept { at_ms, value },
             None => Seen::Unreadable { at_ms },
         },

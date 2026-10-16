@@ -220,10 +220,18 @@ fn 每一样按回包类型收_形状不对的不收() {
     let mut extra = accounts_list();
     extra["meta"]["extra"] = json!(1);
     let mut missing = accounts_list();
-    missing["accounts"][0].as_object_mut().unwrap().remove("color");
+    missing["accounts"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("color");
     let mut wrong = accounts_list();
     wrong["accounts"][0]["color"] = json!("3");
-    for v in [json!({"meta": {"enabled": true}, "accounts": []}), extra, missing, wrong] {
+    for v in [
+        json!({"meta": {"enabled": true}, "accounts": []}),
+        extra,
+        missing,
+        wrong,
+    ] {
         assert_eq!(code("accounts", v), "bad_args");
     }
     assert!(!d.file().exists(), "拒掉的不许落一个字节");
@@ -271,10 +279,22 @@ fn 存档不是这一版_照实说读不懂_不交原样() {
             json!({"atMs": 3, "shape": "00000000", "value": report()}),
         ),
         ("bare", "data", json!({"atMs": 4, "value": report()})),
-        ("bent", "data", json!({"atMs": 5, "shape": now, "value": wrong})),
+        (
+            "bent",
+            "data",
+            json!({"atMs": 5, "shape": now, "value": wrong}),
+        ),
         // 旧版记的账号清单没带指纹（那时原样存）⇒ 照样读不懂。
-        ("bare-accounts", "accounts", json!({"atMs": 6, "value": accounts_list()})),
-        ("bent-accounts", "accounts", json!({"atMs": 7, "shape": now_accounts, "value": bent})),
+        (
+            "bare-accounts",
+            "accounts",
+            json!({"atMs": 6, "value": accounts_list()}),
+        ),
+        (
+            "bent-accounts",
+            "accounts",
+            json!({"atMs": 7, "shape": now_accounts, "value": bent}),
+        ),
     ] {
         std::fs::write(d.file(), json!({ o: {kind: entry} }).to_string()).unwrap();
         let got = read_at(&d.file(), &json!({"origin": o})).unwrap();
