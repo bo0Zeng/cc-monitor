@@ -18,10 +18,11 @@ android {
 //   `--font-size-*` 的 `px` ⇒ `sp`，其余 `px` ⇒ `dp`；无单位数 ⇒ `Float`；`ms` / `s` ⇒ 毫秒 `Int`；
 //   `--font-*` 字体栈 ⇒ `String`；阴影 `0 6px 24px #…` ⇒ `ThemeShadow`。
 // 名字不合 `--族-角色[-变体]`、或值读不懂 ⇒ 构建失败，不猜。哪个槽取哪个令牌只写在 `AppTheme.kt` · `Tokens.kt`（判据 `ThemeLedgerTest`）。
-val tokensCss = rootProject.file("../shared/theme/tokens.css")
-val themeGenDir = layout.buildDirectory.dir("generated/themeTokens")
 val genThemeTokens =
     tasks.register("genThemeTokens") {
+        // 输入输出只在任务里定：doLast 里引脚本顶层的 val 会把整个脚本对象带进配置缓存（存不下）。
+        val tokensCss = rootProject.file("../shared/theme/tokens.css")
+        val themeGenDir = layout.buildDirectory.dir("generated/themeTokens")
         inputs.file(tokensCss)
         outputs.dir(themeGenDir)
         doLast {
@@ -139,7 +140,7 @@ tasks.matching { it.name.startsWith("runKtlint") || it.name.startsWith("ktlint")
 
 kotlin {
     sourceSets.named("main") {
-        kotlin.srcDir(genThemeTokens.map { themeGenDir.get() })
+        kotlin.srcDir(genThemeTokens)
     }
 }
 

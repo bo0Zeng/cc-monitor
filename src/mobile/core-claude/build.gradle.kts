@@ -20,13 +20,14 @@ java {
 // `build-mobile` 取同一趟 `build-backends` 的产物放进来；`:app` 把它们放进 assets）。带了就**看字节**（同桌面 `shell/build.rs`）：
 // 每一份扫出恰一个身份戳；几份不同版 · 与 `BUILD_ID` 不同 ⇒ 构建失败（「我这一版」与推出去的字节是同一个东西）。
 // 带了哪几格进 `EmbeddedBuild.CARRIED`；一份都没铺 ⇒ 空（装后端那一步照实说「这一版没带」）。
-val backendLib = rootProject.file("../backend/lib.rs")
-val stampMarks = rootProject.file("../common/deploy-contract/src/lib.rs")
-val embeddedBackends = rootProject.file("../frontend/shell/embedded-backends")
-val backendArches = listOf("x86_64", "aarch64")
-val embeddedBuildDir = layout.buildDirectory.dir("generated/embeddedBuild")
 val genEmbeddedBuild =
     tasks.register("genEmbeddedBuild") {
+        // 输入输出只在任务里定：doLast 里引脚本顶层的 val 会把整个脚本对象带进配置缓存（存不下）。
+        val backendLib = rootProject.file("../backend/lib.rs")
+        val stampMarks = rootProject.file("../common/deploy-contract/src/lib.rs")
+        val embeddedBackends = rootProject.file("../frontend/shell/embedded-backends")
+        val backendArches = listOf("x86_64", "aarch64")
+        val embeddedBuildDir = layout.buildDirectory.dir("generated/embeddedBuild")
         inputs.file(backendLib)
         inputs.file(stampMarks)
         inputs.files(backendArches.map { embeddedBackends.resolve("cc-monitor-backend-$it") }).optional()
@@ -76,7 +77,7 @@ tasks.matching { it.name.startsWith("runKtlint") || it.name.startsWith("ktlint")
 
 kotlin {
     sourceSets.named("main") {
-        kotlin.srcDir(genEmbeddedBuild.map { embeddedBuildDir.get() })
+        kotlin.srcDir(genEmbeddedBuild)
     }
     sourceSets.named("test") {
         kotlin.srcDir(rootProject.file("testing/src/test/kotlin"))
