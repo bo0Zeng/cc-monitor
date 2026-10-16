@@ -559,7 +559,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 ### 48.1 门由内核给（本人通道，没有钥匙）
 
-常驻后端只听这台家里的一个 Unix 套接字 `<家>/run/backend.sock`（路径只由共享 crate `relay_route_core::listen_socket_for` 算）。`run/` 只给本人（`0700`），每条连接再核对端 uid（共享 crate `own-chan`），不同 ⇒ 关掉、出声；在听的那一个攥着 `run/` 的独占锁，抢不到就带「已有人在听」的退出码退。attach 行只是 `{"attach":true}`（可带 `tz` · `mine`，类型 `cmd_wire::attach::AttachLine`），形状不对 ⇒ `malformed-attach`；带了 `mine` ⇒ 回话里是这台相对它的新旧。远端经 ssh 跑 `ccm -- --resident-attach` 小中继去连那台的套接字。常驻后端起子进程时清掉常驻开关、诊断文件与后端内部那几族环境（`platform/child_env.rs`）。沙箱跑（`CCM_SANDBOX=1`）却要占本账号真家目录里的门牌 ⇒ 拒绝起。文件窗口的通道不监听（父子管道，`chan/host.rs::serve_window`）。
+常驻后端只听这台家里的一个 Unix 套接字 `<家>/run/backend.sock`（路径只由共享 crate `relay_route_core::listen_socket_for` 算）。`run/` 只给本人（`0700`），每条连接再核对端 uid（共享 crate `own-chan`），不同 ⇒ 关掉、出声；在听的那一个攥着 `run/` 的独占锁，抢不到就带「已有人在听」的退出码退。attach 行只是 `{"attach":true}`（可带 `tz` · `mine` · `watch`，类型 `cmd_wire::attach::AttachLine`），形状不对 ⇒ `malformed-attach`；带了 `mine` ⇒ 回话里是这台相对它的新旧。远端经 ssh 跑 `ccm -- --resident-attach` 小中继去连那台的套接字。常驻后端起子进程时清掉常驻开关、诊断文件与后端内部那几族环境（`platform/child_env.rs`）。沙箱跑（`CCM_SANDBOX=1`）却要占本账号真家目录里的门牌 ⇒ 拒绝起。文件窗口的通道不监听（父子管道，`chan/host.rs::serve_window`）。
 
 **为什么不能松动**：从前的回环 TCP 口没有权限位，只能靠一把钥匙补，钥匙文件又被别的实例改写过（远端从此一直被拒）⇒ 已删，换成内核给的本人门。能连上套接字的只有本账号自己的进程。
 

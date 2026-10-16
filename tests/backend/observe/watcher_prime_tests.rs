@@ -284,6 +284,7 @@ fn three_connections_on_one_record_prime_it_once() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         join(
             Sub::new(id, tx, crate::Tz::default()),
+            None,
             &mut state,
             &mut sink,
         );

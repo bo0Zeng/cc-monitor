@@ -253,9 +253,13 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
     .unwrap();
     assert_eq!(cfg.origin_label(), ORIGIN);
     let (tx, rx) = tokio::sync::mpsc::channel(EVENT_QUEUE);
+    // 名单台：在看订了的那一条（同产品里 `stream_watch` 交给它的那份）。
+    let desk = resident_client::watch::Desk::new(|_| Vec::new(), |_| {});
+    desk.set(replay.watched(&crate::origin::Origin(ORIGIN.into())));
     let feed = Feed::start(
         feed_config(ORIGIN),
         Some(Arc::new(Fake(Arc::clone(&remote)))),
+        desk,
         queue_sink(tx),
     );
     let consumer = tokio::spawn(consume_remote(cfg, rx, replay.clone(), health));

@@ -4595,6 +4595,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     let (tx1, mut rx1) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
     join(
         Sub::new(1, tx1, crate::Tz::default()),
+        None,
         &mut state,
         &mut sink,
     );

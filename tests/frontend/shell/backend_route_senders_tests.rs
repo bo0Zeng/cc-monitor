@@ -108,10 +108,10 @@ const SENDERS: &[(&str, Verdict)] = &[
         "terminal_screen_relay.rs",
         Verdict::ProbeOnlyNoFallbackDecision,
     ),
-    // 每条长连接报「在看哪几个会话」（`stream_watch.rs`，那台后端 `stream-watch`）：没报上只记一行日志、那条连接照旧全看 ——
+    // 每台的名单台报「在看哪几个会话」（`resident-client/watch.rs`，那台后端 `stream-watch`）：没报上只记一行日志 ——
     //   没有第二条路，成败也不交给任何人（下一次名单变 / 换连接再报）。
-    ("stream_watch.rs", Verdict::ProbeOnlyNoFallbackDecision),
-    // 手机那一侧一台的常驻流（`resident-client/feed.rs`）：报在看名单 · 问那台新旧只记一行日志、没有第二条路；
+    ("watch.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 一台的常驻流（`resident-client/feed.rs`）：问活只记一行日志、没有第二条路；
     //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
     ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
 ];

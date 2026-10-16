@@ -1522,6 +1522,8 @@ pub(crate) fn local_stdio_consumer(
             .expect("上面刚判过 is_some")
             .into_client(witness);
         crate::inbound_client::register(route.origin.as_wire_str(), client.clone());
+        // stdio 载体没有 attach 行 ⇒ 接上即在它上面报名单（名单台那一处）。
+        crate::stream_watch::desk(&route.origin).up(&client, None);
         registered = Some(client);
         crate::prefs_migration::after_local_ready();
         crate::machine_table::refresh();

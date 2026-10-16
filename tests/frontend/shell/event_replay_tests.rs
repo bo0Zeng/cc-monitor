@@ -1298,14 +1298,28 @@ fn watch_from(sid: &str, seq: u64) -> crate::ui_contract::SessionWatchPayload {
     }
 }
 
-/// 名单 ＝ 主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话；主窗口没报过 ⇒ 不报（全看）。
+/// 名单 ＝ 主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话；主窗口从起来就在、初值是空的（没报过 ＝ 一个都不看，不是全看）。
 /// 报了一份不一样的 · 查看窗来了 / 走了 ⇒ 醒一次；同一份再报一遍不醒。
 #[tokio::test]
 async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_machine() {
     let (r, _rec) = hub();
     let mut ticks = r.watch_changes();
     r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 10);
-    assert_eq!(r.watched(&local()), None, "主窗口没报过就不该替那台报名单");
+    let set = |v: &[&str]| {
+        v.iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>()
+    };
+    assert_eq!(
+        r.watched(&local()),
+        set(&["b"]),
+        "主窗口还没报：只有查看窗那一条"
+    );
+    assert_eq!(
+        r.watched(&crate::origin::Origin("box".into())),
+        set(&[]),
+        "主窗口还没报：别的台是空名单（不是全看）"
+    );
     assert!(ticks.has_changed().unwrap());
     ticks.mark_unchanged();
 
@@ -1315,20 +1329,12 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
     ]);
     assert!(ticks.has_changed().unwrap());
     ticks.mark_unchanged();
-    let set = |v: &[&str]| {
-        v.iter()
-            .map(|s| s.to_string())
-            .collect::<BTreeSet<String>>()
-    };
-    assert_eq!(r.watched(&local()), Some(set(&["a", "b"])));
-    assert_eq!(
-        r.watched(&crate::origin::Origin("box".into())),
-        Some(set(&["c"]))
-    );
+    assert_eq!(r.watched(&local()), set(&["a", "b"]));
+    assert_eq!(r.watched(&crate::origin::Origin("box".into())), set(&["c"]));
     assert_eq!(
         r.watched(&crate::origin::Origin("far".into())),
-        Some(set(&[])),
-        "报过了 ⇒ 没在看的那台报空名单"
+        set(&[]),
+        "没在看的那台报空名单"
     );
 
     r.set_main_watch([
@@ -1339,7 +1345,7 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
 
     r.stop("viewer-b", 1);
     assert!(ticks.has_changed().unwrap());
-    assert_eq!(r.watched(&local()), Some(set(&["a"])));
+    assert_eq!(r.watched(&local()), set(&["a"]));
 }
 
 /// 「从第 seq 行起上流」：留存里 seq 之下那段与 seq 隔着缺口 ⇒ 整段丢、之后更低的行不进（F5 重放的是连着的一段）；

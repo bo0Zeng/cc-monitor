@@ -304,7 +304,7 @@ impl Book {
         &self,
         origin: &crate::origin::Origin,
         sids: &std::collections::BTreeSet<String>,
-    ) -> Vec<resident_client::watch::BranchHeld> {
+    ) -> Vec<cmd_wire::watch::BranchHeld> {
         let mine = self.branch.get(origin.as_wire_str());
         sids.iter()
             .map(|sid| match mine.and_then(|m| m.get(sid)) {
@@ -312,13 +312,16 @@ impl Book {
                     path,
                     off,
                     sum: Some(sum),
-                }) => resident_client::watch::BranchHeld {
+                }) => cmd_wire::watch::BranchHeld {
                     sid: sid.clone(),
                     path: Some(path.clone()),
                     at: off.len() as u64,
                     sum: Some(sum.clone()),
                 },
-                _ => resident_client::watch::BranchHeld::nothing(sid),
+                _ => cmd_wire::watch::BranchHeld {
+                    sid: sid.to_string(),
+                    ..Default::default()
+                },
             })
             .collect()
     }

@@ -333,7 +333,11 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
 /// 拼的时候中间缺过一截（`at` 比手上的长）⇒ 说不准，交 `at: 0`；没有的、会话离开了的 ⇒ `at: 0`；那台报完清单时不在了 ⇒ 摘。
 #[test]
 fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
-    use resident_client::watch::BranchHeld;
+    use cmd_wire::watch::BranchHeld;
+    let nothing = |sid: &str| BranchHeld {
+        sid: sid.into(),
+        ..Default::default()
+    };
     let pi = crate::origin::Origin("pi".into());
     let branch = |s: &str, at: u64, ids: &[&str], sum: &str| In::Branch {
         origin: pi.clone(),
@@ -367,8 +371,8 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
                 at: 3,
                 sum: Some("s3".into())
             },
-            BranchHeld::nothing("b"),
-            BranchHeld::nothing("c"),
+            nothing("b"),
+            nothing("c"),
         ],
         "断线之后交回的手上那份不对"
     );
@@ -377,8 +381,56 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     b.step(In::Listed {
         origin: "pi".into(),
     });
+    assert_eq!(b.branch_held(&pi, &sids(&["a"])), vec![nothing("a")]);
+}
+
+/// 名单并进 attach 行之后，手上那份清单在写 attach 行时就读：旧连接队列里还压着一帧 `session_branch` 没落账时读到的是更早一刻的
+/// （`at` ＋ `sum` 出自同一帧，仍是一份自洽的前缀）。那台照它补缺的那一截（从更早的 `at` 起）；旧那帧之后再落账、新补来的那一帧再覆盖 ⇒
+/// 落完账手上的与那台一致，只是多补了一点。
+#[test]
+fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_is() {
+    use cmd_wire::watch::BranchHeld;
+    let pi = crate::origin::Origin("pi".into());
+    let branch = |at: u64, ids: &[&str], sum: &str| In::Branch {
+        origin: pi.clone(),
+        sid: "a".into(),
+        path: "/a.jsonl".into(),
+        at,
+        off: ids.iter().map(|i| i.to_string()).collect(),
+        sum: sum.into(),
+    };
+    let only_a: std::collections::BTreeSet<String> = ["a".to_string()].into();
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    b.step(branch(0, &["u1", "u2"], "s2"));
+    // 写 attach 行那一刻读的：旧连接那一帧（前 2 条照旧，其后 u3）还压在队列里。
+    let read_early = b.branch_held(&pi, &only_a);
     assert_eq!(
-        b.branch_held(&pi, &sids(&["a"])),
-        vec![BranchHeld::nothing("a")]
+        read_early,
+        vec![BranchHeld {
+            sid: "a".into(),
+            path: Some("/a.jsonl".into()),
+            at: 2,
+            sum: Some("s2".into()),
+        }]
+    );
+    b.step(branch(2, &["u3"], "s3"));
+    // 新连接上那台照读早的那份补：此刻它的清单是 u1..u4，从第 2 条起补。
+    let out = b.step(branch(2, &["u3", "u4"], "s4"));
+    let Some(Out::Branch { off, .. }) = out.last() else {
+        panic!("{out:?}");
+    };
+    assert_eq!(
+        off,
+        &branch_body(&["u1", "u2", "u3", "u4"].map(String::from))
+    );
+    assert_eq!(
+        b.branch_held(&pi, &only_a),
+        vec![BranchHeld {
+            sid: "a".into(),
+            path: Some("/a.jsonl".into()),
+            at: 4,
+            sum: Some("s4".into()),
+        }]
     );
 }

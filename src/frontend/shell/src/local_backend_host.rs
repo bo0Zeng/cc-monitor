@@ -412,24 +412,29 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-// attach 行（「我要流」＋ 时区 ＋ 手上这一版）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`）。
+// attach 行（「我要流」＋ 时区 ＋ 手上这一版 ＋ 在看名单）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`）。
 pub(crate) use resident_client::attach::attach_line;
 
-/// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
-fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
+/// 交 attach 行（带在看名单），换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
+fn send_attach(
+    sock: &own_chan::BlockingStream,
+    watch: &cmd_wire::watch::WatchAsk,
+) -> Result<(), Said> {
     use std::io::Write;
     let mut w = sock;
-    w.write_all(attach_line(host_core::viewer_tz().as_deref(), None).as_bytes())
-        .and_then(|()| w.flush())
-        .map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "rsLocalBackendHost.attach.sendFailed",
-                    &[("why", &copy_core::io_reason(e.kind()))],
-                ),
-                &e,
-            )
-        })?;
+    w.write_all(
+        attach_line(host_core::viewer_tz().as_deref(), None, Some(watch.clone())).as_bytes(),
+    )
+    .and_then(|()| w.flush())
+    .map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "rsLocalBackendHost.attach.sendFailed",
+                &[("why", &copy_core::io_reason(e.kind()))],
+            ),
+            &e,
+        )
+    })?;
     let line = read_handshake_line(sock)?;
     match cmd_wire::attach::AttachReply::of(&line) {
         Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
@@ -815,7 +820,12 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// **复用的是纯零件**（`stream_source::decode` · `inbound_client::witness_of` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
-fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
+/// `carried` ＝ attach 行带过的那份名单（接上之后交本机名单台：握手中变了 ⇒ 它当场补报）。
+fn attach_stream(
+    sock: own_chan::BlockingStream,
+    hello_line: &str,
+    carried: &cmd_wire::watch::WatchAsk,
+) -> Result<(), Said> {
     let frame = crate::stream_source::decode(hello_line)
         .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
     let witness = crate::inbound_client::witness_of(&frame)
@@ -831,6 +841,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
             })?;
     let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
     crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
         crate::inbound_client::LOCAL_ORIGIN
@@ -1105,7 +1116,11 @@ fn adopt_with(
     match got {
         Ok(None) => Adopt::None,
         Ok(Some((conn, hello))) => {
-            match send_attach(&conn).and_then(|()| attach_stream(conn, &hello)) {
+            // attach 行带本机名单台此刻那份：后端从第一帧起照它发；接上之后把这条连接交给名单台。
+            let carried =
+                crate::stream_watch::desk(&crate::origin::Origin::local()).ask_for_attach();
+            match send_attach(&conn, &carried).and_then(|()| attach_stream(conn, &hello, &carried))
+            {
                 Ok(()) => Adopt::Attached,
                 Err(e) => Adopt::Refused(e),
             }

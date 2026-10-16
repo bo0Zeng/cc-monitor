@@ -84,7 +84,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 ```
 
 - **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
-- **流只发要看的会话**：每条长连接经 `stream-watch {sids}` 报「在看哪几个会话」（壳 `stream_watch.rs`，名单 ＝ 主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话）；刚进名单的会话从第几行起上流由那台回，界面据它补上没上流的那段。手机按同一条命令报它屏上的会话。
+- **流只发要看的会话**：每台一张名单台（`resident-client` 的 `watch::Desk`）：attach 行带上「在看哪几个会话」、那台从第一帧起照它发，之后变了经 `stream-watch {sids}` 报；刚进名单的会话从第几行起上流由那台回，界面据它补上没上流的那段。名单从空开始；桌面名单 ＝ 主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（壳 `stream_watch.rs` 交名单台），手机是它屏上的会话（核心 `resident.rs` 计数）。
 - **seq 是后端给的行号**，界面 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。一条记录至多一张卡：纯工具的记录画成一张「几步」卡（每步一行），界面不把相邻的并组 —— 哪几条收进「过程」只由后端划段（`observe/turns.rs`）。
 - **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_state` · `sessions_replayed` 随 `session-lines` 一起来，起停帧没 credit 也照交（照扣，可欠）、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、界面说「说不清」。
 - **背压**：界面给 credit；实时行没有 credit 就丢，并在原位报 gap，界面按行号向那台后端补（帧命令 `history-lines`）。

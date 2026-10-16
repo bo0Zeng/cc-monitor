@@ -229,9 +229,13 @@ impl TapSource for TapRx {
 }
 
 /// 一条流连接接上了 ⇒ 在进程级 hub 的活卡上登记一条连接（两条载体各在「流开始」那一处调一次）。
-/// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
-pub fn attach(tz: crate::Tz) -> TapRx {
+/// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）；`watch` ＝ attach 行带的名单（没带 ⇒ 全看，等 `stream-watch`）。
+pub fn attach(tz: crate::Tz, watch: Option<&[String]>) -> TapRx {
     let mut rx = attach_rx(hub());
+    if let Some(sids) = watch {
+        // 写者还没开始取：名单外的卡还没欠下的那几张当场撤掉，一张都不发。
+        rx.watch_handle().watch(sids);
+    }
     rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.needs = Some(crate::control::asks::changes().subscribe());

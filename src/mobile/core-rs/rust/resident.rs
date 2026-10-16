@@ -8,7 +8,8 @@ use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
 };
-use std::collections::HashMap;
+use resident_client::watch::Desk;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -251,10 +252,6 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
             "frame",
             cmd_wire::record::mend_line_frame(line).unwrap_or_else(|| line.clone()),
         ),
-        Event::WatchFrom(rows) => (
-            "watch_from",
-            serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
-        ),
         Event::Ssh(reached) => ("ssh", reached.to_string()),
         Event::Attached { .. } | Event::Gap => return None,
     })
@@ -275,21 +272,36 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
         tz,
         handshake: HANDSHAKE,
     };
+    // 名单从空开始：一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。手机不读主线外清单 ⇒ 一份都不要。
+    let rows_to = Arc::clone(&on_event);
+    let desk = Desk::new(
+        |_| Vec::new(),
+        move |rows| {
+            rows_to(
+                id,
+                "watch_from",
+                serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+            );
+        },
+    );
     let feed = Feed::start(
         cfg,
         None,
+        Arc::clone(&desk),
         sink(move |e: Event| {
             if let Some((kind, body)) = event_of(&e) {
                 on_event(id, kind, body);
             }
         }),
     );
-    // 一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。
-    feed.watch_none();
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(id, feed);
+    watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id, (desk, Watched::default()));
     id
 }
 
@@ -334,10 +346,55 @@ pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) 
     id
 }
 
-/// 多一处 / 少一处在看这条会话。
+/// 多一处 / 少一处在看这条会话。名单变了 ⇒ 交那台的名单台（整份）。
 pub fn watch(h: i64, sid: &str, holding: bool) {
-    if let Some(f) = feed(h) {
-        f.watch(sid, holding);
+    let mut t = watching().lock().unwrap_or_else(|e| e.into_inner());
+    let Some((desk, w)) = t.get_mut(&h) else {
+        return;
+    };
+    let moved = if holding { w.hold(sid) } else { w.release(sid) };
+    if moved {
+        desk.set(w.sids());
+    }
+}
+
+/// 每台的名单台与「几处在看」的计数（[`open`] 起、[`close`] 摘）。
+fn watching() -> &'static Mutex<HashMap<i64, (Arc<Desk>, Watched)>> {
+    static W: OnceLock<Mutex<HashMap<i64, (Arc<Desk>, Watched)>>> = OnceLock::new();
+    W.get_or_init(Default::default)
+}
+
+/// 此刻有人在看的那几条（每条记有几处在看：一处放手不影响别处）。名单 = 计数大于零的那几条。
+#[derive(Debug, Default, Clone)]
+pub struct Watched {
+    held: BTreeMap<String, u32>,
+}
+
+impl Watched {
+    /// 多一处在看。回名单变没变。
+    pub fn hold(&mut self, sid: &str) -> bool {
+        let n = self.held.entry(sid.to_string()).or_insert(0);
+        *n += 1;
+        *n == 1
+    }
+
+    /// 少一处在看。回名单变没变（本来就没在看 ⇒ 不变）。
+    pub fn release(&mut self, sid: &str) -> bool {
+        match self.held.get_mut(sid) {
+            Some(n) if *n > 1 => {
+                *n -= 1;
+                false
+            }
+            Some(_) => {
+                self.held.remove(sid);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn sids(&self) -> BTreeSet<String> {
+        self.held.keys().cloned().collect()
     }
 }
 
@@ -354,6 +411,10 @@ pub fn kick(h: i64, retry: bool) {
 
 pub fn close(h: i64) {
     bases().lock().unwrap_or_else(|e| e.into_inner()).remove(&h);
+    watching()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&h);
     if let Some(f) = feeds().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) {
         f.close();
     }
@@ -635,6 +696,20 @@ mod tests {
             event_of(&Event::Ssh(true)),
             Some(("ssh", "true".to_string()))
         );
+    }
+
+    /// 几处在看同一条：计数到零才出名单；两处 hold、放一处 ⇒ 名单不变。
+    #[test]
+    fn a_session_leaves_the_list_only_when_the_last_holder_lets_go() {
+        let mut w = Watched::default();
+        assert!(w.sids().is_empty(), "从空开始");
+        assert!(w.hold("a"), "第一处在看 ⇒ 名单变了");
+        assert!(!w.hold("a"), "第二处在看 ⇒ 名单没变");
+        assert!(!w.release("a"));
+        assert_eq!(w.sids().len(), 1);
+        assert!(w.release("a"), "最后一处放手 ⇒ 名单变了");
+        assert!(w.sids().is_empty());
+        assert!(!w.release("a"), "本来就没在看 ⇒ 不变");
     }
 
     /// ack 与 capture 那一行的读法。

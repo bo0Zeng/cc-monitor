@@ -40,11 +40,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧一问一答取连接的口：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
-        "src/comms/resident-client/feed.rs",
-        "watch_none",
-        "手机那一侧「名单从空开始报」的口（桌面的在看名单经登记表上的客户端报，不经循环）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
-    ),
-    (
         "src/backend/footprint/registry.rs",
         "NOT_MANAGED",
         "足迹申报表的「不归它管」那一半（逐条写为什么不属这张表）：读者是 footprint 的登记判据，理由文字进文案普查台账",
