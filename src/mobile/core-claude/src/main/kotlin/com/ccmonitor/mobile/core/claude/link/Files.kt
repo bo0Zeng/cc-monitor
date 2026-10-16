@@ -120,12 +120,24 @@ object FilesLs {
         /** 目录，或跟得过去的指向目录的链接。 */
         val isDir: Boolean,
         val size: Long?,
+        /** 大小那一格（那台写好的）。 */
+        val sizeText: String?,
         /** 那台按它的钟写好的短写法。 */
         val mtime: String?,
+        /** 预览那道门（那台判的）；目录 · 手机不画的那几种（图）⇒ `null`。 */
+        val preview: Open? = null,
+        /** 编辑那道门（那台判的）；目录 ⇒ `null`。 */
+        val edit: Open? = null,
     ) {
         /** 屏上那一串名字。 */
         val name: String get() = rel.shown
     }
+
+    /** 一道门：许读 [cap] 以内；不许 ⇒ [said]（那台写好的那一句）。 */
+    data class Open(
+        val cap: Long? = null,
+        val said: String? = null,
+    )
 
     data class Listing(
         /** 那台排好的先后，照画。 */
@@ -164,7 +176,11 @@ object FilesLs {
     private fun entryOf(e: LsEntry): Entry? {
         val path = RemotePath.of(e.path) ?: return null
         val rel = RemotePath.of(e.name) ?: return null
-        return Entry(path, rel, e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true), e.size, e.mtimeText)
+        val g = e.gates
+        val preview = g?.preview?.let { p -> p.text?.let { Open(cap = it.cap) } ?: p.no?.let { Open(said = it) } }
+        val edit = g?.edit?.let { Open(it.cap, it.no) }
+        val isDir = e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true)
+        return Entry(path, rel, isDir, e.size, e.sizeText, e.mtimeText, preview, edit)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */
@@ -214,16 +230,17 @@ object FilesStat {
 object FilesReadText {
     const val COMMAND: String = "files-read-text"
 
-    /** 一趟许读的上限。 */
-    const val MAX_BYTES: Long = 256L * 1024
-
     data class Text(
         val text: String,
         /** 读到的那一份字节的 SHA-256：存回时交回去（盘上被改过 ⇒ 那台拒）。 */
         val sha256: String,
     )
 
-    fun args(path: RemotePath): Map<String, Any?> = mapOf("path" to path.wire, "max_bytes" to MAX_BYTES)
+    /** [cap] ＝ 列表那一行上那台给的那道门许读多少。 */
+    fun args(
+        path: RemotePath,
+        cap: Long,
+    ): Map<String, Any?> = mapOf("path" to path.wire, "max_bytes" to cap)
 
     fun of(data: Any?): Text? = Wire.bind<ReadTextReply>(data)?.let { Text(it.text, it.sha256) }
 }

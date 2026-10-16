@@ -237,7 +237,7 @@ fn a_tree_delete_row_stops_through_its_ticket() {
         copy_text(
             "rsFilewinBatch.row.title",
             &[
-                ("action", &copy_text("rsFilewinBatch.verb.delete", &[])),
+                ("action", &copy_text("beFiles.batch.verbDelete", &[])),
                 ("n", "1")
             ]
         )

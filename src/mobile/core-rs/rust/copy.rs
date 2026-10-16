@@ -53,18 +53,6 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_text<'l>(
     })
 }
 
-/// `CopyCore.sizeText(bytes)`：负数按 0。
-#[no_mangle]
-pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_sizeText<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    bytes: jlong,
-) -> jstring {
-    guarded(std::ptr::null_mut(), || {
-        out(&env, Some(copy_core::size_text(ms(bytes))))
-    })
-}
-
 /// `CopyCore.shortDuration(ms)`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_copy_CopyCore_shortDuration<'l>(

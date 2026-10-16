@@ -48,7 +48,7 @@
 //!
 //! 1. **多选下载没做** —— 同第五刀那条：生产侧递进来的恒是一件。
 //! 2. **目录递归下载没做** —— `sftp_download` 读的是一个文件；
-//!    [`is_downloadable`] 因此把目录挡在外面（而不是让它失败在池子里）。
+//!    `pick_core::Pick::downloadable` 因此把目录挡在外面（而不是让它失败在池子里）。
 //! 3. **断点续传那一半不在这儿** —— 它在 `sftp_download` 里面（尾块逐字节对账），
 //!    本模块看不见也不该看见（同 `transfer.rs` 头注那一条）。
 //! 4. **真的「拖」出去没做** —— 这一刀是一颗按钮。窗口之间互拖、拖到别的应用里，
@@ -58,30 +58,9 @@ use copy_core::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::source::Row;
-
 /// 行上那颗按钮。
 pub static DOWNLOAD_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinDownload.label.download", &[]));
-
-/// 这一行**拉得下来**吗。
-///
-/// # 🔴 它与 [`super::copy::is_copyable`] 今天**逐行相同**，而它们刻意是两个函数
-///
-/// 两条规矩同源不是巧合：目录不行（`sftp_download` 读的是一个文件）、
-/// 有损名不行（SFTP 那侧寻址不到真字节）。
-/// **但它们答的是两个问题**：一个是「能不能在那台远端上零流量复制」，
-/// 一个是「能不能拉到这台机器上来」。合成一个之后，改动任一侧的射程会
-/// **静默改掉另一侧**（例：将来支持递归下载 ⇒ 目录这一档要放开，
-/// 而零流量复制那一侧不该跟着放开）。
-///
-/// ⇒ 照本模块的先例（`source.rs` 那两份排序实现）：**两份各自存在，
-/// 但「今天它们一致」是一条相等断言**（住
-/// [`tests::the_two_row_gates_agree_today_and_say_so_when_they_stop`]），
-/// 所以「它们悄悄漂开」这件事有判据。
-pub fn is_downloadable(r: &Row) -> bool {
-    !r.is_dir && !r.lossy_name
-}
 
 /// 远端的名字在本机能不能原样用：`windows` ＝ 本机是 Windows ⇒ 那几个不认的字（`< > : " / \ | ? *` 与控制字符）换成 `_`、
 /// 结尾的点与空格去掉、保留的设备名（`CON` `PRN` `AUX` `NUL` `COM1`…`COM9` `LPT1`…`LPT9`，带不带扩展名都算）前面加 `_`；
@@ -127,14 +106,6 @@ pub fn local_name(name: &str, windows: bool) -> String {
 
 // 这里原来有「存到哪儿 / 盖掉它吗」那两问的状态机（落点怎么算 · 三支裁决 · 碰盘判存在）与改名那一句：
 //   改成系统存盘框（落点、同名都由系统框自己问），那一套随样子删了。
-
-/// 这一行拉不拉得下来（看 [`Listed`] 那一格原始字节）：名字不是 UTF-8 但带着字节 ⇒ 也拉得下来
-/// （远端按字节就地拷进暂存区再下，`lossy_pull.rs`）。[`is_downloadable`] 照旧只看 [`Row`]（与复制那一道对拍的那条不动）。
-///
-/// [`Listed`]: super::source::Listed
-pub fn is_downloadable_listed(r: &super::source::Listed) -> bool {
-    !r.link_dir && (is_downloadable(r) || (!r.is_dir && r.raw_name.is_some()))
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // 这一趟在窗口上的样子

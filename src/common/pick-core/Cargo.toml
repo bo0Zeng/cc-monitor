@@ -1,0 +1,15 @@
+[package]
+name = "pick-core"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "选中这几项 ⇒ 能做什么（选中的是哪一种 · 每种出口给哪几项 · 做不了的为什么）：桌面文件窗口与手机嵌的核心同一份。"
+
+[dependencies]
+cmd-wire = { path = "../cmd-wire" }
+copy-core = { path = "../copy-core" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+test-home = { path = "../test-home" }

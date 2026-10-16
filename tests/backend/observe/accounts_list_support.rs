@@ -39,6 +39,7 @@ pub(crate) fn row_with(name: &str, f: impl FnOnce(&mut ScannedAccount)) -> Accou
         },
         quota: None,
         unselectable: None,
+        login: false,
     }
 }
 

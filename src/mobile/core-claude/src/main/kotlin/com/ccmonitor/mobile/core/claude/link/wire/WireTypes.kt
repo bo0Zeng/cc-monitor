@@ -267,7 +267,20 @@ data class NeedsChoice(
     val text: String,
     val tone: Tone,
     val note: NeedsNote,
+    val row: NeedsChoiceRow,
 )
+
+@JsonClass(generateAdapter = false)
+enum class NeedsChoiceRow {
+    @Json(name = "main")
+    MAIN,
+
+    @Json(name = "hold")
+    HOLD,
+
+    @Json(name = "release")
+    RELEASE,
+}
 
 @JsonClass(generateAdapter = false)
 enum class NeedsNote {
@@ -332,8 +345,23 @@ enum class AnswerResult {
 @JsonClass(generateAdapter = true)
 data class HistoryListPage(
     val rows: List<HistoryRow>,
+    val groups: List<HistoryGroup>,
     val notice: String?,
     val truncated: Boolean,
+)
+
+/** 按目录看时的一组：几台的组按 `order` 并成一列；时刻照那台写好的 `atText`（读不了的那一组 ⇒ `null`）。 */
+@WireOf("HistoryGroup")
+@JsonClass(generateAdapter = true)
+data class HistoryGroup(
+    val key: String,
+    val projectName: String,
+    val projectPath: String,
+    val count: Long,
+    val hasLive: Boolean?,
+    val order: Long,
+    val atText: String?,
+    val failed: String?,
 )
 
 @WireOf("HistoryRow")
@@ -349,6 +377,44 @@ data class HistoryRow(
     val agentTag: String?,
     val status: String,
     val hidden: Hidden?,
+    val forkedFromSessionId: String?,
+    val forkedFrom: ForkedFrom?,
+)
+
+/** 分叉来的那一行的父会话（显示标题）；父会话不在那台的清单里 ⇒ 行上没有这一格，写「分叉自其他会话」。 */
+@WireOf("ForkedFrom")
+@JsonClass(generateAdapter = true)
+data class ForkedFrom(
+    val label: String,
+)
+
+/** `history-search`：每个命中会话一行。 */
+@WireOf("HistorySearchReply")
+@JsonClass(generateAdapter = true)
+data class HistorySearchReply(
+    val sessions: List<SessionHits>,
+    val unreadable: Long,
+)
+
+@WireOf("SessionHits")
+@JsonClass(generateAdapter = true)
+data class SessionHits(
+    val sessionId: String,
+    val title: String,
+    val hitCount: Long,
+    val hits: List<SearchHit>,
+    val forkedFrom: ForkedFrom?,
+)
+
+/** 一条命中：`offset` 交给 `history-read` 就从那一条读起。 */
+@WireOf("SearchHit")
+@JsonClass(generateAdapter = true)
+data class SearchHit(
+    val uuid: String,
+    val before: String,
+    val matched: String,
+    val after: String,
+    val offset: Long,
 )
 
 /** 隐藏那一格（判定只住后端）：手机只读后端写好的那一句（长按菜单里说为什么隐藏）。不隐藏 ⇒ 行上是 `null`。 */
@@ -720,8 +786,37 @@ data class LsEntry(
     val name: Any,
     val kind: FileKind,
     val size: Long?,
+    @Json(name = "size_text") val sizeText: String?,
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "link_dir") val linkDir: Boolean?,
+    val gates: Gates?,
+)
+
+@WireOf("Gates")
+@JsonClass(generateAdapter = true)
+data class Gates(
+    val preview: PreviewGate,
+    val edit: Gate,
+)
+
+@WireOf("PreviewGate")
+@JsonClass(generateAdapter = true)
+data class PreviewGate(
+    val text: TextPreview?,
+    val no: String?,
+)
+
+@WireOf("TextPreview")
+@JsonClass(generateAdapter = true)
+data class TextPreview(
+    val cap: Long,
+)
+
+@WireOf("Gate")
+@JsonClass(generateAdapter = true)
+data class Gate(
+    val cap: Long?,
+    val no: String?,
 )
 
 @WireOf("LsReply")
@@ -820,7 +915,7 @@ data class RotationViewReply(
     val dirty: Boolean,
     val start: String,
     val current: String,
-    val accounts: List<Fact>,
+    val accounts: List<RotAccount>,
     val listed: Int,
     val decision: RotTryDecision?,
     val timeline: RotTryTimeline?,
@@ -881,13 +976,22 @@ data class RotFormChoice(
     val label: Any,
 )
 
-@WireOf("Fact")
+@WireOf("RotAccount")
 @JsonClass(generateAdapter = true)
-data class Fact(
+data class RotAccount(
     val account: String,
     val w5h: WinFact,
     val w7d: WinFact,
     val blocked: FactBlocked?,
+    val plate: RotPlate,
+)
+
+@WireOf("RotPlate")
+@JsonClass(generateAdapter = true)
+data class RotPlate(
+    val color: Int,
+    val label: String,
+    val text: String,
 )
 
 @WireOf("WinFact")
@@ -1088,3 +1192,110 @@ data class ProfilesWriteDone(
     val wrote: Boolean,
     val reload: String?,
 )
+
+/** `accounts-list`：这台账号库里的号（号牌字 · 5h 那一格 · 选不了的那一句都是那台写好的）。 */
+@WireOf("AccountsList")
+@JsonClass(generateAdapter = true)
+data class AccountsList(
+    val meta: ListMeta,
+    val accounts: List<AccountRow>,
+)
+
+@WireOf("ListMeta")
+@JsonClass(generateAdapter = true)
+data class ListMeta(
+    val effectiveDefault: String?,
+    val home: String?,
+)
+
+@WireOf("AccountRow")
+@JsonClass(generateAdapter = true)
+data class AccountRow(
+    val name: String,
+    val label: String,
+    val color: Int,
+    val plate: String,
+    val quota: String?,
+    val unselectable: String?,
+    val selectable: Boolean,
+    val login: Boolean,
+    val configDir: String?,
+    val mode: String,
+)
+
+/** 登录失败的 `data`：还能怎么办（那台照码定）。 */
+@WireOf("LoginAgain")
+@JsonClass(generateAdapter = true)
+data class LoginAgain(
+    val again: LoginAgainHow,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LoginAgainHow {
+    @Json(name = "paste")
+    PASTE,
+
+    @Json(name = "restart")
+    RESTART,
+
+    @Json(name = "none")
+    NONE,
+}
+
+/** `session-resume`：那条会话此刻在哪个 tmux 会话里。 */
+@WireOf("Resumed")
+@JsonClass(generateAdapter = true)
+data class Resumed(
+    val session: String,
+)
+
+/*
+ * `quota-read`（用量屏）：结论两行 · 每号两条计量条那一格（字 · 语气 · 重置 · 1% ≈ 多少），全照那台写好的。
+ */
+
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaAccount>,
+    val verdict: QuotaVerdict?,
+)
+
+/** 「现在还能不能发」：大字 · 小字（说不出 ⇒ `null`）· 语气。 */
+@WireOf("QuotaVerdict")
+@JsonClass(generateAdapter = true)
+data class QuotaVerdict(
+    val text: String,
+    val sub: String?,
+    val tone: UsageTone,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaAccount(
+    val account: String,
+    val slots: List<SlotShow>,
+)
+
+/** 一个语义位那一格：字 · 语气 · 重置那一格（`↻18:30` / `↻13:10 已过`，说不出 ⇒ `null`）· 「1% ≈ 多少」（量不到 ⇒ `null`）。 */
+@WireOf("SlotShow")
+@JsonClass(generateAdapter = true)
+data class SlotShow(
+    val slot: String,
+    val text: String,
+    val tone: UsageTone,
+    val resetText: String?,
+    val perPctText: String?,
+)
+
+/** 用量那几格的语气（线上那一列只有这三个值）。 */
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}

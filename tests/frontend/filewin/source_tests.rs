@@ -1,12 +1,9 @@
 use super::*;
 
 /// 一份 `files-ls` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成一屏：两步任一不过都是报错。
-fn rows_from_ls_data(
-    d: &serde_json::Value,
-    by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, Cut), String> {
+fn rows_from_ls_data(d: &serde_json::Value) -> Result<(Vec<Listed>, Cut), String> {
     reply_of::<cmd_wire::files::LsReq>(d.clone())
-        .map(|r| super::rows_from_ls_data(r, by))
+        .map(super::rows_from_ls_data)
         .map_err(|_| copy_text("reason.content.unparsable", &[]))
 }
 
@@ -28,64 +25,30 @@ fn synth_tree() -> std::path::PathBuf {
 }
 
 #[test]
-fn listing_a_local_dir_yields_dirs_first_then_case_insensitive_name() {
+fn listing_a_local_dir_reads_every_entry_with_its_real_size() {
     let root = synth_tree();
     let rows = list_local(&root).unwrap();
-    let got: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
-    // 相等断言，不是「包含」：目录在前（alpha < Beta，小写比），再文件（mid < Zeta）。
-    assert_eq!(got, vec!["alpha", "Beta", "mid.txt", "Zeta.txt"]);
-    assert_eq!(
-        rows.iter().map(|r| r.is_dir).collect::<Vec<_>>(),
-        vec![true, true, false, false]
-    );
-    // 大小走的是真 metadata，不是编出来的。
-    assert_eq!(rows[2].size, 5);
-    assert_eq!(rows[3].size, 10);
-    std::fs::remove_dir_all(&root).ok();
-}
-
-/// 🔴 上面头注那个「两份实现」的缝 —— 这条把**两条路的真实输出**对拍成相等。
-///
-#[test]
-fn the_two_orderings_agree_on_a_synthetic_set() {
-    let names = [
-        ("README", false),
-        ("bin", true),
-        ("Cargo.toml", false),
-        ("Src", true),
-        ("aux", true),
-        ("build.rs", false),
-    ];
-    let mut mine: Vec<Listed> = names
+    let got: std::collections::BTreeSet<(&str, bool, u64)> = rows
         .iter()
-        .map(|(n, d)| {
-            Listed::plain(Row {
-                name: (*n).to_string(),
-                path: format!("/x/{n}"),
-                is_dir: *d,
-                size: 0,
-                lossy_name: false,
-            })
-        })
+        .map(|r| (r.name.as_str(), r.is_dir, r.size))
         .collect();
-    // ⚠ 缺省那一档 —— 它就是从前那个写死的函数（逐字节相同那一条住下面）。
-    sort_rows(&mut mine, SortBy::default());
-
-    // 生产契约逐字（原住池子那个私有排序函数，已删）：目录在前，再名称小写升序。
-    let mut theirs: Vec<(String, bool)> =
-        names.iter().map(|(n, d)| ((*n).to_string(), *d)).collect();
-    theirs.sort_by(|a, b| {
-        b.1.cmp(&a.1)
-            .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
-    });
-
-    let mine_seq: Vec<(String, bool)> = mine.iter().map(|r| (r.name.clone(), r.is_dir)).collect();
-    assert_eq!(mine_seq, theirs);
-    // 反空真：这个集合真的会被重排（不是本来就有序）。
-    assert_ne!(
-        mine_seq.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
-        names.iter().map(|(n, _)| *n).collect::<Vec<_>>()
+    // 先后照目录项（不排）；大小走的是真 metadata，不是编出来的。
+    assert_eq!(
+        got,
+        [
+            ("Beta", true, got.iter().find(|g| g.0 == "Beta").unwrap().2),
+            ("Zeta.txt", false, 10),
+            (
+                "alpha",
+                true,
+                got.iter().find(|g| g.0 == "alpha").unwrap().2
+            ),
+            ("mid.txt", false, 5)
+        ]
+        .into_iter()
+        .collect()
     );
+    std::fs::remove_dir_all(&root).ok();
 }
 
 // 这里原先有一条「`SftpEntry` → 行的映射六格一格不许掉」的判据。
@@ -370,9 +333,23 @@ fn a_backend_entry_becomes_a_row() {
         "path": "/srv/data/报表.csv", "name": "报表.csv",
         "kind": "file",
         "size": 4096u64,
-        "mtime_secs": 1_700_000_000u64,
+        "mtime_secs": 1_700_000_000u64, "size_text": "4 KB",
+        "class": "text", "type_text": "文本 · CSV",
+        "gates": { "preview": { "text": { "cap": 65536 } }, "edit": { "cap": 8388608 } },
     });
     let r = entry(&v).expect("这条 entry 应当解得出来");
+    assert_eq!(
+        r.size_text.as_deref(),
+        Some("4 KB"),
+        "大小那一格照后端写好的字"
+    );
+    // 种类 · 那一列的字 · 门原样带上来（窗口不判）。
+    assert_eq!(r.class, cmd_wire::files::FileClass::Text);
+    assert_eq!(r.type_text, "文本 · CSV");
+    assert_eq!(
+        r.gates.as_ref().map(|g| g.edit.clone()),
+        Some(cmd_wire::files::Gate::Cap(8388608))
+    );
     assert_eq!(r.path, "/srv/data/报表.csv");
     assert_eq!(r.name, "报表.csv", "名字是那台切好的末段");
     assert!(!r.is_dir);
@@ -392,12 +369,12 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
         ("symlink", false),
         ("other", false),
     ] {
-        let v = serde_json::json!({ "path": format!("/a/{kind}"), "name": kind, "kind": kind });
+        let v = serde_json::json!({ "path": format!("/a/{kind}"), "name": kind, "kind": kind, "class": "other", "type_text": "" });
         let r = entry(&v).unwrap();
         assert_eq!(r.is_dir, want_dir, "`kind={kind}` 判错了");
     }
     // `size` 缺了不整条失败（同本机那条：读不到 stat 也照样给一行）。
-    let v = serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file" });
+    let v = serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" });
     assert_eq!(entry(&v).unwrap().size, 0);
 }
 
@@ -406,15 +383,14 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
 /// 旧写法是 `name.contains('\u{FFFD}')`（`list_local` 里那一行，今天还在退路上）：
 /// 它把「转换时产生了替换字符」与「这个文件真叫这个名字」混成一件事
 /// ⇒ 一个**真叫** `\u{FFFD}` 的文件会被误判成有损，于是复制/改名/删除三颗按钮
-/// 对它一颗都不画（`is_copyable` / `is_writable` 都看这一格）。
+/// 对它一颗都不画（复制那道门与 `is_writable` 都看这一格）。
 ///
 /// 新写法看的是**字节**：`files-ls` 的 `path` 走原始字节
 /// （字符串 或 `{"b16":…}`）⇒ 有损与否是**事实**不是猜。
 #[test]
 fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
     // ① 真叫 U+FFFD 的文件：**合法 UTF-8**，不该判成有损。
-    let v =
-        serde_json::json!({ "path": "/a/\u{FFFD}怪名", "name": "\u{FFFD}怪名", "kind": "file" });
+    let v = serde_json::json!({ "path": "/a/\u{FFFD}怪名", "name": "\u{FFFD}怪名", "kind": "file", "class": "other", "type_text": "" });
     let r = entry(&v).unwrap();
     assert!(
         !r.lossy_name,
@@ -430,7 +406,7 @@ fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
     // ② 真的非 UTF-8 字节（走 `{"b16":…}`）⇒ 判成有损。
     //    `/a/` ＋ 一个孤立的 0xFF（任何 UTF-8 序列里都不合法）。
     let hex = "2f612fff";
-    let v2 = serde_json::json!({ "path": { "b16": hex }, "name": { "b16": "ff" }, "kind": "file" });
+    let v2 = serde_json::json!({ "path": { "b16": hex }, "name": { "b16": "ff" }, "kind": "file", "class": "other", "type_text": "" });
     let r2 = entry(&v2).unwrap();
     assert!(r2.lossy_name, "非 UTF-8 字节没被判成有损");
     assert!(
@@ -448,48 +424,34 @@ fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
 fn an_entry_we_cannot_read_is_an_error_not_a_skipped_row() {
     for bad in [
         serde_json::json!({ "kind": "file" }),
-        serde_json::json!({ "path": 42, "kind": "file" }),
+        serde_json::json!({ "path": 42, "kind": "file", "class": "other", "type_text": "" }),
         serde_json::json!({ "path": { "b16": "zz" }, "kind": "file" }),
     ] {
         let e = entry(&bad).expect_err(&format!("`{bad}` 竟然解出来了"));
         assert!(!e.trim().is_empty(), "报错是空串");
     }
     // 阴性对照：正常那条解得出来（否则上面可以靠「什么都报错」全绿）。
-    assert!(entry(&serde_json::json!({ "path": "/a", "name": "a", "kind": "dir" })).is_ok());
+    assert!(entry(&serde_json::json!({ "path": "/a", "name": "a", "kind": "dir", "class": "other", "type_text": "" })).is_ok());
 }
 
-/// 🔴 **一屏回来就是排好序的** —— 而这是**行为**判据，不是源码代理。
-///
-/// 后端不排（它答的是目录项不是一屏）。「目录在前、名称小写排」这个**显示序**契约，
-/// 主路上只经 `sort_rows` 这一处 —— 本条喂一份乱序的 `data`，看它出来是不是序对的。
+/// 一屏照后端排好的先后摆：窗口不重排（喂一份「不像排过」的序，出来一模一样）。
 #[test]
-fn a_screenful_comes_back_already_sorted() {
+fn a_screenful_keeps_the_backends_order() {
     let d = serde_json::json!({
         "entries": [
-            { "path": "/a/zebra.txt", "name": "zebra.txt", "kind": "file" },
-            { "path": "/a/Apple", "name": "Apple",     "kind": "dir"  },
-            { "path": "/a/beta.txt", "name": "beta.txt",  "kind": "file" },
-            { "path": "/a/yak", "name": "yak",       "kind": "dir"  },
+            { "path": "/a/zebra.txt", "name": "zebra.txt", "kind": "file", "class": "other", "type_text": "" },
+            { "path": "/a/Apple", "name": "Apple",     "kind": "dir", "class": "other", "type_text": "" },
+            { "path": "/a/beta.txt", "name": "beta.txt",  "kind": "file", "class": "other", "type_text": "" },
         ],
         "truncated": false,
         "crumbs": [],
-        "total": 4,
+        "total": 3,
         "unreadable": 0,
     });
-    let (rows, truncated) = rows_from_ls_data(&d, SortBy::default()).expect("这一份该解得出来");
+    let (rows, cut) = rows_from_ls_data(&d).expect("这一份该解得出来");
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
-    assert_eq!(
-        names,
-        vec!["Apple", "yak", "beta.txt", "zebra.txt"],
-        "序不对 —— 契约是「目录在前，再按名称**小写**排」（`Apple` 要排在 `yak` 前）"
-    );
-    assert!(!truncated.truncated);
-    // 反空真：喂进去的就是乱序的（否则「出来有序」可能只是原样）。
-    assert_ne!(
-        names,
-        vec!["zebra.txt", "Apple", "beta.txt", "yak"],
-        "本条喂的语料没被重排过 —— 它此刻在量一个恒真"
-    );
+    assert_eq!(names, ["zebra.txt", "Apple", "beta.txt"]);
+    assert!(!cut.truncated);
 }
 
 /// 🔴 **解不出的一行 ⇒ 整趟报错，不悄悄跳过。**
@@ -504,24 +466,20 @@ fn a_screenful_comes_back_already_sorted() {
 fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
     let d = serde_json::json!({
         "entries": [
-            { "path": "/a/good.txt", "name": "good.txt", "kind": "file" },
+            { "path": "/a/good.txt", "name": "good.txt", "kind": "file", "class": "other", "type_text": "" },
             { "kind": "file" },                       // 没有 path
-            { "path": "/a/also-good", "name": "also-good", "kind": "dir" },
+            { "path": "/a/also-good", "name": "also-good", "kind": "dir", "class": "other", "type_text": "" },
         ],
         "truncated": false, "crumbs": [], "total": 3, "unreadable": 0,
     });
-    let e = rows_from_ls_data(&d, SortBy::default())
-        .expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
+    let e = rows_from_ls_data(&d).expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(
         copy_core::copy_matches("reason.content.unparsable", &e),
         "报错不是「回包认不出」那一句：{e}"
     );
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
-    let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "name": "x", "kind": "file" } ], "truncated": false, "crumbs": [], "total": 1, "unreadable": 0 });
-    assert_eq!(
-        rows_from_ls_data(&ok, SortBy::default()).unwrap().0.len(),
-        1
-    );
+    let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ], "truncated": false, "crumbs": [], "total": 1, "unreadable": 0 });
+    assert_eq!(rows_from_ls_data(&ok).unwrap().0.len(), 1);
 }
 
 /// `truncated` 带得回来；缺了这一格 ⇒ 回包认不出（不再悄悄当没截断：形状由两端共用的类型定）。
@@ -529,17 +487,11 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
 fn truncation_is_carried_back_not_dropped() {
     let d = serde_json::json!({ "entries": [], "crumbs": [], "truncated": true, "total": 9, "unreadable": 0 });
     assert!(
-        rows_from_ls_data(&d, SortBy::default())
-            .unwrap()
-            .1
-            .truncated,
+        rows_from_ls_data(&d).unwrap().1.truncated,
         "截断那一格被丢了"
     );
     let d2 = serde_json::json!({ "entries": [] });
-    assert!(
-        rows_from_ls_data(&d2, SortBy::default()).is_err(),
-        "缺了截断那一格却解出来了"
-    );
+    assert!(rows_from_ls_data(&d2).is_err(), "缺了截断那一格却解出来了");
 }
 
 /// 🔴**后端说不行 ⇒ 列目录就是失败，没有第二条路**（`D11`）。
@@ -563,17 +515,18 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
     // 窗口手里的是远端那一形（恒 `/`；Windows 上本机临时目录要换一下，见 `remote_form` 头注）。
     let dir = remote_form(&root.to_string_lossy());
     // ① 后端答得出。
-    let (rows, cut) = list_dir(&wired.line, &src, &dir, SortBy::default())
+    let (rows, cut) = list_dir(&wired.line, &src, &dir, Sort::default())
         .await
         .expect("后端答得出，窗口这一侧却失败了");
     let want = list_local(&root).expect("合成树列得出来");
+    let set = |v: &[Listed]| {
+        v.iter()
+            .map(|r| (r.name.clone(), r.size, r.is_dir))
+            .collect::<std::collections::BTreeSet<_>>()
+    };
     assert_eq!(
-        rows.iter()
-            .map(|r| (r.name.clone(), r.size, r.is_dir))
-            .collect::<Vec<_>>(),
-        want.iter()
-            .map(|r| (r.name.clone(), r.size, r.is_dir))
-            .collect::<Vec<_>>(),
+        set(&rows),
+        set(&want),
         "经通道回来的那一屏与后端那一侧看见的不等"
     );
     assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
@@ -585,7 +538,7 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         }
     );
     // ② 后端拒 ⇒ 失败，带那台的原话（码不上屏）。
-    let e = list_dir(&wired.line, &src, "/definitely/not/here", SortBy::default())
+    let e = list_dir(&wired.line, &src, "/definitely/not/here", Sort::default())
         .await
         .expect_err("后端拒了，窗口却交出了一屏");
     assert!(
@@ -628,158 +581,14 @@ fn a_windows_temp_dir_is_split_by_the_window_only_after_the_fixture_makes_it_pos
 // 🔴〔补齐五项 2026-09-23〕排序 · 面包屑 · 修改时间 · 逐格表
 // ════════════════════════════════════════════════════════════════════════
 
-/// 一摞行的**序指纹**（FNV-1a 64，喂 `名字 ‖ 是不是目录 ‖ 0`）。
-///
-/// ⚠ 散列本身不是被测对象 —— 它只是把「两万行的序」压成一个能钉进判据的数。
-/// 基线那一趟用的是**逐字同一段**散列代码（见下面那条判据的头注）。
-fn order_fingerprint(v: &[Listed]) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for r in v {
-        for b in r.name.bytes().chain([u8::from(r.is_dir), 0]) {
-            h ^= u64::from(b);
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-    }
-    h
-}
-
-/// 🔴 **缺省那一档（名称）与从前那个写死的 `sort_rows` 逐字节同序。**
-///
-/// # 两侧不同源 —— 那个数是在**基线提交上真跑出来的**
-///
-/// 期望值 `0xb7ba462750a3cc6a` 不是由本文件里任何一行算出来的：它是在基线
-/// `66f34e29`（补齐五项之前，`sort_rows(v: &mut [Row])` 还是写死的那一版）的一棵临时工作树里，
-/// 对 `corpus::synth_rows(20_000, 0x5EED_0F0D)` 跑**那一版** `sort_rows` 印出来的
-/// （同一段散列代码；语料的名字与是否目录两格在两版之间逐字节相同 ——
-/// `corpus::synth_rows` 头注写着新那两格一格 rng 都不多抽）。
-///
-/// ⇒ `Name` 那一支里多出来的那个 `then_with(Equal)` 哪天被人改成真比较一格东西，
-///   这条当场红；而 `sort_rows` 整个换一种写法、只要序不变，它照样绿（它判的是行为）。
-#[test]
-fn the_default_order_is_byte_for_byte_what_it_was_before() {
-    let mut v = crate::corpus::synth_rows(20_000, 0x5EED_0F0D);
-    let before = order_fingerprint(&v);
-    sort_rows(&mut v, SortBy::default());
-    assert_eq!(
-        order_fingerprint(&v),
-        0xb7ba_4627_50a3_cc6a,
-        "缺省那一档的序与基线那一版不再逐字节相同 —— 「默认与从前一样」那句话失效了"
-    );
-    // 反空真：这份语料真的被重排了（不是本来就有序、排了等于没排）。
-    assert_ne!(
-        before, 0xb7ba_4627_50a3_cc6a,
-        "语料本来就是有序的 —— 上面那条在空转"
-    );
-    // 反空真 ②：「大小」那一档真的给出**不同**的序（`by` 这一格不是被忽略掉的）。
-    // ⚠ 「类型」那一档在这份语料上**恰好**与名称同序（现打）：合成名字里没有点，
-    //   而旧面板那个怪处让「没有点」的扩展名就是整个名字 ⇒ 按扩展名排 ＝ 按名字排。
-    //   那一档的区分力由 `sorting_by_type_follows_the_type_column` 单独喂。
-    let mut w = v.clone();
-    sort_rows(&mut w, SortBy::Size);
-    assert_ne!(
-        order_fingerprint(&w),
-        0xb7ba_4627_50a3_cc6a,
-        "「大小」那一档排出来和名称一模一样 —— 入参没进比较器"
-    );
-}
-
-/// 🔴 **已经按名称排过的一屏，再按名称排一遍是恒等**（稳定排序 ＋ 同一个比较器）。
-///
-/// 这是 `list_dir` 那一步「池子排过一次、这里再排一次」不搅序的结构理由。
-#[test]
-fn sorting_an_already_sorted_screenful_by_name_changes_nothing() {
-    let mut once = crate::corpus::synth_rows(5_000, 7);
-    sort_rows(&mut once, SortBy::Name);
-    let mut twice = once.clone();
-    sort_rows(&mut twice, SortBy::Name);
-    assert_eq!(once, twice);
-    // 阴性对照：换一档**会**改（否则「恒等」可能来自比较器根本没在比）。
-    let mut other = once.clone();
-    sort_rows(&mut other, SortBy::Size);
-    assert_ne!(once, other);
-}
-
-fn named(name: &str, is_dir: bool, size: u64) -> Listed {
-    Listed::plain(Row {
-        name: name.to_string(),
-        path: format!("/x/{name}"),
-        is_dir,
-        size,
-        lossy_name: false,
-    })
-}
-
-fn order_of(v: &[Listed]) -> Vec<&str> {
-    v.iter().map(|r| r.name.as_str()).collect()
-}
-
-/// 「大小」那一档：目录恒在前 · 大的在前 · 一样大按名称（同旧面板 `b.size - a.size || cmpName`）。
-///
-/// ⚠ 期望序是**照着 `src/sftp/paths.ts::sortEntries` 手推**的，不是拿本函数跑一遍抄下来的。
-#[test]
-fn sorting_by_size_matches_the_old_panel() {
-    let mut v = vec![
-        named("small", false, 1),
-        named("Zdir", true, 0),
-        named("big", false, 900),
-        named("b-tie", false, 50),
-        named("a-tie", false, 50),
-        named("adir", true, 0),
-    ];
-    sort_rows(&mut v, SortBy::Size);
-    assert_eq!(
-        order_of(&v),
-        ["adir", "Zdir", "big", "a-tie", "b-tie", "small"]
-    );
-}
-
-/// 「类型」那一列：按种类（与那一列写的字同源）、再扩展名、相持按名称；没有扩展名的照「文件」那一类排。
-#[test]
-fn sorting_by_type_follows_the_type_column() {
-    let mut v = vec![
-        named("b.rs", false, 0),
-        named("README", false, 0),
-        named("a.md", false, 0),
-        named("z.MD", false, 0),
-        named("a.rs", false, 0),
-        named("src", true, 0),
-    ];
-    sort_rows(&mut v, SortBy::Type);
-    assert_eq!(
-        order_of(&v),
-        ["src", "a.md", "z.MD", "a.rs", "b.rs", "README"],
-        "文本（md）在代码（rs）前，没有扩展名的 `README` 是「文件」那一类、排最后"
-    );
-}
-
-/// 反过来的那一列只反它自己：目录照旧在前，相持照旧按名称（不分大小写）从小到大。期望序手推。
-#[test]
-fn a_descending_column_keeps_dirs_first_and_ties_by_name_ascending() {
-    let at = |name: &str, is_dir: bool, mtime: u64| {
-        let mut r = named(name, is_dir, 0);
-        r.mtime_secs = Some(mtime);
-        r
-    };
-    let mut v = vec![
-        at("b-old", false, 1),
-        at("Tie", false, 5),
-        at("old-dir", true, 1),
-        at("new", false, 9),
-        at("tie2", false, 5),
-        at("New-dir", true, 9),
-    ];
-    sort_rows(&mut v, SortBy::Mtime);
-    assert_eq!(
-        order_of(&v),
-        ["New-dir", "old-dir", "new", "Tie", "tie2", "b-old"]
-    );
-}
-
 /// 表头那四列是**闭集**，缺省按名称；时间与大小第一下从大到小，再点一下反过来，换一列从那一列的第一下起。
 #[test]
 fn the_four_columns_and_how_a_click_turns_the_order() {
     assert_eq!(SortBy::default(), SortBy::Name);
-    let labels: Vec<String> = SortBy::ALL.iter().map(|b| b.label()).collect();
+    let labels: Vec<String> = crate::rows::ORDER
+        .iter()
+        .map(|b| crate::rows::column_label(*b))
+        .collect();
     assert_eq!(
         labels,
         [
@@ -791,11 +600,11 @@ fn the_four_columns_and_how_a_click_turns_the_order() {
     );
     let s = Sort::default();
     assert!(!s.descending());
-    let t = s.after_click(SortBy::Mtime);
-    assert!(t.descending() && !t.reversed);
-    let t2 = t.after_click(SortBy::Mtime);
-    assert!(!t2.descending() && t2.reversed);
-    assert_eq!(t2.after_click(SortBy::Name), Sort::default());
+    let t = after_click(s, SortBy::Mtime);
+    assert!(t.descending() && !t.reverse);
+    let t2 = after_click(t, SortBy::Mtime);
+    assert!(!t2.descending() && t2.reverse);
+    assert_eq!(after_click(t2, SortBy::Name), Sort::default());
 }
 
 /// 面包屑：根在最前，每一段各是一个可点的前缀；`//` 与尾巴上的 `/` 不生出空段。
@@ -877,11 +686,19 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
             name: WirePath::from("a"),
             kind: FileKind::Symlink,
             size: Some(1),
+            size_text: Some(String::new()),
             mtime_secs: Some(1),
             mtime_text: Some(String::new()),
             mtime_full: Some(String::new()),
             link_dir: Some(true),
             link_to: Some(LinkTo::Dir),
+            class: cmd_wire::files::FileClass::Folder,
+            type_text: String::new(),
+            gates: Some(cmd_wire::files::Gates {
+                preview: cmd_wire::files::PreviewGate::No(String::new()),
+                view: None,
+                edit: cmd_wire::files::Gate::Cap(1),
+            }),
         }],
         up: Some(WirePath::from("/")),
         crumbs: Vec::new(),
@@ -933,6 +750,10 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("up", "窗口不读（上一级照当前目录切）"),
         ("crumbs", "窗口不读（面包屑照当前目录切）"),
         ("size", "size（缺 ＝ 0）"),
+        ("size_text", "size_text（大小那一格，原样）"),
+        ("class", "class（画哪种图标，原样）"),
+        ("type_text", "type_text（「类型」那一列，原样）"),
+        ("gates", "gates（预览 · 看图 · 编辑那几道门，原样）"),
         ("truncated", "界面上那句「只拿到了前 N 条」"),
         ("unreadable", "界面上那句「有 n 项读不出来」"),
     ];
@@ -947,32 +768,38 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     // ── 右栏：逐格行为 ──
     let one = |v: serde_json::Value| entry(&v).expect("这一条该解得出来");
     // kind：两格，不是一格。
-    let link = one(serde_json::json!({ "path": "/a/l", "name": "l", "kind": "symlink" }));
+    let link = one(
+        serde_json::json!({ "path": "/a/l", "name": "l", "kind": "symlink", "class": "other", "type_text": "" }),
+    );
     assert!(link.link && !link.is_dir, "symlink 没落成 link");
-    let dir = one(serde_json::json!({ "path": "/a/d", "name": "d", "kind": "dir" }));
+    let dir = one(
+        serde_json::json!({ "path": "/a/d", "name": "d", "kind": "dir", "class": "other", "type_text": "" }),
+    );
     assert!(dir.is_dir && !dir.link);
-    let file = one(serde_json::json!({ "path": "/a/f", "name": "f", "kind": "file" }));
+    let file = one(
+        serde_json::json!({ "path": "/a/f", "name": "f", "kind": "file", "class": "other", "type_text": "" }),
+    );
     assert!(!file.is_dir && !file.link);
     // link_dir：链接且为真 ⇒ 点得进去（is_dir 仍为假：删 / 复制按链接本身算）；缺 ⇒ 否。
     let to_dir = one(
-        serde_json::json!({ "path": "/a/ld", "name": "ld", "kind": "symlink", "link_dir": true }),
+        serde_json::json!({ "path": "/a/ld", "name": "ld", "kind": "symlink", "link_dir": true, "class": "other", "type_text": "" }),
     );
     assert!(to_dir.link && to_dir.link_dir && !to_dir.is_dir && to_dir.opens_as_dir());
     assert!(!link.link_dir && !link.opens_as_dir());
     // link_to：`missing` ⇒ 断了的链接；指向得到的 ⇒ 不是。
     let broken = one(
-        serde_json::json!({ "path": "/a/bl", "name": "bl", "kind": "symlink", "link_to": "missing" }),
+        serde_json::json!({ "path": "/a/bl", "name": "bl", "kind": "symlink", "link_to": "missing", "class": "other", "type_text": "" }),
     );
     assert!(broken.link_broken && !to_dir.link_broken && !link.link_broken);
     // mtime_secs：原样；缺了是 None，不是 0（1970）。
     let t = one(
-        serde_json::json!({ "path": "/a/t", "name": "t", "kind": "file", "mtime_secs": 1_700_000_000u64 }),
+        serde_json::json!({ "path": "/a/t", "name": "t", "kind": "file", "mtime_secs": 1_700_000_000u64, "class": "other", "type_text": "" }),
     );
     assert_eq!(t.mtime_secs, Some(1_700_000_000));
     assert_eq!(file.mtime_secs, None);
     // mtime_text · mtime_full：后端按那台本地钟写好的两格，原样（窗口不换算）；缺了是 None。
     let tx = one(
-        serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file", "mtime_secs": 1u64, "mtime_text": "10-02", "mtime_full": "2026-10-02 15:01:23" }),
+        serde_json::json!({ "path": "/a/x", "name": "x", "kind": "file", "mtime_secs": 1u64, "mtime_text": "10-02", "mtime_full": "2026-10-02 15:01:23", "class": "other", "type_text": "" }),
     );
     assert_eq!(
         (tx.mtime_text.as_deref(), tx.mtime_full.as_deref()),
@@ -983,15 +810,17 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         (None, None)
     );
     // size：缺 ⇒ 0。
-    let s = one(serde_json::json!({ "path": "/a/s", "name": "s", "kind": "file", "size": 42 }));
+    let s = one(
+        serde_json::json!({ "path": "/a/s", "name": "s", "kind": "file", "size": 42, "class": "other", "type_text": "" }),
+    );
     assert_eq!((s.size, file.size), (42, 0));
     // name：那台切好的末段；有损那一格跟着**名字那一段**的字节走（目录有损、名字干净 ⇒ 名字照样能用）。
     let lossy = one(
-        serde_json::json!({ "path": { "b16": "2f612f66ff" }, "name": { "b16": "66ff" }, "kind": "file" }),
+        serde_json::json!({ "path": { "b16": "2f612f66ff" }, "name": { "b16": "66ff" }, "kind": "file", "class": "other", "type_text": "" }),
     );
     assert!(lossy.lossy_name && lossy.name.ends_with('\u{FFFD}'));
     let in_lossy_dir = one(
-        serde_json::json!({ "path": { "b16": "2fff2f72656164" }, "name": "read", "kind": "file" }),
+        serde_json::json!({ "path": { "b16": "2fff2f72656164" }, "name": "read", "kind": "file", "class": "other", "type_text": "" }),
     );
     assert_eq!(
         (
@@ -1005,8 +834,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     assert_eq!(file.name, "f");
     // entries / truncated：由 `rows_from_ls_data` 摊开。
     let (rows, cut) = rows_from_ls_data(
-        &serde_json::json!({ "entries": [ { "path": "/a/x", "name": "x", "kind": "file" } ], "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
-        SortBy::default(),
+        &serde_json::json!({ "entries": [ { "path": "/a/x", "name": "x", "kind": "file", "class": "other", "type_text": "" } ], "crumbs": [], "truncated": true, "unreadable": 3, "total": 9 }),
     )
     .unwrap();
     assert_eq!(
@@ -1394,9 +1222,9 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     let plain = RemotePath::plain("/srv/a b");
     let lossy = RemotePath::from_bytes(b"/srv/d\xff");
     for p in [&plain, &lossy] {
-        let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, SortBy::default()).await;
+        let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, Sort::default()).await;
         let _ = crate::size::size_remote(&line, &o, &p.path(), "n").await;
-        let _ = crate::editor::read_text_at(&line, &o, p).await;
+        let _ = crate::editor::read_text_at(&line, &o, p, 8388608).await;
     }
     let board = crate::find::SearchBoard::default();
     let asked = crate::find::Asked {
@@ -1413,10 +1241,11 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
         .collect();
     let stream = board.stream().to_string();
     let want = [
-        r#"files-ls {"limit":50000,"path":"/srv/a b"}"#.to_string(),
+        r#"files-ls {"limit":50000,"path":"/srv/a b","sort":{"by":"name"}}"#.to_string(),
         r#"files-size {"path":"/srv/a b"}"#.to_string(),
         r#"files-read-text {"max_bytes":8388608,"path":"/srv/a b"}"#.to_string(),
-        r#"files-ls {"limit":50000,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-ls {"limit":50000,"path":{"b16":"2f7372762f64ff"},"sort":{"by":"name"}}"#
+            .to_string(),
         r#"files-size {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
         r#"files-read-text {"max_bytes":8388608,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
         format!(
