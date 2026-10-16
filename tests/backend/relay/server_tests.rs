@@ -3709,10 +3709,7 @@ fn upstream_said(port: u16, result: &str, hop: &str) -> String {
         &[
             ("host", "127.0.0.1"),
             ("port", &port.to_string()),
-            (
-                "result",
-                &copy_core::copy_text(result, &[]),
-            ),
+            ("result", &copy_core::copy_text(result, &[])),
             (
                 "hop",
                 &copy_core::copy_text(&format!("beServer.words.{hop}"), &[]),

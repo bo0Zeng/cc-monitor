@@ -131,10 +131,7 @@ async fn a_hello_that_answers_ping_is_all_green() {
         .strip_prefix(pre)
         .and_then(|t| t.strip_suffix(post))
         .unwrap_or_else(|| panic!("不是那三格：{hello}"));
-    assert!(
-        dur.starts_with(|c: char| c.is_ascii_digit()),
-        "{hello}"
-    );
+    assert!(dur.starts_with(|c: char| c.is_ascii_digit()), "{hello}");
     // 做不到的按码分类交出去（那句人话归 monitor，`control-said.ts::unavailableReason`）。
     assert_eq!(r["backendGaps"], json!([{"code": "no_tmux", "count": 1}]));
     assert!(is_not_a_log_line(hello), "机器页那一行又是日志行：{hello}");
