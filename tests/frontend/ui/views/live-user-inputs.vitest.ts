@@ -279,7 +279,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     }
     feed(userLine(150, "ok", "这次通了")); // 成功 ⇒ 清零
     await settleOutline();
-    expect(rowsOf().length).toBeGreaterThan(0);
+    expect(rowsOf().length).toBe(2);
     outlineBackend.failNext = MAX_TRANSIENT_FAILURES - 1;
     for (let i = 0; i < MAX_TRANSIENT_FAILURES - 1; i++) {
       feed(userLine(160 + i, `y${i}`, "又一句"));
@@ -289,7 +289,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     outlineBackend.entries.push(outlineEntry("z"));
     feed(userLine(170, "z", "还在要吗"));
     await settleOutline();
-    expect(outlineCalls().length, "累计而非连续地数 ⇒ 这里已经停了").toBeGreaterThan(0);
+    expect(outlineCalls().length, "累计而非连续地数 ⇒ 这里已经停了").toBe(1);
   });
 
   it(`🔴 连续瞬时失败到上限（${MAX_TRANSIENT_FAILURES} 次）⇒ 按结构性处理：此后不再要`, async () => {
@@ -313,7 +313,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
   it("后端说一条都没有 ⇒ 开关禁用（不给一个点了没反应的入口）", async () => {
     feed(assistantLine(1, "a1", "只有回复"));
     await settleOutline();
-    expect(outlineCalls().length).toBeGreaterThan(0); // 真的问过了，不是没问
+    expect(outlineCalls().length).toBe(1); // 真的问过了，不是没问
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
     expect(toggleOf().textContent).toBe(copyText("userInputPanel.outline.label"));

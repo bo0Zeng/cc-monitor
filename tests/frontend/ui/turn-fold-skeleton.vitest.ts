@@ -241,7 +241,7 @@ describe("冷切停住那一帧：骨架后到", () => {
     expect(reads, "占位插进去之后的那一趟排版还在读几何（量过程行高 / 钉视口 / 一轮都没展开也量视口高）⇒ 逼浏览器当场再排一次版").toEqual([]);
   });
 
-  it("★ 过程行高量过一次就记着：之后每趟排版不再量（流尺寸变了才重量）", async () => {
+  it("★ 过程行高量过就记着：之后每趟排版不再量（流尺寸变了才重量）", async () => {
     const { content, fold, mkView, floor } = await lateRig();
     mkView().attach(floor);
     await new Promise((r) => setTimeout(r, 0));
@@ -249,7 +249,7 @@ describe("冷切停住那一帧：骨架后到", () => {
     const spy = vi.spyOn(line, "getBoundingClientRect");
     fold.apply();
     fold.apply();
-    expect(spy.mock.calls.length, "每趟排版都去量一次过程行（DOM 刚改过 ⇒ 每一下都是一次强制排版）").toBeLessThanOrEqual(1);
+    expect(spy.mock.calls.length, "量过的过程行高没记着：每趟排版都去量一次（DOM 刚改过 ⇒ 每一下都是一次强制排版）").toBe(0);
   });
 
   it("★ 过程行上的字没变就不重画：再排一次版，行里的节点原样不动（不白白作废样式与排版）", async () => {
