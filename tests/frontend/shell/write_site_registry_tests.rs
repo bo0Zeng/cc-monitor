@@ -109,7 +109,6 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，后端自有状态，写经 `Own`），本进程一个字节不落 ⇒ 摘行。
-    ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；原住 `config.rs`，住壳的平台层）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
     // `logging.rs` 那两行（`write_diagnostics_to_config` · `atomic_replace` 副本）摘了：诊断写口改经
@@ -430,7 +429,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("config.rs", "patch_config_at", Lands::OwnState),
     ("prefs_migration.rs", "finish_at", Lands::OwnState),
     // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
-    ("fs.rs", "atomic_replace", Lands::OwnState), // 原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),
     ("logging.rs", "build_rolling_appender", Lands::OwnState),
     // `logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。

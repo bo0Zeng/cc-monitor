@@ -457,7 +457,7 @@ jobs:
           }
           Write-Host ("native backend staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
 
-      # ── **文件窗口程序也内嵌进 exe** —— 单文件的 `cc-monitor.exe` 旁边没有它时，开窗那一刻放到 `~/.cc-monitor/bin/` 再起 ──
+      # ── **文件窗口程序也内嵌进 exe** —— 开窗那一刻放到 `~/.cc-monitor/bin/` 再起 ──
       #
       # 它是文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`：monitor 的 `build.rs` 吃不到它 ⇒ 先单编、铺进 `native-backend/`
       # （名字定死在 `build.rs::NATIVE_FILEWIN_FILE`，旁挂 `.target` 同上面两对），下面 `tauri build` 编 monitor 时

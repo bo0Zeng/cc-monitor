@@ -237,8 +237,12 @@ pub(crate) fn patch_config_at(
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     crate::platform::fs::only_me_on_create(&mut opts);
+    // 换名前先落盘：不然断电后换上去的可能是一份空文件。
     opts.open(&tmp)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, pretty.as_bytes()))
+        .and_then(|mut f| {
+            std::io::Write::write_all(&mut f, pretty.as_bytes())?;
+            f.sync_all()
+        })
         .map_err(|e| {
             ConfigWriteError::Io(Said::with_raw(
                 copy_text(
@@ -251,7 +255,8 @@ pub(crate) fn patch_config_at(
                 &e,
             ))
         })?;
-    crate::platform::fs::atomic_replace(&tmp, path).map_err(|e| {
+    // 标准库的换名在 Windows 上就是覆盖已在的目标，长路径前缀它自己补。
+    std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         ConfigWriteError::Io(Said::with_raw(
             copy_text(
@@ -295,8 +300,6 @@ fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
         }
     }
 }
-
-// `atomic_replace`（两个平台臂：`MoveFileExW` / `rename`）搬进 `platform/fs.rs`，本文件经 `crate::platform::fs::atomic_replace` 调。
 
 /// 文件缺失时返回的最小骨架。仅做占位，前端读到没有 `theme` 字段会用 :root 默认值。
 fn default_config() -> Value {

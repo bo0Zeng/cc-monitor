@@ -340,8 +340,8 @@ fn embed_native_filewin() {
     }
     if !src.exists() {
         println!(
-            "cargo:warning=没有内嵌文件窗口程序（src/frontend/shell/{}）⇒ 这一趟编出来的可执行文件只在旁边有 \
-             `{NATIVE_FILEWIN_FILE}` 时开得了文件窗口（开发树的 target 目录里两个挨着）。要它：`{REEMBED_CMD} --native`。",
+            "cargo:warning=没有内嵌文件窗口程序（src/frontend/shell/{}）⇒ 这一趟编出来的可执行文件只在环境变量 \
+             `filewin::proc::BIN_ENV` 指着一份时开得了文件窗口。要它：`{REEMBED_CMD} --native`。",
             src.display()
         );
         return;
@@ -351,7 +351,7 @@ fn embed_native_filewin() {
     if !staged_target.is_empty() && staged_target != target {
         println!(
             "cargo:warning=内嵌文件窗口程序（src/frontend/shell/{}）是给 `{staged_target}` 编的，这一趟的 TARGET 是 `{target}` \
-             ⇒ 这一趟不内嵌它（只在旁边有 `{NATIVE_FILEWIN_FILE}` 时开得了文件窗口）。",
+             ⇒ 这一趟不内嵌它（只在环境变量 `filewin::proc::BIN_ENV` 指着一份时开得了文件窗口）。",
             src.display()
         );
         return;
@@ -362,7 +362,7 @@ fn embed_native_filewin() {
              （清单读作 `{staged_target}`；空串 = 根本没有 `{}.target` 这个文件。）\n\
              内嵌一个别的平台的程序 = 放到用户盘上起不来。\
              出路二选一，**两条都是同一条命令**：① `{REEMBED_CMD} --native` 为这一趟的 TARGET 重编重铺；\
-             ② `{REEMBED_CMD} --clean` 删掉落点（只剩「exe 旁边」那一支，编译立刻恢复）。",
+             ② `{REEMBED_CMD} --clean` 删掉落点（只剩环境变量指的那一份，编译立刻恢复）。",
             src.display(),
             staged_target,
             NATIVE_FILEWIN_FILE,
