@@ -281,13 +281,11 @@ fn the_no_window_outcome_is_a_code_not_a_phrase_the_frontend_greps_for() {
         serde_json::to_value(TerminalOpen::SetMissing).unwrap(),
         serde_json::json!("setMissing")
     );
-    const RUNNER: &str = include_str!("../../../src/frontend/ui/remote-launch-run.ts");
-    const LOCAL: &str = include_str!("../../../src/frontend/ui/local-resume.ts");
+    const SESSION_OPEN: &str = include_str!("../../../src/frontend/ui/session-open.ts");
     const LOGIN: &str = include_str!("../../../src/frontend/ui/settings/account-login.ts");
     const OPEN: &str = include_str!("../../../src/frontend/ui/terminal-open.ts");
     for (name, src) in [
-        ("remote-launch-run.ts", RUNNER),
-        ("local-resume.ts", LOCAL),
+        ("session-open.ts", SESSION_OPEN),
         ("account-login.ts", LOGIN),
     ] {
         assert!(

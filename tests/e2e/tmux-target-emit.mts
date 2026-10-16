@@ -13,8 +13,8 @@
  *
  * 输出：每行 `<key>\t<生产命令串>`，供 `tmux-target-acceptance.sh` 消费。
  */
-import { planAttach } from "../../src/frontend/ui/launch-requests.ts";
-import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
+import { planAttach } from "../test-support/launch-requests.ts";
+import type { LaunchContext } from "../test-support/launch-types.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
 import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
 

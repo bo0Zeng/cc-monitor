@@ -215,7 +215,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   monitor 那一份改调 gate-core。
     defs: ["isValidTmuxName", "isValidNewTmuxName", "rejectEmptyTarget"],
     needles: [
-      { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/frontend/ui/launch-requests.ts" },
+      { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0 },
       { text: "[*?=]", count: 0 },
       { text: 'target === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },
       { text: '.trim() === ""', count: 0, file: "src/frontend/ui/tmux-control.ts" },

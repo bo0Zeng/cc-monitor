@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 177,
+  "ceiling": 172,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -276,9 +276,9 @@
     {
       "file": "src/frontend/ui/tab-batch-run.ts",
       "rule": "caseWord",
-      "n": 8,
+      "n": 3,
       "kind": "第 1 批",
-      "why": "批量起 / 停的拒绝码（no_tmux · ambiguous · name_taken …）⇒ 字：每个会话的结局带 said"
+      "why": "批量停的拒绝码（no_tmux · not_in_tmux · ambiguous）⇒ 字：每个会话的结局带 said"
     },
     {
       "file": "src/frontend/ui/tab-stream-view.ts",

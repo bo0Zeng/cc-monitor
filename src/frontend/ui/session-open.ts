@@ -25,12 +25,12 @@ import type { AccountUnavailable } from "./generated/AccountUnavailable";
 
 export type { SessionOpenReq, Opened, Landed };
 
-/** 一问的结局：成了 · 那台拒了（码 · 那一句 · `data` · 复制详情）· 同一张票那一趟还在起 · 期限到（结果未知）· 够不着那台。 */
+/** 一问的结局：成了 · 那台拒了（码 · 那一句 · `data` · 复制详情）· 同一张票那一趟还在起 · 期限到（结果未知）· 够不着那台。没成的几形都带那一句。 */
 export type OpenEnd =
   | { kind: "opened"; opened: Opened }
   | { kind: "refused"; code: string; said: string; data: unknown; detail: string }
   | { kind: "pending"; said: string }
-  | { kind: "timeout"; detail: string }
+  | { kind: "timeout"; said: string; detail: string }
   | { kind: "unreachable"; said: string; detail: string };
 
 /** 只问、只分结局，不出声。 */
@@ -47,7 +47,7 @@ export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<Open
       if (r) return { kind: "refused", code: r.code, said: r.message, data: r.data, detail };
     }
     // 发出去了、没等到回话 ⇒ 结果未知，不说失败。
-    if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", detail };
+    if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", said: copyText("sessionOpen.timeout.title", { machine: machineName(origin) }), detail };
     return { kind: "unreachable", said: saidOfTransport(origin, err), detail };
   }
 }
@@ -120,23 +120,13 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
       match: o.sid !== null ? { sid: o.sid } : { cwd: o.cwd! },
       tmuxName: o.session,
       arrived: {
-        title: req.what.kind === "new" ? copyText("sessionOpen.arrived.new") : copyText("sessionOpen.arrived.resume"),
+        title: copyText("sessionOpen.arrived.title"),
         body: arrivedBody(origin),
       },
       ...(o.cwd !== null ? { slot: { cwd: o.cwd, agent: o.agent } } : {}),
     });
   }
   return true;
-}
-
-/** 没成的那一形那一句：那台写的（拒 · 还在起）· 期限到 · 够不着。 */
-export function endSaid(origin: Origin, end: Exclude<OpenEnd, { kind: "opened" }>): string {
-  switch (end.kind) {
-    case "timeout":
-      return copyText("sessionOpen.timeout.title", { machine: machineName(origin) });
-    default:
-      return end.said;
-  }
 }
 
 /** 没成的那几形各说一句；按钮只有两种：选不了号 ⇒ 改用那台给的替代（没有 ⇒ 不指定账号）· 不是这个会话的 ⇒ 对齐后重试。 */
@@ -146,7 +136,7 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
     return;
   }
   if (end.kind !== "refused") {
-    toast(endSaid(origin, end), "", { detail: end.detail });
+    toast(end.said, "", { detail: end.detail });
     return;
   }
   const [title, body] = lines(end.said);

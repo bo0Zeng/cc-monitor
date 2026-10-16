@@ -3,7 +3,7 @@
  *
  * 一个动作 ＋ 一个容器 ＋ 若干正交修饰（账号 · 模型 · 身份标记 · 启动期令牌）。它被摊成线上请求交给那台后端，
  * 渲出来的永远是一行 `ccm …`（`launch-cli-wire.ts::buildCliRenderRequest` → 帧命令 `launch-render-cli`）；
- * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做，界面一句 shell 都不拼。
+ * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做。界面已不用：只给 `launch-render-cli` 的期望表与 e2e 驱动，随那条命令一起删。
  */
 
 /** 起会话就是起会话，attach 就是 attach，不要 `or`。 */
@@ -17,8 +17,8 @@ export type LaunchAction =
   | { kind: "attach"; name: string };
 
 /** 起会话那一格「用哪个号」（线上 `AccountAsk`：跟随 · 账号 0 · 用户点名）—— 判定在那台后端。 */
-export type { AccountAsk as LaunchAccount } from "./generated/AccountAsk";
-import type { AccountAsk } from "./generated/AccountAsk";
+export type { AccountAsk as LaunchAccount } from "../../src/frontend/ui/generated/AccountAsk";
+import type { AccountAsk } from "../../src/frontend/ui/generated/AccountAsk";
 
 /**
  * 正交修饰：要哪个号（缺席 ＝ 跟随，同那台后端的缺省）。启动命令 · 模型偏好表住那台后端（`prefs.json`），不随请求交。

@@ -32302,16 +32302,10 @@
       "args": ["machine", "name"],
       "limited": ["tmux"]
     },
-    "sessionOpen.arrived.resume": {
+    "sessionOpen.arrived.title": {
       "kind": "body",
       "role": "片段",
-      "zh": "已恢复",
-      "args": []
-    },
-    "sessionOpen.arrived.new": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已新建",
+      "zh": "已启动",
       "args": []
     },
     "sessionOpen.timeout.title": {

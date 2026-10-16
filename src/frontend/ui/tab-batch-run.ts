@@ -12,7 +12,7 @@ import { copyText } from "./copy-table";
 import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
 import type { Run } from "./generated/Run";
-import { askOpen, endSaid, ON_LANDED } from "./session-open";
+import { askOpen, ON_LANDED } from "./session-open";
 import type { Outcome } from "./generated/Outcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { failSaid } from "./kit/detail";
@@ -121,7 +121,7 @@ async function startOne(origin: Origin, sid: string, run: Run): Promise<BatchOut
   const end = await askOpen(origin, { what: { kind: "resume", sid }, run, local: isLocalOrigin(origin) });
   if (end.kind !== "opened") {
     const detail = end.kind === "pending" ? "" : end.detail;
-    return { sid, outcome: "failed", why: endSaid(origin, end), ...(detail !== "" ? { detail } : {}) };
+    return { sid, outcome: "failed", why: end.said, ...(detail !== "" ? { detail } : {}) };
   }
   const o = end.opened;
   if (o.landed === "running") return { sid, outcome: "skipped", why: copyText("tabBatch.why.running", { name: o.session ?? "" }) };

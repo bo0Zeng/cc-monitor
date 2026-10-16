@@ -9,8 +9,8 @@
 import {
   planResumeDirect,
   planAttach,
-} from "../../../src/frontend/ui/launch-requests.ts";
-import { buildCliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire.ts";
+} from "../../test-support/launch-requests.ts";
+import { buildCliRenderRequest } from "../../test-support/launch-cli-wire.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
