@@ -217,7 +217,7 @@
     "peerVersion.said.framesDiffer": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 后端版本不同 · 部分内容收不到，需更新",
+      "zh": "{machine} 后端版本不同 · 需更新",
       "args": ["machine"]
     },
     "peerVersion.said.unreadable": {

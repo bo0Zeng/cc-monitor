@@ -751,6 +751,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
+    // 一行的 `kind`（帧门与解帧共用）：界面不解线上帧，TS 侧没有孪生。
+    kind_of: NONE,
     as_wire: NONE,
     // 帧表（`frame_shapes` · `frame::gated_tys`）与指纹算法（`fingerprint`，测试档）：两端比的那一张由类型现算；界面不比，TS 侧没有孪生。
     FRAMES: NONE,
@@ -766,6 +768,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "copy-core": {
     backend_old: "J22",
     backend_differs: NONE,
+    // 帧种形状对不上那一句（`copy-core::backend_frames_differ`）只在通信层：它在握手那一刻比帧表、写好带机器名的那一句。
+    backend_frames_differ: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。
