@@ -844,18 +844,23 @@ data class ReadTextReply(
     val sha256: String,
 )
 
-@WireOf("HexBytes")
+// ── 上传提交撞了同名（码 `exists` 的 `data`）：要放过去的 → 已有的。 ──
+
+@WireOf("Conflicts")
 @JsonClass(generateAdapter = true)
-data class HexBytes(
-    val b16: String,
+data class Conflicts(
+    val conflicts: List<Conflict>,
 )
 
-@WireOf("ReadChunkReply")
+@WireOf("Conflict")
 @JsonClass(generateAdapter = true)
-data class ReadChunkReply(
-    val size: Long,
-    val eof: Boolean,
-    val content: HexBytes,
+data class Conflict(
+    val name: Any,
+    val size: Long?,
+    @Json(name = "mtime_text") val mtimeText: String?,
+    @Json(name = "there_size") val thereSize: Long?,
+    @Json(name = "there_mtime_text") val thereMtimeText: String?,
+    @Json(name = "dir_into") val dirInto: Boolean,
 )
 
 // ── 一组的回包（`files-delete` · `files-chmod`：手机一次只交一项）：逐项结局 ＋ 后端拼好的那一句。 ──

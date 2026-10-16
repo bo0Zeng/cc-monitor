@@ -394,6 +394,8 @@ def files_page():
     d = f"files{T}"
     # 上几趟留下的先清掉（台架家里的），这一趟那一份要在第一屏里。
     sh(f"rm -rf ~/work/files* && mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
+    # 11b 量大文本编辑用的那一份：接近编辑上限（8 MB），一行 80 字。
+    sh(f"yes 'line of text 0123456789 abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123' | head -c 7900000 > ~/work/{d}/big.txt")
     drawer(t("mobDrawer.item.files"))
     if not wait("work", 30):
         raise Step.Fail("家目录没列出来")
@@ -467,6 +469,76 @@ def files_page():
         raise Step.Fail("上传落到那台之后，提交 · 重列两问的期限都过了，忙线还在")
     if ui.find(up) is None:
         raise Step.Fail("上传完、重列也回来了，列表里没有它")
+    # 同一份再传一次：那台说同名 ⇒ 底部抽屉问（标题 · 那台那一句 · 要放过去的 → 已有的）⇒［保留两份］⇒ 那台另起名放下，块不重送。
+    tap(t("rsFilewinUpload.label.upload"))
+    if not wait(up, 15):
+        tap("Downloads", must=False) or tap("Download", must=False)
+    tap(up)
+    if not wait(t("rsFilewinBatch.btn.keepBoth"), 2 * FILES_ASK_S):
+        raise Step.Fail("同名再传一次，没出冲突抽屉")
+    if ui.find(t("rsFilewinBatch.ask.title", action=t("rsFilewinBatch.verb.upload"), n=1, dir="")[:4]) is None:
+        raise Step.Fail("冲突抽屉的标题不是「上传 1 项到 …」")
+    shot("11-上传同名")
+    tap(t("rsFilewinBatch.btn.keepBoth"))
+    both = up.replace(".txt", " (2).txt")
+    end = time.time() + 2 * FILES_ASK_S
+    while time.time() < end and f"up {T}" not in sh(f"cat ~/work/{d}/'{both}' 2>/dev/null; true"):
+        time.sleep(1)
+    if time.time() >= end:
+        raise Step.Fail(f"答了保留两份，那台上没有 {both}")
+
+
+def big_text():
+    """量法（只记数、不判红绿）：接近编辑上限（8 MB）的一份文本开编辑页 —— 首帧 · 滚动帧 · 敲字之后的帧 · 内存 · 有没有 ANR。
+    数写进 `bigtext.txt` 与输出；开着那一页不再 dump 界面（整份字会进 dump），量完按返回收掉。"""
+    name = "big.txt"
+    if not wait(name, 15):
+        raise Step.Fail("那份大文本没列出来")
+    pss = lambda: re.search(r"TOTAL PSS:\s+(\d+)", adb("shell", "dumpsys", "meminfo", PKG)) or re.search(r"TOTAL\s+(\d+)", adb("shell", "dumpsys", "meminfo", PKG))
+    before = pss()
+    long_press(name)
+    adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
+    wins = lambda: adb("shell", "dumpsys", "window", "windows").count(PKG)
+    base = wins()
+    tap(t("rsFilewinEditor.label.edit"))
+    t0 = time.time()
+    first = None
+    while time.time() - t0 < 120:
+        if wins() > base:
+            first = time.time() - t0
+            break
+        time.sleep(0.2)
+    open_gfx = adb("shell", "dumpsys", "gfxinfo", PKG)
+    adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
+    size = adb("shell", "wm", "size").split()[-1].split("x")
+    w, h = int(size[0]), int(size[1])
+    for _ in range(5):
+        adb("shell", "input", "swipe", str(w // 2), str(h * 2 // 3), str(w // 2), str(h // 3), "300")
+    scroll_gfx = adb("shell", "dumpsys", "gfxinfo", PKG)
+    adb("shell", "dumpsys", "gfxinfo", PKG, "reset")
+    adb("shell", "input", "tap", str(w // 2), str(h // 2))
+    t1 = time.time()
+    adb("shell", "input", "text", "xyz")
+    typed_s = time.time() - t1
+    type_gfx = adb("shell", "dumpsys", "gfxinfo", PKG)
+    after = pss()
+    anr = "ANR in " + PKG in adb("logcat", "-d", "-s", "ActivityManager:E")
+    pick = lambda g: " · ".join(m.group(0) for m in re.finditer(r"(Total frames rendered|Janky frames|90th percentile|99th percentile): [^\n]+", g))
+    said = "\n".join([
+        f"首帧（点「编辑」到那一页的窗口出来，含读回那 8 MB）: {first if first is None else round(first, 2)} s",
+        f"开页那一段: {pick(open_gfx)}",
+        f"滚动 5 下: {pick(scroll_gfx)}",
+        f"敲 3 个字（input 回来用时 {round(typed_s, 2)} s）: {pick(type_gfx)}",
+        f"内存 PSS: {before and before.group(1)} KB → {after and after.group(1)} KB",
+        f"ANR: {anr}",
+    ])
+    open(os.path.join(OUT, "bigtext.txt"), "w").write(said + "\n")
+    print(said, flush=True)
+    shot("11b-大文本编辑")
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(1)
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(2)
 
 
 # 轮换屏那一步用的两份策略（合成的：照号牌顺序用；一格「权重容差」）。写进台架家里的策略目录（不是真家目录）。
@@ -724,6 +796,8 @@ def walk():
             drawer(t("mobDrawer.item.chats"))
         with Step("11-文件页"):
             files_page()
+        with Step("11b-大文本编辑"):
+            big_text()
         return report()
 
     with Step("1-加机器连上"):
@@ -1210,6 +1284,9 @@ def walk():
     with Step("11-文件页"):
         launch()
         files_page()
+
+    with Step("11b-大文本编辑"):
+        big_text()
 
     report()
 

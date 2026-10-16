@@ -7,8 +7,8 @@ description = "分块传的循环（上传：逐块进那台的暂存区 ＋ 整
 
 [dependencies]
 cmd-wire = { path = "../cmd-wire" }
-# 两棵 workspace 各锁一版（后端那棵 0.11、壳那棵 0.10），本 crate 只用两版共有的那几口。
-sha2 = ">=0.10, <0.12"
+# 两棵 workspace 里同一份源码要拿到同一版依赖（两份 lock 的真冲突判据）：钉壳那棵那一版；后端那棵另有 0.11 给 SSH 那一树。
+sha2 = "0.10"
 
 [dev-dependencies]
 serde_json = "1"

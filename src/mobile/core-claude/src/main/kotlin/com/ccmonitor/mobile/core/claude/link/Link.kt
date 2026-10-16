@@ -84,6 +84,32 @@ interface CoreLink {
         args: Map<String, Any?>? = null,
         withinMs: Long = DEFAULT_CALL_MS,
     ): Reply
+
+    /**
+     * 分块传（循环在核心里，桌面同一份）：[fd] 现开本机那一份、交出描述符（核心用完就关；开不了就抛 [java.io.IOException]）。
+     * 每一块等至多 [withinMs]，走到哪经 [moved]（已过字节 · 总数，不知道 ⇒ `-1`）；结局同 [call]。
+     * [Transfer.Stage]：送进那台的暂存区，成了 ⇒ `{key, chunks, bytes, sha256}`；[Transfer.Pull]：读回写进本机那一份，成了 ⇒ `{bytes}`。
+     */
+    suspend fun transfer(
+        how: Transfer,
+        fd: () -> Int,
+        withinMs: Long,
+        moved: (Long, Long) -> Unit,
+    ): Reply
+}
+
+/** 分块传哪一半（[CoreLink.transfer]）。 */
+sealed interface Transfer {
+    /** 上传那一半；[name] 是本机那一份在句子里的名字。 */
+    data class Stage(
+        val name: String,
+    ) : Transfer
+
+    /** 下载：那台上的 [path] 读回；[shown] 是本机落点在句子里的名字。 */
+    data class Pull(
+        val path: RemotePath,
+        val shown: String,
+    ) : Transfer
 }
 
 /** 一问一答默认等多久。 */
