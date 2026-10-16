@@ -483,9 +483,7 @@ fn background_warmers_run_at_low_priority() {
         i64::from(crate::platform::proc::BACKGROUND_NICE).max(before)
     );
     assert_eq!(nice_of_this_thread(), before, "降到了别的线程身上");
-    let src = guard_core::production_code(include_str!(
-        "../../../src/backend/history/listing.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/history/listing.rs"));
     assert!(
         src.contains("crate::platform::proc::lower_this_thread();"),
         "history/listing.rs 的后台热缓存线程没降优先级"

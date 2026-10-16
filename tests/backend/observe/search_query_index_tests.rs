@@ -303,9 +303,8 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
 /// 文本判（如实登记：按行为量要起真二进制再从外面看索引）；表与它的锁是本模块私有的，别处够不着，只需看这一份。
 #[test]
 fn fix_only_a_question_fills_the_resident_index() {
-    let src = guard_core::production_code(include_str!(
-        "../../../src/backend/observe/search_query.rs"
-    ));
+    let src =
+        guard_core::production_code(include_str!("../../../src/backend/observe/search_query.rs"));
     let fn_name = |line: &str| {
         let rest = guard_core::strip_visibility(line.trim_start())
             .trim_start()
