@@ -35,7 +35,7 @@ pub(crate) struct Picked {
 /// 以 `BACKEND_EMBEDDED_ID` 交来）。没内嵌（开发树 · 工作树）⇒ `None`：手上没有可放的字节，不判那台旧、
 /// 不发起换装，只按那台报的接，并说一句版本不可比。没有兜底串。
 ///
-/// 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · `resident-verdict` · 本机常驻 hello · Windows 预检都只读它。
+/// attach 行里的 `mine` · 跳预检 · 已验版本记忆 · 本机常驻 hello · Windows 预检都只读它。
 pub(crate) const fn my_backend_id() -> Option<&'static str> {
     option_env!("BACKEND_EMBEDDED_ID")
 }

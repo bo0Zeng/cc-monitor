@@ -753,6 +753,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     decode: NONE,
     // 一行的 `kind`（帧门与解帧共用）：界面不解线上帧，TS 侧没有孪生。
     kind_of: NONE,
+    // 接常驻流那两行（`attach`）的一整行写法：握手只在 Rust 那几端（后端 · 通信层 · 本机宿主），界面不握手，TS 侧没有孪生。
+    line: NONE,
     as_wire: NONE,
     // 帧表（`frame_shapes` · `frame::gated_tys`）与指纹算法（`fingerprint`，测试档）：两端比的那一张由类型现算；界面不比，TS 侧没有孪生。
     FRAMES: NONE,
@@ -770,6 +772,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     backend_differs: NONE,
     // 帧种形状对不上那一句（`copy-core::backend_frames_differ`）只在通信层：它在握手那一刻比帧表、写好带机器名的那一句。
     backend_frames_differ: NONE,
+    // 接上时那台较新 · 新旧比不出那两句同上：通信层按那台在 attach 回话里给的新旧写好，界面只照抄。
+    backend_newer: NONE,
+    backend_incomparable: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。

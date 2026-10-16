@@ -120,7 +120,7 @@ pub(crate) const STREAM_PLACES: &[(&str, &[(&str, &str)])] = &[
     ("session_removed", &[("", "session_removed")]),
 ];
 
-/// **一条流的出口声明**（attach 行的 `view` · 流模式起参 `--view`）：与请求信封的 `view` 同一套词、同一处解（[`parse_view`]）、
+/// **一条流的出口声明**（流模式起参 `--view`）：与请求信封的 `view` 同一套词、同一处解（[`parse_view`]）、
 /// 同一处裁（[`project_reply`]）；只许点推送帧里住着的那几件成品（[`STREAM_PLACES`]）。应答不受它管（应答各按各的请求信封）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamView(View);
@@ -184,27 +184,6 @@ pub fn to_line_viewed(
     let mut s = serde_json::to_string(&v)?;
     s.push('\n');
     Ok(s)
-}
-
-/// attach 行里这条连接要什么（`{"attach":true,"tz":"Asia/Shanghai","view":{…}}`）：`tz` 同 [`crate::wire::cli_words::TZ_FLAG`]（认不得 ⇒ UTC）·
-/// `view` 同请求信封的声明（[`StreamView`]；缺 ＝ 全量）。别的键（`attach` 以外）· 声明认不出 ⇒ `Err`（当 malformed 拒）。
-/// 每条连接各按自己的这一行定，不看进程起参。
-pub fn attach_flags(line: &str) -> Result<Option<StreamWants>, ()> {
-    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
-    let o = v.as_object().ok_or(())?;
-    if o.keys()
-        .any(|k| !matches!(k.as_str(), "attach" | "tz" | "view"))
-    {
-        return Err(());
-    }
-    let view = match o.get("view") {
-        Some(decl) => StreamView::parse(decl).map_err(|_| ())?,
-        None => None,
-    };
-    Ok(Some(StreamWants {
-        tz: o.get("tz").map(crate::Tz::of).unwrap_or_default(),
-        view,
-    }))
 }
 
 #[cfg(test)]

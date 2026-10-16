@@ -1,7 +1,7 @@
 //! **装 / 升级远端后端的判定与编排**：桌面与手机同一份。
 //!
 //! 照桌面五步走：① 出计划（[`plan`]）· ② 取字节 ＋ 自检 · ③ 放 ＋ 读回（`ssh_dial::sftp::put_verified`）· ④ 判读回 ＋ 收拾残件 ·
-//! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`，[`resident_verdict`] 判换不换）。
+//! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`；新旧由那台常驻后端回 attach 行时判）。
 //!
 //! - 桌面：本机常驻后端答帧命令 `deploy-plan`（`control/deploy_plan.rs`，薄薄一层：入参 · 回包形状 · 码）调 [`plan`]；
 //!   字节在 monitor 手里，②④ 由 monitor 照计划做，③ 经后端那条 `files` 链路落到 `put_verified`。
@@ -19,8 +19,8 @@ use std::pin::Pin;
 
 use copy_core::copy_text;
 use deploy_contract::{
-    build_relation, Arch, BuildRelation, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity,
-    Route, LINES,
+    build_relation, Arch, DeployAction, Key, Marks, Os, Refusal, Relation, RemoteIdentity, Route,
+    LINES,
 };
 use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
@@ -173,7 +173,7 @@ pub fn identity_decision(
             &[],
         ))),
         RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
-        RemoteIdentity::Stamp(s) if build_relation(s, expected) == BuildRelation::Older => {
+        RemoteIdentity::Stamp(s) if build_relation(s, expected) == Relation::Older => {
             Ok(DeployAction::Deploy(copy_text(
                 "rsSftp.identity.other",
                 &[("s", &s.to_string()), ("expected", &expected.to_string())],
@@ -436,24 +436,6 @@ impl Facing for DialFacing {
             let s = self.session().await.ok()?;
             ssh_dial::sftp::list_dir(s, rel).await
         })
-    }
-}
-
-// ═══ 远端常驻后端 hello 的新旧 ═══════════════════════════
-
-/// hello 那一问的答：`replace` = 换掉再接（只升不降，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
-#[derive(Debug, PartialEq, Eq)]
-pub struct Verdict {
-    pub replace: bool,
-    pub older: bool,
-}
-
-/// **纯函数**：`mine` = 手上这一版自报的身份 · `theirs` = 那台 hello 报的 · `replaced` = 这一趟已经换过一次。
-pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
-    let older = build_relation(theirs, mine) == BuildRelation::Older;
-    Verdict {
-        replace: older && !replaced,
-        older,
     }
 }
 

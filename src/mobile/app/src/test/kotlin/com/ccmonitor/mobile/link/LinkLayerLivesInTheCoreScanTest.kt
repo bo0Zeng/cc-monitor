@@ -13,7 +13,7 @@ import java.io.File
  * | # | 问什么 |
  * |---|---|
  * | ① | 那几样从前的 Kotlin 链路层（`ResidentLink` · `FrameClient` · `BackendFeed` · `OneShot` · `BackendGate` · `WatchList` · `BackendBin` · `LineFramer` · `RemoteDuplex`）一个都没有声明 |
- * | ② | 链路层的线上词（请求信封的 `within_ms` · 撤单的 `cancel` · 版本门的 `resident-verdict` · 在看名单的 `stream-watch` · 接流与起常驻的子命令）在生产字面里一个都没有 |
+ * | ② | 链路层的线上词（请求信封的 `within_ms` · 撤单的 `cancel` · 在看名单的 `stream-watch` · 接流与起常驻的子命令）在生产字面里一个都没有 |
  * | ③ | 退避的数不在 Kotlin 里：没有 `Backoff` 声明，也没有「活过多久才算站住」那个名字（`HEALTHY_MS`）—— 两端同一份在核心里 |
  *
  * 判别力押在阳性对照上（每一条先喂一份合成样本证明认得出）。看不见拼接 · 反射，防手滑不防故意。
@@ -77,7 +77,7 @@ class LinkLayerLivesInTheCoreScanTest {
         val OLD_LINK_LAYER = listOf("ResidentLink", "FrameClient", "BackendFeed", "OneShot", "BackendGate", "WatchList", "BackendBin", "LineFramer", "RemoteDuplex")
 
         // 「attach」不在表里：它也是终端那几问里的一个动作词（`"kind" to "attach"`），不是握手。
-        val WIRE_WORDS = listOf("within_ms", "cancel", "resident-verdict", "stream-watch", "--resident-attach", "--resident-ensure")
+        val WIRE_WORDS = listOf("within_ms", "cancel", "stream-watch", "--resident-attach", "--resident-ensure")
         val BACKOFF_NAMES = listOf("Backoff", "HEALTHY_MS")
     }
 }

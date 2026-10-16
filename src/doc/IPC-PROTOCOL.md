@@ -11,7 +11,7 @@
 | 载体 | 谁用 | 怎么接 |
 |---|---|---|
 | SSH exec | 远端（monitor 经本机常驻后端的连接池 · 第二个前端直连） | `ccm -- --stream …`：后端写 stdout、读 stdin |
-| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；先读 hello，再交一行 `{"attach":true}`（可带 `"tz"` · `"view"`，见 §2；别的键一律当 malformed），回 `{"attach":"ok"}` 或 `{"attach":"refused","reason":"malformed-attach"}`；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
+| 常驻套接字 | 本机常驻后端 · 远端常驻后端（经 `link-open` 的 `use:"stream"` 在那台跑 `ccm -- --resident-attach` 小中继，原样对拷） | Unix 套接字 `<家>/run/backend.sock`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；目录只给本人，收连接时核对端 uid，没有钥匙）；连上就交一行 `{"attach":true}`（可带 `"tz"` · `"mine"`，见 §2；别的键一律当 malformed；不必等 hello，hello 写在分档之前），再读 hello、读回话：`{"attach":"ok"}`（带了 `mine` ⇒ 多一格 `"relation":"same"|"older"|"newer"|"incomparable"`，这台相对 `mine`，序键是 `BUILD_ID` 的）或 `{"attach":"refused","reason":"malformed-attach"}`（认不得这一形的就是比这一形早的，客户端当旧）；中继找不到或够不着那台常驻时第一行就是 `{"attach":"refused","reason":"absent"|"unreachable"}`；这台一份 watcher（会话账本 · 记录读者 · 运行簿整台一份，记录整台只预读一次），每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ 入方向 / writer |
 | 一次性 exec | CLI 子命令（脚本 · skill · 第二个前端的查询） | `ccm -- --子命令 …`，干完即退、不进流 |
 
 后端二进制叫 `ccm`（`~/.cc-monitor/bin/ccm`）：零参数是「起会话」，打头的 `--` 之后才归后端（`<交给 claude 的…> -- <ccm 自己的…>`）。
@@ -27,11 +27,12 @@
 | 载体 | 怎么交 |
 |---|---|
 | SSH exec / stdio（CLI 那一臂） | `ccm -- --stream [--tz <IANA 名>] [--view <声明>]`。`--stream` 是「我是流模式」的显式词；`--view` 的值同 §8 CLI 面那一格（JSON 原样或 base64）。声明认不出 ⇒ 不起流：stderr 一行失败信封（`bad_args`）、退出 2 |
-| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","view":{…}}`：两格都可缺；声明认不出 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
+| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>"}`：两格都可缺；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
 
 - **`tz`**：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。见 §4「时刻按谁的钟」。
-- **`view`**：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_state` · `session_removed`（整帧就是那件成品，`kind` 不受裁）。
-  点了别的成品 ⇒ 当认不出。缺 ＝ 全量。应答不受它管（应答各按各的请求信封）。例：桌面远端那条流交 `{"omit":{"session_added":["pid"]}}`（那台的 pid 只有本机 ↗ 绑窗口用得上）。
+- **`view`**（只 CLI 那一臂）：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_state` · `session_removed`（整帧就是那件成品，`kind` 不受裁）。
+  点了别的成品 ⇒ 当认不出。缺 ＝ 全量。应答不受它管（应答各按各的请求信封）。
+- **`mine`**（只常驻那条）：手上这一版的 `BUILD_ID`；回话里那一格 `relation` 由它算，客户端不另问新旧。
 
 ### 流只发要看的会话
 

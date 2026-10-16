@@ -118,7 +118,9 @@ pub fn restart_after(plan: &deploy::Plan, theirs: Option<&str>) -> bool {
     match &plan.action {
         DeployAction::Deploy(_) => true,
         DeployAction::Skip => {
-            theirs.is_none_or(|t| deploy::resident_verdict(&plan.expected, t, false).replace)
+            theirs.is_none_or(|t| {
+                deploy_contract::build_relation(t, &plan.expected) == deploy_contract::Relation::Older
+            })
         }
         DeployAction::Keep { .. } => false,
     }

@@ -31,17 +31,9 @@ pub enum MachineStateKind {
     Unknown,
 }
 
-/// 那台与这一版的版本关系（连上时判一次）；`incomparable` ＝ 手上没带后端字节（开发树），不判旧、不自动换装。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum VersionRelation {
-    Same,
-    Older,
-    Newer,
-    Incomparable,
-}
+// 那台与这一版的版本关系（连上时判一次；类型住 `cmd-wire`，那台在 attach 回话里给的就是它）：
+//   `incomparable` ＝ 序解不出 · 手上没带后端字节（开发树），不判旧、不自动换装。
+pub use cmd_wire::attach::Relation;
 
 /// 那一行上给的修法（闭集；界面按它摆按钮，按钮名在文案表）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -73,7 +65,7 @@ pub struct MachineState {
     /// 不同的那台报不出它的号（握手只带构建标识）⇒ 空；开发构建 ⇒ 空（关系是 `incomparable`）。构建标识只进日志与诊断信息。
     pub version: Option<String>,
     /// 与这一版的版本关系（握手过才有）。
-    pub version_relation: Option<VersionRelation>,
+    pub version_relation: Option<Relation>,
     /// 那台的系统（`Linux` · `macOS` · `Windows`；部署计划问到过才有）。
     pub os: Option<String>,
     /// 那一行上给的修法（按 `state` 与 `reason` 定）。
@@ -94,7 +86,7 @@ struct Entry {
     reason: Option<String>,
     stage: Option<String>,
     version: Option<String>,
-    relation: Option<VersionRelation>,
+    relation: Option<Relation>,
     os: Option<String>,
     /// 拨号那一层最近一次没拨成的原因码（这一轮收尾时用）。
     dial_why: Option<String>,
@@ -158,8 +150,8 @@ pub(crate) fn connecting(origin: &str, stage: &str) {
 pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// 与这一版同一份字节 ⇒ 这一版的号；别的报不出 ⇒ `None`。
-fn product_version(relation: VersionRelation) -> Option<String> {
-    (relation == VersionRelation::Same).then(|| PRODUCT_VERSION.to_string())
+fn product_version(relation: Relation) -> Option<String> {
+    (relation == Relation::Same).then(|| PRODUCT_VERSION.to_string())
 }
 
 /// 正在把这一版放上去：`first` ＝ 那台还没有（装）；否则是换掉旧的（更新）。
@@ -187,13 +179,13 @@ pub(crate) fn deploying_auto(origin: &str) {
 }
 
 /// 握手成了：那台报的构建标识（只进日志）＋ 与这一版的关系。
-pub(crate) fn up(origin: &str, build: &str, relation: VersionRelation) {
+pub(crate) fn up(origin: &str, build: &str, relation: Relation) {
     tracing::info!("[machine] {origin} 连上：构建 {build} · 与这一版 {relation:?}");
     with(origin, |e| {
         e.state = Some(match relation {
-            VersionRelation::Older => MachineStateKind::NeedsUpdate,
-            VersionRelation::Newer => MachineStateKind::Newer,
-            VersionRelation::Same | VersionRelation::Incomparable => MachineStateKind::Up,
+            Relation::Older => MachineStateKind::NeedsUpdate,
+            Relation::Newer => MachineStateKind::Newer,
+            Relation::Same | Relation::Incomparable => MachineStateKind::Up,
         });
         e.reason = None;
         e.stage = None;
@@ -363,19 +355,15 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         .unwrap_or_else(|e| e.into_inner())
         .clone();
     let relation = match (channel, mine, foreign.as_deref()) {
-        (true, Some(_), _) => VersionRelation::Same,
-        (false, Some(m), Some(theirs)) => match deploy_contract::build_relation(theirs, m) {
-            deploy_contract::BuildRelation::Older => VersionRelation::Older,
-            deploy_contract::BuildRelation::Newer => VersionRelation::Newer,
-            deploy_contract::BuildRelation::Incomparable => VersionRelation::Incomparable,
-        },
-        (false, Some(_), None) => VersionRelation::Same,
-        (_, None, _) => VersionRelation::Incomparable,
+        (true, Some(_), _) => Relation::Same,
+        (false, Some(m), Some(theirs)) => deploy_contract::build_relation(theirs, m),
+        (false, Some(_), None) => Relation::Same,
+        (_, None, _) => Relation::Incomparable,
     };
     let state = match (channel, relation) {
         (true, _) => MachineStateKind::Up,
-        (false, VersionRelation::Older) => MachineStateKind::NeedsUpdate,
-        (false, VersionRelation::Newer) => MachineStateKind::Newer,
+        (false, Relation::Older) => MachineStateKind::NeedsUpdate,
+        (false, Relation::Newer) => MachineStateKind::Newer,
         (false, _) => MachineStateKind::Down,
     };
     let reason = (!channel).then(|| LOCAL_DOWN.to_string());
@@ -384,7 +372,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         fixes: fixes_of(state, reason.as_deref()),
         reason,
         stage: None,
-        version: (relation == VersionRelation::Same).then(|| PRODUCT_VERSION.to_string()),
+        version: (relation == Relation::Same).then(|| PRODUCT_VERSION.to_string()),
         version_relation: Some(relation),
         os: None,
         seen_host_key: None,

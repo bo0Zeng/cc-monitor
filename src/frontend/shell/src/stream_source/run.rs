@@ -1,14 +1,12 @@
 //! 远端一台的那条流，monitor 这一侧。**重连循环不在这里**：断线重连 · 握手 · ensure · 版本门（旧了换装）· 退避都是
 //! `resident-client` 那一条（[`Feed`]，手机同一份；全仓只这一处，`one_loop_guard`）。这里只接宿主那几根线：
-//! - 链路（[`DeskLink`]）：本机常驻后端给的那条（`dial_host`）· 每一轮之前的部署预检 · 版本门问本机常驻后端（装得了后端）；
+//! - 链路（[`DeskLink`]）：本机常驻后端给的那条（`dial_host`）· 每一轮之前的部署预检 · 装得了后端（那台旧了换装）；
 //! - 循环交出来的事落到哪（[`consume_remote`]）：登记表 · 机器状态 · 会话账本 · 会话流 · 攒批 · 旁路快照。
 
 use super::*;
 use crate::event_replay::EventReplay;
 use crate::session_book::In as BookIn;
-use resident_client::feed::{
-    Boxed, Event, Exec, Feed, Install, Problem, Progress, State, Transport,
-};
+use resident_client::feed::{Boxed, Event, Exec, Feed, Problem, Progress, State, Transport};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -85,23 +83,8 @@ impl Transport for DeskLink {
         Box::pin(preflight(&self.cfg, &self.health))
     }
 
-    fn installer(&self) -> Option<&dyn Install> {
-        Some(self)
-    }
-}
-
-impl Install for DeskLink {
-    fn verdict<'a>(
-        &'a self,
-        mine: &'a str,
-        theirs: &'a str,
-        replaced: bool,
-    ) -> Boxed<'a, Result<resident_client::gate::Verdict, Problem>> {
-        Box::pin(async move {
-            crate::remote_resident::ask_verdict(mine, theirs, replaced)
-                .await
-                .map_err(problem_of)
-        })
+    fn installs(&self) -> bool {
+        true
     }
 }
 
@@ -275,16 +258,19 @@ pub(crate) async fn consume_remote(
         };
         match ev {
             Event::Attached { hello, client } => attached = Some((hello, client)),
-            Event::State(State::Up { notice, .. }) => {
+            Event::State(State::Up {
+                relation, notice, ..
+            }) => {
                 let Some((hello, client)) = attached.take() else {
-                    continue; // 同一条连接补交的那一句（装得了后端的这一侧不会有）
+                    continue;
                 };
                 conn = Some(on_attached(
                     &cfg,
                     Round {
                         replay: &replay,
                         health: &health,
-                        remote_older: notice.is_some(),
+                        relation,
+                        notice: notice.as_ref(),
                         t_connect_start: round_started,
                     },
                     &hello,
@@ -432,8 +418,10 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
 struct Round<'a> {
     replay: &'a Arc<EventReplay>,
     health: &'a HealthOut,
-    /// 接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
-    remote_older: bool,
+    /// 那台相对手上这一版（那台在 attach 回话里判的）。
+    relation: cmd_wire::attach::Relation,
+    /// 版本那一句（同一版 ⇒ 无；字由循环那一侧写）。
+    notice: Option<&'a Problem>,
     /// 这一轮连接的起点（`[perf]` 埋点从这里算）。
     t_connect_start: std::time::Instant,
 }
@@ -450,7 +438,8 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     let Round {
         replay,
         health,
-        remote_older,
+        relation,
+        notice,
         t_connect_start,
     } = round;
     let HelloSeen {
@@ -463,22 +452,15 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     );
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。
     replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
-    // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示；类别（要更新 · 较新 · 不可比）
-    // 这里判好（`version_health_kind`），前端按类别挑标题。不 hard-disconnect（向前兼容）。
-    // 手上没带后端字节（「我这一版」是 `None`）⇒ 同一条通道说一句「版本不可比」，照常接。
-    let mine = crate::byte_table::my_backend_id();
-    let rel = version_relation(&build_id, remote_older, mine);
-    crate::machine_state::up(&host_label, &build_id, rel);
-    if let (Some(kind), Some(msg)) = (
-        version_health_kind(rel),
-        version_warning(&build_id, &host_label, remote_older, mine),
-    ) {
-        tracing::warn!("stream_source remote [{host_label}] version: {msg}");
+    // 版本：新旧那台判好（attach 回话），那一句循环那一侧写好；这里按新旧挑类别（界面按它挑标题），照常接、不断开。
+    crate::machine_state::up(&host_label, &build_id, relation);
+    if let (Some(kind), Some(p)) = (version_health_kind(relation), notice) {
+        tracing::warn!("stream_source remote [{host_label}] version: {}", p.text);
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.clone(),
             kind: kind.to_string(),
-            message: msg,
-            detail: String::new(),
+            message: p.text.clone(),
+            detail: p.detail.clone(),
         };
         if let Err(e) = health(payload) {
             tracing::warn!("stream_source remote-health (version) emit failed: {e}");
@@ -491,12 +473,76 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。
     // build_id 不是「我这一版」（或手上没带字节、无从比）⇒ **抹掉**（这台机器上装的不是当前 build，
     // 下一轮必须照跑预检去部署），不是「留着上次的」。
-    if mine == Some(build_id.as_str()) {
+    if crate::byte_table::my_backend_id() == Some(build_id.as_str()) {
         record_verified_build(&host_label, &build_id);
     } else {
         forget_verified_build(&host_label);
     }
 }
+
+/// 版本那条健康信息（`RemoteHealthPayload::kind`）的三类：界面按它挑标题（`remote-health.ts::headlineFor`），不自己判。
+pub(super) const VERSION_KIND_OLDER: &str = "version-older";
+pub(super) const VERSION_KIND_NEWER: &str = "version-newer";
+pub(super) const VERSION_KIND_INCOMPARABLE: &str = "version-incomparable";
+
+/// 新旧 → 健康信息的类别（同 ⇒ 不说）。
+fn version_health_kind(rel: cmd_wire::attach::Relation) -> Option<&'static str> {
+    use cmd_wire::attach::Relation as R;
+    match rel {
+        R::Same => None,
+        R::Older => Some(VERSION_KIND_OLDER),
+        R::Newer => Some(VERSION_KIND_NEWER),
+        R::Incomparable => Some(VERSION_KIND_INCOMPARABLE),
+    }
+}
+
+/// 冷启动预检的自证记忆：远端已经是当前 build 时，每次重连都付的那两条预检连接（`byte_table::probe_key` 的 `uname -s -m` 一次性 exec ·
+/// 读远端 `.build_id` 的那一趟）可以跳过。记的是 hello 自报的 build_id（「这台机器上一次真的跑起来的后端就是当前期望的那个」），不是预检算出来的结论。
+/// 跳的条件只有一个：记忆里那台机器的 build_id 恰好等于「我这一版」（`byte_table::my_backend_id`）；其余一律照跑。
+/// 记忆过期（远端二进制被删 / 换旧）⇒ 这一轮 exec 失败，失败路径清掉记忆 ⇒ 下一轮重新预检并部署。代价是多一次重连。
+static VERIFIED_BUILD: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+/// 纯函数：这一轮能不能跳过那两条预检连接。`verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）；`mine` = 「我这一版」（`None` = 手上没带后端字节）。
+/// 逐字相等，不是包含（前缀相等会把 `abc123` 与 `abc123-dirty` 混为一谈）；`mine` 是 `None` ⇒ 恒不跳。
+fn preflight_can_be_skipped(verified: Option<&str>, mine: Option<&str>) -> bool {
+    matches!((verified, mine), (Some(v), Some(m)) if v == m)
+}
+
+/// 读这台机器的自证记录。
+fn verified_build_of(origin: &str) -> Option<String> {
+    VERIFIED_BUILD.lock().ok()?.as_ref()?.get(origin).cloned()
+}
+
+/// 记下「这台机器上一次真的跑起来的后端是 `build_id`」。
+///
+/// ⚠ **只许在收到 hello 的那一处调**（backend 自报）。别处调就把「自证」变回了「猜」。
+fn record_verified_build(origin: &str, build_id: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        g.get_or_insert_with(HashMap::new)
+            .insert(origin.to_string(), build_id.to_string());
+    }
+}
+
+/// 抹掉这台机器的自证记录（连接没起来 / backend 换了身份）。
+fn forget_verified_build(origin: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        if let Some(m) = g.as_mut() {
+            m.remove(origin);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/coldstart_preflight_guard.rs"]
+mod coldstart_preflight_guard;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/coldstart_perf_guard.rs"]
+mod coldstart_perf_guard;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/stream_flag_gate_tests.rs"]
+mod stream_flag_gate_tests;
 
 /// 收事那一头的接缝：overflow 那一句 · 「hello 之后才登记」等随循环搬走的那几条的去向（文件头注）。
 #[cfg(test)]

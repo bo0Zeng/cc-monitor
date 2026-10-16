@@ -298,7 +298,6 @@ async fn main() {
                     held,
                     hello,
                     agent_home,
-                    wants,
                     own,
                 ) => {}
                 _ = stop => {
@@ -548,8 +547,8 @@ struct Attached {
     reader: tokio::io::BufReader<tokio::io::ReadHalf<own_chan::Stream>>,
     writer: BufWriter<tokio::io::WriteHalf<own_chan::Stream>>,
     hello_flushed: wire::HelloFlushed,
-    /// 这条连接要什么（attach 行里的 `tz` · `view`）；`None` = 用进程起参那一份。
-    flags: Option<StreamWants>,
+    /// 看的这一台的时区（attach 行里的 `tz`）。
+    tz: cc_monitor_backend::Tz,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
@@ -594,32 +593,27 @@ async fn handshake_one(
             return;
         }
     };
-    // flags 写坏了与整行坏了同一格拒（`malformed-attach`）。
-    let flags = inbound::views::attach_flags(&line);
-    let verdict = match (listen::attach_verdict(&line), &flags) {
-        (listen::Verdict::Attach, Err(())) => listen::Verdict::Malformed,
-        (v, _) => v,
-    };
-    match listen::admit(verdict) {
+    match listen::admit(&line, cc_monitor_backend::BUILD_ID) {
         listen::Admit::Refuse(reason) => {
             // **出声地拒**（照 `relay::serve` 那条 503 的形状：宁可拒绝，也不静默 FIN）。
             // 静默 FIN 会让对端只能靠「等了很久没动静」去猜，而那是猜不出原因的。
             let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;
             tracing::warn!("拒绝一条 attach 请求：{reason}");
         }
-        listen::Admit::Stream => {
-            if listen::write_line(&mut w, listen::ATTACH_OK_LINE)
-                .await
-                .is_err()
-            {
+        listen::Admit::Stream { tz, reply } => {
+            if listen::write_line(&mut w, &reply.line()).await.is_err() {
                 return;
             }
+            let tz = tz
+                .as_deref()
+                .and_then(cc_monitor_backend::Tz::named)
+                .unwrap_or_default();
             let _ = attached
                 .send(Attached {
                     reader: r,
                     writer: w,
                     hello_flushed,
-                    flags: flags.unwrap_or(None),
+                    tz,
                 })
                 .await;
         }
@@ -735,7 +729,6 @@ async fn serve_listening(
     _held: cc_monitor_backend::platform::OwnLock,
     hello: Frame,
     agent_home: PathBuf,
-    defaults: StreamWants,
     own: cc_monitor_backend::platform::Own,
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
@@ -778,10 +771,8 @@ async fn serve_listening(
             // ② 有人认证通过 ⇒ 接上这台那份 watcher（先收一份此刻的样子），起流。
             Some(att) = attached_rx.recv() => {
                 let id = clients.join();
-                let Attached { reader, writer, hello_flushed, flags } = att;
-                let wants = flags.unwrap_or_else(|| defaults.clone());
-                let (tz, view) = (wants.tz.clone(), wants.view.clone());
-                let (rx, poke) = watcher.attach(&wants.tz);
+                let Attached { reader, writer, hello_flushed, tz } = att;
+                let (rx, poke) = watcher.attach(&tz);
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -798,7 +789,7 @@ async fn serve_listening(
                     // 一个**空闲**的后端根本没有东西可写 ⇒ 客户走了也不知道 ⇒ 连接计数永远不归零。
                     // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
                     tokio::select! {
-                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz, view) => {
+                        _ = writer_task(writer, rx, reply_rx, tap_rx, tz, None) => {
                             tracing::info!("流结束：写不出去了（客户端走了）");
                         }
                         _ = &mut inbound_task => {

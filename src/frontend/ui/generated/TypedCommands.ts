@@ -333,8 +333,6 @@ import type { Trust } from "./Trust";
 import type { UnfollowReq } from "./UnfollowReq";
 import type { UserInputs } from "./UserInputs";
 import type { UserInputsReq } from "./UserInputsReq";
-import type { VerdictReply } from "./VerdictReply";
-import type { VerdictReq } from "./VerdictReq";
 import type { VerifyReport } from "./VerifyReport";
 import type { WatchAsk } from "./WatchAsk";
 import type { WatchReply } from "./WatchReply";
@@ -494,7 +492,6 @@ export interface TypedCommands {
   "relay-optin": { req: OptinReq; reply: Optin; code: "bad_args" | "failed" };
   "remote-probe": { req: ProbeReq; reply: null; code: "bad_args" | "bad_jump" | "failed" };
   "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };
-  "resident-verdict": { req: VerdictReq; reply: VerdictReply; code: "bad_args" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
   "rotation-day-paint": { req: RotationDayPaintReq; reply: RotationDayPaintReply; code: "bad_args" };

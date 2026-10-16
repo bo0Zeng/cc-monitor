@@ -412,7 +412,7 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-// attach 行（「我要流」＋ 时区 ＋ 出口声明）住 `resident-client`（本机 · 远端 · 手机同一处拼）。
+// attach 行（「我要流」＋ 时区 ＋ 手上这一版）住 `resident-client`（本机 · 远端 · 手机同一处拼）；本机不带这一版（换装只认同一版，`hello_verdict`）。
 pub(crate) use resident_client::attach::attach_line;
 
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
@@ -431,24 +431,13 @@ fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
             )
         })?;
     let line = read_handshake_line(sock)?;
-    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|e| {
-        Said::with_raw(
-            copy_text("rsLocalBackendHost.attach.notJson", &[]),
-            format!("{e}\n{line}"),
-        )
-    })?;
-    match v.get("attach").and_then(|x| x.as_str()) {
-        Some("ok") => Ok(()),
+    match cmd_wire::attach::AttachReply::of(&line) {
+        Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
-        Some("refused") => {
-            let reason = v.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
-            Err(copy_text(
-                "rsLocalBackendHost.attach.refused",
-                &[("reason", &reason.to_string())],
-            )
-            .into())
+        Some(cmd_wire::attach::AttachReply::Refused { reason }) => {
+            Err(copy_text("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
         }
-        _ => Err(copy_text(
+        None => Err(copy_text(
             "rsLocalBackendHost.attach.unreadable",
             &[("line", &line.to_string())],
         )

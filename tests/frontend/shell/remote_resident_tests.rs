@@ -9,35 +9,6 @@ fn hello(build: &str) -> String {
     )
 }
 
-/// 本机常驻后端的答严格收：恰 `{action, older}`，`action` 只认 `replace` / `attach`（金样同 `IPC-PROTOCOL.md` 那一节）。
-#[test]
-fn the_verdict_answer_is_read_strictly() {
-    use serde_json::json;
-    assert_eq!(
-        decode_verdict(&json!({"action": "replace", "older": true})),
-        Ok(Verdict {
-            replace: true,
-            older: true
-        })
-    );
-    assert_eq!(
-        decode_verdict(&json!({"action": "attach", "older": false})),
-        Ok(Verdict {
-            replace: false,
-            older: false
-        })
-    );
-    for bad in [
-        json!({"action": "keep", "older": false}),
-        json!({"action": "attach"}),
-        json!({"action": "attach", "older": "no"}),
-        json!({"action": "attach", "older": false, "extra": 1}),
-        json!(null),
-    ] {
-        assert!(decode_verdict(&bad).is_err(), "{bad}");
-    }
-}
-
 fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::RemoteExec {
     crate::stream_source::RemoteExec {
         stdout: stdout.into(),
@@ -245,8 +216,8 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
     );
 }
 
-// 中继 `absent` 时等着再接的编排 · 「没带字节就不问换不换」随重连循环住 `resident-client`：
-//   `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · `gate_tests.rs::without_an_own_identity_nothing_is_asked_and_the_link_goes_ahead`。
+// 中继 `absent` 时等着再接的编排 · 「没带字节就不比新旧」随重连循环住 `resident-client`：
+//   `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · `feed_tests.rs::without_its_own_build_the_relation_is_incomparable`。
 
 /// 小中继的第一行（读法住 `resident-client`，两端同一份）：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
 #[test]

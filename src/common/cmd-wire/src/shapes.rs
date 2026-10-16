@@ -155,7 +155,6 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("relay-optin", "06769fb9"),
     ("remote-probe", "80485660"),
     ("remote-reach", "819ea6be"),
-    ("resident-verdict", "c3b80886"),
     ("resolve", "a25c2648"),
     ("resync", "2f5a0ba2"),
     ("rotation-day-paint", "1f16f2dc"),

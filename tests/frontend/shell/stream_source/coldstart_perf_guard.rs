@@ -71,12 +71,8 @@ fn body_of(src: &str, sig: &str) -> String {
 
 #[test]
 fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
+    // 抽取器坏了 ⇒ 下面每一相的函数都找不到、`body_of` 当场红（不靠字节数地板）。
     let src = crate::guard_support::stream_source_raw();
-    assert!(
-        src.len() > 100_000,
-        "只读到 {} 字节 —— 抽取器坏了",
-        src.len()
-    );
     for (phase, sig, needle) in PHASES {
         let body = body_of(&source_of(sig), sig);
         assert!(

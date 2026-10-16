@@ -1163,8 +1163,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--bus-state",
     // 部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
-    // 远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
-    "--resident-verdict",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。

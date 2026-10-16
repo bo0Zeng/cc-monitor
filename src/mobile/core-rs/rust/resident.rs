@@ -260,23 +260,9 @@ pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     })
 }
 
-/// 状态那一行；通着、但那台旧了（`notice`）⇒ 另点名 `fix: update`（同断着时的 `fix`：［更新后端］按得了）。
+/// 状态那一行（要不要「更新后端」由循环定好在 `fix` 里：通着 · 断着同一格）。
 pub fn state_json(s: &State) -> String {
-    let mut v =
-        serde_json::to_value(s).unwrap_or_else(|_| serde_json::json!({"state": "connecting"}));
-    if let (
-        State::Up {
-            notice: Some(_), ..
-        },
-        Some(o),
-    ) = (s, v.as_object_mut())
-    {
-        o.insert(
-            "fix".into(),
-            serde_json::to_value(resident_client::feed::Fix::Update).unwrap_or_default(),
-        );
-    }
-    v.to_string()
+    serde_json::to_string(s).unwrap_or_else(|_| r#"{"state":"connecting"}"#.to_string())
 }
 
 /// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
@@ -611,14 +597,18 @@ mod tests {
     fn events_are_tagged_and_frames_go_through_untouched() {
         let (k, b) = event_of(&Event::State(State::Up {
             epoch: 3,
-            notice: None,
+            relation: cmd_wire::attach::Relation::Newer,
             differs: vec![],
+            notice: Some(Problem::new("box 后端较新 · 不会换回", "")),
+            fix: None,
         }))
         .unwrap();
         assert_eq!(k, "state");
         let v: serde_json::Value = serde_json::from_str(&b).unwrap();
         assert_eq!(v["state"], "up");
         assert_eq!(v["epoch"], 3);
+        assert_eq!(v["relation"], "newer");
+        assert!(v.get("fix").is_none(), "那台新 ⇒ 不点名「更新」：{v}");
         let (k, b) = event_of(&Event::State(State::Down {
             problem: Problem::new("box 离线", ""),
             needs_hand: true,

@@ -141,7 +141,7 @@ async fn serve(s: tokio::io::DuplexStream, remote: Arc<Remote>) {
     }
 }
 
-/// 那台远端的替身：链路是一条内存里的流；装得了后端（版本门问「本机」：恒接）。
+/// 那台远端的替身：链路是一条内存里的流；装得了后端（回话不带新旧 ⇒ 不换）。
 struct Fake(Arc<Remote>);
 
 impl Transport for Fake {
@@ -171,24 +171,8 @@ impl Transport for Fake {
             })
         })
     }
-    fn installer(&self) -> Option<&dyn Install> {
-        Some(self)
-    }
-}
-
-impl Install for Fake {
-    fn verdict<'a>(
-        &'a self,
-        _mine: &'a str,
-        _theirs: &'a str,
-        _replaced: bool,
-    ) -> Boxed<'a, Result<resident_client::gate::Verdict, Problem>> {
-        Box::pin(async {
-            Ok(resident_client::gate::Verdict {
-                replace: false,
-                older: false,
-            })
-        })
+    fn installs(&self) -> bool {
+        true
     }
 }
 

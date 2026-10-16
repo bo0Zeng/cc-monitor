@@ -1,5 +1,5 @@
 /**
- * 远端健康提示的标题按壳给的类别挑（`stream_source/version.rs::version_health_kind` 判好要更新 · 较新 · 不可比），
+ * 远端健康提示的标题按壳给的类别挑（`stream_source/run.rs::version_health_kind` 按那台回的新旧挑好要更新 · 较新 · 不可比），
  * 界面不自己猜哪一种；壳那边三个类别字每个都在这里有自己那一句，不落到通用「远端提示」。
  */
 import { describe, expect, it, vi } from "vitest";
@@ -12,10 +12,10 @@ import { headlineFor } from "../../../src/frontend/ui/remote-health";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { REPO_ROOT } from "../../test-support/repo-root";
 
-const src = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/stream_source/version.rs"), "utf8");
+const src = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/stream_source/run.rs"), "utf8");
 const kind = (name: string): string => {
   const m = new RegExp(`const ${name}: &str = "([^"]+)";`).exec(src);
-  if (!m) throw new Error(`version.rs 里没有 ${name}`);
+  if (!m) throw new Error(`run.rs 里没有 ${name}`);
   return m[1];
 };
 

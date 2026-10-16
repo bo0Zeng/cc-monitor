@@ -267,37 +267,3 @@ fn the_stream_view_refuses_products_the_stream_does_not_carry() {
             .is_some()
     );
 }
-
-/// attach 行定这条连接要什么：`tz` · `view` 两格（缺 ＝ UTC · 全量，不看进程起参）；别的键（旧的 `flags` 也算）· 声明认不出 ⇒ malformed。
-#[test]
-fn attach_line_carries_tz_and_view_and_nothing_else() {
-    assert_eq!(
-        attach_flags(r#"{"attach":true}"#),
-        Ok(Some(crate::stream::inbound::views::StreamWants::default()))
-    );
-    // 看的那一台的时区：认得 ⇒ 那个时区；认不得 ⇒ UTC。
-    let sh = crate::Tz::named("Asia/Shanghai").unwrap();
-    assert_eq!(
-        attach_flags(r#"{"attach":true,"tz":"Asia/Shanghai"}"#).map(|w| w.map(|w| w.tz)),
-        Ok(Some(sh))
-    );
-    assert_eq!(
-        attach_flags(r#"{"attach":true,"tz":"Nowhere/Atlantis"}"#).map(|w| w.map(|w| w.tz)),
-        Ok(Some(crate::Tz::default()))
-    );
-    // 声明：与请求信封同一套词；只许点推送帧里住着的成品。
-    let viewed = attach_flags(r#"{"attach":true,"view":{"omit":{"session_added":["pid"]}}}"#)
-        .expect("认得的声明")
-        .expect("有这一行");
-    assert!(viewed.view.is_some(), "声明没进这条连接");
-    for bad in [
-        r#"{"attach":true,"flags":["--tail-only"]}"#,
-        r#"{"attach":true,"flags":[]}"#,
-        r#"{"attach":true,"view":{"omit":{"facts":["usage"]}}}"#,
-        r#"{"attach":true,"view":{"omit":{"session_added":["no_such_cell"]}}}"#,
-        r#"{"attach":true,"view":{"pick":{}}}"#,
-        r#"{"attach":true,"view":"x"}"#,
-    ] {
-        assert_eq!(attach_flags(bad), Err(()), "{bad}");
-    }
-}

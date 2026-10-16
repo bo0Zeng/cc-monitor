@@ -102,9 +102,6 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 部署计划：把「怎么够到那台 ＋ 这一版带着哪几格」交给**本机**后端 `deploy-plan`，
     //   经 `sftp.rs::ask_plan_for` 这一口；判定住后端，没有第二条路可回落（判定不回到 monitor）。形状与 `asset_sync.rs` 那一行同。
     ("sftp.rs", Verdict::UsesRouter),
-    // 远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
-    //   理由与 `sftp.rs` 问部署计划那条逐字相同（长连接不在时明说，没有第二条路可回落）。
-    ("remote_resident.rs", Verdict::UsesRouter),
     // 终端画面流撤掉时壳替界面向那台退订（`terminal_screen_relay.rs::unfollow`）：发出去就不管，没成只记一行日志 ——
     //   连接走时那台整张票表本来就收；没有第二条路，也不把成败交给任何人。
     (

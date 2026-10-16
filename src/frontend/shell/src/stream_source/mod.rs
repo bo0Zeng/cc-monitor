@@ -15,7 +15,6 @@ mod frame;
 mod local;
 mod run;
 mod snapshot;
-mod version;
 
 pub(crate) use batch::*;
 pub(crate) use config::*;
@@ -25,7 +24,6 @@ pub(crate) use frame::*;
 pub(crate) use local::*;
 pub(crate) use run::*;
 pub(crate) use snapshot::*;
-pub(crate) use version::*;
 
 // 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**：
 // `dial_home_registry`（另一份文件）那条递减棘轮拿 `DIAL_SITES` 里 `moved == false` 的

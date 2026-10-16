@@ -1,6 +1,6 @@
 //! # 要求住址：`INVARIANTS §48.1`（常驻后端的门由内核给：只给本人的套接字 ＋ 对端 uid，没有钥匙）
 //!
-//! 本族钉帧面那一半：常驻开关怎么认（`mode_from`：空 / `1` / 别的值拒）· attach 行只判形状（`attach_verdict`）·
+//! 本族钉帧面那一半：常驻开关怎么认（`mode_from`：空 / `1` / 别的值拒）· attach 行的形状与回话里的新旧（`admit`）·
 //! 拒绝理由闭集 · 握手行上界 · 退出码。门本身（目录独占锁 · 对端 uid）在共享 crate `own-chan` 的判据里，
 //! 抢门牌与沙箱那一判在 `main_claim_tests.rs` / `resident_tests.rs`。
 
@@ -48,31 +48,46 @@ fn the_resident_switch_is_empty_one_or_refused() {
     );
 }
 
-/// attach 行只判形状：`{"attach":true}`（可带 `tz` · `view`）才要流；钥匙串、数字、缺字段、不是 JSON 都是 malformed。
+/// attach 行只认 `cmd_wire::attach::AttachLine` 那一形（认不得的格 · `attach` 不是 `true` · 不是 JSON ⇒ malformed，同一句拒）；
+/// 带 `mine` ⇒ 回话里是这台相对它的新旧，四态各一：那台旧 · 新 · 同 · 解不出序键；没带 ⇒ 回话与只说「可以」那一行逐字节相同。
 #[test]
-fn attach_verdicts_judge_the_shape_only() {
-    assert_eq!(attach_verdict("{\"attach\":true}"), Verdict::Attach);
-    assert_eq!(attach_verdict("{\"attach\":true}\n"), Verdict::Attach);
+fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
+    let own = "p5c-own";
+    let rel = |line: &str| match admit(line, own) {
+        Admit::Stream { reply, .. } => reply.line(),
+        Admit::Refuse(r) => format!("refused {r}"),
+    };
+    assert_eq!(rel(r#"{"attach":true}"#), "{\"attach\":\"ok\"}\n");
+    for (mine, want) in [
+        ("p5d-next", "older"),
+        ("p5b-prev", "newer"),
+        ("p5c-own", "same"),
+        ("dev-build", "incomparable"),
+    ] {
+        assert_eq!(
+            rel(&format!(r#"{{"attach":true,"mine":"{mine}"}}"#)),
+            format!("{{\"attach\":\"ok\",\"relation\":\"{want}\"}}\n"),
+            "{mine}"
+        );
+    }
     assert_eq!(
-        attach_verdict("{\"attach\":true,\"tz\":\"UTC\"}"),
-        Verdict::Attach
+        admit(r#"{"attach":true,"tz":"Asia/Shanghai"}"#, own),
+        Admit::Stream {
+            tz: Some("Asia/Shanghai".into()),
+            reply: cmd_wire::attach::AttachReply::Ok { relation: None },
+        }
     );
     for bad in [
-        "{\"attach\":\"0123456789abcdef0123456789abcdef\"}",
-        "{\"attach\":false}",
-        "{\"attach\":1}",
+        r#"{"attach":"0123456789abcdef0123456789abcdef"}"#,
+        r#"{"attach":false}"#,
+        r#"{"attach":1}"#,
+        r#"{"attach":true,"flags":[]}"#,
+        r#"{"attach":true,"view":{}}"#,
         "{}",
         "not json",
     ] {
-        assert_eq!(attach_verdict(bad), Verdict::Malformed, "{bad}");
+        assert_eq!(admit(bad, own), Admit::Refuse(REFUSE_MALFORMED), "{bad}");
     }
-}
-
-/// 分档表逐格钉死：形状对就交流（多客户，不看有没有人占着）；不对就拒、理由是 malformed。
-#[test]
-fn the_two_tier_split_is_pinned_cell_by_cell() {
-    assert_eq!(admit(Verdict::Attach), Admit::Stream);
-    assert_eq!(admit(Verdict::Malformed), Admit::Refuse(REFUSE_MALFORMED));
 }
 
 /// 拒绝理由是闭集，且拼出来的每一行都是**合法 JSON**。
@@ -256,15 +271,6 @@ fn every_file_this_head_note_points_at_really_exists() {
             .contains("fn the_single_stream_shape_is_still_exactly_one_client"),
         "`single_stream_guard.rs` 里那条触发器不见了 —— 头注在替一个不存在的性质背书"
     );
-}
-
-/// ★ `ATTACH_OK_LINE` 也得是合法的一行 NDJSON（同上，形状钉死）。
-#[test]
-fn the_ok_line_is_one_valid_ndjson_line() {
-    assert!(ATTACH_OK_LINE.ends_with('\n'));
-    assert_eq!(ATTACH_OK_LINE.matches('\n').count(), 1);
-    let v: serde_json::Value = serde_json::from_str(ATTACH_OK_LINE.trim()).expect("合法 JSON");
-    assert_eq!(v["attach"], "ok");
 }
 
 /// ★★ **超限之后内存不涨** —— 这条性质只有把 `cap` 做成参数才测得动。

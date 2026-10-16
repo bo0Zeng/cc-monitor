@@ -25,7 +25,7 @@ import { shouldShowHealthToast } from "./remote-health-throttle";
 import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
 import { copyText } from "./copy-table";
 
-/** kind → toast 标题（未知 kind 回退到通用「远端提示」）。版本那三类由壳判好（`stream_source/version.rs::version_health_kind`）。 */
+/** kind → toast 标题（未知 kind 回退到通用「远端提示」）。版本那三类由壳按那台回的新旧挑好（`stream_source/run.rs::version_health_kind`）。 */
 export function headlineFor(kind: string): string {
   switch (kind) {
     case "overflow":

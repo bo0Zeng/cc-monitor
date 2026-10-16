@@ -19,6 +19,7 @@
 //! - `BUILD_ID` —— 留在后端（进了这里就又成了 monitor 读得到的源码常量；monitor 的「我这一版」只认手上那份字节自报的）；
 //! - 任何 IO（问那台、读盘、写）。
 
+pub use cmd_wire::attach::Relation;
 use copy_core::copy_text;
 use copy_core::said::Said;
 
@@ -416,22 +417,17 @@ pub fn build_order(id: &str) -> Option<(u32, u8)> {
     }
 }
 
-/// 另一份构建相对手上这一版。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuildRelation {
-    Newer,
-    Older,
-    /// 任一边解不出序键，或同序不同名。
-    Incomparable,
-}
-
 /// `theirs`（那台上 / 口上占着的那一份）相对 `mine`（手上这一版）的新旧，按 [`build_order`] 比 —— 唯一实现：
-/// 部署只升不降（后端 `deploy`）与本机口上那一份别的构建（monitor 机器状态）都调它。**纯函数**。
-pub fn build_relation(theirs: &str, mine: &str) -> BuildRelation {
+/// 部署只升不降（后端 `deploy`）· 常驻后端回 attach 行（新旧三态上线的那一格）· 本机口上那一份别的构建（monitor 机器状态）都调它。
+/// 逐字相同 ⇒ 同；任一边解不出序键 · 同序不同名 ⇒ 不可比。**纯函数**。
+pub fn build_relation(theirs: &str, mine: &str) -> Relation {
+    if theirs == mine {
+        return Relation::Same;
+    }
     match (build_order(theirs), build_order(mine)) {
-        (Some(t), Some(m)) if t < m => BuildRelation::Older,
-        (Some(t), Some(m)) if t > m => BuildRelation::Newer,
-        _ => BuildRelation::Incomparable,
+        (Some(t), Some(m)) if t < m => Relation::Older,
+        (Some(t), Some(m)) if t > m => Relation::Newer,
+        _ => Relation::Incomparable,
     }
 }
 

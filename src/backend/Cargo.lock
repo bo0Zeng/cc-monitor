@@ -676,6 +676,7 @@ dependencies = [
 name = "deploy-contract"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "shell-quote-core",
 ]

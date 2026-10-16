@@ -220,6 +220,18 @@
       "zh": "{machine} 后端版本不同 · 需更新",
       "args": ["machine"]
     },
+    "peerVersion.said.newer": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端较新 · 不会换回",
+      "args": ["machine"]
+    },
+    "peerVersion.said.incomparable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端版本不可比",
+      "args": ["machine"]
+    },
     "peerVersion.said.unreadable": {
       "kind": "error",
       "role": "报错",
@@ -1556,12 +1568,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "远端回的不是 cc-monitor 后端",
-      "args": []
-    },
-    "rsRemoteResident.verdict.unreadable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端回复内容无法解析 · 未定是否替换远端后端",
       "args": []
     },
     "rsRemoteResident.handshake.helloCut": {
@@ -13716,24 +13722,6 @@
       "zh": "host 别名含不安全字符 · {alias}",
       "args": ["alias"]
     },
-    "rsSshSource.version.remoteOlder": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端要更新\n现为 {reported} · 下次连上自动换成 {mine}",
-      "args": ["label", "reported", "mine"]
-    },
-    "rsSshSource.version.remoteNotOlder": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端 {reported} 不旧于本机 {mine} · 不会换回 · 要一致就升级本机 cc-monitor",
-      "args": ["label", "reported", "mine"]
-    },
-    "rsSshSource.version.noOwnBytes": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端版本不可比\n现为 {reported} · 未带后端字节",
-      "args": ["label", "reported"]
-    },
     "rsSshSource.health.overflowLost": {
       "kind": "body",
       "role": "说明",
@@ -15286,12 +15274,6 @@
       "zh": "后端拒绝连接 · {reason}",
       "args": ["reason"],
       "limited": ["连接"]
-    },
-    "rsLocalBackendHost.attach.notJson": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端的回答不是 JSON",
-      "args": []
     },
     "rsLocalBackendHost.attach.sendFailed": {
       "kind": "error",

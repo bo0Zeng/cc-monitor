@@ -9,6 +9,8 @@ description = "部署那一族的契约（两侧对上的形状）：表 A 的�
 # 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
 # 从 `deploy-core` 拆出来的契约那一半：monitor 取字节 · 解计划 · 读字节里的戳要同一份形状；判定那一半进了后端。
 [dependencies]
+# 新旧三态的类型住它（上线的数据只一份）；比大小的函数在这里。
+cmd-wire = { path = "../cmd-wire" }
 copy-core = { path = "../copy-core" }
 shell-quote-core = { path = "../shell-quote-core" }
 

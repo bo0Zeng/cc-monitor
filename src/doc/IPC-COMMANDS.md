@@ -11093,42 +11093,6 @@ type Prefer = { host: string, port: number, };
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable`
 
-#### `resident-verdict`
-
-远端常驻后端要不要换一次。
-
-收 `args` · 可撤 · CLI：`ccm -- --resident-verdict`
-
-入参 `VerdictReq` · 回包 `VerdictReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type VerdictAction = "replace" | "attach";
-type VerdictReply = { 
-/**
- * 换掉再接 · 接上它。
- */
-action: VerdictAction, 
-/**
- * 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」）。
- */
-older: boolean, };
-type VerdictReq = { 
-/**
- * monitor 手上这一版后端自报的身份（非空）。
- */
-mine: string, 
-/**
- * 那台 hello 报的 `build_id`（缺 ⇒ 空串）。
- */
-theirs: string, 
-/**
- * 这一趟是不是已经换过一次。
- */
-replaced: boolean, };
-```
-
-码：`bad_args`
-
 #### `place-verdict`
 
 本机那一份放不放。
@@ -12759,7 +12723,6 @@ needs: string | null, };
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起 |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
-| `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-day-paint` | ＝ 帧命令 `rotation-day-paint`：在 24 小时条上刷一段 |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
