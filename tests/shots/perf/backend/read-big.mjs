@@ -8,7 +8,7 @@
 //     cold  ＝ 先删骨架目录（头一次开）· warm ＝ 骨架留着、记录没变（重启）· grown ＝ 骨架留着、起之前往大记录追加 `--append` 行
 //     --live N：问完之后往大记录一口气追加 N 行，量 N 帧 `line` 出完要多久、后端花了多少 CPU
 //   node read-big.mjs --compare <输出目录A> <输出目录B>
-//     两趟的冷开应答逐字节比（`writers` 是那一趟活进程的 pid，比之前抹掉）；不一样的逐份印出，退出码 1。
+//     两趟的冷开应答逐字节比（`writers` · 事实令牌的 `rev` 每趟都不一样，比之前抹掉）；不一样的逐份印出，退出码 1。
 // 输出：一行一条 JSON 读数；应答原样写进 <输出目录>/replies/<命令>.json（几页的按页一行）。
 // 后端的 stderr 写进 <输出目录>/stderr.log（日志档照环境变量 READ_BIG_LOG，缺省 warn）。
 // 读数里 `recordMb` 是后端进程这一趟从文件读进来的字节（/proc/<pid>/io 的 rchar，含骨架与其它小文件）；墙钟随机器负载抖，
@@ -27,7 +27,8 @@ const opt = (k, d) => {
 
 if (argv[0] === "--compare") {
   const [a, b] = [argv[1], argv[2]];
-  const scrub = (s) => s.replace(/"writers":\[[0-9,]*\]/g, '"writers":[]');
+  // 抹掉每趟都不一样的：活进程的 pid、事实续传令牌的 `rev`（按进程起来的时刻起号）。
+  const scrub = (s) => s.replace(/"writers":\[[0-9,]*\]/g, '"writers":[]').replace(/"rev":[0-9]+/g, '"rev":0');
   let bad = 0;
   const names = new Set([...readdirSync(join(a, "replies")), ...readdirSync(join(b, "replies"))]);
   for (const n of [...names].sort()) {
