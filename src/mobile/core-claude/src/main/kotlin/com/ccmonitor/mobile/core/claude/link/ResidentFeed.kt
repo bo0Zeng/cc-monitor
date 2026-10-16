@@ -66,7 +66,6 @@ interface ResidentCore {
  *
  * - [ssh] 是这台的拨号请求（JSON，不带用法；`null` ＝ 没连上过 · 已断开）：按值比，变了才交给核心（它照新的重拨）。
  *   这条流就是手机上唯一那条重连循环：池里那条死了它在核心里自己拨一条新的，SSH 那层跟着它的 [state] 换连接。
- * - 丢了会话帧（[SessionTable.needsResync]）⇒ 叫核心整份重来。
  * - 退避的数（2 → 30 s，活过 30 s 才清零）只在核心里，这里一个都不写。
  */
 class ResidentFeed(
@@ -243,7 +242,6 @@ class ResidentFeed(
         if (frame.str("kind") == LiveFrame.KIND) LiveFrame.of(frame)?.let(liveFlow::tryEmit) ?: broke("frame", frame.toString())
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
-        if (next.needsResync) reconnect()
     }
 
     /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */

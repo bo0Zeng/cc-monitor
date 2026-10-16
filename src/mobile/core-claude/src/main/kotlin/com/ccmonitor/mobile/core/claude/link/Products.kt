@@ -145,7 +145,7 @@ enum class SessionDot {
 
 /**
  * 会话表：把流上的会话帧折成「此刻有哪些会话、各自怎么样」。纯函数，一帧一步。
- * `overflow` 里丢了会话帧 ⇒ [needsResync]（这张表不可信了，重接一次让后端整份重报）。
+ * 拥塞丢了帧由那台在原连接上整份重报（覆盖式折进来），这里不判、不重接。
  */
 data class SessionTable(
     val sessions: Map<String, LiveSession> = emptyMap(),
@@ -153,7 +153,6 @@ data class SessionTable(
     val fates: Map<String, SessionFate> = emptyMap(),
     /** 后端说「清单报完了」（`sessions_replayed`）。 */
     val replayed: Boolean = false,
-    val needsResync: Boolean = false,
     /** 被顶替的会话 ⇒ 顶替它的那一条（`session_removed.by`：清空之后同一个进程另起的那一份记录）。 */
     val successors: Map<String, String> = emptyMap(),
 ) {
@@ -166,7 +165,6 @@ data class SessionTable(
         FOLDS[kind]?.let { (fold, missing) -> return fold(this, frame) ?: also { onBreak(missing) } }
         return when (kind) {
             "sessions_replayed" -> copy(replayed = true)
-            "overflow" -> if (lostSessionFrames(frame)) copy(needsResync = true) else this
             else -> this
         }
     }
@@ -205,8 +203,6 @@ data class SessionTable(
     }
 
     companion object {
-        private val SESSION_KINDS = setOf("session_added", "session_status", "session_removed", "session_state")
-
         /** 会话帧 ⇒ 怎么折 ＋ 缺格时报的那一句（折不进 ⇒ `null`）。 */
         private val FOLDS: Map<String, Pair<SessionTable.(Map<String, Any?>) -> SessionTable?, String>> =
             mapOf(
@@ -234,10 +230,6 @@ data class SessionTable(
 
         /** 帧上 `activity` 那一格判得出「一轮在跑」的那个词（核心的闭集；缺席 ＝ 判不出）。 */
         private const val RUNNING = "working"
-
-        /** 丢的里头有会话帧（或身份表截过）⇒ 一次性结论丢了，别处补不回来。 */
-        private fun lostSessionFrames(m: Map<String, Any?>): Boolean =
-            m.bool("lost_truncated") == true || m.objs("lost").orEmpty().any { it.str("kind") in SESSION_KINDS }
     }
 }
 
