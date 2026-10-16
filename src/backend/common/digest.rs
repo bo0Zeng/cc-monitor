@@ -64,6 +64,9 @@ impl Fnv {
         }
         self
     }
+    pub fn value(&self) -> u64 {
+        self.0
+    }
     pub fn hex(&self) -> String {
         format!("{:016x}", self.0)
     }

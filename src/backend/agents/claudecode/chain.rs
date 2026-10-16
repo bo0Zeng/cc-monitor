@@ -4,7 +4,7 @@
 //! （它缺席的话它的孩子指向集合外、成了根，被当死胡同整棵折掉）；`queue-operation` 的 `enqueue` 给排队原文（豁免那片裸叶）。
 //! 只有 user 记录解析整行（判是不是打断、取原文）；别的只读那几格短串。
 
-use crate::agents::mainline::{ChainFact, Link};
+use crate::agents::mainline::{ChainFact, Link, Words};
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 
@@ -50,7 +50,7 @@ pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
     let kind = p.kind.as_deref().unwrap_or("");
     if kind == "queue-operation" {
         return match (p.operation.as_deref(), p.content) {
-            (Some("enqueue"), Some(Loose::Str(t))) => Some(ChainFact::Queued(t.trim().to_string())),
+            (Some("enqueue"), Some(Loose::Str(t))) => Some(ChainFact::Queued(Words::of(&t))),
             _ => None,
         };
     }
@@ -75,7 +75,7 @@ pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<ChainFact> {
             .unwrap_or(&serde_json::Value::Null);
         let interrupt = super::text::user_text_of_record(&v)
             .is_some_and(|t| matches!(t.speaker, crate::agents::Speaker::Interrupt));
-        (interrupt, Some(first_text(content).trim().to_string()))
+        (interrupt, Some(Words::of(first_text(content))))
     } else {
         (false, None)
     };

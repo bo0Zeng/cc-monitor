@@ -22,7 +22,7 @@ fn user_and_assistant_lines_are_shown_nodes() {
             said: true,
             reply: false,
             interrupt: false,
-            text: Some("hello there".into()),
+            text: Some(Words::of("hello there")),
             shown: true,
         }
     );
@@ -63,7 +63,7 @@ fn queued_text_comes_from_enqueue_only() {
             r#"{"type":"queue-operation","operation":"enqueue","content":" later words ","timestamp":"t8"}"#,
             0
         )),
-        Some(ChainFact::Queued("later words".into()))
+        Some(ChainFact::Queued(Words::of("later words")))
     );
     assert_eq!(
         chain_fact(&crate::agents::Line::new(
@@ -100,5 +100,5 @@ fn a_line_is_parsed_from_text_at_most_once() {
     let reply = r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"t2","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}"#;
     assert_eq!(count(user), 1, "user 行解析了不止一遍");
     assert_eq!(count(reply), 1, "回复行解析了不止一遍");
-    assert!(node(user).said && node(user).text.as_deref() == Some("hello"));
+    assert!(node(user).said && node(user).text == Some(Words::of("hello")));
 }
