@@ -10,7 +10,7 @@
 //!   本模块过 `backend::tests::the_backend_layer_stays_host_agnostic`（禁 `AppHandle` 等把手）。
 //!
 //! 用 `std::process::Command`，**刻意不引入 `tauri-plugin-shell`**：
-//! 摸底实测 monitor 今天的 tauri 插件只有 opener/dialog/notification/single-instance，
+//! 摸底实测 monitor 今天的 tauri 插件只有 opener/dialog/single-instance，
 //! 而 Tauri 的 sidecar API 要 `AppHandle` —— 那会让本模块**当场违反**宿主无关那条机检。
 //! `externalBin` 只是**打包器**的事（把二进制放进安装包并按 triple 命名），与「怎么起它」无关。
 //!

@@ -13406,12 +13406,6 @@
       "zh": "cc-monitor 设置",
       "args": []
     },
-    "rsLib.run.localBackendDown": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端未运行",
-      "args": []
-    },
     "backendPolicy.exit.kills": {
       "kind": "body",
       "role": "说明",
@@ -15234,10 +15228,10 @@
       "args": ["path", "why"],
       "limited": ["连接"]
     },
-    "rsLocalBackendHost.start.refusedNotice": {
+    "rsLocalBackendHost.start.refusedNext": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未启动 · 已在运行的后端连接失败 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
+      "zh": "已在运行的后端连接失败 · {why}\n结束该进程再重试 · 进程号记在 {pidPath}",
       "args": ["why", "pidPath"],
       "limited": ["连接"]
     },
