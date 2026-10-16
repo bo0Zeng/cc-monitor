@@ -11,7 +11,7 @@ use super::UserText;
 /// 一家怎么读出一条记录的一拍（注册表 `RecordFace.beats` 那一格）。
 #[derive(Clone, Copy)]
 pub(crate) struct BeatFace {
-    /// 一条已解析的记录 ⇒ 这一拍；这一家不认的记录 ⇒ `None`（通用层当它什么都没说）。
+    /// 一条已解析的记录 ⇒ 它的一拍；这一家不认的记录 ⇒ `None`（通用层当它什么都没说）。
     pub(crate) beat: for<'a> fn(&'a serde_json::Value) -> Option<Beat<'a>>,
     /// 快路：这一行（原文，不含结尾换行）有没有可能改动会话事实。**只许放过、不许误拦**：凡是会改动事实的行必为真。
     /// 只认这一家的格式那一半；「行里带着某个还挂着的调用 id」那一半是通用的，由 observe 自己看。
@@ -174,12 +174,12 @@ impl Beat<'_> {
         })
     }
 
-    /// 这一拍停在 `why` 上了没有。
+    /// 一拍停在 `why` 上了没有。
     pub(crate) fn stops(&self, why: StopWhy) -> bool {
         self.acts.contains(&Act::Stop(why))
     }
 
-    /// 这一拍带着工具结果。
+    /// 一拍带着工具结果。
     pub(crate) fn has_result(&self) -> bool {
         self.acts.iter().any(|a| matches!(a, Act::Result { .. }))
     }
