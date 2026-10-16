@@ -726,6 +726,9 @@ def deploy_steps():
             time.sleep(1)
         if ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
             raise Step.Fail("换了常驻还说要更新（接上的不是这一版）")
+    if landing_id() != build_id():
+        # 升级那一步没走完、那台还是旧版：放回这一版再往下走（后面几步不该跟着它红）。
+        rig("land", os.environ.get("CCM_SMOKE_BACKEND", os.path.join(ROOT, ".build", "backend", "debug", "cc-monitor-backend")))
     with Step("1d-主机设置核对版本"):
         # 主机设置里那一行：通着、已是这一版 ⇒ 按钮是「核对版本」，按下去说「已是最新」、一个字节不写、不换常驻。
         before = sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace"))

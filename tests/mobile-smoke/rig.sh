@@ -35,7 +35,7 @@ up() {
   [ -f "$box/sshd/client_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/client_ed25519" -C smoke-client
   cp "$box/sshd/client_ed25519.pub" "$box/sshd/authorized_keys"
   # 换后端那份文件之前先停台架里的常驻（它跑的是旧文件；文件换掉之后它再起子进程会找不到自己）。
-  if ! cmp -s "$backend" "$home/.cc-monitor/bin/ccm"; then stop_resident; install -m 755 "$backend" "$home/.cc-monitor/bin/ccm"; fi
+  if ! cmp -s "$backend" "$home/.cc-monitor/bin/ccm"; then stop_resident; put "$backend"; fi
   install -m 644 "$root/tests/mobile-smoke/fake-agent.py" "$box/bin/fake-agent.py"
   for k in claude codex; do
     printf '#!/bin/bash\nCCM_SMOKE_KIND=%s exec -a %s /usr/bin/python3 %q "$@"\n' "$k" "$k" "$box/bin/fake-agent.py" > "$box/bin/$k"
@@ -107,12 +107,17 @@ down() {
   say "台架停了（目录留着：$box）"
 }
 
+# 落点放一份：先写到同目录的临时名再改名（几百 MB 的调试包忙时要写好几秒，手机那一下正好来跑就撞上半截文件、当成「未装」）。
+put() {
+  install -m 755 "$1" "$home/.cc-monitor/bin/.ccm.part" && mv -f "$home/.cc-monitor/bin/.ccm.part" "$home/.cc-monitor/bin/ccm"
+}
+
 # 落点换一份（装后端那两步用）：先停台架里的常驻，再把落点删掉（`none`）或换成给的那份文件。
 land() {
   stop_resident
   case "${1:-}" in
     none) rm -f "$home/.cc-monitor/bin/ccm"; say "落点删了（台架那台没有后端）" ;;
-    *) [ -f "$1" ] || { say "没有这份文件：$1"; exit 2; }; install -m 755 "$1" "$home/.cc-monitor/bin/ccm"; say "落点换成 $1" ;;
+    *) [ -f "$1" ] || { say "没有这份文件：$1"; exit 2; }; put "$1"; say "落点换成 $1" ;;
   esac
 }
 
