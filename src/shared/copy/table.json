@@ -22278,18 +22278,6 @@
       "zh": "{slot} {tier}",
       "args": ["slot", "tier"]
     },
-    "acct.window.line": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{window} {value}",
-      "args": ["window", "value"]
-    },
-    "acct.window.lineReset": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{window} {value} · ↻{at}",
-      "args": ["window", "value", "at"]
-    },
     "acct.verdict.can": {
       "kind": "body",
       "role": "状态",

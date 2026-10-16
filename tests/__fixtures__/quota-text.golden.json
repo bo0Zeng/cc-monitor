@@ -88,6 +88,91 @@
       "tz": "Asia/Shanghai"
     },
     {
+      "blocks": [],
+      "machine": "本机",
+      "name": "订阅 · 更细的窗口（7d opus）在 7d 与超额之间各一行、快满带语气；量过的那一格带 1% ≈ 多少",
+      "reply": {
+        "accounts": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false,
+              "windows": []
+            },
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 63,
+                "resetsAt": 1791196200,
+                "resetsAtText": "18:30",
+                "slot": "5h",
+                "perPctText": "1% ≈ 2.1M"
+              },
+              {
+                "pct": 85,
+                "resetsAt": 1791507600,
+                "resetsAtText": "10-09 09:00",
+                "slot": "7d",
+                "perPctText": "1% ≈ 25K"
+              }
+            ],
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "windows": [
+              {
+                "name": "five_hour",
+                "key": "5h",
+                "pct": 63,
+                "resetsAt": 1791196200,
+                "seenAt": 1791189480,
+                "from": "headers",
+                "tokensPerPct": 2100000,
+                "perPctText": "1% ≈ 2.1M",
+                "tone": "plain"
+              },
+              {
+                "name": "seven_day",
+                "key": "7d",
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "seenAt": 1791189480,
+                "from": "headers",
+                "tone": "plain"
+              },
+              {
+                "name": "seven_day_opus",
+                "key": "7d:opus",
+                "pct": 85,
+                "resetsAt": 1791507600,
+                "seenAt": 1791189480,
+                "from": "headers",
+                "tokensPerPct": 25000,
+                "perPctText": "1% ≈ 25K",
+                "tone": "warn"
+              }
+            ]
+          }
+        ],
+        "earliestReturn": null,
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "unseen": [],
+        "usableNow": [
+          "personal"
+        ]
+      },
+      "text": "",
+      "tz": "Asia/Shanghai"
+    },
+    {
       "blocks": [
         {
           "account": "personal",

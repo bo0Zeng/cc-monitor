@@ -1008,7 +1008,11 @@ fn session_row(
         is_bg: false,
         status: Liveness::Ended,
         forked_from: None,
-        parent: entry.done.forked.clone().or_else(|| entry.tail.forked.clone()),
+        parent: entry
+            .done
+            .forked
+            .clone()
+            .or_else(|| entry.tail.forked.clone()),
     }
 }
 

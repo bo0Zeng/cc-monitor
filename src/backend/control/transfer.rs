@@ -907,7 +907,8 @@ impl Desk {
                             mtime_text: None,
                             there,
                             there_size: m.is_file().then(|| m.len()),
-                            there_size_text: (m.is_file().then(|| m.len())).map(copy_core::size_text),
+                            there_size_text: (m.is_file().then(|| m.len()))
+                                .map(copy_core::size_text),
                             there_mtime_text: crate::common::batch_book::moment_text(
                                 crate::common::batch_book::mtime_secs(m.modified()),
                                 tz,

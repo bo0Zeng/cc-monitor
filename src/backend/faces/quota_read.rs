@@ -262,6 +262,7 @@ pub(crate) fn specimen() -> QuotaRead {
             resets_at: Some(2_000),
             resets_at_text: None,
             resets_at_rel_text: None,
+            reset_text: Some(Words("r".into())),
             full: true,
             text: Words("1%".into()),
             tone: Tone::Plain,
@@ -284,7 +285,6 @@ pub(crate) fn specimen() -> QuotaRead {
             tokens_per_pct: Some(25_000),
             per_pct_text: Some(Words("p".into())),
             reset_since_seen: true,
-            text: Words("w".into()),
             tone: Tone::Plain,
         }],
         usage: crate::accounts::quota::show::Usage {

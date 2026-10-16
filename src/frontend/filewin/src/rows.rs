@@ -1005,11 +1005,7 @@ fn paint_one_row(
         full: r.mtime_full.clone().unwrap_or_else(|| short.clone()),
         short,
     });
-    let size_text = if r.is_dir {
-        String::new()
-    } else {
-        r.size_text.clone().unwrap_or_default()
-    };
+    let size_text = r.size_text.clone().unwrap_or_default();
     let mut tips: Vec<(egui::Rect, String)> = Vec::new();
     let folded: Vec<String> = [
         (

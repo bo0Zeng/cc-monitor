@@ -45,6 +45,7 @@ const LEDGER: QuotaRead = {
   text: null,
   fiveHour: null,
   names: { accounts: {}, slots: {} },
+  verdict: null,
 };
 
 const ledger = (p: Partial<QuotaShow>): QuotaRead => ({ ...LEDGER, accounts: LEDGER.accounts.map((a) => (a.account === "personal" ? { ...a, ...quota(p) } : a)) });

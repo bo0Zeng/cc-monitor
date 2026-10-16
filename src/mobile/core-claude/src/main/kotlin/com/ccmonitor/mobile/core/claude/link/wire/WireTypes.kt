@@ -1242,12 +1242,12 @@ data class Resumed(
 )
 
 /*
- * `quota-read`（用量屏）：结论两行 · 每号两条计量条那一格 · 更细窗口那一行，字与语气全照那台写好的。
+ * `quota-read`（用量屏）：结论两行 · 每号两条计量条那一格（字 · 语气 · 重置 · 1% ≈ 多少），全照那台写好的。
  */
 
 @WireOf("QuotaRead")
 @JsonClass(generateAdapter = true)
-data class QuotaRead(
+data class QuotaReadReply(
     val accounts: List<QuotaAccount>,
     val verdict: QuotaVerdict?,
 )
@@ -1258,7 +1258,7 @@ data class QuotaRead(
 data class QuotaVerdict(
     val text: String,
     val sub: String?,
-    val tone: Tone,
+    val tone: UsageTone,
 )
 
 @WireOf("QuotaAccount")
@@ -1266,24 +1266,28 @@ data class QuotaVerdict(
 data class QuotaAccount(
     val account: String,
     val slots: List<SlotShow>,
-    val windows: List<WindowShow>?,
 )
 
-/** 一个语义位那一格：字 · 语气 · 「1% ≈ 多少」（量不到 ⇒ `null`）。 */
+/** 一个语义位那一格：字 · 语气 · 重置那一格（`↻18:30` / `↻13:10 已过`，说不出 ⇒ `null`）· 「1% ≈ 多少」（量不到 ⇒ `null`）。 */
 @WireOf("SlotShow")
 @JsonClass(generateAdapter = true)
 data class SlotShow(
     val slot: String,
     val text: String,
-    val tone: Tone,
+    val tone: UsageTone,
+    val resetText: String?,
     val perPctText: String?,
 )
 
-/** 更细窗口那一行：写好的字与语气（原名与窗口键不上屏）。 */
-@WireOf("WindowShow")
-@JsonClass(generateAdapter = true)
-data class WindowShow(
-    val text: String,
-    val tone: Tone,
-    val perPctText: String?,
-)
+/** 用量那几格的语气（线上那一列只有这三个值）。 */
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}

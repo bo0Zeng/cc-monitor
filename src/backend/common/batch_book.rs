@@ -288,12 +288,27 @@ pub(crate) fn said_of(verb: &str, outcomes: &[BatchOutcome], into: Option<&str>)
     let skip = count(&[ItemState::Skipped]);
     let bad = count(&[ItemState::Failed, ItemState::Exists]);
     let left = count(&[ItemState::Cancelled]);
-    let mut parts = vec![copy_text("beFiles.batch.head", &[("action", verb), ("n", &n)])];
+    let mut parts = vec![copy_text(
+        "beFiles.batch.head",
+        &[("action", verb), ("n", &n)],
+    )];
     let segs = [
-        (ok, copy_text("beFiles.batch.segOk", &[("ok", &ok.to_string())])),
-        (skip, copy_text("beFiles.batch.segSkip", &[("skip", &skip.to_string())])),
-        (bad, copy_text("beFiles.batch.segBad", &[("bad", &bad.to_string())])),
-        (left, copy_text("beFiles.batch.segLeft", &[("left", &left.to_string())])),
+        (
+            ok,
+            copy_text("beFiles.batch.segOk", &[("ok", &ok.to_string())]),
+        ),
+        (
+            skip,
+            copy_text("beFiles.batch.segSkip", &[("skip", &skip.to_string())]),
+        ),
+        (
+            bad,
+            copy_text("beFiles.batch.segBad", &[("bad", &bad.to_string())]),
+        ),
+        (
+            left,
+            copy_text("beFiles.batch.segLeft", &[("left", &left.to_string())]),
+        ),
     ];
     parts.extend(segs.into_iter().filter(|(k, _)| *k > 0).map(|(_, t)| t));
     parts.join(&copy_text("kit.text.sep", &[]))

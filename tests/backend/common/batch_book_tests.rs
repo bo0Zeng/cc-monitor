@@ -29,7 +29,12 @@ fn the_ending_line_leaves_out_the_parts_that_are_zero() {
     );
     assert_eq!(
         said_of("删除", &outs(&[Done, Skipped, Cancelled]), None),
-        line(vec![head("3"), seg("ok", "1"), seg("skip", "1"), seg("left", "1")])
+        line(vec![
+            head("3"),
+            seg("ok", "1"),
+            seg("skip", "1"),
+            seg("left", "1")
+        ])
     );
     assert_eq!(
         said_of("删除", &outs(&[Failed, Failed]), None),
@@ -43,6 +48,9 @@ fn the_ending_line_leaves_out_the_parts_that_are_zero() {
         said_of("删除", &outs(&[Done, Failed]), None),
         said_of("删除", &outs(&[Skipped, Cancelled]), None),
     ] {
-        assert!(!s.contains(" 0") && !s.contains("×0"), "写了是 0 的那一段：{s}");
+        assert!(
+            !s.contains(" 0") && !s.contains("×0"),
+            "写了是 0 的那一段：{s}"
+        );
     }
 }

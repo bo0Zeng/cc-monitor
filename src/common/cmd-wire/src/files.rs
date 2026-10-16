@@ -398,7 +398,7 @@ pub struct LsEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub size: Option<u64>,
-    /// `size` 写好的字（`2.1 MB`，`copy_core::size_text`）；读不到大小 ⇒ 缺。
+    /// `size` 写好的字（`2.1 MB`，`copy_core::size_text`）；目录 · 指向目录的链接 · 读不到大小的 ⇒ 缺。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub size_text: Option<String>,

@@ -659,7 +659,7 @@ private fun EntryRow(
             Text(e.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
             e.mtime?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
         }
-        if (!e.isDir) e.sizeText?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
+        e.sizeText?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
     }
 }
 

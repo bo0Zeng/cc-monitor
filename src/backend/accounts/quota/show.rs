@@ -179,10 +179,22 @@ impl Stamp for SlotShow {
     /// 出口那一下：按钟写 `resets_at` 旁边那两格。
     fn stamp(&mut self, clock: &crate::common::time::TextClock) {
         if let Some(t) = self.resets_at {
-            self.resets_at_text = Some(clock.text(t));
+            let at = clock.text(t);
             self.resets_at_rel_text = clock.rel(t);
+            self.reset_text = Some(reset_text(&at, self.resets_at_rel_text.is_none()));
+            self.resets_at_text = Some(at);
         }
     }
+}
+
+/// 重置那一格的字（唯一写法）：还没到 ⇒ `↻18:30`；已过 ⇒ `↻13:10 已过`。
+pub(crate) fn reset_text(at: &Words, past: bool) -> Words {
+    let key = if past {
+        "acct.reset.past"
+    } else {
+        "acct.reset.at"
+    };
+    Words(copy_core::copy_text(key, &[("at", &at.0)]))
 }
 
 impl Stamp for WindowShow {
@@ -194,7 +206,6 @@ impl Stamp for WindowShow {
         }
         self.seen_at_text = Some(clock.text(self.seen_at));
         self.seen_at_rel_text = clock.rel(self.seen_at);
-        self.text = window_line(self);
     }
 }
 
@@ -243,7 +254,6 @@ pub(crate) fn windows_of(
                 tokens_per_pct: per_pct,
                 per_pct_text: per_pct.map(per_pct_text),
                 reset_since_seen: reset,
-                text: Words::default(),
                 tone,
             }
         })
@@ -270,7 +280,7 @@ pub(crate) fn per_pct_of_slots(sh: &mut QuotaShow) {
 }
 
 /// 一个窗口那一行的名字：窗口键 `5h` · `7d` 照语义位的字；`7d:<档>` ⇒「7d <档>」；不算用量窗口的（超额）⇒「超额」。
-fn window_label(key: Option<&str>) -> String {
+pub(crate) fn window_label(key: Option<&str>) -> String {
     match key {
         None => copy_core::copy_text("acct.row.over", &[]),
         Some(k) => match k.split_once(':') {
@@ -284,31 +294,6 @@ fn window_label(key: Option<&str>) -> String {
             None => super::name_words::slot_text(k),
         },
     }
-}
-
-/// 一个窗口那一行写好的字（出口那一下、时刻字写好之后）：名字 · 值（已重置未计时 / 没数 ⇒ `—`，用满 ⇒ `✕`）· 还在计时 ⇒ `↻时刻`。
-fn window_line(w: &WindowShow) -> Words {
-    let value = if w.reset_since_seen {
-        copy_core::copy_text("acct.val.none", &[])
-    } else if w.tone == Tone::Fail {
-        copy_core::copy_text("acct.val.full", &[])
-    } else {
-        match w.pct {
-            Some(p) => copy_core::copy_text("acct.val.pct", &[("pct", &p.to_string())]),
-            None => copy_core::copy_text("acct.val.none", &[]),
-        }
-    };
-    let window = window_label(w.key.as_deref());
-    Words(match w.resets_at_text.as_ref().filter(|_| !w.reset_since_seen) {
-        Some(at) => copy_core::copy_text(
-            "acct.window.lineReset",
-            &[("window", &window), ("value", &value), ("at", &at.0)],
-        ),
-        None => copy_core::copy_text(
-            "acct.window.line",
-            &[("window", &window), ("value", &value)],
-        ),
-    })
 }
 
 /// 「用到 N%」的显示判法：这个窗口用到 `n`%、还没重置。
@@ -345,6 +330,7 @@ fn slots_of(
             Some(SlotShow {
                 resets_at_text: None,
                 resets_at_rel_text: None,
+                reset_text: None,
                 slot: (*s).to_string(),
                 pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,

@@ -120,6 +120,10 @@ pub struct SlotShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
     pub resets_at_rel_text: Option<Words>,
+    /// 重置那一格写好的字（`↻18:30` · 已过 `↻13:10 已过`；同 `rows` 里那一格）；说不出几点 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    pub reset_text: Option<Words>,
     /// 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
@@ -284,11 +288,7 @@ pub struct WindowShow {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub reset_since_seen: bool,
-    /// 这一窗口那一行写好的字（`7d opus 22% · ↻10-19 09:00`；出口那一下按钟写，原名与窗口键不上屏）。
-    #[serde(default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
-    pub text: Words,
-    /// 那一行的语气：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
+    /// 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
     #[serde(default = "plain")]
     #[cfg_attr(
         any(test, feature = "ts"),

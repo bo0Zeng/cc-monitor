@@ -161,7 +161,11 @@ fn hits_carry_their_offset_and_forks_name_their_parent() {
         first.clone() + "\r\n" + line("c2", Some(P), "命中词").as_str(),
     )
     .unwrap();
-    std::fs::write(dir.join(format!("{O}.jsonl")), line("o1", Some("0000aaaa-0000-4000-8000-0000000000ff"), "命中词")).unwrap();
+    std::fs::write(
+        dir.join(format!("{O}.jsonl")),
+        line("o1", Some("0000aaaa-0000-4000-8000-0000000000ff"), "命中词"),
+    )
+    .unwrap();
     let req = HistorySearchReq {
         query: "命中词".to_string(),
         include_tools: None,
@@ -171,7 +175,12 @@ fn hits_carry_their_offset_and_forks_name_their_parent() {
         titles: None,
     };
     let v = search_at(&home, req, crate::faces::read_face::LINES_CAP_BYTES).expect("搜索");
-    let by = |sid: &str| v.sessions.iter().find(|s| s.session_id == sid).unwrap_or_else(|| panic!("{sid} 没命中"));
+    let by = |sid: &str| {
+        v.sessions
+            .iter()
+            .find(|s| s.session_id == sid)
+            .unwrap_or_else(|| panic!("{sid} 没命中"))
+    };
     let c = by(C);
     assert_eq!(
         c.forked_from.as_ref().map(|f| f.label.0.as_str()),

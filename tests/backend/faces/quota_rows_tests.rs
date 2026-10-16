@@ -174,6 +174,7 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
         resets_at: u64::try_from(resets_at).ok(),
         resets_at_text: Some(Words("x".to_string())),
         resets_at_rel_text: None,
+        reset_text: None,
         full: false,
         text: Words::default(),
         tone: Tone::Plain,
@@ -407,29 +408,48 @@ fn the_verdict_says_whether_anything_can_send() {
     };
     let verdict = |b: Base, u: Vec<_>| reply_of(b, Vec::new(), u, &clock).verdict;
     let sep = copy_core::copy_text("kit.text.sep", &[]);
-    let v = verdict(base(ReadState::Present, &["a", "_"], None), vec![unseen("a")]).expect("有号");
+    let v = verdict(
+        base(ReadState::Present, &["a", "_"], None),
+        vec![unseen("a")],
+    )
+    .expect("有号");
     assert_eq!(
         (v.text.0, v.sub.map(|w| w.0), v.tone),
         (
             copy_core::copy_text("acct.verdict.can", &[("n", "2")]),
-            Some(format!("a{sep}{}", copy_core::copy_text("acct.tag.home", &[]))),
+            Some(format!(
+                "a{sep}{}",
+                copy_core::copy_text("acct.tag.home", &[])
+            )),
             crate::common::cells::Tone::Plain
         )
     );
     let back = now + 5_400;
-    let v = verdict(base(ReadState::Present, &[], Some(("b", back))), vec![unseen("a")]).expect("有号");
+    let v = verdict(
+        base(ReadState::Present, &[], Some(("b", back))),
+        vec![unseen("a")],
+    )
+    .expect("有号");
     assert_eq!(
         (v.text.0, v.sub.map(|w| w.0), v.tone),
         (
             copy_core::copy_text("acct.verdict.none", &[]),
             Some(copy_core::copy_text(
                 "acct.verdict.earliest",
-                &[("account", "b"), ("at", &clock.text(back).0), ("rel", &clock.rel(back).unwrap().0)]
+                &[
+                    ("account", "b"),
+                    ("at", &clock.text(back).0),
+                    ("rel", &clock.rel(back).unwrap().0)
+                ]
             )),
             crate::common::cells::Tone::Fail
         )
     );
-    let v = verdict(base(ReadState::Present, &[], Some(("b", now - 60))), vec![unseen("a")]).expect("有号");
+    let v = verdict(
+        base(ReadState::Present, &[], Some(("b", now - 60))),
+        vec![unseen("a")],
+    )
+    .expect("有号");
     assert_eq!(
         v.sub.map(|w| w.0),
         Some(copy_core::copy_text(
@@ -439,7 +459,16 @@ fn the_verdict_says_whether_anything_can_send() {
     );
     let v = verdict(base(ReadState::Present, &[], None), vec![unseen("a")]).expect("有号");
     assert_eq!(v.sub, None, "说不出几点回来 ⇒ 缺");
-    assert!(verdict(base(ReadState::Present, &[], None), Vec::new()).is_none(), "一个号都没有");
-    assert!(verdict(base(ReadState::Unreadable, &["a"], None), vec![unseen("a")]).is_none(), "读不出");
-    assert!(verdict(base(ReadState::Absent, &[], None), Vec::new()).is_none(), "没记过账");
+    assert!(
+        verdict(base(ReadState::Present, &[], None), Vec::new()).is_none(),
+        "一个号都没有"
+    );
+    assert!(
+        verdict(base(ReadState::Unreadable, &["a"], None), vec![unseen("a")]).is_none(),
+        "读不出"
+    );
+    assert!(
+        verdict(base(ReadState::Absent, &[], None), Vec::new()).is_none(),
+        "没记过账"
+    );
 }

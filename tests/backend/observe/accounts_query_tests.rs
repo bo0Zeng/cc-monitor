@@ -2661,20 +2661,20 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
     use test_support::row_with;
     let list = |sign_in: bool| {
         let mut l = test_support::list(vec![
-                row_with("ready", |_| {}),
-                row_with("need", |a| a.auth_ready = false),
-                row_with("api", |a| {
-                    a.auth_kind = acct_core::AUTH_KIND_API_KEY.to_string();
-                    a.auth_ready = false;
-                }),
-                row_with("gone", |a| {
-                    a.exists = false;
-                    a.auth_ready = false;
-                }),
-                row_with("here", |a| {
-                    a.mode = "in-place".to_string();
-                    a.auth_ready = false;
-                }),
+            row_with("ready", |_| {}),
+            row_with("need", |a| a.auth_ready = false),
+            row_with("api", |a| {
+                a.auth_kind = acct_core::AUTH_KIND_API_KEY.to_string();
+                a.auth_ready = false;
+            }),
+            row_with("gone", |a| {
+                a.exists = false;
+                a.auth_ready = false;
+            }),
+            row_with("here", |a| {
+                a.mode = "in-place".to_string();
+                a.auth_ready = false;
+            }),
         ]);
         with_sign_in(&mut l, sign_in);
         l.accounts
@@ -2682,7 +2682,12 @@ fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
             .map(|r| (r.scanned.name.clone(), r.login))
             .collect::<Vec<_>>()
     };
-    let named = |v: Vec<(String, bool)>| v.into_iter().filter(|(_, b)| *b).map(|(n, _)| n).collect::<Vec<_>>();
+    let named = |v: Vec<(String, bool)>| {
+        v.into_iter()
+            .filter(|(_, b)| *b)
+            .map(|(n, _)| n)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(named(list(true)), vec!["need".to_string()]);
     assert!(named(list(false)).is_empty());
     let mut l = test_support::list(vec![row_with("need", |a| a.auth_ready = false)]);
