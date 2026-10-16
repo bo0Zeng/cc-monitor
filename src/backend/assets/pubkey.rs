@@ -19,7 +19,7 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::common::door::{self, Door};
 use crate::platform::shell::posix;
@@ -158,7 +158,7 @@ pub(crate) fn answer_add(
 }
 
 /// `authorized-keys-add` 的入参：一行公钥（本条自己也校验一遍）。
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
@@ -258,10 +258,13 @@ impl Reach for Wire {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
     {
         Box::pin(async move {
+            let req = KeyAddReq {
+                key: key.to_string(),
+            };
             let v = crate::dial::remote_ask::ask_json(
                 machine,
-                "authorized-keys-add",
-                &json!({ "key": key }),
+                <AuthorizedKeysAdd as crate::wire::typed::Command>::NAME,
+                &serde_json::to_value(req).map_err(|e| e.to_string())?,
                 // 回包里没有时刻（只回 `outcome`）。
                 &crate::Tz::default(),
                 &crate::dial::remote_ask::REACH,

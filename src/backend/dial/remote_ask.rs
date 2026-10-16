@@ -230,14 +230,24 @@ pub async fn ask_json(
 }
 
 /// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）。
-pub async fn ask_dialed(
+/// 入参类型选中那条命令（名字 · 回包类型都挂在它上面），发的是它序列化的那一份；回包解不出 ⇒ 那台后端版本不同。
+pub async fn ask_dialed<C: cmd_wire::files::Call>(
     dial: &Value,
-    cmd: &str,
-    args: &Value,
+    req: &C,
     tz: &crate::Tz,
     remote: &dyn Remote,
-) -> Result<Value, Said> {
-    ask_via(dial, &copy_core::peer_machine(), cmd, args, tz, remote).await
+) -> Result<C::Reply, Said> {
+    let machine = copy_core::peer_machine();
+    let differs = |e: serde_json::Error| Said {
+        code: None,
+        message: crate::common::contract::joined(
+            copy_core::backend_differs(&machine),
+            Some(format!("{}: {e}", C::NAME)),
+        ),
+    };
+    let args = serde_json::to_value(req).map_err(differs)?;
+    let v = ask_via(dial, &machine, C::NAME, &args, tz, remote).await?;
+    serde_json::from_value(v).map_err(differs)
 }
 
 async fn ask_via(

@@ -2,6 +2,7 @@
 //! 校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/frontend/shell/pubkey_tests.rs`，随实现搬来、期望一字未改。
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
+use serde_json::json;
 use std::sync::Mutex;
 
 // 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份（判据照线上形比）。

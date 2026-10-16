@@ -326,18 +326,31 @@ impl RigBackend {
         while let Some(d) = stack.pop() {
             for e in fs::read_dir(&d).unwrap() {
                 let p = e.unwrap().path();
-                let rel = p.strip_prefix(&self.disk).unwrap().to_string_lossy().into_owned();
+                let rel = p
+                    .strip_prefix(&self.disk)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
                 if p.is_dir() {
                     g.dirs.insert(rel);
                     stack.push(p);
                 } else {
-                    g.files.insert(rel, rig::Entry { bytes: fs::read(&p).unwrap() });
+                    g.files.insert(
+                        rel,
+                        rig::Entry {
+                            bytes: fs::read(&p).unwrap(),
+                        },
+                    );
                 }
             }
         }
     }
 
-    fn answer(&self, flag: &str, args: &serde_json::Value) -> Result<serde_json::Value, (String, String)> {
+    fn answer(
+        &self,
+        flag: &str,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, (String, String)> {
         use crate::wire::typed::take;
         let face = crate::platform::fs::Face::issue();
         let w = |f: crate::control::files_write::WriteFail| (f.code.to_string(), f.said);
@@ -348,8 +361,11 @@ impl RigBackend {
                 serde_json::json!({ "path": rig::HOME })
             }
             "files-mkdir" => serde_json::to_value(
-                crate::control::files_write::answer(take::<cwf::FilesMkdirReq>(args).map_err(t)?, &face)
-                    .map_err(w)?,
+                crate::control::files_write::answer(
+                    take::<cwf::FilesMkdirReq>(args).map_err(t)?,
+                    &face,
+                )
+                .map_err(w)?,
             )
             .unwrap(),
             "files-commit-upload" => serde_json::to_value(
@@ -422,8 +438,10 @@ fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
     {
         let mut g = a.lock().unwrap();
         g.dirs.extend(["src".to_string(), "src/d".to_string()]);
-        g.files.insert("src/f.bin".into(), rig::Entry { bytes: one.clone() });
-        g.files.insert("src/d/x.bin".into(), rig::Entry { bytes: two.clone() });
+        g.files
+            .insert("src/f.bin".into(), rig::Entry { bytes: one.clone() });
+        g.files
+            .insert("src/d/x.bin".into(), rig::Entry { bytes: two.clone() });
     }
     let b = rig::home(false, true);
     b.lock().unwrap().dirs.insert("dst".into());
@@ -435,7 +453,10 @@ fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
     let at = |p: &str| format!("{}/{p}", rig::HOME);
     let r = on_rt(|rt| {
         let (fa, fb) = rt.block_on(async {
-            (rig::session_on(a.clone()).await, rig::session_on(b.clone()).await)
+            (
+                rig::session_on(a.clone()).await,
+                rig::session_on(b.clone()).await,
+            )
         });
         let w = rt
             .block_on(Wired::over(
@@ -475,7 +496,11 @@ fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
     let g = b.lock().unwrap();
     assert_eq!(g.bytes("dst/f.bin"), Some(one), "那份文件逐字节一样");
     assert_eq!(g.bytes("dst/d/x.bin"), Some(two), "目录里那份逐字节一样");
-    let left: Vec<_> = g.files.keys().filter(|k| k.starts_with(".cc-monitor/")).collect();
+    let left: Vec<_> = g
+        .files
+        .keys()
+        .filter(|k| k.starts_with(".cc-monitor/"))
+        .collect();
     assert!(left.is_empty(), "落点那台不留暂存件：{left:?}");
     let here_left: Vec<_> = fs::read_dir(here.join(relay_route_core::STAGING_DIR_REL))
         .map(|d| d.map(|e| e.unwrap().file_name()).collect())

@@ -7,7 +7,8 @@
 //! - 票 · 进度 · 撤同同一台上那三条（`common/batch_book.rs`）：带票 ⇒ 断开照常做完、同一张票再问回同一份结局。
 //!   进度多报一样字节：整组文件的字节和是总数，一份文件两腿（A → 本机 · 本机 → B）各占它一半，传到一半也动。
 //!
-//! 两头的动作经 [`Ends`] 这一层：生产那一份是 SFTP ＋ 问 B 那台后端（[`Wired`]），判据用本机两个目录上的替身。
+//! 两头的动作经 [`Ends`] 这一层：生产那一份是 SFTP ＋ 问 B 那台后端（[`Wired`]）；判据一族用本机两个目录上的替身，
+//! 一趟用两台合成 SFTP 台架 ＋ 假远端判生产那一份（入参照真的解码器解、提交走真的那一份）。
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -386,26 +387,20 @@ pub(crate) struct Wired {
     staging: PathBuf,
 }
 
-/// 问落点那台后端一条命令（经那条连接的 CLI 面）。
-async fn ask_to(w: &Wired, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Miss> {
-    crate::dial::remote_ask::ask_dialed(
-        &w.to_dial,
-        cmd,
-        &args,
-        &w.tz,
-        w.remote.as_ref(),
-    )
-    .await
-    .map_err(|s| {
-        let code = match s.code.as_deref() {
-            Some("exists") => "exists",
-            Some("refused") => "refused",
-            Some("stale") => "stale",
-            Some("bad_name") => "bad_name",
-            _ => "io_failed",
-        };
-        (code, Said::from(s.message))
-    })
+/// 问落点那台后端一条命令（经那条连接的 CLI 面；入参类型选中那条命令）。
+async fn ask_to<C: cwf::Call>(w: &Wired, req: &C) -> Result<C::Reply, Miss> {
+    crate::dial::remote_ask::ask_dialed(&w.to_dial, req, &w.tz, w.remote.as_ref())
+        .await
+        .map_err(|s| {
+            let code = match s.code.as_deref() {
+                Some("exists") => "exists",
+                Some("refused") => "refused",
+                Some("stale") => "stale",
+                Some("bad_name") => "bad_name",
+                _ => "io_failed",
+            };
+            (code, Said::from(s.message))
+        })
 }
 
 impl Wired {
@@ -456,11 +451,11 @@ impl Wired {
             remote,
             staging,
         };
-        let h = ask_to(&w, "files-home", serde_json::json!({}))
+        let h = ask_to(&w, &cwf::HomeReq {})
             .await
             .map_err(|(_, s)| CopyErr::Unreachable(s.said))?;
-        let bhome = h.get("path").and_then(|p| p.as_str()).unwrap_or_default();
-        if let Some(why) = super::transfer::start_dir_mismatch(w.to.home(), bhome) {
+        let bhome = String::from_utf8_lossy(h.path.bytes());
+        if let Some(why) = super::transfer::start_dir_mismatch(w.to.home(), &bhome) {
             return Err(CopyErr::SftpHomeMismatch(why));
         }
         Ok(w)
@@ -535,13 +530,12 @@ impl Ends for Wired {
 
     fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Miss>> {
         Box::pin(async move {
-            ask_to(
-                self,
-                "files-mkdir",
-                serde_json::json!({"root": dir, "rel": name}),
-            )
-            .await
-            .map(|_| ())
+            let req = cwf::FilesMkdirReq {
+                root: dir.into(),
+                rel: name.into(),
+                single: None,
+            };
+            ask_to(self, &req).await.map(|_| ())
         })
     }
 
@@ -584,15 +578,18 @@ impl Ends for Wired {
                 let (n, sha) = upload_to_staging(&self.to, &local_s, &key, &cancel, &sink)
                     .await
                     .map_err(io)?;
-                ask_to(
-                    self,
-                    "files-commit-upload",
-                    serde_json::json!({
-                        "root": dir, "rel": name, "key": key, "overwrite": overwrite,
-                        "expect": {"sha256": sha},
-                    }),
-                )
-                .await?;
+                let req = cwf::FilesCommitUploadReq {
+                    root: dir.into(),
+                    rel: name.into(),
+                    key: key.clone(),
+                    on_exists: overwrite.then_some(cmd_wire::batch::OnExists::Overwrite),
+                    expect: cwf::Sha256Expect {
+                        sha256: cwf::Sha256Hex(sha),
+                    },
+                    chunks: None,
+                    bytes: None,
+                };
+                ask_to(self, &req).await?;
                 Ok(n)
             }
             .await;
