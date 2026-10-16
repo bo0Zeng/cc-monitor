@@ -412,6 +412,29 @@ data class ForkedFrom(
 data class HistorySearchReply(
     val sessions: List<SessionHits>,
     val unreadable: Long,
+    val skipped: List<String>,
+)
+
+/** `history-search-merge`：几台合好的一份（照那台排好的先后）。 */
+@WireOf("Merged")
+@JsonClass(generateAdapter = true)
+data class Merged(
+    val totalHits: Long,
+    val sessionCount: Long,
+    val truncated: Boolean,
+    val sessions: List<MergedRow>,
+)
+
+/** 合好的一行：[origin] 是交合并时给那台起的名字（合并的那一台自己 ⇒ 缺）。 */
+@WireOf("MergedRow")
+@JsonClass(generateAdapter = true)
+data class MergedRow(
+    val origin: String?,
+    val atText: String,
+    val sessionId: String,
+    val title: String,
+    val hitCount: Long,
+    val hits: List<SearchHit>,
 )
 
 @WireOf("SessionHits")
