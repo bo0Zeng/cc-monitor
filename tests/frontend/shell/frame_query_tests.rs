@@ -1286,6 +1286,51 @@ async fn an_expired_deadline_sends_nothing() {
     inbound_client::unregister(origin.as_wire_str(), &client);
 }
 
+/// 那台拒了：句子就是它那一句（不在前面接「谁查询失败 ·」），复制详情是它写的那份（远端补「本机」那一行）。
+#[tokio::test]
+async fn a_refusal_says_the_peer_sentence_and_carries_its_detail() {
+    let origin = Origin("said3-refused".into());
+    let (client, mut peer) = client_for_test(origin.as_wire_str(), &["machines-read"]);
+    let o = origin.clone();
+    let asking = tokio::spawn(async move {
+        call(
+            &o,
+            "machines-read",
+            json!({}),
+            None,
+            Deadline::within(Duration::from_secs(5)),
+        )
+        .await
+    });
+    let req = next_request(&mut peer, Duration::from_secs(5))
+        .await
+        .expect("一行都没发");
+    let wrote = copy_core::detail::Detail::new()
+        .item(copy_core::detail::Label::Raw, "disk full")
+        .render();
+    client.route_reply(
+        req["id"].as_str().expect("id"),
+        false,
+        Some("write_failed".into()),
+        Some("机器表写不进去".into()),
+        Some(wrote.clone()),
+        None,
+    );
+    let e = asking.await.expect("task").expect_err("拒了却成了");
+    assert_eq!(e.said, "机器表写不进去");
+    assert!(
+        e.detail.contains(&wrote),
+        "那台写的详情没带上：{}",
+        e.detail
+    );
+    assert!(
+        e.detail.contains(&crate::detail::local_line()),
+        "远端没补「本机」：{}",
+        e.detail
+    );
+    inbound_client::unregister(origin.as_wire_str(), &client);
+}
+
 /// D4 ★ **本模块只用、不造**：`Deadline` 的构造恰好一处（`within`），生产段零处另起截止时刻
 /// （`Instant::now() +` 恰好一处且在 `within` 里）；出口函数的签名里零个 `Duration` 形参（期限一律是 `Deadline`）。
 /// 正控：同一识别器在合成语料里认得出一个带 `Duration` 形参的出口、一处多出来的 `now() +`。

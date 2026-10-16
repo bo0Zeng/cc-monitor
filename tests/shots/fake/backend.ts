@@ -273,7 +273,7 @@ export class FakeBackend {
       case "chan_call":
         return this.chanCall(args);
       case "chan_offer":
-        return { ops: Object.keys(this.world.ops), unavailable: [], stoppable: [] };
+        return { ops: Object.keys(this.world.ops), unavailable: [] };
       case "watch_sessions":
         // 主窗口报在看哪几个（整份换）：转给无头壳，它照产品那一条合每台的名单、经 `stream-watch` 报给那台后端（没在看的会话，行不上流）。
         // 交给无头壳的这几条一律等它收下了才回（同产品：Tauri 命令登记完才返回）—— 主界面 `await` 完订阅才发 `frontend-ready`，
@@ -286,8 +286,6 @@ export class FakeBackend {
         return null;
       case "chan_stop":
         if (this.shellSubs.delete(Number(args.id))) return this.tell("stop", { id: Number(args.id) }).then(() => null);
-        return null;
-      case "chan_cancel":
         return null;
     }
     const own = this.world.commands[cmd];

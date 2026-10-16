@@ -36,8 +36,8 @@ export async function callTyped<K extends keyof TypedCommands>(
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
  * 「这条路该等多久」由每个调用点自己说（`X6`：调用点一律显式给期限，零处用库里的默认）。
  */
-export function budgetWithin(ms: number, cancel?: AbortSignal): Budget {
-  return { until: performance.now() + ms, cancel };
+export function budgetWithin(ms: number): Budget {
+  return { until: performance.now() + ms };
 }
 
 const enc = new TextEncoder();
@@ -159,9 +159,7 @@ function saidByLayer(e: unknown): string {
         ? copyText("chanCaller.said.timeout")
         : copyText("chanCaller.said.unreachable");
     case "ours":
-      if (err.why !== "Cancelled") return copyText("chanCaller.said.internal");
-      // 那台对这一条不认撤 ⇒ 说它可能还在跑。
-      return err.runsOn === true ? copyText("chanCaller.said.withdrawnRunsOn") : copyText("chanCaller.said.withdrawn");
+      return err.why === "Cancelled" ? copyText("chanCaller.said.withdrawn") : copyText("chanCaller.said.internal");
   }
 }
 

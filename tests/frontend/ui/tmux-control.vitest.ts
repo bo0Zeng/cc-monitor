@@ -193,7 +193,7 @@ describe("那台握手时说过做不到的，菜单置灰并说为什么", () =
     invokeMock.mockImplementation((cmd: string, args: { origin?: string }) =>
       Promise.resolve(
         cmd === "chan_offer" && args.origin === "net2-box"
-          ? { ops: ["kill", "terminal-preview"], unavailable: [["kill", "no_tmux"]], stoppable: [] }
+          ? { ops: ["kill", "terminal-preview"], unavailable: [["kill", "no_tmux", "net2-box 无 tmux"]] }
           : null,
       ),
     );

@@ -11,7 +11,7 @@
  * 这里的 [`settleTyped`] 只接一个已经发出去的 `Promise`。
  */
 import { copyText } from "./copy-table";
-import { chan, ChanError, unavailableCode, type CallError } from "../../comms/inward/chan";
+import { chan, ChanError, type CallError } from "../../comms/inward/chan";
 import { machineName, peerVersionSaid, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
@@ -61,9 +61,7 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
       // `unsupported`：那台后端事前就说不认这条命令（比这条动作老）。`refused` 由调用方先接走，走不到这里。
       return peerVersionSaid("backend_old", origin);
     case "ours":
-      if (err.why !== "Cancelled") return copyText("control.channel.broken");
-      // 那台对这一条不认撤 ⇒ 说它可能还在跑。
-      return err.runsOn === true ? copyText("control.channel.cancelledRunsOn") : copyText("control.channel.cancelled");
+      return err.why === "Cancelled" ? copyText("control.channel.cancelled") : copyText("control.channel.broken");
   }
 }
 
@@ -104,14 +102,12 @@ function controlErrorOf(origin: Origin, e: unknown, refusals: Refusals): unknown
 export function unavailableSaid(origin: Origin, op: string): string | null {
   const offer = chan.cachedOffer(origin);
   if (offer === undefined) void chan.offer(origin);
-  const code = unavailableCode(offer, op);
-  if (code === null) return null;
-  return unavailableReason(code, machineName(origin));
+  return offer?.unavailable.find(([o]) => o === op)?.[2] ?? null;
 }
 
 /**
- * 那台说「做不到」的一个码说成人话（hello 的 `unavailable` · 真调用回的同一个码）。唯一住址：
- * 置灰那一句（{@link unavailableSaid}）与测试连接那一格的「做不到的那几类」（`settings/machine-card.ts`）共用。
+ * 那台说「做不到」的一个码说成人话（hello 的 `unavailable` · 真调用回的同一个码）：测试连接那一格的「做不到的那几类」（`settings/machine-card.ts`）用。
+ * 置灰那一句由 monitor 写好、随能力事实交来（{@link unavailableSaid}）。
  */
 export function unavailableReason(code: string, machine: string): string {
   switch (code) {

@@ -1,4 +1,4 @@
-//! 因对方版本说不成的那几句（命令发不成 · 接上时的新旧），和一句话里怎么称呼那台机器。全产品各一份（界面那一侧是 `chan-caller.ts::peerVersionSaid`）。
+//! 因对方版本说不成的那几句（命令发不成 · 接上时的新旧）· 那台做不到的那一句，和一句话里怎么称呼那台机器。全产品各一份（界面那一侧是 `chan-caller.ts::peerVersionSaid`）。
 
 use crate::copy_text;
 
@@ -45,4 +45,13 @@ pub fn backend_frames_differ(machine: &str) -> String {
 /// 见 [`backend_old`]。
 pub fn reply_unreadable(machine: &str) -> String {
     copy_text("peerVersion.said.unreadable", &[("machine", machine)])
+}
+
+/// 那台握手时说过「这条接得下、这台做不到」的一个码（`hello.unavailable`）⇒ 置灰时说的那一句；认不出的码只说做不到（码不上屏）。
+pub fn unavailable(code: &str, machine: &str) -> String {
+    match code {
+        "no_tmux" => copy_text("control.unavailable.noTmux", &[("machine", machine)]),
+        "no_unix_mode" => copy_text("control.unavailable.noUnixMode", &[("machine", machine)]),
+        _ => copy_text("control.unavailable.other", &[("machine", machine)]),
+    }
 }

@@ -192,7 +192,7 @@ async fn ask_plan_for(
 }
 
 /// 照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。
-fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
+fn planned_binary(plan: &Plan) -> Result<BackendBinary, Said> {
     crate::byte_table::pick(plan.key)
         .and_then(|p| Some((p.bytes, p.build_id?)))
         .filter(|(_, id)| *id == plan.expected)
@@ -202,7 +202,7 @@ fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
             machine: plan.key.label(),
         })
         .ok_or_else(|| {
-            copy_text(
+            Said::of(
                 "rsSftp.plan.notThisSlot",
                 &[("machine", &plan.key.label()), ("expected", &plan.expected)],
             )
@@ -224,12 +224,6 @@ impl DeployError {
         match self {
             DeployError::Refused(s) | DeployError::Failed(s) => s,
         }
-    }
-}
-
-impl From<String> for DeployError {
-    fn from(why: String) -> Self {
-        DeployError::Failed(Said::written(why))
     }
 }
 
@@ -364,7 +358,7 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
     let r: Result<String, Said> = async move {
         // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
         let plan = ask_plan(&cfg).await?;
-        let bin = planned_binary(&plan).map_err(Said::written)?;
+        let bin = planned_binary(&plan)?;
         // 经本机常驻后端那条 `files` 链路。
         let fs = RemoteFs::open(&cfg).await?;
         let backend_msg = match plan.action {

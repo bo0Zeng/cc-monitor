@@ -920,30 +920,6 @@ impl Round {
 // 往返
 // ═══════════════════════════════════════════════════════════════════
 
-/// 后端拒绝时那句话。**逐档对着 `src/doc/IPC-PROTOCOL.md §10` 的错误码写。**
-/// 对外那句只说哪一步没成 ＋ 那台的原话；命令名与错误码不上屏，只进日志（排查用）。
-pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
-    tracing::warn!("filewin: {cmd} refused ({code}): {message}");
-    let hint = match code {
-        "bad_args" => &copy_text("rsFilewinFind.refusal.badArgs", &[]),
-        "bad_path" => &copy_text("rsFilewinFind.refusal.badPath", &[]),
-        "bad_query" => &copy_text("rsFilewinFind.refusal.badQuery", &[]),
-        "unreadable" => &copy_text("rsFilewinFind.refusal.cannotOpen", &[]),
-        _ => &copy_text("rsFilewinFind.refusal.other", &[]),
-    };
-    if message.trim().is_empty() {
-        return hint.to_string();
-    }
-    copy_text(
-        "rsFilewinFind.refusal.line",
-        &[
-            ("hint", &hint.to_string()),
-            // 对端应答里那一句（原话在应答的 detail 里，不在这一格）。
-            ("said", &message.to_string()),
-        ],
-    )
-}
-
 /// 问一趟 `files-find`（按 `FindReq` 发、按 `FindReply` 解）。`Ok(None)` = 后端说这一趟已被同一个搜索框更新的一趟顶掉（不出声）。
 ///
 /// ⚠ 搜索**没有第二条路可回落** ——：SFTP 给不了搜索。

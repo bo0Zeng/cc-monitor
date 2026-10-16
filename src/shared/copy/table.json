@@ -2290,12 +2290,6 @@
       "zh": "操作已撤回",
       "args": []
     },
-    "control.channel.cancelledRunsOn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "操作已撤回 · 该机器无法停止它 · 可能仍在跑",
-      "args": []
-    },
     "control.unavailable.noTmux": {
       "kind": "body",
       "role": "说明",
@@ -3800,12 +3794,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "查询已撤回",
-      "args": []
-    },
-    "chanCaller.said.withdrawnRunsOn": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "查询已撤回 · 该机无法停止它 · 可能仍在跑",
       "args": []
     },
     "chanCaller.said.unreachable": {
@@ -10160,71 +10148,10 @@
       "zh": "内容无法解析",
       "args": []
     },
-    "rsFilewinSource.said.internal": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错 · 重开本窗口",
-      "args": []
-    },
     "rsFilewinSource.said.cancelled": {
       "kind": "error",
       "role": "原因格",
       "zh": "已取消",
-      "args": []
-    },
-    "rsFilewinSource.said.hopFault": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未完成 · {what} · {did} · {leg}",
-      "args": ["leg", "what", "did"]
-    },
-    "rsFilewinSource.said.legHost": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "主程序与后端之间",
-      "args": []
-    },
-    "rsFilewinSource.said.legWindow": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "文件窗口与主程序之间",
-      "args": []
-    },
-    "rsFilewinSource.said.mayHaveRun": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "结果未知",
-      "args": []
-    },
-    "rsFilewinSource.said.notSent": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "请求未发出",
-      "args": []
-    },
-    "rsFilewinSource.said.timeout": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "无应答",
-      "args": []
-    },
-    "rsFilewinSource.said.broken": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "连接断开",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "rsFilewinSource.said.unreachable": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "离线",
-      "args": []
-    },
-    "rsFilewinSource.said.refused": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "被拒",
       "args": []
     },
     "rsFilewinSource.watch.localBreak": {
@@ -10415,47 +10342,11 @@
       "zh": "新建目录",
       "args": []
     },
-    "rsFilewinFind.refusal.line": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{hint} · {said}",
-      "args": ["hint", "said"]
-    },
-    "rsFilewinFind.refusal.other": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "被拒",
-      "args": []
-    },
-    "rsFilewinFind.refusal.cannotOpen": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端无法打开此目录 · 无权限或目录不在该机器上",
-      "args": []
-    },
-    "rsFilewinFind.refusal.badPath": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端不认此路径",
-      "args": []
-    },
-    "rsFilewinFind.refusal.badArgs": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错",
-      "args": []
-    },
     "rsFilewinFind.firstBuild.line": {
       "kind": "body",
       "role": "说明",
       "zh": "首建文件清单 · {machine} · 约 {secs}s",
       "args": ["machine", "secs"]
-    },
-    "rsFilewinFind.refusal.badQuery": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "搜索词写法不对",
-      "args": []
     },
     "rsFilewinWorkspace.acrossArgs.notUnder": {
       "kind": "error",
@@ -12511,49 +12402,6 @@
       "zh": "写入失败 · {dir} · {why}",
       "args": ["dir", "why"]
     },
-    "rsChanWire.hop.unreachable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "离线",
-      "args": []
-    },
-    "rsChanWire.hop.dropped": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "连接中途断开",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "rsChanWire.hop.overrun": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "无应答",
-      "args": []
-    },
-    "rsChanWire.peer.refused": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "后端拒绝",
-      "args": []
-    },
-    "rsChanWire.ours.cancelled": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "已取消",
-      "args": []
-    },
-    "rsChanWire.ours.cancelledRunsOn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "已取消 · 对方无法中止 · 结果未知",
-      "args": []
-    },
-    "rsChanWire.ours.broken": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错",
-      "args": []
-    },
     "rsSshLink.dial.noReason": {
       "kind": "error",
       "role": "原因格",
@@ -12743,6 +12591,55 @@
       "role": "报错",
       "zh": "一段声称 {n} 字节，超过上限 {cap}",
       "args": ["n", "cap"]
+    },
+    "rsChanSaid.hop.expired": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已超时 · 未执行",
+      "args": []
+    },
+    "rsChanSaid.hop.localDown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机后端未运行 · 未执行",
+      "args": []
+    },
+    "rsChanSaid.hop.remoteDown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 离线 · 未执行",
+      "args": ["machine"]
+    },
+    "rsChanSaid.hop.overrun": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 回复超时 · 结果未知",
+      "args": ["machine"]
+    },
+    "rsChanSaid.hop.dropped": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "与 {machine} 的连接断开 · 结果未知",
+      "args": ["machine"],
+      "limited": ["连接"]
+    },
+    "rsChanSaid.peer.refusedNoReason": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端拒绝 · 原因不明",
+      "args": ["machine"]
+    },
+    "rsChanSaid.ours.cancelled": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已取消",
+      "args": []
+    },
+    "rsChanSaid.ours.cancelledRunsOn": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已取消 · {machine} 无法中止 · 结果未知",
+      "args": ["machine"]
     },
     "rsChanHost.transfer.noResume": {
       "kind": "error",
@@ -14616,30 +14513,6 @@
       "role": "报错",
       "zh": "{who}的回答前后不一致 · {plan}",
       "args": ["who", "plan"]
-    },
-    "rsFrameQuery.who.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
-    "rsFrameQuery.who.remote": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine}",
-      "args": ["machine"]
-    },
-    "rsFrameQuery.call.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{who}查询失败 · {said}",
-      "args": ["who", "said"]
-    },
-    "rsFrameQuery.call.failedNoReason": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{who}查询失败 · 原因不明",
-      "args": ["who"]
     },
     "rsFrameQuery.call.overdue": {
       "kind": "error",

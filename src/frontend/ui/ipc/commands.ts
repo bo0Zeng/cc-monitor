@@ -332,25 +332,17 @@ export const commands = {
     payload: number[];
     view: object | null;
     leftMs: number;
-    callId: string | null;
   }) => invoke<ArrayBuffer>("chan_call", args),
 
   /**
-   * 撤掉 webview 这一跳上带编号的那一问（`chan/webview.rs::chan_cancel`）。
-   * 调用方同样**不直接用它**：`chan.call` 在 `Budget.cancel` 拨下时自己发。回那一问此刻在不在飞。**桶①**。
-   */
-  chan_cancel: (args: { id: string }) => invoke<boolean>("chan_cancel", args),
-
-  /**
-   * 那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码）·
-   * 撤掉之后停得下的那几条。判断在 monitor 那边做完，本侧只查成员。`null` = 今天没有控制通道。
+   * 那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码与置灰时说的那一句）。
+   * 判断在 monitor 那边做完，本侧只查成员。`null` = 今天没有控制通道。
    * ⚠ 调用方经 `src/comms/inward/chan.ts` 的 `chan.offer` / `chan.cachedOffer` 用它。
    */
   chan_offer: (args: { origin: Origin }) =>
     invoke<{
       ops: string[];
-      unavailable: [string, string][];
-      stoppable: string[];
+      unavailable: [string, string, string][];
     } | null>("chan_offer", args),
 
   /**

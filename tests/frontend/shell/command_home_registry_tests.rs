@@ -181,11 +181,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
-    (
-        "chan_cancel",
-        Own::Channel,
-        "通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳）",
-    ),
     // 起会话的那一行进了后端之后，monitor 在这件事上只剩开窗这一格。
     (
         "open_local_terminal",
@@ -229,7 +224,6 @@ const PENDING: &[(&str, &str)] = &[
     // 原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     // 公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
-    // 撤单那一条（`chan_cancel`）进 `Channel`。
     // `open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
     //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];

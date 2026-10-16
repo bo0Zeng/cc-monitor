@@ -502,35 +502,31 @@ pub(crate) fn pin_request(name: &str, host: &str, fp: &str) -> serde_json::Value
     }] })
 }
 
-/// `machines-set` 那一答 ⇒ 结局（`kept` ＞ 0 ＝ 那一格已有值）。认不出 / 认出多台 / 问不到 ⇒ `Err`（那一句）。**纯函数**。
-pub(crate) fn pin_outcome(reply: Result<serde_json::Value, String>) -> Result<PinWrite, String> {
-    let r = reply?;
-    Ok(
-        if r.get("kept")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0)
-            > 0
-        {
-            PinWrite::AlreadySet
-        } else {
-            PinWrite::Written
-        },
-    )
+/// `machines-set` 那一答 ⇒ 结局（`kept` ＞ 0 ＝ 那一格已有值）。**纯函数**。
+pub(crate) fn pin_outcome(r: &serde_json::Value) -> PinWrite {
+    if r.get("kept")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
+        > 0
+    {
+        PinWrite::AlreadySet
+    } else {
+        PinWrite::Written
+    }
 }
 
 /// 问本机后端写那一台的指纹。
-async fn pin_host_key(origin: &str, host: &str, fp: &str) -> Result<PinWrite, String> {
+async fn pin_host_key(origin: &str, host: &str, fp: &str) -> Result<PinWrite, Said> {
     let deadline = crate::frame_query::Deadline::within(std::time::Duration::from_secs(10));
-    pin_outcome(
-        crate::frame_query::call(
-            &crate::origin::Origin::local(),
-            "machines-set",
-            pin_request(origin, host, fp),
-            None,
-            deadline,
-        )
-        .await,
+    crate::frame_query::call(
+        &crate::origin::Origin::local(),
+        "machines-set",
+        pin_request(origin, host, fp),
+        None,
+        deadline,
     )
+    .await
+    .map(|r| pin_outcome(&r))
 }
 
 // 「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `ssh-dial/machine.rs::request`

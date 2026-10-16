@@ -29,7 +29,9 @@
 //! 期限的**值**暂住下面那几个常量：「期限的值归谁」待定，定了再搬。
 
 use crate::backend_route::{no_channel, route_call_error, Routed};
+use crate::chan::said::machine as who;
 use crate::copy_table::copy_text;
+use crate::detail::Said;
 use crate::inbound_client;
 use crate::origin::Origin;
 use serde_json::{json, Value};
@@ -126,9 +128,9 @@ impl Deadline {
     }
 
     /// 到点那句话（说法归发起方：带这件事当初给了多少秒；读查询不说「无法确认远端有没有执行」那句）。
-    /// `who` 是 [`who`] 说的那个「谁」（本机 / 远端 [x]）。
-    fn overdue(&self, who: &str) -> String {
-        copy_text(
+    /// `who` 是那台的称呼（[`who`]）。
+    fn overdue(&self, who: &str) -> Said {
+        Said::of(
             "rsFrameQuery.call.overdue",
             &[
                 ("who", &who.to_string()),
@@ -144,23 +146,23 @@ impl Deadline {
 ///
 /// 期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/comms/inward/chan.ts`
 /// 「已经过了 ⇒ 一个字节都不发」）；发出去之后到点 ⇒ `InboundClient` 补发 `cancel`，这里说「没在 N 秒内答完」。
+/// 那台拒了 ⇒ 句子就是它那一句、详情是它写的那份（[`Said::of_call`]，远端补「本机」）。
 pub(crate) async fn call(
     origin: &Origin,
     cmd: &str,
     args: Value,
     view: Option<&Value>,
     deadline: Deadline,
-) -> Result<Value, String> {
+) -> Result<Value, Said> {
     let who = who(origin);
-    let origin = origin.as_wire_str();
-    let Some(client) = inbound_client::client_for(origin) else {
-        // 说「谁」用同一个 [`who`]：本机那几问改走 `<local>` 之后，不许把 `<local>` 这个键原样说给人看。
-        return Err(said(no_channel(&who)));
+    let Some(client) = inbound_client::client_for(origin.as_wire_str()) else {
+        // 说「谁」用同一个 [`who`]：不许把 `<local>` 这个键原样说给人看。
+        return Err(Said::written(said(no_channel(&who))));
     };
     // 能力协商放在发之前：「这台的后端太旧」是问得出答案的，
     // 不许与超时同形。
     if !client.accepts(cmd) {
-        return Err(copy_core::backend_old(&who));
+        return Err(Said::written(copy_core::backend_old(&who)));
     }
     if deadline.passed() {
         return Err(deadline.overdue(&who));
@@ -173,41 +175,20 @@ pub(crate) async fn call(
         if deadline.passed() {
             return deadline.overdue(&who);
         }
-        said(route_call_error(&e, &who, |code, message| {
-            // 码只进日志；给人看的是哪一问没成 ＋ 那台那一句（那台的原话在应答的 detail 里，不在这一格）。
+        let sentence = said(route_call_error(&e, &who, |code, message| {
+            // 码只进日志（详情里也有）。
             tracing::warn!("frame query {cmd} refused ({code}): {message}");
-            if message.trim().is_empty() {
-                copy_text("rsFrameQuery.call.failedNoReason", &[("who", &who)])
-            } else {
-                copy_text(
-                    "rsFrameQuery.call.failed",
-                    &[("who", &who), ("said", &message.to_string())],
-                )
-            }
-        }))
+            crate::chan::said::refused(message, origin)
+        }));
+        Said::of_call(sentence, cmd, origin, &e)
     })?;
-    data.ok_or_else(|| copy_core::reply_unreadable(&who))
+    data.ok_or_else(|| Said::written(copy_core::reply_unreadable(&who)))
 }
 
 /// 三态里给人看的那句话。`Done` 在本族走不到（查询不产「已完成」这一档）。
 fn said(r: Routed) -> String {
     match r {
         Routed::NoChannel(s) | Routed::Refused(s) => s,
-    }
-}
-
-/// 报错里的「谁」：本机说「本机」，远端说「远端 [x]」。
-///
-/// 本机那几问从 exec 一次性后端改走 `<local>` 长连接之后，同一句话本机远端共用 ——
-/// 不许把本机说成「远端 [<local>]」。
-pub(crate) fn who(origin: &Origin) -> String {
-    if origin.is_local() {
-        copy_text("rsFrameQuery.who.local", &[])
-    } else {
-        copy_text(
-            "rsFrameQuery.who.remote",
-            &[("machine", origin.as_wire_str())],
-        )
     }
 }
 
@@ -234,7 +215,8 @@ pub(crate) async fn tail(
         None,
         deadline,
     )
-    .await?;
+    .await
+    .map_err(|e| e.said)?;
     let who = who(origin);
     let num = |k: &str| {
         data.get(k)
@@ -327,7 +309,9 @@ pub(crate) async fn read_page(
     if let Some(u) = upto {
         args["until"] = json!(u);
     }
-    let data = call(origin, "history-read", args, Some(folded_view()), deadline).await?;
+    let data = call(origin, "history-read", args, Some(folded_view()), deadline)
+        .await
+        .map_err(|e| e.said)?;
     let who = who(origin);
     let rows = data
         .get("rows")

@@ -226,8 +226,6 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("chan_call", "comm.face-a.call", Side::Both),
     // 主界面要那台的能力事实（`Offer`）：本机 `<local>` 与远端同一条路 ⇒ `Both`，归 `comm.face-a.call`（`call` 之前的那一问）。
     ("chan_offer", "comm.face-a.call", Side::Both),
-    // 〔「撤单不许回退」〕撤掉 webview 那一跳上带编号的一问：只认编号，本机远端同一张在飞表 ⇒ `Both`。
-    ("chan_cancel", "comm.face-a.call", Side::Both),
     // 主界面说 `subscribe`（会话内容流）：本机 `<local>` 与远端同一条路（句柄按 origin 挑行）⇒ `Both`；
     //   新能力 `comm.face-a.subscribe`（与 `call` 是面 A 上两个动作）。`want` / `stop` 只认订阅编号。
     ("chan_subscribe", "comm.face-a.subscribe", Side::Both),
@@ -639,7 +637,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
     // - **+1**（`clipboard_read`，`Both`，归已有能力 `app.window.self`：登录抽屉［粘贴］读面前这台的剪贴板）。
     // - **−1**（`notify_desktop`，`Both`：界面不再发系统通知）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
+    // - **−1**（`chan_cancel`，`Both`：主界面没有撤单，这条命令删）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 39;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

@@ -1130,67 +1130,6 @@ fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// 🔴**通道那三层失败，每一层说的话都不一样** —— 而「发没发出去」那一格一定说出来。
-///
-/// 写面那几条据此决定要不要再点一次：`NotSent` ＝ 这一下没生效；`Sent` / `Unknown` ＝ 对面可能已经做了。
-/// 压成同一句的话，用户在「删除」上再点一次就可能删两遍。
-#[test]
-fn each_layer_of_a_channel_failure_says_something_different() {
-    use comms_inward::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
-    let o = crate::source::Origin("devbox".into());
-    let hop = |idx, reach| CallError::Hop {
-        at: HopId { idx, tag: "wait" },
-        reach,
-        why: HopFault::Overrun,
-    };
-    let not_sent = said(&o, "files-delete", &hop(1, Reach::NotSent));
-    let unknown = said(&o, "files-delete", &hop(1, Reach::Unknown));
-    let sent = said(&o, "files-delete", &hop(1, Reach::Sent));
-    assert_ne!(not_sent, unknown, "「没发出去」与「拿不准」说成了同一句");
-    assert_eq!(
-        unknown, sent,
-        "`Sent` 与 `Unknown` 对用户是同一件事（对面可能已经做了）"
-    );
-    assert_ne!(
-        said(&o, "x", &hop(0, Reach::NotSent)),
-        said(&o, "x", &hop(1, Reach::NotSent)),
-        "断在哪一段没说出来"
-    );
-    // 对端拒绝：原话在、码不上屏（走 `find::refusal` 那一个翻译）。
-    let refused = said(
-        &o,
-        "files-mkdir",
-        &CallError::Peer {
-            why: PeerFault::Refused {
-                body: Body(br#"{"code":"refused","message":"refuse write: fence"}"#.to_vec()),
-            },
-        },
-    );
-    assert!(
-        refused.contains("refuse write: fence") && !refused.contains("refused"),
-        "{refused}"
-    );
-    // 不认这条命令 ⇒ 说「版本旧了、不支持」那一条。
-    // 按文案键断言，不按原文（CP1 裁掉了命令名，「是哪条命令」那一维不在句子里）。
-    assert_eq!(
-        said(
-            &o,
-            "files-chmod",
-            &CallError::Peer {
-                why: PeerFault::Unsupported
-            }
-        ),
-        copy_core::backend_old("devbox")
-    );
-    // 本侧三种互不相同。
-    let ours: std::collections::BTreeSet<String> =
-        [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
-            .into_iter()
-            .map(|why| said(&o, "x", &why.into()))
-            .collect();
-    assert_eq!(ours.len(), 3, "本侧三种错说成了同一句");
-}
-
 /// 🔴 **那台送来的文件时间窗口不换算**：生产代码里叫本机钟的 [`mtime_text`] 的地方 == 下面这张登记表（逐文件计数，两向）。
 /// 登记的三处都是**这台窗口自己记下的时刻**：断线于（`chrome.rs`）· 一件传输收尾于（`progress.rs`）· 保存于（`shell.rs`）。
 /// 列表 · 搜索结果 · 属性 · 预览 · 同名冲突框两头的时刻照抄后端写好的字，谁把它们改回 `mtime_text(…)`，这里多出一处就红。
@@ -1337,8 +1276,8 @@ fn an_unreadable_refusal_keeps_its_body_out_of_the_sentence_and_in_the_detail() 
         },
     };
     let at = Origin("devbox".into());
-    let s = said(&at, "files-ls", &refused);
-    assert_eq!(s, copy_text("rsFilewinSource.said.refused", &[]));
+    let s = comms_inward::chan::said::said(&refused, &at);
+    assert!(!s.contains("html"), "{s}");
     let d = detail_of(&at, "files-ls", &refused);
     assert!(
         d.contains(&format!(

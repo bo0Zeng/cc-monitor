@@ -25,9 +25,6 @@
 //! - 编号由 webview 那一侧给（每页从 1 起）：格可能先于 `chan_subscribe` 的应答到达，编号先登记在 TS 那侧才不丢。同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载）。
 //! - 体在这一跳是文本：Tauri 事件是 JSON，二进制过不来；体原样按 UTF-8 装成字符串（不解析、不改写），不是 UTF-8 ⇒ 那一格换成 `Closed{Ours(Broken)}`。
 //! - 句柄只有一种：会话内容（`kind` 前缀 `session-lines`，[`crate::event_replay::SESSION_LINES_KIND`]）。认不出的 `kind` 原位回 `Closed{Peer(no-such-stream)}`。
-//!
-//! 撤单：`Budget.cancel` 拨下 ⇒ TS 本地立即回 `Ours{Cancelled}`，同时带着那一问的编号发 [`chan_cancel`] ⇒ 在飞表里那一格的撤单手柄拨下 ⇒ 路由器丢掉那次调用
-//! （`router::settle`）⇒ `inbound_client` 的 `AbandonGuard` 补发 `cancel` ⇒ 后端可取消档停下。
 
 use super::host::InboundBackends;
 use super::router::{self, Backends};
@@ -37,12 +34,13 @@ use super::wire::{
 use serde::Serialize;
 use std::time::Duration;
 
-/// 失败时交回 webview 的那一格：线上形状 ＋ `Refused` 的不透明体 ＋ 「复制详情」那几行（[`crate::detail`]：
+/// 失败时交回 webview 的那一格：线上形状 ＋ `Refused` 的不透明体 ＋ 给人看的那一句（[`super::said::said`]）＋ 「复制详情」那几行（[`crate::detail`]：
 /// 对端说「不行」⇒ 那台写的那份（远端时「本机」那一行通道宿主已经补上，`InboundBackends::call`）；别的层 ⇒ 壳写）。
 #[derive(Debug, Serialize)]
 pub struct Fail {
     err: WireErr,
     body: Vec<u8>,
+    said: String,
     detail: String,
 }
 
@@ -53,12 +51,17 @@ pub(crate) fn fail(origin: &crate::origin::Origin, op: &str, e: CallError) -> Fa
         } => crate::detail::of_refusal_body(&body.0),
         other => crate::detail::of_channel(origin, op, other),
     };
+    let said = super::said::said(&e, origin);
     let (err, body) = err_to_wire(e);
-    Fail { err, body, detail }
+    Fail {
+        err,
+        body,
+        said,
+        detail,
+    }
 }
 
 /// 经给定句柄走一次 `call`（第 1 跳）。判据用它喂合成句柄；生产由 [`chan_call`] 喂 [`InboundBackends`]。
-/// `call_id` 给了 ⇒ 这一问登记进在飞表，[`chan_cancel`] 拨下它的撤单手柄（见头注「撤单」）。
 pub(crate) async fn call_via(
     backends: &dyn Backends,
     origin: super::wire::Origin,
@@ -66,79 +69,10 @@ pub(crate) async fn call_via(
     payload: Vec<u8>,
     view: Option<serde_json::Value>,
     left: Duration,
-    call_id: Option<String>,
 ) -> Result<Body, CallError> {
     let cancel = CancelToken::new();
-    let _inflight = call_id.map(|id| Inflight::enter(id, cancel.clone()));
-    // 撤单先于这一问到了（两条 IPC 不保序）⇒ 一个字节都不发。
-    if cancel.is_cancelled() {
-        return Err(OursFault::Cancelled.into());
-    }
     let fut = backends.call(origin, Op(op), Body(payload), view, left, cancel.clone());
     router::settle(fut, left, cancel).await
-}
-
-/// 〔「撤单不许回退」〕webview 这一跳在飞的调用：TS 给的编号 → 撤单手柄；
-/// 外加「撤单先到、那一问还没登记」的编号（两条 IPC 不保序），留最近 [`EARLY_KEEP`] 个，那一问登记时当场撤。
-/// 有结局 / 被撤 / 调用方被丢都摘掉（[`Inflight`] 的 `Drop`）。编号由 TS 那一侧现造（每一问一个 UUID），本侧只当不透明的键。
-#[derive(Default)]
-struct Table {
-    live: std::collections::HashMap<String, CancelToken>,
-    early: std::collections::VecDeque<String>,
-}
-
-/// 先到的撤单留几个（晚到的撤单 —— 那一问已经有结局 —— 也落在这里，所以要有上限；编号不复用，挤掉的只是最旧的）。
-const EARLY_KEEP: usize = 64;
-
-fn inflight() -> std::sync::MutexGuard<'static, Table> {
-    use std::sync::{Mutex, OnceLock};
-    static TABLE: OnceLock<Mutex<Table>> = OnceLock::new();
-    TABLE
-        .get_or_init(|| Mutex::new(Table::default()))
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// 在飞表里的一格，随这一问一起走。
-pub(crate) struct Inflight(String);
-
-impl Inflight {
-    fn enter(id: String, cancel: CancelToken) -> Inflight {
-        let mut t = inflight();
-        if let Some(i) = t.early.iter().position(|e| *e == id) {
-            t.early.remove(i);
-            cancel.cancel();
-        }
-        t.live.insert(id.clone(), cancel);
-        Inflight(id)
-    }
-}
-
-impl Drop for Inflight {
-    fn drop(&mut self) {
-        inflight().live.remove(&self.0);
-    }
-}
-
-/// 拨下编号 `id` 那一问的撤单手柄。回它此刻在不在飞（不在 ⇒ 记进「先到的撤单」，那一问随后登记时当场撤）。
-pub(crate) fn cancel_inflight(id: &str) -> bool {
-    let mut t = inflight();
-    if let Some(c) = t.live.get(id).cloned() {
-        c.cancel();
-        return true;
-    }
-    if t.early.len() >= EARLY_KEEP {
-        t.early.pop_front();
-    }
-    t.early.push_back(id.to_string());
-    false
-}
-
-/// 主界面撤掉一问（`src/comms/inward/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
-/// 撤单手柄拨下 ⇒ `router::settle` 丢掉那次调用 ⇒ `inbound_client` 的放弃守卫补发 `cancel{target}` ⇒ 后端可取消档停下。
-#[tauri::command]
-pub fn chan_cancel(id: String) -> bool {
-    cancel_inflight(&id)
 }
 
 /// 主界面说 `call` 的那一条命令。`left_ms` = 这一跳还剩多少（TS 那侧由绝对时刻换算，过期的根本不发）。
@@ -153,7 +87,6 @@ pub async fn chan_call(
     payload: Vec<u8>,
     view: Option<serde_json::Value>,
     left_ms: u64,
-    call_id: Option<String>,
 ) -> Result<tauri::ipc::Response, Fail> {
     if origin.route("chan_call").is_err() {
         return Err(fail(&origin, &op, OursFault::Misuse.into()));
@@ -165,7 +98,6 @@ pub async fn chan_call(
         payload,
         view,
         Duration::from_millis(left_ms),
-        call_id,
     )
     .await
     {
@@ -179,24 +111,26 @@ pub async fn chan_call(
 pub struct OfferView {
     /// 那台认的 op。
     ops: Vec<String>,
-    /// `[op, 码]`：这台做不到（码与那台事后会回的同一个）。
-    unavailable: Vec<(String, String)>,
-    /// 本地撤掉之后那台停得下的 op（`Offer::withdraw == Asked`）；不在里面的 ⇒ 撤了它可能还在跑。
-    stoppable: Vec<String>,
+    /// `[op, 码, 那一句]`：这台做不到（码与那台事后会回的同一个；那一句是置灰时说的）。
+    unavailable: Vec<(String, String, String)>,
 }
 
-/// `Offer` ⇒ webview 那一份。
-pub fn offer_view(o: &super::wire::Offer) -> OfferView {
+/// `Offer` ⇒ webview 那一份。`origin` 只用来称呼那台。
+pub fn offer_view(o: &super::wire::Offer, origin: &crate::origin::Origin) -> OfferView {
     let ops = o.ops().to_vec();
+    let machine = super::said::machine(origin);
     OfferView {
         unavailable: ops
             .iter()
-            .filter_map(|op| o.unavailable(op).map(|c| (op.clone(), c.to_string())))
-            .collect(),
-        stoppable: ops
-            .iter()
-            .filter(|op| o.withdraw(op) == super::wire::Withdraw::Asked)
-            .cloned()
+            .filter_map(|op| {
+                o.unavailable(op).map(|c| {
+                    (
+                        op.clone(),
+                        c.to_string(),
+                        copy_core::unavailable(c, &machine),
+                    )
+                })
+            })
             .collect(),
         ops,
     }
@@ -207,7 +141,10 @@ pub fn offer_view(o: &super::wire::Offer) -> OfferView {
 #[tauri::command]
 pub fn chan_offer(origin: crate::origin::Origin) -> Option<OfferView> {
     origin.route("chan_offer").ok()?;
-    InboundBackends.offer(&origin).as_ref().map(offer_view)
+    InboundBackends
+        .offer(&origin)
+        .as_ref()
+        .map(|o| offer_view(o, &origin))
 }
 
 // ════════════════════════════════════════════════════════════════════════════
