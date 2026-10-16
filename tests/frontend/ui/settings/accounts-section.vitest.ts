@@ -5,7 +5,6 @@
  *
  * 那几条读口 / 写口整块换成假的（`vi.mock`）：这里只量「拿到这些事实，画成什么样、交出去什么」。
  */
-import { noteMachineTmux } from "../../../../src/frontend/ui/resume-defaults";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -44,6 +43,14 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   findHostByOrigin: (hosts: { label: string }[], o: string) => hosts.find((h) => h.label === o) ?? null,
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ bindEvents: () => Promise.resolve() }));
+/** 那台有没有 tmux（`session-new-facts` 的 `tmux`）。 */
+const facts = vi.hoisted(() => ({ tmux: true, asked: 0 }));
+vi.mock("../../../../src/frontend/ui/new-session-reads", () => ({
+  askFacts: async () => {
+    facts.asked++;
+    return { tmux: facts.tmux };
+  },
+}));
 vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
   openLoginWindow: (...a: unknown[]) => openLoginWindow(...a),
   loginInTmux: (...a: unknown[]) => loginInTmux(...a),
@@ -424,8 +431,9 @@ describe("登录与指路", () => {
     expect(loginInTmux).toHaveBeenCalledWith("devbox", "team", "/h/.cc-monitor/accounts/z");
   });
 
-  it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］", async () => {
-    noteMachineTmux("devbox", false);
+  it("那台说了没有 tmux ⇒ 开不了终端窗口时只说那一句，不出［在 tmux 里登录］（开不了窗那一刻问那台一次）", async () => {
+    facts.tmux = false;
+    facts.asked = 0;
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "team", loggedIn: false, authReady: false, selectable: false })] }));
     openLoginWindow.mockResolvedValue("noWindow");
     const el = await mount();
@@ -434,7 +442,8 @@ describe("登录与指路", () => {
     await settle();
     expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
     expect([...rowOf(el, "team").querySelectorAll("button")].some((b) => b.textContent === copyText("acctPage.login.inTmux"))).toBe(false);
-    noteMachineTmux("devbox", true);
+    expect(facts.asked).toBe(1);
+    facts.tmux = true;
   });
 
   it("开了登录窗口 ⇒ 那一行「等待终端登录…」＋［重新打开登录窗口］；后端推来已登录 ⇒ 行变回正常", async () => {

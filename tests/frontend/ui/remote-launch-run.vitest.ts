@@ -18,10 +18,8 @@ vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
 }));
 const clip = vi.hoisted(() => ({ writeClipboard: vi.fn() }));
 vi.mock("../../../src/frontend/ui/clipboard", () => clip);
-const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn() }));
 const settingsWin = vi.hoisted(() => ({ openSettingsWindow: vi.fn() }));
 vi.mock("../../../src/frontend/ui/settings/open-settings", () => settingsWin);
-vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({
   offerResyncRetry: vi.fn(),
 }));
@@ -32,20 +30,13 @@ vi.mock("../../../src/frontend/ui/launch-arrival", () => ({
   arrivedBody: (o: string) => `报出了@${o}`,
 }));
 
-import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
-import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import {
-  runRemoteResume,
   runRemoteAttach,
 } from "../../../src/frontend/ui/remote-launch-run";
-import { NoTerminalWindow } from "../../../src/frontend/ui/terminal-open";
 import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire";
-import { ControlError } from "../../../src/frontend/ui/control-said";
-import { copyText } from "../../../src/frontend/ui/copy-table";
-import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
-const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
 
 /** 后端那一行的替身：中性、认得出（判的是「交出去的就是它」，不是它长得像不像一条真命令）。 */
 const lineFor = (req: CliRenderRequest): string =>
@@ -73,101 +64,10 @@ beforeEach(() => {
     account: null,
   });
   term.openTerminal.mockResolvedValue(undefined);
-  mint.mintFreshTmuxName.mockResolvedValue({ ok: true, name: "w-cc" });
   stubClipboard(vi.fn().mockResolvedValue(undefined));
 });
 
-describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选择", () => {
-  it("★ 跟随 ⇒ 那台回 account_unavailable ⇒ 零次开窗 ＋ 一条可点提示；点了 ⇒ 点名替代号再问一次、开窗", async () => {
-    const refusal = Object.assign(
-      new ControlError(
-        "号选不了",
-        "launch-render-cli refused: account_unavailable",
-      ),
-      {},
-    );
-    Object.defineProperty(refusal, "error", {
-      value: {
-        layer: "peer",
-        why: "refused",
-        body: new TextEncoder().encode(
-          JSON.stringify({
-            code: "account_unavailable",
-            message: "m",
-            data: {
-              requested: "z",
-              pinned: true,
-              listKnown: true,
-              alternative: "b",
-            },
-          }),
-        ),
-      },
-    });
-    render.renderCli.mockImplementation(
-      async (_o: string, req: CliRenderRequest) => {
-        if (req.account.kind === "follow") throw refusal;
-        return {
-          cmd: lineFor(req),
-          account: { name: "b", configDir: "/h/b", model: null },
-        };
-      },
-    );
-    expect(await runRemoteResume("devbox", "claude", "sid-1", "/p")).toBe(
-      false,
-    );
-    expect(term.openTerminal).not.toHaveBeenCalled();
-    expect(toastMock).toHaveBeenCalledTimes(1);
-    const [title, body, opts] = toastMock.mock.calls[0] as [
-      string,
-      string,
-      { onClick?: () => void },
-    ];
-    expect(title).toBe(copyText("accountPick.refused.title"));
-    expect(body).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
-    opts.onClick!();
-    await vi.waitFor(() => expect(term.openTerminal).toHaveBeenCalledTimes(1), UNTIL_CEILING);
-    expect(requests().map((r) => r.account)).toEqual([
-      { kind: "follow" },
-      { kind: "named", name: "b" },
-    ]);
-  });
-
-  it("开窗之前问 preflight：收的是那台判出来的号的目录；说不起 ⇒ 不开窗", async () => {
-    render.renderCli.mockImplementation(
-      async (_o: string, req: CliRenderRequest) => ({
-        cmd: lineFor(req),
-        account: { name: "z", configDir: "/h/z", model: null },
-      }),
-    );
-    const preflight = vi.fn().mockResolvedValue(false);
-    expect(
-      await runRemoteResume("devbox", "claude", "sid-1", "/p", { preflight }),
-    ).toBe(false);
-    expect(preflight).toHaveBeenCalledWith("/h/z");
-    expect(term.openTerminal).not.toHaveBeenCalled();
-  });
-});
-
 describe("每条远端起会话路径：问那台要那一行，原样交给终端", () => {
-  it("直连 resume：容器 none；交给终端的就是那一行", async () => {
-    expect(await runRemoteResume("devbox", "claude", "sid-1", "/p")).toBe(
-      true,
-    );
-    const [req] = requests();
-    expect(req.container).toEqual({ kind: "none" });
-    expect(req.action).toEqual({ kind: "resume", sid: "sid-1" });
-    expect(req.agent).toBe("claude");
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
-    expect(arrivalMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        origin: "devbox",
-        match: { sid: "sid-1" },
-        tmuxName: null,
-      }),
-    );
-  });
-
   it("接回：动作 attach，交给终端的就是那一行", async () => {
     await runRemoteAttach("devbox", "claude", "cc-x");
     const [req] = requests();
@@ -176,44 +76,7 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
   });
 });
 
-
-describe("按会话的那一家起", () => {
-  it("Codex 会话：请求说的是 codex；启动命令不随请求交（那台按那一家读自己的偏好）", async () => {
-    expect(await runRemoteResume("devbox", "codex", "sid-1", "/p")).toBe(true);
-    const [req] = requests();
-    expect(req.agent).toBe("codex");
-    expect(Object.keys(req).filter((k) => ["launcher", "defaultLauncher", "models"].includes(k))).toEqual([]);
-  });
-});
-
 describe("失败怎么说", () => {
-  it("那台拒了 ⇒ 构造失败提示、不起终端、不往剪贴板塞东西", async () => {
-    render.renderCli.mockRejectedValue(new Error("那台说：会话 ID 不合法"));
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    stubClipboard(writeText);
-    expect(await runRemoteResume("devbox", "claude", "-x", "/p")).toBe(
-      false,
-    );
-    expect(term.openTerminal).not.toHaveBeenCalled();
-    expect(writeText).not.toHaveBeenCalled();
-    // 交给失败 toast：带详情 ⇒ 标题换成那台写好的那一句；这次是 JS 层的 Error ⇒ 标题留界面那句、原文进控制台。
-    const calls = vi.mocked(failToast).mock.calls;
-    expect(calls).toHaveLength(1);
-    expect(String(calls[0][1])).toContain("会话 ID 不合法");
-  });
-
-  it("开不了终端 ⇒ 剪贴板里是那一行 ＋ 提示里带原因与那一行", async () => {
-    term.openTerminal.mockRejectedValue(new Error("wt 起不来"));
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    stubClipboard(writeText);
-    expect(await runRemoteResume("devbox", "claude", "sid-1", "/p")).toBe(
-      false,
-    );
-    const line = lineFor(requests()[0]);
-    expect(writeText).toHaveBeenCalledWith(line);
-    expect(String(toastMock.mock.calls[0][1])).toContain(line);
-  });
-
   it("接回开不了终端 ⇒ 剪贴板与提示里是那一整行，长 tmux 名不截（超过 15 个字也是全名）", async () => {
     term.openTerminal.mockRejectedValue(new Error("没开成"));
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -226,42 +89,4 @@ describe("失败怎么说", () => {
     expect(String(toastMock.mock.calls[0][1]).split("\n")).toContain(line);
   });
 
-  it("壳回「找不到终端」那个结局 ⇒ 照实说 ＋［设置］直达那一格 ＋［复制命令］；不自动写剪贴板，点了才复制那一行", async () => {
-    term.openTerminal.mockRejectedValue(new NoTerminalWindow("ssh -t devbox -- 'ccm --resume sid-1'"));
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    stubClipboard(writeText);
-    await runRemoteResume("<local>", "claude", "sid-1", "/p");
-    expect(writeText, "不许自动写剪贴板").not.toHaveBeenCalled();
-    const [title, , opts] = toastMock.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
-    expect(title).toBe(copyText("terminalOpen.noTerminal.title"));
-    const acts = opts.action ?? [];
-    expect(acts.map((a) => a.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
-    acts[0].run();
-    expect(settingsWin.openSettingsWindow).toHaveBeenCalledWith(null, { page: "general", anchor: "terminal" });
-    acts[1].run();
-    await Promise.resolve();
-    expect(writeText).toHaveBeenCalledWith("ssh -t devbox -- 'ccm --resume sid-1'");
-  });
-
-  it("设置里指定的终端不在（setMissing）⇒ 同样给［设置］直达那一格 ＋［复制命令］，标题说是指定的那一个不在", async () => {
-    term.openTerminal.mockRejectedValue(new NoTerminalWindow("ccm --resume sid-1", "setMissing"));
-    stubClipboard(vi.fn().mockResolvedValue(undefined));
-    await runRemoteResume("<local>", "claude", "sid-1", "/p");
-    const [title, , opts] = toastMock.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
-    expect(title).toBe(copyText("terminalOpen.setMissing.title"));
-    expect((opts.action ?? []).map((a) => a.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
-    (opts.action ?? [])[0].run();
-    expect(settingsWin.openSettingsWindow).toHaveBeenCalledWith(null, { page: "general", anchor: "terminal" });
-  });
-
-  it("按结局判、不按字判：真失败的话里就算带着「找不到终端」那一句的原文，也照样叫失败、照样复制命令", async () => {
-    term.openTerminal.mockRejectedValue(
-      new Error(copyText("rsLaunch.posix.noTerminalWindow")),
-    );
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    stubClipboard(writeText);
-    await runRemoteResume("<local>", "claude", "sid-1", "/p");
-    expect(String(toastMock.mock.calls[0][0])).not.toBe(copyText("terminalOpen.noTerminal.title"));
-    expect(writeText).toHaveBeenCalled();
-  });
 });

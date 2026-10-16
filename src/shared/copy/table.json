@@ -2153,18 +2153,6 @@
       "zh": "会话记录被改过 · 已从头重显",
       "args": []
     },
-    "sessionState.recordGone.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "恢复失败 · 记录已不在",
-      "args": []
-    },
-    "sessionState.recordGone.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{who} 的 {root} 里无会话 {sid} 的记录 · 无法恢复 · 未打开终端",
-      "args": ["who", "root", "sid"]
-    },
     "sessionState.pin.pinHint": {
       "kind": "body",
       "role": "说明",
@@ -4259,30 +4247,6 @@
       "zh": "生成 attach 命令失败",
       "args": []
     },
-    "remoteLaunchRun.inPlace.notRun": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "就地恢复未执行",
-      "args": []
-    },
-    "remoteLaunchRun.resume.failedCopied": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端未打开 · 命令已复制",
-      "args": []
-    },
-    "remoteLaunchRun.resume.started": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已在远端恢复",
-      "args": []
-    },
-    "remoteLaunchRun.resume.buildFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "生成恢复会话的启动命令失败",
-      "args": []
-    },
     "remoteLaunchRun.copyFallback.runRemote": {
       "kind": "body",
       "role": "说明",
@@ -5194,18 +5158,6 @@
       "zh": "结束失败 · {title}",
       "args": ["title"]
     },
-    "tabSessionActions.who.remote": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{machine}",
-      "args": ["machine"]
-    },
-    "tabSessionActions.recordUnknown.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "记录状态未知 · 照常恢复",
-      "args": []
-    },
     "tabSessionActions.who.local": {
       "kind": "body",
       "role": "片段",
@@ -5223,20 +5175,6 @@
       "role": "按钮",
       "zh": "结束会话",
       "args": []
-    },
-    "tabSessionActions.dupes.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在 tmux 会话 ×{n} · 已打开「{name}」 · 其余的到终端里清理",
-      "args": ["n", "name"],
-      "limited": ["tmux"]
-    },
-    "tabSessionActions.dupes.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在多个 tmux 会话里",
-      "args": [],
-      "limited": ["tmux"]
     },
     "tabSessionActions.openInWindow.failed": {
       "kind": "error",
@@ -14540,12 +14478,6 @@
       "zh": "保存失败",
       "args": []
     },
-    "localResume.launch.arrived": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已在本机恢复",
-      "args": []
-    },
     "history.rename.prompt": {
       "kind": "control",
       "role": "占位",
@@ -17094,54 +17026,6 @@
       "role": "报错",
       "zh": "取中转钥匙失败 · {why} · 中转未起（无钥匙则谁都能用）",
       "args": ["why"]
-    },
-    "localResume.launch.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "恢复失败",
-      "args": []
-    },
-    "accountPick.machine.local": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "本机",
-      "args": []
-    },
-    "accountPick.refused.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号不可用 · 未启动会话",
-      "args": []
-    },
-    "accountPick.refused.pinGoneToCurrent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用默认账号 {current} 启动",
-      "args": ["name", "current"]
-    },
-    "accountPick.refused.pinGoneToBase": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用「不指定账号」启动",
-      "args": ["name"]
-    },
-    "accountPick.refused.explicitGoneToCurrent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 不可用 · 未启动\n点此提示改用默认账号 {current} 启动",
-      "args": ["name", "current"]
-    },
-    "accountPick.refused.explicitGoneToBase": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 不可用 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["name"]
-    },
-    "accountPick.refused.listUnknown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "账号 {name} 是否可用不明 · 未读到 {machine} 的账号清单 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["machine", "name"]
     },
     "events.stream.closedTitle": {
       "kind": "error",
@@ -21682,12 +21566,6 @@
       "zh": "停",
       "args": []
     },
-    "history.resume.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "恢复失败 · {machine} · {why}",
-      "args": ["machine", "why"]
-    },
     "history.menu.openWindow": {
       "kind": "action",
       "role": "菜单项",
@@ -24058,6 +23936,12 @@
       "zh": "在 tmux 里",
       "args": [],
       "limited": ["tmux"]
+    },
+    "resumeMenu.run.machine": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "照机器设置",
+      "args": []
     },
     "resumeMenu.run.direct": {
       "kind": "action",

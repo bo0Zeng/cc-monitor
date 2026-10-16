@@ -13,15 +13,15 @@ import type { Tab } from "./tab-model";
 import { canResume, hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import type { TabCollection } from "./tab-collections";
-import { defaultPick, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
+import { defaultPick, pickAsk, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openNewSession } from "./new-session";
-import { askOf } from "./launch-account";
 import { runRemoteAttach } from "./remote-launch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { standingOf } from "./sessions-where";
+import { standingOf, type Standing } from "./sessions-where";
+import type { Run } from "./generated/Run";
 import {
   menuGeneration,
   removeMenuItem,
@@ -37,7 +37,7 @@ import { terminalFrontAvailable } from "./terminal-front";
 import { fullTitle } from "./session-face";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
-const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "launch" };
+const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", "resume-into": "session-open" };
 
 /** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、第二行写为什么。 */
 export function gateByOffer(origin: Origin, item: MenuItem): MenuItem {
@@ -243,11 +243,14 @@ export class TabMenu {
     if (extra.bottom && extra.bottom.length > 0) items.push({ label: "", divider: true }, ...extra.bottom);
     const shown = tidyDividers(items);
     openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, shown);
-    if (unseen) return;
-    if (remote !== null && t) void this.resolveRemoteTmuxItems(remote, sid, fullTitle(t));
-    if (local && t) void this.resolveLocalTmuxItems(sid, fullTitle(t));
-    // 已结束的会话：那台的号到了再把「恢复 ▸」的账号组换上。
-    if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
+    if (unseen || !t) return;
+    // 这一代菜单问那台一次 `sessions-where`：几格 tmux 项与「恢复 ▸」的勾共用这一答。
+    let asked: Promise<Standing | undefined> | null = null;
+    const where = (): Promise<Standing | undefined> => (asked ??= standingOf(t.origin, sid));
+    if (remote !== null) void this.resolveRemoteTmuxItems(remote, sid, fullTitle(t), where);
+    if (local) void this.resolveLocalTmuxItems(sid, fullTitle(t), where);
+    // 已结束的会话：那台的号与默认放在哪到了再把「恢复 ▸」换上。
+    void this.appendAccountMenuItems(t.origin, sid, t.state, where);
   }
 
   /** 「分组 ▸」那一层，作用于这几个（命令面板「加入分组…」开的也是它；多选 ⇒ 每项带个数）。 */
@@ -278,8 +281,8 @@ export class TabMenu {
   openResumeMenu(anchor: HTMLElement, sid: string): void {
     const t = this.host.tab(sid);
     if (!t || !canResume(t.state)) return;
-    void this.resumeAccountsOf(t.origin, t.agent).then((accounts) => {
-      if (anchor.isConnected) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, accounts).map((i) => gateByOffer(t.origin, i)));
+    void Promise.all([this.resumeAccountsOf(t.origin, t.agent), standingOf(t.origin, sid)]).then(([accounts, s]) => {
+      if (anchor.isConnected) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, accounts, s?.run).map((i) => gateByOffer(t.origin, i)));
     });
   }
 
@@ -306,9 +309,9 @@ export class TabMenu {
   }
 
   /** 远端：那台答回这个会话在哪个 tmux 会话里 ⇒ 在终端里打开 · 看一眼画面 · 结束三格就位（菜单已换 / 已关 ⇒ 不动）。 */
-  private async resolveRemoteTmuxItems(origin: string, sid: string, title: string): Promise<void> {
+  private async resolveRemoteTmuxItems(origin: string, sid: string, title: string, where: () => Promise<Standing | undefined>): Promise<void> {
     const gen = menuGeneration();
-    const s = await standingOf(origin, sid);
+    const s = await where();
     if (gen !== menuGeneration()) return;
     const drop = (...ids: string[]): void => ids.forEach((id) => removeMenuItem(id));
     if (s === undefined) return this.unresolved(["attach", "kill"]);
@@ -332,9 +335,9 @@ export class TabMenu {
   }
 
   /** 本机：那台答回这个会话在哪个 tmux 会话里 ⇒ 结束 · 就地恢复两格就位（菜单已换 / 已关 ⇒ 不动）。 */
-  private async resolveLocalTmuxItems(sid: string, title: string): Promise<void> {
+  private async resolveLocalTmuxItems(sid: string, title: string, where: () => Promise<Standing | undefined>): Promise<void> {
     const gen = menuGeneration();
-    const s = await standingOf(LOCAL_ORIGIN, sid);
+    const s = await where();
     if (gen !== menuGeneration()) return;
     if (s === undefined) return this.unresolved(["kill", "resume-into"]);
     // 不在 tmux 里 ⇒ 不留一个假装能用的破坏性项。
@@ -346,7 +349,7 @@ export class TabMenu {
     const name = s.names[0];
     if (s.kind === "idle") {
       // Claude 已退出、tmux 会话在：就地恢复（非破坏性）与结束并列。
-      updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, { id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), onClick: () => void this.actions.resumeLocalInTmux(sid) }));
+      updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, { id: "resume-into", icon: "history", label: copyText("tabMenu.inPlace.label"), onClick: () => void this.actions.resume(sid, { run: "tmux" }) }));
     } else removeMenuItem("resume-into");
     updateMenuItem("kill", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
       ? { id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), enabled: false, danger: true, why: copyText("tabMenu.kill.dupesWhy", { n: s.names.length }) }
@@ -380,24 +383,22 @@ export class TabMenu {
    * 「恢复 ▸」那一层：最上面一行「恢复」按勾着的那一组起（标签页没有主按钮）；账号 · 运行于两组单选；在此目录新建会话。
    * 起法还是标签页这边那几条：tmux ⇒ 那台在 tmux 里起再接进去（本机同一条）；不用 tmux ⇒ 直接恢复。
    */
-  private buildResumeSubmenu(sid: string, accounts: ResumeAccounts): MenuItem[] {
+  private buildResumeSubmenu(sid: string, accounts: ResumeAccounts, machineRun?: Run): MenuItem[] {
     let pick = this.resumePicks.get(sid);
     const t = this.host.tab(sid);
-    if (!pick) this.resumePicks.set(sid, (pick = defaultPick(t?.origin)));
+    if (!pick) this.resumePicks.set(sid, (pick = defaultPick()));
     const dir = t?.projectDir ?? "";
     return resumeMenuItems({
       accounts,
       pick,
+      machineRun,
       run: (p) => void this.runResume(sid, p),
       newInDir: t && dir ? () => void openNewSession({ origin: t.origin, cwd: dir }) : undefined,
     });
   }
 
   private runResume(sid: string, p: ResumePick): Promise<void> {
-    const t = this.host.tab(sid);
-    if (!t) return Promise.resolve();
-    if (!p.tmux) return this.actions.resumeTab(sid, p.account, p.useBase);
-    return isLocalOrigin(t.origin) ? this.actions.resumeLocalInTmux(sid, askOf(p.account, p.useBase)) : this.actions.resumeTabTmux(sid, p.account, p.useBase);
+    return this.actions.resume(sid, pickAsk(p));
   }
 
   /** 已结束的会话：菜单开后那台的号到了，把「恢复 ▸」的账号组换上（菜单已换 / 已关 ⇒ 不动）。 */
@@ -405,11 +406,12 @@ export class TabMenu {
     origin: string,
     sid: string,
     state: SessionState,
+    where: () => Promise<Standing | undefined>,
   ): Promise<void> {
     if (state.liveness === "unseen" || !isResumeOnly(state)) return;
     const gen = menuGeneration();
-    const accounts = await this.resumeAccountsOf(origin, this.host.tab(sid)?.agent ?? null);
-    if (gen !== menuGeneration() || accounts.kind === "off") return;
-    updateMenuItem("resume", { id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts) });
+    const [accounts, s] = await Promise.all([this.resumeAccountsOf(origin, this.host.tab(sid)?.agent ?? null), where()]);
+    if (gen !== menuGeneration() || (accounts.kind === "off" && s === undefined)) return;
+    updateMenuItem("resume", { id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts, s?.run) });
   }
 }

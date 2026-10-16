@@ -156,9 +156,11 @@ export const HISTORY_SCENES: Scene[] = [
     }),
     world: () => {
       const w = defaultWorld();
-      w.ops = { ...w.ops, "launch-local": () => ({ cmd: "ccm --resume s3", account: null }) };
+      w.ops = {
+        ...w.ops,
+        "session-open": () => ({ landed: "window", session: null, line: "ccm --resume s3", sid: "s3", agent: "claude", cwd: "/home/demo/notes", account: null, note: null, prompt: null }),
+      };
       w.commands = { ...w.commands, open_local_terminal: () => "noWindow" };
-      w.quiet = [...(w.quiet ?? []), "terminal-name-mint"];
       return w;
     },
   },

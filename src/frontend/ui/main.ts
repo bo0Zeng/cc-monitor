@@ -28,7 +28,6 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { forgetResumeDefaults } from "./resume-defaults";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
@@ -523,7 +522,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
-    forgetResumeDefaults(); // 恢复默认的「运行于」：各台那一格可能改了，下次重问
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）

@@ -293,6 +293,7 @@ export function machineOps(): Record<string, OpHandler> {
         const name = `cc-${s.cwd.split(/[/\\]/).pop()}`;
         return { sid, standing: s.idle ? "idle" : "running", names: [name], terminals: [{ host: "tmux", terminal: `tmux-${name}` }] };
       }),
+      run: "direct",
     }),
   };
 }

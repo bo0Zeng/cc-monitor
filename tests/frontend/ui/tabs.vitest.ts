@@ -129,16 +129,19 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn() }));
-// Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
   runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
-// 单个菜单的「杀」与「在 tmux 里 Resume」交那台（`sessions-stop` / `sessions-start`，与批量同一条）：这里换成 spy，
+// 恢复交那台（`session-open`）：这里换成 spy，判的是交了什么；那台怎么判住后端判据，发 · 说 · 开窗住 `session-open.vitest.ts`。
+vi.mock("../../../src/frontend/ui/session-open", async (orig) => ({
+  ...(await orig<typeof import("../../../src/frontend/ui/session-open")>()),
+  openSession: vi.fn().mockResolvedValue(true),
+}));
+// 单个菜单的「杀」交那台（`sessions-stop`，与批量同一条）：这里换成 spy，
 //   判的是单个那一侧交了什么、拿到回答之后做什么；那台怎么判住后端判据（`session_batch_tests.rs`），交法住 `tab-batch-run.vitest.ts`。
 vi.mock("../../../src/frontend/ui/tab-batch-run", async (orig) => {
   const real = await orig<typeof import("../../../src/frontend/ui/tab-batch-run")>();
-  return { ...real, callStart: vi.fn(), callStop: vi.fn() };
+  return { ...real, callStop: vi.fn() };
 });
 // ↗ 浮层［更新］就地部署：部署那一处住共用模块（`backend-deploy.ts`，它自己的判据住 `backend-deploy.vitest.ts`），这里换成 spy，判的是浮层接上它、就地说过程与结局。
 vi.mock("../../../src/frontend/ui/backend-deploy", () => ({ updateBackendOf: vi.fn() }));
@@ -155,7 +158,6 @@ import {
   historyCalls,
   isChanCall,
   launchRenderShim,
-  localLaunchCalls,
   sessionReadCalls,
   tmuxMintCalls,
   UNSUPPORTED,
@@ -165,13 +167,12 @@ import {
   recordReadCalls,
 } from "../../test-support/chan-fake";
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
-import { failToast, silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
+import { silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
-import {
-  runRemoteResume,
-  runRemoteAttach,
-} from "../../../src/frontend/ui/remote-launch-run";
-import { callStart, callStop } from "../../../src/frontend/ui/tab-batch-run";
+import { runRemoteAttach } from "../../../src/frontend/ui/remote-launch-run";
+import { openSession } from "../../../src/frontend/ui/session-open";
+import { pickAsk } from "../../../src/frontend/ui/resume-menu";
+import { callStop } from "../../../src/frontend/ui/tab-batch-run";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { DWELL_MS, DWELL_MOVE_PX, type DropTarget } from "../../../src/frontend/ui/tab-drop";
 import tg from "../../../src/frontend/ui/tab-group.module.css";
@@ -250,8 +251,8 @@ interface TMHomes {
   actions: TabSessionActions;
 }
 const home = (tm: TabManager): TMHomes => tm as unknown as TMHomes;
-/** 本机 resume 那几发（`launch-local` 通道请求译回旧形参，`chan-fake.ts::localLaunchCalls`）。 */
-const resumed = (): Record<string, unknown>[] => localLaunchCalls(vi.mocked(invoke).mock.calls, "resume_history_session");
+/** 交给那台的每一问 `session-open`：`[哪台, 请求]`。 */
+const opens = (): unknown[][] => vi.mocked(openSession).mock.calls.map((c) => [c[0], c[1]]);
 
 /**
  * 摆一份分组：组表只有 `{id, name}`，组员 = `Tab.group`（tab 自己的属性）。
@@ -1254,29 +1255,30 @@ describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终�
   });
 });
 
-describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
+describe("恢复交那台：恰好一问 session-open（本机 / 远端 × 不用 tmux / tmux 里 / 照这台）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
     tm = makeTM();
   });
 
-  it("远端归档 tab → runRemoteResume(origin, agent, sid, cwd, mods)", async () => {
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "devbox");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTab("r1");
-    // 默认 resume（没点号）⇒ 跟随，交给那台判。
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "follow" }, preflight: expect.any(Function) });
-    expect(resumed()).toEqual([]);
+  it("★ 六格各恢复一次 ⇒ 每格恰好一问、恢复那一形；放在哪没动过 ⇒ 不带 run；界面不问记录、不铸名、不记 pin", async () => {
+    for (const origin of [LOCAL_ORIGIN, "devbox"]) {
+      for (const run of ["direct", "tmux", null] as const) {
+        vi.mocked(openSession).mockClear();
+        const sid = `${origin === LOCAL_ORIGIN ? "l" : "r"}-${run ?? "m"}`;
+        tm.ensureTab(sid, "/home/pi/proj", `/p/${sid}.jsonl`, origin);
+        tm.archiveTab(sid);
+        await home(tm).actions.resume(sid, pickAsk({ run, account: undefined, useBase: false }));
+        expect(opens(), `${origin} · ${run}`).toEqual([[origin, { what: { kind: "resume", sid }, ...(run ? { run } : {}), local: origin === LOCAL_ORIGIN }]]);
+      }
+    }
+    expect(sessionReadCalls(vi.mocked(invoke).mock.calls, "probe_session_record")).toEqual([]);
+    expect(tmuxMintCalls(vi.mocked(invoke).mock.calls)).toEqual([]);
+    expect(historyCalls(vi.mocked(invoke).mock.calls, "update_history_metadata")).toHaveLength(0);
   });
 
-  it("★ 会话事实到了才知道是哪一家：codex 会话按 codex 起；还不知道是哪一家 ⇒ 不起、说一句（不落 claude）", async () => {
-    tm.ensureTab("cx", "/home/pi/proj", "/p/cx.jsonl", "devbox");
-    home(tm).store.tabs.get("cx")!.agent = "codex";
-    tm.archiveTab("cx");
-    await home(tm).actions.resumeTab("cx");
-    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)?.[1]).toBe("codex");
-    vi.mocked(runRemoteResume).mockClear();
+  it("还不知道是哪一家也照交（哪一家那台从记录里读）；说不清那台在不在跑 ⇒ 不交", async () => {
     (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = true;
     try {
       tm.ensureTab("u1", "/home/pi/proj", "/p/u1.jsonl", "devbox");
@@ -1284,152 +1286,11 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = false;
     }
     tm.archiveTab("u1");
-    await home(tm).actions.resumeTab("u1");
-    expect(runRemoteResume, "还不知道是哪一家就起了").not.toHaveBeenCalled();
-    expect(String(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0])).toContain(copyText("tabSessionActions.agent.unknown"));
-  });
-
-  // 点了号 ⇒ 点名那个号原样交给那台（它判选不选得了；选不了时的说清 ＋ 显式选择由 `remote-launch-run.vitest.ts` 钉）。
-  it("resumeTab 带账号名 → 点名那个号交给那台，界面不先查账号库", async () => {
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "devbox");
-    tm.archiveTab("r1");
-    await home(tm).actions.resumeTab("r1", "z");
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", {
-      account: { kind: "named", name: "z" },
-      preflight: expect.any(Function),
-    });
-    expect(historyCalls(vi.mocked(invoke).mock.calls, "update_history_metadata")).toHaveLength(0);
-  });
-
-  it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
-    tm.ensureTab("l1", "/home/u/p", "/p/l1.jsonl", LOCAL_ORIGIN);
-    tm.archiveTab("l1");
-    vi.mocked(invoke).mockImplementation(withHistoryReads(launchRenderShim(() => Promise.resolve(undefined))));
-    await home(tm).actions.resumeTab("l1");
-    expect(runRemoteResume).not.toHaveBeenCalled();
-    expect(resumed()).toContainEqual({
-      agent: "claude",
-      sessionId: "l1",
-      cwd: "/home/u/p",
-      // P3t-Y2b：读不到本机 tmux 名单（这里 `invoke` 的缺省 mock 回 undefined）⇒ **不铸名**。
-      // `null` 在这里是「不知道」，不是「没有名字被占」—— 硬铸就是不避让（issue #76）。
-      tmuxName: null,
-      account: { kind: "follow" },
-    });
-  });
-
-  // ★★ P3t-Y2b：本机 resume 真的把铸好的 tmux 名传下去。
-  //
-  // 上面那条只证「不知道的时候不铸」。**光有它，整个 Y2b 被回退掉也不会红**
-  //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
-  it("P3t-Y2b 本地 resume：本机后端铸了名字 → 原样传给起会话那一问", async () => {
-    (invoke as unknown as Mock).mockImplementation(withHistoryReads(launchRenderShim(async (cmd: string) => {
-      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`；它已被占 ⇒ 让到 `-2`。派生 ＋ 避让在本机后端（`terminal-name-mint`），
-      //   替身写死它铸了 `p-cc-2`；这里钉的是「问了、用的就是它铸的」（下面 `tmuxMintCalls` 那一行）。
-      if (cmd === "tmux_name_mint") return "p-cc-2";
-      return undefined;
-    })));
-    tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", LOCAL_ORIGIN);
-    tm.archiveTab("l1abcdef");
-    await home(tm).actions.resumeTab("l1abcdef");
-    expect(resumed()).toContainEqual({
-      agent: "claude",
-      sessionId: "l1abcdef",
-      cwd: "/home/u/p",
-      // 让到 `-2` 而不是撞上 `p-cc` —— 撞上去就是「静默接进第一个会话，
-      // 而用户以为开了新的」（issue #76 那一族，F13 记着同一个坑）。
-      // `K-R96`：名字里**没有 sid**（`l1abcdef` 一个字都不出现）—— 它骑在 `@ccm_sid` 上。
-      tmuxName: "p-cc-2",
-      account: { kind: "follow" },
-    });
-    expect(tmuxMintCalls(vi.mocked(invoke).mock.calls)).toEqual([[LOCAL_ORIGIN, { cwd: "/home/u/p" }]]);
+    await home(tm).actions.resume("u1");
+    expect(opens()).toEqual([["devbox", { what: { kind: "resume", sid: "u1" }, local: false }]]);
   });
 });
 
-// 跟随 / 账号 0：界面不读 pin、不查账号库，交的就是那一格（那台判）。
-describe("跟随 / 用账号 0：界面不读 pin，交的就是那一格", () => {
-  let tm: TabManager;
-  beforeEach(() => {
-    vi.clearAllMocks();
-    tm = makeTM();
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "devbox");
-    tm.archiveTab("r1");
-  });
-
-  it("直连跟随 · 用账号 0：一次 pin 都不读；交 follow / base", async () => {
-    await home(tm).actions.resumeTab("r1");
-    await home(tm).actions.resumeTab("r1", undefined, true);
-    expect(historyCalls(vi.mocked(invoke).mock.calls, "list_last_accounts")).toHaveLength(0);
-    expect(vi.mocked(runRemoteResume).mock.calls.map((c) => (c[4] as { account: unknown }).account)).toEqual([
-      { kind: "follow" },
-      { kind: "base" },
-    ]);
-  });
-});
-
-// audit-fixes F03 步骤1（idle-tmux 就地复用，治 #76 根因 + #75 一条）：
-// 单个「在 tmux 里 Resume」与批量「在 tmux 里后台起」同一条：交那台一个 sid 的一批（`sessions-start`，那台判在不在跑 · 空 tmux 就地键入 ·
-//   铸名交一行 ccm），单个只多一步：起好之后开一个终端接进去。那台怎么判住后端判据；这里判单个这一侧交了什么、拿到回答之后做什么。
-describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差 sid 的个数）", () => {
-  let tm: TabManager;
-  const reply = (outcome: string, why: string | null, session: string | null, detail = "") => ({
-    sid: "r1", outcome, why, detail, said: null, copyDetail: "", session, bus: null, cmd: null, account: null, unavailable: null,
-  });
-  beforeEach(() => {
-    vi.clearAllMocks();
-    tm = makeTM();
-    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "devbox");
-    tm.archiveTab("r1");
-  });
-
-  it("基座（useBase）：交的是这一个（账号 0）；起好了 ⇒ 接进那台答的那个会话", async () => {
-    vi.mocked(callStart).mockResolvedValue([reply("done", null, "proj-cc")] as never);
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    // 第 4 格是起哪一家（标签页里的会话 ＝ 流跟的那一家；起法住 `tmux-resume.ts`，历史页按那一行自己的一家交）。
-    expect(vi.mocked(callStart).mock.calls).toEqual([["devbox", "tmux", [{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "base" } }], "claude"]]);
-    expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc");
-  });
-
-  it("那台答「已经在跑」⇒ 不另起，接进去；在跑的不止一个 ⇒ 接第一个 ＋ 说出来", async () => {
-    vi.mocked(callStart).mockResolvedValue([reply("skipped", "running", "cc-r1abcd", "cc-r1abcd")] as never);
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(runRemoteAttach).toHaveBeenLastCalledWith("devbox", "claude", "cc-r1abcd");
-    vi.mocked(callStart).mockResolvedValue([reply("skipped", "ambiguous", "cc-r1abcd", "cc-r1abcd, cc-r1efgh")] as never);
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(runRemoteAttach).toHaveBeenLastCalledWith("devbox", "claude", "cc-r1abcd");
-    expect(showActionFailureToast).toHaveBeenCalledWith(copyText("tabSessionActions.dupes.title"), expect.stringContaining("2"), expect.objectContaining({ level: "info" }));
-  });
-
-  it("记录已不在 / 那台没起成 / 问不到那台 ⇒ 不开终端、出声", async () => {
-    vi.mocked(callStart).mockResolvedValue([reply("skipped", "record_gone", null, "/home/pi/.claude/projects")] as never);
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toContain(copyText("sessionState.recordGone.title"));
-    vi.mocked(callStart).mockResolvedValue([reply("failed", "start_failed", "proj-cc", "ccm: 起不来")] as never);
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    vi.mocked(callStart).mockRejectedValue(new Error("通道不在"));
-    vi.mocked(failToast).mockClear();
-    await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(runRemoteAttach).not.toHaveBeenCalled();
-    expect(vi.mocked(showActionFailureToast).mock.calls.length).toBe(2);
-    // 问不到那台：那次失败交给失败 toast（带详情 ⇒ 换成那一句；不带 ⇒ 标题留「没起」那句）。
-    expect(vi.mocked(failToast).mock.calls.map((c) => c[0])).toEqual([copyText("remoteLaunchRun.inPlace.notRun")]);
-  });
-
-  it("跟随：交 follow（号与模型那台判，单个与批量同一条）；那台说选不了 ⇒ 不接、给显式选择，点了点名再交", async () => {
-    vi.mocked(callStart).mockResolvedValueOnce([
-      { ...reply("skipped", "account_unavailable", null, "z"), unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } },
-    ] as never);
-    await home(tm).actions.resumeTabTmux("r1");
-    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "follow" } }]);
-    expect(runRemoteAttach).not.toHaveBeenCalled();
-    const hit = vi.mocked(showActionFailureToast).mock.calls.find((c) => c[0] === copyText("accountPick.refused.title"));
-    expect(hit, "没有说清为什么没起").toBeTruthy();
-    vi.mocked(callStart).mockResolvedValueOnce([reply("done", null, "proj-cc")] as never);
-    hit![2]!.onClick!();
-    await vi.waitFor(() => expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc"), UNTIL_CEILING);
-    expect(vi.mocked(callStart).mock.calls[1][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "named", name: "b" } }]);
-  });
-});
 
 describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1）", () => {
   let tm: TabManager;
@@ -1824,77 +1685,73 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item(copyText("acct.menu.open"))!.click();
     expect(open).toHaveBeenCalledWith("r2", "devbox");
   });
-  it("远端：一级项 ＋ flyout（最上面「恢复」· 运行于两项单选 · 在此目录新建会话）；点单选只挪勾、菜单不关；「恢复」按勾着的那一组起", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux" ? Promise.resolve([]) : cmd === "tmux_name_mint" ? Promise.resolve("proj-cc") : Promise.resolve(undefined),
-    ));
+  it("★ 远端：一级项 ＋ flyout（最上面「恢复」· 运行于两项单选 · 在此目录新建会话）；勾画在那台答的默认上；没动过 ⇒ 不带 run，挪过 ⇒ 带", async () => {
+    // 替身那台答的默认放在哪是「不用 tmux」（`chan-fake.ts::standingProduct`）。
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) => (cmd === "list_remote_tmux" ? Promise.resolve([]) : Promise.resolve(undefined))));
     await openArchived();
     const fly = flyout();
     expect([...fly.children].map((c) => (c.getAttribute("role") === "presentation" ? `[${c.textContent}]` : c.getAttribute("role") === "separator" ? "—" : labelOf(c)))).toEqual([
       RESUME, "—", `[${copyText("resumeMenu.group.run")}]`, TMUX, DIRECT, "—", copyText("history.menu.newInDir"),
     ]);
+    expect(item(DIRECT)!.getAttribute("aria-checked"), "勾画在那台答的默认上").toBe("true");
     expect(item(RESUME)!.textContent, "「恢复」右侧灰字是勾着的方式").toContain(DIRECT);
-    // 点「在 tmux 里」：只挪勾，什么都不起
+    item(RESUME)!.click();
+    await settle();
+    expect(opens(), "人没动过 ⇒ 不带 run（那台照自己的设置）").toEqual([["devbox", { what: { kind: "resume", sid: "r1" }, local: false }]]);
+    // 点「在 tmux 里」：只挪勾、菜单不关、什么都不起；勾在这个 tab 上记着
+    rightClick("r1");
+    await settle();
+    vi.mocked(openSession).mockClear();
     item(TMUX)!.click();
     await settle();
     expect(document.body.querySelector("[role=menu]"), "点单选菜单不关").not.toBeNull();
     expect(item(TMUX)!.getAttribute("aria-checked")).toBe("true");
-    expect(callStart).not.toHaveBeenCalled();
-    expect(item(RESUME)!.textContent).toContain(copyText("resumeMenu.hint.tmux"));
-    // 「恢复」⇒ 交那台在 tmux 里起这一个（在不在跑 · 铸名 · 判号都在那台）；账号跟随
-    vi.mocked(callStart).mockResolvedValue([{ sid: "r1", outcome: "done", why: null, detail: "", session: "proj-cc", bus: null, cmd: null }] as never);
+    expect(openSession).not.toHaveBeenCalled();
     item(RESUME)!.click();
     await settle();
-    expect(vi.mocked(callStart).mock.calls[0].slice(0, 2)).toEqual(["devbox", "tmux"]);
-    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "follow" } }]);
-    expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc");
-    // 勾在这个 tab 上记着：再开还是 tmux；挪回不用 tmux ⇒ 直接恢复
     rightClick("r1");
     await settle();
-    expect(item(TMUX)!.getAttribute("aria-checked")).toBe("true");
-    item(DIRECT)!.click();
-    item(RESUME)!.click();
-    await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "follow" }, preflight: expect.any(Function) });
+    expect(item(TMUX)!.getAttribute("aria-checked"), "勾在这个 tab 上记着").toBe("true");
+    expect(opens()).toEqual([["devbox", { what: { kind: "resume", sid: "r1" }, run: "tmux", local: false }]]);
   });
 
-  it("本机：同一个组件（不再是单独一项）；在 tmux 里 ⇒ 本机那一条（交本机后端在 tmux 里起再接进去）", async () => {
-    vi.mocked(callStart).mockResolvedValue([{ sid: "l1", outcome: "done", why: null, detail: "", session: "p-cc", bus: null, cmd: null }] as never);
+  it("本机：同一个组件（不再是单独一项）；在 tmux 里 ⇒ 同一问、带 run", async () => {
     await openArchived("l1", LOCAL_ORIGIN);
     expect(menuLabels()).toEqual(expect.arrayContaining([RESUME, TMUX, DIRECT]));
     item(TMUX)!.click();
     item(RESUME)!.click();
     await settle();
-    expect(vi.mocked(callStart).mock.calls[0].slice(0, 2)).toEqual([LOCAL_ORIGIN, "tmux"]);
+    expect(opens()).toEqual([[LOCAL_ORIGIN, { what: { kind: "resume", sid: "l1" }, run: "tmux", local: true }]]);
   });
 
-  it("那台只有一个可选号：账号组照出（那个号 ＋ 基座）；勾基座再「恢复」⇒ useBase（#75 逃生口不退化）", async () => {
+  it("那台只有一个可选号：账号组照出（那个号 ＋ 基座）；勾基座再「恢复」⇒ 账号 0（#75 逃生口不退化）", async () => {
     accounts("z");
     await openArchived();
     expect(menuLabels()).toEqual(expect.arrayContaining(["z", BASE]));
     expect(item("z")!.getAttribute("role")).toBe("menuitemradio");
     item(BASE)!.click();
-    expect(callStart).not.toHaveBeenCalled();
-    expect(runRemoteResume).not.toHaveBeenCalled();
+    expect(openSession).not.toHaveBeenCalled();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "base" }, preflight: expect.any(Function) });
+    expect(opens()).toEqual([["devbox", { what: { kind: "resume", sid: "r1" }, account: { kind: "base" }, local: false }]]);
   });
 
-  it("两个号：勾 b ⇒ 真的用 b 起（不是跟随）；勾 z ＋ 在 tmux 里 ⇒ tmux 那条且带 z（账号 × 方式两组正交）", async () => {
+  it("两个号：勾 b ⇒ 真的用 b 起（不是跟随）；勾 z ＋ 在 tmux 里 ⇒ 带 z 与 tmux（账号 × 方式两组正交）", async () => {
     accounts("z", "b");
     await openArchived();
     item("b")!.click();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", expect.objectContaining({ account: { kind: "named", name: "b" } }));
     rightClick("r1");
     await settle();
     item("z")!.click();
     item(TMUX)!.click();
     item(RESUME)!.click();
     await settle();
-    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([expect.objectContaining({ sid: "r1", account: { kind: "named", name: "z" } })]);
+    expect(opens().map((c) => c[1])).toEqual([
+      { what: { kind: "resume", sid: "r1" }, account: { kind: "named", name: "b" }, local: false },
+      { what: { kind: "resume", sid: "r1" }, account: { kind: "named", name: "z" }, run: "tmux", local: false },
+    ]);
   });
 
   // 账号名允许 `__base__`（账号也能在 app 之外写进账号库）：它是一个号，不是基座 —— 基座在类型上是另一支（`name: null`）。
@@ -1904,7 +1761,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item("__base__")!.click();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", expect.objectContaining({ account: { kind: "named", name: "__base__" } }));
+    expect(opens().map((c) => (c[1] as { account?: unknown }).account)).toEqual([{ kind: "named", name: "__base__" }]);
   });
 
   it("那台没开多账号 ⇒ 账号组不出", async () => {
@@ -4488,64 +4345,16 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(tabOf("q1").state).toEqual(LIVE);
   });
 
-  it("★ G1：resume 查到记录不在 ⇒ 不开终端 ＋ 诚实报错（说清哪台、哪棵树）＋ 落「记录已不在」；再查到在 ⇒ 翻回已结束、照常 resume", async () => {
+  it("★ 那台说记录不在 ⇒ 落「记录已不在」（悬停卡照说）；再说在 ⇒ 翻回已结束", async () => {
     tm.ensureTab("g1", "/home/u/p", "/p/g1.jsonl", LOCAL_ORIGIN);
     tm.archiveTab("g1");
-    probe = { present: false, root: "/h/.claude/projects" };
-    const opened = (): number => vi.mocked(invoke).mock.calls.filter(([c]) => c === "open_local_terminal").length;
-    await home(tm).actions.resumeTab("g1");
-    // 本机后端先判号、渲那一行，开窗之前问记录：不在 ⇒ 不开窗。
-    expect(opened()).toBe(0);
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      copyText("sessionState.recordGone.title"),
-      copyText("sessionState.recordGone.body", { who: copyText("tabSessionActions.who.local"), root: "/h/.claude/projects", sid: "g1" }),
-    );
+    await home(tm).actions.resume("g1");
+    const onRecord = vi.mocked(openSession).mock.calls[0][2]!.onRecord!;
+    onRecord(false);
     expect(tabOf("g1").state).toEqual(GONE);
     expect(cardOf(tm, "g1")?.querySelector(".tab-hover-state")?.textContent).toBe(copyText("sessionState.gone.tooltip"));
-    probe = { present: true, root: "/h/.claude/projects" };
-    await home(tm).actions.resumeTab("g1");
+    onRecord(true);
     expect(tabOf("g1").state).toEqual(ENDED);
-    expect(opened()).toBe(1);
-  });
-
-  // 在 tmux 里那一条的「记录还在不在」由那台在起之前自己问（`sessions-start` 的 `record_gone`，见「单个在 tmux 里 Resume」那组）。
-  /** 执行器替身：照生产那样在开窗之前问 `preflight`（那台判出来的号目录，这里不关心），回开没开。 */
-  const openedRemote: string[] = [];
-  const remoteRunnerAsksPreflight = (): void => {
-    openedRemote.length = 0;
-    vi.mocked(runRemoteResume).mockImplementation(async (_o, _a, sid, _c, mods) => {
-      const m = mods as { preflight?: (d: string | undefined) => Promise<boolean> } | undefined;
-      if (m?.preflight && !(await m.preflight(undefined))) return false;
-      openedRemote.push(sid);
-      return true;
-    });
-  };
-
-  it("★ G1：远端直连同样先问；问不到 ⇒ 当不知道、照今天的路走（不当「不在」）", async () => {
-    remoteRunnerAsksPreflight();
-    tm.ensureTab("g2", "/home/pi/proj", "/p/g2.jsonl", "devbox");
-    tm.archiveTab("g2");
-    probe = { present: false, root: "/home/pi/.claude/projects" };
-    await home(tm).actions.resumeTab("g2");
-    expect(openedRemote).toEqual([]);
-    expect(tabOf("g2").state).toEqual(GONE);
-    probe = undefined; // 问不到
-    await home(tm).actions.resumeTab("g2");
-    expect(openedRemote).toEqual(["g2"]);
-    expect(tabOf("g2").state, "问不到不改状态").toEqual(GONE);
-  });
-
-  // 「照起但说一句『查不到记录还在不在』；形状不对报两端契约对不上（出声不静默）」。
-  // 回包形状不对那一形不在界面判了：`history-record` 是 typed 命令，两端形状由握手指纹管（对不上 monitor 事前就拒、说「后端版本不同」）。
-  it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到", async () => {
-    remoteRunnerAsksPreflight();
-    tm.ensureTab("g4", "/home/pi/proj", "/p/g4.jsonl", "devbox");
-    tm.archiveTab("g4");
-    const title = copyText("tabSessionActions.recordUnknown.title");
-    probe = undefined; // 问不到
-    await home(tm).actions.resumeTab("g4");
-    expect(openedRemote).toEqual(["g4"]);
-    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toEqual([title]);
   });
 
   it("★ G1：可重连的会话记录没了也不落「记录已不在」（终端还在，接得回去）", () => {
@@ -4652,49 +4461,6 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 那台一个 tab 都没有时收到 unseen ⇒ 什么都不建", () => {
     tm.markOriginUnseen("nowhere");
     expect(home(tm).store.tabs.size).toBe(0);
-  });
-});
-
-/**
- * **resume 之前问记录，问的是这次 resume 要用的那个账号根**。
- * 期望的目录 == 交给起会话那一格的目录（同一次解析，两处读同一个值）。
- */
-describe("〔GP1〕记录那一问带上这次 resume 的账号根（那台判出来的那个号）", () => {
-  let tm: TabManager;
-  const probes = (): Record<string, unknown>[] =>
-    sessionReadCalls(vi.mocked(invoke).mock.calls, "probe_session_record");
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    tm = makeTM();
-  });
-
-  it("★ 远端直连：问的是那台判出来的号的目录（执行器开窗之前交回来的那一个）", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(() => Promise.resolve(undefined))));
-    vi.mocked(runRemoteResume).mockImplementation(async (_o, _a, _s, _c, mods) => {
-      const m = mods as { preflight?: (d: string | undefined) => Promise<boolean> } | undefined;
-      return (await m?.preflight?.("/h/.claude-alt/z")) ?? true;
-    });
-    tm.ensureTab("k1", "/home/pi/proj", "/p/k1.jsonl", "devbox");
-    tm.archiveTab("k1");
-    await home(tm).actions.resumeTab("k1");
-    expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-alt/z"]);
-  });
-
-  it("★ 本机：问的是本机后端判出来、随那一行交回来的号目录；账号 0 / 不指定 ⇒ 不带", async () => {
-    let account: unknown = { name: "acct-b", configDir: "/h/.claude-alt/acct-b", model: null };
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string) => {
-      if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-alt/acct-b/projects" });
-      if (cmd === "resume_history_session") return Promise.resolve({ account });
-      return Promise.resolve(undefined);
-    }))));
-    tm.ensureTab("k2", "/home/u/p", "/p/k2.jsonl", LOCAL_ORIGIN);
-    tm.archiveTab("k2");
-    await home(tm).actions.resumeTab("k2");
-    account = null;
-    await home(tm).actions.resumeTab("k2");
-    expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-alt/acct-b", undefined]);
   });
 });
 

@@ -11,13 +11,8 @@
 import { NoTerminalWindow, openTerminal, sayNoTerminal } from "./terminal-open";
 // 「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin } from "./ipc/origin";
-import { planResumeDirect, planAttach } from "./launch-requests";
-import type { LaunchContext, LaunchModifiers } from "./launch-types";
-import type { AccountAsk } from "./generated/AccountAsk";
-import {
-  accountUnavailableOf,
-  refuseUnavailableAccount,
-} from "./launch-account";
+import { planAttach } from "./launch-requests";
+import type { LaunchContext } from "./launch-types";
 import { buildCliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { toast, failToast } from "./kit/toast";
@@ -36,36 +31,6 @@ async function renderLaunchCommand(
   ctx: LaunchContext,
 ): Promise<string> {
   return (await renderCli(origin, buildCliRenderRequest(ctx))).cmd;
-}
-
-/**
- * 渲那一行（那台判号）：要的号选不了 ⇒ 不起、给显式选择（点了 ⇒ `again(那个号)`）；别的失败 ⇒ 说成 `failedTitle` 那一句；
- * 开窗之前问 `mods.preflight`（收那台判出来的号的目录）。说不起 ⇒ `null`。
- */
-async function renderOrRefuse(
-  origin: string,
-  ctx: LaunchContext,
-  failedTitle: string,
-  mods: LaunchModifiers,
-  again: (account: AccountAsk) => unknown,
-): Promise<string | null> {
-  let r;
-  try {
-    r = await renderCli(origin, buildCliRenderRequest(ctx));
-  } catch (err) {
-    const u = accountUnavailableOf(err);
-    if (u)
-      refuseUnavailableAccount({
-        machine: origin,
-        u,
-        choose: (account) => again(account) as Promise<unknown>,
-      });
-    else failToast(failedTitle, err);
-    return null;
-  }
-  if (mods.preflight && !(await mods.preflight(r.account?.configDir)))
-    return null;
-  return r.cmd;
 }
 
 interface LaunchToasts {
@@ -94,7 +59,6 @@ type AfterOpen =
 
 /** 窗口那一跳的结局：没真发出去 · 发出去了（等那台报出交给主窗口）。 */
 type Opened = "unsent" | "sent";
-const sent = (o: Opened): boolean => o !== "unsent";
 
 /** 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
  *  6 个 executor 的 invoke→toast/剪贴板回退骨架逐字相同，只有文案与 `origin` 不同——收敛成
@@ -141,47 +105,6 @@ async function invokeLaunchOrCopyFallback(
     toast(headline, `${where}\n${cmd}`, { detail: detailOf(err), level: "info" });
     return "unsent";
   }
-}
-
-/** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
-export async function runRemoteResume(
-  origin: string,
-  agent: string,
-  sid: string,
-  cwd: string,
-  mods: LaunchModifiers = {}, // 正交修饰（要哪个号），见 launch-types.ts
-  // 回「真发出去了吗」（失败那一路自己出声）：别把「走到了最后一步」当成「已 resume」。
-): Promise<boolean> {
-  return sent(await resumeDirectCore(origin, agent, sid, cwd, mods));
-}
-
-async function resumeDirectCore(
-  origin: string,
-  agent: string,
-  sid: string,
-  cwd: string,
-  mods: LaunchModifiers,
-): Promise<Opened> {
-  const ctx = planResumeDirect(agent, sid, cwd, mods);
-  const cmd = await renderOrRefuse(
-    origin,
-    ctx,
-    copyText("remoteLaunchRun.resume.buildFailed"),
-    mods,
-    (account) =>
-      resumeDirectCore(origin, agent, sid, cwd, { ...mods, account }),
-  );
-  if (cmd === null) return "unsent";
-  return invokeLaunchOrCopyFallback(
-    origin,
-    cmd,
-    {
-      success: copyText("remoteLaunchRun.resume.started"),
-      failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
-      failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-    },
-    { kind: "expect", match: { sid }, tmuxName: null, slot: { cwd, agent } },
-  );
 }
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。

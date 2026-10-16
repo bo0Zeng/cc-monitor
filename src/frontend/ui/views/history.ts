@@ -10,7 +10,6 @@
  */
 import { button, setBusy, setDisabled } from "../kit/button";
 import { splitButton } from "../kit/split-button";
-import { banner } from "../kit/banner";
 import { icon } from "../kit/icon";
 import { countBadge } from "../kit/badge";
 import { tabs } from "../kit/tabs";
@@ -25,7 +24,7 @@ import { askText, confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation, historyReasonOf } from "../history-reads";
 import { setHide } from "../session-hidden-cmds";
@@ -33,15 +32,14 @@ import { undoHide } from "../session-hidden";
 import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
 import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
 import { SessionViewer, viewerPath, type ViewerHead } from "./session-viewer";
-import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../resume-menu";
+import { defaultPick, pickAsk, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../resume-menu";
 import { deleteSession } from "../session-writes";
-import { askOf, type AccountAsk } from "../launch-account";
 import { revealInFolder } from "../reveal-in-folder";
-import { resumeHistoryRow } from "../history-resume";
+import { openSession } from "../session-open";
+import { standingOf } from "../sessions-where";
 import { openNewSession } from "../new-session";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
 import s from "./history.module.css";
-import { detailOf } from "../kit/detail";
 
 type ViewMode = "time" | "project";
 type Scope = "all" | "user" | "assistant" | "report";
@@ -902,7 +900,7 @@ export class HistoryView {
   private pickOf(r: HistoryRow): ResumePick {
     const k = rowKey(r);
     let p = this.picks.get(k);
-    if (!p) this.picks.set(k, (p = defaultPick(r.origin ?? LOCAL_ORIGIN)));
+    if (!p) this.picks.set(k, (p = defaultPick()));
     return p;
   }
 
@@ -913,20 +911,22 @@ export class HistoryView {
     return { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] };
   }
 
-  /** ▾ 的项：账号（能选号的那一家才问那台）· 运行于 · 在此目录新建会话；勾一挪，主按钮的悬停跟着改。 */
+  /** ▾ 的项：账号（能选号的那一家才问那台）· 运行于（勾画在那台答的默认上）· 在此目录新建会话；勾一挪，主按钮的悬停跟着改。 */
   private async resumeItems(r: HistoryRow, main: HTMLButtonElement): Promise<MenuItem[]> {
-    const accounts = await resumeAccounts(r.origin ?? LOCAL_ORIGIN, r.agent, {
-      hasAccounts: r.can.accounts,
-      agentName: r.agentTag ?? r.agent,
-      last: r.lastAccount,
-    });
+    const origin = r.origin ?? LOCAL_ORIGIN;
+    const [accounts, where] = await Promise.all([
+      resumeAccounts(origin, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount }),
+      standingOf(origin, r.sessionId),
+    ]);
     const pick = this.pickOf(r);
-    main.title = resumeHint(accounts, pick);
+    const machineRun = where?.run;
+    main.title = resumeHint(accounts, pick, machineRun);
     return resumeMenuItems({
       accounts,
       pick,
+      machineRun,
       onChange: (p) => {
-        if (main.getAttribute("aria-disabled") !== "true") main.title = resumeHint(accounts, p);
+        if (main.getAttribute("aria-disabled") !== "true") main.title = resumeHint(accounts, p, machineRun);
       },
       newInDir: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }),
     });
@@ -961,17 +961,11 @@ export class HistoryView {
     };
   }
 
-  /** 恢复（按这一行勾着的那一组；没动过 ⇒ 上次的号 · 不用 tmux）；在跑的 ⇒ 切过去。 */
-  private resume(r: HistoryRow): Promise<void> {
-    const p = this.pickOf(r);
-    return this.resumeWith(r, { tmux: p.tmux, account: askOf(p.account, p.useBase) });
-  }
-
   /**
-   * 按选的那一种恢复。号由那台判（跟随 / 点名 / 账号 0；选不了 ⇒ 那台不起、给替代）；tmux 那一支与标签页同一条起法（`tmux-resume.ts`）。
-   * 起了 ⇒ 关历史页（主窗口等它出现再切过去）；没起 ⇒ 内容头下一条错误条 ＋［重试］（右边显示的不是它 ⇒ toast）。
+   * 恢复（按这一行勾着的那一组；没动过 ⇒ 跟随上次的号 · 照这台的设置，那台判）；在跑的 ⇒ 切过去。
+   * 起了 ⇒ 关历史页（主窗口等它出现再切过去）；没起 ⇒ 那一句已经说过、页面留着。
    */
-  private async resumeWith(r: HistoryRow, how: { tmux: boolean; account: AccountAsk }): Promise<void> {
+  private async resume(r: HistoryRow): Promise<void> {
     if (r.can.resume === "bg") return;
     if (r.can.resume === "switch") {
       this.switchTo(r.sessionId);
@@ -980,19 +974,10 @@ export class HistoryView {
     }
     const main = this.shown === rowKey(r) ? this.viewer?.element.querySelector<HTMLButtonElement>(`[data-role="resume"] > button`) : null;
     if (main) setBusy(main, copyText("history.resume.busy"));
-    this.viewer?.showBanner(null);
+    const origin = r.origin ?? LOCAL_ORIGIN;
     try {
-      const started = await resumeHistoryRow(r, how, (a) => this.resumeWith(r, { tmux: how.tmux, account: a ?? how.account }));
-      if (!started) return;
-      this.close();
-    } catch (e) {
-      const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
-      if (this.shown === rowKey(r) && this.viewer) {
-        const retry = button({ label: copyText("history.group.retry"), size: "compact", onClick: () => void this.resumeWith(r, how) });
-        this.viewer.showBanner(banner("error", said, [retry], detailOf(e)));
-      } else {
-        toast(said, "");
-      }
+      const req = { what: { kind: "resume" as const, sid: r.sessionId }, ...pickAsk(this.pickOf(r)), local: isLocalOrigin(origin) };
+      if (await openSession(origin, req)) this.close();
     } finally {
       if (main) setBusy(main, null);
     }

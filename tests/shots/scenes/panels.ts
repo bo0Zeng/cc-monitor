@@ -38,12 +38,10 @@ function remoteEndedWorld(): World {
 /** 同上，且那台说这条会话上次用的号（personal）现在选不了，替代是它的默认号 work。 */
 function accountGoneWorld(): World {
   const w = remoteEndedWorld();
-  w.ops["launch-render-cli"] = () => {
-    throw new Refuse("account_unavailable", "账号 personal 不可用，未启动", {
-      requested: "personal",
-      pinned: true,
-      listKnown: true,
-      alternative: "work",
+  w.ops["session-open"] = () => {
+    throw new Refuse("account_unavailable", copyText("beLaunchAccount.unavailable.lastToDefault", { name: "personal", alt: "work" }), {
+      field: null,
+      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
     });
   };
   return w;

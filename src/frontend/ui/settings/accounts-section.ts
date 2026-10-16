@@ -13,7 +13,7 @@ import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
-import { machineHasTmux } from "../resume-defaults";
+import { askFacts } from "../new-session-reads";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, launchAgentId } from "../account-reads";
 import { readPrefs, setPrefs } from "../machine-prefs";
@@ -79,8 +79,8 @@ export class AccountsSection {
   private readonly open = new Set<string>();
   /** 这次开着窗口时为它开过登录窗口的号（那一行「等待终端登录…」＋［重新打开登录窗口］）。 */
   private readonly waiting = new Set<string>();
-  /** 开不了终端窗口的号（那一行改说「本机无法开终端窗口」＋［在 tmux 里登录］）。 */
-  private readonly noWindow = new Set<string>();
+  /** 开不了终端窗口的号 ⇒ 那台有没有 tmux（那一行改说「本机无法开终端窗口」，有 ⇒ ＋［在 tmux 里登录］）。 */
+  private readonly noWindow = new Map<string, boolean>();
   /** 这次窗口里修复过的机器（警告条 ⋯ 里才有「恢复到修复之前」）。 */
   private readonly repaired = new Set<Origin>();
   private form: NewAccountForm | null = null;
@@ -469,7 +469,7 @@ export class AccountsSection {
         why.textContent = copyText("acctPage.login.noWindow");
         act.append(why);
         // 那台说了没有 tmux ⇒ 不出［在 tmux 里登录］（tmux 一律可选，不画成「要装」）。
-        if (machineHasTmux(origin) !== false) act.appendChild(button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
+        if (this.noWindow.get(key) !== false) act.appendChild(button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
       } else if (waiting) {
         act.appendChild(button({ label: copyText("acctPage.login.reopen"), size: "compact", onClick: stop(() => void this.login(origin, a)) }));
       } else if (accountRowKind(a) === "notLoggedIn") {
@@ -736,7 +736,8 @@ export class AccountsSection {
         this.noWindow.delete(key);
         this.waiting.add(key);
       } else {
-        this.noWindow.add(key);
+        // 开不了窗 ⇒ 问那台有没有 tmux（问不到 ⇒ 照给［在 tmux 里登录］，按下去那台照实说）。
+        this.noWindow.set(key, await askFacts(origin, null).then((f) => f.tmux, () => true));
       }
     } catch (e) {
       failToast(copyText("acctPage.login.failed", { name: a.name }), e, { level: "error" });

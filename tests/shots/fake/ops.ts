@@ -56,6 +56,12 @@ export function defaultOps(): Record<string, OpHandler> {
     ),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
     "session-new-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
+    // 恢复 · 接回：那台照意图答落在哪 ＋ 那一行（恢复 ⇒ 开窗起；接回 ⇒ 接上在跑的那个）。
+    "session-open": (_o, req) => {
+      const what = req.what as { kind: string; sid?: string; session?: string };
+      if (what.kind === "look") return { landed: "running", session: what.session ?? "cc-proj", line: `ccm --attach ${what.session ?? "cc-proj"}`, sid: what.sid ?? null, agent: null, cwd: null, account: null, note: null, prompt: null };
+      return { landed: "window", session: null, line: `ccm --resume ${what.sid ?? ""}`, sid: what.sid ?? null, agent: "claude", cwd: "~", account: null, note: null, prompt: null };
+    },
     "session-new": (_o, req) => ({
       outcome: req.place === "tmux" ? "started" : "open",
       session: req.place === "tmux" ? "orders-cc-2" : null,

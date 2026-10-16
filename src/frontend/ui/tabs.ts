@@ -196,7 +196,7 @@ export class TabManager {
     refreshTabBar: () => this.refreshTabBar(),
     createSkeletonTab: (sid, projectDir, origin, background, name) =>
       this.createSkeletonTab(sid, projectDir, origin, background, name),
-    resumeTab: (sid) => this.actions.resumeTab(sid),
+    resumeTab: (sid) => this.actions.resume(sid),
     streamElOf: (sid) => this.streamElOf(sid),
   });
 
