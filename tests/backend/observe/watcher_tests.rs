@@ -3314,9 +3314,12 @@ fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
                 format!("gone:{session_id}")
             }
             Frame::SessionFileReread(crate::wire::SessionFileReread {
-                session_id, why, ..
+                session_id,
+                why,
+                lines,
+                ..
             }) => {
-                format!("reread:{session_id}:{why:?}")
+                format!("reread:{session_id}:{why:?}:{lines}")
             }
             other => format!("other:{}", other.loss_identity().kind),
         });
@@ -3366,13 +3369,13 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     );
 
     // agent 按路径追加 ⇒ 同名文件重新长出来，只有新行（比读到过的短也好、长也好，都从 0 读）。
-    // 长回来的是另一份文件 ⇒ 先说「已从头重读」（行号从 0 重数，下游据它作废旧号）。
+    // 长回来的是另一份文件 ⇒ 说「已从头重读」带行数（行号从 0 重数，下游据它作废旧号、从尾段重取），重读的行不逐行出。
     std::fs::write(&path, "{\"n\":3}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     assert_eq!(
         fw1_drain(&mut rx),
-        vec!["reread:s-fw1:Rewritten", "line:0"],
-        "重建之后不是「出声 ＋ 从 0 读」"
+        vec!["reread:s-fw1:Rewritten:1"],
+        "重建之后不是「出声带行数、不逐行出」"
     );
     std::fs::write(&path, "{\"n\":3}\n{\"n\":4-a-longer-line-than-before}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
@@ -3385,7 +3388,7 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；行号从 0 重数（`watcher_lines_tests` 钉号）。
+/// ★ **截短 ⇒ 从头重读、出声（why = 截短，带行数）**；行号从 0 重数（`watcher_lines_tests` 钉号）。
 #[test]
 fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let (dir, path, mut state, mut sink, mut rx) = fw1_rig("trunc");
@@ -3394,12 +3397,12 @@ fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let _ = fw1_drain(&mut rx);
     std::fs::write(&path, "{\"n\":9}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(fw1_drain(&mut rx), vec!["reread:s-fw1:Truncated", "line:0"]);
+    assert_eq!(fw1_drain(&mut rx), vec!["reread:s-fw1:Truncated:1"]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
 /// ★★ **原地整份改写且变长**（编辑器整份覆盖多了几个字）：长度没变短，截断判不出 ——
-/// 末尾指纹对不上 ⇒ 先出声（why = 改写）再从头重读；读到的是新文件的每一行，**没有**从旧偏移读出来的半行。
+/// 末尾指纹对不上 ⇒ 从头重读、出声（why = 改写，带新文件的行数）；不从旧偏移读出半行来。
 /// 阴性对照：纯追加 ⇒ 不出声、只来新的那一行。
 #[test]
 fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
@@ -3420,10 +3423,14 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
     assert!(rewritten.len() >= appended.len());
     std::fs::write(&path, &rewritten).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    let want: Vec<String> = std::iter::once("reread:s-fw1:Rewritten".to_string())
-        .chain((0..rewritten.lines().count()).map(|k| format!("line:{k}")))
-        .collect();
-    assert_eq!(fw1_drain(&mut rx), want, "改写之后不是「出声 ＋ 整份重读」");
+    assert_eq!(
+        fw1_drain(&mut rx),
+        vec![format!(
+            "reread:s-fw1:Rewritten:{}",
+            rewritten.lines().count()
+        )],
+        "改写之后不是「出声带行数、不逐行出」"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -3447,10 +3454,11 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
             session_id: "s".into(),
             path: "/p/s.jsonl".into(),
             why,
+            lines: 7,
         });
         assert_eq!(
             to_line(&f).unwrap(),
-            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\"}}\n")
+            format!("{{\"kind\":\"session_file_reread\",\"session_id\":\"s\",\"path\":\"/p/s.jsonl\",\"why\":\"{lit}\",\"lines\":7}}\n")
         );
         assert!(!f.loss_is_recoverable());
     }
@@ -4083,7 +4091,7 @@ fn main_and_sub_run_lines_carry_their_own_reply_key() {
             byte_offset: 0,
             start: 0,
         };
-        send_line("s", "/p/s.jsonl", line, &mut state, &mut sink);
+        send_line("s", "/p/s.jsonl", line, &mut state, &mut sink, false);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -4120,7 +4128,7 @@ fn a_queued_line_on_the_live_stream_carries_the_moment_it_was_typed() {
             byte_offset: 0,
             start,
         };
-        send_line("s", path, line, &mut state, &mut sink);
+        send_line("s", path, line, &mut state, &mut sink, false);
     }
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {

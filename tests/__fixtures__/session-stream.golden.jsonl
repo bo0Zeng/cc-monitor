@@ -24,8 +24,8 @@
 {"kind":"sessions_replayed"}
 {"kind":"session_file_gone","session_id":"s1","path":"/p/s1.jsonl"}
 {"kind":"session_file_gone","session_id":"s1","path":"/p/s1.jsonl"}
-{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated"}
-{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated"}
+{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated","lines":7}
+{"kind":"session_file_reread","session_id":"s1","path":"/p/s1.jsonl","why":"truncated","lines":7}
 {"kind":"link_data","link":"L1","data":"aGkK"}
 {"kind":"link_data","link":"L1","data":"aGkK"}
 {"kind":"link_end","link":"L1","error":"e"}

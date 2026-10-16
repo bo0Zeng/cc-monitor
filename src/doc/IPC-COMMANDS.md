@@ -171,6 +171,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `session_id` | string | 会话 id |
 | `path` | string | 被改过、已从头重读的那份记录文件 |
 | `why` | RereadWhy | 为什么从头重读 |
+| `lines` | number | 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它） |
 
 ### `link_data`
 

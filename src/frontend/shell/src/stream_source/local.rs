@@ -76,6 +76,7 @@ pub(crate) enum LocalStep {
         sid: String,
         path: String,
         change: FileChange,
+        lines: Option<u64>,
     },
     /// 这一件不进内容流（不是内容帧）。
     Skip,
@@ -195,9 +196,17 @@ pub(crate) fn local_step(item: LocalItem) -> LocalStep {
             LocalStep::Announce { sid, path, lines }
         }
         LocalItem::Frame(InboundFrame::SessionRemoved { sid }) => LocalStep::Remove { sid },
-        LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
-            LocalStep::Notice { sid, path, change }
-        }
+        LocalItem::Frame(InboundFrame::SessionFileNotice {
+            sid,
+            path,
+            change,
+            lines,
+        }) => LocalStep::Notice {
+            sid,
+            path,
+            change,
+            lines,
+        },
         // 「X 变了」：界面按主题 · key 取（隐藏那一格变了也走这里，主题 `session_hidden`）。
         LocalItem::Frame(InboundFrame::Changed { topic, cell }) => {
             LocalStep::Changed { topic, cell }
@@ -276,7 +285,12 @@ pub(crate) async fn consume_local(
                     intake.flush().await;
                     intake.removed(&sid);
                 }
-                LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
+                LocalStep::Notice {
+                    sid,
+                    path,
+                    change,
+                    lines,
+                } => intake.notice(&sid, &path, change, lines).await,
                 LocalStep::Changed { topic, cell } => {
                     // 本机的机器表变了 ⇒ 本壳自己也重问一次、对齐远端流（界面的订阅照常收这一格）。
                     if topic == "machines" {

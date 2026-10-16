@@ -176,7 +176,7 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 ### 会话内容在底部整段重复
 
-记录文件被截短重写时，后端先发 `session_file_reread`、行号从 0 重数，前端收到后那个 tab 整份重来（`TabManager.onRecordFileReread`），入口只按 seq 去重。复现：对一个正在被盯的 jsonl 手动截短再追加回去，后端日志出 `jsonl truncated … full re-read`，tab 内容不应翻倍。行投递是至少一次（INVARIANTS §25）。
+记录文件被截短重写时，后端从 0 重数、不逐行重发，读完发 `session_file_reread` 带行数；壳照宣告那样重排一份旁路快照，前端那个 tab 整份重来（`TabManager.onRecordFileReread`），入口只按 seq 去重。复现：对一个正在被盯的 jsonl 手动截短再追加回去，后端日志出 `jsonl truncated … full re-read`，tab 内容不应翻倍。行投递是至少一次（INVARIANTS §25）。
 
 ### 大段消息被误折成「已被 ESC 回退」
 

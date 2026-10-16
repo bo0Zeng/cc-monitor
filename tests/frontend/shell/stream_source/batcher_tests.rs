@@ -48,3 +48,41 @@ fn take_on_empty_is_none() {
     let mut b = Batcher::new(600);
     assert!(b.take().is_none());
 }
+
+/// 记录文件从头重读：后端不逐行重发，壳照宣告那样排一份旁路快照（带重读完的行数）；「不见了」不排。
+#[tokio::test]
+async fn a_reread_queues_a_fresh_tail_snapshot_and_gone_does_not() {
+    let snapshots = SnapshotQueue::new();
+    let mut intake = LineIntake {
+        origin_label: crate::origin::LOCAL.to_string(),
+        replay: std::sync::Arc::new(crate::event_replay::EventReplay::new()),
+        batcher: Batcher::new(BATCH_CAP),
+        snapshots: snapshots.clone(),
+        runs: crate::SkipRuns::default(),
+        _closer: SnapshotQueueCloser(snapshots.clone()),
+    };
+    intake.announced("s", Some("/p/s.jsonl".into()), Some(10));
+    let first = snapshots.pop(None).await.unwrap();
+    assert_eq!(first.expected_lines, Some(10), "宣告那一份");
+    intake
+        .notice("s", "/p/s.jsonl", FileChange::Gone, None)
+        .await;
+    intake
+        .notice("s", "/p/s.jsonl", FileChange::Truncated, Some(3))
+        .await;
+    let again = tokio::time::timeout(guard_core::wall::CEILING, snapshots.pop(None))
+        .await
+        .expect("从头重读之后没排旁路快照")
+        .unwrap();
+    assert_eq!(
+        (
+            again.sid.as_str(),
+            again.path.as_str(),
+            again.expected_lines
+        ),
+        ("s", "/p/s.jsonl", Some(3)),
+        "从头重读 ⇒ 照宣告那样重拉尾段"
+    );
+    snapshots.close();
+    assert!(snapshots.pop(None).await.is_none(), "不见了那一下不该排");
+}

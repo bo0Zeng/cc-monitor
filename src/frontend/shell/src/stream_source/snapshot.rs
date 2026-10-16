@@ -106,7 +106,7 @@ impl SnapshotQueue {
             || self.pending.lock().unwrap().cancelled.contains(sid)
     }
 
-    fn close(&self) {
+    pub(super) fn close(&self) {
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
         self.notify.notify_waiters();
     }
@@ -117,7 +117,7 @@ impl SnapshotQueue {
     /// 丢失唤醒防护（审计 D-I1）：`notify_waiters` 不给未注册者存 permit——
     /// 必须**先注册**（`enable`）再检查状态，close/push 发生在注册后必被捕获、
     /// 发生在注册前则状态检查看得到。
-    async fn pop(&self, priority: Option<String>) -> Option<SnapshotItem> {
+    pub(super) async fn pop(&self, priority: Option<String>) -> Option<SnapshotItem> {
         loop {
             let notified = self.notify.notified();
             tokio::pin!(notified);

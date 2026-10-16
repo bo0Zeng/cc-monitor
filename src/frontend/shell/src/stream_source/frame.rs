@@ -140,6 +140,8 @@ pub enum InboundFrame {
         sid: String,
         path: String,
         change: FileChange,
+        /// 从头重读之后那份记录的完整行数（重读那一形必带：重读的行不逐行上流，照宣告那样从尾段取；不见了那一形没有）。
+        lines: Option<u64>,
     },
     /// 会话 status 变化（远端红绿灯）。
     SessionStatus {
@@ -573,11 +575,13 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             sid: req_str(obj, k, "session_id")?,
             path: req_str(obj, k, "path")?,
             change: FileChange::Gone,
+            lines: None,
         },
         "session_file_reread" => InboundFrame::SessionFileNotice {
             sid: req_str(obj, k, "session_id")?,
             path: req_str(obj, k, "path")?,
             change: req_word(obj, k, "why", FileChange::reread_from_wire)?,
+            lines: Some(req_u64(obj, k, "lines")?),
         },
         "session_status" => {
             let opt = |key: &str| obj.get(key).and_then(|v| v.as_str()).map(str::to_string);

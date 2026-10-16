@@ -2345,7 +2345,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
         Look::Unreadable => return 0,
         Look::Read(new) => new,
     };
-    // 这一趟要从 0 重读 ⇒ 行号从 0 重数（seq ＝ 当前文件里的行号），出声那一帧排在重读的行之前。
+    // 这一趟要从 0 重读 ⇒ 行号从 0 重数（seq ＝ 当前文件里的行号），读完出声。
     //   来路：`read_tail_from` 认出的截短 / 改写 · 删了之后同名又长出来（读的那一下文件又缩了的，下一趟按截短办，见 [`NewLines::finish`]）。
     let reappeared = state.gone.remove(&key);
     let reread = new
@@ -2360,24 +2360,29 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             .branches
             .remove(&key)
             .is_some_and(|c| !c.off().is_empty());
-    if let Some(why) = reread {
-        sink.send(Frame::SessionFileReread(crate::wire::SessionFileReread {
-            session_id: session_id.clone(),
-            path: path_str.clone(),
-            why,
-        }));
-    }
+    // 从 0 重读那一趟照读照数（行号 · 链 · 运行簿推进到此刻），一行都不上流：客户端收到出声那一帧照宣告那样从尾段取。
+    let quiet = reread.is_some();
     let mut n = 0;
     let mut runs_changed = adopt_runs(state, &session_id, path);
     while let Some(lines) = new.next(&key_str, &mut state.seqs) {
-        n += lines.len();
+        if !quiet {
+            n += lines.len();
+        }
         for line in lines {
-            runs_changed |= send_line(&session_id, &path_str, line, state, sink);
+            runs_changed |= send_line(&session_id, &path_str, line, state, sink, quiet);
         }
     }
     let (new_cursor, tail) = new.finish();
     state.tails.insert(key.clone(), tail);
     state.offsets.insert(key.clone(), new_cursor);
+    if let Some(why) = reread {
+        sink.send(Frame::SessionFileReread(crate::wire::SessionFileReread {
+            session_id: session_id.clone(),
+            path: path_str.clone(),
+            why,
+            lines: state.seqs.peek(&key_str),
+        }));
+    }
     branch_changed |= settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(&session_id));
@@ -2611,12 +2616,14 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
 ///
 /// 这一行在渲染模型里是什么，问注册表里流式那一家的记录解释面（`agents::record_face`）；
 /// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（不算：调用方读完这一趟再 `settle_chain`）。回：运行表变没变。
+/// `quiet` ⇒ 只记账（链 · 运行簿 · 此刻在干什么），不出行帧（从 0 重读那一趟）。
 fn send_line(
     session_id: &str,
     path_str: &str,
     line: ReadLine,
     state: &mut ReaderState,
     sink: &mut FrameSink,
+    quiet: bool,
 ) -> bool {
     // 一行只从文本解一次（瓶颈 #8）：成品 · 链事实 · 运行簿 · 此刻在干什么都吃这一份；
     //   这一路几问都要整行 ⇒ 先解好（只要几格的那几问从这一份里取，不再各自解文本）。
@@ -2624,7 +2631,6 @@ fn send_line(
     feed_chain(state, Path::new(path_str), &parsed);
     let root = state.root_of(Path::new(path_str));
     let face = root.map(|i| state.roots[i].face);
-    let translated = face.and_then(|f| (f.parse)(&parsed).ok().flatten());
     let rec = root
         .map(|i| state.roots[i].runs.main_record(session_id, &parsed))
         .unwrap_or_default();
@@ -2633,6 +2639,13 @@ fn send_line(
         .and_then(|f| f.activity)
         .and_then(|f| f(&parsed))
         .filter(|_| !rec.in_run);
+    if quiet {
+        if let Some(a) = activity {
+            note_activity(session_id, a, state, sink);
+        }
+        return rec.changed;
+    }
+    let translated = face.and_then(|f| (f.parse)(&parsed).ok().flatten());
     if let Some(body) = translated
         .as_ref()
         .and_then(|t| t.record.as_ref())
@@ -2785,7 +2798,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         byte_offset: cursor.consumed + rest.len() as u64,
         start: cursor.consumed,
     };
-    let runs_changed = send_line(sid, &path.to_string_lossy(), line, state, sink);
+    let runs_changed = send_line(sid, &path.to_string_lossy(), line, state, sink, false);
     let branch_changed = settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(sid));

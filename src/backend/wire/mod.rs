@@ -783,7 +783,7 @@ impl SeqCounter {
     }
 
     /// 这份文件从 0 重读（截短 / 改写 / 删了又长回来）⇒ 行号从 0 重数：seq ＝ 当前文件里的行号。
-    /// 调用方先发 `session_file_reread` 再发重读出来的行（下游据它把这个会话的旧号整份作废）。
+    /// 重读那一趟照数不出行，读完发 `session_file_reread`（带行数；下游据它把这个会话的旧号整份作废）。
     pub fn restart(&mut self, path: &str) {
         self.next.remove(path);
     }

@@ -459,6 +459,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             session_id: s("s1"),
             path: s("/p/s1.jsonl"),
             why: RereadWhy::Truncated,
+            lines: 7,
         })),
         both(Frame::LinkData(crate::wire::LinkData {
             link: s("L1"),
