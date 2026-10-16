@@ -601,7 +601,7 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
             ("line", 4, 3),
             ("line", 5, 4),
             ("end", 6, 0),
-            // 有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（不吃 credit，排在行后）。
+            // 有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（没 credit 也照交，排在行后）。
             ("unseen", 7, 0)
         ]
     );
@@ -1037,10 +1037,20 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
     );
 }
 
-/// ★ 「起停帧不吃 credit、不许丢（登记一条例外）」：一格 credit 都没有时，行照丢（原位 `Gap`），
-/// 起停那几格照交、照占位置；就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后。
+fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
+    crate::ui_contract::SessionStreamFrame::Ended(crate::ui_contract::SessionEndedPayload {
+        session_id: sid.into(),
+        text: None,
+        hint: None,
+        tone: None,
+        order: None,
+        switch: None,
+    })
+}
+
+/// ★ 就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后；手里有没说的丢失时，起停那一格之前原位先给 `Gap`。
 #[tokio::test]
-async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_around_the_lines() {
+async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     use crate::session_book::In;
     use cmd_wire::frame::SessionFate as Fate;
     let ((r, rec), book) = hub_with_book();
@@ -1065,130 +1075,44 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
         "就绪点：骨架 → 留存行 → 终局"
     );
     rec.clear();
-    r.want("w", 1, 0);
-    // 把 credit 用光（10 − 2 行 ＝ 8）。
-    r.on_line_batch_awaited(lines("c", 0..8)).await;
+    r.on_line_batch_awaited(lines("c", 0..9)).await; // 10 − 7 格 ⇒ 交 3 行、丢 6 行
     rec.clear();
-    r.on_line_batch_awaited(lines("c", 8..9)).await; // 没 credit ⇒ 丢
-    assert!(rec.all().is_empty());
-    r.on_lifecycle(
-        "<local>",
-        vec![crate::ui_contract::SessionStreamFrame::Ended(
-            crate::ui_contract::SessionEndedPayload {
-                session_id: "c".into(),
-                text: None,
-                hint: None,
-                tone: None,
-                order: None,
-                switch: None,
-            },
-        )],
-    );
+    r.on_lifecycle("<local>", vec![ended("c")]);
     assert_eq!(
-        rec.all()
-            .iter()
-            .map(what)
-            .map(|(k, _, _)| k)
-            .collect::<Vec<_>>(),
+        rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
         vec!["gap", "ended"],
         "没 credit 也照交起停（先原位说丢在哪）"
     );
 }
 
-/// ★ 「起停帧不吃 credit、不许丢（登记一条例外）」—— 例外表就是 `SessionStreamFrame::takes_credit`：
-/// 每一种格造一个、读它上线的键名，按吃不吃 credit 分两摞 == 金样（TS 那一侧 `CREDIT_EXEMPT_FRAMES` 读同一份，异源）。
-#[test]
-fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
-    use crate::ui_contract::{self as b, SessionStreamFrame as F};
-    let sid = || "s".to_string();
-    let all = vec![
-        F::Line(payload("s", 0)),
-        F::Batch(b::BatchEdge::Start),
-        F::FileNotice(b::SessionFileNoticePayload {
-            session_id: sid(),
-            origin: "<local>".into(),
-            path: "/p".into(),
-            change: "gone".into(),
-        }),
-        F::Live(b::SessionLivePayload {
-            session_id: sid(),
-            origin: "<local>".into(),
-            background: false,
-            attachable: None,
-            cwd: None,
-            project_dir: None,
-            name: None,
-            hidden: None,
-        }),
-        F::Activity(b::SessionActivityPayload {
-            session_id: sid(),
-            activity: b::ActivityCells::of(
-                &crate::guard_support::session_added("s", serde_json::json!({})).face,
-            ),
-            naming: b::NameCells {
-                label: "L".into(),
-                label_project: None,
-            },
-            waiting_for: None,
-        }),
-        F::Container(b::SessionContainerPayload {
-            session_id: sid(),
-            container: cmd_wire::frame::SessionContainer::None,
-        }),
-        F::Idle(b::SessionIdlePayload {
-            session_id: sid(),
-            text: None,
-            hint: None,
-            tone: None,
-            order: None,
-            switch: None,
-        }),
-        F::Ended(b::SessionEndedPayload {
-            session_id: sid(),
-            text: None,
-            hint: None,
-            tone: None,
-            order: None,
-            switch: None,
-        }),
-        F::Unseen(b::SessionUnseenPayload {
-            origin: crate::origin::Origin::local(),
-        }),
-        F::Listed(b::OriginSessionsListedPayload {
-            origin: crate::origin::Origin::local(),
-            all: false,
-        }),
-        F::SnapshotInflight(b::SnapshotInflightPayload { count: 1 }),
-        F::Runs(b::SessionRunsPayload {
-            session_id: "s".into(),
-            runs: b::RecordBody::from_json("[]".into()).unwrap(),
-            ended: b::RecordBody::from_json("[]".into()).unwrap(),
-        }),
-        F::Branch(b::SessionBranchPayload {
-            session_id: "s".into(),
-            off: b::RecordBody::from_json("[]".into()).unwrap(),
-        }),
-        F::Watch(b::SessionWatchPayload {
-            session_id: "s".into(),
-            path: "/p".into(),
-            seq: 3,
-        }),
-    ];
-    let key = |f: &F| -> String {
-        let v = serde_json::to_value(f).unwrap();
-        v.as_object().unwrap().keys().next().unwrap().clone()
-    };
-    let mut credit: Vec<String> = all.iter().filter(|f| f.takes_credit()).map(key).collect();
-    let mut exempt: Vec<String> = all.iter().filter(|f| !f.takes_credit()).map(key).collect();
-    credit.sort();
-    exempt.sort();
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/session-stream-credit.golden.json"
-    ))
-    .unwrap();
+/// ★ 起停那几格没 credit 也照交、照扣（credit 可欠）：欠着的时候行照丢、原位 `Gap`；还清之后下一行照交。
+#[tokio::test]
+async fn lifecycle_frames_go_out_without_credit_and_are_owed() {
+    let (r, rec) = hub();
+    r.origin_seen(&local(), true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 0);
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_lifecycle("<local>", vec![ended("c")]); // credit 0 ⇒ 照交，欠一格
     assert_eq!(
-        serde_json::json!({ "credit": credit, "exempt": exempt }),
-        golden
+        rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
+        vec!["ended"]
+    );
+    rec.clear();
+    r.on_line_batch_awaited(lines("c", 0..1)).await; // 欠着 ⇒ 丢，位置 1
+    assert!(rec.all().is_empty(), "欠着 credit 却交了行");
+    r.want("w", 1, 1); // 还上欠的那一格：仍是 0
+    assert!(rec.all().is_empty(), "credit 还没回正就说了丢失");
+    r.want("w", 1, 1);
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("gap", 1, 2)]
+    );
+    rec.clear();
+    r.on_line_batch_awaited(lines("c", 1..2)).await;
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![("line", 2, 1)]
     );
 }
 
@@ -1419,7 +1343,7 @@ async fn the_watch_list_is_the_main_windows_tabs_plus_the_followed_sessions_per_
 }
 
 /// 「从第 seq 行起上流」：留存里 seq 之下那段与 seq 隔着缺口 ⇒ 整段丢、之后更低的行不进（F5 重放的是连着的一段）；
-/// 连着的不动。会话流里交一格 `watch`（不吃 credit），只给那台、订了那个会话的订阅。
+/// 连着的不动。会话流里交一格 `watch`（没 credit 也照交），只给那台、订了那个会话的订阅。
 #[tokio::test]
 async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_session() {
     let (r, rec) = hub();
@@ -1474,7 +1398,7 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
             ("w".to_string(), 1, "a".to_string(), 10),
             ("w".to_string(), 1, "b".to_string(), 3),
         ],
-        "credit 0 也该交到（不吃 credit），且只给订了那个会话的"
+        "credit 0 也该交到（没 credit 也照交），且只给订了那个会话的"
     );
 }
 

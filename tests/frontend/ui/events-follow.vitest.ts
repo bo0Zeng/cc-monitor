@@ -1,5 +1,5 @@
 // `events.ts::followSession`：跟着一个会话（查看器 · 独立查看窗）订 `session-lines/<sid>`，与整台机器那几条同一处 `chan.subscribe`。
-// 流里一批格 ⇒ 那一个会话的事件：行 · 丢了行 · 起停 · 那台看不看得见；吃 credit 的格当场还，不吃的（起停那几种）不还。
+// 流里一批格 ⇒ 那一个会话的事件：行 · 丢了行 · 起停 · 那台看不看得见（每格还 credit 见 session-stream-credit）。
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -21,7 +21,7 @@ describe("跟着一个会话", () => {
     chanStreamModule.chan.subscribe.mockClear();
   });
 
-  it("订 (那台, session-lines/<sid>)、窗口 STREAM_WINDOW；行 ⇒ 一批交；别的会话的行不交；起停 · 看不见 · 丢行各一件；credit 只还吃 credit 的格", async () => {
+  it("订 (那台, session-lines/<sid>)、窗口 STREAM_WINDOW；行 ⇒ 一批交；别的会话的行不交；起停 · 看不见 · 丢行各一件", async () => {
     const got: FollowEvent[] = [];
     const h = await followSession("devbox", "s1", (e) => got.push(e));
     expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["devbox", "session-lines/s1"]]);
@@ -35,17 +35,15 @@ describe("跟着一个会话", () => {
       frame(4, { ended: { session_id: "s1" } }),
     ]);
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 3), line("s1", 5)] }, { t: "live", live: false }]);
-    expect(rec.wants, "起停那一格不吃 credit：4 格还 4").toEqual([4]);
     got.length = 0;
     rec.sink([frame(5, { live: { session_id: "s1", origin: "devbox" } }), { t: "gap", fromSeq: 6, toSeq: 9 }]);
     rec.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
     rec.sink([{ t: "seen", from: null }]);
     expect(got).toEqual([{ t: "live", live: true }, { t: "gap" }, { t: "sight", seen: false }, { t: "sight", seen: true }]);
-    expect(rec.wants, "只有起停格 ⇒ 不还").toEqual([4]);
     h.stop();
   });
 
-  it("主线外清单那一格（branch）⇒ 一件 {t: branch, off}；别的会话的不交；形状不对不交；不吃 credit", async () => {
+  it("主线外清单那一格（branch）⇒ 一件 {t: branch, off}；别的会话的不交；形状不对不交", async () => {
     const got: FollowEvent[] = [];
     const h = await followSession("devbox", "s1", (e) => got.push(e));
     const rec = streamFake.subscriptions[0]!;
@@ -58,7 +56,6 @@ describe("跟着一个会话", () => {
     ]);
     warn.mockRestore();
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 4)] }, { t: "branch", off: ["u2", "u3"] }]);
-    expect(rec.wants, "branch 那几格不吃 credit：只还那一行").toEqual([1]);
     h.stop();
   });
 
@@ -75,7 +72,7 @@ describe("跟着一个会话", () => {
     expect(streamFake.subscriptions[0]!.wants).toEqual([2]);
   });
 
-  it("上流点那一格（watch）⇒ 一件 {t: from, path, seq}；别的会话的 · 形状不对的不交；不吃 credit", async () => {
+  it("上流点那一格（watch）⇒ 一件 {t: from, path, seq}；别的会话的 · 形状不对的不交", async () => {
     const got: FollowEvent[] = [];
     const h = await followSession("devbox", "s1", (e) => got.push(e));
     const rec = streamFake.subscriptions[0]!;
@@ -88,7 +85,6 @@ describe("跟着一个会话", () => {
     ]);
     warn.mockRestore();
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 40)] }, { t: "from", path: "/p/s1.jsonl", seq: 40 }]);
-    expect(rec.wants, "watch 不吃 credit：只还那一行").toEqual([1]);
     h.stop();
   });
 });

@@ -804,7 +804,7 @@ pub fn run() {
                         );
                         // 就绪点：主界面在发 `frontend-ready` 之前已经订好了各台机器的会话流（`chan.subscribe`），
                         //   这里按 credit 交完留存；起停的成品（骨架在行前、终局在行后，`session_book::Book::replay`）在同一条流里原位交，
-                        //   不吃 credit。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
+                        //   没 credit 也照交。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
                         replay.ready_point(priority_sid.as_deref()).await;
                     });
                 });
@@ -1036,7 +1036,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
         });
     }
     // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
-    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+    //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，没 credit 也照交、不丢）。
     //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
     {
         let replay = replay.clone();

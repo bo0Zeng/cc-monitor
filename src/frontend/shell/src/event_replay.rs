@@ -44,7 +44,8 @@
 //!   下一次交出去之前原位先给 `Item::Gap`（级 2）。**绝不攒着等 credit** —— 攒着的行会晚于
 //!   其间发出的 `ended` 格（僵尸 tab）；也**绝不让管线等** —— 一个不给 credit 的窗口会卡住那台机器的整条流。
 //! - **重放那一份**（就绪点 / 独立窗口开窗）按 credit **等**：它不在起停事件的顺序里（对账由同一个任务在它交完之后发）。
-//! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。
+//! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。起停那几格没 credit 也照交、照扣
+//!   （credit 可欠，[`SessionStreamFrame::never_dropped`]）：欠着的时候行照丢，还清了才再交。
 //!
 //! 丢了什么由前端自己补（「判可恢复归上层」）：它收到 `Gap` 就把那台机器上各 tab 的账本当成不可信、
 //! 按行号往回取（`history-lines`）。
@@ -168,8 +169,8 @@ struct Sub {
     kind: SubKind,
     /// `session-lines/<sid>` 那一形：只要这一个会话。
     only: Option<String>,
-    /// 还能交几格 `Frame`（`want` 累加）。
-    credit: u64,
+    /// 还能交几格 `Frame`（`want` 累加）；起停那几格照扣，可欠成负数。
+    credit: i64,
     /// 下一格的位置。
     next: u64,
     /// 丢了还没说的那一段从哪个位置起（下一次交出去之前原位给 `Gap`）。
@@ -319,7 +320,7 @@ fn batch_chunks(chunks: Vec<Vec<JsonlLinePayload>>) -> Vec<Vec<Body>> {
 /// 这一次交出去的第一格之前，若有没说的丢失 ⇒ 原位先给 `Gap`。返回要交的格（可能为空）。
 fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
     let n = frames.len() as u64;
-    let can = sub.credit.min(n);
+    let can = sub.credit.clamp(0, n as i64) as u64;
     let mut out = Vec::new();
     if can > 0 {
         if let Some(from_seq) = sub.gap_from.take() {
@@ -336,7 +337,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
         });
         sub.next += 1;
     }
-    sub.credit -= can;
+    sub.credit -= can as i64;
     if can < n {
         sub.gap_from.get_or_insert(sub.next);
         sub.next += n - can;
@@ -347,7 +348,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
 /// **重放那一份**的一步（纯函数）：只交手里 credit 够的那几格、**不丢**；返回 `(要交的格, 用掉了几格)`。
 /// credit 为零 ⇒ `(空, 0)`，调用方去等。
 fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
-    let take = (sub.credit.min(rest.len() as u64)) as usize;
+    let take = sub.credit.clamp(0, rest.len() as i64) as usize;
     if take == 0 {
         return (Vec::new(), 0);
     }
@@ -365,12 +366,12 @@ fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
         });
         sub.next += 1;
     }
-    sub.credit -= take as u64;
+    sub.credit -= take as i64;
     (out, take)
 }
 
-/// 〔登记的例外〕**起停那几格**交给一条订阅的计划（纯函数）：不看 credit、**不丢**、照占位置；
-/// 手里有没说的丢失 ⇒ 原位先给 `Gap`（位置号照样连得上）。只许交 [`SessionStreamFrame::takes_credit`] 为假的那几种。
+/// **起停那几格**交给一条订阅的计划（纯函数）：没 credit 也照交、**不丢**、照扣（可欠）、照占位置；
+/// 手里有没说的丢失 ⇒ 原位先给 `Gap`（位置号照样连得上）。只许交 [`SessionStreamFrame::never_dropped`] 那几种。
 fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
     let mut out = Vec::with_capacity(frames.len() + 1);
     if frames.is_empty() {
@@ -389,6 +390,7 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
         });
         sub.next += 1;
     }
+    sub.credit -= frames.len() as i64;
     out
 }
 
@@ -784,7 +786,7 @@ impl EventReplay {
             after,
         } = job;
         let label = label.as_str();
-        // 骨架（活会话 ＋ 灯 ＋ 容器）先于行，不吃 credit。
+        // 骨架（活会话 ＋ 灯 ＋ 容器）先于行，没 credit 也照交。
         if !self.deliver_lifecycle(sink, label, id, generation, &before) {
             return;
         }
@@ -796,7 +798,7 @@ impl EventReplay {
         self.deliver_lifecycle(sink, label, id, generation, &after);
     }
 
-    /// 按计划交一串起停格给一条订阅（不吃 credit、不丢）；订阅没了 ⇒ `false`。
+    /// 按计划交一串起停格给一条订阅（没 credit 也照交、不丢）；订阅没了 ⇒ `false`。
     fn deliver_lifecycle(
         &self,
         sink: &dyn ItemSink,
@@ -927,7 +929,7 @@ impl EventReplay {
                 origin: origin.to_string(),
                 kind,
                 only,
-                credit: u64::from(want),
+                credit: i64::from(want),
                 next: 0,
                 gap_from: None,
                 live: immediate,
@@ -978,10 +980,10 @@ impl EventReplay {
     }
 
     /// 那台机器的会话起停成品（`session_book` 的出口线程调）：交给订了那台 `session-lines` 的每条实时订阅
-    /// （`session-lines/<sid>` 那一形只交它那一个会话的）—— **不吃 credit、不丢**、照占位置（登记的例外，[`plan_lifecycle`]）。
+    /// （`session-lines/<sid>` 那一形只交它那一个会话的）—— 没 credit 也照交、**不丢**、照占位置（[`plan_lifecycle`]）。
     /// 不进留存：F5 / 开窗的重放从成品缓存重算（[`lifecycle_replay`]）。
     pub fn on_lifecycle(&self, origin: &str, frames: Vec<SessionStreamFrame>) {
-        debug_assert!(frames.iter().all(|f| !f.takes_credit()), "只许交起停那几格");
+        debug_assert!(frames.iter().all(|f| f.never_dropped()), "只许交起停那几格");
         if frames.is_empty() {
             return;
         }
@@ -1020,7 +1022,7 @@ impl EventReplay {
         }
     }
 
-    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢），并记下这个数（重放补电平读它）。
+    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（没 credit 也照交、不丢），并记下这个数（重放补电平读它）。
     pub fn on_snapshot_inflight(&self, count: u32) {
         let body = body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count },
@@ -1089,7 +1091,7 @@ impl EventReplay {
                 .iter_mut()
                 .find(|s| s.label == label && s.id == id)
                 .and_then(|sub| {
-                    sub.credit += u64::from(more);
+                    sub.credit += i64::from(more);
                     if sub.credit > 0 {
                         sub.gap_from.take().map(|from_seq| Item::Gap {
                             from_seq,
@@ -1264,7 +1266,7 @@ impl EventReplay {
     ///
     /// ① 留存修成**连着的**：这个会话留存里 `seq` 之下那段要是与 `seq` 之间有缺口（没在看的那段没上流），整段丢、
     ///   底线抬到 `seq`（之后到的更低的行不进）⇒ F5 / 开窗重放出来的永远是连着的一段，往下的由界面按行号 / 按骨架取回；
-    /// ② 交那台的会话流一格 `watch`（不吃 credit、不丢）：主窗口的 tab 与那个会话的查看窗据它补上 `[已有, seq)`。
+    /// ② 交那台的会话流一格 `watch`（没 credit 也照交、不丢）：主窗口的 tab 与那个会话的查看窗据它补上 `[已有, seq)`。
     pub fn on_watch_from(
         &self,
         origin: &crate::origin::Origin,

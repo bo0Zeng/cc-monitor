@@ -254,7 +254,7 @@ fn snapshot_inflight_change(replay: &EventReplay, delta: isize) {
     } else {
         n.saturating_sub(1)
     };
-    // 持锁交：保证到达序 == 计数变化序（会话流里的一格，不吃 credit、不丢）。
+    // 持锁交：保证到达序 == 计数变化序（会话流里的一格，没 credit 也照交、不丢）。
     replay.on_snapshot_inflight(*n as u32);
     drop(n);
 }

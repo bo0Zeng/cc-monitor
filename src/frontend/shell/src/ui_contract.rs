@@ -11,7 +11,7 @@ use serde::Serialize;
 pub mod events {
     // 会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
     //   `-activity` · `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进了会话流 `subscribe(origin, "session-lines")`：
-    //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），不吃 credit、不丢（[`super::SessionStreamFrame::takes_credit`]）。
+    //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），没 credit 也照交、不丢（[`super::SessionStreamFrame::never_dropped`]）。
     // `task-update` 事件退役：任务变更经通道 `subscribe(origin, "changed/tasks")`（后端 `changed {tasks}` 帧）。
     /// **方向相反的那一个**（前端 emit、Rust `app.listen` 收）：前端注册完 listener 后
     /// 通知后端开始 replay 历史，payload 见 [`FrontendReadyPayload`]。
@@ -136,7 +136,7 @@ pub enum SessionStreamFrame {
     FileNotice(SessionFileNoticePayload),
     /// **会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转）—— 与行同一条流、同一个顺序
     /// （行与起停的先后就是流的先后，那条「ended 抢在行前面 ⇒ 僵尸」由构造排除）。
-    /// ⚠ 这几种**不吃 credit、不许丢**（[`Self::takes_credit`]；登记的唯一例外）：丢一格起停别处补不回来。
+    /// ⚠ 这几种**不许丢**（[`Self::never_dropped`]）：丢一格起停别处补不回来。
     /// 活会话（本机远端同一形；`origin` 说哪台）。
     Live(SessionLivePayload),
     /// 红绿灯。
@@ -163,14 +163,13 @@ pub enum SessionStreamFrame {
 }
 
 impl SessionStreamFrame {
-    /// 〔⑬ 登记的例外〕这一格吃不吃 credit：行与批边界 · 记录文件出声吃（可丢、丢了按行号补）；
-    /// 起停那几种**不吃、不丢**（丢了别处补不回来）。穷尽 `match`：新长一种格编译期就要表态。
-    /// TS 那一侧同一张表住 `src/frontend/ui/events.ts::CREDIT_EXEMPT_FRAMES`，两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
-    pub fn takes_credit(&self) -> bool {
+    /// 没 credit 时这一格丢不丢：行与批边界 · 记录文件出声丢（丢了按行号补）；起停那几种**照交、照扣**（credit 可欠，
+    /// 丢了别处补不回来）。界面不分格种，每格还一格。穷尽 `match`：新长一种格编译期就要表态。
+    pub fn never_dropped(&self) -> bool {
         match self {
             SessionStreamFrame::Line(_)
             | SessionStreamFrame::Batch(_)
-            | SessionStreamFrame::FileNotice(_) => true,
+            | SessionStreamFrame::FileNotice(_) => false,
             SessionStreamFrame::Live(_)
             | SessionStreamFrame::Activity(_)
             | SessionStreamFrame::Container(_)
@@ -181,7 +180,7 @@ impl SessionStreamFrame {
             | SessionStreamFrame::SnapshotInflight(_)
             | SessionStreamFrame::Runs(_)
             | SessionStreamFrame::Branch(_)
-            | SessionStreamFrame::Watch(_) => false,
+            | SessionStreamFrame::Watch(_) => true,
         }
     }
 
