@@ -244,7 +244,7 @@ up = b"upload-body\n"
 A.ask("files-stage-chunk", {"key": key2, "seq": 0, "content": "upload-"})
 A.ask("files-stage-chunk", {"key": key2, "seq": 1, "content": "body\n"})
 r = A.ask("files-commit-upload", {"root": root, "rel": "up.bin", "key": key2, "chunks": 2, "bytes": len(up),
-                                   "overwrite": False, "expect": {"sha256": hashlib.sha256(up).hexdigest()}})
+                                   "expect": {"sha256": hashlib.sha256(up).hexdigest()}})
 check(r.get("ok") and open(os.path.join(root, "up.bin"), "rb").read() == up, "files-commit-upload 上位到新落点", r)
 
 # ── ② 越界路径被拒，盘上一个字节不多 ──────────────────────────────────────────
@@ -313,7 +313,7 @@ else:
     B = Backend(remote_home, "remote")
     rroot = os.path.join(remote_home, "target"); os.makedirs(rroot)
     rr = B.ask("files-commit-upload", {"root": rroot, "rel": "landed.bin", "key": d.get("key"),
-                                       "overwrite": False, "expect": {"sha256": (end or {}).get("sha256")}})
+                                       "expect": {"sha256": (end or {}).get("sha256")}})
     check(rr.get("ok") and open(os.path.join(rroot, "landed.bin"), "rb").read() == upbody,
           "远端那台沙箱后端把暂存件提交上位，逐字节对", rr)
     B.close()
