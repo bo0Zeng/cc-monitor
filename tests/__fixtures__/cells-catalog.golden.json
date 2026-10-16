@@ -1936,6 +1936,12 @@
         },
         {
           "frozen": false,
+          "kind": "value",
+          "path": "state_order",
+          "type": "number"
+        },
+        {
+          "frozen": false,
           "kind": "text",
           "path": "state_text",
           "type": "string"

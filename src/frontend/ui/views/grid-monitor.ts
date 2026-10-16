@@ -10,7 +10,7 @@ import { dispatcher } from "../keybindings/registry";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { sessionDot, type GridSessionSnapshot, type SessionPeek } from "../session-status";
 import { backgroundLine } from "../session-face";
-import { isLive, isResumeOnly, stateView } from "../tab-session-state";
+import { isLive, stateView } from "../tab-session-state";
 import { copyText } from "../copy-table";
 import { setDot, statusDot } from "../kit/status-dot";
 
@@ -49,14 +49,13 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
   return groups;
 }
 
-/** 组内排序：先按两轴分三段（活 · 可重连（claude 退、tmux 在）· 已结束只能 resume），段内只按核心给的序（`activityOrder`，
- *  后端 `ActivityFace` 那一格，小的在前）；还没收到序的排在那一段最后。同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
+/** 组内排序：只按核心给的序（`order`，小的在前：活会话 0–3 · 可重连 4 · 已结束 5，同一把尺）；没有序的（说不清 · 还没收到）排最后。
+ *  同序保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
-  const band = (s: GridSessionSnapshot): number => (isResumeOnly(s.state) ? 2 : s.state.liveness === "dead" ? 1 : 0);
-  const order = (s: GridSessionSnapshot): number => s.activityOrder ?? Number.POSITIVE_INFINITY;
+  const order = (s: GridSessionSnapshot): number => s.order ?? Number.POSITIVE_INFINITY;
   return sessions
     .map((s, i) => ({ s, i }))
-    .sort((a, b) => band(a.s) - band(b.s) || order(a.s) - order(b.s) || a.i - b.i)
+    .sort((a, b) => order(a.s) - order(b.s) || a.i - b.i)
     .map((x) => x.s);
 }
 

@@ -36,14 +36,14 @@ pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
 pub use cmd_wire::frame::{SessionBranch, SessionRuns, TerminalFollowEnd, TerminalScreen};
 pub use cmd_wire::frame::{SessionFileGone, SessionFileReread};
 
-/// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
+/// 写好的字与语气（短名 · 悬停那一句 · 语气）与监控板的序：`session_state` 帧上带着，出口照抄。
 pub(crate) trait SessionFateExt {
-    fn cells(self) -> (Words, Words, Tone);
+    fn cells(self) -> (Words, Words, Tone, u8);
 }
 
 impl SessionFateExt for SessionFate {
-    /// 写好的字与语气（短名 · 悬停那一句 · 语气）：`session_state` 帧上带着，出口照抄。
-    fn cells(self) -> (Words, Words, Tone) {
+    /// 写好的字与语气 ＋ 序：接在活会话（[`ActivityFaceExt::of`] 的 0–3）之后，可重连 4 · 已结束 5。
+    fn cells(self) -> (Words, Words, Tone, u8) {
         match self {
             SessionFate::Reconnectable => (
                 Words(copy_core::copy_text("sessionState.reconnectable.name", &[])),
@@ -52,11 +52,13 @@ impl SessionFateExt for SessionFate {
                     &[],
                 )),
                 Tone::Plain,
+                4,
             ),
             SessionFate::Ended => (
                 Words(copy_core::copy_text("sessionState.ended.name", &[])),
                 Words(copy_core::copy_text("sessionState.ended.tooltip", &[])),
                 Tone::Plain,
+                5,
             ),
         }
     }
@@ -300,13 +302,14 @@ impl FrameMake for Frame {
     }
 
     fn session_state(sid: String, state: SessionFate) -> Frame {
-        let (state_text, state_hint, state_tone) = state.cells();
+        let (state_text, state_hint, state_tone, state_order) = state.cells();
         Frame::SessionState(SessionState {
             sid,
             state,
             state_text,
             state_hint,
             state_tone,
+            state_order,
             switch: Switch::gone(),
         })
     }

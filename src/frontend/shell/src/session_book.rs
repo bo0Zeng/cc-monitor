@@ -24,6 +24,8 @@ pub struct FateWords {
     pub text: cmd_wire::cells::Words,
     pub hint: cmd_wire::cells::Words,
     pub tone: cmd_wire::cells::Tone,
+    /// 监控板组内的序（与活会话同一把尺）。
+    pub order: u8,
     pub switch: cmd_wire::frame::Switch,
 }
 
@@ -34,6 +36,7 @@ impl FateWords {
             text: s.state_text,
             hint: s.state_hint,
             tone: s.state_tone,
+            order: s.state_order,
             switch: s.switch,
         }
     }
@@ -516,14 +519,15 @@ impl Out {
             Out::Left {
                 sid, fate, words, ..
             } => {
-                let (text, hint, tone, switch) = match words {
+                let (text, hint, tone, order, switch) = match words {
                     Some(w) => (
                         Some(w.text.0.clone()),
                         Some(w.hint.0.clone()),
                         Some(b::tone_word(w.tone)),
+                        Some(w.order),
                         Some(w.switch.clone()),
                     ),
-                    None => (None, None, None, None),
+                    None => (None, None, None, None, None),
                 };
                 vec![match fate {
                     SessionFate::Reconnectable => F::Idle(b::SessionIdlePayload {
@@ -531,6 +535,7 @@ impl Out {
                         text,
                         hint,
                         tone,
+                        order,
                         switch,
                     }),
                     SessionFate::Ended => F::Ended(b::SessionEndedPayload {
@@ -538,6 +543,7 @@ impl Out {
                         text,
                         hint,
                         tone,
+                        order,
                         switch,
                     }),
                 }]
