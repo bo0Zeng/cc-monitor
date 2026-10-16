@@ -735,7 +735,7 @@ impl Graph {
 }
 
 fn monitor_tree() -> BTreeMap<String, String> {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, s)| {

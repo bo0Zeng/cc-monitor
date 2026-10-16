@@ -1,23 +1,5 @@
-//! 拨号核心（`src/backend/ssh-dial/`）判据共用的几样：源码人群的根 · 仓根 · 只留生产段 · 测试档装的那一套。整个模块只在 `cfg(test)` 下存在。
-//!
-//! 人群的根是**后端那个包**（`src/backend/`）：本 crate 住它底下，从那里扫就连本 crate 一起扫到、住址是 `ssh-dial/<文件>`
-//! —— 与后端那几条扫描型判据同一个人群。
-
-pub(crate) use guard_core::production_code;
-
-/// 后端源码人群的根（含本 crate）。
-pub(crate) fn src_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
-}
-
-/// 仓库根。
-pub(crate) fn repo_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("src/backend/ssh-dial 的上三级 = 仓根")
-        .to_path_buf()
-}
+//! 拨号核心（`src/backend/ssh-dial/`）判据共用的测试档那一套。整个模块只在 `cfg(test)` 下存在。
+//! 源码人群的根是**后端那个包**（`guard_core::addr::backend_src_root`）：本 crate 住它底下，从那里扫就连本 crate 一起扫到。
 
 /// 测试档那一套建目录给的权限位（部署那种规矩；与后端交的 `own_dir::PRIVATE_DIR_MODE` 同值，后端那边另有一条核它真交了那一个）。
 pub(crate) const TEST_DIR_MODE: u32 = 0o700;

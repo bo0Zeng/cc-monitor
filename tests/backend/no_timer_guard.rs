@@ -215,7 +215,7 @@ mod f09_external_beat {
 
     /// 后端生产段里**产出给别人执行的 shell 串** —— 逐条 `(文件, 那一行逐字, 串的内容)`。
     fn shell_string_literals() -> Vec<(String, String, String)> {
-        let dir = crate::guard_support::src_root();
+        let dir = guard_core::addr::backend_src_root();
         let mut out = Vec::new();
         let mut stack = vec![dir.clone()];
         while let Some(d) = stack.pop() {
@@ -438,7 +438,7 @@ mod windows_arm {
 
     #[test]
     fn the_only_timed_windows_wait_is_the_one_shot_stop_grace() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut hits = Vec::new();
         let mut files = 0usize;
         for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -448,8 +448,7 @@ mod windows_arm {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let prod =
-                guard_core::strip_comment_lines(&crate::guard_support::production_code(&src));
+            let prod = guard_core::strip_comment_lines(&guard_core::production_code(&src));
             for l in prod.lines() {
                 // 声明那一行（`fn WaitForSingleObject(…)`）与无期限的等（`INFINITE` / `WAIT_FOREVER`）不算。
                 if l.contains("fn ") || l.contains("INFINITE") || l.contains("WAIT_FOREVER") {

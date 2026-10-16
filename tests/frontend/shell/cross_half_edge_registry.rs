@@ -149,7 +149,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          要落在真写者身上 —— 后端那份写口经自有状态原子写那一处（`platform/fs/own.rs`）出生即只给本人，同一把针在这里数得到，才说明零命中不是针瞎了",
     ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
-    //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
+    //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_core::addr::backend_registry_sources`），不再是编译期边。
     (
         "monitor→backend",
         // 住址跟着判据搬：

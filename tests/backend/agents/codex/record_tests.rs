@@ -565,7 +565,7 @@ const CODEX_REGEN: &str = "CCM_REGEN_CODEX_RECORD_GOLDEN";
 /// 手机（`CodexRecordGoldenTest.kt`）与界面（`codex-record.vitest.ts`）解的是同一份金样，逐格对。
 #[test]
 fn codex_sample_rollout_reads_to_the_record_golden() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let sample = std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
     let face = super::super::RECORDS;
     let tz = crate::Tz::named("UTC").unwrap();

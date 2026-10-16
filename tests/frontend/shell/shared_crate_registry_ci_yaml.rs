@@ -1,8 +1,8 @@
 use std::path::Path;
 
 fn repo_root() -> std::path::PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 pub(crate) fn yml() -> String {

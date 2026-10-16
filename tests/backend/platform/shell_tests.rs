@@ -345,7 +345,7 @@ fn a_script_install_is_refused_only_when_the_policy_forbids_scripts() {
 /// 「认得出」就是「起得来」）。认法：生产代码里切 `PATH` 的那一下（`split_paths(`）只许住 `platform/shell/mod.rs`、恰好一处。
 #[test]
 fn only_find_session_command_walks_path() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     assert!(
         files.len() > 200,

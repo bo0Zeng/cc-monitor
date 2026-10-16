@@ -165,7 +165,7 @@ fn dial_traces(prod: &str) -> Vec<String> {
 /// 正控：同一个判定函数喂一段含三根针的合成代码，三根都要量到（不是「这把尺子什么都量不到」）。
 #[test]
 fn the_dial_proxy_leaves_no_trace_in_monitor_production() {
-    let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
+    let root = guard_core::addr::repo_root().join("src/frontend/shell/src");
     let mut hits: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -355,7 +355,7 @@ fn lives_long_sites(file: &str, prod: &str) -> Vec<(String, String)> {
 /// 少一处 = 长连接流 / 端口转发 / 部署会在 120 s 被掐断。正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
 fn only_the_three_long_lived_links_drop_the_deadline() {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

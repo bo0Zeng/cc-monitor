@@ -273,7 +273,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         // `root` 是 crate 根（`<repo>/src/frontend/shell`）⇒ 再爬**一级**
         // 只到 `<repo>/src`。仓根要爬两级，走唯一住址。
         &std::fs::read_to_string(
-            crate::guard_support::repo_root().join(".github/workflows/release.yml"),
+            guard_core::addr::repo_root().join(".github/workflows/release.yml"),
         )
         .expect("读不到 release.yml"),
     );
@@ -890,7 +890,7 @@ fn the_auto_deploy_never_refuses_silently() {
 /// D2：调用方拿到 `Err` ⇒ 经远端健康通道恰发一条 `kind = "deploy"`（不阻断，照旧接着试连已有后端）。
 #[test]
 fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     let at = guard_core::find_pinned(&prod, "crate::deploy::ensure_backend_deployed(cfg).await")
         .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
     let rest = &prod[at..];

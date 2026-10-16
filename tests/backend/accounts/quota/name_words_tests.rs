@@ -30,7 +30,7 @@ fn no_other_backend_module_maps_slots_or_home_to_words() {
     for (p, src) in
         guard_core::scan_tree_excluding(root, &["rs"], &["accounts/quota/name_words.rs"])
     {
-        let prod = crate::guard_support::production_code(&src);
+        let prod = guard_core::production_code(&src);
         for needle in [
             "copy_text(\"acct.slot.fiveHour\"",
             "copy_text(\"acct.slot.sevenDay\"",

@@ -293,7 +293,7 @@ fn wake_fns(prod: &str) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     (0..lines.len())
         .filter(|&i| names.iter().any(|n| is_call_of(lines[i], n)))
-        .map(|i| crate::guard_support::enclosing_fn(&lines, i))
+        .map(|i| guard_core::addr::enclosing_fn(&lines, i))
         .collect()
 }
 
@@ -452,7 +452,7 @@ fn every_ticker_names_its_event_source_and_owner() {
 /// 的源码对拍，真机零读数（WN1 不碰 Win11 虚拟机）。F12 删心跳之前，那一格值得先买一次真机读数。
 #[test]
 fn the_windows_pidwatch_has_landed_so_f12_is_unblocked() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let read = |rel: &str| {
         let p = root.join(rel);
         std::fs::read_to_string(&p).unwrap_or_else(|e| {
@@ -546,7 +546,7 @@ fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
     //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
     //   它不见了不是因为有人删了它，是因为它搬走了。
     // 又搬一次：`search-core` 拆进后端，`find_ci` 随通用口径住 `src/backend/history/search_rules.rs`。
-    let anchor = crate::guard_support::repo_src_root().join("backend/history/search_rules.rs");
+    let anchor = guard_core::addr::repo_src_root().join("backend/history/search_rules.rs");
     let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
     assert!(
         search.contains(&format!("for i in 0{}n", "..")),

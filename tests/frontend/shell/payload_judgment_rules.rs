@@ -242,7 +242,7 @@ fn base_url_issue_patterns() -> Vec<(&'static str, String)> {
 /// 生成 `src/frontend/ui/generated/judgment-rules.ts`。
 #[test]
 fn export_bindings_judgment_rules() {
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let out = repo.join("src/frontend/ui/generated/judgment-rules.ts");
     std::fs::write(&out, render_judgment_rules())
         .unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
@@ -315,7 +315,7 @@ fn the_upstream_url_golden_agrees_with_the_one_rule() {
 fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     // 住址按仓根写（`src/…`），搬树时跟着仓根走，不跟着本 crate 的深度走。
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let read =
         |rel: &str| guard_core::production_code(&std::fs::read_to_string(repo.join(rel)).unwrap());
     // (名字, 它今天的家)

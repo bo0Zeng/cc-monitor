@@ -40,10 +40,7 @@ const LOCK_FILES: &[&str] = &["Cargo.lock", "package-lock.json"];
 
 /// 仓根（本 crate 住 `src/common/guard-core`）。
 pub(super) fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("guard-core 的上三级 = 仓根")
+    crate::addr::repo_root()
 }
 
 /// 词表：点名仓外东西的那几类词 `(类, 前半, 后半)`，并进 [`net`]。每个词拆两段、运行期拼；词边界一律写成 ASCII 字符类（`\b` 认 Unicode，整张网会掉出快路径、慢四十倍）；那个单字用 `\x{7A3F}` 写，说明里也不写出它。

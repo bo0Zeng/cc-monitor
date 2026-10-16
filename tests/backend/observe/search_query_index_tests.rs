@@ -389,7 +389,7 @@ fn fix_a_bounded_index_answers_like_an_unbounded_one_and_keeps_the_most_recent()
 /// 接线（文本，如实登记：按行为量要起真二进制再从外面看索引）：`main.rs` 起来就调预热，恰好一处。
 #[test]
 fn fix_main_warms_the_search_index_once() {
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(
         &main,
         "observe::search_query::warm_in_background(agent_home.clone());",
@@ -606,7 +606,7 @@ fn par_workers_is_min_of_eight_and_the_machine_and_at_least_one() {
 /// 别处要分线程走 `par_in_order`，不自己再问一遍、再定一个上限。
 #[test]
 fn the_worker_count_is_asked_in_one_place() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     assert!(
         files.len() >= 100,
@@ -616,7 +616,7 @@ fn the_worker_count_is_asked_in_one_place() {
     let hits: Vec<(String, usize)> = files
         .iter()
         .map(|(p, src)| {
-            let n = crate::guard_support::production_code(src)
+            let n = guard_core::production_code(src)
                 .matches("available_parallelism")
                 .count();
             (

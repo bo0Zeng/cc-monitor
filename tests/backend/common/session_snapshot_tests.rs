@@ -91,12 +91,12 @@ fn the_stale_read_door_never_appears_in_production_code() {
     // ⚠ 宏自称的「摘掉调用者自己那一份」**在这一处不生效**
     //   （判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
     //   本条不在自己的语料里靠的是**住址**：它住 `tests/backend/common/`，扫的是 `src/backend`。
-    let src_dir = crate::guard_support::src_root();
+    let src_dir = guard_core::addr::backend_src_root();
     let mut checked = 0usize;
     let mut hits: Vec<String> = Vec::new();
     for (path, raw) in guard_core::scan_tree!(&src_dir, &["rs"]) {
         checked += 1;
-        if crate::guard_support::production_code(&raw).contains(".peek()") {
+        if guard_core::production_code(&raw).contains(".peek()") {
             hits.push(
                 path.strip_prefix(&src_dir)
                     .unwrap_or(&path)
@@ -128,10 +128,10 @@ fn the_stale_read_door_never_appears_in_production_code() {
 fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
-    let prod = crate::guard_support::production_code(include_str!(
+    let prod = guard_core::production_code(include_str!(
         "../../../src/backend/common/session_snapshot.rs"
     ));
-    crate::guard_support::assert_no_test_code("common/session_snapshot.rs", &prod);
+    guard_core::assert_no_test_code("common/session_snapshot.rs", &prod);
 
     let starts = prod.matches("Child::new(\"tmux\")").count();
     assert_eq!(

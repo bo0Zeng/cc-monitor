@@ -12,7 +12,7 @@
 //! | S4 | 默认构建（本测试自己这一档）里特性没开 |
 //! | S5 | 门禁的格名单里有 `shotsshell`：与台架同一条编法（特性 · 例子名，在本包目录下）、归在让路表里 —— 改了无头壳调的签名，门禁当场编不过，不等跑截图台架才知道 |
 
-use crate::guard_support::{crate_root, crate_src_root, repo_root};
+use guard_core::addr::{repo_root, shell_root, shell_src_root};
 use std::path::Path;
 
 const FEATURE: &str = "shots";
@@ -49,7 +49,7 @@ fn read(p: &Path) -> String {
 /// `Cargo.toml` 拆成一段一段：（段头, 这一段里 `键 = 值` 的那几行）。只认本包这份手写清单的形状（键值一行一条）。
 fn manifest_sections() -> Vec<(String, Vec<(String, String)>)> {
     let mut out: Vec<(String, Vec<(String, String)>)> = Vec::new();
-    for l in read(&crate_root().join("Cargo.toml")).lines() {
+    for l in read(&shell_root().join("Cargo.toml")).lines() {
         let t = l.trim();
         if t.is_empty() {
             continue;
@@ -104,7 +104,7 @@ fn s1_manifest_keeps_the_feature_off_by_default_and_only_an_example_needs_it() {
         .expect("例子写明 path")
         .trim_matches('"')
         .to_string();
-    assert!(crate_root().join(&path).is_file(), "例子那份源码在：{path}");
+    assert!(shell_root().join(&path).is_file(), "例子那份源码在：{path}");
     for (_, b) in m.iter().filter(|(h, _)| h == "[[bin]]") {
         let p = get(b, "path").unwrap_or_default().trim_matches('"');
         assert!(
@@ -125,7 +125,7 @@ fn s1_manifest_keeps_the_feature_off_by_default_and_only_an_example_needs_it() {
 
 #[test]
 fn s2_the_module_is_declared_only_under_the_feature() {
-    let lib = read(&crate_src_root().join("lib.rs"));
+    let lib = read(&shell_src_root().join("lib.rs"));
     let lines: Vec<&str> = lib.lines().collect();
     let decl: Vec<usize> = lines
         .iter()
@@ -143,8 +143,8 @@ fn s2_the_module_is_declared_only_under_the_feature() {
     // 生产源码里别处不提它（提了就是默认构建也要它）。
     let mut hits = Vec::new();
     let mut seen = 0;
-    for (f, src) in guard_core::scan_tree!(&crate_src_root(), &["rs"]) {
-        let Ok(rel) = f.strip_prefix(crate_src_root()) else {
+    for (f, src) in guard_core::scan_tree!(&shell_src_root(), &["rs"]) {
+        let Ok(rel) = f.strip_prefix(shell_src_root()) else {
             continue;
         };
         seen += 1;

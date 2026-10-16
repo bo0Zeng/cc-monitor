@@ -10,7 +10,7 @@ fn root() -> &'static Path {
 
 /// 共享 crate 的家 —— `<repo>/src/common/`。
 fn common_dir() -> std::path::PathBuf {
-    crate::guard_support::repo_src_root().join("common")
+    guard_core::addr::repo_src_root().join("common")
 }
 
 /// 从本 crate 的包根（`members` 数组的基准）到 [`common_dir`] 的相对前缀（带尾 `/`）。
@@ -213,7 +213,7 @@ fn every_path_dependency_is_actually_committed() {
         let manifest = format!("src/frontend/shell/{rel}/Cargo.toml");
         let out = std::process::Command::new("git")
             .args(["ls-files", "--error-unmatch", "--", &manifest])
-            .current_dir(crate::guard_support::repo_root())
+            .current_dir(guard_core::addr::repo_root())
             .output();
         match out {
             Ok(o) if o.status.success() => {}
@@ -383,7 +383,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
         ),
     ];
 
-    let pkg = std::fs::read_to_string(crate::guard_support::repo_root().join("package.json"))
+    let pkg = std::fs::read_to_string(guard_core::addr::repo_root().join("package.json"))
         .expect("读不到 package.json");
     // 只取顶层 "scripts" 里 `"test…": "…"` 这种行，不引 json 依赖。
     let scripts: Vec<(String, String)> = pkg
@@ -408,7 +408,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 
     let ci = ci_yaml::live_lines();
     let local_gate =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
+        std::fs::read_to_string(guard_core::addr::repo_root().join("tests/scripts/gate.sh"))
             .expect("读不到 tests/scripts/gate.sh");
     // `npm test` 用 `&&` 串起来的那些，也算「CI 会跑」。
     let chained = scripts
@@ -451,10 +451,9 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
     // ★ 前提触发器：f40 那条例外的**硬理由**是「它往 `~/.claude/` 写」。
     // 哪天它改用临时目录，这条理由就消失、它可能变成本机跑得动的 —— 必须回来重判。
     {
-        let f40 = std::fs::read_to_string(
-            crate::guard_support::repo_root().join("tests/e2e/f40-suite.sh"),
-        )
-        .expect("读不到 tests/e2e/f40-suite.sh");
+        let f40 =
+            std::fs::read_to_string(guard_core::addr::repo_root().join("tests/e2e/f40-suite.sh"))
+                .expect("读不到 tests/e2e/f40-suite.sh");
         assert!(
             f40.lines()
                 .any(|l| !l.trim_start().starts_with('#') && l.contains("$HOME/.claude/")),
@@ -620,7 +619,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         ),
     ];
 
-    let repo = crate::guard_support::repo_root().to_path_buf();
+    let repo = guard_core::addr::repo_root().to_path_buf();
     // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
     let mut ignored: Vec<(String, String)> = Vec::new();
     // 🔴 **加上 `tests/frontend/shell` 这一棵。**
@@ -961,7 +960,7 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
         );
     }
 
-    let root = crate::guard_support::repo_root().to_path_buf();
+    let root = guard_core::addr::repo_root().to_path_buf();
     let mut seen_adjudicated = 0usize;
     for (wf, resting) in STILL_RESTING_ON {
         let text = std::fs::read_to_string(root.join(".github/workflows").join(wf))
@@ -1050,7 +1049,7 @@ fn the_premise_behind_three_honesty_boundaries_still_holds() {
 /// 写在这里让下一个人看得见。
 #[test]
 fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
-    let path = crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
+    let path = guard_core::addr::repo_root().join("tests/scripts/verify-committed-state.sh");
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
 
     // `(检查名, 那一行还必须含什么)` —— 钉性质不钉整行，留出改写空间。
@@ -1111,7 +1110,7 @@ fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
 /// 挡不住的是「`run` 函数本身坏掉但文本还在」。
 #[test]
 fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
-    let path = crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
+    let path = guard_core::addr::repo_root().join("tests/scripts/verify-committed-state.sh");
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
     // ⚠ **只看非注释行**：本脚本的头注里逐字引用着那句成功结论（讲的就是这次事故），
     // 连注释一起数，下面「恰好一处」当场变成两处 —— 08-08 写这条时就差点踩上。
@@ -1167,7 +1166,7 @@ struct WorkflowJob {
 /// 一份 workflow（剔掉整行注释）按顶层 job 切开，每个 job 再切成步骤：
 /// job 键是 `jobs:` 底下「两个空格 + 名字 + 冒号」；每一步从 `      - ` 起，到下一步或缩进退回步骤那一层之外为止。
 fn workflow_jobs(rel: &str) -> (String, Vec<WorkflowJob>) {
-    let raw = fs::read_to_string(crate::guard_support::repo_root().join(rel))
+    let raw = fs::read_to_string(guard_core::addr::repo_root().join(rel))
         .unwrap_or_else(|e| panic!("{rel} 读不到：{e}"));
     let live = guard_core::strip_hash_comment_lines(&raw);
     let mut jobs: Vec<WorkflowJob> = Vec::new();
@@ -1257,7 +1256,7 @@ fn apt_helper_args(step: &str) -> Option<(bool, String)> {
 
 /// apt-install 那份脚本（剔整行注释）与它的总时限（秒，`budget=` 那一行）。
 fn apt_helper_code_and_budget() -> (String, u64) {
-    let script = fs::read_to_string(crate::guard_support::repo_root().join(APT_HELPER))
+    let script = fs::read_to_string(guard_core::addr::repo_root().join(APT_HELPER))
         .unwrap_or_else(|e| panic!("{APT_HELPER} 读不到：{e}"));
     let code = guard_core::strip_hash_comment_lines(&script);
     let budget = code
@@ -1507,10 +1506,8 @@ fn ci_runs_the_same_jobs_on_the_candidate_branch_and_never_releases_from_it() {
         );
     }
     let rel = guard_core::strip_hash_comment_lines(
-        &fs::read_to_string(
-            crate::guard_support::repo_root().join(".github/workflows/release.yml"),
-        )
-        .expect("release.yml 读不到"),
+        &fs::read_to_string(guard_core::addr::repo_root().join(".github/workflows/release.yml"))
+            .expect("release.yml 读不到"),
     );
     let rel_push: Vec<&str> = rel
         .lines()

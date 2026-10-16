@@ -132,8 +132,8 @@ fn guards_declaring_a_table(test_src: &str) -> Vec<(String, String)> {
 }
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
@@ -261,7 +261,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     }
     // 抽取器自检⑤：**逐子树对拍采集面** —— git 跟踪着的每一份 `.rs` 都得被打开过。
     // 路径拼错 · 后缀过滤掉 · 静默跳过子目录都红。
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "登记表型判据",
         &seen,
         &["src/frontend/shell/src", "src/backend", "tests"],
@@ -1252,7 +1252,7 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
                 .iter()
                 .find(|(s, _)| s == sub)
                 .map_or(0, |(_, n)| *n);
-            let want = crate::guard_support::tracked_under(sub, "rs").len();
+            let want = guard_core::addr::tracked_under(sub, "rs").len();
             (got < want).then(|| format!("  {sub} —— 采到 {got} 份，git 跟踪着 {want} 份"))
         })
         .collect();

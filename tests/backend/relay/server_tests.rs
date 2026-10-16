@@ -3857,13 +3857,13 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         ]
     );
 
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     assert!(files.len() >= 30, "只扫到 {} 份 —— 取法坏了", files.len());
     let mut on_disk: Vec<(String, String)> = Vec::new();
     for (p, raw) in &files {
         let rel = guard_core::module_address(&root, p); // 按模块住址认（中转 crate 的文件认作 `comms-outward/…`）
-        for lit in status_literals(&crate::guard_support::production_code(raw)) {
+        for lit in status_literals(&guard_core::production_code(raw)) {
             on_disk.push((rel.clone(), lit));
         }
     }

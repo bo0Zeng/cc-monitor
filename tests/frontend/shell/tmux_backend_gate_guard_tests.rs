@@ -183,7 +183,7 @@ fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
 
 /// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
 fn monitor_production_corpus() -> (usize, String) {
-    let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
+    let root = guard_core::addr::repo_root().join("src/frontend/shell/src");
     let mut corpus = String::new();
     let mut files = 0usize;
     for (_, one_file) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -214,7 +214,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
          杀会话只许走后端的 `kill`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/tmux-control.ts::killSession` 说它。"
     );
     let kill_rs = guard_core::production_code(
-        &fs::read_to_string(crate::guard_support::backend_src_root().join("control/kill.rs"))
+        &fs::read_to_string(guard_core::addr::backend_src_root().join("control/kill.rs"))
             .expect("读后端 control/kill.rs"),
     );
     assert!(
@@ -232,7 +232,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
 /// 两向相等：出现这几个字面量的文件集合 == `{src/tmux-control.ts}`；正控：那一份里各自恰好几处。
 #[test]
 fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
     let needles = ["callTyped(origin, \"kill\""];
@@ -370,7 +370,7 @@ fn every_target_placeholder_comes_from_exact_target() {
 /// 三件：① 家在、有内容 · ② 家里有下溢谓词、monitor 生产段没有第二份 · ③ 家里两种表示（argv 旗 · env）都在、monitor 不许长出 env 形。
 #[test]
 fn utf8_client_kou_jing_has_one_home_and_this_side_has_none() {
-    let home_path = crate::guard_support::repo_root().join("src/backend/common/tmux_utf8.rs");
+    let home_path = guard_core::addr::repo_root().join("src/backend/common/tmux_utf8.rs");
     let home = std::fs::read_to_string(&home_path)
         .unwrap_or_else(|e| panic!("读不到后端侧那个家 {home_path:?}：{e}"));
     assert!(

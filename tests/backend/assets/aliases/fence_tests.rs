@@ -478,7 +478,7 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 /// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
-    let root = crate::guard_support::repo_root().join("src/backend/assets/aliases");
+    let root = guard_core::addr::repo_root().join("src/backend/assets/aliases");
     let read = |f: &str| {
         let raw = std::fs::read_to_string(root.join(f)).unwrap();
         let prod = guard_core::production_code(&raw);
@@ -510,7 +510,7 @@ fn the_write_rule_has_exactly_one_home() {
     // 正控：序列的那一个住址真的在（后端），而且恰好一处定义。
     let backend = guard_core::production_code(
         &std::fs::read_to_string(
-            crate::guard_support::repo_root().join("src/backend/control/files_write.rs"),
+            guard_core::addr::repo_root().join("src/backend/control/files_write.rs"),
         )
         .unwrap(),
     );

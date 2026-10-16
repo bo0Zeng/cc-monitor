@@ -99,10 +99,10 @@ fn the_two_preference_lists_are_exactly_these_and_reach_the_config() {
 
 /// 生产段里「命中 `needle` 的文件 → 处数」。
 fn production_hits(needle: &str) -> Vec<(String, usize)> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut out = Vec::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-        let code = crate::guard_support::production_code(&src);
+        let code = guard_core::production_code(&src);
         let n = code.matches(needle).count();
         if n > 0 {
             out.push((guard_core::module_address(&root, &path), n));
@@ -297,8 +297,8 @@ const VENDORED_RUSSH: &str = "src/vendor/russh";
 /// 副本目录的绝对住址。住址写成字面量（`test_tiers` 扫描层按 `repo_root().join("…")` 字面量核它在盘上），
 /// 与 [`VENDORED_RUSSH`] 同一处由这里的断言钉住（VR2 拿常量去比 `[patch.crates-io]` 那一行）。
 fn vendored_russh_dir() -> std::path::PathBuf {
-    let dir = crate::guard_support::repo_root().join("src/vendor/russh");
-    assert_eq!(dir, crate::guard_support::repo_root().join(VENDORED_RUSSH));
+    let dir = guard_core::addr::repo_root().join("src/vendor/russh");
+    assert_eq!(dir, guard_core::addr::repo_root().join(VENDORED_RUSSH));
     dir
 }
 
@@ -888,9 +888,7 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
 /// 〔第二问「只当跳板用的机器一直 TOFU（设计没写）」〕跳板那一格也进 `Linked`（`jump_fingerprints`），界面按那一台自己固化。
 #[test]
 fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../src/backend/ssh-dial/connect.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../src/backend/ssh-dial/connect.rs"));
     // 跳板链那一段（`through_hops`）紧挨在 `establish` 前面：两段一起看（目标那一趟在后者、跳板那几趟在前者）。
     let at = prod
         .find("async fn through_hops(")

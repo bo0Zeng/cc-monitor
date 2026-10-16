@@ -32,7 +32,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 后端命令表各族生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**，逐族切）。
 /// 抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
-    let families = crate::guard_support::backend_registry_sources();
+    let families = guard_core::addr::backend_registry_sources();
     let mut blocks: Vec<(String, String)> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
@@ -130,7 +130,7 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
 /// 另一侧从后端 `lib.rs` 的 `SUBCOMMANDS` 那张表的源码数（正控：同一块里认得出今天真在的 `--history-read`）。
 #[test]
 fn the_moved_subcommands_are_gone_from_the_backend() {
-    let lib = std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/lib.rs"))
+    let lib = std::fs::read_to_string(guard_core::addr::repo_root().join("src/backend/lib.rs"))
         .expect("读不到后端 lib.rs");
     let at = lib
         .find("pub const SUBCOMMANDS: &[&str] = &[")
@@ -1097,7 +1097,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 
 /// 生产段里含 `needle` 的「文件::外层函数」集合（按行往回找最近的 `fn `）。
 fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut out = std::collections::BTreeSet::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&src);
@@ -1141,7 +1141,7 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         .filter(|site| {
             let (file, _) = site.split_once("::").unwrap();
             let src =
-                std::fs::read_to_string(crate::guard_support::crate_src_root().join(file)).unwrap();
+                std::fs::read_to_string(guard_core::addr::shell_src_root().join(file)).unwrap();
             // 路径短了一截，rustfmt 可能把实参折回同一行 ⇒ 去掉空白再认。
             let flat: String = guard_core::production_code(&src)
                 .chars()
@@ -1435,7 +1435,7 @@ fn deadline_makers(file: &str, prod: &str) -> Vec<(String, String)> {
 /// 正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
 fn every_deadline_is_made_where_its_job_begins_and_only_there() {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -1487,7 +1487,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
     // 历史浏览器读整份那一件进了界面，后来查看器改成骨架 ＋ 按视口取（`src/frontend/ui/record-reads.ts::readRange`），整份读这件事没了。
-    let snapshot_src = crate::guard_support::stream_source_file("snapshot.rs");
+    let snapshot_src = guard_core::addr::stream_source_file("snapshot.rs");
     let cases: [(&str, &str, &str); 1] =
         [(&snapshot_src, "async fn fetch_snapshot(", "'read: for ")];
     fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {

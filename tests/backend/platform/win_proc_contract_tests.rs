@@ -137,7 +137,7 @@ fn each_liveness_fact_has_exactly_one_windows_arm_that_delegates() {
 /// 少了 `win_proc.rs` ⇒ 读法搬走了而本条的锚没跟上。
 #[test]
 fn the_win32_process_reads_live_in_exactly_one_file() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let names = ["OpenProcess", "GetExitCodeProcess", "GetProcessTimes"];
     // `WaitForSingleObject` 从这张名单里拆出去单列：它是 Win32 的**通用等待**，不只等进程 ——
     //   `platform/lock.rs` 用它等第四层那把跨进程锁（命名互斥量）。那一格不是「又一份判活读法」，

@@ -74,13 +74,13 @@ fn t3_iso8601() {
 
 #[test]
 fn t4_the_constant_lives_only_here() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needle = "719_468";
     let files = guard_core::scan_tree!(&root, &["rs"]);
     let scanned = files.len();
     let hits: Vec<String> = files
         .iter()
-        .filter(|(_, src)| crate::guard_support::production_code(src).contains(needle))
+        .filter(|(_, src)| guard_core::production_code(src).contains(needle))
         .map(|(p, _)| {
             p.strip_prefix(&root)
                 .unwrap()
@@ -96,7 +96,7 @@ fn t4_the_constant_lives_only_here() {
     );
     let sample = "fn civil(z: i64) { let z = z + 719_468; }";
     assert!(
-        crate::guard_support::production_code(sample).contains(needle),
+        guard_core::production_code(sample).contains(needle),
         "针认不出样本"
     );
 }

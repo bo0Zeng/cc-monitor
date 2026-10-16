@@ -21,9 +21,6 @@ pub(crate) use comms_outward::{
 // ── 判据：读的是中转 crate 与上游选择的源码（路径不变），挂在后端这一侧 ──
 // 「中转层里没有账号」：四条两向集合相等（残留表已清空 ⇒ 零命中形态）
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/bind_guard.rs"]
-mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
-#[cfg(test)]
 #[path = "../../../tests/backend/relay/creds_guard.rs"]
 mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
 #[cfg(test)]

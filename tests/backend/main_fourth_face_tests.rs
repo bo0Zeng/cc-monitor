@@ -7,7 +7,7 @@ use crate::platform::tmux::{tmux_exe_in, tmux_in, tmux_present, TmuxPlatform};
 /// 本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
 #[test]
 fn production_hello_fills_unavailable_from_this_machine() {
-    let prod = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let prod = guard_core::production_code(include_str!("../../src/backend/main.rs"));
     let sites: Vec<&str> = prod
         .lines()
         .map(str::trim)
@@ -347,8 +347,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
 #[test]
 fn the_windows_arm_is_wired_into_the_source() {
     // `TMUX_PLATFORM` 与 tmux 可用性那一族住 `platform/tmux.rs`（const1 从 `lib.rs` 挪过去）。
-    let prod =
-        crate::guard_support::production_code(include_str!("../../src/backend/platform/tmux.rs"));
+    let prod = guard_core::production_code(include_str!("../../src/backend/platform/tmux.rs"));
     let decl = // 搬进 `lib.rs` 时提了权 ⇒ 逐字锚跟着改成 `pub const`。
         // ⚠ 这一条**本该红，也真的红了**：它报的是「有一行包含它但不等于它」并把那一行
         //   原样印了出来 —— 逐字锚的正确失效方式。

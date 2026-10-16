@@ -31,7 +31,7 @@ use std::path::Path;
 
 /// 读会话的两层（observe · history）的生产段 ＋ 围栏的家：`(相对后端源码根的路径, 生产代码)`。
 fn reader_sources() -> Vec<(String, String)> {
-    let src_root = crate::guard_support::src_root();
+    let src_root = guard_core::addr::backend_src_root();
     let mut out: Vec<(String, String)> = Vec::new();
     for layer in ["observe", "history"] {
         let root = src_root.join(layer);
@@ -44,7 +44,7 @@ fn reader_sources() -> Vec<(String, String)> {
                         .expect("扫到的文件不在后端源码根下")
                         .to_string_lossy()
                         .replace('\\', "/");
-                    (rel, crate::guard_support::production_side_of(&p, &text))
+                    (rel, guard_core::addr::production_side_of(&p, &text))
                 }),
         );
     }
@@ -52,7 +52,7 @@ fn reader_sources() -> Vec<(String, String)> {
     let text = std::fs::read_to_string(&home).expect("读 common/fence.rs");
     out.push((
         "common/fence.rs".to_string(),
-        crate::guard_support::production_side_of(&home, &text),
+        guard_core::addr::production_side_of(&home, &text),
     ));
     for want in ["observe/history_query.rs", "history/listing.rs"] {
         assert!(

@@ -339,7 +339,7 @@ fn this_module_reads_no_file_content() {
         "read_dir",
     ];
     let count = |src: &str| {
-        let prod = crate::guard_support::production_code(src);
+        let prod = guard_core::production_code(src);
         needles
             .iter()
             .map(|n| prod.matches(n).count())

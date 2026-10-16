@@ -224,7 +224,7 @@ fn every_request_the_mobile_sends_decodes_by_that_commands_args_type() {
 
 /// 现算的那一份与盘上的比；不一样 ⇒ 写成现算的那一份、红。
 fn fresh(rel: &str, want: &str) {
-    let path = crate::guard_support::repo_root().join(rel);
+    let path = guard_core::addr::repo_root().join(rel);
     let got = std::fs::read_to_string(&path).unwrap_or_default();
     if got != want {
         std::fs::write(&path, want).unwrap();

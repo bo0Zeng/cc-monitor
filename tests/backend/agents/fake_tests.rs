@@ -628,8 +628,8 @@ fn the_fixture_agent_never_ships() {
              ⇒ 真填 `hello.homes` 那天，backend 会向仓外消费方声明一个**不存在**的 agent。"
     );
     // ② 模块声明必须带 `#[cfg(test)]` —— 生产二进制里零字节。
-    let mod_rs = std::fs::read_to_string(crate::guard_support::src_root().join("agents/mod.rs"))
-        .expect("读 agents/mod.rs");
+    let mod_path = guard_core::addr::backend_src_root().join("agents/mod.rs");
+    let mod_rs = std::fs::read_to_string(mod_path).expect("读 agents/mod.rs");
     let decl = format!("mod {AGENT_KIND};");
     let idx = mod_rs.find(&decl).unwrap_or_else(|| {
         panic!("`agents/mod.rs` 里找不到 `{decl}` —— 夹具家的模块声明改了形状，本条在空转")

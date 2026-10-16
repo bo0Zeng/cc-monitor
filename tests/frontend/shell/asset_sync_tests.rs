@@ -77,7 +77,7 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
 #[test]
 fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     let gen = |f: &str| {
-        std::fs::read_to_string(crate::guard_support::repo_root().join(f)).expect("生成的类型声明")
+        std::fs::read_to_string(guard_core::addr::repo_root().join(f)).expect("生成的类型声明")
     };
     assert!(
         gen("src/frontend/ui/generated/TypedCommands.ts")
@@ -117,7 +117,7 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
 /// 判定没长第二个家：monitor 这一侧零合并 / 推送规则的字样（人群从后端两份源码现抠：它们的公开函数名）。
 #[test]
 fn this_module_holds_no_sync_rule() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mine = guard_core::production_code(
         &std::fs::read_to_string(root.join("src/frontend/shell/src/asset_sync.rs")).unwrap(),
     );
@@ -206,7 +206,7 @@ fn decl_keys(decl: &str) -> std::collections::BTreeSet<String> {
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {
     let gen = |f: &str| {
-        std::fs::read_to_string(crate::guard_support::repo_root().join(f)).expect("生成的类型声明")
+        std::fs::read_to_string(guard_core::addr::repo_root().join(f)).expect("生成的类型声明")
     };
     // 命令表那一行点的是这两个类型（`generated/TypedCommands.ts`；改了名这里跟着改，下面那条断言会先红）。
     assert!(

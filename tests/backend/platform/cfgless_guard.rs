@@ -89,13 +89,13 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
     use std::path::{Path, PathBuf};
 
     // ══════════════════════════ 人群 ══════════════════════════
 
     fn src_root() -> PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     fn rel_of(p: &Path, root: &Path) -> String {

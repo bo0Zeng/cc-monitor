@@ -20,7 +20,7 @@ monitor 的 Rust 半：Tauri 2 应用，crate `monitor`（lib 名 `monitor_lib`�
 | monitor 自己的事 | `config.rs`（`config.json` 唯一写口 `patch_config_at`）· `logging.rs` · `ui_error.rs`（要让用户知道的出错只此一种事件）· `ui_contract.rs`（事件名与载荷）· `data_paths.rs` · `diagnostics_report.rs` · `auto_launch.rs` · `app_restart.rs` · `clipboard.rs` · `footprint_client.rs` · `machine_state.rs` · `probe_relay.rs` · `asset_sync.rs` · `creds_store.rs` · `copy_table.rs` · `detail.rs` · `utils.rs` |
 | 本机 `ccm` 与集成 | `backend_once.rs`（问自己放下去的那份后端一次）· `ccm_cli_contract.rs` · `cc_bus.rs` |
 | 平台原语 | `platform/`（壳里平台 cfg 的唯一住址：文件原语 · 控制台 · 窗口 · 进程 · 通知 · 单实例 …） |
-| 判据宿主 | 名字带 `_registry` / `_guard` / `_ledger` 的，以及 `structural_scan.rs` · `history.rs` · `guard_support.rs`：生产树里只挂 `#[cfg(test)]` 模块，判据本体住 `tests/frontend/shell/`（`lib.rs` 里经 `#[path]` 挂进来的那一批也是） |
+| 判据宿主 | 名字带 `_registry` / `_guard` / `_ledger` 的，以及 `structural_scan.rs` · `history.rs`：生产树里只挂 `#[cfg(test)]` 模块，判据本体住 `tests/frontend/shell/`（`lib.rs` 里经 `#[path]` 挂进来的那一批也是） |
 | 截图台架 | `shots_shell.rs`：壳那几块真代码不带窗口跑起来给截图台架用，只在特性 `shots` 下编，发版构建里没有 |
 
 ## 要加什么去哪

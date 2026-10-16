@@ -95,8 +95,6 @@ mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零写零交路径（本机常驻后端按家推、写、答）—— 只剩判据
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
-#[cfg(test)]
-mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 
 // 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
 #[cfg(test)]
@@ -1741,11 +1739,6 @@ fn open_with(bin: &str, args: &[String]) -> Result<(), Said> {
         )
     })
 }
-
-// 搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里。今天只剩「monitor 这一侧零处」（「恰一份」那两道随家进了后端）。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/search_kou_jing_guard.rs"]
-mod search_kou_jing_guard;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_env_scrub_tests.rs"]

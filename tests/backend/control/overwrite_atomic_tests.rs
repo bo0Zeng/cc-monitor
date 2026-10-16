@@ -208,9 +208,8 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
         "{raw}"
     );
     // 接线：提交那一支拿「撤占位」的真结局去问它（不是 `let _ =` 吞掉）。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_commit.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_commit.rs"));
     let undo = prod
         .find("let undo = face.delete_file(&dest);")
         .expect("撤占位那一句");
@@ -246,11 +245,11 @@ fn write_calls(code: &str) -> Vec<usize> {
 #[test]
 fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     // ① 全后端生产段的人群：`fs::write(` 只住 `control/files_write.rs`。
-    let roots = crate::guard_support::code_roots();
+    let roots = guard_core::addr::backend_code_roots();
     let mut files: Vec<String> = Vec::new();
     let mut prims: Vec<String> = Vec::new();
     for (path, src) in guard_core::scan_tree_excluding(&roots[0], &["rs"], &[]) {
-        let prod = crate::guard_support::production_side_of(&path, &src);
+        let prod = guard_core::addr::production_side_of(&path, &src);
         let rel = path
             .strip_prefix(&roots[0])
             .unwrap_or(&path)
@@ -285,9 +284,8 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
         "后端生产段就地写的集合变了"
     );
     // ② 那一处在 `swap_in` 那一段里、且那一段恰好一个 `#[cfg(windows)]`、就地写跟在它后面。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_write.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
     assert_eq!(
         prod.matches("fn swap_in(").count(),
         1,
@@ -375,9 +373,8 @@ fn h2_the_in_place_reasons_are_exactly_links_and_owner() {
         both.contains("3 个硬链接") && both.contains("属主"),
         "{both}"
     );
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_write.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
     assert_eq!(
         prod.matches("in_place_reason(links, owner, crate::platform::paths::current_uid())")
             .count(),

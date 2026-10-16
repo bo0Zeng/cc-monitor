@@ -1,0 +1,7 @@
+# 规则（`tests/common/guard-core/rules/`）不许自己读盘：仓里的文件只经入口那一份快照读（`rules` 模块 deny 这一条，入口读盘那一块就地放行）。
+disallowed-methods = [
+    { path = "std::fs::read_dir", reason = "规则经入口取人群（rules::repo），不自己遍历" },
+    { path = "std::fs::read_to_string", reason = "规则经入口读文件（rules::repo），不自己读盘" },
+    { path = "std::fs::read", reason = "规则经入口读文件（rules::repo），不自己读盘" },
+    { path = "std::fs::File::open", reason = "规则经入口读文件（rules::repo），不自己读盘" },
+]

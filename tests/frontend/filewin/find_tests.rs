@@ -1126,11 +1126,11 @@ fn no_rewalk_period_literal_lives_on_this_side() {
 
     // 运行时拼，免得命中本行自己。
     let needle = format!("{}{}", 30, 0);
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let frontend = repo.join("src/frontend");
     // 🔴 走 `guard_core` 而不是裸 `read_dir`（`scanning_guard_registry` 那条纪律）。
     let files: Vec<(String, String)> = [
-        crate::guard_support::crate_src_root(),
+        guard_core::addr::filewin_src_root(),
         repo.join("src/frontend/shell/src/filewin"),
     ]
     .iter()
@@ -1430,7 +1430,7 @@ fn the_arg_builders_use_the_documented_keys() {
 /// （它的射程逐字只钉 backend crate）。
 #[test]
 fn this_module_never_touches_the_disk() {
-    let src = std::fs::read_to_string(crate::guard_support::crate_src_root().join("find.rs"))
+    let src = std::fs::read_to_string(guard_core::addr::filewin_src_root().join("find.rs"))
         .expect("find.rs 读不动");
     let prod = guard_core::production_code(&src);
     // 运行时拼，免得命中本行自己。

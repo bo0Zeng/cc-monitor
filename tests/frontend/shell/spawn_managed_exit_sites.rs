@@ -40,7 +40,7 @@
 //!   不是把这一列删掉。今天盘面上一处都没有这一形。
 //! - **`build.rs` 刻意不在人群里**：它跑在构建期，`SPAWNS` 已经把它那两处登记成
 //!   「不进那个出口」并写了理由。同一件事记两张表 ⇒ 两张会各自漂。
-//!   ⇒ 本条的扫描面逐字是 `crate_src_root()` 一棵树，**构建期那一格不归它**。
+//!   ⇒ 本条的扫描面逐字是 `shell_src_root()` 一棵树，**构建期那一格不归它**。
 //! - **同文件同函数内两处落点，本条区分得开处数、区分不开各自的策略**：
 //!   `platform/terminal.rs::launch_powershell_window` 今天就有两跳（`wt.exe` / `powershell.exe`），
 //!   本表为它留**两行同键**、处数对得上；但「哪一跳配哪三格」仍归
@@ -160,7 +160,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
 
 /// 本 crate 的源码根 —— 住址唯一源。
 fn src_root() -> PathBuf {
-    crate::guard_support::crate_src_root()
+    guard_core::addr::shell_src_root()
 }
 
 /// 那个唯一出口自己的住址（相对仓根）。**明写，不靠 `file!()` 自摘** ——

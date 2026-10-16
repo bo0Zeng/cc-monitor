@@ -164,7 +164,7 @@ fn the_data_dir_is_spelled_in_one_place() {
         };
         prod.contains(old.as_str())
     };
-    let root = crate::guard_support::repo_src_root();
+    let root = guard_core::addr::repo_src_root();
     let skip = [
         "doc/",
         "frontend/shell/.cargo/",

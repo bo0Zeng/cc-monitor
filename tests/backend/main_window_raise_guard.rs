@@ -79,7 +79,7 @@ fn raise_sites_are_gated(prod: &str) -> Result<usize, String> {
 /// 文件是今天唯一能机检的「一处」；更细的粒度要语法树。
 #[test]
 fn window_raising_lives_in_one_file_and_only_behind_cfg_windows() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     // ⚠ 走共享原语而不是自己 `read_dir`：`scanning_guard_registry` 那条棘轮要求如此。
     //
     // 🔴 **从 `scan_tree!` 换成 `scan_tree_excluding(.., &[])`，并删掉「把 `main.rs` 补回来」那两段。**
@@ -96,7 +96,7 @@ fn window_raising_lives_in_one_file_and_only_behind_cfg_windows() {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            (rel, crate::guard_support::production_code(&src))
+            (rel, guard_core::production_code(&src))
         })
         .collect();
     // 反向自检（换了方向）：`main.rs` **必须在**人群里 ——
@@ -106,7 +106,7 @@ fn window_raising_lives_in_one_file_and_only_behind_cfg_windows() {
         "`main.rs` 不在人群里 —— 「拉窗写进 main.rs」这一格从此逃得掉，\
          而逃掉之后的输出与守住一模一样。多半是排除名单又开始摘它了。"
     );
-    // 反空真：扫描面塌了的话，下面两条会在空集上恒绿。地板同 `guard_support` 那条（37）。
+    // 反空真：扫描面塌了的话，下面两条会在空集上恒绿。
     assert!(
         files.len() >= 37,
         "只扫到 {} 个 `.rs`（地板 37）—— 扫描面塌了，本护栏正在空转",

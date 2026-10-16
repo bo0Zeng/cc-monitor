@@ -132,8 +132,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
 ];
 
 fn src_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 语料 = `src/` 整棵树 **+ `build.rs`**。

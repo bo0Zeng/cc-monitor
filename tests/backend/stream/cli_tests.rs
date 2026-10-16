@@ -295,7 +295,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
 #[test]
 fn the_cli_entry_never_names_a_concrete_handler() {
     let raw = include_str!("../../../src/backend/stream/cli.rs");
-    let prod = crate::guard_support::production_code(raw);
+    let prod = guard_core::production_code(raw);
     for banned in [
         "control::launch::",
         "control::kill::",
@@ -322,8 +322,7 @@ fn the_cli_entry_never_names_a_concrete_handler() {
 /// 只是**开始说谎** —— 而 skill 按它的话决定走不走新路 ⇒ 静默降级，没有任何报错。
 #[test]
 fn the_probe_reports_exactly_what_it_can_dispatch() {
-    let raw =
-        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
+    let raw = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         !raw.contains("\"--launch\"") && !raw.contains("\"--kill\""),
         "`probe()` 里出现了硬编码的命令字面量 —— 清单必须从 `REGISTRY` 派生"
@@ -435,8 +434,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     );
     assert!(!declared.is_empty(), "一条无输入命令都没有 —— 本断言在空转");
     // `run` 必须用的就是这个决定，不是另写一份判断。
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         prod.contains("if reads_stdin(spec) {"),
         "`run` 不再按 `reads_stdin` 决定读不读 stdin —— 上面那条断言此刻钉的是一个没人用的函数"

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 fn src_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 某一行所在的函数名：往回找最近的一处 `fn <名>`（顶格或缩进都算）。

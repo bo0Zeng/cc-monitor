@@ -37,7 +37,7 @@ fn answer_forget_at(own: &Own, args: &Value) -> Result<Value, Fail> {
 }
 
 fn fixture_dir() -> PathBuf {
-    crate::guard_support::repo_root().join("tests/__fixtures__")
+    guard_core::addr::repo_root().join("tests/__fixtures__")
 }
 
 fn golden() -> Value {

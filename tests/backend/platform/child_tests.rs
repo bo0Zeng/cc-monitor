@@ -201,7 +201,7 @@ fn a_detached_child_leads_its_own_group() {
 /// 显式交自有格的口（`pass_own`）生产段**恰好一个调用点**，在起常驻后端那一处；正控：原语里的定义不算调用点。
 #[test]
 fn pass_own_has_exactly_one_production_caller_and_it_starts_the_resident() {
-    let src = crate::guard_support::src_root();
+    let src = guard_core::addr::backend_src_root();
     let mut hits: Vec<(String, usize)> = Vec::new();
     for (p, raw) in guard_core::scan_tree_excluding(&src, &["rs"], &[]) {
         let rel = p
@@ -209,7 +209,7 @@ fn pass_own_has_exactly_one_production_caller_and_it_starts_the_resident() {
             .unwrap_or(&p)
             .to_string_lossy()
             .replace('\\', "/");
-        let n = crate::guard_support::production_code(&raw)
+        let n = guard_core::production_code(&raw)
             .matches(".pass_own(")
             .count();
         if n > 0 {

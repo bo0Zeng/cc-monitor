@@ -174,8 +174,8 @@ fn starts_with_str(hay: &str, prefix: &str) -> bool {
 }
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（它的头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 fn filewin_dir() -> PathBuf {
@@ -455,10 +455,10 @@ fn edges_by_process() -> (
     let window_files = guard_core::scan_tree_excluding(&window_crate_dir(), &["rs"], &[]);
     // 🔴 两侧人群都现数（恒等，不是地板）：塌成空集时下面那两条相等**照样成立**。
     // 壳里 `filewin/` 现打 3 份（mod · entry · proc；`win_main` 那个 bin 入口 size2 10-11 搬进窗口包成了 `main.rs`）；窗口包现打 29 份（搬家前那 31 份里 27 份整份搬来 ＋ 新 `proc.rs`（窗口进程那一半）＋ `guard_support.rs`）。
-    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。
+    // 29 → 30：窗口包的平台层 `platform.rs`。30 → 34：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`。34 → 35：窗口的通用件 `kit.rs`。35 → 36：「进度」表 `progress.rs`。36 → 37：帧日志 `frame_log.rs`（窗口那一侧）。37 → 38：计划反查 `plan.rs`。38 → 40：图片查看页 `imgview.rs` ＋ 一张图读一次解一次 `picture.rs`。40 → 41：bin 入口 `main.rs`（size2 从壳里搬来）。41 → 42：渲染器挑哪块显卡 `render.rs`（fwgpu）。42 → 43：一组一条命令那一层 `batch.rs`（票 · 冲突框 · 断了带票再问 · 撤）。43 → 42：判据住址 `guard_support.rs` 并进共享的 `guard_core::addr`。
     assert_eq!(
         (inside.len(), window_files.len()),
-        (3, 43),
+        (3, 42),
         "两侧扫到的 `.rs` 份数变了 —— 遍历器坏了，或者两侧有人加 / 删了文件（先回答那份住哪一侧，再改这个数）"
     );
     let root = repo_root();

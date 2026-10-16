@@ -32,9 +32,8 @@
 /// **只有这一条没有**：实测把两行对调，backend 294 条一条不红。
 #[test]
 fn the_handle_is_deregistered_before_the_reply_goes_out() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound/mod.rs"
-    ));
+    let src =
+        guard_core::production_code(include_str!("../../../src/backend/stream/inbound/mod.rs"));
     // 两个锚点各自的唯一性先量过：`remove` 那句只有一处；`replies.send(frame)` 有两处
     // （另一处在下面的监督臂里），所以**取第一处**并断言它就在 `remove` 之后。
     let remove_at = src

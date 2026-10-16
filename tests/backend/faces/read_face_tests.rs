@@ -158,7 +158,7 @@ fn session(home: &Path, proj: &str, sid: &str, n: usize, torn: bool) -> PathBuf 
 /// 左边从命令表各族的**生产段源码**切 `CommandSpec {` 块数出来（异源：不读本文件的任何常量）。
 #[test]
 fn the_registry_hands_exactly_the_eight_to_this_host() {
-    let families = crate::guard_support::registry_sources();
+    let families = guard_core::addr::backend_registry_sources();
     let mut got: Vec<String> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))

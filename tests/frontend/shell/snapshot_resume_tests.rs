@@ -174,7 +174,7 @@ fn a_stale_cursor_falls_back_to_the_tail_only() {
 /// 快照多拉的行进了留存也会被修回这个数（F5 那一屏看不到），只在界面账本里多占着、往上翻才用得上 ⇒ 不多拉。
 #[test]
 fn the_snapshot_tail_is_the_replay_keep() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     for anchor in [
         "const SNAPSHOT_TAIL_LINES: u64 = crate::event_replay::REPLAY_TAIL_KEEP as u64;",
         "SNAPSHOT_TAIL_LINES,",
@@ -221,7 +221,7 @@ fn the_cursor_only_moves_on_contiguous_lines() {
 /// 锚串各恰好一处（`find_pinned`：裸 `contains` 在锚被撑大时照样绿）。
 #[test]
 fn the_snapshot_path_is_wired_through_the_cursor() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     for anchor in [
         "crate::snapshot_resume::plan_read(",
         "crate::snapshot_resume::cursor_of(&origin, sid)",
@@ -459,7 +459,7 @@ fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
         }
         Ok(())
     }
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     wired(&prod).unwrap_or_else(|e| panic!("{e}"));
     let old = prod.replacen(
         "crate::snapshot_resume::witness_holds(&w, &page.rows)",

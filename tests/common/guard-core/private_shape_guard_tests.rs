@@ -34,10 +34,7 @@ const SKIP_FILES: &[&str] = &["THIRD-PARTY-NOTICES.txt"];
 const SKIP_DIRS: &[&str] = &["src/vendor/", "src/mobile/libs/LICENSES/"];
 
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("guard-core 的上三级 = 仓根")
+    crate::addr::repo_root()
 }
 
 fn tracked_texts(root: &Path) -> Vec<(String, String)> {

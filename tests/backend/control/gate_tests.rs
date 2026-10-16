@@ -11,9 +11,8 @@ use super::*;
 /// 只有行为那条，「另起一条 argv 自己去问」在没有真 tmux 的沙箱里也可能碰巧绿。
 #[test]
 fn listing_every_session_is_no_longer_this_modules_job() {
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
-    crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    guard_core::assert_no_test_code("control/gate.rs", &prod);
     assert!(
         !prod.contains("list-sessions"),
         "本模块生产段里又出现了 `list-sessions` —— 判活回去自己起 tmux 了。\n\
@@ -23,7 +22,7 @@ fn listing_every_session_is_no_longer_this_modules_job() {
     // 反向自检：这一条不是靠「本文件恰好不含那个词」空转的 —— 快照那边必须有。
     let owner = include_str!("../../../src/backend/common/session_snapshot.rs");
     assert!(
-        crate::guard_support::production_code(owner).contains("\"list-sessions\""),
+        guard_core::production_code(owner).contains("\"list-sessions\""),
         "`common/session_snapshot.rs` 的生产段里找不到 `list-sessions` ——\n\
              那处调用点搬走/改名了，本条此刻在空转（它只会证明「谁都没有」）。"
     );
@@ -118,9 +117,8 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
 
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
-    crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    guard_core::assert_no_test_code("control/gate.rs", &prod);
 
     let starts = prod.matches("Child::new(\"tmux\")").count();
     assert_eq!(
@@ -477,7 +475,7 @@ fn both_gates_always_probe_before_they_act() {
 // 不钉断言条数 ⇒ 这两处就是那个决定的全部落点，下面那条把它们钉住。
 
 fn repo_root() -> std::path::PathBuf {
-    crate::guard_support::repo_root()
+    guard_core::addr::repo_root()
 }
 
 /// ★ **未登记的 skip 仍然让 `backend-gate2` 整套红**：
@@ -581,8 +579,7 @@ fn tl2_fn_body<'a>(src: &'a str, name: &str) -> &'a str {
 /// 异源：码集合读 `gate.rs`，调用关系读各模块与 `stream/inbound/` 的源码，被比的是运行期的 `REGISTRY`。
 #[test]
 fn every_command_that_passes_the_gate_lists_the_gates_codes() {
-    let gate =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let gate = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
     let probe = tl2_error_codes_in(tl2_fn_body(&gate, "probe"));
     let codes_of = |f: &str| -> std::collections::BTreeSet<String> {
         let body = tl2_fn_body(&gate, f);
@@ -606,8 +603,8 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
         "非破坏性的 `admit` 会回 `too_many_windows` 了 —— 送键会被多窗口误拒：{doors:?}"
     );
 
-    let families = crate::guard_support::registry_sources();
-    let root = crate::guard_support::src_root();
+    let families = guard_core::addr::backend_registry_sources();
+    let root = guard_core::addr::backend_src_root();
     let mut checked = Vec::new();
     // typed 那几行（`typed::<档>::<crate::control::<模块>::<类型>>(…)`）：命令名从那份文件里 `impl Command for <类型>` 的 `const NAME` 读。
     let mut typed_cells: Vec<(String, String)> = Vec::new();
@@ -672,7 +669,7 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
             else {
                 continue;
             };
-            let prod = crate::guard_support::production_code(&src);
+            let prod = guard_core::production_code(&src);
             for (door, want) in &doors {
                 if !prod.contains(&format!("gate::{door}(")) {
                     continue;
@@ -754,8 +751,7 @@ fn the_requester_is_optional_and_shaped() {
 /// 门那几句里的 tmux 会话名直接填进句子：`format!("{name:?}")` 会让界面上出现 Rust 调试形的引号与转义（手机端键名对账 10-09 第四节第 4 条）。
 #[test]
 fn the_gate_puts_the_session_name_in_as_is() {
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/control/gate.rs"));
     assert!(
         !prod.contains("{name:?}"),
         "gate.rs 生产段里又用 `{{name:?}}` 填会话名 —— 界面上会带调试引号"

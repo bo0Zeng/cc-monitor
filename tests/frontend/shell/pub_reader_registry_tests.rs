@@ -14,7 +14,7 @@
 //! - 按名字数：别处有同名的东西（同名方法 · 字符串里提到）就算有读者 —— 只会漏判，不会误判。
 //! - 不看可见性该不该更窄（有读者的 `pub` 只在本包里读也不判）。
 
-use crate::guard_support::repo_root;
+use guard_core::addr::repo_root;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
