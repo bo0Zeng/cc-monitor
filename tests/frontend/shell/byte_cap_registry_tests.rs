@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "FNV64_BASIS",
+        "**散列的起点**不是体量：`cmd-wire/src/fnv.rs` FNV-1a 64 从这个数开始喂字节。",
+    ),
+    (
         "NEEDS_TIER_SPAN",
         "**毫秒**不是字节：`backend/observe/facts_query.rs` 先答序里一档危险度占多宽，同一档里已等多久只在这一格里动。",
     ),
