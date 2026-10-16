@@ -822,8 +822,8 @@ export class HistoryView {
     this.shown = null;
   }
 
-  /** 右边就地看这一行（列表不动）。`jumpTo` = 内容命中的那一句（uuid ＋ 后端说的落点 `tool`）。 */
-  private show(r: HistoryRow, jumpTo?: { uuid: string; tool?: string }): void {
+  /** 右边就地看这一行（列表不动）。`jumpTo` = 内容命中的那一句（uuid · 行号 ＋ 后端说的落点 `tool`）。 */
+  private show(r: HistoryRow, jumpTo?: { uuid: string; line: number; tool?: string }): void {
     const k = rowKey(r);
     this.selected = k;
     this.shown = k;
@@ -838,7 +838,7 @@ export class HistoryView {
       origin: r.origin ?? LOCAL_ORIGIN,
       agent: r.agent,
       cwd: r.projectPath,
-      scrollToUuid: jumpTo?.uuid,
+      ...(jumpTo !== undefined ? { scrollTo: { uuid: jumpTo.uuid, line: jumpTo.line } } : {}),
       ...(jumpTo?.tool !== undefined ? { scrollToTool: jumpTo.tool } : {}),
       suppressBranch: !r.can.fork,
       // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了 ⇒ 重问那一台的清单（头上［切过去］／［恢复］跟着那台的判定换）。

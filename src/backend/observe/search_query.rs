@@ -114,6 +114,9 @@ pub(crate) struct SearchHit {
     /// 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) offset: u64,
+    /// 这条记录的行号（与实时行的 `seq` 同一个空间；打开查看器后按它物化、按 `uuid` 找卡）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
 }
 
 /// 全文搜索那一行的活不活：只扫记录树、看得到这台的 pidfile ⇒ 只有两态。
@@ -369,6 +372,8 @@ struct Facts {
     /// 分叉来的：父会话 id（第一条带 `forkedFrom` 的记录，同历史清单那一格）。
     forked: Option<String>,
     records: Vec<Rec>,
+    /// 这一段里算一行的行数（[`super::lines::counts`]；后一段的行号从前一段的这个数接着数）。
+    lines: u64,
 }
 
 /// 一条 user / assistant 记录。工具文本**按需**抽：第一次有 `include_tools` 的那一问才整份重读补上（它要把整块工具输入 / 输出串起来，贵）。
@@ -378,6 +383,8 @@ struct Rec {
     uuid: String,
     /// 这一行在记录文件里的起点（字节）。
     offset: u64,
+    /// 这一行的行号。
+    line: u64,
     /// 这一条是你说的一句（一轮的开头；口径同大纲 `user_inputs::user_input_of`）。
     opens_turn: bool,
 }
@@ -390,12 +397,17 @@ impl Rec {
 }
 
 impl Facts {
-    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。`base` ＝ 这段文本在记录文件里的起点（字节）。
-    fn absorb(&mut self, text: &str, tools: bool, base: u64) {
+    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。`base` ＝ 这段文本在记录文件里的起点（字节），
+    /// `first` ＝ 它第一行的行号。
+    fn absorb(&mut self, text: &str, tools: bool, base: u64, first: u64) {
         let mut at = base;
         for raw in text.split_inclusive('\n') {
             let start = at;
             at += raw.len() as u64;
+            let line = first + self.lines;
+            if super::lines::counts(raw.as_bytes()) {
+                self.lines += 1;
+            }
             let Some(v) = super::lines::parse(raw.as_bytes()) else {
                 continue;
             };
@@ -463,6 +475,7 @@ impl Facts {
                         ts_ms,
                         uuid,
                         offset: start,
+                        line,
                         opens_turn,
                     });
                 }
@@ -506,10 +519,12 @@ impl Facts {
                 ts_ms: r.ts_ms,
                 uuid: r.uuid.clone(),
                 offset: r.offset,
+                line: r.line,
                 opens_turn: r.opens_turn,
             })
             .collect();
         *self = Facts {
+            lines: self.lines,
             cwd: self.cwd.clone(),
             bg: self.bg,
             title: self.title.clone(),
@@ -535,6 +550,7 @@ impl Facts {
             self.forked = later.forked;
         }
         self.records.extend(later.records);
+        self.lines += later.lines;
     }
 }
 
@@ -568,7 +584,7 @@ impl FileEntry {
                 match std::str::from_utf8(&whole) {
                     Ok(s) => {
                         let mut seg = Facts::default();
-                        seg.absorb(s, self.tools, self.read.consumed());
+                        seg.absorb(s, self.tools, self.read.consumed(), self.done.lines);
                         self.done.extend(seg);
                         self.read.took(&whole);
                     }
@@ -584,7 +600,9 @@ impl FileEntry {
         self.read.saw((mtime, base + blocks.read()));
         if self.bad.is_none() {
             match std::str::from_utf8(&rest) {
-                Ok(s) => self.tail.absorb(s, self.tools, self.read.consumed()),
+                Ok(s) => self
+                    .tail
+                    .absorb(s, self.tools, self.read.consumed(), self.done.lines),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
@@ -691,7 +709,15 @@ impl SearchIndex {
                 continue;
             };
             if pager.take() && result.is_ok() {
-                result = on_hit(&find_hit(&rec.rt, &rec.uuid, kind, hit, q, turn, rec.ts_ms));
+                result = on_hit(&find_hit(
+                    &rec.rt,
+                    (&rec.uuid, rec.line),
+                    kind,
+                    hit,
+                    q,
+                    turn,
+                    rec.ts_ms,
+                ));
             }
         }
         let (count, total) = pager.finish();
@@ -919,6 +945,7 @@ fn session_hits_in(
                     // 落点同会话内查找（[`find_hit`]）：收在某次工具调用那一块里 ⇒ 带那次调用的 id。
                     tool: rec.rt.lands_in.clone(),
                     offset: rec.offset,
+                    line: rec.line,
                 });
             }
             SnippetVerdict::BudgetExhausted => session_starved = true,
@@ -1195,7 +1222,7 @@ impl FindPager {
 /// 收在某次工具调用那一块里的（[`RecordText::lands_in`]）再带 `tool`（调用 id）：界面按它落到那一块上。
 fn find_hit(
     rt: &RecordText,
-    uuid: &str,
+    (uuid, line): (&str, u64),
     kind: &str,
     hit: &str,
     q: &str,
@@ -1205,6 +1232,7 @@ fn find_hit(
     let (before, matched, after) = search_rules::make_snippet(hit, q);
     FindHit {
         uuid: uuid.to_string(),
+        line,
         kind: kind.to_string(),
         before,
         matched,
@@ -1222,8 +1250,11 @@ fn find_hit(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FindHit {
-    /// 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+    /// 命中的那条记录的 uuid（界面按它找卡）。
     pub(crate) uuid: String,
+    /// 它的行号（与实时行的 `seq` 同一个空间；界面按它物化那一段）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
     /// `user` · `assistant` · `report`（agent 回报）· `tool`。
     pub(crate) kind: String,
     /// 片段三段（同全局搜索的 `Hit`）。
@@ -1269,10 +1300,15 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     let mut pager = FindPager::new(page);
     let mut turn: u64 = 0;
     let mut lines = super::lines::Lines::new(r, 0);
+    let mut counted: u64 = 0;
     while !q.is_empty() {
         let Some(row) = lines.next()? else {
             break;
         };
+        let line = counted;
+        if super::lines::counts(row.body()) {
+            counted += 1;
+        }
         let Some(v) = super::lines::parse(row.body()) else {
             continue;
         };
@@ -1305,7 +1341,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
                 .and_then(Value::as_str)
                 .and_then(crate::common::time::parse_iso8601_ms)
                 .unwrap_or(0);
-            on_hit(&find_hit(&rt, uuid, kind, hit, &q, turn, ts_ms))?;
+            on_hit(&find_hit(&rt, (uuid, line), kind, hit, &q, turn, ts_ms))?;
         }
     }
     Ok(pager.finish())

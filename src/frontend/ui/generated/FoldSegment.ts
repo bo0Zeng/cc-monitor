@@ -12,6 +12,10 @@ export type FoldSegment = {
  */
 after: string, 
 /**
+ * `after` 那一条的行号（界面按它与 `untilLine` 在骨架账本里取这一段的那几行）。
+ */
+afterLine: number, 
+/**
  * 那一行的字（后端写好，界面按语气排版、段间加分隔）。
  */
 parts: Array<TurnPart>, 
@@ -22,9 +26,12 @@ span: TurnSpan,
 /**
  * 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
  * 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
- * 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
  */
 until: string | null, 
+/**
+ * `until` 那一条的行号（没有 ⇒ 没有）。
+ */
+untilLine: number | null, 
 /**
  * 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
  */

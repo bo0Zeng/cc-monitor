@@ -26,6 +26,12 @@ const OUTLINE_HINT = copyText("userInputPanel.outline.hint");
  */
 export type JumpResult = HTMLElement | null | Promise<HTMLElement | null>;
 
+/** 跳到哪一条：按 `uuid` 找卡，按 `line`（后端给的行号，与 `seq` 同一个空间）物化它那一段。 */
+export interface JumpTarget {
+  uuid: string;
+  line: number;
+}
+
 /** 宿主要提供的两件事 —— 「怎么跳」和「跳空了怎么跟人解释」。 */
 export interface UserInputPanelHost {
   /**
@@ -34,7 +40,7 @@ export interface UserInputPanelHost {
    * 🔴 返回值就是落点读数：面板**不自己再查一遍 DOM 去猜跳没跳到** ——
    * 「先渲染再找」这一段只有宿主知道自己做没做，猜出来的读数会在两条路上各错一次。
    */
-  jumpTo(uuid: string): JumpResult;
+  jumpTo(to: JumpTarget): JumpResult;
   /** 跳空时挂在那一行上的一句人话。两条路的原因不同，所以由宿主给。 */
   readonly unjumpableHint: string;
   /**
@@ -170,6 +176,6 @@ export class UserInputPanel {
    */
   private jump(entry: UserInputEntry, row: HTMLButtonElement): void {
     // 标记的加 / 撤搬进 [`markJump`]（查找命中行共用同一个住址）；两样都撤的纪律在那边。
-    markJump(row, this.host.jumpTo(entry.uuid), entry.excerpt, this.host.unjumpableHint);
+    markJump(row, this.host.jumpTo(entry), entry.excerpt, this.host.unjumpableHint);
   }
 }

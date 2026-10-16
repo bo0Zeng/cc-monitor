@@ -41,7 +41,8 @@
  */
 import type { RecordTimeline } from "./record-timeline";
 import { SkeletonLedger, type TurnFolds } from "./live-window";
-import { initialColumnWidth, skeletonKind, type SkeletonFacts } from "./height-estimate";
+import { initialColumnWidth, skeletonKind } from "./height-estimate";
+import type { HistoryIndex } from "./generated/HistoryIndex";
 import { copyText } from "./copy-table";
 
 /** 视口上下各多物化多少屏（相对视口高）。 */
@@ -589,9 +590,9 @@ export type LedgerFetch =
  * （冷启动 0；续传 = 旧账本的 `endSeq`，由调用方 `append`）。
  */
 export function ledgerFromIndex(
-  res: { available: boolean; reason?: string; end: number; rows: SkeletonFacts[] },
+  res: { available: boolean; reason?: string; end: number; pages: readonly HistoryIndex[] },
   base = 0,
 ): LedgerFetch {
   if (!res.available) return { ok: false, reason: res.reason ?? copyText("skeletonView.ledgerFromIndex.noIndex") };
-  return { ok: true, ledger: new SkeletonLedger(base, res.rows), end: res.end };
+  return { ok: true, ledger: new SkeletonLedger(base, res.pages), end: res.end };
 }

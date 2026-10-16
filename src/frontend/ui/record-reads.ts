@@ -25,6 +25,7 @@ import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
+import type { RecordAt } from "./cards/index";
 import type { Branch } from "./generated/Branch";
 import type { HistoryLines } from "./generated/HistoryLines";
 import type { HistoryPage } from "./generated/HistoryPage";
@@ -116,23 +117,22 @@ async function readRangeAs(
   }
 }
 
-/** 骨架里认得一行在哪的那一半（`live-window.ts::SkeletonLedger` 的这两件）。 */
+/** 骨架里认得一行在哪的那一件（`live-window.ts::SkeletonLedger.factsOf`）。 */
 interface RowPlaces {
-  uuidToSeq: ReadonlyMap<string, number>;
   factsOf(seq: number): { o: number; n: number } | undefined;
 }
 
 /**
- * **按记录 id 取回那一行全文**（出口省掉的正文展开那一下，`RenderContext.fullRecord`）：骨架里那一行的字节边界，
- * 取 `[o, o + n)`、不带声明。骨架还没接上 / 骨架里没有这一行 ⇒ 抛（说清为什么），下次展开再取。主窗口 tab 与查看器同一处。
+ * **取回一条记录的全文**（出口省掉的正文展开那一下，`RenderContext.fullRecord`）：按它的行号找骨架里那一行的字节边界，
+ * 取 `[o, o + n)`、不带声明，认 `id` 那一条。骨架还没接上 / 骨架里没有这一行 / 不知道行号 ⇒ 抛（说清为什么），下次展开再取。
+ * 主窗口 tab 与查看器同一处。
  */
 export async function readRecordById(
   origin: Origin,
   jsonlPath: string,
   places: RowPlaces | null,
-  id: string,
+  { id, seq }: RecordAt,
 ): Promise<LineRecord | null> {
-  const seq = places?.uuidToSeq.get(id);
   const at = seq === undefined ? undefined : places?.factsOf(seq);
   if (seq === undefined || !at) throw new Error(copyText("recordReads.byId.notIndexed"));
   const rows = await readRangeAs(origin, jsonlPath, at.o, at.o + at.n, seq, null);

@@ -27,7 +27,7 @@ import { openNewSession } from "../new-session";
 // 大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
 // 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
-import { UserInputPanel, type JumpResult } from "./user-input-panel";
+import { UserInputPanel, type JumpResult, type JumpTarget } from "./user-input-panel";
 // 按轮折叠与主窗口同一个（`turn-fold.ts`）。
 import { TurnFold, revealProcessOf } from "../turn-fold";
 import { button } from "../kit/button";
@@ -130,8 +130,8 @@ export interface ViewerOptions {
   /** 顶栏标题（后端给的显示标题）。 */
   displayTitle: string;
   head?: ViewerHead;
-  /** 从全文搜索跳进来时命中的那条 uuid：读完定位到它（展开所在折叠段）、居中并闪一下，不贴底。 */
-  scrollToUuid?: string;
+  /** 从全文搜索跳进来时命中的那一条：读完定位到它（展开所在折叠段）、居中并闪一下，不贴底。 */
+  scrollTo?: JumpTarget;
   /** 那条命中落在哪次工具调用的卡里（后端给的命中 `tool`）；缺 ⇒ 落在它自己那张卡上。 */
   scrollToTool?: string;
   /** 哪台机器的会话（本机 ＝ `LOCAL_ORIGIN`）。必填：「没说」不许当成本机。 */
@@ -399,7 +399,7 @@ export class SessionViewer {
       // 远端会话展开子 agent 要带上 origin
       origin: opts.origin,
       // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文
-      fullRecord: (id) => readRecordById(opts.origin, opts.jsonlPath, this.skeleton?.ledger ?? null, id),
+      fullRecord: (from) => readRecordById(opts.origin, opts.jsonlPath, this.skeleton?.ledger ?? null, from),
       lazy: true,
     };
     const timeline = new RecordTimeline(this.stream);
@@ -443,7 +443,7 @@ export class SessionViewer {
       view.attachGaps([[ledger.base, ledger.endSeq]]);
       // 首屏：尾巴（＋ 深链岛）
       view.ensureRange(cardsBack(ledger, ledger.endSeq, TAIL_INITIAL), ledger.endSeq);
-      const target = opts.scrollToUuid !== undefined ? ledger.uuidToSeq.get(opts.scrollToUuid) : undefined;
+      const target = opts.scrollTo?.line;
       if (target !== undefined && view.isPending(target)) {
         view.ensureRange(cardsBack(ledger, target, ISLAND_RADIUS), cardsAhead(ledger, target, ISLAND_RADIUS));
       }
@@ -460,8 +460,8 @@ export class SessionViewer {
       this.rebuildUserInputs();
       void this.turnFold?.refresh();
       // 从搜索结果跳进来 ⇒ 定位到命中消息；否则贴底。
-      if (opts.scrollToUuid) {
-        void Promise.resolve(this.scrollToMessage(opts.scrollToUuid, opts.scrollToTool)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
+      if (opts.scrollTo) {
+        void Promise.resolve(this.scrollToMessage(opts.scrollTo, opts.scrollToTool)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
       } else {
         this.stream?.scrollToBottom();
       }
@@ -684,13 +684,12 @@ export class SessionViewer {
   }
 
   /**
-   * 滚到指定 uuid 的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`（同主窗口 `TabStreamView.jumpInTab`）：
+   * 滚到那一条的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`（同主窗口 `TabStreamView.jumpInTab`）：
    * 还在占位里 ⇒ 经骨架物化它附近那一段、**等在途的段落完**再找卡（取不到 ⇒ reject 带原因）；找不到就退到贴底。
    */
-  private scrollToMessage(uuid: string, tool?: string): JumpResult {
+  private scrollToMessage({ uuid, line: seq }: JumpTarget, tool?: string): JumpResult {
     const sk = this.skeleton;
-    const seq = sk?.ledger.uuidToSeq.get(uuid);
-    if (sk && seq !== undefined && sk.isPending(seq)) {
+    if (sk && sk.isPending(seq)) {
       sk.ensure(seq, ISLAND_RADIUS);
       this.updateStatus();
       if (this.inflight.size > 0) {
@@ -889,9 +888,9 @@ export class SessionViewer {
     tools.className = sv.svTools;
     this.toolsEl = tools;
     this.said = new UserInputPanel({
-      jumpTo: (uuid) => {
+      jumpTo: (to) => {
         closePopover();
-        return this.scrollToMessage(uuid);
+        return this.scrollToMessage(to);
       },
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
       // 开合归本查看器（工具行那颗按钮 ＋ kit 浮层）；面板自带的开关不挂。
@@ -925,7 +924,7 @@ export class SessionViewer {
         if (!where) return { available: false, reason: "", hits: [], total: 0 };
         return findInSession(where.origin, where.jsonlPath, query, includeTools, skip, scope);
       },
-      jumpTo: (uuid, tool) => this.scrollToMessage(uuid, tool),
+      jumpTo: (to, tool) => this.scrollToMessage(to, tool),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
     }, { meta: (h, scope) => hitMeta(h, scope) }); // 命中头一行同主窗口面板（同一个控件）
     tools.append(this.saidBtn, this.find.box);

@@ -6,7 +6,7 @@
  * `scrollToMessage`（`session-viewer.ts`，issue #6 起就在）与它的高亮样式 `search-hit-flash`
  * 在**全部 119 个 `*.vitest.ts` 里零命中**（09-10 现打，分母 = `find src -name '*.vitest.ts'`
  * 的 119 份；命中数 = `grep -l` 的 0 份）。而 `K-R45` 要把它的调用方**从 1 个变成 2 个**
- * （今天唯一调用方是搜索命中：`history.ts` 传 `scrollToUuid: hit.uuid`）。
+ * （今天唯一调用方是搜索命中：`history.ts` 传 `scrollTo: {uuid, line}`）。
  * ⇒ **先立哨，再加调用方** —— 反过来做的话，哨立起来时已经罩着新代码，
  * 它证不了「原来那条路今天还好使」，只证得了「我刚写的东西自洽」。
  *
@@ -42,6 +42,7 @@ import {
   userLine,
   viewerRig,
   assistantLine,
+  lineOf,
   type RigPayload,
   type ViewerRigHandles,
 } from "../../../test-support/session-viewer-rig";
@@ -55,7 +56,7 @@ function chained(seq: number, uuid: string, text: string): RigPayload {
 
 /** 取 viewer 的私有 `scrollToMessage`（不改被测函数的可见性，见头注）。 */
 function jump(v: SessionViewer, uuid: string): void {
-  (v as unknown as { scrollToMessage(u: string): void }).scrollToMessage(uuid);
+  (v as unknown as { scrollToMessage(to: { uuid: string; line: number }): void }).scrollToMessage({ uuid, line: lineOf(uuid) });
 }
 
 let rig: ViewerRigHandles;
@@ -70,7 +71,7 @@ async function mount(lines: RigPayload[], scrollToUuid?: string): Promise<Sessio
     displayTitle: "T",
     origin: LOCAL_ORIGIN,
     suppressBranch: true, // 分支按钮不在这里的射程里
-    ...(scrollToUuid === undefined ? {} : { scrollToUuid }),
+    ...(scrollToUuid === undefined ? {} : { scrollTo: { uuid: scrollToUuid, line: lineOf(scrollToUuid) } }),
   });
   expectLoaded(v.element);
   return v;
@@ -242,7 +243,7 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
       results: { [id]: { ok: true, preview: out, chars: [...out].length, ...(kind ? { kind } : {}) } },
     });
   const land = (v: SessionViewer, uuid: string, tool?: string): HTMLElement | null =>
-    (v as unknown as { scrollToMessage(u: string, t?: string): HTMLElement | null }).scrollToMessage(uuid, tool);
+    (v as unknown as { scrollToMessage(to: { uuid: string; line: number }, t?: string): HTMLElement | null }).scrollToMessage({ uuid, line: lineOf(uuid) }, tool);
 
   it("四条命中照核心给的落点全跳得到，落点是那次调用那一块", async () => {
     const v = await mount([

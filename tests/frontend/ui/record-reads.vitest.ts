@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { readLines, readRange, readRecordById } from "../../../src/frontend/ui/record-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const FOLDED = JSON.parse(readFileSync(resolve(REPO_ROOT, "src/shared/views/folded-record.json"), "utf8")) as unknown;
@@ -68,11 +69,16 @@ describe("记录读面：折起那一行的声明", () => {
     expect(Object.keys(chanArgsJson(page) as object).sort()).toEqual(["offset", "path", "seq", "until"]);
   });
 
-  it("★ 按记录 id 取回那一行：不带声明（要的就是全文）", async () => {
-    const places = { uuidToSeq: new Map([["r3", 3]]), factsOf: () => ({ o: 40, n: 50 }) };
-    const rec = await readRecordById("<local>", "/p/s.jsonl", places, "r3");
+  it("★ 按行号取回那一行、认 id：不带声明（要的就是全文）；不知道行号 ⇒ 说索引未就绪、不问", async () => {
+    const factsOf = vi.fn((seq: number) => (seq === 3 ? { o: 40, n: 50 } : undefined));
+    const rec = await readRecordById("<local>", "/p/s.jsonl", { factsOf }, { id: "r3", seq: 3 });
     expect(rec).toEqual({ id: "r3" });
-    expect(calls().map((c) => [c.op, c.view])).toEqual([["history-page", null]]);
+    const [page] = calls();
+    expect([page.op, page.view]).toEqual(["history-page", null]);
+    expect(chanArgsJson(page)).toMatchObject({ offset: 40, until: 90, seq: 3 });
+    invokeMock.mockClear();
+    await expect(readRecordById("<local>", "/p/s.jsonl", { factsOf }, { id: "r3", seq: undefined })).rejects.toThrow(copyText("recordReads.byId.notIndexed"));
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("一页 20 万行（合成的短行）：拼页不抛，行一条不少", async () => {

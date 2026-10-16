@@ -60,7 +60,7 @@ pub(crate) struct IndexSpeaker {
     pub(crate) v: Vec<String>,
 }
 
-/// 骨架索引里用户输入的摘要与时刻（没有时刻 ⇒ 空串）。
+/// 骨架索引里用户输入的 uuid · 摘要 · 时刻（没有时刻 ⇒ 空串）：大纲清单从它出，跳过去时按 uuid 找卡、按行号物化。
 #[derive(Debug, Default, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -68,6 +68,7 @@ pub(crate) struct IndexInputs {
     /// 行号差。
     #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) at: Vec<u64>,
+    pub(crate) u: Vec<String>,
     pub(crate) x: Vec<String>,
     pub(crate) ts: Vec<String>,
 }
@@ -75,11 +76,11 @@ pub(crate) struct IndexInputs {
 /// **骨架索引按列排**（17 MB 的会话一份索引六千多行，逐行对象里键名占一大半）：
 ///
 /// - 每行都有的几格各一列：`o`（与上一行末尾的字节差，第一行与 `from` 比；连着 ＝ 0）· `n` · `t`（`classes` 里的号，
-///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）· `u`（没有 ⇒ `null`）。
+///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）。行号就是下标（第一行 ＝ 这一页从第几行起），不运每行的 uuid。
 /// - 稀疏的几格各一张小表（`body` · `sp` · `inputs`），`at` 是与上一项的行号差。
-/// - `sc` 不上帧面（CLI 那一臂照旧逐行出 [`crate::observe::history_query::IndexRow`]）。
+/// - `sc` 不上帧面（CLI 那一臂照旧逐行出 [`crate::observe::recognize::index_row::IndexRow`]）。
 ///
-/// 界面读法只在 `session-reads.ts::unpackIndex` 一处（装回逐行，下游照旧），跨语言金样钉两侧。
+/// 界面照列收进骨架账本（`live-window.ts::SkeletonLedger.append`），跨语言金样钉两侧。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -105,7 +106,6 @@ pub(crate) struct HistoryIndex {
     #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) t: Vec<usize>,
     pub(crate) fd: Vec<u32>,
-    pub(crate) u: Vec<Option<String>>,
     pub(crate) body: IndexBody,
     pub(crate) sp: IndexSpeaker,
     pub(crate) inputs: IndexInputs,
@@ -127,7 +127,6 @@ pub(crate) fn pack_index(
         n: Vec::new(),
         t: Vec::new(),
         fd: Vec::new(),
-        u: Vec::new(),
         body: IndexBody::default(),
         sp: IndexSpeaker::default(),
         inputs: IndexInputs::default(),
@@ -149,7 +148,6 @@ pub(crate) fn pack_index(
             None => 0,
         });
         ix.fd.push(r.fd);
-        ix.u.push(r.u.clone());
         if [r.ch, r.cj, r.pl, r.cb, r.cl].iter().any(|n| *n != 0) {
             let b = &mut ix.body;
             b.at.push(gap(&mut lb, i));
@@ -165,6 +163,7 @@ pub(crate) fn pack_index(
         }
         if let Some(x) = &r.x {
             ix.inputs.at.push(gap(&mut li, i));
+            ix.inputs.u.push(r.u.clone().unwrap_or_default());
             ix.inputs.x.push(x.clone());
             ix.inputs.ts.push(r.ts.clone().unwrap_or_default());
         }
@@ -180,7 +179,7 @@ fn index_row_cost(
     seen: &mut Vec<crate::agents::record::RecordClass>,
 ) -> usize {
     let at = digits(i as u64) + 1;
-    let mut n = digits(r.o) + digits(r.n) + digits(r.fd.into()) + jlen(&r.u) + 3 + 5;
+    let mut n = digits(r.o) + digits(r.n) + digits(r.fd.into()) + 3 + 4;
     n += match r.t {
         Some(c) if !seen.contains(&c) => {
             seen.push(c);
@@ -197,7 +196,13 @@ fn index_row_cost(
         n += at + jlen(v) + 1;
     }
     if let Some(x) = &r.x {
-        n += at + jlen(x) + 1 + jlen(r.ts.as_deref().unwrap_or("")) + 1;
+        n += at
+            + jlen(r.u.as_deref().unwrap_or(""))
+            + 1
+            + jlen(x)
+            + 1
+            + jlen(r.ts.as_deref().unwrap_or(""))
+            + 1;
     }
     n
 }

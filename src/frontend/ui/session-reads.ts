@@ -1,7 +1,7 @@
 /**
  * **会话读面上的三条一次性查询，经通道直接问那台机器的后端**：
  * 骨架索引（`history-index`）· 大纲清单（`history-user-inputs`）· 会话内查找（`history-find`）。
- * 后端的帧应答就是成品（`src/backend/faces/read_face.rs`：`{from,end,rows}` / `{from,end,entries}` / `{total,hits}`），
+ * 后端的帧应答就是成品（`src/backend/faces/read_face.rs`：`{from,end,…列}` / `{from,end,entries}` / `{total,hits}`），
  * 本文件经 `chan.call` 直接问、按形状收；monitor 那一跳只搬字节。本机与远端同一条路（本机那台由 `<local>` 那条长连接答）。
  *
  * # 本文件做的只有两件（都是调用方那一侧的事，不是通信层成员）
@@ -29,7 +29,6 @@ import type { HistoryTurns } from "./generated/HistoryTurns";
 import type { UserInputs } from "./generated/UserInputs";
 import type { UserInputRow } from "./generated/UserInputRow";
 import type { Origin } from "./ipc/origin";
-import type { SkeletonFacts } from "./height-estimate";
 import type { TurnRow } from "./generated/TurnRow";
 import type { SessionFacts as WireFacts } from "./generated/SessionFacts";
 import type { HistoryFactsReq } from "./generated/HistoryFactsReq";
@@ -85,7 +84,7 @@ export interface UserInputsResult {
   entries: UserInputEntry[];
 }
 
-/** 骨架索引的回包。`available == false` 时 `rows` 为空、`reason` 说清为什么（**不是错误**）。 */
+/** 骨架索引的回包。`available == false` 时 `pages` 为空、`reason` 说清为什么（**不是错误**）。 */
 export interface SessionIndexResult {
   available: boolean;
   reason?: string;
@@ -93,8 +92,8 @@ export interface SessionIndexResult {
   from: number;
   /** 最后一个完整行的末字节 ＝ **下一次续传该带的 `fromOffset`**。 */
   end: number;
-  /** 每个可计行一条（形状 = 后端 `IndexRow`，`IPC-PROTOCOL.md §10.3`）。本文件**不解释**这些行。 */
-  rows: SkeletonFacts[];
+  /** 按序的几页（帧面按列排，`IPC-PROTOCOL.md §10.3`），原样交骨架账本收列。本文件**不解释**这些行。 */
+  pages: HistoryIndex[];
   /** 要不到的种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时 ⇒ 下一次触发点再问一次）。 */
   failure?: OutlineFailure;
 }
@@ -131,46 +130,6 @@ export const FIND_LIMIT = 100;
 
 /** 这三问各自的期限（见头注）。 */
 const READ_BUDGET_MS = 30_000;
-
-/**
- * `history-index` 的成品装回逐行（帧面上它**按列排**，后端 `history_face.rs::pack_index`：偏移是与上一行末尾的差、
- * `t` 是 `classes` 里的号、稀疏的几格各一张小表、`at` 是行号差）；下游照旧读 [`SkeletonFacts`]。行本身**不解释**。
- * 形状由握手时的形状指纹管，这里只装、不验。
- */
-export function unpackIndex(v: HistoryIndex): SkeletonFacts[] {
-  const rows: Array<SkeletonFacts & { x?: string; ts?: string }> = [];
-  let at = v.from;
-  for (let i = 0; i < v.count; i++) {
-    const r: SkeletonFacts = { o: at + v.o[i], n: v.n[i] };
-    at = r.o + r.n;
-    const k = v.t[i];
-    if (k > 0) r.t = v.classes[k - 1] as SkeletonFacts["t"];
-    const id = v.u[i];
-    if (id !== null) r.u = id;
-    if (v.fd[i] > 0) r.fd = v.fd[i];
-    rows.push(r);
-  }
-  /** 一张稀疏小表的行号列 ⇒ 每一项落在第几行（`at` 是与上一项的行号差，第一项与 −1 比）。 */
-  const lines = (ats: number[]): number[] => {
-    let i = -1;
-    return ats.map((g) => (i += g + 1));
-  };
-  lines(v.body.at).forEach((i, j) => {
-    const r = rows[i];
-    const b = v.body;
-    if (b.ch[j] > 0) r.ch = b.ch[j];
-    if (b.cj[j] > 0) r.cj = b.cj[j];
-    if (b.pl[j] > 0) r.pl = b.pl[j];
-    if (b.cb[j] > 0) r.cb = b.cb[j];
-    if (b.cl[j] > 0) r.cl = b.cl[j];
-  });
-  lines(v.sp.at).forEach((i, j) => (rows[i].sp = v.sp.v[j]));
-  lines(v.inputs.at).forEach((i, j) => {
-    rows[i].x = v.inputs.x[j];
-    if (v.inputs.ts[j] !== "") rows[i].ts = v.inputs.ts[j];
-  });
-  return rows;
-}
 
 /** 收到的那一份 ⇒ [`SessionFacts`]（`needs` 记上本机收到的时刻）。 */
 export function factsOf(v: WireFacts, receivedAt: number = Date.now()): SessionFacts {
@@ -269,22 +228,24 @@ export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: n
  */
 export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number, want?: number): Promise<SessionIndexResult> {
   try {
-    const rows: SkeletonFacts[] = [];
+    const pages: HistoryIndex[] = [];
+    let rows = 0;
     let at: number | null = fromOffset;
     let end = fromOffset;
-    while (at !== null && (want === undefined || rows.length < want)) {
+    while (at !== null && (want === undefined || rows < want)) {
       const args: HistoryIndexReq = { path: jsonlPath, offset: at };
-      if (want !== undefined) args.limit = want - rows.length;
+      if (want !== undefined) args.limit = want - rows;
       const page = await callTyped(origin, "history-index", args, budgetWithin(READ_BUDGET_MS));
-      rows.push(...unpackIndex(page));
+      pages.push(page);
+      rows += page.count;
       end = page.end;
       at = page.next ?? null;
     }
-    return { available: true, from: fromOffset, end, rows };
+    return { available: true, from: fromOffset, end, pages };
   } catch (e) {
     const reason = reasonOf(e, origin);
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
-    return { available: false, reason, failure, from: fromOffset, end: fromOffset, rows: [] };
+    return { available: false, reason, failure, from: fromOffset, end: fromOffset, pages: [] };
   }
 }
 

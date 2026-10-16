@@ -31,7 +31,10 @@ pub(crate) struct TurnRow {
     /// 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at: u64,
-    /// 你那句的 uuid（跳过去用）。
+    /// 你那句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
+    /// 你那句的 uuid（跳过去时按它找卡）。
     pub(crate) uuid: String,
     /// 起：你那句的时刻；止：这一轮最后一条主线记录的时刻（还没有回应 ⇒ 同起）。
     pub(crate) start: String,
@@ -82,14 +85,21 @@ pub(crate) struct TurnRow {
 pub(crate) struct Fold {
     /// 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
     pub(crate) after: String,
+    /// `after` 那一条的行号（界面按它与 `untilLine` 在骨架账本里取这一段的那几行）。
+    #[serde(rename = "afterLine")]
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) after_line: u64,
     /// 那一行的字（后端写好，界面按语气排版、段间加分隔）。
     pub(crate) parts: Vec<Part>,
     /// 那一行右端那一截。
     pub(crate) span: Span,
     /// 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
     /// 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
-    /// 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
     pub(crate) until: Option<String>,
+    /// `until` 那一条的行号（没有 ⇒ 没有）。
+    #[serde(rename = "untilLine")]
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) until_line: Option<u64>,
     /// 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
     pub(crate) phase: Phase,
     /// 这一段第一条 / 最后一条记录的时刻（右端那一截按它写，不出帧）。
@@ -148,6 +158,8 @@ const DUR_SLOT: &str = "{dur}";
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 struct Item {
     uuid: Option<String>,
+    /// 行号（划段时段的两头按它给）。
+    line: u64,
     ts: String,
     /// 露着（带正文 · 停下这一轮的那一条）。
     shown: bool,
@@ -286,7 +298,7 @@ impl TurnRow {
 
 impl Open {
     /// 收这一轮：合计 · 露着的 · 划段（每段的字 · 右端那一截 · 管到哪一条）· 回复头。`next` ＝ 下一轮你那句（还没有 ⇒ `None`）。
-    fn close(mut self, next: Option<&str>) -> TurnRow {
+    fn close(mut self, next: Option<(&str, u64)>) -> TurnRow {
         if let Some(i) = self.stop.take() {
             self.items[i].shown = true;
         }
@@ -314,20 +326,22 @@ impl Open {
         );
         r.reply = reply_head(&self.reply_text);
         // 划段：露着的那一条把过程隔开；一段从「你那句 / 露着的某一条」之后起，到下一条露着的为止。
-        let mut after = r.uuid.clone();
+        let mut after = (r.uuid.clone(), r.line);
         let mut seg: Option<(Tally, String, String)> = None;
         let mut folds = Vec::new();
         let flush = |seg: &mut Option<(Tally, String, String)>,
-                     after: &str,
-                     until: Option<&str>,
+                     after: &(String, u64),
+                     until: Option<(&str, u64)>,
                      folds: &mut Vec<Fold>| {
             if let Some((tally, start, end)) = seg.take() {
                 if let Some(parts) = tally.parts() {
                     folds.push(Fold {
-                        after: after.to_string(),
+                        after: after.0.clone(),
+                        after_line: after.1,
                         parts,
                         span: Span::default(),
-                        until: until.map(str::to_string),
+                        until: until.map(|(u, _)| u.to_string()),
+                        until_line: until.map(|(_, l)| l),
                         phase: Phase::Idle,
                         start,
                         end,
@@ -338,9 +352,9 @@ impl Open {
         };
         for it in &self.items {
             if let (true, Some(u)) = (it.shown, it.uuid.as_ref()) {
-                flush(&mut seg, &after, Some(u), &mut folds);
+                flush(&mut seg, &after, Some((u, it.line)), &mut folds);
                 r.shown.push(u.clone());
-                after = u.clone();
+                after = (u.clone(), it.line);
                 continue;
             }
             let (tally, start, end) = seg.get_or_insert_with(Default::default);
@@ -511,7 +525,7 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 /// 一条主线记录喂进开着的那一轮。
-fn feed(tree: &str, t: &mut Open, v: &Value) {
+fn feed(tree: &str, t: &mut Open, v: &Value, line: u64) {
     let ts = v.get("timestamp").and_then(Value::as_str).unwrap_or("");
     let uuid = v
         .get("uuid")
@@ -519,6 +533,7 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
         .filter(|u| !u.is_empty());
     let mut it = Item {
         uuid: uuid.map(str::to_string),
+        line,
         ts: ts.to_string(),
         ..Item::default()
     };
@@ -657,7 +672,7 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
     t.items.push(it);
 }
 
-/// 逐条记录攒轮次：[`TurnScan::line`] 收一条（`at` = 它的字节位置），新的一句收尾了上一轮就交出上一轮；
+/// 逐条记录攒轮次：[`TurnScan::line`] 收一条（`at` = 它的字节位置，`line` = 它的行号），新的一句收尾了上一轮就交出上一轮；
 /// [`TurnScan::finish`] 交出还开着的那一轮。可以抄一份接着扫（骨架落的就是它：还没收尾那一轮的扫描状态）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TurnScan {
@@ -763,7 +778,7 @@ impl Default for TurnScan {
 }
 
 impl TurnScan {
-    pub(crate) fn line(&mut self, at: u64, v: &Value) -> Option<TurnRow> {
+    pub(crate) fn line(&mut self, at: u64, line: u64, v: &Value) -> Option<TurnRow> {
         let spoke = crate::agents::user_text_of(self.tree, v);
         if let Some(said) = user_input_given(v, spoke.as_ref()) {
             let speech = spoke.and_then(|s| s.speech()).unwrap_or_default();
@@ -781,11 +796,12 @@ impl TurnScan {
                     .filter(|(_, q)| q == text)
                     .map(|(id, _)| id.clone())
                     .collect();
-                t.close(Some(&said.uuid))
+                t.close(Some((&said.uuid, line)))
             });
             self.open = Some(Open {
                 row: TurnRow {
                     at,
+                    line,
                     uuid: said.uuid,
                     end: said.timestamp.clone(),
                     start: said.timestamp,
@@ -806,7 +822,7 @@ impl TurnScan {
             t.queued.push((crate::agents::line_id(at), q));
         }
         if let Some(t) = self.open.as_mut() {
-            feed(self.tree, t, v);
+            feed(self.tree, t, v, line);
         }
         None
     }

@@ -132,6 +132,7 @@
         "after": "beta",
         "before": "alpha",
         "kind": "user",
+        "line": 0,
         "matched": "zqx",
         "tsMs": 0,
         "tsText": "",
@@ -142,6 +143,7 @@
         "after": "",
         "before": "gamma",
         "kind": "assistant",
+        "line": 1,
         "matched": "zqx",
         "tsMs": 0,
         "tsText": "",
@@ -212,6 +214,10 @@
         "t1",
         "t2"
       ],
+      "u": [
+        "in-1",
+        "in-2"
+      ],
       "x": [
         "alpha zqx beta",
         "delta"
@@ -243,12 +249,6 @@
       2,
       1,
       1
-    ],
-    "u": [
-      "in-1",
-      "out-1",
-      "meta-1",
-      "in-2"
     ]
   },
   "history-turns": {
@@ -267,6 +267,7 @@
         "folds": [
           {
             "after": "t-1",
+            "afterLine": 0,
             "parts": [
               {
                 "text": "过程",
@@ -283,10 +284,12 @@
               "text": "",
               "to": null
             },
-            "until": "t-3"
+            "until": "t-3",
+            "untilLine": 2
           },
           {
             "after": "t-3",
+            "afterLine": 2,
             "parts": [
               {
                 "text": "过程",
@@ -307,10 +310,12 @@
               "text": "",
               "to": null
             },
-            "until": "t-8"
+            "until": "t-8",
+            "untilLine": 7
           }
         ],
         "landed": [],
+        "line": 0,
         "peers": 0,
         "phase": "idle",
         "reply": "r1\nr2\nr3",
@@ -337,6 +342,7 @@
         "folds": [
           {
             "after": "t-9",
+            "afterLine": 8,
             "parts": [
               {
                 "text": "过程",
@@ -353,10 +359,12 @@
               "text": "",
               "to": null
             },
-            "until": null
+            "until": null,
+            "untilLine": null
           }
         ],
         "landed": [],
+        "line": 8,
         "peers": 0,
         "phase": "idle",
         "reply": "",
@@ -377,12 +385,14 @@
       {
         "at": 0,
         "excerpt": "alpha zqx beta",
+        "line": 0,
         "timestamp": "t1",
         "uuid": "in-1"
       },
       {
         "at": 424,
         "excerpt": "delta",
+        "line": 3,
         "timestamp": "t2",
         "uuid": "in-2"
       }

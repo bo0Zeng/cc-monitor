@@ -24,6 +24,10 @@ pub(crate) struct UserInputRow {
     #[serde(default)]
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at: u64,
+    /// 这一句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。同 `at`，由扫的那一处填。
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) line: u64,
     pub(crate) uuid: String,
     /// 记录的 `timestamp`；没有 ⇒ 空串。
     pub(crate) timestamp: String,
@@ -59,6 +63,7 @@ pub(crate) fn user_input_given(
     let body = body.as_str();
     Some(UserInputRow {
         at: 0,
+        line: 0,
         uuid: uuid.to_string(),
         timestamp: v
             .get("timestamp")

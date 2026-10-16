@@ -23,7 +23,7 @@ pub(crate) struct IndexRow {
     /// 不进界面（元数据 · 解析不出 · 认不出）⇒ 省略。判定在适配层（注册表 `RecordFace.class`，与它的翻译表对拍）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) t: Option<crate::agents::record::RecordClass>,
-    /// `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚）。
+    /// `uuid`（帧面不逐行运它：只在用户输入那张小表里带；扫描图按它认一条记录在第几轮）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) u: Option<String>,
     /// 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出）。

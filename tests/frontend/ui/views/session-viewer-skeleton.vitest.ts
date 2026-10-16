@@ -23,6 +23,7 @@ import {
   expectLoaded,
   userLine,
   viewerRig,
+  lineOf,
   type RigPayload,
 } from "../../../test-support/session-viewer-rig";
 import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer";
@@ -65,7 +66,7 @@ async function mount(scrollToUuid?: string): Promise<SessionViewer> {
     displayTitle: "T",
     origin: LOCAL_ORIGIN,
     suppressBranch: true,
-    ...(scrollToUuid === undefined ? {} : { scrollToUuid }),
+    ...(scrollToUuid === undefined ? {} : { scrollTo: { uuid: scrollToUuid, line: lineOf(scrollToUuid) } }),
   });
   expectLoaded(v.element);
   await settle();
@@ -145,7 +146,7 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     viewerRig.index = index();
     const v = await mount();
     vi.mocked(invoke).mockClear();
-    const el = await (v as unknown as { scrollToMessage(u: string): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage("u150"); // seq 300
+    const el = await (v as unknown as { scrollToMessage(to: { uuid: string; line: number }): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage({ uuid: "u150", line: lineOf("u150") }); // seq 300
     expect(el?.dataset.id).toBe("u150");
     expect(ranges().length).toBe(1);
     const g = gaps(v.element);
@@ -160,7 +161,7 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     viewerRig.index = index();
     const v = await mount();
     viewerRig.failPage = true;
-    const got = (v as unknown as { scrollToMessage(u: string): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage("u150");
+    const got = (v as unknown as { scrollToMessage(to: { uuid: string; line: number }): Promise<HTMLElement | null> | HTMLElement | null }).scrollToMessage({ uuid: "u150", line: lineOf("u150") });
     await expect(Promise.resolve(got)).rejects.toThrow("devbox 断开");
     expect(gaps(v.element)).toEqual([[0, 700]]);
   });

@@ -31,7 +31,6 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import {
   readTurns,
   factsOf,
-  unpackIndex,
   failureOf,
   findInSession,
   FIND_LIMIT,
@@ -41,6 +40,8 @@ import {
   readSessionIndex,
 } from "../../../src/frontend/ui/session-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
+import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
+import { outlineSeedFromIndex } from "../../../src/frontend/ui/views/outline-source";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
@@ -54,27 +55,28 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/se
 beforeEach(() => invokeMock.mockReset());
 
 describe("〔C4b〕会话读面三问：按形状收", () => {
-  it("★★ 金样：后端真出的三份成品就是生成的那几个类型（索引装回逐行）", () => {
+  it("★★ 金样：后端真出的三份成品就是生成的那几个类型（索引按列收进骨架账本；索引带出的大纲 ＝ 大纲那一问）", () => {
     const index = golden["history-index"] as HistoryIndex;
-    const idx = { from: index.from, end: index.end, rows: unpackIndex(index) };
-    expect([idx.from, idx.end, idx.rows.length, index.next]).toEqual([0, 537, 4, null]);
-    expect(idx.rows.map((r) => [r.o, r.n, r.u, r.t])).toEqual([
-      [0, 100, "in-1", "said"],
-      [100, 194, "out-1", "reply"],
-      [295, 129, "meta-1", "said"],
-      [424, 113, "in-2", "said"],
+    expect([index.from, index.end, index.count, index.next]).toEqual([0, 537, 4, null]);
+    const ledger = new SkeletonLedger(0, [index]);
+    expect(Array.from({ length: ledger.count }, (_, i) => ledger.factsOf(i)).map((r) => [r?.o, r?.n, r?.t])).toEqual([
+      [0, 100, "said"],
+      [100, 194, "reply"],
+      [295, 129, "said"],
+      [424, 113, "said"],
     ]);
     const ui = golden["history-user-inputs"] as UserInputs;
     expect([ui.from, ui.end, ui.next]).toEqual([0, 537, null]);
     expect(ui.entries).toEqual([
-      { at: 0, uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
-      { at: 424, uuid: "in-2", excerpt: "delta", timestamp: "t2" },
+      { at: 0, line: 0, uuid: "in-1", excerpt: "alpha zqx beta", timestamp: "t1" },
+      { at: 424, line: 3, uuid: "in-2", excerpt: "delta", timestamp: "t2" },
     ]);
+    expect(outlineSeedFromIndex({ available: true, end: index.end, pages: [index] })).toEqual({ entries: ui.entries, end: ui.end });
     const f = golden["history-find"] as HistoryFind;
     expect(f.total).toBe(2);
-    expect(f.hits.map((h) => [h.uuid, h.kind, h.before, h.matched, h.after, h.turn, h.tsMs])).toEqual([
-      ["in-1", "user", "alpha", "zqx", "beta", 1, 0],
-      ["out-1", "assistant", "gamma", "zqx", "", 1, 0],
+    expect(f.hits.map((h) => [h.uuid, h.line, h.kind, h.before, h.matched, h.after, h.turn, h.tsMs])).toEqual([
+      ["in-1", 0, "user", "alpha", "zqx", "beta", 1, 0],
+      ["out-1", 1, "assistant", "gamma", "zqx", "", 1, 0],
     ]);
   });
 
@@ -103,7 +105,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-index"]));
     const idx = await readSessionIndex("<local>", "/p/s.jsonl", 7);
     expect(sent()).toEqual(["<local>", "history-index", { path: "/p/s.jsonl", offset: 7 }]);
-    expect([idx.available, idx.end, idx.rows.length]).toEqual([true, 537, 4]);
+    expect([idx.available, idx.end, idx.pages]).toEqual([true, 537, [golden["history-index"]]]);
 
     invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-user-inputs"]));
     const ui = await listUserInputs("devbox", "/p/s.jsonl", 42);
@@ -136,7 +138,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
 
     invokeMock.mockReset().mockRejectedValueOnce(NO_CHANNEL);
     const c = await readSessionIndex("devbox", "/p/s.jsonl", 0);
-    expect([c.available, c.rows]).toEqual([false, []]);
+    expect([c.available, c.pages]).toEqual([false, []]);
     expect(c.reason).toContain(copyText("chanCaller.said.unreachable"));
 
   });
@@ -386,7 +388,7 @@ describe("8a b：分页取", () => {
       { path: "/p/s.jsonl", offset: 0 },
       { path: "/p/s.jsonl", offset: 300 },
     ]);
-    expect(all.rows.length).toBe(2 * index.count);
+    expect(all.pages.map((p) => p.count)).toEqual([index.count, index.count]);
 
     invokeMock.mockReset();
     invokeMock.mockResolvedValueOnce(chanReply(page(0, 300))).mockResolvedValueOnce(chanReply(page(300, 600)));
@@ -395,6 +397,6 @@ describe("8a b：分页取", () => {
       { path: "/p/s.jsonl", offset: 0, limit: index.count + 1 },
       { path: "/p/s.jsonl", offset: 300, limit: 1 },
     ]);
-    expect(some.rows.length).toBeGreaterThanOrEqual(index.count + 1);
+    expect(some.pages.reduce((n, p) => n + p.count, 0)).toBeGreaterThanOrEqual(index.count + 1);
   });
 });

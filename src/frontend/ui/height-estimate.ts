@@ -365,8 +365,6 @@ export interface SkeletonFacts {
   n: number;
   /** 这一行会翻成的通用记录的类（与读正文时那条记录的 `t` 同一个词；不进界面 ⇒ 缺） */
   t?: LineRecord["t"];
-  u?: string;
-  sc?: boolean;
   /** user 记录是谁说的（后端判好的来源；人说的与工具结果省略） */
   sp?: string;
   /** 正文字符数（代码块外） */

@@ -7,7 +7,11 @@ export type UserInputRow = {
 /**
  * 这一句那一行在记录里的字节起点（分页的续点按它给；逐条认的那一处不知道位置时是 0，由扫的那一处填）。
  */
-at: number, uuid: string, 
+at: number, 
+/**
+ * 这一句的行号（与实时行的 `seq` 同一个空间；跳过去时按它物化）。同 `at`，由扫的那一处填。
+ */
+line: number, uuid: string, 
 /**
  * 记录的 `timestamp`；没有 ⇒ 空串。
  */

@@ -193,6 +193,8 @@ impl Scan {
                     self.rest.activity = Some(a);
                 }
             }
+            // 这一行的行号（不算一行的那几行与下一行同号，它们解析不出记录、用不上）。
+            let line = self.starts.len() as u64;
             let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
@@ -208,9 +210,10 @@ impl Scan {
             };
             if let Some(mut row) = super::recognize::user_inputs::user_input_of(&v) {
                 row.at = start;
+                row.line = line;
                 self.rest.inputs.push(row);
             }
-            if let Some(row) = self.rest.open.line(start, &v) {
+            if let Some(row) = self.rest.open.line(start, line, &v) {
                 self.rest.turns.push(row);
             }
             if super::recognize::facts::could_matter(body, &self.facts) {
