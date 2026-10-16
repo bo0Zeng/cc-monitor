@@ -141,7 +141,11 @@ def drawer(item):
     to_chat()
     tap(t("mobDrawer.open.aria"))
     time.sleep(1.5)
-    tap(item)
+    # 抽屉盖在那一屏上：同一个字底下那一屏也有（对话列表的顶栏标题就叫「对话」）⇒ 点抽屉里那一处（画在最上面、节点排在最后）。
+    if sum(1 for n in ui.nodes() if item == n.get("text")) > 1:
+        tap_last(item)
+    else:
+        tap(item)
     time.sleep(2)
 
 
@@ -494,10 +498,6 @@ def frames(cmd, args, within=20000):
 
 
 SMOKE_ALIAS = "smk"
-
-
-def tmux_sessions():
-    return [l for l in rig("tmux", "list-sessions", "-F", "#{session_name}").stdout.splitlines() if l]
 
 
 def seed_alias():
