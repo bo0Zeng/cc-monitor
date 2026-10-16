@@ -594,10 +594,6 @@ export async function bindEvents(
       hold.owed += 1;
       owedHolds.add(hold);
     };
-    const unread = (what: string, v: unknown): void => {
-      owe();
-      console.warn(`[events] ${what}那一格形状不对，不收：`, JSON.stringify(v).slice(0, 200));
-    };
     for (const it of items) {
       if (it.t === "frame") {
         let f: SessionStreamFrame | null = null;
@@ -653,15 +649,24 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "runs" in f) {
           const runs = decodeRunsPayload(f.runs);
           if (runs) take({ kind: "runs", payload: runs });
-          else unread("运行表", f.runs);
+          else {
+            owe();
+            console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
+          }
         } else if (f !== null && typeof f === "object" && "branch" in f) {
           const branch = decodeBranchPayload(f.branch);
           if (branch) take({ kind: "branch", payload: branch });
-          else unread("主线外清单", f.branch);
+          else {
+            owe();
+            console.warn("[events] 主线外清单那一格形状不对，不收：", JSON.stringify(f.branch).slice(0, 200));
+          }
         } else if (f !== null && typeof f === "object" && "watch" in f) {
           const w = decodeWatchPayload(f.watch);
           if (w) take({ kind: "watch", origin, payload: w });
-          else unread("上流点", f.watch);
+          else {
+            owe();
+            console.warn("[events] 上流点那一格形状不对，不收：", JSON.stringify(f.watch).slice(0, 200));
+          }
         } else if (f !== null && typeof f === "object" && "idle" in f) {
           take({ kind: "idle", sessionId: f.idle.session_id, switch: f.idle.switch, order: f.idle.order });
         } else if (f !== null && typeof f === "object" && "ended" in f) {
