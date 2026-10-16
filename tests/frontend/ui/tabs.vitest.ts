@@ -2532,7 +2532,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
     const tab = home(tm).store.tabs.get("l1")!;
     const step = (id: string): HTMLElement => {
-      const line = buildStepLine("Bash", { tool: "Bash", arg: id, known: true } as never, "", id);
+      const line = buildStepLine("Bash", { tool: "Bash", arg: id, known: true } as never, id);
       tab.streamEl.appendChild(line);
       return line;
     };

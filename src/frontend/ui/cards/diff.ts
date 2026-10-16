@@ -1,21 +1,13 @@
 /**
- * Edit / Write / MultiEdit 工具调用的行级 diff 渲染（issue #14）。
+ * 写类工具（卡型 `diff`）展开的行级 diff：改前改后由后端给（`steps[id].body.changes`），这里只算行差、画。
  *
- * 两层严格分离：
- * - **纯函数层**（本文件上半，DOM-free）：`diffLines` + 三个 input normalizer。
- *   不 import 任何 DOM / render 模块，可被 `diff.test.ts` 用 `npx tsx` 独立单测。
- * - **DOM 层**（下半，见 step 3 追加）：`buildDiffBody` 仅用 createElement + textContent
- *   构建元素 —— 绕开 DOMPurify（sanitize 只作用于 renderMarkdown 的字符串输出），
- *   且三引号 / HTML / CJK / emoji 都按字面安全渲染。
- *
- * 关键约束：
- * - **迭代 LCS，非递归**（INVARIANT §17b）：上千行的 Edit 在 WebView2 上递归会 RangeError。
- *   用 DP 矩阵 + 迭代回溯。再加 cell-budget 守卫，超大输入退化成"整删+整增"而不分配巨矩阵。
- * - **容错 schema**（INVARIANT §18）：`tool_use.input` 是 `unknown`，normalizer 运行时校验
- *   字段类型，任何缺失 / 非字符串一律返 `null`，交由调用方回退 prettyJson。
+ * - **纯函数层**（上半，DOM-free）：`diffLines`，可被 `diff.test.ts` 用 `npx tsx` 独立单测。
+ * - **DOM 层**（下半）：`buildDiffBody` 仅用 createElement + textContent，绕开 DOMPurify，三引号 / HTML / CJK / emoji 按字面渲染。
+ * - **迭代 LCS，非递归**（INVARIANT §17b）：上千行在 WebView2 上递归会 RangeError；再加 cell-budget 守卫，超大输入退化成「整删 + 整增」。
  */
 
 import { copyText } from "../copy-table";
+import type { TextChange } from "../generated/TextChange";
 
 // === 类型（纯数据，无 DOM） ===
 
@@ -220,79 +212,10 @@ export function diffLines(
   return { rows, truncated, addCount, delCount };
 }
 
-// === 纯函数：input normalizer（运行时校验 unknown → 旧/新文本对） ===
-
-export interface OldNew {
-  old: string;
-  new: string;
-}
-
-function asRecord(input: unknown): Record<string, unknown> | null {
-  return input && typeof input === "object" ? (input as Record<string, unknown>) : null;
-}
-
-/** Edit: {old_string, new_string}。任一缺失 / 非字符串 → null。 */
-export function normalizeEditInput(input: unknown): OldNew | null {
-  const r = asRecord(input);
-  if (!r) return null;
-  const o = r.old_string;
-  const n = r.new_string;
-  if (typeof o !== "string" || typeof n !== "string") return null;
-  return { old: o, new: n };
-}
-
-/** Write: {content} → 整块新增（old=''）。content 非字符串 → null。 */
-export function normalizeWriteInput(input: unknown): OldNew | null {
-  const r = asRecord(input);
-  if (!r) return null;
-  const c = r.content;
-  if (typeof c !== "string") return null;
-  return { old: "", new: c };
-}
-
-/** MultiEdit: {edits:[{old_string,new_string}]}。非数组 / 空 / 任一项不合规 → null（整卡回退）。 */
-export function normalizeMultiEditInput(input: unknown): OldNew[] | null {
-  const r = asRecord(input);
-  if (!r) return null;
-  const edits = r.edits;
-  if (!Array.isArray(edits) || edits.length === 0) return null;
-  const out: OldNew[] = [];
-  for (const e of edits) {
-    const er = asRecord(e);
-    if (!er) return null;
-    const o = er.old_string;
-    const n = er.new_string;
-    if (typeof o !== "string" || typeof n !== "string") return null;
-    out.push({ old: o, new: n });
-  }
-  return out;
-}
-
 // === DOM 层：仅 createElement + textContent（绕开 DOMPurify） ===
 //
 // 这一段是唯一碰 DOM 的代码。纯函数层（上方）import 不到这里，故 diff.test.ts
 // 能在无 DOM 的 node 下独立单测纯逻辑。buildDiffBody 用 document，只能手测。
-
-// 哪些工具走 diff 渲染由那台后端判（卡型 `diff`，随记录成品带来；NotebookEdit 不在内）。
-
-/**
- * 纯（无 DOM）：按工具名把 `unknown` input 归一化成 diff 段（old/new 对数组）。
- * 未知工具 / 任一畸形 → null（调用方回退 prettyJson）。可被 node 单测。
- */
-export function diffSegments(toolName: string, input: unknown): OldNew[] | null {
-  if (toolName === "Edit") {
-    const e = normalizeEditInput(input);
-    return e ? [e] : null;
-  }
-  if (toolName === "Write") {
-    const w = normalizeWriteInput(input);
-    return w ? [w] : null;
-  }
-  if (toolName === "MultiEdit") {
-    return normalizeMultiEditInput(input);
-  }
-  return null;
-}
 
 function gutterMark(type: DiffRowType): string {
   if (type === "add") return "+";
@@ -330,7 +253,7 @@ interface RenderTally {
 }
 
 /** 把所有 diff 段渲染进 root（MultiEdit 多段各加一个段标题），统计行数/增删/截断。 */
-function renderSegmentsInto(root: HTMLElement, segments: OldNew[], opts?: DiffOpts): RenderTally {
+function renderSegmentsInto(root: HTMLElement, segments: readonly TextChange[], opts?: DiffOpts): RenderTally {
   const multi = segments.length > 1;
   const tally: RenderTally = { totalRows: 0, truncated: false, addCount: 0, delCount: 0 };
   for (let i = 0; i < segments.length; i++) {
@@ -354,19 +277,12 @@ function renderSegmentsInto(root: HTMLElement, segments: OldNew[], opts?: DiffOp
 const FULL_OPTS: DiffOpts = { maxLines: Number.MAX_SAFE_INTEGER };
 
 /**
- * 构建 diff 折叠条 body 元素。仅 createElement + textContent，**从不** innerHTML / renderMarkdown。
- *
- * 任何异常 / 畸形 input / 未知工具 / 无可显示内容（如空 Write）→ 返 null，
- * 调用方回退现有 prettyJson `<pre>`（INVARIANT §17a / §18）。返回单个 root 元素
- * （非 fragment），便于以 `wrap.insertBefore(el, wrap.firstChild)` 替换原 `<pre>`。
- *
- * 截断时附 "显示完整 diff" 按钮（复用 .block-body-show-full 样式）：用户点击（一次）后
- * 整体重渲染完整内容 —— 这发生在主动展开之后、脱离 lazy/replay 期，不影响 §21 滚动稳定性。
+ * 构建 diff 折叠条 body 元素（改动是后端给的 `steps[id].body.changes`）。仅 createElement + textContent，**从不** innerHTML / renderMarkdown。
+ * 无可显示内容（如空的新写）/ 异常 → 返 null，调用方回退入参原文 `<pre>`。截断时附「显示完整 diff」按钮，点一次整体重渲染完整内容。
  */
-export function buildDiffBody(toolName: string, input: unknown): HTMLElement | null {
+export function buildDiffBody(segments: readonly TextChange[]): HTMLElement | null {
   try {
-    const segments = diffSegments(toolName, input);
-    if (!segments || segments.length === 0) return null;
+    if (segments.length === 0) return null;
 
     const root = document.createElement("div");
     root.className = "block-body block-args block-diff";

@@ -9,7 +9,8 @@
 use crate::agents::PlanTitleExt as _;
 use crate::agents::StepResultExt as _;
 use crate::agents::{
-    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepResult, ToolStep,
+    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepBody, StepResult, TextChange,
+    ToolStep,
 };
 
 /// 一次改动的 diff 至多带多少字（各段行正文的字数之和）：超了就只给前几段、立 `patchTruncated`，**整段不劈**；
@@ -92,12 +93,46 @@ const NOTE_FIELD: &str = "description";
 /// 主参数至多留多少字（一行；协议上的定长，两个前端都不再截）。
 const ARG_MAX: usize = 200;
 
-/// 一次工具调用 ⇒ 它的一行人话（工具名 · 主参数 · 说明 · 认不认得）。
+/// 一次工具调用 ⇒ 它的一行人话（工具名 · 主参数 · 说明 · 认不认得）与展开要画的东西（[`body_of`]）。
 pub(crate) fn step_of(name: &str, input: &Value) -> ToolStep {
     let mut s = named(name, input);
     s.text = (!s.known)
         .then(|| crate::common::cells::Words(copy_core::copy_text("stream.step.unknown", &[])));
+    s.body = body_of(name, input);
     s
+}
+
+/// 展开那一格：写类工具的改前改后（`Edit` 的 `old_string` / `new_string` · `Write` 的 `content` · `MultiEdit` 的 `edits[]`）·
+/// 命令的整行（`command`）。形状不对（缺格 · 非字符串 · 改几处那张表空或有一项不对）⇒ `None`。
+fn body_of(name: &str, input: &Value) -> Option<StepBody> {
+    let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+    let change = |v: &Value| {
+        Some(TextChange {
+            old: text(v, "old_string")?,
+            new: text(v, "new_string")?,
+        })
+    };
+    let changes = match name {
+        "Edit" => vec![change(input)?],
+        "Write" => vec![TextChange {
+            old: String::new(),
+            new: text(input, "content")?,
+        }],
+        "MultiEdit" => input
+            .get("edits")?
+            .as_array()
+            .filter(|e| !e.is_empty())?
+            .iter()
+            .map(change)
+            .collect::<Option<Vec<_>>>()?,
+        "Bash" => {
+            return text(input, "command")
+                .filter(|c| !c.is_empty())
+                .map(|line| StepBody::Command { line })
+        }
+        _ => return None,
+    };
+    Some(StepBody::Changes { changes })
 }
 
 /// [`step_of`] 的认法那一半（认不出的工具那一句由 [`step_of`] 添）。
@@ -110,11 +145,19 @@ fn named(name: &str, input: &Value) -> ToolStep {
             .filter(|s| !s.is_empty())
     };
     if let Some((_, k)) = PATH_TOOLS.iter().find(|(t, _)| *t == name) {
+        // 文件窗口按远端的 POSIX 路径定位：只给绝对路径（相对的会落到错的目录）。
+        let file = input
+            .get(*k)
+            .and_then(Value::as_str)
+            .filter(|p| p.starts_with('/'))
+            .map(str::to_string);
         return ToolStep {
             tool: name.to_string(),
             arg: field(k),
             path: true,
             note: None,
+            file,
+            body: None,
             known: true,
             text: None,
             ask: None,
@@ -128,6 +171,8 @@ fn named(name: &str, input: &Value) -> ToolStep {
             arg: field(k),
             path: false,
             note,
+            file: None,
+            body: None,
             known: true,
             text: None,
             ask: None,
@@ -138,6 +183,8 @@ fn named(name: &str, input: &Value) -> ToolStep {
         arg: None,
         path: false,
         note: None,
+        file: None,
+        body: None,
         known: BARE_TOOLS.contains(&name),
         text: None,
         ask: ask_of(name, input),

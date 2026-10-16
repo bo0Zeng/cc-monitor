@@ -233,6 +233,36 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=reply}.steps.*.body.changes[].new",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.changes[].old",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.kind",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.body.line",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
+          "path": "{t=reply}.steps.*.file",
+          "type": "string"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=reply}.steps.*.known",
           "type": "bool"
         },

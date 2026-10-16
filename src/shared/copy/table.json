@@ -3252,12 +3252,6 @@
       "zh": "会话索引未就绪",
       "args": []
     },
-    "cards.truncate.ellipsis": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{text}…",
-      "args": ["text"]
-    },
     "cards.markdown.showRest": {
       "kind": "action",
       "role": "按钮",

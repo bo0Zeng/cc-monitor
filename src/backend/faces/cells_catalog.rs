@@ -680,7 +680,7 @@ mod specimens {
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
-        ResultKind, SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
+        ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard, ToolStep, UserText,
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
@@ -845,6 +845,8 @@ mod specimens {
                             arg: some("ls"),
                             path: true,
                             note: some("n"),
+                            file: some("/f"),
+                            body: Some(StepBody::Command { line: s("l") }),
                             known: true,
                             text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Questions {
@@ -867,6 +869,13 @@ mod specimens {
                             arg: some("a"),
                             path: true,
                             note: some("n"),
+                            file: some("/f"),
+                            body: Some(StepBody::Changes {
+                                changes: vec![TextChange {
+                                    old: s("o"),
+                                    new: s("n"),
+                                }],
+                            }),
                             known: true,
                             text: Some(Words(s("t"))),
                             ask: Some(StepAsk::Plan {

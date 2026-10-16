@@ -228,11 +228,11 @@ pub enum ToolCard {
     Agent,
     /// agent 在等用户决定（默认展开，不收成过程里的一步）。
     Interactive,
-    /// 写类工具（参数按行级 diff 画）。
+    /// 写类工具：展开按行级 diff 画（[`StepBody::Changes`]）。
     Diff,
     /// 结果默认按 Markdown 画。
     Md,
-    /// 跑一行命令的工具：入参里 `command` 是那一行、`description` 是可缺的说明 —— 展开画命令本身，不画入参 JSON。
+    /// 跑一行命令的工具：展开画命令本身（[`StepBody::Command`]，说明在 [`ToolStep::note`]），不画入参 JSON。
     Command,
 }
 
@@ -247,8 +247,8 @@ pub struct ChildRunTag {
     pub kind: Option<String>,
 }
 
-/// 过程里一步的「一行人话」：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
-/// 怎么从入参里挑主参数与说明是各家的格式知识（`agents/<名>/steps.rs`）；界面只排版，不认入参结构。
+/// 过程里一步的「一行人话」与展开要画的东西：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
+/// 怎么从入参里读出这几格是各家的格式知识（`agents/<名>/steps.rs`）；界面只按这几格画，入参只当原文整份显示。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
@@ -263,10 +263,18 @@ pub struct ToolStep {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub path: bool,
-    /// 说明（Bash 的 `description` 那一类）。
+    /// 说明（命令那一句注一类）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub note: Option<String>,
+    /// 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub file: Option<String>,
+    /// 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub body: Option<StepBody>,
     /// 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
     pub known: bool,
     /// 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
@@ -278,6 +286,27 @@ pub struct ToolStep {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub ask: Option<StepAsk>,
+}
+
+/// 一步展开要画的东西（[`ToolStep::body`]）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StepBody {
+    /// 改了一份文件的哪几处（新写整份 ⇒ 一处、改前为空）。
+    Changes { changes: Vec<TextChange> },
+    /// 跑的那一行命令原样（多行、不截）。
+    Command { line: String },
+}
+
+/// 一处改动：改前 · 改后的原文。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct TextChange {
+    pub old: String,
+    pub new: String,
 }
 
 /// 提问 / 计划卡的内容（[`ToolStep::ask`]）。

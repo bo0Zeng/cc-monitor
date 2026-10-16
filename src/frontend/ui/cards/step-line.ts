@@ -66,11 +66,11 @@ const ICON_OF: Record<Exclude<StepState, "running" | "pending">, IconName> = {
 };
 
 /**
- * 一步那一行（放进 `<summary>`）。没有 `toolSteps` 那一格（老后端）⇒ 工具名 ＋ 调用方给的一句兜底。
+ * 一步那一行（放进 `<summary>`）。没有 `steps` 那一格（那一家没给）⇒ 只写工具名。
  * `call` ＝ 这一步的调用 id（会话事实按它说这一步还没结果时是什么样子）。
  * 返回的那一行之后由 [`settleStepLine`] 按结果改、由 [`paintWaiting`] 按事实改。
  */
-export function buildStepLine(name: string, step: ToolStep | undefined, fallbackArg: string, call?: string): HTMLElement {
+export function buildStepLine(name: string, step: ToolStep | undefined, call?: string): HTMLElement {
   const row = document.createElement("span");
   row.className = "step-line";
   if (call) row.dataset.call = call;
@@ -81,7 +81,7 @@ export function buildStepLine(name: string, step: ToolStep | undefined, fallback
   tool.textContent = step?.tool ?? name;
   const arg = document.createElement("span");
   arg.className = "step-arg";
-  const a = step ? (step.arg ?? "") : fallbackArg;
+  const a = step?.arg ?? "";
   // 不挂 `title`：展开那一步就看得到全文；属性里的 `<` `>` 各引擎序列化也不一样（秤 2 的 DOM 指纹按引擎对拍）。
   arg.textContent = step?.path ? middleEllipsis(a) : a;
   row.append(ic, tool, arg);

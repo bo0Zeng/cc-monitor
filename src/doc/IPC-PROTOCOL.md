@@ -202,7 +202,7 @@
 | 类 | 格 |
 |---|---|
 | `said`（人那一侧说的：人 · 工具结果 · 派活 · 来话 · 通知 …） | `who`（`UserText`：`speaker` 谁说的，`kind` 闭集 `human` `slashCommand` `bashInput` `bashOutput` `commandOutput` `taskNotification` `agentMessage` `peerSession` `coordinator` `agentTask` `system` `compactSummary` `interrupt` `toolResult`；`text` 要显示的正文；`pasted?` 粘贴块）· `blocks` · `results?`（工具调用 id ⇒ 结果一句：`ok` `rejected?` `lines?` `added?` `removed?` `files?` `answer?` `exitCode?` `file?` `patch?` `patchTruncated?`；`patch` 至多 32 KiB、整段不劈）· `cwd?` |
-| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
+| `reply`（代理的回复） | `blocks` · `model?` · `autoReply`（代理那一侧自动写的应答，不建卡）· `cards?`（工具调用 id ⇒ 卡型 `agent` `interactive` `diff` `md` `command`）· `steps?`（工具调用 id ⇒ 过程一行：`tool` · `arg?` · `path?` · `note?` · `known`；展开画的 `body?`：改动 `{kind: changes, changes: [{old, new}]}` · 命令 `{kind: command, line}`；可在文件窗口定位的绝对路径 `file?`。界面只按这几格画，不读 `tool_use.input` 的键）· `runs?`（工具调用 id ⇒ 派出的子运行 `{label, kind?}`）· `error?`（上游最终失败写的报错：`reason` 闭集 `overloaded` `quota` `network` `auth` `context` `unknown`，`status?` HTTP 状态码；报错正文在 `blocks` 里） |
 | `retry`（上游失败、将重试） | `reason`（同上闭集）· `attempt?` · `max?` |
 | `title`（会话标题） | `text` · `by`（`agent` 代理起的 · `user` 人起的） |
 | `queued`（人在一轮跑着时插进去的一句） | `who`（同 `said`） |

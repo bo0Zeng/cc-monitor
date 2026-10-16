@@ -424,10 +424,30 @@ data class LineRecord(
     val blocks: List<RecordBlock>?,
     val results: Map<String, StepResult>?,
     val autoReply: Boolean?,
+    val cards: Map<String, ToolCard>?,
     val steps: Map<String, ToolStep>?,
     val text: String?,
     val excerpt: String?,
 )
+
+/** 一个工具调用画成哪一种卡（核心判的；普通工具卡不列）。 */
+@JsonClass(generateAdapter = false)
+enum class ToolCard {
+    @Json(name = "agent")
+    AGENT,
+
+    @Json(name = "interactive")
+    INTERACTIVE,
+
+    @Json(name = "diff")
+    DIFF,
+
+    @Json(name = "md")
+    MD,
+
+    @Json(name = "command")
+    COMMAND,
+}
 
 @JsonClass(generateAdapter = false)
 enum class RecordKind {

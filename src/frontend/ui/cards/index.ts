@@ -36,7 +36,7 @@ import type { PendingCall, RetryOutcome } from "../session-reads";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { buildUnreadLine } from "./unread";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { firstLineOf, jsonPrefix, sizeText } from "../format";
+import { firstLineOf, sizeText } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { toast } from "../kit/toast";
@@ -502,7 +502,7 @@ function renderBlock(
           console.warn("interactive card fallback:", block.name, e);
         }
       }
-      return buildToolUseCard(block, ctx, card, step, facts.id);
+      return buildToolUseCard(block, ctx, step, facts.id);
     }
     case "tool_result": {
       return injectOrBuildToolResult(block, ctx, facts);
@@ -522,7 +522,7 @@ function renderBlock(
 /**
  * tool_use 折叠条结构：
  *   <details class="block-collapsible block-tool-use">
- *     <summary>🔧 ToolName  input-summary</summary>
+ *     <summary>一步那一行（`buildStepLine`）</summary>
  *     <div class="block-body-wrap">
  *       <pre class="block-args">     ← lazy 渲染（首次展开时）
  *       <div class="block-tool-result-inline"> ← 由 injectOrBuildToolResult 追加
@@ -532,22 +532,19 @@ function renderBlock(
 function buildToolUseCard(
   block: Extract<Block, { type: "tool_use" }>,
   ctx: RenderContext,
-  card: ToolCard | undefined,
   step: ToolStep | undefined,
   recordId: string,
 ): HTMLElement {
-  // 入参被出口省掉了（`omit` 声明）⇒ 折起那一行照画（`steps` 是核心给的），展开那一下按记录 id 取回那一块。
+  // 入参与展开那一格被出口省掉了（`omit` 声明）⇒ 折起那一行照画，展开那一下按记录 id 取回那一块与它的 `steps` 那一格。
   const omitted = !("input" in block);
   const callId = block.id;
-  const command = card === "command" && !omitted ? commandOf(block.input) : null;
-  const summary = command ? commandSummary(command.command) : omitted ? "" : summarizeInput(block.input);
   const d = document.createElement("details");
   d.className = "block-collapsible block-tool-use";
 
-  // 一步一行（§5.2.3）：主参数与说明是后端给的（`steps`）；没有那一格 ⇒ 工具名 ＋ 入参一句兜底。
+  // 一步一行（§5.2.3）：主参数与说明是后端给的（`steps`）；没有那一格 ⇒ 只写工具名。
   const s = document.createElement("summary");
   s.className = "block-summary block-step";
-  const line = buildStepLine(block.name, step, summary, block.id);
+  const line = buildStepLine(block.name, step, block.id);
   s.appendChild(line);
   d.appendChild(s);
   // 会话事实已经说了这一步是什么样子 ⇒ 建出来就照画；还没说 ⇒ 不画状态，等事实（不按「没有结果」当在跑）。
@@ -570,39 +567,32 @@ function buildToolUseCard(
         ctx,
         recordId,
         wrap,
-        (rec) => blocksOf(rec).find((b): b is Extract<Block, { type: "tool_use" }> => b.type === "tool_use" && b.id === callId),
-        (full) => {
+        (rec) => {
+          const full = blocksOf(rec).find((b): b is Extract<Block, { type: "tool_use" }> => b.type === "tool_use" && b.id === callId);
+          return full && { block: full, step: stepFactsOf(rec).steps[callId] };
+        },
+        (got) => {
           argsRendered = true;
-          buildArgs(full, card === "command" ? commandOf(full.input) : null);
+          buildArgs(got.block, got.step);
         },
       ).then(() => {
         fetching = false;
       });
       return;
     }
-    buildArgs(block, command);
+    buildArgs(block, step);
     argsRendered = true;
   });
 
-  const buildArgs = (block: Extract<Block, { type: "tool_use" }>, command: { command: string; description: string | null } | null): void => {
+  // 展开画后端给的那一格（`steps[id].body`：改动 ⇒ 行级 diff · 命令 ⇒ 命令本身、说明作一行注）；没有 · 画不出 ⇒ 入参原文。
+  const buildArgs = (block: Extract<Block, { type: "tool_use" }>, step: ToolStep | undefined): void => {
+    const body = step?.body;
     let bodyEl: HTMLElement | null = null;
-    // issue #14：Edit/Write/MultiEdit → 行级 diff 卡；任何异常 / 畸形 / 未知工具
-    // 回退现有 prettyJson <pre>（双重 try/catch：这里 + buildDiffBody 内部）。
-    // 写类工具（后端判的卡型 `diff`）→ 行级 diff 卡。
-    if (card === "diff") {
-      try {
-        bodyEl = buildDiffBody(block.name, block.input);
-      } catch {
-        bodyEl = null;
-      }
-    }
-    // 命令卡（后端判的卡型 `command`）→ 命令本身，说明作一行注；形状不对就照常回退 JSON。
-    if (command) {
+    if (body?.kind === "changes") bodyEl = buildDiffBody(body.changes);
+    if (body?.kind === "command") {
       const pre = document.createElement("pre");
       pre.className = "block-body block-args";
-      pre.textContent = command.description
-        ? `${copyText("cards.command.note", { text: command.description })}\n${command.command}`
-        : command.command;
+      pre.textContent = step?.note ? `${copyText("cards.command.note", { text: step.note })}\n${body.line}` : body.line;
       bodyEl = pre;
     }
     if (!bodyEl) {
@@ -613,46 +603,15 @@ function buildToolUseCard(
     }
     // args/diff 始终在 result 之前（injectOrBuildToolResult 把 result append 到 wrap 末尾）
     wrap.insertBefore(bodyEl, wrap.firstChild);
-    // 远端会话 ＋ 带 file_path 的工具（Read / Write / Edit …）⇒ body 顶上一条「在文件窗口里定位」的链接。
+    // 远端会话 ＋ 这一步说的是一份文件（`steps[id].file`）⇒ body 顶上一条「在文件窗口里定位」的链接。
     // 放 body 不放 summary：summary 会被 tool_result 注入重写。
-    const fp = fileInputPath(block.input);
-    if (isRemoteOrigin(ctx.origin) && fp) {
-      wrap.insertBefore(buildRemoteFileLink(ctx.origin, fp), wrap.firstChild);
+    if (isRemoteOrigin(ctx.origin) && step?.file) {
+      wrap.insertBefore(buildRemoteFileLink(ctx.origin, step.file), wrap.firstChild);
     }
   };
 
   ctx.toolUseElements.set(block.id, d);
   return d;
-}
-
-/**
- * 命令卡（卡型 `command`）的入参：`command` 是那一行命令，`description` 是可缺的一句说明。形状不是这样 ⇒ `null`（照普通卡画）。
- */
-function commandOf(input: unknown): { command: string; description: string | null } | null {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  const o = input as Record<string, unknown>;
-  if (typeof o.command !== "string" || o.command.length === 0) return null;
-  const description = typeof o.description === "string" && o.description.trim() ? o.description.trim() : null;
-  return { command: o.command, description };
-}
-
-/** 命令卡收着时那一行：命令的第一行（多行或太长 ⇒ 截到 60 字加省略号）。 */
-function commandSummary(command: string): string {
-  const { line } = firstLineOf(command, 60);
-  return command.trim() === line ? line : copyText("cards.truncate.ellipsis", { text: line });
-}
-
-/**
- * tool_use 输入里能在文件窗口定位的路径：Read / Write / Edit / MultiEdit 的 `file_path`、NotebookEdit 的 `notebook_path`。
- * 只认绝对 POSIX 路径（相对路径会解析到错的目录）；否则 null。
- */
-export function fileInputPath(input: unknown): string | null {
-  if (input && typeof input === "object") {
-    const obj = input as Record<string, unknown>;
-    const fp = obj.file_path ?? obj.notebook_path;
-    if (typeof fp === "string" && fp.startsWith("/")) return fp;
-  }
-  return null;
 }
 
 /** 远端文件路径的可点元素：点了在文件窗口里定位那份文件。 */
@@ -1303,21 +1262,6 @@ function textOf(blocks: readonly Block[]): string {
     .map((b) => (b.type === "text" ? b.text : ""))
     .filter(Boolean)
     .join("\n");
-}
-
-function summarizeInput(input: unknown): string {
-  if (input === null || input === undefined) return "";
-  if (typeof input === "string") return truncate(input, 60);
-  try {
-    // 只序列化到够 61 个字为止（`format.ts::jsonPrefix`），结果与 `truncate(JSON.stringify(input), 60)` 逐字相同；大输入不整份序列化。
-    return truncate(jsonPrefix(input, 60) as string, 60);
-  } catch {
-    return "";
-  }
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? copyText("cards.truncate.ellipsis", { text: s.slice(0, n) }) : s;
 }
 
 function approximateSize(content: readonly Block[]): string {
