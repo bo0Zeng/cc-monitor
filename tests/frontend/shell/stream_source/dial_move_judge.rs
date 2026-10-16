@@ -41,7 +41,7 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
     ),
     (
-        "sftp.rs",
+        "deploy.rs",
         0,
         true,
         "**搬走了**：SFTP 进了本机常驻后端（用户），与其它 SSH 同一条连接；\
@@ -72,8 +72,8 @@ fn corpus() -> Vec<(&'static str, String)> {
             crate::guard_support::stream_source_production(),
         ),
         (
-            "sftp.rs",
-            production_code(include_str!("../../../../src/frontend/shell/src/sftp.rs")),
+            "deploy.rs",
+            production_code(include_str!("../../../../src/frontend/shell/src/deploy.rs")),
         ),
     ]
 }

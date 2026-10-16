@@ -73,7 +73,7 @@ fn render_judgment_rules() -> String {
     s.push_str(
         "export function accountNameOk(s: string): boolean {\n  return ACCOUNT_NAME_RE.test(s);\n}\n",
     );
-    // 账号种类的取值集（收成品时的白名单；`AuthKind` 这个类型也从它派生，不再手写字面量）。
+    // 账号种类的取值集（`AuthKind` 这个类型从它派生，不再手写字面量）。
     s.push_str("\n/** 账号种类的取值集 —— 契约常量住 `acct_core::AUTH_KINDS`。 */\n");
     s.push_str(&format!("export const AUTH_KINDS = {kinds} as const;\n"));
     s.push_str("/** 见 [`AUTH_KINDS`]。 */\n");

@@ -112,6 +112,7 @@ function bar(tabs: Tab[], prefs: Partial<TabBarPrefs> = {}) {
     openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
     reconnect: vi.fn(),
+    needsOrder: vi.fn(async () => []),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -178,12 +179,12 @@ describe("标签栏：栏底「已隐藏 N」那一行照 hidden 格画", () => 
     expect(rowSids(r, false).sort()).toEqual(["a", "b", "c"]);
   });
 
-  it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行汇总那颗需手动的点", () => {
+  it("★ 隐藏的会话在等人：「需手动」照样数它、`Ctrl+J` 照样跳过去；收着的那一行汇总那颗需手动的点", async () => {
     const r = bar([tab("a"), tab("b", { hidden: BG, activity: waiting, needs: approve() })]);
     const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
     expect(strip.style.display).toBe("");
     expect(strip.querySelector(".tab-needs-count")?.textContent).toBe("1");
-    r.view.nextNeeds();
+    await r.view.nextNeeds();
     expect(r.host.answerAt).toHaveBeenCalledWith("b");
     expect(hiddenRow(r.el)!.querySelector(".tab-group-chip[data-dot='needs-you']")?.textContent).toBe(copyText("tabBar.group.sumNeeds", { n: 1 }));
   });

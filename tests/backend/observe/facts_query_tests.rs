@@ -1379,6 +1379,99 @@ fn needs_rank_orders_by_danger_then_waited_unknown_last() {
     }
 }
 
+/// 一条「需手动」：只有先后要看的 `rank`（危险度那一档 ＋ 那台答出那一刻已等多久，经 [`needs_rank`]）是真的，其余是空的。
+fn ranked(tier: usize, waited_ms: Option<u64>) -> Needs {
+    Needs {
+        kind: NeedsKind::Approve,
+        tool: None,
+        call: None,
+        what: None,
+        since_ms: None,
+        text: crate::common::cells::Words(String::new()),
+        head: crate::common::cells::Words(String::new()),
+        head_code: None,
+        tone: crate::common::cells::Tone::Need,
+        rank: needs_rank(NEEDS_BY_DANGER[tier], waited_ms),
+        waited_ms,
+        waited_text: None,
+        ask: None,
+        manual_text: None,
+    }
+}
+
+/// ★ 各台合成一个先后只经 [`merge_needs`]（`sessions-needs-merge`，桌面 `Ctrl+J` 走这一份）：跨台照 `rank` 比；
+/// 全都一样照给的台序与台内原来的先后；每条带回它那台。每一例的几条拆在两台上交进来（期望手写）。
+#[test]
+fn needs_merge_orders_across_machines_by_the_one_rule() {
+    type Case<'a> = (
+        &'a str,
+        &'a [(&'a str, &'a str, usize, Option<u64>)],
+        &'a [&'a str],
+    );
+    let cases: &[Case] = &[
+        (
+            "危险度在前",
+            &[
+                ("devbox", "a", 3, Some(900_000)),
+                ("<local>", "b", 1, Some(1000)),
+            ],
+            &["b", "a"],
+        ),
+        (
+            "同一档等得久的在前",
+            &[
+                ("<local>", "a", 1, Some(1000)),
+                ("devbox", "b", 1, Some(90_000)),
+            ],
+            &["b", "a"],
+        ),
+        (
+            "不知道等了多久的排这一档最后",
+            &[
+                ("<local>", "a", 1, None),
+                ("devbox", "b", 1, Some(5)),
+                ("devbox", "c", 0, None),
+            ],
+            &["c", "b", "a"],
+        ),
+        (
+            "全都一样照给的台序与台内的先后",
+            &[
+                ("<local>", "a", 2, None),
+                ("<local>", "b", 2, None),
+                ("devbox", "c", 2, Some(7)),
+                ("devbox", "d", 2, Some(7)),
+                ("devbox", "e", 2, None),
+            ],
+            &["c", "d", "a", "b", "e"],
+        ),
+    ];
+    for (name, rows, want) in cases {
+        let mut machines: Vec<NeedsMachine> = Vec::new();
+        for (m, sid, tier, waited) in *rows {
+            let row = cmd_wire::needs::NeedsRow {
+                sid: sid.to_string(),
+                needs: ranked(*tier, *waited),
+                hidden: None,
+            };
+            match machines.iter_mut().find(|x| x.origin.0 == *m) {
+                Some(x) => x.waiting.push(row),
+                None => machines.push(NeedsMachine {
+                    origin: cmd_wire::Machine(m.to_string()),
+                    waiting: vec![row],
+                }),
+            }
+        }
+        let got = merge_needs(machines);
+        let sids: Vec<&str> = got.order.iter().map(|x| x.sid.as_str()).collect();
+        assert_eq!(&sids, want, "{name}");
+        for x in &got.order {
+            let (m, ..) = rows.iter().find(|r| r.1 == x.sid).unwrap();
+            assert_eq!(x.origin.0, *m, "{name}：{} 带回的台不对", x.sid);
+        }
+    }
+}
+
 /// 钉条第一行由核心写（`head`：种类 ＋ 工具名，「等批准 · Bash」），等宽那一段也由核心挑（`headCode`：批准 · 回答 · 放行带主参数，
 /// 别的不带）；短的那一格 `text` 照旧（别处用）。
 #[test]

@@ -10,15 +10,6 @@ vi.mock("../../../src/frontend/ui/copy-table", () => ({
 
 const calls: { op: string; body: unknown }[] = [];
 let reply: unknown = {};
-vi.mock("../../../src/comms/inward/chan", async (orig) => ({
-  ...(await orig<object>()),
-  chan: {
-    call: (_o: string, op: string, body: Uint8Array) => {
-      calls.push({ op, body: JSON.parse(new TextDecoder().decode(body)) });
-      return Promise.resolve(new TextEncoder().encode(JSON.stringify(reply)));
-    },
-  },
-}));
 
 const typed: { op: string; args: unknown }[] = [];
 let checked: { state: string; said: string } = { state: "ok", said: "能用" };
@@ -27,6 +18,10 @@ vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
   callTyped: (_o: string, op: string, args: unknown) => {
     typed.push({ op, args });
     if (op === "plan-pb-check") return Promise.resolve(checked);
+    if (op.startsWith("plan-")) {
+      calls.push({ op, body: args });
+      return Promise.resolve(reply);
+    }
     return Promise.resolve({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, pbDir: (args as { pbDir?: string }).pbDir ?? "/opt/pb" } });
   },
 }));

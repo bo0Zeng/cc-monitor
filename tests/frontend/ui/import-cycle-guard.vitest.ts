@@ -30,7 +30,7 @@
  * # 第二条：**连类型边一起算**的全图，强连通分量 == 豁免表（两向）
  *
  * 上面那条「`import type` 不算边」的理由对**运行期**成立；但审计 B §4 现打出一个 7 模块的类型环
- * （`accounts · accounts-decode · config · history-reads · ipc/chan · ipc/chan-caller · ipc/commands`），
+ * （`accounts · 账号解码器 · config · history-reads · ipc/chan · ipc/chan-caller · ipc/commands`），
  * 只靠 `ipc/commands.ts` 为一个返回类型回头 `import type` 账号域闭合 —— **通信层在类型上依赖账号域**，
  * 那是分层反了，不是「不存在的依赖」。要求「import 图无环（现打全图）」、「类型住被依赖的一侧」。
  * ⇒ 第二条判据量全图（值边 ＋ 类型边），强连通分量集合 == [`TYPE_CYCLE_EXEMPT`]（两向：新长一个环 ⇒ 红；
@@ -179,8 +179,6 @@ function cycleComponents(graph: Map<string, string[]>): string[][] {
  * 拆掉了不摘 ⇒ 红；新长一个 ⇒ 红。
  */
 const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
-  // `accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
-  //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（登记时写明这一处要摘）。
   // `cards/index ⇄ cards/subagent` 那一行摘了：派出卡不再就地展开时间线，`subagent.ts` 不再 `import type` 回 `./index`（agent 窗口那一路）。
   // `launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/frontend/ui/launch-types.ts`，
   //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。

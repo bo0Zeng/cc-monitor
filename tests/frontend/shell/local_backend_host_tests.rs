@@ -1717,7 +1717,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    - `E2eSandbox` 在 **2** 个 `.rs` 里（就是这两个）—— 这半也是真的；
 ///    - **`embedded-backends` 在 8 个 `.rs` 里**：本文件 · `local_backend.rs` ·
 ///      `src/frontend/shell/build.rs`（`Path::new("embedded-backends")`，**是代码不是散文**）·
-///      `src/frontend/shell/src/tool_registry.rs`（登记表数据）· `src/frontend/shell/src/sftp.rs` ·
+///      `src/frontend/shell/src/tool_registry.rs`（登记表数据）· `src/frontend/shell/src/deploy.rs` ·
 ///      `tests/frontend/shell/write_site_registry.rs` · `src/backend/main.rs` ·
 ///      `src/backend/build_id_guard.rs`（后四个是文档注释 / 错误文案）。
 ///    ⇒ **结论不变**（那 6 个文件里一条起真后端的测试都没有，逐个看过），

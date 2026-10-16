@@ -73,7 +73,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/footprint/registry_tests.rs",
-        "src/frontend/shell/src/sftp.rs",
+        "src/frontend/shell/src/deploy.rs",
         "申报表 `backend` / `ccm` 那几行的装 / 卸口在 monitor 放字节那一侧（部署远端后端 · 卸载）：申报的「可装 / 可卸」\
          必须与那两个真有的口逐字签名一致（`KR63D1`，搬家前是 monitor→backend 读 `assets/*` 的那一族，方向跟着申报表翻过来）",
     ),
@@ -87,7 +87,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/footprint/rows_tests.rs",
-        "src/frontend/shell/src/sftp.rs",
+        "src/frontend/shell/src/deploy.rs",
         "足迹里远端落点那几行必须钉在 monitor 真写的那一处（`declared_destinations_are_pinned_to_the_real_writers`），随判据从 monitor 搬来",
     ),
     // `tests/backend/footprint/rows_tests.rs` → `relay-route-core` 那一条删了：共享 crate 搬出 monitor 包、住 `src/common/`，
@@ -106,9 +106,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/sftp_tests.rs",
+        "tests/frontend/shell/deploy_tests.rs",
         "src/backend/assets/aliases/block.rs",
-        "「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
+        "「别名块的真相不住 `deploy.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
     ),
     (
         "monitor→backend",

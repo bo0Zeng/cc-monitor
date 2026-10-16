@@ -11,7 +11,7 @@
  *   这里不按码挑词：只有通道这一层的事（那台断开 · 那台后端太旧不认这条命令 · 回的东西读不懂）由这里说。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, machineName, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, machineName, refusalOf } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import { isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
@@ -47,16 +47,8 @@ export interface FollowPort {
 
 export const CHANNEL_PORT: FollowPort = {
   subscribe: (origin, kind, want, sink) => chan.subscribe(origin, kind, null, want, sink),
-  follow: (origin, args) => {
-    const body = jsonBody(args);
-    const budget = budgetWithin(FOLLOW_BUDGET_MS);
-    return chan.call(origin, "terminal-follow", body, budget);
-  },
-  ack: (origin, args) => {
-    const body = jsonBody(args);
-    const budget = budgetWithin(FOLLOW_BUDGET_MS);
-    return chan.call(origin, "terminal-follow-ack", body, budget);
-  },
+  follow: (origin, args) => callTyped(origin, "terminal-follow", args, budgetWithin(FOLLOW_BUDGET_MS)),
+  ack: (origin, args) => callTyped(origin, "terminal-follow-ack", args, budgetWithin(FOLLOW_BUDGET_MS)),
 };
 
 export interface Follow {

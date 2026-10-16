@@ -204,7 +204,7 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     let confirmed_build = if skip_preflight {
         mine.map(str::to_string)
     } else {
-        match crate::sftp::ensure_backend_deployed(cfg).await {
+        match crate::deploy::ensure_backend_deployed(cfg).await {
             Ok(c) => Some(c),
             Err(e) => {
                 let said = e.said();

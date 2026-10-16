@@ -1,6 +1,6 @@
 /**
  * 〔「后端持有全部 SSH」〕「测试连接」**走通道，本机常驻后端拨一次**：
- * `chan.call(<local>, "remote-probe", {ticket, machine, saved, jump})`。
+ * `callTyped(<local>, "remote-probe", {ticket, machine, saved, jump})`。
  *
  * 〔「进度不许倒退」〕阶段**边拨边推**：调用之前先订 `subscribe(<local>, "probe-progress/<ticket>")`，
  * 后端每走完一段推一格 —— 握手那几行（`{stage}`，与 `ConnectStage` 同形）→ `{reached: "ssh"}` → `{reached: "hello"}` →
@@ -11,7 +11,7 @@
  * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, saidFrom, unreadableFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { ConnectStage } from "./generated/ConnectStage";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
@@ -181,9 +181,7 @@ export async function probeMachine(
   const sub = await chan.subscribe(LOCAL_ORIGIN, `${PROBE_PROGRESS_KIND}/${ticket}`, null, PROBE_WINDOW, onItems);
   try {
     try {
-      const body = jsonBody({ ticket, machine, saved: mine, jump });
-      const budget = budgetWithin(PROBE_BUDGET_MS);
-      await chan.call(LOCAL_ORIGIN, "remote-probe", body, budget);
+      await callTyped(LOCAL_ORIGIN, "remote-probe", { ticket, machine, saved: mine, jump }, budgetWithin(PROBE_BUDGET_MS));
     } catch (e) {
       if (end !== null) return end;
       if (e instanceof ChanError && e.error.layer === "hop" && e.error.why === "Overrun") {

@@ -189,8 +189,8 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
                     continue;
                 }
                 let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
-                // 这两条住同一份宿主、不读会话也不读账号（诊断那一族），不在本族里。
-                if ["BackendLog", "DriftReportCmd"].contains(&ty) {
+                // 这几条与本族同住一个模块、不读会话也不读账号（诊断那两条 · 各台需手动清单的纯计算合并），不在本族里。
+                if ["BackendLog", "DriftReportCmd", "NeedsMergeCmd"].contains(&ty) {
                     continue;
                 }
                 let imp = [

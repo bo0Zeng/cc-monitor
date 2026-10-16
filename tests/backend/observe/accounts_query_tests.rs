@@ -1688,9 +1688,8 @@ fn the_list_product_carries_each_api_accounts_masked_key_and_address() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
-/// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
-/// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
+/// ★★ **金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
+/// 界面那一侧按生成类型收（形状由握手指纹管），不再另读这份。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 #[test]
 fn the_account_products_match_the_cross_language_golden() {
     let (root, accts) = c4c_fixture("c4c-golden", true);

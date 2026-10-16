@@ -669,7 +669,7 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
 /// **原子上传 ＋ 整份读回比对**（部署那一趟：桌面经 `files` 链路的 `put`（`verify`）· 手机经 `deploy` crate，同一份）：
 /// [`put_atomic`] 放上去 → [`read_all`] 读回 → [`verify_readback`] 判；**读回不对 ⇒ 当场删掉传坏的那一份**（删不掉也照实说）。
 ///
-/// 删的理由（从 monitor `sftp.rs::upload_verified` 随判定一起搬来）：身份读字节自己的戳 —— 一份传坏的字节若恰好还带着对的戳，
+/// 删的理由（从 monitor `deploy.rs::upload_verified` 随判定一起搬来）：身份读字节自己的戳 —— 一份传坏的字节若恰好还带着对的戳，
 /// 下次会被判「已是这一版」⇒ 坏字节永久驻留。删掉它，下次就是「落点没有 ⇒ 装」。
 /// 中途断了（读回之前 · 删之前）：落点上留的是这一趟放上去的那一份（没读回过），下次连上照计划扫它的戳再判。
 pub async fn put_verified(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Result<(), Refusal> {

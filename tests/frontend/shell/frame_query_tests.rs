@@ -194,7 +194,7 @@ fn the_dial_per_query_path_is_gone() {
 // 八条里哪几条已经**只走通道**（主界面经 `src/comms/inward/chan.ts`）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 已迁到通道的帧命令：前端经 `chan.call(origin, "<op>", …)` 直接问那台后端，monitor 那一跳只搬字节。
+/// 已迁到通道的帧命令：前端经通道（`callTyped(origin, "<op>", …)`）直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
     (
@@ -225,7 +225,7 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
-         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 按生成类型问，本机与远端同一条路",
     ),
     (
         "accounts-trust",
@@ -342,7 +342,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 测试连接：monitor 那条 Tauri 命令与它手里那份探针退役，本机后端组请求、拨一次、回结局。
     (
         "remote-probe",
-        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按恰好的键集合收",
+        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按生成类型问、收进度帧",
     ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
@@ -500,9 +500,19 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          前端 `src/frontend/ui/resync.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
+        "sessions-needs",
+        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的会话，`needs_first` 排好）；前端 `src/frontend/ui/needs-order.ts::askNeedsOrder` 逐台问，\
+         monitor 这一侧零发送点",
+    ),
+    (
+        "sessions-needs-merge",
+        "`BORN_ON_FRAME` 那一条：各台的需手动清单合成一个先后（`facts_query::merge_needs`，同一个 `needs_first`）；\
+         前端 `needs-order.ts::askNeedsOrder` 问本机后端（`Ctrl+J` 走它），monitor 这一侧零发送点",
+    ),
+    (
         "machine-interrupts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
-         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按生成类型收，monitor 这一侧零发送点",
     ),
     // 生在帧面上、界面直接问的那一条。
     (

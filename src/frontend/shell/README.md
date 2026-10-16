@@ -12,7 +12,7 @@ monitor 的 Rust 半：Tauri 2 应用，crate `monitor`（lib 名 `monitor_lib`�
 |---|---|
 | 装配 | `lib.rs`（`run()`：插件 · State · Tauri 命令注册 · 工作线程）· `main.rs` |
 | 本机后端 | `local_backend_host.rs`（起 / 停 / 状态；常驻那一种经本人 Unix 套接字 `<家>/run/backend.sock` 接上）· `local_backend.rs`（stdio 监护那一种）· `backend_control.rs` · `backend_policy.rs` |
-| 远端 | `remote_resident.rs`（远端常驻后端：经本机后端那条 SSH 跑 `--resident-attach` 中继）· `dial_host.rs`（一台远端的配置 → 拨号请求）· `link_mux.rs`（经本机后端开链路）· `sftp.rs`（自部署那一半）· `sftp_pool.rs`（传输台中继）· `byte_table.rs`（全仓唯一的取字节口） |
+| 远端 | `remote_resident.rs`（远端常驻后端：经本机后端那条 SSH 跑 `--resident-attach` 中继）· `dial_host.rs`（一台远端的配置 → 拨号请求）· `link_mux.rs`（经本机后端开链路）· `deploy.rs`（自部署那一半）· `sftp_pool.rs`（传输台中继）· `byte_table.rs`（全仓唯一的取字节口） |
 | 会话流 | `stream_source/`（远端与本机两条流进同一个收口 `batch.rs` 的 `LineIntake`）· `local_lines.rs` · `event_replay.rs`（重放缓冲 · 订阅 · 就绪点）· `stream_watch.rs`（每条长连接报「在看哪几个会话」）· `session_book.rs`（那台说过的会话成品，纯缓存）· `live_card.rs` · `snapshot_resume.rs` · `frame_query.rs` · `frame_tally.rs` · `inbound_client.rs` |
 | 通道 | `chan/`（`webview.rs`：主界面的 `chan_call` / `chan_subscribe`；`host.rs`：文件窗口那对父子管道）；路由器与线上词汇住 `src/comms/inward/` |
 | 终端与窗口 | `launch.rs`（开终端窗口）· `bind.rs`（↗ 认窗口：点那一刻沿进程链问每一级显示在哪个窗口）· `terminal_screen_relay.rs` · `spawn_managed.rs`（起子进程的唯一出口） |

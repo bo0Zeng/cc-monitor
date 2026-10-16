@@ -60,6 +60,7 @@ function rig(tabs: Tab[], answers: Record<string, ManualRead>) {
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined), closeTab: vi.fn(), switchTo: vi.fn(), answerAt: vi.fn(), pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false), beginDrag: vi.fn(), takeSuppressedClick: vi.fn().mockReturnValue(false), beginGroupDrag: vi.fn(),
     takeSuppressedHeadClick: vi.fn().mockReturnValue(false), openMenu: vi.fn(), toggleSelect: vi.fn(), openMenuAt: vi.fn(), rereadAll: vi.fn().mockResolvedValue(undefined), reconnect: vi.fn(),
+    needsOrder: vi.fn(async () => []),
   } satisfies TabBarViewHost;
   const el = document.createElement("div");
   document.body.appendChild(el);

@@ -1,6 +1,6 @@
-//! SS-D：远端**自部署**的业务那一半（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）＋ 别名块的规划。
+//! SS-D：远端**自部署**的 monitor 那一半（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）：照本机常驻后端出的计划放字节。
 //!
-//! 执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）。
+//! 执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）；别名块归别名域（那台后端）。
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
@@ -431,10 +431,6 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said>
     r.map_err(|s| s.named("uninstall_remote_backend"))
 }
 
-// F10（别名块）这一段搬去了 `profile_installer.rs`（B §2 第 12 条：本文件已经不做 SFTP，
-//   别名块的真相 —— 围栏那一对 · 块的内容 · 自带的名字 · 合 / 剥 · 远端装 / 卸两条命令 —— 归别名域）。
-//   本文件只剩部署：后端字节 · 身份 · 读回 · `ccm` 入口。
-
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/sftp_tests.rs"]
+#[path = "../../../../tests/frontend/shell/deploy_tests.rs"]
 mod tests;

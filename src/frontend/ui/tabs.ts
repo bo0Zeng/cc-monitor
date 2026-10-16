@@ -75,6 +75,7 @@ import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
+import { askNeedsOrder } from "./needs-order";
 import type { ActionId } from "./keybindings/actions";
 
 
@@ -139,6 +140,7 @@ export class TabManager {
       toggleSelect: (sid) => this.pick(sid, "toggle"),
       openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
+      needsOrder: (origins) => askNeedsOrder(origins),
       reconnect: (origin) => this.reconnect(origin),
     });
     this.slots = new LaunchSlots(
@@ -1222,7 +1224,7 @@ export class TabManager {
 
   /** `Ctrl+J` · 点「需手动」：跳到下一个需手动的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
   jumpToNextNeeds(): void {
-    this.bar.nextNeeds();
+    void this.bar.nextNeeds();
   }
 
   /** 计划那一侧的「需手动」挂进来（几条 · 站在第几条 · 去第几条 · 按片列出），之后数变了调 `planNeedsChanged`。 */

@@ -3815,12 +3815,6 @@
       "zh": "后端报错 · 原因不明",
       "args": []
     },
-    "chanCaller.linesOf.badShape": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "内容无法解析",
-      "args": []
-    },
     "keybindingActions.category.account": {
       "kind": "title",
       "role": "标题",
@@ -4450,10 +4444,30 @@
       "zh": "拖动调宽",
       "args": []
     },
-    "main.empty.noSessions": {
+    "main.empty.title": {
       "kind": "body",
       "role": "空态",
-      "zh": "暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>",
+      "zh": "无会话",
+      "args": []
+    },
+    "main.empty.hint": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "终端里 ccm（或别名）启动后自动出现",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "main.empty.hintUnhooked": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "终端里 ccm（或别名）启动后自动出现 · 本机终端未接上",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "main.empty.connect": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "接上终端",
       "args": []
     },
     "tabBatch.menu.head": {
@@ -5340,18 +5354,6 @@
       "kind": "body",
       "role": "片段",
       "zh": " · 已是默认",
-      "args": []
-    },
-    "accountsDecode.where.nth": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "账号 {i}",
-      "args": ["i"]
-    },
-    "accountsDecode.where.top": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "顶层",
       "args": []
     },
     "agentProfile.lookup.unknown": {

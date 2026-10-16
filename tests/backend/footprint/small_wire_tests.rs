@@ -91,7 +91,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     let read =
         |o: &str| wire(&super::last_seen::read_at(&file, &take(json!({ "origin": o }))).unwrap());
     assert_eq!(read("devbox"), r#"{"accounts":null,"data":null}"#);
-    let v = json!({"meta": {"enabled": true}, "accounts": [{"name": "work"}]});
+    let v = json!({"meta": {"enabled": true, "acctsDir": "/a", "manifestPath": "/a/m.json", "updatedAt": null, "sharedStore": null, "count": 0, "error": null, "unsupported": null, "nextDefault": null, "effectiveDefault": null, "home": null}, "accounts": [], "notice": null});
     assert_eq!(
         wire(
             &ls(
@@ -116,7 +116,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     );
     assert_eq!(
         read("devbox"),
-        r#"{"accounts":{"atMs":1000,"value":{"accounts":[{"name":"work"}],"meta":{"enabled":true}}},"data":{"atMs":2000,"state":"kept","value":{"changedFiles":[],"chores":0,"home":"/h","own":[],"tmux":null,"todo":[]}}}"#
+        r#"{"accounts":{"atMs":1000,"state":"kept","value":{"accounts":[],"meta":{"acctsDir":"/a","count":0,"effectiveDefault":null,"enabled":true,"error":null,"home":null,"manifestPath":"/a/m.json","nextDefault":null,"sharedStore":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"atMs":2000,"state":"kept","value":{"changedFiles":[],"chores":0,"home":"/h","own":[],"tmux":null,"todo":[]}}}"#
     );
     assert_eq!(
         wire(&ls(&own, &json!({"origin": "devbox", "forget": true}), 3000).unwrap()),

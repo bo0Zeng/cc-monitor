@@ -411,7 +411,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：`W2_COST=1` 时才量慢路与快路的墙钟（墙钟不当判据）"),
     ),
     (
-        "tests/frontend/shell/sftp_tests.rs",
+        "tests/frontend/shell/deploy_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
         Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },
     ),

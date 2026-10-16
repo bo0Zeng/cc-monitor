@@ -2398,7 +2398,7 @@ pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
 ///
 /// 一族「**声明缺口**」：某张表上写着「这一格今天盘上没有实现」（`None` / `false`），
 /// 而那句话**没有任何东西核**。本仓的活体是（今天住后端的）`registry.rs::TOOLS` 的 `remote-daemon`：
-/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_backend` 是设置面板上
+/// 字段写着 `uninstallable: false`，而 `deploy.rs::uninstall_remote_backend` 是设置面板上
 /// 那个「卸载后端」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
 ///
 /// ⇒ 处方：申报「没有」的那一格，**去它家里扫一眼有没有一个没人认领的同族实现**。

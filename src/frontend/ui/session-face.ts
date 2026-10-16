@@ -161,19 +161,6 @@ export function abbrOf(tab: Tab): string {
 }
 
 /**
- * `Ctrl+J` 的顺序：需手动的那几个按核心给的先答序 `rank` 排（小的先答），同档按条上看到的顺序。`tabs` 按条上看到的顺序给。
- * 序里算进了那台答出那一刻已等多久；本机从收到起又等了多久照减（各在一台钟上量，不跨机器比时刻）—— 不知道等了多久的不减。
- */
-export function needsOrder(tabs: readonly Tab[], now: number): string[] {
-  const at = (n: Needs): number => n.rank - (n.waitedMs === null ? 0 : Math.max(0, now - n.receivedAt));
-  return tabs
-    .map((t, i) => ({ t, i, n: needsOf(t) }))
-    .filter((x): x is { t: Tab; i: number; n: Needs } => x.n !== null)
-    .sort((a, b) => at(a.n) - at(b.n) || a.i - b.i)
-    .map((x) => x.t.sessionId);
-}
-
-/**
  * 「需手动」的下一站：会话在前（`order`）、计划项在后（`planCount` 条）。站在计划项上 ⇒ `planAt` 是第几条，否则看 `active` 那个会话。
  * 走到尽头绕回开头；两边都空 ⇒ `null`。
  */
