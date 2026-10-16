@@ -68,41 +68,57 @@ pub(crate) fn answer(
     if !windows {
         return plain(
             UserPathState::NotWindows,
-            copy_text("beUserPath.notWindows", &[]),
+            copy_text("beUserPath.state.notWindows", &[]),
         );
     }
     let Some(dir) = dir else {
-        return plain(UserPathState::Unknown, copy_text("beUserPath.noHome", &[]));
+        return plain(
+            UserPathState::Unknown,
+            copy_text("beUserPath.state.noHome", &[]),
+        );
     };
     let wrote = match op {
         UserPathOp::Read => Ok(()),
-        UserPathOp::Add => set(dir, true).map_err(|s| ("beUserPath.addFailed", s)),
-        UserPathOp::Remove => set(dir, false).map_err(|s| ("beUserPath.removeFailed", s)),
+        UserPathOp::Add => set(dir, true).map_err(|s| {
+            let said = copy_text("beUserPath.write.addFailed", &[("why", &s.said)]);
+            (said, s.raw)
+        }),
+        UserPathOp::Remove => set(dir, false).map_err(|s| {
+            let said = copy_text("beUserPath.write.removeFailed", &[("why", &s.said)]);
+            (said, s.raw)
+        }),
     };
     let (state, said, failed) = match holds(dir) {
-        Ok(true) => (UserPathState::On, copy_text("beUserPath.on", &[]), None),
+        Ok(true) => (
+            UserPathState::On,
+            copy_text("beUserPath.state.on", &[]),
+            None,
+        ),
         Ok(false) => (
             UserPathState::Off,
-            copy_text("beUserPath.off", &[("dir", dir)]),
+            copy_text("beUserPath.state.off", &[("dir", dir)]),
             None,
         ),
         Err(s) => (
             UserPathState::Unknown,
-            copy_text("beUserPath.unknown", &[("why", &s.said)]),
+            copy_text("beUserPath.state.unknown", &[("why", &s.said)]),
             Some(("unreadable", s.raw)),
         ),
     };
     let (said, failed) = match wrote {
         Ok(()) => (said, failed),
-        Err((key, s)) => (
-            copy_text(key, &[("why", &s.said)]),
-            Some(("write_failed", s.raw)),
-        ),
+        Err((said, raw)) => (said, Some(("write_failed", raw))),
     };
     UserPath {
         state,
         said,
-        detail: failed.map(|(code, raw)| crate::wire::detail::of(Some(NAME), code, raw.as_deref())),
+        detail: failed.map(|(code, raw)| {
+            crate::wire::detail::of(
+                Some(<CcmUserPath as crate::wire::typed::Command>::NAME),
+                code,
+                raw.as_deref(),
+            )
+        }),
         command: match state {
             UserPathState::On => Some(user_path_remove(dir)),
             UserPathState::Off => Some(user_path_add(dir)),
@@ -110,12 +126,6 @@ pub(crate) fn answer(
         },
     }
 }
-
-const NAME: &str = "ccm-user-path";
-
-/// 整条命令总期限的上限（改一发 ＋ 再问一发）。
-pub(crate) const USER_PATH_CAP: crate::platform::child::Deadline =
-    crate::platform::child::Deadline::secs(28);
 
 /// 这台 `ccm` 所在目录（后端落点的上一级）；家目录说不出 ⇒ `None`。
 fn ccm_dir() -> Option<String> {
@@ -147,7 +157,7 @@ crate::wire::typed::codes! {
 pub(crate) struct CcmUserPath;
 
 impl crate::wire::typed::Command for CcmUserPath {
-    const NAME: &'static str = NAME;
+    const NAME: &'static str = "ccm-user-path";
     type Req = UserPathReq;
     type Reply = UserPath;
     type Err = UserPathErr;

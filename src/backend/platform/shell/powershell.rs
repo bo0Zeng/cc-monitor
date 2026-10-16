@@ -3,8 +3,8 @@
 //! ⚠ 这一臂只到「编得过」：本机没有 PowerShell，这几句一次都没被 PowerShell 解析过。
 
 use super::PsHost;
-use crate::common::said::Said;
 use crate::platform::child::Deadline;
+use copy_core::said::Said;
 
 // ─── 执行策略：块装进 `$PROFILE` 之前先问这一代 PowerShell 会不会加载它 ───
 
@@ -179,7 +179,7 @@ fn user_path_head(dir: &str) -> String {
     format!(
         "$d = {}\n\
          $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')\n\
-         $p = [string]$k.GetValue('Path', '', 'DoNotExpandEnvironmentNames')\n\
+         $p = [string]$k.GetValue('Path', $null, 'DoNotExpandEnvironmentNames')\n\
          $t = if ($null -ne $k.GetValue('Path')) {{ $k.GetValueKind('Path') }} else {{ 'ExpandString' }}\n",
         super::dialect::ps_literal(dir)
     )
@@ -196,7 +196,7 @@ pub(crate) fn user_path_add(dir: &str) -> String {
     format!(
         "{}\
          if (-not ($p -split ';' | Where-Object {{ [Environment]::ExpandEnvironmentVariables($_) -eq $d }})) {{\n\
-         \x20   $n = if ($p -eq '') {{ $d }} elseif ($p.EndsWith(';')) {{ $p + $d + ';' }} else {{ $p + ';' + $d }}\n\
+         \x20   $n = if (-not $p) {{ $d }} elseif ($p.EndsWith(';')) {{ $p + $d + ';' }} else {{ $p + ';' + $d }}\n\
          \x20   $k.SetValue('Path', $n, $t)\n\
          {SETTING_CHANGE_BROADCAST}\
          }}\n",
@@ -212,7 +212,7 @@ pub(crate) fn user_path_remove(dir: &str) -> String {
          $kept = @($p -split ';' | Where-Object {{ [Environment]::ExpandEnvironmentVariables($_) -ne $d }})\n\
          if ($kept.Count -ne @($p -split ';').Count) {{\n\
          \x20   $n = $kept -join ';'\n\
-         \x20   if ($n -eq '') {{ $k.DeleteValue('Path', $false) }} else {{ $k.SetValue('Path', $n, $t) }}\n\
+         \x20   if (-not $n) {{ $k.DeleteValue('Path', $false) }} else {{ $k.SetValue('Path', $n, $t) }}\n\
          {SETTING_CHANGE_BROADCAST}\
          }}\n",
         user_path_head(dir)

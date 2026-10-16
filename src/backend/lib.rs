@@ -1228,6 +1228,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--agent-home-check",
     // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--chores-mark",
+    // 用户级 PATH 那一格（`ccm-user-path`，typed）派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--ccm-user-path",
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--last-seen-read",
     "--last-seen-write",

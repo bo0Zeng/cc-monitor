@@ -33,11 +33,8 @@ fn from_code_page(bytes: &[u8], cp: u32) -> Option<String> {
     }
     let mut wide = vec![0u16; need as usize];
     let got = unsafe { MultiByteToWideChar(cp, 0, bytes.as_ptr(), len, wide.as_mut_ptr(), need) };
-    if got <= 0 {
-        return None;
-    }
-    wide.truncate(got as usize);
-    Some(String::from_utf16_lossy(&wide))
+    wide.truncate(usize::try_from(got).unwrap_or(0));
+    (got > 0).then(|| String::from_utf16_lossy(&wide))
 }
 
 #[cfg(windows)]

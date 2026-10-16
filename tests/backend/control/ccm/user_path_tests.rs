@@ -54,7 +54,7 @@ fn elsewhere_it_says_this_is_not_windows_and_touches_nothing() {
         let f = Fake::new(Ok(true), Ok(()));
         let r = f.run(op, false, Some(DIR));
         assert_eq!(r.state, UserPathState::NotWindows);
-        assert_eq!(r.said, copy_text("beUserPath.notWindows", &[]));
+        assert_eq!(r.said, copy_text("beUserPath.state.notWindows", &[]));
         assert_eq!((r.detail, r.command), (None, None));
         assert!(f.calls().is_empty(), "{:?}", f.calls());
     }
@@ -66,14 +66,14 @@ fn reading_on_offers_the_removal_and_reading_off_offers_the_addition() {
     let on = f.run(UserPathOp::Read, true, Some(DIR));
     assert_eq!(f.calls(), ["holds"]);
     assert_eq!(on.state, UserPathState::On);
-    assert_eq!(on.said, copy_text("beUserPath.on", &[]));
+    assert_eq!(on.said, copy_text("beUserPath.state.on", &[]));
     assert_eq!(on.detail, None);
     assert_eq!(on.command.as_deref(), Some(user_path_remove(DIR).as_str()));
 
     let f = Fake::new(Ok(false), Ok(()));
     let off = f.run(UserPathOp::Read, true, Some(DIR));
     assert_eq!(off.state, UserPathState::Off);
-    assert_eq!(off.said, copy_text("beUserPath.off", &[("dir", DIR)]));
+    assert_eq!(off.said, copy_text("beUserPath.state.off", &[("dir", DIR)]));
     assert_eq!(off.command.as_deref(), Some(user_path_add(DIR).as_str()));
 }
 
@@ -84,7 +84,7 @@ fn an_unreadable_user_path_is_unknown_not_off() {
     assert_eq!(r.state, UserPathState::Unknown);
     assert_eq!(
         r.said,
-        copy_text("beUserPath.unknown", &[("why", "原因词")])
+        copy_text("beUserPath.state.unknown", &[("why", "原因词")])
     );
     assert!(
         r.detail
@@ -104,7 +104,7 @@ fn add_and_remove_write_first_then_answer_with_what_is_read_back() {
     assert_eq!(f.calls(), ["set:true", "holds"]);
     assert_eq!(
         (r.state, r.said),
-        (UserPathState::On, copy_text("beUserPath.on", &[]))
+        (UserPathState::On, copy_text("beUserPath.state.on", &[]))
     );
 
     let f = Fake::new(Ok(false), Ok(()));
@@ -121,7 +121,7 @@ fn a_failed_write_says_so_while_the_state_is_what_is_read_back() {
     assert_eq!(r.state, UserPathState::Off);
     assert_eq!(
         r.said,
-        copy_text("beUserPath.addFailed", &[("why", "原因词")])
+        copy_text("beUserPath.write.addFailed", &[("why", "原因词")])
     );
     assert!(r.detail.as_deref().unwrap_or("").contains("nope"));
     assert_eq!(r.command.as_deref(), Some(user_path_add(DIR).as_str()));
@@ -131,7 +131,7 @@ fn a_failed_write_says_so_while_the_state_is_what_is_read_back() {
     assert_eq!(r.state, UserPathState::On);
     assert_eq!(
         r.said,
-        copy_text("beUserPath.removeFailed", &[("why", "原因词")])
+        copy_text("beUserPath.write.removeFailed", &[("why", "原因词")])
     );
 }
 
@@ -140,6 +140,6 @@ fn without_a_home_there_is_no_directory_to_ask_about() {
     let f = Fake::new(Ok(true), Ok(()));
     let r = f.run(UserPathOp::Add, true, None);
     assert_eq!(r.state, UserPathState::Unknown);
-    assert_eq!(r.said, copy_text("beUserPath.noHome", &[]));
+    assert_eq!(r.said, copy_text("beUserPath.state.noHome", &[]));
     assert!(f.calls().is_empty());
 }

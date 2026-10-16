@@ -384,7 +384,6 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("local_backend::place_local_program", Kind::Carried),
     // 窗口进程的 stderr 一条最多收多少字节：与被监护子进程那一份同一个上界（不另起一个数）。
     ("local_backend::STDERR_MAX_LINE_BYTES", Kind::Carried),
-    ("relay_route_core::BACKEND_LANDING_REL", Kind::Carried),
     ("platform::fs::make_executable", Kind::Carried),
     ("platform::fs::ensure_private_dir", Kind::Carried),
     ("stream_source::RemoteConfig", Kind::Config),

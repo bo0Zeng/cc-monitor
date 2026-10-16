@@ -241,6 +241,7 @@ const CHANNELED: &[(&str, &str)] = &[
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 别名页最上那一句（`src/frontend/ui/alias-reads.ts::readCcmOnPath`）：终端里敲 ccm 走到哪由那台后端现问、判、出句子。
     ("ccm-probe", "取代本机那条 Tauri 命令（壳自己起登录 shell 探 PATH、判、写那句话）；本机远端同一问"),
+    ("ccm-user-path", "取代本机那三条 Tauri 命令（壳自己起 PowerShell 读 / 改用户级 PATH、拼那句话）"),
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。

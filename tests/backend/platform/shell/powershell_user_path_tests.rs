@@ -19,7 +19,7 @@ fn the_user_path_scripts_edit_only_the_user_scope_and_never_via_setx() {
     for (which, cmd) in [("加", &add), ("撤", &del)] {
         for need in [
             "[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')",
-            "GetValue('Path', '', 'DoNotExpandEnvironmentNames')",
+            "GetValue('Path', $null, 'DoNotExpandEnvironmentNames')",
             "GetValueKind('Path')",
             "SetValue('Path', $n, $t)",
             SETTING_CHANGE_BROADCAST,

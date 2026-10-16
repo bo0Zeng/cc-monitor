@@ -1003,7 +1003,8 @@ fn the_remote_side_column_is_signed_off() {
         // 81 → 76：载荷 / 调用行渲染 · 中转地址 · 本机新起 / resume / 接回 · 远端 ccm 探测七条删了、开窗 · 中转开关两条新增。
         // 基数 81 ＋ MIG-3a −11 ＋ MIG-2 −5 ⇒ 65。
         // 81 − MIG-1 3（`~/.ssh/config` 导入那三条 `#[tauri::command]` 删了）⇒ 78。
-        derived.len() >= 42,
+        // 44 → 41：用户级 PATH 那三条进了后端帧命令 `ccm-user-path`。
+        derived.len() >= 39,
         "派生器只认出 {} 条命令的派发跳（`LEDGER` 现打 {} 行）—— **扫描面塌了**，\n\
              不是「命令变少了」。先修 `command_dispatch_class`，别信下面任何一条绿。",
         derived.len(),
