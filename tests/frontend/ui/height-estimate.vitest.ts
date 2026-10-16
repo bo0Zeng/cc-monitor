@@ -111,8 +111,12 @@ describe("estimateStreamNodeHeight", () => {
     mixed.innerHTML =
       '<div data-role="run-card"><button>agent</button></div>' +
       '<details class="block-collapsible" open><summary>a</summary><div class="block-text"><p>' + "长".repeat(400) + "</p></div></details>";
-    const h = estimateStreamNodeHeight(mixed)!;
-    expect(h).toBeGreaterThan(38 + 4 + 38);
+    const solo = document.createElement("div");
+    solo.className = "card card-steps";
+    solo.innerHTML = mixed.innerHTML.replace('<div data-role="run-card"><button>agent</button></div>', "");
+    const open = estimateStreamNodeHeight(solo)!;
+    expect(open, "展开着的那一步没按内容算").toBeGreaterThan(38);
+    expect(estimateStreamNodeHeight(mixed)).toBe(38 + 4 + open);
     mixed.querySelector("details")!.open = false;
     expect(estimateStreamNodeHeight(mixed)).toBe(38 + 4 + 38);
   });

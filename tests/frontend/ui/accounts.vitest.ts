@@ -15,7 +15,7 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines } from "../../../src/frontend/ui/account-reads";
+import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, SESSION_ACCOUNTS_BUDGET_MS } from "../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
@@ -337,14 +337,15 @@ describe("fetchSessionAccounts（经通道 `accounts-sessions`）", () => {
           : undefined,
       ),
     ));
-    const s = await fetchSessionAccounts("devbox");
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
+    const s = await fetchSessionAccounts("devbox").finally(() => clock.mockRestore());
     expect(s).toHaveLength(1);
     const call = invokeMock.mock.calls.find((c) => c[0] === "chan_call");
     const args = call?.[1] as ChanCallArgs;
     expect(args.origin).toBe("devbox");
     expect(args.op).toBe("accounts-sessions");
     expect(chanArgsJson(args)).toEqual({});
-    expect(args.leftMs, "期限由调用方给（30 秒那一档），不是库里的默认").toBeGreaterThan(29_000);
+    expect(args.leftMs, "期限由调用方给（会话 ↔ 账号那一档），不是库里的默认").toBe(SESSION_ACCOUNTS_BUDGET_MS);
   });
   it("本机也走同一条路（`<local>` 就是一个 origin）", async () => {
     invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>

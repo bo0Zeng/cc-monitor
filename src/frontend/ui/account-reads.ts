@@ -127,7 +127,7 @@ export async function fetchSessionAccounts(origin: Origin): Promise<SessionAccou
  * 「会话 ↔ 账号」那一问的期限：30 秒 —— 与它上一个住址（monitor 侧 `frame_query` 的 `LINES_BUDGET`）同值，
  * 它盖的是「那台后端扫一遍活会话 ＋ 回程」，不含握手（长连接早就连着）。
  */
-const SESSION_ACCOUNTS_BUDGET_MS = 30_000;
+export const SESSION_ACCOUNTS_BUDGET_MS = 30_000;
 
 const optStr = (v: unknown): v is string | null | undefined =>
   v === undefined || v === null || typeof v === "string";

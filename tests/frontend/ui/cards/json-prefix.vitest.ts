@@ -121,7 +121,7 @@ describe("jsonPrefix：JSON.stringify 的前缀，拼回调用方与原式逐字
         compared++;
       }
     }
-    expect(compared).toBeGreaterThan(9000);
+    expect(compared).toBe(11907);
   });
 
   it("切口劈开代理对：前 60 个字仍与原式相同", () => {
@@ -152,9 +152,9 @@ describe("jsonPrefix：JSON.stringify 的前缀，拼回调用方与原式逐字
     expect(s.startsWith('{"key0":"vvv')).toBe(true);
     // `toJSON` 探一次 ＋ 第一个值；够 61 个字就停
     expect(reads).toBeLessThanOrEqual(3);
-    // 正控：原式把 1000 个值全读了
+    // 正控：原式探一次 `toJSON`、再把 1000 个值全读了
     reads = 0;
     JSON.stringify(p);
-    expect(reads).toBeGreaterThanOrEqual(1000);
+    expect(reads).toBe(1001);
   });
 });
