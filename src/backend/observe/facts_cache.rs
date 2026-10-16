@@ -1,4 +1,4 @@
-//! **会话事实的续算表**：常驻后端记下最近出过的几份累加器，续传令牌因此只是 `{end, rev}`（[`super::facts_query`] 头注）。
+//! **会话事实的续算表**：常驻后端记下最近出过的几份累加器，续传令牌因此只是 `{end, rev}`（[`super::recognize::facts`] 头注）。
 //!
 //! - 一份 ＝ `(rev, path, 那一份累加器)`；至多 [`FACTS_CACHE_KEEP`] 份，满了挤掉最久没用的那一份。
 //! - 续上了 ⇒ 那一份换成续算出来的新一份、铸新 `rev`（每个调用方只占一格）；读不成（截断 · 不在行边界）⇒ 原来那一份留着。
@@ -6,7 +6,7 @@
 //! - 一次性 CLI 进程里这张表恒空 ⇒ 带令牌恒回 `stale_prior`（照实说没续上）。
 //! - 只在内存里，不落盘；丢了只是多一次冷扫。
 
-use super::facts_query::SessionFacts;
+use super::recognize::facts::SessionFacts;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 

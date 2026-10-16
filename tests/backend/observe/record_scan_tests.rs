@@ -75,12 +75,12 @@ fn fixture(turns: usize) -> String {
 fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64) {
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
     let (mut index, mut inputs, mut turns) = (Vec::new(), Vec::new(), Vec::new());
-    let mut scan = crate::observe::turns::TurnScan::default();
+    let mut scan = crate::observe::recognize::turns::TurnScan::default();
     let mut lines = crate::observe::lines::Lines::new(bytes, 0);
     while let Some(row) = lines.next().unwrap() {
         let body = row.body();
         if crate::observe::lines::counts(body) {
-            let r = crate::observe::history_query::index_row(
+            let r = crate::observe::recognize::index_row::index_row(
                 kind,
                 body,
                 row.at,
@@ -91,7 +91,7 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
         let Some(v) = crate::observe::lines::parse(body) else {
             continue;
         };
-        if let Some(mut r) = crate::observe::user_inputs::user_input_of(&v) {
+        if let Some(mut r) = crate::observe::recognize::user_inputs::user_input_of(&v) {
             r.at = row.at;
             inputs.push(serde_json::to_string(&r).unwrap());
         }
@@ -139,10 +139,10 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
         .collect();
     assert_eq!(got_turns, want_turns, "轮次");
 
-    let limits = crate::observe::facts_query::ContextLimits::default();
-    let want_facts = crate::observe::facts_query::scan_facts(
+    let limits = crate::observe::recognize::facts::ContextLimits::default();
+    let want_facts = crate::observe::recognize::facts::scan_facts(
         bytes,
-        crate::observe::facts_query::SessionFacts::default(),
+        crate::observe::recognize::facts::SessionFacts::default(),
         &limits,
         None,
     )
@@ -154,7 +154,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     );
 
     for n in [0usize, 1, 2, 5, 1000] {
-        let want = crate::observe::history_query::tail_plan_of(bytes, n).unwrap();
+        let want = crate::observe::query::tail::tail_plan_of(bytes, n).unwrap();
         assert_eq!(map.tail(n, want.file.clone()), want, "尾段 n={n}");
     }
 }
@@ -282,7 +282,7 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
 
 /// 一张图的全部样子（线上那几样 ＋ 线上不带、续扫要用的那几格），比「接着扫的」与「整份扫的」用。
 fn whole(map: &ScanMap) -> String {
-    let limits = crate::observe::facts_query::ContextLimits::default();
+    let limits = crate::observe::recognize::facts::ContextLimits::default();
     let rows = |v: &[TurnRow]| -> Vec<String> {
         v.iter()
             .map(|r| {

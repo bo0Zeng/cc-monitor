@@ -51,14 +51,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryReadCmd>(
         "按字节分页读一份会话",
     ),
-    // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/record_page.rs`）。同族同档、同一个只读宿主。
+    // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/query/body.rs`）。同族同档、同一个只读宿主。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryPageCmd>(
         "按字节分页读，出记录行",
     ),
     // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
-    // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
+    // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/recognize/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryTurnsCmd>("一轮的摘要"),
     crate::wire::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>(
         "这台上需手动的会话清单",
@@ -72,7 +72,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
         "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
     ),
-    // 会话事实（`observe/facts_query.rs`）。`prior` 是调用方上一次拿到的应答里的 `{end, rev}`（续传令牌，那台续算表 `observe::facts_cache`）；带 `view` 时这两格照样在（`views::TOKENS`）。
+    // 会话事实（`observe/recognize/facts.rs`）。`prior` 是调用方上一次拿到的应答里的 `{end, rev}`（续传令牌，那台续算表 `observe::facts_cache`）；带 `view` 时这两格照样在（`views::TOKENS`）。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),

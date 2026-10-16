@@ -96,7 +96,7 @@ impl Prefs {
         }
     }
 
-    /// 上限表那一形（`facts_query::ContextLimits`：子串小写）。
+    /// 上限表那一形（`recognize::facts::ContextLimits`：子串小写）。
     pub(crate) fn limits(&self) -> Vec<(String, u64)> {
         self.context_limits
             .iter()

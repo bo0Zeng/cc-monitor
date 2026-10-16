@@ -24,7 +24,7 @@ fn fixture(n: usize) -> (String, Vec<(u64, String)>) {
     (text, rows)
 }
 
-/// 照后端 `history_query::tail_plan` 的定义从夹具**自己数**出那张图（不调被测代码）。
+/// 照后端 `query::tail::tail_plan` 的定义从夹具**自己数**出那张图（不调被测代码）。
 fn plan_of(text: &str, rows: &[(u64, String)], n_tail: usize) -> TailPlan {
     let total = rows.len() as u64;
     let keep = n_tail.max(1) as u64;

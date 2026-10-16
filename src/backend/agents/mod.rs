@@ -683,7 +683,7 @@ pub(crate) struct LocalFace {
 pub use cmd_wire::frame::SessionActivity;
 
 /// 一条会话在等人时，**等的是什么框**（与哪一家无关；适配层从那一家的词翻过来，翻不出 ⇒ 不给）。
-/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::facts_query::needs_of`），不在这里判。
+/// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::recognize::facts::needs_of`），不在这里判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WaitOn {
     /// 批准框（工具调用 · 提问 · 计划都弹在这一类里，分哪种看那一步是什么工具）。
@@ -743,7 +743,7 @@ pub(crate) struct ChildLink {
 
 /// 后台命令的一笔账（适配层从那一家的记录翻过来，与哪一家无关）：
 /// 起了一条（工具调用 id · 那条命令原样）· 它当场拿到了任务号 · 它收场了（完成 / 失败 / 被叫停都算，只认是哪一条）。
-/// 哪几条此刻还在跑、句子怎么写在核心（`observe::facts_query`）。
+/// 哪几条此刻还在跑、句子怎么写在核心（`observe::recognize::facts`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BgMark {
     Started {
@@ -2336,7 +2336,7 @@ pub(crate) fn content_search_skips() -> Vec<&'static str> {
 }
 
 /// 注册表里每一家合成历史面给的记录根（注册序；说不出的跳过）。按路径读会话的围栏在 Claude 的
-/// `projects/` 之外还认这几个（`observe/history_query.rs::validate_session_path`）。
+/// `projects/` 之外还认这几个（`observe/query/locate.rs::validate_session_path`）。
 pub(crate) fn history_roots() -> Vec<PathBuf> {
     history_faces()
         .into_iter()

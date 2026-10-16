@@ -2,8 +2,8 @@
 //! 按（路径 · 长度 · 修改时刻）留着，那几条帧命令（`history-tail` · `-index` · `-user-inputs` · `-turns` · `-facts`）从字节 0 问时共用。
 //!
 //! - 一遍：每个完整行只解析一次，同一个值喂给五样各自的那一步（各自的口径仍只住各自的模块：
-//!   [`super::history_query::index_row_of`] · [`super::user_inputs::user_input_of`] · [`super::turns::TurnScan`] ·
-//!   [`super::facts_query::note_record`] · [`super::lines::counts`]）。
+//!   [`super::recognize::index_row::index_row_of`] · [`super::recognize::user_inputs::user_input_of`] · [`super::recognize::turns::TurnScan`] ·
+//!   [`super::recognize::facts::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
 //!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大就不留。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
@@ -11,13 +11,14 @@
 //!   每样都带着 `end`，续取从那里接。
 //! - 只扫到问的那一刻的长度：之后写进来的不在这一张里（键对得上内容）。
 
-use super::facts_query::{ContextLimits, SessionFacts};
-use super::history_query::{IndexRow, TailPlan};
+use super::recognize::facts::{ContextLimits, SessionFacts};
+use super::recognize::index_row::IndexRow;
+use super::recognize::turns::{TurnRow, TurnScan};
+use super::recognize::user_inputs::UserInputRow;
 use super::skeleton::{Look, Mark, Skeletons};
-use super::turns::{TurnRow, TurnScan};
-use super::user_inputs::UserInputRow;
 use crate::agents::mainline::Chain;
 use crate::platform::fs::{Ro, RoFile};
+use cmd_wire::session::TailPlan;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,7 +55,7 @@ pub(crate) struct ScanMap {
 struct Rest {
     witness: Vec<u8>,
     inputs: Vec<UserInputRow>,
-    #[serde(with = "super::turns::skel::rows")]
+    #[serde(with = "super::recognize::turns::skel::rows")]
     turns: Vec<TurnRow>,
     open: TurnScan,
     #[serde(with = "crate::agents::mainline::skel")]
@@ -195,7 +196,7 @@ impl Scan {
             let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
-                self.index.push(super::history_query::index_row_of(
+                self.index.push(super::recognize::index_row::index_row_of(
                     kind,
                     v,
                     start,
@@ -205,15 +206,15 @@ impl Scan {
             let Some(v) = v else {
                 continue;
             };
-            if let Some(mut row) = super::user_inputs::user_input_of(&v) {
+            if let Some(mut row) = super::recognize::user_inputs::user_input_of(&v) {
                 row.at = start;
                 self.rest.inputs.push(row);
             }
             if let Some(row) = self.rest.open.line(start, &v) {
                 self.rest.turns.push(row);
             }
-            if super::facts_query::could_matter(body, &self.facts) {
-                super::facts_query::note_record(&mut self.facts, &v);
+            if super::recognize::facts::could_matter(body, &self.facts) {
+                super::recognize::facts::note_record(&mut self.facts, &v);
             }
         }
         Ok(())
@@ -308,7 +309,7 @@ impl ScanMap {
         }
     }
 
-    /// 尾段那张图：最后 `n` 个可计行从哪开始（同 [`super::history_query::tail_plan_of`]）；`file` 是那份文件的身份（调用方读）。
+    /// 尾段那张图：最后 `n` 个可计行从哪开始（同 [`super::query::tail::tail_plan_of`]）；`file` 是那份文件的身份（调用方读）。
     pub(crate) fn tail(&self, n: usize, file: String) -> TailPlan {
         let total = self.starts.len();
         let from = total - n.max(1).min(total);
@@ -324,12 +325,12 @@ impl ScanMap {
     /// 事实：按这一次的上限表与中转标记定上下文上限。
     pub(crate) fn facts(&self, limits: &ContextLimits, relay: Option<bool>) -> SessionFacts {
         let mut f = self.facts.clone();
-        super::facts_query::settle_limit(&mut f, limits, relay);
+        super::recognize::facts::settle_limit(&mut f, limits, relay);
         f
     }
 
     /// 还没结果的工具调用（文件序；种类判「需手动」用）。
-    pub(crate) fn pending(&self) -> &[super::facts_query::PendingCall] {
+    pub(crate) fn pending(&self) -> &[super::recognize::facts::PendingCall] {
         &self.facts.pending
     }
 

@@ -11,7 +11,7 @@
 //! 按段取：`from` 是某一轮开头那一行的字节位置（`at`）或 0；还在跑的最后一轮下次从它的 `at` 再取一次，整轮重算（后端零状态）。
 //! `from` 之前的那半轮不出（它的开头不在这一段里）。
 
-use super::facts_query::{what_of, Needs, NeedsKind, PendingCall};
+use super::facts::{what_of, Needs, NeedsKind, PendingCall};
 use super::user_inputs::user_input_given;
 use crate::agents::UserTextExt as _;
 use copy_core::copy_text;
@@ -402,7 +402,7 @@ fn step_of(name: &str, what: Option<&str>) -> String {
     }
 }
 
-/// **正在跑的那一轮**按这台此刻的会话事实补上「现在 / 在等你」那一截（判定同会话事实：`needs` 由 [`super::facts_query::needs_of`] 判，
+/// **正在跑的那一轮**按这台此刻的会话事实补上「现在 / 在等你」那一截（判定同会话事实：`needs` 由 [`super::facts::needs_of`] 判，
 /// 活不活看这台 pidfile），写在这一轮尾巴那一段上。收尾了的轮不动；尾巴不是一段过程（最后露着的是正文）⇒ 只改 `phase`。
 pub(crate) fn dress_live(row: &mut TurnRow, needs: Option<&Needs>, live: bool) {
     if row.done {
@@ -817,5 +817,5 @@ impl TurnScan {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/turns_tests.rs"]
+#[path = "../../../../tests/backend/observe/recognize/turns_tests.rs"]
 mod tests;

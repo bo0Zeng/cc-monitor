@@ -65,7 +65,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
     );
 
     // ② 后端那一份还在、恰好一处：适配层的 `agents::first_in_head`（窗口按字节，`HEAD_CAP`），
-    //    历史查询（`observe/history_query.rs`）自己一份头部窗口都没有，只问适配层 —— 否则上面那条会零命中地绿。
+    //    历史查询（`observe/query/locate.rs`）自己一份头部窗口都没有，只问适配层 —— 否则上面那条会零命中地绿。
     let read = |rel: &str| {
         guard_core::production_code(
             &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
@@ -81,7 +81,14 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
         (1, 1),
         "后端那一份不是「恰好一处、按字节有上界」了"
     );
-    let history = read("src/backend/observe/history_query.rs");
+    let history = [
+        "query/locate.rs",
+        "query/tail.rs",
+        "query/body.rs",
+        "recognize/index_row.rs",
+    ]
+    .map(|f| read(&format!("src/backend/observe/{f}")))
+    .concat();
     assert_eq!(
         history
             .lines()
@@ -246,7 +253,7 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
 }
 
 // `SessionPager` 那四条（本机远端同一个分页器 · 行号跨页连续 · 种类按文件名判 · 冷读只经后端）
-//   随读正文那条命令一起退役：判定进了后端，住 `tests/backend/observe/record_page_tests.rs`（编号 · 只出进界面的 ·
+//   随读正文那条命令一起退役：判定进了后端，住 `tests/backend/observe/query/body_tests.rs`（编号 · 只出进界面的 ·
 //   按根认是哪一家）与 `tests/backend/faces/read_face_tests.rs`（`history-page` 那一臂）。
 
 #[test]

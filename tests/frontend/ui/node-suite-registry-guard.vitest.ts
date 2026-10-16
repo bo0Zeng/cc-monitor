@@ -88,7 +88,7 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // §5 步 12：`views/pricing.ts` → `views/context-limit.ts`（只剩 context 上限那半，
   // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
   // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
-  // 条数 5 → 3：上下文上限的判定搬进后端（`observe/facts_query.rs::context_limit`，逐格归 `facts_query_tests.rs`），
+  // 条数 5 → 3：上下文上限的判定搬进后端（`observe/recognize/facts.rs::context_limit`，逐格归 `recognize/facts_tests.rs`），
   // `contextLimit` 三条与 `contextPercent` 一条随函数删；前端只剩排版（`contextPercentOf`）与读设置表（`readContextLimits`）各一条。
   // 3 → 4：上限判不出时只写用了多少（`contextTokensText`）。
   // 读设置表那一条随 `readContextLimits` 删（上限表住各台后端 `prefs.json`，界面经 `prefs-read` 问）。
@@ -100,7 +100,7 @@ const NODE_SUITES: readonly (readonly [string, string])[] = [
   // 与座无关的 2 条（shim 漂移守卫 · 铸名口数据流）搬进了 `remote-launch.test.ts`。
   // 🔴 原先这里有 `["test:panorama-session-files", "tests/frontend/ui/panorama/session-files.test.ts", 7]`。
   // 写类工具那张表与它的口径搬进了后端（会话事实由后端出成品）⇒ 被测对象 `collectEditedFiles` 删了、套件整删
-  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/facts_query_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
+  // （**被测对象没了**，不是把测试删光了）；七条逐条搬进 `tests/backend/observe/recognize/facts_tests.rs::edit_tools_rules_moved_from_the_frontend_suite`。
   // 🔴 原先这里有 `["test:launch-dimensions", "tests/frontend/ui/launch-dimensions.test.ts", 31]`。
   // 维度表只为载荷渲染那条存在，起会话只剩那一行 `ccm …` ⇒ 维度表与套件整删（**被测对象没了**）。
   // 🔴 原先这里有 `["test:launch-render-cli", "tests/launch-render-cli.test.ts", 30]`。

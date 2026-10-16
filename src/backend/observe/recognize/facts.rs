@@ -12,10 +12,10 @@
 //! # 续传令牌 `{end, rev}`（后端有界缓存）
 //!
 //! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：常驻后端记下最近出过的几份累加器
-//! （[`super::facts_cache`]，有界），调用方只交回上一份应答里的 `{end, rev}`（`prior`），本文件从那一份的 `end` 接着扫、
+//! （[`super::super::facts_cache`]，有界），调用方只交回上一份应答里的 `{end, rev}`（`prior`），本文件从那一份的 `end` 接着扫、
 //! 把新的一截累加在它上面 —— 判定与累加都只在这里。表里没有了（挤掉了 · 后端重启过 · 一次性 CLI 进程）⇒ `stale_prior`，
 //! 调用方不带令牌从 0 要一份：丢了只是多一次冷扫，不会算错。从前令牌是整份成品（改过上千个文件的会话一问上下各 60–85 KB）。
-//! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。
+//! 续点的两道校验（截断 · 不在行边界）在 `query::locate::open_facts_at`。
 //!
 //! # 口径（逐格，三样各一个住址）
 //!
@@ -929,12 +929,12 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
     limits: &ContextLimits,
     relay: Option<bool>,
 ) -> std::io::Result<SessionFacts> {
-    let mut lines = super::lines::Lines::new(r, facts.end);
+    let mut lines = super::super::lines::Lines::new(r, facts.end);
     while let Some(row) = lines.next()? {
         facts.end = row.at + row.whole.len() as u64;
         let line = row.body();
         if could_matter(line, &facts) {
-            if let Some(v) = super::lines::parse(line) {
+            if let Some(v) = super::super::lines::parse(line) {
                 note_record(&mut facts, &v);
             }
         }
@@ -956,7 +956,7 @@ pub(crate) fn mcp_from<R: std::io::BufRead>(
         mcp: std::mem::take(mcp),
         ..SessionFacts::default()
     };
-    let mut lines = super::lines::Lines::new(r, 0);
+    let mut lines = super::super::lines::Lines::new(r, 0);
     let out = loop {
         let row = match lines.next() {
             Ok(Some(row)) => row,
@@ -965,7 +965,7 @@ pub(crate) fn mcp_from<R: std::io::BufRead>(
         };
         let line = row.body();
         if contains(line, MCP_MARK) {
-            if let Some(v) = super::lines::parse(line) {
+            if let Some(v) = super::super::lines::parse(line) {
                 note_mcp(&mut f, &v);
             }
         }
@@ -1447,5 +1447,5 @@ fn short_tokens(n: u64) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/facts_query_tests.rs"]
+#[path = "../../../../tests/backend/observe/recognize/facts_tests.rs"]
 mod tests;

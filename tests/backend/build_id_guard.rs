@@ -216,7 +216,7 @@ mod tests {
         lines.sort_unstable();
         format!(
             "frozen {:016x}",
-            crate::observe::record_page::line_hash(lines.join("\n").as_bytes())
+            crate::observe::query::body::line_hash(lines.join("\n").as_bytes())
         )
     }
 

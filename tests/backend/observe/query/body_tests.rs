@@ -354,9 +354,10 @@ fn the_folded_view_drops_every_body_cell_and_keeps_every_folded_cell() {
 /// 核心认得它的每一格（`parse_view` 不拒）；照它投影 ⇒ 工具入参 · 结果正文 · 逐段改动没了，思考 · 说的话 · 预览 · 主参数那一句还在。
 #[test]
 fn the_desktop_folded_view_in_shared_parses_and_drops_only_the_tool_bodies() {
-    let decl: serde_json::Value =
-        serde_json::from_str(include_str!("../../../src/shared/views/folded-record.json"))
-            .expect("那份声明是 JSON");
+    let decl: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../src/shared/views/folded-record.json"
+    ))
+    .expect("那份声明是 JSON");
     let view = crate::faces::project::parse_view(&decl)
         .unwrap_or_else(|e| panic!("核心不认那份声明：{e}"))
         .expect("声明不是空的");

@@ -131,7 +131,7 @@ fn the_tail_names_the_file_by_its_first_line() {
     let other = tail_at(&home, req(1)).unwrap();
     assert_ne!(other.file, first.file);
     // 扫描图那一支：扫过一遍留着之后再问，同一个值。
-    let _ = crate::observe::history_query::cold_scan(&home, &path);
+    let _ = crate::observe::query::locate::cold_scan(&home, &path);
     assert_eq!(tail_at(&home, req(1)).unwrap().file, other.file);
     std::fs::write(&path, "\n\n").unwrap();
     assert_eq!(tail_at(&home, req(1)).unwrap().file, "");

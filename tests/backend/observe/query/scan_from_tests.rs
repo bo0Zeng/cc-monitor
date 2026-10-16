@@ -1,4 +1,4 @@
-//! 续取那一张扫描图的打开口（`scan_from`：大纲 · 轮次 · 索引从中间续都经它；纯核的判据在 `user_inputs_tests.rs`）。
+//! 续取那一张扫描图的打开口（`scan_from`：大纲 · 轮次 · 索引从中间续都经它；纯核的判据在 `recognize/user_inputs_tests.rs`）。
 
 use super::*;
 

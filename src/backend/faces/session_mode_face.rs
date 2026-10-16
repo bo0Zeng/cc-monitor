@@ -225,7 +225,7 @@ fn answer(req: &SessionPermissionReq) -> Result<ModeSwitched, CmdErr> {
         ));
     }
     let home = crate::history::listing::agent_home();
-    let kind = crate::observe::history_query::session_record(&home, &req.sid)
+    let kind = crate::observe::query::locate::session_record(&home, &req.sid)
         .ok()
         .and_then(|p| crate::agents::record_kind_of(&p));
     let face = crate::agents::pick_kind(kind)

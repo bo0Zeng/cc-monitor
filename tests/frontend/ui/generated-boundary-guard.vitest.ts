@@ -441,12 +441,12 @@ describe("C01 边界生成物", () => {
     );
   });
 
-  it("`history-turns` 的一轮与过程段（`observe/turns.rs`）来自生成物，界面不再手写那一形", () => {
+  it("`history-turns` 的一轮与过程段（`observe/recognize/turns.rs`）来自生成物，界面不再手写那一形", () => {
     // 复审五：`Fold` 只有 `Serialize`、界面手写了一份（新加的线上形状必须出生成类型）。
     const files = readdirSync(resolve(ROOT, "src/frontend/ui/generated"));
     const want = ["TurnRow", "FoldSegment", "TurnPart", "TurnSpan", "TurnPhase", "Tone"];
     expect(want.filter((n) => !files.includes(`${n}.ts`)), "生成目录里缺这几形").toEqual([]);
-    const turns = rustCode(read("src/backend/observe/turns.rs"));
+    const turns = rustCode(read("src/backend/observe/recognize/turns.rs"));
     for (const t of ["TurnRow", "Fold", "Part", "Span", "Phase"]) {
       expect(turns, `turns.rs 的 ${t} 没派生 ts_rs::TS`).toMatch(
         new RegExp(`derive\\(ts_rs::TS\\)\\)\\]\\s*(#\\[[^\\n]*\\]\\s*)*pub\\(crate\\) (struct|enum) ${t}\\b`),

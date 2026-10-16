@@ -7,7 +7,7 @@
  * | 按记录 id 取回那一行不带声明（展开那一下要的就是全文） | 「不带声明」那一条 |
  * | 一页的行数不设上限（一页按字节算 1 MiB，短行能有几十万行）：拼页不把一页展开成实参（V8 的实参上限） | 「一页 20 万行」那一条 |
  *
- * 买不到：后端照声明裁得对不对（后端 `record_page_tests` 用同一份文件量）；monitor 那一跳把它搬进信封（`webview_tests` · `inbound_client_tests`）。
+ * 买不到：后端照声明裁得对不对（后端 `query::body::tests` 用同一份文件量）；monitor 那一跳把它搬进信封（`webview_tests` · `inbound_client_tests`）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";

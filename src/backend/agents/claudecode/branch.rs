@@ -1,6 +1,6 @@
 //! **会话分叉的记录变换 ＋ 按 sid 找那份会话文件** —— Claude 记录格式的知识，住它的适配层（组 3 ·
 //! `§1.2`「共享 crate 只放契约」）。从前是共享 crate `branch-core`（G1 立：当时 monitor 本机分叉也要算这一段）；本机分叉改问本机后端
-//! 之后 monitor 零引用，它只剩后端用 ⇒ 收进这里。通用层（`control/fork_write.rs` · `observe/history_query.rs`）经注册表那两格够它
+//! 之后 monitor 零引用，它只剩后端用 ⇒ 收进这里。通用层（`control/fork_write.rs` · `observe/query/locate.rs`）经注册表那两格够它
 //! （`RecordFace.find_session` · `.branch` → `agents::find_session_file` · `agents::build_branch_records`），不直呼 `agents::claudecode::`。
 //!
 //! # 落盘格式的判据

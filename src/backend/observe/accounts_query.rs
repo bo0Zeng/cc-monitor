@@ -625,7 +625,7 @@ pub(crate) struct LiveMcpFailed {
 /// 各条活会话记录里 MCP 那一格读到了哪：记录 ⇒ （读过的字节数 · 那一格）。扩展页每打开一次只读各条记录新长出来的那一截。
 #[derive(Debug, Default)]
 pub(crate) struct McpBook(
-    std::collections::BTreeMap<PathBuf, (u64, Vec<super::facts_query::McpTrouble>)>,
+    std::collections::BTreeMap<PathBuf, (u64, Vec<super::recognize::facts::McpTrouble>)>,
 );
 
 impl McpBook {
@@ -633,7 +633,7 @@ impl McpBook {
     pub(crate) fn read(
         &mut self,
         path: &Path,
-    ) -> std::io::Result<Vec<super::facts_query::McpTrouble>> {
+    ) -> std::io::Result<Vec<super::recognize::facts::McpTrouble>> {
         use std::io::{Seek, SeekFrom};
         let mut file = Ro::open(path)?;
         let len = file.metadata()?.len();
@@ -643,7 +643,7 @@ impl McpBook {
             mcp.clear();
         }
         file.seek(SeekFrom::Start(*at))?;
-        *at += super::facts_query::mcp_from(std::io::BufReader::new(file), mcp)?;
+        *at += super::recognize::facts::mcp_from(std::io::BufReader::new(file), mcp)?;
         Ok(mcp.clone())
     }
 
@@ -680,7 +680,7 @@ pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
             else {
                 continue;
             };
-            let Ok(path) = super::history_query::session_record(home, sid) else {
+            let Ok(path) = super::query::locate::session_record(home, sid) else {
                 continue;
             };
             seen.push(path.clone());
@@ -785,8 +785,11 @@ pub(crate) fn session_holders_by(
 
 /// 那台 pidfile 说这条会话**此刻在等人**（适配层翻成 [`crate::agents::SessionActivity::NeedsYou`]）：等的是什么框（适配层翻好的 [`crate::agents::WaitOn`]）· 从何时起等（`statusUpdatedAt`，epoch ms）。
 /// 判活同 [`session_writers`]；不在等 / 没有活进程持着它 ⇒ `None`。几个进程同时持着、有一个在等 ⇒ 取它（等得最早的那个）。
-/// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `facts_query::needs_of`。
-pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_query::PidWait> {
+/// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `recognize::facts::needs_of`。
+pub(crate) fn session_wait(
+    agent_home: &Path,
+    sid: &str,
+) -> Option<super::recognize::facts::PidWait> {
     pidfiles(agent_home)
         .into_iter()
         .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
@@ -795,7 +798,7 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
         })
         .filter(|(_, v)| !crate::agents::pidfile_background(v))
         .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
-        .map(|(_, v)| super::facts_query::PidWait {
+        .map(|(_, v)| super::recognize::facts::PidWait {
             waiting_for: crate::agents::pidfile_wait(&v),
             since_ms: v.get("statusUpdatedAt").and_then(serde_json::Value::as_u64),
             read_at_ms: read_at_ms(),
@@ -832,8 +835,8 @@ pub(crate) fn session_background(agent_home: &Path, sid: &str) -> Option<Option<
 pub(crate) struct Doing {
     /// 说不清 ⇒ `None`（主窗口那颗点照「在跑」画）。
     pub(crate) activity: Option<crate::agents::SessionActivity>,
-    /// 只在 `activity` 是在等你时有：配上记录里没结果的那一步判的种类（[`super::facts_query::needs_of`]）。
-    pub(crate) needs: Option<super::facts_query::NeedsKind>,
+    /// 只在 `activity` 是在等你时有：配上记录里没结果的那一步判的种类（[`super::recognize::facts::needs_of`]）。
+    pub(crate) needs: Option<super::recognize::facts::NeedsKind>,
 }
 
 /// 这台此刻活着的每个会话在干什么（判活同 [`live_session_ids`]）。同一会话几个进程持着 ⇒ 在等人 ＞ 在跑 ＞ 后台命令在跑 ＞ 空闲 ＞ 说不清。
@@ -851,13 +854,16 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 }
 
 /// **这台上需手动的会话**：此刻活着、那台说在等人的每一个（判活与「在等人」同 [`live_doing`]），带它在等什么（[`waiting_needs`]，不另判），
-/// 先答的在前（[`super::facts_query::needs_first`]）。
+/// 先答的在前（[`super::recognize::facts::needs_first`]）。
 /// `asked` ＝ 此刻有待答请求挂着的会话（常驻进程那一份登记表，顶层壳交进来）；`dress` ＝ 给一条 `needs` 配上它挂着的请求（同上）。
 /// `hidden(sid, 是不是分身)` ＝ 那一格（顶层壳经 `control/session_hidden.rs` 判）。
 pub(crate) fn live_needs(
     agent_home: &Path,
     asked: &[String],
-    dress: &dyn Fn(Option<super::facts_query::Needs>, &str) -> Option<super::facts_query::Needs>,
+    dress: &dyn Fn(
+        Option<super::recognize::facts::Needs>,
+        &str,
+    ) -> Option<super::recognize::facts::Needs>,
     hidden: &dyn Fn(&str, bool) -> Option<cmd_wire::session::Hidden>,
 ) -> Vec<NeedsRow> {
     let live = live_activity(agent_home);
@@ -889,7 +895,7 @@ pub(crate) fn live_needs(
         .collect::<Vec<_>>();
     // 先答哪个照核心那一处（同一档、同样久 ⇒ 按会话 id，稳定）。
     rows.sort_by(|a, b| {
-        super::facts_query::needs_first(&a.needs, &b.needs).then_with(|| a.sid.cmp(&b.sid))
+        super::recognize::facts::needs_first(&a.needs, &b.needs).then_with(|| a.sid.cmp(&b.sid))
     });
     rows
 }
@@ -953,20 +959,20 @@ fn live_activity(
     out
 }
 
-/// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::facts_query::needs_of`] 判（同 `history-facts.needs`）；
+/// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::recognize::facts::needs_of`] 判（同 `history-facts.needs`）；
 /// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的（那台说在等 ⇒ 恒有一份）。
-fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::facts_query::Needs> {
-    let pending = super::history_query::session_record(agent_home, sid)
+fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts::Needs> {
+    let pending = super::query::locate::session_record(agent_home, sid)
         .ok()
-        .and_then(|p| super::history_query::cold_scan(agent_home, &p.to_string_lossy()).ok())
+        .and_then(|p| super::query::locate::cold_scan(agent_home, &p.to_string_lossy()).ok())
         .map(|m| m.pending().to_vec())
         .unwrap_or_default();
-    let wait = session_wait(agent_home, sid).unwrap_or(super::facts_query::PidWait {
+    let wait = session_wait(agent_home, sid).unwrap_or(super::recognize::facts::PidWait {
         waiting_for: None,
         since_ms: None,
         read_at_ms: 0,
     });
-    super::facts_query::needs_of(&pending, Some(&wait))
+    super::recognize::facts::needs_of(&pending, Some(&wait))
 }
 
 /// 正在跑的会话各属哪个号：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。

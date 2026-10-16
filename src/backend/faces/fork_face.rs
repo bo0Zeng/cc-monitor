@@ -1,5 +1,5 @@
 //! 帧面 `session-fork` 的宿主 —— 与 `read_face` / `footprint` 同形的一层壳：
-//! 找家目录（与帧面其余几条同一个出处 `observe::history_query::agent_home`）、交给本体；
+//! 找家目录（与帧面其余几条同一个出处 `history::listing::agent_home`）、交给本体；
 //! 再收齐「分叉之后起」要的源会话事实（记录里的工作目录 · 进程名单 · 终端名单），交推断（`control/fork_launch.rs`）出 `launch` 那一格。
 //!
 //! # 为什么要这一层壳（而不是 `control/fork_write.rs` 自己找家）

@@ -425,7 +425,7 @@ describe("TabManager 生命周期", () => {
 
   // === issue #63①：fork 血缘徽标 ===
   // 分叉血缘改由后端出成品（`history-facts`），这一组搬进文件末尾「会话事实」那组（后端给了什么 ⇒ tab 上是什么）；
-  //   「首条锁定 · 只认 user/assistant」那两条口径住后端 `tests/backend/observe/facts_query_tests.rs`。
+  //   「首条锁定 · 只认 user/assistant」那两条口径住后端 `tests/backend/observe/recognize/facts_tests.rs`。
 
   // === Batch5-F19：last-active 写回 ===
 
@@ -2097,7 +2097,7 @@ describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () =>
 });
 
 // 「F70 会话改动集聚合」那一组搬进文件末尾「会话事实」那组：改动文件集由后端出成品（口径 · 去重 · 近因序
-//   住 `tests/backend/observe/facts_query_tests.rs`），前端这边只剩「成品 ⇒ 监控板 peek 的透传」。
+//   住 `tests/backend/observe/recognize/facts_tests.rs`），前端这边只剩「成品 ⇒ 监控板 peek 的透传」。
 
 describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", () => {
 
@@ -2141,7 +2141,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   });
 
   // F91b-fix(batch18)：touchedFiles 近因序（peek `recentFiles` 尾部 = 最近改的）。近因序今天由后端排
-  //   （`facts_query_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
+  //   （`recognize/facts_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
 describe("account-ux U5 tab 徽章「信息才显」", () => {
@@ -5138,7 +5138,7 @@ describe.each([
 // ════════════════════════════════════════════════════════════════════════════
 //
 // 分叉血缘 · 改动文件集 · 最新 usage 由后端出成品（帧命令 `history-facts`，`session-reads.ts` 第五问）。
-// 口径（首条锁定 · 近因序 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/facts_query_tests.rs`）；
+// 口径（首条锁定 · 近因序 · 上界 · 取文件序最后一条）全在后端判据（`tests/backend/observe/recognize/facts_tests.rs`）；
 // 这一组只钉前端那一侧：成品原样落到 tab 上、原样当续传令牌交回去、只刷变了的那几块、要不到就出声。
 // 子 agent 的列表与状态不在会话事实里（运行表，`tests/frontend/ui/runs.vitest.ts`）。
 // 夹具只造结构（sid / 路径 / 占位 id），不采会话正文。

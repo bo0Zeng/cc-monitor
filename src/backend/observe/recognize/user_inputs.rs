@@ -38,7 +38,7 @@ fn tree() -> &'static str {
 
 /// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**口径的唯一住址**（见头注）。
 ///
-/// 冷开扫描图（[`super::record_scan`]）每行解析一次、顺带问这一句；**判定没有第二份**。
+/// 冷开扫描图（[`super::super::record_scan`]）每行解析一次、顺带问这一句；**判定没有第二份**。
 pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
     user_input_given(v, crate::agents::user_text_of(tree(), v).as_ref())
 }
@@ -108,5 +108,5 @@ pub(crate) fn excerpt(text: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/user_inputs_tests.rs"]
+#[path = "../../../../tests/backend/observe/recognize/user_inputs_tests.rs"]
 mod tests;

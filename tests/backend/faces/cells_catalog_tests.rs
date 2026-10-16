@@ -43,10 +43,10 @@ pub(crate) struct Pending {
 /// - G1 会话灯「后台任务运行中」那一档 ⇒ `activity` 的闭集多了 `backgroundWork`（不是新格），字与语气在 `activity_text` · `activity_tone`。
 /// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
 /// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
-///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
+///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `recognize::facts::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
 ///   字与序跟着种类走，不另挂在 `session_status` 上。
 /// - G4 上下文的字 ⇒ `facts.usage.contextText`（判得出上限写百分比、判不出只写用了多少）· `limitText` · `promptTokensText` ·
-///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
+///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`recognize::facts::context_limit`），出口不再按型号猜。
 /// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
 ///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
 pub(crate) const PENDING: &[Pending] = &[];
@@ -268,7 +268,7 @@ fn golden(file: &str) -> String {
 /// 各件成品的真样子：跨语言金样里由真代码写出来的那几份（＋ 金样里恰好缺的那一格，用真代码现造）。
 /// 挂着的待答请求那一格用真路子现造：Claude 适配层读一份提问的 hook 输入（子 agent 发的、带说明的选项）⇒ 通用层写成品、配进 needs；
 /// 另配一份没有挂着请求的（`manualText` 那一格）。
-fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value> {
+fn dressed_needs(base: Option<crate::observe::recognize::facts::Needs>) -> Vec<Value> {
     let hook = serde_json::json!({
         "session_id": "s", "hook_event_name": "PermissionRequest", "agent_id": "a", "agent_type": "t",
         "tool_name": "AskUserQuestion",
@@ -278,8 +278,8 @@ fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value>
     let asked = crate::agents::claudecode::asks::read(&hook).unwrap();
     let ask = crate::agents::asks::product_of("ask-1", &asked, 1);
     [
-        crate::observe::facts_query::dress_ask_with(base.clone(), Some(ask), 2),
-        crate::observe::facts_query::dress_ask_with(base, None, 2),
+        crate::observe::recognize::facts::dress_ask_with(base.clone(), Some(ask), 2),
+        crate::observe::recognize::facts::dress_ask_with(base, None, 2),
     ]
     .into_iter()
     .map(|n| serde_json::to_value(n).unwrap())
@@ -298,33 +298,33 @@ fn corpus(name: &str) -> Vec<Value> {
             let g: Value = serde_json::from_str(&golden("session-reads.golden.json")).unwrap();
             let mut f = g["history-facts"].clone();
             // 金样那份会话不在等人（`needs` 是 null）⇒ 这一格用真判定现造一份。
-            let pending = vec![crate::observe::facts_query::PendingCall {
+            let pending = vec![crate::observe::recognize::facts::PendingCall {
                 id: "c".into(),
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
                 at_ms: None,
-                state: crate::observe::facts_query::StepWait::Running,
+                state: crate::observe::recognize::facts::StepWait::Running,
                 why: None,
                 text: None,
                 why_text: None,
             }];
-            let wait = crate::observe::facts_query::PidWait {
+            let wait = crate::observe::recognize::facts::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
                 read_at_ms: 0,
             };
-            f["needs"] =
-                serde_json::to_value(crate::observe::facts_query::needs_of(&pending, Some(&wait)))
-                    .unwrap();
-            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
-            let tasks: Vec<crate::observe::facts_query::BgTask> =
-                serde_json::from_value(f["bgTasks"].clone()).unwrap();
-            f["background"] = serde_json::to_value(crate::observe::facts_query::background_of(
-                &tasks,
-                None,
-                u64::MAX / 2,
+            f["needs"] = serde_json::to_value(crate::observe::recognize::facts::needs_of(
+                &pending,
+                Some(&wait),
             ))
+            .unwrap();
+            // 金样那份会话不在后台任务运行中那一态（`background` 是 null）⇒ 同上，用真判定现造一份（金样里那几条没收场的后台命令）。
+            let tasks: Vec<crate::observe::recognize::facts::BgTask> =
+                serde_json::from_value(f["bgTasks"].clone()).unwrap();
+            f["background"] = serde_json::to_value(
+                crate::observe::recognize::facts::background_of(&tasks, None, u64::MAX / 2),
+            )
             .unwrap();
             // 金样那份会话没有血缘（`parent` 是 null、`children` 空）⇒ 同上，用真判定现造一份：
             // 主会话起它时写了 `--tab hide`、它起的子会话照偏好隐藏（两格都带隐藏那一格）。
@@ -353,7 +353,7 @@ fn corpus(name: &str) -> Vec<Value> {
             );
             f["startedBy"] = serde_json::to_value(parent).unwrap();
             f["children"] = serde_json::to_value(children).unwrap();
-            let base: Option<crate::observe::facts_query::Needs> =
+            let base: Option<crate::observe::recognize::facts::Needs> =
                 serde_json::from_value(f["needs"].clone()).unwrap();
             let mut out = vec![f.clone()];
             // 答题口没接上那一格：真跑要一个带那个变量的活进程，这里照它写好的那一句配一份。
@@ -369,23 +369,23 @@ fn corpus(name: &str) -> Vec<Value> {
         }
         // 清单那一行用真判定现造（金样生成那一处不起进程，答不出非空的清单）。
         "needs_row" => {
-            let pending = vec![crate::observe::facts_query::PendingCall {
+            let pending = vec![crate::observe::recognize::facts::PendingCall {
                 id: "c".into(),
                 name: "Bash".into(),
                 what: Some("ls".into()),
                 at: None,
                 at_ms: None,
-                state: crate::observe::facts_query::StepWait::Running,
+                state: crate::observe::recognize::facts::StepWait::Running,
                 why: None,
                 text: None,
                 why_text: None,
             }];
-            let wait = crate::observe::facts_query::PidWait {
+            let wait = crate::observe::recognize::facts::PidWait {
                 waiting_for: Some(crate::agents::WaitOn::Permission),
                 since_ms: Some(1),
                 read_at_ms: 2,
             };
-            let needs = crate::observe::facts_query::needs_of(&pending, Some(&wait)).unwrap();
+            let needs = crate::observe::recognize::facts::needs_of(&pending, Some(&wait)).unwrap();
             let mut rows = vec![
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),
@@ -419,12 +419,12 @@ fn corpus(name: &str) -> Vec<Value> {
             ]
             .iter()
             .map(|l| {
-                serde_json::to_value(crate::observe::history_query::index_row(crate::agents::record_tree_kind().unwrap_or_default(), l.as_bytes(), 0, l.len() as u64)).unwrap()
+                serde_json::to_value(crate::observe::recognize::index_row::index_row(crate::agents::record_tree_kind().unwrap_or_default(), l.as_bytes(), 0, l.len() as u64)).unwrap()
             })
             .collect();
             let line = r#"{"type":"assistant","uuid":"a-1","isSidechain":true,"agentId":"ag","message":{"content":[{"type":"text","text":"\u4e2d\n```\nx\n```"}]}}"#.as_bytes();
             rows.push(
-                serde_json::to_value(crate::observe::history_query::index_row(
+                serde_json::to_value(crate::observe::recognize::index_row::index_row(
                     crate::agents::record_tree_kind().unwrap_or_default(),
                     line,
                     0,
@@ -443,8 +443,8 @@ fn corpus(name: &str) -> Vec<Value> {
             );
             let face = crate::agents::claudecode::RECORDS;
             let mut reader =
-                crate::observe::record_page::Reader::new(&face, 0, &[], Default::default());
-            crate::observe::record_page::rows_of(&mut reader, 0, page.as_bytes())
+                crate::observe::query::body::Reader::new(&face, 0, &[], Default::default());
+            crate::observe::query::body::rows_of(&mut reader, 0, page.as_bytes())
                 .into_iter()
                 .map(|r| serde_json::to_value(r).unwrap())
                 .collect()

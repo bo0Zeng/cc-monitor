@@ -160,7 +160,7 @@ fn send(req: &SessionModelReq) -> Result<Sent2, Fail> {
         ));
     }
     let home = crate::history::listing::agent_home();
-    let record = crate::observe::history_query::session_record(&home, &req.sid).map_err(|_| {
+    let record = crate::observe::query::locate::session_record(&home, &req.sid).map_err(|_| {
         Fail::new(
             "no_such_session",
             copy_text("beSessionCommands.session.noRecord", &[]),

@@ -59,7 +59,7 @@ fn index_rows_share_the_seq_space_with_the_tail_counter() {
     let data: &[u8] = b"{\"type\":\"user\",\"uuid\":\"a\"}\n\n   \n{\"type\":\"assistant\",\"uuid\":\"b\"}\n\xEF\xBB\xBF{\"type\":\"system\",\"subtype\":\"api_error\",\"timestamp\":\"t\"}\n{\"type\":\"torn";
     let v = index_of(data, 0, None);
     let (_, rows, tail) = split(&v);
-    let (meta, _, _) = split_tail(data, 1_000);
+    let (meta, _, _) = crate::observe::query::tail::split_tail(data, 1_000);
     let total: serde_json::Value = serde_json::from_str(meta.trim()).unwrap();
     assert_eq!(
         rows.len() as u64,
@@ -175,8 +175,8 @@ fn zero_facts_are_not_serialized() {
 /// 对**同一份**金标准 —— 两侧实现不同源，金标准是手算的（见 `.golden` 头注）。
 #[test]
 fn index_rows_match_the_shared_seq_space_golden() {
-    let data: &[u8] = include_bytes!("../../__fixtures__/skeleton-seq-space.jsonl");
-    let golden = include_str!("../../__fixtures__/skeleton-seq-space.golden");
+    let data: &[u8] = include_bytes!("../../../__fixtures__/skeleton-seq-space.jsonl");
+    let golden = include_str!("../../../__fixtures__/skeleton-seq-space.golden");
     let mut want: Vec<(u64, Option<String>)> = Vec::new();
     let (mut count, mut end) = (None, None);
     for l in golden.lines() {

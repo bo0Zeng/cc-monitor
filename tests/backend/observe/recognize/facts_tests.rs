@@ -1336,8 +1336,10 @@ fn how_long_it_has_waited_is_measured_on_the_machine_that_wrote_the_start() {
 /// 那一个读口 `session-face.ts::needsFirst` 读同一份）。
 #[test]
 fn needs_first_agrees_with_the_shared_order_golden() {
-    let golden: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/needs-order.golden.json")).unwrap();
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../__fixtures__/needs-order.golden.json"
+    ))
+    .unwrap();
     let cases = golden["cases"].as_array().unwrap();
     assert!(cases.len() >= 4, "金样读空了");
     for c in cases {

@@ -31,7 +31,7 @@ pub(crate) fn with_deps_as<T>(
 ) -> T {
     let list = tmux_rows;
     let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
-        crate::observe::history_query::record_for(&crate::history::listing::agent_home(), dir, sid)
+        crate::observe::query::locate::record_for(&crate::history::listing::agent_home(), dir, sid)
             .map(|p| (p.present, p.root))
     };
     let kill =

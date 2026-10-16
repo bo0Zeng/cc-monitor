@@ -689,11 +689,11 @@ mod specimens {
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
-    use crate::observe::facts_query::{
+    use crate::observe::recognize::facts::{
         Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,
         RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
-    use crate::observe::history_query::IndexRow;
+    use crate::observe::recognize::index_row::IndexRow;
     use crate::wire::{ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate};
     use crate::wire::{ActivityFaceExt as _, FrameMake as _};
     use std::collections::BTreeMap;
@@ -1011,15 +1011,15 @@ mod specimens {
                         partial: false,
                         text: Words(s("$0.01")),
                     }),
-                    bg_tasks: vec![crate::observe::facts_query::BgTask {
+                    bg_tasks: vec![crate::observe::recognize::facts::BgTask {
                         call: s("c"),
                         task: some("b"),
                         cmd: some("make"),
                         at: some("t"),
                     }],
-                    background: Some(crate::observe::facts_query::Background {
+                    background: Some(crate::observe::recognize::facts::Background {
                         text: Words(s("t")),
-                        clock: Some(crate::observe::facts_query::Clock {
+                        clock: Some(crate::observe::recognize::facts::Clock {
                             text: Words(s("t")),
                             from: 1,
                         }),
@@ -1037,7 +1037,7 @@ mod specimens {
                             at: some("t"),
                         })
                         .collect(),
-                    started_by: Some(crate::observe::facts_query::Kin {
+                    started_by: Some(crate::observe::recognize::facts::Kin {
                         sid: s("k"),
                         title: s("t"),
                         live: true,
@@ -1048,7 +1048,7 @@ mod specimens {
                             },
                         ),
                     }),
-                    children: vec![crate::observe::facts_query::Kin {
+                    children: vec![crate::observe::recognize::facts::Kin {
                         sid: s("k"),
                         title: s("t"),
                         live: true,
@@ -1059,7 +1059,7 @@ mod specimens {
                             },
                         ),
                     }],
-                    quiet_unread: Some(crate::observe::facts_query::QuietUnread {
+                    quiet_unread: Some(crate::observe::recognize::facts::QuietUnread {
                         text: Words(s("q")),
                         count: 1,
                         kinds: vec![s("k")],
@@ -1071,7 +1071,7 @@ mod specimens {
     }
 
     pub(super) fn read_row() -> Vec<Specimen> {
-        vec![node_of(&crate::observe::record_page::ReadRow {
+        vec![node_of(&crate::observe::query::body::ReadRow {
             end: Some(1),
             hash: 1,
             record: Some(serde_json::json!({})),

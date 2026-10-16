@@ -481,7 +481,7 @@ fn no_line_for_an_empty_process_or_a_lone_compact_summary() {
 /// 尾巴是露着的正文（不是一段过程）⇒ 只改此刻，前面那几段不动。
 #[test]
 fn live_turn_says_what_runs_now_or_what_waits_for_you() {
-    use crate::observe::facts_query::{Needs, NeedsKind};
+    use crate::observe::recognize::facts::{Needs, NeedsKind};
     let t = "2026-10-07T08:16:00Z";
     let lines = [
         user("u1", t, "q"),
@@ -704,7 +704,7 @@ fn a_rewound_turn_is_not_swallowed_by_the_fold_before_it() {
 /// 三种续写：只续一段正文（没收尾）· 结果回来再说结论（`end_turn`）· 又说了一句、新的一轮回了话。
 #[test]
 fn a_reply_written_after_the_pidfile_says_waiting_stays_outside() {
-    use crate::observe::facts_query::{Needs, NeedsKind};
+    use crate::observe::recognize::facts::{Needs, NeedsKind};
     let t = "2026-10-07T08:16:00Z";
     let needs = Needs {
         kind: NeedsKind::Approve,

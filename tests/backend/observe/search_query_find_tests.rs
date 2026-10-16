@@ -251,7 +251,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
     std::fs::write(&path, &body).unwrap();
     let p = path.display().to_string();
     let scan = |tools: bool| {
-        let r = crate::observe::history_query::open_session_at(&home, &p, 0).unwrap();
+        let r = crate::observe::query::locate::open_session_at(&home, &p, 0).unwrap();
         let mut hits = Vec::new();
         let (_, total) = crate::observe::search_query::scan_session_find(
             r,
@@ -337,7 +337,7 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
     std::fs::write(&path, &body).unwrap();
     let p = path.display().to_string();
     let scan = |skip: usize, limit: usize| {
-        let r = crate::observe::history_query::open_session_at(&home, &p, 0).unwrap();
+        let r = crate::observe::query::locate::open_session_at(&home, &p, 0).unwrap();
         let mut hits = Vec::new();
         let page = crate::observe::search_query::FindPage { skip, limit };
         let (_, total) =

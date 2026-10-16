@@ -945,7 +945,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 手机聊天屏起会话走 session-new ＋ terminal-input（删路 A 与 src/mobile/bridge）。
 ///
 /// p10b-fold-segments-codex-record：过程按段折——history-turns 每轮的 ending · parts · span 换成 shown（露着的那几条）＋ folds[] {after, parts, span, phase}（一段一行），
-/// 多 landed（落成了人话的排队插话，界面不再单独出）；核心 observe/turns.rs 一处划段。Codex 的 function_call 入参从 arguments 解成 tool_use.input（从前恒为 null）。
+/// 多 landed（落成了人话的排队插话，界面不再单独出）；核心 observe/recognize/turns.rs 一处划段。Codex 的 function_call 入参从 arguments 解成 tool_use.input（从前恒为 null）。
 /// Windows 上找 / 起 agent 命令收成 platform::shell::find_session_command（PATHEXT 次序，.cmd 经 cmd /c、.ps1 经 powershell -File）。
 /// 手机：终端屏阅读子页删、Codex 落聊天屏能送字、stream-watch 按行号接续、复用判活与新建同时起跑。
 ///

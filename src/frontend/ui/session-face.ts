@@ -161,7 +161,7 @@ export function abbrOf(tab: Tab): string {
 }
 
 /**
- * 两条「需手动」先答哪个 —— 照核心那一处（Rust `facts_query::needs_first`，对同一份金样 `needs-order.golden.json`）：
+ * 两条「需手动」先答哪个 —— 照核心那一处（Rust `recognize::facts::needs_first`，对同一份金样 `needs-order.golden.json`）：
  * 危险度在前（`rank`，核心判好的）；同一档里等得久的在前；不知道等了多久的排这一档最后。
  * 「等了多久」＝ 那台答出那一刻算好的 `waitedMs` ＋ 本机从收到起走过的（各在一台钟上量，不跨机器比时刻）。
  */

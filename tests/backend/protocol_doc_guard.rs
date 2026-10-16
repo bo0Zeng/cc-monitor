@@ -681,13 +681,13 @@ mod tests {
                 "**根本不是 wire**：它在解析账号库的清单**文件**（文件 schema）",
             ),
             (
-                "observe/history_query.rs",
+                "observe/recognize/index_row.rs",
                 "IndexRow",
                 "骨架索引的一行（`history-index` 按列装运之前的那一形），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
             ),
             (
-                "observe/history_query.rs",
+                "observe/query/locate.rs",
                 "RecordProbe",
                 "同上，帧命令 `history-record` 的应答 `data`",
             ),
@@ -783,8 +783,12 @@ mod tests {
                 include_str!("../../src/backend/observe/accounts_query.rs"),
             ),
             (
-                "observe/history_query.rs",
-                include_str!("../../src/backend/observe/history_query.rs"),
+                "observe/query/locate.rs",
+                include_str!("../../src/backend/observe/query/locate.rs"),
+            ),
+            (
+                "observe/recognize/index_row.rs",
+                include_str!("../../src/backend/observe/recognize/index_row.rs"),
             ),
             (
                 "history/listing.rs",

@@ -93,7 +93,7 @@ pub(crate) fn resume_here(
     say: Option<&str>,
     files: Files,
 ) -> Option<Answer> {
-    use crate::observe::history_query as hq;
+    use crate::observe::query::locate as hq;
     let home = crate::history::listing::agent_home();
     let path = hq::session_record(&home, sid).ok()?;
     let path = path.to_str()?;

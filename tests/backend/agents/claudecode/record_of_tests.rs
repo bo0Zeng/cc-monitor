@@ -397,7 +397,7 @@ fn an_unread_line_comes_out_as_unread() {
 
 /// **没有链上身份的未知顶层类型不成卡**（10-14 起的规矩）：对话内容每行都带 `uuid` / `parentUuid`，没身份的只可能是那一家的簿记行 ——
 /// 下一版再加几种也不刷屏。同一份记录里：没身份的新类型 ⇒ 不出记录；带身份的新类型 ⇒ 照旧 `unread`；
-/// 认识的类型形状变了（没身份也算）⇒ 照旧 `unread`。不悄悄丢的那一半（会话事实里记几行、哪几种）在 `facts_query_tests`。
+/// 认识的类型形状变了（没身份也算）⇒ 照旧 `unread`。不悄悄丢的那一半（会话事实里记几行、哪几种）在 `recognize::facts::tests`。
 #[test]
 fn a_bookkeeping_line_without_identity_is_no_card() {
     let lines = [

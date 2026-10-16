@@ -211,7 +211,7 @@ pub(crate) fn who(origin: &Origin) -> String {
     }
 }
 
-/// `history-tail` 那张图（字段同后端 `history_query::TailPlan`）。
+/// `history-tail` 那张图（字段同后端 `query::tail::TailPlan`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TailPlan {
     pub total: u64,
@@ -279,7 +279,7 @@ pub(crate) struct Page {
     pub eof: bool,
 }
 
-/// 一行成品的形状（后端 `observe/record_page.rs::rows_of`）；不对 ⇒ `None`（整页当形状对不上）。
+/// 一行成品的形状（后端 `observe/query/body.rs::rows_of`）；不对 ⇒ `None`（整页当形状对不上）。
 pub(crate) fn row_of(v: &Value) -> Option<Row> {
     let end = match v.get("end")? {
         Value::Null => None,

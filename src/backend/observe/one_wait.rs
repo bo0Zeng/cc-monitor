@@ -105,7 +105,7 @@ pub(crate) fn record_pick<T: Send + 'static>(
 
 /// 等 `sid` 那份会话记录里此刻之后出现一条压缩摘要（记录按 sid 在这台的记录树里找，同分叉那一找）。
 pub(crate) fn compact_summary(agent_home: &Path, sid: &str) -> Result<Armed, String> {
-    let record = crate::observe::history_query::session_record(agent_home, sid)?;
+    let record = crate::observe::query::locate::session_record(agent_home, sid)?;
     let kind = crate::agents::record_kind_of(&record).unwrap_or_default();
     record_line(&record, move |v| crate::agents::is_compact_summary(kind, v))
 }

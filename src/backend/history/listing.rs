@@ -1,4 +1,4 @@
-//! **会话清单那一族**（原住 `observe/history_query.rs`，10-13 挪来）：项目清单 · 平铺会话清单（连那份「没变不重扫、变长只扫尾巴」的缓存）·
+//! **会话清单那一族**：项目清单 · 平铺会话清单（连那份「没变不重扫、变长只扫尾巴」的缓存）·
 //! 后台热缓存 · 叫一条会话什么（[`label_facts_of`] · [`session_title_of`]）· 「这一行能做什么」（[`can_of`]）· 分叉来源（[`fork_origin`]）·
 //! 藏起来的那个工作目录（[`hidden_cwd`]）· `<agent_home>/projects/` 那道围栏（[`fence_under_projects`]）· 这台的 agent 家（[`agent_home`]）。
 //!
@@ -99,7 +99,7 @@ pub(crate) fn group_by_cwd(items: &[(Option<String>, i64)]) -> Vec<String> {
 
 /// 会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— 不露实现词）。
 pub(crate) fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
-    tracing::warn!("history_query: 读不了 {}：{e}", dir.display());
+    tracing::warn!("history listing: 读不了 {}：{e}", dir.display());
     let path = dir.display().to_string();
     if e.kind() == std::io::ErrorKind::PermissionDenied {
         copy_text("beHistory.dir.denied", &[("path", &path)])
@@ -670,7 +670,7 @@ pub(crate) fn analyze_session(p: &Path) -> serde_json::Value {
 /// `user` / `assistant` 记录上的 `forkedFrom`（两个键都得是串）⇒ (源会话 id, 分叉处的消息 uuid)。
 ///
 /// 两个读者调同一个函数：历史会话行（[`analyze_session`] 的 `forkedFromSessionId`）与活 tab 的会话事实
-/// （`facts_query.rs` 的 `forkedFrom`）—— 搬之前活 tab 那一份住前端、口径更松（任何记录、只看 `sessionId`），
+/// （`recognize/facts.rs` 的 `forkedFrom`）—— 搬之前活 tab 那一份住前端、口径更松（任何记录、只看 `sessionId`），
 /// 同一个会话会在历史树与 tab 栏上一个认是分叉、一个不认。
 pub(crate) fn fork_origin(v: &serde_json::Value) -> Option<(String, String)> {
     match v.get("type").and_then(|t| t.as_str()) {

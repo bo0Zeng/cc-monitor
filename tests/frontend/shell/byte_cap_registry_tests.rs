@@ -129,7 +129,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "CONTEXT_STANDARD",
-        "**模型的上下文窗口**（tokens），不是字节：会话事实判上下文上限时的标准那一档（`observe/facts_query.rs::context_limit`）；不限任何读写的体量。",
+        "**模型的上下文窗口**（tokens），不是字节：会话事实判上下文上限时的标准那一档（`observe/recognize/facts.rs::context_limit`）；不限任何读写的体量。",
     ),
     (
         "CONTEXT_EXTENDED",
@@ -845,7 +845,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 分页读记录时往回多看那一段：只拿来配排队消息的打字时刻；配不上（打字在这一段之前）⇒ 那条照用它自己的时刻（协议文档写明），记录一条不少。
     (
-        "src/backend/observe/record_page.rs",
+        "src/backend/observe/query/body.rs",
         "QUEUE_LOOKBACK_BYTES",
         "从文件中段起读一页记录时，往回多读、只用来配排队消息打字时刻的那一段原始字节（配对用的索引；记录本身一条不少）",
         "索引截断（不丢数据）",
@@ -1783,18 +1783,18 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "`files-read-chunk` 的 `len` 是入参，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）；回 `eof` / `size`，\
              调用方读到 `eof` 为止 —— 不是截断后当完整的用。",
     ),
-    // `history_query::read_page` 的一页上限是入参；唯一调用点
+    // `query::body::read_page` 的一页上限是入参；唯一调用点
     // （`read_face.rs`）给的是具名常量 `READ_PAGE_BYTES`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：读满一页就停、**回续点 `next`**，调用方循环到 `eof` —— 一个字节都不丢。
     (
-        "src/backend/observe/history_query.rs",
+        "src/backend/observe/query/body.rs",
         "page as u64",
         "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
              读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
     ),
-    // `record_page::lead_of` 往回多看的那一段：起点是 `offset − QUEUE_LOOKBACK_BYTES`（已在 `CAPS` 里，饱和到 0）⇒ 读的长度不过它。
+    // `body::lead_of` 往回多看的那一段：起点是 `offset − QUEUE_LOOKBACK_BYTES`（已在 `CAPS` 里，饱和到 0）⇒ 读的长度不过它。
     (
-        "src/backend/observe/record_page.rs",
+        "src/backend/observe/query/body.rs",
         "offset - at",
         "`lead_of` 读 `[offset − QUEUE_LOOKBACK_BYTES, offset)` 那一段（`QUEUE_LOOKBACK_BYTES` 已在 `CAPS` 里）；\
              只为配打字时刻（索引），配不上照用那条自己的时刻、记录一条不少 —— 协议文档写明。",

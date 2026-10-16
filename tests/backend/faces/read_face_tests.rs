@@ -268,7 +268,7 @@ fn paged_read_reassembles_the_file_byte_for_byte() {
     let mut off = 0u64;
     let mut pages = 0;
     loop {
-        let pg = crate::observe::history_query::read_page(&home, &path, off, None, 37, 1 << 20)
+        let pg = crate::observe::query::body::read_page(&home, &path, off, None, 37, 1 << 20)
             .expect("读页");
         assert_eq!(
             pg.next,
@@ -290,8 +290,8 @@ fn paged_read_reassembles_the_file_byte_for_byte() {
     assert_eq!(got, want);
     // `until` 收口：[a, b) 恰好是那一段。
     let (a, b) = (8u64, 60u64);
-    let pg = crate::observe::history_query::read_page(&home, &path, a, Some(b), 1 << 20, 1 << 20)
-        .unwrap();
+    let pg =
+        crate::observe::query::body::read_page(&home, &path, a, Some(b), 1 << 20, 1 << 20).unwrap();
     assert!(pg.eof);
     assert_eq!(pg.bytes, want[a as usize..b as usize].to_vec());
     let _ = std::fs::remove_dir_all(&home);
@@ -307,14 +307,14 @@ fn an_oversized_line_is_refused_not_cut() {
     let long = format!("{{\"x\":\"{}\"}}\n{{\"i\":1}}\n", "a".repeat(5000));
     std::fs::write(&p, &long).unwrap();
     let path = p.to_string_lossy().into_owned();
-    let ok = crate::observe::history_query::read_page(&home, &path, 0, None, 100, 1 << 20).unwrap();
+    let ok = crate::observe::query::body::read_page(&home, &path, 0, None, 100, 1 << 20).unwrap();
     assert_eq!(ok.bytes.last(), Some(&b'\n'));
     assert_eq!(
         ok.bytes.len(),
         long.find('\n').unwrap() + 1,
         "应恰好是那一整行"
     );
-    match crate::observe::history_query::read_page(&home, &path, 0, None, 100, 1000) {
+    match crate::observe::query::body::read_page(&home, &path, 0, None, 100, 1000) {
         Err((c, _)) => assert_eq!(c, "oversized_line"),
         Ok(pg) => panic!("超长行被交出去了（{} 字节）", pg.bytes.len()),
     }
@@ -1115,7 +1115,7 @@ fn lines_by_number_match_the_hand_written_countable_rows() {
     let n = want.len() as u64;
     for from in 0..=n + 1 {
         for until in (from..=n + 2).map(Some).chain([None]) {
-            let got = crate::observe::history_query::read_lines_from(
+            let got = crate::observe::query::body::read_lines_from(
                 std::io::Cursor::new(body.as_bytes()),
                 from,
                 until,
@@ -1150,7 +1150,7 @@ fn lines_by_number_page_on_row_boundaries_and_reassemble() {
         let mut from = 0u64;
         let mut rounds = 0;
         loop {
-            let pg = crate::observe::history_query::read_lines_from(
+            let pg = crate::observe::query::body::read_lines_from(
                 std::io::Cursor::new(body.as_bytes()),
                 from,
                 None,
@@ -1179,7 +1179,7 @@ fn lines_by_number_page_on_row_boundaries_and_reassemble() {
 fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
     let (body, want) = lines_fixture();
     let cap = 100; // 夹具那一行 > 200 字节
-    match crate::observe::history_query::read_lines_from(
+    match crate::observe::query::body::read_lines_from(
         std::io::Cursor::new(body.as_bytes()),
         3,
         Some(5),
@@ -1189,7 +1189,7 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
         Err(("oversized_line", _)) => {}
         other => panic!("超长行被交出去了：{other:?}"),
     }
-    let after = crate::observe::history_query::read_lines_from(
+    let after = crate::observe::query::body::read_lines_from(
         std::io::Cursor::new(body.as_bytes()),
         5,
         None,
@@ -1291,7 +1291,7 @@ fn lines_by_number_match_the_shared_seq_space_golden() {
         !want.is_empty(),
         "金标准一行都没抽到 —— 下面的相等在空集上绿"
     );
-    let pg = crate::observe::history_query::read_lines_from(
+    let pg = crate::observe::query::body::read_lines_from(
         std::io::Cursor::new(data),
         0,
         None,
@@ -1872,7 +1872,7 @@ pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
 #[test]
 fn the_index_is_packed_by_column_with_offsets_as_differences() {
     use crate::agents::record::RecordClass;
-    use crate::observe::history_query::IndexRow;
+    use crate::observe::recognize::index_row::IndexRow;
     let rows = vec![
         IndexRow {
             o: 0,
@@ -1908,7 +1908,7 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             ..Default::default()
         },
     ];
-    let v = serde_json::to_value(crate::faces::history_face::pack_index(0, 315, &rows)).unwrap();
+    let v = serde_json::to_value(crate::observe::query::index::pack_index(0, 315, &rows)).unwrap();
     assert_eq!(
         v,
         serde_json::json!({
@@ -2179,7 +2179,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     assert_eq!(needs, r#"{"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
-        use crate::observe::facts_query::{needs_of, PidWait};
+        use crate::observe::recognize::facts::{needs_of, PidWait};
         crate::faces::history_face::NeedsList {
             waiting: vec![crate::observe::accounts_query::NeedsRow {
                 sid: "s-1".into(),

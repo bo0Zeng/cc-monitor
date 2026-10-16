@@ -287,7 +287,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `shell_tests.rs::the_exists_code_is_the_backends_one`。两侧各写一份 `exists`；\
          失效方向：两份漂开 ⇒ 就地改名 / 新建撞名时那一格下面说的是系统那句长话，不是「x 已存在」。",
     ),
-    // `tests/frontend/shell/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
+    // `tests/frontend/shell/history_title_coverage.rs` → 后端 `query/locate.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
     //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
     //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。
     // ── backend → monitor（3 → 4 · 4 → 2：两条对拍随「只剩一份」出列 · −1：vendored cc-acct-iso 挪去 `src/shared/` · 2 → 0）：backend 的判据去读 monitor ──

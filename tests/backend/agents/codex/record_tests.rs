@@ -561,7 +561,7 @@ fn codex_records_carry_the_clock_face_too() {
 const CODEX_REGEN: &str = "CCM_REGEN_CODEX_RECORD_GOLDEN";
 
 /// ★ 造的中性 rollout（`codex-rollout.sample.jsonl`，一整份会话：元记录 · 事件 · 人话 · 注入 · 推理 · 两种工具 · 回复 · 认不出的一类）
-/// 走核心读页那一遍（适配层 ＋ `record_page::rows_of`，与 `history-read` 同一条路）⇒ 通用记录金样 `record-codex.golden.jsonl`。
+/// 走核心读页那一遍（适配层 ＋ `body::rows_of`，与 `history-read` 同一条路）⇒ 通用记录金样 `record-codex.golden.jsonl`。
 /// 手机（`CodexRecordGoldenTest.kt`）与界面（`codex-record.vitest.ts`）解的是同一份金样，逐格对。
 #[test]
 fn codex_sample_rollout_reads_to_the_record_golden() {
@@ -569,8 +569,8 @@ fn codex_sample_rollout_reads_to_the_record_golden() {
     let sample = std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
     let face = super::super::RECORDS;
     let tz = crate::Tz::named("UTC").unwrap();
-    let mut reader = crate::observe::record_page::Reader::new(&face, 0, &[], tz);
-    let rows = crate::observe::record_page::rows_of(&mut reader, 0, &sample);
+    let mut reader = crate::observe::query::body::Reader::new(&face, 0, &[], tz);
+    let rows = crate::observe::query::body::rows_of(&mut reader, 0, &sample);
     let mut got = String::new();
     for (i, row) in rows.iter().enumerate() {
         if let Some(record) = &row.record {
@@ -615,7 +615,7 @@ fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
             }) == Some(true)
         });
         assert_eq!(class(&v), want, "{raw}");
-        let row = crate::observe::history_query::index_row_of(
+        let row = crate::observe::recognize::index_row::index_row_of(
             super::super::AGENT_KIND,
             Some(&v),
             offset,

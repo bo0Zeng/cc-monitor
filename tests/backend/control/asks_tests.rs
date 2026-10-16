@@ -155,10 +155,13 @@ fn a_sub_agent_request_lands_in_needs_carries_its_id_and_is_answered() {
     let mut rx = open(AGENT, a, 9003);
     // 挡着终端：pidfile 不说在等 ⇒ 照挂着的请求补出一份 needs。
     let needs =
-        crate::observe::facts_query::dress_ask_with(None, pending(sid).into_iter().next(), 0)
+        crate::observe::recognize::facts::dress_ask_with(None, pending(sid).into_iter().next(), 0)
             .expect("有挂着的就有 needs");
     let ask = needs.ask.clone().expect("带 ask");
-    assert_eq!(needs.kind, crate::observe::facts_query::NeedsKind::Approve);
+    assert_eq!(
+        needs.kind,
+        crate::observe::recognize::facts::NeedsKind::Approve
+    );
     assert_eq!(needs.tool.as_deref(), Some("Bash"));
     assert_eq!(ask.run.as_ref().map(|r| r.id.as_str()), Some("agent-7"));
     assert_eq!(
@@ -286,21 +289,21 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
 
 #[test]
 fn needs_without_a_pending_request_say_only_in_the_terminal() {
-    let n = crate::observe::facts_query::needs_of(
+    let n = crate::observe::recognize::facts::needs_of(
         &[],
-        Some(&crate::observe::facts_query::PidWait {
+        Some(&crate::observe::recognize::facts::PidWait {
             waiting_for: Some(crate::agents::WaitOn::Dialog),
             since_ms: None,
             read_at_ms: 0,
         }),
     );
-    let n = crate::observe::facts_query::dress_ask_with(n, None, 0).unwrap();
+    let n = crate::observe::recognize::facts::dress_ask_with(n, None, 0).unwrap();
     assert!(n.ask.is_none());
     assert_eq!(
         n.manual_text.as_ref().map(|w| w.0.clone()),
         Some(copy_core::copy_text("beAsk.manual.terminal", &[]))
     );
-    assert!(crate::observe::facts_query::dress_ask_with(None, None, 0).is_none());
+    assert!(crate::observe::recognize::facts::dress_ask_with(None, None, 0).is_none());
 }
 
 #[tokio::test]

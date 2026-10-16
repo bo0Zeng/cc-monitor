@@ -236,7 +236,7 @@ export function withSessionReads(
 //
 // 这四问从前是四条 Tauri 命令，判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
 // `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/frontend/ui/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
-// 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
+// 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/query/body.rs` 出的那几个）。
 
 /** 各问的名字（判据里的叫法 = 旧命令名）。查看器整份读那一问随查看器改成骨架 ＋ 按视口取删了。 */
 export type RecordRead = "read_session_range" | "read_session_lines" | "load_subagent" | "history-branch";
