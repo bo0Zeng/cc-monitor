@@ -1443,6 +1443,22 @@ fn note_never_started(out: StartOutcome) -> StartOutcome {
     out
 }
 
+/// 「本机后端那一趟起着」：造出来时记上，丢掉时收掉（哪个出口都收）。
+struct Starting;
+
+impl Starting {
+    fn on() -> Self {
+        crate::machine_state::note_local_starting(true);
+        Starting
+    }
+}
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        crate::machine_state::note_local_starting(false);
+    }
+}
+
 pub fn start_local_backend() -> StartOutcome {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
@@ -1464,6 +1480,8 @@ pub fn start_local_backend() -> StartOutcome {
     // 句柄表本身只在读写那一下拿 ⇒ 这一趟里释放 ~10MB、等绑口、握手的那几秒，查状态与退出那一臂不被挡住
     // （从前锁的就是句柄表，`backend_status` 跟着等）。
     let _life = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
+    // 这一趟起着 ⇒ 本机那台说「连接中」，起完（不论结局）收掉。
+    let _starting = Starting::on();
     let g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
         return StartOutcome::AlreadyRunning;
@@ -1550,6 +1568,24 @@ pub fn start_local_backend() -> StartOutcome {
         Resolved::Found(p) => StartOutcome::Started(p),
         Resolved::Missing { reason, looked_at } => StartOutcome::Failed { reason, looked_at },
     })
+}
+
+/// 起来时起本机后端：结局交给 `then`。
+pub fn start_at_launch(then: impl FnOnce(StartOutcome) + Send + 'static) {
+    start_off_thread(start_local_backend, then)
+}
+
+/// 起来时那一趟起本机后端：在自己的线程上起（窗口第一屏不等它听口、握手），调用方当场返回。
+fn start_off_thread(
+    start: impl FnOnce() -> StartOutcome + Send + 'static,
+    then: impl FnOnce(StartOutcome) + Send + 'static,
+) {
+    if let Err(e) = std::thread::Builder::new()
+        .name("local-backend-start".into())
+        .spawn(move || then(start()))
+    {
+        tracing::error!("起本机后端那条线程起不来：{e}");
+    }
 }
 
 /// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。

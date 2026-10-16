@@ -130,6 +130,31 @@ fn a_foreign_local_backend_is_judged_by_build_order() {
     );
 }
 
+/// 本机后端那一趟正在起（还没接上）⇒ 连接中、停在「启动 cc-monitor」那一步、没有修法；起完没接上 ⇒ 没连上；接上了 ⇒ 连着。
+#[test]
+fn a_local_backend_being_started_reads_as_connecting() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    note_local_foreign(None);
+    note_local_starting(true);
+    let starting = local_product(false, Some("p8c-mine"));
+    let attached = local_product(true, Some("p8c-mine")).state;
+    note_local_starting(false);
+    assert_eq!(
+        (
+            starting.state,
+            starting.stage.as_deref(),
+            starting.reason.as_deref()
+        ),
+        (MachineStateKind::Connecting, Some("attach"), None)
+    );
+    assert_eq!(starting.fixes, vec![], "起着时不给修法");
+    assert_eq!(attached, MachineStateKind::Up);
+    assert_eq!(
+        local_product(false, Some("p8c-mine")).state,
+        MachineStateKind::Down
+    );
+}
+
 #[test]
 fn the_version_relation_decides_up_needs_update_newer() {
     for (rel, want, fixes) in [

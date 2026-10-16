@@ -14,7 +14,7 @@
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
 import { hiddenPushed } from "./session-hidden";
-import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { LOCAL_ORIGIN, isLocalOrigin, type Origin } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { icon } from "./kit/icon";
@@ -80,7 +80,7 @@ import { decodeTasks, TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage } from "./terminal-page";
-import { onMachineState } from "./machine-feed";
+import { onMachineUp } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
@@ -220,10 +220,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       el.focus({ preventScroll: true });
     },
   });
-  // 那台重连回来（壳推「已连上」）⇒ 终端页停在「那台断开」的实时自己重新订上。
-  onMachineState((origin, m) => {
-    if (m?.state === "up") terminalPage.machineUp(origin);
-  });
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
   document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);
@@ -250,6 +246,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 计划那一侧的「需手动」的账（会话头那一枚标 · 标签栏的数 · Ctrl J 都读它；计划页问到的交给它）。
   const planNeeds = new PlanNeedsBook();
   const manualBook = new ManualBook();
+  // 那台接上了（起来时本机后端还在起 · 断开之后又连上）⇒ 接上之前问过它的那几处再问一次；终端页停在「那台断开」的实时自己重新订上。
+  onMachineUp((origin) => {
+    terminalPage.machineUp(origin);
+    void chores.refresh(origin);
+    void manualBook.refresh(origin);
+    if (isLocalOrigin(origin)) void start.refresh();
+  });
   // 窗口标题的 N 同侧栏入口（会话 ＋ 计划项 ＋ 会话外的每一项）。`tabs` 建好之后才会被调到（标签页栏那一次刷新排在下一个微任务里）。
   const paintNeedsTitle = (): void => needsTitle.observe(tabs.needsCount());
 

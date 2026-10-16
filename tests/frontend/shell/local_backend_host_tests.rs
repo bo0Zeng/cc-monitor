@@ -2782,9 +2782,9 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
     let lib = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
     // 反空真①：自动起那条路本身还在（0 处 = 接线没了，下面切什么都没意义）。
     assert_eq!(
-        lib.matches("start_local_backend()").count(),
+        lib.matches("local_backend_host::start_at_launch(").count(),
         1,
-        "`lib.rs` 里 `start_local_backend()` 不是恰好一处 —— \
+        "`lib.rs` 里 `start_at_launch(` 不是恰好一处 —— \
              自动起那条路搬家或没了，本条会零命中地绿"
     );
     let arm = braced_block(
@@ -4241,7 +4241,7 @@ fn three_fake_backends_land_in_three_different_cells() {
 #[test]
 fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
     // 本文件对 `lib.rs` 的两条判据取的针：`kill_on_exit_now(`（退出臂那一条的正控，接替已删的旧缝名）·
-    // `start_local_backend()`（568）· `take_start_refusal()`（602）—— 都在 59 之后。
+    // `start_at_launch(` · `take_start_refusal()` —— 都在第一个 `#[cfg(test)]` 之后。
     //
     // ⚠ 本文件另有一条 `the_strip_rule_this_file_leans_on_is_still_on_disk`，它是剥法的
     //    **住址钉**，头注自己逐字声明「买不到剥法对不对」——**那条与本条不重叠**：
@@ -4251,7 +4251,7 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
         include_str!("../../../src/frontend/shell/src/lib.rs"),
         &[
             "kill_on_exit_now(",
-            "start_local_backend()",
+            "local_backend_host::start_at_launch(",
             "take_start_refusal()",
         ],
     );
@@ -4699,5 +4699,41 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
             && silent.said.contains(&copy_core::format_elapsed(within)),
         "报错没说等的是哪个口、等了多久：{}",
         silent.said
+    );
+}
+
+/// 起来时起本机后端不挡调用方：替身那一趟卡着（等放行），调用方已经回来了；放行之后结局照样交到 `then`。
+/// 同步起 ⇒ 替身等满 2 秒没人放行、自己回来，调用方回来时它已经起完 ⇒ 红。
+#[test]
+fn the_launch_start_returns_before_the_backend_is_up() {
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
+    let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let f = finished.clone();
+    super::start_off_thread(
+        move || {
+            let released = release_rx
+                .recv_timeout(std::time::Duration::from_secs(2))
+                .is_ok();
+            f.store(true, std::sync::atomic::Ordering::SeqCst);
+            if released {
+                StartOutcome::AlreadyRunning
+            } else {
+                StartOutcome::Started(std::path::PathBuf::from("timed-out"))
+            }
+        },
+        move |out| {
+            let _ = done_tx.send(matches!(out, StartOutcome::AlreadyRunning));
+        },
+    );
+    assert!(
+        !finished.load(std::sync::atomic::Ordering::SeqCst),
+        "起本机后端那一趟还没放行，调用方就等它起完了"
+    );
+    release_tx.send(()).expect("替身那一趟不在了");
+    assert_eq!(
+        done_rx.recv_timeout(guard_core::wall::CEILING),
+        Ok(true),
+        "结局没交到 then"
     );
 }

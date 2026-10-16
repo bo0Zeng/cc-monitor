@@ -33,3 +33,17 @@ export function onMachineState(cb: (origin: string, machine: MachineState | null
     off?.();
   };
 }
+
+/** 那台变成连着的那一刻（起着 / 断开之后接上）叫一次；连着时再来的帧不叫。回退订函数。 */
+export function onMachineUp(cb: (origin: string) => void): () => void {
+  const up = new Set<string>();
+  return onMachineState((origin, m) => {
+    if (m?.state !== "up") {
+      up.delete(origin);
+      return;
+    }
+    if (up.has(origin)) return;
+    up.add(origin);
+    cb(origin);
+  });
+}

@@ -346,9 +346,18 @@ pub(crate) fn note_local_foreign(build: Option<&str>) {
     notify(crate::inbound_client::LOCAL_ORIGIN);
 }
 
+/// 本机后端那一趟起着没有（`local_backend_host::start_local_backend` 起止各记一次）。
+static LOCAL_STARTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 记下本机后端起着 / 起完了。
+pub(crate) fn note_local_starting(on: bool) {
+    LOCAL_STARTING.store(on, std::sync::atomic::Ordering::SeqCst);
+    notify(crate::inbound_client::LOCAL_ORIGIN);
+}
+
 /// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，`local_backend_host::hello_verdict`；没带后端字节 ⇒ 开发构建、不可比）；
 /// 通道在 ⇒ 连着；不在而口上占着别的构建（终端里先起的那一份）⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 不可比、照没连上说）；
-/// 别的不在 ⇒ 没连上。本机没连上一律原因码 `local`，修法只给［重试］。
+/// 那一趟正在起 ⇒ 连接中（到「启动」那一步）；别的不在 ⇒ 没连上。本机没连上一律原因码 `local`，修法只给［重试］。
 pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
     let foreign = LOCAL_FOREIGN
         .lock()
@@ -360,18 +369,20 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         (false, Some(_), None) => Relation::Same,
         (_, None, _) => Relation::Incomparable,
     };
+    let starting = LOCAL_STARTING.load(std::sync::atomic::Ordering::SeqCst);
     let state = match (channel, relation) {
         (true, _) => MachineStateKind::Up,
+        (false, _) if starting => MachineStateKind::Connecting,
         (false, Relation::Older) => MachineStateKind::NeedsUpdate,
         (false, Relation::Newer) => MachineStateKind::Newer,
         (false, _) => MachineStateKind::Down,
     };
-    let reason = (!channel).then(|| LOCAL_DOWN.to_string());
+    let reason = (!channel && !starting).then(|| LOCAL_DOWN.to_string());
     MachineState {
         state,
         fixes: fixes_of(state, reason.as_deref()),
         reason,
-        stage: None,
+        stage: (state == MachineStateKind::Connecting).then(|| "attach".to_string()),
         version: (relation == Relation::Same).then(|| PRODUCT_VERSION.to_string()),
         version_relation: Some(relation),
         os: None,
