@@ -7,11 +7,10 @@ use std::collections::BTreeSet;
 
 const HOME: &str = "src/common/cmd-wire/src/fnv.rs";
 
-/// 64 位起点 · 64 位乘数 · 多写一位 0 的那个 64 位乘数 · 32 位起点 · 32 位乘数。
-const CONSTANTS: [u64; 5] = [
+/// 64 位起点 · 64 位乘数 · 32 位起点 · 32 位乘数。
+const CONSTANTS: [u64; 4] = [
     0xcbf2_9ce4_8422_2325,
     0x0100_0000_01b3,
-    0x1000_0000_01b3,
     0x811c_9dc5,
     0x0100_0193,
 ];

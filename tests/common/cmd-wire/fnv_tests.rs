@@ -16,12 +16,3 @@ fn standard_vectors() {
 fn feeding_in_parts_is_feeding_once() {
     assert_eq!(fnv1a64_from(fnv1a64(b"foo"), b"bar"), fnv1a64(b"foobar"));
 }
-
-/// 宽乘数那一种：钉一个另行独立算出的数（目录锁的互斥量名、旧版口号靠它，换了就和别的进程对不上）。
-#[test]
-fn wide_prime_value_is_pinned() {
-    assert_eq!(
-        fnv1a64_wide(b"c:\\users\\a\\.cc-monitor"),
-        0x674a_df81_a80d_ede8
-    );
-}

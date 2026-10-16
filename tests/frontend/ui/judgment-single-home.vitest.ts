@@ -720,7 +720,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     fnv1a64_from: NONE,
     fnv1a64: NONE,
     fnv1a32: NONE,
-    fnv1a64_wide: NONE,
     // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。
     bare: NONE,
     is_local: "J36",

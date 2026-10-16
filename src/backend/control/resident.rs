@@ -528,14 +528,24 @@ pub fn sandbox_refusal(
     ))
 }
 
-/// 〔升级那一跳，跨过 4.1.x 之后删〕旧版常驻后端的进程记录 `<家>/listen-<口>.pid`：口按家算（[`cmd_wire::fnv::fnv1a64_wide`]），
-/// 要与旧版算出同一个口。
-pub fn legacy_listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
-    const PORT_BASE: u16 = 49152;
-    const PORT_SPAN: u32 = 16384;
-    let h = cmd_wire::fnv::fnv1a64_wide(data_home.to_string_lossy().as_bytes());
-    let port = PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16);
-    data_home.join(format!("listen-{port}.pid"))
+/// 〔升级那一跳，跨过 4.1.x 之后删〕旧版常驻后端的进程记录 `<家>/listen-<口>.pid`：口是旧版按家散列出来的，
+/// 这里不再算，照名字的形状在家里找。没有 ⇒ `None`。
+pub fn legacy_listen_pid_in(data_home: &std::path::Path) -> Option<std::path::PathBuf> {
+    crate::platform::fs::Ro::read_dir(data_home)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| {
+                    n.strip_prefix("listen-")?
+                        .strip_suffix(".pid")?
+                        .parse::<u16>()
+                        .ok()
+                })
+                .is_some()
+        })
 }
 
 /// 〔同上〕旧版常驻后端的钥匙文件（在家里）：停掉旧的之后一并删掉。
@@ -547,7 +557,7 @@ pub(crate) const LEGACY_LISTEN_TOKEN_NAME: &str = "listen-token";
 /// 等待在这里：只在常驻后端起来那一刻走一次（`no_timer_guard` 那张表登记了这一处入口）。
 pub fn retire_legacy(own: &Own) -> Option<String> {
     let root = own.root()?;
-    let rec = legacy_listen_pid_for(root.as_path());
+    let rec = legacy_listen_pid_in(root.as_path())?;
     let rec_own = root.join(&rec.file_name()?.to_string_lossy()).ok()?;
     let token = root.join(LEGACY_LISTEN_TOKEN_NAME).ok()?;
     let (pid, bin) = crate::platform::fs::Ro::read_to_string(&rec)

@@ -371,7 +371,7 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let theirs = guard_core::production_code(include_str!("../../../src/backend/platform/lock.rs"));
     for needle in [
         "format!(\"{namespace}\\\\ccm-own-state-{h:016x}\")",
-        "cmd_wire::fnv::fnv1a64_wide(",
+        "cmd_wire::fnv::fnv1a64(",
         "for ns in [\"Global\", \"Local\"] {",
     ] {
         assert_eq!(

@@ -25,12 +25,6 @@ pub fn fnv1a32(bytes: &[u8]) -> u32 {
     fold(0x811c_9dc5, 0x0100_0193, bytes) as u32
 }
 
-/// 起点同 FNV-1a 64、乘数比 FNV 素数多一位 0 的那一种：目录锁的互斥量名 · 旧版常驻后端的口号按它算过，
-/// 别的进程 / 旧版要算出同一个名字，值不换。
-pub fn fnv1a64_wide(bytes: &[u8]) -> u64 {
-    fold(FNV64_BASIS, 0x1000_0000_01b3, bytes)
-}
-
 #[cfg(test)]
 #[path = "../../../../tests/common/cmd-wire/fnv_tests.rs"]
 mod tests;
