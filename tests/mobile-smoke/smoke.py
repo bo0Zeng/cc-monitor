@@ -3,6 +3,7 @@
 # 前提：rig.sh up（沙箱 sshd ＋ 后端）· emu.sh up（模拟器）· debug 包已装；环境照 emu.sh env。入口是同目录 smoke.sh。
 # 第 4 步后两小步（4b 模型 chip · 4c ［+］面板）走聊天屏输入那一圈。
 # 每一步只看手机屏上与台架记录里看得到的东西（不读 App 内部）；判不出的写「看不出」，不当过。
+import itertools
 import json
 import os
 import re
@@ -127,21 +128,27 @@ masked = []
 
 
 def shot(name):
+    return snap(name)[0]
+
+
+def snap(name):
+    """截一张、涂掉露出的本机真名；回 (路径, 截完那一刻屏上的控件)，要边截边看的拿控件接着判。"""
     p = os.path.join(OUT, f"{name}.png")
     open(p, "wb").write(ui.adb("exec-out", "screencap", "-p").stdout)
-    hits = [ui.bounds(n) for n in ui.nodes() if any(x in ui.label(n) for x in PRIVATE)]
+    ns = ui.nodes()
+    hits = [ui.bounds(n) for n in ns if any(x in ui.label(n) for x in PRIVATE)]
     if hits:
         try:
             from PIL import Image, ImageDraw
         except ImportError:
             masked.append(f"{name}（没涂：缺 Pillow）")
-            return p
+            return p, ns
         im = Image.open(p)
         for b in hits:
             ImageDraw.Draw(im).rectangle(b, fill="black")
         im.save(p)
         masked.append(name)
-    return p
+    return p, ns
 
 
 def start_app():
@@ -699,21 +706,20 @@ def deploy_and_time(button, name):
     before = sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace"))
     tapped = time.time()
     tap(button)
-    for i in range(10):
-        shot(f"{name}-过程-{i}")
-        time.sleep(0.3)
     end = ui.within(300)
     done_word = t("rsSftp.deploy.done", buildId="", machine="", path="", reason="").split(" ")[0]
-    while time.time() < end:
-        texts = [n.get("text") or "" for n in ui.nodes()]
+    for i in itertools.count():
+        # 头十回边截边看：「已安装后端」是一闪而过的提示，截图那几秒里出来又收了的话，截完再看就错过了。
+        ns = snap(f"{name}-过程-{i}")[1] if i < 10 else ui.nodes()
+        texts = [n.get("text") or "" for n in ns]
         if any(x.startswith(done_word) for x in texts):
             break
         failed = [x for x in texts if "失败" in x or "未安装" in x]
         if failed:
             raise Step.Fail(f"没装上：{failed[0]}")
-        time.sleep(0.5)
-    else:
-        raise Step.Fail("五分钟没等到「已安装后端」那一句")
+        if time.time() >= end:
+            raise Step.Fail("五分钟没等到「已安装后端」那一句")
+        time.sleep(0.3)
     cmds = [(at, c) for at, c in commands() if at >= today_secs(tapped) - 1]
     replaced = [at for at, c in cmds if c.endswith("--resident-ensure --replace")]
     if sum(1 for _, c in commands() if c.endswith("--resident-ensure --replace")) <= before or not replaced:
@@ -898,7 +904,12 @@ def walk():
         drawer(t("mobDrawer.item.newChat"))
         if not wait("~/work", 20):
             raise Step.Fail("目录 chip 没填上那台最近的目录")
-        tap_until("~/work", t("mobNewSession.dir.browse"), what="目录抽屉")
+        tap_until("~/work", t("newSession.recent.label"), what="目录抽屉")
+        # 「浏览…」在「最近的」那一列底下：最近用过的目录多了它在屏外，往上翻到它。
+        for _ in range(6):
+            if ui.find(t("mobNewSession.dir.browse")) is not None:
+                break
+            adb("shell", "input", "swipe", "540", "2100", "540", "1300", "300")
         tap(t("mobNewSession.dir.browse"))
         if not wait(f"{T}dir", 20):
             raise Step.Fail("浏览屏里没列出那一层的文件夹")
