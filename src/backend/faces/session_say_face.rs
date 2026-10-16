@@ -3,6 +3,7 @@
 //! 挂着它的那个窗格前台只剩 shell（agent 退了）⇒ 不送进去，当作终端没了（`terminals::say_on`）。
 //! 送的时候这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 只剩 shell）⇒ 按记下的号恢复这条会话，那一句当第一句交出去
 //! （模型 · 权限档取会话记录里最后那一条，同 `history-facts` 那一处扫描；起法同批量起的 tmux 那一形，`session_batch::resume_saying`）。
+//! `session-resume` 是同一支不带那一句：终端没了的会话先在这台恢复，回它落在哪个 tmux 会话（界面接着附着进去）。
 
 use crate::common::contract::malformed;
 use crate::control::launch_account::AccountAsk;
@@ -71,7 +72,8 @@ impl crate::wire::typed::Handle for SessionSay {
             let asked = crate::control::asks::sids();
             let waiting =
                 |sid: &str| crate::observe::accounts_query::waiting_now(&home, sid, &asked);
-            let resume = |r: &SessionSayReq| resume_here(r, files);
+            let resume =
+                |r: &SessionSayReq| resume_here(&r.sid, r.client.as_deref(), Some(&r.text), files);
             say_with(
                 &req,
                 &waiting,
@@ -83,33 +85,133 @@ impl crate::wire::typed::Handle for SessionSay {
     }
 }
 
-/// 恢复再送的生产那一份：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
-/// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。任一找不到 ⇒ `None`（不恢复）。
-pub(crate) fn resume_here(req: &SessionSayReq, files: Files) -> Option<Answer> {
+/// 恢复的生产那一份（恢复再送 · 恢复再附着同一份）：记录在这台记录树里找；哪一家 · 工作目录 · 模型 · 权限档从会话事实那一处扫描读（上限表用不着，不读）。
+/// 号跟随（这条会话上次用的号）；启动命令 · 模型表读这台 `prefs.json`（[`batch`] 那一份 `Deps`）。`say` ＝ 随起交的第一句。任一找不到 ⇒ `None`（不恢复）。
+pub(crate) fn resume_here(
+    sid: &str,
+    client: Option<&str>,
+    say: Option<&str>,
+    files: Files,
+) -> Option<Answer> {
     use crate::observe::history_query as hq;
     let home = crate::history::listing::agent_home();
-    let path = hq::session_record(&home, &req.sid).ok()?;
+    let path = hq::session_record(&home, sid).ok()?;
     let path = path.to_str()?;
     let agent = hq::facts_agent(&home, path)?;
     let cwd = hq::facts_project_dir(&home, path)?;
     let facts = hq::cold_scan(&home, path).ok()?.facts(&Vec::new(), None);
     let item = Item {
-        sid: req.sid.clone(),
+        sid: sid.to_string(),
         cwd,
         account: AccountAsk::Follow,
         fresh: false,
         fork_of: None,
-        say: Some(req.text.clone()),
+        say: say.map(str::to_string),
         model: facts.usage.and_then(|u| u.model),
         permission_mode: facts.permission_mode,
     };
-    let client = crate::control::gate::requester(req.client.as_deref()).ok()?;
+    let client = crate::control::gate::requester(client).ok()?;
     Some(crate::faces::session_batch_face::with_deps_as(
         client.as_deref(),
         &agent,
         Some(files),
         |d| batch::resume_saying(&item, &agent, d),
     ))
+}
+
+/// `session-resume` 的入参。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionResumeReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+    /// 自报的前端（同 `session-say`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+}
+
+/// `session-resume` 的应答：那条会话此刻在哪个 tmux 会话里（刚起的 · 本来就在跑的）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Resumed {
+    pub(crate) session: String,
+}
+
+typed::codes! {
+    /// `session-resume` 的码。
+    pub(crate) enum SessionResumeErr {
+        /// 另有活进程在写这条会话（开在 tmux 之外的终端里）。
+        Elsewhere = "elsewhere",
+        /// 没恢复成（记录找不到 · 号选不了 · 起不来 …）。
+        NotResumed = "not_resumed",
+        /// 这台没有 tmux（恢复要在 tmux 里起）。
+        NoTmux = "no_tmux",
+    }
+}
+
+/// `session-resume`：终端没了的会话先在这台恢复（同 `session-say` 恢复那一支，不带那一句），回它落在哪个 tmux 会话。
+/// 阻塞档（列名单 · 起 tmux；起之前预标信任，要文件管理面）。
+pub(crate) struct SessionResume;
+
+impl Command for SessionResume {
+    const NAME: &'static str = "session-resume";
+    type Req = SessionResumeReq;
+    type Reply = Resumed;
+    type Err = SessionResumeErr;
+}
+
+impl crate::wire::typed::Handle for SessionResume {
+    type Needs = crate::wire::typed::needs::Files;
+    fn run(
+        req: SessionResumeReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Resumed, SessionResumeErr>> + Send + 'static {
+        let (_cx, files) = cx.split();
+        async move {
+            if !shell_quote_core::session_id_ok(&req.sid) {
+                return Err(SessionResumeErr::BadArgs(malformed(
+                    "`sid` must be a session id",
+                )));
+            }
+            resume_with(&|| resume_here(&req.sid, req.client.as_deref(), None, files))
+        }
+    }
+}
+
+/// `session-resume` 的本体：起成了 · 本来就在 tmux 里跑 ⇒ 落在的那个；另有活进程在写 ⇒ `elsewhere`；别的 ⇒ `not_resumed`。
+pub(crate) fn resume_with(
+    resume: &dyn Fn() -> Option<Answer>,
+) -> Result<Resumed, SessionResumeErr> {
+    let a = resume();
+    let landed = a
+        .as_ref()
+        .and_then(|a| match (a.outcome, a.why.as_deref()) {
+            ("done", _) | ("skipped", Some("running" | "ambiguous")) => a.session.clone(),
+            _ => None,
+        });
+    if let Some(session) = landed {
+        return Ok(Resumed { session });
+    }
+    if let Some(a) = &a {
+        tracing::warn!(
+            "[session-resume] {} 恢复没成：{} {:?} {}",
+            a.sid,
+            a.outcome,
+            a.why,
+            a.detail
+        );
+    }
+    Err(match a.as_ref().and_then(|a| a.why.as_deref()) {
+        Some(batch::ALREADY_LIVE) => SessionResumeErr::Elsewhere(no_said(Refused::Elsewhere)),
+        Some("no_tmux") => {
+            SessionResumeErr::NoTmux(copy_core::copy_text("profilesPage.form.noTmux", &[]))
+        }
+        _ => SessionResumeErr::NotResumed(no_said(Refused::NotResumed)),
+    })
 }
 
 /// `session-say` 的本体：`waiting` 答这条会话此刻在不在等人，`send` 照 `terminal-input` 送。
