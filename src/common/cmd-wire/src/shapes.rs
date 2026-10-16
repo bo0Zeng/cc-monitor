@@ -104,7 +104,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("history-user-inputs", "541ceaf1"),
     ("hooks-diag", "9d3b1fb9"),
     ("kill", "5a6e81b0"),
-    ("last-seen-read", "462604d2"),
+    ("last-seen-read", "ca82c227"),
     ("last-seen-write", "7e4222b2"),
     ("launch", "e7405d81"),
     ("launch-local", "e81af5f5"),

@@ -121,18 +121,18 @@ async fn a_hello_that_answers_ping_is_all_green() {
     assert_eq!(r["backendOk"], true);
     assert_eq!(r["message"], copy_text("beProbe.test.ok", &[]));
     let hello = r["backendHello"].as_str().unwrap();
-    // 往返 N 毫秒 · 版本 b1 · 做不到 1 项（kill）（N 是现量的，只核是数）。
+    // 往返时长 · 版本 b1 · 做不到 1 项（kill）（时长是现量的，只核以数起头）。
     let want = copy_text(
         "beProbe.hello.okGaps",
-        &[("build", "b1"), ("gaps", "1"), ("ms", "\u{0}")],
+        &[("build", "b1"), ("gaps", "1"), ("dur", "\u{0}")],
     );
     let (pre, post) = want.split_once('\u{0}').unwrap();
-    let ms = hello
+    let dur = hello
         .strip_prefix(pre)
         .and_then(|t| t.strip_suffix(post))
         .unwrap_or_else(|| panic!("不是那三格：{hello}"));
     assert!(
-        !ms.is_empty() && ms.chars().all(|c| c.is_ascii_digit()),
+        dur.starts_with(|c: char| c.is_ascii_digit()),
         "{hello}"
     );
     // 做不到的按码分类交出去（那句人话归 monitor，`control-said.ts::unavailableReason`）。

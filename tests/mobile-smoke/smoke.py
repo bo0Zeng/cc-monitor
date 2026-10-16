@@ -412,11 +412,11 @@ def fill(field, value):
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
-    tap_until(t("mobHosts.fab.aria"), t("mobHostEdit.field.name"))
-    fill(t("mobHostEdit.field.name"), name)
-    fill(t("mobHostEdit.field.host"), host_alias())
+    tap_until(t("mobHosts.fab.aria"), t("machineForm.field.name"))
+    fill(t("machineForm.field.name"), name)
+    fill(t("machineForm.field.host"), host_alias())
     fill("22", PORT)
-    fill(t("mobHostEdit.field.user"), USER)
+    fill(t("machineForm.field.user"), USER)
     hide_keyboard()
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
     tap("smoke")

@@ -339,6 +339,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("copy_core::copy_text", Kind::Copy),
     // 天数 ⇒ 公历：与取文口同住 copy-core（「复制详情」的时刻要它，后端也链，宿主原语那一家后端不许链）。纯函数。
     ("copy_core::civil_from_days", Kind::Copy),
+    // 时长的两种写法（「约多久」「多久前」走短时长，冷启动预计走长时长）：与取文口同住 copy-core。纯函数。
+    ("copy_core::format_duration", Kind::Copy),
+    ("copy_core::short_duration", Kind::Copy),
     // 「复制详情」那几行的排法（项名闭集 · 一项一行 · 原话截断）：与取文口同住 copy-core，三端写详情只经这一份。纯函数。
     ("copy_core::detail::Detail::new", Kind::Copy),
     ("copy_core::detail::Label::Path", Kind::Copy),
