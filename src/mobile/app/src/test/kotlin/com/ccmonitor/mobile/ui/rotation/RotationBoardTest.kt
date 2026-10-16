@@ -186,15 +186,17 @@ class RotationBoardTest {
         runTest {
             val (_, b) = board()
             val v = b.state.value.view!!
-            val team = v.board.rows[1]
+            val rows = v.board.rows
+            val all = v.board.all
+            val team = rows[1]
             assertEquals("夹具·team 那一行", team.line)
             val delay = team.cells.first { it.key == "delay" }
             assertEquals(RotFrom.OWN to 30.0, delay.from to delay.num)
-            assertEquals(RotFrom.ALL, v.board.rows[0].cells.first { it.key == "delay" }.from)
-            val cap = v.board.rows[0].cells.first { it.window == "5h" }
+            assertEquals(RotFrom.ALL, rows[0].cells.first { it.key == "delay" }.from)
+            val cap = rows[0].cells.first { it.window == "5h" }
             assertEquals("cap.5h@0", cellId(cap, 0))
             assertEquals(listOf("夹具·90.0"), cap.segs!!.map { it.text })
-            assertEquals("不强制切换", v.board.all.first { it.key == "tol" }.nullable)
+            assertEquals("不强制切换", all.first { it.key == "tol" }.nullable)
         }
 
     @Test

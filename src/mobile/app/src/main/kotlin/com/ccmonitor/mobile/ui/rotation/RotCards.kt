@@ -69,6 +69,7 @@ internal fun Cards(
 ) {
     RotHeader(copyText("rot.h.cards"), copyText("mobRot.cards.hint"))
     val listed = view.accounts.take(view.listed)
+    val rows = view.board.rows
     val rects = remember { mutableStateMapOf<Int, Rect>() }
     var drag by remember { mutableStateOf<Pair<Int, Offset>?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -82,7 +83,7 @@ internal fun Cards(
                 Card(
                     i = i,
                     f = f,
-                    hover = view.board.rows.getOrNull(i)?.hover.orEmpty(),
+                    hover = rows.getOrNull(i)?.hover.orEmpty(),
                     ui = ui,
                     board = board,
                     inUse = board.inSession && f.account == view.current,

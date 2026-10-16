@@ -285,7 +285,8 @@ class RotationBoard(
             if (sid != null) {
                 Rotation.settings(RotWhere.Session(sid), edit, ifRev = rev())
             } else {
-                val id = _state.value.view?.strategy?.id ?: return
+                val view = _state.value.view
+                val id = view?.strategy?.id ?: return
                 Rotation.settings(RotWhere.Strategy(id), edit, draft = draft)
             }
         val failed = { p: Problem ->
@@ -293,7 +294,8 @@ class RotationBoard(
         }
         val took = { data: Any? ->
             if (sid == null) {
-                if (draft == null) draftRev = _state.value.view?.strategy?.rev
+                val view = _state.value.view
+                if (draft == null) draftRev = view?.strategy?.rev
                 draft = Rotation.ofSettings(data)?.settings
             }
         }

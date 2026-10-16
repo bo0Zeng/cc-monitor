@@ -992,13 +992,14 @@ fn the_board_carries_each_cell_resolved_once() {
     let caps = pick(r0, "caps", Some("5h"));
     assert_eq!(caps.from, form::RotFrom::All);
     assert_eq!(caps.label, "用量上限 · 5h");
+    let zero = copy_core::copy_text("rot.day.zero", &[]);
     assert_eq!(
         caps.segs
             .iter()
             .map(|s| (s.from, s.to, s.text.as_str(), s.tip.as_str()))
             .collect::<Vec<_>>(),
         [
-            (0, 600, "0% · 不用", "00:00–10:00 · 上限 0%"),
+            (0, 600, zero.as_str(), "00:00–10:00 · 上限 0%"),
             (600, 1440, "80%", "10:00–24:00 · 上限 80%")
         ]
     );
