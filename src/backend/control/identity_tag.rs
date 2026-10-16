@@ -200,8 +200,8 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
         Err((code, msg)) => return Outcome::Failed(format!("{code}: {msg}")),
     };
     // 容器那一格报的句柄：与 `terminals-list` 同一个函数、同一个窗格。
-    let terminal = super::terminals::handle_of(&probed.session_id, Some(&pane));
-    if probed.ccm_sid == sid {
+    let terminal = super::terminals::handle_of(probed.session_id(), Some(&pane));
+    if probed.ccm_sid() == sid {
         return Outcome::AlreadyCurrent(terminal);
     }
     // 对窗格句柄（`%N`，server 生命周期内唯一、不复用）下手，不对名字 —— 与 `gate` / `kill` 同一条纪律。

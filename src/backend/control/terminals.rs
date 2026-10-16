@@ -19,7 +19,7 @@ use super::terminals_wire::{
     TerminalsListReq,
 };
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
-use crate::control::gate::{self, Who};
+use crate::control::gate::{self, Barred, Who};
 use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
 
@@ -124,16 +124,6 @@ impl TermRow {
     /// 对它下手用的 tmux 句柄：挂着 sid 的窗格，或那个会话（看它当前的窗格）。
     fn target(&self) -> &str {
         self.pane.as_deref().unwrap_or(&self.id)
-    }
-
-    /// 喂身份门的那四格（与 `gate::probe` 探到的同形）。
-    fn probed(&self) -> gate::Probed {
-        gate::Probed {
-            session_id: self.id.clone(),
-            ccm_sid: self.sid.clone(),
-            windows: self.windows,
-            client: self.client.clone(),
-        }
     }
 }
 
@@ -314,7 +304,7 @@ pub(crate) fn terminal_json(
     clients: &[(String, u64, u64)],
     requester: Option<&str>,
 ) -> TerminalItem {
-    let who = gate::identity(&row.name, &row.probed(), requester);
+    let who = gate::identity(&row.name, &row.client, &row.sid, requester);
     let input = match who {
         Who::Pass => Ability::Yes,
         Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
@@ -921,19 +911,15 @@ fn send_on(
         Found::NotKnown => return Ok(refused(Refused::NotKnown)),
         Found::Ambiguous => return Ok(refused(Refused::Ambiguous)),
     };
-    // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人）。探的是挂着 sid 的那个窗格 ⇒ 按它判。
-    let Some(p) = gate::probe_with(on.cmd(), row.target())? else {
-        return Ok(refused(Refused::Ended));
-    };
-    if row.pane.is_some() && p.ccm_sid != row.sid {
-        // 那个窗格此刻挂的已经不是名单里那个 sid 了。
-        return Ok(refused(Refused::NotKnown));
-    }
-    // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。令牌只有门发得出。
-    let at = match gate::admit_probed(&row.name, p, row.pane.clone(), requester.as_deref()) {
+    // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人），挂着 sid 的窗格由门按 sid 找、身份按它判。
+    // 送到哪：那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。令牌只有门发得出。
+    let sid = row.pane.as_ref().map(|_| row.sid.as_str());
+    let at = match gate::admit_with(&|| on.cmd(), &row.name, &row.id, sid, requester.as_deref())? {
         Ok(at) => at,
-        Err(Who::OtherClient) => return Ok(refused(Refused::NotYours)),
-        Err(_) => return Ok(refused(Refused::NotManaged)),
+        Err(Barred::Gone) => return Ok(refused(Refused::Ended)),
+        Err(Barred::OtherSid) => return Ok(refused(Refused::NotKnown)),
+        Err(Barred::Not(Who::OtherClient)) => return Ok(refused(Refused::NotYours)),
+        Err(Barred::Not(_)) => return Ok(refused(Refused::NotManaged)),
     };
     if !takes(row) {
         return Ok(refused(Refused::Ended));

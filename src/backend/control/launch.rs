@@ -791,7 +791,7 @@ pub(crate) fn check_input_text(text: &str) -> Result<(), CmdErr> {
 
 /// 送一段**字面字**（终端管理 L1 送字那一半）：单行 `send-keys -l`（不解释成键名）；多行按粘贴送
 /// （`paste-buffer -p`：程序开了括号粘贴就带上，用完即删那个缓冲）。`enter` ⇒ 之后再补一个回车键。
-/// 只收门发的令牌（[`super::gate::admit_probed`]）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
+/// 只收门发的令牌（[`super::gate::admit`] · [`super::gate::admit_with`]）；`tmux` 同 [`run_with`] 那一口（测试交隔离 socket 上的）。
 pub(crate) fn type_literal(
     at: &super::gate::Admitted,
     text: &str,
