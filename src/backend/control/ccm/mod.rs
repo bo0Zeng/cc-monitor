@@ -789,13 +789,16 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                     );
                     return 3;
                 }
-                Err(f) => {
+                Err(mut f) => {
                     // 命令行：那一句 ＋ tmux 原话一起上 stderr（终端里没有复制详情）。
                     let msg = crate::common::said::Said::from(f.fail.clone()).logged();
-                    let after = after_launch_fail(&f, c.detach);
+                    let shape = f.untyped.as_ref().map(|(d, m)| (*d, m.is_some()));
+                    let after = after_launch_fail(shape, c.detach);
                     // 明确没送进 ⇒ 先收掉本趟建的那个只剩 shell 的会话，再报（不留空会话）。
-                    let reaped = (after == AfterFail::ReapThenReport)
-                        .then(|| crate::control::launch::reap(&c.name));
+                    let made = f.untyped.take().and_then(|(_, m)| m);
+                    let reaped = made
+                        .filter(|_| after == AfterFail::ReapThenReport)
+                        .map(crate::control::launch::reap);
                     eprintln!(
                         "{}",
                         copy_text(
@@ -881,9 +884,12 @@ enum AfterFail {
     ReapThenReport,
 }
 
-fn after_launch_fail(f: &crate::control::launch::LaunchFail, detach: bool) -> AfterFail {
+fn after_launch_fail(
+    untyped: Option<(crate::control::launch::Delivery, bool)>,
+    detach: bool,
+) -> AfterFail {
     use crate::control::launch::Delivery;
-    match f.untyped {
+    match untyped {
         Some((Delivery::Unknown, true)) if !detach => AfterFail::JoinAnyway,
         Some((Delivery::NotDelivered, true)) => AfterFail::ReapThenReport,
         _ => AfterFail::Report,

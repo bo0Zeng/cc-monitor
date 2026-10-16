@@ -11,7 +11,6 @@ const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts(
 const PENDING: &[&str] = &[
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs",
-    "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/local_read_surface_registry_tests.rs",
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/frontend/shell/polling_registry_tests.rs",
