@@ -17,7 +17,7 @@
 //! monitor 侧 `scanning_guard_registry` 立过一条递减棘轮 —— 扫描型判据不许裸遍历目录，
 //! 要走 `guard_core::scan_tree!`。
 //!
-//! 判据与被扫的代码不许在同一个文件（同文件里 `file!()` 自摘会把靶子摘掉）；本文件住 `tests/backend/relay/`，不在人群里。
+//! 判据与被扫的代码不许在同一个文件：本文件住 `tests/backend/relay/`，不在人群里。
 //!
 //! # `KS4` 为什么是白名单，而本仓别处大量用黑名单
 //!

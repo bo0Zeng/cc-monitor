@@ -822,9 +822,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
-    expose_for_persisting: NONE,
-    // 登录令牌（订阅号续期）：第三个明文出口 ＋ 读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
-    expose_for_token_request: NONE,
+    // 登录令牌（订阅号续期）：读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
     merge_secret: NONE,
     merge_tokens: NONE,
     refresh_body: NONE,
