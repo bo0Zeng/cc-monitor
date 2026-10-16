@@ -13,7 +13,7 @@ fn chores(f: &Facts) -> Vec<Value> {
 
 /// 角标数（按那几件本身数，同成品那一格）。
 fn badge_of(f: &Facts) -> usize {
-    super::badge(&super::chores(f))
+    super::counts(&super::chores(f)).badge
 }
 
 fn base() -> Facts {

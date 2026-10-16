@@ -242,26 +242,76 @@ impl Chore {
     }
 }
 
-/// 进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的（没做 · 过期）。
-pub(crate) fn badge(chores: &[Chore]) -> usize {
-    chores
-        .iter()
-        .filter(|c| {
-            matches!(
-                c.kind,
-                ChoreKind::Must | ChoreKind::Install | ChoreKind::Decide
-            )
-        })
-        .filter(|c| matches!(c.state, ChoreState::Todo | ChoreState::Expired))
-        .count()
+/// 「待办」各类的件数（`data-report` 的 `counts`，跨台由 `chores-merge` 逐格相加）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ChoreCounts {
+    /// 进角标的：要做 ＋ 待定 ＋ 要装，还没做完的（没做 · 过期）。
+    pub(crate) badge: usize,
+    /// 还没做完的：不是已做、也不是不用了。
+    pub(crate) open: usize,
+    /// 还没做完的要做（过期的本来就升成要做）。以下四类合起来就是 `open`。
+    pub(crate) must: usize,
+    /// 还没做完的待定。
+    pub(crate) decide: usize,
+    /// 还没做完的要装。
+    pub(crate) install: usize,
+    /// 还没做完的要装 · 可选与可选（含先决没满足的）。
+    pub(crate) optional: usize,
+    /// 已做。
+    pub(crate) done: usize,
 }
 
-/// 还没做完的件数：不是已做、也不是不用了。
-pub(crate) fn open(chores: &[Chore]) -> usize {
-    chores
-        .iter()
-        .filter(|c| !matches!(c.state, ChoreState::Done | ChoreState::Declined))
-        .count()
+impl ChoreCounts {
+    fn add(self, o: ChoreCounts) -> ChoreCounts {
+        ChoreCounts {
+            badge: self.badge + o.badge,
+            open: self.open + o.open,
+            must: self.must + o.must,
+            decide: self.decide + o.decide,
+            install: self.install + o.install,
+            optional: self.optional + o.optional,
+            done: self.done + o.done,
+        }
+    }
+}
+
+/// 一台各件 ⇒ 各类件数。
+pub(crate) fn counts(chores: &[Chore]) -> ChoreCounts {
+    let mut n = ChoreCounts::default();
+    for c in chores {
+        match c.state {
+            ChoreState::Done => n.done += 1,
+            ChoreState::Declined => {}
+            ChoreState::Todo | ChoreState::Expired | ChoreState::Blocked => {
+                n.open += 1;
+                *match c.kind {
+                    ChoreKind::Must => &mut n.must,
+                    ChoreKind::Decide => &mut n.decide,
+                    ChoreKind::Install => &mut n.install,
+                    ChoreKind::InstallOptional | ChoreKind::Optional => &mut n.optional,
+                } += 1;
+                if c.state != ChoreState::Blocked
+                    && matches!(
+                        c.kind,
+                        ChoreKind::Must | ChoreKind::Install | ChoreKind::Decide
+                    )
+                {
+                    n.badge += 1;
+                }
+            }
+        }
+    }
+    n
+}
+
+/// 几台的件数合成一份（`chores-merge`）：逐格相加。纯计算。
+pub(crate) fn merge_counts(machines: Vec<ChoreCounts>) -> ChoreCounts {
+    machines
+        .into_iter()
+        .fold(ChoreCounts::default(), ChoreCounts::add)
 }
 
 /// 事实 ⇒ 各件（急的在前：要做 · 待定 · 要装 · 要装 · 可选 · 可选）。

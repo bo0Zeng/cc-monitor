@@ -7,7 +7,7 @@
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
  *   再「cc-monitor 的文件」：那台后端家里那几样照那台 `data-report` 的 `own` 排（本机远端同一套行，`own-block.ts`）；
  *   本机后面再接宿主交进来的界面自己那几份（monitor 数据目录 · 网页引擎 · 本地存储）。
- * - 左栏角标 ＝ 各台 `chores` 相加（问不到的那台不算）；主窗口状态栏读同一个数（`data-reads.ts::choresOf`）。
+ * - 左栏角标与顶上那一行 ＝ 各台 `counts` 交本机后端合的那一份（问不到的那台不交）；主窗口状态栏读同一个数（`data-reads.ts::mergeChores`）。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]；之后［全部重查］显式补一刀（切页不重读，不轮询）。
  */
 import { tabs } from "../kit/tabs";
@@ -20,7 +20,7 @@ import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
-import { markChore, readDataReport, recallDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
+import { markChore, mergeChores, readDataReport, recallDataReport, type Chore, type ChoreCounts, type ChoreState, type DataReport } from "./data-reads";
 import { ownBlock, remoteOpen } from "./own-block";
 import { localOpenButtons } from "./data-section";
 import { spanNow } from "../duration-format";
@@ -44,7 +44,7 @@ export interface DataPageHost {
   ownFiles: HTMLElement;
   /** 跳到设置窗里那一页那一栏那一节。 */
   goTo: (t: SettingsTarget) => void;
-  /** 左栏角标（各台进角标的件数相加）。 */
+  /** 左栏角标（各台合计的 `badge`）。 */
   setBadge: (n: number) => void;
 }
 
@@ -74,6 +74,8 @@ export class DataPage {
   private readonly ownBody: HTMLElement;
   private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }];
   private readings = new Map<Origin, Reading>();
+  /** 读成的那几台合起来的件数（本机后端合的；没合成 ⇒ `null`，顶上不出数）。 */
+  private total: ChoreCounts | null = null;
   private picked: Origin = LOCAL_ORIGIN;
   /** 点过复制、那台还没认出已做的那几件（界面只多记这一样）。键 ＝ 机器 ＋ 件。 */
   private readonly copied = new Set<string>();
@@ -204,19 +206,15 @@ export class DataPage {
       }),
     );
     if (gen !== this.generation) return;
-    const total = this.sum((r) => r.chores);
-    this.host.setBadge(total);
-    this.paintTabs(total);
+    const counts = [...this.readings.values()].flatMap((r) => (r.ok ? [r.report.counts] : []));
+    const total = await mergeChores(counts).catch(() => null);
+    if (gen !== this.generation) return;
+    this.total = total;
+    this.host.setBadge(total?.badge ?? 0);
+    this.paintTabs(total?.badge ?? 0);
     this.paintChores();
     this.paintPlaced();
     this.landFocus();
-  }
-
-  /** 各台成品里那一个数相加（读不到的那台不算）：角标 ＝ `chores`，顶上那一句 ＝ `open`。 */
-  private sum(of: (r: DataReport) => number): number {
-    let n = 0;
-    for (const r of this.readings.values()) if (r.ok) n += of(r.report);
-    return n;
   }
 
   private paintTabs(total: number): void {
@@ -265,13 +263,13 @@ export class DataPage {
   private paintChores(): void {
     const pane = this.choresPane;
     pane.replaceChildren();
-    const all = [...this.readings.values()].flatMap((r) => (r.ok ? r.report.todo : []));
     const head = document.createElement("div");
     head.className = "data-summary";
-    const lead = document.createElement("span");
-    lead.textContent = copyText("dataPage.chores.open", { n: this.sum((r) => r.open) });
-    head.appendChild(lead);
-    for (const t of countTags(all)) head.appendChild(t);
+    if (this.total) {
+      const lead = document.createElement("span");
+      lead.textContent = copyText("dataPage.chores.open", { n: this.total.open });
+      head.append(lead, ...countTags(this.total));
+    }
     const sp = document.createElement("span");
     sp.className = "data-sp";
     head.appendChild(sp);
@@ -297,7 +295,7 @@ export class DataPage {
     name.textContent = m.name;
     head.appendChild(name);
     const r = this.readings.get(m.origin);
-    if (r?.ok) for (const t of countTags(r.report.todo)) head.appendChild(t);
+    if (r?.ok) head.append(...countTags(r.report.counts));
     const sp = document.createElement("span");
     sp.className = "data-sp";
     head.appendChild(sp);

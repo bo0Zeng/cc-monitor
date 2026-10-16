@@ -461,7 +461,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, todo, tmux, chores, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
+        "后端出成品 `{home, changedFiles, todo, tmux, counts, rank, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
          形状由握手指纹核过）；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
     // 首次运行「开始用」那份数：本机后端判三步、剩几步；机器表台数由界面带上。
@@ -486,6 +486,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "chores-mark",
         "后端读—改—写自己那份小文件（`src/backend/footprint/chores/marks.rs`）；前端 `src/frontend/ui/settings/data-reads.ts::markChore` 问\
          （「待办」里［不用了］［还是要做］· 别名页［我自己贴］［改由 cc-monitor 接上］），monitor 这一侧零发送点",
+    ),
+    // 几台的「待办」件数合成一份：本机后端逐格相加。
+    (
+        "chores-merge",
+        "后端出成品（`src/backend/footprint/chores/mod.rs::merge_counts`）；前端 `src/frontend/ui/settings/data-reads.ts::mergeChores` 问本机后端\
+         （设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏），monitor 这一侧零发送点",
     ),
     // 换 Claude 目录前那一问：后端 stat 两次回码。
     (

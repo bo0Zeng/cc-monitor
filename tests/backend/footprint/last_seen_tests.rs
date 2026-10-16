@@ -28,10 +28,9 @@ fn report() -> serde_json::Value {
     serde_json::to_value(crate::footprint::data::DataReport {
         home: "/home/u".into(),
         changed_files: vec![],
+        counts: crate::footprint::chores::counts(std::slice::from_ref(&c)),
         todo: vec![c],
         tmux: Some(true),
-        chores: 1,
-        open: 1,
         rank: 0,
         own: vec![],
     })

@@ -1,9 +1,10 @@
 /**
  * 「文件与数据」那一份成品（那台后端的 `data-report`，typed：形状由握手指纹核过）：按机器问。
  * 本机那一栏先问 monitor 一次它自己进程的那几条事实（`footprint_client_facts`），原样带给本机后端（同足迹那一问）。
- * 设置窗左栏角标与主窗口状态栏那一枚读同一个数（[`choresOf`]），界面不另数。
+ * 每台的各类件数是那台后端数好的（`counts`）；跨台合计交本机后端（[`mergeChores`]），界面不另数。
  */
 import { budgetWithin, callTyped, saidFrom } from "../ipc/chan-caller";
+import type { ChoreCounts } from "../generated/ChoreCounts";
 import type { ChoresMarkReq } from "../generated/ChoresMarkReq";
 import type { DataReport } from "../generated/DataReport";
 import type { FootprintClient } from "../generated/FootprintClient";
@@ -15,6 +16,7 @@ export type { DataReport } from "../generated/DataReport";
 export type { Chore } from "../generated/Chore";
 export type { ChoreKind } from "../generated/ChoreKind";
 export type { ChoreState } from "../generated/ChoreState";
+export type { ChoreCounts } from "../generated/ChoreCounts";
 export type { OwnItem } from "../generated/OwnItem";
 
 /** 一次 stat 一批、读几份小文件：给 30 秒。 */
@@ -58,11 +60,19 @@ export async function recallDataReport(origin: Origin): Promise<{ report: DataRe
   return { report: seen.value, atMs: seen.atMs };
 }
 
-/** 那台进角标的件数（问不到 ⇒ `null`，不当 0）。设置窗角标与主窗口状态栏读这一个。 */
-export async function choresOf(origin: Origin): Promise<number | null> {
+/** 那台各类的件数（问不到 ⇒ `null`，不当 0）。 */
+export async function choresOf(origin: Origin): Promise<ChoreCounts | null> {
   try {
-    return (await readDataReport(origin)).chores;
+    return (await readDataReport(origin)).counts;
   } catch {
     return null;
   }
+}
+
+/** 本机后端纯计算：同「需手动」合先后那一问，10 秒。 */
+const MERGE_BUDGET_MS = 10_000;
+
+/** 几台的件数合成一份（本机后端 `chores-merge`）：设置窗角标 · 「文件与数据」顶上 · 主窗口状态栏读这一份。问不到 ⇒ 抛。 */
+export async function mergeChores(machines: ChoreCounts[]): Promise<ChoreCounts> {
+  return callTyped(LOCAL_ORIGIN, "chores-merge", { machines }, budgetWithin(MERGE_BUDGET_MS));
 }
