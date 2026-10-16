@@ -23,12 +23,14 @@ pub(crate) fn repo_root() -> std::path::PathBuf {
 pub(crate) const TEST_DIR_MODE: u32 = 0o700;
 
 /// 装上测试档那一套：同 [`crate::env::Env::bare`]，只是远端写按部署那两处（判据要写 `staging` / `bin`）、
-/// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件。一个进程一次。
+/// 钥匙那一格先查判据登记的几样（[`register`]：密码 · 外部签名器），不在表里才按路径读文件、
+/// 交宿主记的 host key 记进一本账（[`remembered`]）。一个进程一次。
 pub(crate) fn test_host() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let env = crate::env::Env {
             keys: Box::new(TestKeys),
+            host_keys: Box::new(TestHostKeys),
             files: crate::sftp::WriteRules::Deploy {
                 dir_mode: TEST_DIR_MODE,
             },
@@ -74,5 +76,34 @@ impl crate::env::KeySource for TestKeys {
             Some(TestCred::Signer(s)) => Ok(crate::env::Credential::Signer(s)),
             None => crate::env::KeyFiles.credential(key),
         }
+    }
+}
+
+/// 拨号核心交宿主记的每一把 host key（主机 · 口 · 算法 ＋ base64），按交的先后。
+fn host_key_book() -> &'static std::sync::Mutex<Vec<(String, u16, String)>> {
+    static B: std::sync::OnceLock<std::sync::Mutex<Vec<(String, u16, String)>>> =
+        std::sync::OnceLock::new();
+    B.get_or_init(Default::default)
+}
+
+/// 交宿主记过的、口是 `port` 的那几笔（各判据的服务端各占一个口，互不串）。
+pub(crate) fn remembered(port: u16) -> Vec<(String, u16, String)> {
+    host_key_book()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .filter(|(_, p, _)| *p == port)
+        .cloned()
+        .collect()
+}
+
+struct TestHostKeys;
+
+impl crate::env::HostKeys for TestHostKeys {
+    fn remember(&self, host: &str, port: u16, key: &str) {
+        host_key_book()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((host.to_string(), port, key.to_string()));
     }
 }
