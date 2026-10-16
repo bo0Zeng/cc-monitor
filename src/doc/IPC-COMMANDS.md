@@ -276,14 +276,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ## 2. 信封与帧里用到的类型
 
-#### `HelloHead`
-
-hello 的头：版本门第一步只解它（全形解不开时也认得出是不是我们的后端、是哪一版）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `build_id` | string |  |
-
 #### `SessionActivity`
 
 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
