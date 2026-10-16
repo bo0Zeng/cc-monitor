@@ -1,8 +1,9 @@
-package com.ccmonitor.mobile.ui.overview
+package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.core.claude.link.Deploying
 import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.LinkState
+import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.claude.link.SessionDot
@@ -12,117 +13,111 @@ import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.Can
 import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
 import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
-import com.ccmonitor.mobile.core.claude.link.wire.Hidden
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
-import com.ccmonitor.mobile.core.claude.link.wire.Needs
-import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
-import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.ui.common.HostLink
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 「对话」这一屏只挑格、按核心写好的段头归段：不判天、不重排、不自己写状态字。 */
-class ConversationsViewTest {
+/** 会话屏只挑格、按核心写好的段头归段、几台只按 `at` 并：不判天、不另排、不自己写状态字。 */
+class ChatsViewTest {
     private fun row(
         sid: String,
         section: String,
-        hidden: Hidden? = null,
-    ) = HistoryRow(sid, "标题 $sid", 0, "09:0$sid", section, false, "w", "/w", "/w", "/w/$sid.jsonl", "claude", null, "live", hidden, null, null, Can(CanDelete.YES))
+        at: Long = 0,
+        status: String = "live",
+    ) = HistoryRow(sid, "标题 $sid", at, "09:0$sid", section, false, "w", "/w", "/w", "/w/$sid.jsonl", "claude", null, status, null, null, null, Can(CanDelete.YES))
 
-    private val list =
-        Fetched.Got(
-            HistoryListPage(
-                rows = listOf(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")),
-                groups = emptyList(),
-                notice = null,
-                truncated = true,
-            ),
-        )
+    private fun page(vararg rows: HistoryRow) = HistoryListPage(rows.toList(), emptyList(), null, false)
+
+    private val list = Fetched.Got(page(row("1", "今天"), row("2", "今天"), row("3", "昨天"), row("4", "今天")).copy(truncated = true))
+
+    private fun snap(
+        link: LinkState = LinkState.Up(),
+        table: SessionTable = SessionTable(),
+        got: Fetched<HistoryListPage> = list,
+        cached: HistoryListPage? = null,
+        deploying: Deploying? = null,
+        ask: ListAsk = ListAsk(),
+        id: String = "h1",
+        machine: String = "m",
+    ) = HostSnap(id, machine, link, table, got, cached, deploying, ask)
+
+    private fun view(
+        vararg parts: HostPart,
+        current: String = "h1",
+        filters: Filters = Filters(),
+        query: String? = null,
+    ) = chatsView(parts.toList(), current, parts.map { HostName(it.hostId, it.machine) }, filters, query)
 
     @Test
     fun `装一次会好的那一种照核心点名带上（断着 · 通着旧了）；装到哪一步原样带上，连着的那一会儿也不丢`() {
         val step = Deploying.Step("安装 cc-monitor → box", bar = true)
-        val down = view("m", LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), SessionTable(), list, Fetched.Loading, deploying = step)
-        assertEquals(Fix.INSTALL, down.fix)
-        assertEquals(step, down.deploying)
-        val old = view("m", LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE), SessionTable(), list, Fetched.Got(emptyList()))
-        assertEquals(Fix.UPDATE, old.fix)
-        assertEquals(Problem("box 后端要更新", ""), old.linkNotice)
-        assertEquals(step, view("m", LinkState.Connecting, SessionTable(), list, Fetched.Loading, deploying = step).deploying)
-        assertNull(view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).fix)
+        val down = hostPart(snap(LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), deploying = step))
+        assertEquals(Fix.INSTALL, down.bar?.fix)
+        assertEquals(step, down.bar?.deploying)
+        val old = hostPart(snap(LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE)))
+        assertEquals(Fix.UPDATE, old.bar?.fix)
+        assertEquals(Problem("box 后端要更新", ""), old.bar?.problem)
+        val connecting = view(hostPart(snap(LinkState.Connecting, deploying = step)))
+        assertEquals("连着的那一会儿条上没东西 ⇒ 单独一行说装到哪了", step, connecting.deploying.single().deploying)
+        assertNull(hostPart(snap()).bar)
     }
 
     @Test
     fun `段头照核心写的、按先后连着归段，不重排`() {
-        val v = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList()))
+        val v = view(hostPart(snap()))
         assertEquals(listOf("今天", "昨天", "今天"), v.sections.map { it.title })
-        assertEquals(listOf("1", "2", "3", "4"), v.sections.flatMap { it.rows }.map { it.sessionId })
+        assertEquals(listOf("1", "2", "3", "4"), v.rows.map { it.sessionId })
         assertTrue(v.truncated)
-        assertEquals(listOf("1", "2", "3", "4"), v.recent.map { it.sessionId })
     }
 
     @Test
     fun `状态字与语气照抄会话帧；不在流上的不画`() {
         val table = SessionTable(sessions = mapOf("2" to LiveSession(sid = "2", activity = Toned("后台任务运行中", Tone.BUSY))))
-        val v = view("m", LinkState.Up(), table, list, Fetched.Got(emptyList()))
-        val rows = v.sections.flatMap { it.rows }.associateBy { it.sessionId }
+        val rows = hostPart(snap(table = table)).rows.associateBy { it.sessionId }
         assertEquals(Toned("后台任务运行中", Tone.BUSY), rows.getValue("2").status)
         assertNull(rows.getValue("1").status)
     }
 
     @Test
-    fun `需手动照核心的先后、字照抄；清单里没有的不拿 sid 顶标题`() {
-        val needs =
-            listOf(
-                NeedsRow("3", Needs("approve", null, "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, 180_000L, null, null)),
-                NeedsRow("9", Needs("answer", null, "等回答", "等回答", null, Tone.NEED, 1, null, null, null)),
-            )
-        val v = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(needs), needsAt = 1_000)
-        assertEquals(listOf("3", "9"), v.needs.map { it.sessionId })
-        assertEquals("标题 3", v.needs[0].label)
-        assertEquals("等批准 · Bash", v.needs[0].text)
-        assertNull(v.needs[1].label)
-        assertEquals("已等在屏上接着走：收到时 3m、过了一分钟是 4m（不重问那台）", DurationFormat.short(240_000), v.needs[0].waitedAt(61_000))
-        assertNull("没有起点 ⇒ 不画时长", v.needs[1].waitedAt(61_000))
-    }
-
-    @Test
-    fun `流走不通只说核心那一句；问失败的那一样单独说`() {
+    fun `流走不通只说核心那一句；问失败的单独说；通着但那台后端旧了照列、多一句`() {
+        val down = hostPart(snap(LinkState.Down(Said("m 离线", "boom"), needsHand = false)))
+        assertEquals(Problem("m 离线", "boom"), down.bar?.problem)
+        assertEquals(true, down.bar?.offline)
+        assertTrue(down.rows.isEmpty())
         val p = Problem("那一句", "详情")
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), list, Fetched.Got(emptyList()))
-        assertEquals(Problem("m 离线", "boom"), down.linkProblem)
-        assertTrue(down.sections.isEmpty())
-        val failed = view("m", LinkState.Up(), SessionTable(), Fetched.Failed(p), Fetched.Got(emptyList()))
-        assertEquals(p, failed.listProblem)
-        assertEquals(false, failed.listLoading)
+        val failed = hostPart(snap(got = Fetched.Failed(p)))
+        assertEquals(p, failed.bar?.problem)
+        assertEquals(false, failed.bar?.offline)
+        assertEquals(false, failed.loading)
+        val old = hostPart(snap(LinkState.Up(Said("m 后端要更新", "theirs: p9"))))
+        assertEquals(Problem("m 后端要更新", "theirs: p9"), old.bar?.problem)
+        assertEquals(4, old.rows.size)
     }
 
     @Test
-    fun `通着但那台后端旧了：照列清单，最前多一句需手动（核心写好）`() {
-        val v = view("m", LinkState.Up(Said("m 后端要更新", "theirs: p9")), SessionTable(), list, Fetched.Got(emptyList()))
-        assertEquals(Problem("m 后端要更新", "theirs: p9"), v.linkNotice)
-        assertNull(v.linkProblem)
-        assertNull("不旧 ⇒ 不说", view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).linkNotice)
+    fun `SSH 那层接不上：那一句当这台的条，不算在读`() {
+        val p = hostPart(snap(LinkState.Connecting, got = Fetched.Loading), HostLink.Failed("认证失败"))
+        assertEquals(Problem("认证失败", ""), p.bar?.problem)
+        assertEquals(false, p.loading)
     }
 
     @Test
     fun `每行一颗状态点：活的照语气、离开活的照去向、流上没有的照清单那一格；字跟着那一格`() {
-        val rows =
-            listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词")
-                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", 0, "09:00", "今天", false, "w", "/w", "/w", "/w/$sid.jsonl", "claude", null, st, null, null, null, Can(CanDelete.YES)) }
+        val rows = listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词").map { (sid, st) -> row(sid, "今天", status = st) }
         val table =
             SessionTable(
                 sessions = mapOf("a" to LiveSession(sid = "a", activity = Toned("需手动", Tone.NEED))),
                 fates = mapOf("b" to SessionFate(SessionFate.State.RECONNECTABLE, "Claude 已退出")),
             )
-        val v = view("m", LinkState.Up(), table, Fetched.Got(HistoryListPage(rows, emptyList(), null, false)), Fetched.Got(emptyList()))
-        val by = v.sections.flatMap { it.rows }.associateBy { it.sessionId }
+        val by = hostPart(snap(table = table, got = Fetched.Got(page(*rows.toTypedArray())))).rows.associateBy { it.sessionId }
         assertEquals(SessionDot.NEEDS_YOU, by.getValue("a").dot)
         assertEquals(Toned("需手动", Tone.NEED), by.getValue("a").status)
         assertEquals(SessionDot.EXITED, by.getValue("b").dot)
@@ -138,54 +133,70 @@ class ConversationsViewTest {
     }
 
     @Test
-    fun `需手动那几条的点照核心给的语气`() {
-        val needs = listOf(NeedsRow("3", Needs("approve", null, "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, null, null, null)))
-        val v = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
-        assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
+    fun `没筛选：断着 · 还在接 · 在问都先画缓存；问到了换成那台这一份`() {
+        val cached = page(row("1", "昨天"), row("2", "昨天"))
+        val down = hostPart(snap(LinkState.Down(Said("m 离线", "boom"), needsHand = false), got = Fetched.Loading, cached = cached))
+        assertEquals(listOf("1", "2"), down.rows.map { it.sessionId })
+        assertEquals(Problem("m 离线", "boom"), down.bar?.problem)
+        assertEquals(listOf("1", "2"), hostPart(snap(LinkState.Connecting, got = Fetched.Loading, cached = cached)).rows.map { it.sessionId })
+        assertEquals("在问 ⇒ 先画上次那一份", listOf("1", "2"), hostPart(snap(got = Fetched.Loading, cached = cached)).rows.map { it.sessionId })
+        assertEquals("问到了 ⇒ 照那台这一份", listOf("1", "2", "3", "4"), hostPart(snap(cached = cached)).rows.map { it.sessionId })
     }
 
     @Test
-    fun `离线（流走不通 · 还在接）：照画本地缓存里上次那一份，离线那一句照说；连上问到了 ⇒ 换成那台这一份`() {
-        val cached = HistoryListPage(listOf(row("1", "昨天"), row("2", "昨天")), emptyList(), null, false)
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
-        assertEquals(Problem("m 离线", "boom"), down.linkProblem)
-        assertEquals(listOf("1", "2"), down.recent.map { it.sessionId })
-        val connecting = view("m", LinkState.Connecting, SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
-        assertEquals(listOf("1", "2"), connecting.recent.map { it.sessionId })
-        val asking = view("m", LinkState.Up(), SessionTable(), Fetched.Loading, Fetched.Loading, cached = cached)
-        assertEquals("在问 ⇒ 先画上次那一份", listOf("1", "2"), asking.recent.map { it.sessionId })
-        val fresh = view("m", LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList()), cached = cached)
-        assertEquals("问到了 ⇒ 照那台这一份", listOf("1", "2", "3", "4"), fresh.recent.map { it.sessionId })
+    fun `带了筛选：缓存不画；那台断着 ⇒ 零行、那一句是离线 · 未列出（在搜 ⇒ 未搜索）`() {
+        val cached = page(row("1", "昨天"))
+        val downLink = LinkState.Down(Said("m 离线", "boom"), needsHand = false)
+        val week = hostPart(snap(downLink, got = Fetched.Loading, cached = cached, ask = ListAsk(withinDays = 7)))
+        assertTrue(week.rows.isEmpty())
+        assertEquals(copyText("history.list.machineDown", "machine" to "m"), week.bar?.problem?.text)
+        val searching = hostPart(snap(downLink, got = Fetched.Loading, cached = cached, ask = ListAsk(query = "q")))
+        assertEquals(copyText("history.search.machineDown", "machine" to "m"), searching.bar?.problem?.text)
+        assertTrue("在问、带着筛选 ⇒ 不先画缓存", hostPart(snap(got = Fetched.Loading, cached = cached, ask = ListAsk(hidden = true))).rows.isEmpty())
+        val plain = hostPart(snap(downLink, got = Fetched.Loading, cached = cached))
+        assertEquals(listOf("1"), plain.rows.map { it.sessionId })
+        assertTrue(view(plain).bars.single().offline)
     }
 
     @Test
     fun `断着：每行的点画说不清、字写那台离线，不照断前那张会话表与缓存里的状态`() {
-        val cached = HistoryListPage(listOf(row("1", "昨天")), emptyList(), null, false)
+        val cached = page(row("1", "昨天"))
         val stale = SessionTable(sessions = mapOf("1" to LiveSession(sid = "1", activity = Toned("运行中", Tone.NOW))))
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), stale, Fetched.Loading, Fetched.Loading, cached = cached)
-        val r = down.recent.single()
+        val r = hostPart(snap(LinkState.Down(Said("m 离线", "boom"), needsHand = false), stale, Fetched.Loading, cached)).rows.single()
         assertEquals(SessionDot.UNKNOWN, r.dot)
         assertEquals(Toned(copyText("newSession.machine.offline", "machine" to "m"), Tone.PLAIN), r.status)
-        val up = view("m", LinkState.Up(), stale, Fetched.Loading, Fetched.Loading, cached = cached)
-        assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, up.recent.single().dot)
+        assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, hostPart(snap(table = stale, got = Fetched.Loading, cached = cached)).rows.single().dot)
     }
 
     @Test
-    fun `隐藏只照行上那一格：「显示已隐藏」关着不画带格的行（上次缓存里的也不画）；开着照画、带后端那一句；抽屉「最近」一律不列`() {
-        val page = HistoryListPage(listOf(row("1", "今天"), row("2", "今天", Hidden("已隐藏")), row("3", "昨天")), emptyList(), null, false)
-        val off = view("m", LinkState.Up(), SessionTable(), Fetched.Got(page), Fetched.Got(emptyList()))
-        assertEquals(listOf("1", "3"), off.sections.flatMap { it.rows }.map { it.sessionId })
-        assertEquals(false, off.showHidden)
-        val cachedOff = view("m", LinkState.Connecting, SessionTable(), Fetched.Loading, Fetched.Loading, cached = page)
-        assertEquals(listOf("1", "3"), cachedOff.sections.flatMap { it.rows }.map { it.sessionId })
-        val on = view("m", LinkState.Up(), SessionTable(), Fetched.Got(page), Fetched.Got(emptyList()), showHidden = true)
-        val rows = on.sections.flatMap { it.rows }
-        assertEquals(listOf("1", "2", "3"), rows.map { it.sessionId })
-        assertEquals(listOf(null, "已隐藏", null), rows.map { it.hidden })
-        assertEquals(true, on.showHidden)
-        assertEquals("抽屉「最近」不列隐藏的", listOf("1", "3"), on.recent.map { it.sessionId })
-        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = page, showHidden = true)
-        assertEquals("离线照缓存画时也照开关", listOf("1", "2", "3"), down.sections.flatMap { it.rows }.map { it.sessionId })
+    fun `两台各三行、at 交错 ⇒ 并成一列六行；连着的同一个段头跨台归一段`() {
+        val a = hostPart(snap(got = Fetched.Got(page(row("a1", "今天", 90), row("a2", "今天", 60), row("a3", "昨天", 30)))))
+        val b = hostPart(snap(got = Fetched.Got(page(row("b1", "今天", 80), row("b2", "昨天", 40), row("b3", "昨天", 10))), id = "h2", machine = "n"))
+        val v = view(a, b)
+        assertEquals(listOf("a1", "b1", "a2", "b2", "a3", "b3"), v.rows.map { it.sessionId })
+        assertEquals(listOf("h1", "h2", "h1", "h2", "h1", "h2"), v.rows.map { it.hostId })
+        assertEquals(listOf("今天", "昨天"), v.sections.map { it.title })
+        val tie = view(hostPart(snap(got = Fetched.Got(page(row("x", "今天", 5))))), hostPart(snap(got = Fetched.Got(page(row("y", "今天", 5))), id = "h2")))
+        assertEquals("同一个 at 照机器表先后", listOf("x", "y"), tie.rows.map { it.sessionId })
+    }
+
+    @Test
+    fun `机器小标签：只勾一台都不写；两台只有不在当前机器上的那几行写`() {
+        val a = hostPart(snap(got = Fetched.Got(page(row("a1", "今天", 9)))))
+        val b = hostPart(snap(got = Fetched.Got(page(row("b1", "今天", 8))), id = "h2", machine = "gpu"))
+        assertEquals(listOf<String?>(null), view(b, current = "h1").rows.map { it.machineTag })
+        assertEquals(listOf(null, "gpu"), view(a, b).rows.map { it.machineTag })
+    }
+
+    @Test
+    fun `空：没筛选 ⇒ 无会话记录；带筛选 · 在搜 ⇒ 无匹配；还有台在读 ⇒ 骨架`() {
+        val none = hostPart(snap(got = Fetched.Got(page())))
+        assertEquals(Empty.NO_SESSIONS, view(none).empty)
+        assertEquals(Empty.NO_MATCH, view(none, filters = Filters(hidden = true)).empty)
+        assertEquals(Empty.NO_MATCH, view(none, query = "q").empty)
+        val reading = view(none, hostPart(snap(got = Fetched.Loading, id = "h2")))
+        assertTrue(reading.skeleton)
+        assertEquals(Empty.NONE, reading.empty)
     }
 
     @Test

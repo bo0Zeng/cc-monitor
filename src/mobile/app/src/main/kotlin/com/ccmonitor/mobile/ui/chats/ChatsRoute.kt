@@ -1,10 +1,8 @@
-package com.ccmonitor.mobile.ui.overview
+package com.ccmonitor.mobile.ui.chats
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -14,17 +12,20 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
@@ -41,58 +42,74 @@ import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 /**
- * 「对话」这一屏的入口：先建 SSH 连接（`HostLink`），通了再在上面接那台的常驻流、读核心的清单。
- * 顶栏同聊天屏：抽屉按钮 ＋「对话」＋ 这台的名字；抽屉与聊天屏是同一个。
+ * 会话屏的入口：勾上的每台各建一条 SSH 持有（离屏放手），通了那台的常驻流就接上、问清单；几台并成一列交 [ChatsScreen]。
+ * 顶栏：抽屉 · 会话 · 漏斗（有筛选生效时强调色）。手指在滚时列表冻住，松手换最新的。
  */
 @Composable
-fun ConversationsRoute(
+fun ChatsRoute(
     hostId: String,
-    onOpen: (sessionId: String) -> Unit,
+    onOpen: (hostId: String, sessionId: String) -> Unit,
     onDrawerAction: (DrawerAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val link by rememberHostLink(hostId, conversationsHolder(hostId))
-    val machine = rememberMachineName(hostId)
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-    val vm = machine?.let { conversationsViewModel(hostId, it) }
-    val state = vm?.state?.collectAsStateWithLifecycle()?.value
-    val snackbar = LocalAppSnackbar.current
-    var filtering by remember { mutableStateOf(false) }
-    if (filtering && vm != null && state != null) ConversationsFilterSheet(state.showHidden, vm::showHidden, onDismiss = { filtering = false })
-    ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawerAction) {
-        Scaffold(
-            modifier = modifier,
-            topBar = {
-                ConversationsTopBar(
-                    machine,
-                    filtered = state?.showHidden == true,
-                    onFilter = { filtering = true }.takeIf { vm != null },
-                    onOpenDrawer = { scope.launch { drawerState.open() } },
-                )
-            },
-        ) { inner ->
-            // 连没连上都先画清单：本地缓存里有上次那一份就照画（离线打开看得到），连上以后换成那台的。
-            if (machine != null && vm != null && state != null) {
-                val onHide: (HistoryItem) -> Unit = { item -> scope.launch { toggleHidden(vm, snackbar, item) } }
-                when (val l = link) {
-                    is HostLink.Failed ->
-                        Column(Modifier.fillMaxSize().padding(inner)) {
-                            HostLinkFailed(l.why)
-                            if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onHide, onDeploy = vm::deploy)
-                        }
-                    HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onHide, Modifier.fillMaxSize().padding(inner), onDeploy = vm::deploy)
-                    HostLink.Ready -> ConversationsScreen(state, machine, onOpen, vm::retry, onHide, Modifier.fillMaxSize().padding(inner), onDeploy = vm::deploy)
-                }
+    val board: ChatsBoard = koinViewModel(key = "chats-$hostId") { parametersOf(hostId) }
+    val ui by board.ui.collectAsStateWithLifecycle()
+    val checked by board.checked.collectAsStateWithLifecycle()
+    val attempts = remember { mutableStateMapOf<String, Int>() }
+    val links = remember { mutableStateMapOf<String, HostLink>() }
+    for (c in checked) {
+        key(c.hostId) {
+            val link by rememberHostLink(c.hostId, conversationsHolder(c.hostId), attempt = attempts[c.hostId] ?: 0)
+            LaunchedEffect(link) {
+                links[c.hostId] = link
+                board.ssh(c.hostId, link)
             }
         }
     }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val snackbar = LocalAppSnackbar.current
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) board.hold() else board.release() }
+    var filtering by remember { mutableStateOf(false) }
+    var menuFor by remember { mutableStateOf<ChatRow?>(null) }
+    if (filtering) FilterSheet(ui, board::filters, onDismiss = { filtering = false })
+    menuFor?.let { r -> RowMenu(r, onHide = { scope.launch { board.chats(r.hostId)?.let { toggleHidden(it, snackbar, r) } } }, onDismiss = { menuFor = null }) }
+    val act =
+        ChatsActions(
+            open = { onOpen(it.hostId, it.sessionId) },
+            menu = { menuFor = it },
+            retry = { b -> retry(board, links, attempts, b) },
+            deploy = { id -> board.chats(id)?.deploy?.invoke() },
+            filters = board::filters,
+        )
+    ChatDrawer(hostId, links[hostId] is HostLink.Ready, drawerState, onDrawerAction) {
+        Scaffold(
+            modifier = modifier,
+            topBar = { ChatsTopBar(ui.filters.active, onFilter = { filtering = true }, onOpenDrawer = { scope.launch { drawerState.open() } }) },
+        ) { inner -> ChatsScreen(ui, act, listState, Modifier.fillMaxSize().padding(inner)) }
+    }
+}
+
+/** 一台的［重试］/［重新连接］：SSH 那层接不上 ⇒ 整条重建；否则交那台（断着重接、通着重问）。 */
+private fun retry(
+    board: ChatsBoard,
+    links: Map<String, HostLink>,
+    attempts: MutableMap<String, Int>,
+    b: HostBar,
+) {
+    if (links[b.hostId] is HostLink.Failed) attempts[b.hostId] = (attempts[b.hostId] ?: 0) + 1 else board.chats(b.hostId)?.retry()
 }
 
 /**
@@ -100,16 +117,16 @@ fun ConversationsRoute(
  * 取消隐藏是明说要显示，不给撤销。撤销在应用根部的反馈里跑（这一屏关了也照做）。
  */
 private suspend fun toggleHidden(
-    vm: ConversationsViewModel,
+    chats: HostChats,
     snackbar: AppSnackbarController,
-    item: HistoryItem,
+    row: ChatRow,
 ) {
-    val hiding = item.hidden == null
-    when (val r = vm.setHide(item.sessionId, if (hiding) Hide.ON else Hide.OFF)) {
+    val hiding = row.hidden == null
+    when (val r = setHide(chats, row.sessionId, if (hiding) Hide.ON else Hide.OFF)) {
         is Fetched.Got ->
             if (hiding) {
-                snackbar.showUndo(copyText("history.hide.done", "label" to item.label)) {
-                    (vm.setHide(item.sessionId, r.value.prev) as? Fetched.Failed)?.let { snackbar.show(Notice(it.problem.text, it.problem.detail)) }
+                snackbar.showUndo(copyText("history.hide.done", "label" to row.label)) {
+                    (setHide(chats, row.sessionId, r.value.prev) as? Fetched.Failed)?.let { snackbar.show(Notice(it.problem.text, it.problem.detail)) }
                 }
             }
         is Fetched.Failed -> snackbar.show(Notice(copyText("history.hide.failed"), listOf(r.problem.text, r.problem.detail).filter(String::isNotBlank).joinToString("\n")))
@@ -117,71 +134,56 @@ private suspend fun toggleHidden(
     }
 }
 
+private suspend fun setHide(
+    chats: HostChats,
+    sid: String,
+    pin: Hide?,
+) = chats.call(HistoryAnnotate.COMMAND, HistoryAnnotate.hide(sid, pin), HistoryAnnotate::of).also { if (it is Fetched.Got) chats.fetch() }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ConversationsTopBar(
-    machine: String?,
+private fun ChatsTopBar(
     filtered: Boolean,
-    onFilter: (() -> Unit)?,
+    onFilter: () -> Unit,
     onOpenDrawer: () -> Unit,
 ) {
     TopAppBar(
         actions = {
-            // 过滤（同桌面历史页的「筛选」）：开着哪一样 ⇒ 漏斗着强调色。
-            onFilter?.let {
-                PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = it, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            PhIconButton(Ph.Funnel, copyText("history.page.filter"), onClick = onFilter, tint = if (filtered) LocalAppTokens.current.accent else MaterialTheme.colorScheme.onSurfaceVariant)
         },
         navigationIcon = { PhIconButton(Ph.List, DRAWER_OPEN_DESCRIPTION, onClick = onOpenDrawer, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.sm)) {
-                Text(copyText("mobDrawer.item.chats"), style = MaterialTheme.typography.titleMedium)
-                machine?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        },
+        title = { Text(copyText("mobDrawer.item.chats"), style = MaterialTheme.typography.titleMedium) },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
     )
 }
 
-/** 这台在手机上的名字（机器表里的 `label`）；还没读到 ⇒ `null`。 */
-@Composable
-private fun rememberMachineName(hostId: String): String? {
-    val hosts = koinInject<HostRepository>()
-    val name by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId)?.label }.getOrNull() ?: hostId }
-    return name
+/** 抽屉「最近」：这台一份清单（没筛选），隐藏的不列。 */
+class RecentChats(
+    make: (CoroutineScope) -> HostChats,
+) : ViewModel() {
+    private val chats = make(viewModelScope)
+
+    /** `null` ＝ 还没拿到；拿到后是清单最前面那些行（核心已按最后活动排好）。 */
+    val recent: StateFlow<List<ChatRow>?> =
+        chats.state
+            .map { s -> hostPart(s).takeIf { !it.loading }?.rows?.filter { it.hidden == null } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 }
 
-/** 一台的清单 VM。「对话」这一屏与抽屉「最近」取同一个（同一个 key）。 */
-@Composable
-private fun conversationsViewModel(
-    hostId: String,
-    machine: String,
-): ConversationsViewModel = koinViewModel(key = "conversations-$hostId") { parametersOf(hostId, machine) }
-
 /**
- * 抽屉「最近」：与「对话」这一屏同一个来源。
+ * 抽屉「最近」。
  *
  * @param linkReady 这台的 SSH 连接通了没有。没通 ⇒ `null`。
- * @return `null` ＝ 还没拿到；拿到后是清单最前面的那些行（核心已按最后活动排好）。
  */
 @Composable
 fun rememberRecent(
     hostId: String,
     linkReady: Boolean,
-): List<HistoryItem>? {
-    val machine = rememberMachineName(hostId)
-    if (!linkReady || machine == null) return null
-    val state by conversationsViewModel(hostId, machine).state.collectAsStateWithLifecycle()
-    return state.recent.takeIf { !state.listLoading }
-}
-
-/** SSH 都接不上时那一句（建连那一层给的原因）。 */
-@Composable
-private fun HostLinkFailed(
-    why: String,
-    modifier: Modifier = Modifier,
-) {
-    Text(why, modifier = modifier.padding(24.dp))
+): List<ChatRow>? {
+    val hosts = koinInject<HostRepository>()
+    val machine by produceState<String?>(null, hostId) { value = runCatching { hosts.get(hostId)?.label }.getOrNull()?.ifBlank { null } ?: hostId }
+    val name = machine
+    if (!linkReady || name == null) return null
+    val vm: RecentChats = koinViewModel(key = "recent-$hostId") { parametersOf(hostId, name) }
+    return vm.recent.collectAsStateWithLifecycle().value
 }

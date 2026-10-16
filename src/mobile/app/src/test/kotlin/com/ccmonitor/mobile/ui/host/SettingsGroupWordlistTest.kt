@@ -12,7 +12,7 @@ import java.io.File
  * 「设置 · 服务器」那一组屏（`ui/host` · `ui/identity`）的文案词表棘轮。
  *
  * 别的词表判据盖不到这一组：`ChatMenuTest` 只对聊天屏菜单判，`UiWordlistTest` 只认
- * `ui/overview` · `ui/chat` · `ui/claude` · `ui/settings`，`ChatAccountGateTest` 只守 `NO_ACCOUNT_CHOSEN` 一个常量。
+ * `ui/chats` · `ui/chat` · `ui/claude` · `ui/settings`，`ChatAccountGateTest` 只守 `NO_ACCOUNT_CHOSEN` 一个常量。
  * `ScreenTitlesTest` 管这一组的标题；本文件管这两个包的全部上屏文案。
  *
  * 口径是棘轮，不是零命中：这两个包里还有不少带禁用词的句子。声称「已清零」是假话；

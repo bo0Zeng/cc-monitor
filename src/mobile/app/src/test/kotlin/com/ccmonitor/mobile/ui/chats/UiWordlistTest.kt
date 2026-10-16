@@ -1,4 +1,4 @@
-package com.ccmonitor.mobile.ui.overview
+package com.ccmonitor.mobile.ui.chats
 
 import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
@@ -11,7 +11,7 @@ import java.io.File
  * 词表机检：禁用的技术词不许出现在给用户看的字面量里。
  *
  * 「终端 / tmux / 按键排」这些对新用户应该不可见；词表是把这条落到可执行层面的唯一手段，
- * 否则文案会一句句把技术概念漏回 UI。这条机检抓的是手滑与顺手：有人图省事写了「连接失败」「会话已结束」。
+ * 否则文案会一句句把技术概念漏回 UI。这条机检抓的是手滑与顺手：有人图省事写了「连接失败」「SSH 已断开」。
  *
  * ### 它不防什么
  *
@@ -34,22 +34,11 @@ import java.io.File
  * `KotlinSourceScannerTest.aNestedBlockCommentNeverLeaksIntoTheCallLiterals`（两个模块各跑一遍）。
  */
 class UiWordlistTest {
-    /** 禁用词，逐字。 */
-    private val banned = listOf("连接", "SSH", "tmux", "会话", "exec", "bridge", "daemon", "offset")
+    /** 禁用词，逐字。「会话」不在里面：共用术语表里它就是「与 agent 的一次运行」，会话屏的标题就叫它。 */
+    private val banned = listOf("连接", "SSH", "tmux", "exec", "bridge", "daemon", "offset")
 
     /** 已经干净的包。零命中。 */
-    private val cleanPackages = listOf("overview", "chat")
-
-    /**
-     * 干净包里许出现的整句：`那句 to 理由`。只收与桌面共用的表条（键 · 句子都是桌面那一条），
-     * 「会话」在共用术语表里就是「与 agent 的一次运行」（`terms.json`「会话」· 规矩 C-W20），不是技术词。
-     */
-    private val sharedSentences =
-        mapOf(
-            "无会话记录" to "history.list.empty：与桌面历史页同一条，「会话」照共用术语表指 agent 的一次运行",
-            "清空会话" to "session.clear.title · mobPlus.row.clear：两端共用的确认框标题，「会话」照共用术语表指 agent 的一次运行",
-            "从空的上下文重新开始 · 之前的对话留在会话列表里" to "session.clear.body：同上那一框的正文，两端共用",
-        )
+    private val cleanPackages = listOf("chats", "chat")
 
     /**
      * 还欠着的包 → 现有的违规条数。
@@ -85,10 +74,7 @@ class UiWordlistTest {
 
     @Test
     fun theOverviewAndChatFacesNeverSayATechnicalWordOutLoud() {
-        val all = cleanPackages.flatMap { scan(it) }
-        val dead = sharedSentences.keys - all.map { it.literal }.toSet()
-        assertTrue("许出现的整句已经不在干净包里了（死条，删掉）：$dead", dead.isEmpty())
-        val hits = all.filterNot { it.literal in sharedSentences }
+        val hits = cleanPackages.flatMap { scan(it) }
         assertEquals(
             "词表命中：每条都要改成人话：\n" +
                 hits.joinToString("\n") { "  ${it.where}  「${it.word}」 in ${it.literal}" },
@@ -121,7 +107,7 @@ class UiWordlistTest {
             fun f() {
                 Text("连接失败: ${'$'}message")
                 Text("这句是干净的")
-                // Text("会话") —— 注释里的不算
+                // Text("连接") —— 注释里的不算
             }
             """.trimIndent()
         val found = textLiterals(src).map { it.second }
@@ -134,7 +120,7 @@ class UiWordlistTest {
      * 嵌套 KDoc 里的 `Text(…)` 不是界面文案。
      *
      * 用「找下一个闭合」跳块注释的扫描器不认嵌套，在这份样本上会吐出
-     * `[(3, 会话已结束), (5, 真实文案)]`：注释里的引文被算成上屏文案（假阳），会让人去改一句根本没上屏的话。
+     * `[(3, 连接已断开), (5, 真实文案)]`：注释里的引文被算成上屏文案（假阳），会让人去改一句根本没上屏的话。
      * 退回那种跳法 ⇒ 本条当场红。
      *
      * 块注释的开/闭在这里逐字拼、不写成连续字面：写成字面的话本文件会被
@@ -146,7 +132,7 @@ class UiWordlistTest {
         val sample =
             "fun f() {\n" +
                 "/" + star + star + " 外层 KDoc，里面嵌一层：" + "/" + star + " 内层说明 " + star + "/" + " 外层还没完\n" +
-                " " + star + " Text(\"会话已结束\")  —— 注释里的引文，不该上屏\n" +
+                " " + star + " Text(\"连接已断开\")  —— 注释里的引文，不该上屏\n" +
                 " " + star + "/\n" +
                 "    Text(\"这句是干净的\")\n" +
                 "}\n"
@@ -171,7 +157,7 @@ class UiWordlistTest {
  * 钉着「扫描器真能抓到东西」。
  *
  * @return `行号 to 字面量内容`（不含引号；模板 `${'$'}{...}` 原样留在串里，
- *   所以 `Text("${'$'}{n} 个会话")` 抓得到「会话」）。行号是那条字面自己所在的行；
+ *   所以 `Text("${'$'}{n} 个连接")` 抓得到「连接」）。行号是那条字面自己所在的行；
  *   这个数只进报错信息，不进判定。界面上的字收进了文案表：字面量是表里的键（`Text(copyText("键"))`）⇒ 换成那句 zh 再比。
  */
 internal fun textLiterals(source: String): List<Pair<Int, String>> =

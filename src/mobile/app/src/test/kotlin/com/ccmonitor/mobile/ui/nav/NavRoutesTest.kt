@@ -68,10 +68,8 @@ class NavRoutesTest {
     }
 
     /**
-     * 用户可见的路由名要过禁用词表。
-     *
-     * 「会话」在技术义上是禁用词，对用户说「对话」。
-     * 路由名虽然不直接上屏，但它是给后来者看的命名基准，跑偏了屏上文案迟早跟着跑偏。
+     * 用户可见的路由名要过禁用词表：路由名不直接上屏，但它是给后来者看的命名基准，跑偏了屏上文案迟早跟着跑偏。
+     * 「会话」是共用术语表里的词（与 agent 的一次运行），不在表里。
      */
     @Test
     fun theNewRouteNamesFollowTheProductVocabulary() {
@@ -81,16 +79,15 @@ class NavRoutesTest {
                 assertFalse("路由名不许出现禁用词「$w」：$r", r.lowercase().contains(w))
             }
         }
-        // 抽屉「新对话」那一项的字是真上屏的，比路由名更该守这份词表。
+        // 抽屉「新建会话」那一项的字是真上屏的，比路由名更该守这份词表。
         val newLabel =
             com.ccmonitor.mobile.ui.drawer
                 .drawerEntries()
                 .first()
                 .label
-        for (w in listOf("会话", "连接", "SSH", "tmux", "bridge", "daemon")) {
-            assertFalse("「新对话」的字不许出现禁用词「$w」：$newLabel", newLabel.contains(w))
+        for (w in listOf("连接", "SSH", "tmux", "bridge", "daemon")) {
+            assertFalse("「新建会话」的字不许出现禁用词「$w」：$newLabel", newLabel.contains(w))
         }
-        assertTrue("它得真说「对话」：这是词表指定的替代说法", newLabel.contains("对话"))
     }
 
     // ---- 新界面必须能开出第一个对话 -------------------------------

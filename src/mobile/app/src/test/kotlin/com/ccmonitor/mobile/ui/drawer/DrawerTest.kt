@@ -6,7 +6,7 @@ import com.ccmonitor.mobile.ui.chat.CHAT_MENU_BANNED_WORDS
 import com.ccmonitor.mobile.ui.nav.Screen
 import com.ccmonitor.mobile.ui.nav.drawerDestination
 import com.ccmonitor.mobile.ui.nav.freshLanding
-import com.ccmonitor.mobile.ui.overview.HistoryItem
+import com.ccmonitor.mobile.ui.chats.ChatRow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -28,11 +28,11 @@ class DrawerTest {
     fun theItemsAndTheirOrderFollowTheDesign() {
         val entries = drawerEntries()
         assertEquals(
-            "抽屉的项与顺序：⊕ 新对话 · 对话 · 文件 · 终端（项目那一屏还没有，不画）",
+            "抽屉的项与顺序：⊕ 新建会话 · 会话 · 文件 · 终端（目录并进会话屏的按目录看法）",
             listOf(DrawerItem.NewConversation, DrawerItem.Conversations, DrawerItem.Files, DrawerItem.Terminal),
             entries.map { it.item },
         )
-        assertEquals(listOf("新对话", "对话", "文件", "终端"), entries.map { it.label })
+        assertEquals(listOf("新建会话", "会话", "文件", "终端"), entries.map { it.label })
         assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
         assertEquals("顶上的名字", "cc-monitor", DRAWER_TITLE)
         assertEquals("「最近」小标题", "最近", RECENT_HEADER)
@@ -158,8 +158,8 @@ class DrawerTest {
         val settings = codeOnly(source("SettingsEntry.kt"))
         assertFalse("设置里不再有「打开终端」", settings.contains("打开终端"))
 
-        val conversations = codeOnly(source("ConversationsRoute.kt"))
-        assertFalse("对话列表不再有自己的「新对话」", conversations.contains("ExtendedFloatingActionButton"))
+        val conversations = codeOnly(source("ChatsRoute.kt"))
+        assertFalse("会话屏不再有自己的「新建会话」", conversations.contains("ExtendedFloatingActionButton"))
 
         val hosts = codeOnly(source("HostScreens.kt"))
         assertFalse("服务器列表不再有自己进设置的那颗", Regex("""\bonSettings\b""").containsMatchIn(hosts))
@@ -182,7 +182,7 @@ class DrawerTest {
     private fun row(
         id: String,
         title: String,
-    ) = HistoryItem(sessionId = id, label = title, atText = "09:00", agentTag = null, status = null)
+    ) = ChatRow(hostId = "h", sessionId = id, label = title, at = 0, atText = "09:00", section = null, agentTag = null, status = null)
 
     private fun codeOnly(text: String): String = KotlinSourceScanner.codeOnlyKeepingLiterals(text)
 

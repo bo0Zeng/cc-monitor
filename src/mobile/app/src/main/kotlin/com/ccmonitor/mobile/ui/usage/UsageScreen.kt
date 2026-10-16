@@ -36,8 +36,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +56,7 @@ import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.DefaultTag
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.DashedBar
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import com.ccmonitor.mobile.ui.rotation.NoteBox
@@ -100,13 +99,13 @@ fun UsageScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (link is LinkState.Down) {
-                DashedBar(copyText("front.body.offline", "machine" to here.machine), copyText("newSession.machine.reconnect"), feed::reconnect)
+                DashedBar(copyText("front.body.offline", "machine" to here.machine), copyText("newSession.machine.reconnect"), feed::reconnect, Modifier.testTag(UsageTags.DOWN))
             } else {
-                ui.quotaRereadFailed?.let { DashedBar(it.text, copyText("front.act.retry"), board::reloadQuota) }
+                ui.quotaRereadFailed?.let { DashedBar(it.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN)) }
             }
             when (val q = ui.quota) {
                 Fetched.Loading -> repeat(SKELETON_CARDS) { SkeletonCard() }
-                is Fetched.Failed -> if (link !is LinkState.Down) DashedBar(q.problem.text, copyText("front.act.retry"), board::reloadQuota)
+                is Fetched.Failed -> if (link !is LinkState.Down) DashedBar(q.problem.text, copyText("front.act.retry"), board::reloadQuota, Modifier.testTag(UsageTags.DOWN))
                 is Fetched.Got -> {
                     val view = usageView(q.value, ui.accounts, ui.defaultAccount)
                     Head(view, board::reloadQuota)
@@ -255,28 +254,6 @@ private fun LabeledLine(
     }
 }
 
-/** 中性灰虚线条：那一句 ＋ 一颗按钮（离线 ⇒［重新连接］；无应答 ⇒［重试］）。 */
-@Composable
-private fun DashedBar(
-    text: String,
-    action: String,
-    onAction: () -> Unit,
-) {
-    val line = MaterialTheme.colorScheme.outline
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .drawBehind {
-                drawRoundRect(line, style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(DASH_ON, DASH_OFF))), cornerRadius = CornerRadius(6.dp.toPx()))
-            }.padding(horizontal = 14.dp, vertical = 8.dp)
-            .testTag(UsageTags.DOWN),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        SecondaryButton(onClick = onAction) { Text(action) }
-    }
-}
-
 /** 头一回读：一张空卡（不转圈）。 */
 @Composable
 private fun SkeletonCard() {
@@ -336,6 +313,4 @@ private const val SKELETON_H = 132
 private const val LABEL_W = 36
 private const val BAR_H = 6
 private const val STRIPE = 6
-private const val DASH_ON = 8f
-private const val DASH_OFF = 6f
 private const val HALF_TURN = 180f

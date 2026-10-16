@@ -41,7 +41,7 @@ import com.ccmonitor.mobile.ui.files.FilesScreen
 import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
-import com.ccmonitor.mobile.ui.overview.ConversationsRoute
+import com.ccmonitor.mobile.ui.chats.ChatsRoute
 import com.ccmonitor.mobile.ui.rotation.RotationScreen
 import com.ccmonitor.mobile.ui.session.SessionScreen
 import com.ccmonitor.mobile.ui.session.SessionTabManager
@@ -445,9 +445,9 @@ private fun NavGraphBuilder.chatRoutes(
     // Claude 对话总览，从抽屉「对话」进。注意：与 `sessions`（终端 tab 总览）是两件事。
     composable(Screen.Conversations.route) { entry ->
         val hostId = entry.arguments?.getString("hostId").orEmpty()
-        ConversationsRoute(
+        ChatsRoute(
             hostId = hostId,
-            onOpen = { sid -> nav.navigate(Screen.Chat.of(hostId, sid)) },
+            onOpen = { host, sid -> nav.navigate(Screen.Chat.of(host, sid)) },
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
         )
     }

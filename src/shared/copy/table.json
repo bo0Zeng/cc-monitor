@@ -29858,13 +29858,13 @@
     "mobDrawer.item.newChat": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "新对话",
+      "zh": "新建会话",
       "args": []
     },
     "mobDrawer.item.chats": {
       "kind": "action",
       "role": "菜单项",
-      "zh": "对话",
+      "zh": "会话",
       "args": []
     },
     "mobDrawer.item.files": {
@@ -30030,12 +30030,6 @@
       "role": "片段",
       "zh": "分叉自「{label}」",
       "args": ["label"]
-    },
-    "mobChats.fork.orphan": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "分叉自其他会话",
-      "args": []
     },
     "mobAccounts.list.section": {
       "kind": "title",

@@ -17,13 +17,17 @@ import com.ccmonitor.mobile.ui.chat.sessionOf
 import com.ccmonitor.mobile.ui.files.FilesViewModel
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
-import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
+import com.ccmonitor.mobile.ui.chats.ChatsBoard
+import com.ccmonitor.mobile.ui.chats.HostName
+import com.ccmonitor.mobile.ui.chats.RecentChats
+import com.ccmonitor.mobile.ui.chats.hostChats
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.session.keys.KeysEditorViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
+import kotlinx.coroutines.flow.map
 
 /** :app 的 Koin 模块（ViewModel + dev seeder）。 */
 val appModule =
@@ -64,21 +68,22 @@ val appModule =
             )
         }
 
-        // 每台一条常驻流（进程级）；「对话」一屏与抽屉「最近」共用同一个清单 VM。参数顺序 = `parametersOf(hostId, machine)`。
+        // 每台一条常驻流（进程级）；会话屏每台一份清单、抽屉「最近」一份，都经它问那台。
         single {
             val hosts = get<HostRepository>()
             val files = BackendFiles(androidContext())
             HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, backendSlots = files::slots)
         }
+        // 会话屏：参数 ＝ `parametersOf(当前那台)`；机器表照库里的先后。
         viewModel { params ->
-            val hostId: String = params.get(0)
-            val backends = get<HostBackends>()
-            ConversationsViewModel(
-                backend = backends.of(hostId),
-                machine = params.get(1),
-                cache = get<LocalCache>().list(hostId),
-                deployBackend = { backends.deploy(hostId) },
-            )
+            val make = hostChats(get(), get())
+            ChatsBoard(params.get(0), get<HostRepository>().observeAll().map { hs -> hs.map { HostName(it.id, it.label.ifBlank { it.id }) } }, make)
+        }
+        // 抽屉「最近」：参数 ＝ `parametersOf(那台, 它的名字)`。
+        viewModel { params ->
+            val make = hostChats(get(), get())
+            val host = HostName(params.get(0), params.get(1))
+            RecentChats { scope -> make(host, scope) }
         }
         // 本地缓存（会话列表 · 记录页 · 续点 · 待发 · 草稿）：那台成品原样落 Room。
         single { LocalCache(get()) }
