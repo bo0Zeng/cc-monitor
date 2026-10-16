@@ -9,7 +9,8 @@ package com.ccmonitor.mobile.core.rs
  *
  * 一台的**常驻流**（重连 · 握手 · 版本门 · 在看名单 · 一问一答，桌面同一份 `resident-client`）整条在核心里：[residentOpen] 看一台，
  * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
- * 它交的事经 [Sink.resident] 回来（`state` · `frame` · `watch_from` · `ssh` · `reply` · `deploy`）。给一台装 / 更新后端经 [deploy]。
+ * 它交的事经 [Sink.resident] 回来（`state` · `frame` · `watch_from` · `ssh` · `reply` · `moved` · `deploy`）。给一台装 / 更新后端经 [deploy]。
+ * 分块传（上传送进暂存区 · 下载读回）的循环也在核心里：本机那一份的文件描述符交 [transferStage] / [transferPull]，走到哪经 `moved`、结局经 `reply` 回。
  *
  * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。
  */
@@ -39,7 +40,7 @@ object Core {
             key: String,
         )
 
-        /** 一台常驻流交的事：[kind] 是 `state` · `frame` · `watch_from` · `reply`，[body] 是那一段文本（JSON 或原样一帧）。 */
+        /** 一台常驻流交的事：[kind] 是 `state` · `frame` · `watch_from` · `reply` · `moved`，[body] 是那一段文本（JSON 或原样一帧）。 */
         fun resident(
             handle: Long,
             kind: String,
@@ -137,6 +138,26 @@ object Core {
     )
 
     external fun residentClose(handle: Long)
+
+    /**
+     * 上传那一半：[fd]（读，已 detach，核心用完就关）逐块送进那台的暂存区；[name] 是它在句子里的名字。回问答编号：
+     * 每块之后一行 `moved {call, done, total}`，结局 `reply`：成了 ⇒ `data {key, chunks, bytes, sha256}`（提交照交）。这台不在 ⇒ 0。
+     */
+    external fun transferStage(
+        handle: Long,
+        fd: Int,
+        name: String,
+        withinMs: Long,
+    ): Long
+
+    /** 下载：那台上的 `args.path` 逐块读回、写进 [fd]（写，同上）；[shown] 是本机落点在句子里的名字。结局 `data {bytes}`。这台不在 ⇒ 0。 */
+    external fun transferPull(
+        handle: Long,
+        fd: Int,
+        args: String,
+        shown: String,
+        withinMs: Long,
+    ): Long
 
     /**
      * 给那台装 / 更新后端（判定与做法是桌面后端同一份 `deploy`）：[slots] = 包里那几格解到的文件

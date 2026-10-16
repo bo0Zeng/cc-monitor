@@ -317,7 +317,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - **读**：后端 `files/`（常驻文件名索引 · 列目录 · 元数据 · 按块读 · 按内容搜）。
 - **写**：只经那台后端的文件管理面 `control/files_write.rs`（`Door::peek` · `Door::put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `control/files_upload_chunks.rs` · `control/files_extract.rs` · `control/files_commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
 - **传输**：两台之间搬字节归原生那一块的传输台 `control/transfer.rs`（经 `dial/` 的 SFTP 写暂存区，远端那台的 `files-commit-upload` 提交）；下载的本机落点也由它写（过同一套路径解析，经帧面分派交来的写句柄）。
-- **手机**：文件屏（`app` 的 `ui/files/`）读写都问那台后端的 `files-*`（经这台的常驻流，入参与桌面窗口同一套切法：`root` ＝ 当前目录、`rel` ＝ 一段名字）；手机进程里没有后端，`transfer-*` 用不上：上传走块形（`files-stage-chunk` → `files-commit-upload`，不覆盖），下载走 `files-read-chunk`。手机经 SFTP 只剩部署那两处（写规矩 `Deploy`，与后端同一种）。
+- **手机**：文件屏（`app` 的 `ui/files/`）读写都问那台后端的 `files-*`（经这台的常驻流，入参与桌面窗口同一套切法：`root` ＝ 当前目录、`rel` ＝ 一段名字）；手机进程里没有后端，`transfer-*` 用不上：上传走块形（`files-stage-chunk` → `files-commit-upload`，同名那台问、答了同一份暂存件再交），下载走 `files-read-chunk`；分块那一圈在嵌的核心里（`chunk-core`，桌面同一份），本机那一份交文件描述符。手机经 SFTP 只剩部署那两处（写规矩 `Deploy`，与后端同一种）。
 
 ### 3.5 终端与 tmux
 

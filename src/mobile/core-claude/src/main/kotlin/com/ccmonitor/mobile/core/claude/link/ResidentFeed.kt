@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `ssh` · `reply` · `deploy`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `ssh` · `reply` · `moved` · `deploy`）。
  */
 interface ResidentCore {
     fun open(
@@ -52,6 +52,23 @@ interface ResidentCore {
         handle: Long,
         retry: Boolean,
     )
+
+    /** 分块传那一半（文件描述符交给核心）：回问答编号，走到哪经 `moved`、结局经 `reply`；这台不在 ⇒ 0。 */
+    fun stage(
+        handle: Long,
+        fd: Int,
+        name: String,
+        withinMs: Long,
+    ): Long
+
+    /** 下载那一半（[args] 是 `{path}`）：同 [stage]。 */
+    fun pull(
+        handle: Long,
+        fd: Int,
+        args: String,
+        shown: String,
+        withinMs: Long,
+    ): Long
 
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
@@ -129,6 +146,9 @@ class ResidentFeed(
     private val opened = CompletableDeferred<Long>()
     private val replies = ConcurrentHashMap<Long, CompletableDeferred<Reply>>()
 
+    /** 在走的分块传：问答编号 ⇒ 报走到哪的那一口。 */
+    private val moving = ConcurrentHashMap<Long, (Long, Long) -> Unit>()
+
     /** 核心交回来的事按到达顺序在这里排队、在 [scope] 里一件一件落（核心的工作线程上不等任何人）。 */
     private val inbox = Channel<Pair<String, String>>(Channel.UNLIMITED)
 
@@ -185,6 +205,31 @@ class ResidentFeed(
         return (withTimeoutOrNull(withinMs + REPLY_GRACE_MS) { slot.await() } ?: Reply.LinkDown).also { replies.remove(id) }
     }
 
+    /** 结局由核心交：每一块都有期限，最后必回一句 ⇒ 这里不另设整趟的期限（大文件要多久就多久）。 */
+    override suspend fun transfer(
+        how: Transfer,
+        fd: () -> Int,
+        withinMs: Long,
+        moved: (Long, Long) -> Unit,
+    ): Reply {
+        ensure()
+        val h = withTimeoutOrNull(withinMs) { opened.await() } ?: return Reply.LinkDown
+        val id =
+            when (how) {
+                is Transfer.Stage -> core.stage(h, fd(), how.name, withinMs)
+                is Transfer.Pull -> core.pull(h, fd(), Json.args(mapOf("path" to how.path.wire)), how.shown, withinMs)
+            }
+        if (id == 0L) return Reply.LinkDown
+        moving[id] = moved
+        val slot = replies.computeIfAbsent(id) { CompletableDeferred() }
+        return try {
+            slot.await()
+        } finally {
+            replies -= id
+            moving -= id
+        }
+    }
+
     override fun hold(sid: String): AutoCloseable {
         ensure()
         scope.launch { core.watch(opened.await(), sid, true) }
@@ -210,6 +255,7 @@ class ResidentFeed(
             "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
+            "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
             else -> broke(kind, body)
         }
@@ -260,6 +306,13 @@ class ResidentFeed(
             m.str("failed") != null -> Deploying.Failed(Said(text, m.str("detail").orEmpty()))
             else -> null
         }
+    }
+
+    /** `moved {call, done, total}`：交给在等那一趟的那一口（总数不知道 ⇒ `-1`）。 */
+    private fun onMoved(body: String) {
+        val m = Json.obj(body) ?: return broke("moved", body)
+        val id = m.num("call") ?: return broke("moved", body)
+        moving[id]?.invoke(m.num("done") ?: 0L, m.num("total") ?: -1L)
     }
 
     private fun onReply(body: String) {

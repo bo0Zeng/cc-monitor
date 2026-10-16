@@ -27,6 +27,8 @@ resident-client = { path = "../../../comms/resident-client" }
 cmd-wire = { path = "../../../common/cmd-wire" }
 # 文件页选中这几项 ⇒ 顶栏与 ⋯ 那几项（桌面文件窗口同一张判法）。
 pick-core = { path = "../../../common/pick-core" }
+# 分块传的循环（逐块进暂存区 ＋ 整份摘要 · 逐块读回）：桌面文件窗口同一份。
+chunk-core = { path = "../../../common/chunk-core" }
 # 事前就拒的那几种问答怎么说（`route_call_error`）：通信层面 A 那一份。
 comms-inward = { path = "../../../comms/inward" }
 # 同后端那一行（版本 · feature 集）：解 PEM 私钥、拼 Keystore 那把公钥要它的 `keys`。
