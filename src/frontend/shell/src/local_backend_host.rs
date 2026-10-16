@@ -1486,8 +1486,7 @@ pub fn start_local_backend() -> StartOutcome {
     // 两样宿主知识在这里给（backend 层不认识它们）：
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
     //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-    //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，
-    //     函数把它接在「旁边没有」后面，不伪造理由。
+    //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，原样交出、不伪造理由。
     let extract_dir = creds_core::store::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));

@@ -602,14 +602,8 @@ pub fn run() {
             // tmux 的状态（F05 摸底 §2.5）。
             {
                 use local_backend::Resolved;
-                // P2z（定框 C10）：exe 旁边没有本机后端时，把**已内嵌**的那份释放到本机再起 ——
-                // 「单 exe 也能起后端进程」那句话的落点。
-                //
-                // 两样宿主知识在这里给（backend 层不认识它们）：
-                //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
-                //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-                //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节；取不到时交进去那句拒绝的话，
-                //     函数把它接在「旁边没有」后面、不伪造理由。
+                // 本机后端只取这一份产物内嵌的那份（exe 旁边不找），放到 `~/.cc-monitor/bin` 再起；
+                // 落点与按 (OS, arch) 挑字节都在 `start_local_backend` 里给，没内嵌 ⇒ 原样交出那句拒绝的话。
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
