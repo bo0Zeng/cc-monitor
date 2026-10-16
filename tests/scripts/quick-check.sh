@@ -2,7 +2,7 @@
 # 快检：交给门禁之前的那一圈，也是合并后 gate-affected --trust-ci 的第一步。不拿门禁锁、不代替门禁。
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh`
 #   跑：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的便宜格（static_cells，经 gate.sh 的 GATE_ONLY，收据另存不盖门禁那份）·
-#       后端那棵整套 `cargo test --workspace --lib`（后端 ＋ 拨号核心） · 壳那棵 workspace 整套 `cargo test --workspace --lib`
+#       后端那棵整套 `cargo test --workspace --lib --bins --benches`（后端 ＋ 拨号核心；bench 只跑冒烟档） · 壳那棵 workspace 整套 `cargo test --workspace --lib`
 #       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）· 整套 vitest · 末尾生成物有没有落在提交外（generated-drift.sh：cargo test 现写的
 #       `generated/` 与 HEAD 不同或没跟踪 ⇒ 红，逐份印出；合并只看得见提交）。
 #   后端那棵的 clippy（系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）：照门禁 `clippy-backend` 那一格的参数，只跑相对起点改到的包
@@ -130,14 +130,16 @@ step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-mo
 step tsc          run node_modules/.bin/tsc --noEmit
 step static       run env GATE_ONLY="$static_cells" GATE_RECEIPT="$root/.build/quick-check/static-receipt.json" bash tests/scripts/gate.sh
 
-# 后端那棵整套 --lib；版本号那一条若是唯一红的 ⇒ 记「待打版本号」
+# 后端那棵整套 lib ＋ bin ＋ bench 冒烟（bench 那几个目标 `test = true`，CI 的 `cargo test --workspace` 跑它们）；
+#   版本号那一条若是唯一红的、且没有别的目标红 ⇒ 记「待打版本号」
 t0=$SECONDS
-out=$(runcargo bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -q' 2>&1); rc=$?
+out=$(runcargo bash -c 'cd src/backend && cargo test --workspace --lib --bins --benches --no-fail-fast -q' 2>&1); rc=$?
 { echo "════ backend（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
 n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
 failed=$(printf '%s\n' "$out" | awk '/^failures:$/{f=1; next} f && /^    [A-Za-z0-9_:]+$/{print $1} /^test result:/{f=0}' | sort -u)
 if [ $rc -eq 0 ] && [ "${n:-0}" -gt 0 ]; then printf '  ok   %-16s %ss · %s 条\n' backend $((SECONDS-t0)) "$n"
-elif [ $rc -ne 0 ] && [ "$failed" = "build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump" ]; then
+elif [ $rc -ne 0 ] && [ "$failed" = "build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump" ] \
+  && ! printf '%s\n' "$out" | grep -q 'to rerun pass .*--b\(in\|ench\) '; then
   printf '  待   %-16s %ss · %s 条；子命令集变了，合并时打版本号（不算红）\n' backend $((SECONDS-t0)) "${n:-?}"; notes+=("待打版本号")
 else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
   hit=$(printf '%s\n' "$out" | grep -E "FAILED|panicked|^error|error\[E" | head -25)
