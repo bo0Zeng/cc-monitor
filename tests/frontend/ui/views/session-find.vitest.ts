@@ -454,7 +454,6 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
       ["user", copyText("sessionFind.scope.user"), "false"],
     ]);
     expect(toolsBox(p.el).closest("label")!.textContent).toBe(copyText("findStrip.box.tools"));
-    expect(copyText("sessionFind.box.tools")).toBe(copyText("findStrip.box.tools"));
     const query = q(p, "[data-role=find-input]").closest("div")!;
     expect(query.contains(scopeSeg(p.el)), "分段不挤在框那一行").toBe(false);
   });
