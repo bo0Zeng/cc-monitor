@@ -129,7 +129,7 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
         },
         WriteOp::Rename {
             from: "/home/u/.claude/projects/dash-proj/abc-123/subagents/agent-1.jsonl".to_string(),
-            to: "/home/u/.claude/projects/dash-proj/abc-123/subagents/agent-2.jsonl".to_string(),
+            name: "agent-2.jsonl".to_string(),
             raw: None,
         },
         WriteOp::Delete {
@@ -183,7 +183,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
-            path: "/srv/refuse/newdir".into(),
+            dir: "/srv/refuse".into(), name: "newdir".into(),
         },
     )
     .await
@@ -197,7 +197,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
-            path: "/srv/data/newdir".into(),
+            dir: "/srv/data".into(), name: "newdir".into(),
         },
     )
     .await
@@ -249,11 +249,11 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
         raw: None,
     });
     ops.push(WriteOp::Mkdir {
-        path: "/srv/data/m".into(),
+        dir: "/srv/data".into(), name: "m".into(),
     });
     ops.push(WriteOp::Rename {
         from: "/srv/data/a".into(),
-        to: "/srv/data/b".into(),
+        name: "b".into(),
         raw: None,
     });
 
@@ -306,7 +306,7 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
 async fn nothing_is_touched_when_the_answer_is_no() {
     let applied = Applied::default();
     let mkdir = WriteOp::Mkdir {
-        path: "/srv/data/m".into(),
+        dir: "/srv/data".into(), name: "m".into(),
     };
     let del = WriteOp::Delete {
         path: "/srv/data/d".into(),
@@ -343,11 +343,11 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
     let out = run_writes(
         vec![
             WriteOp::Mkdir {
-                path: "/srv/data/m".into(),
+                dir: "/srv/data".into(), name: "m".into(),
             },
             WriteOp::Rename {
                 from: "/srv/data/a".into(),
-                to: "/srv/data/b".into(),
+                name: "b".into(),
                 raw: None,
             },
         ],
@@ -409,7 +409,7 @@ async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
 async fn a_failure_comes_back_with_the_message_the_pool_gave() {
     let out = run_writes(
         vec![WriteOp::Mkdir {
-            path: "/srv/data/m".into(),
+            dir: "/srv/data".into(), name: "m".into(),
         }],
         |a| async move { a },
         each(|_| async move { Err("新建目录失败: permission denied".into()) }),
@@ -453,10 +453,10 @@ async fn an_empty_batch_does_nothing_at_all() {
 #[test]
 fn exactly_delete_asks_first() {
     let all = vec![
-        WriteOp::Mkdir { path: "/a".into() },
+        WriteOp::Mkdir { dir: "/".into(), name: "a".into(), },
         WriteOp::Rename {
             from: "/a".into(),
-            to: "/b".into(),
+            name: "b".into(),
             raw: None,
         },
         WriteOp::Delete {
@@ -495,7 +495,7 @@ fn exactly_delete_asks_first() {
 fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Mkdir {
-            path: "/srv/d".into()
+            dir: "/srv".into(), name: "d".into(),
         }
         .label(),
         copy_core::copy_text("rsFilewinWriteops.op.mkdir", &[("path", "/srv/d")])
@@ -503,7 +503,7 @@ fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Rename {
             from: "/srv/a".into(),
-            to: "/srv/b".into(),
+            name: "b".into(),
             raw: None,
         }
         .label(),
@@ -540,7 +540,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     assert_eq!(
         p.to_op().unwrap(),
         WriteOp::Mkdir {
-            path: "/srv/data/sub".into()
+            dir: "/srv/data".into(), name: "sub".into(),
         }
     );
 
@@ -554,7 +554,7 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
         p.to_op().unwrap(),
         WriteOp::Rename {
             from: "/srv/data/a.bin".into(),
-            to: "/srv/data/b.bin".into(),
+            name: "b.bin".into(),
             raw: None,
         }
     );
@@ -588,7 +588,8 @@ fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
         assert_eq!(
             p.to_op().expect("名字交给那台判，窗口不拒"),
             WriteOp::Mkdir {
-                path: format!("/srv/data/{typed}")
+                dir: "/srv/data".into(),
+                name: typed.into(),
             }
         );
     }
@@ -753,7 +754,7 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     let origin = comms_inward::origin::Origin(wired.origin.clone());
     let ops = [
         WriteOp::Mkdir {
-            path: "/srv/data/新目录".into(),
+            dir: "/srv/data".into(), name: "新目录".into(),
         },
         WriteOp::Delete {
             path: "/srv/data/x.bin".into(),
@@ -762,7 +763,7 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         },
         WriteOp::Rename {
             from: "/srv/data/x.bin".into(),
-            to: "/srv/data/y.bin".into(),
+            name: "y.bin".into(),
             raw: None,
         },
         WriteOp::Chmod {
@@ -778,26 +779,12 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     }
     let got: Vec<serde_json::Value> = wired.log.lock().unwrap().clone();
     let want = vec![
-        serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录" } }),
+        serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录", "single": true } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "x.bin" }] } }),
-        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin" } }),
+        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin", "single": true } }),
         serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": 0o640 } }),
     ];
     assert_eq!(got, want, "线上那四行与期望不等");
-    // 改名跨目录 ⇒ 当场拒，一个字节不发（写面只有一个 `root`）。
-    let e = super::apply_remote(
-        &wired.line,
-        &origin,
-        &WriteOp::Rename {
-            from: "/srv/data/a".into(),
-            to: "/srv/other/a".into(),
-            raw: None,
-        },
-    )
-    .await
-    .expect_err("跨目录改名竟然发出去了");
-    assert!(!e.is_empty());
-    assert_eq!(wired.log.lock().unwrap().len(), 4, "跨目录那一件上了线");
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -834,7 +821,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         },
         WriteOp::Rename {
             from: "/srv/data/caf\u{FFFD}.txt".into(),
-            to: "/srv/data/cafe.txt".into(),
+            name: "cafe.txt".into(),
             raw: Some(raw.clone()),
         },
         WriteOp::Chmod {
@@ -853,7 +840,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
     let want = vec![
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "build", "recursive": true }] } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": b16 }] } }),
-        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt" } }),
+        serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt", "single": true } }),
         serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": 0o600 } }),
     ];
     assert_eq!(got, want, "线上那几行与期望不等");
@@ -1200,18 +1187,13 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
     assert_eq!(
         n.to_inline(),
         Ok(Some(InlineGo::Op(WriteOp::Mkdir {
-            path: format!(
-                "/srv/data/{}",
-                copy_core::copy_static!("rsFilewinWriteops.inline.newDir")
-            )
+            dir: "/srv/data".into(),
+            name: copy_core::copy_static!("rsFilewinWriteops.inline.newDir").into(),
         })))
     );
     assert_eq!(
         WritePrompt::for_new("/srv/data", true).to_inline(),
-        Ok(Some(InlineGo::Create(format!(
-            "/srv/data/{}",
-            copy_core::copy_static!("rsFilewinWriteops.inline.newFile")
-        ))))
+        Ok(Some(InlineGo::Create))
     );
 }
 

@@ -10040,12 +10040,6 @@
       "zh": "复制无法启动 · 重开本窗口",
       "args": []
     },
-    "rsFilewinShell.copy.badName": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "「{name}」不可用 · 不能为空 · 不含 / · 不同于原名",
-      "args": ["name"]
-    },
     "rsFilewinShell.drop.noNames": {
       "kind": "error",
       "role": "报错",
@@ -10342,12 +10336,6 @@
       "role": "标题",
       "zh": "改权限 · {n} 项",
       "args": ["n"]
-    },
-    "rsFilewinWriteops.remote.renameSameDir": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "只能在同一目录改名 · {op}",
-      "args": ["op"]
     },
     "rsFilewinWriteops.op.chmod": {
       "kind": "body",
@@ -17240,6 +17228,12 @@
       "zh": "未解压 · 超出上限 {cap}",
       "args": ["cap"]
     },
+    "beFilesExtract.plan.overBytes": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未解压 · 解出的内容超出上限 {cap}",
+      "args": ["cap"]
+    },
     "beFilesExtract.archive.unreadable": {
       "kind": "error",
       "role": "原因格",
@@ -17476,12 +17470,6 @@
       "role": "报错",
       "zh": "只收相对路径 · 给的是绝对路径 {path}",
       "args": ["path"]
-    },
-    "beFilesWrite.path.outsideRoot": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 不在 {root} 下 · 未改动",
-      "args": ["path", "root"]
     },
     "beFilesWrite.path.unresolved": {
       "kind": "error",

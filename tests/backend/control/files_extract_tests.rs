@@ -307,11 +307,12 @@ fn the_three_whole_refusals_touch_nothing() {
     let e =
         extract(&Face::issue(), &base, Path::new("p.rar"), Path::new("r")).expect_err("rar 解成了");
     assert_eq!(e.code, "unsupported", "{e:?}");
-    let e = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), 1)
+    let entries = |n| Caps { entries: n, ..CAPS };
+    let e = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), entries(1))
         .expect_err("超上限却解了");
     assert_eq!(e.code, "refused", "{e:?}");
     assert!(std::fs::symlink_metadata(base.join("c")).is_err());
-    extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), 2)
+    extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), entries(2))
         .expect("上限恰好够却被拒了");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -418,5 +419,61 @@ fn a_zip_link_target_over_the_cap_refuses_instead_of_truncating() {
     );
     extract(&Face::issue(), &base, Path::new("k.zip"), Path::new("k"))
         .expect("恰好到上限的目标被拒了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 解出的字节之和超上限 ⇒ 计划趟就整趟拒、一个目录都不建；硬链接落成的拷贝也算进去；恰好够 ⇒ 照解。
+#[test]
+fn an_archive_that_expands_past_the_byte_cap_refuses_before_building_anything() {
+    let base = temp_root("bytes");
+    plant(
+        &base,
+        "p.tar",
+        &tar_bytes(&[
+            TarItem::File(b"f", &[7u8; 40], 0o644),
+            TarItem::Hard(b"h1", b"f"),
+            TarItem::Hard(b"h2", b"f"),
+        ]),
+    );
+    let bytes = |floor| Caps {
+        ratio: 0,
+        floor,
+        ..CAPS
+    };
+    let e = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), bytes(119))
+        .expect_err("超字节上限却解了");
+    assert_eq!(e.code, "refused", "{e:?}");
+    assert!(copy_core::copy_matches("beFilesExtract.plan.overBytes", &e.said), "{e:?}");
+    assert!(std::fs::symlink_metadata(base.join("c")).is_err(), "拒了还建了落点");
+    let got = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), bytes(120))
+        .expect("恰好够却被拒了");
+    assert_eq!(got.bytes, 120);
+    // 倍数那一格：包本身的大小 × 倍数（地板为 0）。
+    let len = std::fs::metadata(base.join("p.tar")).unwrap().len();
+    assert!(len >= 120, "夹具的包本身就该比解出的大");
+    extract_with(
+        &Face::issue(),
+        &base,
+        Path::new("p.tar"),
+        Path::new("d"),
+        Caps { ratio: 1, floor: 0, ..CAPS },
+    )
+    .expect("包本身一倍就够却被拒了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 执行趟按真写出的字节再判（包里写的大小可以撒谎）：写超了 ⇒ 那一份删掉、剩余额度不动、回超上限那一句。
+#[test]
+fn landing_a_file_past_what_is_left_deletes_it_and_says_the_cap() {
+    let base = temp_root("left");
+    let mut left = 5u64;
+    let e = land_file(&Face::issue(), &base, Path::new("f"), &mut &[1u8; 10][..], None, &mut left)
+        .expect_err("写超了却留下了");
+    assert!(copy_core::copy_matches("beFilesExtract.plan.overBytes", &e.said), "{e:?}");
+    assert!(std::fs::symlink_metadata(base.join("f")).is_err(), "写超的那一份没删");
+    assert_eq!(left, 5);
+    let n = land_file(&Face::issue(), &base, Path::new("g"), &mut &[1u8; 5][..], None, &mut left)
+        .expect("恰好用完却被拒了");
+    assert_eq!((n, left), (5, 0));
     std::fs::remove_dir_all(&base).ok();
 }

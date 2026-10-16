@@ -841,14 +841,10 @@ impl Workspace {
             .map(|r| {
                 // 〔有损名全寻址〕源 ＝ 源那一栏当前目录的字节 ＋ 名字的字节；目标 ＝ 另一栏当前目录的字节 ＋ 同一个名字。
                 let src = from.row_path(r);
-                let dst = super::shell::join_path(&dest_path, &super::shell::name_bytes(r));
+                let dst = dest_path.child(&super::shell::name_bytes(r));
                 CopyJob {
                     from: src.shown.clone(),
-                    to: if dst.is_lossy() {
-                        dst.shown.clone()
-                    } else {
-                        super::writeops::join_remote(&dest_dir, &r.name)
-                    },
+                    to: dst.shown.clone(),
                     name: r.name.clone(),
                     is_dir: r.is_dir,
                     from_raw: src.raw,
@@ -1698,6 +1694,7 @@ pub fn across_req(jobs: &[CopyJob]) -> Result<cmd_wire::files::FilesCopyReq, Str
         on_exists: None,
         decide: None,
         ticket: None,
+        single: None,
     })
 }
 

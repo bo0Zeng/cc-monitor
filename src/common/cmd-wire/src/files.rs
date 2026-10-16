@@ -1191,6 +1191,10 @@ pub struct FilesCopyReq {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub ticket: Option<String>,
+    /// `true` ⇒ 每项的 `to` 只许是一段名字、且不同于 `from`（界面「复制为」那一格敲的就是一个名字）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub single: Option<bool>,
 }
 
 /// 复制的一项：`from` 复制成 `to`（都是根底下的相对段）。

@@ -413,6 +413,11 @@ impl RemotePath {
         wire_bytes(tail_bytes(&self.bytes()))
     }
 
+    /// 底下名叫 `name` 的那一项（按字节拼，[`child_bytes`]）。
+    pub fn child(&self, name: &[u8]) -> Self {
+        Self::from_bytes(&child_bytes(&self.bytes(), name))
+    }
+
     /// 这条路径是有损的（显示串寻址不到真字节）。
     pub fn is_lossy(&self) -> bool {
         self.raw.is_some()
@@ -435,6 +440,20 @@ fn trim_slashes(b: &[u8]) -> &[u8] {
         end -= 1;
     }
     &b[..end]
+}
+
+/// 目录 ＋ `/` ＋ 名字（按字节；目录尾巴的 `/` 不重复，根上就是 `/名字`）。窗口里拼路径只这一处；
+/// 名字合不合法不在这里判（交那台：写面带 `single`）。
+pub fn child_bytes(dir: &[u8], name: &[u8]) -> Vec<u8> {
+    let mut b = trim_slashes(dir).to_vec();
+    b.push(b'/');
+    b.extend_from_slice(name);
+    b
+}
+
+/// [`child_bytes`] 的串版（两头都是合法 UTF-8）。
+pub fn child_of(dir: &str, name: &str) -> String {
+    String::from_utf8_lossy(&child_bytes(dir.as_bytes(), name.as_bytes())).into_owned()
 }
 
 /// [`parent_dir`] 的字节版（同一个口径：根的上一级是根）。

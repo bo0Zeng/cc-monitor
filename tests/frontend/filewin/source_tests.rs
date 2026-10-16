@@ -1034,17 +1034,10 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
 ///   （`parent_dir` / `remote_basename` 搬去那里、两边共用一份）；后两棵的键带前缀。
 /// - 算一处「切」：一行里出现 `.split('/')` · `.rsplit('/')` · `.rfind('/')` ·
 ///   `.split_terminator('/')` 任一形；记成 `(文件, 所在函数)`。
-/// - ⚠ **不算**：`trim_end_matches('/')`（剥尾巴，不切）· `push('/')`（拼，不切）·
+/// - ⚠ **不算**：`trim_end_matches('/')`（剥尾巴，不切）· `push('/')`（拼，下一条管）·
 ///   `matches('/').count()`（数深度，不切）。它们不产生「哪一段是名字」的判断。
 #[test]
 fn every_place_that_splits_a_remote_path_is_declared() {
-    const SPLITS: &[&str] = &[
-        ".split('/')",
-        ".rsplit('/')",
-        ".rfind('/')",
-        ".split_terminator('/')",
-    ];
-    const FN_WORD: &str = "fn ";
     /// `(文件, 函数, 为什么它可以切)`。
     const DECLARED: &[(&str, &str, &str)] = &[
         (
@@ -1062,6 +1055,40 @@ fn every_place_that_splits_a_remote_path_is_declared() {
             "自带那份窗口程序的本机落点：契约里 `/` 分隔的相对路径逐段拼进本机家目录，不是远端路径",
         ),
     ];
+    sites_match(
+        &[
+            ".split('/')",
+            ".rsplit('/')",
+            ".rfind('/')",
+            ".split_terminator('/')",
+        ],
+        DECLARED,
+        "按 `/` 切远端路径的地方",
+    );
+}
+
+/// 🔴 **窗口里拼路径（目录 ＋ `/` ＋ 名字）只在 `child_bytes` 一处**；名字合不合法交那台判（写面带 `single`），这里不判。
+/// 算一处「拼」：一行里出现 `.push(b'/')` · `.push('/')` · 格式串里的 `}/{` 任一形。人群与口径同上一条。
+#[test]
+fn every_place_that_joins_a_remote_path_is_declared() {
+    const DECLARED: &[(&str, &str, &str)] = &[
+        ("source.rs", "child_bytes", "拼路径的那一处"),
+        ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
+        ("source.rs", "common_dir_bytes", "两条路径按段比出来的公共前缀"),
+        ("corpus.rs", "synth_paths", "合成语料铺字节，不是远端路径"),
+        ("batch.rs", "name_of", "一项的键（序号 / 相对段）写成给人看的名字，不寻址"),
+        ("fonts.rs", "ruler_self_check", "自检那一句里的「几 / 几」，不是路径"),
+    ];
+    sites_match(
+        &[".push(b'/')", ".push('/')", "}/{"],
+        DECLARED,
+        "拼远端路径的地方",
+    );
+}
+
+/// 三棵生产段里命中 `patterns` 任一形的 `(文件, 所在函数)` 与 `declared` 两向相等。
+fn sites_match(patterns: &[&str], declared: &[(&str, &str, &str)], what: &str) {
+    const FN_WORD: &str = "fn ";
     let repo = crate::guard_support::repo_root();
     let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
     let mut files = 0usize;
@@ -1086,7 +1113,7 @@ fn every_place_that_splits_a_remote_path_is_declared() {
                 if let Some(name) = fn_name_on(line, FN_WORD) {
                     current = name;
                 }
-                if SPLITS.iter().any(|n| guard_core::contains_word(line, n)) {
+                if patterns.iter().any(|n| guard_core::contains_word(line, n)) {
                     found.insert((file.clone(), current.clone()));
                 }
             }
@@ -1096,13 +1123,13 @@ fn every_place_that_splits_a_remote_path_is_declared() {
         files >= 16,
         "`filewin/` 只扫到 {files} 份 —— 遍历器坏了，下面那条会在空集上成立"
     );
-    let want: std::collections::BTreeSet<(String, String)> = DECLARED
+    let want: std::collections::BTreeSet<(String, String)> = declared
         .iter()
         .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
         .collect();
     assert_eq!(
         found, want,
-        "按 `/` 切远端路径的地方与登记表对不上。\n  多出来的（新写了一份切法）：{:?}\n  表里有、盘上没了的：{:?}",
+        "{what}与登记表对不上。\n  多出来的（新写了一份）：{:?}\n  表里有、盘上没了的：{:?}",
         found.difference(&want).collect::<Vec<_>>(),
         want.difference(&found).collect::<Vec<_>>()
     );

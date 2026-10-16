@@ -121,6 +121,17 @@ pub(crate) fn copy(
         .iter()
         .map(|i| (rel_of(&i.from), rel_of(&i.to)))
         .collect();
+    if req.single == Some(true) {
+        for (from, to) in &items {
+            super::files_write::names_ok(true, to).map_err(CopyRefused::Fail)?;
+            if from == to {
+                return Err(CopyRefused::Fail(WriteFail::from((
+                    super::files_write::BAD_NAME,
+                    copy_text("beFilesWrite.copy.same", &[("path", &to.to_string_lossy())]),
+                ))));
+            }
+        }
+    }
     let total = items.len();
     let decide = req.decide;
     let probe = || -> Result<Vec<Option<Clash>>, CopyRefused> {

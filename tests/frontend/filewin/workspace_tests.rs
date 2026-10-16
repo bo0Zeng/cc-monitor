@@ -1482,7 +1482,7 @@ async fn screenshot_for_the_shots_tool() {
             copy_core::copy_text("rsFilewinWriteops.inline.renamed", &[("name", "retry.rs")]),
             vec![crate::writeops::WriteOp::Rename {
                 from: format!("{d}/retry.rs"),
-                to: format!("{d}/main.rs"),
+                name: "main.rs".into(),
                 raw: None,
             }],
         ));

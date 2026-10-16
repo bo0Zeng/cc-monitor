@@ -2772,7 +2772,7 @@ pub fn wire_of(p: &Path) -> wire::WirePath {
 
 /// `single`（缺 ⇒ `false`）：给了 ⇒ 这一格只许是一段名字（界面「新建 / 改名」那一格敲的就是一个名字）。
 /// 每一段都过这台的名字规则（`platform::paths::name_problem`）。不合 ⇒ 码 [`BAD_NAME`]。
-fn names_ok(single: bool, rel: &Path) -> Result<(), WriteFail> {
+pub(crate) fn names_ok(single: bool, rel: &Path) -> Result<(), WriteFail> {
     let shown = rel.to_string_lossy();
     let parts: Vec<Component> = rel.components().collect();
     if single && parts.is_empty() {

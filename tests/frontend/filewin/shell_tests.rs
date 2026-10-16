@@ -439,45 +439,26 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     // 目录**摆得出**「复制为」框了（后端 `recursive: true`），框里记着「源是目录」
     //   ⇒ 那一趟线上与文件同形，后端按源判、整棵复制（`workspace_tests::copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`）。
     assert!(w.begin_copy(0), "目录摆不出「复制为」框");
-    let job = w
-        .copy_prompt()
-        .and_then(|p| p.to_job())
-        .expect("框里的名字该能用");
-    assert!(job.is_dir, "目录那一件没标成目录 —— 线上不会带 recursive");
+    assert!(
+        w.copy_prompt().is_some_and(|p| p.is_dir),
+        "目录那一件没标成目录"
+    );
 }
 
-/// 🔴 名字不合法 ⇒ **框留着 ＋ 出声**，不静默收掉。
-///
-/// 收掉的话用户点了「复制」什么都没发生，与「已经开始复制了」长得一模一样。
+/// 「复制为」框里敲的名字窗口不判（空 · 带 `/` · 与源同名都由那台判，`single`）：每一个都走到「起一组」那一步
+/// （这个窗口没有运行时 ⇒ 停在那一支、说那一句、框留着）。
 #[test]
-fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
+fn the_copy_box_hands_any_typed_name_to_the_far_side() {
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     pick_row(&mut w, 0);
     assert!(w.perform(crate::select::Action::Copy, None));
-
-    for bad in ["", "   ", "sub/a.bin", "a.bin"] {
-        *w.listing.error.lock().unwrap() = None;
-        w.copy_prompt.as_mut().unwrap().new_name = bad.to_string();
-        assert!(!w.confirm_copy(None), "「{bad}」这个名字竟然起得来");
-        assert!(
-            w.copy_prompt().is_some(),
-            "「{bad}」被拒了，框却收掉了 —— 用户会以为复制开始了"
-        );
-        assert!(
-            w.prompt_error().is_some() && w.listing.error.lock().unwrap().is_none(),
-            "「{bad}」被拒了，原因没说在框里"
-        );
+    for typed in ["", "   ", "sub/a.bin", "a.bin", "a.bin.copy"] {
+        w.copy_prompt.as_mut().unwrap().new_name = typed.to_string();
+        assert!(!w.confirm_copy(None), "没有运行时却说起得来");
+        let e = w.prompt_error().expect("没出声");
+        assert!(no_runtime(&e), "「{typed}」在窗口这一侧就被挡了：{e}");
+        assert!(w.copy_prompt().is_some(), "没起来，框却收掉了");
     }
-    // 反空真：换一个能用的名字，它就不再卡在「名字不合法」这一支上
-    //（这个窗口没有运行时 ⇒ 它会卡在下一支，而那一支说的是另一件事）。
-    w.copy_prompt.as_mut().unwrap().new_name = "a.bin.copy".to_string();
-    assert!(!w.confirm_copy(None), "没有运行时却说起得来");
-    let e = w.prompt_error().unwrap();
-    assert!(
-        no_runtime(&e),
-        "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
-    );
-    // 取消把框收掉。
     w.cancel_copy();
     assert!(w.copy_prompt().is_none());
 }
@@ -1404,14 +1385,14 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
     // 落点（根可以是当前目录的字节，有损名全寻址；交回应答与码）各恰好一处：`run_writes` 的 `apply` 里走
-    //   `apply_all`（删除 · 改权限一组一条命令）；就地那一格走 `apply_typed`（新建 · 改名：敲的名字原样交那台判）。
+    //   `apply_all`（删除 · 改权限一组一条命令）；就地那一格走 `apply_remote_coded`（新建 · 改名：敲的名字原样交那台判）。
     assert_eq!(
         prod.matches("writeops::apply_all(").count(),
         1,
         "批量那一条的落点不是恰好一处"
     );
     assert_eq!(
-        prod.matches("writeops::apply_typed(").count(),
+        prod.matches("writeops::apply_remote_coded(").count(),
         1,
         "就地那一格的落点不是恰好一处"
     );
@@ -3461,7 +3442,7 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
         undo,
         vec![WriteOp::Rename {
             from: "/srv/data/b.txt".into(),
-            to: "/srv/data/a.txt".into(),
+            name: "a.txt".into(),
             raw: None
         }]
     );

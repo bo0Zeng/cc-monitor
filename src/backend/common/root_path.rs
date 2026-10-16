@@ -6,7 +6,7 @@
 
 use crate::platform::fs::{Resolved, Ro};
 use copy_core::{copy_text, io_reason};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// 路径解析①（词法）：**纯路径算术，不碰盘**。过了就返回「打算写到哪」。
 ///
@@ -22,51 +22,21 @@ use std::path::{Component, Path, PathBuf};
 /// `~/.claude*` 那几棵树里」）。用户原话「**文件管理器全部都可以改. 不需要任何围栏**」⇒ 那一关删了：
 /// 本函数只答「这一段拼到根上之后还在不在根底下」，**不问落点是谁的数据**。
 ///
-/// 入参从 `&str` 换成了 `impl AsRef<Path>`：段判定走的是 `Path::components`，
-/// 它本来就**不看编码** ⇒ 非 UTF-8 的名字（乱码文件名）照样逐段判；递归删的子项名字
-/// 也不一定是 UTF-8，逐条目过路径解析要的正是这一格。判定一个字没变。
+/// 段判定按字节（与远端写围栏 · 解压条目同一道 `ssh_dial::plain_path`；本机 Windows 上 `\` 也是分隔符）⇒
+/// 非 UTF-8 的名字照样逐段判。
 pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+    use ssh_dial::plain_path::{plain_segments, Dots, Fault};
     let rel = rel.as_ref();
     if rel.to_string_lossy().trim().is_empty() {
         return Err(copy_text("beFilesWrite.path.empty", &[]));
     }
-    let shown = rel.display();
-    for c in rel.components() {
-        match c {
-            Component::Normal(_) => {}
-            Component::ParentDir => {
-                return Err(copy_text(
-                    "beFilesWrite.path.parentStep",
-                    &[("path", &shown.to_string())],
-                ));
-            }
-            Component::CurDir => {
-                return Err(copy_text(
-                    "beFilesWrite.path.dotStep",
-                    &[("path", &shown.to_string())],
-                ));
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(copy_text(
-                    "beFilesWrite.path.absolute",
-                    &[("path", &shown.to_string())],
-                ));
-            }
-        }
-    }
-    let target = root.join(rel);
-    // 上面已经把非 Normal 的段全拒了 ⇒ 这一条恒真。**留着它是自证**：
-    // 哪天有人往上面那个 match 里加一档放行，这里会当场把后果说出来。
-    if !target.starts_with(root) {
-        return Err(copy_text(
-            "beFilesWrite.path.outsideRoot",
-            &[
-                ("path", &target.display().to_string()),
-                ("root", &root.display().to_string()),
-            ],
-        ));
-    }
-    Ok(target)
+    let key = match plain_segments(rel.as_os_str().as_encoded_bytes(), cfg!(windows), Dots::Reject) {
+        Ok(_) => return Ok(root.join(rel)),
+        Err(Fault::Parent) => "beFilesWrite.path.parentStep",
+        Err(Fault::Dot) => "beFilesWrite.path.dotStep",
+        Err(Fault::Absolute) => "beFilesWrite.path.absolute",
+    };
+    Err(copy_text(key, &[("path", &rel.display().to_string())]))
 }
 
 /// 路径解析②（现打）：把**父目录**解析成真路径（解 symlink）之后再判一次落点。

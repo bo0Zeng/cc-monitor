@@ -40,6 +40,7 @@ fn copy_req(
         on_exists: Some(on),
         decide: None,
         ticket: ticket.map(str::to_string),
+        single: None,
     }
 }
 
@@ -295,4 +296,33 @@ fn one_failed_item_does_not_fail_the_group_and_carries_its_reason() {
         "{bad:?}"
     );
     assert!(r.said.contains(" · "), "部分成那一行逐样数：{}", r.said);
+}
+
+/// 「复制为」那一格（`single`）：目标只许是一段、不同于源，否则整组 `bad_name`、一个字节不动；一段名字照常复制。
+#[test]
+fn a_single_copy_takes_one_plain_name_and_refuses_the_rest_as_bad_name() {
+    let root = temp_root("single");
+    fs::write(root.join("a"), b"A").unwrap();
+    fs::create_dir_all(root.join("d")).unwrap();
+    for to in ["d/a2", "", "a", "../a2"] {
+        let mut req = copy_req(&root, &[("a", to)], OnExists::Ask, None);
+        req.single = Some(true);
+        let got = copy(&Face::issue(), req);
+        let Err(CopyRefused::Fail(f)) = got else {
+            panic!("`{to}` 该整组拒：{got:?}")
+        };
+        assert_eq!(f.code, super::super::files_write::BAD_NAME, "`{to}`：{}", f.said);
+    }
+    assert!(!root.join("d/a2").exists());
+    let mut req = copy_req(&root, &[("a", "a2")], OnExists::Ask, None);
+    req.single = Some(true);
+    copy(&Face::issue(), req).expect("一段名字该照常复制");
+    assert_eq!(fs::read(root.join("a2")).unwrap(), b"A");
+    // 不带 `single` 时多段的目标照常（「复制到另一栏」那一形）。
+    copy(
+        &Face::issue(),
+        copy_req(&root, &[("a", "d/a3")], OnExists::Ask, None),
+    )
+    .expect("不带 single 的多段目标照常");
+    assert!(root.join("d/a3").exists());
 }

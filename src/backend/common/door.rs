@@ -210,6 +210,7 @@ pub(crate) fn copy(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(),
         on_exists: Some(OnExists::Ask),
         decide: None,
         ticket: None,
+        single: None,
     }))
     .map_err(|e| refused(e).said())
 }
