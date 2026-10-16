@@ -92,7 +92,7 @@ fn a_refused_read_says_the_reason_and_keeps_the_os_words_apart() {
     let dir = std::env::temp_dir().join(format!("ccm-fs-said-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let e = Ro::read_regular_capped(&dir, 8).expect_err("目录也读成了");
-    assert_eq!(e.said, copy_text("beFs.readRegularCapped.notRegular", &[]));
+    assert_eq!(e.said, copy_text("reason.fs.notRegular", &[]));
     let gone = dir.join("gone");
     let e = Ro::read_regular_capped(&gone, 8).expect_err("不在的也读成了");
     assert_eq!(e.said, copy_core::io_reason(std::io::ErrorKind::NotFound));

@@ -417,11 +417,11 @@ export class MachineCard {
       this.accepted.host = host;
       onChange();
     };
-    this.labelInput = connField(body, copyText("machineCard.field.label"), {
+    this.labelInput = connField(body, copyText("machineForm.field.name"), {
       placeholder: copyText("machineCard.field.labelHint"),
       onChange: () => void onNameChange(),
     });
-    this.hostInput = connField(body, copyText("machineCard.field.host"), {
+    this.hostInput = connField(body, copyText("machineForm.field.host"), {
       hint: copyText("machineCard.field.hostHint"),
       onChange: () => void onNameChange(),
     });
@@ -439,13 +439,13 @@ export class MachineCard {
       this.accepted.port = port;
       onChange();
     };
-    this.userInput = connField(body, copyText("machineCard.field.user"), {
+    this.userInput = connField(body, copyText("machineForm.field.user"), {
       placeholder: copyText("machineCard.field.userHint"),
       onChange,
     });
-    this.portInput = connField(body, copyText("machineCard.field.port"), { type: "number", placeholder: "22", onChange: () => void onPortChange() });
+    this.portInput = connField(body, copyText("machineForm.field.port"), { type: "number", placeholder: "22", onChange: () => void onPortChange() });
     this.portInput.closest(".machine-conn-field")?.classList.add("machine-conn-port");
-    this.keyPathInput = connField(body, copyText("machineCard.field.keyPath"), {
+    this.keyPathInput = connField(body, copyText("machineForm.field.key"), {
       hint: copyText("addMachine.field.keyHelp"),
       onChange,
     });
@@ -496,7 +496,7 @@ export class MachineCard {
     addrRow.className = "machine-conn-field";
     const addrLabel = document.createElement("span");
     addrLabel.className = "settings-label";
-    addrLabel.textContent = copyText("machineCard.field.addresses");
+    addrLabel.textContent = copyText("machineForm.field.addresses");
     addrRow.appendChild(addrLabel);
     this.addressesInput = document.createElement("textarea");
     this.addressesInput.className = "settings-input settings-input-wide";
@@ -512,7 +512,7 @@ export class MachineCard {
     body.appendChild(addrRow);
 
     // 跳板 ProxyJump：填另一台已配置主机的 label（空 = 直连），经那台隧道连这台。
-    this.jumpInput = connField(body, copyText("machineCard.field.jump"), {
+    this.jumpInput = connField(body, copyText("machineForm.field.jump"), {
       placeholder: copyText("machineCard.field.jumpHint"),
       onChange: () => {
         this.paintMoreSummary();
@@ -1054,17 +1054,17 @@ export class MachineCard {
   async compareFingerprint(seen: string | null): Promise<void> {
     const pinned = this.fingerprintInput.value.trim();
     const ok = await confirmDialog({
-      title: copyText("machineCard.hostKey.compareTitle", { machine: this.displayName() }),
-      action: copyText("machineCard.hostKey.trust"),
-      cancel: copyText("machineCard.hostKey.dontConnect"),
+      title: copyText("hostKey.compare.title", { machine: this.displayName() }),
+      action: copyText("hostKey.compare.trust"),
+      cancel: copyText("hostKey.compare.dontConnect"),
       danger: true,
-      body: copyText("machineCard.hostKey.caution"),
+      body: copyText("hostKey.compare.caution"),
       rows: [
         {
-          label: copyText("machineCard.hostKey.pinned"),
-          items: pinned ? [pinned, ...(this.pinnedAt ? [copyText("machineCard.hostKey.pinnedAt", { date: this.pinnedAt })] : [])] : [copyText("machineCard.hostKey.none")],
+          label: copyText("hostKey.compare.pinned"),
+          items: pinned ? [pinned, ...(this.pinnedAt ? [copyText("hostKey.compare.pinnedAt", { date: this.pinnedAt })] : [])] : [copyText("hostKey.compare.none")],
         },
-        { label: copyText("machineCard.hostKey.seen"), items: [seen ?? copyText("machineCard.hostKey.none")] },
+        { label: copyText("hostKey.compare.seen"), items: [seen ?? copyText("hostKey.compare.none")] },
       ],
     });
     if (!ok || seen === null) return;

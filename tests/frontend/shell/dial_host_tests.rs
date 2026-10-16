@@ -737,7 +737,7 @@ fn a_dial_refusal_keeps_the_backend_detail_and_link_faults_keep_raw_out_of_the_s
         old.detail
     );
     let io = link_said(LinkError::Io("broken pipe here".into()));
-    assert_eq!(io.said, copy_text("rsSshLink.dial.readFailed", &[]));
+    assert_eq!(io.said, copy_text("reason.local.linkLost", &[]));
     assert!(io.detail.contains("broken pipe here"), "{}", io.detail);
     let garbled = link_said(LinkError::Garbled("expected value: \"zz\"".into()));
     assert!(!garbled.said.contains("expected"), "{}", garbled.said);

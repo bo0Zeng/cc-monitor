@@ -691,7 +691,7 @@ fn a_missing_tmux_is_said_with_a_reason_word_not_the_os_words() {
     assert_eq!(
         said,
         copy_text(
-            "beGate.probe.noTmux",
+            "reason.tmux.startFailed",
             &[(
                 "why",
                 &copy_core::spawn_reason(std::io::ErrorKind::NotFound)

@@ -339,7 +339,7 @@ private fun PickSheet(
         Column(Modifier.navigationBarsPadding().padding(bottom = LocalAppTokens.current.spacing.lg)) {
             SheetTitle(title)
             when {
-                picks == null -> SheetLine(copyText("newSession.facts.loading"))
+                picks == null -> SheetLine(copyText("kit.state.reading"))
                 picks.error != null -> SheetLine(picks.error)
                 else -> {
                     of(picks).forEach { p ->
@@ -378,7 +378,7 @@ private fun PlusSheet(
                 else -> {
                     SheetTitle(copyText("mobPlus.sheet.title"))
                     when (view) {
-                        CommandsView.Idle, CommandsView.Loading -> SheetLine(copyText("newSession.facts.loading"))
+                        CommandsView.Idle, CommandsView.Loading -> SheetLine(copyText("kit.state.reading"))
                         is CommandsView.Failed -> SheetLine(view.why)
                         is CommandsView.Ready -> PlusRows(view.list, go, say, confirmClear)
                     }

@@ -152,9 +152,8 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
             reason: copy_text(
                 "rsLocalBackend.decide.crashLoop",
                 &[
-                    ("windowMs", &limits.window_ms.to_string()),
+                    ("dur", &copy_core::format_duration(limits.window_ms)),
                     ("recent", &recent.to_string()),
-                    ("maxCrashes", &limits.max_crashes.to_string()),
                 ],
             ),
         };
@@ -1640,9 +1639,9 @@ pub(crate) fn local_stdio_consumer(
 
     // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
     if let Some(mine) = registered.as_ref() {
-        crate::link_mux::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
+        crate::link_mux::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
         // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
-        crate::sftp_pool::fail_owned_by(mine, &copy_text("rsLocalBackend.stdio.broken", &[]));
+        crate::sftp_pool::fail_owned_by(mine, &copy_text("reason.local.linkLost", &[]));
     }
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();

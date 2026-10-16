@@ -44,7 +44,7 @@ impl Store {
     /// 解盘上那份。`key` = 服务器表的键（与各号配置文件里的同名，读用户级 MCP 的几处因此一种读法）。
     /// 形状不对 ⇒ `Err`（这一份不拿来算，更不拿来盖）。报错里只有位置，不带任何值。
     pub(crate) fn parse(text: &str, key: &str) -> Result<Store, String> {
-        let shape = || copy_text("beAcctMcpShare.store.badShape", &[]);
+        let shape = || copy_text("reason.content.unparsable", &[]);
         let root: Value =
             serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| {
                 copy_text(

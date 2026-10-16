@@ -51,7 +51,7 @@ pub fn land_link(
     face.make_link(target, &at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &at.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -470,7 +470,7 @@ fn land_file(
     let fail = |e: std::io::Error| {
         io_failed(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &at.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -504,7 +504,7 @@ fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Fail> {
     face.make_dir(&at).map_err(|e| {
         io_failed(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &at.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -662,7 +662,7 @@ pub fn extract_with(
         } else {
             io_failed(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &dest.display().to_string()),
                         ("why", &io_reason(e.kind())),

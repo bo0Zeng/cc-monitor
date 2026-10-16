@@ -31,8 +31,8 @@ pub fn sftp_status_reason(code: u32) -> String {
     match code {
         2 => io_reason(std::io::ErrorKind::NotFound),
         3 => io_reason(std::io::ErrorKind::PermissionDenied),
-        5 => copy_text("reason.sftp.badMessage", &[]),
-        6 | 7 => copy_text("reason.sftp.connectionLost", &[]),
+        5 => copy_text("reason.code.bug", &[]),
+        6 | 7 => copy_text("reason.link.lost", &[]),
         8 => copy_text("reason.sftp.unsupported", &[]),
         _ => io_reason(std::io::ErrorKind::Other),
     }

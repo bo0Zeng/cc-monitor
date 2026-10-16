@@ -956,7 +956,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     assert_eq!(
         e.message,
         copy_text(
-            "beLaunch.run.noTmux",
+            "reason.tmux.startFailed",
             &[(
                 "why",
                 &copy_core::spawn_reason(std::io::ErrorKind::NotFound)

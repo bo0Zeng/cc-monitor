@@ -86,7 +86,7 @@ export function shotOf(v: Preview): TerminalShot {
 }
 
 /** 后端没给那一句（契约外）时落的那一个词：不按码猜。 */
-const noSaid = (): string => copyText("terminal.why.other");
+const noSaid = (): string => copyText("reason.code.refused");
 
 /** `terminals-list` 的回包 ⇒ 这边要的那几格。 */
 export function rowsOf(v: TerminalsList): TerminalRow[] {

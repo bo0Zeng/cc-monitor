@@ -142,12 +142,12 @@ impl std::fmt::Display for LinkError {
             LinkError::TooOld { .. } => {
                 write!(f, "{}", copy_core::backend_old(&copy_core::local_machine()))
             }
-            LinkError::Garbled(_) => write!(f, "{}", copy_text("rsSshLink.dial.badShape", &[])),
+            LinkError::Garbled(_) => write!(f, "{}", copy_text("reason.dial.unparsable", &[])),
             LinkError::LineTooLong(_) => {
-                write!(f, "{}", copy_text("rsSshLink.dial.tooLong", &[]))
+                write!(f, "{}", copy_text("reason.dial.unparsable", &[]))
             }
             // 管子读错的原话不上这一句（调用方把它交给复制详情）。
-            LinkError::Io(_) => write!(f, "{}", copy_text("rsSshLink.dial.readFailed", &[])),
+            LinkError::Io(_) => write!(f, "{}", copy_text("reason.local.linkLost", &[])),
         }
     }
 }
@@ -208,7 +208,7 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
             return Err(LinkError::Refused {
                 why: ack
                     .error
-                    .unwrap_or_else(|| copy_text("rsSshLink.dial.noReason", &[])),
+                    .unwrap_or_else(|| copy_text("reason.io.unknown", &[])),
                 fingerprint: ack.fingerprint,
                 reason: ack.reason,
                 detail: ack.detail,

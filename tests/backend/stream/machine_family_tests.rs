@@ -233,7 +233,7 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
         .to_string();
     assert_eq!(
         wire_of(&got).replace(&path, "<PATH>"),
-        r#"{"detail":null,"killOnExit":false,"path":"<PATH>","reason":null,"said":"关 = 不主动停止 · 掉线后自行退出","state":"absent"}"#
+        r#"{"detail":null,"killOnExit":false,"path":"<PATH>","reason":null,"said":"关 = 不主动停止 · 连接断开后自行退出","state":"absent"}"#
     );
     // 这台的 `ccm` 会哪些（终端里敲它走到哪那一格随这台的 shell 变，只核形状）。
     let mut got = run_any("ccm-probe", json!({})).unwrap().expect("回包");

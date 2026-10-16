@@ -14,6 +14,7 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { copyText } from "./copy-table";
+import { fmtDur } from "./duration-format";
 import { machineName } from "./control-said";
 import { toast } from "./kit/toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
@@ -150,20 +151,20 @@ export function arrivedBody(o: Origin): string {
 }
 
 async function sayMissed(p: ArrivalSpec): Promise<void> {
-  const secs = String(Math.round(ARRIVAL_BUDGET_MS / 1000));
+  const dur = fmtDur(ARRIVAL_BUDGET_MS / 1000);
   const machine = machineName(p.origin);
   let body: string;
   if (p.tmuxName === null) {
-    body = copyText("launchArrival.missed.inWindow", { secs, machine });
+    body = copyText("launchArrival.missed.inWindow", { dur, machine });
   } else {
     try {
       const words = lastWords(await previewByTmuxName(p.origin, p.tmuxName));
       body =
         words === ""
-          ? copyText("launchArrival.missed.emptyScreen", { secs, machine, name: p.tmuxName })
-          : copyText("launchArrival.missed.words", { secs, machine, name: p.tmuxName, words });
+          ? copyText("launchArrival.missed.emptyScreen", { dur, machine, name: p.tmuxName })
+          : copyText("launchArrival.missed.words", { dur, machine, name: p.tmuxName, words });
     } catch (e) {
-      body = copyText("launchArrival.missed.noScreen", { secs, machine, name: p.tmuxName, why: String(e) });
+      body = copyText("launchArrival.missed.noScreen", { dur, machine, name: p.tmuxName, why: String(e) });
     }
   }
   say(p, copyText("launchArrival.missed.title"), body, "error");

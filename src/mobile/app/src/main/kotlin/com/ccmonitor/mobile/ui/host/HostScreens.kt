@@ -60,6 +60,7 @@ import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
+import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -114,6 +115,7 @@ fun HostListScreen(
     val hosts by vm.hosts.collectAsState()
     val linkDots by vm.linkDots.collectAsState()
     val tokens = LocalAppTokens.current
+    val snackbar = LocalAppSnackbar.current
 
     // 按 groupId 分组：命名组按名排序在前，未分组的放最后。
     val groups = remember(hosts) { groupHosts(hosts) }
@@ -149,7 +151,10 @@ fun HostListScreen(
                                 onClick = { onConnect(host.id) },
                                 onFiles = { onFiles(host.id) },
                                 onEdit = { onEdit(host.id) },
-                                onDelete = { vm.deleteHost(host) },
+                                onDelete = {
+                                    vm.deleteHost(host)
+                                    snackbar.showUndo(copyText("machineList.remove.done", "machine" to host.label)) { vm.restoreHost(host) }
+                                },
                             )
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
@@ -282,10 +287,6 @@ private fun HostListActions(
 /** 行首那颗点的读屏名：已连接 ⇒ 在线，连接失败 ⇒ 离线（与桌面机器页同一句）。 */
 private fun hostDotLabel(dot: SessionDot): String = if (dot == SessionDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
 
-/** 主机删除确认文案：点明不可撤销，且不动远端数据。 */
-internal fun hostDeleteWarning(label: String): String =
-    copyText("mobHosts.delete.body", "label" to label)
-
 @OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
 private fun HostRow(
@@ -336,7 +337,7 @@ private fun HostRow(
     }
 }
 
-/** 一台的 ⋯：行尾「编辑 · 文件」收进这里，删除也在这里（撤不回 ⇒ 再弹确认框）。 */
+/** 一台的 ⋯：行尾「编辑 · 文件」收进这里，删除也在这里（只删本机这条配置、撤得回 ⇒ 不弹框，删后给撤销）。 */
 @Composable
 private fun HostRowMenu(
     host: Host,
@@ -345,32 +346,19 @@ private fun HostRowMenu(
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var confirming by remember { mutableStateOf(false) }
-    if (!confirming) {
-        ActionSheet(
-            title = host.label,
-            actions =
-                listOf(
-                    SheetAction(Ph.PencilSimple, copyText("mobHosts.row.edit"), onClick = onEdit),
-                    SheetAction(Ph.FolderSimple, copyText("mobHosts.row.files"), onClick = onFiles),
-                    SheetAction(Ph.Trash, copyText("mobHosts.delete.title"), danger = true, onClick = { confirming = true }),
-                ),
-            onDismiss = { if (!confirming) onDismiss() },
-        )
-    } else {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(copyText("mobHosts.delete.title")) },
-            text = { Text(hostDeleteWarning(host.label)) },
-            confirmButton = {
-                SecondaryButton(danger = true, onClick = {
+    ActionSheet(
+        title = host.label,
+        actions =
+            listOf(
+                SheetAction(Ph.PencilSimple, copyText("mobHosts.row.edit"), onClick = onEdit),
+                SheetAction(Ph.FolderSimple, copyText("mobHosts.row.files"), onClick = onFiles),
+                SheetAction(Ph.Trash, copyText("mobHosts.delete.title"), danger = true, onClick = {
                     onDismiss()
                     onDelete()
-                }) { Text(copyText("mobHosts.delete.ok")) }
-            },
-            dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
-        )
-    }
+                }),
+            ),
+        onDismiss = onDismiss,
+    )
 }
 
 private enum class HostEditLoad { Loading, Loaded, NotFound }
@@ -469,16 +457,16 @@ fun HostEditorScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(if (hostId == null) copyText("mobHostEdit.page.newTitle") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(label, { label = it }, label = { Text(copyText("mobHostEdit.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(host, { host = it }, label = { Text(copyText("mobHostEdit.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("mobHostEdit.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user, { user = it }, label = { Text(copyText("mobHostEdit.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(label, { label = it }, label = { Text(copyText("machineForm.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(host, { host = it }, label = { Text(copyText("machineForm.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(user, { user = it }, label = { Text(copyText("machineForm.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
         // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
         OutlinedTextField(
             extraAddresses,
             { extraAddresses = it },
-            label = { Text(copyText("mobHostEdit.field.extra")) },
+            label = { Text(copyText("machineForm.field.addresses")) },
             placeholder = { Text("192.0.2.20\nwan.example.com:2222") },
             minLines = 2,
             modifier = Modifier.fillMaxWidth(),
@@ -602,7 +590,7 @@ private fun ProxyJumpPicker(
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
-    Text(copyText("mobHostEdit.jump.title"), style = MaterialTheme.typography.labelMedium)
+    Text(copyText("machineForm.field.jump"), style = MaterialTheme.typography.labelMedium)
     ChoiceRow(copyText("mobHostEdit.jump.none"), selected == null, Modifier.fillMaxWidth()) { onSelect(null) }
     candidates.forEach { j ->
         ChoiceRow("${j.label} (${j.host})", selected == j.id, Modifier.fillMaxWidth()) { onSelect(j.id) }

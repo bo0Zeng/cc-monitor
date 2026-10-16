@@ -152,7 +152,7 @@ describe("20 s 没报到", () => {
     expect(rows()[0].textContent).toBe(`devboxbilling${copyText("launch.slot.missedTitle")}`);
     expect(panelText()).toBe(
       `${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedTitle")} · 20s` +
-        copyText("launch.slot.missedCard", { secs: 20 }) + copyText("launch.slot.tmuxThere", { machine: "devbox", name: "billing-2" }) +
+        copyText("launch.slot.missedCard", { dur: "20s" }) + copyText("launch.slot.tmuxThere", { machine: "devbox", name: "billing-2" }) +
         "claude: error: unknown option '--modle'\n(Did you mean --model?)\n$" +
         `${copyText("launch.slot.screen")}${copyText("sessionHead.act.openTerm")}${copyText("sessionState.killIdle.action")}${copyText("launch.slot.close")}`,
     );
@@ -202,7 +202,7 @@ describe("20 s 没报到", () => {
     make().add({ ...SPEC, tmuxName: null });
     await missNow();
     expect(acts.screen).not.toHaveBeenCalled();
-    expect(panelText()).toBe(`${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedState", { secs: 20 })}${copyText("launch.slot.missedCard", { secs: 20 })}${copyText("launch.slot.close")}`);
+    expect(panelText()).toBe(`${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedState", { dur: "20s" })}${copyText("launch.slot.missedCard", { dur: "20s" })}${copyText("launch.slot.close")}`);
     expect(actsOnCard()).toEqual([`close:${copyText("launch.slot.close")}`]);
   });
 });

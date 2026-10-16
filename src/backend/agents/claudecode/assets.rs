@@ -144,7 +144,7 @@ pub(crate) fn scan_skills_at(root: &Path, project: Option<&str>, out: &mut Sight
             out.problems.push(
                 crate::common::said::Said::with_raw(
                     copy_text(
-                        "beClaudeAssets.scan.listFailed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &root.display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),
@@ -256,7 +256,7 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
             out.problems.push(
                 crate::common::said::Said::with_raw(
                     copy_text(
-                        "beClaudeAssets.mcp.statFailed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &file.display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),
@@ -275,7 +275,7 @@ pub(crate) fn scan_project_mcp_at(dir: &Path, out: &mut Sightings) {
         Err(e) => {
             let e = e.wrap(|why| {
                 copy_text(
-                    "beClaudeAssets.mcp.readFailed",
+                    "reason.fs.readFailed",
                     &[("path", &file.display().to_string()), ("why", why)],
                 )
             });
@@ -390,7 +390,7 @@ fn scan_commands_at(root: &Path, project: bool, out: &mut crate::agents::Session
                 out.problems.push(
                     e.wrap(|why| {
                         copy_text(
-                            "beClaudeAssets.scan.listFailed",
+                            "reason.fs.readFailed",
                             &[("path", &path.display().to_string()), ("why", why)],
                         )
                     })
@@ -426,7 +426,7 @@ fn list_md(
             out.problems.push(
                 crate::common::said::Said::with_raw(
                     copy_text(
-                        "beClaudeAssets.scan.listFailed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &dir.display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),

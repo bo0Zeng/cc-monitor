@@ -1272,7 +1272,7 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
     };
     assert_eq!(
         wire(&crate::control::kill::reply("demo-cc", &removed)),
-        r##"{"bus":{"detail":"","failed":[],"removed":["p_cc","q_cc"],"said":"已从 cc-bus 名册注销 p_cc · q_cc","unread":null},"killed":true,"session":"demo-cc"}"##
+        r##"{"bus":{"detail":"","failed":[],"removed":["p_cc","q_cc"],"said":"已从 cc-bus 名单注销 p_cc · q_cc","unread":null},"killed":true,"session":"demo-cc"}"##
     );
     assert_eq!(
         run_registered(

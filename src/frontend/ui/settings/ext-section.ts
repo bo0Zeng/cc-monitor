@@ -286,7 +286,7 @@ export class ExtSection {
   /** 重读那张表；`sync` = 先让本机后端对那台（`LOCAL_ORIGIN` = 各台）同步一趟。 */
   private async reload(visit: boolean, sync: Origin | null): Promise<void> {
     const my = ++this.seq;
-    if (!this.list) this.status.textContent = copyText("extPage.status.loading");
+    if (!this.list) this.status.textContent = copyText("kit.state.reading");
     try {
       const synced = sync === null ? "" : await this.syncOnce(sync);
       const list = await extList(visit);
@@ -579,7 +579,7 @@ export class ExtSection {
       const line = el("div", "ext-hook");
       line.appendChild(el("span", "ext-machine-name", machineName(m)));
       const h = this.hooks.get(machineKey(m));
-      if (!m.reachable) line.appendChild(el("div", "settings-hint", copyText("extPage.hooks.offline")));
+      if (!m.reachable) line.appendChild(el("div", "settings-hint", copyText("kit.offline.later")));
       else if (!h || h.kind === "loading") line.appendChild(el("div", "settings-hint", copyText("extPage.hooks.loading")));
       else if (h.kind === "failed") line.appendChild(el("div", "ext-error", copyText("extPage.hooks.failed", { said: h.said })));
       else this.hookReport(line, h.report);

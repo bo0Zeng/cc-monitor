@@ -71,7 +71,7 @@ export class DiagnosticsSection {
     // ── 未识别数据（一行；数读诊断信息那一份）──
     const unknown = this.line(copyText("diagnostics.unknown.label"));
     this.unknownLine = unknown.help;
-    this.unknownLine.textContent = copyText("diagnostics.unknown.reading");
+    this.unknownLine.textContent = copyText("kit.state.reading");
     unknown.row.appendChild(this.copyButton("compact"));
     root.appendChild(unknown.row);
 

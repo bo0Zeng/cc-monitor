@@ -27,7 +27,7 @@ fn synth_cfg() -> RemoteConfig {
 fn the_window_process_words_reach_the_webview_verbatim() {
     let said = "那台说：没有这个目录 /srv/不在";
     assert_eq!(unopened_said(Unopened::Said(said.into())).said, said);
-    let why = copy_text("rsFilewinProc.open.exited", &[]);
+    let why = copy_text("reason.code.bug", &[]);
     let wrapped = unopened_said(Unopened::Process(ProcFail::from(why.clone())));
     assert_eq!(
         wrapped.said,
@@ -40,7 +40,7 @@ fn the_window_process_words_reach_the_webview_verbatim() {
 #[test]
 fn a_process_failure_puts_its_exit_status_and_stderr_in_the_detail() {
     let f = ProcFail {
-        said: copy_text("rsFilewinProc.open.exited", &[]),
+        said: copy_text("reason.code.bug", &[]),
         code: Some("exit status: 1".into()),
         raw: Some("line a\nline b".into()),
     };

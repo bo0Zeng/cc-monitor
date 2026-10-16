@@ -89,7 +89,7 @@ function fetchOmitted<T>(
   for (const old of into.querySelectorAll(":scope > .block-omitted[data-failed]")) old.remove();
   const note = document.createElement("div");
   note.className = "block-body block-omitted";
-  note.textContent = copyText("cards.omitted.loading");
+  note.textContent = copyText("kit.state.reading");
   into.insertBefore(note, into.firstChild);
   const ask = ctx.fullRecord ? ctx.fullRecord(id) : Promise.reject(new Error(copyText("cards.omitted.noSource")));
   return ask

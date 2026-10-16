@@ -58,7 +58,7 @@ pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
         Err(e) => {
             return Err(Said::with_raw(
                 copy_text(
-                    "rsConfig.write.readFailed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &path.display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
@@ -97,7 +97,7 @@ pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
             .map_err(|e| {
                 Said::with_raw(
                     copy_text(
-                        "rsConfig.write.readFailed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &backup.display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),

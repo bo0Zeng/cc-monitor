@@ -111,7 +111,7 @@ impl Ro {
         let io = |e: std::io::Error| Said::with_raw(copy_core::io_reason(e.kind()), e);
         let meta = std::fs::metadata(path).map_err(io)?;
         if !meta.is_file() {
-            return Err(copy_text("beFs.readRegularCapped.notRegular", &[]).into());
+            return Err(copy_text("reason.fs.notRegular", &[]).into());
         }
         // 先看长度再决定读不读：拒绝一个巨型文件之前不先读 `cap + 1` 进内存。
         // 早退不取代下面那道 `take(cap + 1)`：`metadata` 与 `read_to_end` 之间文件还会长（TOCTOU），两道一起才完整。

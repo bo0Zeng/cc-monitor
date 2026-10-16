@@ -432,10 +432,7 @@ pub(crate) fn read_local_pub(path: &str) -> Result<String, (&'static str, String
     let said = |why: &str| {
         (
             "refused",
-            copy_text(
-                "rsPubkey.pushPublicKey.readFailed",
-                &[("path", path), ("why", why)],
-            ),
+            copy_text("reason.fs.readFailed", &[("path", path), ("why", why)]),
         )
     };
     // 系统原话记一行日志；句子只带原因词。

@@ -160,7 +160,7 @@ fn fenced_root(skills: &Path) -> Result<(PathBuf, PathBuf), crate::common::said:
         let unresolved = |at: &Path, e: std::io::Error| {
             crate::common::said::Said::with_raw(
                 copy_text(
-                    "beCcBusInstall.fence.resolveFailed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &at.display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),

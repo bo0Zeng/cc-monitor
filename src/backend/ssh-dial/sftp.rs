@@ -374,7 +374,7 @@ fn why_of(e: &(dyn std::error::Error + 'static)) -> String {
 pub fn why_of_io(e: &std::io::Error) -> String {
     use std::io::ErrorKind as K;
     match e.kind() {
-        K::TimedOut => return copy_text("reason.sftp.noAnswer", &[]),
+        K::TimedOut => return copy_text("reason.link.noAnswer", &[]),
         K::BrokenPipe | K::ConnectionReset => {
             // 传输中对端断了 ＝ SFTP 标准码 7（连接断）那一件。
             return copy_core::sftp_status_reason(7);
@@ -410,9 +410,9 @@ fn why_of_sftp(e: &russh_sftp::client::error::Error) -> String {
     use russh_sftp::client::error::Error as E;
     match e {
         E::Status(st) => copy_core::sftp_status_reason(st.status_code as u32),
-        E::Timeout => copy_text("reason.sftp.noAnswer", &[]),
+        E::Timeout => copy_text("reason.link.noAnswer", &[]),
         E::Limited(_) => copy_text("reason.sftp.overLimit", &[]),
-        E::UnexpectedPacket => copy_text("reason.sftp.badMessage", &[]),
+        E::UnexpectedPacket => copy_text("reason.code.bug", &[]),
         E::IO(_) | E::UnexpectedBehavior(_) => copy_core::io_reason(std::io::ErrorKind::Other),
     }
 }
@@ -995,7 +995,7 @@ pub async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile, Said> 
         .map_err(|e| {
             Said::with_raw(
                 copy_text(
-                    "beSftp.open.readFailed",
+                    "reason.fs.readFailed",
                     &[("path", path), ("why", &why_of(&e))],
                 ),
                 &e,

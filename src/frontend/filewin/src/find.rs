@@ -386,20 +386,9 @@ pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> cmd_wire::files::Br
 // 状态行的字（纯函数；数都是后端报的，这里只摆字）
 // ═══════════════════════════════════════════════════════════════════
 
-/// 秒数 → 「3m」这一形（文件清单多久前的）。
+/// 秒数 → 「3m」这一形（文件清单多久前的）：短时长。
 pub fn age_text(secs: u64) -> String {
-    match secs {
-        0..60 => copy_text("rsFilewinFind.age.secs", &[("n", &secs.to_string())]),
-        60..3600 => copy_text("rsFilewinFind.age.mins", &[("n", &(secs / 60).to_string())]),
-        3600..86_400 => copy_text(
-            "rsFilewinFind.age.hours",
-            &[("n", &(secs / 3600).to_string())],
-        ),
-        _ => copy_text(
-            "rsFilewinFind.age.days",
-            &[("n", &(secs / 86_400).to_string())],
-        ),
-    }
+    copy_core::short_duration(secs.saturating_mul(1000))
 }
 
 /// 起点那一段的名字（最后一级；根 ⇒ 原样）。
@@ -556,7 +545,10 @@ pub fn first_build_line(machine: &str, cold_first_build_secs: u64) -> String {
         "rsFilewinFind.firstBuild.line",
         &[
             ("machine", &machine.to_string()),
-            ("secs", &cold_first_build_secs.to_string()),
+            (
+                "dur",
+                &copy_core::format_duration(cold_first_build_secs.saturating_mul(1000)),
+            ),
         ],
     )
 }
@@ -925,11 +917,11 @@ impl Round {
 pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
     tracing::warn!("filewin: {cmd} refused ({code}): {message}");
     let hint = match code {
-        "bad_args" => &copy_text("rsFilewinFind.refusal.badArgs", &[]),
+        "bad_args" => &copy_text("reason.code.bug", &[]),
         "bad_path" => &copy_text("rsFilewinFind.refusal.badPath", &[]),
         "bad_query" => &copy_text("rsFilewinFind.refusal.badQuery", &[]),
         "unreadable" => &copy_text("rsFilewinFind.refusal.cannotOpen", &[]),
-        _ => &copy_text("rsFilewinFind.refusal.other", &[]),
+        _ => &copy_text("reason.code.refused", &[]),
     };
     if message.trim().is_empty() {
         return hint.to_string();

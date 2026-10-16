@@ -195,8 +195,8 @@ class SshConnectionRefcountTest {
             assertEquals("single-flight：仍只建 1 条连接", 1, produced.size)
             assertSame("等待者复用首者连接", ta, tb)
             assertTrue(
-                "等待者收到「另一连接尝试进行中」提示（TCP）",
-                eventsB.any { it.stage == SshConnectEvent.Stage.TCP && it.message.contains("另一连接尝试进行中") },
+                "等待者收到「等待另一次连接」提示（TCP）",
+                eventsB.any { it.stage == SshConnectEvent.Stage.TCP && it.message.contains("等待另一次连接") },
             )
             assertTrue(
                 "等待者收到锁内复查合成 ESTABLISHED（复用已有连接）",

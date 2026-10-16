@@ -231,7 +231,7 @@ fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdEr
 /// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。
 pub(crate) fn tmux_unavailable(e: crate::platform::child::ChildFail) -> CmdErr {
     CmdErr::from(e.into_cmd_said("no_tmux", |why| {
-        copy_text("beKill.run.noTmux", &[("why", why)])
+        copy_text("reason.tmux.startFailed", &[("why", why)])
     }))
 }
 

@@ -274,7 +274,7 @@ impl std::fmt::Display for CallError {
             } => f.write_str(&match why {
                 HopFault::Unreachable => copy_text("rsChanWire.hop.unreachable", &[]),
                 HopFault::Dropped => copy_text("rsChanWire.hop.dropped", &[]),
-                HopFault::Overrun => copy_text("rsChanWire.hop.overrun", &[]),
+                HopFault::Overrun => copy_text("reason.link.noAnswer", &[]),
             }),
             CallError::Peer { why } => f.write_str(&match why {
                 // 这一层不知道那台叫什么：知道的调用方按码自己取（`copy_core::backend_old(名字)`）。
@@ -285,9 +285,9 @@ impl std::fmt::Display for CallError {
                 OursFault::Cancelled if *runs_on => {
                     copy_text("rsChanWire.ours.cancelledRunsOn", &[])
                 }
-                OursFault::Cancelled => copy_text("rsChanWire.ours.cancelled", &[]),
-                OursFault::Misuse => copy_text("rsChanWire.ours.broken", &[]),
-                OursFault::Broken => copy_text("rsChanWire.ours.broken", &[]),
+                OursFault::Cancelled => copy_text("reason.op.cancelled", &[]),
+                OursFault::Misuse => copy_text("reason.code.bug", &[]),
+                OursFault::Broken => copy_text("reason.code.bug", &[]),
             }),
         }
     }

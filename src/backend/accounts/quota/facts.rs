@@ -189,7 +189,7 @@ fn blocked_text(why: FactWhy, at: Option<&str>) -> String {
     use copy_core::copy_text;
     match (why, at) {
         (FactWhy::Refused, Some(at)) => copy_text("beRotation.fact.refused", &[("at", at)]),
-        (FactWhy::Refused, None) => copy_text("beRotation.fact.refusedOpen", &[]),
+        (FactWhy::Refused, None) => copy_text("reason.code.refused", &[]),
         (FactWhy::Overage, _) => copy_text("beRotation.fact.overage", &[]),
         (FactWhy::Used, Some(at)) => copy_text("beRotation.fact.used", &[("at", at)]),
         (FactWhy::Used, None) => copy_text("beRotation.fact.usedOpen", &[]),

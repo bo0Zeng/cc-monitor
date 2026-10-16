@@ -774,7 +774,7 @@ async fn the_status_line_shows_the_numbers_the_backend_reports() {
     let mut lines: Vec<(Vec<String>, Vec<String>)> = Vec::new();
     for (tag, age, said, unreadable, mounts, hint) in [
         ("b1-fresh-a", 1234u64, "20m", 41u64, 3u64, 'a'),
-        ("b1-fresh-b", 7300u64, "2h", 13u64, 29u64, 'b'),
+        ("b1-fresh-b", 7300u64, "2h1m", 13u64, 29u64, 'b'),
     ] {
         let tree = testing::plant(&format!("fresh-{hint}"), 30, TREE_SEED).expect("造不出那棵树");
         let root = tree.remote_root();
@@ -982,7 +982,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
             "rsFilewinFind.firstBuild.line",
             &[
                 ("machine", machine.as_str()),
-                ("secs", secs.to_string().as_str()),
+                ("dur", copy_core::format_duration(secs * 1000).as_str()),
             ],
         );
         assert!(

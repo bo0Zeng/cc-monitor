@@ -889,7 +889,7 @@ fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
     if !md.is_file() {
         return Err(Refused::from((
             "not_text",
-            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
+            copy_core::copy_text("reason.fs.notRegular", &[]),
         )));
     }
     let broke = |e: std::io::Error| {
@@ -958,7 +958,7 @@ fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
     if !md.is_file() {
         return Err(Refused::from((
             "not_text",
-            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
+            copy_core::copy_text("reason.fs.notRegular", &[]),
         )));
     }
     if md.len() > max {

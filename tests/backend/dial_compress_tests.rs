@@ -988,7 +988,7 @@ fn the_race_reason_word_follows_the_worst_stage() {
     let w = |k: &str| copy_text(k, &[]);
     assert_eq!(race_reason(Some("resolve")), w("reason.dial.resolve"));
     assert_eq!(race_reason(Some("tcp")), w("reason.dial.refused"));
-    assert_eq!(race_reason(Some("timeout")), w("reason.dial.timeout"));
+    assert_eq!(race_reason(Some("timeout")), w("reason.link.noAnswer"));
     assert_eq!(race_reason(Some("hostkey")), w("reason.io.unknown"));
     assert_eq!(race_reason(None), w("reason.io.unknown"));
 }

@@ -387,9 +387,9 @@ pub(crate) fn answer_plan_with(
         for rel in skipped {
             here.insert(
                 rel.clone(),
-                json!({ "unreadable": copy_text("beSkillInstall.plan.notRegular", &[]) }),
+                json!({ "unreadable": copy_text("reason.fs.notRegular", &[]) }),
             );
-            unwritable.insert(rel, copy_text("beSkillInstall.plan.notRegular", &[]));
+            unwritable.insert(rel, copy_text("reason.fs.notRegular", &[]));
         }
     }
     let there: Map<String, Value> = source

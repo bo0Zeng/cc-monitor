@@ -325,7 +325,7 @@ pub fn verdict(ev: &DeathEvidence) -> Option<Death> {
 pub fn death_kind(d: &Death) -> String {
     match d {
         Death::NeverStarted { .. } => copy_text("rsBackendPolicy.death.neverStarted", &[]),
-        Death::Refused { .. } => copy_text("rsBackendPolicy.death.refused", &[]),
+        Death::Refused { .. } => copy_text("reason.code.refused", &[]),
         Death::Crashed { .. } => copy_text("rsBackendPolicy.death.crashed", &[]),
         Death::Misread { .. } => copy_text("rsBackendPolicy.death.misread", &[]),
     }

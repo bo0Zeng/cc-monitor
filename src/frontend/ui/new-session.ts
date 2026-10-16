@@ -686,7 +686,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     focusAction: true,
     blocked: () => {
       if (!up()) return copyText("newSession.machine.offline", { machine: machineName(origin) });
-      if (facts === null) return copyText("newSession.facts.loading");
+      if (facts === null) return copyText("kit.state.reading");
       const a = chosenAccountOpt();
       if (a && !a.ready && !accountRow.root.hidden) return copyText("launch.account.notLoggedIn", { name: a.name });
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");

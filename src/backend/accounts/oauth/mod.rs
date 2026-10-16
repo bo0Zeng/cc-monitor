@@ -367,7 +367,7 @@ fn renew(
         _ => {
             trail.why = Some("not-json".to_string());
             return Err(Unusable::NotRenewed(crate::common::said::Said::from(
-                copy_text("beOauth.refresh.notJson", &[]),
+                copy_text("beOauth.refresh.unparsable", &[]),
             )));
         }
     };
@@ -378,7 +378,7 @@ fn renew(
     ) else {
         trail.why = Some("missing".to_string());
         return Err(Unusable::NotRenewed(crate::common::said::Said::from(
-            copy_text("beOauth.refresh.missing", &[]),
+            copy_text("beOauth.refresh.unparsable", &[]),
         )));
     };
     let renewed = Renewed {

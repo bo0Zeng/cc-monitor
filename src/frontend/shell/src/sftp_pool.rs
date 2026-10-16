@@ -345,7 +345,7 @@ pub fn watch_ticket(
         tokio::spawn(async move {
             let Some(client) = owner.upgrade() else {
                 state.send_modify(|s| {
-                    s.end = Some(End::failed(copy_text("rsSftpPool.watch.streamGone", &[])))
+                    s.end = Some(End::failed(copy_text("reason.local.linkLost", &[])))
                 });
                 return;
             };

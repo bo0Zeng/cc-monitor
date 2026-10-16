@@ -888,9 +888,9 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
         // 告诉本机内容消费者这条流结束了。
         crate::local_lines::stream_ended().await;
         // 流没了 ⇒ 经它开的在飞链路全部带原因结束（不让调用方干等到超时）。
-        crate::link_mux::fail_owned_by(&client, &copy_text("rsLocalBackendHost.stream.lost", &[]));
+        crate::link_mux::fail_owned_by(&client, &copy_text("reason.local.linkLost", &[]));
         // 经它开的传输也一律收场（后端的票表随那条流一起撤了）。
-        crate::sftp_pool::fail_owned_by(&client, &copy_text("rsLocalBackendHost.stream.lost", &[]));
+        crate::sftp_pool::fail_owned_by(&client, &copy_text("reason.local.linkLost", &[]));
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
@@ -1541,7 +1541,7 @@ pub fn start_local_backend() -> StartOutcome {
 pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
     let g = LOCAL_BACKEND
         .lock()
-        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?;
+        .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
     if let Some(h) = g.as_ref() {
         return Ok((h.current_pid(), Some(h.attempts())));
     }
@@ -1550,7 +1550,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
     // 报 0 会让 UI 显示一个看起来正常的数，而它背后没有任何东西在数。**空值 ≠ 0。**
     let d = DETACHED
         .lock()
-        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?;
+        .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
     Ok(match d.as_ref() {
         Some(h) if h.pid != 0 => (Some(h.pid), None),
         Some(_) => (None, None),
@@ -1600,7 +1600,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
     // 起停串行：一趟停从头到尾攥着它（句柄表只在读写那一下拿）。
     let _life = LIFECYCLE
         .lock()
-        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?;
+        .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
     // 中转住本机后端进程里 ⇒ 停后端就是停中转，这里不再另收一个。
     // ★ `K-P1`：常驻那条路的「停」。
     if let Some(r) = stop_detached() {
@@ -1608,7 +1608,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, Said> 
     }
     let taken = LOCAL_BACKEND
         .lock()
-        .map_err(|e| Said::with_raw(copy_text("rsLocalBackendHost.lock.poisoned", &[]), &e))?
+        .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?
         .take();
     match taken {
         // 被监护那条（Windows / `CCM_NO_DETACH`）：`SuperviseHandle::stop()` 直接杀子进程 —— 如实报「强杀」。

@@ -9,6 +9,7 @@
  * 是不是那一个由 `launch-arrival.ts` 认（同一份比对）；tmux 会话在不在、画面是什么问那台（`terminal-reads.ts`）。这里只排版。
  */
 import { copyText } from "./copy-table";
+import { fmtDur } from "./duration-format";
 import { machineName } from "./control-said";
 import { isRemoteOrigin, type Origin } from "./ipc/origin";
 import { button } from "./kit/button";
@@ -214,7 +215,7 @@ export class LaunchSlots {
   private paintPanel(sl: Slot): void {
     const { origin, cwd, tmuxName } = sl.spec;
     const machine = machineName(origin);
-    const secs = String(Math.round(SLOT_MISS_MS / 1000));
+    const dur = fmtDur(SLOT_MISS_MS / 1000);
 
     const head = document.createElement("div");
     head.className = s.slotHead;
@@ -229,7 +230,7 @@ export class LaunchSlots {
     if (sl.missed) {
       const st = document.createElement("span");
       st.className = s.slotState;
-      st.textContent = copyText("launch.slot.missedState", { secs });
+      st.textContent = copyText("launch.slot.missedState", { dur });
       head.appendChild(st);
     }
     if (!sl.missed) {
@@ -243,7 +244,7 @@ export class LaunchSlots {
     const body = document.createElement("div");
     body.className = s.slotBody;
     const line1 = document.createElement("div");
-    line1.textContent = copyText("launch.slot.missedCard", { secs });
+    line1.textContent = copyText("launch.slot.missedCard", { dur });
     body.appendChild(line1);
 
     const acts: HTMLElement[] = [];

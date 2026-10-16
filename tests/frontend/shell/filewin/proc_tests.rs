@@ -965,7 +965,7 @@ fn the_window_process_own_reason_reaches_the_sentence() {
         }
     };
     // 句子只说哪件事没成 ＋ 原因词；退出状态进「码」、stderr 末几行进「原话」（复制详情）。
-    let why = copy_text("rsFilewinProc.open.exited", &[]);
+    let why = copy_text("reason.code.bug", &[]);
     let gl = run("gl", "'Error: egui_glow requires opengl 2.0+.'");
     assert_eq!(
         gl.said,

@@ -269,7 +269,7 @@ pub async fn open_group(
             Ok(o) => Opened::Items(o.items),
             Err(e) => Opened::Failed(super::source::Failed {
                 code: None,
-                said: copy_text("rsFilewinSource.said.badReply", &[]),
+                said: copy_text("reason.content.unparsable", &[]),
                 detail: e.to_string(),
             }),
         },
@@ -307,7 +307,7 @@ where
 /// 「取消了 3 件」与「传完了 3 件」分不开（`ok` 与 `skipped` 都装不下它），
 /// 而那正是这一格要买的读数。
 pub static CANCELLED: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinTransfer.cancelled.message", &[]));
+    std::sync::LazyLock::new(|| copy_text("reason.op.cancelled", &[]));
 
 /// 界面上那颗取消按钮的字面。**唯一住址**（判据按同一个常量去找它画出来的字）。
 ///
@@ -537,7 +537,7 @@ async fn reopen(
     match super::source::opened_one(opened)? {
         (id, Some(key)) => Ok((id, key)),
         (_, None) => Err(super::source::Failed::local(copy_text(
-            "rsFilewinSource.said.badReply",
+            "reason.content.unparsable",
             &[],
         ))),
     }

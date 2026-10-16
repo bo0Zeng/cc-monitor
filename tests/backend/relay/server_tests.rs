@@ -3715,7 +3715,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         "② 请求没发完上游就断了该回 502 ＋ upstream-send：{:?}",
         &got[..got.len().min(300)]
     );
-    let want = upstream_said(up.port(), "sendFailed", "hopSend");
+    let want = upstream_said(up.port(), "beServer.words.sendFailed", "hopSend");
     assert!(got.contains(&want), "② want {want:?} got {got:?}");
 
     // ③ 没回应就断开。
@@ -3726,7 +3726,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-closed")),
         "③ 上游不回就关该回 502：{got:?}"
     );
-    let want = upstream_said(up.port(), "closedBeforeAnswer", "hopWait");
+    let want = upstream_said(up.port(), "reason.link.lost", "hopWait");
     assert!(got.contains(&want), "③ want {want:?} got {got:?}");
 
     // ④ 等响应超时：唯一回 504 的那一格。
@@ -3738,7 +3738,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
             && got.contains(&reason("upstream-no-answer")),
         "④ 等响应超时该回 504：{got:?}"
     );
-    let want = upstream_said(up.port(), "noAnswer", "hopWait");
+    let want = upstream_said(up.port(), "reason.link.noAnswer", "hopWait");
     assert!(got.contains(&want), "④ want {want:?} got {got:?}");
 
     // ⑤ 回的不是 HTTP。
@@ -3749,7 +3749,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-not-http")),
         "⑤ 回的不是 HTTP 该回 502：{got:?}"
     );
-    let want = upstream_said(up.port(), "notHttp", "hopRead");
+    let want = upstream_said(up.port(), "beServer.words.notHttp", "hopRead");
     assert!(got.contains(&want), "⑤ want {want:?} got {got:?}");
 }
 
@@ -3760,10 +3760,7 @@ fn upstream_said(port: u16, result: &str, hop: &str) -> String {
         &[
             ("host", "127.0.0.1"),
             ("port", &port.to_string()),
-            (
-                "result",
-                &copy_core::copy_text(&format!("beServer.words.{result}"), &[]),
-            ),
+            ("result", &copy_core::copy_text(result, &[])),
             (
                 "hop",
                 &copy_core::copy_text(&format!("beServer.words.{hop}"), &[]),

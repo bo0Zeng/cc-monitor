@@ -163,7 +163,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
             problems.push(
                 crate::common::said::Said::with_raw(
                     copy_core::copy_text(
-                        "beMcp.read.statFailed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &path.display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),
@@ -184,7 +184,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
             problems.push(
                 e.wrap(|why| {
                     copy_core::copy_text(
-                        "beMcp.read.readFailed",
+                        "reason.fs.readFailed",
                         &[("path", &path.display().to_string()), ("why", why)],
                     )
                 })

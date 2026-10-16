@@ -2988,7 +2988,7 @@ impl FileWindow {
             }
             Arrived::Failed { path, why } => {
                 let said = copy_text(
-                    "rsFilewinShell.edit.readFailed",
+                    "reason.fs.readFailed",
                     &[("path", &path.to_string()), ("why", &why.said)],
                 );
                 if self.edit_tab {
@@ -3403,7 +3403,7 @@ impl FileWindow {
         let p = super::theme::palette(ui.ctx());
         let (pane, dirty) = (&f.pane, f.dirty);
         let state = if self.edits.opening().is_some() {
-            Some(copy_text("rsFilewinEditPage.state.reading", &[]))
+            Some(copy_text("kit.state.reading", &[]))
         } else if self.edits.saving().is_some() {
             Some(copy_text("rsFilewinEditPage.state.saving", &[]))
         } else if dirty {

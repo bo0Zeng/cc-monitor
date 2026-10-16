@@ -221,14 +221,13 @@ private fun NeedIdentityContent(
 }
 
 /**
- * 服务器身份变更的恢复页。
+ * 主机指纹变更的恢复页：与桌面那张比对框同一套字（标题 · 提醒 · 记下的 / 当前两枚 · 信任新的指纹）。
  *
  * 做成一整屏而不是一行红字：这是唯一一个「连接被拒但能做点什么」的失败态，触发它的又常是合法操作
- * （重装系统、重建 VPS、轮换密钥）；删掉服务器重加也没用（`KnownHost` 与 `Host` 没有外键级联）。
+ * （重装系统、重建 VPS、轮换密钥）；删掉机器重加也没用（`KnownHost` 与 `Host` 没有外键级联）。
+ * 这一页本身就是那一次确认：按「信任新的指纹」直接改记并重连，不再弹第二个框。
  *
  * 首次连接故意静默接受：对不会核对指纹的人，首次弹窗只会训练他闭眼点通过。唯一一次打断留给真正异常的时刻。
- *
- * 正文说「身份」，不说「主机密钥 / 指纹」；详情里给出指纹原文，放在正文之下，供会核对的人用。
  */
 @Composable
 private fun HostKeyChangedContent(
@@ -236,51 +235,29 @@ private fun HostKeyChangedContent(
     onShowTabs: () -> Unit,
     onTrustNew: () -> Unit,
 ) {
-    var confirming by remember { mutableStateOf(false) }
-
+    val none = copyText("hostKey.compare.none")
     Column(
         Modifier.fillMaxSize().statusBarsPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SessionStateTabButton(onShowTabs)
-        Text(copyText("mobHostKey.page.title"), style = MaterialTheme.typography.titleMedium, color = LocalAppTokens.current.errorText)
         Text(
-            copyText("hostIdentity.changed.body"),
-            style = MaterialTheme.typography.bodyMedium,
+            copyText("hostKey.compare.title", "machine" to LocalKeysEnv.current.hostLabel),
+            style = MaterialTheme.typography.titleMedium,
+            color = LocalAppTokens.current.errorText,
         )
-        Text(
-            copyText("mobHostKey.page.cases"),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        // 详情给会核对的人，放在正文之下、小字
-        if (state.expectedFingerprint.isNotBlank() || state.offeredFingerprint.isNotBlank()) {
-            Text(
-                copyText(
-                    "mobHostKey.page.fingerprints",
-                    "old" to state.expectedFingerprint.ifBlank { copyText("mobHostKey.page.unknown") },
-                    "new" to state.offeredFingerprint.ifBlank { copyText("mobHostKey.page.unknown") },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Text(copyText("hostKey.compare.caution"), style = MaterialTheme.typography.bodyMedium)
+        // 两枚指纹给会核对的人，放在提醒之下、小字
+        listOf(
+            copyText("hostKey.compare.pinned") to state.expectedFingerprint.ifBlank { none },
+            copyText("hostKey.compare.seen") to state.offeredFingerprint.ifBlank { none },
+        ).forEach { (label, value) ->
+            Column {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.bodySmall)
+            }
         }
-        SecondaryButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
-    }
-
-    if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = { Text(copyText("mobHostKey.trust.title")) },
-            // 二次确认的文案说清后果，而不是只问「确定吗」。
-            text = { Text(copyText("hostIdentity.trust.consequence")) },
-            confirmButton = {
-                SecondaryButton(onClick = {
-                    confirming = false
-                    onTrustNew()
-                }) { Text(copyText("mobHostKey.trust.ok")) }
-            },
-            dismissButton = { SecondaryButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
-        )
+        SecondaryButton(onClick = onTrustNew) { Text(copyText("hostKey.compare.trust")) }
     }
 }
 
@@ -411,7 +388,7 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped"),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped", "machine" to LocalKeysEnv.current.hostLabel),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
         SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
@@ -784,7 +761,7 @@ private class KeyBarNav(
         KeyActionFail.GROUP_GONE -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
         KeyActionFail.NO_TMUX -> {
             val action = (b as? KeyBinding.App)?.action?.let(::appActionName).orEmpty()
-            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "host" to env.hostLabel))
+            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "machine" to env.hostLabel))
         }
     }
 }

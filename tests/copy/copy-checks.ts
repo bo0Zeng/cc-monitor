@@ -200,7 +200,7 @@ const WORD_ROWS: Row[] = [
     rule: "C-W9",
     on: "zh",
     kinds: kinds("action"),
-    find: (t, _e, ctx) => (words(ctx, "C-W9").includes(t.trim()) ? `按钮写成「${t.trim()}」` : null),
+    find: (t, _e, ctx) => (words(ctx, "C-W9").includes(t.trim()) || /^确认\S/.test(t.trim()) ? `按钮写成「${t.trim()}」` : null),
   },
   // 口语词（「了」不在「了解 · 了结」里，「请」不在「请求」里）。
   {
@@ -213,7 +213,7 @@ const WORD_ROWS: Row[] = [
       return h.length ? `口语词「${h.join("」「")}」` : null;
     },
   },
-  { rule: "C-W19", on: "speech", find: listed("C-W19", (h) => `第二人称「${h.join("」「")}」`) },
+  { rule: "C-W19", on: "speech", find: listed("C-W19", (h) => `人称「${h.join("」「")}」`) },
   // 术语表「会话」：「会话」前紧跟的技术前缀只许 words 里那几个（tmux）。
   {
     rule: "C-W20",
@@ -335,6 +335,7 @@ function durations(e: Entry): Hit[] {
   if (isCli(e)) return [];
   const z = e.zh;
   if (/(\d|\})\s*(毫秒|秒钟?|分钟|小时|天)(前|后|内)?/.test(z)) return one("C-W6", "写死了时长单位（时长走 {dur}）");
+  if (/\{\w+\}\s*(ms|s|m|h|d)(?![A-Za-z])/.test(z)) return one("C-W6", "占位符后写死了时长单位（时长走 {dur}）");
   if (/\d+\s*月\s*\d+\s*日/.test(z)) return one("C-W6", "写了「X 月 X 日」");
   if (/今天|昨天|前天/.test(z)) return one("C-W6", "写了今天 / 昨天 / 前天");
   return [];
@@ -342,8 +343,8 @@ function durations(e: Entry): Hit[] {
 
 function counters(e: Entry): Hit[] {
   // 名词在前、数字在后（「处理 · 种类」这类词里的字不算量词）；「失败」计数写「失败 ×{n}」。
-  if (/\{\w+\}\s*(个|台|次|件|处(?!理)|份|种(?!类))/.test(e.zh)) return one("C-W11", "数字后跟量词");
-  if (/第\s*\{\w+\}\s*(行|个|项|条)/.test(e.zh)) return one("C-W11", "写了「第 N 行」");
+  if (/\{\w+\}\s*(个|台|次|件|处(?!理)|份|种(?!类)|颗)/.test(e.zh)) return one("C-W11", "数字后跟量词");
+  if (/第\s*\{\w+\}\s*(行|个|项|条|轮|块|字)/.test(e.zh)) return one("C-W11", "写了「第 N 行」");
   if (/失败 \{\w+\}/.test(e.zh)) return one("C-W11", "「失败」后的计数没写 ×");
   return [];
 }

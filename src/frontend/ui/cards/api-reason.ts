@@ -18,6 +18,6 @@ export function reasonWord(reason: ApiReason | undefined): string {
     case "context":
       return copyText("apiError.reason.context");
     default:
-      return copyText("apiError.reason.unknown");
+      return copyText("reason.io.unknown");
   }
 }

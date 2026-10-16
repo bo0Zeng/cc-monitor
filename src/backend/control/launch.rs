@@ -424,7 +424,7 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
             stderr: said_of(&out.stderr),
         }),
         Err(e) => Err(CmdErr::from(e.into_cmd_said("no_tmux", |why| {
-            copy_text("beLaunch.run.noTmux", &[("why", why)])
+            copy_text("reason.tmux.startFailed", &[("why", why)])
         }))),
     }
 }

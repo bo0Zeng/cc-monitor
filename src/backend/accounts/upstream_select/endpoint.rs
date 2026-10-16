@@ -366,7 +366,7 @@ pub(crate) fn optin_report_at(
         SettingsBaseUrl::Unreadable(why) => {
             let why = match why {
                 SettingsUnreadable::Io(e) => e.clone(),
-                SettingsUnreadable::NotFile => copy_text("beUpstreamEndpoint.optin.notFile", &[]),
+                SettingsUnreadable::NotFile => copy_text("reason.fs.notRegular", &[]),
                 SettingsUnreadable::TooLarge(cap) => copy_text(
                     "beUpstreamEndpoint.optin.tooLarge",
                     &[("cap", &cap.to_string())],

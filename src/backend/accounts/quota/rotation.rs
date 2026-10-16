@@ -355,7 +355,7 @@ pub(crate) struct Migrated {
 fn io_said(path: &Path, e: &std::io::Error) -> Said {
     Said::with_raw(
         copy_text(
-            "beRotation.write.failed",
+            "reason.fs.writeFailed",
             &[
                 ("path", &path.display().to_string()),
                 ("why", &copy_core::io_reason(e.kind())),

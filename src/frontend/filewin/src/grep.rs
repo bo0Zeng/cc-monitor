@@ -122,7 +122,7 @@ pub struct GrepOutcome {
 pub fn decode_grep(d: &Value) -> Result<GrepOutcome, String> {
     use cmd_wire::files::GrepStopped;
     let d = super::source::reply_of::<cmd_wire::files::GrepReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
+        .map_err(|_| copy_text("reason.content.unparsable", &[]))?;
     Ok(GrepOutcome {
         hits: d
             .hits

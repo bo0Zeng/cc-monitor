@@ -448,7 +448,7 @@ fn record(
 fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
     crate::common::said::Said::with_raw(
         copy_text(
-            "beLaunchAccount.write.failed",
+            "reason.fs.writeFailed",
             &[
                 ("path", &path.display().to_string()),
                 ("why", &copy_core::io_reason(e.kind())),

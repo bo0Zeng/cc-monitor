@@ -204,7 +204,7 @@ pub fn commit_upload_in(
         land_staged(face, home, key, root, rel, &dest, cross_device).map_err(|e| {
             WriteRefusal::IoSaid {
                 said: copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[("path", &dest.display().to_string()), ("why", &e.why)],
                 ),
                 raw: e.raw,
@@ -332,7 +332,7 @@ pub(crate) fn move_failed(
     match undo {
         Ok(()) => WriteRefusal::IoSaid {
             said: copy_text(
-                "beFilesCommit.upload.moveFailedNote",
+                "reason.fs.writeFailed",
                 &[("path", &path), ("why", &fail.why)],
             ),
             raw: fail.raw.clone(),
@@ -365,7 +365,7 @@ fn ensure_staging(face: &Face, home: &Path) -> Result<PathBuf, WriteRefusal> {
         face.make_dir_private(&next).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &next.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -495,7 +495,6 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
         return Err(WriteRefusal::Io(copy_text(
             "beFilesCommit.chunk.lengthMismatch",
             &[
-                ("chunks", &chunks.to_string()),
                 ("got", &out.len().to_string()),
                 ("bytes", &bytes.to_string()),
             ],

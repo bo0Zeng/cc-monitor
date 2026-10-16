@@ -307,7 +307,7 @@ export class DataPage {
     );
     sec.appendChild(head);
     if (!r) {
-      sec.appendChild(note(copyText("dataPage.chores.reading")));
+      sec.appendChild(note(copyText("kit.state.reading")));
       return sec;
     }
     if (!r.ok) {
@@ -433,7 +433,7 @@ export class DataPage {
     }
     this.changedBox.replaceChildren();
     if (!r) {
-      this.changedBox.appendChild(note(copyText("dataPage.chores.reading")));
+      this.changedBox.appendChild(note(copyText("kit.state.reading")));
       return;
     }
     // 断开的那台：有上次的就照上次的画（警告条说多旧），没有就照实说读不到。

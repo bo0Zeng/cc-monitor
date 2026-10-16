@@ -497,7 +497,7 @@ export class TerminalPage {
       void this.recapture();
       return false;
     }
-    this.showNote({ text: copyText("terminal.input.failed", { why: sent?.result === "refused" ? sent.said : copyText("terminal.why.other") }), tone: "error", retry: what });
+    this.showNote({ text: copyText("terminal.input.failed", { why: sent?.result === "refused" ? sent.said : copyText("reason.code.refused") }), tone: "error", retry: what });
     if (why === "not_known" || why === "ended") void this.refresh();
     return false;
   }

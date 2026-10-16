@@ -135,7 +135,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
         ),
         (
             CallError::Cancelled,
-            Routed::Refused(unsure(t("rsInboundClient.error.cancelled"))),
+            Routed::Refused(unsure(t("reason.op.cancelled"))),
         ),
         (
             CallError::Remote {

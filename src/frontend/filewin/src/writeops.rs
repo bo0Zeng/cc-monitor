@@ -582,7 +582,7 @@ pub async fn apply_all(
                 }
                 super::batch::Phase::Failed(f) => Err(f.clone()),
                 _ => Err(super::source::Failed::from(copy_text(
-                    "rsFilewinSource.said.cancelled",
+                    "reason.op.cancelled",
                     &[],
                 ))),
             };

@@ -136,7 +136,7 @@ function buildMcpRow(origin: () => Origin, machine: () => string): { row: CfgRow
   };
 
   const load = (): void => {
-    row.setStatus("off", copyText("cfgPage.row.reading"));
+    row.setStatus("off", copyText("kit.state.reading"));
     accountsMcpRead(origin()).then(paint, (e: unknown) => {
       row.setStatus("warn", copyText("cfgPage.mcp.readFailed"));
       body.replaceChildren(line("cfg-hint", saidOfControl(e)));
@@ -192,7 +192,7 @@ function buildExtRow(origin: () => Origin, machine: () => string, go: (el: HTMLE
   };
   const load = (): void => {
     row.setName(copyText("cfgPage.ext.title", { machine: machine() }));
-    row.setStatus("off", copyText("cfgPage.row.reading"));
+    row.setStatus("off", copyText("kit.state.reading"));
     extList(false).then(paint, (e: unknown) => {
       row.setStatus("warn", copyText("cfgPage.ext.readFailed"));
       row.body.replaceChildren(line("cfg-hint", saidOfControl(e)));

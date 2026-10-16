@@ -236,7 +236,7 @@ fn write_locked(own: &Own, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, Sa
     own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
             copy_text(
-                "beLineage.write.failed",
+                "reason.fs.writeFailed",
                 &[("path", &shown), ("why", &copy_core::io_reason(e.kind()))],
             ),
             &e,
