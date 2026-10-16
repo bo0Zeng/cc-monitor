@@ -88,6 +88,7 @@
             "slots": [
               {
                 "pct": 63,
+                "resetText": "↻18:30",
                 "resetsAt": 1791196200,
                 "resetsAtRelText": "+1h50m",
                 "resetsAtText": "18:30",
@@ -97,6 +98,7 @@
               },
               {
                 "pct": 41,
+                "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
                 "resetsAtText": "10-09 09:00",
@@ -122,6 +124,230 @@
               "atText": "18:31",
               "text": "5h 63% ↻18:30"
             }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "personal",
+            "agent": "claude",
+            "kind": "sub"
+          }
+        ],
+        "detail": null,
+        "earliestReturn": null,
+        "fiveHour": null,
+        "names": {
+          "accounts": {
+            "0": "~/.claude",
+            "_": "未指定账号"
+          },
+          "slots": {
+            "5h": "5h",
+            "7d": "7d"
+          }
+        },
+        "now": 1791189600,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "reason": null,
+        "state": "present",
+        "text": null,
+        "unseen": [],
+        "usableNow": [
+          "personal"
+        ],
+        "verdict": {
+          "sub": "personal",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
+      },
+      "tz": "Asia/Shanghai"
+    },
+    {
+      "name": "订阅 · 更细的窗口（7d opus）在 7d 与超额之间各一行；量过的那一格带 1% ≈ 多少",
+      "reply": {
+        "accounts": [
+          {
+            "account": "personal",
+            "agent": "claude",
+            "fiveHour": "5h 63%",
+            "kind": "sub",
+            "limiting": "5h",
+            "login": "ok",
+            "reading": {
+              "refused": false,
+              "windows": []
+            },
+            "rows": [
+              [
+                {
+                  "text": "personal",
+                  "tone": "plain"
+                },
+                {
+                  "text": "订阅",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "5h",
+                  "tone": "plain"
+                },
+                {
+                  "text": "63%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻18:30",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+1h50m",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d",
+                  "tone": "plain"
+                },
+                {
+                  "text": "41%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-09 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+3d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "7d opus",
+                  "tone": "plain"
+                },
+                {
+                  "text": "22%",
+                  "tone": "plain"
+                },
+                {
+                  "text": "↻10-09 09:00",
+                  "tone": "plain"
+                },
+                {
+                  "text": "+3d",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "超额",
+                  "tone": "plain"
+                },
+                {
+                  "text": "—",
+                  "tone": "plain"
+                }
+              ],
+              [
+                {
+                  "text": "采样",
+                  "tone": "plain"
+                },
+                {
+                  "text": "16:38",
+                  "tone": "plain"
+                }
+              ]
+            ],
+            "seenAt": 1791189480,
+            "seenAtText": "16:38",
+            "slots": [
+              {
+                "pct": 63,
+                "perPctText": "1% ≈ 2.1M",
+                "resetText": "↻18:30",
+                "resetsAt": 1791196200,
+                "resetsAtRelText": "+1h50m",
+                "resetsAtText": "18:30",
+                "slot": "5h",
+                "text": "63%",
+                "tone": "plain"
+              },
+              {
+                "pct": 41,
+                "resetText": "↻10-09 09:00",
+                "resetsAt": 1791507600,
+                "resetsAtRelText": "+3d",
+                "resetsAtText": "10-09 09:00",
+                "slot": "7d",
+                "text": "41%",
+                "tone": "plain"
+              }
+            ],
+            "stale": false,
+            "state": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "usage": {
+              "slot": "5h",
+              "text": "5h 63%",
+              "tone": "plain",
+              "value": "63%",
+              "window": "5h"
+            },
+            "warm": {
+              "act": "wait",
+              "at": 1791196260,
+              "atRelText": "+1h51m",
+              "atText": "18:31",
+              "text": "5h 63% ↻18:30"
+            },
+            "windows": [
+              {
+                "from": "headers",
+                "key": "5h",
+                "name": "five_hour",
+                "pct": 63,
+                "perPctText": "1% ≈ 2.1M",
+                "resetsAt": 1791196200,
+                "resetsAtRelText": "+1h50m",
+                "resetsAtText": "18:30",
+                "seenAt": 1791189480,
+                "seenAtText": "16:38",
+                "tokensPerPct": 2100000,
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d",
+                "name": "seven_day",
+                "pct": 41,
+                "resetsAt": 1791507600,
+                "resetsAtRelText": "+3d",
+                "resetsAtText": "10-09 09:00",
+                "seenAt": 1791189480,
+                "seenAtText": "16:38",
+                "tone": "plain"
+              },
+              {
+                "from": "headers",
+                "key": "7d:opus",
+                "name": "seven_day_opus",
+                "pct": 22,
+                "perPctText": "1% ≈ 25K",
+                "resetsAt": 1791507600,
+                "resetsAtRelText": "+3d",
+                "resetsAtText": "10-09 09:00",
+                "seenAt": 1791189480,
+                "seenAtText": "16:38",
+                "tokensPerPct": 25000,
+                "tone": "plain"
+              }
+            ]
           }
         ],
         "candidates": [
@@ -249,6 +475,7 @@
             "slots": [
               {
                 "pct": 86,
+                "resetText": "↻18:30",
                 "resetsAt": 1791196200,
                 "resetsAtRelText": "+1h50m",
                 "resetsAtText": "18:30",
@@ -258,6 +485,7 @@
               },
               {
                 "pct": 41,
+                "resetText": "↻10-09 09:00",
                 "resetsAt": 1791507600,
                 "resetsAtRelText": "+3d",
                 "resetsAtText": "10-09 09:00",
@@ -414,6 +642,7 @@
               {
                 "full": true,
                 "pct": 100,
+                "resetText": "↻19:00",
                 "resetsAt": 1791198000,
                 "resetsAtRelText": "+2h20m",
                 "resetsAtText": "19:00",
@@ -423,6 +652,7 @@
               },
               {
                 "pct": 78,
+                "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
                 "resetsAtRelText": "+1d",
                 "resetsAtText": "10-07 09:00",
@@ -582,6 +812,7 @@
             "slots": [
               {
                 "pct": 58,
+                "resetText": "↻19:00",
                 "resetsAt": 1791198000,
                 "resetsAtRelText": "+2h20m",
                 "resetsAtText": "19:00",
@@ -591,6 +822,7 @@
               },
               {
                 "pct": 78,
+                "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
                 "resetsAtRelText": "+1d",
                 "resetsAtText": "10-07 09:00",
@@ -754,6 +986,7 @@
             "slots": [
               {
                 "pct": 104,
+                "resetText": "↻19:00",
                 "resetsAt": 1791198000,
                 "resetsAtRelText": "+2h20m",
                 "resetsAtText": "19:00",
@@ -763,6 +996,7 @@
               },
               {
                 "pct": 78,
+                "resetText": "↻10-07 09:00",
                 "resetsAt": 1791334800,
                 "resetsAtRelText": "+1d",
                 "resetsAtText": "10-07 09:00",
@@ -914,6 +1148,7 @@
             "slots": [
               {
                 "pct": 97,
+                "resetText": "↻13:10 已过",
                 "resetsAt": 1791177000,
                 "resetsAtText": "13:10",
                 "slot": "5h",
@@ -922,6 +1157,7 @@
               },
               {
                 "pct": 12,
+                "resetText": "↻10-11 08:00",
                 "resetsAt": 1791676800,
                 "resetsAtRelText": "+5d",
                 "resetsAtText": "10-11 08:00",
@@ -1214,6 +1450,7 @@
             "slots": [
               {
                 "pct": 30,
+                "resetText": "↻20:00",
                 "resetsAt": 1791201600,
                 "resetsAtRelText": "+3h20m",
                 "resetsAtText": "20:00",
@@ -1371,6 +1608,7 @@
             "slots": [
               {
                 "pct": 31,
+                "resetText": "↻18:40",
                 "resetsAt": 1791196800,
                 "resetsAtRelText": "+2h",
                 "resetsAtText": "18:40",
@@ -1380,6 +1618,7 @@
               },
               {
                 "pct": 9,
+                "resetText": "↻17:25",
                 "resetsAt": 1791192300,
                 "resetsAtRelText": "+45m",
                 "resetsAtText": "17:25",
@@ -1781,6 +2020,7 @@
             "slots": [
               {
                 "pct": 4,
+                "resetText": "↻18:10",
                 "resetsAt": 1791195000,
                 "resetsAtRelText": "+1h30m",
                 "resetsAtText": "18:10",
@@ -1790,6 +2030,7 @@
               },
               {
                 "pct": 12,
+                "resetText": "↻10-10 09:00",
                 "resetsAt": 1791594000,
                 "resetsAtRelText": "+4d",
                 "resetsAtText": "10-10 09:00",
@@ -2052,6 +2293,7 @@
             "slots": [
               {
                 "pct": 97,
+                "resetText": "↻13:10 已过",
                 "resetsAt": 1798693800,
                 "resetsAtText": "13:10",
                 "slot": "5h",
@@ -2060,6 +2302,7 @@
               },
               {
                 "pct": 12,
+                "resetText": "↻2027-01-03 09:00",
                 "resetsAt": 1798938000,
                 "resetsAtRelText": "+2d",
                 "resetsAtText": "2027-01-03 09:00",
@@ -2159,6 +2402,7 @@
             "slots": [
               {
                 "pct": 2,
+                "resetText": "↻01-01 03:00 已过",
                 "resetsAt": 1767207600,
                 "resetsAtText": "01-01 03:00",
                 "slot": "5h",
@@ -2167,6 +2411,7 @@
               },
               {
                 "pct": 5,
+                "resetText": "↻01-06 09:00 已过",
                 "resetsAt": 1767661200,
                 "resetsAtText": "01-06 09:00",
                 "slot": "7d",

@@ -88,9 +88,52 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "blocks": [],
+      "blocks": [
+        {
+          "account": "personal",
+          "rows": [
+            [
+              "personal",
+              "订阅"
+            ],
+            [
+              "5h",
+              "63%",
+              "↻18:30",
+              "+1h50m"
+            ],
+            [
+              "7d",
+              "41%",
+              "↻10-09 09:00",
+              "+3d"
+            ],
+            [
+              "7d opus",
+              "22%",
+              "↻10-09 09:00",
+              "+3d"
+            ],
+            [
+              "超额",
+              "—"
+            ],
+            [
+              "采样",
+              "16:38"
+            ]
+          ],
+          "warm": {
+            "act": "wait",
+            "at": 1791196260,
+            "atRelText": "+1h51m",
+            "atText": "18:31",
+            "text": "5h 63% ↻18:30"
+          }
+        }
+      ],
       "machine": "本机",
-      "name": "订阅 · 更细的窗口（7d opus）在 7d 与超额之间各一行、快满带语气；量过的那一格带 1% ≈ 多少",
+      "name": "订阅 · 更细的窗口（7d opus）在 7d 与超额之间各一行；量过的那一格带 1% ≈ 多少",
       "reply": {
         "accounts": [
           {
@@ -108,17 +151,16 @@
             "slots": [
               {
                 "pct": 63,
+                "perPctText": "1% ≈ 2.1M",
                 "resetsAt": 1791196200,
                 "resetsAtText": "18:30",
-                "slot": "5h",
-                "perPctText": "1% ≈ 2.1M"
+                "slot": "5h"
               },
               {
-                "pct": 85,
+                "pct": 41,
                 "resetsAt": 1791507600,
                 "resetsAtText": "10-09 09:00",
-                "slot": "7d",
-                "perPctText": "1% ≈ 25K"
+                "slot": "7d"
               }
             ],
             "stale": false,
@@ -126,35 +168,35 @@
             "subId": "3f9c0e1a2b3c4d5e6f708192",
             "windows": [
               {
-                "name": "five_hour",
+                "from": "headers",
                 "key": "5h",
+                "name": "five_hour",
                 "pct": 63,
+                "perPctText": "1% ≈ 2.1M",
                 "resetsAt": 1791196200,
                 "seenAt": 1791189480,
-                "from": "headers",
                 "tokensPerPct": 2100000,
-                "perPctText": "1% ≈ 2.1M",
                 "tone": "plain"
               },
               {
-                "name": "seven_day",
+                "from": "headers",
                 "key": "7d",
+                "name": "seven_day",
                 "pct": 41,
                 "resetsAt": 1791507600,
                 "seenAt": 1791189480,
-                "from": "headers",
                 "tone": "plain"
               },
               {
-                "name": "seven_day_opus",
+                "from": "headers",
                 "key": "7d:opus",
-                "pct": 85,
+                "name": "seven_day_opus",
+                "pct": 22,
+                "perPctText": "1% ≈ 25K",
                 "resetsAt": 1791507600,
                 "seenAt": 1791189480,
-                "from": "headers",
                 "tokensPerPct": 25000,
-                "perPctText": "1% ≈ 25K",
-                "tone": "warn"
+                "tone": "plain"
               }
             ]
           }
@@ -169,7 +211,7 @@
           "personal"
         ]
       },
-      "text": "",
+      "text": "personal  订阅\n  5h       63%  ↻18:30        +1h50m\n  7d       41%  ↻10-09 09:00  +3d\n  7d opus  22%  ↻10-09 09:00  +3d\n  超额     —\n  采样     16:38",
       "tz": "Asia/Shanghai"
     },
     {

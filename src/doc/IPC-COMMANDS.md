@@ -759,6 +759,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -770,6 +774,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -849,6 +857,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -860,6 +872,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1009,6 +1025,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -1020,6 +1040,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1298,6 +1322,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -1309,6 +1337,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1505,6 +1537,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -1516,6 +1552,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1734,7 +1774,11 @@ type LsEntry = { path: WirePath,
 /**
  * 末段名（那台按自己的分隔符切好）。
  */
-name: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+name: WirePath, kind: FileKind, size?: number, 
+/**
+ * `size` 写好的字（`2.1 MB`，`copy_core::size_text`）；目录 · 指向目录的链接 · 读不到大小的 ⇒ 缺。
+ */
+size_text?: string, mtime_secs?: number, 
 /**
  * 那台按本地钟写好的短写法。
  */
@@ -2019,7 +2063,7 @@ path: string | null,
  */
 now: number, 
 /**
- * 每个出过数的号一条，按 `(agent, account)` 排。
+ * 每个出过数的号一条，按 `(agent, account)` 排（不按能不能发重排：额度一变就重读，按状态排的话卡片会跳位）。
  */
 accounts: Array<QuotaAccount>, 
 /**
@@ -2049,7 +2093,11 @@ fiveHour: Words | null,
 /**
  * 号名 / 位名表（出口画号名 · 位名只照它）。
  */
-names: QuotaNames, };
+names: QuotaNames, 
+/**
+ * 「现在还能不能发」那两行写好的字（用量页的结论 · 全满时那一句）；读不出 / 一个号都没有 ⇒ `null`（那时看 `text`）。
+ */
+verdict: QuotaVerdict | null, };
 type QuotaReadState = "present" | "absent" | "unreadable";
 type QuotaReadingShown = { 
 /**
@@ -2081,6 +2129,7 @@ fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind
  */
 usage: QuotaUnseenUsage, };
 type QuotaUnseenUsage = { slot?: string, window?: Words, value: Words, text: Words, tone: "plain" | "fail" | "warn", };
+type QuotaVerdict = { text: string, sub: string | null, tone: "plain" | "fail" | "warn", };
 type QuotaWarm = { act: QuotaWarmAct, at?: number, 
 /**
  * `at` 写给人看的样子（`Warm::stamp`）。
@@ -2119,6 +2168,10 @@ resetsAtText?: string,
  */
 resetsAtRelText?: string, 
 /**
+ * 重置那一格写好的字（`↻18:30` · 已过 `↻13:10 已过`；同 `rows` 里那一格）；说不出几点 ⇒ 缺。
+ */
+resetText?: string, 
+/**
  * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
  */
 full?: boolean, 
@@ -2129,7 +2182,11 @@ text: string,
 /**
  * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
  */
-tone: "plain" | "fail" | "warn", };
+tone: "plain" | "fail" | "warn", 
+/**
+ * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
+ */
+perPctText?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type Usage = { 
 /**
@@ -2195,9 +2252,17 @@ seenAtRelText?: string, from: QuotaSource,
  */
 tokensPerPct?: number, 
 /**
+ * `tokens_per_pct` 写好的字（`1% ≈ 2.1M`）；量不到 ⇒ 缺。
+ */
+perPctText?: string, 
+/**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */
-resetSinceSeen?: boolean, };
+resetSinceSeen?: boolean, 
+/**
+ * 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
 type Words = string;
 ```
 
@@ -3072,7 +3137,11 @@ quota: Words | null,
  * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
  * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
  */
-unselectable: Words | null, name: string, 
+unselectable: Words | null, 
+/**
+ * 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
+ */
+login: boolean, name: string, 
 /**
  * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
  */
@@ -4135,6 +4204,7 @@ type Entry = { starred: boolean, customTitle: string | null,
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
 hide?: Hide, updatedAt: number, };
+type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -4144,6 +4214,10 @@ type HistoryGroup = { key: string, agent: string, projectName: string, projectPa
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
 hasLive: boolean | null, starred: boolean, lastActivity: number, 
+/**
+ * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+ */
+atText: string | null, 
 /**
  * 几台的组并成一列时按它（大的在前）。
  */
@@ -4243,7 +4317,11 @@ type HistoryRow = { agent: string, sessionId: string, projectPath: string, proje
 /**
  * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+/**
+ * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
+ */
+forkedFrom?: ForkedFrom, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */
@@ -4309,6 +4387,7 @@ fork: boolean,
 delete: CanDelete, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type ForkedFrom = { label: string, };
 type HistorySearchReply = { 
 /**
  * 每命中会话一行，最近优先。
@@ -4360,7 +4439,11 @@ kind: string, before: string, matched: string, after: string,
 /**
  * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
  */
-tool?: string, };
+tool?: string, 
+/**
+ * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+ */
+offset: number, };
 type SearchScope = "user" | "assistant" | "report";
 type SessionHits = { 
 /**
@@ -4394,7 +4477,11 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, };
 ```
 
 码：`bad_args` · `failed` · `too_large`
@@ -4427,6 +4514,7 @@ fork: boolean,
 delete: CanDelete, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type ForkedFrom = { label: string, };
 type HistorySearchMergeReq = { machines: Array<MachineHits>, };
 type Liveness = "live" | "ended";
 type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
@@ -4487,7 +4575,11 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, };
 type Origin = string;
 type SearchHit = { 
 /**
@@ -4501,7 +4593,11 @@ kind: string, before: string, matched: string, after: string,
 /**
  * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
  */
-tool?: string, };
+tool?: string, 
+/**
+ * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+ */
+offset: number, };
 type SessionHits = { 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
@@ -4534,7 +4630,11 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, };
 ```
 
 码：`bad_args`

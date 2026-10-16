@@ -2204,6 +2204,18 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "accounts[].slots[].perPctText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "accounts[].slots[].resetText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "accounts[].slots[].resetsAt",
           "type": "number"
@@ -2372,6 +2384,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "accounts[].windows[].perPctText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "accounts[].windows[].resetSinceSeen",
           "type": "bool"
@@ -2417,6 +2435,12 @@
           "kind": "value",
           "path": "accounts[].windows[].tokensPerPct",
           "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "accounts[].windows[].tone",
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -2627,6 +2651,24 @@
           "kind": "value",
           "path": "usableNow[]",
           "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "verdict.sub",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "verdict.text",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "tone",
+          "path": "verdict.tone",
+          "type": "enum"
         }
       ],
       "name": "quota_read"
@@ -2637,6 +2679,12 @@
           "frozen": false,
           "kind": "value",
           "path": "groups[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "groups[].atText",
           "type": "string"
         },
         {
@@ -2781,6 +2829,12 @@
           "frozen": false,
           "kind": "value",
           "path": "rows[].firstUserExcerpt",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "rows[].forkedFrom.label",
           "type": "string"
         },
         {
