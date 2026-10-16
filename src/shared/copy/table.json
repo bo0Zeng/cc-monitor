@@ -22270,7 +22270,10 @@
       "kind": "body",
       "role": "片段",
       "zh": "1% ≈ {n}",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W1": "约等于号夹在两个数之间读得最快；用量卡头那一行窄屏也要放得下，换成「约」更长"
+      }
     },
     "acct.window.tier": {
       "kind": "body",
@@ -22280,13 +22283,13 @@
     },
     "acct.verdict.can": {
       "kind": "body",
-      "role": "状态",
+      "role": "片段",
       "zh": "可发 · {n} 个号",
       "args": ["n"]
     },
     "acct.verdict.none": {
       "kind": "body",
-      "role": "状态",
+      "role": "片段",
       "zh": "均不可发",
       "args": []
     },
@@ -31592,13 +31595,13 @@
       "zh": "无 · 直连",
       "args": []
     },
-    "mobFiles.copyTo": {
+    "mobFiles.menu.copyTo": {
       "kind": "action",
       "role": "菜单项",
       "zh": "复制到…",
       "args": []
     },
-    "mobFiles.selectAll": {
+    "mobFiles.menu.selectAll": {
       "kind": "action",
       "role": "菜单项",
       "zh": "全选",

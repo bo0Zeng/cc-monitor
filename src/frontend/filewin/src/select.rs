@@ -539,7 +539,7 @@ impl ActionFace for Action {
             }
             Action::Chmod => super::writeops::CHMOD_LABEL.to_string(),
             Action::Properties => PROPS_LABEL.to_string(),
-            Action::CopyTo => copy_text("mobFiles.copyTo", &[]),
+            Action::CopyTo => copy_text("mobFiles.menu.copyTo", &[]),
             Action::Delete if n > 1 => {
                 copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
             }
@@ -661,7 +661,7 @@ impl ItemFace for Item {
             Item::NewFile => copy_text("rsFilewinSelect.menu.newFile", &[]),
             Item::Upload => super::upload::UPLOAD_LABEL.to_string(),
             Item::Term => super::chrome::TERMINAL_LABEL.to_string(),
-            Item::SelectAll => copy_text("mobFiles.selectAll", &[]),
+            Item::SelectAll => copy_text("mobFiles.menu.selectAll", &[]),
         }
     }
 }

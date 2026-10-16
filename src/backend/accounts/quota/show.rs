@@ -189,12 +189,11 @@ impl Stamp for SlotShow {
 
 /// 重置那一格的字（唯一写法）：还没到 ⇒ `↻18:30`；已过 ⇒ `↻13:10 已过`。
 pub(crate) fn reset_text(at: &Words, past: bool) -> Words {
-    let key = if past {
-        "acct.reset.past"
+    Words(if past {
+        copy_core::copy_text("acct.reset.past", &[("at", &at.0)])
     } else {
-        "acct.reset.at"
-    };
-    Words(copy_core::copy_text(key, &[("at", &at.0)]))
+        copy_core::copy_text("acct.reset.at", &[("at", &at.0)])
+    })
 }
 
 impl Stamp for WindowShow {

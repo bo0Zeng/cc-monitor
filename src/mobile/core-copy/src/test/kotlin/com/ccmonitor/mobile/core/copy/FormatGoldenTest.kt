@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.core.copy
 import com.squareup.moshi.Moshi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
@@ -29,7 +28,6 @@ class FormatGoldenTest {
     private fun Map<String, Any?>.list(k: String) = this[k] as List<Map<String, Any?>>
 
     private fun Map<String, Any?>.long(k: String): Long? = (this[k] as Double?)?.toLong()
-
 
     @Test
     fun `短时长 · 距今 · 会走的钟：每一条与金样逐字相同`() {

@@ -75,6 +75,7 @@ population = [
     "../../common/filewin-contract",
     "../../common/win-manifest",
     "../../common/chunk-core",
+    "../../common/pick-core",
     "../filewin",
 ]
 

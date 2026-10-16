@@ -21,14 +21,15 @@ fn the_ending_line_leaves_out_the_parts_that_are_zero() {
         _ => copy_text("beFiles.batch.segLeft", &[("left", n)]),
     };
     let sep = copy_text("kit.text.sep", &[]);
-    let head = |n: &str| copy_text("beFiles.batch.head", &[("action", "删除"), ("n", n)]);
+    let del = copy_text("beFiles.batch.verbDelete", &[]);
+    let head = |n: &str| copy_text("beFiles.batch.head", &[("action", &del), ("n", n)]);
     let line = |parts: Vec<String>| parts.join(&sep);
     assert_eq!(
-        said_of("删除", &outs(&[Done, Done, Done, Failed, Exists]), None),
+        said_of(&del, &outs(&[Done, Done, Done, Failed, Exists]), None),
         line(vec![head("5"), seg("ok", "3"), seg("bad", "2")])
     );
     assert_eq!(
-        said_of("删除", &outs(&[Done, Skipped, Cancelled]), None),
+        said_of(&del, &outs(&[Done, Skipped, Cancelled]), None),
         line(vec![
             head("3"),
             seg("ok", "1"),
@@ -37,16 +38,16 @@ fn the_ending_line_leaves_out_the_parts_that_are_zero() {
         ])
     );
     assert_eq!(
-        said_of("删除", &outs(&[Failed, Failed]), None),
+        said_of(&del, &outs(&[Failed, Failed]), None),
         line(vec![head("2"), seg("bad", "2")])
     );
     assert_eq!(
-        said_of("删除", &outs(&[Done, Done]), None),
-        copy_text("beFiles.batch.done", &[("action", "删除"), ("n", "2")])
+        said_of(&del, &outs(&[Done, Done]), None),
+        copy_text("beFiles.batch.done", &[("action", &del), ("n", "2")])
     );
     for s in [
-        said_of("删除", &outs(&[Done, Failed]), None),
-        said_of("删除", &outs(&[Skipped, Cancelled]), None),
+        said_of(&del, &outs(&[Done, Failed]), None),
+        said_of(&del, &outs(&[Skipped, Cancelled]), None),
     ] {
         assert!(
             !s.contains(" 0") && !s.contains("×0"),
