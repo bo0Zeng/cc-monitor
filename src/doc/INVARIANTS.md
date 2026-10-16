@@ -250,7 +250,7 @@ Claude Code 把很多不是人说的东西也写成 `type=user`。判定只有�
 2. **视口上方插入不手动补偿 `scrollTop`**，交给原生 `overflow-anchor`（禁止给 `.stream` 设 `overflow-anchor: none`；唯一豁免是上翻补批那一个同步任务内临时关、`finally` 还原：`tabs.fillAbove` 与 `session-viewer.maybeFillAbove`）。手动补偿叠加原生锚定会双重位移。
 3. **重放期视口上方的旧内容不建 DOM**：没接骨架的 tab 由 `TailWindow` 收纳，`seq < floor` 的只进账本不建卡，后台 tab 空闲时、切过去时再物化尾段；大增量批的中部插入攒到批末一次挂。物化 / 补批插卡前先 `branchFolder.unwrapAll()`、插完 `rebuildNow()`。
 
-   **3b. 接上骨架的 tab / 查看器**：已渲染集 = 尾后缀 ∪ 若干岛，「哪些 seq 没物化」以 `SkeletonView` 的占位为准；往占位里建卡只许经骨架（`fillVisible` / `ensure`）；每次只物化与视口相交的那一段；物化时钉住视口里最上面那张已渲染卡的屏幕位置；接之前对拍 seq 空间，对不上就不接；接上之后正文不驻留，滚到时按偏移向那台后端取回。
+   **3b. 接上骨架的 tab / 查看器**：已渲染集 = 尾后缀 ∪ 若干岛，「哪些 seq 没物化」以 `SkeletonView` 的占位为准；往占位里建卡只许经骨架（`fillVisible` / `ensure`）；每次只物化与视口相交的那一段，离视口远的已建卡交回占位（`release`：只在轮与回答的开头切，交回前量真高进账本）；物化 / 交回时钉住视口里最上面那张已渲染卡的屏幕位置；接之前对拍 seq 空间，对不上就不接；接上之后正文不驻留，滚到时按偏移向那台后端取回。
 
 **为什么不能松动**：末块先发的重放会把旧消息逐条插到贴底视口上方，高分屏上分数像素的舍入每帧不同 ⇒ 整块上下抖。只测 `scrollTop` 发现不了（它单调增长），要测可见元素 `getBoundingClientRect().top` 的逐帧反转。
 

@@ -21,6 +21,8 @@
  * - **按住切**（keys）：按住「下一个 tab」（缺省键 `]`）30 下、每 40 ms 一下，3 串：每下按下到画出 / 输入排队 · > 50 ms 的帧 · 长任务 · 后台流新建节点 · 末下到安静。
  * - **长会话**（long）：新开页、第一下就点最长那条（冷），量首屏同上；然后在流上滚轮往上 60 下（每下 600 px、间隔 50 ms），
  *   量帧间隔 p50 / p95 / 最长、> 50 ms 的帧数、长任务。
+ * - **只留眼前**（mem）：新开页、点最长那条，一屏一屏滚到顶、再滚回底（每屏等安静），然后 24 个 tab 逐个切一遍；
+ *   开头 · 到顶 · 回底 · 切完各强制 GC 一次，读 JS 堆与 DOM 元素数（`getElementsByTagName("*")`），另记最长那条流里的卡数。
  * 每项跑 `--runs` 趟（缺省 3），表里给的是全部趟合在一起的分位数；机器负载（loadavg）开头结尾各记一次。
  */
 import { spawn } from "node:child_process";
@@ -37,7 +39,7 @@ const args = parseArgs(process.argv.slice(2));
 const runs = Number(args.runs ?? 3);
 const out = path.resolve(args.out ?? path.join(repo, ".build/perf"));
 const sandbox = path.join(repo, ".build/perf-sandbox");
-const only = new Set(String(args.only ?? "switch,rapid,keys,long,viewer").split(","));
+const only = new Set(String(args.only ?? "switch,rapid,keys,long,viewer,mem").split(","));
 /** 查看窗那一项开的会话：世界里最长那一条（`world.ts` 的 `PERF_TURNS[0]`，`scene.ts::LONGEST_SID`）。 */
 const VIEWER_SID = "5e550100-0000-4000-8000-000000000100";
 /** 宿主的停留判定（`tab-stream-view.ts::STAY_MS`）：切进来停住这么久才接骨架 ⇒ 「停住之后最长一帧」从这里起算。 */
@@ -77,10 +79,10 @@ function isolatedEnv(extra = {}) {
 if (args.merge) {
   // 几次分开跑的读数合成一张（A/B 交替跑时用）：`--merge 目录1,目录2,… --out 目录`
   const parts = String(args.merge).split(",").map((d) => JSON.parse(readFileSync(path.join(path.resolve(d), "perf.json"), "utf8")));
-  const m = { ...parts[0], runs: 0, switch: [], rapid: [], keys: [], long: [], viewer: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
+  const m = { ...parts[0], runs: 0, switch: [], rapid: [], keys: [], long: [], viewer: [], mem: [], boot: [], load: { start: parts[0].load.start, end: parts[parts.length - 1].load.end } };
   parts.forEach((p, k) => {
     m.runs += p.runs;
-    for (const key of ["switch", "rapid", "keys", "long", "viewer", "boot"]) m[key].push(...(p[key] ?? []).map((x) => ({ ...x, part: k })));
+    for (const key of ["switch", "rapid", "keys", "long", "viewer", "mem", "boot"]) m[key].push(...(p[key] ?? []).map((x) => ({ ...x, part: k })));
   });
   writeFileSync(path.join(out, "perf.json"), JSON.stringify(m, null, 1));
   const t = summarize(m);
@@ -138,7 +140,7 @@ const browser = spawn(
 children.push(browser);
 const cdp = await Cdp.connect(await devtoolsUrl(profile));
 
-const result = { when: new Date().toISOString(), mode: args.dev ? "dev" : "build", runs, load: { start: load0 }, switch: [], rapid: [], keys: [], long: [], viewer: [], boot: [] };
+const result = { when: new Date().toISOString(), mode: args.dev ? "dev" : "build", runs, load: { start: load0 }, switch: [], rapid: [], keys: [], long: [], viewer: [], mem: [], boot: [] };
 
 if (args.shot) {
   // 看一眼世界长什么样：开页、点最长那条、截一张
@@ -174,6 +176,7 @@ for (let r = 0; r < runs; r++) {
   if (only.has("keys")) result.keys.push(...(await watchdog("按住切", benchKeys(r))));
   if (only.has("long")) result.long.push(await watchdog("长会话", benchLong(r)));
   if (only.has("viewer")) result.viewer.push(await watchdog("查看窗", benchViewer(r)));
+  if (only.has("mem")) result.mem.push(await watchdog("只留眼前", benchMem(r)));
   if (only.has("boot")) await watchdog("开窗", openPage().then((p) => p.close())); // 只量开窗（读数在 boot 里）
 }
 result.load.end = os.loadavg();
@@ -611,6 +614,60 @@ async function benchLong(run) {
   };
 }
 
+/** 强制 GC 后的 JS 堆 · DOM 元素数 · 当前那条流里已建的顶层条目（占位不算）。 */
+async function memRead(page) {
+  const heap = await heapAfterGc(page);
+  const dom = await page.eval(`({ els: document.getElementsByTagName("*").length, cards: document.querySelector(".stream.active")?.querySelectorAll(".stream-content > *:not(.stream-skeleton-gap)").length ?? 0 })`);
+  return { heap, ...dom };
+}
+
+/** 一屏一屏滚（`dir` −1 往顶、+1 往底），每屏等安静，滚到头为止；交回滚了几屏。 */
+async function scrollThrough(page, dir) {
+  let steps = 0;
+  for (;;) {
+    const at = await page.eval(`(() => { const s = document.querySelector(".stream.active"); const before = s.scrollTop; s.scrollTop = before + ${dir} * s.clientHeight * 0.9; return { before, after: s.scrollTop, end: ${dir} < 0 ? s.scrollTop <= 0 : s.scrollTop + s.clientHeight >= s.scrollHeight - 1 }; })()`);
+    steps++;
+    await page.eval("__perf.quiet(150, 3000)");
+    if (at.end || steps > 5000) {
+      // 到头之后补的那几块可能又把它推开：再看一眼
+      const done = await page.eval(`(() => { const s = document.querySelector(".stream.active"); return ${dir} < 0 ? s.scrollTop <= 0 : s.scrollTop + s.clientHeight >= s.scrollHeight - 1; })()`);
+      if (done || steps > 5000) return steps;
+    }
+  }
+}
+
+async function benchMem(run) {
+  const page = await openPage();
+  const n = await page.eval("document.querySelectorAll('#tab-bar .tab').length");
+  let longest = 0;
+  let most = -1;
+  for (let i = 0; i < n; i++) {
+    const t = await tabAt(page, i);
+    if ((t.turns ?? 0) > most) {
+      most = t.turns;
+      longest = i;
+    }
+  }
+  const t = await tabAt(page, longest);
+  await clickAt(page, t.x, t.y);
+  await page.eval("__perf.quiet(1000, 15000)");
+  const open = await memRead(page);
+  const up = await scrollThrough(page, -1);
+  const top = await memRead(page);
+  const down = await scrollThrough(page, 1);
+  const back = await memRead(page);
+  for (let i = 0; i < n; i++) {
+    const x = await tabAt(page, i);
+    if (x.active) continue;
+    await clickAt(page, x.x, x.y);
+    await page.eval("__perf.quiet(300, 5000)");
+  }
+  const toured = await memRead(page);
+  await page.close();
+  console.log(`  只留眼前 第 ${run + 1} 趟：往顶 ${up} 屏 · 回底 ${down} 屏`);
+  return { run, up, down, open, top, back, toured };
+}
+
 // ─────────────────────────────────────────── 汇总 ───────────────────────────────────────────
 
 function f0(x) {
@@ -690,6 +747,17 @@ function summarize(r) {
     L.push("| 趟 | 第一张卡出来（开页起 ms） | 开页 CPU | 开页长任务个（DOMContentLoaded 之后） | 开页长任务合计 | 最长长任务 | 建了几张卡 | 帧 p50 | 帧 p95 | 最长帧 | >50ms 帧 | 滚动 CPU | 滚动中长任务合计 |");
     L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
     for (const x of r.viewer) L.push(`| ${x.run + 1} | ${f0(x.firstCard)} | ${f0(x.openCpu)} | ${x.openLtN} | ${f0(x.openLtMs)} | ${f0(x.openLtMax)} | ${x.cards} | ${f0(x.frameP50)} | ${f0(x.frameP95)} | ${f0(x.frameMax)} | ${x.framesOver50} | ${f0(x.cpu)} | ${f0(x.ltMs)} |`);
+    L.push("");
+  }
+  if (r.mem?.length) {
+    L.push("## 只留眼前（最长那条滚到顶再回底 ＋ 24 个 tab 逐个切一遍；强制 GC 后）");
+    L.push("");
+    L.push("| 趟 | 屏数（上 / 下） | JS 堆 MB：开 · 顶 · 底 · 切完 | DOM 元素：开 · 顶 · 底 · 切完 | 流里的卡：开 · 顶 · 底 |");
+    L.push("|---|---|---|---|---|");
+    for (const x of r.mem) {
+      const s = [x.open, x.top, x.back, x.toured];
+      L.push(`| ${x.run + 1} | ${x.up} / ${x.down} | ${s.map((y) => mb(y.heap)).join(" · ")} | ${s.map((y) => y.els).join(" · ")} | ${s.slice(0, 3).map((y) => y.cards).join(" · ")} |`);
+    }
     L.push("");
   }
   return L.join("\n");

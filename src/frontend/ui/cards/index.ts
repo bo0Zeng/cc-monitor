@@ -894,6 +894,13 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
   return removed;
 }
 
+/** 卡交回占位之后（`SkeletonView.release`）：几张表里还指着摘下来的卡的那几项丢掉（滚回来重建时重新登记）。 */
+export function forgetDetached(ctx: Pick<RenderContext, "toolUseElements" | "runCards" | "pendingToolResults">): void {
+  for (const [id, el] of ctx.toolUseElements) if (!el.isConnected) ctx.toolUseElements.delete(id);
+  for (const [id, el] of ctx.runCards ?? []) if (!el.isConnected) ctx.runCards!.delete(id);
+  for (const [id, { element }] of ctx.pendingToolResults) if (!element.isConnected) ctx.pendingToolResults.delete(id);
+}
+
 /**
  * 把 tool_result 文本渲染到 host 里，并附 [文本|MD] 切换 toolbar。
  *

@@ -9,6 +9,7 @@ import { MessageStream } from "../stream";
 import {
   type LineRecord,
   type RenderContext,
+  forgetDetached,
   reconcilePendingToolResults,
 } from "../cards";
 import { BranchFolder } from "../branch-fold";
@@ -242,6 +243,7 @@ export class SessionViewer {
   private loadGeneration = 0;
   private onScrollFill = (): void => {
     void this.maybeFillAbove();
+    this.skeleton?.release(); // 远处已建的卡交回占位
   };
   private titleEl!: HTMLElement;
   private leadEl!: HTMLElement;
@@ -436,6 +438,13 @@ export class SessionViewer {
       this.folder = new BranchFolder(this.stream.contentElement);
       const view: SkeletonView = new SkeletonView(ledger, this.streamEl, sink.timeline, {
         materialize: (lo, hi) => this.fetchRows(gen, view, lo, hi),
+        // 交回的行算没画过 ⇒ 滚回来照常取
+        released: (ranges) => {
+          for (const [a, b] of ranges) for (let q = a; q < b; q++) this.drawn.delete(q);
+          forgetDetached(ctx);
+          this.rebuildFold();
+          this.updateStatus();
+        },
       });
       this.skeleton = view;
       // 折叠先交给账本：占位插进去就是折后的高（同主窗口 `TabStreamView.attachSkeleton`）
