@@ -340,7 +340,10 @@ fn the_config_writer_syncs_the_temp_file_before_it_renames() {
     let sync = guard_core::find_pinned(body, ".sync_all()").expect("写口里落盘不是恰好一处");
     let swap = guard_core::find_pinned(body, "std::fs::rename(&tmp, path)")
         .expect("写口里换名不是恰好一处");
-    assert!(sync < swap, "落盘排在换名之后 —— 换上去的那一份可能还没写到盘上");
+    assert!(
+        sync < swap,
+        "落盘排在换名之后 —— 换上去的那一份可能还没写到盘上"
+    );
 }
 
 /// 路径超过 260 字符照样写得上（Windows 上换名要带长路径前缀；标准库自己补）。
