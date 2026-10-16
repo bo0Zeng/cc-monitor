@@ -222,8 +222,8 @@ class RustTransport(
                     val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
                     val pub =
                         ks.getCertificate(auth.alias)?.publicKey as? ECPublicKey
-                            ?: error(copyText("mobSsh.keystore.noCert", "alias" to auth.alias))
-                    Core.putKeystore(auth.alias, uncompressedPoint(pub)) ?: error(copyText("mobSsh.keystore.noCert", "alias" to auth.alias))
+                            ?: error(copyText("mobSsh.keystore.noCert"))
+                    Core.putKeystore(auth.alias, uncompressedPoint(pub)) ?: error(copyText("mobSsh.keystore.noCert"))
                 }
             } ?: throw IOException(copyText("mobSsh.conn.unavailable"))
         val kept = synchronized(keys) { !closed.get() && keys.add(id) }

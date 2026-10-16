@@ -495,7 +495,6 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
         return Err(WriteRefusal::Io(copy_text(
             "beFilesCommit.chunk.lengthMismatch",
             &[
-                ("chunks", &chunks.to_string()),
                 ("got", &out.len().to_string()),
                 ("bytes", &bytes.to_string()),
             ],

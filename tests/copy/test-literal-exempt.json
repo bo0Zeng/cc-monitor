@@ -247,8 +247,12 @@
     "tests/frontend/ui/tab-bar-state.vitest.ts": [
       { "text": "昨天", "use": "输入" }
     ],
+    "tests/frontend/ui/kit/detail-in-view.vitest.ts": [
+      { "text": "读取画面失败", "use": "输入" }
+    ],
     "tests/frontend/ui/tabs.vitest.ts": [
-      { "text": "任务", "use": "输入" }
+      { "text": "任务", "use": "输入" },
+      { "text": "画面", "use": "词义" }
     ],
     "tests/frontend/ui/tmux-control.vitest.ts": [
       { "text": "预览", "use": "输入" }

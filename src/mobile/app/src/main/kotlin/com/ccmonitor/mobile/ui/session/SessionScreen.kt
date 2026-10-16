@@ -411,7 +411,7 @@ private fun DroppedBanner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ErrorLine(
-            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped"),
+            if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped", "machine" to LocalKeysEnv.current.hostLabel),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
         SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
@@ -784,7 +784,7 @@ private class KeyBarNav(
         KeyActionFail.GROUP_GONE -> snackbar.showSticky(copyText("mobKeys.err.groupGone"), copyText("mobKeys.err.edit"), env.onEditKeys)
         KeyActionFail.NO_TMUX -> {
             val action = (b as? KeyBinding.App)?.action?.let(::appActionName).orEmpty()
-            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "host" to env.hostLabel))
+            snackbar.showSticky(copyText("mobKeys.err.actionNoTmux", "action" to action, "machine" to env.hostLabel))
         }
     }
 }

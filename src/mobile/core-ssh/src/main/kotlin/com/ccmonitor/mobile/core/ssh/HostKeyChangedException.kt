@@ -15,4 +15,4 @@ class HostKeyChangedException(
     /** 现在这台服务器出示的指纹。 */
     val offeredFingerprint: String = "",
     cause: Throwable? = null,
-) : Exception(copyText("mobSsh.hostKey.changed", "target" to "$host:$port", "keyType" to keyType), cause)
+) : Exception(copyText("mobSsh.hostKey.changed", "target" to "$host:$port"), cause)
