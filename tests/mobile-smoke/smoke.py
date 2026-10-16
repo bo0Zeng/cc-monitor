@@ -27,7 +27,7 @@ def t(key, **args):
 
 BOX = os.environ["CCM_SMOKE_BOX"]
 OUT = os.environ.get("CCM_SMOKE_OUT", os.path.join(BOX, "..", "shots"))
-PORT = os.environ.get("CCM_SMOKE_PORT", "22422")
+PORT = os.environ["CCM_SMOKE_PORT"]
 USER = subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
 PKG = "com.ccmonitor.mobile"
 os.makedirs(OUT, exist_ok=True)
@@ -66,13 +66,29 @@ def adb(*a):
 
 
 def tap(text, nth=0, must=True):
-    n = ui.find(text, nth)
+    """点 [text]：要点的（must）等它出现并停稳再点（忙时界面晚几秒才画出来、或还在滑开）；可有可无的只看此刻。"""
+    n = ui.settled(text, nth) if must else ui.find(text, nth)
     if n is None:
         if must:
             raise Step.Fail(f"屏上找不到「{text}」")
         return False
     adb("shell", "input", "tap", *map(str, ui.center(n)))
     return True
+
+
+def tap_until(text, shows, secs=5, tries=3, what=None):
+    """点 [text] 直到 [shows]（字，或一个判断）成立：忙时一下点在界面还没接手的那一刻会落空，没成、[text] 还在就再点，最多 [tries] 回。"""
+    seen = shows if callable(shows) else (lambda: ui.find(shows) is not None)
+    for _ in range(tries):
+        tap(text)
+        end = ui.within(secs)
+        while time.time() < end:
+            if seen():
+                return
+            time.sleep(0.5)
+        if ui.find(text) is None:
+            break
+    raise Step.Fail(f"点了「{text}」，{what or '「' + shows + '」'}没出来")
 
 
 # 文件屏一问（提交上传 · 列目录）的期限（秒，产品里的数）。
@@ -85,7 +101,7 @@ def busy():
 
 
 def wait(text, secs=30):
-    end = time.time() + secs
+    end = ui.within(secs)
     while time.time() < end:
         if ui.find(text) is not None:
             return True
@@ -109,25 +125,46 @@ def shot(name):
     return p
 
 
-def launch(fresh=False):
-    # `am start -W` 等到那一屏画出第一帧才回（事件）：机器忙时冷启动要几十秒，之后再找字不按秒数猜。
+def start_app():
+    # `am start -W` 等到那一屏画出第一帧才回：机器忙时冷启动要几十秒。
     adb("shell", "am", "start", "-W", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
         "-n", f"{PKG}/.MainActivity")
+
+
+def foreground():
+    """App 在前台：系统报的那个 resumed 的 activity 是它的。"""
+    return any(PKG in ln for ln in adb("shell", "dumpsys", "activity", "activities").splitlines() if "ResumedActivity" in ln)
+
+
+def launch(fresh=False):
+    start_app()
     if fresh:
         if not wait(t("mobDrawer.server.bare"), 20):
             raise Step.Fail("App 没起来")
         return
-    time.sleep(3)
     to_chat()
 
 
-def to_chat():
-    """回到带抽屉按钮的那一屏（对话列表 · 终端屏没有顶栏，按返回回去）。"""
-    for _ in range(4):
+def to_chat(secs=30):
+    """回到带抽屉按钮的那一屏（对话列表 · 终端屏没有顶栏，按返回回去）。App 不在前台（返回按出去了 · 闪退）就拉起来；
+    只在 App 画出了自己的字、连着两回一样（不在动画途中）又没有抽屉按钮时才按返回。"""
+    end = ui.within(secs)
+    last = None
+    while time.time() < end:
+        if not foreground():
+            start_app()
+            last = None
+            continue
         hide_keyboard()
-        if wait(t("mobDrawer.open.aria"), 3):
+        ns = ui.nodes()
+        if ui.find_in(ns, t("mobDrawer.open.aria")) is not None:
             return
-        adb("shell", "input", "keyevent", "4")
+        # 冷启动那几十秒屏上只有一层空窗（没画出第一帧、截屏全黑）：那时按返回就把 App 按出去了，等它画出自己的字再说。
+        now = [ui.label(n) for n in ns if n.get("package") == PKG]
+        if any(now) and now == last:
+            adb("shell", "input", "keyevent", "4")
+            now = None
+        last = now
         time.sleep(1)
     raise Step.Fail("回不到聊天屏（找不到抽屉按钮）")
 
@@ -137,35 +174,77 @@ def to_bottom():
         adb("shell", "input", "swipe", "540", "2000", "540", "500", "120")
 
 
+def drawer_open():
+    """抽屉开着：抽屉底下那颗齿轮（只有抽屉里有）在屏上。"""
+    return any(n.get("content-desc") == t("mobDrawer.settings.aria") for n in ui.nodes())
+
+
 def drawer(item):
     to_chat()
-    tap(t("mobDrawer.open.aria"))
-    time.sleep(1.5)
+    tap_until(t("mobDrawer.open.aria"), drawer_open, what="抽屉")
     # 抽屉盖在那一屏上：同一个字底下那一屏也有（对话列表的顶栏标题就叫「对话」）⇒ 点抽屉里那一处（画在最上面、节点排在最后）。
     if sum(1 for n in ui.nodes() if item == n.get("text")) > 1:
         tap_last(item)
     else:
         tap(item)
-    time.sleep(2)
+    end = ui.within(10)
+    while drawer_open() and time.time() < end:
+        time.sleep(0.5)
+
+
+def reset():
+    """红了之后回到已知的起点：网 · 屏上键盘放回来，App 停掉重开到带抽屉按钮那一屏（停在半截的抽屉 · 框 · 别的 App 都不留）。"""
+    adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
+    adb("shell", "svc", "wifi", "enable")
+    restore_ime()
+    adb("shell", "am", "force-stop", PKG)
+    launch()
 
 
 class Step:
     class Fail(Exception):
         pass
 
+    # 上一步红了、收拾过：下一步要从某一条对话接着走的，先回到那一条（[back_to]）。
+    after_red = False
+
     def __init__(self, name):
         self.name = name
 
     def __enter__(self):
         self.t0 = time.time()
+        self.anr0 = len(ui.anrs)
+        self.recovered, Step.after_red = Step.after_red, False
         return self
+
+    def back_to(self, row):
+        """上一步红了 ⇒ 先从对话列表点进 [row] 那一条（这一步的起点）；没红就在原地接着走。"""
+        if not self.recovered:
+            return
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(row, 30):
+            raise Step.Fail(f"对话列表里没有「{row}」（这一步接着它走，前面那步没起来）")
+        tap(row)
+        if not wait(t("chat.input.placeholder"), 20):
+            raise Step.Fail(f"点了「{row}」没进那一条")
 
     def __exit__(self, kind, err, tb):
         took = time.time() - self.t0
         p = shot(self.name)
         ok = kind is None
-        results.append((self.name, "过" if ok else f"没过：{err}", f"{took:.1f}s", p))
-        print(f"{'ok ' if ok else 'RED'} {self.name}  {took:.1f}s  {'' if ok else err}  {p}", flush=True)
+        anr = len(ui.anrs) - self.anr0
+        res = ("过" if ok else f"没过：{err}") + (f"（期间应用无响应 {anr} 回）" if anr else "")
+        results.append((self.name, res, f"{took:.1f}s", f"{ui.patience():.1f}", p))
+        print(f"{'ok ' if ok else 'RED'} {self.name}  {took:.1f}s  ×{ui.patience():.1f}  {'' if ok else err}  {p}", flush=True)
+        if not ok:
+            # 红的那一刻屏上有什么（控件树 ＋ 前台是谁），分得清是没画出来还是画错了；再回到起点，后面那几步不跟着连红。
+            focus = [ln.strip() for ln in adb("shell", "dumpsys", "window").splitlines() if "mCurrentFocus" in ln]
+            open(p[:-4] + ".xml", "w").write(adb("exec-out", "uiautomator", "dump", "/dev/tty") + "\n" + "\n".join(focus) + "\n")
+            try:
+                reset()
+            except Step.Fail as e:
+                print(f"    收拾不回起点：{e}", flush=True)
+            Step.after_red = True
         return kind is Step.Fail
 
 
@@ -236,13 +315,9 @@ def tap_in_row(label, button):
 
 
 def open_import():
-    """钥匙页点悬浮的「+」（按无障碍名找）开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
-    for _ in range(3):
-        tap(t("mobIdentity.fab.aria"))
-        if wait(t("mobIdentity.add.import"), 4):
-            break
-    tap(t("mobIdentity.add.import"))
-    time.sleep(1)
+    """钥匙页点悬浮的「+」（按无障碍名找）开「添一把钥匙」那一张、点「搬进来」（提示条收起时「+」在往回落，那一下可能点空）。"""
+    tap_until(t("mobIdentity.fab.aria"), t("mobIdentity.add.import"))
+    tap_until(t("mobIdentity.add.import"), t("mobIdentity.import.pem"))
 
 
 
@@ -278,7 +353,7 @@ def _type_key(key, want):
         for line in key:
             typed(line)
             adb("shell", "input", "keyevent", "66")
-        end = time.time() + 20
+        end = ui.within(20)
         got = ""
         while time.time() < end:
             got = next((n.get("text") for n in ui.nodes() if "END OPENSSH" in (n.get("text") or "")), "") or ""
@@ -291,24 +366,33 @@ def _type_key(key, want):
     bad = next((f"第 {i + 1} 行 {g!r}" for i, (w, g) in enumerate(zip(want.split("\n"), got.split("\n"))) if w != g), "行数不一样")
     raise Step.Fail(f"钥匙敲不进框里（三回都与原文不一致：{bad[:160]}）")
 
+def fill(field, value):
+    """点 [field] 那一格、全选删掉、敲 [value]，读回屏上有它才算：忙时点下去那一格还没拿到焦点，敲的字会丢，没读回就再来一回。"""
+    for _ in range(2):
+        tap(field)
+        adb("shell", "input", "keycombination", "113", "29")
+        adb("shell", "input", "keyevent", "67")
+        typed(value)
+        if wait(value, 10):
+            return
+    raise Step.Fail(f"「{field}」那一格敲不进「{value}」")
+
+
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
-    tap(t("mobHosts.fab.aria"))
-    time.sleep(1.5)
-    tap(t("mobHostEdit.field.name")); typed(name)
-    tap(t("mobHostEdit.field.host")); typed(host_alias())
-    tap("22")
-    for k in ("123",) + ("67",) * 4:
-        adb("shell", "input", "keyevent", k)
-    typed(PORT)
-    tap(t("mobHostEdit.field.user")); typed(USER)
+    tap_until(t("mobHosts.fab.aria"), t("mobHostEdit.field.name"))
+    fill(t("mobHostEdit.field.name"), name)
+    fill(t("mobHostEdit.field.host"), host_alias())
+    fill("22", PORT)
+    fill(t("mobHostEdit.field.user"), USER)
     hide_keyboard()
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
-    time.sleep(1)
     tap("smoke")
     tap(t("mobHostEdit.page.save"))
-    time.sleep(2)
+    end = ui.within(10)
+    while ui.find(t("mobHostEdit.page.save")) is not None and time.time() < end:
+        time.sleep(0.5)
 
 
 def claude_models(cell="models"):
@@ -324,7 +408,7 @@ def claude_models(cell="models"):
 
 def pane_has(name, text, secs):
     """那个 tmux 会话的屏上在 [secs] 秒内出现 [text]。"""
-    end = time.time() + secs
+    end = ui.within(secs)
     while True:
         if text in rig("tmux", "capture-pane", "-p", "-t", name or "").stdout:
             return True
@@ -356,7 +440,7 @@ def switch_model(name):
     try:
         time.sleep(1)
         adb("shell", "input", "tap", *map(str, ui.center(row)))
-        end = time.time() + 20
+        end = ui.within(20)
         while time.time() < end and f"> /model {pick['value']}" not in rig("tmux", "capture-pane", "-p", "-t", name).stdout:
             time.sleep(1)
         got = time.time() < end
@@ -383,7 +467,9 @@ def long_press(text):
 
 def tap_last(text):
     """同一个字有几处（对话框标题与确认键同字）时点最后一处：确认键在最下。"""
-    hits = [n for n in ui.nodes() if text == n.get("text")]
+    end = ui.within(10)
+    while not (hits := [n for n in ui.nodes() if text == n.get("text")]) and time.time() < end:
+        time.sleep(0.5)
     if not hits:
         raise Step.Fail(f"屏上找不到「{text}」")
     adb("shell", "input", "tap", *map(str, ui.center(hits[-1])))
@@ -453,14 +539,14 @@ def files_page():
         if not wait(up, 10):
             raise Step.Fail("选文件那一屏里找不到推进去的那一份")
     tap(up)
-    end = time.time() + 30
+    end = ui.within(30)
     while time.time() < end and f"up {T}" not in sh(f"cat ~/work/{d}/{up} 2>/dev/null; true"):
         time.sleep(1)
     if time.time() >= end:
         raise Step.Fail("上传没落到那台")
     # 落到那台之后手机还要等提交那一问回话、再重列一次（各一问，期限各 20 秒、在产品里），两问都在路上时屏上那条忙线不收：
     # 等它收（＝回包到了、重列完了）再看列表，不按秒数猜机器多快。
-    end = time.time() + 2 * FILES_ASK_S
+    end = ui.within(2 * FILES_ASK_S)
     while time.time() < end and busy():
         time.sleep(1)
     if busy():
@@ -577,7 +663,7 @@ def today_secs(t_wall):
 
 
 def wait_any(texts, secs):
-    end = time.time() + secs
+    end = ui.within(secs)
     while time.time() < end:
         if any(ui.find(x) is not None for x in texts):
             return True
@@ -594,7 +680,7 @@ def deploy_and_time(button, name):
     for i in range(10):
         shot(f"{name}-过程-{i}")
         time.sleep(0.3)
-    end = time.time() + 300
+    end = ui.within(300)
     done_word = t("rsSftp.deploy.done", buildId="", machine="", path="", reason="").split(" ")[0]
     while time.time() < end:
         texts = [n.get("text") or "" for n in ui.nodes()]
@@ -635,7 +721,7 @@ def deploy_steps():
             raise Step.Fail(f"那台是旧版 {old_id}，却没说要更新")
         shot("1c-要更新")
         deploy_and_time(t("machineState.fix.update"), "1c")
-        end = time.time() + 60
+        end = ui.within(60)
         while time.time() < end and ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
             time.sleep(1)
         if ui.find(t("peerVersion.said.old", machine=MACHINE)) is not None:
@@ -656,7 +742,7 @@ def deploy_steps():
             time.sleep(1)
         tap(t("mobHostEdit.backend.check"))
         up_to_date = t("rsSftp.deploy.upToDate", buildId=build_id(), machine="", path="").split(" ")[0]
-        end = time.time() + 60
+        end = ui.within(60)
         while time.time() < end and not any((n.get("text") or "").startswith(up_to_date) for n in ui.nodes()):
             time.sleep(1)
         if not any((n.get("text") or "").startswith(up_to_date) for n in ui.nodes()):
@@ -788,9 +874,7 @@ def walk():
         drawer(t("mobDrawer.item.newChat"))
         if not wait("~/work", 20):
             raise Step.Fail("目录 chip 没填上那台最近的目录")
-        tap("~/work")
-        if not wait(t("mobNewSession.dir.browse"), 10):
-            raise Step.Fail("目录抽屉没出来")
+        tap_until("~/work", t("mobNewSession.dir.browse"), what="目录抽屉")
         tap(t("mobNewSession.dir.browse"))
         if not wait(f"{T}dir", 20):
             raise Step.Fail("浏览屏里没列出那一层的文件夹")
@@ -799,7 +883,7 @@ def walk():
         tap(t("mobNewSession.dir.pick"))
         if not wait(f"~/work/{T}dir", 10):
             raise Step.Fail("选了目录，chip 没换成它")
-        tap(t("chat.input.placeholder")); typed(f"{T} new session")
+        fill(t("chat.input.placeholder"), f"{T} new session")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} new session", 40):
@@ -807,8 +891,9 @@ def walk():
         if f"{T}dir" not in sh("ls ~/.claude/projects/"):
             raise Step.Fail("那条会话没起在选的目录里")
 
-    with Step("4-聊天屏"):
-        tap(t("chat.input.placeholder")); typed(f"{T} long")
+    with Step("4-聊天屏") as st:
+        st.back_to(f"{T} new session")
+        fill(t("chat.input.placeholder"), f"{T} long")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(t("cards.thinking.title"), 20):
@@ -822,7 +907,8 @@ def walk():
         if not wait("替身在想。", 5):
             raise Step.Fail("思考展不开")
 
-    with Step("4b-换模型 chip"):
+    with Step("4b-换模型 chip") as st:
+        st.back_to(f"{T} new session")
         # 聊天屏输入框下那颗模型 chip：抽屉里列那台给的模型，点一个 ⇒ session-model；读回 done 才换字（替身落的读回是那个值）。
         name = tmux_name_of(f"{T} new session")
         pick = claude_models()[-1]
@@ -834,7 +920,7 @@ def walk():
         tap(pick["text"])
         if not pane_has(name, f"> /model {pick['value']}", 20):
             raise Step.Fail(f"点了「{pick['text']}」，那个会话里没收到 /model {pick['value']}")
-        end = time.time() + 20
+        end = ui.within(20)
         while time.time() < end and ui.find(t("session.model.title")) is not None:
             time.sleep(1)
         if ui.find(t("session.model.unsure")) is not None:
@@ -850,7 +936,8 @@ def walk():
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)
 
-    with Step("4c-加号面板"):
+    with Step("4c-加号面板") as st:
+        st.back_to(f"{T} new session")
         # ［+］：命令清单是那台给这条会话的（session-commands），点一条只填进输入框；压缩上下文不确认、经 session-say 送；清空会话先确认，取消就不送。
         name = tmux_name_of(f"{T} new session")
         hide_keyboard()
@@ -897,7 +984,7 @@ def walk():
 
     def ask_up(said, head, title=None, before=None):
         """发一句让替身停在框上；钉条出来（那台写的那一行）⇒ 点［答］升起抽屉（[title] ＝ 抽屉头一行，给了就核；[before] 升抽屉之前先看一眼）。"""
-        tap(t("chat.input.placeholder")); typed(said)
+        fill(t("chat.input.placeholder"), said)
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(head, 30):
@@ -913,22 +1000,9 @@ def walk():
         if title and not wait(title, 5):
             raise Step.Fail(f"抽屉头一行不是「{title}」")
 
-    def tap_still(text):
-        """抽屉在往上滑时点会点空（落在遮罩上 ⇒ 收起、不算答）：等那一项连着两次都在同一处再点。"""
-        last = None
-        for _ in range(10):
-            n = ui.find(text)
-            b = ui.bounds(n) if n is not None else None
-            if b is not None and b == last:
-                adb("shell", "input", "tap", *map(str, ui.center(n)))
-                return
-            last = b
-            time.sleep(0.5)
-        raise Step.Fail(f"「{text}」一直没停稳")
-
     def answered(said, want):
         """那一步的结果里落了答题口给的决定（替身原样写进记录），这一轮跟着答完。"""
-        end = time.time() + 30
+        end = ui.within(30)
         while time.time() < end:
             log = sh("cat ~/.claude/projects/*/*.jsonl 2>/dev/null; true")
             if f"替身收到：{said}" in log:
@@ -950,7 +1024,7 @@ def walk():
     def step_badge():
         """流里在等的那一步：工具卡上那一枚是那台写好的「等批准」（needs.call 认的那一步）。"""
         want = t("beSession.needs.approve")  # 钉条头一行里也有这几个字：只认字正好是它的那一枚
-        end = time.time() + 20
+        end = ui.within(20)
         while time.time() < end and not any(n.get("text") == want for n in ui.nodes()):
             adb("shell", "input", "swipe", "540", "1500", "540", "500", "150")
             time.sleep(1)
@@ -958,46 +1032,51 @@ def walk():
             raise Step.Fail("流里那张在等的工具卡上没有「等批准」")
         shot("4d-工具卡等批准")
 
-    with Step("4d-答批准"):
+    with Step("4d-答批准") as st:
+        st.back_to(f"{T} new session")
         ask_up(f"{T} ask go", t("needs.bar.approve", tool="Bash"), before=step_badge)
         always = t("beAsk.choice.allowAlways", rule=t("beAsk.rule.dirs", dirs="/w", scope=t("beAsk.scope.session")))
         for want in (t("beAsk.choice.allow"), always, t("beAsk.choice.denyStop")):
             if ui.find(want) is None:
                 raise Step.Fail(f"抽屉里没有「{want}」")
         shot("4d-批准抽屉")
-        tap_still(always)
+        tap(always)
         answered(f"{T} ask go", '"behavior": "allow"')
 
-    with Step("4e-答提问"):
+    with Step("4e-答提问") as st:
+        st.back_to(f"{T} new session")
         ask_up(f"{T} quiz go", t("needs.bar.answer"), t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
-        tap_still("Red")
+        tap("Red")
         shot("4e-提问第一题")
-        tap_still(t("mobAsk.act.next")); time.sleep(1)
-        tap_still("Pear")
-        tap_still(t("beAsk.choice.answer"))
+        tap(t("mobAsk.act.next")); time.sleep(1)
+        tap("Pear")
+        tap(t("beAsk.choice.answer"))
         answered(f"{T} quiz go", '"Which color?": "Red"')
 
-    with Step("4f-批计划"):
+    with Step("4f-批计划") as st:
+        st.back_to(f"{T} new session")
         ask_up(f"{T} plan go", t("needs.bar.plan"))
         if ui.find(t("beAsk.choice.planAuto")) is None:
             raise Step.Fail("抽屉里没有「自动模式」")
         shot("4f-批计划抽屉")
-        tap_still(t("beAsk.choice.planManual"))
+        tap(t("beAsk.choice.planManual"))
         answered(f"{T} plan go", '"mode": "default"')
 
-    with Step("4g-别处先答了"):
+    with Step("4g-别处先答了") as st:
+        st.back_to(f"{T} new session")
         name = tmux_name_of(f"{T} ask go")
         ask_up(f"{T} ask again", t("needs.bar.approve", tool="Bash"))
         rig("tmux", "send-keys", "-t", name or "", "y", "Enter")  # 终端那一侧先答了
         if not wait(t("askBlock.gone.elsewhere"), 20):
             raise Step.Fail("抽屉里没出「已在终端答过或已关闭」")
         shot("4g-别处先答了")
-        tap_still(t("mobKit.act.close"))
+        tap(t("mobKit.act.close"))
         time.sleep(1)
         if answer_key() is not None:
             raise Step.Fail("别处答完了钉条还在")
 
-    with Step("4h-在终端里打开"):
+    with Step("4h-在终端里打开") as st:
+        st.back_to(f"{T} new session")
         # ⋯ 里那一项：那台名单上认这条会话的终端（第二行是那个 tmux 会话名），点了终端屏开一个标签附着它。
         name = tmux_name_of(f"{T} new session")
         hide_keyboard()
@@ -1012,7 +1091,7 @@ def walk():
             rows = rig("tmux", "list-sessions", "-F", "#{session_name} #{session_attached}").stdout.splitlines()
             return any(r.rsplit(" ", 1)[0] == name and r.rsplit(" ", 1)[-1] != "0" for r in rows)
 
-        end = time.time() + 30
+        end = ui.within(30)
         while time.time() < end and not attached():
             time.sleep(1)
         if time.time() >= end:
@@ -1021,7 +1100,8 @@ def walk():
         adb("shell", "input", "keyevent", "4")
         time.sleep(2)
 
-    with Step("6-断网再连"):
+    with Step("6-断网再连") as st:
+        st.back_to(f"{T} new session")
         name = tmux_name_of(f"{T} new session")
         adb("shell", "cmd", "connectivity", "airplane-mode", "enable")
         # 断着：两颗 chip 灰、上方那一行写那台离线（连接那一层判的，桌面同一句）；网回来那一行撤掉。
@@ -1045,7 +1125,8 @@ def walk():
         if ui.find(offline) is not None:
             raise Step.Fail("网回来了还写着离线")
 
-    with Step("7-换网"):
+    with Step("7-换网") as st:
+        st.back_to(f"{T} new session")
         # 换一张网（Wi-Fi 关掉 ⇒ 落到移动数据，再开回来）：SSH 那层重连换一条，常驻流在新的那条上当场重接；断着那段补上。
         name = tmux_name_of(f"{T} new session")
         adb("shell", "svc", "wifi", "disable")
@@ -1126,7 +1207,7 @@ def walk():
         shot("9a-终端屏-别名")
         hide_keyboard()
         tap(SMOKE_ALIAS)
-        end = time.time() + 30
+        end = ui.within(30)
         while time.time() < end and not (set(tmux_sessions()) - before):
             time.sleep(1)
         fresh = sorted(set(tmux_sessions()) - before)
@@ -1169,13 +1250,11 @@ def walk():
         drawer(t("mobDrawer.item.newChat"))
         if not wait(names["claude"], 20):
             raise Step.Fail("新建会话没画 agent chip")
-        tap(names["claude"])
-        if not wait(names["codex"], 10):
-            raise Step.Fail("agent 抽屉里列不出那台能起的几家")
+        tap_until(names["claude"], names["codex"], what="agent 抽屉里那台能起的几家")
         tap(names["codex"])
         time.sleep(1)
         hide_keyboard()
-        tap(t("chat.input.placeholder")); typed(f"{T} codex")
+        fill(t("chat.input.placeholder"), f"{T} codex")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} codex", 40):
@@ -1215,7 +1294,7 @@ def report():
         if not wait("smoke-b", 10):
             raise Step.Fail("策略抽屉里没有 smoke-b")
         tap("smoke-b")
-        end = time.time() + 20
+        end = ui.within(20)
         while time.time() < end and ((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("strategy") or {}).get("id") != "smoke-b":
             time.sleep(1)
         if time.time() >= end:
@@ -1230,7 +1309,7 @@ def report():
             raise Step.Fail("模拟里找不到 team 那一行或最上那条")
         (x1, y1), (x2, y2) = ui.center(head), ui.center(top)
         adb("shell", "input", "draganddrop", str(x1), str(y1), str(x2), str(y2), "1500")
-        end = time.time() + 20
+        end = ui.within(20)
         while time.time() < end and "team" not in (((frames("rotation-view", {"target": {"sid": sid}}).get("data") or {}).get("decision") or {}).get("temp") or []):
             time.sleep(1)
         if time.time() >= end:
@@ -1254,7 +1333,7 @@ def report():
             raise Step.Fail("改了一格，底部没出没存条")
         shot("12c-没存")
         tap(t("rot.top.save"))
-        end = time.time() + 20
+        end = ui.within(20)
         while time.time() < end and not re.search(r'"close":\s*30(\.0)?\b', sh("cat ~/.cc-monitor/strategies/smoke-b.rhai")):
             time.sleep(1)
         if time.time() >= end:
@@ -1273,12 +1352,18 @@ def report():
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
 
     print()
-    print("| 步 | 结果 | 用时 | 截图 |")
-    print("|---|---|---|---|")
-    for name, res, took, p in results:
-        print(f"| {name} | {res} | {took} | {p} |")
-    json.dump(results, open(os.path.join(OUT, "results.json"), "w"), ensure_ascii=False, indent=1)
-    sys.exit(0 if all(r[1] == "过" for r in results) else 1)
+    print("| 步 | 结果 | 用时 | 期限放宽 | 截图 |")
+    print("|---|---|---|---|---|")
+    for name, res, took, slack, p in results:
+        print(f"| {name} | {res} | {took} | ×{slack} | {p} |")
+    if ui.anrs:
+        # 应用无响应照实记（时刻 · 框上的字 · 系统留的那份记录），关掉接着走过的步不算绿。
+        open(os.path.join(OUT, "anr.txt"), "w").write(adb("shell", "dumpsys", "dropbox", "--print", "data_app_anr"))
+        for at, said in ui.anrs:
+            print(f"应用无响应 {at}：{said}")
+        print(f"有 {len(ui.anrs)} 回应用无响应（系统记录在 {os.path.join(OUT, 'anr.txt')}），这一趟不算绿")
+    json.dump({"steps": results, "anrs": ui.anrs}, open(os.path.join(OUT, "results.json"), "w"), ensure_ascii=False, indent=1)
+    sys.exit(0 if all(r[1] == "过" for r in results) and not ui.anrs else 1)
 
 
 if __name__ == "__main__":

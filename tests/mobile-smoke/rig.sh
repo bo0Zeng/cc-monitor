@@ -3,11 +3,11 @@
 #
 # 用法：bash tests/mobile-smoke/rig.sh up|down|env|tmux <tmux 参数…>
 #   up    建台架目录（默认 <仓根>/.build/mobile-smoke/box，CCM_SMOKE_BOX 可改）、私有 host key 与登录钥匙、
-#         把本树编好的后端放成 <台架家>/.cc-monitor/bin/ccm、起私有端口上的 sshd（默认 22422，CCM_SMOKE_PORT 可改）。
+#         把本树编好的后端放成 <台架家>/.cc-monitor/bin/ccm、起私有端口上的 sshd（CCM_SMOKE_PORT）。
 #   down  停 sshd、停台架里的常驻后端与 tmux 服务端（只认台架目录里的门牌与套接字）。
 #   env   印出台架那几格（家目录 · tmux 套接字 · 端口 · 登录钥匙），给驱动脚本 source。
 #   ssh   以台架的环境在台架里跑一条（和手机进来走同一个登录壳）—— 种历史会话、看台架里的状态用它。
-#   hop up|down  跳板那一台：同一套钥匙、同一个登录壳的第二个 sshd，听 CCM_SMOKE_HOP_PORT（默认 22423）；手机经它 direct-tcpip 到台架 sshd（ssh -J 那一形）。
+#   hop up|down  跳板那一台：同一套钥匙、同一个登录壳的第二个 sshd，听 CCM_SMOKE_HOP_PORT；手机经它 direct-tcpip 到台架 sshd（ssh -J 那一形）。
 #   tmux  在台架的 tmux 服务端上敲一条（显式 -S，清掉继承来的 TMUX 那几格）—— 桌面那一侧接着打字就用它。
 #   land  none|<文件>：停台架里的常驻，落点删掉 / 换成那份（手机装后端 · 升级后端那两步用）。
 #   backend off|on  让那台的常驻后端起不来（停掉在跑的常驻、把落点那份挪开 ⇒ attach / ensure 都是 127）· 放回去；SSH 本身照通。
@@ -18,7 +18,8 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 box=${CCM_SMOKE_BOX:-$root/.build/mobile-smoke/box}
-port=${CCM_SMOKE_PORT:-22422}
+# 端口不替人挑（落到一个默认口上会撞上别的台架）：sshd 口 CCM_SMOKE_PORT 一律要给，起台架还要中转口 CCM_SMOKE_RELAY_PORT。
+port=${CCM_SMOKE_PORT:?rig: 要先给 sshd 口 CCM_SMOKE_PORT（不落默认口）}
 backend=${CCM_SMOKE_BACKEND:-$root/.build/backend/debug/cc-monitor-backend}
 home=$box/home
 sock=$box/tmux/tmux-$(id -u)/default
@@ -26,6 +27,7 @@ sock=$box/tmux/tmux-$(id -u)/default
 say() { printf 'rig: %s\n' "$*" >&2; }
 
 up() {
+  : "${CCM_SMOKE_RELAY_PORT:?rig: 要先给中转口 CCM_SMOKE_RELAY_PORT（不落默认口）}"
   [ -x "$backend" ] || { say "没有编好的后端 $backend（先 cd src/backend && cargo build）"; exit 2; }
   mkdir -p "$box"/{sshd,bin,tmux,logs} "$home"/.cc-monitor/bin "$home"/.claude "$home"/.codex "$home"/work
   chmod 700 "$box/tmux"
@@ -51,7 +53,7 @@ for k in \$(compgen -e); do case "\$k" in CCM_*|CLAUDE*|ANTHROPIC_*|TMUX*|CC_BUS
 export HOME=$(printf %q "$home") TMUX_TMPDIR=$(printf %q "$box/tmux") CCM_SANDBOX=1 CCM_SMOKE_BOX=$(printf %q "$box")
 export PATH=$(printf %q "$box/bin"):$(printf %q "$home/.cc-monitor/bin"):/usr/local/bin:/usr/bin:/bin SHELL=/bin/bash
 # 台架后端的中转口用私有的（默认那个口本机正在跑的后端占着）。替身起到能收第一句要多久：外面给了就带进来。
-export CCM_RELAY_PORT=${CCM_SMOKE_RELAY_PORT:-28788} CCM_SMOKE_BOOT=${CCM_SMOKE_BOOT:-2}
+export CCM_RELAY_PORT=$CCM_SMOKE_RELAY_PORT CCM_SMOKE_BOOT=${CCM_SMOKE_BOOT:-2}
 cd "\$HOME"
 # 每条进来的命令记一行（冒烟看手机到底跑了什么）。
 printf '%s %s\n' "\$(date +%T.%N | cut -c1-12)" "\${SSH_ORIGINAL_COMMAND:-<登录 shell>}" >> $(printf %q "$box/logs/commands.log")
@@ -115,7 +117,7 @@ land() {
 }
 
 hop() {
-  local hp=${CCM_SMOKE_HOP_PORT:-22423} cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
+  local hp=${CCM_SMOKE_HOP_PORT:?rig: 要先给跳板口 CCM_SMOKE_HOP_PORT（不落默认口）} cfg=$box/sshd/hop_config pid=$box/sshd/hop.pid
   case "${1:-}" in
     up)
       [ -f "$box/sshd/sshd_config" ] || { say "先 rig.sh up"; exit 2; }

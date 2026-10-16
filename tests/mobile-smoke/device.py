@@ -38,7 +38,7 @@ WITHIN = float(os.environ.get("CCM_DEVICE_WITHIN", "60"))
 # 静默断网之后网回来多久内要重连上（秒）：连接自己的保活判死、重拨的间隔都要短到网回来几秒内接上。
 REJOIN = float(os.environ.get("CCM_DEVICE_REJOIN", "10"))
 # 跳板那台 sshd 的口（rig.sh hop）。慢链路那一格的往返（模拟器出方向 netem 加的那一段）。
-HOP_PORT = os.environ.get("CCM_SMOKE_HOP_PORT", "22423")
+HOP_PORT = os.environ["CCM_SMOKE_HOP_PORT"]
 SLOW_RTT_MS = int(os.environ.get("CCM_DEVICE_SLOW_RTT", "1500"))
 D = "d" + str(int(time.time()))[-5:]
 rows = []  # (项, 结果 绿/红/没核, 说明)

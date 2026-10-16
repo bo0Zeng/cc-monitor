@@ -9,8 +9,6 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 export CCM_SMOKE_BOX=${CCM_SMOKE_BOX:-$root/.build/mobile-smoke/box}
-# 冒烟这一台的 adb · 模拟器口（与 device.sh · 门禁那一格错开；emu.sh 自己不落默认口）。
-export CCM_SMOKE_ADB_PORT=${CCM_SMOKE_ADB_PORT:-5137} CCM_SMOKE_EMU_PORT=${CCM_SMOKE_EMU_PORT:-5590}
 heavy=()
 [ -f "$root/tests/scripts/heavy.sh" ] && heavy=(bash "$root/tests/scripts/heavy.sh")
 (cd "$root/src/backend" && "${heavy[@]}" cargo build -q)
@@ -27,7 +25,12 @@ for variant in ${CCM_SMOKE_VARIANTS:-debug minified}; do
   # shellcheck disable=SC1091
   (cd "$root/src/mobile" && . ./scripts/env.sh >/dev/null && "${heavy[@]}" ./gradlew --no-daemon -q ":app:assemble$cap")
   # 两趟同一个包名、同一把调试签名：覆盖装（清数据在 smoke.py 开头）。
-  adb install -r "$root/.build/mobile/app/outputs/apk/$variant/app-$variant.apk" >/dev/null
+  # 机器忙时包管理器偶尔不答（装包失败、不给原因）：等它答得上话再装，最多三回。
+  for try in 1 2 3; do
+    adb install -r "$root/.build/mobile/app/outputs/apk/$variant/app-$variant.apk" >/dev/null && break
+    [ "$try" -lt 3 ] || { echo "装不上 $variant 包（三回）" >&2; exit 1; }
+    timeout 120 bash -c 'until adb shell pm path android >/dev/null 2>&1; do sleep 1; done' || true
+  done
   echo "== $variant =="
   CCM_SMOKE_OUT="$out/$variant" python3 "$here/smoke.py" || red+=("$variant")
 done
