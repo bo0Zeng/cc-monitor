@@ -1444,15 +1444,15 @@ mod tests {
         for p in files {
             let nested = p.parent() != Some(root.as_path());
             let up = if nested { "super::super::" } else { "super::" };
-            let code = production_code(&std::fs::read_to_string(&p).expect("read rs"));
+            let layer_src = production_code(&std::fs::read_to_string(&p).expect("read rs"));
             for t in &targets {
                 let n = [format!("crate::{top}::{t}"), format!("{up}{t}")]
                     .iter()
                     .map(|needle| {
-                        code.match_indices(needle.as_str())
+                        layer_src.match_indices(needle.as_str())
                             .filter(|(i, _)| {
-                                let after = code[i + needle.len()..].chars().next();
-                                let before = code[..*i].chars().next_back();
+                                let after = layer_src[i + needle.len()..].chars().next();
+                                let before = layer_src[..*i].chars().next_back();
                                 !after.is_some_and(is_ident_char)
                                     && !before.is_some_and(|c| is_ident_char(c) || c == ':')
                             })

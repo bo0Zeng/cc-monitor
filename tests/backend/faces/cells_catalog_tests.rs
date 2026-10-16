@@ -410,7 +410,7 @@ fn corpus(name: &str) -> Vec<Value> {
             rows
         }
         "index_row" => {
-            // 逐行那一形只在 CLI 那一臂（帧面按列排，`history_face.rs::pack_index`）⇒ 用真函数逐行现算：
+            // 逐行那一形只在 CLI 那一臂（帧面按列排，`index.rs::pack_index`）⇒ 用真函数逐行现算：
             // 用户说的话（摘要 · 时刻）· 带工具调用的回复 · 系统注入 · 子运行里带代码块与全宽字的一行。
             let mut rows: Vec<Value> = [
                 r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,

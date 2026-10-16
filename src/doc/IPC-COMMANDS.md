@@ -13056,6 +13056,8 @@ needs: string | null, };
 | `x` | string? | 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略 |
 | `ts` | string? | 同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席） |
 
+### `history-record` 的出参
+
 #### `RecordProbe`
 
 `record_in` 的答案。
