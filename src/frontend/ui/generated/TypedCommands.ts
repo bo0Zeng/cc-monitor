@@ -193,8 +193,6 @@ import type { NewFactsReq } from "./NewFactsReq";
 import type { NewRequest } from "./NewRequest";
 import type { NoArgs } from "./NoArgs";
 import type { NoReq } from "./NoReq";
-import type { Optin } from "./Optin";
-import type { OptinReq } from "./OptinReq";
 import type { PlaceAnswer } from "./PlaceAnswer";
 import type { PlaceReq } from "./PlaceReq";
 import type { PlanAckReply } from "./PlanAckReply";
@@ -483,7 +481,6 @@ export interface TypedCommands {
   "pubkey-push": { req: PubkeyPushReq; reply: PubkeyPushed; code: "bad_args" | "bad_jump" | "refused" | "failed" };
   "quota-probe": { req: QuotaProbeReq; reply: Probed; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "not_found" | "unsupported" };
   "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
-  "relay-optin": { req: OptinReq; reply: Optin; code: "bad_args" | "failed" };
   "remote-probe": { req: ProbeReq; reply: null; code: "bad_args" | "bad_jump" | "failed" };
   "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };
   "resident-verdict": { req: VerdictReq; reply: VerdictReply; code: "bad_args" };

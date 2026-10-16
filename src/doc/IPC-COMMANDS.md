@@ -7125,11 +7125,7 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -7228,11 +7224,7 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -11664,46 +11656,6 @@ type PinnedDay = { origin: Origin, day: string, };
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
 失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
-
-#### `relay-optin`
-
-直接敲的 agent 也走中转。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-入参 `OptinReq` · 回包 `Optin`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AgentKind = string;
-type Optin = { 
-/**
- * `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
- */
-state: "installed" | "stale" | "absent" | "other" | "unreadable", 
-/**
- * 那份文件为什么读不了（`unreadable` 才有，其余空串）。
- */
-note: string, 
-/**
- * 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
- */
-missing: string, 
-/**
- * 读的是哪份文件（这台后端看到的路径）。
- */
-source: string, 
-/**
- * 要合并进那份文件的那一段（**带钥匙**）；已装或生成不了 ⇒ `null`。
- */
-snippet: string | null, 
-/**
- * 这台我们的中转此刻在不在听。
- */
-listening: boolean, };
-type OptinReq = { agent: AgentKind, };
-```
-
-码：`bad_args` · `failed`
 
 #### `drift-report`
 

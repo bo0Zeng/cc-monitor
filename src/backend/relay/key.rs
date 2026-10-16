@@ -18,8 +18,9 @@
 //! （[`KeyKind::Pass`]，[`pass_of`] 从根钥匙派生）的地址。非得经 shell 那一趟：全权那一把写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`，
 //! 只许直通那一把在 `ccm` 里现算、照字面写进那个词（它本来就进 argv）
 //! （`control/ccm/plan.rs::relay_export`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
-//! ⇒ 全权那一把只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、webview 里都没有它。
-//! 只许直通那一把会进那一家的 argv 与它自己的日志 —— 它只开得了 `/t/`（永不代入凭据），见 `comms_outward::door`。
+//! ⇒ 全权那一把只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、线上帧里都没有它。
+//! 只许直通那一把会进那一家的 argv 与它自己的日志，也进「直接敲的也走中转」要用户自己贴的那一段（那条地址恒是 `/t/`，
+//! 插哪一把按地址定：[`KeyKind::for_url`]）—— 它只开得了 `/t/`（永不代入凭据），见 `comms_outward::door`。
 //!
 //! # 一把根钥匙，两个范围
 //!
@@ -43,6 +44,25 @@ pub(crate) enum KeyKind {
     Full,
     /// 只许直通（`/t/`）。
     Pass,
+}
+
+impl KeyKind {
+    /// 一条构造口产物（不带钥匙）该插哪一把：`/s/` ⇒ 全权；`/t/` ⇒ 只许直通（`/t/` 用不上全权那一把）。认不出 ⇒ `None`。
+    pub(crate) fn for_url(url: &str) -> Option<KeyKind> {
+        use relay_route_core::RouteMode;
+        if !relay_route_core::base_url_shape_ok(url) {
+            return None;
+        }
+        let rest = url.strip_prefix("http://127.0.0.1:")?;
+        let path = &rest[rest.find('/')?..];
+        RouteMode::ALL
+            .into_iter()
+            .find(|m| path.starts_with(m.prefix()))
+            .map(|m| match m {
+                RouteMode::Substitute => KeyKind::Full,
+                RouteMode::Passthrough => KeyKind::Pass,
+            })
+    }
 }
 
 /// 钥匙的熵：32 字节 = 256 位（要求 ≥128 位）。落盘是 64 个小写十六进制字符。

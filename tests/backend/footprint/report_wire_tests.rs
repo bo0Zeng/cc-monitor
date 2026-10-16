@@ -143,7 +143,6 @@ fn relay(state: &str, path: &str, text: Option<&str>, url: Option<&str>) -> Rela
         path: path.into(),
         text: text.map(Into::into),
         url: url.map(Into::into),
-        secret: url.map(|_| "k".into()),
     }
 }
 

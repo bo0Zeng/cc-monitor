@@ -16657,18 +16657,6 @@
       "zh": "base_url 是明文 http 且主机非本机 · key 会明文上网\n改用 https 或把上游放到本机",
       "args": []
     },
-    "beUpstreamEndpoint.optin.noHome": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "无 HOME · 未找到 claude 的设置文件",
-      "args": []
-    },
-    "beUpstreamEndpoint.optin.noAgent": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "该 agent 不支持这样接中转",
-      "args": []
-    },
     "beUpstreamEndpoint.optin.notFile": {
       "kind": "body",
       "role": "片段",
@@ -27879,12 +27867,6 @@
       "kind": "aria",
       "role": "读屏",
       "zh": "改动",
-      "args": []
-    },
-    "dataPage.chore.maskHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "钥匙已遮住 · 复制的是真内容",
       "args": []
     },
     "dataPage.chore.copyLines": {

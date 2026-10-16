@@ -326,7 +326,7 @@ function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<str
 
 /** 「待办」一件（假后端照 `footprint/chores` 的成品形状）。 */
 function chore(over: Record<string, unknown>): Record<string, unknown> & { kind: string; state: string } {
-  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
+  return { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet", ...over } as Record<string, unknown> & { kind: string; state: string };
 }
 
 const SETTINGS = `${HOME}/.claude/settings.json`;
@@ -352,7 +352,6 @@ const DEVBOX_CHORES = [
     whole: WHOLE,
     wholeCovers: ["relay:claude-code", "cc-bus-hooks"],
     file: SETTINGS,
-    mask: "9f3c2a71",
   }),
   chore({
     id: "relay:codex",
@@ -369,7 +368,6 @@ const DEVBOX_CHORES = [
     whole: 'openai_base_url = "http://127.0.0.1:8788/9f3c2a71/t/codex/_"\nmodel = "gpt-5"\n',
     wholeCovers: ["relay:codex"],
     file: `${HOME}/.codex/config.toml`,
-    mask: "9f3c2a71",
   }),
   chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay:claude-code", "cc-bus-hooks"], file: SETTINGS }),
 ];

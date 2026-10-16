@@ -1,6 +1,6 @@
 /**
  * 「待办」里的一件：收着时一行（状态点 · 名字 · 类 / 态的小标签 · 下一行 位置小标签 ＋ 一句现状 · 主按钮 · 展开钮），
- * 点开依次 为什么 · 怎么做（编号步骤）· diff（上下各一行原文，删红加绿，钥匙遮住）· 按钮（复制这几行 · 复制改好的整份文件 · 打开 · 不用了）·
+ * 点开依次 为什么 · 怎么做（编号步骤）· diff（上下各一行原文，删红加绿）· 按钮（复制这几行 · 复制改好的整份文件 · 打开 · 不用了）·
  * 一句「存盘后这里自己认出」＋［再查一遍］。
  * 每一格都照那台后端的成品画（类 · 态 · 字 · 行号 · diff · 要复制的原文），界面只多记一个「已复制」。
  */
@@ -37,14 +37,6 @@ function tone(c: Chore): string {
   if (c.state === "expired" || c.kind === "must") return "bad";
   if (c.kind === "decide" || c.kind === "install") return "warn";
   return "muted";
-}
-
-/** 遮钥匙用的圆点（U+2022）。 */
-const MASK_DOT = String.fromCharCode(0x2022);
-
-/** 显示时把钥匙遮住（复制的照旧是真内容）。 */
-export function masked(text: string, mask: string | null): string {
-  return mask ? text.split(mask).join(MASK_DOT.repeat(8)) : text;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tagName: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
@@ -123,7 +115,7 @@ function detail(c: Chore, host: ChoreRowHost): HTMLElement {
   if (c.why) box.appendChild(el("div", "chore-why", c.why));
   if (c.steps.length) {
     const ol = el("ol", "chore-steps");
-    for (const s of c.steps) ol.appendChild(el("li", "", masked(s, c.mask)));
+    for (const s of c.steps) ol.appendChild(el("li", "", s));
     box.appendChild(ol);
   }
   if (c.diff.length) {
@@ -133,12 +125,11 @@ function detail(c: Chore, host: ChoreRowHost): HTMLElement {
     for (const d of c.diff) {
       const line = el("div", "chore-diff-line");
       line.dataset.op = d.op;
-      line.append(el("span", "chore-diff-n", d.n === null ? "+" : String(d.n)), el("span", "chore-diff-text", masked(d.text, c.mask)));
+      line.append(el("span", "chore-diff-n", d.n === null ? "+" : String(d.n)), el("span", "chore-diff-text", d.text));
       pre.appendChild(line);
     }
     box.appendChild(pre);
   }
-  if (c.mask) box.appendChild(el("div", "settings-hint", copyText("dataPage.chore.maskHint")));
   const acts = el("div", "chore-acts");
   if (c.state !== "done" && c.state !== "blocked") {
     if (c.copy !== null && c.action !== "copyCommand") acts.appendChild(button({ label: c.action === "locate" || c.action === "decide" ? copyText("dataPage.chore.copyPosition") : copyText("dataPage.chore.copyLines"), size: "compact", kind: "primary", onClick: () => host.onCopied(c.copy ?? "", [c.id]) }));

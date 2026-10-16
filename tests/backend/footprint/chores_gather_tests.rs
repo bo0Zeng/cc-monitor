@@ -76,3 +76,69 @@ fn 失效行_文件在才读的不报_守着别的文件的与裸的照报() {
     assert_eq!(nums, vec![13, 15, 17, 18]);
     let _ = std::fs::remove_dir_all(&h);
 }
+
+/// 根钥匙派生出的只许直通那一把（照中转的派生法在这里现算：HMAC-SHA256(根, "ccm-relay/t") 的小写十六进制）。
+fn pass_hex(root: &str) -> String {
+    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, root.as_bytes());
+    ring::hmac::sign(&k, b"ccm-relay/t")
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// 一段文本里所有恰好 64 位的小写十六进制串（钥匙的形状）。
+fn hex64(s: &str) -> std::collections::BTreeSet<String> {
+    s.split(|c: char| !matches!(c, '0'..='9' | 'a'..='f'))
+        .filter(|w| w.len() == 64)
+        .map(str::to_string)
+        .collect()
+}
+
+/// ★ 中转钥匙不进界面：这台收事实 → 出「待办」→ 序列化成线上那一份，里面所有钥匙形的串 == {只许直通那一把}。
+/// 两份设置文件：没写 · 照旧贴过全权那一把（根钥匙本身，贴过的那一行在 diff 里显示成 `…`、整份里换成新的那一条）。
+/// 同一份文件上还有收信那一件（它的 diff 上下文与整份也从那份文件来）。正控：直通那一把确实出现了。
+#[test]
+fn 待办里的钥匙只有只许直通那一把() {
+    let root = "0123456789abcdef".repeat(4);
+    let old = format!(
+        "{{\n  \"model\": \"x\",\n  \"env\": {{\n    \"ANTHROPIC_BASE_URL\": \"http://127.0.0.1:8788/{root}/t/claude-code/_\"\n  }}\n}}\n"
+    );
+    for settings in [None, Some(old)] {
+        let h = tmp("relay-key");
+        std::fs::create_dir_all(h.join(".cc-monitor")).unwrap();
+        std::fs::create_dir_all(h.join(".claude")).unwrap();
+        std::fs::write(h.join(".cc-monitor/relay-key"), &root).unwrap();
+        let file = h.join(".claude/settings.json");
+        if let Some(s) = &settings {
+            std::fs::write(&file, s).unwrap();
+        }
+        let relay = relay_at(&h, &[], &|_| true);
+        assert!(!relay.is_empty(), "该有「直接敲的也走中转」那几件");
+        let f = Facts {
+            windows: false,
+            needs_install: vec![],
+            stale_ccm: None,
+            self_paste: None,
+            clashes: vec![],
+            dead: vec![],
+            relay,
+            hooks: Some(Hooks {
+                ccbus: true,
+                installed: false,
+                path: file.display().to_string(),
+                text: settings.clone(),
+                items: vec![("Stop".into(), serde_json::json!({"hooks": []}))],
+            }),
+            mcp_login: vec![],
+            declined: vec![],
+        };
+        let wire = serde_json::to_string(&super::super::chores(&f)).unwrap();
+        assert_eq!(
+            hex64(&wire),
+            std::collections::BTreeSet::from([pass_hex(&root)]),
+            "设置文件 {settings:?} ⇒ {wire}"
+        );
+        let _ = std::fs::remove_dir_all(&h);
+    }
+}

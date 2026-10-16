@@ -44,7 +44,7 @@ const EXT = {
 
 const calls: Array<[string, string, unknown]> = [];
 let mcp: Record<string, unknown> = VIEW;
-const chore = (id: string, kind: string, state = "todo") => ({ id, kind, state, name: id, loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet" });
+const chore = (id: string, kind: string, state = "todo") => ({ id, kind, state, name: id, loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" });
 let data: Record<string, unknown> | null = null;
 
 beforeEach(() => {

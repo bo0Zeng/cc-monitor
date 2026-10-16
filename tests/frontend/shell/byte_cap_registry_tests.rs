@@ -952,11 +952,11 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
         "降级+说清",
     ),
-    // 「直接敲的也走中转」（`relay-optin`，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
+    // 「直接敲的也走中转」（「待办」那一件，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
     (
         "src/backend/agents/claudecode/paths.rs",
         "SETTINGS_CAP_BYTES",
-        "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
+        "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
     // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
@@ -977,7 +977,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/agents/codex/relay.rs",
         "CONFIG_CAP_BYTES",
-        "`relay-optin` 读那台 `~/.codex/config.toml` 多大",
+        "「待办」里「直接敲的也走中转」那一件读那台 `~/.codex/config.toml` 多大",
         "降级+说清",
     ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。

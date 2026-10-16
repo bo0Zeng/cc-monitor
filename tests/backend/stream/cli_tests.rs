@@ -158,10 +158,6 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
         "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
     ),
     (
-        "relay-optin",
-        "「直接敲的也走中转」那一段的成品里「中转在不在」同样读本进程的监听状态，一次性进程里恒答「不在」—— 假话。",
-    ),
-    (
         "launch-local",
         "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态；一次性进程里没有中转 ⇒ \
          「非它不可」的号会被误拒、「有它更好」的会被说成直连。",
@@ -415,7 +411,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "manual-list",
         // 读回配置文件整份：无入参（问的就是「这台」那一份）。
         "profiles-read",
-        // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

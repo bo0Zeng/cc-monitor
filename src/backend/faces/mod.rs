@@ -24,7 +24,6 @@ pub mod quota_probe_face; // 帧面 `quota-probe`：用某个号查一次额度�
 pub(crate) mod quota_read; // `quota-read` 的成品（有类型：每号 ＝ 原数 ＋ 显示态 ＋ 写好的几行 · 5h 那一格 · 开窗那一判；顶上 ＋ 号名表）
 pub(crate) mod quota_rows; // `quota-read` 每号的 `rows`（额度每号几行，唯一的行模型）与开窗那一判 `warm`
 pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
-pub mod relay_optin_face; // 帧面 `relay-optin` 的宿主壳：入参 · 码表 · 怎么跑；判定与成品住 accounts/upstream_select/endpoint.rs
 pub(crate) mod remote_reach_face; // 帧面 `remote-reach`（typed）：可达表登记（dial）＋ 登记完交一次待交的偏好（control）—— 两边只在这里接上
 pub(crate) mod rotation_edit_face; // 帧面：轮换的写（typed）：设置 · 存 · 换一份 · 拖出来的顺序 · 现在用 · 策略文件 · 24 小时条的算术
 pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游选择换号要的那几格（两边只在这里接上）

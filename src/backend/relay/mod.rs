@@ -9,7 +9,7 @@ mod listen; // 绑口 · accept · 在途上界 · 两个期限值 · 起监听�
 /// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream_select::host_relay`）。
 pub(crate) use listen::{host, our_relay_listening, ENV_PORT};
 
-/// 「把这台的钥匙插进这条地址」—— 上游选择出「直接敲的也走中转」那一段（`relay-optin`）时用。只交插好的地址，不交钥匙本身。
+/// 「把这台的钥匙插进这条地址」—— 上游选择出「直接敲的也走中转」那一段与 `ccm` exec 时用。只交插好的地址，不交钥匙本身。
 pub(crate) use key::{keyed_with_key_on_disk, pass_key_on_disk, KeyKind};
 
 /// 中转与上游选择之间的契约件 · tee 的第二个落点 · 一问一答的传输原语（都住 `comms_outward`）。
