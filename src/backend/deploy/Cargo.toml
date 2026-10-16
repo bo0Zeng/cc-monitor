@@ -16,7 +16,6 @@ ssh-dial = { path = "../ssh-dial" }
 deploy-contract = { path = "../../common/deploy-contract" }
 relay-route-core = { path = "../../common/relay-route-core" }
 copy-core = { path = "../../common/copy-core" }
-serde_json = "1"
 tokio = { version = "1", features = ["rt", "macros", "io-util", "sync"] }
 tracing = "0.1"
 

@@ -12,8 +12,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.security.KeyStore
 import java.util.Base64
 
@@ -32,6 +34,11 @@ class RustTransportTest {
     private val pem: ByteArray? = args.getString("sshKey")?.let { Base64.getDecoder().decode(it) }
     private val open = mutableListOf<RustTransport>()
 
+    /** 主机钥匙那份库：测试 APK 自己的私有目录（核心一个进程只装一次，路径以第一次为准）。 */
+    private val book = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "known_hosts")
+
+    @Before fun setup() = installRustCore(book)
+
     @After fun teardown() = open.forEach { it.close() }
 
     private fun config(auth: AuthMethod = AuthMethod.PrivateKey(requireNotNull(pem))) =
@@ -40,12 +47,9 @@ class RustTransportTest {
     /** 台架只认跑它的那个用户（宿主机上的用户名由入口交进来；缺 ⇒ 读 `sshUser`）。 */
     private fun user(): String = requireNotNull(args.getString("sshUser")) { "缺 sshUser" }
 
-    private fun connected(
-        store: KnownHostStore? = null,
-        auth: AuthMethod? = null,
-    ): RustTransport {
+    private fun connected(auth: AuthMethod? = null): RustTransport {
         assumeTrue("没给台架钥匙与地址（sshKey · sshHost）", pem != null && host.isNotEmpty())
-        val t = RustTransport(store).also { open += it }
+        val t = RustTransport().also { open += it }
         runBlocking { withTimeout(WALL_CEILING_MS) { t.connect(if (auth == null) config() else config(auth)) } }
         return t
     }
@@ -91,19 +95,21 @@ class RustTransportTest {
         sh.close()
     }
 
-    /** 首见记下（鉴权过了才落库）；之后按记下的那一把严格比；那一把被换了 ⇒ 拒并带新旧指纹。 */
+    /** 首见记进库文件（鉴权过了才记）；之后按记下的那一把严格比；那一把被换了 ⇒ 拒并带库里那一把的指纹；忘掉之后又是首见。 */
     @Test
-    fun first_use_is_recorded_then_enforced() {
-        val store = MemoryStore()
-        connected(store)
-        val rec = runBlocking { store.forHost(host, port) }.single()
-        connected(store)
-        runBlocking {
-            store.forget(host, port)
-            store.record(rec.copy(publicKeyBase64 = flipped(rec.publicKeyBase64)))
-        }
-        val e = runCatching { connected(store) }.exceptionOrNull()
-        assertTrue("$e", e is HostKeyChangedException)
+    fun first_use_is_recorded_then_enforced_and_forgetting_starts_over() {
+        assumeTrue("没给台架钥匙与地址（sshKey · sshHost）", pem != null && host.isNotEmpty())
+        assertTrue(forgetHostKey(host, port))
+        connected()
+        val line = book.readLines().single { it.isNotBlank() }
+        connected()
+        val (names, alg, b64) = line.split(' ')
+        book.writeText("$names $alg ${flipped(b64)}\n")
+        val e = runCatching { connected() }.exceptionOrNull()
+        assertTrue("$e", e is HostKeyChangedException && e.expectedFingerprint.startsWith("SHA256:"))
+        assertTrue(forgetHostKey(host, port))
+        connected()
+        assertEquals(line, book.readLines().single { it.isNotBlank() })
     }
 
     /** Keystore 里不可导出的 P-256：先用台架钥匙把它的公钥放进台架的 authorized_keys，再只凭 Keystore 签名登上。 */
@@ -126,26 +132,6 @@ class RustTransportTest {
         val raw = Base64.getDecoder().decode(b64)
         raw[raw.size - 1] = (raw[raw.size - 1].toInt() xor 1).toByte()
         return Base64.getEncoder().encodeToString(raw)
-    }
-
-    private class MemoryStore : KnownHostStore {
-        private val rows = mutableListOf<KnownHostRecord>()
-
-        override suspend fun forHost(
-            host: String,
-            port: Int,
-        ) = synchronized(rows) { rows.filter { it.host == host && it.port == port } }
-
-        override suspend fun record(knownHost: KnownHostRecord) {
-            synchronized(rows) { rows += knownHost }
-        }
-
-        override suspend fun forget(
-            host: String,
-            port: Int,
-        ) {
-            synchronized(rows) { rows.removeAll { it.host == host && it.port == port } }
-        }
     }
 
     private companion object {

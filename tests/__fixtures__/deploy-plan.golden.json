@@ -1,5 +1,5 @@
 {
-  "_doc": "帧命令 deploy-plan 的线上形状（部署决策进后端、monitor 只放字节）。后端 deploy_plan_tests::the_plan_frame_has_exactly_the_golden_keys 核键集 == 真产出；monitor sftp.rs 的 decode_plan 读同一份（sftp_tests::the_plan_decoder_reads_the_golden）。值是结构占位。ack = 问 uname 那一趟拨号的 DialAck 原样（monitor 按它固化指纹）。leftovers = 落点目录里没人要的上传残件（家目录相对），monitor 照删。",
+  "_doc": "帧命令 deploy-plan 的线上形状（部署决策进后端、monitor 只放字节）。后端 deploy_plan_tests::the_plan_frame_has_exactly_the_golden_keys 核键集 == 真产出；monitor sftp.rs 的 decode_plan 读同一份（sftp_tests::the_plan_decoder_reads_the_golden）。值是结构占位。leftovers = 落点目录里没人要的上传残件（家目录相对），monitor 照删。",
   "product": {
     "action": "keep",
     "arch": "x86_64",
@@ -8,15 +8,6 @@
     "leftovers": [".cc-monitor/bin/ccm.1-2-3.tmp"],
     "os": "Linux",
     "theirs": "p0b-placeholder",
-    "why": "placeholder",
-    "ack": {
-      "ok": true,
-      "fingerprints": {
-        "192.0.2.2:22": "SHA256:placeholder"
-      },
-      "jump_fingerprints": {},
-      "strict": false,
-      "jump_strict": false
-    }
+    "why": "placeholder"
   }
 }

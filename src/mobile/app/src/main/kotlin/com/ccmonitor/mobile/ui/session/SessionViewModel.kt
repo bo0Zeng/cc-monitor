@@ -14,7 +14,6 @@ import com.ccmonitor.mobile.core.data.repo.MovedLaunchRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.HostKeyChangedException
-import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
@@ -22,6 +21,7 @@ import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ssh.SshTransport
 import com.ccmonitor.mobile.core.ssh.commandChannel
 import com.ccmonitor.mobile.core.ssh.commandExecutor
+import com.ccmonitor.mobile.core.ssh.forgetHostKey
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
@@ -69,7 +69,7 @@ sealed interface SessionUiState {
     /**
      * 服务器身份变了（TOFU 指纹不符）。这是唯一一个「拒绝连接但可恢复」的态。
      *
-     * 不并进 [Error]：一个字符串给不出出路，删掉服务器重加也没用（`KnownHost` 与 `Host` 之间没有外键级联）。
+     * 不并进 [Error]：一个字符串给不出出路，删掉服务器重加也没用（主机钥匙那份库按地址认，不随主机删）。
      * 这个态带上新旧指纹，让恢复成为一次有依据的选择。
      */
     data class HostKeyChanged(
@@ -109,7 +109,6 @@ class SessionViewModel(
     private val movedRepo: MovedLaunchRepository, // 迁移说明那一格：手机原来存的启动配置，这一台的列一次
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
     backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束都问那台核心
-    private val knownHostStore: KnownHostStore, // 主机钥匙变更的恢复：确认后 forget 再重连
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val cd: String? = cdArg?.ifBlank { null } // Koin 参数不传 null，空串当 null
@@ -362,7 +361,7 @@ class SessionViewModel(
         port: Int,
     ) {
         viewModelScope.launch {
-            knownHostStore.forget(host, port)
+            withContext(io) { forgetHostKey(host, port) }
             retry()
         }
     }

@@ -43,23 +43,14 @@ interface IdentityDao {
     suspend fun delete(identity: Identity)
 }
 
+/** 旧表：主机钥匙改住核心那份库，这张表只剩 App 起来迁一次（读全部 · 读回对上才清空）。下一版升库删表。 */
 @Dao
 interface KnownHostDao {
-    @Query("SELECT * FROM known_hosts WHERE host = :host AND port = :port")
-    suspend fun forHost(
-        host: String,
-        port: Int,
-    ): List<KnownHost>
+    @Query("SELECT * FROM known_hosts")
+    suspend fun all(): List<KnownHost>
 
-    @Upsert
-    suspend fun upsert(knownHost: KnownHost)
-
-    /** 忘记某 host:port 的全部已钉扎密钥（TOFU 恢复路径：服务器真·重装/轮换后重新走首见接受）。 */
-    @Query("DELETE FROM known_hosts WHERE host = :host AND port = :port")
-    suspend fun forget(
-        host: String,
-        port: Int,
-    )
+    @Query("DELETE FROM known_hosts")
+    suspend fun clear()
 }
 
 @Dao

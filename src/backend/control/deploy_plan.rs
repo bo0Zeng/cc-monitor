@@ -35,7 +35,6 @@ use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use deploy_contract::{DeployAction, Key, Refusal, RemoteIdentity, Route};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// 判定与计划的本体住 `deploy` crate（桌面与手机同一份）；本文件只是帧面那一层（入参 · 回包形状 · 码）。
 pub use deploy::{
@@ -88,9 +87,6 @@ pub(crate) struct Planned {
     pub(crate) theirs: Option<String>,
     /// 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
     pub(crate) leftovers: Vec<String>,
-    /// 问 `uname` 那一趟拨号的 ack 原样（拨号核心 `DialAck` 那一形）。
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) ack: Value,
 }
 
 /// 计划 → 帧面那一格。
@@ -109,7 +105,6 @@ pub fn plan_json(p: &Plan) -> Planned {
         why,
         theirs,
         leftovers: p.leftovers.clone(),
-        ack: p.ack.clone(),
     }
 }
 

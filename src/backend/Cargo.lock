@@ -692,7 +692,6 @@ dependencies = [
  "copy-core",
  "deploy-contract",
  "relay-route-core",
- "serde_json",
  "ssh-dial",
  "test-home",
  "tokio",

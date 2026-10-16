@@ -50,7 +50,6 @@ impl PhoneLink {
             r.insert("stages".into(), false.into());
             r.insert("progress".into(), true.into());
         }
-        crate::note_known(&req);
         let req: ssh_dial::DialRequest = serde_json::from_value(req).map_err(|e| {
             Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string())
         })?;

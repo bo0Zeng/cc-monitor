@@ -84,8 +84,7 @@ pub(crate) struct Plan {
 
 /// `deploy-plan` 的应答 → [`Plan`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
-    const KEYS: [&str; 9] = [
-        "ack",
+    const KEYS: [&str; 8] = [
         "action",
         "arch",
         "expected",
@@ -119,9 +118,6 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         .get("leftovers")
         .cloned()
         .and_then(|a| serde_json::from_value(a).ok())
-        .ok_or_else(bad)?;
-    obj.get("ack")
-        .filter(|a| a.is_object() || a.is_null())
         .ok_or_else(bad)?;
     Ok(Plan {
         key,

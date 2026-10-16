@@ -151,7 +151,6 @@ async fn run(
     on: &OnEvent,
 ) {
     let emit = |body: String| on(h, KIND, body);
-    crate::note_known(&base);
     let req: ssh_dial::DialRequest = match serde_json::from_value(base.clone()) {
         Ok(r) => r,
         Err(e) => {
@@ -159,19 +158,18 @@ async fn run(
             return emit(failed_json("bad_request", &text, Some(&e.to_string())));
         }
     };
-    // 一次性命令走常驻流那条链路的 capture（同一条池连接；手机的 host key 拨号时已经回调落库，ack 不用）。
+    // 一次性命令走常驻流那条链路的 capture（同一条池连接）。
     let link = Arc::new(resident::PhoneLink::new(base));
     let exec: deploy::Exec = Box::new(move |command| {
         let link = Arc::clone(&link);
         Box::pin(async move {
             use resident_client::feed::Transport as _;
             let got = link.capture(command).await.map_err(|p| p.text)?;
-            let captured = ssh_dial::Captured {
+            Ok(ssh_dial::Captured {
                 stdout: got.stdout,
                 stderr: got.stderr,
                 exit_status: got.exit_status,
-            };
-            Ok((captured, serde_json::Value::Null))
+            })
         })
     });
     let facing = deploy::DialFacing::new(req, exec);
@@ -212,7 +210,6 @@ mod tests {
             expected: "p9b-mine".into(),
             action,
             leftovers: vec![],
-            ack: serde_json::Value::Null,
         }
     }
 

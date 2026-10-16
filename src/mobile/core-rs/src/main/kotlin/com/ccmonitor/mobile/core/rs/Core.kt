@@ -20,7 +20,7 @@ object Core {
         System.loadLibrary("mobcore")
     }
 
-    /** 核心回调 Kotlin 的四个口（在核心的工作线程上调；不许阻塞太久，不许抛）。 */
+    /** 核心回调 Kotlin 的三个口（在核心的工作线程上调；不许阻塞太久，不许抛）。 */
     interface Sink {
         /** 一条链路的下行字节；`null` ⇒ 这条链路收工了。 */
         fun data(
@@ -34,13 +34,6 @@ object Core {
             data: ByteArray,
         ): ByteArray?
 
-        /** 握手时认下的一把 host key（[key] = 算法 ＋ base64，同 OpenSSH 那一行的前两段）。 */
-        fun hostKey(
-            host: String,
-            port: Int,
-            key: String,
-        )
-
         /** 一台常驻流交的事：[kind] 是 `state` · `frame` · `watch_from` · `reply` · `moved`，[body] 是那一段文本（JSON 或原样一帧）。 */
         fun resident(
             handle: Long,
@@ -52,8 +45,23 @@ object Core {
     /** 这一份核心的身份那一行（JSON：拨号核心的 ack 协议版本 · 认得的用法）。 */
     external fun version(): String
 
-    /** 记下 [sink]、装上手机那一套（只认第一次）。 */
-    external fun init(sink: Sink)
+    /** 记下 [sink]、装上手机那一套（只认第一次）：主机钥匙那份库（OpenSSH known_hosts）在 [knownHosts]（App 私有目录）。 */
+    external fun init(
+        sink: Sink,
+        knownHosts: String,
+    )
+
+    /**
+     * Room 旧表迁进库、读回比（[rows] 平铺：主机 · 口 · 类型 · base64 四个一行）：对上 ⇒ `null`（旧表可清空）；
+     * 对不上 ⇒ 那一句（之后拨号一律拒，下次启动再迁）。只活这一版。
+     */
+    external fun migrateHostKeys(rows: Array<String>): String?
+
+    /** 忘掉这台的主机钥匙（「钥匙变了」页上点了才调）；写不成 ⇒ `false`。 */
+    external fun forgetHost(
+        host: String,
+        port: Int,
+    ): Boolean
 
     /** 握一份密码，回它的编号；读不动 ⇒ `null`。 */
     external fun putPassword(password: String): String?

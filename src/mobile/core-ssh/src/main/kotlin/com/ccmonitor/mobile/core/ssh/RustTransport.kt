@@ -22,11 +22,10 @@ import org.json.JSONObject
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.File
 import java.security.KeyStore
-import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.interfaces.ECPublicKey
-import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -35,13 +34,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * - **连上**＝开一条握着连接的链路（`use: hold`）：竞速 · 跳板（多跳）· host key · 鉴权 · 保活都在核心里；之后每一次 exec /
  *   shell 各开一条链路，按同一份拨号身份复用那条连接（核心的连接池）。握着的那条收工（对端断 · 保活判死）⇒ [isConnected] 变假。
- * - host key：这台记过的全部钥匙交进请求，照 OpenSSH 比（记过的类型协商排前、按协商出的那一种严格比、那一种没记过 ⇒ 拒）；
- *   一把都没记过 ⇒ 首见接受，**鉴权过了**才落 [KnownHostStore]。
+ * - host key：读 · 判 · 记都在核心里（App 私有目录那份库，[installRustCore] 时交的路径）；「钥匙变了」照 ack 说（[HostKeyChangedException]）。
  * - 钥匙交进核心、拨号请求写它的编号（密码 · PEM · Keystore 别名＋公钥）；每一条都握着自己那份身份的钥匙，[close] 时放掉 ——
  *   身份的最后一条收掉，核心里那几把就没了。Keystore 的签名在这里做（回 DER，核心换成 SSH 的格式）。
  */
 class RustTransport(
-    private val knownHostStore: KnownHostStore? = null,
     /** 照这一份拨号身份再握一条（[again]）；`null` ⇒ [connect] 照配置组一份新的。 */
     private val preset: JSONObject? = null,
     /** [preset] 那份身份的钥匙编号（[again] 已替这一条多握了一份）。 */
@@ -70,7 +67,7 @@ class RustTransport(
             kept.forEach { Core.holdKey(it, false) }
             return null
         }
-        return RustTransport(knownHostStore, JSONObject(b.toString()), ids)
+        return RustTransport(JSONObject(b.toString()), ids)
     }
 
     override fun onDrop(f: () -> Unit) {
@@ -85,8 +82,7 @@ class RustTransport(
     ) = withContext(Dispatchers.IO) {
         require(configs.isNotEmpty()) { "no address to connect" }
         val first = configs.first()
-        preset?.let { return@withContext holdOn(it, first, emptyList(), emptyList(), onEvent) }
-        val known = knownOf(first.host, first.port)
+        preset?.let { return@withContext holdOn(it, first, onEvent) }
         val req =
             JSONObject()
                 .put("host", first.host)
@@ -94,12 +90,9 @@ class RustTransport(
                 .put("user", first.username)
                 .put("key_path", keyFor(first.auth))
                 .put("endpoints", JSONArray(configs.map { JSONObject().put("host", it.host).put("port", it.port) }))
-        if (known.isNotEmpty()) req.put("known_keys", JSONArray(known.map { "${it.keyType} ${it.publicKeyBase64}" }))
         first.jumpVia?.let { req.put("jump", hopOf(it)) }
         base = JSONObject(req.toString())
-        val chain = generateSequence(first) { it.jumpVia }.map { it.host to it.port }.toList()
-        chain.forEach { RustCore.forgetSeen(it.first, it.second) }
-        holdOn(req, first, known, chain, onEvent)
+        holdOn(req, first, onEvent)
     }
 
     /**
@@ -111,8 +104,6 @@ class RustTransport(
     private suspend fun holdOn(
         req: JSONObject,
         first: ConnectionConfig,
-        known: List<KnownHostRecord>,
-        chain: List<Pair<String, Int>>,
         onEvent: ((SshConnectEvent) -> Unit)?,
     ) {
         val link = RustCore.open(JSONObject(req.toString()).put("use", "hold").put("stages", onEvent != null))
@@ -125,9 +116,8 @@ class RustTransport(
             }
         if (!ack.optBoolean("ok")) {
             link.close()
-            throw failureOf(ack, first, known)
+            throw failureOf(ack, first)
         }
-        recordFirstUse(chain)
         if (closed.get()) {
             link.close()
             throw IOException(copyText("reason.link.lost"))
@@ -213,7 +203,6 @@ class RustTransport(
 
     /** 把一样鉴权交进核心（这一条握一份），回它的编号（拨号请求的 `key_path`）；这一条已经关了 ⇒ 当场放掉、抛。 */
     private fun keyFor(auth: AuthMethod): String {
-        RustCore.ensure()
         val id =
             when (auth) {
                 is AuthMethod.Password -> Core.putPassword(auth.password)
@@ -242,45 +231,21 @@ class RustTransport(
                 .put("user", cfg.username)
                 .put("key_path", keyFor(cfg.auth))
                 .put("label", "${cfg.host}:${cfg.port}")
-        val known = knownOf(cfg.host, cfg.port)
-        if (known.isNotEmpty()) hop.put("known_keys", JSONArray(known.map { "${it.keyType} ${it.publicKeyBase64}" }))
         cfg.jumpVia?.let { hop.put("jump", hopOf(it)) }
         return hop
     }
 
-    /**
-     * 这台记过的全部钥匙（可多种类型）。交给核心照 OpenSSH 的做法比：协商时这几种类型排前，按协商出的那一种严格比；
-     * 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」；一把都没记过 ⇒ 首见。
-     */
-    private suspend fun knownOf(
-        host: String,
-        port: Int,
-    ): List<KnownHostRecord> = knownHostStore?.forHost(host, port).orEmpty()
-
-    /** 鉴权过了：这一趟首见的那几台落 [KnownHostStore]（已经记过的不动）。 */
-    private suspend fun recordFirstUse(chain: List<Pair<String, Int>>) {
-        val store = knownHostStore ?: return
-        for ((host, port) in chain) {
-            val parts = RustCore.takeSeen(host, port)?.split(' ').orEmpty()
-            if (parts.size >= 2 && store.forHost(host, port).isEmpty()) {
-                store.record(KnownHostRecord(host, port, parts[0], parts[1], System.currentTimeMillis()))
-            }
-        }
-    }
-
+    /** ack 带着库里那一把的指纹 ⇒ 钥匙对不上被拒（核心判的、指纹也是核心写的）；库读不出（含旧表没迁完）只是 `host_key` 那一句。 */
     private fun failureOf(
         ack: JSONObject,
         cfg: ConnectionConfig,
-        known: List<KnownHostRecord>,
     ): Exception =
-        if (ack.optString("reason") == "host_key" && known.isNotEmpty()) {
-            val type = ack.optString("key_type")
+        if (ack.has("expected_fingerprint")) {
             HostKeyChangedException(
                 host = cfg.host,
                 port = cfg.port,
-                keyType = type,
-                // 同类型记过的那一把（没有 ⇒ 这一种从没记过：空串）。
-                expectedFingerprint = known.firstOrNull { it.keyType == type }?.let { fingerprintOf(it.publicKeyBase64) }.orEmpty(),
+                keyType = ack.optString("key_type"),
+                expectedFingerprint = ack.optString("expected_fingerprint"),
                 offeredFingerprint = ack.optString("fingerprint"),
             )
         } else if (ack.optString("reason") in UNREACHED) {
@@ -321,12 +286,6 @@ class RustTransport(
         /** 拨号核心 ack 里「没够着那一台」的那几个原因码（`ssh-dial` 的 `why`：解析 · 拨不通 · 一步都没动到期限 · 跳板那一台断了）。 */
         val UNREACHED = setOf("resolve", "unreachable", "timeout", "jump")
 
-        /** SSH 公钥 blob（base64）⇒ `SHA256:<无填充 base64>`（与 OpenSSH / 核心报的同形）。 */
-        fun fingerprintOf(blobB64: String): String {
-            val digest = MessageDigest.getInstance("SHA-256").digest(Base64.getDecoder().decode(blobB64))
-            return "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(digest)
-        }
-
         /** P-256 公钥 ⇒ 未压缩点 `04 ‖ X ‖ Y`（各 32 字节，左补零）。 */
         fun uncompressedPoint(pub: ECPublicKey): ByteArray {
             fun fixed(n: java.math.BigInteger): ByteArray {
@@ -340,25 +299,40 @@ class RustTransport(
     }
 }
 
-/** 核心装上（记下 Kotlin 这一侧的回调、装上手机那一套）；只认第一次。开常驻流之前要它（常驻流交的事经同一个回调回来）。 */
+/**
+ * 核心装上（记下 Kotlin 这一侧的回调、装上手机那一套）：主机钥匙那份库在 [knownHosts]。只认第一次；App 一起来就装，
+ * 之后才迁旧表、才拨号（常驻流交的事经同一个回调回来）。
+ */
+fun installRustCore(knownHosts: File) = RustCore.install(knownHosts)
+
+/** 核心装过了（没装就拨 ⇒ 抛：没装的核心一把主机钥匙都不认、也不记）。 */
 fun ensureRustCore() = RustCore.ensure()
 
-/** 进程里那一份 Rust 核心的 Kotlin 一侧：链路编号 → 收件箱 · Keystore 签名 · 认下的 host key · 常驻流交的事。 */
+/** 忘掉这台的主机钥匙（「钥匙变了」页上点了才调；规矩在核心）。写不成 ⇒ `false`。 */
+fun forgetHostKey(
+    host: String,
+    port: Int,
+): Boolean {
+    RustCore.ensure()
+    return Core.forgetHost(host, port)
+}
+
+/** 进程里那一份 Rust 核心的 Kotlin 一侧：链路编号 → 收件箱 · Keystore 签名 · 常驻流交的事。 */
 internal object RustCore : Core.Sink {
     private val inboxes = ConcurrentHashMap<Long, Channel<ByteArray>>()
-    private val seen = ConcurrentHashMap<String, String>()
 
     @Volatile private var ready = false
 
-    fun ensure() {
-        if (ready) return
+    fun install(knownHosts: File) {
         synchronized(this) {
             if (!ready) {
-                Core.init(this)
+                Core.init(this, knownHosts.path)
                 ready = true
             }
         }
     }
+
+    fun ensure() = check(ready)
 
     fun open(req: JSONObject): RustLink {
         ensure()
@@ -399,26 +373,6 @@ internal object RustCore : Core.Sink {
             android.util.Log.w("mobcore", "Keystore 签名失败（$alias）", e)
             null
         }
-
-    override fun hostKey(
-        host: String,
-        port: Int,
-        key: String,
-    ) {
-        seen["$host:$port"] = key
-    }
-
-    fun forgetSeen(
-        host: String,
-        port: Int,
-    ) {
-        seen.remove("$host:$port")
-    }
-
-    fun takeSeen(
-        host: String,
-        port: Int,
-    ): String? = seen.remove("$host:$port")
 
     /** 常驻流交的事：按那台的编号分过去（`ResidentEvents`）。 */
     override fun resident(

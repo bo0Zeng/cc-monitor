@@ -3,12 +3,10 @@ package com.ccmonitor.mobile.di
 import android.util.Log
 import com.ccmonitor.mobile.cache.LocalCache
 import com.ccmonitor.mobile.core.data.repo.HostRepository
-import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.link.BackendFiles
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
-import com.ccmonitor.mobile.ssh.KnownHostDaoStore
 import com.ccmonitor.mobile.ui.chat.ChatController
 import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
@@ -99,13 +97,10 @@ val appModule =
                 movedRepo = get(), // 迁移说明那一格：手机原来存的启动配置，每台列一次
                 hostConnector = get(),
                 backends = get(), // 这台的常驻流：终端那几件问那台核心
-                knownHostStore = get(), // TOFU 恢复路径
             )
         }
         // 文件屏的浏览状态 VM：读写问那台后端（这台的常驻流）；SSH 连接与终端共用，按持有者计数保活。
         viewModel { (hostId: String) -> FilesViewModel(hostId, get(), get(), get()) }
-        // core-ssh 的 KnownHostStore 端口接 Room；sshModule 里的连接管理器靠它解析。
-        single<KnownHostStore> { KnownHostDaoStore(get()) } // get()=KnownHostDao（dataModule 提供）
         single { HostConnector(get(), get(), get()) }
         single { SessionTabManager() } // 多 tab 的应用级状态：打开的会话和按 key 保活的 ViewModelStore
         single { DevSeeder(androidContext(), get(), get()) }
