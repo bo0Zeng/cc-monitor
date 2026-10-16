@@ -39,7 +39,7 @@ export type OpenEnd =
   | { kind: "timeout"; said: string; detail: string }
   | { kind: "unreachable"; said: string; detail: string };
 
-const FIELDS: readonly string[] = ["agent", "command", "cwd", "account", "place", "tmuxName"] satisfies SessionNewField[];
+const FIELDS: ReadonlySet<string> = new Set<SessionNewField>(["agent", "command", "cwd", "account", "place", "tmuxName"]);
 
 /** 拒绝体的 `data`（`{field, unavailable}`）；读不出 ⇒ 当整体不行。 */
 function refusalData(d: unknown): { field: SessionNewField | null; unavailable: AccountUnavailable | null } {
@@ -47,7 +47,7 @@ function refusalData(d: unknown): { field: SessionNewField | null; unavailable: 
   const f = d.field;
   const u = d.unavailable;
   return {
-    field: typeof f === "string" && FIELDS.includes(f) ? (f as SessionNewField) : null,
+    field: typeof f === "string" && FIELDS.has(f) ? (f as SessionNewField) : null,
     unavailable: isObj(u) && typeof u.requested === "string" && typeof u.listKnown === "boolean" ? (u as unknown as AccountUnavailable) : null,
   };
 }
