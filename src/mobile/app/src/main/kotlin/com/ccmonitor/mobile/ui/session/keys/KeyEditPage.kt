@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,7 @@ import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import com.ccmonitor.mobile.ui.session.GestureSpec
 import com.ccmonitor.mobile.ui.session.SystemTimings
 import com.ccmonitor.mobile.ui.session.gestureSpec
+import com.ccmonitor.mobile.ui.session.keyIcon
 
 /** 编辑一颗上叠着的那一个抽屉。 */
 private sealed interface Sheet {
@@ -60,13 +62,15 @@ private sealed interface Sheet {
 
     data object Group : Sheet
 
+    data object Icon : Sheet
+
     data class Duration(
         val double: Boolean,
     ) : Sheet
 }
 
 /**
- * 编辑一颗：键帽（不填照单击自动写）· 所在组 · 单击 · 双击 · 长按（各一个三段分段按钮）· 更多（这颗的两个时长）·
+ * 编辑一颗：键帽（另写字或另选图标，都不填照单击自动写）· 所在组 · 单击 · 双击 · 长按（各一个三段分段按钮）· 更多（这颗的两个时长）·
  * 底部「还原默认」（默认按键改过的才有）·「删除按键」。修饰键只有所在组和三行固定的意思。保存在顶栏右边。
  */
 @Composable
@@ -118,11 +122,20 @@ private fun EditBody(
     val mod = d.modifier
     if (mod == null) {
         SectionLabel(copyText("mobKeys.edit.cap"))
+        // 另写字或另选图标，二选一；都没有 ＝ 照单击自动写（占位字说会写成什么）。
+        val icon = keyIcon(d.icon)
         OutlinedTextField(
             value = d.label,
-            onValueChange = { onDraft(d.copy(label = it)) },
+            onValueChange = { onDraft(d.withLabel(it)) },
             singleLine = true,
-            placeholder = { Text(copyText("mobKeys.edit.capAuto", "x" to (tapCap ?: copyText("mobKeys.edit.capFollow")))) },
+            placeholder =
+                if (icon == null) {
+                    { Text(copyText("mobKeys.edit.capAuto", "x" to (tapCap ?: copyText("mobKeys.edit.capFollow")))) }
+                } else {
+                    null
+                },
+            leadingIcon = icon?.let { { PhIcon(it, contentDescription = d.icon, size = Touch.iconInline) } },
+            trailingIcon = { TextButton(onClick = { onSheet(Sheet.Icon) }) { Text(copyText("mobKeys.edit.capIcon")) } },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -152,7 +165,7 @@ private fun EditBody(
     }
 }
 
-/** 编辑一颗上的抽屉：录入 · 选 App 动作 · 选组 · 这颗的时长。 */
+/** 编辑一颗上的抽屉：录入 · 选 App 动作 · 选组 · 选键帽图标 · 这颗的时长。 */
 @Composable
 private fun EditSheet(
     sheet: Sheet?,
@@ -176,6 +189,11 @@ private fun EditSheet(
         Sheet.Group ->
             GroupPickSheet(state.groups, d.groupId, onPick = {
                 onDraft(d.copy(groupId = it))
+                onDone()
+            }, onDismiss = onDone)
+        Sheet.Icon ->
+            IconPickSheet(d.icon, onPick = {
+                onDraft(d.withIcon(it))
                 onDone()
             }, onDismiss = onDone)
         is Sheet.Duration -> {

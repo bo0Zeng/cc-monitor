@@ -41,11 +41,12 @@ import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.session.KeyCapLabel
 import kotlinx.coroutines.launch
 
-/** 编辑页里画的一颗小键帽（`--card` 底 ＋ 边，等宽小字）；字里的方向 · 回车这类画成图标。 */
+/** 编辑页里画的一颗小键帽（`--card` 底 ＋ 边，等宽小字）；另选了图标画图标，字里的方向 · 回车这类也画成图标。 */
 @Composable
 internal fun MiniCap(
     label: String,
     modifier: Modifier = Modifier,
+    icon: String? = null,
     active: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
@@ -61,7 +62,7 @@ internal fun MiniCap(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        KeyCapLabel(label, style = monoSmall, color = MaterialTheme.colorScheme.onSurface)
+        KeyCapLabel(label, style = monoSmall, color = MaterialTheme.colorScheme.onSurface, icon = icon)
     }
 }
 

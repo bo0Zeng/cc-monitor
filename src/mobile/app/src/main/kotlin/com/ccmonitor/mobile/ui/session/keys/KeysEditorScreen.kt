@@ -530,7 +530,7 @@ private fun KeyRow(
         Box(handle.heightIn(min = Touch.target).width(Touch.target), contentAlignment = Alignment.Center) {
             PhIcon(Ph.DotsSixVertical, contentDescription = null, size = Touch.iconInline, tint = tokens.textFaint)
         }
-        MiniCap(k.cap(state::groupName))
+        MiniCap(k.cap(state::groupName), icon = k.icon)
         Spacer(Modifier.width(tokens.spacing.sm))
         Column(Modifier.weight(1f)) {
             Text(firstLine(k, state::groupName), style = MaterialTheme.typography.bodyMedium)

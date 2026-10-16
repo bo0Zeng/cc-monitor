@@ -56,6 +56,12 @@ enum class Ph(
     Warning(0xE4E0),
     WarningCircle(0xE4E2),
     RadioButton(0xEB08),
+    ArrowLineDown(0xE05C),
+    ArrowLineUp(0xE066),
+    FloppyDisk(0xE248),
+    GitBranch(0xE278),
+    MagnifyingGlass(0xE30C),
+    SignOut(0xE42A),
     ;
 
     val glyph: String get() = String(Character.toChars(codepoint))
