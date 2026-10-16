@@ -4,7 +4,7 @@
 //! 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
 use super::*;
-use cmd_wire::watch::WatchFrom;
+use crate::wire::WatchFrom;
 
 const A: &str = "s-wa";
 const B: &str = "s-wb";
@@ -61,8 +61,8 @@ fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
     out
 }
 
-fn ids(v: &[&str]) -> cmd_wire::watch::WatchAsk {
-    cmd_wire::watch::WatchAsk {
+fn ids(v: &[&str]) -> crate::wire::WatchAsk {
+    crate::wire::WatchAsk {
         sids: v.iter().map(|s| s.to_string()).collect(),
         branch: Vec::new(),
     }
@@ -221,9 +221,12 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
         );
     }
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
-    let ask = cmd_wire::watch::WatchAsk {
+    let ask = crate::wire::WatchAsk {
         sids: vec![A.into()],
-        branch: vec![cmd_wire::watch::BranchHeld::nothing(A)],
+        branch: vec![crate::wire::BranchHeld {
+            sid: A.into(),
+            ..Default::default()
+        }],
     };
     join(
         Sub::new(7, tx, crate::Tz::default()),

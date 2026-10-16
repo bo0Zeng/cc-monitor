@@ -586,6 +586,9 @@ pub fn branch_sum(ids: &[String]) -> String {
 /// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`；那边的 files 一问一答也用它，两处只许一份）。
 pub use ssh_dial::b64::{b64_decode, b64_encode};
 
+/// 「这条流在看哪几个会话」那一问（`stream-watch`，attach 行的 `watch` 同形）的入参与应答：住 `cmd-wire`（客户端同一份）。
+pub use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
+
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text

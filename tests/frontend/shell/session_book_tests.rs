@@ -334,6 +334,10 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
 #[test]
 fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     use cmd_wire::watch::BranchHeld;
+    let nothing = |sid: &str| BranchHeld {
+        sid: sid.into(),
+        ..Default::default()
+    };
     let pi = crate::origin::Origin("pi".into());
     let branch = |s: &str, at: u64, ids: &[&str], sum: &str| In::Branch {
         origin: pi.clone(),
@@ -367,8 +371,8 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
                 at: 3,
                 sum: Some("s3".into())
             },
-            BranchHeld::nothing("b"),
-            BranchHeld::nothing("c"),
+            nothing("b"),
+            nothing("c"),
         ],
         "断线之后交回的手上那份不对"
     );
@@ -377,10 +381,7 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     b.step(In::Listed {
         origin: "pi".into(),
     });
-    assert_eq!(
-        b.branch_held(&pi, &sids(&["a"])),
-        vec![BranchHeld::nothing("a")]
-    );
+    assert_eq!(b.branch_held(&pi, &sids(&["a"])), vec![nothing("a")]);
 }
 
 /// 名单并进 attach 行之后，手上那份清单在写 attach 行时就读：旧连接队列里还压着一帧 `session_branch` 没落账时读到的是更早一刻的

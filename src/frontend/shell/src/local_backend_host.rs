@@ -841,7 +841,7 @@ fn attach_stream(
             })?;
     let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
     crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
-    crate::stream_watch::desk(crate::inbound_client::LOCAL_ORIGIN).up(&client, Some(carried));
+    crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
         crate::inbound_client::LOCAL_ORIGIN
@@ -1118,7 +1118,7 @@ fn adopt_with(
         Ok(Some((conn, hello))) => {
             // attach 行带本机名单台此刻那份：后端从第一帧起照它发；接上之后把这条连接交给名单台。
             let carried =
-                crate::stream_watch::desk(crate::inbound_client::LOCAL_ORIGIN).ask_for_attach();
+                crate::stream_watch::desk(&crate::origin::Origin::local()).ask_for_attach();
             match send_attach(&conn, &carried).and_then(|()| attach_stream(conn, &hello, &carried))
             {
                 Ok(()) => Adopt::Attached,

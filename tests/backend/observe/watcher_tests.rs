@@ -1374,7 +1374,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
     );
     watch_sessions(
         0,
-        cmd_wire::watch::WatchAsk {
+        crate::wire::WatchAsk {
             sids: vec!["other".into()],
             branch: vec![],
         },
@@ -4563,7 +4563,7 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
-    use cmd_wire::watch::{BranchHeld, WatchAsk};
+    use crate::wire::{BranchHeld, WatchAsk};
     let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-read8c-held-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

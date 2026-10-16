@@ -108,7 +108,7 @@ fn caps_child() {
             std::io::Cursor::new(input.as_bytes().to_vec()),
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
             crate::wire::HelloFlushed::for_tests(),

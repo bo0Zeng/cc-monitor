@@ -70,12 +70,11 @@ fn sids(a: &serde_json::Value) -> serde_json::Value {
     a["sids"].clone()
 }
 
-/// 让发送任务跑完手上的（虚拟时钟：转几圈 ＋ 推一点时间）。
+/// 让发送任务 · 替身那一头跑完手上的（单线程运行时：数圈数，不看钟）。
 async fn settle() {
-    for _ in 0..8 {
+    for _ in 0..256 {
         tokio::task::yield_now().await;
     }
-    tokio::time::sleep(Duration::from_millis(10)).await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -209,7 +208,11 @@ async fn the_branch_lists_held_ride_along_on_both_paths() {
         serde_json::json!({ "sids": ["a"], "branch": [] })
     );
     assert_eq!(
-        serde_json::to_value(BranchHeld::nothing("b")).unwrap(),
+        serde_json::to_value(BranchHeld {
+            sid: "b".into(),
+            ..Default::default()
+        })
+        .unwrap(),
         serde_json::json!({ "sid": "b", "at": 0 })
     );
 }
@@ -221,10 +224,8 @@ fn only_the_desk_says_stream_watch() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let me = "src/comms/resident-client/watch.rs";
     let mine = guard_core::production_code(&std::fs::read_to_string(repo.join(me)).unwrap());
-    assert!(
-        mine.contains("\"stream-watch\"") && mine.contains("WATCH_CMD"),
-        "正控：本文件里没有那两样了"
-    );
+    guard_core::find_pinned(&mine, "pub const WATCH_CMD: &str = \"stream-watch\";")
+        .unwrap_or_else(|e| panic!("正控：{e}"));
     let mut hits = Vec::new();
     let mut seen = 0usize;
     for root in [

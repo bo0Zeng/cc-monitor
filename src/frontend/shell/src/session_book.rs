@@ -315,7 +315,10 @@ impl Book {
                     at: off.len() as u64,
                     sum: Some(sum.clone()),
                 },
-                _ => cmd_wire::watch::BranchHeld::nothing(sid),
+                _ => cmd_wire::watch::BranchHeld {
+                    sid: sid.to_string(),
+                    ..Default::default()
+                },
             })
             .collect()
     }

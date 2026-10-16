@@ -165,7 +165,7 @@ pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut)
     let feed = Feed::start(
         feed_config(&origin),
         Some(link),
-        crate::stream_watch::desk(&origin),
+        crate::stream_watch::desk(&crate::origin::Origin(origin.clone())),
         queue_sink(tx),
     );
     feeds()

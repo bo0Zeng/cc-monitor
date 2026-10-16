@@ -9,7 +9,10 @@ fn the_attach_line_is_four_cells_and_nothing_else() {
         mine: Some("p1a-x".into()),
         watch: Some(crate::watch::WatchAsk {
             sids: vec!["s1".into()],
-            branch: vec![crate::watch::BranchHeld::nothing("s1")],
+            branch: vec![crate::watch::BranchHeld {
+                sid: "s1".into(),
+                ..Default::default()
+            }],
         }),
     };
     assert_eq!(

@@ -513,25 +513,6 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `gone` —— 会话走了 / 子运行收场了
 - `unwatched` —— 出了这条连接的名单
 
-#### `WatchFrom`
-
-`stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流（`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sid` | string | 会话 id |
-| `path` | string | 这份会话记录在那台机器上的绝对路径 |
-| `seq` | number | 这条流从这一行起发它 |
-
-#### `WatchAsk`
-
-`stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `sids` | [string] | 在看的会话 id（空 ＝ 一个都不看） |
-| `branch` | [BranchHeld]? | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要） |
-
 #### `BranchHeld`
 
 `stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。
@@ -542,6 +523,25 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | `path` | string? |  |
 | `at` | number? | 手上那份的前几条（照手上最后一帧 `session_branch` 的 `at + off.len()`；手上没有 ⇒ `0`） |
 | `sum` | string? |  |
+
+#### `WatchAsk`
+
+`stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sids` | [string] | 在看的会话 id（空 ＝ 一个都不看） |
+| `branch` | [BranchHeld]? | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要） |
+
+#### `WatchFrom`
+
+`stream-watch` 应答里的一格：这个会话刚进了这条流的名单，它的这份记录从第 `seq` 行起上流（`seq` 与行帧同一个行号空间）；`[0, seq)` 那段客户端按骨架补（`history-index` 从上次的末端续）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `path` | string | 这份会话记录在那台机器上的绝对路径 |
+| `seq` | number | 这条流从这一行起发它 |
 
 #### `WatchReply`
 

@@ -115,8 +115,8 @@ pub fn command_names() -> Vec<&'static str> {
 pub struct WatchDesk(
     Arc<
         dyn Fn(
-                cmd_wire::watch::WatchAsk,
-            ) -> tokio::sync::oneshot::Receiver<Vec<cmd_wire::watch::WatchFrom>>
+                crate::wire::WatchAsk,
+            ) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>>
             + Send
             + Sync,
     >,
@@ -126,8 +126,8 @@ impl WatchDesk {
     /// 接上这条连接的 watcher（入参就是它的 `watch` 口）。
     pub fn new(
         f: impl Fn(
-                cmd_wire::watch::WatchAsk,
-            ) -> tokio::sync::oneshot::Receiver<Vec<cmd_wire::watch::WatchFrom>>
+                crate::wire::WatchAsk,
+            ) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>>
             + Send
             + Sync
             + 'static,
@@ -429,7 +429,7 @@ fn dispatch(
             ),
         ),
         // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
-        "stream-watch" => match crate::wire::typed::take::<cmd_wire::watch::WatchAsk>(&req.args) {
+        "stream-watch" => match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
             Err(f) => Disposition::Reply(f.into_reply(req.id, &req.cmd)),
             Ok(ask) => {
                 let answer = (given.watch.0)(ask);
@@ -438,7 +438,7 @@ fn dispatch(
                     crate::wire::typed::answer_later::<crate::wire::conn::StreamWatch, _>(
                         async move {
                             // watcher 已停（这条流正在收场）⇒ 没有可答的，回空。
-                            Ok(cmd_wire::watch::WatchReply {
+                            Ok(crate::wire::WatchReply {
                                 from: answer.await.unwrap_or_default(),
                             })
                         },

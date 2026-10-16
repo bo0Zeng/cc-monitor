@@ -3,11 +3,12 @@ use super::*;
 
 #[test]
 fn one_desk_per_machine_and_it_starts_empty() {
-    let a = desk("o-watch-test");
-    let b = desk("o-watch-test");
+    let o = |s: &str| crate::origin::Origin(s.into());
+    let a = desk(&o("o-watch-test"));
+    let b = desk(&o("o-watch-test"));
     assert!(Arc::ptr_eq(&a, &b), "同一台两张名单台");
     assert!(a.sids().is_empty(), "冷起名单从空开始（不是全看）");
-    assert!(!Arc::ptr_eq(&a, &desk("o-watch-test-2")), "两台共用了一张");
+    assert!(!Arc::ptr_eq(&a, &desk(&o("o-watch-test-2"))), "两台共用了一张");
 }
 
 /// 三处连接都经名单台：本机常驻（attach 行带它的名单 · 接上交它）· 本机 stdio（没有 attach 行 ⇒ 接上交它、它当场报）· 远端（交给 `Feed`）。
@@ -19,8 +20,8 @@ fn every_carrier_goes_through_the_desk() {
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
     for pin in [
-        "crate::stream_watch::desk(crate::inbound_client::LOCAL_ORIGIN).ask_for_attach();",
-        "crate::stream_watch::desk(crate::inbound_client::LOCAL_ORIGIN).up(&client, Some(carried));",
+        "crate::stream_watch::desk(&crate::origin::Origin::local()).ask_for_attach();",
+        "crate::stream_watch::desk(&crate::origin::Origin::local()).up(&client, Some(carried));",
     ] {
         guard_core::find_pinned(&host, pin).unwrap_or_else(|e| panic!("本机常驻：{e}"));
     }
@@ -29,14 +30,17 @@ fn every_carrier_goes_through_the_desk() {
     ));
     guard_core::find_pinned(
         &stdio,
-        "crate::stream_watch::desk(route.origin.as_wire_str()).up(&client, None);",
+        "crate::stream_watch::desk(&route.origin).up(&client, None);",
     )
     .unwrap_or_else(|e| panic!("本机 stdio：{e}"));
     let remote = read(include_str!(
         "../../../src/frontend/shell/src/stream_source/run.rs"
     ));
-    guard_core::find_pinned(&remote, "crate::stream_watch::desk(&origin),")
-        .unwrap_or_else(|e| panic!("远端：{e}"));
+    guard_core::find_pinned(
+        &remote,
+        "crate::stream_watch::desk(&crate::origin::Origin(origin.clone())),",
+    )
+    .unwrap_or_else(|e| panic!("远端：{e}"));
     let me = read(include_str!(
         "../../../src/frontend/shell/src/stream_watch.rs"
     ));

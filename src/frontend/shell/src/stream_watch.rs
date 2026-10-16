@@ -20,13 +20,12 @@ fn desks() -> &'static Mutex<HashMap<String, Arc<Desk>>> {
 }
 
 /// 那台的名单台（没有就起一张，名单照此刻的）。连接那一侧拿它：写 attach 行时问名单、接上时交连接。
-pub(crate) fn desk(origin: &str) -> Arc<Desk> {
+pub(crate) fn desk(origin: &Origin) -> Arc<Desk> {
     let mut t = desks().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(d) = t.get(origin) {
+    if let Some(d) = t.get(origin.as_wire_str()) {
         return Arc::clone(d);
     }
-    let o = Origin(origin.to_string());
-    let (held_at, from_at) = (o.clone(), o.clone());
+    let (held_at, from_at) = (origin.clone(), origin.clone());
     // 发送任务住 monitor 那一份运行时（调的人可能在同步线程上）。
     let _rt = tauri::async_runtime::handle().inner().enter();
     let d = Desk::new(
@@ -42,9 +41,9 @@ pub(crate) fn desk(origin: &str) -> Arc<Desk> {
         },
     );
     if let Some(r) = REPLAY.get() {
-        d.set(r.watched(&o));
+        d.set(r.watched(origin));
     }
-    t.insert(origin.to_string(), Arc::clone(&d));
+    t.insert(origin.as_wire_str().to_string(), Arc::clone(&d));
     d
 }
 

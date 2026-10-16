@@ -551,7 +551,7 @@ struct Attached {
     /// 看的这一台的时区（attach 行里的 `tz`）。
     tz: cc_monitor_backend::Tz,
     /// attach 行带的在看名单（没带 ⇒ 全发，等 `stream-watch`）。
-    watch: Option<cmd_wire::watch::WatchAsk>,
+    watch: Option<crate::wire::WatchAsk>,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。

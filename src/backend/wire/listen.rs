@@ -149,7 +149,7 @@ pub enum Admit {
     Stream {
         tz: Option<String>,
         reply: AttachReply,
-        watch: Option<cmd_wire::watch::WatchAsk>,
+        watch: Option<crate::wire::WatchAsk>,
     },
     /// 拒绝，并把理由写回去（**出声**，不是静默 FIN —— 照 `relay::serve` 那条 503 的形状）。
     Refuse(&'static str),

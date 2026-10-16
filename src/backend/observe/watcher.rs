@@ -154,11 +154,11 @@ enum WatchEvent {
     Watch {
         /// 哪条连接报的（[`Attachment`] 的号）。
         sub: u64,
-        ask: cmd_wire::watch::WatchAsk,
-        done: tokio::sync::oneshot::Sender<Vec<cmd_wire::watch::WatchFrom>>,
+        ask: crate::wire::WatchAsk,
+        done: tokio::sync::oneshot::Sender<Vec<crate::wire::WatchFrom>>,
     },
     /// 一条流连接接上来了：从这一刻起它收这台的帧（先收一份此刻的样子，[`join`]）；带着 attach 行里的名单（没带 ⇒ 全看）。
-    Join(Sub, Option<cmd_wire::watch::WatchAsk>),
+    Join(Sub, Option<crate::wire::WatchAsk>),
     /// 那条流连接走了（[`Attachment`] 丢了）。
     Leave(u64),
     /// 一条会话的后台预读做完了（线程池交回，[`primed`] 装回）。
@@ -841,7 +841,7 @@ impl WatcherPoke {
     pub fn attach(
         &self,
         tz: &crate::Tz,
-        watch: Option<cmd_wire::watch::WatchAsk>,
+        watch: Option<crate::wire::WatchAsk>,
     ) -> (mpsc::Receiver<Frame>, Attachment) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -886,9 +886,9 @@ impl WatchHandle {
     /// 这条流此刻在看哪几个会话（整份换）；回刚进名单的那几个从第几行起上流。watcher 已停 ⇒ 回的那一头直接断。
     pub fn watch(
         &self,
-        ask: cmd_wire::watch::WatchAsk,
-    ) -> tokio::sync::oneshot::Receiver<Vec<cmd_wire::watch::WatchFrom>> {
-        let (done, rx) = tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>();
+        ask: crate::wire::WatchAsk,
+    ) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>> {
+        let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>();
         let _ = self.tx.send(WatchEvent::Watch {
             sub: self.id,
             ask,
@@ -2420,10 +2420,10 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
 /// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发，[`primed`]）、也不回续点（它的续点由 `session_primed` 给）。
 fn watch_sessions(
     sub: u64,
-    ask: cmd_wire::watch::WatchAsk,
+    ask: crate::wire::WatchAsk,
     state: &mut ReaderState,
     sink: &mut FrameSink,
-) -> Vec<cmd_wire::watch::WatchFrom> {
+) -> Vec<crate::wire::WatchFrom> {
     let Some((fresh, starting)) = take_ask(sub, ask, state, sink) else {
         return Vec::new();
     };
@@ -2431,7 +2431,7 @@ fn watch_sessions(
     for sid in fresh {
         sink.send_to(sub, state.runs_frame(&sid));
         for p in paths_of(state, &sid) {
-            from.push(cmd_wire::watch::WatchFrom {
+            from.push(crate::wire::WatchFrom {
                 sid: sid.clone(),
                 path: p.to_string_lossy().into_owned(),
                 seq: state.seqs.peek(&p.to_string_lossy()),
@@ -2445,7 +2445,7 @@ fn watch_sessions(
 /// 这条连接的名单换成 `ask`：回刚进名单的（先前报过、又不在里面的）与刚要起主线外清单的（排好序；预读没交回的不算刚进）。没这条连接 ⇒ `None`。
 fn take_ask(
     sub: u64,
-    ask: cmd_wire::watch::WatchAsk,
+    ask: crate::wire::WatchAsk,
     state: &ReaderState,
     sink: &mut FrameSink,
 ) -> Option<(Vec<String>, Vec<String>)> {
@@ -2464,7 +2464,7 @@ fn take_ask(
         }
     };
     // 要清单的：只算在看的那几个（不在看的清单本来就不上流）。
-    let held: HashMap<String, cmd_wire::watch::BranchHeld> = ask
+    let held: HashMap<String, crate::wire::BranchHeld> = ask
         .branch
         .into_iter()
         .filter(|h| next.contains(&h.sid))
@@ -2515,7 +2515,7 @@ fn branch_starting(sub: u64, starting: &[String], state: &ReaderState, sink: &mu
 /// attach 行带了名单 ⇒ 先照它定这条连接的名单，那一份里的运行表只发名单里的（同之后的每一帧）。
 fn join(
     sub: Sub,
-    watch: Option<cmd_wire::watch::WatchAsk>,
+    watch: Option<crate::wire::WatchAsk>,
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) {

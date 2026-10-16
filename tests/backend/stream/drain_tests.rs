@@ -108,7 +108,7 @@ fn d2_child_harness() {
             tokio::io::stdin(),
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
             crate::wire::HelloFlushed::for_tests(),

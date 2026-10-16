@@ -61,16 +61,6 @@ pub struct BranchHeld {
     pub sum: Option<String>,
 }
 
-impl BranchHeld {
-    /// 要这个会话的清单、手上什么都没有（那台给整份）。
-    pub fn nothing(sid: &str) -> Self {
-        BranchHeld {
-            sid: sid.to_string(),
-            ..Default::default()
-        }
-    }
-}
-
 /// `stream-watch` 的应答。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
