@@ -7,7 +7,7 @@
 //!
 //! # 怎么测：驱动**真的发货二进制**，一行生产代码都不抄
 //!
-//! 取尾那一趟（`history_query::tail_plan`，只数行、不搬正文）是后端的私有 fn ⇒ 外部 target 够不着。
+//! 取尾那一趟（`history_query::tail_now`，数行 ＋ 读尾段第一页 ＋ 最后一行的记号）是后端的私有 fn ⇒ 外部 target 够不着。
 //! 本秤 **spawn 真二进制的真 CLI 入口** `--history-tail`（帧命令 `history-tail` 派生的那一面，入参经
 //! `--args-b64`）。`CARGO_BIN_EXE_*` 由 cargo 在**构建 bench target 时**注入，指向同一 profile 下编出来的那个 bin
 //! ⇒ 被测的就是发货路径本身，零漂移。
@@ -23,7 +23,7 @@
 //! | 量 | 怎么得 |
 //! |---|---|
 //! | 进程地板 `S` | `--history-tail`（一行的会话） |
-//! | **数行那一趟 `K`** | `--history-tail`（那一份大会话）− `S` |
+//! | **数行那一趟 `K`** | `--history-tail`（那一份大会话）− `S`（含尾段第一页那 N 行，与文件大小无关） |
 //!
 //! `K` 就是「`(size, mtime)` 缓存能省掉的那一块」。**判断值不值得做，看的是 K，不是总数。**
 //!
@@ -143,7 +143,7 @@ fn main() {
 
     let mut rows: Vec<Row> = Vec::new();
 
-    // ① 取尾：`history-tail`（只数行）。三档大小 + 长尾变体，N = 生产的那个数。
+    // ① 取尾：`history-tail`（数行 ＋ 尾段第一页）。三档大小 + 长尾变体，N = 生产的那个数。
     for (label, path, _) in &sizes {
         rows.push(measure(
             &format!("tail  N={SNAPSHOT_TAIL_LINES}  {label}"),
@@ -239,8 +239,8 @@ fn tail_args(path: &Path, n: usize) -> Vec<std::ffi::OsString> {
 ///
 /// | 被测入口 | 期望 |
 /// |---|---|
-/// | `--history-tail {path, n: N}` | `{total: T, tail_from: T−N, split_at: 前 T−N 行的字节和, end: 文件长, file: 第一行的摘要}` |
-/// | 同上，一行的会话（进程地板那一格） | `{total: 1, tail_from: 0, split_at: 0, end: 那一行的长, file: 那一行的摘要}` |
+/// | `--history-tail {path, n: N}` | `{total: T, tail_from: T−N, split_at: 前 T−N 行的字节和, end: 文件长, how: tail, from: T−N}` ＋ 第一页 N 行读完 ＋ `held` 停在文件尾、记号是最后一行的位置与摘要 |
+/// | 同上，一行的会话（进程地板那一格） | `{total: 1, tail_from: 0, split_at: 0, end: 那一行的长, how: tail, from: 0}` ＋ 一行 ＋ 同上 |
 ///
 /// 每一格都先经本秤自己的 [`measure`]（`reps = 1`）拿出字节数与期望那一行比，取尾那一格再经 [`measure_piped`]
 /// 比一次，并直接比一次**解出来的那张图** —— 读数表里的「出字节」那一列就是这么来的。
@@ -259,16 +259,15 @@ fn smoke() {
     let total = lines.len();
     let tail_from = total - N;
     let split_at: usize = lines[..tail_from].iter().map(|l| l.len()).sum();
-    // 文件身份：第一行正文（去掉 `\n`）的 FNV-1a 64 摘要，16 位十六进制。按定义在这里现算，不调后端那一份。
-    let fnv = |body: &[u8]| {
-        format!(
-            "{:016x}",
-            body.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &b| {
-                (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-            })
-        )
+    // 记号：最后一行（含 `\n`）的起点 · 终点与它原始字节的 FNV-1a 64 摘要（16 位十六进制）。按定义在这里现算，不调后端那一份。
+    let mark = |start: usize, line: &[u8]| {
+        let h = line.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+        format!("{start}-{}-{h:016x}", start + line.len())
     };
-    let file = fnv(&lines[0][..lines[0].len() - 1]);
+    let last = lines[total - 1];
+    let last_at = corpus.len() - last.len();
 
     let home = std::env::temp_dir().join(format!("s7-smoke-{}", std::process::id()));
     let sess = home.join("projects/s7-bench");
@@ -290,12 +289,16 @@ fn smoke() {
         (
             "tail",
             tail_args(&f, N),
-            serde_json::json!({"total": total, "tail_from": tail_from, "split_at": split_at, "end": corpus.len(), "file": file}),
+            serde_json::json!({"total": total, "tail_from": tail_from, "split_at": split_at, "end": corpus.len(),
+                "how": "tail", "from": tail_from, "rows": N, "next": corpus.len(), "eof": true,
+                "held": {"next": total, "next_byte": corpus.len(), "mark": mark(last_at, last)}}),
         ),
         (
             "floor",
             tail_args(&one, N),
-            serde_json::json!({"total": 1, "tail_from": 0, "split_at": 0, "end": one_line.len(), "file": fnv(&one_line[..one_line.len() - 1])}),
+            serde_json::json!({"total": 1, "tail_from": 0, "split_at": 0, "end": one_line.len(),
+                "how": "tail", "from": 0, "rows": 1, "next": one_line.len(), "eof": true,
+                "held": {"next": 1, "next_byte": one_line.len(), "mark": mark(0, one_line)}}),
         ),
     ];
     for (label, args, want) in &cases {
@@ -312,8 +315,13 @@ fn smoke() {
             out.status.code(),
             String::from_utf8_lossy(&out.stderr)
         );
-        let got: serde_json::Value =
+        let mut got: serde_json::Value =
             serde_json::from_slice(&out.stdout).expect("秤 7 冒烟：应答不是一行 JSON");
+        // 第一页的正文只数行数；`held.path` 是这一趟的一次性目录，不比。
+        got["rows"] = serde_json::json!(got["rows"].as_array().map_or(0, Vec::len));
+        if let Some(h) = got["held"].as_object_mut() {
+            h.remove("path");
+        }
         assert_eq!(
             &got, want,
             "秤 7 冒烟：`{label}` 那张图与从语料独立算出的期望不等"
