@@ -1934,7 +1934,7 @@
     "beResident.stop.cannotAsk": {
       "kind": "error",
       "role": "报错",
-      "zh": "问不到在听的后端 · {path} · {why}",
+      "zh": "连接在听的后端失败 · {path} · {why}",
       "args": ["path", "why"]
     },
     "beResident.stop.foreign": {
@@ -18785,7 +18785,7 @@
     "beSftp.fence.rootNotOwn": {
       "kind": "error",
       "role": "报错",
-      "zh": "~/{root} 不是家目录里的真目录 · {real} · 不写",
+      "zh": "~/{root} 不是主目录里的真目录 · {real} · 不写",
       "args": ["root", "real"]
     },
     "beSftp.fence.escaped": {

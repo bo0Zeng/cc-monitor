@@ -115,7 +115,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let body = &prod[at..];
     let made = guard_core::find_pinned(body, "let handed = backend_env();")
         .unwrap_or_else(|e| panic!("`start_local_backend` 里没有恰好一处算那份环境：{e}"));
-    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &handed) {")
+    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &landing, &handed) {")
         .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
     let supervised = guard_core::find_pinned(body, "handed,\n")
         .unwrap_or_else(|e| panic!("被监护那条没交那份环境：{e}"));
@@ -3495,7 +3495,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         // ── 宿主① ────────────────────────────────────────────────
         let bin = sb.bin.clone();
         expect_started(
-            start_detached(&|| Ok(bin.clone()), &sb.envs()),
+            start_detached(&|| Ok(bin.clone()), &bin, &sb.envs()),
             "第一个宿主",
         );
         let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -3519,7 +3519,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         // ── 宿主② ────────────────────────────────────────────────
         let bin2 = sb.bin.clone();
         expect_adopted(
-            start_detached(&|| Ok(bin2.clone()), &sb.envs()),
+            start_detached(&|| Ok(bin2.clone()), &bin2, &sb.envs()),
             "第二个宿主",
         );
         let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -3543,7 +3543,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         *DETACHED.lock().expect("锁") = None;
         let bin3 = sb.bin.clone();
         expect_started(
-            start_detached(&|| Ok(bin3.clone()), &sb.envs()),
+            start_detached(&|| Ok(bin3.clone()), &bin3, &sb.envs()),
             "非空对照（换一个数据目录 = 换一个口）",
         );
         let pid3 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -3574,7 +3574,7 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         *DETACHED.lock().expect("锁") = None;
 
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &sb.envs()), "本条");
+        expect_started(start_detached(&|| Ok(bin.clone()), &bin, &sb.envs()), "本条");
         let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         assert!(alive(pid), "起出来的 pid={pid} 不在进程表里");
 
@@ -3670,7 +3670,7 @@ fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
             }
         }
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &env), "本条");
+        expect_started(start_detached(&|| Ok(bin.clone()), &bin, &env), "本条");
         let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         sb.remember(pid);
         let own = ["CCM_RESIDENT", "CCM_BACKEND_STDERR_LOG"];
@@ -3753,7 +3753,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
             env
         };
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &env_now()), "第一次起");
+        expect_started(start_detached(&|| Ok(bin.clone()), &bin, &env_now()), "第一次起");
         let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         sb.remember(pid1);
         // 常驻后端的环境里只有常驻开关，没有任何钥匙或钥匙文件（门由内核给）。
@@ -3795,7 +3795,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         std::env::set_var("CLAUDE_CONFIG_DIR", &claude_c);
         let bin2 = sb.bin.clone();
         expect_adopted(
-            start_detached(&|| Ok(bin2.clone()), &env_now()),
+            start_detached(&|| Ok(bin2.clone()), &bin2, &env_now()),
             "改了设置之后再起",
         );
         assert_eq!(
@@ -3824,7 +3824,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         sb.forget_like_a_host_that_exited();
         let bin3 = sb.bin.clone();
         expect_started(
-            start_detached(&|| Ok(bin3.clone()), &env_now()),
+            start_detached(&|| Ok(bin3.clone()), &bin3, &env_now()),
             "停了之后再起",
         );
         let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
