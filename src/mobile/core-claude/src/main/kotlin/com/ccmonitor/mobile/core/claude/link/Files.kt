@@ -196,8 +196,16 @@ object FilesStat {
     /** unix 权限位；那台没有这一说 ⇒ `null`；解不出 ⇒ `null`。 */
     fun modeOf(data: Any?): Long? = Wire.bind<StatReply>(data)?.mode
 
-    /** 是什么（跟链接，那台判的）；解不出 ⇒ `null`。 */
-    fun kindOf(data: Any?): FileKind? = Wire.bind<StatReply>(data)?.kind
+    /** 是什么（跟链接，那台判的）· 在哪一级 · 末段名（那台切好的）；解不出 ⇒ `null`。 */
+    fun placeOf(data: Any?): Place? =
+        Wire.bind<StatReply>(data)?.let { r -> RemotePath.of(r.name)?.let { Place(r.kind, RemotePath.of(r.up), it) } }
+
+    /** 一个路径是什么、在哪：[up] 到顶 ⇒ `null`。 */
+    data class Place(
+        val kind: FileKind,
+        val up: RemotePath?,
+        val name: RemotePath,
+    )
 }
 
 /** `files-read-text`：读一份文本（预览 · 编辑）。 */
