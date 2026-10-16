@@ -22,7 +22,7 @@
  * - **长会话**（long）：新开页、第一下就点最长那条（冷），量首屏同上；然后在流上滚轮往上 60 下（每下 600 px、间隔 50 ms），
  *   量帧间隔 p50 / p95 / 最长、> 50 ms 的帧数、长任务。
  * - **只留眼前**（mem）：新开页、点最长那条，一屏一屏滚到顶、再滚回底（每屏等安静），然后 24 个 tab 逐个切一遍；
- *   开头 · 到顶 · 回底 · 切完各强制 GC 一次，读 JS 堆与 DOM 元素数（`getElementsByTagName("*")`），另记最长那条流里的卡数。
+ *   开头 · 到顶 · 回底 · 切完各强制 GC 一次，读 JS 堆 · 浏览器进程树的 Pss · DOM 元素数（`getElementsByTagName("*")`），另记最长那条流里的卡数。
  * 每项跑 `--runs` 趟（缺省 3），表里给的是全部趟合在一起的分位数；机器负载（loadavg）开头结尾各记一次。
  */
 import { spawn } from "node:child_process";
@@ -32,7 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cdp, Page, sleep } from "../cdp.mjs";
 import { pinDateSource, SHOTS_TZ } from "../real/pool.mjs";
-import { cpuMs, devtoolsUrl, findChrome, freePort, pct } from "./harness.mjs";
+import { cpuMs, devtoolsUrl, findChrome, freePort, pct, pssMb } from "./harness.mjs";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const args = parseArgs(process.argv.slice(2));
@@ -614,11 +614,11 @@ async function benchLong(run) {
   };
 }
 
-/** 强制 GC 后的 JS 堆 · DOM 元素数 · 当前那条流里已建的顶层条目（占位不算）。 */
+/** 强制 GC 后的 JS 堆 · 浏览器进程树的 Pss（DOM 不在 JS 堆里）· DOM 元素数 · 当前那条流里已建的顶层条目（占位不算）。 */
 async function memRead(page) {
   const heap = await heapAfterGc(page);
   const dom = await page.eval(`({ els: document.getElementsByTagName("*").length, cards: document.querySelector(".stream.active")?.querySelectorAll(".stream-content > *:not(.stream-skeleton-gap)").length ?? 0 })`);
-  return { heap, ...dom };
+  return { heap, pss: pssMb(browser.pid), ...dom };
 }
 
 /** 一屏一屏滚（`dir` −1 往顶、+1 往底），每屏等安静，滚到头为止；交回滚了几屏。 */
@@ -752,11 +752,11 @@ function summarize(r) {
   if (r.mem?.length) {
     L.push("## 只留眼前（最长那条滚到顶再回底 ＋ 24 个 tab 逐个切一遍；强制 GC 后）");
     L.push("");
-    L.push("| 趟 | 屏数（上 / 下） | JS 堆 MB：开 · 顶 · 底 · 切完 | DOM 元素：开 · 顶 · 底 · 切完 | 流里的卡：开 · 顶 · 底 |");
-    L.push("|---|---|---|---|---|");
+    L.push("| 趟 | 屏数（上 / 下） | JS 堆 MB：开 · 顶 · 底 · 切完 | 浏览器 Pss MB：开 · 顶 · 底 · 切完 | DOM 元素：开 · 顶 · 底 · 切完 | 流里的卡：开 · 顶 · 底 |");
+    L.push("|---|---|---|---|---|---|");
     for (const x of r.mem) {
       const s = [x.open, x.top, x.back, x.toured];
-      L.push(`| ${x.run + 1} | ${x.up} / ${x.down} | ${s.map((y) => mb(y.heap)).join(" · ")} | ${s.map((y) => y.els).join(" · ")} | ${s.slice(0, 3).map((y) => y.cards).join(" · ")} |`);
+      L.push(`| ${x.run + 1} | ${x.up} / ${x.down} | ${s.map((y) => mb(y.heap)).join(" · ")} | ${s.map((y) => (y.pss === undefined ? "—" : y.pss.toFixed(0))).join(" · ")} | ${s.map((y) => y.els).join(" · ")} | ${s.slice(0, 3).map((y) => y.cards).join(" · ")} |`);
     }
     L.push("");
   }

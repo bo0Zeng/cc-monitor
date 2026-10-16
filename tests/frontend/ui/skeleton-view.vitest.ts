@@ -104,7 +104,7 @@ function makeFetchingHost(timeline: RecordTimeline, realH: (seq: number) => numb
       return [[lo, hi]];
     },
     build: (lo: number, hi: number) => buildCards(timeline, lo, hi, realH),
-    released(): void {},
+    released(_ranges: ReadonlyArray<readonly [number, number]>): void {},
   };
 }
 
@@ -254,10 +254,12 @@ describe("🔴 视口外的卡交回占位", () => {
       .map((c) => [Number((c as HTMLElement).dataset.seq), c.getBoundingClientRect()] as const)
       .filter(([, r]) => r.height > 0 && r.bottom > 0 && r.top < VIEW_H)
       .map(([seq, r]) => [seq, r.top]);
-  /** 滚一下：补可见区补到收敛，再交回远处的（宿主滚动监听里就是这两步）；交回前后总高不许变。 */
+  /** 滚一下：补可见区补到收敛，建了卡就交回远处的（宿主滚动监听里就是这两步）；交回前后总高不许变。 */
   const scrollTo = (s: ReturnType<typeof setup>, y: number) => {
     s.layout.scrollTop = Math.max(0, y);
-    for (let k = 0; k < 6 && s.view.fillVisible() > 0; k++);
+    let built = 0;
+    for (let k = 0, n = 1; k < 6 && n > 0; k++) built += n = s.view.fillVisible();
+    if (built === 0) return;
     const h = totalOf(s.content);
     s.view.release();
     expect(totalOf(s.content), "交回占位改了总高").toBeCloseTo(h, 6);

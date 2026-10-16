@@ -385,8 +385,8 @@ export class TabStreamView {
       // 〔骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
-        t.skeleton.fillVisible();
-        t.skeleton.release(); // 远处已建的卡交回占位
+        // 建了新卡才交回远处的（建卡这一下本来就要排版；没建的滚动不量卡）
+        if (t.skeleton.fillVisible() > 0) t.skeleton.release();
         this.refineNearby(t); // 第二级：视口附近的占位行交 Worker 精算
         return;
       }

@@ -242,8 +242,7 @@ export class SessionViewer {
   /** 读取世代号：异步间隙（rAF / 通道）之后核对，换了会话的残余操作直接丢掉。 */
   private loadGeneration = 0;
   private onScrollFill = (): void => {
-    void this.maybeFillAbove();
-    this.skeleton?.release(); // 远处已建的卡交回占位
+    if (this.maybeFillAbove()) this.skeleton?.release(); // 建了新卡才交回远处的（同主窗口）
   };
   private titleEl!: HTMLElement;
   private leadEl!: HTMLElement;
@@ -688,8 +687,10 @@ export class SessionViewer {
   }
 
   /** 滚动 / 首屏之后：只物化与视口相交的那段占位（取回由 `fetchRows` 做，不自链）。 */
-  private maybeFillAbove(): void {
-    if (this.skeleton && this.skeleton.fillVisible() > 0) this.updateStatus();
+  private maybeFillAbove(): boolean {
+    if (!this.skeleton || this.skeleton.fillVisible() === 0) return false;
+    this.updateStatus();
+    return true;
   }
 
   /**

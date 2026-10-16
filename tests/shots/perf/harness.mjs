@@ -20,22 +20,7 @@ export function pct(xs, q, floor = 0) {
  */
 export function cpuMs(root) {
   const cpuSeen = (globalThis.__cpuSeen ??= new Map());
-  const kids = new Map();
-  for (const d of readdirSync("/proc")) {
-    if (!/^\d+$/.test(d)) continue;
-    try {
-      const st = readFileSync(`/proc/${d}/stat`, "utf8");
-      const ppid = Number(st.slice(st.lastIndexOf(")") + 2).split(" ")[1]);
-      if (!kids.has(ppid)) kids.set(ppid, []);
-      kids.get(ppid).push(Number(d));
-    } catch {
-      // 进程刚退
-    }
-  }
-  const stack = [root];
-  while (stack.length) {
-    const pid = stack.pop();
-    stack.push(...(kids.get(pid) ?? []));
+  for (const pid of treeOf(root)) {
     try {
       for (const t of readdirSync(`/proc/${pid}/task`)) {
         try {
@@ -54,6 +39,43 @@ export function cpuMs(root) {
   let ns = 0;
   for (const v of cpuSeen.values()) ns += v;
   return ns / 1e6;
+}
+
+/** 一棵进程树此刻的内存（每个进程 `smaps_rollup` 的 Pss 相加，MB；共享页按份摊，不重算）。 */
+export function pssMb(root) {
+  let kb = 0;
+  for (const pid of treeOf(root)) {
+    try {
+      kb += Number(/^Pss:\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/smaps_rollup`, "utf8"))?.[1] ?? 0);
+    } catch {
+      // 进程刚退
+    }
+  }
+  return kb / 1024;
+}
+
+/** `root` 连同它的全部子孙进程。 */
+function treeOf(root) {
+  const kids = new Map();
+  for (const d of readdirSync("/proc")) {
+    if (!/^\d+$/.test(d)) continue;
+    try {
+      const st = readFileSync(`/proc/${d}/stat`, "utf8");
+      const ppid = Number(st.slice(st.lastIndexOf(")") + 2).split(" ")[1]);
+      if (!kids.has(ppid)) kids.set(ppid, []);
+      kids.get(ppid).push(Number(d));
+    } catch {
+      // 进程刚退
+    }
+  }
+  const out = [];
+  const stack = [root];
+  while (stack.length) {
+    const pid = stack.pop();
+    out.push(pid);
+    stack.push(...(kids.get(pid) ?? []));
+  }
+  return out;
 }
 
 export function findChrome() {
