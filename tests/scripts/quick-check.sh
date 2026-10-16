@@ -3,7 +3,7 @@
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh`
 #   跑：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的便宜格（static_cells，经 gate.sh 的 GATE_ONLY，收据另存不盖门禁那份）·
 #       后端那棵整套 `cargo test --workspace --lib`（后端 ＋ 拨号核心） · 壳那棵 workspace 整套 `cargo test --workspace --lib`
-#       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）· 整套 vitest · 末尾生成物有没有落在提交外（generated-drift.sh：cargo test 现写的
+#       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）＋ 凭据那份共享 crate 开 `harden` 那一档 · 整套 vitest · 末尾生成物有没有落在提交外（generated-drift.sh：cargo test 现写的
 #       `generated/` 与 HEAD 不同或没跟踪 ⇒ 红，逐份印出；合并只看得见提交）。
 #   后端那棵的 clippy（系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）：照门禁 `clippy-backend` 那一格的参数，只跑相对起点改到的包
 #     （clippy_pkgs；一个都没改到就跳过并说一声，找不到起点就全都跑）。
@@ -147,6 +147,8 @@ else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
 clippy_step
 # 壳那棵 workspace 整套 --lib（全部成员）
 step shell        runcargo bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -q'
+# 凭据那份共享 crate 开 `harden` 那一档（上面那步不开它，后端那棵不跑它的测试）
+step creds-harden runcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
 # 界面：整套 vitest
 step vitest       run node_modules/.bin/vitest run --reporter=dot
 # 手机：改到才跑
