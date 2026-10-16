@@ -8,7 +8,10 @@ fn one_desk_per_machine_and_it_starts_empty() {
     let b = desk(&o("o-watch-test"));
     assert!(Arc::ptr_eq(&a, &b), "同一台两张名单台");
     assert!(a.sids().is_empty(), "冷起名单从空开始（不是全看）");
-    assert!(!Arc::ptr_eq(&a, &desk(&o("o-watch-test-2"))), "两台共用了一张");
+    assert!(
+        !Arc::ptr_eq(&a, &desk(&o("o-watch-test-2"))),
+        "两台共用了一张"
+    );
 }
 
 /// 三处连接都经名单台：本机常驻（attach 行带它的名单 · 接上交它）· 本机 stdio（没有 attach 行 ⇒ 接上交它、它当场报）· 远端（交给 `Feed`）。
