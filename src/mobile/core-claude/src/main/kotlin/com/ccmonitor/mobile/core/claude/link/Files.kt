@@ -2,11 +2,12 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
 import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
+import com.ccmonitor.mobile.core.claude.link.wire.Conflict
+import com.ccmonitor.mobile.core.claude.link.wire.Conflicts
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
 import com.ccmonitor.mobile.core.claude.link.wire.FilesPathReply
 import com.ccmonitor.mobile.core.claude.link.wire.LsEntry
 import com.ccmonitor.mobile.core.claude.link.wire.LsReply
-import com.ccmonitor.mobile.core.claude.link.wire.ReadChunkReply
 import com.ccmonitor.mobile.core.claude.link.wire.ReadTextReply
 import com.ccmonitor.mobile.core.claude.link.wire.StatReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
@@ -15,7 +16,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
 /*
- * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 分块上传 · 分块下载。都是那台后端的帧命令，
+ * 那台的文件：列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 上传的提交（分块那一圈在核心里，[CoreLink.transfer]）。都是那台后端的帧命令，
  * 桌面文件窗口问的同一族；能不能做 · 出错那一句 · 冲突都由那台判、那台写。手机只拼入参，回包由嵌的 Rust 核心按 `cmd-wire` 那一份解过、
  * 装进 `link/wire/` 的声明类。写的那几问照桌面的切法：`root` ＝ 当前目录，`rel` ＝ 一段名字（敲的名字带 `single`，合不合法那台判）。
  */
@@ -74,12 +75,9 @@ class RemotePath(
 }
 
 /** 字节 ⇒ 小写十六进制（`{"b16": …}` 那一形）。 */
-internal fun hex(
-    b: ByteArray,
-    n: Int = b.size,
-): String {
-    val s = StringBuilder(n * 2)
-    for (i in 0 until n) s.append(HEX[(b[i].toInt() shr 4) and 0xf]).append(HEX[b[i].toInt() and 0xf])
+internal fun hex(b: ByteArray): String {
+    val s = StringBuilder(b.size * 2)
+    for (i in b.indices) s.append(HEX[(b[i].toInt() shr 4) and 0xf]).append(HEX[b[i].toInt() and 0xf])
     return s.toString()
 }
 
@@ -313,57 +311,48 @@ object Batch {
     }
 }
 
-/** `files-stage-chunk`：上传的一块进那台的暂存区（同一份上传同一个 `key`，`seq` 从 0 数）。 */
-object FilesStageChunk {
-    const val COMMAND: String = "files-stage-chunk"
-
-    fun args(
-        key: String,
-        seq: Long,
-        buf: ByteArray,
-        n: Int,
-    ): Map<String, Any?> = mapOf("key" to key, "seq" to seq, "content" to mapOf("b16" to hex(buf, n)))
-}
-
-/** `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；不覆盖：目标在就拒，那一句那台写）。 */
+/**
+ * `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核）。同名怎么办 [onExists]：不带 ⇒ 那台问（码 `exists` ＋ 同名清单，
+ * 块与暂存件都留着）；`overwrite` · `keep_both` ⇒ 同一份暂存件再交一次。
+ */
 object FilesCommitUpload {
     const val COMMAND: String = "files-commit-upload"
+
+    /** 上传那一件撞了同名能怎么答（`skip` 那台不收：只有一件，不放就不提交）。 */
+    val ANSWERS: List<String> = listOf("overwrite", "keep_both")
 
     fun args(
         dir: RemotePath,
         name: String,
-        key: String,
-        sha256: String,
-        chunks: Long,
-        bytes: Long,
+        staged: Staged,
+        onExists: String? = null,
     ): Map<String, Any?> =
         mapOf(
             "root" to dir.wire,
             "rel" to name,
-            "key" to key,
-            "expect" to mapOf("sha256" to sha256),
-            "chunks" to chunks,
-            "bytes" to bytes,
-        )
+            "key" to staged.key,
+            "expect" to mapOf("sha256" to staged.sha256),
+            "chunks" to staged.chunks,
+            "bytes" to staged.bytes,
+        ) + listOfNotNull(onExists?.let { "on_exists" to it })
+
+    /** 核心送完的那一份（[CoreLink.transfer] 的 [Transfer.Stage] 回的那一形）。 */
+    data class Staged(
+        val key: String,
+        val chunks: Long,
+        val bytes: Long,
+        val sha256: String,
+    ) {
+        companion object {
+            fun of(data: Any?): Staged? =
+                (data as? Map<*, *>)?.let { m ->
+                    val n = { k: String -> (m[k] as? Number)?.toLong() }
+                    Staged(m["key"] as? String ?: return null, n("chunks") ?: return null, n("bytes") ?: return null, m["sha256"] as? String ?: return null)
+                }
+        }
+    }
+
+    /** 码 `exists` 的 `data` ⇒ 同名清单；解不出 ⇒ `null`。 */
+    fun conflictsOf(data: Any?): List<Conflict>? = Wire.bind<Conflicts>(data)?.conflicts
 }
 
-/** `files-read-chunk`：按字节分块读回（下载）。 */
-object FilesReadChunk {
-    const val COMMAND: String = "files-read-chunk"
-
-    /** 一块多大（同那台一块的上限 `READ_CHUNK_MAX_BYTES`）。 */
-    const val LEN: Long = 256L * 1024
-
-    class Chunk(
-        val bytes: ByteArray,
-        val size: Long,
-        val eof: Boolean,
-    )
-
-    fun args(
-        path: RemotePath,
-        offset: Long,
-    ): Map<String, Any?> = mapOf("path" to path.wire, "offset" to offset, "len" to LEN)
-
-    fun of(data: Any?): Chunk? = Wire.bind<ReadChunkReply>(data)?.let { r -> unhex(r.content.b16)?.let { Chunk(it, r.size, r.eof) } }
-}
