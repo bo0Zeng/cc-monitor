@@ -824,7 +824,7 @@ fi
 
 # ── `creds-harden`：凭据那份共享 crate 开 `harden` 那一档的单测 ─────────────────────────────
 # 壳那棵不开 `harden`（monitor 不写那份文件），后端那棵只把共享 crate 当依赖、不跑它的测试 ⇒ 建文件即只给本人那几条只在这一格跑。
-run_gate creds-harden '分母：`creds-core` 开 `harden` 那一档的 lib 单测（写那一半只在这一档编进来）' \
+run_gate creds-harden '`creds-core` 开 `harden` 那一档的 lib 单测（写那一半只在这一档编进来）' \
          gate_cargo_test_nonet src/frontend/shell -p creds-core --features harden --lib
 
 # ── `comm-boundary` · `test-tiers`：两族判据还在不在 ─────────────────────────────────────
