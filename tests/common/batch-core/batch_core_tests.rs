@@ -160,6 +160,8 @@ fn a_copy_plan_roots_at_the_common_parent() {
     assert_eq!(p.args, serde_json::json!({"root": "/srv", "items": [{"from": "a/b/x", "to": "c/x"}]}));
     let p = copy_plan(b"/a", &[b"x".to_vec()], b"/b", "devbox").unwrap();
     assert_eq!(p.args, serde_json::json!({"root": "/", "items": [{"from": "a/x", "to": "b/x"}]}), "只在根下相交");
+    let p = copy_plan(b"/w", &[b"d".to_vec()], b"/w/d", "devbox").unwrap();
+    assert_eq!(p.args, serde_json::json!({"root": "/w", "items": [{"from": "d", "to": "d/d"}]}), "复制进它自己底下：根按上一级算");
 }
 
 /// 🔴 同名那一问的答：整组一个答 ⇒ 每个键同一格；逐项选 ⇒ 点过的照点、没点的跳过；取消 ⇒ `None`。
