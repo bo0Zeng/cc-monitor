@@ -658,6 +658,7 @@ mod tests {
     /// unix 上从描述符包成文件的那一下、读权限位的那一个特征，与开出来那一份的类型。
     /// 谁能调由类型管：方法都在 `Face` / `NewFile` 上（写方法只收 `Resolved`），两者只有登记的那几处造（[`ISSUERS`]）。
     const FACE_NAMES: &[&str] = &[
+        "std::fs::OpenOptions {",
         "std::fs::OpenOptions::new()",
         "std::fs::create_dir(",
         "std::fs::rename(",

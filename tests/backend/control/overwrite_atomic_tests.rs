@@ -222,7 +222,7 @@ fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
         "replace_contents 里就地写不是恰好一处"
     );
     let asked = seg.find("in_place_reason(").expect("那一问");
-    let arm = seg.find("if let Some(why) = in_place").expect("就地那一支");
+    let arm = seg.find("if in_place {").expect("就地那一支");
     let w = write_calls(seg)[0];
     assert!(asked < arm && arm < w, "就地写不在「不该原子换」那一支里");
     // 正控：数法认得出几形就地写。

@@ -1974,23 +1974,27 @@ pub(crate) fn replace_contents(
     was: Was,
     between: &mut dyn FnMut(),
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    let failed = |key: &str, at: &Path, e: std::io::Error| {
-        WriteRefusal::io(
-            copy_text(
-                key,
-                &[
-                    ("path", &at.display().to_string()),
-                    ("why", &io_reason(e.kind())),
-                ],
-            ),
-            &e,
-        )
+    let unread = |at: &Path, e: std::io::Error| {
+        let at = at.display().to_string();
+        let said = copy_text(
+            "beFilesWrite.read.failed",
+            &[("path", &at), ("why", &io_reason(e.kind()))],
+        );
+        WriteRefusal::io(said, &e)
+    };
+    let unwritten = |at: &Path, e: std::io::Error| {
+        let at = at.display().to_string();
+        let said = copy_text(
+            "beFilesWrite.write.failed",
+            &[("path", &at), ("why", &io_reason(e.kind()))],
+        );
+        WriteRefusal::io(said, &e)
     };
     let at = walk_in_root(Last::Link, root, rel).map_err(WriteRefusal::Refused)?;
     let exists = match Ro::symlink_metadata(&at) {
         Ok(_) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-        Err(e) => return Err(failed("beFilesWrite.read.failed", &at, e)),
+        Err(e) => return Err(unread(&at, e)),
     };
     match (was, exists) {
         (Was::New, true) => {
@@ -2009,40 +2013,42 @@ pub(crate) fn replace_contents(
     }
     let (dst, perms, in_place) = if exists {
         let real = walk_in_root(Last::Follow, root, rel).map_err(WriteRefusal::Refused)?;
-        let md = Ro::metadata(&real).map_err(|e| failed("beFilesWrite.read.failed", &real, e))?;
+        let md = Ro::metadata(&real).map_err(|e| unread(&real, e))?;
         if !md.is_file() {
             return Err(WriteRefusal::Refused(copy_text(
                 "beFilesWrite.overwrite.notRegular",
                 &[("path", &real.display().to_string())],
             )));
         }
-        let why = if cfg!(windows) {
-            Some("Windows 上换名会换掉它的 ACL".to_string())
-        } else {
-            links_and_owner(&real).and_then(|(links, owner)| {
-                in_place_reason(links, owner, crate::platform::paths::current_uid())
-            })
-        };
-        (real, Some(md.permissions()), why)
+        let why = links_and_owner(&real).and_then(|(links, owner)| {
+            in_place_reason(links, owner, crate::platform::paths::current_uid())
+        });
+        if cfg!(windows) {
+            tracing::warn!(
+                "换内容 {}：Windows 上换名会换掉 ACL —— 就地写",
+                real.display()
+            );
+        } else if let Some(why) = &why {
+            tracing::warn!(
+                "换内容 {}：这一次不是原子写，因为{why} —— 改成就地写",
+                real.display()
+            );
+        }
+        let in_place = cfg!(windows) || why.is_some();
+        (real, Some(md.permissions()), in_place)
     } else {
         let perms = fresh.or_else(|| own_mode(&at, false));
-        (at, perms, None)
+        (at, perms, false)
     };
     let staged_gone = |staged: &Resolved| {
         // 内容已经落进目标：暂存件删不掉不算失败（孤儿扫按期限收）。
         face.delete_file(staged).ok();
     };
-    if let Some(why) = in_place {
-        tracing::warn!(
-            "换内容 {}：这一次不是原子写，因为{why} —— 改成就地写",
-            dst.display()
-        );
-        let mut f = face
-            .overwrite(&dst)
-            .map_err(|e| failed("beFilesWrite.write.failed", &dst, e))?;
+    if in_place {
+        let mut f = face.overwrite(&dst).map_err(|e| unwritten(&dst, e))?;
         let n = pour(&content, &mut f)
             .and_then(|n| f.sync_all().map(|()| n))
-            .map_err(|e| failed("beFilesWrite.write.failed", &dst, e))?;
+            .map_err(|e| unwritten(&dst, e))?;
         if let Content::Staged(staged) = content {
             staged_gone(staged);
         }
@@ -2050,14 +2056,14 @@ pub(crate) fn replace_contents(
     }
     if let Content::Staged(staged) = &content {
         let n = Ro::symlink_metadata(staged)
-            .map_err(|e| failed("beFilesWrite.read.failed", staged, e))?
+            .map_err(|e| unread(staged, e))?
             .len();
         let ready = perms
             .clone()
             .map_or(Ok(()), |p| face.set_permissions(staged, p))
             .and_then(|()| face.sync(staged));
         if let Err(e) = ready {
-            return Err(failed("beFilesWrite.write.failed", staged, e));
+            return Err(unwritten(staged, e));
         }
         between();
         match place(face, staged, &dst, was == Was::New) {
@@ -2088,9 +2094,7 @@ pub(crate) fn replace_contents(
             &[("path", &rel.display().to_string())],
         ))
     })?;
-    let mut f = face
-        .create_new(&side)
-        .map_err(|e| failed("beFilesWrite.write.failed", &side, e))?;
+    let mut f = face.create_new(&side).map_err(|e| unwritten(&side, e))?;
     // 权限位在写进内容之前就定：旁名上也不留一刻宽的。
     let written = perms
         .map_or(Ok(()), |p| f.set_permissions(p))
@@ -2101,7 +2105,7 @@ pub(crate) fn replace_contents(
         Ok(n) => n,
         Err(e) => {
             face.delete_file(&side).ok();
-            return Err(failed("beFilesWrite.write.failed", &side, e));
+            return Err(unwritten(&side, e));
         }
     };
     between();

@@ -746,14 +746,11 @@ pub fn ask_ui(ui: &mut egui::Ui, board: &BatchBoard) {
 
 /// 逐项答那一格的字。
 fn pick_text(d: Decide) -> String {
-    copy_text(
-        match d {
-            Decide::Skip => "rsFilewinBatch.pick.skip",
-            Decide::KeepBoth => "rsFilewinBatch.pick.keepBoth",
-            Decide::Overwrite => "rsFilewinBatch.pick.overwrite",
-        },
-        &[],
-    )
+    match d {
+        Decide::Skip => copy_text("rsFilewinBatch.pick.skip", &[]),
+        Decide::KeepBoth => copy_text("rsFilewinBatch.pick.keepBoth", &[]),
+        Decide::Overwrite => copy_text("rsFilewinBatch.pick.overwrite", &[]),
+    }
 }
 
 /// 冲突框打开时焦点落在哪一颗：「跳过同名」（不毁东西的那一个）。
