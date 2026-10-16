@@ -5,7 +5,7 @@ use tokio::io::AsyncBufReadExt;
 /// backend 出方向单行的字节上限：一帧 = 一条 Claude jsonl 行。不等于 backend 入方向命令信封的 `inbound::MAX_LINE_BYTES`（1 MiB）—— 两者不是同一个量。
 /// 真实的 jsonl 里最长一行接近 3 MiB、上百行超过 1 MiB；抄 1 MiB 会丢真实的行，用户还会看到一条「丢了帧」的健康提示。
 /// 64 MiB 留足余量：帧内换行被后端转义成 `\n` 两字符（最坏接近翻倍），工具输出体量只会变大。
-/// 超限语义：丢弃 + 带身份报告（`REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 同一个出口），不许静默。
+/// 超限语义：丢弃 + 带身份报告（`REMOTE_HEALTH` + `kind: "line_too_long"`，与拥塞那一句同一个出口），不许静默。
 pub const BACKEND_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
 
 /// 一次有界读行的结果。
