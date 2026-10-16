@@ -569,11 +569,11 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 中转口（常驻后端进程内的回环口，本机远端同一份代码）每条请求在读请求体、问上游选择之前过三问：带 `Origin` ⇒ 403；`Host` 不是回环字面量、缺或不止一个 ⇒ 421（防 DNS rebinding）；路径第一段不是钥匙 ⇒ 403（定长时间比对，`comms/outward/door.rs` 的 `tokens_match`）。过了才剥掉那一段交给路由（「钥匙对、没这条路由」是 404，与 403 可分）。
 
-**一把根钥匙、门上两个范围**：根钥匙 `~/.cc-monitor/relay-key`（`0600`，256 位，中转绑上口之后读回或铸，跨重起不变）开 `/s/` 与 `/t/`；只许直通那一把不落盘，由根钥匙派生（`relay/key.rs::pass_of`）、只开 `/t/`（中转在 `/t/` 永不代入凭据），它可以进 argv（有的 agent 只认命令行参数里的上游地址）。根钥匙只从那份文件进 agent 进程自己的环境：交给终端的那一行 `ccm …` 不带地址也不带钥匙，`ccm` 在最终 exec 那一处读文件、拼进 agent 环境（插钥匙只在 `relay/key.rs::keyed_with_key_on_disk` 一处）。唯一的例外：用户选「直接敲的 claude 也走中转」时，`relay-optin` 的成品带着要贴的那一段。
+**一把根钥匙、门上两个范围**：根钥匙 `~/.cc-monitor/relay-key`（`0600`，256 位，中转绑上口之后读回或铸，跨重起不变）开 `/s/` 与 `/t/`；只许直通那一把不落盘，由根钥匙派生（`relay/key.rs::pass_of`）、只开 `/t/`（中转在 `/t/` 永不代入凭据），它可以进 argv（有的 agent 只认命令行参数里的上游地址）。根钥匙只从那份文件进 agent 进程自己的环境：交给终端的那一行 `ccm …` 不带地址也不带钥匙，`ccm` 在最终 exec 那一处读文件、拼进 agent 环境（插钥匙只在 `relay/key.rs::keyed_with_key_on_disk` 一处）。用户选「直接敲的 agent 也走中转」时，「待办」里要贴的那一段插的是只许直通那一把（那条地址恒是 `/t/`）；贴过的旧地址里的钥匙段显示成 `…`。全权那一把不进线上帧。
 
 **为什么不能松动**：中转会代入账号的凭据打上游；门开着，同机任何进程（别的用户、浏览器里的网页）就能以这个账号的额度发请求。
 
-**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::the_pass_key_gets_in_but_only_for_passthrough_routes` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` · `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` · `key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts` · `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream` · `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there` · `plan_tests.rs::an_inherited_relay_address_of_ours_never_goes_into_the_pane`。诚实边界：`ccm` 是一次性进程，读不到常驻后端的监听状态 ⇒ 钥匙文件在、口被别人占着时会被认成在听（`accounts/upstream_select/endpoint.rs::relay_for_exec`）。
+**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::the_pass_key_gets_in_but_only_for_passthrough_routes` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` · `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` · `chores_gather_tests.rs::待办里的钥匙只有只许直通那一把` · `key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts` · `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream` · `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there` · `plan_tests.rs::an_inherited_relay_address_of_ours_never_goes_into_the_pane`。诚实边界：`ccm` 是一次性进程，读不到常驻后端的监听状态 ⇒ 钥匙文件在、口被别人占着时会被认成在听（`accounts/upstream_select/endpoint.rs::relay_for_exec`）。
 
 ### 48.2 脱离后不留僵尸
 

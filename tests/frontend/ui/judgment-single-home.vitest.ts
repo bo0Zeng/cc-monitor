@@ -1022,6 +1022,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     BACKEND_LANDING_SHELL: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
+    // 一行里插好钥匙的地址把钥匙段换成 `…`（「待办」摘出的原文行）；界面照画，TS 侧没有孪生。
+    hide_key: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。

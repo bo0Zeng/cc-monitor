@@ -1,4 +1,4 @@
-//! 命令表 · 机器：`ssh-*` · `remote-*` · `deploy-*` · `resident-*` · `place-verdict` · `drift-report` · `powershell-*` · `authorized-keys-add` · `pubkey-push` · `backend-log` · `exit-policy-*` · `relay-optin` · `forward-*` · `ccm-*`。
+//! 命令表 · 机器：`ssh-*` · `remote-*` · `deploy-*` · `resident-*` · `place-verdict` · `drift-report` · `powershell-*` · `authorized-keys-add` · `pubkey-push` · `backend-log` · `exit-policy-*` · `forward-*` · `ccm-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -62,10 +62,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::wire::typed::blocking::<crate::control::machines::MachinesSetCmd>(
         "改机器表（按键认那一台），写完读回、推 `changed {machines}`",
-    ),
-    // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
-    crate::wire::typed::blocking::<crate::faces::relay_optin_face::RelayOptin>(
-        "直接敲的 agent 也走中转",
     ),
     // 这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。

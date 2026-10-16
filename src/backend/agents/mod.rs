@@ -2146,13 +2146,11 @@ pub(crate) struct QuotaReading {
     pub(crate) overage: Option<QuotaOverage>,
 }
 
-/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。
+/// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 怎么合进去（格式知识与那一次只读都在这一家）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SettingsEnvFace {
     /// 家目录（`$HOME`）→ 那份文件（各号共用的那一份）＋ 里面写的上游地址（**只读**）。
     pub(crate) read: fn(&Path) -> (PathBuf, SettingsBaseUrl),
-    /// 地址 → 要合并进那份文件的那一段。
-    pub(crate) snippet: fn(&str) -> String,
     /// （那份文件现在的内容, 地址）→ 合好的整份（只算不写；「待办」按它算 diff）。现在的内容读不懂 ⇒ `None`。
     pub(crate) merge: fn(&str, &str) -> Option<String>,
     /// 地址住那份文件里哪一格（「待办」那一件的位置行）。

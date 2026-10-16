@@ -241,6 +241,38 @@ pub fn keyed_base_url(url: &str, key: &str) -> Option<String> {
     Some(format!("{head}{key}/{tail}"))
 }
 
+/// 一行里每一条插好钥匙的我们那一形地址（[`split_keyed_base_url`] 认得的），钥匙段换成 `…`；其余逐字不变。
+/// 读者：「待办」里从用户文件原样摘出的行（贴过的老地址里那把钥匙不出后端）。
+pub fn hide_key(line: &str) -> String {
+    const HEAD: &str = "http://127.0.0.1:";
+    let url_byte =
+        |b: u8| b.is_ascii_alphanumeric() || matches!(b, b':' | b'/' | b'-' | b'_' | b'~');
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(at) = rest.find(HEAD) {
+        let (before, from) = rest.split_at(at);
+        out.push_str(before);
+        let len = HEAD.len()
+            + from
+                .bytes()
+                .skip(HEAD.len())
+                .position(|b| !url_byte(b))
+                .unwrap_or(from.len() - HEAD.len());
+        let (url, after) = from.split_at(len);
+        match split_keyed_base_url(url) {
+            Some((head, tail)) => {
+                out.push_str(head);
+                out.push('…');
+                out.push_str(tail);
+            }
+            None => out.push_str(url),
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
 /// 路由路径第一段的两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
 ///
 /// `/s/` 代入：上游选择的表里必须有这一行，没有 ⇒ 404；`/t/` 直通：中转**永不**代入凭据，第 2 段只当标签。

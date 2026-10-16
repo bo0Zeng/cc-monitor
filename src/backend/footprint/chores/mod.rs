@@ -56,15 +56,13 @@ pub(crate) struct Relay {
     pub slot: &'static str,
     /// （现在的内容, 地址）→ 合好的整份（那一家的格式，注册表 `SettingsEnvFace.merge`）。
     pub merge: fn(&str, &str) -> Option<String>,
-    /// `installed` · `stale` · `absent`（同 `relay-optin`）。
+    /// `installed` · `stale` · `absent`（`endpoint::OptinState`）。
     pub state: String,
     pub path: String,
     /// 那份设置文件现在的内容（不在 ⇒ `None`）。
     pub text: Option<String>,
-    /// 要写进去的地址（带钥匙）；生成不了 ⇒ `None`。
+    /// 要写进去的地址（插的是只许直通那一把）；生成不了 ⇒ `None`。
     pub url: Option<String>,
-    /// 地址里那把钥匙（界面显示时遮住）。
-    pub secret: Option<String>,
 }
 
 impl Relay {
@@ -218,8 +216,6 @@ pub(crate) struct Chore {
     /// 去哪一处做（设置窗的页 · 栏 · 锚点）。
     pub(crate) go: Option<UndoAt>,
     pub(crate) how_url: Option<String>,
-    /// 显示时要遮住的那把钥匙。
-    pub(crate) mask: Option<String>,
     pub(crate) action: ChoreAction,
 }
 
@@ -241,7 +237,6 @@ impl Chore {
             file: None,
             go: None,
             how_url: None,
-            mask: None,
             action,
         }
     }
@@ -397,7 +392,6 @@ pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
         c.loc = copy_text("beChore.relay.loc", &[("path", &r.path), ("slot", r.slot)]);
         c.why = copy_text("beChore.relay.why", &[]);
         c.file = Some(r.path.clone());
-        c.mask = r.secret.clone();
         match (r.state.as_str(), &r.url) {
             ("installed", _) => {
                 c.state = ChoreState::Done;
@@ -558,7 +552,19 @@ fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
         },
         copy_text("beChore.step.save", &[]),
     ];
-    c.diff = p.diff.iter().cloned().map(DiffRow::from).collect();
+    // 从用户文件原样摘出的行（上下文 · 换掉的那几行）里，我们那一形地址的钥匙段显示成 `…`（贴过的老地址带的可能是全权那一把）。
+    c.diff = p
+        .diff
+        .iter()
+        .cloned()
+        .map(|l| {
+            let mut row = DiffRow::from(l);
+            if row.op != DiffOp::Add {
+                row.text = relay_route_core::hide_key(&row.text);
+            }
+            row
+        })
+        .collect();
     c.copy = Some(added.join("\n"));
     c.whole = Some(p.whole.clone());
     c.whole_covers = vec![c.id.clone()];

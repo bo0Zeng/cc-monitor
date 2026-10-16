@@ -176,15 +176,37 @@ pub(crate) fn stale_ccm(home: &Path, path: Option<&str>, windows: bool) -> Optio
     })
 }
 
-/// 直接敲的 agent 也走中转：声明了这一形的每一家各一件（`relay-optin` 那一份 ＋ 那份设置文件现在的内容）。
+/// 直接敲的 agent 也走中转：声明了这一形的每一家各一件（`endpoint::optin_report` 那一份 ＋ 那份设置文件现在的内容）。
 fn relay() -> Vec<Relay> {
+    let Some(home) = crate::platform::paths::home_dir() else {
+        return Vec::new();
+    };
+    let up = crate::accounts::upstream_select::Upstreams::from_env(&|k| std::env::var(k).ok());
+    relay_at(
+        &home,
+        &crate::accounts::upstream_select::file_face::machine_rows(),
+        &|agent| up.as_ref().is_some_and(|u| u.has(agent)),
+    )
+}
+
+/// [`relay`] 的本体（家目录 · 表 · 哪几家登记了默认上游都是参数，判据喂夹具）。
+pub(crate) fn relay_at(
+    home: &Path,
+    routed: &[String],
+    registered: &dyn Fn(&str) -> bool,
+) -> Vec<Relay> {
     crate::agents::settings_env_families()
         .into_iter()
-        .filter_map(|(agent, name, face)| {
-            let r = crate::accounts::upstream_select::endpoint::optin_report(agent).ok()?;
+        .map(|(agent, name, face)| {
+            let r = crate::accounts::upstream_select::endpoint::optin_report_at(
+                home,
+                agent,
+                &face,
+                routed,
+                registered(agent),
+            );
             let path = r.source.display().to_string();
-            let secret = r.url.as_deref().and_then(key_segment);
-            Some(Relay {
+            Relay {
                 agent: agent.to_string(),
                 name: name.to_string(),
                 slot: face.slot,
@@ -193,17 +215,9 @@ fn relay() -> Vec<Relay> {
                 text: read_small(&r.source),
                 path,
                 url: r.url,
-                secret,
-            })
+            }
         })
         .collect()
-}
-
-/// 插好钥匙的中转地址里那把钥匙（口之后、路由之前那一截；界面显示时遮住它）。不是那一形 ⇒ `None`。
-pub(crate) fn key_segment(url: &str) -> Option<String> {
-    let (head, tail) = relay_route_core::split_keyed_base_url(url)?;
-    url.get(head.len()..url.len() - tail.len())
-        .map(str::to_string)
 }
 
 /// cc-bus 自动收信：`hooks-diag` 那一份 ＋ 那份设置文件现在的内容。这台跑不了 cc-bus ⇒ 不出这一件。
