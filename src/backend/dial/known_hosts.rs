@@ -1,5 +1,5 @@
-//! **cc-monitor 自己那份 `known_hosts`**（`<家>/.cc-monitor/known_hosts`，OpenSSH 的格式）：本后端握手时认下的每台主机钥匙
-//! （按机器表里固化的指纹校验过，或首连认下、随即固化的那一把）记在这里；开终端那一行把它交给 `ssh`
+//! **cc-monitor 自己那份 `known_hosts`**（`<家>/.cc-monitor/known_hosts`，OpenSSH 的格式）：本后端连上的每台主机钥匙
+//! （握手时认下、鉴权也过了的那一把）记在这里；开终端那一行把它交给 `ssh`
 //! （`-o UserKnownHostsFile=<这份>`，[`super::terminal`]）⇒ 终端里那一跳认得同一把钥匙、不再问一遍，
 //! 也不往用户自己的 `~/.ssh/known_hosts` 写。主机钥匙核对照旧开着：钥匙变了 OpenSSH 照样拒。
 //!
@@ -20,7 +20,7 @@ pub(crate) fn path() -> Option<PathBuf> {
 
 /// 记下认下的钥匙的那只手：写句柄（家目录那一根）只装在这里面，对外只有 [`Writer::remember`]。
 ///
-/// 握手核对钥匙那一刻（拨号核心 `ssh-dial/connect.rs` 的 `Checker`，经 [`KnownHostsFile`] 进来）在哪条拨号路上都可能发生（开链路 · 远端问话 · 探针 · 传输），
+/// 鉴权过了的那一刻（拨号核心 `ssh-dial/connect.rs`，经 [`KnownHostsFile`] 进来）在哪条拨号路上都可能发生（开链路 · 远端问话 · 探针 · 传输），
 /// 那些路大多只读 ⇒ 不顺着它们递写句柄（递了就把写能力交给了只读的那几条），而是启动入口装一次（[`install`]），
 /// 拨号那一层只取得到这只只会记钥匙的手（[`installed`]）。
 #[derive(Clone)]
@@ -78,7 +78,7 @@ impl Writer {
     }
 }
 
-/// 拨号核心认下一把 host key 时交到这里（[`ssh_dial::env::HostKeys`]）：经启动时装的那只手记（[`installed`]）。
+/// 拨号核心认下一把 host key、鉴权也过了时交到这里（[`ssh_dial::env::HostKeys`]）：经启动时装的那只手记（[`installed`]）。
 /// 没装（一次性子命令 · 判据）⇒ 不记。
 pub(crate) struct KnownHostsFile;
 

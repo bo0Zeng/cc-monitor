@@ -205,7 +205,7 @@ impl ExternalSigner for KeystoreSigner {
     }
 }
 
-/// 认下的 host key 交回 Kotlin（那边等鉴权过了才落 Room）。
+/// 鉴权过了的那一把 host key 交回 Kotlin（那边等 ack 成功才落 Room）。
 struct PhoneHostKeys;
 
 impl HostKeys for PhoneHostKeys {
