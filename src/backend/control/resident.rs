@@ -3,16 +3,18 @@
 //! 三条一次性子命令，由 monitor 经本机常驻后端的链路在远端跑（本机那一份由宿主 `local_backend_host` 起 / 停，停也经 `--resident-stop`）：
 //! - `--resident-ensure [--replace]`：这台家里那个套接字（`relay_route_core::listen_socket_for`）上已有人在听 ⇒ 不再起；
 //!   没人 ⇒ 起一个脱离的自己（常驻载体，只交 `CCM_RESIDENT=1`）。回一行 `{"pid":n|null}`。本进程不等任何东西（零定时器）。
-//!   `--replace`：先按下面那个停法停掉在听的那一位（它自己记的 pid 文件），再起（只升不降由 monitor 按 hello 判）。
+//!   `--replace`：问在听的那一位它是哪一版（hello）——不比自己旧 ⇒ 不动它；比自己旧 ⇒ 按下面那个停法停掉、再起。
+//!   回 `{"pid":n|null,"replaced":bool}`。停与起之间攥着 `<家>/run/swap/` 那把锁（两端同时换一台时不交错）。
 //! - `--resident-attach`：**小中继**。连这台的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退。
 //!   monitor 经 ssh exec 跑它（ssh 证明了本人，它在那台以本人身份连本人通道）；断开 ⇒ stdout 回一行
 //!   `{"attach":"refused","reason":"absent"|"unreachable"}` 再退（monitor 读第一行就分得出）。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
-//!   SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
+//!   连这台的套接字问在听的是谁（对端 pid 由内核报，不靠盘上的记录）→ SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 →
+//!   到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
 //!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`clippy.toml` 的 `disallowed-methods`，调用处就地放行）。
 //!
 //! 门牌按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）⇒ 一台机器一个家一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。
-//! 套接字 · 目录独占锁 · 「谁在听」都住 `<家>/run/`，都由常驻后端自己写（本机远端一个写者）；没有钥匙（门由内核给：目录 `0700` ＋ 对端 uid，`own-chan`）。
+//! 套接字 · 目录独占锁都住 `<家>/run/`，由常驻后端自己写（本机远端一个写者）；没有钥匙（门由内核给：目录 `0700` ＋ 对端 uid，`own-chan`）。
 
 use crate::platform::child::{Child, ChildFail};
 use crate::platform::child_env::OWN_ENVS;
@@ -86,16 +88,32 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 
     let (Some(home), Some(dh)) = (home(), data_home()) else {
         return fail(ENSURE, "no_home", copy_text("beResident.home.missing", &[]));
     };
-    if args.iter().any(|a| a == "--replace") {
+    let replace = args.iter().any(|a| a == "--replace");
+    // 换装锁：从「问在听的是谁」到起新的那一下都攥着（两端同时换一台 ⇒ 后到的看见的是先到的刚起的那一位）。
+    let _swap = match replace.then(|| swap_lock(own)).transpose() {
+        Ok(l) => l,
+        Err(e) => return fail(ENSURE, "replace_failed", e),
+    };
+    if replace {
         // 旧的不先让出锁，新的必然起不来 ⇒ 与「停」同一个停法（等它真退了再起）。
-        if let Err(e) = stop_owner(own, STOP_GRACE_MS) {
-            return fail(ENSURE, "replace_failed", e);
+        match swap_out(own, crate::BUILD_ID, STOP_GRACE_MS) {
+            Ok(Swap::Kept(pid)) => {
+                println!("{}", serde_json::json!({ "pid": pid, "replaced": false }));
+                return 0;
+            }
+            Ok(Swap::Cleared(_)) => {}
+            Err(e) => return fail(ENSURE, "replace_failed", e),
         }
-    } else if own_chan::someone_listening(&relay_route_core::listen_socket_for(&dh)) {
-        // 已有人在听 ⇒ 不再起（起了也拿不到锁）。
-        let pid = read_owner(&dh).map(|(p, _)| p);
-        println!("{}", serde_json::json!({ "pid": pid }));
-        return 0;
+    } else {
+        match who_listens(&dh) {
+            // 已有人在听 ⇒ 不再起（起了也拿不到锁）。
+            Ok(Some(l)) => {
+                println!("{}", serde_json::json!({ "pid": l.pid, "replaced": false }));
+                return 0;
+            }
+            Ok(None) => {}
+            Err(e) => return fail(ENSURE, "spawn_failed", e),
+        }
     }
     let exe = match std::env::current_exe() {
         Ok(p) => p,
@@ -109,7 +127,7 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 
     };
     match spawn_detached(&exe, &child_env(&home, hosted)) {
         Ok(pid) => {
-            println!("{}", serde_json::json!({ "pid": pid }));
+            println!("{}", serde_json::json!({ "pid": pid, "replaced": replace }));
             0
         }
         Err((code, e)) => fail(ENSURE, code, e),
@@ -191,6 +209,10 @@ pub fn run_stop(args: &[String], own: &Own) -> i32 {
         Ok(g) => g,
         Err(e) => return fail(STOP, "bad_args", e),
     };
+    let _swap = match swap_lock(own) {
+        Ok(l) => l,
+        Err(e) => return fail(STOP, "stop_failed", e),
+    };
     match stop_owner(own, grace_ms) {
         Ok(end) => {
             println!(
@@ -236,7 +258,7 @@ pub(crate) enum Stopped {
     Graceful(u32),
     /// 宽限期满还在 ⇒ 强杀了，而且它确实没了。
     Killed(u32),
-    /// 没有记录，或记下的那个已经不在。
+    /// 没人在听。
     NotRunning,
 }
 
@@ -341,29 +363,7 @@ fn spawn_detached(
     })
 }
 
-/// 常驻后端拿到锁、绑上之后记下「谁在听」（`pid\n二进制\n`，`<家>/run/backend.pid`）—— 本机远端都由它自己记。
-/// `held` 是门牌那一层的那把锁（抢门牌时拿到、随进程活着）。
-fn record_owner(own: &Own, run: &OwnPath, held: &OwnLock) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let file = run
-        .join(relay_route_core::LISTEN_PID_NAME)
-        .map_err(|e| e.said)?;
-    own.write(
-        &file,
-        held,
-        format!("{}\n{}\n", std::process::id(), exe.display()).as_bytes(),
-    )
-    .map_err(|e| e.logged())
-}
-
-/// 读「谁在听」那一份（读不到 / 残缺 ⇒ `None`）。
-fn read_owner(data_home: &Path) -> Option<(u32, PathBuf)> {
-    crate::platform::fs::Ro::read_to_string(relay_route_core::listen_pid_for(data_home))
-        .ok()
-        .and_then(|b| parse_owner(&b))
-}
-
-/// 解 pid 文件那两行（纯函数）。
+/// 解旧版那份「谁在听」记录的两行（纯函数；只剩 [`retire_legacy`] 读它）。
 pub(crate) fn parse_owner(body: &str) -> Option<(u32, PathBuf)> {
     let mut lines = body.lines();
     let pid: u32 = lines.next()?.trim().parse().ok()?;
@@ -377,24 +377,128 @@ pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
     Path::new(seen) == recorded
 }
 
-/// 按 pid 文件停在听的那一位。没有记录 ⇒ `NotRunning`。
-fn stop_owner(own: &Own, grace_ms: u32) -> Result<Stopped, Said> {
-    let (root, run) = run_dir(own)?;
-    let data_home = root.as_path();
-    let pid_file = run.join(relay_route_core::LISTEN_PID_NAME)?;
-    let Some((pid, bin)) = read_owner(data_home) else {
-        return Ok(Stopped::NotRunning);
-    };
-    let end = stop_pid(pid, &bin, grace_ms, KILL_WAIT_MS)?;
-    // 它已不在 ⇒ 那份记录是陈的：还指着它就收掉（下一个起来的会自己再记；指着别人的不动）。
-    if read_owner(data_home).is_some_and(|(p, _)| p == pid) {
-        let _ = own.delete_file(&pid_file);
-    }
-    Ok(end)
+/// 在听的那一位：`pid` 是内核报的对端（不靠盘上的记录、不靠路径相等）；`build` 是它 hello 报的（读不出 ⇒ `None`）。
+pub(crate) struct Listener {
+    pub(crate) pid: u32,
+    pub(crate) build: Option<String>,
 }
 
-/// 同机监督者本体：先拿进程把手、再核身份（pid 会被复用；拿到把手之后信号只打得到它）→ SIGTERM →
-/// 至多等 `grace_ms` → 还在 ⇒ 强杀 → 至多再等 `kill_wait_ms`；还在 ⇒ `Err`（不说「停了」）。
+/// hello 那一行的字节上限：一行 hello 几 KiB，再长就不是它。
+const HELLO_CAP: u64 = 256 * 1024;
+
+/// 连这台的套接字问在听的是谁。没人在听（不在 / 拒连）⇒ `None`；对端不是本人 ⇒ `Err`（不停别人的进程）。
+fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
+    use std::io::BufRead as _;
+    use std::io::Read as _;
+    let sock = relay_route_core::listen_socket_for(data_home);
+    let cannot = |e: &std::io::Error| {
+        Said::with_raw(
+            copy_text(
+                "beResident.stop.cannotAsk",
+                &[
+                    ("path", &sock.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            e,
+        )
+    };
+    let s = match own_chan::connect_blocking(&sock) {
+        Ok(s) => s,
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            return Ok(None)
+        }
+        Err(e) => return Err(cannot(&e)),
+    };
+    let (uid, pid) = s.peer().map_err(|e| cannot(&e))?;
+    #[cfg(unix)]
+    if uid != own_chan::own_uid() {
+        return Err(copy_text(
+            "beResident.stop.foreign",
+            &[("pid", &pid.to_string()), ("uid", &uid.to_string())],
+        )
+        .into());
+    }
+    #[cfg(not(unix))]
+    let _ = uid;
+    // 在听的那一位连上就先写 hello；卡住不写也不把这一次性进程挂死。
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "一次性进程读一行 hello 的期限：有字节就返回，不驱动循环；常驻后端的事件循环不经这里"
+    )]
+    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(HELLO_READ_SECS)));
+    let mut line = String::new();
+    let _ = std::io::BufReader::new((&s).take(HELLO_CAP)).read_line(&mut line);
+    let build = serde_json::from_str::<serde_json::Value>(&line)
+        .ok()
+        .and_then(|v| v.get("build_id")?.as_str().map(str::to_string));
+    Ok(Some(Listener { pid, build }))
+}
+
+/// 读 hello 那一行最多等多久（秒）。
+const HELLO_READ_SECS: u64 = 10;
+
+/// 停在听的那一位。没人在听 ⇒ `NotRunning`。
+fn stop_owner(own: &Own, grace_ms: u32) -> Result<Stopped, Said> {
+    let (root, _) = run_dir(own)?;
+    match who_listens(root.as_path())? {
+        Some(l) => stop_listener(root.as_path(), l.pid, grace_ms),
+        None => Ok(Stopped::NotRunning),
+    }
+}
+
+/// 先拿把手、再问一次套接字：还是 `pid` 在听 ⇒ 把手指的就是它（两问之间它退了、pid 被复用的那一形，信号打不到别人）。
+fn stop_listener(data_home: &Path, pid: u32, grace_ms: u32) -> Result<Stopped, Said> {
+    let Some(target) = crate::platform::signal::stoppable(pid)? else {
+        return Ok(Stopped::NotRunning);
+    };
+    if !who_listens(data_home)?.is_some_and(|l| l.pid == pid) {
+        return Ok(Stopped::NotRunning);
+    }
+    finish(&target, pid, grace_ms, KILL_WAIT_MS)
+}
+
+/// `--replace` 那一问的结局。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Swap {
+    /// 在听的那一位不比 `mine` 旧（同版 · 更新）⇒ 没动它。
+    Kept(u32),
+    /// 那一位停了（或本来就没人在听）⇒ 起新的。
+    Cleared(Stopped),
+}
+
+/// 「只升不降」在执行换的这一处判：在听的那一位 hello 报的比 `mine` 旧（或说不出自己是哪一版）才停它。
+pub(crate) fn swap_out(own: &Own, mine: &str, grace_ms: u32) -> Result<Swap, Said> {
+    let (root, _) = run_dir(own)?;
+    let Some(l) = who_listens(root.as_path())? else {
+        return Ok(Swap::Cleared(Stopped::NotRunning));
+    };
+    let older = l
+        .build
+        .as_deref()
+        .is_none_or(|theirs| deploy::resident_verdict(mine, theirs, false).replace);
+    if !older {
+        return Ok(Swap::Kept(l.pid));
+    }
+    stop_listener(root.as_path(), l.pid, grace_ms).map(Swap::Cleared)
+}
+
+/// 换装锁（`<家>/run/swap/`，只给换装与停用；不是门牌那把）：停与起之间攥着，落地即放。
+fn swap_lock(own: &Own) -> Result<OwnLock, Said> {
+    let (root, run) = run_dir(own)?;
+    let swap = run.join("swap")?;
+    ensure_dir(own, &root)?;
+    ensure_dir(own, &run)?;
+    ensure_dir(own, &swap)?;
+    own.lock(&swap).map_err(Said::from)
+}
+
+/// 按旧版记录停（只剩 [`retire_legacy`]）：先拿进程把手、再核程序路径（pid 会被复用；拿到把手之后信号只打得到它）→ [`finish`]。
 pub(crate) fn stop_pid(
     pid: u32,
     bin: &Path,
@@ -413,6 +517,16 @@ pub(crate) fn stop_pid(
         )
         .into());
     }
+    finish(&target, pid, grace_ms, kill_wait_ms)
+}
+
+/// 请它收尾 → 至多等 `grace_ms` → 还在 ⇒ 强杀 → 至多再等 `kill_wait_ms`；还在 ⇒ `Err`（不说「停了」）。
+fn finish(
+    target: &crate::platform::signal::Stoppable,
+    pid: u32,
+    grace_ms: u32,
+    kill_wait_ms: u32,
+) -> Result<Stopped, Said> {
     match target.ask_to_finish() {
         Ok(()) => {
             if target.exited_within(grace_ms)? {
@@ -443,7 +557,7 @@ pub enum Claim {
 /// 套接字路径的字节上限（`sockaddr_un.sun_path` 108 字节含结尾的 0；留几格余量）。超了就不绑：内核会截断或拒，截断了就是另一个路径。
 pub(crate) const SOCKET_PATH_MAX: usize = 100;
 
-/// 常驻后端抢门牌：建 `<家>/run/`（只给本人）→ 抢它的独占锁 → 记「谁在听」→ 删陈旧的套接字文件 → 绑。没有钥匙。
+/// 常驻后端抢门牌：建 `<家>/run/`（只给本人）→ 抢它的独占锁 → 删陈旧的套接字文件 → 绑。没有钥匙。
 /// 要在 tokio 运行时里调（绑的是异步套接字）。
 pub fn claim(own: &Own) -> Claim {
     let (root, run, sock) = match run_dir(own).and_then(|(root, run)| {
@@ -462,10 +576,6 @@ pub fn claim(own: &Own) -> Claim {
         Ok(None) => return Claim::Held,
         Err(e) => return Claim::Failed(bind_failed(dir, &e)),
     };
-    // 「谁在听」先记、再开门：套接字一出现，记录就已经在盘上（`--resident-ensure` 见到有人在听就读它）。
-    if let Err(e) = record_owner(own, &run, &held) {
-        tracing::warn!("记不下「谁在听」（{e}）⇒ 「停」会停不了它");
-    }
     let len = sock.as_path().as_os_str().len();
     if len > SOCKET_PATH_MAX {
         return Claim::Failed(copy_text(

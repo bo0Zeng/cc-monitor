@@ -152,7 +152,7 @@ pub(super) fn version_warning(
             ],
         )),
         // 按新旧分两句（部署只升不降）：那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
-        // 新旧不在这里比：本机常驻后端接上那一刻判过（`resident-verdict`，`control/deploy_plan.rs`），这里只按答案挑句子。
+        // 新旧不在这里比：接上的那一台答版本门那一问时判过（`resident-verdict`，`control/deploy_plan.rs`），这里只按答案挑句子。
         VersionVerdict::StaleBuild { reported, mine } if remote_older => Some(copy_text(
             "rsSshSource.version.remoteOlder",
             &[

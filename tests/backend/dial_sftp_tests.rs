@@ -144,6 +144,48 @@ async fn a_symlinked_directory_under_a_root_cannot_carry_a_write_out() {
     );
 }
 
+/// 写根**本身**是链接（`bin -> ~/.ssh` · `.cc-monitor -> 别处`）：解链接之后「在根底下」恒成立，只问父目录拦不住；
+/// 围栏问根本身 ⇒ 拒、出声、服务端零改动。
+#[tokio::test]
+async fn a_write_root_that_is_itself_a_link_is_refused() {
+    for (link, target, make) in [
+        (".cc-monitor/bin", ".ssh", vec![".ssh"]),
+        (
+            ".cc-monitor",
+            "elsewhere",
+            vec!["elsewhere", "elsewhere/bin"],
+        ),
+    ] {
+        let fs = rig::home(false, false);
+        {
+            let mut g = fs.lock().unwrap();
+            if link == ".cc-monitor" {
+                g.dirs.remove(".cc-monitor");
+            }
+            for d in make {
+                g.dirs.insert(d.to_string());
+            }
+            g.links.insert(link.to_string(), target.to_string());
+        }
+        let s = rig::session_on(fs.clone()).await;
+        let r = super::put_atomic(&s, ".cc-monitor/bin/ccm", b"k", 0o700).await;
+        assert!(
+            matches!(&r, Err(Refusal::Fenced { said: m, .. }) if copy_core::copy_matches("beSftp.fence.rootNotOwn", m)),
+            "`{link}` 是链接，写却没拦住：{r:?}"
+        );
+        let r2 = super::make_dirs(&s, ".cc-monitor/bin").await;
+        assert!(
+            matches!(r2, Err(Refusal::Fenced { .. })),
+            "`{link}` 是链接，建目录没拦住：{r2:?}"
+        );
+        assert!(
+            fs.lock().unwrap().mutated.is_empty(),
+            "被拒的请求在服务端留下了改动：{:?}",
+            fs.lock().unwrap().mutated
+        );
+    }
+}
+
 /// 开写之前问一次 `lstat`：最后一段是链接 ⇒ 拒（开写会跟过去）。
 #[tokio::test]
 async fn opening_a_symlink_for_write_is_refused() {

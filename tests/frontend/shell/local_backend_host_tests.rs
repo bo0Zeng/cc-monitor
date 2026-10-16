@@ -1401,10 +1401,6 @@ fn the_socket_follows_the_home() {
         relay_route_core::listen_socket_for(a),
         a.join("run").join("backend.sock")
     );
-    assert_eq!(
-        relay_route_core::listen_pid_for(a),
-        a.join("run").join("backend.pid")
-    );
     assert_ne!(
         relay_route_core::listen_socket_for(a),
         relay_route_core::listen_socket_for(Path::new("/home/other/.cc-monitor"))
@@ -1448,25 +1444,6 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
         hello_verdict("HTTP/1.1 200 OK", None, &[]),
         HelloVerdict::Stranger(_)
     ));
-}
-
-/// 「谁在听那个口」那份记录**是上一个 monitor 写的** —— 它可能残缺。
-/// 残缺一律回 `None`，而 `None` 的处置是**不杀**（fail closed）。
-#[test]
-fn a_half_written_owner_record_is_refused_rather_than_guessed() {
-    assert_eq!(
-        parse_listen_owner("123\n/opt/ccm/backend\n"),
-        Some((123, std::path::PathBuf::from("/opt/ccm/backend")))
-    );
-    assert_eq!(
-        parse_listen_owner("123\n"),
-        None,
-        "只有 pid 没有二进制 ⇒ 核对不了身份 ⇒ 不许杀"
-    );
-    assert_eq!(parse_listen_owner("123\n\n"), None, "第二行是空的 ⇒ 同上");
-    assert_eq!(parse_listen_owner("abc\n/x\n"), None);
-    assert_eq!(parse_listen_owner(""), None);
-    assert_eq!(parse_listen_owner("0\n/x\n"), None, "pid 0 不是一个进程");
 }
 
 /// ★★ **起真后端的判据必须 fail-closed 地要一个私有 tmux 隔离。**
@@ -2880,15 +2857,15 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
              写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
     );
     // 按文案键断言，不按原文：原先钉着「下一步」三个字（CP1 裁「改·§2.3」处方形），
-    //   现在认那一臂取的是拒绝那一条、并把 pid 文件交给它当 `pidPath`。
+    //   现在认那一臂取的是拒绝那一条、并把套接字对端的 pid 交给它当 `pid`。
     for (needle, why) in [
         (
             "\"rsLocalBackendHost.start.refusedNotice\"",
             "只报「起不来」是没用的：用户要的是**现在该干什么** —— 那一句住这条文案",
         ),
         (
-            "(\"pidPath\", &(pid_path(&dir)",
-            "「把那个进程停掉」要说得出它是哪个进程 —— pid 记在那个文件里",
+            "(\"pid\", &listener_pid(&sock)",
+            "「把那个进程停掉」要说得出它是哪个进程 —— pid 由内核报（套接字的对端）",
         ),
     ] {
         assert!(
@@ -3527,13 +3504,9 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
 
         // 「谁在听那个口」那份记录要真的落了盘 —— 没有它，下一个宿主停不了它。
         let home = crate::config::resolve_monitor_data_dir().expect("沙箱的家");
-        let owner = read_listen_owner(&home);
-        assert_eq!(
-            owner.as_ref().map(|(p, _)| *p),
-            Some(pid1),
-            "「谁在听」没记对"
-        );
-        println!("E2E-OK KPY2 「谁在听」落了盘且带二进制路径（停按钮的凭据）");
+        let home = relay_route_core::listen_socket_for(&home);
+        assert_eq!(listener_pid(&home), pid1, "套接字的对端不是起出来的那一个");
+        println!("E2E-OK KPY2 套接字的对端就是起出来的那一个（停按钮的凭据）");
 
         // ── 宿主①退出（不碰那个进程 —— 那正是「脱离」）────────────
         sb.forget_like_a_host_that_exited();

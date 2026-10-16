@@ -1552,12 +1552,6 @@
       "zh": "远端回的不是 cc-monitor 后端",
       "args": []
     },
-    "rsRemoteResident.verdict.unreadable": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机后端回复内容无法解析 · 未定是否替换远端后端",
-      "args": []
-    },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
       "role": "报错",
@@ -1936,6 +1930,18 @@
       "role": "报错",
       "zh": "未停止进程 {pid} · 不是记下的后端\n它运行的是 {exe} · 进程号可能已被别的程序复用",
       "args": ["pid", "exe"]
+    },
+    "beResident.stop.cannotAsk": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "问不到在听的后端 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beResident.stop.foreign": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未停止进程 {pid} · 在听的不是本账号（uid {uid}）",
+      "args": ["pid", "uid"]
     },
     "beResident.stop.badGrace": {
       "kind": "error",
@@ -15068,8 +15074,8 @@
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未启动 · 已在运行的后端连接失败 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
-      "args": ["why", "pidPath"],
+      "zh": "本机后端未启动 · 已在运行的后端连接失败 · {why}\n结束进程 {pid}（在听 {sock}）再重开 cc-monitor 即可",
+      "args": ["why", "pid", "sock"],
       "limited": ["连接"]
     },
     "rsLocalBackendHost.stream.lost": {
@@ -18775,6 +18781,12 @@
       "role": "报错",
       "zh": "读取失败 · ~/{parent} · {why}",
       "args": ["parent", "why"]
+    },
+    "beSftp.fence.rootNotOwn": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "~/{root} 不是家目录里的真目录 · {real} · 不写",
+      "args": ["root", "real"]
     },
     "beSftp.fence.escaped": {
       "kind": "error",

@@ -93,10 +93,6 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         let run = relay_route_core::listen_dir_for(&fresh);
         let mode = std::fs::metadata(&run).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700, "门牌目录不是只给本人");
-        assert!(
-            relay_route_core::listen_pid_for(&fresh).is_file(),
-            "开门之前没记「谁在听」"
-        );
         drop(l2);
     }
     let (listening, _) = claim_then_log(&own_of(&|_| None), &|_| None, None, install)

@@ -139,6 +139,13 @@ pub fn connect_blocking(_path: &Path) -> std::io::Result<BlockingStream> {
 
 #[cfg(unix)]
 impl BlockingStream {
+    /// 对端是谁（内核给，不靠盘上的记录）：`(uid, pid)`。Linux `SO_PEERCRED`；macOS `getpeereid` ＋ `LOCAL_PEERPID`；
+    /// 别的 Unix 拿不到 pid ⇒ `Unsupported`。
+    pub fn peer(&self) -> std::io::Result<(u32, u32)> {
+        use std::os::unix::io::AsRawFd;
+        peer_of(self.0.as_raw_fd())
+    }
+
     /// 这一次阻塞读最多等多久（不是定时器：有字节就返回）。
     pub fn set_read_timeout(&self, d: Option<std::time::Duration>) -> std::io::Result<()> {
         self.0.set_read_timeout(d)
@@ -154,6 +161,74 @@ impl BlockingStream {
         self.0.set_nonblocking(true)?;
         tokio::net::UnixStream::from_std(self.0)
     }
+}
+
+#[cfg(target_os = "linux")]
+fn peer_of(fd: std::os::unix::io::RawFd) -> std::io::Result<(u32, u32)> {
+    let mut cred = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: `fd` 是活着的套接字；`cred` / `len` 是本栈上的、大小与 `SO_PEERCRED` 要的一致。
+    let rc = unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut cred as *mut libc::ucred).cast(),
+            &mut len,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    u32::try_from(cred.pid)
+        .ok()
+        .filter(|p| *p != 0)
+        .map(|pid| (cred.uid, pid))
+        .ok_or_else(|| std::io::ErrorKind::NotFound.into())
+}
+
+#[cfg(target_os = "macos")]
+fn peer_of(fd: std::os::unix::io::RawFd) -> std::io::Result<(u32, u32)> {
+    let (mut uid, mut gid) = (0, 0);
+    // SAFETY: `fd` 是活着的套接字；两个出参在本栈上。
+    if unsafe { libc::getpeereid(fd, &mut uid, &mut gid) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut pid: libc::pid_t = 0;
+    let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
+    // SAFETY: 同上；`LOCAL_PEERPID` 回一个 `pid_t`。
+    let rc = unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERPID,
+            (&mut pid as *mut libc::pid_t).cast(),
+            &mut len,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    u32::try_from(pid)
+        .ok()
+        .filter(|p| *p != 0)
+        .map(|pid| (uid, pid))
+        .ok_or_else(|| std::io::ErrorKind::NotFound.into())
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn peer_of(_fd: std::os::unix::io::RawFd) -> std::io::Result<(u32, u32)> {
+    Err(std::io::ErrorKind::Unsupported.into())
+}
+
+/// 本进程的 uid（核对端是不是本人用）。
+#[cfg(unix)]
+pub fn own_uid() -> u32 {
+    my_uid()
 }
 
 #[cfg(unix)]
@@ -175,6 +250,10 @@ impl std::io::Write for &BlockingStream {
 
 #[cfg(not(unix))]
 impl BlockingStream {
+    /// 非 Unix：造不出来。
+    pub fn peer(&self) -> std::io::Result<(u32, u32)> {
+        match self.0 {}
+    }
     /// 非 Unix：造不出来。
     pub fn set_read_timeout(&self, _d: Option<std::time::Duration>) -> std::io::Result<()> {
         match self.0 {}

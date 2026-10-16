@@ -167,24 +167,8 @@ impl Transport for Fake {
             })
         })
     }
-    fn installer(&self) -> Option<&dyn Install> {
-        Some(self)
-    }
-}
-
-impl Install for Fake {
-    fn verdict<'a>(
-        &'a self,
-        _mine: &'a str,
-        _theirs: &'a str,
-        _replaced: bool,
-    ) -> Boxed<'a, Result<resident_client::gate::Verdict, Problem>> {
-        Box::pin(async {
-            Ok(resident_client::gate::Verdict {
-                replace: false,
-                older: false,
-            })
-        })
+    fn installs(&self) -> bool {
+        true
     }
 }
 

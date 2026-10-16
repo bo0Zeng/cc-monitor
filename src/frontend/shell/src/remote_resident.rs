@@ -1,6 +1,5 @@
 //! **远端常驻后端，monitor 这一侧剩下的那几件**：起 · 找 · 只升不降（接上 · ensure · 换装 · 退避）是 `resident-client` 那一条循环
 //! （`resident_client::feed`，手机同一份），monitor 这一侧只给它接线（`stream_source/run.rs::DeskLink`）。这里剩：
-//! - 版本门问本机常驻后端（[`ask_verdict`]，帧命令 `resident-verdict`，与 `deploy-plan` 一家；判定只在后端）；
 //! - 停：`--resident-stop`（那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）；
 //! - 读一次性回话（[`parse_answer`]：停 · 本机那一趟同读）。
 
@@ -102,35 +101,6 @@ pub(crate) fn parse_answer(
             }
         }
     }
-}
-
-// 那条命令的名字 · 期限 · 答的形状与读法 · 「没带身份就不问」：住 `resident-client` 的版本门（两端同一份；装得了后端的这一侧问本机常驻后端）。
-use resident_client::gate::{Verdict, VERDICT_BUDGET, VERDICT_CMD};
-
-/// 应答 → [`Verdict`]（严格收，读法住 `resident_client::gate::decode_verdict`）；对不上 ⇒ 那一句 ＋ 哪里不对。
-pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
-    resident_client::gate::decode_verdict(v)
-        .map_err(|what| Said::with_raw(copy_text("rsRemoteResident.verdict.unreadable", &[]), what))
-}
-
-/// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
-pub(crate) async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, Said> {
-    use crate::backend_route::{route_call_error, Routed};
-    let client = crate::dial_host::local_backend_accepting(VERDICT_CMD)
-        .await
-        .map_err(Said::written)?;
-    let args = resident_client::gate::verdict_args(mine, theirs, replaced);
-    let data = client
-        .call(VERDICT_CMD, args, VERDICT_BUDGET)
-        .await
-        .map_err(|e| {
-            match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
-                message.to_string()
-            }) {
-                Routed::NoChannel(s) | Routed::Refused(s) => Said::written(s),
-            }
-        })?;
-    decode_verdict(&data.unwrap_or_default())
 }
 
 /// 「停」的结局 —— 后端 `--resident-stop` 那一行原样的三个词（`control/resident.rs::Stopped`）。

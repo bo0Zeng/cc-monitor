@@ -134,7 +134,7 @@ impl Own {
         })
     }
 
-    /// 试拿 `dir` 的独占锁、不等：别人持着 ⇒ `Ok(None)`。常驻后端抢门牌用（拿到的那一把随进程活着，「谁在听」也在它里面写）。
+    /// 试拿 `dir` 的独占锁、不等：别人持着 ⇒ `Ok(None)`。常驻后端抢门牌用（拿到的那一把随进程活着）。
     /// 本平台没有这一形 ⇒ `Err`（`Unsupported`）。
     pub(crate) fn try_lock(&self, dir: &OwnPath) -> std::io::Result<Option<OwnLock>> {
         Ok(own_chan::try_hold(dir.as_path())?.map(|h| OwnLock {

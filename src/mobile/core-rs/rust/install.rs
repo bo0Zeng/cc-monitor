@@ -1,5 +1,5 @@
 //! **手机给一台装 / 升级后端**的宿主：判定与 ①–④ 是 `deploy` crate 那一份（桌面后端答 `deploy-plan` 用的同一份），
-//! ⑤ 换常驻是 `resident-client` 那一条（`Feed::replace`：`--resident-ensure --replace` 再整份重接）。这里只接线、写话。
+//! ⑤ 换常驻是 `resident-client` 那一条（`Feed::replace`：`--resident-ensure --replace`，换不换那台自己判，换了就整份重接）。这里只接线、写话。
 //!
 //! 一个入口（`Core.deploy(handle, slots)`），事经那台常驻流同一个口交 Kotlin（种类 `deploy`，一行 JSON）：
 //! - `{"step": "plan" | "place" | "restart", "text", "bar"}`：走到哪一步（话是写好的；`bar` ⇒ 放字节那一步，屏上走一条进度条）；
@@ -113,17 +113,6 @@ pub fn slots_of(json: &str) -> Vec<deploy::Slot> {
         .collect()
 }
 
-/// 装完之后要不要换常驻：放上了这一版 ⇒ 换；已是这一版 ⇒ 接着的那一位旧（或根本没接着）才换；那台更新 ⇒ 不动。
-pub fn restart_after(plan: &deploy::Plan, theirs: Option<&str>) -> bool {
-    match &plan.action {
-        DeployAction::Deploy(_) => true,
-        DeployAction::Skip => {
-            theirs.is_none_or(|t| deploy::resident_verdict(&plan.expected, t, false).replace)
-        }
-        DeployAction::Keep { .. } => false,
-    }
-}
-
 /// 给编号 `h` 那台装一趟（在当前运行时上起）。那台不在 · 正在装 ⇒ `false`（不起第二趟）。
 pub fn start(h: i64, slots_json: &str, on: OnEvent) -> bool {
     let Some(feed) = resident::feed(h) else {
@@ -203,14 +192,11 @@ async fn run(
         Ok(p) => p,
         Err(f) => return emit(failed_json(f.code, &f.said, f.raw.as_deref())),
     };
-    if restart_after(&plan, feed.theirs().as_deref()) {
-        emit(step_json(Step::Restart, machine));
-        if let Err(p) = feed.replace().await {
-            let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
-            return emit(failed_json("restart_failed", &p.text, raw));
-        }
-    } else {
-        feed.wake();
+    // 换不换常驻由那台判（`--resident-ensure --replace`：在听的比落点旧才换）。
+    emit(step_json(Step::Restart, machine));
+    if let Err(p) = feed.replace().await {
+        let raw = (!p.detail.is_empty()).then_some(p.detail.as_str());
+        return emit(failed_json("restart_failed", &p.text, raw));
     }
     emit(done_json(&plan));
 }
@@ -298,24 +284,5 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].path, std::path::PathBuf::from("/a/x"));
         assert!(slots_of("not json").is_empty());
-    }
-
-    /// 换不换常驻：放上了 ⇒ 换；已是这一版 ⇒ 没接着 · 接着的那一位旧才换；那台更新 ⇒ 不动。
-    #[test]
-    fn the_resident_is_replaced_only_when_it_runs_an_older_one() {
-        assert!(restart_after(
-            &plan(DeployAction::Deploy(String::new())),
-            Some("p9b-mine")
-        ));
-        assert!(restart_after(&plan(DeployAction::Skip), None));
-        assert!(restart_after(&plan(DeployAction::Skip), Some("p9a-old")));
-        assert!(!restart_after(&plan(DeployAction::Skip), Some("p9b-mine")));
-        assert!(!restart_after(
-            &plan(DeployAction::Keep {
-                theirs: "p9c".into(),
-                why: String::new()
-            }),
-            None
-        ));
     }
 }

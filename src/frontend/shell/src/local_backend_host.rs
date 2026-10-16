@@ -145,31 +145,11 @@ pub(crate) const RESIDENT_ENV: &str = "CCM_RESIDENT";
 /// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
 pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 
-/// 「谁在听」的住址（常驻后端拿到锁之后自己写；本宿主只读）。
-fn pid_path(dir: &std::path::Path) -> std::path::PathBuf {
-    relay_route_core::listen_pid_for(dir)
-}
-
-// `~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
-//   与释放后端二进制那几处（`local_backend.rs`，经注入）共用一份。
-
-/// 解那两行。**纯函数**，所以「只有一行」「pid 不是数字」这些残缺形都测得到 ——
-/// 这个文件是上一个 monitor 写的，它可能被中途打断、可能是旧版本写的。
-pub(crate) fn parse_listen_owner(body: &str) -> Option<(u32, std::path::PathBuf)> {
-    let mut lines = body.lines();
-    let pid: u32 = lines.next()?.trim().parse().ok()?;
-    if pid == 0 {
-        return None;
-    }
-    let bin = lines.next()?.trim();
-    if bin.is_empty() {
-        return None;
-    }
-    Some((pid, std::path::PathBuf::from(bin)))
-}
-
-fn read_listen_owner(dir: &std::path::Path) -> Option<(u32, std::path::PathBuf)> {
-    parse_listen_owner(&std::fs::read_to_string(pid_path(dir)).ok()?)
+/// 在听的那一位的 pid：连它的套接字、内核报的对端（不靠盘上的记录）。问不到 ⇒ 0（不知道）。
+fn listener_pid(sock: &std::path::Path) -> u32 {
+    own_chan::connect_blocking(sock)
+        .and_then(|s| s.peer())
+        .map_or(0, |(_, pid)| pid)
 }
 
 /// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
@@ -540,7 +520,7 @@ fn spawn_detached(
 
 /// 脱离之后手里剩下的东西。
 pub struct DetachedHandle {
-    /// 那个后端的 pid。**0 表示不知道**（接管来的、而上一次那个 monitor 没记下来）。
+    /// 那个后端的 pid。**0 表示不知道**（接管来的、而那一下问不到套接字的对端）。
     pid: u32,
     /// **我们起的**那个 `Child`；接管别人起的那个时是 `None`。
     ///
@@ -549,8 +529,7 @@ pub struct DetachedHandle {
     /// 而两份表示会漂（本区最贵的那一族：「一个值装了两件事」的近亲）。
     /// 要问这句话就问 `child.is_some()`。
     child: Option<crate::spawn_managed::ManagedChild>,
-    /// 那个二进制的路径。杀它之前拿它核对 `/proc/<pid>/exe`（防 pid 复用误伤）。
-    /// 接管来的那个从 pid 文件的第二行读回；读不回就是空的，而空的**不许杀**。
+    /// 那个二进制的路径（停它时跑它的 `--resident-stop`；停哪一位由那一跳问套接字）。接管来的就是落点那一份。
     bin: std::path::PathBuf,
 }
 
@@ -568,7 +547,7 @@ static SUPERVISED_BIN: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync:
 
 /// **正在跑的那份**本机常驻后端的二进制 —— 给终端窗口导 `CCM_BACKEND_BIN`（`D11`）。
 ///
-/// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的从 pid 文件第二行读回；读不回是空的 ⇒ `None`，不猜）；
+/// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的是落点那一份）；
 /// 被监护那条 ⇒ 起它时解析出的那一份。都不在 ⇒ `None`（窗口里不设，同「本机后端不在」）。
 /// 此前窗口那一格自己去找 exe 旁边那份文件，不认自释放之后正在跑的那一份（RT1 F2 / WIN1 报备）。
 pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
@@ -941,6 +920,7 @@ enum DetachOutcome {
 ///   tmux server 的状态（08-11 那次事故打没了用户 9 个真实会话）。
 fn start_detached(
     resolve_bin: &dyn Fn() -> Result<std::path::PathBuf, (Said, Vec<std::path::PathBuf>)>,
+    landing: &std::path::Path,
     extra_env: &[(String, String)],
 ) -> DetachOutcome {
     if !detach_wanted(
@@ -953,7 +933,7 @@ fn start_detached(
     let Some(home) = crate::config::resolve_monitor_data_dir() else {
         return DetachOutcome::NotTaken;
     };
-    // 套接字与「谁在听」都住这个家（后端 `--resident-stop` 在同一个家里找同一份）。
+    // 套接字住这个家（后端 `--resident-stop` 在同一个家里问同一个）。
     let dir = home;
     let sock = relay_route_core::listen_socket_for(&dir);
 
@@ -964,12 +944,12 @@ fn start_detached(
     //    ⇒ **脱离而不认已有实例 = 每台机 N 个后端互相盖槽位，比今天更糟。**
     match adopt_existing(&sock, extra_env) {
         Adopt::Attached => {
-            let (pid, bin) = read_listen_owner(&dir).unwrap_or((0, std::path::PathBuf::new()));
+            let pid = listener_pid(&sock);
             let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
             *g = Some(DetachedHandle {
                 pid,
                 child: None,
-                bin,
+                bin: landing.to_path_buf(),
             });
             return DetachOutcome::Done(StartOutcome::AlreadyRunning);
         }
@@ -982,7 +962,8 @@ fn start_detached(
                 "rsLocalBackendHost.start.refusedNotice",
                 &[
                     ("why", &why.said),
-                    ("pidPath", &(pid_path(&dir).display()).to_string()),
+                    ("pid", &listener_pid(&sock).to_string()),
+                    ("sock", &sock.display().to_string()),
                 ],
             ));
             return DetachOutcome::Done(StartOutcome::Failed {
@@ -993,7 +974,7 @@ fn start_detached(
                     ),
                     why,
                 ),
-                looked_at: vec![pid_path(&dir), sock.clone()],
+                looked_at: vec![sock.clone()],
             });
         }
         // 〔HOST 余项〕常驻后端多客户之后不再有「被另一个 monitor 占着」那一臂（连同两句话删了）。
@@ -1017,7 +998,6 @@ fn start_detached(
         }
     };
     let pid = child.id();
-    // 「谁在听」由它自己绑上口之后记（后端 `control/resident.rs::record_owner`，本机远端同一个写者）。
     {
         let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
         *g = Some(DetachedHandle {
@@ -1521,7 +1501,8 @@ pub fn start_local_backend() -> StartOutcome {
     let handed = backend_env();
     // `embedded` 里可能是那句拒绝的话（`String`），不再是 `Copy` ⇒ 常驻那条拿一份拷贝。
     let resolve = || resolve_backend_bin(&extract_dir, embedded.clone());
-    match start_detached(&resolve, &handed) {
+    let landing = extract_dir.join(local_backend::local_ccm_entry_name());
+    match start_detached(&resolve, &landing, &handed) {
         // ★ `K-P3b`：这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
         DetachOutcome::Done(out) => return note_never_started(out),
         DetachOutcome::NotTaken => {}
