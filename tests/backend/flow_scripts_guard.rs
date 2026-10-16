@@ -998,8 +998,8 @@ mod tests {
         let emu = read("tests/mobile-smoke/emu.sh");
         pinned(
             &emu,
-            "systemd-run --user --scope --quiet -p MemoryHigh=6G -p MemoryMax=8G",
-            "模拟器不在自己封了内存的 scope 里",
+            "systemd-run --user --scope --quiet -p MemoryMax=8G --",
+            "模拟器不在自己封了内存的 scope 里（只封顶、不设 MemoryHigh：一开机就顶到 6G 那条线，回收节流把线程压在 D 态）",
         );
     }
 
