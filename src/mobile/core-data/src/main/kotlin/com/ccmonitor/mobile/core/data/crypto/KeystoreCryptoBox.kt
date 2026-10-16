@@ -33,16 +33,6 @@ class KeystoreCryptoBox(
 
     override fun decrypt(blob: ByteArray): ByteArray = aead.decrypt(blob, ASSOCIATED_DATA)
 
-    /**
-     * 启发式：Tink 密文不以 PEM '-'(0x2D) 或 DER SEQUENCE(0x30) 开头。
-     * 用来区分已加密与明文（防御性）。
-     */
-    override fun isEncrypted(blob: ByteArray): Boolean {
-        if (blob.isEmpty()) return false
-        val first = blob[0]
-        return first != '-'.code.toByte() && first != 0x30.toByte()
-    }
-
     private companion object {
         const val KEYSET_NAME = "ccm_key_keyset"
         const val PREFERENCE_FILE = "ccm_key_keyset_prefs"

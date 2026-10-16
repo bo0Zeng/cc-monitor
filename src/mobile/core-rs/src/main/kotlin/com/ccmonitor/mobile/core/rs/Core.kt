@@ -5,7 +5,8 @@ package com.ccmonitor.mobile.core.rs
  *
  * 一条**链路**就是拨号核心的那一条：[open] 交一份拨号请求（JSON，同后端 `link-open` 组好的那一形），之后上行字节经 [send]，
  * 下行字节（先是阶段行 ＋ 一行 ack，再按用法）经 [Sink.data] 回来，收工时回一个 `null`。改 PTY 窗口经 [resize]，收掉经 [close]。
- * 钥匙按编号交进来（[putPassword] · [putPem] · [putKeystore]），拨号请求的 `key_path` 写那个编号。
+ * 钥匙交进来回一个编号（[putPassword] · [putPem] · [putKeystore]，同样的一把只存一份），拨号请求的 `key_path` 写那个编号；
+ * 每交一次 ＝ 握一份，[holdKey] 多握 / 放掉一份，最后一份放掉核心就删了它。
  *
  * 一台的**常驻流**（重连 · 握手 · 版本门 · 在看名单 · 一问一答，桌面同一份 `resident-client`）整条在核心里：[residentOpen] 看一台，
  * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
@@ -53,22 +54,25 @@ object Core {
     /** 记下 [sink]、装上手机那一套（只认第一次）。 */
     external fun init(sink: Sink)
 
-    external fun putPassword(
-        id: String,
-        password: String,
-    )
+    /** 握一份密码，回它的编号；读不动 ⇒ `null`。 */
+    external fun putPassword(password: String): String?
 
+    /** 握一份私钥 PEM（[passphrase] 是它的口令），回编号；读不动 ⇒ `null`。 */
     external fun putPem(
-        id: String,
         pem: ByteArray,
         passphrase: String?,
-    )
+    ): String?
 
-    /** [point] = P-256 公钥的未压缩点（`04 ‖ X ‖ Y`）。认不出 ⇒ `false`。 */
+    /** 握一份 Keystore 钥匙（[point] = P-256 公钥的未压缩点 `04 ‖ X ‖ Y`），回编号；认不出那个点 ⇒ `null`。 */
     external fun putKeystore(
-        id: String,
         alias: String,
         point: ByteArray,
+    ): String?
+
+    /** 编号 [id] 那把钥匙多握一份（[holding]）/ 放掉一份；编号不在 ⇒ `false`。 */
+    external fun holdKey(
+        id: String,
+        holding: Boolean,
     ): Boolean
 
     /** 一段私钥 PEM（不带口令）⇒ 它的公钥那一行（`<算法> <base64> [comment]`）；认不出 ⇒ `null`。 */

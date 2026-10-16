@@ -8,15 +8,4 @@ interface CryptoBox {
     fun encrypt(plain: ByteArray): ByteArray
 
     fun decrypt(blob: ByteArray): ByteArray
-
-    fun isEncrypted(blob: ByteArray): Boolean
-}
-
-/** 直通，不加密。只给测试用。 */
-class NoopCryptoBox : CryptoBox {
-    override fun encrypt(plain: ByteArray): ByteArray = plain
-
-    override fun decrypt(blob: ByteArray): ByteArray = blob
-
-    override fun isEncrypted(blob: ByteArray): Boolean = false
 }
