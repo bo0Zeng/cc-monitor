@@ -56,7 +56,7 @@
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
-| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `known_hosts` `profiles-written.json` `cache/skeleton/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 主机钥匙 · 上次写出的配置指纹 · 大记录的骨架（照记录重扫） |
+| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `known_hosts` `profiles-written.json` `cache/skeleton/` `cache/listing.json` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 主机钥匙 · 上次写出的配置指纹 · 大记录的骨架 · 历史清单缓存（都照记录重扫） |
 | `relay-key` `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
@@ -85,7 +85,7 @@
 
 ## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证（v2.6 B 重构）
 
-后端给每一行分配 per-file 单调递增的 `seq`（从 0 重读时先发 `session_file_reread` 再从 0 数；流不重放历史，起点是当前完整行数 ⇒ seq 就是行号，与旁路快照同一个编号空间，§25a）。本机与远端同一个来源（本机会话的行也是本机后端的 `line` 帧）。所有交付路径透传 seq。前端每个 Tab / 查看器持一个 `RecordTimeline`，按 seq 二分插入 DOM。后端交格顺序、切块到达顺序、实时与成批混合，都不影响视觉顺序。seq 保时序、不保投递次数（§25）。
+后端给每一行分配 per-file 单调递增的 `seq`（从 0 重读时照数不出行、读完发 `session_file_reread` 带行数，客户端从尾段重取；流不重放历史，起点是当前完整行数 ⇒ seq 就是行号，与旁路快照同一个编号空间，§25a）。本机与远端同一个来源（本机会话的行也是本机后端的 `line` 帧）。所有交付路径透传 seq。前端每个 Tab / 查看器持一个 `RecordTimeline`，按 seq 二分插入 DOM。后端交格顺序、切块到达顺序、实时与成批混合，都不影响视觉顺序。seq 保时序、不保投递次数（§25）。
 
 **为什么不能松动**：此前用五个 flag 协调「批 / 实时 / 前插」反复出相位 bug；seq ＋ 二分插入把「后端保序」变成「前端排序」，一次性消掉了那整套机制。
 
@@ -297,7 +297,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 25. 行事件投递是 at-least-once —— 按 uuid 累积状态的前端模块必须自行幂等（issue #25）
 
-行投递不保证恰好一次：重连重放、快照与实时的重叠区是同 seq 重投；截断重读时后端先发 `session_file_reread`、从 0 重数（前端那个会话整份重来）。两端只消费以 `\n` 结尾的完整行。`tab.seenSeqs` 挡同 seq 重投；**任何按 uuid 累积状态或构建拓扑的前端模块必须对「同一条再来一遍」幂等**（入口按 uuid 拒重、保首见），例：`BranchFolder.seenUuids`。
+行投递不保证恰好一次：重连重放、快照与实时的重叠区是同 seq 重投；截断重读时后端从 0 重数、不逐行重发，发 `session_file_reread` 带行数（前端那个会话整份重来、照宣告那样从尾段取）。两端只消费以 `\n` 结尾的完整行。`tab.seenSeqs` 挡同 seq 重投；**任何按 uuid 累积状态或构建拓扑的前端模块必须对「同一条再来一遍」幂等**（入口按 uuid 拒重、保首见），例：`BranchFolder.seenUuids`。
 
 **为什么不能松动**：一条重复记录就能毒化拓扑计数，把整段历史误折成「已被 ESC 回退」；重复的常是不出 DOM 的记录，肉眼看不见、F5 后带毒不自愈。
 

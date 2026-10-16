@@ -6,16 +6,17 @@
 //! 这一族不引 observe（`layering_guard::ONE_WAY`）。
 //!
 //! 安全：按名字给的项目目录不许含路径分隔符；路径一律经 [`crate::common::fence::Fence`] 放行（`canonicalize` 后前缀校验，防 `../` 穿越）。
-//! 只读：本模块只 read_dir / read。
+//! 读记录只 read_dir / read；写只有清单缓存落盘那一份（经启动时装的 [`Own`]）。
 
 use super::listing_scan::SessionScan;
 use crate::common::append_read::{Blocks, Step, Tailed};
 use crate::common::fence::Fence;
-use crate::platform::fs::Ro;
+use crate::platform::fs::{Own, OwnPath, Ro};
 pub(crate) use cmd_wire::listing::{Can, CanDelete, CanResume};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
 
 /// 一条会话的状态：`live` 在跑 · `reconnectable` 不在跑、tmux 里还挂着它（会话账本说的）· `ended` 已结束 ·
@@ -244,6 +245,9 @@ pub(crate) fn sessions_by_dir_for(
     .flatten()
     .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
+    if only.is_none() {
+        save();
+    }
     Ok(Some(out))
 }
 
@@ -287,6 +291,144 @@ static SESSION_META: std::sync::Mutex<std::collections::BTreeMap<PathBuf, Listin
 
 /// [`SESSION_META`] 的上限（条）：超了整张清掉重来（不做淘汰次序 —— 一台上会话数到这个量级之前它都不会触发）。
 const SESSION_META_CAP: usize = 50_000;
+
+/// 清单缓存落盘的家（启动入口装：[`install`]）：数据目录底下一份 [`relay_route_core::LISTING_CACHE_REL`]。
+/// 没装（判据 · 一次性进程）⇒ 只在内存。
+static STORE: std::sync::OnceLock<Own> = std::sync::OnceLock::new();
+
+/// 盘上那一份装回过没有（头一次碰清单缓存时装，谁先碰谁装）。
+static LOADED: std::sync::Once = std::sync::Once::new();
+
+/// 内存那一份自上次落盘之后变过没有（没变不重写）。
+static DIRTY: AtomicBool = AtomicBool::new(false);
+
+/// 盘上那一份的格式：形状变了就加一（对不上 ⇒ 当没有，照记录重扫、覆盖）。
+const STORE_VERSION: u32 = 1;
+
+/// 读盘上那一份的上限。
+const STORE_MAX_READ: u64 = 256 << 20;
+
+/// 启动时装一次（拿启动时造的写句柄）：之后重启照盘上那一份接着认 —— 没变的记录不读、变长的只读追加的那一截。
+pub fn install(own: &Own) {
+    if STORE.set(own.clone()).is_err() {
+        tracing::debug!("listing cache home already installed; keeping the first one");
+    }
+}
+
+/// 盘上一份：版本 ＋ 每份记录读到哪了、累计的那几格、成品行。
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Saved {
+    v: u32,
+    rows: Vec<SavedRow>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedRow {
+    path: PathBuf,
+    read: Tailed,
+    done: SessionScan,
+    tail: SessionScan,
+    row: serde_json::Value,
+}
+
+/// 清单缓存那张表（头一次碰时先把盘上那一份装回）。
+fn table() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<PathBuf, ListingEntry>> {
+    LOADED.call_once(|| {
+        if let Some(own) = STORE.get() {
+            load_from(own);
+        }
+    });
+    SESSION_META.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 落盘那一份的（目录, 文件）。
+fn store_at(own: &Own) -> Option<(OwnPath, OwnPath)> {
+    let rel = relay_route_core::LISTING_CACHE_REL.strip_prefix(".cc-monitor/")?;
+    let (dir, name) = rel.rsplit_once('/')?;
+    let dir = own.path(dir).ok()?;
+    let file = dir.join(name).ok()?;
+    Some((dir, file))
+}
+
+/// 把盘上那一份装进内存（内存里已有的那几份不动）。没有 · 读不出 · 版本对不上 ⇒ 什么都不装。
+pub(crate) fn load_from(own: &Own) {
+    let Some((_, file)) = store_at(own) else {
+        return;
+    };
+    let Ok(meta) = Ro::metadata(file.as_path()) else {
+        return;
+    };
+    if !meta.is_file() || meta.len() > STORE_MAX_READ {
+        tracing::warn!("listing cache skipped: not a file or over the cap");
+        return;
+    }
+    let saved: Saved = match Ro::open(file.as_path())
+        .map_err(|e| e.to_string())
+        .and_then(|f| {
+            serde_json::from_reader(std::io::BufReader::new(f)).map_err(|e| e.to_string())
+        }) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!("listing cache unreadable: {e}");
+            return;
+        }
+    };
+    if saved.v != STORE_VERSION {
+        return;
+    }
+    let mut t = SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
+    for r in saved.rows {
+        t.entry(r.path).or_insert_with(|| ListingEntry {
+            read: r.read,
+            done: r.done,
+            tail: r.tail,
+            row: r.row,
+            last_bytes: 0,
+        });
+    }
+}
+
+/// 内存那一份变过 ⇒ 整份落盘（已经不在的记录不落）。没装家 ⇒ 不落。
+fn save() {
+    if let Some(own) = STORE.get() {
+        save_to(own);
+    }
+}
+
+/// [`save`] 的本体（家是参数）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
+pub(crate) fn save_to(own: &Own) {
+    if !DIRTY.swap(false, Ordering::Relaxed) {
+        return;
+    }
+    let rows: Vec<SavedRow> = table()
+        .iter()
+        .filter(|(p, _)| p.to_str().is_some())
+        .map(|(p, e)| SavedRow {
+            path: p.clone(),
+            read: e.read.clone(),
+            done: e.done.clone(),
+            tail: e.tail.clone(),
+            row: e.row.clone(),
+        })
+        .collect();
+    let rows: Vec<SavedRow> = rows.into_iter().filter(|r| r.path.is_file()).collect();
+    let saved = Saved {
+        v: STORE_VERSION,
+        rows,
+    };
+    let written = (|| -> Result<(), String> {
+        let (dir, file) = store_at(own).ok_or("no data dir")?;
+        let root = own.root().ok_or("no data dir")?;
+        own.ensure_dir(&root).map_err(|e| e.to_string())?;
+        own.ensure_dir(&dir).map_err(|e| e.to_string())?;
+        let held = own.lock(&dir).map_err(|e| format!("{e:?}"))?;
+        let body = serde_json::to_vec(&saved).map_err(|e| e.to_string())?;
+        own.write(&file, &held, &body).map_err(|e| e.to_string())
+    })();
+    if let Err(e) = written {
+        tracing::debug!("listing cache not stored: {e}");
+    }
+}
 
 /// 清单缓存里的一份：读到哪了（与全文搜索索引共用的 [`Tailed`]）· 完整行累计的那几格 · 末尾半行的那几格 · 成品行。
 struct ListingEntry {
@@ -383,7 +525,7 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
     if let Err(e) = sessions_by_dir(agent_home) {
         tracing::warn!("历史清单缓存：后台热缓存读不了记录树（{e}）");
     }
-    SESSION_META.lock().unwrap_or_else(|e| e.into_inner()).len()
+    table().len()
 }
 
 /// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
@@ -425,8 +567,7 @@ pub(crate) fn session_title_of(p: &Path) -> String {
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。
 fn analyze_session_cached(p: &Path) -> serde_json::Value {
-    let lock = || SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
-    let prev = lock().remove(p);
+    let prev = table().remove(p);
     // 读到过读不动的一行（之后的都不算）⇒ 不追加读：那一行之后的内容要整份重扫才对得上。
     let may_append = prev.as_ref().is_some_and(|e| !e.done.stopped);
     let mut bytes = 0u64;
@@ -434,6 +575,7 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
     else {
         return analyze_session(p);
     };
+    let changed = !matches!((&step, &prev), (Step::Same, Some(_)));
     let entry = match (step, prev) {
         (Step::Same, Some(mut e)) => {
             e.last_bytes = 0;
@@ -452,11 +594,14 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
     let row = entry.row.clone();
     // 拿不到修改时刻 ⇒ 不留（下次认不出它变没变）。
     if seen.0.is_some() {
-        let mut t = lock();
+        let mut t = table();
         if t.len() >= SESSION_META_CAP {
             t.clear();
         }
         t.insert(p.to_path_buf(), entry);
+        if changed {
+            DIRTY.store(true, Ordering::Relaxed);
+        }
     }
     row
 }

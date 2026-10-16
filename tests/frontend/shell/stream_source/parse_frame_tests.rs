@@ -969,7 +969,8 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
         Ok(InboundFrame::SessionFileNotice {
             sid: "s".into(),
             path: "/p/s.jsonl".into(),
-            change: FileChange::Gone
+            change: FileChange::Gone,
+            lines: None,
         })
     );
     for (why, want) in [
@@ -978,18 +979,20 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
     ] {
         assert_eq!(
             parse_frame(&format!(
-                r#"{{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"{why}"}}"#
+                r#"{{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"{why}","lines":7}}"#
             )),
             Ok(InboundFrame::SessionFileNotice {
                 sid: "s".into(),
                 path: "/p/s.jsonl".into(),
-                change: want
+                change: want,
+                lines: Some(7),
             })
         );
     }
     for bad in [
-        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"moved"}"#,
-        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl"}"#,
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"moved","lines":7}"#,
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","lines":7}"#,
+        r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"truncated"}"#,
         r#"{"kind":"session_file_gone","session_id":"s"}"#,
     ] {
         assert!(parse_frame(bad).is_err(), "{bad}");

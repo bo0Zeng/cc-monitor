@@ -585,3 +585,81 @@ fn the_history_readers_stream_instead_of_slurping() {
         );
     }
 }
+
+/// 清单缓存落盘：内存那一份没了（重启）之后照盘上那一份接着认 —— 没变的一个字节都不读、变长的只读见证与追加的那一截；
+/// 答案与整份重扫逐字相同。家在沙箱的数据目录里。
+#[test]
+fn a_restart_takes_the_listing_from_disk() {
+    use std::io::Write as _;
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-disk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("data")).unwrap();
+    let (data, home) = (
+        tmp.join("data").to_string_lossy().into_owned(),
+        tmp.to_string_lossy().into_owned(),
+    );
+    let own = crate::platform::fs::Own::issue_with(&|k| match k {
+        creds_core::store::DATA_DIR_ENV => Some(data.clone()),
+        "HOME" => Some(home.clone()),
+        _ => None,
+    });
+    let dir = fixture_project(&tmp, "proj-disk");
+    let rec = |i: usize| {
+        format!(
+            "{{\"type\":\"user\",\"cwd\":\"/w/disk\",\"timestamp\":\"2026-10-01T08:{:02}:00Z\",\"message\":{{\"role\":\"user\",\"content\":\"第 {i} 句 {}\"}}}}\n",
+            i % 60,
+            "填".repeat(2000)
+        )
+    };
+    let p = dir.join("s-disk.jsonl");
+    std::fs::write(&p, (0..100).map(rec).collect::<String>()).unwrap();
+    let title = dir.join("s-disk-title.jsonl");
+    std::fs::write(
+        &title,
+        format!(
+            "{}{{\"type\":\"ai-title\",\"aiTitle\":\"盘上的标题\"}}\n",
+            rec(0)
+        ),
+    )
+    .unwrap();
+    let read = |p: &Path| SESSION_META.lock().unwrap().get(p).map(|e| e.last_bytes);
+    let forget = || {
+        let mut t = SESSION_META.lock().unwrap();
+        t.remove(&p);
+        t.remove(&title);
+    };
+    for q in [&p, &title] {
+        analyze_session_cached(q);
+    }
+    save_to(&own);
+    forget();
+    load_from(&own);
+    for q in [&p, &title] {
+        assert_eq!(
+            analyze_session_cached(q),
+            analyze_session(q),
+            "{}",
+            q.display()
+        );
+        assert_eq!(read(q), Some(0), "重启之后没变的 {} 又读了", q.display());
+    }
+    // 重启之后变长：只读见证与追加的那一行。
+    forget();
+    load_from(&own);
+    let one = rec(100);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(one.as_bytes())
+        .unwrap();
+    let v = analyze_session_cached(&p);
+    assert_eq!(v, analyze_session(&p));
+    assert_eq!(v["messageCountApprox"], 101);
+    let got = read(&p).unwrap();
+    assert!(
+        got < (one.len() + 1024) as u64,
+        "重启之后追加一行读了 {got} 字节 —— 整份重扫了"
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+}

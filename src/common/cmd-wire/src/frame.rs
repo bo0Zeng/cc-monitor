@@ -327,7 +327,7 @@ pub struct SessionFileGone {
 
 /// **活会话的记录文件被改过了，已从头重读**（截短 · 或游标之前被原地改写）。
 ///
-/// 紧跟在这一趟重读出来的 `line` 帧**之前**；重读的行号从 0 重数 ⇒ 下游据这一帧把这个会话旧的一代整份作废。
+/// 重读那一趟照读照数、不逐行上流；行号从 0 重数 ⇒ 下游据这一帧把这个会话旧的一代整份作废，照宣告那样从尾段取到第 `lines` 行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionFileReread {
     /// 会话 id。
@@ -336,6 +336,8 @@ pub struct SessionFileReread {
     pub path: String,
     /// 为什么从头重读。
     pub why: RereadWhy,
+    /// 重读完那份记录的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
+    pub lines: u64,
 }
 
 /// **一条链路的下行字节**。`data` 是 base64（标准字母表、带补位）。🔴 **不丢**：走应答那条独立通道。

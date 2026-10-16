@@ -122,6 +122,8 @@ async fn main() {
     dial::install_known_hosts(&own);
     // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（实时跟读起步也照它）。
     observe::skeleton::install(&own);
+    // 历史清单缓存落在数据目录底下：这里装一次那个家（重启照它接着认，不整台重扫）。
+    history::listing::install(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {

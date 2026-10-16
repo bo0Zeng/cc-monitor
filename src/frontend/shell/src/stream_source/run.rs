@@ -561,8 +561,13 @@ async fn dispatch(
             replay.changed(&crate::origin::Origin(host_label.clone()), &topic, cell);
         }
         // 那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
-        Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
-            intake.notice(&sid, &path, change).await;
+        Some(InboundFrame::SessionFileNotice {
+            sid,
+            path,
+            change,
+            lines,
+        }) => {
+            intake.notice(&sid, &path, change, lines).await;
         }
         // 那台的活会话清单报完了（后端把它压到第一份 tmux 快照之后、那一份推出的可重连之后才放）。
         //   与上面的宣告同一条流、同序交出口 ⇒ 前端收到它时，这台全部的活会话与可重连会话都已报过。

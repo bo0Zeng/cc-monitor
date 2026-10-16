@@ -6,7 +6,7 @@ use std::path::Path;
 /// 增量读一份**只往后追加**的文件（会话记录）的那本账：上一次读完时的（stat 的修改时刻, 真读到的长度）·
 /// `[0, consumed)` 已经交给调用方的完整行 · `consumed` 之前最多 [`WITNESS_BYTES`] 字节的见证。
 /// 全文搜索的常驻索引与历史清单的那份缓存共用这一本（「没变不读 · 变长且见证对得上只读尾巴 · 其余整份」只此一处）。
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Tailed {
     seen: (Option<std::time::SystemTime>, u64),
     consumed: u64,

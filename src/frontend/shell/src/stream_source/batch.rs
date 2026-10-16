@@ -176,12 +176,17 @@ impl LineIntake {
         }
     }
 
-    /// 一个会话的记录文件不见了 / 被改过已从头重读：残批先冲（出声那一格排在它之前的行后面、
-    /// 重读出来的行前面 —— 后端发它就在重读的行之前），再交那个会话的内容流一格。
-    pub(super) async fn notice(&mut self, sid: &str, path: &str, change: FileChange) {
+    /// 一个会话的记录文件不见了 / 被改过已从头重读：残批先冲（出声那一格排在它之前的行后面），再交那个会话的内容流一格。
+    /// 从头重读 ⇒ 后端行号从 0 重数、重读的行不逐行上流：旧的一代的快照撤掉、续点作废（同「会话走了」：`removed`；
+    /// 留存里旧的一代由 `on_session_notice` 同一拍丢），再照宣告那样排一份旁路快照，从尾段取到第 `lines` 行。
+    pub(super) async fn notice(
+        &mut self,
+        sid: &str,
+        path: &str,
+        change: FileChange,
+        lines: Option<u64>,
+    ) {
         self.flush().await;
-        // 从头重读 ⇒ 后端的行号从 0 重数：在飞 / 排队的快照（旧的一代）撤掉、续点作废。
-        //   （与「会话走了」同一件事：`removed`）。留存里旧的一代由 `on_session_notice` 同一拍丢。
         if change != FileChange::Gone {
             self.removed(sid);
         }
@@ -193,6 +198,9 @@ impl LineIntake {
                 change: change.as_wire().to_string(),
             })
             .await;
+        if change != FileChange::Gone {
+            self.announced(sid, Some(path.to_string()), lines);
+        }
     }
 
     /// 这条流上有一行丢了、说不出是哪个会话的哪一行（超长整行丢弃）：残批先冲，

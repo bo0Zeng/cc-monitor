@@ -248,6 +248,7 @@ fn own_what(id: &str) -> String {
         "accountsMcp" => copy_text("rsDataPaths.backend.accountsMcp", &[]),
         "extBackups" => copy_text("rsDataPaths.backend.extBackups", &[]),
         "skeleton" => copy_text("rsDataPaths.backend.skeleton", &[]),
+        "listingCache" => copy_text("rsDataPaths.backend.listingCache", &[]),
         _ => copy_text("dataPage.own.unknownItem", &[("id", id)]),
     }
 }

@@ -161,7 +161,7 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "session_file_reread",
-        r#"{"kind":"session_file_reread","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","why":"rewritten"}"#,
+        r#"{"kind":"session_file_reread","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","why":"rewritten","lines":3}"#,
     ),
     (
         "transfer",
@@ -851,8 +851,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
 #[test]
 fn a_session_file_notice_is_dispatched_for_every_session() {
     const GONE: &str = r#"{"kind":"session_file_gone","session_id":"a","path":"/p/a.jsonl"}"#;
-    const REREAD_B: &str =
-        r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated"}"#;
+    const REREAD_B: &str = r#"{"kind":"session_file_reread","session_id":"b","path":"/p/b.jsonl","why":"truncated","lines":4}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"bg","background":true}"#;
     assert_eq!(
         step(frame(GONE)),
@@ -860,6 +859,7 @@ fn a_session_file_notice_is_dispatched_for_every_session() {
             sid: "a".into(),
             path: "/p/a.jsonl".into(),
             change: crate::stream_source::FileChange::Gone,
+            lines: None,
         }
     );
     assert_eq!(step(frame(ADD_B_BG)), LocalStep::Skip);
@@ -869,6 +869,7 @@ fn a_session_file_notice_is_dispatched_for_every_session() {
             sid: "b".into(),
             path: "/p/b.jsonl".into(),
             change: crate::stream_source::FileChange::Truncated,
+            lines: Some(4),
         }
     );
 }
