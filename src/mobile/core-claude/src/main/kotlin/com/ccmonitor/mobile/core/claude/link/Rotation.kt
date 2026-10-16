@@ -151,7 +151,6 @@ object Rotation {
         tz: String,
         ifRev: String,
     ): Map<String, Any?> = mapOf("id" to id, "tz" to tz, "ifRev" to ifRev)
-
 }
 
 /** 改设置的一个意图（线上 `RotEdit`）：那台照声明改完、校验；`row` ＝ 号列表第几行（缺 ⇒ 总体那一格）。 */
