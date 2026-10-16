@@ -75,6 +75,8 @@ sealed interface RenderUnit {
         // 头那一行的字，核心写好的（`reply.steps` · `said.results`）：这一步的参数（认不出的那一家 ⇒ 核心那一句），结果那一句（还没结果 ⇒ null）。
         val summary: String = "",
         val resultLine: String? = null,
+        // 卡型是交互那一种（核心判的 `reply.cards`）：在等人决定，默认展开。
+        val interactive: Boolean = false,
     ) : RenderUnit
 
     /** 斜杠命令 `/name args`（user 记录里的 `<command-*>` 回显，非真实 prompt）。 */

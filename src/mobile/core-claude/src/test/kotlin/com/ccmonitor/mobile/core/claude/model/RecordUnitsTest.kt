@@ -61,6 +61,17 @@ class RecordUnitsTest {
     }
 
     @Test
+    fun `交互卡照核心判的卡型（reply_cards）认，不认工具名`() {
+        fun call(cards: Map<String, String>?) =
+            RecordUnits
+                .of(listOf(requireNotNull(Wire.bind<LineRecord>(mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "cards" to cards, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "c", "name" to "Tool", "input" to emptyMap<String, Any>())))))))
+                .single() as RenderUnit.ToolCall
+        assertTrue(call(mapOf("c" to "interactive")).interactive)
+        assertEquals(false, call(mapOf("c" to "diff")).interactive)
+        assertEquals(false, call(null).interactive)
+    }
+
+    @Test
     fun `自动应答不建卡；斜杠命令 · bash 入出 · 摘要 · 中断各画各的`() {
         assertEquals(emptyList<RenderUnit>(), units("reply-auto"))
         assertEquals(RenderUnit.SlashCommand("u-said-slash", "/review", "x", "u-said-slash"), units("said-slash").single())

@@ -18,7 +18,7 @@
  * 2. **给载荷打上它从哪台来**（`origin`：本机不带、远端是那台的名字 —— 与实时流那一条同一个口径，这是地址不是解释）。
  * 3. **期限与翻页**：一件事一个期限，翻页只把后端交回的续点（`next` / `nextSeq`）原样交回去。
  *
- * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动；
+ * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动 · 一步展开那一格；
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
 import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";

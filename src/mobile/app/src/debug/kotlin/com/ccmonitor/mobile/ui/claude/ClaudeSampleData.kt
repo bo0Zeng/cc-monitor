@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.claude
 
+import com.ccmonitor.mobile.core.claude.model.PatchHunk
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 
 /** debug 预览用样本，覆盖 4 种 RenderUnit + diff / pending / error 工具态。 */
@@ -35,7 +36,8 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s4",
             toolUseId = "t1",
             name = "Bash",
-            input = mapOf("command" to "./gradlew :core-claude:testDebugUnitTest --console=plain"),
+            input = emptyMap(),
+            summary = "./gradlew :core-claude:testDebugUnitTest --console=plain",
             resultText = "BUILD SUCCESSFUL in 7s\nTOTAL tests=37 failures+errors=0 skipped=0",
             isError = false,
             pending = false,
@@ -45,12 +47,10 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s5",
             toolUseId = "t2",
             name = "Edit",
-            input =
-                mapOf(
-                    "file_path" to "core-claude/src/main/kotlin/.../LineDiff.kt",
-                    "old_string" to "val c = IntArray((m + 1) * width)\nfor (i in 1..m) {",
-                    "new_string" to "if (m.toLong() * n > cellBudget) return degraded(oldLines, newLines)\nval c = IntArray((m + 1) * width)\nfor (i in 1..m) {",
-                ),
+            input = emptyMap(),
+            summary = "core-claude/src/main/kotlin/.../LineDiff.kt",
+            structuredPatch = listOf(PatchHunk(1, 2, 1, 3, listOf("+if (m.toLong() * n > cellBudget) return degraded(oldLines, newLines)", " val c = IntArray((m + 1) * width)", " for (i in 1..m) {"))),
+            patchFilePath = "core-claude/src/main/kotlin/.../LineDiff.kt",
             resultText = "已应用编辑。",
             isError = false,
             pending = false,
@@ -60,15 +60,14 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s6",
             toolUseId = "tm",
             name = "MultiEdit",
-            input =
-                mapOf(
-                    "file_path" to "core-claude/.../MainBranch.kt",
-                    "edits" to
-                        listOf(
-                            mapOf("old_string" to "fun resolve(records) = records", "new_string" to "fun resolve(records) = computeMainBranch(records)"),
-                            mapOf("old_string" to "// TODO dedup", "new_string" to "val seen = HashSet<String>()"),
-                        ),
+            input = emptyMap(),
+            summary = "core-claude/.../MainBranch.kt",
+            structuredPatch =
+                listOf(
+                    PatchHunk(1, 1, 1, 1, listOf("-fun resolve(records) = records", "+fun resolve(records) = computeMainBranch(records)")),
+                    PatchHunk(9, 1, 9, 1, listOf("-// TODO dedup", "+val seen = HashSet<String>()")),
                 ),
+            patchFilePath = "core-claude/.../MainBranch.kt",
             resultText = "已应用 2 处编辑。",
             isError = false,
             pending = false,
@@ -78,7 +77,8 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s7",
             toolUseId = "t3",
             name = "Read",
-            input = mapOf("file_path" to "/home/pi/project/foo.kt", "limit" to 100),
+            input = emptyMap(),
+            summary = "/home/pi/project/foo.kt",
             resultText = null,
             isError = false,
             pending = true,
@@ -88,7 +88,8 @@ fun sampleRenderUnits(): List<RenderUnit> =
             key = "s8",
             toolUseId = "t4",
             name = "Bash",
-            input = mapOf("command" to "cat /nonexistent"),
+            input = emptyMap(),
+            summary = "cat /nonexistent",
             resultText = "cat: /nonexistent: No such file or directory",
             isError = true,
             pending = false,

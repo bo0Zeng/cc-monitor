@@ -229,6 +229,8 @@ describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", 
       id: uuid,
       at: ts(seq),
       blocks: [{ type: "tool_use", id, name: "Bash", input: { command: cmd } }],
+      // 过程那一行是核心出的一格（`steps.rs::step_of`），夹具照后端成品带上
+      steps: { [id]: { tool: "Bash", arg: cmd, known: true } },
       autoReply: false,
     });
   const res = (seq: number, uuid: string, id: string, out: string, kind?: "handback"): RigPayload =>

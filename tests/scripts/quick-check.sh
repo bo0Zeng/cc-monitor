@@ -4,7 +4,7 @@
 #   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（static_cells，经 gate.sh 的 GATE_ONLY，收据另存）·
 #     后端那棵改到的包跑 clippy（照门禁 `clippy-backend` 的参数；系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）·
 #     凭据那份共享 crate 开 `harden` 那一档（creds-harden：壳那棵不开它，后端那棵不跑它的测试）· 末尾生成物有没有落在提交外（generated-drift.sh）。
-#   重的四段：后端那棵 `cargo test --workspace --lib` · 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
+#   重的四段：后端那棵 `cargo test --workspace --lib --bins --benches`（bench 只跑冒烟档）· 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
 #     手机那一套（ktlint · detekt · 各模块 JVM 单测，经 heavy.sh、gradle 带 --no-daemon）。这棵树（连没提交的）相对起点改到的路径
 #     交给 gate-affected/plan.py 照 gate-affected/map 判（与 gate-affected 同一张表）：挑上那一段的格（backend · cargo · npm · mobile）才跑；
 #     前三段在表里恒跑（@suites：它们都扫全仓），手机那一段按改动挑。表不认识的路径、找不到起点、plan.py 停了 ⇒ 四段全跑。
@@ -149,12 +149,14 @@ verdict() {
 backend_step() {
   seg_go backend || return 0
   t0=$SECONDS
-  out=$(runcargo bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -q' 2>&1); rc=$?
+  # lib ＋ bin ＋ bench 冒烟（bench 那几个目标 `test = true`，CI 的 `cargo test --workspace` 跑它们）
+  out=$(runcargo bash -c 'cd src/backend && cargo test --workspace --lib --bins --benches --no-fail-fast -q' 2>&1); rc=$?
   { echo "════ backend（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
   n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
   failed=$(printf '%s\n' "$out" | awk '/^failures:$/{f=1; next} f && /^    [A-Za-z0-9_:]+$/{print $1} /^test result:/{f=0}' | sort -u)
   if [ $rc -eq 0 ] && [ "${n:-0}" -gt 0 ]; then printf '  ok   %-16s %ss · %s 条\n' backend $((SECONDS-t0)) "$n"
-  elif [ $rc -ne 0 ] && [ "$failed" = "build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump" ]; then
+  elif [ $rc -ne 0 ] && [ "$failed" = "build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump" ] \
+    && ! printf '%s\n' "$out" | grep -q 'to rerun pass .*--b\(in\|ench\) '; then
     printf '  待   %-16s %ss · %s 条；子命令集变了，合并时打版本号（不算红）\n' backend $((SECONDS-t0)) "${n:-?}"; notes+=("待打版本号")
   else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
     hit=$(printf '%s\n' "$out" | grep -E "FAILED|panicked|^error|error\[E" | head -25)

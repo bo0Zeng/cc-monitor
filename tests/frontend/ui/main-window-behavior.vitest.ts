@@ -467,31 +467,6 @@ const ctx = (): RenderContext => ({
   pendingToolResults: new Map(),
 });
 
-describe("命令卡展开显示命令本身（说明作注），不显示入参 JSON", () => {
-  it("后端说是命令卡 ⇒ 收着那一行是命令、展开是「# 说明」＋ 命令；没有卡型的照旧", () => {
-    const r = renderMessage(
-      toolCalls([{ id: "t1", name: "Bash", input: { command: 'rg -n "x" src | head', description: "找调用点" } }], { t1: "command" }),
-      ctx(),
-    );
-    if (r.kind !== "steps") throw new Error(`期望几步，得到 ${r.kind}`);
-    const d = r.units[0] as HTMLDetailsElement;
-    // 一步一行（§5.2.3）：工具名 · 主参数 · 说明由后端给（`steps`）；这条夹具没带 ⇒ 工具名 ＋ 命令兜底。
-    expect([...d.querySelectorAll(".block-summary .step-tool, .block-summary .step-arg")].map((e) => e.textContent)).toEqual(["Bash", 'rg -n "x" src | head']);
-    d.open = true;
-    d.dispatchEvent(new Event("toggle"));
-    const body = d.querySelector(".block-args")?.textContent ?? "";
-    expect(body).toBe('# 找调用点\nrg -n "x" src | head');
-    expect(body).not.toMatch(/"command"/);
-    // 没有卡型（界面不认工具名）⇒ 照旧画入参。
-    const plain = renderMessage(toolCalls([{ id: "t2", name: "Bash", input: { command: "ls" } }]), ctx());
-    if (plain.kind !== "steps") throw new Error(plain.kind);
-    const p = plain.units[0] as HTMLDetailsElement;
-    p.open = true;
-    p.dispatchEvent(new Event("toggle"));
-    expect(p.querySelector(".block-args")?.textContent).toMatch(/"command": "ls"/);
-  });
-});
-
 describe("快捷键翻「自动跟随 / 自动切到前台」：说一句翻成了什么，并告诉设置窗", () => {
   it("翻一下 ⇒ 写盘、主窗口用上、右下角说「自动跟随：关」、发给设置窗翻完之后的两格", async () => {
     behavior.now = { autoFollowUserActive: true, bringMonitorToFrontOnUserActive: false } as never;
@@ -550,7 +525,7 @@ describe("重试细条：相邻并成一条 · 结局照会话事实", () => {
 describe("一步还没结果时：照会话事实画", () => {
   const icon = (row: HTMLElement) => row.querySelector(".step-icon")!.firstElementChild?.tagName.toLowerCase() ?? "";
   it("★ 刚建出来不画状态；事实说在跑 ⇒ 转圈；在等你批准 ⇒ 琥珀点「等你批准」＋ 已等多久；等的不是批准 ⇒「在等你」；状态不明 ⇒ 问号「状态不明」；结果到了照结果、之后的事实不改它", () => {
-    const row = buildStepLine("Bash", { tool: "Bash", arg: "rm -rf build/", note: "清掉构建目录", known: true } as never, "", "t1");
+    const row = buildStepLine("Bash", { tool: "Bash", arg: "rm -rf build/", note: "清掉构建目录", known: true } as never, "t1");
     expect([row.dataset.state, row.dataset.call, icon(row)], "事实到之前不当它在跑").toEqual(["pending", "t1", ""]);
     paintWaiting(row, { state: "running", text: null, whyText: null }, null, false);
     expect([row.dataset.state, row.querySelector(".step-icon [role=progressbar], .step-icon > span") !== null]).toEqual(["running", true]);

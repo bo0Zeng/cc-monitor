@@ -71,9 +71,10 @@ impl Home {
     }
 
     fn ledger(&self) -> Arc<Ledger> {
-        Arc::new(Ledger::with_nodes(
+        Arc::new(Ledger::open(
             Some(self.root.join(ledger::FILE_NAME)),
             self.tx.clone(),
+            Default::default(),
         ))
     }
 

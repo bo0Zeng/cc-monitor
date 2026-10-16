@@ -4,13 +4,6 @@ use super::*;
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::path::PathBuf;
 
-impl Ledger {
-    /// 同 [`Ledger::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
-    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::super::nodes::Nodes) -> Self {
-        Self::open(path, nodes, Default::default())
-    }
-}
-
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-quota-ledger-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -560,7 +553,11 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
     let d = temp_dir("perpct");
     let path = d.join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_data_at(&d);
-    let l = Ledger::with_nodes(Some(path.clone()), tokio::sync::broadcast::channel(16).0);
+    let l = Ledger::open(
+        Some(path.clone()),
+        tokio::sync::broadcast::channel(16).0,
+        Default::default(),
+    );
     let t = 1_800_000_000;
     let reset = t + 18_000;
     let sid = Some("s-perpct");
@@ -576,7 +573,7 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
         );
     };
     let used = |input: u64| {
-        l.spend().heard(
+        l.spend.heard(
             "s-perpct",
             &format!(
                 r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{input}}}}}}}"#

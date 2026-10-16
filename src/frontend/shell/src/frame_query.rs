@@ -248,7 +248,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
     })
 }
 
-/// 「折起那一行」那份声明（省掉工具入参 · 结果正文 · 逐段改动）：只住 `src/shared/views/folded-record.json` 一处，
+/// 「折起那一行」那份声明（省掉工具入参 · 结果正文 · 逐段改动 · 一步展开那一格）：只住 `src/shared/views/folded-record.json` 一处，
 /// 界面 `record-reads.ts` 读同一份。旁路快照交给界面的行就是折起那一形，展开那一下界面按记录 id 取回全文。
 fn folded_view() -> &'static Value {
     static V: std::sync::OnceLock<Value> = std::sync::OnceLock::new();

@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.RecordBlock
 import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.SpeakerKind
+import com.ccmonitor.mobile.core.claude.link.wire.ToolCard
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按 `t` · `speaker.kind` · 块的 `type` 排，
@@ -99,6 +100,7 @@ object RecordUnits {
                         patchFilePath = res?.file,
                         summary = (step?.arg ?: step?.text).orEmpty(),
                         resultLine = res?.line,
+                        interactive = r.cards?.get(callId) == ToolCard.INTERACTIVE,
                     )
                 }
                 else -> null
