@@ -1602,7 +1602,7 @@ struct Claim {
 
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
-    const SFTP: &str = include_str!("../../../src/frontend/shell/src/sftp.rs");
+    const DEPLOY: &str = include_str!("../../../src/frontend/shell/src/deploy.rs");
     // 别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
     const PROFILE_INSTALLER: &str = include_str!("../../../src/backend/assets/aliases/block.rs");
     // 项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
@@ -1614,9 +1614,9 @@ fn claims() -> Vec<Claim> {
     const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
     // 账号库由那台后端自己建（界面「启用多账号」）：装口住 `src/backend/accounts/manage/wire.rs`（`accounts-init` 走它）。
     const ACCOUNTS_WIRE: &str = include_str!("../../../src/backend/accounts/manage/wire.rs");
-    let sftp = || ImplHome {
-        addr: "sftp.rs",
-        text: SFTP,
+    let deploy = || ImplHome {
+        addr: "deploy.rs",
+        text: DEPLOY,
     };
     let profile = || ImplHome {
         addr: "block.rs",
@@ -1673,13 +1673,13 @@ fn claims() -> Vec<Claim> {
         },
         Claim {
             tool: "backend",
-            home: Some(sftp()),
+            home: Some(deploy()),
             install: Some(ImplSite {
-                addr: "sftp.rs::deploy_remote_backend",
+                addr: "deploy.rs::deploy_remote_backend",
                 definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "sftp.rs::uninstall_remote_backend",
+                addr: "deploy.rs::uninstall_remote_backend",
                 definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {",
             }),
         },
@@ -1804,7 +1804,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
     assert!(
         guard_core::fn_names_starting_with(
-            include_str!("../../../src/frontend/shell/src/sftp.rs"),
+            include_str!("../../../src/frontend/shell/src/deploy.rs"),
             &["uninstall"]
         )
         .contains(&"uninstall_remote_backend".to_string()),

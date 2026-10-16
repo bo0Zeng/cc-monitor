@@ -735,7 +735,7 @@ fn probe_path_ccm() -> Option<CcmProbeResult> {
 pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
     std::fs::read(p).is_ok_and(|b| {
         matches!(
-            deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
+            deploy_contract::identity_of_bytes(&b, crate::deploy::STAMP_MARKS),
             deploy_contract::RemoteIdentity::Stamp(_)
         )
     })

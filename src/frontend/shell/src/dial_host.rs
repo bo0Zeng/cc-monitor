@@ -715,7 +715,7 @@ pub(crate) async fn capture(
 // ═══ 部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
 //
 // 用户「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
-// `ccm` 入口）的**业务判定**留在 monitor（`sftp.rs`，一个判定函数都没动），
+// `ccm` 入口）照本机常驻后端出的计划放字节（`deploy.rs`），
 // 执行交给本机常驻后端那一份 SFTP（`src/backend/ssh-dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
 // `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
 

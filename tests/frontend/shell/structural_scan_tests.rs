@@ -1898,7 +1898,7 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
     // 真树上打一发：这个动词在真文件里确实有命中（恒空的扫描买不到任何东西）。
     assert!(
         fn_names_starting_with(
-            include_str!("../../../src/frontend/shell/src/sftp.rs"),
+            include_str!("../../../src/frontend/shell/src/deploy.rs"),
             &["uninstall"]
         )
         .contains(&"uninstall_remote_backend".to_string()),

@@ -304,7 +304,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
             assert!(
                 REMOTE_WRITES
                     .iter()
-                    .any(|(f, n, ..)| *f == "sftp.rs" && n == m),
+                    .any(|(f, n, ..)| *f == "deploy.rs" && n == m),
                 "落点类型 `{ty}` 的写原语 `{m}` 不在 `REMOTE_WRITES` 里 —— 这条边指向账外"
             );
         }

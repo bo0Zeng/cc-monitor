@@ -142,7 +142,7 @@ fn the_build_stamp_witness_actually_bites() {
 #[test]
 fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
+    let src = std::fs::read_to_string(root.join("src/deploy.rs")).expect("读不到 deploy.rs");
     let prod = guard_core::production_code(&src);
     // 两份 musl 的槽与它们的身份取值口搬进了 `byte_table.rs`（全仓唯一的取字节口）；
     //   「出门前那道见证」仍在本文件（部署路）。①④ 读那一份，② 读这一份，③ 两份都读。
@@ -198,7 +198,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
             !mark.is_empty(),
             "契约 crate 的界标是空串 —— 空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭"
         );
-        for (name, code) in [("byte_table.rs", &table), ("sftp.rs", &prod)] {
+        for (name, code) in [("byte_table.rs", &table), ("deploy.rs", &prod)] {
             assert!(
                 !code.contains(&format!("\"{mark}\"")),
                 "{name} 生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在契约 crate\n\
@@ -379,13 +379,13 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
 
 // ═══ 部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
 //
-// 要求：「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+// 要求：「部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
 
 /// 🔴 两条部署路（自动 · 按钮）各**恰好一次**问本机常驻后端要计划、照计划取字节；本文件生产段里**零处**再做判定
 /// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 认旧入口），也零处碰旁挂标记。带正控。
 #[test]
 fn the_deploy_paths_only_place_bytes_the_backend_decides() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let decisions = |code: &str| -> Vec<&'static str> {
         [
             "probe_key(",
@@ -407,7 +407,7 @@ fn the_deploy_paths_only_place_bytes_the_backend_decides() {
     assert_eq!(
         decisions(&prod),
         Vec::<&str>::new(),
-        "sftp.rs 又自己判起了部署 —— 判定住本机常驻后端（`deploy-plan`）"
+        "deploy.rs 又自己判起了部署 —— 判定住本机常驻后端（`deploy-plan`）"
     );
     for sig in [
         "pub async fn ensure_backend_deployed(",
@@ -487,7 +487,7 @@ fn the_plan_decoder_reads_the_golden() {
 /// 计划里的残件（后端判的）在**每次连上**的那条路上照删：自动部署与手动部署两个入口各恰好一处（在执行链上，不只是解码得出来）。
 #[test]
 fn the_planned_leftovers_are_swept_on_every_connect() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
@@ -515,7 +515,7 @@ fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
         "解码器没把 ack 的逐地址指纹收进来：{:?}",
         p.ack
     );
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let body = dp1_body(&prod, "async fn ask_plan_for(");
     guard_core::find_pinned(
         &body,
@@ -557,7 +557,7 @@ fn deploy_paths_use_verified_upload_for_content() {
     }
     let checks = [(
         body(
-            include_str!("../../../src/frontend/shell/src/sftp.rs"),
+            include_str!("../../../src/frontend/shell/src/deploy.rs"),
             "pub async fn deploy_remote_backend(",
         ),
         "deploy_remote_backend",
@@ -603,7 +603,7 @@ fn deploy_paths_use_verified_upload_for_content() {
 /// 生产段里**零处**再造入口（shim 的记号只许作为「认旧的」出现在 `ccm_legacy.rs`）；落点常量与后端那一侧同源（`relay_route_core`）。
 #[test]
 fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
@@ -618,7 +618,7 @@ fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
         "CCM_CLI_REMOTE_PATH",
         "exec {} ccm",
     ] {
-        assert!(!prod.contains(gone), "sftp.rs 又在造 ccm 入口了：{gone}");
+        assert!(!prod.contains(gone), "deploy.rs 又在造 ccm 入口了：{gone}");
     }
     assert_eq!(LANDING_REL, relay_route_core::BACKEND_LANDING_REL);
     assert_eq!(LANDING_REL, ".cc-monitor/bin/ccm");
@@ -860,7 +860,7 @@ fn dp1_silent_forms(body: &str) -> Vec<&'static str> {
 /// 体内零 `Ok(None)` · 零 `debug!`；表拒绝恰好交成 `DeployError::Refused` 一处。
 #[test]
 fn the_auto_deploy_never_refuses_silently() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let body = dp1_body(&prod, "pub async fn ensure_backend_deployed(");
     let sig = body.lines().next().unwrap_or_default();
     assert!(
@@ -886,7 +886,7 @@ fn the_auto_deploy_never_refuses_silently() {
 #[test]
 fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     let prod = crate::guard_support::stream_source_production();
-    let at = guard_core::find_pinned(&prod, "crate::sftp::ensure_backend_deployed(cfg).await")
+    let at = guard_core::find_pinned(&prod, "crate::deploy::ensure_backend_deployed(cfg).await")
         .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
     let rest = &prod[at..];
     let err_at = rest.find("Err(e) =>").expect("找不到 Err 那一支");
@@ -911,7 +911,7 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
 /// 这里钉 monitor 这一侧真的要了那一格：部署的上传恰一处 `fs.put(remote_path, bytes, mode, true)`（`verify` 开着），自己不再判、不再删。
 #[test]
 fn a_bad_readback_removes_the_upload_it_just_made() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let body = dp1_body(&prod, "pub(crate) async fn upload_verified(");
     guard_core::find_pinned(&body, "fs.put(remote_path, bytes, mode, true)")
         .unwrap_or_else(|e| panic!("部署的上传没开读回比对（{e}）：\n{body}"));
@@ -921,17 +921,17 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
     );
 }
 
-/// 🔴 **A1：别名块的真相不住 `sftp.rs`**（
+/// 🔴 **A1：别名块的真相不住 `deploy.rs`**（
 /// 「别名块真相从 `sftp.rs` 搬到别名域；`sftp.rs` 已不做 SFTP」；「渲染 · 读回 · 启动文件归方言，
 /// 写入 … 那台机器后端的文件管理那一面」—— 部署那一族管不着别名块）。
 ///
-/// 两向：那 6 个符号的**定义**与两条别名块命令在 `sftp.rs` 生产段里**零命中**；正控：同一把尺子
+/// 两向：那 6 个符号的**定义**与两条别名块命令在 `deploy.rs` 生产段里**零命中**；正控：同一把尺子
 /// （`find_pinned`：恰好一处 ＋ 两侧边界）量 `profile_installer.rs`，8 个全量得出。
-/// 人群会怎么长：别的路往 `sftp.rs` 加一个别名块相关的定义 ⇒ 这里不红（名单是这 8 个）——
-/// 它钉的是「这几样搬走了、没搬回来」，不是「`sftp.rs` 里没有任何与 rc 有关的东西」。
+/// 人群会怎么长：别的路往 `deploy.rs` 加一个别名块相关的定义 ⇒ 这里不红（名单是这 8 个）——
+/// 它钉的是「这几样搬走了、没搬回来」，不是「`deploy.rs` 里没有任何与 rc 有关的东西」。
 #[test]
 fn the_alias_block_truth_no_longer_lives_in_sftp() {
-    let sftp = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let sftp = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     // 别名块的真相再搬一次：进了那台后端（`src/backend/assets/aliases/block.rs`）。
     let alias_home =
         guard_core::production_code(include_str!("../../../src/backend/assets/aliases/block.rs"));
@@ -947,7 +947,7 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
     let stayed: Vec<&str> = defs.iter().copied().filter(|d| sftp.contains(d)).collect();
     assert!(
         stayed.is_empty(),
-        "别名块的真相又住回 `sftp.rs` 了：{stayed:?} —— 那份文件只管部署"
+        "别名块的真相又住回 `deploy.rs` 了：{stayed:?} —— 那份文件只管部署"
     );
     for d in defs {
         guard_core::find_pinned(&alias_home, d).unwrap_or_else(|e| {
@@ -965,7 +965,7 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
 /// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
 #[test]
 fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
-    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/deploy.rs"));
     let f = guard_core::find_pinned(&prod, "pub async fn ensure_backend_deployed(")
         .expect("自动部署那个函数不在了");
     let body = &prod[f..];
