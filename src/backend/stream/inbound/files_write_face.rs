@@ -200,6 +200,8 @@ codes! {
         BadPath = "bad_path",
         /// 这个平台没有 unix 权限位：一组里每一项都回它（那一项的结局里），整条不回 —— 登记在这里，平台那一维照它现推。
         NoUnixMode = "no_unix_mode",
+        /// 权限位那几个字解不成（空 · 不是八进制 · 超出 7777）：一项都没动。
+        Refused = "refused",
     }
 }
 
@@ -231,6 +233,8 @@ impl crate::wire::typed::Handle for FilesChmod {
 codes! {
     /// `files-copy` 的码（同 `files-delete`：一项的码在它的结局里）。
     pub(crate) enum FilesCopyErr {
+        /// `single` 时目标不是一段名字、与源同名，或不合这台的规则（一项都没做）。
+        BadName = "bad_name",
         /// 目标根是空的。
         BadPath = "bad_path",
         /// 有同名的、还没答怎么办（一项都没做）：`data` 是同名清单。
@@ -462,6 +466,8 @@ impl crate::wire::typed::Handle for FilesCommitText {
 codes! {
     /// `files-commit-upload` 的码。
     pub(crate) enum FilesCommitUploadErr {
+        /// 落点名不合这台的规则（`single` 时还得是一段）。
+        BadName = "bad_name",
         /// 目标根或落点是空的。
         BadPath = "bad_path",
         /// 盘上这一步没成。

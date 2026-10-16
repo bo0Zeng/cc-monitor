@@ -789,7 +789,7 @@ async fn an_opened_upload_watches_then_commits_with_the_answer_it_was_opened_wit
     assert_eq!(
         got[1].1,
         serde_json::json!({ "key": "k".repeat(32), "root": "/srv", "rel": "a.bin", "on_exists": "overwrite",
-                            "expect": { "sha256": xfer_sha() } }),
+                            "expect": { "sha256": xfer_sha() }, "single": true }),
         "提交没带传输台交的整份摘要（远端后端改名上位之前要核它）"
     );
 }

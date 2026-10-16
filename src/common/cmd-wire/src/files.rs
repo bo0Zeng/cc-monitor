@@ -1130,7 +1130,7 @@ pub struct DeleteItem {
     pub expect: Option<DeleteExpect>,
 }
 
-/// `files-chmod`：一组改成同一个 unix 权限位（十进制、低 12 位）。回包 [`crate::batch::BatchReply`]（每项带 `before`）。
+/// `files-chmod`：一组改成同一个 unix 权限位。回包 [`crate::batch::BatchReply`]（每项带 `before`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -1141,7 +1141,8 @@ pub struct DeleteItem {
 pub struct FilesChmodReq {
     pub root: WirePath,
     pub items: Vec<ChmodItem>,
-    pub mode: u32,
+    /// 八进制写法原样（`644` · `0755`，框里敲的就交这几个字）；由那台解（空 · 不是八进制 · 超出 7777 ⇒ 整组 `refused`、那一句那台写）。
+    pub mode: String,
     #[serde(
         default,
         deserialize_with = "present",
@@ -1195,6 +1196,10 @@ pub struct FilesCopyReq {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub ticket: Option<String>,
+    /// `true` ⇒ 每项的 `to` 只许是一段名字、且不同于 `from`（界面「复制为」那一格敲的就是一个名字）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub single: Option<bool>,
 }
 
 /// 复制的一项：`from` 复制成 `to`（都是根底下的相对段）。
@@ -1431,6 +1436,10 @@ pub struct FilesCommitUploadReq {
     )]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub bytes: Option<u64>,
+    /// `true` ⇒ `rel` 只许是一段名字（界面上传一份文件：名字是本机那份的名字，或别的 App 交来的显示名）。不论给没给，每一段都过这台的名字规则。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub single: Option<bool>,
 }
 
 // ── 命令名 · 入参 · 回包连成一张表 ───────────────────

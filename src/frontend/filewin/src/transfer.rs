@@ -104,6 +104,7 @@ impl Pending {
             },
             chunks: chunked.map(|c| c.0),
             bytes: chunked.map(|c| c.1),
+            single: Some(true),
         }
     }
 
@@ -111,10 +112,7 @@ impl Pending {
     pub fn path_wire(&self) -> cmd_wire::files::WirePath {
         match &self.remote_dir_raw {
             Some(b) => {
-                let mut v = b.clone();
-                v.push(b'/');
-                v.extend_from_slice(self.name.as_bytes());
-                cmd_wire::files::WirePath(v)
+                cmd_wire::files::WirePath(super::source::child_bytes(b, self.name.as_bytes()))
             }
             None => cmd_wire::files::WirePath::from(self.remote_path.as_str()),
         }
@@ -125,10 +123,8 @@ impl Pending {
         let mut p = self;
         if let Some(n) = &it.new_name {
             let name = String::from_utf8_lossy(n.bytes()).into_owned();
-            p.remote_path = format!(
-                "{}/{name}",
-                super::source::parent_dir(&p.remote_path).trim_end_matches('/')
-            );
+            p.remote_path =
+                super::source::child_of(&super::source::parent_dir(&p.remote_path), &name);
             p.name = name;
         }
         p.overwrite = it.overwrite;
@@ -137,17 +133,15 @@ impl Pending {
 
     /// 「把本机这个文件放到远端这个目录里」。
     ///
-    /// ⚠ 远端路径**恒用 `/`** 拼（同 [`super::source::parent_dir`] 那条理由）。
     /// 拿不到 basename（比如 `/` 或空串）⇒ `None`，**不编一个名字出来**。
     pub fn into_remote_dir(local_path: &str, remote_dir: &str) -> Option<Self> {
         let name = std::path::Path::new(local_path)
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .filter(|s| !s.is_empty())?;
-        let base = remote_dir.trim_end_matches('/');
         Some(Self {
             local_path: local_path.to_string(),
-            remote_path: format!("{base}/{name}"),
+            remote_path: super::source::child_of(remote_dir, &name),
             name,
             overwrite: false,
             remote_dir_raw: None,

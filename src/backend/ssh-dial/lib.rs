@@ -41,6 +41,7 @@ pub mod connect;
 pub mod env;
 pub mod known_hosts;
 pub mod machine;
+pub mod plain_path;
 pub mod pool;
 pub mod sftp;
 pub mod tcp_rtt;

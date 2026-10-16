@@ -9785,12 +9785,6 @@
       "zh": "复制无法启动 · 重开本窗口",
       "args": []
     },
-    "rsFilewinShell.copy.badName": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "「{name}」不可用 · 不能为空 · 不含 / · 不同于原名",
-      "args": ["name"]
-    },
     "rsFilewinShell.drop.noNames": {
       "kind": "error",
       "role": "报错",
@@ -10003,19 +9997,19 @@
       "zh": "未完成 {n} 项 · {what} · {why}",
       "args": ["n", "what", "why"]
     },
-    "rsFilewinWriteops.mode.outOfRange": {
+    "beFilesWrite.mode.outOfRange": {
       "kind": "error",
       "role": "报错",
       "zh": "超出范围 · 最大 7777",
       "args": []
     },
-    "rsFilewinWriteops.mode.notOctal": {
+    "beFilesWrite.mode.notOctal": {
       "kind": "error",
       "role": "报错",
       "zh": "需三位数字 · 例 644",
       "args": []
     },
-    "rsFilewinWriteops.mode.empty": {
+    "beFilesWrite.mode.empty": {
       "kind": "error",
       "role": "报错",
       "zh": "权限为空",
@@ -10050,12 +10044,6 @@
       "role": "标题",
       "zh": "改权限 · {n} 项",
       "args": ["n"]
-    },
-    "rsFilewinWriteops.remote.renameSameDir": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "只能在同一目录改名 · {op}",
-      "args": ["op"]
     },
     "rsFilewinWriteops.op.chmod": {
       "kind": "body",
@@ -16753,6 +16741,12 @@
       "zh": "未解压 · 超出上限 {cap}",
       "args": ["cap"]
     },
+    "beFilesExtract.plan.overBytes": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未解压 · 解出的内容超出上限 {cap}",
+      "args": ["cap"]
+    },
     "beFilesExtract.archive.unreadable": {
       "kind": "error",
       "role": "原因格",
@@ -16990,12 +16984,6 @@
       "zh": "只收相对路径 · 给的是绝对路径 {path}",
       "args": ["path"]
     },
-    "beFilesWrite.path.outsideRoot": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{path} 不在 {root} 下 · 未改动",
-      "args": ["path", "root"]
-    },
     "beFilesWrite.path.unresolved": {
       "kind": "error",
       "role": "原因格",
@@ -17079,12 +17067,6 @@
       "role": "报错",
       "zh": "{path} 非空 · 此处只删空目录 · 未删除",
       "args": ["path"]
-    },
-    "beFilesWrite.chmod.badMode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "权限位只收低 12 位 · 给的是 {mode}",
-      "args": ["mode"]
     },
     "beFilesWrite.chmod.failed": {
       "kind": "error",

@@ -103,7 +103,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::source::{parent_dir, remote_basename, Line, Origin};
+use super::source::{child_of, parent_dir, remote_basename, Line, Origin};
 
 use super::source::Listed;
 
@@ -163,8 +163,8 @@ pub fn rel_json(shown: &str, raw: Option<&[u8]>) -> serde_json::Value {
 /// 少了它，两件操作在「一次问完」那一步里分不开（`allowed.contains` 会认错）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WriteOp {
-    /// 在当前目录里新建一个目录。
-    Mkdir { path: String },
+    /// 在 `dir` 里新建一个目录（`name` 原样交那台判：合不合法、是不是一段）。
+    Mkdir { dir: String, name: String },
     /// 删一项。`is_dir` ⇒ **连同里面全部内容**（后端 `files-delete` 带 `recursive: true`，
     /// 逐条目过路径解析；树里的会话文件照删）；文件 / 链接 ⇒ 只删它自己。
     Delete {
@@ -172,16 +172,16 @@ pub enum WriteOp {
         is_dir: bool,
         raw: Option<Vec<u8>>,
     },
-    /// 同一个目录里改名。`raw` 是 `from` 的尾段字节（`to` 是框里敲的，恒 UTF-8）。
+    /// 同一个目录里改名成 `name`（原样交那台判）。`raw` 是 `from` 的尾段字节。
     Rename {
         from: String,
-        to: String,
+        name: String,
         raw: Option<Vec<u8>>,
     },
-    /// 改权限位。`mode` 是 unix mode 的低 12 位。
+    /// 改权限位。`mode` 是八进制写法原样（框里敲的那几个字，或九格算出来的数写成八进制）；那台解、那台拒。
     Chmod {
         path: String,
-        mode: u32,
+        mode: String,
         raw: Option<Vec<u8>>,
     },
 }
@@ -193,25 +193,26 @@ impl WriteOp {
     /// 给人看的一句话（确认框 · 结果行都用它）。
     pub fn label(&self) -> String {
         match self {
-            WriteOp::Mkdir { path } => {
-                copy_text("rsFilewinWriteops.op.mkdir", &[("path", &path.to_string())])
-            }
+            WriteOp::Mkdir { dir, name } => copy_text(
+                "rsFilewinWriteops.op.mkdir",
+                &[("path", &child_of(dir, name))],
+            ),
             WriteOp::Delete {
                 path, is_dir: true, ..
             } => copy_text("rsFilewinWriteops.op.rmdir", &[("path", &path.to_string())]),
             WriteOp::Delete { path, .. } => {
                 copy_text("rsFilewinWriteops.op.rm", &[("path", &path.to_string())])
             }
-            WriteOp::Rename { from, to, .. } => copy_text(
+            WriteOp::Rename { from, name, .. } => copy_text(
                 "rsFilewinWriteops.op.rename",
-                &[("from", &from.to_string()), ("to", &to.to_string())],
+                &[
+                    ("from", &from.to_string()),
+                    ("to", &child_of(&parent_dir(from), name)),
+                ],
             ),
             WriteOp::Chmod { path, mode, .. } => copy_text(
                 "rsFilewinWriteops.op.chmod",
-                &[
-                    ("path", &path.to_string()),
-                    ("mode", &format!("{:o}", mode)),
-                ],
+                &[("path", &path.to_string()), ("mode", &mode.to_string())],
             ),
         }
     }
@@ -299,13 +300,10 @@ where
 
 /// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
 ///
-/// 🔴 **路径切成 `(root, rel)`**：后端写面按「一个根 ＋ 一段相对名」收参（路径解析逐段判 `rel`，
-/// 拒 `..` / 盘符 / 空段）。窗口上的写操作全都发生在**当前目录里**（改名只许同目录），所以切法恒是「上一级 ＋ 尾段」，走
-/// [`parent_dir`] / [`remote_basename`] 那一对（不另写一份切法）。用户敲的名字走 [`apply_typed`]。
-/// ⚠ 改名两端**不在同一个目录** ⇒ 这里当场拒（后端那一格只有一个 `root`），不猜。
+/// 后端写面按「一个根 ＋ 一段相对名」收参。删 · 改权限的对象是当前目录的直接子项 ⇒ 「上一级 ＋ 尾段」；
+/// 新建 · 改名的名字原样交那台、带 `single: true`（合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 [`BAD_NAME`]）。
 ///
-/// ⚠ 回来的 `Err` **原样**带出去（后端路径解析那句拒绝经 [`super::source::said`] 翻成人话），
-/// 由 [`WriteBoard::ui`] 画到窗口上 —— 这一层不改写、不摘要。
+/// ⚠ 回来的 `Err` **原样**带出去（后端那句拒绝经 [`super::source::said`] 翻成人话），由 [`WriteBoard::ui`] 画到窗口上。
 pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
     apply_remote_in(line, origin, op, None).await
 }
@@ -323,29 +321,6 @@ pub async fn apply_remote_in(
         .await
         .map(|_| ())
         .map_err(|f| f.said)
-}
-
-/// 同 [`apply_remote_in`]，但交回**最后一趟的应答**（改权限的 `before` 撤销要用）与对端的码
-/// （就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
-pub async fn apply_remote_coded(
-    line: &Line,
-    origin: &Origin,
-    op: &WriteOp,
-    root_raw: Option<&[u8]>,
-) -> Result<Applied, super::source::Failed> {
-    apply_named(line, origin, op, root_raw, None).await
-}
-
-/// 就地新建目录 / 改名：名字是用户敲的 `typed`，原样交后端、带 `single: true`
-/// （合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 [`BAD_NAME`]、那一句照登）。
-pub async fn apply_typed(
-    line: &Line,
-    origin: &Origin,
-    op: &WriteOp,
-    root_raw: Option<&[u8]>,
-    typed: &str,
-) -> Result<Applied, super::source::Failed> {
-    apply_named(line, origin, op, root_raw, Some(typed)).await
 }
 
 /// 写面一件交回来的那一份（按命令的回包类型解好的）：改权限的 `before` 撤销要用。
@@ -367,27 +342,13 @@ fn rel_wire(shown: &str, raw: Option<&[u8]>) -> cmd_wire::files::WirePath {
     }
 }
 
-/// `path` 切成 `(root, rel)`；`typed` 是框里敲的名字时按它切（`path` ＝ 目录 ＋ `/` ＋ 它），名字里的 `/` 不当分隔符。
-fn root_rel<'a>(path: &'a str, typed: Option<&'a str>) -> (String, &'a str) {
-    match typed.and_then(|n| path.strip_suffix(n)?.strip_suffix('/').map(|d| (d, n))) {
-        Some((dir, name)) => (
-            if dir.is_empty() {
-                "/".to_string()
-            } else {
-                dir.to_string()
-            },
-            name,
-        ),
-        None => (parent_dir(path), remote_basename(path)),
-    }
-}
-
-async fn apply_named(
+/// 同 [`apply_remote_in`]，但交回**最后一趟的应答**（改权限的 `before` 撤销要用）与对端的码
+/// （就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
+pub async fn apply_remote_coded(
     line: &Line,
     origin: &Origin,
     op: &WriteOp,
     root_raw: Option<&[u8]>,
-    typed: Option<&str>,
 ) -> Result<Applied, super::source::Failed> {
     use super::source::ask_typed;
     use cmd_wire::files as w;
@@ -396,16 +357,13 @@ async fn apply_named(
         Some(r) => w::WirePath(r.to_vec()),
         None => w::WirePath::from(shown.as_str()),
     };
-    // 用户敲的名字：带 `single: true`（合不合法、是不是一段由那台判）。
-    let single = typed.map(|_| true);
     let t = budget_for(op);
     match op {
-        WriteOp::Mkdir { path } => {
-            let (dir, rel) = root_rel(path, typed);
+        WriteOp::Mkdir { dir, name } => {
             let req = w::FilesMkdirReq {
-                root: root(dir),
-                rel: w::WirePath::from(rel),
-                single,
+                root: root(dir.clone()),
+                rel: w::WirePath::from(name.as_str()),
+                single: Some(true),
             };
             ask_typed(line, origin, &req, t).await.map(Applied::Path)
         }
@@ -425,24 +383,12 @@ async fn apply_named(
                 .await
                 .map(Applied::Deleted)
         }
-        WriteOp::Rename { from, to, raw } => {
-            let dir = parent_dir(from);
-            let (to_root, to_rel) = root_rel(to, typed);
-            if to_root != dir {
-                return Err(super::source::Failed {
-                    code: None,
-                    said: copy_text(
-                        "rsFilewinWriteops.remote.renameSameDir",
-                        &[("op", &(op.label()).to_string())],
-                    ),
-                    detail: String::new(),
-                });
-            }
+        WriteOp::Rename { from, name, raw } => {
             let req = w::FilesRenameReq {
-                root: root(dir),
+                root: root(parent_dir(from)),
                 from: rel_wire(remote_basename(from), raw.as_deref()),
-                to: w::WirePath::from(to_rel),
-                single,
+                to: w::WirePath::from(name.as_str()),
+                single: Some(true),
             };
             ask_typed(line, origin, &req, t).await.map(Applied::Path)
         }
@@ -452,7 +398,7 @@ async fn apply_named(
                 items: vec![w::ChmodItem {
                     rel: rel_wire(remote_basename(path), raw.as_deref()),
                 }],
-                mode: *mode,
+                mode: mode.clone(),
                 ticket: None,
             };
             super::source::ask_one(line, origin, &req, t)
@@ -481,15 +427,17 @@ pub async fn apply_all(
     };
     let mut out = Vec::with_capacity(ops.len());
     // 一组：(动词, 根, 权限位) ⇒ 那几件。
-    let mut groups: Vec<((super::batch::Verb, String, u32), Vec<WriteOp>)> = Vec::new();
+    let mut groups: Vec<((super::batch::Verb, String, String), Vec<WriteOp>)> = Vec::new();
     for op in ops {
         let key = match &op {
-            WriteOp::Delete { path, .. } => (super::batch::Verb::Delete, parent_dir(path), 0),
+            WriteOp::Delete { path, .. } => {
+                (super::batch::Verb::Delete, parent_dir(path), String::new())
+            }
             WriteOp::Chmod { path, mode, .. } => {
-                (super::batch::Verb::Chmod, parent_dir(path), *mode)
+                (super::batch::Verb::Chmod, parent_dir(path), mode.clone())
             }
             _ => {
-                let r = apply_named(line, origin, &op, root_raw, None).await;
+                let r = apply_remote_coded(line, origin, &op, root_raw).await;
                 out.push((op, r));
                 continue;
             }
@@ -665,8 +613,8 @@ pub enum PromptKind {
 pub enum InlineGo {
     /// 新建目录 · 改名：写面那一件。
     Op(WriteOp),
-    /// 新建空文件：`files-create` 落在这条路径上。
-    Create(String),
+    /// 新建空文件（`files-create`，名字是那一格里敲的）。
+    Create,
 }
 
 /// 改权限那个框里的一项：路径 ＋ 名字的原始字节（有损名才有）。
@@ -806,17 +754,14 @@ impl WritePrompt {
         match &self.kind {
             // 新建空文件不是写面那一件（`files-create`）：走 [`Self::to_inline`]。
             PromptKind::NewFile => Err(copy_text("rsFilewinWriteops.toOp.notOne", &[("n", "0")])),
-            PromptKind::Mkdir => {
-                let name = clean_name(t);
-                Ok(vec![WriteOp::Mkdir {
-                    path: join_remote(&self.dir, &name),
-                }])
-            }
+            PromptKind::Mkdir => Ok(vec![WriteOp::Mkdir {
+                dir: self.dir.clone(),
+                name: clean_name(t),
+            }]),
             PromptKind::Rename { from, raw } => {
                 let name = clean_name(t);
-                let to = join_remote(&self.dir, &name);
                 // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
-                if &to == from && raw.is_none() {
+                if remote_basename(from) == name && raw.is_none() {
                     return Err(copy_text(
                         "rsFilewinWriteops.toOps.sameName",
                         &[("name", &name.to_string())],
@@ -824,7 +769,7 @@ impl WritePrompt {
                 }
                 Ok(vec![WriteOp::Rename {
                     from: from.clone(),
-                    to,
+                    name,
                     raw: raw.clone(),
                 }])
             }
@@ -832,21 +777,18 @@ impl WritePrompt {
                 if targets.is_empty() {
                     return Err(copy_text("rsFilewinWriteops.toOps.nothingToChmod", &[]));
                 }
-                // 「数字写法」那一栏有字 ⇒ 照它（整份一个数）；空着 ⇒ 照 3 × 3 勾：定了的位照勾，「—」那几位逐项留原值。
-                if !t.is_empty() {
-                    let mode = parse_mode(t)?;
+                // 「数字写法」那一栏有字、或九格一格都没定 ⇒ 那几个字原样交那台（解与拒都在那台）；
+                // 否则照 3 × 3 勾：定了的位照勾，「—」那几位逐项留原值。
+                let (mask, want) = grid_bits(&self.grid);
+                if !t.is_empty() || mask == 0 {
                     return Ok(targets
                         .iter()
                         .map(|c| WriteOp::Chmod {
                             path: c.path.clone(),
-                            mode,
+                            mode: t.to_string(),
                             raw: c.raw.clone(),
                         })
                         .collect());
-                }
-                let (mask, want) = grid_bits(&self.grid);
-                if mask == 0 {
-                    return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
                 }
                 targets
                     .iter()
@@ -862,7 +804,7 @@ impl WritePrompt {
                         };
                         Ok(WriteOp::Chmod {
                             path: c.path.clone(),
-                            mode: (old & !mask) | want,
+                            mode: format!("{:o}", (old & !mask) | want),
                             raw: c.raw.clone(),
                         })
                     })
@@ -909,13 +851,9 @@ impl WritePrompt {
     /// 一句给用户的话（挂在那一格下面，那一格留着）。
     pub fn to_inline(&self) -> Result<Option<InlineGo>, String> {
         match &self.kind {
-            PromptKind::NewFile => {
-                let name = clean_name(&self.text);
-                Ok(Some(InlineGo::Create(join_remote(&self.dir, &name))))
-            }
+            PromptKind::NewFile => Ok(Some(InlineGo::Create)),
             PromptKind::Rename { from, raw } => {
-                let name = clean_name(&self.text);
-                if &join_remote(&self.dir, &name) == from && raw.is_none() {
+                if remote_basename(from) == clean_name(&self.text) && raw.is_none() {
                     return Ok(None);
                 }
                 self.to_op().map(|o| Some(InlineGo::Op(o)))
@@ -932,9 +870,12 @@ impl WritePrompt {
         self.text = grid_text(&self.grid).unwrap_or_default();
     }
 
-    /// 「数字写法」那一栏改了 ⇒ 是一个能用的数就把九格照它摆；不是就不动九格（框上那一句说为什么）。
+    /// 「数字写法」那一栏改了 ⇒ 读得成一个权限位就把九格照它摆，读不成就不动九格（只是摆格子；能不能用由那台判）。
     pub fn typed(&mut self) {
-        if let Ok(m) = parse_mode(self.text.trim()) {
+        if let Some(m) = u32::from_str_radix(self.text.trim(), 8)
+            .ok()
+            .filter(|m| *m <= 0o7777)
+        {
             self.grid = grid_of(Some(m & 0o777));
         }
     }
@@ -990,34 +931,11 @@ pub fn grid_text(g: &[Option<bool>; 9]) -> Option<String> {
     (mask == 0o777).then(|| format!("{want:03o}"))
 }
 
-/// 框里敲的名字：去掉两头空白。合不合法由那台判（[`apply_typed`] 带 `single`，不合 ⇒ [`BAD_NAME`]），这里不另写规则。
+/// 框里敲的名字：去掉两头空白。合不合法由那台判（写面带 `single`，不合 ⇒ [`BAD_NAME`]），这里不另写规则。
 ///
 /// 「新建空文件」（[`super::create`]）问的也是这一个函数。
 pub(super) fn clean_name(t: &str) -> String {
     t.trim().to_string()
-}
-
-/// 八进制权限位。
-///
-/// ⚠ 掩到 `0o7777` 那一步在池子里（`sftp_pool::sftp_chmod` 转给 `chmod_attrs`），
-/// 这里**拒**超出范围的输入而不是悄悄掩掉：用户输了 `100644`（连文件类型位一起抄来的）
-/// 而我们掩成 `644` ⇒ 他以为改的是别的东西。
-fn parse_mode(t: &str) -> Result<u32, String> {
-    if t.is_empty() {
-        return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
-    }
-    let mode =
-        u32::from_str_radix(t, 8).map_err(|_| copy_text("rsFilewinWriteops.mode.notOctal", &[]))?;
-    if mode > 0o7777 {
-        return Err(copy_text("rsFilewinWriteops.mode.outOfRange", &[]));
-    }
-    Ok(mode)
-}
-
-/// 远端路径**恒用 `/`** 拼（同 [`super::source::parent_dir`] 那条理由：
-/// 拿 `std::path` 切远端路径，在 Windows 上会把 `\` 也当分隔符）。
-pub(super) fn join_remote(dir: &str, name: &str) -> String {
-    format!("{}/{}", dir.trim_end_matches('/'), name)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1244,10 +1162,7 @@ pub fn receipt_of(
         let text = match done {
             [WriteOp::Chmod { path, mode, .. }] => copy_text(
                 "rsFilewinWriteops.result.chmodOne",
-                &[
-                    ("name", remote_basename(path)),
-                    ("mode", &format!("{mode:o}")),
-                ],
+                &[("name", remote_basename(path)), ("mode", mode)],
             ),
             _ => copy_text(
                 "rsFilewinWriteops.result.chmodMany",
@@ -1267,7 +1182,7 @@ pub fn chmod_undo(op: &WriteOp, reply: &Applied) -> Option<WriteOp> {
     let before = low12(r.before)?;
     Some(WriteOp::Chmod {
         path: path.clone(),
-        mode: before,
+        mode: format!("{before:o}"),
         raw: raw.clone(),
     })
 }
@@ -1404,7 +1319,7 @@ impl WriteBoard {
         let path_of = |o: &WriteOp| match o {
             WriteOp::Delete { path, .. }
             | WriteOp::Chmod { path, .. }
-            | WriteOp::Mkdir { path } => path.clone(),
+            | WriteOp::Mkdir { dir: path, .. } => path.clone(),
             WriteOp::Rename { from, .. } => from.clone(),
         };
         let title = if n == 1 {

@@ -14,11 +14,14 @@
 //!    硬链接（拷贝）→ 链接（最后建：先建的话后面的文件会穿过它写）；每一条当场过 [`resolve_in_root`]。
 //!    中途失败 ⇒ 倒序撤掉这一趟自己建的（含落点目录）。
 //!
-//! 认下的：不设解压字节上限 · 修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
+//! 解出的字节之和有上限（[`Caps`]：包的 [`EXPAND_RATIO_CAP`] 倍，小包至少 [`EXPAND_FLOOR_BYTES`]）：计划趟按包里写的大小先判，
+//! 执行趟按真写出的字节再判（包里写的大小可以撒谎）；超了整趟拒、撤掉已建的。
+//!
+//! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    lexical_in_root, resolve_existing_in_root, resolve_in_root, wire_of, Act, ManageCommand,
-    WriteFail, WriteRefusal, TREE_ENTRY_CAP,
+    resolve_existing_in_root, resolve_in_root, wire_of, Act, ManageCommand, WriteFail,
+    WriteRefusal, TREE_ENTRY_CAP,
 };
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
@@ -34,6 +37,41 @@ use std::path::{Path, PathBuf};
 
 /// zip 里一条链接的目标文本最多多长（Linux `PATH_MAX` 同量级）；超了整趟拒、不截断。
 pub const LINK_TARGET_MAX_BYTES: u64 = 4096;
+
+/// 解出的字节之和最多是包本身的几倍。量过：源码 · 依赖 · 编译产物打的 tar.gz 展开 3–5 倍、日志约 10 倍，全零的 zip 约 1000 倍。
+pub const EXPAND_RATIO_CAP: u64 = 100;
+
+/// 小包不按倍数卡：解出的字节之和在这以内总放行。
+pub const EXPAND_FLOOR_BYTES: u64 = 1 << 30;
+
+/// 一趟解压的两条上限：条目数 ＋ 解出的字节之和（包的 `ratio` 倍、至少 `floor`）。
+#[derive(Clone, Copy, Debug)]
+pub struct Caps {
+    pub entries: usize,
+    pub ratio: u64,
+    pub floor: u64,
+}
+
+/// 线上那条命令用的上限。
+pub const CAPS: Caps = Caps {
+    entries: TREE_ENTRY_CAP,
+    ratio: EXPAND_RATIO_CAP,
+    floor: EXPAND_FLOOR_BYTES,
+};
+
+impl Caps {
+    /// 这个包最多解出多少字节。
+    fn bytes_for(&self, archive_len: u64) -> u64 {
+        archive_len.saturating_mul(self.ratio).max(self.floor)
+    }
+}
+
+fn over_bytes(cap: u64) -> Fail {
+    refused(copy_text(
+        "beFilesExtract.plan.overBytes",
+        &[("cap", &copy_core::size_text(cap))],
+    ))
+}
 
 /// 这个平台建不建得了链接（计划趟据此决定「链接 ⇒ 记下来」还是「链接 ⇒ 整趟拒」）。
 pub const LINKS_SUPPORTED: bool = cfg!(unix);
@@ -123,6 +161,8 @@ pub enum What {
     File {
         index: usize,
         mode: Option<u32>,
+        /// 包里写的大小（计划趟据它先判总量；执行趟按真写出的再判）。
+        size: u64,
     },
     /// 符号链接，目标文本原样。
     Link(PathBuf),
@@ -135,6 +175,8 @@ pub enum What {
 pub struct Plan {
     /// 按相对段排好：父目录恒在子项之前（`Path` 的比较按段）。
     pub entries: BTreeMap<PathBuf, What>,
+    /// 包里写的、要解出的字节之和（普通文件 ＋ 硬链接落成的拷贝）。
+    pub declared: u64,
 }
 
 /// 一趟解压做了什么。
@@ -166,42 +208,22 @@ fn shown(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
 }
 
-/// 包里一条名字（原始字节，`/` 分段）→ 相对落点的一段。空段与 `.` 剥掉；`..` · 绝对 · 盘符 ⇒ 拒；全剥光 ⇒ `Ok(None)`（落点自己）。
-/// `backslash_is_sep`：zip 规范只用 `/`，Windows 上打的包常写 `\`，照 7-Zip / Python 的读法当分隔符；tar 里 `\` 是名字的一部分。
-pub fn entry_rel(name: &[u8], backslash_is_sep: bool) -> Result<Option<PathBuf>, String> {
-    if name.first() == Some(&b'/') || (backslash_is_sep && name.first() == Some(&b'\\')) {
-        return Err(copy_text(
+/// 包里一条名字（原始字节）→ 相对落点的一段。空段与 `.` 剥掉；`..` · 绝对 · 盘符 ⇒ 拒；全剥光 ⇒ `Ok(None)`（落点自己）。
+/// zip 规范只用 `/`，Windows 上打的包常写 `\`，照 7-Zip / Python 的读法当分隔符；tar 里 `\` 只在落点是 Windows 时才是分隔符。
+pub fn entry_rel(name: &[u8], zip: bool) -> Result<Option<PathBuf>, String> {
+    use ssh_dial::plain_path::{plain_segments, Dots, Fault};
+    match plain_segments(name, zip || cfg!(windows), Dots::Strip) {
+        Ok(segs) if segs.is_empty() => Ok(None),
+        Ok(segs) => Ok(Some(crate::files::raw::to_path_buf(&segs.join(&b'/')))),
+        Err(Fault::Parent) => Err(copy_text(
+            "beFilesExtract.path.upward",
+            &[("name", &shown(name))],
+        )),
+        Err(Fault::Absolute | Fault::Dot) => Err(copy_text(
             "beFilesExtract.path.absolute",
             &[("name", &shown(name))],
-        ));
+        )),
     }
-    let mut segs: Vec<&[u8]> = Vec::new();
-    for seg in name.split(|b| *b == b'/' || (backslash_is_sep && *b == b'\\')) {
-        match seg {
-            b"" | b"." => continue,
-            b".." => {
-                return Err(copy_text(
-                    "beFilesExtract.path.upward",
-                    &[("name", &shown(name))],
-                ));
-            }
-            s if segs.is_empty() && s.len() == 2 && s[1] == b':' && s[0].is_ascii_alphabetic() => {
-                return Err(copy_text(
-                    "beFilesExtract.path.absolute",
-                    &[("name", &shown(name))],
-                ));
-            }
-            s => segs.push(s),
-        }
-    }
-    if segs.is_empty() {
-        return Ok(None);
-    }
-    let joined: Vec<u8> = segs.join(&b'/');
-    let rel = crate::files::raw::to_path_buf(&joined);
-    // 同一道词法判定再过一次（与写面其余几条同一个口径；拼出来的一段本就干净，这里是第二道）。
-    lexical_in_root(Path::new("/x"), &rel)?;
-    Ok(Some(rel))
 }
 
 /// 链接目标从链接所在目录起算，词法上不出落点（相对 · 不以 `/` 起头 · 逐段 `..` 不越过落点）。
@@ -237,7 +259,14 @@ enum Raw {
 }
 
 /// 把一条条目并进计划。
-fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Result<(), Fail> {
+fn admit(
+    plan: &mut Plan,
+    index: usize,
+    name: &[u8],
+    raw: Raw,
+    zip: bool,
+    size: u64,
+) -> Result<(), Fail> {
     let rel = match entry_rel(name, zip) {
         Ok(Some(r)) => r,
         Ok(None) => return Ok(()),
@@ -249,6 +278,7 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
         Raw::File(mode) => What::File {
             index,
             mode: mode.map(|m| m & 0o777),
+            size,
         },
         Raw::Link(to) => {
             if !LINKS_SUPPORTED {
@@ -275,12 +305,13 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
                     )))
                 }
             };
-            if !matches!(plan.entries.get(&target), Some(What::File { .. })) {
+            let Some(What::File { size, .. }) = plan.entries.get(&target) else {
                 return Err(refused(copy_text(
                     "beFilesExtract.entry.hardEscapes",
                     &[("name", &shown(name)), ("to", &shown(&to))],
                 )));
-            }
+            };
+            plan.declared = plan.declared.saturating_add(*size);
             What::Copy(target)
         }
         Raw::Other(what) => {
@@ -290,6 +321,9 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
             )))
         }
     };
+    if let What::File { size, .. } = what {
+        plan.declared = plan.declared.saturating_add(size);
+    }
     match (plan.entries.get(&rel), &what) {
         (None, _) => {
             plan.entries.insert(rel, what);
@@ -395,7 +429,7 @@ fn tar_reader(kind: Kind, f: RoFile) -> Box<dyn Read> {
 }
 
 /// **计划趟（只读）**：读一遍包，逐条目判。一个改动都没有。
-pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
+pub fn plan(archive: &Path, kind: Kind, cap: usize, bytes_cap: u64) -> Result<Plan, Fail> {
     let mut plan = Plan::default();
     let mut count = 0usize;
     match kind {
@@ -434,7 +468,8 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
                 } else {
                     Raw::File(f.unix_mode())
                 };
-                admit(&mut plan, i, &name, raw, true)?;
+                let size = f.size();
+                admit(&mut plan, i, &name, raw, true, size)?;
             }
         }
         Kind::Tar | Kind::TarGz => {
@@ -450,11 +485,14 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
                 let e = e.map_err(|e| broken(archive, e))?;
                 let name = e.path_bytes().into_owned();
                 let raw = tar_raw(&e);
-                admit(&mut plan, i, &name, raw, false)?;
+                admit(&mut plan, i, &name, raw, false, e.size())?;
             }
         }
     }
     close_plan(&mut plan, cap)?;
+    if plan.declared > bytes_cap {
+        return Err(over_bytes(bytes_cap));
+    }
     Ok(plan)
 }
 
@@ -465,6 +503,7 @@ fn land_file(
     rel: &Path,
     body: &mut dyn Read,
     mode: Option<u32>,
+    left: &mut u64,
 ) -> Result<u64, Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
@@ -482,7 +521,8 @@ fn land_file(
     let mut out = face.create_new(&at).map_err(fail)?;
     // 写一半 / 设权限没成 ⇒ 删掉**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在），它还没进回滚那张表。
     // 权限位按句柄改（没有路径可被换成链接）。
-    let done = std::io::copy(body, &mut out).and_then(|n| {
+    let cap = *left;
+    let done = std::io::copy(&mut body.take(cap.saturating_add(1)), &mut out).and_then(|n| {
         #[cfg(unix)]
         if let Some(p) = mode.and_then(Ro::perms_from_mode) {
             out.set_permissions(p)?;
@@ -492,10 +532,20 @@ fn land_file(
         Ok(n)
     });
     drop(out);
-    done.map_err(|e| {
-        face.delete_file(&at).ok();
-        fail(e)
-    })
+    match done {
+        Ok(n) if n <= cap => {
+            *left = cap - n;
+            Ok(n)
+        }
+        Ok(_) => {
+            face.delete_file(&at).ok();
+            Err(over_bytes(cap))
+        }
+        Err(e) => {
+            face.delete_file(&at).ok();
+            Err(fail(e))
+        }
+    }
 }
 
 /// 建一个目录（先过路径解析）。
@@ -552,7 +602,9 @@ fn execute(
     kind: Kind,
     plan: &Plan,
     made: &mut Vec<(PathBuf, bool)>,
+    bytes_cap: u64,
 ) -> Result<u64, Fail> {
+    let mut left = bytes_cap;
     for (rel, w) in &plan.entries {
         if *w == What::Dir {
             land_dir(face, root, &into.join(rel))?;
@@ -563,7 +615,7 @@ fn execute(
         .entries
         .iter()
         .filter_map(|(r, w)| match w {
-            What::File { index, mode } => Some((*index, (r, *mode))),
+            What::File { index, mode, .. } => Some((*index, (r, *mode))),
             _ => None,
         })
         .collect();
@@ -574,7 +626,7 @@ fn execute(
                 zip::ZipArchive::new(open_archive(archive)?).map_err(|e| broken(archive, e))?;
             for (i, (rel, mode)) in &files {
                 let mut f = z.by_index(*i).map_err(|e| broken(archive, e))?;
-                bytes += land_file(face, root, &into.join(rel), &mut f, *mode)?;
+                bytes += land_file(face, root, &into.join(rel), &mut f, *mode, &mut left)?;
                 made.push((into.join(rel), false));
             }
         }
@@ -585,7 +637,7 @@ fn execute(
                     continue;
                 };
                 let mut e = e.map_err(|e| broken(archive, e))?;
-                bytes += land_file(face, root, &into.join(rel), &mut e, *mode)?;
+                bytes += land_file(face, root, &into.join(rel), &mut e, *mode, &mut left)?;
                 made.push((into.join(rel), false));
             }
         }
@@ -599,7 +651,7 @@ fn execute(
                 Some(What::File { mode, .. }) => *mode,
                 _ => None,
             };
-            bytes += land_file(face, root, &into.join(rel), &mut body, mode)?;
+            bytes += land_file(face, root, &into.join(rel), &mut body, mode, &mut left)?;
             made.push((into.join(rel), false));
         }
     }
@@ -615,7 +667,7 @@ fn execute(
 
 /// **解压**：`root ＋ rel` 那个包解到 `root ＋ into`（一个此前不存在的新目录）。
 pub fn extract(face: &Face, root: &Path, rel: &Path, into: &Path) -> Result<Extracted, Fail> {
-    extract_with(face, root, rel, into, TREE_ENTRY_CAP)
+    extract_with(face, root, rel, into, CAPS)
 }
 
 /// [`extract`] 的本体，上限由调用方给（判据拿小上限验「超了整趟拒」）。
@@ -624,7 +676,7 @@ pub fn extract_with(
     root: &Path,
     rel: &Path,
     into: &Path,
-    cap: usize,
+    caps: Caps,
 ) -> Result<Extracted, Fail> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
@@ -648,7 +700,9 @@ pub fn extract_with(
             ),
         )));
     }
-    let plan = plan(&archive, kind, cap)?;
+    let len = Ro::metadata(&archive).map(|m| m.len()).unwrap_or(0);
+    let bytes_cap = caps.bytes_for(len);
+    let plan = plan(&archive, kind, caps.entries, bytes_cap)?;
     // 落点目录：`create_dir` 自己就是「不在才建」（与探的那一眼之间有人建了 ⇒ 仍是 `exists`）。
     if let Err(e) = face.make_dir(&dest) {
         return Err(if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -673,7 +727,9 @@ pub fn extract_with(
         });
     }
     let mut made: Vec<(PathBuf, bool)> = vec![(into.to_path_buf(), true)];
-    match execute(face, root, into, &archive, kind, &plan, &mut made) {
+    match execute(
+        face, root, into, &archive, kind, &plan, &mut made, bytes_cap,
+    ) {
         Ok(bytes) => {
             let count = |f: fn(&What) -> bool| plan.entries.values().filter(|w| f(w)).count();
             Ok(Extracted {

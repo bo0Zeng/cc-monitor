@@ -1181,3 +1181,23 @@ fn a_clash_after_assembling_is_asked_too_and_the_resend_reuses_the_staged_file()
     assert_eq!(std::fs::read(h.join("dst/r.bin")).unwrap(), b"abc");
     std::fs::remove_dir_all(&h).ok();
 }
+
+/// 上传名与新建同一套名字规则：`single` 时只许一段（别的 App 交来的显示名可以带 `/`）、拒 ⇒ `bad_name`、一个字节不落、暂存件留着；一段名字照落。
+#[test]
+fn an_upload_name_goes_through_the_same_name_rules_as_create() {
+    let (home, root) = rig("upname");
+    stage(&home, KEY, b"x");
+    let args = |rel: &str| {
+        serde_json::json!({
+            "root": root.to_str().expect("utf8"), "rel": rel, "key": KEY,
+            "expect": {"sha256": staged_sha(&home, KEY)}, "single": true,
+        })
+    };
+    std::fs::create_dir_all(root.join("sub")).expect("建子目录");
+    let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin"))
+        .expect_err("带 / 的名字落进了子目录");
+    assert_eq!(e.code, super::super::files_write::BAD_NAME, "{e:?}");
+    assert!(!root.join("sub/a.bin").exists());
+    answer_commit_at(&Face::issue(), &home, &args("a.bin")).expect("一段名字该照落");
+    assert_eq!(std::fs::read(root.join("a.bin")).expect("读落点"), b"x");
+}

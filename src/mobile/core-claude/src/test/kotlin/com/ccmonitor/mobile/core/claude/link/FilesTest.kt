@@ -60,7 +60,7 @@ class FilesTest {
         assertEquals(mapOf("root" to "/w", "from" to mapOf("b16" to "78ff"), "to" to "ok", "single" to true), FilesRename.args(dir, from, "ok"))
         assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f"))), FilesDelete.args(dir, RemotePath.of("f"), recursive = false))
         assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "d", "recursive" to true))), FilesDelete.args(dir, RemotePath.of("d"), recursive = true))
-        assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f")), "mode" to 420L), FilesChmod.args(dir, RemotePath.of("f"), 420L))
+        assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f")), "mode" to "644"), FilesChmod.args(dir, RemotePath.of("f"), "644"))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
         assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "name" to "f", "up" to "/w", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
         assertEquals(
@@ -101,6 +101,7 @@ class FilesTest {
                 "expect" to mapOf("sha256" to "ab"),
                 "chunks" to 3L,
                 "bytes" to 9L,
+                "single" to true,
             ),
             FilesCommitUpload.args(RemotePath.of("/w"), "up.bin", "k", "ab", chunks = 3L, bytes = 9L),
         )

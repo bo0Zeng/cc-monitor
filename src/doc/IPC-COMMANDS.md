@@ -1226,12 +1226,16 @@ reason?: string,
 detail?: string, };
 type BatchReply = { outcomes: Array<BatchOutcome>, said: string, };
 type ChmodItem = { rel: WirePath, };
-type FilesChmodReq = { root: WirePath, items: Array<ChmodItem>, mode: number, ticket?: string, };
+type FilesChmodReq = { root: WirePath, items: Array<ChmodItem>, 
+/**
+ * 八进制写法原样（`644` · `0755`，框里敲的就交这几个字）；由那台解（空 · 不是八进制 · 超出 7777 ⇒ 整组 `refused`、那一句那台写）。
+ */
+mode: string, ticket?: string, };
 type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `no_unix_mode`
+码：`bad_args` · `bad_path` · `no_unix_mode` · `refused`
 
 #### `files-copy`
 
@@ -1321,13 +1325,17 @@ type Conflicts = { conflicts: Array<Conflict>, };
 type CopyItem = { from: WirePath, to: WirePath, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
-type FilesCopyReq = { root: WirePath, items: Array<CopyItem>, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, };
+type FilesCopyReq = { root: WirePath, items: Array<CopyItem>, on_exists?: OnExists, decide?: { [key in string]: Decide }, ticket?: string, 
+/**
+ * `true` ⇒ 每项的 `to` 只许是一段名字、且不同于 `from`（界面「复制为」那一格敲的就是一个名字）。
+ */
+single?: boolean, };
 type ItemState = "done" | "skipped" | "exists" | "failed" | "cancelled";
 type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `exists`
+码：`bad_args` · `bad_name` · `bad_path` · `exists`
 
 失败带 `data` 的码：`exists` ⇒ `Conflicts`
 
@@ -1483,7 +1491,11 @@ type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string,
  * 落点已有同名：同成组复制那一条（缺 ⇒ `ask`：码 `exists`、`data` 是同名清单，一个字节不动、块留着，改个答原样再交）。
  * 只有一件 ⇒ `skip` 不收（不放就别提交）。
  */
-on_exists?: OnExists, expect: Sha256Expect, chunks?: number, bytes?: number, };
+on_exists?: OnExists, expect: Sha256Expect, chunks?: number, bytes?: number, 
+/**
+ * `true` ⇒ `rel` 只许是一段名字（界面上传一份文件：名字是本机那份的名字，或别的 App 交来的显示名）。不论给没给，每一段都过这台的名字规则。
+ */
+single?: boolean, };
 type FilesPathBytesReply = { path: WirePath, bytes: number, };
 type OnExists = "ask" | "overwrite" | "skip" | "keep_both";
 type Sha256Expect = { sha256: Sha256Hex, };
@@ -1491,7 +1503,7 @@ type Sha256Hex = string;
 type WirePath = string | { b16: string };
 ```
 
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale` · `exists`
+码：`bad_args` · `bad_name` · `bad_path` · `io_failed` · `refused` · `stale` · `exists`
 
 失败带 `data` 的码：`exists` ⇒ `Conflicts`
 

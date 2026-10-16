@@ -1,8 +1,8 @@
 {
   "accounts-list": [{"agent":"claude"},{"agent":""}],
   "accounts-set-default": [{"name":"a"}],
-  "files-chmod": [{"root":"/w","items":[{"rel":{"b16":"2fff"}}],"mode":420}],
-  "files-commit-upload": [{"root":"/w","rel":"up.bin","key":"k","expect":{"sha256":"abababababababababababababababababababababababababababababababab"},"chunks":3,"bytes":9}],
+  "files-chmod": [{"root":"/w","items":[{"rel":{"b16":"2fff"}}],"mode":"644"}],
+  "files-commit-upload": [{"root":"/w","rel":"up.bin","key":"k","expect":{"sha256":"abababababababababababababababababababababababababababababababab"},"chunks":3,"bytes":9,"single":true}],
   "files-create": [{"root":"/w","rel":"a.txt","single":true}],
   "files-delete": [{"root":"/w","items":[{"rel":{"b16":"2fff"},"recursive":true}]},{"root":"/w","items":[{"rel":{"b16":"2fff"}}]}],
   "files-home": [{}],

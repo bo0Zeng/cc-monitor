@@ -900,7 +900,7 @@ impl FileWindow {
 
     /// 列表里那一行的整条路径 ＝ 当前目录的字节 ＋ `/` ＋ 名字的字节（有损名用后端送的那一段字节）。
     pub fn row_path(&self, r: &super::source::Listed) -> super::source::RemotePath {
-        join_path(&self.cwd_path(), &name_bytes(r))
+        self.cwd_path().child(&name_bytes(r))
     }
 
     /// 〔有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
@@ -1186,7 +1186,7 @@ impl FileWindow {
             match rows.get(i) {
                 // 有损名目录：没带字节就进不去（寻址不到）；带了 ⇒ 按字节进。
                 Some(r) if r.opens_as_dir() && (!r.lossy_name || r.raw_name.is_some()) => {
-                    join_path(&self.cwd_path(), &name_bytes(r))
+                    self.row_path(r)
                 }
                 _ => return false,
             }
@@ -1696,26 +1696,12 @@ impl FileWindow {
         *self.prompt_error.lock().unwrap() = None;
     }
 
-    /// 框里那个名字 → 一趟真复制。回值 = 真的起来了。
-    ///
-    /// ⚠ 名字不合法（空 / 带 `/` / 复制成自己）⇒ **框留着、出声**，不静默收掉
-    /// —— 收掉的话用户点了「复制」什么都没发生，与成功长得一模一样。
+    /// 框里那个名字 → 一趟真复制（名字由那台判，不合的那一句照登在「进度」那一行）。回值 = 真的起来了。
     pub fn confirm_copy(&mut self, ctx: Option<egui::Context>) -> bool {
         let Some(p) = self.copy_prompt.clone() else {
             return false;
         };
-        let Some(job) = p.to_job() else {
-            *self.say_slot() = Some(
-                copy_text(
-                    "rsFilewinShell.copy.badName",
-                    &[("name", &p.new_name.to_string())],
-                )
-                .into(),
-            );
-            return false;
-        };
-        // 一组一项：同名由后端探、回 `exists` 画同一个冲突框，结局是「进度」表里后端那一行。
-        if !self.start_copy_batch(vec![job], ctx) {
+        if !self.start_copy_req(p.to_req(), vec![p.new_name.trim().to_string()], ctx) {
             return false;
         }
         self.copy_prompt = None;
@@ -1733,11 +1719,20 @@ impl FileWindow {
                 return false;
             }
         };
+        self.start_copy_req(req, jobs.iter().map(|j| j.name.clone()).collect(), ctx)
+    }
+
+    fn start_copy_req(
+        &mut self,
+        req: cmd_wire::files::FilesCopyReq,
+        names: Vec<String>,
+        ctx: Option<egui::Context>,
+    ) -> bool {
         let plan = super::batch::Plan {
             verb: super::batch::Verb::Copy,
             cmd: super::copy::CMD_COPY,
             args: serde_json::to_value(&req).unwrap_or_default(),
-            names: jobs.iter().map(|j| j.name.clone()).collect(),
+            names,
             into: Some(self.cwd.clone()),
             machine: self.source.label(),
         };
@@ -2386,11 +2381,11 @@ impl FileWindow {
         h.spawn(async move {
             let got = match go {
                 super::writeops::InlineGo::Op(op) => {
-                    super::writeops::apply_typed(&line, &origin, &op, root_raw.as_deref(), &name)
+                    super::writeops::apply_remote_coded(&line, &origin, &op, root_raw.as_deref())
                         .await
                         .map(|_| ())
                 }
-                super::writeops::InlineGo::Create(_) => {
+                super::writeops::InlineGo::Create => {
                     super::create::create_typed_coded(&line, &origin, &cwd, &name).await
                 }
             };
@@ -2417,12 +2412,11 @@ impl FileWindow {
                 if let Some(p) = self.write_prompt.take() {
                     if let (PromptKind::Rename { from, raw: None }, None) = (&p.kind, &self.cwd_raw)
                     {
-                        let to = super::writeops::join_remote(&p.dir, &name);
                         self.receipt_undo = Some((
                             copy_text("rsFilewinWriteops.inline.renamed", &[("name", &name)]),
                             vec![WriteOp::Rename {
-                                from: to,
-                                to: from.clone(),
+                                from: super::source::child_of(&p.dir, &name),
+                                name: super::source::remote_basename(from).to_string(),
                                 raw: None,
                             }],
                         ));
@@ -5599,19 +5593,6 @@ pub fn name_bytes(r: &super::source::Listed) -> Vec<u8> {
         .unwrap_or_else(|| r.name.as_bytes().to_vec())
 }
 
-/// 目录 ＋ `/` ＋ 名字（按字节拼；根上不重复那个 `/`）。
-pub fn join_path(dir: &super::source::RemotePath, name: &[u8]) -> super::source::RemotePath {
-    let mut b = dir.bytes();
-    while b.len() > 1 && b.last() == Some(&b'/') {
-        b.pop();
-    }
-    if b.last() != Some(&b'/') {
-        b.push(b'/');
-    }
-    b.extend_from_slice(name);
-    super::source::RemotePath::from_bytes(&b)
-}
-
 /// 就地那一格要画成什么：输入框里的字 · 插了新行之后的那一摞（新建才有）· 那一格在第几行。
 /// 新建 ⇒ 文件夹那一段之后插一行；改名 ⇒ 就是那一行。
 fn inline_rows(
@@ -5634,7 +5615,7 @@ fn inline_rows(
                     i,
                     super::source::Listed::plain(super::source::Row {
                         name: text.clone(),
-                        path: super::writeops::join_remote(&p.dir, &text),
+                        path: super::source::child_of(&p.dir, &text),
                         is_dir: matches!(kind, PromptKind::Mkdir),
                         size: 0,
                         lossy_name: false,
@@ -5809,7 +5790,7 @@ fn cross_dirs(
                         pal.text,
                     );
                     if r.double_clicked() {
-                        *go_to = Some(super::writeops::join_remote(&pick.path, d));
+                        *go_to = Some(super::source::child_of(&pick.path, d));
                     } else if r.clicked() {
                         *picked = Some(d.clone());
                     }

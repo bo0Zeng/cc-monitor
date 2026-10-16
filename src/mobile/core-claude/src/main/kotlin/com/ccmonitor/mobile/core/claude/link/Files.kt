@@ -292,14 +292,14 @@ object FilesDelete {
         )
 }
 
-/** `files-chmod`：改 unix 权限位（交成一组里的一项）。回包是一组的结局（[Batch]）。 */
+/** `files-chmod`：改 unix 权限位（交成一组里的一项）。[mode] 是框里敲的八进制原样，那台解、那台拒。回包是一组的结局（[Batch]）。 */
 object FilesChmod {
     const val COMMAND: String = "files-chmod"
 
     fun args(
         dir: RemotePath,
         name: RemotePath,
-        mode: Long,
+        mode: String,
     ): Map<String, Any?> = mapOf("root" to dir.wire, "items" to listOf(mapOf("rel" to name.wire)), "mode" to mode)
 }
 
@@ -333,7 +333,7 @@ object FilesStageChunk {
     ): Map<String, Any?> = mapOf("key" to key, "seq" to seq, "content" to mapOf("b16" to hex(buf, n)))
 }
 
-/** `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；不覆盖：目标在就拒，那一句那台写）。 */
+/** `files-commit-upload`：暂存区里传完的那一份挪进当前目录（整份摘要那台照核；不覆盖：目标在就拒；名字带 single，那台判，那一句那台写）。 */
 object FilesCommitUpload {
     const val COMMAND: String = "files-commit-upload"
 
@@ -352,6 +352,7 @@ object FilesCommitUpload {
             "expect" to mapOf("sha256" to sha256),
             "chunks" to chunks,
             "bytes" to bytes,
+            "single" to true,
         )
 }
 

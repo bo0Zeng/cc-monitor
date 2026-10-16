@@ -116,7 +116,7 @@ class FileOps(
     suspend fun chmod(
         dir: RemotePath,
         name: RemotePath,
-        mode: Long,
+        mode: String,
     ): Result<Unit> = batch(FilesChmod.COMMAND, FilesChmod.args(dir, name, mode))
 
     /**
@@ -233,17 +233,5 @@ class FileOps(
 
         /** 删一整棵树的一段等多久（同桌面）。 */
         const val TREE_MS: Long = 120_000L
-
-        /** 权限框里敲的八进制（同桌面：空 · 不是八进制 · 超出 7777 各一句）。 */
-        fun modeOf(typed: String): Result<Long> {
-            val t = typed.trim()
-            if (t.isEmpty()) return Result.failure(IllegalArgumentException(copyText("rsFilewinWriteops.mode.empty")))
-            val m = t.toLongOrNull(OCTAL) ?: return Result.failure(IllegalArgumentException(copyText("rsFilewinWriteops.mode.notOctal")))
-            if (m < 0 || m > MAX_MODE) return Result.failure(IllegalArgumentException(copyText("rsFilewinWriteops.mode.outOfRange")))
-            return Result.success(m)
-        }
-
-        private const val OCTAL = 8
-        private const val MAX_MODE = 0xFFFL
     }
 }

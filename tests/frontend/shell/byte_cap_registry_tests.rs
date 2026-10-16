@@ -850,6 +850,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/files_extract.rs",
+        "EXPAND_FLOOR_BYTES",
+        "`files-extract` 一个包解出的字节之和：这以内总放行，往上按包本身的 `EXPAND_RATIO_CAP` 倍卡（计划趟按包里写的大小、执行趟按真写出的）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/control/files_write.rs",
         "PEEK_MAX_BYTES",
         "`files-peek` 一趟读回的文本（读改写的读那一半；写回时与新内容同装一行请求）",

@@ -357,12 +357,12 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
         (
             "chmod-first",
             "files-chmod",
-            json!({ "root": r, "items": [{ "rel": "copied.txt" }], "mode": 384 }),
+            json!({ "root": r, "items": [{ "rel": "copied.txt" }], "mode": "600" }),
         ),
         (
             "chmod",
             "files-chmod",
-            json!({ "root": r, "items": [{ "rel": "copied.txt" }], "mode": 416 }),
+            json!({ "root": r, "items": [{ "rel": "copied.txt" }], "mode": "640" }),
         ),
         (
             "write-text",

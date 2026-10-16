@@ -209,7 +209,7 @@ class FilesViewModel(
 
     fun chmod(
         entry: FilesLs.Entry,
-        mode: Long,
+        mode: String,
     ) = write { ops.chmod(it, entry.rel, mode) }
 
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
