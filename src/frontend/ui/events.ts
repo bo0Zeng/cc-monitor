@@ -108,7 +108,7 @@ export interface EventHandlers {
   onLiveCardsLost?: (origin: Origin) => void;
   /**
    * 活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
-   * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
+   * 会话流里的一格（`{"file_notice": …}`），与行同序：重读之后的尾段由壳照宣告那样重取，排在它后面。
    */
   onSessionFileNotice?: (sessionId: string, change: string) => void;
   /**
