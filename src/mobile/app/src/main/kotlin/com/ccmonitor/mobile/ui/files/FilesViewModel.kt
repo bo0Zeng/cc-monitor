@@ -130,7 +130,7 @@ class FilesViewModel(
     val opened: SharedFlow<Pair<String, String>> = _opened.asSharedFlow()
 
     /**
-     * 打开别处点名的一个路径（轮换屏的［看代码］…）：连上以后问那台它是什么，目录 ⇒ 进去；文件 ⇒ 开预览（标题写整条路径）。
+     * 打开别处点名的一个路径（轮换屏的［看代码］…）：连上以后问那台它是什么，目录 ⇒ 进去；文件 ⇒ 进它所在的目录、开预览。
      * 没成 ⇒ 那台那一句。
      */
     fun open(text: String) {
@@ -139,8 +139,9 @@ class FilesViewModel(
             when (val at = ops.open(text).onFailure(::say).getOrNull() ?: return@launch) {
                 is FileOps.Opening.Dir -> navigateTo(at.dir)
                 is FileOps.Opening.File -> {
+                    navigateTo(at.dir)
                     _busy.value = true
-                    ops.readText(at.file).onSuccess { _opened.tryEmit(at.file.shown to it.text) }.onFailure(::say)
+                    ops.readText(at.file).onSuccess { _opened.tryEmit(at.file.name.shown to it.text) }.onFailure(::say)
                     _busy.value = false
                 }
             }

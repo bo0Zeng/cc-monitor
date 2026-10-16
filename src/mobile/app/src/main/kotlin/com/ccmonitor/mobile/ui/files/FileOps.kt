@@ -89,7 +89,7 @@ class FileOps(
     /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进它所在的目录、开它。 */
     suspend fun open(text: String): Result<Opening> {
         val path = RemotePath.of(text)
-        return ask(FilesStat.COMMAND, FilesStat.args(path), FilesStat::kindOf).map { if (it == FileKind.DIR) Opening.Dir(path) else Opening.File(path) }
+        return ask(FilesStat.COMMAND, FilesStat.args(path), FilesStat::kindOf).map { if (it == FileKind.DIR) Opening.Dir(path) else Opening.File(path.parent, path) }
     }
 
     /** 打开一个路径落在哪。 */
@@ -99,6 +99,7 @@ class FileOps(
         ) : Opening
 
         data class File(
+            val dir: RemotePath,
             val file: RemotePath,
         ) : Opening
     }
