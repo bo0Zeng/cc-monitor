@@ -1,7 +1,7 @@
 // 后端台架：起一个沙箱后端（白名单环境 · 临时 HOME · stdio 载体，与本机宿主同一组流模式旗标），
 // 照界面的问法逐条问、量每条应答的墙钟与字节，再量空闲 CPU / 常驻内存与实时追加一行的延迟。
 // 用法：node drive.mjs <后端二进制> <HOME> [--reps N] [--idle S] [--only 名,名]
-//   只量全文搜索那一组（热索引用时 · 不含 / 含工具每问 · 问过含工具之后再问不含工具 · 常驻）：--only search
+//   只量全文搜索那一组（没人搜时起来 60 s 的常驻与读盘 · 第一问建索引 · 不含 / 含工具每问 · 问过含工具之后再问不含工具 · 常驻）：--only search
 //   读法：按每问的进程 CPU 毫秒（cpuMs）比，不按墙钟（机器忙时墙钟抖几倍）；index 是那一问后端记的读盘账（full=整份重读几份）。
 // 输出：一行一条 JSON（台架读数），最后一行是汇总。
 import { spawn } from "node:child_process";
@@ -32,7 +32,7 @@ const env = {
   CCM_SHOTS_NOW_MS: String(SHOTS_NOW_MS),
   TMUX_TMPDIR: join(box, "tmux"),
   XDG_RUNTIME_DIR: join(box, "run"),
-  // 搜索索引那几行（后台建好 · 每问读盘的账）要看见：它们是读数的一部分。
+  // 搜索索引每问读盘的账那一行要看见：它是读数的一部分。
   RUST_LOG: "warn,cc_monitor_backend::observe::search_query=debug",
   ...(RELAY ? { CCM_RELAY_PORT: RELAY } : {}),
 };
@@ -40,8 +40,6 @@ const t0 = performance.now();
 const child = spawn(bin, ["--", "--stream"], { env, stdio: ["pipe", "pipe", "pipe"] });
 let stderr = "";
 let errLine = "";
-let warmAt = null;
-let warmWhat = "";
 let lastIndex = "";
 child.stderr.on("data", (d) => {
   errLine += d;
@@ -49,11 +47,6 @@ child.stderr.on("data", (d) => {
   while ((i = errLine.indexOf("\n")) >= 0) {
     const l = errLine.slice(0, i);
     errLine = errLine.slice(i + 1);
-    if (l.includes("后台建好")) {
-      warmAt = performance.now();
-      warmWhat = l.replace(/^.*全文搜索索引：/, "");
-      continue;
-    }
     const m = l.match(/history-search index: (.*)$/);
     if (m) {
       lastIndex = m[1];
@@ -106,6 +99,12 @@ function cpuTicks(pid) {
   const st = readFileSync(`/proc/${pid}/stat`, "utf8");
   const rest = st.slice(st.lastIndexOf(")") + 2).split(" ");
   return Number(rest[11]) + Number(rest[12]);
+}
+// 进程读进来的字节：rchar = 经 read 调用（含页缓存命中）· readBytes = 真到块设备。
+function io(pid) {
+  const s = readFileSync(`/proc/${pid}/io`, "utf8");
+  const g = (k) => Number((s.match(new RegExp(`${k}:\\s+(\\d+)`)) || [])[1] || 0);
+  return { rcharMb: +(g("rchar") / 1e6).toFixed(1), readMb: +(g("read_bytes") / 1e6).toFixed(1) };
 }
 function mem(pid) {
   const s = readFileSync(`/proc/${pid}/status`, "utf8");
@@ -215,10 +214,11 @@ if (!ONLY.length || ONLY.includes("whole-read")) {
   emit({ name: "whole-read-big", ms: +(performance.now() - s).toFixed(1), pages, cpuMs: (cpuTicks(child.pid) - c0) * 10 });
 }
 
-// —— 全文搜索那一组：后台热索引要多久 · 每问 CPU · 问过含工具之后不含工具的那一问还快不快 · 常驻 ——
+// —— 全文搜索那一组：没人搜时的常驻与读盘 · 第一问（建索引）与之后每问的 CPU · 问过含工具之后不含工具的那一问还快不快 · 常驻 ——
 if (!ONLY.length || ONLY.includes("search")) {
-  while (warmAt === null) await sleep(20);
-  emit({ name: "search-warm", ms: +(warmAt - t0).toFixed(0), what: warmWhat, ...mem(child.pid) });
+  // 只量这一组时，此前没有一问碰过会话：这一格是「起来 60 s、没人搜」的后端。
+  if (ONLY.length) await sleep(Math.max(0, t0 + 60000 - performance.now()));
+  emit({ name: ONLY.length ? "idle-60s" : "before-search", sinceStartS: +((performance.now() - t0) / 1000).toFixed(0), ...mem(child.pid), ...io(child.pid) });
   const ask = async (name, args, n) => {
     const ms = [];
     const cpuMs = [];
@@ -230,7 +230,7 @@ if (!ONLY.length || ONLY.includes("search")) {
       if (!r.ok) emit({ name, code: r.code });
     }
     await sleep(50); // 让那一问的读盘账那一行到
-    emit({ name, ms, cpuMs, index: lastIndex, ...mem(child.pid) });
+    emit({ name, ms, cpuMs, index: lastIndex, ...mem(child.pid), ...io(child.pid) });
   };
   await ask("search-plain", { query: "游标分页" }, 3);
   await ask("search-tools", { query: "npm test", include_tools: true }, Math.max(REPS, 3));
