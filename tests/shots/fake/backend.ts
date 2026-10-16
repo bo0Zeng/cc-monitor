@@ -58,16 +58,30 @@ export const REAL_OPS = new Set([
   "mcp-read",
   // 终端里敲 ccm 走到哪（别名页最上那一句）：那台后端现问终端的 PATH、判、出句子。
   "ccm-probe",
+  // 终端那一族（名单 · 抓一屏 · 送字送键 · 实时画面订退与回执 · 一批会话各在哪个终端）：真后端问那台私有 tmux，
+  // 替身窗格里印着那一屏（`disk/screen.ts`）、终端窗口是嵌套的客户端；只能快照 · 读不出那两形由边界上的 tmux 替身演（`MachineDisk.tmuxShim`）。
+  "terminals-list",
+  "terminal-preview",
+  "terminal-input",
+  "terminal-follow",
+  "terminal-follow-ack",
+  "terminal-unfollow",
+  "sessions-where",
+  // 「从 ~/.ssh/config 选」：真后端读台架盘上那一份、逐个 `ssh -G`（沙箱里没有系统那一份 ssh 配置）。
+  "ssh-config-import",
+  // 别名块预览（往一份空文件里装一次会写成什么）：真后端照那份启动文件的方言写。
+  "aliases-block-render",
 ]);
 
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
- * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那四种 `changed/<topic>`（含待答请求 `needs`）。
+ * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那四种 `changed/<topic>`（含待答请求 `needs`）·
+ * 终端实时画面（`terminal-screen/<票>`：那台后端挂一个只读客户端看替身窗格、有变化推一屏）。
  * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
- * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
+ * 换号那几条帧命令还是合成的）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
 export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden"]);
-const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
+const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/") || kind.startsWith("terminal-screen/");
 
 /**
  * 真后端够不着的那一支：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支演不出来。那几问照样交真后端答，
@@ -102,7 +116,6 @@ export class FakeBackend {
   private readonly listedOrigins = new Set<string>();
   /** 有一台报完清单了（[`settled`] 按它醒，不按钟点问）。 */
   private onListed: () => void = () => undefined;
-  private screenSeq = 0;
   /** 无头壳已经交出 `live` 那一格的会话（按 sid 去重）：等 tab 等不到时的读数（`window.__shots.sessions`）。 */
   readonly liveSent = new Set<string>();
 
@@ -213,8 +226,18 @@ export class FakeBackend {
     return this.writeFile(origin, c.file(), c.textFrom(from), true);
   }
 
+  /** 那个会话的替身往自己的窗格里再印一段（原样的终端输出）：真后端照常抓到、订着实时画面的照常收到新的一屏。 */
+  paint(origin: string, sid: string, text: string): Promise<void> {
+    return this.tell("paint", { origin, sid, text });
+  }
+
+  /** 场景演那台断了：那台后端当场杀掉（壳那一侧照真的那一套作废那台的成品、各条订阅说断了）。 */
+  dropMachine(origin: string): Promise<void> {
+    return this.tell("kill", { origin });
+  }
+
   /** 订阅那几样交给无头壳。 */
-  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch", body: Record<string, unknown>): Promise<void> {
+  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch" | "paint", body: Record<string, unknown>): Promise<void> {
     return this.ready.then(async () => {
       const r = await fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
       if (!r.ok) throw new Error(`/__ccm/${what}：${await r.text()}`);
@@ -360,21 +383,7 @@ export class FakeBackend {
       this.send(sub, [{ t: "closed_by_peer", body: JSON.stringify({ code: "busy", message: "这台机器上的会话太多，先关掉几个再连" }) }]);
       return;
     }
-    if (sub.kind.startsWith("terminal-screen/")) {
-      // 终端实时画面：订上之后推一屏（就是那一刻的 `terminal-preview` 成品）；按场景随后停（画面中断 · 那台断开）。
-      // 那一屏抓不到（场景让 `terminal-preview` 拒）⇒ 不推：真后端那边是 `terminal-follow` 那一问被拒，流上什么都不来。
-      const mode = this.world.terminalLive ?? "live";
-      let view: unknown;
-      try {
-        view = this.world.ops["terminal-preview"]?.(sub.origin, {}, this.world);
-      } catch (e) {
-        if (e instanceof Refuse) return;
-        throw e;
-      }
-      setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
-      if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
-      if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-live-card" || sub.kind.startsWith("changed/")) {
+    if (sub.kind === "session-live-card" || sub.kind.startsWith("changed/")) {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);
@@ -389,14 +398,6 @@ export class FakeBackend {
   pushChanged(origin: string, topic: string, cell: unknown): void {
     for (const sub of this.subs.values()) {
       if (sub.origin === origin && sub.kind === `changed/${topic}`) this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(cell) }]);
-    }
-  }
-
-  /** 性能台架：往那台所有终端实时画面的订阅上推一屏（`view` 同 `terminal-preview` 成品）。 */
-  pushScreen(origin: string, view: unknown): void {
-    this.screenSeq += 1;
-    for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind.startsWith("terminal-screen/")) this.send(sub, [{ t: "frame", seq: this.screenSeq, body: JSON.stringify({ seq: this.screenSeq + 1, view }) }]);
     }
   }
 
