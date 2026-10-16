@@ -30,8 +30,8 @@ const toolOnly = (t: SkeletonFacts["t"] = "reply"): SkeletonFacts => ({ o: 0, n:
 const none = (t?: SkeletonFacts["t"]): SkeletonFacts => (t ? { o: 0, n: 1, t } : { o: 0, n: 1 });
 
 describe("estimateFromFacts / skeletonKind", () => {
-  it("不建卡的记录高 0：系统注入 · 本地命令回显 / 不进界面的行 / 标题 / 解析不出的", () => {
-    for (const f of [user(10, { sp: "system" }), user(10, { sp: "commandOutput" }), none(), none("title"), { o: 0, n: 1 }]) {
+  it("不建卡的记录高 0：本地命令回显 / 不进界面的行 / 标题 / 解析不出的", () => {
+    for (const f of [user(10, { sp: "commandOutput" }), none(), none("title"), { o: 0, n: 1 }]) {
       expect(skeletonKind(f)).toBe("none");
       expect(estimateFromFacts(f)).toBe(0);
     }

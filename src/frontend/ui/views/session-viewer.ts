@@ -169,23 +169,24 @@ function pageStatus(s: ViewerStatus): string {
 const TAIL_INITIAL = 150; // 首屏取回、渲染的末尾条数（建卡的那几类）
 const ISLAND_RADIUS = 100; // 深链岛：命中那一条上下各取几条
 
+/** 这一行建不建卡（注入细条不算）。 */
+function buildsCard(ledger: SkeletonLedger, q: number): boolean {
+  const f = ledger.factsOf(q);
+  const k = f && skeletonKind(f);
+  return k === "card" || k === "tool";
+}
+
 /** 从 `from`（不含）往前数 `k` 条建卡的行，回最早那一条的 seq（不够 ⇒ 账本第一行）。 */
 function cardsBack(ledger: SkeletonLedger, from: number, k: number): number {
   let n = 0;
-  for (let q = from - 1; q >= ledger.base; q--) {
-    const f = ledger.factsOf(q);
-    if (f && skeletonKind(f) !== "none" && ++n === k) return q;
-  }
+  for (let q = from - 1; q >= ledger.base; q--) if (buildsCard(ledger, q) && ++n === k) return q;
   return ledger.base;
 }
 
 /** 从 `at`（含）往后数 `k` 条建卡的行，回最后那一条的下一行（不够 ⇒ 账本末尾）。 */
 function cardsAhead(ledger: SkeletonLedger, at: number, k: number): number {
   let n = 0;
-  for (let q = at; q < ledger.endSeq; q++) {
-    const f = ledger.factsOf(q);
-    if (f && skeletonKind(f) !== "none" && ++n === k) return q + 1;
-  }
+  for (let q = at; q < ledger.endSeq; q++) if (buildsCard(ledger, q) && ++n === k) return q + 1;
   return ledger.endSeq;
 }
 

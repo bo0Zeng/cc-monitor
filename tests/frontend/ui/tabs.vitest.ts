@@ -4050,16 +4050,16 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
   /** 重放形状：尾巴先到（钉 floor=200），老的 [0,200) 后到 ⇒ 全收纳。`skip` 里的 seq 不发（模拟迟到）。 */
-  function replay(sid: string, skip: Set<number> = new Set()): Tab {
-    tm.onLine(mk(sid, 200, "u200")); // 首个 tab ⇒ active，非批期直渲钉 floor
+  function replay(sid: string, skip: Set<number> = new Set(), make: typeof mk = mk): Tab {
+    tm.onLine(make(sid, 200, "u200")); // 首个 tab ⇒ active，非批期直渲钉 floor
     // jsdom 没布局 ⇒ `contentReachesBottom` 退回算术判据；给它一个「已满屏」的几何，
     // 否则批结束会把 [0,200) 全物化掉（那是没有骨架时的正确行为，不是本组要测的）
     const el = home(tm).store.tabs.get(sid)!.streamEl;
     Object.defineProperty(el, "scrollHeight", { value: 2000, configurable: true });
     Object.defineProperty(el, "clientHeight", { value: 800, configurable: true });
     tm.onBatchStart();
-    for (let s = 201; s < 300; s++) tm.onLine(mk(sid, s, `u${s}`));
-    for (let s = 0; s < 200; s++) if (!skip.has(s)) tm.onLine(mk(sid, s, `u${s}`));
+    for (let s = 201; s < 300; s++) tm.onLine(make(sid, s, `u${s}`));
+    for (let s = 0; s < 200; s++) if (!skip.has(s)) tm.onLine(make(sid, s, `u${s}`));
     tm.onBatchEnd();
     return home(tm).store.tabs.get(sid)!;
   }
@@ -4287,6 +4287,45 @@ describe("骨架接入：索引 → 占位 → 门控 → 跳转", () => {
     }
     // 150 不在这一段里 ⇒ 没被要
     expect(ranges.some((c) => c.seqBase === 150)).toBe(false);
+  });
+
+  // 系统注入那一行（101）不建卡、建一条细条：按偏移取回的那一段要与直接建出来的那一截逐行一样（开着「显示系统注入」时露的就是它）。
+  it("★ 按偏移取回的一段与直接建出来的一截逐行一样：夹在中间的系统注入也取回、照建", async () => {
+    const INJ = 101;
+    const make = ((sid: string, seq: number, uuid: string) =>
+      seq === INJ
+        ? { session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "said", id: uuid, who: { speaker: { kind: "system", body: "注入" } } } }
+        : mk(sid, seq, uuid)) as typeof mk;
+    const index = idx(300);
+    index.rows[INJ] = { ...index.rows[INJ], t: "said", sp: "system" } as never;
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
+      if (cmd === "read_session_index") return Promise.resolve(index);
+      if (cmd === "read_session_range") {
+        const a = args as { jsonlPath: string; seqBase: number; offset: number; until: number };
+        const sid = a.jsonlPath.replace(/^.*\//, "").replace(/\.jsonl$/, "");
+        return Promise.resolve(Array.from({ length: (a.until - a.offset) / 10 }, (_, k) => make(sid, a.seqBase + k, `u${a.seqBase + k}`)));
+      }
+      return Promise.resolve(undefined);
+    }) as never));
+    const { renderContentRecord } = await import("../../../src/frontend/ui/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    const built = async (sid: string, skip: Set<number>): Promise<unknown[]> => {
+      tm = makeTM();
+      const t = replay(sid, skip, make);
+      await settle();
+      expect(t.skeleton, "前置：骨架要接上").not.toBeNull();
+      spy.mockClear();
+      t.skeleton!.ensure(INJ, 3); // [98, 105)
+      await settle();
+      return spy.mock.calls
+        .map((c) => c[0] as { seq: number; record: unknown })
+        .sort((x, y) => x.seq - y.seq)
+        .map((p) => [p.seq, p.record]);
+    };
+    const direct = await built("injDirect", new Set());
+    const fetched = await built("injFetched", new Set([100, 101, 102]));
+    expect(direct.map((r) => (r as [number])[0]), "正控：直接建出来的那一截带注入那一行").toContain(INJ);
+    expect(fetched).toEqual(direct);
   });
 
   it("滚动：接上骨架后**每次**滚动都交给 fillVisible —— 不再只在离顶 800px 内才补（占位可以在中部）", async () => {

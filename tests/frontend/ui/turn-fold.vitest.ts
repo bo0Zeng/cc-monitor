@@ -566,9 +566,9 @@ describe("系统注入的旁注细条", () => {
     expect([kids[1].getAttribute("data-id"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
   });
 
-  it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类", () => {
+  it("★ 估高跟着开关：关着 0、开着一条细条；它自成一类（照取回、照建细条）", () => {
     const f = { o: 0, n: 1, t: "said", sp: "system", ch: 200, pl: 9 } as never;
-    expect(skeletonKind(f)).toBe("none");
+    expect(skeletonKind(f)).toBe("strip");
     setInjectedShown(false);
     expect(estimateFromFacts(f)).toBe(0);
     setInjectedShown(true);

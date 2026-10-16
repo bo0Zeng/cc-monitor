@@ -386,11 +386,12 @@ export interface SkeletonFacts {
 /**
  * 一条记录在骨架里算哪一类：
  * - `none`：**不建卡**（不进界面的行 · 标题 · 不画的来源 …）——高 0；
+ * - `strip`：系统注入 —— 不建卡、照建一条旁注细条（物化时与别的行一样取回），露不露、占不占高只看「显示系统注入」；
  * - `tool`：只有折叠单元的记录（纯 tool_use / 纯 tool_result）——assistant 那一侧一条一张「几步」卡（每步一行）；
  *   user 那一侧的纯工具结果注入进它那个调用的那一行，不另建卡（高 0）；
  * - `card`：其余。
  */
-export type SkeletonKind = "none" | "tool" | "card";
+export type SkeletonKind = "none" | "strip" | "tool" | "card";
 
 /**
  * 卡片外框（padding ＋ border ＋ 卡间 margin）的常数。
@@ -436,6 +437,7 @@ function factCode(f: SkeletonFacts): number {
 /** 一条记录属于哪一类（不看邻居）。 */
 export function skeletonKind(f: SkeletonFacts): SkeletonKind {
   if (f.t !== "said" && f.t !== "reply" && f.t !== "retry" && f.t !== "queued") return "none";
+  if (f.sp === "system") return "strip";
   if (f.sp && !drawsCard(f.sp)) return "none";
   if (f.t === "retry" || f.t === "queued") return "card";
   const hasBody = (f.ch ?? 0) > 0 || (f.cb ?? 0) > 0;
@@ -454,8 +456,7 @@ export function skeletonKind(f: SkeletonFacts): SkeletonKind {
  */
 export function estimateFromFacts(f: SkeletonFacts, colW: number = COL_W): number {
   const kind = skeletonKind(f);
-  // 注入行不是任何一类，只按开关出高。
-  if (f.sp === "system") return injectedShown ? SKEL_INJECTED_H : 0;
+  if (kind === "strip") return injectedShown ? SKEL_INJECTED_H : 0;
   if (kind === "none") return 0;
   if (kind === "tool") {
     const n = f.fd ?? 0;
