@@ -50,6 +50,7 @@
   "session-new-dir": [{"cwd":"/w"}],
   "session-new-facts": [{}],
   "session-permission": [{"sid":"s","mode":"plan","client":"mobile"}],
+  "session-resume": [{"sid":"s","client":"mobile"}],
   "session-say": [{"sid":"s","text":"hi","client":"mobile"}],
   "sessions-needs": [null],
   "terminal-input": [{"sid":"s","text":"hi"},{"sid":"s","key":"esc"}],
