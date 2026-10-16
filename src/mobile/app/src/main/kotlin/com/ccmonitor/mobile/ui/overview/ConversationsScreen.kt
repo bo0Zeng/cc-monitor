@@ -44,6 +44,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
 import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -208,13 +209,35 @@ private fun LazyListScope.historySection(
     items(s.rows, key = { it.sessionId }) { r ->
         DotRow(r.dot, r.status?.text, onClick = { onOpen(r.sessionId) }, onLongClick = { onMenu(r) }) {
             Column(Modifier.weight(1f)) {
-                Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle())
-                r.status?.let { StatusText(it) }
+                // 第一层：★ · 标题 · 时刻；第二层：状态字 · 目录短名 · 家牌 ·「已隐藏」· 分叉那一句（有的才写，用 · 连）。
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (r.starred) PhIcon(Ph.Star, contentDescription = null, size = Touch.iconInline, tint = LocalAppTokens.current.warn)
+                    Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle(), modifier = Modifier.weight(1f))
+                    r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                SecondLine(r)
             }
-            // 隐藏的行（开着「显示已隐藏」才在）：同桌面历史行的那颗小标。
-            r.hidden?.let { Text(copyText("history.row.hidden"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag(OverviewTags.HIDDEN)) }
-            r.agentTag?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+}
+
+/** 第二层：状态字（带语气）在前，其余几格淡字，用 ` · ` 连。 */
+@Composable
+private fun SecondLine(r: HistoryItem) {
+    val rest = listOfNotNull(r.project, r.agentTag, r.hidden?.let { copyText("history.row.hidden") }, r.fork)
+    if (r.status == null && rest.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+        r.status?.let { StatusText(it) }
+        val tail = rest.joinToString(copyText("kit.text.sep"))
+        if (tail.isNotEmpty()) {
+            Text(
+                (if (r.status != null) copyText("kit.text.sep") else "") + tail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = if (r.hidden != null) Modifier.testTag(OverviewTags.HIDDEN) else Modifier,
+            )
         }
     }
 }

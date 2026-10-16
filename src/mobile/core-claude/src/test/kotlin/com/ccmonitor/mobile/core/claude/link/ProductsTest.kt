@@ -117,8 +117,8 @@ class ProductsTest {
     }
 
     @Test
-    fun `history-list：行上隐藏那一格照收（后端写好的那一句）；入参只在「显示已隐藏」开着时带 hidden`() {
-        val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "atText" to "", "sectionText" to "", "projectPath" to "", "jsonlPath" to "", "agent" to "claude", "status" to "ended", "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
+    fun `history-list：行上隐藏那一格照收（后端写好的那一句）`() {
+        val rows = listOf(mapOf("sessionId" to "s", "label" to "l", "at" to 0, "atText" to "", "sectionText" to "", "starred" to false, "projectName" to "", "projectPath" to "", "group" to "g", "can" to mapOf("delete" to "yes"), "jsonlPath" to "", "agent" to "claude", "status" to "ended", "hidden" to mapOf("by" to "child", "said" to "由 a 启动 · 子会话默认隐藏")))
         assertEquals(
             Hidden("由 a 启动 · 子会话默认隐藏"),
             HistoryList
@@ -134,8 +134,6 @@ class ProductsTest {
                 .first()
                 .hidden,
         )
-        assertEquals(mapOf("hidden" to true), HistoryList.args(showHidden = true))
-        assertNull("关着 ⇒ 不带（缺省不出）", HistoryList.args(showHidden = false))
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
+import com.ccmonitor.mobile.core.claude.link.wire.TabPref
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,7 +38,7 @@ class SentRequestsTest {
             HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl")),
             HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
             HistoryAnnotate.COMMAND to listOf(HistoryAnnotate.hide("s", Hide.ON), HistoryAnnotate.hide("s", Hide.OFF), HistoryAnnotate.hide("s", null)),
-            HistoryList.COMMAND to listOf(HistoryList.args(false), HistoryList.args(true)),
+            HistoryList.COMMAND to listOf(HistoryList.args(ListAsk()), HistoryList.args(ListAsk("q", 7, ListSort.CREATED, true)), HistoryList.args(ListAsk(sort = ListSort.ACTIVITY))),
             HistoryRead.COMMAND to listOf(HistoryRead.args("/p/s.jsonl", 0L, 10L)),
             HistoryTail.COMMAND to listOf(HistoryTail.args("/p/s.jsonl", 50)),
             Kill.COMMAND to listOf(Kill.args("demo")),
@@ -53,6 +54,15 @@ class SentRequestsTest {
             Profiles.READ to listOf(emptyMap()),
             Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
             Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
+            QuotaRead.COMMAND to listOf(null),
+            MachinePrefs.READ to listOf(null),
+            MachinePrefs.SET to
+                listOf(
+                    MachinePrefs.tab(TabKind.CHILD, TabPref.SHOW),
+                    MachinePrefs.tab(TabKind.BG, TabPref.HIDE),
+                    MachinePrefs.model("work", "opus"),
+                    MachinePrefs.model("work", null),
+                ),
             Rotation.DAY_PAINT to listOf(Rotation.dayPaint(listOf(RotSeg(0L, 10L, 1.0)), 0L, 10L, 0.5), Rotation.dayPaint(emptyList(), 0L, 10L, null)),
             Rotation.FOR_NEW to listOf(Rotation.forNew("s1"), Rotation.forNew(null)),
             Rotation.REVERT to listOf(Rotation.revert("s")),
@@ -72,6 +82,7 @@ class SentRequestsTest {
                     Rotation.view(RotWhere.Session("s"), 12),
                     Rotation.view(RotWhere.Strategy("x"), 12, mapOf("k" to 1L), "r"),
                 ),
+            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),
             SessionNew.COMMAND to

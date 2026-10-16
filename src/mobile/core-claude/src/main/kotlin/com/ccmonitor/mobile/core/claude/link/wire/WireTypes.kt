@@ -356,14 +356,19 @@ data class HistoryGroup(
     val failed: String?,
 )
 
+/** 清单一行：[at] 是并几台时的排序键；[group] 是按目录那一形里属于哪一组（`groups[].key`）。 */
 @WireOf("HistoryRow")
 @JsonClass(generateAdapter = true)
 data class HistoryRow(
     val sessionId: String,
     val label: String,
+    val at: Long,
     val atText: String,
     val sectionText: String,
+    val starred: Boolean,
+    val projectName: String,
     val projectPath: String,
+    val group: String,
     val jsonlPath: String,
     val agent: String,
     val agentTag: String?,
@@ -371,7 +376,28 @@ data class HistoryRow(
     val hidden: Hidden?,
     val forkedFromSessionId: String?,
     val forkedFrom: ForkedFrom?,
+    val can: Can,
 )
+
+/** 这一行能做什么（那台判的）；手机只读删除那一格。 */
+@WireOf("Can")
+@JsonClass(generateAdapter = true)
+data class Can(
+    val delete: CanDelete,
+)
+
+/** 能不能删：`live` 正在跑（灰着）；`unsure` 说不准在不在跑（确认框多一句）。 */
+@JsonClass(generateAdapter = false)
+enum class CanDelete {
+    @Json(name = "yes")
+    YES,
+
+    @Json(name = "live")
+    LIVE,
+
+    @Json(name = "unsure")
+    UNSURE,
+}
 
 /** 分叉来的那一行的父会话（显示标题）；父会话不在那台的清单里 ⇒ 行上没有这一格，写「分叉自其他会话」。 */
 @WireOf("ForkedFrom")
@@ -1213,7 +1239,179 @@ data class AccountRow(
     val login: Boolean,
     val configDir: String?,
     val mode: String,
+    val authKind: String,
+    val badge: Badge,
 )
+
+/** 号行右边那一枚（[warn] ⇒ 要人动手的那一种，界面只画这一种）。 */
+@WireOf("Badge")
+@JsonClass(generateAdapter = true)
+data class Badge(
+    val text: String,
+    val warn: Boolean,
+)
+
+/**
+ * `quota-read`：这台的额度账。读到的三态 · 读不出 / 一个号都没有时那一句（[text]）与复制详情；出过数的号在 [accounts]、
+ * 没出过数的在 [unseen]（各照回包先后）；结论两行 [verdict]；位名表 [names]。字与语气全是那台写好的。
+ */
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val state: QuotaReadState,
+    val text: String?,
+    val detail: String?,
+    val accounts: List<QuotaAccount>,
+    val unseen: List<QuotaUnseen>,
+    val verdict: QuotaVerdict?,
+    val names: QuotaNames,
+)
+
+@JsonClass(generateAdapter = false)
+enum class QuotaReadState {
+    @Json(name = "present")
+    PRESENT,
+
+    @Json(name = "absent")
+    ABSENT,
+
+    @Json(name = "unreadable")
+    UNREADABLE,
+}
+
+/** 位名表（`5h` ⇒ 屏上那个字）。 */
+@WireOf("QuotaNames")
+@JsonClass(generateAdapter = true)
+data class QuotaNames(
+    val slots: Map<String, String>,
+)
+
+/** 「现在还能不能发」：大字 · 小字（说不出 ⇒ `null`）· 语气。 */
+@WireOf("QuotaVerdict")
+@JsonClass(generateAdapter = true)
+data class QuotaVerdict(
+    val text: String,
+    val sub: String?,
+    val tone: UsageTone,
+)
+
+/** 出过数的一个号：写好的几行（[rows]，第一行是卡头）· 两条计量条那几格 · 数旧没有 · 用量那一格。 */
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaAccount(
+    val account: String,
+    val kind: QuotaKind,
+    val rows: List<List<QuotaCell>>,
+    val slots: List<SlotShow>,
+    val stale: Boolean,
+    val usage: Usage,
+)
+
+/** 一个语义位那一格：条长 · 字 · 语气 · 重置那一格与距今（说不出 ⇒ `null`）· 「1% ≈ 多少」（量不到 ⇒ `null`）。 */
+@WireOf("SlotShow")
+@JsonClass(generateAdapter = true)
+data class SlotShow(
+    val slot: String,
+    val pct: Int?,
+    val text: String,
+    val tone: UsageTone,
+    val resetText: String?,
+    val resetsAtRelText: String?,
+    val perPctText: String?,
+)
+
+/** 行里的一格。 */
+@WireOf("QuotaCell")
+@JsonClass(generateAdapter = true)
+data class QuotaCell(
+    val text: String,
+    val tone: Tone,
+)
+
+@JsonClass(generateAdapter = false)
+enum class QuotaKind {
+    @Json(name = "sub")
+    SUB,
+
+    @Json(name = "api")
+    API,
+}
+
+@WireOf("QuotaUnseen")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseen(
+    val account: String,
+    val kind: QuotaKind,
+    val rows: List<List<QuotaCell>>,
+    val usage: QuotaUnseenUsage,
+)
+
+/** 用量那一格：连成的一句 ＋ 语气（状态栏按钮 · 切号下拉同一份）。 */
+@WireOf("Usage")
+@JsonClass(generateAdapter = true)
+data class Usage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@WireOf("QuotaUnseenUsage")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseenUsage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}
+
+/** `prefs-read` · `prefs-set`（写完读回）：这台的偏好；读不懂（[state] 为 unreadable）也照答那一份。 */
+@WireOf("PrefsReply")
+@JsonClass(generateAdapter = true)
+data class PrefsReply(
+    val state: PrefsState,
+    val reason: String?,
+    val detail: String?,
+    val prefs: Prefs,
+)
+
+@JsonClass(generateAdapter = false)
+enum class PrefsState {
+    @Json(name = "absent")
+    ABSENT,
+
+    @Json(name = "ok")
+    OK,
+
+    @Json(name = "unreadable")
+    UNREADABLE,
+}
+
+@WireOf("Prefs")
+@JsonClass(generateAdapter = true)
+data class Prefs(
+    val models: Map<String, String>,
+    val childTab: TabPref,
+    val bgTab: TabPref,
+)
+
+/** 一种会话进不进标签栏（也管手机的「最近」列不列它）。 */
+@JsonClass(generateAdapter = false)
+enum class TabPref {
+    @Json(name = "show")
+    SHOW,
+
+    @Json(name = "hide")
+    HIDE,
+}
 
 /** 登录失败的 `data`：还能怎么办（那台照码定）。 */
 @WireOf("LoginAgain")
@@ -1240,54 +1438,3 @@ enum class LoginAgainHow {
 data class Resumed(
     val session: String,
 )
-
-/*
- * `quota-read`（用量屏）：结论两行 · 每号两条计量条那一格（字 · 语气 · 重置 · 1% ≈ 多少），全照那台写好的。
- */
-
-@WireOf("QuotaRead")
-@JsonClass(generateAdapter = true)
-data class QuotaReadReply(
-    val accounts: List<QuotaAccount>,
-    val verdict: QuotaVerdict?,
-)
-
-/** 「现在还能不能发」：大字 · 小字（说不出 ⇒ `null`）· 语气。 */
-@WireOf("QuotaVerdict")
-@JsonClass(generateAdapter = true)
-data class QuotaVerdict(
-    val text: String,
-    val sub: String?,
-    val tone: UsageTone,
-)
-
-@WireOf("QuotaAccount")
-@JsonClass(generateAdapter = true)
-data class QuotaAccount(
-    val account: String,
-    val slots: List<SlotShow>,
-)
-
-/** 一个语义位那一格：字 · 语气 · 重置那一格（`↻18:30` / `↻13:10 已过`，说不出 ⇒ `null`）· 「1% ≈ 多少」（量不到 ⇒ `null`）。 */
-@WireOf("SlotShow")
-@JsonClass(generateAdapter = true)
-data class SlotShow(
-    val slot: String,
-    val text: String,
-    val tone: UsageTone,
-    val resetText: String?,
-    val perPctText: String?,
-)
-
-/** 用量那几格的语气（线上那一列只有这三个值）。 */
-@JsonClass(generateAdapter = false)
-enum class UsageTone {
-    @Json(name = "plain")
-    PLAIN,
-
-    @Json(name = "fail")
-    FAIL,
-
-    @Json(name = "warn")
-    WARN,
-}

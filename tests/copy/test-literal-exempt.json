@@ -128,7 +128,8 @@
       { "text": "快捷键", "use": "用例名" }
     ],
     "tests/frontend/ui/design-tokens.vitest.ts": [
-      { "text": "颜色", "use": "非文案" }
+      { "text": "颜色", "use": "非文案" },
+      { "text": "字号", "use": "非文案" }
     ],
     "tests/frontend/ui/front-result.vitest.ts": [
       { "text": "本机", "use": "输入" }

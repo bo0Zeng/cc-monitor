@@ -8,6 +8,7 @@ import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.HistoryAnnotate
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
+import com.ccmonitor.mobile.core.claude.link.ListAsk
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.ResidentFeed
 import com.ccmonitor.mobile.core.claude.link.SessionDot
@@ -15,12 +16,14 @@ import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.Annotated
+import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.link.notice
 import com.ccmonitor.mobile.link.problem
@@ -122,7 +125,7 @@ class ConversationsViewModel(
         // 手机只连这一台、直接问它的常驻：不带 origin / listing ⇒ 那台自己的清单并上它的注解（`history_list.rs` 头注）。
         val wanted = showHidden.value
         viewModelScope.launch {
-            val reply = backend.call(HistoryList.COMMAND, HistoryList.args(wanted))
+            val reply = backend.call(HistoryList.COMMAND, HistoryList.args(ListAsk(hidden = wanted)))
             val got = fetched(reply, HistoryList.COMMAND, HistoryList::of)
             // 问的路上开关又换了 ⇒ 这一份作废（换的那一下已经照新的参数另问了）。
             if (wanted != showHidden.value) return@launch
@@ -171,19 +174,6 @@ class ConversationsViewModel(
         const val LIST_DEBOUNCE_MS = 1_000L
         const val NEEDS_DEBOUNCE_MS = 300L
     }
-}
-
-/** 一问的三态。 */
-sealed interface Fetched<out T> {
-    data object Loading : Fetched<Nothing>
-
-    data class Got<T>(
-        val value: T,
-    ) : Fetched<T>
-
-    data class Failed(
-        val problem: Problem,
-    ) : Fetched<Nothing>
 }
 
 /** 这一屏要画的全部。 */
@@ -255,7 +245,23 @@ data class HistoryItem(
     val dot: SessionDot? = null,
     /** 隐藏 ⇒ 那台写好的那一句（为什么隐藏）；不隐藏 ⇒ `null`。 */
     val hidden: String? = null,
+    val starred: Boolean = false,
+    /** 目录短名（那台写的）。 */
+    val project: String? = null,
+    /** 分叉那一句（[forkLine]）；不是分叉来的 ⇒ `null`。 */
+    val fork: String? = null,
 )
+
+/** 分叉那一句：父会话在清单里 ⇒ 带它的标题；只知道是分叉来的 ⇒ 「分叉自其他会话」；不是分叉来的 ⇒ `null`。 */
+internal fun forkLine(
+    from: ForkedFrom?,
+    fromSessionId: String?,
+): String? =
+    when {
+        from != null -> copyText("mobChats.fork.from", "label" to from.label)
+        fromSessionId != null -> copyText("mobChats.fork.orphan")
+        else -> null
+    }
 
 internal fun view(
     /** 这台在屏上的名字（断着时每行那一句里称呼它）。 */
@@ -320,7 +326,7 @@ private fun sectionsOf(
         val live = table?.sessions?.get(r.sessionId)
         val fate = table?.fates?.get(r.sessionId)
         val (status, dot) = if (table == null) offline to SessionDot.UNKNOWN else statusOf(live?.activity, fate?.text, r.status) to SessionDot.of(live, fate, r.status)
-        val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, status, dot, r.hidden?.said)
+        val item = HistoryItem(r.sessionId, r.label, r.atText, r.agentTag, status, dot, r.hidden?.said, r.starred, r.projectName, forkLine(r.forkedFrom, r.forkedFromSessionId))
         val last = sections.lastOrNull()
         if (last != null && last.title == r.sectionText) {
             sections[sections.size - 1] = last.copy(rows = last.rows + item)

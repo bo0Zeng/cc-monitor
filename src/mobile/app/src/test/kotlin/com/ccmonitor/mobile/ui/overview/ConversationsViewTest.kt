@@ -9,6 +9,9 @@ import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionFate
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.Can
+import com.ccmonitor.mobile.core.claude.link.wire.CanDelete
+import com.ccmonitor.mobile.core.claude.link.wire.ForkedFrom
 import com.ccmonitor.mobile.core.claude.link.wire.Hidden
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
@@ -17,6 +20,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.link.Fetched
 import com.ccmonitor.mobile.link.Problem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -29,7 +33,7 @@ class ConversationsViewTest {
         sid: String,
         section: String,
         hidden: Hidden? = null,
-    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live", hidden, null, null)
+    ) = HistoryRow(sid, "标题 $sid", 0, "09:0$sid", section, false, "w", "/w", "/w", "/w/$sid.jsonl", "claude", null, "live", hidden, null, null, Can(CanDelete.YES))
 
     private val list =
         Fetched.Got(
@@ -111,7 +115,7 @@ class ConversationsViewTest {
     fun `每行一颗状态点：活的照语气、离开活的照去向、流上没有的照清单那一格；字跟着那一格`() {
         val rows =
             listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词")
-                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st, null, null, null) }
+                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", 0, "09:00", "今天", false, "w", "/w", "/w", "/w/$sid.jsonl", "claude", null, st, null, null, null, Can(CanDelete.YES)) }
         val table =
             SessionTable(
                 sessions = mapOf("a" to LiveSession(sid = "a", activity = Toned("需手动", Tone.NEED))),
@@ -182,5 +186,12 @@ class ConversationsViewTest {
         assertEquals("抽屉「最近」不列隐藏的", listOf("1", "3"), on.recent.map { it.sessionId })
         val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = page, showHidden = true)
         assertEquals("离线照缓存画时也照开关", listOf("1", "2", "3"), down.sections.flatMap { it.rows }.map { it.sessionId })
+    }
+
+    @Test
+    fun `分叉那一句：父会话在 ⇒ 带标题；只有 id ⇒ 其他会话；都没有 ⇒ 不写`() {
+        assertEquals("分叉自「修登录」", forkLine(ForkedFrom("修登录"), "p1"))
+        assertEquals("分叉自其他会话", forkLine(null, "p1"))
+        assertNull(forkLine(null, null))
     }
 }

@@ -265,8 +265,30 @@ object HistoryList {
     fun ofRows(rows: List<Any?>): HistoryListPage? =
         of(mapOf("rows" to rows, "groups" to emptyList<Any?>(), "notice" to null, "truncated" to false))
 
-    /** 入参：「显示已隐藏」开着 ⇒ `hidden: true`（隐藏的也出，与桌面历史同一个参数）；关着不带（那台缺省不出）。 */
-    fun args(showHidden: Boolean): Map<String, Any?>? = if (showHidden) mapOf("hidden" to true) else null
+    /** 入参：设了的筛选各带一格（与桌面历史同几个参数），没设的不带（那台照缺省）；全没设 ⇒ `null`。 */
+    fun args(ask: ListAsk): Map<String, Any?>? =
+        buildMap {
+            ask.query?.let { put("query", it) }
+            ask.withinDays?.let { put("within_days", it) }
+            ask.sort?.let { put("sort", it.wire) }
+            if (ask.hidden) put("hidden", true)
+        }.ifEmpty { null }
+}
+
+/** 问 `history-list` 带的筛选：标题里的字 · 最近几天 · 排序 · 隐藏的也出。 */
+data class ListAsk(
+    val query: String? = null,
+    val withinDays: Int? = null,
+    val sort: ListSort? = null,
+    val hidden: Boolean = false,
+)
+
+/** 清单按什么排：最后活动 · 开始时刻。 */
+enum class ListSort(
+    val wire: String,
+) {
+    ACTIVITY("activity"),
+    CREATED("created"),
 }
 
 /** `history-annotate`：改那台注解里单个隐藏那一格（与桌面历史 · 标签栏同一条命令）。 */
