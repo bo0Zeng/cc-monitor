@@ -45,11 +45,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
         "手机那一侧「名单从空开始报」的口（桌面的在看名单经登记表上的客户端报，不经循环）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs`，不在 monitor 的扫描面里）与本 crate 的判据",
     ),
     (
-        "src/backend/footprint/registry.rs",
-        "NOT_MANAGED",
-        "足迹申报表的「不归它管」那一半（逐条写为什么不属这张表）：读者是 footprint 的登记判据，理由文字进文案普查台账",
-    ),
-    (
         "src/backend/files/mod.rs",
         "FRESHNESS",
         "保鲜机制逐 target 的声明（刻意不判相等）：读者是 `capability_guard` 的反向判据，各格的说明文字进文案普查台账",
