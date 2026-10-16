@@ -1,6 +1,7 @@
 //! 第 7 批的一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`）：新旧两种 `config.json` 各演一遍（有那几格 · 没有 · 读不懂 · 不在），
 //! 远端那几份记成待交、连上那台再交（那台还没有才交，交成 / 那台已有都删掉那一条，问不到留着）。家目录都在临时目录里。
 use super::*;
+use crate::dial::remote_ask::Said;
 use crate::platform::Own;
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -147,21 +148,30 @@ fn an_unreadable_or_missing_config_writes_nothing() {
 }
 
 /// 一台远端那一问的替身：`prefs-read` 答哪一态（`None` ⇒ 问不到），记下交过的 `prefs-set`。
+/// 假远端那一台：从命令行认出子命令、入参从 stdin 那一行读；记下被问了哪几条、`prefs-set` 交来的入参。
 struct Peer {
     state: Option<&'static str>,
     sets: std::sync::Mutex<Vec<serde_json::Value>>,
     asked: std::sync::Mutex<Vec<String>>,
+    table: Table,
 }
 
 impl Peer {
     fn new(state: Option<&'static str>) -> Peer {
+        let table = Table::default();
+        let dial = serde_json::from_value(
+            json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
+        )
+        .unwrap();
+        crate::dial::remote_ask::register(&table, &gpu(), &dial).unwrap();
         Peer {
             state,
             sets: Default::default(),
             asked: Default::default(),
+            table,
         }
     }
-    fn ask(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Said> {
+    fn answer(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Said> {
         self.asked.lock().unwrap().push(cmd.to_string());
         let Some(state) = self.state else {
             return Err(Said {
@@ -173,10 +183,49 @@ impl Peer {
             "prefs-read" => Ok(json!({"state": state, "prefs": {}})),
             "prefs-set" => {
                 self.sets.lock().unwrap().push(args);
-                Ok(json!({"state": "ok"}))
+                Ok(json!({"state": "ok", "prefs": {}}))
             }
             _ => panic!("问了不该问的：{cmd}"),
         }
+    }
+    fn hand_over(&self, own: &Own) -> HandedOver {
+        run(hand_over(
+            own,
+            &gpu(),
+            &crate::Tz::default(),
+            &self.table,
+            self,
+        ))
+    }
+}
+
+impl Remote for Peer {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>>
+    {
+        Box::pin(async { Err("走 run_coded".to_string()) })
+    }
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, Said>> + Send + 'a>>
+    {
+        let cmd = command
+            .split(" -- ")
+            .nth(1)
+            .and_then(|t| t.split('\'').nth(1))
+            .unwrap_or_default()
+            .trim_start_matches('-')
+            .to_string();
+        let args = serde_json::from_str(stdin.as_deref().unwrap_or("null").trim()).unwrap();
+        let out = self.answer(&cmd, args).map(|v| v.to_string());
+        Box::pin(async move { out })
     }
 }
 
@@ -204,23 +253,22 @@ fn run(fut: impl std::future::Future<Output = HandedOver>) -> HandedOver {
 fn a_machine_without_prefs_gets_its_share_once() {
     let (home, own) = pending_home("give");
     let peer = Peer::new(Some("absent"));
-    let got = run(hand_over(&own, &gpu(), |c, a| {
-        std::future::ready(peer.ask(c, a))
-    }));
+    let got = peer.hand_over(&own);
     assert_eq!(got, HandedOver::Given);
-    let want = serde_json::to_value(&plan(&old_shape()).remote["gpu"]).unwrap();
-    assert_eq!(*peer.sets.lock().unwrap(), vec![want]);
+    // 交过去的补丁打在一份空的上 ＝ 那一台的那一份（整份都给了）。
+    let sets = peer.sets.lock().unwrap().clone();
+    assert_eq!(sets.len(), 1, "只交一次");
+    let set: machine_prefs::PrefsSet = crate::wire::typed::take(&sets[0]).unwrap();
+    assert_eq!(
+        machine_prefs::patched(Prefs::default(), &set),
+        plan(&old_shape()).remote["gpu"]
+    );
     let left = read_pending(&own);
     assert!(!left.contains_key("gpu"));
     assert_eq!(left.len(), 2);
     // 再连一次：没有那一条了 ⇒ 一句都不问。
     let peer = Peer::new(Some("absent"));
-    assert_eq!(
-        run(hand_over(&own, &gpu(), |c, a| std::future::ready(
-            peer.ask(c, a)
-        ))),
-        HandedOver::Nothing
-    );
+    assert_eq!(peer.hand_over(&own), HandedOver::Nothing);
     assert!(peer.asked.lock().unwrap().is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -231,12 +279,7 @@ fn a_machine_that_already_has_prefs_is_not_overwritten() {
     for state in ["ok", "unreadable"] {
         let (home, own) = pending_home(state);
         let peer = Peer::new(Some(state));
-        assert_eq!(
-            run(hand_over(&own, &gpu(), |c, a| std::future::ready(
-                peer.ask(c, a)
-            ))),
-            HandedOver::AlreadyThere
-        );
+        assert_eq!(peer.hand_over(&own), HandedOver::AlreadyThere);
         assert!(peer.sets.lock().unwrap().is_empty(), "{state}：盖了那台的");
         assert!(!read_pending(&own).contains_key("gpu"));
         let _ = std::fs::remove_dir_all(&home);
@@ -248,12 +291,7 @@ fn a_machine_that_already_has_prefs_is_not_overwritten() {
 fn an_unreachable_machine_keeps_its_share_pending() {
     let (home, own) = pending_home("keep");
     let peer = Peer::new(None);
-    assert!(matches!(
-        run(hand_over(&own, &gpu(), |c, a| std::future::ready(
-            peer.ask(c, a)
-        ))),
-        HandedOver::Kept(_)
-    ));
+    assert!(matches!(peer.hand_over(&own), HandedOver::Kept(_)));
     assert!(read_pending(&own).contains_key("gpu"));
     let _ = std::fs::remove_dir_all(&home);
 }

@@ -24,7 +24,6 @@
 //! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
 //! （顺手登记）都调它。
 
-use cmd_wire::files as cwf;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -212,53 +211,65 @@ pub(crate) fn unreachable_message(machine: &str) -> String {
 }
 
 /// 问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
-/// 参数（JSON 对象）一行写进它的 stdin，交回它 stdout 那一行 JSON（成品本身）。两台之间那几件的枢纽（`assets/hub.rs`）用它；
+/// 入参类型序列化的那一份一行写进它的 stdin，它 stdout 那一行按回包类型解。两台之间那几件的枢纽（`assets/hub.rs`）· 公钥推送 · 偏好迁移用它；
 /// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
 /// `tz` ＝ 看的人那一台的时区（引起这一趟的请求信封里那一格）：经 [`crate::wire::cli_words::TZ_FLAG`] 转给那台，它回的「几点」照它写。
-pub async fn ask_json(
+pub(crate) async fn ask_json<C: crate::wire::typed::Command>(
     machine: &str,
-    cmd: &str,
-    args: &Value,
+    req: &C::Req,
     tz: &crate::Tz,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<Value, Said> {
+) -> Result<C::Reply, Said>
+where
+    C::Req: serde::Serialize,
+    C::Reply: serde::de::DeserializeOwned,
+{
     let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
         code: Some("unreachable".to_string()),
         message: unreachable_message(machine),
     })?;
-    ask_via(&r.dial, machine, cmd, args, tz, remote).await
+    ask_via(&r.dial, machine, C::NAME, req, tz, remote).await
 }
 
-/// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）。
-/// 入参类型选中那条命令（名字 · 回包类型都挂在它上面），发的是它序列化的那一份；回包解不出 ⇒ 那台后端版本不同。
-pub async fn ask_dialed<C: cwf::Call>(
+/// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）；
+/// 命令由线上入参类型选（名字 · 回包类型都挂在它上面）。
+pub async fn ask_dialed<C: cmd_wire::files::Call>(
     dial: &Value,
     req: &C,
     tz: &crate::Tz,
     remote: &dyn Remote,
 ) -> Result<C::Reply, Said> {
-    let machine = copy_core::peer_machine();
-    let differs = |e: serde_json::Error| Said {
-        code: None,
-        message: crate::common::contract::joined(
-            copy_core::backend_differs(&machine),
-            Some(format!("{}: {e}", C::NAME)),
-        ),
-    };
-    let args = serde_json::to_value(req).map_err(differs)?;
-    let v = ask_via(dial, &machine, C::NAME, &args, tz, remote).await?;
-    serde_json::from_value(v).map_err(differs)
+    ask_via(dial, &copy_core::peer_machine(), C::NAME, req, tz, remote).await
 }
 
-async fn ask_via(
+/// 那台的回包按回包类型解；解不出 ⇒ 码 `backend_differs`、说那台后端版本不同，解码器那一句进原话。
+pub(crate) fn reply_of<R: serde::de::DeserializeOwned>(
+    machine: &str,
+    cmd: &str,
+    v: Value,
+) -> Result<R, Said> {
+    serde_json::from_value(v).map_err(|e| Said {
+        code: Some("backend_differs".to_string()),
+        message: crate::common::contract::joined(
+            copy_core::backend_differs(machine),
+            Some(format!("{cmd}: {e}")),
+        ),
+    })
+}
+
+async fn ask_via<Req: serde::Serialize, Reply: serde::de::DeserializeOwned>(
     dial: &Value,
     machine: &str,
     cmd: &str,
-    args: &Value,
+    req: &Req,
     tz: &crate::Tz,
     remote: &dyn Remote,
-) -> Result<Value, Said> {
+) -> Result<Reply, Said> {
+    let args = serde_json::to_value(req).map_err(|e| Said {
+        code: None,
+        message: e.to_string(),
+    })?;
     let flag = crate::wire::cli_words::cli_flag(cmd);
     let zone = tz.iana_name();
     let mut argv = vec![flag.as_str(), crate::wire::cli_words::STDIN_LINE_FLAG];
@@ -276,13 +287,14 @@ async fn ask_via(
             },
             _ => s,
         })?;
-    serde_json::from_str(out.trim()).map_err(|e| {
+    let v = serde_json::from_str(out.trim()).map_err(|e| {
         tracing::warn!("reply from {machine} is not JSON: {e}");
         Said {
             code: None,
             message: copy_core::reply_unreadable(machine),
         }
-    })
+    })?;
+    reply_of(machine, cmd, v)
 }
 
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────

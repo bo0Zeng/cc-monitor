@@ -1,23 +1,16 @@
-//! 枢纽问各台的那 8 条内层命令（来源那台读 · 被写那台判 / 写）的线上形：每条一个标记类型，名字 · 入参 · 回包连在 [`Inner`] 上。
+//! 枢纽问各台的那 8 条内层命令（来源那台读 · 被写那台判 / 写）的线上形：每条一个标记类型，名字 · 入参 · 回包连在它的 `Command` 上。
 //!
 //! 这是**两台后端之间**的线上形：远端那台可能更旧或更新。于是入参拒多出来的键（这台收到的是同版本枢纽发的），
 //! 回包不拒（对面可能更新、多带一格）；回包解不出 ⇒ 枢纽说「那台后端版本不同」（`hub::ask_one`）。
-//! 帧面那一侧（`faces/hub_inner_face.rs`）每条一行：`impl Command`（线上名 · 入参 · 回包 · 码）与 `impl Inner`（取前者的三样），名字只写那一处。
+//! 帧面那一侧（`faces/hub_inner_face.rs`）每条一行 `impl Command`（线上名 · 入参 · 回包 · 码），名字只写那一处。
 //! 有 `null` 的那几格照出 `null`（不省略）：钉住的字节（`hub_inner_wire_tests`）就是这一形。
 
 use super::ext::{ExtLoc, ExtSlot};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// 一条内层命令：线上名 ＋ 入参 ＋ 回包。
-pub(crate) trait Inner: 'static {
-    const NAME: &'static str;
-    type Req: Serialize + DeserializeOwned + Send + 'static;
-    type Reply: Serialize + DeserializeOwned + Send + 'static;
-}
-
-// 标记类型住这里（枢纽按它们问）；`impl Inner` 与帧面的 `impl Command` 住 `faces/hub_inner_face.rs`，线上名只写在那一处。
+// 标记类型住这里（枢纽按它们问）；帧面的 `impl Command`（线上名 · 入参 · 回包）住 `faces/hub_inner_face.rs`，线上名只写在那一处。
 
 /// 来源那台读一个 skill 的全部文件（`skill-read`）。
 pub(crate) struct SkillReadCmd;

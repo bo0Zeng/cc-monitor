@@ -9589,12 +9589,6 @@
       "zh": "状态",
       "args": []
     },
-    "bePubkey.add.noOutcome": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "推送公钥到 {machine} 结果未知",
-      "args": ["machine"]
-    },
     "bePubkey.exec.failed": {
       "kind": "error",
       "role": "报错",

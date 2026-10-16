@@ -1,8 +1,8 @@
-//! 枢纽问各台的那 8 条内层命令（typed）：每条 `impl Command`（线上名只写这一处）＋ `impl Inner`（枢纽问的那一侧取前者的三样），
+//! 枢纽问各台的那 8 条内层命令（typed）：每条 `impl Command`（线上名只写这一处，枢纽问的那一侧也照它），
 //! 本体在 `skill_install` · `skill_flow` · `mcp_sync_flow` · `cc_bus_install`。写的那三条（两条装 · cc-bus 装）走「文件管理面 ＋ 写句柄」那一档：
 //! 写用户的文件经文件管理面、写装记录经写句柄；其余几条只读（要读 MCP 配置的那两条经文件管理面读）。
 
-use crate::assets::hub_wire::{self as wire, Inner};
+use crate::assets::hub_wire as wire;
 // 标记类型住 `assets::hub_wire`（枢纽按它们问）；命令表从这里认它们（本体在这份文件里）。
 pub(crate) use crate::assets::hub_wire::{
     CcBusInstallCmd, CcBusStateCmd, McpApplyCmd, McpPreviewCmd, McpSourceCmd, SkillApplyCmd,
@@ -45,12 +45,6 @@ impl Command for SkillReadCmd {
     type Err = SkillReadErr;
 }
 
-impl Inner for SkillReadCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
-}
-
 impl crate::wire::typed::Handle for SkillReadCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
@@ -83,12 +77,6 @@ impl Command for SkillPlanCmd {
     type Req = wire::SkillPlanReq;
     type Reply = wire::SkillPlan;
     type Err = SkillPlanErr;
-}
-
-impl Inner for SkillPlanCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
 }
 
 impl crate::wire::typed::Handle for SkillPlanCmd {
@@ -125,12 +113,6 @@ impl Command for SkillApplyCmd {
     type Req = wire::SkillApplyReq;
     type Reply = wire::SkillApplied;
     type Err = SkillApplyErr;
-}
-
-impl Inner for SkillApplyCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
 }
 
 impl crate::wire::typed::Handle for SkillApplyCmd {
@@ -179,12 +161,6 @@ impl Command for McpSourceCmd {
     type Err = McpSourceErr;
 }
 
-impl Inner for McpSourceCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
-}
-
 impl crate::wire::typed::Handle for McpSourceCmd {
     type Needs = crate::wire::typed::needs::Files;
     fn run(
@@ -223,12 +199,6 @@ impl Command for McpPreviewCmd {
     type Req = wire::McpPreviewReq;
     type Reply = wire::McpPreview;
     type Err = McpPreviewErr;
-}
-
-impl Inner for McpPreviewCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
 }
 
 impl crate::wire::typed::Handle for McpPreviewCmd {
@@ -275,12 +245,6 @@ impl Command for McpApplyCmd {
     type Err = McpApplyErr;
 }
 
-impl Inner for McpApplyCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
-}
-
 impl crate::wire::typed::Handle for McpApplyCmd {
     type Needs = crate::wire::typed::needs::FilesOwn;
     fn run(
@@ -314,12 +278,6 @@ impl Command for CcBusStateCmd {
     type Err = CcBusStateErr;
 }
 
-impl Inner for CcBusStateCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
-}
-
 impl crate::wire::typed::Handle for CcBusStateCmd {
     type Needs = crate::wire::typed::needs::Nothing;
     fn run(
@@ -349,12 +307,6 @@ impl Command for CcBusInstallCmd {
     type Req = wire::NoReq;
     type Reply = wire::CcBusInstalled;
     type Err = CcBusInstallErr;
-}
-
-impl Inner for CcBusInstallCmd {
-    const NAME: &'static str = <Self as Command>::NAME;
-    type Req = <Self as Command>::Req;
-    type Reply = <Self as Command>::Reply;
 }
 
 impl crate::wire::typed::Handle for CcBusInstallCmd {

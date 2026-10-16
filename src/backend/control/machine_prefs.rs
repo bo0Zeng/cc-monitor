@@ -122,11 +122,11 @@ impl Loaded {
             Loaded::Absent | Loaded::Unreadable(_) => Prefs::default(),
         }
     }
-    fn state(&self) -> &'static str {
+    fn state(&self) -> PrefsState {
         match self {
-            Loaded::Absent => "absent",
-            Loaded::Present(_) => "ok",
-            Loaded::Unreadable(_) => "unreadable",
+            Loaded::Absent => PrefsState::Absent,
+            Loaded::Present(_) => PrefsState::Ok,
+            Loaded::Unreadable(_) => PrefsState::Unreadable,
         }
     }
 }
@@ -288,15 +288,23 @@ pub(crate) fn write(own: &Own, p: &Prefs) -> Result<(), Said> {
     own.write(&path, &held, &body)
 }
 
+/// 那份文件的状态：没设过 · 读得懂 · 读不懂（读不懂也照答，不是失败）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum PrefsState {
+    Absent,
+    Ok,
+    Unreadable,
+}
+
 /// `prefs-read` / `prefs-set` 的回包：状态 ＋ 照用的那一份（读不懂 ⇒ 缺省那一份）。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PrefsReply {
-    /// `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
     #[cfg_attr(test, ts(type = "\"absent\" | \"ok\" | \"unreadable\""))]
-    pub(crate) state: &'static str,
+    pub(crate) state: PrefsState,
     /// `unreadable` 时的原因（那一句不带原话）。
     pub(crate) reason: Option<String>,
     /// `unreadable` 时的复制详情。
@@ -330,7 +338,7 @@ pub(crate) fn answer_read_in(home: Option<&Path>) -> PrefsReply {
 }
 
 /// `prefs-set` 的入参：给了的那一节整节换掉，没给的不动。`models` 里值为 `null` 的那一条删掉、别的号不动。
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -366,6 +374,27 @@ pub(crate) struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) pb_dir: Option<String>,
+}
+
+/// 整份当补丁（交给一台还没设过的：每一节都给）。
+impl From<&Prefs> for PrefsSet {
+    fn from(p: &Prefs) -> Self {
+        PrefsSet {
+            launchers: Some(p.launchers.clone()),
+            resume_in_tmux: Some(p.resume_in_tmux),
+            models: Some(
+                p.models
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Some(v.clone())))
+                    .collect(),
+            ),
+            context_limits: Some(p.context_limits.clone()),
+            agent_homes: Some(p.agent_homes.clone()),
+            child_tab: Some(p.child_tab),
+            bg_tab: Some(p.bg_tab),
+            pb_dir: p.pb_dir.clone(),
+        }
+    }
 }
 
 /// 补丁打到 `p` 上（纯）。

@@ -44,7 +44,8 @@ const CRATE_WORD: &str = "crate";
 /// 一段源码里，从 `ident` 这个词出发的**全部路径引用**（`ident::a::b` ⇒ `a::b`）。
 ///
 /// 认 · 认不出什么，与桥那一份逐条相同（整条路径不截断 · 花括号摊一层 ·
-/// 词后面不是两个冒号不算 · 不剥注释 —— 调用方先过 `guard_core::production_code`）。
+/// 词后面不是两个冒号不算 · 不剥注释 —— 调用方先过 `guard_core::production_code`），
+/// 只多一条：别的 crate 底下的同名段不算（[`starts_here`]）。
 fn paths_from(prod: &str, ident: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let b = prod.as_bytes();
@@ -58,7 +59,7 @@ fn paths_from(prod: &str, ident: &str) -> BTreeSet<String> {
         while i < b.len() && is_ident_byte(b[i]) {
             i += 1;
         }
-        if &prod[start..i] != ident {
+        if &prod[start..i] != ident || !starts_here(prod, start) {
             continue;
         }
         let mut j = i;
@@ -98,6 +99,37 @@ fn paths_from(prod: &str, ident: &str) -> BTreeSet<String> {
         }
     }
     out
+}
+
+/// `at` 处那个词是不是一条从这个 crate 出发的路径的头：前面是 `::` ⇒ 它是别的路径里的一段，
+/// 只有那条路径从 `super` / `self` 起才算（`cmd_wire::files::Call` 是线上类型那个 crate 的，不是本模块）。
+fn starts_here(prod: &str, at: usize) -> bool {
+    let b = prod.as_bytes();
+    let mut k = at;
+    let mut root = None;
+    loop {
+        let mut c = k;
+        while c > 0 && b[c - 1].is_ascii_whitespace() {
+            c -= 1;
+        }
+        if c < 2 || &b[c - 2..c] != b"::" {
+            break;
+        }
+        c -= 2;
+        while c > 0 && b[c - 1].is_ascii_whitespace() {
+            c -= 1;
+        }
+        let end = c;
+        while c > 0 && is_ident_byte(b[c - 1]) {
+            c -= 1;
+        }
+        if c == end {
+            break;
+        }
+        root = Some(&prod[c..end]);
+        k = c;
+    }
+    root.is_none_or(|r| r == "super" || r == "self")
 }
 
 fn is_ident_byte(c: u8) -> bool {
@@ -770,6 +802,10 @@ fn the_edge_extractors_see_what_they_should_and_nothing_else() {
         inward_edges(&src),
         want(&["control::files_write::make_dir", "files::index::find"])
     );
+    // 内向按路径认：别的 crate 底下的同名段（线上类型 `cmd_wire::files::…`）不是这个模块；经 `super` 走回来的是。
+    let src =
+        "cmd_wire::files::Call; use cmd_wire::files::{StatReq}; super::super::files::answer();";
+    assert_eq!(inward_edges(src), want(&["files::answer"]));
     // 注释：抽取器自己不剥，判据先过 `production_code`。
     assert_eq!(
         paths_from(
