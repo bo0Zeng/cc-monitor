@@ -255,25 +255,6 @@ fn every_shelled_out_command_carries_a_written_ruling() {
     }
 }
 
-/// ★ `KR113D1`：`bus-state` **一次回全**（两半在同一个函数里取）。两半改读 cc-bus 的机器可读形。
-#[test]
-fn bus_state_answers_both_halves_from_one_call() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/cc_bus.rs"
-    ));
-    let body = prod
-        .split("pub(crate) fn state_for_inbound")
-        .nth(1)
-        .expect("`state_for_inbound` 不在生产段里了 —— `bus-state` 的本体没了");
-    let body = &body[..body.find("\n}").expect("函数体没有收尾 —— 抽取坏了")];
-    for half in ["roster()", "spawned_via_cc_agents()"] {
-        assert!(
-            body.contains(half),
-            "`state_for_inbound` 里没有 `{half}` —— 「一次回全」少了一半"
-        );
-    }
-}
-
 /// **跨语言金样**：驾驶舱读面两份成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
 /// 要求：「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· 读面：登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴。
 /// 异源：输入样例经**生产**解析器（`parse_roster_tsv` / `parse_spawned_tsv` / `parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。

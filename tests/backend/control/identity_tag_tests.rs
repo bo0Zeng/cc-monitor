@@ -127,21 +127,26 @@ fn only_percent_digits_is_a_pane_id() {
     }
 }
 
-/// 一个不存在的 pid 拿不到 `TMUX_PANE` ⇒ **不会**去猜一个会话。
-///
-/// ⚠ 本条**不起 tmux**：`pane_of` 在 `gate::probe` 之前就给出结局。
-///
-/// 结局从 `NotInTmux` 改成 `PaneUnknown`：PID 0 的环境是**读不到**，不是「读到了、
-/// 没设 `TMUX_PANE`」。前者说「不知道」，后者说「不在 tmux 里」—— 容器那一格（`session_added.container`）
-/// 不许把前者报成 `"none"`。打标行为不变（两支都不打）。
+/// 一个读不到环境的 pid ⇒ 结局是 `PaneUnknown`，一次 tmux 都不起（`pane_of` 在 `gate::probe` 之前就给出结局；录下的调用为零）。
+/// 读不到 ≠ 不在 tmux 里：容器那一格（`session_added.container`）不许把它报成 `"none"`。
 #[test]
 fn a_pid_without_tmux_pane_never_reaches_tmux() {
-    let _iso = door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-resync-none-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("argv");
+    let script = dir.join("tmux");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
+    )
+    .unwrap();
+    let _iso = door::isolate_with(&script);
     // PID 0 在 Linux 上不是一个可读的 `/proc` 目录 ⇒ 读不到环境。
-    assert_eq!(
-        tag(0, "9d66c46d-bf88-4f99-877e-455555555555"),
-        Outcome::PaneUnknown
-    );
+    let got = tag(0, "9d66c46d-bf88-4f99-877e-455555555555");
+    let said = std::fs::read_to_string(&log).ok();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(got, Outcome::PaneUnknown);
+    assert_eq!(said, None, "读不到环境却还起了 tmux");
 }
 
 /// **「不在 tmux 里」那一格真能出来**：本测试进程自己的环境读得到；把 `TMUX_PANE` 摘掉的子进程

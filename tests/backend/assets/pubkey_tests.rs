@@ -225,11 +225,31 @@ fn cmd_follows_mobile_contract() {
     assert!(c.contains("'ssh-ed25519 AAAA user@host'"));
 }
 
+/// 带单引号 · `$` · `;` 的异常输入：真跑一遍那串 shell，写进去的就是原样那一行（命令结构没被它破坏），再跑一遍认出已有。
+#[cfg(unix)]
 #[test]
 fn cmd_escapes_single_quote_injection() {
-    // 公钥正常不含单引号;异常输入下 shell_quote 须逃逸,不破坏命令结构。
-    let c = authorized_keys_cmd("ssh-ed25519 AAAA a'b");
-    assert!(c.contains(r"'\''"), "单引号须被 shell_quote 逃逸为 '\\''");
+    let key = "ssh-ed25519 AAAA a'b $(touch pwned); c";
+    let home = std::env::temp_dir().join(format!("ccm-pubkey-quote-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).expect("建夹具家目录");
+    let run = || {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(authorized_keys_cmd(key))
+            .env("HOME", &home)
+            .current_dir(&home)
+            .output()
+            .expect("起 sh");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    assert_eq!(parse_push_outcome(&run()), Ok(PushOutcome::Added));
+    assert_eq!(parse_push_outcome(&run()), Ok(PushOutcome::Already));
+    let written =
+        std::fs::read_to_string(home.join(".ssh/authorized_keys")).expect("读 authorized_keys");
+    assert_eq!(written, format!("{key}\n"));
+    assert!(!home.join("pwned").exists(), "输入里的命令替换被执行了");
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]

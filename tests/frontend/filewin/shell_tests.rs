@@ -55,12 +55,9 @@ fn a_remote_window_without_a_runtime_says_so_instead_of_showing_an_empty_dir() {
     assert!(e.is_some(), "没有运行时却没报错 —— 那是静默的空列表");
 }
 
-/// `Source::label()` 是窗口标题的来源，别让它回空串。
-///
-/// ⚠ 从前这条还判一格「本机那一格逐字是『本机』两个中文字」——
-/// 没有本机侧，那一格也就没有（`source.rs` 头注「只有远端一侧」那一节）。
+/// `Source::label()` 是窗口标题的来源：远端那一侧就是它配置里的名字。
 #[test]
-fn every_source_has_a_non_empty_label() {
+fn a_remote_source_is_titled_by_its_label() {
     assert_eq!(Source::remote(synth_cfg("tagged")).label(), "tagged");
     // 「`label` 为空时回退到 `host`」那一半是 `RemoteConfig::origin_label` 的契约，随名字在 monitor 那一侧算搬去了
     //   `entry_tests::the_seed_names_the_machine_by_its_origin_label`。

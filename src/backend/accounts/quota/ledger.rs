@@ -277,6 +277,8 @@ impl Ledger {
     }
 
     /// 同 [`Self::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
+    /// 只在测试里编：生产只有 [`Self::at`] 一个构造口，造出来的账都往进程里那一条节点通道发。
+    #[cfg(test)]
     pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
         Self::open(path, nodes, Default::default())
     }
