@@ -84,8 +84,15 @@ export function procStartSh(stat) {
 export const PANE_COLS = 120;
 export const PANE_ROWS = 32;
 
-/** 真 tmux 在哪（沙箱里 `/` 只读挂着，同一个路径）：台架自己敲的那几下不经边界上的替身。 */
-const TMUX_BIN = spawnSync("sh", ["-c", "command -v tmux"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } }).stdout.trim() || "/usr/bin/tmux";
+/**
+ * 真 tmux 在哪（沙箱里 `/` 只读挂着，同一个路径）：台架自己敲的那几下不经边界上的替身。
+ * 用到时才找、找一次：导入池子不起进程（判据的 Windows 那一格也导入它，那里没有 sh）；找不到退回 `/usr/bin/tmux`。
+ */
+let tmuxBinFound;
+function tmuxBin() {
+  tmuxBinFound ??= spawnSync("sh", ["-c", "command -v tmux"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } }).stdout?.trim() || "/usr/bin/tmux";
+  return tmuxBinFound;
+}
 
 /**
  * 各活会话那个 tmux 会话的名字：照起会话那一处铸名的样子（`<目录名>-cc`，重名往后加 `-2` · `-3`），先让开不住 claude 的那几个（`bareTmux`）。
@@ -116,7 +123,7 @@ export function tmuxShim(shim, sock) {
     if (!/^[a-z-]+$/.test(sub)) throw new Error(`tmuxShim.noServer 里的子命令形状不对：${sub}`);
     lines.push(`for a in "$@"; do [ "$a" = ${sub} ] && { echo "no server running on ${sock}" >&2; exit 1; }; done`);
   }
-  lines.push(`exec ${TMUX_BIN} "$@"`);
+  lines.push(`exec ${tmuxBin()} "$@"`);
   return lines.join("\n") + "\n";
 }
 
@@ -195,7 +202,7 @@ export function backendPool({ repo, sandbox }) {
     const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
     const sock = `${H}/.shots-tmux/tmux-${process.getuid()}/default`;
     // 台架自己敲的 tmux 一律是真的那一个（边界上的替身只挡后端那几问，见下面 `tmuxShim`）。
-    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null "$@"; }`];
+    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE ${tmuxBin()} -S ${sock} -f /dev/null "$@"; }`];
     sh.push(`ln -s "$(readlink -f /bin/sh)" ${H}/.shots-setup/claude`);
     /**
      * 开页之后才收场的那几个（台架见到那台的清单之后收）：已结束 ⇒ 关掉它那个 tmux 会话（替身跟着没了）；
@@ -247,7 +254,7 @@ export function backendPool({ repo, sandbox }) {
       sh.push(`${newSession(b.name, `cat ${H}/.shots-setup/bare${k}.screen; exec sh`)}`);
     });
     // 终端窗口：同一台私有 tmux 里另起一个会话，窗格里跑一个嵌套的客户端 attach 到它那个会话上（后端 `list-clients` 照真的那样数到它）。
-    viewers.forEach((name, j) => sh.push(newSession(`window-${j}`, `exec env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null attach -t ${q(`=${name}`)}`)));
+    viewers.forEach((name, j) => sh.push(newSession(`window-${j}`, `exec env -u TMUX -u TMUX_PANE ${tmuxBin()} -S ${sock} -f /dev/null attach -t ${q(`=${name}`)}`)));
     if (m.warm) {
       mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
       writeFileSync(path.join(setup, "warm.json"), JSON.stringify({ pid: "__PID__", next: m.warm }).replace('"__PID__"', "__PID__"));
