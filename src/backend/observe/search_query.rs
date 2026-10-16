@@ -211,8 +211,7 @@ pub(crate) fn find_indexed(
     index.find(&path, &q, include_tools, scope, page, on_hit)
 }
 
-/// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建；
-/// 第一问赶在它前面到了也不白等：谁先拿到锁谁读那一份，另一方见它没变就不再读。
+/// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问来时建、建好留着；没人问的那台不占这份内存、不为它读盘。
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());
 
@@ -233,57 +232,7 @@ fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> 
     })
 }
 
-/// 〔第一问〕后端一起来就后台建索引（一条一次性线程，不是定时器；建完就退）。
-/// 只在内存（不落盘：搜索结果随进程走，重开就重算）；远端流后端与本机常驻后端同一个调用点（`main.rs`）。
-pub fn warm_in_background(agent_home: PathBuf) {
-    let spawned = std::thread::Builder::new()
-        .name("search-warm".into())
-        .spawn(move || {
-            // 低优先级：不跟前台的帧命令抢 CPU（建索引只是让第一问快，不该让别的问慢）。
-            crate::platform::proc::lower_this_thread();
-            let (files, kept) = warm(&agent_home);
-            tracing::info!(
-                "全文搜索索引：后台建好 {files} 份，常驻 {kept} 字节（上界 {RESIDENT_MAX_BYTES}）"
-            );
-        });
-    if let Err(e) = spawned {
-        tracing::warn!("全文搜索索引：后台建索引的线程起不来（{e}），第一问会现读");
-    }
-}
-
-/// [`warm_in_background`] 的本体（判据直接调它）：按最近优先把每份会话读进常驻表，留到上界为止就停（再读也留不下）。
-/// 每一份单独拿一次锁 ⇒ 半路来的一问不必等整棵建完。回 `(这一趟读进来的份数, 常驻字节)`。
-pub(crate) fn warm(agent_home: &Path) -> (usize, usize) {
-    let Some(Ok(fence)) = crate::agents::records_root(agent_home).map(|r| Fence::at(&r)) else {
-        return (0, 0);
-    };
-    let mut read = 0usize;
-    for (path, _) in session_files(&fence) {
-        if fence.admit(&path).is_err() {
-            continue;
-        }
-        let mut guard = resident();
-        let index = guard.entry(fence.root().to_path_buf()).or_default();
-        let prev = index.files.remove(&path);
-        let was_there = prev.is_some();
-        let Ok(mut entry) = bring_up(&path, prev, false, &mut index.last) else {
-            continue; // 读不动的留给那一问去说（它会逐份出声、计数）
-        };
-        let others = index.kept();
-        if others + entry.weight > index.budget {
-            entry.drop_tools(); // 先到的那一问抽过工具文本：先放工具层
-        }
-        if others + entry.weight > index.budget {
-            break;
-        }
-        read += usize::from(!was_there);
-        index.files.insert(path, entry);
-    }
-    let kept = resident().get(fence.root()).map_or(0, SearchIndex::kept);
-    (read, kept)
-}
-
-/// 一棵 projects 下的会话文件，按最近优先排（搜索与预热同一个 walk、同一个排序）。
+/// 一棵 projects 下的会话文件，按最近优先排。
 fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
     let mut files: Vec<(PathBuf, i64)> = WalkDir::new(fence.root())
         .max_depth(2)

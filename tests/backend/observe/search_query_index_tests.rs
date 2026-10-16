@@ -297,52 +297,36 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
 }
 
 // ───────────────────────── ─────────────────────────
-// 守的要求：「冷首趟仍全读（起来就后台建，还是落盘）· 常驻内存无上界（本机约 11 MB，大历史的远端可能几百 MB）」。
-// 起来就后台建（只在内存）＋ 有界（按最近优先留到上界，留不下的照搜不留）。
+// 守的要求：「常驻内存有界 · 常驻表只为真搜过的人存在」。第一问来时建、建好留着（按最近优先留到上界，留不下的照搜不留）。
 
-/// ★ 预热之后的第一问一个字节都不读（冷首趟挪进了后台），且答案与新建索引逐字节相等。
+/// ★ 起来不建：往常驻表里放东西的只有两问的入口（全文搜索 · 会话内查找）；没人问，表就是空的、projects 一份都不为它读。
+/// 文本判（如实登记：按行为量要起真二进制再从外面看索引）；表与它的锁是本模块私有的，别处够不着，只需看这一份。
 #[test]
-fn fix_after_the_warm_up_the_first_question_reads_nothing() {
-    let home = build_corpus("warm");
-    let key = projects_root(&home).canonicalize().expect("规范化");
-    let (read, kept) = warm(&home);
-    let n = 9; // 与 J3 同一份人群（build_corpus 的会话文件数）
-    assert_eq!((read, kept > 0), (n, true), "预热没把整棵读进来");
-    let mut got = Vec::new();
-    search_into(
-        &home,
-        "docker",
-        &opts_from_words(&[]),
-        &mut lines_into(&mut got),
-    )
-    .expect("search ok");
-    let last = RESIDENT.lock().expect("锁").get(&key).map(|i| i.last);
+fn fix_only_a_question_fills_the_resident_index() {
+    let src = guard_core::production_code(include_str!(
+        "../../../src/backend/observe/search_query.rs"
+    ));
+    let fn_name = |line: &str| {
+        let rest = guard_core::strip_visibility(line.trim_start())
+            .trim_start()
+            .strip_prefix("fn ")?;
+        let end = rest.find(|c: char| !(c.is_alphanumeric() || c == '_'))?;
+        Some(rest[..end].to_string())
+    };
+    let mut within = None;
+    let mut who = std::collections::BTreeSet::new();
+    for line in src.lines() {
+        if let Some(name) = fn_name(line) {
+            within = Some(name);
+        } else if line.contains("resident()") {
+            who.insert(within.clone().expect("拿表的那一行在某个函数里"));
+        }
+    }
     assert_eq!(
-        last,
-        Some(Refresh {
-            full: 0,
-            appended: 0,
-            reused: n,
-            bytes: 0
-        }),
-        "预热过的第一问还在读盘"
+        who,
+        ["find_indexed", "search_counting"].map(String::from).into(),
+        "拿常驻表的不止两问的入口：没人问也会建"
     );
-    let fence = Fence::at(&projects_root(&home)).expect("围栏");
-    let mut want = Vec::new();
-    SearchIndex::default()
-        .search(
-            &fence,
-            "docker",
-            &opts_from_words(&[]),
-            &crate::history::live::live_session_ids(&home),
-            &mut lines_into(&mut want),
-        )
-        .expect("search ok");
-    assert_eq!(
-        String::from_utf8_lossy(&got),
-        String::from_utf8_lossy(&want)
-    );
-    std::fs::remove_dir_all(&home).ok();
 }
 
 /// ★ 有界：上界只够留几份时，每一问的答案与不设上界逐问逐行相等；常驻的字节不超上界、留下的恰是按最近优先装得下的那几份。
@@ -384,17 +368,6 @@ fn fix_a_bounded_index_answers_like_an_unbounded_one_and_keeps_the_most_recent()
         );
     }
     std::fs::remove_dir_all(&home).ok();
-}
-
-/// 接线（文本，如实登记：按行为量要起真二进制再从外面看索引）：`main.rs` 起来就调预热，恰好一处。
-#[test]
-fn fix_main_warms_the_search_index_once() {
-    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
-    guard_core::find_pinned(
-        &main,
-        "observe::search_query::warm_in_background(agent_home.clone());",
-    )
-    .unwrap_or_else(|e| panic!("`main.rs` 里预热不是恰好一处：{e}"));
 }
 
 /// 〔perfC #5〕常驻索引存紧：一条既没有正文、也没有工具文本、也不开一轮的记录（不搜工具时的工具调用 / 工具结果）
