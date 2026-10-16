@@ -43,7 +43,3 @@ export function refusedCode(
   return r ? { code: r.code, data: r.data } : null;
 }
 
-/** 说明的第一行（下拉里那行灰字）。 */
-export function firstLine(description: string): string {
-  return description.split("\n").find((l) => l.trim() !== "") ?? "";
-}

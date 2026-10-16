@@ -27,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.AccountsList
-import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -205,7 +204,7 @@ fun AccountSheet(
         PickRow(
             title = st.id,
             tag = NewSessionTags.ROW,
-            second = listOfNotNull(copyText("rot.tag.forNew").takeIf { st.forNew }, RotationStrategies.firstLine(st.description).ifEmpty { null }).joinToString(copyText("kit.text.sep")).ifEmpty { null },
+            second = listOfNotNull(copyText("rot.tag.forNew").takeIf { st.forNew }, st.summary.ifEmpty { null }).joinToString(copyText("kit.text.sep")).ifEmpty { null },
             selected = ui.rotation == st.id,
             onClick = { picker.pickRotation(st.id) },
         )

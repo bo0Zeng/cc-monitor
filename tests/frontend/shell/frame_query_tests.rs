@@ -280,7 +280,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("rotation-strategy-rename", "typed 帧命令：改文件名（指着它的会话一起改过去）"),
     ("rotation-strategy-delete", "typed 帧命令：删一份策略（有会话在用由后端拒）"),
     ("rotation-strategy-tz", "typed 帧命令：给策略设时区（只重写设置块里的 tz · 版本冲突由后端判）"),
-    ("rotation-day-paint", "typed 帧命令：24 小时条上刷一段（分段的算术在后端）"),
     // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
         "sessions-start",

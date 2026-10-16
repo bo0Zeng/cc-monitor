@@ -271,10 +271,10 @@ private fun BoxWithConstraintsScope.LaneTrack(
     val ok = MaterialTheme.colorScheme.surfaceContainerHighest
     val out = MaterialTheme.colorScheme.errorContainer
     view.past?.lanes?.firstOrNull { it.account == account }?.segs?.forEach { g ->
-        LaneSeg(place(span, g.from, g.to), if (g.sendable) ok else out, if (g.sendable && g.reset) copyText("rot.sim.reset", "at" to g.fromText) else "")
+        LaneSeg(place(span, g.from, g.to), if (g.sendable) ok else out, g.text)
     }
-    view.timeline?.lanes?.firstOrNull { it.account == account }?.segs?.forEachIndexed { k, g ->
-        if (g.to > span.a && g.from < span.b) LaneSeg(place(span, g.from, g.to), (if (g.sendable) ok else out).copy(alpha = FUTURE), laneText(g, k == 0))
+    view.timeline?.lanes?.firstOrNull { it.account == account }?.segs?.forEach { g ->
+        if (g.to > span.a && g.from < span.b) LaneSeg(place(span, g.from, g.to), (if (g.sendable) ok else out).copy(alpha = FUTURE), g.text)
     }
     NowLine(view, span)
 }

@@ -2316,9 +2316,9 @@ sendable: boolean,
  */
 used: [number, number], reset: boolean, 
 /**
- * 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
+ * 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
  */
-fromText: string, 
+text: string, 
 /**
  * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
  */
@@ -2408,7 +2408,11 @@ type RotStrategyItem = { id: string,
 /**
  * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
  */
-description: string, rev: string, error?: RotStrategyError, 
+description: string, 
+/**
+ * 说明的第一行（下拉里那行灰字；没有 ⇒ 空）。
+ */
+summary: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */
@@ -2462,22 +2466,32 @@ type FactWhy = "refused" | "overage" | "used" | "login" | "key";
 type LoginState = "ok" | "needsLogin" | "needsKey";
 type QuotaKind = "sub" | "api";
 type RotBadCell = { cell: string, code: string, };
-type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
+type RotBoard = { all: Array<RotCell>, rows: Array<RotRow>, };
+type RotCell = { key: string, kind: RotFormKind, 
 /**
- * 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
+ * 24 小时条那一格是哪一窗（`5h` · `7d`）。
  */
-inherit?: boolean, label: StrategyText, help?: StrategyText, 
+window?: string, 
 /**
- * 只对 `daySegments`：哪几个窗口（`5h` · `7d`）。
+ * 标签（24 小时条那一格带窗名）。
  */
-windows?: Array<string>, min?: number, max?: number, unit?: string, default: unknown, choices?: Array<RotFormChoice>, 
+label: string, help?: string, 
 /**
- * 能是空（`null`）：空的那一项怎么叫（例如「不回切」）。
+ * 此刻生效的值（`null` ＝ 可空的那一格选了空的那一项；24 小时条 ⇒ `null`，段在 `segs`）。
  */
-nullable?: StrategyText, };
-type RotFormChoice = { v: string, label: StrategyText, };
+v: unknown, 
+/**
+ * 数格框里写的数（值是空的那一项 ⇒ 声明默认 · 下限 · 0 里头一个是数的）。
+ */
+num?: number, from: RotFrom, 
+/**
+ * 能是空（`null`）：空的那一项怎么叫。
+ */
+nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, };
+type RotChoice = { v: string, label: string, };
+type RotDaySeg = { from: number, to: number, v: number, text: string, tip: string, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
-type RotFormScope = "all" | "each";
+type RotFrom = "own" | "all" | "default";
 type RotHint = { "k": "hold", until?: number, account?: string, 
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
@@ -2485,7 +2499,7 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
-type RotNote = { hint: RotHint, text: string, 
+type RotNote = { hint: RotHint, tone: Tone, text: string, 
 /**
  * 复制详情（出错那一条带原话；别的没有）。
  */
@@ -2493,16 +2507,21 @@ detail?: string, };
 type RotOldFile = { name: string, path: string, };
 type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane>, };
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
-type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
+type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
 type RotPlate = { color: number, label: Words, };
 type RotRefused = { cells: Array<RotBadCell>, };
+type RotRow = { account: string, line: string, hover: string, cells: Array<RotCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
  * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
  */
-description: string, rev: string, error?: RotStrategyError, 
+description: string, 
+/**
+ * 说明的第一行（下拉里那行灰字；没有 ⇒ 空）。
+ */
+summary: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */
@@ -2556,9 +2575,9 @@ sendable: boolean,
  */
 used: [number, number], reset: boolean, 
 /**
- * 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
+ * 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
  */
-fromText: string, 
+text: string, 
 /**
  * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
  */
@@ -2598,13 +2617,13 @@ title: string | null,
  */
 strategy: RotStrategyItem | null, 
 /**
- * 设置怎么画（策略的声明）。
- */
-form: Array<RotFormCell>, 
-/**
- * 生效的设置（会话有草稿 ⇒ 草稿）。
+ * 生效的设置（会话有草稿 ⇒ 草稿）：设置页把它当草稿原样存着、随读带回，界面不拆。
  */
 settings: unknown, 
+/**
+ * 设置那几格照声明解好（此刻的值 · 从哪来 · 字）。
+ */
+board: RotBoard, 
 /**
  * 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
  */
@@ -2642,7 +2661,7 @@ type RotationViewReq = { target: RotTarget,
  * 往后推几小时（1–48，缺 ⇒ 12）。
  */
 hours?: number, };
-type StrategyText = string | { zh: string, en?: string, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type WinFact = { open: boolean, used: number, resets?: number, 
 /**
  * `resets` 写给人看的样子（按看的那一台的时区）。
@@ -2670,18 +2689,23 @@ type Words = string;
 ```ts
 type RotBadCell = { cell: string, code: string, };
 type RotConflict = { rev: string, };
+type RotEdit = { "set": { key: string, row?: number, v: unknown, } } | { "day": { key: string, row?: number, window: string, from: number, to: number, v: number | null, } } | { "move": { from: number, to: number, } } | { "add": { account: string, } } | { "remove": { row: number, } } | "keep";
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotWhere = { sid: string, } | { strategy: string, };
 type RotationSettingsReply = { 
 /**
  * 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
  */
-dirty: boolean, };
+dirty: boolean, 
+/**
+ * 改完的整份（设置页当新的草稿存着；会话那边已存成草稿）。
+ */
+settings: unknown, };
 type RotationSettingsReq = { target: RotWhere, 
 /**
- * 整份设置（形状照那份策略的声明）。
+ * 设置页：界面手上那份草稿（上一次回包的 `settings` 原样带回；缺 ⇒ 文件里的）。会话 ⇒ 不带（草稿在这台）。
  */
-settings: unknown, 
+settings?: unknown, edit: RotEdit, 
 /**
  * 改之前读到的那份策略文件的版本；对不上 ⇒ `conflict`。
  */
@@ -2912,30 +2936,6 @@ type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
 码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
 
 失败带 `data` 的码：`conflict` ⇒ `RotConflict`
-
-#### `rotation-day-paint`
-
-在 24 小时条上刷一段。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-day-paint`
-
-入参 `RotationDayPaintReq` · 回包 `RotationDayPaintReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type RotSeg = { from: number, to: number, v: number, };
-type RotationDayPaintReply = { segs: Array<RotSeg>, };
-type RotationDayPaintReq = { segs: Array<RotSeg>, 
-/**
- * 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
- */
-from: number, to: number, 
-/**
- * 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
- */
-v: number | null, };
-```
-
-码：`bad_args`
 
 #### `apikey-key-set`
 
@@ -13133,7 +13133,6 @@ needs: string | null, };
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
-| `--rotation-day-paint` | ＝ 帧命令 `rotation-day-paint`：在 24 小时条上刷一段 |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
 | `--rotation-for-new` | ＝ 帧命令 `rotation-for-new`：新会话用哪份策略 |
 | `--rotation-revert` | ＝ 帧命令 `rotation-revert`：丢掉会话里没存的设置 |

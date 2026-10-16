@@ -13,9 +13,9 @@ sendable: boolean,
  */
 used: [number, number], reset: boolean, 
 /**
- * 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
+ * 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
  */
-fromText: string, 
+text: string, 
 /**
  * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
  */

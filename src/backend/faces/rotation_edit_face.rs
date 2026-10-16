@@ -1,5 +1,5 @@
-//! 帧面：轮换的写（typed）。设置整份交回、照策略的声明校验形状（后端不认格的意思）；
-//! 会话那一侧的写进 `rotation.json`，策略文件的写只重写头、代码一个字不动。外加一条无状态的算术：24 小时条上刷一段。
+//! 帧面：轮换的写（typed）。改设置交一个意图（设一格 · 刷一段 · 拖号牌 · 加号 · 移出），后端照声明改完、校验形状（不认格的意思）；
+//! 会话那一侧的写进 `rotation.json`，策略文件的写只重写头、代码一个字不动。
 
 use crate::accounts::quota::rotation;
 use crate::accounts::quota::rules::book::{self, Book, Session, Uses};
@@ -9,11 +9,11 @@ use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_view_face::{checked, RotRefused};
 use crate::wire::typed::Command;
 pub(crate) use cmd_wire::rotation::{
-    RotBadStrategy, RotConflict, RotDone, RotInUse, RotSeg, RotStrategyId, RotStrategyRev,
-    RotUnusable, RotationDayPaintReply, RotationSaveReply, RotationSettingsReply,
-    RotationTempReply,
+    RotBadStrategy, RotConflict, RotDone, RotInUse, RotStrategyId, RotStrategyRev, RotUnusable,
+    RotationSaveReply, RotationSettingsReply, RotationTempReply,
 };
 use copy_core::copy_text;
+pub(crate) use form::RotEdit;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -86,9 +86,11 @@ fn fresh_name(ctx: &Ctx, name: &str) -> Result<String, String> {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationSettingsReq {
     pub(crate) target: RotWhere,
-    /// 整份设置（形状照那份策略的声明）。
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) settings: Value,
+    /// 设置页：界面手上那份草稿（上一次回包的 `settings` 原样带回；缺 ⇒ 文件里的）。会话 ⇒ 不带（草稿在这台）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "unknown"))]
+    pub(crate) settings: Option<Value>,
+    pub(crate) edit: RotEdit,
     /// 改之前读到的那份策略文件的版本；对不上 ⇒ `conflict`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -106,7 +108,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `rotation-settings`：会话 ⇒ 写进 `rotation.json` 的草稿；策略 ⇒ 只校验（设置页的草稿在界面手上）。
+/// `rotation-settings`：照意图改 ⇒ 会话写进 `rotation.json` 的草稿；策略只回改完的那份（设置页的草稿在界面手上）。
 pub(crate) struct RotationSettings;
 
 impl Command for RotationSettings {
@@ -148,7 +150,17 @@ pub(crate) fn settings_with(
         RotWhere::Strategy { strategy } => (None, strategy.clone()),
     };
     let sh = find(ctx, &id).ok_or_else(|| RotationSettingsErr::NoStrategy(gone(&id)))?;
-    checked(sh.file.as_ref().ok(), &req.settings)
+    let head = head_of(&sh);
+    let base = match (&sid, &req.settings) {
+        (Some(sid), _) => session_of(&book, sid).and_then(|s| s.strategy.draft),
+        (None, given) => given.clone(),
+    }
+    .or_else(|| head.map(|h| h.settings.clone()))
+    .unwrap_or_else(|| Value::Object(Default::default()));
+    let form = head.map_or(&[][..], |h| h.form.as_slice());
+    let settings = form::apply(form, &base, &req.edit)
+        .map_err(|e| RotationSettingsErr::BadArgs(crate::common::contract::malformed(&e)))?;
+    checked(sh.file.as_ref().ok(), &settings)
         .map_err(|r| RotationSettingsErr::Refused(refused_said(), r))?;
     if req.if_rev.as_deref().is_some_and(|r| r != sh.rev) {
         return Err(RotationSettingsErr::Conflict(
@@ -158,9 +170,9 @@ pub(crate) fn settings_with(
             },
         ));
     }
-    let dirty = head_of(&sh).map(|h| &h.settings) != Some(&req.settings);
+    let dirty = head.map(|h| &h.settings) != Some(&settings);
     if let Some(sid) = sid {
-        let draft = dirty.then(|| req.settings.clone());
+        let draft = dirty.then(|| settings.clone());
         let rev = sh.rev.clone();
         rotation::face_change(&ctx.hop.store, own, |b| {
             if let Some(s) = b.sessions.get_mut(&sid) {
@@ -170,7 +182,7 @@ pub(crate) fn settings_with(
         })
         .map_err(|e| RotationSettingsErr::IoFailed(note(e)))?;
     }
-    Ok(RotationSettingsReply { dirty })
+    Ok(RotationSettingsReply { dirty, settings })
 }
 
 // ── rotation-save ─────────────────────────────────────────────────────────────────────────
@@ -1089,67 +1101,6 @@ pub(crate) fn delete_with(
     rotation::strategy_file_remove(own, &req.id)
         .map_err(|e| RotationStrategyDeleteErr::IoFailed(note(e)))?;
     Ok(RotDone {})
-}
-
-// ── rotation-day-paint ────────────────────────────────────────────────────────────────────
-
-/// `rotation-day-paint` 的入参。
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationDayPaintReq {
-    pub(crate) segs: Vec<RotSeg>,
-    /// 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) from: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) to: u64,
-    /// 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) v: Option<f64>,
-}
-
-crate::wire::typed::codes! {
-    /// `rotation-day-paint` 自己的码（只有入参不对那一种）。
-    pub(crate) enum RotationDayPaintErr {}
-}
-
-/// `rotation-day-paint`：纯算术 ⇒ 阻塞档（不读盘）。
-pub(crate) struct RotationDayPaint;
-
-impl Command for RotationDayPaint {
-    const NAME: &'static str = "rotation-day-paint";
-    type Req = RotationDayPaintReq;
-    type Reply = RotationDayPaintReply;
-    type Err = RotationDayPaintErr;
-}
-
-impl crate::wire::typed::Handle for RotationDayPaint {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: RotationDayPaintReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<RotationDayPaintReply, RotationDayPaintErr>>
-           + Send
-           + 'static {
-        async move {
-            if req.from > form::DAY_MIN || req.to > form::DAY_MIN {
-                return Err(RotationDayPaintErr::BadArgs(
-                    crate::common::contract::malformed(
-                        "`from` and `to` must be minutes of a day (0–1440)",
-                    ),
-                ));
-            }
-            let segs: Vec<(u64, u64, f64)> = req.segs.iter().map(|s| (s.from, s.to, s.v)).collect();
-            Ok(RotationDayPaintReply {
-                segs: form::day_paint(&segs, req.from, req.to, req.v)
-                    .into_iter()
-                    .map(|(from, to, v)| RotSeg { from, to, v })
-                    .collect(),
-            })
-        }
-    }
 }
 
 #[cfg(test)]

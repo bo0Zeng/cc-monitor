@@ -1,15 +1,15 @@
 /**
  * 轮换四块（`rot-board.ts`）：只照 `rotation-view` · `rotation-strategies` 的回包画，手势翻成 `BoardActs`。
- * 号名 · 文件名 · 时刻全是合成的；格的样子照 `我们的轮换.rhai` 那几格（这里的 label / help 是夹具里的字，不是界面写的）。期望手写。
+ * 号名 · 文件名 · 时刻全是合成的；格（`board`）是后端解好的那一形（label / help / 段上的字都是夹具里的字，不是界面写的）。期望手写。
  */
 import { describe, expect, it, vi } from "vitest";
-import { board, textOf, type BoardActs, type BoardState } from "../../../src/frontend/ui/rot-board";
+import { board, type BoardActs, type BoardState } from "../../../src/frontend/ui/rot-board";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Fact } from "../../../src/frontend/ui/generated/Fact";
-import type { RotFormCell } from "../../../src/frontend/ui/generated/RotFormCell";
+import type { RotCell } from "../../../src/frontend/ui/generated/RotCell";
+import type { RotRow } from "../../../src/frontend/ui/generated/RotRow";
 import type { RotationStrategiesReply } from "../../../src/frontend/ui/generated/RotationStrategiesReply";
 import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
-import { nonEmpty } from "../../test-support/non-empty";
 
 const NOW = 1_800_000_000;
 const fact = (account: string, u5: number, u7: number, blocked = false): Fact => ({
@@ -21,28 +21,30 @@ const fact = (account: string, u5: number, u7: number, blocked = false): Fact =>
   ...(blocked ? { blocked: { why: "used", text: "5h 用满 · 18:30 重置" } } : {}),
 });
 
-const FORM: RotFormCell[] = [
-  { key: "caps", kind: "daySegments", scope: "each", inherit: true, windows: ["5h", "7d"], min: 0, max: 100, unit: "percent", default: 90, label: { zh: "夹具·上限" }, help: { zh: "夹具·上限的定义" } },
-  { key: "close", kind: "percent", scope: "all", min: 0, max: 100, default: 25, label: { zh: "夹具·容差" } },
-  { key: "force", kind: "percent", scope: "all", min: 0, max: 100, default: 25, nullable: { zh: "夹具·空值" }, label: { zh: "夹具·阈值" } },
-  { key: "fallback", kind: "toggle", scope: "each", default: false, label: { zh: "夹具·开关" } },
-  { key: "delay", kind: "minutes", scope: "each", min: 0, max: 1440, default: 0, label: { zh: "夹具·延迟" } },
+const seg = { from: 0, to: 1440, v: 90, text: "夹具·90", tip: "夹具·全天 90" };
+const caps = (window: string, from: RotCell["from"]): RotCell => ({ key: "caps", kind: "daySegments", window, label: `夹具·上限 ${window}`, help: "夹具·上限的定义", v: null, from, segs: [seg] });
+const each = (fallback: boolean, from: RotCell["from"]): RotCell[] => [
+  caps("5h", "all"),
+  caps("7d", "all"),
+  { key: "fallback", kind: "toggle", label: "夹具·开关", v: fallback, from },
+  { key: "delay", kind: "minutes", label: "夹具·延迟", v: 0, num: 0, from: "default", min: 0, max: 1440 },
 ];
-
-const SETTINGS = {
-  accounts: [{ id: "work" }, { id: "team" }, { id: "lab", fallback: true }],
-  caps: { "5h": [{ from: 0, to: 1440, v: 90 }], "7d": [{ from: 0, to: 1440, v: 90 }] },
-  close: 25,
-  force: 25,
+const row = (account: string, cells: RotCell[]): RotRow => ({ account, line: `夹具·${account} 那一行`, hover: `夹具·${account} 悬停`, cells });
+const BOARD = {
+  all: [
+    { key: "close", kind: "percent", label: "夹具·容差", v: 25, num: 25, from: "own", min: 0, max: 100 },
+    { key: "force", kind: "percent", label: "夹具·阈值", v: 25, num: 25, from: "own", nullable: "夹具·空值", min: 0, max: 100 },
+  ] satisfies RotCell[],
+  rows: [row("work", each(false, "default")), row("team", each(false, "default")), row("lab", each(true, "own"))],
 };
 
 function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
   return {
     now: NOW,
     nowText: "14:30", title: null,
-    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false },
-    form: FORM,
-    settings: SETTINGS,
+    strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", summary: "第一句说明", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false },
+    settings: { 夹具: "界面不拆" },
+    board: BOARD,
     dirty: false,
     start: "work",
     current: "team",
@@ -58,8 +60,8 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
         { from: NOW + 9000, to: NOW + 43_200, fromTemp: false, capUnknown: false, skipped: [] },
       ],
       lanes: [
-        { account: "team", segs: [{ from: NOW, to: NOW + 3600, sendable: true, used: [58, 30], reset: false, fromText: "14:30", left: 42 }, { from: NOW + 3600, to: NOW + 43_200, sendable: true, used: [0, 30], reset: true, fromText: "15:30", left: 70 }] },
-        { account: "work", segs: [{ from: NOW, to: NOW + 43_200, sendable: false, used: [100, 40], reset: false, fromText: "14:30", left: 0 }] },
+        { account: "team", segs: [{ from: NOW, to: NOW + 3600, sendable: true, used: [58, 30], reset: false, text: "夹具·剩 42", left: 42 }, { from: NOW + 3600, to: NOW + 43_200, sendable: true, used: [0, 30], reset: true, text: "夹具·↻15:30", left: 70 }] },
+        { account: "work", segs: [{ from: NOW, to: NOW + 43_200, sendable: false, used: [100, 40], reset: false, text: "", left: 0 }] },
       ],
       truncated: false,
       ticks: [{ at: NOW + 1800, text: "15:00" }, { at: NOW + 9000, text: "17:00" }],
@@ -74,8 +76,8 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
 
 const LIST: RotationStrategiesReply = {
   strategies: [
-    { id: "按权重轮换", description: "第一句说明\n第二句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, wordsBad: false, tzUnknown: false },
-    { id: "夜里省着用", description: "夜里那一句", rev: "h:2", inUse: [], forNew: false, wordsBad: false, tzUnknown: false },
+    { id: "按权重轮换", description: "第一句说明\n第二句说明", summary: "第一句说明", rev: "h:1", inUse: ["s1", "s2"], forNew: true, wordsBad: false, tzUnknown: false },
+    { id: "夜里省着用", description: "夜里那一句", summary: "夜里那一句", rev: "h:2", inUse: [], forNew: false, wordsBad: false, tzUnknown: false },
   ],
   forNew: "按权重轮换",
   oldScripts: 0,
@@ -89,10 +91,9 @@ function acts() {
     forNew: vi.fn(),
     remove: vi.fn(),
     add: vi.fn(),
-    settings: vi.fn(),
+    edit: vi.fn(),
     save: vi.fn(),
     revert: vi.fn(),
-    dayPaint: vi.fn(async () => []),
     useNow: vi.fn(),
     temp: vi.fn(),
     hours: vi.fn(),
@@ -134,7 +135,7 @@ describe("第一行与说明", () => {
   });
 
   it("★ 不轮换的会话：第一行 ＋ 一行「只用开会话的号 work」，号牌 · 设置 · 模拟都不出", () => {
-    const root = draw(view({ strategy: null, form: [], decision: null, timeline: null, accounts: [], plates: {}, listed: 0 }), state(), acts());
+    const root = draw(view({ strategy: null, board: { all: [], rows: [] }, decision: null, timeline: null, accounts: [], plates: {}, listed: 0 }), state(), acts());
     expect(root.textContent).toContain(copyText("rot.none.desc"));
     expect(root.textContent).toContain("work");
     expect(root.querySelector("[data-account]")).toBeNull();
@@ -143,7 +144,7 @@ describe("第一行与说明", () => {
 
   it("★ 提示照后端写好的那一句；停发那一句里的「还有多久」在画的那一刻照 now · until 填", () => {
     const root = draw(
-      view({ hints: [{ hint: { k: "hold", until: NOW + 4 * 3600, untilText: "18:30", account: "team" }, text: "停发了 · 18:30 team · 还剩 {dur}" }, { hint: { k: "wordsBad" }, text: "说明写法不合规那一句" }] }),
+      view({ hints: [{ hint: { k: "hold", until: NOW + 4 * 3600, untilText: "18:30", account: "team" }, tone: "warn", text: "停发了 · 18:30 team · 还剩 {dur}" }, { hint: { k: "wordsBad" }, tone: "plain", text: "说明写法不合规那一句" }] }),
       state(),
       acts(),
     );
@@ -170,8 +171,8 @@ describe("提示里的按钮", () => {
     const root = draw(
       view({
         hints: [
-          { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" }, path: "/夹具/strategies/夜里省着用.rhai" }, text: "出错那一句" },
-          { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, text: "时区那一句" },
+          { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" }, path: "/夹具/strategies/夜里省着用.rhai" }, tone: "fail", text: "出错那一句" },
+          { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, tone: "need", text: "时区那一句" },
         ],
       }),
       state(),
@@ -183,7 +184,7 @@ describe("提示里的按钮", () => {
     expect(tz.title).toBe(copyText("rot.hint.setTzTip", { zone: "Asia/Shanghai" }));
     tz.click();
     expect(a.setTz).toHaveBeenCalledWith("Asia/Shanghai");
-    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "夹具·出错那一句" }] }), state(), acts());
+    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, tone: "fail", text: "夹具·出错那一句" }] }), state(), acts());
     expect(button(bare, copyText("rot.hint.code"))).toBeUndefined();
   });
 
@@ -191,8 +192,8 @@ describe("提示里的按钮", () => {
     const root = draw(
       view({
         hints: [
-          { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" } }, text: "夹具·出错那一句", detail: "Division by zero: 1 / 0" },
-          { hint: { k: "tzUnknown", zone: "UTC" }, text: "时区那一句" },
+          { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" } }, tone: "fail", text: "夹具·出错那一句", detail: "Division by zero: 1 / 0" },
+          { hint: { k: "tzUnknown", zone: "UTC" }, tone: "need", text: "时区那一句" },
         ],
       }),
       state(),
@@ -207,7 +208,7 @@ describe("提示里的按钮", () => {
 
   it("★ 旧格式 ⇒ 看是哪几份：展开后列出后端给的文件名，点名字开那一份", () => {
     const a = acts();
-    const old = { hint: { k: "oldScripts" as const, n: 2, files: [{ name: "旧的一份.rhai", path: "/夹具/v3/旧的一份.rhai" }, { name: "旧的两份.rhai", path: "/夹具/v3/旧的两份.rhai" }] }, text: "2 份旧格式" };
+    const old = { hint: { k: "oldScripts" as const, n: 2, files: [{ name: "旧的一份.rhai", path: "/夹具/v3/旧的一份.rhai" }, { name: "旧的两份.rhai", path: "/夹具/v3/旧的两份.rhai" }] }, tone: "need" as const, text: "2 份旧格式" };
     const shut = draw(view({ hints: [old] }), state(), a);
     expect(button(shut, "旧的一份.rhai")).toBeUndefined();
     button(shut, copyText("rot.hint.which"))!.click();
@@ -219,7 +220,7 @@ describe("提示里的按钮", () => {
 
   it("★ 别处改了 ⇒ 载入新的 · 留着这边的", () => {
     const a = acts();
-    const root = draw(view({ dirty: true, hints: [{ hint: { k: "newer" }, text: "夹具·别处改了那一句" }] }), state(), a);
+    const root = draw(view({ dirty: true, hints: [{ hint: { k: "newer" }, tone: "plain", text: "夹具·别处改了那一句" }] }), state(), a);
     expect(root.querySelector("[data-rot-hint=\"newer\"]")?.textContent).toContain("夹具·别处改了那一句");
     button(root, copyText("rot.hint.loadNew"))!.click();
     button(root, copyText("rot.hint.keepMine"))!.click();
@@ -241,7 +242,7 @@ describe("号牌与点开一个号", () => {
     expect(a.open).toHaveBeenCalledWith("lab");
   });
 
-  it("★ 拖第 1 张松在第 3 张上 ⇒ 整份设置里号列表排成 team · work · lab（拖到它前头），别的格原样", () => {
+  it("★ 拖第 1 张松在第 3 张上 ⇒ 交「第 0 行挪到第 2 行前头」那个意图（怎么排是后端的）", () => {
     const a = acts();
     const root = draw(view(), state(), a);
     const cards = [...root.querySelectorAll<HTMLElement>("[data-account]")];
@@ -249,25 +250,32 @@ describe("号牌与点开一个号", () => {
     cards[0].dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 40, clientY: 10 }));
     document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 140, clientY: 10 }));
     document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 240, clientY: 10 }));
-    expect(a.settings).toHaveBeenCalledOnce();
-    const next = a.settings.mock.calls[0][0] as typeof SETTINGS;
-    expect(next.accounts.map((r) => r.id)).toEqual(["team", "work", "lab"]);
-    expect(next.close).toBe(25);
+    expect(a.edit.mock.calls).toEqual([[{ move: { from: 0, to: 2 } }]]);
     expect(a.open).not.toHaveBeenCalled();
   });
 
-  it("★ 点开 lab：每号那几格照声明（标签是策略写的字，跟总体的画虚线）；改开关 ⇒ 只改 lab 那一行", () => {
+  it("★ 点开 lab：那一行的字与格照回包（标签是后端挑好的字，跟总体的画虚线）；改开关 ⇒ 交「lab 那一行设这一格」", () => {
     const a = acts();
     const root = draw(view(), state({ open: "lab" }), a);
     const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
     const keys = [...new Set(texts(pane, "span").filter((t) => t.startsWith("夹具")))];
-    expect(keys).toEqual([copyText("rot.cell.win", { label: "夹具·上限", win: copyText("rot.win.fiveHour") }), copyText("rot.cell.win", { label: "夹具·上限", win: copyText("rot.win.sevenDay") }), "夹具·开关", "夹具·延迟"]);
-    nonEmpty(pane.querySelectorAll('[data-inherited="true"]'));
+    expect(keys).toEqual(["夹具·lab 那一行", "夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·开关", "夹具·延迟"]);
+    expect([...pane.querySelectorAll<HTMLElement>('[data-inherited="true"]')].map((e) => e.textContent), "只有 from = all 的画虚线").toEqual(["夹具·上限 5h", "夹具·90", "夹具·上限 7d", "夹具·90"]);
     pane.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
-    expect(a.settings).toHaveBeenCalledOnce();
-    const next = a.settings.mock.calls[0][0] as { accounts: Record<string, unknown>[] };
-    expect(next.accounts[2]).toEqual({ id: "lab", fallback: false });
-    expect(next.accounts[0]).toEqual({ id: "work" });
+    expect(a.edit.mock.calls).toEqual([[{ set: { key: "fallback", v: false, row: 2 } }]]);
+  });
+
+  it("★ 24 小时条：段与悬停照回包的字；拖出 20:00–23:00 选 0% ⇒ 交「lab 那一行 caps 那一窗刷成 0」（照谁刷、写成谁的是后端的）", () => {
+    const a = acts();
+    const root = draw(view(), state({ open: "lab" }), a);
+    const pane = root.querySelector<HTMLElement>('[data-account="lab"]:not(button)')!;
+    const bar = pane.querySelector<HTMLElement>("[data-day-bar]")!;
+    expect(bar.textContent).toBe("夹具·90");
+    bar.getBoundingClientRect = () => ({ left: 0, right: 1440, top: 0, bottom: 20, width: 1440, height: 20, x: 0, y: 0, toJSON: () => ({}) });
+    bar.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 1200, clientY: 10 }));
+    bar.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 1380, clientY: 10 }));
+    button(document.body, copyText("rot.day.v", { v: 0 }))!.click();
+    expect(a.edit.mock.calls).toEqual([[{ day: { key: "caps", window: "5h", from: 1200, to: 1380, v: 0, row: 2 } }]]);
   });
 
   it("★ 「现在用」被拦下 ⇒ 按钮下直接写原因（后端那一句）；在设置页（没有会话）不出「现在用」", () => {
@@ -282,22 +290,18 @@ describe("号牌与点开一个号", () => {
 });
 
 describe("总体设置", () => {
-  it("★ 照 `scope: all` 的先后画；可空的那一格点空值说法 ⇒ 交 null，再点 ⇒ 交回数", () => {
+  it("★ 照 board.all 的先后画；可空的那一格点空值说法 ⇒ 交 null，再点 ⇒ 交回框里那个数（后端给的 num）", () => {
     const a = acts();
     const root = draw(view(), state(), a);
     expect(root.textContent).toContain("夹具·容差");
     expect(root.textContent).toContain("夹具·阈值");
     button(root, "夹具·空值")!.click();
-    expect((a.settings.mock.calls[0][0] as typeof SETTINGS).force).toBeNull();
+    expect(a.edit.mock.calls).toEqual([[{ set: { key: "force", v: null } }]]);
     const b = acts();
-    const again = draw(view({ settings: { ...SETTINGS, force: null } }), state(), b);
+    const force: RotCell = { ...BOARD.all[1], v: null, num: 30 };
+    const again = draw(view({ board: { ...BOARD, all: [BOARD.all[0], force] } }), state(), b);
     button(again, "夹具·空值")!.click();
-    expect((b.settings.mock.calls[0][0] as typeof SETTINGS).force).toBe(25);
-  });
-
-  it("textOf：一句 · 分语言的取中文", () => {
-    expect(textOf("一句")).toBe("一句");
-    expect(textOf({ zh: "中", en: "en" })).toBe("中");
+    expect(b.edit.mock.calls).toEqual([[{ set: { key: "force", v: 30 } }]]);
   });
 });
 
@@ -309,7 +313,7 @@ describe("模拟", () => {
     expect(root.textContent, "挨着此刻的刻度让开").not.toContain("15:00");
     expect(root.textContent).toContain(copyText("rot.sim.switch", { at: "16:00", account: "lab" }));
     const segs = texts(root, '[data-state]');
-    expect(segs).toEqual([copyText("rot.sim.left", { n: 42 }), copyText("rot.sim.reset", { at: "15:30" }), ""]);
+    expect(segs, "每段的字照回包").toEqual(["夹具·剩 42", "夹具·↻15:30", ""]);
   });
 
   it("★ 过去那一截：左端是它的开头，过去的段实心（不带虚边）、只有重置那段写 ↻；推演的段全是虚边；此刻一条竖线；换号标签只标将来的", () => {
@@ -321,8 +325,8 @@ describe("模拟", () => {
         { from: NOW - 1800, to: NOW, account: "team" },
       ],
       lanes: [
-        { account: "team", segs: [{ from: NOW - 5400, to: NOW, sendable: true, reset: true, fromText: "13:00" }] },
-        { account: "work", segs: [{ from: NOW - 7200, to: NOW - 3600, sendable: true, reset: false, fromText: "12:30" }, { from: NOW - 3600, to: NOW, sendable: false, reset: false, fromText: "13:30" }] },
+        { account: "team", segs: [{ from: NOW - 5400, to: NOW, sendable: true, reset: true, text: "夹具·↻13:00" }] },
+        { account: "work", segs: [{ from: NOW - 7200, to: NOW - 3600, sendable: true, reset: false, text: "" }, { from: NOW - 3600, to: NOW, sendable: false, reset: false, text: "" }] },
       ],
     };
     const v = view({ past });
@@ -339,7 +343,7 @@ describe("模拟", () => {
     expect(nowTick.dataset.edge).toBeUndefined();
     const pastLanes = [...root.querySelectorAll<HTMLElement>('[data-past="true"][data-state]')];
     expect(pastLanes.map((e) => [e.dataset.state, e.textContent])).toEqual([
-      ["ok", copyText("rot.sim.reset", { at: "13:00" })],
+      ["ok", "夹具·↻13:00"],
       ["ok", ""],
       ["out", ""],
     ]);

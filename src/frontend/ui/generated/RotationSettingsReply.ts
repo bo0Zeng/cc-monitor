@@ -7,4 +7,8 @@ export type RotationSettingsReply = {
 /**
  * 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
  */
-dirty: boolean, };
+dirty: boolean, 
+/**
+ * 改完的整份（设置页当新的草稿存着；会话那边已存成草稿）。
+ */
+settings: unknown, };

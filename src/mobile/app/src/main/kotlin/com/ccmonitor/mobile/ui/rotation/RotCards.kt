@@ -46,8 +46,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.wire.Fact
-import com.ccmonitor.mobile.core.claude.link.wire.RotFormScope
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.WinFact
 import com.ccmonitor.mobile.core.copy.copyText
@@ -69,6 +69,7 @@ internal fun Cards(
 ) {
     RotHeader(copyText("rot.h.cards"), copyText("mobRot.cards.hint"))
     val listed = view.accounts.take(view.listed)
+    val rows = view.board.rows
     val rects = remember { mutableStateMapOf<Int, Rect>() }
     var drag by remember { mutableStateOf<Pair<Int, Offset>?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -82,6 +83,7 @@ internal fun Cards(
                 Card(
                     i = i,
                     f = f,
+                    hover = rows.getOrNull(i)?.hover.orEmpty(),
                     ui = ui,
                     board = board,
                     inUse = board.inSession && f.account == view.current,
@@ -97,7 +99,7 @@ internal fun Cards(
                             }) { from, at ->
                                 drag = null
                                 val to = rects.entries.firstOrNull { it.value.contains(at) }?.key ?: return@cardDrag
-                                moved(view.settings, from, to)?.let { board.settings(it) }
+                                if (to != from) board.edit(RotEdit.move(from, to))
                             },
                 )
             }
@@ -136,6 +138,7 @@ private fun Modifier.cardDrag(
 private fun Card(
     i: Int,
     f: Fact,
+    hover: String,
     ui: RotationUi,
     board: RotationBoard,
     inUse: Boolean,
@@ -160,7 +163,7 @@ private fun Card(
                     .fillMaxWidth()
                     .height(44.dp)
                     .clickable { board.open(if (open) null else f.account) }
-                    .semantics { contentDescription = board.label(f.account) + copyText("kit.text.sep") + cardHover(f) }
+                    .semantics { contentDescription = board.label(f.account) + copyText("kit.text.sep") + hover }
                     .testTag("${RotTags.CARD}-${f.account}"),
         ) {
             Row(Modifier.padding(horizontal = 8.dp).dim(f.blocked != null), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -241,7 +244,7 @@ private fun AddSheet(
         view.accounts.drop(view.listed).forEach { f ->
             PickRow(board.label(f.account), "rot-add-${f.account}", onClick = {
                 onDismiss()
-                board.settings(added(view.settings, f.account))
+                board.edit(RotEdit.add(f.account))
             }, lead = { AccountBadge(f.account, ui.accounts[f.account]?.color, 20) })
         }
         SheetEnd()
@@ -258,22 +261,23 @@ private fun AccountPane(
 ) {
     val i = view.accounts.indexOfFirst { it.account == account }.takeIf { it in 0 until view.listed } ?: return
     val f = view.accounts[i]
+    val row = view.board.rows.getOrNull(i)
     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().testTag("rot-pane-$account")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AccountBadge(account, ui.accounts[account]?.color, 20)
                 Text(board.label(account), fontWeight = FontWeight.SemiBold)
             }
-            Text(acctLine(f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(row?.line.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (board.inSession && account != view.current) {
                     OutlinedButton(onClick = { board.useNow(account) }, enabled = f.blocked == null) { Text(copyText("rot.acct.useNow", "account" to board.label(account))) }
                 }
-                SecondaryButton(onClick = { board.settings(removed(view.settings, i)) }) { Text(copyText("rot.acct.remove")) }
+                SecondaryButton(onClick = { board.edit(RotEdit.remove(i)) }) { Text(copyText("rot.acct.remove")) }
             }
             f.blocked?.let { b -> NoteBox(NoteTone.WARN) { Text(b.text, style = MaterialTheme.typography.bodySmall) } }
             ui.refused?.takeIf { it.first == account }?.let { (_, t) -> Text(t, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            view.form.filter { it.scope == RotFormScope.EACH }.forEach { CellRows(ui, view, board, it, i) }
+            row?.cells?.forEach { CellRows(ui, board, it, i) }
         }
     }
 }
