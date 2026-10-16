@@ -97,9 +97,28 @@ fn perf_dialed(host_label: &str, t_exec: std::time::Instant) {
     );
 }
 
+/// 每台一条的循环在壳这一侧被用到的那几样：叫醒 · 此刻那一态 · 握手时那台报的构建。
+pub(crate) trait Looped: Send + Sync {
+    fn wake(&self);
+    fn state(&self) -> State;
+    fn theirs(&self) -> Option<String>;
+}
+
+impl<T: Transport> Looped for Feed<T> {
+    fn wake(&self) {
+        Feed::wake(self);
+    }
+    fn state(&self) -> State {
+        Feed::state(self)
+    }
+    fn theirs(&self) -> Option<String> {
+        Feed::theirs(self)
+    }
+}
+
 /// 每台一条的循环（［重新连接］· 机器页「起」经 [`wake`] 叫醒它）。只记弱引用：流任务停了，它就跟着没了。
-fn feeds() -> &'static Mutex<HashMap<String, Weak<Feed<DeskLink>>>> {
-    static F: std::sync::OnceLock<Mutex<HashMap<String, Weak<Feed<DeskLink>>>>> =
+pub(crate) fn feeds() -> &'static Mutex<HashMap<String, Weak<dyn Looped>>> {
+    static F: std::sync::OnceLock<Mutex<HashMap<String, Weak<dyn Looped>>>> =
         std::sync::OnceLock::new();
     F.get_or_init(Default::default)
 }
@@ -114,6 +133,68 @@ pub(crate) fn wake(origin: &str) {
     if let Some(f) = feed {
         f.wake();
     }
+}
+
+/// 接常驻那一轮的结论交本机后端（`machine-round`，原样的事实；那台的状态成品在后端定）。按交的先后一件一件送；
+/// 本机通道不在 ⇒ 不送（通道接上那一刻 [`rehand_rounds`] 把每台手上最新那一轮重交）。
+fn hand_round(origin: &str, s: &State) {
+    static TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<(String, State)>> =
+        std::sync::OnceLock::new();
+    let tx = TX.get_or_init(|| {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, State)>();
+        tauri::async_runtime::spawn(async move {
+            while let Some((origin, s)) = rx.recv().await {
+                send_round(&origin, &s).await;
+            }
+        });
+        tx
+    });
+    if tx.send((origin.to_string(), s.clone())).is_err() {
+        tracing::warn!("[machine] 交那台这一轮结论的那条队列没了（{origin}）");
+    }
+}
+
+/// 送一件（[`hand_round`] 那条队列的消费者）。
+async fn send_round(origin: &str, s: &State) {
+    let Some(client) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN)
+    else {
+        return;
+    };
+    let args = serde_json::json!({
+        "machine": origin,
+        "round": s.round(),
+        "version": crate::PRODUCT_VERSION,
+    });
+    if let Err(e) = client.call(MACHINE_ROUND, args, MACHINE_ROUND_BUDGET).await {
+        tracing::warn!("[machine] 交 {origin} 这一轮结论没成：{e:?}");
+    }
+}
+
+/// 帧命令名与时限。
+const MACHINE_ROUND: &str = "machine-round";
+const MACHINE_ROUND_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 本机通道接上了（本机后端可能刚重启、表是空的）⇒ 每台手上最新那一轮重交一遍。
+pub(crate) fn rehand_rounds() {
+    let now: Vec<(String, State)> = feeds()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .filter_map(|(o, f)| f.upgrade().map(|f| (o.clone(), f.state())))
+        .collect();
+    for (origin, s) in now {
+        hand_round(&origin, &s);
+    }
+}
+
+/// 那台手上那条循环握手时那台报的构建标识（诊断信息用）；没握过手 ⇒ `None`。
+pub(crate) fn theirs_of(origin: &str) -> Option<String> {
+    feeds()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(origin)
+        .and_then(Weak::upgrade)
+        .and_then(|f| f.theirs())
 }
 
 /// 流任务被停（`abort`）⇒ 这台的循环一并收掉。
@@ -167,7 +248,7 @@ pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut)
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .insert(origin, Arc::downgrade(&feed));
+        .insert(origin, Arc::downgrade(&(feed.clone() as Arc<dyn Looped>)));
     let _closing = Closing(feed);
     consume_remote(cfg, rx, replay, health).await;
 }
@@ -175,7 +256,6 @@ pub async fn run(cfg: RemoteConfig, replay: Arc<EventReplay>, health: HealthOut)
 /// 每一轮开拨之前：部署预检（这台自证过就是期望 build 则跳过）。部署失败不阻断（手动部署的后端照样能连），但那句话要到界面上。
 async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     let host_label = cfg.origin_label();
-    crate::machine_state::connecting(&host_label, "deploy");
     // 冷启动最贵的三段（用户点开应用到看见远端会话之间唯一的那条链）埋 `[perf]`：不改任何行为，只让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
     // 连接前确保远端后端已部署到固定落点（`~/.cc-monitor/bin/ccm`）；这一版没带字节 ⇒ `byte_table::choose` 回「这一版没带」→ 优雅 no-op。
@@ -214,8 +294,6 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
         t_connect_start.elapsed().as_millis(),
         confirmed_build.as_deref()
     );
-    // 接那台的常驻后端（没有就起一个；与本机同形）。起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
-    crate::machine_state::connecting(&host_label, "attach");
 }
 
 /// 一条连接上 monitor 这边的那几样（接上时开、断了就丢）：攒批 ＋ 静默窗 ＋ 旁路快照（[`LineIntake`]，本机那条流用的是同一个）· 认不出的帧记账。
@@ -256,11 +334,13 @@ pub(crate) async fn consume_remote(
             }
             return;
         };
+        // 每一轮的结论原样交本机后端（那台的状态成品在那里定）。
+        if let Event::State(s) = &ev {
+            hand_round(&host_label, s);
+        }
         match ev {
             Event::Attached { hello, client } => attached = Some((hello, client)),
-            Event::State(State::Up {
-                relation, notice, ..
-            }) => {
+            Event::State(State::Up { .. }) => {
                 let Some((hello, client)) = attached.take() else {
                     continue;
                 };
@@ -269,8 +349,6 @@ pub(crate) async fn consume_remote(
                     Round {
                         replay: &replay,
                         health: &health,
-                        relation,
-                        notice: notice.as_ref(),
                         t_connect_start: round_started,
                     },
                     &hello,
@@ -396,7 +474,6 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
     // 没接上 ⇒ 抹掉自证记忆：否则一台后端被删 / 被换旧的机器会每一轮都跳预检、每一轮都失败。代价是多一次预检（`VERIFIED_BUILD` 头注）。
     forget_verified_build(host_label);
     if unsupported {
-        crate::machine_state::unsupported(host_label, crate::machine_state::NOT_UNIX, &said);
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.to_string(),
             kind: "unsupported".to_string(),
@@ -406,8 +483,6 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
         if let Err(e) = health(payload) {
             tracing::warn!("stream_source remote-health (unsupported) emit failed: {e}");
         }
-    } else {
-        crate::machine_state::down(host_label, &said, problem.why, problem.seen_key.as_deref());
     }
 }
 
@@ -416,10 +491,6 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
 struct Round<'a> {
     replay: &'a Arc<EventReplay>,
     health: &'a HealthOut,
-    /// 那台相对手上这一版（那台在 attach 回话里判的）。
-    relation: cmd_wire::attach::Relation,
-    /// 版本那一句（同一版 ⇒ 无；字由循环那一侧写）。
-    notice: Option<&'a Problem>,
     /// 这一轮连接的起点（`[perf]` 埋点从这里算）。
     t_connect_start: std::time::Instant,
 }
@@ -431,14 +502,12 @@ struct HelloSeen {
     commands: Vec<String>,
 }
 
-/// hello 那一臂：打日志、记账、版本提示、自证记忆。
+/// hello 那一臂：打日志、记账、自证记忆。
 fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     let Round {
         replay,
-        health,
-        relation,
-        notice,
         t_connect_start,
+        ..
     } = round;
     let HelloSeen {
         build_id,
@@ -450,20 +519,6 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     );
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。
     replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
-    // 版本：新旧那台判好（attach 回话），那一句循环那一侧写好；这里按新旧挑类别（界面按它挑标题），照常接、不断开。
-    crate::machine_state::up(&host_label, &build_id, relation);
-    if let (Some(kind), Some(p)) = (version_health_kind(relation), notice) {
-        tracing::warn!("stream_source remote [{host_label}] version: {}", p.text);
-        let payload = crate::ui_contract::RemoteHealthPayload {
-            origin: host_label.clone(),
-            kind: kind.to_string(),
-            message: p.text.clone(),
-            detail: p.detail.clone(),
-        };
-        if let Err(e) = health(payload) {
-            tracing::warn!("stream_source remote-health (version) emit failed: {e}");
-        }
-    }
     tracing::info!(
         "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自这一轮连接开始）",
         t_connect_start.elapsed().as_millis()
@@ -475,22 +530,6 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
         record_verified_build(&host_label, &build_id);
     } else {
         forget_verified_build(&host_label);
-    }
-}
-
-/// 版本那条健康信息（`RemoteHealthPayload::kind`）的三类：界面按它挑标题（`remote-health.ts::headlineFor`），不自己判。
-pub(super) const VERSION_KIND_OLDER: &str = "version-older";
-pub(super) const VERSION_KIND_NEWER: &str = "version-newer";
-pub(super) const VERSION_KIND_INCOMPARABLE: &str = "version-incomparable";
-
-/// 新旧 → 健康信息的类别（同 ⇒ 不说）。
-fn version_health_kind(rel: cmd_wire::attach::Relation) -> Option<&'static str> {
-    use cmd_wire::attach::Relation as R;
-    match rel {
-        R::Same => None,
-        R::Older => Some(VERSION_KIND_OLDER),
-        R::Newer => Some(VERSION_KIND_NEWER),
-        R::Incomparable => Some(VERSION_KIND_INCOMPARABLE),
     }
 }
 
@@ -551,6 +590,11 @@ mod seam_tests;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/write_half_guard.rs"]
 mod write_half_guard;
+
+/// 本机通道接上 ⇒ 每台最新那一轮原样重交本机后端。
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/machine_round_tests.rs"]
+mod machine_round_tests;
 
 /// 断线 → 重连 → 续上之后，订了这台的那几条订阅各收几格（数格、不看墙钟）。
 #[cfg(test)]

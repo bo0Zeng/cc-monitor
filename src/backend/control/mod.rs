@@ -31,6 +31,7 @@ pub mod files_commit;
 pub(crate) mod machine_prefs;
 pub(crate) mod session_hidden; // 一条会话隐不隐藏：判定只住这里（会话宣告 · history-list · sessions-needs 三处同调）
 pub use machine_prefs::apply_agent_homes;
+pub(crate) mod machine_state;
 pub(crate) mod machines;
 // 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。
 pub mod prefs_migration;

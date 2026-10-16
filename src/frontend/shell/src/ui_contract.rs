@@ -26,8 +26,8 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
-    /// **某台机器的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
-    /// `machine_state.rs`）。正在连 / 装 / 更新、连上、没连上、指纹不对 …… 一变就推一帧，界面不轮询。
+    /// **本机那一台的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
+    /// `local_backend_host::local_product`）。通道接上 / 断了 · 口上换了人就推一帧；远端各台走本机后端的 `changed {machine}`。
     pub const MACHINE_STATE: &str = "machine-state";
     /// **要让用户知道的出错**（`ui_error::UiErrorPayload`：码 ＋ 文案键 ＋ 那句话 ＋ 复制详情）。
     /// 壳推给界面的出错只这一种；日志行不上屏。

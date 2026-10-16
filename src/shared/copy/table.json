@@ -5806,24 +5806,6 @@
       "zh": "读取远端历史失败",
       "args": []
     },
-    "remoteHealth.head.backendOld": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端要更新",
-      "args": []
-    },
-    "remoteHealth.head.backendNewer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端版本较新",
-      "args": []
-    },
-    "remoteHealth.head.versionIncomparable": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端后端版本不可比",
-      "args": []
-    },
     "remoteHealth.head.congested": {
       "kind": "body",
       "role": "片段",

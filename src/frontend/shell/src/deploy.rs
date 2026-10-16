@@ -132,7 +132,7 @@ fn slots_dir() -> Option<std::path::PathBuf> {
         .map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)).join("slots"))
 }
 
-/// 请本机常驻后端给那台装一趟：入参只有事实；后端每走一步推一帧 `deploy`（`local_backend` 交 `machine_state::deploy_step`）。
+/// 请本机常驻后端给那台装一趟：入参只有事实；每走一步记进那台的状态成品（后端推 `changed {machine}`）。
 async fn install(cfg: &RemoteConfig) -> Result<Installed, Said> {
     install_for(cfg, slot_rows()?).await
 }
@@ -165,7 +165,6 @@ async fn install_for(cfg: &RemoteConfig, slots: Vec<serde_json::Value>) -> Resul
     let got =
         decode_installed(&data.ok_or_else(|| command(copy_text("rsSftp.plan.internal", &[])))?)
             .map_err(command)?;
-    crate::machine_state::note_os(&cfg.origin_label(), &got.os);
     // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &got.ack);
     Ok(got)

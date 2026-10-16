@@ -172,6 +172,35 @@ pub enum State {
     },
 }
 
+impl State {
+    /// 交给机器状态那一份（只有事实：画法字段不带）。
+    pub fn round(&self) -> cmd_wire::machine::Round {
+        use cmd_wire::machine::{Round, RoundProblem};
+        match self {
+            State::Connecting => Round::Connecting,
+            State::Up {
+                relation, differs, ..
+            } => Round::Up {
+                relation: *relation,
+                differs: differs.clone(),
+            },
+            State::Down {
+                problem,
+                unsupported,
+                ..
+            } => Round::Down {
+                problem: RoundProblem {
+                    text: problem.text.clone(),
+                    detail: problem.detail.clone(),
+                    why: problem.why,
+                    seen_key: problem.seen_key.clone(),
+                },
+                unsupported: *unsupported,
+            },
+        }
+    }
+}
+
 /// 装一次会好的那一种：那台没有我们的后端（没装 · 起不了 · 不是我们的）· 有、但旧了（不认这一版的子命令）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

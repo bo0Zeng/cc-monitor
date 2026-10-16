@@ -2,7 +2,7 @@
  * 机器与设置那一族的合成答法：后端状态、ccm 入口、ssh 配置、tmux、足迹、数据位置、日志 …
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
@@ -179,6 +179,8 @@ export function machineOps(): Record<string, OpHandler> {
             }
           : null,
     }),
+    // 远端各台的状态成品（本机后端那张表）：照场景的世界答。
+    "machine-read": (_o, _r, w) => ({ machines: Object.fromEntries(w.machines.slice(1).map((m) => [m, machineOf(m, w)])) }),
     // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答。
     "machines-read": (o, _r, w) => {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
@@ -226,21 +228,46 @@ export function machineOps(): Record<string, OpHandler> {
 /** 「改过你的文件」里那一行 ~/.bashrc（data-report 与离线那台的上次值共用）。 */
 const BASHRC_CHANGED = { path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } };
 
+/** 一颗修法按钮（字照后端那一批键）。 */
+const fixOf = (fix: string, key: CopyKey) => ({ fix, label: copyText(key) });
+
 /** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
 function machineOf(origin: string, w: World): Record<string, unknown> {
-  const base = { stage: null, said: null as string | null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null, detail: null as string | null };
-  if (w.installingMachines?.includes(origin)) return { ...base, said: `安装 cc-monitor → ${origin}`, state: "installing", reason: null, version: null, versionRelation: null, fixes: [] };
+  const base = { reason: null, stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, word: "", said: "", fixes: [] as unknown[], seenHostKey: null as string | null, detail: null as string | null };
+  if (w.installingMachines?.includes(origin))
+    return { ...base, state: "installing", word: copyText("machineState.word.installing"), said: `安装 cc-monitor → ${origin}`, version: null, versionRelation: null };
   if (w.hostKeyChanged?.includes(origin))
-    return { ...base, state: "host_key_changed", reason: "host_key", version: null, versionRelation: null, fixes: ["compare_fingerprint"], seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8" };
-  if (w.staleMachines.includes(origin)) return { ...base, state: "needs_update", reason: null, version: null, versionRelation: "older", fixes: ["update"] };
-  if (!w.unseenMachines.includes(origin)) return { ...base, state: "up", reason: null, fixes: [] };
+    return {
+      ...base,
+      state: "host_key_changed",
+      reason: "host_key",
+      word: copyText("machineState.word.hostKey"),
+      said: copyText("machineState.problem.hostKey"),
+      version: null,
+      versionRelation: null,
+      fixes: [fixOf("compare_fingerprint", "machineState.fix.compareFingerprint")],
+      seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8",
+    };
+  if (w.staleMachines.includes(origin))
+    return {
+      ...base,
+      state: "needs_update",
+      word: copyText("machineState.word.needsUpdate"),
+      said: copyText("machineState.problem.needsUpdate", { machine: origin }),
+      version: null,
+      versionRelation: "older",
+      fixes: [fixOf("update", "machineState.fix.update")],
+    };
+  if (!w.unseenMachines.includes(origin)) return { ...base, state: "up" };
   return {
     ...base,
     state: "down",
     reason: "auth",
+    word: copyText("machinePage.state.down"),
+    said: copyText("machineState.down.auth"),
     version: null,
     versionRelation: null,
-    fixes: ["push_key", "conn_settings"],
+    fixes: [fixOf("push_key", "machineCard.build.pushKey"), fixOf("conn_settings", "machinePage.conn.toggle")],
     detail: `时刻：2026-10-08 21:04:11 +08:00\n机器：Linux x86_64 · 后端 p9z-fixture\n命令：dial\n对象：${origin}\n断在：私钥登录失败\n码：auth\n原话：Authentication failed (publickey)`,
   };
 }
@@ -251,7 +278,8 @@ export function machineCommands(): Record<string, CommandHandler> {
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
       pid: pidOf(String(a.origin), w),
-      machine: machineOf(String(a.origin), w),
+      // 本机那一行壳出；远端各台走本机后端的 `machine-read` · `changed {machine}`。
+      machine: a.origin === "<local>" ? machineOf(String(a.origin), w) : null,
       health: {
         state: "clean",
         summary: copyText("rsBackendPolicy.health.clean"),

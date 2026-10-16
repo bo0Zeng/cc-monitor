@@ -260,13 +260,6 @@
       "why": "测试连接停在哪一步 / 拨号阶段码 ⇒ 字（start · handshake … · dialing · hostKey …）：机器状态成品带 said（V12 同批）"
     },
     {
-      "file": "src/frontend/ui/settings/machine-state.ts",
-      "rule": "caseWord",
-      "n": 14,
-      "kind": "第 7 批",
-      "why": "V12：断开的原因码 ⇒ 字（机器状态成品带 said）"
-    },
-    {
       "file": "src/frontend/ui/tab-batch-menu.ts",
       "rule": "codeWord",
       "n": 1,

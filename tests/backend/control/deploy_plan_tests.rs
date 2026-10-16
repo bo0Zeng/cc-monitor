@@ -326,10 +326,10 @@ async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
     );
 }
 
-/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）：应答 · 进度帧各一份。
+/// 键集合 == 金样 `tests/__fixtures__/deploy-install.golden.json` 的键（monitor 的解码器读同一份金样）。
 /// 应答那一句是 `deploy` crate 写的那一句；`build` 是落点上现在那一份（`keep` ⇒ 那台的）。
 #[test]
-fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
+fn the_install_reply_has_exactly_the_golden_keys() {
     let golden: serde_json::Value = serde_json::from_str(include_str!(
         "../../__fixtures__/deploy-install.golden.json"
     ))
@@ -360,16 +360,6 @@ fn the_install_reply_and_the_step_frame_have_exactly_the_golden_keys() {
         (Some("keep"), Some("p9b"), Some("w"))
     );
     assert_eq!(got["ack"], fake_ack(1));
-    let step = step_frame("box", deploy::Step::Place { updating: true }).unwrap();
-    let wire =
-        serde_json::to_value(crate::wire::Frame::<cmd_wire::record::Record>::Deploy(step)).unwrap();
-    assert_eq!(keys(&wire), keys(&golden["step"]));
-    assert_eq!(wire["step"], "update");
-    assert_eq!(
-        wire["said"],
-        deploy::Step::Place { updating: true }.said("box")
-    );
-    assert!(step_frame("box", deploy::Step::Restart).is_none());
 }
 
 #[test]

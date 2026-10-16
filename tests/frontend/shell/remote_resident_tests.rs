@@ -46,8 +46,7 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
         ),
         "devbox",
     ) {
-        Err(AttachErr::Unsupported(s, code)) => {
-            assert_eq!(code, crate::machine_state::NOT_UNIX);
+        Err(AttachErr::Unsupported(s)) => {
             assert_eq!(
                 s.said,
                 copy_text("rsRemoteResident.ensure.unsupported", &[])

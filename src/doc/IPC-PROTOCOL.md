@@ -137,13 +137,14 @@
 | `login` | 否 | 带 | — | 带（≤ 8192 B） | `manual-list` |
 | `manual` | 是 | — | — | — | `manual-list` |
 | `machines` | 是 | — | — | — | `machines-read` |
+| `machine` | 是 | 带 | — | 带（≤ 8192 B） | `machine-read` |
 | `session_hidden` | 否 | 带 | — | 带（≤ 1024 B） | `history-list` |
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
 `body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
-`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。
+`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。`machine`：这一端连的某台远端此刻的状态变了（接常驻那一轮 · 部署走到哪一步 · 「连接这台」开关），`key` 是那台的名字，`body` 是那台的状态成品（同 `machine-read` 里那一格）；本机常驻后端才推。
 `session_hidden`：这台某个活会话隐不隐藏变了（注解 · 这台偏好 `childTab` / `bgTab` · 会话血缘动了之后重判的），`key` 是会话 id，`body` 是 `{hidden}`（那一格 `{by, said}`，不隐藏 ⇒ `null`；判定只住后端一处，`session_added` · `history-list` 每行 · `sessions-needs` 每行带的是同一格），收到就换、不重读整份清单；万一没收到，重问 `history-list {sid}` 那一行。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
@@ -263,7 +264,7 @@
 | `machines.json` | `machines-set`（按键认那一台；指纹记于哪天由它盖；写完整张表要成立：`control/machines.rs::check_table`） | `machines-read` · monitor（照它起停远端流） | 这一端连各台用的机器表：名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连 |
 | `prefs-handoff.json` | 本机常驻后端起来时那一次换形 · `remote-reach` 之后交出去那一下 | `remote-reach`（那台连上时） | 升级时从 `config.json` 搬来的远端每台的偏好，那台还没有偏好时交过去（`prefs-set`），交完删那一条；下一版删 |
 
-设置窗机器列表那一格的成品（`state` · `reason` · `fixes` …）判定只在 `machine_state.rs`，形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
+设置窗机器列表那一格的成品（`state` · `word` · `said` · `fixes` …）：远端各台判定只在后端 `deploy/machine.rs`（本机常驻后端答 `machine-read`、推 `changed {machine}`；壳把接常驻那一轮的结论经 `machine-round` 原样交过去），本机那一行由壳照同一批文案键出（`backend_status` 的 `machine`）；形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。
 
 **Claude Code 自己写、后端只读的两份**（集成方要自己写 pidfile 时看这里）：
 

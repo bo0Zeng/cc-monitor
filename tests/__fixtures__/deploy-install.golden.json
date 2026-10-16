@@ -1,5 +1,5 @@
 {
-  "_doc": "帧命令 deploy-install 的应答与进度帧的线上形状（装那一趟整趟在本机后端，monitor 只交字节文件的路径、收进度）。后端 deploy_plan_tests::the_install_reply_and_the_step_frame_have_exactly_the_golden_keys 核键集 == 真产出；monitor deploy.rs 的 decode_installed 读同一份（deploy_tests::the_reply_decoder_reads_the_golden）。值是结构占位。ack = 问 uname 那一趟拨号的 DialAck 原样（monitor 按它固化指纹）。",
+  "_doc": "帧命令 deploy-install 的应答的线上形状（装那一趟整趟在本机后端，monitor 只交字节文件的路径；每一步进那台的状态成品）。后端 deploy_plan_tests::the_install_reply_has_exactly_the_golden_keys 核键集 == 真产出；monitor deploy.rs 的 decode_installed 读同一份（deploy_tests::the_reply_decoder_reads_the_golden）。值是结构占位。ack = 问 uname 那一趟拨号的 DialAck 原样（monitor 按它固化指纹）。",
   "product": {
     "action": "keep",
     "said": "placeholder",
@@ -14,11 +14,5 @@
       "strict": false,
       "jump_strict": false
     }
-  },
-  "step": {
-    "kind": "deploy",
-    "machine": "placeholder",
-    "step": "update",
-    "said": "placeholder"
   }
 }

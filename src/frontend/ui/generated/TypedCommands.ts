@@ -172,6 +172,9 @@ import type { LoginStarted } from "./LoginStarted";
 import type { LsReply } from "./LsReply";
 import type { LsReq } from "./LsReq";
 import type { MachineInterruptsReq } from "./MachineInterruptsReq";
+import type { MachineRead } from "./MachineRead";
+import type { MachineRoundReq } from "./MachineRoundReq";
+import type { MachineState } from "./MachineState";
 import type { MachinesEdits } from "./MachinesEdits";
 import type { MachinesReply } from "./MachinesReply";
 import type { MachinesSet } from "./MachinesSet";
@@ -451,6 +454,8 @@ export interface TypedCommands {
   "login-finish": { req: LoginFinishReq; reply: LoginDone; code: "bad_args" | "bad_paste" | "refused" | "no_job" | "child_timed_out" };
   "login-start": { req: LoginStartArgs; reply: LoginStarted; code: "bad_args" | "not_found" | "unsupported" | "failed" };
   "machine-interrupts": { req: MachineInterruptsReq; reply: Interrupts; code: "bad_args" };
+  "machine-read": { req: NoArgs; reply: MachineRead; code: "bad_args" };
+  "machine-round": { req: MachineRoundReq; reply: MachineState; code: "bad_args" };
   "machines-read": { req: NoArgs; reply: MachinesReply; code: "bad_args" };
   "machines-set": { req: MachinesEdits; reply: MachinesSet; code: "bad_args" | "unreadable" | "element_gone" | "element_exists" | "bad_machine" | "io_failed" };
   "machines-try": { req: MachinesEdits; reply: MachinesTried; code: "bad_args" };

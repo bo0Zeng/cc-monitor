@@ -588,6 +588,7 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<()> {
 
 fn ring() {
     let _ = changes().send(());
+    crate::control::machine_state::table_moved();
 }
 
 // ───────────────────────────── 三条命令 ─────────────────────────────

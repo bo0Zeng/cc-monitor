@@ -221,16 +221,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `ticket` | string | 测试连接那一趟的票（`remote-probe` 交来的） |
 | `cell` | JSON | 一格进度，恰好一个键：`stage` · `reached` · `end` |
 
-### `deploy`
-
-**装 / 升级远端后端那一趟走到哪一步**（`deploy-install` 在跑时才出现，只推给发起它的那条连接）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `machine` | string | 那台的名字（发起时交的 `machine`） |
-| `step` | DeployStep |  |
-| `said` | string |  |
-
 ### `live_card`
 
 `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -294,15 +284,6 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`） |
-=======
-
-#### `DeployStep`
-
-`Deploy::step`：问那台 · 放字节（落点上原来没有 ⇒ 装；有 ⇒ 更新）。
-
-- `plan`
-- `install`
-- `update`
 
 #### `SessionActivity`
 
@@ -410,6 +391,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
+- `machine` —— 这一端连的某台远端此刻的状态（`key` ＝ 那台的名字；`body` ＝ 那台的成品 `MachineState`；丢了重问 `machine-read`）
 - `session_hidden` —— 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：注解 · 这台偏好 · 会话血缘动了之后判出来的
 
 #### `RereadWhy`
@@ -11620,7 +11602,7 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 
 给那台装 / 升级后端。
 
-收 `args` · 连接内就地做完 · 只在流上
+收 `args` · 可撤 · 只在流上
 
 入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
@@ -11702,6 +11684,123 @@ path: string, };
 ```
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
+
+#### `machine-round`
+
+交那台接常驻这一轮的结论。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `MachineRoundReq` · 回包 `MachineState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineRound = { "state": "connecting" } | { "state": "up", relation: VersionRelation, differs: Array<string>, } | { "state": "down", problem: MachineRoundProblem, unsupported: boolean, };
+type MachineRoundProblem = { text: string, detail: string, why: DialWhy | null, seen_key: string | null, };
+type MachineRoundReq = { machine: string, round: MachineRound, version: string, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { state: MachineStateKind, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
+```
+
+码：`bad_args`
+
+#### `machine-read`
+
+机器表里每台此刻的状态。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `NoArgs` · 回包 `MachineRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DialWhy = "resolve" | "unreachable" | "timeout" | "host_key" | "auth" | "password" | "key_unreadable" | "jump" | "other";
+type MachineFix = "retry" | "conn_settings" | "push_key" | "compare_fingerprint" | "update" | "connect" | "install";
+type MachineFixButton = { fix: MachineFix, label: string, };
+type MachineRead = { machines: { [key in string]: MachineState }, };
+type MachineStage = "deploy" | "attach";
+type MachineState = { state: MachineStateKind, 
+/**
+ * 没连上的原因码（`down` · `host_key_changed` 才有）。
+ */
+reason: DialWhy | null, 
+/**
+ * 正在连时到哪一步。
+ */
+stage: MachineStage | null, 
+/**
+ * 那台 cc-monitor 的产品版本号：与这一版同一份字节时就是这一版的号；别的报不出 ⇒ 空。
+ */
+version: string | null, 
+/**
+ * 与这一版的版本关系（握手过才有）。
+ */
+versionRelation: VersionRelation | null, 
+/**
+ * 那台的系统（部署问到过才有）。
+ */
+os: string | null, 
+/**
+ * 名字旁那个词（连着时空）。
+ */
+word: string, 
+/**
+ * 问题行那一句（空 ⇒ 不出问题行）。
+ */
+said: string, fixes: Array<MachineFixButton>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有）。
+ */
+seenHostKey: string | null, 
+/**
+ * 这一轮没连上 / 做不了时的复制详情（界面照原样跟在问题行那句后面）。
+ */
+detail: string | null, };
+type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+type NoArgs = Record<symbol, never>;
+type VersionRelation = "same" | "older" | "newer" | "incomparable";
+```
+
+码：`bad_args`
 
 #### `place-verdict`
 

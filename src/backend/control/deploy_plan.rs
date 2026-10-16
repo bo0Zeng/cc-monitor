@@ -5,7 +5,7 @@
 //! monitor 交三样事实：怎么够到那台（`dial`）· 自己带着哪几格后端字节（`slots`，`[{os, arch, id, path}]`：那一格自报的身份 ·
 //! 落在本机哪个文件，本后端从文件读，不经帧传字节）· 那台叫什么。`deploy::install` 沿池里那条 SSH 走完 ①–④
 //! （计划 · 取字节 ＋ 自检 · 放进暂存区 ＋ 读回 · 那一份自己换进落点 · 收拾残件），同手机那一趟。
-//! 每走一步往本连接的应答通道推一帧 `deploy {machine, step, said}`（那一句是 `deploy::Step::said`），结局是应答。
+//! 每走一步、收尾那一下都记进那台的状态成品（`control/machine_state.rs`，推 `changed {machine}`），结局是应答。
 //! ⑤ 换常驻不在这里：monitor 接那台时 `--resident-ensure --replace`，那台自己判换不换。
 //!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
@@ -143,27 +143,11 @@ pub(crate) fn installed_of(p: &Plan) -> Installed {
     }
 }
 
-/// 一步 ⇒ 进度帧（那一句是 `deploy::Step::said`）。换常驻那一步不在这一趟里（宿主接那台时自己走）。
-pub(crate) fn step_frame(machine: &str, s: deploy::Step) -> Option<crate::wire::Deploy> {
-    use crate::wire::DeployStep;
-    let step = match s {
-        deploy::Step::Plan => DeployStep::Plan,
-        deploy::Step::Place { updating: false } => DeployStep::Install,
-        deploy::Step::Place { updating: true } => DeployStep::Update,
-        deploy::Step::Restart => return None,
-    };
-    Some(crate::wire::Deploy {
-        machine: machine.to_string(),
-        step,
-        said: s.said(machine),
-    })
-}
-
-/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on` 一帧，结局是应答。
+/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on`，结局是应答。
 pub async fn install(
     req: &DeployInstallReq,
     host: &dyn deploy::Place,
-    on: &(dyn Fn(crate::wire::Deploy) + Send + Sync),
+    on: &(dyn Fn(deploy::Step) + Send + Sync),
 ) -> Result<Installed, Fail> {
     let slots = slots_of(&req.slots)?;
     if req.machine.trim().is_empty() {
@@ -177,13 +161,7 @@ pub async fn install(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let load = |p: &std::path::Path| Ro::read(p);
-    let machine = req.machine.as_str();
-    let step = |s: deploy::Step| {
-        if let Some(f) = step_frame(machine, s) {
-            on(f);
-        }
-    };
-    deploy::install(host, &slots, &load, machine, now, &step)
+    deploy::install(host, &slots, &load, &req.machine, now, on)
         .await
         .map(|p| installed_of(&p))
         .map_err(fail_of)
@@ -203,7 +181,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `deploy-install`：给那台装 / 升级后端（帧面硬臂：进度帧走本连接的应答通道）。真异步（拨号 / 等远端）。
+/// `deploy-install`：给那台装 / 升级后端。真异步（拨号 / 等远端）。
 pub(crate) struct DeployInstall;
 
 impl crate::wire::typed::Command for DeployInstall {
@@ -213,11 +191,19 @@ impl crate::wire::typed::Command for DeployInstall {
     type Err = DeployInstallErr;
 }
 
-/// 生产的 `deploy-install`：真拨号；进度帧进本连接的应答通道（不丢、与应答同序）。
-pub(crate) async fn answer_install(
-    req: DeployInstallReq,
-    replies: &tokio::sync::mpsc::Sender<crate::wire::Frame>,
-) -> Result<Installed, DeployInstallErr> {
+impl crate::wire::typed::Handle for DeployInstall {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: DeployInstallReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Installed, DeployInstallErr>> + Send + 'static
+    {
+        answer_install(req)
+    }
+}
+
+/// 生产的 `deploy-install`：真拨号；每一步与收尾记进那台的状态成品。
+pub(crate) async fn answer_install(req: DeployInstallReq) -> Result<Installed, DeployInstallErr> {
     let dial = req
         .dial
         .stored()
@@ -232,22 +218,15 @@ pub(crate) async fn answer_install(
         Box::pin(async move { crate::dial::remote_ask::capture_full(&dial, command).await })
     });
     let facing = DialFacing::new(to, exec);
-    // 进度帧先进一条不封顶的队，由一个任务按序送进应答通道（`on` 是同步回调，送不了 `await`）。
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::wire::Deploy>();
-    let out = replies.clone();
-    let pump = tokio::spawn(async move {
-        while let Some(f) = rx.recv().await {
-            if out.send(crate::wire::Frame::Deploy(f)).await.is_err() {
-                break;
-            }
-        }
-    });
-    let got = install(&req, &facing, &move |f: crate::wire::Deploy| {
-        let _ = tx.send(f);
+    let machine = req.machine.clone();
+    let got = install(&req, &facing, &move |s| {
+        crate::control::machine_state::note(&machine, deploy::machine::Fact::Step(s));
     })
     .await;
-    // 进度帧排在应答之前：等那条队送完。
-    let _ = pump.await;
+    if !req.machine.trim().is_empty() {
+        let os = got.as_ref().ok().map(|i| i.os.to_string());
+        crate::control::machine_state::note(&req.machine, deploy::machine::Fact::Deployed { os });
+    }
     got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
 }
 

@@ -662,6 +662,7 @@ dependencies = [
 name = "deploy"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "deploy-contract",
  "relay-route-core",

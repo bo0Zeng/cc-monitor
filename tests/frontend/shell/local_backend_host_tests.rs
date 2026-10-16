@@ -4718,3 +4718,69 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
         );
     }
 }
+
+/// 本机那一行的成品与跨语言金样「本机没连上」那一形逐格相等（远端那几形由后端现产，`tests/backend/control/machine_state_tests.rs`）。
+#[test]
+fn the_local_row_matches_the_cross_language_golden() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/machine-state.golden.json"))
+            .expect("金样不是 JSON");
+    let want = golden["cases"]
+        .as_array()
+        .and_then(|c| c.iter().find(|c| c["name"] == "本机没连上"))
+        .expect("金样里没有本机那一形")["machine"]
+        .clone();
+    let got = {
+        let _g = crate::inbound_client::local_origin_test_lock();
+        note_local_foreign(None);
+        local_product(false, Some("p7z"))
+    };
+    let got = serde_json::to_value(got)
+        .unwrap()
+        .to_string()
+        .replace(&format!("\"{}\"", crate::PRODUCT_VERSION), "\"<ver>\"");
+    let got: serde_json::Value = serde_json::from_str(&got).unwrap();
+    assert_eq!(got, want, "本机那一形与金样对不上\n现产：{got}");
+}
+
+/// 壳里造机器状态成品只许本机那一处（远端各台的成品在后端定）：壳生产段里写 `MachineState {` 字面构造的文件恰好是这一份。
+#[test]
+fn only_the_local_row_is_built_in_the_shell() {
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    for root in guard_core::addr::shell_population_roots() {
+        walk(&root, &mut files);
+    }
+    assert!(
+        files.len() > 50,
+        "壳的人群只扫到 {} 份 —— 走法坏了",
+        files.len()
+    );
+    let builds: std::collections::BTreeSet<String> = files
+        .iter()
+        .filter(|p| {
+            let src = std::fs::read_to_string(p).unwrap_or_default();
+            guard_core::production_code(&src).lines().any(|l| {
+                let l = l.trim();
+                l.contains("MachineState {") && !l.contains("-> MachineState {")
+            })
+        })
+        .map(|p| guard_core::addr::rel_of(p))
+        .collect();
+    assert_eq!(
+        builds,
+        ["src/frontend/shell/src/local_backend_host.rs".to_string()]
+            .into_iter()
+            .collect(),
+        "壳里另有一处在造机器状态成品"
+    );
+}

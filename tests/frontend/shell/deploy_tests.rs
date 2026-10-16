@@ -414,24 +414,6 @@ fn the_reply_decoder_reads_the_golden() {
     );
 }
 
-/// 进度帧解码读同一份金样里的 `step`：那台 · 哪一步 · 那一句（后端写好的）原样进机器状态那一格。
-#[test]
-fn the_step_frame_reads_the_golden() {
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../__fixtures__/deploy-install.golden.json"
-    ))
-    .unwrap();
-    let got = crate::stream_source::decode(&golden["step"].to_string()).ok();
-    assert_eq!(
-        got,
-        Some(cmd_wire::frame::Frame::Deploy(cmd_wire::frame::Deploy {
-            machine: "placeholder".into(),
-            step: cmd_wire::frame::DeployStep::Update,
-            said: "placeholder".into(),
-        }))
-    );
-}
-
 /// 🔴装那一趟在本机后端里拨号 ⇒ 它的逐地址指纹随应答交回、由 monitor 按**同一个**判定固化
 /// （`dial_host::settle_host_key`，monitor 自己开链路那几条也走它），不另写一份。两向：解码器把金样里的 `ack` 原样收进来；
 /// 装那一口恰好一处把它交给 `settle_host_key`。

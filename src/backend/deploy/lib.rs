@@ -25,6 +25,7 @@ use serde_json::Value;
 use ssh_dial::{Captured, DialRequest};
 
 mod install;
+pub mod machine;
 pub use install::{install, Load, Place, Slot, Step, STAGED_STEM};
 
 /// 身份戳的两个界标（住契约 crate）。

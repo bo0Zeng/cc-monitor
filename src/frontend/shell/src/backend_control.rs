@@ -150,18 +150,21 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, Said> {
     // `detached` 的源头只能是「起它的时候走没走那条路」：`is_detached()` 读的是一条只在真的走过脱离那条路时才写下的记录（`local_backend_host::DETACHED`）。
     // 不许拿 `channel` 或 `pid` 反推（假信号不报错，它只是一直说是）。远端那侧是 `null`（「它脱没脱离」在远端这条路上没有意义）。
     // 三格一起算：`the_three_ports_are_one_command_each_and_all_take_origin` 逐口只许有一处 `is_local(&origin)` 分派。
-    // 那台的状态成品（判定只在 `machine_state`）同一处分派：本机按通道与手上这一版；远端按那张表，「连接这台」关着 ⇒ 停用。
-    let (pid, attempts, detached) = if is_local(&origin) {
+    // 本机那一台的状态成品同一处分派（按通道与手上这一版）；远端各台的成品在本机后端（`machine-read` · `changed {machine}`）⇒ `null`。
+    let (pid, attempts, detached, machine) = if is_local(&origin) {
         let (p, a) = crate::local_backend_host::local_pid_and_attempts()?;
         (
             p,
             a,
             serde_json::json!(crate::local_backend_host::is_detached()),
+            Some(crate::local_backend_host::local_product(
+                channel,
+                crate::byte_table::my_backend_id(),
+            )),
         )
     } else {
-        (None, None, serde_json::Value::Null)
+        (None, None, serde_json::Value::Null, None)
     };
-    let machine = machine_product(&origin, channel);
     // 死亡账的读数也从这一口出去。它不走 `is_local` 分派：那张账按 origin 存（`backend_policy::health(origin)`），远端那一格恒是「四个 0」——
     // 远端退出状态在别人机器上拿不到，「没人在记」正是实情，那一格说「答不出来」（判定在 `backend_policy::health_face`）。
     // 不填 `null`：那与 `pid` / `attempts` 不是一件事。再开一个 `is_local(&origin)` 分派会撞那条「逐口恰好一处」的判据。
@@ -176,24 +179,6 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, Said> {
         // 「退出行为」那个值住后端那台机器上（后端 `exit-policy-read`），这里不留副本。「健康」那一格是成品（状态 ＋ 一句 ＋ ⓘ ＋ `[详情]`），判定只在 `health_face`。
         "health": crate::backend_policy::health_face(&h),
     }))
-}
-
-/// 那台此刻的状态成品（通道在不在现看）：`machine-state` 推送与诊断信息那一段读这一处。
-pub(crate) fn machine_now(origin: &str) -> crate::machine_state::MachineState {
-    machine_product(origin, crate::inbound_client::client_for(origin).is_some())
-}
-
-/// 那台的状态成品（`backend_status` 的 `machine` 一格与 `machine-state` 推送同一处）：本机按通道与手上这一版；
-/// 远端按那张表，「连接这台」关着 ⇒ 停用。
-pub(crate) fn machine_product(origin: &str, channel: bool) -> crate::machine_state::MachineState {
-    if is_local(origin) {
-        return crate::machine_state::local_product(channel, crate::byte_table::my_backend_id());
-    }
-    let enabled = crate::load_all_remote_configs()
-        .into_iter()
-        .find(|(c, _)| c.origin_label() == origin)
-        .is_none_or(|(_, connect)| connect);
-    crate::machine_state::product(origin, enabled)
 }
 
 /// 起这台机的 backend。已经在跑就是 no-op（每台机只许一个）。
