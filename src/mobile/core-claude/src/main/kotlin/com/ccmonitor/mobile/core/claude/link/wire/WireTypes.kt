@@ -1360,4 +1360,3 @@ enum class LoginAgainHow {
     @Json(name = "none")
     NONE,
 }
-

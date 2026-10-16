@@ -18,7 +18,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.link.wire.Sent as SentWire
 
-/**
+/*
  * 起会话 · 往会话里送字 · 读一条会话的正文：都是那台核心的帧命令，手机只拼入参、解成品（`IPC-COMMANDS.md` 各节）。
  * 正文是核心的通用记录（`IPC-PROTOCOL.md`「通用记录」）。
  */
