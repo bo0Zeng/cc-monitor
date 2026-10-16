@@ -18,12 +18,12 @@ fn it_reads_the_same_table_the_frontend_reads() {
     assert_eq!(raw, TABLE_JSON, "内嵌的那一份与盘上那一份不是同一份");
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "devbox"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "devbox"), ("name", "%1")]
         ),
         copy_core::copy_text(
-            "panePreview.head.title",
-            &[("origin", "devbox"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "devbox"), ("name", "%1")]
         )
     );
 }
@@ -33,7 +33,7 @@ fn it_reads_the_same_table_the_frontend_reads() {
 fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
     assert_eq!(
-        copy_text("panePreview.head.title", &[("origin", "devbox")]),
-        "预览 · devbox · tmux 会话 {target}"
+        copy_text("sessionOpen.attached.body", &[("machine", "devbox")]),
+        "devbox · tmux 会话「{name}」"
     );
 }
