@@ -40,21 +40,21 @@ pub enum Step {
 impl Step {
     /// 这一步对人说的那一句（`machine` = 那台的名字）。
     pub fn said(self, machine: &str) -> String {
-        let connecting = |stage: &str| {
+        let connecting = |stage: String| {
             copy_text(
                 "machineState.busy.connecting",
-                &[("machine", machine), ("stage", &copy_text(stage, &[]))],
+                &[("machine", machine), ("stage", &stage)],
             )
         };
         match self {
-            Step::Plan => connecting("machineState.stage.deploy"),
+            Step::Plan => connecting(copy_text("machineState.stage.deploy", &[])),
             Step::Place { updating: true } => {
                 copy_text("machineState.busy.updating", &[("machine", machine)])
             }
             Step::Place { updating: false } => {
                 copy_text("machineState.busy.installing", &[("machine", machine)])
             }
-            Step::Restart => connecting("machineState.stage.attach"),
+            Step::Restart => connecting(copy_text("machineState.stage.attach", &[])),
         }
     }
 }

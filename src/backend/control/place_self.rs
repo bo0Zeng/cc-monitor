@@ -50,7 +50,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), (&'static s
     let (true, Some(name)) = (inside, name) else {
         return Err((
             "outside_staging",
-            copy_text("bePlaceSelf.outsideStaging", &[("path", &shown)]).into(),
+            copy_text("bePlaceSelf.place.outsideStaging", &[("path", &shown)]).into(),
         ));
     };
     let io = |e: std::io::Error| {
@@ -58,7 +58,7 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), (&'static s
             "place_failed",
             Said::with_raw(
                 copy_text(
-                    "bePlaceSelf.failed",
+                    "bePlaceSelf.place.failed",
                     &[("path", &shown), ("why", &copy_core::io_reason(e.kind()))],
                 ),
                 &e,
@@ -75,7 +75,11 @@ pub(crate) fn place(own: &Own, exe: &Path, mine: &str) -> Result<(), (&'static s
         }
         return Err((
             "not_self",
-            copy_text("bePlaceSelf.notSelf", &[("path", &shown), ("mine", mine)]).into(),
+            copy_text(
+                "bePlaceSelf.place.notSelf",
+                &[("path", &shown), ("mine", mine)],
+            )
+            .into(),
         ));
     }
     own.place_staged(name).map_err(io)

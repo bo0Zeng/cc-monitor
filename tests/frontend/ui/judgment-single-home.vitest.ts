@@ -975,6 +975,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PREFS_HANDOFF_REL: NONE,
     MACHINES_REL: NONE,
     file_name_of: NONE,
+    // 家目录底下一条相对路径的远端 POSIX 写法（部署叫暂存那一份用）；TS 侧没有孪生。
+    home_shell: NONE,
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,
     LISTEN_SOCKET_NAME: NONE,

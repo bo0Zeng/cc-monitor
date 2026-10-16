@@ -150,14 +150,11 @@ pub(crate) fn connecting(origin: &str, stage: &str) {
             ("machine", origin),
             (
                 "stage",
-                &crate::copy_table::copy_text(
-                    if stage == "attach" {
-                        "machineState.stage.attach"
-                    } else {
-                        "machineState.stage.deploy"
-                    },
-                    &[],
-                ),
+                &if stage == "attach" {
+                    crate::copy_table::copy_text("machineState.stage.attach", &[])
+                } else {
+                    crate::copy_table::copy_text("machineState.stage.deploy", &[])
+                },
             ),
         ],
     );
