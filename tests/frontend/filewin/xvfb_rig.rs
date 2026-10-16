@@ -445,10 +445,8 @@ pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
 /// 🔴 带 `--onlyvisible`：只认**真的映射到屏幕上**的那一档。
 /// 不带的话一个建了却没 map 的窗口照样数得到 ——
 /// 而「建了」与「摆到屏幕上了」正是这一格要分开的两件事。
-pub fn wait_for_windows(display: &str, needle: &str, budget_ms: u64) -> Vec<String> {
-    let step = 100;
-    let mut waited = 0;
-    loop {
+pub fn wait_for_windows(display: &str, needle: &str) -> Vec<String> {
+    for () in guard_core::wall::rounds() {
         if let Ok(out) = xdotool_on(display, &["search", "--onlyvisible", "--name", needle]) {
             let ids: Vec<String> = out
                 .lines()
@@ -460,12 +458,9 @@ pub fn wait_for_windows(display: &str, needle: &str, budget_ms: u64) -> Vec<Stri
                 return ids;
             }
         }
-        if waited >= budget_ms {
-            return Vec::new();
-        }
-        std::thread::sleep(std::time::Duration::from_millis(step));
-        waited += step;
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
+    Vec::new()
 }
 
 /// 一个窗口在**根坐标**里的位置与尺寸（都是物理像素）。

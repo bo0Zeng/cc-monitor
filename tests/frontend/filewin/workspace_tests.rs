@@ -2858,7 +2858,7 @@ async fn perf_rig_worker() {
         println!("perf.{name}.cpu_ms={}", (cpu() - c0) * 10);
         println!("perf.{name}.frames={}", frames() - f0);
     };
-    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big", 20_000);
+    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big");
     let Some(id) = ids.first().cloned() else {
         panic!("窗口没起来");
     };

@@ -581,7 +581,7 @@ fn drive_real_pointer(
     let sleep = |ms: u64| std::thread::sleep(std::time::Duration::from_millis(ms));
 
     // 等「窗口在屏幕上」且「已经画过几帧」两件同时成立。
-    let ids = xvfb::wait_for_windows(display, REAL_EVENT_WINDOW_TITLE, 20_000);
+    let ids = xvfb::wait_for_windows(display, REAL_EVENT_WINDOW_TITLE);
     log.push(format!("窗口 {ids:?}"));
     let Some(id) = ids.first().cloned() else {
         // 关不掉的话 `run_native` 永远不回，那一格会以超时收场 —— 让它快点收。

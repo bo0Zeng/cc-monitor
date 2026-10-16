@@ -585,7 +585,7 @@ fn xvfb_worker_opens_a_real_window() {
         Some(crate::theme::testing::default_theme()),
     );
 
-    let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
+    let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE);
     xvfb::emit("a.window_count", ids.len());
     if let Some(id) = ids.first() {
         xvfb::emit(
