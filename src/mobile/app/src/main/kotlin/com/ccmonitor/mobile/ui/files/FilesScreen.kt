@@ -193,8 +193,8 @@ private fun entryActions(
     return remember(vm) {
         EntryActions(
             download = { e -> vm.download(e, context.getExternalFilesDir(null)) },
-            preview = { e -> scope.launch { vm.readText(e, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
-            startEdit = { e -> scope.launch { vm.readText(e, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
+            preview = { e -> scope.launch { vm.readText(e.path, e.preview).onSuccess { onDialog(FilesDialog.Preview(e.name, it.text)) } } },
+            startEdit = { e -> scope.launch { vm.readText(e.path, e.edit).onSuccess { onDialog(FilesDialog.Edit(e, it.text, it.sha256)) } } },
             startChmod = { e -> scope.launch { onDialog(FilesDialog.Chmod(e, vm.modeText(e))) } },
         )
     }

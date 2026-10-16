@@ -137,12 +137,12 @@ class FilesViewModel(
         viewModelScope.launch {
             _ui.first { it == FilesUi.Ready }
             when (val at = ops.open(text).onFailure(::say).getOrNull() ?: return@launch) {
-                is FileOps.Opening.Dir -> navigateTo(at.dir)
+                is FileOps.Opening.Dir -> enter(at.dir)
                 is FileOps.Opening.File -> {
-                    navigateTo(at.dir)
-                    _busy.value = true
-                    ops.readText(at.file).onSuccess { _opened.tryEmit(at.file.name.shown to it.text) }.onFailure(::say)
-                    _busy.value = false
+                    // 名字与预览那道门都在它那一行上；不在这一屏（截了）⇒ 门不明，读那一步说那一句。
+                    val e = enter(at.dir)?.entries?.firstOrNull { it.path == at.file }
+                    if (e != null && e.preview == null) return@launch
+                    readText(at.file, e?.preview).onSuccess { _opened.tryEmit((e?.name ?: at.file.shown) to it.text) }
                 }
             }
         }
@@ -150,16 +150,20 @@ class FilesViewModel(
 
     /** 进一个目录（上级 · 面包屑 · 书签 · 点目录都走它）：列不出 ⇒ 留在原处、说那台那一句。 */
     fun navigateTo(dir: RemotePath) {
-        viewModelScope.launch {
-            _busy.value = true
+        viewModelScope.launch { enter(dir) }
+    }
+
+    private suspend fun enter(dir: RemotePath): FilesLs.Listing? {
+        _busy.value = true
+        val r =
             ops
                 .list(dir, _sortBySize.value)
                 .onSuccess {
                     _listing.value = it
                     _cwd.value = dir
                 }.onFailure(::say)
-            _busy.value = false
-        }
+        _busy.value = false
+        return r.getOrNull()
     }
 
     private suspend fun refresh() {
@@ -257,7 +261,7 @@ class FilesViewModel(
 
     /** 照那道门读那一份文本（预览 · 编辑）：门不许 ⇒ 说那台写好的那一句、不读；没成 ⇒ 已说那一句。 */
     suspend fun readText(
-        entry: FilesLs.Entry,
+        path: RemotePath,
         gate: FilesLs.Open?,
     ): Result<FilesReadText.Text> {
         val cap = gate?.cap
@@ -267,7 +271,7 @@ class FilesViewModel(
             return Result.failure(IllegalStateException(said))
         }
         _busy.value = true
-        return ops.readText(entry.path, cap).also {
+        return ops.readText(path, cap).also {
             _busy.value = false
             it.onFailure(::say)
         }

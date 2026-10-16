@@ -592,6 +592,7 @@ fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatRe
     let texts = mtime.map(|ms| crate::common::time::mtime_texts_now(ms, tz));
     Ok(wire::StatReply {
         path: wire_path(raw::path_bytes(&path)),
+        up: path.parent().map(|u| wire_path(raw::path_bytes(u))),
         kind: kind_of(t.is_dir(), t.is_file(), t.is_symlink()),
         size: md.len(),
         readonly: md.permissions().readonly(),

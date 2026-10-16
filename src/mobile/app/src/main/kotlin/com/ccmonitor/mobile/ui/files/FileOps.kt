@@ -89,10 +89,12 @@ class FileOps(
         isDir: Boolean,
     ): Result<Unit> = batch(FilesDelete.COMMAND, FilesDelete.args(dir, name, isDir), TREE_MS)
 
-    /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进它所在的目录、开它。 */
+    /** 打开别处点名的一个路径：那台说是目录 ⇒ 进去；别的 ⇒ 进那台说的它所在的目录、开它。 */
     suspend fun open(text: String): Result<Opening> {
         val path = RemotePath.of(text)
-        return ask(FilesStat.COMMAND, FilesStat.args(path), FilesStat::kindOf).map { if (it == FileKind.DIR) Opening.Dir(path) else Opening.File(path.parent, path) }
+        return ask(FilesStat.COMMAND, FilesStat.args(path), { d ->
+            FilesStat.placeOf(d)?.let { p -> if (p.kind == FileKind.DIR) Opening.Dir(path) else p.up?.let { Opening.File(it, path) } }
+        })
     }
 
     /** 打开一个路径落在哪。 */
