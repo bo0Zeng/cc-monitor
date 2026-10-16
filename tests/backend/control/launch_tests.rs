@@ -1205,7 +1205,10 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.code, "typed_unconfirmed");
-    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    assert_eq!(
+        e.untyped,
+        Some((Delivery::NotDelivered, Some(JustMade::for_test(&req.name))))
+    );
 
     let f = FakeTmux::new(|verb| match verb {
         "send-keys" => Err(CmdErr::from(
@@ -1219,7 +1222,10 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.code, "typed_unconfirmed");
-    assert_eq!(e.untyped, Some((Delivery::Unknown, true)));
+    assert_eq!(
+        e.untyped,
+        Some((Delivery::Unknown, Some(JustMade::for_test(&req.name))))
+    );
 
     // 别的失败（建不出来）不带这一格。
     let f = FakeTmux::new(|verb| match verb {
@@ -1251,8 +1257,15 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         ran(sb.child(), a)
     };
     let e = run_with(&req, &tmux).unwrap_err();
-    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    let Some((Delivery::NotDelivered, Some(made))) = e.untyped else {
+        panic!("没送进却没带回「刚建的」令牌：{:?}", e.untyped);
+    };
     let real = |a: &[&str]| ran(sb.child(), a);
+    // 收空壳只经 `kill::end`、只收令牌；别的几形在沙箱里自己建好再造令牌（判据那一口）。
+    let reap_on = |m: JustMade| {
+        crate::control::kill::end(crate::control::kill::Ending::Bare(m, &real)).is_ok()
+    };
+    let reap = |name: &str| reap_on(JustMade::for_test(name));
     assert!(
         sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status
@@ -1266,10 +1279,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         "=busy2-bare:",
         "#{session_windows} #{window_panes} [#{pane_start_command}] #{session_attached}",
     ]);
-    assert!(
-        reap_if_bare("busy2-bare", &real),
-        "只剩 shell 的会话该收掉：{seen}"
-    );
+    assert!(reap_on(made), "只剩 shell 的会话该收掉：{seen}");
     assert!(
         !sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status
@@ -1279,7 +1289,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
 
     // 里面跑着别的程序 ⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-busy", "sleep 600"]);
-    assert!(!reap_if_bare("busy2-busy", &real));
+    assert!(!reap("busy2-busy"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-busy:"])
         .status
@@ -1287,20 +1297,20 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
     // 开了第二个窗口 ⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-two"]);
     sb.ok(&["new-window", "-t", "=busy2-two:"]);
-    assert!(!reap_if_bare("busy2-two", &real));
+    assert!(!reap("busy2-two"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-two:"])
         .status
         .success());
     // 窗格起的不是默认 shell（前台此刻是什么不看）⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-cmd", "sh"]);
-    assert!(!reap_if_bare("busy2-cmd", &real));
+    assert!(!reap("busy2-cmd"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-cmd:"])
         .status
         .success());
     // 名字只认精确那一个：`busy2-tw` 不存在 ⇒ 不碰 `busy2-two`。
-    assert!(!reap_if_bare("busy2-tw", &real));
+    assert!(!reap("busy2-tw"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-two:"])
         .status

@@ -1386,10 +1386,11 @@ fn the_final_launch_starts_what_the_footprint_found() {
 /// busy2：容器路送启动命令没确认 ⇒ 送达未知且不带 `--detach` 照样接进去；明确没送进且会话是本趟建的 ⇒ 收掉再报；别的照报。
 #[test]
 fn busy2_after_an_unconfirmed_start_command_join_or_reap() {
-    use crate::control::launch::{Delivery, LaunchFail};
-    let fail = |untyped| LaunchFail {
+    use crate::control::launch::{Delivery, JustMade, LaunchFail};
+    // `true` ＝ 会话是本趟建的（失败带回「刚建的」令牌）。
+    let fail = |untyped: Option<(Delivery, bool)>| LaunchFail {
         fail: crate::wire::spec::Fail::new("typed_unconfirmed", "x".into()),
-        untyped,
+        untyped: untyped.map(|(d, made)| (d, made.then(|| JustMade::for_test("x")))),
     };
     let cases = [
         (

@@ -140,14 +140,27 @@ fn run_expecting(
 ) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     let target = super::launch::exact_target(name);
     // Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）⇒ 通过后拿到令牌。
-    end(
-        name,
-        super::gate::admit_destructive(name, &target, sid, requester)?,
-    )
+    let doomed = super::gate::admit_destructive(name, &target, sid, requester)?;
+    end(Ending::Doomed(name, doomed))
 }
 
-/// 结束门放行的那一处：只收门发的令牌，对令牌里的句柄下手（整个会话，或只挂着那个 sid 的几个窗格）。
-fn end(name: &str, doomed: super::gate::Doomed) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+/// 一发 tmux（`launch::run_with` 那一口的形状）。
+type Tmux<'a> = dyn Fn(&[&str]) -> Result<super::launch::Ran, CmdErr> + 'a;
+
+/// 结束会话的两种令牌：门放行的（`kill`），或本趟刚建、启动命令没送进的那个空壳（`ccm` 收掉它）。
+pub(crate) enum Ending<'a> {
+    /// `name`：说给人听的会话名（杀成之后按它认 cc-bus 名册）。
+    Doomed(&'a str, super::gate::Doomed),
+    /// 只在仍是空壳时收；`tmux` 同 `launch::run_with` 那一口（判据交隔离 socket 上的）。
+    Bare(super::launch::JustMade, &'a Tmux<'a>),
+}
+
+/// 结束会话的唯一一处：只收令牌（[`Ending`]），对令牌里的目标下手。
+pub(crate) fn end(ending: Ending<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    let (name, doomed) = match ending {
+        Ending::Doomed(n, d) => (n, d),
+        Ending::Bare(made, tmux) => return end_bare(made.target(), tmux),
+    };
     let (handle, only) = match doomed.at() {
         super::gate::EndAt::Session(h) => (h.as_str(), None),
         super::gate::EndAt::Panes(h, ps) => (h.as_str(), Some(ps.as_slice())),
@@ -175,6 +188,25 @@ fn end(name: &str, doomed: super::gate::Doomed) -> Result<super::cc_bus::BusClea
         return Ok(bus);
     }
     Err(kill_refused(&out.stderr))
+}
+
+/// [`end`] 的空壳那一臂。判与收在同一发 tmux 里（`if-shell -F`）：只一个窗口、一个窗格、窗格起的是默认 shell
+/// （`pane_start_command` 空）、没有客户端接着 ⇒ `kill-session`；别的形一律不动。不看窗格前台是什么：shell 刚起时
+/// rc 里的子进程会短暂占着前台（实测 40 趟里 4 趟）。收成 ⇒ 空的注销结局（空壳上没有登记）；不在 · 不是空壳 ⇒ `kill_failed`。
+fn end_bare(t: &str, tmux: &Tmux<'_>) -> Result<super::cc_bus::BusCleanup, CmdErr> {
+    const BARE: &str = "#{&&:#{==:#{session_windows},1},#{&&:#{==:#{window_panes},1},#{&&:#{==:#{pane_start_command},},#{==:#{session_attached},0}}}}";
+    let there = || matches!(tmux(&["has-session", "-t", t]), Ok(r) if r.ok);
+    let kill = format!("kill-session -t {t}");
+    if there()
+        && matches!(tmux(&["if-shell", "-F", "-t", t, BARE, &kill]), Ok(r) if r.ok)
+        && !there()
+    {
+        return Ok(Default::default());
+    }
+    Err(CmdErr::new(
+        "kill_failed",
+        copy_text("beKill.run.failed", &[]),
+    ))
 }
 
 /// tmux 这个程序起不来：句子只说原因词（未装 / 无权限 …），系统原话进复制详情；超时那一档照旧。
