@@ -35,6 +35,7 @@ class MachineSettingsTest {
         "plate" to name.take(2),
         "quota" to null,
         "unselectable" to if (selectable) null else "需登录",
+        "login" to !selectable,
         "authKind" to "subscription",
         "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable),
     )

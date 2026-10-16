@@ -131,7 +131,7 @@ class KeyDispatchTest {
     fun keyBarInputSendsWithWhatIsLitAtThatMoment() {
         var sent: ByteArray? = null
         val noop = {}
-        val a = KeyActions(true, noop, noop, noop, noop, noop, noop, noop, noop, noop, { true })
+        val a = KeyActions(null, null, noop, noop, noop, noop, noop, noop, noop, noop, noop, { true })
         dispatchBinding(KeyBinding.Input(listOf(sp(SpecialKey.RIGHT))), { sent = it }, a) { lit(KeyMod.CTRL, KeyMod.SHIFT) }
         assertEquals("\u001b[1;6C", String(sent!!, Charsets.ISO_8859_1))
     }
