@@ -276,25 +276,32 @@ fn the_from_section_is_comment_lines_only() {
     let t = AccountTable::default();
     let plan = build(&o, &env(), &t, None).expect("算得出计划");
     let text = render_from(&from_rows(&o, &origins, &env(), &t, &plan));
-    let lines: Vec<&str> = text.lines().collect();
-    assert!(lines.len() >= 4, "「来自」那一节太短：{text}");
-    assert_eq!(
-        lines[0],
-        format!("# {}", copy_core::copy_text("beCcm.print.from", &[]))
-    );
-    assert!(
-        lines.iter().all(|l| l.starts_with("# ")),
-        "「来自」那一节有一行不是注释（混进那条命令交给 shell 就会被当命令跑）：{text}"
-    );
-    let cwd = copy_core::copy_text(
-        "beCcm.print.row",
-        &[
-            ("item", &copy_core::copy_text("beCcm.item.cwd", &[])),
-            ("value", "/p"),
-            ("from", &copy_core::copy_text("beCcm.from.flag", &[])),
-        ],
-    );
-    assert!(lines.contains(&format!("# {cwd}").as_str()), "{text}");
+    // 每一行都是注释（混进那条命令交给 shell 就会被当命令跑）：标题一行 ＋ 四项各一行（值 · 从哪来）。
+    let c = |k: &str| copy_core::copy_text(k, &[]);
+    let row = |item: String, value: &str, from: &str| {
+        let r = copy_core::copy_text(
+            "beCcm.print.row",
+            &[("item", &item), ("value", value), ("from", &c(from))],
+        );
+        format!("# {r}\n")
+    };
+    let want = [
+        format!("# {}\n", c("beCcm.print.from")),
+        row(c("beCcm.item.cwd"), "/p", "beCcm.from.flag"),
+        row(
+            c("beProfile.slot.account"),
+            &c("beCcm.value.noAccount"),
+            "beCcm.from.default",
+        ),
+        row(c("beProfile.slot.launcher"), "claude", "beCcm.from.default"),
+        row(
+            c("beProfile.slot.tmux"),
+            &c("beCcm.value.here"),
+            "beCcm.from.default",
+        ),
+    ]
+    .concat();
+    assert_eq!(text, want, "「来自」那一节");
     // 接回一个会话不起新会话 ⇒ 一行都不写。
     let attach: Vec<String> = ["--", "--attach", "x"]
         .iter()
