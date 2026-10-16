@@ -15,7 +15,7 @@
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
 import { makeYieldToMain } from "../yield-to-main";
-import { renderMarkdown, renderPlainText } from "../render";
+import { forgetEnhance, renderMarkdown, renderPlainText } from "../render";
 import { buildSlashCommandCard } from "./slash";
 import { buildBashInputCard, buildBashOutputCard } from "./bash";
 import { buildCompactSummaryCard } from "./compact";
@@ -894,8 +894,12 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
   return removed;
 }
 
-/** 卡交回占位之后（`SkeletonView.release`）：几张表里还指着摘下来的卡的那几项丢掉（滚回来重建时重新登记）。 */
-export function forgetDetached(ctx: Pick<RenderContext, "toolUseElements" | "runCards" | "pendingToolResults">): void {
+/**
+ * 卡交回占位之后（`SkeletonView.release`）：几张表里还指着摘下来的卡的那几项丢掉、摘下来的卡不再等着补高亮
+ * （`root` = 它们所在的滚动容器）；滚回来重建时重新登记。
+ */
+export function forgetDetached(ctx: Pick<RenderContext, "toolUseElements" | "runCards" | "pendingToolResults">, root: HTMLElement, cards: Iterable<HTMLElement>): void {
+  for (const el of cards) forgetEnhance(el, root);
   for (const [id, el] of ctx.toolUseElements) if (!el.isConnected) ctx.toolUseElements.delete(id);
   for (const [id, el] of ctx.runCards ?? []) if (!el.isConnected) ctx.runCards!.delete(id);
   for (const [id, { element }] of ctx.pendingToolResults) if (!element.isConnected) ctx.pendingToolResults.delete(id);

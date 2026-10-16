@@ -438,9 +438,9 @@ export class SessionViewer {
       const view: SkeletonView = new SkeletonView(ledger, this.streamEl, sink.timeline, {
         materialize: (lo, hi) => this.fetchRows(gen, view, lo, hi),
         // 交回的行算没画过 ⇒ 滚回来照常取
-        released: (ranges) => {
+        released: (ranges, cards) => {
           for (const [a, b] of ranges) for (let q = a; q < b; q++) this.drawn.delete(q);
-          forgetDetached(ctx);
+          forgetDetached(ctx, this.streamEl, cards);
           this.rebuildFold();
           this.updateStatus();
         },

@@ -63,8 +63,8 @@ export interface SkeletonHost {
    * 落地时宿主调 [`SkeletonView.landed`]（取不到 ⇒ [`SkeletonView.failed`]）。
    */
   materialize(lo: number, hi: number): ReadonlyArray<readonly [number, number]>;
-  /** 这几段（半开）已建的卡摘了、交回占位（[`SkeletonView.release`]）：宿主清掉还指着摘下来的卡的表、重折。 */
-  released(ranges: ReadonlyArray<readonly [number, number]>): void;
+  /** 这几段（半开）已建的卡（`cards`）摘了、交回占位（[`SkeletonView.release`]）：宿主清掉还指着它们的表、重折。 */
+  released(ranges: ReadonlyArray<readonly [number, number]>, cards: readonly HTMLElement[]): void;
 }
 
 interface Gap {
@@ -317,8 +317,8 @@ export class SkeletonView {
     return total;
   }
 
-  /** 视口上下各留几屏已建的卡，更远的交回占位。 */
-  static readonly KEEP_SCREENS = 3;
+  /** 视口上下各留几屏已建的卡，更远的交回占位（每多留一屏约多一万个 DOM 元素、帧间隔不随它变；两屏够来回看几眼不用重取）。 */
+  static readonly KEEP_SCREENS = 2;
 
   /**
    * **物化的反方向**：离视口超过 ±`screens` 屏的已建卡交回占位（滚回来照物化可见区那条路重建）。
@@ -342,12 +342,15 @@ export class SkeletonView {
     }
     if (ranges.length === 0) return 0;
     let n = 0;
+    const cards: HTMLElement[] = [];
     this.pinned(() => {
       const heights = ranges.map(([a, b]) => this.measure(a, b));
       for (const h of heights) this.ledger.measured(h);
       for (const [a, b] of ranges) {
+        const gaps = new Set(this.gaps.map((g) => g.el));
         const gone = new Set<HTMLElement>();
         for (const e of this.timeline.removeBetween(a, b)) {
+          if (!gaps.has(e.element)) cards.push(e.element);
           gone.add(e.element);
           e.element.remove();
         }
@@ -356,7 +359,7 @@ export class SkeletonView {
         n += b - a;
       }
     });
-    this.host.released(ranges);
+    this.host.released(ranges, cards);
     return n;
   }
 

@@ -1114,8 +1114,8 @@ export class TabStreamView {
         return this.fetchMissingRows(tab, view, lo, hi, new Set(taken.map((p) => p.seq)));
       },
       // 交回的行早到过（`seenSeqs`）⇒ 滚回来按偏移取回、只建卡（`fetchMissingRows` 的「见过的」那一支）
-      released: () => {
-        forgetDetached(tab);
+      released: (_ranges, cards) => {
+        forgetDetached(tab, tab.streamEl, cards);
         tab.branchFolder.rebuildNow();
       },
     });
