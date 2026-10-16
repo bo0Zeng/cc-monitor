@@ -2833,7 +2833,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     copy.as_object_mut().unwrap().remove("ticket");
     assert_eq!(
         copy,
-        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }] })
+        serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "from": b16(b"f\xfe"), "to": "g" }], "single": true })
     );
     assert_eq!(
         wired.count("files-stat"),
@@ -3467,7 +3467,9 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
     }
     assert_eq!(
         renames(&wired).last(),
-        Some(&serde_json::json!({ "root": "/srv/data", "from": "b.txt", "to": "a.txt" })),
+        Some(
+            &serde_json::json!({ "root": "/srv/data", "from": "b.txt", "to": "a.txt", "single": true })
+        ),
         "撤销那一件不是改回原名"
     );
     w.settle_finished_writes();

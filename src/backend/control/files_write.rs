@@ -603,16 +603,16 @@ pub fn change_mode(
 /// 超出 `0o7777` 拒而不掩：敲了 `100644`（连文件类型位一起抄来的）掩成 `644` 就是改了别的东西。
 pub fn mode_of_text(t: &str) -> Result<u32, WriteFail> {
     let t = t.trim();
-    let key = if t.is_empty() {
-        "beFilesWrite.mode.empty"
+    let said = if t.is_empty() {
+        copy_text("beFilesWrite.mode.empty", &[])
     } else {
         match u32::from_str_radix(t, 8) {
             Ok(m) if m <= 0o7777 => return Ok(m),
-            Ok(_) => "beFilesWrite.mode.outOfRange",
-            Err(_) => "beFilesWrite.mode.notOctal",
+            Ok(_) => copy_text("beFilesWrite.mode.outOfRange", &[]),
+            Err(_) => copy_text("beFilesWrite.mode.notOctal", &[]),
         }
     };
-    Err(WriteFail::from(("refused", copy_text(key, &[]))))
+    Err(WriteFail::from(("refused", said)))
 }
 
 /// 同 [`change_mode`]，另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。

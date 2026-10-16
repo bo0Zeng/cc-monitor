@@ -39,8 +39,14 @@ pub(crate) fn local_dest_kept(
     raw: &[u8],
 ) -> (serde_json::Value, Option<String>) {
     use std::os::unix::ffi::OsStrExt as _;
-    let dir = p.parent().map(|d| d.as_os_str().as_bytes()).unwrap_or_default();
-    (crate::source::wire_bytes(&crate::source::child_bytes(dir, raw)), None)
+    let dir = p
+        .parent()
+        .map(|d| d.as_os_str().as_bytes())
+        .unwrap_or_default();
+    (
+        crate::source::wire_bytes(&crate::source::child_bytes(dir, raw)),
+        None,
+    )
 }
 
 #[cfg(not(unix))]

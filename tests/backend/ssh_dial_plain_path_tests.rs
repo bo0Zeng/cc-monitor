@@ -3,8 +3,11 @@
 use super::{plain_segments, Dots, Fault};
 
 fn segs(p: &str, bs: bool, dots: Dots) -> Result<Vec<String>, Fault> {
-    plain_segments(p.as_bytes(), bs, dots)
-        .map(|v| v.iter().map(|s| String::from_utf8_lossy(s).into_owned()).collect())
+    plain_segments(p.as_bytes(), bs, dots).map(|v| {
+        v.iter()
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect()
+    })
 }
 
 #[test]

@@ -26,13 +26,20 @@ pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
     if rel.to_string_lossy().trim().is_empty() {
         return Err(copy_text("beFilesWrite.path.empty", &[]));
     }
-    let key = match plain_segments(rel.as_os_str().as_encoded_bytes(), cfg!(windows), Dots::Reject) {
-        Ok(_) => return Ok(root.join(rel)),
-        Err(Fault::Parent) => "beFilesWrite.path.parentStep",
-        Err(Fault::Dot) => "beFilesWrite.path.dotStep",
-        Err(Fault::Absolute) => "beFilesWrite.path.absolute",
-    };
-    Err(copy_text(key, &[("path", &rel.display().to_string())]))
+    let path = rel.display().to_string();
+    match plain_segments(
+        rel.as_os_str().as_encoded_bytes(),
+        cfg!(windows),
+        Dots::Reject,
+    ) {
+        Ok(_) => Ok(root.join(rel)),
+        Err(Fault::Parent) => Err(copy_text(
+            "beFilesWrite.path.parentStep",
+            &[("path", &path)],
+        )),
+        Err(Fault::Dot) => Err(copy_text("beFilesWrite.path.dotStep", &[("path", &path)])),
+        Err(Fault::Absolute) => Err(copy_text("beFilesWrite.path.absolute", &[("path", &path)])),
+    }
 }
 
 /// 路径解析②（现打）：把**父目录**解析成真路径（解 symlink）之后再判一次落点。

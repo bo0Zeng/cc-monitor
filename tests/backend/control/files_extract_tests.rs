@@ -308,12 +308,24 @@ fn the_three_whole_refusals_touch_nothing() {
         extract(&Face::issue(), &base, Path::new("p.rar"), Path::new("r")).expect_err("rar 解成了");
     assert_eq!(e.code, "unsupported", "{e:?}");
     let entries = |n| Caps { entries: n, ..CAPS };
-    let e = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), entries(1))
-        .expect_err("超上限却解了");
+    let e = extract_with(
+        &Face::issue(),
+        &base,
+        Path::new("p.tar"),
+        Path::new("c"),
+        entries(1),
+    )
+    .expect_err("超上限却解了");
     assert_eq!(e.code, "refused", "{e:?}");
     assert!(std::fs::symlink_metadata(base.join("c")).is_err());
-    extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), entries(2))
-        .expect("上限恰好够却被拒了");
+    extract_with(
+        &Face::issue(),
+        &base,
+        Path::new("p.tar"),
+        Path::new("c"),
+        entries(2),
+    )
+    .expect("上限恰好够却被拒了");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -440,13 +452,31 @@ fn an_archive_that_expands_past_the_byte_cap_refuses_before_building_anything() 
         floor,
         ..CAPS
     };
-    let e = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), bytes(119))
-        .expect_err("超字节上限却解了");
+    let e = extract_with(
+        &Face::issue(),
+        &base,
+        Path::new("p.tar"),
+        Path::new("c"),
+        bytes(119),
+    )
+    .expect_err("超字节上限却解了");
     assert_eq!(e.code, "refused", "{e:?}");
-    assert!(copy_core::copy_matches("beFilesExtract.plan.overBytes", &e.said), "{e:?}");
-    assert!(std::fs::symlink_metadata(base.join("c")).is_err(), "拒了还建了落点");
-    let got = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), bytes(120))
-        .expect("恰好够却被拒了");
+    assert!(
+        copy_core::copy_matches("beFilesExtract.plan.overBytes", &e.said),
+        "{e:?}"
+    );
+    assert!(
+        std::fs::symlink_metadata(base.join("c")).is_err(),
+        "拒了还建了落点"
+    );
+    let got = extract_with(
+        &Face::issue(),
+        &base,
+        Path::new("p.tar"),
+        Path::new("c"),
+        bytes(120),
+    )
+    .expect("恰好够却被拒了");
     assert_eq!(got.bytes, 120);
     // 倍数那一格：包本身的大小 × 倍数（地板为 0）。
     let len = std::fs::metadata(base.join("p.tar")).unwrap().len();
@@ -456,7 +486,11 @@ fn an_archive_that_expands_past_the_byte_cap_refuses_before_building_anything() 
         &base,
         Path::new("p.tar"),
         Path::new("d"),
-        Caps { ratio: 1, floor: 0, ..CAPS },
+        Caps {
+            ratio: 1,
+            floor: 0,
+            ..CAPS
+        },
     )
     .expect("包本身一倍就够却被拒了");
     std::fs::remove_dir_all(&base).ok();
@@ -467,13 +501,33 @@ fn an_archive_that_expands_past_the_byte_cap_refuses_before_building_anything() 
 fn landing_a_file_past_what_is_left_deletes_it_and_says_the_cap() {
     let base = temp_root("left");
     let mut left = 5u64;
-    let e = land_file(&Face::issue(), &base, Path::new("f"), &mut &[1u8; 10][..], None, &mut left)
-        .expect_err("写超了却留下了");
-    assert!(copy_core::copy_matches("beFilesExtract.plan.overBytes", &e.said), "{e:?}");
-    assert!(std::fs::symlink_metadata(base.join("f")).is_err(), "写超的那一份没删");
+    let e = land_file(
+        &Face::issue(),
+        &base,
+        Path::new("f"),
+        &mut &[1u8; 10][..],
+        None,
+        &mut left,
+    )
+    .expect_err("写超了却留下了");
+    assert!(
+        copy_core::copy_matches("beFilesExtract.plan.overBytes", &e.said),
+        "{e:?}"
+    );
+    assert!(
+        std::fs::symlink_metadata(base.join("f")).is_err(),
+        "写超的那一份没删"
+    );
     assert_eq!(left, 5);
-    let n = land_file(&Face::issue(), &base, Path::new("g"), &mut &[1u8; 5][..], None, &mut left)
-        .expect("恰好用完却被拒了");
+    let n = land_file(
+        &Face::issue(),
+        &base,
+        Path::new("g"),
+        &mut &[1u8; 5][..],
+        None,
+        &mut left,
+    )
+    .expect("恰好用完却被拒了");
     assert_eq!((n, left), (5, 0));
     std::fs::remove_dir_all(&base).ok();
 }

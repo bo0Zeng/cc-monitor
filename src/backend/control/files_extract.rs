@@ -20,8 +20,8 @@
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    resolve_existing_in_root, resolve_in_root, wire_of, Act, ManageCommand,
-    WriteFail, WriteRefusal, TREE_ENTRY_CAP,
+    resolve_existing_in_root, resolve_in_root, wire_of, Act, ManageCommand, WriteFail,
+    WriteRefusal, TREE_ENTRY_CAP,
 };
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;
@@ -212,13 +212,18 @@ fn shown(b: &[u8]) -> String {
 /// zip 规范只用 `/`，Windows 上打的包常写 `\`，照 7-Zip / Python 的读法当分隔符；tar 里 `\` 只在落点是 Windows 时才是分隔符。
 pub fn entry_rel(name: &[u8], zip: bool) -> Result<Option<PathBuf>, String> {
     use ssh_dial::plain_path::{plain_segments, Dots, Fault};
-    let key = match plain_segments(name, zip || cfg!(windows), Dots::Strip) {
-        Ok(segs) if segs.is_empty() => return Ok(None),
-        Ok(segs) => return Ok(Some(crate::files::raw::to_path_buf(&segs.join(&b'/')))),
-        Err(Fault::Parent) => "beFilesExtract.path.upward",
-        Err(Fault::Absolute | Fault::Dot) => "beFilesExtract.path.absolute",
-    };
-    Err(copy_text(key, &[("name", &shown(name))]))
+    match plain_segments(name, zip || cfg!(windows), Dots::Strip) {
+        Ok(segs) if segs.is_empty() => Ok(None),
+        Ok(segs) => Ok(Some(crate::files::raw::to_path_buf(&segs.join(&b'/')))),
+        Err(Fault::Parent) => Err(copy_text(
+            "beFilesExtract.path.upward",
+            &[("name", &shown(name))],
+        )),
+        Err(Fault::Absolute | Fault::Dot) => Err(copy_text(
+            "beFilesExtract.path.absolute",
+            &[("name", &shown(name))],
+        )),
+    }
 }
 
 /// 链接目标从链接所在目录起算，词法上不出落点（相对 · 不以 `/` 起头 · 逐段 `..` 不越过落点）。
@@ -722,7 +727,9 @@ pub fn extract_with(
         });
     }
     let mut made: Vec<(PathBuf, bool)> = vec![(into.to_path_buf(), true)];
-    match execute(face, root, into, &archive, kind, &plan, &mut made, bytes_cap) {
+    match execute(
+        face, root, into, &archive, kind, &plan, &mut made, bytes_cap,
+    ) {
         Ok(bytes) => {
             let count = |f: fn(&What) -> bool| plan.entries.values().filter(|w| f(w)).count();
             Ok(Extracted {

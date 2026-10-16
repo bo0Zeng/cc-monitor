@@ -1194,7 +1194,8 @@ fn an_upload_name_goes_through_the_same_name_rules_as_create() {
         })
     };
     std::fs::create_dir_all(root.join("sub")).expect("建子目录");
-    let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin")).expect_err("带 / 的名字落进了子目录");
+    let e = answer_commit_at(&Face::issue(), &home, &args("sub/a.bin"))
+        .expect_err("带 / 的名字落进了子目录");
     assert_eq!(e.code, super::super::files_write::BAD_NAME, "{e:?}");
     assert!(!root.join("sub/a.bin").exists());
     answer_commit_at(&Face::issue(), &home, &args("a.bin")).expect("一段名字该照落");

@@ -68,7 +68,7 @@ async fn a_mismatch_switches_this_window_to_chunks_once_and_the_chunks_rebuild_t
         got[4].1,
         serde_json::json!({
             "key": key, "root": "/srv", "rel": "big.bin",
-            "expect": { "sha256": want_sha }, "chunks": 3, "bytes": body.len(),
+            "expect": { "sha256": want_sha }, "chunks": 3, "bytes": body.len(), "single": true,
         })
     );
     std::fs::remove_dir_all(&dir).ok();

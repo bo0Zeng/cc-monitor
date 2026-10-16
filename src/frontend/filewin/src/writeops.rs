@@ -193,9 +193,10 @@ impl WriteOp {
     /// 给人看的一句话（确认框 · 结果行都用它）。
     pub fn label(&self) -> String {
         match self {
-            WriteOp::Mkdir { dir, name } => {
-                copy_text("rsFilewinWriteops.op.mkdir", &[("path", &child_of(dir, name))])
-            }
+            WriteOp::Mkdir { dir, name } => copy_text(
+                "rsFilewinWriteops.op.mkdir",
+                &[("path", &child_of(dir, name))],
+            ),
             WriteOp::Delete {
                 path, is_dir: true, ..
             } => copy_text("rsFilewinWriteops.op.rmdir", &[("path", &path.to_string())]),

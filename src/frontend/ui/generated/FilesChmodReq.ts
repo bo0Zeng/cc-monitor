@@ -3,6 +3,10 @@ import type { ChmodItem } from "./ChmodItem";
 import type { WirePath } from "./WirePath";
 
 /**
- * `files-chmod`：一组改成同一个 unix 权限位（十进制、低 12 位）。回包 [`crate::batch::BatchReply`]（每项带 `before`）。
+ * `files-chmod`：一组改成同一个 unix 权限位。回包 [`crate::batch::BatchReply`]（每项带 `before`）。
  */
-export type FilesChmodReq = { root: WirePath, items: Array<ChmodItem>, mode: number, ticket?: string, };
+export type FilesChmodReq = { root: WirePath, items: Array<ChmodItem>, 
+/**
+ * 八进制写法原样（`644` · `0755`，框里敲的就交这几个字）；由那台解（空 · 不是八进制 · 超出 7777 ⇒ 整组 `refused`、那一句那台写）。
+ */
+mode: string, ticket?: string, };

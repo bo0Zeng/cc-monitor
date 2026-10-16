@@ -311,7 +311,12 @@ fn a_single_copy_takes_one_plain_name_and_refuses_the_rest_as_bad_name() {
         let Err(CopyRefused::Fail(f)) = got else {
             panic!("`{to}` 该整组拒：{got:?}")
         };
-        assert_eq!(f.code, super::super::files_write::BAD_NAME, "`{to}`：{}", f.said);
+        assert_eq!(
+            f.code,
+            super::super::files_write::BAD_NAME,
+            "`{to}`：{}",
+            f.said
+        );
     }
     assert!(!root.join("d/a2").exists());
     let mut req = copy_req(&root, &[("a", "a2")], OnExists::Ask, None);

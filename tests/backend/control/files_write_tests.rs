@@ -1058,7 +1058,12 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
 /// 权限位的八进制只在这里解：前后空白剪掉；空 · 不是八进制 · 超出 7777（连文件类型位抄来的）各一句、码 `refused`。
 #[test]
 fn the_mode_text_is_read_and_refused_in_one_place() {
-    for (t, m) in [("644", 0o644), (" 0755 ", 0o755), ("7777", 0o7777), ("0", 0)] {
+    for (t, m) in [
+        ("644", 0o644),
+        (" 0755 ", 0o755),
+        ("7777", 0o7777),
+        ("0", 0),
+    ] {
         assert_eq!(mode_of_text(t).expect(t), m);
     }
     for (t, key) in [

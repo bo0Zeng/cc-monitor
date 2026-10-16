@@ -1074,10 +1074,22 @@ fn every_place_that_joins_a_remote_path_is_declared() {
     const DECLARED: &[(&str, &str, &str)] = &[
         ("source.rs", "child_bytes", "拼路径的那一处"),
         ("source.rs", "breadcrumbs", "面包屑那一摞前缀"),
-        ("source.rs", "common_dir_bytes", "两条路径按段比出来的公共前缀"),
+        (
+            "source.rs",
+            "common_dir_bytes",
+            "两条路径按段比出来的公共前缀",
+        ),
         ("corpus.rs", "synth_paths", "合成语料铺字节，不是远端路径"),
-        ("batch.rs", "name_of", "一项的键（序号 / 相对段）写成给人看的名字，不寻址"),
-        ("fonts.rs", "ruler_self_check", "自检那一句里的「几 / 几」，不是路径"),
+        (
+            "batch.rs",
+            "name_of",
+            "一项的键（序号 / 相对段）写成给人看的名字，不寻址",
+        ),
+        (
+            "fonts.rs",
+            "ruler_self_check",
+            "自检那一句里的「几 / 几」，不是路径",
+        ),
     ];
     sites_match(
         &[".push(b'/')", ".push('/')", "}/{"],
@@ -1128,7 +1140,8 @@ fn sites_match(patterns: &[&str], declared: &[(&str, &str, &str)], what: &str) {
         .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
         .collect();
     assert_eq!(
-        found, want,
+        found,
+        want,
         "{what}与登记表对不上。\n  多出来的（新写了一份）：{:?}\n  表里有、盘上没了的：{:?}",
         found.difference(&want).collect::<Vec<_>>(),
         want.difference(&found).collect::<Vec<_>>()

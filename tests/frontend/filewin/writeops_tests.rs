@@ -183,7 +183,8 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
-            dir: "/srv/refuse".into(), name: "newdir".into(),
+            dir: "/srv/refuse".into(),
+            name: "newdir".into(),
         },
     )
     .await
@@ -197,7 +198,8 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &wired.line,
         &origin,
         &WriteOp::Mkdir {
-            dir: "/srv/data".into(), name: "newdir".into(),
+            dir: "/srv/data".into(),
+            name: "newdir".into(),
         },
     )
     .await
@@ -249,7 +251,8 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
         raw: None,
     });
     ops.push(WriteOp::Mkdir {
-        dir: "/srv/data".into(), name: "m".into(),
+        dir: "/srv/data".into(),
+        name: "m".into(),
     });
     ops.push(WriteOp::Rename {
         from: "/srv/data/a".into(),
@@ -306,7 +309,8 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
 async fn nothing_is_touched_when_the_answer_is_no() {
     let applied = Applied::default();
     let mkdir = WriteOp::Mkdir {
-        dir: "/srv/data".into(), name: "m".into(),
+        dir: "/srv/data".into(),
+        name: "m".into(),
     };
     let del = WriteOp::Delete {
         path: "/srv/data/d".into(),
@@ -343,7 +347,8 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
     let out = run_writes(
         vec![
             WriteOp::Mkdir {
-                dir: "/srv/data".into(), name: "m".into(),
+                dir: "/srv/data".into(),
+                name: "m".into(),
             },
             WriteOp::Rename {
                 from: "/srv/data/a".into(),
@@ -409,7 +414,8 @@ async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
 async fn a_failure_comes_back_with_the_message_the_pool_gave() {
     let out = run_writes(
         vec![WriteOp::Mkdir {
-            dir: "/srv/data".into(), name: "m".into(),
+            dir: "/srv/data".into(),
+            name: "m".into(),
         }],
         |a| async move { a },
         each(|_| async move { Err("新建目录失败: permission denied".into()) }),
@@ -453,7 +459,10 @@ async fn an_empty_batch_does_nothing_at_all() {
 #[test]
 fn exactly_delete_asks_first() {
     let all = vec![
-        WriteOp::Mkdir { dir: "/".into(), name: "a".into(), },
+        WriteOp::Mkdir {
+            dir: "/".into(),
+            name: "a".into(),
+        },
         WriteOp::Rename {
             from: "/a".into(),
             name: "b".into(),
@@ -495,7 +504,8 @@ fn exactly_delete_asks_first() {
 fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Mkdir {
-            dir: "/srv".into(), name: "d".into(),
+            dir: "/srv".into(),
+            name: "d".into(),
         }
         .label(),
         copy_core::copy_text("rsFilewinWriteops.op.mkdir", &[("path", "/srv/d")])
@@ -540,7 +550,8 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     assert_eq!(
         p.to_op().unwrap(),
         WriteOp::Mkdir {
-            dir: "/srv/data".into(), name: "sub".into(),
+            dir: "/srv/data".into(),
+            name: "sub".into(),
         }
     );
 
@@ -754,7 +765,8 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
     let origin = comms_inward::origin::Origin(wired.origin.clone());
     let ops = [
         WriteOp::Mkdir {
-            dir: "/srv/data".into(), name: "新目录".into(),
+            dir: "/srv/data".into(),
+            name: "新目录".into(),
         },
         WriteOp::Delete {
             path: "/srv/data/x.bin".into(),

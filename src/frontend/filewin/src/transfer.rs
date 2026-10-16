@@ -111,7 +111,9 @@ impl Pending {
     /// 探「在不在」的那条整路径（按字节）。
     pub fn path_wire(&self) -> cmd_wire::files::WirePath {
         match &self.remote_dir_raw {
-            Some(b) => cmd_wire::files::WirePath(super::source::child_bytes(b, self.name.as_bytes())),
+            Some(b) => {
+                cmd_wire::files::WirePath(super::source::child_bytes(b, self.name.as_bytes()))
+            }
             None => cmd_wire::files::WirePath::from(self.remote_path.as_str()),
         }
     }
