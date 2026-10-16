@@ -390,10 +390,10 @@ export interface TypedCommands {
   "ext-uninstall-preview": { req: ExtUninstallReq; reply: ExtUninstallCard; code: "bad_args" | "bad_file" | "bad_path" | "io_failed" | "ledger_unreadable" | "not_found" | "refused" };
   "files-batch-stop": { req: FilesBatchStopReq; reply: FilesBatchStopReply; code: "bad_args" };
   "files-browse": { req: BrowseReq; reply: BrowseReply; code: "bad_args" | "bad_path" };
-  "files-chmod": { req: FilesChmodReq; reply: BatchReply; code: "bad_args" | "bad_path" | "no_unix_mode" };
+  "files-chmod": { req: FilesChmodReq; reply: BatchReply; code: "bad_args" | "bad_path" | "no_unix_mode" | "refused" };
   "files-commit-text": { req: FilesCommitTextReq; reply: FilesWrittenReply; code: "bad_args" | "bad_path" | "io_failed" | "refused" | "stale" };
-  "files-commit-upload": { req: FilesCommitUploadReq; reply: FilesPathBytesReply; code: "bad_args" | "bad_path" | "io_failed" | "refused" | "stale" | "exists" };
-  "files-copy": { req: FilesCopyReq; reply: BatchReply; code: "bad_args" | "bad_path" | "exists" };
+  "files-commit-upload": { req: FilesCommitUploadReq; reply: FilesPathBytesReply; code: "bad_args" | "bad_name" | "bad_path" | "io_failed" | "refused" | "stale" | "exists" };
+  "files-copy": { req: FilesCopyReq; reply: BatchReply; code: "bad_args" | "bad_name" | "bad_path" | "exists" };
   "files-create": { req: FilesCreateReq; reply: FilesPathBytesReply; code: "bad_args" | "bad_name" | "bad_path" | "exists" | "io_failed" | "refused" };
   "files-delete": { req: FilesDeleteReq; reply: BatchReply; code: "bad_args" | "bad_path" };
   "files-delete-session": { req: FilesDeleteSessionReq; reply: FilesPathReply; code: "bad_args" | "io_failed" | "refused" };

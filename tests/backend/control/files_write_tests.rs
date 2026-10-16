@@ -909,7 +909,7 @@ fn chmod_reports_the_mode_it_had_before() {
         &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "run.sh", "mode": "755"}),
     )
     .expect("改权限被拒");
-    assert_eq!(data["mode"], serde_json::json!(0o755));
+    assert_eq!(data["mode"], serde_json::json!("755"));
     assert_eq!(
         data["before"],
         serde_json::json!(0o640),

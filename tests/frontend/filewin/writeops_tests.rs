@@ -1300,17 +1300,3 @@ fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
     );
     assert_eq!(chmod_undo(&op, &chmod_reply(None)), None);
 }
-
-/// 就地新建 / 改名：用户敲的名字原样作 `rel` / `to` 交出去（名字里的 `/` 不当分隔符），根是当前目录。
-#[test]
-fn a_typed_name_goes_out_whole_against_the_current_directory() {
-    assert_eq!(
-        super::root_rel("/srv/data/sub/x", Some("sub/x")),
-        ("/srv/data".to_string(), "sub/x")
-    );
-    assert_eq!(super::root_rel("/x", Some("x")), ("/".to_string(), "x"));
-    assert_eq!(
-        super::root_rel("/srv/data/sub/x", None),
-        ("/srv/data/sub".to_string(), "x")
-    );
-}

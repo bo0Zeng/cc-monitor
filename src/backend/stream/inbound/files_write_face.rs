@@ -200,6 +200,8 @@ codes! {
         BadPath = "bad_path",
         /// 这个平台没有 unix 权限位：一组里每一项都回它（那一项的结局里），整条不回 —— 登记在这里，平台那一维照它现推。
         NoUnixMode = "no_unix_mode",
+        /// 权限位那几个字解不成（空 · 不是八进制 · 超出 7777）：一项都没动。
+        Refused = "refused",
     }
 }
 
