@@ -49,23 +49,9 @@ pub const TRUSTED_SIDS: &[&str] = &["S-1-5-18", "S-1-5-32-544"];
 /// 一条访问掩码够不够碰到内容或改权限：读数据 · 写数据 · 追加 · 改 DACL · 改属主 · 三个通用位
 /// （写得进去的能改上游地址把 key 引走，改得了 DACL / 属主的能给自己补读权）。
 pub fn mask_reaches(mask: u32) -> bool {
-    const READ_DATA: u32 = 0x1;
-    const WRITE_DATA: u32 = 0x2;
-    const APPEND_DATA: u32 = 0x4;
-    const WRITE_DAC: u32 = 0x4_0000;
-    const WRITE_OWNER: u32 = 0x8_0000;
-    const GENERIC_ALL: u32 = 0x1000_0000;
-    const GENERIC_WRITE: u32 = 0x4000_0000;
-    const GENERIC_READ: u32 = 0x8000_0000;
-    mask & (READ_DATA
-        | WRITE_DATA
-        | APPEND_DATA
-        | WRITE_DAC
-        | WRITE_OWNER
-        | GENERIC_ALL
-        | GENERIC_WRITE
-        | GENERIC_READ)
-        != 0
+    // 读数据 0x1 · 写数据 0x2 · 追加 0x4 · WRITE_DAC 0x4_0000 · WRITE_OWNER 0x8_0000 ·
+    // GENERIC_ALL 0x1000_0000 · GENERIC_WRITE 0x4000_0000 · GENERIC_READ 0x8000_0000。
+    mask & 0xd00c_0007 != 0
 }
 
 /// 判完的结论。
@@ -93,14 +79,11 @@ impl Verdict {
 /// **判断只有这一处。** 两个平台、三种量到的东西，都在这里变成同一种结论。
 /// 白名单：属主得是本人（Windows 上另认 [`TRUSTED_SIDS`]），本人之外许碰内容的只有 [`TRUSTED_SIDS`]。
 pub fn judge(p: &Protection) -> Verdict {
-    let wide = |how: String, fix: &str| Verdict::TooWide {
-        how,
-        fix: copy_text(fix, &[]),
-    };
+    let wide = |how: String, fix: String| Verdict::TooWide { how, fix };
     match p {
         Protection::Unix { owner, me, .. } if owner != me => wide(
             copy_text("credsPerm.judge.notOwner", &[("owner", &owner.to_string())]),
-            "credsPerm.judge.fixOwner",
+            copy_text("credsPerm.judge.fixOwner", &[]),
         ),
         Protection::Unix { mode, .. } => {
             let extra = mode & 0o077;
@@ -115,7 +98,7 @@ pub fn judge(p: &Protection) -> Verdict {
                             ("extra", &format!("{:03o}", extra)),
                         ],
                     ),
-                    "credsPerm.judge.fixUnix",
+                    copy_text("credsPerm.judge.fixUnix", &[]),
                 )
             }
         }
@@ -124,13 +107,13 @@ pub fn judge(p: &Protection) -> Verdict {
             if !trusted(owner) {
                 return wide(
                     copy_text("credsPerm.judge.notOwner", &[("owner", owner)]),
-                    "credsPerm.judge.fixOwner",
+                    copy_text("credsPerm.judge.fixOwner", &[]),
                 );
             }
             let Some(aces) = dacl else {
                 return wide(
                     copy_text("credsPerm.judge.noDacl", &[]),
-                    "credsPerm.judge.fixWindows",
+                    copy_text("credsPerm.judge.fixWindows", &[]),
                 );
             };
             let mut who: Vec<&str> = Vec::new();
@@ -151,7 +134,7 @@ pub fn judge(p: &Protection) -> Verdict {
                         "credsPerm.judge.tooWideWindows",
                         &[("who", &who.join(" / "))],
                     ),
-                    "credsPerm.judge.fixWindows",
+                    copy_text("credsPerm.judge.fixWindows", &[]),
                 )
             }
         }

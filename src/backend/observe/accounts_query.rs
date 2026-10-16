@@ -460,11 +460,11 @@ pub(crate) fn list_product(
 /// KS11：这台两份自家秘密文件（API key 凭据文件 · 中转钥匙文件）各该说的那一句（不在 · 只给本人的不说）。判法只在 `creds_core::perm`。
 pub(crate) fn secret_file_notices(creds: Option<&Path>, key: Option<&Path>) -> Vec<String> {
     [
-        (creds, "credsPerm.notice.apikey"),
-        (key, "credsPerm.notice.relayKey"),
+        (creds, copy_text("credsPerm.notice.apikey", &[])),
+        (key, copy_text("credsPerm.notice.relayKey", &[])),
     ]
     .into_iter()
-    .filter_map(|(p, what)| creds_core::perm::notice(p?, &copy_text(what, &[])))
+    .filter_map(|(p, what)| creds_core::perm::notice(p?, &what))
     .collect()
 }
 
