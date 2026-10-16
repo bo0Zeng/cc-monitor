@@ -174,6 +174,7 @@ impl SwitchExt for Switch {
 /// `label_project` ＝ 项目目录最后一截。
 pub(crate) trait NameFaceExt: Sized {
     fn of_parts(label: String, label_project: Option<String>) -> Self;
+    #[cfg(test)]
     fn label(&self) -> &str;
 }
 
@@ -187,6 +188,7 @@ impl NameFaceExt for NameFace {
     }
 
     /// 名字那一格。
+    #[cfg(test)]
     fn label(&self) -> &str {
         &self.label.0
     }

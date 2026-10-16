@@ -289,3 +289,24 @@ fn the_shared_count_golden_agrees_with_this_reader() {
         .collect();
     assert!(wrong.is_empty(), "计数与金样不符：{wrong:?}");
 }
+
+/// 短写的计数（`1% ≈ 2.1M` 那一格）：不满一千写整数；往上按千进位到 K · M · B，不满 10 带一位小数、否则取整（都四舍五入），
+/// 舍到 1000 的进一档。
+#[test]
+fn short_counts_round_into_k_m_b() {
+    for (n, want) in [
+        (0, "0"),
+        (999, "999"),
+        (1_000, "1.0K"),
+        (9_949, "9.9K"),
+        (9_950, "10K"),
+        (25_000, "25K"),
+        (999_499, "999K"),
+        (999_500, "1.0M"),
+        (2_100_000, "2.1M"),
+        (1_500_000_000, "1.5B"),
+        (u64::MAX, "18446744074B"),
+    ] {
+        assert_eq!(crate::count_short(n), want, "{n}");
+    }
+}

@@ -147,9 +147,11 @@ pub(crate) fn copy(
                     name: wire_of(Path::new(dst.file_name().unwrap_or_default())),
                     kind,
                     size,
+                    size_text: size.map(copy_core::size_text),
                     mtime_text: moment_text(mtime, tz),
                     there,
                     there_size,
+                    there_size_text: there_size.map(copy_core::size_text),
                     there_mtime_text: moment_text(there_mtime, tz),
                     dir_into,
                 });

@@ -711,6 +711,22 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     sent: NONE,
     finish: NONE,
   },
+  // 选中几项 ⇒ 菜单那张表：文件窗口与手机嵌的核心照它画；界面（TS）不列文件，没有孪生。
+  "pick-core": {
+    PLAN_GROUP: NONE,
+    table: NONE,
+    picked_kind: NONE,
+    menu_groups: NONE,
+    why_not_editable: NONE,
+    blocked: NONE,
+    actions_for: NONE,
+    phone_menu: NONE,
+    opens_as_dir: NONE,
+    copyable: NONE,
+    downloadable: NONE,
+    viewable: NONE,
+    pick: NONE,
+  },
   "cmd-wire": {
     LOCAL: "J36",
     // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。
@@ -757,6 +773,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
     new: NONE,
     as_str: NONE,
+    // `files-ls` 那一列是不是从大到小（后端排序 · 文件窗口表头的箭头）。界面不列目录，TS 侧没有孪生。
+    descending: NONE,
   },
   "copy-core": {
     backend_old: "J22",
@@ -772,6 +790,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     rel_duration: "J28",
     size_text: "J31",
     count_text: "J32",
+    // 短写的计数（`2.1M`）：只后端写进成品（额度「1% ≈ 多少」那一格），界面照抄，TS 侧没有孪生。
+    count_short: NONE,
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",

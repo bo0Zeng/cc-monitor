@@ -7,15 +7,15 @@
 
 use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::ledger::{ReadState, WindowSeen};
-use crate::accounts::quota::name_words::{is_candidate, names};
+use crate::accounts::quota::name_words::{account_text, is_candidate, names};
 use crate::accounts::quota::show::{QuotaShow, Stamp};
 use crate::agents::{kind_of_route, QuotaOverage, QuotaReading, QuotaWindow};
-use crate::common::cells::Words;
+use crate::common::cells::{Tone, Words};
 use crate::common::time::TextClock;
 use crate::faces::quota_rows;
 pub(crate) use cmd_wire::quota::{
     AccountHead, Candidate, EarliestReturn, OverageShown, QuotaAccount, QuotaRead, QuotaUnseen,
-    ReadingShown, ResetsAt, UnseenHead, UnseenUsage, WindowReadShown, WindowSeenShown,
+    ReadingShown, ResetsAt, UnseenHead, UnseenUsage, Verdict, WindowReadShown, WindowSeenShown,
 };
 use std::collections::BTreeMap;
 
@@ -138,6 +138,41 @@ pub(crate) fn unseen_of(head: UnseenHead, clock: &TextClock) -> QuotaUnseen {
     }
 }
 
+/// ★「现在还能不能发」那两行（唯一写法）：有号发得出去 ⇒「可发 · n 个号」＋ 哪几个；一个都发不出去 ⇒「均不可发」＋ 最早哪个几点回来（说不出 ⇒ 缺）。
+fn verdict_of(usable: &[String], earliest: Option<&(String, u64)>, clock: &TextClock) -> Verdict {
+    if !usable.is_empty() {
+        let sep = copy_core::copy_text("kit.text.sep", &[]);
+        let names: Vec<String> = usable.iter().map(|a| account_text(a)).collect();
+        return Verdict {
+            text: Words(copy_core::copy_text(
+                "acct.verdict.can",
+                &[("n", &usable.len().to_string())],
+            )),
+            sub: Some(Words(names.join(&sep))),
+            tone: Tone::Plain,
+        };
+    }
+    let sub = earliest.map(|(account, at)| {
+        let account = account_text(account);
+        let at_text = clock.text(*at).0;
+        Words(match clock.rel(*at) {
+            Some(rel) => copy_core::copy_text(
+                "acct.verdict.earliest",
+                &[("account", &account), ("at", &at_text), ("rel", &rel.0)],
+            ),
+            None => copy_core::copy_text(
+                "acct.verdict.earliestAt",
+                &[("account", &account), ("at", &at_text)],
+            ),
+        })
+    });
+    Verdict {
+        text: Words(copy_core::copy_text("acct.verdict.none", &[])),
+        sub,
+        tone: Tone::Fail,
+    }
+}
+
 /// ★ 出口：交进来的原数与显示态 ⇒ `quota-read` 的成品（唯一一处；生产与金样都走它）。
 pub(crate) fn reply_of(
     base: Base,
@@ -171,7 +206,10 @@ pub(crate) fn reply_of(
         }
         w
     };
+    let verdict = (base.state == ReadState::Present && !(seen.is_empty() && unseen.is_empty()))
+        .then(|| verdict_of(&base.usable_now, base.earliest.as_ref(), clock));
     QuotaRead {
+        verdict,
         candidates,
         text,
         five_hour: quota_rows::head_five_hour(base.state),
@@ -212,7 +250,6 @@ pub(crate) fn specimen() -> QuotaRead {
     use crate::accounts::quota::ledger::Source;
     use crate::accounts::quota::show::{LoginState, QuotaState, SlotShow, WindowShow};
     use crate::agents::QuotaStatus;
-    use crate::common::cells::Tone;
     let clock = TextClock::new(1_000, &crate::Tz::default());
     let show = QuotaShow {
         kind: Kind::Sub,
@@ -225,9 +262,12 @@ pub(crate) fn specimen() -> QuotaRead {
             resets_at: Some(2_000),
             resets_at_text: None,
             resets_at_rel_text: None,
+            reset_text: Some(Words("r".into())),
             full: true,
             text: Words("1%".into()),
             tone: Tone::Plain,
+            per_pct_text: Some(Words("p".into())),
+            window: String::new(),
         }],
         login: LoginState::Ok,
         sub_id: Some("s".into()),
@@ -243,7 +283,9 @@ pub(crate) fn specimen() -> QuotaRead {
             seen_at_rel_text: None,
             from: Source::Headers,
             tokens_per_pct: Some(25_000),
+            per_pct_text: Some(Words("p".into())),
             reset_since_seen: true,
+            tone: Tone::Plain,
         }],
         usage: crate::accounts::quota::show::Usage {
             slot: Some("5h".into()),

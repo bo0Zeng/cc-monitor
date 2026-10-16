@@ -1510,6 +1510,7 @@ dependencies = [
  "deploy-contract",
  "guard-core",
  "jni",
+ "pick-core",
  "relay-route-core",
  "resident-client",
  "ring",
@@ -1767,6 +1768,15 @@ checksum = "44dc769b75f93afdddd8c7fa12d685292ddeff1e66f7f0f3a234cf1818afe892"
 dependencies = [
  "base64ct",
  "ctutils",
+]
+
+[[package]]
+name = "pick-core"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "serde",
 ]
 
 [[package]]

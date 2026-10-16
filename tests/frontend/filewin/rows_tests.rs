@@ -6,6 +6,7 @@ use super::*;
 use crate::copy::testing::rects_of;
 use crate::corpus;
 use crate::source::Row;
+use cmd_wire::files::FileClass;
 
 /// 1280×800，与那趟原型同一个视口。
 fn screen() -> egui::Vec2 {
@@ -953,7 +954,18 @@ fn linked_rows() -> Vec<Listed> {
         // 后端写好的两格（故意与 `mtime_secs` 对不上：窗口若还在自己换算就红）。
         mtime_text: t.map(|(_, x)| x.to_string()),
         mtime_full: t.map(|(_, x)| format!("2026-{x} 00:00:00")),
+        size_text: Some(copy_core::size_text(3)),
         raw_name: None,
+        // 后端判的那一种（链接画它指向的那一种）。
+        class: if is_dir {
+            FileClass::Folder
+        } else if name.ends_with(".txt") {
+            FileClass::Text
+        } else {
+            FileClass::Other
+        },
+        type_text: String::new(),
+        gates: None,
     };
     vec![
         mk("to-elsewhere", false, true, Some((1_700_000_000, "07-01"))),
@@ -965,7 +977,8 @@ fn linked_rows() -> Vec<Listed> {
 /// 🔴 **每一行的图标按种类画，链接那一行画链接** —— 画出来的链接图标个数 == 链接行数；目录 · 文本各画自己那一个。
 #[test]
 fn only_the_link_rows_get_the_link_mark_painted() {
-    use crate::kind::{icon, Kind};
+    use crate::kind::icon;
+    use FileClass as Kind;
     let ctx = egui::Context::default();
     let rows = linked_rows();
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());

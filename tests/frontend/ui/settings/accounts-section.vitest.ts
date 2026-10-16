@@ -119,8 +119,8 @@ function quota(refusedAt?: number): QuotaRead {
     slots: [
       // `full` 是那台后端的显示态（用满才有）；被拒没用满不带它。
       // 那一格的字是核心写好的（用满 ✕ · 被拒没用满「{pct}% · 被拒」· 否则「{pct}%」），界面照抄。
-      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", text: pct5 >= 100 ? "✕" : st === "refused" ? copyText("acct.val.refusedPct", { pct: pct5 }) : `${pct5}%`, tone: "plain", ...(pct5 >= 100 ? { full: true } : {}) },
-      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
+      { slot: "5h", pct: pct5, resetsAt: NOW + 3600, resetsAtText: "13:00", resetText: copyText("acct.reset.at", { at: "13:00" }), text: pct5 >= 100 ? "✕" : st === "refused" ? copyText("acct.val.refusedPct", { pct: pct5 }) : `${pct5}%`, tone: "plain", ...(pct5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: pct7, resetsAt: NOW + 86400, resetsAtText: "01-16 12:00", resetText: copyText("acct.reset.at", { at: "01-16 12:00" }), text: pct7 >= 100 ? "✕" : `${pct7}%`, tone: "plain", ...(pct7 >= 100 ? { full: true } : {}) },
     ],
     login: "ok",
     usage: { slot: "5h", window: "5h", value: `${pct5}%`, text: `5h ${pct5}%`, tone: "plain" },

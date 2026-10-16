@@ -262,7 +262,8 @@ object HistoryList {
     fun rawRows(data: Any?): List<Any?>? = ((data as? Map<*, *>)?.get("rows") as? List<*>)?.toList()
 
     /** 缓存里那几行（原样）拼回一份清单，交给同一个解码器（[of]）；注解与截断那两格缓存不存。 */
-    fun ofRows(rows: List<Any?>): HistoryListPage? = of(mapOf("rows" to rows, "notice" to null, "truncated" to false))
+    fun ofRows(rows: List<Any?>): HistoryListPage? =
+        of(mapOf("rows" to rows, "groups" to emptyList<Any?>(), "notice" to null, "truncated" to false))
 
     /** 入参：「显示已隐藏」开着 ⇒ `hidden: true`（隐藏的也出，与桌面历史同一个参数）；关着不带（那台缺省不出）。 */
     fun args(showHidden: Boolean): Map<String, Any?>? = if (showHidden) mapOf("hidden" to true) else null

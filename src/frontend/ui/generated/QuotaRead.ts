@@ -5,6 +5,7 @@ import type { QuotaEarliestReturn } from "./QuotaEarliestReturn";
 import type { QuotaNames } from "./QuotaNames";
 import type { QuotaReadState } from "./QuotaReadState";
 import type { QuotaUnseen } from "./QuotaUnseen";
+import type { QuotaVerdict } from "./QuotaVerdict";
 import type { Words } from "./Words";
 
 /**
@@ -32,7 +33,7 @@ path: string | null,
  */
 now: number, 
 /**
- * 每个出过数的号一条，按 `(agent, account)` 排。
+ * 每个出过数的号一条，按 `(agent, account)` 排（不按能不能发重排：额度一变就重读，按状态排的话卡片会跳位）。
  */
 accounts: Array<QuotaAccount>, 
 /**
@@ -62,4 +63,8 @@ fiveHour: Words | null,
 /**
  * 号名 / 位名表（出口画号名 · 位名只照它）。
  */
-names: QuotaNames, };
+names: QuotaNames, 
+/**
+ * 「现在还能不能发」那两行写好的字（用量页的结论 · 全满时那一句）；读不出 / 一个号都没有 ⇒ `null`（那时看 `text`）。
+ */
+verdict: QuotaVerdict | null, };

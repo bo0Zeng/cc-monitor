@@ -13,6 +13,10 @@ resetsAtText?: string,
  */
 resetsAtRelText?: string, 
 /**
+ * 重置那一格写好的字（`↻18:30` · 已过 `↻13:10 已过`；同 `rows` 里那一格）；说不出几点 ⇒ 缺。
+ */
+resetText?: string, 
+/**
  * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
  */
 full?: boolean, 
@@ -23,4 +27,8 @@ text: string,
 /**
  * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
  */
-tone: "plain" | "fail" | "warn", };
+tone: "plain" | "fail" | "warn", 
+/**
+ * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
+ */
+perPctText?: string, };

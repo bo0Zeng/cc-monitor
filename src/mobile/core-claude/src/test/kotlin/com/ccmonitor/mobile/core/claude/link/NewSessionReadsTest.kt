@@ -63,6 +63,7 @@ class NewSessionReadsTest {
                 "plate" to "夹" + name,
                 "quota" to if (ok) "5h 41%" else null,
                 "unselectable" to if (ok) null else "需登录",
+                "login" to !ok,
             )
         }
         val data =

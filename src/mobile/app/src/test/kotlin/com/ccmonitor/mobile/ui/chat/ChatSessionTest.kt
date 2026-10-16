@@ -392,7 +392,7 @@ class ChatSessionTest {
                             mapOf(
                                 "accounts" to
                                     listOf("work", "personal").map {
-                                        mapOf("name" to it, "label" to it, "color" to 0.0, "plate" to it.take(2), "quota" to null, "unselectable" to null, "configDir" to "/a/$it", "mode" to "isolated", "selectable" to true)
+                                        mapOf("name" to it, "label" to it, "color" to 0.0, "plate" to it.take(2), "quota" to null, "unselectable" to null, "configDir" to "/a/$it", "mode" to "isolated", "selectable" to true, "login" to false)
                                     },
                                 "meta" to mapOf("effectiveDefault" to "work", "home" to null),
                             ),

@@ -85,14 +85,14 @@ class FileOpsTest {
     @Test
     fun openingAPathAsksTheBackendWhatItIsDirsAreEnteredFilesOpenInTheirFolder() =
         runTest {
-            val kinds = mapOf("/w/src" to "dir", "/w/src/a.kt" to "file")
+            val kinds = mapOf("/w/src" to Triple("dir", "src", "/w"), "/w/src/a.kt" to Triple("file", "a.kt", "/w/src"))
             val link =
                 FakeCoreLink().apply {
-                    answer = { _, a -> kinds[a!!["path"]]?.let { Reply.Ok(mapOf("path" to a["path"], "kind" to it, "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(CoreFailure("not_found", "不在", "")) }
+                    answer = { _, a -> kinds[a!!["path"]]?.let { Reply.Ok(mapOf("path" to a["path"], "name" to it.second, "up" to it.third, "kind" to it.first, "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)) } ?: Reply.Failed(CoreFailure("not_found", "不在", "")) }
                 }
             val ops = FileOps(link) { "box" }
             assertEquals(FileOps.Opening.Dir(RemotePath.of("/w/src")), ops.open("/w/src").getOrThrow())
-            assertEquals(FileOps.Opening.File(RemotePath.of("/w/src"), RemotePath.of("/w/src/a.kt")), ops.open("/w/src/a.kt").getOrThrow())
+            assertEquals(FileOps.Opening.File(RemotePath.of("/w/src"), RemotePath.of("/w/src/a.kt"), RemotePath.of("a.kt")), ops.open("/w/src/a.kt").getOrThrow())
             assertEquals(listOf("files-stat"), link.calls.map { it.first }.distinct())
             assertEquals("不在", (ops.open("/w/nope").exceptionOrNull() as FileOps.Failed).problem.text)
         }

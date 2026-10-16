@@ -82,6 +82,14 @@ pub(crate) struct SessionHits {
     pub(crate) status: Liveness,
     /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
     pub(crate) can: crate::history::listing::Can,
+    /// 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) forked_from: Option<cmd_wire::listing::ForkedFrom>,
+    /// 父会话的会话 id（只给这一层填上面那一格，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    pub(crate) parent: Option<String>,
 }
 
 /// 一条命中。
@@ -103,6 +111,9 @@ pub(crate) struct SearchHit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub(crate) tool: Option<String>,
+    /// 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) offset: u64,
 }
 
 /// 全文搜索那一行的活不活：只扫记录树、看得到这台的 pidfile ⇒ 只有两态。
@@ -355,6 +366,8 @@ struct Facts {
     bg: bool,
     title: Option<String>,
     excerpt: String,
+    /// 分叉来的：父会话 id（第一条带 `forkedFrom` 的记录，同历史清单那一格）。
+    forked: Option<String>,
     records: Vec<Rec>,
 }
 
@@ -363,6 +376,8 @@ struct Rec {
     rt: RecordText,
     ts_ms: i64,
     uuid: String,
+    /// 这一行在记录文件里的起点（字节）。
+    offset: u64,
     /// 这一条是你说的一句（一轮的开头；口径同大纲 `user_inputs::user_input_of`）。
     opens_turn: bool,
 }
@@ -375,9 +390,14 @@ impl Rec {
 }
 
 impl Facts {
-    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。
-    fn absorb(&mut self, text: &str, tools: bool) {
-        for line in text.lines() {
+    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。`base` ＝ 这段文本在记录文件里的起点（字节）。
+    fn absorb(&mut self, text: &str, tools: bool, base: u64) {
+        let mut at = base;
+        for raw in text.split_inclusive('\n') {
+            let start = at;
+            at += raw.len() as u64;
+            let line = raw.strip_suffix('\n').unwrap_or(raw);
+            let line = line.strip_suffix('\r').unwrap_or(line);
             let trimmed = line.trim_start_matches('\u{feff}').trim();
             if trimmed.is_empty() {
                 continue;
@@ -408,6 +428,9 @@ impl Facts {
                     }
                 }
                 "user" | "assistant" => {
+                    if self.forked.is_none() {
+                        self.forked = crate::history::listing::fork_origin(&v).map(|(p, _)| p);
+                    }
                     let opens_turn = super::user_inputs::user_input_of(&v).is_some();
                     let Some(rt) = record_text(&v, tools).or_else(|| {
                         opens_turn.then(|| RecordText {
@@ -446,6 +469,7 @@ impl Facts {
                         rt,
                         ts_ms,
                         uuid,
+                        offset: start,
                         opens_turn,
                     });
                 }
@@ -488,6 +512,7 @@ impl Facts {
                 },
                 ts_ms: r.ts_ms,
                 uuid: r.uuid.clone(),
+                offset: r.offset,
                 opens_turn: r.opens_turn,
             })
             .collect();
@@ -496,6 +521,7 @@ impl Facts {
             bg: self.bg,
             title: self.title.clone(),
             excerpt: self.excerpt.clone(),
+            forked: self.forked.clone(),
             records,
         };
     }
@@ -511,6 +537,9 @@ impl Facts {
         }
         if self.excerpt.is_empty() {
             self.excerpt = later.excerpt;
+        }
+        if self.forked.is_none() {
+            self.forked = later.forked;
         }
         self.records.extend(later.records);
     }
@@ -546,7 +575,7 @@ impl FileEntry {
                 match std::str::from_utf8(&whole) {
                     Ok(s) => {
                         let mut seg = Facts::default();
-                        seg.absorb(s, self.tools);
+                        seg.absorb(s, self.tools, self.read.consumed());
                         self.done.extend(seg);
                         self.read.took(&whole);
                     }
@@ -562,7 +591,7 @@ impl FileEntry {
         self.read.saw((mtime, base + blocks.read()));
         if self.bad.is_none() {
             match std::str::from_utf8(&rest) {
-                Ok(s) => self.tail.absorb(s, self.tools),
+                Ok(s) => self.tail.absorb(s, self.tools, self.read.consumed()),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
         }
@@ -700,6 +729,9 @@ impl SearchIndex {
             .into_iter()
             .filter(|(path, _)| fence.admit(path).is_ok())
             .collect();
+        // 分叉来的那几行要父会话的显示标题：这一趟走到的每一份都记下（父会话没命中也认得出），走完再填、再交出去。
+        let mut labels: BTreeMap<String, String> = BTreeMap::new();
+        let mut found: Vec<SessionHits> = Vec::new();
         // 〔perfC2〕一批批带到这一问：每批在几条线程上同时读（常驻装不下的那几份每问整份重读重解，这是大头），再按最近优先逐份搜。
         for batch in files.chunks(SEARCH_BATCH) {
             let work: Vec<(PathBuf, Option<FileEntry>)> = batch
@@ -730,6 +762,9 @@ impl SearchIndex {
                     _ => None,
                 };
                 let bg = entry.as_ref().is_some_and(|e| e.done.bg || e.tail.bg);
+                if let (Some(e), Some(sid)) = (&entry, path.file_stem().and_then(|s| s.to_str())) {
+                    labels.insert(sid.to_string(), label_of(e));
+                }
                 if let Some(e) = entry {
                     self.retain(&mut kept, path.clone(), e);
                 }
@@ -744,9 +779,19 @@ impl SearchIndex {
                     session.is_bg = bg;
                     session.can =
                         crate::history::listing::can_of(&session.agent, session.status.word(), bg);
-                    push(session)?;
+                    found.push(session);
                 }
             }
+        }
+        for mut session in found {
+            session.forked_from = session
+                .parent
+                .as_deref()
+                .and_then(|p| labels.get(p))
+                .map(|l| cmd_wire::listing::ForkedFrom {
+                    label: crate::common::cells::Words(l.clone()),
+                });
+            push(session)?;
         }
         Ok(unreadable)
     }
@@ -880,6 +925,7 @@ fn session_hits_in(
                     after,
                     // 落点同会话内查找（[`find_hit`]）：收在某次工具调用那一块里 ⇒ 带那次调用的 id。
                     tool: rec.rt.lands_in.clone(),
+                    offset: rec.offset,
                 });
             }
             SnippetVerdict::BudgetExhausted => session_starved = true,
@@ -941,19 +987,7 @@ fn session_row(
         .and_then(|s| s.to_str())
         .map(str::to_string)
         .unwrap_or_else(|| project_path.clone());
-    let ai_title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
-    let first_user_excerpt = if entry.done.excerpt.is_empty() {
-        &entry.tail.excerpt
-    } else {
-        &entry.done.excerpt
-    };
-    // 全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
-    let (title, _) = search_rules::session_label(&search_rules::LabelFacts {
-        custom: None,
-        title: ai_title.cloned(),
-        first: first_user_excerpt.clone(),
-        project_dir: None,
-    });
+    let title = label_of(entry);
     // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
     let agent = crate::agents::record_tree_kind()
         .unwrap_or_default()
@@ -973,7 +1007,30 @@ fn session_row(
         hits_truncated: session_starved,
         is_bg: false,
         status: Liveness::Ended,
+        forked_from: None,
+        parent: entry
+            .done
+            .forked
+            .clone()
+            .or_else(|| entry.tail.forked.clone()),
     }
+}
+
+/// 一个会话的显示标题（标题 / 首条 user 摘要 / sid 前 8 位之一）。全文搜索只扫记录 ⇒ 没有注解那一档（改过的名在界面并清单时盖上）。
+fn label_of(entry: &FileEntry) -> String {
+    let ai_title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
+    let first_user_excerpt = if entry.done.excerpt.is_empty() {
+        &entry.tail.excerpt
+    } else {
+        &entry.done.excerpt
+    };
+    search_rules::session_label(&search_rules::LabelFacts {
+        custom: None,
+        title: ai_title.cloned(),
+        first: first_user_excerpt.clone(),
+        project_dir: None,
+    })
+    .0
 }
 
 /// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。
