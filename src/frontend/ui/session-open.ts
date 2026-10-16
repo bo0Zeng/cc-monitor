@@ -1,50 +1,69 @@
 /**
  * **起会话 · 恢复 · 接回：界面这一侧只有这一个家**（帧命令 `session-open`）。意图交那台，那台判完、做完，回「落在哪 ＋ 要开终端就跑这一行」；
  * 这里只做四件：发请求 · 失败按码挑按钮（那一句是那台写的，原样上屏）· 照 `landed` 开那一行（开不了就复制）· 交等报到。
- * 「说不清不恢复」归标签页那一侧：连接断了是界面唯一自己知道的事。
+ * 新建框的失败按格落在框里（它自己排），成了同样交 [`landOpened`]。「说不清不恢复」归标签页那一侧：连接断了是界面唯一自己知道的事。
  */
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, machineName, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { saidOfTransport } from "./control-said";
 import { detailOf } from "./kit/detail";
-import { isObj } from "./ipc/decode";
+import { exactKeys, isObj } from "./ipc/decode";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { writeClipboard } from "./clipboard";
 import { NoTerminalWindow, openLocalTerminal, openTerminal, sayNoTerminal } from "./terminal-open";
-import { arrivedBody, expectArrival } from "./launch-arrival";
+import { arrivedBody, awaitArrival, expectArrival, slotsHere, type ArrivalSpec } from "./launch-arrival";
 import { chosenAccount } from "./launch-account";
 import { offerResyncRetry } from "./resync";
-import { NEW_BUDGET_MS } from "./new-session-reads";
 import type { SessionOpenReq } from "./generated/SessionOpenReq";
 import type { OpenWhat } from "./generated/OpenWhat";
 import type { Opened } from "./generated/Opened";
 import type { Landed } from "./generated/Landed";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
+import type { SessionNewField } from "./generated/SessionNewField";
 
 export type { SessionOpenReq, Opened, Landed };
 
-/** 一问的结局：成了 · 那台拒了（码 · 那一句 · `data` · 复制详情）· 同一张票那一趟还在起 · 期限到（结果未知）· 够不着那台。没成的几形都带那一句。 */
+/** 一问的期限：铸名 ＋ 起 ccm（那台自己的期限 15 s）＋ 回程。到了 ⇒ 结果未知（同一张票再问一次那台认得出）。 */
+const OPEN_BUDGET_MS = 25_000;
+
+/**
+ * 一问的结局：成了 · 那台拒了（码 · 那一句 · 哪一格不行 · 选不了号那一形）· 同一张票那一趟还在起 · 期限到（结果未知）· 够不着那台。
+ * 没成的几形都带那一句与复制详情（没有 ⇒ 空串）。
+ */
 export type OpenEnd =
   | { kind: "opened"; opened: Opened }
-  | { kind: "refused"; code: string; said: string; data: unknown; detail: string }
-  | { kind: "pending"; said: string }
+  | { kind: "refused"; code: string; said: string; field: SessionNewField | null; unavailable: AccountUnavailable | null; detail: string }
+  | { kind: "pending"; said: string; detail: string }
   | { kind: "timeout"; said: string; detail: string }
   | { kind: "unreachable"; said: string; detail: string };
+
+const FIELDS: readonly string[] = ["agent", "command", "cwd", "account", "place", "tmuxName"] satisfies SessionNewField[];
+
+/** 拒绝体的 `data`（`{field, unavailable}`）；读不出 ⇒ 当整体不行。 */
+function refusalData(d: unknown): { field: SessionNewField | null; unavailable: AccountUnavailable | null } {
+  if (!isObj(d) || !exactKeys(d, ["field", "unavailable"])) return { field: null, unavailable: null };
+  const f = d.field;
+  const u = d.unavailable;
+  return {
+    field: typeof f === "string" && FIELDS.includes(f) ? (f as SessionNewField) : null,
+    unavailable: isObj(u) && typeof u.requested === "string" && typeof u.listKnown === "boolean" ? (u as unknown as AccountUnavailable) : null,
+  };
+}
 
 /** 只问、只分结局，不出声。 */
 export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<OpenEnd> {
   try {
-    return { kind: "opened", opened: await callTyped(origin, "session-open", req, budgetWithin(NEW_BUDGET_MS)) };
+    return { kind: "opened", opened: await callTyped(origin, "session-open", req, budgetWithin(OPEN_BUDGET_MS)) };
   } catch (e) {
     const detail = detailOf(e);
     if (!(e instanceof ChanError)) return { kind: "unreachable", said: String(e), detail };
     const err = e.error;
     if (err.layer === "peer" && err.why === "refused") {
       const r = refusalOf(err.body);
-      if (r?.code === "launch_pending") return { kind: "pending", said: r.message };
-      if (r) return { kind: "refused", code: r.code, said: r.message, data: r.data, detail };
+      if (r?.code === "launch_pending") return { kind: "pending", said: r.message, detail };
+      if (r) return { kind: "refused", code: r.code, said: r.message, ...refusalData(r.data), detail };
     }
     // 发出去了、没等到回话 ⇒ 结果未知，不说失败。
     if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", said: copyText("sessionOpen.timeout.title", { machine: machineName(origin) }), detail };
@@ -53,20 +72,24 @@ export async function askOpen(origin: Origin, req: SessionOpenReq): Promise<Open
 }
 
 /**
- * 照 `landed` 开不开那一行（批量那一列）· 等不等报到（单个）。单个一律开：`window` 不跑就没起；`started` · `in_place` 开了是接进去；
- * `running` · `idle` 本来就在，开了当场说接上。批量只开 `window`（后台起的不一个个接进去）。
+ * 照 `landed` 开不开那一行 · 等不等报到。单个恢复 · 接回一律开：`window` 不跑就没起；`started` · `in_place` 开了是接进去；
+ * `running` · `idle` 本来就在，开了当场说接上。后台起的（批量 · 新起）只开 `window`，不一个个接进去。
  */
-export const ON_LANDED: Record<Landed, { batch: boolean; wait: boolean }> = {
-  window: { batch: true, wait: true },
-  started: { batch: false, wait: true },
-  in_place: { batch: false, wait: true },
-  running: { batch: false, wait: false },
-  idle: { batch: false, wait: false },
+export const ON_LANDED: Record<Landed, { background: boolean; wait: boolean }> = {
+  window: { background: true, wait: true },
+  started: { background: false, wait: true },
+  in_place: { background: false, wait: true },
+  running: { background: false, wait: false },
+  idle: { background: false, wait: false },
 };
 
 export interface OpenHow {
   /** 那台说了记录在不在（恢复那一形；标签页据此画「记录已不在」）。 */
   onRecord?(present: boolean): void;
+  /** 头一次发出去那一刻这台已经报过的会话（[`liveSince`]）：回话晚到时，那之后先报到的那个才认得出是它。只主窗口有。 */
+  before?: ReadonlySet<string>;
+  /** 不在主窗口时报到了交给发起方自己说（新起会话给［切过去］）；缺 ⇒ 主窗口说「已启动」。 */
+  onArrived?(sid: string, opened: Opened): void;
 }
 
 /** 在飞的那几条（`origin` ＋ sid / 终端名）：再点不重发。 */
@@ -83,13 +106,7 @@ function lines(said: string): [string, string] {
   return i < 0 ? [said, ""] : [said.slice(0, i), said.slice(i + 1)];
 }
 
-function unavailableOf(data: unknown): AccountUnavailable | null {
-  if (!isObj(data) || !isObj(data.unavailable)) return null;
-  const u = data.unavailable;
-  return typeof u.requested === "string" && typeof u.listKnown === "boolean" ? (u as unknown as AccountUnavailable) : null;
-}
-
-/** 起 · 恢复 · 接回一次：问、说、开、交等报到。回「那一行真开出来了吗」（没开的那一路已经出过声）。 */
+/** 起 · 恢复 · 接回一次：问、说、开、交等报到。回「成了没有」（没成的那一路已经出过声）。 */
 export async function openSession(origin: Origin, req: SessionOpenReq, how: OpenHow = {}): Promise<boolean> {
   const key = flightKey(origin, req.what);
   if (key !== null) {
@@ -106,25 +123,32 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
     sayEnd(origin, req, how, end);
     return false;
   }
-  const o = end.opened;
+  return landOpened(origin, req, end.opened, how);
+}
+
+/** 那台答了「成了」之后：说附带的那一句 · 照 `landed` 开那一行 · 交等报到。回「成了没有」（要开的那一行开不出 ⇒ 已说过、`false`）。 */
+export async function landOpened(origin: Origin, req: SessionOpenReq, o: Opened, how: OpenHow = {}): Promise<boolean> {
   if (req.what.kind === "resume") how.onRecord?.(true);
   if (o.note !== null) toast(o.note, "", { level: "info" });
-  if (o.line === null) return false;
-  if (!(await openLine(origin, o.line, o.cwd))) return false;
+  const open = o.line !== null && (req.what.kind !== "new" || ON_LANDED[o.landed].background);
+  if (open && !(await openLine(origin, o.line!, o.cwd))) return false;
   if (!ON_LANDED[o.landed].wait) {
+    if (!open) return true;
     const body = o.session === null ? "" : copyText("sessionOpen.attached.body", { machine: machineName(origin), name: o.session });
     toast(copyText("sessionOpen.attached.title"), body, { level: "info" });
   } else if (o.agent !== null && (o.sid !== null || o.cwd !== null)) {
-    expectArrival({
+    const spec: ArrivalSpec = {
       origin,
       match: o.sid !== null ? { sid: o.sid } : { cwd: o.cwd! },
       tmuxName: o.session,
-      arrived: {
-        title: copyText("sessionOpen.arrived.title"),
-        body: arrivedBody(origin),
-      },
-      ...(o.cwd !== null ? { slot: { cwd: o.cwd, agent: o.agent } } : {}),
-    });
+      arrived: { title: copyText("sessionOpen.arrived.title"), body: arrivedBody(origin) },
+    };
+    const done = how.onArrived;
+    if (done && !slotsHere()) {
+      void awaitArrival({ ...spec, arrived: null }).then((sid) => sid !== null && done(sid, o));
+    } else {
+      expectArrival({ ...spec, ...(o.cwd !== null ? { slot: { cwd: o.cwd } } : {}), ...(how.before ? { before: [...how.before] } : {}) });
+    }
   }
   return true;
 }
@@ -143,7 +167,7 @@ function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<
   const again = (r: SessionOpenReq): Promise<void> => openSession(origin, r, how).then(() => undefined);
   switch (end.code) {
     case "account_unavailable": {
-      const u = unavailableOf(end.data);
+      const u = end.unavailable;
       const alt = u?.listKnown ? u.alternative : null;
       toast(title, body, {
         detail: end.detail,
