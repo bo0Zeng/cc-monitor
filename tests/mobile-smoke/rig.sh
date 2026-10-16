@@ -34,8 +34,8 @@ up() {
   [ -f "$box/sshd/host_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/host_ed25519" -C smoke-host
   [ -f "$box/sshd/client_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "$box/sshd/client_ed25519" -C smoke-client
   cp "$box/sshd/client_ed25519.pub" "$box/sshd/authorized_keys"
-  # 换后端那份文件之前先停台架里的常驻（它跑的是旧文件；文件换掉之后它再起子进程会找不到自己）。
-  if ! cmp -s "$backend" "$home/.cc-monitor/bin/ccm"; then stop_resident; put "$backend"; fi
+  # 换了后端那份文件就停台架里的常驻（它跑的还是旧文件）。
+  if ! cmp -s "$backend" "$home/.cc-monitor/bin/ccm"; then put "$backend"; stop_resident; fi
   install -m 644 "$root/tests/mobile-smoke/fake-agent.py" "$box/bin/fake-agent.py"
   for k in claude codex; do
     printf '#!/bin/bash\nCCM_SMOKE_KIND=%s exec -a %s /usr/bin/python3 %q "$@"\n' "$k" "$k" "$box/bin/fake-agent.py" > "$box/bin/$k"
@@ -112,12 +112,12 @@ put() {
   install -m 755 "$1" "$home/.cc-monitor/bin/.ccm.part" && mv -f "$home/.cc-monitor/bin/.ccm.part" "$home/.cc-monitor/bin/ccm"
 }
 
-# 落点换一份（装后端那两步用）：先停台架里的常驻，再把落点删掉（`none`）或换成给的那份文件。
+# 落点换一份（装后端那两步用）：把落点删掉（`none`）或换成给的那份文件，再停台架里的常驻。
+# 先换后停：反过来的话，停掉到写完那十几秒里手机重连，ensure 拿落点上还没换的那份起常驻，接上的不是要的那一版。
 land() {
-  stop_resident
   case "${1:-}" in
-    none) rm -f "$home/.cc-monitor/bin/ccm"; say "落点删了（台架那台没有后端）" ;;
-    *) [ -f "$1" ] || { say "没有这份文件：$1"; exit 2; }; put "$1"; say "落点换成 $1" ;;
+    none) rm -f "$home/.cc-monitor/bin/ccm"; stop_resident; say "落点删了（台架那台没有后端）" ;;
+    *) [ -f "$1" ] || { say "没有这份文件：$1"; exit 2; }; put "$1"; stop_resident; say "落点换成 $1" ;;
   esac
 }
 
@@ -137,7 +137,7 @@ hop() {
 backend() {
   local bin=$home/.cc-monitor/bin
   case "${1:-}" in
-    off) stop_resident; [ -f "$bin/ccm" ] && mv "$bin/ccm" "$bin/ccm.off"; say "常驻后端起不来了（落点挪开）" ;;
+    off) [ -f "$bin/ccm" ] && mv "$bin/ccm" "$bin/ccm.off"; stop_resident; say "常驻后端起不来了（落点挪开）" ;;
     on) [ -f "$bin/ccm.off" ] && mv "$bin/ccm.off" "$bin/ccm"; say "常驻后端放回去了" ;;
     *) echo "用法：rig.sh backend off|on" >&2; exit 2 ;;
   esac
