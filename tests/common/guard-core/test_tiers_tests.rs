@@ -432,17 +432,12 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：真规模本机历史只量冷首趟 / 热态耗时与条数；跑法住它自己的头注"),
     ),
     (
-        "tests/frontend/shell/profile_installer_tests.rs",
+        "tests/backend/platform/shell/powershell_user_path_tests.rs",
         "wf1_real_powershell_add_then_remove_restores_the_user_path",
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
     ),
     (
-        "tests/frontend/shell/profile_installer_tests.rs",
-        "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
-        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),
-    ),
-    (
-        "tests/frontend/shell/platform/console_text_tests.rs",
+        "tests/backend/platform/console_text_tests.rs",
         "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）核 936 替身字节就是它往 stderr 写的那一段；跑法住它自己的头注"),
     ),

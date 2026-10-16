@@ -10966,6 +10966,31 @@ type OnPathVerdict = "ours" | "other" | "absent" | "unknown";
 
 码：`bad_args`
 
+#### `ccm-user-path`
+
+`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --ccm-user-path`
+
+入参 `UserPathReq` · 回包 `UserPath`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type UserPath = { state: UserPathState, said: string, 
+/**
+ * 问不出 / 改没成时的复制详情（原话在里面）；顺利 ⇒ `null`。
+ */
+detail: string | null, 
+/**
+ * 在 ⇒ 撤那一段；不在 ⇒ 加那一段；判不了 ⇒ `null`。
+ */
+command: string | null, };
+type UserPathOp = "read" | "add" | "remove";
+type UserPathReq = { op: UserPathOp, };
+type UserPathState = "on" | "off" | "unknown" | "not_windows";
+```
+
+码：`bad_args`
+
 #### `deploy-plan`
 
 那台的后端要不要换、换成哪一格。

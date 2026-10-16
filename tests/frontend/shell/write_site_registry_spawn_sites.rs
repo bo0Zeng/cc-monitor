@@ -56,33 +56,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           **照盘面写、不顺手改**（没有任何 Windows 读数支持那个改动，而这是主用途那条路）。\
           第五列记的是 Plan B 那一跳；本表的对拍粒度是文件，盖不到同函数内两跳的差别 —— 如实记。",
      "NewVisible · Detached · Inherit"),
-    // 🔴 〔`K-R135` / `R88` 09-15〕**这一行就是 `R88` 放行的那一行，只加了这一行。**
-    //
-    // `R87` 原本写着「不需要起进程」——**那是假前提，`R88` 已推翻**：`§0b` 明禁拿
-    // `$env:PATH` 判用户级 PATH（它是机器级＋用户级拼起来的）⇒ **状态 / 加 / 撤三样
-    // 都得碰 `HKCU\Environment`**，而「现在状态」那一格**根本不可能靠用户自己去跑**。
-    //
-    // **为什么必须起进程**：Rust 侧够到那一档只有两条路 —— 起 PowerShell，或直接读写
-    // 注册表。后者现打编不过（`windows::Win32::System::Registry` 是 `E0432`，全仓
-    // `Cargo.toml` 开这个 feature **0 处**、现有注册表调用 **0 处**），而且 `R88` 按份量
-    // 否掉了它：① 直接写注册表会造出**第二份 PATH 编辑实现**，而走 Tauri 命令的理由
-    // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
-    // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
-    // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
-    // 那个 .NET 调用按 `REG_SZ` 写、读回展开值（`%VAR%` 被冻成字面）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
-    // 广播自己做（`profile_installer.rs::SETTING_CHANGE_BROADCAST`）；仍是这一跳、这一段生成的字节，写点仍是加 / 撤两处。
-    //
-    // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
-    // `<脚本>` **只可能是 `profile_installer` 那三个 `render_*` 函数的输出**
-    // （探 / 加 / 撤），**不吃任何用户输入** —— 里面唯一的变量是 `tool_registry` 申报的
-    // 那个目录。同文件的 `the_generated_path_command_edits_only_the_user_scope_and_never_via_setx`
-    // 在数「生产段起进程恰好一处、写用户级 PATH 恰好两处」，别读成「这里能跑任意命令」。
-    ("profile_installer.rs", "run_user_path_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <我们自己生成的那段>`",
-     "`R85` 用户逐字「应当让用户手动点击加，也能管理删除」⇒ **点击即执行是允许的**（`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定）。\
-          必须起进程的理由是**那一档只有 Windows 的用户级环境块里有**，而 Rust 侧够得着它的另一条路（直接写注册表）会造出第二份 PATH 编辑实现、并把 `WM_SETTINGCHANGE` 广播的责任揽到自己身上 —— 两条都被 `R88` 否掉了。\
-          ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
-          ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
-     "Hidden · JobKillOnClose · Captured"),
     // `dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，目录模块，后端 `readonly_guard::spawn_registry` 登记）。
     ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
      "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录

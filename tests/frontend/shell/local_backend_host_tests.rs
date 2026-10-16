@@ -4701,3 +4701,40 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
         silent.said
     );
 }
+
+/// **用户级 PATH 上写的那个目录（后端按落点算），就是本机真放 `ccm` 下去的那个。**
+/// 真落点：`install_local_ccm_entry` 的 `dir` 实参，`local_backend_host.rs` 算的 `extract_dir`；按源码文本对拍（跑起来要一台 Windows）。
+/// 有人改成用一个中间变量拼路径，它会**红**而不是静默放过：「PATH 指向一个空目录」与「根本没补 PATH」在用户终端上是同一个结果。
+#[test]
+fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
+    let (dir, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .expect("后端落点的目录");
+    // `.cc-monitor/bin` ⇒ `.join(".cc-monitor").join("bin")` —— 真落点那一行的形状。
+    let want: String = dir
+        .split('/')
+        .map(|seg| format!(".join(\"{seg}\")"))
+        .collect::<Vec<_>>()
+        .join("");
+
+    // 真落点：`install_local_ccm_entry` 的 `dir` 实参是 `local_backend_host.rs` 算的 `extract_dir`。
+    //
+    // ⚠ **比之前先把空白抹掉**：rustfmt 会把 `.join(…)` 链断成几行，按原文 `contains` 会漏掉它。
+    let squeeze = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let want = squeeze(&want);
+    let hosts: [(&str, &str); 1] = [(
+        "local_backend_host.rs",
+        include_str!("../../../src/frontend/shell/src/local_backend_host.rs"),
+    )];
+    for (name, raw) in hosts {
+        let prod = squeeze(&guard_core::production_code(raw));
+        assert!(
+            prod.contains(&want),
+            "`{name}` 的生产段里找不到 `{want}` —— 也就是说\
+                 「PATH 上写的那个目录」与「盘上真放 ccm 的那个目录」已经分家了。\n\
+                 PATH 那一侧现算自后端落点那个常量的 `{dir}`；\
+                 要么那个常量改错了，要么真落点搬了家而这一侧没跟。\n\
+                 ⚠ 指错目录与根本没补 PATH，在用户终端上是**同一个结果**（命令找不到）。"
+        );
+    }
+}

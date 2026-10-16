@@ -1,7 +1,7 @@
 //! PowerShell profile 路径解析 + 块插入/卸载 + 命令名冲突检测。
 //!
 //! 从 monitor `profile_installer.rs` 搬来**别名块那一半**：规划 · 围栏 · 装 / 卸
-//! 今天在那台机器的后端里算、经它自己的文件管理面写（[`super`]）。用户级 PATH 那一格（本机后端的引导）仍住 monitor。
+//! 今天在那台机器的后端里算、经它自己的文件管理面写（[`super`]）。用户级 PATH 那一格是另一条命令（`control/ccm/user_path.rs`）。
 //!
 //! ## 块标记
 //!
@@ -319,8 +319,6 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     Ok(expanded)
 }
 
-// `K-R132` 那一节「装上了、能跑、用户敲不到」（用户级 PATH 那一格）留在 monitor（`profile_installer.rs`，本机后端的引导）。
-
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R132` 真机现打逮到的**第二条缺陷**：BOM-less UTF-8 ＋ PS 5.1 ＝ 吞掉一行
 // ═══════════════════════════════════════════════════════════════════════════
@@ -390,7 +388,7 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 ///
 /// 切到终端不靠这一块：cc-monitor 点 ↗ 那一刻按终端的控制台认窗口（v9 起块里没有握手、没有后台）。`cc` 进了清单（清单渲染出来的
 /// PowerShell 别名带一行有守卫的 `__ccm_bind` 调用）；没有 tmux 的目标没有 `cct` / `cca`。
-/// 用户级 PATH 那件事是另一格（用户点一下，命令文本由 monitor `profile_installer.rs` 生成）。
+/// 用户级 PATH 那件事是另一格（用户点一下，`ccm-user-path`）。
 ///
 /// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `auto-launch.json` 的那个目录），按 PowerShell
 /// 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`（跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。

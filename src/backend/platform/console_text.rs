@@ -2,13 +2,11 @@
 //!
 //! Windows：控制台程序（PowerShell 5.1 的报错就是这一形）按那台控制台的 OEM 代码页写（`GetOEMCP`，中文系统 936），
 //! 按同一个代码页解（`MultiByteToWideChar`）；解不动 ⇒ 退回 UTF-8（有损，话不丢）。其余平台：UTF-8（有损）。
-//! 照后端 `platform/win_proc.rs` 先例手写 `extern "system"`，不为两个函数加依赖。
+//! 照 `win_proc.rs` 先例手写 `extern "system"`，不为两个函数加依赖。
 //! ⚠ 只给「按控制台编码写出来的」那一路用：自己把 UTF-8 字节直写标准输出的（PATH 探针）不走这里。
 
 /// 控制台子进程吐出来的一段字节 ⇒ 文本（见模块头注）。
-/// 生产调用方只在 Windows 臂（`profile_installer::run_user_path_powershell`）；非 Windows 只有测试用它。
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn console_text(bytes: &[u8]) -> String {
+pub(crate) fn console_text(bytes: &[u8]) -> String {
     #[cfg(windows)]
     {
         // SAFETY：无参、只读系统设置。
@@ -57,5 +55,5 @@ extern "system" {
 }
 
 #[cfg(test)]
-#[path = "../../../../../tests/frontend/shell/platform/console_text_tests.rs"]
+#[path = "../../../tests/backend/platform/console_text_tests.rs"]
 mod tests;

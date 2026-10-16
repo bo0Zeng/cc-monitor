@@ -5947,41 +5947,10 @@
       "zh": "cc-monitor 未开时自动开",
       "args": []
     },
-    "machineAliases.userPath.removeFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "从用户 PATH 移除失败",
-      "args": []
-    },
-    "machineAliases.userPath.addFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "加进用户 PATH 失败",
-      "args": []
-    },
     "machineAliases.userPath.readFailed": {
       "kind": "error",
       "role": "报错",
       "zh": "读取用户 PATH 失败",
-      "args": []
-    },
-    "machineAliases.userPath.on": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已加进用户 PATH",
-      "args": []
-    },
-    "machineAliases.userPath.notWindows": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "仅 Windows · 本机接上终端后即可敲 ccm",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "machineAliases.userPath.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "—",
       "args": []
     },
     "machineAliases.userPath.cmdNote": {
@@ -6499,12 +6468,6 @@
       "role": "按钮",
       "zh": "接上 {path}…",
       "args": ["path"]
-    },
-    "machineAliases.userPath.offHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "把 {dir} 加进用户 PATH · 只改本用户 · 不用管理员 · 重开终端生效",
-      "args": ["dir"]
     },
     "machineAliases.win.title": {
       "kind": "title",
@@ -12284,47 +12247,6 @@
       "zh": "未找到 cc-monitor 数据目录 · 未写别名块",
       "args": []
     },
-    "rsProfileInstaller.userPath.removeNoDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到本机 ccm 安装目录 · 未改用户 PATH",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsProfileInstaller.userPath.addNoDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到本机 ccm 安装目录 · 未改用户 PATH",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsProfileInstaller.userPath.noBinDir": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未找到 ccm 安装目录 · 程序出错",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsProfileInstaller.userPath.notWindows": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本机无用户级 PATH · 仅 Windows 有",
-      "args": []
-    },
-    "rsProfileInstaller.ps.exitCode": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "运行 PowerShell 失败 · 原因不明",
-      "args": [],
-      "limited": ["PowerShell"]
-    },
-    "rsProfileInstaller.ps.spawnFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "运行 PowerShell 失败 · {why}",
-      "args": ["why"],
-      "limited": ["PowerShell"]
-    },
     "rsProfileInstaller.fence.symlinkEscape": {
       "kind": "error",
       "role": "报错",
@@ -13226,6 +13148,49 @@
       "zh": "终端的 PATH 未查到 · 无法判断敲 ccm 走到哪一份",
       "args": [],
       "limited": ["ccm"]
+    },
+    "beUserPath.on": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已加进用户 PATH · 新开的终端生效",
+      "args": []
+    },
+    "beUserPath.off": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "把 {dir} 加进用户 PATH · 只改本用户 · 不用管理员 · 新开的终端生效",
+      "args": ["dir"]
+    },
+    "beUserPath.unknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "用户 PATH 未读到 · {why}",
+      "args": ["why"]
+    },
+    "beUserPath.noHome": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "家目录未查到 · 无法定位 ccm 所在目录",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beUserPath.notWindows": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "这台不是 Windows · 无用户级 PATH",
+      "args": []
+    },
+    "beUserPath.addFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未加进用户 PATH · {why}",
+      "args": ["why"]
+    },
+    "beUserPath.removeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未从用户 PATH 移除 · {why}",
+      "args": ["why"]
     },
     "rsLib.log.none": {
       "kind": "error",

@@ -24,14 +24,15 @@
  */
 import { commands } from "../ipc/commands";
 import { isLocalOrigin } from "../ipc/origin";
-import { failToast } from "../kit/toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
+import { failToast } from "../kit/toast";
 import { markChore } from "./data-reads";
 import { SETTINGS_GO_EVENT } from "./events";
 // 接入那几问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
 import type { ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { toggleSwitch } from "../kit/switch";
-import { allowLocalScripts, installAliasBlock, readAliases, readCcmOnPath, removeAliasBlock, renderAliasBlock } from "../alias-reads";
+import { allowLocalScripts, installAliasBlock, readAliases, readCcmOnPath, removeAliasBlock, renderAliasBlock, userPath } from "../alias-reads";
+import type { UserPathOp } from "../generated/UserPathOp";
 import { buildProfilesList, type ProfileClash } from "./profiles-list";
 import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -617,7 +618,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
       if (loadedOnce) return reread();
       loadedOnce = true;
       if (winRow) {
-        psExtras = buildPsExtras(winRow);
+        psExtras = buildPsExtras(winRow, opts.origin);
         psExtras.loadNow();
       }
       void load();
@@ -641,14 +642,14 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
 // 别名块那一半（选哪份 `$PROFILE` · 装 / 卸 / 预览 / 现状 · 执行策略）在上面「别名」那一行里，与 POSIX 同一族命令；
 // 这一行是不随启动文件走的那两格：
 // - 用别名起 claude 时 cc-monitor 没开就先打开它（开关，立刻生效）；
-// - 用户级 PATH：开关就是手动加的那一下，拨回就是删；每次读都真问一趟（不缓存），探不动 ≠ 不在 PATH 上 ——
-//   读不出时开关不给拨、那句原话上屏。那两条命令的逐字文本给不想拨开关的人看（与开关跑的是同一份字节）。
+// - 用户级 PATH：开关就是手动加的那一下，拨回就是删；那台后端做完现问、回成品（状态 · 那一句 · 详情 · 那段命令），这里照画。
+//   判不了时开关不给拨。那段命令给不想拨开关的人看（与开关跑的是同一份字节）。
 
 interface PsExtras {
   loadNow(): void;
 }
 
-function buildPsExtras(row: CfgRow): PsExtras {
+function buildPsExtras(row: CfgRow, origin: () => Origin): PsExtras {
   const body = row.body;
   let onPath: boolean | null = null;
   const paintStatus = (): void => {
@@ -676,15 +677,10 @@ function buildPsExtras(row: CfgRow): PsExtras {
   const pathSw = toggleSwitch({
     label: copyText("machineAliases.userPath.title"),
     on: false,
+    // 判不了 ⇒ 开关回到拨之前（`false`）；判得了 ⇒ 已照现问的摆好。
     onChange: async (on) => {
-      try {
-        if (on) await commands.ccm_user_path_add();
-        else await commands.ccm_user_path_remove();
-      } catch (e) {
-        failToast(on ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"), e);
-      }
-      // 成功失败都重扫：盘上现在是什么样，就显示什么样（不拿我们以为的结果去写界面）。
-      await refreshPath();
+      await askPath(on ? "add" : "remove");
+      return onPath === null ? false : undefined;
     },
   });
   pathSw.root.dataset.role = "win-path";
@@ -707,29 +703,18 @@ function buildPsExtras(row: CfgRow): PsExtras {
     else pathSw.input.removeAttribute("aria-disabled");
   };
 
-  const refreshPath = async (): Promise<void> => {
+  // 盘上现在是什么样就画什么样（改没成时那一句说清，状态照现问的）。
+  const askPath = async (op: UserPathOp): Promise<void> => {
     try {
-      const st = await commands.ccm_user_path_status();
-      if (!st.supported) {
-        onPath = null;
-        lock(true);
-        pathHelp.textContent = copyText("machineAliases.userPath.notWindows");
-      } else if (st.error) {
-        // 🔴 探不动 ≠ 不在 PATH 上：原话上屏，开关不给拨。
-        onPath = null;
-        lock(true);
-        sayWithDetail(pathHelp, st.error.said, st.error.detail);
-      } else {
-        onPath = st.onUserPath;
-        lock(false);
-        pathSw.set(st.onUserPath);
-        pathHelp.textContent = st.onUserPath
-          ? copyText("machineAliases.userPath.on")
-          : copyText("machineAliases.userPath.offHelp", { dir: st.dir ?? copyText("machineAliases.userPath.empty") });
-        const text = st.onUserPath ? st.removeCommand : st.addCommand;
-        cmdPre.textContent = text ?? "";
-        cmdLink.hidden = !text;
-      }
+      const r = await userPath(origin(), op);
+      onPath = r.state === "on" ? true : r.state === "off" ? false : null;
+      lock(onPath === null);
+      if (onPath !== null) pathSw.set(onPath);
+      if (r.detail) sayWithDetail(pathHelp, r.said, r.detail);
+      else pathHelp.textContent = r.said;
+      cmdPre.textContent = r.command ?? "";
+      cmdLink.hidden = !r.command;
+      if (!r.command) cmdPre.hidden = true;
     } catch (e) {
       onPath = null;
       lock(true);
@@ -756,7 +741,7 @@ function buildPsExtras(row: CfgRow): PsExtras {
   return {
     loadNow: () => {
       void refreshAutoLaunch();
-      void refreshPath();
+      void askPath("read");
     },
   };
 }

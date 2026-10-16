@@ -522,21 +522,6 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     const MANUAL: &[(&str, &str)] = &[
         // `f63_real_data_ledger` 那一行随记录解析搬进了后端（`tests/backend/agents/claudecode/parse_tests.rs`）。
         (
-            "wf1_real_powershell_add_then_remove_restores_the_user_path",
-            "不是判据是**读数**：要一个 PowerShell（`CCM_PWSH`，收一个 `.ps1` 路径的程序；本机用容器里的 PowerShell 7）\
-             跑生成的用户级 PATH 加 / 撤两段（注册表换替身）。谁什么时候跑：改 `profile_installer.rs` 那两段渲染时，交付前跑一趟、把结果贴进报告。",
-        ),
-        (
-            "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
-            "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
-             谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 时，交付前跑一趟、把结果贴进报告。",
-        ),
-        (
-            "p2_powershell_under_a_936_console_writes_the_sample_bytes_to_stderr",
-            "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），核 `platform/console_text_tests.rs` 那段 936 替身字节就是 PowerShell 在 936 控制台下往 stderr 写的。\
-             谁什么时候跑：改那段替身字节或 `platform/console_text.rs` 时，交付前跑一趟、把结果贴进报告。",
-        ),
-        (
             "the_readings_behind_the_two_thresholds",
             "不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\
              （debug 档慢一个数量级，拿它推门槛就是订正过的那个错）。\
@@ -682,12 +667,12 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             }
         }
     }
-    // ★ 自检 1（正控）：真机才跑的那条 PATH 往返判据必被收到 ⇒ 否则剥法坏了（下面会零命中地绿）。
+    // ★ 自检 1（正控）：要真 sshd 的那条回环判据必被收到 ⇒ 否则剥法坏了（下面会零命中地绿）。
     assert!(
         ignored
             .iter()
-            .any(|(_, n)| n == "wf1_real_powershell_add_then_remove_restores_the_user_path"),
-        "收到的 {} 条 `#[ignore]` 测试里没有 PATH 往返那一条 —— 剥法坏了",
+            .any(|(_, n)| n == "loopback_roundtrip_through_the_resident_backend"),
+        "收到的 {} 条 `#[ignore]` 测试里没有回环那一条 —— 剥法坏了",
         ignored.len()
     );
 

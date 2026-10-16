@@ -29,6 +29,10 @@ pub(crate) const CAPS: &[(&str, Deadline)] = &[
         "powershell-policy-set",
         crate::assets::aliases::POLICY_SET_CAP,
     ),
+    (
+        "ccm-user-path",
+        crate::control::ccm::user_path::USER_PATH_CAP,
+    ),
 ];
 
 /// 发起方期限 − 余量，从此刻起换成截止时刻（没带 ⇒ `None`；不够余量 ⇒ 此刻就到）。

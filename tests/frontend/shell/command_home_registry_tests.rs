@@ -151,13 +151,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "设置页「数据」区列 monitor 自己的持久路径",
     ),
     (
-        "ccm_user_path_status",
-        Own::Lifecycle,
-        "本机 `~/.cc-monitor/bin` 在不在用户级 PATH（本机后端的引导）",
-    ),
-    ("ccm_user_path_add", Own::Lifecycle, "同上：加"),
-    ("ccm_user_path_remove", Own::Lifecycle, "同上：撤"),
-    (
         "chan_call",
         Own::Channel,
         "通信层面 A：webview 说 `call` 的那一跳",
