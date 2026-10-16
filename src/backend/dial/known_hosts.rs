@@ -90,16 +90,17 @@ impl ssh_dial::env::HostKeys for KnownHostsFile {
 /// 开终端那一行 `ssh -F` 用的那份配置（[`relay_route_core::SSH_CONFIG_REL`]）的路径，经装了的那只手写好（[`Writer::terminal_config`]）。
 /// 没装写句柄 / 写不成 ⇒ `None`（终端那一行照 ssh 自己的默认；写不成记一行日志）。
 pub(crate) fn terminal_config() -> Option<PathBuf> {
-    installed()?
-        .terminal_config()
-        .map_err(|e| {
+    match installed()?.terminal_config() {
+        Ok(p) => Some(p),
+        Err(e) => {
             tracing::warn!(
                 "ssh_config：{} 没写成：{}",
                 relay_route_core::SSH_CONFIG_REL,
                 e.logged()
-            )
-        })
-        .ok()
+            );
+            None
+        }
+    }
 }
 
 impl Writer {

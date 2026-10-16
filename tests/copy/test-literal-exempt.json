@@ -59,9 +59,6 @@
       { "text": "退回", "use": "词义" },
       { "text": "刷新", "use": "非文案" }
     ],
-    "tests/common/guard-core/no_outside_refs_tests.rs": [
-      { "text": "记录", "use": "非文案" }
-    ],
     "tests/common/shell-quote-core/lib_tests.rs": [
       { "text": "会话", "use": "输入" },
       { "text": "模型", "use": "输入" },

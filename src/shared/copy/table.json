@@ -21281,14 +21281,14 @@
     "rsDataPaths.backend.knownHosts": {
       "kind": "body",
       "role": "说明",
-      "zh": "主机指纹 · 各台主机记下的主机密钥 · 拨号与开终端都按它核对",
+      "zh": "主机指纹 · 各台的主机密钥 · 拨号和开终端按它核对",
       "args": [],
-      "limited": ["SSH", "SSH 主机指纹"]
+      "limited": ["SSH 主机指纹"]
     },
     "rsDataPaths.backend.sshConfig": {
       "kind": "body",
       "role": "说明",
-      "zh": "终端用的 SSH 配置 · 指向主机指纹那一份 · 由后端生成",
+      "zh": "终端用的 SSH 配置 · 指向主机指纹文件 · 由后端生成",
       "args": [],
       "limited": ["SSH", "SSH 主机指纹"]
     },
