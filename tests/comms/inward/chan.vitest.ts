@@ -69,6 +69,22 @@ beforeEach(() => {
 });
 
 describe("〔C4a〕webview 通道客户端", () => {
+  it("★ 壳交回的失败（金标准那四种 ＋ 那一句 ＋ 详情）经 `chan_call` 一跳照样解回三层，详情原样上身", async () => {
+    const golden = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/chan-webview-fail.golden.json"), "utf8"),
+    ) as Record<string, object>;
+    for (const [k, raw] of Object.entries(golden)) {
+      invokeMock.mockRejectedValueOnce({ ...raw, said: `句 ${k}`, detail: `详情 ${k}` });
+      const e = await chan.call("devbox", "op", new Uint8Array(), budgetWithin(5_000)).then(
+        () => null,
+        (x: unknown) => x,
+      );
+      expect(e, k).toBeInstanceOf(ChanError);
+      expect((e as ChanError).error, k).toEqual(decodeFail(raw));
+      expect((e as ChanError).detail, k).toBe(`详情 ${k}`);
+    }
+  });
+
   it("★★ 金标准：Rust 造的那四种失败形状，TS 逐个解回 `§3.3.1` 的三层", () => {
     const golden = JSON.parse(
       readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/chan-webview-fail.golden.json"), "utf8"),

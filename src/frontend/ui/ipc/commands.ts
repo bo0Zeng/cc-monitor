@@ -18,7 +18,8 @@ import type { Said } from "../generated/Said";
 
 /**
  * 壳命令失败（Rust `detail::Said`：一句 ＋ 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
- * `detail` 是复制详情（`kit/detail.ts::detailOf` 取）。全仓壳命令的失败只这一形；别的形状原样抛（不猜）。
+ * `detail` 是复制详情（`kit/detail.ts::detailOf` 取）。别的形状原样抛（不猜）：通道那条的失败（`chan/webview.rs::Fail`，
+ * 多一格三层 `err`）也带这两格，但它要由 `chan.ts` 解回三层，不是 `Said`。
  */
 export class SaidError extends Error {
   readonly detail: string;
@@ -33,7 +34,13 @@ export class SaidError extends Error {
 }
 
 function isSaid(v: unknown): v is Said {
-  return v !== null && typeof v === "object" && typeof (v as Said).said === "string" && typeof (v as Said).detail === "string";
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    !("err" in v) &&
+    typeof (v as Said).said === "string" &&
+    typeof (v as Said).detail === "string"
+  );
 }
 
 async function callShell<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
