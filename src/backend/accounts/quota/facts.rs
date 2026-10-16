@@ -111,9 +111,7 @@ fn standing(
     if !login_ok {
         return Some((WhyNot::Login, None));
     }
-    retry
-        .filter(|t| *t > now)
-        .map(|t| (WhyNot::Login, Some(t)))
+    retry.filter(|t| *t > now).map(|t| (WhyNot::Login, Some(t)))
 }
 
 /// 一个窗口在额度账上量出来的那两样（按窗口原名问；调用方交）：用速（点 / 分）· 1% ≈ 多少用量。

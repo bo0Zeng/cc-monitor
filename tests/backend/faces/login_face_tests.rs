@@ -78,9 +78,10 @@ fn the_manual_list_names_each_thing_and_how_to_fix_it() {
         ]})
     );
     // 那一家不在 app 里登 ⇒ 不列需登录的号（没有解法的不列成「点了能解」）。
-    let fake =
-        serde_json::to_value(manual_of("no-such-agent", &accounts, None, &[], None).expect("列得出"))
-            .unwrap();
+    let fake = serde_json::to_value(
+        manual_of("no-such-agent", &accounts, None, &[], None).expect("列得出"),
+    )
+    .unwrap();
     assert_eq!(fake, json!({ "items": [] }));
     let no_mcp_login = serde_json::to_value(
         manual_of("no-such-agent", &accounts, None, &[], Some(("fake", &mcp))).expect("列得出"),
@@ -115,9 +116,10 @@ fn an_account_whose_renewal_was_refused_is_listed_as_needing_a_new_login() {
         row("q", "subscription", true, true),
         row("ok", "subscription", true, true),
     ]);
-    let got =
-        serde_json::to_value(manual_of("claude", &accounts, None, &["q".to_string()], None).expect("列得出"))
-            .unwrap();
+    let got = serde_json::to_value(
+        manual_of("claude", &accounts, None, &["q".to_string()], None).expect("列得出"),
+    )
+    .unwrap();
     assert_eq!(
         got,
         json!({ "items": [

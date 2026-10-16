@@ -525,9 +525,16 @@ fn expire_b(home: &Home) {
 }
 
 fn fact_b(hop: &Hop, at: u64) -> Option<(crate::accounts::quota::facts::FactWhy, Option<u64>)> {
-    hop.fact_one("claude-code", &hop.library(), "b", &|_| None, at, &crate::Tz::default())
-        .blocked
-        .map(|b| (b.why, b.until))
+    hop.fact_one(
+        "claude-code",
+        &hop.library(),
+        "b",
+        &|_| None,
+        at,
+        &crate::Tz::default(),
+    )
+    .blocked
+    .map(|b| (b.why, b.until))
 }
 
 /// ★ 换到的号续不上令牌、端点不收那个刷新令牌 ⇒ 当场成那个号的事实「需重新登录」（不带时刻）：事实里它用不了，
@@ -547,7 +554,11 @@ fn a_refused_renewal_bars_the_account_until_its_login_changes() {
     assert_ne!(which(&steer(&hop, &own, t + 1)), "b");
     assert_eq!(hits(), 1);
     use crate::accounts::quota::facts::FactWhy;
-    assert_eq!(fact_b(&hop, t + 1), Some((FactWhy::Login, None)), "续不上没成事实");
+    assert_eq!(
+        fact_b(&hop, t + 1),
+        Some((FactWhy::Login, None)),
+        "续不上没成事实"
+    );
     for i in 2..6 {
         assert_ne!(which(&steer(&hop, &own, t + i)), "b");
     }

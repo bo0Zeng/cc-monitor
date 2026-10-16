@@ -162,9 +162,7 @@ pub(crate) fn access_token(
             tracing::warn!("[auth] {}", u.said(account).logged());
         }
     }
-    if missed::note(dir, face, now_ms / 1000, &r) {
-        crate::accounts::sign_in::ring_manual();
-    }
+    missed::note(dir, face, now_ms / 1000, &r);
     r
 }
 

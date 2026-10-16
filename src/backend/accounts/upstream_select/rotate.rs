@@ -249,13 +249,13 @@ impl Hop {
         let ep = self.endpoint(&face).ok_or(Unready::NeedsLogin)?;
         let token = oauth::access_token(own, &dir, &face, &ep, now.saturating_mul(1000), account)
             .map_err(|u| {
-                // 续不上已成那个号的事实（`oauth::missed`）：发一件节点，判照新的事实重来；别人正在续不算。
-                if u != oauth::Unusable::Busy {
-                    self.quota
-                        .notify(super::super::quota::nodes::Source::Login, None);
-                }
-                Unready::NeedsLogin
-            })?;
+            // 续不上已成那个号的事实（`oauth::missed`）：发一件节点，判照新的事实重来；别人正在续不算。
+            if u != oauth::Unusable::Busy {
+                self.quota
+                    .notify(super::super::quota::nodes::Source::Login, None);
+            }
+            Unready::NeedsLogin
+        })?;
         let who = self
             .identity(&face, &dir, base.as_deref())
             .ok_or(Unready::NeedsLogin)?;
@@ -338,7 +338,7 @@ impl Hop {
         lib: &Library,
         account: &str,
         now: u64,
-    ) -> Option<oauth::missed::Missed> {
+    ) -> Option<oauth::missed::Unrenewed> {
         let face = crate::agents::login_of(agent)?;
         let (dir, _) = self.dir_of(&face, lib, account)?;
         oauth::missed::missed(&dir, &face, now)
@@ -351,7 +351,8 @@ impl Hop {
             .iter()
             .filter(|a| {
                 !a.api
-                    && self.missed(agent, &lib, &a.id, now) == Some(oauth::missed::Missed::Manual)
+                    && self.missed(agent, &lib, &a.id, now)
+                        == Some(oauth::missed::Unrenewed::Manual)
             })
             .map(|a| a.id.clone())
             .collect()
@@ -383,7 +384,7 @@ impl Hop {
             Kind::Sub => match self.who_on_disk(agent, lib, account) {
                 Ok(_)
                     if self.missed(agent, lib, account, now)
-                        == Some(oauth::missed::Missed::Manual) =>
+                        == Some(oauth::missed::Unrenewed::Manual) =>
                 {
                     (LoginState::NeedsLogin, None)
                 }
@@ -441,7 +442,7 @@ impl Hop {
             kind_with(row, lib, id),
             self.show_facts(agent, lib, id, row, now).login,
             match self.missed(agent, lib, id, now) {
-                Some(oauth::missed::Missed::RetryAt(t)) => Some(t),
+                Some(oauth::missed::Unrenewed::RetryAt(t)) => Some(t),
                 _ => None,
             },
             now,
