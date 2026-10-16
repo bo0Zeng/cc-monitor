@@ -143,10 +143,6 @@ impl HelloHead {
     }
 }
 
-fn is_false(b: &bool) -> bool {
-    !*b
-}
-
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
@@ -366,23 +362,14 @@ pub struct SessionRemoved {
     pub by: Option<String>,
 }
 
-/// The bounded frame channel back-pressured and the reader had to drop
-/// `dropped` frames (a slow/wedged SSH pipe).
+/// 这条连接拥塞丢过帧：那台写好的那一句（只丢了行 · 会话状态已重新对齐 · 两样都有）。
+/// 丢了会话状态那一类的，那台紧跟着在同一条连接上把此刻的样子整份重报一次，客户端不判、不重接。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Overflow {
-    /// 自上一次哨兵以来丢掉的帧数。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub dropped: u64,
-    /// 〔audit-0805 F03，**additive**〕那批丢帧里**不可恢复**的那些的身份。空集时**不序列化**。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<LostFrame>>"))]
-    pub lost: Vec<LostFrame>,
-    /// 身份表是**有界**的（后端 `watcher.rs` 的 `LOST_IDENTITY_CAP`）。触顶后置位。
-    #[serde(default, skip_serializing_if = "is_false")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
-    pub lost_truncated: bool,
+    /// 那一句。
+    pub said: Words,
 }
 
 /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，backend **原样回显、不解析**。
@@ -765,19 +752,6 @@ impl RemovalCause {
     fn is_gone(&self) -> bool {
         matches!(self, RemovalCause::Gone)
     }
-}
-
-/// 一条**丢了就不可恢复**的帧的身份（`overflow.lost` 的一项）：给那些帧带上身份，让客户端能精确地重新问那几个主体。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct LostFrame {
-    /// 帧种（与 `kind` tag 同一套 snake_case 名字）。
-    pub kind: String,
-    /// 主体：会话 sid / tmux 会话名。取不到就是 `None`（如 `hello`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-    pub subject: Option<String>,
 }
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**

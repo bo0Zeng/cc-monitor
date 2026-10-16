@@ -58,6 +58,14 @@ fn the_event_dispatch_has_no_catch_all_arm() {
 }
 use super::*;
 
+/// 一帧的帧种（线上 `kind` 那一格）。
+fn kind_of(f: &Frame) -> String {
+    serde_json::to_value(f).unwrap()["kind"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
 /// 夹具那一份发帧口：一条连接（号 0）、不带会话账本（生产那一份是 [`FrameSink::hub`]，连接经 `join` 接上来）。
 impl FrameSink {
     pub(in crate::observe::watcher) fn new(tx: mpsc::Sender<Frame>) -> Self {
@@ -2150,152 +2158,6 @@ fn is_same_live_process_truth_table() {
     assert!(is_same_live_process(true, None, None));
 }
 
-// === #32 overflow signal (F05) ===
-
-/// FrameSink: a full channel drops + counts; once the channel drains, the
-/// next send emits a single `Overflow{dropped}` before the real frame and
-/// resets the counter. tokio's `try_send`/`try_recv` are sync, so no runtime.
-#[test]
-fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(2);
-    let mut sink = FrameSink::new(tx);
-
-    // Fill both slots — these go through cleanly, no overflow owed.
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "a".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }));
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "b".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }));
-    assert_eq!(
-        sink.subs[0].dropped, 0,
-        "nothing dropped while the channel had room"
-    );
-
-    // Channel is full now: three sends are dropped and counted.
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "c".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }));
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "d".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }));
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "e".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }));
-    assert_eq!(sink.subs[0].dropped, 3);
-
-    // Drain both queued frames (they are the first two, not the dropped ones).
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
-
-    // Next send (channel now empty, cap 2): emits Overflow{3} into slot 1,
-    // resets the counter, then the real frame into slot 2.
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "f".into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    }));
-    assert_eq!(
-        sink.subs[0].dropped, 0,
-        "overflow signal flushed, counter reset"
-    );
-    assert!(
-        matches!(
-            rx.try_recv(),
-            Ok(Frame::Overflow(crate::wire::Overflow { dropped: 3, .. }))
-        ),
-        "overflow signal carries the dropped count and arrives first"
-    );
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved(_))),
-        "the real frame follows the overflow signal"
-    );
-
-    // Steady state: no spurious Overflow once recovered.
-    sink.send(Frame::SessionAdded(crate::wire::SessionAdded {
-        sid: "g".into(),
-        agent_kind: "claude".to_string(),
-        background: false,
-        attachable: None,
-        cwd: None,
-        project_dir: None,
-        name: None,
-        path: None,
-        face: crate::wire::ActivityFace::of(None),
-        name_face: crate::history::search_rules::name_face(&Default::default()),
-        waiting_for: None,
-        hidden: None,
-        container: None,
-        pid: 0,
-    }));
-    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded(_))));
-}
-
 /// ★★ **「只数不建」必须与「建了再数」得出同一个数、同一个游标、同一批 seq**
 /// 〔audit-0805 F04 第 3 步〕。
 ///
@@ -2539,125 +2401,6 @@ fn a_chunk_that_stops_short_of_eof_panics_instead_of_silently_wedging() {
         "k",
         &mut seqs,
     );
-}
-
-/// ★★ **丢的是「别处没有」的帧时，`Overflow` 必须带上身份**〔audit-0805 F03，定框 E4〕。
-///
-/// 只有计数的 `Overflow` 对**内容帧**够用（行还在远端 jsonl 里），对**状态增量帧**不够：
-/// 它是一次差分的结果、别处不存在，客户端拿着「丢了 N 条」**没法重同步**。
-///
-/// ⚠ 这条钉的是**行为**，不是「代码里有没有那个字段」——
-/// 塞满通道、真丢一条 `SessionRemoved`，再看排空后那条 `Overflow` 认不认得它。
-#[test]
-fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(1);
-    let mut sink = FrameSink::new(tx);
-
-    // 占满（cap 1）。
-    sink.send(Frame::Line(crate::wire::Line {
-        session_id: "occupy".into(),
-        path: "/p".into(),
-        seq: 0,
-        record: None,
-        cwd: None,
-        byte_offset: 0,
-        rid: None,
-    }));
-    // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
-    sink.send(Frame::Line(crate::wire::Line {
-        session_id: "content-lost".into(),
-        path: "/p".into(),
-        seq: 1,
-        record: None,
-        cwd: None,
-        byte_offset: 1,
-        rid: None,
-    }));
-    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-        sid: "sid-gone".into(),
-        cause: RemovalCause::Gone,
-        by: None,
-    }));
-    assert_eq!(sink.subs[0].dropped, 2, "两条都该计入 dropped");
-
-    // 排空后下一次 send 会先补 Overflow。
-    assert!(matches!(rx.try_recv(), Ok(Frame::Line(_))));
-    sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
-        session_id: "x".into(),
-        path: "p".into(),
-    }));
-    match rx.try_recv() {
-        Ok(Frame::Overflow(crate::wire::Overflow {
-            dropped,
-            lost,
-            lost_truncated,
-        })) => {
-            assert_eq!(dropped, 2);
-            assert!(!lost_truncated, "才两条，远没到上限");
-            assert_eq!(
-                lost,
-                vec![crate::wire::LostFrame {
-                    kind: "session_removed".to_string(),
-                    subject: Some("sid-gone".into()),
-                }],
-                "只有不可恢复的那条留身份；内容帧丢了别处还有，不该占位"
-            );
-        }
-        other => panic!("期望带身份的 Overflow，实得 {other:?}"),
-    }
-}
-
-/// 身份表**有界**，且超限**不是静默截断**〔定框 E5：上限与超限语义成对定义〕。
-///
-/// 没有这个界，就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧挪到了 `Overflow` 自己身上。
-#[test]
-fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
-    let (tx, mut rx) = mpsc::channel::<Frame>(1);
-    let mut sink = FrameSink::new(tx);
-    sink.send(Frame::Line(crate::wire::Line {
-        session_id: "occupy".into(),
-        path: "/p".into(),
-        seq: 0,
-        record: None,
-        cwd: None,
-        byte_offset: 0,
-        rid: None,
-    }));
-    let over = LOST_IDENTITY_CAP + 5;
-    for i in 0..over {
-        sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
-            sid: format!("sid-{i}"),
-            cause: RemovalCause::Gone,
-            by: None,
-        }));
-    }
-    assert_eq!(
-        sink.subs[0].dropped, over as u64,
-        "超出上限的仍然计入 dropped"
-    );
-    assert_eq!(
-        sink.subs[0].lost.len(),
-        LOST_IDENTITY_CAP,
-        "身份表不许越界增长"
-    );
-    assert!(sink.subs[0].lost_truncated, "截断了就要说出来，不许静默");
-
-    assert!(matches!(rx.try_recv(), Ok(Frame::Line(_))));
-    sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
-        session_id: "x".into(),
-        path: "p".into(),
-    }));
-    match rx.try_recv() {
-        Ok(Frame::Overflow(crate::wire::Overflow {
-            lost,
-            lost_truncated,
-            ..
-        })) => {
-            assert_eq!(lost.len(), LOST_IDENTITY_CAP);
-            assert!(lost_truncated, "标志要真的上线，不能只留在 sink 里");
-        }
-        other => panic!("期望 Overflow，实得 {other:?}"),
-    }
 }
 
 /// 分类表**不许用 `_ =>` 兜底**〔LEDGER S1 的钉法〕。
@@ -3059,7 +2802,7 @@ fn one_sid_in_two_pidfiles_is_announced_once() {
     process_session_removed(&files[0], &mut state, &mut sink);
     let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        got.push(f.loss_identity().kind.to_string());
+        got.push(kind_of(&f));
     }
     for k in kids.iter_mut() {
         let _ = k.kill();
@@ -3092,7 +2835,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     fn kinds(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
         let mut out = Vec::new();
         while let Ok(f) = rx.try_recv() {
-            out.push(f.loss_identity().kind.to_string());
+            out.push(kind_of(&f));
         }
         out
     }
@@ -3138,10 +2881,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
         vec![Some(crate::wire::SessionContainer::None); 2],
         "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
     );
-    let got: Vec<String> = frames
-        .iter()
-        .map(|f| f.loss_identity().kind.to_string())
-        .collect();
+    let got: Vec<String> = frames.iter().map(kind_of).collect();
     for k in kids.iter_mut() {
         let _ = k.kill();
         let _ = k.wait();
@@ -3215,10 +2955,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
             _ => None,
         })
         .collect();
-    let kinds: Vec<String> = frames
-        .iter()
-        .map(|f| f.loss_identity().kind.to_string())
-        .collect();
+    let kinds: Vec<String> = frames.iter().map(kind_of).collect();
     // 排队的那两件事件交给主循环（同 `watch_loop` 里 `is_session_json` 那一支：在 ⇒ 加，不在 ⇒ 删）。
     let mut later = Vec::new();
     for p in [&live, &gone] {
@@ -3229,7 +2966,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
         }
     }
     while let Ok(f) = rx.try_recv() {
-        later.push(f.loss_identity().kind.to_string());
+        later.push(kind_of(&f));
     }
     let _ = kid.kill();
     let _ = kid.wait();
@@ -3317,7 +3054,7 @@ fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
             }) => {
                 format!("reread:{session_id}:{why:?}")
             }
-            other => format!("other:{}", other.loss_identity().kind),
+            other => format!("other:{}", kind_of(&other)),
         });
     }
     out
@@ -3716,7 +3453,7 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
                 Frame::SessionRemoved(crate::wire::SessionRemoved { sid, .. }) => {
                     format!("removed {sid}")
                 }
-                other => other.loss_identity().kind.to_string(),
+                other => kind_of(&other),
             });
         }
         v.sort();
@@ -4698,7 +4435,7 @@ fn a_live_line_is_parsed_from_text_once() {
     let parses = crate::agents::LINE_PARSES.with(std::cell::Cell::get);
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        kinds.push(f.loss_identity().kind);
+        kinds.push(kind_of(&f));
     }
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(

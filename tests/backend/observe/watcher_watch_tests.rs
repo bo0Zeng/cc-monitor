@@ -395,3 +395,201 @@ fn reporting_again_answers_only_the_new_ones() {
     watch_sessions(1, kept(&["x", "y"]), &mut state, &mut sink);
     assert_eq!(told(&mut rx), vec!["Ended y"]);
 }
+
+// ── 拥塞：通了先一句 overflow（那台写的）；丢过行以外的 ⇒ 原连接上就地重报，客户端不判、不重接 ──
+
+/// 一条通道容量 8 的连接：在看 A、要 A 的主线外清单、手上留着 k（那台不在说）；接上那一份读掉。
+fn narrow(
+    tag: &str,
+) -> (
+    PathBuf,
+    ReaderState,
+    FrameSink,
+    tokio::sync::mpsc::Receiver<Frame>,
+) {
+    let (dir, mut state, _, _rx0) = rig(tag);
+    let mut sink = ledgered(true);
+    let pa = file(&dir, A);
+    append(&pa, 1);
+    process_jsonl(&pa, &mut state, &mut sink);
+    state.added.insert(A.to_string(), added_frame(A));
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(8);
+    let ask = crate::wire::WatchAsk {
+        sids: vec![A.into()],
+        branch: vec![crate::wire::BranchHeld {
+            sid: A.into(),
+            ..Default::default()
+        }],
+        kept: vec!["k".into()],
+    };
+    join(
+        Sub::new(1, tx, crate::Tz::default()),
+        Some(ask),
+        &mut state,
+        &mut sink,
+    );
+    while rx.try_recv().is_ok() {}
+    (dir, state, sink, rx)
+}
+
+fn gone(sid: &str) -> Frame {
+    Frame::SessionFileGone(crate::wire::SessionFileGone {
+        session_id: sid.into(),
+        path: String::new(),
+    })
+}
+
+/// 把通道塞满（`n` 格填料）。
+fn fill(sink: &mut FrameSink, n: usize) {
+    for _ in 0..n {
+        sink.send_to(1, gone("f"));
+    }
+}
+
+/// 读掉通道里的全部，记成一行一件。
+fn heard(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+    use crate::wire::TopicExt as _;
+    let mut out = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        out.push(match f {
+            Frame::Overflow(o) => format!("overflow {}", o.said.0),
+            Frame::SessionAdded(a) => format!("added {}", a.sid),
+            Frame::SessionPrimed(p) => format!("primed {}", p.sid),
+            Frame::SessionsReplayed(_) => "listed".into(),
+            Frame::SessionState(s) => format!("{:?} {}", s.state, s.sid),
+            Frame::Changed(c) => {
+                format!("changed {} {}", c.topic.name(), c.key.unwrap_or_default())
+            }
+            Frame::SessionBranch(b) => format!("branch {} {}", b.sid, b.at),
+            Frame::SessionFileGone(g) => format!("gone {}", g.session_id),
+            Frame::Line(l) => format!("line {} {}", l.session_id, l.seq),
+            other => format!("{other:?}"),
+        });
+    }
+    out
+}
+
+fn realigned() -> String {
+    format!(
+        "overflow {}",
+        copy_core::copy_text("beStream.overflow.realigned", &[])
+    )
+}
+
+/// ⑩ 丢一帧会话状态 ⇒ 通了之后这条连接依次收到：那一句（已重新对齐）· 此刻的样子（宣告 · 读完了 · 清单报完）· 手上留着的重答。
+#[test]
+fn a_lost_session_state_is_reported_again_in_place_after_the_overflow() {
+    let (dir, mut state, mut sink, mut rx) = narrow("realign");
+    fill(&mut sink, 8);
+    sink.send(Frame::session_state(
+        "z".into(),
+        crate::wire::SessionFate::Ended,
+    ));
+    while rx.try_recv().is_ok() {}
+    sink.send_to(1, gone("t"));
+    report_owed(&mut state, &mut sink);
+    assert_eq!(
+        heard(&mut rx),
+        vec![
+            realigned(),
+            "gone t".into(),
+            format!("added {A}"),
+            format!("primed {A}"),
+            "listed".into(),
+            "Ended k".into(),
+        ]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ⑪ 只丢了行 ⇒ 那一句是「实时消息」那句，后面没有重报。
+#[test]
+fn only_lost_lines_say_so_and_report_nothing_again() {
+    let (dir, mut state, mut sink, mut rx) = narrow("lines");
+    fill(&mut sink, 8);
+    let pa = file(&dir, A);
+    append(&pa, 2);
+    process_jsonl(&pa, &mut state, &mut sink);
+    while rx.try_recv().is_ok() {}
+    sink.send_to(1, gone("t"));
+    report_owed(&mut state, &mut sink);
+    assert_eq!(
+        heard(&mut rx),
+        vec![
+            format!(
+                "overflow {}",
+                copy_core::copy_text("beStream.overflow.lines", &[("n", "2")])
+            ),
+            "gone t".into(),
+        ]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ⑫ 丢一帧 `changed(tasks, x)` ⇒ 重报里有它（不带体）；丢一帧主线外清单 ⇒ 重报给那份整份。
+#[test]
+fn a_lost_change_and_a_lost_branch_page_come_back_in_the_report() {
+    let (dir, mut state, mut sink, mut rx) = narrow("changed");
+    fill(&mut sink, 8);
+    sink.send(Frame::changed(
+        crate::wire::Topic::Tasks,
+        Some("x".into()),
+        None,
+        None,
+    ));
+    let pa = file(&dir, A);
+    sink.branch(A, &pa.to_string_lossy(), &[], 0);
+    while rx.try_recv().is_ok() {}
+    sink.send_to(1, gone("t"));
+    report_owed(&mut state, &mut sink);
+    assert_eq!(
+        heard(&mut rx),
+        vec![
+            realigned(),
+            "gone t".into(),
+            format!("added {A}"),
+            format!("primed {A}"),
+            "listed".into(),
+            "Ended k".into(),
+            "changed tasks x".into(),
+            format!("branch {A} 0"),
+        ]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// ⑬ 重报时通道还满 ⇒ 下一次照样 overflow ＋ 重报；通了之后不再有（数帧，不按墙钟）。
+#[test]
+fn a_report_that_jams_again_is_said_and_reported_again_until_it_gets_through() {
+    let (dir, mut state, mut sink, mut rx) = narrow("jam");
+    fill(&mut sink, 8);
+    sink.send(Frame::session_state(
+        "z".into(),
+        crate::wire::SessionFate::Ended,
+    ));
+    while rx.try_recv().is_ok() {}
+    fill(&mut sink, 7); // 头一格先补上那一句，通道又满
+    sink.send_to(1, gone("t")); // 这一帧丢
+    report_owed(&mut state, &mut sink); // 重报整份又丢
+    let first = heard(&mut rx);
+    assert_eq!(first.len(), 8);
+    assert_eq!(first[0], realigned());
+    assert!(first[1..].iter().all(|f| f == "gone f"), "{first:?}");
+    sink.send_to(1, gone("t"));
+    report_owed(&mut state, &mut sink);
+    assert_eq!(
+        heard(&mut rx),
+        vec![
+            realigned(),
+            "gone t".into(),
+            format!("added {A}"),
+            format!("primed {A}"),
+            "listed".into(),
+            "Ended k".into(),
+        ]
+    );
+    sink.send_to(1, gone("t"));
+    report_owed(&mut state, &mut sink);
+    assert_eq!(heard(&mut rx), vec!["gone t".to_string()], "通了之后不再有");
+    std::fs::remove_dir_all(&dir).ok();
+}

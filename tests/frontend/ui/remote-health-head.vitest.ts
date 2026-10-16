@@ -21,10 +21,17 @@ const kind = (name: string): string => {
 
 describe("远端健康提示：版本那条的标题", () => {
   it("要更新 · 较新 · 不可比 各说各的，都不落到通用标题", () => {
-    expect(headlineFor(kind("VERSION_KIND_OLDER"))).toBe(copyText("remoteHealth.head.backendOld"));
-    expect(headlineFor(kind("VERSION_KIND_NEWER"))).toBe(copyText("remoteHealth.head.backendNewer"));
-    expect(headlineFor(kind("VERSION_KIND_INCOMPARABLE"))).toBe(copyText("remoteHealth.head.versionIncomparable"));
-    expect(headlineFor("version"), "旧的总称类别不再有").toBe(copyText("remoteHealth.head.notice"));
+    expect(headlineFor(kind("VERSION_KIND_OLDER"), "devbox")).toBe(copyText("remoteHealth.head.backendOld"));
+    expect(headlineFor(kind("VERSION_KIND_NEWER"), "devbox")).toBe(copyText("remoteHealth.head.backendNewer"));
+    expect(headlineFor(kind("VERSION_KIND_INCOMPARABLE"), "devbox")).toBe(copyText("remoteHealth.head.versionIncomparable"));
+    expect(headlineFor("version", "devbox"), "旧的总称类别不再有").toBe(copyText("remoteHealth.head.notice"));
+  });
+});
+
+describe("远端健康提示：拥塞那一条的标题", () => {
+  it("正文是那台后端写的那一句（不带机器名）⇒ 标题是机器名，本机称「本机」那一格", () => {
+    expect(headlineFor("overflow", "devbox")).toBe("devbox");
+    expect(headlineFor("overflow", "<local>")).toBe(copyText("acct.machine.here"));
   });
 });
 

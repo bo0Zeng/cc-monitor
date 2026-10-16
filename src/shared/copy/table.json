@@ -1460,6 +1460,27 @@
       "args": ["name"],
       "limited": ["tmux"]
     },
+    "beStream.overflow.lines": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "连接拥塞 · 约 {n} 条实时消息未送达\n重开该会话可看完整历史",
+      "args": ["n"],
+      "limited": ["连接"]
+    },
+    "beStream.overflow.realigned": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "连接拥塞 · 会话状态已重新对齐",
+      "args": [],
+      "limited": ["连接"]
+    },
+    "beStream.overflow.realignedLines": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "连接拥塞 · 会话状态已重新对齐\n约 {n} 条实时消息未送达 · 重开该会话可看完整历史",
+      "args": ["n"],
+      "limited": ["连接"]
+    },
     "beStderrFd.point.dupFailed": {
       "kind": "error",
       "role": "原因格",
@@ -5765,13 +5786,6 @@
       "role": "片段",
       "zh": "远端后端版本不可比",
       "args": []
-    },
-    "remoteHealth.head.congested": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "远端连接拥塞",
-      "args": [],
-      "limited": ["连接"]
     },
     "skeletonView.ledgerFromIndex.noIndex": {
       "kind": "error",
@@ -13721,26 +13735,6 @@
       "role": "报错",
       "zh": "host 别名含不安全字符 · {alias}",
       "args": ["alias"]
-    },
-    "rsSshSource.health.overflowLost": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{host} 连接拥塞 · 会话状态可能未更新 ×{count}{named}\n重开会话无法补回 · 刷新该机器{truncatedNote}",
-      "args": ["host", "count", "named", "truncatedNote"],
-      "limited": ["连接"]
-    },
-    "rsSshSource.health.overflowTruncated": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · 受影响会话清单不全",
-      "args": []
-    },
-    "rsSshSource.health.overflowLines": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{host} 连接拥塞 · 可能丢失实时消息约 {dropped} 条\n重开该会话可看完整历史",
-      "args": ["host", "dropped"],
-      "limited": ["连接"]
     },
     "rsSshSource.health.badFrame": {
       "kind": "body",

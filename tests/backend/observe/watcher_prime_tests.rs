@@ -117,7 +117,10 @@ fn brief(frames: &[Frame]) -> Vec<String> {
             Frame::Line(crate::wire::Line {
                 session_id, seq, ..
             }) => format!("line {session_id} {seq}"),
-            other => other.loss_identity().kind.to_string(),
+            other => serde_json::to_value(other).unwrap()["kind"]
+                .as_str()
+                .unwrap()
+                .to_string(),
         })
         .collect()
 }

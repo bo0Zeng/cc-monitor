@@ -13,8 +13,7 @@
 //!   [`Frame`]s into the channel via [`FrameSink`]. It uses `try_send`, so a full
 //!   channel drops the frame rather than ever blocking the notify callback — but
 //!   it **counts** the dropped frames and emits a [`Frame::Overflow`] signal once
-//!   （audit-0805 F03：**不可恢复**的那些还会带上身份 `lost`，见 `LOST_IDENTITY_CAP`）
-//!   the channel drains (#32), so the client can warn that live lines were lost.
+//!   the channel drains (#32)；丢的是行以外的，紧跟着在同一条连接上整份重报一次（[`report_to`]）。
 //! - the **writer** ([`crate::main`]'s stdout task) drains the channel and
 //!   writes one wire line per frame. A slow SSH pipe back-pressures the channel
 //!   (the writer awaits on a full pipe), and the bound on the channel means
@@ -63,8 +62,8 @@
 
 use crate::agents::UserTextExt as _;
 use crate::platform::fs::{Ro, RoFile};
-use crate::wire::{ActivityFaceExt as _, FrameMake as _, FrameRules as _};
-use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
+use crate::wire::{ActivityFaceExt as _, FrameMake as _, FrameRules as _, TopicExt as _};
+use crate::wire::{Frame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1511,6 +1510,8 @@ fn watch_loop(
             }
             WatchEvent::Shutdown => break,
         }
+        // 这一件里通道又通了、欠着重报的连接：就地重报。
+        report_owed(&mut state, &mut sink);
         // 有摘除了的会话在等一份「摘除之后才起」的 tmux 观测来裁去向 ⇒ 起一份（在途的那份是摘除之前起的，它回来再起）。
         if sink.awaits_observation() {
             start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
@@ -2511,13 +2512,9 @@ fn branch_starting(sub: u64, starting: &[String], state: &ReaderState, sink: &mu
     }
 }
 
-/// 一条流连接接上来了：先给它一份这台此刻的样子，之后它与别的连接一样收每一帧。
-///
-/// 那一份 ＝ 每个活会话一帧 `session_added`（宣告那一帧，此刻的活动 · 名字 · 在等什么 · 记录路径换成现值）·
-/// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 ·
-/// 会话账本的那一份（可重连的 · 清单报完了没有）。主线外清单只给要了的连接、照它手上的只补缺的（attach 行 · `stream-watch` 带的 `branch`），跟在那一份后面。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
-/// attach 行带了名单 ⇒ 先照它定这条连接的名单，那一份里的运行表只发名单里的（同之后的每一帧）；
-/// 它手上留着的（`kept`）里账上没有的，跟在账本那一份后面答已结束（[`FrameSink::settle_kept`]）。
+/// 一条流连接接上来了：先给它一份这台此刻的样子（[`report_to`]），之后它与别的连接一样收每一帧。
+/// attach 行带了名单 ⇒ 先照它定这条连接的名单，那一份里的运行表只发名单里的（同之后的每一帧）。
+/// 主线外清单只给要了的连接、照它手上的只补缺的（attach 行 · `stream-watch` 带的 `branch`），跟在那一份后面。
 fn join(
     sub: Sub,
     watch: Option<crate::wire::WatchAsk>,
@@ -2530,6 +2527,17 @@ fn join(
         .and_then(|ask| take_ask(id, ask, state, sink))
         .map(|(_, starting)| starting)
         .unwrap_or_default();
+    report_to(id, state, sink);
+    branch_starting(id, &starting, state, sink);
+}
+
+/// 给一条连接一份这台此刻的样子（接上那一刻 · 拥塞丢过会话状态那一类帧之后就地重报，同一份）。
+///
+/// 那一份 ＝ 每个活会话一帧 `session_added`（宣告那一帧，此刻的活动 · 名字 · 在等什么 · 记录路径换成现值）·
+/// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 ·
+/// 会话账本的那一份（可重连的 · 清单报完了没有）· 手上留着的（`kept`）里账上没有的答已结束（[`FrameSink::settle_kept`]）。
+/// 运行表只发名单里的。**不重读记录**：预读整台只做一次。
+fn report_to(id: u64, state: &mut ReaderState, sink: &mut FrameSink) {
     let mut sids: Vec<String> = state.active_sids.iter().cloned().collect();
     sids.sort_unstable();
     for sid in sids {
@@ -2590,7 +2598,38 @@ fn join(
         sink.send_to(id, f);
     }
     sink.settle_kept(id);
-    branch_starting(id, &starting, state, sink);
+}
+
+/// 拥塞丢过行以外的帧、`overflow` 已推出去的那几条连接：各在原连接上就地重报一次 —— 此刻的样子（[`report_to`]，
+/// 手上留着的全部重答：丢的可能正是那一帧）· 丢了的 `changed` 各再发一帧（不带体，客户端照常重问）·
+/// 丢过一帧的主线外清单给整份。重报时又堵 ⇒ 下一次照样 `overflow` ＋ 重报，通了就停。
+fn report_owed(state: &mut ReaderState, sink: &mut FrameSink) {
+    for id in sink.take_realign() {
+        let Some(s) = sink.subs.iter_mut().find(|s| s.id == id) else {
+            continue;
+        };
+        s.kept_answered.clear();
+        let mut changed: Vec<(Topic, Option<String>)> = s.changed_lost.drain().collect();
+        changed.sort_by(|a, b| (a.0.name(), &a.1).cmp(&(b.0.name(), &b.1)));
+        let mut stale: Vec<(String, PathBuf)> = s
+            .branching
+            .iter()
+            .flat_map(|sid| {
+                paths_of(state, sid)
+                    .into_iter()
+                    .map(move |p| (sid.clone(), p))
+            })
+            .filter(|(_, p)| s.branch_stale.contains(&*p.to_string_lossy()))
+            .collect();
+        stale.sort();
+        report_to(id, state, sink);
+        for (topic, key) in changed {
+            sink.send_to(id, Frame::changed(topic, key, None, None));
+        }
+        for (sid, p) in stale {
+            branch_to(state, sink, id, &sid, &p);
+        }
+    }
 }
 
 /// 这份记录的主线外清单变了 ⇒ 发变了的那一截（`whole` ⇒ 从头整份：从 0 重读 · 读完那一刻）。
@@ -4520,28 +4559,22 @@ struct FrameSink {
 
 /// 一条流连接在这台 watcher 上的投影：它的有界通道 · 它的名单 · 它欠的丢帧账。
 ///
-/// The per-connection send half: a bounded-channel sender that turns a wedged pipe
-/// into an explicit **overflow signal** (#32) instead of silently losing data.
-///
-/// A full channel means the writer/SSH pipe is wedged. We still `try_send` (never
-/// blocking the notify reader), but now we **count** the frames we had to drop
-/// and, once the channel drains enough to accept it, emit a single
-/// [`Frame::Overflow`] carrying that count. The client warns the user that live
-/// lines were lost. One signal per congestion burst — naturally throttled.
+/// 通道满（写端 / SSH 管道堵了）⇒ 照样 `try_send`、不阻塞读循环，丢了的记账：行只计数（还在记录里，重开可看）；
+/// 别的（会话状态 · 清单报完 · 运行表 · 主线外清单 · `changed` …）一次差分的结果、别处没有 ⇒ 记「要重新对齐」。
+/// 通道一通，先推一帧 [`Frame::Overflow`]（那一句），要对齐的再欠一次就地重报（[`FrameSink::take_realign`] → [`report_to`]）。
 pub(crate) struct Sub {
     id: u64,
     tx: mpsc::Sender<Frame>,
     /// 这条连接看的那一台的时区（按连接现写的那几帧用）。
     tz: crate::Tz,
-    /// Frames dropped since the last successfully-sent `Overflow` signal.
-    dropped: u64,
-    /// 那批丢帧里**不可恢复**的那些的身份。
-    ///
-    /// 只有计数的 `Overflow` 对内容帧够用（行还在远端 jsonl 里），对状态增量帧不够：
-    /// 它是一次差分的结果、别处不存在，客户端拿着「丢了 N 条」没法重同步。
-    lost: Vec<LostFrame>,
-    /// 身份表触顶过（超出 [`LOST_IDENTITY_CAP`] 的那些只计数、不留身份）。
-    lost_truncated: bool,
+    /// 上一次 `overflow` 之后丢了几行。
+    lines_lost: u64,
+    /// 上一次 `overflow` 之后丢过行以外的帧（重报才对得上）。
+    realign: bool,
+    /// 丢过的 `changed`（主题 · 键）：重报里各再发一帧（不带体，客户端照常重问）。
+    changed_lost: HashSet<(Topic, Option<String>)>,
+    /// `overflow` 已推出去、欠这条连接一次就地重报。
+    owes_report: bool,
     /// 这条流此刻在看哪几个会话（`stream-watch` 报的）：`None` ＝ 没报过 ＝ 全看。
     /// 不在名单里的会话，它的整行帧（[`Frame::content_of`]）不投给这条连接，别的帧不挑。
     watching: Option<HashSet<String>>,
@@ -4556,17 +4589,6 @@ pub(crate) struct Sub {
     /// 其中已经答过已结束的（[`FrameSink::settle_kept`]；不在 `kept` 里了就摘）。
     kept_answered: BTreeSet<String>,
 }
-
-/// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
-///
-/// **超限语义**：超出的那些**仍然计入 `dropped`**，只是不再留身份，并置 `lost_truncated`
-/// 让客户端知道「这份清单不全」——**不是**静默截断（那正是本区在治的病）。
-///
-/// ⚠ **为什么必须有界**：通道卡死时 `dropped` 会一直涨，如果身份表跟着无界增长，
-/// 就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧**挪到了 `Overflow` 自己身上**。
-/// 64 的取法：一次拥塞里真正值得逐个重同步的会话数量级是「几个到几十个」；
-/// 再多时客户端理性的做法本来就是整体重取快照，而 `lost_truncated` 恰好告诉它该这么做。
-const LOST_IDENTITY_CAP: usize = 64;
 
 impl FrameSink {
     /// 生产那一份：带会话账本，起步没有连接（[`join`] 接上来）。
@@ -4736,6 +4758,14 @@ impl FrameSink {
         }
     }
 
+    /// `overflow` 已推出去、欠一次就地重报的那几条连接（取走即清）。
+    fn take_realign(&mut self) -> Vec<u64> {
+        self.subs
+            .iter_mut()
+            .filter_map(|s| std::mem::take(&mut s.owes_report).then_some(s.id))
+            .collect()
+    }
+
     /// 那条连接走了。
     fn leave(&mut self, id: u64) {
         self.subs.retain(|s| s.id != id);
@@ -4748,9 +4778,10 @@ impl Sub {
             id,
             tx,
             tz,
-            dropped: 0,
-            lost: Vec::new(),
-            lost_truncated: false,
+            lines_lost: 0,
+            realign: false,
+            changed_lost: HashSet::new(),
+            owes_report: false,
             watching: None,
             branching: HashSet::new(),
             branch_stale: HashSet::new(),
@@ -4784,37 +4815,27 @@ impl Sub {
         }
     }
 
-    /// Send `frame`, first flushing any owed overflow signal.
-    ///
-    /// Order matters: we try to emit the pending `Overflow` *before* the real
-    /// frame so the client learns "you lost N frames" no later than the next
-    /// frame it receives. If the channel is still full, we keep owing the count
-    /// (it only ever grows until a send succeeds); a closed channel is a quiet
-    /// shutdown (the sink drops this connection).
+    /// 推一帧；先补欠着的那一帧 `overflow`（客户端最晚在下一帧之前知道丢过）。通道还满 ⇒ 接着欠；关了 ⇒ 不说（连接摘掉）。
     fn push(&mut self, frame: Frame) {
-        if self.dropped > 0 {
-            match self.tx.try_send(Frame::Overflow(crate::wire::Overflow {
-                dropped: self.dropped,
-                lost: self.lost.clone(),
-                lost_truncated: self.lost_truncated,
-            })) {
+        if self.lines_lost > 0 || self.realign {
+            match self
+                .tx
+                .try_send(Frame::overflow(self.lines_lost, self.realign))
+            {
                 Ok(()) => {
                     tracing::warn!(
-                        "recovered from frame-channel overflow; signalled {} dropped frame(s), \
-                         {} unrecoverable identities{}",
-                        self.dropped,
-                        self.lost.len(),
-                        if self.lost_truncated {
-                            " (identity list truncated)"
+                        "frame channel recovered: {} line(s) lost{}",
+                        self.lines_lost,
+                        if self.realign {
+                            ", reporting again"
                         } else {
                             ""
                         }
                     );
-                    self.dropped = 0;
-                    self.lost.clear();
-                    self.lost_truncated = false;
+                    self.owes_report |= self.realign;
+                    self.lines_lost = 0;
+                    self.realign = false;
                 }
-                // Still wedged: keep owing the count, retry on the next send.
                 Err(mpsc::error::TrySendError::Full(_)) => {}
                 Err(mpsc::error::TrySendError::Closed(_)) => return,
             }
@@ -4822,25 +4843,23 @@ impl Sub {
         match self.tx.try_send(frame) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(frame)) => {
-                self.dropped += 1;
-                if let Frame::SessionBranch(crate::wire::SessionBranch { path, .. }) = &frame {
-                    self.branch_stale.insert(path.clone());
-                }
-                // **不可恢复的那些要留下身份**，否则客户端只知道
-                // 「丢了 N 条」，而状态增量帧丢了别处没有、它无从重同步。
-                // 有界：超出 `LOST_IDENTITY_CAP` 的仍计入 `dropped`，只是不再留身份并置位标志。
-                if !frame.loss_is_recoverable() {
-                    if self.lost.len() < LOST_IDENTITY_CAP {
-                        self.lost.push(frame.loss_identity());
-                    } else {
-                        self.lost_truncated = true;
+                match &frame {
+                    Frame::Changed(c) => {
+                        self.changed_lost.insert((c.topic, c.key.clone()));
+                        self.realign = true;
                     }
+                    Frame::SessionBranch(crate::wire::SessionBranch { path, .. }) => {
+                        self.branch_stale.insert(path.clone());
+                        self.realign = true;
+                    }
+                    f if f.loss_is_recoverable() => self.lines_lost += 1,
+                    _ => self.realign = true,
                 }
                 tracing::warn!(
-                    "frame channel full (cap {CHANNEL_CAPACITY}); dropping frame \
-                     ({} dropped since last overflow signal, {} unrecoverable identities kept)",
-                    self.dropped,
-                    self.lost.len()
+                    "frame channel full (cap {CHANNEL_CAPACITY}); dropping a frame \
+                     ({} line(s) lost so far, realign {})",
+                    self.lines_lost,
+                    self.realign
                 );
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {

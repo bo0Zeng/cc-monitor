@@ -246,8 +246,8 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::wire::{
-        LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo, RunState,
-        RunWhy, SessionContainer, SessionFate, TransferEnd, Unavailable,
+        LiveBlock, LiveCard, LiveOp, LivePhase, RereadWhy, RunEnded, RunInfo, RunState, RunWhy,
+        SessionContainer, SessionFate, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
@@ -398,21 +398,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 by: None,
             }),
         ],
-        [
-            Frame::Overflow(crate::wire::Overflow {
-                dropped: 7,
-                lost: vec![LostFrame {
-                    kind: "session_added".to_string(),
-                    subject: Some(s("s1")),
-                }],
-                lost_truncated: true,
-            }),
-            Frame::Overflow(crate::wire::Overflow {
-                dropped: 7,
-                lost: vec![],
-                lost_truncated: false,
-            }),
-        ],
+        [Frame::overflow(0, true), Frame::overflow(7, false)],
         [
             Frame::Reply(crate::wire::Reply {
                 id: s("q1"),
@@ -649,7 +635,7 @@ fn frame_variant_kinds() -> std::collections::BTreeSet<String> {
 
 /// ★ 会话流跨语言金样：金样 == 真序列化器此刻的产出（逐行字节）；金样的 kind 集合 == `Frame` 的全部变体。
 ///
-/// 每一行都是单行 JSON、`\n` 收尾、kind 与 `loss_identity` 报的一致。
+/// 每一行都是单行 JSON、`\n` 收尾。
 /// 重打是显式动作：`REGOLD_SESSION_STREAM=1` 跑本条写盘；不设就只比、不一致就红并打印差异。
 #[test]
 fn the_session_stream_golden_is_what_the_serializer_writes() {
@@ -661,11 +647,6 @@ fn the_session_stream_golden_is_what_the_serializer_writes() {
             .map(|f| {
                 let line = to_line(f).expect("serialize");
                 let kind = parse_kind(&line);
-                assert_eq!(
-                    kind,
-                    f.loss_identity().kind,
-                    "kind 标签与 loss_identity 不一致"
-                );
                 produced.push_str(&line);
                 kind
             })
@@ -1022,18 +1003,25 @@ fn the_name_face_carries_the_name_and_the_project() {
     );
 }
 
+/// `overflow` 只有那一句：只丢了行 · 已重新对齐 · 两样都有，三种各一句（数在句子里）。
 #[test]
-fn overflow_frame_serializes_with_dropped_count() {
-    let line = to_line(&Frame::Overflow(crate::wire::Overflow {
-        dropped: 42,
-        lost: Vec::new(),
-        lost_truncated: false,
-    }))
-    .expect("serialize");
-    let body = line.strip_suffix('\n').unwrap();
-    let v: Value = serde_json::from_str(body).expect("valid json");
-    assert_eq!(v["kind"], "overflow");
-    assert_eq!(v["dropped"], 42);
+fn the_overflow_frame_is_the_one_sentence() {
+    let said = |f: Frame| -> Value {
+        let line = to_line(&f).expect("serialize");
+        serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("valid json")
+    };
+    assert_eq!(
+        said(Frame::overflow(42, false)),
+        serde_json::json!({ "kind": "overflow", "said": copy_core::copy_text("beStream.overflow.lines", &[("n", "42")]) })
+    );
+    assert_eq!(
+        said(Frame::overflow(0, true))["said"],
+        copy_core::copy_text("beStream.overflow.realigned", &[])
+    );
+    assert_eq!(
+        said(Frame::overflow(3, true))["said"],
+        copy_core::copy_text("beStream.overflow.realignedLines", &[("n", "3")])
+    );
 }
 
 // `tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
@@ -1355,9 +1343,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
     // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
-    ("overflow", "dropped", "number"),
-    ("overflow", "lost", "array"),
-    ("overflow", "lost_truncated", "bool"),
+    ("overflow", "said", "string"),
     // 〔第二个前端 live1 10-13〕**活卡**（聊天屏的逐字长出，核心拼好的成品）。`live_frames_have_exactly_these_bytes` 钉的是字节，
     // 本表钉的是**有人在读它**。⚠ 一份样本只带得动一种 `op`：取整卡（`open`）那一支；增量与撤卡那几种的字节由逐字节判据钉。
     ("live_card", "sid", "string"),
@@ -1406,14 +1392,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             byte_offset: 9,
             rid: None,
         }),
-        Frame::Overflow(crate::wire::Overflow {
-            dropped: 2,
-            lost: vec![LostFrame {
-                kind: "session_status".to_string(),
-                subject: s.clone(),
-            }],
-            lost_truncated: true,
-        }),
+        Frame::overflow(2, true),
         Frame::LiveCard(crate::wire::LiveCard {
             sid: "s".into(),
             run: s.clone(),
@@ -1672,19 +1651,13 @@ fn a_changed_body_over_its_cap_is_left_off() {
     }
 }
 
-/// `changed` 丢了能不能恢复照主题表答；丢了报的身份是 `changed` ＋ `主题[/key]`。
+/// `changed` 丢了能不能恢复照主题表答。
 #[test]
 fn changed_loss_follows_the_topic_table() {
     for t in Topic::ALL {
         let f = Frame::changed(t, None, None, None);
         assert_eq!(f.loss_is_recoverable(), t.spec().lossy, "{t:?}");
     }
-    let f = Frame::changed(Topic::Tasks, Some("s1".into()), None, None);
-    let id = f.loss_identity();
-    assert_eq!(
-        (id.kind.as_str(), id.subject.as_deref()),
-        ("changed", Some("tasks/s1"))
-    );
 }
 
 /// 8a b：整份主线外清单切成几帧 `session_branch`：每帧一行 ≤ `REPLY_PAGE_BYTES`；`at` 依次接上；拼起来 ＝ 原清单；

@@ -270,9 +270,7 @@ fn the_hello_witness_can_only_come_from_a_hello_frame() {
     assert!(
         witness_of(&cmd_wire::frame::Frame::Overflow(
             cmd_wire::frame::Overflow {
-                dropped: 1,
-                lost: Vec::new(),
-                lost_truncated: false
+                said: cmd_wire::cells::Words("拥塞".into())
             }
         ))
         .is_none(),

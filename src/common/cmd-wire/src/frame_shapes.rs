@@ -10,7 +10,7 @@ pub const FRAMES: &[(&str, &str)] = &[
     ("link_data", "78319744"),
     ("link_end", "4d744cd6"),
     ("live_card", "4320b506"),
-    ("overflow", "8e326572"),
+    ("overflow", "6c57a5a8"),
     ("probe", "f36b8ba6"),
     ("reply", "561634f0"),
     ("session_added", "abc1c129"),

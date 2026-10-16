@@ -24,12 +24,14 @@ import { shouldShowHealthToast } from "./remote-health-throttle";
 // 现在字段名由生成物负责，不必再靠注释提醒。
 import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
 import { copyText } from "./copy-table";
+import { machineLabel } from "./acct-view";
 
 /** kind → toast 标题（未知 kind 回退到通用「远端提示」）。版本那三类由壳按那台回的新旧挑好（`stream_source/run.rs::version_health_kind`）。 */
-export function headlineFor(kind: string): string {
+export function headlineFor(kind: string, origin: string): string {
   switch (kind) {
+    // 拥塞那一句是那台后端写的、不带机器名 ⇒ 标题位排机器名。
     case "overflow":
-      return copyText("remoteHealth.head.congested");
+      return machineLabel(origin);
     case "version-older":
       return copyText("remoteHealth.head.backendOld");
     case "version-newer":
@@ -62,7 +64,7 @@ export function bindRemoteHealthToast(): void {
     const now = Date.now();
     if (!shouldShowHealthToast(lastShown.get(key), now)) return;
     lastShown.set(key, now);
-    toast(headlineFor(p.kind), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), { detail: p.detail,
+    toast(headlineFor(p.kind, p.origin), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), { detail: p.detail,
       level: "info",
     });
   });

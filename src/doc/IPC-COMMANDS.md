@@ -105,13 +105,11 @@ A session file went away。
 
 ### `overflow`
 
-The bounded frame channel back-pressured and the reader had to drop `dropped` frames (a slow/wedged SSH pipe)。
+这条连接拥塞丢过帧：那台写好的那一句（只丢了行 · 会话状态已重新对齐 · 两样都有）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `dropped` | number | 自上一次哨兵以来丢掉的帧数 |
-| `lost` | [LostFrame]? | 那批丢帧里**不可恢复**的那些的身份 |
-| `lost_truncated` | bool? | 身份表是**有界**的（后端 `watcher.rs` 的 `LOST_IDENTITY_CAP`） |
+| `said` | Words | 那一句 |
 
 ### `reply`
 
@@ -357,15 +355,6 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 
 - `gone` —— 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind
 - `superseded` —— 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**（直接归档，不再去查 tmux 快照）
-
-#### `LostFrame`
-
-一条**丢了就不可恢复**的帧的身份（`overflow.lost` 的一项）：给那些帧带上身份，让客户端能精确地重新问那几个主体。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `kind` | string | 帧种（与 `kind` tag 同一套 snake_case 名字） |
-| `subject` | string? | 主体：会话 sid / tmux 会话名 |
 
 #### `Unavailable`
 

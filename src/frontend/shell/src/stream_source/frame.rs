@@ -27,44 +27,6 @@ pub struct JsonlLine {
 /// 那台后端发来的一帧，按 `cmd-wire` 的类型解（记录那一格原文收下、不建树）。
 pub(crate) type Frame = cmd_wire::frame::Frame<crate::ui_contract::RecordBody>;
 
-/// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
-/// - 只丢了内容帧（`lost` 空）：行还在那台的记录里，「重开会话可看完整历史」成立。
-/// - 有不可恢复的丢失：点名主体，并明说重开会话补不回来；身份表还被截断了 ⇒ 再加一句「清单不全」。
-pub(super) fn overflow_health_message(host_label: &str, o: &cmd_wire::frame::Overflow) -> String {
-    if o.lost.is_empty() {
-        return copy_text(
-            "rsSshSource.health.overflowLines",
-            &[
-                ("host", &host_label.to_string()),
-                ("dropped", &o.dropped.to_string()),
-            ],
-        );
-    }
-    // 主体去重后点名（同一个会话可能连丢好几帧）。
-    let mut subjects: Vec<&str> = o.lost.iter().filter_map(|l| l.subject.as_deref()).collect();
-    subjects.sort_unstable();
-    subjects.dedup();
-    let named = if subjects.is_empty() {
-        String::new()
-    } else {
-        format!("（{}）", subjects.join(" / "))
-    };
-    let truncated_note = if o.lost_truncated {
-        &copy_text("rsSshSource.health.overflowTruncated", &[])
-    } else {
-        ""
-    };
-    copy_text(
-        "rsSshSource.health.overflowLost",
-        &[
-            ("host", &host_label.to_string()),
-            ("count", &(o.lost.len()).to_string()),
-            ("named", &named.to_string()),
-            ("truncatedNote", &truncated_note.to_string()),
-        ],
-    )
-}
-
 /// 一行进不来的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unread {

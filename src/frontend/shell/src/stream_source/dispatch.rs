@@ -235,29 +235,15 @@ fn array_body<T: serde::Serialize>(rows: &[T]) -> crate::ui_contract::RecordBody
         })
 }
 
-/// 那台管道拥塞丢了帧：日志 ＋ 经 `remote-health` 说一句（丢了的不可恢复帧点名）。
+/// 那台管道拥塞丢过帧：日志 ＋ 经 `remote-health` 原样交那台写的那一句（标题位界面排机器名）。
+/// 丢了会话状态那一类的，那台紧跟着在同一条连接上整份重报，这里不判、不重接。
 fn on_overflow(origin: &crate::origin::Origin, health: &HealthOut, o: &wire::Overflow) {
     let at = origin.as_wire_str();
-    // 那一句里怎么称呼那台：本机说「本机」，远端说它的名字。
-    let label = if *origin == crate::origin::Origin::local() {
-        crate::copy_table::copy_text("control.machine.local", &[])
-    } else {
-        at.to_string()
-    };
-    tracing::warn!(
-        "stream_source [{at}] overflow: backend dropped {} frame(s), {} unrecoverable{}",
-        o.dropped,
-        o.lost.len(),
-        if o.lost_truncated {
-            " (list truncated)"
-        } else {
-            ""
-        }
-    );
+    tracing::warn!("stream_source [{at}] overflow: {}", o.said.0);
     let payload = crate::ui_contract::RemoteHealthPayload {
         origin: at.to_string(),
         kind: "overflow".to_string(),
-        message: overflow_health_message(&label, o),
+        message: o.said.0.clone(),
         detail: String::new(),
     };
     if let Err(e) = health(payload) {

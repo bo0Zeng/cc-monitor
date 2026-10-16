@@ -32,7 +32,7 @@ class ProductsTest {
     }
 
     @Test
-    fun `会话表：status 改字、removed 拿掉、replayed 记下、丢了会话帧要重接`() {
+    fun `会话表：status 改字、removed 拿掉、replayed 记下`() {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_added")[0], breaks::add)
         t = t.step(golden("session_status")[1], breaks::add)
@@ -41,9 +41,6 @@ class ProductsTest {
         assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path) // 状态帧不抹掉宣告时的格
         t = t.step(golden("sessions_replayed")[0], breaks::add)
         assertTrue(t.replayed)
-        val (lostOne, plain) = golden("overflow")
-        assertTrue(t.step(lostOne, breaks::add).needsResync)
-        assertFalse("只丢了内容帧 ⇒ 表照样可信", t.step(plain, breaks::add).needsResync)
         t = t.step(golden("session_removed")[1], breaks::add)
         assertTrue(t.sessions.isEmpty())
         assertTrue(breaks.toString(), breaks.isEmpty())

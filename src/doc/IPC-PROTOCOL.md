@@ -115,7 +115,7 @@
 3. 状态：`session_status`（红绿灯变了才发，天然稀疏；`activity` ＝ `working` · `needs_you` · `idle` · `background_work`（一轮停了、它在后台起的命令还在跑），后端适配层从那一家的进程状态翻过来；没有进程状态文件的那一家照它记录里的事件翻（一轮开始 ⇒ `working`，一轮完了 / 中止 ⇒ `idle`），翻不出就不带）· `session_runs`（子运行表，整份）· `changed`（「这台的某样东西变了」，下面「`changed` 主题表」）。
 4. 离开：`session_removed`（`cause`：`gone` 真没了 · `superseded` 同一个 pidfile 原地换了 sid，后者客户端直接归档、别去查 tmux）→ `session_state`（这台后端自己裁：`reconnectable` 容器还在、接得回去 · `ended` 只能 resume）。
 5. 记录文件被动过：`session_file_gone`（不见了，不误判结束）· `session_file_reread`（被截短 / 改写过、已从头重读；紧排在重读出来的 `line` 之前）。
-6. 背压：实时通道满时丢帧，排空后发一帧 `overflow`（丢了几帧 ＋ 不可恢复的那些帧的身份 `lost`）。`line` 丢了可以从记录文件补；`session_added` / `session_removed` / `session_status` / `session_state` / 不可丢主题的 `changed`（`lost` 里 `kind: "changed"`、`subject` ＝ `主题` 或 `主题/key`）这类一次性结论丢了别处没有，客户端按 `lost` 重同步。
+6. 背压：实时通道满时丢帧，排空后先发一帧 `overflow {said}`（那台写好的那一句：只丢了行 · 会话状态已重新对齐 · 两样都有）。`line` 丢了只计数（重开会话可看完整历史）；别的（`session_added` / `session_removed` / `session_status` / `session_state` / `sessions_replayed` · 运行表 · 主线外清单 · 不可丢主题的 `changed`）一次性结论丢了别处没有 ⇒ 后端紧跟着在**同一条连接**上整份重报一次：接上那一刻的那一份（活会话宣告 · 读完了 · 运行表 · 可重连的 · 清单报完）· `kept` 里那台不在说的重答已结束 · 丢了的 `changed` 各一帧（不带体，客户端照常重问）· 丢过一帧的主线外清单给整份。重报时又堵 ⇒ 下一次照样 `overflow` ＋ 重报。客户端不判、不重接，`said` 原样上屏。
 
 ### `changed` 主题表
 
@@ -146,7 +146,7 @@
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
 `login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。
 `session_hidden`：这台某个活会话隐不隐藏变了（注解 · 这台偏好 `childTab` / `bgTab` · 会话血缘动了之后重判的），`key` 是会话 id，`body` 是 `{hidden}`（那一格 `{by, said}`，不隐藏 ⇒ `null`；判定只住后端一处，`session_added` · `history-list` 每行 · `sessions-needs` 每行带的是同一格），收到就换、不重读整份清单；万一没收到，重问 `history-list {sid}` 那一行。
-可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
+可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了那台就地重报时再发一帧）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_state`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。
 
@@ -168,7 +168,7 @@
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `emits` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
-  `overflow` `dropped` `lost` `lost_truncated` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
+  `overflow` `said` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `activity` `activity_text` `activity_tone` `background`）·
   `session_status`（`sid` `waiting_for` `activity` `activity_text` `activity_tone`）· `session_removed`（`sid` `cause`）只冻这几格；
