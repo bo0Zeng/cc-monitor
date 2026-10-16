@@ -194,6 +194,7 @@ impl Stamp for WindowShow {
         }
         self.seen_at_text = Some(clock.text(self.seen_at));
         self.seen_at_rel_text = clock.rel(self.seen_at);
+        self.text = window_line(self);
     }
 }
 
@@ -218,6 +219,14 @@ pub(crate) fn windows_of(
         .map(|w| {
             let seen = o.window_seen(&w.name);
             let reset = super::reset_since_seen(w.resets_at, now);
+            let per_pct = o.tokens_per_pct(&w.name, now);
+            let tone = if full(w, now) {
+                Tone::Fail
+            } else if over(w, NEAR_DEFAULT, now) {
+                Tone::Warn
+            } else {
+                Tone::Plain
+            };
             WindowShow {
                 resets_at_text: None,
                 resets_at_rel_text: None,
@@ -231,11 +240,75 @@ pub(crate) fn windows_of(
                 resets_at: w.resets_at,
                 seen_at: seen.at,
                 from: seen.from,
-                tokens_per_pct: o.tokens_per_pct(&w.name, now),
+                tokens_per_pct: per_pct,
+                per_pct_text: per_pct.map(per_pct_text),
                 reset_since_seen: reset,
+                text: Words::default(),
+                tone,
             }
         })
         .collect()
+}
+
+/// 「1% ≈ 多少用量」那一格的字（唯一写法）。
+fn per_pct_text(n: u64) -> Words {
+    Words(copy_core::copy_text(
+        "acct.val.perPct",
+        &[("n", &copy_core::count_short(n))],
+    ))
+}
+
+/// 各语义位那一格照它取的那个窗口带上「1% ≈ 多少用量」（[`windows_of`] 之后调）。
+pub(crate) fn per_pct_of_slots(sh: &mut QuotaShow) {
+    for s in &mut sh.slots {
+        s.per_pct_text = sh
+            .windows
+            .iter()
+            .find(|w| w.name == s.window)
+            .and_then(|w| w.per_pct_text.clone());
+    }
+}
+
+/// 一个窗口那一行的名字：窗口键 `5h` · `7d` 照语义位的字；`7d:<档>` ⇒「7d <档>」；不算用量窗口的（超额）⇒「超额」。
+fn window_label(key: Option<&str>) -> String {
+    match key {
+        None => copy_core::copy_text("acct.row.over", &[]),
+        Some(k) => match k.split_once(':') {
+            Some((slot, tier)) => copy_core::copy_text(
+                "acct.window.tier",
+                &[
+                    ("slot", &super::name_words::slot_text(slot)),
+                    ("tier", &tier.replace('_', " ")),
+                ],
+            ),
+            None => super::name_words::slot_text(k),
+        },
+    }
+}
+
+/// 一个窗口那一行写好的字（出口那一下、时刻字写好之后）：名字 · 值（已重置未计时 / 没数 ⇒ `—`，用满 ⇒ `✕`）· 还在计时 ⇒ `↻时刻`。
+fn window_line(w: &WindowShow) -> Words {
+    let value = if w.reset_since_seen {
+        copy_core::copy_text("acct.val.none", &[])
+    } else if w.tone == Tone::Fail {
+        copy_core::copy_text("acct.val.full", &[])
+    } else {
+        match w.pct {
+            Some(p) => copy_core::copy_text("acct.val.pct", &[("pct", &p.to_string())]),
+            None => copy_core::copy_text("acct.val.none", &[]),
+        }
+    };
+    let window = window_label(w.key.as_deref());
+    Words(match w.resets_at_text.as_ref().filter(|_| !w.reset_since_seen) {
+        Some(at) => copy_core::copy_text(
+            "acct.window.lineReset",
+            &[("window", &window), ("value", &value), ("at", &at.0)],
+        ),
+        None => copy_core::copy_text(
+            "acct.window.line",
+            &[("window", &window), ("value", &value)],
+        ),
+    })
 }
 
 /// 「用到 N%」的显示判法：这个窗口用到 `n`%、还没重置。
@@ -278,6 +351,8 @@ fn slots_of(
                 full: full(w, now),
                 text: Words::default(),
                 tone: Tone::Plain,
+                per_pct_text: None,
+                window: w.name.clone(),
             })
         })
         .collect()

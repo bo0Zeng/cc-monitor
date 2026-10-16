@@ -244,7 +244,7 @@ private fun AccountRow(
                 if (a.name == ui.defaultAccount) DefaultTag()
                 if (a.selectable) {
                     a.quota?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                } else {
+                } else if (a.login) {
                     OutlinedButton(onClick = onLogin) { Text(copyText("newSession.account.login")) }
                 }
             },

@@ -1333,12 +1333,14 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
             name: cwf::WirePath::from("a.txt"),
             kind: cwf::FileKind::File,
             size: Some(4),
+            size_text: Some(copy_core::size_text(4)),
             mtime_text: crate::common::batch_book::moment_text(
                 crate::common::batch_book::mtime_secs(mine.modified()),
                 &tz
             ),
             there: cwf::FileKind::File,
             there_size: Some(3),
+            there_size_text: Some(copy_core::size_text(3)),
             there_mtime_text: Some("2023-11-15 07:13".into()),
             dir_into: false,
         }],

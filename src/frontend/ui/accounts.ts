@@ -59,6 +59,8 @@ export interface Account {
   quota?: string | null;
   /** 选不了的那一句（需登录 · 需 key · 不隔离 · 号目录不在）；选得了 · 账号 0 ⇒ `null`。线上恒有，夹具可以不写。 */
   unselectable?: string | null;
+  /** 给不给［登录…］（那台判的：只差登录、这一家能在 app 里登录）。线上恒有，夹具可以不写（不写 ⇒ 不给）。 */
+  login?: boolean;
 }
 
 /** 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。 */

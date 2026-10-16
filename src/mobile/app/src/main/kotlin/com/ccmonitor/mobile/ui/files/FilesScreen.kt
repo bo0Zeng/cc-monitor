@@ -49,7 +49,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.RemotePath
-import com.ccmonitor.mobile.core.copy.SizeFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
@@ -660,7 +659,7 @@ private fun EntryRow(
             Text(e.name, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
             e.mtime?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
         }
-        if (!e.isDir) e.size?.let { Text(SizeFormat.text(it), style = monoSmall, color = tokens.textFaint) }
+        if (!e.isDir) e.sizeText?.let { Text(it, style = monoSmall, color = tokens.textFaint) }
     }
 }
 

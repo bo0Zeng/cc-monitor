@@ -16,6 +16,7 @@
 use super::*;
 use crate::copy::testing::{rects_of, text_in_frame, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend, Wired};
+use crate::select::ActionFace;
 use crate::shell::FileWindow;
 use crate::workspace::Workspace;
 

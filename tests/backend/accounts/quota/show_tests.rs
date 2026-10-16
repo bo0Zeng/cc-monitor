@@ -141,6 +141,8 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 full: false,
                 text: copy_core::copy_text("acct.val.pct", &[("pct", "63")]).into(),
                 tone: crate::common::cells::Tone::Plain,
+                per_pct_text: None,
+                window: "five_hour".into(),
             },
             SlotShow {
                 resets_at_text: None,
@@ -151,6 +153,8 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 full: false,
                 text: copy_core::copy_text("acct.val.pct", &[("pct", "41")]).into(),
                 tone: crate::common::cells::Tone::Plain,
+                per_pct_text: None,
+                window: "seven_day".into(),
             },
         ]
     );
@@ -327,5 +331,92 @@ fn the_usage_cell_is_written_by_the_core() {
     assert_eq!(
         u.text.0,
         copy_core::copy_text("acct.usage.wv", &[("w", &u.value.0), ("v", &reset)])
+    );
+}
+
+/// 一份账：5h 用 30%、7d 两个窗口（`seven_day` 40% · `seven_day_opus` 85%），5h 与 opus 量过「1% ≈ 多少」。
+fn observed() -> crate::accounts::quota::ledger::Observed {
+    use crate::accounts::quota::ledger::{Observed, PerPct};
+    let mut r = sub(0.3, LATER);
+    r.windows = vec![
+        win("five_hour", 0.3, LATER),
+        win("seven_day", 0.4, LATER + 86_400),
+        win("seven_day_opus", 0.85, LATER + 86_400),
+    ];
+    Observed {
+        agent: "claude".into(),
+        account: "a".into(),
+        seen_at: NOW,
+        reading: r,
+        windows_seen: Default::default(),
+        trend: Default::default(),
+        per_pct: [
+            ("five_hour".to_string(), PerPct { tokens: 2_100_000, at: NOW }),
+            ("seven_day_opus".to_string(), PerPct { tokens: 25_000, at: NOW }),
+        ]
+        .into(),
+    }
+}
+
+/// ★ 「1% ≈ 多少」写好的字：每个量过的窗口一格（短写的数）；语义位那一格照它取的那个窗口（7d 取用得多的 opus），没量过 ⇒ 缺。
+#[test]
+fn per_pct_is_written_for_windows_and_the_slot_that_took_them() {
+    let o = observed();
+    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+    let mut sh = show(Some((&o.reading, o.seen_at)), facts(Kind::Sub), NOW, &slot);
+    sh.windows = windows_of(&o, &key, NOW);
+    per_pct_of_slots(&mut sh);
+    let pp = |n: &str| Some(Words(copy_core::copy_text("acct.val.perPct", &[("n", n)])));
+    let win_pp: Vec<_> = sh.windows.iter().map(|w| (w.name.as_str(), w.per_pct_text.clone())).collect();
+    assert_eq!(
+        win_pp,
+        vec![("five_hour", pp("2.1M")), ("seven_day", None), ("seven_day_opus", pp("25K"))]
+    );
+    let slot_pp: Vec<_> = sh.slots.iter().map(|s| (s.slot.as_str(), s.per_pct_text.clone())).collect();
+    assert_eq!(slot_pp, vec![("5h", pp("2.1M")), ("7d", pp("25K"))]);
+}
+
+/// ★ 更细窗口那一行写好的字与语气：名字照窗口键（`7d:opus` ⇒「7d opus」、超额那一档 ⇒「超额」，原名不上屏）· 值 · 还在计时 ⇒ ↻时刻；
+/// 快满 ⇒ warn、用满 ⇒ fail；重置已过 ⇒ 值写「—」、不写重置。
+#[test]
+fn each_window_line_is_written_with_its_tone() {
+    let mut o = observed();
+    o.reading.windows.push(win("overage", 1.0, LATER));
+    o.reading.windows.push(win("seven_day_sonnet", 0.5, EARLIER));
+    let key = |w: &str| crate::agents::claudecode::quota::key_of(w);
+    let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
+    let mut ws = windows_of(&o, &key, NOW);
+    ws.iter_mut().for_each(|w| w.stamp(&clock));
+    let line = |window: &str, value: &str, at: Option<u64>| match at {
+        Some(t) => copy_core::copy_text(
+            "acct.window.lineReset",
+            &[("window", window), ("value", value), ("at", &clock.text(t).0)],
+        ),
+        None => copy_core::copy_text("acct.window.line", &[("window", window), ("value", value)]),
+    };
+    let opus = copy_core::copy_text("acct.window.tier", &[("slot", "7d"), ("tier", "opus")]);
+    let sonnet = copy_core::copy_text("acct.window.tier", &[("slot", "7d"), ("tier", "sonnet")]);
+    let got: Vec<_> = ws.iter().map(|w| (w.text.0.clone(), w.tone)).collect();
+    assert_eq!(
+        got,
+        vec![
+            (line("5h", "30%", Some(LATER)), Tone::Plain),
+            (line("7d", "40%", Some(LATER + 86_400)), Tone::Plain),
+            (line(&opus, "85%", Some(LATER + 86_400)), Tone::Warn),
+            (
+                line(
+                    &copy_core::copy_text("acct.row.over", &[]),
+                    &copy_core::copy_text("acct.val.full", &[]),
+                    Some(LATER)
+                ),
+                Tone::Fail
+            ),
+            (line(&sonnet, "—", None), Tone::Plain),
+        ]
+    );
+    assert!(
+        ws.iter().all(|w| !w.text.0.contains(&w.name)
+            && w.key.as_deref().is_none_or(|k| !k.contains(':') || !w.text.0.contains(k))),
+        "原名或窗口键上了屏：{got:?}"
     );
 }

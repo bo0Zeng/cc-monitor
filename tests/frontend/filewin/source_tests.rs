@@ -333,11 +333,16 @@ fn a_backend_entry_becomes_a_row() {
         "path": "/srv/data/报表.csv", "name": "报表.csv",
         "kind": "file",
         "size": 4096u64,
-        "mtime_secs": 1_700_000_000u64,
+        "mtime_secs": 1_700_000_000u64, "size_text": "4 KB",
         "class": "text", "type_text": "文本 · CSV",
         "gates": { "preview": { "text": { "cap": 65536 } }, "edit": { "cap": 8388608 } },
     });
     let r = entry(&v).expect("这条 entry 应当解得出来");
+    assert_eq!(
+        r.size_text.as_deref(),
+        Some("4 KB"),
+        "大小那一格照后端写好的字"
+    );
     // 种类 · 那一列的字 · 门原样带上来（窗口不判）。
     assert_eq!(r.class, cmd_wire::files::FileClass::Text);
     assert_eq!(r.type_text, "文本 · CSV");
@@ -681,6 +686,7 @@ fn backend_ls_fields() -> std::collections::BTreeSet<String> {
             name: WirePath::from("a"),
             kind: FileKind::Symlink,
             size: Some(1),
+            size_text: Some(String::new()),
             mtime_secs: Some(1),
             mtime_text: Some(String::new()),
             mtime_full: Some(String::new()),
@@ -744,6 +750,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("up", "窗口不读（上一级照当前目录切）"),
         ("crumbs", "窗口不读（面包屑照当前目录切）"),
         ("size", "size（缺 ＝ 0）"),
+        ("size_text", "size_text（大小那一格，原样）"),
         ("class", "class（画哪种图标，原样）"),
         ("type_text", "type_text（「类型」那一列，原样）"),
         ("gates", "gates（预览 · 看图 · 编辑那几道门，原样）"),

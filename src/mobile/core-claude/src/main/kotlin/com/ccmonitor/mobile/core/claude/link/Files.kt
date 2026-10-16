@@ -120,6 +120,8 @@ object FilesLs {
         /** 目录，或跟得过去的指向目录的链接。 */
         val isDir: Boolean,
         val size: Long?,
+        /** 大小那一格（那台写好的）。 */
+        val sizeText: String?,
         /** 那台按它的钟写好的短写法。 */
         val mtime: String?,
         /** 预览那道门（那台判的）；目录 · 手机不画的那几种（图）⇒ `null`。 */
@@ -178,7 +180,7 @@ object FilesLs {
         val preview = g?.preview?.let { p -> p.text?.let { Open(cap = it.cap) } ?: p.no?.let { Open(said = it) } }
         val edit = g?.edit?.let { Open(it.cap, it.no) }
         val isDir = e.kind == FileKind.DIR || (e.kind == FileKind.SYMLINK && e.linkDir == true)
-        return Entry(path, rel, isDir, e.size, e.mtimeText, preview, edit)
+        return Entry(path, rel, isDir, e.size, e.sizeText, e.mtimeText, preview, edit)
     }
 
     /** 新建会话的目录浏览：只列文件夹（含指向目录的链接）。路径是那台写好的全路径。 */

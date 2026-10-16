@@ -2438,7 +2438,7 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
     let row = |name: &str| {
         serde_json::json!({"name": name, "label": name, "email": "", "configDir": "/d", "isDefault": false, "mode": "isolated",
             "exists": true, "loggedIn": true, "authKind": "subscription", "authReady": true, "selectable": true, "color": 0,
-            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null})
+            "keyMasked": null, "baseUrl": null, "badge": {"text": "", "warn": false, "title": ""}, "plate": "x", "quota": null, "unselectable": null, "login": false})
     };
     let mut list: crate::observe::accounts_query::AccountsList = serde_json::from_value(serde_json::json!({
         "meta": {"enabled": true, "acctsDir": "", "manifestPath": "", "updatedAt": null, "sharedStore": null, "count": 2,

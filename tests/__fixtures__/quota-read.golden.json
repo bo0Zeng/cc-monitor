@@ -152,7 +152,12 @@
         "unseen": [],
         "usableNow": [
           "personal"
-        ]
+        ],
+        "verdict": {
+          "sub": "personal",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -308,7 +313,12 @@
         "unseen": [],
         "usableNow": [
           "personal"
-        ]
+        ],
+        "verdict": {
+          "sub": "personal",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -472,7 +482,12 @@
         "state": "present",
         "text": null,
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": {
+          "sub": "最早 work ↻19:00 (+2h20m)",
+          "text": "均不可发",
+          "tone": "fail"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -635,7 +650,12 @@
         "state": "present",
         "text": null,
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": {
+          "sub": "最早 work ↻19:00 (+2h20m)",
+          "text": "均不可发",
+          "tone": "fail"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -801,7 +821,12 @@
         "state": "present",
         "text": null,
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": {
+          "sub": "最早 work ↻19:00 (+2h20m)",
+          "text": "均不可发",
+          "tone": "fail"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -949,7 +974,12 @@
         "unseen": [],
         "usableNow": [
           "team"
-        ]
+        ],
+        "verdict": {
+          "sub": "team",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -1091,7 +1121,12 @@
         "state": "present",
         "text": null,
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": {
+          "sub": "最早 work ↻17:25 (+45m)",
+          "text": "均不可发",
+          "tone": "fail"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -1239,7 +1274,12 @@
         "state": "present",
         "text": null,
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": {
+          "sub": null,
+          "text": "均不可发",
+          "tone": "fail"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -1389,7 +1429,12 @@
         "unseen": [],
         "usableNow": [
           "_"
-        ]
+        ],
+        "verdict": {
+          "sub": "未指定账号",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -1639,7 +1684,12 @@
         "unseen": [],
         "usableNow": [
           "api"
-        ]
+        ],
+        "verdict": {
+          "sub": "api",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -1909,7 +1959,12 @@
         ],
         "usableNow": [
           "personal"
-        ]
+        ],
+        "verdict": {
+          "sub": "personal",
+          "text": "可发 · 1 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -2169,7 +2224,12 @@
         "usableNow": [
           "team",
           "cold"
-        ]
+        ],
+        "verdict": {
+          "sub": "team · cold",
+          "text": "可发 · 2 个号",
+          "tone": "plain"
+        }
       },
       "tz": "Asia/Shanghai"
     },
@@ -2197,7 +2257,8 @@
         "state": "absent",
         "text": "无采样",
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": null
       },
       "tz": "Asia/Shanghai"
     },
@@ -2225,7 +2286,8 @@
         "state": "unreadable",
         "text": "读取 /h/.cc-monitor/quota.json 失败 · 内容无法解析",
         "unseen": [],
-        "usableNow": []
+        "usableNow": [],
+        "verdict": null
       },
       "tz": "Asia/Shanghai"
     }

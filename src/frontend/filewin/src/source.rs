@@ -96,6 +96,9 @@ pub struct Listed {
     pub type_text: String,
     /// 预览 · 看图 · 编辑那几道门（后端判好的；目录与问不出的路 ⇒ `None`）。
     pub gates: Option<cmd_wire::files::Gates>,
+    /// 大小那一格的字（后端写好的；问不出 ⇒ `None`，那一格空着）。
+    #[serde(default)]
+    pub size_text: Option<String>,
 }
 
 impl Listed {
@@ -119,6 +122,7 @@ impl Listed {
             },
             type_text: String::new(),
             gates: None,
+            size_text: None,
             row,
         }
     }
@@ -126,6 +130,21 @@ impl Listed {
     /// 点得进去：目录，或指向目录的链接。
     pub fn opens_as_dir(&self) -> bool {
         self.row.is_dir || self.link_dir
+    }
+
+    /// 这一行交给「能做什么」那一套（`pick-core`）的那几格。
+    pub fn pick(&self) -> pick_core::Pick<'_> {
+        pick_core::Pick {
+            name: &self.row.name,
+            is_dir: self.row.is_dir,
+            link: self.link,
+            link_dir: self.link_dir,
+            link_broken: self.link_broken,
+            lossy: self.row.lossy_name,
+            raw: self.raw_name.is_some(),
+            class: self.class,
+            gates: self.gates.as_ref(),
+        }
     }
 }
 
@@ -600,6 +619,7 @@ pub const CMD_LS: &str = "files-ls";
 /// | `kind`（`dir`/`file`/`symlink`/`other`） | `is_dir` ＋ `link` | `dir` ⇒ 目录；`symlink` ⇒ 链接。**两格，不是一格** |
 /// | `link_dir`（只在链接上、可能缺） | `link_dir` | 链接且它为真 ⇒ 指向目录；缺 ⇒ 否 |
 /// | `size`（可能缺） | `size` | 缺就是 0（同本机那条：读不到 stat 不整趟失败） |
+/// | `size_text`（可能缺） | `size_text` | 后端写好的大小那一格，原样；缺 ⇒ `None` |
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
 /// | `mtime_text`（可能缺） | `mtime_text` | 后端按那台本地钟写好的短写法，原样；缺 ⇒ `None` |
 /// | `mtime_full`（可能缺） | `mtime_full` | 后端按那台本地钟写好的完整写法，原样；缺 ⇒ `None` |
@@ -656,6 +676,7 @@ pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
         class: v.class,
         type_text: v.type_text.clone(),
         gates: v.gates.clone(),
+        size_text: v.size_text.clone(),
     }
 }
 

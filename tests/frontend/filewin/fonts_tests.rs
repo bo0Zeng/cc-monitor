@@ -214,6 +214,17 @@ fn label_chars() -> std::collections::BTreeSet<char> {
             set.extend(zh.chars().filter(|c| !c.is_ascii()));
         }
     }
+    // 判法住共用那一份（`pick-core`：选中几项 ⇒ 菜单那张表 · 灰着的为什么）、窗口照画的那几句。
+    let picks = std::fs::read_to_string(
+        crate::guard_support::crate_src_root().join("../../../common/pick-core/src/lib.rs"),
+    )
+    .expect("读不到 pick-core");
+    for key in copy_text_keys(&picks) {
+        let zh = entries[&key]["zh"]
+            .as_str()
+            .unwrap_or_else(|| panic!("文案表里没有 {key}"));
+        set.extend(zh.chars().filter(|c| !c.is_ascii()));
+    }
     // 后端写好、窗口照画的那几句（种类 · 「类型」那一列 · 预览 / 看图 / 编辑那几道门不许时那一句）。
     for (key, e) in entries {
         if key.starts_with("beFilesKind.") || key.starts_with("beFilesOpen.") {

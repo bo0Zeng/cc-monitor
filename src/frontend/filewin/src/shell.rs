@@ -115,7 +115,7 @@ use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_hit_rows, HitTally, RenderTally};
-use super::select::{self, Action, Intent, Item, Selection, TypeAhead};
+use super::select::{self, Action, ActionFace, Intent, Item, ItemFace, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, PromptKind, WriteBoard, WriteOp, WritePrompt};
@@ -4344,7 +4344,7 @@ impl FileWindow {
         let meta = if row.is_dir {
             copy_text("rsFilewinWriteops.delete.rowDir", &[])
         } else {
-            copy_core::size_text(row.size)
+            row.size_text.clone().unwrap_or_default()
         };
         self.write_board
             .describe(&row.path, super::kind::icon(row.class), meta);
@@ -4541,7 +4541,7 @@ impl FileWindow {
         }
         match it {
             Item::Act(a) => self.unavailable_here(a).or_else(|| self.offline_refusal(a)),
-            Item::InPlan => None,
+            Item::InPlan | Item::SelectAll => None,
             Item::Mkdir => self.offline_cmd(Cmd::Mkdir),
             Item::NewFile => self.offline_cmd(Cmd::NewFile),
             Item::Upload => self.offline_cmd(Cmd::Upload),
@@ -4592,6 +4592,10 @@ impl FileWindow {
             Some(Item::NewFile) => self.run_command(super::chrome::Cmd::NewFile, Some(ctx)),
             Some(Item::Upload) => self.run_command(super::chrome::Cmd::Upload, Some(ctx)),
             Some(Item::Term) => self.run_command(super::chrome::Cmd::Term, Some(ctx)),
+            Some(Item::SelectAll) => {
+                let rows = self.listing.rows.lock().unwrap();
+                self.selection.select_all(&rows);
+            }
             None => {}
         }
     }

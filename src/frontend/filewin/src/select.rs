@@ -499,35 +499,9 @@ fn starts_with_ignoring_case(name: &str, prefix: &str) -> bool {
 // 能做什么：菜单与键盘共用的**唯一**判定
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 对选中那几项能做的一件事。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Action {
-    /// 进这个目录。
-    Open,
-    /// 编辑这份文本。
-    Edit,
-    /// 开一个查看页看这张图（窗口自己解得开的那几种，[`super::imgview::viewable`]）。
-    View,
-    /// 零流量复制（「复制为」那个框）。
-    Copy,
-    /// 往外拖（「存到哪儿」那一问）。
-    Download,
-    /// 算大小（后端 `files-size`）—— 一项或多项。
-    Size,
-    /// 解压到这里（后端 `files-extract`）—— 恰好一份文件。
-    Extract,
-    /// 复制到另一台机器（后端 `transfer-copy`：经本机中转，目录整棵逐个文件）—— 一项或多项。
-    CrossCopy,
-    /// 复制到另一栏（双栏时）—— 多选那一种的菜单里才有（单选走命令栏 · 拖）。
-    Across,
-    Rename,
-    /// 改权限 —— 对一项或多项（头注 §三）。
-    Chmod,
-    /// 删除 —— 对一项或多项（头注 §三）。
-    Delete,
-    /// 属性（路径 · 大小 · 修改时间 · 权限 · 所有者 · 链接指向）。
-    Properties,
-}
+use pick_core::Outlet;
+/// 能做什么那一套（种类 · 两个出口的表 · 做不了的为什么）住共用的 `pick-core`（手机嵌的核心同一份）；这里只接上窗口那一行与图标 · 快捷键 · 字。
+pub use pick_core::{Action, Item, Picked, PLAN_GROUP};
 
 /// 「打开」那一项的字。另外六项**复用**行上那几颗按钮的字（各自的唯一住址），
 /// 不在这儿另写一份 —— 两份字漂开的症状是「菜单上叫一个名字，行上叫另一个」。
@@ -537,9 +511,9 @@ pub static OPEN_LABEL: std::sync::LazyLock<String> =
 pub static PROPS_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinSelect.label.properties", &[]));
 
-impl Action {
+impl ActionFace for Action {
     /// 菜单上那一项的字。`n` = 选中了几项（只有「删除」对多项说话时要它）。
-    pub fn label(self, n: usize) -> String {
+    fn label(self, n: usize) -> String {
         match self {
             Action::Open => OPEN_LABEL.to_string(),
             Action::Edit => super::editor::EDIT_LABEL.to_string(),
@@ -565,323 +539,16 @@ impl Action {
             }
             Action::Chmod => super::writeops::CHMOD_LABEL.to_string(),
             Action::Properties => PROPS_LABEL.to_string(),
+            Action::CopyTo => copy_text("mobFiles.copyTo", &[]),
             Action::Delete if n > 1 => {
                 copy_text("rsFilewinSelect.label.deleteMany", &[("n", &n.to_string())])
             }
             Action::Delete => super::writeops::DELETE_LABEL.to_string(),
         }
     }
-}
 
-// ═══════════════════════════════════════════════════════════════════════
-// 菜单那张表：选中的是哪一种 ⇒ 给哪几项（分几组）
-// ═══════════════════════════════════════════════════════════════════════
-
-/// 菜单上的一项：对选中那几项的一件事 ·「在计划里看」· 空白处那几件（对这个目录）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Item {
-    Act(Action),
-    /// 在计划里看（单选的那一份归某一格时才有，[`PLAN_GROUP`]）。
-    InPlan,
-    Mkdir,
-    NewFile,
-    Upload,
-    Term,
-}
-
-/// 选中的是哪一种（闭集）—— 菜单那张表按它查。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Picked {
-    /// 什么都没选、右键落在列表的空白处：对这个目录。
-    Here,
-    Dir,
-    /// 指向目录的链接（点得进去；删 / 复制按链接本身算）。
-    DirLink,
-    /// 文本 · 代码 · 没有扩展名那种（编辑；认不认是文本由后端判）。
-    Text,
-    /// 窗口自己解得开的图片（查看，不给编辑）。
-    Image,
-    /// 压缩包（解压到此处）。
-    Archive,
-    /// 别的文件（PDF · 解不开的图 · 二进制）：不编辑、不查看。
-    File,
-    /// 断了的链接：只能改名、看属性、删除。
-    BrokenLink,
-    /// 名字读不出（有损、没带原始字节）的目录：只能进去。
-    NamelessDir,
-    /// 名字读不出的文件：什么都做不了（菜单上说出来）。
-    Nameless,
-    /// 多选，每一项都寻址得到。
-    Many,
-    /// 多选，混着名字读不出的：什么都做不了（给「删除 3 项」却只删 2 项是「选中态 == 批量那一摞」的反面）。
-    ManyNameless,
-}
-
-use Action as A;
-
-/// 🔴 **右键菜单那张表**：一种选中 ⇒ 几组项，组与组之间一道线，危险的那一组在最后。
-///
-/// 菜单、命令栏的「⋯」、键盘准不准做都从这张表来（[`menu_groups`] · [`actions_for`]），不在各处另写 `if`。
-/// 算大小只给目录与多选 · 解压只给压缩包 · 查看给图片 · 编辑给文本（10-11 用户裁）。
-pub const MENU_TABLE: &[(Picked, &[&[Item]])] = &[
-    (
-        Picked::Here,
-        &[&[Item::Mkdir, Item::NewFile, Item::Upload], &[Item::Term]],
-    ),
-    (
-        Picked::Dir,
-        &[
-            &[Item::Act(A::Open), Item::Act(A::Copy)],
-            &[
-                Item::Act(A::Size),
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::DirLink,
-        &[
-            &[Item::Act(A::Open), Item::Act(A::Copy)],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::Text,
-        &[
-            &[
-                Item::Act(A::Edit),
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::Image,
-        &[
-            &[
-                Item::Act(A::View),
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::Archive,
-        &[
-            &[
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Extract),
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::File,
-        &[
-            &[
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Copy),
-            ],
-            &[
-                Item::Act(A::Rename),
-                Item::Act(A::Chmod),
-                Item::Act(A::Properties),
-            ],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (
-        Picked::BrokenLink,
-        &[
-            &[Item::Act(A::Rename), Item::Act(A::Properties)],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (Picked::NamelessDir, &[&[Item::Act(A::Open)]]),
-    (Picked::Nameless, &[]),
-    (
-        Picked::Many,
-        &[
-            &[
-                Item::Act(A::Download),
-                Item::Act(A::CrossCopy),
-                Item::Act(A::Across),
-            ],
-            &[Item::Act(A::Size), Item::Act(A::Chmod)],
-            &[Item::Act(A::Delete)],
-        ],
-    ),
-    (Picked::ManyNameless, &[]),
-];
-
-/// 单选的那一份归某一格 ⇒ 多这一组，插在危险那一组之前。
-pub const PLAN_GROUP: &[Item] = &[Item::InPlan];
-
-/// 这几项是哪一种。
-pub fn picked_kind(picked: &[&Listed]) -> Picked {
-    let named = |r: &Listed| !r.lossy_name || r.raw_name.is_some();
-    match picked {
-        [] => Picked::Here,
-        [r] if !named(r) => {
-            if r.opens_as_dir() {
-                Picked::NamelessDir
-            } else {
-                Picked::Nameless
-            }
-        }
-        [r] if r.link && r.link_broken => Picked::BrokenLink,
-        [r] if r.link_dir => Picked::DirLink,
-        [r] if r.is_dir => Picked::Dir,
-        [r] if super::imgview::viewable(r) => Picked::Image,
-        // 指向文件的链接按它指向的那一种（与列表上的图标同一个判法）。
-        // 窗口解不开的图（svg · heic …）照旧当文本那一种（svg 本来就是文本；不是文本的由后端说）。
-        [r] => match r.class {
-            FileClass::Text | FileClass::Code | FileClass::Other | FileClass::Image => Picked::Text,
-            FileClass::Archive => Picked::Archive,
-            _ => Picked::File,
-        },
-        many if many.iter().all(|r| named(r)) => Picked::Many,
-        _ => Picked::ManyNameless,
-    }
-}
-
-/// 这一种选中的菜单：表里那几组；`planned` ⇒ 危险那一组之前多 [`PLAN_GROUP`]。
-pub fn menu_groups(kind: Picked, planned: bool) -> Vec<Vec<Item>> {
-    let mut groups: Vec<Vec<Item>> = MENU_TABLE
-        .iter()
-        .find(|(k, _)| *k == kind)
-        .map(|(_, g)| g.iter().map(|g| g.to_vec()).collect())
-        .unwrap_or_default();
-    if planned {
-        let at = groups
-            .iter()
-            .position(|g| g.contains(&Item::Act(A::Delete)))
-            .unwrap_or(groups.len());
-        groups.insert(at, PLAN_GROUP.to_vec());
-    }
-    groups
-}
-
-/// 表里有、但**这一份**做不了的那一件 ⇒ 为什么（菜单上灰着、悬停说哪几项为什么；键盘按了说同一句）。
-/// 编辑超上限 · 多选里有目录不能下载（下载只收文件）· 多选里名字只有原始字节的那几项不能复制到另一台（那一条按路径串寻址）。
-pub fn blocked(a: Action, picked: &[&Listed]) -> Option<String> {
-    let names = |hit: &dyn Fn(&Listed) -> bool| -> Option<String> {
-        let v: Vec<&str> = picked
-            .iter()
-            .filter(|r| hit(r))
-            .map(|r| r.name.as_str())
-            .collect();
-        (!v.is_empty()).then(|| v.join(&copy_text("rsFilewinCopy.batch.listSep", &[])))
-    };
-    match (a, picked) {
-        (Action::Edit, [r]) => super::editor::why_not_editable(r),
-        (Action::Download, [_, _, ..]) => names(&|r: &Listed| r.opens_as_dir())
-            .map(|n| copy_text("rsFilewinSelect.why.dirDownload", &[("names", &n)])),
-        (Action::CrossCopy, [_, _, ..]) => names(&|r: &Listed| r.lossy_name)
-            .map(|n| copy_text("rsFilewinSelect.why.lossyCross", &[("names", &n)])),
-        _ => None,
-    }
-}
-
-/// 🔴 **对这几项能做什么** —— 菜单那张表里这一种的那几件，去掉这一份做不了的（[`blocked`]）。
-/// 键盘准不准做、命令栏灰不灰、预览头给哪几颗问的都是它。顺序同表。空 ⇒ 什么都做不了。
-pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
-    menu_groups(picked_kind(picked), false)
-        .into_iter()
-        .flatten()
-        .filter_map(|i| match i {
-            Item::Act(a) if blocked(a, picked).is_none() => Some(a),
-            _ => None,
-        })
-        .collect()
-}
-
-impl Item {
-    /// 左格那个图标（命令栏上同一件用同一个）。
-    pub fn icon(self) -> &'static str {
-        use egui_phosphor::regular as ph;
-        match self {
-            Item::Act(a) => a.icon(),
-            Item::InPlan => ph::TREE_STRUCTURE,
-            Item::Mkdir => ph::FOLDER_PLUS,
-            Item::NewFile => ph::FILE_PLUS,
-            Item::Upload => ph::UPLOAD_SIMPLE,
-            Item::Term => ph::TERMINAL_WINDOW,
-        }
-    }
-
-    /// 右端那一格：按哪个键也做这一件（与 [`intents`] 那张键位表同一套；判据逐个喂回去核）。
-    pub fn shortcut(self) -> Option<egui::KeyboardShortcut> {
-        use egui::{Key, KeyboardShortcut as K, Modifiers as M};
-        Some(match self {
-            Item::Act(Action::Open | Action::Edit | Action::View) => K::new(M::NONE, Key::Enter),
-            Item::Act(Action::Download) => K::new(M::COMMAND, Key::D),
-            Item::Act(Action::Rename) => K::new(M::NONE, Key::F2),
-            Item::Act(Action::Delete) => K::new(M::NONE, Key::Delete),
-            Item::Mkdir => K::new(M::COMMAND | M::SHIFT, Key::N),
-            Item::Upload => K::new(M::COMMAND, Key::U),
-            _ => return None,
-        })
-    }
-
-    /// 危险的那一件（字与图标 `--error-text`）。
-    pub fn danger(self) -> bool {
-        self == Item::Act(Action::Delete)
-    }
-
-    /// 菜单上那一项的字。`n` = 选中了几项；`plan` =「在计划里看」那一项的字（[`super::plan::menu_label`]）。
-    /// 要先问一句才做的那几件（改权限 · 删除）字后带「…」。
-    pub fn label(self, n: usize, plan: Option<&str>) -> String {
-        match self {
-            Item::Act(Action::Delete) if n > 1 => {
-                copy_text("rsFilewinSelect.menu.deleteMany", &[("n", &n.to_string())])
-            }
-            Item::Act(Action::Delete) => copy_text("rsFilewinSelect.menu.delete", &[]),
-            Item::Act(Action::Chmod) => copy_text("rsFilewinSelect.menu.chmod", &[]),
-            Item::Act(a) => a.label(n),
-            Item::InPlan => plan.unwrap_or_default().to_string(),
-            // 空白处那个菜单上没有「新建 ▾」那一层，字写全。
-            Item::Mkdir => copy_text("rsFilewinSelect.menu.newFolder", &[]),
-            Item::NewFile => copy_text("rsFilewinSelect.menu.newFile", &[]),
-            Item::Upload => super::upload::UPLOAD_LABEL.to_string(),
-            Item::Term => super::chrome::TERMINAL_LABEL.to_string(),
-        }
-    }
-}
-
-impl Action {
     /// 这一件的图标（菜单左格 · 命令栏那一颗同一个）。
-    pub fn icon(self) -> &'static str {
+    fn icon(self) -> &'static str {
         use egui_phosphor::regular as ph;
         match self {
             Action::Open => ph::FOLDER_OPEN,
@@ -897,6 +564,104 @@ impl Action {
             Action::Chmod => ph::LOCK_KEY,
             Action::Delete => ph::TRASH,
             Action::Properties => ph::INFO,
+            Action::CopyTo => ph::COPY,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 菜单那张表：选中的是哪一种 ⇒ 给哪几项（分几组）—— 表与判法在 `pick-core`，这里按窗口那一行问它
+// ═══════════════════════════════════════════════════════════════════════
+
+fn picks<'a>(picked: &[&'a Listed]) -> Vec<pick_core::Pick<'a>> {
+    picked.iter().map(|r| r.pick()).collect()
+}
+
+/// 这几项是哪一种。
+pub fn picked_kind(picked: &[&Listed]) -> Picked {
+    pick_core::picked_kind(&picks(picked))
+}
+
+/// 这一种选中的菜单：桌面那张表里那几组；`planned` ⇒ 危险那一组之前多 [`PLAN_GROUP`]。
+pub fn menu_groups(kind: Picked, planned: bool) -> Vec<Vec<Item>> {
+    pick_core::menu_groups(Outlet::Desk, kind, planned)
+}
+
+/// 表里有、但**这一份**做不了的那一件 ⇒ 为什么（菜单上灰着、悬停说哪几项为什么；键盘按了说同一句）。
+pub fn blocked(a: Action, picked: &[&Listed]) -> Option<String> {
+    pick_core::blocked(a, &picks(picked))
+}
+
+/// 🔴 **对这几项能做什么** —— 键盘准不准做、命令栏灰不灰、预览头给哪几颗问的都是它。顺序同表。空 ⇒ 什么都做不了。
+pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
+    pick_core::actions_for(Outlet::Desk, &picks(picked))
+}
+
+/// 窗口那一侧的图标 · 快捷键 · 危险色 · 字（表与判法在 `pick-core`）。
+pub trait ItemFace {
+    fn icon(self) -> &'static str;
+    fn shortcut(self) -> Option<egui::KeyboardShortcut>;
+    fn danger(self) -> bool;
+    fn label(self, n: usize, plan: Option<&str>) -> String;
+}
+
+/// 一件事在窗口上的图标与字。
+pub trait ActionFace {
+    fn icon(self) -> &'static str;
+    fn label(self, n: usize) -> String;
+}
+
+impl ItemFace for Item {
+    /// 左格那个图标（命令栏上同一件用同一个）。
+    fn icon(self) -> &'static str {
+        use egui_phosphor::regular as ph;
+        match self {
+            Item::Act(a) => a.icon(),
+            Item::InPlan => ph::TREE_STRUCTURE,
+            Item::Mkdir => ph::FOLDER_PLUS,
+            Item::NewFile => ph::FILE_PLUS,
+            Item::Upload => ph::UPLOAD_SIMPLE,
+            Item::Term => ph::TERMINAL_WINDOW,
+            Item::SelectAll => ph::CHECKS,
+        }
+    }
+
+    /// 右端那一格：按哪个键也做这一件（与 [`intents`] 那张键位表同一套；判据逐个喂回去核）。
+    fn shortcut(self) -> Option<egui::KeyboardShortcut> {
+        use egui::{Key, KeyboardShortcut as K, Modifiers as M};
+        Some(match self {
+            Item::Act(Action::Open | Action::Edit | Action::View) => K::new(M::NONE, Key::Enter),
+            Item::Act(Action::Download) => K::new(M::COMMAND, Key::D),
+            Item::Act(Action::Rename) => K::new(M::NONE, Key::F2),
+            Item::Act(Action::Delete) => K::new(M::NONE, Key::Delete),
+            Item::Mkdir => K::new(M::COMMAND | M::SHIFT, Key::N),
+            Item::Upload => K::new(M::COMMAND, Key::U),
+            _ => return None,
+        })
+    }
+
+    /// 危险的那一件（字与图标 `--error-text`）。
+    fn danger(self) -> bool {
+        self == Item::Act(Action::Delete)
+    }
+
+    /// 菜单上那一项的字。`n` = 选中了几项；`plan` =「在计划里看」那一项的字（[`super::plan::menu_label`]）。
+    /// 要先问一句才做的那几件（改权限 · 删除）字后带「…」。
+    fn label(self, n: usize, plan: Option<&str>) -> String {
+        match self {
+            Item::Act(Action::Delete) if n > 1 => {
+                copy_text("rsFilewinSelect.menu.deleteMany", &[("n", &n.to_string())])
+            }
+            Item::Act(Action::Delete) => copy_text("rsFilewinSelect.menu.delete", &[]),
+            Item::Act(Action::Chmod) => copy_text("rsFilewinSelect.menu.chmod", &[]),
+            Item::Act(a) => a.label(n),
+            Item::InPlan => plan.unwrap_or_default().to_string(),
+            // 空白处那个菜单上没有「新建 ▾」那一层，字写全。
+            Item::Mkdir => copy_text("rsFilewinSelect.menu.newFolder", &[]),
+            Item::NewFile => copy_text("rsFilewinSelect.menu.newFile", &[]),
+            Item::Upload => super::upload::UPLOAD_LABEL.to_string(),
+            Item::Term => super::chrome::TERMINAL_LABEL.to_string(),
+            Item::SelectAll => copy_text("mobFiles.selectAll", &[]),
         }
     }
 }

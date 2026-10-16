@@ -903,9 +903,11 @@ impl Desk {
                             ),
                             kind: cwf::FileKind::File,
                             size: None,
+                            size_text: None,
                             mtime_text: None,
                             there,
                             there_size: m.is_file().then(|| m.len()),
+                            there_size_text: (m.is_file().then(|| m.len())).map(copy_core::size_text),
                             there_mtime_text: crate::common::batch_book::moment_text(
                                 crate::common::batch_book::mtime_secs(m.modified()),
                                 tz,
@@ -1161,9 +1163,11 @@ async fn upload_fates(
                 name: cwf::WirePath(name.clone()),
                 kind: cwf::FileKind::File,
                 size: local.as_ref().map(|m| m.len()),
+                size_text: (local.as_ref().map(|m| m.len())).map(copy_core::size_text),
                 mtime_text: moment_text(local.as_ref().and_then(|m| mtime_secs(m.modified())), tz),
                 there: there.kind,
                 there_size: there.size,
+                there_size_text: there.size.map(copy_core::size_text),
                 there_mtime_text: moment_text(there.mtime, tz),
                 dir_into,
             });

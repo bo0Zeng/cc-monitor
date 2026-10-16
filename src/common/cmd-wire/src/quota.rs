@@ -135,6 +135,14 @@ pub struct SlotShow {
         ts(type = "\"plain\" | \"fail\" | \"warn\"")
     )]
     pub tone: Tone,
+    /// 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    pub per_pct_text: Option<Words>,
+    /// 这一格取的是哪个窗口（原名；只给后端对上 [`WindowShow`]，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(any(test, feature = "ts"), ts(skip))]
+    pub window: String,
 }
 
 fn plain() -> Tone {
@@ -268,10 +276,25 @@ pub struct WindowShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
     pub tokens_per_pct: Option<u64>,
+    /// `tokens_per_pct` 写好的字（`1% ≈ 2.1M`）；量不到 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "string"))]
+    pub per_pct_text: Option<Words>,
     /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub reset_since_seen: bool,
+    /// 这一窗口那一行写好的字（`7d opus 22% · ↻10-19 09:00`；出口那一下按钟写，原名与窗口键不上屏）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub text: Words,
+    /// 那一行的语气：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
+    #[serde(default = "plain")]
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"plain\" | \"fail\" | \"warn\"")
+    )]
+    pub tone: Tone,
 }
 
 /// 成品上的 `names` 那一格：`accounts` 只列与原名不同的号（今天只有 `_`），`slots` 列每个语义位。
@@ -367,7 +390,7 @@ pub struct QuotaRead {
     /// 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub now: u64,
-    /// 每个出过数的号一条，按 `(agent, account)` 排。
+    /// 每个出过数的号一条，按 `(agent, account)` 排（不按能不能发重排：额度一变就重读，按状态排的话卡片会跳位）。
     pub accounts: Vec<QuotaAccount>,
     /// 账号库里有、额度账上从没出过数的号。
     pub unseen: Vec<QuotaUnseen>,
@@ -383,6 +406,30 @@ pub struct QuotaRead {
     pub five_hour: Option<Words>,
     /// 号名 / 位名表（出口画号名 · 位名只照它）。
     pub names: Names,
+    /// 「现在还能不能发」那两行写好的字（用量页的结论 · 全满时那一句）；读不出 / 一个号都没有 ⇒ `null`（那时看 `text`）。
+    pub verdict: Option<Verdict>,
+}
+
+/// 「现在还能不能发」：大字一句 · 小字一句（哪几个号能发 · 最早几点回来；说不出 ⇒ 缺）· 语气（能发 `plain`、都不能发 `fail`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"),
+    ts(
+        rename = "QuotaVerdict",
+        export,
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub struct Verdict {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub text: Words,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub sub: Option<Words>,
+    #[cfg_attr(
+        any(test, feature = "ts"),
+        ts(type = "\"plain\" | \"fail\" | \"warn\"")
+    )]
+    pub tone: Tone,
 }
 
 /// 出过数的一个号：账上那一条的原数 ＋ 显示态（`AccountHead`）＋ 照它写好的几格。
