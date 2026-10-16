@@ -13,6 +13,7 @@ struct Fake {
     presses: usize,
     opened: bool,
     sent: SentResult,
+    gone: Option<crate::control::terminals::Refused>,
 }
 
 impl Fake {
@@ -25,14 +26,15 @@ impl Fake {
             presses: 0,
             opened: false,
             sent: SentResult::Delivered,
+            gone: None,
         }
     }
 }
 
 impl ModeIo for Fake {
-    fn open(&mut self) -> Result<(), CmdErr> {
+    fn open(&mut self) -> Result<Option<crate::control::terminals::Refused>, CmdErr> {
         self.opened = true;
-        Ok(())
+        Ok(self.gone)
     }
     fn read(&mut self) -> Result<Option<&'static str>, CmdErr> {
         Ok((!self.blind).then(|| self.order[self.at]))
@@ -63,7 +65,7 @@ const SW: crate::agents::ModeSwitch = crate::agents::ModeSwitch {
 };
 
 fn run(target: &str, waiting: bool, f: &mut Fake) -> ModeSwitched {
-    switch_with(target, &SW, waiting, f).unwrap()
+    switch_with(target, &SW, waiting, f, &|| panic!("记下了")).unwrap()
 }
 
 /// ★ 循环走到那一档为止：从 default 到 plan 按两下，回 done ＋ 读到的那一档。
@@ -177,4 +179,31 @@ fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
             serde_json::from_str::<serde_json::Value>(&want).unwrap()
         );
     }
+}
+
+/// ★ 这台已经没有它的终端（名单里没有 · 只剩 shell）⇒ 一下都不按、读也不读，记下那一档、回切到了；
+/// 别的不收（不归我们）照实回被拒、不记。
+#[test]
+fn a_session_without_its_terminal_keeps_the_mode_for_the_next_resume() {
+    use crate::control::terminals::Refused;
+    use std::cell::Cell;
+    for why in [Refused::Ended, Refused::NotKnown] {
+        let mut f = Fake::new(&["default", "acceptEdits", "plan"], 0);
+        f.gone = Some(why);
+        let kept = Cell::new(0);
+        let got = switch_with("plan", &SW, false, &mut f, &|| {
+            kept.set(kept.get() + 1);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(got.result, SwitchResult::Done);
+        assert_eq!(got.mode.as_deref(), Some("plan"));
+        assert_eq!((got.why, got.said), (None, None));
+        assert_eq!((kept.get(), f.presses), (1, 0));
+    }
+    let mut f = Fake::new(&["default", "plan"], 0);
+    f.gone = Some(Refused::NotManaged);
+    let got = run("plan", false, &mut f);
+    assert_eq!(got.result, SwitchResult::Refused);
+    assert_eq!(got.why, Some(Refused::NotManaged));
 }

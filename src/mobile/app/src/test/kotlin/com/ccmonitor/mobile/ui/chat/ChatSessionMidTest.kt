@@ -106,19 +106,20 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `chip 的字：打开时照 history-facts 那台写好的两个字；换成过就以读回的为准`() =
+    fun `chip 的字：打开时照 history-facts 那台写好的两个字、模型抽屉勾 modelPick；换成过就以读回的为准`() =
         runTest {
             val link = FakeCoreLink()
             val s =
                 existing(link) { cmd, _ ->
                     when (cmd) {
-                        "history-facts" -> Reply.Ok(mapOf("modelText" to "Opus 4.5", "permissionModeText" to "自动接受编辑"))
+                        "history-facts" -> Reply.Ok(mapOf("modelText" to "Opus 4.5", "modelPick" to "opus", "permissionModeText" to "自动接受编辑"))
                         else -> null
                     }
                 }
             runCurrent()
             assertEquals(listOf(mapOf("path" to "/p/s1.jsonl")), link.calls("history-facts"))
             assertEquals("Opus 4.5", s.state.value.model.text)
+            assertEquals("opus", s.state.value.model.value)
             assertEquals("自动接受编辑", s.state.value.permission.text)
         }
 
@@ -131,9 +132,10 @@ class ChatSessionMidTest {
             runCurrent()
             assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束", Switches(CanSwitch("会话已退出"), CanSwitch("会话已退出")))))
+            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束", Switches(CanSwitch(null), CanSwitch(null)))))
             runCurrent()
-            assertEquals("会话已退出", s.state.value.permission.blocked)
+            assertNull(s.state.value.model.blocked)
+            assertNull(s.state.value.permission.blocked)
             link.state.value = LinkState.Down(Said("", ""), needsHand = false)
             runCurrent()
             val off = copyText("newSession.machine.offline", "machine" to "box")

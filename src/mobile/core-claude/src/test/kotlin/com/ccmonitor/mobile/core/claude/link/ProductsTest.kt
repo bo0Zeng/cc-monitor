@@ -78,7 +78,7 @@ class ProductsTest {
         )
         t = t.step(golden("session_state")[0], breaks::add)
         assertEquals(
-            CanSwitch("会话已退出"),
+            CanSwitch(null),
             t.fates
                 .getValue("s1")
                 .switch

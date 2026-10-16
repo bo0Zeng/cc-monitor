@@ -949,6 +949,7 @@ mod specimens {
                         (200_000, LimitFrom::Observed),
                     )),
                     model_text: Some(Words(s("m"))),
+                    model_pick: some("m"),
                     project_dir: some("/w"),
                     agent: some("agent"),
                     writers: vec![1],

@@ -2426,8 +2426,10 @@ fn facts_name_the_model_of_the_last_reply() {
         serde_json::json!(crate::agents::model_text("claude", "claude-opus-4-5-20251101").unwrap()),
         "{named}"
     );
+    assert_eq!(named["modelPick"], "opus", "{named}");
     let odd = facts_of("b", "m-odd");
     assert_eq!(odd["modelText"], serde_json::Value::Null, "{odd}");
+    assert_eq!(odd["modelPick"], serde_json::Value::Null, "{odd}");
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -2468,4 +2470,59 @@ fn each_listed_account_carries_its_five_hour_cell_from_the_quota_read() {
         [Some("5h 读不到".into()), Some("5h 读不到".into())],
         "账读不出 ⇒ 顶上那一格"
     );
+}
+
+/// ★ 终端没了时换的那一项还算数 ⇒ 会话事实的模型 · 权限档写它（字取清单里那一项）；只记了一样 ⇒ 另一样照记录；没记 ⇒ 不动。
+#[test]
+fn facts_follow_the_pick_kept_for_the_next_resume() {
+    use crate::faces::history_face::dress_kept;
+    use cmd_wire::listing::ResumeWith;
+    let base = || crate::observe::facts_query::SessionFacts {
+        agent: Some("claude".into()),
+        model_pick: Some("opus".into()),
+        permission_mode: Some("acceptEdits".into()),
+        permission_mode_text: Some(crate::common::cells::Words("记录里那一档".into())),
+        model_text: Some(crate::common::cells::Words("记录里那个".into())),
+        ..Default::default()
+    };
+    let mut f = base();
+    dress_kept(
+        &mut f,
+        Some(ResumeWith {
+            model: Some("sonnet".into()),
+            permission_mode: Some("plan".into()),
+            end: 1,
+        }),
+    );
+    assert_eq!(
+        f.model_text.map(|w| w.0),
+        crate::agents::model_choice_text("claude", "sonnet")
+    );
+    assert_eq!(f.permission_mode.as_deref(), Some("plan"));
+    assert_eq!(f.model_pick.as_deref(), Some("sonnet"), "记下的优先于记录");
+    assert_eq!(
+        f.permission_mode_text.map(|w| w.0),
+        crate::agents::permission_mode_text("claude", "plan")
+    );
+    let mut f = base();
+    dress_kept(
+        &mut f,
+        Some(ResumeWith {
+            model: Some("default".into()),
+            permission_mode: None,
+            end: 1,
+        }),
+    );
+    assert_eq!(
+        f.model_text.map(|w| w.0),
+        crate::agents::model_choice_text("claude", "default")
+    );
+    assert_eq!(f.permission_mode.as_deref(), Some("acceptEdits"));
+    assert_eq!(
+        f.permission_mode_text.map(|w| w.0).as_deref(),
+        Some("记录里那一档")
+    );
+    let mut f = base();
+    dress_kept(&mut f, None);
+    assert_eq!(f, base());
 }

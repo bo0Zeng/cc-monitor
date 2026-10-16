@@ -850,6 +850,12 @@
         },
         {
           "frozen": false,
+          "kind": "value",
+          "path": "modelPick",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "text",
           "path": "modelText",
           "type": "string"
@@ -1966,21 +1972,9 @@
         },
         {
           "frozen": false,
-          "kind": "text",
-          "path": "switch.model{can=no}.why",
-          "type": "string"
-        },
-        {
-          "frozen": false,
           "kind": "value",
           "path": "switch.permission.can",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "switch.permission{can=no}.why",
-          "type": "string"
         }
       ],
       "name": "session_state"

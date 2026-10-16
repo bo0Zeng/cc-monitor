@@ -64,8 +64,10 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const lineage = tab.lineage === undefined || !sameLineage(tab.lineage, lin);
   tab.lineage = lin;
 
-  const switchable = tab.modelText !== f.modelText || tab.permissionMode !== f.permissionMode || tab.permissionModeText !== f.permissionModeText;
+  const switchable =
+    tab.modelText !== f.modelText || tab.modelPick !== f.modelPick || tab.permissionMode !== f.permissionMode || tab.permissionModeText !== f.permissionModeText;
   tab.modelText = f.modelText;
+  tab.modelPick = f.modelPick;
   tab.permissionMode = f.permissionMode;
   tab.permissionModeText = f.permissionModeText;
 

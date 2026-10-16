@@ -533,6 +533,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     permissionMode: null,
     permissionModeText: null,
     modelText: null,
+    modelPick: null,
     tokens: null,
     cost: null,
     mcp: [],

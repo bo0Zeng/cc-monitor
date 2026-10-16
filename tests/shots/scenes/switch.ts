@@ -1,5 +1,5 @@
 /**
- * 会话头上换模型 · 切权限档那两颗：能换 · 两个菜单 · 正在换 · 换成了 · 没换成 · 不能换（在跑 · 需手动 · 已退出）· 窄窗。
+ * 会话头上换模型 · 切权限档那两颗：能换 · 两个菜单 · 正在换 · 换成了 · 没换成 · 不能换（在跑 · 需手动）· 已退出（也能换）· 窄窗。
  * 字（`modelText` · `permissionModeText`）· 能不能换（会话帧 `switch`）· 菜单里那一家的清单（`session-new-facts.agents`）都是真后端算的；
  * 换的那两条命令（`session-model` · `session-permission`）台架里没有真的那一家可送，场景只演回包的结局那一形（读回的字取那一家自己写的原样）。
  */
@@ -141,8 +141,8 @@ export const SWITCH_SCENES: Scene[] = [
   ),
   sw(
     "main-switch-ended",
-    "会话头 · 会话已退出",
-    "已结束的会话：两颗都灰（session_state 带的 switch），悬停写「会话已退出」；［恢复 ▾］照旧在右边",
+    "会话头 · 已结束的会话",
+    "已结束的会话：两颗都亮着（session_state 带的 switch；选了记下、恢复照它起）；［恢复 ▾］照旧在右边",
     async () => {
       await mainReady(ALL_TABS);
       await openTab(2);

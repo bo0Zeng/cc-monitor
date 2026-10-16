@@ -1670,6 +1670,19 @@ pub(crate) fn facts_at(
         .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
         .and_then(|(kind, model)| crate::agents::model_text(kind, model))
         .map(crate::common::cells::Words);
+    facts.model_pick = facts
+        .agent
+        .as_deref()
+        .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
+        .and_then(|(kind, model)| crate::agents::model_pick(kind, model))
+        .map(str::to_string);
+    dress_kept(
+        &mut facts,
+        super::session_open_face::kept_for_resume(
+            crate::history::history_annotations::resume_with_of(sid),
+            Path::new(path),
+        ),
+    );
     // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
@@ -1698,6 +1711,25 @@ pub(crate) fn facts_at(
     match over_cap(&facts) {
         Some(said) => Err(HistoryFactsErr::TooLarge(said)),
         None => Ok(facts),
+    }
+}
+
+/// 终端没了时换的那一项还算数（[`super::session_open_face::kept_for_resume`]，恢复读同一份）⇒ 模型 · 权限档那几格写它：下次恢复就照它起。
+pub(crate) fn dress_kept(
+    facts: &mut crate::observe::facts_query::SessionFacts,
+    kept: Option<cmd_wire::listing::ResumeWith>,
+) {
+    let Some(k) = kept else { return };
+    let kind = facts.agent.clone().unwrap_or_default();
+    if let Some(m) = k.permission_mode {
+        facts.permission_mode_text =
+            crate::agents::permission_mode_text(&kind, &m).map(crate::common::cells::Words);
+        facts.permission_mode = Some(m);
+    }
+    if let Some(m) = k.model {
+        facts.model_text =
+            crate::agents::model_choice_text(&kind, &m).map(crate::common::cells::Words);
+        facts.model_pick = Some(m);
     }
 }
 

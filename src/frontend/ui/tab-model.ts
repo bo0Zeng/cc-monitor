@@ -107,6 +107,8 @@ export interface Tab {
   usage: UsageFact | null;
   /** 模型写给人看的字（后端 `history-facts` 的 `modelText`，会话头 · HUD · 监控板照抄）；没有 ⇒ `null`。 */
   modelText: string | null;
+  /** 此刻是换模型清单里哪一项（后端 `history-facts` 的 `modelPick`，抽屉里勾它）；认不出 ⇒ `null`。 */
+  modelPick: string | null;
   /** 此刻的权限档：原值（`permissionMode`，抽屉里勾哪一档）与写给人看的字（`permissionModeText`）；没有 ⇒ `null`。 */
   permissionMode: string | null;
   permissionModeText: string | null;

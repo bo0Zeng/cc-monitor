@@ -1591,10 +1591,9 @@ fn mig1_session_state_has_exactly_these_bytes() {
             copy_core::copy_text(name, &[]),
             copy_core::copy_text(hint, &[]),
         );
-        let ended = copy_core::copy_text("beSessionSwitch.why.ended", &[]);
         assert_eq!(
             to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"switch\":{{\"model\":{{\"can\":\"no\",\"why\":\"{ended}\"}},\"permission\":{{\"can\":\"no\",\"why\":\"{ended}\"}}}}}}\n")
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"switch\":{{\"model\":{{\"can\":\"yes\"}},\"permission\":{{\"can\":\"yes\"}}}}}}\n")
         );
     }
 }
@@ -2140,11 +2139,12 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
             serde_json::json!({"model": yes, "permission": yes})
         );
     }
+    // 进程退了 ⇒ 都能换（终端没了那两条命令记下、恢复照它起）。
     for fate in [SessionFate::Reconnectable, SessionFate::Ended] {
         let v = serde_json::to_value(Frame::session_state("s".into(), fate)).unwrap();
         assert_eq!(
             v["switch"],
-            serde_json::json!({"model": no("beSessionSwitch.why.ended"), "permission": no("beSessionSwitch.why.ended")}),
+            serde_json::json!({"model": yes, "permission": yes}),
             "{v}"
         );
     }
@@ -2207,8 +2207,6 @@ fn the_written_faces_are_built_in_one_place_only() {
         "reading · ActivityFace",
         "live · Switch",
         "live · CanSwitch::No",
-        "gone · Switch",
-        "gone · CanSwitch::No",
         "of_parts · NameFace",
     ]
     .iter()
@@ -2221,6 +2219,6 @@ fn the_written_faces_are_built_in_one_place_only() {
     .collect();
     assert_eq!(
         seen, want,
-        "会话帧那几格写好的字只许经后端 `wire` 的构造口造（`ActivityFace::of` · `Switch::live` / `gone` · `NameFace::of_parts`）"
+        "会话帧那几格写好的字只许经后端 `wire` 的构造口造（`ActivityFace::of` · `Switch::live` · `NameFace::of_parts`）"
     );
 }

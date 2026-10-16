@@ -293,6 +293,11 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
 /// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
 pub(crate) use cmd_wire::session::Refused;
 
+/// 这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 窗格里只剩 shell）：`session-say` 恢复再送，换模型 / 权限档记下等恢复，同这一判。
+pub(crate) fn terminal_gone(why: Option<Refused>) -> bool {
+    matches!(why, Some(Refused::NotKnown | Refused::Ended))
+}
+
 /// 原因 ⇒ 给人看的那一句。
 pub(crate) fn no_said(why: Refused) -> String {
     match why {
@@ -905,6 +910,57 @@ fn shell_only(row: &TermRow) -> bool {
     SHELLS.contains(&row.program.as_str())
 }
 
+/// 名单里对上 · 过身份门 · `takes` 收 ⇒ 那一行 ＋ 对它下手的句柄；不收 ⇒ 原因（[`send_on`] 送之前、[`say_target_on`] 看屏之前同一道）。
+fn admit_on(
+    on: On<'_>,
+    target: &Target,
+    client: Option<&str>,
+    takes: impl Fn(&TermRow) -> bool,
+) -> Result<Result<(TermRow, String), Refused>, CmdErr> {
+    let requester = gate::requester(client)?;
+    let (rows, _, _) = rows_on(on)?;
+    let row = match find(&rows, target) {
+        Found::One(r) => r,
+        Found::NotKnown => return Ok(Err(Refused::NotKnown)),
+        Found::Ambiguous => return Ok(Err(Refused::Ambiguous)),
+    };
+    // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人）。探的是挂着 sid 的那个窗格 ⇒ 按它判。
+    let Some(p) = gate::probe_with(on.cmd(), row.target())? else {
+        return Ok(Err(Refused::Ended));
+    };
+    if row.pane.is_some() && p.ccm_sid != row.sid {
+        // 那个窗格此刻挂的已经不是名单里那个 sid 了。
+        return Ok(Err(Refused::NotKnown));
+    }
+    match gate::identity(&row.name, &p, requester.as_deref()) {
+        Who::Pass => {}
+        Who::OtherClient => return Ok(Err(Refused::NotYours)),
+        Who::NotOurs => return Ok(Err(Refused::NotManaged)),
+    }
+    if !takes(row) {
+        return Ok(Err(Refused::Ended));
+    }
+    // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
+    let at = row.pane.clone().unwrap_or(p.session_id);
+    Ok(Ok((row.clone(), at)))
+}
+
+/// 切权限档看屏 · 等重画那一份（同 [`follow_target_on`] 的形）：过 [`say_on`] 那同一道门 —— 只剩 shell 的窗格不看（读不出档，也不该往里按键）。
+pub(crate) fn say_target_on(
+    on: On<'_>,
+    sid: &str,
+    client: Option<&str>,
+) -> Result<Result<FollowTarget, Refused>, CmdErr> {
+    let t = target(None, Some(sid))?;
+    Ok(
+        admit_on(on, &t, client, |row| !shell_only(row))?.map(|(row, _)| FollowTarget {
+            target: row.target().to_string(),
+            session: row.id.clone(),
+            pane: row.pane.clone(),
+        }),
+    )
+}
+
 /// [`input_on`] · [`say_on`] 的本体：`takes` 答名单里那一行（过了身份门之后）此刻收不收。
 fn send_on(
     on: On<'_>,
@@ -913,32 +969,11 @@ fn send_on(
 ) -> Result<Sent, CmdErr> {
     let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
     let input = input_of(req)?;
-    let requester = gate::requester(req.client.as_deref())?;
     let seen = req.seen_screen.clone();
-    let (rows, _, _) = rows_on(on)?;
-    let row = match find(&rows, &target) {
-        Found::One(r) => r,
-        Found::NotKnown => return Ok(refused(Refused::NotKnown)),
-        Found::Ambiguous => return Ok(refused(Refused::Ambiguous)),
+    let at = match admit_on(on, &target, req.client.as_deref(), takes)? {
+        Ok((_, at)) => at,
+        Err(why) => return Ok(refused(why)),
     };
-    // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人）。探的是挂着 sid 的那个窗格 ⇒ 按它判。
-    let Some(p) = gate::probe_with(on.cmd(), row.target())? else {
-        return Ok(refused(Refused::Ended));
-    };
-    if row.pane.is_some() && p.ccm_sid != row.sid {
-        // 那个窗格此刻挂的已经不是名单里那个 sid 了。
-        return Ok(refused(Refused::NotKnown));
-    }
-    match gate::identity(&row.name, &p, requester.as_deref()) {
-        Who::Pass => {}
-        Who::OtherClient => return Ok(refused(Refused::NotYours)),
-        Who::NotOurs => return Ok(refused(Refused::NotManaged)),
-    }
-    if !takes(row) {
-        return Ok(refused(Refused::Ended));
-    }
-    // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
-    let at = row.pane.clone().unwrap_or(p.session_id);
     if let Some(seen) = seen {
         let now = screen_now(on, &at)?;
         if now != seen {

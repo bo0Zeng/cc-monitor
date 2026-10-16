@@ -3,6 +3,7 @@
 
 use crate::control::session_new::{ForkWrite, PreRotation};
 use crate::control::session_open::{self as open, Facts, ResumeOf};
+use cmd_wire::listing::ResumeWith;
 use cmd_wire::session::{ForkSlot, ForkTerminal};
 
 /// `session-open`：起新的 · 恢复某条 · 接回，一个请求。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
@@ -123,12 +124,70 @@ pub(crate) fn resume_of(sid: &str) -> Option<ResumeOf> {
     let agent = hq::facts_agent(&home, path)?;
     let cwd = hq::facts_project_dir(&home, path)?;
     let facts = hq::cold_scan(&home, path).ok()?.facts(&Vec::new(), None);
-    Some(ResumeOf {
-        agent,
-        cwd,
-        model: facts.usage.and_then(|u| u.model),
-        permission_mode: facts.permission_mode,
-    })
+    let kept = kept_for_resume(
+        crate::history::history_annotations::resume_with_of(sid),
+        std::path::Path::new(path),
+    );
+    Some(with_kept(
+        ResumeOf {
+            agent,
+            cwd,
+            model: facts.usage.and_then(|u| u.model),
+            permission_mode: facts.permission_mode,
+        },
+        kept,
+    ))
+}
+
+/// 终端没了时换的那一项（注解 `resumeWith`）此刻还算不算数：记录还是记下那一刻那么长 ⇒ 算；长了（恢复过 · 又写过）· 读不到记录 ⇒ 作废。
+/// 恢复（[`resume_of`]）与会话事实读同一份。
+pub(crate) fn kept_for_resume(
+    kept: Option<ResumeWith>,
+    record: &std::path::Path,
+) -> Option<ResumeWith> {
+    let len = crate::platform::fs::Ro::metadata(record).ok()?.len();
+    kept.filter(|k| k.end == len)
+}
+
+/// 记下了的那两格盖过记录里的；模型记的是「默认」那一项 ⇒ 不带模型（不写就是那一家自己的默认）。
+pub(crate) fn with_kept(r: ResumeOf, kept: Option<ResumeWith>) -> ResumeOf {
+    let Some(k) = kept else { return r };
+    let default = crate::agents::launch_face_among(crate::agents::REGISTRY, &r.agent)
+        .and_then(|f| f.model_default)
+        .map(|c| c.value);
+    ResumeOf {
+        model: match k.model {
+            Some(m) => (Some(m.as_str()) != default).then_some(m),
+            None => r.model,
+        },
+        permission_mode: k.permission_mode.or(r.permission_mode),
+        ..r
+    }
+}
+
+/// 终端没了时换模型 / 权限档：把选的那一项记在这条会话上（`end` ＝ 此刻记录多长），下次恢复照它起。
+pub(crate) fn keep_for_resume(
+    own: &crate::platform::fs::Own,
+    sid: &str,
+    record: &std::path::Path,
+    model: Option<&str>,
+    permission_mode: Option<&str>,
+) -> Result<(), crate::wire::spec::Fail> {
+    let end = crate::platform::fs::Ro::metadata(record)
+        .map_err(|e| crate::wire::spec::Fail::new("io_failed", copy_core::io_reason(e.kind())))?
+        .len();
+    crate::history::history_annotations::keep_resume_at(
+        own,
+        sid,
+        ResumeWith {
+            model: model.map(str::to_string),
+            permission_mode: permission_mode.map(str::to_string),
+            end,
+        },
+        crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64),
+    )
 }
 
 /// 分叉的源会话此刻在不在 tmux 里（同 `session-new-facts` 那一格 `fork.launch.terminal`）；说不出 ⇒ `None`。
@@ -141,3 +200,7 @@ fn fork_in_tmux(sid: &str) -> Option<bool> {
         ForkSlot::Unknown { .. } => None,
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/session_open_face_tests.rs"]
+mod tests;

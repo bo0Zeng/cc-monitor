@@ -232,7 +232,7 @@ pub(crate) fn say_with(
         ..TerminalInputReq::default()
     })?;
     // 这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 恢复再送；别的被拒原样回。带了看见的那一屏 ⇒ 不恢复。
-    if req.seen_screen.is_some() || !matches!(sent.why, Some(Refused::NotKnown | Refused::Ended)) {
+    if req.seen_screen.is_some() || !crate::control::terminals::terminal_gone(sent.why) {
         return Ok(sent);
     }
     let Some(a) = resume(req) else {

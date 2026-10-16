@@ -196,3 +196,15 @@ fn the_model_written_in_the_record_reads_as_its_name() {
         "没考据过模型名的那一家不给字"
     );
 }
+
+/// ★ 记录里的模型原值认成换模型清单里唯一对得上的那一项：`claude-opus-…` ⇒ `opus`；`claude-sonnet-…` 在清单里有 `sonnet` 与
+/// `sonnet[1m]` 两项、记录里分不出 ⇒ 不认；不是这一家的值 ⇒ 不认；Codex 没考据过 ⇒ 不认。
+#[test]
+fn the_record_model_is_picked_only_when_one_item_matches() {
+    let pick = |m: &str| crate::agents::model_pick("claude", m);
+    assert_eq!(pick("claude-opus-4-1-20250805"), Some("opus"));
+    assert_eq!(pick("claude-haiku-4-5-20251001"), Some("haiku"));
+    assert_eq!(pick("claude-sonnet-4-5"), None);
+    assert_eq!(pick("gpt-5"), None);
+    assert_eq!(crate::agents::model_pick("codex", "claude-opus-4-5"), None);
+}

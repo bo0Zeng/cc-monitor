@@ -512,11 +512,11 @@ describe("TabManager 生命周期", () => {
 
   it("★ 那台说的「此刻能不能换」随活动那几格 · 去向那一帧落到 tab 上（早于建 Tab ⇒ 暂存落实）；没带 ⇒ 不动", () => {
     const busy = { model: { can: "no" as const, why: "核心·本轮结束后可换模型" }, permission: { can: "yes" as const } };
-    const gone = { model: { can: "no" as const, why: "核心·会话已退出" }, permission: { can: "no" as const, why: "核心·会话已退出" } };
+    const gone = { model: { can: "yes" as const }, permission: { can: "yes" as const } };
     tm.updateActivity("sw", "working", null, copyText("beSession.activity.working"), "now", 1, busy);
     const tab = tm.ensureTab("sw", "/x", "p", LOCAL_ORIGIN);
     expect(tab.switch).toEqual(busy);
-    tm.updateActivity("sw", "idle", null, copyText("beSession.activity.idle"), "plain", 3, { model: { can: "yes" }, permission: { can: "yes" } });
+    tm.updateActivity("sw", "idle", null, copyText("beSession.activity.idle"), "plain", 3, { model: { can: "yes" }, permission: { can: "no", why: "核心·先答完需手动" } });
     expect(tab.switch?.model).toEqual({ can: "yes" });
     tm.archiveTab("sw", gone);
     expect(tab.switch).toEqual(gone);
@@ -4932,6 +4932,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     permissionMode: null,
     permissionModeText: null,
     modelText: null,
+    modelPick: null,
     tokens: null,
     cost: null,
     bgTasks: [],
@@ -6413,6 +6414,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     permissionMode: null,
     permissionModeText: null,
     modelText: null,
+    modelPick: null,
     tokens: null,
     cost: null,
     bgTasks: [],

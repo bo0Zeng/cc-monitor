@@ -35,7 +35,7 @@ pub(crate) mod search_face; // 全文搜索那两条（typed）：`history-searc
 pub mod session_batch_face;
 pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：一条会话能用的斜杠命令与 Skill
 pub(crate) mod session_mode_face;
-pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：会话开着时换模型（送那一行、从记录读回） // 帧面 `session-permission`（typed）：会话开着时切权限档（按循环键、等重画、读回到了为止）
+pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：换模型（送那一行、从记录读回；终端没了记下等恢复） // 帧面 `session-permission`（typed）：切权限档（按循环键、等重画、读回到了为止；终端没了记下等恢复）
 pub mod session_new_face; // 帧面 `session-new` · `session-new-facts` · `session-new-dir`：起新会话框要的这台事实 ＋ 起
 pub(crate) mod session_open_face; // 帧面 `session-open`：起新的 · 恢复 · 接回一个请求（恢复那条的记录 · 分叉源在不在 tmux 由这层读）
 pub mod session_restart_face;
