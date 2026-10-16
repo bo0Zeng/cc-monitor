@@ -189,8 +189,7 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     } else {
         match crate::deploy::ensure_backend_deployed(cfg).await {
             Ok(c) => Some(c),
-            Err(e) => {
-                let said = e.said();
+            Err(said) => {
                 tracing::warn!(
                     "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {said}: {}",
                     said.raw()
@@ -597,6 +596,12 @@ async fn dispatch(
         Some(InboundFrame::Probe { ticket, .. }) => {
             tracing::warn!(
                 "stream_source [{host_label}] 远端后端发来了测试连接的进度帧（ticket={ticket}）—— 测试连接在本机后端，丢掉"
+            );
+        }
+        // 装后端的进度帧同理：那一趟在**本机**后端里跑，远端后端发来 ⇒ 协议对不上，照实说、丢掉。
+        Some(InboundFrame::Deploy { machine, .. }) => {
+            tracing::warn!(
+                "stream_source [{host_label}] 远端后端发来了装后端的进度帧（machine={machine}）—— 那一趟在本机后端，丢掉"
             );
         }
         // 一组复制 · 删除 · 改权限的进度：按票交给订了它的那扇文件窗口（从不阻塞；没人订就丢）。

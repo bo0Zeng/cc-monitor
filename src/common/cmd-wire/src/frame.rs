@@ -37,6 +37,7 @@ pub enum Frame<R = Record> {
     Transfer(Transfer),
     FilesBatch(FilesBatch),
     Probe(Probe),
+    Deploy(Deploy),
     LiveCard(LiveCard),
     SessionRuns(SessionRuns),
     SessionBranch(SessionBranch),
@@ -400,6 +401,24 @@ pub struct Probe {
     pub ticket: String,
     /// 一格进度，恰好一个键：`stage` · `reached` · `end`。
     pub cell: Value,
+}
+
+/// **装 / 升级远端后端那一趟走到哪一步**（`deploy-install` 在跑时才出现，只推给发起它的那条连接）。`said` 是写好的那一句，两端照画。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deploy {
+    /// 那台的名字（发起时交的 `machine`）。
+    pub machine: String,
+    pub step: DeployStep,
+    pub said: String,
+}
+
+/// [`Deploy::step`]：问那台 · 放字节（落点上原来没有 ⇒ 装；有 ⇒ 更新）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployStep {
+    Plan,
+    Install,
+    Update,
 }
 
 /// 一个会话的运行表（主运行之外的那几个子运行）。表变了就整份发一次；`ended`：被挤出运行表的已收场子运行。

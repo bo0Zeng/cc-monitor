@@ -588,7 +588,7 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
 /// 写 `<path>.<这一趟独有的后缀>.tmp`（从前是固定 `<path>.tmp` ＋ 先删残留；**EXCLUDE** 创建：临时件是一条预置的链接也不会跟过去 —— F89a 审计）
 /// → 旧目标**改名成 `.<后缀>.bak`**（不是删：「先删旧」一旦后续改名失败就丢原件，DN-7 订正过那句注释）
 /// → 临时件上位 → 删 `.bak`。临时件与 `.bak` 都在目标**同一个父目录**里，那个父目录已经过了围栏。
-/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。两个部署者交错时临时件 / 备份件各是各的（唯一名）；仍剩的一格如实记：`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在。
+/// 标准 SFTP 的改名不覆盖（`russh-sftp` 没有 `posix-rename@openssh.com`）⇒ 只能这样近似原子。两个部署者交错时临时件 / 备份件各是各的（唯一名）；`rel → .bak` 与 `tmp → rel` 之间 `rel` 有一瞬不在 ⇒ 部署不经它换落点（只放进暂存区，落点由那一份自己 `--place-self` 原子换进去）。
 ///
 /// ⚠ **改名之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上那一次 setstat 把刚上位的
 /// 后端**截成 0 字节** ⇒ 不可 exec → 连接 EOF → 标记变空 → 无限重部署。权限只在 open-create 的属性里设一次。
@@ -708,12 +708,11 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
     Ok(())
 }
 
-/// **原子上传 ＋ 整份读回比对**（部署那一趟：桌面经 `files` 链路的 `put`（`verify`）· 手机经 `deploy` crate，同一份）：
+/// **原子上传 ＋ 整份读回比对**（部署那一趟放进暂存区：`deploy` crate，桌面手机同一份；`files` 链路的 `put`（`verify`）也是它）：
 /// [`put_atomic`] 放上去 → [`read_all`] 读回 → [`verify_readback`] 判；**读回不对 ⇒ 当场删掉传坏的那一份**（删不掉也照实说）。
 ///
-/// 删的理由（从 monitor `deploy.rs::upload_verified` 随判定一起搬来）：身份读字节自己的戳 —— 一份传坏的字节若恰好还带着对的戳，
-/// 下次会被判「已是这一版」⇒ 坏字节永久驻留。删掉它，下次就是「落点没有 ⇒ 装」。
-/// 中途断了（读回之前 · 删之前）：落点上留的是这一趟放上去的那一份（没读回过），下次连上照计划扫它的戳再判。
+/// 删的理由：一份传坏的字节留着没用，下一趟按残件清还得等期限；当场删掉，下一趟从头传。
+/// 中途断了（读回之前 · 删之前）：留下的那一份是唯一名的暂存件，下次连上照计划当残件清。
 pub async fn put_verified(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Result<(), Refusal> {
     put_atomic(s, path, bytes, mode).await?;
     let back = read_all(s, path).await;

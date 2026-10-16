@@ -223,6 +223,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `ticket` | string | 测试连接那一趟的票（`remote-probe` 交来的） |
 | `cell` | JSON | 一格进度，恰好一个键：`stage` · `reached` · `end` |
 
+### `deploy`
+
+**装 / 升级远端后端那一趟走到哪一步**（`deploy-install` 在跑时才出现，只推给发起它的那条连接）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `machine` | string | 那台的名字（发起时交的 `machine`） |
+| `step` | DeployStep |  |
+| `said` | string |  |
+
 ### `live_card`
 
 `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -278,6 +288,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `said` | string | 给人看的那一句（后端写好，界面原样上屏） |
 
 ## 2. 信封与帧里用到的类型
+
+#### `DeployStep`
+
+`Deploy::step`：问那台 · 放字节（落点上原来没有 ⇒ 装；有 ⇒ 更新）。
+
+- `plan`
+- `install`
+- `update`
 
 #### `SessionActivity`
 
@@ -11279,21 +11297,41 @@ type UserPathState = "on" | "off" | "unknown" | "not_windows";
 
 码：`bad_args`
 
-#### `deploy-plan`
+#### `deploy-install`
 
-那台的后端要不要换、换成哪一格。
+给那台装 / 升级后端。
 
-收 `args` · 可撤 · CLI：`ccm -- --deploy-plan`
+收 `args` · 连接内就地做完 · 只在流上
 
-入参 `DeployPlanReq` · 回包 `Planned`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Carried = { os: string, arch: string, id: string, };
-type DeployPlanReq = { dial: MachineDial, carried: Array<Carried>, 
+type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
 /**
- * 那台的名字（非空）。
+ * 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
  */
 machine: string, };
+type Installed = { 
+/**
+ * `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
+ */
+action: "skip" | "deploy" | "keep", 
+/**
+ * 这一趟做了什么那一句（`deploy::Plan::said`）。
+ */
+said: string, 
+/**
+ * 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
+ */
+build: string, 
+/**
+ * 那台的 OS（表 A 的词）。
+ */
+os: string, 
+/**
+ * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+ */
+ack: unknown, };
 type MachineConfig = { 
 /**
  * 首选地址。
@@ -11336,39 +11374,15 @@ use?: string | null,
  * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
  */
 agent_sock?: string | null, };
-type Planned = { 
-/**
- * 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）。
- */
-os: string, arch: string, label: string, 
-/**
- * 那一格这一版带着的字节自报的身份（对照物）。
- */
-expected: string, 
-/**
- * `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）。
- */
-action: "skip" | "deploy" | "keep", 
-/**
- * 人读原因（`skip` 时空串）。
- */
-why: string, 
-/**
- * `keep` 时那台上那一份自报的身份，否则 `null`。
- */
-theirs: string | null, 
-/**
- * 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
- */
-leftovers: Array<string>, 
-/**
- * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
- */
-ack: unknown, };
 type Prefer = { host: string, port: number, };
+type SlotRow = { os: string, arch: string, id: string, 
+/**
+ * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ */
+path: string, };
 ```
 
-码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable`
+码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
 
 #### `resident-verdict`
 
@@ -12900,7 +12914,6 @@ needs: string | null, };
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
-| `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |

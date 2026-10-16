@@ -26,13 +26,65 @@ pub struct Slot {
 /// 读一格的字节（宿主给：本 crate 不碰本机文件系统，读文件是宿主的事）。
 pub type Load = dyn Fn(&std::path::Path) -> std::io::Result<Vec<u8>> + Send + Sync;
 
-/// 走到哪一步了（宿主照它显示进度）。
+/// 走到哪一步了（宿主照它显示进度；那一句 [`Step::said`] 两端照画）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     /// 问那台：要哪一格 · 落点那一份是谁。
     Plan,
     /// 放字节（`updating` = 落点上原有一份旧的）。
     Place { updating: bool },
+    /// ⑤ 换常驻（宿主跑 `--resident-ensure --replace`）。
+    Restart,
+}
+
+impl Step {
+    /// 这一步对人说的那一句（`machine` = 那台的名字）。
+    pub fn said(self, machine: &str) -> String {
+        let connecting = |stage: &str| {
+            copy_text(
+                "machineState.busy.connecting",
+                &[("machine", machine), ("stage", &copy_text(stage, &[]))],
+            )
+        };
+        match self {
+            Step::Plan => connecting("machineState.stage.deploy"),
+            Step::Place { updating: true } => {
+                copy_text("machineState.busy.updating", &[("machine", machine)])
+            }
+            Step::Place { updating: false } => {
+                copy_text("machineState.busy.installing", &[("machine", machine)])
+            }
+            Step::Restart => connecting("machineState.stage.attach"),
+        }
+    }
+}
+
+impl Plan {
+    /// 这一趟做了什么那一句：已是这一版 · 装上了这一版（带原因）· 那台不比这一版旧、没动它（计划里那一句）。
+    pub fn said(&self) -> String {
+        let path = format!("~/{}", relay_route_core::BACKEND_LANDING_REL);
+        let machine = self.key.label();
+        match &self.action {
+            DeployAction::Skip => copy_text(
+                "rsSftp.deploy.upToDate",
+                &[
+                    ("buildId", &self.expected),
+                    ("machine", &machine),
+                    ("path", &path),
+                ],
+            ),
+            DeployAction::Deploy(reason) => copy_text(
+                "rsSftp.deploy.done",
+                &[
+                    ("buildId", &self.expected),
+                    ("machine", &machine),
+                    ("path", &path),
+                    ("reason", reason),
+                ],
+            ),
+            DeployAction::Keep { why, .. } => why.clone(),
+        }
+    }
 }
 
 /// 放得了字节的对面：计划那几问之外，还给得出这条连接上的 SFTP 会话。
@@ -71,7 +123,10 @@ async fn place_self(host: &dyn Place, staged: &str, machine: &str) -> Result<(),
         )
     };
     let (got, _) = host
-        .exec(format!("\"$HOME\"/{staged} -- --place-self"))
+        .exec(format!(
+            "{} -- --place-self",
+            relay_route_core::home_shell(staged)
+        ))
         .await
         .map_err(|e| failed(&e))?;
     let line = |t: &str| {
@@ -104,7 +159,7 @@ pub async fn install(
     let carried: Vec<(Key, String)> = slots.iter().map(|s| (s.key, s.id.clone())).collect();
     let (plan, updating) = crate::plan_and_landing(host, &carried, machine, now_secs).await?;
     if let DeployAction::Deploy(_) = &plan.action {
-        // ② 照计划取那一格的字节；计划说的身份与字节自报的对不上 ⇒ 不推（同桌面 `planned_binary` · `bytes_carry_build_stamp`）。
+        // ② 照计划取那一格的字节；计划说的身份与字节自报的对不上 ⇒ 不推。
         let not_this = || {
             Fail::new(
                 "not_carried",

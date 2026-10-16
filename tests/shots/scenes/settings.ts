@@ -129,6 +129,7 @@ const pushed = (state: string, extra: Record<string, unknown> = {}): Record<stri
   state,
   reason: null,
   stage: null,
+  said: null,
   version: null,
   versionRelation: null,
   os: "Linux",
@@ -177,8 +178,8 @@ export const SETTINGS_SCENES: Scene[] = [
   }, installingWorld),
   settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时壳推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async () => {
     await go("machines");
-    await emit("machine-state", { origin: "devbox", machine: pushed("connecting", { stage: "attach" }) });
-    await emit("machine-state", { origin: "gpu-01", machine: pushed("updating") });
+    await emit("machine-state", { origin: "devbox", machine: pushed("connecting", { stage: "attach", said: "连接 devbox · 启动 cc-monitor" }) });
+    await emit("machine-state", { origin: "gpu-01", machine: pushed("updating", { said: "更新 gpu-01 · cc-monitor" }) });
     await sleep(800);
   }),
 

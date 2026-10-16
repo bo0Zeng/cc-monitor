@@ -218,6 +218,13 @@ pub enum InboundFrame {
     /// 测试连接那一趟的一格进度 / 结局（后端 `wire::Frame::Probe`）。只有**本机后端**那条流上会有
     /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
     Probe { ticket: String, cell: String },
+    /// 装 / 升级一台远端后端那一趟走到哪一步（后端 `wire::Frame::Deploy`）。只有**本机后端**那条流上会有
+    /// （`deploy-install` 在本机常驻后端里跑），交 `machine_state::deploy_step`。`said` 是后端写好的那一句。
+    Deploy {
+        machine: String,
+        step: crate::machine_state::DeployStep,
+        said: String,
+    },
     /// 同一台上一组（复制 · 删除 · 改权限）此刻做到哪了（后端 `wire::Frame::FilesBatch`）。本机远端两条流上都会有
     /// （那一组在哪台做就是哪台推的）。`cell` ＝ `{"done": n, "total": n, "current"?: 路径, "bytes_done"?: n, "bytes_total"?: n}`
     /// 的文本（原样，界面严格收）；按票交 `files_batch_relay::deliver`。
@@ -714,6 +721,13 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 .filter(|c| c.is_object())
                 .ok_or_else(|| bad(k, "`cell` is not an object"))?
                 .to_string(),
+        },
+        // 装后端那一趟的一步：那台 · 哪一步 · 那一句。
+        "deploy" => InboundFrame::Deploy {
+            machine: req_str(obj, k, "machine")?,
+            step: serde_json::from_value(req(obj, k, "step")?.clone())
+                .map_err(|_| bad(k, "`step` is not a known step"))?,
+            said: req_str(obj, k, "said")?,
         },
         // 一组的进度：票 ＋ 做完几项 · 一共几项 ＋ 手上那一项（可缺，原样）。
         "files_batch" => InboundFrame::FilesBatch {

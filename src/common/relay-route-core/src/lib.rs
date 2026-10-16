@@ -82,6 +82,11 @@ pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
 /// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX）：`$HOME` 在那台上展开，其余字节都是安全字符。
 pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
 
+/// 家目录底下一条只含安全字符的相对路径在远端 POSIX shell 里的写法（同 [`BACKEND_LANDING_SHELL`]）：部署放进暂存区的那一份用它叫。
+pub fn home_shell(rel: &str) -> String {
+    format!("\"$HOME\"/{rel}")
+}
+
 /// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
 /// **远端**：`--resident-ensure` 起那台的常驻后端时交同一个值（本机远端同形）。
 pub const PORT: u16 = 8788;

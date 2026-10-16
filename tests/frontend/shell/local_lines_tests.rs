@@ -172,6 +172,11 @@ const FRAMES: &[(&str, &str)] = &[
         "probe",
         r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
     ),
+    // 装远端后端那一趟走到哪一步 —— 不是会话内容，就地进机器状态（`machine_state::deploy_step`），不进内容通道。
+    (
+        "deploy",
+        r#"{"kind":"deploy","machine":"no-such-machine","step":"plan","said":"x"}"#,
+    ),
     // 一组复制 · 删除 · 改权限的进度 —— 不是会话内容，就地记一行（窗口还没订这一口），不进内容通道。
     (
         "files_batch",

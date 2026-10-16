@@ -110,7 +110,10 @@ impl Facing for Rig {
                 },
             }
         } else if let Some(name) = command
-            .strip_prefix(&format!("\"$HOME\"/{}/", ssh_dial::sftp::STAGING_ROOT))
+            .strip_prefix(&relay_route_core::home_shell(&format!(
+                "{}/",
+                ssh_dial::sftp::STAGING_ROOT
+            )))
             .and_then(|c| c.strip_suffix(" -- --place-self"))
         {
             // 替身那一份 `--place-self`：暂存件 `rename(2)` 盖掉落点（不经 SFTP ⇒ 不进改动表，同那台上那个进程自己改名）。

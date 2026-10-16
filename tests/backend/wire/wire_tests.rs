@@ -495,6 +495,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             ticket: s("t1"),
             cell: serde_json::json!({"reached": "ssh"}),
         })),
+        both(Frame::Deploy(crate::wire::Deploy {
+            machine: s("box"),
+            step: crate::wire::DeployStep::Update,
+            said: s("更新 box · cc-monitor"),
+        })),
         [
             Frame::FilesBatch(crate::wire::FilesBatch {
                 ticket: s("b1"),

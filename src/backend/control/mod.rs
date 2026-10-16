@@ -11,7 +11,7 @@
 //! - [`launch`]：起 tmux 会话 / 往已有会话键入载荷（argv 直传不过 shell）；不 attach —— backend 在远端开不了你面前的窗。
 //! - [`cli_args`]：CLI 面读入参的唯一一处（`stream::cli` 经它读）。
 //! - [`cc_bus`]：cc-bus 的基础命令（`bus-list` / `bus-send`），转调本机的 cc-bus 命令；不读 cc-bus 的任何数据文件，只把它的命令当接口。
-//! - [`deploy_plan`]：部署计划（帧命令 `deploy-plan`）；只读那台，放字节归 monitor。
+//! - [`deploy_plan`]：给那台装 / 升级后端（帧命令 `deploy-install`；编排住 `deploy` crate）。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）—— 名字里有 `query`，但它是计划面，属于控制的前半。
 //!
 //! # 这一层不许引用 [`crate::observe`]

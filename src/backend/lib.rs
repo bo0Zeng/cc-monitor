@@ -1168,8 +1168,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
     // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
     "--bus-state",
-    // 部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
-    "--deploy-plan",
+    // `--deploy-plan` 摘了：帧命令 `deploy-plan` 删了（装那一趟整趟在 `deploy-install`，进度帧只在帧面）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--resident-verdict",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
@@ -2313,6 +2312,8 @@ pub const EMITS: &[&str] = &[
     // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "probe",
+    // 装 / 升级远端后端那一趟走到哪一步（`control/deploy_plan.rs` 的 `deploy-install` 真发，登记 = 承诺真发）。只在它在跑时出现。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
+    "deploy",
     // 同一台上一组（复制 · 删除 · 改权限）的进度（`stream/inbound` 那一路听票、真发，登记 = 承诺真发）。只在带票的那一组在做时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "files_batch",

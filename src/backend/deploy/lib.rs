@@ -3,9 +3,9 @@
 //! 照桌面五步走：① 出计划（[`plan`]）· ② 取字节 ＋ 自检 · ③ 放进暂存区 ＋ 读回（`ssh_dial::sftp::put_verified`）→ 那一份自己换进落点（`--place-self`）· ④ 判读回 ＋ 收拾残件 ·
 //! ⑤ 起常驻 / 换旧的（远端 ccm 自己的 `--resident-ensure [--replace]`，[`resident_verdict`] 判换不换）。
 //!
-//! - 桌面：本机常驻后端答帧命令 `deploy-plan`（`control/deploy_plan.rs`，薄薄一层：入参 · 回包形状 · 码）调 [`plan`]；
-//!   字节在 monitor 手里，②④ 由 monitor 照计划做，③ 经后端那条 `files` 链路落到 `put_verified`。
-//! - 手机：mobcore 直接调 [`install`]（①–④ 一趟，字节是 App 从包里解出来的那一份文件）；⑤ 由 mobcore 跑 `--resident-ensure --replace`。
+//! 两端都调 [`install`]（①–④ 一趟，字节是宿主交来的一份文件，每一步那一句是 [`Step::said`]、结局那一句是 [`Plan::said`]）；⑤ 由宿主跑 `--resident-ensure --replace`：
+//! - 桌面：本机常驻后端答帧命令 `deploy-install`（`control/deploy_plan.rs`，薄薄一层：入参 · 进度帧 · 回包形状 · 码），字节是 monitor 落成的文件；
+//! - 手机：mobcore 直接调，字节是 App 从包里解出来的那一份文件。
 //!
 //! 契约那一半（表 A 的键与行 · 戳格式 · 答话形状 · 落点路径）住 `deploy_contract` / `relay_route_core`；本 crate 只放判定与编排。
 //!

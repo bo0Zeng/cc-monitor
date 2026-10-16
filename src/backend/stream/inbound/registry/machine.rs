@@ -16,11 +16,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::control::ccm::user_path::CcmUserPath>(
         "`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤",
     ),
-    // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
-    //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
-    crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(
-        "那台的后端要不要换、换成哪一格",
-    ),
+    // **给那台装 / 升级后端**：`{dial, slots, machine}` → `{action, said, build, os, ack}`；每走一步推一帧 `deploy`（进度帧走本连接的应答通道 ⇒ 硬臂）。
+    //   本体 `control/deploy_plan.rs`（编排住 `deploy` crate，手机同一份）。
+    crate::wire::typed::frame::<crate::control::deploy_plan::DeployInstall>("给那台装 / 升级后端"),
     // **远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
     //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端）。
     crate::wire::typed::asynchronous::<crate::control::deploy_plan::ResidentVerdict>(
