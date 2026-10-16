@@ -238,14 +238,14 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
             .unwrap_err()
             .0,
         "refused",
-        "用户名"
+        "用户名打头是 -"
     );
     assert_eq!(
         run(machine("-oProxyCommand", "u", 22, None), "x")
             .unwrap_err()
             .0,
         "refused",
-        "地址"
+        "地址打头是 -"
     );
     let m = json!({ "host": "t", "user": "u", "port": 22, "label": "target", "jump": "bastion" });
     let hop = |host: &str, user: &str| json!({ "host": host, "user": user, "port": 22, "label": "bastion" });
@@ -253,8 +253,8 @@ fn a_leading_dash_in_any_bare_word_is_refused() {
         answer(&json!({ "machine": m, "jump": hop("jump-1", "pi-x"), "command": "x" })).is_ok()
     );
     for (j, why) in [
-        (hop("jump.local", "-x"), "跳板用户"),
-        (hop("-x", "pi"), "跳板地址"),
+        (hop("jump.local", "-x"), "跳板用户打头是 -"),
+        (hop("-x", "pi"), "跳板地址打头是 -"),
     ] {
         assert_eq!(
             answer(&json!({ "machine": m, "jump": j, "command": "x" }))
