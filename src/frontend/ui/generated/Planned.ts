@@ -27,8 +27,4 @@ theirs: string | null,
 /**
  * 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
  */
-leftovers: Array<string>, 
-/**
- * 问 `uname` 那一趟拨号的 ack 原样（拨号核心 `DialAck` 那一形）。
- */
-ack: unknown, };
+leftovers: Array<string>, };

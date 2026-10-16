@@ -1,5 +1,10 @@
 package com.ccmonitor.mobile.core.copy
 
+/** 大小（字节 ⇒ 给人看的一格）：核心 `copy_core::size_text` 那一份。 */
+object SizeFormat {
+    fun text(bytes: Long): String = CopyCore.sizeText(bytes)
+}
+
 /**
  * 短时长 · 距今：核心 `copy_core::short_duration` / `rel_duration` 那一份。核心写好的 `{text, from, to?}` 钟只在这里按此刻填 `{dur}`
  * （同桌面 `duration-format.ts`，clock 段对金样 `tests/__fixtures__/short-duration.golden.json`）。

@@ -27,6 +27,9 @@ internal object CopyCore {
     ): String
 
     /** 负数按 0。 */
+    external fun sizeText(bytes: Long): String
+
+    /** 负数按 0。 */
     external fun shortDuration(ms: Long): String
 
     /** 已到 ⇒ `null`。 */

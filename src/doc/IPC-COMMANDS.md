@@ -4186,6 +4186,7 @@ hide?: Hide,
  * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
  */
 autoAnswer?: AutoAnswer, updatedAt: number, };
+type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -6363,7 +6364,12 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsMachine = { origin: Origin, waiting: Array<NeedsRow>, };
 type NeedsMergeReq = { machines: Array<NeedsMachine>, };
@@ -7576,7 +7582,11 @@ quota: Words | null,
  * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
  * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
  */
-unselectable: Words | null, name: string, 
+unselectable: Words | null, 
+/**
+ * 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
+ */
+login: boolean, name: string, 
 /**
  * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
  */
@@ -11514,11 +11524,7 @@ theirs: string | null,
 /**
  * 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
  */
-leftovers: Array<string>, 
-/**
- * 问 `uname` 那一趟拨号的 ack 原样（拨号核心 `DialAck` 那一形）。
- */
-ack: unknown, };
+leftovers: Array<string>, };
 type Prefer = { host: string, port: number, };
 ```
 

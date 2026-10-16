@@ -19,7 +19,9 @@ class CopyCoreTest {
     }
 
     @Test
-    fun `短时长 · 距今经核心：负数按 0，已到 ⇒ null`() {
+    fun `大小 · 短时长 · 距今经核心：负数按 0，已到 ⇒ null`() {
+        assertEquals("1.5 KB", SizeFormat.text(1536))
+        assertEquals("0 B", SizeFormat.text(-1))
         assertEquals("1h4m", DurationFormat.short(3_840_000))
         assertEquals("<1s", DurationFormat.short(-5))
         assertEquals("+2m", DurationFormat.ahead(61_000))
