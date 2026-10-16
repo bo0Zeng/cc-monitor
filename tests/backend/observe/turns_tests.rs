@@ -15,16 +15,24 @@ fn scan(body: &str, from: u64) -> Vec<TurnRow> {
         .collect()
 }
 
-/// 扫描那一层交出来的原样（进索引缓存的那一份）。
+/// 冷开扫描图那一张（夹具的记录不带父子链 ⇒ 不认链、不滤主线外；进缓存的那一份）。
+fn map_of(body: &str) -> crate::observe::record_scan::ScanMap {
+    crate::observe::record_scan::ScanMap::scan_with(
+        body.as_bytes(),
+        body.len() as u64,
+        tree_kind(),
+        None,
+    )
+    .unwrap()
+}
+
+/// 扫描那一层交出来的原样，从 `from` 起切（同 `history-turns` 从图上切的那一段）。
 fn raw_scan(body: &str, from: u64) -> Vec<TurnRow> {
-    let mut out = Vec::new();
-    let r = std::io::Cursor::new(body.as_bytes()[from as usize..].to_vec());
-    scan_turns(r, from, |t| {
-        out.push(t.clone());
-        Ok(())
-    })
-    .unwrap();
-    out
+    map_of(body)
+        .turns
+        .into_iter()
+        .filter(|t| t.at >= from)
+        .collect()
 }
 
 /// 钟面不进扫描那一份（索引缓存里那一份给几个时区不同的看的人共用）：答的那一下按看的那一台的时区写，右端那一截跟着改。
@@ -131,8 +139,10 @@ fn turn_at_counts_your_sentences_up_to_that_record() {
         r#"{"type":"user","uuid":"u2","timestamp":"t2","message":{"role":"user","content":"第二句"}}"#,
         r#"{"type":"assistant","uuid":"a2","timestamp":"t2b","message":{"role":"assistant","content":[{"type":"text","text":"行"}]}}"#,
     ]
-    .join("\n");
-    let at = |u: &str| turn_at(std::io::Cursor::new(lines.as_bytes()), u);
+    .join("\n")
+        + "\n";
+    let map = map_of(&lines);
+    let at = |u: &str| map.turn_at(u);
     assert_eq!(at("a1"), Some((1, "t1".to_string())));
     assert_eq!(at("u2"), Some((2, "t2".to_string())));
     assert_eq!(at("a2"), Some((2, "t2".to_string())));

@@ -7,7 +7,7 @@
 
 use super::*;
 
-/// 造一份假会话：`n` 行，每 7 行插一个空行（空行不占号 —— 与后端 `line_counts` 同口径）。
+/// 造一份假会话：`n` 行，每 7 行插一个空行（空行不占号 —— 与后端 `lines::counts` 同口径）。
 /// 回 `(全文, 每个可计行的 (起字节, 正文))`。
 fn fixture(n: usize) -> (String, Vec<(u64, String)>) {
     let mut text = String::new();

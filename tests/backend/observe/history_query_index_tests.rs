@@ -1,6 +1,6 @@
-//! 〔骨架〕骨架索引的扫描（帧面 `history-index` 用的那一个）与 `--read-session-from-offset` 选项解析的判据。
+//! 〔骨架〕骨架索引（帧面 `history-index` 从冷开扫描图上切的那一段）与 `--read-session-from-offset` 选项解析的判据。
 //!
-//! 买到：索引与 seq 空间**逐行对齐**（与 `--read-session-tail` 那份计数同一口径、同一个 `line_counts`）·
+//! 买到：索引与 seq 空间**逐行对齐**（与 `--read-session-tail` 那份计数同一口径、同一个 `lines::counts`）·
 //! 偏移是绝对的、续传从 `end` 接得上 · 宽度无关料按块型分开数 · 选项解析拒写错的尾随参数。
 //! **买不到**：料「数得准不准」只对到原料层（前端最终建不建卡、建成哪种卡，这里不知道）；
 
@@ -11,21 +11,27 @@ fn tree() -> &'static str {
     crate::agents::record_tree_kind().unwrap_or_default()
 }
 
-/// 扫一遍，排成「头 · 每行 · 尾」三段（头带 `from`，尾带 `count` · `end`），下面的判据照这三段读。
+/// 扫一遍（冷开扫描图那一张），从 `from` 切到 `until`（同 `history-index` 从图上切的那一段），
+/// 排成「头 · 每行 · 尾」三段（头带 `from`，尾带 `count` · `end`），下面的判据照这三段读。
 fn index_of(data: &[u8], from: u64, until: Option<u64>) -> Vec<serde_json::Value> {
-    let mut rows = vec![serde_json::json!({"kind": "session_index", "v": 1, "from": from})];
-    let (count, end) = scan_session_index(
+    let map = crate::observe::record_scan::ScanMap::scan_with(
+        data,
+        data.len() as u64,
         tree(),
-        &data[from.min(data.len() as u64) as usize..],
-        from,
-        until,
-        |row| {
-            rows.push(serde_json::to_value(row).expect("每行都是 JSON"));
-            Ok(())
-        },
+        Some(crate::agents::claudecode::RECORDS),
     )
     .expect("index ok");
-    rows.push(serde_json::json!({"kind": "session_index_end", "count": count, "end": end}));
+    let start = map.index.partition_point(|r| r.o < from);
+    let stop = until.map_or(map.index.len(), |u| map.index.partition_point(|r| r.o < u));
+    let end = map.index.get(stop).map_or(map.end, |r| r.o);
+    let mut rows = vec![serde_json::json!({"kind": "session_index", "v": 1, "from": from})];
+    let picked = &map.index[start..stop.max(start)];
+    rows.extend(
+        picked
+            .iter()
+            .map(|r| serde_json::to_value(r).expect("每行都是 JSON")),
+    );
+    rows.push(serde_json::json!({"kind": "session_index_end", "count": picked.len(), "end": end}));
     rows
 }
 

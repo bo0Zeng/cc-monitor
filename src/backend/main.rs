@@ -120,7 +120,7 @@ async fn main() {
     let own = cc_monitor_backend::platform::Own::issue();
     // 握手认下的主机钥匙记进 cc-monitor 那份 known_hosts：哪条拨号路上都可能发生 ⇒ 这里装一次那只只会记钥匙的手。
     dial::install_known_hosts(&own);
-    // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（预读那一路由 watcher 自己带着同一个写句柄）。
+    // 冷开扫描图（全进程一份）的骨架落在数据目录底下：这里装一次那个家（实时跟读起步也照它）。
     observe::skeleton::install(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();

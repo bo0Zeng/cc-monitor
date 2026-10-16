@@ -172,7 +172,7 @@ fn the_fast_path_never_changes_the_answer() {
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
-        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
+        if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
     }
@@ -576,7 +576,7 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
-        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
+        if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
     }
@@ -1106,7 +1106,7 @@ fn background_commands_are_kept_until_their_end_notice() {
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
-        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
+        if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
     }

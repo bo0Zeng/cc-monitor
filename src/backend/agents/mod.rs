@@ -1234,6 +1234,12 @@ impl<'a> Line<'a> {
             .as_ref()
     }
 
+    /// 整行拿走（解过就是那一份，没解过当场解）；连 JSON 都不是 ⇒ `None`。
+    pub(crate) fn into_value(self) -> Option<serde_json::Value> {
+        self.value();
+        self.value.into_inner().flatten()
+    }
+
     /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。
     pub(crate) fn read<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
         match self.value.get() {

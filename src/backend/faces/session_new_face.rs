@@ -3,7 +3,6 @@
 //! 写分支记录交 `control/fork_write`（本体与 `session-fork` 同一份）。
 
 use crate::control::session_new;
-use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -301,9 +300,12 @@ pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'st
             ))?;
             let source =
                 crate::agents::find_session_file(&root, sid).map_err(|m| ("fork_failed", m))?;
+            // 第几轮照那一份的扫描图数（与 `history-turns` 同一张：回退掉的那几句不算一轮）。
             let turn = at.and_then(|uuid| {
-                let f = Ro::open(&source).ok()?;
-                crate::observe::turns::turn_at(std::io::BufReader::new(f), uuid)
+                crate::observe::record_scan::global()
+                    .get(&source)
+                    .ok()?
+                    .turn_at(uuid)
             });
             Some(ForkFacts {
                 agent: crate::agents::record_kind_of(&source)
