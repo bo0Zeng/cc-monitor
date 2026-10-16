@@ -41,6 +41,8 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 # 够不着任何一个宿主的读口；只能各写一份译法）。仓内 crate，只依赖 serde_json。
 copy-core = { path = "../copy-core" }
 serde_json = "1"
+# `SecretKey` 的手写 `Deserialize`（入参解码那一刻就包好）。两份 lock 里都已有它（serde_json 本来就带进来）。
+serde = "1"
 # 交给 Win32 的路径（长路径前缀）只从它来；只在 `harden` 那一半用。仓内 crate、零依赖。
 win-path-core = { path = "../win-path-core", optional = true }
 

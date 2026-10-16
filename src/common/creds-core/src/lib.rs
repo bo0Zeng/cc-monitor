@@ -221,6 +221,14 @@ impl fmt::Debug for SecretKey {
     }
 }
 
+/// 从入参解出来那一刻就是 `SecretKey`（先解成串、再经 [`SecretKey::new`]）：写在 `sealed` 之外，够不到字段。
+/// 只有解没有写：`Serialize` 照旧没有。
+impl<'de> serde::Deserialize<'de> for SecretKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        String::deserialize(d).map(SecretKey::new)
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/creds-core/lib_tests.rs"]
 mod tests;
