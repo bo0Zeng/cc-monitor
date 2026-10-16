@@ -57,7 +57,6 @@ fn machines_start_absent_and_a_cell_edit_touches_only_that_cell() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-
 /// 认不出 / 认出多台 ⇒ `element_gone`；要加的已在 ⇒ `element_exists`；改完的表不成立 ⇒ `bad_machine` ＋ 那一处。都一个字节不写。
 #[test]
 fn a_bad_batch_is_refused_whole_and_writes_nothing() {
@@ -175,20 +174,30 @@ fn a_leading_dash_in_an_address_or_user_is_refused() {
     bad_user["value"]["user"] = json!("-oProxyCommand=x");
     let mut bad_alt = insert("b", "b.lan");
     bad_alt["value"]["addresses"] = json!(["ok.lan", " -oX"]);
-    for e in [json!([insert("", "-x.lan")]), json!([bad_user]), json!([bad_alt])] {
+    for e in [
+        json!([insert("", "-x.lan")]),
+        json!([bad_user]),
+        json!([bad_alt]),
+    ] {
         let MachinesSetErr::BadMachine(_, f) = set(&home, e.clone()).unwrap_err() else {
             panic!("{e}")
         };
         assert_eq!(f.code, MachineFaultCode::LeadingDash, "{e}");
         assert_eq!(
-            answer_try_in(Some(&home), &edits(e.clone())).fault.map(|f| f.code),
+            answer_try_in(Some(&home), &edits(e.clone()))
+                .fault
+                .map(|f| f.code),
             Some(MachineFaultCode::LeadingDash),
             "{e}"
         );
     }
     set(&home, json!([insert("c", "my-host.lan")])).unwrap();
-    let edit = json!([{ "op": "setin", "where": by_name("c"), "field": "addresses", "value": ["-y"] }]);
-    assert!(matches!(set(&home, edit), Err(MachinesSetErr::BadMachine(..))), "改备用地址也要过那一道");
+    let edit =
+        json!([{ "op": "setin", "where": by_name("c"), "field": "addresses", "value": ["-y"] }]);
+    assert!(
+        matches!(set(&home, edit), Err(MachinesSetErr::BadMachine(..))),
+        "改备用地址也要过那一道"
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -209,15 +218,19 @@ fn reading_shows_each_hosts_keys_and_forgetting_drops_only_that_one() {
     let (ka, fa) = key(1);
     let (kb, fb) = key(2);
     let mut a = insert("gpu", "g.lan");
-    a["value"]["addresses"] = json!(["10.0.0.5:2222"]);
+    a["value"]["addresses"] = json!(["192.0.2.5:2222"]);
     set(&home, json!([a, insert("pi", "pi.lan")])).unwrap();
     std::fs::write(
         home.join(".cc-monitor/known_hosts"),
-        format!("[10.0.0.5]:2222 {ka}\npi.lan {kb}\nelse {kb}\n"),
+        format!("[192.0.2.5]:2222 {ka}\npi.lan {kb}\nelse {kb}\n"),
     )
     .unwrap();
     let r = answer_read_in(Some(&home));
-    assert_eq!(r.host_keys.get("gpu"), Some(&vec![fa]), "备用地址那一行也算这台的");
+    assert_eq!(
+        r.host_keys.get("gpu"),
+        Some(&vec![fa]),
+        "备用地址那一行也算这台的"
+    );
     assert_eq!(r.host_keys.get("pi"), Some(&vec![fb.clone()]));
     let own = Own::issue_at(&home);
     let req = |m: &str| HostKeysForgetReq {

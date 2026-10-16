@@ -12,10 +12,6 @@ export type TerminalSshReq = {
  */
 machine: MachineConfig, 
 /**
- * 已保存的那一份（指纹只从同一个 host 的那一份继承）。
- */
-saved?: MachineConfig | null, 
-/**
  * 跳板那一台的配置（`machine.jump` 指它时必给）。
  */
 jump?: MachineConfig | null, 

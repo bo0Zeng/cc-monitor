@@ -135,6 +135,7 @@ import type { HistoryTurns } from "./HistoryTurns";
 import type { HistoryTurnsReq } from "./HistoryTurnsReq";
 import type { HomeReq } from "./HomeReq";
 import type { HooksReport } from "./HooksReport";
+import type { HostKeysForgetReq } from "./HostKeysForgetReq";
 import type { HubApplied } from "./HubApplied";
 import type { HubApplyReq } from "./HubApplyReq";
 import type { HubPreview } from "./HubPreview";
@@ -439,6 +440,7 @@ export interface TypedCommands {
   "history-turns": { req: HistoryTurnsReq; reply: HistoryTurns; code: "bad_args" | "failed" | "too_large" };
   "history-user-inputs": { req: UserInputsReq; reply: UserInputs; code: "bad_args" | "failed" | "too_large" };
   "hooks-diag": { req: NoArgs; reply: HooksReport; code: "bad_args" | "too_large" };
+  "host-keys-forget": { req: HostKeysForgetReq; reply: MachinesReply; code: "bad_args" | "unreadable" | "element_gone" | "io_failed" };
   "kill": { req: KillReq; reply: Killed; code: "bad_args" | "no_tmux" | "no_such_session" | "wrong_owner" | "too_many_windows" | "kill_failed" | "child_timed_out" };
   "last-seen-read": { req: LastSeenReadReq; reply: LastSeen; code: "bad_args" | "io_failed" };
   "last-seen-write": { req: LastSeenWriteReq; reply: LastSeenWritten; code: "bad_args" | "io_failed" | "too_large" };

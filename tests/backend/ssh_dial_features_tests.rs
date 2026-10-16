@@ -583,10 +583,10 @@ fn the_pool_identity_carries_every_hop() {
         "jump": {"host": "j", "port": 22, "user": "ju", "jump": {"host": "o", "port": 2200, "user": "ou"}}
     }));
     let id1 = crate::pool::identity(&one);
-    assert!(id1.contains(r#"["j",22,"ju",null,null]"#), "{id1}");
+    assert!(id1.contains(r#"["j",22,"ju",null]"#), "{id1}");
     let id2 = crate::pool::identity(&two);
     assert_ne!(id1, id2, "换了外一台跳板还是同一个身份");
-    assert!(id2.contains(r#"["o",2200,"ou",null,null]"#), "{id2}");
+    assert!(id2.contains(r#"["o",2200,"ou",null]"#), "{id2}");
 }
 
 /// ★ PTY：要一个 PTY（终端名 ＋ 列行）开 shell，之后原样对拷；改窗口走 `Control` 那根管子、远端收到 window-change。
@@ -709,7 +709,10 @@ async fn dial_with_known(port: u16) -> serde_json::Value {
 }
 
 fn seed(port: u16, key: &str) {
-    seed_library(&format!("{} {key}", crate::known_hosts::host_pattern("127.0.0.1", port)));
+    seed_library(&format!(
+        "{} {key}",
+        crate::known_hosts::host_pattern("127.0.0.1", port)
+    ));
 }
 
 /// ★ 同 OpenSSH：记过的类型排在协商前头 ⇒ 服务端两种都给时协商出记过的那一种、按那一把严格比、过。
@@ -733,7 +736,10 @@ async fn an_unstored_key_type_or_another_key_is_refused() {
     assert_eq!(ack["ok"], false, "{ack}");
     assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
     assert_eq!(ack["key_type"], "ssh-ed25519", "{ack}");
-    assert_eq!(ack["expected_fingerprint"], "", "库里没有同类型的那一把 ⇒ 空串：{ack}");
+    assert_eq!(
+        ack["expected_fingerprint"], "",
+        "库里没有同类型的那一把 ⇒ 空串：{ack}"
+    );
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
     let wrong = ed25519_key(12);
     seed(port, &key_line(&wrong));
@@ -759,7 +765,9 @@ async fn a_pending_fingerprint_is_checked_then_replaced_by_the_whole_key() {
     let host = ed25519_key(21);
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
     let names = crate::known_hosts::host_pattern("127.0.0.1", port);
-    seed_library(&format!("#cc-monitor-pending-fingerprint {names} SHA256:not-this-one"));
+    seed_library(&format!(
+        "#cc-monitor-pending-fingerprint {names} SHA256:not-this-one"
+    ));
     let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], false, "{ack}");
     assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
@@ -770,9 +778,15 @@ async fn a_pending_fingerprint_is_checked_then_replaced_by_the_whole_key() {
     seed_library(&format!("#cc-monitor-pending-fingerprint {names} {fp}"));
     let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], true, "{ack}");
-    assert_eq!(remembered(port), vec![format!("{names} {}", key_line(&host))]);
+    assert_eq!(
+        remembered(port),
+        vec![format!("{names} {}", key_line(&host))]
+    );
     let lib = crate::env::get().host_keys.read().unwrap();
-    assert!(!lib.contains(&format!("{names} {fp}")), "待核那一行该随之去掉：{lib}");
+    assert!(
+        !lib.contains(&format!("{names} {fp}")),
+        "待核那一行该随之去掉：{lib}"
+    );
 }
 
 /// 赛跑里另拨的那一条用的那一份（[`StageSink::quiet`]）：阶段 · 原因码不进这一趟，进展照报到这一趟的那一头
@@ -814,7 +828,11 @@ async fn a_first_seen_key_is_remembered_only_after_login() {
     assert_eq!(ack["ok"], true, "{ack}");
     assert_eq!(
         remembered(port),
-        vec![format!("{} {}", crate::known_hosts::host_pattern("127.0.0.1", port), key_line(&host_key))]
+        vec![format!(
+            "{} {}",
+            crate::known_hosts::host_pattern("127.0.0.1", port),
+            key_line(&host_key)
+        )]
     );
 }
 

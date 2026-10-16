@@ -11,7 +11,10 @@ fn wire_of(v: &impl serde::Serialize) -> String {
 
 /// 开终端那一行里 `-F` 那一段（测试档没装写句柄 ⇒ 不带，POSIX 那一形）。
 fn known_hosts_posix() -> String {
-    crate::dial::terminal::config_arg(crate::dial::known_hosts::terminal_config().as_deref(), false)
+    crate::dial::terminal::config_arg(
+        crate::dial::known_hosts::terminal_config().as_deref(),
+        false,
+    )
 }
 
 /// `terminal-ssh`（壳的「在此打开终端」与主界面都读 `command` 那一格）：带跳板 · 上次赢的那条 · 钥匙。

@@ -23,10 +23,6 @@ remoteHost: string, remotePort: number,
  */
 machine?: MachineConfig | null, 
 /**
- * 已保存的那一份。
- */
-saved?: MachineConfig | null, 
-/**
  * 跳板那一台。
  */
 jump?: MachineConfig | null, };

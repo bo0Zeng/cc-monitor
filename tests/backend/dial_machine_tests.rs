@@ -132,4 +132,3 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         Err("bad_args")
     );
 }
-

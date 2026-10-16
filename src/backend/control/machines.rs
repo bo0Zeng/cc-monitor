@@ -247,9 +247,7 @@ impl MachineFault {
             MachineFaultCode::NameTaken => {
                 copy_text("rsConfig.machine.nameTaken", &[("name", name)])
             }
-            MachineFaultCode::LeadingDash => {
-                copy_text("rsConfig.machine.dash", &[("name", name)])
-            }
+            MachineFaultCode::LeadingDash => copy_text("rsConfig.machine.dash", &[("name", name)]),
         }
     }
 }
@@ -554,7 +552,9 @@ fn reply(l: &Loaded, path: Option<&Path>, home: Option<&Path>) -> MachinesReply 
         reason,
         detail,
         path: path.map(|p| p.display().to_string()),
-        host_keys: home.map(|h| host_keys_of(h, &l.hosts())).unwrap_or_default(),
+        host_keys: home
+            .map(|h| host_keys_of(h, &l.hosts()))
+            .unwrap_or_default(),
         hosts: l.hosts(),
     }
 }
@@ -736,11 +736,7 @@ impl crate::wire::typed::Handle for MachinesSetCmd {
         async move {
             let own = &needs;
 
-            answer_set_in(
-                crate::platform::paths::home_dir().as_deref(),
-                own,
-                &req,
-            )
+            answer_set_in(crate::platform::paths::home_dir().as_deref(), own, &req)
         }
     }
 }
@@ -786,7 +782,9 @@ pub(crate) fn answer_forget_in(
     let host = hosts
         .iter()
         .find(|h| h.name() == req.machine.as_wire_str())
-        .ok_or_else(|| HostKeysForgetErr::ElementGone(copy_text("rsConfig.write.elementGone", &[])))?;
+        .ok_or_else(|| {
+            HostKeysForgetErr::ElementGone(copy_text("rsConfig.write.elementGone", &[]))
+        })?;
     let addrs = host.endpoints();
     crate::dial::known_hosts::writer_at(own)
         .rewrite(&mut |t| ssh_dial::known_hosts::forgotten(t, &addrs))

@@ -137,10 +137,13 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
  */
 describe("机器表读不懂", () => {
   it("★ unreadable ⇒ 一台都不给，并照抄后端那一句；absent / ok 零台 ⇒ 不带", () => {
-    const got = remoteConfigOf({ state: "unreadable", reason: "读不懂那一句", detail: null, path: null, hosts: [] });
+    const got = remoteConfigOf({ state: "unreadable", reason: "读不懂那一句", detail: null, path: null, hosts: [], hostKeys: {} });
     expect(got).toEqual({ hosts: [], unrecognized: "读不懂那一句" });
     for (const state of ["absent", "ok"] as const) {
-      expect(remoteConfigOf({ state, reason: null, detail: null, path: null, hosts: [] })).toEqual({ hosts: [] });
+      expect(remoteConfigOf({ state, reason: null, detail: null, path: null, hosts: [], hostKeys: { gpu: ["SHA256:x"] } })).toEqual({
+        hosts: [],
+        hostKeys: { gpu: ["SHA256:x"] },
+      });
     }
   });
 });

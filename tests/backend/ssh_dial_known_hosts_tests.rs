@@ -14,7 +14,10 @@ fn key(seed: u8) -> String {
         russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[seed; 32]),
     );
     let line = k.public_key().to_openssh().unwrap();
-    line.split_whitespace().take(2).collect::<Vec<_>>().join(" ")
+    line.split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[test]
@@ -35,17 +38,29 @@ fn first_seen_appends_once_and_any_address_reads_it_back() {
     for one in [ep("a", 22), ep("b", 2222)] {
         let got = known(&t, std::slice::from_ref(&one));
         assert_eq!(got.len(), 1, "{one:?}");
-        assert_eq!(got[0].to_openssh().unwrap().split_whitespace().nth(1), key(1).split_whitespace().nth(1));
+        assert_eq!(
+            got[0].to_openssh().unwrap().split_whitespace().nth(1),
+            key(1).split_whitespace().nth(1)
+        );
     }
     assert!(known(&t, &[ep("b", 22)]).is_empty(), "口不同是另一台");
     assert!(known(&t, &[ep("c", 22)]).is_empty());
-    assert_eq!(remembered(&t, &[ep("b", 2222)], &key(2)), None, "有行就不动");
+    assert_eq!(
+        remembered(&t, &[ep("b", 2222)], &key(2)),
+        None,
+        "有行就不动"
+    );
 }
 
 /// 忘掉删这台的全部行（几种类型几行都删、连同待核的指纹），别的台留着；没有可删的 ⇒ 不写。
 #[test]
 fn forgetting_drops_every_line_of_that_machine_only() {
-    let t = format!("a {}\n[a]:2 {}\nb {}\n#cc-monitor-pending-fingerprint a SHA256:x\n", key(1), key(2), key(3));
+    let t = format!(
+        "a {}\n[a]:2 {}\nb {}\n#cc-monitor-pending-fingerprint a SHA256:x\n",
+        key(1),
+        key(2),
+        key(3)
+    );
     let m = [ep("a", 22), ep("a", 2)];
     assert_eq!(forgotten(&t, &m).unwrap(), format!("b {}\n", key(3)));
     assert_eq!(forgotten(&format!("b {}\n", key(3)), &m), None);

@@ -208,7 +208,7 @@ where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
-    let (machine, _, _) = pick.machines()?;
+    let (machine, _) = pick.machines()?;
     let command = format!(
         "{} -- {}",
         relay_route_core::BACKEND_LANDING_SHELL,

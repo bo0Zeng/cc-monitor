@@ -181,7 +181,7 @@ where
         (None, Some(machine)) => {
             let pick = super::pick::Pick {
                 machine,
-                        jump: req.jump.as_ref(),
+                jump: req.jump.as_ref(),
                 prefer: None,
             };
             pick.machines()?;

@@ -325,7 +325,13 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     // 结构化的胜者（界面据它记 last-good，不再自己解析地址）。
     assert_eq!(v["winner"], serde_json::json!({"host": "h", "port": 22}));
     // 固化指纹那几格（逐地址指纹 · 严格与否）删了：信哪把钥匙只在拨号核心那份库里判。
-    for gone in ["fingerprints", "jump_fingerprints", "strict", "jump_strict", "expected_fingerprint"] {
+    for gone in [
+        "fingerprints",
+        "jump_fingerprints",
+        "strict",
+        "jump_strict",
+        "expected_fingerprint",
+    ] {
         assert!(v.get(gone).is_none(), "{gone} 还在 ack 里：{v}");
     }
     // 开通道被回拒那一格（从前只给隧道用）删了：ack 里不再有它。
@@ -434,9 +440,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         // 只握着连接（手机「连上一台」那一形）。
         ("hold", Use::Hold),
     ] {
-        let raw = format!(
-            r#"{{"host":"h","port":1,"user":"u","key_path":null,"use":"{word}"}}"#
-        );
+        let raw = format!(r#"{{"host":"h","port":1,"user":"u","key_path":null,"use":"{word}"}}"#);
         assert_eq!(parse_request(&raw).unwrap().use_, want);
         assert!(
             USES.contains(&word),

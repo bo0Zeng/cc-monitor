@@ -189,9 +189,9 @@ function onTable(edits: readonly MachineEditLike[]): Edit[] {
  * `machines-read` 那一答（纯函数）：机器表摆在一份假 `config.json` 的 `remote.hosts` 里。没有 `remote` ⇒ `absent`；
  * 不是数组 ⇒ `unreadable`。自己桩 `chan.call` 的测试照它答 `machines-read`（表照旧摆在它们那块盘上）。
  */
-export function machinesReadOf(cfg: unknown): { state: string; reason: string | null; detail: null; path: null; hosts: unknown[] } {
+export function machinesReadOf(cfg: unknown): { state: string; reason: string | null; detail: null; path: null; hosts: unknown[]; hostKeys: Record<string, string[]> } {
   const remote = (cfg as { remote?: { hosts?: unknown } } | null)?.remote;
-  if (remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [] };
+  if (remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [], hostKeys: {} };
   return Array.isArray(remote.hosts)
     ? { state: "ok", reason: null, detail: null, path: null, hosts: remote.hosts as unknown[], hostKeys: {} }
     : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [], hostKeys: {} };

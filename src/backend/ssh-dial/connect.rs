@@ -960,15 +960,10 @@ async fn through_hops(
         let hop_trust = Trust::of(&hop_addrs).map_err(|e| unreadable(stages, e))?;
         let (mut session, seen) = match held.last() {
             None => {
-                let (s, o, _w, c, _h) = race(
-                    req.probe,
-                    false,
-                    hop_trust,
-                    hop_addrs.to_vec(),
-                    stages,
-                )
-                .await
-                .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
+                let (s, o, _w, c, _h) =
+                    race(req.probe, false, hop_trust, hop_addrs.to_vec(), stages)
+                        .await
+                        .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
                 compress = c;
                 (s, o)
             }
@@ -1080,14 +1075,7 @@ pub async fn establish(
     let addrs = req.race_order();
     let target_trust = Trust::of(&addrs).map_err(|e| unreadable(stages, e))?;
     let (mut session, observed, winner, jumps, heard) = if req.jump.is_none() {
-        let (s, o, w, _, h) = race(
-            req.probe,
-            true,
-            target_trust,
-            addrs.clone(),
-            stages,
-        )
-        .await?;
+        let (s, o, w, _, h) = race(req.probe, true, target_trust, addrs.clone(), stages).await?;
         (s, o, w, Vec::new(), h)
     } else {
         let (tunnel, compress_inner, jumps) = through_hops(req, stages).await?;

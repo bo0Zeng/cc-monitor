@@ -256,7 +256,11 @@ pub fn note_known(request: &serde_json::Value) {
     let keys = |v: &serde_json::Value| -> Vec<String> {
         v.get("known_keys")
             .and_then(serde_json::Value::as_array)
-            .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|k| k.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default()
     };
     let mut addrs: Vec<ssh_dial::Endpoint> = request

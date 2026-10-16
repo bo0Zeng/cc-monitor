@@ -16,8 +16,12 @@ fn rewriting_lands_under_the_handles_home_and_only_writes_on_change() {
     let home = sandbox("rw");
     let w = Writer(crate::platform::fs::Own::issue_at(&home));
     let file = home.join(".cc-monitor").join("known_hosts");
-    w.rewrite(&mut |t| Some(format!("{t}a ssh-ed25519 AAAA1\n"))).unwrap();
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "a ssh-ed25519 AAAA1\n");
+    w.rewrite(&mut |t| Some(format!("{t}a ssh-ed25519 AAAA1\n")))
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "a ssh-ed25519 AAAA1\n"
+    );
     let first = crate::platform::fs::Ro::stamp(&file);
     let mut seen = String::new();
     w.rewrite(&mut |t| {
@@ -50,7 +54,11 @@ fn ssh_reads_our_known_hosts_and_still_reads_both_user_and_system_configs() {
     let probe = home.join("probe_config");
     std::fs::write(
         &probe,
-        config_text(&known.to_string_lossy(), &user.to_string_lossy(), &system.to_string_lossy()),
+        config_text(
+            &known.to_string_lossy(),
+            &user.to_string_lossy(),
+            &system.to_string_lossy(),
+        ),
     )
     .unwrap();
     let out = std::process::Command::new("ssh")
@@ -63,7 +71,10 @@ fn ssh_reads_our_known_hosts_and_still_reads_both_user_and_system_configs() {
     let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
     assert!(out.status.success(), "{text}");
     let has = |line: &str| text.lines().any(|l| l.trim() == line);
-    assert!(has(&format!("userknownhostsfile {}", known.display()).to_lowercase()), "{text}");
+    assert!(
+        has(&format!("userknownhostsfile {}", known.display()).to_lowercase()),
+        "{text}"
+    );
     assert!(has("port 2345"), "用户那份没读到：{text}");
     assert!(has("serveraliveinterval 77"), "系统那份没读到：{text}");
     let _ = std::fs::remove_dir_all(&home);

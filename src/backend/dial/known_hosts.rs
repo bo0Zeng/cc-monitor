@@ -79,10 +79,7 @@ impl ssh_dial::env::HostKeys for KnownHostsFile {
         }
     }
 
-    fn rewrite(
-        &self,
-        edit: &mut dyn FnMut(&str) -> Option<String>,
-    ) -> Result<(), ssh_dial::Said> {
+    fn rewrite(&self, edit: &mut dyn FnMut(&str) -> Option<String>) -> Result<(), ssh_dial::Said> {
         match installed() {
             Some(w) => w.rewrite(edit),
             None => Ok(()),

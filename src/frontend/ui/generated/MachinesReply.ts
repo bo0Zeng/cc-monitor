@@ -24,4 +24,8 @@ path: string | null,
 /**
  * 照用的那一张。
  */
-hosts: Array<Host>, };
+hosts: Array<Host>, 
+/**
+ * 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
+ */
+hostKeys: { [key in string]: Array<string> }, };

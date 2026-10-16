@@ -161,13 +161,11 @@ async function removeAt(sec: RemoteSection, i: number, commit = true): Promise<v
 }
 
 describe("F43 shouldShowResetFingerprint", () => {
-  it("已固化非空指纹 → 显示", () => {
-    expect(shouldShowResetFingerprint("SHA256:abc")).toBe(true);
+  it("库里记着 → 显示", () => {
+    expect(shouldShowResetFingerprint(["SHA256:abc"])).toBe(true);
   });
-  it("空 / 纯空白 → 不显示(重置无意义)", () => {
-    expect(shouldShowResetFingerprint("")).toBe(false);
-    expect(shouldShowResetFingerprint("   ")).toBe(false);
-    expect(shouldShowResetFingerprint("\n\t")).toBe(false);
+  it("库里没记 → 不显示(忘掉无意义)", () => {
+    expect(shouldShowResetFingerprint([])).toBe(false);
   });
 });
 

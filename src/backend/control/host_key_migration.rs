@@ -21,7 +21,9 @@ const OLD_CELLS: [&str; 2] = ["hostKeyFingerprint", "hostKeyPinnedAt"];
 /// 一台旧形状的那一行 ⇒ (全部地址, 固化的指纹)。没有指纹 ⇒ `None`。
 fn pinned_of(row: &Value) -> Option<(Vec<Endpoint>, String)> {
     let s = |k: &str| row.get(k).and_then(Value::as_str);
-    let fp = s("hostKeyFingerprint").map(str::trim).filter(|f| !f.is_empty())?;
+    let fp = s("hostKeyFingerprint")
+        .map(str::trim)
+        .filter(|f| !f.is_empty())?;
     let m = ssh_dial::machine::Machine::of(ssh_dial::machine::Fields {
         host: s("host"),
         user: s("user").or(Some("-")),
@@ -32,7 +34,12 @@ fn pinned_of(row: &Value) -> Option<(Vec<Endpoint>, String)> {
         addresses: row
             .get("addresses")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default(),
         ..Default::default()
     })
@@ -66,7 +73,9 @@ pub(crate) fn library_after(text: &str, pinned: &[(Vec<Endpoint>, String)]) -> S
 /// 读回比对：每台要么库里有一把指纹相等，要么待核的就是它。
 pub(crate) fn library_holds(text: &str, pinned: &[(Vec<Endpoint>, String)]) -> bool {
     pinned.iter().all(|(addrs, fp)| {
-        kh::known(text, addrs).iter().any(|k| kh::fingerprint(k) == *fp)
+        kh::known(text, addrs)
+            .iter()
+            .any(|k| kh::fingerprint(k) == *fp)
             || kh::pending(text, addrs).as_deref() == Some(fp.as_str())
     })
 }

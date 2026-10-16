@@ -41,6 +41,10 @@ fixes: Array<MachineFix>,
  */
 seenHostKey: string | null, 
 /**
+ * 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。后端拨号核心说的，不在这里算。
+ */
+expectedHostKey: string | null, 
+/**
  * 这一轮没连上 / 做不了时的复制详情（`down` · `host_key_changed` · `unsupported` 才可能有）：时刻 · 机器 · 本机 · 命令 ·
  * 断在（哪一步没成的那一句）· 码 · 原话。界面照原样跟在问题行那句后面（［复制详情］），自己不拼。说不出 ⇒ 空。
  */

@@ -196,6 +196,8 @@ export class MachineCard {
   private jumpInput!: HTMLInputElement;
   /** 库里记着这台的主机指纹（`machines-read` 的 `hostKeys`；只读）。 */
   private hostKeys: string[] = [];
+  /** 主机指纹那一行（与钥匙路径一起排成宽的那两格）。 */
+  private fpRow!: HTMLElement;
   /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
   private accepted = { label: "", host: "", port: 22 };
   /** 连接这台（开关那一格的当前值）。 */
@@ -416,6 +418,7 @@ export class MachineCard {
 
     // 主机指纹：只读一行（库里记着的那几枚）＋［忘记…］；值住拨号核心那份库，不随整台存。
     const fpRow = document.createElement("div");
+    this.fpRow = fpRow;
     fpRow.className = "machine-conn-field machine-conn-fp";
     const fpLabel = document.createElement("span");
     fpLabel.className = "settings-label";
@@ -539,7 +542,7 @@ export class MachineCard {
     const grid = document.createElement("div");
     grid.className = "machine-conn-grid";
     grid.append(fieldOf(this.labelInput), fieldOf(this.hostInput), fieldOf(this.userInput), fieldOf(this.portInput));
-    const wide = [fieldOf(this.keyPathInput), fpRow];
+    const wide = [fieldOf(this.keyPathInput), this.fpRow];
     for (const w of wide) w.classList.add("machine-conn-wide");
     grid.append(...wide);
     const moreBody = document.createElement("div");

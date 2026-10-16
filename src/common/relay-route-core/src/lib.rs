@@ -467,7 +467,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
     ("answerPlugin", ANSWER_PLUGIN_DIR_REL, true, false),
-    ("knownHosts", KNOWN_HOSTS_REL, false, false),
+    ("knownHosts", KNOWN_HOSTS_REL, false, true),
     ("sshConfig", SSH_CONFIG_REL, false, false),
     ("accounts", ACCOUNTS_DIR_REL, true, true),
     ("accountsMcp", ACCOUNTS_MCP_REL, false, true),

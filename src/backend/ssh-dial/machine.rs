@@ -254,9 +254,7 @@ pub fn dial_request(
 }
 
 /// 帧命令入参里那两格（`machine` · `jump?`）一次读齐。
-pub fn from_args(
-    args: &Value,
-) -> Result<(Machine, Option<Machine>), (&'static str, String)> {
+pub fn from_args(args: &Value) -> Result<(Machine, Option<Machine>), (&'static str, String)> {
     let m = args
         .get("machine")
         .ok_or_else(|| ("bad_args", crate::malformed("missing `machine`")))?;

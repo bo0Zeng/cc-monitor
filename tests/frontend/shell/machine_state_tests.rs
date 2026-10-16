@@ -65,7 +65,12 @@ fn a_failed_round_takes_the_reason_the_dial_layer_noted() {
 #[test]
 fn a_changed_host_key_is_its_own_state() {
     let o = fresh("指纹");
-    dial_failed(&o, Some("host_key"), (Some("SHA256:new"), Some("SHA256:old")), &said("拨号没成"));
+    dial_failed(
+        &o,
+        Some("host_key"),
+        (Some("SHA256:new"), Some("SHA256:old")),
+        &said("拨号没成"),
+    );
     down(&o);
     let p = product(&o, true);
     assert_eq!(p.state, MachineStateKind::HostKeyChanged);
@@ -75,7 +80,11 @@ fn a_changed_host_key_is_its_own_state() {
         Some("SHA256:new"),
         "比对框要的那枚指纹没带出来"
     );
-    assert_eq!(p.expected_host_key.as_deref(), Some("SHA256:old"), "库里记下的那枚照 ack 带进状态");
+    assert_eq!(
+        p.expected_host_key.as_deref(),
+        Some("SHA256:old"),
+        "库里记下的那枚照 ack 带进状态"
+    );
     // 下一轮换成别的原因 ⇒ 那枚指纹不再挂着。
     dial_failed(&o, Some("timeout"), (None, None), &said("拨号没成"));
     down(&o);
@@ -204,7 +213,12 @@ fn the_product_matches_the_cross_language_golden() {
                 down(&o)
             }
             "指纹变了" => {
-                dial_failed(&o, Some("host_key"), (Some("SHA256:new"), Some("SHA256:old")), &said("拨号没成"));
+                dial_failed(
+                    &o,
+                    Some("host_key"),
+                    (Some("SHA256:new"), Some("SHA256:old")),
+                    &said("拨号没成"),
+                );
                 down(&o)
             }
             "要更新" => up(&o, "p7a", VersionRelation::Older),

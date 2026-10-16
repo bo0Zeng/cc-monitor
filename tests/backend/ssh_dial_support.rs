@@ -74,7 +74,11 @@ pub(crate) fn remembered(port: u16) -> Vec<String> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .lines()
-        .filter(|l| l.split_whitespace().next().is_some_and(|n| n.split(',').any(|x| x == me)))
+        .filter(|l| {
+            l.split_whitespace()
+                .next()
+                .is_some_and(|n| n.split(',').any(|x| x == me))
+        })
         .map(str::to_string)
         .collect()
 }

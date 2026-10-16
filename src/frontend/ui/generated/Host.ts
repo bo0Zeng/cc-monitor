@@ -21,14 +21,6 @@ port: number, user: string,
  */
 keyPath: string, 
 /**
- * 固化的主机指纹（空 ＝ 没固化）。
- */
-hostKeyFingerprint: string, 
-/**
- * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
- */
-hostKeyPinnedAt: string, 
-/**
  * 备用地址（竞发）。
  */
 addresses: Array<string>, 

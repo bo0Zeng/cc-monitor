@@ -29,6 +29,6 @@ theirs: string | null,
  */
 leftovers: Array<string>, 
 /**
- * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+ * 问 `uname` 那一趟拨号的 ack 原样（拨号核心 `DialAck` 那一形）。
  */
 ack: unknown, };

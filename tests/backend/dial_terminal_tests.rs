@@ -446,7 +446,10 @@ fn the_terminal_line_hands_ssh_our_config_without_disabling_the_check() {
         r" -F 'C:\Users\O''Neil A\.cc-monitor\ssh_config'"
     );
     assert_eq!(
-        super::config_arg(Some(std::path::Path::new("/home/u/.cc-monitor/ssh_config")), false),
+        super::config_arg(
+            Some(std::path::Path::new("/home/u/.cc-monitor/ssh_config")),
+            false
+        ),
         " -F '/home/u/.cc-monitor/ssh_config'"
     );
     assert_eq!(config_arg(None), "");

@@ -120,7 +120,9 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         .cloned()
         .and_then(|a| serde_json::from_value(a).ok())
         .ok_or_else(bad)?;
-    obj.get("ack").filter(|a| a.is_object() || a.is_null()).ok_or_else(bad)?;
+    obj.get("ack")
+        .filter(|a| a.is_object() || a.is_null())
+        .ok_or_else(bad)?;
     Ok(Plan {
         key,
         expected: text("expected")

@@ -15,7 +15,11 @@ fn key(seed: u8) -> (String, String) {
         russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[seed; 32]),
     );
     let line = k.public_key().to_openssh().unwrap();
-    let two = line.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+    let two = line
+        .split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ");
     (two, kh::fingerprint(k.public_key()))
 }
 
@@ -57,13 +61,22 @@ fn the_table_loses_both_cells_and_the_library_holds_every_pin() {
     ]});
     let file = home.join(".cc-monitor/machines.json");
     std::fs::write(&file, table.to_string()).unwrap();
-    assert!(matches!(machines::read_at(&file), machines::Loaded::Unreadable(_)), "量具：旧形状新表读不懂");
+    assert!(
+        matches!(machines::read_at(&file), machines::Loaded::Unreadable(_)),
+        "量具：旧形状新表读不懂"
+    );
     let lib = crate::dial::known_hosts::writer_at(&own);
     assert_eq!(migrate_in(&own, &lib), Moved::Done(2));
     let machines::Loaded::Present(hosts) = machines::read_at(&file) else {
         panic!("换形后机器表读不回");
     };
-    assert_eq!(hosts.iter().map(|h| h.name().to_string()).collect::<Vec<_>>(), ["甲", "乙", "丙"]);
+    assert_eq!(
+        hosts
+            .iter()
+            .map(|h| h.name().to_string())
+            .collect::<Vec<_>>(),
+        ["甲", "乙", "丙"]
+    );
     assert!(!std::fs::read_to_string(&file).unwrap().contains("hostKey"));
     assert_eq!(
         std::fs::read_to_string(home.join(".cc-monitor/known_hosts")).unwrap(),

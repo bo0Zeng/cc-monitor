@@ -854,7 +854,10 @@ async fn the_checker_trusts_only_what_the_library_holds() {
             endpoint: "a:22".to_string(),
             heard: Default::default(),
         };
-        (c.check_server_key(offered).await.unwrap(), stages.expected())
+        (
+            c.check_server_key(offered).await.unwrap(),
+            stages.expected(),
+        )
     }
     let (a, b) = (key(1), key(2));
     let known = |ks: Vec<PublicKey>| Trust {
@@ -863,8 +866,14 @@ async fn the_checker_trusts_only_what_the_library_holds() {
     };
     assert_eq!(judge(Trust::default(), &a).await, (true, None), "首见收下");
     assert_eq!(judge(known(vec![a.clone()]), &a).await, (true, None));
-    assert_eq!(judge(known(vec![a.clone()]), &b).await, (false, Some(fp(&a))));
-    assert_eq!(judge(known(vec![ec.clone()]), &a).await, (false, Some(String::new())));
+    assert_eq!(
+        judge(known(vec![a.clone()]), &b).await,
+        (false, Some(fp(&a)))
+    );
+    assert_eq!(
+        judge(known(vec![ec.clone()]), &a).await,
+        (false, Some(String::new()))
+    );
     let pending = |f: String| Trust {
         known: vec![],
         pending: Some(f),
@@ -882,9 +891,7 @@ async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail(
         port,
     };
     let stages = StageSink::new(false);
-    let Err((said, _)) = race(true, true, Trust::default(), vec![ep.clone()], &stages)
-    .await
-    else {
+    let Err((said, _)) = race(true, true, Trust::default(), vec![ep.clone()], &stages).await else {
         panic!("关着的口居然拨通了");
     };
     let addr = format!("127.0.0.1:{port}");
