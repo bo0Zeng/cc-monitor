@@ -7,7 +7,7 @@
 import type { Origin } from "./generated/Origin";
 import type { SessionState } from "./tab-session-state";
 import type { RunState } from "./generated/RunState";
-import type { SessionActivity } from "./generated/SessionActivity";
+import type { WireSessionActivity } from "./generated/WireSessionActivity";
 import type { DotState } from "./kit/status-dot";
 import type { BackgroundWork } from "./session-reads";
 
@@ -64,7 +64,7 @@ export interface GridSessionSnapshot {
    */
   state: SessionState;
   /** 此刻在干什么（后端翻好的）；null = 说不清。字与点按下面两格。 */
-  activity: SessionActivity | null;
+  activity: WireSessionActivity | null;
   /** 那一态核心写好的字（运行中 · 需手动 · 空闲 · 后台在跑 …）；还没收到 ⇒ null。 */
   activityText: string | null;
   /** 那一态的语气（点的颜色按它）；还没收到 ⇒ null。 */

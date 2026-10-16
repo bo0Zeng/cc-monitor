@@ -948,8 +948,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) => {
-      tabs.updateName(e.session_id, e.label, e.label_project);
-      tabs.updateActivity(e.session_id, e.activity, e.waiting_for, e.activity_text, e.activity_tone, e.activity_order, e.switch);
+      tabs.updateName(e.sid, e.label, e.label_project ?? null);
+      tabs.updateActivity(e.sid, e.activity ?? null, e.waiting_for ?? null, e.activity_text, e.activity_tone, e.activity_order, e.switch);
     },
     // 远端会话宣告 → 骨架 Tab，附项目目录 / kind / name：骨架标题当场完整（bg → ⚙ ＋ 任务名）；没给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {

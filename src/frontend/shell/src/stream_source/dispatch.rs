@@ -210,12 +210,7 @@ pub(crate) async fn apply(
             };
             intake.notice(&r.session_id, &r.path, change).await
         }
-        Ordered::SessionRuns(r) => crate::session_book::feed(BookIn::Runs {
-            origin: at,
-            sid: r.sid,
-            runs: array_body(&r.runs),
-            ended: array_body(&r.ended),
-        }),
+        Ordered::SessionRuns(runs) => crate::session_book::feed(BookIn::Runs { origin: at, runs }),
         Ordered::SessionBranch(b) => crate::session_book::feed(BookIn::Branch {
             origin: origin.clone(),
             sid: b.sid,
@@ -225,14 +220,6 @@ pub(crate) async fn apply(
             sum: b.sum,
         }),
     }
-}
-
-/// 运行表那两格交界面的原文（JSON 数组）。
-fn array_body<T: serde::Serialize>(rows: &[T]) -> crate::ui_contract::RecordBody {
-    crate::ui_contract::RecordBody::from_json(serde_json::to_string(rows).unwrap_or_default())
-        .unwrap_or_else(|| {
-            crate::ui_contract::RecordBody::from_json("[]".to_string()).expect("[] is JSON")
-        })
 }
 
 /// 那台管道拥塞丢过帧：日志 ＋ 经 `remote-health` 原样交那台写的那一句（标题位界面排机器名）。

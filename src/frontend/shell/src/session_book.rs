@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-use cmd_wire::frame::{SessionAdded, SessionFate, SessionState, SessionStatus};
+use cmd_wire::frame::{SessionAdded, SessionFate, SessionRuns, SessionState, SessionStatus};
 
 /// 去向那一种写好的字与语气（那台核心写的 `session_state.state_text` · `state_hint` · `state_tone` · `switch`，原样转交）。
 /// 去向只由那台裁（手上留着、那台不在说的，那台也答一句已结束），每一份都带这几格。
@@ -71,13 +71,8 @@ pub enum In {
     Listed { origin: String },
     /// 到那台的连接断了。
     LinkLost { origin: String },
-    /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个（JSON 数组原文，不解释）。
-    Runs {
-        origin: String,
-        sid: String,
-        runs: crate::ui_contract::RecordBody,
-        ended: crate::ui_contract::RecordBody,
-    },
+    /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个。
+    Runs { origin: String, runs: SessionRuns },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
     /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
     Branch {
@@ -114,17 +109,12 @@ pub enum Out {
     /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
     Unseen { origin: String, sids: Vec<String> },
     /// 一个会话的运行表（原样转）。
-    Runs {
-        origin: String,
-        sid: String,
-        runs: crate::ui_contract::RecordBody,
-        ended: crate::ui_contract::RecordBody,
-    },
-    /// 一个会话的主线外清单（原样转）。
+    Runs { origin: String, runs: SessionRuns },
+    /// 一个会话的主线外清单（拼好的整份）。
     Branch {
         origin: crate::origin::Origin,
         sid: String,
-        off: crate::ui_contract::RecordBody,
+        off: Vec<String>,
     },
 }
 
@@ -133,13 +123,7 @@ struct OriginBook {
     sessions: BTreeMap<String, Product>,
     listed: bool,
     /// 活会话的最新运行表（F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
-    runs: BTreeMap<
-        String,
-        (
-            crate::ui_contract::RecordBody,
-            crate::ui_contract::RecordBody,
-        ),
-    >,
+    runs: BTreeMap<String, SessionRuns>,
 }
 
 /// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
@@ -155,14 +139,6 @@ struct BranchCopy {
 pub struct Replay {
     pub before: Vec<Out>,
     pub after: Vec<Out>,
-}
-
-/// 拼好的整份清单写成交给界面的那一格（JSON 数组原文）。
-fn branch_body(off: &[String]) -> crate::ui_contract::RecordBody {
-    crate::ui_contract::RecordBody::from_json(serde_json::to_string(off).unwrap_or_default())
-        .unwrap_or_else(|| {
-            crate::ui_contract::RecordBody::from_json("[]".to_string()).expect("[] is JSON")
-        })
 }
 
 /// 全部机器的成品账（见模块头注）。
@@ -220,23 +196,13 @@ impl Book {
                     words,
                 }]
             }
-            In::Runs {
-                origin,
-                sid,
-                runs,
-                ended,
-            } => {
+            In::Runs { origin, runs } => {
                 self.origins
                     .entry(origin.clone())
                     .or_default()
                     .runs
-                    .insert(sid.clone(), (runs.clone(), ended.clone()));
-                vec![Out::Runs {
-                    origin,
-                    sid,
-                    runs,
-                    ended,
-                }]
+                    .insert(runs.sid.clone(), runs.clone());
+                vec![Out::Runs { origin, runs }]
             }
             In::Branch {
                 origin,
@@ -268,7 +234,7 @@ impl Book {
                 vec![Out::Branch {
                     origin,
                     sid,
-                    off: branch_body(&held.off),
+                    off: held.off.clone(),
                 }]
             }
             In::Listed { origin } => {
@@ -400,19 +366,17 @@ impl Book {
                             sid: sid.clone(),
                             meta: m.clone(),
                         });
-                        if let Some((runs, ended)) = b.runs.get(sid) {
+                        if let Some(runs) = b.runs.get(sid) {
                             r.before.push(Out::Runs {
                                 origin: (*o).clone(),
-                                sid: sid.clone(),
                                 runs: runs.clone(),
-                                ended: ended.clone(),
                             });
                         }
                         if let Some(c) = self.branch.get(*o).and_then(|m| m.get(sid)) {
                             r.before.push(Out::Branch {
                                 origin: crate::origin::Origin((*o).clone()),
                                 sid: sid.clone(),
-                                off: branch_body(&c.off),
+                                off: c.off.clone(),
                             });
                         }
                     }
@@ -478,90 +442,35 @@ impl Out {
         }
     }
 
-    /// 这件事 ⇒ 会话流里的几格（前端照原样收）。活会话 = `live` ＋ 初始灯 ＋ 容器（判不了的不发）。
-    pub fn frames(&self) -> Vec<crate::ui_contract::SessionStreamFrame> {
+    /// 这件事 ⇒ 会话流里的一格（前端照原样收；起停那几种就是那台的帧）。
+    pub fn frame(&self) -> crate::ui_contract::SessionStreamFrame {
         use crate::ui_contract::{self as b, SessionStreamFrame as F};
         match self {
-            Out::Live { origin, sid, meta } => {
-                let mut v = vec![
-                    F::Live(b::SessionLivePayload {
-                        session_id: sid.clone(),
-                        origin: origin.clone(),
-                        background: meta.background,
-                        attachable: meta.attachable,
-                        cwd: meta.cwd.clone(),
-                        project_dir: meta.project_dir.clone(),
-                        name: meta.name.clone(),
-                        hidden: meta.hidden.clone(),
-                    }),
-                    F::Activity(b::SessionActivityPayload {
-                        session_id: sid.clone(),
-                        activity: b::ActivityCells::of(&meta.face),
-                        naming: b::NameCells::of(&meta.name_face),
-                        waiting_for: meta.waiting_for.clone(),
-                    }),
-                ];
-                if let Some(c) = &meta.container {
-                    v.push(F::Container(b::SessionContainerPayload {
-                        session_id: sid.clone(),
-                        container: c.clone(),
-                    }));
-                }
-                v
-            }
-            Out::Status { status: s, .. } => vec![F::Activity(b::SessionActivityPayload {
-                session_id: s.sid.clone(),
-                activity: b::ActivityCells::of(&s.face),
-                naming: b::NameCells::of(&s.name_face),
-                waiting_for: s.waiting_for.clone(),
-            })],
+            Out::Live { meta, .. } => F::Added(meta.clone()),
+            Out::Status { status, .. } => F::Status(status.clone()),
             Out::Left {
                 sid, fate, words, ..
-            } => {
-                let (text, hint, tone, order, switch) = (
-                    words.text.0.clone(),
-                    words.hint.0.clone(),
-                    b::tone_word(words.tone),
-                    words.order,
-                    words.switch.clone(),
-                );
-                vec![match fate {
-                    SessionFate::Reconnectable => F::Idle(b::SessionIdlePayload {
-                        session_id: sid.clone(),
-                        text,
-                        hint,
-                        tone,
-                        order,
-                        switch,
-                    }),
-                    SessionFate::Ended => F::Ended(b::SessionEndedPayload {
-                        session_id: sid.clone(),
-                        text,
-                        hint,
-                        tone,
-                        order,
-                        switch,
-                    }),
-                }]
-            }
-            Out::Listed { origin, all } => vec![F::Listed(b::OriginSessionsListedPayload {
+            } => F::State(SessionState {
+                sid: sid.clone(),
+                state: *fate,
+                state_text: words.text.clone(),
+                state_hint: words.hint.clone(),
+                state_tone: words.tone,
+                state_order: words.order,
+                switch: words.switch.clone(),
+            }),
+            Out::Listed { origin, all } => F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin(origin.clone()),
                 all: *all,
-            })],
-            Out::Unseen { origin, .. } => vec![F::Unseen(b::SessionUnseenPayload {
+            }),
+            Out::Unseen { origin, .. } => F::Unseen(b::SessionUnseenPayload {
                 origin: crate::origin::Origin(origin.clone()),
-            })],
-            Out::Runs {
-                sid, runs, ended, ..
-            } => vec![F::Runs(b::SessionRunsPayload {
-                session_id: sid.clone(),
-                runs: runs.clone(),
-                ended: ended.clone(),
-            })],
-            Out::Branch { sid, off, .. } => vec![F::Branch(b::SessionBranchPayload {
-                session_id: sid.clone(),
+            }),
+            Out::Runs { runs, .. } => F::Runs(runs.clone()),
+            Out::Branch { sid, off, .. } => F::Branch(b::SessionBranchPayload {
+                sid: sid.clone(),
                 off: off.clone(),
-            })],
+            }),
         }
     }
 }

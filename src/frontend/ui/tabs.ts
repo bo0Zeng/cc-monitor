@@ -12,7 +12,8 @@ import { markRunCard, markRunWindow } from "./cards/subagent";
 import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
 
-import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import type { SessionRuns } from "./generated/SessionRuns";
+import type { WatchFrom } from "./generated/WatchFrom";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
@@ -31,10 +32,10 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, type Tab, type TabsSummary } from "./tab-model";
-import type { SessionActivity } from "./generated/SessionActivity";
-import type { SwitchCells } from "./generated/SwitchCells";
+import type { WireSessionActivity } from "./generated/WireSessionActivity";
+import type { Switch } from "./generated/Switch";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
-import type { SessionContainer } from "./generated/SessionContainer";
+import type { WireSessionContainer } from "./generated/WireSessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -483,8 +484,8 @@ export class TabManager {
    * 这个会话刚进了那台那条流的「在看」名单（`watch` 格）：它的这份记录从第 `seq` 行起上流 ⇒ 之前没上流的那段补上
    * （`TabStreamView.catchUpTo`）。
    */
-  onSessionWatch(origin: Origin, p: { session_id: string; path: string; seq: number }): void {
-    const tab = this.store.tabs.get(p.session_id);
+  onSessionWatch(origin: Origin, p: WatchFrom): void {
+    const tab = this.store.tabs.get(p.sid);
     if (!tab || tab.origin !== origin) return;
     this.view.catchUpTo(tab, p.path, p.seq);
   }
@@ -901,7 +902,7 @@ export class TabManager {
   }
 
   /** 会话退出且容器也没了 ⇒ 已结束，内容保留。 */
-  archiveTab(sessionId: string, sw: SwitchCells | null = null, order: number | null = null): void {
+  archiveTab(sessionId: string, sw: Switch | null = null, order: number | null = null): void {
     this.live.dropTab(sessionId); // 结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     this.noteSwitch(sessionId, sw);
@@ -927,7 +928,7 @@ export class TabManager {
   /**
    * 那台说的「此刻能不能换模型 · 权限档」落到 tab 上（Tab 还没建 ⇒ 暂存）；没带 ⇒ 不动。回「变没变」。
    */
-  private noteSwitch(sessionId: string, sw: SwitchCells | null): boolean {
+  private noteSwitch(sessionId: string, sw: Switch | null): boolean {
     if (sw === null) return false;
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
@@ -959,7 +960,7 @@ export class TabManager {
    * 远端 claude 退了、tmux 会话还在 ⇒ 可重连（不归档、不 forget）。Tab 未建 ⇒ 暂存待 `ensureTab` 落实；已结束的不回到可重连。
    * 离开可重连：`ensureTab`（主：又见行 / 重宣告）· `updateActivity`（又有活动）· `reviveTab`（本机）· `archiveTab`（tmux 真没了）。
    */
-  markTmuxIdle(sessionId: string, sw: SwitchCells | null = null, order: number | null = null): void {
+  markTmuxIdle(sessionId: string, sw: Switch | null = null, order: number | null = null): void {
     this.live.dropTab(sessionId); // claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     this.noteSwitch(sessionId, sw);
@@ -986,8 +987,8 @@ export class TabManager {
    * 一个会话的运行表到了（会话流里的 `runs` 格）：派出它们的那几张工具卡记上是哪个子运行、什么状态（被挤出表的已收场那几个
    * 在 `ended` 里，卡照样标）；当前 tab 的就交 agent 面板。主 tab 的消息流里不画子运行。
    */
-  onSessionRuns(p: SessionRunsPayload): void {
-    const tab = this.store.tabs.get(p.session_id);
+  onSessionRuns(p: SessionRuns): void {
+    const tab = this.store.tabs.get(p.sid);
     if (!tab) return;
     this.live.onRuns(tab.sessionId, p.runs);
     for (const r of p.runs) {
@@ -1010,7 +1011,7 @@ export class TabManager {
    * 一个会话的主线外清单到了（会话流里的 `branch` 格，整份）：那个 tab 的折叠层按它重折。没有这个 tab ⇒ 不收。
    */
   onSessionBranch(p: SessionBranchPayload): void {
-    const tab = this.store.tabs.get(p.session_id);
+    const tab = this.store.tabs.get(p.sid);
     if (tab) this.view.setOff(tab, new Set(p.off));
   }
 
@@ -1117,14 +1118,11 @@ export class TabManager {
   }
 
   /**
-   * 后端报来这条活会话的容器（`container` 格：在认得的宿主里 · 不在任何宿主里 · 这边不认识的宿主）。
-   * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实；不认识的宿主记成「终端形式未知」、日志一条（不吞）。
+   * 后端报来这条活会话的容器（宣告带的 `container`：在认得的宿主里 · 不在任何宿主里）。
+   * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实。
    * 只落在活着的会话上（`nextState`）：死了的那一格由死的那一刻的裁决说了算。
    */
-  noteContainer(sessionId: string, container: SessionContainer): void {
-    if (container.form === "other") {
-      console.warn(`[tabs] 会话 ${sessionId.slice(0, 8)} 的终端形式这边不认识：host=${container.host}`);
-    }
+  noteContainer(sessionId: string, container: WireSessionContainer): void {
     const ev = containerEvent(container);
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
@@ -1380,12 +1378,12 @@ export class TabManager {
   /** 红绿灯（会话流的 activity 格）：那一态 ＋ 核心写好的字与语气 ＋ 监控板的序（`doing = null` ＝ 那一家没说，字与语气照样有）。Tab 未建 ⇒ 暂存。无变化不重绘。 */
   updateActivity(
     sessionId: string,
-    doing: SessionActivity | null,
+    doing: WireSessionActivity | null,
     waitingFor: string | null,
     text: string,
     tone: string,
     order: number,
-    sw: SwitchCells | null = null,
+    sw: Switch | null = null,
   ): void {
     const act = { doing, waitingFor, text, tone, order };
     const tab = this.store.tabs.get(sessionId);

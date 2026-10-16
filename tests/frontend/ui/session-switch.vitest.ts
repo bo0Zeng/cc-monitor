@@ -29,9 +29,9 @@ import { switchModel, switchPermission } from "../../../src/frontend/ui/session-
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { NewFacts } from "../../../src/frontend/ui/generated/NewFacts";
-import type { SwitchCells } from "../../../src/frontend/ui/generated/SwitchCells";
+import type { Switch } from "../../../src/frontend/ui/generated/Switch";
 
-const YES: SwitchCells = { model: { can: "yes" }, permission: { can: "yes" } };
+const YES: Switch = { model: { can: "yes" }, permission: { can: "yes" } };
 
 function tab(over: Partial<Tab> = {}): Tab {
   return { sessionId: "s1", title: "orders", origin: "devbox", agent: "claude", modelText: "核心·Opus 4.5", permissionMode: "acceptEdits", permissionModeText: "核心·自动接受编辑", switch: YES, ...over } as unknown as Tab;

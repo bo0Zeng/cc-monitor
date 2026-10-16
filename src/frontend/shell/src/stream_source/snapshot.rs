@@ -329,8 +329,8 @@ async fn fetch_snapshot(
             );
             replay.on_watch_from(
                 &origin,
-                vec![crate::ui_contract::SessionWatchPayload {
-                    session_id: sid.to_string(),
+                vec![cmd_wire::watch::WatchFrom {
+                    sid: sid.to_string(),
                     path: path.to_string(),
                     seq: tail.from,
                 }],
@@ -391,7 +391,7 @@ async fn fetch_snapshot(
                 .read()
                 .settle_again(origin.as_wire_str(), sid);
             for out in again {
-                replay.on_lifecycle(out.origin(), out.frames());
+                replay.on_lifecycle(out.origin(), vec![out.frame()]);
             }
         }
         return Ok(FetchOutcome::Cancelled);

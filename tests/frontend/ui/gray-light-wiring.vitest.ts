@@ -72,7 +72,7 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
     // 抽取器自检：**没订到就零命中地绿** —— 本仓一路在治的那种空真。
     expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
     const gone = { model: { can: "no", why: "w" }, permission: { can: "no", why: "w" } };
-    streamFake.lifecycle([{ idle: { session_id: "sid-gray", text: null, hint: null, tone: null, order: 4, switch: gone } }]);
+    streamFake.lifecycle([{ state: { sid: "sid-gray", state: "reconnectable", state_order: 4, switch: gone } }]);
     await vi.waitFor(() => expect(onSessionIdle, "连同那台随去向带来的「此刻能不能换」与监控板的序").toHaveBeenCalledWith("sid-gray", gone, 4), UNTIL_CEILING);
     // 反向：它不该顺手把 ended 也叫了（灰灯 ≠ 归档，两条路在后端就分开了）。
     expect(onSessionEnded).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
       onSessionIdle: (s: string) => order.push(`idle:${s}`),
       onSessionEnded: (s: string) => order.push(`ended:${s}`),
     } as never, STREAMS);
-    streamFake.lifecycle([{ ended: { session_id: "a" } }, { idle: { session_id: "b" } }]);
+    streamFake.lifecycle([{ state: { sid: "a", state: "ended" } }, { state: { sid: "b", state: "reconnectable" } }]);
     await vi.waitFor(() => expect(order.length).toBe(2), UNTIL_CEILING);
     expect(order).toEqual(["ended:a", "idle:b"]);
   });

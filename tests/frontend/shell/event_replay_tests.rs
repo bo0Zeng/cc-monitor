@@ -452,11 +452,9 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
             } else {
                 // 起停那几格：按键名认。
                 let k = [
-                    "live",
-                    "activity",
-                    "container",
-                    "idle",
-                    "ended",
+                    "added",
+                    "status",
+                    "state",
                     "unseen",
                     "listed",
                     "snapshot_inflight",
@@ -1049,8 +1047,7 @@ fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
         fate: cmd_wire::frame::SessionFate::Ended,
         words: words(sid, "T"),
     }
-    .frames()
-    .remove(0)
+    .frame()
 }
 
 /// ★ 就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后；手里有没说的丢失时，起停那一格之前原位先给 `Gap`。
@@ -1076,16 +1073,16 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     r.ready_point(None).await;
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["live", "activity", "start", "line", "line", "end", "ended"],
-        "就绪点：骨架 → 留存行 → 终局"
+        vec!["added", "start", "line", "line", "end", "state"],
+        "就绪点：骨架（一条活会话一格）→ 留存行 → 终局"
     );
     rec.clear();
-    r.on_line_batch_awaited(lines("c", 0..9)).await; // 10 − 7 格 ⇒ 交 3 行、丢 6 行
+    r.on_line_batch_awaited(lines("c", 0..10)).await; // 10 − 6 格 ⇒ 交 4 行、丢 6 行
     rec.clear();
     r.on_lifecycle("<local>", vec![ended("c")]);
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["gap", "ended"],
+        vec!["gap", "state"],
         "没 credit 也照交起停（先原位说丢在哪）"
     );
 }
@@ -1149,7 +1146,7 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
         .filter_map(|i| match i {
             WItem::Frame { body, .. } => {
                 let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                v.get("ended").map(|e| e["session_id"].to_string())
+                v.get("state").map(|e| e["sid"].to_string())
             }
             _ => None,
         })
@@ -1177,21 +1174,22 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
         fate: Fate::Ended,
         words: words("x", "那台写的"),
     });
-    r.on_lifecycle("<local>", out.iter().flat_map(|o| o.frames()).collect());
+    r.on_lifecycle("<local>", out.iter().map(|o| o.frame()).collect());
     let ended: Vec<serde_json::Value> = rec
         .all()
         .iter()
         .filter_map(|i| match i {
             WItem::Frame { body, .. } => {
                 let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-                v.get("ended").cloned()
+                v.get("state").cloned()
             }
             _ => None,
         })
         .collect();
     assert_eq!(ended.len(), 1, "只该有那台答的那一格：{ended:?}");
-    assert_eq!(ended[0]["session_id"], "x");
-    assert_eq!(ended[0]["text"], "那台写的");
+    assert_eq!(ended[0]["sid"], "x");
+    assert_eq!(ended[0]["state"], "ended");
+    assert_eq!(ended[0]["state_text"], "那台写的");
 }
 
 /// ★ 起停那几格没 credit 也照交、照扣（credit 可欠）：欠着的时候行照丢、原位 `Gap`；还清之后下一行照交。
@@ -1205,7 +1203,7 @@ async fn lifecycle_frames_go_out_without_credit_and_are_owed() {
     r.on_lifecycle("<local>", vec![ended("c")]); // credit 0 ⇒ 照交，欠一格
     assert_eq!(
         rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
-        vec!["ended"]
+        vec!["state"]
     );
     rec.clear();
     r.on_line_batch_awaited(lines("c", 0..1)).await; // 欠着 ⇒ 丢，位置 1
@@ -1392,9 +1390,9 @@ async fn dropping_a_terminal_screen_subscription_unfollows_that_ticket_on_that_o
 
 // ==== 「在看哪几个会话」（`stream-watch`）====
 
-fn watch_from(sid: &str, seq: u64) -> crate::ui_contract::SessionWatchPayload {
-    crate::ui_contract::SessionWatchPayload {
-        session_id: sid.into(),
+fn watch_from(sid: &str, seq: u64) -> cmd_wire::watch::WatchFrom {
+    cmd_wire::watch::WatchFrom {
+        sid: sid.into(),
         path: format!("/p/{sid}.jsonl"),
         seq,
     }
@@ -1488,7 +1486,7 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
                     Some((
                         label.clone(),
                         *id,
-                        w["session_id"].as_str().unwrap().to_string(),
+                        w["sid"].as_str().unwrap().to_string(),
                         w["seq"].as_u64().unwrap(),
                     ))
                 }

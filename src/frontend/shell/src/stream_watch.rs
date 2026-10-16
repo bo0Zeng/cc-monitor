@@ -37,7 +37,7 @@ pub(crate) fn desk(origin: &Origin) -> Arc<Desk> {
         },
         move |rows| {
             if let Some(r) = REPLAY.get() {
-                r.on_watch_from(&from_at, rows.into_iter().map(payload).collect());
+                r.on_watch_from(&from_at, rows);
             }
         },
     );
@@ -72,15 +72,6 @@ pub(crate) fn spawn(replay: Arc<EventReplay>) {
             }
         }
     });
-}
-
-/// 应答里的一格 ⇒ 会话流那一格的体。
-fn payload(w: cmd_wire::watch::WatchFrom) -> crate::ui_contract::SessionWatchPayload {
-    crate::ui_contract::SessionWatchPayload {
-        session_id: w.sid,
-        path: w.path,
-        seq: w.seq,
-    }
 }
 
 #[cfg(test)]

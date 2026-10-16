@@ -199,7 +199,7 @@ TabManager.prototype.ensureTab = function (this: TabManager, ...args: Parameters
   if (t.agent === null && !(globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown) t.agent = "claude";
   return t;
 };
-import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { readFileSync } from "node:fs";
 import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { SkeletonView } from "../../../src/frontend/ui/skeleton-view";
@@ -2133,7 +2133,7 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     tab.touchedFiles.add("/proj/b.ts");
     // 运行表（后端的成品）序：done, running, stopped, running —— 期望 running 提前、组内保表序
     tm.onSessionRuns({
-      session_id: "s1",
+      sid: "s1",
       runs: [
         { run: "1", label: "done1", state: "done" },
         { run: "2", label: "run1", state: "running" },
@@ -2583,7 +2583,7 @@ describe("agent 来话的事件条：标签按运行表查（流视图把运行�
     const tm = makeTM();
     tm.ensureTab("l3", "/w", "p", LOCAL_ORIGIN);
     tm.switchTo("l3");
-    tm.onSessionRuns({ session_id: "l3", runs: [{ run: "a7", label: "审面板交互" }], ended: [] } as never);
+    tm.onSessionRuns({ sid: "l3", runs: [{ run: "a7", label: "审面板交互" }], ended: [] } as never);
     const label = (tm as unknown as { view: { host: { runLabelOf(sid: string, run: string): string | undefined } } }).view.host.runLabelOf;
     expect(label("l3", "a7")).toBe("审面板交互");
     expect(label("l3", "zz"), "表里没有 ⇒ 不给，用来话自带的").toBeUndefined();
@@ -2733,8 +2733,8 @@ describe("F15 每行代价的现状基线", () => {
   it("★ 会话流的 branch 格 ⇒ 那个 tab 的折叠层按整份清单重折；没有那个 tab ⇒ 不收", () => {
     tm.ensureTab("s1", "/w", "/w/s1.jsonl", LOCAL_ORIGIN);
     f15.setOff.length = 0;
-    tm.onSessionBranch({ session_id: "s1", off: ["u-2", "u-3"] });
-    tm.onSessionBranch({ session_id: "nope", off: ["x"] });
+    tm.onSessionBranch({ sid: "s1", off: ["u-2", "u-3"] });
+    tm.onSessionBranch({ sid: "nope", off: ["x"] });
     expect(f15.setOff).toEqual([["u-2", "u-3"]]);
   });
 
@@ -4446,28 +4446,19 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
 
   it("★ G3：容器事实落在活会话上；早到的暂存、建 tab 时落实；死了之后来的不改死的那一格", () => {
     // 悬停卡不再单列容器那一句：活会话的状态句只说在干什么；容器决定的是右键 / 会话头给哪几样。
-    tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: "tmux-3-7" }); // 早于建 tab
+    tm.noteContainer("c1", { host: "tmux", terminal: "tmux-3-7" }); // 早于建 tab
     const t = tm.ensureTab("c1", "/x", "p", "pi");
     expect(t.state).toEqual(LIVE_ATTACHABLE);
-    tm.noteContainer("c1", { form: "none" });
+    tm.noteContainer("c1", { host: "none" });
     expect(t.state).toEqual(LIVE_RESUMABLE);
     tm.archiveTab("c1");
-    tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: null }); // 晚到：死了的那一格由死的那一刻说了算
+    tm.noteContainer("c1", { host: "tmux" }); // 晚到：死了的那一格由死的那一刻说了算
     expect(t.state).toEqual(ENDED);
-  });
-
-  it("★ 不认识的宿主不被吞：那一格进「终端形式未知」（不当可接回）、日志一条", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const t = tm.ensureTab("c3", "/x", "p", "pi");
-    tm.noteContainer("c3", { form: "other", host: "hosted" });
-    expect(t.state).toEqual(LIVE_UNKNOWN_HOST);
-    expect(warn.mock.calls.filter((c) => String(c[0]).includes("host=hosted")).length).toBe(1);
-    warn.mockRestore();
   });
 
   it("★ G3 行为不回退：活着、只是不在 tmux 里的会话 ≠ 已结束（× 不露、↗ 还在）", () => {
     tm.ensureTab("c2", "/x", "p", "pi");
-    tm.noteContainer("c2", { form: "none" });
+    tm.noteContainer("c2", { host: "none" });
     expect(btn().classList.contains("ended")).toBe(false);
     expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
@@ -6376,7 +6367,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wg", s));
     tm.onLine(line("wg", 50)); // 上流点那一行比应答先到
-    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wg", path: "/p/wg.jsonl", seq: 50 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wg", path: "/p/wg.jsonl", seq: 50 });
     await settle();
     expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
     const t = home(tm).store.tabs.get("wg")!;
@@ -6401,7 +6392,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     for (let k = 0; k < 5; k++) await settle();
     const live = turnsAsks();
     expect(live, "实时来一行就要一次").toBeGreaterThan(before);
-    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wf", path: "/p/wf.jsonl", seq: 50 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wf", path: "/p/wf.jsonl", seq: 50 });
     for (let k = 0; k < 5; k++) await settle();
     expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
     expect(turnsAsks(), "补上的那段落了以后没再要划段").toBeGreaterThan(live);
@@ -6412,7 +6403,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     for (let s = 0; s < 10; s++) tm.onLine(line("wbig", s));
     tm.onLine(line("wbig", 2000));
     const before = home(tm).store.tabs.get("wbig")!;
-    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wbig", path: "/p/wbig.jsonl", seq: 2000 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wbig", path: "/p/wbig.jsonl", seq: 2000 });
     await settle();
     expect(lineReads()).toEqual([{ from: 1400, until: undefined }]);
     const t = home(tm).store.tabs.get("wbig")!;
@@ -6452,7 +6443,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     tm.switchTo("front");
     const turnsBefore = asks("history-turns").length;
     const inputsBefore = asks("history-user-inputs").length;
-    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wr", path: "/p/wr.jsonl", seq: 2000 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wr", path: "/p/wr.jsonl", seq: 2000 });
     for (let k = 0; k < 5; k++) await settle();
     const t = home(tm).store.tabs.get("wr")!;
     expect(t, "缺得多却没重来正文").not.toBe(t0);
@@ -6471,9 +6462,9 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wc", s));
-    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wc", path: "/p/wc.jsonl", seq: 10 });
-    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wc", path: "/q/other.jsonl", seq: 40 });
-    tm.onSessionWatch("box", { session_id: "wc", path: "/p/wc.jsonl", seq: 40 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wc", path: "/p/wc.jsonl", seq: 10 });
+    tm.onSessionWatch(LOCAL_ORIGIN, { sid: "wc", path: "/q/other.jsonl", seq: 40 });
+    tm.onSessionWatch("box", { sid: "wc", path: "/p/wc.jsonl", seq: 40 });
     await settle();
     expect(lineReads()).toEqual([]);
   });

@@ -1045,7 +1045,7 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
             .name("session-book-emitter".into())
             .spawn(move || {
                 while let Ok(out) = book_rx.recv() {
-                    replay.on_lifecycle(out.origin(), out.frames());
+                    replay.on_lifecycle(out.origin(), vec![out.frame()]);
                 }
             });
         if let Err(e) = spawned {
@@ -1354,12 +1354,15 @@ fn kept_sessions(
     sessions: Vec<ui_contract::TabSession>,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), Said> {
-    replay.set_main_kept(
-        sessions
-            .into_iter()
-            .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
-    );
-    Ok(())
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
+        replay.set_main_kept(
+            sessions
+                .into_iter()
+                .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+        );
+        Ok(())
+    })();
+    r.map_err(|s| s.named("kept_sessions"))
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，

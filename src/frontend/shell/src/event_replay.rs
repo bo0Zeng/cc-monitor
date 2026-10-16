@@ -424,7 +424,7 @@ fn lifecycle_replay(
     let pick = |outs: Vec<crate::session_book::Out>| -> Vec<Body> {
         outs.into_iter()
             .filter(|o| o.origin() == origin)
-            .flat_map(|o| o.frames())
+            .map(|o| o.frame())
             .filter(|f| f.reaches(only))
             .map(|f| body_of(&f))
             .collect()
@@ -1314,17 +1314,13 @@ impl EventReplay {
     pub fn on_watch_from(
         &self,
         origin: &crate::origin::Origin,
-        from: Vec<crate::ui_contract::SessionWatchPayload>,
+        from: Vec<cmd_wire::watch::WatchFrom>,
     ) {
         let origin = origin.as_wire_str();
         {
             let mut inner = self.inner.lock();
             for w in &from {
-                cut_to_contiguous(
-                    &mut inner,
-                    &(origin.to_string(), w.session_id.clone()),
-                    w.seq,
-                );
+                cut_to_contiguous(&mut inner, &(origin.to_string(), w.sid.clone()), w.seq);
             }
             self.tell_kept(&mut inner);
         }

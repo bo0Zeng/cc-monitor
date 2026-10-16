@@ -441,6 +441,15 @@ describe("C01 边界生成物", () => {
     );
   });
 
+  it("会话流的格只经生成类型读：`events.ts` · `runs.ts` 里没有 `decode*` 手解，也没有把一格强转成 `Record<string, unknown>` 再按键名读", () => {
+    const hand = /\bdecode[A-Z]\w*Payload\b|as\s+Record<string,\s*unknown>/g;
+    const hits = (src: string): string[] => code(src).match(hand) ?? [];
+    // 正控：两种写法各造一处，尺子认得出。
+    expect(hits("export function decodeRunsPayload(v: unknown) {}\nconst f = v as Record<string, unknown>;")).toHaveLength(2);
+    expect(hits(read("src/frontend/ui/events.ts")), "events.ts 又手解会话流的格了").toEqual([]);
+    expect(hits(read("src/frontend/ui/runs.ts")), "runs.ts 又手解运行表了").toEqual([]);
+  });
+
   it("`history-turns` 的一轮与过程段（`observe/turns.rs`）来自生成物，界面不再手写那一形", () => {
     // 复审五：`Fold` 只有 `Serialize`、界面手写了一份（新加的线上形状必须出生成类型）。
     const files = readdirSync(resolve(ROOT, "src/frontend/ui/generated"));

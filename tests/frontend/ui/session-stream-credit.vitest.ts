@@ -25,17 +25,15 @@ const ONE: { [K in Kind]: unknown } = {
   line: { session_id: "s", cwd: "/p", path: "/p/s.jsonl", seq: 1, record: { type: "assistant", uuid: "u" } },
   batch: "start",
   file_notice: { session_id: "s", origin: "<local>", path: "/p/s.jsonl", change: "gone" },
-  live: { session_id: "s", origin: "<local>", background: false },
-  activity: { session_id: "s" },
-  container: { session_id: "s", container: { kind: "none" } },
-  idle: { session_id: "s", switch: null, order: 4 },
-  ended: { session_id: "s", switch: null, order: 5 },
+  added: { sid: "s", agent_kind: "claude", pid: 1, container: { host: "none" } },
+  status: { sid: "s" },
+  state: { sid: "s", state: "ended", state_order: 5 },
   unseen: { origin: "<local>" },
   listed: { origin: "<local>", all: true },
   snapshot_inflight: { count: 0 },
-  runs: { session_id: "s", runs: [], ended: [] },
-  branch: { session_id: "s", off: [] },
-  watch: { session_id: "s", path: "/p/s.jsonl", seq: 0 },
+  runs: { sid: "s", runs: [], ended: [] },
+  branch: { sid: "s", off: [] },
+  watch: { sid: "s", path: "/p/s.jsonl", seq: 0 },
 };
 const FRAMES = Object.entries(ONE).map(([k, v]) => ({ [k]: v }));
 const quiet = new Proxy({}, { get: () => () => {} });

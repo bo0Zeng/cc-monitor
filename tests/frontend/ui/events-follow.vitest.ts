@@ -32,26 +32,25 @@ describe("跟着一个会话", () => {
       frame(1, { line: line("s9", 4) }),
       frame(2, { batch: "start" }),
       frame(3, { line: line("s1", 5) }),
-      frame(4, { ended: { session_id: "s1" } }),
+      frame(4, { state: { sid: "s1", state: "ended" } }),
     ]);
     expect(got).toEqual([{ t: "lines", lines: [line("s1", 3), line("s1", 5)] }, { t: "live", live: false }]);
     got.length = 0;
-    rec.sink([frame(5, { live: { session_id: "s1", origin: "devbox" } }), { t: "gap", fromSeq: 6, toSeq: 9 }]);
+    rec.sink([frame(5, { added: { sid: "s1" } }), { t: "gap", fromSeq: 6, toSeq: 9 }]);
     rec.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
     rec.sink([{ t: "seen", from: null }]);
     expect(got).toEqual([{ t: "live", live: true }, { t: "gap" }, { t: "sight", seen: false }, { t: "sight", seen: true }]);
     h.stop();
   });
 
-  it("主线外清单那一格（branch）⇒ 一件 {t: branch, off}；别的会话的不交；形状不对不交", async () => {
+  it("主线外清单那一格（branch）⇒ 一件 {t: branch, off}；别的会话的不交", async () => {
     const got: FollowEvent[] = [];
     const h = await followSession("devbox", "s1", (e) => got.push(e));
     const rec = streamFake.subscriptions[0]!;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     rec.sink([
-      frame(0, { branch: { session_id: "s1", off: ["u2", "u3"] } }),
-      frame(1, { branch: { session_id: "s9", off: ["x"] } }),
-      frame(2, { branch: { session_id: "s1", off: [1] } }),
+      frame(0, { branch: { sid: "s1", off: ["u2", "u3"] } }),
+      frame(1, { branch: { sid: "s9", off: ["x"] } }),
       frame(3, { line: line("s1", 4) }),
     ]);
     warn.mockRestore();
@@ -72,15 +71,14 @@ describe("跟着一个会话", () => {
     expect(streamFake.subscriptions[0]!.wants).toEqual([2]);
   });
 
-  it("上流点那一格（watch）⇒ 一件 {t: from, path, seq}；别的会话的 · 形状不对的不交", async () => {
+  it("上流点那一格（watch）⇒ 一件 {t: from, path, seq}；别的会话的不交", async () => {
     const got: FollowEvent[] = [];
     const h = await followSession("devbox", "s1", (e) => got.push(e));
     const rec = streamFake.subscriptions[0]!;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     rec.sink([
-      frame(0, { watch: { session_id: "s1", path: "/p/s1.jsonl", seq: 40 } }),
-      frame(1, { watch: { session_id: "s9", path: "/p/s9.jsonl", seq: 7 } }),
-      frame(2, { watch: { session_id: "s1", path: "/p/s1.jsonl", seq: -1 } }),
+      frame(0, { watch: { sid: "s1", path: "/p/s1.jsonl", seq: 40 } }),
+      frame(1, { watch: { sid: "s9", path: "/p/s9.jsonl", seq: 7 } }),
       frame(4, { line: line("s1", 40) }),
     ]);
     warn.mockRestore();

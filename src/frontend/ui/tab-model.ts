@@ -18,8 +18,8 @@ import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
 import type { ToolResultBlock, ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
-import type { SessionActivity } from "./generated/SessionActivity";
-import type { SwitchCells } from "./generated/SwitchCells";
+import type { WireSessionActivity } from "./generated/WireSessionActivity";
+import type { Switch } from "./generated/Switch";
 import type { LineRecord } from "./generated/LineRecord";
 import type { SessionState } from "./tab-session-state";
 import type { BackgroundWork, Needs, PendingCall, RetryOutcome, UsageFact } from "./session-reads";
@@ -98,7 +98,7 @@ export interface Tab {
   /**
    * 红绿灯（与 `state` 正交）：此刻在干什么（后端翻好的；`doing` 为 null ＝ 那一家没说）＋ 在等什么 ＋ 核心写好的字与语气（说不清也有）。null ＝ 还没收到。
    */
-  activity: { doing: SessionActivity | null; waitingFor: string | null; text: string; tone: string; order: number } | null;
+  activity: { doing: WireSessionActivity | null; waitingFor: string | null; text: string; tone: string; order: number } | null;
   /** 监控板组内的序（核心写的那一格：活着随 activity、离开活随去向帧带的；说不清 · 壳补的已结束 · 还没收到 ⇒ null）。 */
   order: number | null;
   // 「claude 已退但 tmux 会话还在」是 `state` 的 `RECONNECTABLE`（死 ＋ 容器还在）。
@@ -116,7 +116,7 @@ export interface Tab {
    * 此刻能不能换模型 · 权限档（那台核心判的会话帧 `switch`：随活动那几格来，离开「活」时随去向那一帧来）。
    * 这次没收到过 ⇒ `null`（界面不判，交命令照实回）。
    */
-  switch: SwitchCells | null;
+  switch: Switch | null;
   /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */

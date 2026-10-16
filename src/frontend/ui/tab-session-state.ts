@@ -22,7 +22,7 @@
  * - 可恢复性第三值 `gone`（resume 一跳问过那台后端、记录不在）；
  * - 活性第三值 `unseen` = 说不清（固定复活、那台机器还没把活会话清单报完）。
  */
-import type { SessionContainer } from "./generated/SessionContainer";
+import type { WireSessionContainer } from "./generated/WireSessionContainer";
 import { copyText } from "./copy-table";
 
 /*
@@ -115,16 +115,9 @@ export type StateEvent =
 /** 容器那一格落成的状态事件。 */
 export type ContainerEvent = "container-hosted" | "container-none" | "container-other";
 
-/** 容器那一格 ⇒ 状态事件：按判别联合的 `form` 分，不写宿主字面量（认哪些宿主由生成的类型说）。 */
-export function containerEvent(c: SessionContainer): ContainerEvent {
-  switch (c.form) {
-    case "hosted":
-      return "container-hosted";
-    case "none":
-      return "container-none";
-    case "other":
-      return "container-other";
-  }
+/** 容器那一格（那台 `session_added.container`）⇒ 状态事件：在认得的宿主里 · 不在任何宿主里（认哪些宿主由生成的类型说）。 */
+export function containerEvent(c: WireSessionContainer): ContainerEvent {
+  return c.host === "none" ? "container-none" : "container-hosted";
 }
 
 /**

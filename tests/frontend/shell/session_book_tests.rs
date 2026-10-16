@@ -62,7 +62,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
                 format!("listed {origin}{}", if *all { " all" } else { "" })
             }
             Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
-            Out::Runs { sid, .. } => format!("runs {sid}"),
+            Out::Runs { runs, .. } => format!("runs {}", runs.sid),
             Out::Branch { sid, .. } => format!("branch {sid}"),
         })
         .collect();
@@ -120,7 +120,7 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
                 }
                 Out::Unseen { origin, sids } => format!("unseen {origin} {sids:?}"),
                 Out::Status { status, .. } => format!("status {}", status.sid),
-                Out::Runs { origin, sid, .. } => format!("runs {origin}/{sid}"),
+                Out::Runs { origin, runs } => format!("runs {origin}/{}", runs.sid),
                 Out::Branch { origin, sid, .. } => format!("branch {}/{sid}", origin.as_wire_str()),
             })
             .collect()
@@ -154,8 +154,7 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     });
     let frames: Vec<String> = lost
         .iter()
-        .flat_map(|o| o.frames())
-        .map(|f| serde_json::to_string(&f).unwrap())
+        .map(|o| serde_json::to_string(&o.frame()).unwrap())
         .collect();
     assert_eq!(frames, vec![r#"{"unseen":{"origin":"pi"}}"#.to_string()]);
 
@@ -178,38 +177,46 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
 
-/// 活会话那一格：项目目录原样带给前端（缺席的那几格按 `null` 出）。期望值手写。
+/// ★ 活会话一格 `added`，就是那台的 `session_added`：骨架那几格 · 此刻的灯与名字 · 容器 · 隐藏那一格一起带（不再拆成三格、不重拼）。期望值手写。
 #[test]
-fn the_live_cell_carries_the_project_dir() {
-    let with = Out::Live {
-        origin: "pi".into(),
-        sid: "a".into(),
-        meta: crate::guard_support::session_added(
-            "a",
-            serde_json::json!({"project_dir": "/a/proj"}),
-        ),
-    };
-    let first = |o: &Out| serde_json::to_string(&o.frames()[0]).unwrap();
-    assert_eq!(
-        first(&with),
-        r#"{"live":{"session_id":"a","origin":"pi","background":false,"attachable":null,"cwd":null,"project_dir":"/a/proj","name":null,"hidden":null}}"#
-    );
-}
-
-/// ★ 隐藏那一格（后端判好的 `{by, said}`）原样转给界面：分身会话不占标签页靠它，壳这里丢了它分身就冒进标签栏。期望值手写。
-#[test]
-fn the_live_cell_carries_the_hidden_cell_verbatim() {
+fn the_live_cell_is_the_backends_session_added_frame() {
     let o = Out::Live {
         origin: "pi".into(),
         sid: "a".into(),
         meta: crate::guard_support::session_added(
             "a",
-            serde_json::json!({"background": true, "hidden": {"by": "bg", "said": "后端那一句"}}),
+            serde_json::json!({
+                "project_dir": "/a/proj",
+                "background": true,
+                "hidden": {"by": "bg", "said": "后端那一句"},
+                "container": {"host": "tmux", "terminal": "tmux-1-2"},
+                "activity": "working",
+                "activity_text": "跑着",
+            }),
         ),
     };
+    let v = serde_json::to_value(o.frame()).unwrap();
+    let a = &v["added"];
+    assert_eq!(v.as_object().unwrap().len(), 1, "{v}");
     assert_eq!(
-        serde_json::to_string(&o.frames()[0]).unwrap(),
-        r#"{"live":{"session_id":"a","origin":"pi","background":true,"attachable":null,"cwd":null,"project_dir":null,"name":null,"hidden":{"by":"bg","said":"后端那一句"}}}"#
+        (&a["sid"], &a["project_dir"], &a["background"]),
+        (
+            &serde_json::json!("a"),
+            &serde_json::json!("/a/proj"),
+            &serde_json::json!(true)
+        )
+    );
+    assert_eq!(
+        a["hidden"],
+        serde_json::json!({"by": "bg", "said": "后端那一句"})
+    );
+    assert_eq!(
+        a["container"],
+        serde_json::json!({"host": "tmux", "terminal": "tmux-1-2"})
+    );
+    assert_eq!(
+        (&a["activity"], &a["activity_text"]),
+        (&serde_json::json!("working"), &serde_json::json!("跑着"))
     );
 }
 
@@ -277,7 +284,7 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
 /// F5 重放跟在那个活会话的宣告后面再说一次（拼好的最新那一份）；会话离开 ⇒ 不再重放。
 #[test]
 fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
-    let off = |ids: &str| crate::ui_contract::RecordBody::from_json(ids.to_string()).unwrap();
+    let off = |ids: &[&str]| -> Vec<String> { ids.iter().map(|i| i.to_string()).collect() };
     let branch = |s: &str, path: &str, at: u64, ids: &[&str]| In::Branch {
         origin: crate::origin::Origin("pi".into()),
         sid: s.into(),
@@ -294,7 +301,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         vec![Out::Branch {
             origin: crate::origin::Origin("pi".into()),
             sid: "a".into(),
-            off: off(r#"["u1"]"#)
+            off: off(&["u1"])
         }]
     );
     // 只来变了的那一截 ⇒ 交出去的是拼好的整份。
@@ -303,17 +310,17 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         vec![Out::Branch {
             origin: crate::origin::Origin("pi".into()),
             sid: "a".into(),
-            off: off(r#"["u1","u2","u3"]"#)
+            off: off(&["u1", "u2", "u3"])
         }]
     );
     // 前 2 条照旧、其后没有了 ⇒ 截短。
     b.step(branch("a", "/a.jsonl", 2, &[]));
     // 另一份记录 ⇒ 从空的起拼（不接在上一份后面）。
     let got = b.step(branch("b", "/b1.jsonl", 0, &["x"]));
-    assert!(matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["x"]"#));
+    assert!(matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["x"])));
     let got = b.step(branch("b", "/b2.jsonl", 1, &["y"]));
     assert!(
-        matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["y"]"#),
+        matches!(&got[..], [Out::Branch { off: o, .. }] if o == &off(&["y"])),
         "{got:?}"
     );
     b.step(left("pi", "b", SessionFate::Ended));
@@ -325,11 +332,11 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         .iter()
         .map(|o| match o {
             Out::Live { sid, .. } => format!("live {sid}"),
-            Out::Branch { sid, off, .. } => format!("branch {sid} {}", off.0.get()),
+            Out::Branch { sid, off, .. } => format!("branch {sid} {off:?}"),
             other => format!("{other:?}"),
         })
         .collect();
-    assert_eq!(got, vec!["live a", r#"branch a ["u1","u2"]"#, "live b"]);
+    assert_eq!(got, vec!["live a", r#"branch a ["u1", "u2"]"#, "live b"]);
 }
 
 /// read8c：报名单时交回手上那份主线外清单（条数 ＋ 那台给的最后一帧的摘要）—— 断线不摘（重接之后交回，那台只补缺的）；
@@ -423,10 +430,7 @@ fn a_branch_list_read_before_the_old_links_last_frame_still_ends_where_the_peer_
     let Some(Out::Branch { off, .. }) = out.last() else {
         panic!("{out:?}");
     };
-    assert_eq!(
-        off,
-        &branch_body(&["u1", "u2", "u3", "u4"].map(String::from))
-    );
+    assert_eq!(off, &["u1", "u2", "u3", "u4"].map(String::from).to_vec());
     assert_eq!(
         b.branch_held(&pi, &only_a),
         vec![BranchHeld {
