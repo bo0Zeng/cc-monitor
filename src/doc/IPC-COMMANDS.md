@@ -261,7 +261,7 @@ A session file went away。
 |---|---|---|
 | `ticket` | string | 订阅票（`terminal-follow` 时客户端给的，后端只当不透明的串回填） |
 | `seq` | number | 这条订阅里第几帧（从 1 连续） |
-| `view` | JSON | 那一屏（同 `terminal-preview` 的回话） |
+| `view` | Preview | 那一屏（同 `terminal-preview` 的回话） |
 
 ### `terminal_follow_end`
 
