@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +38,7 @@ import com.ccmonitor.mobile.core.data.db.autoCap
 import com.ccmonitor.mobile.core.data.db.isModifiedDefault
 import com.ccmonitor.mobile.core.data.db.modName
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.IconTextButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
@@ -135,7 +135,7 @@ private fun EditBody(
                     null
                 },
             leadingIcon = icon?.let { { PhIcon(it, contentDescription = d.icon, size = Touch.iconInline) } },
-            trailingIcon = { TextButton(onClick = { onSheet(Sheet.Icon) }) { Text(copyText("mobKeys.edit.capIcon")) } },
+            trailingIcon = { SecondaryButton(onClick = { onSheet(Sheet.Icon) }) { Text(copyText("mobKeys.edit.capIcon")) } },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -196,30 +196,40 @@ private fun EditSheet(
                 onDraft(d.withIcon(it))
                 onDone()
             }, onDismiss = onDone)
-        is Sheet.Duration -> {
-            val system = if (sheet.double) ViewConfiguration.getDoubleTapTimeout() else ViewConfiguration.getLongPressTimeout()
-            val total = if (sheet.double) state.doubleTapMs else state.longPressMs
-            DurationSheet(
-                title = if (sheet.double) copyText("mobKeys.dur.double") else copyText("mobKeys.dur.long"),
-                sub =
-                    d.label.ifBlank {
-                        d.tap.binding
-                            ?.let { autoCap(it, state::groupName) }
-                            .orEmpty()
-                    },
-                single = true,
-                own = if (sheet.double) d.doubleTapMs else d.longPressMs,
-                following = total ?: system,
-                system = system,
-                range = if (sheet.double) SettingsRepository.DOUBLE_TAP_MS_RANGE else SettingsRepository.LONG_PRESS_MS_RANGE,
-                onSave = { ms ->
-                    onDraft(if (sheet.double) d.copy(doubleTapMs = ms) else d.copy(longPressMs = ms))
-                    onDone()
-                },
-                onDismiss = onDone,
-            )
-        }
+        is Sheet.Duration -> OneKeyDurationSheet(sheet.double, d, state, onDraft, onDone)
     }
+}
+
+/** 这一颗另设的时长（双击判定 · 长按）。 */
+@Composable
+private fun OneKeyDurationSheet(
+    double: Boolean,
+    d: KeyDraft,
+    state: KeysState,
+    onDraft: (KeyDraft) -> Unit,
+    onDone: () -> Unit,
+) {
+    val system = if (double) ViewConfiguration.getDoubleTapTimeout() else ViewConfiguration.getLongPressTimeout()
+    val total = if (double) state.doubleTapMs else state.longPressMs
+    DurationSheet(
+        title = if (double) copyText("mobKeys.dur.double") else copyText("mobKeys.dur.long"),
+        sub =
+            d.label.ifBlank {
+                d.tap.binding
+                    ?.let { autoCap(it, state::groupName) }
+                    .orEmpty()
+            },
+        single = true,
+        own = if (double) d.doubleTapMs else d.longPressMs,
+        following = total ?: system,
+        system = system,
+        range = if (double) SettingsRepository.DOUBLE_TAP_MS_RANGE else SettingsRepository.LONG_PRESS_MS_RANGE,
+        onSave = { ms ->
+            onDraft(if (double) d.copy(doubleTapMs = ms) else d.copy(longPressMs = ms))
+            onDone()
+        },
+        onDismiss = onDone,
+    )
 }
 
 internal fun triggerName(t: Trigger): String =
