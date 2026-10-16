@@ -3,6 +3,7 @@ package com.ccmonitor.mobile.core.claude.link
 import com.ccmonitor.mobile.core.claude.link.wire.Killed
 import com.ccmonitor.mobile.core.claude.link.wire.Preview
 import com.ccmonitor.mobile.core.claude.link.wire.Rendered
+import com.ccmonitor.mobile.core.claude.link.wire.Resumed
 import com.ccmonitor.mobile.core.claude.link.wire.TerminalsListReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -52,6 +53,15 @@ object TerminalsList {
         rows: List<Row>,
         name: String,
     ): String? = rows.firstOrNull { it.name == name }?.terminal
+}
+
+/** `session-resume`：终端没了的会话先在那台恢复（号 · 模型 · 权限档那台照记录定），回它落在哪个 tmux 会话。 */
+object SessionResume {
+    const val COMMAND: String = "session-resume"
+
+    fun args(sid: String): Map<String, Any?> = mapOf("sid" to sid, "client" to CLIENT)
+
+    fun of(data: Any?): String? = Wire.bind<Resumed>(data)?.session
 }
 
 /** `terminal-preview`：抓一个终端的一屏（纯文字）。 */

@@ -590,7 +590,7 @@ impl comms_inward::chan::router::Backends for XferHost {
             }
             "files-home" => serde_json::json!({ "path": "/srv/a.bin" }),
             "files-stat" => serde_json::json!({
-                "path": "/srv/a.bin", "name": "a.bin", "up": "/srv", "kind": "file", "size": 3, "readonly": false,
+                "path": "/srv/a.bin", "up": "/srv", "kind": "file", "size": 3, "readonly": false,
                 "owner": null, "link_target": null
             }),
             // 回包照那条命令的类型（块：只有 `bytes`；提交：落点 ＋ 字节数）。

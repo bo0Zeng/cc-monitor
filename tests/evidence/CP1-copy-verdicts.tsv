@@ -108,6 +108,8 @@ src/backend/lib.rs:1530	终端管理 L1 的送字送键：这一版宿主只有 
 src/backend/lib.rs:1538	与帧面 `terminal-preview` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1545	与帧面 `terminal-input` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1839	往会话说一句：送字那一半就是 `terminal-input` 那一条（`send-keys`，声明了 `no_tmux`）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1915	恢复再附着：同 `session-say` 终端没了那一支（在 tmux 里起）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
+src/backend/lib.rs:1957	与帧面 `session-resume` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1846	与帧面 `session-say` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1853	会话开着时切权限档：按键走 `terminal-input` 那一条、等重画用 tmux 控制模式客户端（声明了 `no_tmux`）⇒ 同那两条的理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面
 src/backend/lib.rs:1860	与帧面 `session-permission` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。	保留	[不对外] 设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面

@@ -97,9 +97,10 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
-            Arc::new(Ledger::with_nodes(
+            Arc::new(Ledger::with(
                 Some(self.root.join(ledger::FILE_NAME)),
                 self.tx.clone(),
+                Default::default(),
             )),
             Some(self.root.clone()),
             Arc::new(move |_| Library {

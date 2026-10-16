@@ -118,8 +118,6 @@ win-manifest = { path = "../../common/win-manifest" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-# 系统通知（`platform/notify.rs`：Linux 以外经这个插件）
-tauri-plugin-notification = "2"
 # 单实例：第二次启动把第一个的主窗拉到前台、自己退出。Windows 用 user 级互斥量，Linux 用会话总线上的名字（zbus）。
 tauri-plugin-single-instance = "2"
 # 写系统剪贴板（`clipboard.rs`）：回真成败。锁里本就有（egui-winit 带进来的）；Linux 多开 Wayland data-control 那一档。
@@ -232,11 +230,10 @@ resident-client = { path = "../../comms/resident-client", features = ["test-supp
 # 只在 dev 侧开 —— resolver 2 下 dev 依赖的特性不并进产品构建，发布二进制里的 tokio 照旧是上面那份 `full`。
 tokio = { version = "1", features = ["test-util"] }
 
-# 系统通知（`platform/notify.rs`）：Linux 上经会话总线直说通知协议，全进程一条长连接（插件那一份每条新开、发完就丢，GNOME 会当场收走）。
-# 已在依赖图里（notification 插件底下的 notify-rust 就用它），这里只是在 Linux 上直接用。
 [target.'cfg(target_os = "linux")'.dependencies]
+# 单实例（`platform/single_instance.rs`）：占会话总线上的名字、转交激活令牌。
 zbus = "5"
-# 点了通知把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
+# 第二次启动把主窗口拉前那一下要带激活令牌（`set_startup_id` ＋ `present`）：tauri 在 Linux 上本来就链着它，这里直接用。
 gtk = "0.18"
 # ↗ 在 X11 上找 / 拉前终端窗口（EWMH，`platform/ewmh.rs`）：文件窗口那边（arboard · winit）早已链着它，这里直接用。
 x11rb = "0.13"

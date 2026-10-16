@@ -1242,12 +1242,12 @@ export class TabManager {
     this.bar.planNeedsChanged();
   }
 
-  /** 此刻需手动的会话数（窗口标题 · 系统通知用）。 */
+  /** 此刻需手动的会话数（窗口标题用）。 */
   needsCount(): number {
     return this.bar.needsCountNow();
   }
 
-  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需手动」用）。 */
+  /** 全部 tab，按条上看到的顺序（窗口标题数「需手动」用）。 */
   tabsInOrder(): Tab[] {
     return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
   }

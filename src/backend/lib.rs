@@ -1420,6 +1420,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-commands",
     "--session-model",
     "--session-permission",
+    "--session-resume",
     "--session-say",
     "--sessions-start",
     "--sessions-stop",
@@ -1910,6 +1911,13 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     },
     TargetGap {
         family: "wire-commands",
+        capability: "session-resume",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "恢复再附着：同 `session-say` 终端没了那一支（在 tmux 里起）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
         capability: "session-say",
         target: Target::Windows,
         kind: GapKind::Owed,
@@ -1942,6 +1950,13 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `session-permission` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--session-resume",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `session-resume` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",

@@ -44,4 +44,8 @@ seenHostKey: string | null,
  * 这一轮没连上 / 做不了时的复制详情（`down` · `host_key_changed` · `unsupported` 才可能有）：时刻 · 机器 · 本机 · 命令 ·
  * 断在（哪一步没成的那一句）· 码 · 原话。界面照原样跟在问题行那句后面（［复制详情］），自己不拼。说不出 ⇒ 空。
  */
-detail: string | null, };
+detail: string | null, 
+/**
+ * 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
+ */
+next: string | null, };
