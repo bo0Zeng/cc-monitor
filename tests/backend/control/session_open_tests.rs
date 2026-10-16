@@ -721,7 +721,7 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
             "no_dir",
         ),
         (
-            json!({ "what": { "kind": "shell", "cwd": "/p\n" } }),
+            json!({ "what": { "kind": "shell", "cwd": "/p\nx" } }),
             "bad_args",
         ),
         (
