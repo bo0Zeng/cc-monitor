@@ -1294,6 +1294,42 @@ def report():
         if not wait(t("rot.top.here", machine="smokebox"), 15):
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
 
+    with Step("13-设置改一项"):
+        # 设置 → 那台上的偏好：子会话拨到另一段，马上存进那台（prefs-read 读回）；退出设置再进，那一段还亮着。
+        def child_tab():
+            return ((frames("prefs-read", {}).get("data") or {}).get("prefs") or {}).get("childTab")
+
+        was = child_tab()
+        if was not in ("show", "hide"):
+            raise Step.Fail(f"台架读不到那台的偏好：{was!r}")
+        want = "hide" if was == "show" else "show"
+        seg = t("settings.machine.tabShow" if want == "show" else "settings.machine.tabHide")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("settings.machine.childTab"), 15):
+            raise Step.Fail("设置里没有「子会话」那一行")
+        tap_in_row(t("settings.machine.childTab"), seg)
+        end = time.time() + 20
+        while time.time() < end and child_tab() != want:
+            time.sleep(1)
+        if child_tab() != want:
+            raise Step.Fail(f"拨了「{seg}」，那台的偏好没写进 {want}")
+        shot("13-拨过")
+        adb("shell", "input", "keyevent", "4")
+        time.sleep(1)
+        drawer(t("mobDrawer.settings.aria"))
+        if not wait(t("settings.machine.childTab"), 15):
+            raise Step.Fail("再进设置没有「子会话」那一行")
+        ns = ui.nodes()
+        row = next(n for n in ns if n.get("text") == t("settings.machine.childTab"))
+        y = ui.center(row)[1]
+        lit = [n for n in ns if n.get("text") == seg and abs(ui.center(n)[1] - y) < 80 and "true" in (n.get("checked"), n.get("selected"))]
+        if not lit:
+            raise Step.Fail(f"再进设置，子会话那一行亮着的不是「{seg}」")
+        # 拨回去，台架那台的偏好留成进来时那样。
+        tap_in_row(t("settings.machine.childTab"), t("settings.machine.tabShow" if was == "show" else "settings.machine.tabHide"))
+
     print()
     print("| 步 | 结果 | 用时 | 截图 |")
     print("|---|---|---|---|")

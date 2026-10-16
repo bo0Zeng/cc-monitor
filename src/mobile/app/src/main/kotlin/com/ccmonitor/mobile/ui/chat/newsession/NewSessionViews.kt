@@ -260,7 +260,7 @@ private fun AccountRow(
 
 /** 「默认」小标（号名旁边那一格）。 */
 @Composable
-private fun DefaultTag() {
+internal fun DefaultTag() {
     androidx.compose.material3.Surface(
         shape =
             androidx.compose.foundation.shape

@@ -174,7 +174,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("rotation-try", "6fdf4462"),
     ("rotation-use", "8fad8b79"),
     ("rotation-use-now", "794fe022"),
-    ("rotation-view", "370971b4"),
+    ("rotation-view", "39fecf1b"),
     ("session-commands", "80201e9c"),
     ("session-fork", "734a9809"),
     ("session-model", "16ca9f26"),
