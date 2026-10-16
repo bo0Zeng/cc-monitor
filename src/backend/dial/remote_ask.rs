@@ -24,6 +24,7 @@
 //! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
 //! （顺手登记）都调它。
 
+use cmd_wire::files as cwf;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -231,7 +232,7 @@ pub async fn ask_json(
 
 /// 同 [`ask_json`]，那一台不按名字查可达表、直接给拨号请求（两台之间复制：请求里带着两台的拨号请求）。
 /// 入参类型选中那条命令（名字 · 回包类型都挂在它上面），发的是它序列化的那一份；回包解不出 ⇒ 那台后端版本不同。
-pub async fn ask_dialed<C: cmd_wire::files::Call>(
+pub async fn ask_dialed<C: cwf::Call>(
     dial: &Value,
     req: &C,
     tz: &crate::Tz,

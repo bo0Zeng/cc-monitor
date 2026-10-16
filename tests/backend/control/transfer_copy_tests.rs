@@ -296,7 +296,7 @@ fn progress_counts_bytes_across_the_group_and_moves_inside_a_file() {
 use crate::dial::sftp::rig;
 
 /// 落点那台的后端：命令行里认出子命令、入参照真的解码器解，建目录与提交走真的那一份。
-/// 那台的盘 ＝ 一个临时目录（`disk`），与台架互为镜像：问之前台架 → 盘，问完盘 → 台架；入参与回包里的路径按 `rig::HOME` ↔ `disk` 换。
+/// 那台的盘 ＝ 一个临时目录（`disk`）：问之前台架整份铺到盘上，问完照盘把台架补齐；入参与回包里的路径按 `rig::HOME` ↔ `disk` 换。
 #[derive(Clone)]
 struct RigBackend {
     fs: Arc<std::sync::Mutex<rig::Fs>>,
@@ -318,31 +318,19 @@ impl RigBackend {
         }
     }
 
-    fn from_disk(&self) {
+    /// 问完：台架上的文件盘上没了的删掉，回包里那个落点（建出来的目录 · 提交落地的文件）照盘上补进台架。
+    fn from_disk(&self, landed: Option<&str>) {
         let mut g = self.fs.lock().unwrap();
-        g.files.clear();
-        g.dirs.clear();
-        let mut stack = vec![self.disk.clone()];
-        while let Some(d) = stack.pop() {
-            for e in fs::read_dir(&d).unwrap() {
-                let p = e.unwrap().path();
-                let rel = p
-                    .strip_prefix(&self.disk)
-                    .unwrap()
-                    .to_string_lossy()
-                    .into_owned();
-                if p.is_dir() {
-                    g.dirs.insert(rel);
-                    stack.push(p);
-                } else {
-                    g.files.insert(
-                        rel,
-                        rig::Entry {
-                            bytes: fs::read(&p).unwrap(),
-                        },
-                    );
-                }
-            }
+        let disk = &self.disk;
+        g.files.retain(|f, _| disk.join(f).exists());
+        let Some(rel) = landed.and_then(|p| Path::new(p).strip_prefix(disk).ok()) else {
+            return;
+        };
+        let (p, rel) = (disk.join(rel), rel.to_string_lossy().into_owned());
+        if p.is_dir() {
+            g.dirs.insert(rel);
+        } else if let Ok(bytes) = fs::read(&p) {
+            g.files.insert(rel, rig::Entry { bytes });
         }
     }
 
@@ -411,7 +399,12 @@ impl crate::dial::remote_ask::Remote for RigBackend {
         let args: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
         self.to_disk();
         let out = self.answer(&flag, &args);
-        self.from_disk();
+        self.from_disk(
+            out.as_ref()
+                .ok()
+                .and_then(|v| v.get("path"))
+                .and_then(serde_json::Value::as_str),
+        );
         self.asked.lock().unwrap().push(match &out {
             Ok(_) => flag,
             Err((c, m)) => format!("{flag} ✗ {c}: {m}"),
@@ -502,10 +495,11 @@ fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
         .filter(|k| k.starts_with(".cc-monitor/"))
         .collect();
     assert!(left.is_empty(), "落点那台不留暂存件：{left:?}");
-    let here_left: Vec<_> = fs::read_dir(here.join(relay_route_core::STAGING_DIR_REL))
-        .map(|d| d.map(|e| e.unwrap().file_name()).collect())
-        .unwrap_or_default();
-    assert!(here_left.is_empty(), "本机不留暂存件：{here_left:?}");
+    // 只删得掉空目录：本机暂存区在、且一份不留。
+    assert!(
+        fs::remove_dir(here.join(relay_route_core::STAGING_DIR_REL)).is_ok(),
+        "本机不留暂存件"
+    );
     drop(g);
     fs::remove_dir_all(&base).ok();
 }
