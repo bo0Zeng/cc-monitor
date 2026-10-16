@@ -115,7 +115,8 @@ fn machine(tag: &str) -> Tmp {
     t
 }
 
-type KeyLog = Mutex<Vec<Value>>;
+/// 写 key 那一口收到的：其余几格（JSON）＋ 那把 key（只比是不是同一串，不取明文）。
+type KeyLog = Mutex<Vec<(Value, creds_core::SecretKey)>>;
 
 /// 这台 key 表落在临时家目录里的那一份。
 fn key_table(t: &Tmp) -> PathBuf {
@@ -207,7 +208,10 @@ pub(crate) fn answer(
 fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
     let table = key_table(t);
     let set = |v: &file_face::KeySetReq| -> Result<file_face::KeySet, Fail> {
-        keys.lock().unwrap().push(serde_json::to_value(v).unwrap());
+        keys.lock().unwrap().push((
+            json!({ "configDir": v.config_dir, "baseUrl": v.base_url }),
+            v.key.clone(),
+        ));
         file_face::answer_set_at(
             &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
             v,
@@ -688,12 +692,17 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
     assert!(got["keyProblem"].is_null());
     assert_eq!(key_ids(&t), vec!["k".to_string()]);
     assert!(got.get("loginCmd").is_none());
+    let sent = keys.lock().unwrap();
     assert_eq!(
-        *keys.lock().unwrap(),
+        sent.iter().map(|(v, _)| v.clone()).collect::<Vec<_>>(),
         vec![
-            json!({ "configDir": t.s(".cc-monitor/accounts/k"), "key": "sk-secret-abcd", "baseUrl": "https://api.example.test" })
+            json!({ "configDir": t.s(".cc-monitor/accounts/k"), "baseUrl": "https://api.example.test" })
         ]
     );
+    assert!(sent[0]
+        .1
+        .same_secret(&creds_core::SecretKey::new("sk-secret-abcd")));
+    drop(sent);
     assert_eq!(t.manifest()["accounts"][1]["authKind"], "api-key");
     assert!(!t
         .read(".cc-monitor/accounts/accounts.json")

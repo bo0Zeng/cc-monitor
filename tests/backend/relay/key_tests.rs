@@ -97,7 +97,12 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     let p = home.join(".cc-monitor").join("relay-key");
     assert!(!p.exists(), "夹具家目录一开始不该有钥匙");
 
-    let first = ensure_key(&own).expect("第一次铸");
+    let (first, verdict) = ensure_key(&own).expect("第一次铸");
+    assert_eq!(
+        verdict,
+        creds_core::perm::Verdict::OwnerOnly,
+        "铸出来的那一份只给本人"
+    );
     let on_disk = std::fs::read_to_string(&p).expect("读回");
     assert_eq!(on_disk, first.expose(), "盘上就是那一把");
     assert!(
@@ -111,7 +116,7 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "钥匙文件必须只给本人");
     }
-    let again = ensure_key(&own).expect("第二次");
+    let (again, _) = ensure_key(&own).expect("第二次");
     assert_eq!(
         again.expose(),
         first.expose(),
@@ -125,7 +130,7 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         &first.expose().to_ascii_uppercase(),
     ] {
         std::fs::write(&p, junk).expect("写坏文件");
-        let fresh = ensure_key(&own).expect("坏文件 ⇒ 换一把");
+        let (fresh, _) = ensure_key(&own).expect("坏文件 ⇒ 换一把");
         assert!(
             relay_route_core::key_shape_ok(fresh.expose()),
             "换出来的形状要对"
@@ -135,9 +140,9 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     }
     // 两次铸出来的不是同一把（随机数真在转）。
     std::fs::write(&p, "").expect("清空");
-    let a = ensure_key(&own).expect("a");
+    let (a, _) = ensure_key(&own).expect("a");
     std::fs::write(&p, "").expect("清空");
-    let b = ensure_key(&own).expect("b");
+    let (b, _) = ensure_key(&own).expect("b");
     assert_ne!(a.expose(), b.expose(), "两次铸出同一把 —— 随机源是死的");
     // 临时文件都挪走了（本进程那一个临时名不在盘上）。
     let tmp = p
@@ -145,6 +150,43 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         .expect("父")
         .join(format!("relay-key.{}.tmp", std::process::id()));
     assert!(!tmp.exists(), "临时文件留在盘上了：{}", tmp.display());
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// §15：钥匙文件与凭据文件同一套判法 —— 宽了照实说（随钥匙交回 ＋ 中转起来时印的那几行），不拒、不自己改权限。
+#[cfg(unix)]
+#[test]
+fn a_too_wide_key_file_is_reported_not_refused_nor_fixed() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("ccm-rk-perm-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).expect("建夹具家目录");
+    let own = crate::platform::fs::Own::issue_at(&home);
+    let (first, _) = ensure_key(&own).expect("铸");
+    let p = home.join(".cc-monitor").join("relay-key");
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
+    let (again, verdict) = ensure_key(&own).expect("宽了也照样交钥匙");
+    assert_eq!(again.expose(), first.expose(), "宽了不换钥匙");
+    let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
+    assert_eq!(mode, 0o644, "不自己改权限");
+    let creds_core::perm::Verdict::TooWide { how, fix } = &verdict else {
+        panic!("0644 该判过宽：{verdict:?}")
+    };
+    let mut out = Vec::new();
+    assert_eq!(
+        crate::relay::listen::announce_key_perm(&verdict, &mut out),
+        2
+    );
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        format!("[relay] key file permissions too wide: {how}\n[relay] how to fix: {fix}\n")
+    );
+    let mut out = Vec::new();
+    assert_eq!(
+        crate::relay::listen::announce_key_perm(&creds_core::perm::Verdict::OwnerOnly, &mut out),
+        0
+    );
+    assert!(out.is_empty());
     let _ = std::fs::remove_dir_all(&home);
 }
 

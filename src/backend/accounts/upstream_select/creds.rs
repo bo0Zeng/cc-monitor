@@ -7,7 +7,6 @@
 //! 路径在启动日志里说：装表时把算出来的那条绝对路径印在 stderr 上，文件不在时连模板一起印（backend 没有 `--help`）。
 
 use super::table::{Note, Rejected, WHY_AUTH_STYLE_UNKNOWN};
-use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use creds_core::perm::{self, Verdict};
 use creds_core::store::{self, AccountEntry, AuthStyle};
@@ -50,11 +49,11 @@ pub(crate) fn announce_unresolved(p: &str, out: &mut dyn std::io::Write) {
 
 /// 读一次。只读 —— 写只在 `file_face` 那一份、只从帧面进来；backend 的 `readonly_guard` 扫的就是这件事。
 pub(crate) fn load(path: &Path) -> Loaded {
-    // 先查权限，再读内容：反过来的话，一份过宽的文件已经被读进内存了才开始出声。
-    let verdict = perm::judge(&perm::probe(path));
-
-    let raw = match Ro::read_to_string(path) {
-        Ok(s) => s,
+    // 开一次、按句柄量、从同一个句柄读：量的就是读的那一份。
+    let raw = match perm::open_checked(path)
+        .and_then(|(f, v)| std::io::read_to_string(f).map(|s| (s, v)))
+    {
+        Ok(got) => got,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Loaded {
                 path: path.to_path_buf(),
@@ -69,7 +68,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
             return Loaded {
                 path: path.to_path_buf(),
                 accounts: Vec::new(),
-                verdict,
+                verdict: perm::open_failed(&e),
                 // 只进日志（`[apikey]` 那一行）：那一句 ＋ 原话一起。
                 problem: Some(
                     crate::common::said::Said::with_raw(
@@ -85,6 +84,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
         }
     };
 
+    let (raw, verdict) = raw;
     match store::parse(&raw) {
         Ok(doc) => Loaded {
             path: path.to_path_buf(),
@@ -99,26 +99,6 @@ pub(crate) fn load(path: &Path) -> Loaded {
             verdict,
             problem: Some(e.said(path).logged()),
         },
-    }
-}
-
-/// KS11 上屏的那一句（账号清单的 `notice` 并它）：凭据文件在、却不是只给本人 ⇒ 路径 ＋ 宽在哪 ＋ 怎么修（查不出 ⇒ 为什么查不出）；
-/// 只给本人 · 文件不在 ⇒ `None`。判断只问 `creds_core::perm::judge`（启动日志那一路同一个）。
-pub(crate) fn perm_notice(path: &Path) -> Option<String> {
-    if !path.exists() {
-        return None;
-    }
-    let p = path.display().to_string();
-    match perm::judge(&perm::probe(path)) {
-        Verdict::OwnerOnly => None,
-        Verdict::TooWide { how, fix } => Some(copy_text(
-            "beAccountsQuery.listProductAt.credsPerm",
-            &[("path", &p), ("how", &how), ("fix", &fix)],
-        )),
-        Verdict::Undetermined { why, .. } => Some(copy_text(
-            "beAccountsQuery.listProductAt.credsPermUnknown",
-            &[("path", &p), ("why", &why)],
-        )),
     }
 }
 

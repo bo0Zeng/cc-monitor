@@ -1104,6 +1104,8 @@ version = "0.1.0"
 dependencies = [
  "copy-core",
  "guard-core",
+ "libc",
+ "serde",
  "serde_json",
  "test-home",
  "win-path-core",

@@ -41,6 +41,8 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 # 够不着任何一个宿主的读口；只能各写一份译法）。仓内 crate，只依赖 serde_json。
 copy-core = { path = "../copy-core" }
 serde_json = "1"
+# `SecretKey` 的手写 `Deserialize`（入参解码那一刻就包好）。两份 lock 里都已有它（serde_json 本来就带进来）。
+serde = "1"
 # 交给 Win32 的路径（长路径前缀）只从它来；只在 `harden` 那一半用。仓内 crate、零依赖。
 win-path-core = { path = "../win-path-core", optional = true }
 
@@ -50,6 +52,10 @@ test-home = { path = "../test-home" }
 # 源码扫描型判据的「只留生产段」剥法，与 monitor / backend 共用同一份。
 # **必须是 dev-dependency**：判据全在 `#[cfg(test)]` 里，它没有理由进发布二进制。
 guard-core = { path = "../guard-core" }
+
+[target.'cfg(unix)'.dependencies]
+# 按句柄量属主时比的「本进程的有效用户」（`geteuid`）。只在 `harden` 那一半用；两份 lock 里都已有它。
+libc = { version = "0.2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # 只在 `harden` 打开时才真的进来。API 与 feature 的对应关系（08-27 实测，非空对照见件文件 `§0c 一`）：
@@ -72,4 +78,4 @@ windows = { version = "0.56", optional = true, features = [
 [features]
 default = []
 # 「把这份文件收窄到只给本人」的能力。**只给会写这份文件的那一侧开。**
-harden = ["dep:windows", "dep:win-path-core"]
+harden = ["dep:windows", "dep:win-path-core", "dep:libc"]

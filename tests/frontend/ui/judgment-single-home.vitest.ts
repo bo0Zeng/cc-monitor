@@ -867,7 +867,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     new: NONE,
     ordered_keys: NONE,
     parse: NONE,
-    probe: NONE,
+    // 自家秘密文件的权限：开一次、按句柄量（后端读凭据文件与中转钥匙都经它）· 量不动时的结论 · 上屏那一句；TS 侧零处判权限。
+    open_checked: NONE,
+    open_failed: NONE,
+    notice: NONE,
+    // Windows 判宽的白名单与「这条掩码碰不碰得到内容」（纯）；TS 侧没有孪生。
+    TRUSTED_SIDS: NONE,
+    mask_reaches: NONE,
     read_accounts: NONE,
     // 删号 · 回滚那两步的纯变换（后端账号库那一族调它；TS 侧没有孪生）。
     remove_account: NONE,
@@ -878,8 +884,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     said: NONE,
     template: NONE,
     to_pretty_json: NONE,
-    WIDE_PRINCIPALS: NONE,
-    wide_principals_in_sddl: NONE,
   },
   // `gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
   // monitor ↔ 文件窗口进程的契约：开窗种子 · 就绪行 · 开终端那一问 · 远端路径的两个切法（窗口与开窗入口共用；TS 侧不切远端路径 ⇒ 无孪生）。

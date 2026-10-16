@@ -61,17 +61,18 @@ pub(crate) fn machine_rows() -> Vec<String> {
     machine_path().map(|p| rows_at(&p)).unwrap_or_default()
 }
 
-/// `apikey-key-set` 的入参。明文只在 `key` 里（帧面：长连接入方向；派生 CLI 面：stdin），一进来就包成 `SecretKey`。
+/// `apikey-key-set` 的入参。明文只在 `key` 里（帧面：长连接入方向；派生 CLI 面：stdin），解码那一刻就是 `SecretKey`。
 /// 不收 `account`（账号 id 由这台后端按 `configDir` 推；不为旧形状留兼容）。
 #[derive(Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(Debug, serde::Serialize, ts_rs::TS))]
+#[cfg_attr(test, derive(Debug, ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct KeySetReq {
     /// 这个号的账号目录。
     pub(crate) config_dir: String,
     /// 明文。
-    pub(crate) key: String,
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) key: SecretKey,
     /// 这个账号的第三方端点：缺 / `null` / 空串 ＝ 不碰那一格（只配 key 时已有端点原样留着）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -112,8 +113,6 @@ pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Fail> 
     // 账号 id 由**这台后端**按全仓唯一那份规则推（`acct_core::apikey_account_id_of_dir`，起会话那一侧 `endpoint.rs` 调的同一个）。
     let account_id = account_of(&req.config_dir)?;
     let account = account_id.as_str();
-    let plain = req.key.as_str();
-    let key = SecretKey::new(plain);
     // Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
     //   （只配 key 时已有端点原样留着）；给了就先过**与装表同一个谓词**（`upstream_url_core::usable`：
     //   写得进去、却装不进表 ⇒ 那一行永远用不了），不对 ⇒ 整次不写（key 也不落）。
@@ -122,8 +121,8 @@ pub(crate) fn answer_set_at(own: &Own, req: &KeySetReq) -> Result<KeySet, Fail> 
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
-    check_inputs(plain, base_url)?;
-    write_at(own, &file, account, &key, base_url)?;
+    check_inputs(&req.key, base_url)?;
+    write_at(own, &file, account, &req.key, base_url)?;
     // 回的是**盘上的事实**：写完再读一遍，取这一行的掩码与端点。
     let row = read_doc(path)?.and_then(|doc| {
         store::read_accounts(&doc)
@@ -259,8 +258,8 @@ pub(crate) fn account_ids_at(path: &Path) -> Result<Vec<String>, String> {
 
 /// 一把 key ＋ 一个 Base URL 写不写得进去（空 key · 装不进表的地址 ⇒ 拒）—— [`answer_set_at`] 落盘前判的就是这一条；
 /// 建 API 号那一趟在建目录**之前**先问它，免得号建好了 key 却写不进去。
-pub(crate) fn check_inputs(plain: &str, base_url: Option<&str>) -> Result<(), Fail> {
-    if !SecretKey::new(plain).is_configured() {
+pub(crate) fn check_inputs(key: &SecretKey, base_url: Option<&str>) -> Result<(), Fail> {
+    if !key.is_configured() {
         return Err(Fail::from((
             "bad_args",
             copy_text("beUpstreamFileFace.keySet.emptyKey", &[]),

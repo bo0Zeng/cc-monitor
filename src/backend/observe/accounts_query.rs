@@ -435,24 +435,40 @@ pub(crate) fn list_product(
     table_agent: &str,
     relay_running: bool,
 ) -> AccountsList {
-    let creds = crate::accounts::upstream_select::file_face::machine_path()
-        .ok()
-        .and_then(|p| crate::accounts::upstream_select::creds::perm_notice(&p));
-    with_notice(
-        list_product_with(
-            &resolve_accts_dir(),
-            home_dir().as_deref(),
-            rows,
-            &crate::accounts::upstream_select::file_face::machine_key_facts(),
-            agent,
-            table_agent,
-            relay_running,
-        ),
-        creds,
-    )
+    let notices = secret_file_notices(
+        crate::accounts::upstream_select::file_face::machine_path()
+            .ok()
+            .as_deref(),
+        home_dir()
+            .map(|h| h.join(relay_route_core::KEY_FILE_REL))
+            .as_deref(),
+    );
+    let list = list_product_with(
+        &resolve_accts_dir(),
+        home_dir().as_deref(),
+        rows,
+        &crate::accounts::upstream_select::file_face::machine_key_facts(),
+        agent,
+        table_agent,
+        relay_running,
+    );
+    notices
+        .into_iter()
+        .fold(list, |v, n| with_notice(v, Some(n)))
 }
 
-/// 清单的 `notice` 并上另一句（凭据文件权限那一句，KS11）：两句都有 ⇒ 连成一句；只有一句 ⇒ 就是它。
+/// KS11：这台两份自家秘密文件（API key 凭据文件 · 中转钥匙文件）各该说的那一句（不在 · 只给本人的不说）。判法只在 `creds_core::perm`。
+pub(crate) fn secret_file_notices(creds: Option<&Path>, key: Option<&Path>) -> Vec<String> {
+    [
+        (creds, copy_text("credsPerm.notice.apikey", &[])),
+        (key, copy_text("credsPerm.notice.relayKey", &[])),
+    ]
+    .into_iter()
+    .filter_map(|(p, what)| creds_core::perm::notice(p?, &what))
+    .collect()
+}
+
+/// 清单的 `notice` 并上另一句（自家秘密文件权限那一句，KS11）：两句都有 ⇒ 连成一句；只有一句 ⇒ 就是它。
 pub(crate) fn with_notice(mut v: AccountsList, more: Option<String>) -> AccountsList {
     let Some(more) = more else { return v };
     v.notice = Some(match v.notice.take() {

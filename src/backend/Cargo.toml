@@ -120,7 +120,7 @@ cmd-wire = { path = "../common/cmd-wire" }
 # ⚠ 买掉的那一格如实记：「backend 写不了这份文件」先前是**编译器**兜的，今天换成判据兜 ——
 #   写半边（`perm::create_private`）在本 crate 生产段的引用处 == 第四层登记的那一份
 #   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
-# 顺带：开了之后 Windows 上 `perm::probe` 也读得了 DACL（先前那条「查不出来」的代价没了）。
+# 顺带：开了之后读凭据文件与中转钥匙时按句柄量权限（`perm::open_checked`，Windows 上读属主与 DACL）。
 creds-core = { path = "../common/creds-core", features = ["harden"] }
 # 交给 Win32 的路径（长路径前缀）只从它来：不覆盖改名那一处用；仓内 crate、零依赖。
 win-path-core = { path = "../common/win-path-core" }

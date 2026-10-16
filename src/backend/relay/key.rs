@@ -31,6 +31,7 @@
 use crate::platform::fs::Own;
 use comms_outward::Key;
 use copy_core::copy_text;
+use creds_core::perm::Verdict;
 use std::path::Path;
 
 /// 哪一个范围的钥匙。盘上只有全权那一把（根钥匙）；只许直通那一把从它派生（[`pass_of`]）。
@@ -104,14 +105,22 @@ pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> O
     relay_route_core::keyed_base_url(url, key.expose())
 }
 
+/// 读回盘上那一把，连同按读它的那个句柄量到的权限结论（`creds_core::perm`，凭据文件同一套判法）。不在 / 读不动 / 形状不对 ⇒ `None`。
+fn read_key_checked(path: &Path) -> Option<(Key, Verdict)> {
+    let (f, v) = creds_core::perm::open_checked(path).ok()?;
+    let s = std::io::read_to_string(f).ok()?;
+    Key::from_text(&s).map(|k| (k, v))
+}
+
 /// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘（经写句柄，家目录那一根：`~/`[`KEY_FILE_REL`](relay_route_core::KEY_FILE_REL)）。
+/// 钥匙文件的权限结论随钥匙交回：宽了照实说、不拒、不自己改（改了不等于没漏，真要换钥匙会打断所有活会话）。
 /// **本模块唯一的写口**（只在中转绑上口之后调，`relay/listen.rs`）。
-pub(crate) fn ensure_key(own: &Own) -> Result<Key, crate::common::said::Said> {
+pub(crate) fn ensure_key(own: &Own) -> Result<(Key, Verdict), crate::common::said::Said> {
     let file = own.at_home(relay_route_core::KEY_FILE_REL)?;
     let dir = own.home_dir()?;
     let path = file.as_path();
-    if let Some(k) = read_key(path) {
-        return Ok(k);
+    if let Some(got) = read_key_checked(path) {
+        return Ok(got);
     }
     // 读 → 铸 → 写整段在那个目录的跨进程锁里（`platform/lock.rs`），锁里再读一次：
     //   两个进程同时发现没钥匙时，只有先拿到锁的那一个铸，后一个读回它那一把。
@@ -129,13 +138,17 @@ pub(crate) fn ensure_key(own: &Own) -> Result<Key, crate::common::said::Said> {
         )
     })?;
     let held = own.lock(&dir).map_err(crate::common::said::Said::from)?;
-    if let Some(k) = read_key(path) {
-        return Ok(k);
+    if let Some(got) = read_key_checked(path) {
+        return Ok(got);
     }
     let k = mint()?;
     // 报错里只有路径，**永远没有钥匙本身**。
     own.write(&file, &held, k.expose().as_bytes())?;
-    Ok(k)
+    let verdict = match creds_core::perm::open_checked(path) {
+        Ok((_, v)) => v,
+        Err(e) => creds_core::perm::open_failed(&e),
+    };
+    Ok((k, verdict))
 }
 
 /// 铸一把：OS 密码学随机数（经 `rustls` 已经带进来的 `ring`，不新增依赖）。

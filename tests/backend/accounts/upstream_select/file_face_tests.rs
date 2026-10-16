@@ -722,3 +722,20 @@ fn the_key_set_reply_keeps_its_wire_bytes() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 入参解码那一刻明文就包进 `SecretKey`：整份入参照 `{:?}` 印出来也不带明文（错误路径里顺手印入参是泄漏的大头）。
+#[test]
+fn the_key_is_sealed_from_the_moment_the_request_is_decoded() {
+    let marker = "sk-marker-7f3a9c";
+    let req: KeySetReq = crate::wire::typed::take(&serde_json::json!({
+        "configDir": "/h/.cc-monitor/accounts/k",
+        "key": marker,
+    }))
+    .expect("合法入参");
+    let printed = format!("{req:?}");
+    assert!(!printed.contains(marker), "{printed}");
+    assert!(
+        printed.contains("/h/.cc-monitor/accounts/k"),
+        "正控：别的格照印 {printed}"
+    );
+}
