@@ -55,14 +55,6 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
-vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(undefined),
-  runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
-  // ── 下面三条只为 `../tabs` 的导入面（`D5 阻-2` 那一组）——本文件不驱动远端那半。
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
-  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 
 // ── `K-H2b` `D5 阻-2`：文件末尾再加一组行为判据，驱动**真的 `TabManager`**。
 //    `tabs.ts` 的模块图很重（stream / cards / 渲染族），这几条 mock 是**为了让它能在

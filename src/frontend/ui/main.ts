@@ -78,7 +78,7 @@ import { lastAccounts } from "./history-reads";
 import { decodeTasks, TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
-import { TerminalPage } from "./terminal-page";
+import { TerminalPage, type Watched } from "./terminal-page";
 import { onMachineState } from "./machine-feed";
 import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
@@ -207,10 +207,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(tasksPanel.summaryElement);
   const agentsPanel = new AgentsPanel();
   status.appendChild(agentsPanel.summaryElement);
-  // 终端页跟着当前标签页走；`tabs` 在下面才建 ⇒ 先经一个口子取当前标签页，建好了再接上。
+  // 终端页跟着当前标签页走（占位标签页显着时看它的那个终端）；`tabs` 在下面才建 ⇒ 先经两个口子取，建好了再接上。
   let activeTab: () => Tab | null = () => null;
+  let watched: () => Watched | null = () => null;
   const terminalPage = new TerminalPage({
-    active: () => activeTab(),
+    active: () => watched(),
     front: (sid) => tabs.frontFor(sid),
     focusStream: () => {
       const el = activeTab()?.streamEl;
@@ -377,13 +378,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.onSlotShown = (on) => {
     sessionHead.el.toggleAttribute("data-slot-over", on);
     tabBar.toggleAttribute("data-slot-over", on);
+    terminalPage.sessionChanged();
   };
   void listen<{ origin: string; sid: string }>(FOCUS_SESSION_EVENT, (e) => {
     const w = getCurrentWindow();
     void w.unminimize().then(() => w.setFocus()).catch(() => {});
     tabs.switchTo(e.payload.sid);
   });
-  tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
+  tabs.onViewTerminal = () => {
+    terminalPage.sessionChanged();
+    mainDrawer.dock.show("terminal");
+  };
   const activeOrigin = (): Origin | null => {
     const sid = tabs.activeSessionId();
     return sid === null ? null : tabs.originOf(sid);
@@ -449,6 +454,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   // 当前 tab 那一格变了 → 刷新 HUD context% chip（会话事实到了 / 切会话 / 要不到 ⇒ chip 说原因）。订阅 store。
   activeTab = () => tabs.activeTab();
+  watched = () => tabs.watched();
   // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
   function paintTerminalActs(): void {
     const t = tabs.activeTab();

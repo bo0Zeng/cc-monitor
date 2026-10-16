@@ -16,10 +16,10 @@ fn it_embeds_the_one_table_on_disk() {
     assert!(!entries().is_empty(), "表解析出 0 条");
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "devbox"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "devbox"), ("name", "%1")]
         ),
-        "预览 · devbox · tmux 会话 %1"
+        "devbox · tmux 会话「%1」"
     );
 }
 
@@ -28,8 +28,8 @@ fn it_embeds_the_one_table_on_disk() {
 fn a_missing_key_says_its_name_instead_of_panicking() {
     assert_eq!(copy_text("no.such.key", &[]), "〔no.such.key〕");
     assert_eq!(
-        copy_text("panePreview.head.title", &[("origin", "devbox")]),
-        "预览 · devbox · tmux 会话 {target}"
+        copy_text("sessionOpen.attached.body", &[("machine", "devbox")]),
+        "devbox · tmux 会话「{name}」"
     );
 }
 
@@ -37,9 +37,9 @@ fn a_missing_key_says_its_name_instead_of_panicking() {
 #[test]
 fn the_static_form_is_the_same_text_and_lives_forever() {
     fn once() -> &'static str {
-        crate::copy_static!("panePreview.head.refresh")
+        crate::copy_static!("accountChip.menu.refresh")
     }
-    assert_eq!(once(), copy_text("panePreview.head.refresh", &[]));
+    assert_eq!(once(), copy_text("accountChip.menu.refresh", &[]));
     assert!(
         std::ptr::eq(once(), once()),
         "同一个调用点取两次不是同一块内存"
@@ -92,34 +92,34 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
     // 值里带另一个参数的占位符：原样留着（先前逐个 replace ⇒ `[%1] tmux: %1`）。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "{target}"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "{name}"), ("name", "%1")]
         ),
-        "预览 · {target} · tmux 会话 %1"
+        "{name} · tmux 会话「%1」"
     );
     // 参数给的顺序反过来也一样（先前的写法只在一个方向上重扫 —— 顺序不该是语义的一部分）。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("target", "{origin}"), ("origin", "devbox")]
+            "sessionOpen.attached.body",
+            &[("name", "{machine}"), ("machine", "devbox")]
         ),
-        "预览 · devbox · tmux 会话 {origin}"
+        "devbox · tmux 会话「{machine}」"
     );
     // 值里带它自己的占位符、带花括号残片：都原样。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "{origin}"), ("target", "{a{b}")]
+            "sessionOpen.attached.body",
+            &[("machine", "{machine}"), ("name", "{a{b}")]
         ),
-        "预览 · {origin} · tmux 会话 {a{b}"
+        "{machine} · tmux 会话「{a{b}」"
     );
     // 正控：两个占位符都真换了（不是「一个都不换」）。
     assert_eq!(
         copy_text(
-            "panePreview.head.title",
-            &[("origin", "devbox"), ("target", "%1")]
+            "sessionOpen.attached.body",
+            &[("machine", "devbox"), ("name", "%1")]
         ),
-        "预览 · devbox · tmux 会话 %1"
+        "devbox · tmux 会话「%1」"
     );
 }
 

@@ -419,7 +419,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
         return reply();
       }),
     };
-    const host = { active: () => cur.t, front: vi.fn(), focusStream: vi.fn() };
+    const host = { active: () => (cur.t ? { kind: "tab" as const, tab: cur.t } : null), front: vi.fn(), focusStream: vi.fn() };
     const page = new TerminalPage(host, reads);
     document.body.appendChild(page.el);
     page.sessionChanged();

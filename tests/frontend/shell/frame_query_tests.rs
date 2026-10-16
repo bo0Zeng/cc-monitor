@@ -614,7 +614,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "terminal-preview",
         "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\
-         `src/frontend/ui/terminal-reads.ts`（预览窗 `views/pane-preview.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
+         `src/frontend/ui/terminal-reads.ts`（终端页 `terminal-page.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
     ),
     (
         "kill",

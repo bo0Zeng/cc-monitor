@@ -1,7 +1,8 @@
 /**
- * 底部抽屉的「终端」页：当前标签页那个会话所在终端的一屏（这一版是快照）＋ 一行输入 ＋ 几颗常用键。跟着当前标签页走。
+ * 底部抽屉的「终端」页：当前标签页那个会话所在终端的一屏（这一版是快照）＋ 一行输入 ＋ 几颗常用键。跟着当前标签页走；
+ * 占位标签页显着时看它的那个终端（没报到的会话与已有会话看画面是同一页）。
  *
- * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着、不在 tmux 里的（容器事实 none）
+ * - 找终端：问那台 `terminals-list`，按会话 ID 认出那一行（占位那一形按终端句柄认）；没有那一行 ⇒ 已结束的写「已结束 · 无终端」；活着、不在 tmux 里的（容器事实 none）
  *   写「不在 tmux 里」（↗ 真能用时给「切到终端」）；在 tmux 里却认不出的写「非 cc-monitor 启动」。
  * - 画面：带颜色（`terminal-screen.ts` 照后端给的颜色段画）。开到这一页 / 切到这个标签页时抓一次，同时订那台的实时画面（`terminal-follow.ts`）：
  *   订上了 ⇒ 头上「● 实时」、画面跟着变、送完不再重抓；那台只能快照 ⇒ 多一枚「仅快照」，照旧送完 0.5 · 1.5 · 3 秒各再抓一次、其余时候点「重新看」；
@@ -57,8 +58,19 @@ function liveOf(why: FollowStop): Live {
   return why.kind === "snapshotOnly" ? { at: "snapOnly", said: why.said } : { at: "stopped", said: why.said, offline: why.offline };
 }
 
+/** 看的是谁：当前标签页那个会话 · 占位标签页的那个终端（哪台 · 句柄 · tmux 会话名 · 标题）。 */
+export type Watched = { kind: "tab"; tab: Tab } | { kind: "slot"; origin: Origin; terminal: string; name: string; title: string };
+
+/** 按会话各记一份的那几样（没送的字）用的键：标签页 ⇒ 会话 ID；占位 ⇒ 那台 ＋ 句柄。 */
+function keyOf(w: Watched): string {
+  return w.kind === "tab" ? w.tab.sessionId : `\u0000${w.origin}\u0000${w.terminal}`;
+}
+const originOf = (w: Watched): Origin => (w.kind === "tab" ? w.tab.origin : w.origin);
+const labelOf = (w: Watched): string => (w.kind === "tab" ? fullTitle(w.tab) : w.title);
+const machineWord = (w: Watched): string => (w.kind === "tab" ? machineOf(w.tab) : machineName(w.origin));
+
 export interface TerminalPageHost {
-  active(): Tab | null;
+  active(): Watched | null;
   /** ↗ 切到这个会话的终端窗口。 */
   front(sid: string): void;
   /** Esc：焦点还给消息流。 */
@@ -102,7 +114,7 @@ let pageSeq = 0;
 export class TerminalPage {
   readonly el: HTMLElement;
   private visible = false;
-  /** 正在看的会话（`null` ＝ 没有当前标签页）。 */
+  /** 正在看的那一个（`keyOf`；`null` ＝ 没有当前标签页）。 */
   private sid: string | null = null;
   private origin: Origin | undefined = undefined;
   private row: TerminalRow | null = null;
@@ -188,7 +200,7 @@ export class TerminalPage {
     this.snapTag.className = s.termTag;
     const sp = el("span");
     sp.className = s.termSp;
-    this.frontBtn = button({ label: copyText("terminal.head.front"), kind: "ghost", size: "compact", icon: "front", onClick: () => this.sid !== null && this.host.front(this.sid) });
+    this.frontBtn = button({ label: copyText("terminal.head.front"), kind: "ghost", size: "compact", icon: "front", onClick: () => this.frontActive() });
     this.snapGroup = el("span");
     this.snapGroup.className = s.termSnap;
     this.snapGroup.append(this.at, again);
@@ -263,10 +275,16 @@ export class TerminalPage {
     }
   }
 
+  /** ↗ 切到当前标签页那个会话的终端窗口（占位那一形没有）。 */
+  private frontActive(): void {
+    const w = this.host.active();
+    if (w?.kind === "tab") this.host.front(w.tab.sessionId);
+  }
+
   /** 当前标签页换了 / 它的状态变了：换了会话 ⇒ 字按会话存取、开着就重新找终端抓一屏；同一个会话 ⇒ 只重画页头。 */
   sessionChanged(): void {
-    const tab = this.host.active();
-    const sid = tab?.sessionId ?? null;
+    const w = this.host.active();
+    const sid = w ? keyOf(w) : null;
     if (sid === this.sid) {
       this.paint();
       return;
@@ -276,7 +294,7 @@ export class TerminalPage {
     this.stopLive();
     this.seq++;
     this.sid = sid;
-    this.origin = tab?.origin;
+    this.origin = w ? originOf(w) : undefined;
     this.row = null;
     this.shot = null;
     this.shotError = null;
@@ -298,14 +316,14 @@ export class TerminalPage {
 
   /** 找终端、抓一屏（名单也重问：终端可能刚起 / 刚没）。 */
   async refresh(): Promise<void> {
-    const tab = this.host.active();
-    if (!tab || tab.sessionId !== this.sid || this.origin === undefined) {
+    const w = this.host.active();
+    if (!w || keyOf(w) !== this.sid || this.origin === undefined) {
       this.paint();
       return;
     }
     const mine = ++this.seq;
     const origin = this.origin;
-    const label = fullTitle(tab);
+    const label = labelOf(w);
     if (this.row === null) {
       this.phase = "loading";
       this.paint();
@@ -313,7 +331,7 @@ export class TerminalPage {
     try {
       const rows = await this.reads.list(origin, label);
       if (mine !== this.seq) return;
-      const hits = rows.filter((r) => r.sid === this.sid);
+      const hits = rows.filter((r) => (w.kind === "tab" ? r.sid === w.tab.sessionId : r.terminal === w.terminal));
       if (hits.length === 0) {
         this.stopLive();
         this.row = null;
@@ -392,11 +410,11 @@ export class TerminalPage {
 
   /** 抓一屏；抓到了（或实时那一帧更新）⇒ `true`，失败 ⇒ `false`。 */
   private async capture(mine: number): Promise<boolean> {
-    const tab = this.host.active();
+    const w = this.host.active();
     const row = this.row;
-    if (!tab || row === null || this.origin === undefined) return false;
+    if (!w || row === null || this.origin === undefined) return false;
     try {
-      const shot = await this.reads.shot(this.origin, row.terminal, fullTitle(tab));
+      const shot = await this.reads.shot(this.origin, row.terminal, labelOf(w));
       if (mine !== this.seq) return true;
       if (this.live.at === "on") return true; // 实时那一帧比这一张新
       this.shotError = null;
@@ -460,9 +478,9 @@ export class TerminalPage {
 
   /** 送一段字或一颗键。能不能送由名单里后端那一格说了算；送完按回话说一句、该重抓就重抓。 */
   async send(what: TerminalSend): Promise<boolean> {
-    const tab = this.host.active();
+    const w = this.host.active();
     const row = this.row;
-    if (!tab || row === null || this.origin === undefined || this.sending || row.inputNo !== null) return false;
+    if (!w || row === null || this.origin === undefined || this.sending || row.inputNo !== null) return false;
     const sid = this.sid;
     this.sending = true;
     this.paint();
@@ -470,7 +488,7 @@ export class TerminalPage {
     let failed: string | null = null;
     let detail = "";
     try {
-      sent = await this.reads.send(this.origin, row.terminal, what, this.shot?.screen ?? null, fullTitle(tab));
+      sent = await this.reads.send(this.origin, row.terminal, what, this.shot?.screen ?? null, labelOf(w));
     } catch (e) {
       failed = saidOfControl(e);
       detail = detailOf(e);
@@ -539,16 +557,21 @@ export class TerminalPage {
 
   /** 按此刻的状态重画。 */
   private paint(): void {
-    const tab = this.host.active();
-    if (!tab || this.sid === null) {
+    const w = this.host.active();
+    if (!w || this.sid === null) {
       this.body.replaceChildren(emptyState({ icon: "terminal", text: copyText("terminal.empty.noSession") }));
       return;
     }
-    if (this.phase === "none") {
+    if (this.phase === "none" && w.kind === "slot") {
+      this.body.replaceChildren(emptyState({ icon: "terminal", text: copyText("launch.slot.tmuxGone", { machine: machineName(w.origin), name: w.name }) }));
+      return;
+    }
+    if (this.phase === "none" && w.kind === "tab") {
+      const tab = w.tab;
+      const sid = tab.sessionId;
       const ended = canResume(tab.state); // 已结束（能恢复的那一态）
       // 活着、容器事实是「不在任何 tmux 里」（后端 `session_added.container` = none）：照实说，不当成别人起的。
       const outside = tab.state.liveness === "live" && tab.state.recoverability === "resumable";
-      const sid = this.sid;
       this.body.replaceChildren(
         ended
           ? emptyState({ icon: "terminal", text: copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }), hint: copyText("terminal.empty.endedHint") })
@@ -577,10 +600,11 @@ export class TerminalPage {
       return;
     }
     const row = this.row as TerminalRow;
-    const d = dotOf(tab);
-    setDot(this.dot, d, stateWord(tab));
-    this.title.textContent = fullTitle(tab);
-    this.where.textContent = tab.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineOf(tab) }) : machineOf(tab);
+    const tab = w.kind === "tab" ? w.tab : null;
+    if (tab) setDot(this.dot, dotOf(tab), stateWord(tab));
+    else setDot(this.dot, "unknown", copyText("launch.placeholder.title"));
+    this.title.textContent = labelOf(w);
+    this.where.textContent = tab?.projectDir ? copyText("terminal.head.where", { dir: tab.projectDir, machine: machineOf(tab) }) : machineWord(w);
     this.tag.textContent = row.tmuxName !== "" ? copyText("terminal.tag.tmux", { name: row.tmuxName }) : "";
     this.tag.style.display = row.tmuxName !== "" ? "" : "none";
     this.tag2.textContent = row.clients > 0 ? copyText("terminal.tag.windows", { n: row.clients }) : copyText("terminal.tag.background");
@@ -592,7 +616,7 @@ export class TerminalPage {
     this.liveTag.textContent = this.live.at === "on" ? copyText("terminal.head.live") : copyText("terminal.head.joining");
     this.snapTag.hidden = this.live.at !== "snapOnly";
     if (this.live.at === "snapOnly") this.snapTag.title = this.live.said;
-    this.frontBtn.style.display = terminalFrontAvailable() && hasTerminal(tab.state) ? "" : "none";
+    this.frontBtn.style.display = tab && terminalFrontAvailable() && hasTerminal(tab.state) ? "" : "none";
 
     const bars: HTMLElement[] = [];
     if (row.programExited) {
@@ -612,7 +636,7 @@ export class TerminalPage {
     }
     this.screen.dataset.stale = String(this.shotError !== null || this.live.at === "stopped");
 
-    this.to.textContent = copyText("terminal.input.to", { title: fullTitle(tab), machine: machineOf(tab) });
+    this.to.textContent = copyText("terminal.input.to", { title: labelOf(w), machine: machineWord(w) });
     this.owner.textContent = row.clients > 0 && row.input === "shared" ? copyText("terminal.input.shared", { n: row.clients }) : row.clients === 0 ? copyText("terminal.input.nobody") : "";
     const no = row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
     this.box.disabled = no !== null || this.sending;

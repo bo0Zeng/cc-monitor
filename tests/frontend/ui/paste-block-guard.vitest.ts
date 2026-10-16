@@ -26,7 +26,6 @@ const FAMILY_B = [
   // 〔三入口拆分 · 住址搬家〕代码块「复制」那处全局代理从 `main.ts` 搬到了主窗与 viewer 窗
   // 共用的 `entry-render-common.ts`（viewer 不再加载 `main.ts`）。语义一字未改。
   "src/frontend/ui/entry-render-common.ts",
-  "src/frontend/ui/remote-launch-run.ts", // 回退：复制命令让用户自己跑
   "src/frontend/ui/session-open.ts", // 开不了终端：复制那一行让用户自己跑
   "src/frontend/ui/terminal-open.ts", // 找不到终端时的［复制命令］：用户点了才复制那一行
   "src/frontend/ui/kit/detail.ts", // 全产品那一颗［复制详情］：一条报错的那句 ＋ 详情，复制给人看（不贴进任何配置）

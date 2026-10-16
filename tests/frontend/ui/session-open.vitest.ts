@@ -47,6 +47,8 @@ const resync = vi.hoisted(() => ({ offerResyncRetry: vi.fn() }));
 vi.mock("../../../src/frontend/ui/resync", () => resync);
 
 import { ON_LANDED, openSession } from "../../../src/frontend/ui/session-open";
+import { NoTerminalWindow } from "../../../src/frontend/ui/terminal-open";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { Landed } from "../../../src/frontend/ui/generated/Landed";
 import type { Opened } from "../../../src/frontend/ui/generated/Opened";
 import type { SessionOpenReq } from "../../../src/frontend/ui/generated/SessionOpenReq";
@@ -182,6 +184,21 @@ describe("开窗失败 · 在飞", () => {
     expect(await openSession("devbox", RESUME)).toBe(false);
     expect(clip.writeClipboard).toHaveBeenCalledWith("line:started");
     expect(arrival.expectArrival).not.toHaveBeenCalled();
+  });
+
+  it("这台找不到终端（按壳回的结局判）⇒ 照实说 ＋［设置］［复制命令］，不自动写剪贴板；只是话里带着那一句的真失败 ⇒ 照样复制", async () => {
+    reply = opened("window");
+    term.openLocalTerminal.mockRejectedValueOnce(new NoTerminalWindow("line:window", "setMissing"));
+    await openSession("<local>", { ...RESUME, local: true });
+    expect(clip.writeClipboard, "不许自动写剪贴板").not.toHaveBeenCalled();
+    const [title, , opts] = toasts.toast.mock.calls[0] as [string, string, { action?: { label: string; run: () => void }[] }];
+    expect(title).toBe(copyText("terminalOpen.setMissing.title"));
+    expect((opts.action ?? []).map((x) => x.label)).toEqual([copyText("terminalOpen.noTerminal.settings"), copyText("terminalOpen.noTerminal.copy")]);
+    vi.clearAllMocks();
+    clip.writeClipboard.mockResolvedValue(undefined);
+    term.openLocalTerminal.mockRejectedValueOnce(new Error(copyText("rsLaunch.posix.noTerminalWindow")));
+    await openSession("<local>", { ...RESUME, local: true });
+    expect(clip.writeClipboard).toHaveBeenCalledWith("line:window");
   });
 
   it("★ 同一条在飞再点 ⇒ 零次第二问；别的那台同一个 sid 照问", async () => {

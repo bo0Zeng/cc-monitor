@@ -8,14 +8,13 @@
  * 状态不明（那台看不见）的标签页：恢复 · 在终端里打开 · 结束 · 账号… 一律灰（同一句），只有关闭标签页可点。
  * 点下去真正做事的住 `tab-session-actions.ts`。
  */
-import { toast } from "./kit/toast";
 import type { Tab } from "./tab-model";
 import { canResume, hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import type { TabCollection } from "./tab-collections";
 import { defaultPick, pickAsk, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { openNewSession } from "./new-session";
-import { runRemoteAttach } from "./remote-launch-run";
+import { openSession } from "./session-open";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
@@ -288,24 +287,11 @@ export class TabMenu {
 
 
 
-  /**
-   * 会话头 / 钉条的［在终端里打开］（远端、在 tmux 里）：问那台这个会话在哪个 tmux 会话里，接上第一个（命中多个照右键那条说出来）；
-   * 那台说没有 ⇒ 说一句，不开窗。
-   */
+  /** 会话头 / 钉条 / 右键的［在终端里打开］（远端）：交那台接回（接哪个 · 命中几个都是那台判、那台说）。 */
   async attachRemote(sid: string): Promise<void> {
     const t = this.host.tab(sid);
     if (!t || !isRemoteOrigin(t.origin)) return;
-    const s = await standingOf(t.origin, sid);
-    if (s === undefined || s.kind === "none" || s.kind === "no_tmux" || s.names.length === 0) {
-      toast(copyText("sessionHead.attach.none", { machine: t.origin }), "", { level: "warn" });
-      return;
-    }
-    if (s.kind === "ambiguous") toast(copyText("tabMenu.dupes.title"), copyText("tabMenu.dupes.body", { n: s.names.length, name: s.names[0] }), { level: "info" });
-    if (t.agent === null) {
-      toast(copyText("tabSessionActions.agent.unknown"), "", { level: "info" });
-      return;
-    }
-    void runRemoteAttach(t.origin, t.agent, s.names[0]);
+    await openSession(t.origin, { what: { kind: "look", sid }, local: false });
   }
 
   /** 远端：那台答回这个会话在哪个 tmux 会话里 ⇒ 在终端里打开 · 看一眼画面 · 结束三格就位（菜单已换 / 已关 ⇒ 不动）。 */
@@ -319,14 +305,13 @@ export class TabMenu {
     const name = s.names[0];
     if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "kill");
     const ambiguous = s.kind === "ambiguous";
-    const agent = this.host.tab(sid)?.agent ?? null;
     updateMenuItem("attach", {
       id: "attach",
       icon: "terminal",
       label: copyText("tabMenu.attach.label"),
-      // 还不知道是哪一家（会话事实没到）⇒ 灰着，不落哪一家；命中多个 ⇒ 接第一个（第二行已经说了）。
-      why: agent === null ? copyText("tabSessionActions.agent.unknown") : ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
-      ...(agent === null ? { enabled: false } : { onClick: () => void runRemoteAttach(origin, agent, name) }),
+      // 命中多个 ⇒ 那台接第一个（第二行先说了）。
+      why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
+      onClick: () => void this.attachRemote(sid),
     });
     // 命中多个 ⇒ 不给结束（破坏性，选错了不可逆）。
     updateMenuItem("kill", gateByOffer(origin, ambiguous

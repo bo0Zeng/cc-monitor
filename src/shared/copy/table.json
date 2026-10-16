@@ -6,8 +6,7 @@
     "role：界面角色（按钮 · 菜单项 · 标题 · 标签 · 占位 · 状态 · 说明 · 悬停 · toast · 报错 · 原因格 · 确认框 · 空态 · 进度 · 命令行 · 读屏 · 片段 · 图标），闭集与每个角色许配的 kind 住 tests/copy/copy-table.vitest.ts 的 ROLE_KINDS（[C-K4]）；按角色限长等规矩据此判。",
     "zh 里的插值点只许具名（{origin}），不许 {} / {0}；args 显式登记，与 zh 里出现的占位符两向相等。",
     "waive：这一条对某条规矩的豁免（规矩号 → 理由）。豁免了却没违反 ⇒ 红（死豁免）。规矩表在 src/shared/copy/rules.json。",
-    "生产代码只经 src/frontend/ui/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。",
-    "本波只抽了一个样板区（src/frontend/ui/views/pane-preview.ts）；全量抽表排在最后一波。"
+    "生产代码只经 src/frontend/ui/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。"
   ],
   "entries": {
     "accountOps.name.empty": {
@@ -2014,40 +2013,6 @@
       "zh": "此平台不支持停止常驻后端",
       "args": []
     },
-    "panePreview.head.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "预览 · {origin} · tmux 会话 {target}",
-      "args": ["origin", "target"],
-      "limited": ["tmux"]
-    },
-    "panePreview.head.refresh": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "刷新",
-      "args": []
-    },
-    "panePreview.head.close": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "关闭",
-      "args": []
-    },
-    "panePreview.body.loading": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "读取画面中",
-      "args": []
-    },
-    "panePreview.body.empty": {
-      "kind": "body",
-      "role": "空态",
-      "zh": "（画面为空）",
-      "args": [],
-      "waive": {
-        "C-L4": "显示在终端画面框里：括号把它和真画面区分开 —— 真画面里可能恰好就有「画面为空」这四个字。"
-      }
-    },
     "sessionState.ended.name": {
       "kind": "body",
       "role": "片段",
@@ -3236,12 +3201,6 @@
       "zh": "返回",
       "args": []
     },
-    "panePreview.head.closeIcon": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "✕",
-      "args": []
-    },
     "cards.omitted.loading": {
       "kind": "body",
       "role": "状态",
@@ -4216,62 +4175,6 @@
       "zh": "关闭组里已结束的（{n}）",
       "args": ["n"]
     },
-    "remoteLaunchRun.copyFallback.failedManual": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端未打开 · 手动复制下面的命令",
-      "args": []
-    },
-    "remoteLaunchRun.attach.failedCopied": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "终端未打开 · 命令已复制",
-      "args": []
-    },
-    "remoteLaunchRun.attach.startedBody": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "新终端窗口正在连接 {machine} · tmux 会话「{name}」",
-      "args": ["machine", "name"],
-      "limited": ["tmux", "连接"]
-    },
-    "remoteLaunchRun.attach.started": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已在终端里打开",
-      "args": []
-    },
-    "remoteLaunchRun.attach.buildFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "生成 attach 命令失败",
-      "args": []
-    },
-    "remoteLaunchRun.copyFallback.runRemote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在 {machine} 的 ssh 终端里粘贴运行",
-      "args": ["machine"],
-      "limited": ["SSH"]
-    },
-    "remoteLaunchRun.copyFallback.runLocal": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在本机 bash 里运行",
-      "args": []
-    },
-    "launchRender.refused.onMachine": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} · {said}",
-      "args": ["machine", "said"]
-    },
-    "remoteLaunchRun.renderCli.noReason": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "原因不明",
-      "args": []
-    },
     "main.sftp.noMachineHint": {
       "kind": "error",
       "role": "报错",
@@ -4716,20 +4619,6 @@
       "role": "报错",
       "zh": "上次的账号 {name} 不可用 · 单独恢复时可换账号",
       "args": ["name"]
-    },
-    "tabMenu.dupes.body": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在 tmux 会话 ×{n} · 已打开「{name}」 · 其余的到终端里清理",
-      "args": ["n", "name"],
-      "limited": ["tmux"]
-    },
-    "tabMenu.dupes.title": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "会话在多个 tmux 会话里",
-      "args": [],
-      "limited": ["tmux"]
     },
     "tabMenu.collection.remove": {
       "kind": "action",
@@ -14372,12 +14261,6 @@
       "zh": "{machine} tmux 会话 {name} 里正在跑的程序",
       "args": ["machine", "name"],
       "limited": ["tmux"]
-    },
-    "tabSessionActions.agent.unknown": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "agent 未知 · 未执行",
-      "args": []
     },
     "tabBatch.why.agentUnknown": {
       "kind": "body",

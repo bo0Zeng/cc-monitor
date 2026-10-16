@@ -129,9 +129,6 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn(), failToast: vi.fn(), silentUndo: vi.fn() }));
-vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
-  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
-}));
 // 恢复交那台（`session-open`）：这里换成 spy，判的是交了什么；那台怎么判住后端判据，发 · 说 · 开窗住 `session-open.vitest.ts`。
 vi.mock("../../../src/frontend/ui/session-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/session-open")>()),
@@ -169,7 +166,6 @@ import {
 import type { SessionFacts, UsageFact } from "../../../src/frontend/ui/session-reads";
 import { silentUndo, toast as showActionFailureToast, undoToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostFactsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
-import { runRemoteAttach } from "../../../src/frontend/ui/remote-launch-run";
 import { openSession } from "../../../src/frontend/ui/session-open";
 import { pickAsk } from "../../../src/frontend/ui/resume-menu";
 import { callStop } from "../../../src/frontend/ui/tab-batch-run";
@@ -1316,11 +1312,11 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   const whyOf = (b: HTMLElement | null): string | undefined => b?.querySelector("[data-part=why]")?.textContent ?? undefined;
   const attachBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.attach.label"));
   const killBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.kill.label"));
-  /** 点「在终端里打开」⇒ 接的是哪个 tmux 会话（交给那台的名字）。 */
-  const attachTarget = (): string | undefined => {
-    vi.mocked(runRemoteAttach).mockClear();
+  /** 点「在终端里打开」⇒ 交那台的那一问（接哪个由那台判）。 */
+  const attachTarget = (): unknown => {
+    vi.mocked(openSession).mockClear();
     attachBtn()?.click();
-    return vi.mocked(runRemoteAttach).mock.calls.at(-1)?.[2] as string | undefined;
+    return vi.mocked(openSession).mock.calls.at(-1)?.[1];
   };
   /** 点「结束会话…」⇒ 确认框里写的字（读完按取消关掉）。 */
   const killConfirmText = async (): Promise<string> => {
@@ -1499,7 +1495,16 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachBtn()?.disabled).toBe(true); // 还在问：先画出项、不可点
     await flush();
     expect(attachBtn()?.disabled).toBe(false); // 就绪
-    expect(attachTarget()).toBe("cc-abc");
+    expect(attachTarget(), "接哪个那台判（按 sid）").toEqual({ what: { kind: "look", sid: "A" }, local: false });
+  });
+
+  it("★ 会话头［在终端里打开］⇒ 恰好一问 `session-open {look, sid}`：不先问它在哪个 tmux 会话里（接哪个 · 命中几个那台判、那台说）", async () => {
+    tm.ensureTab("A", "/a", "p", "hostA");
+    vi.mocked(openSession).mockClear();
+    tm.attachInTerminal("A");
+    await flush();
+    expect(opens()).toEqual([["hostA", { what: { kind: "look", sid: "A" }, local: false }]]);
+    expect(vi.mocked(invoke).mock.calls.filter(([c, a]) => isChanCall(c, a, "sessions-where"))).toEqual([]);
   });
 
   it("前台命令报 node（claude 是 Node CLI）也认(D-Sug2)", async () => {
@@ -1513,7 +1518,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
     await flush();
-    expect(attachTarget()).toBe("sess");
+    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
   });
 
   it("无匹配（cwd 不符）→ 占位移除,不显示 attach", async () => {
@@ -1545,7 +1550,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("A");
     await flush();
     expect(attachBtn()?.disabled).toBe(false);
-    expect(attachTarget()).toBe("cc-A1");
+    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "A" }, local: false });
   });
 
   // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可），
@@ -1582,8 +1587,6 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     const labels = items.map((b) => b.querySelector("[data-part=label]")?.textContent);
     expect(labels).toContain(copyText("tabMenu.open.drawer"));
     expect(items.filter((b) => b.dataset.id === "preview" || b.querySelector("[data-part=label]")?.textContent?.includes("画面")), "旧浮层那一项还在").toEqual([]);
-    itemLabeled(copyText("tabMenu.open.drawer"))?.click();
-    expect(document.querySelector(".pane-preview-overlay"), "点了不许开旧浮层").toBeNull();
   });
 
   it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
@@ -1609,7 +1612,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
       { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
     ]);
     await flush(); // A 迟到:代次不符 → 整体 no-op,不动 B 菜单
-    expect(attachTarget()).toBe("B-sess");
+    expect(vi.mocked(openSession).mock.calls.length, "A 迟到的那一答没换掉 B 的项").toBe(0);
+    expect(attachTarget()).toEqual({ what: { kind: "look", sid: "B" }, local: false });
   });
 });
 

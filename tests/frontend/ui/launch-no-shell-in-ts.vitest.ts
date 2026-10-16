@@ -171,7 +171,7 @@ describe(" 条 1：前端零 shell 串", () => {
 
   it("量具自检：人群真的是 src/ 生产段全集（否则零命中是因为人群空了）", () => {
     // 起会话那条链上的几份必须在人群里 —— 它们正是本条要看的东西；测试文件与生成物必须不在。
-    for (const f of ["src/frontend/ui/remote-launch-run.ts", "src/frontend/ui/launch-requests.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/entry-main.ts"]) {
+    for (const f of ["src/frontend/ui/session-open.ts", "src/frontend/ui/launch-requests.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/entry-main.ts"]) {
       expect(all.has(f), `${f} 不在人群里 —— 遍历坏了`).toBe(true);
     }
     expect([...all.keys()].some((f) => f.includes(".vitest.") || f.includes(".test.") || f.startsWith("src/frontend/ui/generated/"))).toBe(false);

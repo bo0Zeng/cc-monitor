@@ -75,6 +75,7 @@ import { updateBackendOf } from "./backend-deploy";
 import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
+import type { Watched } from "./terminal-page";
 import type { ActionId } from "./keybindings/actions";
 
 
@@ -151,6 +152,7 @@ export class TabManager {
           this.slotOver = on;
           this.onSlotShown?.(on);
         },
+        viewTerminal: () => this.onViewTerminal?.(),
       },
       CHANNEL_ACTS,
     );
@@ -1773,6 +1775,16 @@ export class TabManager {
     }
     this.slots.add(spec);
     return true;
+  }
+
+  /** 抽屉的终端页看谁：占位标签页那一页显着 ⇒ 它起在的那个终端（还不知道 ⇒ 没有）；否则当前标签页那个会话。 */
+  watched(): Watched | null {
+    if (this.slots.isShowing()) {
+      const w = this.slots.watched();
+      return w ? { kind: "slot", ...w } : null;
+    }
+    const tab = this.activeTab();
+    return tab ? { kind: "tab", tab } : null;
   }
 
   /** 这一键此刻要不要让开：占位标签页那一页显着、而它作用于当前会话（底下那个真标签页不是你看着的那个）。 */
