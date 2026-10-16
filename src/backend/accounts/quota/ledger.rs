@@ -276,12 +276,8 @@ impl Ledger {
         )
     }
 
-    /// 同 [`Self::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
-    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
-        Self::open(path, nodes, Default::default())
-    }
-
-    fn open(
+    /// 在这个落点开账，节点发到给的那一条、用量记在给的那一本里（判据各给自己的，不跟并行的判据串）。
+    pub(crate) fn open(
         path: Option<PathBuf>,
         nodes: super::nodes::Nodes,
         spend: std::sync::Arc<super::spend::Spend>,
@@ -304,11 +300,6 @@ impl Ledger {
             nodes,
             spend,
         }
-    }
-
-    /// 每发用量的那一本（判据往里喂流事件）。
-    pub(crate) fn spend(&self) -> &super::spend::Spend {
-        &self.spend
     }
 
     /// 用的那一刻比一次盘上的戳：别人写过 ⇒ 读进来、按窗口并进内存（内存里中转那几格照旧 —— 回包头只有中转这一个写者）。

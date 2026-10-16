@@ -15,6 +15,7 @@
   "files-stat": [{"path":{"b16":"2fff"}}],
   "files-write-text": [{"root":"/w","rel":{"b16":"2fff"},"content":"x","expect":{"sha256":"abababababababababababababababababababababababababababababababab"}}],
   "history-annotate": [{"sid":"s","patch":{"hide":"on"}},{"sid":"s","patch":{"hide":"off"}},{"sid":"s","patch":{"hide":"rule"}}],
+  "history-facts": [{"path":"/p/s.jsonl"}],
   "history-lines": [{"path":"/p/s.jsonl","from":0,"until":10}],
   "history-list": [null,{"hidden":true}],
   "history-read": [{"path":"/p/s.jsonl","offset":0,"until":10}],

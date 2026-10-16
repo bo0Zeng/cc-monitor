@@ -62,8 +62,11 @@ class FilesTest {
         assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "d", "recursive" to true))), FilesDelete.args(dir, RemotePath.of("d"), recursive = true))
         assertEquals(mapOf("root" to "/w", "items" to listOf(mapOf("rel" to "f")), "mode" to "644"), FilesChmod.args(dir, RemotePath.of("f"), "644"))
         assertEquals(mapOf("path" to "/w/f"), FilesStat.args(RemotePath.of("/w/f")))
-        assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
-        assertEquals(FileKind.DIR, FilesStat.kindOf(mapOf("path" to "/w/d", "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)))
+        assertEquals(420L, FilesStat.modeOf(mapOf("path" to "/w/f", "name" to "f", "up" to "/w", "kind" to "file", "size" to 0.0, "readonly" to false, "mode" to 420.0, "owner" to null, "link_target" to null)))
+        assertEquals(
+            FilesStat.Place(FileKind.DIR, RemotePath.of("/w"), RemotePath.of("d")),
+            FilesStat.placeOf(mapOf("path" to "/w/d", "name" to "d", "up" to "/w", "kind" to "dir", "size" to 0.0, "readonly" to false, "owner" to null, "link_target" to null)),
+        )
     }
 
     @Test

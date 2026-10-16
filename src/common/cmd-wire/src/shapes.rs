@@ -76,7 +76,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("files-rename", "56ed5d98"),
     ("files-size", "66c56831"),
     ("files-stage-chunk", "7d04d145"),
-    ("files-stat", "b36445b4"),
+    ("files-stat", "4e0945bb"),
     ("files-write-text", "462b190a"),
     ("first-run", "bc125054"),
     ("footprint-report", "68ebb811"),
