@@ -73,6 +73,27 @@ class ResidentFeedTest {
         }
 
         val transfers = mutableListOf<List<Any>>()
+        val batches = mutableListOf<String>()
+        val answers = mutableListOf<Pair<Long, String?>>()
+
+        override fun batchStart(
+            handle: Long,
+            want: String,
+        ): Long {
+            batches += want
+            return 40L + batches.size
+        }
+
+        override fun batchAnswer(
+            id: Long,
+            answer: String?,
+        ) {
+            answers += id to answer
+        }
+
+        override fun batchStop(id: Long) {
+            answers += id to "stop"
+        }
 
         override fun stage(
             handle: Long,

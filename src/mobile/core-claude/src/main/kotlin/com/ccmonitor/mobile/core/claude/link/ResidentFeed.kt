@@ -70,6 +70,19 @@ interface ResidentCore {
         withinMs: Long,
     ): Long
 
+    /** 起一组（[want] 是 JSON）：回编号，事经 `batch` 那一种交回；这台不在 ⇒ 0。 */
+    fun batchStart(
+        handle: Long,
+        want: String,
+    ): Long
+
+    fun batchAnswer(
+        id: Long,
+        answer: String?,
+    )
+
+    fun batchStop(id: Long)
+
     /** 给那台装 / 更新后端（[slots] = 包里那几格解到的文件，JSON）；事经 `deploy` 那一种交回。那台不在 · 正在装 ⇒ `false`。 */
     fun deploy(
         handle: Long,
@@ -230,6 +243,22 @@ class ResidentFeed(
         }
     }
 
+    private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = BUFFER)
+    override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
+
+    override suspend fun batch(want: Map<String, Any?>): Long {
+        ensure()
+        val h = withTimeoutOrNull(DEFAULT_CALL_MS) { opened.await() } ?: return 0L
+        return core.batchStart(h, Json.args(want))
+    }
+
+    override fun batchAnswer(
+        id: Long,
+        answer: BatchAnswer?,
+    ) = core.batchAnswer(id, BatchAnswer.wire(answer)?.let(Json::args))
+
+    override fun batchStop(id: Long) = core.batchStop(id)
+
     override fun hold(sid: String): AutoCloseable {
         ensure()
         scope.launch { core.watch(opened.await(), sid, true) }
@@ -251,12 +280,13 @@ class ResidentFeed(
     ) {
         when (kind) {
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
-            "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
+            "frame" -> onFrameLine(body)
             "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)
             "moved" -> onMoved(body)
             "deploy" -> onDeployLine(body)
+            "batch" -> onBatchLine(body)
             else -> broke(kind, body)
         }
     }
@@ -281,6 +311,10 @@ class ResidentFeed(
         if (deployFlow.value is Deploying.Done && (now is LinkState.Down || (now as? LinkState.Up)?.notice != null)) deployFlow.value = null
     }
 
+    private suspend fun onFrameLine(body: String) {
+        Json.obj(body)?.let { onFrame(it) } ?: broke("frame", body)
+    }
+
     private suspend fun onFrame(frame: Map<String, Any?>) {
         val next = tableFlow.value.step(frame, onBreak)
         tableFlow.value = next
@@ -290,6 +324,11 @@ class ResidentFeed(
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
         if (next.needsResync) reconnect()
+    }
+
+    /** `batch` 那一行落进 [batches]；认不出 ⇒ 报一次契约对不上。 */
+    private suspend fun onBatchLine(body: String) {
+        Json.obj(body)?.let(BatchEvent::of)?.let { batchFlow.emit(it) } ?: broke("batch", body)
     }
 
     /** `deploy` 那一行落进 [deploying]；认不出 ⇒ 报一次契约对不上、不动。 */

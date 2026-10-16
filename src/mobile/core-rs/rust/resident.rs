@@ -294,6 +294,10 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
         cfg,
         None,
         sink(move |e: Event| {
+            // 一组的进度按票在核心里接（`batch.rs`），不进 Kotlin 的帧流。
+            if matches!(&e, Event::Frame(line) if crate::batch::took(line)) {
+                return;
+            }
             if let Some((kind, body)) = event_of(&e) {
                 on_event(id, kind, body);
             }

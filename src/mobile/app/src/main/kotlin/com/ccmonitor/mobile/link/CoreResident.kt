@@ -57,6 +57,22 @@ object CoreResident : ResidentCore {
         withinMs: Long,
     ): Long = Core.transferPull(handle, fd, args, shown, withinMs)
 
+    override fun batchStart(
+        handle: Long,
+        want: String,
+    ): Long = Core.batchStart(handle, want)
+
+    override fun batchAnswer(
+        id: Long,
+        answer: String?,
+    ) {
+        Core.batchAnswer(id, answer)
+    }
+
+    override fun batchStop(id: Long) {
+        Core.batchStop(id)
+    }
+
     override fun deploy(
         handle: Long,
         slots: String,

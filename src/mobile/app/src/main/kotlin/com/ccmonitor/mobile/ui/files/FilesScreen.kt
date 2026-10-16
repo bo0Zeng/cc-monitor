@@ -134,6 +134,7 @@ fun FilesScreen(
     var dialog by remember { mutableStateOf<FilesDialog?>(null) }
 
     LaunchedEffect(vm) { vm.events.collect { snackbar.show(it) } }
+    LaunchedEffect(vm) { vm.undos.collect { (said, id) -> snackbar.showUndo(said) { vm.again(id, undo = true) } } }
     LaunchedEffect(vm) { vm.opened.collect { (name, text) -> dialog = FilesDialog.Preview(name, text) } }
     var opened by rememberSaveable(openPath) { mutableStateOf(false) }
     LaunchedEffect(openPath) {
@@ -169,6 +170,16 @@ fun FilesScreen(
                         }
                     }
                 is FilesUi.Ready -> ReadyContent(vm, hostId, onOpenTerminal, onShowTabs, { dialog = it }, actions)
+            }
+            val group by vm.batch.collectAsState()
+            group?.let { e ->
+                BatchCard(
+                    e,
+                    onStop = { vm.stopBatch(e.id) },
+                    onRetry = { vm.again(e.id, undo = false) },
+                    onDismiss = vm::dismissBatch,
+                    modifier = Modifier.align(Alignment.BottomCenter).clearOfNotice(),
+                )
             }
         }
     }
@@ -430,8 +441,8 @@ private fun DialogHost(
                 vm.create(it)
                 close()
             }
-        is FilesDialog.Delete -> DeleteDialog(d.entry, close) { vm.delete(d.entry) }
-        is FilesDialog.Chmod -> ChmodDialog(d, close) { vm.chmod(d.entry, it) }
+        is FilesDialog.Delete -> DeleteDialog(d.entry, close) { vm.delete(listOf(d.entry)) }
+        is FilesDialog.Chmod -> ChmodDialog(d, close) { vm.chmod(listOf(d.entry), it) }
         is FilesDialog.Preview -> PreviewDialog(d.name, d.content, close)
         is FilesDialog.Edit -> EditDialog(d, onDialog)
         is FilesDialog.ConfirmSave ->

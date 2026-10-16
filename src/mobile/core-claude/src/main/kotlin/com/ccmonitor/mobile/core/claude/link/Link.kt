@@ -96,6 +96,25 @@ interface CoreLink {
         withinMs: Long,
         moved: (Long, Long) -> Unit,
     ): Reply
+
+    /** 一组一条命令走到哪（全部编号的都在这一条流上；按 [BatchEvent.id] 认自己那一组）。 */
+    val batches: SharedFlow<BatchEvent>
+
+    /**
+     * 起一组（全过程与字在核心里，桌面同一份）：[want] 是要做什么 —— `delete {root, items [{rel, name, dir}]}` ·
+     * `chmod {root, items [{rel, name}], mode}` · `copy {from, names, to}` · `retry id` · `undo id`，入参由核心拼。
+     * 回编号；这台不在 ⇒ 0。
+     */
+    suspend fun batch(want: Map<String, Any?>): Long
+
+    /** 同名那一问的答（`null` ＝ 取消）。 */
+    fun batchAnswer(
+        id: Long,
+        answer: BatchAnswer?,
+    )
+
+    /** 撤那一组（「停」）。 */
+    fun batchStop(id: Long)
 }
 
 /** 分块传哪一半（[CoreLink.transfer]）。 */

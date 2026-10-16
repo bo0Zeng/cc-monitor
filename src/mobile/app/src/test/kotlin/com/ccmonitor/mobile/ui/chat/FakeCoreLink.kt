@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.ui.chat
 
+import com.ccmonitor.mobile.core.claude.link.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.LinkState
@@ -68,6 +70,33 @@ internal class FakeCoreLink :
         moves.forEach { (d, t) -> moved(d, t) }
         return transferred(how)
     }
+
+    private val batchFlow = MutableSharedFlow<BatchEvent>(extraBufferCapacity = 64)
+    override val batches: SharedFlow<BatchEvent> = batchFlow.asSharedFlow()
+
+    /** 起过的每一组（要做什么）· 每一答 · 每一停。 */
+    val wants = mutableListOf<Map<String, Any?>>()
+    val answered = mutableListOf<Pair<Long, BatchAnswer?>>()
+    val stopped = mutableListOf<Long>()
+
+    override suspend fun batch(want: Map<String, Any?>): Long {
+        wants += want
+        return wants.size.toLong()
+    }
+
+    override fun batchAnswer(
+        id: Long,
+        answer: BatchAnswer?,
+    ) {
+        answered += id to answer
+    }
+
+    override fun batchStop(id: Long) {
+        stopped += id
+    }
+
+    /** 核心交来一格（照核心那一行，经 [BatchEvent.of] 解）。 */
+    suspend fun batchEvent(m: Map<String, Any?>) = batchFlow.emit(BatchEvent.of(m)!!)
 
     suspend fun line(
         sid: String,

@@ -1,7 +1,5 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.BatchItemState
-import com.ccmonitor.mobile.core.claude.link.wire.BatchReply
 import com.ccmonitor.mobile.core.claude.link.wire.Conflict
 import com.ccmonitor.mobile.core.claude.link.wire.Conflicts
 import com.ccmonitor.mobile.core.claude.link.wire.FileKind
@@ -284,56 +282,6 @@ object FilesRename {
         from: RemotePath,
         typed: String,
     ): Map<String, Any?> = mapOf("root" to dir.wire, "from" to from.wire, "to" to typed, "single" to true)
-}
-
-/** `files-delete`：删一项（交成一组里的一项）；目录连同里面全部（`recursive`）。回包是一组的结局（[Batch]）。 */
-object FilesDelete {
-    const val COMMAND: String = "files-delete"
-
-    fun args(
-        dir: RemotePath,
-        name: RemotePath,
-        recursive: Boolean,
-    ): Map<String, Any?> =
-        mapOf(
-            "root" to dir.wire,
-            "items" to
-                listOf(
-                    buildMap {
-                        put("rel", name.wire)
-                        if (recursive) put("recursive", true)
-                    },
-                ),
-        )
-}
-
-/** `files-chmod`：改 unix 权限位（交成一组里的一项）。[mode] 是框里敲的八进制原样，那台解、那台拒。回包是一组的结局（[Batch]）。 */
-object FilesChmod {
-    const val COMMAND: String = "files-chmod"
-
-    fun args(
-        dir: RemotePath,
-        name: RemotePath,
-        mode: String,
-    ): Map<String, Any?> = mapOf("root" to dir.wire, "items" to listOf(mapOf("rel" to name.wire)), "mode" to mode)
-}
-
-/** 一组的回包（手机只交一项）：那一项做完 ⇒ [Done]；没成 ⇒ [Refused] 带后端写的那一句与那一项的原话；解不出 ⇒ `null`。 */
-object Batch {
-    sealed interface Fate
-
-    data object Done : Fate
-
-    data class Refused(
-        val said: String,
-        val detail: String,
-    ) : Fate
-
-    fun fateOf(data: Any?): Fate? {
-        val r = Wire.bind<BatchReply>(data) ?: return null
-        val one = r.outcomes.singleOrNull() ?: return null
-        return if (one.state == BatchItemState.DONE) Done else Refused(r.said, one.detail.orEmpty())
-    }
 }
 
 /**

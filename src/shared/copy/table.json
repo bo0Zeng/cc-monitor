@@ -31416,6 +31416,12 @@
       "zh": "全选",
       "args": []
     },
+    "mobFiles.failedShow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看失败的",
+      "args": []
+    },
     "mobFiles.bookmark.deleted": {
       "kind": "body",
       "role": "toast",

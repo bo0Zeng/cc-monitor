@@ -160,6 +160,24 @@ object Core {
     ): Long
 
     /**
+     * 起一组一条命令（[want]：删 · 改权限 · 复制到 · 重试 · 撤销，JSON；入参由核心拼）。回编号，
+     * 走到哪 · 同名那一问 · 结局经 [Sink.resident] 的 `batch` 那一种回来（字是核心写好的）。这台不在 · 读不动 ⇒ 0。
+     */
+    external fun batchStart(
+        handle: Long,
+        want: String,
+    ): Long
+
+    /** 同名那一问的答（`{all}` · `{each}`；`null` ⇒ 取消）。没人在等 ⇒ `false`。 */
+    external fun batchAnswer(
+        id: Long,
+        answer: String?,
+    ): Boolean
+
+    /** 撤那一组（同一张票发 `files-batch-stop`）。 */
+    external fun batchStop(id: Long): Boolean
+
+    /**
      * 给那台装 / 更新后端（判定与做法是桌面后端同一份 `deploy`）：[slots] = 包里那几格解到的文件
      * （JSON `[{os, arch, id, path}]`）。走到哪 · 结局 · 失败经 [Sink.resident] 的 `deploy` 那一种回来（话是核心写好的）。
      * 那台不在 · 正在装 ⇒ `false`。

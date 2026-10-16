@@ -23,6 +23,7 @@ use ssh_dial::Said;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
+pub mod batch;
 pub mod install;
 pub mod resident;
 pub mod transfer;
@@ -876,6 +877,57 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferPull<'l>(
             u64::try_from(within_ms).unwrap_or(0),
             on_resident(),
         )
+    })
+}
+
+/// `Core.batchStart(handle, want)`：起一组（`batch.rs::plan_of` 那几种「要做什么」，入参由核心拼）；回编号，
+/// 进度 · 同名那一问 · 结局经 `Sink.resident(…, "batch", …)` 回来。这台不在 · 读不动 ⇒ 0。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStart<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    want: JString<'l>,
+) -> jlong {
+    guarded(0, || {
+        let Some(want) = string(&mut env, &want) else { return 0 };
+        let _rt = runtime().enter();
+        batch::start(handle, &want, on_resident())
+    })
+}
+
+/// `Core.batchAnswer(id, answer)`：同名那一问的答（`{all}` · `{each}`；`null` ⇒ 取消）。没人在等 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchAnswer<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: jlong,
+    answer: JString<'l>,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let text = string(&mut env, &answer);
+        if batch::answer(id, text.as_deref()) {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
+    })
+}
+
+/// `Core.batchStop(id)`：撤这一组（同一张票发 `files-batch-stop`）。那一组不在 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_batchStop<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: jlong,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let _rt = runtime().enter();
+        if batch::stop(id) {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
     })
 }
 

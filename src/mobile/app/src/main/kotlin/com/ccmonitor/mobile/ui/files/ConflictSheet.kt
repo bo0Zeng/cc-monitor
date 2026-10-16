@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import com.ccmonitor.mobile.core.claude.link.RemotePath
 import com.ccmonitor.mobile.core.claude.link.wire.Conflict
-import com.ccmonitor.mobile.core.copy.SizeFormat
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -53,7 +52,7 @@ fun ConflictSheet(
                 Column {
                     Text(RemotePath.of(c.name)?.shown.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        copyText("rsFilewinBatch.meta.vs", "mine" to side(c.size, c.mtimeText), "there" to side(c.thereSize, c.thereMtimeText)),
+                        copyText("rsFilewinBatch.meta.vs", "mine" to side(c.sizeText, c.mtimeText), "there" to side(c.thereSizeText, c.thereMtimeText)),
                         style = monoSmall,
                         color = tokens.textFaint,
                     )
@@ -77,11 +76,11 @@ fun ConflictSheet(
     }
 }
 
-/** 一头那一项：大小 · 时刻（缺的那一格不写）。 */
+/** 一头那一项：大小 · 时刻（那台写好的字，缺的那一格不写）。 */
 private fun side(
-    size: Long?,
+    size: String?,
     mtime: String?,
-): String = listOfNotNull(size?.let(SizeFormat::text), mtime).joinToString(" · ")
+): String = listOfNotNull(size, mtime).joinToString(" · ")
 
 private const val OVERWRITE = "overwrite"
 private const val KEEP_BOTH = "keep_both"

@@ -856,47 +856,12 @@ data class Conflicts(
 @JsonClass(generateAdapter = true)
 data class Conflict(
     val name: Any,
-    val size: Long?,
+    @Json(name = "size_text") val sizeText: String?,
     @Json(name = "mtime_text") val mtimeText: String?,
-    @Json(name = "there_size") val thereSize: Long?,
+    @Json(name = "there_size_text") val thereSizeText: String?,
     @Json(name = "there_mtime_text") val thereMtimeText: String?,
     @Json(name = "dir_into") val dirInto: Boolean,
 )
-
-// ── 一组的回包（`files-delete` · `files-chmod`：手机一次只交一项）：逐项结局 ＋ 后端拼好的那一句。 ──
-
-@WireOf("BatchReply")
-@JsonClass(generateAdapter = true)
-data class BatchReply(
-    val outcomes: List<BatchOutcome>,
-    val said: String,
-)
-
-@WireOf("BatchOutcome")
-@JsonClass(generateAdapter = true)
-data class BatchOutcome(
-    val key: String,
-    val state: BatchItemState,
-    val detail: String?,
-)
-
-@JsonClass(generateAdapter = false)
-enum class BatchItemState {
-    @Json(name = "done")
-    DONE,
-
-    @Json(name = "skipped")
-    SKIPPED,
-
-    @Json(name = "exists")
-    EXISTS,
-
-    @Json(name = "failed")
-    FAILED,
-
-    @Json(name = "cancelled")
-    CANCELLED,
-}
 
 // ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。策略写的字（`StrategyText` ＝ 一句或分语言）声明成 `Any`，取字在 `Rotation.text`。 ──
 

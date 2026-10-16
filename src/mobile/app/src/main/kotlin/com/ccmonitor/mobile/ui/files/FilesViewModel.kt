@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.ui.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.BatchAnswer
+import com.ccmonitor.mobile.core.claude.link.BatchEvent
 import com.ccmonitor.mobile.core.claude.link.FilesLs
 import com.ccmonitor.mobile.core.claude.link.FilesReadText
 import com.ccmonitor.mobile.core.claude.link.RemotePath
@@ -81,6 +83,7 @@ class FilesViewModel(
     init {
         hostConnector.retain(hostId, holderToken)
         connect()
+        viewModelScope.launch { feed.batches.collect(::onBatch) }
         // 换了一条流（`epoch` 变了）：之前在路上的问答作废了 ⇒ 打不开的那一屏再问一次，列着的那一屏重列。
         viewModelScope.launch {
             feed.epoch.drop(1).collect {
@@ -210,12 +213,79 @@ class FilesViewModel(
         typed: String,
     ) = write { ops.rename(it, entry.rel, typed) }
 
-    fun delete(entry: FilesLs.Entry) = write { ops.delete(it, entry.rel, entry.isDir) }
+    private val _batch = MutableStateFlow<BatchEvent?>(null)
+
+    /** 底部浮卡画的那一组（在做 · 在问同名 · 断开 · 收场了还有没成的）；全成了 ⇒ `null`（结局句走 toast）。 */
+    val batch: StateFlow<BatchEvent?> = _batch.asStateFlow()
+
+    private val _undos = MutableSharedFlow<Pair<String, Long>>(extraBufferCapacity = 4)
+
+    /** 全成了、撤得了（改权限）：那一句 ＋ 那一组的编号（屏上 toast［撤销］）。 */
+    val undos: SharedFlow<Pair<String, Long>> = _undos.asSharedFlow()
+
+    /** 这一屏起的那几组（别处起的不画）。 */
+    private val mine = mutableSetOf<Long>()
+
+    /** 编号还没回到这里、核心已经交来的那一格（每组只留最后一格；编号一回来照它画）。 */
+    private val early = LinkedHashMap<Long, BatchEvent>()
+
+    private fun onBatch(e: BatchEvent) {
+        if (e.id !in mine) {
+            early[e.id] = e
+            if (early.size > EARLY_KEPT) early.remove(early.keys.first())
+            return
+        }
+        when {
+            e.phase == BatchEvent.ENDED && e.failed.isEmpty() -> {
+                _batch.value = null
+                if (e.undo) _undos.tryEmit(e.said.orEmpty() to e.id) else _events.tryEmit(Notice(e.said.orEmpty()))
+            }
+            e.phase == BatchEvent.DROPPED -> _batch.value = null
+            else -> _batch.value = e
+        }
+        if (e.over) viewModelScope.launch { refresh() }
+    }
+
+    /** 起一组（[start] 回编号；0 ＝ 这台不在 ⇒ 那一句）。 */
+    private fun group(start: suspend (RemotePath) -> Long) {
+        val dir = _cwd.value ?: return
+        viewModelScope.launch {
+            val id = start(dir)
+            if (id == 0L) {
+                _events.tryEmit(Notice(copyText("front.body.offline", "machine" to (hostRepo.get(hostId)?.label ?: hostId))))
+            } else {
+                mine += id
+                early.remove(id)?.let(::onBatch)
+            }
+        }
+    }
+
+    fun delete(entries: List<FilesLs.Entry>) = group { ops.delete(it, entries) }
 
     fun chmod(
-        entry: FilesLs.Entry,
+        entries: List<FilesLs.Entry>,
         mode: String,
-    ) = write { ops.chmod(it, entry.rel, mode) }
+    ) = group { ops.chmod(it, entries, mode) }
+
+    /** ［重试失败的］（[undo] ⇒ ［撤销］）：照那一组另起。 */
+    fun again(
+        id: Long,
+        undo: Boolean,
+    ) = group { ops.again(id, undo) }
+
+    /** 同名那一问的答（`null` ＝ 取消）。 */
+    fun answerBatch(
+        id: Long,
+        answer: BatchAnswer?,
+    ) = feed.batchAnswer(id, answer)
+
+    /** 浮卡上的［停］。 */
+    fun stopBatch(id: Long) = feed.batchStop(id)
+
+    /** 收场了还留着的那张卡收起。 */
+    fun dismissBatch() {
+        _batch.value = null
+    }
 
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
     suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
@@ -330,5 +400,8 @@ class FilesViewModel(
 
     private companion object {
         const val OCTAL = 8
+
+        /** 编号还没回来时先收着几组的那一格。 */
+        const val EARLY_KEPT = 16
     }
 }
