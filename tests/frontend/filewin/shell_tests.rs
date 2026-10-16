@@ -525,13 +525,12 @@ const WINDOW_NEEDLE: &str = XVFB_ORIGIN;
 #[cfg(not(windows))]
 fn join_verdict(
     h: std::thread::JoinHandle<Result<(), copy_core::said::Said>>,
-    budget_ms: u64,
 ) -> (&'static str, String) {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let _ = tx.send(h.join());
     });
-    match rx.recv_timeout(std::time::Duration::from_millis(budget_ms)) {
+    match rx.recv_timeout(guard_core::wall::CEILING) {
         Ok(Ok(Ok(()))) => ("ok", String::new()),
         Ok(Ok(Err(e))) => ("err", e.logged()),
         Ok(Err(p)) => {
@@ -585,7 +584,7 @@ fn xvfb_worker_opens_a_real_window() {
         Some(crate::theme::testing::default_theme()),
     );
 
-    let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
+    let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE);
     xvfb::emit("a.window_count", ids.len());
     if let Some(id) = ids.first() {
         xvfb::emit(
@@ -632,7 +631,7 @@ fn xvfb_worker_opens_a_real_window() {
     }
     xvfb::emit("a.open_requested_delta", open_requested() - req0);
     xvfb::emit("a.windows_opened_delta", windows_opened() - opened0);
-    let (verdict, why) = join_verdict(h, 30_000);
+    let (verdict, why) = join_verdict(h);
     xvfb::emit("a.run_native", verdict);
     xvfb::emit("a.reason_len", why.chars().count());
     xvfb::emit("a.reason", why.replace('\n', " "));
@@ -681,7 +680,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         None,
     );
-    let (verdict, why) = join_verdict(h, 30_000);
+    let (verdict, why) = join_verdict(h);
     xvfb::emit("n.run_native", verdict);
     xvfb::emit("n.reason_len", why.chars().count());
     xvfb::emit("n.reason", why.replace('\n', " "));

@@ -2302,6 +2302,30 @@ fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it()
     assert_eq!(ws.tabs_on(0), 2, "答了「不保存」那一页没关");
 }
 
+/// 「进度」表里该画全的那几行字：每趟下载两行（名字 · 落点）＋ 失败那一趟的两句原因。排好序。
+fn progress_rows_of(downloads: usize) -> Vec<String> {
+    let mut want: Vec<String> = (0..downloads)
+        .flat_map(|k| {
+            [
+                copy_text(
+                    "rsFilewinProgress.download.running",
+                    &[("name", &format!("big-{k}.iso"))],
+                ),
+                copy_text(
+                    "rsFilewinProgress.download.detail",
+                    &[("dest", &format!("/tmp/big-{k}.iso"))],
+                ),
+            ]
+        })
+        .chain([
+            "r-2.tar.gz：磁盘满".to_string(),
+            "r-3.tar.gz：没有权限".to_string(),
+        ])
+        .collect();
+    want.sort_unstable();
+    want
+}
+
 /// 「进度」表照行数长高：四趟在跑 ＋ 一趟上传失败（两个没成，自动摊开）⇒ 失败那一行与它底下每一句原因都整个画在表里，
 /// 不被状态栏压住、不在表的可见区外面。改值验：失败那一行不摊开（原因挤成一行截断）⇒ 本条红。
 #[test]
@@ -2363,7 +2387,13 @@ fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
         .filter(|(t, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
         .map(|(_, r)| r)
         .collect();
-    assert!(rows.len() >= 6, "表里的行没画全：{painted:?}");
+    let mut names: Vec<&str> = painted
+        .iter()
+        .filter(|(t, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
+        .map(|(t, _)| t.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, progress_rows_of(4), "表里的行没画全：{painted:?}");
     for r in &rows {
         assert!(
             r.top() >= head.bottom(),
@@ -2459,7 +2489,9 @@ fn the_progress_table_is_tall_enough_that_no_row_is_clipped() {
         .iter()
         .filter(|(t, _, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
         .collect();
-    assert!(rows.len() >= 7, "表里的行没画全：{clipped:?}");
+    let mut names: Vec<&str> = rows.iter().map(|(t, _, _)| t.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, progress_rows_of(5), "表里的行没画全：{clipped:?}");
     for (t, r, clip) in rows {
         assert!(
             r.top() >= clip.top() - 0.5 && r.bottom() <= clip.bottom() + 0.5,
@@ -2858,7 +2890,7 @@ async fn perf_rig_worker() {
         println!("perf.{name}.cpu_ms={}", (cpu() - c0) * 10);
         println!("perf.{name}.frames={}", frames() - f0);
     };
-    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big", 20_000);
+    let ids = crate::rows::testing::xvfb::wait_for_windows(&display, "big");
     let Some(id) = ids.first().cloned() else {
         panic!("窗口没起来");
     };
