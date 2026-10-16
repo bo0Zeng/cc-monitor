@@ -501,7 +501,10 @@ fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, CmdErr>
 pub(crate) fn fingerprint(plain_lines: &[String], rows: u32) -> String {
     let skip = plain_lines.len().saturating_sub(rows as usize);
     let shown: Vec<&str> = plain_lines[skip..].iter().map(|l| l.trim_end()).collect();
-    format!("{:016x}", cmd_wire::fnv::fnv1a64(shown.join("\n").as_bytes()))
+    format!(
+        "{:016x}",
+        cmd_wire::fnv::fnv1a64(shown.join("\n").as_bytes())
+    )
 }
 
 /// 抓回来的原文按行切（去掉最后那个换行带出来的空行）。

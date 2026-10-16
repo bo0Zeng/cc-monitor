@@ -1052,5 +1052,8 @@ fn each_startup_candidate_says_how_many_lines_the_block_would_add() {
 /// 别名文件的指纹钉一个另行独立算出的数（长度 ＋ FNV-1a 64）。
 #[test]
 fn alias_file_fingerprint_is_pinned() {
-    assert_eq!(fingerprint_of(Some("abc")).as_deref(), Some("3-e71fa2190541574b"));
+    assert_eq!(
+        fingerprint_of(Some("abc")).as_deref(),
+        Some("3-e71fa2190541574b")
+    );
 }
