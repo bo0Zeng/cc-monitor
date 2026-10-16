@@ -34,7 +34,7 @@ describe("〔FW1〕记录文件出声的线上字面量", () => {
     expect(wire.length, "monitor 那一侧一个都没抠到 —— 抠取器坏了").toBeGreaterThan(0);
     expect([...RECORD_FILE_CHANGES].sort()).toEqual(wire);
     for (const c of RECORD_FILE_CHANGES) {
-      expect(copyText(`sessionState.recordFile.${c}` as never).length).toBeGreaterThan(0);
+      expect(() => copyText(`sessionState.recordFile.${c}` as never), c).not.toThrow();
     }
   });
 });

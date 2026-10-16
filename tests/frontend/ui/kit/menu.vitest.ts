@@ -264,14 +264,14 @@ describe("弹出菜单", () => {
       { id: "x", label: "x" },
     ]);
     const g1 = menuGeneration();
-    expect(g1).toBeGreaterThan(g0);
+    expect(g1, "开一次换一代").toBe(g0 + 1);
     updateMenuItem("attach", { id: "attach", label: "接回 orders" });
     removeMenuItem("x");
     expect(items().map((b) => [b.textContent, b.disabled])).toEqual([
       ["接回 orders", false],
     ]);
     closeMenu();
-    expect(menuGeneration()).toBeGreaterThan(g1);
+    expect(menuGeneration(), "关一次换一代").toBe(g1 + 1);
     updateMenuItem("attach", { label: "迟到的" });
     expect(menus().length).toBe(0);
   });
