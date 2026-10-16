@@ -4,6 +4,7 @@ import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsAsk
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsChoiceRow
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.core.copy.copyText
@@ -387,5 +388,8 @@ class NeedsDeskTest {
         val q = choiceGroups(Wire.bind<NeedsAsk>(golden["question"])!!)
         assertEquals(listOf(listOf("answer"), listOf("dismiss")), q.map { g -> g.map { it.choice.id } })
         assertEquals(ChoiceLook.QUIET, q[1].single().look)
+
+        val moved = sub.copy(choices = sub.choices.map { if (it.id == "always-1") it.copy(row = NeedsChoiceRow.RELEASE) else it })
+        assertEquals("段只照那台给的 row，不按 id 认", listOf("always-1", "release"), choiceGroups(moved).last().map { it.choice.id })
     }
 }

@@ -23,7 +23,7 @@ const host: AcctPanelHost = {
   defaultOf: () => "work",
 };
 
-const view = { now: 1, nowText: "00:00", title: null, strategy: null, form: [], settings: {}, dirty: false, start: "work", current: "work", accounts: [], plates: {}, listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
+const view = { now: 1, nowText: "00:00", title: null, strategy: null, form: [], settings: {}, dirty: false, start: "work", current: "work", accounts: [], listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
 
 const panel = (): HTMLElement => document.querySelector<HTMLElement>("aside[role=dialog]")!;
 const btn = (text: string): HTMLButtonElement | undefined => [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text);
