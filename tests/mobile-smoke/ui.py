@@ -5,7 +5,11 @@
 import os, re, subprocess, sys, time, xml.etree.ElementTree as ET
 
 def adb(*a, **k):
-    return subprocess.run(["adb", *a], capture_output=True, stdin=subprocess.DEVNULL, **k)
+    """一条 adb。模拟器卡住时 adb shell 一直不回：一分钟（按忙闲放宽）没回就当它什么也没回（退出码 124），等它的那一圈照自己的期限收。"""
+    try:
+        return subprocess.run(["adb", *a], capture_output=True, stdin=subprocess.DEVNULL, timeout=60 * patience(), **k)
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(e.cmd, 124, e.stdout or b"", e.stderr or b"")
 
 
 def patience():

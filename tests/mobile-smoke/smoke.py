@@ -254,9 +254,9 @@ class Step:
         res = ("过" if ok else f"没过：{err}") + (f"（期间应用无响应 {anr} 回）" if anr else "")
         results.append((self.name, res, f"{took:.1f}s", f"{ui.patience():.1f}", p))
         print(f"{'ok ' if ok else 'RED'} {self.name}  {took:.1f}s  ×{ui.patience():.1f}  {'' if ok else err}  {p}", flush=True)
-        if not ok and adb("get-state").strip() != "device":
-            # 模拟器自己没了（本机 IO 卡死时它的看门狗会把自己停掉）：后面几步无从走起，照实停在这一步。
-            print("模拟器没了（看台架目录 logs/emulator.log），后面几步不走", flush=True)
+        if not ok and ui.adb("shell", "true").returncode != 0:
+            # 模拟器没了（本机卡死时它的看门狗会把自己停掉）或一分钟不答话：后面几步无从走起，照实停在这一步。
+            print("模拟器没了或不答话（看台架目录 logs/emulator.log），后面几步不走", flush=True)
             summary()
         if not ok:
             # 红的那一刻屏上有什么（控件树 ＋ 前台是谁），分得清是没画出来还是画错了；再回到起点，后面那几步不跟着连红。
@@ -351,27 +351,6 @@ def type_key(key):
     对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
     want = "\n".join(key)
     _type_key(key, want)
-
-
-_IME = []
-
-
-def stop_ime():
-    """停掉屏上所有的输入法（记下原来开着的几个、头一个是默认那个）：只停默认那一个，系统会换上语音输入那一个接着改字。"""
-    global _IME
-    default = adb("shell", "settings", "get", "secure", "default_input_method").strip()
-    on = adb("shell", "ime", "list", "-s").split()
-    _IME = ([default] if default in on else []) + [x for x in on if x != default]
-    for x in _IME:
-        adb("shell", "ime", "disable", x)
-
-
-def restore_ime():
-    """[stop_ime] 停掉的输入法放回来，默认的还是原来那一个。"""
-    for x in _IME:
-        adb("shell", "ime", "enable", x)
-    if _IME:
-        adb("shell", "ime", "set", _IME[0])
 
 
 def _type_key(key, want):
@@ -803,13 +782,8 @@ def deploy_steps():
 
 
 def main():
-    # 整趟停掉屏上键盘：`input text` 的按键直接进框，忙时输入法改字 · 吞字插不进来，键盘也不盖住按钮、不把敲过的词（登录名）列在联想条上截进图里。
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))  # 被停掉时也走下面的收尾
-    stop_ime()
-    try:
-        tidy_tmux(walk)
-    finally:
-        restore_ime()
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))  # 被停掉时也收掉这一趟的 tmux 会话
+    tidy_tmux(walk)
 
 
 def walk():
