@@ -2973,6 +2973,13 @@ mod g6_dependency_signoff {
              那两条判据数，不由本表。本表管的是「它自己会不会写」",
         ),
         (
+            "tokio",
+            DEV_DEPS,
+            UNMEASURED,
+            "同上一行那一棵，测试档多开 `test-util`：保活那几条判据走虚拟钟（`start_paused`）。\
+             **只在测试期开**，不进发布二进制；只多出拨钟的 API，不多写面",
+        ),
+        (
             "tracing",
             DEPS,
             UNMEASURED,
