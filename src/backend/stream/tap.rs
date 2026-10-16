@@ -288,6 +288,10 @@ async fn node_moved(
             if n.source == Source::Strategies {
                 out.push((Topic::RotationStrategies, None));
             }
+            // 续令牌没成：「需重新登录」那一项可能进了需手动清单。
+            if n.source == Source::Login {
+                out.push((Topic::Manual, None));
+            }
             if let Some(sid) = n.sid {
                 out.push((Topic::Rotation, Some(sid)));
             }

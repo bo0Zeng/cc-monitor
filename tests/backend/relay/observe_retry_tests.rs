@@ -1351,8 +1351,11 @@ fn the_undeclared_account_is_not_taken_for_the_default_login() {
     let none = |_: &str| None;
     let lib = hop.library();
     assert!(hop
-        .show_facts("claude-code", &lib, "0", &none)
+        .show_facts("claude-code", &lib, "0", &none, 0)
         .sub_id
         .is_some());
-    assert_eq!(hop.show_facts("claude-code", &lib, "_", &none).sub_id, None);
+    assert_eq!(
+        hop.show_facts("claude-code", &lib, "_", &none, 0).sub_id,
+        None
+    );
 }
