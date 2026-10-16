@@ -693,7 +693,8 @@ pub(crate) async fn stream(
         cfg,
         "stream",
         serde_json::json!({ "command": cmd, "progress": true }),
-    )?;
+    )
+    .map_err(Said::from)?;
     open(cfg, &req, "stream", &mut |_| {}, on_step)
         .await
         .map(|(s, _)| s)
@@ -713,7 +714,8 @@ pub(crate) async fn capture(
             "command": cmd,
             "capture": { "max_bytes": max_bytes, "abort_marker": abort_marker },
         }),
-    )?;
+    )
+    .map_err(Said::from)?;
     let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}, &mut || {}).await?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());

@@ -61,7 +61,12 @@ fn a_failed_round_takes_the_reason_its_problem_carries() {
 #[test]
 fn a_changed_host_key_is_its_own_state() {
     let o = fresh("指纹");
-    down(&o, &said("拨号没成"), Some(Why::HostKey), Some("SHA256:new"));
+    down(
+        &o,
+        &said("拨号没成"),
+        Some(Why::HostKey),
+        Some("SHA256:new"),
+    );
     let p = product(&o, true);
     assert_eq!(p.state, MachineStateKind::HostKeyChanged);
     assert_eq!(p.fixes, vec![MachineFix::CompareFingerprint]);
@@ -187,22 +192,19 @@ fn the_product_matches_the_cross_language_golden() {
         match name {
             "连着" => up(&o, "p7z", Relation::Same),
             "正在连" => connecting(&o, "attach"),
-            "密钥被拒" => {
-                down(&o, &said("拨号没成"), Some(Why::Auth), None)
-            }
-            "无应答" => {
-                down(&o, &said("拨号没成"), Some(Why::Timeout), None)
-            }
-            "指纹变了" => {
-                down(&o, &said("拨号没成"), Some(Why::HostKey), Some("SHA256:new"))
-            }
+            "密钥被拒" => down(&o, &said("拨号没成"), Some(Why::Auth), None),
+            "无应答" => down(&o, &said("拨号没成"), Some(Why::Timeout), None),
+            "指纹变了" => down(
+                &o,
+                &said("拨号没成"),
+                Some(Why::HostKey),
+                Some("SHA256:new"),
+            ),
             "要更新" => up(&o, "p7a", Relation::Older),
             "较新" => up(&o, "p9a", Relation::Newer),
             "版本不可比" => up(&o, "dev", Relation::Incomparable),
             "不是 Unix" => unsupported(&o, NOT_UNIX, &said("拨号没成")),
-            "要密码" => {
-                down(&o, &said("拨号没成"), Some(Why::Password), None)
-            }
+            "要密码" => down(&o, &said("拨号没成"), Some(Why::Password), None),
             "正在装" => deploying(&o, true),
             "正在更新" => deploying(&o, false),
             "停用" => {}

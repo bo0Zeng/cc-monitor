@@ -626,7 +626,6 @@ async fn authenticate(
     key_path: Option<&str>,
     agent_sock: Option<&str>,
 ) -> Result<(), (Why, Said)> {
-    use crate::why;
     let Some(key) = key_path.filter(|s| !s.trim().is_empty()) else {
         let best_hash = best_rsa_hash(session).await?;
         // agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
@@ -705,9 +704,7 @@ async fn authenticate(
 }
 
 /// RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
-async fn best_rsa_hash(
-    session: &client::Handle<Checker>,
-) -> Result<Option<HashAlg>, (Why, Said)> {
+async fn best_rsa_hash(session: &client::Handle<Checker>) -> Result<Option<HashAlg>, (Why, Said)> {
     Ok(session
         .best_supported_rsa_hash()
         .await
@@ -833,7 +830,6 @@ async fn agent_auth(
     best_hash: Option<HashAlg>,
     agent_sock: Option<&str>,
 ) -> Result<(), (Why, Said)> {
-    use crate::why;
     let Some(source) = env::get().agent.as_ref() else {
         return Err((
             Why::Auth,

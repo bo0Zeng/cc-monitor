@@ -219,7 +219,9 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         }
         Peer::Up { build, die_now } => (build, die_now),
         Peer::Mute { build } | Peer::Laggy { build, .. } => (build, false),
-        Peer::Hang | Peer::Slow { .. } => unreachable!("没人回话 / 还在拨的那一拨开不出链路"),
+        Peer::Hang | Peer::Slow { .. } | Peer::Refused(_) => {
+            unreachable!("没人回话 / 还在拨 / 拨号拒了的那一拨开不出链路")
+        }
     };
     let _ = r
         .get_mut()
@@ -853,10 +855,7 @@ async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
         Some(cmd_wire::machine::Why::Auth),
         Some("SHA256:seen".into()),
     );
-    f.attaches
-        .lock()
-        .unwrap()
-        .push_back(Peer::Refused(refused));
+    f.attaches.lock().unwrap().push_back(Peer::Refused(refused));
     let (feed, _) = start(&f);
     until("断开", || matches!(feed.state(), State::Down { .. })).await;
     let state = feed.state();

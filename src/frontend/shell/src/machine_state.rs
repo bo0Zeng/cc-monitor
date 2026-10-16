@@ -208,7 +208,12 @@ fn round_detail(target: &str, said: &crate::detail::Said, code: &str) -> String 
 }
 
 /// 这一轮没连上：原因码随那一句来（没有 ⇒ `other`）；指纹不对单列一态，带那台出示的指纹。
-pub(crate) fn down(origin: &str, said: &crate::detail::Said, why: Option<Why>, seen_key: Option<&str>) {
+pub(crate) fn down(
+    origin: &str,
+    said: &crate::detail::Said,
+    why: Option<Why>,
+    seen_key: Option<&str>,
+) {
     let why = why.unwrap_or(Why::Other);
     let code = serde_json::to_value(why)
         .ok()
