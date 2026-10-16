@@ -401,7 +401,7 @@ export class SkeletonLedger {
   private kinds: SkeletonKind[] = [];
   /** 每行第一级粗估（`prefix` 由它与 `refined` 合出来）。 */
   private est: number[] = [];
-  /** 〔第二级〕Worker 精算回来的高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
+  /** 〔第二级〕Worker 精算回来的高 · 交回占位前量的真高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
   private refined = new Map<number, number>();
   private colW: number | undefined;
   /** 〔大折叠〕折着的过程（seq 半开区间，升序不相交）：这些行按 0 高（不建卡、不占滚动条），展开了才回到估高。 */
@@ -513,10 +513,24 @@ export class SkeletonLedger {
    * 返回有没有哪一行真的变了。
    */
   refine(entries: Iterable<readonly [number, number]>): boolean {
+    return this.take(entries, false);
+  }
+
+  /**
+   * 建过的卡量出来的真高（交回占位之前，`SkeletonView.release`）换进同一张表：不建卡的行也收（注入细条有高），
+   * 折着的行不收，过程行那一条的高扣掉（它另算）。返回有没有哪一行变了。
+   */
+  measured(entries: Iterable<readonly [number, number]>): boolean {
+    return this.take(entries, true);
+  }
+
+  private take(entries: Iterable<readonly [number, number]>, measured: boolean): boolean {
     let lowest = Infinity;
-    for (const [seq, h] of entries) {
+    for (const [seq, px] of entries) {
       const i = seq - this.base;
-      if (i < 0 || i >= this.rows.length || this.kinds[i] === "none" || !(h >= 0)) continue;
+      if (i < 0 || i >= this.rows.length || !(px >= 0)) continue;
+      if (measured ? this.isFolded(seq) : this.kinds[i] === "none") continue;
+      const h = measured && this.lines.has(seq) ? Math.max(0, px - this.linePx) : px;
       if (this.refined.get(seq) === h) continue;
       this.refined.set(seq, h);
       lowest = Math.min(lowest, i);

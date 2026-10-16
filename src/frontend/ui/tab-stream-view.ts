@@ -14,7 +14,7 @@ import { waitedNow } from "./duration-format";
 import type { SessionFacts } from "./session-reads";
 import type { FactsChange } from "./tab-session-facts";
 import { MessageStream } from "./stream";
-import { reconcilePendingToolResults, type RenderContext } from "./cards";
+import { forgetDetached, reconcilePendingToolResults, type RenderContext } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // 实时会话的分叉入口
 import type { JsonlLinePayload } from "./events";
@@ -385,7 +385,8 @@ export class TabStreamView {
       // 〔骨架〕接上了 ⇒ 占位可能在任何位置（拖滚动条到中部），**每次滚动**都看一眼
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
-        t.skeleton.fillVisible();
+        // 建了新卡才交回远处的（建卡这一下本来就要排版；没建的滚动不量卡）
+        if (t.skeleton.fillVisible() > 0) t.skeleton.release();
         this.refineNearby(t); // 第二级：视口附近的占位行交 Worker 精算
         return;
       }
@@ -492,6 +493,8 @@ export class TabStreamView {
   /** 切 tab：只让这一条流（连同它的查找面板）可见（原是 `switchTo` 开头那一段）。 */
   showOnly(sessionId: string): void {
     for (const [sid, t] of this.store.tabs) {
+      // 收起的那一个只留视口那一截（收起之后几何不作数 ⇒ 在翻走之前交）
+      if (sid !== sessionId && t.streamEl.classList.contains("active")) t.skeleton?.release(0);
       t.streamEl.classList.toggle("active", sid === sessionId);
       t.stream.park(sid !== sessionId); // 收起期间几何不作数（`MessageStream.park`）
       // 面板与它那条流同进同出：漏掉的话所有 tab 的面板一起挂在屏幕上，点下去找的是别人的流。
@@ -1109,6 +1112,11 @@ export class TabStreamView {
         const taken = tab.window.takeRange(lo, hi);
         this.renderPayloadsBatch(tab, taken);
         return this.fetchMissingRows(tab, view, lo, hi, new Set(taken.map((p) => p.seq)));
+      },
+      // 交回的行早到过（`seenSeqs`）⇒ 滚回来按偏移取回、只建卡（`fetchMissingRows` 的「见过的」那一支）
+      released: (_ranges, cards) => {
+        forgetDetached(tab, tab.streamEl, cards);
+        tab.branchFolder.rebuildNow();
       },
     });
     // 折叠先交给账本：占位插进去就是折后的高、补可见区不建折着的过程行（不先交 ⇒ 插完排版时再改高、再钉视口，这一帧多排两次版）

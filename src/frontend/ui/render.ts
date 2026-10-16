@@ -377,6 +377,11 @@ export function observeForEnhance(el: HTMLElement, root: HTMLElement): void {
   io.observe(el);
 }
 
+/** 卡摘出了流（骨架交回占位）：不再等它进视口。 */
+export function forgetEnhance(el: HTMLElement, root: HTMLElement): void {
+  enhanceObservers.get(root)?.unobserve(el);
+}
+
 /** 滚动容器销毁：断开它那一个 IO（还没进过视口的卡不再补，容器都没了）。 */
 export function releaseEnhanceRoot(root: HTMLElement): void {
   const io = enhanceObservers.get(root);
