@@ -1,4 +1,15 @@
-//! `K-H2a` 的两条机检：**明文出口恰好一处**（`KS2`）· **记日志走白名单**（`KS4`）。
+//! `K-H2a` 的中转凭据机检：**记日志走白名单**（`KS4`）· 写半边只从一处声明开 · 换头前先丢的头名全集。
+//!
+//! # 为什么这里没有「明文出口恰好一处」（`KS2`）
+//!
+//! 由类型与三棵树判据接走：`SecretKey` 字段私有、`Debug` 只印遮蔽形、不实现 `Display`；
+//! 落盘与续期两个出口只对 `creds-core` 可见（本 crate 调不到，编译器挡）；
+//! 换头那个出口跨 crate 调，处数由 `creds_store_tests::PLAINTEXT_EXIT_SITES` 扫三棵树数（恰好 1 处）。
+//!
+//! # 为什么 `KS4` 留着（类型挡不住）
+//!
+//! 日志插进去的是任意值：一个 `String` 里装的是不是文件内容、是不是请求头，类型说不出来
+//! ⇒ 只能枚举每一处日志调用、要求每一个被插进去的名字登记理由。
 //!
 //! # 为什么单住一个文件
 //!
@@ -6,11 +17,7 @@
 //! monitor 侧 `scanning_guard_registry` 立过一条递减棘轮 —— 扫描型判据不许裸遍历目录，
 //! 要走 `guard_core::scan_tree!`。
 //!
-//! ⚠ 先前这里跟着抄了一句「那个宏**按构造摘掉调用者自己那一份**」——
-//! **那一刀在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比
-//! 恒不命中）。结论「**判据与被扫的代码必须不在同一个文件**」仍然成立，但成因只剩一种：
-//! 判据若写在被扫文件自己的 `#[cfg(test)]` 段里（不经 `#[path]`），`file!()` 就会命中
-//! ⇒「摘掉自己」正好把靶子摘了。本文件今天不在人群里靠的是住址（它住 `tests/backend/relay/`）。
+//! 判据与被扫的代码不许在同一个文件：本文件住 `tests/backend/relay/`，不在人群里。
 //!
 //! # `KS4` 为什么是白名单，而本仓别处大量用黑名单
 //!
@@ -285,17 +292,6 @@ mod tests {
     // 其中 `iso.rs`（账号隔离工具的查询）**不是**中转的上游选择，不进本白名单的人群。
     const LOG_ROOTS: &[&str] = &["comms-outward", "relay", "accounts/upstream_select"];
 
-    /// 整个 backend crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
-    /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
-    /// 那么有人在 `observe/` 里再取一次就不会红。**人群要恰好等于性质。**
-    fn crate_production() -> Vec<(String, String)> {
-        let dir = guard_core::addr::backend_src_root();
-        guard_core::scan_tree!(&dir, &["rs"])
-            .into_iter()
-            .map(|(p, raw)| (p.display().to_string(), production_code(&raw)))
-            .collect()
-    }
-
     /// ★★★ **`K-H2a` 裁四那句话的判据** —— 裁四**收窄**之后，本条改钉收窄后的那一句。
     ///
     /// # 那句话怎么变的
@@ -481,62 +477,6 @@ mod tests {
         assert!(
             wrote >= 2,
             "只有 {wrote} 种形状写了头 —— 上面 ㈡ 那一格空转了"
-        );
-    }
-
-    /// ★★ `KS2`：**取明文的地方恰好一处**，而且就是换头那一行。
-    #[test]
-    fn the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate() {
-        let files = crate_production();
-        // 采集面自检：整个 crate 的 .rs 不止几个（**相等地板会误伤**，这里用有理由的下界）。
-        assert!(
-            files.len() >= 30,
-            "只扫到 {} 个文件 —— 取法坏了，本断言在空转",
-            files.len()
-        );
-
-        let mut header_sites: Vec<String> = Vec::new();
-        let mut persist_sites: Vec<String> = Vec::new();
-        for (path, prod) in &files {
-            for (no, line) in prod.lines().enumerate() {
-                if line.contains("expose_for_auth_header(") {
-                    header_sites.push(format!("{path}:{}", no + 1));
-                }
-                if line.contains("expose_for_persisting(") {
-                    persist_sites.push(format!("{path}:{}", no + 1));
-                }
-            }
-        }
-
-        assert_eq!(
-            header_sites.len(),
-            1,
-            "把明文取出来写鉴权头的地方有 {} 处，应当**恰好 1** 处：{header_sites:?}\n\
-             ⚠ `KS2` 逐字：加行是收紧、动断言是放宽。真要多一处，\
-             **必须先在件计划里说清那一处是什么**，不许在实现里顺手把这个数改大。",
-            header_sites.len()
-        );
-        // ⚠ 住址从 `server.rs`（中转）换成 `accounts/mod.rs`（上游选择）——
-        //    **换的是住址，不是处数**：上面那条「恰好 1」的相等断言一个字节都没动。
-        //    搬的理由：中转的类型面上不许再出现 `creds-core` 的类型（`C2`），
-        //    而「把 key 拼成头值」必须拿着 `SecretKey` ⇒ 它只能在上游选择。
-        //    ⇒ 中转从此**碰不到明文**。这一格因此比先前**更紧**，不是搬松了。
-        assert!(
-            header_sites[0].ends_with(".rs:0")
-                || header_sites[0].contains("accounts/upstream_select/mod.rs"),
-            "唯一那处不在 `accounts/upstream_select/mod.rs`（上游选择拼头值那一行）而在 {} —— 靶子挪了。\n\
-             ⚠ 它**不许**回到中转：那会让 `creds-core` 的类型重新爬上中转的类型面（`C2`）。",
-            header_sites[0]
-        );
-        // ★ 另一半：**落盘那个明文出口在本 crate 里应当一次都没有**。
-        // 裁四收窄后本 crate 有了一个写凭据文件的模块（`accounts/upstream_select/file_face.rs`），
-        //   但它**不自己取明文**：拼落盘文本走 `creds_core::store::merge_account_key`，
-        //   明文出口（`expose_for_persisting`）仍只在 `creds-core` 里那一处 ⇒ 本 crate 这边照旧 0。
-        assert_eq!(
-            persist_sites.len(),
-            0,
-            "backend 里出现了「自己取明文写回文件」的出口：{persist_sites:?}\n\
-             写凭据文件只许经 `creds_core::store` 的纯函数拼，本 crate 不许自己取明文。",
         );
     }
 

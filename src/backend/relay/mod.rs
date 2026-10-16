@@ -22,7 +22,7 @@ pub(crate) use comms_outward::{
 // 「中转层里没有账号」：四条两向集合相等（残留表已清空 ⇒ 零命中形态）
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/creds_guard.rs"]
-mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
+mod creds_guard; // `K-H2a` `KS4`：记日志走白名单 · 写半边只从一处声明开 · 换头前先丢的头名（整体 #[cfg(test)]）
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/table_guard.rs"]
 mod table_guard; // `K-H2` `KH1`：决定点那几条腿（焊接点 · 开上游连接点 · 中转无默认上游）

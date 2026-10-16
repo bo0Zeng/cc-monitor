@@ -37,44 +37,8 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
     }
 }
 
-/// ★ **生产接线（顺序钉）**：门必须在 `kill-session` **之前**。
-///
-/// 反过来（先杀再判）＝ 门形同虚设，而「函数被调用了」这种判据照样绿。
-/// 同 `launch_tests.rs::the_send_into_arm_admits_before_it_types` 一族 ——
-/// **破坏性动作的顺序错法后果最重**，所以单独钉。
-#[test]
-fn the_kill_path_admits_before_it_kills() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
-    let admit = src
-        .find("gate::admit_destructive")
-        .expect("生产段里没有 `gate::admit_destructive` —— 这条 kill 没过门");
-    // 两种结束（整个会话 · 挂着那个 sid 的窗格）共用一条命令：argv 由放行的结局拼出，只在一处交给 tmux。
-    let at = |needle: &str| {
-        let n = src.matches(needle).count();
-        assert_eq!(
-            n, 1,
-            "生产段里 `{needle}` 出现 {n} 次（应恰好 1 次）—— 0 次 = 写法变了（本条会零命中地绿）；\
-             ≥2 次 = 有第二条 kill 路，那就得逐条问「它过门了吗」"
-        );
-        src.find(needle).unwrap()
-    };
-    let whole = at(&format!("[\"kill-{}\", \"-t\", &handle]", "session"));
-    let panes = at(&format!("[\"kill-{}\", \"-t\", p.as_str()]", "pane"));
-    let act = at(".args(&argv)");
-    assert!(
-        admit < whole && admit < panes && whole < act && panes < act,
-        "杀的那条命令排在过门之前 —— 先杀再判，门就没意义了"
-    );
-    // 杀的必须是放行时拿到的句柄（会话句柄 / 窗格句柄），不是名字。
-    assert!(
-        src.contains("super::gate::EndAt::Session(h) => (h, None)")
-            && src.contains("super::gate::EndAt::Panes(h, ps) => (h, Some(ps))"),
-        "kill 的目标不是过门时拿到的句柄 —— 对名字下手就把 TOCTOU 窗口放回来了，\
-             而这是**破坏性**动作"
-    );
-}
-
-/// 顺序钉：读 pane pid 在**过门之后、杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
+/// 顺序钉：读 pane pid 在**杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
+/// 过门在前由类型挡：结束那一下只收门发的令牌（`gate::Doomed`）。
 #[test]
 fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
     let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
@@ -86,36 +50,16 @@ fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
         );
         src.find(needle).unwrap()
     };
-    let admit = at("gate::admit_destructive");
-    let panes = at("let panes = pane_pids(&handle, only.as_deref());");
+    let panes = at("let panes = pane_pids(handle, only);");
     let kill = at(".args(&argv)");
     let ok = at("if out.status.success() {");
     let unregister = at("let bus = super::cc_bus::unregister_panes(name, &panes);");
-    assert!(
-        admit < panes && panes < kill,
-        "pane pid 要在过门之后、杀之前读"
-    );
+    assert!(panes < kill, "pane pid 要在杀之前读");
     assert!(ok < unregister, "顺手注销只能在杀成那一支里");
     let after_ok = &src[ok..];
     assert!(
         after_ok.find("unregister_panes").unwrap() < after_ok.find("return Ok(bus)").unwrap(),
         "顺手注销要在杀成那一支返回之前"
-    );
-}
-
-/// ★ Gate 3 只给破坏性动作：本模块用 `admit_destructive`，**不是** `admit`。
-#[test]
-fn kill_uses_the_destructive_gate_not_the_plain_one() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
-    assert!(
-        src.contains("admit_destructive"),
-        "kill 必须走带 Gate 3 的那个门"
-    );
-    // 运行时拼，免得命中上一行自己。
-    let plain = format!("gate::admit({}", "");
-    assert!(
-        !src.contains(plain.as_str()),
-        "kill 走了非破坏性的 `admit`（没有 Gate 3）—— 多窗口会话会被误杀"
     );
 }
 

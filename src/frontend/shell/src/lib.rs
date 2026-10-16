@@ -173,11 +173,8 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 #[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/gate_singleton_guard.rs"]
-mod gate_singleton_guard;
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/judges_live_in_tests.rs"]
-mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/） // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（后端 `control/gate_rules.rs`）
+mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/）
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/atomic_replace_registry.rs"]

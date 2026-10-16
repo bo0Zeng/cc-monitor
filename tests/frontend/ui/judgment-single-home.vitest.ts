@@ -227,7 +227,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/control/gate_rules.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
       // monitor `tmux.rs` 那一格（Gate 1 调 gate-core 恰一处 · 私有谓词不许长回来）随整份文件删了：
-      //   monitor 生产段零处够门，由 `tests/frontend/shell/gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` 钉。
+      //   monitor 不依赖后端 crate，够不到门；送键与杀只收后端门发的令牌（`control/gate.rs`）。
     ],
   },
   J7: {
@@ -837,9 +837,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
-    expose_for_persisting: NONE,
-    // 登录令牌（订阅号续期）：第三个明文出口 ＋ 读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
-    expose_for_token_request: NONE,
+    // 登录令牌（订阅号续期）：读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
     merge_secret: NONE,
     merge_tokens: NONE,
     refresh_body: NONE,

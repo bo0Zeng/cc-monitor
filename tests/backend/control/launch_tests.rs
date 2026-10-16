@@ -431,28 +431,6 @@ fn the_payload_is_still_only_shape_checked() {
     }
 }
 
-/// ★ **生产接线（顺序钉）**：`admit` 必须在 `type_payload` **之前**。
-///
-/// 这条与上面那条不是重复：上面钉「过不过门」，这条钉「门在不在路上」。
-/// 反过来（先键入再核验）＝ 门形同虚设、而两条测试都会因为「函数被调用了」而绿。
-/// 顺序错的形态在本仓出现过（`launch_wire` 的 env 顺序），是**最容易被 review 漏掉**的一类。
-#[test]
-fn the_send_into_arm_admits_before_it_types() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/control/launch.rs"));
-    let arm = arm_of(&src, "Mode::SendInto =>");
-    let admit_at = arm.find("gate::admit").expect("分支里没有 `gate::admit`");
-    let type_at = arm.find("type_payload").expect("分支里没有 `type_payload`");
-    assert!(
-        admit_at < type_at,
-        "`type_payload` 排在 `gate::admit` 前面 —— 载荷先打出去了，门再判就没意义了"
-    );
-    // 键入的目标必须是 `admit` 回的**句柄**，不是名字/`t`。见 `gate` 模块头注的 TOCTOU 那段。
-    assert!(
-        arm.contains("type_payload(&handle"),
-        "键入的目标不是 `admit` 回的句柄 —— 对名字下手就把 TOCTOU 窗口放回来了"
-    );
-}
-
 /// ★ `create-or-attach` **刻意不过门**，且理由必须仍然成立：
 /// 它只在 `new-session` 成功（＝会话是本次刚建的）时才键入；
 /// 建失败但会话已存在时**早返回、根本不键入**。
@@ -1215,7 +1193,13 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.code, "typed_unconfirmed");
-    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    assert_eq!(
+        e.untyped,
+        Some((
+            Delivery::NotDelivered,
+            Some(JustMade(exact_target(&req.name)))
+        ))
+    );
 
     let f = FakeTmux::new(|verb| match verb {
         "send-keys" => Err(CmdErr::from(
@@ -1229,7 +1213,10 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     });
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.code, "typed_unconfirmed");
-    assert_eq!(e.untyped, Some((Delivery::Unknown, true)));
+    assert_eq!(
+        e.untyped,
+        Some((Delivery::Unknown, Some(JustMade(exact_target(&req.name)))))
+    );
 
     // 别的失败（建不出来）不带这一格。
     let f = FakeTmux::new(|verb| match verb {
@@ -1261,8 +1248,15 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         ran(sb.child(), a)
     };
     let e = run_with(&req, &tmux).unwrap_err();
-    assert_eq!(e.untyped, Some((Delivery::NotDelivered, true)));
+    let Some((Delivery::NotDelivered, Some(made))) = e.untyped else {
+        panic!("没送进却没带回「刚建的」令牌：{:?}", e.untyped);
+    };
     let real = |a: &[&str]| ran(sb.child(), a);
+    // 收空壳只经 `kill::end`、只收令牌；别的几形在沙箱里自己建好再造令牌（判据那一口）。
+    let reap_on = |m: JustMade| {
+        crate::control::kill::end(crate::control::kill::Ending::Bare(m, &real)).is_ok()
+    };
+    let reap = |name: &str| reap_on(JustMade(exact_target(name)));
     assert!(
         sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status
@@ -1276,10 +1270,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         "=busy2-bare:",
         "#{session_windows} #{window_panes} [#{pane_start_command}] #{session_attached}",
     ]);
-    assert!(
-        reap_if_bare("busy2-bare", &real),
-        "只剩 shell 的会话该收掉：{seen}"
-    );
+    assert!(reap_on(made), "只剩 shell 的会话该收掉：{seen}");
     assert!(
         !sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status
@@ -1289,7 +1280,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
 
     // 里面跑着别的程序 ⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-busy", "sleep 600"]);
-    assert!(!reap_if_bare("busy2-busy", &real));
+    assert!(!reap("busy2-busy"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-busy:"])
         .status
@@ -1297,20 +1288,20 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
     // 开了第二个窗口 ⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-two"]);
     sb.ok(&["new-window", "-t", "=busy2-two:"]);
-    assert!(!reap_if_bare("busy2-two", &real));
+    assert!(!reap("busy2-two"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-two:"])
         .status
         .success());
     // 窗格起的不是默认 shell（前台此刻是什么不看）⇒ 不动。
     sb.ok(&["new-session", "-d", "-s", "busy2-cmd", "sh"]);
-    assert!(!reap_if_bare("busy2-cmd", &real));
+    assert!(!reap("busy2-cmd"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-cmd:"])
         .status
         .success());
     // 名字只认精确那一个：`busy2-tw` 不存在 ⇒ 不碰 `busy2-two`。
-    assert!(!reap_if_bare("busy2-tw", &real));
+    assert!(!reap("busy2-tw"));
     assert!(sb
         .run(&["has-session", "-t", "=busy2-two:"])
         .status

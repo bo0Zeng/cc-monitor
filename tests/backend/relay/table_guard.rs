@@ -22,7 +22,7 @@
 //! |---|---|---|---|
 //! | ㈠ `Row{base` 字面量（**去空白后**数，09-09 起） | **哪个上游配哪把 key**（焊接那一步） | 本文件 | **1** |
 //! | ㈡ `upstream::connect(` 调用点 | **这条请求实际连到哪儿** | 本文件 | **1** |
-//! | ㈢ `expose_for_auth_header(` 调用点 | **换上去的是哪把 key** | `creds_guard.rs`（`KS2`，`K-H2a` 就有） | **1** |
+//! | ㈢ `expose_for_auth_header(` 调用点 | **换上去的是哪把 key** | `creds_store_tests.rs`（`KS2`，扫三棵树） | **1** |
 //!
 //! ⇒ 三条加起来才是「决定点」。**少一条都不是** ——
 //! 只钉㈠，有人可以另开一条 `upstream::connect` 绕过表；只钉㈡，
@@ -97,8 +97,7 @@ mod tests {
 
     /// 整个后端 crate 的生产段（逐文件）。
     ///
-    /// ★ 人群是**整个 crate**，不是 `relay/` —— 与 `creds_guard::crate_production` 同一条理由：
-    /// 「决定点只有一处」这句话的分母如果只到 `relay/`，那么有人在 `observe/` 里
+    /// ★ 人群是**整个 crate**，不是 `relay/`：「决定点只有一处」这句话的分母如果只到 `relay/`，那么有人在 `observe/` 里
     /// 再开一条上游连接就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
         let dir = guard_core::addr::backend_src_root();
