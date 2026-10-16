@@ -56,13 +56,6 @@
         "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
       }
     ],
-    "src/mobile/core-copy/src/main/kotlin/com/ccmonitor/mobile/core/copy/CopyText.kt": [
-      {
-        "text": "copyText: 表里没有 {…}",
-        "use": "内部",
-        "why": "取文口的程序员错（引了表里没有的键），构建时已拦住，只进异常栈"
-      }
-    ],
     "src/mobile/core-remote/src/main/kotlin/com/ccmonitor/mobile/core/remote/RemoteExecutor.kt": [
       {
         "text": "{…} 失败（退出码 {…}）：{…}",

@@ -11,7 +11,7 @@ package com.ccmonitor.mobile.core.rs
  * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
  * 它交的事经 [Sink.resident] 回来（`state` · `frame` · `watch_from` · `ssh` · `reply` · `deploy`）。给一台装 / 更新后端经 [deploy]。
  *
- * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。
+ * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。写字那几个口另在 core-copy 的 `CopyCore`。
  */
 object Core {
     init {

@@ -1,5 +1,5 @@
 /**
- * **时长与距今的那一个读口**（桌面；手机端是 `DurationFormat.kt`，Rust 核心是 `copy_core::short_duration` · `rel_duration`，三边对同一份金样
+ * **时长与距今的那一个读口**（桌面；Rust 核心是 `copy_core::short_duration` · `rel_duration`，手机经 JNI 调它，两边对同一份金样
  * `tests/__fixtures__/short-duration.golden.json`）。
  *
  * 静态的时长 / 距今由核心写成 `…Text`，界面照抄；这里只管**会走的钟**：核心交 `{text, from, to?}`（`text` 里的 `{dur}` 是空位，

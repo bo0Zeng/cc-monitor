@@ -15,7 +15,7 @@
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（沙箱换 HOME 之前就定下）。
 # 手机那一套（ktlint · detekt · 各模块 JVM 单测；经 heavy.sh，gradle 带 --no-daemon）：这棵树（连没提交的改动）相对起点改到了
 #   下面 mobile_reads 里的路径才跑，没改到就跳过并打一行说明。手机的单测与构建在 src/mobile 之外还读：tests/__fixtures__/（金样）·
-#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/shared/copy/（文案表，生成 CopyEntries）· src/shared/theme/（令牌正本，生成 ThemeTokens）。这张表漏没漏，由判据
+#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/common/copy-core/ · src/shared/copy/（手机写字经 JNI 调它，表编译期内嵌；JVM 单测加载宿主版那份 .so）· src/shared/theme/（令牌正本，生成 ThemeTokens）。这张表漏没漏，由判据
 #   tests/backend/flow_scripts_guard.rs 对着 src/mobile 里字面写到的仓内路径核。Android Lint 与 release 构建不在这里（门禁 mobile 格跑）。
 #   起点是 base.sh 印的那一个：分支上游（合并用的分支）与 HEAD 的 merge-base，没设上游就对 origin/main；不必先合 main。
 #   工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev（沙箱换 HOME 之前就定下）。
@@ -27,7 +27,7 @@ root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
-mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/deploy/ src/common/deploy-contract/ src/frontend/shell/embedded-backends/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/common/copy-core/ src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/deploy/ src/common/deploy-contract/ src/frontend/shell/embedded-backends/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
 # 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。
@@ -95,7 +95,7 @@ mobile_step() {
     else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain ktlintCheck detektDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain || exit $?
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain || exit $?
     n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
     echo "mobile: ${n:-0} passed"'
 }

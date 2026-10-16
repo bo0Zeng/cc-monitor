@@ -6,7 +6,7 @@ use jni::JNIEnv;
 
 use crate::{guarded, string};
 
-/// 取文：参数按「名 · 值 · 名 · 值 …」平铺交进来。key 不是字面量（这里是转发），所以本文件登记在取文判据的定义一侧。
+/// 取文：参数按「名 · 值 · 名 · 值 …」平铺交进来。这里是转发（key 不是字面量），不是引用。
 fn text(key: &str, flat: &[String]) -> String {
     let args: Vec<(&str, &str)> = flat
         .chunks_exact(2)

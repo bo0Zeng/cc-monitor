@@ -533,7 +533,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "短时长（N5：45s · 6m · 1h50m · 3d）与距今（+12m）⇒ 会走的钟那一截 · 已等多久 · 到重置还有多久",
     homes: ["copy-core::short_duration", "copy-core::rel_duration"],
     // 认可的双读口（与 J24 同理）：核心写静态的那一刻填一次（`…Text` · `…RelText`），桌面会走的钟只留这一个读口（`duration-format.ts`），
-    //   手机端 `DurationFormat.kt` 同一份金样；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
+    //   手机经 JNI 调核心那一份；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
     status: "mirror",
     defs: ["fmtDur"],
     needles: [],
