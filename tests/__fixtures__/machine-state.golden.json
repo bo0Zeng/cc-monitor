@@ -18,6 +18,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -32,6 +33,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -46,6 +48,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -60,6 +63,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -77,6 +81,7 @@
           "conn_settings"
         ],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": "命令：dial\n对象：ms-金样-密钥被拒\n断在：拨号没成\n码：auth\n原话：raw words"
       }
     },
@@ -94,6 +99,7 @@
           "conn_settings"
         ],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": "命令：dial\n对象：ms-金样-无应答\n断在：拨号没成\n码：timeout\n原话：raw words"
       }
     },
@@ -110,6 +116,7 @@
           "push_key"
         ],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": "命令：dial\n对象：ms-金样-要密码\n断在：拨号没成\n码：password\n原话：raw words"
       }
     },
@@ -126,6 +133,7 @@
           "compare_fingerprint"
         ],
         "seenHostKey": "SHA256:new",
+        "expectedHostKey": "SHA256:old",
         "detail": "命令：dial\n对象：ms-金样-指纹变了\n断在：拨号没成\n码：host_key\n原话：raw words"
       }
     },
@@ -142,6 +150,7 @@
           "update"
         ],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -156,6 +165,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -170,6 +180,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -184,6 +195,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -200,6 +212,7 @@
           "connect"
         ],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     },
@@ -216,6 +229,7 @@
           "retry"
         ],
         "seenHostKey": null,
+        "expectedHostKey": null,
         "detail": null
       }
     }

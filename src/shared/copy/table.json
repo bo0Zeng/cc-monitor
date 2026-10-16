@@ -7220,24 +7220,6 @@
       "zh": "打开设置失败",
       "args": []
     },
-    "machineCard.test.pinned": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "已记录",
-      "args": []
-    },
-    "machineCard.test.pinSave": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "记录",
-      "args": []
-    },
-    "machineCard.test.pinUpdate": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "改记此指纹",
-      "args": []
-    },
     "machineCard.uninstall.running": {
       "kind": "body",
       "role": "进度",
@@ -8718,13 +8700,6 @@
       "role": "toast",
       "zh": "已保存",
       "args": []
-    },
-    "remote.save.fingerprintShape": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已保存 · 有主机指纹不以 SHA256: 开头 · 核对是否粘错",
-      "args": [],
-      "limited": ["SSH 主机指纹"]
     },
     "remote.save.incomplete": {
       "kind": "body",
@@ -16655,26 +16630,6 @@
       "zh": "base_url 含空白字符（空格、制表符或换行） · 去掉它",
       "args": []
     },
-    "rsDialHost.hostKey.pinned": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已记下 {origin} 的 SSH 主机指纹 · 之后只认它 · {fingerprint}",
-      "args": ["origin", "fingerprint"],
-      "limited": ["SSH", "SSH 主机指纹"]
-    },
-    "rsDialHost.hostKey.differs": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{origin} 各地址的 SSH 主机指纹不一 · 未记下 · {list}\n在设置里该机器上选一个填入",
-      "args": ["origin", "list"],
-      "limited": ["SSH", "SSH 主机指纹"]
-    },
-    "rsDialHost.hostKey.listSep": {
-      "kind": "body",
-      "role": "片段",
-      "zh": " · ",
-      "args": []
-    },
     "beFilesLink.land.unsupported": {
       "kind": "error",
       "role": "报错",
@@ -24142,12 +24097,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "machineCard.fp.line": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{fp} · 记于 {date}",
-      "args": ["fp", "date"]
-    },
     "hostKey.compare.title": {
       "kind": "title",
       "role": "标题",
@@ -24179,12 +24128,6 @@
       "role": "片段",
       "zh": "记下的",
       "args": []
-    },
-    "hostKey.compare.pinnedAt": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "记于 {date}",
-      "args": ["date"]
     },
     "hostKey.compare.seen": {
       "kind": "body",
@@ -24230,20 +24173,6 @@
       "role": "说明",
       "zh": "仅 {machine}",
       "args": ["machine"]
-    },
-    "machineCard.test.fpChanged": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "主机指纹与记录的不同：{fingerprint}",
-      "args": ["fingerprint"],
-      "limited": ["SSH 主机指纹"]
-    },
-    "machineCard.test.fpUnpinned": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "主机指纹未记录：{fingerprint}",
-      "args": ["fingerprint"],
-      "limited": ["SSH 主机指纹"]
     },
     "machinePage.meta.version": {
       "kind": "body",

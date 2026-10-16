@@ -506,10 +506,6 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
         .filter(|a| !a.is_empty())
         .map(|a| String::from_utf8(a.to_vec()).unwrap())
         .collect();
-    let known = format!(
-        "UserKnownHostsFile={}",
-        known_hosts_value(&crate::dial::known_hosts::path().unwrap().to_string_lossy())
-    );
     let want: Vec<String> = [
         "-t",
         "-J",
@@ -518,8 +514,6 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
         "2222",
         "-i",
         "/home/u/my key's/id",
-        "-o",
-        &known,
         "u@192.0.2.3",
         "--",
         &format!("bash -lic {}", shell_quote_core::posix_quote(cmd)),

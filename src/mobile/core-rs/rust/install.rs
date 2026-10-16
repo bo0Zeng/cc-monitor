@@ -151,6 +151,7 @@ async fn run(
     on: &OnEvent,
 ) {
     let emit = |body: String| on(h, KIND, body);
+    crate::note_known(&base);
     let req: ssh_dial::DialRequest = match serde_json::from_value(base.clone()) {
         Ok(r) => r,
         Err(e) => {

@@ -1,7 +1,7 @@
 //! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md`「链路四条」（按拨号身份复用 · 最后一条走了就断）
 //!
 //! 核原文：「链路四条」逐字「后端把到同一台远端的所有链路**复用在同一族 SSH 连接上**（按拨号身份：
-//! `host · port · user · key_path · host_key_fingerprint · 竞速地址 · 跳板`；默认一条、按需多开至多 3 条；最后一条链路走了连接就断，没有空闲定时器）」
+//! `host · port · user · key_path · 竞速地址 · 跳板`；默认一条、按需多开至多 3 条；最后一条链路走了连接就断，没有空闲定时器）」
 //! —— 同身份复用 · 身份口径逐项 · 按需多开封顶 · 最后一个走了就收，是这一句的四半（那一句原是「复用在一条 SSH 连接上」）。
 //! 并发同身份只拨一次、`evict` 只摘自己、关了的不复用：契约里没有逐字，守的是「远端一台一条连接」不被破坏。
 //!
@@ -198,8 +198,7 @@ async fn concurrent_opens_of_one_identity_dial_once() {
 /// 身份：决定「连到哪、以谁的身份」的那几项在里面；用法 / 命令 / 阶段 / agent 套接字**不在**。
 #[test]
 fn the_identity_ignores_what_a_link_uses_it_for() {
-    let base =
-        r#"{"host":"h","port":22,"user":"u","key_path":"/k","host_key_fingerprint":"SHA256:x"}"#;
+    let base = r#"{"host":"h","port":22,"user":"u","key_path":"/k"}"#;
     let with = |extra: &str| {
         let mut v: serde_json::Value = serde_json::from_str(base).unwrap();
         let e: serde_json::Value = serde_json::from_str(extra).unwrap();
@@ -223,9 +222,8 @@ fn the_identity_ignores_what_a_link_uses_it_for() {
         r#"{"port":2222}"#,
         r#"{"user":"u2"}"#,
         r#"{"key_path":"/k2"}"#,
-        r#"{"host_key_fingerprint":"SHA256:y"}"#,
         r#"{"endpoints":[{"host":"a","port":1}]}"#,
-        r#"{"jump":{"host":"j","port":22,"user":"ju","key_path":null,"host_key_fingerprint":null}}"#,
+        r#"{"jump":{"host":"j","port":22,"user":"ju","key_path":null}}"#,
     ] {
         assert_ne!(with(extra), id0, "`{extra}` 该换一个连接身份");
     }

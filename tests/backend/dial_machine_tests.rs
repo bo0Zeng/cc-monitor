@@ -29,27 +29,15 @@ fn address_lines_read_the_four_shapes_and_refuse_garbage() {
 }
 
 #[test]
-fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
+fn the_request_carries_the_form_and_no_trust_anchor() {
     let form = m(
-        json!({"host": "192.0.2.2", "label": "devbox", "port": 2222, "user": "u", "keyPath": "", "hostKeyFingerprint": "",
+        json!({"host": "192.0.2.2", "label": "devbox", "port": 2222, "user": "u", "keyPath": "",
                         "addresses": ["devbox.lan", "192.0.2.2:2222", "bad:x"], "jump": ""}),
     );
-    let saved_same =
-        m(json!({"host": "192.0.2.2", "user": "u", "hostKeyFingerprint": "SHA256:old"}));
-    let saved_moved =
-        m(json!({"host": "192.0.2.9", "user": "u", "hostKeyFingerprint": "SHA256:old"}));
-    let r = request(
-        &form,
-        Some(&saved_same),
-        None,
-        None,
-        "stream",
-        json!({"stages": true}),
-    )
-    .unwrap();
-    assert_eq!(
-        r["host_key_fingerprint"], "SHA256:old",
-        "表单空、已保存那份同一个 host ⇒ 继承"
+    let r = request(&form, None, None, "stream", json!({"stages": true})).unwrap();
+    assert!(
+        r.get("host_key_fingerprint").is_none() && r.get("known_keys").is_none(),
+        "信哪把主机钥匙由拨号核心读库，请求里不带：{r}"
     );
     assert_eq!(r["key_path"], Value::Null, "空串 ⇒ 走 agent");
     assert_eq!(
@@ -61,12 +49,6 @@ fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
         (r["use"].as_str(), r["stages"].as_bool()),
         (Some("stream"), Some(true))
     );
-    let r = request(&form, Some(&saved_moved), None, None, "stream", json!({})).unwrap();
-    assert_eq!(
-        r["host_key_fingerprint"],
-        Value::Null,
-        "换了 host 不许继承旧指纹"
-    );
     serde_json::from_value::<crate::DialRequest>(r).expect("组出来的请求后端自己读得动");
 }
 
@@ -75,11 +57,11 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
     let via = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"}));
     let bastion =
         m(json!({"host": "b.example", "label": "bastion", "user": "j", "jump": "elsewhere"}));
-    let r = request(&via, None, Some(&bastion), None, "forward", json!({})).unwrap();
+    let r = request(&via, Some(&bastion), None, "forward", json!({})).unwrap();
     assert_eq!(r["jump"]["host"], "b.example");
     assert_eq!(r["jump"]["label"], "bastion");
     assert_eq!(
-        request(&via, None, None, None, "forward", json!({}))
+        request(&via, None, None, "forward", json!({}))
             .unwrap_err()
             .0,
         "bad_jump",
@@ -87,14 +69,14 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
     );
     let wrong = m(json!({"host": "x", "label": "other", "user": "j"}));
     assert_eq!(
-        request(&via, None, Some(&wrong), None, "forward", json!({}))
+        request(&via, Some(&wrong), None, "forward", json!({}))
             .unwrap_err()
             .0,
         "bad_jump"
     );
     let selfish = m(json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "devbox"}));
     assert_eq!(
-        request(&selfish, None, Some(&selfish), None, "forward", json!({}))
+        request(&selfish, Some(&selfish), None, "forward", json!({}))
             .unwrap_err()
             .0,
         "bad_jump",
@@ -151,31 +133,3 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
     );
 }
 
-#[test]
-fn the_ack_says_how_strict_the_composed_request_was() {
-    // 界面判「要不要自动固化」看 ack 的 `strict` / `jump_strict`，不再自己重推指纹继承（规则只在本文件）。
-    let strict_of = |wire: Value| crate::uses::strictness(&resolve(&wire).unwrap());
-    let form = json!({"host": "192.0.2.2", "label": "devbox", "user": "u", "jump": "bastion"});
-    let bastion = |fp: &str| json!({"host": "b.lan", "label": "bastion", "user": "u", "hostKeyFingerprint": fp});
-    assert_eq!(
-        strict_of(json!({"machine": form, "jump": bastion("")})),
-        (false, false),
-        "谁都没带指纹 ⇒ 两台都 TOFU"
-    );
-    assert_eq!(
-        strict_of(
-            json!({"machine": form, "saved": {"host": "192.0.2.2", "user": "u", "hostKeyFingerprint": "SHA256:s"},
-            "jump": bastion("SHA256:j")})
-        ),
-        (true, true),
-        "目标从同一个 host 的已保存那份继承了指纹 ⇒ 严格；跳板自己带了 ⇒ 严格"
-    );
-    assert_eq!(
-        strict_of(
-            json!({"machine": form, "saved": {"host": "198.51.100.9", "user": "u", "hostKeyFingerprint": "SHA256:s"},
-            "jump": bastion("  ")})
-        ),
-        (false, false),
-        "换了 host 不继承；空白指纹不算"
-    );
-}

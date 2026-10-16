@@ -241,9 +241,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "tests/frontend/shell/dial_host_tests.rs",
         "src/backend/ssh-dial/machine.rs",
         "★〔「一个判定一个家」〕**这台原样的配置交过去的那几格两侧同形** —— \
-         `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request`（`machine` · `saved` · \
+         `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request`（`machine` · \
          `jump` · `prefer` · `use`），读侧是后端 `ssh-dial/machine.rs::resolve`（组拨号请求只在那里）。失效方向同上一行：写错一格名， \
-         后端读成缺席（`saved` 缺 ⇒ 固化之后的重连照旧 TOFU · `prefer` 缺 ⇒ 上次赢的那条不排首），两侧各自的判据全绿。",
+         后端读成缺席（`jump` 缺 ⇒ 照 fail-closed 拒 · `prefer` 缺 ⇒ 上次赢的那条不排首），两侧各自的判据全绿。",
     ),
     (
         "monitor→backend",

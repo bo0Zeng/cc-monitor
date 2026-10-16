@@ -148,6 +148,7 @@ describe("机器单页问题行的修法接到真流程", () => {
       os: null,
       fixes: ["compare_fingerprint"],
       seenHostKey: "SHA256:new",
+      expectedHostKey: "SHA256:old",
       detail: null,
     });
     const label = fixLabel("compare_fingerprint");

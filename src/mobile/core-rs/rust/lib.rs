@@ -231,28 +231,121 @@ impl ExternalSigner for KeystoreSigner {
     }
 }
 
-/// 鉴权过了的那一把 host key 交回 Kotlin（那边等 ack 成功才落 Room）。
+/// 主机钥匙那份库在手机上这一版的样子：Room 那张表还是真身（迁进库文件是下一刀），核心读到的文本由每次拨号请求里
+/// Kotlin 现查交来的 `known_keys` 拼出（[`note_known`]）；核心记下的首见那一行拆回「主机 · 口 · 钥匙」交 Kotlin，等 ack 成功才落 Room。
+/// 迁移那一刀把本段连同请求里的 `known_keys` 一起删。
 struct PhoneHostKeys;
 
-impl HostKeys for PhoneHostKeys {
-    fn remember(&self, host: &str, port: u16, key: &str) {
-        if let Some(s) = sink() {
-            s.call(|env, obj| {
-                let h = env.new_string(host)?;
-                let k = env.new_string(key)?;
-                env.call_method(
-                    obj,
-                    "hostKey",
-                    "(Ljava/lang/String;ILjava/lang/String;)V",
-                    &[
-                        JValue::Object(&h),
-                        JValue::Int(i32::from(port)),
-                        JValue::Object(&k),
-                    ],
-                )?;
-                Ok(())
-            });
+/// 一台：全部地址 ＋ Room 里记着的那几把（`算法 base64`）。
+type Known = (Vec<ssh_dial::Endpoint>, Vec<String>);
+
+fn known_book() -> &'static Mutex<Vec<Known>> {
+    static B: OnceLock<Mutex<Vec<Known>>> = OnceLock::new();
+    B.get_or_init(Default::default)
+}
+
+/// 拨号请求（原样 JSON）里目标与每台跳板的 `known_keys` 记进本子：同一台（任一地址相同）的旧那一条换掉，没记过的那台删掉。
+pub fn note_known(request: &serde_json::Value) {
+    let mut found: Vec<Known> = Vec::new();
+    let ep = |v: &serde_json::Value| -> Option<ssh_dial::Endpoint> {
+        Some(ssh_dial::Endpoint {
+            host: v.get("host")?.as_str()?.to_string(),
+            port: u16::try_from(v.get("port")?.as_u64()?).ok()?,
+        })
+    };
+    let keys = |v: &serde_json::Value| -> Vec<String> {
+        v.get("known_keys")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    };
+    let mut addrs: Vec<ssh_dial::Endpoint> = request
+        .get("endpoints")
+        .and_then(serde_json::Value::as_array)
+        .map(|a| a.iter().filter_map(ep).collect())
+        .unwrap_or_default();
+    if addrs.is_empty() {
+        addrs.extend(ep(request));
+    }
+    found.push((addrs, keys(request)));
+    let mut hop = request.get("jump");
+    while let Some(h) = hop.filter(|h| h.is_object()) {
+        found.push((ep(h).into_iter().collect(), keys(h)));
+        hop = h.get("jump");
+    }
+    let mut book = known_book().lock().unwrap_or_else(|e| e.into_inner());
+    for (addrs, keys) in found {
+        book.retain(|(a, _)| !a.iter().any(|x| addrs.contains(x)));
+        if !keys.is_empty() {
+            book.push((addrs, keys));
         }
+    }
+}
+
+/// 本子 ⇒ known_hosts 文本（一台一把一行，主机名段写全部地址）。
+fn known_text() -> String {
+    let book = known_book().lock().unwrap_or_else(|e| e.into_inner());
+    book.iter()
+        .flat_map(|(addrs, keys)| {
+            let names = ssh_dial::known_hosts::names(addrs);
+            keys.iter().map(move |k| format!("{names} {k}\n"))
+        })
+        .collect()
+}
+
+/// 主机名段的一项（`主机` 或 `[主机]:口`）⇒ (主机, 口)。
+fn endpoint_of(name: &str) -> Option<(String, u16)> {
+    match name.strip_prefix('[') {
+        Some(rest) => {
+            let (h, p) = rest.split_once("]:")?;
+            Some((h.to_string(), p.parse().ok()?))
+        }
+        None => Some((name.to_string(), 22)),
+    }
+}
+
+impl HostKeys for PhoneHostKeys {
+    fn read(&self) -> Result<String, Said> {
+        Ok(known_text())
+    }
+
+    /// 核心改出来的新文本里多出来的那几行（首见）逐地址交回 Kotlin（那边等 ack 成功才落 Room）。
+    fn rewrite(&self, edit: &mut dyn FnMut(&str) -> Option<String>) -> Result<(), Said> {
+        let old = known_text();
+        let Some(new) = edit(&old) else {
+            return Ok(());
+        };
+        let Some(s) = sink() else {
+            return Ok(());
+        };
+        for line in new.lines().filter(|l| !old.lines().any(|o| o == *l)) {
+            let mut f = line.split_whitespace();
+            let (Some(names), Some(alg), Some(b64)) = (f.next(), f.next(), f.next()) else {
+                continue;
+            };
+            if names.starts_with('#') {
+                continue;
+            }
+            let key = format!("{alg} {b64}");
+            for (host, port) in names.split(',').filter_map(endpoint_of) {
+                s.call(|env, obj| {
+                    let h = env.new_string(&host)?;
+                    let k = env.new_string(&key)?;
+                    env.call_method(
+                        obj,
+                        "hostKey",
+                        "(Ljava/lang/String;ILjava/lang/String;)V",
+                        &[
+                            JValue::Object(&h),
+                            JValue::Int(i32::from(port)),
+                            JValue::Object(&k),
+                        ],
+                    )?;
+                    Ok(())
+                });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -337,7 +430,9 @@ pub type OnData = Arc<dyn Fn(i64, Option<&[u8]>) + Send + Sync>;
 /// 开一条链路（拨号请求 JSON，组好的那一形，同拨号核心 `DialRequest`）。回编号；请求读不动 ⇒ `Err(原话)`。
 pub fn open_link(request: &str, on_data: OnData) -> Result<i64, String> {
     static NEXT: AtomicI64 = AtomicI64::new(1);
-    let req: ssh_dial::DialRequest = serde_json::from_str(request).map_err(|e| e.to_string())?;
+    let raw: serde_json::Value = serde_json::from_str(request).map_err(|e| e.to_string())?;
+    note_known(&raw);
+    let req: ssh_dial::DialRequest = serde_json::from_value(raw).map_err(|e| e.to_string())?;
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let (up_tx, mut up_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let (resize_tx, resize_rx) = mpsc::unbounded_channel();

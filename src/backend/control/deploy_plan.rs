@@ -29,8 +29,6 @@
 //! # 买不到的
 //!
 //! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，monitor 照计划放。
-//! - 第一次连一台没钉过指纹的机器：这一问在本机后端里拨，ack 里那枚指纹这一跳不交 monitor 去钉；
-//!   紧接着 monitor 开 `files` 链路（池里同一条连接）那一跳照旧钉（`dial_host::settle_host_key`）。
 
 use crate::platform::fs::Ro;
 
@@ -90,7 +88,7 @@ pub(crate) struct Planned {
     pub(crate) theirs: Option<String>,
     /// 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
     pub(crate) leftovers: Vec<String>,
-    /// 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+    /// 问 `uname` 那一趟拨号的 ack 原样（拨号核心 `DialAck` 那一形）。
     #[cfg_attr(test, ts(type = "unknown"))]
     pub(crate) ack: Value,
 }

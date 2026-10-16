@@ -246,7 +246,7 @@ pub struct Plan {
     pub action: DeployAction,
     /// 落点目录里没人要的临时件 / 备份件（家目录相对）；照删。列不出那个目录 ⇒ 空（下次再问）。
     pub leftovers: Vec<String>,
-    /// 问 `uname` 那一趟的 ack：桌面那一侧原样交回 monitor，按它固化指纹（`dial_host::settle_host_key`）；手机不用（拨号时已经回调落进 Room）。
+    /// 问 `uname` 那一趟的 ack（原样交回 monitor）。
     pub ack: Value,
 }
 

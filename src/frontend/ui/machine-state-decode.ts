@@ -25,16 +25,18 @@ const KINDS: readonly MachineStateKind[] = [
 ];
 const RELATIONS: readonly VersionRelation[] = ["same", "older", "newer", "incomparable"];
 const FIXES: readonly MachineFix[] = ["retry", "conn_settings", "push_key", "compare_fingerprint", "update", "connect"];
-const KEYS = ["detail", "fixes", "os", "reason", "seenHostKey", "stage", "state", "version", "versionRelation"];
+const KEYS = ["detail", "expectedHostKey", "fixes", "os", "reason", "seenHostKey", "stage", "state", "version", "versionRelation"];
 
 const strOrNull = (v: unknown): v is string | null => v === null || (typeof v === "string" && v !== "");
 
-/** 严格收：键集恰好那九格、每格取值在闭集里；收不下 ⇒ `null`（那一行照「没问到」画，不替后端编一态）。 */
+/** 严格收：键集恰好那十格、每格取值在闭集里；收不下 ⇒ `null`（那一行照「没问到」画，不替后端编一态）。 */
 export function decodeMachineState(raw: unknown): MachineState | null {
   if (!isObj(raw) || !exactKeys(raw, KEYS)) return null;
   const v = raw;
   if (!KINDS.includes(v.state as MachineStateKind)) return null;
   if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.detail)) return null;
+  // 库里记下的那一枚：库里没有同类型的 ⇒ 空串（后端照实说「没有」）。
+  if (v.expectedHostKey !== null && typeof v.expectedHostKey !== "string") return null;
   if (v.versionRelation !== null && !RELATIONS.includes(v.versionRelation as VersionRelation)) return null;
   if (!Array.isArray(v.fixes) || !v.fixes.every((f) => FIXES.includes(f as MachineFix))) return null;
   return v as unknown as MachineState;

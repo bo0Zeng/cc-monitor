@@ -394,8 +394,7 @@ where
 /// **原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
 /// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
 ///
-/// 连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回：拨号在本机后端里发生，逐地址指纹要交 monitor 固化
-/// （`dial_host::settle_host_key`），不另写一份判定。
+/// 连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回。
 pub(crate) async fn capture_full(
     dial: &Value,
     command: String,

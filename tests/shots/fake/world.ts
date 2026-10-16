@@ -313,7 +313,7 @@ export function defaultDisk(machines: string[]): Record<string, MachineDisk> {
 export function defaultConfig(): Record<string, unknown> {
   return {
     remote: {
-      hosts: REMOTES.map((label, i) => ({
+      hosts: REMOTES.map((label) => ({
         label,
         host: hostOf(label),
         port: 22,

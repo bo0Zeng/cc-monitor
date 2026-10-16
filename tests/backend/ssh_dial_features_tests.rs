@@ -2,7 +2,7 @@
 //! 写的规矩（宿主装、线上改不动）。都对一台**进程内**的 SSH 服务端（[`Door`]，回环口上，测试档不许出网）真拨一趟：
 //! 走生产那条 `uses::run`（拨号 → 鉴权 → 开通道 → 阶段行 ＋ ack ＋ 字节），不另写一份拨号。
 
-use crate::guard_support::{register, remembered, test_host, TestCred};
+use crate::guard_support::{register, remembered, seed_library, test_host, TestCred};
 use crate::{DialRequest, StageSink};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -524,7 +524,7 @@ fn a_der_ecdsa_signature_becomes_two_mpints() {
 }
 
 /// ★ 多跳：本机 → 甲 → 乙 → 目标，每一台都是一台真服务端（各自的密码）；逐台经上一台的 direct-tcpip 开到下一台，
-/// 跳板那几台的指纹进 `jump_fingerprints`、目标那一台的进 `fingerprints`。
+/// 三台各自鉴权过了，各记进库一行（首见）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn two_jumps_reach_the_target_through_each_other() {
     let (p_outer, log_outer) = door(Some("a"), None).await;
@@ -566,16 +566,9 @@ async fn two_jumps_reach_the_target_through_each_other() {
         "内一台没替我们开到目标"
     );
     assert!(log_target.lock().unwrap().iter().any(|l| l == "exec uname"));
-    assert_eq!(
-        ack["jump_fingerprints"].as_object().map(|m| m.len()),
-        Some(2),
-        "两台跳板的指纹该各记一格：{ack}"
-    );
-    assert_eq!(
-        ack["fingerprints"].as_object().map(|m| m.len()),
-        Some(1),
-        "{ack}"
-    );
+    for p in [p_outer, p_inner, p_target] {
+        assert_eq!(remembered(p).len(), 1, "{p} 那一台没记进库：{ack}");
+    }
 }
 
 /// 多跳的连接身份：外一台进了身份（换了外一台就是另一条连接）；只一跳时身份与从前同形（`[主机, 口, 用户, 钥匙, 指纹]`）。
@@ -705,14 +698,18 @@ fn ed25519_key(seed: u8) -> russh::keys::PrivateKey {
     ))
 }
 
-async fn dial_with_known(port: u16, known: Vec<String>) -> serde_json::Value {
+/// 库里这台记着 `known` 那几把时拨一次（每次换一个口的服务端：各判据的库行按口分开，不串）。
+async fn dial_with_known(port: u16) -> serde_json::Value {
     register("known-pw", TestCred::Password("k".into()));
     let req = request(serde_json::json!({
         "host": "127.0.0.1", "port": port, "user": "u", "key_path": "known-pw",
-        "use": "capture", "command": "echo", "capture": {"max_bytes": 64},
-        "known_keys": known
+        "use": "capture", "command": "echo", "capture": {"max_bytes": 64}
     }));
     open(req, crate::uses::Control::none()).await.0
+}
+
+fn seed(port: u16, key: &str) {
+    seed_library(&format!("{} {key}", crate::known_hosts::host_pattern("127.0.0.1", port)));
 }
 
 /// ★ 同 OpenSSH：记过的类型排在协商前头 ⇒ 服务端两种都给时协商出记过的那一种、按那一把严格比、过。
@@ -720,24 +717,62 @@ async fn dial_with_known(port: u16, known: Vec<String>) -> serde_json::Value {
 async fn a_known_key_type_is_negotiated_first_and_passes() {
     let ec = ecdsa_key();
     let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![ed25519_key(9), ec.clone()])).await;
-    let ack = dial_with_known(port, vec![key_line(&ec)]).await;
+    seed(port, &key_line(&ec));
+    let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], true, "记过的那一种没被协商出来 / 被拒了：{ack}");
 }
 
 /// ★ 服务端只给一种这台没记过的类型（而别的类型记过）⇒ 拒，报「钥匙变了」带类型；同类型但不是那一把 ⇒ 也拒。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_unstored_key_type_or_another_key_is_refused() {
-    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![ed25519_key(11)])).await;
-    let ack = dial_with_known(port, vec![key_line(&ecdsa_key())]).await;
+    let host = ed25519_key(11);
+    let other = ecdsa_key();
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
+    seed(port, &key_line(&other));
+    let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], false, "{ack}");
     assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
     assert_eq!(ack["key_type"], "ssh-ed25519", "{ack}");
-    let ack = dial_with_known(port, vec![key_line(&ed25519_key(12))]).await;
+    assert_eq!(ack["expected_fingerprint"], "", "库里没有同类型的那一把 ⇒ 空串：{ack}");
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
+    let wrong = ed25519_key(12);
+    seed(port, &key_line(&wrong));
+    let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], false, "{ack}");
     assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
+    assert_eq!(
+        ack["expected_fingerprint"],
+        crate::known_hosts::fingerprint(wrong.public_key()),
+        "「钥匙变了」那一句要库里同类型那一把的指纹：{ack}"
+    );
+    assert_eq!(remembered(port).len(), 1, "被拒的那一把不许记进库");
     // 正控：记的正是那一把 ⇒ 过。
-    let ack = dial_with_known(port, vec![key_line(&ed25519_key(11))]).await;
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
+    seed(port, &key_line(&host));
+    let ack = dial_with_known(port).await;
     assert_eq!(ack["ok"], true, "{ack}");
+}
+
+/// ★ 待核的指纹（机器表那一格换形来的，只活这一版）：对不上 ⇒ 拒；对得上 ⇒ 过、记下整把、待核那一行去掉。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pending_fingerprint_is_checked_then_replaced_by_the_whole_key() {
+    let host = ed25519_key(21);
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
+    let names = crate::known_hosts::host_pattern("127.0.0.1", port);
+    seed_library(&format!("#cc-monitor-pending-fingerprint {names} SHA256:not-this-one"));
+    let ack = dial_with_known(port).await;
+    assert_eq!(ack["ok"], false, "{ack}");
+    assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
+    assert_eq!(ack["expected_fingerprint"], "SHA256:not-this-one", "{ack}");
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![host.clone()])).await;
+    let names = crate::known_hosts::host_pattern("127.0.0.1", port);
+    let fp = crate::known_hosts::fingerprint(host.public_key());
+    seed_library(&format!("#cc-monitor-pending-fingerprint {names} {fp}"));
+    let ack = dial_with_known(port).await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    assert_eq!(remembered(port), vec![format!("{names} {}", key_line(&host))]);
+    let lib = crate::env::get().host_keys.read().unwrap();
+    assert!(!lib.contains(&format!("{names} {fp}")), "待核那一行该随之去掉：{lib}");
 }
 
 /// 赛跑里另拨的那一条用的那一份（[`StageSink::quiet`]）：阶段 · 原因码不进这一趟，进展照报到这一趟的那一头
@@ -774,12 +809,12 @@ async fn a_first_seen_key_is_remembered_only_after_login() {
         ack["fingerprint"].is_string(),
         "握手要先过核钥匙那一步：{ack}"
     );
-    assert_eq!(remembered(port), vec![], "鉴权没过的那一趟把钥匙记下了");
+    assert!(remembered(port).is_empty(), "鉴权没过的那一趟把钥匙记下了");
     let (ack, ..) = open(req("tofu-good"), crate::uses::Control::none()).await;
     assert_eq!(ack["ok"], true, "{ack}");
     assert_eq!(
         remembered(port),
-        vec![("127.0.0.1".to_string(), port, key_line(&host_key))]
+        vec![format!("{} {}", crate::known_hosts::host_pattern("127.0.0.1", port), key_line(&host_key))]
     );
 }
 
@@ -803,6 +838,6 @@ async fn each_hop_is_remembered_only_after_its_own_login() {
     let (ack, ..) = open(req, crate::uses::Control::none()).await;
     assert_eq!(ack["ok"], false, "{ack}");
     assert_eq!(remembered(p_outer).len(), 1, "外一台鉴权过了却没记");
-    assert_eq!(remembered(p_inner), vec![], "内一台鉴权没过却记下了");
-    assert_eq!(remembered(p_target), vec![], "目标没走到却记下了");
+    assert!(remembered(p_inner).is_empty(), "内一台鉴权没过却记下了");
+    assert!(remembered(p_target).is_empty(), "目标没走到却记下了");
 }
