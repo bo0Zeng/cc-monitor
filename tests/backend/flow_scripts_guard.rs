@@ -489,6 +489,99 @@ mod tests {
             .unwrap()
     }
 
+    /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开一个 ⇒ A 先拿到。
+    /// 放开的时刻挑在 A 刚问过一圈、B 还没问的那一段（各自起来后约 5.5 秒 · 3 秒）：各自轮询的写法这时 B 抢在前面；排队的写法谁先来谁先拿，与何时放开无关。
+    #[test]
+    fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Child, Stdio};
+        let d = scratch("heavy-fifo");
+        let bin = tool_bin(
+            &d,
+            &[
+                "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "rm",
+            ],
+        );
+        let slots = d.join("state/heavy-slots");
+        std::fs::create_dir_all(&slots).unwrap();
+        // 三个槽位各由一个持锁的子进程占着；关掉它的标准输入就放开。
+        let mut holders: Vec<Child> = (1..=3)
+            .map(|i| {
+                let mut h = Command::new("bash")
+                    .args(["-c", "exec 9>\"$0\"; flock 9; echo held; read _"])
+                    .arg(slots.join(i.to_string()))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                let mut line = String::new();
+                BufReader::new(h.stdout.as_mut().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                assert_eq!(line, "held\n");
+                h
+            })
+            .collect();
+        let order = d.join("order");
+        // 起一个等的人，等它说出「排队等」才回（它已经问过一圈、没拿到）。
+        let waiter = |name: &str| -> (Child, std::time::Instant) {
+            let mut c = Command::new(bin.join("bash"))
+                .arg(root().join("tests/scripts/heavy.sh"))
+                .args(["bash", "-c", "echo \"$0\" >> order", name])
+                .current_dir(&d)
+                .env("PATH", &bin)
+                .env("GATE_STATE_DIR", d.join("state"))
+                .env("HEAVY_SLOTS", "3")
+                .env_remove("HEAVY_HELD")
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut err = BufReader::new(c.stderr.take().unwrap());
+            let mut line = String::new();
+            while !line.contains("排队") {
+                line.clear();
+                assert!(
+                    err.read_line(&mut line).unwrap() > 0,
+                    "{name} 没说排队就退了"
+                );
+            }
+            std::thread::spawn(move || std::io::copy(&mut err, &mut std::io::sink()));
+            (c, std::time::Instant::now())
+        };
+        let (mut a, a_at) = waiter("A");
+        std::thread::sleep(std::time::Duration::from_millis(2_500));
+        let (mut b, _) = waiter("B");
+        std::thread::sleep(
+            (a_at + std::time::Duration::from_millis(5_500))
+                .saturating_duration_since(std::time::Instant::now()),
+        );
+        drop(holders[0].stdin.take());
+        let _ = holders[0].wait();
+        let first = guard_core::wall::rounds()
+            .find_map(|()| {
+                let got = std::fs::read_to_string(&order).unwrap_or_default();
+                if got.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    return None;
+                }
+                Some(got)
+            })
+            .expect("放开一个槽位后谁都没拿到");
+        assert_eq!(
+            first.lines().next(),
+            Some("A"),
+            "后来的 B 抢在先来的 A 前面拿到了槽位"
+        );
+        for h in &mut holders[1..] {
+            drop(h.stdin.take());
+            let _ = h.wait();
+        }
+        assert!(a.wait().unwrap().success());
+        assert!(b.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&order).unwrap(), "A\nB\n");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// 本进程的 nice 值再降 10（封顶 19）：判据自己可能就跑在一份降过的重活里。
     fn lowered_nice() -> String {
         let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
