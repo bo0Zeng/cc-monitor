@@ -20,7 +20,7 @@ import {
   readRemoteConfig,
   findHostByOrigin,
 } from "./remote-config";
-import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { callStop, type Reply, type StartItem } from "./tab-batch-run";
 import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
@@ -281,7 +281,7 @@ export class TabSessionActions {
         return;
       }
       if (r.outcome !== "done") {
-        const said = sayReply(origin, "stop", r);
+        const said = r.said ?? "";
         // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
         if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed", { title }), said, kill);
         else toast(copyText("tabSessionActions.kill.failed", { title }), said, { detail: r.copyDetail });

@@ -10,12 +10,12 @@
  */
 import { commands, type TerminalOpened } from "./ipc/commands";
 import { copyText } from "./copy-table";
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { TerminalSshReq } from "./generated/TerminalSshReq";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { toast } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
-import { detailOf, failSaid } from "./kit/detail";
+import { detailOf, failSaid, saidOf } from "./kit/detail";
 import { openSettingsWindow } from "./settings/open-settings";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
@@ -27,7 +27,7 @@ async function lineOf(req: TerminalSshReq): Promise<string> {
     const { command } = await callTyped(LOCAL_ORIGIN, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
     return command;
   } catch (e) {
-    throw new Error(saidFrom(e, LOCAL_ORIGIN));
+    throw new Error(saidOf(e));
   }
 }
 

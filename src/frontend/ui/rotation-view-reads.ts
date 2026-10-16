@@ -3,8 +3,7 @@
  * 会话所在那台；本机远端同一条 `chan.call(origin, …)`。typed 命令（入参 · 回包从 Rust 类型生成），形状由握手指纹管。
  * 判定全在后端：这里只问、交给画的那几处。轮换那几块界面（会话面板 · 设置页）此刻还没有。
  */
-import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 
@@ -19,8 +18,7 @@ export async function readSessionView(origin: Origin, sid: string): Promise<Rota
   try {
     return await callTyped(origin, "rotation-view", { target: { sid }, hours: HOURS }, budgetWithin(BUDGET_MS));
   } catch (e) {
-    const err = e instanceof ChanError ? e.error : undefined;
-    if (err && err.layer === "peer" && err.why === "refused" && refusalOf(err.body)?.code === "no_session") return null;
+    if (refusalIn(e)?.code === "no_session") return null;
     throw e;
   }
 }

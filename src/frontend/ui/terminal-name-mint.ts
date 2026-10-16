@@ -6,7 +6,8 @@
  * 不避让的名字会撞上已有会话、静默接进去，而用户以为开了新的。之后怎么办归调用方。
  */
 import type { Origin } from "./ipc/origin";
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { saidOf } from "./kit/detail";
 
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
 
@@ -19,7 +20,7 @@ async function askMint(origin: Origin, args: { cwd: string }): Promise<MintOutco
     const minted = await callTyped(origin, "terminal-name-mint", args, budgetWithin(MINT_BUDGET_MS));
     return { ok: true, name: minted.name };
   } catch (e) {
-    return { ok: false, why: saidFrom(e, origin) };
+    return { ok: false, why: saidOf(e) };
   }
 }
 

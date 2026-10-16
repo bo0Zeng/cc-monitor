@@ -325,6 +325,7 @@ export const commands = {
    * ⚠ 调用方**不直接用它**：一律经 `src/comms/inward/chan.ts` 的 `chan.call(origin, op, payload, budget)`
    * （期限换算、本地撤单、三层错误解码都住那里）。载荷去程是字节数组、回程是原样字节（`ArrayBuffer`）。
    * **桶②**：回的是不透明字节，本表不认识它的形状。
+   * 失败回的是 `Fail`（三层 ＋ 那一句 ＋ 详情），不是 `Said`：不经 [`invoke`] 换成 [`SaidError`]（那会丢了三层），原样交 `chan.ts` 解。
    */
   chan_call: (args: {
     origin: Origin;
@@ -332,7 +333,7 @@ export const commands = {
     payload: number[];
     view: object | null;
     leftMs: number;
-  }) => invoke<ArrayBuffer>("chan_call", args),
+  }) => tauriInvoke<ArrayBuffer>("chan_call", args),
 
   /**
    * 那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码与置灰时说的那一句）。

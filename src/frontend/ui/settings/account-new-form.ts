@@ -12,12 +12,13 @@
 import { accountsAdd, validateAcctName, type AccountAddArgs } from "../account-ops";
 import { copyText } from "../copy-table";
 import { baseUrlIssue, type BaseUrlIssue } from "../generated/judgment-rules";
-import { saidOfControl } from "../control-said";
+
 import { field } from "../kit/field";
 import { button, buttonRow, setButtonLabel } from "../kit/button";
 import { checkbox, radio } from "../kit/switch";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import type { Origin } from "../ipc/origin";
+import { saidOf } from "../kit/detail";
 
 /** 接入方式 —— `§4.4` 那个岔口的两支。 */
 export type AccountAccess = "subscription" | "apikey";
@@ -205,7 +206,7 @@ export function renderNewAccountForm(
       (e: unknown) => {
         if (my !== asked) return;
         setNameHelp("");
-        name.setError(saidOfControl(e));
+        name.setError(saidOf(e));
       },
     );
   };

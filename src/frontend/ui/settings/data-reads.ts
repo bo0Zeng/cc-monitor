@@ -3,13 +3,14 @@
  * 本机那一栏先问 monitor 一次它自己进程的那几条事实（`footprint_client_facts`），原样带给本机后端（同足迹那一问）。
  * 设置窗左栏角标与主窗口状态栏那一枚读同一个数（[`choresOf`]），界面不另数。
  */
-import { budgetWithin, callTyped, saidFrom } from "../ipc/chan-caller";
+import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import type { ChoresMarkReq } from "../generated/ChoresMarkReq";
 import type { DataReport } from "../generated/DataReport";
 import type { FootprintClient } from "../generated/FootprintClient";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { recallSeen, rememberSeen } from "../last-seen";
+import { saidOf } from "../kit/detail";
 
 export type { DataReport } from "../generated/DataReport";
 export type { Chore } from "../generated/Chore";
@@ -28,7 +29,7 @@ export async function markChore(origin: Origin, args: ChoresMarkReq): Promise<vo
   try {
     await callTyped(target, "chores-mark", args, budgetWithin(MARK_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 
@@ -41,7 +42,7 @@ export async function readDataReport(origin: Origin): Promise<DataReport> {
   try {
     report = await callTyped(local ? LOCAL_ORIGIN : origin, "data-report", req, budgetWithin(DATA_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
   void rememberSeen(origin, "data", report);
   return report;

@@ -11,7 +11,7 @@
  * 规则 · 方言 · 围栏整族在那台后端（`src/backend/assets/aliases/`）。入参 · 回包都是后端类型生成的（`generated/`），
  * 回包形状由握手时的形状指纹管，这里不逐格判。**前端不做安全判断**。
  */
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { ShellKind } from "./generated/ShellKind";
 import type { AliasWins } from "./generated/AliasWins";
@@ -20,6 +20,7 @@ import type { PsExecPolicy } from "./generated/PsExecPolicy";
 import type { AliasStartupFile } from "./generated/AliasStartupFile";
 import type { AliasListing as AliasListingWire } from "./generated/AliasListing";
 import type { PolicySet as PolicySetWire } from "./generated/PolicySet";
+import { saidOf } from "./kit/detail";
 
 /** 方言：别名文件、别名块、source 那一行问的是同一个问题。 */
 export type Shell = ShellKind;
@@ -44,14 +45,14 @@ export type AliasListing = AliasListingWire;
 
 /** 这几问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */
 const ALIAS_BUDGET_MS = 30_000;
-const said = (e: unknown, origin: Origin): Error => new Error(saidFrom(e, origin));
+const said = (e: unknown): Error => new Error(saidOf(e));
 
 /** 读回那台上的启动文件候选；`rcPath` = 人另指的那一份（那台后端过围栏）。 */
 export async function readAliases(origin: Origin, shell: Shell, rcPath: string | null): Promise<AliasListing> {
   try {
     return await callTyped(origin, "aliases-read", { shell, rcPath }, budgetWithin(ALIAS_BUDGET_MS));
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -61,7 +62,7 @@ export async function renderAliasBlock(origin: Origin, rcPath: string): Promise<
     const { text } = await callTyped(origin, "aliases-block-render", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
     return text;
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -70,7 +71,7 @@ export async function installAliasBlock(origin: Origin, rcPath: string): Promise
   try {
     await callTyped(origin, "aliases-block-install", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -82,7 +83,7 @@ export async function allowLocalScripts(origin: Origin, host: PsHost): Promise<P
   try {
     return await callTyped(origin, "powershell-policy-set", { host }, budgetWithin(ALIAS_BUDGET_MS));
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }
 
@@ -91,6 +92,6 @@ export async function removeAliasBlock(origin: Origin, rcPath: string): Promise<
   try {
     await callTyped(origin, "aliases-block-remove", { rcPath }, budgetWithin(ALIAS_BUDGET_MS));
   } catch (e) {
-    throw said(e, origin);
+    throw said(e);
   }
 }

@@ -55,20 +55,20 @@ describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
     ]);
   });
   it("成品严格收：四格照收；多一格 / 缺一格 / 类型不对 ⇒ 抛（不补值）", () => {
-    expect(decodeApikeyWritten(WRITTEN)).toEqual(WRITTEN);
+    expect(decodeApikeyWritten(WRITTEN, "devbox")).toEqual(WRITTEN);
     for (const bad of [
       { ...WRITTEN, key: "sk-FIXTURE" },
       { account: "work", path: "/h/k.json", masked: "sk-****" },
       { ...WRITTEN, baseUrl: 3 },
       null,
     ]) {
-      expect(() => decodeApikeyWritten(bad)).toThrow(ReplyUnreadable);
+      expect(() => decodeApikeyWritten(bad, "devbox")).toThrow(ReplyUnreadable);
     }
   });
   it("失败说人话、话里不带明文", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     const err = await writeApikeyKey("host-a", "/d", "sk-SHOULD-NOT-SHOW").catch((e: Error) => e);
-    expect(String(err)).toMatch(copyText("chanCaller.said.unreachable"));
+    expect(String(err)).toMatch(NO_CHANNEL.said);
     expect(String(err)).not.toContain("sk-SHOULD-NOT-SHOW");
   });
 });

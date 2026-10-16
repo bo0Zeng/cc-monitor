@@ -3,10 +3,9 @@
  * `session-new-dir`（目录失焦：在不在 · 那台会铸的终端名）· `session-new`（点［新建］：起）。三问都是 typed 帧命令（入参 · 回包类型从 Rust 生成，形状由握手指纹核过）。
  */
 import { ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, refusalIn } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { saidOfTransport } from "./control-said";
-import { detailOf } from "./kit/detail";
+import { detailOf, saidOf } from "./kit/detail";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { DirChecked } from "./generated/DirChecked";
 import type { NewFacts } from "./generated/NewFacts";
@@ -66,16 +65,12 @@ export async function askNew(origin: Origin, req: NewRequest): Promise<NewResult
     reply = await callTyped(origin, "session-new", req, budget);
   } catch (e) {
     const detail = detailOf(e);
-    if (!(e instanceof ChanError)) return { kind: "unreachable", said: String(e), detail };
-    const err = e.error;
-    if (err.layer === "peer" && err.why === "refused") {
-      const r = refusalOf(err.body);
-      if (r?.code === "launch_pending") return { kind: "pending", said: r.message, detail };
-      if (r) return { kind: "refused", code: r.code, said: r.message, ...refusalData(r.data), detail };
-    }
+    const r = refusalIn(e);
+    if (r?.code === "launch_pending") return { kind: "pending", said: saidOf(e), detail };
+    if (r) return { kind: "refused", code: r.code, said: saidOf(e), ...refusalData(r.data), detail };
     // 发出去了、没等到回话（期限到 · 半路断了）⇒ 结果未知：同一张票再问一次（那台认得出是不是同一趟），不说失败。
-    if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", detail };
-    return { kind: "unreachable", said: saidOfTransport(origin, err), detail };
+    if (e instanceof ChanError && e.error.layer === "hop" && e.error.reach !== "NotSent") return { kind: "timeout", detail };
+    return { kind: "unreachable", said: saidOf(e), detail };
   }
   return { kind: "ok", reply };
 }

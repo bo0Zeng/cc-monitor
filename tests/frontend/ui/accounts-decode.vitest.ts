@@ -14,7 +14,7 @@
  * 买不到：真 Tauri IPC 与真后端（后端那一侧的判据在 Rust 里；monitor 那一跳由 `webview_tests` 量）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { peerVersionSaid, ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
+import { unreadableSaid, ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -61,7 +61,7 @@ const LIST_BAD = ReplyUnreadable;
 
 describe("金样：后端出的成品，TS 这一侧读得懂", () => {
   it("accounts-list：三格照收，账号逐格照收（并过表的那一个是 api-key 且可选）", () => {
-    const got = decodeAccountsList(golden["accounts-list"]);
+    const got = decodeAccountsList(golden["accounts-list"], "devbox");
     expect(got.meta.enabled).toBe(true);
     expect(got.meta.count).toBe(3);
     expect(got.meta.nextDefault, "删了默认号之后接班的那个号（后端答的）没收进来").toBe("b");
@@ -80,7 +80,7 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
     ]);
   });
   it("accounts-trust：两格照收", () => {
-    expect(decodeTrust(golden["accounts-trust"])).toEqual({ trusted: true, known: true });
+    expect(decodeTrust(golden["accounts-trust"], "devbox")).toEqual({ trusted: true, known: true });
   });
 });
 
@@ -113,12 +113,12 @@ describe("严格收：形状不对就抛，不补值", () => {
   for (const [why, v] of cases) {
     it(why, () => {
       // JSON 往返一次：`undefined` 那几格在线上就是「缺席」。
-      expect(() => decodeAccountsList(JSON.parse(JSON.stringify(v)))).toThrow(LIST_BAD);
+      expect(() => decodeAccountsList(JSON.parse(JSON.stringify(v)), "devbox")).toThrow(LIST_BAD);
     });
   }
   it("信任预检：缺一格 / 多一格都抛", () => {
-    expect(() => decodeTrust({ trusted: true })).toThrow(ReplyUnreadable);
-    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(ReplyUnreadable);
+    expect(() => decodeTrust({ trusted: true }, "devbox")).toThrow(ReplyUnreadable);
+    expect(() => decodeTrust({ trusted: true, known: false, error: null }, "devbox")).toThrow(ReplyUnreadable);
   });
 });
 
@@ -149,7 +149,7 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
     expect(st.accounts).toEqual([]);
-    expect(st.error).toMatch(copyText("chanCaller.said.unreachable"));
+    expect(st.error).toMatch(NO_CHANNEL.said);
     // 够不着 ≠ 要更新。
     expect([st.oldBackend, deriveUi(st).kind]).toEqual([false, "query-failed"]);
   });
@@ -167,6 +167,6 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     invokeMock.mockResolvedValue(linesReply(['{"kind":"accounts-meta","enabled":true}']));
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
-    expect(st.error).toBe(peerVersionSaid("reply_unreadable", "devbox"));
+    expect(st.error).toBe(unreadableSaid("devbox"));
   });
 });

@@ -20,7 +20,6 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { accountUnavailableOf, chosenAccount, refuseUnavailableAccount, type AccountUnavailable } from "../../../src/frontend/ui/launch-account";
-import { ControlError } from "../../../src/frontend/ui/control-said";
 import { ChanError } from "../../../src/comms/inward/chan";
 import {
   accountReadCalls,
@@ -86,8 +85,8 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   //    **再也到不了**，连档带测一起下岗。
   // 要求：「后端需更新在任何查询失败时都显示」⇒「只在真的版本不够时显示；查询失败按码说查询失败」。
   it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
-    const failed = deriveUi(state({ available: false, error: copyText("chanCaller.said.unreachable") }));
-    expect(failed).toEqual({ kind: "query-failed", reason: copyText("chanCaller.said.unreachable") });
+    const failed = deriveUi(state({ available: false, error: "壳·离线" }));
+    expect(failed).toEqual({ kind: "query-failed", reason: "壳·离线" });
     // 原因串里碰巧有「过旧」也不算（从前按串猜）：种类只看 `oldBackend`。
     expect(deriveUi(state({ available: false, error: "版本过旧？" })).kind).toBe("query-failed");
   });
@@ -593,10 +592,9 @@ describe("launch-account：要哪个号 · 那台说选不了时给的那个选�
     expect(chosenAccount("z")).toEqual({ kind: "named", name: "z" });
   });
 
-  it("认得出「那台说要的号选不了」：通道层 / 控制层两种错都认；别的码 · 形状不对 · 别的层 ⇒ 不认", () => {
+  it("认得出「那台说要的号选不了」：别的码 · 形状不对 · 别的层 ⇒ 不认", () => {
     const peer = (body: Uint8Array) => ({ layer: "peer" as const, why: "refused" as const, body });
     expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", U))))).toEqual(U);
-    expect(accountUnavailableOf(new ControlError("s", "d", peer(refusal("account_unavailable", U))))).toEqual(U);
     expect(accountUnavailableOf(new ChanError(peer(refusal("refused"))))).toBeNull();
     expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", { requested: 1 }))))).toBeNull();
     expect(accountUnavailableOf(new ChanError(peer(refusal("account_unavailable", null))))).toBeNull();

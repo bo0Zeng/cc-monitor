@@ -10,7 +10,6 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { machineName, saidOfControl, settleTyped, unavailableSaid, type Refusals } from "./control-said";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
 import type { AccountAsk } from "./launch-account";
 import type { Outcome } from "./generated/Outcome";
@@ -43,33 +42,29 @@ function batchRefusals(origin: Origin): Refusals {
   };
 }
 
-/** 后端答的跳过 / 失败原因 ⇒ 人话。停的失败照单个那条的说法（`tmux-control.ts::killRefusals`）。 */
-export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string {
-  const machine = machineName(origin);
-  const target = r.session ?? "";
+/** 起那一项跳过 / 失败的原因码 ⇒ 人话（停的那一句那台写好，在 `said`）。机器由提示里那一行的标题说。 */
+export function sayStart(r: Reply): string {
   switch (r.why) {
     case null:
       return "";
     case "no_tmux":
-      return copyText("tabBatch.why.noTmux", { machine });
-    case "not_in_tmux":
-      return copyText("tabBatch.why.notInTmux", { machine });
+      return copyText("tabBatch.why.noTmux");
     case "ambiguous":
-      return copyText("tabBatch.why.ambiguous", { machine, names: r.detail });
+      return copyText("tabBatch.why.ambiguous", { names: r.detail });
     case "running":
-      return copyText("tabBatch.why.running", { name: target });
+      return copyText("tabBatch.why.running", { name: r.session ?? "" });
     case "session_already_live":
-      return copyText("tabBatch.why.alreadyLive", { machine, pids: r.detail });
+      return copyText("tabBatch.why.alreadyLive", { pids: r.detail });
     case "record_gone":
-      return copyText("tabBatch.why.recordGone", { machine, root: r.detail });
+      return copyText("tabBatch.why.recordGone", { root: r.detail });
     case "account_unavailable":
       return copyText("tabBatch.why.accountGone", { name: r.detail });
     case "name_taken":
-      return copyText("tabBatch.why.nameTaken", { machine, name: target });
+      return copyText("tabBatch.why.nameTaken", { name: r.session ?? "" });
     case "child_timed_out":
-      return op === "stop" ? (r.said ?? killRefusals(target).noReason()) : copyText("tabBatch.why.childTimedOut", { machine });
+      return copyText("tabBatch.why.childTimedOut");
     default:
-      return op === "stop" ? (r.said ?? killRefusals(target).noReason()) : copyText("tabBatch.why.startFailed", { machine });
+      return copyText("tabBatch.why.startFailed");
   }
 }
 
@@ -121,7 +116,7 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
       const no = offered(origin, "sessions-stop", sids);
       if (no) return no;
       try {
-        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: sayReply(origin, "stop", r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
+        return (await callStop(origin, sids)).map((r) => ({ sid: r.sid, outcome: r.outcome, why: r.said ?? "", ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) }));
       } catch (e) {
         return machineFailed(sids, e);
       }
@@ -174,7 +169,7 @@ export async function startMany(tabs: readonly Tab[], mode: "tmux" | "window"): 
           continue;
         }
         for (const [i, r] of replies.entries()) {
-          let o: BatchOutcome = { sid: r.sid, outcome: r.outcome, why: sayReply(origin, "start", r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) };
+          let o: BatchOutcome = { sid: r.sid, outcome: r.outcome, why: sayStart(r), ...(r.copyDetail !== "" ? { detail: r.copyDetail } : {}) };
           if (r.outcome === "done" && mode === "window" && r.cmd !== null) {
             const failed = await openWindow(origin, r.cmd, items[i].cwd);
             if (failed !== null) o = { sid: r.sid, outcome: "failed", why: failed };

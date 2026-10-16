@@ -13,6 +13,7 @@
 import type { Account, AccountsMeta, AuthKind } from "./accounts";
 import { copyText } from "./copy-table";
 import { ReplyUnreadable } from "./ipc/chan-caller";
+import type { Origin } from "./ipc/origin";
 // 账号种类的取值集只有一份（`acct_core::AUTH_KINDS`），这里读它现生成的那份，不手抄。
 import { AUTH_KINDS } from "./generated/judgment-rules";
 import { exactKeys, isObj } from "./ipc/decode";
@@ -74,13 +75,13 @@ const nullableStr = (v: unknown): v is string | null => v === null || typeof v =
  * 不替后端补一个值（那会把一个坏掉的号悄悄变成一个能选的号）。老后端回的 `{"lines": […]}` 也落这里。
  * 跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着两侧。
  */
-export function decodeAccountsList(v: unknown): {
+export function decodeAccountsList(v: unknown, origin: Origin): {
   meta: AccountsMeta;
   accounts: Account[];
   notice: string | null;
 } {
   const bad = (what: string): never => {
-    throw new ReplyUnreadable(`accounts-list reply: ${what}`);
+    throw new ReplyUnreadable(origin, `accounts-list reply: ${what}`);
   };
   if (!isObj(v) || !exactKeys(v, TOP_KEYS)) return bad(copyText("accountsDecode.where.top"));
   const m = v.meta;
@@ -171,14 +172,14 @@ export function decodeAccountsList(v: unknown): {
 }
 
 /** 后端 `accounts-trust` 的成品 ⇒ `{trusted, known}`。严格收（同上）。 */
-export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
+export function decodeTrust(v: unknown, origin: Origin): { trusted: boolean; known: boolean } {
   if (
     !isObj(v) ||
     !exactKeys(v, TRUST_KEYS) ||
     typeof v.trusted !== "boolean" ||
     typeof v.known !== "boolean"
   ) {
-    throw new ReplyUnreadable("accounts-trust reply shape");
+    throw new ReplyUnreadable(origin, "accounts-trust reply shape");
   }
   return { trusted: v.trusted, known: v.known };
 }

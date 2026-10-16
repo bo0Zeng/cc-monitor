@@ -12,7 +12,7 @@
  * ```
  *
  * - **期限**：`Budget.until` 是**绝对时刻**（`performance.now()` 钟面，单调）。过线换成「还剩多少」；
- *   已经过了 ⇒ `Hop{0 write, NotSent, Overrun}`，**一个字节都不发**（`§10.4` 那张表第一行）。
+ *   已经过了 ⇒ 交 `0`，monitor 回 `Hop{0 write, NotSent, Overrun}`，**后端那一跳一个字节都不发**（`§10.4` 那张表第一行）。
  *   第 1 跳的上界由 monitor 那一侧执行（`chan/webview.rs` → `router::settle`）⇒ **本文件零定时器**。
  * - **错误三层**（`§3.3.1`）：`hop`（传输错，带跳号 ＋ `reach`）· `peer`（对端说不认 / 说不行，后者带不透明体）·
  *   `ours`（我们自己错）。monitor 交回来的是回环那条同一份线上形状（`wire::err_to_wire`），这里解回三层；
@@ -69,17 +69,22 @@ export type CallError =
   | { layer: "peer"; why: "refused"; body: Uint8Array }
   | { layer: "ours"; why: OursFault };
 
-/** `call` 失败时抛的那一个。`error` 是分好层的结局；`message` 只给日志看。 */
+/**
+ * `call` 失败时抛的那一个。`error` 是分好层的结局（调用方要按层 / 按码分支的读它）；`message` 是给人看的那一句、
+ * `detail` 是「复制详情」那几行，都由 monitor 写好交回（[`saidOfFail`] · [`detailOfFail`]），本侧不按层另写。
+ */
 export class ChanError extends Error {
-  // `detail`：「复制详情」那几行（monitor 交回来的：对端说「不行」⇒ 那台写的那份 ＋ 本机一行；别的层 ⇒ monitor 写）。
-  // 本页自己判的失败（期限早已过）没有 ⇒ 空串（界面就不出按钮）。
-  constructor(readonly error: CallError, readonly detail = "") {
-    super(`通道：${describeCallError(error)}`);
+  constructor(
+    readonly error: CallError,
+    said = "",
+    readonly detail = "",
+  ) {
+    super(said);
     this.name = "ChanError";
   }
 }
 
-/** 给日志 / 开发者看的一句（不是界面文案：界面那句话由调用方按层自己说）。 */
+/** 给日志 / 开发者看的一句（不是界面文案：给人看的那一句是 monitor 写的 `message`）。 */
 export function describeCallError(e: CallError): string {
   switch (e.layer) {
     case "hop":
@@ -100,9 +105,18 @@ const BROKEN: CallError = { layer: "ours", why: "Broken" };
 
 /** monitor 交回来的失败里那份复制详情（`{ …, detail }`）；没有 / 形状不对 ⇒ 空串。 */
 export function detailOfFail(raw: unknown): string {
+  return stringField(raw, "detail");
+}
+
+/** monitor 交回来的失败里给人看的那一句（`{ …, said }`，`chan/said.rs` 写）；没有 / 形状不对 ⇒ 空串（调用方按自己那件事说）。 */
+export function saidOfFail(raw: unknown): string {
+  return stringField(raw, "said");
+}
+
+function stringField(raw: unknown, key: "said" | "detail"): string {
   if (raw === null || typeof raw !== "object") return "";
-  const d = (raw as { detail?: unknown }).detail;
-  return typeof d === "string" ? d : "";
+  const v = (raw as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : "";
 }
 
 /**
@@ -303,21 +317,13 @@ export const chan = {
    * `view`：出口的声明（要哪几格 · 哪几格不要），原样搬进后端的请求信封、不进载荷；本文件不读它。没给 ⇒ 全量。
    */
   async call(origin: Origin, op: string, payload: Uint8Array, budget: Budget, view: object | null = null): Promise<Uint8Array> {
-    const left = remaining(budget);
-    if (left <= 0) {
-      throw new ChanError({
-        layer: "hop",
-        at: { idx: 0, tag: "write" },
-        reach: "NotSent",
-        why: "Overrun",
-      });
-    }
-    return commands.chan_call({ origin, op, payload: Array.from(payload), view, leftMs: left }).then(
+    // 期限早已过也照样交给 monitor（`leftMs: 0`）：它一个字节都不往后端发、回「已超时 · 未执行」那一句。
+    return commands.chan_call({ origin, op, payload: Array.from(payload), view, leftMs: remaining(budget) }).then(
       (buf) => new Uint8Array(buf),
       (raw: unknown) => {
         const e = decodeFail(raw);
         if (e.layer === "hop") offers.delete(origin);
-        throw new ChanError(e, detailOfFail(raw));
+        throw new ChanError(e, saidOfFail(raw), detailOfFail(raw));
       },
     );
   },

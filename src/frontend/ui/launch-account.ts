@@ -7,9 +7,7 @@
  */
 import type { AccountAsk } from "./generated/AccountAsk";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
-import { ChanError } from "../../comms/inward/chan";
-import { refusalOf } from "./ipc/chan-caller";
-import { ControlError } from "./control-said";
+import { refusalIn } from "./ipc/chan-caller";
 import { isLocalOrigin } from "./ipc/origin";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
@@ -35,9 +33,7 @@ export function askOf(accountName: string | undefined, useBase: boolean): Accoun
 
 /** 这次失败是不是那台说「要的号选不了」；是 ⇒ 那一形（`data`）。 */
 export function accountUnavailableOf(e: unknown): AccountUnavailable | null {
-  const err = e instanceof ControlError ? e.error : e instanceof ChanError ? e.error : undefined;
-  if (!err || err.layer !== "peer" || err.why !== "refused") return null;
-  const r = refusalOf(err.body);
+  const r = refusalIn(e);
   const d = r?.code === "account_unavailable" ? r.data : undefined;
   if (d === null || typeof d !== "object") return null;
   const u = d as Record<string, unknown>;

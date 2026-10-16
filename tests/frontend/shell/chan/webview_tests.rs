@@ -148,6 +148,35 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
     );
 }
 
+/// 主界面那一侧期限早已过（`left = 0`）⇒ 句柄一下都不碰（一个字节都不发）、回 `Hop{0 write, NotSent, Overrun}`；
+/// 那一句照「已超时 · 未执行」由壳写（与别的失败同一条路）。
+#[tokio::test]
+async fn an_expired_budget_never_reaches_the_backend() {
+    let fake = Fake::default();
+    let err = call_via(
+        &fake,
+        Origin("devbox".into()),
+        "echo".into(),
+        b"{}".to_vec(),
+        None,
+        Duration::ZERO,
+    )
+    .await
+    .expect_err("期限已过还回了成功");
+    assert_eq!(
+        err,
+        CallError::Hop {
+            at: HopId {
+                idx: 0,
+                tag: "write"
+            },
+            reach: Reach::NotSent,
+            why: HopFault::Overrun,
+        }
+    );
+    assert!(fake.seen.lock().unwrap().is_empty(), "期限已过还交给了句柄");
+}
+
 #[tokio::test]
 async fn backend_errors_pass_through_unchanged() {
     let fake = Fake::default();

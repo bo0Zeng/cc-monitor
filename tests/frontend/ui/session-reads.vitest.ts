@@ -137,7 +137,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockReset().mockRejectedValueOnce(NO_CHANNEL);
     const c = await readSessionIndex("devbox", "/p/s.jsonl", 0);
     expect([c.available, c.rows]).toEqual([false, []]);
-    expect(c.reason).toContain(copyText("chanCaller.said.unreachable"));
+    expect(c.reason).toContain(NO_CHANNEL.said);
 
   });
 

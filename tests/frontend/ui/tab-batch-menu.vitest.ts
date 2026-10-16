@@ -136,7 +136,7 @@ describe("批量菜单", () => {
     expect((vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: unknown }).action).toBeUndefined();
   });
 
-  it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里", async () => {
+  it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里（确认框与结果那几行同一形；原因那台写、不带机器）", async () => {
     const devbox = originFromWire("devbox");
     tabs = [
       tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", label: "账单导出改成流式", labelProject: "billing" }),
@@ -149,8 +149,8 @@ describe("批量菜单", () => {
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
     const spec = run.confirm.mock.calls[0][0] as { list: string[] };
-    expect(spec.list).toEqual([copyText("tabBatch.stop.line", { title: "billing 账单导出改成流式", machine: "devbox" }), "web 首页"]);
-    expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: "billing 账单导出改成流式", why: "门拦下了" })]);
+    expect(spec.list).toEqual([copyText("tabBatch.line.remote", { title: "billing 账单导出改成流式", machine: "devbox" }), "web 首页"]);
+    expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: spec.list[0], why: "门拦下了" })]);
   });
 
   it("B3 · 固定 / 分组：一次交出能做的那几个；新建分组整批进同一个新组，不问名字", async () => {

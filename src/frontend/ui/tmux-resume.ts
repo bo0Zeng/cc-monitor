@@ -11,7 +11,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { refuseUnavailableAccount, type AccountAsk } from "./launch-account";
 import { runRemoteAttach } from "./remote-launch-run";
 import { offerResyncRetry } from "./resync";
-import { callStart, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { callStart, sayStart, type Reply, type StartItem } from "./tab-batch-run";
 
 /** 起哪一个：哪台 · 哪一家 · 哪个会话 · 在哪个目录。 */
 export interface TmuxResumeTarget {
@@ -56,7 +56,7 @@ export async function startInTmuxThenAttach(t: TmuxResumeTarget, account: Accoun
     return false;
   }
   if (r.outcome === "failed" || r.session === null) {
-    const said = sayReply(origin, "start", r);
+    const said = sayStart(r);
     if (r.why === "wrong_owner") offerResyncRetry(origin, t.sid, copyText("remoteLaunchRun.inPlace.notRun"), said, () => hooks.again());
     else toast(copyText("remoteLaunchRun.inPlace.notRun"), said);
     return false;

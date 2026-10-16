@@ -319,9 +319,9 @@ export class LaunchSlots {
 /** 缺省的那几件：走通道。 */
 export const CHANNEL_ACTS: SlotActs = {
   async screen(origin, tmuxName) {
-    const row = (await listTerminals(origin, tmuxName)).find((r) => r.tmuxName === tmuxName);
+    const row = (await listTerminals(origin)).find((r) => r.tmuxName === tmuxName);
     if (row === undefined) return { kind: "gone" };
-    return { kind: "there", terminal: row.terminal, words: lastWords(await previewText(origin, { terminal: row.terminal }, tmuxName)) };
+    return { kind: "there", terminal: row.terminal, words: lastWords(await previewText(origin, { terminal: row.terminal })) };
   },
   preview: (origin, tmuxName, terminal) => void openPanePreview(origin, tmuxName, { terminal }),
   attach: (origin, agent, tmuxName) => void runRemoteAttach(origin, agent, tmuxName),

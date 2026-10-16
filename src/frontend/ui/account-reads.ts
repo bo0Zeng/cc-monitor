@@ -8,12 +8,13 @@
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 import { recallSeen, rememberSeen } from "./last-seen";
+import { saidOf } from "./kit/detail";
 
 /**
  * 问那台机器（**本机也一样**）的账号状态：每次都发 `accounts-list`，答回来那一份放进 store（画的那几处订它）。
@@ -33,7 +34,7 @@ export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
     const budget = budgetWithin(ACCOUNTS_BUDGET_MS);
     const reply = await chan.call(origin, "accounts-list", body, budget);
     const raw = readJson(reply);
-    const got = decodeAccountsList(raw);
+    const got = decodeAccountsList(raw, origin);
     state = {
       origin,
       available: true,
@@ -49,7 +50,7 @@ export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
     state = {
       origin,
       available: false,
-      error: saidFrom(e, origin),
+      error: saidOf(e),
       oldBackend: isOldBackend(e),
       meta: null,
       accounts: [],
@@ -66,7 +67,7 @@ async function recallLast(origin: Origin): Promise<AccountsState["last"]> {
   const seen = await recallSeen(origin, "accounts");
   if (seen === null) return null;
   try {
-    const got = decodeAccountsList(seen.value);
+    const got = decodeAccountsList(seen.value, origin);
     return got.meta === null ? null : { meta: got.meta, accounts: got.accounts, atMs: seen.atMs };
   } catch {
     // 记着的那份形状对不上（旧版记的）⇒ 当没有。
@@ -208,13 +209,13 @@ export async function checkTrust(
     const body = jsonBody({ configDir, cwd });
     const budget = budgetWithin(TRUST_BUDGET_MS);
     const reply = await chan.call(origin, "accounts-trust", body, budget);
-    return { available: true, error: null, ...decodeTrust(readJson(reply)) };
+    return { available: true, error: null, ...decodeTrust(readJson(reply), origin) };
   } catch (e) {
     return {
       available: false,
       trusted: false,
       known: false,
-      error: saidFrom(e, origin),
+      error: saidOf(e),
     };
   }
 }

@@ -206,9 +206,9 @@ describe("正在换 · 换成了 · 没换成", () => {
   });
 
   it("结局读法：被拒 ⇒ 那台那一句；发出去了没等到回话 ⇒ 不说（结果未知）；回包照 result · 读回的字 · said", async () => {
-    answer = () => new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "no_tmux", message: "核心·没有 tmux" })) }, "");
+    answer = () => new ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: "no_tmux", message: "核心·没有 tmux" })) }, "核心·没有 tmux");
     expect(await switchModel("devbox", "s1", "opus")).toEqual({ done: false, text: null, said: "核心·没有 tmux" });
-    answer = () => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "");
+    answer = () => new ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "壳·无应答");
     expect(await switchPermission("devbox", "s1", "plan")).toEqual({ done: false, text: null, said: null });
     answer = () => ({ result: "unsure", model: null, said: "核心·换模型结果未知" });
     expect(await switchModel("devbox", "s1", "opus")).toEqual({ done: false, text: null, said: "核心·换模型结果未知" });

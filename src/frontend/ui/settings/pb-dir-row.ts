@@ -5,10 +5,10 @@
  * 离开那一格（`change`）就办：空 ⇒ 删掉那一格；非空 ⇒ 先问那台这个路径能不能用（`plan-pb-check`），能用才存，
  * 行下一句是那台写好的话（能用 · 不存在 · 下面没有 · 跑不起来）。读不懂（那台 `state: "unreadable"`）⇒ 那一格禁用、说那台那一句。
  */
-import { budgetWithin, callTyped, saidFrom } from "../ipc/chan-caller";
+import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import { copyText } from "../copy-table";
 import { readPrefs, setPrefs } from "../machine-prefs";
-import { detailOf, sayWithDetail } from "../kit/detail";
+import { detailOf, sayWithDetail, saidOf } from "../kit/detail";
 import { PB_DIR_ANCHOR } from "../settings-dest";
 import { ccRow } from "./cc-row";
 import type { Origin } from "../ipc/origin";
@@ -66,7 +66,7 @@ export function pbDirRow(origin: Origin): { row: HTMLElement; load: () => void }
       saved = next;
       input.removeAttribute("aria-invalid");
     } catch (e) {
-      say(copyText("settingsPanel.pbDir.saveFailed", { why: saidFrom(e, origin) }), true, detailOf(e));
+      say(copyText("settingsPanel.pbDir.saveFailed", { why: saidOf(e) }), true, detailOf(e));
     } finally {
       input.disabled = false;
     }

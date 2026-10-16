@@ -20,7 +20,7 @@
  * `{end, rev}` 两格（[`readSessionFacts`] 的 `prior`；那台常驻后端记着那一份累加器，`observe/facts_cache.rs`）—— 本文件与调用方不读、不合并成品。
  */
 import { ChanError, type CallError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
 import type { RecordProbe } from "./generated/RecordProbe";
 import type { FindHit } from "./generated/FindHit";
 import type { HistoryIndex } from "./generated/HistoryIndex";
@@ -42,6 +42,7 @@ import type { UsageFact } from "./generated/UsageFact";
 import type { RetryOutcome } from "./generated/RetryOutcome";
 import type { PendingCall } from "./generated/PendingCall";
 import type { FactsBackground } from "./generated/FactsBackground";
+import { saidOf } from "./kit/detail";
 
 // ─── 成品的形状（后端 `read_face.rs` 那三条的应答；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）───
 
@@ -191,11 +192,6 @@ export function failureOf(e: CallError): OutlineFailure {
   }
 }
 
-/** 问 `origin` 那台的一次失败 ⇒ 给人看的那句话（`ipc/chan-caller.ts::saidFrom`，各调用方共用）。 */
-export function reasonOf(e: unknown, origin: Origin): string {
-  return saidFrom(e, origin);
-}
-
 // ─── 三问 ───
 
 /**
@@ -216,7 +212,7 @@ export async function findInSession(
     const { total, hits } = await callTyped(origin, "history-find", { path: jsonlPath, query, ...which, limit: FIND_LIMIT, ...(skip > 0 ? { skip } : {}) }, budget);
     return { available: true, hits, total };
   } catch (e) {
-    const reason = reasonOf(e, origin);
+    const reason = saidOf(e);
     return { available: false, reason, hits: [], total: 0 };
   }
 }
@@ -236,7 +232,7 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
     return { available: true, from: fromOffset, end, entries };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
-    const reason = reasonOf(e, origin);
+    const reason = saidOf(e);
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, entries: [] };
   }
 }
@@ -258,7 +254,7 @@ export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: n
     }
     return { available: true, from: fromOffset, end, turns };
   } catch (e) {
-    return { available: false, reason: reasonOf(e, origin) };
+    return { available: false, reason: saidOf(e) };
   }
 }
 
@@ -282,7 +278,7 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
     }
     return { available: true, from: fromOffset, end, rows };
   } catch (e) {
-    const reason = reasonOf(e, origin);
+    const reason = saidOf(e);
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, rows: [] };
   }
@@ -305,7 +301,7 @@ export async function readSessionFacts(
     return { available: true, facts: factsOf(await callTyped(origin, "history-facts", args, budget)) };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
-    return { available: false, reason: reasonOf(e, origin), failure };
+    return { available: false, reason: saidOf(e), failure };
   }
 }
 

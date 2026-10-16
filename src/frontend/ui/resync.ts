@@ -7,7 +7,7 @@
  * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
  */
 import { copyText } from "./copy-table";
-import { settleTyped, type Refusals } from "./control-said";
+import { settleTyped } from "./control-said";
 import { toast, failToast } from "./kit/toast";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -25,12 +25,7 @@ export interface Resynced {
   watchers: number;
 }
 
-const refusals: Refusals = {
-  byCode: (_code, said) => copyText("resync.call.refused", { said }),
-  noReason: () => copyText("resync.call.noReason"),
-};
-
-/** 让 `origin` 那台对齐一次；给了 `sid` 就只对那一个会话。失败 ⇒ 抛 [`ControlError`]。 */
+/** 让 `origin` 那台对齐一次；给了 `sid` 就只对那一个会话。失败 ⇒ 抛（那一句 monitor 写好；被拒前面接「刷新被拒」）。 */
 export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
   const budget = budgetWithin(RESYNC_BUDGET_MS);
   const req = sid === undefined ? {} : { sid };
@@ -39,7 +34,7 @@ export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
     origin,
     "resync",
     callTyped(origin, "resync", req, budget),
-    refusals,
+    (said) => copyText("resync.call.refused", { said }),
   );
   return { added, removed, retagged, caughtUp, watchers };
 }

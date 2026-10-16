@@ -28,7 +28,6 @@ import { fold, setFoldSummary } from "../kit/fold";
 import { button, setButtonLabel } from "../kit/button";
 import { icon } from "../kit/icon";
 import { toggleSwitch } from "../kit/switch";
-import { unavailableReason } from "../control-said";
 import { detailOf, failSaid, sayWithDetail } from "../kit/detail";
 
 /**
@@ -1013,9 +1012,8 @@ export class MachineCard {
       this.testResult.appendChild(fpLine);
     }
 
-    // 这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
+    // 这台说做不到的那几类：点开看全表（一类一句，后端写好；与置灰那一句同一个家）。
     if (res.backendGaps.length > 0) {
-      const machine = this.labelInput.value.trim() || this.hostInput.value.trim();
       const gaps = document.createElement("details");
       gaps.className = "remote-test-line";
       const summary = document.createElement("summary");
@@ -1024,7 +1022,7 @@ export class MachineCard {
       for (const g of res.backendGaps) {
         const row = document.createElement("div");
         row.textContent = copyText("machineCard.test.gapRow", {
-          reason: unavailableReason(g.code, machine),
+          reason: g.said,
           n: String(g.count),
         });
         gaps.appendChild(row);

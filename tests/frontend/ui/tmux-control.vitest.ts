@@ -26,11 +26,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import {
-  ControlError,
-  killedOf,
-  killSession,
-} from "../../../src/frontend/ui/tmux-control";
+import { killedOf, killSession } from "../../../src/frontend/ui/tmux-control";
+import { detailOf as errDetail, writtenSaid } from "../../../src/frontend/ui/kit/detail";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
@@ -79,8 +76,10 @@ async function saidOf(act: () => Promise<unknown>): Promise<string> {
   try {
     await act();
   } catch (e) {
-    expect(e, "抛的不是 ControlError —— 调用方拿不到那一句").toBeInstanceOf(ControlError);
-    return (e as ControlError).message;
+    // 出错那一端写好的那一句（带详情的 Error）：调用方经 `kit/detail.ts` 原样取。
+    const said = writtenSaid(e);
+    expect(said, "抛的不是带那一句的错 —— 调用方拿不到那一句").not.toBeNull();
+    return said ?? "";
   }
   throw new Error("本该失败却成功了");
 }
@@ -91,8 +90,7 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
   try {
     await act();
   } catch (e) {
-    expect(e).toBeInstanceOf(ControlError);
-    return (e as ControlError).detail;
+    return errDetail(e);
   }
   throw new Error("本该失败却成功了");
 }
@@ -151,15 +149,10 @@ describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
     expect(sentCalls().map(([, op, body]) => [op, (body as { name?: unknown }).name]), "界面自己把空目标拦下了").toEqual([["kill", ""]]);
   });
 
-  it("★★ 通道不在：本机与远端两句话不同、远端点得出是哪台；本机照样经通道问", async () => {
+  it("★★ 通道不在：那一句是 monitor 写的、原样上屏（本机远端怎么说归 `chan/said.rs`）；本机照样经通道问", async () => {
     answer({ fail: NO_CHANNEL });
     for (const [label, act] of ACTIONS) {
-      const local = await saidOf(() => act(LOCAL_ORIGIN, "demo-cc"));
-      const remote = await saidOf(() => act("kr-remote-label", "demo-cc"));
-      expect(local, label).not.toBe(remote);
-      expect(local, label).toMatch(copyText("control.channel.localDown"));
-      expect(remote, label).toContain("kr-remote-label");
-      for (const x of [local, remote]) expect(x, label).not.toMatch(copyPattern("rsLaunch.remote.noConfig"));
+      expect(await saidOf(() => act(LOCAL_ORIGIN, "demo-cc")), label).toBe(NO_CHANNEL.said);
     }
     expect(sentCalls().filter(([o]) => o === LOCAL_ORIGIN).length, "本机没经通道问").toBe(1);
   });
@@ -175,8 +168,6 @@ describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
         answer({ fail: refusedReply(code, `S-${code}`) });
         expect(await detailOf(() => act("demo-cc")), `${op}：复制详情没带出来`).toContain(code);
       }
-      answer({ fail: refusedReply("zzz_new_code", "") });
-      expect(await saidOf(() => act("demo-cc")), `${op}：那台没写那一句`).toBe(copyText("tmuxControl.kill.noReason", { target: "demo-cc" }));
       // 三态不许压成两态：门拒绝（身份门）与通道不在是两句话。
       answer({ fail: refusedReply("wrong_owner", "RAW-WORDS") });
       const gate = await saidOf(() => act("demo-cc"));

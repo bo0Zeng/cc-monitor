@@ -41,8 +41,9 @@ import { toast, failToast } from "../kit/toast";
 import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
-import { machineName, saidOfControl } from "../control-said";
+import { machineName } from "../control-said";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { saidOf } from "../kit/detail";
 
 /** 一趟读回来的那一台（都是那台后端的成品；读不到的那一格是 `null`）。 */
 interface Facts {
@@ -310,7 +311,7 @@ export class AccountsSection {
           await accountsInit(origin, { name: n });
           await this.reload();
         } catch (e) {
-          name.setError(saidOfControl(e));
+          name.setError(saidOf(e));
         } finally {
           setBusy(go, null);
         }
@@ -591,7 +592,7 @@ export class AccountsSection {
     model.addEventListener("change", () => {
       void setPrefs(origin, { models: { [a.name]: model.value || null } }).then(
         () => (modelErr.textContent = ""),
-        (e: unknown) => (modelErr.textContent = saidOfControl(e)),
+        (e: unknown) => (modelErr.textContent = saidOf(e)),
       );
     });
     const scope = document.createElement("span");
@@ -664,7 +665,7 @@ export class AccountsSection {
           show(w.masked || null, w.baseUrl);
           keyF.setError(null);
         } catch (e) {
-          keyF.setError(saidOfControl(e));
+          keyF.setError(saidOf(e));
         } finally {
           setBusy(save, null);
         }

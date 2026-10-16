@@ -11,7 +11,7 @@
  *   这里不按码挑词：只有通道这一层的事（那台断开 · 那台后端太旧不认这条命令 · 回的东西读不懂）由这里说。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, machineName, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, isOldBackend, jsonBody, machineName, refusalIn } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import { isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
@@ -71,16 +71,13 @@ const offline = (origin: Origin): FollowStop => ({ kind: "stopped", said: copyTe
 /** 停了 · 读不懂那台说的（画面中断）。 */
 const lost = (): FollowStop => ({ kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false });
 
-/** 订不上的那一问 ⇒ 停在哪：那台说了 ⇒ 照它说的（`data.live` ＋ 那一句）；通道这一层的 ⇒ 这里说。 */
-function stopOfStart(origin: Origin, e: unknown): FollowStop {
-  if (!(e instanceof ChanError)) return lost();
-  const err = e.error;
-  if (err.layer === "hop") return offline(origin);
-  if (err.layer === "peer" && err.why === "unsupported") return { kind: "snapshotOnly", said: copyText("terminal.head.snapshotOnlyOld", { machine: machineName(origin) }) };
-  if (err.layer !== "peer" || err.why !== "refused") return lost();
-  const r = refusalOf(err.body);
-  if (r === null || r.message.trim() === "") return lost();
-  return isObj(r.data) && r.data.live === "snapshot_only" ? { kind: "snapshotOnly", said: r.message } : { kind: "stopped", said: r.message, offline: false };
+/** 订不上的那一问 ⇒ 停在哪：那一句 monitor 写好（被拒时就是那台那一句），这里只按形分「断开 · 只能快照 · 停了」；没那一句 ⇒ 当读不懂。 */
+function stopOfStart(e: unknown): FollowStop {
+  if (!(e instanceof ChanError) || e.message.trim() === "") return lost();
+  if (e.error.layer === "hop") return { kind: "stopped", said: e.message, offline: true };
+  const r = refusalIn(e);
+  const snapshotOnly = isOldBackend(e) || (r !== null && isObj(r.data) && r.data.live === "snapshot_only");
+  return snapshotOnly ? { kind: "snapshotOnly", said: e.message } : { kind: "stopped", said: e.message, offline: false };
 }
 
 /** 收尾那一格（`{why, said}`）⇒ 停了，那一句原样；没有那一句 ⇒ `null`（当读不懂）。 */
@@ -165,7 +162,7 @@ export function startFollow(origin: Origin, terminal: string, events: FollowEven
     try {
       await port.follow(origin, { terminal, ticket });
     } catch (e) {
-      halt(stopOfStart(origin, e));
+      halt(stopOfStart(e));
     }
   })();
 

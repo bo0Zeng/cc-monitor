@@ -2,7 +2,7 @@
 // 只装「一个账号长什么样、能不能选、该显示成什么」：形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）·
 // 可用性照后端写好的 `selectable`（`selectableAccounts`）· 徽章文案。起会话用哪个号由会话所在那台的后端判。
 // 别处：经通道读 → `account-reads.ts`；每号模型偏好 → `account-prefs.ts`；起会话「要哪个号」→ `launch-account.ts`。
-import { machineName, peerVersionSaid } from "./ipc/chan-caller";
+import { machineName } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 // 先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
 import { copyText } from "./copy-table";
@@ -103,7 +103,7 @@ export interface AccountsState {
   origin: Origin;
   available: boolean;
   error: string | null;
-  /** `available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的）；其余失败 ⇒ `false`。 */
+  /** `available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的；那一句 monitor 写好、在 `error`）；其余失败 ⇒ `false`。 */
   oldBackend: boolean;
   meta: AccountsMeta | null;
   accounts: Account[];
@@ -130,7 +130,7 @@ export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
     // 按失败的种类分（不按原因串猜：远端没部署上 / 拒转发不是「需更新」）。
-    if (state.oldBackend) return { kind: "needs-update", reason: peerVersionSaid("backend_old", state.origin) };
+    if (state.oldBackend) return { kind: "needs-update", reason: e };
     return { kind: "query-failed", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
   if (!state.meta?.enabled || state.accounts.length === 0) {

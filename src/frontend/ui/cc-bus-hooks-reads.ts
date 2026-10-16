@@ -6,11 +6,12 @@
  * `HookState` 是后端 `#[serde(tag = "kind", rename_all = "kebab-case")]` 的内部标记枚举 → 判别联合。
  */
 import type { Origin } from "./ipc/origin";
-import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
 import type { HookState } from "./generated/HookState";
 import type { HooksDiagnosis } from "./generated/HooksDiagnosis";
 import type { HooksReport } from "./generated/HooksReport";
+import { saidOf } from "./kit/detail";
 
 export type { HookState, HooksDiagnosis, HooksReport };
 
@@ -22,7 +23,7 @@ export async function fetchHooksReport(origin: Origin): Promise<HooksReport> {
   try {
     return await callTyped(origin, "hooks-diag", {}, budgetWithin(HOOKS_DIAG_BUDGET_MS));
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }
 

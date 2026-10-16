@@ -34,10 +34,11 @@ export function linesReply(rows: unknown[]): ArrayBuffer {
   return chanReply({ lines: rows.map((r) => (typeof r === "string" ? r : JSON.stringify(r))) });
 }
 
-/** 「那台没有控制通道」（`Hop{1 open, NotSent, Unreachable}`）—— monitor 那一跳会拒的那个值。 */
+/** 「那台没有控制通道」（`Hop{1 open, NotSent, Unreachable}`）—— monitor 那一跳会拒的那个值；那一句是 monitor 写的（替身照本机那一形填）。 */
 export const NO_CHANNEL = {
   err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } },
   body: [] as number[],
+  said: copyText("rsChanSaid.hop.localDown"),
 };
 
 /** 一发 `chan_call` 的请求体解回 JSON。 */
@@ -94,15 +95,16 @@ export function sessionReadCalls(calls: ReadonlyArray<readonly unknown[]>, which
     .map((r) => r[1]);
 }
 
-/** 通道那一跳「对端说不认」（`Peer{Unsupported}`）—— 那台后端比这条查询老。 */
-export const UNSUPPORTED = { err: "Unsupported", body: [] as number[] };
+/** 通道那一跳「对端说不认」（`Peer{Unsupported}`）—— 那台后端比这条查询老；那一句 monitor 写（替身照「需更新」那一形填）。 */
+export const UNSUPPORTED = { err: "Unsupported", body: [] as number[], said: copyText("peerVersion.said.old", { machine: "devbox" }) };
 
 /** 通道那一跳「对端说不行」（`Peer{Refused}`，体是后端的 `{code, message}`）。 */
-export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[]; detail: string } {
+export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[]; said: string; detail: string } {
   const body = data === undefined ? { code, message } : { code, message, data };
   // monitor 交回来的那份复制详情（那台后端写好、经 monitor 转交）：替身只写「码」那一项。
   const detail = `${copyText("detail.label.code")}：${code}`;
-  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), detail };
+  // 那一句 monitor 照对端那一句原样交（`chan/said.rs::refused`）。
+  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))), said: message, detail };
 }
 
 /**

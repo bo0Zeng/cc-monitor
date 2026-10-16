@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { ControlError } from "../../../src/frontend/ui/control-said";
+import { ChanError } from "../../../src/comms/inward/chan";
 import { decodeShot, previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
 import type { Preview } from "../../../src/frontend/ui/generated/Preview";
 import type { Sent } from "../../../src/frontend/ui/generated/Sent";
@@ -61,16 +61,16 @@ function answer(by: Record<string, { ok: unknown } | { fail: unknown }>): void {
   });
 }
 
-async function failureOf(act: () => Promise<unknown>): Promise<ControlError> {
+async function failureOf(act: () => Promise<unknown>): Promise<ChanError> {
   try {
     await act();
   } catch (e) {
-    expect(e, "抛的不是 ControlError —— 调用方拿不到那一句").toBeInstanceOf(ControlError);
-    return e as ControlError;
+    expect(e, "抛的不是 ChanError —— 调用方拿不到那一句").toBeInstanceOf(ChanError);
+    return e as ChanError;
   }
   throw new Error("本该失败却成功了");
 }
-const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewText(origin, { sid: "sid-a" }, "demo-cc"))).message;
+const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewText(origin, { sid: "sid-a" }))).message;
 
 describe("抓一屏：金样与形状", () => {
   it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来）；实时预览那一帧同一份成品、读法相同", () => {
@@ -119,8 +119,8 @@ describe("抓一屏：金样与形状", () => {
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {
     answer({ "terminal-input": { ok: { result: "delivered" } } });
-    await sendToTerminal("devbox", "tmux-1", { text: "/usage", enter: true }, "fp1", "demo");
-    await sendToTerminal("devbox", "tmux-1", { key: "esc" }, null, "demo");
+    await sendToTerminal("devbox", "tmux-1", { text: "/usage", enter: true }, "fp1");
+    await sendToTerminal("devbox", "tmux-1", { key: "esc" }, null);
     expect(sentCalls()).toEqual([
       ["devbox", "terminal-input", { terminal: "tmux-1", text: "/usage", enter: true, seen_screen: "fp1" }],
       ["devbox", "terminal-input", { terminal: "tmux-1", key: "esc" }],
@@ -131,8 +131,8 @@ describe("抓一屏：金样与形状", () => {
 describe("抓一屏：发出去", () => {
   it("★ 按句柄 / 会话 ID 指、要带颜色的成品；本机照样经通道问、期限交了", async () => {
     answer({ "terminal-preview": { ok: PREVIEW.reply } });
-    await previewText("devbox", { sid: "sid-a" }, "demo-cc");
-    await previewText(LOCAL_ORIGIN, { terminal: "tmux-1" }, "demo-cc");
+    await previewText("devbox", { sid: "sid-a" });
+    await previewText(LOCAL_ORIGIN, { terminal: "tmux-1" });
     expect(sentCalls()).toEqual([
       ["devbox", "terminal-preview", { sid: "sid-a", color: true }],
       [LOCAL_ORIGIN, "terminal-preview", { terminal: "tmux-1", color: true }],
@@ -153,35 +153,26 @@ describe("抓一屏：发出去", () => {
 });
 
 describe("抓一屏：失败怎么说", () => {
-  it("★★ 通道不在：本机与远端两句话不同；远端那句点得出是哪台", async () => {
-    answer({ "terminal-preview": { fail: NO_CHANNEL } });
-    const local = await saidBy(LOCAL_ORIGIN);
-    const remote = await saidBy("kr-remote-label");
-    expect(local).not.toBe(remote);
-    expect(local).toMatch(copyText("control.channel.localDown"));
-    expect(remote).toContain("kr-remote-label");
+  it("★★ 通道没成（不在 · 后端旧 · 无应答 · 撤了）：那一句都是 monitor 写的、原样上屏，界面不按层另写（怎么说归 `chan/said.rs`）", async () => {
+    for (const fail of [
+      NO_CHANNEL,
+      UNSUPPORTED,
+      { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [], said: "壳·无应答", detail: "" },
+      { err: { Ours: "Cancelled" }, body: [], said: "壳·已取消", detail: "" },
+    ]) {
+      answer({ "terminal-preview": { fail } });
+      expect(await saidBy(LOCAL_ORIGIN)).toBe(fail.said);
+    }
   });
 
-  it("★ 那台后端比这条命令老 ⇒ 说版本不对；断了 / 超时 ⇒ 说不知道；撤回 ⇒ 说撤回了", async () => {
-    answer({ "terminal-preview": { fail: UNSUPPORTED } });
-    expect(await saidBy("devbox")).toBe(copyText("peerVersion.said.old", { machine: "devbox" }));
-    answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
-    expect(await saidBy("devbox")).toBe(copyText("control.channel.unsure", { machine: "devbox" }));
-    answer({ "terminal-preview": { fail: { err: { Ours: "Cancelled" }, body: [] } } });
-    expect(await saidBy("devbox")).toBe(copyText("control.channel.cancelled"));
-  });
-
-  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；那台没写 ⇒ 无原因那一句带名字", async () => {
+  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）", async () => {
     expect(PREVIEW.codes.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
     for (const code of PREVIEW.codes) {
       answer({ "terminal-preview": { fail: refusedReply(code, `S-${code}`) } });
-      const e = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
+      const e = await failureOf(() => previewText("devbox", { sid: "sid-a" }));
       expect(e.message).toBe(`S-${code}`);
       expect(e.detail, "复制详情里没有码").toContain(code);
     }
-    answer({ "terminal-preview": { fail: refusedReply("zzz_new_code", " ") } });
-    const none = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
-    expect(none.message).toBe(copyText("terminalReads.preview.noReason", { target: "demo-cc" }));
   });
 
 });

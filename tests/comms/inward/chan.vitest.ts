@@ -48,6 +48,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, type Item } from "../../../src/comms/inward/chan";
 import { budgetWithin } from "../../../src/frontend/ui/ipc/chan-caller";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 
@@ -90,10 +91,16 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(decodeFail(golden.ours)).toEqual({ layer: "ours", why: "Misuse" });
   });
 
-  it("★ 期限已过：一个字节都不发，答 `Hop{0 write, NotSent, Overrun}`", async () => {
-    const e = await failOf(chan.call("devbox", "op", new Uint8Array([1]), { until: performance.now() - 1 }));
-    expect(e).toEqual({ layer: "hop", at: { idx: 0, tag: "write" }, reach: "NotSent", why: "Overrun" });
-    expect(invokeMock, "过期了还发了").not.toHaveBeenCalled();
+  it("★ 期限已过：照样交 monitor、`leftMs` 是 0（后端那一跳一个字节都不发由 monitor 守）；它回的那一句与详情原样上身", async () => {
+    const said = copyText("rsChanSaid.hop.expired");
+    invokeMock.mockRejectedValue({ err: { Hop: { idx: 0, tag: "write", reach: "NotSent", why: "Overrun" } }, body: [], said, detail: "D" });
+    let thrown: unknown;
+    await chan.call("devbox", "op", new Uint8Array([1]), { until: performance.now() - 1 }).catch((e: unknown) => (thrown = e));
+    expect((invokeMock.mock.calls[0][1] as { leftMs: number }).leftMs).toBe(0);
+    expect(thrown).toBeInstanceOf(ChanError);
+    const e = thrown as ChanError;
+    expect(e.error).toEqual({ layer: "hop", at: { idx: 0, tag: "write" }, reach: "NotSent", why: "Overrun" });
+    expect([e.message, e.detail]).toEqual([said, "D"]);
   });
 
   it("★ 过线的是「还剩多少」：`leftMs` 在 (0, 给的毫秒] 之内，绝对时刻不上线", async () => {

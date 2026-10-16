@@ -17,9 +17,10 @@
  * ⚠ 账号 id 只由后端推：前端交 `configDir`，一个字都不从它推账号 id。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { exactKeys, isObj } from "./ipc/decode";
+import { saidOf } from "./kit/detail";
 
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
@@ -38,7 +39,7 @@ export interface ApikeyWritten {
 }
 
 /** `apikey-key-set` 的成品 ⇒ 写完读回的那一行。严格收。 */
-export function decodeApikeyWritten(v: unknown): ApikeyWritten {
+export function decodeApikeyWritten(v: unknown, origin: Origin): ApikeyWritten {
   if (
     !isObj(v) ||
     !exactKeys(v, ["account", "path", "masked", "baseUrl"]) ||
@@ -47,7 +48,7 @@ export function decodeApikeyWritten(v: unknown): ApikeyWritten {
     typeof v.masked !== "string" ||
     !nullableStr(v.baseUrl)
   ) {
-    throw new ReplyUnreadable("apikeyReads reply shape");
+    throw new ReplyUnreadable(origin, "apikeyReads reply shape");
   }
   return { account: v.account, path: v.path, masked: v.masked, baseUrl: v.baseUrl };
 }
@@ -67,8 +68,8 @@ export async function writeApikeyKey(
     const body = jsonBody(baseUrl === undefined ? { configDir, key } : { configDir, key, baseUrl });
     const budget = budgetWithin(APIKEY_BUDGET_MS);
     const reply = await chan.call(origin, "apikey-key-set", body, budget);
-    return decodeApikeyWritten(readJson(reply));
+    return decodeApikeyWritten(readJson(reply), origin);
   } catch (e) {
-    throw new Error(saidFrom(e, origin));
+    throw new Error(saidOf(e));
   }
 }

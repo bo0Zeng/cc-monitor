@@ -27,7 +27,7 @@ import { copyText } from "../copy-table";
 import { commands } from "../ipc/commands";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
-import { annotate, forgetAnnotation, historyReasonOf } from "../history-reads";
+import { annotate, forgetAnnotation } from "../history-reads";
 import { setHide } from "../session-hidden-cmds";
 import { undoHide } from "../session-hidden";
 import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
@@ -41,7 +41,7 @@ import { resumeHistoryRow } from "../history-resume";
 import { openNewSession } from "../new-session";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
 import s from "./history.module.css";
-import { detailOf } from "../kit/detail";
+import { detailOf, saidOf } from "../kit/detail";
 
 type ViewMode = "time" | "project";
 type Scope = "all" | "user" | "assistant" | "report";
@@ -227,7 +227,7 @@ export class HistoryView {
         },
         (e: unknown) => {
           if (seq !== this.seq && only === undefined) return;
-          this.per.set(m, { state: "failed", why: historyReasonOf(e) });
+          this.per.set(m, { state: "failed", why: saidOf(e) });
           this.scheduleRender();
         },
       );
@@ -275,7 +275,7 @@ export class HistoryView {
       this.content = { q, state: "done", r };
     } catch (e) {
       if (seq !== this.contentSeq) return;
-      this.content = { q, state: "failed", why: historyReasonOf(e) };
+      this.content = { q, state: "failed", why: saidOf(e) };
     }
     this.renderNow();
   }

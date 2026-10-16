@@ -63,11 +63,16 @@ function unseenOr(why: string): (t: Tab) => string {
   return (t) => (t.state.liveness === "unseen" ? copyText("sessionState.unseen.tooltip") : why);
 }
 
+/** 一行里怎么称呼一个 tab：远端的机器写在括号里（那一行的原因由那台写，不带机器）。 */
+function lineTitle(t: Tab): string {
+  return isRemoteOrigin(t.origin) ? copyText("tabBatch.line.remote", { title: fullTitle(t), machine: machineName(t.origin) }) : fullTitle(t);
+}
+
 /** 结果提示：一句汇总（做了 · 失败几个）；逐个跳过与失败的（各为什么）进「消息」那一条，［查看］展开。 */
 export function sayBatch(action: string | ((done: number, failed: number) => string), tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
   const title = (sid: string): string => {
     const t = tabs.find((x) => x.sessionId === sid);
-    return t ? fullTitle(t) : sid;
+    return t ? lineTitle(t) : sid;
   };
   const n = (k: BatchOutcome["outcome"]) => outcomes.filter((o) => o.outcome === k).length;
   // 一句结果（`已结束 11 · 失败 ×1`）；第二行起逐条写没做的为什么（出错的不自己走）。
@@ -128,7 +133,7 @@ export function openBatchMenu(
   const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), heading: true },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
-      const ended = notStoppable.filter((o) => o.why === copyText("tabBatch.why.ended", { ended: copyText("sessionState.ended.name") })).length;
+      const ended = tabs.filter((t) => !hasTerminal(t.state) && t.state.liveness !== "unseen").length;
       const confirm = {
         title: copyText("tabBatch.stop.title", { n: stoppable.length }),
         action: copyText("tabBatch.stop.action", { n: stoppable.length }),
@@ -137,8 +142,7 @@ export function openBatchMenu(
           { label: copyText("kit.interrupts.cut"), items: [copyText("tabBatch.stop.cuts")] },
           { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] },
         ],
-        // 机器只出一次：标题用不带 `[机器]` 前缀的那一形，远端的机器写在括号里。
-        list: stoppable.map((t) => (isRemoteOrigin(t.origin) ? copyText("tabBatch.stop.line", { title: fullTitle(t), machine: machineName(t.origin) }) : fullTitle(t))),
+        list: stoppable.map(lineTitle),
         note: ended > 0 ? copyText("sessionState.batch.skipped", { n: ended }) : undefined,
       };
       if (!(await run.confirm(confirm))) return;
