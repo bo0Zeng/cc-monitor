@@ -11,12 +11,12 @@ import type { Tab } from "./tab-model";
 /** 问一台的清单 · 本机合一份：都是读内存 ＋ 回程。 */
 const ASK_BUDGET_MS = 10_000;
 
-/** 问 `origins` 那几台，回后端排好的会话（先答的在前）；问不到的那台不在里面。一台都没问到 ⇒ 空。`call` 缺省走通道（测试换成假的）。 */
-export async function askNeedsOrder(origins: readonly Origin[], call: typeof callTyped = callTyped): Promise<string[]> {
+/** 问 `origins` 那几台，回后端排好的会话（先答的在前）；问不到的那台不在里面。一台都没问到 ⇒ 空。 */
+export async function askNeedsOrder(origins: readonly Origin[]): Promise<string[]> {
   const answered = await Promise.all(
     origins.map(async (origin): Promise<NeedsMachine | null> => {
       try {
-        const { waiting } = await call(origin, "sessions-needs", {}, budgetWithin(ASK_BUDGET_MS));
+        const { waiting } = await callTyped(origin, "sessions-needs", {}, budgetWithin(ASK_BUDGET_MS));
         return { origin, waiting };
       } catch (e) {
         console.warn(`[needs] ${origin} 的需手动清单问不到：`, e);
@@ -26,7 +26,7 @@ export async function askNeedsOrder(origins: readonly Origin[], call: typeof cal
   );
   const machines = answered.filter((m): m is NeedsMachine => m !== null);
   if (machines.length === 0) return [];
-  const { order } = await call(LOCAL_ORIGIN, "sessions-needs-merge", { machines }, budgetWithin(ASK_BUDGET_MS));
+  const { order } = await callTyped(LOCAL_ORIGIN, "sessions-needs-merge", { machines }, budgetWithin(ASK_BUDGET_MS));
   return order.map((x) => x.sid);
 }
 

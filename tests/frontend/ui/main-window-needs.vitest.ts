@@ -11,6 +11,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TabStore } from "../../../src/frontend/ui/tab-store";
+
+/** `askNeedsOrder` 经 `callTyped` 问：那一条换成手上的假的，别处照真的。 */
+const typed = vi.hoisted(() => ({ fake: null as ((...a: unknown[]) => Promise<unknown>) | null }));
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => {
+  const real = await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>();
+  return { ...real, callTyped: (...a: unknown[]) => (typed.fake ? typed.fake(...a) : (real.callTyped as (...b: unknown[]) => Promise<unknown>)(...a)) };
+});
 import { TabBarView, type TabBarViewHost } from "../../../src/frontend/ui/tab-bar-view";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
@@ -189,15 +196,17 @@ describe("一个会话读成什么（session-face）", () => {
       }
       return { order: [{ origin: "devbox", sid: "d1" }, { origin: "<local>", sid: "l2" }, { origin: "<local>", sid: "l1" }] };
     });
-    const got = await askNeedsOrder(["<local>", "devbox", "gpu-01"], call as never);
+    typed.fake = call as never;
+    const got = await askNeedsOrder(["<local>", "devbox", "gpu-01"]);
     expect(got).toEqual(["d1", "l2", "l1"]);
     expect(asked.filter((x) => x.op === "sessions-needs").map((x) => x.origin).sort()).toEqual(["<local>", "devbox", "gpu-01"]);
     const merge = asked.filter((x) => x.op === "sessions-needs-merge");
     expect(merge.map((x) => x.origin)).toEqual(["<local>"]);
     expect(merge[0]!.args).toEqual({ machines: [{ origin: "<local>", waiting: [row("l1"), row("l2")] }, { origin: "devbox", waiting: [row("d1")] }] });
     call.mockClear();
-    expect(await askNeedsOrder([], call as never), "没有人在等 ⇒ 不问").toEqual([]);
+    expect(await askNeedsOrder([]), "没有人在等 ⇒ 不问").toEqual([]);
     expect(call).not.toHaveBeenCalled();
+    typed.fake = null;
   });
 
   it("窄窗两个字母取项目目录名里的字母；标题拆成项目那一格 ＋ 名字（都是核心给的；核心还没报 ⇒ sid 前 8 位）", () => {

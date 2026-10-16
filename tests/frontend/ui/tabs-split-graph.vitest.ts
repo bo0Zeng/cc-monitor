@@ -105,6 +105,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/backend-deploy.ts", // ↗ 浮层［更新］就地把这一版换到那台（与机器卡同一处部署）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
+    "src/frontend/ui/needs-order.ts", // 「需手动」的先后问后端（`askNeedsOrder`），交给标签页栏
     "src/frontend/ui/record-reads.ts", // 出口省掉的正文展开那一下按骨架偏移取回那一行（`readRecordById`，挂在 tab 的 `fullRecord` 上）
     "src/frontend/ui/runs.ts", // 监控板 peek 的子运行名：标签缺席时的通用叫法只住 `runs.ts::runLabel`
     "src/frontend/ui/tab-bar-drag.ts",
@@ -203,6 +204,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/menu.ts", // 组的菜单（「⋯」/ 组头右键）
     "src/frontend/ui/kit/popover.ts", // 「需手动」点开的那个浮层（开 · 关 · 数据变了原地换内容）
     "src/frontend/ui/needs-panel.ts", // 那个浮层里排什么（会话 · 计划项 · 会话外的每一项 · 断开 / 无法读取）
+    "src/frontend/ui/needs-order.ts", // `Ctrl+J` 与浮层的先后：条上的照后端排好的那一份对上去（`orderNeeds`）
     "src/frontend/ui/kit/status-dot.ts", // 状态点
     "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）
