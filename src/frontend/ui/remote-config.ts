@@ -244,7 +244,7 @@ export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineF
  * - 增（`key = null`）⇒ 一条 `insertin`：那个 origin 盘上已有 ⇒ 整批拒；
  * - `key` 在、`was` 缺（加载时那个 origin 不止一台）⇒ 按那个 origin 删了再插 —— 认出多台 ⇒ `removein` 整批拒，不猜是哪台。
  *
- * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；刚自动固化的指纹、别的窗口改的格都不会被盖掉。
+ * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；别的窗口改的格不会被盖掉。
  */
 export function remoteHostsEdits(patch: RemoteHostsPatch): MachineEdit[] {
   const edits: MachineEdit[] = [];

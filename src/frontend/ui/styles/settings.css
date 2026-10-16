@@ -1129,13 +1129,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text-faint);
 }
 
-.remote-test-fp {
-  font-family: var(--font-mono);
-  color: var(--text);
-  word-break: break-all;
-}
-
-/* FIX 4（issue #15）：首次 / TOFU 捕获的指纹未经验证，固化前的安全提醒。 */
+/* 忘掉主机指纹之后那一行提醒（下次连接重新记录）。 */
 .remote-test-caution {
   flex-basis: 100%;
   color: var(--warn);

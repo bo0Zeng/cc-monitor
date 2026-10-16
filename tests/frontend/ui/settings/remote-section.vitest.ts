@@ -1,5 +1,5 @@
-// F43：指纹重置按钮显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
-// 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
+// F43：［忘记…］显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
+// 「库里记着这台的指纹才显示」这条判定,防未来误改成没记也显示(忘掉无意义)。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
