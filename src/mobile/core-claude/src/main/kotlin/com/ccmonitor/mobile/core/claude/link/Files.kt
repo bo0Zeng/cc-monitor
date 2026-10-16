@@ -355,4 +355,3 @@ object FilesCommitUpload {
     /** 码 `exists` 的 `data` ⇒ 同名清单；解不出 ⇒ `null`。 */
     fun conflictsOf(data: Any?): List<Conflict>? = Wire.bind<Conflicts>(data)?.conflicts
 }
-

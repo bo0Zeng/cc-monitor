@@ -225,8 +225,8 @@ class ResidentFeed(
         return try {
             slot.await()
         } finally {
-            replies.remove(id)
-            moving.remove(id)
+            replies -= id
+            moving -= id
         }
     }
 
