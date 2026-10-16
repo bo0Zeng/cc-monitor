@@ -3,12 +3,11 @@
  * ＋ 问本机后端（同一条，`machine` = 那台：通往那台的端口转发），两份事实并排排成对话框里的两行（中断 · 保留）。
  * 什么都不会断 ⇒ 空，调用方就不弹框。这里不判什么，只排版。
  */
-import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson } from "../ipc/chan-caller";
+import { budgetWithin, callTyped } from "../ipc/chan-caller";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import type { DialogRow } from "../kit/dialog";
-import { exactKeys, isObj } from "../ipc/decode";
+import type { Interrupts as InterruptsReply } from "../generated/Interrupts";
 
 /** 那两份事实并起来（问不到的那一格是 `null`，不当成 0）。 */
 export interface Interrupts {
@@ -18,34 +17,14 @@ export interface Interrupts {
   forwards: number | null;
 }
 
-/** 一份 `machine-interrupts` 应答（严格收：恰好四格、都是非负整数）。 */
-export interface InterruptsReply {
-  relayedSessions: number;
-  relayedMaybe: number;
-  liveStreams: number;
-  forwards: number;
-}
-
-const KEYS = ["forwards", "liveStreams", "relayedMaybe", "relayedSessions"];
-
-/** 严格收；收不下 ⇒ `null`（当成问不到）。 */
-export function decodeInterrupts(v: unknown): InterruptsReply | null {
-  if (!isObj(v) || !exactKeys(v, KEYS)) return null;
-  const o = v;
-  if (!KEYS.every((k) => Number.isInteger(o[k]) && (o[k] as number) >= 0)) return null;
-  return o as unknown as InterruptsReply;
-}
-
 /** 那一问的期限：那台扫一遍活会话 ＋ 回程。 */
 const INTERRUPTS_BUDGET_MS = 10_000;
 
 /** 问一家（那台 / 本机）；问不到 ⇒ `null`。`appExit` ⇒ 问的是「重启 / 退出 cc-monitor」（那台后端按它自己的退出行为答）。 */
 async function askOne(origin: string, machine: string | null, appExit = false): Promise<InterruptsReply | null> {
   try {
-    const body = jsonBody(appExit ? { appExit: true } : machine === null ? {} : { machine });
-    const budget = budgetWithin(INTERRUPTS_BUDGET_MS);
-    const reply = await chan.call(origin, "machine-interrupts", body, budget);
-    return decodeInterrupts(readJson(reply));
+    const req = appExit ? { appExit: true } : machine === null ? {} : { machine };
+    return await callTyped(origin, "machine-interrupts", req, budgetWithin(INTERRUPTS_BUDGET_MS));
   } catch (e) {
     console.warn(`[interrupts] ${origin} 问不到会打断什么：`, e);
     return null;
