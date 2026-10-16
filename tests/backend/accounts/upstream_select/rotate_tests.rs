@@ -97,7 +97,7 @@ impl Home {
                 Some(self.root.join(rotation::FILE_NAME)),
                 self.tx.clone(),
             )),
-            Arc::new(Ledger::with(
+            Arc::new(Ledger::open(
                 Some(self.root.join(ledger::FILE_NAME)),
                 self.tx.clone(),
                 Default::default(),

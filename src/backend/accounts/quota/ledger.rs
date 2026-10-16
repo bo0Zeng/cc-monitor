@@ -269,15 +269,15 @@ pub(crate) struct Ledger {
 impl Ledger {
     /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。节点发到进程里那一条。
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
-        Self::with(
+        Self::open(
             path,
             super::nodes::bus().clone(),
             super::spend::book().clone(),
         )
     }
 
-    /// 同 [`Self::at`]，节点发到给的那一条、用量记在给的那一本里（判据各用自己的，不跟并行的判据串）。
-    pub(crate) fn with(
+    /// 在这个落点开账，节点发到给的那一条、用量记在给的那一本里（判据各给自己的，不跟并行的判据串）。
+    pub(crate) fn open(
         path: Option<PathBuf>,
         nodes: super::nodes::Nodes,
         spend: std::sync::Arc<super::spend::Spend>,

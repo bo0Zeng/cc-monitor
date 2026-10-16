@@ -553,7 +553,7 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
     let d = temp_dir("perpct");
     let path = d.join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_data_at(&d);
-    let l = Ledger::with(
+    let l = Ledger::open(
         Some(path.clone()),
         tokio::sync::broadcast::channel(16).0,
         Default::default(),
