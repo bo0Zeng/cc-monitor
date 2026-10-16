@@ -16,6 +16,7 @@ import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 // 列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
@@ -617,7 +618,7 @@ describe("〔P3〕列宽变了", () => {
     };
     tsv.settleLayoutLater(s.view);
     tsv.settleLayoutLater(s.view);
-    await vi.waitFor(() => expect(s.ledger.staleRows).toBe(0));
+    await vi.waitFor(() => expect(s.ledger.staleRows).toBe(0), UNTIL_CEILING);
     expect(steps.mock.calls.length, "一段至多补 `SETTLE_ROWS` 行；同一个排了两次也只补一遍").toBe(Math.ceil(far / 20_000));
     for (let i = 0; i < total; i += 997) {
       expect(s.ledger.heightOf(i, i + 1), `第 ${i} 行`).toBeCloseTo(estimateFromFacts(s.ledger.factsOf(i)!, w), 6);
@@ -655,12 +656,12 @@ describe("〔P3〕列宽变了", () => {
       [50, 70, 5],
       [80, 90, 8],
     ]);
-    await vi.waitFor(() => expect(releases.length).toBe(1));
+    await vi.waitFor(() => expect(releases.length).toBe(1), UNTIL_CEILING);
     s.view.relayout(initialColumnWidth() / 2); // 算的途中列宽变了 ⇒ 这一批作废
     releases[0]!();
-    await vi.waitFor(() => expect(releases.length, "作废的那一批没放回重交").toBe(2));
+    await vi.waitFor(() => expect(releases.length, "作废的那一批没放回重交").toBe(2), UNTIL_CEILING);
     releases[1]!();
-    await vi.waitFor(() => expect(s.ledger.isRefined(9)).toBe(true));
+    await vi.waitFor(() => expect(s.ledger.isRefined(9)).toBe(true), UNTIL_CEILING);
     expect(s.ledger.heightOf(9, 10)).toBe(33);
     expect(s.view.staleCount).toBe(0);
     // 都要过了 ⇒ 不再问
