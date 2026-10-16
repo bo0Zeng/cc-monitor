@@ -3961,7 +3961,7 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
         r#"{"kind":"hello","build_id":"kp3b-jia","host_arch":"x86_64","#,
         r#""commands":["ping"]}"#
     );
-    let frame = crate::stream_source::parse_frame(line).expect("这一行该解析成 hello 帧");
+    let frame = crate::stream_source::decode(line).expect("这一行该解析成 hello 帧");
     let witness = crate::inbound_client::witness_of(&frame)
         .expect("hello 帧该给得出见证 —— 给不出的话下面那一格是空转的");
     assert_eq!(

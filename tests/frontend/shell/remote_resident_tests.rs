@@ -131,24 +131,25 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
     );
 }
 
-/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 声明（`session_added.pid` 去掉）；没有旗标、没有钥匙。本机远端同一处拼（`local_backend_host::attach_line`）；
-/// 远端那一行由重连循环（`resident-client` 的 `feed.rs`，两端同一条）带上声明。
+/// 远端那条流的 attach 行：「我要流」＋ 时区；没有旗标、没有钥匙、没有出口声明（会话帧远端本机同一形）。
+/// 本机远端同一处拼（`local_backend_host::attach_line`）。
 #[test]
-fn the_attach_line_asks_for_the_stream_with_the_remote_declaration() {
-    let l = crate::local_backend_host::attach_line(
-        Some("Asia/Shanghai"),
-        Some(&resident_client::attach::remote_stream_view()),
-    );
+fn the_attach_line_asks_for_the_stream_and_nothing_else() {
+    let l = crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None);
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(
         v,
-        serde_json::json!({"attach": true, "tz": "Asia/Shanghai", "view": {"omit": {"session_added": ["pid"]}}})
+        serde_json::json!({"attach": true, "tz": "Asia/Shanghai"})
     );
     let src =
         guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"));
-    guard_core::find_pinned(&src, "Some(&attach::remote_stream_view())")
-        .unwrap_or_else(|e| panic!("远端那一行没带声明：{e}"));
+    assert!(
+        !src.contains("remote_stream_view"),
+        "远端那一行又带上了出口声明"
+    );
+    guard_core::find_pinned(&src, "attach::handshake(")
+        .unwrap_or_else(|e| panic!("远端那一行不经 attach 握手：{e}"));
 }
 
 /// T4 **停的结局只认三个词**（本机远端同一个读法）：`graceful` · `killed` · `not_running` 各落一格、pid 原样；

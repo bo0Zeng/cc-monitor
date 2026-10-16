@@ -34,15 +34,20 @@ async fn dropping_a_watch_unregisters_only_that_one() {
     assert!(table().get("fbr-b").is_none());
 }
 
-/// 本机那条流上来的 `files_batch` 帧（两台之间的复制在本机后端里做）⇒ 经吸收点交到订了那张票的那一位，字节那两格原样带着。
+/// 本机那条流上来的 `files_batch` 帧（两台之间的复制在本机后端里做）⇒ 经分派交到订了那张票的那一位，字节那两格原样带着。
 #[tokio::test]
 async fn a_frame_on_the_local_stream_reaches_the_watcher_with_its_bytes() {
     let mut s = watch("fbr-local");
-    let f = crate::stream_source::parse_frame(
+    let f = crate::stream_source::decode(
         r#"{"kind":"files_batch","ticket":"fbr-local","done":1,"total":3,"bytes_done":512,"bytes_total":2048}"#,
     )
     .expect("认得这一帧");
-    crate::local_backend::absorb_local_frame(f, None, &crate::origin::Origin::local());
+    crate::stream_source::route(
+        crate::stream_source::Via::Local,
+        &crate::origin::Origin::local(),
+        None,
+        f,
+    );
     let got = tokio::time::timeout(guard_core::wall::CEILING, s.next())
         .await
         .expect("等到一格")

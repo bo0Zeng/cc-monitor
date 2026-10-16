@@ -38,11 +38,6 @@ pub fn attach_line(tz: Option<&str>, view: Option<&serde_json::Value>) -> String
     format!("{}\n", serde_json::Value::Object(o))
 }
 
-/// 远端那条流的出口声明：会话帧里不要本机才用得上的 `pid`。
-pub fn remote_stream_view() -> serde_json::Value {
-    serde_json::json!({ "omit": { "session_added": ["pid"] } })
-}
-
 /// attach 回话：`{"attach":"ok"}` ⇒ 成；别的 ⇒ 那一句（带那头说的原因）。
 pub fn attach_reply(line: &str) -> Result<(), String> {
     let v: serde_json::Value = serde_json::from_str(line).unwrap_or_default();

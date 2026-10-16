@@ -255,7 +255,8 @@ fn total_retention_stays_under_the_cap_however_many_sessions() {
 /// C2：满了先丢已经不活的会话（成品缓存说已结束 / 可重连），活的哪怕更久没进过行也后丢。
 #[test]
 fn when_full_sessions_that_are_not_live_go_first() {
-    use crate::session_book::{Fate, In, LiveMeta};
+    use crate::session_book::In;
+    use cmd_wire::frame::SessionFate as Fate;
     let book: &'static parking_lot::RwLock<crate::session_book::Book> =
         Box::leak(Box::new(parking_lot::RwLock::new(Default::default())));
     let mut r = EventReplay::new();
@@ -264,7 +265,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
     book.write().step(In::Live {
         origin: "<local>".into(),
         sid: "live".into(),
-        meta: LiveMeta::default(),
+        meta: crate::guard_support::session_added("x", serde_json::json!({})),
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
@@ -1040,13 +1041,14 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
 /// 起停那几格照交、照占位置；就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后。
 #[tokio::test]
 async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_around_the_lines() {
-    use crate::session_book::{Fate, In, LiveMeta};
+    use crate::session_book::In;
+    use cmd_wire::frame::SessionFate as Fate;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
     book.write().step(In::Live {
         origin: "<local>".into(),
         sid: "a".into(),
-        meta: LiveMeta::default(),
+        meta: crate::guard_support::session_added("x", serde_json::json!({})),
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
@@ -1119,14 +1121,10 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::Activity(b::SessionActivityPayload {
             session_id: sid(),
-            activity: crate::session_book::ActivityCells {
-                activity: None,
-                activity_text: "T".into(),
-                activity_tone: "now".into(),
-                activity_order: 1,
-                switch: Default::default(),
-            },
-            naming: crate::session_book::NameCells {
+            activity: b::ActivityCells::of(
+                &crate::guard_support::session_added("s", serde_json::json!({})).face,
+            ),
+            naming: b::NameCells {
                 label: "L".into(),
                 label_project: None,
             },
@@ -1134,7 +1132,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::Container(b::SessionContainerPayload {
             session_id: sid(),
-            container: crate::session_book::SessionContainer::None,
+            container: cmd_wire::frame::SessionContainer::None,
         }),
         F::Idle(b::SessionIdlePayload {
             session_id: sid(),
@@ -1482,33 +1480,30 @@ async fn a_watch_point_cuts_the_held_tail_to_one_contiguous_run_and_reaches_its_
 #[test]
 fn the_codex_sample_frames_decode() {
     const GOLDEN: &str = include_str!("../../__fixtures__/codex-session-stream.golden.jsonl");
-    use crate::stream_source::{parse_frame, InboundFrame};
+    use cmd_wire::frame::Frame;
     let mut added = Vec::new();
     let mut lines = 0;
     let (mut announced_text, mut working_text) = (None, None);
     for l in GOLDEN.lines() {
-        match parse_frame(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}")) {
-            InboundFrame::SessionAdded {
-                sid,
-                path,
-                activity,
-                ..
-            } => {
-                announced_text = Some(activity.activity_text.clone());
+        match crate::stream_source::decode(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}"))
+        {
+            Frame::SessionAdded(a) => {
+                announced_text = Some(a.face.activity_text.clone());
                 // 判不出 ⇒ 语气 plain（不是「在跑」那一种）：壳原样转交，不自己补。
                 assert_eq!(
-                    activity.activity_tone, "plain",
+                    a.face.activity_tone,
+                    cmd_wire::cells::Tone::Plain,
                     "宣告那一帧判不出却用了在跑的语气"
                 );
-                assert_eq!(activity.activity, None, "宣告那一帧不说判出了哪一态");
-                added.push((sid, path))
+                assert_eq!(a.face.activity, None, "宣告那一帧不说判出了哪一态");
+                added.push((a.sid, a.path))
             }
-            InboundFrame::SessionStatus { activity, .. }
-                if activity.activity == Some(crate::session_book::SessionActivity::Working) =>
+            Frame::SessionStatus(st)
+                if st.face.activity == Some(cmd_wire::frame::SessionActivity::Working) =>
             {
-                working_text.get_or_insert(activity.activity_text.clone());
+                working_text.get_or_insert(st.face.activity_text.clone());
             }
-            InboundFrame::Line { .. } => lines += 1,
+            Frame::Line(_) => lines += 1,
             _ => {}
         }
     }

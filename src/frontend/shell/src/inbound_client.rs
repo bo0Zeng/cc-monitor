@@ -6,7 +6,6 @@ pub use resident_client::client::*;
 // 判据（`inbound_client_tests.rs`，与本体同一份行为）沿用本体那几样词。
 #[cfg(test)]
 use crate::chan::wire::Withdraw;
-use crate::stream_source::InboundFrame;
 #[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
@@ -15,9 +14,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// 这一帧是 hello ⇒ 见证（[`BackendHello::of`]）；别的帧 ⇒ `None`。
-pub fn witness_of(frame: &InboundFrame) -> Option<BackendHello> {
+pub fn witness_of(frame: &crate::stream_source::Frame) -> Option<BackendHello> {
     match frame {
-        InboundFrame::Hello(h) => Some(BackendHello::of(h)),
+        cmd_wire::frame::Frame::Hello(h) => Some(BackendHello::of(h)),
         _ => None,
     }
 }

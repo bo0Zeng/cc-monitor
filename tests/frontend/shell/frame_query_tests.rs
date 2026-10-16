@@ -1193,7 +1193,7 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
 //  「**造**期限的那一手住调用方」。
 // ════════════════════════════════════════════════════════════════════════════
 
-use crate::inbound_client::{park, BackendHello, InboundClient};
+use crate::inbound_client::{park, InboundClient};
 use tokio::io::AsyncBufReadExt;
 
 /// 一个真 `InboundClient` 接一根内存双工管子，登记在全局表里一个**只有本用例用**的 origin 名下；
@@ -1206,23 +1206,8 @@ fn client_for_test(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = crate::inbound_client::witness_of(&crate::stream_source::InboundFrame::Hello(
-        cmd_wire::frame::Hello {
-            build_id: "test".into(),
-            host_arch: "x86_64".into(),
-            commands: commands.iter().map(|s| s.to_string()).collect(),
-            unavailable: vec![],
-            // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
-            shapes: commands
-                .iter()
-                .filter_map(|c| {
-                    cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string()))
-                })
-                .collect(),
-            ..Default::default()
-        },
-    ))
-    .expect("是 Hello 帧");
+    let hello = crate::inbound_client::witness_of(&crate::guard_support::our_hello(commands))
+        .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
     inbound_client::register(origin, client.clone());
     (client, tokio::io::BufReader::new(theirs))

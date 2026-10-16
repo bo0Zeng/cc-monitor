@@ -1,145 +1,99 @@
-/// ★ **backend 帧的消费分派不许有兜底臂**。
-///
-/// # 它钉的是「谁是被偶然守住的」那一类（第三例）
-///
-/// `stream_loop` 里那条 `match frame` 今天用**九条具名臂**盖住 `InboundFrame`
-/// 的全部 10 个变体（`Reply` 与 `Cancelled` 合用一条）＋ 一条 `None`，
-/// **没有兜底臂** ⇒ backend 新加一种帧、monitor 忘了处理时**编译失败**。
-///
-/// ⚠ 那是个没人盯的前提：谁加一条兜底臂，穷尽性当场消失，
-/// 新帧从此被**静默丢弃** —— 而 monitor 侧既有判据一条都不会因此变红
-/// （它们各测各的帧）。后果不是报错，是**功能默默不生效**：
-/// 用户看到的是「backend 明明发了，界面没反应」。
-/// ★ 赌注比前两例高：这条流**同时被手机端消费**（承接 D6：
-/// 暴露给第三方 = 契约冻结成本），而 monitor 是它的参考实现。
-///
-/// 与 `watcher.rs`（backend 七路信号）、`config_surface.rs`（审计页解析形态）同型。
-#[test]
-fn the_backend_frame_dispatch_has_no_catch_all_arm() {
-    // ⚠ **不能按首个 cfg-test 切**：本文件有十几个测试模块，第一个在 915 行，
-    //   而要守的那条分派在 3552 行 —— 第一版就是这么写的，
-    //   抽取器自检当场报「只扫到 0 条臂」。用共享原语剥全部测试段。
-    let prod = crate::guard_support::stream_source_production();
-    let lines: Vec<&str> = prod.lines().collect();
-    let ind = |l: &str| l.len() - l.trim_start().len();
-    let mut arms = 0usize;
-    let mut offenders: Vec<usize> = Vec::new();
-    for (n, l) in lines.iter().enumerate() {
+//! 分派那两层（`route` · `apply`）没有兜底臂、臂集合就是帧种集合：后端加一种帧、这一侧忘了处理时编不过，
+//! 而谁加一条 `_ =>`，穷尽性当场消失、新帧从此被静默丢弃（「后端明明发了，界面没反应」）—— 这条守它。
+
+/// 生产段里 `fn {name}(` 那个函数体（到下一个顶格 `}` 为止）。
+fn body_of<'a>(prod: &'a str, name: &str) -> &'a str {
+    let at = prod
+        .find(&format!("fn {name}("))
+        .unwrap_or_else(|| panic!("生产段里找不到 `fn {name}(`"));
+    let end = prod[at..]
+        .find("\n}\n")
+        .unwrap_or_else(|| panic!("`{name}` 没有收尾"));
+    &prod[at..at + end]
+}
+
+/// 一段里的臂（`{prefix}X(` 起头、同一行或后几行有 `=>`）的 `X`；`a | b` 连写的各算一个。
+fn arms(body: &str, prefix: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for l in body.lines() {
         let s = l.trim_start();
-        if s.starts_with("Some(InboundFrame::") || s.starts_with("Some(f @ (InboundFrame::") {
-            arms += 1;
+        let s = s.strip_prefix("f @ (").unwrap_or(s);
+        if !s.starts_with(prefix) {
             continue;
         }
-        if !s.starts_with("_ =>") {
-            continue;
-        }
-        let d = ind(l);
-        for k in (0..n).rev() {
-            let prev = lines[k];
-            if prev.trim().is_empty() {
-                continue;
-            }
-            if ind(prev) < d {
-                break;
-            }
-            if ind(prev) == d && prev.trim_start().starts_with("Some(InboundFrame::") {
-                offenders.push(n + 1);
-                break;
+        for part in s.split(" | ") {
+            if let Some(r) = part.trim_start().strip_prefix(prefix) {
+                let name: String = r
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric())
+                    .collect();
+                if !name.is_empty() {
+                    out.insert(name);
+                }
             }
         }
     }
-    assert!(
-        arms >= 8,
-        "只扫到 {arms} 条 `Some(InboundFrame::` 臂（08-06 实测 9）—— 抽取坏了，本条此刻是空转的"
-    );
-    // 豁免登记（**默认拒绝**：不在这张表里的兜底臂一律红）。按**函数名**登记，不按行号。
-    // 豁免表空了：从前豁免的那条应答路由 match 随重连循环搬进 `resident-client`（`feed.rs::route`，按 `kind` 字串分，不是帧类型）。
-    const ALLOWED: &[(&str, &str)] = &[];
-    let fn_of = |line_no: usize| -> String {
-        lines[..line_no.min(lines.len())]
-            .iter()
-            .rev()
-            .find_map(|l| {
-                let s = l.trim_start();
-                s.strip_prefix("fn ")
-                    .or_else(|| s.strip_prefix("pub fn "))
-                    .or_else(|| s.strip_prefix("async fn "))
-                    .or_else(|| s.strip_prefix("pub async fn "))
-                    .map(|r| {
-                        r.chars()
-                            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                            .collect::<String>()
-                    })
-            })
-            .unwrap_or_default()
-    };
-    let offenders: Vec<usize> = offenders
-        .into_iter()
-        .filter(|n| !ALLOWED.iter().any(|(f, _)| *f == fn_of(*n)))
-        .collect();
-    for (f, _) in ALLOWED {
+    out
+}
+
+/// `{head}` 那个 enum 的变体名（`X(…)` 那一形）。
+fn variants(src: &str, head: &str) -> std::collections::BTreeSet<String> {
+    let at = src.find(head).unwrap_or_else(|| panic!("找不到 `{head}`"));
+    let body = &src[at..at + src[at..].find("\n}").expect("enum 没有收尾")];
+    body.lines()
+        .skip(1)
+        .filter_map(|l| l.trim().split_once('(').map(|(n, _)| n.to_string()))
+        .collect()
+}
+
+#[test]
+fn the_two_dispatch_layers_cover_every_frame_kind_without_a_catch_all() {
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/stream_source/dispatch.rs"
+    ));
+    let route = body_of(&prod, "route");
+    let apply = body_of(&prod, "apply");
+    for (name, body) in [("route", route), ("apply", apply)] {
         assert!(
-            prod.contains(&format!("fn {f}(")),
-            "豁免表里的 `{f}` 已经不在生产段里 —— 登记该删了"
+            !body.lines().any(|l| l.trim_start().starts_with("_ =>")),
+            "`{name}` 里出现了兜底臂 —— 新帧会被静默丢弃；确实不处理也请写成具名臂"
         );
     }
+    // 帧种由 `cmd-wire` 的类型说（另一份源）。
+    let kinds = variants(
+        include_str!("../../../../src/common/cmd-wire/src/frame.rs"),
+        "pub enum Frame<R = Record> {",
+    );
+    assert_eq!(kinds.len(), 24, "帧种表读空了 / 读错了：{kinds:?}");
+    assert_eq!(arms(route, "Frame::"), kinds, "`route` 的臂不是全部帧种");
+    let ordered = variants(&prod, "pub(crate) enum Ordered {");
     assert!(
-        offenders.is_empty(),
-        "backend 帧的消费分派里出现了兜底臂（生产段第 {offenders:?} 行）。\n\
-             ⚠ 后果不是报错，是**新帧被静默丢弃** —— 用户看到的是\n\
-             「backend 明明发了，界面没反应」，而既有判据一条都不会红。\n\
-             这条流同时被手机端消费（D6：契约冻结成本）。\n\
-             新增帧请写成具名臂；确实不处理也请显式写出来并加一句为什么。"
+        ordered.is_subset(&kinds) && !ordered.is_empty(),
+        "有序的那几种里有不是帧种的：{ordered:?}"
+    );
+    assert_eq!(
+        arms(apply, "Ordered::"),
+        ordered,
+        "`apply` 的臂不是全部有序的那几种"
     );
 }
 
-// ── P28：给这条源码扫描型守卫立**负对照** ──
-//
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
-// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 今天 4490 行，
-// 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
-// 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
-// ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
-//
-// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
-// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
-
-/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+/// 交活卡的地方恰好一处：分派第一层那一臂（本机远端同一处，origin 是这条流的）。
 #[test]
-fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
-    // 本文件抬头逐字记着这条病的现场：「第一版就是这么写的，抽取器自检当场报
-    // 『只扫到 0 条臂』」。那个 `arms >= 8` 的地板**这一次恰好承重**（缩水到 908 行
-    // 之后臂数归零），但它是**地板** —— 只在归零方向上咬人。
-    // ⇒ 这条把「那条分派与它的豁免函数都还在扫描面里」钉成逐针的事：
-    //    第一条 `Some(InboundFrame::` 臂与它所在的 `async fn dispatch(` 都在第一个测试模块之后。
-    guard_core::assert_stripper_keeps(
-        "stream_source::frame_dispatch_shape",
-        &crate::guard_support::stream_source_raw(),
-        &["Some(InboundFrame::", "async fn dispatch("],
-    );
-}
-
-/// 〔「流沿已有的后端链路回到 monitor」〕远端那条流的 `Live` 臂把帧交 `session_live`（origin = 那台），
-/// 与本机那条流同一个口；monitor 生产段里交活卡的地方恰好两处：远端这一臂 ＋ 本机吸收点。
-#[test]
-fn the_remote_stream_hands_live_frames_to_the_session_live_with_its_own_origin() {
-    let prod = crate::guard_support::stream_source_production();
-    let arm = prod
-        .lines()
-        .find(|l| {
-            l.trim_start()
-                .starts_with("Some(InboundFrame::LiveCard(l)) =>")
-        })
-        .expect("dispatch 里找不到 Live 那一臂");
-    assert!(
-        arm.contains("crate::live_card::deliver(&host_label, l)"),
-        "远端流的活卡帧没交 session_live（或 origin 不是这台）：{arm}"
-    );
-    let local = guard_core::production_code(include_str!(
-        "../../../../src/frontend/shell/src/local_backend.rs"
+fn live_cards_are_handed_over_in_one_place_with_the_stream_origin() {
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/stream_source/dispatch.rs"
     ));
-    let n =
-        prod.matches("live_card::deliver(").count() + local.matches("live_card::deliver(").count();
-    assert_eq!(n, 2, "交活卡的地方不是恰好「远端一臂 ＋ 本机吸收点」");
+    guard_core::find_pinned(body_of(&prod, "route"), "crate::live_card::deliver(at, l)")
+        .unwrap_or_else(|e| panic!("活卡那一臂不是恰好一处、或 origin 不是这条流的：{e}"));
+    let mut n = 0;
+    for (_, raw) in guard_core::scan_tree!(
+        &crate::guard_support::repo_root().join("src/frontend/shell/src"),
+        &["rs"]
+    ) {
+        n += guard_core::production_code(&raw)
+            .matches("live_card::deliver(")
+            .count();
+    }
+    assert_eq!(n, 1, "交活卡的地方不是恰好一处");
 }

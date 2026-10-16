@@ -2302,6 +2302,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "proc_claude_config_dir",
             1,
         ),
+        // 后端版本谱系（人写的）点了一种早删了的帧：那是病史，该留。它一直被壳手写解帧那一份里的同名串遮着「还活着」，壳改按类型解之后才被看见。
+        ("src/backend/lib.rs", "tmux_session_closed", 2),
         (
             "tests/frontend/shell/local_read_surface_registry.rs",
             "list_history_projects",

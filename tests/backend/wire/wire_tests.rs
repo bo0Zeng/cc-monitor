@@ -825,7 +825,7 @@ fn transfer_frames_have_exactly_these_bytes() {
     }
 }
 
-/// `live` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// `live` 的逐字节线上形状（期望是手写字面量；客户端按 `cmd-wire` 的类型解同样的串）。
 /// 一张卡五种 `op`：整卡 · 加块 · 加字 · 说完了 · 撤卡；`run` 缺 ＝ 主运行。可丢（SSE 只保快，写者最低优先）。
 #[test]
 fn live_frames_have_exactly_these_bytes() {
@@ -898,7 +898,7 @@ fn live_frames_have_exactly_these_bytes() {
     }
 }
 
-/// 运行表那一帧的逐字节线上形状（monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// 运行表那一帧的逐字节线上形状（客户端按 `cmd-wire` 的类型解同样的串）。
 #[test]
 fn session_runs_frames_have_exactly_these_bytes() {
     use crate::agents::RunDid;
@@ -1191,7 +1191,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
 }
 
 /// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前；写好的字与语气跟在 `state` 后面。
-/// monitor `stream_source::parse_frame` 照这两个字面量认它。
+/// 客户端按 `cmd-wire` 的类型认这两个字面量。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::wire::SessionFate;
@@ -1222,7 +1222,7 @@ fn mig1_session_state_has_exactly_these_bytes() {
 }
 
 /// `sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
-/// monitor `stream_source::parse_frame` 照这个字面量认它。
+/// 客户端按 `cmd-wire` 的类型认这个字面量。
 #[test]
 fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(
@@ -1837,11 +1837,6 @@ fn the_written_faces_are_built_in_one_place_only() {
     ]
     .iter()
     .map(|s| format!("src/backend/wire/mod.rs · {s}"))
-    // 壳解帧落进自己那份同名的 `session_book::CanSwitch`（另一个类型，字取自帧上）：解码口与它的判据。
-    .chain([
-        "src/frontend/shell/src/stream_source/frame.rs · switch_cells · CanSwitch::No".to_string(),
-        "tests/frontend/shell/stream_source/parse_frame_tests.rs · session_status_carries_the_switch_cells_as_the_core_wrote_them · CanSwitch::No".to_string(),
-    ])
     .collect();
     assert_eq!(
         seen, want,

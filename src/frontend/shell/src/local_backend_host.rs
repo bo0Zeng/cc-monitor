@@ -198,19 +198,19 @@ pub(crate) fn hello_verdict(
     want_build: Option<&str>,
     want_env: &[(String, String)],
 ) -> HelloVerdict {
-    let Ok(frame) = crate::stream_source::parse_frame(line) else {
+    if cmd_wire::frame::kind_of(line).is_err() {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.notBackendLine",
             &[("bytes", &(line.len()).to_string())],
         ));
-    };
-    let crate::stream_source::InboundFrame::Hello(cmd_wire::frame::Hello { build_id, .. }) = &frame
+    }
+    let Some(cmd_wire::frame::HelloHead { build_id, .. }) = cmd_wire::frame::HelloHead::of(line)
     else {
         return HelloVerdict::Stranger(
             copy_text("rsLocalBackendHost.hello.notBackend", &[]).into(),
         );
     };
-    if let Some(ours) = want_build.filter(|w| build_id != w) {
+    if let Some(ours) = want_build.filter(|w| build_id != *w) {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.buildMismatch",
             &[
@@ -357,10 +357,8 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
         }
         HelloVerdict::Stranger(why) => {
             // 在听的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
-            if let Ok(crate::stream_source::InboundFrame::Hello(cmd_wire::frame::Hello {
-                build_id,
-                ..
-            })) = crate::stream_source::parse_frame(&line)
+            if let Some(cmd_wire::frame::HelloHead { build_id, .. }) =
+                cmd_wire::frame::HelloHead::of(&line)
             {
                 if mine.is_some_and(|m| m != build_id) {
                     crate::machine_state::note_local_foreign(Some(&build_id));
@@ -741,7 +739,7 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 脱离那条路上「它跟我们说过话没有」这一维。
 ///
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
-/// [`attach_stream`] 开头两行是 `parse_frame` + `inbound_client::witness_of`，
+/// [`attach_stream`] 开头两行是 `stream_source::decode` + `inbound_client::witness_of`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
 /// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
@@ -825,11 +823,11 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
 ///
 /// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条套接字的两半。
-/// **复用的是纯零件**（`parse_frame` · `inbound_client::witness_of` ·
+/// **复用的是纯零件**（`stream_source::decode` · `inbound_client::witness_of` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
-    let frame = crate::stream_source::parse_frame(hello_line)
+    let frame = crate::stream_source::decode(hello_line)
         .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
     let witness = crate::inbound_client::witness_of(&frame)
         .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
@@ -894,16 +892,20 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
                 }
                 continue;
             };
-            let Some(f) = unread.take(line, &mut tally, &crate::stream_source::local_health) else {
+            let Some(f) = unread.take(
+                line,
+                Some(&client),
+                &mut tally,
+                &crate::stream_source::local_health,
+            ) else {
                 continue;
             };
-            // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
-            // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
-            // 交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) = crate::local_backend::absorb_local_frame(
-                f,
-                Some(&client),
+            // 与 stdio 那条载体同一处分派；有序的那几种送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
+            if let Some(f) = crate::stream_source::route(
+                crate::stream_source::Via::Local,
                 &crate::origin::Origin::local(),
+                Some(&client),
+                f,
             ) {
                 crate::local_lines::deliver(f).await;
             }

@@ -2,7 +2,7 @@
 import type { TerminalHost } from "./TerminalHost";
 
 /**
- * 一条活会话住在什么容器里（后端 `session_added.container`；缺席 = 不知道，不在这里）。开放联合：认得的 ＋ 其它。
- * 原样交给界面（`ui_contract::SessionContainerPayload`），`ts-rs` 生成同形的判别联合。
+ * 一条活会话住在什么容器里（界面那一形）：在某个认得的宿主的终端里（`terminal` 是 `terminals-list` 那一行的句柄，算不出就没有）·
+ * 不在任何宿主里 · 这边不认识的宿主。
  */
 export type SessionContainer = { "form": "hosted", host: TerminalHost, terminal: string | null, } | { "form": "none" } | { "form": "other", host: string, };

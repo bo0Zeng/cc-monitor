@@ -560,39 +560,32 @@ fn the_sweep_only_takes_the_old_ones() {
 /// 而那时本机 tmux 会话又对 monitor 不可见了 —— 与 `P2` 当初「把非 hello 帧全丢了」
 /// 是同一个形状的退化。⇒ 位置性质要单独钉（`find_pinned`：恰好一处、有边界）。
 #[test]
-fn the_read_loop_really_calls_the_absorb_point() {
+fn the_read_loop_really_calls_the_dispatch() {
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend.rs"
     ));
-    // 吸收点从此把内容帧交回（`-> Option<InboundFrame>`），调用形去掉了行尾分号；
-    //   「交回的帧真送进本机内容通道」由 `local_lines_tests` 另钉。
-    let at = guard_core::find_pinned(
-        &prod,
-        "absorb_local_frame(frame, registered.as_ref(), &route.origin)",
-    )
-    .expect(
-        "读行循环里必须恰好有一处 `absorb_local_frame(frame, registered.as_ref(), &route.origin)`",
-    );
-    let before = &prod[..at];
+    // 「交回的有序帧真送进本机内容通道」由 `local_lines_tests` 另钉。
+    let at = guard_core::find_pinned(&prod, "crate::stream_source::route(")
+        .expect("读行循环里必须恰好有一处分派第一层（`stream_source::route`）");
     assert!(
-        before.contains("unread.take(&line"),
-        "吸收点必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
+        prod[..at].contains("unread.take("),
+        "分派必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
     );
-    // ★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一个吸收点 —— 恰好一处，
+    // ★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一处 —— 恰好一处，说 `<local>`，
     // 而且两条循环结束时都把经它开的在飞链路一起结束（`link_mux::fail_owned_by`，各恰好一处）。
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
-    let at = guard_core::find_pinned(&host, "crate::local_backend::absorb_local_frame(")
-        .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
-    let flat: String = host.chars().filter(|c| !c.is_whitespace()).collect();
+    let at = guard_core::find_pinned(&host, "crate::stream_source::route(")
+        .expect("常驻载体的读循环里必须恰好有一处分派第一层");
+    let flat: String = host[at..].chars().filter(|c| !c.is_whitespace()).collect();
     assert!(
-        flat.contains("absorb_local_frame(f,Some(&client),&crate::origin::Origin::local()"),
-        "常驻载体是本机那一台：吸收点交 tap / 画面时说 `<local>`"
+        flat.starts_with("crate::stream_source::route(crate::stream_source::Via::Local,&crate::origin::Origin::local(),Some(&client),"),
+        "常驻载体是本机那一台：分派时说 `<local>`、带这条连接的客户端"
     );
     assert!(
-        host[..at].contains("unread.take(line"),
-        "常驻载体：吸收点必须排在解析出帧之后"
+        host[..at].contains("unread.take("),
+        "常驻载体：分派必须排在解析出帧之后"
     );
     for (name, src) in [
         ("local_backend.rs", &prod),
@@ -607,23 +600,12 @@ fn the_read_loop_really_calls_the_absorb_point() {
 }
 
 /// ★ 本机那条流上的**应答**真的路由回请求方（此前本机两条读循环一条都不路由 ⇒ 本机入方向命令只会等到超时）。
-/// 走**真的**吸收点：造一个 client、发一条命令，把对应的 `reply` 帧喂给吸收点，调用方拿到 `data`。
+/// 走**真的**分派：造一个 client、发一条命令，把对应的 `reply` 帧喂给 `route`，调用方拿到 `data`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
+async fn a_local_reply_reaches_the_caller_through_the_dispatch() {
     use tokio::io::AsyncBufReadExt;
     let (mine, theirs) = tokio::io::duplex(4096);
-    let hello = crate::stream_source::InboundFrame::Hello(cmd_wire::frame::Hello {
-        build_id: "t".into(),
-        host_arch: "x86_64".into(),
-        commands: vec!["ping".into()],
-        unavailable: vec![],
-        // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。
-        shapes: cmd_wire::shapes::SHAPES
-            .iter()
-            .map(|(c, h)| (c.to_string(), h.to_string()))
-            .collect(),
-        ..Default::default()
-    });
+    let hello = crate::guard_support::our_hello(&["ping"]);
     let witness = crate::inbound_client::witness_of(&hello).unwrap();
     let client = crate::inbound_client::park(mine).into_client(witness);
     let c2 = std::sync::Arc::clone(&client);
@@ -642,11 +624,16 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         .as_str()
         .unwrap()
         .to_string();
-    let reply = crate::stream_source::parse_frame(&format!(
+    let reply = crate::stream_source::decode(&format!(
         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
     ))
     .unwrap();
-    absorb_local_frame(reply, Some(&client), &crate::origin::Origin::local());
+    crate::stream_source::route(
+        crate::stream_source::Via::Local,
+        &crate::origin::Origin::local(),
+        Some(&client),
+        reply,
+    );
     let got = call.await.unwrap().expect("应答没路由回来");
     assert_eq!(got, Some(serde_json::json!({"pong": 1})));
 }

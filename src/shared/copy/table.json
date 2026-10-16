@@ -13754,12 +13754,6 @@
       "args": ["host", "dropped"],
       "limited": ["连接"]
     },
-    "rsSshSource.health.unknownFrame": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{host} · 未识别内容 · {kind} · 后端较新",
-      "args": ["host", "kind"]
-    },
     "rsSshSource.health.badFrame": {
       "kind": "body",
       "role": "说明",

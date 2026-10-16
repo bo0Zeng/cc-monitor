@@ -781,14 +781,9 @@ impl<T: Transport> Feed<T> {
         };
         // exec 开出来了 ⇒ 拨通、认证过：SSH 够着那一台（后面常驻后端在不在是另一回事）。
         self.set_ssh(true).await;
-        attach::handshake(
-            stream,
-            self.cfg.tz.as_deref(),
-            Some(&attach::remote_stream_view()),
-            self.cfg.handshake,
-        )
-        .await
-        .map_err(AttachOr::Shake)
+        attach::handshake(stream, self.cfg.tz.as_deref(), None, self.cfg.handshake)
+            .await
+            .map_err(AttachOr::Shake)
     }
 
     /// ensure 之后：小中继回 `absent`（常驻还没绑上口）隔一会儿再试。

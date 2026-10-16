@@ -8,12 +8,12 @@
 //! └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
 //! │                            ▲ 身上没有任何写方法
 //! │                            └── .into_client(hello: BackendHello)
-//! └── ReadHalf → 既有 reader task      ▲ 只能由 InboundFrame::Hello 换来
+//! └── ReadHalf → 既有 reader task      ▲ 只能由 hello 那一帧换来
 //! ```
 //!
 //! 收到 Hello 之前，握手那一步手里只有一个 [`ParkedWriter`]，它没有可调的写（比「注释 + 扫文本的机检」强一档）。
 //! 切分与停放是同一个函数（[`split_and_park`]）⇒ 生产代码里不存在可写的裸 `WriteHalf` 窗口。
-//! 剩下的绕过方式：自己造一个假的 `InboundFrame::Hello` 去换见证（调用点显眼的胡来），或绕开本模块直接拿 `tokio::io::split` ——
+//! 剩下的绕过方式：自己造一个假的 `frame::Hello` 去换见证（调用点显眼的胡来），或绕开本模块直接拿 `tokio::io::split` ——
 //! 后者由 `stream_source` 的 `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（零命中型判据，尾随注释绕不动）。
 //!
 //! # 超时归客户端

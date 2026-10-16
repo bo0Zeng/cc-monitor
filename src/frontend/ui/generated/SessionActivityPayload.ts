@@ -3,7 +3,7 @@ import type { SessionActivity } from "./SessionActivity";
 import type { SwitchCells } from "./SwitchCells";
 
 /**
- * 会话红绿灯：此刻在干什么（那台后端翻好的 [`crate::session_book::SessionActivity`]；`None` ＝ 说不清）；
+ * 会话红绿灯：此刻在干什么（那台后端翻好的 [`SessionActivity`]；`None` ＝ 说不清）；
  * `waiting_for` 是在等人时那一家给的细分（原样）。
  */
 export type SessionActivityPayload = { session_id: string, waiting_for: string | null, activity: SessionActivity | null, activity_text: string, activity_tone: string, activity_order: number, 

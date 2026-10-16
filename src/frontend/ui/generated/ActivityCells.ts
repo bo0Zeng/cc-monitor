@@ -3,9 +3,8 @@ import type { SessionActivity } from "./SessionActivity";
 import type { SwitchCells } from "./SwitchCells";
 
 /**
- * 一条活会话此刻在干什么那几格（那台核心的 `wire::ActivityFace`，原样转交）：那一态（`None` ＝ 说不清）·
- * 写好的字与语气（运行中 / 需手动 / 空闲 · `now` / `need` / `plain`）· 监控板组内的序（`activity_order`，小的在前，核心排的）。
- * 解码只一处（`stream_source::frame` 的 `activity_cells`）。
+ * 一条活会话此刻在干什么那几格（那台核心的 `ActivityFace`，界面那一形）：那一态（`None` ＝ 说不清）·
+ * 写好的字与语气 · 监控板组内的序（`activity_order`，小的在前，核心排的）· 能不能换。
  */
 export type ActivityCells = { activity: SessionActivity | null, activity_text: string, activity_tone: string, activity_order: number, 
 /**
