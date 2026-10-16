@@ -2,8 +2,8 @@
 //!
 //! # 为什么单住一个文件
 //!
-//! 与隔壁 `creds_guard.rs` / `bind_guard.rs`（以及已退役的 `nodelay_guard.rs`）同一个理由，
-//! 它们的头注逐字写着：扫描型判据要走 `guard_core::scan_tree!`
+//! 与隔壁 `creds_guard.rs`（以及已退役的 `nodelay_guard.rs`）同一个理由，
+//! 它的头注逐字写着：扫描型判据要走 `guard_core::scan_tree!`
 //! ⇒ **判据与被扫的代码必须不在同一个文件**，否则「摘掉自己」正好把靶子摘了
 //!（⚠ 那一刀经 `#[path]` 挂载时**不生效**，也就是本仓今天的全部判据 —— 详见下一段）。
 //! 本模块扫的是 `table.rs`，所以它不能住 `table.rs`。

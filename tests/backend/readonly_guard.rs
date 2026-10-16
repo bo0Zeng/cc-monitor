@@ -2802,9 +2802,10 @@ mod g6_dependency_signoff {
         (
             "guard-core",
             DEV_DEPS,
-            MEASURED_CLEAN,
-            "源码扫描型判据的共用剥法。**只在测试期链接**，不进发布二进制；\
-             仓内 crate，现打 0 处写面",
+            MEASURED_WRITES,
+            "源码扫描型判据的共用剥法与住址（`addr`）。现打 0 处写盘、1 处起进程：`addr::tracked_under` 起一个只读的 \
+             `git ls-files` 问索引。进不了发布二进制：它只在各包的 `[dev-dependencies]`，本行的段与清单逐条对拍 \
+             （`every_dependency_this_manifest_declares_carries_a_signature`），挪进 `[dependencies]` 就红",
         ),
         (
             "libc",
@@ -3359,7 +3360,7 @@ mod g6_dependency_signoff {
     /// 前提翻了一次：先前是「那个 feature 本清单没开 ⇒ 今天编不进来」
     /// （`已量·有写面`），今天是「开了、写面就是账号域那一份要用的」（`已量·有写面·就是要它写`）。
     /// ⇒ 两个方向都钉：feature 被关掉了而签字还说「就是要它写」⇒ 红；
-    ///   `已量·有写面`（「凭什么进不来」那一档）今天**零成员** —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
+    ///   `已量·有写面`（「凭什么进不来」那一档）今天只有 guard-core —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
     /// 本仓最高频的病是「代码订正了，盘没跟着改」，这一条挡的正是它的反面：
     /// **盘上写着的前提被代码改掉了而盘不知道。**
     #[test]
@@ -3369,10 +3370,11 @@ mod g6_dependency_signoff {
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES)
             .map(|(n, ..)| *n)
             .collect();
+        // 今天只有 guard-core：起一个只读的 `git ls-files`，进不来是因为它只在 `[dev-dependencies]`（签字里写着谁钉）。
         assert_eq!(
             gated,
-            Vec::<&str>::new(),
-            "「有写面、但被一个没开的 feature 关着」那一档今天应当零成员，实得 {gated:?}\n\
+            vec!["guard-core"],
+            "「有写面、但进不了发布二进制」那一档的成员变了，实得 {gated:?}\n\
              新来一条这样的依赖 ⇒ 先回答「它凭什么进不来」「那个前提谁钉着」，再改这里。"
         );
         let purposeful: Vec<&str> = SIGNED

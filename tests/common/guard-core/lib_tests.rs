@@ -105,8 +105,8 @@ fn a_named_exclusion_actually_drops_that_file() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let files = scan_tree_excluding(&root, &["rs"], &["common/guard-core/src/lib.rs"]);
     assert!(
-        files.is_empty(),
-        "明写名单没把 `lib.rs` 摘掉，实得 {:?}",
+        !files.iter().any(|(p, _)| p.ends_with("lib.rs")) && !files.is_empty(),
+        "明写名单没把 `lib.rs` 摘掉（或把别的也摘了），实得 {:?}",
         files.iter().map(|(p, _)| p).collect::<Vec<_>>()
     );
     // 对照组：名单为空 ⇒ 它必须回来（否则上面那个「为空」是遍历坏了）。
@@ -149,7 +149,7 @@ fn a_windows_shaped_caller_file_still_excludes_the_caller() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let files = scan_tree_excluding_self(&root, &["rs"], r"common\guard-core\src\lib.rs");
     assert!(
-        files.is_empty(),
+        !files.iter().any(|(p, _)| p.ends_with("lib.rs")) && !files.is_empty(),
         "反斜杠形的 `caller_file` 没摘掉调用者 —— 摘除在 Windows 上是空转的，实得 {:?}",
         files.iter().map(|(p, _)| p).collect::<Vec<_>>()
     );

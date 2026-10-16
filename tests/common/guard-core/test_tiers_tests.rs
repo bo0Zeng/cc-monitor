@@ -60,6 +60,7 @@ use std::path::{Path, PathBuf};
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
+    "tests/common/guard-core/rules/mod.rs", // 规则的入口：快照 · 取人群 · 两向相等 · 耗时
     "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
     "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/observe/accounts_list_support.rs", // 账号清单成品几份判据共用：照类型造号行与清单
@@ -1302,8 +1303,8 @@ fn root_anchored_literals(raw: &str) -> Vec<(usize, String, String)> {
     let code = code_only(raw, Lang::Rust);
     let raw_lines: Vec<&str> = raw.lines().collect();
     let code_lines: Vec<&str> = code.lines().collect();
-    // 住址名 ⇒ 它是哪个住址。本文件自己定义的根函数：函数体（定义行起 5 行）转调 `addr::<住址>()` ⇒ 认作那个住址；
-    // 与住址同名、却不转调的 ⇒ 语义是本地的 ⇒ 不认。
+    // 住址名 ⇒ 它是哪个住址。本文件自己定义的函数、函数体只有一句 `[guard_core::]addr::<住址>()` 的 ⇒ 认作那个住址；
+    // 与住址同名、函数体却不是那一句的 ⇒ 语义是本地的 ⇒ 不认。
     let mut alias: BTreeMap<String, String> = ROOT_FNS
         .iter()
         .map(|(f, _)| (f.to_string(), f.to_string()))
@@ -1318,11 +1319,18 @@ fn root_anchored_literals(raw: &str) -> Vec<(usize, String, String)> {
         }
         let end = (at..(at + 5).min(code_lines.len()))
             .find(|&k| (k == at && cl.trim_end().ends_with('}')) || code_lines[k].starts_with('}'))
-            .unwrap_or((at + 4).min(code_lines.len() - 1));
-        let body = code_lines[at..=end].join("\n");
+            .unwrap_or(at);
+        let text = code_lines[at..=end].join("\n");
+        let body = text
+            .split_once('{')
+            .and_then(|(_, r)| r.rsplit_once('}'))
+            .map(|(b, _)| b.trim())
+            .unwrap_or("");
+        let body = body.strip_prefix("guard_core::").unwrap_or(body);
+        let body = body.strip_prefix("crate::").unwrap_or(body);
         match ROOT_FNS
             .iter()
-            .find(|(f, _)| crate::contains_word(&body, &format!("addr::{f}()")))
+            .find(|(f, _)| body == format!("addr::{f}()"))
         {
             Some((f, _)) => {
                 alias.insert(name, f.to_string());

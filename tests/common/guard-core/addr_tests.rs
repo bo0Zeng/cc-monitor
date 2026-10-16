@@ -85,12 +85,14 @@ fn the_production_side_of_a_test_tree_file_is_empty() {
     let attr = format!("#[{}]", "test");
     let src = format!("fn a() {{}}\n{attr}\nfn t() {{}}\n");
     assert_eq!(
-        production_side_of(&backend_tests_root().join("x_tests.rs"), &src),
+        production_side_of(&backend_tests_root().join("readonly_guard.rs"), &src),
         ""
     );
     assert_eq!(
-        production_side_of(&comms_tests_root().join("../outward/y.rs"), &src),
+        production_side_of(&comms_tests_root().join("server_tests.rs"), &src),
         ""
     );
-    assert!(production_side_of(&backend_src_root().join("x.rs"), "fn a() {}\n").contains("fn a()"));
+    assert!(
+        production_side_of(&backend_src_root().join("lib.rs"), "fn a() {}\n").contains("fn a()")
+    );
 }
