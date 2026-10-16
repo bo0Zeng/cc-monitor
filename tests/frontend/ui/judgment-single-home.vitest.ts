@@ -948,7 +948,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     set_read_timeout: NONE,
     set_write_timeout: NONE,
     into_async: NONE,
-    someone_listening: NONE,
+    peer: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
@@ -976,10 +976,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,
     LISTEN_SOCKET_NAME: NONE,
-    LISTEN_PID_NAME: NONE,
     listen_dir_for: NONE,
     listen_socket_for: NONE,
-    listen_pid_for: NONE,
     // 升级那一跳找旧版常驻后端用（跨过 4.1.x 之后删）；TS 侧没有孪生。
     legacy_listen_pid_for: NONE,
     LEGACY_LISTEN_TOKEN_NAME: NONE,

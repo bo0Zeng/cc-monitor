@@ -14,7 +14,8 @@
 //!
 //! # 帧命令 `resident-verdict`（同一家）
 //!
-//! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（重连循环 `resident_client::feed` 换装那一步）。
+//! 接上的这一台 hello 报的 build 比问的那一端手上这一版旧没有（[`resident_verdict`]）：版本门那一句按 `older` 挑（`resident_client::gate`）。
+//! 换不换常驻不在这里：`--resident-ensure --replace` 自己比（`control/resident.rs::swap_out`，同一个纯函数）。
 //!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
@@ -220,7 +221,7 @@ impl crate::wire::typed::Handle for DeployPlan {
 
 // ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
 //
-// monitor 接远端常驻后端时读到 hello，「那台比手上这一版旧 ⇒ 换一次」在这里判，monitor 只照做。
+// 两端接上一台时问它自己「我手上这一版比你新吗」（版本门那一句）。
 
 /// `resident-verdict` 的入参：手上这一版 · 那台 hello 报的 · 这一趟换过没有（只有事实）。
 #[derive(Debug, Clone, serde::Deserialize)]

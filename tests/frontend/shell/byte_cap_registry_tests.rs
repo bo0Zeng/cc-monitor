@@ -552,6 +552,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/resident.rs",
+        "HELLO_CAP",
+        "停 / 换之前问在听的那一位读的那一行 hello（同上，几 KiB）",
+        "拒收+回错",
+    ),
+    (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
         "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",

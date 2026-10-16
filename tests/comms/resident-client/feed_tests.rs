@@ -4,7 +4,6 @@
 use super::*;
 use crate::backoff::RECONNECT_MIN;
 use crate::client::CallError;
-use crate::gate::Verdict;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
@@ -139,8 +138,7 @@ impl Transport for T {
     }
 }
 
-/// 装得了后端的宿主替身（桌面那一形）：链路同 [`T`]；每一轮之前记一回（有放行就等它）；版本门问「本机」——
-/// 替身的规矩：`p9…` 比手上这一版旧 ⇒ 没换过就换、换过还旧就照接说旧。
+/// 每一轮自己装后端的宿主替身（桌面那一形）：链路同 [`T`]；每一轮之前记一回（有放行就等它）。
 struct D(Arc<Fake>);
 
 impl Transport for D {
@@ -167,26 +165,17 @@ impl Transport for D {
             }
         })
     }
-    fn installer(&self) -> Option<&dyn Install> {
-        Some(self)
+    fn installs(&self) -> bool {
+        true
     }
 }
 
-impl Install for D {
-    fn verdict<'a>(
-        &'a self,
-        mine: &'a str,
-        theirs: &'a str,
-        replaced: bool,
-    ) -> Boxed<'a, Result<Verdict, Problem>> {
-        Box::pin(async move {
-            assert_eq!(mine, MINE);
-            let older = theirs.starts_with("p9");
-            Ok(Verdict {
-                replace: older && !replaced,
-                older,
-            })
-        })
+/// `--resident-ensure --replace` 的答：那台换没换（只升不降在那台判）。
+fn swapped(replaced: bool) -> Exec {
+    Exec {
+        exit_status: Some(0),
+        stdout: format!(r#"{{"pid":7,"replaced":{replaced}}}"#),
+        stderr: String::new(),
     }
 }
 
@@ -567,11 +556,12 @@ async fn every_new_link_gets_the_whole_watch_list_again() {
     assert!(matches!(feed.state(), State::Up { epoch: 2, .. }));
 }
 
-/// 装得了后端的宿主（桌面那一形）：那台旧 ⇒ 版本门问本机、`--resident-ensure --replace` 换一次再接；换上的不旧 ⇒ 接、不说。
-/// 不问接上的那一台自己；每一轮开拨之前那一步先跑；接上先交 hello 与客户端，再交 `Up`。
+/// 每一轮自己装后端的宿主（桌面那一形）：接上的不是这一版 ⇒ `--resident-ensure --replace` 一次；那台换了 ⇒ 再接；换上的是这一版 ⇒ 不说。
+/// 每一轮开拨之前那一步先跑；接上先交 hello 与客户端，再交 `Up`。
 #[tokio::test(start_paused = true)]
 async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
     let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(swapped(true));
     {
         let mut a = f.attaches.lock().unwrap();
         a.push_back(upp("p9a-old"));
@@ -592,12 +582,6 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
         }
     );
     assert_eq!(f.rounds.load(Ordering::SeqCst), 1, "开拨之前那一步跑一回");
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    assert_eq!(
-        f.verdicts.load(Ordering::SeqCst),
-        0,
-        "装得了后端 ⇒ 版本门问本机，不问那一台"
-    );
     let seen = seen.lock().unwrap();
     let at = seen
         .iter()
@@ -609,15 +593,25 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
         .unwrap();
     assert!(at < up_at, "hello 先于 Up：{seen:?}");
 
-    // 换过还旧（落点上那份也旧）⇒ 照接、说要更新，不再换第二次。
+    // 换过还旧（落点上那份也旧）⇒ 照接、版本门说要更新，不再换第二次。
     let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(swapped(true));
     {
         let mut a = f.attaches.lock().unwrap();
         a.push_back(upp("p9a-old"));
         a.push_back(upp("p9b-still-old"));
     }
     let (feed, _) = start_desk(&f);
-    until("换过一次之后照接", || up(&feed)).await;
+    until("换过一次之后照接、带那一句", || {
+        matches!(
+            feed.state(),
+            State::Up {
+                notice: Some(_),
+                ..
+            }
+        )
+    })
+    .await;
     assert_eq!(f.captured.lock().unwrap().len(), 1, "只换一次");
     match feed.state() {
         State::Up {
@@ -625,6 +619,16 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
         } => assert!(p.detail.contains("p9b-still-old"), "{}", p.detail),
         other => panic!("换过还旧 ⇒ 接上、带那一句：{other:?}"),
     }
+
+    // 那台说没换（在听的不比落点旧）⇒ 不重接，接着的就是第一条。
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(swapped(false));
+    f.attaches.lock().unwrap().push_back(upp("p9q-newer"));
+    let (feed, _) = start_desk(&f);
+    until("没换照接", || up(&feed)).await;
+    assert_eq!(f.captured.lock().unwrap().len(), 1);
+    assert_eq!(feed.theirs().as_deref(), Some("p9q-newer"));
+    assert!(f.attaches.lock().unwrap().is_empty());
 }
 
 /// 没装 · 起不了常驻：装不了后端的要人动手（上面那条）；装得了的不等人、下一轮（先部署）再试。
@@ -1216,7 +1220,8 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
     until("接上旧的", || up(&feed)).await;
     assert_eq!(feed.theirs().as_deref(), Some("p9z-old"));
     f.attaches.lock().unwrap().push_back(upp(MINE));
-    feed.replace().await.expect("换装该成");
+    f.ensures.lock().unwrap().push_back(swapped(true));
+    assert!(feed.replace().await.expect("换装该成"), "那台说换了");
     assert!(
         f.captured
             .lock()

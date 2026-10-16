@@ -20,6 +20,7 @@
 //! - 路径归一成 home 相对（home = SFTP `realpath(".")`，即起始目录）：绝对路径必须在 `<home>/` 底下；
 //! - 词法：不许 `..` / `.` / 空段；前两段必须恰好是某一个根；写文件必须**在根底下**（不是根自己）；
 //!   建目录另放行两个根自己与它们唯一的祖先 `.cc-monitor`（首次部署要建）；
+//! - 写根本身：`.cc-monitor` 与那个根 `lstat` 不是链接、`realpath` 仍在 home 底下（挡「`bin` 本身是指向 `~/.ssh` 的链接」）；
 //! - 解链接：目标的父目录 `realpath` 之后必须仍在那个根的 `realpath` 之下（挡「`bin/x` 是指向 `~/.ssh` 的链接」）；
 //!   打开写的那一格另问一次 `lstat`，最后一段是链接就拒（开写会跟过去）。
 //!
@@ -484,7 +485,54 @@ fn parent_of(rel: &str) -> &str {
     rel.rsplit_once('/').map(|(p, _)| p).unwrap_or(".")
 }
 
-/// **围栏**：词法那一道 ＋ 父目录解链接之后仍在那个根之下。回 home 相对路径（SFTP 起始目录就是 home）。
+/// 写根**本身**：`.cc-monitor` 与那个根都不是链接、解开后仍在家目录底下（根是链接 ⇒ 后面「在根底下」恒成立）。
+/// 回解开的根；`.cc-monitor` 或根还不在 ⇒ `None`（底下没有东西可写错，建的那一下再问）。
+async fn own_root(s: &Session, root: &str) -> Result<Option<String>, Refusal> {
+    let unresolved = |dir: &str, e: &russh_sftp::client::error::Error| {
+        fenced_raw(
+            copy_text(
+                "beSftp.fence.rootUnresolved",
+                &[("root", dir), ("why", &why_of(e))],
+            ),
+            e,
+        )
+    };
+    let not_own = |real: &str| {
+        fenced(copy_text(
+            "beSftp.fence.rootNotOwn",
+            &[("root", root), ("real", real)],
+        ))
+    };
+    for dir in [ROOTS_HOME, root] {
+        match s.sftp().symlink_metadata(dir).await {
+            Ok(m) if m.is_symlink() => {
+                let real = s.sftp().canonicalize(dir).await.unwrap_or_default();
+                return Err(not_own(&real));
+            }
+            Ok(_) => {}
+            Err(russh_sftp::client::error::Error::Status(st))
+                if st.status_code == russh_sftp::protocol::StatusCode::NoSuchFile =>
+            {
+                return Ok(None)
+            }
+            Err(e) => return Err(unresolved(dir, &e)),
+        }
+    }
+    let real = s
+        .sftp()
+        .canonicalize(root)
+        .await
+        .map_err(|e| unresolved(root, &e))?;
+    let under_home = real
+        .strip_prefix(s.home.as_str())
+        .is_some_and(|rest| rest.starts_with('/'));
+    if !under_home {
+        return Err(not_own(&real));
+    }
+    Ok(Some(real))
+}
+
+/// **围栏**：词法那一道 ＋ 写根本身是家目录里的真目录（[`own_root`]）＋ 父目录解链接之后仍在那个根之下。回 home 相对路径（SFTP 起始目录就是 home）。
 pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<String, Refusal> {
     match crate::env::get().files {
         WriteRules::ReadOnly => {
@@ -499,18 +547,12 @@ pub async fn fenced_remote(s: &Session, path: &str, intent: Intent) -> Result<St
     let Some(root) = root else {
         return Ok(rel);
     };
+    let Some(real_root) = own_root(s, root).await? else {
+        return Ok(rel);
+    };
     if rel == root {
         return Ok(rel);
     }
-    let real_root = s.sftp().canonicalize(root).await.map_err(|e| {
-        fenced_raw(
-            copy_text(
-                "beSftp.fence.rootUnresolved",
-                &[("root", root), ("why", &why_of(&e))],
-            ),
-            &e,
-        )
-    })?;
     let parent = parent_of(&rel);
     let real_parent = s.sftp().canonicalize(parent).await.map_err(|e| {
         fenced_raw(

@@ -6,9 +6,7 @@
 use super::*;
 use crate::event_replay::EventReplay;
 use crate::session_book::{In as BookIn, LiveMeta};
-use resident_client::feed::{
-    Boxed, Event, Exec, Feed, Install, Problem, Progress, State, Transport,
-};
+use resident_client::feed::{Boxed, Event, Exec, Feed, Problem, Progress, State, Transport};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
@@ -85,23 +83,8 @@ impl Transport for DeskLink {
         Box::pin(preflight(&self.cfg, &self.health))
     }
 
-    fn installer(&self) -> Option<&dyn Install> {
-        Some(self)
-    }
-}
-
-impl Install for DeskLink {
-    fn verdict<'a>(
-        &'a self,
-        mine: &'a str,
-        theirs: &'a str,
-        replaced: bool,
-    ) -> Boxed<'a, Result<resident_client::gate::Verdict, Problem>> {
-        Box::pin(async move {
-            crate::remote_resident::ask_verdict(mine, theirs, replaced)
-                .await
-                .map_err(problem_of)
-        })
+    fn installs(&self) -> bool {
+        true
     }
 }
 

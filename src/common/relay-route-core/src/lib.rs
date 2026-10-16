@@ -6,8 +6,7 @@
 //! - **门牌**：中转口 [`PORT`] · 常驻后端的套接字 [`listen_socket_for`] · 中转钥匙 [`KEY_FILE_REL`] ·
 //!   路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
-//!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单 ·
-//!   常驻后端的进程记录 [`listen_pid_for`]。
+//!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单。
 //!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
@@ -29,21 +28,18 @@
 //!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）·
 //!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
 //!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
-//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
-//!   常驻后端的进程记录（[`listen_pid_for`]）。家那一族由后端列（[`OWN_HOME_ENTRIES`]），monitor 不另列。
+//! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）。
+//!   家那一族由后端列（[`OWN_HOME_ENTRIES`]），monitor 不另列。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
 
 /// 常驻后端听的那个 Unix 套接字所在的目录（相对家目录）：只给本人（`0700`）。常驻后端活着时攥着这个目录的独占锁
-/// （抢不到 = 已有一个在听），套接字与进程记录都住这里。门由内核给：目录权限 ＋ 对端 uid，没有钥匙。
+/// （抢不到 = 已有一个在听），套接字住这里。门由内核给：目录权限 ＋ 对端 uid，没有钥匙。
 pub const LISTEN_DIR_REL: &str = ".cc-monitor/run";
 
 /// 套接字的文件名（在 [`LISTEN_DIR_REL`] 里）。
 pub const LISTEN_SOCKET_NAME: &str = "backend.sock";
-
-/// 常驻后端自己记的「谁在听」（`pid\n二进制\n`）的文件名（在 [`LISTEN_DIR_REL`] 里）。
-pub const LISTEN_PID_NAME: &str = "backend.pid";
 
 /// 这个家（`~/.cc-monitor`；隔离跑时 `CCM_DATA_DIR`）⇒ 常驻后端那个目录。门牌只跟着家走：与 Claude 目录、与哪一家 agent 都无关。
 /// 本机宿主（monitor `local_backend_host`）与后端（常驻后端 · `--resident-ensure` / `--resident-attach` / `--resident-stop`）同一个函数
@@ -55,11 +51,6 @@ pub fn listen_dir_for(data_home: &std::path::Path) -> std::path::PathBuf {
 /// 同上 ⇒ 那个套接字。
 pub fn listen_socket_for(data_home: &std::path::Path) -> std::path::PathBuf {
     listen_dir_for(data_home).join(LISTEN_SOCKET_NAME)
-}
-
-/// 同上 ⇒ 那份进程记录。
-pub fn listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
-    listen_dir_for(data_home).join(LISTEN_PID_NAME)
 }
 
 /// 「这是一次沙箱跑」的标记（值 `1`）：测试 / 台架起后端时在白名单环境里带上。带着它的常驻后端若要占的家落在本账号真家目录的

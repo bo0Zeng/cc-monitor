@@ -9,35 +9,6 @@ fn hello(build: &str) -> String {
     )
 }
 
-/// 本机常驻后端的答严格收：恰 `{action, older}`，`action` 只认 `replace` / `attach`（金样同 `IPC-PROTOCOL.md` 那一节）。
-#[test]
-fn the_verdict_answer_is_read_strictly() {
-    use serde_json::json;
-    assert_eq!(
-        decode_verdict(&json!({"action": "replace", "older": true})),
-        Ok(Verdict {
-            replace: true,
-            older: true
-        })
-    );
-    assert_eq!(
-        decode_verdict(&json!({"action": "attach", "older": false})),
-        Ok(Verdict {
-            replace: false,
-            older: false
-        })
-    );
-    for bad in [
-        json!({"action": "keep", "older": false}),
-        json!({"action": "attach"}),
-        json!({"action": "attach", "older": "no"}),
-        json!({"action": "attach", "older": false, "extra": 1}),
-        json!(null),
-    ] {
-        assert!(decode_verdict(&bad).is_err(), "{bad}");
-    }
-}
-
 fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::RemoteExec {
     crate::stream_source::RemoteExec {
         stdout: stdout.into(),
