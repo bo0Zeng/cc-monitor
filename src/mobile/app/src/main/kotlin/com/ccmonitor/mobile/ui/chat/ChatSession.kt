@@ -16,7 +16,7 @@ import com.ccmonitor.mobile.core.claude.link.LiveCardState
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionCommandList
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
@@ -474,15 +474,17 @@ class ChatSession(
         val p = picker ?: return
         p.settled()
         val c = p.chosen()
-        val args = SessionNew.args(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
-        val answer =
-            when (val r = link.call(SessionNew.COMMAND, args, NEW_MS)) {
-                is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
-                else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
+        val args = SessionOpen.newIn(c.cwd, d.ticket, c.agent, first.text, c.account, c.rotation)
+        val (answer, cwd) =
+            when (val r = link.call(SessionOpen.COMMAND, args, NEW_MS)) {
+                is Reply.Ok ->
+                    SessionOpen.of(r.data)?.let { a -> a.cwd?.let { a to it } }
+                        ?: return failSession(unreadableReply(machine, SessionOpen.COMMAND, r.data.toString()).text)
+                else -> return failSession(r.problem(machine, SessionOpen.COMMAND)?.text)
             }
         val arrived =
             answer.sid ?: withTimeoutOrNull(arrivalMs) {
-                link.table.mapNotNull { SessionNew.arrived(it, answer.cwd, before)?.sid }.first()
+                link.table.mapNotNull { SessionOpen.arrived(it, cwd, before)?.sid }.first()
             } ?: return failSession(copyText("launchArrival.missed.title"))
         answer.prompt?.let { said ->
             first.handed = true
@@ -491,7 +493,7 @@ class ChatSession(
         }
         sid = arrived
         cache.bind(outgoing.map { it.localId }, arrived)
-        _state.value = _state.value.copy(sid = arrived, cwd = answer.cwd)
+        _state.value = _state.value.copy(sid = arrived, cwd = cwd)
         syncHold()
         follow = scope.launch { attach(arrived, fresh = true) }
     }

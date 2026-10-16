@@ -76,6 +76,7 @@ class SessionsMidTest {
             SessionNewFacts.of(
                 mapOf(
                     "recent" to emptyList<Any>(),
+                    "tmux" to true,
                     "agents" to
                         listOf(
                             mapOf(

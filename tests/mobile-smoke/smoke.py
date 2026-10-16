@@ -1258,6 +1258,43 @@ def walk():
         switch_model(name)
         adb("shell", "input", "keyevent", "4")
 
+    with Step("9b-tmux 新建"):
+        # tmux 管理窗「新建」：请那台建一个空会话（session-open 的 shell 那一形），手机不拼 tmux 命令；台架 tmux 里看得到它。
+        drawer(t("mobDrawer.item.terminal"))
+        time.sleep(2)
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
+        tap(t("mobTmux.new.name")); typed(f"{T}new"); hide_keyboard()
+        tap(t("mobTmux.new.detached"))
+        end = time.time() + 20
+        while time.time() < end and f"{T}new" not in tmux_sessions():
+            time.sleep(1)
+        if f"{T}new" not in tmux_sessions():
+            raise Step.Fail(f"点了「{t('mobTmux.new.detached')}」，台架 tmux 里没有 {T}new")
+        shot("9b-新建")
+        adb("shell", "input", "keyevent", "4")
+
+    with Step("9c-推公钥"):
+        # 命令面板「推送公钥」：问那台后端 authorized-keys-add，结局照回包说；这把钥匙本来就在（连上用的就是它）⇒「已在」那一句。
+        hide_keyboard()
+        tap(t("mobDefaultButtons.label.command")); time.sleep(1.5)
+        tap(t("mobPalette.item.key")); time.sleep(1.5)
+        said = t("mobKeyPush.result.already")
+        row = ui.find("smoke")
+        if row is None:
+            raise Step.Fail("推送公钥那一框里没有「smoke」那把钥匙")
+        # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点，不 dump 屏。
+        events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            time.sleep(1)
+            adb("shell", "input", "tap", *map(str, ui.center(row)))
+            time.sleep(6)
+        finally:
+            events.terminate()
+        if said not in events.communicate(timeout=5)[0]:
+            raise Step.Fail(f"没看到那台的结局「{said}」")
+        adb("shell", "input", "keyevent", "4")
+
     with Step("10-Codex"):
         launch()
         # 哪几家是那台给的（session-new-facts）：新建会话顶栏下那一颗 agent chip 列得出，手机自己不认识 Codex。

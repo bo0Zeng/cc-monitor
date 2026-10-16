@@ -318,6 +318,28 @@ val MIGRATION_18_19 =
         }
     }
 
+// hosts 去掉用户手标的「远端系统」那一格（方言 · 有没有 tmux 都问那台了）：照 7→8 重建（老 SQLite 没有 DROP COLUMN），那一格的值丢掉。别的表一字不动。
+val MIGRATION_19_20 =
+    object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE `hosts_new` (`id` TEXT NOT NULL, `label` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                    "`port` INTEGER NOT NULL, `username` TEXT NOT NULL, `authRef` TEXT, `extraAddresses` TEXT, " +
+                    "`groupId` TEXT, `sortOrder` INTEGER NOT NULL, `lastConnected` INTEGER, `defaultWorkingDir` TEXT, " +
+                    "`sessionManager` TEXT, `autoReconnect` INTEGER NOT NULL, `proxyJumpHostId` TEXT, `passwordEnc` TEXT, " +
+                    "`agentKind` TEXT, PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "INSERT INTO `hosts_new` (id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,agentKind) " +
+                    "SELECT id,label,host,port,username,authRef,extraAddresses,groupId,sortOrder,lastConnected," +
+                    "defaultWorkingDir,sessionManager,autoReconnect,proxyJumpHostId,passwordEnc,agentKind FROM `hosts`",
+            )
+            db.execSQL("DROP TABLE `hosts`")
+            db.execSQL("ALTER TABLE `hosts_new` RENAME TO `hosts`")
+        }
+    }
+
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
         MIGRATION_1_2,
@@ -338,4 +360,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_16_17,
         MIGRATION_17_18,
         MIGRATION_18_19,
+        MIGRATION_19_20,
     )

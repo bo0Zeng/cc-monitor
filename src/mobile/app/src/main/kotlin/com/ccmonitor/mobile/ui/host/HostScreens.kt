@@ -396,7 +396,6 @@ fun HostEditorScreen(
     var user by remember { mutableStateOf("") }
     var authRef by remember { mutableStateOf<String?>(null) }
     var authIsPassword by remember { mutableStateOf(false) } // 认证方式：钥匙 / 密码
-    var isWindows by remember { mutableStateOf(false) } // 远端 OS；Windows 走 PowerShell 方言，没有 tmux/Claude
     var password by remember { mutableStateOf("") } // 明文密码，保存时加密
     var extraAddresses by remember { mutableStateOf("") }
     var workingDir by remember { mutableStateOf("") }
@@ -423,7 +422,6 @@ fun HostEditorScreen(
                 user = h.username
                 authRef = h.authRef
                 authIsPassword = h.passwordEnc != null
-                isWindows = h.os.equals("windows", ignoreCase = true)
                 if (h.passwordEnc != null) password = vm.hostPassword(h) ?: "" // 回显解密后的密码
                 extraAddresses = h.extraAddresses ?: ""
                 workingDir = h.defaultWorkingDir ?: ""
@@ -512,20 +510,6 @@ fun HostEditorScreen(
         SwitchRow(copyText("mobHostEdit.switch.workspace"), useTmux) { useTmux = it }
         SwitchRow(copyText("mobHostEdit.switch.reconnect"), autoReconnect) { autoReconnect = it }
 
-        // 远端系统：POSIX（Linux/macOS，默认）或 Windows（PowerShell，没有 tmux）。
-        Text(copyText("mobHostEdit.os.title"), style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChoiceRow("Linux/macOS", !isWindows) { isWindows = false }
-            ChoiceRow("Windows", isWindows) { isWindows = true }
-        }
-        if (isWindows) {
-            Text(
-                copyText("mobHostEdit.os.windowsHint"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
         // 认证方式：钥匙或密码，二选一。
         Text(copyText("mobHostEdit.auth.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -579,7 +563,6 @@ fun HostEditorScreen(
                             autoReconnect = autoReconnect,
                             groupId = group.trim().ifBlank { null },
                             proxyJumpHostId = proxyJumpHostId,
-                            os = if (isWindows) "windows" else null,
                             agentKind = agentKind,
                         )
                     // 密码模式加密进 passwordEnc；钥匙模式清空 passwordEnc（encryptPassword(_, null) 统一处理）。

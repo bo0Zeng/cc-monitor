@@ -10,9 +10,9 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 
 | 模块 | 管什么 |
 |---|---|
-| `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关（`ssh/TmuxCommands.kt` 只留用户在 ssh 里也会敲的「进 / 建一个会话」两条；终端屏列会话 · 附着 · 结束 · 抓屏都问那台核心，附着那一行照后端 `launch-render-cli` 渲的原样敲）；聊天屏起会话 · 送字 · 正文都走那台核心（`ui/chat/ChatSession.kt`）；文件屏（`ui/files/`）读写都问那台后端的 `files-*`（列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 分块上传 / 下载，入参照桌面文件窗口） |
+| `app` | 屏与导航、注入、前台保活、拨号网关（终端屏手机一条 shell 命令都不拼：进哪儿 · 建会话 · 恢复 · 接回一问那台 `session-open`、原样敲回来的那一行；列会话 · 结束 · 抓屏 · 推公钥也都问那台核心）；聊天屏起会话 · 送字 · 正文都走那台核心（`ui/chat/ChatSession.kt`）；文件屏（`ui/files/`）读写都问那台后端的 `files-*`（列 · 读 · 存回 · 新建 · 改名 · 删 · 改权限 · 分块上传 / 下载，入参照桌面文件窗口） |
 | `core-claude` | `link/`：那台常驻流交来的事落成手机这一侧的几条流（接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`，桌面同一份：那台比手上旧才换、同或新照接，能不能用逐条命令按形状指纹判）；会话族与文件族（`files-*`）那几条的回包由 `core-rs` 按 `cmd-wire` 的类型解过，`link/wire/` 只声明手机读哪几格、装进去（判据 `WireTypesTest` 对着导出的 TS 核）；会话帧 · `history-list` · `sessions-needs` · `quota-read` · `history-read/lines` · `line` 帧还按名字取（那几份的类型还住后端，下一步挪）；手机里没有任何一家 agent 的知识：哪几家 · 叫什么 · 能换哪些模型都问那台 `session-new-facts`；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元 |
-| `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
+| `core-remote` | 中立的远端抽象：一次性 exec（带退出码）|
 | `core-ssh` | 连接管理（按机器单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` 那份 Rust 核心（竞速 · 跳板 · SFTP · host key · 鉴权都在核心里）；`~/.ssh/config` 导入与钥匙派生也经它 |
 | `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编 |
 | `core-data` | Room 库 |

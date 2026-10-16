@@ -36,20 +36,7 @@ class RemoteExecException(
 ) : IOException(message)
 
 /**
- * 一次性远端命令执行，与 [RemoteCommandChannel] 并列，不是替代。
- *
- * | | [RemoteCommandChannel] | [RemoteExecutor] |
- * |---|---|---|
- * | 形态 | 流式，边跑边给字节 | 一次性，跑完给全量 |
- * | 退出码 | 拿不到 | [ExecResult.exitStatus] |
- * | stderr | 不读 | 排空并保尾部 |
- * | 适用 | `tail -F` 这类长跑 | 写操作、探测 |
- *
- * 流式通道拿不到退出码，「stdout 空」分不清「成功但没输出」和「根本没跑起来」，所以要单独一个接口。
- * 跑在 tmux 里的命令，退出码属于 `tmux` 而不是里面那个进程，那些地方仍靠命令尾巴上的
- * `&& printf MARKER` 作成功证据。
- *
- * 不给 [RemoteCommandChannel] 加方法：它是 `fun interface`，各处的 SAM lambda 会编译不过。
+ * 一次性远端命令执行（带退出码与 stderr 尾巴）。
  *
  * 实现方必须守的两条：
  * 1. 无条件排空 stderr：stderr 与 stdout 共用同一个通道窗口，不读 stderr 会耗尽窗口、把 stdout 一起拖停。
@@ -65,3 +52,11 @@ fun interface RemoteExecutor {
      */
     suspend fun execCapture(command: String): ExecResult
 }
+
+/**
+ * 底层连接不可用（连接对象不存在 / 未连上）时抛这个异常。是 IOException 子类，只 `catch (IOException)` 的地方行为不变；
+ * 要区分「连接死了」与「其他传输/命令错」的消费方单独 catch 它。
+ */
+class ConnectionDeadException(
+    message: String,
+) : IOException(message)

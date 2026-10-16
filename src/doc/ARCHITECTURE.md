@@ -333,7 +333,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 - 本机：本机后端 `launch-local` 渲出那一行 → monitor 开窗。
 - 界面只经 `src/frontend/ui/terminal-open.ts` 走这条，monitor 只开窗、不拼命令。开窗挑终端：设置里指定的 → 系统出口（`xdg-terminal-exec` · `x-terminal-emulator`）→ 常见终端逐个探；都没有就不开窗、说清楚去设置里指定（`launch_tests.rs::the_terminal_is_picked_by_setting_then_system_exits_then_common_ones` 钉着）。
 
-**在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。附着那一行问那台后端 `launch-render-cli` 渲（接回一个 tmux 会话就是 `ccm -- --attach <名>`，与桌面「命令已复制」那一条同一个出处），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Terminals.kt` 的 `AttachLine`）；列会话 · 结束 · 抓屏 · 送字也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input`）。手机自己只留用户在 ssh 里也会敲的两条（主机设置里「连上就进某个会话」与 tmux 管理窗里的「新建」，`ssh/TmuxCommands.kt`）。
+**在终端里打开**（手机）：手机开自己的终端（`core-terminal` ＋ 自己那条 SSH），在里面附着会话。进哪儿一问那台后端 `session-open`（恢复 · 接回 · 进 / 建一个空会话 · 只进一个目录四形，回那台渲好的那一行），手机原样敲进自己的终端（`src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/Sessions.kt` 的 `SessionOpen`）；列会话 · 结束 · 抓屏 · 送字 · 推公钥也都问那台核心（`terminals-list` · `kill` · `terminal-preview` · `terminal-input` · `authorized-keys-add`）。手机一条 shell 命令都不拼，有没有 tmux 也照那台 `session-new-facts` 说的。
 
 **tmux 这一面**（都在后端）：
 
@@ -369,7 +369,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 |---|---|
 | `app` | 屏与导航、注入、前台保活；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏用拨号网关与 tmux 网关 |
 | `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了接回）与核心成品的解码；`model/` 把通用记录映射成渲染单元 |
-| `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
+| `core-remote` | 中立的远端抽象：一次性 exec（带退出码）|
 | `core-ssh` | 连接管理（单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` |
 | `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里 |
 | `core-terminal` | 终端引擎（termlib） |

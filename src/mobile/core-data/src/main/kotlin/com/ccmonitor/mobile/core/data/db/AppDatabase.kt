@@ -20,7 +20,7 @@ import androidx.room.TypeConverters
         PendingSend::class,
         Draft::class,
     ],
-    version = 19,
+    version = 20,
     exportSchema = true,
 )
 @TypeConverters(KeyConverters::class)

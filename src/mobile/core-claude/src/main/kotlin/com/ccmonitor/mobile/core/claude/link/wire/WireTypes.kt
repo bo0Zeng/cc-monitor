@@ -39,35 +39,58 @@ data class FirstSay(
     val said: String?,
 )
 
-@WireOf("SessionNew")
+/** `session-open` 的成品：落在哪 · 哪个 tmux 会话 · 要在终端里敲的那一行（那台渲好的）· 第一句的结局。 */
+@WireOf("Opened")
 @JsonClass(generateAdapter = true)
-data class SessionNewReply(
-    val outcome: SessionNewOutcome,
+data class Opened(
+    val landed: Landed,
     val session: String?,
+    val line: String?,
     val sid: String?,
-    val cwd: String,
+    val cwd: String?,
+    val note: String?,
     val prompt: FirstSay?,
 )
 
 @JsonClass(generateAdapter = false)
-enum class SessionNewOutcome {
+enum class Landed {
     @Json(name = "started")
     STARTED,
 
-    @Json(name = "open")
-    OPEN,
+    @Json(name = "in_place")
+    IN_PLACE,
+
+    @Json(name = "running")
+    RUNNING,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "window")
+    WINDOW,
 }
 
-@WireOf("Rendered")
+/** `authorized-keys-add`：那一行公钥并进去了，还是本来就在。 */
+@WireOf("KeyAdded")
 @JsonClass(generateAdapter = true)
-data class Rendered(
-    val cmd: String,
+data class KeyAdded(
+    val outcome: PushOutcome,
 )
+
+@JsonClass(generateAdapter = false)
+enum class PushOutcome {
+    @Json(name = "added")
+    ADDED,
+
+    @Json(name = "already")
+    ALREADY,
+}
 
 @WireOf("NewFacts")
 @JsonClass(generateAdapter = true)
 data class NewFacts(
     val recent: List<RecentDir>,
+    val tmux: Boolean,
     val agents: List<AgentFacts>,
 )
 
@@ -1337,13 +1360,6 @@ enum class LoginAgainHow {
     @Json(name = "none")
     NONE,
 }
-
-/** `session-resume`：那条会话此刻在哪个 tmux 会话里。 */
-@WireOf("Resumed")
-@JsonClass(generateAdapter = true)
-data class Resumed(
-    val session: String,
-)
 
 /*
  * `quota-read`（用量屏）：结论两行 · 每号两条计量条那一格（字 · 语气 · 重置 · 1% ≈ 多少），全照那台写好的。

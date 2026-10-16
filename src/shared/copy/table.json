@@ -30137,6 +30137,13 @@
       "args": [],
       "limited": ["tmux"]
     },
+    "mobTerm.tmux.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{host} 无 tmux",
+      "args": ["host"],
+      "limited": ["tmux"]
+    },
     "mobTerm.capture.copied": {
       "kind": "body",
       "role": "toast",
@@ -30154,13 +30161,6 @@
       "role": "toast",
       "zh": "公钥已在 authorized_keys（未重复添加）",
       "args": []
-    },
-    "mobKeyPush.result.unsure": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "推送未确认 · 远端 ~/.ssh/authorized_keys 需手动核对",
-      "args": [],
-      "limited": ["SSH"]
     },
     "mobKeyPush.result.noPublic": {
       "kind": "body",
@@ -30770,12 +30770,11 @@
       "args": [],
       "limited": ["tmux"]
     },
-    "mobKeys.err.actionNoTmux": {
+    "mobKeys.err.actionUnavailable": {
       "kind": "error",
       "role": "报错",
-      "zh": "{action}不可用 · {host} 无 tmux",
-      "args": ["action", "host"],
-      "limited": ["tmux"]
+      "zh": "{action}不可用 · {why}",
+      "args": ["action", "why"]
     },
     "mobKeys.err.groupGone": {
       "kind": "error",
@@ -31351,19 +31350,6 @@
       "role": "标签",
       "zh": "断线自动重连",
       "args": []
-    },
-    "mobHostEdit.os.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "远端系统",
-      "args": []
-    },
-    "mobHostEdit.os.windowsHint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "Windows：走 PowerShell、跳过 tmux\ntmux/一键 cc 等在 Windows 下不可用（连接/终端/SFTP 可用）",
-      "args": [],
-      "limited": ["PowerShell", "tmux", "连接"]
     },
     "mobHostEdit.auth.title": {
       "kind": "title",

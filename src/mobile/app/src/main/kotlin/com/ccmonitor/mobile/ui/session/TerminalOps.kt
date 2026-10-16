@@ -1,20 +1,21 @@
 package com.ccmonitor.mobile.ui.session
 
-import com.ccmonitor.mobile.core.claude.link.AttachLine
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.KeyAdd
 import com.ccmonitor.mobile.core.claude.link.Kill
 import com.ccmonitor.mobile.core.claude.link.Profiles
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionModel
-import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
-import com.ccmonitor.mobile.core.claude.link.SessionResume
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.TerminalPreview
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitchResult
+import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
+import com.ccmonitor.mobile.core.claude.link.wire.PushOutcome
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.MovedLaunch
 import com.ccmonitor.mobile.core.ui.feedback.Notice
@@ -23,8 +24,8 @@ import com.ccmonitor.mobile.link.unreadableReply
 import java.util.UUID
 
 /**
- * 终端屏里要那台核心做的几件（列 · 结束 · 后台起 · 送字 · 抓屏 · 进终端那一行 · 别名），都经这台的常驻流 [feed]。
- * 找哪个窗格、怎么附着、带不带 `-u` 全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
+ * 终端屏里要那台核心做的几件（列 · 结束 · 进终端那一行 · 建会话 · 后台起 · 送字 · 抓屏 · 推公钥 · 别名），都经这台的常驻流 [feed]。
+ * 找哪个窗格、怎么附着、怎么建、shell 方言全在那台；这里只把回话翻成屏上那一句。失败的那一句是那台写好的（[problem]）。
  * [machine] 是这台在手机上的名字（走不通时那一句里用）；[stored] 是这台存的那一家（线上 kind，主机设置里选的；没选 ⇒ `null`）。
  * 哪几家、叫什么、能换哪些模型都问那台（`session-new-facts`），手机一家都不认识。
  */
@@ -52,8 +53,18 @@ class TerminalOps(
                 onFailure = { Notice(it.message.orEmpty()) },
             )
 
-    /** 这台能起的几家（那台的 `session-new-facts`：名字 · 可选的模型都是那台给的）。 */
-    suspend fun agents(): Result<List<AgentFacts>> = ask(SessionNewFacts.COMMAND, emptyMap()) { SessionNewFacts.of(it)?.agents }
+    /** 这台的起会话事实（`session-new-facts`：几家 · 名字 · 可选的模型 · 有没有 tmux 都是那台给的）。 */
+    suspend fun facts(): Result<NewFacts> = ask(SessionNewFacts.COMMAND, emptyMap(), SessionNewFacts::of)
+
+    /** 那台能做什么（[Reach]）；问不到 ⇒ 那一句（tmux 也当没有）。 */
+    suspend fun reach(): Reach =
+        facts().fold(
+            onSuccess = { f -> Reach(noTmux = if (f.tmux) null else copyText("mobTerm.tmux.none", "host" to machine())) },
+            onFailure = { Reach(it.message.orEmpty(), it.message.orEmpty()) },
+        )
+
+    /** 这台能起的几家。 */
+    suspend fun agents(): Result<List<AgentFacts>> = facts().map { it.agents }
 
     /** 这台起会话用哪一家：存的那一家 · 那台列的第一家（线上 kind）。问不到 ⇒ 失败（那一句）。 */
     private suspend fun agent(): Result<String> =
@@ -62,9 +73,40 @@ class TerminalOps(
     /** 在名叫 [name] 的会话里后台起这台那一家（不进入）。失败 ⇒ 那一句。 */
     suspend fun startAgent(name: String): String? =
         agent()
-            .mapCatching { a -> ask(SessionNew.COMMAND, SessionNew.inTmux(agent = a, name = name, ticket = UUID.randomUUID().toString()), SessionNew::of).getOrThrow() }
+            .mapCatching { a -> open(SessionOpen.newInTmux(agent = a, name = name, ticket = UUID.randomUUID().toString())).getOrThrow() }
             .exceptionOrNull()
             ?.message
+
+    /** 在那台建一个名叫 [name] 的空会话（在了就不动），不进入。失败 ⇒ 那一句。 */
+    suspend fun create(name: String): String? = open(SessionOpen.shell(name, null)).exceptionOrNull()?.message
+
+    /**
+     * 连上之后进哪儿，一问：接回 [attachTo] · 恢复 [resumeSid] · 进（没有就建）[tmux] 那个会话 · 只进 [cwd] 那个目录；都没有 ⇒ `null`（普通 shell，不问）。
+     * 回包里的那一行由调用方敲进终端；[cwd] 只在建的那一刻生效。
+     */
+    suspend fun enter(
+        attachTo: String?,
+        resumeSid: String?,
+        tmux: String?,
+        cwd: String?,
+    ): Result<SessionOpen.Answer>? =
+        when {
+            attachTo != null -> open(SessionOpen.look(attachTo))
+            resumeSid != null -> open(SessionOpen.resume(resumeSid))
+            tmux != null || cwd != null -> open(SessionOpen.shell(tmux, cwd))
+            else -> null
+        }
+
+    private suspend fun open(args: Map<String, Any?>): Result<SessionOpen.Answer> = ask(SessionOpen.COMMAND, args, SessionOpen::of)
+
+    /** 把 [key]（一行 OpenSSH 公钥）并进那台的 `authorized_keys`；回屏上那一句（被拒 ⇒ 那台写好的那一句）。 */
+    suspend fun pushKey(key: String): Result<String> =
+        ask(KeyAdd.COMMAND, KeyAdd.args(key), KeyAdd::of).map {
+            when (it) {
+                PushOutcome.ADDED -> copyText("mobKeyPush.result.added")
+                PushOutcome.ALREADY -> copyText("mobKeyPush.result.already")
+            }
+        }
 
     /** 名叫 [name] 的那个终端里跑着的那一家能换的模型（那台给的）；里面没跑会话 ⇒ 空。 */
     suspend fun modelsIn(name: String): List<NewSessionPick> {
@@ -107,18 +149,6 @@ class TerminalOps(
     /** 抓名叫 [name] 的那个终端的一屏（纯文字）。 */
     suspend fun capture(name: String): Result<String> =
         handleOf(name).mapCatching { h -> ask(TerminalPreview.COMMAND, TerminalPreview.args(h), TerminalPreview::of).getOrThrow() }
-
-    /**
-     * 进 [name] 那个会话要在终端里敲的那一行（那台渲的，与桌面「命令已复制」同一条）。手机只交意图：哪一家取那个终端里跑着的那一家，
-     * 没跑会话 ⇒ 这台起会话用的那一家。
-     */
-    suspend fun attachLine(name: String): Result<String> {
-        val running = list().getOrNull()?.firstOrNull { it.name == name }?.agent
-        return (running?.let { Result.success(it) } ?: agent()).mapCatching { a -> ask(AttachLine.COMMAND, AttachLine.args(a, name), AttachLine::of).getOrThrow() }
-    }
-
-    /** 先让那台恢复 [sid] 那条会话（终端没了），回它落在哪个 tmux 会话；没成 ⇒ 失败（那台那一句）。 */
-    suspend fun resume(sid: String): Result<String> = ask(SessionResume.COMMAND, SessionResume.args(sid), SessionResume::of)
 
     /** 这台能用的别名（那台的 `profiles-read`，名字与顺序照那台）：终端屏「用哪个启动」那一排。 */
     suspend fun aliases(): Result<List<Profiles.Alias>> = ask(Profiles.READ, emptyMap(), Profiles::of).map { it.usable }

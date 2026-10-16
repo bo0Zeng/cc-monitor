@@ -6,7 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.FilesHome
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.claude.link.SessionNewDir
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.AccountRow
@@ -73,7 +73,7 @@ data class Chosen(
     val cwd: String,
     val agent: String,
     val account: String?,
-    val rotation: SessionNew.Rotation?,
+    val rotation: SessionOpen.Rotation?,
 )
 
 /**
@@ -230,7 +230,7 @@ class NewSessionPicker(
     fun chosen(): Chosen {
         val s = _state.value
         val account = s.account?.takeIf { it != s.defaultAccount }
-        val rotation = s.strategies?.let { if (s.rotation != s.forNew) SessionNew.Rotation(s.rotation) else null }
+        val rotation = s.strategies?.let { if (s.rotation != s.forNew) SessionOpen.Rotation(s.rotation) else null }
         return Chosen(s.cwd, s.agent ?: storedAgent.orEmpty(), account, rotation)
     }
 

@@ -59,10 +59,12 @@ class KeyDispatchTest {
         val hit = mutableListOf<String>()
 
         fun actions(
-            tmux: Boolean,
+            noTmux: String? = null,
+            noBackend: String? = null,
             groupExists: Boolean = true,
         ) = KeyActions(
-            supportsTmux = tmux,
+            noTmux = noTmux,
+            noBackend = noBackend,
             onShowTabs = { hit += "tabs" },
             onCommandPalette = { hit += "palette" },
             onTmuxSessions = { hit += "tmux" },
@@ -83,20 +85,23 @@ class KeyDispatchTest {
             takes++
             KeyModifiers()
         }
-        val ok = AppAction.entries.map { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(true), take) }
+        val ok = AppAction.entries.map { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(), take) }
         assertEquals(listOf("next", "goto:g1", "edit", "paste", "tabs", "palette", "tmux", "keyboard", "capture", "pushKey"), hit)
         assertEquals(AppAction.entries.map { null }, ok)
         assertNull("App 动作不出线字节", sent)
         assertEquals("App 动作不吃修饰键", 0, takes)
         hit.clear()
-        val noTmux = AppAction.entries.associateWith { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(false), take) }
-        assertEquals(listOf("next", "goto:g1", "edit", "paste", "tabs", "palette", "keyboard"), hit)
-        assertEquals(AppAction.NEEDS_TMUX, noTmux.filterValues { it == KeyActionFail.NO_TMUX }.keys)
+        val noTmux = AppAction.entries.associateWith { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(noTmux = "box 无 tmux"), take) }
+        assertEquals(listOf("next", "goto:g1", "edit", "paste", "tabs", "palette", "keyboard", "pushKey"), hit)
+        assertEquals(AppAction.NEEDS_TMUX, noTmux.filterValues { it == KeyActionFail.Unavailable("box 无 tmux") }.keys)
         hit.clear()
-        assertEquals(KeyActionFail.GROUP_GONE, dispatchBinding(KeyBinding.App(AppAction.GOTO_GROUP), { }, actions(true), take))
+        val down = AppAction.entries.associateWith { a -> dispatchBinding(KeyBinding.App(a, "g1"), { sent = it }, actions(noBackend = "后端未连上"), take) }
+        assertEquals("推公钥只要那台后端，不要 tmux", mapOf(AppAction.PUSH_KEY to KeyActionFail.Unavailable("后端未连上")), down.filterValues { it != null })
+        hit.clear()
+        assertEquals(KeyActionFail.GroupGone, dispatchBinding(KeyBinding.App(AppAction.GOTO_GROUP), { }, actions(), take))
         assertEquals("切到某一组没带组 ⇒ 不动", emptyList<String>(), hit)
-        assertEquals(KeyActionFail.GROUP_GONE, dispatchBinding(KeyBinding.App(AppAction.GOTO_GROUP, "gone"), { }, actions(true, groupExists = false), take))
-        assertNull(dispatchBinding(KeyBinding.Input(listOf(KeyPress.Text("ls"))), { sent = it }, actions(true), take))
+        assertEquals(KeyActionFail.GroupGone, dispatchBinding(KeyBinding.App(AppAction.GOTO_GROUP, "gone"), { }, actions(groupExists = false), take))
+        assertNull(dispatchBinding(KeyBinding.Input(listOf(KeyPress.Text("ls"))), { sent = it }, actions(), take))
         assertEquals("ls", String(sent!!))
         assertEquals("送输入取一次修饰键", 1, takes)
     }

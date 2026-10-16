@@ -1,6 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
+import com.ccmonitor.mobile.core.claude.link.wire.Landed
 import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -12,34 +12,77 @@ class SessionsTest {
     private val terminals = Fixtures.json("terminals.golden.json")
     private val reads = Fixtures.json("record-reads.golden.json")
     private val frames = Fixtures.text("session-stream.golden.jsonl").lines().mapNotNull(Json::obj)
+    private val opened =
+        mapOf(
+            "landed" to "started",
+            "session" to "proj-cc",
+            "line" to "ccm -- --attach proj-cc",
+            "sid" to null,
+            "agent" to "claude",
+            "cwd" to "/h/proj",
+            "account" to null,
+            "note" to null,
+            "prompt" to null,
+        )
 
     @Test
-    fun `session-new：在那台 tmux 里起那一家，带票、第一句随起交；不带模型 · 权限 · 账号（跟随默认）`() {
-        val args = SessionNew.args(cwd = "~/proj", ticket = "t-1", agent = "codex", prompt = "你好")
-        assertEquals(mapOf("agent" to "codex", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1", "prompt" to "你好"), args)
+    fun `session-open 新起：在那台 tmux 里起那一家，带票、第一句随起交；不带模型 · 权限 · 账号（跟随默认）`() {
+        val args = SessionOpen.newIn(cwd = "~/proj", ticket = "t-1", agent = "codex", prompt = "你好")
+        assertEquals(
+            mapOf(
+                "what" to mapOf("kind" to "new", "agent" to "codex", "cwd" to "~/proj", "prompt" to "你好"),
+                "run" to "tmux",
+                "local" to false,
+                "ticket" to "t-1",
+                "client" to "mobile",
+            ),
+            args,
+        )
     }
 
     @Test
-    fun `session-new：第一句的结局照 terminal-input 那一形解；没交 ⇒ null，形不对 ⇒ 整份解不出`() {
-        val base = mapOf("outcome" to "started", "session" to "proj-cc", "sid" to "s1", "agent" to "claude", "cwd" to "/h/proj")
-        assertEquals(TerminalInput.Result.Delivered, SessionNew.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null)))?.prompt)
+    fun `session-open 另三形：后台起在指名的会话里 · 恢复照 tmux · 接回与开 shell 不带 run`() {
+        assertEquals(
+            mapOf(
+                "what" to mapOf("kind" to "new", "agent" to "claude", "cwd" to "~", "tmuxName" to "work"),
+                "run" to "tmux",
+                "local" to false,
+                "ticket" to "t-2",
+                "client" to "mobile",
+            ),
+            SessionOpen.newInTmux(agent = "claude", name = "work", ticket = "t-2"),
+        )
+        assertEquals(
+            mapOf("what" to mapOf("kind" to "resume", "sid" to "s1"), "run" to "tmux", "local" to false, "client" to "mobile"),
+            SessionOpen.resume("s1"),
+        )
+        assertEquals(mapOf("what" to mapOf("kind" to "look", "session" to "demo"), "local" to false, "client" to "mobile"), SessionOpen.look("demo"))
+        assertEquals(mapOf("what" to mapOf("kind" to "shell", "session" to "main", "cwd" to "~/w"), "local" to false, "client" to "mobile"), SessionOpen.shell("main", "~/w"))
+        assertEquals(mapOf("what" to mapOf("kind" to "shell", "cwd" to "/srv"), "local" to false, "client" to "mobile"), SessionOpen.shell(null, "/srv"))
+    }
+
+    @Test
+    fun `session-open：第一句的结局照 terminal-input 那一形解；没交 ⇒ null，形不对 ⇒ 整份解不出`() {
+        val base = opened + ("sid" to "s1")
+        assertEquals(TerminalInput.Result.Delivered, SessionOpen.of(base + ("prompt" to mapOf("result" to "delivered", "why" to null, "said" to null)))?.prompt)
         assertEquals(
             TerminalInput.Result.Refused("终端已不在", "not_known"),
-            SessionNew.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))?.prompt,
+            SessionOpen.of(base + ("prompt" to mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))?.prompt,
         )
-        assertNull(SessionNew.of(base + ("prompt" to null))?.prompt)
-        assertNull("prompt 那一格认不出 ⇒ 解不出", SessionNew.of(base + ("prompt" to mapOf("result" to "maybe"))))
+        assertNull(SessionOpen.of(base)?.prompt)
+        assertNull("prompt 那一格认不出 ⇒ 解不出", SessionOpen.of(base + ("prompt" to mapOf("result" to "maybe"))))
     }
 
     @Test
-    fun `session-new：应答解出结局 · tmux 名 · 展开后的目录；新起的 sid 为空`() {
-        val a = SessionNew.of(mapOf("outcome" to "started", "session" to "proj-cc", "sid" to null, "cmd" to null, "account" to null, "agent" to "claude", "cwd" to "/h/proj"))
-        assertEquals(SessionNew.Answer(outcome = SessionNewOutcome.STARTED, session = "proj-cc", sid = null, cwd = "/h/proj", prompt = null), a)
-        assertNull("缺 cwd ⇒ 认不出报到的会话 ⇒ 解不出", SessionNew.of(mapOf("outcome" to "started", "agent" to "claude")))
+    fun `session-open：应答解出落在哪 · tmux 名 · 那一行 · 展开后的目录；新起的 sid 可为空`() {
+        val a = SessionOpen.of(opened)
+        assertEquals(SessionOpen.Answer(Landed.STARTED, "proj-cc", "ccm -- --attach proj-cc", null, "/h/proj", null, null), a)
+        assertEquals(Landed.IDLE, SessionOpen.of(opened + ("landed" to "idle") + ("cwd" to null))?.landed)
+        assertNull("落在哪认不出 ⇒ 解不出", SessionOpen.of(opened + ("landed" to "maybe")))
     }
 
     @Test
-    fun `session-new：报到的会话按展开后的目录认，起之前就在的不算`() {
+    fun `session-open：报到的会话按展开后的目录认，起之前就在的不算`() {
         val before = setOf("old")
         val table =
             SessionTable(
@@ -50,8 +93,8 @@ class SessionsTest {
                         "new" to LiveSession("new", path = "/p/new.jsonl", cwd = "/h/proj", activity = Toned("运行中", null)),
                     ),
             )
-        assertEquals("new", SessionNew.arrived(table, "/h/proj", before)?.sid)
-        assertNull(SessionNew.arrived(table, "/h/none", before))
+        assertEquals("new", SessionOpen.arrived(table, "/h/proj", before)?.sid)
+        assertNull(SessionOpen.arrived(table, "/h/none", before))
     }
 
     @Test

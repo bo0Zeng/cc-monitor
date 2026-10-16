@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.chat.newsession
 
 import com.ccmonitor.mobile.core.claude.link.Reply
-import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionOpen
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -144,9 +144,9 @@ class NewSessionPickerTest {
             runCurrent()
             p.pickAccount("personal")
             p.pickRotation(null)
-            assertEquals(Chosen("/h/work/orders", "claude", "personal", SessionNew.Rotation(null)), p.chosen())
+            assertEquals(Chosen("/h/work/orders", "claude", "personal", SessionOpen.Rotation(null)), p.chosen())
             p.pickRotation("night")
-            assertEquals(SessionNew.Rotation("night"), p.chosen().rotation)
+            assertEquals(SessionOpen.Rotation("night"), p.chosen().rotation)
             p.pickRotation("spread")
             assertNull("又选回新会话用的那份 ⇒ 不交", p.chosen().rotation)
         }
