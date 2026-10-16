@@ -239,8 +239,8 @@ fn tail_args(path: &Path, n: usize) -> Vec<std::ffi::OsString> {
 ///
 /// | 被测入口 | 期望 |
 /// |---|---|
-/// | `--history-tail {path, n: N}` | `{total: T, tail_from: T−N, split_at: 前 T−N 行的字节和, end: 文件长}` |
-/// | 同上，一行的会话（进程地板那一格） | `{total: 1, tail_from: 0, split_at: 0, end: 那一行的长}` |
+/// | `--history-tail {path, n: N}` | `{total: T, tail_from: T−N, split_at: 前 T−N 行的字节和, end: 文件长, file: 第一行的摘要}` |
+/// | 同上，一行的会话（进程地板那一格） | `{total: 1, tail_from: 0, split_at: 0, end: 那一行的长, file: 那一行的摘要}` |
 ///
 /// 每一格都先经本秤自己的 [`measure`]（`reps = 1`）拿出字节数与期望那一行比，取尾那一格再经 [`measure_piped`]
 /// 比一次，并直接比一次**解出来的那张图** —— 读数表里的「出字节」那一列就是这么来的。
@@ -259,6 +259,16 @@ fn smoke() {
     let total = lines.len();
     let tail_from = total - N;
     let split_at: usize = lines[..tail_from].iter().map(|l| l.len()).sum();
+    // 文件身份：第一行正文（去掉 `\n`）的 FNV-1a 64 摘要，16 位十六进制。按定义在这里现算，不调后端那一份。
+    let fnv = |body: &[u8]| {
+        format!(
+            "{:016x}",
+            body.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &b| {
+                (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+            })
+        )
+    };
+    let file = fnv(&lines[0][..lines[0].len() - 1]);
 
     let home = std::env::temp_dir().join(format!("s7-smoke-{}", std::process::id()));
     let sess = home.join("projects/s7-bench");
@@ -280,12 +290,12 @@ fn smoke() {
         (
             "tail",
             tail_args(&f, N),
-            serde_json::json!({"total": total, "tail_from": tail_from, "split_at": split_at, "end": corpus.len()}),
+            serde_json::json!({"total": total, "tail_from": tail_from, "split_at": split_at, "end": corpus.len(), "file": file}),
         ),
         (
             "floor",
             tail_args(&one, N),
-            serde_json::json!({"total": 1, "tail_from": 0, "split_at": 0, "end": one_line.len()}),
+            serde_json::json!({"total": 1, "tail_from": 0, "split_at": 0, "end": one_line.len(), "file": fnv(&one_line[..one_line.len() - 1])}),
         ),
     ];
     for (label, args, want) in &cases {
