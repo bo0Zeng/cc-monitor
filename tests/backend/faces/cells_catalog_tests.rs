@@ -315,6 +315,7 @@ fn corpus(name: &str) -> Vec<Value> {
                 read_at_ms: 0,
             };
             f["needs"] = serde_json::to_value(crate::observe::recognize::facts::needs_of(
+                crate::agents::record_tree_kind().unwrap_or_default(),
                 &pending,
                 Some(&wait),
             ))
@@ -385,7 +386,12 @@ fn corpus(name: &str) -> Vec<Value> {
                 since_ms: Some(1),
                 read_at_ms: 2,
             };
-            let needs = crate::observe::recognize::facts::needs_of(&pending, Some(&wait)).unwrap();
+            let needs = crate::observe::recognize::facts::needs_of(
+                crate::agents::record_tree_kind().unwrap_or_default(),
+                &pending,
+                Some(&wait),
+            )
+            .unwrap();
             let mut rows = vec![
                 serde_json::to_value(crate::observe::accounts_query::NeedsRow {
                     sid: "s".into(),

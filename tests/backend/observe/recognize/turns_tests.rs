@@ -20,7 +20,7 @@ fn map_of(body: &str) -> crate::observe::record_scan::ScanMap {
     crate::observe::record_scan::ScanMap::scan_with(
         body.as_bytes(),
         body.len() as u64,
-        tree_kind(),
+        crate::agents::record_tree_kind().unwrap_or_default(),
         None,
     )
     .unwrap()

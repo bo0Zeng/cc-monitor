@@ -18,76 +18,33 @@
 //!
 //! | 格 | 口径 |
 //! |---|---|
-//! | `forkedFrom` | `history::listing::fork_origin`（与历史会话行同一个函数）；首条命中即锁定 |
-//! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
-//! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
+//! | `forkedFrom` | 一拍的 `forked_from`（那一家答；Claude 与历史会话行同一个函数）；首条命中即锁定 |
+//! | `touchedFiles` | 代理那侧的工具调用里写类工具的路径（一拍的 `Call.edits`，写类工具表是那一家的），去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
+//! | `usage` | 代理那侧一拍的用量里新输入 · 读缓存 · 写缓存之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
 //! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
 //! | `writers` | 这台 pidfile 里此刻持着这条会话的活进程（`observe::accounts_query::session_writers`）；每次现查，不在逐行扫描里 |
-//! | `pending` | `assistant` 记录里的工具调用，等到 `user` 记录里同 id 的 `tool_result` 才摘；你又发了一句（`user` 记录里没有 `tool_result`）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
-//! | `lastSay` | 文件序最后一段 `assistant` 正文（`text` 块）的头一个非空行，至多 [`SAY_CHARS`] 字 |
+//! | `pending` | 代理那侧的工具调用，等到用户那侧同 id 的工具结果才摘；人又发了一句（用户那侧没有工具结果）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
+//! | `lastSay` | 文件序最后一段代理那侧正文的头一个非空行，至多 [`SAY_CHARS`] 字 |
 //! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
-//! | `retries` | 一串相邻的 API 重试（`system` · `api_error`）按首条的 `uuid` 记一件，结局看它后面第一条 `assistant` / 人发的 `user`（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
+//! | `retries` | 一串相邻的上游重试（一拍的 `Retry`）按首条的 id 记一件，结局看它后面第一条代理那侧 / 人发的（不是注入、不带工具结果）用户那侧（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
 //! | `bgTasks` | 后台命令（适配层翻好的 [`crate::agents::BgMark`]）：起了一条 ⇒ 记下（工具调用 id · 命令原样 · 那条记录的 `timestamp`）；拿到任务号 ⇒ 补上；收场通知 / 当场回的结果出错 ⇒ 摘。文件序，至多 [`BG_KEEP`] 条 |
 //! | `background` | 那台 pidfile 说「一轮停了、后台命令还在跑」⇒ 状态一句（[`background_of`]）；每次现查，不累加 |
 //! | `mcp` | 适配层 `agents::mcp_said_of` 说的三张表（要登录 · 断开 · 还在连），每张以文件序最后一次写它的那一条为准；按名字排 |
 //! | `quietUnread` | 认不出、又不成卡的行（适配层 `agents::quiet_unread_of` 判：没见过的顶层类型 ＋ 没有链上身份 ⇒ 那一家的簿记行）：几行 · 哪几种（首见序，至多 [`QUIET_KINDS_KEEP`] 种，再多只加数）· 写好的一句；一行都没有 ⇒ `null` |
-//! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
+//! | `handedBack` | 交回了的子运行：用户那侧「谁说的」是 agent 交回（一拍的 `Said` 是 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
 //!
-//! 一行要不要解析，先按字节看它有没有可能改动事实（[`could_matter`]）：分叉已锁 ⇒ 不找 `"forkedFrom"`；
-//! 工具结果那一大类（常是整份文件内容）连解析都不做。**只省时间、不改结果**：
-//! 能改动事实的记录必然带着那几个键名（Claude Code 写 JSON 不转义 ASCII 字母），由判据逐行对拍「过滤 / 不过滤」两向相等。
+//! 一行要不要解析，先按字节看它有没有可能改动事实（[`could_matter`]）：格式那一半问那一家（`BeatFace.hint`，比如分叉已锁就不找分叉那一格、
+//! 工具结果那一大类连解析都不做），挂着的调用 / 后台命令的 id 在不在行里这一半在这里看。**只省时间、不改结果**：
+//! 由判据逐行对拍「过滤 / 不过滤」两向相等。
 
+use crate::agents::beat::{contains, one_line, Act, Beat, Side, StopWhy, Watch};
 use crate::common::cells::Words;
 pub(crate) use cmd_wire::needs::{Needs, NeedsKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-//
-// ── Claude 的工具词表里会话事实要认的两张 ─────────────────────────────────────────
-//
-// 它们是 Claude 的记录格式知识，却住在 `observe/`（与 `user_inputs.rs` 的四条口径同一处境：本层仍是 Claude 专属的）。
-// 搬进 `agents/claudecode/` 就要从这里直呼它 ⇒ `agent_locality_guard::NEW_AGENT_GAP_BASELINE` 要涨，那是只许降的棘轮 ⇒ 收进接口时随本文件一起走。
-// 写类工具表只有这一份。
-
-/// 写类工具 → 取路径的键。Edit / Write / MultiEdit 用 `file_path`；NotebookEdit 用 `notebook_path`。
-/// 与渲染那边的「写类」（卡型 `diff`，适配层 `agents/claudecode/cards.rs` 那张写类工具表，行级 diff）**不是同一个问题**：
-/// 这里多一个 NotebookEdit（它改文件、但不按行 diff 渲染）。
-pub(crate) const EDIT_TOOL_PATH_KEYS: &[(&str, &str)] = &[
-    ("Edit", "file_path"),
-    ("Write", "file_path"),
-    ("MultiEdit", "file_path"),
-    ("NotebookEdit", "notebook_path"),
-];
-
-fn edit_path_key(name: &str) -> Option<&'static str> {
-    EDIT_TOOL_PATH_KEYS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, k)| *k)
-}
-
-/// 交互工具：在等你**回答**的 · 在等你**批准计划**的。别的工具在等 ⇒ 等你批准它（`waitingFor` 说是批准框时）。
-const ANSWER_TOOLS: &[&str] = &["AskUserQuestion"];
-const PLAN_TOOLS: &[&str] = &["ExitPlanMode"];
-
-/// 工具 → 「它在做什么」那一格取哪个入参（一行人话的主参数）。没登记的工具 ⇒ 不给（界面只写工具名）。
-const WHAT_KEYS: &[(&str, &str)] = &[
-    ("Bash", "command"),
-    ("Read", "file_path"),
-    ("Edit", "file_path"),
-    ("Write", "file_path"),
-    ("MultiEdit", "file_path"),
-    ("NotebookEdit", "notebook_path"),
-    ("Grep", "pattern"),
-    ("Glob", "pattern"),
-    ("WebFetch", "url"),
-    ("WebSearch", "query"),
-    ("Task", "description"),
-    ("Agent", "description"),
-];
 
 /// 没结果的工具调用至多留几条（并发调用一批也就几条；超 ⇒ 丢最早的）。
 pub(crate) const PENDING_KEEP: usize = 16;
@@ -103,38 +60,6 @@ pub(crate) const HANDED_BACK_KEEP: usize = 500;
 
 /// `quietUnread` 至多记多少种类型（再多的只加行数）。
 pub(crate) const QUIET_KINDS_KEEP: usize = 16;
-/// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
-pub(crate) const SAY_CHARS: usize = 160;
-
-/// 头一个非空行，压成一行、至多 [`SAY_CHARS`] 字（超 ⇒ 截断加 `…`）。空 ⇒ `None`。
-fn one_line(s: &str) -> Option<String> {
-    let line = s.lines().map(str::trim).find(|l| !l.is_empty())?;
-    let mut out: String = line.chars().take(SAY_CHARS).collect();
-    if line.chars().count() > SAY_CHARS {
-        out.push('…');
-    }
-    Some(out)
-}
-
-/// 一个工具调用的主参数一行（[`WHAT_KEYS`]；提问工具取第一问）。
-pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
-    let input = input?;
-    if ANSWER_TOOLS.contains(&name) {
-        return input
-            .get("questions")
-            .and_then(Value::as_array)
-            .and_then(|q| q.first())
-            .and_then(|q| q.get("question"))
-            .and_then(Value::as_str)
-            .and_then(one_line);
-    }
-    let key = WHAT_KEYS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, k)| *k)?;
-    input.get(key).and_then(Value::as_str).and_then(one_line)
-}
-
 /// 改动文件集至多留多少条（超 ⇒ 丢最久没碰的）。回包有上限：
 /// 1000 条 × 路径长（百来字节）≈ 140 KB；实际会话里多不过几十条。
 pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
@@ -358,9 +283,9 @@ pub(crate) fn background_of(tasks: &[BgTask], born_ms: Option<u64>, now_ms: u64)
 }
 
 /// 一笔后台命令的账记到 `f` 上（口径见头注那张表）。
-fn note_background(f: &mut SessionFacts, v: &Value, at: Option<&String>) {
+fn note_background(f: &mut SessionFacts, kind: &str, v: &Value, at: Option<&String>) {
     use crate::agents::BgMark;
-    for m in crate::agents::background_marks(v) {
+    for m in crate::agents::background_marks(kind, v) {
         match m {
             BgMark::Started { call, cmd } => {
                 f.bg_tasks.retain(|t| t.call != call);
@@ -587,16 +512,19 @@ pub(crate) struct PidWait {
 /// - 要填 / 要答 ⇒ 回答；联网 ⇒ 放行（那一步多半就是要联网的那条命令）；
 /// - 协作请求 · 会话目标 · 别的对话框 ⇒ 各一种，不挂记录里的哪一步（那一步不在这份记录里 / 不是一步工具调用）。
 ///   这几种是顶上那个框：底下就算有提问 / 计划，也是先答它。
-pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+pub(crate) fn needs_of(
+    agent: &str,
+    pending: &[PendingCall],
+    wait: Option<&PidWait>,
+) -> Option<Needs> {
+    use crate::agents::beat::CallAsk;
     use crate::agents::WaitOn as W;
     let wait = wait?;
     let first = pending.first();
-    let asks = pending
-        .iter()
-        .find(|p| ANSWER_TOOLS.contains(&p.name.as_str()));
-    let plan = pending
-        .iter()
-        .find(|p| PLAN_TOOLS.contains(&p.name.as_str()));
+    let ask_is =
+        |want: CallAsk| move |p: &&PendingCall| crate::agents::call_ask(agent, &p.name) == want;
+    let asks = pending.iter().find(ask_is(CallAsk::Answer));
+    let plan = pending.iter().find(ask_is(CallAsk::Plan));
     let (kind, call) = match wait.waiting_for {
         Some(W::Permission) | None if asks.is_some() => (NeedsKind::Answer, asks),
         Some(W::Permission) | None if plan.is_some() => (NeedsKind::Plan, plan),
@@ -903,26 +831,32 @@ pub(crate) fn context_limit(
 }
 
 /// 一个完整行（不含结尾 `\n`）累加到 `facts` 上：先过快路（[`could_matter`]），过了才解析。没解析过这一行的读者（事实尾巴接着读）走它。
-pub(crate) fn note_line(facts: &mut SessionFacts, line: &[u8]) {
-    if could_matter(line, facts) {
+/// `kind` ＝ 这份记录是哪一家的。
+pub(crate) fn note_line(facts: &mut SessionFacts, kind: &str, line: &[u8]) {
+    if could_matter(kind, line, facts) {
         if let Some(v) = super::super::lines::parse(line) {
-            note_record(facts, &v);
+            if let Some(beat) = crate::agents::beat_of(kind, &v) {
+                note_record(facts, kind, &v, &beat);
+            }
         }
     }
 }
 
-/// 说 MCP 样子的那种记录行里必有的字（快路只放过带它的行；[`could_matter`] 与 [`mcp_from`] 同一个口径）。
-const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
-
-/// 只要 `mcp` 那一格：从 `r` 此刻的位置读到尾，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 接着 `mcp` 往下改（口径与整份事实那一格同一处）。
+/// 只要 `mcp` 那一格：从 `r` 此刻的位置读到尾，只解析快路放过的完整行（那一家的快路只问 MCP 那一格）、
+/// 经 [`note_mcp`] 接着 `mcp` 往下改（口径与整份事实那一格同一处）。
 /// 回读过的字节数（只算到最后一个完整行：半行留给下一次）。扩展页问「这台活会话里谁断开」用（`observe::accounts_query::McpBook`）。
 pub(crate) fn mcp_from<R: std::io::BufRead>(
     r: R,
+    kind: &str,
     mcp: &mut Vec<McpTrouble>,
 ) -> std::io::Result<u64> {
     let mut f = SessionFacts {
         mcp: std::mem::take(mcp),
         ..SessionFacts::default()
+    };
+    let only = Watch {
+        mcp_only: true,
+        ..Watch::default()
     };
     let mut lines = super::super::lines::Lines::new(r, 0);
     let out = loop {
@@ -932,9 +866,11 @@ pub(crate) fn mcp_from<R: std::io::BufRead>(
             Err(e) => break Err(e),
         };
         let line = row.body();
-        if contains(line, MCP_MARK) {
+        if crate::agents::beat_hint(kind, line, &only) {
             if let Some(v) = super::super::lines::parse(line) {
-                note_mcp(&mut f, &v);
+                let at =
+                    crate::agents::beat_of(kind, &v).and_then(|b| b.at.map(|a| a.into_owned()));
+                note_mcp(&mut f, kind, &v, at.as_ref());
             }
         }
     };
@@ -951,70 +887,52 @@ pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, rel
 }
 
 /// 这一行有没有可能改动事实（快路，见头注）。**只许放过、不许误拦**：凡是 [`note_record`] 会动的记录，这里必为真。
-pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
-    (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
-        || contains(line, b"\"permission-mode\"")
-        // 认不出、又不成卡的行（[`note_quiet`]）：没有链上身份 ⇒ 行里没有 `"uuid"` 字样（簿记行都短）。
-        || !contains(line, b"\"uuid\"")
-        || contains(line, b"\"cost-state\"")
-        || contains(line, b"\"usage\"")
-        || contains(line, b"\"tool_use\"")
-        || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
-        // 交回：记录级 `origin.handback`（键名在行里）。
-        || contains(line, b"\"handback\"")
-        // MCP 状态：「延后加载的工具变了」那种附件（行里带它的类型名）。
-        || contains(line, MCP_MARK)
-        // 重试：它本身（`api_error`）· 一串还没下文时，它后面的回复 / 人发的一句。
-        || contains(line, b"\"api_error\"")
-        || (open_retry(facts) && (contains(line, b"\"assistant\"") || contains(line, b"\"user\"")))
-        // 有没结果的调用：它的结果（行里带着它的 id）· 你又发了一句（`user` 记录、没有工具结果）。
-        // 别人的工具结果（常是整份文件内容）照旧连解析都不做。
-        // 后台命令：起它的调用 · 当场回的任务号 · 有没收场的 ⇒ 收场通知（三处都带着那个框）与出错的当场结果（行里带着它的 id）。
-        || contains(line, b"\"run_in_background\"")
-        || contains(line, b"\"backgroundTaskId\"")
-        || (!facts.bg_tasks.is_empty()
-            && (contains(line, b"task-notification")
-                || facts.bg_tasks.iter().any(|t| contains(line, t.call.as_bytes()))))
-        || (!facts.pending.is_empty()
-            && contains(line, b"\"user\"")
-            && (!contains(line, b"\"tool_result\"")
-                || facts.pending.iter().any(|p| contains(line, p.id.as_bytes()))))
+/// 格式那一半问那一家（`BeatFace.hint`）；「行里带着某个还挂着的调用 / 后台命令的 id」这一半是通用的，在这里看。
+pub(crate) fn could_matter(kind: &str, line: &[u8], facts: &SessionFacts) -> bool {
+    let watch = Watch {
+        fork_locked: facts.forked_from.is_some(),
+        retry_open: open_retry(facts),
+        pending: !facts.pending.is_empty(),
+        background: !facts.bg_tasks.is_empty(),
+        mcp_only: false,
+    };
+    crate::agents::beat_hint(kind, line, &watch)
+        || facts
+            .bg_tasks
+            .iter()
+            .any(|t| contains(line, t.call.as_bytes()))
+        || facts
+            .pending
+            .iter()
+            .any(|p| contains(line, p.id.as_bytes()))
 }
 
 /// 这条是 agent 交回 ⇒ 那个子运行进 `handed_back`（谁说的由适配层判，口径同全局搜索的「agent 回报」）。
-fn note_handback(f: &mut SessionFacts, v: &Value) {
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
-    let Some(said) = crate::agents::user_text_of(kind, v) else {
-        return;
-    };
-    let crate::agents::Speaker::AgentMessage {
+fn note_handback(f: &mut SessionFacts, beat: &Beat) {
+    let Some(crate::agents::Speaker::AgentMessage {
         from: Some(from),
         handback: true,
         ..
-    } = said.speaker
+    }) = beat.said().map(|s| &s.speaker)
     else {
         return;
     };
-    if f.handed_back.contains(&from) {
+    if f.handed_back.contains(from) {
         return;
     }
-    f.handed_back.push(from);
+    f.handed_back.push(from.clone());
     if f.handed_back.len() > HANDED_BACK_KEEP {
         f.handed_back.remove(0);
     }
 }
 
 /// 那一家这一条说了 MCP 的哪几张表 ⇒ 那几种整种换掉（没说的那几种沿用）。
-fn note_mcp(f: &mut SessionFacts, v: &Value) {
+fn note_mcp(f: &mut SessionFacts, kind: &str, v: &Value, at: Option<&String>) {
     use crate::agents::McpStatus as S;
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
     let Some(said) = crate::agents::mcp_said_of(kind, v) else {
         return;
     };
-    let at = v
-        .get("timestamp")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let at = at.cloned();
     let named = |names: Vec<String>, status| {
         let at = at.clone();
         names.into_iter().map(move |name| McpTrouble {
@@ -1047,8 +965,7 @@ fn note_mcp(f: &mut SessionFacts, v: &Value) {
 }
 
 /// 这一家说这一行认不出、又不成卡 ⇒ 记一行（种类首见序），那一句照新的数重写。
-fn note_quiet(f: &mut SessionFacts, v: &Value) {
-    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+fn note_quiet(f: &mut SessionFacts, kind: &str, v: &Value) {
     let Some(t) = crate::agents::quiet_unread_of(kind, v) else {
         return;
     };
@@ -1077,49 +994,39 @@ fn open_retry(f: &SessionFacts) -> bool {
         .is_some_and(|r| r.outcome == RetryOutcome::Retrying)
 }
 
-/// 重试一串一串地记（口径见头注那张表）。`kind` ＝ 记录类型。
-fn note_retry(f: &mut SessionFacts, kind: Option<&str>, v: &Value) {
+/// 重试一串一串地记（口径见头注那张表）。
+fn note_retry(f: &mut SessionFacts, beat: &Beat) {
     let open = open_retry(f);
-    match kind {
-        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("api_error") => {
-            if open {
-                return;
-            }
-            let Some(id) = v.get("uuid").and_then(Value::as_str) else {
-                return;
-            };
-            f.retries.push(RetryRun {
-                id: id.to_string(),
-                outcome: RetryOutcome::Retrying,
-            });
-            if f.retries.len() > RETRY_KEEP {
-                f.retries.remove(0);
-            }
+    if beat.acts.contains(&Act::Retry) {
+        if open {
+            return;
         }
-        Some("assistant") if open => {
-            let failed = v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
-            settle_retry(
-                f,
-                if failed {
-                    RetryOutcome::Failed
-                } else {
-                    RetryOutcome::Recovered
-                },
-            );
+        let Some(id) = beat.id.as_deref() else {
+            return;
+        };
+        f.retries.push(RetryRun {
+            id: id.to_string(),
+            outcome: RetryOutcome::Retrying,
+        });
+        if f.retries.len() > RETRY_KEEP {
+            f.retries.remove(0);
         }
-        Some("user") if open => {
-            let meta = v.get("isMeta").and_then(Value::as_bool) == Some(true);
-            let tool_result = v
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(Value::as_array)
-                .is_some_and(|a| {
-                    a.iter()
-                        .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
-                });
-            if !meta && !tool_result {
-                settle_retry(f, RetryOutcome::Interrupted);
-            }
+        return;
+    }
+    if !open {
+        return;
+    }
+    match beat.side {
+        Side::Reply => settle_retry(
+            f,
+            if beat.stops(StopWhy::Failed) {
+                RetryOutcome::Failed
+            } else {
+                RetryOutcome::Recovered
+            },
+        ),
+        Side::Input if !beat.injected && !beat.has_result() => {
+            settle_retry(f, RetryOutcome::Interrupted)
         }
         _ => {}
     }
@@ -1131,50 +1038,25 @@ fn settle_retry(f: &mut SessionFacts, outcome: RetryOutcome) {
     }
 }
 
-/// 子串在不在：按首字节跳着找，命中首字节再比后面（大工具输出那几行每行要问好几次，逐窗比较太慢）。
-fn contains(hay: &[u8], needle: &[u8]) -> bool {
-    let Some((&first, rest)) = needle.split_first() else {
-        return true;
-    };
-    let mut from = 0;
-    while let Some(p) = hay[from..].iter().position(|&b| b == first) {
-        let at = from + p;
-        if hay[at + 1..].starts_with(rest) {
-            return true;
-        }
-        from = at + 1;
-    }
-    false
-}
-
-/// 一条**已解析**的记录累加到 `f` 上。三格口径的唯一住址（见头注那张表）。
-pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
+/// 一条**已解析**的记录（`kind` 那一家的，`beat` 是它的一拍）累加到 `f` 上。各格口径的唯一住址（见头注那张表）。
+pub(crate) fn note_record(f: &mut SessionFacts, kind: &str, v: &Value, beat: &Beat) {
     if f.forked_from.is_none() {
-        if let Some((sid, _)) = crate::history::listing::fork_origin(v) {
-            f.forked_from = Some(sid);
+        if let Some(sid) = &beat.forked_from {
+            f.forked_from = Some(sid.clone());
         }
     }
-    let blocks = v
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .and_then(Value::as_array);
-    let at = v
-        .get("timestamp")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let kind = v.get("type").and_then(Value::as_str);
-    note_retry(f, kind, v);
-    note_background(f, v, at.as_ref());
-    note_mcp(f, v);
-    note_quiet(f, v);
-    match kind {
-        Some("user") => note_user(f, v),
-        Some("assistant") => {
-            if let Some(blocks) = blocks {
-                for b in blocks {
-                    if b.get("type").and_then(Value::as_str) == Some("text") {
-                        if let Some(text) = b.get("text").and_then(Value::as_str).and_then(one_line)
-                        {
+    let at = beat.at.as_deref().map(str::to_string);
+    note_retry(f, beat);
+    note_background(f, kind, v, at.as_ref());
+    note_mcp(f, kind, v, at.as_ref());
+    note_quiet(f, kind, v);
+    match beat.side {
+        Side::Input => note_user(f, beat),
+        Side::Reply => {
+            for a in &beat.acts {
+                match a {
+                    Act::Text(t) => {
+                        if let Some(text) = one_line(t) {
                             f.last_say = Some(LastSay {
                                 text,
                                 at: at.clone(),
@@ -1183,84 +1065,68 @@ pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
                                     .and_then(crate::common::time::parse_iso8601_ms),
                             });
                         }
-                        continue;
                     }
-                    if b.get("type").and_then(Value::as_str) != Some("tool_use") {
-                        continue;
-                    }
-                    let Some(name) = b.get("name").and_then(Value::as_str) else {
-                        continue;
-                    };
-                    if let Some(id) = b
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .filter(|i| !i.is_empty())
-                    {
-                        f.pending.retain(|p| p.id != id);
-                        f.pending.push(PendingCall {
-                            id: id.to_string(),
-                            name: name.to_string(),
-                            what: what_of(name, b.get("input")),
-                            at: at.clone(),
-                            at_ms: at
-                                .as_deref()
-                                .and_then(crate::common::time::parse_iso8601_ms),
-                            state: StepWait::default(),
-                            why: None,
-                            text: None,
-                            why_text: None,
-                        });
-                        if f.pending.len() > PENDING_KEEP {
-                            f.pending.remove(0);
+                    Act::Call {
+                        id,
+                        name,
+                        what,
+                        edits,
+                    } if !name.is_empty() => {
+                        if !id.is_empty() {
+                            f.pending.retain(|p| p.id != *id);
+                            f.pending.push(PendingCall {
+                                id: id.to_string(),
+                                name: name.to_string(),
+                                what: what.clone(),
+                                at: at.clone(),
+                                at_ms: at
+                                    .as_deref()
+                                    .and_then(crate::common::time::parse_iso8601_ms),
+                                state: StepWait::default(),
+                                why: None,
+                                text: None,
+                                why_text: None,
+                            });
+                            if f.pending.len() > PENDING_KEEP {
+                                f.pending.remove(0);
+                            }
                         }
-                    }
-                    if let Some(key) = edit_path_key(name) {
-                        if let Some(p) = b
-                            .get("input")
-                            .and_then(|i| i.get(key))
-                            .and_then(Value::as_str)
-                            .filter(|p| !p.is_empty())
-                        {
+                        if let Some(p) = edits {
                             touch(f, p);
                         }
                     }
+                    _ => {}
                 }
             }
-            note_usage(f, v);
-            note_tokens(f, v);
+            note_usage(f, beat);
+            note_tokens(f, beat);
         }
-        Some("cost-state") => note_cost(f, v),
-        Some("permission-mode") => {
-            if let Some(m) = v.get("permissionMode").and_then(Value::as_str) {
-                f.permission_mode = Some(m.to_string());
-            }
-        }
-        _ => {}
+        Side::Note => {}
+    }
+    if let Some(c) = beat.cost {
+        note_cost(f, c);
+    }
+    if let Some(m) = &beat.mode {
+        f.permission_mode = Some(m.to_string());
     }
 }
 
-/// `user` 记录：是 agent 交回 ⇒ 记下那个子运行；带着工具结果 ⇒ 摘掉结果对上的那几个调用；
-/// 没有工具结果（你发的一句 · 中断）⇒ 没结果的全摘（那一轮过去了）。
-fn note_user(f: &mut SessionFacts, v: &Value) {
-    note_handback(f, v);
+/// 用户那侧：是 agent 交回 ⇒ 记下那个子运行；带着工具结果 ⇒ 摘掉结果对上的那几个调用；
+/// 没有工具结果（人发的一句 · 中断）⇒ 没结果的全摘（那一轮过去了）。
+fn note_user(f: &mut SessionFacts, beat: &Beat) {
+    note_handback(f, beat);
     if f.pending.is_empty() {
         return;
     }
-    let content = v.get("message").and_then(|m| m.get("content"));
-    let results: Vec<&str> = content
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
-                .filter_map(|b| b.get("tool_use_id").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
-    let has_result_block = content.and_then(Value::as_array).is_some_and(|a| {
-        a.iter()
-            .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
-    });
-    if has_result_block {
+    if beat.has_result() {
+        let results: Vec<&str> = beat
+            .acts
+            .iter()
+            .filter_map(|a| match a {
+                Act::Result { of: Some(of), .. } => Some(of.as_ref()),
+                _ => None,
+            })
+            .collect();
         f.pending.retain(|p| !results.contains(&p.id.as_str()));
     } else {
         f.pending.clear();
@@ -1278,15 +1144,14 @@ fn touch(f: &mut SessionFacts, p: &str) {
     }
 }
 
-fn note_usage(f: &mut SessionFacts, v: &Value) {
-    let msg = v.get("message");
-    let Some(usage) = msg.and_then(|m| m.get("usage")).filter(|u| u.is_object()) else {
+fn note_usage(f: &mut SessionFacts, beat: &Beat) {
+    let Some(u) = &beat.usage else {
         return;
     };
-    let num = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
-    let prompt = num("input_tokens")
-        .saturating_add(num("cache_creation_input_tokens"))
-        .saturating_add(num("cache_read_input_tokens"));
+    let prompt = u
+        .input
+        .saturating_add(u.cache_write)
+        .saturating_add(u.cache_read);
     if prompt == 0 {
         return;
     }
@@ -1295,52 +1160,25 @@ fn note_usage(f: &mut SessionFacts, v: &Value) {
         .as_ref()
         .map_or(0, |u| u.peak_prompt_tokens)
         .max(prompt);
-    let model = msg
-        .and_then(|m| m.get("model"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let model = beat.model.as_deref().map(str::to_string);
     let limit = context_limit(model.as_deref(), peak, &Vec::new(), None);
     f.usage = Some(UsageFact::new(prompt, model, peak, limit));
 }
 
-/// 一条回复的用量记进全会话用量：同一次请求（`requestId`）紧跟着的后一条替掉前一条的数。
-fn note_tokens(f: &mut SessionFacts, v: &Value) {
-    let Some(u) = v
-        .get("message")
-        .and_then(|m| m.get("usage"))
-        .filter(|u| u.is_object())
-    else {
+/// 一条回复的用量记进全会话用量：同一次请求（请求键）紧跟着的后一条替掉前一条的数。
+fn note_tokens(f: &mut SessionFacts, beat: &Beat) {
+    let Some(u) = &beat.usage else {
         return;
     };
-    let num = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
-    let write = num("cache_creation_input_tokens");
-    let tier = |k: &str| {
-        u.get("cache_creation")
-            .and_then(|c| c.get(k))
-            .and_then(Value::as_u64)
-    };
-    let (w5, w1) = match (
-        tier("ephemeral_5m_input_tokens"),
-        tier("ephemeral_1h_input_tokens"),
-    ) {
-        (None, None) => (write, 0),
+    let (w5, w1) = match (u.write_5m, u.write_1h) {
+        (None, None) => (u.cache_write, 0),
         (a, b) => (a.unwrap_or(0), b.unwrap_or(0)),
     };
-    let tokens = [
-        num("input_tokens"),
-        num("output_tokens"),
-        num("cache_read_input_tokens"),
-        w5,
-        w1,
-    ];
+    let tokens = [u.input, u.output, u.cache_read, w5, w1];
     if tokens.iter().all(|&n| n == 0) {
         return;
     }
-    let id = v
-        .get("requestId")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
+    let id = u.request.as_deref().unwrap_or("").to_string();
     let s = f.tokens.get_or_insert_with(TokenUse::default);
     let mut add = |sign: bool, t: &[u64; 5]| {
         let fields = [
@@ -1375,17 +1213,9 @@ fn note_tokens(f: &mut SessionFacts, v: &Value) {
     ));
 }
 
-/// 花费那一条（`totalCostUSD` 是到此刻为止的全会话总数；`hasUnknownModelCost` 为真 ⇒ 有型号定不了价、数只是下限）。
-fn note_cost(f: &mut SessionFacts, v: &Value) {
-    let Some(usd) = v
-        .get("totalCostUSD")
-        .and_then(Value::as_f64)
-        .filter(|x| x.is_finite() && *x >= 0.0)
-    else {
-        return;
-    };
-    let micros = (usd * 1e6).round() as u64;
-    let partial = v.get("hasUnknownModelCost").and_then(Value::as_bool) == Some(true);
+/// 花费那一条（那一家说的到此刻为止的全会话总数；`partial` ⇒ 有型号定不了价、数只是下限）。
+fn note_cost(f: &mut SessionFacts, c: crate::agents::beat::CostSaid) {
+    let crate::agents::beat::CostSaid { micros, partial } = c;
     let shown = format!("{:.2}", micros as f64 / 1e6);
     let text = match (micros, partial) {
         (1..=4_999, _) => copy_core::copy_text("beSpend.cost.tiny", &[]),

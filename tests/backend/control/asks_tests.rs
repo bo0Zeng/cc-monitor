@@ -290,6 +290,7 @@ fn notes_and_picks_are_checked_before_anything_is_delivered() {
 #[test]
 fn needs_without_a_pending_request_say_only_in_the_terminal() {
     let n = crate::observe::recognize::facts::needs_of(
+        crate::agents::record_tree_kind().unwrap_or_default(),
         &[],
         Some(&crate::observe::recognize::facts::PidWait {
             waiting_for: Some(crate::agents::WaitOn::Dialog),

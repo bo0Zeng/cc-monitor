@@ -96,10 +96,12 @@ impl SessionScan {
                     .and_then(crate::common::time::parse_iso8601_ms);
             }
             if self.forked.is_none() {
-                self.forked = head
-                    .forked_from
-                    .as_ref()
-                    .and_then(super::listing::forked_pair);
+                self.forked = head.forked_from.as_ref().and_then(|f| {
+                    crate::agents::fork_pair_of(
+                        crate::agents::record_tree_kind().unwrap_or_default(),
+                        f,
+                    )
+                });
             }
         }
         match kind {

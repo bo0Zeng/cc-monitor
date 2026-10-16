@@ -187,28 +187,31 @@ impl Scan {
                     self.rest.activity = Some(a);
                 }
             }
+            // 一拍也只算一次：骨架索引 · 用户输入 · 轮次 · 事实吃同一拍。
+            let beat = v.and_then(|v| crate::agents::beat_of(kind, v));
             let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
                 self.index.push(super::recognize::index_row::index_row_of(
                     kind,
                     v,
+                    beat.as_ref(),
                     start,
                     read as u64,
                 ));
             }
-            let Some(v) = v else {
+            let (Some(v), Some(beat)) = (v, beat) else {
                 continue;
             };
-            if let Some(mut row) = super::recognize::user_inputs::user_input_of(&v) {
+            if let Some(mut row) = super::recognize::user_inputs::user_input_given(kind, v, &beat) {
                 row.at = start;
                 self.rest.inputs.push(row);
             }
-            if let Some(row) = self.rest.open.line(start, &v) {
+            if let Some(row) = self.rest.open.line(start, kind, v, &beat) {
                 self.rest.turns.push(row);
             }
-            if super::recognize::facts::could_matter(body, &self.facts) {
-                super::recognize::facts::note_record(&mut self.facts, &v);
+            if super::recognize::facts::could_matter(kind, body, &self.facts) {
+                super::recognize::facts::note_record(&mut self.facts, kind, v, &beat);
             }
         }
         Ok(())
@@ -748,6 +751,7 @@ impl RecordScans {
     /// 从尾巴的游标接着读到此刻的长度（只认事实），读完换下那一条；变短了 · 见证对不上 ⇒ `None`。
     fn follow(&self, mut t: Tail) -> std::io::Result<Option<SessionFacts>> {
         let mut file = Ro::open(&t.path)?;
+        let kind = crate::agents::record_kind_of(&t.path).unwrap_or_default();
         let len = file.metadata()?.len();
         if len < t.end {
             return Ok(None);
@@ -761,7 +765,7 @@ impl RecordScans {
         let mut lines = super::lines::Lines::new(std::io::BufReader::new(file), t.end).upto(len);
         while let Some(row) = lines.next()? {
             slide(&mut t.witness, row.whole);
-            super::recognize::facts::note_line(&mut t.facts, row.body());
+            super::recognize::facts::note_line(&mut t.facts, kind, row.body());
         }
         t.end = lines.end();
         let facts = t.facts.clone();

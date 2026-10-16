@@ -175,6 +175,32 @@ fn look_down(dir: &Path, want: &str, depth: usize) -> Option<PathBuf> {
         .find_map(|d| look_down(&d, want, depth - 1))
 }
 
+/// **「这条记录说明本会话是从哪个会话分叉来的」的唯一住址**：
+/// `user` / `assistant` 记录上的 `forkedFrom`（两个键都得是串）⇒ (源会话 id, 分叉处的消息 uuid)。
+///
+/// 两个读者调同一个函数：历史会话行（`history::listing` 的 `forkedFromSessionId`）与活 tab 的会话事实
+/// （一拍的 `forked_from`，[`super::beat`]）—— 搬之前活 tab 那一份住前端、口径更松（任何记录、只看 `sessionId`），
+/// 同一个会话会在历史树与 tab 栏上一个认是分叉、一个不认。
+pub(crate) fn fork_origin(v: &serde_json::Value) -> Option<(String, String)> {
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("user") | Some("assistant") => forked_from(v),
+        _ => None,
+    }
+}
+
+/// 一条记录的 `forkedFrom`（`/branch` 分叉出来的会话，每条复制过来的记录都带着）→ (源会话 id, 分叉处的消息 uuid)。
+fn forked_from(v: &serde_json::Value) -> Option<(String, String)> {
+    forked_pair(v.get("forkedFrom")?)
+}
+
+/// `forkedFrom` 那一格本身 → (源会话 id, 分叉处的消息 uuid)（两格都得是串）。
+pub(crate) fn forked_pair(f: &serde_json::Value) -> Option<(String, String)> {
+    Some((
+        f.get("sessionId")?.as_str()?.to_string(),
+        f.get("messageUuid")?.as_str()?.to_string(),
+    ))
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/claudecode/branch_tests.rs"]
 mod tests;

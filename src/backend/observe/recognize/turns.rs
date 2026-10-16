@@ -11,8 +11,9 @@
 //! 按段取：`from` 是某一轮开头那一行的字节位置（`at`）或 0；还在跑的最后一轮下次从它的 `at` 再取一次，整轮重算（后端零状态）。
 //! `from` 之前的那半轮不出（它的开头不在这一段里）。
 
-use super::facts::{what_of, Needs, NeedsKind, PendingCall};
+use super::facts::{Needs, NeedsKind, PendingCall};
 use super::user_inputs::user_input_given;
+use crate::agents::beat::{Act, Beat, Side, StopWhy};
 use crate::agents::UserTextExt as _;
 use copy_core::copy_text;
 use serde_json::Value;
@@ -510,53 +511,44 @@ fn clip(s: &str, max: usize) -> String {
     }
 }
 
-/// 一条主线记录喂进开着的那一轮。
-fn feed(tree: &str, t: &mut Open, v: &Value) {
-    let ts = v.get("timestamp").and_then(Value::as_str).unwrap_or("");
-    let uuid = v
-        .get("uuid")
-        .and_then(Value::as_str)
-        .filter(|u| !u.is_empty());
+/// 一条主线记录（`kind` 那一家的，`beat` 是它的一拍）喂进开着的那一轮。
+fn feed(kind: &str, t: &mut Open, v: &Value, beat: &Beat) {
+    let ts = beat.at.as_deref().unwrap_or("");
+    let uuid = beat.id.as_deref().filter(|u| !u.is_empty());
     let mut it = Item {
         uuid: uuid.map(str::to_string),
         ts: ts.to_string(),
         ..Item::default()
     };
     let here = t.items.len();
-    let blocks = v
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .and_then(Value::as_array);
-    let links = crate::agents::run_faces(tree).child_links(v);
-    match v.get("type").and_then(Value::as_str) {
-        Some("assistant") => {
+    let links = crate::agents::run_faces(kind).child_links(v);
+    match beat.side {
+        Side::Reply => {
             if !ts.is_empty() {
                 t.row.end = ts.to_string();
             }
             t.stop = None;
-            let failed = v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
             let spawned: Vec<&str> = links
                 .iter()
                 .filter(|l| l.run.is_none())
                 .filter_map(|l| l.tool.as_deref())
                 .collect();
             let mut text = String::new();
-            for b in blocks.into_iter().flatten() {
-                match b.get("type").and_then(Value::as_str) {
-                    Some("tool_use") => {
-                        let id = b.get("id").and_then(Value::as_str).unwrap_or_default();
-                        if spawned.contains(&id) {
+            for a in &beat.acts {
+                match a {
+                    Act::Call { id, name, what, .. } => {
+                        if spawned.contains(&id.as_ref()) {
                             it.agents += 1;
                             t.agent_calls.push(id.to_string());
                         } else {
                             it.tools += 1;
                         }
-                        if let Some(name) = b.get("name").and_then(Value::as_str) {
-                            t.row.pending.retain(|p| p.id != id);
+                        if !name.is_empty() {
+                            t.row.pending.retain(|p| p.id != *id);
                             t.row.pending.push(PendingCall {
                                 id: id.to_string(),
                                 name: name.to_string(),
-                                what: what_of(name, b.get("input")),
+                                what: what.clone(),
                                 at: None,
                                 at_ms: None,
                                 state: Default::default(),
@@ -568,16 +560,12 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                         // 又调了工具 ⇒ 之前的正文是中间的话，不是结论（回复头不取它；它照样露着）。
                         t.reply_text.clear();
                     }
-                    Some("thinking") | Some("redacted_thinking") => it.thinking += 1,
-                    Some("text") => {
-                        if let Some(s) = b.get("text").and_then(Value::as_str) {
-                            text.push_str(s);
-                        }
-                    }
+                    Act::Thinking => it.thinking += 1,
+                    Act::Text(s) => text.push_str(s),
                     _ => {}
                 }
             }
-            if failed {
+            if beat.stops(StopWhy::Failed) {
                 t.stop = uuid.map(|_| here);
                 t.row.done = true;
             } else if !text.trim().is_empty() {
@@ -591,15 +579,11 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                     t.reply_text.push_str(&text);
                 }
             }
-            let stop = v
-                .get("message")
-                .and_then(|m| m.get("stop_reason"))
-                .and_then(Value::as_str);
-            if stop == Some("end_turn") {
+            if beat.stops(StopWhy::Done) {
                 t.row.done = true;
             }
         }
-        Some("user") => {
+        Side::Input => {
             if !ts.is_empty() {
                 t.row.end = ts.to_string();
             }
@@ -611,33 +595,29 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                     }
                 }
             }
-            let tur = v.get("toolUseResult");
-            for b in blocks.into_iter().flatten() {
-                if b.get("type").and_then(Value::as_str) != Some("tool_result") {
-                    continue;
-                }
-                if let Some(id) = b.get("tool_use_id").and_then(Value::as_str) {
-                    t.row.pending.retain(|p| p.id != id);
-                }
-                if b.get("is_error").and_then(Value::as_bool) == Some(true)
-                    && !crate::agents::step_result_of(tree, b, tur).rejected
-                {
-                    it.fails += 1;
+            for a in &beat.acts {
+                if let Act::Result { of, failed } = a {
+                    if let Some(id) = of {
+                        t.row.pending.retain(|p| p.id != *id);
+                    }
+                    if *failed {
+                        it.fails += 1;
+                    }
                 }
             }
-            if let Some(said) = crate::agents::user_text_of(tree, v) {
+            if let Some(said) = beat.said() {
                 use crate::agents::Speaker;
-                match said.speaker {
+                match &said.speaker {
                     Speaker::TaskNotification {
                         task_id, status, ..
                     } => it
                         .notices
-                        .push((task_id, status.as_deref() == Some("failed"))),
+                        .push((task_id.clone(), status.as_deref() == Some("failed"))),
                     Speaker::AgentMessage {
                         handback: true,
                         from,
                         ..
-                    } => t.agent_runs.extend(from),
+                    } => t.agent_runs.extend(from.clone()),
                     Speaker::AgentMessage { .. } | Speaker::PeerSession { .. } => it.peers += 1,
                     Speaker::CompactSummary { .. } => it.compacts += 1,
                     Speaker::Interrupt => {
@@ -649,25 +629,20 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
                 }
             }
         }
-        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("api_error") => {
-            it.retries += 1;
+        Side::Note => {
+            if beat.acts.contains(&Act::Retry) {
+                it.retries += 1;
+            }
         }
-        _ => {}
     }
     t.items.push(it);
 }
 
 /// 逐条记录攒轮次：[`TurnScan::line`] 收一条（`at` = 它的字节位置），新的一句收尾了上一轮就交出上一轮；
 /// [`TurnScan::finish`] 交出还开着的那一轮。可以抄一份接着扫（骨架落的就是它：还没收尾那一轮的扫描状态）。
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TurnScan {
-    #[serde(skip, default = "tree_kind")]
-    tree: &'static str,
     open: Option<Open>,
-}
-
-fn tree_kind() -> &'static str {
-    crate::agents::record_tree_kind().unwrap_or_default()
 }
 
 /// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的几格（过程段的起止时刻与钟面 · 尾巴那一段 · 没结果的调用）也要留着，
@@ -753,20 +728,11 @@ pub(crate) mod skel {
     }
 }
 
-impl Default for TurnScan {
-    fn default() -> Self {
-        TurnScan {
-            tree: tree_kind(),
-            open: None,
-        }
-    }
-}
-
 impl TurnScan {
-    pub(crate) fn line(&mut self, at: u64, v: &Value) -> Option<TurnRow> {
-        let spoke = crate::agents::user_text_of(self.tree, v);
-        if let Some(said) = user_input_given(v, spoke.as_ref()) {
-            let speech = spoke.and_then(|s| s.speech()).unwrap_or_default();
+    /// `kind` ＝ 这份记录是哪一家的；`beat` 是这一条的一拍。
+    pub(crate) fn line(&mut self, at: u64, kind: &str, v: &Value, beat: &Beat) -> Option<TurnRow> {
+        if let Some(said) = user_input_given(kind, v, beat) {
+            let speech = beat.said().and_then(|s| s.speech()).unwrap_or_default();
             let first = speech
                 .lines()
                 .map(str::trim)
@@ -796,17 +762,14 @@ impl TurnScan {
             });
             return closed;
         }
-        if crate::agents::run_of_record(self.tree, v).is_some() {
+        if crate::agents::run_of_record(kind, v).is_some() {
             return None;
         }
-        if let (Some(q), Some(t)) = (
-            crate::agents::queued_text_of(self.tree, v),
-            self.open.as_mut(),
-        ) {
+        if let (Some(q), Some(t)) = (crate::agents::queued_text_of(kind, v), self.open.as_mut()) {
             t.queued.push((crate::agents::line_id(at), q));
         }
         if let Some(t) = self.open.as_mut() {
-            feed(self.tree, t, v);
+            feed(kind, t, v, beat);
         }
         None
     }

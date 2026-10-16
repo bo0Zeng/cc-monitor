@@ -4,11 +4,12 @@
 //! # 口径
 //!
 //! 「一条用户输入」＝ 同时满足的 jsonl 记录：
-//! 1. 是 user 记录，且人在这里说了话（适配层判「谁说的」，经注册表 `agents::user_text_of` 够；人打的 · 粘贴的 ·
+//! 1. 是 user 记录，且人在这里说了话（适配层判「谁说的」，即那一家一拍里的 `Said`；人打的 · 粘贴的 ·
 //!    斜杠命令 · `!` 输入算，agent 发来的 · 后台通知 · 系统注入 · 压缩摘要 · 中断标记 · 工具结果 · 输出回显都不算）；
 //! 2. 不属于任何子运行（适配层 `RecordFace::run_of` 答不出）—— 子运行里的话是主线派下去的活，不是人在这个会话里说的；
-//! 3. 有 uuid（列出来要跳得过去）。
+//! 3. 有 id（列出来要跳得过去）。
 
+use crate::agents::beat::Beat;
 use crate::agents::UserTextExt as _;
 use serde_json::Value;
 
@@ -31,40 +32,25 @@ pub(crate) struct UserInputRow {
     pub(crate) excerpt: String,
 }
 
-/// 用户输入列表读的是记录树那一家的记录（`agents::record_tree_kind`）。
-fn tree() -> &'static str {
-    crate::agents::record_tree_kind().unwrap_or_default()
+/// 一条**已解析**的记录（`kind` 那一家的）→ 是用户输入就给一条 [`UserInputRow`]（一拍现算；手上已有一拍的走 [`user_input_given`]）。
+pub(crate) fn user_input_of(kind: &str, v: &Value) -> Option<UserInputRow> {
+    user_input_given(kind, v, &crate::agents::beat_of(kind, v)?)
 }
 
-/// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**口径的唯一住址**（见头注）。
+/// 一条**已解析**的记录（`kind` 那一家的，`beat` 是它的一拍）→ 是用户输入就给一条 [`UserInputRow`]。**口径的唯一住址**（见头注）。
 ///
-/// 冷开扫描图（[`super::super::record_scan`]）每行解析一次、顺带问这一句；**判定没有第二份**。
-pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
-    user_input_given(v, crate::agents::user_text_of(tree(), v).as_ref())
-}
-
-/// 同 [`user_input_of`]，「谁说的」已经判过（骨架索引那一行顺手也要它，不判两遍）。
-pub(crate) fn user_input_given(
-    v: &Value,
-    said: Option<&crate::agents::UserText>,
-) -> Option<UserInputRow> {
-    if crate::agents::run_of_record(tree(), v).is_some() {
+/// 冷开扫描图（[`super::super::record_scan`]）每行解析一次、一拍算一次，轮次 · 骨架索引 · 这里吃同一拍；**判定没有第二份**。
+pub(crate) fn user_input_given(kind: &str, v: &Value, beat: &Beat) -> Option<UserInputRow> {
+    if crate::agents::run_of_record(kind, v).is_some() {
         return None;
     }
-    let uuid = v
-        .get("uuid")
-        .and_then(Value::as_str)
-        .filter(|u| !u.is_empty())?;
-    let body = said?.speech()?;
+    let uuid = beat.id.as_deref().filter(|u| !u.is_empty())?;
+    let body = beat.said()?.speech()?;
     let body = body.as_str();
     Some(UserInputRow {
         at: 0,
         uuid: uuid.to_string(),
-        timestamp: v
-            .get("timestamp")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
+        timestamp: beat.at.as_deref().unwrap_or("").to_string(),
         excerpt: excerpt(body),
     })
 }

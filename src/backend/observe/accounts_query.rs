@@ -643,7 +643,8 @@ impl McpBook {
             mcp.clear();
         }
         file.seek(SeekFrom::Start(*at))?;
-        *at += super::recognize::facts::mcp_from(std::io::BufReader::new(file), mcp)?;
+        let kind = crate::agents::record_kind_of(path).unwrap_or_default();
+        *at += super::recognize::facts::mcp_from(std::io::BufReader::new(file), kind, mcp)?;
         Ok(mcp.clone())
     }
 
@@ -962,19 +963,26 @@ fn live_activity(
 /// 一条在等人的会话此刻要人做什么：读它的记录（扫描图缓存）配上没结果的调用，经 [`super::recognize::facts::needs_of`] 判（同 `history-facts.needs`）；
 /// 记录找不到 ⇒ 不挂哪一步，框是哪种照那台说的（那台说在等 ⇒ 恒有一份）。
 fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts::Needs> {
-    let pending = super::query::locate::session_record(agent_home, sid)
-        .ok()
+    let record = super::query::locate::session_record(agent_home, sid).ok();
+    let pending = record
+        .as_ref()
         .and_then(|p| {
             super::query::locate::facts(agent_home, &p.to_string_lossy(), &Vec::new(), None).ok()
         })
         .map(|f| f.pending)
+        .unwrap_or_default();
+    // 找不到记录 ⇒ 按记录树那一家认工具（那台 pidfile 就是它的）。
+    let kind = record
+        .as_deref()
+        .and_then(crate::agents::record_kind_of)
+        .or_else(crate::agents::record_tree_kind)
         .unwrap_or_default();
     let wait = session_wait(agent_home, sid).unwrap_or(super::recognize::facts::PidWait {
         waiting_for: None,
         since_ms: None,
         read_at_ms: 0,
     });
-    super::recognize::facts::needs_of(&pending, Some(&wait))
+    super::recognize::facts::needs_of(kind, &pending, Some(&wait))
 }
 
 /// 正在跑的会话各属哪个号：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。

@@ -2084,6 +2084,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
             waiting: vec![crate::observe::accounts_query::NeedsRow {
                 sid: "s-1".into(),
                 needs: needs_of(
+                    crate::agents::record_tree_kind().unwrap_or_default(),
                     &[],
                     Some(&PidWait {
                         waiting_for: Some(crate::agents::WaitOn::Worker),

@@ -855,6 +855,7 @@ fn dress_open_turn(home: &Path, path: &str, last: &mut crate::observe::recognize
     let off = answer_off_of(&holders, locate::facts_agent(home, path).as_deref());
     let needs = dress_ask(
         crate::observe::recognize::facts::needs_of(
+            crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
             &last.pending,
             crate::observe::accounts_query::session_wait(home, sid).as_ref(),
         ),
@@ -1074,6 +1075,7 @@ pub(crate) fn facts_at(
     facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
     facts.needs = dress_ask(
         facts::needs_of(
+            crate::agents::record_kind_of(Path::new(path)).unwrap_or_default(),
             &facts.pending,
             accounts_query::session_wait(home, sid).as_ref(),
         ),

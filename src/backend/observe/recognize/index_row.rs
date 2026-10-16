@@ -77,7 +77,9 @@ fn is_zero(n: &u32) -> bool {
 /// 解析失败（半截 / 非 JSON）**不丢这一行** —— 它仍占一个 seq，只是没有料（`t` 省略）；
 /// 丢了它，后面每一行的 seq 都会错一位（那是「计数对不上而且不会报错」的那一形）。
 pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
-    index_row_of(kind, super::super::lines::parse(line).as_ref(), offset, len)
+    let v = super::super::lines::parse(line);
+    let beat = v.as_ref().and_then(|v| crate::agents::beat_of(kind, v));
+    index_row_of(kind, v.as_ref(), beat.as_ref(), offset, len)
 }
 
 /// [`index_row`] 的后半：这一行已经解析过（解析不了 ⇒ `None`，那一行照样占位）。
@@ -85,6 +87,7 @@ pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> Index
 pub(crate) fn index_row_of(
     kind: &str,
     v: Option<&serde_json::Value>,
+    beat: Option<&crate::agents::beat::Beat>,
     offset: u64,
     len: u64,
 ) -> IndexRow {
@@ -96,16 +99,17 @@ pub(crate) fn index_row_of(
     let Some(v) = v else {
         return row;
     };
-    row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
+    row.u = beat.and_then(|b| b.id.as_deref()).map(str::to_string);
     row.t = crate::agents::record_class_of(kind, v);
     row.sc = crate::agents::run_of_record(kind, &v).is_some();
-    let said = crate::agents::user_text_of(kind, &v);
+    let said = beat.and_then(|b| b.said());
     row.sp = said
-        .as_ref()
         .map(|u| u.speaker.kind())
         .filter(|k| !matches!(*k, "human" | "toolResult"));
     // 大纲那一项（判定只住 `user_inputs`；这里只搬字段）
-    if let Some(ui) = crate::observe::recognize::user_inputs::user_input_given(&v, said.as_ref()) {
+    if let Some(ui) =
+        beat.and_then(|b| crate::observe::recognize::user_inputs::user_input_given(kind, v, b))
+    {
         row.x = Some(ui.excerpt);
         row.ts = Some(ui.timestamp).filter(|t| !t.is_empty());
     }

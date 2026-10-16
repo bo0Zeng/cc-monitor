@@ -92,11 +92,18 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
         let Some(v) = crate::observe::lines::parse(body) else {
             continue;
         };
-        if let Some(mut r) = crate::observe::recognize::user_inputs::user_input_of(&v) {
+        if let Some(mut r) = crate::observe::recognize::user_inputs::user_input_of(
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            &v,
+        ) {
             r.at = row.at;
             inputs.push(serde_json::to_string(&r).unwrap());
         }
-        if let Some(t) = scan.line(row.at, &v) {
+        let kind = crate::agents::record_tree_kind().unwrap_or_default();
+        let Some(beat) = crate::agents::beat_of(kind, &v) else {
+            continue;
+        };
+        if let Some(t) = scan.line(row.at, kind, &v, &beat) {
             turns.push(serde_json::to_string(&t).unwrap());
         }
     }
@@ -143,7 +150,11 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     let mut want_facts = crate::observe::recognize::facts::SessionFacts::default();
     let mut lines = crate::observe::lines::Lines::new(bytes, 0);
     while let Some(row) = lines.next().unwrap() {
-        crate::observe::recognize::facts::note_line(&mut want_facts, row.body());
+        crate::observe::recognize::facts::note_line(
+            &mut want_facts,
+            crate::agents::record_tree_kind().unwrap_or_default(),
+            row.body(),
+        );
     }
     assert_eq!(map.facts, want_facts, "事实");
     assert!(
