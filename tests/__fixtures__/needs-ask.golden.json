@@ -4,36 +4,42 @@
       {
         "id": "allow",
         "note": "none",
+        "row": "main",
         "text": "允许",
         "tone": "plain"
       },
       {
         "id": "always-0",
         "note": "none",
+        "row": "main",
         "text": "允许，且允许访问 /w（本次会话）",
         "tone": "plain"
       },
       {
         "id": "always-1",
         "note": "none",
+        "row": "main",
         "text": "允许，且自动接受编辑（本次会话）",
         "tone": "plain"
       },
       {
         "id": "deny",
         "note": "none",
+        "row": "hold",
         "text": "拒绝",
         "tone": "warn"
       },
       {
         "id": "deny-note",
         "note": "required",
+        "row": "hold",
         "text": "拒绝并说明",
         "tone": "warn"
       },
       {
         "id": "deny-stop",
         "note": "none",
+        "row": "hold",
         "text": "拒绝并停下",
         "tone": "warn"
       }
@@ -52,24 +58,28 @@
       {
         "id": "plan-auto",
         "note": "none",
+        "row": "main",
         "text": "自动模式",
         "tone": "plain"
       },
       {
         "id": "plan-edits",
         "note": "none",
+        "row": "main",
         "text": "自动接受编辑",
         "tone": "plain"
       },
       {
         "id": "plan-manual",
         "note": "none",
+        "row": "main",
         "text": "逐个确认",
         "tone": "plain"
       },
       {
         "id": "plan-keep",
         "note": "optional",
+        "row": "hold",
         "text": "继续规划",
         "tone": "warn"
       }
@@ -88,12 +98,14 @@
       {
         "id": "answer",
         "note": "none",
+        "row": "main",
         "text": "提交答案",
         "tone": "plain"
       },
       {
         "id": "dismiss",
         "note": "none",
+        "row": "release",
         "text": "不回答",
         "tone": "warn"
       }
@@ -151,42 +163,49 @@
       {
         "id": "allow",
         "note": "none",
+        "row": "main",
         "text": "允许",
         "tone": "plain"
       },
       {
         "id": "always-0",
         "note": "none",
+        "row": "main",
         "text": "允许，且允许访问 /w（本次会话）",
         "tone": "plain"
       },
       {
         "id": "always-1",
         "note": "none",
+        "row": "main",
         "text": "允许，且自动接受编辑（本次会话）",
         "tone": "plain"
       },
       {
         "id": "deny",
         "note": "none",
+        "row": "hold",
         "text": "拒绝",
         "tone": "warn"
       },
       {
         "id": "deny-note",
         "note": "required",
+        "row": "hold",
         "text": "拒绝并说明",
         "tone": "warn"
       },
       {
         "id": "deny-stop",
         "note": "none",
+        "row": "hold",
         "text": "拒绝并停下",
         "tone": "warn"
       },
       {
         "id": "release",
         "note": "none",
+        "row": "release",
         "text": "改到终端里答",
         "tone": "plain"
       }

@@ -56,6 +56,7 @@ internal object RotFixture {
             put("w5h", win(u5, resets))
             put("w7d", win(u7))
             put("login", "ok")
+            put("plate", mapOf("color" to 2.0, "label" to if (account == "work") "Work" else account, "text" to account.take(2)))
             blocked?.let { put("blocked", mapOf("why" to "used", "text" to it)) }
         }
 
