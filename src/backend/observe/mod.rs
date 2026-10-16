@@ -34,7 +34,7 @@ pub(crate) mod lines;
 pub(crate) mod record_page; // 按路径读正文出成品（切行 · 编号 · 挑哪一家解释）
 pub(crate) mod record_scan;
 pub mod runs;
-pub mod skeleton; // 大记录的骨架落盘（预读 · 冷开扫描图从它接着读）
+pub mod skeleton; // 大记录的骨架落盘（冷开扫描图落、实时跟读起步照它）
 pub(crate) mod tmux_observe; // tmux 观测（原 `watcher.rs` A 块）
 pub(crate) mod turns; // `history-turns`：一轮的摘要（过程行 · 刻度 · 大纲同源）
 pub(crate) mod user_inputs;

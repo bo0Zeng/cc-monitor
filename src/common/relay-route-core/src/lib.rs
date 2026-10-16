@@ -170,7 +170,7 @@ pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
 
 /// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
 pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
-/// 大记录的骨架（后端在数据目录底下落的缓存：预读与冷开扫描图从它接着读，删了照记录重建；`observe/skeleton.rs`）。
+/// 大记录的骨架（后端冷开扫描图在数据目录底下落的缓存，实时跟读起步也照它；删了照记录重建；`observe/skeleton.rs`）。
 pub const SKELETON_DIR_REL: &str = ".cc-monitor/cache/skeleton";
 
 /// 〔同上〕**答题插件**（`ccm` 换了启动器起会话时写、经 `CLAUDE_CODE_PLUGIN_DIRS` 交给那一家）：清单 ＋ 答题那一组 hook，内容由后端生成、随时可重写。

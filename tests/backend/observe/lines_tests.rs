@@ -38,10 +38,7 @@ fn reading_from_the_middle_keeps_file_offsets_and_upto_stops_there() {
     assert_eq!(end, bytes.len() as u64);
     // 读到 12 为止：第三行（7..12）在里面，第四行不读。
     let (got, end) = rows(bytes, 3, Some(12));
-    assert_eq!(
-        got,
-        vec![(3, b"bbb".to_vec()), (7, b"cccc".to_vec())]
-    );
+    assert_eq!(got, vec![(3, b"bbb".to_vec()), (7, b"cccc".to_vec())]);
     assert_eq!(end, 12);
     // 读到行中间为止：那半行不出、不计。
     let (got, end) = rows(bytes, 0, Some(5));
@@ -51,7 +48,14 @@ fn reading_from_the_middle_keeps_file_offsets_and_upto_stops_there() {
 
 #[test]
 fn a_line_counts_unless_it_is_only_bom_and_whitespace() {
-    for blank in ["", " ", "\t\r", "\u{feff}", "\u{feff}  \u{000b}", "\u{3000}"] {
+    for blank in [
+        "",
+        " ",
+        "\t\r",
+        "\u{feff}",
+        "\u{feff}  \u{000b}",
+        "\u{3000}",
+    ] {
         assert!(!counts(blank.as_bytes()), "{blank:?} 不算一行");
     }
     for line in ["{}", " x ", "\u{feff}{}", "中"] {
@@ -80,7 +84,10 @@ fn the_live_line_numbers_and_the_scan_count_agree() {
 
 #[test]
 fn parse_strips_bom_and_whitespace_and_refuses_what_is_not_json() {
-    assert_eq!(parse(b"\xef\xbb\xbf {\"a\":1} \r"), Some(serde_json::json!({"a": 1})));
+    assert_eq!(
+        parse(b"\xef\xbb\xbf {\"a\":1} \r"),
+        Some(serde_json::json!({"a": 1}))
+    );
     assert_eq!(parse(b"{\"a\":"), None);
     assert_eq!(parse(b""), None);
 }

@@ -251,7 +251,7 @@ if (STRACE) {
       per.set(k, (per.get(k) ?? 0) + Number(n[1]));
     }
   }
-  const name = (p) => (p === big ? "big" : p === small ? "small" : p.includes("/skeleton/") ? `skeleton:${p.slice(p.lastIndexOf(".", p.lastIndexOf(".") - 1) + 1)}` : "other");
+  const name = (p) => (p === big ? "big" : p === small ? "small" : p.includes("/skeleton/") ? "skeleton" : "other");
   const sum = {};
   const byThread = {};
   for (const [k, n] of per) {

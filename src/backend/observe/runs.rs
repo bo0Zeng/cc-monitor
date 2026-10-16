@@ -706,11 +706,6 @@ impl RunTrack {
         changed
     }
 
-    /// 这一行主记录过不过子运行的预筛（预读落的骨架只留过了预筛的那几行，读回来照 [`Self::prime`] 补进簿里）。
-    pub(crate) fn hint(&self, text: &str) -> bool {
-        self.has_children() && self.faces.hint(text)
-    }
-
     /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来、从头读一遍。
     /// 之后新长出来的子运行记录靠它自己的文件事件进来（[`Self::on_path`]）。回：运行表变没变。
     pub(crate) fn adopt(&mut self, sid: &str, parent: &Path) -> bool {

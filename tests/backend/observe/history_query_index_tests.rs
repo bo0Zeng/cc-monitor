@@ -18,7 +18,7 @@ fn index_of(data: &[u8], from: u64, until: Option<u64>) -> Vec<serde_json::Value
         data,
         data.len() as u64,
         tree(),
-        crate::agents::claudecode::RECORDS.chain,
+        Some(crate::agents::claudecode::RECORDS),
     )
     .expect("index ok");
     let start = map.index.partition_point(|r| r.o < from);
@@ -26,7 +26,11 @@ fn index_of(data: &[u8], from: u64, until: Option<u64>) -> Vec<serde_json::Value
     let end = map.index.get(stop).map_or(map.end, |r| r.o);
     let mut rows = vec![serde_json::json!({"kind": "session_index", "v": 1, "from": from})];
     let picked = &map.index[start..stop.max(start)];
-    rows.extend(picked.iter().map(|r| serde_json::to_value(r).expect("每行都是 JSON")));
+    rows.extend(
+        picked
+            .iter()
+            .map(|r| serde_json::to_value(r).expect("每行都是 JSON")),
+    );
     rows.push(serde_json::json!({"kind": "session_index_end", "count": picked.len(), "end": end}));
     rows
 }

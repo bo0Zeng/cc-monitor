@@ -54,11 +54,11 @@ fn a_stored_skeleton_reads_back_and_a_foreign_one_does_not() {
     let (d, own) = sandbox("rt");
     let s = Skeletons::at(own, 0);
     let rec = d.join("a.jsonl");
-    assert!(s.load::<Vec<u32>>(&rec, "t").is_none(), "没落过 ⇒ 没有");
-    s.store(&rec, "t", &vec![1u32, 2, 3]);
-    assert_eq!(s.load::<Vec<u32>>(&rec, "t"), Some(vec![1, 2, 3]));
+    assert!(s.load::<Vec<u32>>(&rec).is_none(), "没落过 ⇒ 没有");
+    s.store(&rec, &vec![1u32, 2, 3]);
+    assert_eq!(s.load::<Vec<u32>>(&rec), Some(vec![1, 2, 3]));
     assert!(
-        s.load::<Vec<u32>>(&d.join("b.jsonl"), "t").is_none(),
+        s.load::<Vec<u32>>(&d.join("b.jsonl")).is_none(),
         "别的路径读到了它"
     );
     // 落点在数据目录的 cache/skeleton 底下，按路径摘要起名。
@@ -66,21 +66,15 @@ fn a_stored_skeleton_reads_back_and_a_foreign_one_does_not() {
         .join("data")
         .join("cache")
         .join("skeleton")
-        .join(format!("{}.t.json", digest(&rec)));
+        .join(format!("{}.json", digest(&rec)));
     assert!(f.is_file(), "没落在数据目录的 cache/skeleton 底下");
     // 版本对不上 ⇒ 当没有（整份重扫）。
     let raw = std::fs::read_to_string(&f).unwrap();
     std::fs::write(&f, raw.replace(&format!("\"v\":{VERSION}"), "\"v\":999")).unwrap();
-    assert!(
-        s.load::<Vec<u32>>(&rec, "t").is_none(),
-        "认不出的版本也读进来了"
-    );
+    assert!(s.load::<Vec<u32>>(&rec).is_none(), "认不出的版本也读进来了");
     // 路径对不上（摘要撞了）⇒ 当没有。
     std::fs::write(&f, raw.replace("a.jsonl", "c.jsonl")).unwrap();
-    assert!(
-        s.load::<Vec<u32>>(&rec, "t").is_none(),
-        "别人的骨架被认成这一份"
-    );
+    assert!(s.load::<Vec<u32>>(&rec).is_none(), "别人的骨架被认成这一份");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -92,14 +86,14 @@ fn small_records_are_not_kept_and_the_dir_is_capped() {
     let s = Skeletons::at(own, 0);
     // 上一个进程原子写到一半被杀留下的旁名：下一次落的时候删掉。
     let dir = d.join("data").join("cache").join("skeleton");
-    s.store(&d.join("first.jsonl"), "t", &0);
-    let stale = dir.join("x.t.json.123.ThreadId(1).0.tmp");
+    s.store(&d.join("first.jsonl"), &0);
+    let stale = dir.join("x.json.123.ThreadId(1).0.tmp");
     std::fs::write(&stale, b"half").unwrap();
     for i in 0..MAX_FILES + 3 {
-        s.store(&d.join(format!("r{i}.jsonl")), "t", &i);
+        s.store(&d.join(format!("r{i}.jsonl")), &i);
     }
     assert!(!stale.exists(), "写到一半的旁名留着没删");
-    let at = |i: usize| dir.join(format!("{}.t.json", digest(&d.join(format!("r{i}.jsonl")))));
+    let at = |i: usize| dir.join(format!("{}.json", digest(&d.join(format!("r{i}.jsonl")))));
     let kept = (0..MAX_FILES + 3).filter(|&i| at(i).is_file()).count();
     assert_eq!(kept, MAX_FILES, "份数没封顶");
     assert!(at(MAX_FILES + 2).is_file(), "刚写的那一份被删了");
@@ -116,12 +110,12 @@ fn a_skeleton_is_written_in_lines_and_read_back_block_by_block() {
     let body: Vec<String> = (0..6_000)
         .map(|i| format!("{i:06}{}", "y".repeat(1_000)))
         .collect();
-    s.store(&rec, "t", &body);
+    s.store(&rec, &body);
     let f = d
         .join("data")
         .join("cache")
         .join("skeleton")
-        .join(format!("{}.t.json", digest(&rec)));
+        .join(format!("{}.json", digest(&rec)));
     let raw = std::fs::read(&f).unwrap();
     let longest = raw.split(|&b| b == b'\n').map(<[u8]>::len).max().unwrap();
     assert!(raw.len() > 4 * READ_BLOCK, "夹具要比几块大：{}", raw.len());
@@ -131,7 +125,7 @@ fn a_skeleton_is_written_in_lines_and_read_back_block_by_block() {
     );
     drop(raw);
     let base = crate::alloc_probe::reset_peak();
-    let got = s.load::<Vec<String>>(&rec, "t").expect("读回来");
+    let got = s.load::<Vec<String>>(&rec).expect("读回来");
     let grew = crate::alloc_probe::peak_since(base);
     let parsed: usize = got.iter().map(|x| x.capacity() + 24).sum::<usize>() + got.capacity() * 24;
     assert_eq!(got, body);
@@ -142,7 +136,7 @@ fn a_skeleton_is_written_in_lines_and_read_back_block_by_block() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 两样骨架同一种键：经符号链接走出来的路径与规范路径落 / 读的是同一份。
+/// 骨架的键是规范路径：经符号链接走出来的路径与规范路径落 / 读的是同一份。
 #[cfg(unix)]
 #[test]
 fn a_symlinked_path_and_the_real_path_share_one_skeleton() {
@@ -154,15 +148,15 @@ fn a_symlinked_path_and_the_real_path_share_one_skeleton() {
     std::fs::write(&rec, b"{}\n").unwrap();
     std::os::unix::fs::symlink(&real, d.join("via")).unwrap();
     let via = d.join("via").join("r.jsonl");
-    s.store(&via, "prime", &1u32);
+    s.store(&via, &1u32);
     assert_eq!(
-        s.load::<u32>(&rec.canonicalize().unwrap(), "prime"),
+        s.load::<u32>(&rec.canonicalize().unwrap()),
         Some(1),
         "规范路径读不到经链接落的那一份"
     );
-    s.store(&rec.canonicalize().unwrap(), "scan", &2u32);
+    s.store(&rec.canonicalize().unwrap(), &2u32);
     assert_eq!(
-        s.load::<u32>(&via, "scan"),
+        s.load::<u32>(&via),
         Some(2),
         "经链接的路径读不到规范路径落的那一份"
     );

@@ -48,7 +48,8 @@ pub(crate) struct ScanMap {
     stored: u64,
 }
 
-/// 接着扫要的：游标前的见证 · 没滤主线外的用户输入与收了尾的轮次 · 还没收尾那一轮 · 链索引。
+/// 接着扫要的：游标前的见证 · 没滤主线外的用户输入与收了尾的轮次 · 还没收尾那一轮 · 链索引；
+/// 外加实时跟读起步要的两样：说到子运行的那几行原文（过了预筛的）· 最后一件说了的「此刻在干什么」。
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct Rest {
     witness: Vec<u8>,
@@ -58,6 +59,8 @@ struct Rest {
     open: TurnScan,
     #[serde(with = "crate::agents::mainline::skel")]
     chain: Chain,
+    runs: Vec<String>,
+    activity: Option<crate::agents::SessionActivity>,
 }
 
 /// 扫到一半的样子：从它接着读（[`Scan::feed`]），读完收成一张图（[`Scan::done`]）。骨架落的也是它（[`ScanView`] 是借着写的那一形）。
@@ -143,9 +146,6 @@ fn index_back<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<IndexRow>, D
         .collect())
 }
 
-/// 链事实面（注册表 `RecordFace.chain`）。
-type ChainOf = Option<fn(&crate::agents::Line<'_>) -> Option<crate::agents::mainline::ChainFact>>;
-
 impl Scan {
     /// 从 `self.end` 接着读 `r`（`r` 已定位在那里），读到 `upto` 为止（之后的不读；残尾不计）。
     fn feed<R: std::io::BufRead>(
@@ -153,8 +153,12 @@ impl Scan {
         r: R,
         upto: u64,
         kind: &str,
-        chain: ChainOf,
+        face: Option<crate::agents::RecordFace>,
     ) -> std::io::Result<()> {
+        let chain = face.and_then(|f| f.chain);
+        let said = face.and_then(|f| f.activity);
+        let run_of = face.and_then(|f| f.run_of);
+        let runs = crate::agents::run_faces(kind);
         let mut lines = super::lines::Lines::new(r, self.end).upto(upto);
         let probe = super::skeleton::WITNESS as usize;
         while let Some(row) = lines.next()? {
@@ -178,6 +182,15 @@ impl Scan {
             let v = line.value();
             if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);
+            }
+            if runs.hint(line.text()) {
+                self.rest.runs.push(line.text().to_string());
+            }
+            // 子运行的记录不说主运行此刻在干什么（同实时那一路 `watcher::send_line`）。
+            if let Some(a) = said.and_then(|f| f(&line)) {
+                if run_of.is_none_or(|f| line.value().and_then(f).is_none()) {
+                    self.rest.activity = Some(a);
+                }
             }
             let counted = super::lines::counts(body);
             if counted {
@@ -239,6 +252,32 @@ impl Scan {
 }
 
 impl ScanMap {
+    /// 实时跟读从这一张起步要的那几样：读到哪（游标 · 当时的长度 · 游标前的见证）· 几个可计行 · 链索引 ·
+    /// 说到子运行的那几行原文 · 最后一件说了的「此刻在干什么」。
+    pub(crate) fn seen(&self) -> u64 {
+        self.seen
+    }
+
+    pub(crate) fn witness(&self) -> &[u8] {
+        &self.rest.witness
+    }
+
+    pub(crate) fn lines(&self) -> u64 {
+        self.starts.len() as u64
+    }
+
+    pub(crate) fn chain(&self) -> &Chain {
+        &self.rest.chain
+    }
+
+    pub(crate) fn runs(&self) -> &[String] {
+        &self.rest.runs
+    }
+
+    pub(crate) fn activity(&self) -> Option<crate::agents::SessionActivity> {
+        self.rest.activity
+    }
+
     /// 某一条记录（`uuid`）落在主线的第几轮、那一轮从何时起（分叉框顶上那一句）：数它之前起了几轮（轮次同 `history-turns`）。
     /// 找不到那一条 / 它在第一句之前 ⇒ `None`。
     pub(crate) fn turn_at(&self, uuid: &str) -> Option<(u64, String)> {
@@ -337,7 +376,8 @@ impl ScanMap {
             })
             .sum();
         // 接着扫要的那几样：没滤的用户输入与轮次（与滤过的同量级）· 链索引每个节点几个短串。
-        let chain = self.rest.chain.len() * 160;
+        let chain = self.rest.chain.len() * 160
+            + self.rest.runs.iter().map(|r| 24 + r.len()).sum::<usize>();
         self.starts.len() * 8 + index + 2 * (inputs + turns) + chain + 1024
     }
 }
@@ -426,6 +466,16 @@ impl RecordScans {
         self
     }
 
+    /// 到此刻为扫描图从记录里读了多少字节（实时跟读起步那一趟照它记账；判据也数它）。
+    pub(crate) fn bytes_read(&self) -> u64 {
+        self.read.load(Ordering::Relaxed)
+    }
+
+    /// 这么长的记录扫完会不会落骨架（有家 ＋ 够大）。
+    pub(crate) fn would_keep(&self, len: u64) -> bool {
+        self.skeletons().is_some_and(|h| h.wants(len))
+    }
+
     fn skeletons(&self) -> Option<&Skeletons> {
         self.home.as_ref()
     }
@@ -449,6 +499,21 @@ impl RecordScans {
         Some(s.map.clone())
     }
 
+    /// 实时跟读起步用：这一份的图留着、或盘上落过骨架 ⇒ 照它接着扫到此刻的那一张（同 [`Self::get`]：没变不读，变长了只读追加的那一截）；
+    /// 都没有 · 正有人在从头扫它 ⇒ `None`（调用方自己轻读一遍行数与链，不在这里等一整遍解析）。
+    pub(crate) fn kept(&self, path: &Path) -> Option<Arc<ScanMap>> {
+        {
+            let g = self.lock();
+            if g.flights.iter().any(|(p, _)| p == path) {
+                return None;
+            }
+            let held = g.slots.iter().any(|s| s.path == path);
+            if !held && !self.skeletons().is_some_and(|h| h.has(path)) {
+                return None;
+            }
+        }
+        self.get(path).ok()
+    }
 
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
     /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。
@@ -529,7 +594,7 @@ impl RecordScans {
         let mut from = base.filter(|b| len > b.seen).map(|b| b.resume());
         if from.is_none() {
             stored = 0;
-            if let Some(k) = home.and_then(|h| h.load::<Skel>(path, SKEL_WHAT)) {
+            if let Some(k) = home.and_then(|h| h.load::<Skel>(path)) {
                 match k.mark.look(len, mtime) {
                     Look::Same => {
                         let mut map = k.scan.done(len);
@@ -557,9 +622,9 @@ impl RecordScans {
         file.seek(SeekFrom::Start(scan.end))?;
         self.read
             .fetch_add(len.saturating_sub(scan.end), Ordering::Relaxed);
-        let chain = crate::agents::record_face_of(path).and_then(|f| f.chain);
+        let face = crate::agents::record_face_of(path);
         let kind = crate::agents::record_kind_of(path).unwrap_or_default();
-        scan.feed(std::io::BufReader::new(file), len, kind, chain)?;
+        scan.feed(std::io::BufReader::new(file), len, kind, face)?;
         let mut map = scan.done(len);
         map.stored = stored;
         // 盘上那份照的是 `stored`：没落过 · 接着扫过了门槛 ⇒ 落一份新的（落了就记成照到此刻）；没过门槛 ⇒ 不重写几十 MB。
@@ -590,7 +655,6 @@ impl RecordScans {
         let h = std::thread::spawn(move || {
             home.store(
                 &p,
-                SKEL_WHAT,
                 &SkelView {
                     mark,
                     scan: map.view(),
@@ -620,9 +684,6 @@ impl RecordScans {
         }
     }
 }
-
-/// 骨架里这一样叫什么（与预读那一份分开两个文件）。
-const SKEL_WHAT: &str = "scan";
 
 /// 等正在扫的那一份扫完（阻塞等它的结果，不是定时醒）。
 fn wait(f: &Flight) -> std::io::Result<Arc<ScanMap>> {

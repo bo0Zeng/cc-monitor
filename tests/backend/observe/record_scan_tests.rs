@@ -10,7 +10,6 @@
 use super::*;
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 impl ScanMap {
@@ -20,20 +19,15 @@ impl ScanMap {
         r: R,
         len: u64,
         kind: &str,
-        chain: ChainOf,
+        face: Option<crate::agents::RecordFace>,
     ) -> std::io::Result<ScanMap> {
         let mut s = Scan::default();
-        s.feed(r, len, kind, chain)?;
+        s.feed(r, len, kind, face)?;
         Ok(s.done(len))
     }
 }
 
 impl RecordScans {
-    /// 到此刻为扫描图读了多少字节（判据读它）。
-    pub(crate) fn bytes_read(&self) -> u64 {
-        self.read.load(Ordering::Relaxed)
-    }
-
     /// 等旁线程上的骨架都落完（判据「重启后」那一步之前用；进程里别处不等它）。
     pub(crate) fn flush(&self) {
         let pending = std::mem::take(&mut *self.writes.lock().unwrap_or_else(|e| e.into_inner()));
@@ -86,7 +80,12 @@ fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64)
     while let Some(row) = lines.next().unwrap() {
         let body = row.body();
         if crate::observe::lines::counts(body) {
-            let r = crate::observe::history_query::index_row(kind, body, row.at, row.whole.len() as u64);
+            let r = crate::observe::history_query::index_row(
+                kind,
+                body,
+                row.at,
+                row.whole.len() as u64,
+            );
             index.push(serde_json::to_string(&r).unwrap());
         }
         let Some(v) = crate::observe::lines::parse(body) else {
@@ -266,7 +265,7 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
     ];
     let text = rows.join("\n") + "\n";
     let bytes = text.as_bytes();
-    let chain = crate::agents::claudecode::RECORDS.chain;
+    let chain = Some(crate::agents::claudecode::RECORDS);
     let map = ScanMap::scan_with(
         bytes,
         bytes.len() as u64,
@@ -338,7 +337,7 @@ fn r6_resuming_from_any_line_through_the_skeleton_equals_one_pass() {
     let text = branched(3);
     let bytes = text.as_bytes();
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
-    let chain = crate::agents::claudecode::RECORDS.chain;
+    let chain = Some(crate::agents::claudecode::RECORDS);
     let full = ScanMap::scan_with(bytes, bytes.len() as u64, kind, chain).unwrap();
     assert!(!full.off.is_empty(), "夹具该有主线外的");
     assert!(
@@ -423,7 +422,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
         &all[..],
         all.len() as u64,
         crate::agents::record_tree_kind().unwrap_or_default(),
-        crate::agents::claudecode::RECORDS.chain,
+        Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();
     assert_eq!(whole(&c), whole(&fresh), "接着骨架扫的跟整份扫的不一样");
@@ -482,9 +481,7 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
     let home = || Skeletons::at(own.clone(), 0);
     // 盘上那一份照到哪了（读它的 `mark.cursor`）。
     let skel = || {
-        home()
-            .load::<serde_json::Value>(&p, "scan")
-            .expect("落过骨架")["mark"]["cursor"]
+        home().load::<serde_json::Value>(&p).expect("落过骨架")["mark"]["cursor"]
             .as_u64()
             .unwrap()
     };
@@ -538,7 +535,7 @@ fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
         &all[..],
         all.len() as u64,
         crate::agents::record_tree_kind().unwrap_or_default(),
-        crate::agents::claudecode::RECORDS.chain,
+        Some(crate::agents::claudecode::RECORDS),
     )
     .unwrap();
     assert_eq!(whole(&m), whole(&fresh), "接着扫的跟整份扫的不一样");

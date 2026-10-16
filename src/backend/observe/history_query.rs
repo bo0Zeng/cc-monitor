@@ -342,12 +342,7 @@ fn is_zero(n: &u32) -> bool {
 /// 解析失败（半截 / 非 JSON）**不丢这一行** —— 它仍占一个 seq，只是没有料（`t` 省略）；
 /// 丢了它，后面每一行的 seq 都会错一位（那是「计数对不上而且不会报错」的那一形）。
 pub(crate) fn index_row(kind: &str, line: &[u8], offset: u64, len: u64) -> IndexRow {
-    index_row_of(
-        kind,
-        super::lines::parse(line).as_ref(),
-        offset,
-        len,
-    )
+    index_row_of(kind, super::lines::parse(line).as_ref(), offset, len)
 }
 
 /// [`index_row`] 的后半：这一行已经解析过（解析不了 ⇒ `None`，那一行照样占位）。

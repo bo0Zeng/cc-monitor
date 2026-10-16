@@ -1150,7 +1150,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/observe/skeleton.rs",
         "MAX_READ",
-        "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，预读或冷开扫描图那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
+        "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，冷开扫描图落的那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
         "跳过+说清",
     ),
     (
