@@ -236,8 +236,8 @@ class Step:
         return self
 
     def back_to(self, row):
-        """上一步红了 ⇒ 先从对话列表点进 [row] 那一条（这一步的起点）；没红就在原地接着走。"""
-        if not self.recovered:
+        """这一步从 [row] 那一条对话起：上一步红了、或此刻不在聊天屏（上一步停在终端屏 · 抽屉里），先从对话列表点进去。"""
+        if not self.recovered and ui.find(t("chat.input.placeholder")) is not None:
             return
         drawer(t("mobDrawer.item.chats"))
         if not wait(row, 30):
