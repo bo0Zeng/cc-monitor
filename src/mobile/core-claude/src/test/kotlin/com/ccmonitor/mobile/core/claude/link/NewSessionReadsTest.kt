@@ -64,6 +64,8 @@ class NewSessionReadsTest {
                 "quota" to if (ok) "5h 41%" else null,
                 "unselectable" to if (ok) null else "需登录",
                 "login" to !ok,
+                "authKind" to "subscription",
+                "badge" to mapOf("text" to if (ok) "已登录" else "需登录", "warn" to !ok, "title" to ""),
             )
         }
         val data =
