@@ -324,9 +324,7 @@ fn fix_only_a_question_fills_the_resident_index() {
     }
     assert_eq!(
         who,
-        ["find_indexed", "search_counting"]
-            .map(String::from)
-            .into(),
+        ["find_indexed", "search_counting"].map(String::from).into(),
         "拿常驻表的不止两问的入口：没人问也会建"
     );
 }
