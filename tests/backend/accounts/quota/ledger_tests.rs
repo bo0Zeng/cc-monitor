@@ -4,6 +4,13 @@ use super::*;
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::path::PathBuf;
 
+impl Ledger {
+    /// 同 [`Ledger::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
+    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::super::nodes::Nodes) -> Self {
+        Self::open(path, nodes, Default::default())
+    }
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-quota-ledger-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
