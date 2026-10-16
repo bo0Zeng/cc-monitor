@@ -20,7 +20,7 @@
 // 「明显短」的输出不许被折叠 · 「明显长」的输出必须折叠、且头部要**够长**。
 // 30→3 会让前者红，20→2 会让后者红，而合法地微调阈值（比如 30→28）不会误红。
 import { describe, it, expect } from "vitest";
-import { buildBashOutputCard } from "../../../../src/frontend/ui/cards/bash";
+import { buildBashOutputCard, OUTPUT_HEAD_LINES } from "../../../../src/frontend/ui/cards/bash";
 
 const time = "00:00";
 const linesOf = (n: number) =>
@@ -46,15 +46,13 @@ describe("bash 输出卡：超长折叠（夹逼锚点，不复制阈值）", ()
     expect(card.querySelector(EXPAND), "折叠了却没有展开入口 = 内容被吃掉").not.toBeNull();
   });
 
-  it("★ 折叠后展示的头部要够长（≥10 行）—— 头部行数被调得过小时这条红", () => {
+  it("★ 折叠后展示的是头部那一档（`OUTPUT_HEAD_LINES` 行），且那一档够长（≥10 行）—— 调得过小时这条红", () => {
     const card = buildBashOutputCard({ stdout: linesOf(200), stderr: "" }, time);
     const pre = card.querySelector(`${WRAP} pre`);
     expect(pre, "折叠壳里没有 pre").not.toBeNull();
     const shown = (pre?.textContent ?? "").split("\n").filter((l) => l.length > 0);
-    // 下界：10 行。它远低于今天的取值，合法微调不会误红；
-    // 上界：必须真的比全文少，否则「折叠」名存实亡。
-    expect(shown.length, `折叠后只展示了 ${shown.length} 行，太少`).toBeGreaterThanOrEqual(10);
-    expect(shown.length, "折叠后展示的行数没有比全文少").toBeLessThan(200);
+    expect(OUTPUT_HEAD_LINES, "头部那一档太短（下界 10 行远低于今天的取值，合法微调不会误红）").toBeGreaterThanOrEqual(10);
+    expect(shown.length, "折叠后展示的行数不是头部那一档").toBe(OUTPUT_HEAD_LINES);
     // 头部要是**开头那几行**，不是随便截的一段。
     expect(shown[0]).toBe("line-1");
   });
