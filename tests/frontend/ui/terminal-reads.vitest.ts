@@ -18,8 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodeShot, previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
-import type { Preview } from "../../../src/frontend/ui/generated/Preview";
+import { decodeShot, previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf } from "../../../src/frontend/ui/terminal-reads";
 import type { Sent } from "../../../src/frontend/ui/generated/Sent";
 import type { TerminalsList } from "../../../src/frontend/ui/generated/TerminalsList";
 import { decodeScreenLines, screenText } from "../../../src/frontend/ui/terminal-screen";
@@ -73,11 +72,10 @@ async function failureOf(act: () => Promise<unknown>): Promise<ControlError> {
 const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewText(origin, { sid: "sid-a" }, "demo-cc"))).message;
 
 describe("抓一屏：金样与形状", () => {
-  it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来）；实时预览那一帧同一份成品、读法相同", () => {
+  it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来）", () => {
     const lines = (PREVIEW.reply.lines as { text: string }[]).map((l) => l.text);
     expect(lines.length, "金样里没有行 —— 下面是空转").toBeGreaterThan(0);
-    expect(shotOf(PREVIEW.reply as unknown as Preview).text).toBe(lines.join("\n"));
-    expect(decodeShot("devbox", PREVIEW.reply)).toEqual(shotOf(PREVIEW.reply as unknown as Preview));
+    expect(decodeShot("devbox", PREVIEW.reply).text).toBe(lines.join("\n"));
   });
 
   it("★ 空屏是合法的成功；多出来的格照收；要用的格缺 / 类型不对 ⇒ 抛", () => {
@@ -105,7 +103,7 @@ describe("抓一屏：金样与形状", () => {
   });
 
   it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出", () => {
-    const shot = shotOf(PREVIEW.reply as unknown as Preview);
+    const shot = decodeShot("devbox", PREVIEW.reply);
     expect([shot.screen, shot.atText]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at_text]);
     expect(shot.lines[0].spans, "抓一屏要连颜色段一起交给画面").toEqual([{ from: 0, to: 4, fg: "red", bold: true }]);
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
