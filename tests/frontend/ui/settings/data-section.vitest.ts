@@ -33,6 +33,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { DataSection, LOGS_DIR_LABEL, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 const SRC = "src/frontend/ui/settings/data-section.ts";
 
@@ -131,7 +132,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     expect(shown).toEqual([...entries, webview].map((e) => e.path));
     // `get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
-    expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
+    nonEmpty(buttons);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
     // 卸载说明那张卡开头是代码画的 info 图标，不是字符（C-W1）。
     const note = sec.element.querySelector<HTMLElement>(".settings-data-note");
@@ -307,7 +308,7 @@ describe("每一行的每一格都在网格里认领了一个区（本机后端�
 
   it("自检：模板里有区名、量具看得见一格没认领的", () => {
     const { areas } = gridOf();
-    expect(areas.size, "settings.css 里读不出 .settings-data-item 的区名 —— 下面两条在空模板上判").toBeGreaterThan(3);
+    nonEmpty(areas);
     const li = document.createElement("li");
     li.className = "settings-data-item";
     const label = document.createElement("span");

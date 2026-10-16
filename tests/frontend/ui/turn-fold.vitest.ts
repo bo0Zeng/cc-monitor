@@ -409,7 +409,7 @@ describe("按段折叠", () => {
         content.appendChild(card("card-assistant", `late${k}`));
         await new Promise((r) => setTimeout(r, 0));
       }
-      expect(setFolds.mock.calls.length).toBeGreaterThan(3);
+      expect(setFolds.mock.calls.length, "首趟 ＋ 五张后到的卡各一趟").toBe(6);
       expect(setFolds.mock.lastCall?.[0].linePx).toBe(28);
       expect(reads).toBe(1);
     } finally {
@@ -589,7 +589,7 @@ describe("续取只碰变了的那几轮（read8b，瓶颈 #5）", () => {
     await fold.refresh();
     const before = fold.indexed;
     await fold.refresh();
-    expect(fold.indexed - before, "续取一次碰了全部轮").toBeLessThanOrEqual(2);
+    expect(fold.indexed - before, "续取一次该只碰两下：摘掉旧的那一轮、记进新的那一轮").toBe(2);
     expect(fold.all.length).toBe(n);
     expect(fold.all[n - 1].folds.length, "新的那一轮没换进来").toBe(2);
     // 新来的那一段（after = tail-a）照新的那份排了过程行

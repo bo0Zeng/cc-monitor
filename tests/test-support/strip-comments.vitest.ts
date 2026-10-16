@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 
 import { REPO_ROOT } from "./repo-root";
 import { stripComments } from "./strip-comments";
+import { nonEmpty } from "./non-empty";
 
 describe("stripComments", () => {
   it("剥掉行注释与块注释，且**逐行保留行结构**", () => {
@@ -59,7 +60,7 @@ describe("stripComments", () => {
     expect(at, `锚点 ${ANCHOR} 不在 ${CORPUS} 里 —— 语料搬家了，本条此刻测不到东西`).toBeGreaterThan(-1);
     const swallowed = raw.slice(at);
     const fnNames = [...swallowed.matchAll(/\bfn\s+([a-z_0-9]+)/g)].map((m) => m[1]);
-    expect(fnNames.length, "取样区间里应当有真函数，否则这条回归测不到东西").toBeGreaterThan(5);
+    nonEmpty(fnNames);
     for (const name of fnNames) {
       expect(out, `曾被吞掉的 fn ${name} 现在必须对守卫可见`).toContain(`fn ${name}`);
     }

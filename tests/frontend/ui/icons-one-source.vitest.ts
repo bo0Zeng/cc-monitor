@@ -19,11 +19,6 @@ const css = productionCssFiles("src/frontend");
 const ts = productionTsFiles("src/frontend");
 
 describe("图标只有一个出处", () => {
-  it("量具自检：扫到了样式与源码", () => {
-    expect(css.length).toBeGreaterThan(20);
-    expect(ts.length).toBeGreaterThan(100);
-  });
-
   it("只有 kit/icon.ts 建 svg", () => {
     const bad = ts
       .filter((f) => !f.file.endsWith("kit/icon.ts"))

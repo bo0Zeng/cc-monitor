@@ -13,6 +13,7 @@ import { MessageStream } from "../../../src/frontend/ui/stream";
 import { TurnFold, PROC_LINE_CLASS } from "../../../src/frontend/ui/turn-fold";
 import type { TurnsResult } from "../../../src/frontend/ui/session-reads";
 import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
+import { nonEmpty } from "../../test-support/non-empty";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 
@@ -151,7 +152,7 @@ describe("大折叠 × 骨架：折没折只有一个来源", () => {
       layout.scrollTop = Math.max(0, layout.scrollTop - VIEW_H);
       await settle();
     }
-    expect(content.querySelectorAll(`.${PROC_LINE_CLASS}`).length).toBeGreaterThan(2);
+    nonEmpty(content.querySelectorAll(`.${PROC_LINE_CLASS}`));
     expect(misfolded(content, view, new Set())).toEqual([]);
     lineOf(content, 1).click();
     await settle();
@@ -237,12 +238,12 @@ describe("冷切停住那一帧：骨架后到", () => {
       HTMLElement.prototype.getBoundingClientRect = orig;
       delete (scrollEl as { clientHeight?: number }).clientHeight;
     }
-    expect(view.ledger.foldedRanges.length, "前置：账本里有折着的过程").toBeGreaterThan(0);
+    nonEmpty(view.ledger.foldedRanges);
     expect(gap.style.height, "占位插进去之后又改了高 ⇒ 插的时候账本还没拿到折叠（这一帧多排一次版、多钉一次视口）").toBe(h0);
     expect(reads, "占位插进去之后的那一趟排版还在读几何（量过程行高 / 钉视口 / 一轮都没展开也量视口高）⇒ 逼浏览器当场再排一次版").toEqual([]);
   });
 
-  it("★ 过程行高量过一次就记着：之后每趟排版不再量（流尺寸变了才重量）", async () => {
+  it("★ 过程行高量过就记着：之后每趟排版不再量（流尺寸变了才重量）", async () => {
     const { content, fold, mkView, floor } = await lateRig();
     mkView().attach(floor);
     await new Promise((r) => setTimeout(r, 0));
@@ -250,13 +251,13 @@ describe("冷切停住那一帧：骨架后到", () => {
     const spy = vi.spyOn(line, "getBoundingClientRect");
     fold.apply();
     fold.apply();
-    expect(spy.mock.calls.length, "每趟排版都去量一次过程行（DOM 刚改过 ⇒ 每一下都是一次强制排版）").toBeLessThanOrEqual(1);
+    expect(spy.mock.calls.length, "量过的过程行高没记着：每趟排版都去量一次（DOM 刚改过 ⇒ 每一下都是一次强制排版）").toBe(0);
   });
 
   it("★ 过程行上的字没变就不重画：再排一次版，行里的节点原样不动（不白白作废样式与排版）", async () => {
     const { content, fold } = await lateRig();
     const before = [...content.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)].map((l) => l.firstChild);
-    expect(before.length, "前置：有过程行").toBeGreaterThan(0);
+    nonEmpty(before);
     fold.apply();
     const after = [...content.querySelectorAll<HTMLElement>(`.${PROC_LINE_CLASS}`)].map((l) => l.firstChild);
     expect(after.every((n, i) => n === before[i]), "字一个没变也整行拆了重建 ⇒ 每趟排版都作废这几行的样式与排版").toBe(true);

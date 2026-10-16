@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postcss, { type Rule } from "postcss";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const UI = resolve(__dirname, "../../../src/frontend/ui");
 
@@ -62,7 +63,7 @@ describe("单行文字不压按钮", () => {
       if (!r.selectors.some((x) => /\.tab-acts$/.test(x.trim()))) return;
       r.walkDecls(/^background(-color)?$/, (d) => void backgrounds.push(`${r.selector} → ${d.value}`));
     });
-    expect(backgrounds.length, "一条都没扫到 ⇒ 量具坏了").toBeGreaterThan(0);
+    nonEmpty(backgrounds);
     for (const b of backgrounds) expect(b, "最底层不是 --bg-2 ⇒ 半透明，标题字会透出来").toMatch(/(^|,)\s*var\(--bg-2\)\s*$/);
   });
 });

@@ -98,11 +98,8 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
     await vi.advanceTimersByTimeAsync(50);
     expect(
       onBatchStart.mock.calls.length,
-      "★ 积压 60 条（阈值 50）却没有进 batch 模式。\n" +
-        "报告 I5′ 写「live 路没拿到等价合批」——复核发现**那句话不成立**，正是因为这里\n" +
-        "有一层深度阈值的突发兜底。这条判据钉的就是它：它没了，那句话才真的成立，\n" +
-        "而中低速率下逐行 O(N) 的分析也要跟着改。",
-    ).toBeGreaterThan(0);
+      "★ 积压 60 条（阈值 50）该恰好进一次 batch 模式（深度阈值的突发兜底）",
+    ).toBe(1);
   });
 
   // K-W1C 09-04：把那条 flaky 的**那一形**变成一条点得出名字的判据。

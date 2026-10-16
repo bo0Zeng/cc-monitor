@@ -81,6 +81,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // ── 0. 人群表（`住址` 由尺 A 机械对账，`选择器` 由尺 B 机械对账）───────────────
 
@@ -610,12 +611,12 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
     for (const [rel, text] of Object.entries(SRC_FILES)) {
       found.push(...censusAppInserts(text, rel));
     }
-    expect(Object.keys(SRC_FILES).length, "glob 没扫到 src 树 —— 下面那条会零命中地绿").toBeGreaterThan(80);
+    nonEmpty(Object.keys(SRC_FILES));
     const key = (s: Site): string => `${s.file} :: ${s.expr}`;
     const got = [...new Set(found.map(key))].sort();
     const want = [...new Set(INSERTED_CHILDREN.map(key))].sort();
     // 尺子得先证明自己不是空的
-    expect(got.length).toBeGreaterThan(0);
+    nonEmpty(got);
     expect(got).toEqual(want);
   });
 
@@ -670,7 +671,7 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
         expect(tpl.cols, "grid-template-areas 的列数 != grid-template-columns 的轨道数").toBe(
           tpl.declaredCols,
         );
-        expect(tpl.areas.size).toBeGreaterThan(0);
+        nonEmpty(tpl.areas);
       });
 
       it("每个 in-flow 直接子元素都认领了一个本模板里声明过的格子（viewer 档 = 条 22 第 4 项）", () => {

@@ -23,6 +23,7 @@ import { describe, it, expect } from "vitest";
 
 import { productionTsFiles } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
+import { nonEmpty } from "../../test-support/non-empty";
 
 /** `src/` 下全部生产 `.ts`，剥掉注释 —— 只看代码（遍历住 `test-support`，本文件不另写一份）。 */
 function frontendCode(): { rel: string; code: string }[] {
@@ -35,10 +36,7 @@ function frontendCode(): { rel: string; code: string }[] {
 describe("B2 · 「退出行为」那个值不住前端", () => {
   it("★★ 推送链与本地持久化零命中 —— 两向带正控", () => {
     const files = frontendCode();
-    expect(
-      files.length,
-      "只扫到这么几份前端源码 —— 遍历坏了，零命中在空人群上恒绿",
-    ).toBeGreaterThan(100);
+    nonEmpty(files);
     // 名字**运行时拼**：本文件自己不在人群里（它住 tests/），但这样读者一眼看得出它们是「已退役的名字」。
     const retired = [
       ["set_backend_", "kill_on_exit"],

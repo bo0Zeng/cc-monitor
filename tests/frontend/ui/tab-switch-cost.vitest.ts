@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const repo = path.resolve(__dirname, "../../..");
 const css = readFileSync(path.join(repo, "src/frontend/ui/styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -45,7 +46,7 @@ describe("① 切 tab 只翻不继承的属性；收起的 tab 用 content-visib
     const base = decls(".stream");
     const on = decls(".stream.active");
     const flipped = [...on.keys()].filter((k) => base.get(k) !== on.get(k));
-    expect(flipped.length, "前提：确实读到了切换那一对规则").toBeGreaterThan(0);
+    nonEmpty(flipped);
     const bad = flipped.filter((k) => INHERITED.test(k));
     expect(bad, "翻继承属性 ⇒ 新旧两个 tab 的整棵子树样式重算（WebKitGTK 没有独立继承属性的快路）").toEqual([]);
   });

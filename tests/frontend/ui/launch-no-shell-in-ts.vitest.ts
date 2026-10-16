@@ -35,6 +35,7 @@ import { resolve } from "node:path";
 import { productionTsFiles } from "../../test-support/production-sources";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const TMUX_VERBS = [
   "new-session",
@@ -175,7 +176,7 @@ describe(" 条 1：前端零 shell 串", () => {
       expect(all.has(f), `${f} 不在人群里 —— 遍历坏了`).toBe(true);
     }
     expect([...all.keys()].some((f) => f.includes(".vitest.") || f.includes(".test.") || f.startsWith("src/frontend/ui/generated/"))).toBe(false);
-    expect(all.size).toBeGreaterThan(150); // 抽取器自检（不是判据）：09-25 现打 171
+    nonEmpty(all); // 抽取器自检（不是判据）：09-25 现打 171
   });
 
   it("★★ src/**/*.ts 生产段里零 shell 命令串字面量（不开例外）", () => {

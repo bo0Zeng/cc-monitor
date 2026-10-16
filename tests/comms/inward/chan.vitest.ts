@@ -51,6 +51,7 @@ import { budgetWithin, saidFrom } from "../../../src/frontend/ui/ipc/chan-caller
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -97,15 +98,16 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(invokeMock, "过期了还发了").not.toHaveBeenCalled();
   });
 
-  it("★ 过线的是「还剩多少」：`leftMs` 在 (0, 给的毫秒] 之内，绝对时刻不上线", async () => {
+  it("★ 过线的是「还剩多少」：钟定住时 `leftMs` 恰是给的毫秒，绝对时刻不上线", async () => {
     invokeMock.mockResolvedValue(new Uint8Array([7]).buffer);
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
     await chan.call("<local>", "op", new Uint8Array(), budgetWithin(5_000));
+    clock.mockRestore();
     const args = invokeMock.mock.calls[0][1] as { leftMs: number; origin: string; op: string };
     expect(invokeMock.mock.calls[0][0]).toBe("chan_call");
     expect(args.origin).toBe("<local>");
     expect(args.op).toBe("op");
-    expect(args.leftMs).toBeGreaterThan(0);
-    expect(args.leftMs).toBeLessThanOrEqual(5_000);
+    expect(args.leftMs).toBe(5_000);
     expect(remaining({ until: performance.now() - 10 }), "过了期限不许是负数").toBe(0);
   });
 
@@ -225,14 +227,14 @@ describe("〔C4a〕webview 通道客户端", () => {
 
 /** 往交格事件里投一次（`{sub, items}`）。 */
 function deliver(sub: number, items: unknown[]): void {
-  expect(itemsListeners.length, "交格事件没人听 —— 本组会零命中地绿").toBeGreaterThan(0);
+  nonEmpty(itemsListeners);
   for (const l of itemsListeners) l({ payload: { sub, items } });
 }
 
 /** 取最近一次 `chan_subscribe` 用的编号（本侧给的）。 */
 function lastSubId(): number {
   const calls = invokeMock.mock.calls.filter((c) => c[0] === "chan_subscribe");
-  expect(calls.length, "没登记到 monitor").toBeGreaterThan(0);
+  nonEmpty(calls);
   return (calls[calls.length - 1][1] as { id: number }).id;
 }
 

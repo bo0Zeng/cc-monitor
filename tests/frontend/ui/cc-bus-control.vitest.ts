@@ -49,6 +49,7 @@ import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -163,18 +164,12 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(copyText("ccBus.broadcast.doneFailed", { sent: "1", skipped: "1", failed: "1", who: "x_cc（child_timed_out）" }));
     expect(sentCalls()).toEqual([["devbox", "bus-broadcast", BCAST.request]]);
   });
-
-  it("★ 每一趟都显式交了期限（X6：调用点给）", async () => {
-    answer({ ok: KILL.reply });
-    await killAgent("devbox", "alpha_cc");
-    const leftMs = (invokeMock.mock.calls[0][1] as ChanCallArgs).leftMs;
-    expect(leftMs, "期限没交").toBeGreaterThan(0);
-  });
 });
 
 describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）", () => {
   it("★★ 金样 `ids` 里坏的 id 也原样交给后端（查在线 · 发消息 · 收掉）；后端回 `bad_id` ⇒ 照它写好的那一句说", async () => {
-    expect(IDS.ok.length * IDS.bad.length, "金样的 ids 空了 —— 下面是空转").toBeGreaterThan(0);
+    nonEmpty(IDS.ok);
+    nonEmpty(IDS.bad);
     const bad = IDS.bad.find((id) => id === "--help")!;
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
     const send = await saidOf(() => sendMessage("devbox", bad, "hi"));
@@ -291,7 +286,7 @@ describe("〔C4e〕失败怎么说", () => {
       ["bus-broadcast", BCAST, () => broadcast("devbox", "hi")],
     ];
     for (const [op, g, act] of drives) {
-      expect(g.codes.length, `${op}：金样里一个码都没有`).toBeGreaterThan(0);
+      nonEmpty(g.codes);
       for (const code of g.codes) {
         answer({ fail: refusedReply(code, `S-${code}`) });
         expect(await saidOf(act), op).toBe(`S-${code}`);

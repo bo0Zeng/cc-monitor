@@ -31,6 +31,7 @@ import { describe, expect, it } from "vitest";
 import { productionKtFiles } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { hanLiteralsIn } from "./kotlin-literals.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 const EXEMPT_PATH = resolve(REPO_ROOT, "tests", "copy", "mobile-literal-exempt.json");
 
@@ -84,10 +85,10 @@ describe("手机生产源码不写死界面中文（文案只从 table.json 来�
 
   it("★ 零处写死的界面中文（豁免表里的除外）· 豁免表无死条", () => {
     const files = productionKtFiles("src/mobile");
-    expect(files.length, "一份手机生产 .kt 都没扫到 —— 下面是空集对空集").toBeGreaterThan(100);
+    nonEmpty(files);
     const exempt = JSON.parse(readFileSync(EXEMPT_PATH, "utf8")).files as Record<string, Exempt[]>;
     const all = files.flatMap((f) => hanLiteralsIn(f.text).map((l) => ({ ...l, file: f.file })));
-    expect(all.length, "人群为 0 —— 读法没接上（日志里明明有中文）").toBeGreaterThan(0);
+    nonEmpty(all);
     const bad: string[] = [];
     const used = new Set<string>();
     for (const h of hitsOf(files)) {

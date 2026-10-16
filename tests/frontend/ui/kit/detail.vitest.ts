@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { copyDetailButton, detailOf, detailBody, detailMany, failSaid, sayFailure, COPIED_MS } from "../../../../src/frontend/ui/kit/detail";
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { fakeClipboard, type ClipboardFake } from "../../../test-support/clipboard-fake";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 const label = (b: HTMLElement): string => b.querySelector("button")?.textContent ?? "";
 
@@ -86,7 +87,7 @@ describe("复制详情按钮", () => {
     const g = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/detail-many.golden.json"), "utf8")) as {
       cases: { head: string; segments: [string, string][]; body: string | null }[];
     };
-    expect(g.cases.length).toBeGreaterThanOrEqual(3);
+    nonEmpty(g.cases);
     for (const c of g.cases) expect(detailMany(c.head, c.segments), c.head).toBe(c.body);
   });
 
@@ -94,7 +95,7 @@ describe("复制详情按钮", () => {
     const g = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/detail-many.golden.json"), "utf8")) as {
       one: { said: string; detail: string; body: string }[];
     };
-    expect(g.one.length).toBeGreaterThanOrEqual(2);
+    nonEmpty(g.one);
     for (const c of g.one) expect(detailBody([[c.said, c.detail]]), c.said).toBe(c.body);
   });
 

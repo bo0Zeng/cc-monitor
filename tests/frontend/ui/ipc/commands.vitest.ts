@@ -123,6 +123,7 @@ import type { TabSessionActions } from "../../../../src/frontend/ui/tab-session-
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { historyCalls, launchRenderShim, localLaunchCalls, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../../test-support/non-empty.ts";
 
 /** Rust 有、但 TS 侧**静态**看不见的命令（全部经动态命令名调用）。见头注「不能写的断言 2」。 */
 /**
@@ -277,8 +278,8 @@ describe("C04a 命令名钉死", () => {
     const registered = registeredCommands();
 
     // 反向自检：真扫到了东西（不是空集在空转）
-    expect(declared.size, "一个命令都没扫到——抽取器坏了").toBeGreaterThan(0);
-    expect(registered.size, "注册表没扫到——正则或锚点坏了").toBeGreaterThan(0);
+    nonEmpty(declared);
+    nonEmpty(registered);
 
     const onlyDeclared = [...declared].filter((c) => !registered.has(c)).sort();
     const onlyRegistered = [...registered].filter((c) => !declared.has(c)).sort();
@@ -292,7 +293,7 @@ describe("C04a 命令名钉死", () => {
     const keys = Object.keys(commands);
 
     // 反向自检：包装层非空，且文本解析出来的条目与运行时的键**逐个一致**
-    expect(keys.length, "包装层是空的").toBeGreaterThan(0);
+    nonEmpty(keys);
     expect([...entries.keys()].sort(), "文本解析出的条目与运行时的键不一致——解析器坏了").toEqual(
       [...keys].sort(),
     );
@@ -328,7 +329,7 @@ describe("C04a 命令名钉死", () => {
 
     // 命令全部静态可见（`DYNAMIC_ONLY` 为空）⇒ 上面「⊆ Rust」与下面「Rust 里看不见的 == DYNAMIC_ONLY」合起来就是两向相等；
     // 扫描面缩了（walk 少扫几个目录）⇒ 下面那条当场红。
-    expect(used.size, "一个字面量命令名都没扫到 —— 扫描器瞎了，下面那条会拿空集比出绿").toBeGreaterThan(0);
+    nonEmpty(used);
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();
@@ -398,7 +399,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
     const sites = SITES;
     // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
-    expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
+    nonEmpty(sites);
     // 只许一处：多一条新主路 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
@@ -877,7 +878,7 @@ describe("〔C4a〕TS 侧 origin 去 null（全 TS ＋ 生成物）", () => {
     ];
     for (const src of bad) {
       const ds = originDecls("probe.ts", src);
-      expect(ds.length, `识别器在 ${src} 里一处 origin 声明都没摘到`).toBeGreaterThan(0);
+      nonEmpty(ds);
       expect(ds.some((d) => d.nullable), `识别器没认出 ${src} 装得下 null`).toBe(true);
     }
     const good = [

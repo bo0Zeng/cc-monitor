@@ -15,7 +15,6 @@ import { asSaid, settleTyped, unreadable, type Refusals } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { decodeScreenLines, screenText, type ScreenLine } from "./terminal-screen";
-import type { Preview } from "./generated/Preview";
 import type { Sent } from "./generated/Sent";
 import type { TerminalsList } from "./generated/TerminalsList";
 
@@ -59,7 +58,7 @@ function previewRefusals(target: string): Refusals {
   return asSaid(() => copyText("terminalReads.preview.noReason", { target }));
 }
 
-/** 实时预览那一帧的 `view`（同 `terminal-preview` 的回包，但走帧、不经握手指纹）⇒ 那一屏 ＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
+/** `terminal-preview` 的回包（实时预览那一帧的 `view` 是同一份）⇒ 那一屏 ＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
 export function decodeShot(origin: Origin, v: unknown): TerminalShot {
   const lines = decodeScreenLines(origin, v);
   const o = v as Record<string, unknown>;
@@ -76,13 +75,7 @@ export async function previewText(origin: Origin, target: TerminalTarget, label:
 export async function previewShot(origin: Origin, target: TerminalTarget, label: string): Promise<TerminalShot> {
   const budget = budgetWithin(PREVIEW_BUDGET_MS);
   const v = await settleTyped(origin, "terminal-preview", callTyped(origin, "terminal-preview", { ...target, color: true }, budget), previewRefusals(label));
-  return shotOf(v);
-}
-
-/** `terminal-preview` 的回包 ⇒ 那一屏（带颜色段）＋ 指纹 ＋ 几点抓的。 */
-export function shotOf(v: Preview): TerminalShot {
-  const lines = v.lines.map((l) => ({ text: l.text, spans: l.spans ?? [] }));
-  return { lines, text: screenText(lines), screen: v.screen, atText: v.captured_at_text };
+  return decodeShot(origin, v);
 }
 
 /** 后端没给那一句（契约外）时落的那一个词：不按码猜。 */

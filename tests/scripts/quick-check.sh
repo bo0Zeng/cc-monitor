@@ -3,7 +3,7 @@
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh [--all | --plan | --only <段>]`
 #   恒跑（便宜）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（static_cells，经 gate.sh 的 GATE_ONLY，收据另存）·
 #     后端那棵改到的包跑 clippy（照门禁 `clippy-backend` 的参数；系统钟 · 定时器那几类 lint 定成 deny，测试拦不住）·
-#     末尾生成物有没有落在提交外（generated-drift.sh）。
+#     凭据那份共享 crate 开 `harden` 那一档（creds-harden：壳那棵不开它，后端那棵不跑它的测试）· 末尾生成物有没有落在提交外（generated-drift.sh）。
 #   重的四段：后端那棵 `cargo test --workspace --lib` · 壳那棵 `cargo test --workspace --lib` · 整套 vitest ·
 #     手机那一套（ktlint · detekt · 各模块 JVM 单测，经 heavy.sh、gradle 带 --no-daemon）。这棵树（连没提交的）相对起点改到的路径
 #     交给 gate-affected/plan.py 照 gate-affected/map 判（与 gate-affected 同一张表）：挑上那一段的格（backend · cargo · npm · mobile）才跑；
@@ -182,6 +182,8 @@ step static       run env GATE_ONLY="$static_cells" GATE_RECEIPT="$root/.build/q
 backend_step
 clippy_step
 shell_step
+# 凭据那份共享 crate 开 `harden` 那一档（壳那棵不开它，后端那棵不跑它的测试）
+step creds-harden runcargo bash -c 'cd src/frontend/shell && cargo test -p creds-core --features harden --lib -q'
 vitest_step
 mobile_step
 # 生成物：上面几步现写过的 generated/ 与 HEAD 比，逐份印出

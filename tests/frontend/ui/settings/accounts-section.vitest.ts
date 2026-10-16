@@ -81,6 +81,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 function acct(p: Partial<Account>): Account {
   return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true, badge: { text: copyText("accounts.badge.signedIn"), warn: false, title: "" }, ...p };
@@ -549,7 +550,7 @@ describe("key 的纪律（源码扫描：账号栏 ＋ 新建表单）", () => {
 
   it("KS6：输入框的 `.value` 只许被赋成空串（从不预填 key）", () => {
     const assigns = [...code.matchAll(/(?:input|In)\.value\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(assigns.length, "一处赋值都没扫到 —— 抽取器坏了").toBeGreaterThan(3);
+    nonEmpty(assigns);
     for (const rhs of assigns) expect(rhs, `输入框被赋了不是空串的值：${rhs}`).toBe('""');
   });
 

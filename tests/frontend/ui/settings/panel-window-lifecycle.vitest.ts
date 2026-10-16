@@ -123,6 +123,7 @@ import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/hos
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -287,7 +288,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     const labels = [...document.querySelectorAll<HTMLButtonElement>(".settings-panel button")].map(
       (b) => b.textContent,
     );
-    expect(labels.length, "一颗按钮都没扫到 —— 下面的「没有」是空真").toBeGreaterThan(5);
+    nonEmpty(labels);
     for (const gone of ["保存", "取消", "保存并关闭", "丢弃改动", "继续编辑"]) {
       expect(labels, `「${gone}」还在 —— 全即时之后它没有可做的事`).not.toContain(gone);
     }

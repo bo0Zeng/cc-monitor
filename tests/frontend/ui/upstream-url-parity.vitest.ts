@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { baseUrlIssue } from "../../../src/frontend/ui/generated/judgment-rules";
 import { checkBaseUrl } from "../../../src/frontend/ui/settings/account-new-form";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/upstream-url.golden.json"), "utf8")) as {
   cases: { url: string; want: string | null }[];
@@ -20,7 +21,7 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/up
 
 describe("J9 上游 base URL：生成物 == 共用金样", () => {
   it("每条：baseUrlIssue 给的理由 == 手写的 want（null = 能用）", () => {
-    expect(golden.cases.length, "金样读空了").toBeGreaterThan(40);
+    nonEmpty(golden.cases);
     const wrong = golden.cases
       .map((c) => ({ c, got: baseUrlIssue(c.url) }))
       .filter(({ c, got }) => got !== c.want)

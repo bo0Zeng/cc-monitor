@@ -3,7 +3,7 @@
 //!
 //! # 钥匙住哪、谁铸
 //!
-//! - 住址：**中转所在那台机器**的 `$HOME/`[`KEY_FILE_REL`]，出生即只给本人（`creds_core::perm::create_private`，`O_EXCL`）。
+//! - 住址：**中转所在那台机器**的 `$HOME/`[`KEY_FILE_REL`](relay_route_core::KEY_FILE_REL)，出生即只给本人（`creds_core::perm::create_private`，`O_EXCL`）。
 //! - 谁铸：**后端**，在中转**绑上口之后**（`listen::prepare`）—— 读回；读不出或形状不对就铸一把新的
 //!   （256 位，OS 密码学随机数）、临时文件写满、原子挪过去。只有绑上了口的那一个会写 ⇒ 两个中转抢着铸构造上不存在。
 //! - 为什么落盘而不是只在内存：端口是固定常量（monitor `payload::RELAY_PORT`）⇒ 后端重启后老会话手里的 URL
@@ -26,16 +26,12 @@
 //!
 //! 盘上只有一份文件（全权那一把，根钥匙）。只许直通那一把**不落盘**：从根钥匙派生（[`pass_of`]：`HMAC-SHA256(根钥匙, "ccm-relay/t")`
 //! 的 64 位小写十六进制）—— 门上与 `ccm` 插地址用的是同一个函数。漏出去的那一把推不回根钥匙。
-//! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
+//! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`）。
 
 use crate::platform::fs::Own;
 use comms_outward::Key;
 use copy_core::copy_text;
 use std::path::Path;
-
-/// 钥匙文件相对家目录的路径。值只住共享 crate `relay_route_core::KEY_FILE_REL`：
-/// `ccm` 读钥匙 / 渲 `$(cat ~/…)` 用的也是同一个 const。
-pub(crate) const KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
 /// 哪一个范围的钥匙。盘上只有全权那一把（根钥匙）；只许直通那一把从它派生（[`pass_of`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,7 +85,8 @@ pub(crate) fn scoped(full: Key, kind: KeyKind) -> Key {
 
 /// 这台盘上根钥匙派生出来的只许直通那一把（[`pass_of`]）的串；读不到 ⇒ `None`（**只读**）。
 pub(crate) fn pass_key_on_disk(home: &Path) -> Option<String> {
-    read_key(&home.join(KEY_FILE_REL)).map(|full| pass_of(&full).expose().to_string())
+    read_key(&home.join(relay_route_core::KEY_FILE_REL))
+        .map(|full| pass_of(&full).expose().to_string())
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
@@ -103,14 +100,14 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
 /// （环境变量里的、参数里的、用户自己贴进设置文件的那一段 —— 那里写不了 `$(cat …)`）。钥匙在这里插、不以裸值出本模块；
 /// 钥匙文件不在 / 形状不对 / 地址不是构造口产物 ⇒ `None`。
 pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> Option<String> {
-    let key = scoped(read_key(&home.join(KEY_FILE_REL))?, kind);
+    let key = scoped(read_key(&home.join(relay_route_core::KEY_FILE_REL))?, kind);
     relay_route_core::keyed_base_url(url, key.expose())
 }
 
-/// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘（经写句柄，家目录那一根：`~/`[`KEY_FILE_REL`]）。
+/// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘（经写句柄，家目录那一根：`~/`[`KEY_FILE_REL`](relay_route_core::KEY_FILE_REL)）。
 /// **本模块唯一的写口**（只在中转绑上口之后调，`relay/listen.rs`）。
 pub(crate) fn ensure_key(own: &Own) -> Result<Key, crate::common::said::Said> {
-    let file = own.at_home(KEY_FILE_REL)?;
+    let file = own.at_home(relay_route_core::KEY_FILE_REL)?;
     let dir = own.home_dir()?;
     let path = file.as_path();
     if let Some(k) = read_key(path) {

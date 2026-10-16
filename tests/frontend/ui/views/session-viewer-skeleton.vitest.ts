@@ -149,11 +149,7 @@ describe("查看器：骨架 ＋ 按视口取（不整份读）", () => {
     expect(el?.dataset.id).toBe("u150");
     expect(ranges().length).toBe(1);
     const g = gaps(v.element);
-    expect(g.length).toBe(2);
-    expect(g[0][0]).toBe(0);
-    expect(g[0][1]).toBeLessThanOrEqual(300);
-    expect(g[1][0]).toBeGreaterThan(300);
-    expect(g[1][1]).toBe(700);
+    expect(g, "取回的那一段（seq 200–400）两边各剩一块占位").toEqual([[0, 200], [401, 700]]);
   });
 
   it("那一段取不到 ⇒ 跳说清没取到、占位放回去（下次滚到再取），不留一段空", async () => {

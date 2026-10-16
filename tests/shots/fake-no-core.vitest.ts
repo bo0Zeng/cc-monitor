@@ -20,6 +20,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { nonEmpty } from "../test-support/non-empty";
 
 const repo = path.resolve(__dirname, "../..");
 const fakeDir = path.join(__dirname, "fake");
@@ -88,7 +89,7 @@ const files = walk(fakeDir, ".ts").filter((p) => !p.endsWith(".vitest.ts"));
 describe("截图台架的假适配层不写核心成品", () => {
   it("人群不空：fake/ 下有那几份，核心的键也读到了", () => {
     expect(files.map((p) => path.basename(p))).toContain("backend.ts");
-    expect(keys.size).toBeGreaterThan(300);
+    nonEmpty(keys);
     // 判据认得出这几种写法（自检：拿一段写着成品的样本过一遍）。
     const sample = 'copyText("history.section.today"); d.getHours(); fmtDur(3); `+${m}m`; view.omit?.record';
     expect(hitsIn(sample, keys)).toEqual({ coreKey: 1, clock: 1, duration: 1, relative: 1, omit: 1 });

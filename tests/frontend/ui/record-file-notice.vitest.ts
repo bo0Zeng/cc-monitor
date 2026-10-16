@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { RECORD_FILE_CHANGES } from "../../../src/frontend/ui/record-file-notice";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../test-support/non-empty";
 
 /** `fn as_wire(self) -> &'static str { match self { FileChange::X => "x", … } }` 里的字面量。 */
 function asWireLiterals(src: string): string[] {
@@ -31,10 +32,10 @@ describe("〔FW1〕记录文件出声的线上字面量", () => {
   it("前端认的 == monitor 交的（两向），每一个都有一句文案", () => {
     const src = readFileSync(join(__dirname, "../../../src/frontend/shell/src/stream_source/local.rs"), "utf8");
     const wire = asWireLiterals(src);
-    expect(wire.length, "monitor 那一侧一个都没抠到 —— 抠取器坏了").toBeGreaterThan(0);
+    nonEmpty(wire);
     expect([...RECORD_FILE_CHANGES].sort()).toEqual(wire);
     for (const c of RECORD_FILE_CHANGES) {
-      expect(copyText(`sessionState.recordFile.${c}` as never).length).toBeGreaterThan(0);
+      expect(() => copyText(`sessionState.recordFile.${c}` as never), c).not.toThrow();
     }
   });
 });

@@ -16,6 +16,7 @@ import { SkeletonLedger } from "../../../src/frontend/ui/live-window";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView, ledgerFromIndex } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
+import { nonEmpty } from "../../test-support/non-empty";
 
 // 列宽那一组要真 `TabStreamView`（它只在被问时才碰到 IPC；这里一次都不问）
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
@@ -164,8 +165,7 @@ describe("🔴 只物化可见区", () => {
     const rowH = s.ledger.heightOf(0, 1);
     // 视口 800 ± 400 = 1600px 的估高行数（+2 条边界）是**一轮**的上限；真高 60 < 估高 ⇒ 可能多跑几轮
     const perPass = Math.ceil((VIEW_H * 2) / rowH) + 2;
-    expect(n).toBeGreaterThan(0);
-    expect(n).toBeLessThanOrEqual(perPass * 4);
+    expect(n, "视口与行高都定死 ⇒ 建的行数是定的").toBe(25);
     // 建的全在视口附近：中点那一行 ± 几屏
     const mid = s.ledger.seqAt(0, 4900, gapH / 2);
     for (const [lo, hi] of s.host.calls) {
@@ -213,7 +213,7 @@ describe("🔴 只物化可见区", () => {
     const before = tailFirst.getBoundingClientRect().top;
     expect(before).toBeCloseTo(VIEW_H / 2);
     const n = s.view.fillVisible();
-    expect(n).toBeGreaterThan(0);
+    expect(n, "视口与行高都定死 ⇒ 建的行数是定的").toBe(12);
     expect(tailFirst.getBoundingClientRect().top).toBeCloseTo(before);
   });
 
@@ -425,7 +425,7 @@ describe("🔴 取回中的行留着占位（10-10「视口里的占位一直不
     const blockTop = block.getBoundingClientRect().top;
     f.view.landed(lo, hi, () => f.host.build(lo, hi));
     expect(block.isConnected).toBe(false);
-    expect(f.inView().length).toBeGreaterThan(0);
+    nonEmpty(f.inView());
     const first = cardsIn(f.content).find((c) => (c as HTMLElement).dataset.seq === String(lo))!;
     expect(first.getBoundingClientRect().top).toBeCloseTo(blockTop);
     expect(f.layout.scrollTop).toBe(gapH / 2);

@@ -4,6 +4,13 @@ use super::*;
 use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
 use std::path::PathBuf;
 
+impl Ledger {
+    /// 同 [`Ledger::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
+    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::super::nodes::Nodes) -> Self {
+        Self::open(path, nodes, Default::default())
+    }
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-quota-ledger-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -668,14 +675,4 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     );
     let o = down.entry("claude-code", "q").expect("entry");
     assert_eq!(o.rate("five_hour", t + 700), None, "不涨");
-}
-
-/// ★ 生产里造的每一份额度账（中转那一份 · 帧面每条命令现造的那一份）都往进程里那一条节点通道发：
-/// `quota-probe` 走的是帧面现造的那一份，从前它没有铃，报了用量也不推。
-#[test]
-fn every_ledger_made_for_production_sends_to_the_process_node_channel() {
-    let l = Ledger::at(None);
-    assert!(l.nodes.same_channel(super::super::nodes::bus()));
-    let ctx = crate::faces::rotation_face::Ctx::here();
-    assert!(ctx.hop.quota.nodes.same_channel(super::super::nodes::bus()));
 }

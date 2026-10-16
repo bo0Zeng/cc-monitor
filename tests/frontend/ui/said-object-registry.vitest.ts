@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const ROOT = resolve(__dirname, "../../..");
 const CALLS = ["previewText", "previewShot", "previewByTmuxName", "sendToTerminal", "agentOnline", "readState", "readInbox", "spawnAgent", "broadcast"];
@@ -48,7 +49,7 @@ describe("不带对象的那几句：每个出处对象都看得见（登记两�
       const code = readFileSync(f, "utf8").replace(/^import [^;]*;$/gms, "");
       for (const c of CALLS) if (new RegExp(`(?<![A-Za-z0-9_$.])${c}\\b`).test(code)) got.add(`${rel}::${c}`);
     }
-    expect(got.size, "一处调用都没扫到 —— 判据在空转").toBeGreaterThan(0);
+    nonEmpty(got);
     expect([...got].sort(), "多出来的：先写清那一句旁边对象在哪再登记；少了的：调用没了就删那一行").toEqual(Object.keys(WHERE).sort());
   });
 });

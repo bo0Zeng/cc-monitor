@@ -36,6 +36,7 @@ import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } 
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
 import type { Killed } from "../../../src/frontend/ui/generated/Killed";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -168,7 +169,7 @@ describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
     for (const [op, codes, act] of [
       ["kill", KILL.codes, (t: string) => killSession("devbox", t)],
     ] as const) {
-      expect(codes.length, `${op}：金样里一个码都没有`).toBeGreaterThan(0);
+      nonEmpty(codes);
       for (const code of codes) {
         answer({ fail: refusedReply(code, `S-${code}`) });
         expect(await saidOf(() => act("demo-cc")), op).toBe(`S-${code}`);

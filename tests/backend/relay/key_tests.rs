@@ -53,7 +53,10 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
         Some(format!("http://127.0.0.1:8788/{}/t/codex/_", p1.expose()).as_str())
     );
     assert_eq!(pass_key_on_disk(&home).as_deref(), Some(p1.expose()));
-    assert!(home.join(KEY_FILE_REL).is_file(), "根钥匙不在盘上");
+    assert!(
+        home.join(relay_route_core::KEY_FILE_REL).is_file(),
+        "根钥匙不在盘上"
+    );
     assert!(
         !home.join(".cc-monitor").join("relay-pass-key").exists(),
         "只许直通那一把落了盘"
@@ -64,7 +67,7 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
 /// 判据用：在一个**夹具家目录**里预先放好 [`TEST_KEY`]（`0600`，走生产段那一份落盘），回这个家目录。
 /// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
 pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
-    let path = home.join(KEY_FILE_REL);
+    let path = home.join(relay_route_core::KEY_FILE_REL);
     // 夹具直接落盘（只给本人）；那一层目录这里自己建。
     std::fs::create_dir_all(path.parent().expect("钥匙路径有父目录")).expect("建夹具目录");
     std::fs::write(&path, test_key().expose()).expect("写夹具钥匙");
@@ -159,13 +162,9 @@ fn no_home_means_no_key() {
     let _ = std::fs::remove_dir_all(&data);
 }
 
-/// ⑦ 钥匙文件的相对路径与钥匙形状**只住共享 crate**（`relay_route_core::KEY_FILE_REL` · `key_shape_ok`）：
-/// 本模块那两个名字是它的别名（先前两半各写一份字面量、本条现抠 monitor `payload.rs` 那一行对拍 —— 那条跨半边边随之出列；
-/// 「两半零字面量」由 monitor 侧 `payload_tests::us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar` 两棵树一起扫）。
-/// 这里钉本模块铸的长度与共享 crate 认的形状对得上（异源：铸法是 `KEY_BYTES` 算出来的，形状闸是 crate 里写死的 64）。
+/// ⑦ 本模块铸的长度与共享 crate 认的钥匙形状对得上（异源：铸法是 `KEY_BYTES` 算出来的，形状闸是 crate 里写死的 64）。
 #[test]
-fn the_key_file_and_the_key_shape_come_from_the_shared_crate() {
-    assert_eq!(KEY_FILE_REL, relay_route_core::KEY_FILE_REL);
+fn the_minted_key_length_matches_the_shared_key_shape() {
     assert_eq!(2 * KEY_BYTES, 64, "铸的长度与共享 crate 的形状闸不一致");
     assert!(
         relay_route_core::key_shape_ok(TEST_KEY),

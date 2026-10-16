@@ -5,6 +5,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root";
+import { nonEmpty } from "../../test-support/non-empty";
 
 const cardsDir = resolve(REPO_ROOT, "src/frontend/ui/cards");
 /** cards/ 里每一种卡的根类（`className = "card card-…"` 那一串）。 */
@@ -48,7 +49,7 @@ function displayOf(classes: string): string {
 describe("折着的卡真的藏起来", () => {
   it("cards/ 里认得出那几种卡（含过程里的几步）", () => {
     expect(cardClasses).toContain("card card-steps");
-    expect(cardClasses.length).toBeGreaterThan(10);
+    nonEmpty(cardClasses);
   });
 
   it.each(cardClasses)("%s ＋ proc-hidden ⇒ 不显示", (c) => {

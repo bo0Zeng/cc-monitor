@@ -13,6 +13,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { nonEmpty } from "../test-support/non-empty";
 
 const root = path.resolve(__dirname);
 
@@ -64,7 +65,7 @@ describe("台架开的每一页：时区 · 现在给死，截图另按减少动
     const src = readFileSync(file, "utf8");
     const calls = opens(src);
     it(`${rel}：每一页开头拨钟`, () => {
-      expect(calls.length).toBeGreaterThan(0);
+      nonEmpty(calls);
       expect(calls.filter((c) => !c.includes("boot: pinDateSource(")), "Page.open 第五个实参带 { boot: pinDateSource() }").toEqual([]);
     });
     it(`${rel}：浏览器的时区是 SHOTS_TZ`, () => {

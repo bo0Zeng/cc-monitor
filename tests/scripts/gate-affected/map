@@ -21,7 +21,7 @@
 #   为什么恒跑：三套里都有扫全仓的判据（strace 实测：后端那套读到被跟踪的 3698 份里的 3686 份、vitest 3674 份；壳那套的私人形状 ·
 #   出仓引用按 `git ls-files` 扫全仓）⇒ 按路径挑会绿着说假话。要挑它们，先得把扫全仓的那几族挪出这三套。
 #   出仓引用（no_outside_refs）在 cargo 里，文案机检（copy-rules · copy-table）在 npm 里；--trust-ci 时 gate-affected 在门禁外单跑这几条。
-@suites cargo comm-boundary test-tiers generated backend npm
+@suites cargo creds-harden comm-boundary test-tiers generated backend npm
 # 壳那棵 workspace（monitor · 文件窗口 · 共享 crate）只编不跑的那几格：lint · 死码 · Linux 真链 · 截图台架的无头壳 · Windows 交叉检查与真链。
 @shellrs clippy deadcode appbuild shotsshell winchk winlink
 # 后端那棵（src/backend 及它链的共享 crate）只编不跑的那几格：lint · 死码 · Windows 交叉检查 · 两个 musl 静态包 · 拨号核心的两个 android target。

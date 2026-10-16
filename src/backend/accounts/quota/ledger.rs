@@ -268,17 +268,13 @@ pub(crate) struct Ledger {
 
 impl Ledger {
     /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。节点发到进程里那一条。
+    /// 生产只有这一个构造口；测试用的 `with_nodes` 住测试那一侧。
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
         Self::open(
             path,
             super::nodes::bus().clone(),
             super::spend::book().clone(),
         )
-    }
-
-    /// 同 [`Self::at`]，节点发到给的那一条、用量记在自己的一本里（判据各用自己的，不跟并行的判据串）。
-    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
-        Self::open(path, nodes, Default::default())
     }
 
     fn open(

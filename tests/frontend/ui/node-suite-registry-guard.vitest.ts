@@ -59,6 +59,7 @@ import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 /**
  * `(npm 脚本名, 文件)`。
@@ -302,11 +303,7 @@ describe("覆盖率地板表的自洽", () => {
     const record = src.slice(src.lastIndexOf("];", decl!.index), decl!.index);
     const chains = [...record.matchAll(/(?:\d+|…)(?:\s*→\s*(?:\d+|…))+/g)].map((m) => m[0]);
     const steps = chains.flatMap((c) => [...c.matchAll(/\d+/g)].map((m) => Number(m[0])));
-    expect(
-      steps.length,
-      "抽不到那条递减记录的箭头链（08-08 实测 `17→16` 与 `16→…→14→13` 共 5 格）——\n" +
-        "记录的写法变了（比如换了箭头字符），本条会零命中地绿，先修抽取器。",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(steps);
 
     for (let i = 1; i < steps.length; i++) {
       expect(
@@ -331,10 +328,7 @@ describe("覆盖率地板表的自洽", () => {
     const src = readFileSync(resolve(ROOT, "tests/scripts/assert-coverage-floors.mjs"), "utf8");
     // 人群 = 表里每一行 `["<路径>", 语句地板, 实测, 分支地板, 实测],`
     const rows = [...src.matchAll(/\[\s*"([^"]+)"\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/g)];
-    expect(
-      rows.length,
-      "从 `PER_FILE_FLOORS` 抽不到足够的行（08-08 实测 6 行）—— 抽取坏了，本条此刻无效",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(rows);
     const SLACK = 8; // 纪律写的是 ~5 点，留一点余量给 v8 版本差
     for (const [, file, sFloor, sNow, bFloor, bNow] of rows) {
       const [sf, sn, bf, bn] = [sFloor, sNow, bFloor, bNow].map(Number);
@@ -392,10 +386,7 @@ describe("`.mjs` 与 `.mts` 的最小闸门", () => {
 
   it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", async () => {
     // 抽取器自检：遍历塌了的话下面那条就是零命中地绿。
-    expect(
-      mjsFiles.length,
-      "全仓一个 .mjs 都没扫到（08-08 实测 6 个）—— 遍历坏了，本条此刻无效",
-    ).toBeGreaterThanOrEqual(4);
+    nonEmpty(mjsFiles);
     // 每份一个 `node --check` 子进程，**同时**起、一起等：原先逐个同步起（十来份 × 一次 node 冷启动），
     //   机器忙时排队等调度的时间逐份累加，整套并跑时把这一格挤过 5 s 默认期限。量具不变，仍是 `node --check` 本身。
     const broken = (

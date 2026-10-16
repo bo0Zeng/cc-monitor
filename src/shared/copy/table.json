@@ -3007,12 +3007,6 @@
         "C-W15": "键位表 / 命令面板里的动作名"
       }
     },
-    "sessionFind.box.tools": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "含工具输出与思考",
-      "args": []
-    },
     "sessionFind.box.placeholder": {
       "kind": "control",
       "role": "占位",

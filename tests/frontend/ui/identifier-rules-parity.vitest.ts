@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 
 import { ACCOUNT_NAME_PATTERN, accountNameOk } from "../../../src/frontend/ui/generated/judgment-rules.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const golden = JSON.parse(
   readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/identifier-rules.golden.json"), "utf8"),
@@ -33,8 +34,8 @@ it("模型名的规则不再生成到界面（界面不判）", () => {
 
 describe("DUP2 账号名：生成物 == 共用金样（两向）", () => {
   it("金样读到了东西（反空真）", () => {
-    expect(golden.account_name.ok.length).toBeGreaterThan(3);
-    expect(golden.account_name.bad.length).toBeGreaterThan(3);
+    nonEmpty(golden.account_name.ok);
+    nonEmpty(golden.account_name.bad);
     expect(ACCOUNT_NAME_PATTERN.startsWith("^")).toBe(true);
   });
 

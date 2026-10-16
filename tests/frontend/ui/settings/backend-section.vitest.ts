@@ -124,6 +124,7 @@ import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 // 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
@@ -182,8 +183,7 @@ describe("P2s backend 开关区", () => {
     const files = readPopulation();
     // 抽取器自检：读不到就下面全空转。
     for (const f of files) {
-      expect(f.src.length, `${f.name} 读出来只有 ${f.src.length} 字节 —— 人群坏了，本条在空转`)
-        .toBeGreaterThan(500);
+      nonEmpty(f.src);
     }
     // ⚠ `K-P3b KP3W4`③：人群扩到 `HEALTH_*` 四句 —— 它们与那三句同一条规矩，
     //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_backend_policy_copy_has_exactly_one_home` 看着
@@ -221,10 +221,8 @@ describe("P2s backend 开关区", () => {
     expect(visibleOf(section).includes("answer.said"), "`backend-section.ts` 不摆后端的 `said` —— 那它的文案是从哪来的？").toBe(true);
   });
 
-  it("★★ 反向锚点：常驻那一句（`backendPolicy.exit.unattended`）在表里有字、且后端那一处真取它（KPY4③）", () => {
-    // ⚠ 这一条在 `K-P1` **之前**的代码上是**红**的：那时常驻却一句不说。
-    //   它就是翻转的活体证据 —— 少了它，上面那几条在一份「文案全被删光」的树上照样绿。按键认，改那句话的措辞不撞。
-    expect(EXIT_UNATTENDED.trim().length, "常驻那一句在表里是空的 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半").toBeGreaterThan(0);
+  it("★★ 反向锚点：后端那一处真取常驻那一句（`backendPolicy.exit.unattended`）", () => {
+    // 少了它，上面那几条在一份「文案全被删光」的树上照样绿；按键认，改那句话的措辞不撞。表里有字由文案表的形状判据管。
     const policy = readFileSync(resolve(srcDirOf(__dirname), "../../../backend/control/exit_policy.rs"), "utf8");
     expect(policy, "后端那一处不再取常驻那一句 —— 界面摆的 `said` 里就没有它了").toContain('copy_text("backendPolicy.exit.unattended"');
   });

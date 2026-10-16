@@ -173,7 +173,7 @@ jobs:
 
       - name: 门禁 · monitor 那棵树的测试
         env:
-          GATE_ONLY: cargo comm-boundary test-tiers generated deadcode
+          GATE_ONLY: cargo creds-harden comm-boundary test-tiers generated deadcode
         run: bash tests/scripts/gate.sh
 
 

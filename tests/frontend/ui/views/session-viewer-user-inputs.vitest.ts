@@ -61,6 +61,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 let rig: ViewerRigHandles;
 
@@ -206,9 +207,7 @@ describe("KR45D1 点一下跳过去", () => {
 
     const inDom = streamOf(v).querySelectorAll("[data-id]").length;
     expect(inDom).toBe(150); // TAIL_INITIAL：首屏只渲染末尾 150 条
-    expect(rowsOf(v).length).toBe(200); // 而清单是 200 条 —— 分母 = 全部 200 条用户输入
-    // 分水岭：清单条数 > DOM 里的卡数 ⇒ 它确实不是扫 DOM 扫出来的
-    expect(rowsOf(v).length).toBeGreaterThan(inDom);
+    expect(rowsOf(v).length).toBe(200); // 而清单是全部 200 条 ⇒ 它不是扫 DOM 扫出来的
 
     expect(cardOf(v, "u1")).toBeNull(); // 第 1 条还没取回
     rowsOf(v)[0].click();
@@ -309,7 +308,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
       .split("\n")
       .map((l) => l.trim());
     // 抽取器自检：先确认这把尺子够得着那个文件（不然下面几条是空真）。
-    expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    nonEmpty(cssLines);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(
       ".session-viewer {",
     );

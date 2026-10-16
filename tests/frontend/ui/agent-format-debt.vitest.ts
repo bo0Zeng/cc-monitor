@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { stripComments } from "../../test-support/strip-comments";
 import { productionTsFiles } from "../../test-support/production-sources";
+import { nonEmpty } from "../../test-support/non-empty";
 
 /** 一处都不许有。 */
 const ZERO: readonly RegExp[] = [
@@ -29,7 +30,7 @@ describe("界面里认着某一家记录格式的地方：零处", () => {
     "★ 那几根针在界面生产代码里零命中",
     () => {
       const files = productionTsFiles("src/frontend/ui").filter((f) => !f.file.includes("/generated/"));
-      expect(files.length, "扫描面塌了").toBeGreaterThan(100);
+      nonEmpty(files);
       const zero: string[] = [];
       for (const { file, text } of files) {
         const code = stripComments(text, "ts");

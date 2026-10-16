@@ -17,7 +17,7 @@ export interface BashOutput {
 
 /** 输出 pre 超过该行数先折叠只展示头部（bash 输出通常短，阈值取小） */
 const OUTPUT_COLLAPSE_LINES = 30;
-const OUTPUT_HEAD_LINES = 20;
+export const OUTPUT_HEAD_LINES = 20;
 
 /** 终端风格命令卡：提示符箭头 ＋ npm install && npm run build */
 export function buildBashInputCard(

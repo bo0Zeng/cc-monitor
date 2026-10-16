@@ -164,6 +164,7 @@ import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 import { factsOn } from "../../../test-support/host-facts";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 // S9：jsdom 的 UA 含 `linux` ⇒ 不置覆盖值，本文件整套跑的就是「非 Windows」那条分支，
 // 而下面这些断言本来是照 Windows 形态写的。
@@ -688,7 +689,7 @@ describe("外观页每项后面那颗「恢复默认」是纯图标按钮", () =
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     const btns = [...document.querySelectorAll<HTMLButtonElement>(".settings-field-reset")];
-    expect(btns.length, "一颗都没找到 —— 下面是空真").toBeGreaterThan(0);
+    nonEmpty(btns);
     for (const b of btns) {
       const label = b.closest(".settings-row")?.querySelector(".settings-label")?.textContent ?? "";
       expect(b.textContent).toBe("");

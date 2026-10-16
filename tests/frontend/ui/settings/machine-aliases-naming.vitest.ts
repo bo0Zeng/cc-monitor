@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { nonEmpty } from "../../../test-support/non-empty";
 
 const PLAN_RS = readFileSync(resolve(__dirname, "../../../../src/backend/control/ccm/plan.rs"), "utf8");
 
@@ -54,8 +55,8 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
       .sort();
     expect(uiNo).toEqual(beNo);
     // 反空真：两边都得真有「退」与「不退」两种（全退 / 全不退时两向相等也会绿）。
-    expect(beYes.length).toBeGreaterThan(0);
-    expect(beNo.length).toBeGreaterThan(0);
+    nonEmpty(beYes);
+    nonEmpty(beNo);
   });
 
   it("说明里点出退让的后缀（-2）⇔ stepsAside 为真（话与表不许各说各的）", async () => {

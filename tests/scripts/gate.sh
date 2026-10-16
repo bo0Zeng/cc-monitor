@@ -180,7 +180,7 @@ if [ "$GATE_PAR" = 1 ]; then GATE_VITEST_EACH=$(( $(nproc) / ${#GATE_VITEST_CELL
 gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); }
 #
 # ② **不按墙钟判的格让路**（`nice -n 10`：负载涨上来时 CPU 先给按墙钟判的那些）：
-#    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `backend`
+#    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `creds-harden` · `backend`
 #      · `rotation-500`（沙箱里的策略每判有墙钟兜底）
 #      · `comm-boundary` · `test-tiers`（`cargo test` 里有带期限 / 等待上限的用例；这两格的 `cargo test --no-run` 那一半让路，
 #      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
@@ -190,7 +190,7 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
-GATE_WALL_CELLS=" npm coverage cargo backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
+GATE_WALL_CELLS=" npm coverage cargo creds-harden backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
 GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
@@ -821,6 +821,11 @@ if [ -d src/frontend/shell/embedded-backends ]; then
 else
   printf '  分母 %-14s %s\n' "cargo" "本树未铺 src/frontend/shell/embedded-backends/ ⇒ embedded_backends cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
 fi
+
+# ── `creds-harden`：凭据那份共享 crate 开 `harden` 那一档的单测 ─────────────────────────────
+# 壳那棵不开 `harden`（monitor 不写那份文件），后端那棵只把共享 crate 当依赖、不跑它的测试 ⇒ 建文件即只给本人那几条只在这一格跑。
+run_gate creds-harden '`creds-core` 开 `harden` 那一档的 lib 单测（写那一半只在这一档编进来）' \
+         gate_cargo_test_nonet src/frontend/shell -p creds-core --features harden --lib
 
 # ── `comm-boundary` · `test-tiers`：两族判据还在不在 ─────────────────────────────────────
 # 两族各挂在一个模块上，那一行 `mod` 被摘掉时整族消失，而 `cargo` 那格只会合计小一点。

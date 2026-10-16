@@ -40,6 +40,7 @@ import { TabManager } from "../../../src/frontend/ui/tabs";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
 import type { LiveCard } from "../../../src/frontend/ui/generated/LiveCard";
 import type { SessionLiveCardPayload } from "../../../src/frontend/ui/generated/SessionLiveCardPayload";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 // ─── 手写的帧（期望只从这里来） ─────────────────────────────────────────
 
@@ -171,7 +172,7 @@ describe("T8 活卡断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口
     const gapped = run(data.filter((f) => f.n !== 1), false);
     const closed = run([...data.slice(0, 3), close("s1", 0, 3)], false);
 
-    expect(none.content.length, "jsonl 那条路一张卡都没建 —— 本组空转").toBeGreaterThan(0);
+    nonEmpty(none.content);
     expect(whole.content).toBe(none.content);
     expect(gapped.content).toBe(none.content);
     expect(closed.content).toBe(none.content);

@@ -125,7 +125,7 @@ export class FindStrip {
     this.input.addEventListener("input", () => this.armAuto());
     this.box.appendChild(this.input);
 
-    this.tools = checkbox(opts.panel ? copyText("sessionFind.box.tools") : copyText("findStrip.box.tools"), false, (on) => {
+    this.tools = checkbox(copyText("findStrip.box.tools"), false, (on) => {
       this.withTools = on;
       if (this.input.value.trim()) void this.run();
     });

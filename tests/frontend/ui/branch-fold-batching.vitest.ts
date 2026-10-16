@@ -175,7 +175,7 @@ describe("C1 · 差量重折 == 从零折", () => {
       foldedSeen += f;
     }
     expect(checked).toBe(300);
-    expect(foldedSeen, "反空真：序列里真出现过折叠段").toBeGreaterThan(50);
+    expect(foldedSeen, "三个种子的序列里折叠段的总数（种子固定 ⇒ 数是定的）").toBe(1444);
   }); // 满载下全量套件里跑过 5 s
 
   it("清单没变 / 只在尾巴长一条主线卡：零搬动（DOM 一次写都没有）", () => {

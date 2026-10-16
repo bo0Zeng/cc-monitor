@@ -42,6 +42,7 @@ import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machi
 import { answerAskDialog, askDialogText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../../test-support/copy-pattern";
+import { nonEmpty } from "../../../test-support/non-empty.ts";
 
 const mockFetchAccounts = fetchAccounts as unknown as ReturnType<typeof vi.fn>;
 
@@ -103,7 +104,7 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
     // S4b-3b-3：扫**整个组件**（`cc-bus-section*` 全部文件）而不是写死一个文件名 ——
     // 代码搬到隔壁新文件后，写死文件名的守卫会照样绿、而守的范围已经缩小（§5-4）。
     const files = componentSources("views", "cc-bus-section");
-    expect(files.length, "反向自检：守卫必须真扫到文件").toBeGreaterThan(0);
+    nonEmpty(files);
     const code = files.map((f) => f.code).join("\n");
     expect(code).not.toMatch(/setInterval|requestAnimationFrame/);
     expect(code).not.toMatch(/setTimeout\s*\(/);
@@ -398,7 +399,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
 
   it("**零引用 launch IR**：spawn 走远端 exec，不经会话启动那套", () => {
     const files = componentSources("views", "cc-bus-section");
-    expect(files.length).toBeGreaterThan(0);
+    nonEmpty(files);
     const code = files.map((f) => f.code).join("\n");
     // `componentSources` 已经剥过注释，这里不必再剥一遍。
     expect(code).not.toMatch(/from ["']\.\.\/launch/);

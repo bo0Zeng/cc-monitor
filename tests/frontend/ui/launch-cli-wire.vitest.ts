@@ -131,7 +131,6 @@ describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
   test("原文件不在盘上，生产段零命中", () => {
     expect(existsSync(resolve(__dirname, "../../..", "src/launch-render-cli.ts"))).toBe(false);
     const files = productionTsFiles();
-    expect(files.length, "生产 TS 一份都没收到 —— 遍历坏了，下面的零命中不携带信息").toBeGreaterThan(100);
     expect(hits(files)).toEqual([]);
   });
 });

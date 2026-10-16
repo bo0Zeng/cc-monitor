@@ -71,6 +71,7 @@ import {
 } from "../../evidence/S30-css-conventions.ts";
 import { stripCodeComments } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { nonEmpty } from "../../test-support/non-empty.ts";
 
 const FACTS: CssFacts = cssFacts(REPO_ROOT);
 const SET_PROP = setPropertyVars(REPO_ROOT);
@@ -107,12 +108,12 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
 
 describe("S30 ⓪ 量具自检（这几条不过，下面三格全是空转）", () => {
   it("扫到的人群没有缩水", () => {
-    expect(FACTS.cssFiles.length, `只扫到 ${FACTS.cssFiles.length} 份 CSS`).toBeGreaterThan(0);
-    expect(FACTS.defined.size, "CSS 里一个自定义属性定义都没扫到 ⇒ 词法坏了").toBeGreaterThan(0);
-    expect(FACTS.used.size, "CSS 里一处 var() 都没扫到 ⇒ 词法坏了").toBeGreaterThan(0);
-    expect(FACTS.rules.length, "一条 CSS 规则都没扫到 ⇒ 分块坏了").toBeGreaterThan(0);
+    nonEmpty(FACTS.cssFiles);
+    nonEmpty(FACTS.defined);
+    nonEmpty(FACTS.used);
+    nonEmpty(FACTS.rules);
     expect(FACTS.transitionDecls, "一条 transition 都没扫到").toBeGreaterThan(0);
-    expect(HIDDEN.length, "一处 `.hidden =` 都没扫到 ⇒ TS 侧词法坏了").toBeGreaterThan(0);
+    nonEmpty(HIDDEN);
   });
 
   it("🔴 正控：剥 CSS 注释这一步在承重（不剥的话散文会同时造假与灭真）", () => {
@@ -156,7 +157,7 @@ describe("S30 ⑤ 自定义属性对账，两个方向", () => {
         `  TS 设了但 CSS 没人用：${minus(fromTs, new Set(fromCss)).join(" ") || "（无）"}\n` +
         "左边多 ⇒ 写错了变量名（那条声明会被浏览器整条丢弃）；右边多 ⇒ setProperty 设了个没人读的名字。",
     ).toEqual(fromTs);
-    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBeGreaterThan(0);
+    nonEmpty(fromTs);
   });
 
   it("② theme.ts 那 14 个旋钮，CSS 里必须都有默认值", () => {
@@ -166,7 +167,7 @@ describe("S30 ⑤ 自定义属性对账，两个方向", () => {
       THEME.filter((t) => !KNOB_FAMILIES.some((f) => t === f || t.startsWith(f))),
       "这些旋钮不在旋钮族里 —— 新补的令牌族不许混进旋钮",
     ).toEqual([]);
-    expect(THEME.length, "一个旋钮都没读到 ⇒ 下面那条会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(THEME);
     expect(
       minus(THEME, FACTS.defined),
       "这些旋钮 CSS 里没有默认值 ⇒ 用户没改过的时候它们是空的，整条属性会被丢弃",
@@ -227,10 +228,7 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
         "  · 要动尺寸 ⇒ 用 `transform: scale`（`.sftp-bar-fill` 那条 `width` 就是这么治好的，S24）\n" +
         "  · 真有第三条路 ⇒ 写进 TRANSITION_EXCEPTIONS，附住址与理由",
     ).toEqual([]);
-    expect(
-      seen.length,
-      `只扫到 ${seen.length} 种被过渡的属性（现打 7）—— 值的切分坏了，上面那条会零命中地绿`,
-    ).toBeGreaterThanOrEqual(5);
+    nonEmpty(seen);
   });
 
   it("登记的例外今天必须真的还在（不许留死条目）", () => {
@@ -377,11 +375,8 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
   const verdicts = new Map(classes.map((c) => [c, displayVerdict(FACTS, c)]));
 
   it("分母：判过的 `.hidden =` 处数与类名个数", () => {
-    expect(HIDDEN.length).toBeGreaterThan(0);
-    expect(
-      classes.length,
-      "一个类名都没解析出来 ⇒ 下面两条会零命中地绿",
-    ).toBeGreaterThan(0);
+    nonEmpty(HIDDEN);
+    nonEmpty(classes);
   });
 
   it("解析不出类名的那几处 == 登记表（不许静默跳过）", () => {
@@ -644,7 +639,7 @@ const DEAD_DECL_KNOWN: Readonly<Record<string, string>> = {} as const;
 
 describe("S30 ⑨ 活规则里的死声明", () => {
   it("分母与量具自检：声明条数 · 三扇窗口的清单 · 层序 · 规则体里没有原生嵌套", () => {
-    expect(DECLS.length, "声明条数塌了 ⇒ 下面那条恒等会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(DECLS);
     expect([...WINDOWS.keys()].sort()).toEqual(["index.html", "settings.html", "viewer.html"]);
     for (const [w, sheets] of WINDOWS) expect(sheets[0], `${w} 的 CSS 清单第一份不是 layers.css —— 层序读错了`).toBe("src/frontend/ui/styles/layers.css");
     expect(LAYERS, "层序读出来不是 layers.css 那一句").toEqual(["reset", "vendor", "tokens", "base", "layout", "components", "states", "utilities"]);

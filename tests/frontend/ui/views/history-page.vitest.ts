@@ -857,7 +857,7 @@ describe("筛选浮层的其余几格 · 按项目收起与新建", () => {
     invokeMock.mock.calls.length = 0;
     box(copyText("history.filter.tools")).click();
     await flush();
-    expect(calls("history-search").length).toBeGreaterThan(0);
+    expect(calls("history-search").map((a) => a.include_tools), "勾上工具 ⇒ 两台各再搜一次、带上工具").toEqual([true, true]);
     expect(byText("button", copyText("history.page.filter"))!.textContent).toContain("2");
     v.close();
   });

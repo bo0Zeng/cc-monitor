@@ -31,6 +31,7 @@ import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { censusList, loadTable, loadTerms, type Entry, type Table, type Term } from "./copy-support.ts";
 import { CHECKS, hitsOf, ruleHit, type CheckCtx, type WRule } from "./copy-checks.ts";
 import { rawFedArgs, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 const RULES_PATH = resolve(REPO_ROOT, "src", "shared", "copy", "rules.json");
 const TABLE_TESTS = resolve(REPO_ROOT, "tests", "copy", "copy-table.vitest.ts");
@@ -157,7 +158,7 @@ describe("CP2a · 文案规范", () => {
   const ctx = y3Ctx(rules, terms);
 
   it("规范的形状：规矩号唯一 · 每条标机检或主观 · 主观写明为什么判不了 · 机检写明可不可豁免", () => {
-    expect(rules.length, "规范一条都没读出来").toBeGreaterThan(0);
+    nonEmpty(rules);
     const p: string[] = [];
     const seen = new Set<string>();
     for (const r of rules) {
@@ -175,7 +176,7 @@ describe("CP2a · 文案规范", () => {
 
   it("★ 规矩 ↔ 实现两向相等：标机检的规矩号 == 各检法管的规矩号之并 ∪ copy-table.vitest.ts 的 [C-xx] 标题", () => {
     const titled = titledIds(readFileSync(TABLE_TESTS, "utf8"));
-    expect(titled.length, "copy-table.vitest.ts 里一条带规矩号的标题都没抽到 —— 抽取器坏了").toBeGreaterThan(0);
+    nonEmpty(titled);
     const implemented = new Set([...CHECKS.flatMap((c) => c.covers), ...titled]);
     const declared = new Set(rules.filter((r) => r.check === "机检").map((r) => r.id));
     expect([...declared].filter((x) => !implemented.has(x)), "标了机检、却没有实现").toEqual([]);
@@ -193,7 +194,7 @@ describe("CP2a · 文案规范", () => {
 
   it("★ 文案表逐条过全部机检规矩（豁免登记的除外，且没有死豁免）", () => {
     const table = loadTable();
-    expect(Object.keys(table).length, "文案表是空的 —— 这一条会零命中地绿").toBeGreaterThan(0);
+    nonEmpty(Object.keys(table));
     expect(tableViolations(table, rules, ctx, loadDebt())).toEqual([]);
   });
 
@@ -263,7 +264,7 @@ describe("复选框 / 开关标签允许动词开头 —— 规矩与检法同�
 
   it("★ 同一串按档各跑一遍：control 档放过、title 档逮住（判别在档，不在串）", () => {
     const good = y3.controlGood ?? [];
-    expect(good.length, "controlGood 是空的 —— 下面的「放过」零命中地绿").toBeGreaterThan(0);
+    nonEmpty(good);
     const p: string[] = [];
     for (const zh of good) {
       if (ruleHit("C-Y3", { kind: "control", zh, args: [] }, ctx)) p.push(`control 档逮住了「${zh}」`);
@@ -271,7 +272,7 @@ describe("复选框 / 开关标签允许动词开头 —— 规矩与检法同�
     expect(p).toEqual([]);
     // 正控：以祈使词开头的那几条换成 title 档必须红（否则「放过」可能是检法整个瞎了）。
     const verbStart = good.filter((zh) => ctx.imperative.some((w) => zh.startsWith(w)));
-    expect(verbStart.length, "controlGood 里没有一条以祈使词开头 —— 这组正例证不了裁决").toBeGreaterThan(0);
+    nonEmpty(verbStart);
     for (const zh of verbStart) {
       expect(ruleHit("C-Y3", { kind: "title", zh, args: [] }, ctx), `title 档放过了「${zh}」`).toMatch(/祈使动词/);
     }

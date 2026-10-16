@@ -38,6 +38,7 @@ import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { loadTable, NAMED_PH, type Ref, type Table } from "./copy-support.ts";
 import { KT_HOME, kotlinRefsIn, kotlinRefsOfTree } from "./kotlin-refs.ts";
 import { RS_DEFINITIONS, RS_HOME, rustRefsIn, rustRefsOfTree } from "./rust-refs.ts";
+import { nonEmpty } from "../test-support/non-empty.ts";
 
 // 第六档 aria：只进 aria-label 的无障碍名。
 const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
@@ -166,7 +167,7 @@ describe("CP2a · 文案表：形状", () => {
   const table = loadTable();
 
   it("表读得出条目（反空真：0 条时下面每一条都是空转）", () => {
-    expect(Object.keys(table).length).toBeGreaterThan(0);
+    nonEmpty(Object.keys(table));
   });
 
   it("[C-K1] key 三段式 · kind 六档 · 占位符只许具名 · args 与占位符两向相等", () => {
@@ -174,7 +175,7 @@ describe("CP2a · 文案表：形状", () => {
   });
 
   it("[C-K2] kind == title 的条数不为 0（全填成 body 会让 R5 静默空转）", () => {
-    expect(Object.values(table).filter((e) => e.kind === "title").length).toBeGreaterThan(0);
+    nonEmpty(Object.values(table).filter((e) => e.kind === "title"));
   });
 
   it("[C-K4] 每条带 role，取自闭集；role 与 kind 的搭配取自搭配表，搭配表与表里出现的格两向相等", () => {
@@ -198,16 +199,16 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   const problems = [...all.flatMap((x) => x.problems), ...rsProblems, ...ktProblems];
 
   it("正控（Kotlin）：扫到了手机端生产源码、Kotlin 取文口自己，也读到了 Kotlin 调用点", () => {
-    expect(ktFiles.length, "一个手机端生产 .kt 都没扫到").toBeGreaterThan(100);
+    nonEmpty(ktFiles);
     expect(ktFiles.map((f) => f.file)).toContain(KT_HOME);
     expect(ktFiles.some((f) => f.file.includes("/src/test/")), "测试源混进了生产人群").toBe(false);
-    expect(ktRefs.length, "一个 copyText 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
+    nonEmpty(ktRefs);
   });
 
   it("正控（Rust）：扫到了 .rs 生产源码、Rust 取文口自己，也读到了 Rust 调用点", () => {
-    expect(rsFiles.length, "一个 .rs 都没扫到").toBeGreaterThan(100);
+    nonEmpty(rsFiles);
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
-    expect(rsRefs.length, "一个 copy_text 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
+    nonEmpty(rsRefs);
      // 三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
     // `src/common/` 10 → 5：`search-core` 删、`deploy-core` 的判定进后端（契约 `deploy-contract` 只剩一份 lib.rs），盘上现 10 份。
     for (const [root, n] of [["src/backend/", 100], ["src/common/", 5]] as const) {
@@ -218,9 +219,8 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   });
 
   it("正控：扫到了生产源码，也扫到了取文口自己", () => {
-    expect(files.length, "一个生产 .ts 都没扫到 —— 下面的相等是空集对空集").toBeGreaterThan(100);
     expect(files.map((f) => f.file)).toContain(HOME);
-    expect(refs.length, "一个 copyText 调用点都没找到 —— 样板区没接上，或者解析器坏了").toBeGreaterThan(0);
+    nonEmpty(refs);
   });
 
   it("没有绕过静态读的写法（非字面 key · 改名导入 · 当值传 · 展开参数）", () => {
@@ -332,7 +332,7 @@ describe("[C-L5] 值与汉字之间的空格随值定", () => {
 
   it("[C-L5] 全表逐条：ASCII 值挨着汉字 ⇒ 恰一个空格；汉字值挨着汉字 ⇒ 没有空格", () => {
     const keys = Object.keys(table).filter((k) => seamed(table[k].zh));
-    expect(keys.length, "一条有接缝的都没找到 —— 下面零命中地绿").toBeGreaterThan(900);
+    nonEmpty(keys);
     const tightA = new RegExp(`${HAN}${ASCII}|${ASCII}${HAN}`);
     const spacedH = new RegExp(`(?!${HANV})${HAN} ${HANV}|${HANV} (?!${HANV})${HAN}`);
     const bad: string[] = [];
@@ -367,7 +367,7 @@ describe("DUP2 · 两个读口的插值对拍（金样 copy-interpolation.golden
   const table = loadTable();
 
   it("金样读得出（反空真）", () => {
-    expect(golden.cases.length).toBeGreaterThanOrEqual(5);
+    nonEmpty(golden.cases);
   });
 
   it("每条：表里还是那一句，copyText 插出来 == 手写的 want", () => {

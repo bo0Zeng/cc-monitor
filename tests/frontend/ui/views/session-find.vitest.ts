@@ -429,7 +429,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     await settleOutline();
     const { recordReadCalls } = await import("../../../test-support/chan-fake");
     const ranges = recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");
-    expect(ranges.length, "正文真的是按偏移要回来的").toBeGreaterThan(0);
+    expect(ranges, "正文是按偏移要回来的").toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", offset: 2700, until: 3310, seqBase: 270 }]);
     expect(el.querySelector('[data-id="u300"]'), "取回之后卡建出来了").not.toBeNull();
     expect(row.dataset.unjumpable, "等到了卡却标成跳不过去 ⇒ 同步那一下就去找了").toBeUndefined();
   });
@@ -454,7 +454,6 @@ describe("ui3 · 查找范围「全部 | 用户」", () => {
       ["user", copyText("sessionFind.scope.user"), "false"],
     ]);
     expect(toolsBox(p.el).closest("label")!.textContent).toBe(copyText("findStrip.box.tools"));
-    expect(copyText("sessionFind.box.tools")).toBe(copyText("findStrip.box.tools"));
     const query = q(p, "[data-role=find-input]").closest("div")!;
     expect(query.contains(scopeSeg(p.el)), "分段不挤在框那一行").toBe(false);
   });

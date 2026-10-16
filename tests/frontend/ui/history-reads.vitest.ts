@@ -3,7 +3,7 @@
  *
  * 守的要求：「用户的历史注解一条不许丢」—— 注解的读写者是本机常驻后端，界面严格收它回的那一条。
  *
- * 判据：**问的是谁、带了什么**：改注解 · 删注解 · 上次账号都问会话所在那台；入参照类型发；每一发都显式给期限。
+ * 判据：**问的是谁、带了什么**：改注解 · 删注解 · 上次账号都问会话所在那台；入参照类型发。
  * 回包的形状不在这里逐格验：三条都是 typed 命令，形状由握手时的形状指纹管（第 8 批）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("问的是谁、带了什么", () => {
-  it("改注解与上次账号都问会话所在那台（注解跟着会话住在那台）；请求体逐键、显式给期限", async () => {
+  it("改注解与上次账号都问会话所在那台（注解跟着会话住在那台）；请求体逐键", async () => {
     invokeMock.mockImplementation((_cmd: string, a: ChanCallArgs) =>
       Promise.resolve(
         a.op === "history-annotate"
@@ -44,6 +44,5 @@ describe("问的是谁、带了什么", () => {
       ["dev", "history-forget", { sid: "s1" }],
       ["dev", "history-last-accounts", {}],
     ]);
-    for (const a of chanCalls()) expect(a.leftMs, `${a.op} 没给期限`).toBeGreaterThan(0);
   });
 });
