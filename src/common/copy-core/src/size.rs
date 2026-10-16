@@ -1,5 +1,5 @@
-//! 大小（字节 ⇒ 给人看的一格）：后端 · 壳 · 文件窗口写大小都经 [`size_text`]；界面那一个读口 `format.ts::sizeText`、
-//! 手机端 `SizeFormat` 与它对同一份金样 `tests/__fixtures__/size-text.golden.json`。单位格住文案表 `sizeFormat.unit.*`。
+//! 大小（字节 ⇒ 给人看的一格）：后端 · 壳 · 文件窗口 · 手机（经 JNI）写大小都经 [`size_text`]；界面那一个读口 `format.ts::sizeText`
+//! 与它对同一份金样 `tests/__fixtures__/size-text.golden.json`。单位格住文案表 `sizeFormat.unit.*`。
 
 use crate::copy_text;
 

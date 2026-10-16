@@ -116,7 +116,6 @@ src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依
 src/backend/lib.rs              mobile  手机构建读 BUILD_ID 与子命令表
 src/frontend/shell/embedded-backends/**  mobile  手机打包时带上的远端后端字节
 src/frontend/ui/generated/**    mobile  线上类型的 TS 生成物：手机单测拿它对拍 Kotlin 那一份
-src/shared/copy/**              mobile  文案表：手机构建与单测读它
 src/vendor/**                   backendrs,e2e  后端链的 vendored russh
 tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
 src/backend/accounts/quota/rules/**  rotation500  轮换的判与推演：一致性大样本比的就是它
@@ -126,6 +125,7 @@ tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 
 
 # ── 部署到远端 / 共用的那几份 ───────────────────────────────────────────────────────────
 src/shared/cc-bus/**            e2e    cc-bus 脚本：cc-spawn-uplift · backend-cc-bus · cc-bus-queue-drain 真跑它；ccbus-twophase 恒跑；shellcheck 由规则 ③ 另加
+src/shared/copy/**              mobile  文案表：编进手机那份核心（copy-core 内嵌），手机的 JVM 单测经宿主版那份 .so 读它
 src/shared/theme/**             mobile,android-device,shots  令牌正本：手机 core-ui 构建时从它生成 ThemeTokens；网页三窗链它（截图格看像素）；文件窗口判据的主题从它解（在恒跑的 cargo 里）
 src/shared/**                   e2e,coverage  文案表 JSON（TS 与 Rust 都读、e2e 也读）· ccm 别名 · quota-warm；被 Rust include_str! 的由规则 ① 另加
 src/doc/**                      -      协议 / IPC 文档：读它的判据在 cargo / backend（恒跑）；被 include_str! 的由规则 ① 另加

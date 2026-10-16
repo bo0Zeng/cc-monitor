@@ -349,7 +349,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 ### 3.6 文案表
 
 - 对外的每一句话都从一张表来：`src/shared/copy/table.json`（键 → 每种语言一句 ＋ 具名插值点；`rules.json` · `terms.json` 是写法规矩与用词表）。
-- 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-copy`（构建时只抄手机代码引到的那几条，`src/mobile/core-copy/build.gradle.kts`）。
+- 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-copy`（经 JNI 调手机那份 `.so` 里的 `copy-core`，大小 · 时长同）。
 - 键必须是字面量，参数名集合等于表里那一条的 `args`；判据 `tests/copy/copy-table.vitest.ts`，手机生产源码不写死界面中文由 `tests/copy/mobile-literals.vitest.ts` 钉。
 - 描述数据与状态的句子由核心写（§2.9），出口只取自己骨架上的字。
 
