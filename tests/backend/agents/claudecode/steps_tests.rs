@@ -602,7 +602,7 @@ fn a_path_step_names_its_file_when_absolute() {
 #[test]
 fn the_frontends_never_read_a_tool_input_key() {
     const KEYS: &[&str] = &["old_string", "new_string", "file_path", "notebook_path"];
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let word = |text: &str, k: &str| {
         let is_id = |c: char| c.is_ascii_alphanumeric() || c == '_';
         text.match_indices(k).any(|(i, _)| {
