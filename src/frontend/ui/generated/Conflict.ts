@@ -23,6 +23,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -34,6 +38,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */

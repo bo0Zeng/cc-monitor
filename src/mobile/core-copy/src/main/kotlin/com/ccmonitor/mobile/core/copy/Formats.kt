@@ -1,39 +1,6 @@
 package com.ccmonitor.mobile.core.copy
 
 /**
- * 大小（字节 ⇒ 给人看的一格）：与核心 `copy_core::size_text` · 桌面 `format.ts::sizeText` 同一个写法，
- * 三侧对 `tests/__fixtures__/size-text.golden.json`。不满 1 KB 写整数字节；往上按 1024 进位、最多到 TB，一位小数。
- */
-object SizeFormat {
-    private const val UNITS = 5
-
-    fun text(bytes: Long): String {
-        val b = bytes.coerceAtLeast(0)
-        var u = 0
-        while (u + 1 < UNITS && b >= 1L shl (10 * (u + 1))) u++
-        if (u == 0) return unit(0, b.toString())
-
-        fun tenths(k: Int): Long = (b * 10 + (1L shl (10 * k - 1))) / (1L shl (10 * k))
-        var t = tenths(u)
-        if (t >= 10_240 && u + 1 < UNITS) t = tenths(++u)
-        return unit(u, "${t / 10}.${t % 10}")
-    }
-
-    /** 第 [u] 档单位写上数（文案键逐档字面量）。 */
-    private fun unit(
-        u: Int,
-        n: String,
-    ): String =
-        when (u) {
-            0 -> copyText("sizeFormat.unit.b", "n" to n)
-            1 -> copyText("sizeFormat.unit.kb", "n" to n)
-            2 -> copyText("sizeFormat.unit.mb", "n" to n)
-            3 -> copyText("sizeFormat.unit.gb", "n" to n)
-            else -> copyText("sizeFormat.unit.tb", "n" to n)
-        }
-}
-
-/**
  * 短时长 · 距今 · 会走的钟：与核心 `copy_core::short_duration` / `rel_duration` · 桌面 `duration-format.ts`
  * 同一个写法，三侧对 `tests/__fixtures__/short-duration.golden.json`。核心写好的 `{text, from, to?}` 钟只在这里按此刻填 `{dur}`。
  */

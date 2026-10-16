@@ -16,6 +16,7 @@
 use super::*;
 use crate::copy::testing::{rects_of, text_in_frame, PaintedText};
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend, Wired};
+use crate::select::ActionFace;
 use crate::shell::FileWindow;
 use crate::workspace::Workspace;
 
@@ -98,13 +99,13 @@ fn keys_on_the_page_and_ctrl_keys_left_to_the_window() {
 }
 
 fn listed(name: &str, size: u64) -> Listed {
-    Listed::plain(crate::source::Row {
+    crate::find::testing::gated(Listed::plain(crate::source::Row {
         name: name.into(),
         path: format!("/d/{name}"),
         is_dir: false,
         size,
         lossy_name: false,
-    })
+    }))
 }
 
 fn shot(path: &str, size: u64) -> Shot {
@@ -347,10 +348,10 @@ fn left_and_right_walk_the_images_of_that_folder_and_stop_at_the_ends() {
         "/d".into(),
         None,
         vec![
-            listed("a.png", 10).row,
-            listed("b.txt", 10).row,
-            listed("c.jpg", 10).row,
-            listed("d.tiff", 10).row,
+            listed("a.png", 10),
+            listed("b.txt", 10),
+            listed("c.jpg", 10),
+            listed("d.tiff", 10),
         ],
     );
     assert!(w.begin_view(0), "图片开不了");
@@ -519,7 +520,17 @@ async fn zoom_keys_the_wheel_and_dragging_move_the_picture() {
 async fn over_the_cap_says_why_and_reads_nothing() {
     let (wired, mut w, dir) = rig("fw-iv-cap").await;
     let a = row_of(&w, "a.png");
-    w.listing.rows.lock().unwrap()[a].row.size = crate::picture::PICTURE_MAX_BYTES + 1;
+    // 后端那道查看门说不许 ⇒ 摆出那一句、不读。
+    let big = 32 * 1024 * 1024 + 1;
+    let gated = crate::find::testing::fake_gates("a.png", false, big).2;
+    let Some(cmd_wire::files::Gate::No(said)) = gated.as_ref().and_then(|g| g.view.clone()) else {
+        panic!("合成后端对 32 M 以上的图该给不许");
+    };
+    {
+        let mut rows = w.listing.rows.lock().unwrap();
+        rows[a].row.size = big;
+        rows[a].gates = gated;
+    }
     assert!(w.begin_view(a));
     let mut ws = Workspace::new(w);
     let mut d = Drive::new();
@@ -527,20 +538,6 @@ async fn over_the_cap_says_why_and_reads_nothing() {
     for _ in 0..5 {
         painted = d.frame(&mut ws, Vec::new());
     }
-    let said = copy_text(
-        "rsFilewinImgview.state.tooBig",
-        &[
-            ("name", "a.png"),
-            (
-                "size",
-                &copy_core::size_text(crate::picture::PICTURE_MAX_BYTES + 1),
-            ),
-            (
-                "limit",
-                &copy_core::size_text(crate::picture::PICTURE_MAX_BYTES),
-            ),
-        ],
-    );
     assert!(
         !rects_of(&painted, &said).is_empty(),
         "超上限没说为什么：{painted:?}"

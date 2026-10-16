@@ -12,14 +12,16 @@ use super::*;
 use crate::find::testing::{window_on, wire_up, Declared, FakeBackend};
 
 fn file_row(name: &str) -> crate::source::Listed {
-    crate::source::Row {
-        name: name.into(),
-        path: format!("/srv/{name}"),
-        is_dir: false,
-        size: 0,
-        lossy_name: false,
-    }
-    .into()
+    crate::find::testing::gated(
+        crate::source::Row {
+            name: name.into(),
+            path: format!("/srv/{name}"),
+            is_dir: false,
+            size: 0,
+            lossy_name: false,
+        }
+        .into(),
+    )
 }
 
 async fn settle(w: &crate::shell::FileWindow, want: u64) {

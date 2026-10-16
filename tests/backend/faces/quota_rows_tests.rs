@@ -174,9 +174,12 @@ fn warm_sends_only_when_the_window_is_not_ticking() {
         resets_at: u64::try_from(resets_at).ok(),
         resets_at_text: Some(Words("x".to_string())),
         resets_at_rel_text: None,
+        reset_text: None,
         full: false,
         text: Words::default(),
         tone: Tone::Plain,
+        per_pct_text: None,
+        window: String::new(),
     };
     let show = |slots: Vec<SlotShow>| QuotaShow {
         kind: Kind::Sub,
@@ -369,4 +372,103 @@ fn an_unreadable_ledger_sends_nothing_and_says_which_file_and_why() {
             serde_json::json!(now as i64 + WARM_UNREADABLE_RETRY_S)
         );
     }
+}
+
+/// ★ 「现在还能不能发」那两行：有号发得出去 ⇒「可发 · n 个号」＋ 号名（`_` 写成它的叫法）、plain；一个都发不出去 ⇒「均不可发」＋ 最早哪个几点回来、fail；
+/// 最早那个时刻已过 ⇒ 不写距今；读不出 / 一个号都没有 ⇒ 不出（看顶上那一句）。
+#[test]
+fn the_verdict_says_whether_anything_can_send() {
+    use crate::accounts::quota::ledger::ReadState;
+    use crate::faces::quota_read::{reply_of, Base};
+    let now = 1_800_000_000u64;
+    let clock = crate::common::time::TextClock::new(now, &crate::Tz::default());
+    let unseen = |id: &str| crate::faces::quota_read::UnseenHead {
+        agent: crate::agents::AgentKind::new("claude"),
+        account: id.into(),
+        kind: crate::accounts::quota::facts::Kind::Sub,
+        login: crate::accounts::quota::show::LoginState::Ok,
+        sub_id: None,
+        usage: crate::accounts::quota::show::usage_of(
+            crate::accounts::quota::facts::Kind::Sub,
+            crate::accounts::quota::show::QuotaState::Unseen,
+            None,
+            &[],
+            None,
+        )
+        .into(),
+    };
+    let base = |state, usable: &[&str], earliest: Option<(&str, u64)>| Base {
+        state,
+        reason: None,
+        detail: None,
+        path: None,
+        now,
+        usable_now: usable.iter().map(|s| s.to_string()).collect(),
+        earliest: earliest.map(|(a, t)| (a.to_string(), t)),
+    };
+    let verdict = |b: Base, u: Vec<_>| reply_of(b, Vec::new(), u, &clock).verdict;
+    let sep = copy_core::copy_text("kit.text.sep", &[]);
+    let v = verdict(
+        base(ReadState::Present, &["a", "_"], None),
+        vec![unseen("a")],
+    )
+    .expect("有号");
+    assert_eq!(
+        (v.text.0, v.sub.map(|w| w.0), v.tone),
+        (
+            copy_core::copy_text("acct.verdict.can", &[("n", "2")]),
+            Some(format!(
+                "a{sep}{}",
+                copy_core::copy_text("acct.tag.home", &[])
+            )),
+            crate::common::cells::Tone::Plain
+        )
+    );
+    let back = now + 5_400;
+    let v = verdict(
+        base(ReadState::Present, &[], Some(("b", back))),
+        vec![unseen("a")],
+    )
+    .expect("有号");
+    assert_eq!(
+        (v.text.0, v.sub.map(|w| w.0), v.tone),
+        (
+            copy_core::copy_text("acct.verdict.none", &[]),
+            Some(copy_core::copy_text(
+                "acct.verdict.earliest",
+                &[
+                    ("account", "b"),
+                    ("at", &clock.text(back).0),
+                    ("rel", &clock.rel(back).unwrap().0)
+                ]
+            )),
+            crate::common::cells::Tone::Fail
+        )
+    );
+    let v = verdict(
+        base(ReadState::Present, &[], Some(("b", now - 60))),
+        vec![unseen("a")],
+    )
+    .expect("有号");
+    assert_eq!(
+        v.sub.map(|w| w.0),
+        Some(copy_core::copy_text(
+            "acct.verdict.earliestAt",
+            &[("account", "b"), ("at", &clock.text(now - 60).0)]
+        ))
+    );
+    let v = verdict(base(ReadState::Present, &[], None), vec![unseen("a")]).expect("有号");
+    assert_eq!(v.sub, None, "说不出几点回来 ⇒ 缺");
+    assert!(
+        verdict(base(ReadState::Present, &[], None), Vec::new()).is_none(),
+        "一个号都没有"
+    );
+    assert!(
+        verdict(base(ReadState::Unreadable, &["a"], None), vec![unseen("a")]).is_none(),
+        "读不出"
+    );
+    assert!(
+        verdict(base(ReadState::Absent, &[], None), Vec::new()).is_none(),
+        "没记过账"
+    );
 }

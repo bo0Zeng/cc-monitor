@@ -164,7 +164,7 @@ impl DirPick {
                 &to,
                 &path,
                 super::source::LS_LIMIT,
-                super::source::SortBy::Name,
+                super::source::Sort::default(),
             )
             .await
             .map(|(rows, _)| {
@@ -201,7 +201,7 @@ impl DirPick {
                 &to,
                 &now.path,
                 super::source::LS_LIMIT,
-                super::source::SortBy::Name,
+                super::source::Sort::default(),
             )
             .await
             .map(|(rows, _)| {

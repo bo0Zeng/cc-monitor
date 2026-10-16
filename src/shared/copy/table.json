@@ -10643,17 +10643,41 @@
       "zh": "已{action} {n} 项 → {dir}",
       "args": ["action", "n", "dir"]
     },
-    "beFiles.batch.partial": {
+    "beFiles.batch.head": {
       "kind": "body",
-      "role": "toast",
-      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad}",
-      "args": ["action", "n", "ok", "skip", "bad"]
+      "role": "片段",
+      "zh": "{action} {n} 项",
+      "args": ["action", "n"]
     },
-    "beFiles.batch.stopped": {
+    "beFiles.batch.segOk": {
       "kind": "body",
-      "role": "toast",
-      "zh": "{action} {n} 项 · 完成 {ok} · 跳过 {skip} · 失败 ×{bad} · 已取消 {left}",
-      "args": ["action", "n", "ok", "skip", "bad", "left"]
+      "role": "片段",
+      "zh": "完成 {ok}",
+      "args": ["ok"]
+    },
+    "beFiles.batch.segSkip": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跳过 {skip}",
+      "args": ["skip"]
+    },
+    "beFiles.batch.segBad": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "失败 ×{bad}",
+      "args": ["bad"]
+    },
+    "beFiles.batch.segLeft": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已取消 {left}",
+      "args": ["left"]
+    },
+    "beFiles.batch.verbDownload": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下载",
+      "args": []
     },
     "beFiles.batch.clash": {
       "kind": "error",
@@ -10943,11 +10967,11 @@
       "zh": "预览",
       "args": []
     },
-    "rsFilewinPreview.decide.tooBig": {
+    "beFilesOpen.preview.tooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 预览上限 {limit} · 可点「编辑」打开",
-      "args": ["name", "size", "limit"]
+      "zh": "{size} · 预览上限 {limit} · 可点「编辑」打开",
+      "args": ["size", "limit"]
     },
     "rsFilewinPreview.decide.badName": {
       "kind": "body",
@@ -11056,30 +11080,6 @@
       "role": "悬停",
       "zh": "名字无法识别 · 不能复制到另一台：{names}",
       "args": ["names"]
-    },
-    "rsFilewinBatch.verb.copy": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "复制",
-      "args": []
-    },
-    "rsFilewinBatch.verb.delete": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "删除",
-      "args": []
-    },
-    "rsFilewinBatch.verb.chmod": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "改权限",
-      "args": []
-    },
-    "rsFilewinBatch.verb.download": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "下载",
-      "args": []
     },
     "rsFilewinBatch.verb.upload": {
       "kind": "body",
@@ -11229,7 +11229,7 @@
       "zh": "{path} 不是文本（含 NUL 或非 UTF-8） · 不可编辑 · 刚改过就刷新",
       "args": ["path"]
     },
-    "rsFilewinEditor.notEditable.tooBig": {
+    "beFilesOpen.edit.tooBig": {
       "kind": "error",
       "role": "报错",
       "zh": "文件 {size} · {bytes} 字节 · 超过编辑上限 {limit} · 多 {over} 字节\n超限拒绝编辑 · 不截断 · 截断的文本存回会写坏文件",
@@ -13510,6 +13510,24 @@
       "zh": "访问越界",
       "args": []
     },
+    "countFormat.unit.k": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}K",
+      "args": ["n"]
+    },
+    "countFormat.unit.m": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}M",
+      "args": ["n"]
+    },
+    "countFormat.unit.b": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{n}B",
+      "args": ["n"]
+    },
     "sizeFormat.unit.b": {
       "kind": "body",
       "role": "片段",
@@ -14057,12 +14075,6 @@
       "zh": "默认",
       "args": []
     },
-    "newSession.account.needLogin": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "需登录",
-      "args": []
-    },
     "newSession.account.follow": {
       "kind": "body",
       "role": "片段",
@@ -14193,6 +14205,12 @@
       "zh": "打开登录页",
       "args": []
     },
+    "accounts.row.loginElsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需登录 · 不支持在 app 里登录",
+      "args": []
+    },
     "accounts.row.missing": {
       "kind": "body",
       "role": "说明",
@@ -14307,12 +14325,6 @@
       "zh": "tmux 会话名已占用",
       "args": [],
       "limited": ["tmux"]
-    },
-    "launch.account.notLoggedIn": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{name} 需登录",
-      "args": ["name"]
     },
     "launch.account.unavailable": {
       "kind": "error",
@@ -20771,59 +20783,65 @@
       "zh": "打开其他机器的文件窗口失败 · 程序出错 · 重开本窗口再试",
       "args": []
     },
-    "rsFilewinKind.label.folder": {
+    "beFilesKind.label.folder": {
       "kind": "body",
       "role": "片段",
       "zh": "目录",
       "args": []
     },
-    "rsFilewinKind.label.text": {
+    "beFilesKind.label.text": {
       "kind": "body",
       "role": "片段",
       "zh": "文本",
       "args": []
     },
-    "rsFilewinKind.label.code": {
+    "beFilesKind.label.code": {
       "kind": "body",
       "role": "片段",
       "zh": "代码",
       "args": []
     },
-    "rsFilewinKind.label.image": {
+    "beFilesKind.label.image": {
       "kind": "body",
       "role": "片段",
       "zh": "图片",
       "args": []
     },
-    "rsFilewinKind.label.archive": {
+    "beFilesKind.label.archive": {
       "kind": "body",
       "role": "片段",
       "zh": "压缩包",
       "args": []
     },
-    "rsFilewinKind.label.pdf": {
+    "beFilesKind.label.pdf": {
       "kind": "body",
       "role": "片段",
       "zh": "PDF",
       "args": []
     },
-    "rsFilewinKind.label.link": {
+    "beFilesKind.label.link": {
       "kind": "body",
       "role": "片段",
       "zh": "链接",
       "args": []
     },
-    "rsFilewinKind.label.other": {
+    "beFilesKind.label.other": {
       "kind": "body",
       "role": "片段",
       "zh": "文件",
       "args": []
     },
-    "rsFilewinKind.type.withExt": {
+    "beFilesKind.type.withExt": {
       "kind": "body",
       "role": "片段",
       "zh": "{kind} · {ext}",
       "args": ["kind", "ext"]
+    },
+    "rsFilewinSource.gates.unlisted": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "读取上限未知 · 刷新列表后再打开",
+      "args": []
     },
     "rsFilewinSource.sort.mtime": {
       "kind": "control",
@@ -21169,11 +21187,11 @@
       "zh": "读取中 · {name} · {got} / {total}",
       "args": ["name", "got", "total"]
     },
-    "rsFilewinImgview.state.tooBig": {
+    "beFilesOpen.view.tooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 超过查看上限 {limit} · 可下载到本机再打开",
-      "args": ["name", "size", "limit"]
+      "zh": "{size} · 超过查看上限 {limit} · 可下载到本机再打开",
+      "args": ["size", "limit"]
     },
     "rsFilewinImgview.state.failed": {
       "kind": "error",
@@ -21181,23 +21199,23 @@
       "zh": "{name} · {why}",
       "args": ["name", "why"]
     },
-    "rsFilewinPreview.decide.imageKind": {
+    "beFilesOpen.preview.imageKind": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} · 此图片格式不预览",
-      "args": ["name"]
+      "zh": "此图片格式不预览",
+      "args": []
     },
-    "rsFilewinPreview.decide.imageTooBig": {
+    "beFilesOpen.preview.imageTooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 图片预览上限 {limit} · 可点「查看」打开",
-      "args": ["name", "size", "limit"]
+      "zh": "{size} · 图片预览上限 {limit} · 可点「查看」打开",
+      "args": ["size", "limit"]
     },
-    "rsFilewinPreview.decide.binaryKind": {
+    "beFilesOpen.preview.binaryKind": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 不是文本 · 不预览 · 可下载到本机再打开",
-      "args": ["name"]
+      "zh": "不是文本 · 不预览 · 可下载到本机再打开",
+      "args": []
     },
     "rsFilewinPreview.ui.imageSize": {
       "kind": "body",
@@ -22254,6 +22272,45 @@
       "zh": "采样",
       "args": []
     },
+    "acct.val.perPct": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "1% ≈ {n}",
+      "args": ["n"],
+      "waive": {
+        "C-W1": "约等于号夹在两个数之间读得最快；用量卡头那一行窄屏也要放得下，换成「约」更长"
+      }
+    },
+    "acct.window.tier": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{slot} {tier}",
+      "args": ["slot", "tier"]
+    },
+    "acct.verdict.can": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "可发的号 {n}",
+      "args": ["n"]
+    },
+    "acct.verdict.none": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "均不可发",
+      "args": []
+    },
+    "acct.verdict.earliest": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "最早 {account} ↻{at} ({rel})",
+      "args": ["account", "at", "rel"]
+    },
+    "acct.verdict.earliestAt": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "最早 {account} ↻{at}",
+      "args": ["account", "at"]
+    },
     "acct.val.pct": {
       "kind": "body",
       "role": "片段",
@@ -22728,13 +22785,13 @@
       "zh": "上传文件",
       "args": []
     },
-    "rsFilewinKind.type.linkTo": {
+    "beFilesKind.type.linkTo": {
       "kind": "body",
       "role": "片段",
       "zh": "链接 → {kind}",
       "args": ["kind"]
     },
-    "rsFilewinKind.type.linkBroken": {
+    "beFilesKind.type.linkBroken": {
       "kind": "body",
       "role": "片段",
       "zh": "链接 · 目标不存在",
@@ -31542,6 +31599,18 @@
       "kind": "control",
       "role": "标签",
       "zh": "无 · 直连",
+      "args": []
+    },
+    "mobFiles.menu.copyTo": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "复制到…",
+      "args": []
+    },
+    "mobFiles.menu.selectAll": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "全选",
       "args": []
     },
     "mobFiles.bookmark.deleted": {

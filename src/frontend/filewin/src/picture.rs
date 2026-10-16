@@ -29,12 +29,6 @@ pub const MAX_SIDE: u32 = 8192;
 /// 解码那一步最多占多少内存（字节）。超了说「像素过多」，不说「解不开」。
 pub const DECODE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
-/// 一张图最多读多少（字节）。**唯一住址**；登记在 `byte_cap_registry`。查看页的上限就是它；
-/// 预览跟着光标走，另有更小的 [`super::preview::IMAGE_MAX_BYTES`] 在发之前预判。
-/// 为什么是这么大：一块 256 KB 一趟，32 MB 是 128 趟（远端上十几秒到半分钟，再大该下载到本机看）；
-/// 相机原图、整屏截图都在里面。超了：不读、出声。
-pub const PICTURE_MAX_BYTES: u64 = 32 * 1024 * 1024;
-
 /// 一张图的钥匙：路径 ＋ 大小 ＋ 修改时间（列表那一行上的）。
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PicKey {

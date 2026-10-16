@@ -23,8 +23,8 @@ fn clash() -> Rebuff {
             detail: String::new(),
         },
         data: Some(serde_json::json!({"conflicts": [
-            {"key": "0", "name": "a", "kind": "file", "size": 3, "mtime_text": "14:02",
-             "there": "file", "there_size": 1, "there_mtime_text": "10-01 09:10", "dir_into": false},
+            {"key": "0", "name": "a", "kind": "file", "size": 3, "size_text": "3 字节", "mtime_text": "14:02",
+             "there": "file", "there_size": 1, "there_size_text": "1 字节", "there_mtime_text": "10-01 09:10", "dir_into": false},
             {"key": "1", "name": "c", "kind": "dir", "there": "dir", "dir_into": true},
         ]})),
         cut: false,
@@ -103,18 +103,15 @@ async fn a_clash_is_asked_once_from_the_conflicts_and_skip_is_the_default() {
         conflict_row(&c[1]).meta,
         copy_text("rsFilewinBatch.ask.dirNoMerge", &[])
     );
-    // 两头的时刻照抄后端写好的字（按看的那一台的钟），窗口不换算。
+    // 两头的大小与时刻照抄后端写好的字（按看的那一台的钟），窗口不换算、不另写。
     let sep = copy_text("rsFilewinCopy.batch.listSep", &[]);
     assert_eq!(
         conflict_row(&c[0]).meta,
         copy_text(
             "rsFilewinBatch.meta.vs",
             &[
-                ("mine", &format!("{}{sep}14:02", copy_core::size_text(3))),
-                (
-                    "there",
-                    &format!("{}{sep}10-01 09:10", copy_core::size_text(1))
-                ),
+                ("mine", &format!("3 字节{sep}14:02")),
+                ("there", &format!("1 字节{sep}10-01 09:10")),
             ]
         )
     );
