@@ -36,11 +36,8 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
     let hello = InboundFrame::Hello {
-        v: 1,
         build_id: "t".into(),
         host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         // 同一版的后端：typed 那几条（开单两条）的形状指纹照本侧编进来的那一份交。

@@ -55,38 +55,20 @@ mod stream_flag_gate_tests;
 // 版本协商（issue #33）：连接时比对后端的 hello.v / hello.build_id。
 // ============================================================================
 
-/// 本 monitor 期望的流式 wire 协议大版本。与后端的 `PROTO_VERSION` 对齐（语义同值）。
-/// 类型用 `u64` 而非后端侧的 `u32`：JSON 数字无符号宽度之分，`parse_frame` 用
-/// `as_u64()` 读 `v`，这里与之同宽以便直接比较，无需转换。
-pub(super) const EXPECTED_PROTO_V: u64 = 1;
-
 /// 版本协商结论（纯函数 [`negotiate_version`] 的产物）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionVerdict {
-    /// 协议版本 + build_id 都匹配 —— 无需提示。
+    /// build_id 匹配 —— 无需提示。
     Ok,
-    /// 协议版本相同，但手上没带后端字节（「我这一版」是 `None`）—— 版本不可比：不判旧、不发起换装，只按那台报的接。
+    /// 手上没带后端字节（「我这一版」是 `None`）—— 版本不可比：不判旧、不发起换装，只按那台报的接。
     Incomparable { reported: String },
-    /// 协议版本相同，但 build_id 与「我这一版」（`mine`）不同 —— backend 偏旧/偏新（非阻断；旧的下次连上换掉）。
+    /// build_id 与「我这一版」（`mine`）不同 —— backend 偏旧/偏新（非阻断；旧的下次连上换掉）。
     StaleBuild { reported: String, mine: String },
-    /// 协议大版本不符 —— 渲染可能异常，醒目提示需更新后端（仍不 hard-disconnect：
-    /// 解析器向前兼容，能解析的仍照常呈现）。
-    Incompatible { reported_v: u64 },
 }
 
-/// 纯函数版本协商：协议版本优先于 build_id（协议不兼容是更严重的问题）。`mine` = 「我这一版」（`byte_table::my_backend_id`）。
-///
-/// - `reported_v != EXPECTED_PROTO_V` → `Incompatible`（无论 build_id）。
-/// - 协议同、`mine` 是 `None` → `Incomparable`（手上没带后端字节，没有对照物）。
-/// - 协议同、`reported_build_id != mine` → `StaleBuild`。
-/// - 全同 → `Ok`。
-pub(super) fn negotiate_version(
-    reported_v: u64,
-    reported_build_id: &str,
-    mine: Option<&str>,
-) -> VersionVerdict {
+/// 纯函数版本协商。`mine` = 「我这一版」（`byte_table::my_backend_id`）；`None` ⇒ 不可比。
+pub(super) fn negotiate_version(reported_build_id: &str, mine: Option<&str>) -> VersionVerdict {
     match mine {
-        _ if reported_v != EXPECTED_PROTO_V => VersionVerdict::Incompatible { reported_v },
         None => VersionVerdict::Incomparable {
             reported: reported_build_id.to_string(),
         },
@@ -100,18 +82,16 @@ pub(super) fn negotiate_version(
 
 /// 版本关系判一处（机器状态成品那一格）：同 · 那台旧（含协议大版本不符）· 那台新 · 不可比。
 pub(super) fn version_relation(
-    reported_v: u64,
     reported_build_id: &str,
     remote_older: bool,
     mine: Option<&str>,
 ) -> crate::machine_state::VersionRelation {
     use crate::machine_state::VersionRelation as R;
-    match negotiate_version(reported_v, reported_build_id, mine) {
+    match negotiate_version(reported_build_id, mine) {
         VersionVerdict::Ok => R::Same,
         VersionVerdict::Incomparable { .. } => R::Incomparable,
         VersionVerdict::StaleBuild { .. } if remote_older => R::Older,
         VersionVerdict::StaleBuild { .. } => R::Newer,
-        VersionVerdict::Incompatible { .. } => R::Older,
     }
 }
 
@@ -120,7 +100,7 @@ pub(super) const VERSION_KIND_OLDER: &str = "version-older";
 pub(super) const VERSION_KIND_NEWER: &str = "version-newer";
 pub(super) const VERSION_KIND_INCOMPARABLE: &str = "version-incomparable";
 
-/// 版本关系 → 健康信息的类别（同 ⇒ 不说）。协议不兼容在 [`version_relation`] 里已归「那台旧」。
+/// 版本关系 → 健康信息的类别（同 ⇒ 不说）。
 pub(super) fn version_health_kind(
     rel: crate::machine_state::VersionRelation,
 ) -> Option<&'static str> {
@@ -136,13 +116,12 @@ pub(super) fn version_health_kind(
 /// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
 /// `remote_older` = 接上那一刻本机常驻后端答的「那台比手上这一版旧」（重连循环交的 `State::Up` 里带不带「要更新」那一句）。
 pub(super) fn version_warning(
-    reported_v: u64,
     reported_build_id: &str,
     label: &str,
     remote_older: bool,
     mine: Option<&str>,
 ) -> Option<String> {
-    match negotiate_version(reported_v, reported_build_id, mine) {
+    match negotiate_version(reported_build_id, mine) {
         VersionVerdict::Ok => None,
         VersionVerdict::Incomparable { reported } => Some(copy_text(
             "rsSshSource.version.noOwnBytes",
@@ -168,10 +147,6 @@ pub(super) fn version_warning(
                 ("reported", &reported.to_string()),
                 ("mine", &mine.to_string()),
             ],
-        )),
-        VersionVerdict::Incompatible { .. } => Some(copy_text(
-            "rsSshSource.version.protoMismatch",
-            &[("label", &label.to_string())],
         )),
     }
 }

@@ -752,6 +752,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
     as_wire: NONE,
+    // 帧表（`frame_shapes` · `frame::gated_tys`）与指纹算法（`fingerprint`，测试档）：两端比的那一张由类型现算；界面不比，TS 侧没有孪生。
+    FRAMES: NONE,
+    gated_tys: NONE,
+    ty_of: NONE,
+    fnv32: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。

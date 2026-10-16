@@ -1,105 +1,22 @@
 use super::*;
 use crate::session_book::SessionActivity;
 
-/// hello 帧解析：取 v / build_id / host_arch / claude_dir（#33 起捕获 build_id）。
+/// hello 帧解析：取 build_id / host_arch。
 #[test]
 fn parses_hello_and_captures_build_id() {
-    let line = r#"{"kind":"hello","v":1,"build_id":"abc123","host_arch":"aarch64","claude_dir":"/home/pi/.claude"}"#;
+    let line = r#"{"kind":"hello","build_id":"abc123","host_arch":"aarch64","frames":{}}"#;
     let frame = parse_frame(line).expect("hello must parse");
     assert_eq!(
         frame,
         InboundFrame::Hello {
-            v: 1,
             build_id: "abc123".to_string(),
             host_arch: "aarch64".to_string(),
-            claude_dir: "/home/pi/.claude".to_string(),
-            // `S4`：本样本无 `homes` 字段（= 今天所有已部署的后端）→ 空表 ⇒ 回退 `claude_dir`。
-            homes: Vec::new(),
             // U8a-2a：无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
             commands: Vec::new(),
             unavailable: vec![],
             shapes: vec![],
         }
     );
-}
-
-/// ★ `S4`：`hello.homes` 的**解析 + 回退**必须有判据 —— 四种形态一次钉住。
-///
-/// 它防的是 `commands` 那次同款的病（见下一条的 D 审计变异 B1）：
-/// 字段名漂一个字母 ⇒ `homes` 永远空 ⇒ 永远走回退 ⇒ **一切照常绿**，
-/// 而 additive 迁移实际上没发生。所以这里逐形态断言，不只断言"不 panic"。
-#[test]
-fn parses_hello_homes_and_falls_back_to_claude_dir() {
-    // ① 无 `homes`（= 今天所有已部署的后端）⇒ 空表 ⇒ 回退 `claude_dir`。
-    let old =
-        r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/old/.claude"}"#;
-    match parse_frame(old).expect("hello must parse") {
-        InboundFrame::Hello {
-            homes, claude_dir, ..
-        } => {
-            assert!(homes.is_empty(), "旧后端不该凭空长出 homes");
-            assert_eq!(
-                claude_home_from_hello(&homes, &claude_dir),
-                "/old/.claude",
-                "无 homes 时必须回退 claude_dir —— 这条一坏，所有已部署的后端当场失去 home"
-            );
-        }
-        other => panic!("expected Hello, got {other:?}"),
-    }
-
-    // ② 有 `homes` 且含 claude 项 ⇒ **homes 优先**（`claude_dir` 故意给个不同的值，
-    //    这样"优先"是真的被验到了，而不是两边碰巧相等）。
-    let new = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/legacy/.claude","homes":[{"agent_kind":"claude","path":"/new/.claude"},{"agent_kind":"codex","path":"/new/.codex"}]}"#;
-    match parse_frame(new).expect("hello must parse") {
-        InboundFrame::Hello {
-            homes, claude_dir, ..
-        } => {
-            assert_eq!(homes.len(), 2, "两项都该解析出来：{homes:?}");
-            assert_eq!(homes[1].agent_kind, "codex");
-            assert_eq!(homes[1].path, "/new/.codex");
-            assert_eq!(
-                claude_home_from_hello(&homes, &claude_dir),
-                "/new/.claude",
-                "有 homes 时必须**优先**读它 —— 回退值是 /legacy/.claude，读到它就说明优先级反了"
-            );
-        }
-        other => panic!("expected Hello, got {other:?}"),
-    }
-
-    // ③ 有 `homes` 但**没有 claude 那一项**（只服务别的 agent）⇒ 仍回退 `claude_dir`。
-    let other_only = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/legacy/.claude","homes":[{"agent_kind":"codex","path":"/new/.codex"}]}"#;
-    match parse_frame(other_only).expect("hello must parse") {
-        InboundFrame::Hello {
-            homes, claude_dir, ..
-        } => assert_eq!(
-            claude_home_from_hello(&homes, &claude_dir),
-            "/legacy/.claude",
-            "homes 非空但没有 claude 项时，不许把别的 agent 的 home 当成 claude 的"
-        ),
-        other => panic!("expected Hello, got {other:?}"),
-    }
-
-    // ④ 坏数据：非数组 / 元素不是对象 / 缺字段 / 字段类型不对
-    //    ⇒ **逐项丢掉、整帧仍解析**（`homes` 不是必需字段，坏它不该让整条 hello 变 garbage）。
-    let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","homes":"not-an-array"}"#;
-    match parse_frame(junk).expect("非数组的 homes 不该让整帧变 None") {
-        InboundFrame::Hello { homes, .. } => assert!(homes.is_empty()),
-        other => panic!("expected Hello, got {other:?}"),
-    }
-    let mixed = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","homes":[7,null,{"agent_kind":"claude"},{"path":"/p"},{"agent_kind":"codex","path":42},{"agent_kind":"codex","path":"/ok"}]}"#;
-    match parse_frame(mixed).expect("坏项不该让整帧变 None") {
-        InboundFrame::Hello { homes, .. } => {
-            assert_eq!(
-                homes,
-                vec![AgentHome {
-                    agent_kind: "codex".to_string(),
-                    path: "/ok".to_string(),
-                }],
-                "只有完整且类型正确的那一项该留下：{homes:?}"
-            );
-        }
-        other => panic!("expected Hello, got {other:?}"),
-    }
 }
 
 /// ★ U8a-2a：`hello.commands` 的**解析**必须有判据。
@@ -204,17 +121,14 @@ fn hello_missing_build_id_returns_none() {
 /// 「我这一版」的一个样值（判据里不读 `byte_table::my_backend_id`：两档都要判，与这棵树带没带字节无关）。
 const MINE: Option<&str> = Some("p9z-mine");
 
-/// #33：版本协商真值表。协议不符优先于 build 差异；手上没带后端字节 ⇒ 不可比（不判旧）。
+/// #33：版本协商真值表。手上没带后端字节 ⇒ 不可比（不判旧）。
 #[test]
 fn negotiate_version_truth_table() {
     // 全同 → Ok。
-    assert_eq!(
-        negotiate_version(EXPECTED_PROTO_V, "p9z-mine", MINE),
-        VersionVerdict::Ok
-    );
+    assert_eq!(negotiate_version("p9z-mine", MINE), VersionVerdict::Ok);
     // 协议同、build 异 → StaleBuild（带上报值与「我这一版」）。
     assert_eq!(
-        negotiate_version(EXPECTED_PROTO_V, "p1a-history", MINE),
+        negotiate_version("p1a-history", MINE),
         VersionVerdict::StaleBuild {
             reported: "p1a-history".to_string(),
             mine: "p9z-mine".to_string(),
@@ -223,23 +137,11 @@ fn negotiate_version_truth_table() {
     // 手上没带后端字节 → Incomparable：哪个 build 都不判旧。
     for theirs in ["p1a-history", "p9z-mine", ""] {
         assert_eq!(
-            negotiate_version(EXPECTED_PROTO_V, theirs, None),
+            negotiate_version(theirs, None),
             VersionVerdict::Incomparable {
                 reported: theirs.to_string()
             },
             "没有对照物却判出了新旧：{theirs:?}"
-        );
-    }
-    // 协议异 → Incompatible，且即便 build 也不同、或没带字节，协议优先。
-    for mine in [MINE, None] {
-        assert_eq!(
-            negotiate_version(999, "whatever", mine),
-            VersionVerdict::Incompatible { reported_v: 999 }
-        );
-        assert_eq!(
-            negotiate_version(999, "p9z-mine", mine),
-            VersionVerdict::Incompatible { reported_v: 999 },
-            "协议不符时即使 build 匹配也算不兼容"
         );
     }
 }
@@ -247,25 +149,15 @@ fn negotiate_version_truth_table() {
 /// #33：version_warning 文案——Ok→None，其余→Some 且含 label。
 #[test]
 fn version_warning_messages() {
-    assert_eq!(
-        version_warning(EXPECTED_PROTO_V, "p9z-mine", "pi", false, MINE),
-        None
-    );
-    let stale =
-        version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("stale warns");
+    assert_eq!(version_warning("p9z-mine", "pi", false, MINE), None);
+    let stale = version_warning("p1a-history", "pi", true, MINE).expect("stale warns");
     assert!(stale.contains("pi") && stale.contains("p1a-history") && stale.contains("p9z-mine"));
-    let incompat = version_warning(2, "p9z-mine", "wsl", false, MINE).expect("incompat warns");
-    assert!(
-        incompat.contains("wsl")
-            && copy_core::copy_matches("rsSshSource.version.protoMismatch", &incompat)
-    );
 }
 
 /// 手上没带后端字节（「我这一版」是 `None`）：健康信息那一句是「不可比」，不说那台旧、不说会换掉它。
 #[test]
 fn without_own_bytes_the_version_line_says_incomparable() {
-    let said = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, None)
-        .expect("没带字节也要说一句");
+    let said = version_warning("p1a-history", "pi", true, None).expect("没带字节也要说一句");
     assert_eq!(
         said,
         copy_core::copy_text(
@@ -285,8 +177,7 @@ fn without_own_bytes_the_version_line_says_incomparable() {
 /// （「解不出序 ⇒ 不比这一版旧」那一格随判定进了后端：`deploy_plan_tests.rs::the_verdict_replaces_only_upward_and_only_once`）。
 #[test]
 fn hx2_the_version_warning_says_which_side_is_older() {
-    let older =
-        version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("旧的该提示");
+    let older = version_warning("p1a-history", "pi", true, MINE).expect("旧的该提示");
     assert!(
         copy_core::copy_matches_with(
             "rsSshSource.version.remoteOlder",
@@ -295,16 +186,14 @@ fn hx2_the_version_warning_says_which_side_is_older() {
         ),
         "{older}"
     );
-    let newer =
-        version_warning(EXPECTED_PROTO_V, "p99a-future", "pi", false, MINE).expect("新的该提示");
+    let newer = version_warning("p99a-future", "pi", false, MINE).expect("新的该提示");
     assert!(
         newer.contains("p99a-future")
             && copy_core::copy_matches("rsSshSource.version.remoteNotOlder", &newer)
             && copy_core::copy_matches("rsSshSource.version.remoteNotOlder", &newer),
         "{newer}"
     );
-    let odd = version_warning(EXPECTED_PROTO_V, "hand-built", "pi", false, MINE)
-        .expect("解不出序的也该提示");
+    let odd = version_warning("hand-built", "pi", false, MINE).expect("解不出序的也该提示");
     assert!(
         copy_core::copy_matches("rsSshSource.version.remoteNotOlder", &odd),
         "后端答「不旧」⇒ 按「不比这一版旧」说：{odd}"
@@ -672,7 +561,7 @@ fn dispatch_over_a_frame_sequence() {
     ];
     let parsed: Vec<Result<InboundFrame, Unread>> = lines.iter().map(|l| parse_frame(l)).collect();
 
-    assert!(matches!(parsed[0], Ok(InboundFrame::Hello { v: 1, .. })));
+    assert!(matches!(parsed[0], Ok(InboundFrame::Hello { .. })));
     assert!(matches!(parsed[1], Ok(InboundFrame::Line { seq: 0, .. })));
     assert!(matches!(parsed[2], Ok(InboundFrame::Line { seq: 1, .. })));
     assert_eq!(
@@ -1021,18 +910,8 @@ fn the_version_health_kind_is_decided_here_not_in_the_ui() {
         3,
         "三类得是三个不同的字"
     );
-    // 协议不兼容随「那台旧」走「要更新」那一类。
     assert_eq!(
-        version_health_kind(version_relation(999, "p9z-mine", false, MINE)),
-        Some(VERSION_KIND_OLDER)
-    );
-    assert_eq!(
-        version_health_kind(version_relation(
-            EXPECTED_PROTO_V,
-            "p1a-history",
-            true,
-            None
-        )),
+        version_health_kind(version_relation("p1a-history", true, None)),
         Some(VERSION_KIND_INCOMPARABLE)
     );
 }

@@ -3,8 +3,7 @@ use crate::platform::tmux::{tmux_exe_in, tmux_in, tmux_present, TmuxPlatform};
 
 /// ★ `K-P4` 红线之一〔NET2 真填〕：**生产 hello 填的就是这台机器的答案**（「`hello.unavailable` 真填」）。
 ///
-/// 与 `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 是两半：那条钉两形的字节，
-/// 本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
+/// 两形的字节由会话流金样钉；本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
 #[test]
 fn production_hello_fills_unavailable_from_this_machine() {
     let prod = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));

@@ -993,15 +993,7 @@ fn the_parser_sees_every_frame_field() {
     let doc = render();
     let at = doc.find("### `hello`").expect("帧表里没有 hello");
     let section = &doc[at..at + doc[at..].find("\n### ").unwrap()];
-    for key in [
-        "v",
-        "build_id",
-        "host_arch",
-        "claude_dir",
-        "emits",
-        "commands",
-        "unavailable",
-    ] {
+    for key in ["build_id", "host_arch", "commands", "unavailable", "frames"] {
         assert!(
             section.contains(&format!("| `{key}` |")),
             "hello 那一节没列 `{key}` —— 解析坏了"

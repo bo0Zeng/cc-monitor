@@ -7,13 +7,10 @@ use tokio::io::AsyncBufReadExt;
 
 fn hello_frame(commands: &[&str]) -> InboundFrame {
     InboundFrame::Hello {
-        v: 1,
         build_id: "test".into(),
         host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
         // backend-split `S4`：`hello.homes` 与本用例无关（它测的是入方向命令协商），
         // 空表 = 今天所有已部署后端的形态。
-        homes: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。

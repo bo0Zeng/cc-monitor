@@ -613,11 +613,8 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
     use tokio::io::AsyncBufReadExt;
     let (mine, theirs) = tokio::io::duplex(4096);
     let hello = crate::stream_source::InboundFrame::Hello {
-        v: 1,
         build_id: "t".into(),
         host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
         commands: vec!["ping".into()],
         unavailable: vec![],
         // 同一版的后端：typed 那几条的形状指纹照本侧编进来的那一份交。

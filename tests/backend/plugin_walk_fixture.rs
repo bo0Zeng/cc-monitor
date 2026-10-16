@@ -1270,8 +1270,7 @@ mod tests {
     /// # 🔴 三条红线，本格一条都没碰（逐条点名，便于复核）
     ///
     /// 1. `main.rs` 生产段那一行 `unavailable: Vec::new(),` —— 本文件**没有**改它；
-    /// 2. `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 的两串期望字节 ——
-    ///    本文件**没有**构造任何 `Frame::Hello`，一个字节都没碰；
+    /// 2. hello 的线上字节（会话流金样）—— 本文件**没有**构造任何 `Frame::Hello`，一个字节都没碰；
     /// 3. 宣称的 `code` 必须是那条命令自己登记过的 —— 那正是本格的正题。
     #[test]
     fn the_pre_declaration_reuses_the_word_the_registry_already_owns() {

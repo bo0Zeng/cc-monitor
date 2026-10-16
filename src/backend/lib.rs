@@ -2270,57 +2270,6 @@ pub fn capabilities_on(t: Target) -> Vec<(&'static str, &'static str)> {
 #[path = "../../tests/backend/capability_ledger_guard.rs"]
 mod capability_ledger_guard;
 
-/// phase②（backend-08）：本 backend **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
-/// 手机端门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
-/// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。
-/// **在此登记 = 承诺后端真发该帧**，勿提前声明未接线的帧。
-pub const EMITS: &[&str] = &[
-    "line",
-    "session_added",
-    // 宣告之后后台预读做完那一刻（`observe::watcher` 交回预读那一步真发，登记 = 承诺真发）：从第几行起接实时、拿它核快照。
-    "session_primed",
-    "session_status",
-    "session_removed",
-    // 会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
-    // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "session_state",
-    "overflow",
-    // tmux 快照不上线：只喂这台的会话账本。
-    // 「X 变了 ⇒ 重读」那一种（主题表 `wire/topic.rs`：账号清单 · 配置文件 · 任务清单由 watcher 发，额度 · 轮换 · 规则 · 计划走 tap 那条；登记 = 承诺真发，已接线）。
-    "changed",
-    // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
-    // 固定复活的 tab 靠它分「说不清」与「已结束」。
-    "sessions_replayed",
-    // 活会话的记录文件不见了 / 被改过已从头重读（`process_jsonl` 真发，登记 = 承诺真发，已接线）。
-    // 旧 monitor / 手机端不认 ⇒ 忽略（additive）。
-    "session_file_gone",
-    "session_file_reread",
-    // 链路的下行字节与收尾（`dial/link.rs` 的两台泵真发，登记 = 承诺真发）。
-    // 只在 monitor 开了链路之后才出现；旧 monitor / 手机端不认这两个 kind ⇒ 忽略（additive）。
-    "link_data",
-    "link_end",
-    // 一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
-    // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
-    "transfer",
-    // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
-    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "probe",
-    // 同一台上一组（复制 · 删除 · 改权限）的进度（`stream/inbound` 那一路听票、真发，登记 = 承诺真发）。只在带票的那一组在做时出现；
-    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "files_batch",
-    // 活卡（中转抄出来的流在 `stream::live` 拼成的成品，`tap::attach` 那一路经 `writer_task` 真发，登记 = 承诺真发）。
-    // 只有进程里住着中转的那个后端（本机常驻）才会有；只发这条流名单里的会话。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "live_card",
-    // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "session_runs",
-    // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "session_branch",
-    // 终端实时预览的一屏与收尾（`control/terminal_follow.rs` 的订阅线程真发，登记 = 承诺真发）。
-    // 只在客户端 `terminal-follow` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
-    "terminal_screen",
-    "terminal_follow_end",
-];
-
 /// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（`StreamWants::view`）。
 pub const STREAM_FLAGS: &[&str] = &[wire::cli_words::STREAM_FLAG_EXPLICIT];
 
@@ -2391,7 +2340,7 @@ mod stream_flag_tests;
 #[path = "../../tests/backend/main_argv_table_guard.rs"]
 mod argv_table_guard;
 
-// ── 第四面：本机到底缺什么（tmux 可用性）＋ `EMITS` ───────────
+// ── 第四面：本机到底缺什么（tmux 可用性） ───────────
 // 同上一段的理由：它们不是「分派」，是 hello 帧的**内容**。in-process 那条路一样要回答
 // 「这台机器有没有 tmux」「本构建会发哪些帧」。`main_fourth_face_tests` 用 `super::` 引它们。
 /// `K-P4`（09-04）：命令级 code —— **「这台机器上没有 tmux」**。

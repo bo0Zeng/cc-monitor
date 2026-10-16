@@ -1207,11 +1207,8 @@ fn client_for_test(
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let hello = BackendHello::from_hello_frame(&crate::stream_source::InboundFrame::Hello {
-        v: 1,
         build_id: "test".into(),
         host_arch: "x86_64".into(),
-        claude_dir: "/tmp".into(),
-        homes: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。

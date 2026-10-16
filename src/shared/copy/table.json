@@ -13710,12 +13710,6 @@
       "zh": "host 别名含不安全字符 · {alias}",
       "args": ["alias"]
     },
-    "rsSshSource.version.protoMismatch": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "{label} 后端要更新\n版本不兼容 · 到设置里更新",
-      "args": ["label"]
-    },
     "rsSshSource.version.remoteOlder": {
       "kind": "body",
       "role": "说明",

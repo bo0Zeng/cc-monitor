@@ -65,6 +65,5 @@ describe("文案表里这一族只剩两句", () => {
 const EXPECTED_REMAINING: string[] = [
   "accountChip.label.backendOld",
   "remoteHealth.head.backendOld",
-  "rsSshSource.version.protoMismatch",
   "rsSshSource.version.remoteOlder",
 ];

@@ -21,7 +21,10 @@ pub mod agent;
 pub mod batch;
 pub mod cells;
 pub mod files;
+#[cfg(any(test, feature = "ts"))]
+pub mod fingerprint;
 pub mod frame;
+pub mod frame_shapes;
 pub mod listing;
 pub mod live;
 pub mod machine;

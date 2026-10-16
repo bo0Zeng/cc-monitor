@@ -149,7 +149,9 @@ fn every_stream_place_names_a_pushed_frame_and_a_catalogued_product() {
     use crate::faces::cells_catalog::PRODUCTS;
     for (kind, places) in STREAM_PLACES {
         assert!(
-            crate::EMITS.contains(kind),
+            cmd_wire::frame_shapes::FRAMES
+                .iter()
+                .any(|(k, _)| k == kind),
             "流的住处表点了 `{kind}`，后端不发这种帧"
         );
         for (_, product) in *places {

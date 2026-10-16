@@ -364,11 +364,8 @@ fn on_attached(
     };
     // 循环那一侧认过它是 hello（不然接不上）；这一侧的帧类型解不出 ⇒ 两边对 hello 的读法漂了，说出来。
     let Some(InboundFrame::Hello {
-        v,
         build_id,
         host_arch,
-        claude_dir,
-        homes,
         commands,
         ..
     }) = conn.unread.take(hello, &mut conn.tally, &say_health)
@@ -380,12 +377,8 @@ fn on_attached(
         host_label,
         round,
         HelloSeen {
-            v,
             build_id,
             host_arch,
-            // 日志报的是解析后的 Claude home（优先 `homes`、回退 `claude_dir`），同时把原样的 `homes` 一起打出来：排障时一眼看出这台后端发没发新字段。
-            claude_home: claude_home_from_hello(&homes, &claude_dir).to_string(),
-            homes,
             commands,
         },
     );
@@ -650,12 +643,8 @@ struct Round<'a> {
 
 /// hello 帧里要读的那几样。
 struct HelloSeen {
-    v: u64,
     build_id: String,
     host_arch: String,
-    /// 解析后的 Claude home（[`claude_home_from_hello`]）。
-    claude_home: String,
-    homes: Vec<AgentHome>,
     commands: Vec<String>,
 }
 
@@ -668,15 +657,12 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
         t_connect_start,
     } = round;
     let HelloSeen {
-        v,
         build_id,
         host_arch,
-        claude_home,
-        homes,
         commands,
     } = hello;
     tracing::info!(
-        "stream_source backend hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} cmds={commands:?}"
+        "stream_source backend hello: build_id={build_id} host_arch={host_arch} cmds={commands:?}"
     );
     // 订了这台会话流的那些订阅原位收一格 `Seen`（`Item::Seen`）。
     replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
@@ -684,11 +670,11 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     // 这里判好（`version_health_kind`），前端按类别挑标题。不 hard-disconnect（向前兼容）。
     // 手上没带后端字节（「我这一版」是 `None`）⇒ 同一条通道说一句「版本不可比」，照常接。
     let mine = crate::byte_table::my_backend_id();
-    let rel = version_relation(v, &build_id, remote_older, mine);
+    let rel = version_relation(&build_id, remote_older, mine);
     crate::machine_state::up(&host_label, &build_id, rel);
     if let (Some(kind), Some(msg)) = (
         version_health_kind(rel),
-        version_warning(v, &build_id, &host_label, remote_older, mine),
+        version_warning(&build_id, &host_label, remote_older, mine),
     ) {
         tracing::warn!("stream_source remote [{host_label}] version: {msg}");
         let payload = crate::ui_contract::RemoteHealthPayload {

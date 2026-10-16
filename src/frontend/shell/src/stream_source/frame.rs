@@ -36,45 +36,16 @@ pub struct LostFrameInfo {
     pub subject: Option<String>,
 }
 
-/// `hello.homes` 的一项 —— 某个 agent 在那台远端机器上的 home 目录。与后端侧 `wire::AgentHome` 对称（这一侧自己解析 JSON）；
-/// agent 维度住在 `agent_kind` 这个值里，字段名里没有任何一个 agent 的名字。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentHome {
-    pub agent_kind: String,
-    pub path: String,
-}
-
-/// 从 hello 帧里解析出「Claude 的 home 目录」—— 优先 `homes`、回退 `claude_dir`。
-/// `homes`（通用）：`[{agent_kind, path}]`；`claude_dir`（冻结兼容，字段名里带 agent 名，后端登记在 `agent_boundary_guard::FROZEN_COMPAT`，
-/// 解锁条件是 monitor 与手机端都改读 `homes`）。monitor 不再依赖 `claude_dir` 的存在语义，它只是回退路径。后端的 `homes` 现在恒空 ⇒ 实际走回退分支。
-pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a str) -> &'a str {
-    homes
-        .iter()
-        .find(|h| h.agent_kind == "claude")
-        .map(|h| h.path.as_str())
-        .unwrap_or(claude_dir)
-}
-
 /// backend→client 的一帧（解析后的 inbound 表示）。
 ///
 /// 对应后端 `wire::Frame`（外部 `kind` tag，snake_case）；这一侧不链那个 crate，按 JSON 现解（[`parse_frame`]）。
 /// 两侧形状由跨语言金样 `tests/__fixtures__/session-stream.golden.jsonl` 对拍。
 #[derive(Debug, Clone, PartialEq)]
 pub enum InboundFrame {
-    /// 握手帧：连接建立后后端发一次。`v` = 协议大版本，`build_id` = backend 构建标识
-    /// （#33 版本协商捕获 + 比对），host_arch / claude_dir 用于 log 证明后端真的在远端
-    /// 跑起来了。多余字段仍忽略（向前兼容）。
+    /// 握手帧：连接建立后后端发一次。`build_id` = backend 构建标识（版本门比它）。
     Hello {
-        v: u64,
         build_id: String,
         host_arch: String,
-        /// ⚠ **原样的线上值**，不做回退解析 —— 要「Claude 的 home」请走
-        /// [`claude_home_from_hello`]（优先 `homes`）。两者分开是刻意的：
-        /// 这个字段是**冻结兼容面**（手机端还在读它），
-        /// 把回退结果写回这里会让"backend 到底发了什么"变得不可观测。
-        claude_dir: String,
-        /// 远端各 agent 的 home 目录表（additive）。旧后端无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。非数组 / 元素缺字段一律滤掉，绝不 panic。
-        homes: Vec<AgentHome>,
         /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。
         /// 旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
@@ -482,23 +453,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
     let k = kind;
     Ok(match kind {
         "hello" => {
-            // `homes` / `commands` 是可选格：缺 ⇒ 空；坏项逐项丢，不丢整帧。
-            // `homes` 空 ⇒ 消费侧回落 `claude_dir`（[`claude_home_from_hello`]；今天后端恒发空表）。
-            let homes: Vec<AgentHome> = obj
-                .get("homes")
-                .and_then(|h| h.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| {
-                            let o = x.as_object()?;
-                            Some(AgentHome {
-                                agent_kind: o.get("agent_kind")?.as_str()?.to_string(),
-                                path: o.get("path")?.as_str()?.to_string(),
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
             let strings = |key: &str| -> Vec<String> {
                 obj.get(key)
                     .and_then(|c| c.as_array())
@@ -512,11 +466,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             // 能力事实那一格：读法住 `Offer::facts_of`（`resync` 应答同形）。
             let unavailable = crate::chan::wire::Offer::facts_of(obj);
             InboundFrame::Hello {
-                v: req_u64(obj, k, "v")?,
                 build_id: req_str(obj, k, "build_id")?,
                 host_arch: req_str(obj, k, "host_arch")?,
-                claude_dir: req_str(obj, k, "claude_dir")?,
-                homes,
                 commands: strings("commands"),
                 unavailable,
                 shapes: crate::chan::wire::Offer::shapes_of(obj),

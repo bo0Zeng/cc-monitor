@@ -279,7 +279,7 @@ async fn main() {
     // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到），在 [`claim_then_log`] 里定、抢口。
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
-    let hello = build_hello(&agent_home);
+    let hello = build_hello();
 
     // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `changed {rotation}`（广播通道是进程内的）。
     inbound::watch_rotation(&own);
@@ -334,37 +334,10 @@ async fn main() {
 
 /// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
 /// 两份 hello 会各自漂，而这一帧是手机端按精确字节在读的东西。
-fn build_hello(agent_home: &std::path::Path) -> Frame {
+fn build_hello() -> Frame {
     Frame::Hello(wire::Hello {
-        v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
-        // ⚠ **左边的字段名与右边的变量名刻意不一致**，这不是笔误：
-        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、手机端在读），
-        // 登记在 `agent_boundary_guard::FROZEN_COMPAT`，带解锁条件，**不许改名**；
-        // 右边 `agent_home` 是**仓内的参数名**，`S4b` 已把它从 `claude_dir` 改过来
-        //（通用层不该在标识符里叫得出某个 agent 的名字 —— `D3` 的同一条道理往仓内推）。
-        // ⇒ 这一行正是两条纪律的交界处：**字段名归契约，变量名归架构**。
-        claude_dir: agent_home.to_string_lossy().into_owned(),
-        // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`）。
-        //
-        // ★★**这一行是空表，但已经不是因为"做不到"了。**
-        // `agents::visible_homes()` 今天就能答出这台机器看得见哪些 agent
-        //（判准：home 目录存在；理由与被排除的另两条候选写在那个函数的头注里）。
-        // 换过去只要改这一行 —— `S5` 的口径是 **能填不真填**：
-        //   填 = 一次**与手机端的契约变更**（它的 hello fixture 按精确字节对），
-        //   而手机端那一侧的运行时这里验不了（前提 `P3`）
-        //   ⇒ 把"何时真填"留成一次**纯发布决策**，而不是顺手改过去。
-        // 真填那天要同轮做的三件事：① 换这一行；② 更新
-        //   `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；
-        //   ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale）。
-        // ⚠ 无论如何**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
-        // 这一行由 `production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住
-        //（它会在那天**故意变红**：那是提醒，不是障碍）；旁边那条
-        // `the_backend_can_already_discover_homes_it_just_does_not_send_them`
-        // 钉的是另一半 —— 空表不等于没能力。
-        homes: Vec::new(),
-        emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::command_names()
             .into_iter()
             .map(str::to_string)
@@ -380,6 +353,11 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         shapes: cmd_wire::shapes::SHAPES
             .iter()
             .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
+        // 每种帧的形状指纹：同上，客户端按帧种比。
+        frames: cmd_wire::frame_shapes::FRAMES
+            .iter()
+            .map(|(k, h)| (k.to_string(), h.to_string()))
             .collect(),
     })
 }

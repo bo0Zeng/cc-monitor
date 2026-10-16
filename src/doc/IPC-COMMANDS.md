@@ -10,20 +10,17 @@
 
 ### `hello`
 
-Handshake sent once when a client connects。
+握手：连上之后那台发的第一帧。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `v` | number | 协议版本号 |
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`）；换不换后端按它判 |
 | `host_arch` | string | 这台机器的架构（`x86_64` / `aarch64` …） |
-| `claude_dir` | string | ⚠ **冻结兼容字段，不是欠账** |
-| `homes` | [AgentHome]? | 本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`） |
-| `emits` | [string]? | 本 backend **会发射的帧 kind 集**（snake_case） |
-| `commands` | [string]? | 本 backend **接受的入方向命令集** |
-| `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
-| `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
+| `commands` | [string]? | 这台后端接受的入方向命令；空 ⇒ 它不读命令 |
+| `unavailable` | [Unavailable]? | 接得下、但这台做不到的命令与原因（见 `Unavailable`）；空 ＝ 没有「做不到」的把握 |
+| `host_env` | {string: string}? | 起它的宿主交给它的那几格环境，原样回显（`{名: 值}`，名单住后端 `wire::HOST_ECHO_ENVS`） |
 | `shapes` | {string: string}? | typed 命令的形状指纹 `{命令: 8 位十六进制}`（`crate::shapes::SHAPES`） |
+| `frames` | {string: string}? | 每种帧（`hello` 除外）的形状指纹 `{kind: 8 位十六进制}`（`crate::frame_shapes::FRAMES`） |
 
 ### `line`
 
@@ -279,6 +276,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ## 2. 信封与帧里用到的类型
 
+#### `HelloHead`
+
+hello 的头：版本门第一步只解它（全形解不开时也认得出是不是我们的后端、是哪一版）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `build_id` | string |  |
+
 #### `SessionActivity`
 
 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
@@ -360,15 +365,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `kind` | string | 帧种（与 `kind` tag 同一套 snake_case 名字） |
 | `subject` | string? | 主体：会话 sid / tmux 会话名 |
-
-#### `AgentHome`
-
-`hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**：agent 维度只在值里（`agent_kind`），不在字段名里。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `agent_kind` | string | 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间 |
-| `path` | string | 该 agent 在这台机器上的 home 目录（绝对路径） |
 
 #### `Unavailable`
 
