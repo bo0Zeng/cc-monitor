@@ -563,6 +563,55 @@ pub struct SessionNew {
     pub prompt: Option<FirstSay>,
 }
 
+/// `session-open` 落在哪。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Landed {
+    /// 新建了一个 tmux 会话、在里面起好了（后台）。
+    Started,
+    /// 在挂着它的空 tmux 会话里就地起了。
+    InPlace,
+    /// 本来就在跑，没另起。
+    Running,
+    /// 那个 tmux 会话里只剩空 shell（接回那一形）。
+    Idle,
+    /// 没起：开终端跑 `line` 才起。
+    Window,
+}
+
+/// `session-open` 的成品。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct Opened {
+    /// 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
+    pub landed: Landed,
+    /// 落在哪个 tmux 会话（`window` ⇒ `null`）。
+    pub session: Option<String>,
+    /// 要开终端跑的那一行（那台渲好的 `ccm …`）：`window` ⇒ 起会话那一行（不跑就没起）；其余 ⇒ 接进那个 tmux 会话那一行。
+    pub line: Option<String>,
+    /// 恢复 / 接回 ⇒ 那一条；新起 ⇒ 先定好的 sid（那一家不认先定 ⇒ `null`）。
+    pub sid: Option<String>,
+    /// 起的是哪一家（接回不起 agent ⇒ `null`）。
+    pub agent: Option<crate::AgentKind>,
+    /// 起在哪个目录（`~` 已按这台的家目录展开；开窗的起始目录、认报到都用它；接回 ⇒ `null`）。
+    pub cwd: Option<String>,
+    /// 实际用的号（账号 0 / 不表态 / 没另起 ⇒ `null`）。
+    pub account: Option<LaunchedAccount>,
+    /// 那台要附带说的一句（命中几个在跑的、接了第一个）；没有 ⇒ `null`。
+    pub note: Option<String>,
+    /// 第一句交进去的结局；没给第一句 ⇒ `null`。
+    pub prompt: Option<FirstSay>,
+}
+
 /// `session-new-facts` 的应答。
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

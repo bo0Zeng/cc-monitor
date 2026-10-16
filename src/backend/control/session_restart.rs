@@ -13,7 +13,8 @@
 
 use super::launch::LAUNCH_CAP;
 use super::launch_account::{self as la, AccountAsk, Settled};
-use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_CAP};
+use super::session_batch::{self as batch, Deps, Standing, SESSIONS_WHERE_CAP};
+use super::session_open::{self as open, Item};
 use crate::platform::child::{Budget, Deadline, Until};
 use serde_json::Value;
 use std::future::Future;
@@ -68,7 +69,7 @@ pub(crate) struct Req {
     compact_within_ms: u64,
     arrive_within_ms: u64,
     local: bool,
-    /// 哪一家（整批那几样由它 ＋ 这台的偏好现拼：[`Batch::of`]）。
+    /// 哪一家（启动命令 · 模型表由它 ＋ 这台的偏好现拼）。
     agent: String,
     /// 发起方的截止时刻（分派那一层给；CLI 面没有）。
     until: Option<Until>,
@@ -197,13 +198,10 @@ fn already_live(said: String, pids: Vec<u32>, stopped: bool) -> Failed {
 /// ⇒ `(号, 终端名, 此刻写它的那几个 pid)`。
 fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed> {
     let _total = Budget::capped(SESSIONS_WHERE_CAP, req.until);
-    // 模型偏好只用在远端那一行上（本机那一行不带模型，同批量起）。
-    let none = Default::default();
-    let models = if req.local { &none } else { &deps.prefs.models };
     let account = la::settle(
         &req.item.account,
         Some(&req.item.sid),
-        models,
+        &deps.prefs.models,
         deps.accounts,
     )
     .map_err(|u| {
@@ -272,27 +270,18 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
         );
         return Err(already_live(said, others, true));
     }
-    let a = batch::start_named(
-        &req.item,
-        &Batch::of(&req.agent, deps.prefs),
-        account,
-        name.to_string(),
-        req.local,
-        deps,
-    );
-    if a.outcome == "done" {
-        return Ok(());
-    }
-    Err((
-        "start_failed",
-        a.detail,
-        Refused::StartFailed {
-            terminal: name.to_string(),
-            why: a.why,
-            stopped: true,
-        }
-        .data(),
-    ))
+    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(|(code, said, _, raw)| {
+        (
+            "start_failed",
+            raw.unwrap_or(said),
+            Refused::StartFailed {
+                terminal: name.to_string(),
+                why: Some(code.to_string()),
+                stopped: true,
+            }
+            .data(),
+        )
+    })
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。

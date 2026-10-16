@@ -82,12 +82,15 @@ fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
         "bad_args",
         "旧形状（带 `isSsh`）该被拒，不静默吞"
     );
-    // 不说是哪一家 ⇒ 收不下（不落默认那一家）；说了认不出的 ⇒ `refused`、列出认得的几家。
+    // 不说是哪一家 ⇒ 收不下（不落默认那一家）；起会话说了认不出的 ⇒ `refused`、列出认得的几家（接回不起 agent，不问是哪一家）。
     let mut no_agent = attach_req();
     no_agent.as_object_mut().unwrap().remove("agent");
     assert_eq!(answer_cli(&no_agent).unwrap_err().0, "bad_args");
     let mut unknown = attach_req();
     unknown["agent"] = serde_json::json!("gemini");
+    assert!(answer_cli(&unknown).is_ok(), "接回不问是哪一家");
+    unknown["action"] = serde_json::json!({"kind": "new"});
+    unknown["container"] = serde_json::json!({"kind": "none"});
     let (code, said) = answer_cli(&unknown).unwrap_err();
     assert_eq!(code, "refused");
     assert!(

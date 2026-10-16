@@ -36,6 +36,7 @@ pub mod session_batch_face;
 pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：一条会话能用的斜杠命令与 Skill
 pub(crate) mod session_mode_face;
 pub(crate) mod session_model_face; // 帧面 `session-model`（typed）：会话开着时换模型（送那一行、从记录读回） // 帧面 `session-permission`（typed）：会话开着时切权限档（按循环键、等重画、读回到了为止）
+pub(crate) mod session_open_face; // 帧面 `session-open`：起新的 · 恢复 · 接回一个请求（恢复那条的记录 · 分叉源在不在 tmux 由这层读）
 pub mod session_new_face; // 帧面 `session-new` · `session-new-facts` · `session-new-dir`：起新会话框要的这台事实 ＋ 起
 pub mod session_restart_face;
 pub(crate) mod session_say_face; // 帧面 `session-say`（typed）：往一条会话说一句，在等人 ⇒ 不送，不在等 ⇒ 照 `terminal-input` 送 // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-stop` / `sessions-start` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch

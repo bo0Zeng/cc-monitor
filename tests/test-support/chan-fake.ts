@@ -818,7 +818,8 @@ async function standingProduct(origin: string, sids: string[], got: Promise<unkn
     if (idle.length > 0) return at("idle", [idle[0]]);
     return at("none", []);
   });
-  return chanReply({ results });
+  // 这台恢复默认放在哪：替身那台的偏好恒是默认（恢复不进 tmux）。
+  return chanReply({ results, run: "direct" });
 }
 
 /** 一发 `chan_call` 若是 `sessions-where` ⇒ 替身扮那台答（名单向判据手里的替身要）；否则 `null`。 */
