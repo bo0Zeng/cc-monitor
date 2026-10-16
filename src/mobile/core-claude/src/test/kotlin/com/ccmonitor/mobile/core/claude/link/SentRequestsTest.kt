@@ -66,7 +66,6 @@ class SentRequestsTest {
                     MachinePrefs.model("work", "opus"),
                     MachinePrefs.model("work", null),
                 ),
-            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             Rotation.DAY_PAINT to listOf(Rotation.dayPaint(listOf(RotSeg(0L, 10L, 1.0)), 0L, 10L, 0.5), Rotation.dayPaint(emptyList(), 0L, 10L, null)),
             Rotation.FOR_NEW to listOf(Rotation.forNew("s1"), Rotation.forNew(null)),
             Rotation.REVERT to listOf(Rotation.revert("s")),
@@ -86,7 +85,6 @@ class SentRequestsTest {
                     Rotation.view(RotWhere.Session("s"), 12),
                     Rotation.view(RotWhere.Strategy("x"), 12, mapOf("k" to 1L), "r"),
                 ),
-            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             SessionCommandList.COMMAND to listOf(SessionCommandList.args("s")),
             SessionModel.COMMAND to listOf(SessionModel.args("s", "opus")),
             SessionNew.COMMAND to
