@@ -9,6 +9,6 @@ read-chunk	{"content":{"b16":"79"},"eof":true,"offset":1,"path":{"b16":"<ROOTHEX
 read-chunk-text	{"content":{"b16":"68656c6c6f"},"eof":false,"offset":0,"path":"<ROOT>/one-file/a.txt","size":11}
 read-text	{"bytes":11,"path":"<ROOT>/one-file/a.txt","sha256":"4e1a8b044a926447ee007346b8ecfcb2a4f6036ace6a9d29cce25b2b33c16382","text":"hello\nwire\n"}
 size	{"bytes":8,"dirs":2,"files":2,"links":0,"other":0,"path":"<ROOT>/size","skipped_mounts":0,"unreadable_dirs":0}
-stat-file	{"kind":"file","link_target":null,"mode":416,"mtime_full":"2001-09-09 01:46:40","mtime_secs":1000000000,"mtime_text":"2001-09-09","owner":"<OWNER>","path":"<ROOT>/one-file/a.txt","readonly":false,"size":11}
-stat-link	{"kind":"dir","link_target":"<ROOT>/target","mode":488,"mtime_full":"2001-09-09 01:46:40","mtime_secs":1000000000,"mtime_text":"2001-09-09","owner":"<OWNER>","path":"<ROOT>/one-link-dir/to-dir","readonly":false,"size":"<DIRSIZE>"}
-stat-odd	{"kind":"file","link_target":null,"mode":384,"mtime_full":"2001-09-09 01:46:40","mtime_secs":1000000000,"mtime_text":"2001-09-09","owner":"<OWNER>","path":{"b16":"<ROOTHEX>2f6f6e652d6f64642f6f64642dff2e62696e"},"readonly":false,"size":2}
+stat-file	{"kind":"file","link_target":null,"mode":416,"mtime_full":"2001-09-09 01:46:40","mtime_secs":1000000000,"mtime_text":"2001-09-09","owner":"<OWNER>","path":"<ROOT>/one-file/a.txt","readonly":false,"size":11,"up":"<ROOT>/one-file"}
+stat-link	{"kind":"dir","link_target":"<ROOT>/target","mode":488,"mtime_full":"2001-09-09 01:46:40","mtime_secs":1000000000,"mtime_text":"2001-09-09","owner":"<OWNER>","path":"<ROOT>/one-link-dir/to-dir","readonly":false,"size":"<DIRSIZE>","up":"<ROOT>/one-link-dir"}
+stat-odd	{"kind":"file","link_target":null,"mode":384,"mtime_full":"2001-09-09 01:46:40","mtime_secs":1000000000,"mtime_text":"2001-09-09","owner":"<OWNER>","path":{"b16":"<ROOTHEX>2f6f6e652d6f64642f6f64642dff2e62696e"},"readonly":false,"size":2,"up":"<ROOT>/one-odd"}
