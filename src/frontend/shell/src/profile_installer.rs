@@ -184,7 +184,7 @@ pub struct UserPathStatus {
 fn run_user_path_powershell(script: &str) -> Result<String, Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     if !crate::platform::login_shell::LOGIN_SHELL.has_user_level_path() {
-        return Err(copy_text("rsProfileInstaller.userPath.notWindows", &[]).into());
+        return Err(Said::of("rsProfileInstaller.userPath.notWindows", &[]));
     }
     let mut cmd = std::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
@@ -243,10 +243,7 @@ pub fn user_path_status() -> UserPathStatus {
                 on_user_path: false,
                 add_command,
                 remove_command,
-                error: Some(Said::from(copy_text(
-                    "rsProfileInstaller.userPath.noBinDir",
-                    &[],
-                ))),
+                error: Some(Said::of("rsProfileInstaller.userPath.noBinDir", &[])),
             };
         }
     };
@@ -286,7 +283,7 @@ pub fn user_path_status() -> UserPathStatus {
 /// `KR135D1` ②：**一个按钮加**。跑的就是 [`render_user_path_setup_command`] 那段字节。
 pub fn user_path_add() -> Result<(), Said> {
     let script = render_user_path_setup_command()
-        .ok_or_else(|| Said::from(copy_text("rsProfileInstaller.userPath.addNoDir", &[])))?;
+        .ok_or_else(|| Said::of("rsProfileInstaller.userPath.addNoDir", &[]))?;
     run_user_path_powershell(&script).map(|_| ())
 }
 
@@ -294,7 +291,7 @@ pub fn user_path_add() -> Result<(), Said> {
 /// —— **只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
 pub fn user_path_remove() -> Result<(), Said> {
     let script = render_user_path_removal_command()
-        .ok_or_else(|| Said::from(copy_text("rsProfileInstaller.userPath.removeNoDir", &[])))?;
+        .ok_or_else(|| Said::of("rsProfileInstaller.userPath.removeNoDir", &[]))?;
     run_user_path_powershell(&script).map(|_| ())
 }
 

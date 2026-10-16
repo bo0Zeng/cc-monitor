@@ -162,7 +162,7 @@ async fn ask_plan_for(
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))
         .collect();
     let command = |said: String| Said::new(said, PLAN_CMD, None);
-    let dial = crate::dial_host::transfer_dial(cfg).map_err(command)?;
+    let dial = crate::dial_host::transfer_dial(cfg);
     let args = serde_json::json!({
         "dial": dial,
         "carried": carried,
@@ -229,7 +229,7 @@ impl DeployError {
 
 impl From<String> for DeployError {
     fn from(why: String) -> Self {
-        DeployError::Failed(why.into())
+        DeployError::Failed(Said::written(why))
     }
 }
 
@@ -278,9 +278,10 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
              （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
-        return Err(DeployError::Failed(
-            copy_text("rsSftp.deploy.noBuildId", &[]).into(),
-        ));
+        return Err(DeployError::Failed(Said::of(
+            "rsSftp.deploy.noBuildId",
+            &[],
+        )));
     }
     // 经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区）。
     let fs = RemoteFs::open(cfg).await?;
@@ -363,7 +364,7 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, Said> {
     let r: Result<String, Said> = async move {
         // 与自动部署同一份计划（本机常驻后端判）、同一个取字节口、同一句拒绝的话。
         let plan = ask_plan(&cfg).await?;
-        let bin = planned_binary(&plan)?;
+        let bin = planned_binary(&plan).map_err(Said::written)?;
         // 经本机常驻后端那条 `files` 链路。
         let fs = RemoteFs::open(&cfg).await?;
         let backend_msg = match plan.action {

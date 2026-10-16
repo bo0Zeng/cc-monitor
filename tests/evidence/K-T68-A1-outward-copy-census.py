@@ -160,11 +160,11 @@ def is_copy_text(text: str) -> bool:
 
 
 # **普查读表**（「全量抽表那一波要同拍把左边改成『普查主集 ＋ 表条数』」）：
-# 出口里的 `copyText("key"…)`（TS）/ `copy_text("key"…)`（monitor Rust）也是一条对外文案 ——
+# 出口里的 `copyText("key"…)`（TS）/ `copy_text("key"…)` · `Said::of("key"…)`（monitor Rust）也是一条对外文案 ——
 # 记成主集条目，`via="table"`，文本与 kind 取表里那一条。字面量那些记 `via="literal"`。
 # ⇒ 抽表不会把全集抽空：各桶的反空真地板照旧有意义。
 TABLE_PATH = REPO / "src" / "shared" / "copy" / "table.json"
-COPY_REF = re.compile(r"(?<![\w.])copy(?:Text|_text)\s*\(\s*\"([A-Za-z0-9.]+)\"")
+COPY_REF = re.compile(r"(?<![\w.])(?:copy(?:Text|_text)|Said::of)\s*\(\s*\"([A-Za-z0-9.]+)\"")
 
 
 def load_copy_table() -> dict:

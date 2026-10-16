@@ -4033,7 +4033,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
     ];
     let before = local_health();
     let out = note_never_started(StartOutcome::Failed {
-        reason: reason.clone().into(),
+        reason: crate::detail::Said::written(reason.clone()),
         looked_at: looked_at.clone(),
     });
     // ① 结局**原样**还回去 —— 记一笔不许动调用方手上的东西。

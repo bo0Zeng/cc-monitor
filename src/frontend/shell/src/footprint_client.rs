@@ -12,18 +12,14 @@ use std::path::PathBuf;
 #[tauri::command]
 pub fn footprint_client_facts() -> Result<Value, Said> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
-        Ok(facts(
-            creds_core::store::home_dir(),
-            std::env::var("PATH").ok(),
-        )?)
+        facts(creds_core::store::home_dir(), std::env::var("PATH").ok())
     })();
     r.map_err(|s| s.named("footprint_client_facts"))
 }
 
 /// [`footprint_client_facts`] 的本体（环境是参数，判据拿夹具喂）。
-pub(crate) fn facts(home: Option<PathBuf>, path: Option<String>) -> Result<Value, String> {
-    let home =
-        home.ok_or_else(|| crate::copy_table::copy_text("rsFootprintClient.env.noHome", &[]))?;
+pub(crate) fn facts(home: Option<PathBuf>, path: Option<String>) -> Result<Value, Said> {
+    let home = home.ok_or_else(|| Said::of("rsFootprintClient.env.noHome", &[]))?;
     Ok(json!({
         "home": home.display().to_string(),
         "path": path,

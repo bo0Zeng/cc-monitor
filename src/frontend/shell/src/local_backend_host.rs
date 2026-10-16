@@ -364,7 +364,7 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
                     crate::machine_state::note_local_foreign(Some(&build_id));
                 }
             }
-            Probe::Stranger(why.into())
+            Probe::Stranger(Said::written(why))
         }
     }
 }
@@ -381,7 +381,7 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     let mut one = [0u8; 1];
     loop {
         match sock.read(&mut one) {
-            Ok(0) => return Err(copy_text("rsLocalBackendHost.handshake.closed", &[]).into()),
+            Ok(0) => return Err(Said::of("rsLocalBackendHost.handshake.closed", &[])),
             Ok(_) => {
                 if one[0] == b'\n' {
                     return String::from_utf8(out).map_err(|e| {
@@ -391,7 +391,7 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
                 out.push(one[0]);
                 if out.len() > LISTEN_HANDSHAKE_LINE_CAP {
                     // **拒收 + 出声**，不静默截断成一行「看起来对」的 JSON。
-                    return Err(copy_text(
+                    return Err(Said::of(
                         "rsLocalBackendHost.handshake.tooLong",
                         &[("cap", &LISTEN_HANDSHAKE_LINE_CAP.to_string())],
                     )
@@ -435,9 +435,9 @@ fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
         Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
         Some(cmd_wire::attach::AttachReply::Refused { reason }) => {
-            Err(copy_text("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
+            Err(Said::of("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
         }
-        None => Err(copy_text(
+        None => Err(Said::of(
             "rsLocalBackendHost.attach.unreadable",
             &[("line", &line.to_string())],
         )
@@ -465,7 +465,7 @@ fn spawn_detached(
 ) -> Result<crate::spawn_managed::ManagedChild, Said> {
     use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
     if !crate::platform::proc::CAN_DETACH {
-        return Err(copy_text(
+        return Err(Said::of(
             "rsLocalBackendHost.spawn.unsupported",
             &[("bin", &(bin.display()).to_string())],
         )
@@ -515,7 +515,7 @@ fn spawn_detached(
     local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
         local_backend::SpawnFailure::TransientBusy { tries, last } => {
-            local_backend::etxtbsy_gave_up_reason(bin, tries, &last).into()
+            Said::written(local_backend::etxtbsy_gave_up_reason(bin, tries, &last))
         }
         // 别的错 ⇒ **今天那句照旧，一个字不改**。
         local_backend::SpawnFailure::Broken(e) => Said::with_raw(
@@ -817,9 +817,9 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
     let frame = crate::stream_source::decode(hello_line)
-        .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
+        .map_err(|_| Said::of("rsLocalBackendHost.stream.badFirstLine", &[]))?;
     let witness = crate::inbound_client::witness_of(&frame)
-        .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
+        .ok_or_else(|| Said::of("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
@@ -1075,7 +1075,7 @@ fn probe_and_attach_after_spawn(
     match adopt_with(sock, env, Some(within)) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
-        Adopt::None => Err(copy_text(
+        Adopt::None => Err(Said::of(
             "rsLocalBackendHost.afterSpawn.neverListened",
             &[("path", &sock.display().to_string())],
         )
@@ -1135,15 +1135,14 @@ pub(crate) fn wait_listening<T>(
             return Ok(Some(t));
         }
         if let Some(how) = exited() {
-            return Err(copy_text(
+            return Err(Said::of(
                 "rsLocalBackendHost.afterSpawn.exited",
                 &[("path", &path), ("how", &how)],
             )
             .into());
         }
         if now() >= deadline {
-            let last: Said =
-                copy_text("rsLocalBackendHost.adopt.notYet", &[("path", &path)]).into();
+            let last: Said = Said::of("rsLocalBackendHost.adopt.notYet", &[("path", &path)]);
             return Err(Said::restate(
                 copy_text(
                     "rsLocalBackendHost.adopt.waited",
@@ -1238,7 +1237,7 @@ fn stop_detached() -> Option<Result<crate::remote_resident::StopAnswer, Said>> {
                 h.child = Some(c);
                 let pid = h.pid;
                 put_back(h);
-                return Some(Err(copy_text(
+                return Some(Err(Said::of(
                     "rsLocalBackendHost.stop.noRecord",
                     &[("pid", &pid.to_string())],
                 )
@@ -1267,7 +1266,7 @@ fn run_resident_stop_within(
 ) -> Result<crate::remote_resident::StopAnswer, Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     if bin.as_os_str().is_empty() {
-        return Err(copy_text("rsLocalBackendHost.stop.noBin", &[]).into());
+        return Err(Said::of("rsLocalBackendHost.stop.noBin", &[]));
     }
     let handed = backend_env();
     // 三条策略：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
@@ -1304,7 +1303,7 @@ fn run_resident_stop_within(
             ))
         }
         Err(crate::ccm_probe::CaptureFail::TimedOut) => {
-            return Err(copy_text(
+            return Err(Said::of(
                 "rsLocalBackendHost.stop.timedOut",
                 &[("dur", &copy_core::format_elapsed(deadline))],
             )

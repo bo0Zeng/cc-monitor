@@ -282,7 +282,9 @@ fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe
             .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
-    let no_dir = |_: &Path| -> Result<(), crate::detail::Said> { Err("不许建".into()) };
+    let no_dir = |_: &Path| -> Result<(), crate::detail::Said> {
+        Err(crate::detail::Said::written("不许建".into()))
+    };
     let fresh = root.join("fresh");
     let e = resolve_window_bin_in(None, Some(b"x"), Some(&fresh), &mk, &no_dir)
         .expect_err("建不了目录也解出来了");

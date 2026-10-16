@@ -1012,11 +1012,11 @@ fn drop_partial(tmp: &Path) {
 fn unasked(e: crate::ccm_probe::OnceErr) -> Said {
     use crate::ccm_probe::OnceErr;
     let why = match e {
-        OnceErr::Refused { message, .. } => return message.into(),
+        OnceErr::Refused { message, .. } => return Said::written(message),
         OnceErr::Spawn(e) => Said::with_raw(copy_text("rsLocalBackend.place.askSpawn", &[]), &e),
-        OnceErr::TimedOut => copy_text("rsLocalBackend.place.askTimeout", &[]).into(),
+        OnceErr::TimedOut => Said::of("rsLocalBackend.place.askTimeout", &[]),
         OnceErr::Unreadable(said) => {
-            copy_text("rsLocalBackend.place.askUnreadable", &[("said", &said)]).into()
+            Said::of("rsLocalBackend.place.askUnreadable", &[("said", &said)])
         }
     };
     Said::restate(
@@ -1649,7 +1649,7 @@ pub fn resolve_or_extract(
             Ok(e) => e,
             Err(why) => {
                 break 'resolve Resolved::Missing {
-                    reason: why.into(),
+                    reason: Said::written(why),
                     looked_at: Vec::new(),
                 }
             }
