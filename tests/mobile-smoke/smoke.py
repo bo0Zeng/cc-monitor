@@ -1216,25 +1216,26 @@ def walk():
         name = fresh[0]
         if not pane_has(name, "就绪", 30):
             raise Step.Fail(f"别名起的会话 {name} 里替身没就绪")
+        end = ui.within(10)
+        while ui.find(SMOKE_ALIAS) is not None and time.time() < end:
+            time.sleep(0.5)
         if ui.find(SMOKE_ALIAS) is not None:
             raise Step.Fail("按过一个别名之后那一排没收起")
         adb("shell", "input", "keyevent", "4")
         drawer(t("mobDrawer.item.terminal"))
-        time.sleep(2)
         hide_keyboard()
-        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
-        names = [n.get("text") for n in ui.nodes()]
-        if name not in names:
+        tap(t("mobDefaultButtons.label.tmux"))
+        if not wait(name, 15) or not any(n.get("text") == name for n in ui.nodes()):
             raise Step.Fail(f"tmux 会话列表里没有 {name}")
+        attached = sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name)
         tap_in_row(name, t("mobTmux.row.attach"))
-        time.sleep(3)
+        end = ui.within(20)
+        while time.time() < end and sum(1 for r in rig("tmux", "list-clients", "-F", "#{session_name}").stdout.split() if r == name) <= attached:
+            time.sleep(1)
         typed(f"{T} from phone terminal")
         adb("shell", "input", "keyevent", "66")
-        time.sleep(1)
         rig("tmux", "send-keys", "-t", name, f"{T} from desk", "Enter")
-        time.sleep(6)
-        pane = rig("tmux", "capture-pane", "-p", "-t", name).stdout
-        if f"> {T} from phone terminal" not in pane or f"> {T} from desk" not in pane:
+        if not (pane_has(name, f"> {T} from phone terminal", 20) and pane_has(name, f"> {T} from desk", 20)):
             raise Step.Fail("两侧打的字没都进那个会话")
         switch_model(name)
         adb("shell", "input", "keyevent", "4")
