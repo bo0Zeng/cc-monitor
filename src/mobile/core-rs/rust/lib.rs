@@ -121,45 +121,70 @@ fn sink() -> Option<&'static Sink> {
 
 // ═══ 宿主那一套：钥匙 · host key · 详情 · 写的规矩 ══════════════════════════════════
 
-/// Kotlin 交进来的一样钥匙（按编号存；拨号请求的 `key_path` 写这个编号）。
-#[derive(Clone)]
+/// Kotlin 交进来的一样钥匙。同样的一把只存一份（按内容认）；拨号请求的 `key_path` 写它的编号。
+#[derive(PartialEq)]
 enum Key {
     Pem(String, Option<String>),
     Password(String),
     Keystore(String, russh::keys::PublicKey),
 }
 
-fn keys() -> &'static Mutex<HashMap<String, Key>> {
-    static K: OnceLock<Mutex<HashMap<String, Key>>> = OnceLock::new();
+/// 表里一格：那把钥匙 ＋ 握着它的连接身份有几份（Kotlin 每份身份交进来一次 · 跟着换一条时多握一次 · 收掉时放一次）。
+struct Held {
+    key: Key,
+    holders: usize,
+}
+
+fn keys() -> &'static Mutex<HashMap<String, Held>> {
+    static K: OnceLock<Mutex<HashMap<String, Held>>> = OnceLock::new();
     K.get_or_init(Default::default)
 }
 
-fn put_key(id: String, key: Key) {
-    keys()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(id, key);
+/// 交进一把钥匙、握一份，回它的编号：同样的那一把已在表里 ⇒ 同一个编号、多握一份。
+fn put_key(key: Key) -> String {
+    static NEXT: AtomicI64 = AtomicI64::new(1);
+    let mut table = keys().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((id, held)) = table.iter_mut().find(|(_, h)| h.key == key) {
+        held.holders += 1;
+        return id.clone();
+    }
+    let id = format!("k{}", NEXT.fetch_add(1, Ordering::Relaxed));
+    table.insert(id.clone(), Held { key, holders: 1 });
+    id
+}
+
+/// 多握一份 / 放掉一份；放掉的是最后一份 ⇒ 那把钥匙从表里删掉。编号不在表里 ⇒ `false`。
+fn hold_key(id: &str, holding: bool) -> bool {
+    let mut table = keys().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(held) = table.get_mut(id) else {
+        return false;
+    };
+    if holding {
+        held.holders += 1;
+    } else {
+        held.holders -= 1;
+        if held.holders == 0 {
+            table.remove(id);
+        }
+    }
+    true
 }
 
 struct PhoneKeys;
 
 impl KeySource for PhoneKeys {
     fn credential(&self, key: &str) -> Result<Credential, Said> {
-        let found = keys()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(key)
-            .cloned();
         let unreadable = || copy_core::copy_text("beConnect.auth.keyLoad", &[("path", key)]);
-        match found {
-            Some(Key::Pem(pem, pass)) => russh::keys::decode_secret_key(&pem, pass.as_deref())
+        let table = keys().lock().unwrap_or_else(|e| e.into_inner());
+        match table.get(key).map(|h| &h.key) {
+            Some(Key::Pem(pem, pass)) => russh::keys::decode_secret_key(pem, pass.as_deref())
                 .map(|k| Credential::Key(Box::new(k)))
                 .map_err(|e| Said::with_raw(unreadable(), &e)),
-            Some(Key::Password(p)) => Ok(Credential::Password(p)),
+            Some(Key::Password(p)) => Ok(Credential::Password(p.clone())),
             Some(Key::Keystore(alias, public)) => {
                 Ok(Credential::Signer(Arc::new(KeystoreSigner {
-                    alias,
-                    public,
+                    alias: alias.clone(),
+                    public: public.clone(),
                 })))
             }
             None => Err(unreadable().into()),
@@ -455,6 +480,12 @@ fn string(env: &mut JNIEnv, s: &JString) -> Option<String> {
     env.get_string(s).ok().map(Into::into)
 }
 
+fn new_jstring(env: &JNIEnv, text: impl AsRef<str>) -> jstring {
+    env.new_string(text)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
 fn guarded<T>(fallback: T, f: impl FnOnce() -> T) -> T {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or(fallback)
 }
@@ -465,10 +496,7 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_version<'l>(
     env: JNIEnv<'l>,
     _class: JClass<'l>,
 ) -> jstring {
-    let text = guarded("{}".to_string(), version_json);
-    env.new_string(text)
-        .map(|s| s.into_raw())
-        .unwrap_or(std::ptr::null_mut())
+    new_jstring(&env, guarded("{}".to_string(), version_json))
 }
 
 /// `Core.init(sink)`：记下 Kotlin 那一侧、装上手机那一套。只认第一次。
@@ -488,63 +516,74 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_init<'l>(
     });
 }
 
-/// `Core.putPassword(id, password)`。
+/// `Core.putPassword(password)`：握一份，回编号；读不动 ⇒ `null`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_putPassword<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    id: JString<'l>,
     password: JString<'l>,
-) {
-    guarded((), || {
-        if let (Some(id), Some(p)) = (string(&mut env, &id), string(&mut env, &password)) {
-            put_key(id, Key::Password(p));
-        }
-    });
+) -> jstring {
+    guarded(std::ptr::null_mut(), || match string(&mut env, &password) {
+        Some(p) => new_jstring(&env, put_key(Key::Password(p))),
+        None => std::ptr::null_mut(),
+    })
 }
 
-/// `Core.putPem(id, pem, passphrase?)`。
+/// `Core.putPem(pem, passphrase?)`：握一份，回编号；读不动 ⇒ `null`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_putPem<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    id: JString<'l>,
     pem: JByteArray<'l>,
     passphrase: JString<'l>,
-) {
-    guarded((), || {
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
         let pass = string(&mut env, &passphrase);
         let pem = env
             .convert_byte_array(&pem)
             .ok()
             .and_then(|b| String::from_utf8(b).ok());
-        if let (Some(id), Some(pem)) = (string(&mut env, &id), pem) {
-            put_key(id, Key::Pem(pem, pass));
+        match pem {
+            Some(pem) => new_jstring(&env, put_key(Key::Pem(pem, pass))),
+            None => std::ptr::null_mut(),
         }
-    });
+    })
 }
 
-/// `Core.putKeystore(id, alias, sec1Point)`：公钥是 P-256 的未压缩点（`04 ‖ X ‖ Y`）。认不出那个点 ⇒ `false`。
+/// `Core.putKeystore(alias, sec1Point)`：公钥是 P-256 的未压缩点（`04 ‖ X ‖ Y`）。握一份，回编号；认不出那个点 ⇒ `null`。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_putKeystore<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
-    id: JString<'l>,
     alias: JString<'l>,
     point: JByteArray<'l>,
-) -> jboolean {
-    guarded(JNI_FALSE, || {
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
         let pt = env.convert_byte_array(&point).ok();
-        let (Some(id), Some(alias), Some(pt)) =
-            (string(&mut env, &id), string(&mut env, &alias), pt)
-        else {
-            return JNI_FALSE;
+        let (Some(alias), Some(pt)) = (string(&mut env, &alias), pt) else {
+            return std::ptr::null_mut();
         };
         let Ok(ec) = russh::keys::ssh_key::public::EcdsaPublicKey::from_sec1_bytes(&pt) else {
-            return JNI_FALSE;
+            return std::ptr::null_mut();
         };
-        put_key(id, Key::Keystore(alias, russh::keys::PublicKey::from(ec)));
-        JNI_TRUE
+        new_jstring(
+            &env,
+            put_key(Key::Keystore(alias, russh::keys::PublicKey::from(ec))),
+        )
+    })
+}
+
+/// `Core.holdKey(id, holding)`：多握一份 / 放掉一份（最后一份放掉 ⇒ 删）。编号不在 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_holdKey<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    id: JString<'l>,
+    holding: jboolean,
+) -> jboolean {
+    guarded(JNI_FALSE, || match string(&mut env, &id) {
+        Some(id) if hold_key(&id, holding != JNI_FALSE) => JNI_TRUE,
+        _ => JNI_FALSE,
     })
 }
 
@@ -563,10 +602,7 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_publicKeyOf<'l>(
             .and_then(|b| String::from_utf8(b).ok());
         let comment = string(&mut env, &comment).unwrap_or_default();
         match pem.and_then(|p| public_line_of(&p, &comment)) {
-            Some(line) => env
-                .new_string(line)
-                .map(|s| s.into_raw())
-                .unwrap_or(std::ptr::null_mut()),
+            Some(line) => new_jstring(&env, line),
             None => std::ptr::null_mut(),
         }
     })
@@ -582,10 +618,10 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_generateEd25519<'l
     guarded(std::ptr::null_mut(), || {
         let comment = string(&mut env, &comment).unwrap_or_default();
         match generate_ed25519(&comment) {
-            Some((pem, public)) => env
-                .new_string(serde_json::json!({"pem": pem, "public": public}).to_string())
-                .map(|s| s.into_raw())
-                .unwrap_or(std::ptr::null_mut()),
+            Some((pem, public)) => new_jstring(
+                &env,
+                serde_json::json!({"pem": pem, "public": public}).to_string(),
+            ),
             None => std::ptr::null_mut(),
         }
     })
@@ -600,9 +636,7 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_parseSshConfig<'l>
 ) -> jstring {
     guarded(std::ptr::null_mut(), || {
         let text = string(&mut env, &text).unwrap_or_default();
-        env.new_string(ssh_config_json(&text))
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut())
+        new_jstring(&env, ssh_config_json(&text))
     })
 }
 
@@ -867,6 +901,52 @@ mod tests {
         let mut got = Vec::<u8>::new();
         assert!(!super::ack_within(&mut r, &mut |b: &[u8]| got.extend_from_slice(b)).await);
         assert!(got.is_empty());
+    }
+
+    /// 表里与 `key` 同样的那一把有几格、共被握着几份。
+    fn copies_of(key: &super::Key) -> (usize, usize) {
+        let table = super::keys().lock().unwrap();
+        let same: Vec<_> = table.values().filter(|h| h.key == *key).collect();
+        (same.len(), same.iter().map(|h| h.holders).sum())
+    }
+
+    /// **钥匙表跟着连接身份走**：同一把钥匙连 20 次（每次交进来一份）表里也只一格；每份身份收掉时放一份，
+    /// 全放掉 ⇒ 表里没有它、拨号核心再要它就拿不到（报读不动那一句）。
+    #[test]
+    fn a_key_put_for_every_dial_is_stored_once_and_gone_when_the_last_holder_lets_go() {
+        use ssh_dial::env::KeySource as _;
+        let pw = || super::Key::Password("pw-held-20-times".into());
+        let ids: Vec<String> = (0..20).map(|_| super::put_key(pw())).collect();
+        assert!(ids.iter().all(|id| *id == ids[0]), "{ids:?}");
+        assert_eq!(copies_of(&pw()), (1, 20));
+        assert!(matches!(
+            super::PhoneKeys.credential(&ids[0]),
+            Ok(ssh_dial::env::Credential::Password(p)) if p == "pw-held-20-times"
+        ));
+        for id in &ids {
+            assert!(super::hold_key(id, false));
+        }
+        assert_eq!(copies_of(&pw()), (0, 0));
+        assert!(!super::hold_key(&ids[0], true));
+        assert!(super::PhoneKeys.credential(&ids[0]).is_err());
+    }
+
+    /// 两把不同的钥匙各一格、编号不同；跟着换一条时多握的那一份也要放掉，表里才没有它。
+    #[test]
+    fn different_keys_get_their_own_ids_and_an_extra_hold_needs_its_own_release() {
+        let a = super::put_key(super::Key::Pem("pem-a".into(), None));
+        let b = super::put_key(super::Key::Pem("pem-a".into(), Some("pass".into())));
+        assert_ne!(a, b);
+        assert!(super::hold_key(&a, true));
+        assert!(super::hold_key(&a, false));
+        assert_eq!(copies_of(&super::Key::Pem("pem-a".into(), None)), (1, 1));
+        assert!(super::hold_key(&a, false));
+        assert!(super::hold_key(&b, false));
+        assert_eq!(copies_of(&super::Key::Pem("pem-a".into(), None)), (0, 0));
+        assert_eq!(
+            copies_of(&super::Key::Pem("pem-a".into(), Some("pass".into()))),
+            (0, 0)
+        );
     }
 
     /// 手机进程装的写规矩是部署那一种（只许后端那两处，建出来的目录收成只给本人）：文件屏走那台后端的 `files-*`，
