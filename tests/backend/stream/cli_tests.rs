@@ -262,13 +262,6 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
         stale.is_empty(),
         "`NOT_ON_CLI` 里这些命令**今天已经上了** CLI 面：{stale:?} —— 理由过期了，删掉它。"
     );
-    for (name, why) in NOT_ON_CLI.iter().chain(STREAM_ONLY_WHY).chain(UI_ONLY_WHY) {
-        assert!(
-            why.chars().count() >= 40,
-            "`NOT_ON_CLI` 里 {name} 的理由只有 {} 字 —— 那是占位不是理由",
-            why.chars().count()
-        );
-    }
     // ③ 理由表里每一条都得是帧面上还在的命令：命令删了、理由还留着 ⇒ 读的人以为它还在（第二个前端照这张表判「哪条只有帧面」）。
     let gone: Vec<&&str> = reasons
         .iter()

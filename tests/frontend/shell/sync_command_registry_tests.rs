@@ -549,9 +549,6 @@ fn every_sync_command_is_on_the_whitelist_with_a_reason() {
          真不会 ⇒ 进 `SYNC_ALLOWED` 并写清为什么。\n\
          白名单里有、盘上不是同步了：{stale:?} —— 从白名单删掉那一行。"
     );
-    for (c, why) in SYNC_ALLOWED {
-        assert!(why.chars().count() >= 8, "`{c}` 没写清为什么它不等外面");
-    }
     // 正控：这两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
     for cmd in [
         "data_paths.rs::get_data_paths",

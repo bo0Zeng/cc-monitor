@@ -80,6 +80,11 @@ fn every_name_gets_exactly_one_of_the_four_states() {
     );
 }
 
+/// 差异的四态 · 可疑项的三种 · 可疑项在这台机器上的事实（线上名）：界面文案表按它们逐键给字。
+const STATES: &[&str] = &["new", "same", "differs", "only-there"];
+const SUSPECT_KINDS: &[&str] = &["abs-path", "command-missing", "command-relative"];
+const THERE: &[&str] = &["present", "absent", "foreign", "unknown"];
+
 #[test]
 fn the_wire_names_are_exactly_the_declared_closed_sets() {
     // 穷尽 match：加一个态 / 一种事实而忘了进闭集 ⇒ 这里编不过或两向不等。

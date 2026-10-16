@@ -150,9 +150,8 @@ class DrawerTest {
         }
         assertFalse("聊天屏顶栏不再有「新对话」", route.contains("CHAT_TOPBAR_VISIBLE_LABEL"))
 
-        val menu = codeOnly(source("ChatMenu.kt"))
         for (gone in listOf("历史对话", "切换机器", "enum class ChatMenuItem")) {
-            assertFalse("⋮ 菜单里的「$gone」该归抽屉了", menu.contains(gone) || route.contains(gone))
+            assertFalse("⋮ 菜单里的「$gone」该归抽屉了", route.contains(gone))
         }
 
         val settings = codeOnly(source("SettingsEntry.kt"))

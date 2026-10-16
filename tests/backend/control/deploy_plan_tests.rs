@@ -815,7 +815,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 
 /// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），代码那一份是 [`promised`]。
 ///
-/// 要求：用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」；承诺是 (键 × origin) 的属性。
+/// 要求：「不承诺. 适配部分, 即os适配部分后面单独写单独做.」；承诺是 (键 × origin) 的属性。
 /// 人群 = 表 A 里有后端产线的每个键（`LINES`）× 两个 origin；每一格恰好落在账本两表之一，且落在 `PROMISE_FACE` ⇔ `promised(route, key)`。
 /// 异源：账本是 Python 源码里的字面量，代码是 Rust 的 `matches!`。
 #[test]

@@ -664,7 +664,7 @@ pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool
 /// 而「流断了」**不等于**「那个进程死了」：backend 现在也会在**它自己**读到 EOF 时主动收掉
 /// 这一条流（那是上一格修的东西）。于是 `wait()` 会等一个**还活着**的进程，
 /// **一直持着那把锁** ⇒ 下一次 `backend_status` / `backend_start` / `backend_stop` 全部卡死。
-/// 实测形状：测试线程 `futex_do_wait`、一个 tokio worker `do_wait`，200 秒不动。
+/// 实测形状：测试线程停在内核的 futex 等待、一个 tokio worker 停在 `do_wait`，200 秒不动。
 /// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（那边逐字写过「guard 活在闭包里
 /// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）—— 本仓第二次。
 ///

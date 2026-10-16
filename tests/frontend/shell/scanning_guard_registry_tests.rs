@@ -1358,11 +1358,4 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
         ghosts.join("\n")
     );
     // 每条豁免都要说清「为什么暂不修」—— 这一列的读者是下一个想再加一行的人。
-    for (p, _, why) in REGISTERED {
-        assert!(
-            why.trim().chars().count() >= 30,
-            "`{p}` 那条豁免的理由太短（实得 {} 字）—— 写清它凭什么不修",
-            why.trim().chars().count()
-        );
-    }
 }

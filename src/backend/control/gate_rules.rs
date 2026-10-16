@@ -36,20 +36,6 @@ impl Gate2 {
     pub(crate) fn allowed(self) -> bool {
         !matches!(self, Gate2::Rejected)
     }
-
-    /// 跨轨对拍用的稳定名字（入库夹具的 `expect` 列、e2e 的比对值都用它）。
-    ///
-    /// ⚠ **不要用 `{:?}`** —— `Debug` 是给人看的、改它不算 breaking change，
-    /// 而夹具里那一列一旦跟着变就成了「两侧一起漂」。这里显式钉死字面量。
-    /// 生产段不读它（它是金表那一格的名字，读者是 `gate_tests.rs`）⇒ 精确 allow。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Gate2::AllowedByName => "allowed_by_name",
-            Gate2::AllowedByRemoteSid => "allowed_by_remote_sid",
-            Gate2::Rejected => "rejected",
-        }
-    }
 }
 
 /// 本工具建的 tmux 会话名判定：`cc-<体>` 前缀，或 `<X>-cc` / `<X>-cc-<N>` 后缀，

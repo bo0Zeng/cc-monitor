@@ -1,6 +1,6 @@
 //! 功能侧只读查询的帧面宿主 —— 任务列表（＋ cc-bus 钩子诊断）。本机远端同一个二进制，monitor 按 origin 问那一台（本机也走这里）。
 //!
-//! 不并进 `read_face`：monitor 侧有一条两向相等判据（`frame_query_tests::the_moved_table_matches_the_design_list_and_the_backend_registry`）
+//! 不并进 `read_face`：monitor 侧有一条两向相等判据（`frame_query_tests::the_moved_table_is_what_the_backend_registers`）
 //! 数的正是「把活交给 `read_face::answer` 的帧命令」，本族不在那张表里。
 //!
 //! - 住顶层、不住 `observe/`：`stream/inbound/` 不许出现 `observe::`；本文件只做换壳，读的本体在 `observe/`。

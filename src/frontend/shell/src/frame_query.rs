@@ -35,61 +35,6 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// 搬上帧面的 CLI 子命令 → 帧命令（来历表）。**判据的一侧**（另一侧从后端源码数，见测试）。
-/// 左列那几条子命令第 7 批第二题已从后端删掉（判据钉着「它们不再是子命令」），右列是今天的帧命令。
-/// 生产段不读它 —— 它是判据的一侧（与 `inbound::CommandSpec` 那几栏同理），故精确 allow。
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const MOVED: &[(&str, &str)] = &[
-    ("--read-session", "history-read"),
-    ("--read-session-tail", "history-tail"),
-    ("--search", "history-search"),
-    ("--list-accounts", "accounts-list"),
-    ("--session-accounts", "accounts-sessions"),
-    // 骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
-    //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
-    //   两形都上了帧面，这个子命令从此一条拨号都不剩。
-    ("--read-session-from-offset", "history-index"),
-    ("--list-user-inputs", "history-user-inputs"),
-    // 会话内查找（Ctrl+F）：同一个处境（新子命令、此前在远端逐次拨号），一起上帧面。
-    ("--find-in-session", "history-find"),
-    // 换号前的信任预检（随账号域一起上帧面）。两形合进**一条**帧命令
-    //   （`configDir` 缺席 / null = 账号 0）⇒ 右列 `accounts-trust` 出现两次，判据按集合比。
-    ("--account-trust", "accounts-trust"),
-    ("--account-trust-zero", "accounts-trust"),
-];
-
-/// **生在帧面上**的只读查询：交给后端只读宿主（`read_face::answer`），但**没有**
-/// 一个被它替掉的逐次拨号子命令（与 [`MOVED`] 那几条的来历不同）。判据的一侧：
-/// `MOVED` 右列 ∪ 本表 == 后端真登记给只读宿主的那几条。
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const BORN_ON_FRAME: &[&str] = &[
-    // resume 之前问「这条会话的记录还在不在」（monitor 这一侧不再发它：界面经通道直接问）。
-    "history-record",
-    // 按行号取回一段（没接骨架的会话丢掉的正文从这里要回来）。
-    "history-lines",
-    // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
-    //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
-    "history-facts",
-    // 主线外清单的冷读（界面经通道直接问；monitor 这一侧从不发它）。
-    "history-branch",
-    // 一轮的摘要（过程行 · 刻度 · 大纲同源；界面经通道直接问，monitor 这一侧从不发它）。
-    "history-turns",
-    // 那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
-    "backend-log",
-    // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
-    "history-page",
-    "drift-report",
-    // 各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
-    "history-search-merge",
-    // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
-    "history-run",
-    // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
-    "machine-interrupts",
-    // 这台上需手动的会话清单（一次问一台）· 各台的合成一个先后（本机后端排）：界面经通道直接问，monitor 这一侧从不发它们。
-    "sessions-needs",
-    "sessions-needs-merge",
-];
-
 /// 一问一页的期限（一次 `history-tail` · 一段 `history-lines`）：与旧逐行读的单次超时同值（60s）。
 pub(crate) const PAGE_BUDGET: Duration = Duration::from_secs(60);
 /// 分页读一大份时假定的**最低**速率（字节 / 秒）：「最大那一份在不低于它时读得完」。

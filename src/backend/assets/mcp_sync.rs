@@ -37,16 +37,6 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::Path;
 
-/// 差异的四态（线上名）。**闭集**：界面文案表按它逐键给字（跨半边两向相等）。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const STATES: &[&str] = &["new", "same", "differs", "only-there"];
-/// 可疑项的三种（线上名）。闭集，同上。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const SUSPECT_KINDS: &[&str] = &["abs-path", "command-missing", "command-relative"];
-/// 可疑项在这台机器上的事实（线上名）。闭集，同上。`command-relative` 那一种不探，这一格是 `null`。
-#[cfg_attr(not(test), allow(dead_code))] // 只被判据读（后端逐态对拍 ＋ 跨半边对界面文案表），同 `inbound::CommandSpec`
-pub(crate) const THERE: &[&str] = &["present", "absent", "foreign", "unknown"];
-
 /// 本族的应答。
 
 /// 一个条目名在两边的样子。

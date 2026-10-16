@@ -16,8 +16,14 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Instant;
 
+#[path = "apikey_rules_one_home.rs"]
+mod apikey_rules_one_home;
 #[path = "bind_guard.rs"]
 mod bind_guard;
+#[path = "cc_bus_one_home.rs"]
+mod cc_bus_one_home;
+#[path = "creds_store_exits.rs"]
+mod creds_store_exits;
 #[path = "filewin_panic_points.rs"]
 mod filewin_panic_points;
 #[path = "raw_said_guard.rs"]
@@ -26,6 +32,8 @@ mod raw_said_guard;
 mod search_kou_jing_guard;
 #[path = "strip_clean.rs"]
 mod strip_clean;
+#[path = "structural_scan.rs"]
+mod structural_scan;
 
 #[path = "mod_tests.rs"]
 mod tests;

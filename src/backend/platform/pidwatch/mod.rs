@@ -25,8 +25,6 @@
 //! `win32` 与 `linux` 逐形对拍（三条判死 ＋ 一条不判死 ＋ Windows 独有的「拒绝访问 ⇒ 不判死」），判据住
 //! `tests/backend/platform/pidwatch_windows_shape_tests.rs`；Windows 那一份只买到编得过 ＋ 源码对拍，真机零读数。
 
-use copy_core::copy_text;
-
 #[cfg(not(any(target_os = "linux", windows)))]
 mod fallback;
 #[cfg(target_os = "linux")]
@@ -44,66 +42,6 @@ pub(crate) use linux::pidfd_open;
 #[cfg(windows)]
 pub(crate) use win32::watch_pid_until_exit;
 
-//
-// ══════════════════════════════════════════════════════════════════════════
-// 「这个平台上有没有自愈」要说得出口：自愈靠内核送的死亡事件醒，没有那条腿的平台上自愈结构性不成立。
-//
-// 不是三态：在那些平台上这件事不是「不知道」，是确证没有（「不知道」会被下游读成「也许有」）。
-// 形状是刻意的：两条 `#[cfg]` 臂 + 一个裸布尔字面量，不是一行 `cfg!()` —— 非主臂一旦被改成乐观值，
-// `platform/fallback_guard.rs` 的 `fallback_branches_must_not_fabricate_success` 当场红；写成 `cfg!()` 那一行不带 `#[cfg]` 属性，整个掉出那道护栏的人群。
-// `fallback.rs` 本身对那道护栏贡献 0 个受检块（它整份文件是被 `#[cfg(...)] mod fallback;` 选进来的），钉它的是本文件末尾那条 `fallback_shape_tests`。
-// ══════════════════════════════════════════════════════════════════════════
-
-/// Linux：**有**那条腿 —— `pidfd_open` + `poll(pidfd, POLLIN, -1)`，
-/// 阻塞在内核事件上（`mod.rs` 头注：`poll` 的超时是 `-1`，不是节拍）⇒ 零定时器。
-#[cfg(target_os = "linux")]
-#[allow(dead_code)] // `K-P3` 第一档：能填不真填 —— 接线是一次发布决策，不是忘了。
-pub(crate) const fn death_events_available() -> bool {
-    true
-}
-
-/// Windows：有那条腿 —— 进程句柄 ＋ 不带超时的等待（`win32.rs`）。值不在这里写字面量（非主分支的块里出现裸 `true` 一律判伪造成功），
-/// 读的是 `win32.rs` 紧挨着实现的声明；背书它的是 `pidwatch_windows_shape_tests`（判死路径与 `linux.rs` 逐形相等）。
-/// 那个「有」是源码写对了，不是真机验过。
-#[cfg(windows)]
-#[allow(dead_code)] // 同上。
-pub(crate) const fn death_events_available() -> bool {
-    win32::WAKES_ON_EXIT
-}
-
-/// 其余平台（macOS 等）：**没有**。`fallback::watch_pid_until_exit` 什么都不做，
-/// `on_dead` 永远不会被调用（那是它头注里刻意选的保守方向）。
-#[cfg(not(any(target_os = "linux", windows)))]
-#[allow(dead_code)] // 同上。
-pub(crate) const fn death_events_available() -> bool {
-    false
-}
-
-/// 那句话本身：要的是「说出口」，所以它是一句话，不是一个 bool —— 只有布尔的话，下游可以读完它什么都不说。
-#[allow(dead_code)] // 同上。
-pub(crate) static NO_DEATH_EVENTS_HERE: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("bePidwatch.noDeathEventsHere.say", &[]));
-
-/// 这台机此刻该不该说那句话。`None` = 有那条腿、不必声明（不是「不知道」：那两件事由 [`death_events_available`] 那个二值先分开了）。
-#[allow(dead_code)] // 同上。
-pub(crate) fn self_healing_caveat() -> Option<&'static str> {
-    if death_events_available() {
-        None
-    } else {
-        Some(NO_DEATH_EVENTS_HERE.as_str())
-    }
-}
-
-/// 一条只在「没有那条腿」的平台上编译时存在的编译期断言。本机门禁上给不出读数（这个 item 在 Linux 上编译期就不存在），
-/// 开口的时刻是任何一次既非 Linux 也非 Windows 的编译。Linux 那侧只有源码文本判据（证「那一支写在那儿」），这一条证「那一支真的被编进去了」。
-#[cfg(not(any(target_os = "linux", windows)))]
-const _: () = assert!(
-    !death_events_available(),
-    "没有进程看守的平台上这一格必须是「确证没有」——`fallback::watch_pid_until_exit` 什么都不做，\
-     它永远不调 on_dead。这里回一个乐观值等于替一条不存在的腿担保，\
-     而下游会拿它当「这台机上崩了会有人管」。"
-);
-
 /// 非 Linux 那份空壳的两条承诺，只能靠源码级守卫钉：`fallback.rs` 在本机根本不编译，行为判据结构上不可能存在。
 ///
 /// 钉的两条：不立刻调 `on_dead()`（那是最坏的选项：进程活得好好的、会话被判死）· 缺判活路径要 `tracing::error!`、不许降成 `warn!`。
@@ -112,15 +50,6 @@ const _: () = assert!(
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/pidwatch_fallback_shape_tests.rs"]
 mod fallback_shape_tests;
-
-/// 「这个平台上有没有自愈」这件事说得出口。三条各证一半：
-/// - 本机（Linux）有腿 ⇒ 没有要声明的话（负例：少了它，把 `self_healing_caveat` 写成 `Some(…)` 恒真也照样绿）；
-/// - 非 Linux 那一支本机编不到 ⇒ 把源码当数据读（形状照 `main_fourth_face_tests.rs::the_windows_arm_is_wired_into_the_source`）；
-/// - 那句话本身必须真的说「没有」。
-/// 这几条证的是「那一支写在源码里」，证不了别的平台上编出来的二进制真走了那一支（那是同文件那条编译期断言的事）。
-#[cfg(test)]
-#[path = "../../../../tests/backend/platform/pidwatch_death_event_leg_tests.rs"]
-mod death_event_leg_tests;
 
 /// **Windows 那一份与 Linux 那一份逐形对拍**（把源码当数据读 —— 本机编不到它）。
 #[cfg(test)]

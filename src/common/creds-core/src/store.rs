@@ -363,7 +363,7 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
 
 /// 只改 `accounts.<id>.api_key` 那一格，别的条一个字节都不动，两层的未知键都留着。
 /// 不收「整张 accounts」：公开面上不许有整份替换 `accounts` 子对象的路，改别的条这件事在本模块的公开面上不可表示。
-/// 它挡住的是走本模块的写者：盘上那份文件仍然可以被别的代码整份覆盖（原子替换那一步在 `src/frontend/shell/src/creds_store.rs` 里）。
+/// 它挡住的是走本模块的写者：盘上那份文件仍然可以被别的代码整份覆盖。
 /// 本函数不自己碰明文：它把那一格转交给 [`merge_key`]，`expose_for_persisting` 的调用点仍然恰好 1 处（在 `merge_key` 里）。
 pub fn merge_account_key(
     current: &Map<String, Value>,

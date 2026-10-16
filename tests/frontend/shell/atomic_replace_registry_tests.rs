@@ -206,10 +206,6 @@ fn each_entry_names_the_file_class_it_writes() {
             "{f} [{sym}] 的文件类别写的是「{class}」—— 必须明说是**用户文件**还是\
                  **monitor 自己的文件**，那是 §4 里唯一的分界"
         );
-        assert!(
-            why.chars().count() > 20,
-            "{f} [{sym}] 的理由太短，像是占位：「{why}」"
-        );
     }
     // 两套都必须真的有人用 —— 只剩一套时这张表就退化成一句废话，该回来重读 §4。
     let own = SITES

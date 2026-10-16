@@ -252,3 +252,22 @@ fn the_byte_path_rule_agrees_with_the_string_rule() {
         );
     }
 }
+
+#[test]
+fn a_bus_id_is_a_plain_token_that_never_starts_with_a_dash() {
+    for id in [
+        "282",
+        "proj_cc",
+        "cc-9d66c46d",
+        "KVM_cc",
+        "EasyTier_cc",
+        "x_y_cc",
+    ] {
+        assert!(bus_id_ok(id), "{id} 应合法");
+    }
+    for bad in [
+        "--help", "-x", "", "a b", "a;rm", "a$(x)", "a\nb", "a\tb", "a/b", "a.b", "a:b", "a*",
+    ] {
+        assert!(!bus_id_ok(bad), "{bad:?} 应被拒");
+    }
+}

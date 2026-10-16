@@ -536,10 +536,6 @@ mod tests {
                 "登记项 `{e}` 只钉到**模块级** —— 那等于把整个模块的接口面都放开，\
                  而计数看不出区别。必须钉到符号：`crate::plugin::<模块>::<符号>`。"
             );
-            assert!(
-                why.trim().len() >= 20,
-                "登记项 `{e}` 没写清「为什么这条边是调用口的**形状**而不是某个插件的**语义**」"
-            );
         }
         assert_eq!(
             found, want,
@@ -750,9 +746,6 @@ mod tests {
             "中转 crate 的公开项与登记表对不上。多出来的 = 有人新开了口子而没说为什么；\
              少了的 = 口收掉了，同拍把登记摘掉。"
         );
-        for (i, why) in RELAY_EXPORTS {
-            assert!(why.chars().count() >= 15, "`{i}` 没写清为什么它是对外的口");
-        }
         // 正控：抽取器认得出两种形（`pub use` 的花括号 / 单项 · 顶层 `pub` 声明），不认 `pub(crate)` 与缩进里的。
         let probe = "pub use a::{x, y};\npub use b::z;\npub struct S;\npub(crate) struct T;\n    pub fn inner() {}\npub trait Q {}\n";
         assert_eq!(

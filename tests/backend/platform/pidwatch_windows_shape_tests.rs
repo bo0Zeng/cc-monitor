@@ -134,17 +134,3 @@ fn the_windows_wait_never_times_out() {
         "`WaitForSingleObject(` 应当恰好三处：`extern` 里的声明 ＋ 上面那一次调用 ＋ 一次性子命令那一处（`wait_within`）"
     );
 }
-
-/// `death_events_available` 的 Windows 那一格说「有」，**背书那句「有」的就是本文件上面那条对拍**。
-/// 这里钉那句声明本身：它紧挨着实现、值是 `true`、且只有一处（不许在别处再写一份「Windows 有」）。
-#[test]
-fn the_windows_claim_of_a_death_leg_sits_next_to_the_implementation() {
-    let win32 = prod(WIN32);
-    guard_core::pin_line(&win32, "pub(crate) const WAKES_ON_EXIT: bool = true;")
-        .unwrap_or_else(|e| panic!("{e}\n⇒ `win32.rs` 不再声明「这一份会在进程退出时调 on_dead」"));
-    // 声明为真，那份实现就必须真的会调 —— 与上一条的「三条判死」同一件事的两面。
-    assert!(
-        win32.contains("on_dead()"),
-        "`win32.rs` 声明自己有死亡事件，而生产段里一次 `on_dead()` 都没有 —— 那是一句没有背书的「有」"
-    );
-}

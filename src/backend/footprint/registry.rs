@@ -23,7 +23,7 @@
 //! （最吃重的一项是 Claude Code 自己写的会话记录）只能靠**不进表**来表示。
 //! 用缺席表达一个判断 —— 那正是 `K-R60` 在治的病。⇒ 现在 `installable: false`
 //! 的条目是这张表的一等公民，它们与 [`UNMANAGED_ENV`] 一起被 [`environment`]
-//! 汇成**唯一一份**环境清单。`NOT_MANAGED`（**刻意不收**的）语义不变。
+//! 汇成**唯一一份**环境清单。
 //!
 //! ## 为什么今天不把它做成机检（量过才这么写）
 //!
@@ -313,30 +313,6 @@ pub enum EnvTier {
 }
 
 impl EnvTier {
-    /// 四档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。今天只有判据用它与 [`Self::label`]。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub const ALL: &'static [EnvTier] = &[
-        EnvTier::AppInstalls,
-        EnvTier::AppShipsNoInstallerYet,
-        EnvTier::UserInstallsWePrompt,
-        EnvTier::AppOnlyChecks,
-    ];
-
-    /// 给人看的档名。措辞定在这里，UI 与诊断文本不再各写一遍。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub fn label(self) -> String {
-        match self {
-            EnvTier::AppInstalls => copy_text("rsToolRegistry.envTier.appInstalls", &[]),
-            EnvTier::AppShipsNoInstallerYet => {
-                copy_text("rsToolRegistry.envTier.appShipsNoInstallerYet", &[])
-            }
-            EnvTier::UserInstallsWePrompt => {
-                copy_text("rsToolRegistry.envTier.userInstallsWePrompt", &[])
-            }
-            EnvTier::AppOnlyChecks => copy_text("rsToolRegistry.envTier.appOnlyChecks", &[]),
-        }
-    }
-
     /// 🔴 **档由两格派生**：「谁该装」× 「今天有没有装口」。**没有兜底臂** ——
     /// 任何一侧加变体都会编译失败，逼人回答那一格该落哪一档。
     pub fn of(who: Provisioning, has_installer_today: bool) -> EnvTier {
@@ -542,42 +518,6 @@ pub fn environment() -> Vec<EnvEntry> {
     }));
     out
 }
-
-/// ★ **反向登记：考虑过、但刻意不收进 [`TOOLS`] 的东西**〔devbench F06, 08-10〕。
-///
-/// # 为什么要有这张表
-///
-/// [`TOOLS`] 收的是「**app 会碰的东西**」——装得了的、以及装不了但我们要去读/去查的
-/// （`K-R60` 起，见模块头注那一节）。而「某个东西不在表里」有两种截然不同的原因：
-///
-/// | 原因 | 该怎么办 |
-/// |---|---|
-/// | **没人想起来** | 那是洞，补进 `TOOLS` |
-/// | **它压根不是「装到别处的工具」** | 那是分类正确 —— 但**没有任何地方记着这个判断** |
-///
-/// 第二种今天全靠口口相传：devbench F01 的清单就把 `code-picture` 记成了「不在受管工具
-/// 注册表」这个洞，而实测它**不该在**。⇒ 把判断落成表，下次有人问就有答案，
-/// 且判据钉住那个理由还在。
-///
-/// ⚠ **这张表最容易变成许愿池**（什么都往里塞、理由写「暂不支持」）。
-/// 所以判据要求每条理由**说清它为什么不属这张表的语义**，而不只是「还没做」。
-/// ⚠ 但判据**判不了论证的质量** —— 只能判「有没有在论证那件事」。如实记。
-#[cfg_attr(not(test), allow(dead_code))]
-pub const NOT_MANAGED: &[(&str, &str)] = &[
-    (
-        "code-picture",
-        "**它在 cc-monitor 里零实现，是一个扩展**（一个 skill ＋ 一个 MCP server）—— 它确实「装到别处」，\
-         但装它走扩展页已有的资产机制（skill 照 skill 装、MCP 那一项只往目标机写一个 server 条目，\
-         程序本身由用户放到那台机器上），是**用法**不是新工具；monitor 与后端都不带它的任何字节。\n\
-         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。",
-    ),
-    (
-        "planned-build",
-        "**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \
-         skill，cc-monitor 只**读它的产物**（计划文件）。\n\
-         ⇒ 它**不在**本表里（受管工具）。",
-    ),
-];
 
 #[cfg(test)]
 #[path = "../../../tests/backend/footprint/registry_not_managed_tests.rs"]

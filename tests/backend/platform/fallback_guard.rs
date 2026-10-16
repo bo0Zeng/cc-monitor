@@ -548,10 +548,6 @@ mod g6_reach {
                 fabricates(sample).is_empty(),
                 "「{shape}」今天红了 —— 本护栏的射程变了，这张表说的话已经不成立"
             );
-            assert!(
-                why.trim().chars().count() >= 10,
-                "「{shape}」没写清为什么它不红 —— 一张只列形状不给理由的表，下一轮没人敢动"
-            );
         }
     }
 

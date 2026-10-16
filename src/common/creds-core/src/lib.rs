@@ -38,8 +38,7 @@
 //!
 //! # 分工（别把两件事混成一件）
 //!
-//! - **写**这份文件：每台机器上恰好一个程序写者。monitor 所在那台是 monitor（`creds_store`）；
-//! 其余每台是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
+//! - **写**这份文件：每台机器上恰好一个程序写者。每台都是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
 //!   只从帧面 `apikey-key-set` 进来（`readonly_guard` 第四层登记）。两侧都开本 crate 的 `harden`。
 //! - **读**这份文件：两侧都读。`K-H2a` 裁四原话「backend 只许读」**收窄**成上面那一格：
 //!   后端里除了那一份，照旧一个写都没有 —— 先前由「feature 不开」这件事让编译器兜着，
@@ -100,7 +99,7 @@ use std::fmt;
 ///      挡它的只有 [`SEALED_FNS`] 那张登记表（判据，不是编译器）；
 ///   ② **出口之后**：`expose_for_auth_header` / `expose_for_persisting` 一旦交出 `&str`，
 ///      那个 `&str` 去哪儿、被谁 `clone()`、被谁 `{:?}` 印出来，**本模块管不着** ——
-///      挡它的是 `creds_store` 的三棵树调用面判据、`relay::creds_guard` 的日志白名单、
+///      挡它的是 `creds_store_exits` 的三棵树调用面判据、`relay::creds_guard` 的日志白名单、
 ///      以及 `KS3` 那条走真子进程的金丝雀。
 /// ⇒ **别把「编译器保证」读成「明文不可能泄漏」。**它保证的是**一段**，不是全程。
 mod sealed {
@@ -179,7 +178,7 @@ mod sealed {
 
         /// ★★ **`KS2`：本 crate 之外唯一的明文出口 —— 往上游请求写鉴权头。**
         ///
-        /// 跨 crate 的调用处数编译器管不着 ⇒ 由 `creds_store` 那条三棵树判据数（恰好 1 处，后端上游选择拼头值那一行）。
+        /// 跨 crate 的调用处数编译器管不着 ⇒ 由 `creds_store_exits` 那条三棵树判据数（恰好 1 处，后端上游选择拼头值那一行）。
         pub fn expose_for_auth_header(&self) -> &str {
             &self.0
         }

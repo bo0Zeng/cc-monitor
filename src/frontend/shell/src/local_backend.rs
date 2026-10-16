@@ -91,12 +91,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// 「找本机后端」的一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
-/// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
-/// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。
-/// 挡在前面的是一条**架构题**，不是工作量：`payload.rs` 编译的 `EnvOp` 由 **TS 前端经 wire
-/// 送来**（`launch_wire.rs`），而后端路径是**后端的知识**（[`resolve_or_extract`]）
-/// ⇒ 让前端携带它正对着 C2 与 C9。裁这道题是 F06b-1d 的第一件事。⇒ resume 路不能把
-/// backend 的答案烤进打印串，得打印一段「执行时去问后端」的配方。
+/// 开终端窗口时由 [`backend_bin_env_for_window`] 带上（值是正在跑的那一份后端）。
 pub(crate) const BACKEND_BIN_ENV: &str = "CCM_BACKEND_BIN";
 
 /// 找二进制的结果。**tagged 而不是 `Result`** —— 定框 §5：「拿不到依赖」是诚实降级。

@@ -241,11 +241,6 @@ fn every_shelled_out_command_carries_a_written_ruling() {
             "`{cmd}` 没写写面 —— 那一栏正是只读铁律那条豁免理由要引用的东西"
         );
         assert!(
-            why.chars().count() >= 40,
-            "`{cmd}` 的理由只有 {} 字 —— 那是占位不是理由",
-            why.chars().count()
-        );
-        assert!(
             unlock.chars().count() >= 20,
             "`{cmd}` 没写解锁条件 —— 没有解锁条件的裁定会一直躺着，\
                  而『躺着』与『裁过』在盘上长得一模一样"

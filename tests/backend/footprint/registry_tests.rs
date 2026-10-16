@@ -306,7 +306,7 @@ fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
 }
 
 /// **防上帝结构的门禁**（计划 §5 P2）。不是形式主义：本会话四次拒绝提前抽象
-/// （R12 registry / R15 passThrough / B02 `--bus-id` / B03 `inbox_id_from_filename`），
+/// （R12 registry / R15 passThrough / B02 `--bus-id` / B03 收件箱 id 取法），
 /// 靠的都是"数真实消费者"。
 #[test]
 fn every_declared_field_has_at_least_two_instantiations() {
@@ -581,7 +581,7 @@ fn owned_file_implies_installable() {
 
 /// **装得了，就必须申报装到哪**（替换掉那条同义反复的测试，见下）。
 ///
-/// 这一条替代原先的 `locality_is_derivable_from_destination_today`。审计实测那条是
+/// 这一条替代原先那条按落点推本地 / 远端的判据。审计实测那条是
 /// **同义反复**：`PathResolution::Remote` 只由 `RemoteHomeRelative` 臂产生且必然产生，
 /// 所以断言恒真——把 `ccm` 的 `destination` 翻成 `LocalHomeRelative`（会让两行从
 /// "远端未确定"变成去 stat 本机 `~/.bashrc`）**492 项照样全绿**。

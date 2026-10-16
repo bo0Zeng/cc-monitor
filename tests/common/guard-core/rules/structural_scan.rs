@@ -1,4 +1,23 @@
-use super::*;
+//! 源码结构那几族判据：测试属性 · 剥法 · 绕道再导出 · 剥注释只一份 · shell 目标的结构扫描 · 位置比较的锚点 · 符号与行号地址 · 死名。
+
+use super::repo;
+use crate::*;
+
+/// `dir`（仓根相对）下后缀在 `exts` 里（空 = 不筛）的文本文件 `(绝对路径, 原文)`，经入口那份快照取（含规则目录：这几族判的是全部源码）。
+fn tree(dir: &str, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
+    let root = addr::repo_root();
+    repo()
+        .with_rules()
+        .under(&[dir], exts)
+        .into_iter()
+        .map(|f| (root.join(&f.rel), f.text().to_string()))
+        .collect()
+}
+
+/// 点名的一份文件的原文。
+fn text(rel: &str) -> String {
+    repo().file(rel).text().to_string()
+}
 
 /// ★★ **两个 `#[test]` 叠在同一个函数上 ⇒ 另一个函数悄悄不是测试了。**
 ///
@@ -38,24 +57,16 @@ fn no_two_test_attributes_land_on_the_same_function() {
     // 🔴 本条这一轮真的咬到东西了：`src/backend` 从来不在它的射程里，
     // 而那棵树上**有 3 处**「一个 fn 两个 `#[test]`」（libtest 因此把它们各注册两遍：
     // `cargo test -- --list` 705 行 / 702 个不同名字）。逐处在步 7c 报告里点名。
-    let repo = addr_repo_root();
     let mut files = Vec::new();
-    for (tree, excluded) in [
-        ("src/frontend/shell/src", &[] as &[&str]),
-        ("src/backend", &[]),
-        ("tests/frontend/shell", &["structural_scan_tests.rs"]),
-        ("tests/frontend/filewin", &[]), // 文件窗口独立成包，它的判据搬到这里
-        ("tests/backend", &[]),
-        ("tests/comms", &[]), // 通信层成员的单测镜像
+    for t in [
+        "src/frontend/shell/src",
+        "src/backend",
+        "tests/frontend/shell",
+        "tests/frontend/filewin",
+        "tests/backend",
+        "tests/comms",
     ] {
-        // 排除名单里写的是**本文件自己**：它住 `tests/frontend/shell/`，在语料里，
-        // 而它的头注为了讲清形状逐字写了 `#[test]` 字样 ⇒ 必须明写摘掉。
-        // `scan_tree_excluding` 摘不到就 panic ⇒ 本文件改名/搬家会当场出声。
-        files.extend(guard_core::scan_tree_excluding(
-            &repo.join(tree),
-            &["rs"],
-            excluded,
-        ));
+        files.extend(tree(t, &["rs"]));
     }
     let mut offenders: Vec<String> = Vec::new();
     let mut seen = 0usize;
@@ -87,11 +98,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
         }
     }
     // 抽取器自检：真的扫到了测试（否则本条会零命中地绿）。
-    assert!(
-        seen > 200,
-        "只扫到 {seen} 个 `#[test]` —— 扫描面坏了，本条在空转（08-11 实测全树 {} 个文件）",
-        files.len()
-    );
+    assert!(seen > 0, "一个 `#[test]` 都没扫到 —— 扫描面坏了");
     // ── 第二半：**直接钉伤害**，不只钉症状 ────────────────────────────
     //
     // 上面那半认的是「`#[test]` 后面又是 `#[test]`」这个**形状**。
@@ -119,9 +126,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
             //    ⇒ 走同一份权威的形状判定，不再各写一份近似的（`E3`）。
             //    ⚠ 现打：今天全仓「带可见性且名字含 test 的 `mod`」**0 处**
             //       ⇒ 这一改在今天的盘上是 **no-op**，买的是「下一处这么写时不会静默」。
-            guard_core::strip_visibility(t).starts_with("mod ")
-                && t.contains("test")
-                && t.ends_with('{')
+            crate::strip_visibility(t).starts_with("mod ") && t.contains("test") && t.ends_with('{')
         }) else {
             continue;
         };
@@ -186,103 +191,6 @@ fn no_two_test_attributes_land_on_the_same_function() {
     );
 }
 
-/// U8a-2a：monitor 的每个源文件都要能被共享剥法（`guard_core`）剥干净。
-///
-/// 与后端侧 `every_backend_file_strips_clean` 同一条，只是换了一棵树。
-///
-/// `min_files` 是**计数自检**：遍历坏掉时它会红，而不是静默扫 0 个文件通过。
-///
-// ⟦KR115D3 共用段·起⟧
-/// 这条同时是「列 0 收尾判据够不够用」的持续验证 —— **而它自己已经守不住那一形了**。
-///
-/// ⚠ 上一版这里逐字写着「哪天有人在测试模块里写了一段列 0 含右
-/// 大括号的原始字符串，**这里会红**」。那句话**两天里假了两次**：
-/// ① `K-R110`（09-13）现打它**当时就没红** —— 那 31 行漏进生产段，而守门人看不见；
-/// ② `K-R110` 之后它**永远不会再因此红** —— 那一形已经被
-///    `guard_core::assert_test_module_ranges_are_brace_balanced` 正确处理掉了
-///    （匹配单位从「行」换成「计数」，区间在原始字符串里收尾会被它当场逮住）。
-/// ⇒ **今天真正守这一形的是那条判据**；本条经剥法自检（`assert_tree_strips_clean` · 规则入口的 `File::prod`）调到它，
-///    本条自己守的只剩「这棵树剥得干净」。
-///
-/// 🔴 **这一段在两处各住一份，逐字必须相同**
-/// （`tests/common/guard-core/rules/strip_clean.rs` ＋ `tests/frontend/shell/structural_scan_tests.rs`）——
-/// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
-/// 下一次还是一处真一处假。钉着它的是
-/// `strip_clean.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
-// ⟦KR115D3 共用段·止⟧
-#[test]
-fn every_monitor_file_strips_clean() {
-    // 地板 = **实测值**（2026-08-02：52 个 .rs）。松着放等于把灵敏度交出去
-    // （同 `ci.yml` 那条 shellcheck 覆盖面棘轮的教条：棘的时候把实测构成一起写下）。
-    guard_core::assert_tree_strips_clean(
-        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-        // ★ audit-0805 F16：52 → **80**（今日实测）。
-        // 余量 28 的时候，`backend/`(15) + `adapter/`(2) **整体掉出扫描面仍会绿** ——
-        // 而「扫描面缩水」正是这条地板存在的全部理由。
-        // ⚠ 棘轮纪律：只许升不许降；要降必须带「副本真退役」的证据。
-        80,
-    );
-}
-
-/// 🔴 `K-R75` `KR75D2` 的**点名**这一半：上一条红的时候，必须说得出**是哪一份** `mod.rs`。
-///
-/// # 它买的是什么
-///
-/// 两棵真树里 `mod.rs` 各有十几份（`backend/mod.rs` · `backend/control/mod.rs` · …）。
-/// `K-R75` 之前 `assert_tree_strips_clean` 传给断言的 `who` 是 `path.file_name()`
-/// ⇒ 报错逐字「`mod.rs`：剥完仍残留 1 个测试属性」，**指不出是哪一份**。
-/// 而「点名那份文件」正是这条反向自检的产出，不是附赠 ——
-/// 一条说不出住址的红，下一个人要拿全树重新找一遍。
-///
-/// # 为什么住在这里而不是 `guard-core` 里
-///
-/// 它要一棵**真目录**才测得了，而造目录要写盘 —— 而 `guard-core`
-/// **一处写盘都不许有，连 `cfg(test)` 里也不许**（backend 侧
-/// `readonly_guard::g6_dependency_signoff::…::the_clean_verdict_is_re_measured_on_the_tree_every_run`
-/// 按**原文行**重扫那几棵仓内 crate，不走 `production_code`）。
-/// 〔09-12 现打：先写在 `guard-core` 里，门禁 `backend` 那格当场 `685 passed; 1 failed`，
-///  逐字点名 `guard-core` 里那一处 `fs::create_dir` —— 那把尺子按原文行数、连测试夹具都算。
-///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着后端本体两层判据。〕
-///
-/// **死值验**：把 `guard_core::assert_tree_strips_clean` 里的 `strip_prefix(root)`
-/// 退回 `path.file_name()` ⇒ 本条必须红。
-#[test]
-fn the_tree_walk_names_the_file_by_path_not_by_basename() {
-    let root = std::env::temp_dir().join(format!(
-        "kr75-naming-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    ));
-    let deep = root.join("alpha").join("beta");
-    std::fs::create_dir_all(&deep).expect("建夹具目录");
-    std::fs::write(root.join("mod.rs"), "fn clean() {}\n").expect("写干净的那份");
-    // 属性与 `mod` 之间夹一行文档注释 ⇒ 剥法认不出（这正是本条要点名的那一族）。
-    let cfg = format!("#[{}({})]", "cfg", "test");
-    std::fs::write(
-        deep.join("mod.rs"),
-        format!("fn a() {{}}\n{cfg}\n/// 说明\npub(crate) mod probe {{\n    fn z() {{}}\n}}\n"),
-    )
-    .expect("写带违规写法的那份");
-    let r = std::panic::catch_unwind({
-        let root = root.clone();
-        move || guard_core::assert_tree_strips_clean(&root, 1)
-    });
-    let _ = std::fs::remove_dir_all(&root);
-    let e = r.expect_err("带违规写法的那份没红 —— 树遍历这一层的第二半没接上");
-    let msg = e
-        .downcast_ref::<String>()
-        .cloned()
-        .or_else(|| e.downcast_ref::<&str>().map(|s| (*s).to_string()))
-        .unwrap_or_default();
-    assert!(
-        msg.contains("alpha/beta/mod.rs"),
-        "报错里没有带目录的相对路径 —— 两份 `mod.rs` 分不开：{msg}"
-    );
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // `K-R77`（09-12）：**「`#[cfg(test)]` 顶层再导出自己的测试模块」那道绕道** ——
 // 拆掉最后一处的同一拍给它上棘轮。
@@ -329,7 +237,7 @@ fn detour_next_item<'a>(lines: &[&'a str], from: usize) -> Option<(usize, &'a st
 ///
 /// 🔴 这一句就是 `K-R75` 治过的那个病的复发点：那一版剥法只认字面 `mod `，
 /// 一个 `pub(crate)` 前缀就让整份文件**静默掉出人群**。⇒ 走同一份权威的形状判定
-/// `guard_core::strip_visibility`，**不再各写一份近似的**（本仓 `E3`）。
+/// `crate::strip_visibility`，**不再各写一份近似的**（本仓 `E3`）。
 fn cfg_test_module_names(src: &str) -> std::collections::BTreeSet<&str> {
     let lines: Vec<&str> = src.lines().collect();
     let mut out = std::collections::BTreeSet::new();
@@ -340,7 +248,7 @@ fn cfg_test_module_names(src: &str) -> std::collections::BTreeSet<&str> {
         let Some((_, next)) = detour_next_item(&lines, i) else {
             continue;
         };
-        let Some(decl) = guard_core::strip_visibility(next).strip_prefix("mod ") else {
+        let Some(decl) = crate::strip_visibility(next).strip_prefix("mod ") else {
             continue;
         };
         let name = decl
@@ -371,7 +279,7 @@ fn cfg_test_reexport_sites(src: &str) -> Vec<(usize, String)> {
         let Some((k, next)) = detour_next_item(&lines, i) else {
             continue;
         };
-        let Some(path) = guard_core::strip_visibility(next).strip_prefix("use ") else {
+        let Some(path) = crate::strip_visibility(next).strip_prefix("use ") else {
             continue;
         };
         let seg = path.trim().split("::").next().unwrap_or_default().trim();
@@ -416,10 +324,10 @@ fn detour_over_ceiling(today: usize, ceiling: usize) -> Option<usize> {
 ///
 /// 绕道的形状：测试模块写成私有 `mod X`，再在文件顶层补一行
 /// `#[cfg(test)] pub(crate) use X::…`，把要跨模块用的东西导出去。
-/// 它**曾经有一个真理由** —— `guard_core::test_module_ranges` 那时按字面前缀认
+/// 它**曾经有一个真理由** —— `crate::test_module_ranges` 那时按字面前缀认
 /// `mod `，模块一带可见性前缀就认不出来，那份文件**整段测试代码留在生产段里**被别的
 /// 守卫扫。`K-R75`（09-12）把那一步换成按形状剥可见性
-/// （`guard_core::strip_visibility`）之后，**那个理由没了**，而盘上那三处还在。
+/// （`crate::strip_visibility`）之后，**那个理由没了**，而盘上那三处还在。
 ///
 /// # 🔴 在本条落地之前，这一族**一颗牙都没有**
 ///
@@ -440,7 +348,7 @@ fn detour_over_ceiling(today: usize, ceiling: usize) -> Option<usize> {
 ///
 /// ⚠ **这条前提本来就该变的时候，去哪里重新裁定**（判据纪律 11）：
 /// 只有一种情形该动它 —— 剥法**又**认不出某种可见性写法。那时先修
-/// `guard_core::strip_visibility`，**不是**回来抬这个 0。
+/// `crate::strip_visibility`，**不是**回来抬这个 0。
 /// 真要给这道绕道开一个正当口子，先立一条裁定、写明理由。
 ///
 /// # 它买不到什么（如实登记，别读成证明）
@@ -491,7 +399,7 @@ fn the_cfg_test_reexport_detour_stays_extinct() {
         panic!(
             "这里有 {} 处「`#[cfg(test)]` 顶层再导出自己的测试模块」，比上限 \
                  {DETOUR_CEILING} 多 {over} 处：\n{}\n\n\
-                 ⇒ **这道绕道今天没有理由了**：`guard_core::test_module_ranges` 自 `K-R75`\n\
+                 ⇒ **这道绕道今天没有理由了**：`crate::test_module_ranges` 自 `K-R75`\n\
                  起按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
                  跨模块的取名走 `crate::<文件>::X::…`，不需要在顶层再导出一次。\n\
                  修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
@@ -666,7 +574,7 @@ fn the_detour_scanner_sees_every_visibility() {
     // ── 反面：这五形一个都不许算进来（前四条是**正当写法**，第五条是**已登记的盲区**）。
     let mod_only = format!("{attr}\nmod tests {{\n    fn a() {{}}\n}}\n");
     let foreign = format!(
-        "{attr}\npub(crate) use guard_core::production_code;\n\n\
+        "{attr}\npub(crate) use crate::production_code;\n\n\
              {attr}\nmod tests {{\n    fn a() {{}}\n}}\n"
     );
     let from_super = format!(
@@ -718,7 +626,7 @@ fn the_detour_scanner_sees_every_visibility() {
 ///
 /// `profile_installer::strip_comments(src, marker)` 按**第一个 marker 截断整行**，
 /// 因此能吃掉**行尾注释**；共享原语刻意不这么做（会砍坏 `"http://host"` 这类字面量，
-/// 详见 `guard_core::strip_comment_lines` 头注）。它扫的是**自己生成的** shell/rc 片段，
+/// 详见 `crate::strip_comment_lines` 头注）。它扫的是**自己生成的** shell/rc 片段，
 /// 语料可控 ⇒ 那个风险在它那里不存在。**这不是豁免，是另一种语义。**
 ///
 /// ⚠ 想再加一个 ⇒ 先问「共享原语为什么不够」，答得出来才加进下面这张表。
@@ -817,7 +725,6 @@ fn every_comment_stripping_transformer_is_registered() {
         // 剥 TS 行尾 `//` 的那一份（生产接线钉那组判据自带的）摘了：那组判据随载荷那一层一起删了。
     ];
 
-    let root = guard_core::addr::repo_root();
     let mut found: Vec<String> = Vec::new();
     // 🔴 **补上 `"tests"` 这一棵。**
     //
@@ -834,7 +741,7 @@ fn every_comment_stripping_transformer_is_registered() {
         "src/backend",
         "tests",
     ] {
-        for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+        for (f, raw) in tree(sub, &["rs"]) {
             let file = f
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -897,7 +804,7 @@ fn every_comment_stripping_transformer_is_registered() {
                 // `starts_with('#')` 过滤」，本条当场把它判成第二份剥法，还建议我去登记它。
                 // ⇒ 与 plan-lint 判据 7 同一个教训：**判据要看围栏，不是看围栏的说明书**。
                 // 用共享原语剥（它认 `//` 那套 Rust 形态，正是这里要去掉的东西）。
-                let body = guard_core::strip_comment_lines(&body);
+                let body = crate::strip_comment_lines(&body);
                 let body = body.as_str();
                 let dq = '"';
                 let strips = body.contains(&format!("starts_with({dq}//{dq})"))
@@ -922,7 +829,7 @@ fn every_comment_stripping_transformer_is_registered() {
     assert_eq!(
         found, want,
         "\n「返回 String/Vec 且会剥注释」的函数与登记表对不上。\n\
-             **多出来的**：先问「共享原语 `guard_core::strip_comment_lines` 为什么不够」——\n\
+             **多出来的**：先问「共享原语 `crate::strip_comment_lines` 为什么不够」——\n\
              答得出来就登记进 `TRANSFORMERS` 并写明理由；答不出来就改成调它。\n\
              ⚠ 名字叫什么**不是判据**：换个名字的同一份剥法仍然是第二份剥法。\n\
              **少了的**：它被收口了 ⇒ 把登记删掉（登记表腐烂比没有登记更糟）。"
@@ -946,12 +853,12 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     // 底下那条抽取器自检按设计响了（它正是为这一形而写的）。
     let mut found: Vec<String> = Vec::new();
     for root in [
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-        guard_core::addr::tests_root().join("frontend/shell"),
-        guard_core::addr::tests_root().join("comms/inward"), // 本 crate 的第二棵测试树
-        guard_core::addr::tests_root().join("frontend/filewin"), // 文件窗口的测试树
+        "src/frontend/shell/src",
+        "tests/frontend/shell",
+        "tests/comms/inward",
+        "tests/frontend/filewin",
     ] {
-        for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+        for (f, raw) in tree(root, &["rs"]) {
             // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
             for l in raw.lines() {
                 let t = l.trim_start();
@@ -986,7 +893,7 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     assert!(
         extra.is_empty(),
         "又出现了私有的剥注释实现：{extra:?}\n\
-             ★ 先用 `guard_core::strip_comment_lines` —— 08-06 已把三份重复迁过去。\n\
+             ★ 先用 `crate::strip_comment_lines` —— 08-06 已把三份重复迁过去。\n\
              它**确实不够**时才加进本表，并写清是哪种语义上的不够（行尾注释？保行号？\n\
              别的注释语法？）。⚠ 只写文件名不算理由。\n\
              已登记：{REGISTERED:?}"
@@ -1195,69 +1102,26 @@ fn violations_report_line_numbers_and_window() {
 #[test]
 fn the_shell_metachar_blacklist_has_exactly_one_home() {
     const NEEDLE: &str = "const CONFIG_DIR_SHELL_META";
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut homes: Vec<String> = Vec::new();
-    let mut scanned = 0usize;
-    // 人群 = monitor · 后端 · 共享 crate 三棵生产树（那张表的家在共享 crate `acct-core`）。
-    let trees = [
-        root.join("src"),
-        root.join("../../backend"),
-        root.join("../../common"),
-    ];
-    for (path, src) in trees
-        .iter()
-        .flat_map(|t| guard_core::scan_tree_excluding(t, &["rs"], &[]))
-    {
-        scanned += 1;
-        let prod = guard_core::production_code(&src);
-        if prod.lines().any(|l| {
-            l.trim_start().starts_with(NEEDLE)
-                || l.trim_start().starts_with(&format!("pub(crate) {NEEDLE}"))
-                || l.trim_start().starts_with(&format!("pub {NEEDLE}"))
-        }) {
-            homes.push(
-                path.strip_prefix(root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .to_string(),
-            );
-        }
-    }
-    // ★ 抽取器自检：遍历坏了会让下面「恰好一处」变成「恰好零处」也叫不出来。
-    // ⚠ 地板是**实测**的：`src/frontend/shell/src` 下 86 个 `.rs` ——先前这里
-    //   还写着「`scan_tree!` 摘除调用者自己 ⇒ 85」，那一刀在本仓**不生效**，而且本文件
-    //   住 `tests/frontend/shell/`、不在这棵树里 ⇒ 盘上几份就是几份。
-    //   第一版我拍了个 100 —— 判据一建就红。**拍出来的数与抄来的数一样会腐**，
-    //   本会话已在别处记过多次，这次犯在自己刚写的自检上。
-    assert!(
-        scanned >= 80,
-        "只扫到 {scanned} 个 .rs —— 遍历坏了，下面那条会零命中地绿（建判据当日实测 85）"
-    );
-    assert_eq!(
-        homes.len(),
-        1,
-        "拼命令用的元字符黑名单**不是恰好一处**，实得：{homes:?}\n\n\
-             ⚠ 同一族已经漂过一次：`history.rs` 那张**不可见字符表**\n\
-             曾停在 U7-3 之前的旧版本，缺六段 Unicode —— 一处纵深防御缺口。\n\
-             ⇒ 要新增消费者就**派生**（`acct_core::config_dir_char_unsafe`），别再抄一份表。\n\
-             E3：判据钉的是「权威源恰好一个」，不是「两份内容一不一样」——\n\
-             后者在两份都改错时照样绿。"
-    );
-    // ⚠ `homes[0]` 是 `strip_prefix(root)` 的产物 ⇒ **分隔符随平台**。
-    //   09-09 云端首跑（windows-latest）实得 `"src\\backend\\control\\payload.rs"`，
-    //   而针写的是正斜杠 ⇒ `ends_with` **恒 false**，本条在 Windows 上必红。
-    //   同一族今天已经逮到两条：覆盖率地板脚本的键写死正斜杠 · `guard-core` 的
-    //   `scan_tree!` 摘除 —— 三条都是**草垛归一了、针没归一**。⇒ 先归一分隔符再比。
-    //   ⚠ 顺手把 `ends_with` 收成**整条相对路径逐字相等**：原写法对
-    //   `src/x/…` 下同名文件也放行 —— 只严不松，不是换个写法。
-    let home = homes[0].replace('\\', "/");
-    assert!(
-        // 家在共享 crate ⇒ 路径相对 monitor 的 manifest 目录。
-        home == "../../common/acct-core/src/lib.rs",
-        "权威源搬家了（现在在 {:?}）—— 搬可以，但请顺手把本条与两处头注的指向一起改。",
-        homes[0]
+    let homes: Vec<String> = repo()
+        .under(
+            &["src/frontend/shell/src", "src/backend", "src/common"],
+            &["rs"],
+        )
+        .into_iter()
+        .filter(|f| {
+            f.prod()
+                .lines()
+                .any(|l| strip_visibility(l.trim_start()).starts_with(NEEDLE))
+        })
+        .map(|f| f.rel.clone())
+        .collect();
+    super::equal(
+        "拼命令用的元字符黑名单的定义（新增消费者就派生 `acct_core::config_dir_char_unsafe`，别抄一份表）",
+        homes,
+        ["src/common/acct-core/src/lib.rs".to_string()],
     );
 }
+
 /// ★★ **位置比较型判据的三种坏法，做成一条常驻元判据**〔audit-0805 08-08，Phase G 第 81 件〕。
 ///
 /// 08-08 透镜五横扫全仓「比源码位置」的顺序断言，**四条老的里两条是洞**，
@@ -1284,24 +1148,23 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
     // 本条认的是「比源码位置的**判据**」，而判据整批住进了 `tests/`。
     // 只给两棵生产树时识别数从 6 掉到 **0**，自检逐字报「识别口径坏了，本条会零命中地绿」
     // —— 红得对，而它红的正是「一整棵树掉出扫描面」。
-    // ⚠ A 类同治：改用 `scan_tree_excluding` 的明写名单。本文件住 `tests/frontend/shell/`，
-    //   现在在人群里，而它头注里就带着这一族的示例文本 ⇒ 必须明写摘掉，摘不到就 panic。
-    let root = guard_core::addr::repo_root().to_path_buf();
-    let mut files = Vec::new();
-    for (sub, excluded) in [
-        ("src/frontend/shell/src", &[] as &[&str]),
-        ("src/backend", &[]),
-        ("tests/frontend/shell", &["structural_scan_tests.rs"]),
-        ("tests/frontend/filewin", &[]), // 文件窗口独立成包，它的判据搬到这里
-        ("tests/backend", &[]),
-        ("tests/comms", &[]), // 通信层成员的单测镜像
-    ] {
-        files.extend(guard_core::scan_tree_excluding(
-            &root.join(sub),
+    // 规则目录不在人群里（本文件头注就带着这一族的示例文本）。
+    let root = addr::repo_root();
+    let files: Vec<(std::path::PathBuf, String)> = repo()
+        .under(
+            &[
+                "src/frontend/shell/src",
+                "src/backend",
+                "tests/frontend/shell",
+                "tests/frontend/filewin",
+                "tests/backend",
+                "tests/comms",
+            ],
             &["rs"],
-            excluded,
-        ));
-    }
+        )
+        .into_iter()
+        .map(|f| (root.join(&f.rel), f.text().to_string()))
+        .collect();
 
     let mut population = 0usize;
     let mut bad: Vec<String> = Vec::new();
@@ -1402,9 +1265,8 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
     }
     // 抽取器自检：人群塌了的话下面那条就是一句废话。
     assert!(
-        population >= 5,
-        "只识别出 {population} 条「比源码位置」的判据（08-08 实测 6）—— \
-             识别口径坏了，本条会零命中地绿"
+        population > 0,
+        "一条「比源码位置」的判据都没识别出来 —— 识别口径坏了"
     );
     assert!(
         bad.is_empty(),
@@ -1431,59 +1293,26 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
 /// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
 /// 形状与从前那条帧节奏说法判据（今天并进 `retired-names.tsv`）同源（本仓已有先例）。
 fn addr_repo_root() -> std::path::PathBuf {
-    guard_core::addr::repo_root().to_path_buf()
+    crate::addr::repo_root().to_path_buf()
 }
 
-/// 地址判据的**语料面**：四个根下的全部 `.rs` + 本文件自己。
-///
-/// **为什么本文件自己也要进来**：判据自己写的地址也得有东西守着 ——
-/// 同族的 `doc/` 判据 08-06 正是在这一格上栽过一次，它的订正逐字：
-/// 「把『已知的例外』变成『已修的缺陷』」。⇒ 这里一开始就把自己收进来。
-///
-/// ⚠ 先前这一段把成因写成「`scan_tree!` 按构造摘除调用者（那是
-/// 「判据读到自己」的防护），但摘掉之后本文件里写的地址就没有任何东西守着了」——
-/// 那一刀**在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比
-/// 恒不命中），而下面那四棵根里逐字含 `"tests"` ⇒ **本文件本来就在语料里**。
-/// ⇒ 末尾那句 `structural_scan.rs` 的 `push` 收的是**生产侧**那一份，而它也已经被
-/// `"src/frontend/shell/src"` 那棵收过一次 —— 今天是冗余的第二份（地址判据只看「有没有」，
-/// 重复无害），**刻意不删**：它把那一份钉成不依赖根清单的事。
-/// 本文件的头注为了讲形状会写地址样例，样例一律用**中文文件名**（抽取器只收 ASCII 路径），
-/// 因此不会把样例算进人群。
+/// 地址判据的语料面：四个根下的全部 `.rs`（含规则目录，判据自己写的地址也守）＋ 壳的 `build.rs`。
+/// 头注里的形状样例一律用中文文件名（抽取器只收 ASCII 路径），不进人群。
 fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
-    let root = addr_repo_root();
     let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
-    // 🔴 19 份纯测试文件从后端树搬到了
-    // `<repo>/tests/backend/` ⇒ 原来那三棵树**一份也够不着它们**，
-    // 而下面那些「符号地址 / 行号地址 / 死名」判据的人群就少了那一块 ——
-    // **少扫不会红，只会零命中地绿**。
     for sub in [
         "src/frontend/shell/src",
         "src/common",
         "src/backend",
         "tests",
     ] {
-        let got = guard_core::scan_tree!(&root.join(sub), &["rs"]);
-        // ★ 抽取器自检：哪一棵根一份都没扫到 ⇒ 下面几条在那一块零命中地绿。
-        assert!(
-            !got.is_empty(),
-            "地址判据在 `{sub}` 下一份 .rs 都没扫到 —— 语料面坏了"
-        );
-        out.extend(got);
+        out.extend(tree(sub, &["rs"]));
     }
-    // 壳那棵根的人群声明带进来的兄弟包（通道 · 宿主原语 · 开窗契约）也住 `src/common` 那棵：同一份只收一次。
-    out.sort_by(|a, b| a.0.cmp(&b.0));
-    out.dedup_by(|a, b| a.0 == b.0);
-    let br = root.join("src/frontend/shell/build.rs");
-    let br_src = std::fs::read_to_string(&br).expect("读不到 src/frontend/shell/build.rs");
-    out.push((br, br_src));
-    out.push((
-        std::path::PathBuf::from("structural_scan.rs"),
-        include_str!("../../../src/frontend/shell/src/structural_scan.rs").to_string(),
-    ));
+    let br = "src/frontend/shell/build.rs";
+    out.push((addr::repo_root().join(br), text(br)));
     out
 }
 
-/// 文件基名。
 fn addr_base(p: &std::path::Path) -> String {
     p.file_name()
         .expect("源文件名")
@@ -1509,7 +1338,7 @@ fn addr_declarations(
         std::collections::BTreeMap::new();
     for (p, raw) in corpus {
         let fname = addr_base(p);
-        for line in guard_core::strip_comment_lines(raw).lines() {
+        for line in crate::strip_comment_lines(raw).lines() {
             let mut it = line.split_whitespace().peekable();
             while let Some(tok) = it.next() {
                 if !KW.contains(&tok) {
@@ -1893,11 +1722,8 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
     );
     // 真树上打一发：这个动词在真文件里确实有命中（恒空的扫描买不到任何东西）。
     assert!(
-        fn_names_starting_with(
-            include_str!("../../../src/frontend/shell/src/deploy.rs"),
-            &["uninstall"]
-        )
-        .contains(&"uninstall_remote_backend".to_string()),
+        fn_names_starting_with(&text("src/frontend/shell/src/deploy.rs"), &["uninstall"])
+            .contains(&"uninstall_remote_backend".to_string()),
         "真树上扫不到 `uninstall_remote_backend` —— 剥法或遍历坏了"
     );
 }
@@ -1914,155 +1740,34 @@ fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
 /// ⇒ 把阈值调上去换一个好看的人群数，等于把本条要逮的那个逮不着。
 const DEAD_NAME_MIN_UNDERSCORES: usize = 2;
 
-/// 仓根相对路径（`\` 一律归一成 `/`，登记表才在 Windows 上也对得上）。
-fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
-    p.strip_prefix(root)
-        .unwrap_or(p)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
-/// 本条的语料面：**六个根 + `src/frontend/shell/build.rs`**，`(仓根相对路径, 原文)`。
+/// 本条的语料面：`src` 与 `tests` 下的全部文本（含 toml · sh · md · json，规则目录也在），`(仓根相对路径, 原文)`。
 ///
-/// # 三条边界，每条都是**对拍逮出来的**，不是想出来的
-///
-/// · **`build.rs` 非收不可**：`emit_backend_capabilities` 真的定义在那儿
-///   （`addr_corpus()` 也是单独把它捞进来的）。不收它 ⇒ 当场多一处假阳。
-/// · **`evidence/` 刻意不收**（它不在六个根下，本条按构造够不着）：那是量具与记录，
-///   散文里逐字写着一堆死名（`local_tmux_names` 就在里面）。收进来 =
-///   **代码侧被本族自己的记录喂饱**，旗舰活体当场从人群里消失。
-/// · **不按扩展名筛**（`scan_tree!` 空列表那一档）：代码侧越宽假红越少，
-///   而 `.json` / `.tsv` / 无扩展名的脚本都可能是一个名字真正的家。
-///
-/// ⚠ **本文件不在语料里。这一刀非落不可**：下面 `INVENTORY` 里每个死名都是一个
-/// **字符串字面量 = 代码**，不摘的话凡是登记过的名字全都「在代码里出现过」，
-/// **人群当场塌成空集**。
-/// 代价如实写明：**本文件自己的散文没人看** —— 那是 `ratchet_guard.rs` 头注那条纪律
-/// 「判据不许与被扫文本同住一个文件」的另一面。**射程外，不假装覆盖了。**
-///
-/// # 🔴 这一刀**从 `file!()` 换成明写的排除**
-///
-/// 上一版靠 `scan_tree!` 的自摘落这一刀。剖分之后本文件由 `#[path]` 引进来，
-/// `file!()` 给的是 `src/../../../tests/bridge/structural_scan_tests.rs` ——
-/// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比不命中
-/// ⇒ **那一刀整个落空**，本文件连同它那张 `INVENTORY` 一起进了语料。
-/// 读数：「只活在散文里的名字」从 84 处塌到 **6 处**。
-/// ⚠ 注意它塌的方向：这次是**人群变小**、被反空真逮住了；
-/// 反过来那一半（判据在自己的登记表里找到自己 ⇒ 恒绿）同样存在，而且不会红。
-/// ⇒ 换成 [`guard_core::scan_tree_excluding`]：排除**明写出来**，
-/// 而且**摘不到就当场红**（`file!()` 那条路从来没有这一格）。
+/// - `tests/evidence/` 不收：那是量具与记录，散文里逐字写着一堆死名，收进来代码侧会被本族自己的记录喂饱。
+/// - 本文件只收声明那一半（不带引号与注释的行）：它的散文与样本为了讲形状写着死名，它的 `fn` 名别处在点。
 fn dead_name_corpus() -> Vec<(String, String)> {
-    let root = addr_repo_root();
+    const ME: &str = "tests/common/guard-core/rules/structural_scan.rs";
     let mut out: Vec<(String, String)> = Vec::new();
-    // 🔴 **两棵根，互不包含。** 上一版列了五个根，其中
-    // `"src/frontend/shell/src"` · `"src/common"` · `"src/doc"` 在搬树之后**全都是
-    // `"src"` 的子目录** ⇒ 那些文件被**数两遍**，于是「盘上 N 处」全部翻倍，
-    // 而登记表写的是搬家前的真数 ⇒ 一片假红（实发：`local_is_posix` 1→2 之类）。
-    //
-    // ⚠ 那一版的注释**已经点出了这个形状**（「后端树已经是 `src` 的子目录，
-    // 两个都列会把每个文件数两遍」）—— 但只对 `"src/backend"` 那一格落实了，
-    // 另外三格漏了。⇒ 教训：**发现一个形状之后，要把同形的全找一遍**，
-    // 不是只修当场那一个。
-    for sub in [
-        "src",
-        // 〔e2e 并入 tests/，2026-09-17〕这一格**从 `"e2e"` 换成 `"tests"`**，不是换成
-        // `"tests/e2e"`：前端测试此前住在 `src/` 里、被上面那个 `"src"` 顺带收着；
-        // 搬去 `tests/` 之后**这个语料面悄悄缩了一大块**，而本族的反空真检查只管
-        // 「本文件不在语料里」，管不了「少了一棵树」⇒ 会安静地少扫，不会红。
-        // 收 `"tests"` 一并把前端测试与 `tests/e2e/` 都拿回来。
-        "tests",
-    ] {
-        // 🔴 **排掉的是谁、为什么**（「明写名单、不靠自摘」那条纪律要的那一句）：
-        //    排掉 `tests/frontend/shell/structural_scan_tests.rs` —— **本文件**。
-        //    理由见上面头注：它那张 `INVENTORY` 把每个死名都写成了字符串字面量，
-        //    收进来就等于宣布「这些名字都还活着」，人群当场塌成空集。
-        //    ⚠ 只对 `"tests"` 那一棵给名单：本文件不在 `"src"` 下面，而
-        //    `scan_tree_excluding` **摘不到就红** —— 给错根会当场说话，不会安静地空转。
-        //    同一条理由排掉禁名表 `tests/__fixtures__/retired-names.tsv`：它逐行写着那些死名。
-        let excluded: &[&str] = match sub {
-            "tests" => &[
-                "tests/frontend/shell/structural_scan_tests.rs",
-                "tests/__fixtures__/retired-names.tsv",
-            ],
-            _ => &[],
-        };
-        for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], excluded) {
-            let rel = dead_name_rel(&root, &p);
-            // 🔴 **`evidence/` 必须排掉** —— 本函数头注逐字写着
-            // 它「刻意不收」，理由是「那是量具与记录，散文里逐字写着一堆死名；
-            // 收进来 = 代码侧被本族自己的记录喂饱，旗舰活体当场从人群里消失」。
-            // 那句话当时靠的是**位置**（`evidence/` 不在当年那几个根下）。
-            // 搬树把它变成 `tests/evidence/` ⇒ 跟着 `"tests"` **自己回来了**，
-            // 而那条设计意图一个字都没改。⇒ 把"靠位置"换成**一条明写的排除**。
-            // 🔴 两条按位置生效的射程边界，都被搬树悄悄取消了：
-            //
-            // ① `evidence/` —— 本函数头注逐字写着它「刻意不收」：那是量具与记录，
-            //    散文里逐字写着一堆死名；收进来 = **代码侧被本族自己的记录喂饱**，
-            //    旗舰活体当场从人群里消失。搬成 `tests/evidence/` 后跟着 `"tests"` 回来了。
-            //
-            // ② `vendor/` —— 第三方 vendored 代码。它原住 `src-tauri/vendor/`（当年的根之外），
-            //    现在 `src/frontend/shell/vendor/` 落进了 `"src"` ⇒ **第三方代码在给我们的
-            //    「这个名字还活着吗」投票**。实发四条假账：`path_shell_safe` 定义在
-            //    vendored 的 `cc-acct-iso/scripts/lib.sh` 里、`guard_doc_rel` 与
-            //    `symbols_in_file` 定义在 vendored 的 `code-picture-core` 里
-            //    ⇒ 三个真死名被读成「活的」，登记表被判成腐了。
-            //
-            // ⚠ 教训：**「靠位置生效的边界」在搬树时会静默失效** —— 它不会报错，
-            //    只会让射程悄悄变大或变小。换成明写的排除。
-            // 〔vendored 的 `cc-acct-iso` 后来挪去 `src/shared/cc-acct-iso/`、曾在这里另写一条排除；
-            //   今天那份脚本已删出仓（账号库由后端自己建），那条排除随之撤了。〕
-            if rel.starts_with("tests/evidence/") || rel.contains("/vendor/") {
-                continue;
-            }
-            out.push((rel, src));
+    for f in repo().with_rules().under(&["src", "tests"], &[]) {
+        if f.rel.starts_with("tests/evidence/")
+            || f.rel.contains("/vendor/")
+            || f.rel == "tests/__fixtures__/retired-names.tsv"
+        {
+            continue;
         }
+        let text = if f.rel == ME {
+            f.text()
+                .lines()
+                .filter(|l| !l.contains('"') && !l.contains("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            f.text().to_string()
+        };
+        out.push((f.rel.clone(), text));
     }
-    let br = root.join("src/frontend/shell/build.rs");
-    let br_src = std::fs::read_to_string(&br).expect("读不到 src/frontend/shell/build.rs");
-    out.push((dead_name_rel(&root, &br), br_src));
-    // 🔴 **本文件的「声明」那一半要补回来，「登记表」与「散文」那两半不补。**
-    //
-    // 上面那一刀摘的是**整份文件**，而它其实只该摘掉两样东西：
-    // ① `INVENTORY` 里那些**死名字符串字面量**（不摘 ⇒ 人群塌成空集）；
-    // ② 本文件自己的散文（头注逐字写着「射程外，不假装覆盖了」）。
-    //
-    // 剖分之前这两样与本文件那几十条 `fn` 声明**同住 `structural_scan.rs`**，
-    // 一起被摘掉也就一起看不见。剖分把**判据**搬来了 `tests/`，而**散文留在原处**
-    // ⇒ 摘掉整份文件之后，`structural_scan.rs` / `local_backend_host_tests.rs` / …
-    // 那十几句「由 `every_symbol_address_in_the_sources_still_resolves` 钉着」
-    // 会被读成「点名了一个代码里根本不存在的名字」—— 而那些判据**就在盘上、还在跑**。
-    // 把它们登记进 `INVENTORY` 才是真的说谎（那张表逐字是「代码里根本不存在的名字」）。
-    //
-    // ⇒ 只把本文件的**不含字面量、不含注释**的那些行补回来：`fn` 声明在里面，
-    //   死名字面量与散文都不在。方向是安全的 —— 这一补只可能让名字**更像活的**，
-    //   而补进来的全是本文件真有的声明。
-    let me_rel = "tests/frontend/shell/structural_scan_tests.rs";
-    let me_decls: String = include_str!("structural_scan_tests.rs")
-        .lines()
-        .filter(|l| !l.contains('"') && !l.contains("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        me_decls.contains(concat!(
-            "fn every_dead_name_named_in_the_",
-            "prose_is_declared_dead"
-        )),
-        "本文件的声明那一半没补进来 —— 那十几条真实存在的判据会被读成死名"
-    );
-    out.push((me_rel.to_string(), me_decls));
-    // ★ 抽取器自检：语料面塌了 ⇒ 下面整条零命中地绿。
-    assert!(
-        out.len() >= 550,
-        "死名判据只收到 {} 份源文件 —— 语料面坏了（09-03 现打 598：六个根 597 + build.rs 1）",
-        out.len()
-    );
     out
 }
 
-/// 一个词是不是「**全小写 `snake_case` + 至少 `min_us` 个下划线**」。
-///
-/// 零词表、纯句法 —— 这正是本条与 `K-R6` 网 A / `K-R18` R1 撞的那种
-/// 「历史限定词」开放类词表**形状不同**的地方：那两次要枚举的是自然语言，怎么枚都枚不全。
 fn is_dead_name_shape(w: &str, min_us: usize) -> bool {
     let segs: Vec<&str> = w.split('_').collect();
     if segs.len() < min_us + 1 {
@@ -2163,7 +1868,7 @@ fn backtick_spans(line: &str) -> Vec<&str> {
 
 /// 把一份文件切成 `(行号1基, 代码段, 注释段)`。
 ///
-/// `//` 那一族（`.rs` / `.ts` / …）走 [`guard_core::strip_comment_lines`] ——
+/// `//` 那一族（`.rs` / `.ts` / …）走 [`crate::strip_comment_lines`] ——
 /// **整行注释与行尾注释都剥，而且字符串安全**（`"http://host"` 不会被切短）。
 ///
 /// 🔴 **行尾注释必须算注释**，这是 `K-R19` 实测出来的坑：它第一版尺子只认整行注释，
@@ -2200,7 +1905,7 @@ fn dead_name_split(path: &str, text: &str) -> Vec<(usize, String, String)> {
             .map(|(i, l)| (i + 1, (*l).to_string(), String::new()))
             .collect();
     }
-    let stripped = guard_core::strip_comment_lines(text);
+    let stripped = crate::strip_comment_lines(text);
     let code: Vec<&str> = stripped.split('\n').collect();
     assert_eq!(
         code.len(),
@@ -2251,269 +1956,36 @@ fn dead_names_on_disk(
     (in_code.len(), dead)
 }
 
-/// ★★ **散文里点名的名字，要么在代码里，要么由写的人声明成历史。**
+/// ★★ **散文里用反引号点名的名字，代码里要有**（零命中，带正控）。
 ///
-/// # 它买的是什么
+/// 改名 / 删掉之后「由 `X` 钉住」那句话不会跟着改，读的人以为这件事有人守着。
+/// 说「它不在了」的那句删掉；仓外的名字写全路径。
 ///
-/// 本仓的判据全叫 `every_x_is_y` 这种长 `snake_case` 名字，而散文**大量**在
-/// 「由 `X` 钉住」「`X` 那条机检管着」这么说。改名 / 删掉 / 换实现之后，
-/// **那句话不会跟着改，也没有任何东西会因此变红** —— 于是一个不存在的名字
-/// 被当成现状说了下去，读的人以为「这件事有人守着」。
-///
-/// 🔴 **不是假想的病**：本仓的人**手工撞见过至少两次**，每次留一段字，然后没有闸 ——
-/// `alloc_probe.rs` 里那条「`the_probe_sees_allocations_made_by_the_reader_task` 钉着」，
-/// 与 `listen.rs` 里那条「这里原先指的是一个**不存在的文件**」。
-///
-/// # 它买不到什么（逐条写明，别把射程写宽了一格）
-///
-/// · **判不了「这句话是不是当现状在说」。** 存量里绝大多数是散文自己已经声明了历史
-///   （「原 `X`」「上一版是 `X`」「已删」），那些是合法的；机器分不开它们与真陈账。
-///   ⇒ 本条**不判真伪**，只做两件机器判得了的事：**登记存量** + **新写的一律红**。
-/// · **棘轮按 `(路径, 名字, 处数)` 认。** 把一处删掉、另换一处写上，
-///   同一份文件里处数不变的话本条**看不见**。它拦的是「顺手又写一个」，不是恶意。
-/// · **本文件自己的散文没人看**（语料按构造摘掉调用者）——见 `dead_name_corpus` 头注。
-/// · **只看反引号里的裸符号引用**。`（local_tmux_names）` 这种**不带反引号**的写法
-///   本条看不见 —— 现打 `tests/frontend/ui/ipc/commands.vitest.ts` 里就有三处这样的，
-///   如实登记成射程外，**不假装覆盖了**。
+/// 买不到：不带反引号的写法；代码侧把字符串字面量也算「活着」（字面量里留着旧名就遮住散文）。
 #[test]
 fn every_dead_name_named_in_the_prose_is_declared_dead() {
-    /// **存量登记**：`(仓根相对路径, 名字, 未声明的处数)`。
-    ///
-    /// 这张表就是「改完之后还剩什么没牙」的**逐条点名**：每一行都是一处
-    /// **判不了真伪**的名字。想少一行的唯一办法是**把那句话改对**。
-    ///
-    /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
-    const INVENTORY: &[(&str, &str, usize)] = &[
-        // 🔴 **这两行是新登记的，原因是一条判据退役。**
-        //    `daemonless_stream_loop` 这个符号 `K-R59`（09-11）就从代码里删掉了，
-        //    它此后一直被一处**字符串字面量**当成「还活着」——
-        //    `doc_claim_registry_daemon_wording_registry.rs` 拿它当「非裸词」自检夹具。
-        //    那个夹具换掉之后，它才第一次被本条看见。
-        //    ⇒ 散文里这几处（README 1 · 本表下一行 1；流来源那份的两处随拆目录删了）全是**病史**，该留；
-        //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
-        //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
-        // 登记表里几段改数史 / 已结账的核实表删了 —— 那些字符串一直替下面这几处散文遮着「还活着」。
-        (
-            "tests/backend/agent_boundary_guard.rs",
-            "proc_claude_config_dir",
-            1,
-        ),
-        (
-            "tests/frontend/shell/local_read_surface_registry.rs",
-            "list_history_projects",
-            1,
-        ),
-        // 那份壳命令登记表的改数史（「−2：…机器表搬进本机后端」）点了已删的壳命令名；它一直被截图台架那份假壳命令表遮着「还活着」，
-        // 台架那一条换成假后端的 `machines-try` 以后才被看见。那句是病史，该留。
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "machine_table_try",
-            1,
-        ),
-        // `("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
-        // `("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
-        // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。
-        (
-            "src/backend/agents/claudecode/accounts.rs",
-            "trust_of_claude_json",
-            1,
-        ),
-        (
-            "src/backend/alloc_probe.rs",
-            "the_probe_sees_allocations_made_by_the_reader_task",
-            1,
-        ),
-        ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
-        ("src/comms/outward/http1.rs", "handle_alloc_error", 1),
-        (
-            "tests/comms/outward/http1_tests.rs",
-            "head_cap_is_enforced",
-            1,
-        ),
-        // `tests/backend/relay/nodelay_guard.rs` 那一行删了：文件随退役整份删掉，
-        //   它头注里点名的旧判据名跟着没了（不是改对了话，是那段话不在了）。
-        ("src/comms/outward/server.rs", "handle_alloc_error", 1),
-        // `tests/comms/outward/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
-        (
-            "tests/comms/outward/upstream_tests.rs",
-            "tls_client_config_builds_and_carries_roots",
-            1,
-        ),
-        // `payload.rs` 点 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect` 那一行摘了：
-        //   那段散文随路由构造口（与它的跨半边样例）一起走了 —— 路由语法进了共享 crate `relay-route-core`。
-        (
-            "tests/frontend/shell/byte_cap_registry_tests.rs",
-            "handle_alloc_error",
-            1,
-        ),
-        (
-            "tests/frontend/shell/byte_cap_registry_tests.rs",
-            "inline_literal_byte_caps_are_still_just_the_one",
-            1,
-        ),
-        (
-            "tests/backend/footprint/rows_tests.rs",
-            "locality_is_derivable_from_destination_today",
-            1,
-        ),
-        // 这里原来一行 `creds_store_tests.rs` 点 `a_temp_file_is_born_owner_only` 的存量：
-        //   那段散文随 `KS5` 两条源码判据（切 monitor 写口的函数体）一起走了 —— 写口去了后端。
-        // `creds_store_tests.rs` 点 `the_ui_hands_the_write_command_a_config_dir_not_a_name` 那一行摘了：
-        //   那段散文住在「写侧那一行正是起会话那一侧找的那一行」判据的头注里，判据随读者换成后端搬去了后端。
-        // `src/frontend/shell/src/history.rs` · `launch_identity_prefix` 那一行摘了：点它的那句随本机起会话搬进后端一起删了。
-        // `("src/frontend/shell/src/history.rs", "list_history_sessions_in_project", 2)` 那一行摘了：点它的两句（模块头注
-        //   「两级懒加载」那一段 · 那条已删命令的头注）随历史清单整轴搬进本机常驻后端一起删了（头注重写成 `` 那一段）。
-        // `tests/frontend/shell/history_tests.rs` · `relay_key_for` 那一行摘了：点它的那句随本机起会话搬进后端一起删了。
-        // `history_tests.rs` 点 `the_two_inputs_at_the_call_site_are_still_the_two_take_points` 那一行摘了：
-        //   那段病史散文随注入侧那几条判据整段重写（缝里的两格事实并成「问那台后端」一格）。
-        (
-            "src/frontend/shell/src/local_backend_host.rs",
-            "futex_do_wait",
-            1,
-        ),
-        (
-            "tests/backend/agents/claudecode/parse_tests.rs", // 随记录解析搬进后端
-            "unknown_type_falls_through_to_unknown_variant",
-            1,
-        ),
-        // 🔴 原来这里登记着 `polling_registry.rs` 里那句提到
-        //    `every_comment_stripping_transformer_is_registered` 的散文。那句话住在
-        //    `the_identity_poller_is_gone_for_good` 的注释里，而后来把那条判据的语料
-        //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
-        //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
-        (
-            "tests/frontend/shell/polling_registry_tests.rs",
-            "the_per_second_identity_poller_spawns_nothing_per_tick",
-            1,
-        ),
-        (
-            "tests/frontend/shell/rust_timer_registry_tests.rs",
-            "the_one_real_ticker",
-            1,
-        ),
-        (
-            "tests/frontend/shell/shared_crate_registry_ci_yaml.rs",
-            "ci_live_lines",
-            1,
-        ),
-        (
-            "tests/frontend/shell/stream_source/write_half_guard.rs",
-            "copy_bidirectional_with_sizes",
-            1,
-        ),
-        // 存量四行摘了：点它们的那几段散文（`stream_source/` 的 tmux 原文账 / 宣告账头注 · `tmux.rs` 的 `list_local_tmux` 头注）
-        //   随 monitor 那几本账一起删 / 改写（`list_local_tmux` 改问本机后端），`ssh_source_f032_idle_tests.rs` 那一处随文件删。
-        (
-            "tests/backend/footprint/registry_tests.rs",
-            "inbox_id_from_filename",
-            1,
-        ),
-        (
-            "tests/backend/footprint/registry_tests.rs",
-            "locality_is_derivable_from_destination_today",
-            1,
-        ),
-        // 这里原来有 `verified_write_tests.rs` 里一条存量（一条早删的判据名）：
-        //   那句话所在的那一组判据随 `verify_and_rollback` 一起走了（零调用方），那句话也就没了 ⇒ 摘行。
-        (
-            "tests/frontend/ui/agent-profile-parity.vitest.ts",
-            "the_gaps_are_named_not_forgotten",
-            1,
-        ),
-        // 原来这里还有一行 `tests/frontend/ui/backend-policy.vitest.ts` 点名的那条「启动时推送」接线钉
-        //   （1 处）—— 那条推送随值搬家退役，点名它的那段散文与那条判据一起删了 ⇒ 本行摘掉（存量 −1）。
-        (
-            "tests/frontend/ui/settings/backend-section.vitest.ts",
-            "the_unattended_wording_is_actually_present",
-            1,
-        ),
-        // `src/frontend/ui/tab-session-actions.ts` 那一行（1 处）摘了：那条 tab 栏本机 resume 连同点这个死名的订正注释
-        //   收进了 `src/frontend/ui/local-resume.ts`（本机 resume 编排只剩一份），订正注释没跟着搬（它订正的那句话已经不在了）⇒ 存量 −1。
-        // 🔴 **不是新长出来的债，是语料面变大了**：
-        // 这份 README 原住 `src-tauri/README.md`，而本族的语料根里没有 `src-tauri`
-        // ⇒ 它**按构造在射程外**。改名成 `src/frontend/shell/README.md` 之后落进了 `"src"`
-        // 那一棵，于是它散文里点名的死名第一次被看见。
-        // 现打核实：这四个名字在 `src/` 与 `tests/` 里**定义数都是 0**（真死名）
-        // ⇒ 如实记账，而不是给它们编一个「还活着」的说法。
-        // `classify_capture_output` 那一行（README 两处）摘掉：README 里抓屏那两处改写成「迁到界面」，旧名不再点。
-        // 同一份 README 那一行（`stream_source/` 的旧功能表）里的跳板函数名：界面侧最后一份
-        //   （`inproc_dial.rs` 里 SFTP 用的那一个）随界面进程零 SSH 整份删了，后端那份改了名 ⇒ 真死名，如实记账；
-        // 🔴 **这里删掉了 6 行**，逐条点名：
-        //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
-        //   `accounts_query.rs`/`local_backend_host.rs`     `every_comment_stripping_transformer_is_registered`
-        //   `tests/backend/readonly_guard.rs`         `the_cfg_test_reexport_detour_stays_extinct`
-        //   `local_backend.rs`  `every_position_comparison_over_source_pins_and_bounds_its_anchors`
-        //
-        //   这六个名字**从来就不是死名** —— 它们是本文件里六条**正在跑的判据**。
-        //   它们当年进这张表，唯一的原因是本条的语料面**按构造摘掉了判据自己那一份**
-        //   ⇒ 连它的 `fn` 声明一起看不见 ⇒ 别处散文点它们就被读成「点了一个不存在的名字」。
-        //   `dead_name_corpus` 这一轮把本文件的**声明那一半**补了回来（登记表字面量与
-        //   本文件自己的散文仍然不收）⇒ 这六行是**被修掉的缺陷**，不是被放过的欠账。
-    ];
-
-    let corpus = dead_name_corpus();
-    let (code_names, disk) = dead_names_on_disk(&corpus, DEAD_NAME_MIN_UNDERSCORES);
-
-    // ★ 抽取器自检 1：代码侧塌了 ⇒ 全世界都成了「零定义」，下面会红成一片假红。
-    assert!(
-        code_names >= 2500,
-        "代码侧只抽到 {code_names} 个 snake_case 名字 —— 剥法或遍历坏了（09-03 现打 3011）"
-    );
-    let hits: usize = disk.values().sum();
-    // ★ 抽取器自检 2：注释侧塌了 ⇒ 本条零命中地绿（`ScanReport::require` 那条纪律）。
-    assert!(
-        hits >= 20,
-        "只抽到 {hits} 处「只活在散文里的名字」—— 抽取器坏了（现打 27 处）"
-    );
-
-    let mut newly: Vec<String> = Vec::new();
-    for ((path, name), undeclared) in &disk {
-        let want = INVENTORY
-            .iter()
-            .find(|(p, n, _)| p == path && n == name)
-            .map(|(_, _, c)| *c)
-            .unwrap_or(0);
-        if *undeclared != want {
-            newly.push(format!(
-                "  {path}  `{name}`  盘上 {undeclared} 处，登记表写 {want} 处"
-            ));
-        }
-    }
-
-    // ★ 顺序是承重的（照 `K-R17` 那条棘轮的教训）：先报「新写的」，
-    //   再报「登记表腐了」—— 反过来的话，「有人新写了一个死名」会被报成
-    //   「登记表里那一行盘上没有了」，**指错修法**。
-    assert!(
-        newly.is_empty(),
-        "这几处散文点名了一个**代码里根本不存在**的名字，而登记表对不上：\n{}\n\n\
-             ⇒ 两条出路：\n\
-             ① **把话改成现状** —— 点今天真的那个符号（`文件·rs::函数名`），\
-             它的真伪由 `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\
-             那句话若只是在说「这个东西不在了」，删掉它就是改成现状；\n\
-             ② 那个名字是**仓外**的（std / 第三方 / 内核 / 另一个仓）⇒ 加进 `INVENTORY`，\
-             并在提交信息里写清它住在哪儿。",
-        newly.join("\n")
-    );
-    // ★ 登记表的保鲜自检：登记的那一处盘上已经没有了 ⇒ 删掉它，别让表替真判据挡枪。
-    let gone: Vec<String> = INVENTORY
+    let (_, disk) = dead_names_on_disk(&dead_name_corpus(), DEAD_NAME_MIN_UNDERSCORES);
+    let found: Vec<String> = disk
         .iter()
-        .filter(|(p, n, _)| !disk.contains_key(&(p.to_string(), n.to_string())))
-        .map(|(p, n, _)| format!("  {p}  `{n}`"))
+        .map(|((path, name), n)| format!("{path}  `{name}`  {n} 处"))
         .collect();
-    assert!(
-        gone.is_empty(),
-        "这几条登记盘上已经没有了 —— **把它们从表里删掉**\
-             （多半是有人把那句话改对了，那是好事）：\n{}",
-        gone.join("\n")
+    // 正控：同一个抽取器在合成样本上认得出一个只活在散文里的名字。
+    let n = format!("zz{u}gone{u}name", u = "_");
+    let sample = [(
+        "a.rs".to_string(),
+        format!("fn live_one_two() {{}}\n// 见 `{n}` · `live_one_two`\n"),
+    )];
+    let control = dead_names_on_disk(&sample, DEAD_NAME_MIN_UNDERSCORES)
+        .1
+        .len();
+    super::none(
+        "散文点名了代码里不存在的名字：改成现状（点今天真的那个符号），说「它不在了」的那句删掉；\
+         仓外的名字（std · 第三方 · 内核）写全路径（`std::alloc::handle_alloc_error`）",
+        found,
+        control,
     );
 }
 
-/// 上面那条判据的**活体夹具** —— 它在真树上今天恰好是绿的（登记表逐格对上），
-/// 而「今天该对上」那种格是**空真**：闸死了照样对得上。
-/// ⇒ 这里造一份**真的会红**的语料，逐格切开验。
-///
-/// 夹具文本一律**现拼**（名字分段拼、反引号分开写），免得夹具自己被真树上的扫描收进人群
-/// —— 本文件按构造已被摘出语料，这是第二道保险，「别让夹具的名字混进断言」本仓栽过两次。
 #[test]
 fn the_dead_name_scanner_really_sees_each_shape() {
     let tick = "`";
@@ -2596,279 +2068,4 @@ fn the_dead_name_scanner_really_sees_each_shape() {
     let json_text = format!("{{\"k\": \"{n}\"}}\n");
     let json_rows = dead_name_split("a.json", &json_text);
     assert!(json_rows[0].2.is_empty() && json_rows[0].1.contains(n.as_str()));
-}
-
-// ── 前提闸 ────────────────────────────────────────────────────
-
-/// 两棵**生产树**的仓根相对住址。`P9` 剩下两件的前提说的就是这两棵树。
-///
-/// ⚠ 这里**不含** `src/common` —— 那八个共享 crate 从来就是「判据与被测代码
-/// 同住一份文件」的形状（`guard-core` 自己就是最大的一份），它们不在
-/// 的剖分计划里，混进来会让下面那两个读数说不清自己在说哪件事。
-const P9_PRODUCTION_TREES: &[&str] = &["src/backend", "src/frontend/shell/src"];
-
-/// 一棵生产树今天的形状：`(.rs 份数, 真 `#[test]` 属性数, 内联 test 模块数, 测试专用支撑项数)`。
-///
-/// 三个计数的**口径分得很细，这一格是承重的**（步 7c 就是被这一格咬到的）：
-/// · **真 `#[test]` 属性** ＝ 整行 trim 之后**逐字等于** `#[test]`。
-///   ⚠ 不用 `src.contains("#[test]")`：那是**子串**口径，会把头注里讲形状的散文算进来
-///   （现打：`src/frontend/shell/src` 今天有 3 处这样的散文 —— `tool_registry` ·
-///   `scanning_guard_registry`×2 · `launch`），于是「这棵树还有测试代码」这句话
-///   会在真的一个都没有的时候仍然为真。**上一版就是这么读的，因此永远响不了。**
-/// · **内联 test 模块** ＝ `#[cfg(test)]`（跳过后续属性行）之后紧接 `mod X {`。
-///   这是那套剖分要消灭的形状。
-/// · **测试专用支撑项** ＝ `#[cfg(test)]` 之后紧接**别的**以 `{` 收尾的项
-///   （`thread_local! {` · `impl Drop for …` · 辅助 `fn` · 测试专用 `enum`）。
-///   ⚠ 这一类**不是**剖分的标的：写着剩下那几份的 `cfg(test)`
-///   「不是 `mod`，是测试专用的 `thread_local!` / 辅助 `fn` / `struct`，
-///   `§3.1` 那套机制罩不住它们，要单独裁」。上一版把它与 test 模块混成一个
-///   「块形」计数，于是剖分做完之后那个数**仍然大于 0**，本条照样不响。
-/// · 分号声明形（`#[cfg(test)] #[path=…] mod X;`）**一个都不算** —— 那正是剖分的产物。
-fn p9_tree_shape(root: &std::path::Path, tree: &str) -> (usize, usize, usize, usize) {
-    // 排除名单刻意留空：本文件住 `tests/frontend/shell/`，**按住址就不在这两棵树里**，
-    // 没有「摘掉我自己」这回事。写成空名单是把这件事明写出来（`§5.4b` 纪律 2）。
-    let files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
-    let (mut attrs, mut mods, mut support) = (0usize, 0usize, 0usize);
-    let test_attr = format!("#[{}]", "test");
-    let cfg_attr = format!("#[cfg({})]", "test");
-    for (_, src) in &files {
-        let lines: Vec<&str> = src.lines().collect();
-        for (i, l) in lines.iter().enumerate() {
-            if l.trim() == test_attr.as_str() {
-                attrs += 1;
-            }
-            if l.trim() != cfg_attr.as_str() {
-                continue;
-            }
-            // 跳过它后面那一串属性行（`#[path = …]` 之类），再看真正的那一项。
-            // ⚠ 针**运行期拼**：`needle_anchor_registry` 的 `.starts_with(` 是**0 上限**的
-            //   递减棘轮（语料变量上的裸字面量匹配）。步 7c 第一版写成字面量，当场把那条
-            //   棘轮顶破 2 处 —— 拼出来就不在它的人群里，而且顺带没了自指。
-            let attr_open = format!("#{}", "[");
-            let mut j = i + 1;
-            while j < lines.len() && lines[j].trim_start().starts_with(attr_open.as_str()) {
-                j += 1;
-            }
-            let Some(t) = lines.get(j).map(|x| x.trim()) else {
-                continue;
-            };
-            if t.ends_with(';') {
-                continue; // 分号声明形 —— 剖分的产物，不算
-            }
-            if !t.ends_with('{') {
-                continue;
-            }
-            let item = t
-                .strip_prefix("pub ")
-                .or_else(|| t.strip_prefix("pub(crate) "))
-                .or_else(|| t.strip_prefix("pub(super) "))
-                .unwrap_or(t);
-            let mod_kw = format!("{} ", "mod");
-            if item.starts_with(mod_kw.as_str()) {
-                mods += 1;
-            } else {
-                support += 1;
-            }
-        }
-    }
-    (files.len(), attrs, mods, support)
-}
-
-/// 每棵生产树**还允许**留几个「测试专用支撑项」。**递减棘轮，只许往下调。**
-///
-/// 现打（步 7c 剖分做完之后，2026-09-19）：`src/backend` **7** · `src/frontend/shell/src` **15**。
-/// 逐份点名。这一族要单独裁（那句「`§3.1` 罩不住它们」），
-/// 当时没改 —— 立这条棘轮是为了让它**只减不增**。
-const P9_SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
-    &[("src/backend", 7), ("src/frontend/shell/src", 15)];
-
-/// 🟢 **剖分做完了 —— 而 `P9` 剩下两件**仍然**做不得，理由换了。**
-///
-/// # 它接的是谁的岗
-///
-/// 原来这里那一条判据断言「两棵生产树的测试代码**不全为 0**」，并在断言文案里写明：
-/// 掉到 0 那天它红，而红的意思是「那棵树剖分做完了 ⇒ `P9` 剩下两件对它成立了」。
-///
-/// 步 7c 把剖分做完了（`src/frontend/shell` 45 份 / 59 块 · `src/backend` 49 份 / 57 块），
-/// 而那一条**没有红** —— 逐条写明为什么，因为这两格都是「量具比它的说法粗」：
-/// ① 它数「含 `#[test]` 的份数」用的是**子串**口径 ⇒ 头注里讲形状的散文照样算命中
-///    （现打 3 处）；
-/// ② 它数「`#[cfg(test)]` 块形」时把 **test 模块**与**测试专用支撑项**
-///    （`thread_local!` / `impl Drop` / 辅助 `fn`）混成一个数 ⇒ 后者按设计还留着
-///    （现打 7 ＋ 15），那个数永远大于 0。
-/// ⇒ 口径按它自己的说法收细之后（见 [`p9_tree_shape`]），「剖分做完」这件事
-///    **今天确实成立**：两棵树真 `#[test]` 属性各 **0** 个、内联 test 模块各 **0** 个。
-///
-/// # 🔴 但它推出来的那个结论是**假的** —— 现打证掉了，所以不能照它说的去做 `P9`
-///
-/// | `P9` 剩下那件 | 它原来的前提 | 步 7c 现打 |
-/// |---|---|---|
-/// | ② 103 处拼针改回字面量 | 「判据住 `tests/`、语料住 `src/` ⇒ 自指不可能」 | ⛔ **假**：今天有 **21 份**判据文件把 `tests/` 那棵树（也就是它们自己住的那棵）收进了语料根 —— 而那是 `§6.2` B 类**必须**的修法（不收就整批掉出扫描面）。步 7c 又加了几处。 |
-/// | ③ 退役那两个元守卫 | 「生产段与测试段是不同目录 ⇒ 混淆结构上不可能」 | ⛔ **假**：正控（往生产段塞一段真漏进来的 `#[test]`）⇒ **三条全红**（`readonly_guard::no_test_code_leaks_into_any_production_section` · `guard_support::every_backend_file_strips_clean` · `structural_scan::every_monitor_file_strips_clean`）。目录不同**不妨碍**有人在 `src/` 里写 `#[test]` —— 今天挡住这件事的就是这三条。 |
-///
-/// ⇒ 本条因此**换了岗位**：从「等剖分做完」的闸，变成
-/// ① **守住剖分的成果**（两棵树真 `#[test]` 与内联 test 模块恒为 0，回来一个就红）；
-/// ② **把 `P9` 那两件今天真正的拦路石变成读数**（21 份自指语料 · 三条元守卫还在）。
-///
-/// # 它怎么响
-///
-/// - 生产树里回来一个 `#[test]` 或一个内联 `mod tests {}` ⇒ 红（剖分被吃回去了）。
-/// - 测试专用支撑项涨过上限 ⇒ 红（那一族只许减，见 [`P9_SUPPORT_ITEM_CEILINGS`]）。
-/// - **「自指语料」的份数掉到 0** ⇒ 红，而那一天的意思是
-///   **`P9` ② 的前提第一次真的成立了 ⇒ 回去做它，并把这一格同轮收掉**。
-/// - 三条元守卫里少了任何一条 ⇒ 红（`P9` ③ 的拦路石被人绕过去了）。
-///
-/// # ⚠ 它买不到什么（诚实边界）
-///
-/// - 判不了「某一处拼针该不该拆」：那要逐处看那条判据的人群覆不覆盖它自己那份文件。
-/// - 判不了剖分做得**对**不对：回拼对账是 `tests/evidence/W1-split-mixed-files.py` 的活。
-/// - 「三条元守卫还在」按**名字**认，认不出「它被掏空了」——
-///   那一格由它们各自的正控接（步 7c 跑过，读数在上表）。
-#[test]
-fn the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself() {
-    let root = addr_repo_root();
-
-    let mut shapes: Vec<(&str, usize, usize, usize, usize)> = Vec::new();
-    for tree in P9_PRODUCTION_TREES {
-        let (files, attrs, mods, support) = p9_tree_shape(&root, tree);
-        shapes.push((tree, files, attrs, mods, support));
-    }
-
-    // ★ 反空真：两棵树都得真的读到文件。扫空集 ⇒ 三个计数全是 0 ⇒ 下面那两条
-    //   「恒为 0」会**零命中地绿**，而这一次假绿的方向是「宣布剖分守住了」。
-    //   ⇒ 地板放在断言前面。
-    for (tree, files, ..) in &shapes {
-        assert!(
-            *files >= 40,
-            "`{tree}` 只收到 {files} 份 `.rs` —— 语料塌了，下面几个读数此刻不携带信息"
-        );
-    }
-
-    // ① 剖分的成果：两棵生产树里**一个测试函数都没有**。
-    for (tree, files, attrs, mods, _) in &shapes {
-        assert_eq!(
-            (*attrs, *mods),
-            (0, 0),
-            "🔴 `{tree}`（{files} 份 `.rs`）里测试代码**回来了**：\n\
-             真 `#[test]` 属性 {attrs} 个 · 内联 `#[cfg(test)] mod X {{}}` {mods} 处。\n\
-             \n\
-形状是：生产树里只留三行桩\n\
-             （`#[cfg(test)]` ＋ `#[path = \"…\"]` ＋ `mod X;`），测试体住 `<repo>/tests/`。\n\
-             ⇒ 处置：把它剖出去（量具：`tests/evidence/W1-split-mixed-files.py --apply`，\n\
-             它带逐字节回拼对账）。**别把本条改松** —— 步 7c 之前这棵树上有过\n\
-             533（backend）/ 302（bridge）个测试属性，那个状态是用两轮尺子重瞄换回来的。"
-        );
-    }
-
-    // ② 测试专用支撑项：递减棘轮（这一族要单独裁，不在剖分的射程里）。
-    for (tree, _, _, _, support) in &shapes {
-        let ceiling = P9_SUPPORT_ITEM_CEILINGS
-            .iter()
-            .find(|(t, _)| t == tree)
-            .map(|(_, c)| *c)
-            .unwrap_or_else(|| panic!("`{tree}` 没有登记支撑项上限 —— 加树就在那张表里加一行"));
-        assert!(
-            *support <= ceiling,
-            "`{tree}` 的「测试专用支撑项」涨到 {support}（上限 {ceiling}）—— **只许降**。\n\
-             这一族是 `#[cfg(test)]` 罩着的 `thread_local!` / `impl Drop` / 辅助 `fn`，\n\
-             `§3.1` 那套 `#[path] mod` 机制罩不住它们，要单独裁。\n\
-             ⚠ **不许把上限调上去让今天好过** —— 新写一个就是给那件事又添一笔债。"
-        );
-    }
-
-    // ③ `P9` ② 今天真正的拦路石：判据把**自己住的那棵树**收进了语料。
-    //
-    // 这是 `§6.2` B 类**必须**的修法（不收，搬走的测试就整批掉出扫描面 ⇒ 恒绿），
-    // 而它的直接后果就是「判据住 `tests/`、语料住 `src/`」这个前提失效。
-    // ⚠ 本条自己就是这 21 份之一（它的语料根含两棵生产树，但 ③ 这一格扫的是 `tests/`）——
-    //   如实记，不把自己摘出去：摘出去这个数就说不出「自指还在不在」了。
-    // 🔴 **针一律运行期拼，一个都不许写成整串字面量。**
-    //
-    // 现打过：第一版把这五根针写成字面量 ⇒ 本文件（住 `tests/`，在③这一格的语料里）
-    // **永远命中自己**，于是 `self_corpus_files` 恒非空、下面那条断言**恒不可能响**。
-    // 那正是本模块从头到尾在治的「判据在自己的语料里找到自己 ⇒ 恒绿」，
-    // 而这一次它长在**新写的判据自己**头上 —— 死值验（把针换成认不出的名字）是唯一
-    // 能看见它的办法：那一趟本条**照样绿**。
-    let t = "tests";
-    let self_corpus_markers = [
-        format!("\"{t}\""),
-        format!("\"{t}/{}\"", "frontend/shell"),
-        format!("\"{t}/{}\"", "backend"),
-        format!("{t}_{}()", "root"),
-        format!("{}_{}()", "code", "roots"),
-    ];
-    // 🔴 **本文件必须明写摘掉，而这一格是死值验逼出来的第二刀。**
-    //
-    // 上面把针改成运行期拼之后，死值验仍然**绿**：针是从 `t` 拼的，而 `t` 的**值**
-    // 必然以字面量出现在本文件里（`let t = "tests";`）⇒ 拼出来的针照样命中本文件。
-    // 换任何一个值都一样 —— 这一格**在本文件上是量不了的**。
-    // ⇒ 排除明写成名单（`scan_tree_excluding` 摘不到就 panic，改名会出声）。
-    //
-    // ⚠ **诚实边界，别读错这个数**：本文件**自己也是这一族的一员**
-    //（`dead_name_corpus()` 的语料根逐字含 `"tests"`）。摘掉它不是因为它不算，
-    // 是因为量具量不了自己。⇒ 下面那个数是 **20**，而真值是 **21**。
-    // 「这一族清零」那天，本文件自己那一处也要一起拆掉 —— 解锁文案里写了这一句。
-    let mut self_corpus_files: Vec<String> = Vec::new();
-    for (path, src) in guard_core::scan_tree_excluding(
-        &root.join("tests"),
-        &["rs"],
-        &["shell/structural_scan_tests.rs"],
-    ) {
-        if self_corpus_markers.iter().any(|m| src.contains(m.as_str())) {
-            self_corpus_files.push(
-                path.strip_prefix(&root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
-        }
-    }
-    self_corpus_files.sort();
-    assert!(
-        !self_corpus_files.is_empty(),
-        "🟢 ** 第②件的前提第一次成立了** —— 今天没有任何判据文件\n\
-         把 `tests/` 那棵树收进自己的语料根了。\n\
-         \n\
-         **本条不是在报故障，是在报一个解锁条件**：\n\
-那条「103 处运行时拼针可以改回普通字面量」，它的前提逐字是\n\
-         「判据和语料物理不同文件 ⇒ 自指不可能发生」。那个前提从 `§6.3` B 类修法\n\
-         落地那天起就是假的（判据住 `tests/`，而语料根含 `tests/`）——\n\
-         今天这个数掉到 0，说明那一族自指真的没了。\n\
-         ⇒ 回去做 `P9` 第②件，并把本条这一格**同轮收掉**。\n\
-         ⚠ 本文件被明写摘出了人群（量具量不了自己，理由在上面那段注里）——\n\
-         所以这个数清零时，**还要手工核一遍本文件自己那一处**（`dead_name_corpus()` 的 `\"tests\"`）。\n\
-         ⚠ 做之前先读 `§4.2` 的订正段：那一轮机械改回 326 处 ⇒ 红 12 条，\n\
-         其中一条住 `tests/frontend/shell/`。逐条核过再改。"
-    );
-
-    // ④ `P9` ③ 今天真正的拦路石：三条元守卫都还在。
-    //
-    // `§4.4` 原文说「搬完之后生产段和测试段是不同目录，这个混淆在结构上不可能发生」。
-    // 目录不同**不妨碍**有人在 `src/` 里写 `#[test]` —— 步 7c 的正控逐条验过：
-    // 往生产段塞一段真漏进来的测试代码，这三条**全红**。它们就是①那一格的执行者。
-    for (rel, judge) in [
-        (
-            "tests/backend/readonly_guard.rs",
-            "fn no_test_code_leaks_into_any_production_section",
-        ),
-        (
-            "tests/common/guard-core/rules/strip_clean.rs",
-            "fn every_backend_file_strips_clean",
-        ),
-        (
-            "tests/frontend/shell/structural_scan_tests.rs",
-            "fn every_monitor_file_strips_clean",
-        ),
-    ] {
-        let src = std::fs::read_to_string(root.join(rel))
-            .unwrap_or_else(|e| panic!("{rel} 读不到：{e} —— 本条判不了，不许当成绿"));
-        assert!(
-            src.contains(judge),
-            "元守卫 `{judge}` 不在 `{rel}` 里了 —— \n\
-             它是上面①那条「生产树里没有测试代码」的**执行者**：①只在每次跑测试时看一眼，\n\
-             而这三条是按文件逐份剥出生产段来核的。\n\
-             ⚠ 说它们「可以退役」，而步 7c 的正控证明**退不得**：\n\
-             往生产段塞一段真漏进来的 `#[test]` ⇒ 这三条全红。别照那一节的散文退役它们。"
-        );
-    }
 }

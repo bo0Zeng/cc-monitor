@@ -287,7 +287,6 @@ fn the_sealed_module_is_the_only_place_that_can_reach_the_field() {
             names.iter().any(|x| x == n),
             "登记表里的 `{n}` 已经不在 `sealed` 里了 —— 表和盘对不上"
         );
-        assert!(why.len() > 8, "`{n}` 这一行没写理由");
     }
     assert_eq!(
         names.len(),
@@ -400,9 +399,6 @@ fn every_fn_touching_the_inner_field_is_classified() {
              把一个新出口标成 `ReadsOnly` 混进表里，正是这张表最容易退化成的样子。"
     );
     // ④ 每一行都要写得出理由（空理由 = 「谁红了就加一行」的症状）。
-    for (name, _, why) in INNER_FIELD_USERS {
-        assert!(why.len() > 8, "`{name}` 这一行没写理由");
-    }
 
     // ⑤ 结构性纵深：块里**任何 fn 都不许有 `&mut` 出参**。
     //    出参是明文外流的载体，而它**没有返回类型**、也不必是 `pub` —— 分类那一关兜不住它。

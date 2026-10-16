@@ -434,3 +434,22 @@ fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {
     );
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// 凭据文件不是前端整份读写的那份配置（同一个目录可以），`config.rs` 生产段也不认那个字段名。
+#[test]
+fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
+    use creds_core::store;
+    let cfg = super::resolve_config_path().expect("config path");
+    let creds = store::credentials_path(&super::resolve_monitor_data_dir().expect("data dir"));
+    assert_ne!(cfg, creds, "凭据落在了前端『读—改—写』整份的那个文件上");
+    assert_eq!(cfg.parent(), creds.parent());
+    let cfg_src =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"));
+    assert!(
+        !cfg_src.contains(store::KEY_FIELD),
+        "`config.rs` 的生产段里出现了 `{}` —— key 进了前端整份读写的那份配置",
+        store::KEY_FIELD
+    );
+    // 正控：这个字段名在凭据模板里认得出。
+    assert!(store::template().contains(store::KEY_FIELD));
+}

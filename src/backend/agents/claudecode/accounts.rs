@@ -234,8 +234,6 @@ pub(crate) fn config_path_in(root: &std::path::Path) -> std::path::PathBuf {
 
 /// 某个配置根下、对某个 cwd 的**信任状态** → 一行 JSON（`{trusted, known, error}`）。
 ///
-/// `S3` 从 `accounts_query::trust_of_claude_json` 原样搬来（逻辑一字未改）。
-///
 /// ⚠ **只出这三个字段**：`.claude.json` 里有 `mcpServers` 的环境变量（可能含 API key），
 /// 整份吐出去就是把密钥送上 wire。
 pub(crate) fn trust_of_config(p: &Path, cwd: &str) -> Result<String, (String, String)> {

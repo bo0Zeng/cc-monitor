@@ -61,14 +61,6 @@ fn unknown_state_fails_closed() {
     assert!(!gate2("someones-session", Some("")).allowed());
 }
 
-#[test]
-fn the_wire_names_are_pinned_not_derived_from_debug() {
-    // 夹具与 e2e 都比这几个字面量；跟着 `Debug` 漂就成了「两侧一起漂」。
-    assert_eq!(Gate2::AllowedByName.as_str(), "allowed_by_name");
-    assert_eq!(Gate2::AllowedByRemoteSid.as_str(), "allowed_by_remote_sid");
-    assert_eq!(Gate2::Rejected.as_str(), "rejected");
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // tmux 会话名的两条规则（新建 · 已有会话）—— 全仓唯一一份。
 // 守的要求：`INVARIANTS §47` ①（新建）/ ②（attach 目标）· F01「不把 glob 建进会话名」。

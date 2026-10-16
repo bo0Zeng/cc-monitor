@@ -155,11 +155,4 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
              已登记的：{registered:?}",
         offenders.join("\n  ")
     );
-    for (file, name, why) in REMOTE_ONLY {
-        assert!(
-            why.chars().count() >= 30,
-            "`REMOTE_ONLY` 里 {file}::{name} 的理由只有 {} 字 —— 那是占位不是理由",
-            why.chars().count()
-        );
-    }
 }

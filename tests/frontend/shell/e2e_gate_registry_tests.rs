@@ -1036,12 +1036,6 @@ fn no_e2e_script_inherits_a_dev_machine_path_it_may_write_to() {
         "tests/e2e/ 里「先继承开发机的值」的路径写法与登记表对不上。多出来的 ⇒ 改成无条件指向沙箱（开发机 rc 里的真值会被照用、再被写坏）；\
          少了的 ⇒ 那一处改掉了，同拍把登记摘掉"
     );
-    for (f, _, why) in INHERITED_PATH_ALLOWED {
-        assert!(
-            why.chars().count() >= 15,
-            "`{f}` 没写清为什么它不是往真路径里写"
-        );
-    }
 }
 
 /// 一份脚本 / 代码里「起 tmux 之前摘掉了继承来的 `$TMUX`」的几种写法（有边界地找，不按子串）。

@@ -61,11 +61,9 @@ mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostSc
                       //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
                       //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
-mod history;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend_control;
-mod cc_bus;
 mod frame_query;
 mod inbound_client;
 mod local_backend;
@@ -93,7 +91,6 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
-mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零写零交路径（本机常驻后端按家推、写、答）—— 只剩判据
 pub(crate) mod detail; // 壳这一端写的「复制详情」那几行 ＋ 壳命令失败的那一形 `Said`
 
 // 截图台架那个无头壳只在台架编译时有（发版构建不带）：判据 · 本体。
@@ -150,17 +147,7 @@ mod link_mux;
 // 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
-mod frame_tally;
-// T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
-// **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`deploy.rs` 的 tmux 目标守卫、
-// `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
-// 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
-/// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
-///
-/// ⚠ **插在这里、不要插在上面那条注释与 `#[cfg(test)]` 之间。** U1a 初版就插错了位置，
-/// 把属性与 `mod structural_scan;` 的配对拆开 —— `structural_scan` 当场变成无条件编译，
-/// 上面注释里逐字写着的「顺带消掉 5 条 dead_code 警告」被原样撤销，而 CI 的 `cargo build`
-/// 没有 `-D warnings` ⇒ **不会红**。是 Phase D 审计数出「dead_code 正好 +5」才发现的。
+/// `shared/ccm` 的强度契约（仅测试构建）。
 #[cfg(test)]
 mod ccm_cli_contract;
 #[cfg(test)]
@@ -172,6 +159,7 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
+mod frame_tally;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/judges_live_in_tests.rs"]
 mod judges_live_in_tests; // 壳的生产源码里不放判据（`*_registry` / `*_guard` / `*_ledger` 住 tests/）
@@ -257,9 +245,7 @@ mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/shell_lint_registry.rs"]
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
-#[cfg(test)]
-mod structural_scan;
-// 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
+                         // 业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/swallow_registry.rs"]
 mod swallow_registry;

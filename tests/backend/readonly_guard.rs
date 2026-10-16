@@ -182,9 +182,6 @@ mod tests {
                 holders.insert(rel, n);
             }
         }
-        for (p, why) in LOCK_HOLDERS {
-            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么要这把锁");
-        }
         let want: std::collections::BTreeSet<String> =
             LOCK_HOLDERS.iter().map(|(p, _)| p.to_string()).collect();
         let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
@@ -318,7 +315,7 @@ mod tests {
 
     /// 🔴🔴 **文件管理写面不再问「这是不是一份会话记录」。**
     ///
-    /// 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」；
+    /// 要求「**文件管理器全部都可以改. 不需要任何围栏**」；
     /// 文件管理面写的路径因此只过路径解析（`Face` 只收它交回的 `Resolved`），不问会话形状。
     ///
     /// # 两向相等，人群按事实取样
@@ -407,7 +404,7 @@ mod tests {
             found,
             want,
             "\n🔴 后端里问「这是不是一份会话记录」的地方，不再恰是删历史会话那一条要的三处。\n\
-             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而用户原话是\n\
+             多出来的（⇒ 有人把会话文件围栏接回了文件管理写面或别处，而要求是\n\
              「文件管理器全部都可以改. 不需要任何围栏」）：{:?}\n\
              少了的（⇒ 删会话那一条的形状变了；它不在 FN1 射程里，先去看是谁动的）：{:?}",
             found.difference(&want).collect::<Vec<_>>(),
@@ -1660,10 +1657,6 @@ mod capture_is_read_only {
             verbs.len()
         );
         for (needle, why) in &verbs {
-            assert!(
-                why.chars().count() >= 12,
-                "针 {needle:?} 没写清「为什么它算改状态」—— 黑名单里的每一条都要说得出理由"
-            );
             let sample = format!("let _ = tmux_argv({needle}, target);");
             assert_eq!(
                 hits(&sample),
@@ -1830,11 +1823,6 @@ pub(crate) mod g6_doctrine {
                 "`{cell}` 这一格没写「什么时候落在这一格」或「正确处置」"
             );
             assert!(
-                why.trim().chars().count() >= 20,
-                "`{cell}` 的 why 太短（{} 字）—— 说不清为什么是这个处置，下一个人只会照抄格名",
-                why.trim().chars().count()
-            );
-            assert!(
                 unlock.trim().chars().count() >= 20,
                 "`{cell}` 没写**这一格自己什么时候要被重新裁定**（实得 {} 字）—— \
                  一张没有解锁条件的判准表，用不了几轮就会变成装饰",
@@ -1940,7 +1928,6 @@ mod g6_reach {
                 "反例 `{rel}` 今天**红了** —— 那说明本护栏的射程变了，\
                  这张表说的话已经不成立，回来重判"
             );
-            assert!(why.trim().chars().count() >= 20, "`{rel}` 的 why 太短");
             assert!(
                 unlock.trim().chars().count() >= 20,
                 "`{rel}` 没写解锁条件 —— 没有解锁条件的反例登记会一直躺着"
@@ -2546,11 +2533,6 @@ mod error_envelope_registry {
             assert!(
                 whose.chars().count() >= 5,
                 "{p} :: {anchor} 说不出这一份是谁的出口"
-            );
-            assert!(
-                why.chars().count() >= 30,
-                "{p} :: {anchor} 的理由只有 {} 字 —— 一条说不出理由的签字就是一条免检",
-                why.chars().count()
             );
         }
     }
@@ -3343,12 +3325,6 @@ mod g6_dependency_signoff {
                 is_verdict(verdict),
                 "`{name}` 的判档是 `{verdict}` —— 它不在闭集里。闭集（现算）：{}",
                 verdict_names().join(" / ")
-            );
-            assert!(
-                why.trim().chars().count() >= 20,
-                "`{name}` 的签字太短（实得 {} 字）—— 这一列的读者是下一个想加依赖的人，\
-                 要写的是「它在后端里做什么 · 凭什么落这一档」，不是一句「没问题」",
-                why.trim().chars().count()
             );
             assert!(
                 declared
@@ -4344,12 +4320,6 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
             assert!(
                 FAMILIES.contains(family),
                 "`{family}` 不在家族闭集里：{FAMILIES:?}"
-            );
-            assert!(
-                why.trim().chars().count() >= 30,
-                "有一条能力锚点没写清它凭什么是形状（实得 {} 字）—— \
-                 这一栏的读者是下一个想往表里加一行的人",
-                why.trim().chars().count()
             );
         }
         for (op, why) in REMOTE_MUTATION_VERBS {

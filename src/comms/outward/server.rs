@@ -8,9 +8,8 @@
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
-//! | `tests/frontend/shell/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
+//! | `tests/common/guard-core/rules/creds_store_exits.rs::PLAINTEXT_EXIT_SITES` | **今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream_select/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
 //! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
-//! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/comms/outward/server.rs", "handle_alloc_error", 1)` |
 //!
 //! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
@@ -46,7 +45,7 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// ⚠ `HEAD_CAP` **管不到这个量** —— 它只管头**字节数**。先前这一格没有任何上限，
 /// 一条 `Content-Length: 1000000000000` 就能把**整个中转进程** abort 掉
-/// （`handle_alloc_error` ⇒ SIGABRT，不走 unwind），而这里是「一个进程服务 N 个会话」
+/// （`std::alloc::handle_alloc_error` ⇒ SIGABRT，不走 unwind），而这里是「一个进程服务 N 个会话」
 /// ⇒ 打掉的是当时**所有会话**的在途流。
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
@@ -958,7 +957,7 @@ fn pump<R: Read, W: Write>(
 /// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上**上游选择交下来的那一格头**
 ///    （上游选择按这一行的 key 算好的；本层手里没有 key）。取明文的那一行今天住
 ///    `accounts::upstream_select`（先前住本文件），它是 `expose_for_auth_header` 在**整个后端生产段里唯一**的调用点
-///    （`KS2`，由 `creds_store_tests::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees` 相等断言钉住）。
+///    （`KS2`，由 `creds_store_exits::the_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees` 相等断言钉住）。
 /// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
 ///
 ///    ⚠⚠ **订正：这一条先前的理由今天是假的，已收口。**
