@@ -333,12 +333,6 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "PROGRESS_EVERY",
         "**进度上报间隔**（每传够这么多字节报一次进度），量的是节奏不是容量。",
     ),
-    (
-        "PORT_SPAN",
-        "**端口个数**不是体量（`K-P1` 的常驻监听口从家目录 hash 出来，落在 \
-             `49152..=65535` 这 16384 个动态口里）。它没有「超了怎么办」这一格 —— \
-             那个 hash 按定义落在区间内。",
-    ),
     // `NET_EPOCH_TO_WIN32_FILETIME_TICKS`（.NET 与 FILETIME 的纪元差）那一行摘了：它住的那个换算一个调用方都没有，连同常量删了。
     // `PROC_START_TOLERANCE_TICKS` 那一行摘了：它住 monitor 自己那份判活（`session_map.rs` 的 Windows
     //   进程身份核对），本机判活改由本机后端的帧来，那份实现连同这个常量一起删了。
