@@ -19,6 +19,28 @@ allprojects {
     layout.buildDirectory.set(buildRoot.resolve(if (this == rootProject) "_root" else name))
 }
 
+// 文案 · 大小 · 时长经 JNI 调手机那份核心（`core-copy` 的 `CopyCore`）：JVM 单测先编同一个 crate 的宿主版，每个模块的单测从那里加载。
+// cargo 自己按源码增量，本任务每趟都跑；产物登记成单测的输入，核心改了单测跟着重跑。
+val hostCoreDir = buildRoot.parentFile.resolve("backend/mobile-dev")
+val cargoBuildHost =
+    tasks.register<Exec>("cargoBuildHost") {
+        group = "build"
+        description = "cargo 编宿主版 libmobcore.so（JVM 单测加载）"
+        workingDir = rootDir.parentFile.resolve("backend")
+        commandLine("cargo", "build", "-p", "mobcore", "--profile", "mobile-dev")
+        outputs.upToDateWhen { false }
+    }
+subprojects {
+    tasks.withType<Test>().configureEach {
+        dependsOn(cargoBuildHost)
+        inputs
+            .file(hostCoreDir.resolve("libmobcore.so"))
+            .withPropertyName("hostCore")
+            .withPathSensitivity(PathSensitivity.NONE)
+        systemProperty("java.library.path", hostCoreDir.path)
+    }
+}
+
 // 所有 Kotlin 子模块统一接 ktlint + detekt。
 // ktlint 引擎版本从 version catalog 取；在 subprojects{} 外读，子工程闭包里的 libs 访问器解析不到。
 val ktlintToolVersion = libs.versions.ktlintTool.get()
