@@ -12,7 +12,8 @@
  */
 import { copyText } from "./copy-table";
 import { chan, ChanError, unavailableCode, type CallError } from "../../comms/inward/chan";
-import { machineName, peerVersionSaid, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, machineName, peerVersionSaid, refusalOf } from "./ipc/chan-caller";
+import { failToast, type ToastAction } from "./kit/toast";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
 export { machineName };
@@ -20,16 +21,19 @@ export { machineName };
 /**
  * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 是「复制详情」那几行（出错那一端写好，
  * 界面原样放进［复制详情］，`kit/detail.ts::detailOf` 取）；`error` 是通道那一跳分好层的结局（失败出在通道上时才有）——
- * 就地 resume 据它判能不能回落。调用方拿 [`saidOfControl`] 取那一句，不自己拼。
+ * 就地 resume 据它判能不能回落；`action` 是这一层判出的修法（结果未知 ⇒［刷新］），失败 toast 照出按钮。
+ * 调用方拿 [`saidOfControl`] 取那一句，不自己拼。
  */
 export class ControlError extends Error {
   readonly detail: string;
   readonly error: CallError | undefined;
-  constructor(said: string, detail: string, error?: CallError) {
+  readonly action: ToastAction | undefined;
+  constructor(said: string, detail: string, error?: CallError, action?: ToastAction) {
     super(said);
     this.name = "ControlError";
     this.detail = detail;
     this.error = error;
+    this.action = action;
   }
 }
 
@@ -94,7 +98,51 @@ function controlErrorOf(origin: Origin, e: unknown, refusals: Refusals): unknown
     const r = refusalOf(err.body);
     return new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), e.detail, err);
   }
-  return new ControlError(saidOfTransport(origin, err), e.detail, err);
+  const unsure = err.layer === "hop" && err.reach !== "NotSent";
+  return new ControlError(saidOfTransport(origin, err), e.detail, err, unsure ? refreshAction(origin) : undefined);
+}
+
+/** 结果未知 ⇒［刷新］：让那台对齐一次，列表照它补齐，看得出那一下做成了没有。 */
+function refreshAction(origin: Origin): ToastAction {
+  return {
+    label: copyText("control.channel.refresh"),
+    run: () => void resync(origin).catch((e: unknown) => failToast(copyText("resync.retry.failed"), e)),
+  };
+}
+
+/** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
+const RESYNC_BUDGET_MS = 20_000;
+
+/** 一次对齐的差异（后端 `resync` 的成品）。 */
+export interface Resynced {
+  added: number;
+  removed: number;
+  retagged: number;
+  /** 在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
+  caughtUp: number;
+  watchers: number;
+}
+
+const resyncRefusals: Refusals = {
+  byCode: (_code, said) => copyText("resync.call.refused", { said }),
+  noReason: () => copyText("resync.call.noReason"),
+};
+
+/**
+ * **手动对齐**：问那台机器的后端 `resync`（本机与远端同一条）；给了 `sid` 就只对那一个会话。失败 ⇒ 抛 [`ControlError`]。
+ * 住这一层：结果未知那一句的［刷新］就是它（落点与按钮见 `resync.ts`）。
+ */
+export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
+  const budget = budgetWithin(RESYNC_BUDGET_MS);
+  const req = sid === undefined ? {} : { sid };
+  // 回包里那两格能力事实 monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面不读。
+  const { added, removed, retagged, caught_up: caughtUp, watchers } = await settleTyped(
+    origin,
+    "resync",
+    callTyped(origin, "resync", req, budget),
+    resyncRefusals,
+  );
+  return { added, removed, retagged, caughtUp, watchers };
 }
 
 /**

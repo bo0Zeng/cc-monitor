@@ -32,10 +32,9 @@ class SettingsGroupWordlistTest {
     /**
      * 禁用词，逐字，与 `UiWordlistTest` / `ChatAccountGateTest` 同源。
      *
-     * 「会话」「连接」两个裸词不在 `CHAT_MENU_BANNED_WORDS` 里（那张表只管聊天屏菜单的技术义），
-     * 但这里照禁。
+     * 「连接」这个裸词不在 `CHAT_MENU_BANNED_WORDS` 里（那张表只管聊天屏菜单的技术义），但这里照禁。
      */
-    private val banned = listOf("连接", "SSH", "tmux", "会话", "exec", "bridge", "daemon", "offset")
+    private val banned = listOf("连接", "SSH", "tmux", "exec", "bridge", "daemon", "offset")
 
     private data class Hit(
         val where: String,

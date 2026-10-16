@@ -28,11 +28,11 @@ class DrawerTest {
     fun theItemsAndTheirOrderFollowTheDesign() {
         val entries = drawerEntries()
         assertEquals(
-            "抽屉的项与顺序：⊕ 新对话 · 对话 · 文件 · 终端（项目那一屏还没有，不画）",
+            "抽屉的项与顺序：⊕ 新建会话 · 会话 · 文件 · 终端（项目那一屏还没有，不画）",
             listOf(DrawerItem.NewConversation, DrawerItem.Conversations, DrawerItem.Files, DrawerItem.Terminal),
             entries.map { it.item },
         )
-        assertEquals(listOf("新对话", "对话", "文件", "终端"), entries.map { it.label })
+        assertEquals(listOf("新建会话", "会话", "文件", "终端"), entries.map { it.label })
         assertEquals("行首图标", listOf(Ph.PlusCircle, Ph.Chats, Ph.FolderSimple, Ph.TerminalWindow), entries.map { it.icon })
         assertEquals("顶上的名字", "cc-monitor", DRAWER_TITLE)
         assertEquals("「最近」小标题", "最近", RECENT_HEADER)

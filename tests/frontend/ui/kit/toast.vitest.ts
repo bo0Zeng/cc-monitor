@@ -47,6 +47,17 @@ describe("toast", () => {
     warn.mockRestore();
   });
 
+  it("失败带着一个动作（出错那一层判的修法，如结果未知 ⇒［刷新］）⇒ failToast 照出那个按钮，点了就做", () => {
+    const run = vi.fn();
+    const said = Object.assign(new Error("devbox 操作结果未知（夹具）"), { detail: "", action: { label: "刷新（夹具）", run } });
+    kit.failToast("结束 X 没成（夹具）", said);
+    const t = toasts().find((x) => x.textContent?.includes("操作结果未知"))!;
+    const b = buttonsOf(t).find((x) => x.textContent === "刷新（夹具）");
+    expect(b, "失败带的动作没出按钮").toBeDefined();
+    b!.click();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("纯告知 4s 自己走；带动作 8s；出错不自己走", () => {
     kit.toast("已复制", "", { level: "info" });
     kit.toast(copyText("machineList.remove.done", { machine: "devbox" }), "", { level: "success", action: { label: copyText("kit.toast.undo"), run: () => {} } });

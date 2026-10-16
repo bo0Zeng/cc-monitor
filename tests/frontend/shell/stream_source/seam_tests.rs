@@ -49,7 +49,7 @@ fn the_overflow_message_is_byte_identical_when_only_lines_were_lost() {
         m,
         copy_text(
             "rsSshSource.health.overflowLines",
-            &[("host", "box1"), ("dropped", "3")]
+            &[("machine", "box1"), ("dropped", "3")]
         )
     );
 }

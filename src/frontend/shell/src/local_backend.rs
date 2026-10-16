@@ -522,21 +522,23 @@ pub fn spawn_with_etxtbsy_retry(
     )
 }
 
-/// 撞上那个会自己过去的竞态、而且试到上限之后**该说的那句话**。
+/// 撞上那个会自己过去的竞态、而且试到上限之后**该说的那句话**（最后一次的原话进复制详情）。
 ///
 /// 🔴 **只此一份**：两个落点共用它。各写一份，两句话就会漂，
 /// 而「用户看到的那句话」正是这里唯一交付给用户的东西。
 ///
 /// 它与「起不来」那句的分工：这一句必须让用户读得出**再开一次多半就好**，
 /// 那一句必须让用户读得出**这台机器上今天就是起不来**。
-pub fn etxtbsy_gave_up_reason(bin: &Path, tries: u32, last: &str) -> String {
-    copy_text(
-        "rsLocalBackend.etxtbsy.gaveUp",
-        &[
-            ("bin", &(bin.display()).to_string()),
-            ("tries", &tries.to_string()),
-            ("last", &last.to_string()),
-        ],
+pub fn etxtbsy_gave_up(bin: &Path, tries: u32, last: &str) -> Said {
+    Said::with_raw(
+        copy_text(
+            "rsLocalBackend.etxtbsy.gaveUp",
+            &[
+                ("bin", &(bin.display()).to_string()),
+                ("tries", &tries.to_string()),
+            ],
+        ),
+        last,
     )
 }
 
@@ -725,9 +727,11 @@ pub fn supervise_with_stdio(
                 Ok(c) => c,
                 // 这一刻恰好撞上了 —— 而且试到了上限。换一句话，别说成「起不来」。
                 Err(SpawnFailure::TransientBusy { tries, last }) => {
+                    let said = etxtbsy_gave_up(&bin, tries, &last);
+                    let raw = Some(said.raw());
                     on_event(SuperviseEvent::GaveUp {
-                        reason: etxtbsy_gave_up_reason(&bin, tries, &last),
-                        raw: None,
+                        reason: said.said,
+                        raw,
                     });
                     return;
                 }

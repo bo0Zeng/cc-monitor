@@ -505,7 +505,7 @@ fn spawn_detached(
     local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
         local_backend::SpawnFailure::TransientBusy { tries, last } => {
-            Said::written(local_backend::etxtbsy_gave_up_reason(bin, tries, &last))
+            local_backend::etxtbsy_gave_up(bin, tries, &last)
         }
         // 别的错 ⇒ **今天那句照旧，一个字不改**。
         local_backend::SpawnFailure::Broken(e) => Said::with_raw(

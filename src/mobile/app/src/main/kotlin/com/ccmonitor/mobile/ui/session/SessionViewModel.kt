@@ -25,6 +25,7 @@ import com.ccmonitor.mobile.core.ssh.commandExecutor
 import com.ccmonitor.mobile.core.terminal.TerminalSession
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
+import com.ccmonitor.mobile.ssh.JumpBroken
 import com.ccmonitor.mobile.ssh.PosixDialect
 import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -79,8 +80,10 @@ sealed interface SessionUiState {
         val offeredFingerprint: String,
     ) : SessionUiState
 
+    /** [edit]：改哪一台的设置能修好（跳板坏了）⇒ 给［编辑］。 */
     data class Error(
         val message: String,
+        val edit: String? = null,
     ) : SessionUiState
 
     data class Connected(
@@ -347,7 +350,7 @@ class SessionViewModel(
             Log.w(TAG, "终端没接上：${e.message}", e)
             // 没成的这一段里 SSH 那层已经跟着共用循环换上了另一条（进「连着」那一下赶在这一次失败之前）⇒ 同样重挂一次。
             hostConnector.connection(hostId)?.takeIf { it !== tried && it.isConnected }?.let { rejoined.value = true }
-            SessionUiState.Error(e.message ?: e.toString())
+            SessionUiState.Error(e.message ?: e.toString(), (e as? JumpBroken)?.fixHostId)
         }
     }
 

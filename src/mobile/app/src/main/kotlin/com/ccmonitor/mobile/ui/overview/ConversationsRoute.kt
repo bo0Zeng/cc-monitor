@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.overview
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +35,7 @@ import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.ui.common.EditHostButton
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.conversationsHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -46,14 +48,15 @@ import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 /**
- * 「对话」这一屏的入口：先建 SSH 连接（`HostLink`），通了再在上面接那台的常驻流、读核心的清单。
- * 顶栏同聊天屏：抽屉按钮 ＋「对话」＋ 这台的名字；抽屉与聊天屏是同一个。
+ * 「会话」这一屏的入口：先建 SSH 连接（`HostLink`），通了再在上面接那台的常驻流、读核心的清单。
+ * 顶栏同聊天屏：抽屉按钮 ＋「会话」＋ 这台的名字；抽屉与聊天屏是同一个。
  */
 @Composable
 fun ConversationsRoute(
     hostId: String,
     onOpen: (sessionId: String) -> Unit,
     onDrawerAction: (DrawerAction) -> Unit,
+    onEditHost: (hostId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val link by rememberHostLink(hostId, conversationsHolder(hostId))
@@ -84,6 +87,7 @@ fun ConversationsRoute(
                     is HostLink.Failed ->
                         Column(Modifier.fillMaxSize().padding(inner)) {
                             HostLinkFailed(l.why)
+                            Box(Modifier.padding(horizontal = 24.dp)) { EditHostButton(l.edit, onEditHost) }
                             if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onHide, onDeploy = vm::deploy)
                         }
                     HostLink.Connecting -> if (state.sections.isNotEmpty()) ConversationsScreen(state, machine, onOpen, vm::retry, onHide, Modifier.fillMaxSize().padding(inner), onDeploy = vm::deploy)
@@ -134,7 +138,7 @@ private fun ConversationsTopBar(
         navigationIcon = { PhIconButton(Ph.List, DRAWER_OPEN_DESCRIPTION, onClick = onOpenDrawer, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.sm)) {
-                Text(copyText("mobDrawer.item.chats"), style = MaterialTheme.typography.titleMedium)
+                Text(copyText("mobDrawer.item.sessions"), style = MaterialTheme.typography.titleMedium)
                 machine?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -152,7 +156,7 @@ private fun rememberMachineName(hostId: String): String? {
     return name
 }
 
-/** 一台的清单 VM。「对话」这一屏与抽屉「最近」取同一个（同一个 key）。 */
+/** 一台的清单 VM。「会话」这一屏与抽屉「最近」取同一个（同一个 key）。 */
 @Composable
 private fun conversationsViewModel(
     hostId: String,
@@ -160,7 +164,7 @@ private fun conversationsViewModel(
 ): ConversationsViewModel = koinViewModel(key = "conversations-$hostId") { parametersOf(hostId, machine) }
 
 /**
- * 抽屉「最近」：与「对话」这一屏同一个来源。
+ * 抽屉「最近」：与「会话」这一屏同一个来源。
  *
  * @param linkReady 这台的 SSH 连接通了没有。没通 ⇒ `null`。
  * @return `null` ＝ 还没拿到；拿到后是清单最前面的那些行（核心已按最后活动排好）。

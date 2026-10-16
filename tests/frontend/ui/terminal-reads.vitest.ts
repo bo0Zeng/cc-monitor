@@ -171,6 +171,21 @@ describe("抓一屏：失败怎么说", () => {
     expect(await saidBy("devbox")).toBe(copyText("control.channel.cancelled"));
   });
 
+  it("★ 结果未知那一句带［刷新］：点了问那台对齐一次（`resync`）；别的几层不带", async () => {
+    answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
+    const e = await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"));
+    expect(e.action?.label).toBe(copyText("control.channel.refresh"));
+    const asked: string[] = [];
+    invokeMock.mockImplementation(async (_cmd: string, a: ChanCallArgs) => {
+      asked.push(`${a.origin}:${a.op}`);
+      return chanReply({ added: 0, removed: 0, retagged: 0, caught_up: 0, watchers: 1 });
+    });
+    e.action!.run();
+    await vi.waitFor(() => expect(asked).toEqual(["devbox:resync"]));
+    answer({ "terminal-preview": { fail: UNSUPPORTED } });
+    expect((await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"))).action).toBeUndefined();
+  });
+
   it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；那台没写 ⇒ 无原因那一句带名字", async () => {
     expect(PREVIEW.codes.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
     for (const code of PREVIEW.codes) {

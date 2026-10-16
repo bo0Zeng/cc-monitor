@@ -32,6 +32,14 @@ fun Host.toConnectionConfigs(
     }
 
 /**
+ * 跳板设置坏了（跳板机不在了 · 跳板机无密钥或密码），拒连。[fixHostId] 是改哪一台能修好：界面据它给［编辑］。
+ */
+class JumpBroken(
+    message: String,
+    val fixHostId: String,
+) : IllegalStateException(message)
+
+/**
  * 把 [Host.proxyJumpHostId] 递归解析成跳板 [ConnectionConfig] 链（ssh -J）；null = 直连。
  * 每跳身份走 [resolveHostAuth]；跳板只取首地址，不参与多地址竞速。[visited] 防环（A→B→A）。
  */
@@ -45,10 +53,10 @@ suspend fun resolveJumpChain(
     val jumpId = host.proxyJumpHostId?.trim()?.takeIf { it.isNotEmpty() && it != host.id && it !in visited } ?: return null
     // 配了跳板却解析不了（跳板主机没了、没身份）→ 拒连并报错，绝不静默直连：那会绕过跳板这道安全边界，
     // 还会把「跳板坏了」报成「目标断开」。
-    val jumpHost = hostRepo.get(jumpId) ?: error(copyText("mobConnect.jump.missing"))
+    val jumpHost = hostRepo.get(jumpId) ?: throw JumpBroken(copyText("mobConnect.jump.missing"), host.id)
     // 跳板身份或密码有一样即可；都没有同样拒连。
     if (jumpHost.authRef == null && jumpHost.passwordEnc == null) {
-        error(copyText("mobConnect.jump.noAuth", "label" to jumpHost.label))
+        throw JumpBroken(copyText("mobConnect.jump.noAuth", "label" to jumpHost.label), jumpHost.id)
     }
     val ep = jumpHost.endpoints().first()
     return ConnectionConfig(

@@ -214,7 +214,7 @@ fn label_chars() -> std::collections::BTreeSet<char> {
     }
     // 判法住共用那一份（`pick-core`：选中几项 ⇒ 菜单那张表 · 灰着的为什么）、窗口照画的那几句。
     let picks = std::fs::read_to_string(
-        crate::guard_support::crate_src_root().join("../../../common/pick-core/src/lib.rs"),
+        guard_core::addr::repo_root().join("src/common/pick-core/src/lib.rs"),
     )
     .expect("读不到 pick-core");
     for key in copy_text_keys(&picks) {

@@ -4,45 +4,13 @@
  * 事件驱动漏一拍就一直错（tmux 选项被外部改掉、inotify 换 inode）；后端零定时器，所以兜底是**用户按按钮**，
  * 后端重跑起步那一套、只对差异发帧。三个落点共用本文件这一个口：
  * 设置页机器一行「重新对齐」（整机）· 关卡 2 拒绝提示「对齐后重试」（带 sid，只对那一个会话：重验 ＋ 重打 ＋ 再过一次关卡）·
- * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
+ * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）· 结果未知那一句的［刷新］（整机）。
+ * 那一问本身住 `control-said.ts::resync`（结果未知的修法在那一层判）。
  */
 import { copyText } from "./copy-table";
-import { settleTyped, type Refusals } from "./control-said";
+import { resync, type Resynced } from "./control-said";
 import { toast, failToast } from "./kit/toast";
-import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-
-/** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
-const RESYNC_BUDGET_MS = 20_000;
-
-/** 一次对齐的差异（后端 `resync` 的成品）。 */
-export interface Resynced {
-  added: number;
-  removed: number;
-  retagged: number;
-  /** 在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
-  caughtUp: number;
-  watchers: number;
-}
-
-const refusals: Refusals = {
-  byCode: (_code, said) => copyText("resync.call.refused", { said }),
-  noReason: () => copyText("resync.call.noReason"),
-};
-
-/** 让 `origin` 那台对齐一次；给了 `sid` 就只对那一个会话。失败 ⇒ 抛 [`ControlError`]。 */
-export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
-  const budget = budgetWithin(RESYNC_BUDGET_MS);
-  const req = sid === undefined ? {} : { sid };
-  // 回包里那两格能力事实 monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面不读。
-  const { added, removed, retagged, caught_up: caughtUp, watchers } = await settleTyped(
-    origin,
-    "resync",
-    callTyped(origin, "resync", req, budget),
-    refusals,
-  );
-  return { added, removed, retagged, caughtUp, watchers };
-}
 
 /** 对齐的结果 ⇒ 一句话：对齐差异 ＋补读了几条（0 ⇒「没有漏的」）。 */
 export function resyncSaid(r: Resynced): string {

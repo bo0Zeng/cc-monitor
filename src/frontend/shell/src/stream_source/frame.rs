@@ -243,7 +243,7 @@ pub(super) fn overflow_health_message(
         return copy_text(
             "rsSshSource.health.overflowLines",
             &[
-                ("host", &host_label.to_string()),
+                ("machine", &host_label.to_string()),
                 ("dropped", &dropped.to_string()),
             ],
         );
@@ -265,7 +265,7 @@ pub(super) fn overflow_health_message(
     copy_text(
         "rsSshSource.health.overflowLost",
         &[
-            ("host", &host_label.to_string()),
+            ("machine", &host_label.to_string()),
             ("count", &(lost.len()).to_string()),
             ("named", &named.to_string()),
             ("truncatedNote", &truncated_note.to_string()),

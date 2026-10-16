@@ -8,7 +8,7 @@
 #     静默断网 15 秒 · 90 秒：网回来 CCM_DEVICE_REJOIN（默认 10）秒内要重连上，晚了就红（断 90 秒改前要 56 秒）。
 #   6 终端是逃生口：那台常驻后端起不来（rig.sh backend off）、SSH 照通 ⇒ 静默断网 30 秒（长过 SSH 保活判死）之后，
 #     开着的终端 CCM_DEVICE_REJOIN ＋ 5 秒内照样回来（在终端里 touch 一个文件、台架里看得到它）。
-#   7 冷启动时断网：飞行模式下杀掉再开 App（SSH 一次都没通过）→ 关飞行模式 ⇒ CCM_DEVICE_REJOIN ＋ 10 秒内对话列表自己出来，不靠谁再点一下
+#   7 冷启动时断网：飞行模式下杀掉再开 App（SSH 一次都没通过）→ 关飞行模式 ⇒ CCM_DEVICE_REJOIN ＋ 10 秒内会话列表自己出来，不靠谁再点一下
 #     （网回来的回调 App 一起来就挂上、交给那条重连循环；拨号请求没够着那一台也照样交给它）。
 #   5 慢链路 ＋ 跳板：台架起第二台 sshd 当跳板（rig.sh hop），加一台经它的机器；模拟器里 netem 往返 1.5 秒：
 #     新加那一台要接得上（新建会话答得回）；慢链路上断 20 秒 · 正常网上断 90 秒，网回来 CCM_DEVICE_REJOIN 秒内常驻流要重连上、
@@ -193,9 +193,9 @@ def till_visible(text, t0, secs):
 
 def to_session(title):
     """经抽屉进 [title] 那一条会话。"""
-    smoke.drawer(t("mobDrawer.item.chats"))
+    smoke.drawer(t("mobDrawer.item.sessions"))
     if not wait(title, 30):
-        raise Red(f"对话列表里没有「{title}」")
+        raise Red(f"会话列表里没有「{title}」")
     tap(title)
     time.sleep(2)
 
@@ -230,10 +230,10 @@ def prepare():
         raise Red("钥匙没导进来")
     tap(t("mobKit.act.back")); time.sleep(1)
     smoke.add_host("devbox")
-    smoke.drawer(t("mobDrawer.item.chats"))
+    smoke.drawer(t("mobDrawer.item.sessions"))
     if not wait_listed(45):
-        raise Red("对话列表没出来（没连上）")
-    smoke.drawer(t("mobDrawer.item.newChat"))
+        raise Red("会话列表没出来（没连上）")
+    smoke.drawer(t("mobDrawer.item.newSession"))
     tap(t("chat.input.placeholder")); smoke.typed(f"{D} start")
     smoke.hide_keyboard()
     tap(t("mobChat.input.send"))
@@ -611,23 +611,23 @@ def item5():
     add_host_via("slow", "127.0.0.1", smoke.PORT, jump="hop")
     t0 = time.time()
     title = f"{D} slow"
-    # 对话列表出来 ＝ 常驻流接上了（新建会话屏只在打开那一刻问一次那台，没接上就停在「离线」，不拿它判）。
-    smoke.drawer(t("mobDrawer.item.chats"))
+    # 会话列表出来 ＝ 常驻流接上了（新建会话屏只在打开那一刻问一次那台，没接上就停在「离线」，不拿它判）。
+    smoke.drawer(t("mobDrawer.item.sessions"))
     ready = wait_listed(180)
     up_at = time.time() - t0 if ready else None
     answered = None
     if ready:
-        smoke.drawer(t("mobDrawer.item.newChat"))
+        smoke.drawer(t("mobDrawer.item.newSession"))
         wait("Claude Code", 60)
         tap(t("chat.input.placeholder")); smoke.typed(title)
         smoke.hide_keyboard()
         tap(t("mobChat.input.send"))
         answered = till_visible(f"替身收到：{title}", t0, 180)
     attaches = [c for c in commands_after(t0) if "--resident-attach" in c[1]]
-    nums["慢链路 ＋ 跳板：新加那台 → 常驻流接上（对话列表出来）"] = round(up_at, 1) if up_at is not None else "180s 没接上"
+    nums["慢链路 ＋ 跳板：新加那台 → 常驻流接上（会话列表出来）"] = round(up_at, 1) if up_at is not None else "180s 没接上"
     nums["慢链路 ＋ 跳板：新加那台 → 新建会话答回"] = round(answered, 1) if answered is not None else "没答回"
     nums["慢链路 ＋ 跳板：那段时间里起了几次常驻流 · 跳板登录几次"] = f"{len(attaches)} · {hop_accepts() - hops0}"
-    notes.append(f"慢链路接上 {nums['慢链路 ＋ 跳板：新加那台 → 常驻流接上（对话列表出来）']} · "
+    notes.append(f"慢链路接上 {nums['慢链路 ＋ 跳板：新加那台 → 常驻流接上（会话列表出来）']} · "
                  f"答回 {nums['慢链路 ＋ 跳板：新加那台 → 新建会话答回']}")
     if answered is None:
         netem(None)
@@ -743,7 +743,7 @@ def back_by_itself(label, ready):
     return got
 
 
-# 对话列表出来了：照分区标题认（台架家里的会话跨了日子就不在「今天」那一格）· 或者「没有对话」那一句。
+# 会话列表出来了：照分区标题认（台架家里的会话跨了日子就不在「今天」那一格）· 或者「无会话记录」那一句。
 LISTED = [t(f"history.section.{k}") for k in ("today", "yesterday", "week", "month")] + [t("history.list.empty")]
 
 
@@ -768,13 +768,13 @@ def item7():
         if not wait(failed, WITHIN):
             raise Red("断着网冷启动，落地那一屏没说读不到那台（没断成，或落地不在新建会话）")
         landed = back_by_itself("落地那一屏的新建会话信息", lambda: ui.find(failed) is None and ui.find(t("chat.input.placeholder")) is not None)
-        # ② 断着网时进对话列表：网回来列表自己出来。
+        # ② 断着网时进会话列表：网回来列表自己出来。
         cold_offline()
-        smoke.drawer(t("mobDrawer.item.chats"))
+        smoke.drawer(t("mobDrawer.item.sessions"))
         if listed():
-            raise Red("断着网，对话列表却出来了（没断成）")
-        got = back_by_itself("对话列表", listed)
-        return f"网回来 {landed}s 新建会话信息 · {got}s 对话列表自己出来"
+            raise Red("断着网，会话列表却出来了（没断成）")
+        got = back_by_itself("会话列表", listed)
+        return f"网回来 {landed}s 新建会话信息 · {got}s 会话列表自己出来"
     finally:
         airplane(False)
 
