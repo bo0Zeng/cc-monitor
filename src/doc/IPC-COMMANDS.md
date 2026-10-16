@@ -11261,6 +11261,31 @@ type OnPathVerdict = "ours" | "other" | "absent" | "unknown";
 
 码：`bad_args`
 
+#### `ccm-user-path`
+
+`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ccm-user-path`
+
+入参 `UserPathReq` · 回包 `UserPath`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type UserPath = { state: UserPathState, said: string, 
+/**
+ * 问不出 / 改没成时的复制详情（原话在里面）；顺利 ⇒ `null`。
+ */
+detail: string | null, 
+/**
+ * 在 ⇒ 撤那一段；不在 ⇒ 加那一段；判不了 ⇒ `null`。
+ */
+command: string | null, };
+type UserPathOp = "read" | "add" | "remove";
+type UserPathReq = { op: UserPathOp, };
+type UserPathState = "on" | "off" | "unknown" | "not_windows";
+```
+
+码：`bad_args`
+
 #### `deploy-plan`
 
 那台的后端要不要换、换成哪一格。
@@ -12919,6 +12944,7 @@ needs: string | null, };
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
+| `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |

@@ -7,6 +7,7 @@ import type { ExecPolicy } from "../../../../src/frontend/ui/alias-reads";
 import type { AliasNameClash as NameClash } from "../../../../src/frontend/ui/generated/AliasNameClash";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { factsOn } from "../../../test-support/host-facts";
+import type { UserPath } from "../../../../src/frontend/ui/generated/UserPath";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 12; i += 1) await Promise.resolve();
@@ -21,7 +22,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   let blockAt: Set<string>;
   let clashes: NameClash[];
   let autoLaunchFail: string | null;
-  let userPathErr: { said: string; detail: string } | null;
+  let userPathAt: (op: string) => UserPath;
   let policyA: ExecPolicy | null;
   let policyAfter: ExecPolicy | null;
   let onPathSaid: string;
@@ -44,7 +45,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     blockAt = new Set();
     clashes = [];
     autoLaunchFail = null;
-    userPathErr = null;
+    userPathAt = (op) =>
+      op === "add"
+        ? { state: "on", said: "（在 · 那一句）", detail: null, command: "（撤的那段）" }
+        : { state: "off", said: "（不在 · 那一句）", detail: null, command: "（加的那段）" };
     policyA = null;
     policyAfter = null;
     onPathSaid = "";
@@ -119,6 +123,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
           seen.push({ cmd: "aliases_block_render", args: { origin, rcPath } });
           return Promise.resolve(`# 接入那几行 → ${rcPath}`);
         },
+        userPath: (origin: string, op: string) => {
+          seen.push({ cmd: "ccm_user_path", args: { origin, op } });
+          return Promise.resolve(userPathAt(op));
+        },
         readCcmOnPath: (origin: string) => {
           seen.push({ cmd: "ccm_probe", args: { origin } });
           return Promise.resolve({ verdict: onPathSaid ? "other" : "ours", said: onPathSaid });
@@ -131,17 +139,6 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
           seen.push({ cmd: "cc_get_auto_launch" });
           if (autoLaunchFail !== null) return Promise.reject(autoLaunchFail);
           return Promise.resolve({ auto_launch_enabled: false, monitor_exe_path: null });
-        },
-        ccm_user_path_status: () => {
-          seen.push({ cmd: "ccm_user_path_status" });
-          return Promise.resolve({
-            supported: true,
-            onUserPath: false,
-            dir: "C:\\Users\\u\\.cc-monitor\\bin",
-            error: userPathErr,
-            addCommand: "（加的那段）",
-            removeCommand: null,
-          });
         },
       },
     }));
@@ -177,12 +174,12 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   /** 重读：别名那一份 ＋ 终端里敲 ccm 走到哪那一格；PowerShell 那几格跟着重问（用户级 PATH 那一格有自己的「刷新」）。 */
   const REREAD: Record<Plat, string[]> = {
     posix: ["aliases_read", "ccm_probe", "profiles_read"],
-    powershell: ["aliases_read", "cc_get_auto_launch", "ccm_probe", "ccm_user_path_status", "profiles_read"],
+    powershell: ["aliases_read", "cc_get_auto_launch", "ccm_probe", "ccm_user_path", "profiles_read"],
   };
 
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "ccm_probe", "profiles_read"],
-    powershell: ["aliases_read", "cc_get_auto_launch", "ccm_probe", "ccm_user_path_status", "profiles_read"],
+    powershell: ["aliases_read", "cc_get_auto_launch", "ccm_probe", "ccm_user_path", "profiles_read"],
   };
 
   it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多；别名那几发都带这个平台的 shell", async () => {
@@ -440,8 +437,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(toasted).toEqual([`${copyText("machineAliases.openRc.failed")}|Error: 没有关联程序|/h/rc-a`]);
   });
 
-  it("用户 PATH 探不动（只 PowerShell 有这一格）：那一句上屏、开关不给拨；PowerShell 的原话不上屏，跟在［复制详情］里", async () => {
-    userPathErr = { said: copyText("rsProfileInstaller.ps.exitCode"), detail: "原话：Access is denied." };
+  it("用户 PATH 判不了（只 PowerShell 有这一格）：那台后端那一句上屏、开关不给拨；原话不上屏，跟在［复制详情］里", async () => {
+    userPathAt = () => ({ state: "unknown", said: "（判不了 · 那一句）", detail: "原话：Access is denied.", command: null });
     const el = await mount();
     await open(el);
     const help = el.querySelector<HTMLElement>(".ccm-user-path-status");
@@ -451,10 +448,30 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     }
     expect(help).not.toBeNull();
     if (help === null) return;
-    expect(help.textContent).toContain(copyText("rsProfileInstaller.ps.exitCode"));
+    expect(help.textContent).toContain("（判不了 · 那一句）");
     expect(help.textContent, "原话不上屏").not.toContain("Access is denied");
     expect(help.querySelector('[data-part="copy-detail"]'), "有详情 ⇒ 句子后面跟［复制详情］").not.toBeNull();
     expect(el.querySelector('[data-role="win-path"] button')!.getAttribute("aria-disabled")).toBe("true");
+    expect(el.querySelector<HTMLElement>(".ccm-user-path-cmd")!.textContent).toBe("");
+  });
+
+  it("用户 PATH 开关：拨一下 ⇒ 那台后端做那一下，回来的成品照画（开关位置 · 那一句 · 那段命令）", async () => {
+    const el = await mount();
+    await open(el);
+    if (plat === "posix") return;
+    const help = el.querySelector<HTMLElement>(".ccm-user-path-status")!;
+    const cmd = el.querySelector<HTMLElement>(".ccm-user-path-cmd")!;
+    const sw = el.querySelector<HTMLButtonElement>('[data-role="win-path"] button')!;
+    expect(help.textContent).toBe("（不在 · 那一句）");
+    expect(cmd.textContent).toBe("（加的那段）");
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    seen = [];
+    sw.click();
+    await flush();
+    expect(seen).toEqual([{ cmd: "ccm_user_path", args: { origin: "<local>", op: "add" } }]);
+    expect(help.textContent).toBe("（在 · 那一句）");
+    expect(cmd.textContent).toBe("（撤的那段）");
+    expect(sw.getAttribute("aria-checked")).toBe("true");
   });
 
   it("终端里敲 ccm 走到哪那一句照那台后端给的画：有话就露出来、原样；没话就藏起来", async () => {

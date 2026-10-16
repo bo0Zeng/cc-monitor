@@ -35,6 +35,7 @@
 
 pub(crate) mod on_path;
 pub(crate) mod plan;
+pub(crate) mod user_path;
 
 use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;

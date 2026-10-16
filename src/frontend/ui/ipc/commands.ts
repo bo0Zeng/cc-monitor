@@ -68,25 +68,6 @@ export interface StopAnswer {
   pid: number | null;
 }
 
-/**
- * 用户级 PATH 那一格的现状。手写（理由见 `ccm_user_path_status` 那一条），
- * 字段名与 Rust 侧 `profile_installer::UserPathStatus` 的线上名由判据对拍。
- */
-export interface UserPathStatus {
-  /** 这台机器有没有「用户级 PATH」这一档 —— 它是 Windows 独有的。 */
-  supported: boolean;
-  /** 我们那个 bin 目录的绝对路径。探不动 ⇒ null。 */
-  dir: string | null;
-  /** 在不在用户级 PATH 上。🔴 `error` 非空时这一格恒 false，**别单看它**。 */
-  onUserPath: boolean;
-  /** 「加」那条命令的逐字文本（与按钮跑的是同一份字节）。 */
-  addCommand: string | null;
-  /** 「撤」那条命令的逐字文本。 */
-  removeCommand: string | null;
-  /** 探不动时的那一句 ＋ 复制详情（PowerShell 的原话 · 退出码在详情里）。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
-  error: Said | null;
-}
-
 /** 两条开窗命令的结局（壳 `platform/terminal.rs::TerminalOpen`）：开了 · 一个终端都没探到 · 设置里指定的那个不在。 */
 export type TerminalOpened = "opened" | "noWindow" | "setMissing";
 
@@ -102,19 +83,6 @@ export const commands = {
   /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   cc_set_auto_launch: (args: { enabled: boolean }) =>
     invoke<void>("cc_set_auto_launch", args),
-
-  /**
-   * 用户级 PATH 那一格的现状。现算、不缓存：每调一次后端真跑一趟 `powershell.exe`（几百 ms）⇒ 只在打开那一格 / 点刷新时调，不许轮询。
-   * 返回类型手写（`UserPathStatus`，桶③里唯一不用生成物的一处）：Rust 侧判据
-   * `the_user_path_status_wire_fields_match_the_hand_written_ts` 把线上字段名与这份接口逐字对拍，改了 Rust 不改这里当场红。
-   */
-  ccm_user_path_status: () => invoke<UserPathStatus>("ccm_user_path_status"),
-
-  /** 把我们那个 bin 目录加到用户级 PATH。桶①。 */
-  ccm_user_path_add: () => invoke<void>("ccm_user_path_add"),
-
-  /** 从用户级 PATH 上只摘掉我们那一格。桶①。 */
-  ccm_user_path_remove: () => invoke<void>("ccm_user_path_remove"),
 
   /**
    * 前端性能日志落进 monitor 日志（无 devtools 环境下的唯一取证通道，grep `fe_perf`）。

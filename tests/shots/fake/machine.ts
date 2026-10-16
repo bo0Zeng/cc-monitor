@@ -280,7 +280,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       backend_stderr: [],
     }),
     cc_get_auto_launch: () => ({ auto_launch_enabled: false, monitor_exe_path: "/opt/cc-monitor/cc-monitor" }),
-    ccm_user_path_status: () => ({ supported: false, dir: null, onUserPath: false, addCommand: null, removeCommand: null, error: null }),
     diagnostics_report: (a) => {
       const keys = (a.configUnknown as string[] | undefined) ?? [];
       return {

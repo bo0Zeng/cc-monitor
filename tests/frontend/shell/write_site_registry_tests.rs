@@ -505,9 +505,7 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
 
 /// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
 const MOVED_OUT: &[&str] = &[
-    // `account_aliases.rs` · `fenced_block.rs` 整份搬进了那台后端（`assets/aliases/`）⇒ 出名单；
-    //   `profile_installer.rs` 只剩用户级 PATH 那一格，留在名单里。
-    "profile_installer.rs",
+    // `account_aliases.rs` · `fenced_block.rs` · `profile_installer.rs` 整份搬进了那台后端 ⇒ 出名单。
     // `mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
     // `skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
     // `cc_bus_deploy.rs` 整份删了（装前那道本机 `ccm` 预检随它删）⇒ 出名单。
@@ -567,7 +565,7 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         offenders.join("\n")
     );
     // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
-    let raw = std::fs::read_to_string(root.join("profile_installer.rs")).expect("读");
+    let raw = std::fs::read_to_string(root.join("history.rs")).expect("读");
     let poisoned = format!(
         "{}\nfn sneaky(p: &std::path::Path) {{ let _ = std::fs::write(p, b\"x\"); }}\n",
         guard_core::production_code(&raw)

@@ -1003,7 +1003,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
             "这一块又在动会话级 `$env:PATH` 了。\n\
                  `R86` 逐字把这一段删了，理由是它造出「PowerShell 里能、`cmd` 里不能」\
                  那个半通状态 —— 要让 `{word}` 在**所有**终端里都找得到，\
-                 走的是**用户级** PATH 那一条（`render_user_path_setup_command`，\
+                 走的是**用户级** PATH 那一条（`ccm-user-path`，\
                  由用户点一下）。\n实得 {} 行：\n{:#?}",
             touches.len(),
             touches
@@ -1623,4 +1623,57 @@ fn the_posix_block_leaves_a_terminal_record_only_in_a_local_graphical_shell() {
             "{sh}: CCM_DATA_DIR 设了就写那里：{line}"
         );
     }
+}
+
+/// **共用的 POSIX 别名 snippet 把 `ccm` 落点放上 PATH，而且只放它。** 真 `source` 一趟问 `$PATH`：加进来的目录集合 == {落点}（两向）；
+/// source 两趟 PATH 不变（幂等）。要 `bash`（这份 snippet 本来就只装进 POSIX rc）。
+#[cfg(unix)]
+#[test]
+fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
+    let (local, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .expect("后端落点的目录");
+    let td = tmpdir("aliassnip");
+    let home = td.0.join("h");
+    std::fs::create_dir_all(&home).expect("造假家目录");
+    let snip = td.0.join("snippet.sh");
+    std::fs::write(&snip, CCM_WRAPPER_SNIPPET).expect("写 snippet");
+    let run = |times: usize| -> String {
+        let dots = format!(". '{}'; ", snip.display());
+        let script = format!("{}printf '%s' \"$PATH\"", dots.repeat(times));
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(&script)
+            .env("HOME", &home)
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .expect("跑 bash —— 沙箱里没有 bash 的话这条判据够不着被测对象");
+        assert!(
+            out.status.success(),
+            "source 那份 snippet 直接失败了（这本身就是一条缺陷）：\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let path = run(1);
+    let added: Vec<&str> = path
+        .split(':')
+        .filter(|s| !["/usr/bin", "/bin"].contains(s))
+        .collect();
+    let segs: Vec<&str> = path.split(':').collect();
+    assert_eq!(
+        segs[segs.len().saturating_sub(2)..],
+        ["/usr/bin", "/bin"],
+        "原来的 PATH 被动了：{path}"
+    );
+    assert_eq!(
+        added,
+        vec![format!("{}/{local}", home.display())],
+        "别名块加进 PATH 的目录不是恰好 `ccm` 落点那一个（旧的 `~/.local/bin` 退役了）"
+    );
+    assert_eq!(
+        run(2),
+        path,
+        "source 两趟 PATH 变了 —— 嵌套 shell 会让 PATH 无限变长"
+    );
 }

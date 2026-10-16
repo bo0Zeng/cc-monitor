@@ -12,6 +12,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::control::ccm::CcmProbe>(
         "这台的 `ccm` 会哪些、终端里敲它走到哪",
     ),
+    // **用户级 `PATH` 那一格**（只 Windows）：`{op: read|add|remove}` → 做完现问的状态 ＋ 那一句 ＋ 那段命令（起 PowerShell ⇒ 阻塞档）。
+    crate::wire::typed::blocking::<crate::control::ccm::user_path::CcmUserPath>(
+        "`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤",
+    ),
     // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
     //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
     crate::wire::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(

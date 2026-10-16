@@ -143,14 +143,6 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          它按同一个家算出同一个口。等带期限（`backend_once::capture_full`，起那一下在它的闭包里交给出口）。\
          stdout 要 piped（结局那一行是返回值）、stderr 要 captured（失败那句 `{code,message}`）。⚠ 已登记在 `SPAWNS`。",
     ),
-    (
-        "profile_installer.rs",
-        "run_user_path_powershell",
-        "spawn_managed_cmd",
-        "argv 的四段是**承重的**：`-NoProfile`（这一跳的行为不许被用户 profile 左右，\
-         而这里刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
-         · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
-    ),
     // 别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
     // 拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
     // `ssh -G` 那一行出表（解析 ssh config 搬进后端）。

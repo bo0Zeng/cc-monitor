@@ -114,8 +114,7 @@ mod local_origin_registry;
 mod logging;
 mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-mod profile_installer;
-// 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
+              // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
 mod files_batch_relay; // 后端的 `files_batch` 帧（一组做到哪了）按票转给文件窗口订的 `files-batch/<票>`
 mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
@@ -863,9 +862,6 @@ pub fn run() {
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
-            ccm_user_path_status,
-            ccm_user_path_add,
-            ccm_user_path_remove,
             cc_get_auto_launch,
             cc_set_auto_launch,
             // v2.0.0 (issue #4): 诊断 / log
@@ -1623,64 +1619,6 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
         Ok(auto_launch::set_enabled(&dir, enabled)?)
     })();
     r.map_err(|s| s.named("cc_set_auto_launch"))
-}
-
-// ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====
-//
-// 用户 `R85` 逐字：「**应该让用户手动点击加，也能管理删除。就像是 log 数据管理一样。**」
-// ⇒ 三样：**现在状态（现算不缓存）· 一个按钮加 · 一个按钮撤**，形状照
-// `src/frontend/ui/settings/diagnostics-section.ts`（用户点名的那个范式，它现打也全走 `commands.*`）。
-//
-// 实现一律住 `profile_installer` 那一族（`R87` 裁定：同一族动作不许另起一条路）；
-// 这三条只是**包装层**，一行业务逻辑都不许写在这里。
-// 三条都走 `spawn_blocking`：它们底下要起一趟 `powershell.exe`（`R88`），不许占住 async 执行器。
-
-/// `KR135D1` ①：**现在状态** —— `~/.cc-monitor\bin` 在不在**用户级** PATH 上。
-///
-/// **现算，不缓存**：每调一次真跑一趟探针。界面只在「打开那一格 / 点刷新」时调它
-/// （起一趟 PowerShell 几百 ms ⇒ 不许轮询）。
-/// 🔴 探不动时回的是 `error` 非空、`on_user_path = false` —— 前端**必须**把 `error` 显示出来，
-/// 不许把「问不出来」静默成「没装」。
-#[tauri::command]
-async fn ccm_user_path_status() -> Result<profile_installer::UserPathStatus, Said> {
-    let r: Result<profile_installer::UserPathStatus, Said> = async move {
-        Ok(
-            tokio::task::spawn_blocking(profile_installer::user_path_status)
-                .await
-                .map_err(Said::crashed)?,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("ccm_user_path_status"))
-}
-
-/// `KR135D1` ②：**一个按钮加**。跑的就是界面上显示给用户看的那段字节
-/// （`render_user_path_setup_command`）—— 点按钮与自己复制去跑**逐字同一份**。
-#[tauri::command]
-async fn ccm_user_path_add() -> Result<(), Said> {
-    let r: Result<(), Said> = async move {
-        Ok(
-            tokio::task::spawn_blocking(profile_installer::user_path_add)
-                .await
-                .map_err(Said::crashed)??,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("ccm_user_path_add"))
-}
-
-/// `KR135D1` ③：**一个按钮撤**。**只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
-#[tauri::command]
-async fn ccm_user_path_remove() -> Result<(), Said> {
-    let r: Result<(), Said> = async move {
-        Ok(
-            tokio::task::spawn_blocking(profile_installer::user_path_remove)
-                .await
-                .map_err(Said::crashed)??,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("ccm_user_path_remove"))
 }
 
 // ===== v2.0.0 (issue #4): 诊断 / log IPC =====

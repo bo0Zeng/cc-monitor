@@ -330,6 +330,8 @@ import type { Trust } from "./Trust";
 import type { UnfollowReq } from "./UnfollowReq";
 import type { UserInputs } from "./UserInputs";
 import type { UserInputsReq } from "./UserInputsReq";
+import type { UserPath } from "./UserPath";
+import type { UserPathReq } from "./UserPathReq";
 import type { VerdictReply } from "./VerdictReply";
 import type { VerdictReq } from "./VerdictReq";
 import type { VerifyReport } from "./VerifyReport";
@@ -377,6 +379,7 @@ export interface TypedCommands {
   "cc-bus-install-state": { req: NoReq; reply: CcBusState; code: "bad_args" | "refused" };
   "ccm-print": { req: CcmPrintReq; reply: CcmLine; code: "bad_args" | "refused" };
   "ccm-probe": { req: NoArgs; reply: CcmCard; code: "bad_args" };
+  "ccm-user-path": { req: UserPathReq; reply: UserPath; code: "bad_args" };
   "chores-mark": { req: ChoresMarkReq; reply: ChoresMarks; code: "bad_args" | "io_failed" | "marks_unreadable" };
   "data-report": { req: FootprintReq; reply: DataReport; code: "bad_args" | "failed" };
   "deploy-plan": { req: DeployPlanReq; reply: Planned; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "undecidable" };
