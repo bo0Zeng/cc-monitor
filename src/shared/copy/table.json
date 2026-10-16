@@ -1616,6 +1616,24 @@
       "zh": "无 HOME · 未找到常驻后端钥匙放处 · 未启动",
       "args": []
     },
+    "bePlaceSelf.outsideStaging": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 不在暂存区 · 未换进落点",
+      "args": ["path"]
+    },
+    "bePlaceSelf.notSelf": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 自报的不是 {mine} · 已删除 · 下次连接重传",
+      "args": ["path", "mine"]
+    },
+    "bePlaceSelf.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{path} 换进落点失败 · {why}",
+      "args": ["path", "why"]
+    },
     "beResident.spawn.noSelf": {
       "kind": "error",
       "role": "原因格",
@@ -2205,6 +2223,12 @@
       "role": "报错",
       "zh": "本版 cc-monitor 未带 {os} / {arch} 的后端 · 无法装到 {machine} · 发布版带",
       "args": ["machine", "os", "arch"]
+    },
+    "deploy.place.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 上的后端没换进落点 · {why} · 原来那份未动",
+      "args": ["machine", "why"]
     },
     "deploy.bytes.unreadable": {
       "kind": "error",

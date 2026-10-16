@@ -503,7 +503,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 /// 门禁跑的是 `--locked`，**声明面与锁定面不一致时 cargo 自己就先失败了**
 /// ⇒ 构造不出「声明面还是 3、锁定面掉到 2」这个状态。
 /// ⇒ 那两条今天是**加固**，不是被验过的牙。**别把它们读成「验过了」。**
-/// 认残件的形状 == `put_atomic` 真起的名字（异源 = 生产那个 `trip_tag`）：临时件 · 备份件都认；
+/// 认残件的形状 == `put_atomic` · 暂存那一份真起的名字（异源 = 生产那个 `trip_tag`）：临时件 · 备份件 · 暂存件都认；
 /// 同一个名字换掉后缀 / 去掉一段 ⇒ 不认。
 #[test]
 fn the_leftover_shape_is_exactly_what_put_atomic_names() {
@@ -514,6 +514,8 @@ fn the_leftover_shape_is_exactly_what_put_atomic_names() {
             "{tag}.{suffix}"
         );
     }
+    let staged = super::staged_name("cc-monitor-backend");
+    assert!(super::is_trip_leftover(&staged), "{staged}");
     let short = tag.rsplit_once('-').unwrap().0;
     for not in [
         format!("ccm.{tag}.part"),

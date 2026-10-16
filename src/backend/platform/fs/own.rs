@@ -3,7 +3,8 @@
 //! - [`Own`] 在后端启动时造一次（[`Own::issue`]，根取 `platform::paths::data_home`），顺着入口递给写自家状态的那几处；
 //!   别处拿不到这个值，也就写不出来。谁许造它由 `readonly_guard` 的构造判据钉（只许启动入口）。
 //! - [`OwnPath`] 只能由 [`Own`] 从根往下拼（相对名、不许 `..`、不许绝对路径）⇒ 方法收的路径落不到根外。
-//! - 方法只有这几件：建一层目录（0700，已在不动）· 拿目录的跨进程锁 · 原子写（要那个目录的锁）· 删文件 · 改名。
+//! - 方法只有这几件：建一层目录（0700，已在不动）· 拿目录的跨进程锁 · 原子写（要那个目录的锁）· 删文件 ·
+//!   把暂存区里的一份后端换进落点（[`Own::place_staged`]，部署那一趟由新传上去的那一份自己做）。
 //!   原子写：旁名出生即只给本人（`O_EXCL` ＋ 0600）→ 写满 → `sync_all` → 原子挪过去；挪不过去就删掉自己建的旁名。
 //!   旁名带 pid ＋ 线程 ＋ 进程内序号，同一进程几个线程同时写同一份也不撞。
 
@@ -169,6 +170,31 @@ impl Own {
     /// （`readonly_guard::remote_write_layer`），本机这一层同名会被认成第二份远端写。
     pub(crate) fn delete_file(&self, path: &OwnPath) -> std::io::Result<()> {
         std::fs::remove_file(&path.0)
+    }
+
+    /// 把暂存区里的一份（`~/.cc-monitor/staging/<name>`，`name` 只许一段名字）原子换进后端落点（`~/.cc-monitor/bin/ccm`）：
+    /// 落点那层目录不在就建（0700），再 `rename(2)` 盖掉旧的（同在 `~/.cc-monitor` 下 ⇒ 同一块盘，落点在换的全程都在）。
+    /// Windows 远端不承诺 ⇒ `Unsupported`。
+    pub(crate) fn place_staged(&self, name: &str) -> std::io::Result<()> {
+        if cfg!(windows) {
+            return Err(std::io::ErrorKind::Unsupported.into());
+        }
+        let bad = || std::io::Error::from(std::io::ErrorKind::InvalidInput);
+        if !one_name(name) {
+            return Err(bad());
+        }
+        let staged = self
+            .at_home(&format!("{}/{name}", relay_route_core::STAGING_DIR_REL))
+            .map_err(|_| bad())?;
+        let landing = self
+            .at_home(relay_route_core::BACKEND_LANDING_REL)
+            .map_err(|_| bad())?;
+        let bin = landing.0.parent().ok_or_else(bad)?;
+        if let Some(home_dir) = bin.parent() {
+            create_dir_private(home_dir)?;
+        }
+        create_dir_private(bin)?;
+        std::fs::rename(&staged.0, &landing.0)
     }
 }
 

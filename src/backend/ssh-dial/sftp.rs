@@ -790,12 +790,17 @@ fn trip_tag() -> String {
     )
 }
 
-/// 这个名字是不是 [`put_atomic`] 留下的临时件 / 备份件：`<名>.<trip_tag>.tmp` 或 `.bak`
-/// （`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这一种 —— 别的名字不是我们放的，一个不碰。
+/// 部署往暂存区放的那一份的名字：`<stem>.<trip_tag>.new`（每趟一个；没换进落点就断了 ⇒ 下一趟按 [`is_trip_leftover`] 认作残件）。
+pub fn staged_name(stem: &str) -> String {
+    format!("{stem}.{}.new", trip_tag())
+}
+
+/// 这个名字是不是一趟部署留下的件：[`put_atomic`] 的临时件 / 备份件（`<名>.<trip_tag>.tmp` · `.bak`）或部署放进暂存区、
+/// 还没换进落点的那一份（`<名>.<trip_tag>.new`；`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这几种 —— 别的名字不是我们放的，一个不碰。
 pub fn is_trip_leftover(name: &str) -> bool {
-    let Some(stem) = name
-        .strip_suffix(".tmp")
-        .or_else(|| name.strip_suffix(".bak"))
+    let Some(stem) = [".tmp", ".bak", ".new"]
+        .iter()
+        .find_map(|sfx| name.strip_suffix(sfx))
     else {
         return false;
     };

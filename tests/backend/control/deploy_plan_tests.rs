@@ -280,16 +280,18 @@ async fn an_unstamped_landing_is_undecidable_whatever_it_holds() {
     // 计划这一路只 stat 与扫戳：对面那一口（`Facing`）连「读回落点那一份」都没有，落点上是什么字节都认不成「我们从前那份」。
 }
 
-/// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」⇒「下次连上清旧的」。
-/// 落点目录里陈旧的临时件 · 备份件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 · 不是 `put_atomic` 那个形状（陈旧也不碰）
-/// · 落点本身 ⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
+/// 要求：「部署中途断了留下的件，之后连上也不清」⇒「下次连上清旧的」。
+/// 暂存区里陈旧的临时件 · 备份件 · 没换进落点的暂存件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 ·
+/// 不是那个形状（陈旧也不碰：上传的 `.part` 归文件管理那一面收）⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
 #[tokio::test]
-async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else() {
+async fn stale_deploy_leftovers_in_staging_are_handed_over_and_nothing_else() {
     let old = NOW - LEFTOVER_STALE_SECS - 1;
     let mut f = Fake::linux(Some("p9a-mine"));
     let rows: Vec<(&str, Option<u64>)> = vec![
         ("ccm.2c0-18d9c8c1df0ec9e7-c.tmp", Some(old)),
         ("ccm.2c0-18d9c8c1df0ec9e7-d.bak", Some(old)),
+        ("cc-monitor-backend.2c0-18d9c8c1df0ec9e7-e.new", Some(old)),
+        ("0123456789abcdef.part", Some(old)),
         ("ccm.2c1-18d9c8c1df0ec9e8-0.tmp", Some(NOW - 60)),
         (
             "ccm.2c1-18d9c8c1df0ec9e8-1.tmp",
@@ -304,15 +306,16 @@ async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else
         (".2c0-1-2.tmp", Some(old)),
     ];
     f.list.insert(
-        ".cc-monitor/bin".into(),
+        ".cc-monitor/staging".into(),
         rows.iter().map(|(n, t)| (n.to_string(), *t)).collect(),
     );
     let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(
         p.leftovers,
         vec![
-            ".cc-monitor/bin/ccm.2c0-18d9c8c1df0ec9e7-c.tmp".to_string(),
-            ".cc-monitor/bin/ccm.2c0-18d9c8c1df0ec9e7-d.bak".to_string(),
+            ".cc-monitor/staging/cc-monitor-backend.2c0-18d9c8c1df0ec9e7-e.new".to_string(),
+            ".cc-monitor/staging/ccm.2c0-18d9c8c1df0ec9e7-c.tmp".to_string(),
+            ".cc-monitor/staging/ccm.2c0-18d9c8c1df0ec9e7-d.bak".to_string(),
         ]
     );
     f.list.clear();

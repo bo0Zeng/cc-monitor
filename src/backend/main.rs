@@ -165,6 +165,8 @@ async fn main() {
             // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
             Some("--answer-hook") => control::asks::hook::run(&args).await,
             Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
+            // 部署那一趟：暂存区里新传上去的那一份自己核字节、换进落点（`control/place_self.rs`）。
+            Some("--place-self") => control::place_self::run(&own),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // 历史读面 · 搜索 · 账号读面 · 分叉 · `--resolve` 那几条手写臂（第 7 批第二题）删了：帧面早有同义的帧命令、
