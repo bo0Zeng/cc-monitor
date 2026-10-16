@@ -1643,8 +1643,13 @@ type WirePath = string | { b16: string };
 入参 `FindReq` · 回包 `FindReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type FilesFindHit = { path: WirePath, kind: FileKind, 
+/**
+ * 画哪种图标（索引不跟链接 ⇒ 链接画 [`FileClass::Link`]）。
+ */
+class: FileClass, 
 /**
  * 相对搜索起点的那一段（所在目录）。
  */
@@ -1716,7 +1721,14 @@ type WirePath = string | { b16: string };
 
 ```ts
 type Crumb = { name: WirePath, path: WirePath, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type FileKind = "dir" | "file" | "symlink" | "other";
+type Gate = { "cap": number } | { "no": string };
+type Gates = { preview: PreviewGate, 
+/**
+ * 查看页：只在两端解得开的那几种图上有。
+ */
+view?: Gate, edit: Gate, };
 type LinkTo = "dir" | "file" | "missing";
 type LsEntry = { path: WirePath, 
 /**
@@ -1738,7 +1750,19 @@ link_dir?: boolean,
 /**
  * 链接指向哪一种（只在链接上）。
  */
-link_to?: LinkTo, };
+link_to?: LinkTo, 
+/**
+ * 画哪种图标（链接画它指向的那一种：指向目录 ⇒ 文件夹，其余按名字）。
+ */
+class: FileClass, 
+/**
+ * 「类型」那一列的字（那台写好）。
+ */
+type_text: string, 
+/**
+ * 读得起来的那几道门；目录（含指向目录的链接）缺。
+ */
+gates?: Gates, };
 type LsReply = { 
 /**
  * 排好的（[`LsReq::sort`]）。
@@ -1778,7 +1802,9 @@ dirs_only?: boolean,
  */
 sort?: LsSort, };
 type LsSort = { by: LsSortBy, reverse?: boolean, };
-type LsSortBy = "name" | "size" | "mtime";
+type LsSortBy = "name" | "size" | "mtime" | "type";
+type PreviewGate = { "text": TextPreview } | { "image": number } | { "no": string };
+type TextPreview = { cap: number, lang?: string, };
 type WirePath = string | { b16: string };
 ```
 

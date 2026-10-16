@@ -727,6 +727,34 @@ data class LsEntry(
     val size: Long?,
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "link_dir") val linkDir: Boolean?,
+    val gates: Gates?,
+)
+
+@WireOf("Gates")
+@JsonClass(generateAdapter = true)
+data class Gates(
+    val preview: PreviewGate,
+    val edit: Gate,
+)
+
+@WireOf("PreviewGate")
+@JsonClass(generateAdapter = true)
+data class PreviewGate(
+    val text: TextPreview?,
+    val no: String?,
+)
+
+@WireOf("TextPreview")
+@JsonClass(generateAdapter = true)
+data class TextPreview(
+    val cap: Long,
+)
+
+@WireOf("Gate")
+@JsonClass(generateAdapter = true)
+data class Gate(
+    val cap: Long?,
+    val no: String?,
 )
 
 @WireOf("LsReply")

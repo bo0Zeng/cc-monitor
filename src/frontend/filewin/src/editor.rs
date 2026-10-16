@@ -1,139 +1,24 @@
+//! **编辑一份远端文本**：读经后端 `files-read-text`、存经 `files-write-text`（装不进一行的分块走暂存区）。
 //!
-//! 🔴**读写两半都经通道问后端了**：写那一半 F2 已换成
-//! `files-write-text`；读那一半已换成 `files-read-text`（[`read_text`]）。标题里那两条
-//! 池子命令是第九刀当时的住址，下面几节讲「上限」「超了怎么办」的推理照旧成立 ——
-//! 变的只是「最终护栏」住哪：从池子那边的解码函数换成后端那条命令（它自己判两次大小）。
+//! # 上限
 //!
-//! ═══════════════════════════════════════════════════════════════════════
-//! # 🔴 一、把两个问题**指名**留给了这一刀
-//! ═══════════════════════════════════════════════════════════════════════
+//! 打不打得开、许读多少由列表那一行上后端那道编辑门给（`gates.edit`；不许时那一句也是后端写好的），
+//! 连那趟往返都不发；那个数记在打开的那一份上（[`Pane::cap`]），敲超了存之前本地拒、字一个不丢。
+//! 读的那一趟后端再判一次大小（列 `size` 与真去读之间文件可能被换掉）。
 //!
-//! 那一节的裁定逐字：「256 KiB 上限」与「改流式」都是**面板还是 webview 时**
-//! 写下的；`§4 戊` 已选原生窗口、`§6.6 C` 已改判为退役那块面板
-//! ⇒「在一个要被替换掉的命令上改签名做流式，是**给将死的东西做手术**。
-//! 那个上限该是多少、超了怎么办，要在**原生窗口的文本控件**这个语境里答，
-//! 连 `byte_cap_registry` 一起改。⇒ 归 `24e`。」
+//! # 改了没存就关掉
 //!
-//! ## 问题二「**超了怎么办**」—— 答了，而答案不用改任何签名
+//! [`Pane::dirty`] 是一条相等断言（`text != original`），关窗那条路先问它（[`Close::NeedsConfirm`]）；
+//! 存失败不清编辑框（用户敲的东西是他唯一的一份）。
 //!
-//! 太大 / 含 NUL / 非 UTF-8 全是 `None` ⇒ **谁拿到 `None` 都说不出为什么**。
-//! 老面板的做法是把那一行灰置 —— 而「灰置」与「这个功能坏了」在屏幕上同形。
+//! # 没做的
 //!
-//! 🔴 **而那三件里最常见的那一件，窗口自己就判得出来**：列目录回来的每一行
-//! 都带着 `size` ⇒ [`why_not_editable`] 按 [`MAX_EDIT_BYTES`]
-//! 在**本地**判「太大」，**连那趟往返都不发**，而且把那个数说给用户听
-//! （「这份 1.2 M 超过 256 K 的编辑上限」）。
-//!
-//! ⇒ 于是 `None` 只剩下两种可能（含 NUL / 非 UTF-8），而那两种本来就是同一句话
-//! （「这不是一份文本文件」）⇒ **三件事分成了两句人话，零签名改动、零额外往返。**
-//!
-//! ⚠ 如实登记它**买不到**什么：远端那个文件在「我们读 `size`」与「我们真去读它」
-//! 之间被换掉（变大 / 变成二进制）⇒ 本地预判会放它过去，而后端 `files-read-text`
-//! 仍然是最终护栏（它在那台机器上再判两次大小，正是为这个竞态；第九刀时这一格住池子那边）。
-//! ⇒ **本地预判是一句话的来源，不是一道围栏。**
-//!
-//! ## 问题一「**这个量该多大**」—— 这里**不动它**，并写清为什么
-//!
-//! 256 KiB 保持不变。三条理由，都不是「懒」：
-//!
-//! 1. **egui 的 `TextEdit` 每帧要把整段文字排一次版**（galley）。
-//!    那一档的代价随字节数长，而它决定的是「打字卡不卡」——
-//!    那正是「上限该多大」在**原生文本控件语境里**的真实约束。
-//!
-//!    🔴 **现打（2026-09-22，本机）**：`262 143` 字节的多行文本，
-//!    在真 `egui::Context` 上 `TextEdit::multiline` 排**一帧 16.3 ms**
-//!    （那一帧真的画出了 262 143 字节文字）。
-//!    住 [`tests::a_full_cap_worth_of_text_still_lays_out_in_one_frame`]。
-//!
-//!    ⇒ **这个读数改变了结论的性质**：60 fps 的预算是 **16.67 ms**
-//!    ⇒ 满上限时排版**几乎吃掉整帧**，一键一帧、没有余量。
-//!    **256 KiB 是天花板，不是一个中值。**
-//!    ⚠ 所以「改大」不只是「要先有形状」—— 现打说它**直接超预算**。
-//!    ⚠ 而「改小」今天**没有依据**：没有任何读数说 256 KiB 排不动
-//!    （16.3 ms 是「刚好排得动」，不是「排不动」）。
-//!
-//!    🔴🔴 **〔第十四刀 2026-09-23 订正 —— 上面这一段的结论是错的，逐条见 §四.0〕**
-//!    上面那个 16.3 ms 是**两个错**叠在一起：
-//!    ① 它是 **debug 档**的数（同一条判据在 **release** 档上现打 **2.19 ms**），
-//!       而 16.67 ms 那个预算说的是**发出去的那个 release 二进制**；
-//!    ② 它是**全新 `Context` 的第一帧**，里头大头是字体图谱与中文字形栅格化
-//!       （同样首帧、只放 3 字节：debug 4.6–5.6 ms / release 0.30–0.47 ms），
-//!       **不随文本长度长**；同一份文本的后续帧因为 galley 缓存命中只要
-//!       debug 0.98–1.27 ms。
-//!    ⇒ 「满上限时排版几乎吃掉整帧」这句话**在 release 上不成立**
-//!      （满上限、行结构正常时打字帧 release **0.08–1.02 ms**，余量 16–200 倍）。
-//!    ⇒ 本段**不删**，但从此**不许**再拿它论证「满上限就超预算」。
-//!    ⇒ 而真正超预算的那一族**另有其人**，也在 §四 里：**一行特别长的文件**。
-//! 2. **改小**会让今天能改的文件改不了（用户会当成退步），而现打没有任何
-//!    读数说 256 KiB 排不动。
-//! 3. **改大**要先有「大文件怎么编辑」的形状（流式 / 分段 / 只读预览），
-//!    而那一件 `§5.4b` 自己就说形状没定 —— **并且现打说它超帧预算**（见第 1 条）。
-//!    ⇒ 不在没有形状、又没有预算的时候动那个数。
-//!
-//! ⚠ 那个读数**买不到**什么（逐条）：它是**CPU 排版**那一段，
-//! 不含 GPU 上屏、不含真输入法、不含用户那台机器（本机没有图形会话，
-//! `XDG_SESSION_TYPE=tty`）。⇒ 「16.3 ms」是一个**下界**，真机上只会更贵。
-//! ⚠ 那条判据**刻意不钉毫秒数**（钉了就是一条随机器快慢红的判据 ——
-//! 本仓那条「金标准把开发机烤进去只有它永远绿」的反面）。它钉的是
-//! 「跑完了 ＋ 真的排了那么多字」，而那个毫秒数只印出来当读数。
-//!
-//! 🔴 ⇒ 交给 `byte_cap_registry` 那条判据的答复是：**这个数复核过，
-//! 保持 256 KiB**，理由是上面这三条（而不是「没人动它」）。
-//!
-//! ═══════════════════════════════════════════════════════════════════════
-//! # 🔴 二、改了没存就关掉 —— 那是这一刀的「不静默覆盖」
-//! ═══════════════════════════════════════════════════════════════════════
-//!
-//! 第八刀那一问挡的是「盖掉本机一个文件」。这一刀对应的那一格是
-//! **「用户敲了半天的东西被静默丢掉」**：编辑框一关，那些字就没了，
-//! 而它与「我存过了」在屏幕上长得一样。
-//!
-//! ⇒ [`Pane::dirty`] 是一条**相等断言**（`text != original`），
-//! 而关窗那条路要先问它（[`Close::NeedsConfirm`]）。
-//!
-//! ⚠ **存失败时不许清掉编辑框** —— 那句话是老面板注释里原有的
-//!（「失败传播 Err(前端保留编辑框内容)」），这里照同一条办，
-//! 并且由判据钉住（用户敲的东西是他唯一的一份）。
-//!
-//! ═══════════════════════════════════════════════════════════════════════
-//! # 三、这一刀**没**处置的（逐条，别读宽）
-//! ═══════════════════════════════════════════════════════════════════════
-//!
-//! 1. **大文件编辑（流式）没做** —— 形状没定（`§5.4b` 自陈）。这里**不改签名**。
-//! 2. **新建文件没做** —— `sftp_write_text` 写得了一条不存在的路径，
-//!    但「在界面上从零造一份文本」是另一个交互题（要先问名字）。
-//! 3. **本机那一侧不能编辑** —— 两条命令都是远端的。本机文本要另一条路。
-//! 4. **没有语法高亮 / 行号 / 查找替换** —— 那是一个编辑器，不是这一刀。
-//!
-//! ═══════════════════════════════════════════════════════════════════════
-//! # 四、「只排视口内的行」—— **落地了，住 [`super::bigfile`]**
-//!
-//! 落地的形状、两个阈值的推算、判据与买不到的，住 [`super::bigfile`] 头注。
-//!
-//! ⚠ 第十四刀留在这里的那一组内核（行索引 · 窗口 · 写回 · 「开窗买不到」那把尺子）
-//! **随落地一起删了**：它们建模的是「窗口化 `TextEdit`」那条路，而落地走的是另一条
-//! （自己画、全文坐标、横向也只排可见段）—— 那条路的撤销栈会静默改坏文件
-//! （`§9 §四.2` 第 3 条），一行特别长时也买不到东西（第 10 条），留着只会让人以为它还是候选。
-//! 行结构改由 [`super::bigfile::Lines`] 增量维护，判据对着 `str::split('\n')` 钉。
+//! 本机文本不能编辑（两条命令都是远端的）；没有语法高亮。长文件的排版住 [`super::bigfile`]。
 
 use cmd_wire::files as w;
 use copy_core::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-
-/// 编辑上限 ＝ **存得回、也读得回来的量**（8 MiB）。**超上限拒编而非截断**（截断过的文本当编辑源会写坏文件）。
-///
-/// 🔴**1 MiB → 8 MiB**。上一版（F9 续）这个数被钉成后端入方向**一行**的上限，
-/// 因为存盘把整份内容装在一条请求行里；现在装不进一行的那几份**分块走暂存区**（[`write_text`]），
-/// 一行的上限不再管「能存多大」⇒ 能存多大改由后端提交那一条的天花板定：`files-commit-text` 只收
-/// `src/backend/files/mod.rs::READ_TEXT_MAX_BYTES` 以内（存得回的要读得回来），而读那一趟的天花板也是它。
-/// ⇒ 本常量**就是**那个数，一个数三处用：打开前按大小拒（[`why_not_editable`]）· 读那一趟的 `max_bytes` ·
-///   存之前按字节数拒（[`Pane::over_cap`]，与后端 `files-commit-text` 拒 `bytes` 的那一关逐字节同一个界）。
-/// ⚠ 两个 crate 之间引不到对方 ⇒ 由 `byte_cap_registry::the_cross_crate_twins_are_machine_checked_not_hand_copied`
-///   读两侧源码**对拍相等**（对 E）。
-/// ⚠ 界面那一侧 8 MiB 打得开、打得动字（release，经窗口生产路径，大文件模式
-///   打开约 20 ms、每键 ≤ 3.03 ms）。
-pub const MAX_EDIT_BYTES: usize = 8 * 1024 * 1024;
 
 /// 🔴**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/stream/inbound/mod.rs::MAX_LINE_BYTES`，
 /// 审计加的防 OOM 线，所有命令共用；多一个字节整行丢弃）。
@@ -329,14 +214,14 @@ pub fn plan_chunks(content: &str, budget: usize) -> Vec<&str> {
     out
 }
 
-/// 敲超上限、存的时候本地拒那句话（一个字节都没发）。
-pub fn over_cap_notice(len: usize) -> String {
+/// 敲超上限（`cap` ＝ 打开时后端给的编辑上限）、存的时候本地拒那句话（一个字节都没发）。
+pub fn over_cap_notice(len: usize, cap: u64) -> String {
     copy_text(
         "rsFilewinEditor.overCap.notice",
         &[
             ("len", &len.to_string()),
-            ("limit", &MAX_EDIT_BYTES.to_string()),
-            ("over", &(len.saturating_sub(MAX_EDIT_BYTES)).to_string()),
+            ("limit", &cap.to_string()),
+            ("over", &(len as u64).saturating_sub(cap).to_string()),
         ],
     )
 }
@@ -353,8 +238,6 @@ pub fn chunk_failed_notice(seq: usize, total: usize, why: &str) -> String {
     )
 }
 
-use super::source::Row;
-
 /// 行上那颗按钮。
 pub static EDIT_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.label.edit", &[]));
@@ -365,72 +248,39 @@ pub static OVERWRITE_LABEL: std::sync::LazyLock<String> =
 pub static REOPEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinEditor.stale.reopen", &[]));
 
-/// 这一行**为什么**改不了（`None` = 改得了）。
-///
-/// 🔴 回 `Option<String>` 而不是 `bool`：那句话就是这一刀买到的东西
-///（见头注「超了怎么办」那一节）。`bool` 只够画一个灰按钮。
-pub fn why_not_editable(r: &Row) -> Option<String> {
-    if r.is_dir {
-        return Some(copy_text("rsFilewinEditor.notEditable.dir", &[]).into());
+/// 这一行**为什么**改不了（`None` = 改得了）：目录 · 名字寻址不到 · 后端那道编辑门不许（那一句是后端写好的）。
+/// 回那句话而不是 `bool`：灰着的按钮与「这个功能坏了」在屏幕上同形。
+pub fn why_not_editable(l: &super::source::Listed) -> Option<String> {
+    if l.is_dir {
+        return Some(copy_text("rsFilewinEditor.notEditable.dir", &[]));
     }
-    if r.lossy_name {
-        // 与 `is_copyable` / `is_writable` 同一条：名字不是合法 UTF-8 ⇒ 寻址不到真字节。
-        return Some(copy_text("rsFilewinEditor.notEditable.badName", &[]).into());
+    // 名字不是合法 UTF-8、又没带原始字节 ⇒ 寻址不到真字节。
+    if l.lossy_name && l.raw_name.is_none() {
+        return Some(copy_text("rsFilewinEditor.notEditable.badName", &[]));
     }
-    if r.size > MAX_EDIT_BYTES as u64 {
-        // 🔴 **报「多了多少」，不是报两个 `copy_core::size_text`。**
-        //
-        // 第一版写的是「这份 {human(size)} 超过 {human(cap)} 的编辑上限」，
-        // 而判据当场逮到它退化：`256 KiB + 1` 字节被 `copy_core::size_text` 四舍成 `256.0 K`
-        // ⇒ 那句话读出来是「这份 **256.0 K** 超过 **256.0 K** 的编辑上限」，
-        // 两个数一模一样，**什么都没告诉用户**。
-        // ⇒ 换成「多了 N 字节」：它在边界附近**永远不退化**，而且直接答
-        //   「我该把文件弄小多少」这个用户真正要问的问题。
-        let over = r.size - MAX_EDIT_BYTES as u64;
-        return Some(copy_text(
-            "rsFilewinEditor.notEditable.tooBig",
-            &[
-                ("size", &(copy_core::size_text(r.size)).to_string()),
-                ("bytes", &r.size.to_string()),
-                (
-                    "limit",
-                    &(copy_core::size_text(MAX_EDIT_BYTES as u64)).to_string(),
-                ),
-                ("over", &over.to_string()),
-            ],
-        ));
+    match l.gates.as_ref().map(|g| &g.edit) {
+        None => Some(copy_text("rsFilewinSource.gates.unlisted", &[])),
+        Some(w::Gate::No(said)) => Some(said.clone()),
+        Some(w::Gate::Cap(_)) => None,
     }
-    None
 }
 
-/// 〔「有损名的…编辑」〕**窗口里一行**为什么不能编辑：有损但带着原始字节 ⇒ 名字那一关放行
-/// （读 / 存走字节），其余几关（目录 · 超上限）照 [`why_not_editable`]。行上那颗按钮与右键菜单问的是它。
-pub fn why_not_editable_listed(l: &super::source::Listed) -> Option<String> {
-    if l.lossy_name && l.raw_name.is_some() {
-        let mut r = l.row.clone();
-        r.lossy_name = false;
-        return why_not_editable(&r);
-    }
-    why_not_editable(&l.row)
-}
-
-/// [`why_not_editable_listed`] 的 `is_none()`。
+/// [`why_not_editable`] 的 `is_none()`。
 pub fn editable(l: &super::source::Listed) -> bool {
-    why_not_editable_listed(l).is_none()
+    why_not_editable(l).is_none()
 }
 
-/// 只有那五格时「编辑」画不画（窗口里一行走 [`editable`]）。
-///
-/// ⚠ 它就是 [`why_not_editable`] 的 `is_none()` —— **刻意不另写一套条件**
-///（那正是「按钮画了但点了没反应」那个静默态的来源；同 `download` 那一对
-/// `return_label` / `go_remote` 的理由）。
-pub fn is_editable(r: &Row) -> bool {
-    why_not_editable(r).is_none()
+/// 打开这一行许读多少（后端那道编辑门给的；不许 ⇒ `None`）。
+pub fn edit_cap(l: &super::source::Listed) -> Option<u64> {
+    match l.gates.as_ref()?.edit {
+        w::Gate::Cap(n) => Some(n),
+        w::Gate::No(_) => None,
+    }
 }
 
 /// 后端说「不可编辑」之后那句话（第九刀时是池子回了 `None`）。
 ///
-/// 🔴 **「太大」不在这里** —— 那一档由 [`why_not_editable`] 在发往返**之前**挡掉。
+/// 「太大」不在这里 —— 那一档由后端那道编辑门在发往返**之前**挡掉。
 /// 走到这儿还是 `None`，剩下的可能只有两种，而它们是同一句人话。
 ///
 /// ⚠ 它**也可能**是那个竞态（读 `size` 之后文件被换大了）⇒ 这句话里
@@ -453,6 +303,8 @@ pub fn not_text_notice(path: &str) -> String {
 #[derive(Clone, Debug)]
 pub struct Pane {
     pub path: String,
+    /// 编辑上限（打开时后端那道门给的）：敲超了不发那一趟存。
+    pub cap: u64,
     /// 行上那个名字（标题用）。
     pub name: String,
     /// 正在编辑的那些字。
@@ -536,9 +388,10 @@ pub fn replace_chars(text: &str, start: usize, end: usize, with: &str) -> String
 }
 
 impl Pane {
-    pub fn opened(path: &str, name: &str, text: String, sha256: String) -> Self {
+    pub fn opened(path: &str, name: &str, text: String, sha256: String, cap: u64) -> Self {
         Self {
             path: path.to_string(),
+            cap,
             name: name.to_string(),
             original: text.clone(),
             text,
@@ -616,14 +469,14 @@ impl Pane {
 
     /// 这一份还差多少到上限（给界面画一句「还能写 N」）。
     pub fn headroom(&self) -> i64 {
-        MAX_EDIT_BYTES as i64 - self.text.len() as i64
+        self.cap as i64 - self.text.len() as i64
     }
 
     /// 🔴 **敲超上限了吗。** 超上限的内容存不回去（后端 `files-commit-text` 拒 `bytes` 超过
     /// 同一个数的那一趟；装得进一行的那一支写面不拦大小，但存回去之后下次就读不回来编辑了）
     /// —— 所以要在屏幕上先说，并且不发那一趟。
     pub fn over_cap(&self) -> bool {
-        self.text.len() > MAX_EDIT_BYTES
+        self.text.len() as u64 > self.cap
     }
 }
 
@@ -674,6 +527,8 @@ pub enum Arrived {
         text: String,
         /// 后端对那份字节算的摘要（存盘 CAS 的 `expect`）。
         sha256: String,
+        /// 编辑上限（读时给的那个数）。
+        cap: u64,
     },
     /// 后端说它不可编辑（那句话由 [`not_text_notice`] 给）。
     NotText { path: String },
@@ -814,23 +669,16 @@ pub const READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 /// ⚠ 上一版这里调的是池子那条读文本命令（SFTP 把字节整份搬过来）；那是窗口进程里
 /// 「跨机传输」那一类欠账的一条。现在字节**在那台机器上**读、只把文本经通道交回来。
 /// ⚠ 有逻辑的那一段（哪几个码算「不可编辑」）住 [`text_from_reply`]。
-pub async fn read_text(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    path: &str,
-) -> Result<Option<Opened>, super::source::Failed> {
-    read_text_at(line, origin, &super::source::RemotePath::plain(path)).await
-}
-
-/// 〔有损名全寻址〕同 [`read_text`]，路径可以带字节（`path` 发 `{"b16": …}`）。
+/// 路径可以带字节（`path` 发 `{"b16": …}`）；`cap` ＝ 列表那一行上后端那道编辑门给的上限。
 pub async fn read_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
+    cap: u64,
 ) -> Result<Option<Opened>, super::source::Failed> {
     let req = cmd_wire::files::ReadTextReq {
         path: at.path(),
-        max_bytes: MAX_EDIT_BYTES as u64,
+        max_bytes: cap,
     };
     opened_from_reply(
         origin,
@@ -906,33 +754,19 @@ pub fn text_from_reply(
 /// ⚠ 某一块没送成 ⇒ **不发提交**、当场回错（第几段、共几段、原话）；已经送进暂存区的块由后端孤儿扫收，
 ///   远端那份一个字节没动。编辑框里的字一个不丢（「存失败不清编辑框」照旧，[`Pane::mark_failed`]）。
 /// ⚠ 超上限 ⇒ 本地拒、一个字节不发（[`over_cap_notice`]）。
-pub async fn write_text(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    path: &str,
-    content: &str,
-    expect_sha256: &str,
-) -> Result<Saved, SaveError> {
-    write_text_at(
-        line,
-        origin,
-        &super::source::RemotePath::plain(path),
-        content,
-        expect_sha256,
-    )
-    .await
-}
-
-/// 〔有损名全寻址〕同 [`write_text`]，路径可以带字节。一行装不装得下按真要发的那一形量。
+/// 路径可以带字节；一行装不装得下按真要发的那一形量；`cap` ＝ 打开时后端给的编辑上限。
 pub async fn write_text_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
     content: &str,
     expect_sha256: &str,
+    cap: u64,
 ) -> Result<Saved, SaveError> {
-    if content.len() > MAX_EDIT_BYTES {
-        return Err(SaveError::Failed(over_cap_notice(content.len()).into()));
+    if content.len() as u64 > cap {
+        return Err(SaveError::Failed(
+            over_cap_notice(content.len(), cap).into(),
+        ));
     }
     let budget = super::writeops::WRITE_BUDGET;
     let room = "0".repeat(SHA256_HEX_LEN);
@@ -995,30 +829,15 @@ pub fn saved_from_reply(
 ///
 /// CAS 仍在：重读与再存之间又被人改了 ⇒ 照样 `stale`（那时再让人选一次）。
 /// 盘上那份此刻不是能编辑的文本（被换成二进制 / 超上限 / 不在了）⇒ 拿不到摘要 ⇒ 不写，说清为什么。
-pub async fn overwrite_anyway(
-    line: &super::source::Line,
-    origin: &super::source::Origin,
-    path: &str,
-    content: &str,
-) -> Result<Saved, SaveError> {
-    overwrite_anyway_at(
-        line,
-        origin,
-        &super::source::RemotePath::plain(path),
-        content,
-    )
-    .await
-}
-
-/// 同 [`overwrite_anyway`]，路径可以带字节。
 pub async fn overwrite_anyway_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
     content: &str,
+    cap: u64,
 ) -> Result<Saved, SaveError> {
     let path = at.shown.as_str();
-    let now = match read_text_at(line, origin, at).await {
+    let now = match read_text_at(line, origin, at, cap).await {
         Ok(Some(o)) => o.sha256,
         Ok(None) => {
             return Err(SaveError::Failed(
@@ -1039,7 +858,7 @@ pub async fn overwrite_anyway_at(
             ))
         }
     };
-    write_text_at(line, origin, at, content, &now).await
+    write_text_at(line, origin, at, content, &now, cap).await
 }
 
 #[cfg(test)]
