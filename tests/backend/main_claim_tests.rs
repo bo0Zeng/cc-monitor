@@ -70,7 +70,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         .await
         .expect("锁放了却没抢到");
     assert!(listening.is_some(), "该在听");
-    assert!(own_chan::someone_listening(&sock), "抢到了却没在听");
+    assert!(own_chan::connect_blocking(&sock).is_ok(), "抢到了却没在听");
     assert_eq!(installs.get(), 1);
     drop(listening);
     // 门牌目录由常驻后端建、建的那一下就只给本人（上面那个是夹具先建的，这里换一个空家看）。

@@ -225,12 +225,6 @@ fn peer_of(_fd: std::os::unix::io::RawFd) -> std::io::Result<(u32, u32)> {
     Err(std::io::ErrorKind::Unsupported.into())
 }
 
-/// 本进程的 uid（核对端是不是本人用）。
-#[cfg(unix)]
-pub fn own_uid() -> u32 {
-    my_uid()
-}
-
 #[cfg(unix)]
 impl std::io::Read for &BlockingStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -283,11 +277,6 @@ impl std::io::Write for &BlockingStream {
     fn flush(&mut self) -> std::io::Result<()> {
         match self.0 {}
     }
-}
-
-/// 有没有人在听（连一下：没人 = 立刻 `NotFound` / `ConnectionRefused`，不等）。
-pub fn someone_listening(path: &Path) -> bool {
-    connect_blocking(path).is_ok()
 }
 
 #[cfg(test)]

@@ -1935,13 +1935,8 @@
       "kind": "error",
       "role": "报错",
       "zh": "连接在听的后端失败 · {path} · {why}",
-      "args": ["path", "why"]
-    },
-    "beResident.stop.foreign": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "未停止进程 {pid} · 在听的不是本账号（uid {uid}）",
-      "args": ["pid", "uid"]
+      "args": ["path", "why"],
+      "limited": ["连接"]
     },
     "beResident.stop.badGrace": {
       "kind": "error",

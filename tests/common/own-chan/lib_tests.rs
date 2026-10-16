@@ -36,9 +36,9 @@ async fn a_peer_with_my_uid_is_ours_and_nobody_means_nobody() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let d = scratch("bind");
     let path = d.join("s.sock");
-    assert!(!someone_listening(&path), "还没绑就说有人在听");
+    assert!(!connect_blocking(&path).is_ok(), "还没绑就说有人在听");
     let l = bind(&path).expect("绑");
-    assert!(someone_listening(&path));
+    assert!(connect_blocking(&path).is_ok());
     let client = tokio::spawn({
         let path = path.clone();
         async move {
@@ -49,7 +49,7 @@ async fn a_peer_with_my_uid_is_ours_and_nobody_means_nobody() {
             back
         }
     });
-    // `someone_listening` 那一下也连过一次：先把它收掉（它连上就走了）。
+    // `connect_blocking` 那一下也连过一次：先把它收掉（它连上就走了）。
     let mut got_ours = None;
     for _ in 0..2 {
         match l.accept().await.expect("收") {
@@ -122,6 +122,6 @@ fn the_peer_is_the_process_that_listens() {
     let got = connect_blocking(&path).expect("连").peer();
     let _ = other.kill();
     let _ = other.wait();
-    assert_eq!(got.expect("对端"), (own_uid(), other.id()));
+    assert_eq!(got.expect("对端"), (my_uid(), other.id()));
     let _ = std::fs::remove_dir_all(&d);
 }

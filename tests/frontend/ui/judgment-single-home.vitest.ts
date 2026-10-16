@@ -950,9 +950,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     set_read_timeout: NONE,
     set_write_timeout: NONE,
     into_async: NONE,
-    someone_listening: NONE,
     peer: NONE,
-    own_uid: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {

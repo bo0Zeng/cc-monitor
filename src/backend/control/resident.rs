@@ -386,7 +386,7 @@ pub(crate) struct Listener {
 /// hello 那一行的字节上限：一行 hello 几 KiB，再长就不是它。
 const HELLO_CAP: u64 = 256 * 1024;
 
-/// 连这台的套接字问在听的是谁。没人在听（不在 / 拒连）⇒ `None`；对端不是本人 ⇒ `Err`（不停别人的进程）。
+/// 连这台的套接字问在听的是谁。没人在听（不在 / 拒连）⇒ `None`。
 fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
     use std::io::BufRead as _;
     use std::io::Read as _;
@@ -415,25 +415,22 @@ fn who_listens(data_home: &Path) -> Result<Option<Listener>, Said> {
         }
         Err(e) => return Err(cannot(&e)),
     };
-    let (uid, pid) = s.peer().map_err(|e| cannot(&e))?;
-    #[cfg(unix)]
-    if uid != own_chan::own_uid() {
-        return Err(copy_text(
-            "beResident.stop.foreign",
-            &[("pid", &pid.to_string()), ("uid", &uid.to_string())],
-        )
-        .into());
-    }
-    #[cfg(not(unix))]
-    let _ = uid;
-    // 在听的那一位连上就先写 hello；卡住不写也不把这一次性进程挂死。
+    // 套接字住只给本人的目录里，连得上的就是本人那一位（常驻那一侧收连接时另核对端 uid）。
+    let (_, pid) = s.peer().map_err(|e| cannot(&e))?;
+    // 在听的那一位连上就先写 hello；卡住不写也不把这一次性进程挂死，超长 ⇒ 不是它。
     #[allow(
         clippy::disallowed_methods,
         reason = "一次性进程读一行 hello 的期限：有字节就返回，不驱动循环；常驻后端的事件循环不经这里"
     )]
-    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(HELLO_READ_SECS)));
+    let wait = std::time::Duration::from_secs(HELLO_READ_SECS);
+    s.set_read_timeout(Some(wait)).map_err(|e| cannot(&e))?;
     let mut line = String::new();
-    let _ = std::io::BufReader::new((&s).take(HELLO_CAP)).read_line(&mut line);
+    let n = std::io::BufReader::new((&s).take(HELLO_CAP))
+        .read_line(&mut line)
+        .map_err(|e| cannot(&e))?;
+    if u64::try_from(n).unwrap_or(u64::MAX) >= HELLO_CAP && !line.ends_with('\n') {
+        return Err(cannot(&std::io::ErrorKind::InvalidData.into()));
+    }
     let build = serde_json::from_str::<serde_json::Value>(&line)
         .ok()
         .and_then(|v| v.get("build_id")?.as_str().map(str::to_string));
