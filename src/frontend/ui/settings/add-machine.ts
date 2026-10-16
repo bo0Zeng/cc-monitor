@@ -148,7 +148,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
         head.append(name, tag);
         main.append(head, info);
       } else {
-        r.name = field({ label: copyText("addMachine.field.name"), value: r.cfg.label, noteOnDemand: true, aside: info });
+        r.name = field({ label: copyText("machineForm.field.name"), value: r.cfg.label, noteOnDemand: true, aside: info });
         r.name.root.classList.add("add-machine-name");
         r.name.input.addEventListener("input", update);
         head.appendChild(r.name.root);
@@ -201,17 +201,17 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   // ---- 自己填 ----
   const grid = document.createElement("div");
   grid.className = "add-machine-grid";
-  const fName = field({ label: copyText("addMachine.field.name"), help: copyText("addMachine.field.nameHelp") });
-  const fHost = field({ label: copyText("addMachine.field.host"), help: copyText("machineCard.field.hostHint") });
-  const fUser = field({ label: copyText("addMachine.field.user"), help: copyText("addMachine.field.userHelp") });
-  const fPort = field({ label: copyText("addMachine.field.port"), value: "22", help: copyText("addMachine.field.portHelp") });
-  const fKey = field({ label: copyText("addMachine.field.key"), help: copyText("addMachine.field.keyHelp") });
+  const fName = field({ label: copyText("machineForm.field.name"), help: copyText("addMachine.field.nameHelp") });
+  const fHost = field({ label: copyText("machineForm.field.host"), help: copyText("machineCard.field.hostHint") });
+  const fUser = field({ label: copyText("machineForm.field.user"), help: copyText("addMachine.field.userHelp") });
+  const fPort = field({ label: copyText("machineForm.field.port"), value: "22", help: copyText("addMachine.field.portHelp") });
+  const fKey = field({ label: copyText("machineForm.field.key"), help: copyText("addMachine.field.keyHelp") });
   fKey.root.classList.add("add-machine-wide");
   grid.append(fName.root, fHost.root, fUser.root, fPort.root, fKey.root);
   const moreBody = document.createElement("div");
   moreBody.className = "add-machine-grid";
-  const fAddrs = field({ label: copyText("addMachine.field.addresses"), help: copyText("addMachine.field.addressesHelp"), multiline: true });
-  const fJump = field({ label: copyText("addMachine.field.jump"), help: copyText("machineCard.field.jumpHint") });
+  const fAddrs = field({ label: copyText("machineForm.field.addresses"), help: copyText("addMachine.field.addressesHelp"), multiline: true });
+  const fJump = field({ label: copyText("machineForm.field.jump"), help: copyText("machineCard.field.jumpHint") });
   moreBody.append(fAddrs.root, fJump.root);
   const manualAfter = document.createElement("div");
   manualAfter.className = "add-machine-note";

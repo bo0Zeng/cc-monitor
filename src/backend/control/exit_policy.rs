@@ -147,9 +147,9 @@ fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
     own.ensure_dir(&dir).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
-                "beExitPolicy.writeAt.mkdirFailed",
+                "reason.fs.writeFailed",
                 &[
-                    ("dir", &(dir.as_path().display()).to_string()),
+                    ("path", &(dir.as_path().display()).to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),

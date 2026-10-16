@@ -227,7 +227,7 @@ fn a_slot_cell_is_written_once_by_state() {
     );
     assert_eq!(
         w(QuotaState::Refused, true, None, false),
-        (c("acct.val.refusedOnly", &[]), Tone::Fail)
+        (c("reason.code.refused", &[]), Tone::Fail)
     );
     assert_eq!(
         w(QuotaState::Refused, false, Some(10), false),
@@ -322,7 +322,7 @@ fn the_usage_cell_is_written_by_the_core() {
     let u = shown(Some(&api), Kind::Api);
     assert_eq!(
         (u.value.0.as_str(), u.tone),
-        (t("acct.val.refusedOnly").as_str(), Tone::Fail)
+        (t("reason.code.refused").as_str(), Tone::Fail)
     );
     assert_eq!(
         u.text.0,

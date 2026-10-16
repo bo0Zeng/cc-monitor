@@ -1084,7 +1084,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
 ) -> Result<C::Reply, Failed> {
     let args = serde_json::to_value(req).map_err(|e| {
         Failed::here(
-            copy_text("rsFilewinSource.ask.badArgs", &[]),
+            copy_text("reason.code.bug", &[]),
             origin,
             C::NAME,
             Some(&e.to_string()),
@@ -1093,7 +1093,7 @@ pub async fn ask_typed<C: cmd_wire::files::Call>(
     let d = ask_coded(line, origin, C::NAME, &args, t).await?;
     reply_of::<C>(d).map_err(|e| {
         Failed::here(
-            copy_text("rsFilewinSource.said.badReply", &[]),
+            copy_text("reason.content.unparsable", &[]),
             origin,
             C::NAME,
             Some(&e),
@@ -1117,10 +1117,7 @@ pub fn opened_one(
 ) -> Result<(String, Option<String>), Failed> {
     use cmd_wire::transfer::OpenState;
     let Some(o) = r.items.into_iter().next() else {
-        return Err(Failed::local(copy_text(
-            "rsFilewinSource.said.badReply",
-            &[],
-        )));
+        return Err(Failed::local(copy_text("reason.content.unparsable", &[])));
     };
     match (o.state, o.id) {
         (OpenState::Opened, Some(id)) => Ok((id, o.staged)),
@@ -1227,7 +1224,7 @@ async fn ask_raw(
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         plain(Failed::here(
-            copy_text("rsFilewinSource.ask.badArgs", &[]),
+            copy_text("reason.code.bug", &[]),
             origin,
             cmd,
             Some(&e.to_string()),
@@ -1256,7 +1253,7 @@ async fn ask_raw(
     })?;
     if v.is_null() {
         return Err(plain(Failed::here(
-            copy_text("rsFilewinSource.said.badReply", &[]),
+            copy_text("reason.content.unparsable", &[]),
             origin,
             cmd,
             None,
@@ -1554,7 +1551,7 @@ pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError)
                             .unwrap_or(""),
                     ),
                     // 拒绝体读不懂：句子只说被拒，那段原文进详情（[`detail_of`]）。
-                    Err(_) => copy_text("rsFilewinSource.said.refused", &[]),
+                    Err(_) => copy_text("reason.code.refused", &[]),
                 }
             }
             // 那台不认这条命令：全产品同一句，名字是这扇窗看着的那台。
@@ -1563,8 +1560,8 @@ pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError)
         CallError::Hop { at, reach, why } => {
             let what = match why {
                 HopFault::Unreachable => &copy_text("rsFilewinSource.said.unreachable", &[]),
-                HopFault::Dropped => &copy_text("rsFilewinSource.said.broken", &[]),
-                HopFault::Overrun => &copy_text("rsFilewinSource.said.timeout", &[]),
+                HopFault::Dropped => &copy_text("reason.link.lost", &[]),
+                HopFault::Overrun => &copy_text("reason.link.noAnswer", &[]),
             };
             let did = match reach {
                 Reach::NotSent => &copy_text("rsFilewinSource.said.notSent", &[]),
@@ -1587,9 +1584,9 @@ pub fn said(origin: &Origin, cmd: &str, e: &comms_inward::chan::wire::CallError)
         CallError::Ours { why, runs_on } => match why {
             // 那台对这一条不认撤 ⇒ 说它可能还在跑。
             OursFault::Cancelled if *runs_on => copy_text("rsChanWire.ours.cancelledRunsOn", &[]),
-            OursFault::Cancelled => copy_text("rsFilewinSource.said.cancelled", &[]),
+            OursFault::Cancelled => copy_text("reason.op.cancelled", &[]),
             OursFault::Misuse => copy_text("rsFilewinSource.said.internal", &[]),
-            OursFault::Broken => copy_text("rsFilewinSource.said.badReply", &[]),
+            OursFault::Broken => copy_text("reason.content.unparsable", &[]),
         },
     }
 }

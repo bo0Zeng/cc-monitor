@@ -109,7 +109,7 @@ export class DataSection {
     this.mainBody.replaceChildren();
     // 加载态是与渲染态同高的骨架（不重排）。类名沿用 `settings-data-loading`（`styles.css` 那条规则的读者）；多出来的高度、身份走 `data-*`。
     this.mainBody.appendChild(
-      makeSkeleton("data-places", copyText("data.renderPlaceholder.loading"), "settings-data-loading"),
+      makeSkeleton("data-places", copyText("kit.state.reading"), "settings-data-loading"),
     );
   }
 

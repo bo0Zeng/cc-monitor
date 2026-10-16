@@ -779,7 +779,7 @@ impl<T: Transport> Feed<T> {
                         self.offline().text,
                         format!(
                             "{} · {}s",
-                            copy_text("reason.dial.timeout", &[]),
+                            copy_text("reason.link.noAnswer", &[]),
                             DIAL_WITHIN.as_secs()
                         ),
                     ),

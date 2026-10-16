@@ -388,9 +388,9 @@ fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Fail> 
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
-                    "beUpstreamFileFace.write.mkdirFailed",
+                    "reason.fs.writeFailed",
                     &[
-                        ("dir", &dir.as_path().display().to_string()),
+                        ("path", &dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),

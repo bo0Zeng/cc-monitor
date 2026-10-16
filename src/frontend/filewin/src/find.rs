@@ -917,11 +917,11 @@ impl Round {
 pub(super) fn refusal(cmd: &str, code: &str, message: &str) -> String {
     tracing::warn!("filewin: {cmd} refused ({code}): {message}");
     let hint = match code {
-        "bad_args" => &copy_text("rsFilewinFind.refusal.badArgs", &[]),
+        "bad_args" => &copy_text("reason.code.bug", &[]),
         "bad_path" => &copy_text("rsFilewinFind.refusal.badPath", &[]),
         "bad_query" => &copy_text("rsFilewinFind.refusal.badQuery", &[]),
         "unreadable" => &copy_text("rsFilewinFind.refusal.cannotOpen", &[]),
-        _ => &copy_text("rsFilewinFind.refusal.other", &[]),
+        _ => &copy_text("reason.code.refused", &[]),
     };
     if message.trim().is_empty() {
         return hint.to_string();

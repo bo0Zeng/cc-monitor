@@ -18,7 +18,7 @@ fun SshConnectionManager.commandChannel(id: String): RemoteCommandChannel =
         if (conn != null && conn.isConnected) {
             conn.execStream(cmd)
         } else {
-            flow { throw ConnectionDeadException(copyText("mobSsh.conn.unavailable")) }
+            flow { throw ConnectionDeadException(copyText("reason.link.lost")) }
         }
     }
 
@@ -35,4 +35,4 @@ fun liveExecutor(conn: () -> SshTransport?): RemoteExecutor =
     RemoteExecutor { cmd -> alive(conn()).execCapture(cmd) }
 
 private fun alive(conn: SshTransport?): SshTransport =
-    conn?.takeIf { it.isConnected } ?: throw ConnectionDeadException(copyText("mobSsh.conn.unavailable"))
+    conn?.takeIf { it.isConnected } ?: throw ConnectionDeadException(copyText("reason.link.lost"))

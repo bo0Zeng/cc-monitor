@@ -387,7 +387,10 @@ where
         }
         match answered {
             Ok(()) => {
-                let dur = t0.elapsed().map(copy_core::format_elapsed).unwrap_or_else(|_| copy_core::format_duration(0));
+                let dur = t0
+                    .elapsed()
+                    .map(copy_core::format_elapsed)
+                    .unwrap_or_else(|_| copy_core::format_duration(0));
                 let line = if facts.gaps == 0 {
                     copy_text("beProbe.hello.ok", &[("build", &build), ("dur", &dur)])
                 } else {

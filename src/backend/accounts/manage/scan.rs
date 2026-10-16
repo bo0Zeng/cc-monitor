@@ -249,7 +249,7 @@ pub(crate) fn manifest_text_at(p: &Path) -> Result<String, crate::common::said::
     let bytes = crate::platform::fs::Ro::read_regular_capped(p, MAX_MANIFEST_BYTES)?;
     String::from_utf8(bytes).map_err(|e| {
         crate::common::said::Said::with_raw(
-            copy_core::copy_text("beAcctScan.manifest.notUtf8", &[]),
+            copy_core::copy_text("reason.content.unparsable", &[]),
             e,
         )
     })

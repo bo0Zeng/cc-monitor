@@ -85,7 +85,7 @@ fn slot_row(show: &QuotaShow, slot: &str) -> Vec<Cell> {
 
 fn state_row(show: &QuotaShow, reading: &ResetsAt) -> Option<Vec<Cell>> {
     let value = match show.state {
-        QuotaState::Refused => toned(copy_text("acct.val.refusedOnly", &[]), Tone::Fail),
+        QuotaState::Refused => toned(copy_text("reason.code.refused", &[]), Tone::Fail),
         QuotaState::ResetSinceSeen => c(copy_text("acct.val.none", &[])),
         _ => return None,
     };

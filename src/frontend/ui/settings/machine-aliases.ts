@@ -247,7 +247,7 @@ function rcOptionLabel(c: StartupFile): string {
 /** 接入那一格底下的提醒：读不了的候选 · 同一份块接在了不止一处。 */
 function accessWarnText(cands: StartupFile[], on: StartupFile[]): string {
   const warn: string[] = [];
-  for (const c of cands) if (c.unreadable) warn.push(copyText("machineAliases.rcStatus.unreadable", { path: c.path, why: c.unreadable }));
+  for (const c of cands) if (c.unreadable) warn.push(copyText("reason.fs.readFailed", { path: c.path, why: c.unreadable }));
   if (on.length > 1) warn.push(copyText("machineAliases.rcStatus.duplicates", { others: on.map((c) => c.path).join("\n") }));
   return warn.join("\n");
 }
@@ -607,7 +607,7 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
     }
   };
 
-  row.setStatus("off", copyText("cfgPage.row.reading"));
+  row.setStatus("off", copyText("kit.state.reading"));
   const reread = (): void => {
     psExtras?.loadNow();
     void load();

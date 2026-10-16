@@ -85,7 +85,7 @@ impl std::fmt::Display for CallError {
                 write!(f, "{}", copy_text("rsInboundClient.error.closed", &[]))
             }
             CallError::Cancelled => {
-                write!(f, "{}", copy_text("rsInboundClient.error.cancelled", &[]))
+                write!(f, "{}", copy_text("reason.op.cancelled", &[]))
             }
             CallError::Timeout { after, withdraw } => {
                 let dur = copy_core::format_elapsed(*after);
@@ -321,7 +321,7 @@ pub fn route_call_error(
 pub fn no_channel(origin: &str) -> Routed {
     Routed::NoChannel(copy_text(
         "rsBackendRoute.noChannel.message",
-        &[("origin", &origin.to_string())],
+        &[("machine", &origin.to_string())],
     ))
 }
 

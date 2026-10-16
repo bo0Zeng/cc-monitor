@@ -222,7 +222,7 @@ describe("F46 describeStage", () => {
     expect(describeStage({ kind: "dialing", endpoint: "h:22" }).text).toContain(copyText("machineCard.stage.dial", { endpoint: "h:22" }));
     expect(describeStage({ kind: "won", endpoint: "h:22" }), "只给一句话，图标不归它（C-W1）").toEqual({ text: copyText("machineCard.stage.won", { endpoint: "h:22" }) });
     expect(describeStage({ kind: "failed", endpoint: "h:22", reason: "x" }).text).toBe(copyText("machineCard.stage.failed", { endpoint: "h:22", reason: "x" }));
-    expect(describeStage({ kind: "auth", ok: false, detail: copyText("acct.val.refusedOnly") }).text).toContain(copyText("acct.val.refusedOnly"));
+    expect(describeStage({ kind: "auth", ok: false, detail: copyText("reason.code.refused") }).text).toContain(copyText("reason.code.refused"));
     expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain(copyText("machineCard.stage.authOk"));
     expect(describeStage({ kind: "established" }).text).toContain(copyText("machineCard.seg.ready"));
     expect(describeStage({ kind: "hostKey", endpoint: "h:22", fingerprint: "SHA256:x" }).text).toContain("SHA256:x");
@@ -684,7 +684,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got, "远端机器页必须带 parts").toBeTruthy();
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
-    expect(inConn).toContain(copyText("machineCard.field.host"));
+    expect(inConn).toContain(copyText("machineForm.field.host"));
     expect(inConn + inComp).not.toContain(copyText("machineCard.field.resumeCmd"));
   });
 

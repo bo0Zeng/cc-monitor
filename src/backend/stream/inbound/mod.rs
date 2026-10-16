@@ -818,7 +818,7 @@ async fn spawn_handler<F, Fut>(
                 .send(Frame::err(
                     &id_sup,
                     "handler_panicked",
-                    &copy_text("beInbound.spawnHandler.crashed", &[]),
+                    &copy_text("reason.code.bug", &[]),
                 ))
                 .await;
         }

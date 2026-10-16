@@ -86,7 +86,7 @@ impl Props {
         match st {
             State::Loading => out.push((
                 copy_text("rsFilewinProps.label.path", &[]),
-                copy_text("rsFilewinProps.value.loading", &[]),
+                copy_text("kit.state.reading", &[]),
             )),
             State::Failed(why) => out.push((copy_text("rsFilewinProps.label.path", &[]), why)),
             State::Ready(s) => {

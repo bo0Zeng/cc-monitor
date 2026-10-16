@@ -116,7 +116,7 @@ pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, Said> {
     let r: Result<serde_json::Value, Said> = async move {
         // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
         if origin == crate::inbound_client::LOCAL_ORIGIN {
-            return Err(Said::of("rsLaunch.terminalDial.local", &[]));
+            return Err(Said::of("reason.code.bug", &[]));
         }
         let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
             Said::of(

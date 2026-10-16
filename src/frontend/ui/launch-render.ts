@@ -23,7 +23,7 @@ const RENDER_BUDGET_MS = 10_000;
 function refusals(origin: Origin): Refusals {
   return {
     byCode: (_code, detail) => copyText("launchRender.refused.onMachine", { machine: machineName(origin), said: detail }),
-    noReason: () => copyText("remoteLaunchRun.renderCli.noReason"),
+    noReason: () => copyText("reason.io.unknown"),
   };
 }
 

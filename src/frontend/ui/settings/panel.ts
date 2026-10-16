@@ -1028,7 +1028,7 @@ export class SettingsPanel {
     this.perMachineSlot.hidden = true;
     this.perMachineFallbackHint = makeSkeleton(
       "backend",
-      copyText("settingsPanel.machines.loading"),
+      copyText("kit.state.reading"),
     );
     machinesPage.appendChild(this.perMachineFallbackHint);
     machinesPage.appendChild(this.perMachineSlot);

@@ -194,7 +194,7 @@ pub(crate) fn patch_config_at(
         let raw = std::fs::read_to_string(path).map_err(|e| {
             ConfigWriteError::Io(Said::with_raw(
                 copy_text(
-                    "rsConfig.write.readFailed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &path.display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
@@ -246,7 +246,7 @@ pub(crate) fn patch_config_at(
         .map_err(|e| {
             ConfigWriteError::Io(Said::with_raw(
                 copy_text(
-                    "rsConfig.write.tmpFailed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &tmp.display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
@@ -260,7 +260,7 @@ pub(crate) fn patch_config_at(
         let _ = std::fs::remove_file(&tmp);
         ConfigWriteError::Io(Said::with_raw(
             copy_text(
-                "rsConfig.write.replaceFailed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &path.display().to_string()),
                     ("why", &copy_core::io_reason(e.kind())),

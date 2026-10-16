@@ -248,7 +248,10 @@ fn timed_out_err(secs: u64) -> (String, String) {
         crate::platform::child::TIMED_OUT.to_string(),
         copy_text(
             "beCcBus.timedOut.say",
-            &[("dur", &copy_core::format_duration(secs.saturating_mul(1000)))],
+            &[(
+                "dur",
+                &copy_core::format_duration(secs.saturating_mul(1000)),
+            )],
         ),
     )
 }

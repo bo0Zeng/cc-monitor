@@ -457,16 +457,16 @@ fun HostEditorScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(if (hostId == null) copyText("mobHostEdit.page.newTitle") else copyText("mobHostEdit.page.editTitle"), style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(label, { label = it }, label = { Text(copyText("mobHostEdit.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(host, { host = it }, label = { Text(copyText("mobHostEdit.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("mobHostEdit.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user, { user = it }, label = { Text(copyText("mobHostEdit.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(label, { label = it }, label = { Text(copyText("machineForm.field.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(host, { host = it }, label = { Text(copyText("machineForm.field.host")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(port, { v -> port = v.filter { it.isDigit() } }, label = { Text(copyText("machineForm.field.port")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(user, { user = it }, label = { Text(copyText("machineForm.field.user")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
         // 多地址：每行一个 host / host:port / [IPv6]:port，连接时与主地址并发竞速，先连通者胜。
         OutlinedTextField(
             extraAddresses,
             { extraAddresses = it },
-            label = { Text(copyText("mobHostEdit.field.extra")) },
+            label = { Text(copyText("machineForm.field.addresses")) },
             placeholder = { Text("192.0.2.20\nwan.example.com:2222") },
             minLines = 2,
             modifier = Modifier.fillMaxWidth(),
@@ -590,7 +590,7 @@ private fun ProxyJumpPicker(
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
-    Text(copyText("mobHostEdit.jump.title"), style = MaterialTheme.typography.labelMedium)
+    Text(copyText("machineForm.field.jump"), style = MaterialTheme.typography.labelMedium)
     ChoiceRow(copyText("mobHostEdit.jump.none"), selected == null, Modifier.fillMaxWidth()) { onSelect(null) }
     candidates.forEach { j ->
         ChoiceRow("${j.label} (${j.host})", selected == j.id, Modifier.fillMaxWidth()) { onSelect(j.id) }

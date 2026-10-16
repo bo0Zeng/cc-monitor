@@ -31,7 +31,7 @@ test("六种原因各出一词、互不相同（后端给的种类，界面不�
 });
 
 test("后端没给原因（老后端）⇒ 原因不明，不猜", () => {
-  eq(reasonWord(undefined), copyText("apiError.reason.unknown"));
+  eq(reasonWord(undefined), copyText("reason.io.unknown"));
 });
 
 if (failed > 0) throw new Error(`${failed} api-error test(s) failed`);

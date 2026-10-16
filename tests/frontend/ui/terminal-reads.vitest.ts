@@ -114,7 +114,7 @@ describe("抓一屏：金样与形状", () => {
       { result: "refused", why: "screen_changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
       { result: "unsure" },
     ]);
-    expect(sentOf({ result: "refused", why: "ambiguous" }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", why: "ambiguous", said: copyText("terminal.why.other"), screen: null });
+    expect(sentOf({ result: "refused", why: "ambiguous" }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", why: "ambiguous", said: copyText("reason.code.refused"), screen: null });
   });
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {

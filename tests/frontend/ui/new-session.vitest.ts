@@ -406,7 +406,7 @@ describe("换机器 · 换一家 · 那台问不到", () => {
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(top()).toContain(copyText("newSession.facts.failed", { machine: "devbox", why: "\u0000" }).split("\u0000")[0]);
-    expect(createBtn().title).toBe(copyText("newSession.facts.loading"));
+    expect(createBtn().title).toBe(copyText("kit.state.reading"));
   });
 
   it("目录空着 ⇒ ［新建］灰着说要填；填了就亮", async () => {

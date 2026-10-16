@@ -472,11 +472,11 @@ impl FailedAt {
                 copy_core::copy_static!("beServer.words.hopSend"),
             ),
             FailedAt::ClosedBeforeAnswer => (
-                copy_core::copy_static!("beServer.words.closedBeforeAnswer"),
+                copy_core::copy_static!("reason.link.lost"),
                 copy_core::copy_static!("beServer.words.hopWait"),
             ),
             FailedAt::NoAnswer => (
-                copy_core::copy_static!("beServer.words.noAnswer"),
+                copy_core::copy_static!("reason.link.noAnswer"),
                 copy_core::copy_static!("beServer.words.hopWait"),
             ),
             FailedAt::NotHttp => (

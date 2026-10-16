@@ -186,9 +186,9 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::wire::spec
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
-                    "beHistoryAnnotations.writeAt.mkdirFailed",
+                    "reason.fs.writeFailed",
                     &[
-                        ("dir", &(d.display()).to_string()),
+                        ("path", &(d.display()).to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),

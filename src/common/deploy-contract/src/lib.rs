@@ -182,13 +182,13 @@ pub fn key_of(os: &str, arch: &str) -> Result<Key, Refusal> {
     let (os, arch) = (os.trim(), arch.trim());
     if os.is_empty() {
         return Err(Refusal::OsUnknown(Said::from(copy_text(
-            "rsByteTable.key.noAnswer",
+            "reason.link.noAnswer",
             &[],
         ))));
     }
     if arch.is_empty() {
         return Err(Refusal::ArchUnknown(Said::with_raw(
-            copy_text("rsByteTable.key.noAnswer", &[]),
+            copy_text("reason.link.noAnswer", &[]),
             os,
         )));
     }
@@ -242,7 +242,7 @@ pub fn key_from_uname(exit: Option<u32>, stdout: &str, stderr: &str) -> Result<K
     if exit != Some(0) {
         let said = stderr.trim();
         let why = if said.is_empty() {
-            copy_text("rsByteTable.key.noAnswer", &[])
+            copy_text("reason.link.noAnswer", &[])
         } else if said.contains('\u{FFFD}') {
             copy_text("rsByteTable.key.unreadable", &[])
         } else {

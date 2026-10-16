@@ -208,7 +208,7 @@ fn the_table_judges_every_cell_place_and_target() {
         .iter()
         .map(|r| (r.name.clone(), r.new, r.cells.iter().map(brief).collect()))
         .collect();
-    let off = format!("note:{}", n("beExt.note.offline"));
+    let off = format!("note:{}", n("kit.offline.later"));
     let no_proj = format!("note:{}", n("beExt.note.noProject"));
     let want: Vec<(String, bool, Vec<String>)> = vec![
         (

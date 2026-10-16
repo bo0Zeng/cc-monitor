@@ -165,7 +165,7 @@ async fn run(
     let req: ssh_dial::DialRequest = match serde_json::from_value(base.clone()) {
         Ok(r) => r,
         Err(e) => {
-            let text = copy_text("mobSsh.conn.unavailable", &[]);
+            let text = copy_text("reason.link.lost", &[]);
             return emit(failed_json("bad_request", &text, Some(&e.to_string())));
         }
     };

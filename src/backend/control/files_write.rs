@@ -226,7 +226,7 @@ pub fn create_new_file(
     f.write_all(bytes).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &target.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -340,7 +340,7 @@ pub fn make_dir(face: &Face, root: &Path, rel: impl AsRef<Path>) -> Result<PathB
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     face.make_dir(&target).map_err(|e| {
         let said = copy_text(
-            "beFilesWrite.write.failed",
+            "reason.fs.writeFailed",
             &[
                 ("path", &target.display().to_string()),
                 ("why", &io_reason(e.kind())),
@@ -455,7 +455,7 @@ pub fn delete_entry(
         .map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &target.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -512,7 +512,7 @@ pub fn delete_file_expecting(
         Err(e) => {
             return Err(WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &target.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -531,7 +531,7 @@ pub fn delete_file_expecting(
     let current = Ro::read_nofollow(&target).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &target.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -591,7 +591,7 @@ pub fn delete_empty_dir(
         Err(e) => {
             return Err(WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &target.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -713,7 +713,7 @@ pub fn overwrite_text(
     let md = Ro::metadata(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &real.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -743,7 +743,7 @@ pub fn overwrite_text(
         wrote.map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &real.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -834,7 +834,7 @@ pub fn overwrite_text_expecting(
         Err(e) => {
             return Err(WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &at.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -849,7 +849,7 @@ pub fn overwrite_text_expecting(
     let md = Ro::metadata(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &real.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -867,7 +867,7 @@ pub fn overwrite_text_expecting(
     let current = Ro::read_nofollow(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &real.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -952,7 +952,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
     let (top_is_dir, top_dev) = kind_and_device(&top).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &top.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -975,7 +975,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
         let listing = Ro::read_dir(&dir_at).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.copyTree.unlistable",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &dir_at.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -988,7 +988,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
             let item = item.map_err(|e| {
                 WriteRefusal::io(
                     copy_text(
-                        "beFilesWrite.copyTree.unlistable",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &dir_at.display().to_string()),
                             ("why", &io_reason(e.kind())),
@@ -1008,7 +1008,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
             let (is_dir, dev) = kind_and_device(&at).map_err(|e| {
                 WriteRefusal::io(
                     copy_text(
-                        "beFilesWrite.read.failed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &at.display().to_string()),
                             ("why", &io_reason(e.kind())),
@@ -1052,7 +1052,7 @@ pub fn remove_planned(face: &Face, root: &Path, p: &Planned) -> Result<PathBuf, 
     let is_dir = Ro::symlink_metadata(&at).map(|m| m.is_dir()).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &at.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -1203,7 +1203,7 @@ fn copy_entry_racing(
     let src_md = Ro::metadata(&src).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &src.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -1263,7 +1263,7 @@ fn land_copy(
     let mut reader = Ro::open_nofollow(src).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &src.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -1295,7 +1295,7 @@ fn land_copy(
             drop(writer);
             return Err(drop_side(WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &side.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -1326,7 +1326,7 @@ fn land_copy(
         if let Err(e) = face.move_file(&side, &dst) {
             return Err(drop_side(WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &dst.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -1450,7 +1450,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
     let (top_kind, top_dev) = copy_kind(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[("path", &shown(&real)), ("why", &io_reason(e.kind()))],
             ),
             &e,
@@ -1478,7 +1478,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         let listing = Ro::read_dir(&dir_at).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.copyTree.unlistable",
+                    "reason.fs.readFailed",
                     &[("path", &shown(&dir_at)), ("why", &io_reason(e.kind()))],
                 ),
                 &e,
@@ -1488,7 +1488,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
             let item = item.map_err(|e| {
                 WriteRefusal::io(
                     copy_text(
-                        "beFilesWrite.copyTree.unlistable",
+                        "reason.fs.readFailed",
                         &[("path", &shown(&dir_at)), ("why", &io_reason(e.kind()))],
                     ),
                     &e,
@@ -1505,7 +1505,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
             let (kind, dev) = copy_kind(&at).map_err(|e| {
                 WriteRefusal::io(
                     copy_text(
-                        "beFilesWrite.read.failed",
+                        "reason.fs.readFailed",
                         &[("path", &shown(&at)), ("why", &io_reason(e.kind()))],
                     ),
                     &e,
@@ -1517,7 +1517,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
                     Some(Ro::read_link(&at).map_err(|e| {
                         WriteRefusal::io(
                             copy_text(
-                                "beFilesWrite.read.failed",
+                                "reason.fs.readFailed",
                                 &[("path", &shown(&at)), ("why", &io_reason(e.kind()))],
                             ),
                             &e,
@@ -1578,7 +1578,7 @@ pub fn copy_planned(
     let unreadable = |e: std::io::Error| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[("path", &shown(&src)), ("why", &io_reason(e.kind()))],
             ),
             &e,
@@ -1607,7 +1607,7 @@ pub fn copy_planned(
         face.make_dir(&dst).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[("path", &shown(&dst)), ("why", &io_reason(e.kind()))],
                 ),
                 &e,
@@ -1633,7 +1633,7 @@ fn copy_dir_mode(
         .map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[("path", &shown(&src)), ("why", &io_reason(e.kind()))],
                 ),
                 &e,
@@ -1846,7 +1846,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
         Err(e) => {
             return Err(WriteFail::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &at.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -1861,7 +1861,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
     let md = Ro::metadata(&real).map_err(|e| {
         WriteFail::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &real.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -1895,7 +1895,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
     let bytes = Ro::read_nofollow(&real).map_err(|e| {
         WriteFail::io(
             copy_text(
-                "beFilesWrite.read.failed",
+                "reason.fs.readFailed",
                 &[
                     ("path", &real.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -2003,7 +2003,7 @@ fn put_text_racing(
         Err(e) => {
             return Err(WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &at.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -2018,7 +2018,7 @@ fn put_text_racing(
         let md = Ro::metadata(&real).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &real.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -2036,7 +2036,7 @@ fn put_text_racing(
         let cur = Ro::read_nofollow(&real).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.read.failed",
+                    "reason.fs.readFailed",
                     &[
                         ("path", &real.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -2180,7 +2180,7 @@ fn make_parents(face: &Face, root: &Path, rel: &Path) -> Result<(), WriteRefusal
                 face.make_dir(&at).map_err(|e| {
                     WriteRefusal::io(
                         copy_text(
-                            "beFilesWrite.write.failed",
+                            "reason.fs.writeFailed",
                             &[
                                 ("path", &at.display().to_string()),
                                 ("why", &io_reason(e.kind())),
@@ -2207,7 +2207,7 @@ fn make_parents(face: &Face, root: &Path, rel: &Path) -> Result<(), WriteRefusal
             Err(e) => {
                 return Err(WriteRefusal::io(
                     copy_text(
-                        "beFilesWrite.read.failed",
+                        "reason.fs.readFailed",
                         &[
                             ("path", &at.display().to_string()),
                             ("why", &io_reason(e.kind())),
@@ -2258,7 +2258,7 @@ fn swap_in(
         face.write_whole(&dst, bytes).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &dst.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -2289,7 +2289,7 @@ fn swap_in(
     let mut f = face.create_new(&side).map_err(|e| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &side.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -2305,7 +2305,7 @@ fn swap_in(
         face.delete_file(&side).ok();
         return Err(WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &side.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -2319,7 +2319,7 @@ fn swap_in(
         face.delete_file(&side).ok();
         return Err(WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &side.display().to_string()),
                     ("why", &io_reason(e.kind())),
@@ -2348,7 +2348,7 @@ fn swap_in(
             }
             Ok((_, _, Err(e))) => WriteRefusal::io(
                 copy_text(
-                    "beFilesWrite.write.failed",
+                    "reason.fs.writeFailed",
                     &[
                         ("path", &dst.display().to_string()),
                         ("why", &io_reason(e.kind())),
@@ -2365,7 +2365,7 @@ fn swap_in(
         face.delete_file(&side).ok();
         return Err(WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &dst.display().to_string()),
                     ("why", &io_reason(e.kind())),

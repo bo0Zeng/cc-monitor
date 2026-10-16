@@ -510,7 +510,7 @@ where
                     Ok(r) => Phase::Ended(r),
                     Err(e) => Phase::Failed(super::source::Failed {
                         code: None,
-                        said: copy_text("rsFilewinSource.said.badReply", &[]),
+                        said: copy_text("reason.content.unparsable", &[]),
                         detail: e.to_string(),
                     }),
                 };

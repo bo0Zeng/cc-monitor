@@ -92,7 +92,7 @@ class SshConnectionManager(
         // 同 id 并发连接单飞：先到者建，后到者进锁复查见活连接即复用，不会各建一条互相顶掉。
         return connectLockFor(id).withLock {
             states[id]?.connection?.takeIf { it.isConnected }?.let {
-                emit(copyText("mobSsh.log.reusedConcurrent"))
+                emit(copyText("mobSsh.log.reused"))
                 return@withLock it
             }
             doConnect(id, hostId, label, addressConfigs, onEvent, expectedGen)

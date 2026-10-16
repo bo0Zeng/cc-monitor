@@ -69,9 +69,9 @@ pub fn ensure_private_dir(dir: &Path) -> Result<(), Said> {
     b.create(dir).map_err(|e| {
         Said::with_raw(
             copy_text(
-                "rsPlatformFs.mkdir.failed",
+                "reason.fs.writeFailed",
                 &[
-                    ("dir", &(dir.display()).to_string()),
+                    ("path", &(dir.display()).to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),

@@ -421,7 +421,7 @@ async fn ack_within<R: tokio::io::AsyncRead + Unpin>(
         None => {
             let ack = serde_json::json!({
                 "ok": false,
-                "error": copy_core::copy_text("reason.dial.timeout", &[]),
+                "error": copy_core::copy_text("reason.link.noAnswer", &[]),
                 "reason": "timeout",
                 "detail": format!("{}s", resident_client::backoff::DIAL_WITHIN.as_secs()),
             });
@@ -889,7 +889,7 @@ mod tests {
         assert_eq!(ack["reason"], "timeout");
         assert_eq!(
             ack["error"],
-            copy_core::copy_text("reason.dial.timeout", &[])
+            copy_core::copy_text("reason.link.noAnswer", &[])
         );
     }
 

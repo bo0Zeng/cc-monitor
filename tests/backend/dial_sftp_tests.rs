@@ -720,7 +720,7 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
             Io::other("Operation unsupported"),
             word("reason.sftp.unsupported"),
         ),
-        (Io::other("Bad message"), word("reason.sftp.badMessage")),
+        (Io::other("Bad message"), word("reason.code.bug")),
         (Io::other("Failure"), word("reason.io.unknown")),
         // 整个包进去那一形。
         (Io::from(st(C::NoSuchFile)), word("reason.io.notFound")),
@@ -729,20 +729,11 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
             Io::from(st(C::OpUnsupported)),
             word("reason.sftp.unsupported"),
         ),
-        (Io::from(E::Timeout), word("reason.sftp.noAnswer")),
-        (
-            Io::from(st(C::ConnectionLost)),
-            word("reason.sftp.connectionLost"),
-        ),
-        (
-            Io::other("Connection lost"),
-            word("reason.sftp.connectionLost"),
-        ),
-        (Io::from(K::BrokenPipe), word("reason.sftp.connectionLost")),
-        (
-            Io::from(K::ConnectionReset),
-            word("reason.sftp.connectionLost"),
-        ),
+        (Io::from(E::Timeout), word("reason.link.noAnswer")),
+        (Io::from(st(C::ConnectionLost)), word("reason.link.lost")),
+        (Io::other("Connection lost"), word("reason.link.lost")),
+        (Io::from(K::BrokenPipe), word("reason.link.lost")),
+        (Io::from(K::ConnectionReset), word("reason.link.lost")),
         (
             Io::from(E::Limited("n".into())),
             word("reason.sftp.overLimit"),

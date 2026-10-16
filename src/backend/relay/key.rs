@@ -122,9 +122,9 @@ pub(crate) fn ensure_key(own: &Own) -> Result<Key, crate::common::said::Said> {
     own.ensure_dir(&dir).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
-                "beDoor.fs.mkdirFailed",
+                "reason.fs.writeFailed",
                 &[
-                    ("dir", &dir.as_path().display().to_string()),
+                    ("path", &dir.as_path().display().to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),

@@ -910,9 +910,9 @@ fn update_core(
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
-                    "beAssetCatalog.write.mkdirFailed",
+                    "reason.fs.writeFailed",
                     &[
-                        ("dir", &dir.as_path().display().to_string()),
+                        ("path", &dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),

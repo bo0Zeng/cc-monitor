@@ -228,11 +228,11 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             arch: "arm64".into(),
         },
         Refusal::OsUnknown(copy_core::said::Said::with_raw(
-            copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            copy_core::copy_static!("reason.link.noAnswer").into(),
             "uname: not found",
         )),
         Refusal::ArchUnknown(copy_core::said::Said::with_raw(
-            copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
+            copy_core::copy_static!("reason.link.noAnswer").into(),
             "Linux",
         )),
         Refusal::NotPromisedHere {

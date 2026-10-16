@@ -63,7 +63,7 @@ pub(crate) fn slot_words(
                 Tone::Fail,
             ),
             None => (
-                Words(copy_core::copy_text("acct.val.refusedOnly", &[])),
+                Words(copy_core::copy_text("reason.code.refused", &[])),
                 Tone::Fail,
             ),
         };
@@ -129,7 +129,7 @@ pub(crate) fn usage_of(
     let mut u = if kind == Kind::Api {
         if state == QuotaState::Refused {
             Usage {
-                value: Words(copy_core::copy_text("acct.val.refusedOnly", &[])),
+                value: Words(copy_core::copy_text("reason.code.refused", &[])),
                 tone: Tone::Fail,
                 resets_at: reading_reset,
                 ..Usage::default()
@@ -147,7 +147,7 @@ pub(crate) fn usage_of(
         let value = slot.map_or_else(
             || {
                 Words(if state == QuotaState::Refused {
-                    copy_core::copy_text("acct.val.refusedOnly", &[])
+                    copy_core::copy_text("reason.code.refused", &[])
                 } else {
                     copy_core::copy_text("acct.val.none", &[])
                 })

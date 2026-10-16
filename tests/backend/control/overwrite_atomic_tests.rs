@@ -168,7 +168,7 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
     // 撤掉了 ⇒ 只说写入失败那一句（没什么要用户做的）；系统原话进复制详情，不上句子。
     let plain = move_failed(dest, &failed, &Ok(()));
     assert!(
-        copy_core::copy_matches("beFilesCommit.upload.moveFailedNote", plain.message()),
+        copy_core::copy_matches("reason.fs.writeFailed", plain.message()),
         "{}",
         plain.message()
     );

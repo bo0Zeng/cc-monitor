@@ -625,7 +625,7 @@ pub fn race_reason(worst: Option<&str>) -> String {
     match worst {
         Some("resolve") => copy_text("reason.dial.resolve", &[]),
         Some("tcp") => copy_text("reason.dial.refused", &[]),
-        Some("timeout") => copy_text("reason.dial.timeout", &[]),
+        Some("timeout") => copy_text("reason.link.noAnswer", &[]),
         _ => copy_core::io_reason(std::io::ErrorKind::Other),
     }
 }

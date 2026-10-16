@@ -62,7 +62,7 @@ export class RunTimeline {
     this.body = document.createElement("div");
     this.live = document.createElement("div");
     this.element.append(this.body, this.live);
-    this.body.textContent = copyText("runs.timeline.loading");
+    this.body.textContent = copyText("kit.state.reading");
     this.folder = new BranchFolder(this.body);
   }
 

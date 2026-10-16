@@ -121,7 +121,7 @@ class RustTransport(
                 link.awaitAck { onEvent?.invoke(eventOf(it, first)) }
             } catch (e: IOException) {
                 link.close()
-                throw HostUnreachedException(e.message ?: copyText("mobSsh.conn.unavailable"), e)
+                throw HostUnreachedException(e.message ?: copyText("reason.link.lost"), e)
             }
         if (!ack.optBoolean("ok")) {
             link.close()
@@ -130,7 +130,7 @@ class RustTransport(
         recordFirstUse(chain)
         if (closed.get()) {
             link.close()
-            throw IOException(copyText("mobSsh.conn.closedNew"))
+            throw IOException(copyText("reason.link.lost"))
         }
         hold = link
         watcher.launch {
@@ -143,7 +143,7 @@ class RustTransport(
         withContext(Dispatchers.IO) {
             val link = child(JSONObject().put("use", "capture").put("command", command).put("capture", JSONObject().put("max_bytes", CAPTURE_MAX)))
             try {
-                val line = link.readLine() ?: throw IOException(copyText("mobSsh.conn.unavailable"))
+                val line = link.readLine() ?: throw IOException(copyText("reason.link.lost"))
                 val got = JSONObject(line)
                 ExecResult(
                     exitStatus = if (got.isNull("exit_status")) null else got.getInt("exit_status"),
@@ -195,7 +195,7 @@ class RustTransport(
     /** 照拨号身份开一条用法链路、读到 ack；ack 不成 ⇒ 抛（连接没了 ⇒ [ConnectionDeadException]）。 */
     private suspend fun child(use: JSONObject): RustLink {
         val b = base
-        if (b == null || !isConnected) throw ConnectionDeadException(copyText("mobSsh.conn.unavailable"))
+        if (b == null || !isConnected) throw ConnectionDeadException(copyText("reason.link.lost"))
         val req = JSONObject(b.toString())
         use.keys().forEach { k -> req.put(k, use.get(k)) }
         val link = RustCore.open(req)
@@ -225,11 +225,11 @@ class RustTransport(
                             ?: error(copyText("mobSsh.keystore.noCert"))
                     Core.putKeystore(auth.alias, uncompressedPoint(pub)) ?: error(copyText("mobSsh.keystore.noCert"))
                 }
-            } ?: throw IOException(copyText("mobSsh.conn.unavailable"))
+            } ?: throw IOException(copyText("reason.link.lost"))
         val kept = synchronized(keys) { !closed.get() && keys.add(id) }
         if (!kept) {
             Core.holdKey(id, false)
-            throw IOException(copyText("mobSsh.conn.closedNew"))
+            throw IOException(copyText("reason.link.lost"))
         }
         return id
     }
@@ -363,7 +363,7 @@ internal object RustCore : Core.Sink {
     fun open(req: JSONObject): RustLink {
         ensure()
         val handle = Core.open(req.toString())
-        if (handle == 0L) throw IOException(copyText("mobSsh.conn.unavailable"))
+        if (handle == 0L) throw IOException(copyText("reason.link.lost"))
         return RustLink(handle, inboxOf(handle))
     }
 
@@ -474,7 +474,7 @@ internal class RustLink(
     /** 读到 ack 那一行（之前的阶段行交给 [onStage]）；没等到就收工 ⇒ 抛。 */
     suspend fun awaitAck(onStage: (JSONObject) -> Unit): JSONObject {
         while (true) {
-            val line = readLine() ?: throw IOException(copyText("mobSsh.conn.unavailable"))
+            val line = readLine() ?: throw IOException(copyText("reason.link.lost"))
             val v = JSONObject(line)
             val stage = v.optJSONObject("stage")
             if (stage != null) onStage(stage) else return v
@@ -482,7 +482,7 @@ internal class RustLink(
     }
 
     fun send(bytes: ByteArray) {
-        if (!Core.send(handle, bytes)) throw IOException(copyText("mobSsh.conn.unavailable"))
+        if (!Core.send(handle, bytes)) throw IOException(copyText("reason.link.lost"))
     }
 
     fun resize(

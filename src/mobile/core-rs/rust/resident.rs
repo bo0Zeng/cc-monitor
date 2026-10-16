@@ -50,10 +50,7 @@ impl PhoneLink {
             r.insert("progress".into(), true.into());
         }
         let req: ssh_dial::DialRequest = serde_json::from_value(req).map_err(|e| {
-            Problem::new(
-                copy_core::copy_text("mobSsh.conn.unavailable", &[]),
-                e.to_string(),
-            )
+            Problem::new(copy_core::copy_text("reason.link.lost", &[]), e.to_string())
         })?;
         let (up_w, up_r) = tokio::io::duplex(256 * 1024);
         let (mut down_w, mut down_r) = tokio::io::duplex(256 * 1024);
@@ -132,9 +129,9 @@ impl Transport for PhoneLink {
                     &Progress::default(),
                 )
                 .await?;
-            let line = read_line(&mut down).await.ok_or_else(|| {
-                Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
-            })?;
+            let line = read_line(&mut down)
+                .await
+                .ok_or_else(|| Problem::new(copy_core::copy_text("reason.link.lost", &[]), ""))?;
             Ok(exec_of(&line))
         })
     }
@@ -146,9 +143,9 @@ async fn read_ack(
     progress: &Progress,
 ) -> Result<serde_json::Value, Problem> {
     loop {
-        let line = read_line(down).await.ok_or_else(|| {
-            Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
-        })?;
+        let line = read_line(down)
+            .await
+            .ok_or_else(|| Problem::new(copy_core::copy_text("reason.link.lost", &[]), ""))?;
         let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
         if v.get("progress").is_some() {
             progress.step();
@@ -186,7 +183,7 @@ pub fn ack_problem(ack: &serde_json::Value) -> Problem {
     let text = s("error");
     Problem::new(
         if text.is_empty() {
-            copy_core::copy_text("mobSsh.conn.unavailable", &[])
+            copy_core::copy_text("reason.link.lost", &[])
         } else {
             text
         },

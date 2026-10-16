@@ -1352,10 +1352,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
         crate::copy_table::copy_text(
             "rsBackendPolicy.death.brief",
             &[
-                (
-                    "kind",
-                    copy_core::copy_static!("rsBackendPolicy.death.refused")
-                ),
+                ("kind", copy_core::copy_static!("reason.code.refused")),
                 ("ended", said)
             ]
         )

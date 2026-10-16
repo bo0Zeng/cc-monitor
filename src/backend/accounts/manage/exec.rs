@@ -166,8 +166,7 @@ impl Run<'_> {
                 self.record(&[("REKEY", &format!("{table}\t{config_dir}"))])
             }
             Op::WriteManifest => {
-                let (text, before) =
-                    manifest.ok_or_else(|| copy_text("beAcctExec.manifest.nothing", &[]))?;
+                let (text, before) = manifest.ok_or_else(|| copy_text("reason.code.bug", &[]))?;
                 let path = self.r.manifest();
                 let existed = item_at(&path).exists();
                 if existed {

@@ -454,7 +454,7 @@ where
                 &(ack
                     .get("error")
                     .and_then(Value::as_str)
-                    .unwrap_or(&copy_text("beRemoteAsk.run.noReason", &[])))
+                    .unwrap_or(&copy_text("reason.io.unknown", &[])))
                 .to_string(),
             )],
         ));

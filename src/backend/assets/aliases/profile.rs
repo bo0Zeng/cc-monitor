@@ -315,7 +315,7 @@ pub(crate) fn read_at(home: &str) -> Result<Book, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Book::default()),
         Err(e) => Err(crate::common::said::Said::with_raw(
             copy_text(
-                "beProfile.file.unreadable",
+                "reason.fs.readFailed",
                 &[("path", &path), ("why", &copy_core::io_reason(e.kind()))],
             ),
             &e,

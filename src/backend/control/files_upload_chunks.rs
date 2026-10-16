@@ -55,7 +55,7 @@ fn assemble(
     let io = |what: &Path, e: std::io::Error| {
         WriteRefusal::io(
             copy_text(
-                "beFilesWrite.write.failed",
+                "reason.fs.writeFailed",
                 &[
                     ("path", &what.display().to_string()),
                     ("why", &io_reason(e.kind())),

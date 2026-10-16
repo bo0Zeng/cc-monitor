@@ -267,7 +267,7 @@ export class CcBusSection {
     const origin = this.originSel.value;
     if (!origin) return;
     this.readBtn.disabled = true;
-    this.statusEl.textContent = copyText("ccBus.reload.reading");
+    this.statusEl.textContent = copyText("kit.state.reading");
     this.listBox.replaceChildren();
     try {
       this.state = await readState(origin);
@@ -429,7 +429,7 @@ export class CcBusSection {
     if (!origin) return;
     btn.disabled = true;
     box.replaceChildren();
-    box.textContent = copyText("ccBus.loadInbox.reading");
+    box.textContent = copyText("kit.state.reading");
     try {
       const msgs = (await readInbox(origin, id)).messages;
       box.replaceChildren();

@@ -52,7 +52,7 @@ pub fn attach_reply(line: &str) -> Result<(), String> {
     }
     let why = match v["reason"].as_str() {
         Some(r) => r.to_string(),
-        None => copy_text("rsRemoteResident.handshake.notAttachReply", &[]),
+        None => copy_text("reason.dial.unparsable", &[]),
     };
     Err(copy_text(
         "rsRemoteResident.handshake.refused",
@@ -155,11 +155,7 @@ where
 
 /// 握手那一行没说完（等 hello · 等 attach 回话）。
 fn cut_short(hello: bool, raw: String) -> AttachFail {
-    let said = if hello {
-        copy_text("rsRemoteResident.handshake.helloCut", &[])
-    } else {
-        copy_text("rsRemoteResident.handshake.replyCut", &[])
-    };
+    let said = copy_text("reason.link.lost", &[]);
     AttachFail::Cut { hello, said, raw }
 }
 

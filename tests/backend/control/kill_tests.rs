@@ -212,7 +212,7 @@ fn the_kill_failures_keep_the_raw_words_out_of_the_sentence() {
     assert_eq!(
         e.message,
         copy_text(
-            "beKill.run.noTmux",
+            "reason.tmux.startFailed",
             &[(
                 "why",
                 &copy_core::spawn_reason(std::io::ErrorKind::NotFound)

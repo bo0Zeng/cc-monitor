@@ -205,7 +205,7 @@ private fun TmuxSessionList(
     onKillRequested: (TerminalsList.Row) -> Unit,
 ) {
     when {
-        loading -> Text(copyText("mobTmux.list.loading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        loading -> Text(copyText("kit.state.reading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         sessions.isEmpty() -> Text(copyText("mobTmux.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else ->
             sessions.forEach { s ->

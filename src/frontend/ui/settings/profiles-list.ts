@@ -355,7 +355,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       el("div", "prof-box-title", chain.length ? copyText("profilesPage.merge.title", { name: p.name, chain: chain.join(copyText("beProfile.chain.arrow")) }) : copyText("profilesPage.merge.titleBare", { name: p.name })),
     );
     if (!resolved) {
-      box.appendChild(el("div", "cfg-hint", copyText("profilesPage.merge.asking")));
+      box.appendChild(el("div", "cfg-hint", copyText("kit.state.reading")));
       return box;
     }
     if (resolved.problem) {

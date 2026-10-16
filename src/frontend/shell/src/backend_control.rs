@@ -118,7 +118,7 @@ pub fn backend_machines() -> Result<Vec<String>, Said> {
         let mut out = vec![LOCAL_ORIGIN.to_string()];
         let g = remotes()
             .lock()
-            .map_err(|e| Said::with_raw(copy_text("rsBackendControl.lock.poisoned", &[]), &e))?;
+            .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
         let mut names: Vec<String> = g.keys().cloned().collect();
         names.sort();
         out.extend(names);
@@ -229,7 +229,7 @@ pub async fn backend_start(origin: String) -> Result<String, Said> {
         }
         let mut g = remotes()
             .lock()
-            .map_err(|e| Said::with_raw(copy_text("rsBackendControl.lock.poisoned", &[]), &e))?;
+            .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
         let slot = g.get_mut(&origin).ok_or_else(|| {
             Said::of(
                 "rsBackendControl.handle.missing",
@@ -267,9 +267,9 @@ pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::Stop
                 .map_err(Said::crashed)?;
         }
         {
-            let mut g = remotes().lock().map_err(|e| {
-                Said::with_raw(copy_text("rsBackendControl.lock.poisoned", &[]), &e)
-            })?;
+            let mut g = remotes()
+                .lock()
+                .map_err(|e| Said::with_raw(copy_text("reason.code.bug", &[]), &e))?;
             let slot = g.get_mut(&origin).ok_or_else(|| {
                 Said::of(
                     "rsBackendControl.handle.missing",

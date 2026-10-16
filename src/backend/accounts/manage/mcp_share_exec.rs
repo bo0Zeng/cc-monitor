@@ -54,7 +54,7 @@ pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, crate::comm
                 .map(Some)
                 .map_err(|_| copy_text("beAcctMcpShare.read.notText", &[]).into())
         }
-        _ => Err(copy_text("beAcctMcpShare.read.notFile", &[]).into()),
+        _ => Err(copy_text("reason.fs.notRegular", &[]).into()),
     }
 }
 
@@ -111,7 +111,7 @@ fn servers_in(raw: Option<&str>, key: &str) -> Result<Servers, String> {
         )
     })?;
     match v.get(key) {
-        _ if !v.is_object() => Err(copy_text("beAcctMcpShare.read.notObject", &[])),
+        _ if !v.is_object() => Err(copy_text("reason.content.unparsable", &[])),
         None => Ok(Servers::new()),
         Some(Value::Object(m)) => Ok(m.clone()),
         Some(_) => Err(copy_text("beAcctMcpShare.read.serversNotObject", &[])),

@@ -106,7 +106,7 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
     case "unsupported":
       return v(copyText("front.title.failed"), copyText("terminalFront.unavailable.short"), "grey");
     case "unknown":
-      return v(copyText("front.title.failed"), copyText("front.body.unknown"), "red", [{ kind: "copy", detail: r.detail }]);
+      return v(copyText("front.title.failed"), copyText("reason.io.unknown"), "red", [{ kind: "copy", detail: r.detail }]);
   }
 }
 

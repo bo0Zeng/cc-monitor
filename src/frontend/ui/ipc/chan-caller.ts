@@ -142,9 +142,9 @@ function saidByLayer(e: unknown): string {
     case "hop":
       return err.why === "Overrun"
         ? copyText("chanCaller.said.timeout")
-        : copyText("chanCaller.said.unreachable");
+        : copyText("reason.link.lost");
     case "ours":
-      if (err.why !== "Cancelled") return copyText("chanCaller.said.internal");
+      if (err.why !== "Cancelled") return copyText("reason.code.bug");
       // 那台对这一条不认撤 ⇒ 说它可能还在跑。
       return err.runsOn === true ? copyText("chanCaller.said.withdrawnRunsOn") : copyText("chanCaller.said.withdrawn");
   }

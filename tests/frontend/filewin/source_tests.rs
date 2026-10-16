@@ -7,7 +7,7 @@ fn rows_from_ls_data(
 ) -> Result<(Vec<Listed>, Cut), String> {
     reply_of::<cmd_wire::files::LsReq>(d.clone())
         .map(|r| super::rows_from_ls_data(r, by))
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))
+        .map_err(|_| copy_text("reason.content.unparsable", &[]))
 }
 
 /// 造一棵**结构**上像样的临时目录树：名字全合成，不锚在任何活体上。
@@ -513,7 +513,7 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
     let e = rows_from_ls_data(&d, SortBy::default())
         .expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(
-        copy_core::copy_matches("rsFilewinSource.said.badReply", &e),
+        copy_core::copy_matches("reason.content.unparsable", &e),
         "报错不是「回包认不出」那一句：{e}"
     );
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
@@ -1338,7 +1338,7 @@ fn an_unreadable_refusal_keeps_its_body_out_of_the_sentence_and_in_the_detail() 
     };
     let at = Origin("devbox".into());
     let s = said(&at, "files-ls", &refused);
-    assert_eq!(s, copy_text("rsFilewinSource.said.refused", &[]));
+    assert_eq!(s, copy_text("reason.code.refused", &[]));
     let d = detail_of(&at, "files-ls", &refused);
     assert!(
         d.contains(&format!(

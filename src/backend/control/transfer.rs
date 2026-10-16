@@ -569,7 +569,7 @@ pub(crate) async fn upload_to_staging(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err(copy_text("beTransfer.run.cancelled", &[]).into());
+                return Err(copy_text("reason.op.cancelled", &[]).into());
             }
             let n = lf.read(&mut buf).await.map_err(|e| {
                 Said::with_raw(
@@ -698,7 +698,7 @@ pub(crate) async fn download_to_local(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err(copy_text("beTransfer.run.cancelled", &[]).into());
+                return Err(copy_text("reason.op.cancelled", &[]).into());
             }
             let n = rf.read(&mut buf).await.map_err(|e| {
                 Said::with_raw(
@@ -1398,7 +1398,7 @@ async fn run(
 ) -> Result<(u64, Option<String>), (Said, Option<&'static str>)> {
     let session = tokio::select! {
         s = sftp::open_for_transfer(dial) => s.map_err(|e| (e, None))?,
-        _ = cancel.wait() => return Err((Said::from(copy_text("beTransfer.run.cancelled", &[])), None)),
+        _ = cancel.wait() => return Err((Said::from(copy_text("reason.op.cancelled", &[])), None)),
     };
     match job {
         Job::Upload { local, key, home } => {
