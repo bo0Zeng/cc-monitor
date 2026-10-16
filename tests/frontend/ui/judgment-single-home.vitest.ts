@@ -410,7 +410,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
-    // 解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
+    // `AuthKind` 类型读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
     status: "generated",
     defs: [],
     gone: ["AUTH_KINDS"],
@@ -421,11 +421,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     gen: {
       file: "src/frontend/ui/generated/judgment-rules.ts",
       exports: ["AUTH_KINDS", "AuthKind"],
-      importers: ["src/frontend/ui/accounts-decode.ts", "src/frontend/ui/accounts.ts"],
+      importers: ["src/frontend/ui/accounts.ts"],
     },
     parity: {
       via: "tests/__fixtures__/accounts.golden.json",
-      tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/frontend/ui/accounts-decode.vitest.ts"],
+      tests: ["tests/backend/observe/accounts_query_tests.rs"],
     },
   },
   J20: {

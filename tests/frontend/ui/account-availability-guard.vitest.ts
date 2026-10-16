@@ -99,12 +99,8 @@ const ALLOWED: Record<string, Record<string, number>> = {
   // `accountLoginActionLabel` 随它没人调删了：`authReady` 4 → 3 · `authKind` 4 → 3。
   // 10-10 `isSelectable` 删了（能不能选由那台后端写好 `selectable`，规则住 `acct_core::account_selectable`）：`authReady` 3 → 2。
   // 10-10 账号徽章由那台后端写好（`accounts-list` 每号 `badge`，`accounts_query::badge_of`），`accountStatusBadge` 删了：`authReady` 2 → 1 · `authKind` 3 → 2。
-  "src/frontend/ui/accounts.ts": { loggedIn: 2, authReady: 1, authKind: 2 },
-  // 后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
-  //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
-  //   不是**判**：可用性仍只由那台后端写好的 `selectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
-  //   单独一个文件、单独一行，两件事分得开（`src/frontend/ui/accounts-decode.ts` 头注）。
-  "src/frontend/ui/accounts-decode.ts": { loggedIn: 4, authReady: 4, authKind: 4 },
+  // 账号的形状改从生成物派生（`Account = AccountRow` 去掉几格可缺），三个字段的声明不在本文件了：各 −1，收口那一行随解码器删。
+  "src/frontend/ui/accounts.ts": { loggedIn: 1, authReady: 0, authKind: 1 },
 };
 
 /** 被钉的三个字段名。 */

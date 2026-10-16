@@ -47,6 +47,9 @@ export const REAL_OPS = new Set([
   "history-last-accounts",
   "exit-policy-read",
   "needs-answer",
+  // 「需手动」的先后（`Ctrl+J` · 浮层开的那一下）：各台的清单与本机合一份都交真后端。
+  "sessions-needs",
+  "sessions-needs-merge",
   // 那台的偏好（`prefs.json`：启动命令 · 子会话 / 分身会话进不进标签栏 …）：真后端读写台架盘上那一份，缺省只在后端。
   "prefs-read",
   "prefs-set",

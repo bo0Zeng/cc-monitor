@@ -1133,6 +1133,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--sessions-needs",
+    // 各台需手动清单合成一个先后（`sessions-needs-merge`，纯计算）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--sessions-needs-merge",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--accounts-trust",
     // 帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。

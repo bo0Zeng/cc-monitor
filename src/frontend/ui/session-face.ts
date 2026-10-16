@@ -161,28 +161,6 @@ export function abbrOf(tab: Tab): string {
 }
 
 /**
- * 两条「需手动」先答哪个 —— 照核心那一处（Rust `facts_query::needs_first`，对同一份金样 `needs-order.golden.json`）：
- * 危险度在前（`rank`，核心判好的）；同一档里等得久的在前；不知道等了多久的排这一档最后。
- * 「等了多久」＝ 那台答出那一刻算好的 `waitedMs` ＋ 本机从收到起走过的（各在一台钟上量，不跨机器比时刻）。
- */
-export function needsFirst(a: Needs, b: Needs, now: number): number {
-  if (a.rank !== b.rank) return a.rank - b.rank;
-  const wa = a.waitedMs === null ? null : a.waitedMs + Math.max(0, now - a.receivedAt);
-  const wb = b.waitedMs === null ? null : b.waitedMs + Math.max(0, now - b.receivedAt);
-  if (wa === null || wb === null) return wa === wb ? 0 : wa === null ? 1 : -1;
-  return wb - wa;
-}
-
-/** `Ctrl+J` 的顺序：需手动的那几个按 [`needsFirst`] 排，同档按条上看到的顺序。`tabs` 按条上看到的顺序给。 */
-export function needsOrder(tabs: readonly Tab[], now: number): string[] {
-  return tabs
-    .map((t, i) => ({ t, i, n: needsOf(t) }))
-    .filter((x): x is { t: Tab; i: number; n: Needs } => x.n !== null)
-    .sort((a, b) => needsFirst(a.n, b.n, now) || a.i - b.i)
-    .map((x) => x.t.sessionId);
-}
-
-/**
  * 「需手动」的下一站：会话在前（`order`）、计划项在后（`planCount` 条）。站在计划项上 ⇒ `planAt` 是第几条，否则看 `active` 那个会话。
  * 走到尽头绕回开头；两边都空 ⇒ `null`。
  */

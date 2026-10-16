@@ -752,7 +752,7 @@ pub(crate) const NEEDS_BY_DANGER: [NeedsKind; 8] = [
     NeedsKind::Unknown,
 ];
 
-/// **几条「需手动」先答哪个**（唯一一处：`sessions-needs` 按它排）：危险度序在前（[`Needs::rank`]）；同一档里等得久的在前
+/// **几条「需手动」先答哪个**（唯一一处：`sessions-needs` 与 [`merge_needs`] 按它排）：危险度序在前（[`Needs::rank`]）；同一档里等得久的在前
 /// （[`Needs::waited_ms`]，各自在那台算的）；不知道等了多久的排这一档最后。
 pub(crate) fn needs_first(a: &Needs, b: &Needs) -> std::cmp::Ordering {
     a.rank
@@ -763,6 +763,52 @@ pub(crate) fn needs_first(a: &Needs, b: &Needs) -> std::cmp::Ordering {
             (None, Some(_)) => std::cmp::Ordering::Greater,
             (None, None) => std::cmp::Ordering::Equal,
         })
+}
+
+/// `sessions-needs-merge` 入参里的一台：它的名字（本机逐字 `"<local>"`）＋ 它答回来的 `sessions-needs` 那几行原样。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NeedsMachine {
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) waiting: Vec<cmd_wire::needs::NeedsRow>,
+}
+
+/// `sessions-needs-merge` 的回包：各台需手动的会话，先答的在前。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NeedsMerged {
+    pub(crate) order: Vec<NeedsAt>,
+}
+
+/// 合好的一条：哪台 · 哪个会话。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct NeedsAt {
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) sid: String,
+}
+
+/// **各台的「需手动」合成一个先后**（`sessions-needs-merge`）：照 [`needs_first`] 排；并列 ⇒ 给的台序、台内原来的先后。
+/// 各台的 `waitedMs` 是同一回问回来的、各在那台的钟上量，跨台照样比。纯计算。
+pub(crate) fn merge_needs(machines: Vec<NeedsMachine>) -> NeedsMerged {
+    let mut all: Vec<(cmd_wire::Machine, cmd_wire::needs::NeedsRow)> = machines
+        .into_iter()
+        .flat_map(|m| {
+            let origin = m.origin;
+            m.waiting.into_iter().map(move |r| (origin.clone(), r))
+        })
+        .collect();
+    all.sort_by(|a, b| needs_first(&a.1.needs, &b.1.needs));
+    NeedsMerged {
+        order: all
+            .into_iter()
+            .map(|(origin, r)| NeedsAt { origin, sid: r.sid })
+            .collect(),
+    }
 }
 
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。

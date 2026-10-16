@@ -193,6 +193,8 @@ import type { Minted } from "./Minted";
 import type { ModeSwitched } from "./ModeSwitched";
 import type { ModelSwitched } from "./ModelSwitched";
 import type { NeedsList } from "./NeedsList";
+import type { NeedsMergeReq } from "./NeedsMergeReq";
+import type { NeedsMerged } from "./NeedsMerged";
 import type { NewFacts } from "./NewFacts";
 import type { NewFactsReq } from "./NewFactsReq";
 import type { NewRequest } from "./NewRequest";
@@ -525,6 +527,7 @@ export interface TypedCommands {
   "session-say": { req: SessionSayReq; reply: Sent; code: "bad_args" | "no_tmux" | "no_such_session" | "unobservable" | "child_timed_out" };
   "session-terminals": { req: SidReq; reply: Showing; code: "bad_args" | "no_such_session" | "failed" | "child_timed_out" };
   "sessions-needs": { req: NoArgs; reply: NeedsList; code: "bad_args" };
+  "sessions-needs-merge": { req: NeedsMergeReq; reply: NeedsMerged; code: "bad_args" };
   "sessions-start": { req: SessionsStartReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-stop": { req: SidsReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-where": { req: SidsReq; reply: Whereabouts; code: "bad_args" | "unobservable" | "child_timed_out" };

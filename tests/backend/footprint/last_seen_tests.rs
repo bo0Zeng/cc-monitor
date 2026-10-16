@@ -36,6 +36,13 @@ fn report() -> serde_json::Value {
     .unwrap()
 }
 
+/// 一份合法的 `accounts-list` 应答（金样里那一份，后端成品现产过）。
+fn accounts_list() -> serde_json::Value {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/accounts.golden.json")).unwrap();
+    g["accounts-list"].clone()
+}
+
 struct Dir(std::path::PathBuf);
 impl Dir {
     fn new(tag: &str) -> Self {
@@ -61,7 +68,7 @@ impl Drop for Dir {
 #[test]
 fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     let d = Dir::new("rw");
-    let v = json!({"meta": {"enabled": true}, "accounts": [{"name": "work"}]});
+    let v = accounts_list();
     write_at(
         &d.own(),
         &json!({"origin": "devbox", "kind": "accounts", "value": v}),
@@ -71,7 +78,7 @@ fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
     assert_eq!(
         got,
-        json!({"accounts": {"atMs": 1000, "value": v}, "data": null})
+        json!({"accounts": {"state": "kept", "atMs": 1000, "value": v}, "data": null})
     );
     let other = read_at(&d.file(), &json!({"origin": "gpu-01"})).unwrap();
     assert_eq!(other, json!({"accounts": null, "data": null}));
@@ -92,13 +99,13 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
     );
     write_at(
         &d.own(),
-        &json!({"origin": "devbox", "kind": "accounts", "value": {"home": "/h"}}),
+        &json!({"origin": "devbox", "kind": "accounts", "value": accounts_list()}),
         5,
     )
     .unwrap();
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
-        json!({"atMs": 5, "value": {"home": "/h"}})
+        json!({"state": "kept", "atMs": 5, "value": accounts_list()})
     );
 }
 
@@ -158,7 +165,7 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     ] {
         write_at(
             &d.own(),
-            &json!({"origin": o, "kind": k, "value": if k == "data" { report() } else { json!({"x": 1}) }}),
+            &json!({"origin": o, "kind": k, "value": if k == "data" { report() } else { accounts_list() }}),
             10,
         )
         .unwrap();
@@ -188,14 +195,14 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     );
 }
 
-/// `data` 那一份按 `data-report` 的回包类型收：多一格 · 缺一格 · 类型不对 ⇒ `bad_args`、不落盘；收下的连同那条命令此刻的形状指纹一起存。
+/// 每一样按它那条命令的回包类型收：多一格 · 缺一格 · 类型不对 ⇒ `bad_args`、不落盘；收下的连同那条命令此刻的形状指纹一起存。
 #[test]
-fn data_那一份按回包类型收_形状不对的不收() {
+fn 每一样按回包类型收_形状不对的不收() {
     let d = Dir::new("shape-in");
-    let code = |v: serde_json::Value| {
+    let code = |kind: &str, v: serde_json::Value| {
         write_at(
             &d.own(),
-            &json!({"origin": "devbox", "kind": "data", "value": v}),
+            &json!({"origin": "devbox", "kind": kind, "value": v}),
             1,
         )
         .unwrap_err()
@@ -208,7 +215,16 @@ fn data_那一份按回包类型收_形状不对的不收() {
     let mut wrong = report();
     wrong["todo"][0]["kind"] = json!("maybe");
     for v in [json!({"home": "/h"}), extra, missing, wrong] {
-        assert_eq!(code(v), "bad_args");
+        assert_eq!(code("data", v), "bad_args");
+    }
+    let mut extra = accounts_list();
+    extra["meta"]["extra"] = json!(1);
+    let mut missing = accounts_list();
+    missing["accounts"][0].as_object_mut().unwrap().remove("color");
+    let mut wrong = accounts_list();
+    wrong["accounts"][0]["color"] = json!("3");
+    for v in [json!({"meta": {"enabled": true}, "accounts": []}), extra, missing, wrong] {
+        assert_eq!(code("accounts", v), "bad_args");
     }
     assert!(!d.file().exists(), "拒掉的不许落一个字节");
     write_at(
@@ -217,12 +233,20 @@ fn data_那一份按回包类型收_形状不对的不收() {
         7,
     )
     .unwrap();
+    write_at(
+        &d.own(),
+        &json!({"origin": "devbox", "kind": "accounts", "value": accounts_list()}),
+        8,
+    )
+    .unwrap();
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
-    assert_eq!(
-        raw["devbox"]["data"]["shape"],
-        json!(cmd_wire::shapes::shape_of("data-report").unwrap()),
-        "存档要记下是哪一版的回包"
-    );
+    for (kind, cmd) in [("data", "data-report"), ("accounts", "accounts-list")] {
+        assert_eq!(
+            raw["devbox"][kind]["shape"],
+            json!(cmd_wire::shapes::shape_of(cmd).unwrap()),
+            "{kind}：存档要记下是哪一版的回包"
+        );
+    }
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["data"],
         json!({"state": "kept", "atMs": 7, "value": report()})
@@ -237,19 +261,26 @@ fn 存档不是这一版_照实说读不懂_不交原样() {
     let mut wrong = report();
     wrong["tmux"] = json!("no");
     let now = cmd_wire::shapes::shape_of("data-report").unwrap();
-    for (o, entry) in [
+    let mut bent = accounts_list();
+    bent["notice"] = json!(1);
+    let now_accounts = cmd_wire::shapes::shape_of("accounts-list").unwrap();
+    for (o, kind, entry) in [
         (
             "old",
+            "data",
             json!({"atMs": 3, "shape": "00000000", "value": report()}),
         ),
-        ("bare", json!({"atMs": 4, "value": report()})),
-        ("bent", json!({"atMs": 5, "shape": now, "value": wrong})),
+        ("bare", "data", json!({"atMs": 4, "value": report()})),
+        ("bent", "data", json!({"atMs": 5, "shape": now, "value": wrong})),
+        // 旧版记的账号清单没带指纹（那时原样存）⇒ 照样读不懂。
+        ("bare-accounts", "accounts", json!({"atMs": 6, "value": accounts_list()})),
+        ("bent-accounts", "accounts", json!({"atMs": 7, "shape": now_accounts, "value": bent})),
     ] {
-        std::fs::write(d.file(), json!({ o: {"data": entry} }).to_string()).unwrap();
+        std::fs::write(d.file(), json!({ o: {kind: entry} }).to_string()).unwrap();
         let got = read_at(&d.file(), &json!({"origin": o})).unwrap();
-        assert_eq!(got["data"]["state"], json!("unreadable"), "{o}: {got}");
+        assert_eq!(got[kind]["state"], json!("unreadable"), "{o}: {got}");
         assert!(
-            got["data"].get("value").is_none(),
+            got[kind].get("value").is_none(),
             "{o}：读不懂的原样不交出去"
         );
     }

@@ -708,6 +708,45 @@ pub(crate) fn needs_with(
     }
 }
 
+// ───────────────────────── sessions-needs-merge ─────────────────────────
+
+/// `sessions-needs-merge` 的入参：各台答回来的需手动清单，按台。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NeedsMergeReq {
+    pub(crate) machines: Vec<crate::observe::facts_query::NeedsMachine>,
+}
+
+codes! {
+    /// `sessions-needs-merge` 自己没有码（只有入参形状不对的 `bad_args`）。
+    pub(crate) enum NeedsMergeErr {}
+}
+
+/// `sessions-needs-merge`：把各台的需手动清单合成一个先后（桌面 `Ctrl+J` 走它；纯计算，不读盘 ⇒ 不进阻塞档）。
+pub(crate) struct NeedsMergeCmd;
+
+impl Command for NeedsMergeCmd {
+    const NAME: &'static str = "sessions-needs-merge";
+    type Req = NeedsMergeReq;
+    type Reply = crate::observe::facts_query::NeedsMerged;
+    type Err = NeedsMergeErr;
+}
+
+impl crate::wire::typed::Handle for NeedsMergeCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: NeedsMergeReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::facts_query::NeedsMerged, NeedsMergeErr>,
+    > + Send
+           + 'static {
+        std::future::ready(Ok(crate::observe::facts_query::merge_needs(req.machines)))
+    }
+}
+
 // ───────────────────────── 出成品那几条的收集器 ─────────────────────────
 
 /// 逐条收成品，整份（按序列化字节计）过 [`LINES_CAP_BYTES`] ⇒ 当场停下扫描、回 `too_large`

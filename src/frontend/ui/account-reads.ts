@@ -3,23 +3,20 @@
  *
  * 三条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
- * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收」。
+ * 入参 · 回包按生成类型问（`callTyped`，形状由握手指纹管）；规则留在 `accounts.ts`（纯），这里只管「去问、收」。
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, isOldBackend, saidFrom } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
-import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 import { recallSeen, rememberSeen } from "./last-seen";
 
 /**
  * 问那台机器（**本机也一样**）的账号状态：每次都发 `accounts-list`，答回来那一份放进 store（画的那几处订它）。
  *
- * **走通道，后端出成品**：`chan.call(origin, "accounts-list", {agent}, …)` —— 帧命令直接问那台机器的后端
- * （本机那台由 `<local>` 那条长连接答），应答就是界面要的形状（[`decodeAccountsList`] 按形状收，不解释）。
+ * **走通道，后端出成品**：帧命令直接问那台机器的后端（本机那台由 `<local>` 那条长连接答），应答就是界面要的形状。
  *
  * `agent`：这次起会话的是哪一家（适配器 id）。并表只认那一家的行，后端不猜 ⇒ 由这里带过去。
  * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到 / 形状对不上）⇒ `available:false` ＋ 一句人话（通道那一层的说法
@@ -29,22 +26,10 @@ import { recallSeen, rememberSeen } from "./last-seen";
 export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
   let state: AccountsState;
   try {
-    const body = jsonBody({ agent: launchAgentId() });
-    const budget = budgetWithin(ACCOUNTS_BUDGET_MS);
-    const reply = await chan.call(origin, "accounts-list", body, budget);
-    const raw = readJson(reply);
-    const got = decodeAccountsList(raw);
-    state = {
-      origin,
-      available: true,
-      error: null,
-      oldBackend: false,
-      meta: got.meta,
-      accounts: got.accounts,
-      // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
-      notice: got.notice,
-    };
-    if (got.meta !== null) void rememberSeen(origin, "accounts", raw);
+    const got = await callTyped(origin, "accounts-list", { agent: launchAgentId() }, budgetWithin(ACCOUNTS_BUDGET_MS));
+    // `notice`：后端说的「能用但有缺」（manifest 里没有账号 0 等）。
+    state = { origin, available: true, error: null, oldBackend: false, meta: got.meta, accounts: got.accounts, notice: got.notice };
+    void rememberSeen(origin, "accounts", got);
   } catch (e) {
     state = {
       origin,
@@ -61,17 +46,15 @@ export async function fetchAccounts(origin: Origin): Promise<AccountsState> {
   return state;
 }
 
-/** 本机后端记着的那台上次那一份（收不下 / 没有 ⇒ `null`；本机那台不记）。 */
+/** 本机后端记着的那台上次那一份（没有 / 存档不是这一版 ⇒ `null`；本机那台不记）。 */
 async function recallLast(origin: Origin): Promise<AccountsState["last"]> {
   const seen = await recallSeen(origin, "accounts");
   if (seen === null) return null;
-  try {
-    const got = decodeAccountsList(seen.value);
-    return got.meta === null ? null : { meta: got.meta, accounts: got.accounts, atMs: seen.atMs };
-  } catch {
-    // 记着的那份形状对不上（旧版记的）⇒ 当没有。
+  if (seen.state === "unreadable") {
+    console.warn(`[accounts] ${origin} 记下的上次值不是这一版，读不懂`);
     return null;
   }
+  return { meta: seen.value.meta, accounts: seen.value.accounts, atMs: seen.atMs };
 }
 
 /**
@@ -106,17 +89,15 @@ export function accountsAgentProfile(): AgentProfileRow | null {
 /**
  * 那台机器（**本机也一样**）上正在跑的会话各属于哪个账号：每次都问那台。
  *
- * **走通道**：`chan.call(origin, "accounts-sessions", …)` —— 帧命令直接问那台机器的后端，
- * 本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）；行的解释只在 [`parseSessionAccountLines`] 一处。
+ * **走通道**：帧命令直接问那台机器的后端，本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）；
+ * 回包是逐行 JSON（`SessionLines`），行的解释只在 [`parseSessionAccountLines`] 一处。
  *
  * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到）一律按「这一次没问出来」：空表、`console.warn`，不猜。
  */
 export async function fetchSessionAccounts(origin: Origin): Promise<SessionAccount[]> {
   try {
-    const empty = jsonBody({});
-    const budget = budgetWithin(SESSION_ACCOUNTS_BUDGET_MS);
-    const reply = await chan.call(origin, "accounts-sessions", empty, budget);
-    return parseSessionAccountLines(linesOf(reply));
+    const { lines } = await callTyped(origin, "accounts-sessions", {}, budgetWithin(SESSION_ACCOUNTS_BUDGET_MS));
+    return parseSessionAccountLines(lines);
   } catch (e) {
     console.warn(`fetchSessionAccounts(${origin}) failed:`, e);
     return [];
@@ -195,26 +176,13 @@ export interface TrustResult {
 /**
  * Z01：`configDir` 传 `null` = 问账号 0（它的 `.claude.json` 在那台机器的 `$HOME`）。**绝不传空串**——那会被后端判成不安全路径拒掉。
  *
- * **走通道**：`chan.call(origin, "accounts-trust", {configDir, cwd}, …)`，本机与远端同一条路。
- * 在此之前是 Tauri 命令 `check_account_trust`：远端每问一次经本机后端开一条链路、在那台 exec 一次后端（最后两条仍逐次拨号的
- * 子命令），本机每问一次 exec 一次性本机后端。失败一律 `available:false` ＋ 一句人话（调用方按「未知信任状态」只警告不拦）。
+ * **走通道**，本机与远端同一条路。失败一律 `available:false` ＋ 一句人话（调用方按「未知信任状态」只警告不拦）。
  */
-export async function checkTrust(
-  origin: Origin,
-  configDir: string | null,
-  cwd: string,
-): Promise<TrustResult> {
+export async function checkTrust(origin: Origin, configDir: string | null, cwd: string): Promise<TrustResult> {
   try {
-    const body = jsonBody({ configDir, cwd });
-    const budget = budgetWithin(TRUST_BUDGET_MS);
-    const reply = await chan.call(origin, "accounts-trust", body, budget);
-    return { available: true, error: null, ...decodeTrust(readJson(reply)) };
+    const got = await callTyped(origin, "accounts-trust", { configDir, cwd }, budgetWithin(TRUST_BUDGET_MS));
+    return { available: true, error: null, trusted: got.trusted, known: got.known };
   } catch (e) {
-    return {
-      available: false,
-      trusted: false,
-      known: false,
-      error: saidFrom(e, origin),
-    };
+    return { available: false, trusted: false, known: false, error: saidFrom(e, origin) };
   }
 }

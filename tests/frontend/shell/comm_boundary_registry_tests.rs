@@ -2022,7 +2022,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 正控（按符号认，不数个数）：每个入口点名一份今天确实在说它的文件 —— 抽取坏了 / 语料面缩了，
     //   上面那条零违例会在零个调用点上恒绿。
     const ANCHORS: &[(&str, &str)] = &[
-        ("chan.call", "src/frontend/ui/account-reads.ts"),
+        ("chan.call", "src/frontend/ui/ipc/chan-caller.ts"),
         ("chan.subscribe", "src/frontend/ui/events.ts"),
         ("call", "src/frontend/filewin/src/source.rs"),
         ("subscribe", "src/frontend/filewin/src/source.rs"),
@@ -2138,7 +2138,7 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 `C4`「读文本」（读 `~/.ssh/config`）与 `C5`（起 `ssh -G`）随「从 ssh config 导入」搬进后端 `dial/ssh_config.rs` 一起离开。〕",
     ),
     (
-        "src/frontend/shell/src/sftp.rs",
+        "src/frontend/shell/src/deploy.rs",
         &["X2"],
         &[],
         "**今天咬 `X2` 一条**：部署判定进了本机常驻后端（`deploy-plan`），本文件问它要计划那一问         定了一个期限值（`PLAN_BUDGET`）—— 期限值归宿主，而它就是宿主那一侧的调用方（形状同下一行 `sftp_pool.rs`），         照实登记、不圈。 **原来只差 `C1` 一条，后来一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\

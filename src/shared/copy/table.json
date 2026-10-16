@@ -3815,12 +3815,6 @@
       "zh": "后端报错 · 原因不明",
       "args": []
     },
-    "chanCaller.linesOf.badShape": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "内容无法解析",
-      "args": []
-    },
     "keybindingActions.category.account": {
       "kind": "title",
       "role": "标题",
@@ -5336,18 +5330,6 @@
       "kind": "body",
       "role": "片段",
       "zh": " · 已是默认",
-      "args": []
-    },
-    "accountsDecode.where.nth": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "账号 {i}",
-      "args": ["i"]
-    },
-    "accountsDecode.where.top": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "顶层",
       "args": []
     },
     "agentProfile.lookup.unknown": {

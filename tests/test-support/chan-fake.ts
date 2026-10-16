@@ -322,7 +322,7 @@ export async function recordReadReply(
 // 今天它们是一发 `chan_call`（op = `accounts-list` / `accounts-trust`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
-//   出的那几个（跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着两侧）。
+//   出的那几个（生成类型 `AccountsList` · `Trust`）。
 // ⚠ 旧回包里「老后端」那几种缺格（账号缺 `authKind` / `authReady`、`meta: null`）在成品里不存在 ⇒ 按旧消费侧的回落补齐：
 //   `authKind` 缺 ⇒ 订阅 · `authReady` 缺 ⇒ `loggedIn`（`accountReady` 那条旧回落）· `meta: null` ⇒ 没启用（`deriveUi` 那一档）。
 
