@@ -1207,7 +1207,10 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     assert_eq!(e.code, "typed_unconfirmed");
     assert_eq!(
         e.untyped,
-        Some((Delivery::NotDelivered, Some(JustMade::for_test(&req.name))))
+        Some((
+            Delivery::NotDelivered,
+            Some(JustMade(exact_target(&req.name)))
+        ))
     );
 
     let f = FakeTmux::new(|verb| match verb {
@@ -1224,7 +1227,7 @@ fn busy2_a_start_command_that_did_not_get_through_says_which_kind() {
     assert_eq!(e.code, "typed_unconfirmed");
     assert_eq!(
         e.untyped,
-        Some((Delivery::Unknown, Some(JustMade::for_test(&req.name))))
+        Some((Delivery::Unknown, Some(JustMade(exact_target(&req.name)))))
     );
 
     // 别的失败（建不出来）不带这一格。
@@ -1265,7 +1268,7 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
     let reap_on = |m: JustMade| {
         crate::control::kill::end(crate::control::kill::Ending::Bare(m, &real)).is_ok()
     };
-    let reap = |name: &str| reap_on(JustMade::for_test(name));
+    let reap = |name: &str| reap_on(JustMade(exact_target(name)));
     assert!(
         sb.run(&["has-session", "-t", "=busy2-bare:"])
             .status

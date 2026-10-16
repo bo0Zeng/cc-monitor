@@ -898,11 +898,3 @@ impl crate::wire::typed::Handle for Launch {
 #[cfg(test)]
 #[path = "../../../tests/backend/control/launch_tests.rs"]
 mod tests;
-
-/// 判据用：在隔离的 tmux 上自己建好会话之后造一个（生产构建里没有这一口）。
-#[cfg(test)]
-impl JustMade {
-    pub(crate) fn for_test(name: &str) -> Self {
-        JustMade(exact_target(name))
-    }
-}
