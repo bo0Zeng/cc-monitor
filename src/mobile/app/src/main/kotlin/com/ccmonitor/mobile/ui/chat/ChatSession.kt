@@ -43,8 +43,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
@@ -518,6 +520,9 @@ class ChatSession(
 
         /** 换了一条流（`CoreLink.epoch` 变了）：断开那段的行没收到。 */
         data object Reconnected : Event
+
+        /** 那份记录被那台从头重读了（会话表里那一条换了一代）：读过的那一代作废。 */
+        data object Reread : Event
     }
 
     /** 先订上这条会话的 `line` 帧与 `from`（攒着），再读最后一屏；读完按行号接上攒着的，之后来一样接一样。[fresh]：刚起的那条（见 [pathOf]）。 */
@@ -540,6 +545,13 @@ class ChatSession(
         if (!fresh) lock.withLock { restoreLocked(s) }
         cache.viewed(s)
         launch { link.epoch.drop(1).collect { events.send(Event.Reconnected) } }
+        launch {
+            link.table
+                .map { it.generation(s) }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { events.send(Event.Reread) }
+        }
         followLive(s)
         attached = true
         syncHold()
@@ -554,7 +566,7 @@ class ChatSession(
         suspend fun take(e: Event) =
             lock.withLock {
                 if (!loaded) {
-                    if (e == Event.Reconnected) loaded = reloadLocked(p)
+                    if (e == Event.Reconnected || e == Event.Reread) loaded = reloadLocked(p)
                 } else if (stepLocked(p, e)) {
                     publishLocked()
                 }
@@ -599,6 +611,11 @@ class ChatSession(
             is Event.From -> e.seq <= nextSeq || fillLocked(p, e.seq)
             // 换了一条流：交手上那一份问一次，断开那一段怎么补那台判（续得上就只读那一截）。
             Event.Reconnected -> reloadLocked(p)
+            // 从头重读了：手上那一份不交（续点作废），读最后一屏、整份重来（同桌面那一 tab 整份重来）。
+            Event.Reread -> {
+                anchorOffset = null
+                reloadLocked(p)
+            }
         }
 
     /**

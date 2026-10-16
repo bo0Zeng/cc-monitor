@@ -1107,3 +1107,100 @@ data class ProfilesWriteDone(
     val wrote: Boolean,
     val reload: String?,
 )
+
+/* 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。 */
+
+@WireOf("SessionAdded")
+@JsonClass(generateAdapter = true)
+data class SessionAddedFrame(
+    val sid: String,
+    val path: String?,
+    val cwd: String?,
+    val name: String?,
+    @Json(name = "agent_kind") val agentKind: String,
+    val attachable: Boolean?,
+    val activity: SessionActivityWord?,
+    @Json(name = "activity_text") val activityText: String,
+    @Json(name = "activity_tone") val activityTone: Tone,
+    val switch: SwitchCell,
+)
+
+@WireOf("SessionStatus")
+@JsonClass(generateAdapter = true)
+data class SessionStatusFrame(
+    val sid: String,
+    val path: String?,
+    val activity: SessionActivityWord?,
+    @Json(name = "activity_text") val activityText: String,
+    @Json(name = "activity_tone") val activityTone: Tone,
+    val switch: SwitchCell,
+)
+
+@WireOf("SessionState")
+@JsonClass(generateAdapter = true)
+data class SessionStateFrame(
+    val sid: String,
+    val state: SessionFateWord,
+    @Json(name = "state_text") val stateText: String,
+    val switch: SwitchCell,
+)
+
+@WireOf("SessionRemoved")
+@JsonClass(generateAdapter = true)
+data class SessionRemovedFrame(
+    val sid: String,
+    val by: String?,
+)
+
+@WireOf("SessionFileReread")
+@JsonClass(generateAdapter = true)
+data class SessionFileRereadFrame(
+    @Json(name = "session_id") val sid: String,
+)
+
+@JsonClass(generateAdapter = false)
+enum class SessionActivityWord {
+    @Json(name = "working")
+    WORKING,
+
+    @Json(name = "needs_you")
+    NEEDS_YOU,
+
+    @Json(name = "idle")
+    IDLE,
+
+    @Json(name = "background_work")
+    BACKGROUND_WORK,
+}
+
+@JsonClass(generateAdapter = false)
+enum class SessionFateWord {
+    @Json(name = "reconnectable")
+    RECONNECTABLE,
+
+    @Json(name = "ended")
+    ENDED,
+}
+
+@WireOf("Switch")
+@JsonClass(generateAdapter = true)
+data class SwitchCell(
+    val model: CanSwitchCell,
+    val permission: CanSwitchCell,
+)
+
+@WireOf("WireCanSwitch")
+@JsonClass(generateAdapter = true)
+data class CanSwitchCell(
+    val can: CanWord,
+    val why: String?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class CanWord {
+    @Json(name = "yes")
+    YES,
+
+    @Json(name = "no")
+    NO,
+}

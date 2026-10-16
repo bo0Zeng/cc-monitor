@@ -348,7 +348,7 @@ pub struct SessionState {
 /// A session file went away.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionRemoved {
     /// 会话 id。
     pub sid: String,
@@ -457,7 +457,7 @@ pub struct SessionFileGone {
 /// 紧跟在这一趟重读出来的 `line` 帧**之前**；重读的行号从 0 重数 ⇒ 下游据这一帧把这个会话旧的一代整份作废。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct SessionFileReread {
     /// 会话 id。
     pub session_id: String,

@@ -1,10 +1,20 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.Annotated
+import com.ccmonitor.mobile.core.claude.link.wire.CanSwitchCell
+import com.ccmonitor.mobile.core.claude.link.wire.CanWord
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.SessionActivityWord
+import com.ccmonitor.mobile.core.claude.link.wire.SessionAddedFrame
+import com.ccmonitor.mobile.core.claude.link.wire.SessionFateWord
+import com.ccmonitor.mobile.core.claude.link.wire.SessionFileRereadFrame
+import com.ccmonitor.mobile.core.claude.link.wire.SessionRemovedFrame
+import com.ccmonitor.mobile.core.claude.link.wire.SessionStateFrame
+import com.ccmonitor.mobile.core.claude.link.wire.SessionStatusFrame
+import com.ccmonitor.mobile.core.claude.link.wire.SwitchCell
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -13,7 +23,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Wire
  * 形状对不上（缺必填格）⇒ `null`，由调用方报「两端契约对不上」，不补默认值。
  */
 
-/** 语气（[Tone]，线上类）的一个词；认不出 ⇒ `null`（照 plain 画、报一次）。会话帧上那几格不经核心按类型解，在这里认。 */
+/** 语气（[Tone]，线上类）的一个词；认不出 ⇒ `null`（照 plain 画、报一次）。 */
 fun toneOf(s: String?): Tone? = Wire.bind<Tone>(s)
 
 /** 一格写好的字 ＋ 它的语气。 */
@@ -44,11 +54,7 @@ data class Switches(
     val permission: CanSwitch,
 ) {
     companion object {
-        /** `{model: {can, why?}, permission: {can, why?}}`；形状认不出 ⇒ `null`。 */
-        fun of(m: Map<String, Any?>?): Switches? {
-            m ?: return null
-            return Switches(CanSwitch.of(m.obj("model")) ?: return null, CanSwitch.of(m.obj("permission")) ?: return null)
-        }
+        fun of(c: SwitchCell): Switches = Switches(CanSwitch.of(c.model), CanSwitch.of(c.permission))
     }
 }
 
@@ -59,12 +65,8 @@ data class CanSwitch(
     val can: Boolean get() = why == null
 
     companion object {
-        fun of(m: Map<String, Any?>?): CanSwitch? =
-            when (m?.str("can")) {
-                "yes" -> CanSwitch(null)
-                "no" -> m.str("why")?.let(::CanSwitch)
-                else -> null
-            }
+        /** `{can: no}` 却没带那一句 ⇒ 当能换说不出为什么：照「不能」灰、那一行空着。 */
+        fun of(c: CanSwitchCell): CanSwitch = CanSwitch(if (c.can == CanWord.YES) null else c.why.orEmpty())
     }
 }
 
@@ -76,15 +78,10 @@ data class SessionFate(
     /** 离开「活」之后能不能换（那台判的，帧上的 `switch`）；没有 ⇒ `null`。 */
     val switch: Switches? = null,
 ) {
-    /** 线上两个词（`reconnectable` · `ended`）；认不出 ⇒ `null`（不猜）。 */
+    /** 线上两个词（`reconnectable` · `ended`）。 */
     enum class State {
         RECONNECTABLE,
         ENDED,
-        ;
-
-        companion object {
-            fun of(s: String?): State? = entries.firstOrNull { it.name.equals(s, ignoreCase = true) }
-        }
     }
 }
 
@@ -155,81 +152,73 @@ data class SessionTable(
     val replayed: Boolean = false,
     /** 被顶替的会话 ⇒ 顶替它的那一条（`session_removed.by`：清空之后同一个进程另起的那一份记录）。 */
     val successors: Map<String, String> = emptyMap(),
+    /** 每条会话的记录被从头重读过几回（见 [generation]）。 */
+    val rereads: Map<String, Long> = emptyMap(),
 ) {
-    /** 喂一帧；不是会话帧 ⇒ 原样返回。缺必填格 ⇒ [onBreak] 报、表不动。 */
+    /** 那一条的记录被从头重读过几回（`session_file_reread`）：值变了 ⇒ 读过的那一代作废、整份重来。 */
+    fun generation(sid: String): Long = rereads[sid] ?: 0L
+
+    /** 喂一帧（核心按 `cmd-wire` 那一份类型重写过）；不是会话帧 ⇒ 原样返回。装不进声明的类 ⇒ [onBreak] 报、表不动。 */
     fun step(
         frame: Map<String, Any?>,
         onBreak: (String) -> Unit,
     ): SessionTable {
         val kind = frame.str("kind")
-        FOLDS[kind]?.let { (fold, missing) -> return fold(this, frame) ?: also { onBreak(missing) } }
-        return when (kind) {
-            "sessions_replayed" -> copy(replayed = true)
-            else -> this
-        }
+        val folded: SessionTable? =
+            when (kind) {
+                "session_added" -> Wire.bind<SessionAddedFrame>(frame)?.let(::added)
+                "session_status" -> Wire.bind<SessionStatusFrame>(frame)?.let(::status)
+                "session_removed" -> Wire.bind<SessionRemovedFrame>(frame)?.let(::removed)
+                "session_state" -> Wire.bind<SessionStateFrame>(frame)?.let(::fate)
+                "session_file_reread" -> Wire.bind<SessionFileRereadFrame>(frame)?.let { copy(rereads = rereads + (it.sid to generation(it.sid) + 1)) }
+                "sessions_replayed" -> return copy(replayed = true)
+                else -> return this
+            }
+        return folded ?: also { onBreak("$kind 装不进声明的那一份") }
     }
 
-    private fun added(frame: Map<String, Any?>): SessionTable? = live(frame)?.let { copy(sessions = sessions + (it.sid to it), fates = fates - it.sid) }
-
-    private fun fate(frame: Map<String, Any?>): SessionTable? {
-        val sid = frame.str("sid") ?: return null
-        val state = SessionFate.State.of(frame.str("state")) ?: return null
-        val text = frame.str("state_text") ?: return null
-        return copy(fates = fates + (sid to SessionFate(state, text, Switches.of(frame.obj("switch")))))
+    private fun added(f: SessionAddedFrame): SessionTable {
+        val s =
+            LiveSession(
+                sid = f.sid,
+                path = f.path,
+                cwd = f.cwd,
+                name = f.name,
+                agentKind = f.agentKind,
+                attachable = f.attachable,
+                activity = Toned(f.activityText, f.activityTone),
+                running = f.activity == SessionActivityWord.WORKING,
+                switch = Switches.of(f.switch),
+            )
+        return copy(sessions = sessions + (s.sid to s), fates = fates - s.sid)
     }
 
-    private fun removed(frame: Map<String, Any?>): SessionTable? =
-        frame.str("sid")?.let { sid ->
-            val by = frame.str("by")
-            copy(sessions = sessions - sid, successors = if (by != null) successors + (sid to by) else successors)
-        }
+    private fun fate(f: SessionStateFrame): SessionTable {
+        val state =
+            when (f.state) {
+                SessionFateWord.RECONNECTABLE -> SessionFate.State.RECONNECTABLE
+                SessionFateWord.ENDED -> SessionFate.State.ENDED
+            }
+        return copy(fates = fates + (f.sid to SessionFate(state, f.stateText, Switches.of(f.switch))))
+    }
+
+    private fun removed(f: SessionRemovedFrame): SessionTable =
+        copy(sessions = sessions - f.sid, successors = if (f.by != null) successors + (f.sid to f.by) else successors)
 
     /**
      * 状态帧：改那一条的字与语气；带着 `path`（宣告以后记录才出现 · 换了一份，那台在那一行的 line 帧之前先发）⇒ 路径换成它。
-     * 宣告时的其余格不动；没宣告过的 sid ⇒ 不动。缺必填格 ⇒ `null`。
+     * 宣告时的其余格不动；没宣告过的 sid ⇒ 不动。
      */
-    private fun status(frame: Map<String, Any?>): SessionTable? {
-        val sid = frame.str("sid") ?: return null
-        val text = frame.str("activity_text") ?: return null
-        val prior = sessions[sid] ?: return this
+    private fun status(f: SessionStatusFrame): SessionTable {
+        val prior = sessions[f.sid] ?: return this
         val now =
             prior.copy(
-                activity = Toned(text, toneOf(frame.str("activity_tone"))),
-                running = frame.str("activity") == RUNNING,
-                path = frame.str("path") ?: prior.path,
-                switch = Switches.of(frame.obj("switch")),
+                activity = Toned(f.activityText, f.activityTone),
+                running = f.activity == SessionActivityWord.WORKING,
+                path = f.path ?: prior.path,
+                switch = Switches.of(f.switch),
             )
-        return copy(sessions = sessions + (sid to now))
-    }
-
-    companion object {
-        /** 会话帧 ⇒ 怎么折 ＋ 缺格时报的那一句（折不进 ⇒ `null`）。 */
-        private val FOLDS: Map<String, Pair<SessionTable.(Map<String, Any?>) -> SessionTable?, String>> =
-            mapOf(
-                "session_added" to (SessionTable::added to "session_added 缺 sid / activity_text"),
-                "session_status" to (SessionTable::status to "session_status 缺 sid / activity_text"),
-                "session_removed" to (SessionTable::removed to "session_removed 缺 sid"),
-                "session_state" to (SessionTable::fate to "session_state 缺 sid / state / state_text，或 state 认不出"),
-            )
-
-        private fun live(m: Map<String, Any?>): LiveSession? {
-            val sid = m.str("sid") ?: return null
-            val text = m.str("activity_text") ?: return null
-            return LiveSession(
-                sid = sid,
-                path = m.str("path"),
-                cwd = m.str("cwd"),
-                name = m.str("name"),
-                agentKind = m.str("agent_kind"),
-                attachable = m.bool("attachable"),
-                activity = Toned(text, toneOf(m.str("activity_tone"))),
-                running = m.str("activity") == RUNNING,
-                switch = Switches.of(m.obj("switch")),
-            )
-        }
-
-        /** 帧上 `activity` 那一格判得出「一轮在跑」的那个词（核心的闭集；缺席 ＝ 判不出）。 */
-        private const val RUNNING = "working"
+        return copy(sessions = sessions + (f.sid to now))
     }
 }
 

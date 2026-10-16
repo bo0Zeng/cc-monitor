@@ -303,6 +303,25 @@ class ChatSessionTest {
         }
 
     @Test
+    fun `那份记录被那台从头重读了：读过的那一代作废，不交续点、照最后一屏整份重来`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u0", "问"), reply("a1", "答")))
+            link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            val s = existing(link)
+            runCurrent()
+            // 行数没变、记号没变：只看续点的话那台会说「续得上、没有新的」。
+            file.records[0] = human("u0", "改过的问")
+            link.table.value = link.table.value.copy(rereads = mapOf("s1" to 1L))
+            runCurrent()
+            assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
+            val tails = link.calls("history-tail")
+            assertEquals(2, tails.size)
+            assertNull("续点作废：不交手上那一份", tails.last()!!["held"])
+        }
+
+    @Test
     fun `点进会话那一刻流不通：不报离线，接上以后照常出第一屏`() =
         runTest {
             val link = FakeCoreLink()
