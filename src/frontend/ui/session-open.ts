@@ -129,20 +129,25 @@ export async function openSession(origin: Origin, req: SessionOpenReq, how: Open
   return true;
 }
 
+/** 没成的那一形那一句：那台写的（拒 · 还在起）· 期限到 · 够不着。 */
+export function endSaid(origin: Origin, end: Exclude<OpenEnd, { kind: "opened" }>): string {
+  switch (end.kind) {
+    case "timeout":
+      return copyText("sessionOpen.timeout.title", { machine: machineName(origin) });
+    default:
+      return end.said;
+  }
+}
+
 /** 没成的那几形各说一句；按钮只有两种：选不了号 ⇒ 改用那台给的替代（没有 ⇒ 不指定账号）· 不是这个会话的 ⇒ 对齐后重试。 */
 function sayEnd(origin: Origin, req: SessionOpenReq, how: OpenHow, end: Exclude<OpenEnd, { kind: "opened" }>): void {
-  switch (end.kind) {
-    case "pending":
-      toast(...lines(end.said), { level: "info" });
-      return;
-    case "timeout":
-      toast(copyText("sessionOpen.timeout.title", { machine: machineName(origin) }), "", { detail: end.detail });
-      return;
-    case "unreachable":
-      toast(end.said, "", { detail: end.detail });
-      return;
-    case "refused":
-      break;
+  if (end.kind === "pending") {
+    toast(...lines(end.said), { level: "info" });
+    return;
+  }
+  if (end.kind !== "refused") {
+    toast(endSaid(origin, end), "", { detail: end.detail });
+    return;
   }
   const [title, body] = lines(end.said);
   const again = (r: SessionOpenReq): Promise<void> => openSession(origin, r, how).then(() => undefined);

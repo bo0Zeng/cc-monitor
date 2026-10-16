@@ -20,6 +20,7 @@ import { machineName } from "./control-said";
 import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
+import type { Run } from "./generated/Run";
 
 /** 批量菜单要宿主给的：按 sid 取 tab · 集合 · 固定 · 关闭（都一次改完、落盘一次）。 */
 export interface TabBatchHost {
@@ -41,7 +42,7 @@ export interface TabBatchHost {
 /** 后端那两件（判据换替身）。 */
 export interface TabBatchRun {
   stop(tabs: readonly Tab[]): Promise<BatchOutcome[]>;
-  start(tabs: readonly Tab[], mode: "tmux" | "window"): Promise<BatchOutcome[]>;
+  start(tabs: readonly Tab[], run: Run): Promise<BatchOutcome[]>;
   confirm: ConfirmFn;
 }
 
@@ -150,7 +151,7 @@ export function openBatchMenu(
       sayBatch(copyText("tabBatch.action.startTmux"), tabs, [...(await run.start(startable, "tmux")), ...notStartable]);
     }, false, notStartable[0]?.why),
     item(copyText("tabBatch.menu.startWindow", { n: startable.length }), startable.length, async () => {
-      sayBatch(copyText("tabBatch.action.startWindow"), tabs, [...(await run.start(startable, "window")), ...notStartable]);
+      sayBatch(copyText("tabBatch.action.startWindow"), tabs, [...(await run.start(startable, "direct")), ...notStartable]);
     }, false, notStartable[0]?.why),
   ];
   if (host.pinnedLoaded()) {

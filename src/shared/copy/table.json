@@ -4571,37 +4571,6 @@
       "args": ["name"],
       "limited": ["tmux"]
     },
-    "tabBatch.why.alreadyLive": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} · 已有进程在写会话 · pid {pids} · 未新建",
-      "args": ["machine", "pids"]
-    },
-    "tabBatch.why.recordGone": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 的 {root} 里无它的记录 · 无法恢复",
-      "args": ["machine", "root"]
-    },
-    "tabBatch.why.nameTaken": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} tmux 会话名「{name}」被占用 · 未启动",
-      "args": ["machine", "name"],
-      "limited": ["tmux"]
-    },
-    "tabBatch.why.childTimedOut": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 新建会话无应答",
-      "args": ["machine"]
-    },
-    "tabBatch.why.startFailed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 启动失败",
-      "args": ["machine"]
-    },
     "tabBatch.why.windowFailed": {
       "kind": "error",
       "role": "报错",
@@ -4613,12 +4582,6 @@
       "role": "报错",
       "zh": "{machine} 未执行 · {said}",
       "args": ["machine", "said"]
-    },
-    "tabBatch.why.accountGone": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 单独恢复时可换账号",
-      "args": ["name"]
     },
     "tabMenu.collection.remove": {
       "kind": "action",
@@ -14261,12 +14224,6 @@
       "zh": "{machine} tmux 会话 {name} 里正在跑的程序",
       "args": ["machine", "name"],
       "limited": ["tmux"]
-    },
-    "tabBatch.why.agentUnknown": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "agent 未知",
-      "args": []
     },
     "launchArrival.arrived.body": {
       "kind": "body",
