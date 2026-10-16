@@ -25,10 +25,10 @@ const RS_FN = "copy_text";
 /** 同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
 const RS_STATIC = "copy_static";
 /**
- * 取文口的**定义**住的三份文件：`copy-core` 的实现，与 monitor · 手机 JNI 那两层转发（`copy_core::copy_text(key, args)`，
+ * 取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
  * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
  */
-export const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs", "src/mobile/core-rs/rust/copy.rs"]);
+export const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs"]);
 
 /** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
 function stripRustLineComments(text: string): string {

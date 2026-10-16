@@ -34,7 +34,7 @@ subprojects {
     tasks.withType<Test>().configureEach {
         dependsOn(cargoBuildHost)
         inputs
-            .file(hostCoreDir.resolve("libmobcore.so"))
+            .file(hostCoreDir.resolve(System.mapLibraryName("mobcore")))
             .withPropertyName("hostCore")
             .withPathSensitivity(PathSensitivity.NONE)
         systemProperty("java.library.path", hostCoreDir.path)
