@@ -18,8 +18,6 @@ pub struct HostFacts {
     pub terminal_front: bool,
     /// 本机 shell 说哪种方言（别名块按它写）：`posix` · `powershell`。
     pub shell_dialect: String,
-    /// 本机 PATH 上 `ccm` 那份短缓存作不作数（「重新对齐」时顺手作废它）。
-    pub ccm_path_cache: bool,
 }
 
 /// 这台此刻的那一份。
@@ -28,7 +26,6 @@ pub fn host_facts() -> HostFacts {
         os: host_core::OS.to_string(),
         terminal_front: cfg!(any(windows, target_os = "linux")),
         shell_dialect: if cfg!(windows) { "powershell" } else { "posix" }.to_string(),
-        ccm_path_cache: !cfg!(windows),
     }
 }
 

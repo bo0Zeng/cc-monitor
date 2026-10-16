@@ -510,7 +510,7 @@ const MOVED_OUT: &[&str] = &[
     "profile_installer.rs",
     // `mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
     // `skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
-    "cc_bus_deploy.rs",
+    // `cc_bus_deploy.rs` 整份删了（装前那道本机 `ccm` 预检随它删）⇒ 出名单。
     "history.rs",
     // `remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
     // `user_files.rs` 整份删了（最后一个用户「认出旧入口并删」随那条迁移链删了）⇒ 出名单。

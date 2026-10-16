@@ -26,9 +26,9 @@ fn path_上先找到的是我们那一份_不报_别的那一份_报() {
     std::fs::write(ours.join("ccm"), "x").unwrap();
     std::fs::write(other.join("ccm"), "x").unwrap();
     let p = std::env::join_paths([&ours, &other]).unwrap();
-    assert!(stale_ccm(&h, Some(&p), false).is_none());
+    assert!(stale_ccm(&h, p.to_str(), false).is_none());
     let p = std::env::join_paths([&other, &ours]).unwrap();
-    let s = stale_ccm(&h, Some(&p), false).unwrap();
+    let s = stale_ccm(&h, p.to_str(), false).unwrap();
     assert_eq!(s.path, other.join("ccm").display().to_string());
     assert!(!s.needs_root, "家目录底下的不用 sudo");
     let _ = std::fs::remove_dir_all(&h);

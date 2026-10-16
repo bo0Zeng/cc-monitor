@@ -6,8 +6,14 @@ fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static
     super::answer_print(&req).map(|r| serde_json::to_value(r).unwrap())
 }
 
+// 那一格（终端里敲 `ccm` 走到哪）要起登录 shell，判它的在 `on_path_tests`；这里只比名片那几格。
 fn answer_probe() -> serde_json::Value {
-    serde_json::to_value(super::answer_probe()).unwrap()
+    let here = on_path::on_path(&on_path::Reach::Ours, "");
+    serde_json::to_value(super::answer_probe_for(
+        crate::platform::tmux::TMUX_PLATFORM,
+        here,
+    ))
+    .unwrap()
 }
 
 /// ★★ **`KR96D2` 死值验第一刀：铸名避让只许问那一张快照，且算完就定死。**
@@ -189,8 +195,7 @@ fn a_bare_call_without_any_terminal_does_not_start_an_agent() {
 
 /// 〔搬自 `ccm-contract-parity` 的 `--ccm-probe` 那 5 条〕
 ///
-/// 这份输出是**外部契约**：`ccm_probe.rs::parse_probe_output` 按行解析
-/// `version=` / `capabilities=`。
+/// 这份输出是**外部契约**：`cc-spawn` 按行读 `capabilities=`。
 #[test]
 fn the_probe_output_is_the_shape_its_parser_expects() {
     let out = probe_output("/usr/local/bin/ccm");

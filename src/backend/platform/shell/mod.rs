@@ -43,29 +43,44 @@ pub(crate) const SESSION_PATH_WITHIN: crate::platform::child::Deadline =
 
 /// **起会话那个 shell** 的 `PATH`：会话在 tmux 窗格里的用户登录 shell 里起（交互、登录；远端开窗那一形是 `bash -lic`），
 /// agent 命令按那里的 `PATH` 找；后端进程自己的 `PATH` 不是那一份（经 ssh 非登录 shell 起时常常没有用户级 `bin`）。
-/// 「装没装」（足迹）与「这台能起哪几家」（起新会话框）都只经这一处问。
+/// 「装没装」（足迹）· 「这台能起哪几家」（起新会话框）· 待办「终端里的 ccm 是旧的一份」都经这一处问。
 ///
-/// 问法：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`，**按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：
-/// 之后装进同一个目录的程序照样查得到）。交互 rc 里的东西会被触发 ⇒ 防法：stdin 接空、`TERM=dumb`、自成一个进程组、
-/// 期限到了整组杀（后端经 ssh / 由界面起，本身没有控制终端 ⇒ 自动接 tmux 那一类接不上就退，卡住的到期限收手）；
-/// 只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个。
-/// 没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`（问不出来，调用方不许当成「没有」）。
+/// **按后端生命周期只问一次**（缓存的是 `PATH`，不是答案：之后装进同一个目录的程序照样查得到；只问一次 ⇒ rc 里起 ssh-agent 那一类至多多起一个）。
+/// 问法与防法见 [`fresh_terminal_path`]；问不出来 ⇒ `None`（调用方不许当成「没有」）。
 /// 非 unix：会话在本机终端里起，环境与本进程同源 ⇒ 本进程的 `PATH`。
 pub(crate) fn session_shell_path() -> Option<String> {
     #[cfg(unix)]
     {
         static ONE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-        ONE.get_or_init(|| {
-            let shell = std::env::var("SHELL")
-                .ok()
-                .filter(|s| !s.trim().is_empty())?;
-            ask_session_path(login_shell_asking_path(&shell), SESSION_PATH_WITHIN)
-        })
-        .clone()
+        ONE.get_or_init(fresh_terminal_path).clone()
     }
     #[cfg(not(unix))]
     {
         std::env::var("PATH").ok()
+    }
+}
+
+/// 现问一次「新开一个终端时的 `PATH`」，不缓存（`ccm-probe` 每问一次都要此刻的样子）。
+///
+/// unix：用 `$SHELL` 起一次 `-l -i -c` 打出 `PATH`。交互 rc 里的东西会被触发 ⇒ stdin 接空、`TERM=dumb`、自成一个进程组、
+/// 期限到了整组杀（后端没有控制终端 ⇒ 自动接 tmux 那一类接不上就退，卡住的到期限收手）。
+/// Windows：新开的终端读注册表里机器级 ＋ 用户级（本进程继承的是起它那一刻的那一份）。
+/// 没有 `$SHELL` / 起不来 / 超时 / 没打出来 ⇒ `None`。
+pub(crate) fn fresh_terminal_path() -> Option<String> {
+    #[cfg(unix)]
+    {
+        let shell = std::env::var("SHELL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())?;
+        ask_session_path(login_shell_asking_path(&shell), SESSION_PATH_WITHIN)
+    }
+    #[cfg(not(unix))]
+    {
+        let cmd = powershell_on(
+            PsHost::Desktop,
+            &powershell::fresh_path_query(SESSION_PATH_MARK),
+        )?;
+        ask_session_path(cmd, SESSION_PATH_WITHIN)
     }
 }
 

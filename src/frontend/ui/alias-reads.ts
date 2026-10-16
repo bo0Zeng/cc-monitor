@@ -7,6 +7,7 @@
  * | 别名块预览（纯） | `aliases-block-render` | `{text}` |
  * | 别名块装 / 卸 | `aliases-block-install` / `-remove` | `{}` |
  * | 执行策略设成当前用户 `RemoteSigned`（用户确认后） | `powershell-policy-set` | [`PolicySet`] |
+ * | 终端里敲 `ccm` 走到哪一份（判词 ＋ 那一句） | `ccm-probe` 的 `onPath` | [`OnPath`] |
  *
  * 规则 · 方言 · 围栏整族在那台后端（`src/backend/assets/aliases/`）。入参 · 回包都是后端类型生成的（`generated/`），
  * 回包形状由握手时的形状指纹管，这里不逐格判。**前端不做安全判断**。
@@ -20,6 +21,7 @@ import type { PsExecPolicy } from "./generated/PsExecPolicy";
 import type { AliasStartupFile } from "./generated/AliasStartupFile";
 import type { AliasListing as AliasListingWire } from "./generated/AliasListing";
 import type { PolicySet as PolicySetWire } from "./generated/PolicySet";
+import type { OnPath } from "./generated/OnPath";
 
 /** 方言：别名文件、别名块、source 那一行问的是同一个问题。 */
 export type Shell = ShellKind;
@@ -50,6 +52,16 @@ const said = (e: unknown, origin: Origin): Error => new Error(saidFrom(e, origin
 export async function readAliases(origin: Origin, shell: Shell, rcPath: string | null): Promise<AliasListing> {
   try {
     return await callTyped(origin, "aliases-read", { shell, rcPath }, budgetWithin(ALIAS_BUDGET_MS));
+  } catch (e) {
+    throw said(e, origin);
+  }
+}
+
+/** 那台终端里敲 `ccm` 走到的是不是 cc-monitor 放的那一份、给人读的那一句（那台后端现问新开终端的 `PATH`）。 */
+export async function readCcmOnPath(origin: Origin): Promise<OnPath> {
+  try {
+    const { onPath } = await callTyped(origin, "ccm-probe", {}, budgetWithin(ALIAS_BUDGET_MS));
+    return onPath;
   } catch (e) {
     throw said(e, origin);
   }

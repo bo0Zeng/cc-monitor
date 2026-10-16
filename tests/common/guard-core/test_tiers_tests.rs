@@ -437,11 +437,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
     ),
     (
-        "tests/frontend/shell/ccm_probe_tests.rs",
-        "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
-        Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
-    ),
-    (
         "tests/frontend/shell/profile_installer_tests.rs",
         "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
         Trigger::Manual("读数不是判据：要一个 PowerShell（`CCM_PWSH`）在 936 控制台编码替身下跑 PATH 探针、读回汉字目录；跑法住它自己的头注"),

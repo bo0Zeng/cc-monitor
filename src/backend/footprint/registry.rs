@@ -45,7 +45,7 @@
 //!
 //! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说当时那个账号工具的探测是
 //! 「比对内容指纹」——不对。它实际跑的是一条命令再解析 stdout，
-//! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。指纹比对
+//! 与「问终端的 `PATH`」（`platform/shell/mod.rs::fresh_terminal_path`）**属于同一族**（跑一条命令、解析 stdout）。指纹比对
 //! 发生在**部署决策**那一步，不是探测。
 //! 所以原先那句「四种机制彼此不兼容，且**各只有一个使用者**」是**错的**：
 //! 「跑命令解析 stdout」这一族至少两个使用者，按 ≥2 判据它反而**够格**。
@@ -419,7 +419,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "bash",
         host: HostScope::Either,
         why: Text(|| copy_text("rsToolRegistry.env.loginShellWhy", &[])),
-        site: "ccm_probe.rs::probe_with",
+        site: "platform/shell/mod.rs::fresh_terminal_path",
     },
     UnmanagedEnv {
         id: "mcp-server",

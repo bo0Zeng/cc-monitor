@@ -33,8 +33,7 @@
 //!
 //! - **针认七样**（[`NEEDLES`]）：等 async 往返 · 同步连口 · 起子进程 · 等子进程 · 睡 · 起停串行锁。
 //!   「读写文件」**不在射程**（今天还同步的 `load_config` / `patch_config` / `cc_*_auto_launch` 读写的是 monitor 自己几 KB 的
-//!   一份文件，逐条登记在 [`SYNC_ALLOWED`]）；`local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_status`（等起停那把锁）
-//!   10-02 改成了 `async`。
+//!   一份文件，逐条登记在 [`SYNC_ALLOWED`]）；`backend_status`（等起停那把锁）10-02 改成了 `async`。
 //! - 只看 monitor 这一个 crate（`#[tauri::command]` 全在这里）；共享 crate 里的阻塞看不见（今天零处）。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -553,9 +552,9 @@ fn every_sync_command_is_on_the_whitelist_with_a_reason() {
     for (c, why) in SYNC_ALLOWED {
         assert!(why.chars().count() >= 8, "`{c}` 没写清为什么它不等外面");
     }
-    // 正控：今天改成 async 的那两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
+    // 正控：这两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
     for cmd in [
-        "ccm_probe.rs::local_ccm_entry_status",
+        "data_paths.rs::get_data_paths",
         "backend_control.rs::backend_status",
     ] {
         assert!(a.async_cmds.contains(cmd), "`{cmd}` 不在 async 命令里");

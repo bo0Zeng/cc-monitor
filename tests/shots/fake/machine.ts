@@ -333,15 +333,6 @@ export function machineCommands(): Record<string, CommandHandler> {
         detail: null,
       },
     }),
-    local_ccm_entry_status: () => ({
-      entry: "$HOME/.cc-monitor/bin/ccm",
-      ours: { installed: true, version: "4.0.6", capabilities: ["tmux", "launcher"], build: "shots" },
-      on_path: { installed: true, version: "4.0.6", capabilities: ["tmux", "launcher"], build: "shots" },
-      verdict: "ours",
-      message: "",
-      ok: true,
-      summary: "",
-    }),
     get_data_paths: () => ({
       monitorDataDir: `${HOME}/.cc-monitor`,
       entries: [

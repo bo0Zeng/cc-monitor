@@ -1019,13 +1019,16 @@ fn tmpdir_e2(tag: &str) -> PathBuf {
 
 /// 替身问话口：答预设的那一句，并记下每一次问的暂存件在不在、装的是不是手上那份字节、入参是什么。
 struct FakeAsk {
-    answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>,
+    answer: Result<serde_json::Value, crate::backend_once::OnceErr>,
     asked: std::cell::RefCell<Vec<(std::path::PathBuf, bool, serde_json::Value)>>,
     bytes: Vec<u8>,
 }
 
 impl FakeAsk {
-    fn new(answer: Result<serde_json::Value, crate::ccm_probe::OnceErr>, bytes: &[u8]) -> FakeAsk {
+    fn new(
+        answer: Result<serde_json::Value, crate::backend_once::OnceErr>,
+        bytes: &[u8],
+    ) -> FakeAsk {
         FakeAsk {
             answer,
             asked: Default::default(),
@@ -1036,7 +1039,7 @@ impl FakeAsk {
         &self,
         staged: &Path,
         args: &serde_json::Value,
-    ) -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
+    ) -> Result<serde_json::Value, crate::backend_once::OnceErr> {
         let holds = std::fs::read(staged).is_ok_and(|b| b == self.bytes);
         self.asked
             .borrow_mut()
@@ -1045,7 +1048,7 @@ impl FakeAsk {
     }
 }
 
-fn place() -> Result<serde_json::Value, crate::ccm_probe::OnceErr> {
+fn place() -> Result<serde_json::Value, crate::backend_once::OnceErr> {
     Ok(serde_json::json!({ "action": "place", "why": "那台上是 p4z-old，这一版是 p5a-mine" }))
 }
 
@@ -1088,7 +1091,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     );
     assert!(no_partials());
     // 逐字节相同 ⇒ 不问
-    let fake = FakeAsk::new(Err(crate::ccm_probe::OnceErr::TimedOut), &mine);
+    let fake = FakeAsk::new(Err(crate::backend_once::OnceErr::TimedOut), &mine);
     assert_eq!(put(&fake).expect("相同 ⇒ 直接用"), dest);
     assert!(fake.asked.borrow().is_empty(), "逐字节相同还去问了");
     // 字节不同 · 答不动 ⇒ 用盘上那份
@@ -1103,7 +1106,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(no_partials());
     // 它说「不」⇒ 那句话原样，不动
     let fake = FakeAsk::new(
-        Err(crate::ccm_probe::OnceErr::Refused {
+        Err(crate::backend_once::OnceErr::Refused {
             code: "undecidable".into(),
             message: "不说自己是谁（夹具句）".into(),
         }),
@@ -1125,9 +1128,13 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(no_partials());
     // 问不成 · 答话不成形 ⇒ 说清是问不成，不动、不猜
     for answer in [
-        Err(crate::ccm_probe::OnceErr::Spawn("exec format error".into())),
-        Err(crate::ccm_probe::OnceErr::TimedOut),
-        Err(crate::ccm_probe::OnceErr::Unreadable("exit=Some(1)".into())),
+        Err(crate::backend_once::OnceErr::Spawn(
+            "exec format error".into(),
+        )),
+        Err(crate::backend_once::OnceErr::TimedOut),
+        Err(crate::backend_once::OnceErr::Unreadable(
+            "exit=Some(1)".into(),
+        )),
         Ok(serde_json::json!({ "action": "maybe", "why": "" })),
         Ok(serde_json::json!({ "action": "place" })),
     ] {

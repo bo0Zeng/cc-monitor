@@ -56,6 +56,8 @@ export const REAL_OPS = new Set([
   "session-new-facts",
   // 各台的 MCP 列表与小标：真后端读台架盘上的用户级配置、各号的「要登录」那一笔与活会话记录里的断开。
   "mcp-read",
+  // 终端里敲 ccm 走到哪（别名页最上那一句）：那台后端现问终端的 PATH、判、出句子。
+  "ccm-probe",
 ]);
 
 /**

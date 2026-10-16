@@ -4,7 +4,6 @@
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
 use crate::common::door::Door;
-use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::Shell;
 use serde_json::Value;
 use std::path::Path;
@@ -106,9 +105,13 @@ pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::
     Facts {
         windows,
         needs_install,
-        stale_ccm: home_path
-            .as_deref()
-            .and_then(|h| stale_ccm(h, std::env::var_os("PATH").as_deref(), windows)),
+        stale_ccm: home_path.as_deref().and_then(|h| {
+            stale_ccm(
+                h,
+                crate::platform::shell::session_shell_path().as_deref(),
+                windows,
+            )
+        }),
         self_paste,
         clashes,
         dead,
@@ -158,26 +161,15 @@ fn mcp_login() -> Vec<super::McpLogin> {
     out
 }
 
-/// PATH 上先找到的 `ccm` 不是 cc-monitor 放的那一份 ⇒ 那一份。
-pub(crate) fn stale_ccm(
-    home: &Path,
-    path: Option<&std::ffi::OsStr>,
-    windows: bool,
-) -> Option<StaleCcm> {
-    // 敲 `ccm` 会起来的那一个（找法只住 `platform::shell::find_session_command`）。
-    let crate::platform::shell::SessionCommand::Found { file: first, .. } =
-        crate::platform::shell::find_session_command("ccm", path?.to_str(), windows, &|p| {
-            p.is_file()
-        })
+/// 终端里敲 `ccm` 走到的不是 cc-monitor 放的那一份 ⇒ 那一份（判法只住 `control::ccm::on_path::reach`）。
+pub(crate) fn stale_ccm(home: &Path, path: Option<&str>, windows: bool) -> Option<StaleCcm> {
+    let name = if windows { "ccm.exe" } else { "ccm" };
+    let ours = home.join(".cc-monitor").join("bin").join(name);
+    let crate::control::ccm::on_path::Reach::Other(first) =
+        crate::control::ccm::on_path::reach(path, &ours, windows, &|p| p.is_file())
     else {
         return None;
     };
-    let name = if windows { "ccm.exe" } else { "ccm" };
-    let ours = home.join(".cc-monitor").join("bin").join(name);
-    let canon = |p: &Path| Ro::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    if canon(&first) == canon(&ours) {
-        return None;
-    }
     Some(StaleCcm {
         needs_root: !first.starts_with(home),
         path: first.display().to_string(),

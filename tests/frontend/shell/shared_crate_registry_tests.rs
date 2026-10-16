@@ -527,11 +527,6 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              跑生成的用户级 PATH 加 / 撤两段（注册表换替身）。谁什么时候跑：改 `profile_installer.rs` 那两段渲染时，交付前跑一趟、把结果贴进报告。",
         ),
         (
-            "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
-            "不是判据是**读数**：同上一条要一个 PowerShell（`CCM_PWSH`），跑 Windows 那一形的 ccm 探测串三种情形。\
-             谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 时，交付前跑一趟、把结果贴进报告。",
-        ),
-        (
             "p2_the_path_probe_reads_back_a_non_ascii_home_under_an_oem_console",
             "不是判据是**读数**：同上要一个 PowerShell（`CCM_PWSH`），控制台编码设成 936 当替身跑 PATH 探针、读回汉字目录。\
              谁什么时候跑：改 `profile_installer.rs::render_user_path_probe_command` 时，交付前跑一趟、把结果贴进报告。",
