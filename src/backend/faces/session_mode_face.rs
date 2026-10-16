@@ -282,9 +282,13 @@ fn answer(req: &SessionPermissionReq, own: &crate::platform::Own) -> Result<Mode
         watch: None,
     };
     let keep = || match &record {
-        Some(r) => {
-            super::session_open_face::keep_for_resume(own, &req.sid, r, None, Some(&req.mode))
-        }
+        Some(r) => crate::history::history_annotations::keep_for_resume(
+            own,
+            &req.sid,
+            r,
+            None,
+            Some(&req.mode),
+        ),
         None => Err(CmdErr::new(
             "no_such_session",
             copy_core::copy_text("beSessionCommands.session.noRecord", &[]),

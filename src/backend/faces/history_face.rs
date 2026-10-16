@@ -1678,7 +1678,7 @@ pub(crate) fn facts_at(
         .map(str::to_string);
     dress_kept(
         &mut facts,
-        super::session_open_face::kept_for_resume(
+        crate::history::history_annotations::kept_for_resume(
             crate::history::history_annotations::resume_with_of(sid),
             Path::new(path),
         ),
@@ -1714,7 +1714,7 @@ pub(crate) fn facts_at(
     }
 }
 
-/// 终端没了时换的那一项还算数（[`super::session_open_face::kept_for_resume`]，恢复读同一份）⇒ 模型 · 权限档那几格写它：下次恢复就照它起。
+/// 终端没了时换的那一项还算数（[`crate::history::history_annotations::kept_for_resume`]，恢复读同一份）⇒ 模型 · 权限档那几格写它：下次恢复就照它起。
 pub(crate) fn dress_kept(
     facts: &mut crate::observe::facts_query::SessionFacts,
     kept: Option<cmd_wire::listing::ResumeWith>,

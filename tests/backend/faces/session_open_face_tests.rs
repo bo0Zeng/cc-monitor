@@ -1,6 +1,7 @@
 //! 恢复读记录那一处：终端没了时换的模型 / 权限档（注解 `resumeWith`）在记录没长时盖过记录里的，长了就作废。
 
 use super::*;
+use crate::history::history_annotations::kept_for_resume;
 
 fn of_record() -> ResumeOf {
     ResumeOf {

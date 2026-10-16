@@ -65,8 +65,14 @@ fn a_session_without_its_terminal_keeps_the_model_for_the_next_resume() {
     let sonnet = claude.model_choice("sonnet").unwrap();
     for why in [Refused::Ended, Refused::NotKnown] {
         let keep = || {
-            crate::faces::session_open_face::keep_for_resume(&own, sid, &rec, Some("sonnet"), None)
-                .map(|()| (sonnet.text)())
+            crate::history::history_annotations::keep_for_resume(
+                &own,
+                sid,
+                &rec,
+                Some("sonnet"),
+                None,
+            )
+            .map(|()| (sonnet.text)())
         };
         let gone = Sent {
             why: Some(why),

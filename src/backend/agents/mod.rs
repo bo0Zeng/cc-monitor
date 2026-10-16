@@ -348,13 +348,13 @@ pub(crate) struct LaunchFace {
 }
 
 impl LaunchFace {
-    /// 换模型清单里 `value` 那一项（可选的模型 ＋「默认」那一项）；不在清单里 ⇒ `None`。
-    pub(crate) fn model_choice(&self, value: &str) -> Option<Choice> {
+    /// 换模型清单里 `model` 那一项（可选的模型 ＋「默认」那一项）；不在清单里 ⇒ `None`。
+    pub(crate) fn model_choice(&self, model: &str) -> Option<Choice> {
         self.models
             .into_iter()
             .flatten()
             .chain(self.model_default.as_ref())
-            .find(|c| c.value == value)
+            .find(|c| c.value == model)
             .copied()
     }
 }

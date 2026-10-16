@@ -1,4 +1,4 @@
-//! 帧面 `session-model` 的宿主壳：换模型。这台已经没有它的终端 ⇒ 记在这条会话上、下次恢复照它起（`session_open_face::keep_for_resume`）；
+//! 帧面 `session-model` 的宿主壳：换模型。这台已经没有它的终端 ⇒ 记在这条会话上、下次恢复照它起（`history_annotations::keep_for_resume`）；
 //! 开着 ⇒ 往会话里送那一家声明的那一行（Claude：`/model <值>`），
 //! 再从记录里此后长出的那一条读回换成了什么（适配层 `LaunchFace.model_switch` 认）。在等人不送；读不回 ⇒ 结果未知，不猜。
 //! 那一家换模型时也把它存成这个号以后新会话的默认 —— 读回那一句照实说。
@@ -198,8 +198,14 @@ fn send(req: &SessionModelReq, own: &crate::platform::Own) -> Result<Sent2, Fail
         ..TerminalInputReq::default()
     })?;
     let keep = || {
-        super::session_open_face::keep_for_resume(own, &req.sid, &record, Some(&req.model), None)
-            .map(|()| (choice.text)())
+        crate::history::history_annotations::keep_for_resume(
+            own,
+            &req.sid,
+            &record,
+            Some(&req.model),
+            None,
+        )
+        .map(|()| (choice.text)())
     };
     Ok(match after_send(sent, &keep)? {
         Some(r) => Sent2::Done(r),

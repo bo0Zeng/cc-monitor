@@ -545,6 +545,38 @@ pub(crate) fn keep_resume_at(
     write_at(own, &file, &held, &raw).map_err(io)
 }
 
+/// 终端没了时换的那一项（注解 `resumeWith`）此刻还算不算数：记录还是记下那一刻那么长 ⇒ 算；长了（恢复过 · 又写过）· 读不到记录 ⇒ 作废。
+/// 恢复（`session_open_face::resume_of`）与会话事实读同一份。
+pub(crate) fn kept_for_resume(kept: Option<ResumeWith>, record: &Path) -> Option<ResumeWith> {
+    let len = crate::platform::fs::Ro::metadata(record).ok()?.len();
+    kept.filter(|k| k.end == len)
+}
+
+/// 终端没了时换模型 / 权限档：把选的那一项记在这条会话上（`end` ＝ 此刻记录多长），下次恢复照它起。
+pub(crate) fn keep_for_resume(
+    own: &Own,
+    sid: &str,
+    record: &Path,
+    model: Option<&str>,
+    permission_mode: Option<&str>,
+) -> Result<(), crate::wire::spec::Fail> {
+    let end = crate::platform::fs::Ro::metadata(record)
+        .map_err(|e| crate::wire::spec::Fail::new("io_failed", copy_core::io_reason(e.kind())))?
+        .len();
+    keep_resume_at(
+        own,
+        sid,
+        ResumeWith {
+            model: model.map(str::to_string),
+            permission_mode: permission_mode.map(str::to_string),
+            end,
+        },
+        crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64),
+    )
+}
+
 /// `history-annotate` 的回包：改完的那一条 ＋ 改之前单个隐藏那一格。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
