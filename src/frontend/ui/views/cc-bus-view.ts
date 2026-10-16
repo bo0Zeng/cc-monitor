@@ -4,7 +4,7 @@
  */
 
 import { dispatcher } from "../keybindings/registry";
-import { CcBusSection } from "../settings/cc-bus-section";
+import { CcBusSection } from "./cc-bus-section";
 import { copyText } from "../copy-table";
 
 export class CcBusView {

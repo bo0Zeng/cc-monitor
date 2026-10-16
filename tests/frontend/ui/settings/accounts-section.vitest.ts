@@ -76,7 +76,7 @@ vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (..
 
 import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
 import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
-import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/machine-context";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../../src/frontend/ui/copy-table";

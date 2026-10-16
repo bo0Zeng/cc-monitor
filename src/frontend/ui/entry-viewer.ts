@@ -41,7 +41,7 @@ import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-
 import { frontView } from "./front-result";
 import { flashFrontDone, showFrontResult } from "./front-pop";
 import { machineName } from "./control-said";
-import { openSettingsWindow } from "./settings/open-settings";
+import { openSettingsWindow } from "./open-settings";
 import { connectTerminalOf } from "./settings-dest";
 import { startInTmuxThenAttach } from "./tmux-resume";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";

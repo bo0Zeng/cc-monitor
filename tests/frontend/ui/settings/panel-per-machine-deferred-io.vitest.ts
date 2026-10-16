@@ -36,7 +36,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -51,7 +51,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
       pages?: { addMachinePage: (id: string, t: string, el: HTMLElement) => void };
     }) {
       setTimeout(() => {
-        opts?.pages?.addMachinePage("machine:（本机）", "本机", document.createElement("div"));
+        opts?.pages?.addMachinePage("machine:<local>", "本机", document.createElement("div"));
         // 第二台（远端）：量「一次打开里 per-machine 那几块只放一次」要有两个机器页。
         opts?.pages?.addMachinePage("machine:devbox", "devbox", document.createElement("div"));
       }, 0);
@@ -77,7 +77,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
 
 /** 落地页（机器列表）这一趟该打的命令 —— 与 `panel-deferred-io.vitest.ts` 的 LANDING_IPC 同一件事。 */
@@ -150,7 +150,7 @@ describe("ST1 延后加载：per-machine 那几块只在机器子页可见时才
     await tick();
     await tick();
     const mark = ipc.calls.length;
-    document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
+    document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:<local>"]')!.click();
     for (let i = 0; i < 4; i++) await tick();
     expect(uniq(ipc.calls.slice(mark))).toEqual(uniq(LOCAL_PAGE_IPC));
   });
@@ -160,7 +160,7 @@ describe("ST1 延后加载：per-machine 那几块只在机器子页可见时才
     await tick();
     await tick();
     const local = () =>
-      document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!;
+      document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:<local>"]')!;
     local().click();
     for (let i = 0; i < 4; i++) await tick();
     const mark = ipc.calls.length;
@@ -174,7 +174,7 @@ describe("ST1 延后加载：per-machine 那几块只在机器子页可见时才
     new SettingsPanel({ windowMode: true });
     await tick();
     await tick();
-    document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:（本机）")!.click();
+    document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:<local>"]')!.click();
     for (let i = 0; i < 4; i++) await tick();
     const mark = ipc.calls.length;
     document.querySelector<HTMLButtonElement>("#settings-tab-machine\\:devbox")!.click();

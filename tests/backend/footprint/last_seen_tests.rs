@@ -31,6 +31,8 @@ fn report() -> serde_json::Value {
         todo: vec![c],
         tmux: Some(true),
         chores: 1,
+        open: 1,
+        rank: 0,
         own: vec![],
     })
     .unwrap()

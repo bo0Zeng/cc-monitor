@@ -156,11 +156,34 @@ fn 成品五格_tmux_原样带_角标数照各件算() {
         keys.sort();
         assert_eq!(
             keys,
-            vec!["changedFiles", "chores", "home", "own", "tmux", "todo"]
+            vec!["changedFiles", "chores", "home", "open", "own", "rank", "tmux", "todo"]
         );
         assert_eq!(got["tmux"], json!(tmux), "查不动不许说成没有");
         assert_eq!(got["chores"], json!(1));
+        assert_eq!(got["open"], json!(2), "没做完 ＝ 不是已做也不是不用了");
     }
+}
+
+#[test]
+fn 先后键_有进角标的件在前_只剩别的没做完的次之_没事的最后() {
+    let chore = |kind, state| {
+        let mut c = Chore::new("x", kind, ChoreAction::How);
+        c.state = state;
+        c
+    };
+    let rank = |todo: Vec<Chore>| {
+        serde_json::to_value(shape(&report(vec![]), todo, None, vec![])).unwrap()["rank"].clone()
+    };
+    assert_eq!(rank(vec![chore(ChoreKind::Install, ChoreState::Expired)]), json!(0));
+    assert_eq!(rank(vec![chore(ChoreKind::Optional, ChoreState::Blocked)]), json!(1));
+    assert_eq!(
+        rank(vec![
+            chore(ChoreKind::Must, ChoreState::Done),
+            chore(ChoreKind::Optional, ChoreState::Declined),
+        ]),
+        json!(2)
+    );
+    assert_eq!(rank(vec![]), json!(2));
 }
 
 /// 改过你的文件那一格（旧测试只看它）。

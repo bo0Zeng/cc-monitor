@@ -75,6 +75,11 @@ function whyCode(why: string | undefined): unknown {
   return m ? { kind: "inside", done: Number(m[1]), of: Number(m[2]) } : null;
 }
 
+/** 行尾那一个原因短词：台架不写核心的字，照出 pb 原话（核心认不出原因时也是这一形）；`wait` 照原因码。 */
+function whyShort(why: string | undefined): unknown {
+  return why ? { text: why, wait: (whyCode(why) as { kind: string } | null)?.kind === "upper" } : null;
+}
+
 const FILE_CODE: Record<string, string> = { 在: "ok", 缺: "missing", 空: "empty", 坏: "broken" };
 
 function build(cells: CellIn[]): Record<string, unknown>[] {
@@ -105,7 +110,8 @@ function build(cells: CellIn[]): Record<string, unknown>[] {
     statusCode: STATUS_CODE[c.status],
     why: c.why ?? null,
     whyCode: whyCode(c.why),
-    signs: (c.signs ?? []).map((g) => ({ at: g.at, atMs: null, by: who(g.by), reason: g.reason, refs: refsIn(g.reason, ids) })),
+    whyShort: whyShort(c.why),
+    signs: (c.signs ?? []).map((g) => ({ at: g.at, by: who(g.by), reason: g.reason, refs: refsIn(g.reason, ids) })),
     owner: who(c.owner ?? null),
     refs: { title: [], body: refsIn(c.body ?? "", ids) },
     hasView: true,
@@ -123,7 +129,7 @@ function timeText(ms: number): string {
   return d.toDateString() === now.toDateString() ? hm : `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
-/** 出口那一遍：`readAt` · `since` · `at`（毫秒或 ISO）旁边添 `…Text`（签收那一格另填 `atMs`，照后端 `product.rs`）；块的 `at`（编号）不是时刻 ⇒ 不添。 */
+/** 出口那一遍：`readAt` · `since` · `at`（毫秒或 ISO）旁边添 `…Text`（照后端 `product.rs`）；块的 `at`（编号）不是时刻 ⇒ 不添。 */
 function withTexts(v: unknown): void {
   if (Array.isArray(v)) {
     v.forEach(withTexts);
@@ -137,7 +143,6 @@ function withTexts(v: unknown): void {
     const ms = typeof x === "number" ? x : typeof x === "string" ? Date.parse(x) : NaN;
     if (Number.isNaN(ms)) continue;
     o[`${k}Text`] = timeText(ms);
-    if (k === "at" && "atMs" in o) o.atMs = ms;
   }
 }
 
@@ -345,10 +350,26 @@ const LEDGER_BY_SESSION: Record<string, unknown> = {
 };
 export const SITE_WS = "/srv/src/site";
 
+/** 后端数好、排好的那几样（照 `product.rs::slice`）：块根格的直接子做完几格 · 没做完的格数 · 签收新的在上。 */
+function counted(sl: Record<string, unknown>): void {
+  type C = { id: string; children: string[]; statusCode: string | null; signs: { at: string }[] };
+  const cells = sl.cells as C[];
+  const byId = new Map(cells.map((c) => [c.id, c]));
+  for (const b of sl.blocks as { cells: string[]; inside?: unknown }[]) {
+    const root = byId.get(b.cells[0] ?? "");
+    const kids = (root?.children ?? []).map((k) => byId.get(k)).filter((c): c is C => c !== undefined && c.statusCode !== "dropped");
+    b.inside = root ? { done: kids.filter((c) => c.statusCode === "done").length, of: kids.length } : null;
+  }
+  sl.openCells = cells.filter((c) => c.statusCode !== "done" && c.statusCode !== "dropped").length;
+  const all = cells.flatMap((c) => c.signs.map((g, i) => ({ cell: c.id, i, ms: Date.parse(g.at) })));
+  sl.recentSigns = all.sort((a, b) => (Number.isNaN(b.ms) ? -Infinity : b.ms) - (Number.isNaN(a.ms) ? -Infinity : a.ms)).map(({ cell, i }) => ({ cell, i }));
+}
+
 /** 一个工作区的成品（`plan-read` 的回包）。 */
 function readOf(origin: string, slices: Record<string, unknown>[], auto: boolean): Record<string, unknown> {
   for (const sl of slices) {
     sl.bare = false;
+    counted(sl);
     sl.needCount = (sl.needs as { acked: boolean; kind: string }[]).filter((n) => !n.acked && n.kind !== "ask").length;
   }
   const doc: Record<string, unknown> = {

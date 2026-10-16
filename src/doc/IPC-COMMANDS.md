@@ -7342,7 +7342,15 @@ tmux: boolean | null,
 /**
  * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
  */
-chores: number, own: Array<OwnItem>, };
+chores: number, 
+/**
+ * 「待办」里还没做完的件数（不是已做、也不是不用了）。
+ */
+open: number, 
+/**
+ * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
+ */
+rank: number, own: Array<OwnItem>, };
 type DiffOp = "same" | "del" | "add";
 type DiffRow = { n: number | null, op: DiffOp, text: string, };
 type FootprintClient = { home: string, path?: string | null, };
@@ -7506,7 +7514,15 @@ tmux: boolean | null,
 /**
  * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
  */
-chores: number, own: Array<OwnItem>, };
+chores: number, 
+/**
+ * 「待办」里还没做完的件数（不是已做、也不是不用了）。
+ */
+open: number, 
+/**
+ * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
+ */
+rank: number, own: Array<OwnItem>, };
 type DiffOp = "same" | "del" | "add";
 type DiffRow = { n: number | null, op: DiffOp, text: string, };
 type LastSeen = { accounts: Seen<AccountsList> | null, data: Seen<DataReport> | null, };
@@ -12449,7 +12465,11 @@ type PlanStale = { said: string | null, raw: string | null, since: number, since
 
 ```ts
 type PlanArchived = { id: string, title: string | null, kind: string | null, replacedBy: string | null, };
-type PlanBlock = { id: string, cells: Array<string>, dir: string | null, owner: PlanWho | null, phase: string | null, 
+type PlanBlock = { id: string, cells: Array<string>, 
+/**
+ * 块根格的直接子做完几格；根格不在片里 ⇒ `null`。
+ */
+inside: PlanKids | null, dir: string | null, owner: PlanWho | null, phase: string | null, 
 /**
  * 站在哪一格（编号）。
  */
@@ -12470,7 +12490,11 @@ why: string | null,
 /**
  * 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
  */
-whyCode: PlanWhyCode | null, signs: Array<PlanSign>, owner: PlanWho | null, 
+whyCode: PlanWhyCode | null, 
+/**
+ * 行尾那一个原因短词；没有原因 ⇒ `null`。
+ */
+whyShort: PlanWhyShort | null, signs: Array<PlanSign>, owner: PlanWho | null, 
 /**
  * 签它的（上一级）；pb 没给 ⇒ `null`。
  */
@@ -12495,6 +12519,7 @@ stateCode: "ok" | "missing" | "empty" | "broken" | null, note: string | null,
  * 同一份文件还挂在哪几格（编号）。
  */
 alsoBy: Array<string>, };
+type PlanKids = { done: number, of: number, };
 type PlanKind = { name: string | null, edgeWords: PlanEdgeWords, };
 type PlanNeed = { key: string, kind: "top" | "red" | "ended" | "ask", block: string | null, cell: string | null, 
 /**
@@ -12547,11 +12572,8 @@ at: string | null,
 /**
  * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
  */
-atText?: string, 
-/**
- * 那一刻的毫秒（自 1970，排序用）；读不出时刻 ⇒ `null`。
- */
-atMs: number | null, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+atText?: string, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+type PlanSignAt = { cell: string, i: number, };
 type PlanSlice = { name: string, domain: string | null, 
 /**
  * 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
@@ -12564,7 +12586,15 @@ docsOnly: boolean,
 /**
  * 这一刻读不成的那一句（pb 原样）。
  */
-error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, 
+/**
+ * 没做完的格数（不是做完了、也不是不做了）。
+ */
+openCells: number, 
+/**
+ * 全片的签收，新的在上（读不出时刻的排后）。
+ */
+recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
 /**
  * 这一片要你看的数（没认可的，不含问人）。
  */
@@ -12585,6 +12615,7 @@ sid: string | null, alive: boolean, activity: "working" | "needs_you" | "idle" |
  */
 needs: string | null, };
 type PlanWhyCode = { "kind": "nosign" } | { "kind": "inside", done: number, of: number, } | { "kind": "upper" };
+type PlanWhyShort = { text: string, wait: boolean, };
 ```
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`

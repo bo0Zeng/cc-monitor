@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const LOCAL_PAGE = "machine:（本机）";
+const LOCAL_PAGE = "machine:<local>";
 const REMOTE_PAGE = "machine:devbox";
 
 const captured = vi.hoisted(() => ({
@@ -21,7 +21,7 @@ vi.mock("../../../../src/frontend/ui/machine-feed", () => ({
 
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (origin: string): string | null => (origin === "devbox" ? REMOTE_PAGE : null);

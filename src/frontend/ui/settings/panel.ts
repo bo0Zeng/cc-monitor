@@ -30,7 +30,7 @@ import { restartNowButton } from "./restart-now";
 import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
-import { setCurrentMachine } from "./machine-context";
+import { setCurrentMachine } from "../machine-context";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { failToast } from "../kit/toast";
 import { toggleSwitch } from "../kit/switch";
@@ -64,7 +64,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type BehaviorToggled } from "./events";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
-import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
+import { parseSettingsTarget, type SettingsTarget } from "../open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
 import { RotationSection } from "./rot-section";

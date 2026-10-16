@@ -25,7 +25,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   // `pages.addMachinePage` 注册本机页，panel 靠那一刻把 per-machine 分节安顿下来。
   // stub 不调的话，那几块就永远游离在文档之外，测试会以为它们「消失了」。
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -52,7 +52,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
       // 「应用/机器/…」前面成为第一页，落地页与导航顺序就都错了。
       setTimeout(() => {
         const page = document.createElement("div");
-        opts?.pages?.addMachinePage("machine:（本机）", "本机", page);
+        opts?.pages?.addMachinePage("machine:<local>", "本机", page);
       }, 0);
     }
   },

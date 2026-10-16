@@ -37,15 +37,13 @@ import {
   blockRoots,
   cellIndex,
   isFresh,
-  kidsDone,
   kindSlot,
   lastSign,
   outlineRows,
   shortId,
-  signsNewestFirst,
+  recentSigns,
   statusLook,
   topBlock,
-  whyShort,
   type PlanFilter,
 } from "./plan-model";
 import { CellDetail } from "./plan-cell";
@@ -53,7 +51,7 @@ import { cellTarget, needBar, openNeeds, openReturn, returnedBar, type ReviewHos
 import type { PlanNeedsBook } from "../plan-needs";
 import { freshPane, phaseBadge, setKindColor, STATUS_ICON } from "./plan-bits";
 import { openNewSession } from "../new-session";
-import { openSettingsWindow } from "../settings/open-settings";
+import { openSettingsWindow } from "../open-settings";
 import { pbDirOf } from "../settings-dest";
 import s from "./plan.module.css";
 
@@ -686,10 +684,9 @@ export class PlanView {
     const box = document.createElement("div");
     box.className = s.pvChips;
     const total = slice.cells.length;
-    const open = slice.cells.filter((c) => statusLook(c) === "open").length;
     const items: { key: PlanFilter; label: string; n: number | null; tone?: string }[] = [
       { key: "all", label: copyText("plan.filter.all"), n: total },
-      { key: "open", label: copyText("plan.filter.open"), n: open },
+      { key: "open", label: copyText("plan.filter.open"), n: slice.openCells },
     ];
     items.push({ key: "needs", label: copyText("plan.filter.needs"), n: slice.needCount, tone: "needs" });
     for (const it of items) {
@@ -878,7 +875,7 @@ export class PlanView {
     const trail = document.createElement("span");
     trail.className = s.pvTrail;
     if (look === "open") {
-      const w = whyShort(c);
+      const w = c.whyShort;
       if (w) {
         const why = document.createElement("span");
         why.className = s.pvWhy;
@@ -961,14 +958,13 @@ export class PlanView {
       const tbl = table([copyText("plan.blocks.block"), copyText("plan.blocks.owner"), copyText("plan.blocks.phase"), copyText("plan.blocks.at"), copyText("plan.blocks.inside")], [4]);
       for (const b of blocks) {
         const root = byId.get(b.cells[0] ?? "");
-        const k = root ? kidsDone(slice, root) : null;
         const at = b.at ? byId.get(b.at) : null;
         const tr = tbl.row([
           text(root?.title ?? b.id),
           b.owner ? this.whoChip(b.owner) : text(copyText("plan.page.none")),
           b.phase ? phaseBadge(b.phase) : text(copyText("plan.page.none")),
           text(at ? (at.title ?? at.id) : copyText("plan.page.none")),
-          text(k ? `${k.done}/${k.of}` : copyText("plan.page.none")),
+          text(b.inside ? `${b.inside.done}/${b.inside.of}` : copyText("plan.page.none")),
         ]);
         if (root) clickRow(tr, () => this.select(root.id));
       }
@@ -1002,7 +998,7 @@ export class PlanView {
     box.appendChild(sec2);
 
     // 最近签收
-    const signs = signsNewestFirst(slice);
+    const signs = recentSigns(slice);
     if (signs.length > 0) {
       const sec3 = section(copyText("plan.overview.recent"));
       const all = document.createElement("button");
@@ -1023,7 +1019,7 @@ export class PlanView {
   private signsFlow(slice: PlanSlice): HTMLElement {
     const box = document.createElement("div");
     box.dataset.view = "signs";
-    const all = signsNewestFirst(slice);
+    const all = recentSigns(slice);
     const h1 = document.createElement("div");
     h1.className = s.pvH1;
     const t = document.createElement("span");
@@ -1043,7 +1039,7 @@ export class PlanView {
     const list = document.createElement("div");
     list.className = s.pvSec;
     const fill = (): void => {
-      const got = signsNewestFirst(slice, this.signsQuery);
+      const got = recentSigns(slice, this.signsQuery);
       if (got.length === 0) list.replaceChildren(text(copyText("plan.signs.none"), s.pvMeta));
       else list.replaceChildren(...got.map((it) => this.signRow(slice, it)));
     };
@@ -1057,7 +1053,7 @@ export class PlanView {
   }
 
   /** 签收的一行：时刻 · 那一格（标题 ＋ 类）· 理由（话里的编号换成标题）· 签的那一位。 */
-  private signRow(slice: PlanSlice, it: ReturnType<typeof signsNewestFirst>[number]): HTMLElement {
+  private signRow(slice: PlanSlice, it: ReturnType<typeof recentSigns>[number]): HTMLElement {
     const row = document.createElement("div");
     row.className = s.pvSign;
     const tm = text(it.sign.atText ?? "", s.pvSignTm);

@@ -232,7 +232,7 @@ export const commands = {
     theme: Record<string, string>;
   }) => invoke<number>("open_file_window", args),
 
-  /** 开设置窗；`target` 是目的地 JSON（`settings/open-settings.ts`）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  /** 开设置窗；`target` 是目的地 JSON（`open-settings.ts`）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: (target: string | null = null) =>
     invoke<void>("open_settings_window", { target }),
 

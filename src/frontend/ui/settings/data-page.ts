@@ -1,7 +1,7 @@
 /**
  * 设置窗「文件与数据」页：两栏 —— 待办（角标）· cc-monitor 放了什么。
  *
- * - 待办：顶上一行总数 ＋［全部重查］；按机器分段（有事的在前），段头 机器名 · 那台的数 ·［打开该机器］；
+ * - 待办：顶上一行总数 ＋［全部重查］；按机器分段（照各台成品的先后键），段头 机器名 · 那台的数 ·［打开该机器］；
  *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。断开的那台：「{machine} 离线 · 未检查」。
  *   今天的件来自那台后端的 `data-report`（要装 / 要装 · 可选）；单件里每一格都照那份成品画，界面不判。
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
@@ -29,7 +29,7 @@ import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
 import { failToast } from "../kit/toast";
 import { openOnMachine } from "../file-window";
-import type { SettingsTarget } from "./open-settings";
+import type { SettingsTarget } from "../open-settings";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 export type DataTab = "chores" | "placed";
@@ -204,7 +204,7 @@ export class DataPage {
       }),
     );
     if (gen !== this.generation) return;
-    const total = this.choresTotal();
+    const total = this.sum((r) => r.chores);
     this.host.setBadge(total);
     this.paintTabs(total);
     this.paintChores();
@@ -212,10 +212,10 @@ export class DataPage {
     this.landFocus();
   }
 
-  /** 进角标的件数：各台 `chores` 相加（读不到的那台不算）。 */
-  private choresTotal(): number {
+  /** 各台成品里那一个数相加（读不到的那台不算）：角标 ＝ `chores`，顶上那一句 ＝ `open`。 */
+  private sum(of: (r: DataReport) => number): number {
     let n = 0;
-    for (const r of this.readings.values()) if (r.ok) n += r.report.chores;
+    for (const r of this.readings.values()) if (r.ok) n += of(r.report);
     return n;
   }
 
@@ -269,7 +269,7 @@ export class DataPage {
     const head = document.createElement("div");
     head.className = "data-summary";
     const lead = document.createElement("span");
-    lead.textContent = copyText("dataPage.chores.open", { n: all.filter((c) => c.state !== "done" && c.state !== "declined").length });
+    lead.textContent = copyText("dataPage.chores.open", { n: this.sum((r) => r.open) });
     head.appendChild(lead);
     for (const t of countTags(all)) head.appendChild(t);
     const sp = document.createElement("span");
@@ -277,8 +277,12 @@ export class DataPage {
     head.appendChild(sp);
     head.appendChild(button({ label: copyText("dataPage.chores.recheck"), icon: "refresh", kind: "ghost", size: "compact", onClick: () => void this.refresh() }));
     pane.appendChild(head);
-    // 有事的那几台在前（顺序照机器表；同一档内不挪）。
-    const order = [...this.machines].sort((a, b) => weight(this.readings.get(b.origin)) - weight(this.readings.get(a.origin)));
+    // 照各台成品的先后键排（同一档照机器表）；没读成的那几台排最后。
+    const rank = (m: Machine): number => {
+      const r = this.readings.get(m.origin);
+      return r?.ok ? r.report.rank : Number.MAX_SAFE_INTEGER;
+    };
+    const order = [...this.machines].sort((a, b) => rank(a) - rank(b));
     for (const m of order) pane.appendChild(this.machineSection(m));
   }
 
@@ -483,14 +487,6 @@ function undoWhere(u: { page: string; tab?: string }): string {
   if (u.page === "ext") return copyText("dataPage.undo.ext");
   if (u.page === "machine" && u.tab === "config") return copyText("dataPage.undo.config");
   return u.page;
-}
-
-/** 有事的分量：进角标的件 ＞ 别的没做完的件 ＞ 读不到 ＞ 没事。 */
-function weight(r: Reading | undefined): number {
-  if (!r) return 0;
-  if (!r.ok) return 1;
-  const open = r.report.todo.filter((c) => c.state !== "done" && c.state !== "declined").length;
-  return r.report.chores * 100 + open * 2;
 }
 
 function section(title: string, sub: string): HTMLElement {

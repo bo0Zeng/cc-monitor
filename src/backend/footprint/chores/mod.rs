@@ -256,6 +256,14 @@ pub(crate) fn badge(chores: &[Chore]) -> usize {
         .count()
 }
 
+/// 还没做完的件数：不是已做、也不是不用了。
+pub(crate) fn open(chores: &[Chore]) -> usize {
+    chores
+        .iter()
+        .filter(|c| !matches!(c.state, ChoreState::Done | ChoreState::Declined))
+        .count()
+}
+
 /// 事实 ⇒ 各件（急的在前：要做 · 待定 · 要装 · 要装 · 可选 · 可选）。
 pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
     let mut out: Vec<Chore> = Vec::new();

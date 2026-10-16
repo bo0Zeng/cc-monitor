@@ -6,7 +6,7 @@ import { copyText } from "../copy-table";
 import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { LOCAL_ORIGIN } from "../ipc/origin";
-import type { SettingsTarget } from "./open-settings";
+import type { SettingsTarget } from "../open-settings";
 import { readReadiness, skipStart, type Readiness, type ReadinessStep } from "./readiness-reads";
 import { failToast } from "../kit/toast";
 

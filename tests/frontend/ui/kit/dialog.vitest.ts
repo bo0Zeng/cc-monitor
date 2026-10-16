@@ -158,7 +158,7 @@ const ASK_CALLERS = [
   "src/frontend/ui/backend-deploy.ts", // 换上这一版之前「会打断什么」那一问（机器卡与 ↗ 浮层共用）
   "src/frontend/ui/keybindings/editor.ts",
   "src/frontend/ui/rot-mount.ts", // 轮换：删一份策略 · 换策略丢掉没存的改动（确认）· 复制 / 改名 / 从文件添加（问名字）
-  "src/frontend/ui/settings/cc-bus-section.ts",
+  "src/frontend/ui/views/cc-bus-section.ts",
   "src/frontend/ui/settings/config-page.ts",
   "src/frontend/ui/settings/machine-card.ts",
   "src/frontend/ui/settings/panel.ts",

@@ -76,10 +76,6 @@ pub(crate) struct PlanSign {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
-    /// 那一刻的毫秒（自 1970，排序用）；读不出时刻 ⇒ `null`。
-    #[serde(default)]
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub at_ms: Option<i64>,
     pub by: Option<PlanWho>,
     pub reason: Option<String>,
     pub refs: Vec<PlanRef>,
@@ -107,6 +103,33 @@ pub(crate) enum PlanWhyCode {
     Nosign,
     Inside { done: u32, of: u32 },
     Upper,
+}
+
+/// 行尾那一个原因短词（写好的字）；`wait` ⇒ 等上一级收下（用正文色）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanWhyShort {
+    pub text: String,
+    pub wait: bool,
+}
+
+/// 一格的直接子里做完了几格 / 一共几格（不做了的不算）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanKids {
+    pub done: u32,
+    pub of: u32,
+}
+
+/// 全片签收先后里的一条：哪一格的第几条签收。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlanSignAt {
+    pub cell: String,
+    pub i: u32,
 }
 
 /// 退回落地时多出来的那一格。
@@ -163,6 +186,8 @@ pub(crate) struct PlanCell {
     pub why: Option<String>,
     /// 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
     pub why_code: Option<PlanWhyCode>,
+    /// 行尾那一个原因短词；没有原因 ⇒ `null`。
+    pub why_short: Option<PlanWhyShort>,
     pub signs: Vec<PlanSign>,
     pub owner: Option<PlanWho>,
     /// 签它的（上一级）；pb 没给 ⇒ `null`。
@@ -200,6 +225,8 @@ pub(crate) struct PlanNeed {
 pub(crate) struct PlanBlock {
     pub id: String,
     pub cells: Vec<String>,
+    /// 块根格的直接子做完几格；根格不在片里 ⇒ `null`。
+    pub inside: Option<PlanKids>,
     pub dir: Option<String>,
     pub owner: Option<PlanWho>,
     pub phase: Option<String>,
@@ -331,6 +358,10 @@ pub(crate) struct PlanSlice {
     pub done: bool,
     pub top: Vec<String>,
     pub progress: Option<PlanProgress>,
+    /// 没做完的格数（不是做完了、也不是不做了）。
+    pub open_cells: u32,
+    /// 全片的签收，新的在上（读不出时刻的排后）。
+    pub recent_signs: Vec<PlanSignAt>,
     pub blocks: Vec<PlanBlock>,
     pub check: PlanCheck,
     pub cells: Vec<PlanCell>,

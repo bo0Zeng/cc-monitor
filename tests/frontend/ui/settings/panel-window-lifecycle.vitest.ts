@@ -77,7 +77,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -120,7 +120,7 @@ import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { copyPattern } from "../../../test-support/copy-pattern";
 import { factsOn } from "../../../test-support/host-facts";
 

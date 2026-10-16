@@ -177,7 +177,7 @@ fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
 
 /// **明令不许有周期唤醒**的文件（把两处散文纪律变成机检）。
 const NO_PERIODIC_WAKE: &[(&str, &str)] = &[(
-    "src/frontend/ui/settings/cc-bus-section.ts",
+    "src/frontend/ui/views/cc-bus-section.ts",
     "头注写着「本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务」",
 )];
 

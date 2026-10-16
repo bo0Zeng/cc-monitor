@@ -53,7 +53,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 // —— 与本条无关的重块 stub 掉（理由见头注〔射程〕②）——
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -69,7 +69,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     }) {
       setTimeout(() => {
         opts?.pages?.addMachinePage(
-          "machine:（本机）",
+          "machine:<local>",
           "本机",
           document.createElement("div"),
         );
@@ -113,7 +113,7 @@ void stubEl;
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
 
 /**
@@ -253,7 +253,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     expect(document.querySelector("#settings-tab-footprint")).toBeNull();
     let mark = ipc.calls.length;
     document
-      .querySelector<HTMLButtonElement>('#settings-tab-machine\\:（本机）')!
+      .querySelector<HTMLButtonElement>('[id="settings-tab-machine:<local>"]')!
       .click();
     await tick();
     for (const name of MACHINE_PAGE_IPC) expect(since(mark), `进机器页不该发 ${name}`).not.toContain(name);

@@ -6,6 +6,7 @@ import type { PlanReturned } from "./PlanReturned";
 import type { PlanSign } from "./PlanSign";
 import type { PlanWho } from "./PlanWho";
 import type { PlanWhyCode } from "./PlanWhyCode";
+import type { PlanWhyShort } from "./PlanWhyShort";
 
 /**
  * 一格。
@@ -26,7 +27,11 @@ why: string | null,
 /**
  * 原因拆好的那一份；认不出 ⇒ `null`（界面照出 `why` 原话）。
  */
-whyCode: PlanWhyCode | null, signs: Array<PlanSign>, owner: PlanWho | null, 
+whyCode: PlanWhyCode | null, 
+/**
+ * 行尾那一个原因短词；没有原因 ⇒ `null`。
+ */
+whyShort: PlanWhyShort | null, signs: Array<PlanSign>, owner: PlanWho | null, 
 /**
  * 签它的（上一级）；pb 没给 ⇒ `null`。
  */

@@ -147,7 +147,7 @@ export const HIDDEN_SCENES: Scene[] = [
     { size: [1100, H], storage: { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1", "cc-monitor.tab-bar.folded": "1" } },
   ),
   settingsScene("hide-08-settings-machine", "设置 · 本机 · 子会话 · 分身会话", "「该机的 cc-monitor」里怎么起会话那几行：子会话 ［显示｜隐藏］· 分身会话 ［显示｜隐藏］（名字短，说明在悬停）", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
     document.querySelector<HTMLElement>(".settings-page:not([hidden]) [data-role=child-tab]")?.scrollIntoView({ block: "center" });

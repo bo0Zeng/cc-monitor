@@ -35,7 +35,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -51,7 +51,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     }) {
       setTimeout(() => {
         opts?.pages?.addMachinePage(
-          "machine:（本机）",
+          "machine:<local>",
           "本机",
           document.createElement("div"),
         );
@@ -88,7 +88,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import {
   SKELETON_PX,
   makeSkeleton,
@@ -106,7 +106,7 @@ async function openAllPages(): Promise<HTMLElement> {
   const p = new SettingsPanel({ windowMode: true });
   await p.open();
   await tick();
-  for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:（本机）", "machines"]) {
+  for (const id of ["app", "app-appearance", "app-logs", "app-data", "machine:<local>", "machines"]) {
     document.querySelector<HTMLButtonElement>(`[id="settings-tab-${id}"]`)?.click();
     await tick();
   }

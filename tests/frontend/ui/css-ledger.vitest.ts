@@ -136,7 +136,7 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
   },
   {
     prefix: "pf-dot-",
-    why: "`src/frontend/ui/views/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
+    why: "`src/frontend/ui/settings/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
   },
   {
     prefix: "status-",

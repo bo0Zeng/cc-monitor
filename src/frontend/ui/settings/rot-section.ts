@@ -10,7 +10,7 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { readRemoteConfig } from "../remote-config";
 import { mountRotation, type RotMount } from "../rot-mount";
-import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { getCurrentMachine, subscribeMachine } from "../machine-context";
 
 export class RotationSection {
   readonly element: HTMLElement;

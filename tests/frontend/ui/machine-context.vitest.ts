@@ -12,8 +12,8 @@ import {
   setCurrentMachine,
   subscribeMachine,
   __resetMachineContextForTests,
-} from "../../../../src/frontend/ui/settings/machine-context";
-import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+} from "../../../src/frontend/ui/machine-context";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 beforeEach(() => __resetMachineContextForTests());
 
