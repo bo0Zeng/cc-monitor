@@ -115,8 +115,9 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let body = &prod[at..];
     let made = guard_core::find_pinned(body, "let handed = backend_env();")
         .unwrap_or_else(|e| panic!("`start_local_backend` 里没有恰好一处算那份环境：{e}"));
-    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &landing, &handed) {")
-        .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
+    let detached =
+        guard_core::find_pinned(body, "match start_detached(&resolve, &landing, &handed) {")
+            .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
     let supervised = guard_core::find_pinned(body, "handed,\n")
         .unwrap_or_else(|e| panic!("被监护那条没交那份环境：{e}"));
     assert!(
@@ -3574,7 +3575,10 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         *DETACHED.lock().expect("锁") = None;
 
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &bin, &sb.envs()), "本条");
+        expect_started(
+            start_detached(&|| Ok(bin.clone()), &bin, &sb.envs()),
+            "本条",
+        );
         let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         assert!(alive(pid), "起出来的 pid={pid} 不在进程表里");
 
@@ -3753,7 +3757,10 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
             env
         };
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &bin, &env_now()), "第一次起");
+        expect_started(
+            start_detached(&|| Ok(bin.clone()), &bin, &env_now()),
+            "第一次起",
+        );
         let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         sb.remember(pid1);
         // 常驻后端的环境里只有常驻开关，没有任何钥匙或钥匙文件（门由内核给）。
