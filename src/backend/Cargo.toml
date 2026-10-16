@@ -330,6 +330,8 @@ comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }
+# 保活那几条判据走虚拟钟（`start_paused`）：200 ms 一轮的保活，墙钟上忙机里回话一晚就误判死。
+tokio = { version = "1", features = ["test-util"] }
 # `acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
 acct-core = { path = "../common/acct-core", features = ["fixtures"] }
 # vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：

@@ -1082,7 +1082,8 @@ impl russh::server::Handler for LetIn {
 
 /// ★ 经跳板的那条连接：外面那条没了（隧道读到头、关也关不上）⇒ 这条照样记成「没了」，握着它的链路（`use: hold`）跟着收工。
 /// 关不上不许吞掉「没了」那一下：否则握着的那条一直算活着，SSH 那层永远等不到它断、终端停在出错页回不来。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+/// 200 ms 的保活走虚拟钟：墙钟上忙机里回话晚到一轮，正控那半就把好着的隧道判成没了。
+#[tokio::test(start_paused = true)]
 async fn a_tunnelled_connection_is_marked_gone_when_its_carrier_dies() {
     let (near, far) = tokio::io::duplex(64 * 1024);
     let gone = Arc::new(std::sync::atomic::AtomicBool::new(false));
