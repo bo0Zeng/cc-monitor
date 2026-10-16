@@ -5,13 +5,20 @@
 //! 成品挂在会话的 `needs` 上（`observe::facts_query::dress_ask`）：`needs.ask` 是「这一条可以怎么答」—— 选项的字、语气、要不要附一句话都由这里写好，出口不按工具名取字；
 //! pidfile 说在等、却没有挂着的请求（用户自己起的会话 · 只能本人答的框 · 工作区信任框 …）⇒ `ask: null`，`manualText` 写好「只能在终端里答」。
 //!
+//! **没人答时自动答**（只管提问；批准工具 · 批计划是安全闸，一律不自动答 —— 只此一处判，[`auto_of`]）：这条会话的注解开着
+//! `autoAnswer` ⇒ 挂上的提问自己带期限（`needs-ask` 那条在等的，零定时器：期限跟着这一次挂着的走），等满了还没人答就替人答 ——
+//! 每一题答成「其他」＋ 那一句；留一条记录（`sessions-needs.answered` · 会话事实 `autoAnswered`），这条会话下一次挂上提问才换掉。
+//!
 //! 那一家的字段名不进这里：读 hook 输入 · 写决定都经注册表 `Adapter.asks`（[`crate::agents::AskFace`]）。
 
 pub mod hook;
 
 use crate::agents::asks::{product_of, Ask, NoteNeed};
 use crate::agents::{AskIn, PlanMode, Verdict};
-pub(crate) use cmd_wire::needs::{AnswerPick as Pick, AnswerReq, AnswerResult, Answered};
+use crate::common::cells::Words;
+pub(crate) use cmd_wire::needs::{
+    AnswerPick as Pick, AnswerReq, AnswerResult, Answered, AutoAnswer,
+};
 use copy_core::copy_text;
 use serde::Serialize;
 use serde_json::Value;
@@ -68,6 +75,8 @@ struct Open {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Settled {
     Answered,
+    /// 没人答、替人答了（那一句在 [`Book::answered`]）。
+    Auto,
     Closed,
 }
 
@@ -75,6 +84,8 @@ enum Settled {
 struct Book {
     open: BTreeMap<String, Open>,
     settled: VecDeque<(String, Settled)>,
+    /// 会话 id ⇒ 最近一次替人答的那一句（这条会话下一次挂上提问就摘掉）。
+    answered: BTreeMap<String, Words>,
 }
 
 /// 收了场的记几条（够分「答过 / 关了」；再早的答回 `not_found`）。
@@ -110,7 +121,8 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(64).0)
 }
 
-fn moved(sid: &str) {
+/// 这条会话的需手动那几格变了（挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了）⇒ 推 `changed {needs, key: sid}`。
+pub(crate) fn moved(sid: &str) {
     let _ = changes().send(sid.to_string());
 }
 
@@ -147,15 +159,41 @@ impl Drop for Desk {
 
 /// `needs-ask` 的本体：`{agent, hook}` ⇒ 挂上、等人答 ⇒ `{decision}`（`null` ＝ 不给决定，hook 空手退）。
 /// 那一家没有答题口 · hook 输入不是要人答的那一种 ⇒ 立刻 `{decision: null}`（不挂）。
-pub(crate) async fn ask(conn: u64, req: AskReq) -> AskReply {
+/// `setting` ＝ 这条会话「没人答时自动答」那一格（注解里那一份，调用方现读交进来）。
+pub(crate) async fn ask(
+    conn: u64,
+    req: AskReq,
+    setting: impl FnOnce(&str) -> Option<AutoAnswer>,
+) -> AskReply {
     let Some(asked) = crate::agents::ask_face(&req.agent).and_then(|f| (f.read)(&req.hook)) else {
         return AskReply { decision: None };
     };
-    let rx = open(&req.agent, asked, conn);
+    let auto = auto_of(&asked, setting(&asked.sid).as_ref());
+    let (id, mut rx) = open_id(&req.agent, asked, conn);
     // 撤掉（连接断了 / 别处关了）⇒ 发端丢了 ⇒ 不给决定。
-    AskReply {
-        decision: rx.await.ok().flatten(),
-    }
+    let decision = match auto {
+        None => rx.await.ok().flatten(),
+        Some(auto) => tokio::select! {
+            r = &mut rx => r.ok().flatten(),
+            () = due(auto.after_min) => {
+                match answer_for_nobody(&id, &auto) {
+                    Some(d) => Some(d),
+                    // 刚好有人先答了 / 撤了：照那一头交来的。
+                    None => rx.await.ok().flatten(),
+                }
+            }
+        },
+    };
+    AskReply { decision }
+}
+
+/// 挂着的这一条自己带的期限（等满 `min` 分钟醒一次）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "会话设了「没人答时自动答」的那一条提问自己带的一次性期限，不是节拍：随这一条收场一起没，那一格关着就不起"
+)]
+async fn due(min: u32) {
+    tokio::time::sleep(std::time::Duration::from_secs(u64::from(min) * 60)).await;
 }
 
 /// 挂上一条（`conn` ＝ 它那条连接）。
@@ -164,23 +202,143 @@ pub(crate) fn open(
     asked: AskIn,
     conn: u64,
 ) -> tokio::sync::oneshot::Receiver<Option<Value>> {
+    open_id(agent, asked, conn).1
+}
+
+fn open_id(
+    agent: &str,
+    asked: AskIn,
+    conn: u64,
+) -> (String, tokio::sync::oneshot::Receiver<Option<Value>>) {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let id = format!("ask-{}", NEXT.fetch_add(1, Ordering::Relaxed));
     let product = product_of(&id, &asked, now_ms());
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<Value>>();
     let sid = asked.sid.clone();
-    book().open.insert(
-        id,
-        Open {
-            agent: agent.to_string(),
-            ask: asked,
-            product,
-            conn,
-            tx,
-        },
-    );
+    {
+        let mut b = book();
+        b.answered.remove(&sid);
+        b.open.insert(
+            id.clone(),
+            Open {
+                agent: agent.to_string(),
+                ask: asked,
+                product,
+                conn,
+                tx,
+            },
+        );
+    }
     moved(&sid);
-    rx
+    (id, rx)
+}
+
+/// 「没人答时自动答」至多等几分钟（要短于那一家给答题 hook 的期限，到那时 hook 已被杀）。
+pub(crate) const AUTO_MAX_MIN: u32 = 30;
+
+/// 替人答的那一句的缺省（交给那一家的话）。
+pub(crate) fn auto_say() -> String {
+    copy_text("beAsk.auto.say", &[])
+}
+
+/// 那一句至多几个字。
+const AUTO_SAY_MAX: usize = 500;
+
+/// 这台挂上的这一条要不要、多久后替人答 —— **唯一的判定**：只有提问那一种；批准工具 · 批计划永远不（安全闸）。
+pub(crate) fn auto_of(a: &AskIn, setting: Option<&AutoAnswer>) -> Option<AutoAnswer> {
+    if a.kind != crate::agents::AskKind::Question {
+        return None;
+    }
+    setting.filter(|s| s.after_min > 0).cloned()
+}
+
+/// 注解里那一格怎么算数（`history-annotate` 写之前过这一道）：`afterMin` 0 ⇒ 关（`None`）· 1..=[`AUTO_MAX_MIN`]；
+/// 那一句去掉首尾空白，空 ⇒ 用缺省，过长拒。
+pub(crate) fn auto_checked(a: AutoAnswer) -> Result<Option<AutoAnswer>, String> {
+    if a.after_min == 0 {
+        return Ok(None);
+    }
+    if a.after_min > AUTO_MAX_MIN {
+        return Err(crate::common::contract::malformed(&format!(
+            "`autoAnswer.afterMin` must be 0..={AUTO_MAX_MIN}: {}",
+            a.after_min
+        )));
+    }
+    let say = a.say.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if say.is_some_and(|s| s.chars().count() > AUTO_SAY_MAX) {
+        return Err(crate::common::contract::malformed(&format!(
+            "`autoAnswer.say` is longer than {AUTO_SAY_MAX} characters"
+        )));
+    }
+    Ok(Some(AutoAnswer {
+        after_min: a.after_min,
+        say: say.map(str::to_string),
+    }))
+}
+
+/// 等满了：还挂着 ⇒ 每一题答成「其他」＋ 那一句（没读出题的那一种 ⇒ 不回答、附那一句），收场、留记录 ⇒ 那一家要的那一份；
+/// 已经不在（有人先答了 · 撤了）/ 那一家写不出 ⇒ `None`。
+fn answer_for_nobody(id: &str, auto: &AutoAnswer) -> Option<Value> {
+    let say = auto.say.clone().unwrap_or_else(auto_say);
+    let mut b = book();
+    let o = b.open.get(id)?;
+    let verdict = if o.product.questions.is_empty() {
+        Verdict::Deny {
+            note: Some(say.clone()),
+            stop: false,
+        }
+    } else {
+        Verdict::Allow {
+            rule: None,
+            mode: None,
+            answers: o
+                .product
+                .questions
+                .iter()
+                .map(|q| (q.text.clone(), say.clone()))
+                .collect(),
+        }
+    };
+    let decision = crate::agents::ask_face(&o.agent).and_then(|f| (f.decide)(&o.ask, &verdict))?;
+    let o = b.open.remove(id).expect("刚找到的那一条");
+    let sid = o.ask.sid;
+    b.settle(id.to_string(), Settled::Auto);
+    b.answered.insert(
+        sid.clone(),
+        Words(copy_text(
+            "beAsk.auto.answered",
+            &[
+                (
+                    "dur",
+                    &copy_core::format_duration(u64::from(auto.after_min) * 60_000),
+                ),
+                ("say", &say),
+            ],
+        )),
+    );
+    while b.answered.len() > SETTLED_KEEP {
+        b.answered.pop_first();
+    }
+    drop(b);
+    moved(&sid);
+    Some(decision)
+}
+
+/// 这条会话最近一次替人答的那一句（下一次挂上提问前一直在）。
+pub(crate) fn answered(sid: &str) -> Option<Words> {
+    book().answered.get(sid).cloned()
+}
+
+/// 替人答过的那几条（`sessions-needs.answered`），按会话 id 排。
+pub(crate) fn answered_rows() -> Vec<cmd_wire::needs::AnsweredRow> {
+    book()
+        .answered
+        .iter()
+        .map(|(sid, said)| cmd_wire::needs::AnsweredRow {
+            sid: sid.clone(),
+            said: said.clone(),
+        })
+        .collect()
 }
 
 /// 这条连接挂的全撤掉（之后再答 ⇒ `closed_elsewhere`）。
@@ -374,6 +532,12 @@ pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
             Some(Settled::Answered) => {
                 refuse("already_answered", copy_text("beAsk.answer.already", &[]))
             }
+            Some(Settled::Auto) => refuse(
+                "already_answered",
+                b.answered
+                    .get(sid)
+                    .map_or_else(|| copy_text("beAsk.answer.already", &[]), |w| w.0.clone()),
+            ),
             Some(Settled::Closed) => {
                 refuse("closed_elsewhere", copy_text("beAsk.answer.closed", &[]))
             }

@@ -929,7 +929,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           break;
         }
         case "needs": {
-          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
+          // 那个会话挂着的待答请求变了（挂上 · 撤掉 · 有人答掉 · 「没人答时自动答」那一格改了）⇒ 重问它的会话事实（答题块跟着换）；可能漏了 ⇒ 这台的都问一次。
           if (change.all) tabs.rereadFactsOn(origin);
           for (const c of change.cells) if (c.key !== null) tabs.rereadFacts(c.key);
           break;

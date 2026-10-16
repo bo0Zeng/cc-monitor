@@ -1,5 +1,6 @@
 /**
  * **会话隐藏：交给那台的几条命令**（改单个那一格 · 这台偏好那两格）。形状住 `session-hidden.ts`（后端生成的类型）。
+ * 同一条注解命令顺带「没人答时自动答」那一格（会话头菜单交的）。
  */
 import { annotate } from "./history-reads";
 import type { Origin } from "./ipc/origin";
@@ -19,4 +20,9 @@ export async function setHide(origin: Origin, sid: string, to: HideSet): Promise
 export async function setPlace(origin: Origin, which: keyof TabPlaces, to: TabPlace): Promise<TabPlaces> {
   const r = await setPrefs(origin, { [which]: to });
   return placesOf(r.prefs);
+}
+
+/** 「没人答时自动答」那一格（`0` ＝ 关；那一句不动）。改完那台推 `changed {needs}`，会话事实跟着重读。 */
+export async function setAutoAnswer(origin: Origin, sid: string, min: number): Promise<void> {
+  await annotate(origin, sid, { autoAnswer: { afterMin: min } });
 }
