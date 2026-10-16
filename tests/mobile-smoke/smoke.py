@@ -254,6 +254,10 @@ class Step:
         res = ("过" if ok else f"没过：{err}") + (f"（期间应用无响应 {anr} 回）" if anr else "")
         results.append((self.name, res, f"{took:.1f}s", f"{ui.patience():.1f}", p))
         print(f"{'ok ' if ok else 'RED'} {self.name}  {took:.1f}s  ×{ui.patience():.1f}  {'' if ok else err}  {p}", flush=True)
+        if not ok and adb("get-state").strip() != "device":
+            # 模拟器自己没了（本机 IO 卡死时它的看门狗会把自己停掉）：后面几步无从走起，照实停在这一步。
+            print("模拟器没了（看台架目录 logs/emulator.log），后面几步不走", flush=True)
+            summary()
         if not ok:
             # 红的那一刻屏上有什么（控件树 ＋ 前台是谁），分得清是没画出来还是画错了；再回到起点，后面那几步不跟着连红。
             focus = [ln.strip() for ln in adb("shell", "dumpsys", "window").splitlines() if "mCurrentFocus" in ln]
@@ -1394,6 +1398,10 @@ def report():
         if not wait(t("rot.top.here", machine="smokebox"), 15):
             raise Step.Fail("设置进的轮换屏顶栏不是「设置 · 那台」")
 
+    summary()
+
+
+def summary():
     print()
     print("| 步 | 结果 | 用时 | 期限放宽 | 截图 |")
     print("|---|---|---|---|---|")
