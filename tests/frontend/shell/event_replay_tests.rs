@@ -1107,6 +1107,56 @@ async fn what_is_kept_follows_the_retention_and_wakes_the_list() {
     assert!(r.kept(&local()).is_empty());
 }
 
+/// 手上留着的也含主窗口的 tab（固定复活的那几条没行）：报上来的多一条 · 少一条叫醒名单那一侧，同一份再报不叫。
+#[tokio::test]
+async fn the_main_window_tabs_are_kept_too() {
+    let (r, _rec) = hub();
+    let mut ticks = r.watch_changes();
+    ticks.borrow_and_update();
+    r.set_main_kept([("<local>".to_string(), "p".to_string())]);
+    assert!(ticks.has_changed().unwrap(), "多了一条没叫");
+    ticks.borrow_and_update();
+    assert_eq!(r.kept(&local()), BTreeSet::from(["p".to_string()]));
+    r.set_main_kept([("<local>".to_string(), "p".to_string())]);
+    assert!(!ticks.has_changed().unwrap(), "同一份再报不该叫");
+    r.set_main_kept([]);
+    assert!(ticks.has_changed().unwrap(), "少了一条没叫");
+    assert!(r.kept(&local()).is_empty());
+}
+
+/// 主窗口手上一个没行的 tab、那台答过它已结束 ⇒ F5 重放里照样有那一格（不只留存有行的那几条）。
+#[tokio::test]
+async fn a_tab_without_lines_gets_its_answered_end_replayed() {
+    use crate::session_book::In;
+    use cmd_wire::frame::SessionFate as Fate;
+    let ((r, rec), book) = hub_with_book();
+    r.origin_seen(&local(), true);
+    book.write().step(In::Listed {
+        origin: "<local>".into(),
+    });
+    book.write().step(In::Left {
+        origin: "<local>".into(),
+        sid: "p".into(),
+        fate: Fate::Ended,
+        words: words("p", "那台写的"),
+    });
+    r.set_main_kept([("<local>".to_string(), "p".to_string())]);
+    r.subscribe("w", 1, &local(), "session-lines", None, 100);
+    r.ready_point(None).await;
+    let ended: Vec<String> = rec
+        .all()
+        .iter()
+        .filter_map(|i| match i {
+            WItem::Frame { body, .. } => {
+                let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
+                v.get("ended").map(|e| e["session_id"].to_string())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ended, vec!["\"p\"".to_string()]);
+}
+
 /// ★ 「已结束」只由那台答：那台报完了清单、留存有 x、账里没有 x ⇒ 重放不替它说；那台答了 x 已结束 ⇒
 /// 交界面的 `ended` 那一格只有一格，字是那台写的那句。
 #[tokio::test]

@@ -3355,11 +3355,12 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     };
     await tm.loadPinned();
     const t = tabOf("s1");
-    // 〔说不清〕本机还没报过清单 ⇒ **说不清**（`Unseen` 不许显示成已结束）；
-    //   报完了、清单里没有它 ⇒ 已结束（`§B.5` 那句「没有活进程」这才成立）。
-    expect(t.state, "那台还没报完清单 ⇒ 说不清，不许说成已结束").toEqual(UNSEEN);
-    tm.markOriginSeen(LOCAL_ORIGIN, new Set());
-    expect(t.state, "清单报完了、里面没有它 ⇒ 已结束").toEqual(ENDED);
+    // 〔说不清〕没人说过它 ⇒ **说不清**；清单报完了也不替那台下结论：去向只由那台答（它随名单报上去，那台答一格已结束）。
+    expect(t.state, "没人说过它 ⇒ 说不清，不许说成已结束").toEqual(UNSEEN);
+    tm.markOriginSeen(LOCAL_ORIGIN);
+    expect(t.state, "清单报完了不替那台下结论").toEqual(UNSEEN);
+    tm.archiveTab("s1");
+    expect(t.state, "那台答了已结束 ⇒ 已结束").toEqual(ENDED);
     expect(t.pinned, "复活出来的当然是固定的").toBe(true);
     expect(t.title, "🔴 标题要用存下来的那份 —— 不等读文件（`§B.5` 逐字）").toBe("存下来的标题");
     expect(t.parentPath, "jsonlPath 是复活的必需品，没落到 tab 上等于白存").toBe("/p/s1.jsonl");
@@ -4471,7 +4472,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(btn().hasAttribute("data-reconnectable")).toBe(false);
   });
 
-  it("★ 说不清：固定复活、那台还没报完 ⇒ 说不清（字里零处「已结束」）；报完了没有它 ⇒ 已结束；报完了有它 ⇒ 活", async () => {
+  it("★ 说不清：固定复活 ⇒ 说不清（字里零处「已结束」）；清单报完了照旧说不清；那台答了已结束 ⇒ 已结束；宣告了 ⇒ 活", async () => {
     disk = {
       tabBar: {
         pinned: [
@@ -4489,20 +4490,32 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       [...document.querySelectorAll<HTMLElement>(".pin-revived-hint")].map((n) => n.textContent).join("\n");
     expect(said()).toContain(copyText("sessionState.unseen.name"));
     expect(said()).not.toContain(copyText("sessionState.ended.name"));
-    // 本机清单报完：p3 在清单里 ⇒ 活；p2 不在 ⇒ 已结束；远端那条不受本机清单影响。
-    tm.markOriginSeen(LOCAL_ORIGIN, new Set(["p3"]));
-    expect([tabOf("p1").state, tabOf("p2").state, tabOf("p3").state]).toEqual([UNSEEN, ENDED, LIVE]);
-    // 远端报完（`listed` 格）：没被宣告过 ⇒ 已结束。正控：这时才出现「已结束」。
+    // 清单报完不下结论；p3 被宣告 ⇒ 活。
+    tm.markOriginSeen(LOCAL_ORIGIN);
     tm.markOriginSeen("pi");
+    tm.reviveTab("p3");
+    expect([tabOf("p1").state, tabOf("p2").state, tabOf("p3").state]).toEqual([UNSEEN, UNSEEN, LIVE]);
+    expect(said()).not.toContain(copyText("sessionState.ended.name"));
+    // 那台答了 p1 已结束（会话流 `ended` 格）。正控：这时才出现「已结束」。
+    tm.archiveTab("p1");
     expect(tabOf("p1").state).toEqual(ENDED);
     expect(said()).toContain(copyText("sessionState.ended.name"));
   });
 
-  it("★ 说不清：那台先报完、固定后复活 ⇒ 直接已结束（`seenOrigins` 记住了）；远端又宣告它 ⇒ 活", async () => {
+  it("★ 说不清：那台先报完、固定后复活 ⇒ 照旧说不清（不替那台下结论）；那台先答了已结束 ⇒ 复活出来就是已结束；远端又宣告它 ⇒ 活", async () => {
     tm.markOriginSeen("pi");
-    disk = { tabBar: { pinned: [{ sid: "q1", origin: "pi", title: "Q", jsonlPath: "/p/q1.jsonl" }] } };
+    tm.archiveTab("q2"); // 那台的答早于复活到（tab 还没建，暂存）
+    disk = {
+      tabBar: {
+        pinned: [
+          { sid: "q1", origin: "pi", title: "Q", jsonlPath: "/p/q1.jsonl" },
+          { sid: "q2", origin: "pi", title: "Q2", jsonlPath: "/p/q2.jsonl" },
+        ],
+      },
+    };
     await tm.loadPinned();
-    expect(tabOf("q1").state).toEqual(ENDED);
+    expect(tabOf("q1").state).toEqual(UNSEEN);
+    expect(tabOf("q2").state).toEqual(ENDED);
     tm.createSkeletonTab("q1", "/x", "pi");
     expect(tabOf("q1").state).toEqual(LIVE);
   });
@@ -4613,34 +4626,34 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     expect(titles()).toContain(copyText("sessionState.ended.name"));
   });
 
-  it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的 ⇒ 已结束", () => {
+  it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的照旧说不清，等那台答（它在手上的 tab 里，随名单报上去）", () => {
     tm.ensureTab("r1", "/x", "p", "pi");
     tm.ensureTab("r2", "/x", "p", "pi");
     tm.markOriginUnseen("pi");
     expect([tabOf("r1").state, tabOf("r2").state]).toEqual([UNSEEN, UNSEEN]);
     tm.createSkeletonTab("r1", "/x", "pi"); // 重连后后端初扫重宣告 r1
     tm.markOriginSeen("pi"); // `sessions_replayed` ⇒ 报完了，没有 r2
-    expect([tabOf("r1").state, tabOf("r2").state]).toEqual([LIVE, ENDED]);
+    expect([tabOf("r1").state, tabOf("r2").state]).toEqual([LIVE, UNSEEN]);
+    tm.archiveTab("r2"); // 那台答的已结束
+    expect(tabOf("r2").state).toEqual(ENDED);
   });
 
-  it("★ 那台从「报完了」里摘掉：之后才复活的固定 tab 落说不清，不再直接落已结束", async () => {
-    tm.markOriginSeen("pi");
-    tm.ensureTab("s1", "/x", "p", "pi");
-    tm.markOriginUnseen("pi");
-    let disk: Record<string, unknown> = {
-      tabBar: { pinned: [{ sid: "s2", origin: "pi", title: "S", jsonlPath: "/p/s2.jsonl" }] },
-    };
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
-      if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
-      if (cmd === "patch_config") {
-        // 写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/frontend/ui/config-patch-fake.ts`）。
-        disk = JSON.parse(applyConfigEdits(JSON.stringify(disk), (args as { edits: Edit[] }).edits));
-        return Promise.resolve(undefined);
-      }
-      return Promise.resolve(undefined);
-    })));
-    await tm.loadPinned();
-    expect(tabOf("s2").state).toEqual(UNSEEN);
+  it("★ 手上的 tab 逐台报给壳（那台不在说的它答已结束）：多一个 · 少一个才报，整份换", () => {
+    const kept = (): unknown[] =>
+      vi.mocked(invoke).mock.calls.filter(([c]) => c === "kept_sessions").map(([, a]) => (a as { sessions: unknown }).sessions);
+    const before = kept().length;
+    tm.ensureTab("k1", "/x", "p", "pi");
+    tm.ensureTab("k2", "/x", "p", LOCAL_ORIGIN);
+    expect(kept().at(-1)).toEqual([
+      { origin: LOCAL_ORIGIN, sessionId: "k2" },
+      { origin: "pi", sessionId: "k1" },
+    ]);
+    const n = kept().length;
+    expect(n - before).toBe(2);
+    tm.archiveTab("k1");
+    expect(kept().length, "状态变了不算多一个少一个").toBe(n);
+    tm.closeTab("k1");
+    expect(kept().at(-1)).toEqual([{ origin: LOCAL_ORIGIN, sessionId: "k2" }]);
   });
 
   // 〔GP1 问 3〕要求：「可重连 → 断连 → 重连后，tmux 里还在的那几条重新宣告为可重连（不是落已结束）」·
@@ -4659,13 +4672,6 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     expect([tabOf("k1").state, tabOf("k2").state]).toEqual([RECONNECTABLE, ENDED]);
     const k1Title = home(tm).bar.tabButtons.get("k1")!.root.title;
     expect(k1Title, "重连后 tmux 还在的那条被说成已结束了").not.toContain(copyText("sessionState.ended.name"));
-    // 次序承重的反面（正控）：若先报完清单再宣告 idle ⇒ 已结束收 idle 不动 —— 这正是 monitor 那一侧要保序的理由。
-    tm.ensureTab("k3", "/x", "p", "pi2");
-    tm.markTmuxIdle("k3");
-    tm.markOriginUnseen("pi2");
-    tm.markOriginSeen("pi2");
-    tm.markTmuxIdle("k3");
-    expect(tabOf("k3").state, "次序反了就回不来 —— 若这格变了，monitor 侧的保序就不再承重，回来重看").toEqual(ENDED);
   });
 
   it("★ 那台一个 tab 都没有时收到 unseen ⇒ 什么都不建", () => {
@@ -4723,11 +4729,10 @@ describe("〔U4b〕main.ts 接线", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;
     expect([
-      n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
       n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一刻「各台都报完」
       n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一刻：收空组 · 交「启动时记住的那一格」
-    ]).toEqual([0, 1, 1, 1]);
+    ]).toEqual([1, 1, 1]);
   });
   // 「那台机器看不见了」主窗接一处（入口脚本没有 DOM 判据够得着）；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
   it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 零处（不建标签页）", () => {

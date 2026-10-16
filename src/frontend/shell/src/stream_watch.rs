@@ -3,7 +3,7 @@
 //! 名单按机器合一份：主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（[`EventReplay::watched`]，从空开始）；一变就逐台整份交名单台。
 //! 应答 `from[]`（刚进名单的会话从第几行起上流）交会话流（[`EventReplay::on_watch_from`]），界面据它补上没上流的那段。
 //! 主线外清单：名单里每个会话都要，各交回会话账手上那份的条数与摘要（[`crate::session_book::Book::branch_held`]），那台只补缺的。
-//! 手上留着的：重放留存里那台有行的会话（[`EventReplay::kept`]）随名单一起交，那台不在说的它答已结束；留存多 / 少一条也重报。
+//! 手上留着的：重放留存里那台有行的会话 ∪ 主窗口那台上的 tab（[`EventReplay::kept`]）随名单一起交，那台不在说的它答已结束；多 / 少一条也重报。
 
 use crate::event_replay::EventReplay;
 use crate::origin::Origin;

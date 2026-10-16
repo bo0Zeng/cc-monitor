@@ -97,7 +97,6 @@ export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recovera
  * - `container-hosted` / `container-none` / `container-other`：`container` 格（后端 `session_added.container`：
  *   在认得的宿主里 · 不在任何宿主里 · 这边不认识的宿主）
  * - `record-gone` / `record-present`：resume 一跳问那台后端（`history-record`）的答案
- * - `seen-absent`：那台机器的活会话清单报完了、里面没有它（会话流的 `listed` 格）
  * - `unseen`：那台机器看不见了（`unseen` 格：到它的连接断了 / F5 时它还没报完清单）
  */
 export type StateEvent =
@@ -111,7 +110,6 @@ export type StateEvent =
   | "container-other"
   | "record-gone"
   | "record-present"
-  | "seen-absent"
   | "unseen";
 
 /** 容器那一格落成的状态事件。 */
@@ -164,8 +162,6 @@ export function nextState(s: SessionState, ev: StateEvent): SessionState {
       return s.liveness === "dead" && s.recoverability === "resumable" ? GONE : s;
     case "record-present":
       return s.liveness === "dead" && s.recoverability === "gone" ? ENDED : s;
-    case "seen-absent":
-      return s.liveness === "unseen" ? ENDED : s;
     case "unseen":
       return s.liveness === "live" || s.recoverability === "attachable" ? UNSEEN : s;
   }

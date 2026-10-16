@@ -149,6 +149,8 @@ struct Inner {
     screen_dropped: Option<ScreenDropped>,
     /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。从起来就在、初值是空的（还没报过 ＝ 一个都不看）。
     main_watch: BTreeSet<TailKey>,
+    /// 主窗口报的「手上的 tab」（`(origin 线上串, sid)`，整份换）：随名单报给那台，那台不在说的它答已结束。
+    main_kept: BTreeSet<TailKey>,
     /// 旁路快照在途的电平：最近一次交出去的那个数（[`EventReplay::on_snapshot_inflight`] 在本锁里记）。
     /// 重放补电平读它、不回头读 `stream_source` 那把计数锁 —— 交电平的那一边是「持计数锁 → 要本锁」，
     /// 这边再「持本锁 → 要计数锁」就是两条线程互等（截图台架偶发整条流停住，抓栈就是这一对）。
@@ -397,22 +399,28 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
 }
 
 /// 一条订阅（整台 / 一个会话）的起停重放：骨架在行前（`before`）、终局在行后（`after`）—— 计划住 `session_book::Book::replay`，
-/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）。
+/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）；
+/// `main_kept` = 主窗口手上的 tab（没行的那几条也要它的终局）。
 fn lifecycle_replay(
     book: &parking_lot::RwLock<crate::session_book::Book>,
     level: u32,
     origin: &str,
     only: Option<&str>,
     history: &[JsonlLinePayload],
+    main_kept: &BTreeSet<TailKey>,
 ) -> (Vec<Body>, Vec<Body>) {
-    let mut buffered: Vec<(String, String)> = Vec::new();
-    for p in history {
-        let pair = (p.session_id.clone(), origin.to_string());
-        if !buffered.contains(&pair) {
-            buffered.push(pair);
+    let mut kept: Vec<(String, String)> = Vec::new();
+    let tabs = main_kept
+        .iter()
+        .filter(|k| k.0 == origin)
+        .map(|k| k.1.clone());
+    for sid in history.iter().map(|p| p.session_id.clone()).chain(tabs) {
+        let pair = (sid, origin.to_string());
+        if !kept.contains(&pair) {
+            kept.push(pair);
         }
     }
-    let plan = book.read().replay(&buffered);
+    let plan = book.read().replay(&kept);
     let pick = |outs: Vec<crate::session_book::Out>| -> Vec<Body> {
         outs.into_iter()
             .filter(|o| o.origin() == origin)
@@ -530,6 +538,7 @@ impl EventReplay {
                 sink: None,
                 screen_dropped: None,
                 main_watch: BTreeSet::new(),
+                main_kept: BTreeSet::new(),
                 snapshot_level: 0,
                 kept_moved: false,
             }),
@@ -740,6 +749,7 @@ impl EventReplay {
                 subs,
                 ready_labels,
                 snapshot_level,
+                main_kept,
                 ..
             } = &mut *inner;
             let mut jobs: Vec<ReplayJob> = Vec::new();
@@ -755,6 +765,7 @@ impl EventReplay {
                         &sub.origin,
                         sub.only.as_deref(),
                         &mine,
+                        main_kept,
                     )
                 } else {
                     (Vec::new(), Vec::new())
@@ -948,6 +959,7 @@ impl EventReplay {
                     origin,
                     sub.only.as_deref(),
                     &mine,
+                    &inner.main_kept,
                 );
                 ReplayJob {
                     label: label.to_string(),
@@ -1237,6 +1249,20 @@ impl EventReplay {
         }
     }
 
+    /// 主窗口报「手上有这几个 tab」（整份换；`(origin 线上串, sid)`）。没变就不惊动谁。
+    pub fn set_main_kept(&self, sessions: impl IntoIterator<Item = (String, String)>) {
+        let next: BTreeSet<TailKey> = sessions.into_iter().collect();
+        let moved = {
+            let mut inner = self.inner.lock();
+            let moved = inner.main_kept != next;
+            inner.main_kept = next;
+            moved
+        };
+        if moved {
+            self.watch_moved();
+        }
+    }
+
     /// 那台那条流该报的「在看」名单：主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话。
     /// 主窗口还没报过 ⇒ 只有查看窗那几条（冷起不全发全拉：界面第一次报的那个 tab 照「刚进名单」补）。
     pub fn watched(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
@@ -1258,16 +1284,10 @@ impl EventReplay {
         out
     }
 
-    /// 那台手上留着的会话：留存里那台有行的那几条（随名单报给那台，那台不在说的它答已结束）。
+    /// 那台手上留着的会话：留存里那台有行的那几条 ∪ 主窗口那台上的 tab（随名单报给那台，那台不在说的它答已结束）。
     pub fn kept(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
-        let origin = origin.as_wire_str();
-        self.inner
-            .lock()
-            .tails
-            .iter()
-            .filter(|(k, t)| k.0 == origin && !t.lines.is_empty())
-            .map(|(k, _)| k.1.clone())
-            .collect()
+        let inner = self.inner.lock();
+        kept_of(&inner.tails, &inner.main_kept, origin.as_wire_str())
     }
 
     /// 留存里有行的那几条变了 ⇒ 名单那一侧重报（与「在看」同一个收端）。
@@ -1363,6 +1383,21 @@ impl Default for EventReplay {
 }
 
 /// 留存里这条订阅要的那些行：订的那台上的各条（只要一个会话的只取那一条），按键序、每条内到达序。
+/// 那台手上留着的（[`EventReplay::kept`]）：留存里那台有行的 ∪ 主窗口那台上的 tab。
+fn kept_of(
+    tails: &BTreeMap<TailKey, Tail>,
+    main_kept: &BTreeSet<TailKey>,
+    origin: &str,
+) -> BTreeSet<String> {
+    tails
+        .iter()
+        .filter(|(k, t)| k.0 == origin && !t.lines.is_empty())
+        .map(|(k, _)| k)
+        .chain(main_kept.iter().filter(|k| k.0 == origin))
+        .map(|k| k.1.clone())
+        .collect()
+}
+
 fn held_for(tails: &BTreeMap<TailKey, Tail>, sub: &Sub) -> Vec<JsonlLinePayload> {
     if sub.kind != SubKind::Lines {
         return Vec::new();

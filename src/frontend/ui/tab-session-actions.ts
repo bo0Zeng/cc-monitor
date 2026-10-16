@@ -429,6 +429,13 @@ export function reportWatching(sessions: { origin: Origin; sessionId: string }[]
   });
 }
 
+/** 报给壳「主窗口手上有这几个 tab」（整份换；失败只记日志）：壳随名单报给各台，那台不在说的它答已结束。 */
+export function reportKept(sessions: { origin: Origin; sessionId: string }[]): void {
+  void commands.kept_sessions({ sessions }).catch((e: unknown) => {
+    console.warn("[tabs] 报「手上有哪几个 tab」失败：", e);
+  });
+}
+
 /** 自动跟随时把 monitor 窗口拉到前台（失败只记日志）。 */
 export function bringMonitorToFront(): void {
   void commands.bring_monitor_to_front().catch((e) => {

@@ -250,12 +250,12 @@ pub struct SessionWatchPayload {
     pub seq: u64,
 }
 
-/// 界面报「在看」的一格（Tauri 命令 `watch_sessions` 的入参）：哪台的哪个会话。
+/// 界面报给壳的一格（Tauri 命令 `watch_sessions` · `kept_sessions` 的入参）：哪台的哪个会话。
 #[derive(Debug, serde::Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct WatchedSession {
+pub struct TabSession {
     pub origin: crate::origin::Origin,
     pub session_id: String,
 }

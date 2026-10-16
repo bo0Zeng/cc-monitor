@@ -856,6 +856,7 @@ pub fn run() {
             //   `src/frontend/ui/assets-sync-reads.ts` · `src/frontend/ui/skill-install-reads.ts`）。
             forget_session,
             watch_sessions,
+            kept_sessions,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
@@ -1333,7 +1334,7 @@ fn forget_session(
 /// 由 `stream_watch` 交那台的名单台（没在看的会话，它的行不上流）。
 #[tauri::command]
 fn watch_sessions(
-    sessions: Vec<ui_contract::WatchedSession>,
+    sessions: Vec<ui_contract::TabSession>,
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
@@ -1345,6 +1346,20 @@ fn watch_sessions(
         Ok(())
     })();
     r.map_err(|s| s.named("watch_sessions"))
+}
+
+/// 主窗口手上的 tab（整份换；多一个 · 少一个时界面报）：随名单交各台的名单台，那台不在说的它答已结束。
+#[tauri::command]
+fn kept_sessions(
+    sessions: Vec<ui_contract::TabSession>,
+    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
+) -> Result<(), Said> {
+    replay.set_main_kept(
+        sessions
+            .into_iter()
+            .map(|w| (w.origin.as_wire_str().to_string(), w.session_id)),
+    );
+    Ok(())
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，

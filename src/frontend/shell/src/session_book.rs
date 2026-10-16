@@ -381,12 +381,12 @@ impl Book {
         }
     }
 
-    /// **F5 重放计划**（纯）：`buffered` = 重放缓冲里有行的 `(sid, 它所在的那台)`。
+    /// **F5 重放计划**（纯）：`kept` = 手上留着的 `(sid, 它所在的那台)`（留存里有行的 · 主窗口的 tab）。
     ///
     /// - `before`：活会话重宣告（骨架 ＋ 初始灯 ＋ 容器，本机远端同一形）；
-    /// - `after`：全部可重连的 · 有行却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说，那台答）·
+    /// - `after`：全部可重连的 · 手上留着却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台没报完清单 ⇒ 说不清，报完了 ⇒ 不说，那台答）·
     ///   报完了清单的那几台再说一次「报完了」（排在最后：前端处理它时活着的已经翻回活）。
-    pub fn replay(&self, buffered: &[(String, String)]) -> Replay {
+    pub fn replay(&self, kept: &[(String, String)]) -> Replay {
         let mut r = Replay::default();
         let mut origins: Vec<&String> = self.origins.keys().collect();
         origins.sort();
@@ -428,7 +428,7 @@ impl Book {
         }
         let mut unseen: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut settled = Vec::new();
-        for (sid, origin) in buffered {
+        for (sid, origin) in kept {
             let b = self.origins.get(origin);
             match b.and_then(|b| b.sessions.get(sid)) {
                 Some(Product::Live(_)) | Some(Product::Left(SessionFate::Reconnectable, _)) => {}

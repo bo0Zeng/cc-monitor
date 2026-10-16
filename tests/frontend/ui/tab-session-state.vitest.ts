@@ -6,7 +6,7 @@
  * - S1 转移表：3 态 × 5 事件 = 15 格，逐格相等。**期望手写自设计表**，不从实现生成。
  * 扩成 7 态 × 10 事件 = 70 格（T1）；呈现表 7 态（T2）；T4「说不清不许说成已结束」。
  * 加一行事件 `unseen`（那台机器看不见了）⇒ 7 × 11 = 77 格。
- * 容器开放联合：加一态「活·形式未知」与一行事件 `container-other` ⇒ 8 × 12 = 96 格。
+ * 容器开放联合：加一态「活·形式未知」与一行事件 `container-other` ⇒ 8 × 11 = 88 格。
  * - S2 呈现表：3 态 → {类开关 · 状态名 · 提示句}。期望串是本文件里的字面量（抄自那张表），
  *   被测串从文案表 `src/shared/copy/table.json` 取 —— 两份语料。
  * - S4 两轴是唯一读法：tab 层 ＋ 两个快照消费者里，旧的一轴半写法（`tmuxIdle` · `"archived"` 状态字面量 ·
@@ -72,12 +72,11 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     "container-other": ["活·形式未知", "活·形式未知", "活·形式未知", "=", "=", "=", "=", "="],
     "record-gone": ["=", "=", "=", "=", "=", "记录没了", "=", "="],
     "record-present": ["=", "=", "=", "=", "=", "=", copyText("sessionState.ended.name"), "="],
-    "seen-absent": ["=", "=", "=", "=", "=", "=", "=", copyText("sessionState.ended.name")],
     // 那台机器看不见了：还有终端可去的两态（活 · 可重连）⇒ 说不清；死透了的不动（看不见推翻不了它们的死）。
     unseen: ["说不清", "说不清", "说不清", "说不清", "说不清", "=", "=", "="],
   };
 
-  it("★ 96 格两向相等（事件集 == 表的行集；每格结果 == 表）", () => {
+  it("★ 88 格两向相等（事件集 == 表的行集；每格结果 == 表）", () => {
     const events = Object.keys(TABLE) as StateEvent[];
     expect([...events].sort()).toEqual([
       "activity",
@@ -89,7 +88,6 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
       "record-gone",
       "record-present",
       "remote-line",
-      "seen-absent",
       "started",
       "unseen",
     ]);

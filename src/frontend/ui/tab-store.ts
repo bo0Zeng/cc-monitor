@@ -98,10 +98,7 @@ export class TabStore {
    * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
    */
   readonly pendingContainer = new Map<string, ContainerEvent>();
-  /**
-   * 已经把活会话清单报完了的机器（会话流的 `listed` 格）。
-   * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
-   */
+  /** 已经把活会话清单报完了的机器（会话流的 `listed` 格）：「没回来的组员」等每台都报完了才认。 */
   readonly seenOrigins = new Set<string>();
   readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
   /** 「此刻能不能换」早于建 Tab 到达（随活动那几格 · 去向那一帧）⇒ 暂存，建 Tab 时落实。 */

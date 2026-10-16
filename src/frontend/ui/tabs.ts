@@ -69,6 +69,7 @@ import {
   frontOnce,
   forgetSession,
   reportWatching,
+  reportKept,
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
 import { updateBackendOf } from "./backend-deploy";
@@ -113,6 +114,7 @@ export class TabManager {
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
+    this.store.subscribe(() => this.reportKept());
     // 账号快照变了 ⇒ 同一拍应用。
     appStore.sessionAccounts.subscribe((snap) => {
       if (snap) this.setSessionAccounts(snap.rows, snap.emailByName, snap.lastByS, snap.readyOrigins, snap.currentByOrigin);
@@ -485,6 +487,20 @@ export class TabManager {
     const tab = this.store.tabs.get(p.session_id);
     if (!tab || tab.origin !== origin) return;
     this.view.catchUpTo(tab, p.path, p.seq);
+  }
+
+  /** 上一次报给壳的「手上的 tab」（`origin \u0000 sid` 排好序拼起来）。 */
+  private keptSaid = "";
+
+  /** 报给壳「主窗口手上有这几个 tab」（多一个 · 少一个才报，整份换）：随名单报给各台，那台不在说的它答已结束。 */
+  private reportKept(): void {
+    const sessions = [...this.store.tabs.values()]
+      .map((t) => ({ origin: t.origin, sessionId: t.sessionId }))
+      .sort((a, b) => (a.origin === b.origin ? (a.sessionId < b.sessionId ? -1 : 1) : a.origin < b.origin ? -1 : 1));
+    const key = sessions.map((s) => `${s.origin}\u0000${s.sessionId}`).join("\u0001");
+    if (key === this.keptSaid) return;
+    this.keptSaid = key;
+    reportKept(sessions);
   }
 
   /** 报给壳「主窗口此刻在看哪个会话」（切 tab · 关掉当前 tab）：没在看的会话，它的行不上流（壳合成每台的名单）。 */
@@ -1120,25 +1136,13 @@ export class TabManager {
   }
 
   /**
-   * 这台机器的活会话清单报完了：这台「说不清」的（固定复活、还没被报过）逐条落地 ——
-   * `liveSids` 里有 ⇒ 活（本机给清单；远端早由 `live` 格建成活的，不传）；没有 ⇒ 已结束。
-   * 记下这台已报完 ⇒ 之后才复活出来的固定 tab 直接落已结束。
+   * 这台机器的活会话清单报完了：记下（「没回来的组员」等每台都报完了才认）。这台「说不清」的不在这里落地 ——
+   * 活的已经宣告过，别的由那台答（手上的 tab 随名单报给它，它不在说的答已结束）。
    */
-  markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
+  markOriginSeen(origin: Origin): void {
     this.store.seenOrigins.add(origin);
     this.settleUnarrivedOnce(); // 壳那一刻先到了、这一台的流后报完 ⇒ 到这时才认「没回来」
     this.bar.markOriginDown(origin, false);
-    let changed = false;
-    for (const tab of this.store.tabs.values()) {
-      if (tab.origin !== origin || tab.state.liveness !== "unseen") continue;
-      const ev: StateEvent = liveSids?.has(tab.sessionId) ? "started" : "seen-absent";
-      if (this.applyState(tab, ev)) {
-        changed = true;
-        if (ev === "started") this.prefs.clearPinHint(tab.sessionId);
-        this.emitTabStateProbe(tab);
-      }
-    }
-    if (changed) this.refreshTabBar();
   }
 
   /** 从「需手动」的入口跳到一个会话之后（焦点进答题块；主窗口挂进来）。 */
