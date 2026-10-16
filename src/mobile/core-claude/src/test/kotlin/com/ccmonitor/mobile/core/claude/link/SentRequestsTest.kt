@@ -58,6 +58,7 @@ class SentRequestsTest {
             Profiles.READ to listOf(emptyMap()),
             Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
             Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
+            QuotaRead.COMMAND to listOf(null),
             MachinePrefs.READ to listOf(null),
             MachinePrefs.SET to
                 listOf(
