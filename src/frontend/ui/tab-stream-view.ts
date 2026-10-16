@@ -228,9 +228,7 @@ export class TabStreamView {
 
   private settleStep(): void {
     this.settleScheduled = false;
-    const sk = this.settling[0];
-    if (!sk) return;
-    if (!sk.settleLayout(TabStreamView.SETTLE_ROWS)) this.settling.shift();
+    if (!this.settling[0]!.settleLayout(TabStreamView.SETTLE_ROWS)) this.settling.shift();
     if (this.settling.length > 0) {
       this.settleScheduled = true;
       this.settleSlot.schedule(() => this.settleStep(), 16);
@@ -260,8 +258,7 @@ export class TabStreamView {
     for (const p of known) seqs.delete(p.seq);
     const runs: Array<[number, number]> = [];
     for (const s of [...seqs].sort((a, b) => a - b)) {
-      const f = sk.ledger.factsOf(s);
-      if (!f || skeletonKind(f) !== "card") continue;
+      if (skeletonKind(sk.ledger.factsOf(s)!) !== "card") continue;
       const last = runs[runs.length - 1];
       if (last && last[1] === s) last[1] = s + 1;
       else runs.push([s, s + 1]);
@@ -562,36 +559,34 @@ export class TabStreamView {
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
   activate(next: Tab): void {
     // 上次按行号往下问失败了的，切进来时允许再问一次（失败不自动重问，见 `BelowState` 头注）。
-    if (next) next.window.retryBelow();
+    next.window.retryBelow();
     // 命中 virgin tab（启动重放全收纳、还没建过卡）→ 同步物化尾段，免得切过去一片空白（有界循环补到一屏）。
     // 非 virgin tab 可能有滚动位置要保，走下面那一脚带补偿的 `fillAbove`。
-    const virginFill = !!next && next.window.floorSeq === null && next.window.pendingCount > 0;
+    const virginFill = next.window.floorSeq === null && next.window.pendingCount > 0;
     if (virginFill) this.materializeUntilFilled(next);
     // 切入即刷新哨兵（非 virgin 但账本非空的 tab 也要见到「还有 N 条」）
-    if (next) this.updateSentinel(next);
+    this.updateSentinel(next);
     // 〔骨架〕要索引 / 接上次停着的那一份 / 刷大纲：都是给「停下来看」的人准备的（索引那一问是后端整份读那个会话的记录文件，
     // 接骨架要插占位、量几何）—— 在眼前停住了（`STAY_MS`）才做；按住「下一个 tab」路过的一概不发、不接。
-    if (next) {
-      // 调度：一次性 —— 停留判定：到点时还是它在眼前（没被下一下切走）才要索引 / 接骨架 / 刷大纲
-      setTimeout(() => {
-        if (!this.inFront(next)) return;
-        const parked = this.parkedSkeletons.get(next);
-        if (parked) {
-          this.parkedSkeletons.delete(next);
-          this.attachSkeleton(next, parked);
-        }
-        this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
-        this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
-        if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
-      }, TabStreamView.STAY_MS);
-    }
+    // 调度：一次性 —— 停留判定：到点时还是它在眼前（没被下一下切走）才要索引 / 接骨架 / 刷大纲
+    setTimeout(() => {
+      if (!this.inFront(next)) return;
+      const parked = this.parkedSkeletons.get(next);
+      if (parked) {
+        this.parkedSkeletons.delete(next);
+        this.attachSkeleton(next, parked);
+      }
+      this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+      this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
+      if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
+    }, TabStreamView.STAY_MS);
     // 账本有余却没满一屏的 tab 没有补批入口（不可滚的元素不产生 scroll 事件）⇒ 切入时踢一次，rAF 自链接管到满或账尽。
     // 账本空了但下面可能还有（`wantsBelow`）同样踢。「满没满」问真实布局（`contentReachesBottom`），不只看 `scrollHeight`（掺着估值）。
     // 刚为 virgin tab 跑过 `materializeUntilFilled`、账本还有余的不再踢：它补不满时自己排了下一帧的接续（一次同步调用要有界）。
     // 「满没满」要读几何 ⇒ 挪到下一帧再问：同步段里一读，浏览器就得当场把刚翻出来的整个 tab 样式与布局算完（点击处理被拖长、这一帧更晚画出来）；
     // 下一帧的回调里读，排的就是那一帧本来要排的那一份。期间又切走（`activeId` 守卫）⇒ 不补。
     const continuing = virginFill && next.window.pendingCount > 0;
-    if (next && !continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
+    if (!continuing && (next.window.pendingCount > 0 || next.window.wantsBelow)) {
       // 调度：一次性 —— 切进来的下一帧问一次满没满，没满踢一脚补批（之后由补批自己的 rAF 自链接管）
       requestAnimationFrame(() => {
         if (!this.inFront(next)) return;
@@ -1032,15 +1027,18 @@ export class TabStreamView {
           console.info(`[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：${got.reason}`);
           return;
         }
-        // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）
-        const floor = tab.window.floorSeq ?? 0;
+        // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）；
+        // 续不上 ⇒ 不接（盖不到尾段的账本接上去，占位里那一截没有行），同瞬时失败
+        const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
         let end = got.end;
         if (floor > got.ledger.endSeq) {
           const more = await readSessionIndex(origin, jsonlPath, got.end);
-          if (more.available) {
-            got.ledger.append(more.rows);
-            end = more.end;
+          if (!more.available) {
+            failed(more.failure !== "oldBackend");
+            return;
           }
+          got.ledger.append(more.rows);
+          end = more.end;
         }
         this.indexEnds.set(tab, end);
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
@@ -1061,7 +1059,7 @@ export class TabStreamView {
    * 续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
    */
   private continueSkeleton(tab: Tab, ledger: SkeletonLedger, end: number): void {
-    const floor = tab.window.floorSeq ?? 0;
+    const floor = tab.window.floorSeq!; // 进来时判过不是 null，之后只会往下钉
     const want = floor - ledger.endSeq;
     const more = want > 0 ? readSessionIndex(tab.origin, tab.parentPath!, end, want) : Promise.resolve(null);
     void more
