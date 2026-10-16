@@ -2088,12 +2088,6 @@
       "args": [],
       "limited": ["tmux"]
     },
-    "sessionState.liveUnknownHost.tooltip": {
-      "kind": "body",
-      "role": "悬停",
-      "zh": "终端形式未知",
-      "args": []
-    },
     "sessionState.gone.name": {
       "kind": "body",
       "role": "片段",
