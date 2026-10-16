@@ -130,7 +130,7 @@ pub(crate) trait SwitchExt: Sized {
 }
 
 impl SwitchExt for Switch {
-    /// 此刻那一态 ⇒ 能不能换（进程退了交 `None`）：
+    /// 此刻那一态 ⇒ 能不能换：
     /// 在等人 ⇒ 都不能（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（送的那一行排成下一条消息、不立刻生效）、权限档能（跑着也收切档键）；
     /// 闲着 · 后台命令在跑 · 说不清 ⇒ 都能（说不清时由那两条命令自己判、照实回）。
     fn live(a: Option<SessionActivity>) -> Self {
@@ -289,8 +289,6 @@ impl FrameMake for Frame {
             state_text,
             state_hint,
             state_tone,
-            // 进程退了（可重连 · 已结束）⇒ 都能换：那两条命令终端没了就记下、恢复照它起。
-            switch: Switch::live(None),
         })
     }
 

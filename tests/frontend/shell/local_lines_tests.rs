@@ -130,7 +130,7 @@ const FRAMES: &[(&str, &str)] = &[
     // 后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
     (
         "session_state",
-        r#"{"kind":"session_state","sid":"s1","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#,
+        r#"{"kind":"session_state","sid":"s1","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#,
     ),
     ("overflow", r#"{"kind":"overflow","dropped":3}"#),
     (
@@ -751,8 +751,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
     const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","session_kind":"bg","background":true}"#;
     const STATUS_A: &str = r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"idle","activity":"idle"}"#;
     const STATUS_B: &str = r#"{"kind":"session_status","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"L","status":"idle","activity":"idle"}"#;
-    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#;
-    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#;
+    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
+    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain"}"#;
     const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
     const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
     const LINE: &str =
@@ -817,7 +817,6 @@ fn the_local_product_core_matches_the_hand_written_table() {
                 text: "t".into(),
                 hint: "h".into(),
                 tone: "plain".into(),
-                switch: Default::default(),
             }),
         }),
         "去向原样交（后端裁的，连写好的字一起）"

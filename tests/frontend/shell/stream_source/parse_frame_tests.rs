@@ -518,7 +518,6 @@ fn session_status_carries_the_switch_cells_as_the_core_wrote_them() {
         r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"no"},"permission":{"can":"yes"}},"label":"L"}"#,
         r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"maybe"},"permission":{"can":"yes"}},"label":"L"}"#,
         r#"{"kind":"session_status","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"switch":{"model":{"can":"yes"}},"label":"L"}"#,
-        r#"{"kind":"session_state","sid":"s","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":true}"#,
     ] {
         assert!(
             matches!(parse_frame(bad), Err(Unread::BadShape { .. })),
@@ -599,11 +598,10 @@ fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
         text: "t".into(),
         hint: "h".into(),
         tone: "plain".into(),
-        switch: Default::default(),
     };
     assert_eq!(
         parse_frame(
-            r#"{"kind":"session_state","sid":"abc","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#
+            r#"{"kind":"session_state","sid":"abc","state":"reconnectable","state_text":"t","state_hint":"h","state_tone":"plain"}"#
         ),
         Ok(InboundFrame::SessionState {
             sid: "abc".into(),
@@ -611,9 +609,10 @@ fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
             words: words(),
         })
     );
+    // 不认的格（旧核心带过的 `switch`，什么形状都一样）不看、不坏整帧。
     assert_eq!(
         parse_frame(
-            r#"{"kind":"session_state","sid":"abc","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}"#
+            r#"{"kind":"session_state","sid":"abc","state":"ended","state_text":"t","state_hint":"h","state_tone":"plain","switch":true}"#
         ),
         Ok(InboundFrame::SessionState {
             sid: "abc".into(),

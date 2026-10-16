@@ -510,18 +510,23 @@ describe("TabManager 生命周期", () => {
     expect(btn.dataset.light === "idle").toBe(true);
   });
 
-  it("★ 那台说的「此刻能不能换」随活动那几格 · 去向那一帧落到 tab 上（早于建 Tab ⇒ 暂存落实）；没带 ⇒ 不动", () => {
+  it("★ 那台说的「此刻能不能换」随活动那几格落到 tab 上（早于建 Tab ⇒ 暂存落实）；离开「活」⇒ 作废", () => {
     const busy = { model: { can: "no" as const, why: "核心·本轮结束后可换模型" }, permission: { can: "yes" as const } };
-    const gone = { model: { can: "yes" as const }, permission: { can: "yes" as const } };
+    const waiting = { model: { can: "no" as const, why: "核心·先答完需手动" }, permission: { can: "no" as const, why: "核心·先答完需手动" } };
     tm.updateActivity("sw", "working", null, copyText("beSession.activity.working"), "now", 1, busy);
     const tab = tm.ensureTab("sw", "/x", "p", LOCAL_ORIGIN);
     expect(tab.switch).toEqual(busy);
-    tm.updateActivity("sw", "idle", null, copyText("beSession.activity.idle"), "plain", 3, { model: { can: "yes" }, permission: { can: "no", why: "核心·先答完需手动" } });
-    expect(tab.switch?.model).toEqual({ can: "yes" });
-    tm.archiveTab("sw", gone);
-    expect(tab.switch).toEqual(gone);
-    tm.archiveTab("sw", null);
-    expect(tab.switch, "壳自己补的已结束不带那一格 ⇒ 不动").toEqual(gone);
+    tm.updateActivity("sw", "needs_you", null, copyText("beSession.activity.needsYou"), "need", 0, waiting);
+    expect(tab.switch).toEqual(waiting);
+    tm.markTmuxIdle("sw");
+    expect(tab.switch, "可重连：在等人时那两颗灰着，退了不该还灰").toBeNull();
+    tm.updateActivity("sw", "needs_you", null, copyText("beSession.activity.needsYou"), "need", 0, waiting);
+    tm.archiveTab("sw");
+    expect(tab.switch, "已结束同理").toBeNull();
+    // 早于建 Tab：暂存的那一格随离开一起作废。
+    tm.updateActivity("sw2", "working", null, copyText("beSession.activity.working"), "now", 1, busy);
+    tm.archiveTab("sw2");
+    expect(tm.ensureTab("sw2", "/x", "p", LOCAL_ORIGIN).switch).toBeNull();
   });
 
   it("归档信号早于 Tab 建立：进 pendingArchive，ensureTab 时落实归档", () => {

@@ -93,7 +93,6 @@ A new session file appeared。
 | `state_text` | Words | 那一种写好的短名 |
 | `state_hint` | Words | 悬停那一句 |
 | `state_tone` | Tone | 语气 |
-| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形） |
 
 ### `session_removed`
 

@@ -341,7 +341,7 @@ fn activity_cells(o: &Obj, kind: &str) -> Result<crate::session_book::ActivityCe
     })
 }
 
-/// `session_added` · `session_status` · `session_state` 上那一格「此刻能不能换模型 · 权限档」（那台核心的 `Switch`）的唯一解码口：
+/// `session_added` · `session_status` 上那一格「此刻能不能换模型 · 权限档」（那台核心的 `Switch`）的唯一解码口：
 /// 必有；每一样 `{can: "yes"}` · `{can: "no", why}`，别的形状 ⇒ 契约对不上。
 fn switch_cells(o: &Obj, kind: &str) -> Result<crate::session_book::SwitchCells, Unread> {
     use crate::session_book::CanSwitch;
@@ -610,7 +610,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 text: req_str(obj, k, "state_text")?,
                 hint: req_str(obj, k, "state_hint")?,
                 tone: req_str(obj, k, "state_tone")?,
-                switch: switch_cells(obj, k)?,
             },
         },
         "overflow" => {

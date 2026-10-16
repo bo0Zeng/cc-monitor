@@ -1077,7 +1077,6 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
                 text: None,
                 hint: None,
                 tone: None,
-                switch: None,
             },
         )],
     );
@@ -1141,14 +1140,12 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
             text: None,
             hint: None,
             tone: None,
-            switch: None,
         }),
         F::Ended(b::SessionEndedPayload {
             session_id: sid(),
             text: None,
             hint: None,
             tone: None,
-            switch: None,
         }),
         F::Unseen(b::SessionUnseenPayload {
             origin: crate::origin::Origin::local(),
@@ -1208,7 +1205,6 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
         text: None,
         hint: None,
         tone: None,
-        switch: None,
     });
     assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
     assert!(!listed.reaches(Some("mine")) && listed.reaches(None));

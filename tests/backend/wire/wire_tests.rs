@@ -1593,7 +1593,7 @@ fn mig1_session_state_has_exactly_these_bytes() {
         );
         assert_eq!(
             to_line(&Frame::session_state("abc".into(), state)).unwrap(),
-            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\",\"switch\":{{\"model\":{{\"can\":\"yes\"}},\"permission\":{{\"can\":\"yes\"}}}}}}\n")
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\",\"state_text\":\"{name}\",\"state_hint\":\"{hint}\",\"state_tone\":\"plain\"}}\n")
         );
     }
 }
@@ -2111,7 +2111,7 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
 }
 
 /// 会话帧上的 `switch`（此刻能不能换模型 · 权限档）由核心判、随那一态带：
-/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换；离开「活」（可重连 · 已结束）⇒ 都灰。
+/// 在跑 ⇒ 模型灰、权限档可换；需手动 ⇒ 都灰；闲着 · 后台命令在跑 · 说不清 · 读记录中 ⇒ 都可换。离开「活」那一帧（`session_state`）不带这一格。
 /// 灰的那一格（`can: no`）带写好的那一句，可换的（`can: yes`）不带。
 #[test]
 fn session_frames_say_whether_model_and_permission_can_switch_now() {
@@ -2137,15 +2137,6 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
         assert_eq!(
             switch(face),
             serde_json::json!({"model": yes, "permission": yes})
-        );
-    }
-    // 进程退了 ⇒ 都能换（终端没了那两条命令记下、恢复照它起）。
-    for fate in [SessionFate::Reconnectable, SessionFate::Ended] {
-        let v = serde_json::to_value(Frame::session_state("s".into(), fate)).unwrap();
-        assert_eq!(
-            v["switch"],
-            serde_json::json!({"model": yes, "permission": yes}),
-            "{v}"
         );
     }
 }

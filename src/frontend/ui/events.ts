@@ -20,7 +20,6 @@ import { decodeRunsPayload } from "./runs";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import type { SessionWatchPayload } from "./generated/SessionWatchPayload";
 import type { SessionContainer } from "./generated/SessionContainer";
-import type { SwitchCells } from "./generated/SwitchCells";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
@@ -34,13 +33,13 @@ export type {
 export interface EventHandlers {
   /** 一行记录。payload 带 seq，RecordTimeline 按 seq 排进 DOM，先到后到不影响画面。 */
   onLine: (e: JsonlLinePayload) => void;
-  /** 会话已结束；`sw` ＝ 那台随去向带来的「此刻能不能换」（壳自己补的已结束没有 ⇒ `null`）。 */
-  onSessionEnded: (sessionId: string, sw?: SwitchCells | null) => void;
+  /** 会话已结束。 */
+  onSessionEnded: (sessionId: string) => void;
   /**
    * 远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux），不归档。后端在会话没了而 `@ccm_sid` 还在时发 `idle` 格（与 ended 格对同一 sid 二选一）。
    * 与 ended 格同进 queue：要相对该会话的行与之后的 remote-added 保序。前端 tabs.markTmuxIdle 置灰点。
    */
-  onSessionIdle?: (sessionId: string, sw?: SwitchCells | null) => void;
+  onSessionIdle?: (sessionId: string) => void;
   /**
    * 会话（重新）变活。后端在 sessions/<PID>.json 新增且 PID 探活通过时发 —— 崩溃 → Tab 灰显 → `/resume` 后回 live，无需 F5。
    * 与 ended 格同进 queue（保持结束 / 复活的先后）。
@@ -200,9 +199,9 @@ type QueueItem =
   | { kind: "batch-end"; grant?: StreamHold }
   // 那台机器的流里丢了几格（`gap`）。
   | { kind: "gap"; origin: Origin }
-  | { kind: "ended"; sessionId: string; switch: SwitchCells | null }
+  | { kind: "ended"; sessionId: string }
   // 灰灯（idle-tmux）—— 与 ended 同 queue 保序，见 onSessionIdle。
-  | { kind: "idle"; sessionId: string; switch: SwitchCells | null }
+  | { kind: "idle"; sessionId: string }
   | {
       kind: "started";
       sessionId: string;
@@ -482,9 +481,9 @@ export async function bindEvents(
         perf.batchDrainEnd = performance.now();
         scheduleBatchEnd();
       } else if (item.kind === "ended") {
-        handlers.onSessionEnded(item.sessionId, item.switch);
+        handlers.onSessionEnded(item.sessionId);
       } else if (item.kind === "idle") {
-        handlers.onSessionIdle?.(item.sessionId, item.switch);
+        handlers.onSessionIdle?.(item.sessionId);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
           cwd: item.cwd,
@@ -676,9 +675,9 @@ export async function bindEvents(
           if (w) queue.push({ kind: "watch", origin, payload: w });
           else console.warn("[events] 上流点那一格形状不对，不收：", JSON.stringify(f.watch).slice(0, 200));
         } else if (f !== null && typeof f === "object" && "idle" in f) {
-          queue.push({ kind: "idle", sessionId: f.idle.session_id, switch: f.idle.switch });
+          queue.push({ kind: "idle", sessionId: f.idle.session_id });
         } else if (f !== null && typeof f === "object" && "ended" in f) {
-          queue.push({ kind: "ended", sessionId: f.ended.session_id, switch: f.ended.switch });
+          queue.push({ kind: "ended", sessionId: f.ended.session_id });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
           queue.push({ kind: "unseen", origin: f.unseen.origin });
         } else if (f !== null && typeof f === "object" && "listed" in f) {

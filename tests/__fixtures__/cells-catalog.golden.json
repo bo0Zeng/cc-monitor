@@ -1963,18 +1963,6 @@
           "kind": "tone",
           "path": "state_tone",
           "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.model.can",
-          "type": "enum"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "switch.permission.can",
-          "type": "enum"
         }
       ],
       "name": "session_state"

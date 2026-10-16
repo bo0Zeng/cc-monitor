@@ -124,7 +124,7 @@ class ChatSessionMidTest {
         }
 
     @Test
-    fun `能不能换照会话帧的 switch；离开活了照那一帧带的；那台离线 ⇒ 两颗都灰、写离线那一句`() =
+    fun `能不能换照会话帧的 switch；离开活了不灰；那台离线 ⇒ 两颗都灰、写离线那一句`() =
         runTest {
             val link = FakeCoreLink()
             val s = existing(link) { _, _ -> null }
@@ -132,7 +132,7 @@ class ChatSessionMidTest {
             runCurrent()
             assertEquals("本轮结束后可换模型", s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)
-            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束", Switches(CanSwitch(null), CanSwitch(null)))))
+            link.table.value = link.table.value.copy(sessions = emptyMap(), fates = mapOf("s1" to SessionFate(SessionFate.State.ENDED, "已结束")))
             runCurrent()
             assertNull(s.state.value.model.blocked)
             assertNull(s.state.value.permission.blocked)

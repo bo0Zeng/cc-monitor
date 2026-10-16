@@ -882,10 +882,10 @@ export class TabManager {
   }
 
   /** 会话退出且容器也没了 ⇒ 已结束，内容保留。 */
-  archiveTab(sessionId: string, sw: SwitchCells | null = null): void {
+  archiveTab(sessionId: string): void {
     this.live.dropTab(sessionId); // 结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
-    this.noteSwitch(sessionId, sw);
+    this.dropSwitch(sessionId);
     if (!tab) {
       // Tab 还没建（归档信号早于行）⇒ 记下待归档、建 Tab 时落实；直接 return 会丢掉归档 → 僵尸活 Tab。
       this.store.pendingArchive.add(sessionId);
@@ -902,6 +902,13 @@ export class TabManager {
     this.refreshTabBar();
     this.emitTabStateProbe(tab);
     this.hider.reap(); // 隐藏的结束了 ⇒ 不留（正看着的切走再收）
+  }
+
+  /** 离开「活」⇒ 随那一态判的「此刻能不能换」作废（`null`：不灰，交两条命令照实回）。 */
+  private dropSwitch(sessionId: string): void {
+    this.store.pendingSwitch.delete(sessionId);
+    const tab = this.store.tabs.get(sessionId);
+    if (tab) tab.switch = null;
   }
 
   /**
@@ -939,10 +946,10 @@ export class TabManager {
    * 远端 claude 退了、tmux 会话还在 ⇒ 可重连（不归档、不 forget）。Tab 未建 ⇒ 暂存待 `ensureTab` 落实；已结束的不回到可重连。
    * 离开可重连：`ensureTab`（主：又见行 / 重宣告）· `updateActivity`（又有活动）· `reviveTab`（本机）· `archiveTab`（tmux 真没了）。
    */
-  markTmuxIdle(sessionId: string, sw: SwitchCells | null = null): void {
+  markTmuxIdle(sessionId: string): void {
     this.live.dropTab(sessionId); // claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
-    this.noteSwitch(sessionId, sw);
+    this.dropSwitch(sessionId);
     if (!tab) {
       this.store.pendingTmuxIdle.add(sessionId);
       return;

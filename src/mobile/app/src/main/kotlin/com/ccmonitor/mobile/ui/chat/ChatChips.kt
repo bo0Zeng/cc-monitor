@@ -107,8 +107,8 @@ internal class ChatChips(
     }
 
     /**
-     * 两颗 chip 此刻能不能换：照会话帧的 `switch`（不在会话表里了 ⇒ 离开「活」那一帧带的）；那台离线 ⇒ 两颗都灰、写离线那一句。
-     * 帧上没有这一格 ⇒ 不灰（由两条命令自己照实回）。
+     * 两颗 chip 此刻能不能换：照会话帧的 `switch`；那台离线 ⇒ 两颗都灰、写离线那一句。
+     * 不在会话表里（离开「活」）· 帧上没有这一格 ⇒ 不灰（由两条命令自己照实回）。
      */
     fun CoroutineScope.watch(s: String) {
         launch {
@@ -117,7 +117,7 @@ internal class ChatChips(
                     if (st is LinkState.Down) {
                         copyText("newSession.machine.offline", "machine" to machine).let { it to it }
                     } else {
-                        val sw = t.sessions[s]?.switch ?: t.fates[s]?.switch
+                        val sw = t.sessions[s]?.switch
                         sw?.model?.why to sw?.permission?.why
                     }
                 val now = state.value

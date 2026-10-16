@@ -301,8 +301,6 @@ pub struct SessionEndedPayload {
     pub text: Option<String>,
     pub hint: Option<String>,
     pub tone: Option<String>,
-    /// 此刻能不能换模型 · 权限档（`session_state.switch`）；壳自己补的「已结束」没有 ⇒ `None`。
-    pub switch: Option<crate::session_book::SwitchCells>,
 }
 
 /// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（会话流 `idle` 那一格）。独立命名（非复用
@@ -312,11 +310,10 @@ pub struct SessionEndedPayload {
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
-    /// 同 [`SessionEndedPayload`] 那四格。
+    /// 同 [`SessionEndedPayload`] 那三格。
     pub text: Option<String>,
     pub hint: Option<String>,
     pub tone: Option<String>,
-    pub switch: Option<crate::session_book::SwitchCells>,
 }
 
 /// 「说不清」的 payload（会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。

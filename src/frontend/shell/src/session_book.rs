@@ -87,8 +87,6 @@ pub struct FateWords {
     pub text: String,
     pub hint: String,
     pub tone: String,
-    /// 此刻能不能换模型 · 权限档（`session_state.switch`，离开「活」那一形）。
-    pub switch: SwitchCells,
 }
 
 pub const FATE_RECONNECTABLE: &str = "reconnectable";
@@ -708,14 +706,13 @@ impl Out {
             Out::Left {
                 sid, fate, words, ..
             } => {
-                let (text, hint, tone, switch) = match words {
+                let (text, hint, tone) = match words {
                     Some(w) => (
                         Some(w.text.clone()),
                         Some(w.hint.clone()),
                         Some(w.tone.clone()),
-                        Some(w.switch.clone()),
                     ),
-                    None => (None, None, None, None),
+                    None => (None, None, None),
                 };
                 vec![match fate {
                     Fate::Reconnectable => F::Idle(b::SessionIdlePayload {
@@ -723,14 +720,12 @@ impl Out {
                         text,
                         hint,
                         tone,
-                        switch,
                     }),
                     Fate::Ended => F::Ended(b::SessionEndedPayload {
                         session_id: sid.clone(),
                         text,
                         hint,
                         tone,
-                        switch,
                     }),
                 }]
             }

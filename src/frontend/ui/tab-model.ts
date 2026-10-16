@@ -113,8 +113,8 @@ export interface Tab {
   permissionMode: string | null;
   permissionModeText: string | null;
   /**
-   * 此刻能不能换模型 · 权限档（那台核心判的会话帧 `switch`：随活动那几格来，离开「活」时随去向那一帧来）。
-   * 这次没收到过 ⇒ `null`（界面不判，交命令照实回）。
+   * 此刻能不能换模型 · 权限档（那台核心判的会话帧 `switch`，随活动那几格来）。
+   * 不活 · 这次没收到过 ⇒ `null`（界面不判，交命令照实回）。
    */
   switch: SwitchCells | null;
   /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */

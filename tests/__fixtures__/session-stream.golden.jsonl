@@ -8,8 +8,8 @@
 {"kind":"session_primed","sid":"s1"}
 {"kind":"session_status","sid":"s1","activity":"needs_you","activity_text":"需手动","activity_tone":"need","activity_order":0,"switch":{"model":{"can":"no","why":"先答完需手动"},"permission":{"can":"no","why":"先答完需手动"}},"label":"t","label_project":"w","waiting_for":"permission prompt","path":"/r/s1.jsonl"}
 {"kind":"session_status","sid":"s1","activity_text":"状态不明","activity_tone":"plain","activity_order":3,"switch":{"model":{"can":"yes"},"permission":{"can":"yes"}},"label":"没有说过话的会话"}
-{"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}
-{"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain","switch":{"model":{"can":"yes"},"permission":{"can":"yes"}}}
+{"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain"}
+{"kind":"session_state","sid":"s1","state":"reconnectable","state_text":"Claude 已退出","state_hint":"Claude 已退出 · tmux 会话在","state_tone":"plain"}
 {"kind":"session_removed","sid":"s1","cause":"superseded","by":"s2"}
 {"kind":"session_removed","sid":"s1"}
 {"kind":"overflow","dropped":7,"lost":[{"kind":"session_added","subject":"s1"}],"lost_truncated":true}

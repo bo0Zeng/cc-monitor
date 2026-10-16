@@ -104,7 +104,7 @@ export class TabStore {
    */
   readonly seenOrigins = new Set<string>();
   readonly pendingActivity = new Map<string, NonNullable<Tab["activity"]>>();
-  /** 「此刻能不能换」早于建 Tab 到达（随活动那几格 · 去向那一帧）⇒ 暂存，建 Tab 时落实。 */
+  /** 「此刻能不能换」早于建 Tab 到达（随活动那几格）⇒ 暂存，建 Tab 时落实。 */
   readonly pendingSwitch = new Map<string, SwitchCells>();
   /** Tab 还没建时先到的名字（`updateName`），建 Tab 时落实。 */
   readonly pendingName = new Map<string, { label: string; labelProject: string | null }>();

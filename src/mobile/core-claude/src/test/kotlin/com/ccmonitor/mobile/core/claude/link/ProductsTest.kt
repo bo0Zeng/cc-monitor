@@ -64,7 +64,7 @@ class ProductsTest {
     }
 
     @Test
-    fun `会话表：能不能换照帧上的 switch 抄（宣告 · 状态 · 离开活），被顶替的记下顶替它的那一条`() {
+    fun `会话表：能不能换照帧上的 switch 抄（宣告 · 状态），被顶替的记下顶替它的那一条`() {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_added")[0], breaks::add)
         assertEquals(Switches(CanSwitch("先答完需手动"), CanSwitch("先答完需手动")), t.sessions.getValue("s1").switch)
@@ -75,14 +75,6 @@ class ProductsTest {
                 .getValue("s1")
                 .switch!!
                 .model.can,
-        )
-        t = t.step(golden("session_state")[0], breaks::add)
-        assertEquals(
-            CanSwitch(null),
-            t.fates
-                .getValue("s1")
-                .switch
-                ?.model,
         )
         val (superseded, gone) = golden("session_removed")
         assertEquals(mapOf("s1" to "s2"), t.step(superseded, breaks::add).successors)

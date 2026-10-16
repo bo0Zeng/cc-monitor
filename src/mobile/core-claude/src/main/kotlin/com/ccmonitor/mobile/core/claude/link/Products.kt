@@ -73,8 +73,6 @@ data class SessionFate(
     val state: State,
     /** 「Claude 已退出」「已结束」（`state_text`，照抄）。 */
     val text: String,
-    /** 离开「活」之后能不能换（那台判的，帧上的 `switch`）；没有 ⇒ `null`。 */
-    val switch: Switches? = null,
 ) {
     /** 线上两个词（`reconnectable` · `ended`）；认不出 ⇒ `null`（不猜）。 */
     enum class State {
@@ -177,7 +175,7 @@ data class SessionTable(
         val sid = frame.str("sid") ?: return null
         val state = SessionFate.State.of(frame.str("state")) ?: return null
         val text = frame.str("state_text") ?: return null
-        return copy(fates = fates + (sid to SessionFate(state, text, Switches.of(frame.obj("switch")))))
+        return copy(fates = fates + (sid to SessionFate(state, text)))
     }
 
     private fun removed(frame: Map<String, Any?>): SessionTable? =

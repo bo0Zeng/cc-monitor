@@ -231,8 +231,6 @@ pub struct SessionState {
     pub state_hint: Words,
     /// 语气。
     pub state_tone: Tone,
-    /// 此刻能不能换模型 · 权限档（离开「活」那一形）。
-    pub switch: Switch,
 }
 
 /// A session file went away.
