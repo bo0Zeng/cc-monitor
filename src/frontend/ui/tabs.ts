@@ -580,7 +580,7 @@ export class TabManager {
         activity: tab.activity?.doing ?? null,
         activityText: tab.activity?.text ?? null,
         activityTone: tab.activity?.tone ?? null,
-        activityOrder: tab.activity?.order ?? null,
+        order: tab.order,
         needs: needsOf(tab)?.text ?? null,
         runningAgents: runs.filter((r) => r.state === "running").length,
         totalAgents: runs.length,
@@ -768,6 +768,12 @@ export class TabManager {
       },
       // 红绿灯信号早于建 Tab 到达 ⇒ 从暂存取（否则 null ＝ 未知 → 绿）。
       activity: this.store.pendingActivity.get(sessionId) ?? null,
+      // 去向帧早于建 Tab ⇒ 照它带的序（归档优先，同下面落实状态那一段）；否则照暂存的灯。
+      order: this.store.pendingArchive.has(sessionId)
+        ? (this.store.pendingArchive.get(sessionId) ?? null)
+        : this.store.pendingTmuxIdle.has(sessionId)
+          ? (this.store.pendingTmuxIdle.get(sessionId) ?? null)
+          : (this.store.pendingActivity.get(sessionId)?.order ?? null),
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
       touchedFiles: new Set(), // 会话改动集
       usage: null, // HUD 与监控板的上下文那一格
@@ -879,13 +885,13 @@ export class TabManager {
   }
 
   /** 会话退出且容器也没了 ⇒ 已结束，内容保留。 */
-  archiveTab(sessionId: string, sw: SwitchCells | null = null): void {
+  archiveTab(sessionId: string, sw: SwitchCells | null = null, order: number | null = null): void {
     this.live.dropTab(sessionId); // 结束了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     this.noteSwitch(sessionId, sw);
     if (!tab) {
       // Tab 还没建（归档信号早于行）⇒ 记下待归档、建 Tab 时落实；直接 return 会丢掉归档 → 僵尸活 Tab。
-      this.store.pendingArchive.add(sessionId);
+      this.store.pendingArchive.set(sessionId, order);
       this.store.pendingActivity.delete(sessionId); // 死会话的暂存灯一并清
       this.store.pendingName.delete(sessionId);
       this.store.pendingTmuxIdle.delete(sessionId); // 已结束优先，清暂存的可重连
@@ -896,6 +902,7 @@ export class TabManager {
     if (!this.applyState(tab, "ended")) return;
     // 灯灭（CSS 上 `.ended` 本就藏起灯，这里保持状态干净）。
     tab.activity = null;
+    tab.order = order;
     this.refreshTabBar();
     this.emitTabStateProbe(tab);
     this.hider.reap(); // 隐藏的结束了 ⇒ 不留（正看着的切走再收）
@@ -936,16 +943,17 @@ export class TabManager {
    * 远端 claude 退了、tmux 会话还在 ⇒ 可重连（不归档、不 forget）。Tab 未建 ⇒ 暂存待 `ensureTab` 落实；已结束的不回到可重连。
    * 离开可重连：`ensureTab`（主：又见行 / 重宣告）· `updateActivity`（又有活动）· `reviveTab`（本机）· `archiveTab`（tmux 真没了）。
    */
-  markTmuxIdle(sessionId: string, sw: SwitchCells | null = null): void {
+  markTmuxIdle(sessionId: string, sw: SwitchCells | null = null, order: number | null = null): void {
     this.live.dropTab(sessionId); // claude 退了 ⇒ 它的活卡全撤
     const tab = this.store.tabs.get(sessionId);
     this.noteSwitch(sessionId, sw);
     if (!tab) {
-      this.store.pendingTmuxIdle.add(sessionId);
+      this.store.pendingTmuxIdle.set(sessionId, order);
       return;
     }
     // 活 ⇒ 可重连；已经死了（可重连 / 已结束）⇒ 不变（`nextState`）。
     if (!this.applyState(tab, "idle")) return;
+    tab.order = order;
     this.refreshTabBar();
     this.emitTabStateProbe(tab);
   }
@@ -1202,6 +1210,7 @@ export class TabManager {
     let changed = false;
     for (const tab of this.store.tabs.values()) {
       if (tab.origin !== origin || !this.applyState(tab, "unseen")) continue;
+      tab.order = null; // 说不清 ⇒ 没有序（排在那台最后）
       changed = true;
       this.emitTabStateProbe(tab);
     }
@@ -1383,6 +1392,7 @@ export class TabManager {
     }
     // 已结束不更新：磁盘残留的 PID 文件被重扫会推陈旧 activity。
     if (isResumeOnly(tab.state)) return;
+    tab.order = act.order;
     const swChanged = this.noteSwitch(sessionId, sw);
     // 有活动 ＝ claude 活着 ⇒ 可重连回到活。必须在下面「无变化早退」之前：复活后首个 activity 未必与陈旧值不同。
     const clearedIdle = doing !== null && this.applyState(tab, "activity");

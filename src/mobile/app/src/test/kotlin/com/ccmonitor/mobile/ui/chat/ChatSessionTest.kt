@@ -52,7 +52,7 @@ class ChatSessionTest {
                 when (cmd) {
                     "session-new" -> ok(started)
                     "session-say" -> ok(mapOf("result" to "delivered"))
-                    "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0, "tail_from" to 0, "total" to 0, "file" to ""))
+                    "history-tail" -> ok(FakeCoreLink.tail(0, 0, 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
             }
@@ -168,7 +168,7 @@ class ChatSessionTest {
                 when (cmd) {
                     "session-new" -> ok(started + ("agent" to "codex"))
                     "session-say" -> ok(mapOf("result" to "delivered"))
-                    "history-tail" -> ok(mapOf("end" to 0, "split_at" to 0, "tail_from" to 0, "total" to 0, "file" to ""))
+                    "history-tail" -> ok(FakeCoreLink.tail(0, 0, 0))
                     else -> ok(mapOf("rows" to emptyList<Any>(), "next" to 0, "eof" to true))
                 }
             }
@@ -229,16 +229,17 @@ class ChatSessionTest {
             link.report("s1", "/w", Tone.NOW)
             link.answer = { cmd, args ->
                 when (cmd) {
-                    "history-tail" -> ok(mapOf("end" to 200, "split_at" to 100, "tail_from" to 0, "total" to 2, "file" to "f"))
-                    "history-read" -> {
-                        assertEquals(mapOf("path" to "/p/s1.jsonl", "offset" to 100L, "until" to 200L), args)
-                        ok(mapOf("rows" to listOf(mapOf("end" to 150, "record" to human("u1", "问")), mapOf("end" to 200, "record" to reply("a1", "答"))), "next" to 200, "eof" to true))
+                    "history-tail" -> {
+                        assertEquals(mapOf("path" to "/p/s1.jsonl", "n" to 60L), args)
+                        ok(FakeCoreLink.tail(200, 100, 2, listOf(mapOf("end" to 150, "record" to human("u1", "问")), mapOf("end" to 200, "record" to reply("a1", "答")))))
                     }
                     else -> Reply.LinkDown
                 }
             }
             val s = existing(link)
             runCurrent()
+            assertEquals("冷读一条会话只问一趟（第一页随 history-tail 来）", 1, link.calls("history-tail").size)
+            assertTrue(link.calls("history-read").isEmpty())
             assertEquals(
                 listOf("u1", "a1#0"),
                 s.state.value.units

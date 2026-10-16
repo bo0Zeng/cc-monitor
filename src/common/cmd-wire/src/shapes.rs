@@ -101,7 +101,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("history-run", "c95eba9e"),
     ("history-search", "f0392e2d"),
     ("history-search-merge", "fa08d337"),
-    ("history-tail", "4d905fe7"),
+    ("history-tail", "f19db531"),
     ("history-turns", "9df304f8"),
     ("history-user-inputs", "541ceaf1"),
     ("hooks-diag", "9d3b1fb9"),

@@ -1,7 +1,9 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.Held
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryTailReply
 import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
-import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
+import com.ccmonitor.mobile.core.claude.link.wire.TailHow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -74,9 +76,27 @@ class SessionsTest {
     @Test
     fun `history-tail · history-read：尾段起点与每行的记录照抄；不进界面的行不出`() {
         assertEquals(mapOf("path" to "/p/a.jsonl", "n" to 50L), HistoryTail.args("/p/a.jsonl", 50))
+        val held = Held("/p/a.jsonl", 9, 900, "m")
         assertEquals(
-            TailPlan(end = 900, splitAt = 300, tailFrom = 7, total = 9, file = "f"),
-            HistoryTail.of(mapOf("end" to 900, "split_at" to 300, "tail_from" to 7, "total" to 9, "file" to "f")),
+            mapOf("path" to "/p/a.jsonl", "n" to 50L, "held" to mapOf("path" to "/p/a.jsonl", "next" to 9L, "next_byte" to 900L, "mark" to "m")),
+            HistoryTail.args("/p/a.jsonl", 50, held),
+        )
+        assertEquals(
+            HistoryTailReply(end = 900, splitAt = 300, total = 9, how = TailHow.RESUME, held = held),
+            HistoryTail.of(
+                mapOf(
+                    "end" to 900,
+                    "split_at" to 300,
+                    "tail_from" to 7,
+                    "total" to 9,
+                    "how" to "resume",
+                    "from" to 7,
+                    "rows" to emptyList<Any>(),
+                    "next" to 900,
+                    "eof" to true,
+                    "held" to mapOf("path" to "/p/a.jsonl", "next" to 9, "next_byte" to 900, "mark" to "m"),
+                ),
+            ),
         )
         assertEquals(mapOf("path" to "/p/a.jsonl", "offset" to 3L, "until" to 9L), HistoryRead.args("/p/a.jsonl", 3, 9))
         val page = HistoryRead.of(reads["history-read"])!!

@@ -7,6 +7,10 @@ export type SessionEndedPayload = { session_id: string,
  */
 text: string | null, hint: string | null, tone: string | null, 
 /**
+ * 监控板组内的序（`session_state.state_order`，与活会话的序同一把尺）；壳自己补的「已结束」没有 ⇒ `None`（排在那台最后）。
+ */
+order: number | null, 
+/**
  * 此刻能不能换模型 · 权限档（`session_state.switch`）；壳自己补的「已结束」没有 ⇒ `None`。
  */
 switch: SwitchCells | null, };

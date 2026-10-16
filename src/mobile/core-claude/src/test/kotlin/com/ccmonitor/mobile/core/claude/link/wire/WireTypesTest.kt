@@ -137,8 +137,8 @@ class WireTypesTest {
         assertEquals(SentResult.REFUSED, Wire.bind<Sent>(mapOf("result" to "refused", "said" to "x"))?.result)
         assertNull(Wire.bind<Sent>(mapOf("result" to "maybe")))
         assertNull("不可空的 cmd 缺了", Wire.bind<Rendered>(mapOf("account" to null)))
-        assertNull("基本型那一格缺了", Wire.bind<TailPlan>(mapOf("end" to 1.0, "split_at" to 2.0, "tail_from" to 3.0, "file" to "f")))
-        assertNotNull(Wire.bind<TailPlan>(mapOf("end" to 1.0, "split_at" to 2.0, "tail_from" to 3.0, "total" to 4.0, "file" to "f")))
+        assertNull("基本型那一格缺了", Wire.bind<Held>(mapOf("path" to "/p", "next" to 1.0, "mark" to "m")))
+        assertNotNull(Wire.bind<Held>(mapOf("path" to "/p", "next" to 1.0, "next_byte" to 2.0, "mark" to "m")))
     }
 
     private fun check(
