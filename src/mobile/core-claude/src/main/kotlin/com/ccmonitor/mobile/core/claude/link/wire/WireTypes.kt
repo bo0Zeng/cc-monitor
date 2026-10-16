@@ -831,6 +831,8 @@ data class Crumb(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
+    val name: Any,
+    val up: Any?,
     val kind: FileKind,
     val mode: Long?,
 )
