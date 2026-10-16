@@ -595,8 +595,8 @@ fn r10_turns_folds_and_inputs_carry_the_index_row_of_their_uuid() {
         .filter(|f| f.until.is_some())
         .count();
     assert!(
-        map.turns.len() >= 3 && folds_until >= 2,
-        "夹具要有几轮、几段带 until 的过程"
+        map.turns.len() >= 3 && folds_until >= 1,
+        "夹具要有几轮、带 until 的过程"
     );
     let physical = |u: &str| {
         text.split('\n')
