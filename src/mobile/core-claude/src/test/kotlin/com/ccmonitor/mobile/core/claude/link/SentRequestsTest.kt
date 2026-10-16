@@ -84,6 +84,7 @@ class SentRequestsTest {
             SessionNewDir.COMMAND to listOf(SessionNewDir.args("/w")),
             SessionNewFacts.COMMAND to listOf(emptyMap()),
             SessionPermission.COMMAND to listOf(SessionPermission.args("s", "plan")),
+            SessionResume.COMMAND to listOf(SessionResume.args("s")),
             SessionSay.COMMAND to listOf(SessionSay.args("s", "hi")),
             SessionsNeeds.COMMAND to listOf(null),
             TerminalInput.COMMAND to listOf(TerminalInput.text("s", "hi"), TerminalInput.key("s", "esc")),
