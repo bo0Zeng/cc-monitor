@@ -54,7 +54,7 @@ export interface TerminalShot {
 /** 怎么指一个终端：名单里的句柄，或挂在它上面的会话 ID。 */
 export type TerminalTarget = { terminal: string } | { sid: string };
 
-/** 抓屏被拒：那一句由那台后端写好（`src/backend/wire/said.rs`）；拒绝体读不出 ⇒ 无原因那一句（`target` 是给人看的那个名字）。 */
+/** 抓屏被拒：那一句由那台后端写好（`src/backend/control/terminals_wire.rs::preview_said`）；拒绝体读不出 ⇒ 无原因那一句（`target` 是给人看的那个名字）。 */
 function previewRefusals(target: string): Refusals {
   return asSaid(() => copyText("terminalReads.preview.noReason", { target }));
 }

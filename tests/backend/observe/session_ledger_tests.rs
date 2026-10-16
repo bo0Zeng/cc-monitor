@@ -3,6 +3,7 @@
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决：摘除按 cause ＋ 摘除之后才起的快照 · 只收割可重连的（活的只认 pidfile）·
 //! 按会话句柄认会话（改名不算关）· 一个会话里几个窗格各挂各的 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
+use crate::wire::ActivityFaceExt as _;
 use crate::wire::{Frame, RemovalCause, SessionFate};
 
 /// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（观测不再是帧）。
@@ -19,11 +20,11 @@ impl From<Frame> for Ev {
 }
 
 fn listed() -> Ev {
-    Frame::SessionsReplayed.into()
+    Frame::SessionsReplayed(crate::wire::SessionsReplayed {}).into()
 }
 
 fn added(sid: &str) -> Ev {
-    Frame::SessionAdded {
+    Frame::SessionAdded(crate::wire::SessionAdded {
         sid: sid.into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -38,16 +39,16 @@ fn added(sid: &str) -> Ev {
         hidden: None,
         container: None,
         pid: 0,
-    }
+    })
     .into()
 }
 
 fn removed(sid: &str, cause: RemovalCause) -> Ev {
-    Frame::SessionRemoved {
+    Frame::SessionRemoved(crate::wire::SessionRemoved {
         sid: sid.into(),
         cause,
         by: None,
-    }
+    })
     .into()
 }
 
@@ -87,8 +88,10 @@ fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
         passed.push(pass);
         for e in extra {
             match e {
-                Frame::SessionState { sid, state, .. } => out.push((sid, Some(state))),
-                Frame::SessionsReplayed => out.push(("*".into(), None)),
+                Frame::SessionState(crate::wire::SessionState { sid, state, .. }) => {
+                    out.push((sid, Some(state)))
+                }
+                Frame::SessionsReplayed(_) => out.push(("*".into(), None)),
                 other => panic!("账本只该补发成品与清单，却补了 {other:?}"),
             }
         }
@@ -141,7 +144,7 @@ fn a_snapshot_started_before_the_removal_does_not_judge_it() {
 #[test]
 fn a_removal_waits_for_an_observation_and_asks_for_one() {
     let mut l = SessionLedger::new();
-    l.on_frame(&Frame::SessionAdded {
+    l.on_frame(&Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -156,13 +159,13 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
         hidden: None,
         container: None,
         pid: 0,
-    });
+    }));
     assert!(!l.awaits_observation());
-    let (pass, extra) = l.on_frame(&Frame::SessionRemoved {
+    let (pass, extra) = l.on_frame(&Frame::SessionRemoved(crate::wire::SessionRemoved {
         sid: "a".into(),
         cause: RemovalCause::Gone,
         by: None,
-    });
+    }));
     assert!(pass && extra.is_empty(), "摘除本身照发，去向等观测");
     assert!(l.awaits_observation(), "要一份摘除之后才起的观测");
     l.observing();

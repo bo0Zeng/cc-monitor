@@ -40,6 +40,7 @@
 //! - **契约里写明**：订着时那台 tmux 里多一个只读客户端 —— 用户自己配的 `client-attached` / `client-detached` 钩子会被它触发，
 //!   我们管不了；本仓自己装的钩子里没有客户端那一族（判据钉着）。
 
+use crate::wire::FrameMake as _;
 use copy_core::copy_text;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -220,8 +221,19 @@ pub(crate) struct FollowErr(&'static str, String);
 impl FollowErr {
     /// 下层那一份失败 ⇒ 这一条的码；码表外的落 `unobservable`（原码进原话）。
     pub(crate) fn of(e: CmdErr) -> FollowErr {
-        crate::wire::typed::of_fail(e, |said| FollowErr("unobservable", said))
+        crate::wire::typed::of_fail_said(e, |said| FollowErr("unobservable", said), said)
     }
+}
+
+/// 订实时画面被拒成 `code` 时给人看的那一句；太老的 tmux（带版本）与满了（带上限）处理器那句就是成品 ⇒ `None`。
+pub(crate) fn said(code: &str) -> Option<String> {
+    Some(match code {
+        "tmux_too_old" | "too_many_follows" => return None,
+        "no_tmux" => copy_text("beTermFollow.refuse.noTmux", &[]),
+        "not_known" => copy_text("beTermFollow.refuse.gone", &[]),
+        "ambiguous" => copy_text("beTermFollow.refuse.ambiguous", &[]),
+        _ => copy_text("beTermFollow.refuse.other", &[]),
+    })
 }
 
 impl crate::wire::typed::Codes for FollowErr {
@@ -811,11 +823,13 @@ impl Worker {
         }
         if let Step::End(why) = step {
             lock(&self.tickets).slots.remove(&self.ticket);
-            let _ = self.replies.blocking_send(Frame::TerminalFollowEnd {
-                ticket: self.ticket.clone(),
-                why,
-                said: end_said(why),
-            });
+            let _ = self.replies.blocking_send(Frame::TerminalFollowEnd(
+                crate::wire::TerminalFollowEnd {
+                    ticket: self.ticket.clone(),
+                    why,
+                    said: end_said(why),
+                },
+            ));
         }
     }
 
@@ -848,11 +862,13 @@ impl Worker {
         *seq += 1;
         *in_flight = true;
         *last = fp;
-        match self.replies.blocking_send(Frame::TerminalScreen {
-            ticket: self.ticket.clone(),
-            seq: *seq,
-            view,
-        }) {
+        match self
+            .replies
+            .blocking_send(Frame::TerminalScreen(crate::wire::TerminalScreen {
+                ticket: self.ticket.clone(),
+                seq: *seq,
+                view,
+            })) {
             Ok(()) => Step::Go,
             Err(_) => Step::Quit,
         }

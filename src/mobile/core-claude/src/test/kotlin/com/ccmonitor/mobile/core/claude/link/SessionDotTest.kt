@@ -37,6 +37,7 @@ class SessionDotTest {
     @Test
     fun `流上没有它：照 history-list 那一行的 status（live · ended · unknown）；认不出的不画`() {
         assertEquals(SessionDot.ENDED, SessionDot.of(null, null, "ended"))
+        assertEquals("清单说可重连（流上还没报到）⇒ 已退出", SessionDot.EXITED, SessionDot.of(null, null, "reconnectable"))
         assertEquals(SessionDot.UNKNOWN, SessionDot.of(null, null, "unknown"))
         assertEquals("清单说活着、流上还没报到 ⇒ 同「还没收到语气」", SessionDot.RUNNING, SessionDot.of(null, null, "live"))
         assertNull(SessionDot.of(null, null, "别的词"))

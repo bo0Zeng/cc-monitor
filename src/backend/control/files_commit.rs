@@ -642,30 +642,91 @@ fn sweep_after(face: &Face, home: &Path, key: &str) {
 }
 
 crate::control::files_write::acts! {
-    FilesCommitUploadReq => FilesPathBytesReply, |r, f| commit_upload_of(f, r);
+    FilesCommitUploadReq => FilesPathBytesReply, |r, f| commit_upload_of(f, r, &crate::common::time::Tz::default()).map_err(CommitRefused::flat);
     FilesStageChunkReq => FilesStageChunkReply, |r, f| stage_chunk_of(f, r);
     FilesCommitTextReq => FilesWrittenReply, |r, f| commit_text_of(f, r);
 }
 
-/// `files-commit-upload`。
-fn commit_upload_of(
+/// 上传提交没成：落点有同名、要问（那一句 ＋ 同名清单，码 `exists`）· 别的（码 ＋ 那一句）。
+#[derive(Debug)]
+pub(crate) enum CommitRefused {
+    Clash(String, cmd_wire::batch::Conflicts),
+    Fail(Fail),
+}
+
+impl From<Fail> for CommitRefused {
+    fn from(f: Fail) -> Self {
+        CommitRefused::Fail(f)
+    }
+}
+
+impl CommitRefused {
+    /// 只认码与那一句的出口（写面那张分派表 · 资产域的门）：同名照码 `exists` 交那一句。
+    pub(crate) fn flat(self) -> Fail {
+        match self {
+            CommitRefused::Clash(said, _) => WriteFail::from((super::files_write::EXISTS, said)),
+            CommitRefused::Fail(f) => f,
+        }
+    }
+}
+
+/// `files-commit-upload`（同名清单里的时刻按 `tz` 写）。
+pub(crate) fn commit_upload_of(
     face: &Face,
     req: wire::FilesCommitUploadReq,
-) -> Result<wire::FilesPathBytesReply, Fail> {
-    commit_upload_at(face, &home_dir()?, req)
+    tz: &crate::common::time::Tz,
+) -> Result<wire::FilesPathBytesReply, CommitRefused> {
+    commit_upload_at(face, &home_dir()?, req, tz)
 }
 
 /// [`commit_upload_of`] 去掉「家在哪」那一问之后的全部 —— 判据从这里进（不改进程的 `HOME`：
-/// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
-/// 覆盖策略 · 整份摘要都必须显式给（缺席在解入参那一步就拒了）：默认成哪一边都是替用户做了一个他没做的决定。
+/// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。整份摘要必须显式给（缺席在解入参那一步就拒了）。
+///
+/// 落点已有同名 ⇒ 照 `on_exists`（同成组复制那一条，缺 ⇒ `ask`）：`ask` ⇒ 拼块之前就回同名清单，块与暂存件都留着，
+/// 改个答原样再交一次就接着提交；`overwrite` ⇒ 盖；`keep_both` ⇒ 另起一个名（同成组复制的起名）；`skip` ⇒ `bad_args`。
 pub fn commit_upload_at(
     face: &Face,
     home: &Path,
     req: wire::FilesCommitUploadReq,
-) -> Result<wire::FilesPathBytesReply, Fail> {
+    tz: &crate::common::time::Tz,
+) -> Result<wire::FilesPathBytesReply, CommitRefused> {
+    use cmd_wire::batch::OnExists;
     let root = root_of(&req.root, "root")?;
     // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
-    let rel = root_of(&req.rel, "rel")?;
+    let mut rel = root_of(&req.rel, "rel")?;
+    let on = req.on_exists.unwrap_or_default();
+    if on == OnExists::Skip {
+        return Err(plain((
+            "bad_args",
+            crate::common::contract::malformed("`on_exists: skip` has nothing to commit"),
+        ))
+        .into());
+    }
+    let clash = |rel: &Path| {
+        resolve_in_root(&root, rel)
+            .ok()
+            .and_then(|d| super::files_batch::look(&d).map(|t| (d, t)))
+    };
+    if let Some((dest, there)) = clash(&rel) {
+        match on {
+            OnExists::Ask => return Err(asked(home, &req, &dest, there, tz)),
+            OnExists::KeepBoth => {
+                rel = (2..=crate::common::batch_book::MINT_TRIES)
+                    .map(|k| crate::common::batch_book::minted(&rel, k))
+                    .find(|r| clash(r).is_none())
+                    .ok_or_else(|| {
+                        plain((
+                            super::files_write::EXISTS,
+                            copy_text(
+                                "beFilesCommit.upload.exists",
+                                &[("path", &dest.display().to_string())],
+                            ),
+                        ))
+                    })?;
+            }
+            OnExists::Overwrite | OnExists::Skip => {}
+        }
+    }
     // 块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
     if let Some(chunks) = req.chunks {
         let bytes = req.bytes.ok_or_else(|| {
@@ -677,21 +738,64 @@ pub fn commit_upload_at(
         super::files_upload_chunks::assemble_part(face, home, &req.key, chunks, bytes)
             .map_err(refused)?;
     }
+    let overwrite = on == OnExists::Overwrite;
     let (landed, bytes) = commit_upload(
         face,
         home,
         &req.key,
         &root,
         &rel,
-        req.overwrite,
+        overwrite,
         &req.expect.sha256.0,
     )
-    .map_err(refused)?;
+    .map_err(|e| {
+        // 探的时候不在、提交那一下在了 ⇒ 照同名回（暂存件留着，改个答再交）。
+        match clash(&rel).filter(|_| !overwrite) {
+            Some((dest, there)) => asked(home, &req, &dest, there, tz),
+            None => refused(e).into(),
+        }
+    })?;
     sweep_after(face, home, &req.key);
     Ok(wire::FilesPathBytesReply {
         path: wire_of(&landed),
         bytes,
     })
+}
+
+/// 落点有同名、要问：那一句 ＋ 只一项的同名清单（键 `0`；要放过去的是这份上传件，大小照交来的 `bytes` 或暂存件）。
+fn asked(
+    home: &Path,
+    req: &wire::FilesCommitUploadReq,
+    dest: &Path,
+    (there, there_size, there_mtime): (wire::FileKind, Option<u64>, Option<i64>),
+    tz: &crate::common::time::Tz,
+) -> CommitRefused {
+    use crate::common::batch_book::{key_of, moment_text};
+    let size = req.bytes.or_else(|| {
+        staged_path(home, &req.key)
+            .ok()
+            .and_then(|p| Ro::symlink_metadata(&p).ok())
+            .map(|m| m.len())
+    });
+    let name = dest
+        .file_name()
+        .map_or_else(Default::default, |n| wire_of(Path::new(n)));
+    CommitRefused::Clash(
+        copy_text("beFiles.batch.clash", &[("n", "1")]),
+        cmd_wire::batch::Conflicts {
+            conflicts: vec![cmd_wire::batch::Conflict {
+                key: key_of(0),
+                name,
+                kind: wire::FileKind::File,
+                size,
+                mtime_text: None,
+                there,
+                there_size,
+                there_mtime_text: moment_text(there_mtime, tz),
+                dir_into: there == wire::FileKind::Dir,
+            }],
+        },
+    )
 }
 
 /// `files-stage-chunk`。

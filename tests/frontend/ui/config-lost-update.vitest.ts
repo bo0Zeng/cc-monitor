@@ -24,15 +24,16 @@ const disk = vi.hoisted(() => ({
   text: "{}",
   /** 每一次 `patch_config` 收到的 edits（J5：写者只交自己的键）。 */
   patches: [] as unknown[][],
-  /** 依次给每一跳 IPC 的额外延迟（毫秒），用完为 0。用来造「先发的后到」。 */
+  /** 依次给每一跳 IPC 多让几拍（宏任务），用完为 0。用来造「先发的后到」：同时在飞的两跳，多让的那一跳必然后落。 */
   delays: [] as number[],
 }));
 
 vi.mock("@tauri-apps/api/core", async () => {
   // 补丁语义用金样钉住的那一份（`tests/frontend/ui/config-patch-fake.ts`，与 Rust 写口跑同一份金样）。
   const { applyConfigEdits } = await import("./config-patch-fake");
-  const hop = (): Promise<void> =>
-    new Promise((r) => setTimeout(r, disk.delays.shift() ?? 0));
+  const hop = async (): Promise<void> => {
+    for (let n = disk.delays.shift() ?? 0; n >= 0; n--) await new Promise((r) => setTimeout(r, 0));
+  };
   return {
     invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
       await hop();
@@ -160,8 +161,8 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
     const cols = await import("../../../src/frontend/ui/tab-collections");
     const v1 = [{ id: "c1", name: "旧" }];
     const v2 = [{ id: "c1", name: "新" }];
-    // 第一跳（v1 那次写）晚 20ms 才被处理 ⇒ 两次若同时在飞，v1 会后落盘、盖掉 v2。
-    disk.delays = [20];
+    // 第一跳（v1 那次写）多让三拍才被处理 ⇒ 两次若同时在飞，v1 必然后落盘、盖掉 v2。
+    disk.delays = [3];
     await Promise.all([cfg.patchConfig([cols.collectionsEdit(v1)]), cfg.patchConfig([cols.collectionsEdit(v2)])]);
     expect((JSON.parse(disk.text) as Record<string, unknown>).tabCollections).toEqual(v2);
   });

@@ -156,9 +156,34 @@ pub(crate) fn held_scan(
 pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<TailPlan, String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     if let Some(map) = super::record_scan::global().peek(&target) {
-        return Ok(map.tail(n));
+        let f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
+        let head =
+            first_counted(std::io::BufReader::new(f)).map_err(|e| format!("scan failed: {e}"))?;
+        return Ok(map.tail(n, file_id(head.as_deref())));
     }
     tail_plan(agent_home, jsonl_path, n).map(|(plan, _)| plan)
+}
+
+/// 文件身份（`history-tail.file`）：第一个可计行正文的摘要（[`super::record_page::line_hash`]，16 位十六进制）；没有 ⇒ 空串。
+pub(crate) fn file_id(first: Option<&[u8]>) -> String {
+    first.map_or_else(String::new, |b| {
+        format!("{:016x}", super::record_page::line_hash(b))
+    })
+}
+
+/// 从头读到第一个可计行（不含 `\n`）；一行都没有 ⇒ `None`。
+fn first_counted<R: std::io::BufRead>(mut r: R) -> std::io::Result<Option<Vec<u8>>> {
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        if r.read_until(b'\n', &mut buf)? == 0 || buf.last() != Some(&b'\n') {
+            return Ok(None);
+        }
+        buf.pop();
+        if line_counts(&buf) {
+            return Ok(Some(buf));
+        }
+    }
 }
 
 /// 大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）。
@@ -528,6 +553,7 @@ pub(crate) fn tail_plan_of<R: std::io::BufRead>(
     let mut total: u64 = 0;
     let mut pos: u64 = 0;
     let mut complete_end: u64 = 0;
+    let mut head: Option<Vec<u8>> = None;
     let mut buf: Vec<u8> = Vec::new();
     loop {
         buf.clear();
@@ -544,6 +570,9 @@ pub(crate) fn tail_plan_of<R: std::io::BufRead>(
         if !line_counts(&buf[..buf.len() - 1]) {
             continue; // 空行不计（与 watcher/monitor 口径一致 —— 判定只有 `line_counts` 一个住址）
         }
+        if head.is_none() {
+            head = Some(buf[..buf.len() - 1].to_vec());
+        }
         total += 1;
         recent.push_back(line_start);
         if recent.len() > keep {
@@ -557,6 +586,7 @@ pub(crate) fn tail_plan_of<R: std::io::BufRead>(
         tail_from,
         split_at,
         end: complete_end,
+        file: file_id(head.as_deref()),
     })
 }
 
@@ -724,9 +754,11 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
     let until = until.unwrap_or(u64::MAX);
     let mut lines: Vec<String> = Vec::new();
     let mut starts: Vec<u64> = Vec::new();
+    let mut ends: Vec<u64> = Vec::new();
     let mut bytes: usize = 0;
     let mut n: u64 = 0; // 下一个可计行的行号
     let mut pos: u64 = 0; // 这一行的起点字节偏移
+    let mut end: u64 = 0; // 最后一个数到的可计行之后
     let mut buf: Vec<u8> = Vec::new();
     let eof = loop {
         if n >= until {
@@ -747,6 +779,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         }
         let at = n;
         n += 1;
+        end = pos;
         if at < from {
             continue;
         }
@@ -762,6 +795,7 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         bytes += body.len();
         lines.push(String::from_utf8_lossy(body).into_owned());
         starts.push(start);
+        ends.push(pos);
         if bytes >= page {
             break false;
         }
@@ -771,7 +805,9 @@ pub(crate) fn read_lines_from<R: std::io::BufRead>(
         from,
         lines,
         starts,
+        ends,
         next,
+        end,
         eof,
     })
 }
@@ -785,8 +821,12 @@ pub(crate) struct LinesPage {
     pub lines: Vec<String>,
     /// 每一条在文件里的起点字节偏移（与 `lines` 逐条对齐）。
     pub starts: Vec<u64>,
+    /// 每一条（含 `\n`）之后那个字节（与 `lines` 逐条对齐）。
+    pub ends: Vec<u64>,
     /// 下一段从这一行起。
     pub next: u64,
+    /// 最后一个数到的可计行之后那个字节（交出的 · 跳过的都算；残尾不算）。
+    pub end: u64,
     /// 读到了最后一个完整行之后（后面没有了）。
     pub eof: bool,
 }

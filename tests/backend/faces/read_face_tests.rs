@@ -1235,7 +1235,11 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
     .unwrap();
     let mut keys: Vec<&String> = lines.as_object().unwrap().keys().collect();
     keys.sort();
-    assert_eq!(keys, ["eof", "from", "lines", "next"], "成品形状变了");
+    assert_eq!(
+        keys,
+        ["end", "eof", "from", "lines", "next"],
+        "成品形状变了"
+    );
     let n = want.len() as u64;
     assert_eq!(tail["total"].as_u64(), Some(n), "history-tail 的 total");
     assert_eq!(
@@ -2166,9 +2170,12 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     );
     assert_eq!(
         lines_mid,
-        r#"{"eof":false,"from":0,"lines":[{"cwd":"/w","path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
+        r#"{"end":152,"eof":false,"from":0,"lines":[{"cwd":"/w","end":152,"path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
     );
-    assert_eq!(tail, r#"{"end":273,"split_at":55,"tail_from":1,"total":3}"#);
+    assert_eq!(
+        tail,
+        r#"{"end":273,"file":"dfb90402727f63bf","split_at":55,"tail_from":1,"total":3}"#
+    );
     assert_eq!(needs, r#"{"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
@@ -2264,7 +2271,7 @@ fn every_golden_record_is_decoded_by_the_phone_as_a_whole_record() {
             let row: serde_json::Value = serde_json::from_str(line).unwrap();
             let record = row["record"].clone();
             let read = serde_json::json!({"eof": true, "next": 9, "rows": [{"cwd": "/w", "end": 9, "hash": 1, "record": record}]});
-            let lines = serde_json::json!({"eof": true, "from": 0, "next": 1, "lines": [{"cwd": null, "path": "p", "record": record, "seq": 0, "session_id": "s"}]});
+            let lines = serde_json::json!({"end": 9, "eof": true, "from": 0, "next": 1, "lines": [{"cwd": null, "end": 9, "path": "p", "record": record, "seq": 0, "session_id": "s"}]});
             phone_decodes_back("history-read", &read.to_string());
             phone_decodes_back("history-lines", &lines.to_string());
             n += 1;

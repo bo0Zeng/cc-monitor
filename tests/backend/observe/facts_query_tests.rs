@@ -962,7 +962,9 @@ fn the_mcp_only_scan_says_what_the_full_facts_say() {
         mcp_delta(json!({"failedMcpServers": [{"name": "m-g", "error": "e-2"}]})),
     ];
     let text = jsonl(&recs);
-    let got = mcp_of(text.as_bytes()).unwrap();
+    let mut got = Vec::new();
+    let read = mcp_from(text.as_bytes(), &mut got).unwrap();
+    assert_eq!(read, text.len() as u64, "整份都是完整行");
     assert_eq!(got, scan_all(&text).mcp);
     assert_eq!(
         got.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),

@@ -147,7 +147,7 @@ async fn one_picture_is_read_once_for_every_place_that_shows_it() {
     // 600 × 400 的噪点 png：好几块（一块 256 KB）。
     let bytes = png(600, 400);
     assert!(
-        bytes.len() as u64 > crate::lossy_pull::PULL_CHUNK,
+        bytes.len() as u64 > chunk_core::CHUNK as u64,
         "量具：图太小，只有一块"
     );
     let (wired, dir, key) = rig("fw-pic-once", &bytes).await;
@@ -201,7 +201,7 @@ async fn a_picture_that_grows_past_the_cap_while_read_stops_and_says_so() {
     let bytes = png(600, 400);
     let (wired, dir, mut key) = rig("fw-pic-grew", &bytes).await;
     key.size = 10; // 列表那时还小。
-    let cap = crate::lossy_pull::PULL_CHUNK + 1;
+    let cap = chunk_core::CHUNK as u64 + 1;
     let ctx = egui::Context::default();
     let pics = Pictures::default();
     pics.load(&key, load_of(&wired, &key, cap));

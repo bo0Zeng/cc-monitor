@@ -4730,13 +4730,24 @@ describe("〔U4b〕main.ts 接线", () => {
  */
 describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
   let tm: TabManager;
+  /** 帧换成手摇的（`fillAbove` 补完一批靠 rAF 自链复检）：用例收场时没摇的帧丢掉，不漏进下一条的计数。 */
+  let frames: FrameRequestCallback[] = [];
   beforeEach(() => {
     vi.clearAllMocks();
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
     tm = makeTM();
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.mocked(invoke).mockResolvedValue(undefined as never);
   });
+  /** 摇一帧：此刻排着的那几个回调跑一遍。 */
+  const oneFrame = (): void => {
+    const due = frames;
+    frames = [];
+    for (const cb of due) cb(0);
+  };
 
   const mk = (sid: string, seq: number, origin?: string) =>
     ({
@@ -4747,10 +4758,16 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
       ...(origin ? { origin } : {}),
       record: { t: "reply", id: `${sid}-${seq}` } as never,
     }) as never;
-  // ⚠ 等的是 rAF（`fillAbove` 补完一批靠 `requestAnimationFrame` 自链复检，jsdom 里约 16ms 一拍）——
-  //   只让几个 0ms 宏任务过去等不到它：上一条的自链会漏进下一条的计数（首跑现打过一次）。
+  /** 一直摇到停：在途的读落下来（让几拍）、排着的帧跑完，连着几拍都没有新排的帧为止。 */
   const settle = async (): Promise<void> => {
-    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 20));
+    for (let quiet = 0; quiet < 3; ) {
+      await new Promise((r) => setTimeout(r, 0));
+      if (frames.length === 0) quiet++;
+      else {
+        quiet = 0;
+        oneFrame();
+      }
+    }
   };
   const asks = () => recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines");
   /** 后端答：`[from, until)` 里每一行都可显示（seq 就是行号）。 */
@@ -4781,7 +4798,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     tm.switchTo("lb"); // jsdom 恒不可滚 ⇒ R-2 踢一脚
-    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    oneFrame(); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(asks()).toEqual([{ origin: "<local>", jsonlPath: "/p/lb.jsonl", from: 100, until: 300, leftMs: 60_000 }]);
     await settle();
     // 回来的 200 条补上了屏（渲染窗口向下扩到 100）；之后接着问 [0, 100)，到第 0 行为止
@@ -4803,6 +4820,20 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     home(tm).view.activate(t);
     await settle();
     expect(asks().length).toBe(2);
+  });
+
+  it("主人拆掉以后，排着的补批复检不再往下问", async () => {
+    vi.mocked(invoke).mockImplementation(answerAll("dz"));
+    tm.onLine(mk("head", 1)); // 首个 tab ⇒ active
+    tm.onLine(mk("dz", 300)); // 后台 tab：账本空、想往下问
+    tm.switchTo("dz");
+    oneFrame(); // 切进来那一脚：问 [100, 300)
+    await new Promise((r) => setTimeout(r, 0)); // 那一问落下来：补上屏、排下一帧复检
+    expect(frames.length, "前提：落下来之后排了下一帧复检").toBeGreaterThan(0);
+    tm.dispose();
+    vi.mocked(invoke).mockClear();
+    await settle();
+    expect(asks(), "拆掉之后又问了").toEqual([]);
   });
 
   it("★ L3：问回来的那一段全是不显示的记录（floor 不动）⇒ 下一问接着往下、不原地重问；问到第 0 行为止、之后再踢也不问", async () => {
@@ -4861,7 +4892,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
     expect(asks().length, "连续两次失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
     home(tm).view.activate(t);
-    await new Promise((r) => requestAnimationFrame(() => r(null))); // 切进来那一脚补批在下一帧（同步段不读几何）
+    oneFrame(); // 切进来那一脚补批在下一帧（同步段不读几何）
     expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(3);
   });
 
@@ -5153,15 +5184,10 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
   };
-  /**
-   * 后台 tab 的第一趟会话事实排在当前那一趟之后、空闲时一个一个要（`tab-cold-reads.ts`；jsdom 没有 requestIdleCallback，走 200 ms 的兜底）：
-   * 等 `n` 个后台 tab 都轮到。
-   */
-  const idleTurns = async (n = 1): Promise<void> => {
-    for (let i = 0; i < n; i++) {
-      await new Promise((r) => setTimeout(r, 220));
-      await settle();
-    }
+  /** 后台 tab 的第一趟会话事实排在当前那一趟之后、空闲时才要（`tab-cold-reads.ts`）：等到 `sid` 那一问真发出去、答落下来。 */
+  const idleTurn = async (sid: string): Promise<void> => {
+    await vi.waitFor(() => expect(asked.some((a) => a.path.endsWith(`/${sid}.jsonl`)), `后台 ${sid} 那一趟没轮到`).toBe(true), UNTIL_CEILING);
+    await settle();
   };
   /** 记下每一问的 `(origin, path, prior)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
   let asked: { origin: string; path: string; prior: unknown }[] = [];
@@ -5264,7 +5290,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("f3", 0));
     tm.onLine(line("fr", 0, "pi"));
     await settle();
-    await idleTurns(); // fr 是后台 tab：它的第一趟空闲时才轮到
+    await idleTurn("fr"); // 后台 tab
     const tab = home(tm).store.tabs.get("f3")!;
     tm.updateName("f3", "我的功能", "proj");
     expect(tab.title).toBe("↳ [proj] 我的功能");
@@ -5312,7 +5338,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onBatchEnd();
     await settle();
     expect(asked.map((a) => a.path), "批结束当场只问当前那一个").toEqual(["/home/u/proj/b1.jsonl"]);
-    await idleTurns();
+    await idleTurn("b2");
     expect(asked.map((a) => a.path).sort()).toEqual(["/home/u/proj/b1.jsonl", "/home/u/proj/b2.jsonl"]);
     expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src");
   });
@@ -5322,7 +5348,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("s-local", 0));
     tm.onLine(line("s-remote", 0, "devbox"));
     await settle();
-    await idleTurns(); // s-remote 是后台 tab
+    await idleTurn("s-remote");
     expect(tm.peekSession("s-local")!.recentFiles).toEqual(["/proj/b.rs", "/proj/a.ts"]); // F91b：尾 = 最近改
     expect(asked.find((a) => a.path.includes("s-remote"))?.origin).toBe("devbox"); // 远端问的是那台
   });
@@ -6394,11 +6420,11 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
         .map((a) => a.from);
     for (let s = 0; s < 10; s++) tm.onLine(line("wr", s));
     tm.switchTo("wr");
-    await new Promise((r) => setTimeout(r, 200)); // 停够了才要第一趟（`STAY_MS`）
+    // 停够了（`STAY_MS`）才要第一趟：等那一问真发出去。
+    await vi.waitFor(() => expect(asks("history-turns"), "切进来第一趟轮次从 0").toContain(0), UNTIL_CEILING);
     for (let k = 0; k < 5; k++) await settle();
     const t0 = home(tm).store.tabs.get("wr")!;
     await t0.outline.refresh();
-    expect(asks("history-turns"), "切进来第一趟轮次从 0").toContain(0);
     tm.switchTo("front");
     const turnsBefore = asks("history-turns").length;
     const inputsBefore = asks("history-user-inputs").length;
@@ -6407,7 +6433,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     const t = home(tm).store.tabs.get("wr")!;
     expect(t, "缺得多却没重来正文").not.toBe(t0);
     tm.switchTo("wr");
-    await new Promise((r) => setTimeout(r, 200));
+    await vi.waitFor(() => expect(asks("history-turns").length, "重来之后没再要轮次").toBeGreaterThan(turnsBefore), UNTIL_CEILING);
     await t.outline.refresh();
     for (let k = 0; k < 5; k++) await settle();
     const turnsAfter = asks("history-turns").slice(turnsBefore);
@@ -6416,9 +6442,6 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     expect(turnsAfter, "重来之后轮次又从 0 整份要").not.toContain(0);
     expect(inputsAfter, "重来之后大纲又从 0 整份要").not.toContain(0);
     expect(t.turnFold.all.map((x) => x.at), "轮次没接过来").toEqual([100]);
-    // 切回别的 tab、等排着的那几脚（停留判定 · 下一帧补批）看到它不在眼前自己退掉 —— 不然负载高时它们落进下一条判据的调用记录里
-    tm.switchTo("front");
-    await new Promise((r) => setTimeout(r, 250));
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
@@ -6735,7 +6758,8 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     coldStart();
     await settle();
     tm.switchTo("C");
-    await new Promise((r) => setTimeout(r, 200)); // 停住（过了 STAY_MS）
+    // 停住了（`STAY_MS`）C 的第一趟会话事实才插到最前：等它真发出去。B 只能经空闲回调轮到，这里的空闲回调不自己跑 ⇒ 之后再判「B 还在排着」是确定的。
+    await vi.waitFor(() => expect(cold.some((c) => c.sid === "C" && c.op === "history-facts"), "停住了 C 的会话事实没插到前面").toBe(true), UNTIL_CEILING);
     await settle();
     const sids = [...new Set(cold.map((c) => c.sid))];
     expect(sids.slice(0, 2), "C 插到 B 前面").toEqual(["A", "C"]);

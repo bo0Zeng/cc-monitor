@@ -68,6 +68,14 @@ fn scrub(v: &mut Value, root: &str) {
                     *o = json!("<OWNER>");
                 }
             }
+            // 面包屑在夹具根之上那几段看临时目录落在哪（进程号也在里面），不是契约：只留根及以下那几段。
+            if let Some(Value::Array(c)) = m.get_mut("crumbs") {
+                c.retain(|seg| {
+                    seg["path"]
+                        .as_str()
+                        .is_some_and(|p| p.starts_with(root) && p != root)
+                });
+            }
             m.values_mut().for_each(|x| scrub(x, root));
         }
         _ => {}
@@ -444,7 +452,7 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
         (
             "commit-upload",
             "files-commit-upload",
-            json!({ "root": r, "rel": "up.bin", "key": k2, "overwrite": false, "expect": sha(b"\x00\x01zz"), "chunks": 2, "bytes": 4 }),
+            json!({ "root": r, "rel": "up.bin", "key": k2, "expect": sha(b"\x00\x01zz"), "chunks": 2, "bytes": 4 }),
         ),
     ];
     let mut got = BTreeMap::new();

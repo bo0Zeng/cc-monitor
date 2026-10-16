@@ -31,6 +31,7 @@
 //!
 //! 等信用是等信号量，等字节是等管子，收掉是 abort。
 
+use crate::wire::FrameMake as _;
 use copy_core::copy_text;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -337,10 +338,10 @@ impl Table {
 
     /// `link-data`：解码、进那条链路的上行队列。`None` = 应答由上行泵在写进管子之后发。
     pub fn data(&self, id: &str, args: &serde_json::Value) -> Option<Frame> {
-        let refuse = |e| Some(crate::wire::typed::refuse::<LinkData>(id, args, e));
+        let refuse = |e| Some(crate::wire::typed::refuse::<LinkData>(id, e));
         let r: LinkDataReq = match crate::wire::typed::take(args) {
             Ok(r) => r,
-            Err(f) => return Some(f.into_reply(id.to_string(), LINK_DATA, args)),
+            Err(f) => return Some(f.into_reply(id.to_string(), LINK_DATA)),
         };
         if let Err(m) = link_ok(&r.link) {
             return refuse(LinkDataErr::BadArgs(m));
@@ -450,10 +451,10 @@ async fn pump_down(
                 Err(_) => break Some(copy_text("beLink.gone.bug", &[])),
             }
         }
-        let frame = Frame::LinkData {
+        let frame = Frame::LinkData(crate::wire::LinkData {
             link: link.clone(),
             data: b64_encode(&buf[..n]),
-        };
+        });
         if replies.send(frame).await.is_err() {
             // 连接没了：没人收，也就不必报 `link_end`。
             return;
@@ -461,10 +462,10 @@ async fn pump_down(
     };
     // 先报再摘：摘的时候会 abort 另外两个任务（不 abort 自己 —— 自己正要结束）。
     let _ = replies
-        .send(Frame::LinkEnd {
+        .send(Frame::LinkEnd(crate::wire::LinkEnd {
             link: link.clone(),
             error,
-        })
+        }))
         .await;
     if let Some(e) = lock(&links).remove(&link) {
         e.serve.abort();

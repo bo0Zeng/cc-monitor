@@ -30,8 +30,9 @@ beforeEach(() => {
 describe("金样：后端出的成品，原样交到调用方", () => {
   it("导入预览照收", async () => {
     invokeMock.mockResolvedValue(chanReply(golden["ssh-config-import"]));
-    const groups = await importSshHosts([]);
+    const { groups, partial } = await importSshHosts([]);
     expect(groups.map((g) => g.label)).toEqual(["devbox", "pi"]);
+    expect(partial).toBe(false);
     expect(groups[0]!.members.map((m) => m.alias)).toEqual(["devbox-lan", "devbox-wan"]);
   });
 });

@@ -286,6 +286,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
     );
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
+    assert_eq!(
+        v.title.as_deref(),
+        Some(&S1[..8]),
+        "这台记录树里没有它 ⇒ 会话 id 前 8 位"
+    );
     assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
     // 每个号带号色与号名（界面不再另问账号清单去对）：号色同 `accounts-list` 那一格的规则（库里没给 ⇒ 按名字算），号名同额度那几处。
     let plate = &v.plates["a"];
@@ -334,6 +339,21 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let v = session_view(&ctx, &home, S1);
     assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
+
+    // 记录树里有它 ⇒ 顶栏写那条会话的名字（第一句），不轮换的那一形也带。
+    let dir = crate::history::listing::records_root(&crate::history::listing::agent_home())
+        .expect("有记录树")
+        .join("-p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let rec = dir.join(format!("{S1}.jsonl"));
+    std::fs::write(
+        &rec,
+        "{\"type\":\"user\",\"uuid\":\"u\",\"timestamp\":\"2026-01-01T00:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"整理报表\"}}\n",
+    )
+    .unwrap();
+    let v = session_view(&ctx, &home, S1);
+    std::fs::remove_file(&rec).ok();
+    assert_eq!(v.title.as_deref(), Some("整理报表"));
 }
 
 /// ★ 设置页那一形：照交来的草稿判、推演（不写盘）；草稿不合声明 ⇒ `refused` 带那几格；没有那一份 ⇒ `no_strategy`。

@@ -317,9 +317,14 @@ fn the_terminal_host_words_are_the_container_words() {
         terminal: "t".into(),
     })
     .unwrap();
+    let container = |c| serde_json::to_value(c).unwrap()["host"].clone();
+    assert_eq!(
+        hosted["host"],
+        container(crate::wire::SessionContainer::Tmux { terminal: None })
+    );
     assert_eq!(hosted["host"], crate::wire::TerminalHost::Tmux.as_wire());
     assert_eq!(
         serde_json::to_value(TerminalFact::None).unwrap()["host"],
-        crate::wire::HOST_NONE
+        container(crate::wire::SessionContainer::None)
     );
 }

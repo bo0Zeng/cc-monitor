@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 data class BrowseUi(
     val path: String? = null,
     val dirs: List<FilesLs.Dir> = emptyList(),
+    /** 上一级（那台给的）；到顶 ⇒ `null`。 */
+    val up: String? = null,
     val selected: String? = null,
     val loading: Boolean = false,
     val failed: String? = null,
@@ -44,8 +46,7 @@ class DirBrowser(
     fun enter(path: String) = go { path }
 
     fun up() {
-        val p = _state.value.path ?: return
-        FilesLs.parent(p)?.let { parent -> go { parent } }
+        _state.value.up?.let { parent -> go { parent } }
     }
 
     /** 长按：选中它；再长按同一个 ⇒ 不选。 */
@@ -65,12 +66,12 @@ class DirBrowser(
             scope.launch {
                 val path = where() ?: return@launch
                 val r = link.call(FilesLs.COMMAND, FilesLs.dirs(path), READ_MS)
-                val dirs = (r as? Reply.Ok)?.let { FilesLs.dirsOf(it.data) }
-                if (dirs == null) {
+                val got = (r as? Reply.Ok)?.let { FilesLs.dirsOf(it.data) }
+                if (got == null) {
                     _state.update { it.copy(path = path) }
                     fail(r, FilesLs.COMMAND)
                 } else {
-                    _state.value = BrowseUi(path = path, dirs = dirs.sortedBy { it.name.lowercase() })
+                    _state.value = BrowseUi(path = path, dirs = got.dirs, up = got.up)
                 }
             }
     }

@@ -16,6 +16,7 @@ use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
 use crate::observe::runs::{next_event, RunBook, RunTrack, RUNS_KEEP, STALE_AFTER};
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::run_route::{Routed, RunRouter};
+use crate::wire::FrameRules as _;
 use crate::wire::{Frame, RunState};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -685,7 +686,9 @@ fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)
         shape.name
     );
     // 会话退休（派出它们的那一方没了）⇒ 还算在跑的那两个变状态不明，已收场的不动。
-    let Some(Frame::SessionRuns { runs: last, .. }) = track.book.retire(SID) else {
+    let Some(Frame::SessionRuns(crate::wire::SessionRuns { runs: last, .. })) =
+        track.book.retire(SID)
+    else {
         panic!(
             "[{}] 会话退休时有在跑的子运行，却没出最后那一帧",
             shape.name
@@ -804,7 +807,7 @@ fn foreground_scenario(shape: &Shape, cold: bool) {
         "[{}] 那一份比子记录晚落盘：下一次读到子记录时对上",
         shape.name
     );
-    let Frame::SessionRuns { runs, .. } = book.frame(SID) else {
+    let Frame::SessionRuns(crate::wire::SessionRuns { runs, .. }) = book.frame(SID) else {
         panic!("运行表那一帧");
     };
     assert!(
@@ -944,7 +947,8 @@ fn cold_crowded_scenario(shape: &Shape) {
         shape.name
     );
     // 挤出表的不丢终态：每个收场了、对上了派出调用的子运行，在运行表或 `ended` 里恰好出现一次，终态对。
-    let Frame::SessionRuns { runs, ended, .. } = track.book.frame(SID) else {
+    let Frame::SessionRuns(crate::wire::SessionRuns { runs, ended, .. }) = track.book.frame(SID)
+    else {
         panic!("frame() 该出运行表帧");
     };
     assert_eq!(
@@ -1146,7 +1150,8 @@ fn a_frame_judges_quiet_runs_without_waiting_for_another_record() {
     );
     // 过阈值不靠真睡 2.5 秒：钟往后拨 2.5 秒交给 `frame_at`（`frame` 就是拿此刻调它）。
     let later = SystemTime::now() + Duration::from_millis(2500);
-    let Frame::SessionRuns { runs, .. } = track.book.frame_at(SID, later) else {
+    let Frame::SessionRuns(crate::wire::SessionRuns { runs, .. }) = track.book.frame_at(SID, later)
+    else {
         panic!("frame() 该出运行表帧");
     };
     assert_eq!(
@@ -1191,7 +1196,7 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
         "期限之前不判"
     );
     let frames = track.book.due_frames(d1);
-    let [Frame::SessionRuns { runs, .. }] = frames.as_slice() else {
+    let [Frame::SessionRuns(crate::wire::SessionRuns { runs, .. })] = frames.as_slice() else {
         panic!("到点、表变了 ⇒ 恰好一帧：{frames:?}");
     };
     let mut st: Vec<_> = runs.iter().map(|r| (r.run.as_str(), r.state)).collect();
@@ -1510,13 +1515,13 @@ fn extra_cells_scenario(shape: &Shape) {
         shape.name
     );
     let sh = crate::Tz::named("Asia/Shanghai").unwrap();
-    let mut f = crate::wire::Frame::SessionRuns {
+    let mut f = crate::wire::Frame::SessionRuns(crate::wire::SessionRuns {
         sid: "s".into(),
         runs: vec![info_of(&book, "g6")],
         ended: Vec::new(),
-    };
+    });
     f.stamp(&sh);
-    let crate::wire::Frame::SessionRuns { runs, .. } = f else {
+    let crate::wire::Frame::SessionRuns(crate::wire::SessionRuns { runs, .. }) = f else {
         unreachable!()
     };
     assert_eq!(
@@ -1525,7 +1530,8 @@ fn extra_cells_scenario(shape: &Shape) {
         "[{}] 开始那一刻的钟面跟着开始取早的那个（推出去那一下按看的那一台的时区写，界面照抄）",
         shape.name
     );
-    let Some(Frame::SessionRuns { runs, .. }) = track.book.retire(SID) else {
+    let Some(Frame::SessionRuns(crate::wire::SessionRuns { runs, .. })) = track.book.retire(SID)
+    else {
         panic!("[{}] 会话退休时 g1 还在跑，却没出最后那一帧", shape.name);
     };
     let g1 = runs.iter().find(|r| r.run == "g1").unwrap();

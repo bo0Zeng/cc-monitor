@@ -612,6 +612,9 @@ pub struct RecordLine<R = Value> {
     /// 行号（可计行，从 0 起）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub seq: u64,
+    /// 这一行（含 `\n`）之后那个字节；相邻认不出的几行并成这一条时 ＝ 最后那一行之后。没 `\n` 收尾的残尾 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]
+    pub end: Option<u64>,
     /// 那一行记的工作目录；没有 ⇒ `null`。
     pub cwd: Option<String>,
     /// 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
@@ -647,6 +650,9 @@ pub struct HistoryLines<R = Value> {
     pub next: u64,
     /// 读到了最后一个完整行之后。
     pub eof: bool,
+    /// `[from, next)` 里最后一个可计行之后那个字节（一行都没交 ⇒ `from` 之前最后一个可计行之后）：续点 ＝（路径 · 它 · `next`）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub end: u64,
     /// `[from, next)` 里进界面的那些（不进界面的照占号、不出现）。
     #[cfg_attr(any(test, feature = "ts"), ts(as = "Vec<RecordLine<Record>>"))]
     pub lines: Vec<RecordLine<R>>,

@@ -12,6 +12,7 @@
 
 use crate::relay::{TapEvent, TapPort};
 use crate::stream::live::Live;
+use crate::wire::FrameMake as _;
 use crate::wire::{Frame, Topic};
 use std::sync::{Arc, Mutex};
 

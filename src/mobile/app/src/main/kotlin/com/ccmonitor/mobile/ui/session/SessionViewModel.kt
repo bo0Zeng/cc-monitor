@@ -216,8 +216,8 @@ class SessionViewModel(
      * 「用哪个启动」那一排：这台能用的别名（那台的 `profiles-read`，名字照那台给的）。进终端 tab（接回已有的会话）不出；
      * 本 tab 按过一个之后收起（那个 shell 里已经起了会话）。
      */
-    private val _aliases = MutableStateFlow<List<String>>(emptyList())
-    val aliases: StateFlow<List<String>> = _aliases.asStateFlow()
+    private val _aliases = MutableStateFlow<List<Profiles.Alias>>(emptyList())
+    val aliases: StateFlow<List<Profiles.Alias>> = _aliases.asStateFlow()
 
     private val _aliasPicked = MutableStateFlow(false)
     val aliasPicked: StateFlow<Boolean> = _aliasPicked.asStateFlow()
@@ -231,20 +231,20 @@ class SessionViewModel(
         viewModelScope.launch { terminals.aliases().onSuccess { _aliases.value = it } }
     }
 
-    /** 按了「用哪个启动」里的 [name]：在这个 shell 里跑 `ccm @名`。 */
-    fun startAlias(name: String) {
+    /** 按了「用哪个启动」里的 [a]：在这个 shell 里敲那台写好的那一行。 */
+    fun startAlias(a: Profiles.Alias) {
         val ts = session ?: return
-        ts.send("${Profiles.startLine(name)}\n".toByteArray())
+        ts.send("${a.start}\n".toByteArray())
         _aliasPicked.value = true
     }
 
     /** 迁移说明里「建这条」：在这台建同名别名（别名页那条写命令），成败都说一句；建好了那一排重读。 */
     fun makeAlias(m: MovedLaunch) {
-        val form = m.aliasForm() ?: return
+        if (m.command.isNullOrBlank()) return
         viewModelScope.launch {
             val machine = hostRepo.get(hostId)?.label ?: hostId
             terminals
-                .makeAlias(form)
+                .makeAlias(m)
                 .onSuccess { reload ->
                     _notices.trySend(listOfNotNull(copyText("mobLaunch.migrate.made", "machine" to machine, "name" to m.label), reload).joinToString("\n"))
                     loadAliases()

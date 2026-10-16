@@ -1,6 +1,6 @@
 //! 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表 —— **只此一处**：名字 · 可不可丢 · `key` / `rev` 说什么 · 帧里带不带小成品、上限多少 · 客户端重问哪条。
 //!
-//! 线上一种帧 `{"kind":"changed","topic":…, "key"?, "rev"?, "body"?}`（[`super::wire::Frame::Changed`]）。
+//! 线上一种帧 `{"kind":"changed","topic":…, "key"?, "rev"?, "body"?}`（[`cmd_wire::frame::Changed`]）。
 //! 壳不认主题：按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按 [`Topic`]（生成的类型）订、读。
 //! 加一个主题 ＝ 这里加一行 ＋ 发端发它 ＋ 界面订它，别处不动。
 //!
@@ -8,48 +8,15 @@
 //! 只推给发起它的那条连接的（`login`）走那条连接的应答通道（不丢）。
 //! 带了 `body` 也不改可丢性。`body` 只带小成品（序列化后 ≤ 那一格的上限，超了就不带、客户端照旧重问）。
 
-use serde::Serialize;
-
-/// 推送主题（线上 `changed.topic`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum Topic {
-    /// 这台的账号清单（账号 manifest 被改写）。清单每号带的「5h 那一格」跟着额度走：那一格变了推的是 [`Topic::Quota`]。
-    Accounts,
-    /// 这台的配置文件（`~/.cc-monitor/profiles.toml`）。
-    Profiles,
-    /// 这台的额度账显示得出来的那几格。
-    Quota,
-    /// 这台某个会话的轮换（`key` ＝ sid）：那一条 · 它用的那份策略 · 事实变了。
-    Rotation,
-    /// 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份。
-    RotationStrategies,
-    /// 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问；
-    /// `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
-    Plan,
-    /// 这台某个会话的任务清单（`key` ＝ sid）。
-    Tasks,
-    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）。
-    Needs,
-    /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。
-    Login,
-    /// 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）。
-    Manual,
-    /// 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）。
-    Machines,
-    /// 这台某个活会话隐不隐藏变了（`key` ＝ sid；`body` ＝ `{hidden}`：那一格，不隐藏 ⇒ `null`）：
-    /// 注解 · 这台偏好 · 会话血缘动了之后判出来的。不重读整份清单，收到就换（丢了重问 `history-list {sid}` 那一行）。
-    SessionHidden,
-}
+/// 推送主题（线上 `changed.topic`）：名字的闭集住 `cmd-wire`（客户端按同一份解），这张表（可丢性 · 小成品上限 · 重问哪条）住这里。
+pub use cmd_wire::frame::Topic;
 
 /// 主题表的一行。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TopicSpec {
     /// 线上名（＝ serde 名，判据对拍）。
     pub name: &'static str,
-    /// 丢了能不能恢复（[`super::wire::Frame::loss_is_recoverable`] 照它答）。
+    /// 丢了能不能恢复（[`super::FrameRules::loss_is_recoverable`] 照它答）。
     pub lossy: bool,
     /// 带不带 `key`（说的是什么写在 [`Topic`] 各项的文档与 IPC-PROTOCOL 主题表）。
     pub key: bool,
@@ -78,9 +45,18 @@ pub enum Ask {
     Sids,
 }
 
-impl Topic {
+/// 主题表（扩展特征：孤儿规则不许在 `cmd-wire` 的类型上加固有方法）。
+pub trait TopicExt {
     /// 全部主题（表的行序）。
-    pub const ALL: [Topic; 12] = [
+    const ALL: [Topic; 12];
+    /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
+    fn spec(self) -> TopicSpec;
+    /// 线上名。
+    fn name(self) -> &'static str;
+}
+
+impl TopicExt for Topic {
+    const ALL: [Topic; 12] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -95,8 +71,7 @@ impl Topic {
         Topic::SessionHidden,
     ];
 
-    /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
-    pub const fn spec(self) -> TopicSpec {
+    fn spec(self) -> TopicSpec {
         match self {
             Topic::Accounts => TopicSpec {
                 name: "accounts",
@@ -225,8 +200,7 @@ impl Topic {
         }
     }
 
-    /// 线上名。
-    pub const fn name(self) -> &'static str {
+    fn name(self) -> &'static str {
         self.spec().name
     }
 }

@@ -3,10 +3,79 @@
 use super::cc_bus;
 use crate::wire::spec::Fail;
 use crate::wire::typed::{self, Codes, Command, NoArgs};
+use copy_core::copy_text;
 
-/// 本体回的那一对（码 ＋ 那一句）⇒ 这一条的码表。
-fn of<E: Codes>(fallback: fn(String) -> E) -> impl Fn((String, String)) -> E {
-    move |pair| typed::of_fail(Fail::from(pair), fallback)
+/// 本体回的那一对（码 ＋ 那一句）⇒ 这一条的码表，那一句照这一条的「码 → 句」表换（下层那句进原话）。
+fn of<E: Codes>(
+    fallback: fn(String) -> E,
+    said: impl Fn(&str) -> String,
+) -> impl Fn((String, String)) -> E {
+    move |pair| typed::of_fail_said(Fail::from(pair), fallback, |c| Some(said(c)))
+}
+
+/// 查在线（`bus-list`）被拒成 `code` 时给人看的那一句。
+pub(crate) fn list_said(code: &str) -> String {
+    match code {
+        "not_installed" => copy_text("ccBus.online.notInstalled", &[]),
+        "child_timed_out" => copy_text("ccBus.online.timedOut", &[]),
+        _ => copy_text("ccBus.online.otherCode", &[]),
+    }
+}
+
+/// 读名册 / 收件箱（`bus-state` · `bus-inbox`）被拒成 `code` 时给人看的那一句。
+pub(crate) fn read_said(code: &str) -> String {
+    match code {
+        "not_installed" => copy_text("ccBus.read.notInstalled", &[]),
+        "child_timed_out" => copy_text("ccBus.read.timedOut", &[]),
+        "bad_id" => copy_text("ccBus.read.badId", &[]),
+        _ => copy_text("ccBus.read.otherCode", &[]),
+    }
+}
+
+/// 收掉一个成员（`bus-kill`）被拒成 `code` 时给人看的那一句。
+pub(crate) fn kill_said(id: &str, code: &str) -> String {
+    match code {
+        "bad_args" => copy_text("ccBus.kill.invalidArgs", &[("id", id)]),
+        "bad_id" => copy_text("ccBus.kill.badId", &[]),
+        "not_installed" => copy_text("ccBus.kill.notInstalled", &[("id", id)]),
+        "child_timed_out" => copy_text("ccBus.kill.timedOut", &[("id", id)]),
+        _ => copy_text("ccBus.kill.otherCode", &[("id", id)]),
+    }
+}
+
+/// 发一条（`bus-send`）被拒成 `code` 时给人看的那一句。`id` 是收件人。
+pub(crate) fn send_said(id: &str, code: &str) -> String {
+    match code {
+        "bad_args" => copy_text("ccBus.send.invalidArgs", &[("id", id)]),
+        "bad_id" => copy_text("ccBus.send.badId", &[]),
+        "not_installed" => copy_text("ccBus.send.notInstalled", &[("id", id)]),
+        "rejected" => copy_text("ccBus.send.rejected", &[("id", id)]),
+        "child_timed_out" => copy_text("ccBus.send.timedOut", &[("id", id)]),
+        "too_long" => copy_text("ccBus.send.tooLong", &[("id", id)]),
+        _ => copy_text("ccBus.send.otherCode", &[("id", id)]),
+    }
+}
+
+/// 新开一个 agent（`bus-spawn`）被拒成 `code` 时给人看的那一句。
+pub(crate) fn spawn_said(code: &str) -> String {
+    match code {
+        "bad_args" => copy_text("ccBus.spawn.invalidArgs", &[]),
+        "bad_id" => copy_text("ccBus.spawn.badId", &[]),
+        "not_installed" => copy_text("ccBus.spawn.notInstalled", &[]),
+        "child_timed_out" => copy_text("ccBus.spawn.timedOut", &[]),
+        _ => copy_text("ccBus.spawn.otherCode", &[]),
+    }
+}
+
+/// 广播（`bus-broadcast`）被拒成 `code` 时给人看的那一句。
+pub(crate) fn broadcast_said(code: &str) -> String {
+    match code {
+        "bad_args" => copy_text("ccBus.broadcast.invalidArgs", &[]),
+        "bad_id" => copy_text("ccBus.broadcast.badId", &[]),
+        "not_installed" => copy_text("ccBus.broadcast.notInstalled", &[]),
+        "child_timed_out" => copy_text("ccBus.broadcast.timedOut", &[]),
+        _ => copy_text("ccBus.broadcast.otherCode", &[]),
+    }
 }
 
 /// 总线名单的一行（`bus-list` · `bus-broadcast` 挑人都读它）。
@@ -310,7 +379,7 @@ impl crate::wire::typed::Handle for BusListCmd {
         _req: NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusList, BusReadErr>> + Send + 'static {
-        async move { cc_bus::list_for_inbound().map_err(of(BusReadErr::Failed)) }
+        async move { cc_bus::list_for_inbound().map_err(of(BusReadErr::Failed, list_said)) }
     }
 }
 
@@ -329,7 +398,7 @@ impl crate::wire::typed::Handle for BusStateCmd {
         _req: NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusState, BusReadErr>> + Send + 'static {
-        async move { cc_bus::state_for_inbound().map_err(of(BusReadErr::Failed)) }
+        async move { cc_bus::state_for_inbound().map_err(of(BusReadErr::Failed, read_said)) }
     }
 }
 
@@ -347,7 +416,7 @@ impl crate::wire::typed::Handle for BusInboxCmd {
         req: BusInboxReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusInbox, BusIdErr>> + Send + 'static {
-        async move { cc_bus::inbox_for_inbound(&req).map_err(of(BusIdErr::Failed)) }
+        async move { cc_bus::inbox_for_inbound(&req).map_err(of(BusIdErr::Failed, read_said)) }
     }
 }
 
@@ -365,7 +434,9 @@ impl crate::wire::typed::Handle for BusKillCmd {
         req: BusKillReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusKilled, BusIdErr>> + Send + 'static {
-        async move { cc_bus::kill_for_inbound(&req).map_err(of(BusIdErr::Failed)) }
+        async move {
+            cc_bus::kill_for_inbound(&req).map_err(of(BusIdErr::Failed, |c| kill_said(&req.id, c)))
+        }
     }
 }
 
@@ -383,7 +454,10 @@ impl crate::wire::typed::Handle for BusSendCmd {
         req: BusSendReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusSent, BusSendErr>> + Send + 'static {
-        async move { cc_bus::send_for_inbound(&req).map_err(of(BusSendErr::Failed)) }
+        async move {
+            cc_bus::send_for_inbound(&req)
+                .map_err(of(BusSendErr::Failed, |c| send_said(&req.to, c)))
+        }
     }
 }
 
@@ -402,7 +476,9 @@ impl crate::wire::typed::Handle for BusBroadcastCmd {
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusBroadcast, BusBroadcastErr>> + Send + 'static
     {
-        async move { cc_bus::broadcast_for_inbound(&req).map_err(of(BusBroadcastErr::Failed)) }
+        async move {
+            cc_bus::broadcast_for_inbound(&req).map_err(of(BusBroadcastErr::Failed, broadcast_said))
+        }
     }
 }
 
@@ -420,6 +496,6 @@ impl crate::wire::typed::Handle for BusSpawnCmd {
         req: BusSpawnReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<BusSpawnedNow, BusIdErr>> + Send + 'static {
-        async move { cc_bus::spawn_for_inbound(&req).map_err(of(BusIdErr::Failed)) }
+        async move { cc_bus::spawn_for_inbound(&req).map_err(of(BusIdErr::Failed, spawn_said)) }
     }
 }

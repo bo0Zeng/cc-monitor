@@ -50,3 +50,25 @@ async fn a_timed_out_call_sends_one_cancel() {
     let v: Value = serde_json::from_str(&second).unwrap();
     assert_eq!(v["cmd"], "cancel");
 }
+
+/// 关写半边交回的那一点：对端见了 EOF 它也不先完成；读这条连接的那一方说「读到底了」（对端收掉了这条流）才完成。
+#[tokio::test(start_paused = true)]
+async fn close_write_is_done_when_the_reader_says_the_stream_ended() {
+    use std::future::Future;
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(mine).into_client(hello());
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let ended = client.close_write();
+    let mut rest = String::new();
+    assert_eq!(peer.read_line(&mut rest).await.unwrap(), 0, "对端该见 EOF");
+    let mut ended = std::pin::pin!(ended);
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(
+        ended.as_mut().poll(&mut cx).is_pending(),
+        "读端还没说读到底就完成了"
+    );
+    client.note_read_end();
+    tokio::time::timeout(Duration::from_secs(5), ended)
+        .await
+        .expect("说了读到底还没完成");
+}

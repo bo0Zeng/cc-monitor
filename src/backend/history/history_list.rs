@@ -110,6 +110,7 @@ fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<RawRow> {
         updated_at: v["updatedAtMs"].as_i64().unwrap_or(0),
         jsonl_path: v["jsonlPath"].as_str().unwrap_or_default().to_string(),
         is_live: Some(live.0.contains(sid)),
+        reconnectable: !live.0.contains(sid) && crate::history::live::reconnectable(sid),
         message_count_approx: v["messageCountApprox"].as_u64().unwrap_or(0) as u32,
         is_bg: v["isBg"].as_bool().unwrap_or(false),
         starred: false,
@@ -139,6 +140,7 @@ fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Ra
         updated_at: s.mtime_ms,
         jsonl_path: s.path.to_string_lossy().into_owned(),
         is_live: None,
+        reconnectable: false,
         message_count_approx: 0,
         is_bg: false,
         starred: false,
@@ -456,7 +458,7 @@ fn finish_row(mut raw: RawRow, ann: Option<&Table>) -> Finished {
         &raw.project_path,
         &raw.session_id,
     );
-    let status = status_of(raw.is_live);
+    let status = status_of(raw.is_live, raw.reconnectable);
     Finished {
         raw,
         label,

@@ -1,6 +1,7 @@
 //! 一条入方向命令的登记形状。各族的命令表（`registry/`）只 use 这一份。
 
 use crate::common::said::IntoNote as _;
+use crate::wire::FrameMake as _;
 use crate::wire::Request;
 
 /// 同步阻塞处理器（分派交进阻塞池：开跑之后打不断）。
@@ -84,19 +85,17 @@ impl Fail {
         crate::common::said::Said::from(self).into_note()
     }
 
-    /// 这次失败投出去的那一份（两个面都经这里：帧面的应答 · CLI 面的信封）。`cmd` 是命令名，进详情的「命令」那一项。
-    /// 这条命令有「码 → 句」表（[`crate::wire::said::reword`]）⇒ 句子换成表里那一句，处理器原来那句进原话。
-    pub(crate) fn settle(
-        mut self,
-        cmd: &str,
-        args: &serde_json::Value,
-    ) -> crate::wire::detail::Failed {
-        if let Some(said) = crate::wire::said::reword(cmd, args, &self.code) {
-            let was = std::mem::replace(&mut self.message, said);
-            if self.raw.is_none() && !was.trim().is_empty() {
-                self.raw = Some(was);
-            }
+    /// 换成给人看的那一句（那条命令自己的「码 → 句」表，[`crate::wire::typed::of_fail_said`]）：原来那句进原话（已有原话 ⇒ 照旧）。
+    pub(crate) fn retold(mut self, said: String) -> Fail {
+        let was = std::mem::replace(&mut self.message, said);
+        if self.raw.is_none() && !was.trim().is_empty() {
+            self.raw = Some(was);
         }
+        self
+    }
+
+    /// 这次失败投出去的那一份（两个面都经这里：帧面的应答 · CLI 面的信封）。`cmd` 是命令名，进详情的「命令」那一项。
+    pub(crate) fn settle(self, cmd: &str) -> crate::wire::detail::Failed {
         crate::wire::detail::Failed::new(
             Some(cmd),
             &self.code,
@@ -107,13 +106,8 @@ impl Fail {
     }
 
     /// 这次失败的应答帧（[`Fail::settle`] 那一份装进 `reply`）。
-    pub(crate) fn into_reply(
-        self,
-        id: String,
-        cmd: &str,
-        args: &serde_json::Value,
-    ) -> crate::wire::Frame {
-        crate::wire::Frame::failed(id, self.settle(cmd, args))
+    pub(crate) fn into_reply(self, id: String, cmd: &str) -> crate::wire::Frame {
+        crate::wire::Frame::failed(id, self.settle(cmd))
     }
 }
 /// 异步处理器的 future（结局可带按码定形的 `data`）。

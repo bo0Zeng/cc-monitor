@@ -9,10 +9,14 @@
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零） |
 | [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
 | [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
-| [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）：两棵 Rust 树的排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest，测试一律在 `.build/` 下的一次性沙箱里跑（换 HOME 与 TMUX_TMPDIR、清掉会话变量）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红；红了把失败测试的 panic 原话印出来，整趟输出存 `.build/quick-check/`。这棵树相对 `main` 改到了手机读的东西（`src/mobile/` · 金样 `tests/__fixtures__/` · `src/backend/lib.rs` · 文案表 `src/shared/copy/`）才加跑手机那一套（ktlint · detekt · JVM 单测，经 `heavy.sh`、gradle 带 `--no-daemon`），没改到就跳过并说一声；`--mobile` 只跑这一段，`--mobile-plan` 只印跑不跑 |
-| [`gate-clean.sh`](gate-clean.sh) | 全量门禁的入口（打发版标签前那一趟）：清掉会话继承来的 `CCM_*` · `CLAUDE_*` · `ANTHROPIC_*` · `TMUX*`，经 `heavy.sh` 排门禁锁跑 `gate.sh`；拿到锁时负载高于核数 × 0.6 就串跑 |
-| [`gate-affected.sh`](gate-affected.sh) | 按改动挑格跑门禁：`git diff <基>...HEAD` 改到的路径照 [`gate-affected/map`](gate-affected/map)（路径 → 格组，每行带理由）挑格，挑格那一半是 [`gate-affected/plan.py`](gate-affected/plan.py)（`--dry-run` 只印计划；表与 `gate.sh` 对不上就停）。`--trust-ci` 是合并用的工作树推候选分支之前那一趟：先 `quick-check.sh`，CI 会跑的格交给 CI，只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件。裁决恒是 PARTIAL，末行 `AFFECTED: OK` / `AFFECTED: 红` |
-| [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的排队；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
+| [`quick-check.sh`](quick-check.sh) | 交门禁之前的那一圈（不拿门禁锁、不代替门禁）：两棵 Rust 树的排版 · tsc · 门禁里只读盘上文本的那几格（`hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`，经 `gate.sh` 的 `GATE_ONLY` 跑，收据另存、不盖门禁那份）· 两棵树整套 `cargo test --lib` · 整套 vitest · 后端那棵改到的包跑 clippy（系统钟 · 定时器那几类 lint 定成 deny，只有它拦得住）· 末尾核生成物（`generated-drift.sh`）。测试一律在 `.build/` 下的一次性沙箱里跑（每一步经 `session-scrub.sh` 摘掉会话变量，再换 HOME 与 TMUX_TMPDIR）。「加了子命令要打版本号」那一条单列成「待打版本号」，不算红；红了把失败测试的 panic 原话印出来，整趟输出存 `.build/quick-check/`。这棵树相对起点（`base.sh`）改到了手机读的东西（`src/mobile/` · 金样 `tests/__fixtures__/` · `src/backend/lib.rs` · 文案表 `src/shared/copy/` 等）才加跑手机那一套（ktlint · detekt · JVM 单测，经 `heavy.sh`、gradle 带 `--no-daemon`），没改到就跳过并说一声；`--mobile` 只跑这一段，`--mobile-plan` 只印跑不跑 |
+| [`session-vars`](session-vars) | 会话继承来的环境变量表，全仓只这一张：Claude Code 与 Codex 的 · tmux 的 · cc-monitor 自己的（连 cc-bus）· 上游与代理的；族里照留的判据输入（`CCM_E2E_*` · `CCM_REGEN_*` · `CCM_BLESS*` …）以 `!` 标出。`session-scrub.sh`（`gate.sh` · `sandbox-env.sh` · 手机台架照它的 `--list`）与 `src/common/test-home`（测试二进制起来时）读它 |
+| [`session-scrub.sh`](session-scrub.sh) | 摘掉表里的变量再起命令：`heavy.sh` 每个出口、`quick-check.sh` 每一步都经它，于是经它们跑的一切测试与门禁都看不见外面会话的配置目录 · tmux · 真端口 · 上游；`--list` 只印这一刻会摘哪几个 |
+| [`base.sh`](base.sh) | 「这棵树自己改了哪些」的起点：HEAD 与分支上游（没设上游就 origin/main，再没有就 main）的 merge-base。quick-check 挑手机那一套、gate-affected 挑格都用它 |
+| [`generated-drift.sh`](generated-drift.sh) | 生成物有没有落在提交外：每个 `generated/` 目录下与 HEAD 不同或没跟踪的文件逐份印出、退 1。quick-check 末尾与门禁 `generated` 格调它（cargo test 现写生成物，只在工作树里对、没提交的，合并以后才红） |
+| [`gate-clean.sh`](gate-clean.sh) | 全量门禁的入口（打发版标签前那一趟）：经 `heavy.sh`（摘会话变量）排门禁锁跑 `gate.sh`；拿到锁时负载高于核数 × 0.6 就串跑 |
+| [`gate-affected.sh`](gate-affected.sh) | 按改动挑格跑门禁：`git diff <基>...HEAD`（基默认取 `base.sh`，`--base` 可指）改到的路径照 [`gate-affected/map`](gate-affected/map)（路径 → 格组，每行带理由）挑格，挑格那一半是 [`gate-affected/plan.py`](gate-affected/plan.py)（`--dry-run` 只印计划；表与 `gate.sh` 对不上就停）。`--trust-ci` 是合并用的工作树推候选分支之前那一趟：先 `quick-check.sh`，CI 会跑的格交给 CI，只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件。裁决恒是 PARTIAL，末行 `AFFECTED: OK` / `AFFECTED: 红` |
+| [`heavy.sh`](heavy.sh) | 重活（cargo 编测 · quick-check · 门禁 · gradle · 截图台架）一律经它跑：起命令前经 `session-scrub.sh` 摘掉会话变量；每份一个 `systemd-run --user --scope`、封顶内存，同时最多 `HEAVY_SLOTS` 份、多的排队；已经在一份重活里面（外层经它跑的）就直接跑，不再排槽位。没有 `systemd-run --user` 的机器（CI · Windows · 没有 user session）不封顶、直接跑，并说一声 |
 | [`push-candidate.sh`](push-candidate.sh) | 推送：`w8/<名>` 强推到候选分支 `next` → 用 `gh` 等 CI 跑完 → 全绿才在主工作树上把 `main` 快进过去并推；有红就停、印红的 job 与失败日志，`main` 不动 |
 | [`bump-build-id.sh`](bump-build-id.sh) | 发版时打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就把指纹历史表（只留上一版 ＋ 当前版两行）最老那行删掉、追加新行（新行取自指纹那条红时印的 `NEW-ROW`）。版本谱系那段说明照旧人写，下一步是 `re-embed.sh` |
 | [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
@@ -28,7 +32,7 @@
 | 层 | 入口 | 跑什么 | 不在这一层 |
 |---|---|---|---|
 | 写的时候 | 增量编 ＋ 只跑改到的那几块（`cargo test --lib -- <模块>` · `vitest run <文件>`） | 改到的那几条 | 其余一切 |
-| 交回前 | `quick-check.sh` | 两棵树排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest；改到手机读的东西才加 ktlint · detekt · 手机 JVM 单测 | e2e · 编译格 · 设备测 |
+| 交回前 | `quick-check.sh` | 两棵树排版 · tsc · 只读盘上文本的七格 · 两棵树整套 `cargo test --lib` · 整套 vitest · 后端那棵改到的包的 clippy · 生成物没提交；改到手机读的东西才加 ktlint · detekt · 手机 JVM 单测 | e2e · 编译格 · 设备测 |
 | 推候选分支前 | `gate-affected.sh --trust-ci` | 上一层 ＋ 恒跑的便宜格 ＋ 被改到的本机才有的格（改了 `src/mobile/` 就含 `android-device`）＋ 被改到被测对象的 e2e 套件 | CI 会跑的格 |
 | 发版前 | `gate-clean.sh`（全量） | `gate.sh` 每一格，含 `android-device`：模拟器上的设备测（androidTest，见下） | 只能手跑的那几样 |
 | CI | `.github/workflows/ci.yml` | 两棵树 cargo · clippy · vitest · 覆盖率 · e2e · 手机 JVM 单测与 release 构建 · Windows 真测 | 设备测（runner 上没有 KVM 模拟器） |
@@ -43,7 +47,22 @@
 判快慢的改计步数 / 计调用次数 / 注入钟（假定时器、虚拟时间），真要看速度的进速度台、不进门禁；要分「自己回来」与「挂住被掐」看退出码，不看用了几秒。
 判据 `tests/common/guard-core/wall_ceiling_tests.rs` 扫门禁跑的测试源，别处写数字期限就红，例外逐条登记理由。
 
-门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓：取环境变量 `PRIVATE_SCAN` 指的那份，没设就在 PATH 上找同名的扫描脚本，都没有就跳过并说一声。
+**会话变量**：在 Claude Code 会话或 tmux 里起的 shell 继承着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_*` 等，单跑测试只换 HOME 时会读到真号的状态。
+表只在 `session-vars` 一处，枚举环境的只有 `session-scrub.sh`：经 `heavy.sh` / `quick-check.sh` 起的命令先经它摘掉；`gate.sh` · e2e 的 `sandbox-env.sh` · 手机台架的登录口照它的 `--list` 摘；测试二进制起来时 `src/common/test-home` 再按同一张表摘一次（`HOME` 是真家时）。
+`TMUX_TMPDIR` 不在表里：摘掉只是回到默认那台，私有的那个由调用方给（quick-check 的沙箱；门禁换掉 `/tmp/tmux-<uid>`，并自己 unset 它）。
+抓依赖用的代理走各工具自己的配置（`CARGO_HOME` 下的 cargo 配置 · `npm_config_proxy` · `gradle.properties`），通用的 `HTTP(S)_PROXY` 一族照摘。
+
+**起点**（`base.sh`）：「这棵树自己改了哪些」= HEAD 与分支上游的 merge-base。施工分支从合并用的分支开时带上游
+（`git worktree add --track -b <分支> <目录> <合并用的分支>`，或事后 `git branch --set-upstream-to=<合并用的分支>`）⇒ 只算这条分支自己的提交，不必先合 main；
+没设上游 ⇒ 对 origin/main（合并用的分支上别的分支的改动也算进来，只会多跑、不会漏跑）。合并用的分支自己不设上游，对的就是 origin/main。
+
+**快检里的静态格**：门禁里只读盘上文本、合计十来秒的那几格进快检（`static_cells`，经 `gate.sh` 的 `GATE_ONLY` 跑同一份命令）。
+量过的数（24 核、负载二十多时）：`hooks` 0.3 秒 · `copy2` 1–5 秒 · `e2e-smoke` 0.2 秒 · `release-gate` 1 秒 · `platform` 0.2 秒 · `installface` 0.8 秒 ·
+`shellcheck` 九十来份串跑 20–57 秒、按核数并起后 4–5 秒（门禁那一格也是并起的）；门禁脚本自己起跑约 3 秒。
+不进快检的：`worktree-clean`（快检本来就跑在没提交的树上）· `audit`（要联网）· `tmux-default` 与 `ccbus-twophase`（要起真进程）· 编译类各格；
+Windows 交叉编译与死码（`winchk` · `winchk-backend` · `winlink` · `deadcode` · `deadcode-backend`）要编 Windows 目标或整棵再编一遍，一格几分钟，留给 gate-affected。
+
+门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓，只认 PATH 上的 `private-scan.sh`：找不到时门禁开跑前就停（没判的不许说绿），推送拒推。
 
 PowerShell 别名块的模板是 `src/shared/cc.ps1.tpl`（不在本目录；后端编译时 `include_str!` 进去）：设置里装别名块时把它（`__ccm_bind` 自动打开 monitor · 窗口标签 ＋ 带标签的 `ssh` · 接上别名文件）写进用户 `$PROFILE` 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内。
 

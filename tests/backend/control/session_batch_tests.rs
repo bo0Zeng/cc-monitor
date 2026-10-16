@@ -1,6 +1,7 @@
 //! 批量停 / 起：每一个的结局与「单个那一条会做的事」相等（替身记下被调了什么；tmux 一个都不起）。
 
 use super::*;
+use serde_json::json;
 use std::cell::RefCell;
 
 /// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。

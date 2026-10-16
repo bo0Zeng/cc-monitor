@@ -245,7 +245,7 @@ async fn what_the_machine_said_to_uname_goes_to_the_detail_not_the_sentence() {
         Some("uname : The term 'uname' is not recognized")
     );
     // 帧面那一格：原话进详情。
-    let frame = e.into_reply("7".into(), "deploy-plan", &Value::Null);
+    let frame = e.into_reply("7".into(), "deploy-plan");
     let wire = serde_json::to_value(&frame).unwrap();
     let detail = wire["detail"].as_str().unwrap_or_default();
     assert!(detail.contains("is not recognized"), "{detail}");
@@ -653,16 +653,6 @@ fn probe_no_cell_answers_in_place_of_another() {
     assert_ne!(
         interpret_target_probe(None, Some(false)),
         interpret_target_probe(None, None)
-    );
-}
-
-/// B1a 后半（随 `is_newer` 从 `deploy-core` 搬来）：只有两边都解得出、且这一版严格大才算新。
-#[test]
-fn hx2_newer_means_both_orders_parse_and_mine_is_strictly_greater() {
-    assert!(is_newer("p3n-a", "p3m-b") && is_newer("p4a-a", "p3z-b"));
-    assert!(!is_newer("p3m-a", "p3m-b"), "同序不同名 ⇒ 不算新");
-    assert!(
-        !is_newer("p3m-a", "p3n-b") && !is_newer("p3n-a", "junk") && !is_newer("junk", "p1a-x")
     );
 }
 

@@ -130,7 +130,7 @@ class ChatCacheTest {
 
     private fun MemCache.seed(vararg records: Map<String, Any?>) {
         pages["s1"] = listOf(RawPage(0, records.size * 10L, records.mapIndexed { i, r -> cell(i, r) }))
-        anchors["s1"] = Anchor("/p/s1.jsonl", records.size * 10L, records.size.toLong())
+        anchors["s1"] = Anchor("/p/s1.jsonl", records.size * 10L, records.size.toLong(), "f1")
     }
 
     @Test
@@ -162,7 +162,7 @@ class ChatCacheTest {
             runCurrent()
             assertEquals(listOf(20L), link.calls("history-read").map { it!!["offset"] })
             assertEquals(listOf("u1", "a1#0", "u2"), s.keys())
-            assertEquals(Anchor("/p/s1.jsonl", 30, 3), cache.anchors["s1"])
+            assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f1"), cache.anchors["s1"])
         }
 
     @Test
@@ -176,7 +176,40 @@ class ChatCacheTest {
             runCurrent()
             assertEquals("从尾段起点（0）读，不从续点 50 往后读", listOf(0L), link.calls("history-read").map { it!!["offset"] })
             assertEquals(listOf("n1", "n2#0"), s.keys())
-            assertEquals(Anchor("/p/s1.jsonl", 20, 2), cache.anchors["s1"])
+            assertEquals(Anchor("/p/s1.jsonl", 20, 2, "f1"), cache.anchors["s1"])
+        }
+
+    @Test
+    fun `同一路径换了一份（身份对不上、长度够）⇒ 从头读最后一屏，不从旧续点往后读`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("n1", "新"), reply("n2", "新"), human("n3", "新")), id = "f2")
+            link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
+            val cache = MemCache().apply { seed(human("u1", "旧"), reply("a1", "旧")) }
+            val s = open(link, cache)
+            runCurrent()
+            assertEquals("从尾段起点（0）读，不从续点 20 往后读", listOf(0L), link.calls("history-read").map { it!!["offset"] })
+            assertEquals(listOf("n1", "n2#0", "n3"), s.keys())
+            assertEquals(Anchor("/p/s1.jsonl", 30, 3, "f2"), cache.anchors["s1"])
+        }
+
+    @Test
+    fun `按行号补完一段：续点跟到那一段之后（不作废），每格带它那一行之后的字节落末页`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File(mutableListOf(human("u1", "你好")))
+            link.answer = { cmd, args -> file.answer(cmd, args) ?: Reply.LinkDown }
+            link.report("s1", "/w")
+            val cache = MemCache()
+            open(link, cache)
+            runCurrent()
+            file.records += listOf(reply("a1", "在"), human("u2", "再来"), reply("a2", "好"))
+            link.line("s1", 3, file.records[3], byteOffset = 40) // 中间 [1, 3) 缺着 ⇒ 按行号补
+            runCurrent()
+            assertEquals(listOf(1L), link.calls("history-lines").map { it!!["from"] })
+            assertEquals(Anchor("/p/s1.jsonl", 40, 4, "f1"), cache.anchors["s1"])
+            val rows = cache.pages.getValue("s1").flatMap { it.rows }
+            assertEquals(listOf(10L, 20L, 30L, 40L), rows.map { (it as Map<*, *>)["end"] })
         }
 
     @Test
@@ -206,7 +239,7 @@ class ChatCacheTest {
                     .single()
                     .rows
             assertEquals(mapOf("end" to 20L, "record" to r), grown[1])
-            assertEquals(Anchor("/p/s1.jsonl", 20, 2), cache.anchors["s1"])
+            assertEquals(Anchor("/p/s1.jsonl", 20, 2, "f1"), cache.anchors["s1"])
         }
 
     @Test

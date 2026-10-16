@@ -23,7 +23,7 @@ function quota(p: Partial<QuotaShow> = {}): QuotaShow {
 
 /** 一个会话的 `rotation-view`：这几处只看 `start` · `current`。 */
 function entry(start: string, current: string): SessionRotationEntry {
-  const read = { now: NOW, nowText: "14:30", strategy: null, form: [], settings: {}, dirty: false, start, current, accounts: [], plates: {}, listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
+  const read = { now: NOW, nowText: "14:30", title: null, strategy: null, form: [], settings: {}, dirty: false, start, current, accounts: [], plates: {}, listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
   return { origin: "<local>", read };
 }
 

@@ -694,9 +694,8 @@ mod specimens {
         RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::history_query::IndexRow;
-    use crate::wire::{
-        ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate, TerminalHost,
-    };
+    use crate::wire::{ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate};
+    use crate::wire::{ActivityFaceExt as _, FrameMake as _};
     use std::collections::BTreeMap;
 
     fn s(v: &str) -> String {
@@ -1145,7 +1144,7 @@ mod specimens {
     }
 
     fn added(activity: SessionActivity) -> Frame {
-        Frame::SessionAdded {
+        Frame::SessionAdded(crate::wire::SessionAdded {
             sid: s("s"),
             agent_kind: "agent".to_string(),
             background: true,
@@ -1161,12 +1160,11 @@ mod specimens {
                 pin: Some(crate::history::history_annotations::Hide::On),
                 ..Default::default()
             }),
-            container: Some(SessionContainer::Hosted {
-                host: TerminalHost::Tmux,
+            container: Some(SessionContainer::Tmux {
                 terminal: some("tmux-1-1"),
             }),
             pid: 1,
-        }
+        })
     }
 
     const ACTIVITIES: [SessionActivity; 4] = [
@@ -1184,13 +1182,13 @@ mod specimens {
         ACTIVITIES
             .into_iter()
             .map(|a| {
-                node_of(&Frame::SessionStatus {
+                node_of::<Frame>(&Frame::SessionStatus(crate::wire::SessionStatus {
                     sid: s("s"),
                     face: ActivityFace::of(Some(a)),
                     name_face: named(),
                     waiting_for: some("w"),
                     path: some("p"),
-                })
+                }))
             })
             .collect()
     }
@@ -1203,11 +1201,13 @@ mod specimens {
     }
 
     pub(super) fn session_removed() -> Vec<Specimen> {
-        vec![node_of(&Frame::SessionRemoved {
-            sid: s("s"),
-            cause: RemovalCause::Superseded,
-            by: some("s2"),
-        })]
+        vec![node_of::<Frame>(&Frame::SessionRemoved(
+            crate::wire::SessionRemoved {
+                sid: s("s"),
+                cause: RemovalCause::Superseded,
+                by: some("s2"),
+            },
+        ))]
     }
 }
 

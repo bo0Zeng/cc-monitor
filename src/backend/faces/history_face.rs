@@ -308,13 +308,15 @@ pub(crate) fn lines_at(
         page.from,
         page.lines
             .iter()
-            .map(|l| l.as_bytes())
-            .zip(page.starts.iter().copied()),
+            .zip(page.starts.iter().copied())
+            .zip(page.ends.iter().copied())
+            .map(|((l, at), end)| (l.as_bytes(), at, Some(end))),
     );
     Ok(HistoryLines {
         from: page.from,
         next: page.next,
         eof: page.eof,
+        end: page.end,
         lines,
     })
 }
@@ -1736,3 +1738,7 @@ pub(crate) fn kin_of(
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/history_paging_tests.rs"]
 mod paging_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/faces/history_bytes_tests.rs"]
+mod bytes_tests;

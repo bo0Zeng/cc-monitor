@@ -7,7 +7,7 @@
 //! |---|---|---|
 //! | [`a_kept_lossy_name_lands_as_its_raw_bytes_on_unix_and_a_renamed_one_as_typed`] | 尾段没改 ⇒ 父目录 ＋ 原始字节（b16）；改了 ⇒ 原样串 | 期望手写 |
 //! | [`a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_backend`] | 远端**只读**（线上只有 `files-read-chunk`，按字节寻址）；块逐个进本机暂存、本机提交落点按字节、摘要 == 本机现算 | 实得是合成对端按 `origin` 记下的；摘要 `sha2` 现算 |
-//! | [`the_chunk_is_the_backend_cap`] | 窗口一块读多少 == 后端 `files::READ_CHUNK_MAX_BYTES` | 读两侧源码 |
+//! | [`the_chunk_is_the_backend_cap`] | 两端共用那一块（`chunk_core::CHUNK`）== 后端 `files::READ_CHUNK_MAX_BYTES` | 读两侧源码 |
 
 use super::*;
 
@@ -62,7 +62,7 @@ impl comms_inward::chan::router::Backends for Two {
             let end = (off + len).min(self.body.len());
             let part = &self.body[off.min(end)..end];
             serde_json::json!({ "path": a["path"], "offset": off, "size": self.body.len(),
-                "eof": end >= self.body.len(), "content": { "b16": crate::chunk_upload::hex(part) } })
+                "eof": end >= self.body.len(), "content": { "b16": chunk_core::hex(part) } })
         } else if op.0 == "files-stage-chunk" {
             serde_json::json!({ "bytes": 1 })
         } else {
@@ -89,7 +89,7 @@ impl comms_inward::chan::router::Backends for Two {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_backend() {
     use sha2::Digest as _;
-    let body: Vec<u8> = (0..(PULL_CHUNK as usize + 1000))
+    let body: Vec<u8> = (0..(chunk_core::CHUNK + 1000))
         .map(|i| (i % 249) as u8)
         .collect();
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -152,7 +152,7 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
         commit,
         &serde_json::json!({
             "key": stages[0]["key"], "root": "/tmp/dl", "rel": crate::source::wire_bytes(b"f\xfe"),
-            "overwrite": true, "expect": { "sha256": want_sha }, "chunks": 2, "bytes": body.len(),
+            "on_exists": "overwrite", "expect": { "sha256": want_sha }, "chunks": 2, "bytes": body.len(),
         })
     );
     assert_eq!(
@@ -167,7 +167,7 @@ fn the_chunk_is_the_backend_cap() {
     let backend = guard_core::production_code(include_str!("../../../src/backend/files/mod.rs"));
     let needle = format!(
         "pub const READ_CHUNK_MAX_BYTES: u64 = {} * 1024;",
-        PULL_CHUNK / 1024
+        chunk_core::CHUNK / 1024
     );
     assert_eq!(
         backend.matches(needle.as_str()).count(),

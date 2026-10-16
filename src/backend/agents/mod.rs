@@ -679,20 +679,8 @@ pub(crate) struct LocalFace {
     pub(crate) wait_of: fn(&serde_json::Value) -> Option<WaitOn>,
 }
 
-/// 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
-/// 线上 `session_added.activity` · `session_status.activity` 送它。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionActivity {
-    /// 一轮在跑。
-    Working,
-    /// 在等人（批准 · 回答 · 弹窗）。
-    NeedsYou,
-    /// 闲着，等下一句输入。
-    Idle,
-    /// 一轮停了，它在后台起的命令还在跑（跑完多半会接着干）。
-    BackgroundWork,
-}
+/// 一条活会话此刻在干什么（与哪一家无关的几态）：线上形住 `cmd-wire`。
+pub use cmd_wire::frame::SessionActivity;
 
 /// 一条会话在等人时，**等的是什么框**（与哪一家无关；适配层从那一家的词翻过来，翻不出 ⇒ 不给）。
 /// 「要人做哪种事」由它配上记录里没结果的那一步判（`observe::facts_query::needs_of`），不在这里判。
@@ -732,19 +720,8 @@ pub(crate) enum RunEnd {
     Stopped,
 }
 
-/// 一个运行最近做的那件事（通用的值域；某一家的哪种记录算哪一件由那一家判）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(tag = "t", rename_all = "lowercase")]
-pub enum RunDid {
-    /// 在写回复。
-    Say,
-    /// 在想。
-    Think,
-    /// 调用了一个工具。
-    Tool { name: String },
-}
+/// 一个运行最近做的那件事（通用的值域）：线上形住 `cmd-wire`。
+pub use cmd_wire::frame::RunDid;
 
 /// 父记录里说到子运行的一条。三形：
 /// - 派出：`tool` 有、`run` 无 ⇒ 这次工具调用派出了一个子运行（标签 · 类别）；
@@ -2571,21 +2548,8 @@ pub(crate) fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
     user_text_of(kind, v).is_some_and(|t| matches!(t.speaker, Speaker::CompactSummary { .. }))
 }
 
-/// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。
-///
-/// `D3` 逐字：「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」。
-/// 这个结构就是那条 charter 的形状：两个字段名都与任何一个 agent 无关，
-/// **接第三个 agent 是多一个元素，不是多一个字段**。
-///
-/// 它替掉的是并列 `<名>_dir` 那条路。那条路的终点 `D3` 已经写死了：
-/// hello 帧里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。
-#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
-pub struct AgentHome {
-    /// 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间。
-    pub agent_kind: String,
-    /// 该 agent 在这台机器上的 home 目录（绝对路径）。
-    pub path: String,
-}
+/// `hello.homes` 的一项：线上形住 `cmd-wire`。
+pub use cmd_wire::frame::AgentHome;
 
 /// **这台机器上看得见哪些 agent** —— 直接产出 `hello.homes` 的那张表〔`S5`，`G1` 成功标准③〕。
 ///

@@ -66,7 +66,7 @@ cargo clippy --all-targets
 |---|---|---|
 | node 纯函数套件（`tests/**/*.test.ts`） | `npm test` 的前段（每套一个 `test:*` 脚本，`tsx` 跑） | diff · 报错卡 · bash 卡 · 格式化 · 历史缓存等纯逻辑。清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES` |
 | vitest ＋ jsdom（`tests/**/*.vitest.ts`） | `npm run test:dom`；单跑一份 `npx vitest run <文件>`；覆盖率 `npm run coverage` | DOM · 生命周期 · 通道替身协作：tab 门控与物化、账本、估高、设置面板等 |
-| 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求 `src/frontend/ui/generated/` 无差异） | 全部源码与测试文件 |
+| 类型 | `npx tsc --noEmit`；`npm run check:types`（重生成 Rust 导出的类型并要求各 `generated/` 与提交的一致、没有没跟踪的，`tests/scripts/generated-drift.sh`） | 全部源码与测试文件 |
 | lint | `npm run lint` · `npm run lint:css` | CI 里只作参考；eslint 基线由 `tests/frontend/ui/eslint-baseline.vitest.ts` 钉着 |
 
 `npm test` ＝ 全部 node 套件 ＋ vitest，即 CI frontend job 里的单测那一步；覆盖率的逐文件地板另跑 `node tests/scripts/assert-coverage-floors.mjs`。各套测试的条数以实跑为准，这里不抄。
@@ -82,11 +82,11 @@ cargo clippy --all-targets
 - `npm run gate`（＝ `bash tests/scripts/gate.sh`）：全量门禁，格的唯一名单，逐格跑 cargo（三处）· npm · 各类判据 · e2e，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。它故意不提交任何东西。
   每一趟落一张收据（位置由 `GATE_RECEIPT` 定，默认在构建目录里）：真跑过哪几格、每格毫秒数（`ms`）、e2e 前置编译与整趟墙钟。`GATE_ONLY="<格> …"` 只跑点名的几格（e2e 可写组名 `e2e`），裁决行是 `GATE: PARTIAL`；CI 的 Linux job 就是这么调它的。
 - 平时不直接敲 `npm run gate`，也不拿它当调试回路；写的时候只跑改到的那几块测试，之后走这几个入口（都在 `tests/scripts/`，跑法见各自头注与 [`tests/scripts/README.md`](../../tests/scripts/README.md)）：
-  - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿锁；两棵 Rust 树的全部单测 ＋ 整套 vitest，改到手机读的东西时加跑手机的 ktlint · detekt · 单测；跑哪几条见它的头注）。
+  - 交门禁之前：`bash tests/scripts/quick-check.sh`（不拿锁；两棵 Rust 树的全部单测 ＋ 整套 vitest ＋ 后端那棵改到的包的 clippy，改到手机读的东西时加跑手机的 ktlint · detekt · 单测；跑哪几条见它的头注）。
   - 合并用的工作树推送之前：`bash tests/scripts/gate-affected.sh --trust-ci`（按改动挑格，`--dry-run` 只印计划），绿了 `bash tests/scripts/push-candidate.sh <合并工作树名>`（先推候选分支 `next`，CI 全绿才快进 `main`）。
   - 打发版标签之前：`bash tests/scripts/gate-clean.sh`（清掉会话变量、排门禁锁的全量一趟，`GATE: OK` 才打）。
   - 重活（编译 · 测试 · 门禁）经 `bash tests/scripts/heavy.sh <命令…>`：单独一个封顶内存的 systemd scope ＋ 槽位排队；没有 `systemd-run --user` 的机器上直接跑。
-  - 门禁锁 · 槽位 · 推送日志在 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）；私人扫描的脚本与词表不在仓里，`PRIVATE_SCAN` 指过去，没有就跳过。
+  - 门禁锁 · 槽位 · 推送日志在 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）；私人扫描的脚本与词表不在仓里，只认 PATH 上的 `private-scan.sh`，找不到时门禁不说绿、推送拒推。
 - `bash tests/scripts/verify-committed-state.sh`：从提交状态（不是工作树）编一次，逮「工作树里有、提交里漏了」的改动。提交推上 `main` 之前 CI 看不见它们，所以推之前在本机跑。
 
 ### 这些数不抄在文档里

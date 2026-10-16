@@ -9,6 +9,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionFate
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
+import com.ccmonitor.mobile.core.claude.link.wire.Hidden
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryRow
 import com.ccmonitor.mobile.core.claude.link.wire.Needs
@@ -27,7 +28,8 @@ class ConversationsViewTest {
     private fun row(
         sid: String,
         section: String,
-    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live")
+        hidden: Hidden? = null,
+    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live", hidden)
 
     private val list =
         Fetched.Got(
@@ -108,7 +110,7 @@ class ConversationsViewTest {
     fun `每行一颗状态点：活的照语气、离开活的照去向、流上没有的照清单那一格；字跟着那一格`() {
         val rows =
             listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词")
-                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st) }
+                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st, null) }
         val table =
             SessionTable(
                 sessions = mapOf("a" to LiveSession(sid = "a", activity = Toned("需手动", Tone.NEED))),
@@ -161,5 +163,23 @@ class ConversationsViewTest {
         assertEquals(Toned(copyText("newSession.machine.offline", "machine" to "m"), Tone.PLAIN), r.status)
         val up = view("m", LinkState.Up(), stale, Fetched.Loading, Fetched.Loading, cached = cached)
         assertEquals("通着 ⇒ 照会话帧", SessionDot.RUNNING, up.recent.single().dot)
+    }
+
+    @Test
+    fun `隐藏只照行上那一格：「显示已隐藏」关着不画带格的行（上次缓存里的也不画）；开着照画、带后端那一句；抽屉「最近」一律不列`() {
+        val page = HistoryListPage(listOf(row("1", "今天"), row("2", "今天", Hidden("已隐藏")), row("3", "昨天")), null, false)
+        val off = view("m", LinkState.Up(), SessionTable(), Fetched.Got(page), Fetched.Got(emptyList()))
+        assertEquals(listOf("1", "3"), off.sections.flatMap { it.rows }.map { it.sessionId })
+        assertEquals(false, off.showHidden)
+        val cachedOff = view("m", LinkState.Connecting, SessionTable(), Fetched.Loading, Fetched.Loading, cached = page)
+        assertEquals(listOf("1", "3"), cachedOff.sections.flatMap { it.rows }.map { it.sessionId })
+        val on = view("m", LinkState.Up(), SessionTable(), Fetched.Got(page), Fetched.Got(emptyList()), showHidden = true)
+        val rows = on.sections.flatMap { it.rows }
+        assertEquals(listOf("1", "2", "3"), rows.map { it.sessionId })
+        assertEquals(listOf(null, "已隐藏", null), rows.map { it.hidden })
+        assertEquals(true, on.showHidden)
+        assertEquals("抽屉「最近」不列隐藏的", listOf("1", "3"), on.recent.map { it.sessionId })
+        val down = view("m", LinkState.Down(Said("m 离线", "boom"), needsHand = false), SessionTable(), Fetched.Loading, Fetched.Loading, cached = page, showHidden = true)
+        assertEquals("离线照缓存画时也照开关", listOf("1", "2", "3"), down.sections.flatMap { it.rows }.map { it.sessionId })
     }
 }

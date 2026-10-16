@@ -497,7 +497,7 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 | 层 | 脚本 | 什么时候 | 跑什么 |
 |---|---|---|---|
 | 写的时候 | — | 每改一处 | 增量编 ＋ 只跑改到的那几块（`cargo test --lib -- <模块>` · `npx vitest run <文件>`） |
-| 交回前 | `quick-check.sh` | 一份改动做完 | 两棵 Rust 树的排版 · tsc · 后端整套单测 ＋ 壳那棵 `cargo test --workspace --lib` · 整套 vitest，在 `.build/` 下的一次性沙箱里跑、不拿锁；改到手机读的东西才加跑 ktlint · detekt · 手机 JVM 单测。「加了子命令要打版本号」单列成待办、不算红 |
+| 交回前 | `quick-check.sh` | 一份改动做完 | 两棵 Rust 树的排版 · tsc · 后端整套单测 ＋ 壳那棵 `cargo test --workspace --lib` · 整套 vitest · 后端那棵改到的包的 clippy，在 `.build/` 下的一次性沙箱里跑、不拿锁；改到手机读的东西才加跑 ktlint · detekt · 手机 JVM 单测。「加了子命令要打版本号」单列成待办、不算红 |
 | 推候选分支前 | `gate-affected.sh --trust-ci` | 合进主线之前 | 先 `quick-check.sh`；再按改动挑门禁的格（`gate-affected/map` 路径 → 格组，`gate-affected/plan.py` 挑），只跑恒跑的便宜格 ＋ 被改到的本机才有的格 ＋ 被改到被测对象的 e2e 套件，CI 会跑的交给 CI；拿门禁锁 |
 | 打发版标签前 | `gate-clean.sh` | 发版 | 清掉会话变量、排门禁锁，跑全量 `gate.sh`（各格一遍，`GATE: OK` 才打标签） |
 

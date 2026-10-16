@@ -124,6 +124,7 @@ export function machineOps(): Record<string, OpHandler> {
         { label: "build-02", host: "192.0.2.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "192.0.2.31", port: 2222, proxyJump: "bastion" }], inList: false },
         { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
       ],
+      partial: false,
     }),
     // 接入那一格：~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（链接那一条恒是你写的生效）。
     "aliases-read": () => ({

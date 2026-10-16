@@ -65,7 +65,7 @@
  *
  * ⚠ **两道门各盖一半，别只报一边**（同 `C05` 那个拆法）：
  * · 「已提交的生成物 == Rust 源」由**门禁第六格 `generated`** 盖
- *   （`git diff --exit-code -- src/frontend/ui/generated/`，跑在 `cargo test --lib` 之后）；
+ *   （`tests/scripts/generated-drift.sh`，跑在 `cargo test --lib` 之后）；
  * · 「TS 消费方 == 已提交的生成物」＋「生成物 == 金表」由**本文件**盖（值的家进了后端之后，「后端那一份 == 金表」由后端 `agents_tests.rs` 盖），
  *   它在**没有 Rust 的那一侧**（CI 的 frontend job）也成立。
  * 🔴 在**整趟门禁**里跑时，`cargo` 那一格会先把生成物重写一遍 ⇒ 本文件那条对拍

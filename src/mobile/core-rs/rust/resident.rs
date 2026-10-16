@@ -560,8 +560,8 @@ mod tests {
         );
         assert_eq!(got["data"]["rows"][1]["cwd"], "/w");
 
-        let line = |seq: u64, r: &serde_json::Value| serde_json::json!({"session_id": "s", "path": "/p", "seq": seq, "cwd": null, "record": r});
-        let lines = serde_json::json!({"from": 0, "next": 2, "eof": false, "lines": [line(0, &good), line(1, &short)]});
+        let line = |seq: u64, r: &serde_json::Value| serde_json::json!({"session_id": "s", "path": "/p", "seq": seq, "end": (seq + 1) * 10, "cwd": null, "record": r});
+        let lines = serde_json::json!({"from": 0, "next": 2, "end": 20, "eof": false, "lines": [line(0, &good), line(1, &short)]});
         let got: serde_json::Value =
             serde_json::from_str(&reply_json(5, "box", "history-lines", Ok(Some(lines))))
                 .expect("JSON");

@@ -702,6 +702,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
+  // 分块传那一圈（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心共用；界面不分块传，没有孪生。
+  "chunk-core": {
+    CHUNK: NONE,
+    key_of: NONE,
+    hex: NONE,
+    new: NONE,
+    sent: NONE,
+    finish: NONE,
+  },
   "cmd-wire": {
     LOCAL: "J36",
     // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。
@@ -739,6 +748,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     unread_text: NONE,
     unread: NONE,
     mend_line_frame: NONE,
+    // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
+    //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
+    decode: NONE,
+    as_wire: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
     // 线上一家 agent 的名字（`AgentKind`）：收下 · 取串。不是判定（kind ⇄ 路由名那一换住后端 `agents`）；界面拿生成的类型当串用，没有孪生。
@@ -1068,6 +1081,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     STAMP_OPEN: NONE, // 身份戳界标（后端拼戳 · monitor 扫字节两侧同一份；TS 不扫字节）
     STAMP_CLOSE: NONE,
     build_order: NONE,
+    build_relation: NONE,
     identity_of_bytes: NONE,
     interpret_stamp_scan: NONE,
     key_from_uname: NONE,

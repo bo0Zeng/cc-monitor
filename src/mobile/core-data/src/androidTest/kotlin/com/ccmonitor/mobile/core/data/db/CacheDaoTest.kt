@@ -41,7 +41,7 @@ class CacheDaoTest {
         runTest {
             dao.replaceList("h", (0..50).map { "s$it" to "{\"sessionId\":\"s$it\"}" })
             for (i in 0..50) {
-                dao.putPages("h", "s$i", listOf(page("h", "s$i")), SyncAnchor("h", "s$i", "/p", 10, 1))
+                dao.putPages("h", "s$i", listOf(page("h", "s$i")), SyncAnchor("h", "s$i", "/p", 10, 1, "f"))
                 dao.viewed("h", "s$i", at = 100L + i)
             }
             assertTrue("最久没看的那条（s0）的页该淘汰", dao.pages("h", "s0").isEmpty())

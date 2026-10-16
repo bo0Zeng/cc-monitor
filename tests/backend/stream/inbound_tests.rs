@@ -453,7 +453,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .filter(|name| {
             matches!(
                 dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
-                Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
+                Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. }))
                     if c == "unknown_command"
             )
         })
@@ -470,7 +470,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     assert!(
         matches!(
             dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
-            Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
+            Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. })) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
     );
@@ -564,9 +564,9 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
 
     let f = rx.recv().await.expect("应当有应答");
     match f {
-        Frame::Reply {
+        Frame::Reply(crate::wire::Reply {
             id, ok, ref code, ..
-        } => {
+        }) => {
             assert_eq!(id, "c1");
             assert!(!ok, "对不可取消的命令发 cancel 不该回 ok");
             assert_eq!(
@@ -844,39 +844,6 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
     assert!(
         !raw.trim().is_empty() && !message.contains(raw.trim()),
         "{r}"
-    );
-}
-
-/// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
-#[test]
-fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
-    let f = crate::wire::spec::Fail::from((
-        "kill_failed".to_string(),
-        "tmux: can't find window: demo-cc:2".to_string(),
-    ));
-    let crate::wire::Frame::Reply {
-        message, detail, ..
-    } = f.into_reply(
-        "i".into(),
-        "kill",
-        &serde_json::json!({ "name": "demo-cc" }),
-    )
-    else {
-        panic!("不是应答帧");
-    };
-    let message = message.unwrap();
-    let detail = detail.unwrap();
-    assert_eq!(
-        message,
-        copy_core::copy_text("tmuxControl.kill.failed", &[("target", "demo-cc")])
-    );
-    assert!(!message.contains("can't find window"), "{message}");
-    assert!(
-        detail.contains(&format!(
-            "{}：tmux: can't find window: demo-cc:2",
-            copy_core::copy_text("detail.label.raw", &[])
-        )),
-        "{detail}"
     );
 }
 

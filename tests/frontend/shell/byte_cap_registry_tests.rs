@@ -211,14 +211,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （`SNAPSHOT_MAX_BYTES` / `MAX_SESSION_BYTES`）。",
     ),
     (
-        "CHUNK_RAW",
-        "**步长**不是上限：文件窗口上传块形每一块读多少原始字节（`filewin/chunk_upload.rs`，b16 翻倍后一行仍远小于后端入方向一行 \
-             `MAX_LINE_BYTES`）。它不限任何字节总量（整份文件多大都一块一块送完）、不截任何东西。",
-    ),
-    (
-        "PULL_CHUNK",
-        "**步长**不是上限：非 UTF-8 名的下载每一块向那台后端要多少原始字节（`filewin/lossy_pull.rs`，== 后端 \
-             `READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。它不限整份多大（一块一块读到 `eof`）、不截任何东西。",
+        "CHUNK",
+        "**步长**不是上限：分块传每一块多少原始字节（`common/chunk-core`，文件窗口与手机同一份；== 后端 \
+             `READ_CHUNK_MAX_BYTES`，读两侧源码钉相等；b16 翻倍后一行仍远小于后端入方向一行 `MAX_LINE_BYTES`）。\
+             它不限整份多大（一块一块送完 / 读到 `eof`）、不截任何东西。",
     ),
     (
         "OWN_FILE_MODE",
@@ -464,6 +460,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/frontend/shell/src/event_replay.rs",
         "HELD_BYTES_CAP",
         "monitor 重放留存里全部会话合起来的正文字节（单会话另有条数上界 `REPLAY_TAIL_KEEP` ＋ `TRIM_SLACK`）",
+        "截断+说清",
+    ),
+    // 帧日志（查闪烁时才开）一扇窗最多记几帧（**条数，不是字节**）：记满写一行 `stopped=cap` 再关掉 ⇒ 「截断+说清」。
+    (
+        "src/frontend/filewin/src/frame_log.rs",
+        "MAX_FRAMES",
+        "文件窗口帧日志一扇窗最多记几帧（**条数，不是字节**；一行约两百字节）",
         "截断+说清",
     ),
     (

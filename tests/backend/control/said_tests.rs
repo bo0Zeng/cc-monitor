@@ -1,7 +1,7 @@
-//! 那几条命令被拒时的那一句（从界面搬来的表）：金样里的每个码各一句、两两不同、句子里没有原话；
-//! 后端知道的对象（会话名 · 收件人）在句子里（处理器原来那句进复制详情的原话：`inbound_tests.rs` 那条）。
+//! 那几条命令被拒时的那一句（各条命令自己的「码 → 句」表）：金样里的每个码各一句、两两不同、句子里没有原话；
+//! 后端知道的对象（会话名 · 收件人）在句子里（处理器原来那句进复制详情的原话：`kill_tests.rs` 那条）。
 
-use super::*;
+use super::{cc_bus_wire, kill, terminal_follow, terminals_wire};
 
 fn golden(file: &str) -> serde_json::Value {
     let p = crate::guard_support::repo_root()
@@ -27,50 +27,48 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
     let bus = golden("cc-bus-control.golden.json");
     let tmux = golden("tmux-control.golden.json");
     let term = golden("terminals.golden.json");
-    let cases: Vec<(&str, serde_json::Value, Vec<String>, Option<&str>)> = vec![
+    type Table = Box<dyn Fn(&str) -> String>;
+    let cases: Vec<(&str, Table, Vec<String>, Option<&str>)> = vec![
         (
             "kill",
-            serde_json::json!({ "name": "demo-cc" }),
+            Box::new(|c| kill::said("demo-cc", c)),
             codes(&tmux, "kill"),
             Some("demo-cc"),
         ),
         (
             "terminal-preview",
-            serde_json::json!({}),
+            Box::new(terminals_wire::preview_said),
             codes(&term, "terminal-preview"),
             None,
         ),
         (
             "bus-send",
-            serde_json::json!({ "to": "agent-a" }),
+            Box::new(|c| cc_bus_wire::send_said("agent-a", c)),
             codes(&bus, "bus-send"),
             Some("agent-a"),
         ),
         (
             "bus-kill",
-            serde_json::json!({ "id": "agent-a" }),
+            Box::new(|c| cc_bus_wire::kill_said("agent-a", c)),
             codes(&bus, "bus-kill"),
             None,
         ),
         (
             "bus-spawn",
-            serde_json::json!({}),
+            Box::new(cc_bus_wire::spawn_said),
             codes(&bus, "bus-spawn"),
             None,
         ),
         (
             "bus-broadcast",
-            serde_json::json!({}),
+            Box::new(cc_bus_wire::broadcast_said),
             codes(&bus, "bus-broadcast"),
             None,
         ),
     ];
-    for (cmd, args, codes, object) in cases {
+    for (cmd, table, codes, object) in cases {
         assert!(!codes.is_empty(), "{cmd}：金样里一个码都没有");
-        let said: Vec<String> = codes
-            .iter()
-            .map(|c| reword(cmd, &args, c).unwrap_or_else(|| panic!("{cmd} 没有表")))
-            .collect();
+        let said: Vec<String> = codes.iter().map(|c| table(c)).collect();
         for (c, s) in codes.iter().zip(&said) {
             assert!(!s.trim().is_empty() && !s.contains('{'), "{cmd}/{c}：{s:?}");
             assert!(!s.contains(c.as_str()), "{cmd}/{c}：码上了句子：{s}");
@@ -95,33 +93,39 @@ fn every_golden_code_has_its_own_sentence_without_raw_words() {
             "{cmd}：有两档被压成了同一句：{said:?}"
         );
     }
-    assert!(
-        reword("ping", &serde_json::json!({}), "x").is_none(),
-        "没有表的命令该照原句"
-    );
-    // 账号库那几条没有表：契约对不上照处理器那句（「请求格式不对」），不猜成两端版本。
-    assert!(reword("accounts-add", &serde_json::json!({}), "bad_args").is_none());
-    assert!(reword("accounts-add", &serde_json::json!({}), "name_taken").is_none());
+}
+
+/// 没有表的命令照处理器那句：投出去那一层（`Fail::settle`）不按命令名换句子。
+#[test]
+fn the_wire_layer_keeps_the_handlers_sentence() {
+    for (cmd, code) in [
+        ("kill", "kill_failed"),
+        ("bus-send", "rejected"),
+        ("accounts-add", "bad_args"),
+    ] {
+        let f = crate::wire::spec::Fail::new(code, "处理器那句".to_string());
+        let out = f.settle(cmd);
+        assert_eq!(out.message, "处理器那句", "{cmd}/{code}");
+    }
 }
 
 /// 订实时画面被拒：带版本 / 带上限的那两码处理器那句就是成品（照原样）；别的码各一句、没有原话。
 #[test]
 fn terminal_follow_refusals_are_said_by_the_backend() {
-    let args = serde_json::json!({});
     for code in ["tmux_too_old", "too_many_follows"] {
-        assert_eq!(reword("terminal-follow", &args, code), None, "{code}");
+        assert_eq!(terminal_follow::said(code), None, "{code}");
     }
     let said: Vec<String> = ["no_tmux", "not_known", "ambiguous", "unobservable"]
         .iter()
-        .map(|c| reword("terminal-follow", &args, c).unwrap_or_else(|| panic!("{c} 没有句子")))
+        .map(|c| terminal_follow::said(c).unwrap_or_else(|| panic!("{c} 没有句子")))
         .collect();
     let mut uniq = said.clone();
     uniq.sort();
     uniq.dedup();
     assert_eq!(uniq.len(), said.len(), "两码同句：{said:?}");
     assert_eq!(
-        reword("terminal-follow", &args, "bad_args"),
-        reword("terminal-follow", &args, "unobservable"),
+        terminal_follow::said("bad_args"),
+        terminal_follow::said("unobservable"),
         "认不出的码落「接不上」那一句"
     );
 }

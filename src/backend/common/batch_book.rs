@@ -324,6 +324,9 @@ pub(crate) fn cancel_rest(out: &mut Vec<BatchOutcome>, from: usize, total: usize
     out.extend((from..total).map(|i| BatchOutcome::bare(key_of(i), ItemState::Cancelled)));
 }
 
+/// 保留两份另起名时最多往后试到第几个。
+pub(crate) const MINT_TRIES: u32 = 999;
+
 /// 保留两份：`名 (k).ext` 里 `k` 从 2 起。
 pub(crate) fn minted(to: &Path, k: u32) -> PathBuf {
     let name = to

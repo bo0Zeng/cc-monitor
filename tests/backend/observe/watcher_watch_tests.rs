@@ -51,9 +51,9 @@ fn append(path: &Path, n: usize) {
 fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Line {
+        if let Frame::Line(crate::wire::Line {
             session_id, seq, ..
-        } = f
+        }) = f
         {
             out.push((session_id, seq));
         }
@@ -99,17 +99,17 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {
         kinds.push(match f {
-            Frame::SessionRuns { sid, .. } => format!("runs {sid}"),
-            Frame::SessionBranch { sid, .. } => format!("branch {sid}"),
+            Frame::SessionRuns(crate::wire::SessionRuns { sid, .. }) => format!("runs {sid}"),
+            Frame::SessionBranch(crate::wire::SessionBranch { sid, .. }) => format!("branch {sid}"),
             _ => "other".into(),
         });
     }
     assert_eq!(kinds, vec![format!("runs {A}")]);
     // 摘要那几格（状态 · 文件重读 / 不在了）不挑：没在看的会话照发。
-    sink.send(Frame::SessionFileGone {
+    sink.send(Frame::SessionFileGone(crate::wire::SessionFileGone {
         session_id: B.into(),
         path: "p".into(),
-    });
+    }));
     let mut n = 0;
     while rx.try_recv().is_ok() {
         n += 1;
@@ -191,7 +191,7 @@ fn coming_into_view_resends_the_run_table_and_the_branch_list() {
     watch_sessions(0, ids(&[A, B]), &mut state, &mut sink);
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionRuns { sid, .. } = f {
+        if let Frame::SessionRuns(crate::wire::SessionRuns { sid, .. }) = f {
             kinds.push(sid);
         }
     }

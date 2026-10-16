@@ -35,9 +35,6 @@ pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
     Some(crate::platform::path_from_bytes(&b))
 }
 
-/// 一块读多少（== 后端 `files::READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。
-pub const PULL_CHUNK: u64 = 256 * 1024;
-
 /// 十六进制 → 字节（`{"b16": …}` 的内容；形状不对 ⇒ `None`）。
 pub fn unhex(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
@@ -66,7 +63,33 @@ pub fn split_local(
     ))
 }
 
-/// 整趟：远端逐块读回（按字节寻址）→ 本机逐块进暂存区 → 本机提交（摘要照核）。`overwrite` ＝ 人在「盖不盖」那一问里答了盖。
+/// 读回来的一块再进本机的暂存区（同一个键，块号连着）。
+struct Restage<'a> {
+    stager: chunk_core::Stager,
+    here: super::chunk_upload::Over<'a>,
+}
+
+impl chunk_core::Sink for Restage<'_> {
+    type Fail = super::source::Failed;
+    async fn put(&mut self, bytes: Vec<u8>) -> Result<(), Self::Fail> {
+        self.stager.put(&self.here, bytes).await
+    }
+}
+
+/// 下载那一格的撤与进度。
+struct Board<'a>(&'a super::download::DownloadBoard);
+
+impl chunk_core::Watch for Board<'_> {
+    fn stopped(&self) -> bool {
+        self.0.cancels().is_cancelled()
+    }
+    fn moved(&mut self, done: u64, total: Option<u64>) {
+        self.0.progress(done, total.unwrap_or(0));
+    }
+}
+
+/// 整趟：远端逐块读回（按字节寻址）→ 本机逐块进暂存区 → 本机提交（摘要照核）。读回与进暂存区那一圈是两端共用的 `chunk_core`。
+/// `overwrite` ＝ 人在「盖不盖」那一问里答了盖。
 pub async fn pull_by_bytes(
     line: &super::source::Line,
     origin: &super::source::Origin,
@@ -75,62 +98,39 @@ pub async fn pull_by_bytes(
     overwrite: bool,
     board: &super::download::DownloadBoard,
 ) -> Result<(), String> {
-    use super::source::ask_typed;
+    use super::source::{ask_typed, Failed};
     use cmd_wire::files as w;
-    use sha2::Digest as _;
     let (root, rel) =
         split_local(&local).ok_or_else(|| copy_text("rsFilewinLossyPull.local.badDest", &[]))?;
     let here = comms_inward::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
-    let key = uuid::Uuid::new_v4().simple().to_string();
-    let mut sha = sha2::Sha256::new();
-    let (mut off, mut seq) = (0u64, 0u64);
-    loop {
-        if board.cancels().is_cancelled() {
-            return Err(super::transfer::CANCELLED.to_string());
-        }
-        let d = ask_typed(
+    let there = super::chunk_upload::Over { line, origin };
+    let mut sink = Restage {
+        stager: chunk_core::Stager::new(chunk_core::key_of(*uuid::Uuid::new_v4().as_bytes())),
+        here: super::chunk_upload::Over {
             line,
-            origin,
-            &cmd_wire::files::ReadChunkReq {
-                path: cmd_wire::files::WirePath(remote.to_vec()),
-                offset: off,
-                len: PULL_CHUNK,
-            },
-            super::chunk_upload::CHUNK_BUDGET,
-        )
-        .await
-        .map_err(|f| f.said)?;
-        let body = d.content.0;
-        let size = d.size;
-        if !body.is_empty() {
-            sha.update(&body);
-            let req = w::FilesStageChunkReq {
-                key: key.clone(),
-                seq,
-                content: w::ChunkBytes::Hex(body.clone()),
-            };
-            ask_typed(line, &here, &req, super::chunk_upload::CHUNK_BUDGET)
-                .await
-                .map_err(|f| f.said)?;
-            seq += 1;
-            off += body.len() as u64;
-        }
-        board.progress(off, size);
-        if d.eof || body.is_empty() {
-            break;
-        }
-    }
-    let digest = super::chunk_upload::hex(&sha.finalize());
+            origin: &here,
+        },
+    };
+    chunk_core::pull(
+        &there,
+        w::WirePath(remote.to_vec()),
+        &mut sink,
+        &mut Board(board),
+        || Failed::from(super::transfer::CANCELLED.as_str()),
+    )
+    .await
+    .map_err(|f| f.said)?;
+    let s = sink.stager.finish();
     let req = w::FilesCommitUploadReq {
         root,
         rel,
-        key,
-        overwrite,
+        key: s.key,
+        on_exists: overwrite.then_some(cmd_wire::batch::OnExists::Overwrite),
         expect: w::Sha256Expect {
-            sha256: w::Sha256Hex(digest),
+            sha256: w::Sha256Hex(s.sha256),
         },
-        chunks: Some(seq),
-        bytes: Some(off),
+        chunks: Some(s.chunks),
+        bytes: Some(s.bytes),
     };
     ask_typed(line, &here, &req, super::transfer::COMMIT_BUDGET)
         .await

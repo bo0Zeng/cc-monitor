@@ -1254,7 +1254,7 @@ export class TabStreamView {
         tab.seenSeqs.addRange(page.from, page.next); // 同上
         tab.window.markFetchedBelow(range.from);
         this.updateSentinel(tab);
-        if (this.store.activeId === tab.sessionId && tab.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) {
+        if (this.inFront(tab) && tab.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) {
           this.fillAbove(tab);
         }
       })
@@ -1413,18 +1413,17 @@ export class TabStreamView {
    * 「仍没满一屏」那一问用真实布局（`contentReachesBottom`），不只看滚不滚得动。
    */
   private scheduleFillContinuation(tab: Tab): void {
-    // 调度：自链 —— 向上补料批末复检：仍在触发区且账本有余就再补，切走了或账尽即停
+    // 调度：自链 —— 向上补料批末复检：仍在触发区且账本有余就再补，切走了 · 关掉了 · 主人拆掉了或账尽即停
     requestAnimationFrame(() => {
-      if (this.store.activeId !== tab.sessionId) return;
-      const t = this.store.tabs.get(tab.sessionId);
-      if (!t || (t.window.pendingCount === 0 && !t.window.wantsBelow)) return;
-      const e = t.streamEl;
+      if (!this.inFront(tab)) return;
+      if (tab.window.pendingCount === 0 && !tab.window.wantsBelow) return;
+      const e = tab.streamEl;
       if (
         e.scrollTop <= TabStreamView.TOP_TRIGGER_PX ||
         e.scrollHeight - e.clientHeight <= 1 ||
-        !this.contentReachesBottom(t)
+        !this.contentReachesBottom(tab)
       ) {
-        this.fillAbove(t);
+        this.fillAbove(tab);
       }
     });
   }

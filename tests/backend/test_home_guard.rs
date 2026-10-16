@@ -135,6 +135,11 @@ const LEAKS: &[&str] = &[
     "CCM_RESIDENT",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_API_KEY",
+    "CLAUDECODE",
+    "AI_AGENT",
+    "CODEX_HOME",
+    "CC_BUS_ID",
+    "HTTPS_PROXY",
 ];
 /// 台架 / 人交给判据的输入：照留（反控：清单没把 `CCM_` 一族一刀切）。
 const KEPT: &[&str] = &["CCM_E2E_WORK", "CCM_SHOTS_NOW_MS", "CCM_SANDBOX"];
@@ -158,7 +163,7 @@ fn child_sees_no_outer_session() {
     }
 }
 
-/// ★ 测试进程里没有外面会话的状态：带着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_RELAY_PORT` · `CCM_*` · `ANTHROPIC_*`
+/// ★ 测试进程里没有外面会话的状态：带着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_RELAY_PORT` · `CCM_*` · `ANTHROPIC_*` · 代理 等
 /// 把本测试二进制当一次新进程拉起（摘掉换家标记、`HOME` 给真家，像在会话里直接敲 `cargo test` 那样），子进程里一样都看不见；
 /// 判据的输入照留。
 #[test]

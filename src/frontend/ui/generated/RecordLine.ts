@@ -18,6 +18,10 @@ path: string,
  */
 seq: number, 
 /**
+ * 这一行（含 `\n`）之后那个字节；相邻认不出的几行并成这一条时 ＝ 最后那一行之后。没 `\n` 收尾的残尾 ⇒ `null`。
+ */
+end: number | null, 
+/**
  * 那一行记的工作目录；没有 ⇒ `null`。
  */
 cwd: string | null, 

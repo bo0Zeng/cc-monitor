@@ -222,6 +222,21 @@ fn log_rows(log: &[book::Log]) -> Vec<RotLogRow> {
         .collect()
 }
 
+/// 会话那一形顶栏写的名字（[`RotationViewReply::title`]）。
+fn title_of(target: &RotTarget) -> Option<String> {
+    let RotTarget::Session { sid } = target else {
+        return None;
+    };
+    let annotations = match crate::history::history_annotations::load() {
+        crate::history::history_annotations::Loaded::Read(t) => t,
+        _ => Default::default(),
+    };
+    Some(crate::history::session_hidden::title_here(
+        sid,
+        &annotations,
+    ))
+}
+
 crate::wire::typed::codes! {
     /// `rotation-view` 自己的码。
     pub(crate) enum RotationViewErr {
@@ -405,6 +420,7 @@ pub(crate) fn view_with(
         return Ok(RotationViewReply {
             now,
             now_text: face(now, tz),
+            title: title_of(&req.target),
             strategy: None,
             form: Vec::new(),
             settings: Value::Object(Default::default()),
@@ -581,6 +597,7 @@ pub(crate) fn view_with(
     Ok(RotationViewReply {
         now,
         now_text: face(now, tz),
+        title: title_of(&req.target),
         strategy: Some(item),
         form: head.map(|h| h.form.clone()).unwrap_or_default(),
         settings: loaded.settings.clone(),

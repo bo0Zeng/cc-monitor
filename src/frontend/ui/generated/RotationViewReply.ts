@@ -18,6 +18,10 @@ export type RotationViewReply = { now: number,
  */
 nowText: string, 
 /**
+ * 会话那一形：这条会话叫什么（同历史清单那一格：改过的 ＞ 标题 ＞ 第一句；这台记录树里找不到 ⇒ 会话 id 前 8 位）；设置页 ⇒ `null`。
+ */
+title: string | null, 
+/**
  * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
  */
 strategy: RotStrategyItem | null, 

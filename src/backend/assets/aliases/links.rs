@@ -29,6 +29,7 @@ pub(crate) fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
         path: dir.as_str().into(),
         limit: None,
         dirs_only: None,
+        sort: None,
     }) {
         Ok(v) => v,
         Err((code, _)) if code == "not_found" => return Ok(Vec::new()),

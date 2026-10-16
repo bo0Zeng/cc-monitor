@@ -18,6 +18,10 @@ next: number,
  */
 eof: boolean, 
 /**
+ * `[from, next)` 里最后一个可计行之后那个字节（一行都没交 ⇒ `from` 之前最后一个可计行之后）：续点 ＝（路径 · 它 · `next`）。
+ */
+end: number, 
+/**
  * `[from, next)` 里进界面的那些（不进界面的照占号、不出现）。
  */
 lines: Array<RecordLine>, };

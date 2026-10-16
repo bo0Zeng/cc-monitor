@@ -105,8 +105,8 @@ async fn clicking_upload_picks_a_file_and_runs_the_drop_path_over_the_channel() 
                            "decide": {"0": "overwrite"}})
     );
     assert_eq!(
-        got[4].1["overwrite"],
-        serde_json::json!(true),
+        got[4].1["on_exists"],
+        serde_json::json!("overwrite"),
         "人答了覆盖，提交却没带"
     );
     assert_eq!(got[4].1["root"], serde_json::json!("/srv"));

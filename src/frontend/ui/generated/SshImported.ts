@@ -4,4 +4,8 @@ import type { SshImportGroup } from "./SshImportGroup";
 /**
  * `ssh-config-import` 的应答：聚合成的预览组（每组带上「已在列表里」）。
  */
-export type SshImported = { groups: Array<SshImportGroup>, };
+export type SshImported = { groups: Array<SshImportGroup>, 
+/**
+ * 有别名在期限内没读完（整批的期限用完 · 那一发卡住）：`groups` 只是读到的那一部分。
+ */
+partial: boolean, };

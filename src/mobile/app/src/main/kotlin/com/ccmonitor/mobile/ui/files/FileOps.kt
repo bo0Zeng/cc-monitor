@@ -46,7 +46,11 @@ class FileOps(
     /** 那台这个用户的家（起点）。 */
     suspend fun home(): Result<RemotePath> = ask(FilesHome.COMMAND, emptyMap(), FilesHome::of)
 
-    suspend fun list(dir: RemotePath): Result<FilesLs.Listing> = ask(FilesLs.COMMAND, FilesLs.args(dir), FilesLs::of)
+    /** 列一层（那台排好；[bySize] ⇒ 按大小）。 */
+    suspend fun list(
+        dir: RemotePath,
+        bySize: Boolean = false,
+    ): Result<FilesLs.Listing> = ask(FilesLs.COMMAND, FilesLs.args(dir, bySize), FilesLs::of)
 
     /** 读一份文本（预览 · 编辑）。不是文本 · 太大 ⇒ 那台那一句。 */
     suspend fun readText(path: RemotePath): Result<FilesReadText.Text> = ask(FilesReadText.COMMAND, FilesReadText.args(path), FilesReadText::of)

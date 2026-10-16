@@ -163,6 +163,7 @@ data class TailPlan(
     @Json(name = "split_at") val splitAt: Long,
     @Json(name = "tail_from") val tailFrom: Long,
     val total: Long,
+    val file: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -339,7 +340,32 @@ data class HistoryRow(
     val agent: String,
     val agentTag: String?,
     val status: String,
+    val hidden: Hidden?,
 )
+
+/** 隐藏那一格（判定只住后端）：手机只读后端写好的那一句（长按菜单里说为什么隐藏）。不隐藏 ⇒ 行上是 `null`。 */
+@WireOf("Hidden")
+@JsonClass(generateAdapter = true)
+data class Hidden(
+    val said: String,
+)
+
+/** `history-annotate` 的回包：手机只读改之前单个隐藏那一格（撤销照它交回去，`null` ＝ 照规则）。 */
+@WireOf("Annotated")
+@JsonClass(generateAdapter = true)
+data class Annotated(
+    val prev: Hide?,
+)
+
+/** 单个隐藏那一格（历史注解 `hide`）。 */
+@JsonClass(generateAdapter = false)
+enum class Hide {
+    @Json(name = "on")
+    ON,
+
+    @Json(name = "off")
+    OFF,
+}
 
 /*
  * 读记录那两条（`history-read` · `history-lines`）连同通用记录本身（`cmd-wire::record`）。
@@ -367,6 +393,7 @@ data class ReadRow(
 data class HistoryLinesPage(
     val next: Long,
     val eof: Boolean,
+    val end: Long,
     val lines: List<LineRow>,
 )
 
@@ -374,6 +401,7 @@ data class HistoryLinesPage(
 @JsonClass(generateAdapter = true)
 data class LineRow(
     val seq: Long,
+    val end: Long?,
     val record: LineRecord,
 )
 
@@ -681,6 +709,7 @@ enum class FileKind {
 @JsonClass(generateAdapter = true)
 data class LsEntry(
     val path: Any,
+    val name: Any,
     val kind: FileKind,
     val size: Long?,
     @Json(name = "mtime_text") val mtimeText: String?,
@@ -691,8 +720,17 @@ data class LsEntry(
 @JsonClass(generateAdapter = true)
 data class LsReply(
     val entries: List<LsEntry>,
+    val up: Any?,
+    val crumbs: List<Crumb>,
     val truncated: Boolean,
     val total: Long,
+)
+
+@WireOf("Crumb")
+@JsonClass(generateAdapter = true)
+data class Crumb(
+    val name: Any,
+    val path: Any,
 )
 
 @WireOf("StatReply")
@@ -765,6 +803,7 @@ enum class BatchItemState {
 data class RotationViewReply(
     val now: Long,
     val nowText: String,
+    val title: String?,
     val strategy: RotStrategyItem?,
     val form: List<RotFormCell>,
     val settings: Any?,
@@ -1030,6 +1069,7 @@ data class ProfilesBook(
 data class ProfileRow(
     val name: String,
     val usable: Boolean,
+    val start: String,
 )
 
 @WireOf("ProfilesWriteDone")

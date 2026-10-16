@@ -734,7 +734,7 @@ export class RemoteSection {
   private openAdd(): Promise<boolean> {
     return openAddMachine({
       tryAdd: (cfgs) => tryRemoteConfig({ upsert: cfgs.map((value) => ({ key: null, value })) }),
-      groups: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
+      imported: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
       add: async (cfgs) => {
         const cards = cfgs.map((c) => this.appendCard(c));
         if (await this.save()) {

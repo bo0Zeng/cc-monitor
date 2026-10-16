@@ -33,6 +33,7 @@
 
 use crate::platform::fs::Ro;
 use cmd_wire::files::{self as wire, FileKind, WirePath};
+use std::path::{Path, PathBuf};
 
 pub mod browse_watch;
 pub mod grep;
@@ -379,10 +380,14 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
             &e,
         )
     })?;
-    let mut entries: Vec<wire::LsEntry> = Vec::new();
-    let mut seen = 0u64;
     // 读不出的项照数（不静默少一项）：窗口按 `unreadable` 说一句。
     let mut unreadable = 0usize;
+    let sort = req.sort.unwrap_or(wire::LsSort {
+        by: wire::LsSortBy::Name,
+        reverse: false,
+    });
+    // 先收齐、排好，再截：截掉的那几项不写钟面字（按名称排时只有链接要读元数据）。
+    let mut picked: Vec<Picked> = Vec::new();
     for e in readable(rd, &mut unreadable) {
         // 🔴 类型走 `DirEntry::file_type()`：它**不跟 symlink**
         //（Linux 上直接来自目录项里的 d_type），所以指向别处的链接不会被当成它的目标。
@@ -390,57 +395,150 @@ fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
             .file_type()
             .map(|t| kind_of(t.is_dir(), t.is_file(), t.is_symlink()))
             .unwrap_or(FileKind::Other);
-        // 只列文件夹时，链接要跟一次才知道指向的是不是目录；别的行等进了这一屏再读元数据（截掉的不读）。
-        let link_md = (dirs_only && kind == FileKind::Symlink)
+        // 链接要跟一次才知道指向的是不是目录（只列文件夹 · 目录在前都看它）；按大小 · 时间排要每一项的元数据。
+        let md = (kind == FileKind::Symlink || sort.by != wire::LsSortBy::Name)
             .then(|| Ro::metadata(e.path()).ok())
             .flatten();
-        if dirs_only && kind != FileKind::Dir && !link_md.as_ref().is_some_and(|m| m.is_dir()) {
+        let dir_like = kind == FileKind::Dir || md.as_ref().is_some_and(|m| m.is_dir());
+        if dirs_only && !dir_like {
             continue;
         }
-        seen += 1;
-        if entries.len() >= limit {
-            continue;
-        }
-        let md = link_md.or_else(|| Ro::metadata(e.path()).ok());
-        let mut row = wire::LsEntry {
-            path: wire_path(raw::path_bytes(&e.path())),
+        let num = md.map_or(0, |m| match sort.by {
+            wire::LsSortBy::Size => m.len(),
+            _ => epoch_secs(m.modified()).unwrap_or(0),
+        });
+        picked.push(Picked {
+            path: e.path(),
             kind,
-            size: None,
-            mtime_secs: None,
-            mtime_text: None,
-            mtime_full: None,
-            link_dir: None,
-            link_to: None,
-        };
-        if let Some(md) = md {
-            row.size = Some(md.len());
-            if let Some(t) = epoch_secs(md.modified()) {
-                let (short, full) = crate::common::time::mtime_texts_now(t, tz);
-                row.mtime_secs = Some(t);
-                row.mtime_text = Some(short);
-                row.mtime_full = Some(full);
-            }
-            // 链接指向的是不是目录（跟链接那一次 `metadata` 顺带的）：窗口据此给「打开」。断链不出这一格。
-            if kind == FileKind::Symlink {
-                row.link_dir = Some(md.is_dir());
-                row.link_to = Some(if md.is_dir() {
-                    wire::LinkTo::Dir
-                } else {
-                    wire::LinkTo::File
-                });
-            }
-        } else if kind == FileKind::Symlink {
-            // 跟不过去 ⇒ 断了的链接（指向的东西不在 / 读不到）。
-            row.link_to = Some(wire::LinkTo::Missing);
-        }
-        entries.push(row);
+            dir_like,
+            num,
+        });
     }
+    let total = picked.len() as u64;
+    picked.sort_by_cached_key(|p| ls_order(p, sort));
+    picked.truncate(limit);
+    let entries = picked
+        .into_iter()
+        .map(|p| ls_row(p, tz))
+        .collect::<Vec<_>>();
     Ok(wire::LsReply {
-        truncated: seen > entries.len() as u64,
+        truncated: total > entries.len() as u64,
         entries,
-        total: seen,
+        up: dir.parent().map(|u| wire_path(raw::path_bytes(u))),
+        crumbs: crumbs_of(&dir),
+        total,
         unreadable: unreadable as u64,
     })
+}
+
+/// 列出来、还没排的一项（`num` ＝ 按大小 / 时间排时那一格，按名称排时不读、恒 0）。
+struct Picked {
+    path: PathBuf,
+    kind: FileKind,
+    dir_like: bool,
+    num: u64,
+}
+
+/// 那一列的值（一次排序里每项同一形）。
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum Col {
+    Text(Vec<u8>),
+    Num(u64),
+}
+
+/// 那一列正着还是反着（一次排序里每项同一形）。
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum Dir {
+    Asc(Col),
+    Desc(std::cmp::Reverse<Col>),
+}
+
+/// 一项的排序键：目录（含指向目录的链接）在前 · 那一列（第一下：名称 A 在前，大小 · 时间大的在前；`reverse` 只反这一格）·
+/// 名称小写 · 原字节。
+fn ls_order(p: &Picked, sort: wire::LsSort) -> (bool, Dir, Vec<u8>, Vec<u8>) {
+    let name = p.path.file_name().map(raw_name).unwrap_or_default();
+    // 名称小写：合法 UTF-8 按字符小写；不是 ⇒ 只把 ASCII 那几个字节小写（字节一路不改形）。
+    let lower = match std::str::from_utf8(&name) {
+        Ok(s) => s.to_lowercase().into_bytes(),
+        Err(_) => name.to_ascii_lowercase(),
+    };
+    let (col, first_down) = match sort.by {
+        wire::LsSortBy::Name => (Col::Text(lower.clone()), false),
+        wire::LsSortBy::Size | wire::LsSortBy::Mtime => (Col::Num(p.num), true),
+    };
+    let col = if first_down != sort.reverse {
+        Dir::Desc(std::cmp::Reverse(col))
+    } else {
+        Dir::Asc(col)
+    };
+    (!p.dir_like, col, lower, name)
+}
+
+/// 排好、进了这一屏的一项 ⇒ 线上那一行（钟面字只给进了屏的写）。
+fn ls_row(p: Picked, tz: &crate::common::time::Tz) -> wire::LsEntry {
+    let kind = p.kind;
+    let md = Ro::metadata(&p.path).ok();
+    let mut row = wire::LsEntry {
+        path: wire_path(raw::path_bytes(&p.path)),
+        name: WirePath(p.path.file_name().map(raw_name).unwrap_or_default()),
+        kind,
+        size: None,
+        mtime_secs: None,
+        mtime_text: None,
+        mtime_full: None,
+        link_dir: None,
+        link_to: None,
+    };
+    if let Some(md) = md {
+        row.size = Some(md.len());
+        if let Some(t) = epoch_secs(md.modified()) {
+            let (short, full) = crate::common::time::mtime_texts_now(t, tz);
+            row.mtime_secs = Some(t);
+            row.mtime_text = Some(short);
+            row.mtime_full = Some(full);
+        }
+        // 链接指向的是不是目录（跟链接那一次 `metadata` 顺带的）：窗口据此给「打开」。断链不出这一格。
+        if kind == FileKind::Symlink {
+            row.link_dir = Some(md.is_dir());
+            row.link_to = Some(if md.is_dir() {
+                wire::LinkTo::Dir
+            } else {
+                wire::LinkTo::File
+            });
+        }
+    } else if kind == FileKind::Symlink {
+        // 跟不过去 ⇒ 断了的链接（指向的东西不在 / 读不到）。
+        row.link_to = Some(wire::LinkTo::Missing);
+    }
+    row
+}
+
+/// 一段名字的原始字节。
+fn raw_name(n: &std::ffi::OsStr) -> Vec<u8> {
+    n.as_encoded_bytes().to_vec()
+}
+
+/// 根到 `dir` 的每一段（根在最前）：照这台的路径规则切（`Path::components`；Windows 的盘符与根并成一段）。
+fn crumbs_of(dir: &Path) -> Vec<wire::Crumb> {
+    let mut out: Vec<wire::Crumb> = Vec::new();
+    let mut at = PathBuf::new();
+    for c in dir.components() {
+        at.push(c.as_os_str());
+        let name = raw_name(c.as_os_str());
+        match (c, out.last_mut()) {
+            // 盘符之后紧跟的根（`C:` ＋ `\`）并进同一段。
+            (std::path::Component::RootDir, Some(last)) => {
+                last.name.0.extend_from_slice(&name);
+                last.path = wire_path(raw::path_bytes(&at));
+            }
+            (std::path::Component::CurDir | std::path::Component::ParentDir, _) => {}
+            _ => out.push(wire::Crumb {
+                name: WirePath(name),
+                path: wire_path(raw::path_bytes(&at)),
+            }),
+        }
+    }
+    out
 }
 
 /// 目录项里读得出的那几条；读不出的数进 `unreadable`（不静默跳过）。

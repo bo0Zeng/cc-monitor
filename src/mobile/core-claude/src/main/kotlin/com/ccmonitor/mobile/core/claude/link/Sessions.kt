@@ -221,7 +221,10 @@ object HistoryTail {
         n: Int,
     ): Map<String, Any?> = mapOf("path" to path, "n" to n.toLong())
 
-    /** 回包就是 `cmd-wire` 的 `TailPlan`（字节 `end` · 尾段起点 `splitAt` · 尾段第一行行号 `tailFrom`，与 `line` 帧的 `seq` 同一个空间 · 可计行总数 `total`）。 */
+    /**
+     * 回包就是 `cmd-wire` 的 `TailPlan`（字节 `end` · 尾段起点 `splitAt` · 尾段第一行行号 `tailFrom`，与 `line` 帧的 `seq` 同一个空间 · 可计行总数 `total` ·
+     * 文件身份 `file`：同一路径换了一份就变）。
+     */
     fun of(data: Any?): TailPlan? = Wire.bind<TailPlan>(data)
 }
 
@@ -280,6 +283,10 @@ object HistoryLines {
         /** 下一段从这一行起。 */
         val next: Long,
         val eof: Boolean,
+        /** 这一段最后一个可计行之后的字节：续点 ＝（路径 · 它 · [next]）。 */
+        val end: Long,
+        /** 每条记录那一行之后的字节（与 [records] 一一对应）。 */
+        val ends: List<Long?> = emptyList(),
         /** 每条记录原样（与 [records] 一一对应；缓存存它）。 */
         val raw: List<Any?> = emptyList(),
     )
@@ -287,7 +294,7 @@ object HistoryLines {
     fun of(data: Any?): Page? {
         val p = Wire.bind<HistoryLinesPage>(data) ?: return null
         val raw = ((data as? Map<*, *>)?.get("lines") as? List<*>)?.map { (it as? Map<*, *>)?.get("record") }.orEmpty()
-        return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof, raw)
+        return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof, p.end, p.lines.map { it.end }, raw)
     }
 }
 

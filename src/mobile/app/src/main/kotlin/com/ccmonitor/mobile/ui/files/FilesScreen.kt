@@ -213,19 +213,6 @@ private fun rememberUploadLauncher(vm: FilesViewModel): ManagedActivityResultLau
     }
 }
 
-/** 排序视图：目录恒在前；名称 / 大小。 */
-private fun sorted(
-    entries: List<FilesLs.Entry>,
-    bySize: Boolean,
-): List<FilesLs.Entry> =
-    entries.sortedWith(
-        if (bySize) {
-            compareByDescending<FilesLs.Entry> { it.isDir }.thenByDescending { it.size ?: -1 }
-        } else {
-            compareByDescending<FilesLs.Entry> { it.isDir }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-        },
-    )
-
 @Composable
 private fun ReadyContent(
     vm: FilesViewModel,
@@ -241,7 +228,7 @@ private fun ReadyContent(
     val progress by vm.progress.collectAsState()
     val sortBySize by vm.sortBySize.collectAsState()
     val dir = cwd ?: return
-    val entries = remember(listing, sortBySize) { sorted(listing.entries, sortBySize) }
+    val entries = listing.entries
     val bookmarkRepo = koinInject<BookmarkRepository>()
     val bookmarks by bookmarkRepo.observeForHost(hostId).collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
@@ -251,9 +238,12 @@ private fun ReadyContent(
         val bookmarked = dir.text?.let { t -> bookmarks.firstOrNull { it.path == t } }
         PathHeader(
             dir = dir,
+            listing = listing,
             bookmarked = bookmarked,
             onNavigate = vm::navigateTo,
-            onToggleBookmark = { dir.text?.let { toggleBookmark(scope, bookmarkRepo, hostId, it, dir.name.shown, bookmarked) } },
+            onToggleBookmark = {
+                dir.text?.let { toggleBookmark(scope, bookmarkRepo, hostId, it, listing.crumbs.lastOrNull()?.first ?: dir.shown, bookmarked) }
+            },
         )
         Toolbar(dir, sortBySize, vm, onOpenTerminal, onShowTabs, onDialog)
         BookmarkBar(bookmarks, vm, bookmarkRepo)
@@ -343,6 +333,8 @@ private fun BookmarkBar(
 @Composable
 private fun PathHeader(
     dir: RemotePath,
+    /** 上一级与各段（那台切好的）。 */
+    listing: FilesLs.Listing,
     bookmarked: Bookmark?,
     onNavigate: (RemotePath) -> Unit,
     onToggleBookmark: () -> Unit,
@@ -353,9 +345,15 @@ private fun PathHeader(
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PhIconButton(Ph.ArrowUp, copyText("rsFilewinChrome.nav.up"), onClick = { onNavigate(dir.parent) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        PhIconButton(
+            Ph.ArrowUp,
+            copyText("rsFilewinChrome.nav.up"),
+            onClick = { listing.up?.let(onNavigate) },
+            enabled = listing.up != null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         // 当前目录总在眼前：只排末尾几段，前面的收成「…」（点它到它那一级；再往上用 ⬆）。
-        val all = dir.crumbs()
+        val all = listing.crumbs
         val shown = if (all.size > CRUMBS_SHOWN) listOf("…" to all[all.size - CRUMBS_SHOWN].second) + all.takeLast(CRUMBS_SHOWN - 1) else all
         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
             shown.forEachIndexed { i, (label, upTo) ->

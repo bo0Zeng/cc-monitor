@@ -38,7 +38,7 @@ const SETTINGS = {
 function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
   return {
     now: NOW,
-    nowText: "14:30",
+    nowText: "14:30", title: null,
     strategy: { id: "按权重轮换", description: "第一句说明\n第二句说明\n\n第二段", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false },
     form: FORM,
     settings: SETTINGS,

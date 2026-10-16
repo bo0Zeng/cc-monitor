@@ -85,7 +85,26 @@ impl crate::wire::typed::Handle for Kill {
         req: KillReq,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Killed, KillErr>> + Send + 'static {
-        async move { kill(&req).map_err(|f| crate::wire::typed::of_fail(f, KillErr::KillFailed)) }
+        async move { kill(&req).map_err(|f| refused(&req.name, f)) }
+    }
+}
+
+/// 下层那一份失败 ⇒ `kill` 的码，那一句换成给人看的（[`said`]）、下层那句进原话。
+pub(crate) fn refused(name: &str, f: CmdErr) -> KillErr {
+    crate::wire::typed::of_fail_said(f, KillErr::KillFailed, |c| Some(said(name, c)))
+}
+
+/// 结束会话被拒成 `code` 时给人看的那一句（批量停那一项也照它说）。`target` 是 tmux 会话名。
+pub(crate) fn said(target: &str, code: &str) -> String {
+    match code {
+        "bad_args" => copy_text("tmuxControl.kill.badName", &[("target", target)]),
+        "no_tmux" => copy_text("tmuxControl.kill.noTmux", &[("target", target)]),
+        "no_such_session" => copy_text("tmuxControl.kill.noSuchSession", &[("target", target)]),
+        "wrong_owner" => copy_text("tmuxControl.kill.wrongOwner", &[("target", target)]),
+        "too_many_windows" => copy_text("tmuxControl.kill.tooManyWindows", &[("target", target)]),
+        "kill_failed" => copy_text("tmuxControl.kill.failed", &[("target", target)]),
+        "child_timed_out" => copy_text("tmuxControl.kill.childTimedOut", &[("target", target)]),
+        _ => copy_text("tmuxControl.kill.otherCode", &[("target", target)]),
     }
 }
 

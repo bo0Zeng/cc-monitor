@@ -948,28 +948,40 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
     Ok(facts)
 }
 
-/// 说 MCP 样子的那种记录行里必有的字（快路只放过带它的行；[`could_matter`] 与 [`mcp_of`] 同一个口径）。
+/// 说 MCP 样子的那种记录行里必有的字（快路只放过带它的行；[`could_matter`] 与 [`mcp_from`] 同一个口径）。
 const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
 
-/// 只要 `mcp` 那一格：读 `r` 整份，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 累加（口径与整份事实那一格同一处）。
-/// 扩展页问「这台活会话里谁断开」用（`observe::accounts_query::live_mcp_failed`）。
-pub(crate) fn mcp_of<R: std::io::BufRead>(mut r: R) -> std::io::Result<Vec<McpTrouble>> {
-    let mut f = SessionFacts::default();
+/// 只要 `mcp` 那一格：从 `r` 此刻的位置读到尾，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 接着 `mcp` 往下改（口径与整份事实那一格同一处）。
+/// 回读过的字节数（只算到最后一个完整行：半行留给下一次）。扩展页问「这台活会话里谁断开」用（`observe::accounts_query::McpBook`）。
+pub(crate) fn mcp_from<R: std::io::BufRead>(
+    mut r: R,
+    mcp: &mut Vec<McpTrouble>,
+) -> std::io::Result<u64> {
+    let mut f = SessionFacts {
+        mcp: std::mem::take(mcp),
+        ..SessionFacts::default()
+    };
     let mut buf: Vec<u8> = Vec::new();
-    loop {
+    let mut done = 0u64;
+    let out = loop {
         buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
+        let read = match r.read_until(b'\n', &mut buf) {
+            Ok(n) => n,
+            Err(e) => break Err(e),
+        };
         if read == 0 || buf.last() != Some(&b'\n') {
-            break;
+            break Ok(done);
         }
+        done += read as u64;
         let line = &buf[..buf.len() - 1];
         if contains(line, MCP_MARK) {
             if let Some(v) = super::record_scan::parse_record(line) {
                 note_mcp(&mut f, &v);
             }
         }
-    }
-    Ok(f.mcp)
+    };
+    *mcp = f.mcp;
+    out
 }
 
 /// 扫完之后按上限表与中转标记定上下文上限（每次按调用方给的表重判，不进扫描）。

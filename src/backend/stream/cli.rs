@@ -152,12 +152,7 @@ pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
         crate::common::contract::malformed(&format!("stream: {detail}")),
     )
     .with_raw(Some(&detail));
-    emit_failed(
-        &mut std::io::stderr(),
-        &f.settle("stream", &serde_json::Value::Null),
-        false,
-        tz,
-    )
+    emit_failed(&mut std::io::stderr(), &f.settle("stream"), false, tz)
 }
 
 /// 能力探测：`{proto, buildId, commands}`。`commands` 必须派生：手抄一份，探测口就会说谎，而 skill 按它的话决定走不走新路。
@@ -232,14 +227,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         .and_then(|v| crate::stream::inbound::views::plan_for(spec.name, &v).map(|p| (v, p)))
     {
         Ok(vp) => vp,
-        Err(f) => {
-            return emit_failed(
-                err,
-                &f.settle(spec.name, &serde_json::Value::Null),
-                text,
-                tz,
-            )
-        }
+        Err(f) => return emit_failed(err, &f.settle(spec.name), text, tz),
     };
     let mut input = String::new();
     if reads_stdin(spec) {
@@ -270,7 +258,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     let req = Request {
         id: CLI_REQUEST_ID.to_string(),
         cmd: spec.name.to_string(),
-        args: cli_args.clone(),
+        args: cli_args,
         within_ms,
         // 声明已在上面解过、拒过（`plan`）；信封里照样带着，与帧面同形。
         view,
@@ -306,7 +294,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             let _ = writeln!(out, "{}", crate::common::time::fill_at(&line, tz));
             0
         }
-        // 失败那一份与帧面同一处出（「码 → 句」表 · 复制详情 · 按码定形的 `data`）。
+        // 失败那一份与帧面同一处出（复制详情 · 按码定形的 `data`）。
         // 一个入参都没给就缺了格 ⇒ 原话里再说一句入参从哪给（一次性模式的入参只从这两处来）。
         Err(f) => {
             let f = if f.code == "bad_args" && trimmed.is_empty() && reads_stdin(spec) {
@@ -318,7 +306,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
             } else {
                 f
             };
-            emit_failed(err, &f.settle(spec.name, &cli_args), text, tz)
+            emit_failed(err, &f.settle(spec.name), text, tz)
         }
     }
 }

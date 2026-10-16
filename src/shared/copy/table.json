@@ -15199,8 +15199,8 @@
     "rsLocalBackendHost.adopt.waited": {
       "kind": "error",
       "role": "报错",
-      "zh": "{last} · 已等 {tries}×{interval}ms",
-      "args": ["last", "tries", "interval"]
+      "zh": "{last} · 已等 {dur}",
+      "args": ["last", "dur"]
     },
     "rsLocalBackendHost.adopt.notYet": {
       "kind": "error",
@@ -15208,11 +15208,11 @@
       "zh": "{path} 上暂无后端在听",
       "args": ["path"]
     },
-    "rsLocalBackendHost.adopt.nobody": {
+    "rsLocalBackendHost.afterSpawn.exited": {
       "kind": "error",
-      "role": "原因格",
-      "zh": "没有后端在听",
-      "args": []
+      "role": "报错",
+      "zh": "后端未在 {path} 上听即退出（{how}）",
+      "args": ["path", "how"]
     },
     "rsLocalBackendHost.afterSpawn.neverListened": {
       "kind": "error",
@@ -24723,6 +24723,12 @@
       "args": [],
       "limited": ["SSH"]
     },
+    "addMachine.ssh.partial": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "有的别名超过时限未读出，不在下面；关掉再打开此框会重读",
+      "args": []
+    },
     "addMachine.ssh.inList": {
       "kind": "body",
       "role": "片段",
@@ -27363,6 +27369,15 @@
       "role": "片段",
       "zh": "开",
       "args": []
+    },
+    "beProfile.line.notALaunch": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这条命令无法建成别名 · 只认 Claude 的启动命令或 ccm",
+      "args": [],
+      "limited": [
+        "ccm"
+      ]
     },
     "beProfile.form.tmuxName": {
       "kind": "error",

@@ -1,6 +1,7 @@
 //! 请求信封的 `view`：登记的成品住处对得上注册表与格目录 · 点了这条命令不出的成品就拒 · 帧面那一跳真的拒、真的裁。
 
 use super::*;
+use crate::wire::ActivityFaceExt as _;
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -169,7 +170,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
     }))
     .unwrap()
     .expect("认得的声明");
-    let added = Frame::SessionAdded {
+    let added = Frame::SessionAdded(crate::wire::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
         background: false,
@@ -184,7 +185,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         hidden: None,
         container: None,
         pid: 42,
-    };
+    });
     let full: serde_json::Value = serde_json::from_str(to_line(&added).unwrap().trim()).unwrap();
     assert_eq!(full["pid"], 42, "没声明的时候该有 pid");
     let cut: serde_json::Value =
@@ -211,7 +212,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
             cwd: None,
         },
     };
-    let line = Frame::Line {
+    let line = Frame::Line(crate::wire::Line {
         session_id: "s".into(),
         path: "/p".into(),
         seq: 0,
@@ -219,7 +220,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         cwd: None,
         byte_offset: 9,
         rid: None,
-    };
+    });
     let cut: serde_json::Value =
         serde_json::from_str(to_line_viewed(&line, Some(&view)).unwrap().trim()).unwrap();
     assert_eq!(cut["kind"], "line");
@@ -231,7 +232,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
     );
     assert_eq!(cut["record"]["who"]["text"], "x", "没点到的格照发");
 
-    let other = Frame::SessionsReplayed;
+    let other = Frame::SessionsReplayed(crate::wire::SessionsReplayed {});
     assert_eq!(
         to_line_viewed(&other, Some(&view)).unwrap(),
         to_line(&other).unwrap()

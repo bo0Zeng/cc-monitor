@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.Annotated
+import com.ccmonitor.mobile.core.claude.link.wire.Hide
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsList
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
@@ -116,7 +118,8 @@ enum class SessionDot {
 
         /**
          * 一条会话的点：流上活着 ⇒ 照语气；离开活了 ⇒ 照 `session_state` 的去向（可重连 ⇒ 已退出，只能恢复 ⇒ 已结束）；
-         * 流上没有它 ⇒ 照 `history-list` 那一行的 `status`（`ended` · `unknown` 说不清 · `live` 还没报到 ⇒ 同还没收到语气）。认不出 ⇒ `null`（不画）。
+         * 流上没有它 ⇒ 照 `history-list` 那一行的 `status`（`reconnectable` ⇒ 已退出 · `ended` · `unknown` 说不清 · `live` 还没报到 ⇒ 同还没收到语气）。
+         * 认不出 ⇒ `null`（不画）。
          */
         fun of(
             live: LiveSession?,
@@ -131,6 +134,7 @@ enum class SessionDot {
             }
             return when (listed) {
                 "live" -> RUNNING
+                "reconnectable" -> EXITED
                 "ended" -> ENDED
                 "unknown" -> UNKNOWN
                 else -> null
@@ -259,6 +263,35 @@ object HistoryList {
 
     /** 缓存里那几行（原样）拼回一份清单，交给同一个解码器（[of]）；注解与截断那两格缓存不存。 */
     fun ofRows(rows: List<Any?>): HistoryListPage? = of(mapOf("rows" to rows, "notice" to null, "truncated" to false))
+
+    /** 入参：「显示已隐藏」开着 ⇒ `hidden: true`（隐藏的也出，与桌面历史同一个参数）；关着不带（那台缺省不出）。 */
+    fun args(showHidden: Boolean): Map<String, Any?>? = if (showHidden) mapOf("hidden" to true) else null
+}
+
+/** `history-annotate`：改那台注解里单个隐藏那一格（与桌面历史 · 标签栏同一条命令）。 */
+object HistoryAnnotate {
+    const val COMMAND: String = "history-annotate"
+
+    /** 单个那一格交成什么：`ON` 隐藏 · `OFF` 明说显示 · `null` 摘掉、回到规则（`rule`）。 */
+    fun hide(
+        sid: String,
+        pin: Hide?,
+    ): Map<String, Any?> =
+        mapOf(
+            "sid" to sid,
+            "patch" to
+                mapOf(
+                    "hide" to
+                        when (pin) {
+                            Hide.ON -> "on"
+                            Hide.OFF -> "off"
+                            null -> "rule"
+                        },
+                ),
+        )
+
+    /** 回包：改之前那一格（`prev`）；撤销「隐藏」原样交回 [hide]（`null` ⇒ 回到规则，不把照规则显示的钉成单独显示）。 */
+    fun of(data: Any?): Annotated? = Wire.bind<Annotated>(data)
 }
 
 /** `quota-read`：这台的额度账。每号一段 `rows`（写好的几行）· `fiveHour`（「5h 41%」那一格）· `warm`（开窗那一判）。 */

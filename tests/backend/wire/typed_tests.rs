@@ -16,6 +16,14 @@ pub(crate) struct Shape {
     pub(crate) uncancellable: bool,
     /// 带 `data` 的那几个码 ⇒ `data` 的 TS 名（码表次序）；算进指纹：两端读 `data` 的形状对不上 ⇒ 指纹就对不上。
     pub(crate) data: Vec<(&'static str, String)>,
+    /// 一份入参照这条命令的入参类型解（与分派同一个解码 [`super::take`]）；解不开 ⇒ 那一句。
+    pub(crate) decode: fn(&serde_json::Value) -> Result<(), String>,
+}
+
+fn decode_of<C: Command>(args: &serde_json::Value) -> Result<(), String> {
+    super::take::<C::Req>(args)
+        .map(drop)
+        .map_err(|f| format!("{}：{}", f.message, f.raw.unwrap_or_default()))
 }
 
 /// 一个类型的 TS 名，连同它与它递归引到的每个具名类型的声明（按名排、去重）。
@@ -107,6 +115,7 @@ pub(crate) fn shape_of<C: Command>() -> Shape {
         decls: decls.into_iter().collect(),
         uncancellable: false,
         data,
+        decode: decode_of::<C>,
     }
 }
 
@@ -182,6 +191,35 @@ fn typed() -> Vec<(&'static str, Shape)> {
         .collect();
     v.sort_by_key(|(n, _)| *n);
     v
+}
+
+/// 手机发出去的每条命令的入参（跨语言金样，手机那一侧 `SentRequestsTest` 照它每个拼入参的口写）：逐份照那条命令的入参类型解得开。
+/// 金样里的命令都得是登记表里的 typed 命令。
+#[test]
+fn every_request_the_mobile_sends_decodes_by_that_commands_args_type() {
+    let golden: std::collections::BTreeMap<String, Vec<serde_json::Value>> = serde_json::from_str(
+        include_str!("../../__fixtures__/mobile-requests.golden.json"),
+    )
+    .expect("mobile-requests.golden.json 解不开");
+    assert!(golden.len() > 20, "金样里没几条命令 —— 本条在空转");
+    let rows = typed();
+    let mut bad = Vec::new();
+    for (cmd, sent) in &golden {
+        let Some((_, shape)) = rows.iter().find(|(n, _)| n == cmd) else {
+            bad.push(format!("{cmd}：登记表里没有这条 typed 命令"));
+            continue;
+        };
+        for args in sent {
+            if let Err(why) = (shape.decode)(args) {
+                bad.push(format!("{cmd} {args}：{why}"));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "手机发的入参照后端入参类型解不开：\n{}",
+        bad.join("\n")
+    );
 }
 
 /// 现算的那一份与盘上的比；不一样 ⇒ 写成现算的那一份、红。

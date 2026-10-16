@@ -10,6 +10,7 @@
  *    换号点（菱形 ＋ 原因短码）在段上面那一层，不压段里的号名（上下留缝），原因字彼此不叠；
  *    规则编辑器封顶表宽时一号一行、各格同一行，窄（窗 <640）时每号一张卡：表头那一行收起、各格竖排、每格前写着列名。
  * 6. 合图每号那一行：行内几句字（时段那一段的「≤80%」· 余 N · 估的到线 · 重置时刻 · 视窗外重置那一句）的框两两不相交。
+ * 7. 浮在消息流上的块（答题块 · 查找条 …，`#message-stream` 下除流以外的直接孩子）：块里几处点上去打中的不是流里的东西（流不盖住它）。
  * 4. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  *
@@ -244,8 +245,34 @@ function messageRows(): string[] {
   return out;
 }
 
+function overStream(): string[] {
+  const out: string[] = [];
+  const root = document.getElementById("message-stream");
+  if (!root) return out;
+  for (const f of [...root.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.classList.contains("stream"))) {
+    if (!visible(f) || getComputedStyle(f).pointerEvents === "none") continue;
+    const r = f.getBoundingClientRect();
+    const inset = Math.min(12, r.width / 4, r.height / 4);
+    const pts: Array<[number, number]> = [
+      [r.left + r.width / 2, r.top + r.height / 2],
+      [r.left + inset, r.top + inset],
+      [r.right - inset, r.top + inset],
+      [r.left + inset, r.bottom - inset],
+      [r.right - inset, r.bottom - inset],
+    ];
+    for (const [x, y] of pts) {
+      const hit = document.elementFromPoint(x, y);
+      if (hit && !f.contains(hit) && hit.closest(".stream")) {
+        out.push(`浮在流上的 ${name(f)} ${fmt(r)} 在 (${Math.round(x)},${Math.round(y)}) 被流里的 ${name(hit)} 盖住`);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows(), ...overStream()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

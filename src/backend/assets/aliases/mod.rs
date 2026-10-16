@@ -246,7 +246,7 @@ fn own_word(name: &str) -> String {
 
 /// 一条别名（旧形状的帧面）⇒ 配置文件里那一段要写成的样子（`from` 由调用方给）。
 /// 打头的 `new` 是「起新会话」的显式写法、本来就是缺省 ⇒ 不进配置。
-fn edit_of_alias(a: &Alias, from: Option<String>) -> profile::ProfileEdit {
+pub(crate) fn edit_of_alias(a: &Alias, from: Option<String>) -> profile::ProfileEdit {
     let (left, right) = match argv_split(&a.args) {
         (l, Some(r)) => (l, r),
         (l, None) => (l, &a.args[..0]),
@@ -373,6 +373,12 @@ pub(crate) fn render_line(name: &str, shell: Shell) -> String {
     shell
         .dialect()
         .render_alias(CALL, name, &[own_word(name)], RestTo::Agent)
+}
+
+/// 「在这台终端里起它」那一行：ccm 的绝对路径（`ccm`，家目录下的落点）＋ `@名`，按这台的 shell 引好 ——
+/// 不靠 `PATH` 里有那个目录（别名块没装 · 终端开在装之前都照样起得来）。名字已过 [`profile::name_ok`]，不用引。
+pub(crate) fn start_line(name: &str, shell: Shell, ccm: &str) -> String {
+    shell.dialect().render_start(ccm, &own_word(name))
 }
 
 /// 这一条要不要写进别名文件（写成函数）：PowerShell 一律是函数；POSIX 只有与系统命令 / 自带片段撞名的那几条
