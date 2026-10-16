@@ -52,7 +52,6 @@ class SentRequestsTest {
             Profiles.READ to listOf(emptyMap()),
             Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
             Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
-            QuotaRead.COMMAND to listOf(null),
             Rotation.DAY_PAINT to listOf(Rotation.dayPaint(listOf(RotSeg(0L, 10L, 1.0)), 0L, 10L, 0.5), Rotation.dayPaint(emptyList(), 0L, 10L, null)),
             Rotation.FOR_NEW to listOf(Rotation.forNew("s1"), Rotation.forNew(null)),
             Rotation.REVERT to listOf(Rotation.revert("s")),
