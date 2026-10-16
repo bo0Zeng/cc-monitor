@@ -63,7 +63,7 @@ fun ConflictSheet(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End)) {
                 SecondaryButton(onClick = { onAnswer(null) }) { Text(copyText("rsFilewinBatch.btn.cancel")) }
                 answers.filter { !(dirInto && it == OVERWRITE) }.forEach { a ->
-                    SecondaryButton(onClick = { onAnswer(a) }, danger = a == OVERWRITE) { Text(copyText(BUTTON.getValue(a))) }
+                    SecondaryButton(onClick = { onAnswer(a) }, danger = a == OVERWRITE) { Text(button(a)) }
                 }
             }
         }
@@ -79,8 +79,9 @@ private fun side(
 private const val OVERWRITE = "overwrite"
 
 /** 线上那一个答 ⇒ 按钮字（同桌面冲突框那几颗）。 */
-private val BUTTON =
-    mapOf(
-        OVERWRITE to "rsFilewinBatch.btn.overwrite",
-        "keep_both" to "rsFilewinBatch.btn.keepBoth",
-    )
+private fun button(answer: String): String =
+    when (answer) {
+        OVERWRITE -> copyText("rsFilewinBatch.btn.overwrite")
+        "keep_both" -> copyText("rsFilewinBatch.btn.keepBoth")
+        else -> answer
+    }
