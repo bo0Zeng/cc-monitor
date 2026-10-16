@@ -27,7 +27,7 @@ struct Rig {
     record: PathBuf,
     state: ReaderState,
     sink: FrameSink,
-    rx: tokio::sync::mpsc::Receiver<Frame>,
+    rx: FrameRx,
 }
 
 /// 记录树那一家的根（空）＋ Codex 那一家的根（判活认写者），一份造好的 rollout。
@@ -52,7 +52,7 @@ fn rig(tag: &str) -> Rig {
         face: crate::agents::record_face(kind).unwrap(),
         live: crate::agents::LiveBy::HeldOpen,
     });
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     Rig {
         _iso: iso,
         dir,
@@ -105,7 +105,7 @@ fn gone(mut c: Child) {
     let _ = c.wait();
 }
 
-fn drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<Frame> {
+fn drain(rx: &mut FrameRx) -> Vec<Frame> {
     let mut v = Vec::new();
     while let Ok(f) = rx.try_recv() {
         v.push(f);

@@ -15,12 +15,12 @@ fn rig(
     PathBuf,
     ReaderState,
     FrameSink,
-    tokio::sync::mpsc::Receiver<Frame>,
+    FrameRx,
 ) {
     let dir = std::env::temp_dir().join(format!("ccm-watch-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut state = ReaderState::new(dir.clone());
     state.active_sids.insert(A.to_string());
     state.active_sids.insert(B.to_string());
@@ -48,7 +48,7 @@ fn append(path: &Path, n: usize) {
 }
 
 /// 这一趟上了流的行：`(会话, 行号)`。
-fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
+fn lines(rx: &mut FrameRx) -> Vec<(String, u64)> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Line(crate::wire::Line {

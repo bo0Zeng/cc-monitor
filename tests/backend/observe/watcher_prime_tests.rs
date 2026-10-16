@@ -98,7 +98,7 @@ fn lines(n: std::ops::Range<usize>) -> String {
     n.map(|i| format!("{{\"n\":{i}}}\n")).collect()
 }
 
-fn drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<Frame> {
+fn drain(rx: &mut FrameRx) -> Vec<Frame> {
     let mut v = Vec::new();
     while let Ok(f) = rx.try_recv() {
         v.push(f);
@@ -148,7 +148,7 @@ fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let mut state = rig.state();
     state.pool = Some(PrimePool::start(ev_tx, None));
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::hub();
     sink.subs.push(Sub::new(0, tx, crate::Tz::default()));
 
@@ -192,7 +192,7 @@ fn nothing_streams_before_the_prime_lands_and_then_it_streams_on_from_its_count(
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let mut state = rig.state();
     state.pool = Some(PrimePool::start(ev_tx, None));
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
     // 预读读完了、还没交回本线程：这时记录又长了三行，文件事件来了。
@@ -237,7 +237,7 @@ fn no_more_primes_run_at_once_than_the_pool_has_threads() {
     }
     let mut state = rig.state();
     state.pool = Some(pool);
-    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
     // 等池子把能取的都取走（只等「在跑的到了上限」这件事，判的是份数）。
@@ -281,7 +281,7 @@ fn three_connections_on_one_record_prime_it_once() {
     assert_eq!(state.prime_bytes, body.len() as u64, "宣告那一趟读一整份");
     let mut seen = Vec::new();
     for id in 1..=3 {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
         join(
             Sub::new(id, tx, crate::Tz::default()),
             &mut state,
@@ -320,7 +320,7 @@ fn the_watched_session_is_primed_first() {
     let cap = pool.pool.size();
     let mut state = rig.state();
     state.pool = Some(pool);
-    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, _rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     // 先把池子占满（各卡在读里）。
     let mut stuck = Vec::new();
@@ -398,7 +398,7 @@ fn prime_once(
         crate::observe::record_scan::RecordScans::new(16, 64 << 20).with_skeletons(home.clone()),
     ));
     state.scans = Some(scans);
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let (tx, mut rx) = frame_channel(CHANNEL_MAX_BYTES);
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
     scans.flush();

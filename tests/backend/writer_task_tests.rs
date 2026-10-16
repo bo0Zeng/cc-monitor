@@ -4,6 +4,7 @@
 //! SSE 那一路断 / 丢 / 挤都不许碰 jsonl 那条对的路）· 抄流跟不上绝不回推主路。
 
 use super::*;
+use cc_monitor_backend::observe::watcher::{frame_channel, CHANNEL_MAX_BYTES};
 
 /// 判据那一侧的 tap 来源：一条手喂的帧通道（生产是 hub 那条，见 `tap::TapRx`）。
 struct Fed(tokio::sync::mpsc::Receiver<Frame>);
@@ -40,7 +41,7 @@ fn tapf(n: u64) -> Frame {
 /// 而且**每一条 `line` 都排在任何一条 tap 之前**（tap 最低优先：出方向有东西时轮不到它）。
 #[tokio::test]
 async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(1000);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(8);
     let (tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1000);
     for i in 0..400 {
@@ -107,7 +108,7 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
             ended: Vec::new(),
         })
     };
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(4);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     tx.try_send(runs(None)).unwrap();
@@ -141,7 +142,7 @@ fn page(id: &str) -> Frame {
 /// 应答优先只到一页为止（按条数让位要等 8 页之后）。
 #[tokio::test]
 async fn a_live_line_goes_out_before_the_next_page_of_a_paged_reply() {
-    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(10);
+    let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(10);
     let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
     for i in 1..=3 {

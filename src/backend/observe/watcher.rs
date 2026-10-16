@@ -68,6 +68,7 @@ use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::path::{Path, PathBuf};
 
 // U2：平台原语搬进 `platform/`（§1.1 第一条解耦线）。这里 re-import 回来，
@@ -328,12 +329,85 @@ fn start_tmux_probe(
     true
 }
 
-/// Bounded channel capacity between the reader and the stdout writer.
+/// 一条流连接的出方向通道最多压住多少字节（帧按序列化的大小记账：进通道时记上，写出那一头取走时还回）。
 ///
-/// Large enough to absorb a `/resume` history burst without dropping, small
-/// enough that a wedged writer cannot grow memory without bound. A full channel
-/// drops frames with a warning (Phase-0 gap, see module docs).
-pub const CHANNEL_CAPACITY: usize = 10_000;
+/// 挡的是写出那一头跟不上时内存无界增长；一帧装不下就丢、记账，排空后先出 `Overflow`（[`Sub::push`]）。
+pub const CHANNEL_MAX_BYTES: usize = 32 << 20;
+
+/// 造一条出方向通道，最多压住 `cap` 字节（生产只用 [`CHANNEL_MAX_BYTES`]，夹具给小的）。
+pub fn frame_channel(cap: usize) -> (FrameTx, FrameRx) {
+    let (tx, rx) = mpsc::unbounded_channel::<(Frame, usize)>();
+    let held = std::sync::Arc::new(AtomicUsize::new(0));
+    (
+        FrameTx {
+            tx,
+            held: held.clone(),
+            cap,
+        },
+        FrameRx { rx, held },
+    )
+}
+
+/// 出方向通道的发送端（reader 那一头）：压住的字节再加这一帧会过上限 ⇒ 不收、把帧交回。
+pub struct FrameTx {
+    tx: mpsc::UnboundedSender<(Frame, usize)>,
+    held: std::sync::Arc<AtomicUsize>,
+    cap: usize,
+}
+
+impl FrameTx {
+    pub fn try_send(&self, frame: Frame) -> Result<(), mpsc::error::TrySendError<Frame>> {
+        let n = wire_bytes(&frame);
+        if self.held.load(Ordering::Acquire) + n > self.cap {
+            return Err(mpsc::error::TrySendError::Full(frame));
+        }
+        self.held.fetch_add(n, Ordering::AcqRel);
+        self.tx.send((frame, n)).map_err(|e| {
+            self.held.fetch_sub(n, Ordering::AcqRel);
+            mpsc::error::TrySendError::Closed(e.0 .0)
+        })
+    }
+
+    fn is_closed(&self) -> bool {
+        self.tx.is_closed()
+    }
+}
+
+/// 出方向通道的接收端（写出那一头）：取走一帧就把它的字节还回去。
+pub struct FrameRx {
+    rx: mpsc::UnboundedReceiver<(Frame, usize)>,
+    held: std::sync::Arc<AtomicUsize>,
+}
+
+impl FrameRx {
+    pub async fn recv(&mut self) -> Option<Frame> {
+        let (frame, n) = self.rx.recv().await?;
+        self.held.fetch_sub(n, Ordering::AcqRel);
+        Some(frame)
+    }
+
+    pub fn try_recv(&mut self) -> Result<Frame, mpsc::error::TryRecvError> {
+        let (frame, n) = self.rx.try_recv()?;
+        self.held.fetch_sub(n, Ordering::AcqRel);
+        Ok(frame)
+    }
+}
+
+/// 一帧序列化之后多少字节（只数，不攒）。
+fn wire_bytes(frame: &Frame) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0 += b.len();
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut c = Count(0);
+    serde_json::to_writer(&mut c, frame).map_or(0, |()| c.0)
+}
 
 /// notify-debouncer-mini debounce window.（从前写「与 monitor 那份读者对齐」—— 那份 CF1 删了。）
 const DEBOUNCE_MS: u64 = 100;
@@ -837,10 +911,10 @@ impl WatcherPoke {
 
     /// 接上一条流连接：回它的出方向通道（这台的帧从这里来；先来一份此刻的样子）与它在这台 watcher 上的那一份（丢了 ＝ 走了）。
     /// 这条连接要的时区（attach 行 / 流模式起参的 `tz`）给按连接现写的那几帧用（任务清单变了那一帧的体）。
-    pub fn attach(&self, tz: &crate::Tz) -> (mpsc::Receiver<Frame>, Attachment) {
+    pub fn attach(&self, tz: &crate::Tz) -> (FrameRx, Attachment) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
+        let (tx, rx) = frame_channel(CHANNEL_MAX_BYTES);
         let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone())));
         (
             rx,
@@ -4328,7 +4402,7 @@ struct FrameSink {
 /// lines were lost. One signal per congestion burst — naturally throttled.
 pub(crate) struct Sub {
     id: u64,
-    tx: mpsc::Sender<Frame>,
+    tx: FrameTx,
     /// 这条连接看的那一台的时区（按连接现写的那几帧用）。
     tz: crate::Tz,
     /// Frames dropped since the last successfully-sent `Overflow` signal.
@@ -4357,7 +4431,7 @@ pub(crate) struct Sub {
 /// 让客户端知道「这份清单不全」——**不是**静默截断（那正是本区在治的病）。
 ///
 /// ⚠ **为什么必须有界**：通道卡死时 `dropped` 会一直涨，如果身份表跟着无界增长，
-/// 就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧**挪到了 `Overflow` 自己身上**。
+/// 就等于把 `CHANNEL_MAX_BYTES` 想防的内存增长从帧**挪到了 `Overflow` 自己身上**。
 /// 64 的取法：一次拥塞里真正值得逐个重同步的会话数量级是「几个到几十个」；
 /// 再多时客户端理性的做法本来就是整体重取快照，而 `lost_truncated` 恰好告诉它该这么做。
 const LOST_IDENTITY_CAP: usize = 64;
@@ -4501,7 +4575,7 @@ impl FrameSink {
 }
 
 impl Sub {
-    pub(crate) fn new(id: u64, tx: mpsc::Sender<Frame>, tz: crate::Tz) -> Self {
+    pub(crate) fn new(id: u64, tx: FrameTx, tz: crate::Tz) -> Self {
         Sub {
             id,
             tx,
@@ -4593,7 +4667,7 @@ impl Sub {
                     }
                 }
                 tracing::warn!(
-                    "frame channel full (cap {CHANNEL_CAPACITY}); dropping frame \
+                    "frame channel full (cap {CHANNEL_MAX_BYTES} bytes); dropping frame \
                      ({} dropped since last overflow signal, {} unrecoverable identities kept)",
                     self.dropped,
                     self.lost.len()
