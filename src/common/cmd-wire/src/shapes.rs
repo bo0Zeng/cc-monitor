@@ -193,7 +193,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("skill-install-record", "d9a39da9"),
     ("skill-read", "36896e60"),
     ("ssh-config-import", "ab0d5420"),
-    ("stream-watch", "0f1cd24d"),
+    ("stream-watch", "9a6c0ecf"),
     ("tasks-list", "4e93dd2a"),
     ("terminal-follow", "697a4f79"),
     ("terminal-follow-ack", "ff50478e"),
