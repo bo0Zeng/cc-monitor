@@ -775,9 +775,9 @@ there_size?: number,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
@@ -865,9 +865,9 @@ there_size?: number,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type Decide = "overwrite" | "skip" | "keep_both";
 type DownloadItem = { remote_path: string, name?: WirePath, };
@@ -1025,9 +1025,9 @@ there_size?: number,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type CopyFrom = { remote_path: string, };
 type Decide = "overwrite" | "skip" | "keep_both";
@@ -1318,9 +1318,9 @@ there_size?: number,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
 type CopyItem = { from: WirePath, to: WirePath, };
 type Decide = "overwrite" | "skip" | "keep_both";
@@ -1481,10 +1481,11 @@ there_size?: number,
  */
 there_mtime_text?: string, 
 /**
- * 两头有一头是目录：目录不合并，只能跳过或保留两份。
+ * 这一项能怎么答（后端定，界面照画、不另判）：两头有一头是目录 ⇒ 没有覆盖（目录不合并）。
  */
-dir_into: boolean, };
+answers: Array<Decide>, };
 type Conflicts = { conflicts: Array<Conflict>, };
+type Decide = "overwrite" | "skip" | "keep_both";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, 
 /**

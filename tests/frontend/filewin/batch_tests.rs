@@ -24,8 +24,8 @@ fn clash() -> Rebuff {
         },
         data: Some(serde_json::json!({"conflicts": [
             {"key": "0", "name": "a", "kind": "file", "size": 3, "mtime_text": "14:02",
-             "there": "file", "there_size": 1, "there_mtime_text": "10-01 09:10", "dir_into": false},
-            {"key": "1", "name": "c", "kind": "dir", "there": "dir", "dir_into": true},
+             "there": "file", "there_size": 1, "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]},
+            {"key": "1", "name": "c", "kind": "dir", "there": "dir", "answers": ["skip", "keep_both"]},
         ]})),
         cut: false,
     }
@@ -98,7 +98,7 @@ async fn a_clash_is_asked_once_from_the_conflicts_and_skip_is_the_default() {
     until(|| board.is_asking()).await;
     let c = board.conflicts();
     assert_eq!(c.len(), 2, "照 data.conflicts 画：{c:?}");
-    assert!(c[1].dir_into, "目录同名那一行要写不合并");
+    assert!(!c[1].answers.contains(&Decide::Overwrite), "目录同名那一行不给覆盖");
     assert_eq!(
         conflict_row(&c[1]).meta,
         copy_text("rsFilewinBatch.ask.dirNoMerge", &[])

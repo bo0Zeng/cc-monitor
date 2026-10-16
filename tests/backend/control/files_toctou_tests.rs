@@ -30,8 +30,8 @@ fn the_platform_rename_refuses_an_existing_target_and_moves_onto_an_absent_one()
     std::fs::write(base.join("b"), b"B").unwrap();
     let e = crate::platform::fs::Face::issue()
         .move_noreplace(
-            &crate::platform::fs::Resolved::vouch(base.join("a")),
-            &crate::platform::fs::Resolved::vouch(base.join("b")),
+            &crate::platform::fs::Resolved::vouch(base.join("a")).unwrap(),
+            &crate::platform::fs::Resolved::vouch(base.join("b")).unwrap(),
         )
         .expect_err("目标已在却改成了");
     assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists, "{e}");
@@ -39,8 +39,8 @@ fn the_platform_rename_refuses_an_existing_target_and_moves_onto_an_absent_one()
     assert_eq!(std::fs::read(base.join("b")).unwrap(), b"B");
     crate::platform::fs::Face::issue()
         .move_noreplace(
-            &crate::platform::fs::Resolved::vouch(base.join("a")),
-            &crate::platform::fs::Resolved::vouch(base.join("c")),
+            &crate::platform::fs::Resolved::vouch(base.join("a")).unwrap(),
+            &crate::platform::fs::Resolved::vouch(base.join("c")).unwrap(),
         )
         .expect("目标不在却没改成");
     assert_eq!(std::fs::read(base.join("c")).unwrap(), b"A");
@@ -94,14 +94,14 @@ fn a_copy_lands_whole_or_not_at_all_and_does_not_clobber_a_newcomer() {
         Some(false),
         "字节写满之前目标那一格已经露出来了（半份）"
     );
-    assert!(matches!(&got, Err(e) if e.code() == "io_failed"), "{got:?}");
+    assert!(matches!(&got, Err(e) if e.code() == "exists"), "{got:?}");
     assert_eq!(
         std::fs::read(&target).unwrap(),
         b"theirs",
         "写的中途冒出来的那一份被盖了"
     );
     assert_eq!(
-        leftovers(&base, "dst", "copy", &COPY_SEQ),
+        leftovers(&base, "dst", "swap", &SWAP_SEQ),
         Vec::<String>::new(),
         "暂存旁名留下了"
     );
@@ -131,7 +131,7 @@ fn a_put_that_expects_absence_does_not_clobber_a_file_that_appears_after_the_che
         "CAS 判完「不在」之后冒出来的那一份被盖了"
     );
     assert_eq!(
-        leftovers(&base, "new.txt", "put", &PUT_SEQ),
+        leftovers(&base, "new.txt", "swap", &SWAP_SEQ),
         Vec::<String>::new(),
         "暂存旁名留下了"
     );
@@ -215,19 +215,19 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
     let src = root.join("src");
     std::os::unix::fs::symlink(&secret, &src).unwrap();
     let perms = std::fs::metadata(&secret).unwrap().permissions();
-    let got = land_copy(
+    let got = replace_contents(
         &Face::issue(),
         &root,
         Path::new("dst"),
-        &src,
-        perms,
-        false,
+        Content::File(&src),
+        Some(perms),
+        Was::New,
         &mut || {},
     );
     assert!(matches!(&got, Err(e) if e.code() == "io_failed"), "{got:?}");
     assert!(!root.join("dst").exists(), "跟着链接把根外那一份抄进来了");
     assert_eq!(
-        leftovers(&root, "dst", "copy", &COPY_SEQ),
+        leftovers(&root, "dst", "swap", &SWAP_SEQ),
         Vec::<String>::new(),
         "暂存旁名留下了"
     );
@@ -235,5 +235,31 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
         crate::platform::fs::Ro::read_nofollow(&src).is_err(),
         "读那一口跟了链接"
     );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 判过之后、动手之前，父目录被整个换成一条指向根外的链接：动的仍是判过的那一层（已开的目录句柄），根外那一份不动。
+#[test]
+#[cfg(unix)]
+fn a_parent_swapped_for_a_link_after_resolving_does_not_lead_out_of_the_root() {
+    let base = temp_root("swapdir");
+    let (root, out) = (base.join("root"), base.join("out"));
+    std::fs::create_dir_all(root.join("d")).unwrap();
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::write(root.join("d/a"), b"in").unwrap();
+    std::fs::write(out.join("a"), b"out").unwrap();
+    let got = rename_entry_racing(
+        &Face::issue(),
+        &root,
+        Path::new("d/a"),
+        Path::new("d/b"),
+        &mut || {
+            std::fs::rename(root.join("d"), root.join("d.was")).unwrap();
+            std::os::unix::fs::symlink(&out, root.join("d")).unwrap();
+        },
+    );
+    assert_eq!(std::fs::read(out.join("a")).unwrap(), b"out", "根外那一份被挪走了：{got:?}");
+    assert!(!out.join("b").exists(), "改名落到了根外：{got:?}");
+    assert_eq!(std::fs::read(root.join("d.was/b")).unwrap(), b"in", "{got:?}");
     std::fs::remove_dir_all(&base).ok();
 }

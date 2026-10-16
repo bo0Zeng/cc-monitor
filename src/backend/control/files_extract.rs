@@ -11,7 +11,7 @@
 //!    设备 / 管道 ⇒ 整趟拒；条目挂在包里一条链接或一份文件底下 ⇒ 整趟拒；同名文件两次 ⇒ 整趟拒；条目数 ≤ `TREE_ENTRY_CAP`。
 //!    包里没写出来的上级目录补成目录。一个改动都没有。
 //! 2. 执行：建落点目录（已在 ⇒ `exists`，一个字节不动）→ 目录 → 文件（`O_EXCL` 新建 · 写满 · 权限位只取 rwx 低 9 位）→
-//!    硬链接（拷贝）→ 链接（最后建：先建的话后面的文件会穿过它写）；每一条当场过 [`resolve_in_root`]。
+//!    硬链接（拷贝）→ 链接（最后建：先建的话后面的文件会穿过它写）；每一条当场过 [`walk_in_root`]。
 //!    中途失败 ⇒ 倒序撤掉这一趟自己建的（含落点目录）。
 //!
 //! 解出的字节之和有上限（[`Caps`]：包的 [`EXPAND_RATIO_CAP`] 倍，小包至少 [`EXPAND_FLOOR_BYTES`]）：计划趟按包里写的大小先判，
@@ -20,7 +20,7 @@
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    resolve_existing_in_root, resolve_in_root, wire_of, Act, ManageCommand, WriteFail,
+    walk_in_root, Last, wire_of, Act, ManageCommand, WriteFail,
     WriteRefusal, TREE_ENTRY_CAP,
 };
 use crate::platform::fs::{Face, Ro, RoFile};
@@ -77,7 +77,7 @@ fn over_bytes(cap: u64) -> Fail {
 pub const LINKS_SUPPORTED: bool = cfg!(unix);
 
 /// 在 `root ＋ rel` 上建一条链接，目标文本 ＝ `target`（原样，不解、不判 —— 它指到哪是它的内容，同 `cp -P`）。
-/// 链接自己那条路径先过 [`resolve_in_root`]；已在（含一条链接）⇒ 系统拒，一个字节不动。
+/// 链接自己那条路径先过 [`walk_in_root`]；已在（含一条链接）⇒ 系统拒，一个字节不动。
 #[cfg(unix)]
 pub fn land_link(
     face: &Face,
@@ -85,7 +85,7 @@ pub fn land_link(
     rel: &Path,
     target: &Path,
 ) -> Result<PathBuf, WriteRefusal> {
-    let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
+    let at = walk_in_root(Last::Link, root, rel).map_err(WriteRefusal::Refused)?;
     face.make_link(target, &at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
@@ -109,7 +109,7 @@ pub fn land_link(
     rel: &Path,
     _target: &Path,
 ) -> Result<PathBuf, WriteRefusal> {
-    let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
+    let at = walk_in_root(Last::Link, root, rel).map_err(WriteRefusal::Refused)?;
     Err(WriteRefusal::Refused(copy_text(
         "beFilesLink.land.unsupported",
         &[("path", &at.display().to_string())],
@@ -505,7 +505,7 @@ fn land_file(
     mode: Option<u32>,
     left: &mut u64,
 ) -> Result<u64, Fail> {
-    let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
+    let at = walk_in_root(Last::Link, root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
         io_failed(
             copy_text(
@@ -550,7 +550,7 @@ fn land_file(
 
 /// 建一个目录（先过路径解析）。
 fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Fail> {
-    let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
+    let at = walk_in_root(Last::Link, root, rel).map_err(|m| ("refused", m))?;
     face.make_dir(&at).map_err(|e| {
         io_failed(
             copy_text(
@@ -568,7 +568,7 @@ fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Fail> {
 /// 回滚：倒序删掉这一趟**自己建的**（每条先过路径解析）。回撤不掉的那一条的说法 ＋ 系统原话（有的话）。
 fn undo(face: &Face, root: &Path, made: &[(PathBuf, bool)]) -> Option<(String, Option<String>)> {
     for (rel, is_dir) in made.iter().rev() {
-        let at = match resolve_in_root(root, rel) {
+        let at = match walk_in_root(Last::Link, root, rel) {
             Ok(a) => a,
             Err(m) => return Some((m, None)),
         };
@@ -645,7 +645,7 @@ fn execute(
     for (rel, w) in &plan.entries {
         if let What::Copy(from) = w {
             let src =
-                resolve_existing_in_root(root, into.join(from)).map_err(|m| ("refused", m))?;
+                walk_in_root(Last::Follow, root, into.join(from)).map_err(|m| ("refused", m))?;
             let mut body = open_archive(&src)?;
             let mode = match plan.entries.get(from) {
                 Some(What::File { mode, .. }) => *mode,
@@ -689,8 +689,8 @@ pub fn extract_with(
             ),
         )
     })?;
-    let archive = resolve_existing_in_root(root, rel).map_err(|m| ("refused", m))?;
-    let dest = resolve_in_root(root, into).map_err(|m| ("refused", m))?;
+    let archive = walk_in_root(Last::Follow, root, rel).map_err(|m| ("refused", m))?;
+    let dest = walk_in_root(Last::Link, root, into).map_err(|m| ("refused", m))?;
     if Ro::symlink_metadata(&dest).is_ok() {
         return Err(WriteFail::from((
             "exists",

@@ -1515,7 +1515,7 @@ async fn screenshot_for_the_shots_tool() {
                 there: cmd_wire::files::FileKind::File,
                 there_size: Some(there),
                 there_mtime_text: Some(there_at.into()),
-                dir_into: false,
+                answers: vec![cmd_wire::batch::Decide::Overwrite, cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth],
             }
         };
         std::mem::forget(b.ask(vec![
@@ -1563,7 +1563,11 @@ async fn screenshot_for_the_shots_tool() {
                 there: kind,
                 there_size: there,
                 there_mtime_text: there.map(|_| "10-01 09:10".to_string()),
-                dir_into: dir,
+                answers: if dir {
+                    vec![cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth]
+                } else {
+                    vec![cmd_wire::batch::Decide::Overwrite, cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth]
+                },
             }
         };
         std::mem::forget(b.ask(vec![

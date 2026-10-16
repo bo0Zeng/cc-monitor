@@ -162,7 +162,7 @@ pub(crate) fn copy(
                     there,
                     there_size,
                     there_mtime_text: moment_text(there_mtime, tz),
-                    dir_into,
+                    answers: crate::common::batch_book::answers_of(dir_into, true),
                 });
             }
             clashes.push(Some(Clash { choice, dir_into }));

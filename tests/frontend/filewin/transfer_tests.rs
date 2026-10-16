@@ -568,7 +568,7 @@ impl comms_inward::chan::router::Backends for XferHost {
                 "message": "同名 1 项",
                 "data": {"conflicts": [{"key": "0", "name": "a.bin", "kind": "file", "size": 3,
                     "mtime_text": "10-12 14:02", "there": "file", "there_size": 1,
-                    "there_mtime_text": "10-01 09:10", "dir_into": false}]},
+                    "there_mtime_text": "10-01 09:10", "answers": ["overwrite", "skip", "keep_both"]}]},
             }))
             .unwrap_or_default();
             return Box::pin(async move {

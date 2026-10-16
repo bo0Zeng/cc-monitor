@@ -184,7 +184,7 @@ pub(crate) fn copy_with(
                         there: kind(there_dir),
                         there_size: None,
                         there_mtime_text: None,
-                        dir_into: src_dir || there_dir,
+                        answers: crate::common::batch_book::answers_of(src_dir || there_dir, true),
                     });
                 }
                 (choice, src_dir || there_dir)
@@ -426,7 +426,7 @@ impl Wired {
         let staging = home.join(relay_route_core::STAGING_DIR_REL);
         if crate::platform::fs::Ro::symlink_metadata(&staging).is_err() {
             if let Ok(at) =
-                crate::common::root_path::resolve_in_root(&home, relay_route_core::STAGING_DIR_REL)
+                crate::common::root_path::walk_in_root(crate::common::root_path::Last::Link, &home, relay_route_core::STAGING_DIR_REL)
             {
                 let _ = face.make_dir_private(&at);
             }
@@ -581,7 +581,7 @@ impl Ends for Wired {
             .await;
             // 本机那一份不论成败都删；没成 ⇒ 落点那台的暂存件也删。
             if let Ok(at) =
-                crate::common::root_path::resolve_in_root(&self.staging, format!("{key}.copy"))
+                crate::common::root_path::walk_in_root(crate::common::root_path::Last::Link, &self.staging, format!("{key}.copy"))
             {
                 let _ = self.face.delete_file(&at);
             }

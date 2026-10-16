@@ -1340,7 +1340,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
             there: cwf::FileKind::File,
             there_size: Some(3),
             there_mtime_text: Some("2023-11-15 07:13".into()),
-            dir_into: false,
+            answers: vec![cmd_wire::batch::Decide::Overwrite, cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth],
         }],
         "只有 a.txt 同名；那台那一格按东京的钟写"
     );
@@ -1381,7 +1381,7 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
     assert_eq!(item(&f, 0).get("overwrite"), None);
 }
 
-/// 远端落点那一格是目录：不合并 ⇒ 答「覆盖」也跳过，清单里写明 `dir_into`。
+/// 远端落点那一格是目录：不合并 ⇒ 答「覆盖」也跳过，清单里那一项的答法没有覆盖。
 #[tokio::test]
 async fn an_upload_onto_a_remote_dir_never_merges() {
     let (tx, _rx) = mpsc::channel(64);
@@ -1406,7 +1406,11 @@ async fn an_upload_onto_a_remote_dir_never_merges() {
     )) else {
         panic!("目录同名也要问")
     };
-    assert!(c.conflicts[0].dir_into);
+    assert_eq!(
+        c.conflicts[0].answers,
+        vec![cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth],
+        "目录同名不该给覆盖"
+    );
     let got = ready(upload_with(
         &desk.tickets,
         &Here,

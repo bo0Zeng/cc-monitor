@@ -6,7 +6,7 @@
 //! 「会话文件 ⇒ `refused`」的格子全部翻面成「会话文件 ⇒ **照做**，盘上逐字节核」；
 //! 仍然会拒的只剩路径解析那几形（上跳 · 绝对路径 · 空段 · 父目录不在 · 解完链接跑出根）——
 //! 那是「改的就是 `root ＋ rel` 那一格」的正确性，不是「不许改什么」。
-//! 两道的旧名 `fence_lexical` / `fence_resolved` 今天叫 `lexical_in_root` / `resolve_parent_in_root`。
+//! 两道的旧名 `fence_lexical` / `fence_resolved` 今天是 `lexical_in_root` / `walk_in_root`。
 //! 下面「买到的」前三条是 FN1 之前的读数，读现状以本节为准。
 //!
 //! # 🔴 这一族买到的是什么、**买不到**什么（逐字，不许含糊）
@@ -313,7 +313,7 @@ fn a_symlink_onto_a_session_file_passes_inside_the_root_and_is_refused_only_for_
     std::fs::create_dir_all(&live).expect("建会话目录");
     std::os::unix::fs::symlink(&live, root.join("docs")).expect("放 symlink");
     let lexical = lexical_in_root(&root, "docs/abc.jsonl").expect("解析① 本来就该放过它");
-    let got = resolve_parent_in_root(&root, &lexical)
+    let got = walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap())
         .expect("🔴 解完落到根里的一份会话记录上，竟然被拒了");
     assert_eq!(
         got.into_path_buf(),
@@ -327,7 +327,7 @@ fn a_symlink_onto_a_session_file_passes_inside_the_root_and_is_refused_only_for_
     std::fs::create_dir_all(&other).expect("建目标根");
     std::os::unix::fs::symlink(&live, other.join("docs")).expect("放 symlink");
     let lexical = lexical_in_root(&other, "docs/abc.jsonl").expect("解析① 本来就该放过它");
-    let err = resolve_parent_in_root(&other, &lexical).expect_err("链接指出根外，解析② 竟然放行了");
+    let err = walk_in_root(Last::Link, &other, lexical.strip_prefix(&other).unwrap()).expect_err("链接指出根外，解析② 竟然放行了");
     assert!(
         copy_core::copy_matches("beFilesWrite.path.escaped", &err),
         "拒了，但说的不是越界：{err}"
@@ -358,7 +358,7 @@ fn the_resolved_fence_lets_a_symlink_into_a_claude_tree_through_when_it_is_not_a
 
     let lexical = lexical_in_root(&root, "s/SKILL.md").expect("围栏① 该放过它");
     let err =
-        resolve_parent_in_root(&root, &lexical).expect_err("这一格今天该以「跑出目标根」被拒");
+        walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap()).expect_err("这一格今天该以「跑出目标根」被拒");
     // 🔴 它仍然被拒，**但理由必须是越界，不是 Claude** —— 两者的差别就是这一裁的全部内容。
     assert!(
         copy_core::copy_matches("beFilesWrite.path.escaped", &err),
@@ -411,7 +411,7 @@ fn the_resolved_fence_catches_a_symlink_out_of_the_target_root() {
 
     let lexical = lexical_in_root(&root, "out/a.md").expect("围栏① 该放过它");
     let err =
-        resolve_parent_in_root(&root, &lexical).expect_err("symlink 指出目标根，围栏② 竟然放行了");
+        walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap()).expect_err("symlink 指出目标根，围栏② 竟然放行了");
     assert!(
         copy_core::copy_matches("beFilesWrite.path.escaped", &err),
         "拒了，但说的不是越界：{err}"
@@ -425,7 +425,7 @@ fn the_resolved_fence_lets_a_clean_path_through() {
     let root = temp_root("clean2");
     std::fs::create_dir_all(root.join("docs")).expect("建子目录");
     let lexical = lexical_in_root(&root, "docs/a.md").expect("围栏① 该放过它");
-    let got = resolve_parent_in_root(&root, &lexical).expect("围栏② 误拒了干净路径");
+    let got = walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap()).expect("围栏② 误拒了干净路径");
     assert_eq!(
         got.file_name().and_then(|s| s.to_str()),
         Some("a.md"),
@@ -445,7 +445,7 @@ fn the_resolved_fence_lets_a_clean_path_through() {
 fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     let root = temp_root("noparent");
     let err =
-        resolve_parent_in_root(&root, &root.join("nope/a.md")).expect_err("父目录不在，却没拒");
+        walk_in_root(Last::Link, &root, "nope/a.md").expect_err("父目录不在，却没拒");
     assert!(
         copy_core::copy_matches("beFilesWrite.path.unresolved", &err),
         "拒的理由不对：{err}"
@@ -559,9 +559,7 @@ fn a_clean_write_lands_once_and_never_overwrites() {
 ///
 /// # 它补的是一个**当场量出来的洞**，不是想出来的
 ///
-/// 本族头一版里，围栏② 的三格全是**直接喂 `resolve_parent_in_root`** 的。
-/// 死值验第一刀（把 `resolve_in_root` 里那句 `resolve_parent_in_root(…)` 换成 `Ok(lexical)`
-/// —— 也就是**把围栏② 整个从串联里摘掉**）实测：**12 格全绿，一条没红。**
+/// 本族头一版里，围栏② 的三格全是直接喂解析函数的；把围栏② 从串联里摘掉实测 12 格全绿。
 /// ⇒ 那时的围栏② 只是「一个函数被单测过」，**它在不在执行链上，盘上没有任何东西钉着**。
 /// （判据不在执行链上就等于不存在。）
 ///
@@ -1041,8 +1039,8 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
         .mode();
     assert_eq!(m & 0o7777, 0o600, "改的不是链接那一头的真文件");
     // 🔴 阴性：名字干净（`away.txt`），解到底跑出了根 ⇒ 拒，而且根外那一份权限位没变。
-    //    只解父目录的那一道（`resolve_in_root`）在这一形上是**瞎的** —— 这一格就是
-    //    `resolve_existing_in_root` 存在的理由。
+    //    只解父目录的那一道（`walk_in_root`）在这一形上是**瞎的** —— 这一格就是
+    //    `Last::Follow` 存在的理由。
     let err = change_mode(&Face::issue(), &root, "away.txt", 0o000)
         .expect_err("借一条链接把根外那一份改成了不可读");
     assert_eq!(err.code(), "refused", "{err:?}");
@@ -1246,14 +1244,14 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
 // 正控 ＋ 阴性对照同拍（同上一节那条口径）；阴性那一侧每一条都去盘上核
 // 「那份会话文件一个字节没动」「目标没被顺手建出来」—— 回了 `Err` 不算数。
 
-/// 目录里有没有复制留下的暂存旁名（`.<名>.ccm-copy-<pid>-<序号>.part`）。
+/// 目录里有没有复制留下的暂存旁名（`.<名>.ccm-swap-<pid>-<序号>.part`）。
 ///
 /// ⚠ **不列目录**（`scanning_guard_registry` 不许测试段裸遍历目录）：旁名的形状是确定的，
-/// 本进程造过的序号是 `0..COPY_SEQ` ⇒ 逐个按名字问「在不在」。
+/// 本进程造过的序号是 `0..SWAP_SEQ` ⇒ 逐个按名字问「在不在」。
 fn copy_leftovers(dir: &Path, name: &str) -> Vec<String> {
-    let upto = COPY_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    let upto = SWAP_SEQ.load(std::sync::atomic::Ordering::Relaxed);
     (0..upto)
-        .map(|seq| format!(".{name}.ccm-copy-{}-{seq}.part", std::process::id()))
+        .map(|seq| format!(".{name}.ccm-swap-{}-{seq}.part", std::process::id()))
         .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
         .collect()
 }
@@ -1272,7 +1270,7 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
     std::fs::write(root.join("b.md"), b"OLD").expect("改 b");
     let err = copy_entry(&Face::issue(), &root, "a.md", "b.md", false)
         .expect_err("🔴 缺省复制顶掉了一份既有文件");
-    assert_eq!(err.code(), "io_failed", "{err:?}");
+    assert_eq!(err.code(), "exists", "{err:?}");
     assert_eq!(
         std::fs::read(root.join("b.md")).expect("b"),
         b"OLD",
@@ -1291,19 +1289,18 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 要求：「复制出来的新文件权限位不从源抄」（登记为开着的缺陷）。
+/// 新建的那一份权限位从源抄；盖掉一份已在的，权限位沿用目标（同 `cp`）。
 ///
-/// 源 `0o751` / `0o600` —— 进程缺省（umask 022 ⇒ `0o644`）给不出来的两个值 ⇒ 抄没抄分得开。
-/// 不覆盖（目标本身新建）与显式覆盖（暂存旁名换名上位）两支各一格；两格目标逐位 == 源。
+/// 源 `0o751` / `0o600` —— 进程缺省（umask 022 ⇒ `0o644`）给不出来的两个值 ⇒ 抄没抄分得开；旧目标 `0o600` 与两个源都不同。
 #[test]
 #[cfg(unix)]
-fn a_copy_carries_the_source_permission_bits_on_both_branches() {
+fn a_copy_takes_the_source_bits_when_new_and_keeps_the_target_bits_when_overwriting() {
     use std::os::unix::fs::PermissionsExt as _;
     let base = temp_root("cpm");
     let root = base.join("cfg");
     std::fs::create_dir_all(&root).expect("建根");
     let mode = |p: &Path| std::fs::metadata(p).expect("stat").permissions().mode() & 0o7777;
-    for (src, bits) in [("x.sh", 0o751u32), ("secret", 0o600u32)] {
+    for (src, bits) in [("x.sh", 0o751u32), ("pub", 0o644u32)] {
         std::fs::write(root.join(src), b"s").expect("铺源");
         std::fs::set_permissions(root.join(src), std::fs::Permissions::from_mode(bits))
             .expect("设源权限");
@@ -1316,49 +1313,48 @@ fn a_copy_carries_the_source_permission_bits_on_both_branches() {
         );
         let old = format!("{src}.old");
         std::fs::write(root.join(&old), b"o").expect("铺旧目标");
-        std::fs::set_permissions(root.join(&old), std::fs::Permissions::from_mode(0o644))
+        std::fs::set_permissions(root.join(&old), std::fs::Permissions::from_mode(0o600))
             .expect("设旧目标权限");
         copy_entry(&Face::issue(), &root, src, &old, true).expect("覆盖那一支被拒");
+        assert_eq!(std::fs::read(root.join(&old)).unwrap(), b"s");
         assert_eq!(
             mode(&root.join(&old)),
-            bits,
-            "覆盖那一支没抄权限位（{src}）"
+            0o600,
+            "覆盖那一支没沿用目标的权限位（{src}）"
         );
     }
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// ★ 显式覆盖：目标换成新内容，**不留暂存旁名**；目标是一条链接时顶掉的是**链接本身**，
-/// 它指着的那份会话记录一个字节没动（这一条不是围栏：复制的目标作用在链接本身上，不跟过去）。
+/// ★ 显式覆盖：目标换成新内容，**不留暂存旁名**；目标是一条链接时解到底改真文件（同 `cp`）：
+/// 指向根外那一份 ⇒ 拒、一个字节没动、那一格仍是链接；指向根里一份 ⇒ 写进那一份、链接留着。
 #[test]
 #[cfg(unix)]
-fn explicit_overwrite_replaces_the_link_itself_and_leaves_no_side_file() {
+fn explicit_overwrite_writes_through_a_link_only_inside_the_root() {
     let base = temp_root("cpo");
     let root = base.join("cfg");
-    let (live, bytes) = plant_live_session(&base);
+    std::fs::create_dir_all(&root).expect("建根");
+    let (live, bytes) = (base.join("outside.md"), b"OUTSIDE".to_vec());
+    std::fs::write(&live, &bytes).expect("铺根外那一份");
     std::fs::write(root.join("a.md"), b"NEW").expect("铺 a");
     std::fs::write(root.join("b.md"), b"OLD").expect("铺 b");
     copy_entry(&Face::issue(), &root, "a.md", "b.md", true).expect("显式覆盖被拒了");
     assert_eq!(std::fs::read(root.join("b.md")).expect("b"), b"NEW");
-    // 目标是一条指向会话文件的链接：不覆盖 ⇒ `O_EXCL` 在链接上就失败；覆盖 ⇒ 顶掉链接。
     std::os::unix::fs::symlink(&live, root.join("ln.md")).expect("铺链接");
     let err = copy_entry(&Face::issue(), &root, "a.md", "ln.md", false)
         .expect_err("链接上 O_EXCL 竟然成了");
-    assert_eq!(err.code(), "io_failed", "{err:?}");
-    copy_entry(&Face::issue(), &root, "a.md", "ln.md", true).expect("覆盖一条链接被拒了");
-    assert!(
-        !std::fs::symlink_metadata(root.join("ln.md"))
-            .expect("ln")
-            .file_type()
-            .is_symlink(),
-        "覆盖之后那一格还是链接 —— 那就是跟过去写了"
-    );
-    assert_eq!(
-        std::fs::read(&live).expect("读会话"),
-        bytes,
-        "🔴 会话记录被经由链接改写了"
-    );
-    for n in ["b.md", "ln.md"] {
+    assert_eq!(err.code(), "exists", "{err:?}");
+    let err = copy_entry(&Face::issue(), &root, "a.md", "ln.md", true)
+        .expect_err("经链接写到了根外");
+    assert_eq!(err.code(), "refused", "{err:?}");
+    assert!(std::fs::symlink_metadata(root.join("ln.md")).expect("ln").file_type().is_symlink());
+    assert_eq!(std::fs::read(&live).expect("读根外"), bytes, "🔴 根外那一份被经由链接改写了");
+    std::fs::write(root.join("c.md"), b"C").expect("铺 c");
+    std::os::unix::fs::symlink("c.md", root.join("in.md")).expect("铺根里的链接");
+    copy_entry(&Face::issue(), &root, "a.md", "in.md", true).expect("根里的链接被拒了");
+    assert!(std::fs::symlink_metadata(root.join("in.md")).expect("in").file_type().is_symlink());
+    assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"NEW");
+    for n in ["b.md", "ln.md", "c.md"] {
         assert!(
             copy_leftovers(&root, n).is_empty(),
             "留下了暂存旁名：{:?}",
@@ -1844,14 +1840,14 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
 // 买不到的：① 回读不符 ⇒ 回滚那一支（要在换名与回读之间插一次外部改动，本族没有注入口，一格没量）；
 // ② 真远端；③ CAS 与换名之间那一个窗（TOCTOU）。
 
-/// 目录里有没有替换留下的暂存旁名（`.<名>.ccm-put-<pid>-<序号>.part`）。
+/// 目录里有没有替换留下的暂存旁名（`.<名>.ccm-swap-<pid>-<序号>.part`）。
 ///
 /// ⚠ **不列目录**（同 [`copy_leftovers`]：`scanning_guard_registry` 不许测试段裸遍历目录）：
-/// 旁名形状确定、本进程造过的序号是 `0..PUT_SEQ` ⇒ 逐个按名字问「在不在」。
+/// 旁名形状确定、本进程造过的序号是 `0..SWAP_SEQ` ⇒ 逐个按名字问「在不在」。
 fn side_files(dir: &Path, name: &str) -> Vec<String> {
-    let upto = PUT_SEQ.load(std::sync::atomic::Ordering::Relaxed);
+    let upto = SWAP_SEQ.load(std::sync::atomic::Ordering::Relaxed);
     (0..upto)
-        .map(|seq| format!(".{name}.ccm-put-{}-{seq}.part", std::process::id()))
+        .map(|seq| format!(".{name}.ccm-swap-{}-{seq}.part", std::process::id()))
         .filter(|n| std::fs::symlink_metadata(dir.join(n)).is_ok())
         .collect()
 }

@@ -8,7 +8,7 @@
 //! 失败 ⇒ 删掉自己刚建的暂存件；不论成败都删掉这一键的全部块（与 `commit_text` 同一条）。
 
 use super::files_commit::{chunk_name, drop_chunks, is_key, STAGING_DIR};
-use super::files_write::{resolve_in_root, WriteRefusal};
+use super::files_write::{walk_in_root, Last, WriteRefusal};
 use crate::platform::fs::{Face, Ro};
 use copy_core::{copy_text, io_reason};
 use std::path::Path;
@@ -25,7 +25,7 @@ pub fn assemble_part(
     let dir = home.join(STAGING_DIR);
     let regular = |name: String| {
         is_key(key)
-            && resolve_in_root(&dir, name)
+            && walk_in_root(Last::Link, &dir, name)
                 .ok()
                 .is_some_and(|p| Ro::symlink_metadata(&p).is_ok_and(|m| m.file_type().is_file()))
     };
@@ -51,7 +51,7 @@ fn assemble(
         )));
     }
     let dir = home.join(STAGING_DIR);
-    let part = resolve_in_root(&dir, format!("{key}.part")).map_err(WriteRefusal::Refused)?;
+    let part = walk_in_root(Last::Link, &dir, format!("{key}.part")).map_err(WriteRefusal::Refused)?;
     let io = |what: &Path, e: std::io::Error| {
         WriteRefusal::io(
             copy_text(
@@ -68,7 +68,7 @@ fn assemble(
     let mut total = 0u64;
     let mut fail: Option<WriteRefusal> = None;
     for seq in 0..chunks {
-        let at = match resolve_in_root(&dir, chunk_name(key, seq)) {
+        let at = match walk_in_root(Last::Link, &dir, chunk_name(key, seq)) {
             Ok(a) => a,
             Err(m) => {
                 fail = Some(WriteRefusal::Refused(m));
@@ -93,7 +93,7 @@ fn assemble(
         }
     }
     drop(out);
-    let extra = resolve_in_root(&dir, chunk_name(key, chunks))
+    let extra = walk_in_root(Last::Link, &dir, chunk_name(key, chunks))
         .is_ok_and(|p| Ro::symlink_metadata(p).is_ok());
     if fail.is_none() && (total != bytes || extra) {
         fail = Some(WriteRefusal::Io(copy_text(
@@ -109,7 +109,7 @@ fn assemble(
         None => Ok(()),
         Some(e) => {
             // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
-            if let Ok(p) = resolve_in_root(&dir, format!("{key}.part")) {
+            if let Ok(p) = walk_in_root(Last::Link, &dir, format!("{key}.part")) {
                 face.delete_file(&p).ok();
             }
             Err(e)

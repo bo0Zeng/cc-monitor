@@ -93,7 +93,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
                 }
                 // 本机落点那一侧有同名、还没答 ⇒ 回 `exists` 带同名清单（窗口照它画冲突框）。
                 Some("transfer-download") if v["args"]["local_dir"] == "/clash" => format!(
-                    r#"{{"kind":"reply","id":{id:?},"ok":false,"code":"exists","message":"同名 1 项","data":{{"conflicts":[{{"key":"0","name":"a","kind":"file","there":"file","dir_into":false}}]}}}}"#
+                    r#"{{"kind":"reply","id":{id:?},"ok":false,"code":"exists","message":"同名 1 项","data":{{"conflicts":[{{"key":"0","name":"a","kind":"file","there":"file","answers":["overwrite","skip","keep_both"]}}]}}}}"#
                 ),
                 Some("transfer-download") => {
                     n += 1;
@@ -582,7 +582,7 @@ async fn a_refusal_brings_its_data_back_to_the_window() {
     assert_eq!(
         r.data,
         Some(
-            serde_json::json!({"conflicts": [{"key": "0", "name": "a", "kind": "file", "there": "file", "dir_into": false}]})
+            serde_json::json!({"conflicts": [{"key": "0", "name": "a", "kind": "file", "there": "file", "answers": ["overwrite", "skip", "keep_both"]}]})
         ),
         "同名清单没带回来"
     );
