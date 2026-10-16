@@ -229,9 +229,6 @@
       { "text": "按目录", "use": "回显" },
       { "text": "在哪起", "use": "回显" }
     ],
-    "tests/frontend/ui/settings/remote-section.vitest.ts": [
-      { "text": "本机", "use": "词义" }
-    ],
     "tests/frontend/ui/settings/router.vitest.ts": [
       { "text": "机器", "use": "输入" },
       { "text": "未命名机器", "use": "输入" },

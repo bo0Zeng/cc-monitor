@@ -156,7 +156,16 @@ fn 成品五格_tmux_原样带_角标数照各件算() {
         keys.sort();
         assert_eq!(
             keys,
-            vec!["changedFiles", "chores", "home", "open", "own", "rank", "tmux", "todo"]
+            vec![
+                "changedFiles",
+                "chores",
+                "home",
+                "open",
+                "own",
+                "rank",
+                "tmux",
+                "todo"
+            ]
         );
         assert_eq!(got["tmux"], json!(tmux), "查不动不许说成没有");
         assert_eq!(got["chores"], json!(1));
@@ -174,8 +183,14 @@ fn 先后键_有进角标的件在前_只剩别的没做完的次之_没事的�
     let rank = |todo: Vec<Chore>| {
         serde_json::to_value(shape(&report(vec![]), todo, None, vec![])).unwrap()["rank"].clone()
     };
-    assert_eq!(rank(vec![chore(ChoreKind::Install, ChoreState::Expired)]), json!(0));
-    assert_eq!(rank(vec![chore(ChoreKind::Optional, ChoreState::Blocked)]), json!(1));
+    assert_eq!(
+        rank(vec![chore(ChoreKind::Install, ChoreState::Expired)]),
+        json!(0)
+    );
+    assert_eq!(
+        rank(vec![chore(ChoreKind::Optional, ChoreState::Blocked)]),
+        json!(1)
+    );
     assert_eq!(
         rank(vec![
             chore(ChoreKind::Must, ChoreState::Done),

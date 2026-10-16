@@ -59,7 +59,10 @@ fn why_short(s: Option<&str>) -> Value {
         Some("inside") => (
             copy_text(
                 "plan.whyShort.inside",
-                &[("done", &code["done"].to_string()), ("of", &code["of"].to_string())],
+                &[
+                    ("done", &code["done"].to_string()),
+                    ("of", &code["of"].to_string()),
+                ],
             ),
             false,
         ),
@@ -393,7 +396,12 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
     // 没做完的格（不是做完了、也不是不做了）。
     let open_cells = cells_in
         .iter()
-        .filter(|c| !matches!(c.get("status").and_then(Value::as_str), Some(DONE | DROPPED)))
+        .filter(|c| {
+            !matches!(
+                c.get("status").and_then(Value::as_str),
+                Some(DONE | DROPPED)
+            )
+        })
         .count();
     // 全片的签收，新的在上；读不出时刻的排后（同为读不出的照原来的先后）。
     let mut recent: Vec<(Option<i64>, &str, usize)> = cells_in
@@ -450,7 +458,11 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
             let cells = strs(b.get("cells"));
             let inside = cells
                 .first()
-                .and_then(|r| cells_in.iter().find(|c| c.get("id").and_then(Value::as_str) == Some(r)))
+                .and_then(|r| {
+                    cells_in
+                        .iter()
+                        .find(|c| c.get("id").and_then(Value::as_str) == Some(r))
+                })
                 .map_or(Value::Null, |root| kids_done(&cells_in, root));
             json!({
                 "id": s(b, "id"),
