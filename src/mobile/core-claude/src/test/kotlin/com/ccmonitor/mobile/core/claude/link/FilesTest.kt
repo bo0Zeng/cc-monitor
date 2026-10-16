@@ -120,27 +120,11 @@ class FilesTest {
     }
 
     @Test
-    fun `上传：一块一块进暂存区（b16），整份摘要与块数交给提交；同名怎么办不带（那台问）`() {
-        assertEquals(mapOf("key" to "k", "seq" to 2L, "content" to mapOf("b16" to "00ff")), FilesStageChunk.args("k", 2L, byteArrayOf(0, -1), 2))
-        assertEquals(
-            mapOf(
-                "root" to "/w",
-                "rel" to "up.bin",
-                "key" to "k",
-                "expect" to mapOf("sha256" to "ab"),
-                "chunks" to 3L,
-                "bytes" to 9L,
-            ),
-            FilesCommitUpload.args(RemotePath.of("/w"), "up.bin", "k", "ab", chunks = 3L, bytes = 9L),
-        )
-    }
-
-    @Test
-    fun `下载：按字节分块读回`() {
-        assertEquals(mapOf("path" to "/w/f", "offset" to 7L, "len" to FilesReadChunk.LEN), FilesReadChunk.args(RemotePath.of("/w/f"), 7L))
-        val c = FilesReadChunk.of(mapOf("path" to "/w/f", "offset" to 0.0, "size" to 2.0, "eof" to true, "content" to mapOf("b16" to "00ff")))!!
-        assertArrayEquals(byteArrayOf(0, -1), c.bytes)
-        assertEquals(true, c.eof)
-        assertNull("内容不是十六进制 ⇒ 解不出", FilesReadChunk.of(mapOf("path" to "/w/f", "offset" to 0.0, "size" to 2.0, "eof" to true, "content" to mapOf("b16" to "zz"))))
+    fun `上传提交：核心送完的那四样照交；同名怎么办不带（那台问）、答了带上`() {
+        val staged = FilesCommitUpload.Staged.of(mapOf("key" to "k", "chunks" to 3.0, "bytes" to 9.0, "sha256" to "ab"))!!
+        val base = mapOf("root" to "/w", "rel" to "up.bin", "key" to "k", "expect" to mapOf("sha256" to "ab"), "chunks" to 3L, "bytes" to 9L)
+        assertEquals(base, FilesCommitUpload.args(RemotePath.of("/w"), "up.bin", staged))
+        assertEquals(base + ("on_exists" to "keep_both"), FilesCommitUpload.args(RemotePath.of("/w"), "up.bin", staged, "keep_both"))
+        assertNull("少一格 ⇒ 解不出", FilesCommitUpload.Staged.of(mapOf("key" to "k", "chunks" to 3.0)))
     }
 }

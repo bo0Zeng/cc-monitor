@@ -25,8 +25,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
-import java.io.InputStream
 import java.util.UUID
 
 /** 文件屏此刻（在接 / 那台说打不开 / 列出来了）。 */
@@ -219,21 +217,17 @@ class FilesViewModel(
     /** 改权限那一框的起点：此刻的权限位（八进制）；那台没有这一说 · 读不到 ⇒ `null`。 */
     suspend fun modeText(entry: FilesLs.Entry): String? = ops.mode(entry.path).getOrNull()?.toString(OCTAL)
 
-    /** 下载到 [destDir]（Composable 传 App 自己的外部文件目录）。 */
+    /** 下载到 [destDir]（Composable 传 App 自己的外部文件目录）：[open] 开本机那一份、交出描述符。 */
     fun download(
         entry: FilesLs.Entry,
         destDir: File?,
+        open: (File) -> Int,
     ) {
         viewModelScope.launch {
             _busy.value = true
             val local = File(destDir, entry.name)
-            withContext(io) {
-                try {
-                    local.outputStream().use { out -> ops.download(entry.path, out, ::track) }
-                } catch (e: IOException) {
-                    Result.failure(FileOps.Failed(Problem(copyText("mobFiles.local.writeFailed", "path" to local.absolutePath), e.toString())))
-                }
-            }.onSuccess { _events.tryEmit(Notice(copyText("mobFiles.download.done", "path" to local.absolutePath))) }
+            withContext(io) { ops.download(entry.path, { open(local) }, local.absolutePath, ::track) }
+                .onSuccess { _events.tryEmit(Notice(copyText("mobFiles.download.done", "path" to local.absolutePath))) }
                 .onFailure {
                     local.delete()
                     say(it)
@@ -243,13 +237,45 @@ class FilesViewModel(
         }
     }
 
-    /** 上传 [name]（[open] 每次给一条从头读的流；[size] 不知道 ⇒ `-1`）。 */
+    /** 上传撞了同名、在问（[FileOps.Upload.Clash]：那台的同名清单与那一句；在哪个目录）；没在问 ⇒ `null`。 */
+    private val _clash = MutableStateFlow<Pair<RemotePath, FileOps.Upload.Clash>?>(null)
+    val clash: StateFlow<Pair<RemotePath, FileOps.Upload.Clash>?> = _clash.asStateFlow()
+
+    /** 上传 [name]（[fd] 每次现开所选那一份、交出描述符）。撞了同名 ⇒ 落进 [clash] 等答。 */
     fun upload(
         name: String,
-        size: Long,
-        open: () -> InputStream,
-    ) = write(copyText("mobFiles.upload.done", "name" to name)) { dir ->
-        withContext(io) { ops.upload(dir, name, open, size, ::track) }.also { _progress.value = null }
+        fd: () -> Int,
+    ) = landed(name) { dir -> withContext(io) { ops.upload(dir, name, fd, ::track) }.also { _progress.value = null } }
+
+    /** 同名那一问的答：`null` ⇒ 不传了（暂存件交那台的孤儿扫）；否则同一份暂存件带这个答再交一次。 */
+    fun answer(onExists: String?) {
+        val (dir, c) = _clash.value ?: return
+        _clash.value = null
+        if (onExists == null) return
+        landed(c.name, dir) { ops.commit(it, c.name, c.staged, onExists) }
+    }
+
+    /** 上传那一件的一趟：放好了 ⇒ 那一句、重列；撞了同名 ⇒ 去问；没成 ⇒ 那台那一句。 */
+    private fun landed(
+        name: String,
+        dir: RemotePath? = _cwd.value,
+        block: suspend (RemotePath) -> Result<FileOps.Upload>,
+    ) {
+        val at = dir ?: return
+        viewModelScope.launch {
+            _busy.value = true
+            block(at)
+                .onSuccess {
+                    when (it) {
+                        FileOps.Upload.Done -> {
+                            _events.tryEmit(Notice(copyText("mobFiles.upload.done", "name" to name)))
+                            refresh()
+                        }
+                        is FileOps.Upload.Clash -> _clash.value = at to it
+                    }
+                }.onFailure(::say)
+            _busy.value = false
+        }
     }
 
     private fun track(
