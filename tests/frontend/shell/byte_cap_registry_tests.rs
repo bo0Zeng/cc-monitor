@@ -1290,8 +1290,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
 ];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// ★ **小到这个数以下的就不当体量看**〔audit-0805 §5 1y，08-06 给它一个名字〕。
@@ -2107,7 +2107,7 @@ fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
 fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
     let prod = format!(
         "{}\n{}",
-        crate::guard_support::stream_source_production(),
+        guard_core::addr::stream_source_production(),
         guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"))
     );
     let lines: Vec<&str> = prod.lines().collect();

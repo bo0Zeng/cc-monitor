@@ -1231,26 +1231,26 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::path::PathBuf;
 
     // 本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
-    let shell = crate::guard_support::repo_root().join("src/frontend/shell");
+    let shell = guard_core::addr::repo_root().join("src/frontend/shell");
     let manifest = shell.as_path();
     let src_root = manifest.join("src");
-    let crates_root = crate::guard_support::repo_root().join("src/common");
+    let crates_root = guard_core::addr::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
     // 🔴 monitor 这半边今天**第三棵树**：
     //    测试段整个住 `<repo>/tests/frontend/shell`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
-        &crate::guard_support::repo_root().join("tests/frontend/shell"),
+        &guard_core::addr::repo_root().join("tests/frontend/shell"),
         &["rs"]
     ));
     // monitor 那半边的通信层成员单测镜像住 `tests/comms/inward/`。
     files.extend(guard_core::scan_tree!(
-        &crate::guard_support::repo_root().join("tests/comms/inward"),
+        &guard_core::addr::repo_root().join("tests/comms/inward"),
         &["rs"]
     ));
     // 闭集的家与随它搬进后端的三份判据（它们不在上面三棵根里了，逐份加回来）。
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     for (rel, text) in [
         (
             "src/backend/footprint/registry.rs",
@@ -1286,7 +1286,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
         let rel = p
             .strip_prefix(manifest)
-            .or_else(|_| p.strip_prefix(crate::guard_support::repo_root()))
+            .or_else(|_| p.strip_prefix(guard_core::addr::repo_root()))
             .unwrap_or(p)
             .to_string_lossy()
             .replace('\\', "/");

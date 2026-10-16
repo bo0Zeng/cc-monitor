@@ -11,7 +11,7 @@ fn shell_production(src: &str) -> String {
 }
 
 fn cc_spawn_path() -> std::path::PathBuf {
-    crate::guard_support::repo_root().join("src/shared/cc-bus/scripts/cc-spawn")
+    guard_core::addr::repo_root().join("src/shared/cc-bus/scripts/cc-spawn")
 }
 
 /// ★ P4b-Y1/Y2（`C14`〔用 08-12〕「spawn 就是起, 就是 creat」）。
@@ -70,7 +70,7 @@ fn cc_spawn_creates_it_never_reuses_a_live_session() {
 /// 这正是本仓一路在治的「散文与代码说的不是一件事」。⇒ 立一条禁词守卫。
 #[test]
 fn the_cc_bus_skill_no_longer_teaches_session_reuse() {
-    let path = crate::guard_support::repo_root().join("src/shared/cc-bus/SKILL.md");
+    let path = guard_core::addr::repo_root().join("src/shared/cc-bus/SKILL.md");
     let src = std::fs::read_to_string(&path).expect("读 cc-bus SKILL.md");
     assert!(
         src.lines().count() >= 20,
@@ -156,7 +156,7 @@ fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
         panic!("{e}\n⇒ `cc-spawn` 不再经 `ccbus_ccm_bin` 找后端 —— 查找次序又长出了第二份")
     });
     let adapt_path =
-        crate::guard_support::repo_root().join("src/shared/cc-bus/scripts/cc-bus-adapt.sh");
+        guard_core::addr::repo_root().join("src/shared/cc-bus/scripts/cc-bus-adapt.sh");
     let adapt = std::fs::read_to_string(&adapt_path)
         .unwrap_or_else(|e| panic!("读不到 {adapt_path:?}: {e}"));
     for probe in ["-f \"$x\"", "-x \"$x\""] {

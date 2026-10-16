@@ -463,7 +463,7 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
 fn every_alias_flag_is_a_real_ccm_flag() {
     // `--help` 正文进了文案表（`beCcm.usage.body`）：后端 ccm 那份源码取的就是这一条，正文从表里读。
     let ccm_src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/control/ccm/mod.rs"),
+        guard_core::addr::repo_root().join("src/backend/control/ccm/mod.rs"),
     )
     .expect("读后端 ccm 源码");
     assert!(

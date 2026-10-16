@@ -209,7 +209,7 @@ fn every_kind_matches_the_golden_full_and_minimal() {
 /// （必填格缺了盘上形状就认不出、不出记录）· 秤的原文语料（`scale2-height-records.jsonl`）每一行。
 #[test]
 fn the_cheap_class_agrees_with_the_record() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let scale =
         std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
             .unwrap();
@@ -477,7 +477,7 @@ fn inflate(v: &mut serde_json::Value) {
 
 /// 原文语料（可先膨胀）⇒ 逐行成品，一行一条。
 fn scale_records(inflated: bool) -> String {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let raw = std::fs::read_to_string(root.join("tests/__fixtures__/scale2-height-records.jsonl"))
         .unwrap();
     let mut got = String::new();
@@ -509,7 +509,7 @@ fn scale_records(inflated: bool) -> String {
 
 #[test]
 fn the_scale_corpora_are_what_this_translator_gives() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     for (name, inflated) in [
         ("scale2-height-line-records.jsonl", false),
         ("scale1-inflated-line-records.jsonl", true),

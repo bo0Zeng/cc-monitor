@@ -134,7 +134,7 @@ fn kick_runs_the_callback_once_without_paths() {
 /// 会话流那一份（`observe/watcher.rs`）盯整棵记录树、按批去抖、自己分派几十种事件，是流本身，不是「一个文件变了就重读」。
 #[test]
 fn only_this_primitive_hangs_a_notify_watcher() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needles = [
         format!("{}::{}", "notify", "recommended_watcher"),
         format!("{}::{}", "RecommendedWatcher", "new"),
@@ -142,7 +142,7 @@ fn only_this_primitive_hangs_a_notify_watcher() {
     ];
     let mut hits: Vec<String> = Vec::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-        let code = crate::guard_support::production_code(&src);
+        let code = guard_core::production_code(&src);
         if needles.iter().any(|n| code.contains(n.as_str())) {
             hits.push(
                 path.strip_prefix(&root)

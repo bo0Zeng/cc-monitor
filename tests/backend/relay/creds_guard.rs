@@ -35,7 +35,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 允许出现在中转日志里的东西。**默认拒绝**：不在表里的当场红。
     ///
@@ -289,7 +289,7 @@ mod tests {
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
     /// 那么有人在 `observe/` 里再取一次就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
-        let dir = crate::guard_support::src_root();
+        let dir = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&dir, &["rs"])
             .into_iter()
             .map(|(p, raw)| (p.display().to_string(), production_code(&raw)))
@@ -349,7 +349,7 @@ mod tests {
         // 先前量的是 monitor 那份（它当时也开着）；monitor 从此不读不写这份文件、不开它 ⇒ 反过来钉「monitor 零处」。
         let read_manifest = |rel: &str| {
             guard_core::strip_hash_comment_lines(
-                &std::fs::read_to_string(crate::guard_support::repo_root().join(rel))
+                &std::fs::read_to_string(guard_core::addr::repo_root().join(rel))
                     .unwrap_or_else(|e| panic!("读不到 {rel}：{e}")),
             )
         };
@@ -622,12 +622,12 @@ mod tests {
     /// ★★ `KS4`：中转记日志走**白名单**。
     #[test]
     fn every_log_line_in_the_relay_only_carries_registered_fields() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut files = Vec::new();
         for r in LOG_ROOTS {
             // `comms-outward` 那一格是中转 crate（`src/comms/outward/`）；`relay` 是后端里它的宿主。
             let dirs = if *r == "comms-outward" {
-                vec![crate::guard_support::relay_root()]
+                vec![guard_core::addr::relay_root()]
             } else {
                 vec![root.join(r)]
             };

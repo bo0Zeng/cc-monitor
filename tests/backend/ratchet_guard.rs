@@ -349,7 +349,7 @@ mod tests {
     /// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself`
     /// 是一条**递减棘轮**，08-27 当场把一份裸遍历打红过。
     fn crate_production_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(path, src)| {
@@ -358,7 +358,7 @@ mod tests {
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                (rel, crate::guard_support::production_code(&src))
+                (rel, guard_core::production_code(&src))
             })
             .collect()
     }

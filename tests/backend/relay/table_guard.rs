@@ -68,7 +68,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 从 `at` 之后第一个 `{` 起，切出配平的花括号块（不含首尾那对括号）。
     ///
@@ -101,7 +101,7 @@ mod tests {
     /// 「决定点只有一处」这句话的分母如果只到 `relay/`，那么有人在 `observe/` 里
     /// 再开一条上游连接就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
-        let dir = crate::guard_support::src_root();
+        let dir = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&dir, &["rs"])
             .into_iter()
             .map(|(p, raw)| (p.display().to_string(), production_code(&raw)))

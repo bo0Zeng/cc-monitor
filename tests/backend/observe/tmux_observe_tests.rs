@@ -462,14 +462,11 @@ fn the_underflow_predicate_only_fires_downward() {
 fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     // A 块搬出之后，「本模块」仍是原 `watcher.rs` 那一份 = 两份生产段拼起来（人群不缩，
     // 下面的登记值与地板一个不动）；起 `sh` 的两处今天都住 `tmux_observe.rs`。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", &prod);
-    let moved = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/tmux_observe.rs"
-    ));
-    crate::guard_support::assert_no_test_code("observe/tmux_observe.rs", &moved);
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
+    guard_core::assert_no_test_code("observe/watcher.rs", &prod);
+    let moved =
+        guard_core::production_code(include_str!("../../../src/backend/observe/tmux_observe.rs"));
+    guard_core::assert_no_test_code("observe/tmux_observe.rs", &moved);
     let prod = format!("{prod}{moved}");
     // 非空对照：剥过头 / 没读到 ⇒ 下面全是 0 == 0 的空真。
     // 地板 = 实测值的一半（09-04 现打 41_149 字节）。

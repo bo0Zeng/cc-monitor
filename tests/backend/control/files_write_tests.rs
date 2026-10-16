@@ -649,7 +649,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 ///（写句柄只递给文件管理那一族，`readonly_guard` 钉着），本条刻意不替它作证。
 #[test]
 fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needle = format!("files_{}::", "write");
     let mut consumers: Vec<String> = Vec::new();
     let mut scanned = 0usize;
@@ -2410,9 +2410,8 @@ fn w5vis_a_backup_that_cannot_keep_the_original_mode_is_removed_and_refused() {
         0o600
     );
     // 接线。
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/files_write.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_write.rs"));
     assert_eq!(
         prod.matches("set_permissions(&bak, p).ok()").count(),
         0,
@@ -2952,7 +2951,7 @@ fn what_the_file_face_creates_inside_the_own_home_is_only_for_the_owner() {
 #[test]
 fn the_two_name_rules_match_the_hand_written_expectations() {
     use crate::platform::paths::{unix_name_problem, windows_name_problem, NameProblem};
-    let path = crate::guard_support::repo_root().join("tests/__fixtures__/file-names.golden.json");
+    let path = guard_core::addr::repo_root().join("tests/__fixtures__/file-names.golden.json");
     let g: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).expect("JSON");
     let word = |p: Option<NameProblem>| match p {

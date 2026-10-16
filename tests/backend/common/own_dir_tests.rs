@@ -99,7 +99,7 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
 
 #[test]
 fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut found: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -109,7 +109,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
             .to_string_lossy()
             .replace('\\', "/");
         scanned += 1;
-        let prod = crate::guard_support::production_side_of(&path, &src);
+        let prod = guard_core::addr::production_side_of(&path, &src);
         found.extend(dir_creations(&rel, &prod));
     }
     assert!(scanned >= 60, "只扫到 {scanned} 份 —— 遍历坏了");
@@ -155,8 +155,8 @@ const MOVED_TO_OWN: &[&str] = &[
 #[test]
 fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     let src = |p: &str| {
-        crate::guard_support::production_code(
-            &std::fs::read_to_string(crate::guard_support::src_root().join(p)).expect("读"),
+        guard_core::production_code(
+            &std::fs::read_to_string(guard_core::addr::backend_src_root().join(p)).expect("读"),
         )
     };
     // 暂存区那两层：经文件管理面句柄那一个带权限位建目录的方法（`Face::make_dir_private`，本体同上那一个函数），恰好一处。
@@ -188,9 +188,9 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     )
     .expect("本后端交给拨号核心的建目录权限位不是 own_dir 那一个");
     // 手机那一份（`mobcore`）装的也是部署那一种，权限位与本后端交的同值（它够不着本 crate，常量自写一份，这里钉相等）。
-    let phone = crate::guard_support::production_code(
+    let phone = guard_core::production_code(
         &std::fs::read_to_string(
-            crate::guard_support::src_root().join("../mobile/core-rs/rust/lib.rs"),
+            guard_core::addr::backend_src_root().join("../mobile/core-rs/rust/lib.rs"),
         )
         .expect("读手机核心"),
     );

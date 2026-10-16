@@ -45,9 +45,9 @@ fn malformed_is_never_an_eager_argument_guard() {
     let mut seen = 0usize;
     let mut bad = Vec::new();
     for (path, src) in
-        guard_core::scan_tree_excluding(&crate::guard_support::src_root(), &["rs"], &[])
+        guard_core::scan_tree_excluding(&guard_core::addr::backend_src_root(), &["rs"], &[])
     {
-        let code = crate::guard_support::production_side_of(&path, &src);
+        let code = guard_core::addr::production_side_of(&path, &src);
         seen += code.matches("malformed(").count();
         let b = code.as_bytes();
         let mut i = 0;

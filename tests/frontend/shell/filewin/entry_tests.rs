@@ -133,7 +133,7 @@ fn this_command_is_wired_all_the_way_to_the_frontend_wrapper() {
 /// `tests/sftp/panel.vitest.ts`（真点一下那颗按钮、看它带着什么参数调下去）。
 #[test]
 fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
-    let root = crate::guard_support::repo_src_root();
+    let root = guard_core::addr::repo_src_root();
     let mut sites: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for f in guard_core::files_by_extension(&root, "ts") {

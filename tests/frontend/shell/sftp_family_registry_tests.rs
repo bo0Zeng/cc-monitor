@@ -66,7 +66,7 @@ const WRITE_FORMS: &[&str] = &[
 
 fn pool_production() -> String {
     let raw = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/frontend/shell/src/sftp_pool.rs"),
+        guard_core::addr::repo_root().join("src/frontend/shell/src/sftp_pool.rs"),
     )
     .expect("读 sftp_pool.rs");
     guard_core::production_code(&raw)
@@ -156,7 +156,7 @@ fn every_pool_tauri_command_is_pending_and_the_transfer_core_has_none() {
 /// 🔴 判据 1 的另一半：**待收的每一格，消费者此刻真的在**（没有「留着用不上的豁免」）。
 #[test]
 fn every_pending_entry_still_has_its_named_consumer_on_disk() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     for (name, _, who, file, needle) in PENDING {
         let text = std::fs::read_to_string(root.join(file)).unwrap_or_default();
         assert!(

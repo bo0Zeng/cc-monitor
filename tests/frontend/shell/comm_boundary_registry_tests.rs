@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -2287,7 +2287,7 @@ fn assert_left_outside(table: &[(&str, &[&str], &[&str], &str)], label: &str) {
                 *rel, "src/frontend/shell/src/stream_source/",
                 "目录那一格只认会话流来源那个目录（理由：{why}）"
             );
-            crate::guard_support::stream_source_production()
+            guard_core::addr::stream_source_production()
         } else {
             let p = root.join(rel);
             let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {

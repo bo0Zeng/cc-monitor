@@ -126,7 +126,7 @@ fn every_golden_row_parses_and_exactly_the_minimal_fields_are_required() {
 #[test]
 fn the_kinds_this_side_knows_are_exactly_the_golden_kinds() {
     let golden: BTreeSet<String> = golden_pairs().into_keys().collect();
-    let known = crate::guard_support::parse_frame_kinds();
+    let known = guard_core::addr::parse_frame_kinds();
     assert_eq!(
         known, golden,
         "认得的种类与金样对不上 —— 后端加了一种帧要在 `parse_frame` 补一条臂（消费或认识但不消费）"

@@ -198,7 +198,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
 
 /// 本 crate 的源码根 —— 住址唯一源。
 fn src_root() -> PathBuf {
-    crate::guard_support::crate_src_root()
+    guard_core::addr::shell_src_root()
 }
 
 /// 那个唯一出口自己的住址（相对仓根）。**明写，不靠 `file!()` 自摘** ——

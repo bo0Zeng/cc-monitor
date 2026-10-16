@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// 本机读面登记表：`(相对 src/frontend/shell 的路径, 外层函数 / 项, 类别, 为什么 + 退役归谁)`。
 ///
-/// 每一处碰本机 claude 目录的源码按「文件 × 外层项」认（[`crate::guard_support::enclosing_fn`]）：
+/// 每一处碰本机 claude 目录的源码按「文件 × 外层项」认（[`guard_core::addr::enclosing_fn`]）：
 /// 新的一处 ⇒ 下面那条红（直读点不许无声地长）；退役了 ⇒ **也红**（把那一行删掉）。
 const REGISTERED: &[(&str, &str, &str, &str)] = &[
     (
@@ -65,7 +65,7 @@ fn hit_fns(prod: &str) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     (0..lines.len())
         .filter(|&i| ns.iter().any(|n| lines[i].contains(n.as_str())))
-        .map(|i| crate::guard_support::enclosing_fn(&lines, i))
+        .map(|i| guard_core::addr::enclosing_fn(&lines, i))
         .collect()
 }
 

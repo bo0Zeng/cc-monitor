@@ -20,7 +20,7 @@ fn wire(v: &impl serde::Serialize) -> String {
 
 /// 钉住的那一份：`tests/__fixtures__/footprint-wire.pin.txt` 里 `名字<TAB>字节` 那一行（一份一行）。
 fn pinned(name: &str) -> String {
-    let path = crate::guard_support::repo_root().join("tests/__fixtures__/footprint-wire.pin.txt");
+    let path = guard_core::addr::repo_root().join("tests/__fixtures__/footprint-wire.pin.txt");
     let all = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}：{e}"));
     all.lines()
         .find_map(|l| l.strip_prefix(name)?.strip_prefix('\t'))

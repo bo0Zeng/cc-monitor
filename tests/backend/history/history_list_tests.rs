@@ -82,7 +82,7 @@ fn listing_annotations(listing: &Value) -> Result<Table, String> {
 }
 
 fn fixtures() -> PathBuf {
-    crate::guard_support::repo_root().join("tests/__fixtures__")
+    guard_core::addr::repo_root().join("tests/__fixtures__")
 }
 
 /// 这台的注解：S1 星标 · S2 隐藏 · S4 星标 ＋ 隐藏（S3 S5 没有注解）。

@@ -932,7 +932,7 @@ fn takes_the_lock(chunk: &str) -> bool {
 /// 量法：按 `#[test]` 切块（先剥注释再切），块里有写口（[`touches_resident_state`]）⇒ 块里得有 `resident_lock()`。
 #[test]
 fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
-    let root = crate::guard_support::tests_root();
+    let root = guard_core::addr::backend_tests_root();
     let mut touching = 0usize;
     let mut unlocked: Vec<String> = Vec::new();
     for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {

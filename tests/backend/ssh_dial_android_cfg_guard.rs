@@ -78,7 +78,7 @@ fn no_platform_cfg_in_the_dial_core_silently_drops_android() {
     let mut gaps = Vec::new();
     for (path, src) in guard_core::scan_tree_excluding(root, &["rs"], &[]) {
         let rel = guard_core::module_address(root, &path);
-        let code = crate::guard_support::production_code(&src);
+        let code = guard_core::production_code(&src);
         seen.insert(rel.clone(), predicates(&code).len());
         gaps.extend(android_gaps(&rel, &code));
     }

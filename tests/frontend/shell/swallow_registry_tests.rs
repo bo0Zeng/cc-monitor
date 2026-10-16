@@ -575,7 +575,7 @@ fn test_only_modules(files: &[(PathBuf, String)]) -> BTreeSet<PathBuf> {
 
 /// 盘上的人群：`(仓根相对路径, 归一化语句) → 处数`。
 fn population() -> BTreeMap<(String, String), usize> {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for sub in ROOTS {
         files.extend(guard_core::scan_tree_excluding(
@@ -683,7 +683,7 @@ fn w5vis_the_swallow_detector_sees_exactly_the_bare_forms() {
 /// ③ 测试专用模块确实被排除：派生出来的那一组里有两份已知的、生产段里带 `let _ =` 的测试专用文件（正控）。
 #[test]
 fn w5vis_test_only_modules_are_derived_and_excluded() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files = Vec::new();
     for sub in ROOTS {
         files.extend(guard_core::scan_tree_excluding(

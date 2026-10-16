@@ -797,9 +797,8 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
 /// 「起不来时真的报错」由 [`a_window_process_that_dies_at_once_comes_back_as_a_reason`] 买。
 #[test]
 fn the_entry_command_has_no_in_process_fallback_left() {
-    let src =
-        std::fs::read_to_string(crate::guard_support::crate_src_root().join("filewin/entry.rs"))
-            .expect("entry.rs 读不动");
+    let src = std::fs::read_to_string(guard_core::addr::shell_src_root().join("filewin/entry.rs"))
+        .expect("entry.rs 读不动");
     let prod = guard_core::production_code(&src);
     // ★ 反向自检：剥完之后生产段**不是空的**，否则下面那条零命中恒真。
     assert!(

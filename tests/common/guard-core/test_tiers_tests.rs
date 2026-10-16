@@ -460,12 +460,8 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
 /// （`file!()` 那条路在 `#[path]` 挂载下不生效 —— 纪律 4）。
 const SELF: &str = "tests/common/guard-core/test_tiers_tests.rs";
 
-/// 仓根。`guard-core` 零依赖、够不着 monitor 的 `guard_support` ⇒ 这里就地算一次。
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("guard-core 的上四级 = 仓根")
+    crate::addr::repo_root()
 }
 
 fn rel_of(root: &Path, p: &Path) -> String {
@@ -778,8 +774,8 @@ fn rust_repo_text_needles() -> Vec<String> {
         ("repo_", "root("),
         ("src_", "root("),
         ("tests_", "root("),
-        ("crate_", "root("),
-        ("crate_src_", "root("),
+        ("shell_", "root("),
+        ("filewin_", "root("),
         ("backend_src_", "root("),
         ("repo_src_", "root("),
         ("CARGO_MANIFEST", "_DIR"),
@@ -791,7 +787,7 @@ fn rust_repo_text_needles() -> Vec<String> {
         ("read_to_", "string("),
         ("read_", "dir("),
         ("fs::", "read("),
-        // 壳 `guard_support` 读会话流来源那个目录的几个口（目录拆开之后，读那份源码的判据经它们读）。
+        // `guard_core::addr` 读会话流来源那个目录的几个口（目录拆开之后，读那份源码的判据经它们读）。
         ("stream_source_", "files("),
         ("stream_source_", "file("),
         ("stream_source_", "production("),
@@ -1276,74 +1272,66 @@ fn unit_tier_every_file_is_reached_by_its_runner() {
 
 // ───────────────────────────── T2 扫描层：语料根在盘 ─────────────────────────────
 
-/// 一个「根」函数名 ⇒ 它在那一侧指向的仓根相对目录。按文件所在的树分两侧（两个 crate 的 `guard_support` 语义不同）。
-fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
-    // 后端 crate 挂载的那棵（`tests/comms/` 由通信层两个 crate 自己挂载，它们没有 `guard_support`）。
-    let backend = under(rel, "tests/backend/");
-    // 文件窗口独立成包：它的判据由窗口包挂载 ⇒ `guard_support` 是窗口包那一份（三个根）。
-    if under(rel, "tests/frontend/filewin/") {
-        return match fname {
-            "repo_root" => Some("."),
-            "crate_src_root" => Some("src/frontend/filewin/src"),
-            "crate_root" => Some("src/frontend/filewin"),
-            _ => None,
-        };
-    }
-    match (backend, fname) {
-        (_, "repo_root") => Some("."),
-        (false, "tests_root") => Some("tests"),
-        (false, "crate_src_root") => Some("src/frontend/shell/src"),
-        (false, "crate_root") => Some("src/frontend/shell"),
-        (false, "backend_src_root") => Some("src/backend"),
-        (false, "repo_src_root") => Some("src"),
-        (true, "tests_root") => Some("tests/backend"),
-        (true, "src_root") => Some("src/backend"),
-        // 后端那一侧的三个根：中转 crate · 它的单测 · 后端里中转的宿主。
-        (true, "relay_root") => Some("src/comms/outward"),
-        (true, "comms_tests_root") => Some("tests/comms/outward"),
-        (true, "relay_host_root") => Some("src/backend/relay"),
-        _ => None,
-    }
+/// 一个住址函数名（`guard_core::addr` 那一份）⇒ 它指向的仓根相对目录。
+fn root_fn_base(fname: &str) -> Option<&'static str> {
+    ROOT_FNS.iter().find(|(f, _)| *f == fname).map(|(_, d)| *d)
 }
+
+/// `guard_core::addr` 里指向一个目录的那几个住址。
+const ROOT_FNS: &[(&str, &str)] = &[
+    ("repo_root", "."),
+    ("repo_src_root", "src"),
+    ("tests_root", "tests"),
+    ("backend_src_root", "src/backend"),
+    ("backend_tests_root", "tests/backend"),
+    ("relay_root", "src/comms/outward"),
+    ("comms_tests_root", "tests/comms/outward"),
+    ("relay_host_root", "src/backend/relay"),
+    ("shell_root", "src/frontend/shell"),
+    ("shell_src_root", "src/frontend/shell/src"),
+    ("filewin_root", "src/frontend/filewin"),
+    ("filewin_src_root", "src/frontend/filewin/src"),
+];
 
 /// 一份 Rust 测试文件里「以仓内根为基」的路径字面量：`(行号, 根函数, 字面量)`。
 ///
 /// 两种形：`repo_root().join("…")` 直连；`let r = repo_root(); … r.join("…")` 绑定。
-/// 本文件里**自己定义了**同名根函数的（`fn src_root(`），那个名字的语义不是共享的 ⇒ 跳过；
+/// 本文件里自己定义的根函数转调 `addr::<住址>()` 的，认作那个住址；与住址同名却不转调的（`fn shell_root(`），语义是本地的 ⇒ 跳过；
 /// 一个变量名在本文件里还被绑到别的东西上 ⇒ 歧义 ⇒ 跳过（宁可少核，不许误红）。
-fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> {
+fn root_anchored_literals(raw: &str) -> Vec<(usize, String, String)> {
     let code = code_only(raw, Lang::Rust);
     let raw_lines: Vec<&str> = raw.lines().collect();
     let code_lines: Vec<&str> = code.lines().collect();
-    const FNS: &[&str] = &[
-        "repo_root",
-        "tests_root",
-        "src_root",
-        "crate_root",
-        "crate_src_root",
-        "backend_src_root",
-        "repo_src_root",
-        "relay_root",
-        "comms_tests_root",
-        "relay_host_root",
-    ];
-    // 本文件自己定义的同名根函数：函数体（定义行起 5 行）里转调的正是 `guard_support::<同名>()`
-    // ⇒ 语义与共享那个相同，照认（本仓 25 份文件是这一形）；否则 ⇒ 语义是本地的 ⇒ 不认。
-    let local_fns: BTreeSet<&str> = FNS
+    // 住址名 ⇒ 它是哪个住址。本文件自己定义的根函数：函数体（定义行起 5 行）转调 `addr::<住址>()` ⇒ 认作那个住址；
+    // 与住址同名、却不转调的 ⇒ 语义是本地的 ⇒ 不认。
+    let mut alias: BTreeMap<String, String> = ROOT_FNS
         .iter()
-        .copied()
-        .filter(|f| {
-            let def = format!("fn {f}(");
-            let Some(at) = code_lines
-                .iter()
-                .position(|l| crate::contains_word(l, &def))
-            else {
-                return false;
-            };
-            let body = code_lines[at..(at + 5).min(code_lines.len())].join("\n");
-            !crate::contains_word(&body, &format!("guard_support::{f}()"))
-        })
+        .map(|(f, _)| (f.to_string(), f.to_string()))
         .collect();
+    for (at, cl) in code_lines.iter().enumerate() {
+        let Some(rest) = cl.split("fn ").nth(1) else {
+            continue;
+        };
+        let name: String = rest.chars().take_while(|c| is_ident(*c)).collect();
+        if name.is_empty() || !rest[name.len()..].starts_with('(') {
+            continue;
+        }
+        let end = (at..(at + 5).min(code_lines.len()))
+            .find(|&k| (k == at && cl.trim_end().ends_with('}')) || code_lines[k].starts_with('}'))
+            .unwrap_or((at + 4).min(code_lines.len() - 1));
+        let body = code_lines[at..=end].join("\n");
+        match ROOT_FNS
+            .iter()
+            .find(|(f, _)| crate::contains_word(&body, &format!("addr::{f}()")))
+        {
+            Some((f, _)) => {
+                alias.insert(name, f.to_string());
+            }
+            None => {
+                alias.remove(&name);
+            }
+        }
+    }
     // 绑定：`let [mut] <v> [: T] = [&][path::]<fn>()`。
     let mut binds: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for cl in &code_lines {
@@ -1366,17 +1354,19 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
             .and_then(|p| p.rsplit("::").next())
             .unwrap_or("")
             .to_string();
-        let is_root_call = FNS.contains(&callee.as_str()) && r.contains(&format!("{callee}()"));
+        let target = alias
+            .get(&callee)
+            .filter(|_| r.contains(&format!("{callee}()")))
+            .cloned();
         binds
             .entry(v)
             .or_default()
-            .insert(if is_root_call { callee } else { String::new() });
+            .insert(target.unwrap_or_default());
     }
     let good: BTreeMap<String, String> = binds
         .into_iter()
         .filter(|(_, fs)| fs.len() == 1 && !fs.contains(""))
         .map(|(v, fs)| (v, fs.into_iter().next().expect("恰好一个")))
-        .filter(|(_, f)| !local_fns.contains(f.as_str()))
         .collect();
     let mut out = Vec::new();
     let mark = ".join(\"";
@@ -1402,15 +1392,14 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
                 .rev()
                 .collect();
             let func = if is_call {
-                (FNS.contains(&name.as_str()) && !local_fns.contains(name.as_str()))
-                    .then(|| name.clone())
+                alias.get(&name).cloned()
             } else {
                 good.get(&name).cloned()
             };
             let Some(func) = func else {
                 continue;
             };
-            if root_fn_base(rel, &func).is_none() {
+            if root_fn_base(&func).is_none() {
                 continue;
             }
             let q_col = line[..at_byte + mark.len() - 1].chars().count();
@@ -1438,8 +1427,8 @@ fn scan_tier_every_root_anchored_path_literal_resolves() {
     for f in three.iter().filter(|f| lang_of(f) == Lang::Rust) {
         let f = f.as_str();
         let Some(raw) = rust.get(f) else { continue };
-        for (line, func, lit) in root_anchored_literals(f, raw) {
-            let base = root_fn_base(f, &func).expect("上面筛过");
+        for (line, func, lit) in root_anchored_literals(raw) {
+            let base = root_fn_base(&func).expect("上面筛过");
             checked += 1;
             if !root.join(base).join(&lit).exists() {
                 bad.push(format!(
@@ -2044,7 +2033,7 @@ fn the_root_anchored_literal_extractor_sees_both_shapes_and_nothing_ambiguous() 
     let src = "fn a() {\n    let r = repo_root();\n    let x = r.join(\"src/frontend/shell\");\n    \
                let y = repo_root().join(\"tests\");\n    let t = tmp();\n    let z = t.join(\"no\");\n}\n\
                fn b() {\n    let r2 = std::env::temp_dir();\n    let w = r2.join(\"no\");\n}\n";
-    let got: Vec<String> = root_anchored_literals("tests/frontend/shell/x.rs", src)
+    let got: Vec<String> = root_anchored_literals(src)
         .into_iter()
         .map(|(_, f, l)| format!("{f}:{l}"))
         .collect();
@@ -2057,17 +2046,14 @@ fn the_root_anchored_literal_extractor_sees_both_shapes_and_nothing_ambiguous() 
     );
     // 同一个名字绑到两种东西上 ⇒ 歧义 ⇒ 不认。
     let amb = "fn a() { let r = repo_root(); let _ = r.join(\"x\"); }\nfn b() { let r = tmp(); let _ = r.join(\"y\"); }\n";
-    assert!(root_anchored_literals("tests/frontend/shell/x.rs", amb).is_empty());
-    // 本文件自己定义了 `src_root` ⇒ 它的语义不是共享的那个 ⇒ 不认。
+    assert!(root_anchored_literals(amb).is_empty());
+    // 本文件自己定义了 `backend_src_root` ⇒ 它的语义不是共享的那个 ⇒ 不认。
     let local =
-        "fn src_root() -> PathBuf { todo!() }\nfn a() { let _ = src_root().join(\"x\"); }\n";
-    assert!(root_anchored_literals("tests/backend/x.rs", local).is_empty());
-    // 本地同名、但只是转调共享那个 ⇒ 语义相同 ⇒ 照认。
-    let delegate = "fn repo_root() -> PathBuf {\n    crate::guard_support::repo_root()\n}\nfn a() { let _ = repo_root().join(\"x\"); }\n";
-    assert_eq!(
-        root_anchored_literals("tests/frontend/shell/x.rs", delegate).len(),
-        1
-    );
+        "fn backend_src_root() -> PathBuf { todo!() }\nfn a() { let _ = backend_src_root().join(\"x\"); }\n";
+    assert!(root_anchored_literals(local).is_empty());
+    // 本地的根函数、只是转调共享那个 ⇒ 认作那个住址。
+    let delegate = "fn src_root() -> PathBuf {\n    guard_core::addr::backend_src_root()\n}\nfn a() { let _ = src_root().join(\"x\"); }\n";
+    assert_eq!(root_anchored_literals(delegate).len(), 1);
 }
 
 /// S4：静默跳过的认法 —— 正控（缺环境 ⇒ return）认得出；读了环境变量但缺了就 panic 的不认。

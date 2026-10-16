@@ -18,7 +18,7 @@
 /// 就连「收到了」这件事都没留下 —— 而那正是最需要知道的一格。
 #[test]
 fn the_session_added_arm_is_not_silent() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     let at = guard_core::find_pinned(&prod, "session-added: [{host_label}] sid={sid}")
         .expect("`SessionAdded` 那一臂必须留下一行「收到了」——否则全链失败时问不出帧到没到");
     // ⚠ **改成局部窗口，不求全局唯一**：那句 emit 生产段有 2 处（另一处是**重宣告**那条路），
@@ -56,7 +56,7 @@ fn the_session_added_arm_is_not_silent() {
 fn the_session_removed_arm_is_not_silent() {
     // 「死亡那跳到没到」今天是两帧：`session_removed`（内容流收口）与紧跟的 `session_state`（后端裁的去向）。
     //   两行都要留；去向那一行排在转交**之前**（转交卡住时也留下「收到了」）。
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     guard_core::find_pinned(&prod, "session-removed: [{host_label}] sid={sid}").expect(
         "`SessionRemoved` 那一臂必须留下一行「收到了」——`#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」。",
     );
@@ -220,7 +220,7 @@ fn the_shared_stripper_keeps_the_arms_this_guard_must_scan() {
     //    `find_pinned`（恰好一处 + 两侧有边界），针的大小要和它一致。
     guard_core::assert_stripper_keeps(
         "stream_source::capped_line_tests",
-        &crate::guard_support::stream_source_raw(),
+        &guard_core::addr::stream_source_raw(),
         &[
             "session-added: [{host_label}] sid={sid}",
             "session-removed: [{host_label}] sid={sid}",

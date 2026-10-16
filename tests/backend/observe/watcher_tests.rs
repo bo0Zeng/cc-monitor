@@ -16,9 +16,7 @@
 /// ⇒ 本条只做一件事：钉住那条 `match` 里**没有兜底臂**。
 #[test]
 fn the_event_dispatch_has_no_catch_all_arm() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let anchor = "WatchEvent::Notify(Ok(events)) =>";
     let at = prod
         .find(anchor)
@@ -330,9 +328,7 @@ fn arm_pid_watcher_is_a_noop_without_sender() {
 /// 扫描抽成 `initial_session_scan` 之后，锚点换成 `watch_loop` 里它的调用点；10-07 起再经 `arm_then_scan`（见函数体）。
 #[test]
 fn events_channel_is_created_before_the_initial_scan() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let src = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let tx_at = src
         .find("state.events_tx = Some(events_tx.clone());")
         .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
@@ -409,7 +405,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
     //    它自己的反空真（`prod.len() < me.len()`）当场红 —— 红得对。
-    let prod = crate::guard_support::production_code(me);
+    let prod = guard_core::production_code(me);
     let prod = prod.as_str();
     let arm = format!("WatchEvent::TmuxProbeDue {} WatchEvent::Poke =>", "|");
     assert!(
@@ -425,7 +421,7 @@ fn poke_shares_the_probe_arm_with_the_ticker() {
         "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
         prod.len()
     );
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
+    guard_core::assert_no_test_code("observe/watcher.rs", prod);
 }
 
 /// ★ S0：pidfile **绑的 sid 变了**才重探 tmux —— 不是「有 .json 事件就探」。
@@ -446,7 +442,7 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
     //    它自己的反空真（`prod.len() < me.len()`）当场红 —— 红得对。
-    let prod = crate::guard_support::production_code(me);
+    let prod = guard_core::production_code(me);
     let prod = prod.as_str();
     // 反空真（换了说法）：原来断的是「剥掉了东西」（`prod.len() < me.len()`），
     // 而剖分之后那份生产文件里**本来就没有测试段可剥** ⇒ 那句话恒假。
@@ -457,7 +453,7 @@ fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
         "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
         prod.len()
     );
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
+    guard_core::assert_no_test_code("observe/watcher.rs", prod);
     // 触发器 = 处理前后拿同一个 key 的 sid 比一次。判据运行时拼，避免本测试自己的
     // 源码把 `contains` 喂成恒真（那正是 P4 那条守卫初版栽的跟头）。
     let before = format!(
@@ -530,7 +526,7 @@ fn still_exactly_one_event_channel() {
     //    而剖分之后 `watcher.rs` 里那三行桩中间多了一行 `#[path = "…"]`
     //    ⇒ 那根针**恒不命中** ⇒ `prod` 退化成全文，下面数的就是全文。
     //    它自己的反空真（`prod.len() < me.len()`）当场红 —— 红得对。
-    let prod = crate::guard_support::production_code(me);
+    let prod = guard_core::production_code(me);
     let prod = prod.as_str();
     let n = prod
         .matches("std::sync::mpsc::channel::<WatchEvent>()")
@@ -549,7 +545,7 @@ fn still_exactly_one_event_channel() {
         "只读到 {} 字节生产段 —— 语料塌了，这条断言在空转",
         prod.len()
     );
-    crate::guard_support::assert_no_test_code("observe/watcher.rs", prod);
+    guard_core::assert_no_test_code("observe/watcher.rs", prod);
 }
 
 // ---------- P3（zero-poll-liveness）：tmux server 生 / 死 / 复活 ----------
@@ -2825,9 +2821,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
 /// 接线：`watch_loop` 经 `HomeEars` 恰好 `arm` 一处、`on_path` 一处（上一条才在执行链上）；旧那句话零命中。带正控。
 #[test]
 fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let at = prod.find("fn watch_loop(").expect("`watch_loop` 不在了");
     let end = prod[at..]
         .find("\nstruct ReaderState")
@@ -2898,7 +2892,7 @@ fn a_batch_counts_as_an_accounts_change_only_when_the_manifest_is_in_it() {
 #[test]
 fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
-    let prod = crate::guard_support::production_code(src);
+    let prod = guard_core::production_code(src);
     let ask = guard_core::find_pinned(&prod, "if manifest_touched(")
         .expect("Notify 那一臂里不是恰好一处问 manifest_touched");
     // 「重新对齐」那一臂也发一帧（整机时）⇒ 全文两处；这里只认 Notify 那一臂里、问完之后的那一处。
@@ -2944,7 +2938,7 @@ fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
 #[test]
 fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
-    let prod = crate::guard_support::production_code(src);
+    let prod = guard_core::production_code(src);
     let ask = guard_core::find_pinned(&prod, "if needs_login_touched(")
         .expect("Notify 那一臂里不是恰好一处问 needs_login_touched");
     let ring = prod[ask..]
@@ -3972,7 +3966,7 @@ fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
     std::fs::remove_dir_all(&home).ok();
     assert_eq!(got, vec![("live-1".to_string(), me)]);
     // 接线：`ccm` 入口注入的就是这一份扫描（恰一处）。
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(&main, "observe::watcher::running_sessions(&home)")
         .unwrap_or_else(|e| panic!("`main.rs` 注入的不是观测层那一份扫描：{e}"));
 }
@@ -4049,9 +4043,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
 /// 接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `changed {tasks}`，排在逐条处理事件的 `for` 之前。
 #[test]
 fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
     let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
         .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
     let emit = prod[ask..]

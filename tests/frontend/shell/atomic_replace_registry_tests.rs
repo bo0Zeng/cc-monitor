@@ -83,8 +83,8 @@ const SITES: &[(&str, &str, &str, &str, &str)] = &[
 ];
 
 fn src_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 剥掉整行注释 —— 本文件与 `mcp.rs` / `profile_installer.rs` 的**头注里就写着这两个符号**。
@@ -165,7 +165,7 @@ fn call_sites() -> Vec<(String, String, String)> {
         for (i, l) in lines.iter().enumerate() {
             for (name, pat) in SCANNED {
                 if l.contains(pat) {
-                    let func = crate::guard_support::enclosing_fn(&lines, i);
+                    let func = guard_core::addr::enclosing_fn(&lines, i);
                     out.push((rel.clone(), (*name).to_string(), func));
                 }
             }
@@ -240,7 +240,7 @@ fn each_entry_names_the_file_class_it_writes() {
 /// 且 `MoveFileExW` 仍被明令排除 —— 否则本模块整套论证的前提就没了。
 #[test]
 fn the_doc_rule_this_registry_rests_on_is_still_there() {
-    let doc = fs::read_to_string(crate::guard_support::repo_root().join("src/doc/INVARIANTS.md"))
+    let doc = fs::read_to_string(guard_core::addr::repo_root().join("src/doc/INVARIANTS.md"))
         .expect("src/doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");
     let sec = doc
         .split("## 4. ")

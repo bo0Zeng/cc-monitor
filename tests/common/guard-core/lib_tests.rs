@@ -19,10 +19,8 @@ use super::*;
 ///
 /// 🔴 **⚠ 别把本条读成「自摘在本仓一处都不生效」**。
 /// 这一段先前逐字就是那么写的，而**那句话是过宽的**：后缀比命不命中只取决于
-/// 扫描根的字符串里有没有和 `file!()` 同一段 `..`。现打：backend 的
-/// `guard_support::tests_root()` 逐字是 `CARGO_MANIFEST_DIR.join("../../tests/backend")`
-/// —— 根自己带着那段 `..` ⇒ 在那棵树上自摘**真的落刀**（`plugin_walk_fixture` 那一趟，
-/// `P4` 当轮已改成明写名单）。**本条钉的是本 crate 这一棵，钉不住那一棵。**
+/// 扫描根的字符串里有没有和 `file!()` 同一段 `..`：哪天有人拼出一个带 `..` 的根，那棵树上自摘就会真的落刀。
+/// **本条钉的是本 crate 这一棵，钉不住别的根。**
 /// 逐侧读数见 [`scan_tree_excluding_self`] 头注那张表。
 ///
 /// · 它是 [`a_path_attribute_caller_file_silently_fails_to_exclude`] 的**加强版** ——

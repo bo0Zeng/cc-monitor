@@ -321,7 +321,7 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
              ⇒ 本条会被**它自己要守的那句话**喂饱（那段头注里逐字写着这些词），于是恒红或恒瞎。"
     );
 
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 🔴 **最该被扫的就是 `local_backend.rs`** ⇒ 单独喂一遍。它走普通遍历本来就在人群里
     //    （自摘在这一处不生效，理由见本条头注），这一份是冗余但刻意保留的第二个来源。
     let self_rel = "src/frontend/shell/src/local_backend.rs";
@@ -1715,7 +1715,7 @@ fn the_backend_bin_env_name_has_exactly_one_home() {
 /// （旧安装包可能在旁边留着一份旧版本，认它就会把旧后端放到落点上）。
 #[test]
 fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let src = std::fs::read_to_string(root.join(".github/workflows/release.yml"))
         .expect("读不到 release.yml");
     // 反空真：打包那几处还在（Windows 的 nsis+msi 与 Linux 的 deb）。

@@ -44,8 +44,7 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
 /// **破坏性动作的顺序错法后果最重**，所以单独钉。
 #[test]
 fn the_kill_path_admits_before_it_kills() {
-    let src =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/kill.rs"));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
     let admit = src
         .find("gate::admit_destructive")
         .expect("生产段里没有 `gate::admit_destructive` —— 这条 kill 没过门");
@@ -78,8 +77,7 @@ fn the_kill_path_admits_before_it_kills() {
 /// 顺序钉：读 pane pid 在**过门之后、杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
 #[test]
 fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
-    let src =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/kill.rs"));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
     let at = |needle: &str| {
         assert_eq!(
             src.matches(needle).count(),
@@ -108,8 +106,7 @@ fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
 /// ★ Gate 3 只给破坏性动作：本模块用 `admit_destructive`，**不是** `admit`。
 #[test]
 fn kill_uses_the_destructive_gate_not_the_plain_one() {
-    let src =
-        crate::guard_support::production_code(include_str!("../../../src/backend/control/kill.rs"));
+    let src = guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
     assert!(
         src.contains("admit_destructive"),
         "kill 必须走带 Gate 3 的那个门"

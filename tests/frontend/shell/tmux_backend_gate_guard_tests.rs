@@ -15,9 +15,9 @@ const BACKEND_GATE_MARKERS: &[&str] = &["gate_rules::gate2", "wrong_owner"];
 const BACKEND_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 
 fn backend_control_dir() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`。原来这里自己爬一级（`src/frontend/shell` 的上级只到
+    // 住址唯一源：`guard_core::addr`。原来这里自己爬一级（`src/frontend/shell` 的上级只到
     // `<repo>/src`）⇒ 扫到 0 个 `.rs`，而本模块下面三条会**零命中地绿**。
-    crate::guard_support::backend_src_root().join("control")
+    guard_core::addr::backend_src_root().join("control")
 }
 
 /// backend `control/` 下**全部** `.rs` 的生产段。
@@ -380,7 +380,7 @@ fn the_backend_now_has_gate3() {
 
 /// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
 fn monitor_production_corpus() -> (usize, String) {
-    let root = crate::guard_support::repo_root().join("src/frontend/shell/src");
+    let root = guard_core::addr::repo_root().join("src/frontend/shell/src");
     let mut corpus = String::new();
     let mut files = 0usize;
     for (_, one_file) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -430,7 +430,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
 /// 两向相等：出现这几个字面量的文件集合 == `{src/tmux-control.ts}`；正控：那一份里各自恰好几处。
 #[test]
 fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
     let needles = ["callTyped(origin, \"kill\""];
@@ -568,7 +568,7 @@ fn every_target_placeholder_comes_from_exact_target() {
 /// 三件：① 家在、有内容 · ② 家里有下溢谓词、monitor 生产段没有第二份 · ③ 家里两种表示（argv 旗 · env）都在、monitor 不许长出 env 形。
 #[test]
 fn utf8_client_kou_jing_has_one_home_and_this_side_has_none() {
-    let home_path = crate::guard_support::repo_root().join("src/backend/common/tmux_utf8.rs");
+    let home_path = guard_core::addr::repo_root().join("src/backend/common/tmux_utf8.rs");
     let home = std::fs::read_to_string(&home_path)
         .unwrap_or_else(|e| panic!("读不到后端侧那个家 {home_path:?}：{e}"));
     assert!(

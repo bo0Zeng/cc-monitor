@@ -37,7 +37,7 @@
 
 #[cfg(test)]
 pub(super) mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
     use std::collections::BTreeSet;
 
     /// 中转在后端里的模块（宿主 `src/backend/relay/`，经它转出中转的契约件）。
@@ -181,7 +181,7 @@ pub(super) mod tests {
 
     /// 整个后端 crate 的生产段：`(相对 src/backend 的路径, 生产段文本)`。
     fn crate_production() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let files: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, raw)| {
@@ -280,7 +280,7 @@ pub(super) mod tests {
     /// `word` 在 `text` 里作为**完整标识符**出现几次。
     /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`）。
     fn top_level_modules() -> BTreeSet<String> {
-        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+        let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
         lib.lines()
             .filter_map(|l| l.trim().strip_prefix("pub mod "))

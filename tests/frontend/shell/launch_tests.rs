@@ -91,7 +91,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
 #[test]
 fn no_prose_claims_the_session_container_is_always_tmux() {
     let needle = format!("会话容器{}是 tmux", "本来就");
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `src/doc/DEVELOPMENT.md`
     // （不在那三份里）**不会红** —— 扫描面本身就是个洞。⇒ 改成「全 `doc/` + 两份 README + 本文件」。
     //

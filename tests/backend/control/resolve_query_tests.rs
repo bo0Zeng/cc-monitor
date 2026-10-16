@@ -236,8 +236,7 @@ fn resolve_from_json_propagates_validation_errors() {
 // 异源：金样是手写字节（不从实现生成）· 代码侧读**生产**纯函数与源码 · 登记表侧读 `inbound::REGISTRY`。
 
 fn frozen_golden() -> Value {
-    let p =
-        crate::guard_support::repo_root().join("tests/__fixtures__/resolve-contract.golden.json");
+    let p = guard_core::addr::repo_root().join("tests/__fixtures__/resolve-contract.golden.json");
     let raw = std::fs::read_to_string(&p)
         .unwrap_or_else(|e| panic!("读不到冻结金样 {}：{e}", p.display()));
     serde_json::from_str(&raw).expect("冻结金样不是 JSON")
@@ -263,7 +262,7 @@ fn frozen_sorted(mut v: Vec<String>) -> Vec<String> {
 /// 本文件所在的生产源码（剥掉测试段与注释）。
 fn frozen_prod_src() -> String {
     let raw = include_str!("../../../src/backend/control/resolve_query.rs");
-    guard_core::strip_comment_lines(&crate::guard_support::production_code(raw))
+    guard_core::strip_comment_lines(&guard_core::production_code(raw))
 }
 
 /// R1 样例逐字节：金样每条请求过**生产** `resolve_from_json` ⇒ 成品串逐字节 == 金样；
@@ -437,7 +436,7 @@ fn frozen_the_error_codes_are_the_registered_ones() {
         codes,
         "`resolve` 的登记码 ≠ 金样"
     );
-    let inbound: Vec<String> = crate::guard_support::registry_sources()
+    let inbound: Vec<String> = guard_core::addr::backend_registry_sources()
         .into_iter()
         .map(|(_, prod)| guard_core::strip_comment_lines(&prod))
         .collect();

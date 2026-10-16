@@ -821,7 +821,7 @@ fn the_place_frame_reads_the_one_file_and_answers_two_keys() {
 #[test]
 fn the_promise_face_in_the_ledger_equals_the_code() {
     use std::collections::BTreeSet;
-    let p = crate::guard_support::repo_root().join("tests/evidence/K-G4-platform-ledger.py");
+    let p = guard_core::addr::repo_root().join("tests/evidence/K-G4-platform-ledger.py");
     let ledger = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let table = |name: &str| -> BTreeSet<(String, String, String)> {
         let at = ledger

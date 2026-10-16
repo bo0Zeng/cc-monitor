@@ -111,8 +111,8 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 #[test]
 fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() {
     // 「整棵 `filewin/`」今天是两棵：本包 ＋ monitor 那一侧 `src/frontend/shell/src/filewin/`（开窗入口 · 起进程），人群与搬家前逐份相同。
-    let root = crate::guard_support::crate_src_root();
-    let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
+    let root = guard_core::addr::filewin_src_root();
+    let monitor_side = guard_core::addr::repo_root().join("src/frontend/shell/src/filewin");
     let files: Vec<std::path::PathBuf> = guard_core::files_by_extension(&root, "rs")
         .into_iter()
         .map(|f| root.join(f))
@@ -1062,11 +1062,11 @@ fn every_place_that_splits_a_remote_path_is_declared() {
             "自带那份窗口程序的本机落点：契约里 `/` 分隔的相对路径逐段拼进本机家目录，不是远端路径",
         ),
     ];
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
     let mut files = 0usize;
     let trees = [
-        (crate::guard_support::crate_src_root(), ""),
+        (guard_core::addr::filewin_src_root(), ""),
         (
             repo.join("src/frontend/shell/src/filewin"),
             "shell/filewin/",
@@ -1198,7 +1198,7 @@ fn each_layer_of_a_channel_failure_says_something_different() {
 fn only_this_machines_own_moments_go_through_the_local_clock() {
     const REGISTERED: &[(&str, usize)] = &[("chrome.rs", 1), ("progress.rs", 1), ("shell.rs", 1)];
     let mut got: Vec<(String, usize)> =
-        guard_core::scan_tree_excluding(&crate::guard_support::crate_src_root(), &["rs"], &[])
+        guard_core::scan_tree_excluding(&guard_core::addr::filewin_src_root(), &["rs"], &[])
             .into_iter()
             .filter_map(|(path, raw)| {
                 let prod = guard_core::production_code(&raw);

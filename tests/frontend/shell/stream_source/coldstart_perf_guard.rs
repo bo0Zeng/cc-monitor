@@ -46,7 +46,7 @@ fn source_of(sig: &str) -> String {
     if sig == "async fn open" {
         include_str!("../../../../src/frontend/shell/src/dial_host.rs").to_string()
     } else {
-        crate::guard_support::stream_source_raw()
+        guard_core::addr::stream_source_raw()
     }
 }
 
@@ -71,7 +71,7 @@ fn body_of(src: &str, sig: &str) -> String {
 
 #[test]
 fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
-    let src = crate::guard_support::stream_source_raw();
+    let src = guard_core::addr::stream_source_raw();
     assert!(
         src.len() > 100_000,
         "只读到 {} 字节 —— 抽取器坏了",
@@ -95,7 +95,7 @@ fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
 #[test]
 fn the_perf_probes_in_this_file_only_grow() {
     let src = [
-        crate::guard_support::stream_source_raw(),
+        guard_core::addr::stream_source_raw(),
         include_str!("../../../../src/frontend/shell/src/dial_host.rs").to_string(),
     ]
     .concat();

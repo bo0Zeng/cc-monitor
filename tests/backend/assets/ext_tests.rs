@@ -1363,7 +1363,7 @@ async fn the_wire_matches_the_cross_language_golden() {
             .replace(&*base.display().to_string(), "<BASE>"),
     )
     .unwrap();
-    let path = crate::guard_support::repo_root().join("tests/__fixtures__/ext-flow.golden.json");
+    let path = guard_core::addr::repo_root().join("tests/__fixtures__/ext-flow.golden.json");
     let want: Value = serde_json::from_str(
         &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到金样 {path:?}：{e}")),
     )

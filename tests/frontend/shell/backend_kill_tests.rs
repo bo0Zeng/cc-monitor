@@ -115,7 +115,7 @@ enum CreationVerdict {
 /// ★★ **创建路径不许铸出主路杀不掉的名字** —— 发现机制是遍历，不是手写清单。
 #[test]
 fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
 
     // ── ① 反向锚点：backend 那条形状门还在（它没了本判据就在空转）──────────
     let kill_prod =
@@ -383,7 +383,7 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     let verb = ["kill", "session"].join("-");
     let mut monitor_prod = String::new();
     for (_, one_file) in guard_core::scan_tree_excluding(
-        &crate::guard_support::repo_root().join("src/frontend/shell/src"),
+        &guard_core::addr::repo_root().join("src/frontend/shell/src"),
         &["rs"],
         &[],
     ) {
@@ -401,7 +401,7 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     );
 
     // ── 人群：遍历 `doc/`（递归），**不是**一张手写清单 ────────────────
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let needle = format!("过渡期{}", "回落");
     let mut scanned: Vec<String> = Vec::new();
     let mut said: Vec<String> = Vec::new();

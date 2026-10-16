@@ -373,7 +373,7 @@ fn the_two_tier_registration_leaves_no_trace_in_production() {
         .is_empty(),
         "注释里提到的名字被当成了生产代码 —— 剥生产段没在跑"
     );
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let generated = root.join("src").join("generated"); // ts-rs 生成物不是手写的生产代码
     let mut scanned = 0usize;
     let mut offenders = Vec::new();

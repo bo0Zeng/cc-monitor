@@ -542,7 +542,7 @@ fn inline_fields(body: &str) -> String {
 // ───────────────────────────── 渲染 ─────────────────────────────
 
 fn read(rel: &str) -> String {
-    std::fs::read_to_string(crate::guard_support::src_root().join(rel))
+    std::fs::read_to_string(guard_core::addr::backend_src_root().join(rel))
         .unwrap_or_else(|e| panic!("读不到 {rel}：{e}"))
 }
 
@@ -626,17 +626,17 @@ fn inline_reexports(src: &str) -> String {
 /// `crate::<模块>` 的源码文件（`<模块>/mod.rs` 或 `<模块>.rs`）。
 fn crate_file(module: &str) -> std::path::PathBuf {
     let file = module.replace("::", "/");
-    let dir = crate::guard_support::src_root().join(format!("{file}/mod.rs"));
+    let dir = guard_core::addr::backend_src_root().join(format!("{file}/mod.rs"));
     if dir.is_file() {
         dir
     } else {
-        crate::guard_support::src_root().join(format!("{file}.rs"))
+        guard_core::addr::backend_src_root().join(format!("{file}.rs"))
     }
 }
 
 /// `cmd_wire::<模块>` 的源码文件。
 fn cmd_wire_file(module: &str) -> std::path::PathBuf {
-    crate::guard_support::src_root().join(format!(
+    guard_core::addr::backend_src_root().join(format!(
         "../common/cmd-wire/src/{}.rs",
         module.replace("::", "/")
     ))
@@ -968,7 +968,7 @@ pub(crate) fn render() -> String {
 #[test]
 fn the_protocol_reference_is_what_the_code_generates() {
     let fresh = render();
-    let path = crate::guard_support::repo_root().join(OUT);
+    let path = guard_core::addr::repo_root().join(OUT);
     // 设了重生成开关 ⇒ 先写回，再照常比（比的就是刚写进去的那一份）。
     if std::env::var_os(REGEN).is_some() {
         std::fs::write(&path, &fresh).expect("写不回协议参考");

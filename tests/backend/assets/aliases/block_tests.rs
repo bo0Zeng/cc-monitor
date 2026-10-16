@@ -735,7 +735,7 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
 #[test]
 fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
     // 人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files =
         guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[]);
     files.extend(guard_core::scan_tree_excluding(
@@ -1402,7 +1402,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
     ];
     const OTHER_WRITES: &[&str] = &[".put(", "std::fs::write", "fenced_block::apply"];
     // 人群 = 后端生产段全树（别名块整族搬进来了）。
-    let root = crate::guard_support::repo_root().join("src/backend");
+    let root = guard_core::addr::repo_root().join("src/backend");
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
     let mut fns_scanned = 0usize;

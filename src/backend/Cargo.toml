@@ -70,7 +70,7 @@ path = "main.rs"
 # **不为了好看去联网。**
 #
 # 🔴 **为什么源码不住 `src/backend/benches/`** —— 现打，不是偏好：
-# 本 crate 有 **17 个扫描型守卫**按 `guard_support::src_root()`（= 本 manifest 所在目录）
+# 本 crate 有 **17 个扫描型守卫**按 `guard_core::addr::backend_src_root()`（= 本 manifest 所在目录）
 # **递归走全树收 `.rs`**。比如 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
 # ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
@@ -349,7 +349,7 @@ ts-rs = "12.0.1"
 # 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 ——）。
 # 来历、改了哪几行、上游修好之后怎么撤：`../vendor/russh/VENDOR.md`。
 # 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。
-# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
+# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_core::addr::backend_src_root()` 递归收 `.rs`，
 #   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
 [patch.crates-io]
 russh = { path = "../vendor/russh" }

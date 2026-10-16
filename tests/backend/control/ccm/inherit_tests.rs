@@ -23,7 +23,7 @@ fn locate(judge: &str) -> (Vec<std::path::PathBuf>, String) {
         module.pop();
     }
     let rel = module.join("/");
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     (
         vec![
             root.join(format!("{rel}.rs")),
@@ -70,7 +70,7 @@ fn marked_in(text: &str) -> Vec<String> {
 
 /// 每个生产源文件里带标记的函数：`crate::<模块路径>::<函数名>`（模块路径照文件位置写，不带类型）。
 fn marked_everywhere() -> std::collections::BTreeSet<(String, String)> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut out = std::collections::BTreeSet::new();
     for (path, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let rel = path
@@ -106,7 +106,7 @@ fn every_inherit_row_names_a_judge_and_every_marked_judge_is_a_row() {
             hit.display()
         );
         let rel = hit
-            .strip_prefix(crate::guard_support::src_root())
+            .strip_prefix(guard_core::addr::backend_src_root())
             .expect("在源码树里")
             .to_string_lossy()
             .replace('\\', "/");
@@ -314,7 +314,7 @@ fn the_from_section_is_comment_lines_only() {
 /// 在别的会话里起、点名一个号的那一发照那个号发，不跟着主会话换。
 #[test]
 fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
-    let path = crate::guard_support::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
+    let path = guard_core::addr::repo_root().join("src/shared/quota-warm/scripts/quota-warm");
     let text = std::fs::read_to_string(&path).expect("预热脚本在");
     let code: String = text
         .lines()

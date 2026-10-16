@@ -1054,8 +1054,8 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     // ② 前提：谁在生产段里提到这条链上的每一个符号。
     // 窗口独立成包：人群是 monitor 那棵 ＋ 本包这棵（入口 `main.rs` 住这里；键带包名前缀，
     //    免得与 monitor 那一侧同名的 `filewin/proc.rs` 撞）；链多了一跳 `cc_monitor_filewin::run`（本包 `lib.rs`）。
-    let monitor_src = crate::guard_support::repo_root().join("src/frontend/shell/src");
-    let own_src = crate::guard_support::crate_src_root();
+    let monitor_src = guard_core::addr::repo_root().join("src/frontend/shell/src");
+    let own_src = guard_core::addr::filewin_src_root();
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&monitor_src, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {

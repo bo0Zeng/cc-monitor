@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 写原语。**刻意含本机也会用的那几个** —— 人群是超集，分类靠登记。
@@ -388,9 +388,9 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
     let seen: Vec<String> =
         guard_core::scan_tree!(&repo_root().join("src/frontend/shell/src"), &["rs"])
             .iter()
-            .map(|(p, _)| crate::guard_support::rel_of(p))
+            .map(|(p, _)| guard_core::addr::rel_of(p))
             .collect();
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "持 SFTP 会话的人群根",
         &seen,
         &["src/frontend/shell/src"],
@@ -469,9 +469,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     // 抽取器自检①：**采集面**与 git 跟踪着的那两棵对拍（射程被改窄在本条上是静默的）。
     let seen: Vec<String> = files
         .iter()
-        .map(|(p, _)| crate::guard_support::rel_of(p))
+        .map(|(p, _)| guard_core::addr::rel_of(p))
         .collect();
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "`filewin/` 那两棵树",
         &seen,
         &["src/frontend/shell/src/filewin", "src/frontend/filewin/src"],

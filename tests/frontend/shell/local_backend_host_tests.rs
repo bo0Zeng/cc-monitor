@@ -818,7 +818,7 @@ fn starting_twice_does_not_spawn_a_second_local_backend_host() {
 /// 那条更是把它逐字叫作「反向自检②」。
 ///
 /// ★ 「字节数地板 → 语义锚点」这个换法**本仓已有判例**：
-/// `guard_support_tests.rs::main_production_section_keeps_its_load_bearing_items` 的头注逐字写着
+/// 规则 `strip_clean.rs::main_production_section_keeps_its_load_bearing_items` 的头注写着
 /// 「字节数地板挡不住『单个文件被剥空/剥过头』…… 这条用**语义锚点**直接钉住那一类失效」。
 fn body_of(prod: &str, head: &str) -> String {
     let at = guard_core::find_pinned(prod, head)
@@ -3278,9 +3278,9 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
     guard_core::assert_block_comment_model_holds(
         &[
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-            &crate::guard_support::tests_root().join("frontend/shell"),
+            &guard_core::addr::tests_root().join("frontend/shell"),
             // 文件窗口独立成包：它的判据搬到 `tests/frontend/filewin/`（代码随 `src` 那棵根的人群声明收）。
-            &crate::guard_support::tests_root().join("frontend/filewin"),
+            &guard_core::addr::tests_root().join("frontend/filewin"),
         ],
         100,
         1200,

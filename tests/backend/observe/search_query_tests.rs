@@ -486,7 +486,7 @@ fn a_hit_carries_this_machines_status_and_can() {
         .map(|r| r.to_string().replace(&prefix, "<HOME>"))
         .collect::<Vec<_>>() });
     let path =
-        crate::guard_support::repo_root().join("tests/__fixtures__/history-search-row.golden.json");
+        guard_core::addr::repo_root().join("tests/__fixtures__/history-search-row.golden.json");
     if std::env::var_os("CCM_BLESS").is_some() {
         std::fs::write(
             &path,

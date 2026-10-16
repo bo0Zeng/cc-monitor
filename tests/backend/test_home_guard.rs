@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
-    crate::guard_support::src_root().join("../..")
+    guard_core::addr::backend_src_root().join("../..")
 }
 
 /// 一个 crate 的根文件（`[lib] path` 写了就照它，没写 ⇒ `src/lib.rs`）。

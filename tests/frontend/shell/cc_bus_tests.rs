@@ -108,7 +108,7 @@ fn quote_roundtrip_is_the_real_property() {
 /// 正控：同一识别器在后端 `control/cc_bus.rs` 的生产段上认得出它真在转调的 `cc-send`。
 #[test]
 fn the_monitor_has_no_cc_bus_write_path_any_more() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 现拼，免得本文件自己被别的扫描收进人群。
     let verbs: Vec<String> = ["send", "kill", "spawn", "broadcast"]
         .iter()
@@ -163,7 +163,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
 /// 那一份里处数恒等（五条各 1）。
 #[test]
 fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let ops = [
         "bus-list",
         "bus-send",
@@ -226,7 +226,7 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
 fn the_bus_id_rule_agrees_with_the_shared_samples() {
     let g: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(
-            crate::guard_support::repo_root().join("tests/__fixtures__/cc-bus-control.golden.json"),
+            guard_core::addr::repo_root().join("tests/__fixtures__/cc-bus-control.golden.json"),
         )
         .expect("读金样"),
     )

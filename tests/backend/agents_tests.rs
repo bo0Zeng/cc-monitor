@@ -391,7 +391,7 @@ fn the_launch_facts_are_spelled_in_one_place() {
         names.len() >= 4,
         "金样里的嵌套标记少于 4 个 —— 抽取坏了：{names:?}"
     );
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let backend: Vec<(String, String)> =
         guard_core::scan_tree_excluding(&root.join("src/backend"), &["rs"], &[])
             .into_iter()
@@ -563,7 +563,7 @@ fn render_agent_profile_table() -> String {
 #[test]
 fn export_bindings_agent_profile_table() {
     let out =
-        crate::guard_support::repo_root().join("src/frontend/ui/generated/agent-profile-table.ts");
+        guard_core::addr::repo_root().join("src/frontend/ui/generated/agent-profile-table.ts");
     std::fs::write(&out, render_agent_profile_table())
         .unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
 }
@@ -571,7 +571,7 @@ fn export_bindings_agent_profile_table() {
 /// ★ ccm 不再做 resume 的决定（之后它是 claude 的壳；从 monitor `agent_profile_parity_tests.rs` 搬来）。
 #[test]
 fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
-    let src = crate::guard_support::repo_root().join("src/backend");
+    let src = guard_core::addr::repo_root().join("src/backend");
     let ccm: String = [
         "control/ccm/mod.rs",
         "ccm_line/argv.rs",

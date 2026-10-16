@@ -726,7 +726,7 @@ fn changed_is_recognised_and_reaches_the_frontend_by_topic() {
     ] {
         assert!(parse_frame(bad).is_err(), "{bad}");
     }
-    let prod = crate::guard_support::stream_source_production();
+    let prod = guard_core::addr::stream_source_production();
     let code = guard_core::strip_comment_lines(&prod);
     assert_eq!(
         code.matches("replay.changed(").count(),

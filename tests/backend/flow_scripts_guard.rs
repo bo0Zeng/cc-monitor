@@ -43,7 +43,7 @@ mod tests {
     ];
 
     fn root() -> PathBuf {
-        crate::guard_support::repo_root()
+        guard_core::addr::repo_root()
     }
 
     fn scratch(tag: &str) -> PathBuf {

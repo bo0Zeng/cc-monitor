@@ -179,8 +179,8 @@ fn starts_with_str(hay: &str, prefix: &str) -> bool {
 }
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（它的头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 fn filewin_dir() -> PathBuf {
