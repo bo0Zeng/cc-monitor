@@ -1,4 +1,4 @@
-//! 流程工具住在仓里（10-10 flow3）：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
+//! 流程工具住在仓里：门禁入口 `gate-clean.sh` · 按改动挑格 `gate-affected.sh`（＋ `gate-affected/plan.py` · `gate-affected/map`）·
 //! 重活隔离 `heavy.sh` · 推候选分支 `push-candidate.sh`，连同早先进仓的 `quick-check.sh` · `bump-build-id.sh`。
 //!
 //! 从前它们在仓外、只认一台机器、没有版本：门禁入口的 tmux 隔离改坏了几天没人发现，挑格的表与仓里的格对不上也只有跑起来才知道。
@@ -96,7 +96,7 @@ mod tests {
     }
 
     /// 私人扫描只认 PATH 上的 `private-scan.sh`：门禁与推送都在做任何事之前找它，找不到就停（门禁不许落成 OK、推送拒推），
-    /// 并说缺的是哪一个；环境变量指过去的不算。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
+    /// 并说缺的是哪一个。正控：PATH 上有它就过了这一关、停在后面的「不在仓里」。
     #[test]
     fn gate_and_push_stop_without_the_private_scan_on_path() {
         const MISSING: &str = "PATH 上没有 private-scan.sh";
@@ -107,12 +107,10 @@ mod tests {
             for on_path in [false, true] {
                 let d = scratch("pscan");
                 let bin = tool_bin(&d, &["bash", "git", "sed", "dirname", "cat", "mkdir"]);
-                let fake = d.join("fake-scan.sh");
-                std::fs::write(&fake, "exit 0\n").unwrap();
                 if on_path {
                     use std::os::unix::fs::PermissionsExt;
                     let on = bin.join("private-scan.sh");
-                    std::fs::copy(&fake, &on).unwrap();
+                    std::fs::write(&on, "exit 0\n").unwrap();
                     std::fs::set_permissions(&on, std::fs::Permissions::from_mode(0o755)).unwrap();
                 }
                 let out = Command::new(bin.join("bash"))
@@ -120,7 +118,6 @@ mod tests {
                     .args(args)
                     .current_dir(&d)
                     .env("PATH", &bin)
-                    .env("PRIVATE_SCAN", &fake)
                     .env("GATE_STATE_DIR", d.join("state"))
                     .env_remove("TMUX")
                     .env_remove("TMUX_PANE")
@@ -154,8 +151,7 @@ mod tests {
                 .arg(root())
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .env_remove("GATE_AFFECTED_MAP");
+                .stderr(std::process::Stdio::piped());
             if trust {
                 c.arg("--trust-ci");
             }

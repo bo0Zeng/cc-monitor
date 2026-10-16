@@ -13,7 +13,7 @@ import os, re, sys, fnmatch, subprocess
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MAP = os.environ.get("GATE_AFFECTED_MAP", os.path.join(HERE, "map"))
+MAP = os.path.join(HERE, "map")
 root = sys.argv[1]
 quiet = "--quiet" in sys.argv
 trust_ci = "--trust-ci" in sys.argv
