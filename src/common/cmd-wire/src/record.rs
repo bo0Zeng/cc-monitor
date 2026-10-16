@@ -780,7 +780,7 @@ impl OrUnread {
         let text = raw.to_string();
         let id = s("id")
             .filter(|i| !i.is_empty())
-            .unwrap_or_else(|| format!("unread:{:016x}", fnv1a(text.as_bytes())));
+            .unwrap_or_else(|| format!("unread:{:016x}", crate::fnv::fnv1a64(text.as_bytes())));
         Self(Record {
             agent: s("agent").unwrap_or_default(),
             id,
@@ -796,13 +796,6 @@ impl<'de> Deserialize<'de> for OrUnread {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         Value::deserialize(d).map(Self::of)
     }
-}
-
-/// 摘身份用的 64 位 FNV-1a（只求稳定、不求抗碰撞）。
-fn fnv1a(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
-        (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
 }
 
 /// 流上的 `line` 帧（一行 JSON）：`record` 在、却解不开 ⇒ 换成认不出那一条（[`OrUnread`]）的那一行；别的（解得开 · 不是 `line` 帧 · 不是 JSON）⇒ `None`（原样交）。

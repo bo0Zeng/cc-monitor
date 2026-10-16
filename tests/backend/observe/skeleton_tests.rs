@@ -162,3 +162,12 @@ fn a_symlinked_path_and_the_real_path_share_one_skeleton() {
     );
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 骨架文件名跨版本稳定：钉一个另行独立算出的数（换了算法或起点 ⇒ 盘上已有的骨架全找不着）。
+#[test]
+fn skeleton_file_digest_is_pinned() {
+    assert_eq!(
+        digest(Path::new("/h/.cc-monitor/x.jsonl")),
+        "2dca13a32d330719784ebdb4b0dff29e"
+    );
+}

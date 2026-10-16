@@ -715,6 +715,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "cmd-wire": {
     LOCAL: "J36",
+    // FNV-1a 的唯一一份（只求稳定的摘要；号色兜底的家是后端 `color_fallback`，见 J35）：界面不算摘要，TS 侧没有孪生。
+    FNV64_BASIS: NONE,
+    fnv1a64_from: NONE,
+    fnv1a64: NONE,
+    fnv1a32: NONE,
     // 一组一条的一项结局只填键与结局、别的格缺席（后端拼结局 · 壳的判据造样本用）：TS 侧只读回包，没有孪生。
     bare: NONE,
     is_local: "J36",
@@ -978,9 +983,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     LISTEN_SOCKET_NAME: NONE,
     listen_dir_for: NONE,
     listen_socket_for: NONE,
-    // 升级那一跳找旧版常驻后端用（跨过 4.1.x 之后删）；TS 侧没有孪生。
-    legacy_listen_pid_for: NONE,
-    LEGACY_LISTEN_TOKEN_NAME: NONE,
     // 「这是一次沙箱跑」的标记（测试 / 台架起后端时带上）；TS 侧没有孪生。
     SANDBOX_ENV: NONE,
     POSIX_ALIASES_REL: NONE,

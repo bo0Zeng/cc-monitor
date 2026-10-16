@@ -33,3 +33,9 @@ fn feeding_in_pieces_gives_the_same_digest_as_feeding_at_once() {
     }
     assert_eq!(pieces.finish(), whole.finish());
 }
+
+/// 装记录里的摘要会存盘：钉一个另行独立算出的数（先喂 8 字节小端长度、再喂原文）。
+#[test]
+fn fnv_digest_value_is_pinned() {
+    assert_eq!(fnv_digest("abc"), "c11ab6d2519bc2b2");
+}

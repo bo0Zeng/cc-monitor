@@ -57,24 +57,6 @@ pub fn listen_socket_for(data_home: &std::path::Path) -> std::path::PathBuf {
 /// `.cc-monitor` 下 ⇒ 拒绝起（后端 `control/resident.rs::sandbox_refusal`）。仓里起沙箱后端的每个入口都带它（判据钉）。
 pub const SANDBOX_ENV: &str = "CCM_SANDBOX";
 
-/// 〔升级那一跳用，跨过 4.1.x 之后删〕4.1.x 及以前的常驻后端听回环 TCP、把「谁在听」记在 `<家>/listen-<口>.pid`，
-/// 口按家用 FNV-1a 算。新的常驻后端起来时按这一份找到还在跑的旧的、停掉它（它占着中转口），再接中转。
-/// 只有那一跳读它；算法逐字是旧版那一份（写死，升级前后要算出同一个口）。
-pub fn legacy_listen_pid_for(data_home: &std::path::Path) -> std::path::PathBuf {
-    const PORT_BASE: u16 = 49152;
-    const PORT_SPAN: u32 = 16384;
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in data_home.to_string_lossy().as_bytes() {
-        h ^= u64::from(*b);
-        h = h.wrapping_mul(0x1000_0000_01b3);
-    }
-    let port = PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16);
-    data_home.join(format!("listen-{port}.pid"))
-}
-
-/// 〔同上，跨过 4.1.x 之后删〕旧版常驻后端的钥匙文件（在家里）：停掉旧的之后一并删掉。
-pub const LEGACY_LISTEN_TOKEN_NAME: &str = "listen-token";
-
 /// **后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
 /// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
 pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";

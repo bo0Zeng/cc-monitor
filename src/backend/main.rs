@@ -221,7 +221,7 @@ async fn main() {
     let legacy = listening
         .as_ref()
         .and_then(|_| control::resident::here())
-        .filter(|dh| relay_route_core::legacy_listen_pid_for(dh).exists());
+        .filter(|dh| control::resident::legacy_listen_pid_in(dh).is_some());
     let off_thread = legacy.is_some();
     let relay_own = own.clone();
     let legacy_own = own.clone();

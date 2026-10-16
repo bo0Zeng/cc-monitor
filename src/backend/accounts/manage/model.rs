@@ -67,13 +67,9 @@ const ACCOUNT_KEYS: &[&str] = &[
 /// 号色几格（与界面 `--acct-c0..c7` 一一对应）。
 pub(crate) const COLOR_SLOTS: u8 = 8;
 
-/// 8 格都用了时的兜底：名字 ⇒ 一格（FNV-1a 32 位，按 UTF-16 码元，模 [`COLOR_SLOTS`]）。号色只在这里按名字算，界面只画清单里那一格。
+/// 8 格都用了时的兜底：名字 ⇒ 一格（FNV-1a 32 位，模 [`COLOR_SLOTS`]）。号色只在这里按名字算，界面只画清单里那一格。
 pub(crate) fn color_fallback(name: &str) -> u8 {
-    let mut h: u32 = 0x811c_9dc5;
-    for u in name.encode_utf16() {
-        h ^= u32::from(u);
-        h = h.wrapping_mul(0x0100_0193);
-    }
+    let h = cmd_wire::fnv::fnv1a32(name.as_bytes());
     u8::try_from(h % u32::from(COLOR_SLOTS)).unwrap_or(0)
 }
 

@@ -137,12 +137,7 @@ impl Shape {
         for (name, decl) in &self.decls {
             text.push_str(&format!("{name}\n{decl}\n"));
         }
-        let mut h: u32 = 0x811c_9dc5;
-        for b in text.bytes() {
-            h ^= u32::from(b);
-            h = h.wrapping_mul(0x0100_0193);
-        }
-        format!("{h:08x}")
+        format!("{:08x}", cmd_wire::fnv::fnv1a32(text.as_bytes()))
     }
 }
 

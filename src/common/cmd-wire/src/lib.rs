@@ -15,12 +15,14 @@
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
 //!   后端在 hello 里交出它自己那一份，客户端拿自己编进来的这一份比：对得上就直接按类型用，对不上就说「那台后端版本不同」。
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
+//! - [`fnv`]：FNV-1a（只求稳定、不防篡改）的唯一一份：形状指纹 · 记录摘要 · 骨架文件名 · 目录锁名等都调它。
 
 pub mod accounts;
 pub mod agent;
 pub mod batch;
 pub mod cells;
 pub mod files;
+pub mod fnv;
 pub mod frame;
 pub mod listing;
 pub mod live;

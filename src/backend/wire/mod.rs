@@ -566,15 +566,14 @@ pub struct BranchSum(u64);
 
 impl Default for BranchSum {
     fn default() -> Self {
-        BranchSum(0xcbf2_9ce4_8422_2325)
+        BranchSum(cmd_wire::fnv::FNV64_BASIS)
     }
 }
 
 impl BranchSum {
     fn push(&mut self, id: &str) {
-        for b in id.bytes().chain(std::iter::once(b'\n')) {
-            self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
-        }
+        self.0 =
+            cmd_wire::fnv::fnv1a64_from(cmd_wire::fnv::fnv1a64_from(self.0, id.as_bytes()), b"\n");
     }
 
     fn hex(self) -> String {

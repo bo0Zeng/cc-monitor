@@ -273,12 +273,7 @@ fn argv_split(args: &[String]) -> (&[String], Option<&[String]>) {
 /// 别名文件的指纹（盘上原样的字节：长度 ＋ FNV-1a 64）。不在 ⇒ `None`。
 /// 只用来认「读回之后盘上那份变没变」（写那一跳另有 CAS），不是摘要形 —— 不借文件管理面那一份 SHA-256（那是它的内部）。
 fn fingerprint_of(text: Option<&str>) -> Option<String> {
-    text.map(|t| {
-        let h = t.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
-            (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-        });
-        format!("{}-{h:016x}", t.len())
-    })
+    text.map(|t| format!("{}-{:016x}", t.len(), cmd_wire::fnv::fnv1a64(t.as_bytes())))
 }
 
 /// 这台的账号表（具名号）。没有账号库 / 读不了 ⇒ 空（账号页自己会说读不了）。

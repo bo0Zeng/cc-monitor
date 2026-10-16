@@ -118,15 +118,10 @@ fn dir_rel() -> &'static str {
 /// 路径的摘要（两遍 FNV-1a 64，不同起点）：文件名用，跨版本稳定。
 fn digest(path: &Path) -> String {
     let b = path.as_os_str().as_encoded_bytes();
-    let fnv = |seed: u64| {
-        b.iter().fold(seed, |h, &c| {
-            (h ^ u64::from(c)).wrapping_mul(0x0000_0100_0000_01b3)
-        })
-    };
     format!(
         "{:016x}{:016x}",
-        fnv(0xcbf2_9ce4_8422_2325),
-        fnv(0x6c62_272e_07bb_0142)
+        cmd_wire::fnv::fnv1a64(b),
+        cmd_wire::fnv::fnv1a64_from(0x6c62_272e_07bb_0142, b)
     )
 }
 

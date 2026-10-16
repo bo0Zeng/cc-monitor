@@ -1053,3 +1053,10 @@ fn a_row_carries_no_constant_purpose() {
         assert_eq!(t["host"], "tmux", "`host` 该留着");
     }
 }
+
+/// 一屏的指纹钉一个另行独立算出的数：只看末 `rows` 行、每行去行尾空白、行间一个换行。
+#[test]
+fn screen_fingerprint_value_is_pinned() {
+    let lines: Vec<String> = ["a ", "b", "c  "].map(String::from).to_vec();
+    assert_eq!(fingerprint(&lines, 2), "fff1451912fbad5a");
+}
