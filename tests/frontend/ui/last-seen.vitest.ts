@@ -1,5 +1,5 @@
 /**
- * 离线那台的上次值：读成了交本机后端记（`last-seen-write`，每次都交、同一份不写盘由后端比；本机那台不记）；
+ * 离线那台的上次值：读成了交本机后端记（`last-seen-write`，读成一次交一次、时刻是最后一次读成的那一刻；本机那台不记）；
  * 账号那一问这次运行里还没答成过而那台问不到 ⇒ 问本机后端记着的那一份，照它画「上次的」（跨重启还在）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -49,7 +49,7 @@ beforeEach(() => {
 });
 
 describe("上次值交本机后端记", () => {
-  it("★ 只交本机后端；读成一次交一次（同一份比不比由后端定，界面不记交过什么）；本机那台不记；值不是对象不交", async () => {
+  it("★ 只交本机后端；读成一次交一次（界面不记交过什么）；本机那台不记；值不是对象不交", async () => {
     await rememberSeen("devbox", "data", { a: 1 });
     await rememberSeen("devbox", "data", { a: 1 });
     await rememberSeen("<local>", "data", { a: 1 });

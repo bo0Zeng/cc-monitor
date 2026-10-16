@@ -255,10 +255,9 @@ fn 存档不是这一版_照实说读不懂_不交原样() {
     }
 }
 
-/// 同一份再交一次 ⇒ 不写盘（文件原封不动、记下的时刻还是头一次那一刻，回包也说那一刻）；内容变了才写。
+/// 同一份再交 ⇒ 内容不变、时刻换成这一次（离线时「上次的」说的是最后一次看到它）；回包也是这一次。内容变了照常记。
 #[test]
-fn 同一份再交_不写盘_时刻照旧_变了才写() {
-    use std::os::unix::fs::MetadataExt;
+fn 同一份再交_内容不变_时刻是新的() {
     let d = Dir::new("same");
     let put = |v: &serde_json::Value, kind: &str, now: u64| {
         write_at(
@@ -271,12 +270,14 @@ fn 同一份再交_不写盘_时刻照旧_变了才写() {
     let acc = json!({"meta": {"enabled": true}, "accounts": []});
     put(&acc, "accounts", 10);
     put(&report(), "data", 11);
-    let ino = || std::fs::metadata(d.file()).unwrap().ino();
-    let (before, bytes) = (ino(), std::fs::read(d.file()).unwrap());
-    assert_eq!(put(&acc, "accounts", 20), json!({"atMs": 10}));
-    assert_eq!(put(&report(), "data", 21), json!({"atMs": 11}));
-    assert_eq!(ino(), before, "同一份又写了一遍盘");
-    assert_eq!(std::fs::read(d.file()).unwrap(), bytes);
+    assert_eq!(put(&acc, "accounts", 20), json!({"atMs": 20}));
+    assert_eq!(put(&report(), "data", 21), json!({"atMs": 21}));
+    let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
+    assert_eq!(got["accounts"], json!({"atMs": 20, "value": acc}));
+    assert_eq!(
+        got["data"],
+        json!({"state": "kept", "atMs": 21, "value": report()})
+    );
     let changed = json!({"meta": {"enabled": false}, "accounts": []});
     assert_eq!(put(&changed, "accounts", 30), json!({"atMs": 30}));
     assert_eq!(
