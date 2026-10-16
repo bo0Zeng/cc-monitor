@@ -7367,7 +7367,11 @@ home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>,
 /**
  * 这台有没有 tmux（查不动 ⇒ `null`）。
  */
-tmux: boolean | null, counts: ChoreCounts, 
+tmux: boolean | null, 
+/**
+ * 「待办」各类的件数。
+ */
+counts: ChoreCounts, 
 /**
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
@@ -7560,7 +7564,11 @@ home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>,
 /**
  * 这台有没有 tmux（查不动 ⇒ `null`）。
  */
-tmux: boolean | null, counts: ChoreCounts, 
+tmux: boolean | null, 
+/**
+ * 「待办」各类的件数。
+ */
+counts: ChoreCounts, 
 /**
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
