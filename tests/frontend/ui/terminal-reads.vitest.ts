@@ -18,11 +18,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodeShot, previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
+import { previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
 import type { Preview } from "../../../src/frontend/ui/generated/Preview";
 import type { Sent } from "../../../src/frontend/ui/generated/Sent";
 import type { TerminalsList } from "../../../src/frontend/ui/generated/TerminalsList";
-import { decodeScreenLines, screenText } from "../../../src/frontend/ui/terminal-screen";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -73,20 +72,11 @@ async function failureOf(act: () => Promise<unknown>): Promise<ControlError> {
 const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewText(origin, { sid: "sid-a" }, "demo-cc"))).message;
 
 describe("抓一屏：金样与形状", () => {
-  it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来）；实时预览那一帧同一份成品、读法相同", () => {
+  it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来，颜色段原样）", () => {
     const lines = (PREVIEW.reply.lines as { text: string }[]).map((l) => l.text);
     expect(lines.length, "金样里没有行 —— 下面是空转").toBeGreaterThan(0);
     expect(shotOf(PREVIEW.reply as unknown as Preview).text).toBe(lines.join("\n"));
-    expect(decodeShot("devbox", PREVIEW.reply)).toEqual(shotOf(PREVIEW.reply as unknown as Preview));
-  });
-
-  it("★ 空屏是合法的成功；多出来的格照收；要用的格缺 / 类型不对 ⇒ 抛", () => {
-    const plain = (v: unknown): string => screenText(decodeScreenLines("devbox", v));
-    expect(plain({ lines: [] })).toBe("");
-    expect(plain({ lines: [{ text: "a", spans: [] }], extra: 1 })).toBe("a");
-    for (const v of [{}, { lines: "x" }, { lines: [{}] }, { lines: [{ text: 1 }] }, null, "screen"]) {
-      expect(() => plain(v), JSON.stringify(v)).toThrow(copyPattern("peerVersion.said.unreadable"));
-    }
+    expect(shotOf(PREVIEW.reply as unknown as Preview).lines[0].spans).toEqual([{ from: 0, to: 4, fg: "red", bold: true }]);
   });
 
   it("★ 名单：金样读得出句柄与 tmux 名", () => {

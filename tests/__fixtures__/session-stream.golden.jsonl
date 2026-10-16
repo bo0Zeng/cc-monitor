@@ -42,7 +42,7 @@
 {"kind":"session_runs","sid":"s1","runs":[{"run":"a1","state":"running"}],"ended":[]}
 {"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":0,"off":["u2","a2"],"sum":"5144bd170a47aa27"}
 {"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":2,"off":[],"sum":"5144bd170a47aa27"}
-{"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"capped":false,"captured_at":1,"captured_at_text":"00:00:01","cols":80,"cursor":{"visible":true,"x":0,"y":0},"lines":[{"spans":[{"fg":"green","from":0,"to":2}],"text":"ok"}],"rows":1,"screen":"00000000000000a1","scrollback_lines":0}}
-{"kind":"terminal_screen","ticket":"t1","seq":1,"view":{}}
+{"kind":"terminal_screen","ticket":"t1","seq":2,"view":{"screen":"00000000000000a1","cols":80,"rows":1,"cursor":{"x":0,"y":0,"visible":true},"lines":[{"text":"ok","spans":[{"from":0,"to":2,"fg":"green"}]}],"scrollback_lines":0,"capped":false,"captured_at":1,"captured_at_text":"00:00:01"}}
+{"kind":"terminal_screen","ticket":"t1","seq":1,"view":{"screen":"0000000000000000","cols":1,"rows":0,"cursor":{"x":0,"y":0,"visible":false},"lines":[],"scrollback_lines":0,"capped":false,"captured_at":0,"captured_at_text":"00:00:00"}}
 {"kind":"terminal_follow_end","ticket":"t1","why":"too_big","said":"that-sentence-1"}
 {"kind":"terminal_follow_end","ticket":"t1","why":"gone","said":"that-sentence-2"}

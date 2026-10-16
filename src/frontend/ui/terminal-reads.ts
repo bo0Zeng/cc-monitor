@@ -5,16 +5,16 @@
  * 先在名单里按名字认出那一行，再按句柄抓。
  *
  * 收法：三条都是 typed 命令（入参 · 回包从 Rust 类型生成，`generated/TypedCommands.ts`）⇒ 形状由握手指纹管，这边只挑要用的那几格。
- * 实时预览的帧（`terminal_screen`）不是命令回包，`view` 仍按「要用的那几格缺 / 类型不对才抛」收（[`decodeShot`]）。
+ * 实时预览的帧（`terminal_screen`）的 `view` 就是 `terminal-preview` 的回包类型（帧的形状指纹核过），同一个 [`shotOf`] 收。
  * 预览要带颜色的成品（`color: true`）：每行 `text` ＋ 颜色段交给画面（`terminal-screen.ts`）；纯文字那一份是每行 `text` 用换行接起来，与那一屏逐行相同。
  *
  * 期限：抓一屏 20 秒，送字送键 20 秒，名单 15 秒（远端没连着还要握手）。
  */
 import { copyText } from "./copy-table";
-import { asSaid, settleTyped, unreadable, type Refusals } from "./control-said";
+import { asSaid, settleTyped, type Refusals } from "./control-said";
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { decodeScreenLines, screenText, type ScreenLine } from "./terminal-screen";
+import { screenText, type ScreenLine } from "./terminal-screen";
 import type { Preview } from "./generated/Preview";
 import type { Sent } from "./generated/Sent";
 import type { TerminalsList } from "./generated/TerminalsList";
@@ -59,14 +59,6 @@ function previewRefusals(target: string): Refusals {
   return asSaid(() => copyText("terminalReads.preview.noReason", { target }));
 }
 
-/** 实时预览那一帧的 `view`（同 `terminal-preview` 的回包，但走帧、不经握手指纹）⇒ 那一屏 ＋ 指纹 ＋ 几点抓的。`screen` / `captured_at_text` 缺 ⇒ 抛。 */
-export function decodeShot(origin: Origin, v: unknown): TerminalShot {
-  const lines = decodeScreenLines(origin, v);
-  const o = v as Record<string, unknown>;
-  if (typeof o.screen !== "string" || typeof o.captured_at_text !== "string") throw unreadable(origin, "terminal-preview", "has no `screen` / `captured_at_text`");
-  return { lines, text: screenText(lines), screen: o.screen, atText: o.captured_at_text };
-}
-
 /** 抓一次那个终端此刻的一屏（只读快照，不过身份门）。失败 ⇒ 抛 `ControlError`（那一句已经说好）。 */
 export async function previewText(origin: Origin, target: TerminalTarget, label: string): Promise<string> {
   return (await previewShot(origin, target, label)).text;
@@ -79,7 +71,7 @@ export async function previewShot(origin: Origin, target: TerminalTarget, label:
   return shotOf(v);
 }
 
-/** `terminal-preview` 的回包 ⇒ 那一屏（带颜色段）＋ 指纹 ＋ 几点抓的。 */
+/** `terminal-preview` 的回包（实时预览每一帧的 `view` 也是它）⇒ 那一屏（带颜色段）＋ 指纹 ＋ 几点抓的。 */
 export function shotOf(v: Preview): TerminalShot {
   const lines = v.lines.map((l) => ({ text: l.text, spans: l.spans ?? [] }));
   return { lines, text: screenText(lines), screen: v.screen, atText: v.captured_at_text };

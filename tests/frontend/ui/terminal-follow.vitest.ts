@@ -175,15 +175,15 @@ describe("停", () => {
     }
   });
 
-  it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开）；读不懂的一格 ⇒ 停了（画面中断）", async () => {
+  it("★ 流断了（gap · closed · 那台看不见了）⇒ 停了（那台断开）；读不懂的一格 · 收尾没有那一句 ⇒ 停了（画面中断）", async () => {
     const offline = { kind: "stopped", said: copyText("terminal.liveWhy.offline", { machine: "devbox" }), offline: true };
     const lost = { kind: "stopped", said: copyText("terminal.liveWhy.lost"), offline: false };
     for (const [item, want] of [
       [{ t: "closed", by: { ours: "Broken" } }, offline],
       [{ t: "gap", fromSeq: 0, toSeq: 1 }, offline],
       [{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }, offline],
-      [frame(0, { seq: 1, view: { lines: "x" } }), lost],
-      [frame(0, { why: "gone" }), lost],
+      [{ t: "frame", seq: 0, body: "{" }, lost],
+      [frame(0, { why: "gone", said: " " }), lost],
     ] as const) {
       const r = rig();
       startFollow("devbox", "tmux-1", r.events, r.port);

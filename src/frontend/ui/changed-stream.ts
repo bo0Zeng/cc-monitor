@@ -5,6 +5,7 @@
  */
 import type { Item } from "../../comms/inward/chan";
 import type { Topic } from "./generated/Topic";
+import type { TopicProducts } from "./generated/TypedCommands";
 
 export type { Topic };
 
@@ -79,24 +80,16 @@ export function planMoves(c: Changed): PlanMoved[] {
 }
 
 /**
- * 一批里帧带来的小成品按 `decode`（重问那条命令的同一个解码器）收：解得开的进 `got`（`key` ⇒ 成品）；
- * 没带 · 解不开的那几格的 `key` 进 `ask`（照旧重问）。`all` 照传（期间可能漏了 ⇒ 调用方整份重问）。
+ * 一批里帧带来的小成品：那一份就是重问那条命令的回包（{@link TopicProducts}，主题表生成），带了的进 `got`（`key` ⇒ 成品）；
+ * 没带的那几格的 `key` 进 `ask`（照旧重问）。`all` 照传（期间可能漏了 ⇒ 调用方整份重问）。
  * 不带 `key` 的主题（额度账 · 规则表）用 `key === null` 那一项：同一批留后一格。
  */
-export function pushedProducts<T>(c: Changed, decode: (v: unknown) => T): { got: Map<string | null, T>; ask: (string | null)[]; all: boolean } {
-  const got = new Map<string | null, T>();
+export function pushedProducts<T extends keyof TopicProducts>(c: Changed, _topic: T): { got: Map<string | null, TopicProducts[T]>; ask: (string | null)[]; all: boolean } {
+  const got = new Map<string | null, TopicProducts[T]>();
   const ask: (string | null)[] = [];
   for (const cell of c.cells) {
-    if (cell.body === undefined) {
-      ask.push(cell.key);
-      continue;
-    }
-    try {
-      got.set(cell.key, decode(cell.body));
-    } catch (e) {
-      console.warn("[changed] 帧里的小成品解不开，照旧重问：", e);
-      ask.push(cell.key);
-    }
+    if (cell.body === undefined) ask.push(cell.key);
+    else got.set(cell.key, cell.body as TopicProducts[T]);
   }
   return { got, ask, all: c.all };
 }

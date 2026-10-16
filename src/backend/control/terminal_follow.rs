@@ -853,10 +853,7 @@ impl Worker {
         if fp == *last {
             return Step::Go;
         }
-        let Ok(view) = serde_json::to_value(&shot) else {
-            return Step::End(FollowEnd::Lost);
-        };
-        if serde_json::to_string(&view).map_or(usize::MAX, |s| s.len()) > SCREEN_FRAME_CAP {
+        if serde_json::to_string(&shot).map_or(usize::MAX, |s| s.len()) > SCREEN_FRAME_CAP {
             return Step::End(FollowEnd::TooBig);
         }
         *seq += 1;
@@ -867,7 +864,7 @@ impl Worker {
             .blocking_send(Frame::TerminalScreen(crate::wire::TerminalScreen {
                 ticket: self.ticket.clone(),
                 seq: *seq,
-                view,
+                view: shot,
             })) {
             Ok(()) => Step::Go,
             Err(_) => Step::Quit,

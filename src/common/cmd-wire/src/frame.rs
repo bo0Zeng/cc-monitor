@@ -4,7 +4,7 @@
 //! 记录那一格（`line.record`）是类型参数 `R`：后端用 [`Record`]；原文照转的一端用 `Box<RawValue>`（不建树）；
 //! 手机用 [`crate::record::OrUnread`]（解不开的那一条成认不出那一条，整帧不失败）。
 //! TS 名带 `Wire` 前缀的那几样（只进形状指纹，不导出）：界面另有壳给的同名形状。
-//! 体格 `Probe.cell` · `TerminalScreen.view` · `Reply.data` · `Changed.body` 仍是 JSON 值（各有自己的严格收处）。
+//! 体格 `Probe.cell` · `Reply.data` · `Changed.body` 仍是 JSON 值（各有自己的严格收处）。
 
 use crate::cells::{Tone, Words};
 use crate::files::WirePath;
@@ -589,7 +589,7 @@ pub struct SessionBranch {
 /// `view` 与 `terminal-preview` 的回话同一份成品；每帧整屏、不是增量；一帧在途（客户端回执之后才推下一帧）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct TerminalScreen {
     /// 订阅票（`terminal-follow` 时客户端给的，后端只当不透明的串回填）。
     pub ticket: String,
@@ -597,14 +597,13 @@ pub struct TerminalScreen {
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub seq: u64,
     /// 那一屏（同 `terminal-preview` 的回话）。
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
-    pub view: Value,
+    pub view: crate::session::Preview,
 }
 
 /// **一条终端订阅停了**（不会再有画面）；后端已经忘掉这张票。客户端自己退订的不发这一帧。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct TerminalFollowEnd {
     /// 订阅票。
     pub ticket: String,

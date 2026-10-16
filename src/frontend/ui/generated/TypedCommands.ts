@@ -547,3 +547,10 @@ export interface TypedCommands {
   "transfer-stop": { req: TransferIdReq; reply: null; code: "bad_args" };
   "transfer-upload": { req: TransferUploadReq; reply: TransferOpened; code: "bad_args" | "exists" };
 }
+
+/** `changed` 帧里现算小成品的主题 ⇒ 那一份的类型（＝ 重问那条命令的回包，形状随那条命令的指纹核过）。 */
+export interface TopicProducts {
+  "quota": TypedCommands["quota-read"]["reply"];
+  "rotation_strategies": TypedCommands["rotation-strategies"]["reply"];
+  "tasks": TypedCommands["tasks-list"]["reply"];
+}

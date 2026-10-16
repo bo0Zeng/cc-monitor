@@ -76,7 +76,7 @@ import { openSettingsWindow } from "./settings/open-settings"; // 点「设置�
 import * as dest from "./settings-dest";
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
-import { decodeTasks, TasksPanel } from "./tasks-panel";
+import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { MainDrawer } from "./main-drawer";
 import { TerminalPage } from "./terminal-page";
@@ -909,9 +909,9 @@ window.addEventListener("DOMContentLoaded", async () => {
           onAccountsChanged();
           break;
         case "tasks": {
-          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 同一个解码器收、直接落账；没带 / 解不开 / 可能漏了 ⇒ 重问。
-          const p = pushedProducts(change, decodeTasks);
-          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list);
+          // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 直接落账；没带 / 可能漏了 ⇒ 重问。
+          const p = pushedProducts(change, "tasks");
+          for (const [sid, list] of p.got) if (sid !== null) tabs.updateTasks(sid, list.tasks);
           const ask = p.ask.filter((s): s is string => s !== null);
           if (p.all || ask.length > 0 || p.ask.includes(null)) tabs.refreshTasks(origin, ask, p.all || p.ask.includes(null));
           break;
