@@ -99,7 +99,7 @@ describe("#42 奇数/游离 $$ 不吞掉真公式 + 行边界回归", () => {
     // ★区分:第三块真公式被规整成独立块——旧正则错位配对会丢掉它(得不到 $$\ne=f\ng=h\n$$ 块)
     expect(pre).toContain("$$\ne=f\ng=h\n$$");
     // 端到端 sanity:至少两块渲染成 KaTeX display（katex-display 类过 DOMPurify 保留）
-    expect(countKatexDisplay(renderMarkdown(md))).toBeGreaterThanOrEqual(2);
+    expect(countKatexDisplay(renderMarkdown(md))).toBe(2);
   });
   it("尾标点 $$…$$。→ 公式仍渲染（修首版行尾过严回归 重要3）", () => {
     expect(renderMarkdown("公式\n$$\na=b\n$$。").includes("katex")).toBe(true);
@@ -363,8 +363,8 @@ describe("D1 · 数学也 lazy", () => {
       expect(lazy.querySelector("[data-math-pending]"), md).toBeNull();
       expect(lazy.innerHTML, md).toBe(eager.innerHTML);
     }
-    // 反空真：语料里真有惰路留了占位的（「$5 and $10」那条按 nonStandard 也会被认成公式）
-    expect(withPending).toBeGreaterThanOrEqual(7);
+    // 语料每一条都有惰路留的占位（「$5 and $10」那条按 nonStandard 也会被认成公式）
+    expect(withPending).toBe(MATH.length);
   });
 
   it("惰路期间零次 renderToString；补算次数 == 急路次数", () => {
@@ -378,7 +378,7 @@ describe("D1 · 数学也 lazy", () => {
       lazy.innerHTML = renderMarkdown(md, { lazy: true });
       expect(spy.mock.calls.length).toBe(0);
       enhanceCard(lazy);
-      expect(eagerCalls).toBeGreaterThan(5);
+      expect(eagerCalls).toBe(10); // 语料固定 ⇒ 急路算几次是定的
       expect(spy.mock.calls.length).toBe(eagerCalls);
     } finally {
       spy.mockRestore();
