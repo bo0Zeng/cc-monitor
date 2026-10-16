@@ -22142,11 +22142,44 @@
       "zh": "答题插件 · 自定义启动器起会话时用 · 随时重写",
       "args": []
     },
-    "beLaunchAccount.unavailable.said": {
+    "beLaunchAccount.unavailable.lastToDefault": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 不可用 · 未启动",
-      "args": ["name"]
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动 · 可改用默认账号 {alt}",
+      "args": ["name", "alt"]
+    },
+    "beLaunchAccount.unavailable.lastToBase": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动 · 可改用「不指定账号」",
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
+    },
+    "beLaunchAccount.unavailable.namedToDefault": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} 不可用 · 未启动 · 可改用默认账号 {alt}",
+      "args": ["name", "alt"]
+    },
+    "beLaunchAccount.unavailable.namedToBase": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} 不可用 · 未启动 · 可改用「不指定账号」",
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
+    },
+    "beLaunchAccount.unavailable.listUnknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "账号 {name} 是否可用不明 · 未读到账号清单 · 未启动 · 可改用「不指定账号」",
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
     },
     "rsFilewinFind.age.secs": {
       "kind": "body",

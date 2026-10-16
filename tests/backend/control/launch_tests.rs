@@ -1330,3 +1330,35 @@ fn busy2_a_bare_session_left_by_an_undelivered_start_command_is_reaped() {
         .status
         .success());
 }
+
+/// ★ 开一个空 shell 的 tmux 会话：不在 ⇒ 建在那个目录里、记下谁建的，不键入任何东西；已在 ⇒ 什么都不做（不改它的目录）；
+/// 名字过不了新建那一条 ⇒ 不建；建不出 ⇒ `create_failed` 带 tmux 原话。
+#[test]
+fn a_shell_session_is_made_bare_or_left_as_it_is() {
+    let f = FakeTmux::new(|verb| said(verb != "has-session", ""));
+    let made =
+        open_shell_with("main", Some("/home/u/p"), Some("mobile"), &|a| f.call(a)).expect("该建成");
+    assert!(made);
+    assert_eq!(f.verbs(), ["new-session", "set-option @ccm_client"]);
+    let first = f.calls.borrow()[0].clone();
+    assert_eq!(
+        first,
+        ["new-session", "-d", "-s", "main", "-c", "/home/u/p"]
+    );
+
+    let f = FakeTmux::new(|verb| said(verb == "has-session", "duplicate session: main"));
+    let made = open_shell_with("main", Some("/home/u/p"), Some("mobile"), &|a| f.call(a))
+        .expect("已在是幂等成功");
+    assert!(!made);
+    assert_eq!(f.verbs(), ["new-session", "has-session"]);
+
+    let f = FakeTmux::new(|_| said(false, "can't create session"));
+    let e = open_shell_with("main", None, None, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "create_failed");
+    assert_eq!(e.raw.as_deref(), Some("can't create session"));
+
+    let f = FakeTmux::new(|_| said(false, ""));
+    let e = open_shell_with("-bad", None, None, &|a| f.call(a)).unwrap_err();
+    assert_eq!(e.code, "bad_args");
+    assert!(!f.verbs().contains(&"new-session".to_string()));
+}

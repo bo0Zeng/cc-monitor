@@ -194,6 +194,7 @@ impl Rig {
                 accounts,
                 writers: &writers,
                 pretrust: &pretrust,
+                open_shell: &|_, _| unreachable!("不开空 shell"),
                 prefs: &self.prefs,
             })
         })
@@ -615,6 +616,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         },
         writers: &|_| Vec::new(),
         pretrust: &|_, _| {},
+        open_shell: &|_, _| unreachable!("不开空 shell"),
         prefs: &crate::control::machine_prefs::Prefs::default(),
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();

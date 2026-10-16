@@ -392,3 +392,26 @@ fn only_find_session_command_walks_path() {
         "{HOME} 里切 PATH 的应恰好一处（find_session_command 那一下）"
     );
 }
+
+/// ★ 进一个目录那一行：方言按这台（POSIX ⇒ `cd`，PowerShell ⇒ `Set-Location -LiteralPath`），目录照各自的引号器成一个词。
+#[test]
+fn entering_a_dir_is_written_in_each_dialect() {
+    use super::dialect::Shell;
+    assert_eq!(
+        super::enter_dir_line_in(Shell::Posix, "/a b/it's"),
+        r"cd '/a b/it'\''s'"
+    );
+    assert_eq!(
+        super::enter_dir_line_in(Shell::PowerShell, r"C:\a b\it's"),
+        r"Set-Location -LiteralPath 'C:\a b\it''s'"
+    );
+    let here = if cfg!(windows) {
+        Shell::PowerShell
+    } else {
+        Shell::Posix
+    };
+    assert_eq!(
+        super::enter_dir_line("/p"),
+        super::enter_dir_line_in(here, "/p")
+    );
+}

@@ -132,6 +132,7 @@ impl Rig {
             accounts: &accounts,
             writers: &writers,
             pretrust: &pretrust,
+            open_shell: &|_, _| unreachable!("不开空 shell"),
             prefs: &crate::control::machine_prefs::Prefs::default(),
         };
         let sid = || PRESET.to_string();
@@ -447,6 +448,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
                 accounts: &accounts,
                 writers: &|_| vec![],
                 pretrust: &|_, _| unreachable!("核目录不起会话"),
+                open_shell: &|_, _| unreachable!("不开空 shell"),
                 prefs: &crate::control::machine_prefs::Prefs::default(),
             };
             let req: SessionNewDirReq = serde_json::from_value(args).unwrap();

@@ -10777,7 +10777,7 @@ permissionMode?: string,
  * 轮换：缺 ＝ 用「新会话用」的那份策略 · `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
  */
 rotation?: RotationPick, };
-type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: string, } | { "kind": "look", sid?: string, session?: string, };
+type OpenWhat = { "kind": "new" } & NewOpen | { "kind": "resume", sid: string, } | { "kind": "look", sid?: string, session?: string, } | { "kind": "shell", session?: string, cwd?: string, };
 type Opened = { 
 /**
  * 落在哪：`started` · `in_place` · `running` · `idle` · `window`。
@@ -10788,7 +10788,7 @@ landed: Landed,
  */
 session: string | null, 
 /**
- * 要开终端跑的那一行（那台渲好的 `ccm …`）：`window` ⇒ 起会话那一行（不跑就没起）；其余 ⇒ 接进那个 tmux 会话那一行。
+ * 要开终端跑的那一行（那台渲好的）：`window` ⇒ 起会话那一行（不跑就没起）或进目录那一行；其余 ⇒ 接进那个 tmux 会话那一行。
  */
 line: string | null, 
 /**
@@ -10800,7 +10800,7 @@ sid: string | null,
  */
 agent: AgentKind | null, 
 /**
- * 起在哪个目录（`~` 已按这台的家目录展开；开窗的起始目录、认报到都用它；接回 ⇒ `null`）。
+ * 起在哪个目录（`~` 已按这台的家目录展开；开窗的起始目录、认报到都用它；接回 · 接上已有的 shell ⇒ `null`）。
  */
 cwd: string | null, 
 /**
@@ -10833,7 +10833,7 @@ field: SessionNewField | null,
 unavailable: AccountUnavailable | null, };
 type SessionOpenReq = { 
 /**
- * 起新的 · 恢复某条 · 接回。
+ * 起新的 · 恢复某条 · 接回 · 开一个 shell。
  */
 what: OpenWhat, 
 /**

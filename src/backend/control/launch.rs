@@ -587,6 +587,75 @@ pub(crate) fn reap_if_bare(name: &str, tmux: &dyn Fn(&[&str]) -> Result<Ran, Cmd
     matches!(tmux(&["if-shell", "-F", "-t", &t, BARE, &kill]), Ok(r) if r.ok) && !there()
 }
 
+/// 新建那一下（`create-or-attach` 与开空 shell 同一份）：名字过 J6 新建那一条；会话已在 ⇒ 幂等、什么都不做（回 `false`）；
+/// 建不出 ⇒ `create_failed` 带 tmux 原话。`size` ＝ `--tmux-size` 的两半（只对新建生效）。
+fn create(
+    name: &str,
+    cwd: Option<&str>,
+    size: Option<(&str, &str)>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<bool, CmdErr> {
+    let t = exact_target(name);
+    // 过不了新建那一条、而那个会话已经在 ⇒ 照旧幂等接回（已有会话走的是已有那一条，进门时判过）；不在 ⇒ 拒并说清。
+    if let Some(said) = new_tmux_name_said(name) {
+        if tmux(&["has-session", "-t", &t])?.ok {
+            return Ok(false);
+        }
+        return Err(CmdErr::from(("bad_args", said)));
+    }
+    let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", name];
+    if let Some(cwd) = cwd {
+        new_args.push("-c");
+        new_args.push(cwd);
+    }
+    // detached 会话默认 80x24，太窄会把 agent 输出折行；已有会话的尺寸归它自己（可能有人正接着）。
+    if let Some((w, h)) = size {
+        new_args.extend(["-x", w, "-y", h]);
+    }
+    // 幂等闸：会话已存在 ⇒ new-session 失败 ⇒ 分辨「已存在」与「真的建不出来」（看退出码，不吞 stderr）。
+    let made = tmux(&new_args)?;
+    if made.ok {
+        return Ok(true);
+    }
+    if tmux(&["has-session", "-t", &t])?.ok {
+        return Ok(false);
+    }
+    Err(CmdErr::new(
+        "create_failed",
+        copy_text("beLaunch.create.failed", &[("name", name)]),
+    )
+    .with_raw(Some(&made.stderr)))
+}
+
+/// 开一个空 shell 的 tmux 会话（不起 agent、不键入）：不在 ⇒ 建在 `cwd` 里、记下是哪个前端建的；已在 ⇒ 不动它。回「这一趟建的」。
+pub(crate) fn open_shell(
+    name: &str,
+    cwd: Option<&str>,
+    client: Option<&str>,
+) -> Result<bool, CmdErr> {
+    open_shell_with(name, cwd, client, &tmux)
+}
+
+/// [`open_shell`] 的本体（起 tmux 那一下由调用方交进来）。
+pub(crate) fn open_shell_with(
+    name: &str,
+    cwd: Option<&str>,
+    client: Option<&str>,
+    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
+) -> Result<bool, CmdErr> {
+    let made = create(name, cwd, None, tmux)?;
+    if let Some(client) = client.filter(|_| made) {
+        let t = exact_target(name);
+        secondary(
+            tmux,
+            name,
+            Secondary::ClientTag,
+            &["set-option", "-t", &t, "@ccm_client", client],
+        );
+    }
+    Ok(made)
+}
+
 /// [`run`] 的本体：起 tmux 的那一下由调用方交进来（生产 = [`tmux`]；判据交一个不起进程的替身，
 /// 驱动 `create-or-attach` 那一臂的每一格结局）。`send-into` 那一臂的门（`gate::admit`）照旧起真 tmux。
 fn run_with(
@@ -615,50 +684,12 @@ fn run_with(
             })
         }
         Mode::CreateOrAttach => {
-            // 〔DUP3 §5 ⑤〕要**新建**的名字过 J6 新建那一条（`gate_rules`，与 `ccm` 铸名同一条）：
-            //   过不了、而那个会话已经在 ⇒ 照旧幂等接回（已有会话走的是已有那一条，进门时判过）；不在 ⇒ 拒并说清。
-            if let Some(said) = new_tmux_name_said(&req.name) {
-                if tmux(&["has-session", "-t", &t])?.ok {
-                    return Ok(LaunchOutcome {
-                        created: false,
-                        typed: false,
-                    });
-                }
-                return Err(CmdErr::from(("bad_args", said)).into());
-            }
-            let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", &req.name];
-            if let Some(cwd) = &req.cwd {
-                new_args.push("-c");
-                new_args.push(cwd);
-            }
-            // `--tmux-size`：detached 会话默认 80x24，太窄会把 agent 输出折行。
-            // **只对新建生效** —— 幂等短路那一支根本走不到这里，与 `shared/ccm` 那条注释
-            // 逐字同义（「已有会话的尺寸归它自己，可能有人正 attach 着」）。
-            if let (Some(w), Some(h)) = (&req.width, &req.height) {
-                new_args.push("-x");
-                new_args.push(w);
-                new_args.push("-y");
-                new_args.push(h);
-            }
-            // 幂等闸：会话已存在 ⇒ new-session 失败 ⇒ **短路，什么都不做**。
-            // 与今天那条 shell 串 `new-session -d … 2>/dev/null && send-keys …` 逐字同义
-            // （不重复 resume）。区别只是这里不吞 stderr 靠 `2>/dev/null`，而是看退出码。
-            let made = tmux(&new_args)?;
-            if !made.ok {
-                // 分辨「已存在（幂等）」与「真的建不出来」——今天那条 shell 串分不出来。
-                if tmux(&["has-session", "-t", &t])?.ok {
-                    return Ok(LaunchOutcome {
-                        created: false,
-                        typed: false,
-                    });
-                }
-                // 带上 tmux 自己说的原因（cwd 不在 / 名字不合法 / server 起不来 …），不再让人猜。
-                return Err(CmdErr::new(
-                    "create_failed",
-                    copy_text("beLaunch.create.failed", &[("name", &req.name)]),
-                )
-                .with_raw(Some(&made.stderr))
-                .into());
+            let size = req.width.as_deref().zip(req.height.as_deref());
+            if !create(&req.name, req.cwd.as_deref(), size, tmux)? {
+                return Ok(LaunchOutcome {
+                    created: false,
+                    typed: false,
+                });
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
             // 与 `ccm` 容器路字符串形（`control/ccm/plan.rs::render_container`）里 `(… 2>/dev/null || true) &&` 同一条纪律

@@ -8,7 +8,7 @@ import type { Run } from "./Run";
  */
 export type SessionOpenReq = { 
 /**
- * 起新的 · 恢复某条 · 接回。
+ * 起新的 · 恢复某条 · 接回 · 开一个 shell。
  */
 what: OpenWhat, 
 /**

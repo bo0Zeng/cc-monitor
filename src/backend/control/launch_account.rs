@@ -232,10 +232,20 @@ pub(crate) fn settled_as_asked(a: &AccountAsk, models: &BTreeMap<String, String>
 
 /// `account_unavailable` 那一句（界面照 `data` 自己说，这一句给命令行面与日志）。
 pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
-    copy_text(
-        "beLaunchAccount.unavailable.said",
-        &[("name", &u.requested)],
-    )
+    let name = ("name", u.requested.as_str());
+    match (u.list_known, u.pinned, u.alternative.as_deref()) {
+        (false, ..) => copy_text("beLaunchAccount.unavailable.listUnknown", &[name]),
+        (true, true, Some(alt)) => copy_text(
+            "beLaunchAccount.unavailable.lastToDefault",
+            &[name, ("alt", alt)],
+        ),
+        (true, true, None) => copy_text("beLaunchAccount.unavailable.lastToBase", &[name]),
+        (true, false, Some(alt)) => copy_text(
+            "beLaunchAccount.unavailable.namedToDefault",
+            &[name, ("alt", alt)],
+        ),
+        (true, false, None) => copy_text("beLaunchAccount.unavailable.namedToBase", &[name]),
+    }
 }
 
 // ───────────────────────────── 记录 ─────────────────────────────

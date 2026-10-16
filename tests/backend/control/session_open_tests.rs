@@ -35,6 +35,7 @@ struct Rig {
     ccm: RefCell<Vec<Vec<String>>>,
     sent: RefCell<Vec<(String, String)>>,
     marks: RefCell<usize>,
+    shells: RefCell<Vec<(String, Option<String>)>>,
 }
 
 impl Rig {
@@ -53,6 +54,7 @@ impl Rig {
             ccm: RefCell::new(vec![]),
             sent: RefCell::new(vec![]),
             marks: RefCell::new(0),
+            shells: RefCell::new(vec![]),
         }
     }
 
@@ -133,6 +135,12 @@ impl Rig {
         };
         let writers = |_: &str| self.live.clone();
         let pretrust = |_: &str, _: &str| *self.marks.borrow_mut() += 1;
+        let open_shell = |name: &str, cwd: Option<&str>| -> Result<bool, crate::wire::spec::Fail> {
+            self.shells
+                .borrow_mut()
+                .push((name.into(), cwd.map(str::to_string)));
+            Ok(true)
+        };
         let library = || {
             la::Library::of_product(&crate::observe::accounts_query::test_support::list(vec![
                 crate::observe::accounts_query::test_support::row_with("work", |a| {
@@ -166,6 +174,7 @@ impl Rig {
             accounts: &accounts,
             writers: &writers,
             pretrust: &pretrust,
+            open_shell: &open_shell,
             prefs: &self.prefs,
         })
     }
@@ -655,4 +664,69 @@ fn resuming_to_say_goes_the_tmux_way_and_stops_where_it_would() {
         NO_FIRST_PROMPT
     );
     assert!(rig.ccm.borrow().is_empty());
+}
+
+/// ★ 开一个 shell：给了会话名 ⇒ 不在就在那个目录里建一个空的、回接进去那一行（`idle`）；已在 ⇒ 不建、目录不管、照它此刻的样子回；
+/// 只给目录 ⇒ 这台 shell 里进那个目录那一行（`window`）；这台没 tmux ⇒ `place_unavailable`，什么都不建；一个 agent 都不起。
+#[test]
+fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
+    let rig = Rig::new(Some(vec![row("busy", Some(A), true)]));
+    let o = rig
+        .open(json!({ "what": { "kind": "shell", "session": "main", "cwd": "/p" } }))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref(), o.agent, o.sid.as_deref()),
+        (Landed::Idle, Some("main"), None, None)
+    );
+    assert!(o.line.unwrap().ends_with("--attach main"));
+    assert_eq!(
+        *rig.shells.borrow(),
+        [("main".to_string(), Some("/p".to_string()))]
+    );
+
+    let o = rig
+        .open(json!({ "what": { "kind": "shell", "session": "busy", "cwd": "/p" } }))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Running, Some("busy"))
+    );
+    assert_eq!(rig.shells.borrow().len(), 1, "已在的会话不该再建");
+
+    let o = rig
+        .open(json!({ "what": { "kind": "shell", "cwd": "/p" } }))
+        .unwrap();
+    assert_eq!((o.landed, o.session), (Landed::Window, None));
+    assert_eq!(o.line.as_deref(), Some("cd '/p'"));
+
+    let none = Rig::new(None);
+    let err = none
+        .open(json!({ "what": { "kind": "shell", "session": "main" } }))
+        .unwrap_err();
+    assert_eq!(err.0, "place_unavailable");
+    assert!(none.shells.borrow().is_empty());
+    // 没 tmux 也进得了目录（那一行不靠 tmux）。
+    assert!(none
+        .open(json!({ "what": { "kind": "shell", "cwd": "/p" } }))
+        .is_ok());
+
+    for (args, code) in [
+        (json!({ "what": { "kind": "shell" } }), "bad_args"),
+        (
+            json!({ "what": { "kind": "shell", "cwd": "/p" }, "run": "tmux" }),
+            "bad_args",
+        ),
+        (
+            json!({ "what": { "kind": "shell", "cwd": "/nope" } }),
+            "no_dir",
+        ),
+        (
+            json!({ "what": { "kind": "shell", "session": "-x" } }),
+            "bad_tmux_name",
+        ),
+    ] {
+        assert_eq!(rig.open(args.clone()).unwrap_err().0, code, "{args}");
+    }
+    assert_eq!(rig.shells.borrow().len(), 1);
+    assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
 }

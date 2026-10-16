@@ -67,7 +67,7 @@ fn answer(
                 },
             )
         }
-        open::Open::Look { .. } => (
+        open::Open::Look { .. } | open::Open::Shell { .. } => (
             String::new(),
             Facts {
                 resume: None,

@@ -1,4 +1,4 @@
-//! **起会话 · 恢复 · 接回 —— 全产品一个请求**（帧命令 `session-open`）：意图进去，这台判完、做完，回「落在哪 ＋ 要开终端就跑这一行」。
+//! **起会话 · 恢复 · 接回 · 开 shell —— 全产品一个请求**（帧命令 `session-open`）：意图进去，这台判完、做完，回「落在哪 ＋ 要开终端就跑这一行」。
 //!
 //! 这台自己判：用哪个号（选不了 ⇒ 不起、带替代号）· 放在哪（没说 ⇒ [`default_run`]；说了 tmux 而这台没有 ⇒ 拒，不改道）·
 //! 记录在不在 · 已有进程在写就不起（直路一样）· 在跑不另起 · 空 tmux 就地起 · 都不是就铸名新开。界面与手机只开窗口、等会话出现。
@@ -39,7 +39,7 @@ pub(crate) enum Run {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SessionOpenReq {
-    /// 起新的 · 恢复某条 · 接回。
+    /// 起新的 · 恢复某条 · 接回 · 开一个 shell。
     pub(crate) what: Open,
     /// 缺 ＝ 跟随：恢复 ⇒ 这条会话上次的号；新起 ⇒ 这台的默认号；分叉 ⇒ 源会话的号。
     #[serde(default)]
@@ -86,6 +86,16 @@ pub(crate) enum Open {
         #[serde(default)]
         #[cfg_attr(test, ts(optional))]
         session: Option<String>,
+    },
+    /// 开一个 shell，不起 agent：给了 `session` ⇒ 这台 tmux 里那个会话（不在就在 `cwd` 里建一个空的）；
+    /// 只给 `cwd` ⇒ 这台 shell 里进那个目录那一行。`cwd` 只在建的那一刻生效（已在的会话不往里敲 `cd`）。
+    Shell {
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        session: Option<String>,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        cwd: Option<String>,
     },
 }
 
@@ -380,6 +390,12 @@ fn dispatch(
             }
             look(sid.as_deref(), session.as_deref(), here, deps)
         }
+        Open::Shell { session, cwd } => {
+            if req.run.is_some() || req.account.is_some() {
+                return Err(malformed("`shell` takes neither `run` nor `account`"));
+            }
+            shell(session.as_deref(), cwd.as_deref(), here, deps, home)
+        }
     }
 }
 
@@ -484,6 +500,65 @@ fn look(
         sid: sid.map(str::to_string),
         note,
         ..opened(landed, Some(name), Some(line))
+    })
+}
+
+/// 开一个 shell：给了会话名 ⇒ 不在就在 `cwd` 里建一个空的（`idle`）、已在 ⇒ 照它此刻的样子，回接进去那一行；
+/// 只给目录 ⇒ 这台 shell 里进那个目录那一行（`window`）。目录先展开 `~`、核在不在。
+fn shell(
+    session: Option<&str>,
+    cwd: Option<&str>,
+    here: Here,
+    deps: &Deps,
+    home: Option<&std::path::Path>,
+) -> Result<Opened, Failed> {
+    let dir = match cwd.map(str::trim) {
+        None => None,
+        Some(raw) => {
+            let d = expand_home(raw, home);
+            if d.is_empty() || !(deps.local_facts.is_dir)(&d) {
+                return Err(fail(
+                    "no_dir",
+                    copy_core::copy_text("beSessionNew.cwd.missing", &[("cwd", raw)]),
+                    Some(Field::Cwd),
+                ));
+            }
+            Some(d)
+        }
+    };
+    let Some(name) = session.map(str::trim) else {
+        let Some(d) = dir else {
+            return Err(malformed("`shell` needs `session` or `cwd`"));
+        };
+        let line = crate::platform::shell::enter_dir_line(&d);
+        return Ok(Opened {
+            cwd: Some(d),
+            ..opened(Landed::Window, None, Some(line))
+        });
+    };
+    let rows = tmux_rows(deps)?;
+    let (landed, cwd) = match rows.iter().find(|r| r.name == name) {
+        Some(r) if r.agent => (Landed::Running, None),
+        Some(_) => (Landed::Idle, None),
+        None => {
+            if crate::control::gate_rules::new_tmux_name_issue(name).is_some() {
+                return Err(fail(
+                    "bad_tmux_name",
+                    copy_core::copy_text("beSessionNew.tmux.badName", &[("name", name)]),
+                    Some(Field::TmuxName),
+                ));
+            }
+            (deps.open_shell)(name, dir.as_deref()).map_err(|f| {
+                let (c, s, d, raw) = lower((&f.code, f.message));
+                (c, s, d, raw.or(f.raw))
+            })?;
+            (Landed::Idle, dir)
+        }
+    };
+    let line = attach_line(name, here, deps)?;
+    Ok(Opened {
+        cwd,
+        ..opened(landed, Some(name.to_string()), Some(line))
     })
 }
 

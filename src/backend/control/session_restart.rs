@@ -272,9 +272,12 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
     }
     open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(
         |(code, said, _, raw)| {
+            if let Some(raw) = raw {
+                tracing::warn!("[session-restart] 起新那一步没成（{name}）：{code} {raw}");
+            }
             (
                 "start_failed",
-                raw.unwrap_or(said),
+                said,
                 Refused::StartFailed {
                     terminal: name.to_string(),
                     why: Some(code.to_string()),

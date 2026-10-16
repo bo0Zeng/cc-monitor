@@ -18,8 +18,8 @@ use crate::rotation::{
     RotationTryReply, RotationViewReply,
 };
 use crate::session::{
-    Killed, ModeSwitched, ModelSwitched, NewFacts, Opened, Preview, Rendered, Sent, SessionCommands,
-    SessionNew, TailPlan, TerminalsList,
+    Killed, ModeSwitched, ModelSwitched, NewFacts, Opened, Preview, Rendered, Sent,
+    SessionCommands, SessionNew, TailPlan, TerminalsList,
 };
 use serde::Serialize;
 
