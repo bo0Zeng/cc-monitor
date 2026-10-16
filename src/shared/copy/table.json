@@ -22284,7 +22284,7 @@
     "acct.verdict.can": {
       "kind": "body",
       "role": "片段",
-      "zh": "可发 · {n} 个号",
+      "zh": "可发的号 {n}",
       "args": ["n"]
     },
     "acct.verdict.none": {

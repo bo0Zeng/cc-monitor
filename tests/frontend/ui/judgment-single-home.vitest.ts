@@ -722,6 +722,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     actions_for: NONE,
     phone_menu: NONE,
     opens_as_dir: NONE,
+    copyable: NONE,
+    downloadable: NONE,
     viewable: NONE,
     pick: NONE,
   },

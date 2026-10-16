@@ -20,11 +20,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 零读者而留着的那几项：`(文件, 项名, 理由)`。
 const EXEMPT: &[(&str, &str, &str)] = &[
     (
-        "src/common/pick-core/src/lib.rs",
-        "phone_menu",
-        "手机文件页那一份（顶栏 · ⋯ 连字一起出）：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/lib.rs`，后端那棵 workspace，不在扫描面里）与本 crate 的判据",
-    ),
-    (
         "src/common/cmd-wire/src/replies.rs",
         "decode_reply",
         "客户端那一侧按两端同一份类型解回包：读者是手机嵌的 Rust 核心（`src/mobile/core-rs/rust/resident.rs`，后端那棵 workspace，不在扫描面里）",
