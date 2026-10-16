@@ -232,19 +232,23 @@ pub(crate) fn settled_as_asked(a: &AccountAsk, models: &BTreeMap<String, String>
 
 /// `account_unavailable` 那一句（界面照 `data` 自己说，这一句给命令行面与日志）。
 pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
-    let name = ("name", u.requested.as_str());
+    let name = u.requested.as_str();
     match (u.list_known, u.pinned, u.alternative.as_deref()) {
-        (false, ..) => copy_text("beLaunchAccount.unavailable.listUnknown", &[name]),
+        (false, ..) => copy_text("beLaunchAccount.unavailable.listUnknown", &[("name", name)]),
         (true, true, Some(alt)) => copy_text(
             "beLaunchAccount.unavailable.lastToDefault",
-            &[name, ("alt", alt)],
+            &[("name", name), ("alt", alt)],
         ),
-        (true, true, None) => copy_text("beLaunchAccount.unavailable.lastToBase", &[name]),
+        (true, true, None) => {
+            copy_text("beLaunchAccount.unavailable.lastToBase", &[("name", name)])
+        }
         (true, false, Some(alt)) => copy_text(
             "beLaunchAccount.unavailable.namedToDefault",
-            &[name, ("alt", alt)],
+            &[("name", name), ("alt", alt)],
         ),
-        (true, false, None) => copy_text("beLaunchAccount.unavailable.namedToBase", &[name]),
+        (true, false, None) => {
+            copy_text("beLaunchAccount.unavailable.namedToBase", &[("name", name)])
+        }
     }
 }
 

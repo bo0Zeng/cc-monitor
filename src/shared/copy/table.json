@@ -1694,7 +1694,7 @@
     "beSessionOpen.look.many": {
       "kind": "body",
       "role": "说明",
-      "zh": "{n} 个在跑 · 接的是 {name}",
+      "zh": "在跑 ×{n} · 接的是 {name}",
       "args": ["n", "name"]
     },
     "beSessionNew.place.noTmux": {
@@ -22145,13 +22145,13 @@
     "beLaunchAccount.unavailable.lastToDefault": {
       "kind": "error",
       "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动 · 可改用默认账号 {alt}",
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动\n可改用默认账号 {alt}",
       "args": ["name", "alt"]
     },
     "beLaunchAccount.unavailable.lastToBase": {
       "kind": "error",
       "role": "报错",
-      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动 · 可改用「不指定账号」",
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动\n可改用「不指定账号」",
       "args": ["name"],
       "waive": {
         "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
@@ -22160,13 +22160,13 @@
     "beLaunchAccount.unavailable.namedToDefault": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 不可用 · 未启动 · 可改用默认账号 {alt}",
+      "zh": "{name} 不可用 · 未启动\n可改用默认账号 {alt}",
       "args": ["name", "alt"]
     },
     "beLaunchAccount.unavailable.namedToBase": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 不可用 · 未启动 · 可改用「不指定账号」",
+      "zh": "{name} 不可用 · 未启动\n可改用「不指定账号」",
       "args": ["name"],
       "waive": {
         "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
@@ -22175,7 +22175,7 @@
     "beLaunchAccount.unavailable.listUnknown": {
       "kind": "error",
       "role": "报错",
-      "zh": "账号 {name} 是否可用不明 · 未读到账号清单 · 未启动 · 可改用「不指定账号」",
+      "zh": "账号 {name} 是否可用不明 · 未读到账号清单 · 未启动\n可改用「不指定账号」",
       "args": ["name"],
       "waive": {
         "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"

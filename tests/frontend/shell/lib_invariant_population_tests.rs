@@ -531,10 +531,12 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "我们那份别名文件的路径",
     ),
     // 问起会话那个 shell 的 `PATH`：quote 进去的只有一个常量标记（`SESSION_PATH_MARK`），不收任何外来值。
+    // 「进那个目录」那一行（`session-open` 开 shell 只给目录那一形）：目录是请求里的自由文本路径，先过 `free_text_ok`
+    //   （不含 NUL / CR / LF：那一行要键进终端），再核这台盘上是个目录。
     (
         "src/backend/platform/shell/mod.rs",
-        &["login_shell_asking_path"],
-        &[],
+        &["enter_dir_line_in", "login_shell_asking_path"],
+        &[("src/common/shell-quote-core/src/lib.rs", "free_text_ok")],
         "",
         "夹住 `PATH` 的那个常量标记",
     ),

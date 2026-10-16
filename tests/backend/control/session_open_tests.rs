@@ -721,6 +721,10 @@ fn shell_makes_or_joins_a_bare_session_or_enters_a_dir() {
             "no_dir",
         ),
         (
+            json!({ "what": { "kind": "shell", "cwd": "/p\n" } }),
+            "bad_args",
+        ),
+        (
             json!({ "what": { "kind": "shell", "session": "-x" } }),
             "bad_tmux_name",
         ),

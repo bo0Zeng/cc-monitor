@@ -461,9 +461,6 @@ fn look(
     deps: &Deps,
 ) -> Result<Opened, Failed> {
     let rows = tmux_rows(deps)?;
-    let gone = |key: &str, args: &[(&str, &str)]| {
-        fail("not_in_tmux", copy_core::copy_text(key, args), None)
-    };
     let (landed, name, note) = match (sid, session) {
         (Some(sid), None) if shell_quote_core::session_id_ok(sid) => match carriers(&rows, sid) {
             Standing::Running(e) => (Landed::Running, e.name.clone(), None),
@@ -475,7 +472,13 @@ fn look(
                 (Landed::Running, first, Some(note))
             }
             Standing::Idle(e) => (Landed::Idle, e.name.clone(), None),
-            Standing::None => return Err(gone("beSessionOpen.look.notInTmux", &[])),
+            Standing::None => {
+                return Err(fail(
+                    "not_in_tmux",
+                    copy_core::copy_text("beSessionOpen.look.notInTmux", &[]),
+                    None,
+                ))
+            }
         },
         (None, Some(name)) => match rows.iter().find(|r| r.name == name) {
             Some(r) => (
@@ -487,7 +490,13 @@ fn look(
                 r.name.clone(),
                 None,
             ),
-            None => return Err(gone("beSessionOpen.look.noSession", &[("name", name)])),
+            None => {
+                return Err(fail(
+                    "not_in_tmux",
+                    copy_core::copy_text("beSessionOpen.look.noSession", &[("name", name)]),
+                    None,
+                ))
+            }
         },
         _ => {
             return Err(malformed(
@@ -514,6 +523,9 @@ fn shell(
 ) -> Result<Opened, Failed> {
     let dir = match cwd.map(str::trim) {
         None => None,
+        Some(raw) if !shell_quote_core::free_text_ok(raw) => {
+            return Err(malformed("`cwd` must not hold NUL, CR or LF"))
+        }
         Some(raw) => {
             let d = expand_home(raw, home);
             if d.is_empty() || !(deps.local_facts.is_dir)(&d) {
