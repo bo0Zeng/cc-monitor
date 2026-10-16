@@ -92,7 +92,7 @@ class FileOpsTest {
                 }
             val ops = FileOps(link) { "box" }
             assertEquals(FileOps.Opening.Dir(RemotePath.of("/w/src")), ops.open("/w/src").getOrThrow())
-            assertEquals(FileOps.Opening.File(RemotePath.of("/w/src"), RemotePath.of("/w/src/a.kt")), ops.open("/w/src/a.kt").getOrThrow())
+            assertEquals(FileOps.Opening.File(RemotePath.of("/w/src/a.kt")), ops.open("/w/src/a.kt").getOrThrow())
             assertEquals(listOf("files-stat"), link.calls.map { it.first }.distinct())
             assertEquals("不在", (ops.open("/w/nope").exceptionOrNull() as FileOps.Failed).problem.text)
         }
