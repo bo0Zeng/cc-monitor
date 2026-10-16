@@ -31,7 +31,7 @@ export function settingsPerfWorld(): World {
   w.machines = [LOCAL, ...remotes];
   const base = defaultConfig() as { remote: { hosts: Record<string, unknown>[] } };
   const tmpl = base.remote.hosts[0];
-  w.config = { ...w.config, remote: { hosts: remotes.map((label, i) => ({ ...tmpl, label, host: `10.0.1.${11 + i}`, hostKeyFingerprint: `SHA256:Bb${String(i).padStart(2, "0")}${"R".repeat(38)}` })) } };
+  w.config = { ...w.config, remote: { hosts: remotes.map((label, i) => ({ ...tmpl, label, host: `10.0.1.${11 + i}` })) } };
   w.sessions = Array.from({ length: SETTINGS_SCALE.sessions }, (_, k) => {
     const n = 0x200 + k;
     const origin = w.machines[k % w.machines.length];

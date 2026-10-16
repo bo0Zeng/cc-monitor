@@ -80,9 +80,6 @@ pub(crate) struct Plan {
     pub(crate) action: DeployAction,
     /// 落点目录里没人要的上传残件（家目录相对；后端判的，这里只照删）。
     pub(crate) leftovers: Vec<String>,
-    /// 问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
-    /// `dial_host::settle_host_key` 固化 —— 与 monitor 自己开链路那几条同一个判定，不另写。
-    pub(crate) ack: crate::ssh_link::Ack,
 }
 
 /// `deploy-plan` 的应答 → [`Plan`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
@@ -123,13 +120,8 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         .cloned()
         .and_then(|a| serde_json::from_value(a).ok())
         .ok_or_else(bad)?;
-    let ack: crate::ssh_link::Ack = obj
-        .get("ack")
-        .cloned()
-        .and_then(|a| serde_json::from_value(a).ok())
-        .ok_or_else(bad)?;
+    obj.get("ack").filter(|a| a.is_object() || a.is_null()).ok_or_else(bad)?;
     Ok(Plan {
-        ack,
         key,
         expected: text("expected")
             .filter(|s| !s.is_empty())
@@ -186,8 +178,6 @@ async fn ask_plan_for(
     let plan = decode_plan(&data.ok_or_else(|| command(copy_text("rsSftp.plan.internal", &[])))?)
         .map_err(command)?;
     crate::machine_state::note_os(&cfg.origin_label(), plan.key.os.label());
-    // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
-    crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
     Ok(plan)
 }
 

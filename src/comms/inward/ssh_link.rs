@@ -70,27 +70,18 @@ pub struct Ack {
     /// 握手时看到的 host key 指纹（失败时也尽量带上）。
     #[serde(default)]
     pub fingerprint: Option<String>,
-    /// 这一趟报过指纹的每条地址 → 指纹（老后端不报 ⇒ 空）。
-    #[serde(default)]
-    pub fingerprints: std::collections::BTreeMap<String, String>,
-    /// 经跳板时跳板那一台报过的指纹（老后端 / 直连 ⇒ 空）。
-    #[serde(default)]
-    pub jump_fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`，给人看）。
     #[serde(default)]
     pub endpoint: Option<String>,
     /// 同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
     #[serde(default)]
     pub winner: Option<Endpoint>,
-    /// 这一趟目标那台是否已严格校验指纹（后端组请求时定的，`ssh-dial/machine.rs`）。
-    #[serde(default)]
-    pub strict: bool,
-    /// 同上，跳板那一台。
-    #[serde(default)]
-    pub jump_strict: bool,
     /// 没拨成时后端给的原因码（闭集：`resolve` · `unreachable` · `timeout` · `host_key` · `auth` · `password` · `key_unreadable` · `jump` · `other`）；老后端 / 拨成了 ⇒ `None`。
     #[serde(default)]
     pub reason: Option<String>,
+    /// 因主机指纹被拒时库里记下的那一枚（库里没有同类型的 ⇒ 空串；别的原因 ⇒ `None`）。
+    #[serde(default)]
+    pub expected_fingerprint: Option<String>,
     #[serde(default)]
     pub v: u32,
     #[serde(default)]
@@ -115,6 +106,8 @@ pub enum LinkError {
     Refused {
         why: String,
         fingerprint: Option<String>,
+        /// 库里记下的那一枚（[`Ack::expected_fingerprint`] 原样）。
+        expected: Option<String>,
         /// 没拨成的原因码（[`Ack::reason`] 原样）。
         reason: Option<String>,
         /// 后端写好的复制详情（[`Ack::detail`] 原样；老后端 ⇒ `None`）。
@@ -210,6 +203,7 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
                     .error
                     .unwrap_or_else(|| copy_text("reason.io.unknown", &[])),
                 fingerprint: ack.fingerprint,
+                expected: ack.expected_fingerprint,
                 reason: ack.reason,
                 detail: ack.detail,
             });

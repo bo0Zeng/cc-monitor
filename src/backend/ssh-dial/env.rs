@@ -1,8 +1,8 @@
-//! **平台的事从这几个口进**：钥匙从哪来 · 认下的 host key 记到哪 · ssh-agent · 复制详情那几行事实。
+//! **平台的事从这几个口进**：钥匙从哪来 · 主机钥匙那份库 · ssh-agent · 复制详情那几行事实。
 //!
 //! 一个进程一份（[`install`]，宿主起来时装一次）：后端装它自己那一套（钥匙文件 · `~/.cc-monitor/known_hosts` · 本机 agent ·
-//! 后端的时刻与机器）；手机装 JNI 那一套（库里的钥匙 / Keystore 签名 · 回调进 Room · 没有 agent）。
-//! 没装就用 [`Env::bare`]：钥匙按路径读文件、认下的 host key 不记、没有 agent、远端一个字节都不许写 —— 宿主不许靠它。
+//! 后端的时刻与机器）；手机装 JNI 那一套（库里的钥匙 / Keystore 签名 · 没有 agent）。
+//! 没装就用 [`Env::bare`]：钥匙按路径读文件、没有主机钥匙库、没有 agent、远端一个字节都不许写 —— 宿主不许靠它。
 
 use std::future::Future;
 use std::pin::Pin;
@@ -38,11 +38,13 @@ pub trait KeySource: Send + Sync {
     fn credential(&self, key: &str) -> Result<Credential, Said>;
 }
 
-/// 认下的 host key 记到哪（桌面：cc-monitor 那份 known_hosts，开终端那一跳认同一把；手机：回调进 Room）。
-/// 只在那一台鉴权过了之后才交（鉴权不过的对端写不进信任库）。
+/// 信哪把主机钥匙的那份库（OpenSSH known_hosts 的文本；桌面：`~/.cc-monitor/known_hosts`，开终端那一跳认同一份；手机：App 私有目录）。
+/// 读 · 记 · 忘的规矩在 [`crate::known_hosts`]，这里只有读写两口。
 pub trait HostKeys: Send + Sync {
-    /// `key` = OpenSSH 公钥那一行的前两段（算法 ＋ base64）。写不了只记日志，不拦这条连接。
-    fn remember(&self, host: &str, port: u16, key: &str);
+    /// 整份文本（没有 ⇒ 空串）。读不出来 ⇒ 那一句：这一趟拒，不当首见。
+    fn read(&self) -> Result<String, Said>;
+    /// 在锁里现读 → `edit` → 有变化（`Some`）就写回整份。
+    fn rewrite(&self, edit: &mut dyn FnMut(&str) -> Option<String>) -> Result<(), Said>;
 }
 
 /// 连上的 agent（各平台的流类型抹成同一个）。
@@ -97,7 +99,7 @@ pub fn installed() -> bool {
 }
 
 impl Env {
-    /// 没装时的那一套：钥匙按路径读文件 · 认下的不记 · 没有 agent · 详情只写命令、码与原话 · 远端一个字节都不许写。
+    /// 没装时的那一套：钥匙按路径读文件 · 没有主机钥匙库 · 没有 agent · 详情只写命令、码与原话 · 远端一个字节都不许写。
     pub fn bare() -> Env {
         Env {
             keys: Box::new(KeyFiles),
@@ -120,11 +122,16 @@ impl KeySource for KeyFiles {
     }
 }
 
-/// 认下的 host key 不记。
+/// 没有库：一把都没记过、记了也不留。
 pub struct Forget;
 
 impl HostKeys for Forget {
-    fn remember(&self, _host: &str, _port: u16, _key: &str) {}
+    fn read(&self) -> Result<String, Said> {
+        Ok(String::new())
+    }
+    fn rewrite(&self, _edit: &mut dyn FnMut(&str) -> Option<String>) -> Result<(), Said> {
+        Ok(())
+    }
 }
 
 /// 详情只写命令 · 码 · 原话（没有宿主的时刻与机器）。

@@ -32,17 +32,17 @@ fn call() -> String {
     format!("& {} ", ps_literal(SSH))
 }
 
-fn known_hosts_arg(p: Option<&std::path::Path>) -> String {
-    super::known_hosts_arg(p, true)
+fn config_arg(p: Option<&std::path::Path>) -> String {
+    super::config_arg(p, true)
 }
 
 fn machine(host: &str, user: &str, port: u16, key: Option<&str>) -> Value {
     json!({ "host": host, "user": user, "port": port, "keyPath": key, "label": host })
 }
 
-/// 开终端那一行里认 cc-monitor 那份 known_hosts 的那一段（测试进程的家目录下）。
+/// 开终端那一行里 `-F` 那一段（测试档没装写句柄 ⇒ 没有那份配置、不带）。
 fn kh() -> String {
-    known_hosts_arg(crate::dial::known_hosts::path().as_deref())
+    config_arg(crate::dial::known_hosts::terminal_config().as_deref())
 }
 
 fn run(m: Value, cmd: &str) -> Result<String, CmdErr> {
@@ -429,34 +429,27 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
     }
 }
 
-/// 终端那一跳认 cc-monitor 自己那份 known_hosts：`-o UserKnownHostsFile=<那份>` 在、主机钥匙核对没被关
-/// （不出现 `StrictHostKeyChecking` / `/dev/null` 那一类）；路径带空格 / `'` / `%` 照 ssh 的切词规矩写。
+/// 终端那一行带 `-F <cc-monitor 那份 ssh 配置>`（目标与 `-J` 的每台跳板都认同一份库）、主机钥匙核对没被关
+/// （不出现 `StrictHostKeyChecking` / `/dev/null` 那一类）；路径照本机终端方言的单引号写。
 #[test]
-fn the_terminal_hop_trusts_the_monitor_known_hosts_without_disabling_the_check() {
+fn the_terminal_line_hands_ssh_our_config_without_disabling_the_check() {
     let got = run(machine("192.0.2.2", "u", 2222, None), "claude").unwrap();
-    let file = crate::dial::known_hosts::path().unwrap();
-    let want = format!(
-        " -o {} ",
-        ps_literal(&format!("UserKnownHostsFile={}", file.display()))
-    );
-    assert!(got.contains(&want), "{got}");
+    assert!(!got.contains(" -o "), "{got}");
     assert!(
         !got.contains("StrictHostKeyChecking") && !got.contains("/dev/null"),
         "{got}"
     );
     assert_eq!(
-        known_hosts_arg(Some(std::path::Path::new(
-            r"C:\Users\O'Neil A\.cc-monitor\known_hosts"
+        config_arg(Some(std::path::Path::new(
+            r"C:\Users\O'Neil A\.cc-monitor\ssh_config"
         ))),
-        r" -o 'UserKnownHostsFile=''C:\Users\O\''Neil A\.cc-monitor\known_hosts'''"
+        r" -F 'C:\Users\O''Neil A\.cc-monitor\ssh_config'"
     );
     assert_eq!(
-        known_hosts_arg(Some(std::path::Path::new(
-            "/home/u/100%/.cc-monitor/known_hosts"
-        ))),
-        " -o 'UserKnownHostsFile=/home/u/100%%/.cc-monitor/known_hosts'"
+        super::config_arg(Some(std::path::Path::new("/home/u/.cc-monitor/ssh_config")), false),
+        " -F '/home/u/.cc-monitor/ssh_config'"
     );
-    assert_eq!(known_hosts_arg(None), "");
+    assert_eq!(config_arg(None), "");
 }
 
 // ── POSIX 那一形（Linux 上开终端的那一行）──────────────────────────────────────────

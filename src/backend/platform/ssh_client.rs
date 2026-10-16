@@ -36,6 +36,16 @@ pub(crate) fn locate() -> SshClient {
     )
 }
 
+/// 这台电脑上系统那份 ssh 配置（Windows：`%ProgramData%\\ssh\\ssh_config`；别处 `/etc/ssh/ssh_config`）。
+pub(crate) fn system_config() -> String {
+    if cfg!(windows) {
+        let data = std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
+        format!("{data}\\ssh\\ssh_config")
+    } else {
+        "/etc/ssh/ssh_config".to_string()
+    }
+}
+
 /// [`locate`] 的本体：平台 · 两格环境 · 查文件那一下都由调用方给。
 pub(crate) fn locate_with(
     windows: bool,

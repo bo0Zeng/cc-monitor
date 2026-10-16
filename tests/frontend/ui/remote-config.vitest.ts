@@ -34,7 +34,6 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
     port: 22,
     user: "pi",
     keyPath: "",
-    hostKeyFingerprint: "",
     addresses: [],
     jump: "",
     connect: true,
@@ -60,7 +59,7 @@ describe("hostKey", () => {
 //   假盘与 Rust 写口跑同一份金样（`config-patch-fake.vitest.ts`）⇒ 这里看到的盘上终态就是 Rust 会落的那份。
 describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整段写 remote", () => {
   beforeEach(() => vi.resetAllMocks());
-  const pinnedB = { ...B, hostKeyFingerprint: "SHA256:pinned" }; // 加载之后后端刚固化的
+  const pinnedB = { ...B, keyPath: "/k/disk" }; // 加载之后别处刚改的
   const disk = (hosts: RemoteHostConfig[]) =>
     vi.mocked(loadConfig).mockResolvedValue({
       theme: "dark",
@@ -69,7 +68,7 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
   const lastEdits = () => vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
   const lastHosts = () => (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: RemoteConfig }).remote.hosts;
 
-  it("★ 增一台 ⇒ 恰好一条 insertin 追加到末尾（字段全带）；别的机器连刚固化的指纹一格不动", async () => {
+  it("★ 增一台 ⇒ 恰好一条 insertin 追加到末尾（字段全带）；别的机器连别处刚改的那一格都不动", async () => {
     disk([A, pinnedB, C]);
     const d = mk({ label: "delta", host: "192.0.2.4" });
     await patchRemoteConfig({ upsert: [{ key: null, value: d }] });
@@ -77,7 +76,7 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
     expect(lastHosts()).toEqual([A, pinnedB, C, d]);
   });
 
-  it("★ 删一台 ⇒ 恰好一条 removein；别的机器连刚固化的指纹一格不动", async () => {
+  it("★ 删一台 ⇒ 恰好一条 removein；别的机器连别处刚改的那一格都不动", async () => {
     disk([A, pinnedB, C]);
     await patchRemoteConfig({ remove: ["alpha"] });
     expect(lastEdits().map((e) => e.op)).toEqual(["removein"]);
@@ -150,13 +149,13 @@ describe("机器表读不懂", () => {
 describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it("★ 加载之后后端刚固化了指纹、设置页改了别的格 ⇒ 指纹留着、只动那几格；改名先写 label；那台没了 ⇒ 整批拒", async () => {
-    const pinned = { ...A, hostKeyFingerprint: "SHA256:pinned" };
+  it("★ 加载之后别处改了一格、设置页改了别的格 ⇒ 那一格留着、只动那几格；改名先写 label；那台没了 ⇒ 整批拒", async () => {
+    const pinned = { ...A, keyPath: "/k/disk" };
     vi.mocked(loadConfig).mockResolvedValue({
       theme: "dark",
       remote: { enabled: true, hosts: [pinned, B, C] },
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-    // 表单加载时 A 还没有指纹（`was`），用户改了 user 与 label。
+    // 表单加载时 A 还是旧的钥匙路径（`was`），用户改了 user 与 label。
     await patchRemoteConfig({
       upsert: [{ key: "alpha", was: A, value: { ...A, user: "new", label: "alpha2" } }],
     });

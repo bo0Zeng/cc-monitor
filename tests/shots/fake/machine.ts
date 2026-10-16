@@ -183,7 +183,9 @@ export function machineOps(): Record<string, OpHandler> {
     "machines-read": (o, _r, w) => {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
       const hosts = ((w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] }).hosts ?? [];
-      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts };
+      // 每台记着一枚台架编的主机指纹（真后端从拨号核心那份库读）。
+      const hostKeys = Object.fromEntries(hosts.map((h, i) => [String(h.label || h.host), [`SHA256:Aa3x${"Q".repeat(16)}Q${i}`]]));
+      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts, hostKeys };
     },
     // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
     "machines-try": (o, r, w) => {

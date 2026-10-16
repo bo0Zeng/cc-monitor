@@ -21326,7 +21326,14 @@
     "rsDataPaths.backend.knownHosts": {
       "kind": "body",
       "role": "说明",
-      "zh": "主机指纹 · 拨号时记下的各台主机指纹 · 开终端时 ssh 按它核对",
+      "zh": "主机指纹 · 各台主机记下的主机密钥 · 拨号与开终端都按它核对",
+      "args": [],
+      "limited": ["SSH", "SSH 主机指纹"]
+    },
+    "rsDataPaths.backend.sshConfig": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "终端用的 SSH 配置 · 指向主机指纹那一份 · 由后端生成",
       "args": [],
       "limited": ["SSH", "SSH 主机指纹"]
     },
@@ -23977,6 +23984,12 @@
       "zh": "端口 1–65535",
       "args": []
     },
+    "addMachine.err.dash": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "地址与用户不能以 - 开头",
+      "args": []
+    },
     "addMachine.err.taken": {
       "kind": "error",
       "role": "报错",
@@ -24655,6 +24668,12 @@
       "kind": "error",
       "role": "报错",
       "zh": "{name} · 端口 1–65535 · 未保存",
+      "args": ["name"]
+    },
+    "rsConfig.machine.dash": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} · 地址与用户不能以 - 开头 · 未保存",
       "args": ["name"]
     },
     "rsConfig.machine.nameTaken": {

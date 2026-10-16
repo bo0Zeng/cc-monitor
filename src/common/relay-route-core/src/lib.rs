@@ -156,8 +156,11 @@ pub const LINEAGE_REL: &str = ".cc-monitor/lineage.json";
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
 pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
 
-/// 〔同上〕**主机钥匙**（后端拨号侧写，OpenSSH 格式）：握手认下的每台主机钥匙；开终端那一行交给 `ssh` 认它，不再问、不写用户的 `~/.ssh`。
+/// 〔同上〕**主机钥匙**（后端拨号侧写，OpenSSH 格式）：拨号认它、鉴权过了的首见钥匙记进它；开终端那一行经 [`SSH_CONFIG_REL`] 交给 `ssh`。
 pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
+
+/// 〔同上〕**开终端那一行的 ssh 配置**（后端拨号侧写，`ssh -F` 用）：指到 [`KNOWN_HOSTS_REL`]，再照读用户与系统的 ssh 配置。
+pub const SSH_CONFIG_REL: &str = ".cc-monitor/ssh_config";
 
 /// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
 pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
@@ -465,6 +468,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
     ("answerPlugin", ANSWER_PLUGIN_DIR_REL, true, false),
     ("knownHosts", KNOWN_HOSTS_REL, false, false),
+    ("sshConfig", SSH_CONFIG_REL, false, false),
     ("accounts", ACCOUNTS_DIR_REL, true, true),
     ("accountsMcp", ACCOUNTS_MCP_REL, false, true),
     ("extBackups", EXT_BACKUPS_DIR_REL, true, true),

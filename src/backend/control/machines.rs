@@ -1,11 +1,11 @@
-//! **机器表**：这一端连各台用的那张表（每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连）。
+//! **机器表**：这一端连各台用的那张表（每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 备用地址 · 跳板 · 连不连）。
 //! 住拨号那一端的本机后端（`~/.cc-monitor/machines.json`，[`relay_route_core::MACHINES_REL`]）：钥匙路径是这台上的文件，
 //! 手机有自己的一张（同一形、不共用一份）。
 //!
 //! - 谁写：只有本模块的 [`answer_set_in`]（帧面 `machines-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）。
-//!   补丁全按键认元素（[`MachineEdit`]），锁内现读现判 ⇒ 设置页改一格、拨号时固化指纹、另一扇窗口同写都不会互相盖掉。
-//! - 判准只此一处（[`check_table`]）：名字不重 · 端口 1–65535 · 地址与用户非空。`machines-try` 与写口同一份。
-//! - 「指纹记于哪一天」只由写口盖（[`stamp_pinned_day`]），不认补丁里带来的那一格。
+//!   补丁全按键认元素（[`MachineEdit`]），锁内现读现判 ⇒ 设置页改一格、另一扇窗口同写都不会互相盖掉。
+//! - 判准只此一处（[`check_table`]）：名字不重 · 端口 1–65535 · 地址与用户非空、不以 `-` 打头。`machines-try` 与写口同一份。
+//! - 主机钥匙不在这张表里：在拨号核心那份库（`dial/known_hosts.rs`）。
 //! - 读不懂：照空表办，`machines-read` 照实报 `unreadable`；`machines-set` 拒（不拿空的盖掉原文）。
 //! - 每次写完响一下（[`changes`]），流连接推 `changed {machines}`，monitor 照它重问、对齐远端那几条流。
 
@@ -48,12 +48,6 @@ pub(crate) struct Host {
     /// 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
     #[serde(default)]
     pub(crate) key_path: String,
-    /// 固化的主机指纹（空 ＝ 没固化）。
-    #[serde(default)]
-    pub(crate) host_key_fingerprint: String,
-    /// 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
-    #[serde(default)]
-    pub(crate) host_key_pinned_at: String,
     /// 备用地址（竞发）。
     #[serde(default)]
     pub(crate) addresses: Vec<String>,
@@ -73,6 +67,22 @@ fn yes() -> bool {
 }
 
 impl Host {
+    /// 这台的全部拨号地址（同拨号那一处的算法：`host` 排首、备用地址追加、去重）。
+    pub(crate) fn endpoints(&self) -> Vec<ssh_dial::Endpoint> {
+        ssh_dial::machine::Machine::of(ssh_dial::machine::Fields {
+            host: Some(&self.host),
+            user: Some("-"),
+            port: u16::try_from(self.port).ok(),
+            addresses: self.addresses.clone(),
+            ..Default::default()
+        })
+        .map(|m| m.endpoints())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(host, port)| ssh_dial::Endpoint { host, port })
+        .collect()
+    }
+
     /// 这台的名字：`label` 去首尾空白后非空取它，否则 `host`。
     pub(crate) fn name(&self) -> &str {
         match self.label.trim() {
@@ -193,7 +203,8 @@ pub(crate) fn write(own: &Own, hosts: &[Host]) -> Result<(), Said> {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MachineFault {
-    /// `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+    /// `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名 ·
+    /// `leading_dash` 地址 / 用户以 `-` 打头（开终端时会被 ssh 当成选项）。
     pub(crate) code: MachineFaultCode,
     /// 出问题的那台的名字（`label` 非空取它、否则 `host`）。
     pub(crate) name: String,
@@ -210,6 +221,7 @@ pub(crate) enum MachineFaultCode {
     NoUser,
     Port,
     NameTaken,
+    LeadingDash,
 }
 
 impl MachineFault {
@@ -220,6 +232,7 @@ impl MachineFault {
             MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
             MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
             MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
+            MachineFaultCode::LeadingDash => copy_text("addMachine.err.dash", &[]),
         };
         Self { code, name, said }
     }
@@ -234,11 +247,15 @@ impl MachineFault {
             MachineFaultCode::NameTaken => {
                 copy_text("rsConfig.machine.nameTaken", &[("name", name)])
             }
+            MachineFaultCode::LeadingDash => {
+                copy_text("rsConfig.machine.dash", &[("name", name)])
+            }
         }
     }
 }
 
-/// 机器表成不成立：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 · 端口 1–65535 · 地址与用户非空。
+/// 机器表成不成立：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 · 端口 1–65535 · 地址与用户非空、
+/// 地址（含备用地址）与用户不以 `-` 打头。
 /// 不成立 ⇒ 第一处；成立 ⇒ `None`。**纯函数**。
 pub(crate) fn check_table(hosts: &[Host]) -> Option<MachineFault> {
     let mut seen = std::collections::HashSet::new();
@@ -252,6 +269,10 @@ pub(crate) fn check_table(hosts: &[Host]) -> Option<MachineFault> {
         }
         if !(1..=65535).contains(&h.port) {
             return fault(MachineFaultCode::Port);
+        }
+        let dash = |s: &str| s.trim().starts_with('-');
+        if dash(&h.host) || dash(&h.user) || h.addresses.iter().any(|a| dash(a)) {
+            return fault(MachineFaultCode::LeadingDash);
         }
         if !seen.insert(h.name().to_string()) {
             return fault(MachineFaultCode::NameTaken);
@@ -279,16 +300,13 @@ pub(crate) struct ElemKey {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "op", rename_all = "lowercase", deny_unknown_fields)]
 pub(crate) enum MachineEdit {
-    /// 只改认出的那一台的 `field` 那一格。`ifEmpty` ＝ 那一格已有值（非空串 / 非 null）就不动（拨号时自动固化指纹用它）。
+    /// 只改认出的那一台的 `field` 那一格。
     #[serde(rename = "setin", rename_all = "camelCase")]
     SetIn {
         r#where: Vec<ElemKey>,
         field: String,
         #[cfg_attr(test, ts(type = "unknown"))]
         value: Value,
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        if_empty: Option<bool>,
     },
     /// 加一台：已有满足 `where` 的 ⇒ 整批拒；否则追加到末尾。
     #[serde(rename = "insertin")]
@@ -311,12 +329,12 @@ impl MachineEdit {
         }
     }
 
-    /// 动了认人的那几格（加一台 · 改名称 / 地址 / 端口 / 用户）⇒ 改完的整张表要过 [`check_table`]。固化指纹这类格不查。
+    /// 动了认人的那几格（加一台 · 改名称 / 地址 / 端口 / 用户 / 备用地址）⇒ 改完的整张表要过 [`check_table`]。
     fn moves_identity(&self) -> bool {
         match self {
             MachineEdit::InsertIn { .. } => true,
             MachineEdit::SetIn { field, .. } => {
-                ["label", "host", "port", "user"].contains(&field.as_str())
+                ["label", "host", "port", "user", "addresses"].contains(&field.as_str())
             }
             MachineEdit::RemoveIn { .. } => false,
         }
@@ -329,19 +347,8 @@ enum Applied {
     Done,
     NoMatch,
     Ambiguous,
-    /// `ifEmpty`：那一格已有值。
-    Kept,
     /// `insertin`：已有满足 `where` 的。
     Exists,
-}
-
-/// 一台的「指纹记于哪一天」盖成了什么（`day` 空 ＝ 指纹清了、日子一起清）。`origin` ＝ 补丁认那台用的键。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct PinnedDay {
-    pub(crate) origin: cmd_wire::Machine,
-    pub(crate) day: String,
 }
 
 crate::wire::typed::codes! {
@@ -395,10 +402,7 @@ fn apply(rows: &mut Vec<Map<String, Value>>, e: &MachineEdit) -> Applied {
             if !found.is_empty() {
                 return Applied::Exists;
             }
-            let mut v = value.as_object().cloned().unwrap_or_default();
-            // 日子只由写口盖（下面 `stamp_pinned_day`），补丁里带来的那一格不认。
-            v.remove("hostKeyPinnedAt");
-            rows.push(v);
+            rows.push(value.as_object().cloned().unwrap_or_default());
             Applied::Done
         }
         MachineEdit::RemoveIn { .. } => match found.as_slice() {
@@ -409,113 +413,31 @@ fn apply(rows: &mut Vec<Map<String, Value>>, e: &MachineEdit) -> Applied {
             [] => Applied::NoMatch,
             _ => Applied::Ambiguous,
         },
-        MachineEdit::SetIn {
-            field,
-            value,
-            if_empty,
-            ..
-        } => {
+        MachineEdit::SetIn { field, value, .. } => {
             let i = match found.as_slice() {
                 [i] => *i,
                 [] => return Applied::NoMatch,
                 _ => return Applied::Ambiguous,
             };
-            let elem = &mut rows[i];
-            let taken = elem
-                .get(field)
-                .is_some_and(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.trim().is_empty()));
-            if if_empty.unwrap_or(false) && taken {
-                return Applied::Kept;
-            }
-            elem.insert(field.clone(), value.clone());
+            rows[i].insert(field.clone(), value.clone());
             Applied::Done
         }
     }
-}
-
-/// 写进了指纹的那一条（改那一格 · 新增一台带着指纹）⇒ 同一台的 `hostKeyPinnedAt` 盖上写的那一天；指纹写成空 ⇒ 日子清空。
-fn stamp_pinned_day(
-    rows: &mut [Map<String, Value>],
-    e: &MachineEdit,
-    day: &str,
-) -> Option<PinnedDay> {
-    let (r#where, fp) = match e {
-        MachineEdit::SetIn {
-            r#where,
-            field,
-            value,
-            ..
-        } if field == "hostKeyFingerprint" => (r#where, value.clone()),
-        MachineEdit::InsertIn { r#where, value } => (
-            r#where,
-            value
-                .get("hostKeyFingerprint")
-                .cloned()
-                .unwrap_or(Value::Null),
-        ),
-        _ => return None,
-    };
-    let given = fp.as_str().is_some_and(|s| !s.trim().is_empty());
-    if !given && matches!(e, MachineEdit::InsertIn { .. }) {
-        return None;
-    }
-    let day = if given {
-        day.to_string()
-    } else {
-        String::new()
-    };
-    let [i] = hits(rows, r#where)[..] else {
-        return None;
-    };
-    rows[i].insert("hostKeyPinnedAt".into(), Value::String(day.clone()));
-    Some(PinnedDay {
-        origin: cmd_wire::Machine(
-            r#where
-                .first()
-                .map(|k| k.equals.clone())
-                .unwrap_or_default(),
-        ),
-        day,
-    })
-}
-
-/// 写的那一天（UTC 的 `YYYY-MM-DD`）。
-pub(crate) fn pinned_day(t: std::time::SystemTime) -> String {
-    let days = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() / 86_400)
-        .unwrap_or(0) as i64;
-    let (y, m, d) = copy_core::civil_from_days(days);
-    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// 一串补丁打完的样子。
 #[derive(Debug)]
 pub(crate) struct Patched {
     pub(crate) hosts: Vec<Host>,
-    pub(crate) pinned: Vec<PinnedDay>,
-    /// 带 `ifEmpty`、那一格已有值而没动的条数。
-    pub(crate) kept: usize,
     /// 有没有一条真动了。
     pub(crate) changed: bool,
 }
 
-/// 把一串补丁逐条打到 `base` 上，再过机器表那一道（动了认人的格才过）。写口与试算口同一份。**纯函数**（日子是参数）。
-pub(crate) fn patched(
-    base: &[Host],
-    edits: &[MachineEdit],
-    day: &str,
-) -> Result<Patched, MachinesSetErr> {
+/// 把一串补丁逐条打到 `base` 上，再过机器表那一道（动了认人的格才过）。写口与试算口同一份。**纯函数**。
+pub(crate) fn patched(base: &[Host], edits: &[MachineEdit]) -> Result<Patched, MachinesSetErr> {
     let bad = |m: String| MachinesSetErr::BadArgs(crate::common::contract::malformed(&m));
     if edits.iter().any(|e| e.r#where().is_empty()) {
         return Err(bad("empty `where`".into()));
-    }
-    for e in edits {
-        if let MachineEdit::SetIn { field, .. } = e {
-            if field == "hostKeyPinnedAt" {
-                return Err(bad("`hostKeyPinnedAt` is stamped by the writer".into()));
-            }
-        }
     }
     let mut rows: Vec<Map<String, Value>> = base
         .iter()
@@ -524,16 +446,10 @@ pub(crate) fn patched(
             _ => Map::new(),
         })
         .collect();
-    let mut pinned = Vec::new();
-    let mut kept = 0;
     let mut changed = false;
     for e in edits {
         match apply(&mut rows, e) {
-            Applied::Done => {
-                changed = true;
-                pinned.extend(stamp_pinned_day(&mut rows, e, day));
-            }
-            Applied::Kept => kept += 1,
+            Applied::Done => changed = true,
             Applied::NoMatch => {
                 return Err(MachinesSetErr::ElementGone(
                     copy_text("rsConfig.write.elementGone", &[]),
@@ -570,12 +486,7 @@ pub(crate) fn patched(
             return Err(MachinesSetErr::BadMachine(f.refused_said(), f));
         }
     }
-    Ok(Patched {
-        hosts,
-        pinned,
-        kept,
-        changed,
-    })
+    Ok(Patched { hosts, changed })
 }
 
 // ───────────────────────────── 推送 ─────────────────────────────
@@ -609,9 +520,30 @@ pub(crate) struct MachinesReply {
     pub(crate) path: Option<String>,
     /// 照用的那一张。
     pub(crate) hosts: Vec<Host>,
+    /// 每台记下的主机指纹（名字 → 指纹，库里没有的那台不出现；拨号核心那份库现读）。
+    pub(crate) host_keys: std::collections::BTreeMap<String, Vec<String>>,
 }
 
-fn reply(l: &Loaded, path: Option<&Path>) -> MachinesReply {
+/// 库里每台记下的那几把的指纹（库读不出来 ⇒ 空：那一处另有拨号时的那一句）。
+fn host_keys_of(home: &Path, hosts: &[Host]) -> std::collections::BTreeMap<String, Vec<String>> {
+    use crate::common::own_state::{read_bytes, Read};
+    let text = match read_bytes(&home.join(relay_route_core::KNOWN_HOSTS_REL), 4 << 20) {
+        Read::Present(b) => String::from_utf8(b).unwrap_or_default(),
+        _ => String::new(),
+    };
+    hosts
+        .iter()
+        .filter_map(|h| {
+            let fps: Vec<String> = ssh_dial::known_hosts::known(&text, &h.endpoints())
+                .iter()
+                .map(ssh_dial::known_hosts::fingerprint)
+                .collect();
+            (!fps.is_empty()).then(|| (h.name().to_string(), fps))
+        })
+        .collect()
+}
+
+fn reply(l: &Loaded, path: Option<&Path>, home: Option<&Path>) -> MachinesReply {
     let why = match l {
         Loaded::Unreadable(w) => Some(w),
         _ => None,
@@ -622,6 +554,7 @@ fn reply(l: &Loaded, path: Option<&Path>) -> MachinesReply {
         reason,
         detail,
         path: path.map(|p| p.display().to_string()),
+        host_keys: home.map(|h| host_keys_of(h, &l.hosts())).unwrap_or_default(),
         hosts: l.hosts(),
     }
 }
@@ -630,7 +563,7 @@ fn reply(l: &Loaded, path: Option<&Path>) -> MachinesReply {
 pub(crate) fn answer_read_in(home: Option<&Path>) -> MachinesReply {
     let path = home.map(path_in);
     let l = path.as_deref().map_or(Loaded::Absent, read_at);
-    reply(&l, path.as_deref())
+    reply(&l, path.as_deref(), home)
 }
 
 /// `machines-try` / `machines-set` 的入参。
@@ -657,8 +590,7 @@ pub(crate) fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> Machine
         .map(path_in)
         .map_or(Loaded::Absent, |p| read_at(&p))
         .hosts();
-    let day = pinned_day(crate::common::time::now());
-    let fault = match patched(&base, &req.edits, &day) {
+    let fault = match patched(&base, &req.edits) {
         Err(MachinesSetErr::BadMachine(_, f)) => Some(f),
         // 往表里加一台、而同名的已经在了 ⇒ 这一道说成同名。
         Err(MachinesSetErr::ElementExists(_)) => req.edits.iter().find_map(|e| match e {
@@ -676,23 +608,19 @@ pub(crate) fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> Machine
     MachinesTried { fault }
 }
 
-/// `machines-set` 的回包：写完读回的那一张 ＋ 写口替那几台盖上的日子 ＋ 带 `ifEmpty` 没动的条数。
+/// `machines-set` 的回包：写完读回的那一张。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct MachinesSet {
     pub(crate) machines: MachinesReply,
-    pub(crate) pinned: Vec<PinnedDay>,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) kept: usize,
 }
 
-/// `machines-set` 的本体（家目录 · 日子是参数）：锁内现读 → 逐条打 → 判 → 整份写 → 读回 → 响一下。一条都没动 ⇒ 不写、不响。
+/// `machines-set` 的本体（家目录是参数）：锁内现读 → 逐条打 → 判 → 整份写 → 读回 → 响一下。一条都没动 ⇒ 不写、不响。
 pub(crate) fn answer_set_in(
     home: Option<&Path>,
     own: &Own,
     req: &MachinesEdits,
-    day: &str,
 ) -> Result<MachinesSet, MachinesSetErr> {
     let io = |e: Said| MachinesSetErr::IoFailed(crate::common::contract::joined(e.said, e.raw));
     let home = home
@@ -710,7 +638,7 @@ pub(crate) fn answer_set_in(
         }
         l => l.hosts(),
     };
-    let p = patched(&base, &req.edits, day)?;
+    let p = patched(&base, &req.edits)?;
     if p.changed {
         let at = dir.join(FILE_NAME).map_err(io)?;
         let body = body_of(at.as_path(), &p.hosts).map_err(io)?;
@@ -721,9 +649,7 @@ pub(crate) fn answer_set_in(
         ring();
     }
     Ok(MachinesSet {
-        machines: reply(&read_at(&path), Some(&path)),
-        pinned: p.pinned,
-        kept: p.kept,
+        machines: reply(&read_at(&path), Some(&path), Some(home)),
     })
 }
 
@@ -814,9 +740,80 @@ impl crate::wire::typed::Handle for MachinesSetCmd {
                 crate::platform::paths::home_dir().as_deref(),
                 own,
                 &req,
-                &pinned_day(crate::common::time::now()),
             )
         }
+    }
+}
+
+// ───────────────────────────── 忘掉一台的主机指纹 ─────────────────────────────
+
+/// `host-keys-forget` 的入参：哪一台（名字）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HostKeysForgetReq {
+    pub(crate) machine: cmd_wire::Machine,
+}
+
+crate::wire::typed::codes! {
+    /// `host-keys-forget` 的码：机器表读不懂 · 表里没有这一台 · 写没成。
+    pub(crate) enum HostKeysForgetErr {
+        Unreadable = "unreadable",
+        ElementGone = "element_gone",
+        IoFailed = "io_failed",
+    }
+}
+
+/// `host-keys-forget` 的本体（家目录是参数）：库里删这台全部地址的行（拨号核心那条规矩），下回连上照首见记；读回机器表、响一下。
+pub(crate) fn answer_forget_in(
+    home: Option<&Path>,
+    own: &Own,
+    req: &HostKeysForgetReq,
+) -> Result<MachinesReply, HostKeysForgetErr> {
+    let home = home.ok_or_else(|| {
+        HostKeysForgetErr::IoFailed(copy_text("beExitPolicy.answerSet.noHome", &[]))
+    })?;
+    let path = path_in(home);
+    let hosts = match read_at(&path) {
+        Loaded::Unreadable(why) => {
+            return Err(HostKeysForgetErr::Unreadable(
+                crate::common::contract::joined(why.said, why.raw),
+            ))
+        }
+        l => l.hosts(),
+    };
+    let host = hosts
+        .iter()
+        .find(|h| h.name() == req.machine.as_wire_str())
+        .ok_or_else(|| HostKeysForgetErr::ElementGone(copy_text("rsConfig.write.elementGone", &[])))?;
+    let addrs = host.endpoints();
+    crate::dial::known_hosts::writer_at(own)
+        .rewrite(&mut |t| ssh_dial::known_hosts::forgotten(t, &addrs))
+        .map_err(|e| HostKeysForgetErr::IoFailed(crate::common::contract::joined(e.said, e.raw)))?;
+    ring();
+    Ok(reply(&read_at(&path), Some(&path), Some(home)))
+}
+
+/// `host-keys-forget`：忘掉这台记下的主机指纹（用户点了才调；写自家状态 ⇒ 只递写句柄）。
+pub(crate) struct HostKeysForget;
+
+impl crate::wire::typed::Command for HostKeysForget {
+    const NAME: &'static str = "host-keys-forget";
+    type Req = HostKeysForgetReq;
+    type Reply = MachinesReply;
+    type Err = HostKeysForgetErr;
+}
+
+impl crate::wire::typed::Handle for HostKeysForget {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: HostKeysForgetReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<MachinesReply, HostKeysForgetErr>> + Send + 'static
+    {
+        let (_cx, needs) = cx.split();
+        async move { answer_forget_in(crate::platform::paths::home_dir().as_deref(), &needs, &req) }
     }
 }
 

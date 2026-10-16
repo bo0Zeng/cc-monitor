@@ -74,7 +74,6 @@ function mkH(label: string, host: string): RemoteHostConfig {
     port: 22,
     user: "u",
     keyPath: "",
-    hostKeyFingerprint: "",
     addresses: [],
     jump: "",
     connect: true,

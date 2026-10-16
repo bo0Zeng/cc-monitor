@@ -2,9 +2,9 @@
 //!
 //! # 身份是什么
 //!
-//! 拨号请求里**决定「连到哪、以谁的身份」**的那几项：`host · port · user · key_path · host_key_fingerprint ·
+//! 拨号请求里**决定「连到哪、以谁的身份」**的那几项：`host · port · user · key_path ·
 //! 竞速地址 · 跳板`（[`identity`]）。用法（`use`）· 命令 · 阶段行 · `agent_sock` 都**不在**身份里 ——
-//! 同一台远端的长流与一次性查询正是要共用一条连接。配置一改（换了钥匙 / 指纹固化了 / 换了跳板）就是
+//! 同一台远端的长流与一次性查询正是要共用一条连接。配置一改（换了钥匙 / 换了跳板）就是
 //! 另一个身份、另一条连接；旧的那条随用它的最后一条链路一起收掉。
 //!
 //! 一个身份是一族连接（至多 [`MAX_CONNECTIONS_PER_HOST`] 条，按需多开），见下面「一个身份一族连接」那一段。
@@ -648,30 +648,14 @@ pub fn identity(req: &DialRequest) -> String {
         .map(|e| serde_json::json!([e.host, e.port]))
         .collect();
     let jump = req.jump.as_ref().map(hop_identity);
-    let mut id = serde_json::json!([
-        req.host,
-        req.port,
-        req.user,
-        req.key_path,
-        req.host_key_fingerprint,
-        endpoints,
-        jump
-    ]);
-    // 记过的钥匙也是信任锚的一部分（换了 ⇒ 另一条连接）；没有时身份与从前同形。
-    if let (false, Some(a)) = (req.known_keys.is_empty(), id.as_array_mut()) {
-        a.push(serde_json::json!(req.known_keys));
-    }
-    id.to_string()
+    serde_json::json!([req.host, req.port, req.user, req.key_path, endpoints, jump]).to_string()
 }
 
-/// 一台跳板的身份：`[主机, 口, 用户, 钥匙, 指纹]`，再外一台在 ⇒ 它的身份接在第六格（多跳）。
+/// 一台跳板的身份：`[主机, 口, 用户, 钥匙]`，再外一台在 ⇒ 它的身份接在第五格（多跳）。
 fn hop_identity(j: &crate::JumpHop) -> serde_json::Value {
-    let mut v = serde_json::json!([j.host, j.port, j.user, j.key_path, j.host_key_fingerprint]);
+    let mut v = serde_json::json!([j.host, j.port, j.user, j.key_path]);
     if let (Some(outer), Some(a)) = (j.jump.as_deref(), v.as_array_mut()) {
         a.push(hop_identity(outer));
-    }
-    if let (false, Some(a)) = (j.known_keys.is_empty(), v.as_array_mut()) {
-        a.push(serde_json::json!(j.known_keys));
     }
     v
 }

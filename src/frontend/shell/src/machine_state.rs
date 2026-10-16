@@ -80,6 +80,8 @@ pub struct MachineState {
     pub fixes: Vec<MachineFix>,
     /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有；与记下的那枚比对用）。
     pub seen_host_key: Option<String>,
+    /// 指纹不对时库里记下的那一枚（`host_key_changed` 才有；库里没有同类型的 ⇒ 空串）。后端拨号核心说的，不在这里算。
+    pub expected_host_key: Option<String>,
     /// 这一轮没连上 / 做不了时的复制详情（`down` · `host_key_changed` · `unsupported` 才可能有）：时刻 · 机器 · 本机 · 命令 ·
     /// 断在（哪一步没成的那一句）· 码 · 原话。界面照原样跟在问题行那句后面（［复制详情］），自己不拼。说不出 ⇒ 空。
     pub detail: Option<String>,
@@ -98,8 +100,9 @@ struct Entry {
     os: Option<String>,
     /// 拨号那一层最近一次没拨成的原因码（这一轮收尾时用）。
     dial_why: Option<String>,
-    /// 指纹不对那一次那台出示的指纹（拨号那一层带回）。
+    /// 指纹不对那一次那台出示的指纹 · 库里记下的那一枚（拨号那一层带回）。
     seen_key: Option<String>,
+    expected_key: Option<String>,
     /// 那台握手报的构建标识（只进日志与诊断信息）。
     build: Option<String>,
     /// 拨号那一层最近一次没拨成的那一句 ＋ 详情（这一轮收尾时用）。
@@ -201,6 +204,7 @@ pub(crate) fn up(origin: &str, build: &str, relation: VersionRelation) {
         e.relation = Some(relation);
         e.dial_why = None;
         e.seen_key = None;
+        e.expected_key = None;
         e.build = Some(build.to_string());
         e.dial_said = None;
         e.round_said = None;
@@ -217,17 +221,18 @@ pub(crate) fn build_of(origin: &str) -> Option<String> {
         .and_then(|e| e.build.clone())
 }
 
-/// 拨号那一层没拨成（后端 ack 带回的原因码 · 那台出示的指纹 · 那一句与详情；老后端没给码 ⇒ 码与指纹不记，那一句照记）。
+/// 拨号那一层没拨成（后端 ack 带回的原因码 · 那台出示的指纹与库里记下的那枚 · 那一句与详情；老后端没给码 ⇒ 码与指纹不记，那一句照记）。
 pub(crate) fn dial_failed(
     origin: &str,
     why: Option<&str>,
-    fingerprint: Option<&str>,
+    (seen, expected): (Option<&str>, Option<&str>),
     said: &crate::detail::Said,
 ) {
     with(origin, |e| {
         if let Some(w) = why {
             e.dial_why = Some(w.to_string());
-            e.seen_key = fingerprint.map(str::to_string);
+            e.seen_key = seen.map(str::to_string);
+            e.expected_key = expected.map(str::to_string);
         }
         e.dial_said = Some(said.clone());
     });
@@ -260,6 +265,7 @@ pub(crate) fn down(origin: &str) {
             MachineStateKind::HostKeyChanged
         } else {
             e.seen_key = None;
+            e.expected_key = None;
             MachineStateKind::Down
         });
         e.reason = Some(why);
@@ -335,11 +341,12 @@ pub(crate) fn product(origin: &str, enabled: bool) -> MachineState {
         version: e.version,
         version_relation: e.relation,
         os: e.os,
-        seen_host_key: if state == MachineStateKind::HostKeyChanged {
-            e.seen_key
-        } else {
-            None
-        },
+        seen_host_key: (state == MachineStateKind::HostKeyChanged)
+            .then_some(e.seen_key)
+            .flatten(),
+        expected_host_key: (state == MachineStateKind::HostKeyChanged)
+            .then_some(e.expected_key)
+            .flatten(),
         detail: if enabled { e.detail } else { None },
     }
 }
@@ -388,6 +395,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         version_relation: Some(relation),
         os: None,
         seen_host_key: None,
+        expected_host_key: None,
         detail: None,
     }
 }

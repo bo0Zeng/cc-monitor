@@ -30,7 +30,7 @@ beforeEach(() => {
 describe("MIG-3b 续 公钥推送走通道、本机后端办", () => {
   it("发给本机那一台的 `pubkey-push`，体恰是金样那四格、带期限", async () => {
     reply = golden.product;
-    const machine = { ...golden.request.machine, port: 22, addresses: [], jump: "", hostKeyFingerprint: null } as unknown as RemoteHostConfig;
+    const machine = { ...golden.request.machine, port: 22, addresses: [], jump: "" } as unknown as RemoteHostConfig;
     const r = await pushPublicKey(machine, [], null);
     expect(r).toEqual(golden.product);
     expect(sent).toHaveLength(1);

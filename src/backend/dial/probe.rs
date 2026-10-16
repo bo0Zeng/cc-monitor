@@ -135,10 +135,6 @@ pub(crate) struct ProbeReq {
     pub(crate) ticket: String,
     /// 那台的配置。
     pub(crate) machine: super::pick::MachineConfig,
-    /// 已保存的那一份（可缺）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) saved: Option<super::pick::MachineConfig>,
     /// 跳板那一台的配置（可缺）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -196,7 +192,6 @@ where
     };
     let pick = super::pick::Pick {
         machine: &req.machine,
-        saved: req.saved.as_ref(),
         jump: req.jump.as_ref(),
         prefer: None,
     };

@@ -319,8 +319,6 @@ export function defaultConfig(): Record<string, unknown> {
         port: 22,
         user: "user",
         keyPath: "~/.ssh/id_ed25519",
-        hostKeyFingerprint: `SHA256:Aa3x${"Q".repeat(16)}Q${i}`,
-        hostKeyPinnedAt: "2026-09-30",
         addresses: [],
         jump: "",
         connect: true,

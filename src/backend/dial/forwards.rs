@@ -71,10 +71,6 @@ pub(crate) struct ForwardStartReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) machine: Option<super::pick::MachineConfig>,
-    /// 已保存的那一份。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) saved: Option<super::pick::MachineConfig>,
     /// 跳板那一台。
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
@@ -185,8 +181,7 @@ where
         (None, Some(machine)) => {
             let pick = super::pick::Pick {
                 machine,
-                saved: req.saved.as_ref(),
-                jump: req.jump.as_ref(),
+                        jump: req.jump.as_ref(),
                 prefer: None,
             };
             pick.machines()?;

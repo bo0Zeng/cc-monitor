@@ -1,6 +1,6 @@
 /**
  * 〔「后端持有全部 SSH」〕「测试连接」**走通道，本机常驻后端拨一次**：
- * `callTyped(<local>, "remote-probe", {ticket, machine, saved, jump})`。
+ * `callTyped(<local>, "remote-probe", {ticket, machine, jump})`。
  *
  * 〔「进度不许倒退」〕阶段**边拨边推**：调用之前先订 `subscribe(<local>, "probe-progress/<ticket>")`，
  * 后端每走完一段推一格 —— 握手那几行（`{stage}`，与 `ConnectStage` 同形）→ `{reached: "ssh"}` → `{reached: "hello"}` →
@@ -128,7 +128,7 @@ const PROBE_WINDOW = 256;
 
 
 /**
- * 测一台机器。`saved` = 已保存的全部机器（从里面找「已保存的那一份」与跳板那一台）。`onStage` 每收到一行握手阶段调一次（边收边画）。
+ * 测一台机器。`saved` = 已保存的全部机器（从里面找跳板那一台）。`onStage` 每收到一行握手阶段调一次（边收边画）。
  * 问不到 ⇒ 抛一句人话；到点没等到结局 ⇒ 抛 {@link ProbeStalled}。
  */
 export async function probeMachine(
@@ -136,7 +136,6 @@ export async function probeMachine(
   saved: readonly RemoteHostConfig[],
   onStage: (st: ConnectStage) => void,
 ): Promise<ConnTestResult> {
-  const mine = saved.find((h) => hostKey(h) === hostKey(machine)) ?? null;
   const jumpName = machine.jump.trim();
   const jump = jumpName ? (saved.find((h) => hostKey(h) === jumpName) ?? null) : null;
   // 一次性的票：进度流的名字（后端只当不透明的串回填）。
@@ -181,7 +180,7 @@ export async function probeMachine(
   const sub = await chan.subscribe(LOCAL_ORIGIN, `${PROBE_PROGRESS_KIND}/${ticket}`, null, PROBE_WINDOW, onItems);
   try {
     try {
-      await callTyped(LOCAL_ORIGIN, "remote-probe", { ticket, machine, saved: mine, jump }, budgetWithin(PROBE_BUDGET_MS));
+      await callTyped(LOCAL_ORIGIN, "remote-probe", { ticket, machine, jump }, budgetWithin(PROBE_BUDGET_MS));
     } catch (e) {
       if (end !== null) return end;
       if (e instanceof ChanError && e.error.layer === "hop" && e.error.why === "Overrun") {

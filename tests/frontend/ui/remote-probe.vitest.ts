@@ -47,7 +47,6 @@ const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   port: 22,
   user: "u",
   keyPath: "",
-  hostKeyFingerprint: "",
   addresses: [],
   jump: "",
   connect: true,

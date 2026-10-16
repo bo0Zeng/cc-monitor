@@ -45,7 +45,7 @@ fn a_round_walks_connecting_then_up_with_the_version() {
 fn a_failed_round_takes_the_reason_the_dial_layer_noted() {
     let o = fresh("没连上");
     connecting(&o, "deploy");
-    dial_failed(&o, Some("auth"), None, &said("拨号没成"));
+    dial_failed(&o, Some("auth"), (None, None), &said("拨号没成"));
     down(&o);
     let p = product(&o, true);
     assert_eq!(
@@ -57,7 +57,7 @@ fn a_failed_round_takes_the_reason_the_dial_layer_noted() {
     down(&o);
     assert_eq!(product(&o, true).reason.as_deref(), Some("other"));
     // 老后端没给码 ⇒ 不记。
-    dial_failed(&o, None, None, &said("拨号没成"));
+    dial_failed(&o, None, (None, None), &said("拨号没成"));
     down(&o);
     assert_eq!(product(&o, true).reason.as_deref(), Some("other"));
 }
@@ -65,7 +65,7 @@ fn a_failed_round_takes_the_reason_the_dial_layer_noted() {
 #[test]
 fn a_changed_host_key_is_its_own_state() {
     let o = fresh("指纹");
-    dial_failed(&o, Some("host_key"), Some("SHA256:new"), &said("拨号没成"));
+    dial_failed(&o, Some("host_key"), (Some("SHA256:new"), Some("SHA256:old")), &said("拨号没成"));
     down(&o);
     let p = product(&o, true);
     assert_eq!(p.state, MachineStateKind::HostKeyChanged);
@@ -75,8 +75,9 @@ fn a_changed_host_key_is_its_own_state() {
         Some("SHA256:new"),
         "比对框要的那枚指纹没带出来"
     );
+    assert_eq!(p.expected_host_key.as_deref(), Some("SHA256:old"), "库里记下的那枚照 ack 带进状态");
     // 下一轮换成别的原因 ⇒ 那枚指纹不再挂着。
-    dial_failed(&o, Some("timeout"), None, &said("拨号没成"));
+    dial_failed(&o, Some("timeout"), (None, None), &said("拨号没成"));
     down(&o);
     assert_eq!(product(&o, true).seen_host_key, None);
 }
@@ -156,7 +157,7 @@ fn the_version_relation_decides_up_needs_update_newer() {
 #[test]
 fn disabled_wins_over_whatever_the_table_says() {
     let o = fresh("停用");
-    dial_failed(&o, Some("timeout"), None, &said("拨号没成"));
+    dial_failed(&o, Some("timeout"), (None, None), &said("拨号没成"));
     down(&o);
     let p = product(&o, false);
     assert_eq!(p.state, MachineStateKind::Disabled);
@@ -195,15 +196,15 @@ fn the_product_matches_the_cross_language_golden() {
             "连着" => up(&o, "p7z", VersionRelation::Same),
             "正在连" => connecting(&o, "attach"),
             "密钥被拒" => {
-                dial_failed(&o, Some("auth"), None, &said("拨号没成"));
+                dial_failed(&o, Some("auth"), (None, None), &said("拨号没成"));
                 down(&o)
             }
             "无应答" => {
-                dial_failed(&o, Some("timeout"), None, &said("拨号没成"));
+                dial_failed(&o, Some("timeout"), (None, None), &said("拨号没成"));
                 down(&o)
             }
             "指纹变了" => {
-                dial_failed(&o, Some("host_key"), Some("SHA256:new"), &said("拨号没成"));
+                dial_failed(&o, Some("host_key"), (Some("SHA256:new"), Some("SHA256:old")), &said("拨号没成"));
                 down(&o)
             }
             "要更新" => up(&o, "p7a", VersionRelation::Older),
@@ -211,7 +212,7 @@ fn the_product_matches_the_cross_language_golden() {
             "版本不可比" => up(&o, "dev", VersionRelation::Incomparable),
             "不是 Unix" => unsupported(&o, NOT_UNIX),
             "要密码" => {
-                dial_failed(&o, Some("password"), None, &said("拨号没成"));
+                dial_failed(&o, Some("password"), (None, None), &said("拨号没成"));
                 down(&o)
             }
             "正在装" => deploying(&o, true),
@@ -249,7 +250,7 @@ fn the_product_matches_the_cross_language_golden() {
 fn a_failed_round_carries_the_copy_detail() {
     let o = fresh("带详情");
     connecting(&o, "deploy");
-    dial_failed(&o, Some("auth"), None, &said("step-said"));
+    dial_failed(&o, Some("auth"), (None, None), &said("step-said"));
     down(&o);
     let d = product(&o, true).detail.expect("没连上那一轮没有详情");
     assert!(d.contains("断在：step-said"), "{d}");
@@ -259,7 +260,7 @@ fn a_failed_round_carries_the_copy_detail() {
     assert_eq!(product(&o, false).detail, None, "停用那一行带了详情");
     // 接常驻后端那一步记下的优先（它比拨号那一层更完整）。
     connecting(&o, "deploy");
-    dial_failed(&o, None, None, &said("拨号那一层"));
+    dial_failed(&o, None, (None, None), &said("拨号那一层"));
     round_failed(&crate::origin::Origin(o.clone()), &said("round-said"));
     down(&o);
     let d = product(&o, true).detail.unwrap();
@@ -270,7 +271,7 @@ fn a_failed_round_carries_the_copy_detail() {
     down(&o);
     assert_eq!(product(&o, true).detail, None, "沿用了上一轮的详情");
     // 连上 ⇒ 清掉。
-    dial_failed(&o, Some("timeout"), None, &said("x"));
+    dial_failed(&o, Some("timeout"), (None, None), &said("x"));
     up(&o, "p7z", VersionRelation::Same);
     assert_eq!(product(&o, true).detail, None);
 }

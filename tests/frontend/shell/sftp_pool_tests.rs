@@ -146,7 +146,6 @@ pub(crate) fn cfg(label: &str) -> RemoteConfig {
         port: 22,
         user: "nobody".into(),
         key_path: Some("/k".into()),
-        host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,
     }

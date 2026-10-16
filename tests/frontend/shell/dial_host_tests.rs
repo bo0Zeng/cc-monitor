@@ -14,14 +14,13 @@ fn cfg(label: &str) -> RemoteConfig {
         port: 2222,
         user: "u".into(),
         key_path: Some("/home/u/.ssh/id_ed25519".into()),
-        host_key_fingerprint: Some("SHA256:abc".into()),
         addresses: vec!["192.0.2.9".into(), "[::1]:22".into()],
         jump: None,
     }
 }
 
 /// 〔「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `ssh-dial/machine.rs::resolve` 读的那几格
-/// （`machine` · `saved` · `jump` · `prefer` · `use`）＋ 其余照进 `DialRequest` 的可选格。异源：从后端源码里现抠。
+/// （`machine` · `jump` · `prefer` · `use`）＋ 其余照进 `DialRequest` 的可选格。异源：从后端源码里现抠。
 #[test]
 fn the_request_hands_over_the_machine_as_is() {
     let c = cfg("c2-dial-host-a");
@@ -33,7 +32,7 @@ fn the_request_hands_over_the_machine_as_is() {
         .find("pub fn resolve(")
         .expect("后端没有 resolve 了")..];
     let resolve = &resolve[..resolve.find("\n}\n").unwrap()];
-    for k in ["machine", "saved", "jump", "prefer", "use"] {
+    for k in ["machine", "jump", "prefer", "use"] {
         assert!(written.contains(k), "请求里缺 `{k}`");
         assert!(
             resolve.contains(&format!("\"{k}\"")),
@@ -228,7 +227,6 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         port: v["port"].as_u64().unwrap() as u16,
         user: v["user"].as_str().unwrap().into(),
         key_path: v["key_path"].as_str().map(String::from),
-        host_key_fingerprint: None,
         addresses: vec![],
         jump: None,
     };
@@ -541,186 +539,6 @@ fn w5vis_open_marks_the_handshake_done_right_after_the_ack() {
         wired(synthetic).is_err(),
         "缺 `mark_shaken` 的 `open` 没被认出 —— 量具瞎了"
     );
-}
-
-// ═══ 〔「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕═══════════════════════════════
-
-fn vis2_book(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
-    pairs
-        .iter()
-        .map(|(a, b)| (a.to_string(), b.to_string()))
-        .collect()
-}
-
-/// 判定逐格（期望手写）：probe 不问 · 已配严格 · 没报不固化 · 全同固化 · 不同说出来。
-#[test]
-fn vis2_the_pin_verdict_is_exactly_this_table() {
-    let same = vis2_book(&[("a:22", "SHA256:x"), ("b:22", "SHA256:x")]);
-    let differ = vis2_book(&[("a:22", "SHA256:x"), ("b:22", "SHA256:y")]);
-    let none = vis2_book(&[]);
-    let got = [
-        pin_verdict(true, false, &same),
-        pin_verdict(false, true, &same),
-        pin_verdict(false, false, &none),
-        pin_verdict(false, false, &same),
-        pin_verdict(false, false, &differ),
-    ];
-    assert_eq!(
-        got,
-        [
-            PinVerdict::NotAsked,
-            PinVerdict::AlreadyStrict,
-            PinVerdict::NoneReported,
-            PinVerdict::Pin("SHA256:x".into()),
-            PinVerdict::Differs(differ.clone()),
-        ]
-    );
-}
-
-/// 写：交本机后端 `machines-set` 一条认 origin 与 `host` 的 `setin`（`ifEmpty`，只动 `hostKeyFingerprint`）；
-/// 认那一台 · 不盖已有 · 盖日子的语义在后端那一处（`machines_tests::pinning_on_dial_touches_only_that_hosts_fingerprint`，同一形入参）。
-/// 那一答 `kept` ＞ 0 ⇒ 已有；被拒 / 问不到 ⇒ 带着那一句回错。
-#[test]
-fn vis2_pinning_asks_the_backend_machine_table_for_one_if_empty_cell() {
-    assert_eq!(
-        pin_request("devbox", "h1", "SHA256:new"),
-        serde_json::json!({ "edits": [{
-            "op": "setin",
-            "where": [
-                { "fields": ["label", "host"], "equals": "devbox" },
-                { "fields": ["host"], "equals": "h1" },
-            ],
-            "field": "hostKeyFingerprint",
-            "value": "SHA256:new",
-            "ifEmpty": true,
-        }] })
-    );
-    assert_eq!(
-        pin_outcome(Ok(serde_json::json!({"kept": 0, "pinned": []}))),
-        Ok(PinWrite::Written)
-    );
-    assert_eq!(
-        pin_outcome(Ok(serde_json::json!({"kept": 1, "pinned": []}))),
-        Ok(PinWrite::AlreadySet)
-    );
-    assert_eq!(pin_outcome(Err("认不出".into())), Err("认不出".to_string()));
-}
-
-/// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——
-/// 「表单 / 手里那份没有 ⇒ 用盘上同一个 host 的」那条继承规则只在后端 `ssh-dial/machine.rs::request`
-/// （`dial_machine_tests::the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint`）。
-#[test]
-fn vis2_the_saved_copy_goes_over_so_a_pinned_key_makes_the_next_dial_strict() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/dial_host.rs"));
-    guard_core::find_pinned(
-        &prod,
-        "\"saved\": crate::load_remote_config_by_label(&origin),",
-    )
-    .expect("盘上那一份没当 `saved` 交过去（恰好一处）");
-}
-
-/// 接线（剥注释）：`open` 在 `mark_shaken` 之后恰好一处 `settle_host_key(`。带正控。
-/// 「请求里的指纹是有效指纹」那一格随组请求搬进后端（见上一条）。
-#[test]
-fn vis2_open_settles_the_host_key_after_the_ack() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/dial_host.rs"));
-    let at = prod.find("async fn open(").expect("open 不在了");
-    let end = at + prod[at..].find("\n}\n").expect("open 的尾巴");
-    let body = &prod[at..end];
-    let n = |t: &str, k: &str| t.matches(k).count();
-    assert_eq!(
-        n(body, "settle_host_key(cfg, req, &ack);"),
-        1,
-        "open 里没有（恰好一处）判固化"
-    );
-    let shaken = body.find("mark_shaken()").expect("mark_shaken 不在了");
-    assert!(
-        body.find("settle_host_key(").unwrap() > shaken,
-        "判固化要在读完 ack 之后"
-    );
-    assert_eq!(
-        n(
-            &format!("{body}\nsettle_host_key(cfg, req, &ack);"),
-            "settle_host_key(cfg, req, &ack);"
-        ),
-        2,
-        "量具正控"
-    );
-}
-
-/// ★ 〔第二问「只当跳板用的机器一直 TOFU（设计没写）」〕经跳板那一趟要判两台：目标按它自己那一格、
-/// 跳板按请求里 `jump` 那一台（origin = 它的 label、否则 host）与 ack 的 `jump_fingerprints`；直连只判目标一台。
-/// 固化之后跳板那一台交进下一趟请求的就是盘上那份（`request` 现查跳板配置 ⇒ 默认转严格对跳板同样成立）。
-#[test]
-fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_target() {
-    let fp = |pairs: &[(&str, &str)]| -> std::collections::BTreeMap<String, String> {
-        pairs
-            .iter()
-            .map(|(a, b)| (a.to_string(), b.to_string()))
-            .collect()
-    };
-    let ack = Ack {
-        ok: true,
-        error: None,
-        detail: None,
-        fingerprint: None,
-        fingerprints: fp(&[("h.example:2222", "SHA256:T")]),
-        jump_fingerprints: fp(&[("j.lan:22", "SHA256:J")]),
-        endpoint: None,
-        winner: None,
-        strict: false,
-        jump_strict: false,
-        reason: None,
-        v: 2,
-        uses: vec![],
-    };
-    let target = cfg("tgt");
-    let direct = serde_json::json!({"machine": {"host": "h.example"}, "jump": null});
-    let got = pin_targets(&target, &direct, &ack);
-    assert_eq!(got.len(), 1, "直连只该判目标一台");
-    let via = serde_json::json!({"machine": {"host": "h.example"},
-        "jump": {"host": "j.lan", "port": 22, "label": "bastion"}});
-    let got: Vec<_> = pin_targets(&target, &via, &ack)
-        .into_iter()
-        .map(|(o, h, c, r)| (o, h, c, pin_verdict(false, c, r)))
-        .collect();
-    assert_eq!(
-        got,
-        vec![
-            (
-                "tgt".into(),
-                "h.example".into(),
-                false,
-                PinVerdict::Pin("SHA256:T".into())
-            ),
-            (
-                "bastion".into(),
-                "j.lan".into(),
-                false,
-                PinVerdict::Pin("SHA256:J".into())
-            ),
-        ]
-    );
-    // 跳板没有 label ⇒ origin 是它的 host（同 `origin_label`）；后端说那一趟跳板已严格（`jump_strict`）⇒ 那一格已严格。
-    let via2 = serde_json::json!({"jump": {"host": "j.lan", "label": ""}});
-    let strict_jump = Ack {
-        jump_strict: true,
-        ..ack.clone()
-    };
-    let (o, h, c, r) = pin_targets(&target, &via2, &strict_jump)
-        .pop()
-        .expect("跳板那一台");
-    assert_eq!((o.as_str(), h.as_str()), ("j.lan", "j.lan"));
-    assert_eq!(pin_verdict(false, c, r), PinVerdict::AlreadyStrict);
-    // 目标那一格同理：严格与否取 ack 的 `strict`（本侧不再重推指纹继承）。
-    let strict = Ack {
-        strict: true,
-        ..ack.clone()
-    };
-    let (_, _, c, r) = pin_targets(&target, &direct, &strict).remove(0);
-    assert_eq!(pin_verdict(false, c, r), PinVerdict::AlreadyStrict);
 }
 
 /// 本机后端说没拨成：那一句原样、详情是它写的那一份（拨号跑在本机后端里 ⇒ 不补「本机」行）；老后端没写详情 ⇒ 壳写时刻与本机。
