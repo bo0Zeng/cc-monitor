@@ -256,7 +256,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     })?;
     let mut at_ms = now_ms;
     locked_edit(own, &dir, &file, |all| {
-        match kept_at(all, &origin, kind, &value, shape) {
+        match kept_at(all.get(&origin), kind, &value, shape) {
             Some(was) => {
                 at_ms = was;
                 false
@@ -270,15 +270,9 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     Ok(LastSeenWritten { at_ms })
 }
 
-/// 盘上那台那一样已经是同一份（值与形状指纹都一样）⇒ 它记下的时刻；不是 ⇒ `None`。
-fn kept_at(
-    all: &Map<String, Value>,
-    origin: &str,
-    kind: &str,
-    value: &Value,
-    shape: Option<&str>,
-) -> Option<u64> {
-    let e = all.get(origin)?.get(kind)?;
+/// 盘上那台（`mine`）那一样已经是同一份（值与形状指纹都一样）⇒ 它记下的时刻；不是 ⇒ `None`。
+fn kept_at(mine: Option<&Value>, kind: &str, value: &Value, shape: Option<&str>) -> Option<u64> {
+    let e = mine?.get(kind)?;
     (e.get("value") == Some(value) && e.get("shape").and_then(Value::as_str) == shape)
         .then(|| e.get("atMs")?.as_u64())
         .flatten()
