@@ -247,7 +247,7 @@ fn every_shell_command_fails_as_said_and_names_itself() {
 fn format_into_said(prod: &str) -> Vec<usize> {
     prod.lines()
         .enumerate()
-        .filter(|(_, l)| l.contains("map_err(|e| format!("))
+        .filter(|(_, l)| guard_core::contains_word(l, "map_err(|e| format!("))
         .map(|(i, _)| i + 1)
         .collect()
 }
