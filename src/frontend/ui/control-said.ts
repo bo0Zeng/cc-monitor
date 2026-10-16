@@ -61,7 +61,8 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
       // `unsupported`：那台后端事前就说不认这条命令（比这条动作老）。`refused` 由调用方先接走，走不到这里。
       return peerVersionSaid("backend_old", origin);
     case "ours":
-      return err.why === "Cancelled" ? copyText("control.channel.cancelled") : copyText("control.channel.broken");
+      if (err.why !== "Cancelled") return copyText("control.channel.broken");
+      return copyText("control.channel.cancelled");
   }
 }
 

@@ -159,7 +159,8 @@ function saidByLayer(e: unknown): string {
         ? copyText("chanCaller.said.timeout")
         : copyText("chanCaller.said.unreachable");
     case "ours":
-      return err.why === "Cancelled" ? copyText("chanCaller.said.withdrawn") : copyText("chanCaller.said.internal");
+      if (err.why !== "Cancelled") return copyText("chanCaller.said.internal");
+      return copyText("chanCaller.said.withdrawn");
   }
 }
 

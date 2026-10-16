@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36" | "J37";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -648,6 +648,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
   },
+  J37: {
+    what: "那台握手时说做不到的一个码 ⇒ 说成哪一句（置灰 · 测试连接那一格的「做不到的那几类」）",
+    // 置灰那一句已由壳按码写好、随能力事实交来（`chan/webview.rs::offer_view`）；测试连接那一格还拿后端交的码在界面现说。
+    homes: ["copy-core::unavailable"],
+    status: "open",
+    defs: ["unavailableReason"],
+    needles: [],
+    owner: "界面不写句那一步：测试连接那一格（`settings/machine-card.ts`）改读后端写好的那一句，`unavailableReason` 随之删",
+    why: "测试连接的答复今天只带码与项数，没带那一句",
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -789,6 +799,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     local_machine: "J22",
     peer_machine: "J22",
     reply_unreadable: "J22",
+    unavailable: "J37",
     TABLE_JSON: NONE,
     // 天数 ⇒ 公历（后端 · monitor · 文件窗口写日期与「复制详情」的时刻都经它）；界面那一份 TS 删了（J23 zero）。
     civil_from_days: "J23",

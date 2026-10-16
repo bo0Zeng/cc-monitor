@@ -307,7 +307,7 @@ where
 /// [`parent_dir`] / [`remote_basename`] 那一对（不另写一份切法）。用户敲的名字走 [`apply_typed`]。
 /// ⚠ 改名两端**不在同一个目录** ⇒ 这里当场拒（后端那一格只有一个 `root`），不猜。
 ///
-/// ⚠ 回来的 `Err` **原样**带出去（后端路径解析那句拒绝经 [`super::source::said`] 翻成人话），
+/// ⚠ 回来的 `Err` **原样**带出去（后端路径解析那句拒绝经 [`comms_inward::chan::said::said`] 翻成人话），
 /// 由 [`WriteBoard::ui`] 画到窗口上 —— 这一层不改写、不摘要。
 pub async fn apply_remote(line: &Line, origin: &Origin, op: &WriteOp) -> Result<(), String> {
     apply_remote_in(line, origin, op, None).await

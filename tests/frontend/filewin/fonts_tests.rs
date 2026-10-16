@@ -156,7 +156,9 @@ fn drawn_files() -> Vec<(String, String)> {
     //   `guard_support.rs` 是本包的判据住址（`#![cfg(test)]`，一个字都不画），同 `proc.rs` 那条理由摘掉。
     //   `frame_log.rs`（帧日志）同理：它写的是一份日志文件，一个字都不画在 egui 上。
     //   `render.rs`（挑哪块显卡）同理：它的话只上 stderr（挑中的那一行 · 挑不出时那一句），一个字都不画在 egui 上。
+    //   通信层的 `chan/said.rs` 进人群：通道没成时窗口上画的那一句从它取（全产品一份，不住本包）。
     let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
+    let said = crate::guard_support::repo_root().join("src/comms/inward/chan/said.rs");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
         &dir,
         &["rs"],
@@ -176,6 +178,10 @@ fn drawn_files() -> Vec<(String, String)> {
         &["rs"],
         &["mod.rs", "proc.rs"],
     ))
+    .chain(std::iter::once((
+        said.clone(),
+        std::fs::read_to_string(&said).expect("读不到 chan/said.rs"),
+    )))
     .map(|(path, src)| {
         let name = path
             .file_name()
@@ -367,7 +373,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 34 → 36，多的是 `imgview.rs`（图片查看页：头条 · 画面 · 状态栏那几句）· `picture.rs`（读图解图没成的那几句）。
         //   字形一个没多：两份的字全经文案表取，源码里不留非 ASCII 字面量。
         // 36 → 37，多的是 `batch.rs`（一组一条命令那一层：冲突框 · 逐项选 · 进度那一行 · 断开那一句）。
-        37,
+        // 37 → 38，多的是通信层的 `chan/said.rs`（通道没成时窗口上那一句，全产品一份）。
+        38,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
@@ -415,7 +422,8 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         // 350 → 349，−`缺`、零 ＋（开单两条换 typed：回包缺字段那一句收成 `ask_typed` 那一句，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
         // 349 → 351：一组一条命令那一层（冲突框 · 逐项选 · 进度那一行 · 断开那一句）多两个字，逐笔来路住 `fonts.rs` 的 `PROBE` 上方。
         // 351 → 350，＋2 −3（＋`继 续` −`勾 照 着`：上传那张自带勾选的同名表删了，结局行多一颗「继续」；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
-        350,
+        // 350 → 346，＋1 −5（通道那一句并成通信层一份、`chan/said.rs` 进人群；逐笔来路住 `fonts.rs` 的 `PROBE` 上方）。
+        346,
         "现扫出 {} 个不同的非 ASCII 字符（2026-09-21 现打 249；第五刀之前是 205、\
          〔书签旧键退役：341 → 337，−4 零 ＋（`entry.rs` 搬家那两句删了，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\
          〔334 → 338，恰好 ＋4、零 −（`仍 然 摘 盘`，编辑器存盘 CAS 那几句，逐笔来路住 `fonts.rs` 的 `PROBE` 上方）〕\

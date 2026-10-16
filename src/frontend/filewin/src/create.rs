@@ -23,7 +23,7 @@
 //! - ① 本地预判围栏〔连同后端那一道一起删了，这一条今天是历史〕：那道围栏的本地副本的去留
 //!   正挂在 `boundary_tests::WINDOW_SIDE` 那一格上（「本地预判围栏」）。
 //!   给它添一个新消费者是往**留**那一侧加码 ⇒ 本操作只靠**后端那一道**（它才是权威；
-//!   被拒那句原话经 [`super::source::said`] 原样画到窗口上）。
+//!   被拒那句原话经 [`comms_inward::chan::said::said`] 原样画到窗口上）。
 //! - ② 一次问完：新建不毁任何东西（存在就拒）⇒ 不问（同 `writeops` 头注 §四「新建目录不问」）。
 //! ⇒ 只借它的**结果板**（[`super::writeops::WriteBoard`]）：画结果、跑完重列目录，
 //!   都是现成的那一条路，不另立一块板子。
@@ -49,7 +49,7 @@ pub const CMD_CREATE: &str = "files-create";
 /// # Errors
 ///
 /// 后端那句原话（围栏拒 `refused` · 已存在 / 父目录不在 `io_failed` · 通道哪一段断了），
-/// 经 [`super::source::said`] 翻过，原样交出去。
+/// 经 [`comms_inward::chan::said::said`] 翻过，原样交出去。
 pub async fn create_remote(line: &Line, origin: &Origin, path: &str) -> Result<(), String> {
     create_remote_at(line, origin, &super::source::RemotePath::plain(path)).await
 }
