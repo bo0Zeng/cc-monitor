@@ -1,5 +1,5 @@
 //! 「你说过的话」清单：会话里每一条主线用户输入，按文件顺序。大纲的数据源，判定（四条口径）全仓只这一个住址；
-//! 界面经通道直接说帧命令 `history-user-inputs`，本文件的扫描直接出成品（`read_face.rs`），本机与远端同一条路。
+//! 冷开扫描图（`record_scan`）逐行问它；帧命令 `history-user-inputs` 从那张图上切页（`faces/history_face.rs`），本机与远端同一条路。
 //!
 //! # 口径
 //!
@@ -8,15 +8,6 @@
 //!    斜杠命令 · `!` 输入算，agent 发来的 · 后台通知 · 系统注入 · 压缩摘要 · 中断标记 · 工具结果 · 输出回显都不算）；
 //! 2. 不属于任何子运行（适配层 `RecordFace::run_of` 答不出）—— 子运行里的话是主线派下去的活，不是人在这个会话里说的；
 //! 3. 有 uuid（列出来要跳得过去）。
-//!
-//! # 出什么（逐行 JSON，形状登记在 `IPC-PROTOCOL.md §10.4`）
-//!
-//! 1. 头 `{"kind":"user_inputs","v":1,"from":F}` —— 首行就认得出「对面会出这份清单」；
-//! 2. 每条一行 [`UserInputRow`]；
-//! 3. 尾 `{"kind":"user_inputs_end","count":N,"end":E}` —— `E` = 最后一个完整行的末字节（torn 残尾不计）＝ 下一次增量该带的 `--from`。
-//!    没有尾行 ⇒ 输出被截断，不许当全量。
-//!
-//! 本文件不含任何 `--旗标` 字面量：argv 在 `history_query.rs` 里解析（那份在 `protocol_doc_guard::DISPATCH_FILES` 里）；这里只有纯核。
 
 use crate::agents::UserTextExt as _;
 use serde_json::Value;
@@ -45,17 +36,9 @@ fn tree() -> &'static str {
     crate::agents::record_tree_kind().unwrap_or_default()
 }
 
-/// 一行 jsonl → 是用户输入就给一条 [`UserInputRow`]，不是 ⇒ `None`。**纯函数**。
-/// 解析不出的行（半截 / 非 JSON）⇒ `None`；判定本身在 [`user_input_of`]。
-pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
-    user_input_of(&super::record_scan::parse_record(line)?)
-}
-
 /// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**口径的唯一住址**（见头注）。
 ///
-/// 从 [`user_input_row`] 里拆出来：骨架索引（`history_query::index_row`）已经解析过这一行，
-/// 顺带问一句「是不是用户输入」就不用再解析一遍 —— 首屏的「索引」与「大纲清单」由此合成一趟读
-/// （那条欠账）。**判定没有第二份**：两个出口都调这里。
+/// 冷开扫描图（[`super::record_scan`]）每行解析一次、顺带问这一句；**判定没有第二份**。
 pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
     user_input_given(v, crate::agents::user_text_of(tree(), v).as_ref())
 }
@@ -122,34 +105,6 @@ pub(crate) fn excerpt(text: &str) -> String {
         Some((i, _)) => format!("{}…", &flat[..i]),
         None => flat,
     }
-}
-
-/// 读 `r`（已定位在字节 `from`）逐条交给 `on_row`，回 `(count, end)`（`end` = 最后一个完整行的末字节）。
-/// 只看**完整行**（`\n` 收尾）；torn 残尾不看、不计进 `end`。帧面 `history-user-inputs`（`read_face.rs`）装成成品
-/// `{from, end, entries}` —— 「什么算一条用户输入」只住 [`user_input_of`]。
-pub(crate) fn scan_user_inputs<R: std::io::BufRead>(
-    mut r: R,
-    from: u64,
-    mut on_row: impl FnMut(&UserInputRow) -> std::io::Result<()>,
-) -> std::io::Result<(u64, u64)> {
-    let mut end = from;
-    let mut count: u64 = 0;
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break;
-        }
-        let at = end;
-        end += read as u64;
-        if let Some(mut row) = user_input_row(&buf[..buf.len() - 1]) {
-            row.at = at;
-            on_row(&row)?;
-            count += 1;
-        }
-    }
-    Ok((count, end))
 }
 
 #[cfg(test)]

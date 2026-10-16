@@ -378,13 +378,8 @@ impl Facts {
     /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。
     fn absorb(&mut self, text: &str, tools: bool) {
         for line in text.lines() {
-            let trimmed = line.trim_start_matches('\u{feff}').trim();
-            if trimmed.is_empty() {
+            let Some(v) = super::lines::parse(line.as_bytes()) else {
                 continue;
-            }
-            let v: Value = match serde_json::from_str(trimmed) {
-                Ok(v) => v,
-                Err(_) => continue,
             };
             if v.get("sessionKind").and_then(Value::as_str) == Some("bg") {
                 self.bg = true;
@@ -1207,7 +1202,7 @@ pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> Find
 /// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub(crate) fn scan_session_find<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     query: &str,
     include_tools: bool,
     scope: Option<&str>,
@@ -1218,16 +1213,12 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     let q = query.trim().to_lowercase();
     let mut pager = FindPager::new(page);
     let mut turn: u64 = 0;
-    let mut buf: Vec<u8> = Vec::new();
+    let mut lines = super::lines::Lines::new(r, 0);
     while !q.is_empty() {
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
+        let Some(row) = lines.next()? else {
             break;
-        }
-        let text = String::from_utf8_lossy(&buf[..buf.len() - 1]);
-        let Ok(v) = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
-        else {
+        };
+        let Some(v) = super::lines::parse(row.body()) else {
             continue;
         };
         if matches!(

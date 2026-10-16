@@ -1202,7 +1202,7 @@ fn lines_by_number_refuse_an_oversized_row_but_can_count_past_it() {
 
 /// ★ L1：同一份夹具的三个出口数的是**同一个**行号空间 —— `history-tail` 的 `total` ·
 /// `history-index` 的行数 · `history-lines` 从 0 取到底的条数，两两相等（三个扫描各写各的循环，只共用
-/// `line_counts` 那一个判定）；帧面那一臂的键集合恒等；围栏照旧。
+/// `lines::counts` 那一个判定）；帧面那一臂的键集合恒等；围栏照旧。
 #[test]
 fn lines_by_number_share_the_seq_space_with_tail_and_index() {
     let home = scratch("cf2-lines");

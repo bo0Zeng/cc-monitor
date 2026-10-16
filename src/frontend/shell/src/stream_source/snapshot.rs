@@ -269,7 +269,7 @@ enum FetchOutcome {
     Cancelled,
 }
 
-// 快照只含可计行：口径只住后端 `history_query::line_counts`。
+// 快照只含可计行：口径只住后端 `observe::lines::counts`。
 
 /// 拉取单个会话的尾段快照（续点在就只续读断线期间新到的那一截）并灌进既有管线。
 ///

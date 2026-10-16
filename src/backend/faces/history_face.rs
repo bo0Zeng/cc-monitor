@@ -825,11 +825,6 @@ fn digits(n: u64) -> usize {
     n.checked_ilog10().map_or(1, |d| d as usize + 1)
 }
 
-/// 扫文件那一处装满一页时停下扫描用的那一句（不是读错）。
-fn page_full() -> std::io::Error {
-    std::io::Error::other("page full")
-}
-
 // ───────────────────────── history-index ─────────────────────────
 
 /// `history-index` 的入参。
@@ -1063,8 +1058,7 @@ fn index_row_cost(
 
 /// [`index_at`] 的本体，一页的上限是参数（判据拿小上限喂）。
 ///
-/// 行从哪来：从 0 起（没有 `until`）⇒ 冷开扫描图；从中间起 ⇒ 扫描图留着且没变就从它切（分页的后几页不重扫），
-/// 否则从文件那一处扫、装满一页当场停（只读这一页那一截）。
+/// 行从哪来：一律从那一份的扫描图上切（从 0 起 · 从中间续都一样；图不在了照骨架起步或重扫，见 [`history_query::scan_from`]）。
 pub(crate) fn index_page(
     home: &Path,
     req: HistoryIndexReq,
@@ -1076,48 +1070,20 @@ pub(crate) fn index_page(
     let mut seen = Vec::new();
     let mut rows: Vec<crate::observe::history_query::IndexRow> = Vec::new();
     let mut next = None;
-    let map = if req.until.is_some() {
-        None
-    } else if offset == 0 {
-        Some(history_query::cold_scan(home, &req.path).map_err(HistoryIndexErr::Failed)?)
-    } else {
-        history_query::held_scan(home, &req.path)
-            .map_err(HistoryIndexErr::Failed)?
-            .filter(|m| offset <= m.end)
-    };
-    let end = match map {
-        Some(map) => {
-            let start = map.index.partition_point(|r| r.o < offset);
-            for r in &map.index[start..] {
-                if !pager.admit(index_row_cost(r, rows.len(), &mut seen)) {
-                    next = Some(r.o);
-                    break;
-                }
-                rows.push(r.clone());
-            }
-            map.end
+    let map = history_query::scan_from(home, &req.path, offset).map_err(HistoryIndexErr::Failed)?;
+    let start = map.index.partition_point(|r| r.o < offset);
+    // `until`：只收起点在它之前的行；末端是界外第一行的起点（没有 ⇒ 扫到的末端）。
+    let stop = req
+        .until
+        .map_or(map.index.len(), |u| map.index.partition_point(|r| r.o < u));
+    let end = map.index.get(stop).map_or(map.end, |r| r.o);
+    for r in &map.index[start..stop.max(start)] {
+        if !pager.admit(index_row_cost(r, rows.len(), &mut seen)) {
+            next = Some(r.o);
+            break;
         }
-        None => {
-            let r = history_query::open_session_at(home, &req.path, offset)
-                .map_err(HistoryIndexErr::Failed)?;
-            let (target, _) =
-                record_face(home, &req.path).map_err(|(_, said)| HistoryIndexErr::Failed(said))?;
-            let kind = crate::agents::record_kind_of(&target).unwrap_or_default();
-            let scanned = history_query::scan_session_index(kind, r, offset, req.until, |row| {
-                if !pager.admit(index_row_cost(row, rows.len(), &mut seen)) {
-                    next = Some(row.o);
-                    return Err(page_full());
-                }
-                rows.push(row.clone());
-                Ok(())
-            });
-            match scanned {
-                Ok((_, end)) => end,
-                Err(_) if next.is_some() => 0,
-                Err(e) => return Err(HistoryIndexErr::Failed(format!("stream failed: {e}"))),
-            }
-        }
-    };
+        rows.push(r.clone());
+    }
     let mut ix = pack_index(offset, next.unwrap_or(end), &rows);
     ix.next = next;
     Ok(ix)
@@ -1191,7 +1157,7 @@ pub(crate) fn user_inputs_at(home: &Path, req: UserInputsReq) -> Result<UserInpu
     user_inputs_page(home, req, REPLY_PAGE_BYTES)
 }
 
-/// [`user_inputs_at`] 的本体，一页的上限是参数。来源同 [`index_page`]：从 0 ⇒ 扫描图；从中间 ⇒ 图留着没变就切，否则从文件扫、满了就停。
+/// [`user_inputs_at`] 的本体，一页的上限是参数。来源同 [`index_page`]：一律从扫描图上切。
 pub(crate) fn user_inputs_page(
     home: &Path,
     req: UserInputsReq,
@@ -1207,43 +1173,16 @@ pub(crate) fn user_inputs_page(
     let mut pager = Pager::new(cap, fixed, req.limit);
     let mut rows = Vec::new();
     let mut next = None;
-    let map = if from == 0 {
-        Some(history_query::cold_scan(home, &req.path).map_err(UserInputsErr::Failed)?)
-    } else {
-        history_query::held_scan(home, &req.path)
-            .map_err(UserInputsErr::Failed)?
-            .filter(|m| from <= m.end)
-    };
-    let end = match map {
-        Some(map) => {
-            let start = map.inputs.partition_point(|r| r.at < from);
-            for r in &map.inputs[start..] {
-                if !pager.admit(jlen(r) + 1) {
-                    next = Some(r.at);
-                    break;
-                }
-                rows.push(r.clone());
-            }
-            map.end
+    let map = history_query::scan_from(home, &req.path, from).map_err(UserInputsErr::Failed)?;
+    let start = map.inputs.partition_point(|r| r.at < from);
+    for r in &map.inputs[start..] {
+        if !pager.admit(jlen(r) + 1) {
+            next = Some(r.at);
+            break;
         }
-        None => {
-            let r = history_query::open_user_inputs_at(home, &req.path, from)
-                .map_err(UserInputsErr::Failed)?;
-            let scanned = crate::observe::user_inputs::scan_user_inputs(r, from, |row| {
-                if !pager.admit(jlen(row) + 1) {
-                    next = Some(row.at);
-                    return Err(page_full());
-                }
-                rows.push(row.clone());
-                Ok(())
-            });
-            match scanned {
-                Ok((_, end)) => end,
-                Err(_) if next.is_some() => 0,
-                Err(e) => return Err(UserInputsErr::Failed(format!("stream failed: {e}"))),
-            }
-        }
-    };
+        rows.push(r.clone());
+    }
+    let end = map.end;
     Ok(UserInputs {
         from,
         end: next.unwrap_or(end),
@@ -1362,40 +1301,14 @@ pub(crate) fn turns_page(
         costs.push(c);
         true
     };
-    let map = if from == 0 {
-        Some(history_query::cold_scan(home, path).map_err(HistoryTurnsErr::Failed)?)
-    } else {
-        history_query::held_scan(home, path)
-            .map_err(HistoryTurnsErr::Failed)?
-            .filter(|m| from <= m.end)
-    };
-    let end = match map {
-        Some(map) => {
-            let start = map.turns.partition_point(|t| t.at < from);
-            for t in &map.turns[start..] {
-                if !take(t, &mut next) {
-                    break;
-                }
-            }
-            map.end
+    let map = history_query::scan_from(home, path, from).map_err(HistoryTurnsErr::Failed)?;
+    let start = map.turns.partition_point(|t| t.at < from);
+    for t in &map.turns[start..] {
+        if !take(t, &mut next) {
+            break;
         }
-        None => {
-            let r = history_query::open_user_inputs_at(home, path, from)
-                .map_err(HistoryTurnsErr::Failed)?;
-            let scanned = crate::observe::turns::scan_turns(r, from, |row| {
-                if take(row, &mut next) {
-                    Ok(())
-                } else {
-                    Err(page_full())
-                }
-            });
-            match scanned {
-                Ok((_, end)) => end,
-                Err(_) if next.is_some() => 0,
-                Err(e) => return Err(HistoryTurnsErr::Failed(format!("stream failed: {e}"))),
-            }
-        }
-    };
+    }
+    let end = map.end;
     drop(take);
     // 还没收尾的最后一轮（只会在最后一页）：「现在在做哪一步 / 在等什么」按这台此刻的会话事实拼进过程行（判定同 `history-facts`）。
     if next.is_none() {

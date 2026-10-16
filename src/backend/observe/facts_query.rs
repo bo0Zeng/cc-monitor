@@ -924,22 +924,17 @@ pub(crate) fn context_limit(
 /// **纯 I/O 泛型**，单测直接喂字节。只看完整行（`\n` 收尾）；torn 残尾不看、不计进 `end`。
 /// 上限每次按此刻的 `limits` 与中转看见的（`relay`）重判（设置改过 / 中转看见了 ⇒ 带着上一份成品再问一次就是新的数）。
 pub(crate) fn scan_facts<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     mut facts: SessionFacts,
     limits: &ContextLimits,
     relay: Option<bool>,
 ) -> std::io::Result<SessionFacts> {
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break;
-        }
-        facts.end += read as u64;
-        let line = &buf[..buf.len() - 1];
+    let mut lines = super::lines::Lines::new(r, facts.end);
+    while let Some(row) = lines.next()? {
+        facts.end = row.at + row.whole.len() as u64;
+        let line = row.body();
         if could_matter(line, &facts) {
-            if let Some(v) = super::record_scan::parse_record(line) {
+            if let Some(v) = super::lines::parse(line) {
                 note_record(&mut facts, &v);
             }
         }
@@ -954,28 +949,23 @@ const MCP_MARK: &[u8] = b"\"deferred_tools_delta\"";
 /// 只要 `mcp` 那一格：从 `r` 此刻的位置读到尾，只解析带 [`MCP_MARK`] 的完整行、经 [`note_mcp`] 接着 `mcp` 往下改（口径与整份事实那一格同一处）。
 /// 回读过的字节数（只算到最后一个完整行：半行留给下一次）。扩展页问「这台活会话里谁断开」用（`observe::accounts_query::McpBook`）。
 pub(crate) fn mcp_from<R: std::io::BufRead>(
-    mut r: R,
+    r: R,
     mcp: &mut Vec<McpTrouble>,
 ) -> std::io::Result<u64> {
     let mut f = SessionFacts {
         mcp: std::mem::take(mcp),
         ..SessionFacts::default()
     };
-    let mut buf: Vec<u8> = Vec::new();
-    let mut done = 0u64;
+    let mut lines = super::lines::Lines::new(r, 0);
     let out = loop {
-        buf.clear();
-        let read = match r.read_until(b'\n', &mut buf) {
-            Ok(n) => n,
+        let row = match lines.next() {
+            Ok(Some(row)) => row,
+            Ok(None) => break Ok(lines.end()),
             Err(e) => break Err(e),
         };
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break Ok(done);
-        }
-        done += read as u64;
-        let line = &buf[..buf.len() - 1];
+        let line = row.body();
         if contains(line, MCP_MARK) {
-            if let Some(v) = super::record_scan::parse_record(line) {
+            if let Some(v) = super::lines::parse(line) {
                 note_mcp(&mut f, &v);
             }
         }

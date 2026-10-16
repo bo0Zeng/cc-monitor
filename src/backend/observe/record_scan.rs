@@ -3,7 +3,7 @@
 //!
 //! - 一遍：每个完整行只解析一次，同一个值喂给五样各自的那一步（各自的口径仍只住各自的模块：
 //!   [`super::history_query::index_row_of`] · [`super::user_inputs::user_input_of`] · [`super::turns::TurnScan`] ·
-//!   [`super::facts_query::note_record`] · [`super::history_query::line_counts`]）。
+//!   [`super::facts_query::note_record`] · [`super::lines::counts`]）。
 //! - 留着：没变 ⇒ 那一张；变长了 ⇒ 核游标前那几个字节（见证），对得上就从那一张接着扫追加的那一截（还没收尾那一轮的扫描状态
 //!   也留着）、对不上 ⇒ 整份重扫；条数与估算字节各有上限，超了先淘汰最久没用的；单张比字节上限还大就不留。
 //! - 落盘：大记录扫完落一份骨架（[`super::skeleton`]）；进程里没有那一张时照骨架起步 —— 没变 ⇒ 不读，变长了 ⇒ 只读追加的那一截。
@@ -19,17 +19,10 @@ use super::user_inputs::UserInputRow;
 use crate::agents::mainline::Chain;
 use crate::platform::fs::{Ro, RoFile};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
-
-/// 一行记录的解析（去 BOM 与两头空白）。解析不了 ⇒ `None`。各扫描都经它，口径只有这一份。
-pub(crate) fn parse_record(line: &[u8]) -> Option<Value> {
-    let text = String::from_utf8_lossy(line);
-    serde_json::from_str(text.trim_start_matches('\u{feff}').trim()).ok()
-}
 
 /// 一遍扫出来的那几样（都是从字节 0 起）。
 #[derive(Debug, Default)]
@@ -162,37 +155,31 @@ impl Scan {
         kind: &str,
         chain: ChainOf,
     ) -> std::io::Result<()> {
-        use std::io::BufRead as _;
-        let mut r = r.take(upto.saturating_sub(self.end));
-        let mut buf: Vec<u8> = Vec::new();
+        let mut lines = super::lines::Lines::new(r, self.end).upto(upto);
         let probe = super::skeleton::WITNESS as usize;
-        loop {
-            buf.clear();
-            let read = r.read_until(b'\n', &mut buf)?;
-            if read == 0 || buf.last() != Some(&b'\n') {
-                break; // EOF / 残尾不计
-            }
-            let start = self.end;
-            self.end += read as u64;
+        while let Some(row) = lines.next()? {
+            let (start, buf) = (row.at, row.whole);
+            let read = buf.len();
+            self.end = start + read as u64;
             self.facts.end = self.end;
             let w = &mut self.rest.witness;
             if buf.len() >= probe {
                 w.clear();
                 w.extend_from_slice(&buf[buf.len() - probe..]);
             } else {
-                w.extend_from_slice(&buf);
+                w.extend_from_slice(buf);
                 let drop = w.len().saturating_sub(probe);
                 w.drain(..drop);
             }
-            let body = &buf[..buf.len() - 1];
-            // 一行只解一次：链事实与下面那四样吃同一份（[`parse_record`] 同一口径）。
+            let body = row.body();
+            // 一行只解一次：链事实与下面那四样吃同一份（[`super::lines::parse`] 同一口径）。
             let text = String::from_utf8_lossy(body);
             let line = crate::agents::Line::new(&text, start);
             let v = line.value();
             if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);
             }
-            let counted = super::history_query::line_counts(body);
+            let counted = super::lines::counts(body);
             if counted {
                 self.starts.push(start);
                 self.index.push(super::history_query::index_row_of(
@@ -252,6 +239,15 @@ impl Scan {
 }
 
 impl ScanMap {
+    /// 某一条记录（`uuid`）落在主线的第几轮、那一轮从何时起（分叉框顶上那一句）：数它之前起了几轮（轮次同 `history-turns`）。
+    /// 找不到那一条 / 它在第一句之前 ⇒ `None`。
+    pub(crate) fn turn_at(&self, uuid: &str) -> Option<(u64, String)> {
+        let at = self.index.iter().find(|r| r.u.as_deref() == Some(uuid))?.o;
+        let n = self.turns.partition_point(|t| t.at <= at);
+        let t = self.turns.get(n.checked_sub(1)?)?;
+        Some((n as u64, t.start.clone()))
+    }
+
     /// 接着扫：这一张的样子抄一份，从 `end` 往后读。
     fn resume(&self) -> Scan {
         Scan {
@@ -453,15 +449,6 @@ impl RecordScans {
         Some(s.map.clone())
     }
 
-    /// 续取用（分页的后几页 · 轮次 / 大纲 / 索引从上次的末端续）：这一份的图留着（哪怕记录已经又长了）⇒ 接着扫到此刻、回那张
-    /// （追加只读新的那一截 ＋ 见证，同 [`Self::get`]）；没留着 ⇒ `None`（调用方从文件那一处扫，不为一次续取冷开整份）。
-    pub(crate) fn held(&self, path: &Path) -> Option<Arc<ScanMap>> {
-        let held = self.lock().slots.iter().any(|s| s.path == path);
-        if !held {
-            return None;
-        }
-        self.get(path).ok()
-    }
 
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
     /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。

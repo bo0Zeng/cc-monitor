@@ -45,15 +45,24 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
     v
 }
 
-/// 扫一遍（帧面 `history-user-inputs` 跑的那一个扫描），摊成 `[{from}, 每条…, {count, end}]`：中段是条目，尾格是扫描的回数。
+/// 冷开扫描图那一张（夹具的记录不带父子链 ⇒ 不认链、不滤主线外；帧面 `history-user-inputs` 从它上面切）。
+fn map_of(data: &[u8]) -> crate::observe::record_scan::ScanMap {
+    crate::observe::record_scan::ScanMap::scan_with(
+        data,
+        data.len() as u64,
+        tree(),
+        None,
+    )
+    .expect("scan ok")
+}
+
+/// 从 `from` 起切（同帧面那一段），摊成 `[{from}, 每条…, {count, end}]`：中段是条目，尾格是条数与扫到的末端。
 fn run(data: &[u8], from: u64) -> Vec<serde_json::Value> {
+    let map = map_of(data);
     let mut v = vec![serde_json::json!({ "from": from })];
-    let (count, end) = scan_user_inputs(&data[from as usize..], from, |row| {
-        v.push(serde_json::to_value(row).unwrap());
-        Ok(())
-    })
-    .expect("scan ok");
-    v.push(serde_json::json!({ "count": count, "end": end }));
+    let picked: Vec<_> = map.inputs.iter().filter(|r| r.at >= from).collect();
+    v.extend(picked.iter().map(|r| serde_json::to_value(r).unwrap()));
+    v.push(serde_json::json!({ "count": picked.len(), "end": map.end }));
     v
 }
 
@@ -173,12 +182,11 @@ fn excerpt_falls_back_to_the_whole_text_when_the_head_is_all_whitespace() {
 /// 从骨架索引的输出里把大纲搬出来（前端 `outline-source.ts::outlineSeedFromIndex` 做的同一件事）：
 /// 带 `x` 的行 ⇒ `{uuid: u, excerpt: x, timestamp: ts ?? ""}`。
 fn outline_from_index(data: &[u8]) -> Vec<(String, String, String)> {
-    let mut v = Vec::new();
-    crate::observe::history_query::scan_session_index(tree(), data, 0, None, |row| {
-        v.push(serde_json::to_value(row).unwrap());
-        Ok(())
-    })
-    .expect("index ok");
+    let v: Vec<serde_json::Value> = map_of(data)
+        .index
+        .iter()
+        .map(|row| serde_json::to_value(row).unwrap())
+        .collect();
     v.iter()
         .filter(|r| r.get("x").is_some())
         .map(|r| {

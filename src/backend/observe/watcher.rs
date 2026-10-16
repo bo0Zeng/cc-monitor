@@ -2054,8 +2054,7 @@ fn scan_new_lines(
                                          // raw = 内容解码 + 剥尾随 '\r'（对齐手机端：raw 无 CRLF/无尾 \n；但 offset **计** `\r`）。
             let text = String::from_utf8_lossy(content);
             let raw = text.strip_suffix('\r').unwrap_or(&text);
-            let is_blank = raw.trim_start_matches('\u{feff}').trim().is_empty();
-            if !is_blank {
+            if super::lines::counts(content) {
                 // Seq from the never-reset per-path counter. Blank lines do not
                 // call `next`, so they do not consume a seq.
                 // seq **必须照常推进**（哪怕不收集）——它是 per-path 单调且永不重置的，
@@ -2745,7 +2744,7 @@ fn note_name(
 /// `writer_dead`（只由会话退休那一刻传真）⇒ 补读完之后，游标之后那截没 `\n` 收尾、但本身是**一整个 JSON 对象**的残行
 /// 当一行交出去：写端写完 JSON、没来得及写 `\n` 就被杀，这一行从此不会再有文件事件。活着的写端照旧等 `\n`。
 /// 这一行**不推进游标、不占计数器**：同一文件日后被续写时，残行与新字节拼成的那一行仍是这个号（冷读的行号空间里它也是
-/// 这个号），前端按 seq 去重吸收；冷读（`history_query::line_counts` 口径）不数这截残行 —— 会话已死、没人再写，差的只是它自己。
+/// 这个号），前端按 seq 去重吸收；冷读（`lines::counts` 口径）不数这截残行 —— 会话已死、没人再写，差的只是它自己。
 /// 退休之前先补读还有一层用处：pidfd 比 debounce 快，死前最后几行的文件事件可能在退休之后才到、被判活过滤挡掉。
 /// 回补读出几行（`resync` 应答的 `caught_up`；不数收尾残行 —— `resync` 那一路写端活着、不收尾）。
 fn catch_up_session(

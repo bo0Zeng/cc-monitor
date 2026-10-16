@@ -699,8 +699,7 @@ impl RunTrack {
             if !self.faces.hint(text) {
                 continue;
             }
-            if let Ok(v) = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
-            {
+            if let Some(v) = super::lines::parse(line) {
                 changed |= self.book.links(&self.faces, sid, &v);
             }
         }
@@ -804,12 +803,7 @@ impl RunTrack {
         while let Ok(Some(whole)) = blocks.next() {
             cur.consumed += whole.len() as u64;
             for line in whole[..whole.len() - 1].split(|&b| b == b'\n') {
-                let text = String::from_utf8_lossy(line);
-                let t = text.trim_start_matches('\u{feff}').trim();
-                if t.is_empty() {
-                    continue;
-                }
-                if let Ok(v) = serde_json::from_str::<Value>(t) {
+                if let Some(v) = super::lines::parse(line) {
                     changed |= self.book.record(&self.faces, &sid, &v, Some(written));
                 }
             }

@@ -77,20 +77,31 @@ fn fixture(turns: usize) -> String {
     s
 }
 
-fn index_direct(bytes: &[u8]) -> (Vec<String>, u64) {
-    let mut rows = Vec::new();
-    let (_, end) = crate::observe::history_query::scan_session_index(
-        crate::agents::record_tree_kind().unwrap_or_default(),
-        bytes,
-        0,
-        None,
-        |r| {
-            rows.push(serde_json::to_string(r).unwrap());
-            Ok(())
-        },
-    )
-    .unwrap();
-    (rows, end)
+/// 逐行各问各的（每一样只调它自己那一处口径，不经扫描图）：骨架索引行 · 用户输入 · 轮次，外加 end。
+fn each_on_its_own(bytes: &[u8]) -> (Vec<String>, Vec<String>, Vec<String>, u64) {
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let (mut index, mut inputs, mut turns) = (Vec::new(), Vec::new(), Vec::new());
+    let mut scan = crate::observe::turns::TurnScan::default();
+    let mut lines = crate::observe::lines::Lines::new(bytes, 0);
+    while let Some(row) = lines.next().unwrap() {
+        let body = row.body();
+        if crate::observe::lines::counts(body) {
+            let r = crate::observe::history_query::index_row(kind, body, row.at, row.whole.len() as u64);
+            index.push(serde_json::to_string(&r).unwrap());
+        }
+        let Some(v) = crate::observe::lines::parse(body) else {
+            continue;
+        };
+        if let Some(mut r) = crate::observe::user_inputs::user_input_of(&v) {
+            r.at = row.at;
+            inputs.push(serde_json::to_string(&r).unwrap());
+        }
+        if let Some(t) = scan.line(row.at, &v) {
+            turns.push(serde_json::to_string(&t).unwrap());
+        }
+    }
+    turns.extend(scan.finish().map(|t| serde_json::to_string(&t).unwrap()));
+    (index, inputs, turns, lines.end())
 }
 
 #[test]
@@ -105,7 +116,7 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     )
     .expect("scan");
 
-    let (want_index, want_end) = index_direct(bytes);
+    let (want_index, want_inputs, want_turns, want_end) = each_on_its_own(bytes);
     let got_index: Vec<String> = map
         .index
         .iter()
@@ -114,12 +125,6 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     assert_eq!(got_index, want_index, "骨架索引");
     assert_eq!(map.end, want_end, "end");
 
-    let mut want_inputs = Vec::new();
-    crate::observe::user_inputs::scan_user_inputs(bytes, 0, |r| {
-        want_inputs.push(serde_json::to_string(r).unwrap());
-        Ok(())
-    })
-    .unwrap();
     let got_inputs: Vec<String> = map
         .inputs
         .iter()
@@ -128,12 +133,6 @@ fn r1_one_pass_equals_each_scan_on_its_own() {
     assert_eq!(got_inputs, want_inputs, "用户输入");
     assert!(got_inputs.len() >= 3, "夹具里该有几句用户输入");
 
-    let mut want_turns = Vec::new();
-    crate::observe::turns::scan_turns(bytes, 0, |r| {
-        want_turns.push(serde_json::to_string(r).unwrap());
-        Ok(())
-    })
-    .unwrap();
     let got_turns: Vec<String> = map
         .turns
         .iter()
@@ -517,20 +516,18 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
 }
 
 /// R9（read8b，瓶颈 #5，数字节）：续取（轮次 / 大纲 / 索引从上次的末端续）遇到留着的图而记录又长了 ⇒ 接着扫追加的那一截
-/// （读 k ＋ 见证），出的轮次与整份扫的一样；没留着 ⇒ `None`、一个字节都不读（不为一次续取冷开整份）。
+/// （读 k ＋ 见证），出的轮次与整份扫的一样。
 #[test]
 fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
     let d = sandbox("r9");
     let p = d.join("s.jsonl");
     std::fs::write(&p, branched(4)).unwrap();
     let scans = RecordScans::new(4, 64 << 20);
-    assert!(scans.held(&p).is_none(), "没留着却给了一张");
-    assert_eq!(scans.bytes_read(), 0, "没留着也读了记录");
     scans.get(&p).unwrap();
     let before = scans.bytes_read();
     let more = "{\"type\":\"user\",\"uuid\":\"late\",\"parentUuid\":\"b3\",\"timestamp\":\"2026-10-01T02:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
     append(&p, more);
-    let m = scans.held(&p).expect("留着的图记录又长了，续取却拿不到");
+    let m = scans.get(&p).expect("留着的图记录又长了，续取却拿不到");
     assert_eq!(
         scans.bytes_read() - before,
         more.len() as u64 + crate::observe::skeleton::WITNESS,

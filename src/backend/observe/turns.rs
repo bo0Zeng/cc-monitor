@@ -657,39 +657,6 @@ fn feed(tree: &str, t: &mut Open, v: &Value) {
     t.items.push(it);
 }
 
-/// 从 `from` 起逐行扫，每收尾一轮交一条；返回 `(轮数, end)`，`end` ＝ 最后一个完整行的末字节（残尾不计）。
-pub(crate) fn scan_turns<R: std::io::BufRead>(
-    mut r: R,
-    from: u64,
-    mut on_row: impl FnMut(&TurnRow) -> std::io::Result<()>,
-) -> std::io::Result<(u64, u64)> {
-    let mut scan = TurnScan::default();
-    let mut end = from;
-    let mut count: u64 = 0;
-    let mut buf: Vec<u8> = Vec::new();
-    loop {
-        buf.clear();
-        let read = r.read_until(b'\n', &mut buf)?;
-        if read == 0 || buf.last() != Some(&b'\n') {
-            break;
-        }
-        let at = end;
-        end += read as u64;
-        let Some(v) = super::record_scan::parse_record(&buf[..buf.len() - 1]) else {
-            continue;
-        };
-        if let Some(row) = scan.line(at, &v) {
-            on_row(&row)?;
-            count += 1;
-        }
-    }
-    if let Some(row) = scan.finish() {
-        on_row(&row)?;
-        count += 1;
-    }
-    Ok((count, end))
-}
-
 /// 逐条记录攒轮次：[`TurnScan::line`] 收一条（`at` = 它的字节位置），新的一句收尾了上一轮就交出上一轮；
 /// [`TurnScan::finish`] 交出还开着的那一轮。可以抄一份接着扫（骨架落的就是它：还没收尾那一轮的扫描状态）。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -847,30 +814,6 @@ impl TurnScan {
     pub(crate) fn finish(self) -> Option<TurnRow> {
         self.open.map(|t| t.close(None))
     }
-}
-
-/// 某一条记录（`uuid`）落在第几轮、那一轮从何时起（分叉框顶上那一句）。轮的口径同 [`scan_turns`]：你说的一句起一轮。
-/// 找不到那一条 / 它在第一句之前 ⇒ `None`。
-pub(crate) fn turn_at<R: std::io::BufRead>(r: R, uuid: &str) -> Option<(u64, String)> {
-    let tree = crate::agents::record_tree_kind().unwrap_or_default();
-    let mut n: u64 = 0;
-    let mut start = String::new();
-    for line in r.lines() {
-        let line = line.ok()?;
-        let Ok(v) = serde_json::from_str::<Value>(line.trim_start_matches('\u{feff}').trim())
-        else {
-            continue;
-        };
-        let spoke = crate::agents::user_text_of(tree, &v);
-        if let Some(said) = user_input_given(&v, spoke.as_ref()) {
-            n += 1;
-            start = said.timestamp;
-        }
-        if v.get("uuid").and_then(Value::as_str) == Some(uuid) {
-            return (n > 0).then_some((n, start));
-        }
-    }
-    None
 }
 
 #[cfg(test)]

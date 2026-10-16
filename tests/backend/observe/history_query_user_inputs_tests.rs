@@ -1,4 +1,4 @@
-//! 大纲清单（帧命令 `history-user-inputs`）的打开口那一层（纯核的判据在 `user_inputs_tests.rs`）。
+//! 续取那一张扫描图的打开口（`scan_from`：大纲 · 轮次 · 索引从中间续都经它；纯核的判据在 `user_inputs_tests.rs`）。
 
 use super::*;
 
@@ -13,11 +13,11 @@ fn from_past_eof_is_an_error_not_an_empty_list() {
     std::fs::write(&p, "{\"type\":\"system\"}\n").unwrap();
     let len = std::fs::metadata(&p).unwrap().len();
     let ps = p.to_string_lossy().into_owned();
-    let err = open_user_inputs_at(&tmp, &ps, len + 1).expect_err("越过 EOF 必须报错");
+    let err = scan_from(&tmp, &ps, len + 1).expect_err("越过 EOF 必须报错");
     assert!(err.contains("past EOF"), "{err}");
-    assert!(open_user_inputs_at(&tmp, &ps, len).is_ok());
+    assert!(scan_from(&tmp, &ps, len).is_ok());
     let outside = tmp.join("secret.jsonl");
     std::fs::write(&outside, "x\n").unwrap();
-    assert!(open_user_inputs_at(&tmp, &outside.to_string_lossy(), 0).is_err());
+    assert!(scan_from(&tmp, &outside.to_string_lossy(), 0).is_err());
     std::fs::remove_dir_all(&tmp).ok();
 }
