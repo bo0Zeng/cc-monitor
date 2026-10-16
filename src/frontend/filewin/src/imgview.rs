@@ -10,7 +10,7 @@
 //!
 //! # 二、读：与预览同一份（[`super::picture`]）
 //!
-//! 上限 [`super::picture::PICTURE_MAX_BYTES`]（列表那一行就超了 ⇒ 不读、出声）；解出来的那一张与预览共用。
+//! 上限照列表那一行上后端给的查看那道门（列表那一行就超了 ⇒ 不读、摆出后端那一句）；解出来的那一张与预览共用。
 //!
 //! # 三、几何：以「原图像素」算
 //!
@@ -62,13 +62,14 @@ pub struct Viewer {
     pub offset: egui::Vec2,
 }
 
-/// 窗口自己解得开、能开查看页的那一行（文件 · 那六种图 · 名字是合法 UTF-8）。
+/// 能开查看页的那一行：后端给了查看那道门（解得开的图）· 名字是合法 UTF-8。
 pub fn viewable(r: &Listed) -> bool {
-    !r.opens_as_dir()
-        && !r.lossy_name
-        && super::kind::kind_of(r) == super::kind::Kind::Image
-        && super::kind::ext_of(&r.name)
-            .is_some_and(|e| super::preview::DECODABLE.contains(&e.as_str()))
+    !r.opens_as_dir() && !r.lossy_name && view_gate(r).is_some()
+}
+
+/// 那一行的查看那道门（后端判的；不是解得开的图 ⇒ `None`）。
+fn view_gate(r: &Listed) -> Option<&cmd_wire::files::Gate> {
+    r.gates.as_ref()?.view.as_ref()
 }
 
 impl Viewer {
@@ -131,22 +132,20 @@ impl Viewer {
         true
     }
 
-    /// 列表那一行就超了上限 ⇒ 那一句（不读）。
+    /// 列表那一行就超了上限 ⇒ 后端写好的那一句（不读）。
     pub fn refused(&self) -> Option<String> {
-        let r = &self.shot().listed.row;
-        (r.size > super::picture::PICTURE_MAX_BYTES).then(|| {
-            copy_text(
-                "rsFilewinImgview.state.tooBig",
-                &[
-                    ("name", &r.name),
-                    ("size", &copy_core::size_text(r.size)),
-                    (
-                        "limit",
-                        &copy_core::size_text(super::picture::PICTURE_MAX_BYTES),
-                    ),
-                ],
-            )
-        })
+        match view_gate(&self.shot().listed)? {
+            cmd_wire::files::Gate::No(said) => Some(said.clone()),
+            cmd_wire::files::Gate::Cap(_) => None,
+        }
+    }
+
+    /// 读这一张许读多少（后端给的；不许 ⇒ 0，那一张不读）。
+    fn cap(&self) -> u64 {
+        match view_gate(&self.shot().listed) {
+            Some(cmd_wire::files::Gate::Cap(n)) => *n,
+            _ => 0,
+        }
     }
 
     /// 此刻的 `scale`（画面 `view` 点 · `ppp` 每点几个物理像素）。
@@ -684,7 +683,7 @@ impl super::shell::FileWindow {
                 line,
                 origin: self.source.origin(),
                 wire: v.shot().at.path(),
-                cap: super::picture::PICTURE_MAX_BYTES,
+                cap: v.cap(),
                 side,
                 ctx: Some(ctx.clone()),
             },

@@ -53,7 +53,10 @@ class FileOps(
     ): Result<FilesLs.Listing> = ask(FilesLs.COMMAND, FilesLs.args(dir, bySize), FilesLs::of)
 
     /** 读一份文本（预览 · 编辑）。不是文本 · 太大 ⇒ 那台那一句。 */
-    suspend fun readText(path: RemotePath): Result<FilesReadText.Text> = ask(FilesReadText.COMMAND, FilesReadText.args(path), FilesReadText::of)
+    suspend fun readText(
+        path: RemotePath,
+        cap: Long,
+    ): Result<FilesReadText.Text> = ask(FilesReadText.COMMAND, FilesReadText.args(path, cap), FilesReadText::of)
 
     /** 存回（带读时的摘要：盘上被改过 ⇒ 那台拒）。 */
     suspend fun writeText(
