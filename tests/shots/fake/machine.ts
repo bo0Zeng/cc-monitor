@@ -47,9 +47,6 @@ function extList(w: World): unknown {
   return g;
 }
 
-/** 台架里能当 pb 用的那一个插件根目录。 */
-export const PB_DIR_GOOD = "/opt/planned-build/0.3.2";
-
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": (_o, _r, w) => extList(w),
@@ -190,11 +187,6 @@ export function machineOps(): Record<string, OpHandler> {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
       return { fault: tryMachineTable(r.edits as Record<string, unknown>[], w) };
     },
-    // pb 路径能不能用（那台起一次 pb）：台架只认这一个目录。
-    "plan-pb-check": (_o, r) =>
-      r.dir === PB_DIR_GOOD
-        ? { state: "ok", said: `能用 · planned-build 在 ${PB_DIR_GOOD}` }
-        : { state: "no_entry", said: `${String(r.dir)} 下没有 planned-build · 填它的插件根目录（含 skills/planned-build）` },
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];

@@ -2,9 +2,10 @@
  * 计划页：大纲 ＋ 概览 · 一格详情 · 各种状态 · 需手动 · 退回框 · 会话头那一枚标 · 新开的一片还没有图。
  */
 import type { Scene } from "./index";
-import type { World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
-import { planWorld, type PlanWorldOpts } from "../fake/plan";
+import type { SceneCtx, World } from "../fake/types";
+import { defaultWorld, LOCAL } from "../fake/world";
+import { LEDGER_REL, LEDGER_WS, ledgerDump, planWorld, type Landed, type PlanWorldOpts } from "../fake/plan";
+import { dumpFile } from "../disk/plan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { byText, click, mainReady, sleep, type, waitFor } from "./helpers";
 
@@ -28,6 +29,14 @@ async function row(id: string): Promise<void> {
   await sleep(400);
 }
 
+/** 开页之前退回过一次（经真后端，同退回框送出的那一条）；`landed` ⇒ 之后 pb 那一侧在底下加了一格。 */
+async function returnedBefore({ backend }: SceneCtx, id: string, text: string, landed?: Landed, o: PlanWorldOpts = {}): Promise<void> {
+  await mainReady(TABS);
+  const r = await backend.planReturn(LOCAL, { workspace: LEDGER_WS, slice: "ledger", id, text });
+  if (r.result !== "delivered") throw new Error(`退回没送到：${JSON.stringify(r)}`);
+  if (landed) await backend.writeFile(LOCAL, dumpFile(LEDGER_REL), JSON.stringify(ledgerDump(o, landed)));
+}
+
 async function scrollPane(px: number): Promise<void> {
   const p = await waitFor(".plan-view .plan-pane");
   p.scrollTop = px;
@@ -47,14 +56,15 @@ export const PLAN_SCENES: Scene[] = [
     await click(await byText(".plan-view .plan-filter", copyText("plan.filter.open")));
     await sleep(300);
   }),
-  plan("plan-04-slices-offline", "计划 · 多片切换 · 那台离线", "切到 devbox 那一片，之后 devbox 离线：保留最后读到的、整体变淡、顶上一条［重新连接］；［整张图］灰着（只在本机）", async () => {
+  plan("plan-04-slices-offline", "计划 · 多片切换 · 那台离线", "切到 devbox 那一片，之后 devbox 离线（那台后端被杀）：保留最后读到的、整体变淡、顶上一条［重新连接］；［整张图］灰着（只在本机）", async ({ backend }) => {
     await openPlan();
     await click(await byText(".plan-view .plan-slice", "site"));
     await sleep(600);
+    await backend.dropMachine("devbox");
     await click(await byText(".plan-view button", "返回"));
     await click(".plan-trigger");
     await sleep(900);
-  }, { devboxDown: true }),
+  }),
   plan("plan-05-empty", "计划 · 空态", "哪台都没有 pb 工作区：一句 ＋［添加工作区…］", async () => {
     await openPlan(false);
     await sleep(800);
@@ -189,14 +199,16 @@ export const PLAN_SCENES: Scene[] = [
     await type(".plan-return-text", "导出先只做 CSV，别的格式下一轮。");
     await sleep(300);
   }),
-  plan("plan-38-returned", "退回之后 · 等它改", "「检查脚本」顶上一条：已退回 · 送给工程底座 · 几点 · 等它在底下加一格或改正文", async () => {
+  plan("plan-38-returned", "退回之后 · 等它改", "「检查脚本」顶上一条：已退回 · 送给工程底座 · 几点 · 等它在底下加一格或改正文", async (ctx) => {
+    await returnedBefore(ctx, "A4-1", "收集 0 条时要退 5，现在退 0；补一条测试。");
     await openPlan();
     await row("A4-1");
-  }, { returned: "returned" }),
-  plan("plan-39-landed", "退回已落地", "「检查脚本」顶上一条：退回已落地 · 在底下加了「收集 0 条时退 5」", async () => {
+  }),
+  plan("plan-39-landed", "退回已落地", "「检查脚本」顶上一条：退回已落地 · 在底下加了「收集 0 条时退 5」", async (ctx) => {
+    await returnedBefore(ctx, "A4-1", "收集 0 条时要退 5，现在退 0；补一条测试。", "cell");
     await openPlan();
     await row("A4-1");
-  }, { returned: "landed" }),
+  }),
   plan("plan-40-acked", "认可之后", "判据红那一条点［认可］：toast「已认可 · 工程底座」［撤销］，选到下一条", async () => {
     await openPlan();
     await row("A4");
@@ -210,14 +222,16 @@ export const PLAN_SCENES: Scene[] = [
     await type(".plan-return-text", "导出那一半先停，导入先和真账单对一遍。");
     await sleep(300);
   }, { topDone: true }),
-  plan("plan-42-top-returned", "顶块退回之后 · 等它改", "概览顶上：顶块那一条下面一条「已退回 · 送给总负责 · 几点」", async () => {
+  plan("plan-42-top-returned", "顶块退回之后 · 等它改", "概览顶上：顶块那一条下面一条「已退回 · 送给总负责 · 几点」", async (ctx) => {
+    await returnedBefore(ctx, "project", "导出那一半先停，导入先和真账单对一遍。");
     await openPlan();
     await waitFor(".plan-view .plan-returned");
-  }, { topDone: true, topReturned: "returned" }),
-  plan("plan-43-top-landed", "顶块退回已落地", "概览顶上：「退回已落地 · 在底下加了「导出与导入对拍」」", async () => {
+  }, { topDone: true }),
+  plan("plan-43-top-landed", "顶块退回已落地", "概览顶上：「退回已落地 · 在底下加了「导出与导入对拍」」", async (ctx) => {
+    await returnedBefore(ctx, "project", "导出那一半先停，导入先和真账单对一遍。", "top", { topDone: true });
     await openPlan();
     await waitFor(".plan-view .plan-returned");
-  }, { topDone: true, topReturned: "landed" }),
+  }, { topDone: true }),
   plan("plan-44-signs", "签收排成一条", "概览「最近签收 · 全部 N」点进去：整片的签收按时间排成一条、新的在上（不进需手动）；右上按标题找", async () => {
     await openPlan();
     await click(".plan-view .plan-signs-all");
