@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -57,9 +58,12 @@ fun ChatDrawer(
 ) {
     val scope = rememberCoroutineScope()
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
+    // 先当场收起再走：边收边跳走的话，这一屏的抽屉状态按「开着」存下，退回来时抽屉还开着、盖住那一屏。
     val act: (DrawerAction) -> Unit = { action ->
-        scope.launch { drawerState.close() }
-        onAction(action)
+        scope.launch {
+            drawerState.snapTo(DrawerValue.Closed)
+            onAction(action)
+        }
     }
     ModalNavigationDrawer(
         drawerState = drawerState,
