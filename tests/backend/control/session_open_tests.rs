@@ -62,7 +62,8 @@ impl Rig {
         if args.get("local").is_none() {
             args["local"] = json!(false);
         }
-        let req: SessionOpenReq = serde_json::from_value(args).map_err(|e| malformed(&e.to_string()))?;
+        let req: SessionOpenReq =
+            serde_json::from_value(args).map_err(|e| malformed(&e.to_string()))?;
         let facts = Facts {
             resume: (!self.gone).then(|| ResumeOf {
                 agent: "claude".into(),
@@ -105,8 +106,12 @@ impl Rig {
                 None => Ok(self.rows.clone()),
             }
         };
-        let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, "/root".into())) };
-        let kill = |_: &str, _: &str| -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
+        let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
+            Ok((true, "/root".into()))
+        };
+        let kill = |_: &str,
+                    _: &str|
+         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
             unreachable!("session-open 不杀")
         };
         let send_into = |name: &str, _: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
@@ -140,7 +145,11 @@ impl Rig {
             library: &library,
             last: &|_| None,
         };
-        let entry: fn() -> Option<String> = if self.no_entry { || None } else { || Some("/b/ccm".into()) };
+        let entry: fn() -> Option<String> = if self.no_entry {
+            || None
+        } else {
+            || Some("/b/ccm".into())
+        };
         f(&Deps {
             list: &list,
             record: &record,
@@ -185,8 +194,12 @@ fn default_run_is_the_whole_table() {
     use Run::*;
     let intents = [
         New { fork_tmux: None },
-        New { fork_tmux: Some(true) },
-        New { fork_tmux: Some(false) },
+        New {
+            fork_tmux: Some(true),
+        },
+        New {
+            fork_tmux: Some(false),
+        },
         Resume,
     ];
     let mut got = Vec::new();
@@ -257,20 +270,39 @@ fn asking_for_tmux_where_there_is_none_is_refused_not_rerouted() {
 fn resume_in_tmux_lands_where_the_session_can_be() {
     let rig = Rig::new(Some(vec![]));
     let o = rig.open(resume(Some("tmux"))).unwrap();
-    assert_eq!((o.landed, o.session.as_deref()), (Landed::Started, Some("p-cc")));
-    assert!(o.line.as_deref().unwrap().ends_with("--attach p-cc"), "{:?}", o.line);
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Started, Some("p-cc"))
+    );
+    assert!(
+        o.line.as_deref().unwrap().ends_with("--attach p-cc"),
+        "{:?}",
+        o.line
+    );
     let argv = rig.ccm.borrow()[0].join(" ");
-    assert!(argv.contains("--ccm-tmux=p-cc") && argv.contains("--detach") && argv.contains(A), "{argv}");
+    assert!(
+        argv.contains("--ccm-tmux=p-cc") && argv.contains("--detach") && argv.contains(A),
+        "{argv}"
+    );
 
     let rig = Rig::new(Some(vec![row("old", Some(A), false)]));
     let o = rig.open(resume(Some("tmux"))).unwrap();
-    assert_eq!((o.landed, o.session.as_deref()), (Landed::InPlace, Some("old")));
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::InPlace, Some("old"))
+    );
     assert_eq!(rig.sent.borrow()[0].0, "old");
     assert!(rig.ccm.borrow().is_empty());
 
-    let rig = Rig::new(Some(vec![row("live", Some(A), true), row("two", Some(A), true)]));
+    let rig = Rig::new(Some(vec![
+        row("live", Some(A), true),
+        row("two", Some(A), true),
+    ]));
     let o = rig.open(resume(Some("tmux"))).unwrap();
-    assert_eq!((o.landed, o.session.as_deref()), (Landed::Running, Some("live")));
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Running, Some("live"))
+    );
     assert!(o.note.unwrap().contains("live"));
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
 }
@@ -296,20 +328,35 @@ fn a_local_direct_resume_is_direct_and_carries_the_model_preference() {
     let o = rig.open(args).unwrap();
     let line = o.line.unwrap();
     assert_eq!((o.landed, o.session), (Landed::Window, None));
-    assert!(!line.contains("--ccm-tmux") && line.contains("--model opus"), "{line}");
+    assert!(
+        !line.contains("--ccm-tmux") && line.contains("--model opus"),
+        "{line}"
+    );
     assert!(rig.ccm.borrow().is_empty());
 }
 
 /// 接回：按会话（在跑 / 空 shell）或按会话名，回接进去那一行；不在哪个 tmux 里 ⇒ `not_in_tmux`。
 #[test]
 fn look_attaches_without_starting_anything() {
-    let rig = Rig::new(Some(vec![row("idle", Some(A), false), row("x", None, true)]));
-    let o = rig.open(json!({ "what": { "kind": "look", "sid": A } })).unwrap();
-    assert_eq!((o.landed, o.session.as_deref(), o.agent), (Landed::Idle, Some("idle"), None));
+    let rig = Rig::new(Some(vec![
+        row("idle", Some(A), false),
+        row("x", None, true),
+    ]));
+    let o = rig
+        .open(json!({ "what": { "kind": "look", "sid": A } }))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref(), o.agent),
+        (Landed::Idle, Some("idle"), None)
+    );
     assert!(o.line.unwrap().ends_with("--attach idle"));
-    let o = rig.open(json!({ "what": { "kind": "look", "session": "x" } })).unwrap();
+    let o = rig
+        .open(json!({ "what": { "kind": "look", "session": "x" } }))
+        .unwrap();
     assert_eq!(o.landed, Landed::Running);
-    let err = rig.open(json!({ "what": { "kind": "look", "sid": U } })).unwrap_err();
+    let err = rig
+        .open(json!({ "what": { "kind": "look", "sid": U } }))
+        .unwrap_err();
     assert_eq!(err.0, "not_in_tmux");
     assert!(rig.ccm.borrow().is_empty() && rig.sent.borrow().is_empty());
 }
@@ -319,8 +366,14 @@ fn look_attaches_without_starting_anything() {
 fn new_lands_started_or_window() {
     let rig = Rig::new(Some(vec![]));
     let o = rig.open(new(json!({}))).unwrap();
-    assert_eq!((o.landed, o.session.as_deref(), o.sid.as_deref()), (Landed::Started, Some("p-cc"), Some(U)));
-    assert_eq!(o.agent.map(|a| a.as_str().to_string()).as_deref(), Some("claude"));
+    assert_eq!(
+        (o.landed, o.session.as_deref(), o.sid.as_deref()),
+        (Landed::Started, Some("p-cc"), Some(U))
+    );
+    assert_eq!(
+        o.agent.map(|a| a.as_str().to_string()).as_deref(),
+        Some("claude")
+    );
     let mut args = new(json!({}));
     args["run"] = json!("direct");
     let o = rig.open(args).unwrap();
@@ -338,62 +391,116 @@ fn every_code_comes_with_a_sentence_written_here() {
         a
     };
     let cases: Vec<(&str, Box<dyn Fn(&mut Rig) -> Value>)> = vec![
-        ("bad_args", Box::new(|_| json!({ "what": { "kind": "resume", "sid": "a;b" } }))),
-        ("unknown_agent", Box::new(|_| json!({ "what": { "kind": "new", "agent": "nope", "cwd": "/p" } }))),
-        ("bad_command", Box::new(|_| new(json!({ "command": "a;b" })))),
-        ("no_dir", Box::new(|_| json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/nope" } }))),
-        ("account_unavailable", Box::new(|_| {
-            let mut a = resume(None);
-            a["account"] = json!({ "kind": "named", "name": "ghost" });
-            a
-        })),
-        ("place_unavailable", Box::new(|r| {
-            r.rows = None;
-            resume(Some("tmux"))
-        })),
-        ("bad_tmux_name", Box::new(move |_| tmux(new(json!({ "tmuxName": "a:b" }))))),
-        ("tmux_taken", Box::new(move |r| {
-            r.rows = Some(vec![row("t", None, false)]);
-            tmux(new(json!({ "tmuxName": "t" })))
-        })),
-        ("record_gone", Box::new(|r| {
-            r.gone = true;
-            resume(None)
-        })),
-        ("already_live", Box::new(|r| {
-            r.live = vec![7];
-            resume(Some("direct"))
-        })),
-        ("not_in_tmux", Box::new(|_| json!({ "what": { "kind": "look", "sid": A } }))),
-        ("wrong_owner", Box::new(|r| {
-            r.rows = Some(vec![row("idle", Some(A), false)]);
-            r.send_err = Some("wrong_owner");
-            resume(Some("tmux"))
-        })),
-        ("unobservable", Box::new(|r| {
-            r.list_err = Some("failed");
-            resume(None)
-        })),
-        ("fork_failed", Box::new(|r| {
-            r.fork_err = true;
-            new(json!({ "fork": { "sid": A, "uuid": U } }))
-        })),
-        ("refused", Box::new(|r| {
-            r.no_entry = true;
-            resume(Some("direct"))
-        })),
-        ("start_failed", Box::new(|r| {
-            r.ccm_rc = 1;
-            resume(Some("tmux"))
-        })),
-        ("child_timed_out", Box::new(|r| {
-            r.list_err = Some(crate::platform::child::TIMED_OUT);
-            resume(None)
-        })),
-        ("no_strategy", Box::new(|r| {
-            r.rotation_err = true;
-            new(json!({ "rotation": { "strategy": "s" } }))
-        })),
+        (
+            "bad_args",
+            Box::new(|_| json!({ "what": { "kind": "resume", "sid": "a;b" } })),
+        ),
+        (
+            "unknown_agent",
+            Box::new(|_| json!({ "what": { "kind": "new", "agent": "nope", "cwd": "/p" } })),
+        ),
+        (
+            "bad_command",
+            Box::new(|_| new(json!({ "command": "a;b" }))),
+        ),
+        (
+            "no_dir",
+            Box::new(|_| json!({ "what": { "kind": "new", "agent": "claude", "cwd": "/nope" } })),
+        ),
+        (
+            "account_unavailable",
+            Box::new(|_| {
+                let mut a = resume(None);
+                a["account"] = json!({ "kind": "named", "name": "ghost" });
+                a
+            }),
+        ),
+        (
+            "place_unavailable",
+            Box::new(|r| {
+                r.rows = None;
+                resume(Some("tmux"))
+            }),
+        ),
+        (
+            "bad_tmux_name",
+            Box::new(move |_| tmux(new(json!({ "tmuxName": "a:b" })))),
+        ),
+        (
+            "tmux_taken",
+            Box::new(move |r| {
+                r.rows = Some(vec![row("t", None, false)]);
+                tmux(new(json!({ "tmuxName": "t" })))
+            }),
+        ),
+        (
+            "record_gone",
+            Box::new(|r| {
+                r.gone = true;
+                resume(None)
+            }),
+        ),
+        (
+            "already_live",
+            Box::new(|r| {
+                r.live = vec![7];
+                resume(Some("direct"))
+            }),
+        ),
+        (
+            "not_in_tmux",
+            Box::new(|_| json!({ "what": { "kind": "look", "sid": A } })),
+        ),
+        (
+            "wrong_owner",
+            Box::new(|r| {
+                r.rows = Some(vec![row("idle", Some(A), false)]);
+                r.send_err = Some("wrong_owner");
+                resume(Some("tmux"))
+            }),
+        ),
+        (
+            "unobservable",
+            Box::new(|r| {
+                r.list_err = Some("failed");
+                resume(None)
+            }),
+        ),
+        (
+            "fork_failed",
+            Box::new(|r| {
+                r.fork_err = true;
+                new(json!({ "fork": { "sid": A, "uuid": U } }))
+            }),
+        ),
+        (
+            "refused",
+            Box::new(|r| {
+                r.no_entry = true;
+                resume(Some("direct"))
+            }),
+        ),
+        (
+            "start_failed",
+            Box::new(|r| {
+                r.ccm_rc = 1;
+                resume(Some("tmux"))
+            }),
+        ),
+        (
+            "child_timed_out",
+            Box::new(|r| {
+                r.list_err = Some(crate::platform::child::TIMED_OUT);
+                resume(None)
+            }),
+        ),
+        (
+            "no_strategy",
+            Box::new(|r| {
+                r.rotation_err = true;
+                new(json!({ "rotation": { "strategy": "s" } }))
+            }),
+        ),
     ];
     let mut fed: BTreeSet<&str> = BTreeSet::new();
     for (code, setup) in &cases {
@@ -401,10 +508,18 @@ fn every_code_comes_with_a_sentence_written_here() {
         let args = setup(&mut rig);
         let err = rig.open(args).expect_err(code);
         assert_eq!(err.0, *code, "{err:?}");
-        assert!(!err.1.trim().is_empty() && !err.1.contains(code), "{code}：那一句 {:?}", err.1);
+        assert!(
+            !err.1.trim().is_empty() && !err.1.contains(code),
+            "{code}：那一句 {:?}",
+            err.1
+        );
         fed.insert(code);
     }
-    let want: BTreeSet<&str> = OPEN_CODES.iter().copied().filter(|c| *c != "launch_pending").collect();
+    let want: BTreeSet<&str> = OPEN_CODES
+        .iter()
+        .copied()
+        .filter(|c| *c != "launch_pending")
+        .collect();
     assert_eq!(fed, want);
 }
 
@@ -447,18 +562,53 @@ fn has_pair(argv: &[String], a: &str, b: &str) -> bool {
 fn a_resumed_item_carries_the_line_the_model_and_the_mode_and_drops_what_it_must() {
     for local in [true, false] {
         let rig = Rig::new(Some(vec![]));
-        rig.run(|d| relaunch_in(&saying(Some("opus"), Some("acceptEdits")), "claude", &Settled::Unsaid, "p-cc", local, d))
-            .unwrap();
+        rig.run(|d| {
+            relaunch_in(
+                &saying(Some("opus"), Some("acceptEdits")),
+                "claude",
+                &Settled::Unsaid,
+                "p-cc",
+                local,
+                d,
+            )
+        })
+        .unwrap();
         let argv = rig.ccm.borrow()[0].clone();
-        assert!(has_pair(&argv, "--", "-接着做\n第二行"), "local={local}: {argv:?}");
-        assert!(has_pair(&argv, "--model", "opus"), "local={local}: {argv:?}");
-        assert!(has_pair(&argv, "--permission-mode", "acceptEdits"), "local={local}: {argv:?}");
-        for (model, mode) in [(Some("bad model;"), Some("bypassPermissions")), (None, Some("auto"))] {
+        assert!(
+            has_pair(&argv, "--", "-接着做\n第二行"),
+            "local={local}: {argv:?}"
+        );
+        assert!(
+            has_pair(&argv, "--model", "opus"),
+            "local={local}: {argv:?}"
+        );
+        assert!(
+            has_pair(&argv, "--permission-mode", "acceptEdits"),
+            "local={local}: {argv:?}"
+        );
+        for (model, mode) in [
+            (Some("bad model;"), Some("bypassPermissions")),
+            (None, Some("auto")),
+        ] {
             let rig = Rig::new(Some(vec![]));
-            rig.run(|d| relaunch_in(&saying(model, mode), "claude", &Settled::Unsaid, "p-cc", local, d))
-                .unwrap();
+            rig.run(|d| {
+                relaunch_in(
+                    &saying(model, mode),
+                    "claude",
+                    &Settled::Unsaid,
+                    "p-cc",
+                    local,
+                    d,
+                )
+            })
+            .unwrap();
             let argv = rig.ccm.borrow()[0].clone();
-            assert!(!argv.iter().any(|a| a == "--permission-mode" || a == "--model"), "{argv:?}");
+            assert!(
+                !argv
+                    .iter()
+                    .any(|a| a == "--permission-mode" || a == "--model"),
+                "{argv:?}"
+            );
             assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
         }
     }
@@ -468,18 +618,41 @@ fn a_resumed_item_carries_the_line_the_model_and_the_mode_and_drops_what_it_must
 #[test]
 fn resuming_to_say_goes_the_tmux_way_and_stops_where_it_would() {
     let rig = Rig::new(Some(vec![]));
-    let o = rig.run(|d| resume_saying(&saying(None, None), "claude", d)).unwrap();
-    assert_eq!((o.landed, o.session.as_deref()), (Landed::Started, Some("p-cc")));
+    let o = rig
+        .run(|d| resume_saying(&saying(None, None), "claude", d))
+        .unwrap();
+    assert_eq!(
+        (o.landed, o.session.as_deref()),
+        (Landed::Started, Some("p-cc"))
+    );
     let argv = rig.ccm.borrow()[0].clone();
-    assert!(argv.iter().any(|t| t == "--detach") && has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
+    assert!(
+        argv.iter().any(|t| t == "--detach") && has_pair(&argv, "--", "-接着做\n第二行"),
+        "{argv:?}"
+    );
 
     let mut live = Rig::new(Some(vec![]));
     live.live = vec![42];
-    assert_eq!(live.run(|d| resume_saying(&saying(None, None), "claude", d)).unwrap_err().0, "already_live");
+    assert_eq!(
+        live.run(|d| resume_saying(&saying(None, None), "claude", d))
+            .unwrap_err()
+            .0,
+        "already_live"
+    );
     assert!(live.ccm.borrow().is_empty());
     let none = Rig::new(None);
-    assert_eq!(none.run(|d| resume_saying(&saying(None, None), "claude", d)).unwrap_err().0, "place_unavailable");
+    assert_eq!(
+        none.run(|d| resume_saying(&saying(None, None), "claude", d))
+            .unwrap_err()
+            .0,
+        "place_unavailable"
+    );
     let rig = Rig::new(Some(vec![]));
-    assert_eq!(rig.run(|d| resume_saying(&saying(None, None), "no-such-agent", d)).unwrap_err().0, NO_FIRST_PROMPT);
+    assert_eq!(
+        rig.run(|d| resume_saying(&saying(None, None), "no-such-agent", d))
+            .unwrap_err()
+            .0,
+        NO_FIRST_PROMPT
+    );
     assert!(rig.ccm.borrow().is_empty());
 }

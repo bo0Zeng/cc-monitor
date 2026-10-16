@@ -164,18 +164,9 @@ fn a_session_whose_terminal_is_gone_is_resumed_with_the_line() {
 #[test]
 fn a_resume_that_does_not_happen_says_why_and_delivers_nothing() {
     let cases = [
-        (
-            Some(not("already_live")),
-            Refused::Elsewhere,
-        ),
-        (
-            Some(not("place_unavailable")),
-            Refused::NotResumed,
-        ),
-        (
-            Some(not("start_failed")),
-            Refused::NotResumed,
-        ),
+        (Some(not("already_live")), Refused::Elsewhere),
+        (Some(not("place_unavailable")), Refused::NotResumed),
+        (Some(not("start_failed")), Refused::NotResumed),
         (None, Refused::NotKnown),
     ];
     for (a, want) in cases {
@@ -264,10 +255,7 @@ fn resuming_to_attach_lands_on_a_tmux_session_or_says_why_not() {
         ok(Some(at(Landed::Running, Some("proj-cc")))).unwrap(),
         "proj-cc"
     );
-    assert_eq!(
-        ok(Some(at(Landed::InPlace, Some("a-cc")))).unwrap(),
-        "a-cc"
-    );
+    assert_eq!(ok(Some(at(Landed::InPlace, Some("a-cc")))).unwrap(), "a-cc");
     let code = |a: Option<Reopened>| {
         let f = crate::wire::typed::Codes::into_fail(resume_with(&|| a.clone()).unwrap_err());
         (f.code, f.message)

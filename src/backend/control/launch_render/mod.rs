@@ -109,7 +109,10 @@ impl Launch {
     /// 那一家的启动命令与默认启动器：启动命令照这台的偏好，默认启动器问适配层（认不出那一家 ⇒ 空，渲的时候照拒）。
     ///
     /// 〔继承表〕启动命令那一格（照这台，不随主会话）。
-    pub(crate) fn launchers(agent: &str, prefs: &crate::control::machine_prefs::Prefs) -> (String, String) {
+    pub(crate) fn launchers(
+        agent: &str,
+        prefs: &crate::control::machine_prefs::Prefs,
+    ) -> (String, String) {
         let default = crate::agents::launch_face_among(crate::agents::REGISTRY, agent)
             .map_or("", |f| f.default_launcher)
             .to_string();
@@ -148,7 +151,9 @@ pub(crate) fn argv_of(
     caps: &std::collections::BTreeSet<String>,
     entry: &str,
 ) -> Result<Vec<String>, String> {
-    spec_with(l, account, here, detach, entry, |spec| ccm_invocation::ccm_argv(spec, caps))
+    spec_with(l, account, here, detach, entry, |spec| {
+        ccm_invocation::ccm_argv(spec, caps)
+    })
 }
 
 /// **唯一的映射**：[`Launch`] ＋ 判好的号 ⇒ 渲染器那份 spec。本机与远端只差三处，都写在这里：
@@ -170,7 +175,12 @@ fn spec_with<T>(
     let launcher = checked_launcher(&l.launcher)?;
     let tmux = l.tmux.as_deref().filter(|n| !n.is_empty() && !windows);
     let (account, picked_model) = match (account, here) {
-        (Settled::Account(a), _) => (ci::CliAccount::Named { name: a.name.as_str() }, a.model.as_deref()),
+        (Settled::Account(a), _) => (
+            ci::CliAccount::Named {
+                name: a.name.as_str(),
+            },
+            a.model.as_deref(),
+        ),
         (Settled::Unsaid, Here::Local { .. }) => (ci::CliAccount::Inherit, None),
         (Settled::Base | Settled::Unsaid, _) => (ci::CliAccount::Base, None),
     };
@@ -185,14 +195,21 @@ fn spec_with<T>(
         agent: &l.agent,
         action,
         container: match tmux {
-            Some(name) => ci::Container::Tmux { name, send_into: l.send_into },
+            Some(name) => ci::Container::Tmux {
+                name,
+                send_into: l.send_into,
+            },
             None => ci::Container::None,
         },
         cwd: l.cwd.as_deref().filter(|c| !c.is_empty() && !local_direct),
         account,
         ccm_sid: l.ccm_sid.as_deref().filter(|_| !windows),
         model: l.model.as_deref().or(picked_model),
-        launcher: if launcher.is_empty() { &l.default_launcher } else { launcher },
+        launcher: if launcher.is_empty() {
+            &l.default_launcher
+        } else {
+            launcher
+        },
         default_launcher: &l.default_launcher,
         args: &args,
         ccm_path,

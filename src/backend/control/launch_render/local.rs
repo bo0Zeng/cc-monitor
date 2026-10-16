@@ -136,7 +136,9 @@ fn launch_of(req: &LocalLaunchRequest, facts: &Facts) -> Result<(super::Launch, 
     let name = req.tmux_name.as_deref().filter(|n| !n.is_empty());
     let entry = (facts.entry)().ok_or_else(|| copy_text("beLaunchRender.entry.noHome", &[]))?;
     let act = match &req.action {
-        LocalAction::Attach if facts.windows => return Err(copy_text("rsHistory.attach.windows", &[])),
+        LocalAction::Attach if facts.windows => {
+            return Err(copy_text("rsHistory.attach.windows", &[]))
+        }
         LocalAction::Attach => match name {
             Some(n) => super::Act::Attach(n.to_string()),
             None => return Err(copy_text("rsHistory.launch.noSessionName", &[])),

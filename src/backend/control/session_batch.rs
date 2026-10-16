@@ -242,7 +242,10 @@ impl Answer {
         Self::new(sid, "done", None, String::new())
     }
     fn with_unavailable(self, unavailable: Option<AccountUnavailable>) -> Self {
-        Self { unavailable, ..self }
+        Self {
+            unavailable,
+            ..self
+        }
     }
     /// `cmd`：`sessions-stop` / `sessions-start`。失败那一项多两格：`said`（停的那一句与单条结束同一张表，[`crate::control::kill::said`]；
     /// 起的那几句要那台的称呼，界面说）· `copyDetail`（复制详情：码 ＋ 那一项的原话）。
@@ -383,7 +386,11 @@ pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> 
             }
         })
         .collect();
-    let run = open::default_run(open::Intent::Resume, deps.prefs.resume_in_tmux, rows.is_some());
+    let run = open::default_run(
+        open::Intent::Resume,
+        deps.prefs.resume_in_tmux,
+        rows.is_some(),
+    );
     Ok(Whereabouts { results, run })
 }
 
@@ -514,7 +521,11 @@ pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdE
     if req.items.is_empty() || req.items.len() > MAX_BATCH {
         return Err(bad(&format!("`items` must hold 1..={MAX_BATCH} entries")));
     }
-    let items = req.items.iter().map(item_of).collect::<Result<Vec<_>, _>>()?;
+    let items = req
+        .items
+        .iter()
+        .map(item_of)
+        .collect::<Result<Vec<_>, _>>()?;
     for (i, it) in items.iter().enumerate() {
         if items[..i].iter().any(|x| x.sid == it.sid) {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));
@@ -531,8 +542,11 @@ pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdE
     let results = items
         .iter()
         .map(|it| {
-            outcome_of(&it.sid, open::resume_item(it, &req.agent, run, req.local, deps))
-                .to_wire("sessions-start")
+            outcome_of(
+                &it.sid,
+                open::resume_item(it, &req.agent, run, req.local, deps),
+            )
+            .to_wire("sessions-start")
         })
         .collect();
     Ok(Batched { results })
@@ -543,7 +557,11 @@ fn outcome_of(sid: &str, r: Result<open::Opened, open::Failed>) -> Answer {
     match r {
         Ok(o) => match o.landed {
             open::Landed::Running => {
-                let why = if o.note.is_some() { "ambiguous" } else { "running" };
+                let why = if o.note.is_some() {
+                    "ambiguous"
+                } else {
+                    "running"
+                };
                 Answer {
                     session: o.session.clone(),
                     ..Answer::skipped(sid, why, o.session.unwrap_or_default())
@@ -565,7 +583,9 @@ fn outcome_of(sid: &str, r: Result<open::Opened, open::Failed>) -> Answer {
             match code {
                 "account_unavailable" => {
                     let u = data
-                        .and_then(|d| serde_json::from_value::<super::session_new::SessionNewRefusal>(d).ok())
+                        .and_then(|d| {
+                            serde_json::from_value::<super::session_new::SessionNewRefusal>(d).ok()
+                        })
                         .and_then(|r| r.unavailable);
                     let requested = u.as_ref().map_or(detail, |u| u.requested.clone());
                     Answer::skipped(sid, code, requested).with_unavailable(u)

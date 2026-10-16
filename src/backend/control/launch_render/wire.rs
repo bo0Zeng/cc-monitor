@@ -96,7 +96,13 @@ pub(crate) fn render_ccm_launch_with(
     caps: &BTreeSet<String>,
     ccm_path: &str,
 ) -> Result<String, String> {
-    super::line_of(&launch_of(req), account, super::Here::Remote, caps, ccm_path)
+    super::line_of(
+        &launch_of(req),
+        account,
+        super::Here::Remote,
+        caps,
+        ccm_path,
+    )
 }
 
 /// 同一行的 argv 形；`detach` ⇒ 建进 tmux 之后不接进去。
@@ -107,7 +113,14 @@ pub(crate) fn ccm_launch_argv(
     ccm_path: &str,
     detach: bool,
 ) -> Result<Vec<String>, String> {
-    super::argv_of(&launch_of(req), account, super::Here::Remote, detach, caps, ccm_path)
+    super::argv_of(
+        &launch_of(req),
+        account,
+        super::Here::Remote,
+        detach,
+        caps,
+        ccm_path,
+    )
 }
 
 /// 上线入参 ⇒ [`super::Launch`]。

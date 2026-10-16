@@ -246,11 +246,18 @@ pub(crate) fn say_with(
             })
         }
         Ok(o) => {
-            tracing::warn!("[session-say] {} 终端没了、恢复时已在跑（{:?}），那一句没送", req.sid, o.session);
+            tracing::warn!(
+                "[session-say] {} 终端没了、恢复时已在跑（{:?}），那一句没送",
+                req.sid,
+                o.session
+            );
             Refused::NotResumed
         }
         Err((code, said, _, raw)) => {
-            tracing::warn!("[session-say] {} 终端没了、恢复没成：{code} {said} {raw:?}", req.sid);
+            tracing::warn!(
+                "[session-say] {} 终端没了、恢复没成：{code} {said} {raw:?}",
+                req.sid
+            );
             if *code == "already_live" {
                 Refused::Elsewhere
             } else {

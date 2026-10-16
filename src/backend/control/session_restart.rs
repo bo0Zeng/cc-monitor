@@ -270,18 +270,20 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
         );
         return Err(already_live(said, others, true));
     }
-    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(|(code, said, _, raw)| {
-        (
-            "start_failed",
-            raw.unwrap_or(said),
-            Refused::StartFailed {
-                terminal: name.to_string(),
-                why: Some(code.to_string()),
-                stopped: true,
-            }
-            .data(),
-        )
-    })
+    open::relaunch_in(&req.item, &req.agent, account, name, req.local, deps).map_err(
+        |(code, said, _, raw)| {
+            (
+                "start_failed",
+                raw.unwrap_or(said),
+                Refused::StartFailed {
+                    terminal: name.to_string(),
+                    why: Some(code.to_string()),
+                    stopped: true,
+                }
+                .data(),
+            )
+        },
+    )
 }
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。

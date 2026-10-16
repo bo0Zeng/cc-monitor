@@ -20,11 +20,13 @@ impl crate::wire::typed::Handle for SessionOpen {
     fn run(
         req: open::SessionOpenReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<open::Opened, open::SessionOpenErr>> + Send + 'static {
+    ) -> impl std::future::Future<Output = Result<open::Opened, open::SessionOpenErr>> + Send + 'static
+    {
         let (_cx, needs) = cx.split();
         async move {
             let (files, own) = (needs.0, &needs.1);
-            answer(req, files, own, &crate::platform::fs::NewFile::issue()).map_err(open::SessionOpenErr)
+            answer(req, files, own, &crate::platform::fs::NewFile::issue())
+                .map_err(open::SessionOpenErr)
         }
     }
 }
@@ -39,15 +41,39 @@ fn answer(
         .map_err(|(c, m)| open::fail(c, m, None))?;
     let (agent, facts) = match &req.what {
         open::Open::New(n) => {
-            let fork_tmux = n.fork.as_ref().filter(|_| req.run.is_none()).and_then(|f| fork_in_tmux(&f.sid));
-            (n.agent.as_str().to_string(), Facts { resume: None, fork_tmux })
+            let fork_tmux = n
+                .fork
+                .as_ref()
+                .filter(|_| req.run.is_none())
+                .and_then(|f| fork_in_tmux(&f.sid));
+            (
+                n.agent.as_str().to_string(),
+                Facts {
+                    resume: None,
+                    fork_tmux,
+                },
+            )
         }
         open::Open::Resume { sid } => {
             let resume = resume_of(sid);
-            let agent = resume.as_ref().map_or_else(String::new, |r| r.agent.clone());
-            (agent, Facts { resume, fork_tmux: None })
+            let agent = resume
+                .as_ref()
+                .map_or_else(String::new, |r| r.agent.clone());
+            (
+                agent,
+                Facts {
+                    resume,
+                    fork_tmux: None,
+                },
+            )
         }
-        open::Open::Look { .. } => (String::new(), Facts { resume: None, fork_tmux: None }),
+        open::Open::Look { .. } => (
+            String::new(),
+            Facts {
+                resume: None,
+                fork_tmux: None,
+            },
+        ),
     };
     with_launch_ctx(own, nf, |fork, pre, home| {
         super::session_batch_face::with_deps_as(client.as_deref(), &agent, Some(files), |d| {
@@ -63,12 +89,20 @@ pub(crate) fn with_launch_ctx<T>(
     f: impl FnOnce(ForkWrite, &PreRotation, Option<&std::path::Path>) -> T,
 ) -> T {
     let home = crate::history::listing::agent_home();
-    let fork = |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(nf, &home, sid, uuid);
+    let fork =
+        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(nf, &home, sid, uuid);
     let user_home = crate::platform::paths::home_dir();
     let ctx = super::rotation_face::Ctx::here();
     let sid = crate::accounts::quota::rotation::new_session_id;
     let write = |sid: &str, kind: &str, rule: &str| {
-        super::rotation_face::preset_with(&ctx, own, sid, kind, rule, crate::accounts::quota::now_unix())
+        super::rotation_face::preset_with(
+            &ctx,
+            own,
+            sid,
+            kind,
+            rule,
+            crate::accounts::quota::now_unix(),
+        )
     };
     let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, own, sid);
     let pre = PreRotation {
