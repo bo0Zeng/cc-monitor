@@ -553,7 +553,11 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
     let d = temp_dir("perpct");
     let path = d.join(FILE_NAME);
     let own = crate::platform::fs::Own::issue_data_at(&d);
-    let l = Ledger::with_nodes(Some(path.clone()), tokio::sync::broadcast::channel(16).0);
+    let l = Ledger::open(
+        Some(path.clone()),
+        tokio::sync::broadcast::channel(16).0,
+        Default::default(),
+    );
     let t = 1_800_000_000;
     let reset = t + 18_000;
     let sid = Some("s-perpct");
@@ -569,7 +573,7 @@ fn the_size_of_one_percent_is_measured_kept_and_aged() {
         );
     };
     let used = |input: u64| {
-        l.spend().heard(
+        l.spend.heard(
             "s-perpct",
             &format!(
                 r#"{{"type":"message_start","message":{{"usage":{{"input_tokens":{input}}}}}}}"#

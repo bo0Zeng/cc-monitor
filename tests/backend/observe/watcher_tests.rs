@@ -55,7 +55,6 @@ fn the_event_dispatch_has_no_catch_all_arm() {
     );
 }
 use super::*;
-use crate::wire::NameFaceExt as _;
 
 /// 夹具那一份发帧口：一条连接（号 0）、不带会话账本（生产那一份是 [`FrameSink::hub`]，连接经 `join` 接上来）。
 impl FrameSink {
@@ -1393,7 +1392,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
     };
     names(&mut rx);
     assert_eq!(
-        state.name_face("sess-1").label(),
+        state.name_face("sess-1").label.0,
         copy_core::copy_text("history.row.untitled", &[]),
         "没起名、没说过话 ⇒ 文案表那一句"
     );
@@ -1648,7 +1647,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         Ok(Frame::SessionStatus(crate::wire::SessionStatus {
             name_face, face, ..
         })) => {
-            assert_eq!(name_face.label(), "乙");
+            assert_eq!(name_face.label.0, "乙");
             assert_eq!(
                 face,
                 crate::wire::ActivityFace::of(Some(crate::agents::SessionActivity::Working)),
@@ -1659,7 +1658,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
     }
     state.reload_annotations(note(None), &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionStatus(crate::wire::SessionStatus { name_face, .. })) if name_face.label() == copy_core::copy_text("history.row.untitled", &[])),
+        matches!(rx.try_recv(), Ok(Frame::SessionStatus(crate::wire::SessionStatus { name_face, .. })) if name_face.label.0 == copy_core::copy_text("history.row.untitled", &[])),
         "改的名删了 ⇒ 落回下一档（记录里什么都没有 ⇒ 文案表那一句）"
     );
     std::fs::remove_dir_all(&dir).ok();
