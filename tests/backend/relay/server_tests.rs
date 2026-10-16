@@ -2643,7 +2643,11 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
         .map(|e| e.body)
         .filter(|b| matches!(b, TapBody::End { .. }))
         .collect();
-    assert_eq!(ends, vec![TapBody::End { broken: false }], "这一趟必须以干净 EOF 收尾");
+    assert_eq!(
+        ends,
+        vec![TapBody::End { broken: false }],
+        "这一趟必须以干净 EOF 收尾"
+    );
     // ⚠ 这两个时刻**只印不断言**：`t_first` 先量、时钟单调 ⇒ `t_first <= t_last` 恒真，
     // 断它等于加一条永远不会红的判据（同上，铁律 15 自查逮到的第二处）。
     println!(
@@ -2691,7 +2695,11 @@ fn forwarding_keeps_nothing_per_request_on_the_relay() {
     }
     let after = crate::alloc_probe::reset_peak();
     client.join().expect("client");
-    assert_eq!(after - before, 0, "转了 {N} 发之后中转这一侧多留了这么多字节");
+    assert_eq!(
+        after - before,
+        0,
+        "转了 {N} 发之后中转这一侧多留了这么多字节"
+    );
 }
 
 /// ★ `DoD-3㈡`（活体）：哨兵头必须**转发得到上游**，却**一个字节都不进 tee / 不进日志**。
