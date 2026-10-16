@@ -103,15 +103,8 @@
       { "text": "要更新", "use": "用例名" },
       { "text": "无应答", "use": "用例名" }
     ],
-    "tests/frontend/shell/remote_write_registry_tests.rs": [
-      { "text": "路径", "use": "非文案" },
-      { "text": "命令", "use": "非文案" }
-    ],
     "tests/frontend/shell/scanning_guard_registry_tests.rs": [
       { "text": "自己", "use": "非文案" }
-    ],
-    "tests/frontend/shell/sftp_family_registry_tests.rs": [
-      { "text": "命令", "use": "非文案" }
     ],
     "tests/frontend/ui/accounts.vitest.ts": [
       { "text": "后端", "use": "词义" }

@@ -51,7 +51,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
         install_site: "block.rs::install_to_profile",
         uninstall_site: Some("block.rs::uninstall_from_profile"),
         pairing: "fence.rs::find_pair",
-        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）",
+        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 Door::put 写）",
     },
     FenceShape {
         id: "local-windows-ps",
@@ -505,7 +505,7 @@ fn the_write_rule_has_exactly_one_home() {
     let home = read("fence.rs");
     assert!(
         !guard_core::contains_word(&home, "put(") && !guard_core::contains_word(&home, "door"),
-        "`fence.rs` 生产段里够到了写口 —— 落盘序列长到规划这一层了（它只住 `files-put`）"
+        "`fence.rs` 生产段里够到了写口 —— 落盘序列长到规划这一层了（它只住 `Door::put`）"
     );
     // 正控：序列的那一个住址真的在（后端），而且恰好一处定义。
     let backend = guard_core::production_code(

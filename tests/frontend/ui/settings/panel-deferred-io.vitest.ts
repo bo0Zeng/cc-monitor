@@ -154,16 +154,9 @@ const APP_PAGE_IPC_ON_REOPEN = [
   "get_data_paths",
 ] as const;
 
-/**
- * 登记表 ③：「未识别的数据」那一发（原顶层「改动足迹」页的漂移记账）。
- * 顶层页删了，那一块住**每台机器子页的「足迹」栏**，只有本机那一栏读 ⇒ 并进登记表 ④。
- */
-// 「未识别的数据」那一块退场（并进日志页的诊断信息）⇒ 这一张今天是空的。
-const FOOTPRINT_IPC = [] as const;
-
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
 // 文件与数据本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端 `data-report`）。
-const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
+const MACHINE_PAGE_IPC = ["footprint_client_facts"] as const;
 
 /** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 // 日志页：日志设置 · 文件 · 诊断信息那一份（「未识别数据」那一行与复制读同一份）；诊断信息的原料：
@@ -207,7 +200,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     const got = uniq(ipc.calls);
     // 相等，不是「不包含」——「不包含」对「多打了一条别的」是瞎的。
     expect(got).toEqual(uniq([...LANDING_IPC]));
-    for (const name of [...APP_PAGE_IPC, ...FOOTPRINT_IPC, ...MACHINE_PAGE_IPC]) {
+    for (const name of [...APP_PAGE_IPC, ...MACHINE_PAGE_IPC]) {
       expect(got, `${name} 不该在用户点进那一页之前就打出去`).not.toContain(name);
     }
   });
@@ -279,7 +272,7 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     await p.open();
     await tick();
     const got = uniq(ipc.calls);
-    for (const name of [...APP_PAGE_IPC, ...FOOTPRINT_IPC, ...MACHINE_PAGE_IPC]) {
+    for (const name of [...APP_PAGE_IPC, ...MACHINE_PAGE_IPC]) {
       expect(got, `打开设置不该碰 ${name}`).not.toContain(name);
     }
     // 反向锚：`open()` 真的做事了（它至少要重读一次 config）—— 否则上面那一串

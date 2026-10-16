@@ -88,22 +88,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 解压：处理器住
     //   `control/files_extract.rs`，写经 `Face`。阻塞档（同步读包 ＋ 落盘）。
     typed::blocking::<crate::stream::inbound::files_write_face::FilesExtract>("解压到一个新目录"),
-    // 建一条链接（`files_extract.rs::land_link` 那一个动词，FILES2 已在写面闭集里）：链接那条路径过根底下的解析，
-    //   目标文本原样（同 `cp -P`）。阻塞档（一次 `symlink`）。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesLink>("建一条符号链接"),
     typed::blocking::<crate::stream::inbound::files_write_face::FilesWriteText>(
         "覆盖写一份已经在的普通文件",
     ),
-    // ── 用户文件的读改写 ＋ 删历史会话 ─────────────────────────
+    // ── 删历史会话 ─────────────────────────
     //
-    // 🔴 只有后端的文件管理部分写**用户的文件**，本机也算 ⇒ monitor 进程
-    //   不再直接写用户文件；本机与远端都经这三条（`call(origin, …)`，同一条路）。处理器同住
-    //   `control/files_write.rs`，写经 `Face`。阻塞档（同步文件 I/O）。
-    //   `files-delete-session` 只收 sid（理由住那个模块的 `delete_session`）。
-    // 上一版说它是「会话文件围栏**唯一的例外**」—— FN1 之后文件管理写面已不设会话文件围栏，
-    //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesPeek>("读改写的读那一半"),
-    typed::blocking::<crate::stream::inbound::files_write_face::FilesPut>("整份替换一份文本文件"),
+    // 只收 sid（理由住 `files_session_face` 那一条的 `delete_session`）。阻塞档（同步文件 I/O）。
     typed::blocking::<crate::stream::inbound::files_session_face::FilesDeleteSession>(
         "删一份历史会话",
     ),

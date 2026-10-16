@@ -8,11 +8,11 @@ import type { SkillTargetFile } from "./SkillTargetFile";
  */
 export type SkillPlan = { root: string, dir: string, 
 /**
- * 写的时候 `files-put` 用的 `root`。
+ * 写的时候 `Door::put` 用的 `root`。
  */
 base: string, 
 /**
- * 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+ * 写的时候 `Door::put` 用的相对前缀：`rel` = `<prefix>/<path>`。
  */
 prefix: string, rows: Array<SkillPlanRow>, target: Array<SkillTargetFile>, 
 /**

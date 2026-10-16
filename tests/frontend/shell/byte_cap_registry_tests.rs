@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "NEEDS_TIER_SPAN",
+        "**毫秒**不是字节：`backend/observe/facts_query.rs` 先答序里一档危险度占多宽，同一档里已等多久只在这一格里动。",
+    ),
+    (
         "LIVE_TEXT_KEEP",
         "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
     ),

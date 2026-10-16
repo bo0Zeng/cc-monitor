@@ -106,7 +106,6 @@ const SUPPORT: &[&str] = &[
     "tests/frontend/shell/polling_registry.rs",
     "tests/frontend/shell/pub_reader_registry.rs",
     "tests/frontend/shell/quote_singleton_guard.rs",
-    "tests/frontend/shell/remote_write_registry.rs",
     "tests/frontend/shell/rust_timer_registry.rs",
     "tests/frontend/shell/scanning_guard_registry.rs",
     "tests/frontend/shell/session_name_registry.rs",

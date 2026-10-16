@@ -1362,22 +1362,6 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `bad_path` · `exists` · `io_failed` · `refused` · `unsupported`
 
-#### `files-link`
-
-建一条符号链接。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-link`
-
-入参 `FilesLinkReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesLinkReq = { root: WirePath, rel: WirePath, target: WirePath, };
-type FilesPathReply = { path: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused`
-
 #### `files-write-text`
 
 覆盖写一份已经在的普通文件。
@@ -1391,38 +1375,6 @@ type FilesWriteTextReq = { root: WirePath, rel: WirePath, content: WirePath, exp
 type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
-
-#### `files-peek`
-
-读改写的读那一半。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-peek`
-
-入参 `FilesPeekReq` · 回包 `FilesPeekReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPeekReply = { path: WirePath, exists: boolean, text: string | null, };
-type FilesPeekReq = { root: WirePath, rel: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `not_text` · `refused` · `too_large`
-
-#### `files-put`
-
-整份替换一份文本文件。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-put`
-
-入参 `FilesPutReq` · 回包 `FilesPutReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPutReply = { path: WirePath, bytes: number, changed: boolean, created: boolean, backup: WirePath | null, };
-type FilesPutReq = { root: WirePath, rel: WirePath, content: WirePath, expect: WirePath | null, backup?: boolean, parents?: boolean, };
 type WirePath = string | { b16: string };
 ```
 
@@ -6019,7 +5971,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6093,7 +6046,7 @@ note: NeedsNote, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
- * 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+ * 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
  */
 waiting: Array<NeedsRow>, };
 type NeedsNote = "none" | "optional" | "required";
@@ -6321,7 +6274,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -7687,11 +7641,11 @@ name: string, project: string | null, };
 type SkillLedgerFile = { digest: string, created: boolean, };
 type SkillPlan = { root: string, dir: string, 
 /**
- * 写的时候 `files-put` 用的 `root`。
+ * 写的时候 `Door::put` 用的 `root`。
  */
 base: string, 
 /**
- * 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+ * 写的时候 `Door::put` 用的相对前缀：`rel` = `<prefix>/<path>`。
  */
 prefix: string, rows: Array<SkillPlanRow>, target: Array<SkillTargetFile>, 
 /**
@@ -12689,11 +12643,8 @@ needs: string | null, };
 | `--files-home` | ＝ 帧命令 `files-home`：后端这个用户的 home |
 | `--files-index-rebuild` | ＝ 帧命令 `files-index-rebuild`：重建常驻文件名索引：走一遍，做完返回 |
 | `--files-index-status` | ＝ 帧命令 `files-index-status`：索引的新鲜度 / 条目数 / 常驻字节 |
-| `--files-link` | ＝ 帧命令 `files-link`：建一条符号链接 |
 | `--files-ls` | ＝ 帧命令 `files-ls`：列一个目录的直接子项 |
 | `--files-mkdir` | ＝ 帧命令 `files-mkdir`：新建一个目录 |
-| `--files-peek` | ＝ 帧命令 `files-peek`：读改写的读那一半 |
-| `--files-put` | ＝ 帧命令 `files-put`：整份替换一份文本文件 |
 | `--files-read-chunk` | ＝ 帧命令 `files-read-chunk`：按字节寻址分块读回 |
 | `--files-read-text` | ＝ 帧命令 `files-read-text`：读一份文本进编辑器 |
 | `--files-rename` | ＝ 帧命令 `files-rename`：改名 / 同根内移动 |

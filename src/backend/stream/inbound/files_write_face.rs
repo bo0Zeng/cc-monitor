@@ -341,44 +341,6 @@ impl crate::wire::typed::Handle for FilesExtract {
 }
 
 codes! {
-    /// `files-link` 的码。
-    pub(crate) enum FilesLinkErr {
-        /// 目标根 · 链接 · 目标有一格是空的。
-        BadPath = "bad_path",
-        /// 盘上这一步没成。
-        IoFailed = "io_failed",
-        /// 路径解析拒了 · 那儿已经有东西。
-        Refused = "refused",
-    }
-}
-
-/// `files-link`：建一条符号链接。
-pub(crate) struct FilesLink;
-
-impl Command for FilesLink {
-    const NAME: &'static str = "files-link";
-    type Req = wire::FilesLinkReq;
-    type Reply = wire::FilesPathReply;
-    type Err = FilesLinkErr;
-}
-
-impl crate::wire::typed::Handle for FilesLink {
-    type Needs = crate::wire::typed::needs::Face;
-    fn run(
-        req: wire::FilesLinkReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::FilesPathReply, FilesLinkErr>> + Send + 'static
-    {
-        let (_cx, needs) = cx.split();
-        async move {
-            let face = &needs;
-
-            ask(req, face, FilesLinkErr::BadArgs)
-        }
-    }
-}
-
-codes! {
     /// `files-write-text` 的码。
     pub(crate) enum FilesWriteTextErr {
         /// 目标根是空的。
@@ -415,88 +377,6 @@ impl crate::wire::typed::Handle for FilesWriteText {
             let face = &needs;
 
             ask(req, face, FilesWriteTextErr::BadArgs)
-        }
-    }
-}
-
-codes! {
-    /// `files-peek` 的码。
-    pub(crate) enum FilesPeekErr {
-        /// 目标根是空的。
-        BadPath = "bad_path",
-        /// 读不出来。
-        IoFailed = "io_failed",
-        /// 不是 UTF-8 文本。
-        NotText = "not_text",
-        /// 路径解析拒了。
-        Refused = "refused",
-        /// 太大，不读。
-        TooLarge = "too_large",
-    }
-}
-
-/// `files-peek`：读改写的读那一半。
-pub(crate) struct FilesPeek;
-
-impl Command for FilesPeek {
-    const NAME: &'static str = "files-peek";
-    type Req = wire::FilesPeekReq;
-    type Reply = wire::FilesPeekReply;
-    type Err = FilesPeekErr;
-}
-
-impl crate::wire::typed::Handle for FilesPeek {
-    type Needs = crate::wire::typed::needs::Face;
-    fn run(
-        req: wire::FilesPeekReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::FilesPeekReply, FilesPeekErr>> + Send + 'static
-    {
-        let (_cx, needs) = cx.split();
-        async move {
-            let face = &needs;
-
-            ask(req, face, FilesPeekErr::BadArgs)
-        }
-    }
-}
-
-codes! {
-    /// `files-put` 的码。
-    pub(crate) enum FilesPutErr {
-        /// 目标根是空的。
-        BadPath = "bad_path",
-        /// 盘上这一步没成（已回滚）。
-        IoFailed = "io_failed",
-        /// 路径解析拒了。
-        Refused = "refused",
-        /// 盘上那一份跟读到的不一样了（一个字节没动）。
-        Stale = "stale",
-    }
-}
-
-/// `files-put`：整份替换一份文本文件。
-pub(crate) struct FilesPut;
-
-impl Command for FilesPut {
-    const NAME: &'static str = "files-put";
-    type Req = wire::FilesPutReq;
-    type Reply = wire::FilesPutReply;
-    type Err = FilesPutErr;
-}
-
-impl crate::wire::typed::Handle for FilesPut {
-    type Needs = crate::wire::typed::needs::Face;
-    fn run(
-        req: wire::FilesPutReq,
-        cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<wire::FilesPutReply, FilesPutErr>> + Send + 'static
-    {
-        let (_cx, needs) = cx.split();
-        async move {
-            let face = &needs;
-
-            ask(req, face, FilesPutErr::BadArgs)
         }
     }
 }

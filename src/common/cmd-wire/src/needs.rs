@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct NeedsList {
-    /// 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+    /// 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
     pub waiting: Vec<NeedsRow>,
 }
 
@@ -71,8 +71,10 @@ pub struct Needs {
     pub head_code: Option<String>,
     /// 语气（恒 `need`）。
     pub tone: Tone,
-    /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
-    pub rank: u8,
+    /// 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+    /// 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub rank: u64,
     /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
     /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number | null"))]

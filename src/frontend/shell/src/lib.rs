@@ -121,9 +121,6 @@ mod files_batch_relay; // 后端的 `files_batch` 帧（一组做到哪了）按
 mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
-mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod session_book;
 mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 后端的 `live_card` 帧（活卡成品）原样转给前端 `session-live-card`
                            // 起子进程的**唯一出口**（三个策略都没有 Default）。

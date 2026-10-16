@@ -2992,7 +2992,7 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "配置文件（`~/.cc-monitor/profiles.toml`）的解析与按条目改（`assets/aliases/profile.rs`）：缺省 feature 关了，只开 `parse` 与 `display`，\
              纯内存把文本变成文档树、再变回文本（保留注释与排版）。读盘与落盘都在本 crate：读是 ccm 那一趟的 `read_to_string` 与经文件管理面的 `files-peek`，\
-             写经文件管理面的 `files-put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
+             写经文件管理面的 `Door::put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
         ),
         (
             "tracing-subscriber",
@@ -3907,16 +3907,14 @@ mod remote_write_layer {
     //! 两张表各自的理由逐条写在表里，这里只说那条总的：
     //!
     //! **远端写不是一个动词，是一条链**：先取得一个能改远端文件系统的**能力**，再拿它发**操作**。
-    //! monitor 侧 `remote_write_registry` 的头注现打过这条链的读数 —— 按写原语的方法名取样是
-    //! 8 份文件、其中 6 份是本机噪声；换成「谁持有 SFTP 会话」立刻收到 3 份、零噪声。
+    //! 按写原语的方法名取样会混进本机写的噪声；按「谁持有 SFTP 会话」取样零噪声。
     //! ⇒ **能力那一端是扼流点，动词那一端不是。** 本层因此把能力网排在第一位，
     //! 动词网只作第二道（能力取得点住在别的文件时，动词那一处仍然点得出名）。
     //!
     //! # ⚠ 它认不出什么 —— **口径与射程同句写清**（`KR79D3` 的落点是 [`BLIND_SPOT_LAYERS`]）
     //!
     //! - **远端 exec**：`channel_open_session` ＋ 把一条会写的 shell 命令交给远端。
-    //!   一条命令写不写，**源码文本上判不了**（monitor 侧 `remote_write_registry` 头注
-    //!   逐字给过同一条结论：`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
+    //!   一条命令写不写，**源码文本上判不了**（`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
     //!   是**同一个洞的远端孪生** —— 盘上今天就有一处，登记在
     //!   [`the_remote_exec_hole_is_a_registered_counterexample_and_still_passes`]。
     //! - **不经 SSH 的远端写协议**（手写 HTTP PUT / 云存储 SDK / 自己封的传输层）：
@@ -3954,9 +3952,8 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         ),
         (
             FAMILY_SUBSYSTEM,
-            "SFTP **会话类型名**。monitor 侧 `remote_write_registry` 头注现打过：\
-             按写原语的方法名取样 = 8 份文件、6 份是本机噪声；换成「谁持有 SFTP 会话」\
-             = 3 份、零噪声。⇒ **会话对象是远端写那条路的扼流点**，方法名不是。",
+            "SFTP **会话类型名**：按写原语的方法名取样混进本机噪声，按「谁持有 SFTP 会话」零噪声 \
+             ⇒ **会话对象是远端写那条路的扼流点**，方法名不是。",
         ),
         (
             FAMILY_SUBSYSTEM,
