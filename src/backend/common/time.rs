@@ -447,6 +447,12 @@ pub(crate) fn hit_text(ts_ms: i64, tz: &Tz) -> String {
     hit_time(tz.local(ts_ms.div_euclid(1_000)), tz.local(now_secs()))
 }
 
+/// 历史页行尾那一格（一行的 `at` · 一组的最近活动同一个写法）：毫秒，按看的那一台的时区。
+pub(crate) fn history_at_text(at: i64, now_ms: i64, tz: &Tz) -> crate::common::cells::Words {
+    let l = |ms: i64| tz.local(ms.div_euclid(1_000));
+    crate::common::cells::Words(row_time(l(at), l(now_ms)))
+}
+
 /// **历史页一行的三格**：`at` ⇒ 行尾那一格 ＋ 分段头；`from` → `to` ⇒ 内容头那一段。
 /// 时刻是毫秒；按看的那一台的时区排（偏移按各自那一刻）。
 pub(crate) fn history_times(
@@ -463,7 +469,7 @@ pub(crate) fn history_times(
     let l = |ms: i64| tz.local(ms.div_euclid(1_000));
     let now = l(now_ms);
     (
-        crate::common::cells::Words(row_time(l(at), now)),
+        history_at_text(at, now_ms, tz),
         crate::common::cells::Words(section_text(l(at), now)),
         crate::common::cells::Words(span_text(l(from), l(to), now)),
     )

@@ -759,6 +759,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -770,6 +774,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -849,6 +857,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -860,6 +872,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1009,6 +1025,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -1020,6 +1040,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1302,6 +1326,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -1313,6 +1341,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1465,6 +1497,10 @@ kind: FileKind,
  */
 size?: number, 
 /**
+ * `size` 写好的字（`2.1 MB`）。
+ */
+size_text?: string, 
+/**
  * 要放过去的那一项的修改时刻，后端按看的那一台的钟写好（当天 `14:02` · 当年 `10-12 14:02` · 别的年带年份）。
  */
 mtime_text?: string, 
@@ -1476,6 +1512,10 @@ there: FileKind,
  * 已在那儿的那一项的大小（文件）。
  */
 there_size?: number, 
+/**
+ * `there_size` 写好的字。
+ */
+there_size_text?: string, 
 /**
  * 已在那儿的那一项的修改时刻（同 [`Conflict::mtime_text`] 的写法）。
  */
@@ -1607,8 +1647,13 @@ type WirePath = string | { b16: string };
 入参 `FindReq` · 回包 `FindReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type FileKind = "dir" | "file" | "symlink" | "other";
 type FilesFindHit = { path: WirePath, kind: FileKind, 
+/**
+ * 画哪种图标（索引不跟链接 ⇒ 链接画 [`FileClass::Link`]）。
+ */
+class: FileClass, 
 /**
  * 相对搜索起点的那一段（所在目录）。
  */
@@ -1680,13 +1725,24 @@ type WirePath = string | { b16: string };
 
 ```ts
 type Crumb = { name: WirePath, path: WirePath, };
+type FileClass = "folder" | "text" | "code" | "image" | "archive" | "pdf" | "link" | "other";
 type FileKind = "dir" | "file" | "symlink" | "other";
+type Gate = { "cap": number } | { "no": string };
+type Gates = { preview: PreviewGate, 
+/**
+ * 查看页：只在两端解得开的那几种图上有。
+ */
+view?: Gate, edit: Gate, };
 type LinkTo = "dir" | "file" | "missing";
 type LsEntry = { path: WirePath, 
 /**
  * 末段名（那台按自己的分隔符切好）。
  */
-name: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+name: WirePath, kind: FileKind, size?: number, 
+/**
+ * `size` 写好的字（`2.1 MB`，`copy_core::size_text`）；目录 · 指向目录的链接 · 读不到大小的 ⇒ 缺。
+ */
+size_text?: string, mtime_secs?: number, 
 /**
  * 那台按本地钟写好的短写法。
  */
@@ -1702,7 +1758,19 @@ link_dir?: boolean,
 /**
  * 链接指向哪一种（只在链接上）。
  */
-link_to?: LinkTo, };
+link_to?: LinkTo, 
+/**
+ * 画哪种图标（链接画它指向的那一种：指向目录 ⇒ 文件夹，其余按名字）。
+ */
+class: FileClass, 
+/**
+ * 「类型」那一列的字（那台写好）。
+ */
+type_text: string, 
+/**
+ * 读得起来的那几道门；目录（含指向目录的链接）缺。
+ */
+gates?: Gates, };
 type LsReply = { 
 /**
  * 排好的（[`LsReq::sort`]）。
@@ -1742,7 +1810,9 @@ dirs_only?: boolean,
  */
 sort?: LsSort, };
 type LsSort = { by: LsSortBy, reverse?: boolean, };
-type LsSortBy = "name" | "size" | "mtime";
+type LsSortBy = "name" | "size" | "mtime" | "type";
+type PreviewGate = { "text": TextPreview } | { "image": number } | { "no": string };
+type TextPreview = { cap: number, lang?: string, };
 type WirePath = string | { b16: string };
 ```
 
@@ -1758,7 +1828,15 @@ type WirePath = string | { b16: string };
 
 ```ts
 type FileKind = "dir" | "file" | "symlink" | "other";
-type StatReply = { path: WirePath, kind: FileKind, size: number, readonly: boolean, 
+type StatReply = { path: WirePath, 
+/**
+ * 末段名（那台按自己的分隔符切好；到顶 ⇒ 空）。
+ */
+name: WirePath, 
+/**
+ * 上一级；到顶 ⇒ `null`。
+ */
+up: WirePath | null, kind: FileKind, size: number, readonly: boolean, 
 /**
  * unix 权限位低 12 位；非 unix 缺席。
  */
@@ -1949,7 +2027,7 @@ path: string | null,
  */
 now: number, 
 /**
- * 每个出过数的号一条，按 `(agent, account)` 排。
+ * 每个出过数的号一条，按 `(agent, account)` 排（不按能不能发重排：额度一变就重读，按状态排的话卡片会跳位）。
  */
 accounts: Array<QuotaAccount>, 
 /**
@@ -1979,7 +2057,11 @@ fiveHour: Words | null,
 /**
  * 号名 / 位名表（出口画号名 · 位名只照它）。
  */
-names: QuotaNames, };
+names: QuotaNames, 
+/**
+ * 「现在还能不能发」那两行写好的字（用量页的结论 · 全满时那一句）；读不出 / 一个号都没有 ⇒ `null`（那时看 `text`）。
+ */
+verdict: QuotaVerdict | null, };
 type QuotaReadState = "present" | "absent" | "unreadable";
 type QuotaReadingShown = { 
 /**
@@ -2011,6 +2093,7 @@ fiveHour: Words | null, warm: QuotaWarm, agent: AgentKind, account: string, kind
  */
 usage: QuotaUnseenUsage, };
 type QuotaUnseenUsage = { slot?: string, window?: Words, value: Words, text: Words, tone: "plain" | "fail" | "warn", };
+type QuotaVerdict = { text: string, sub: string | null, tone: "plain" | "fail" | "warn", };
 type QuotaWarm = { act: QuotaWarmAct, at?: number, 
 /**
  * `at` 写给人看的样子（`Warm::stamp`）。
@@ -2049,6 +2132,10 @@ resetsAtText?: string,
  */
 resetsAtRelText?: string, 
 /**
+ * 重置那一格写好的字（`↻18:30` · 已过 `↻13:10 已过`；同 `rows` 里那一格）；说不出几点 ⇒ 缺。
+ */
+resetText?: string, 
+/**
  * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
  */
 full?: boolean, 
@@ -2059,7 +2146,11 @@ text: string,
 /**
  * 那一格的语气：用满 · 被拒 ⇒ `fail`；超额在兜 · 卡着的窗口快满 ⇒ `warn`；否则 `plain`。
  */
-tone: "plain" | "fail" | "warn", };
+tone: "plain" | "fail" | "warn", 
+/**
+ * 这一格那个窗口「1% ≈ 多少用量」写好的字（`1% ≈ 2.1M`，同 [`WindowShow::per_pct_text`]）；量不到 ⇒ 缺。
+ */
+perPctText?: string, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type Usage = { 
 /**
@@ -2125,9 +2216,17 @@ seenAtRelText?: string, from: QuotaSource,
  */
 tokensPerPct?: number, 
 /**
+ * `tokens_per_pct` 写好的字（`1% ≈ 2.1M`）；量不到 ⇒ 缺。
+ */
+perPctText?: string, 
+/**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */
-resetSinceSeen?: boolean, };
+resetSinceSeen?: boolean, 
+/**
+ * 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };
 type Words = string;
 ```
 
@@ -2436,7 +2535,11 @@ type RotationStrategiesReq = Record<symbol, never>;
 入参 `RotationViewReq` · 回包 `RotationViewReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Fact = { 
+type FactBlocked = { why: FactWhy, until?: number, text: string, };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type QuotaKind = "sub" | "api";
+type RotAccount = { plate: RotPlate, 
 /**
  * 路由第 2 段。
  */
@@ -2449,10 +2552,6 @@ seenAt?: number,
  * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
  */
 blocked?: FactBlocked, };
-type FactBlocked = { why: FactWhy, until?: number, text: string, };
-type FactWhy = "refused" | "overage" | "used" | "login" | "key";
-type LoginState = "ok" | "needsLogin" | "needsKey";
-type QuotaKind = "sub" | "api";
 type RotBadCell = { cell: string, code: string, };
 type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
 /**
@@ -2487,7 +2586,7 @@ type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
 type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
 type RotPastUse = { from: number, to: number, account?: string, };
-type RotPlate = { color: number, label: Words, };
+type RotPlate = { color: number, label: Words, text: Words, };
 type RotRefused = { cells: Array<RotBadCell>, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
@@ -2606,13 +2705,9 @@ dirty: boolean,
  */
 start: string, current: string, 
 /**
- * 每个号的事实，照号列表的先后（列表里没有的接在后面）。
+ * 每个号的事实 ＋ 号牌，照号列表的先后（列表里没有的接在后面）。
  */
-accounts: Array<Fact>, 
-/**
- * `accounts` 里每个号的号牌（号色 · 号名），按号 id。
- */
-plates: { [key in string]: RotPlate }, 
+accounts: Array<RotAccount>, 
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
@@ -3006,7 +3101,11 @@ quota: Words | null,
  * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
  * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
  */
-unselectable: Words | null, name: string, 
+unselectable: Words | null, 
+/**
+ * 给不给［登录…］：需登录、而这一家能在 app 里登录 ⇒ `true`（需登录却登不了的，`unselectable` 那一句说为什么）。
+ */
+login: boolean, name: string, 
 /**
  * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
  */
@@ -4069,6 +4168,7 @@ type Entry = { starred: boolean, customTitle: string | null,
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
 hide?: Hide, updatedAt: number, };
+type ForkedFrom = { label: string, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -4078,6 +4178,10 @@ type HistoryGroup = { key: string, agent: string, projectName: string, projectPa
  * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
  */
 hasLive: boolean | null, starred: boolean, lastActivity: number, 
+/**
+ * `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+ */
+atText: string | null, 
 /**
  * 几台的组并成一列时按它（大的在前）。
  */
@@ -4177,7 +4281,11 @@ type HistoryRow = { agent: string, sessionId: string, projectPath: string, proje
 /**
  * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+/**
+ * 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
+ */
+forkedFrom?: ForkedFrom, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */
@@ -4243,6 +4351,7 @@ fork: boolean,
 delete: CanDelete, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type ForkedFrom = { label: string, };
 type HistorySearchReply = { 
 /**
  * 每命中会话一行，最近优先。
@@ -4294,7 +4403,11 @@ kind: string, before: string, matched: string, after: string,
 /**
  * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
  */
-tool?: string, };
+tool?: string, 
+/**
+ * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+ */
+offset: number, };
 type SearchScope = "user" | "assistant" | "report";
 type SessionHits = { 
 /**
@@ -4328,7 +4441,11 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, };
 ```
 
 码：`bad_args` · `failed` · `too_large`
@@ -4361,6 +4478,7 @@ fork: boolean,
 delete: CanDelete, };
 type CanDelete = "yes" | "live" | "unsure";
 type CanResume = "yes" | "switch" | "bg";
+type ForkedFrom = { label: string, };
 type HistorySearchMergeReq = { machines: Array<MachineHits>, };
 type Liveness = "live" | "ended";
 type MachineHits = { origin: Origin, sessions: Array<SessionHits>, };
@@ -4421,7 +4539,11 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, };
 type Origin = string;
 type SearchHit = { 
 /**
@@ -4435,7 +4557,11 @@ kind: string, before: string, matched: string, after: string,
 /**
  * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
  */
-tool?: string, };
+tool?: string, 
+/**
+ * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+ */
+offset: number, };
 type SessionHits = { 
 /**
  * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
@@ -4468,7 +4594,11 @@ status: Liveness,
 /**
  * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
  */
-can: Can, };
+can: Can, 
+/**
+ * 分叉来的：父会话的显示标题（同历史清单那一格）；不是分叉来的 · 父会话这一趟没走到 ⇒ 缺。
+ */
+forkedFrom?: ForkedFrom, };
 ```
 
 码：`bad_args`
@@ -6054,7 +6184,12 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
@@ -6357,7 +6492,12 @@ id: string, text: Words, tone: Tone,
 /**
  * 要不要附一句话：none · optional · required。
  */
-note: NeedsNote, };
+note: NeedsNote, 
+/**
+ * 排在哪一段（出口照它分段，不按 id 认）。
+ */
+row: NeedsChoiceRow, };
+type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
@@ -9970,6 +10110,29 @@ seen_screen?: string, };
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
 
+#### `session-resume`
+
+终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-resume` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionResumeReq` · 回包 `Resumed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Resumed = { session: string, };
+type SessionResumeReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 自报的前端（同 `session-say`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `elsewhere` · `not_resumed` · `no_tmux`
+
 #### `terminal-follow`
 
 订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）。
@@ -12758,6 +12921,7 @@ needs: string | null, };
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
+| `--session-resume` | ＝ 帧命令 `session-resume`：终端没了的会话先在这台恢复（同说一句里恢复那一支，不带那一句），回它落在哪个 tmux 会话 |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |

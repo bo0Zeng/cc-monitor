@@ -822,7 +822,7 @@ impl Workspace {
             self.notice = Some(copy_text("rsFilewinSelect.refusal.none", &[]));
             return false;
         }
-        if let Some(r) = rows.iter().find(|r| !super::copy::copyable(r)) {
+        if let Some(r) = rows.iter().find(|r| !r.pick().copyable()) {
             self.notice = Some(copy_text(
                 "rsFilewinWorkspace.copyToOther.unaddressable",
                 &[("name", &r.name.to_string())],

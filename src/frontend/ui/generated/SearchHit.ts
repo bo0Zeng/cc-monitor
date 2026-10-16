@@ -15,4 +15,8 @@ kind: string, before: string, matched: string, after: string,
 /**
  * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
  */
-tool?: string, };
+tool?: string, 
+/**
+ * 这条记录那一行在记录文件里的起点（字节；交给 `history-read` 的 `offset` 就从它读起）。
+ */
+offset: number, };

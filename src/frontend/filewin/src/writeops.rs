@@ -132,9 +132,6 @@ pub static CHMOD_LABEL: std::sync::LazyLock<String> =
 /// ⇒ **能写**：发给后端的相对段走 `{"b16": …}`（[`rel_json`]），寻址的是那几个真字节，不是显示串。
 /// 此前这一档一律灰置 —— 乱码名的文件在窗口上改不了名、删不掉，而「改成一个读得出的名字」正是它最常要的那一下。
 ///
-/// ⚠ 与 [`super::copy::is_copyable`] **刻意不是同一个函数**：目录**能**改名 /
-/// 删除 / 改权限，但**不能**零流量复制（`copy-data` 吃的是文件句柄）。
-/// 合成一个就得让目录那一档在四个按钮上做不同的事，而那正是「一个函数两种语义」。
 pub fn is_writable(r: &Listed) -> bool {
     !r.lossy_name || r.raw_name.is_some()
 }

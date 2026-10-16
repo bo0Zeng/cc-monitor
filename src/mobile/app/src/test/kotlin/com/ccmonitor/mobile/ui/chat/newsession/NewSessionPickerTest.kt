@@ -41,7 +41,18 @@ class NewSessionPickerTest {
         name: String,
         selectable: Boolean = true,
         color: Int = 0,
-    ) = mapOf("name" to name, "configDir" to "/a/$name", "mode" to "isolated", "selectable" to selectable, "loggedIn" to selectable, "color" to color.toDouble())
+    ) = mapOf(
+        "name" to name,
+        "label" to name,
+        "configDir" to "/a/$name",
+        "mode" to "isolated",
+        "selectable" to selectable,
+        "color" to color.toDouble(),
+        "plate" to name.take(2),
+        "quota" to if (selectable) "5h ${name.length}%" else null,
+        "unselectable" to if (selectable) null else "需登录",
+        "login" to !selectable,
+    )
 
     private fun accounts(
         names: List<Map<String, Any?>> = listOf(acct("work"), acct("personal", color = 2), acct("team", selectable = false, color = 1)),
@@ -59,13 +70,6 @@ class NewSessionPickerTest {
             "oldScripts" to 0.0,
         )
 
-    private val quota =
-        mapOf(
-            "state" to "present",
-            "accounts" to listOf(mapOf("account" to "work", "rows" to emptyList<Any>(), "fiveHour" to "5h 63%"), mapOf("account" to "personal", "rows" to emptyList<Any>(), "fiveHour" to "5h 12%")),
-            "unseen" to emptyList<Any>(),
-        )
-
     private fun link(
         f: Map<String, Any?> = facts(),
         a: (Map<String, Any?>?) -> Map<String, Any?> = { accounts() },
@@ -75,7 +79,6 @@ class NewSessionPickerTest {
                 "session-new-facts" -> ok(f)
                 "files-home" -> ok(mapOf("path" to "/h/me"))
                 "accounts-list" -> ok(a(args))
-                "quota-read" -> ok(quota)
                 "rotation-strategies" -> ok(strategies)
                 "session-new-dir" -> ok(mapOf("exists" to (args?.get("cwd") != "/h/gone"), "tmuxName" to null))
                 "accounts-set-default" -> ok(mapOf("applied" to true))
@@ -155,7 +158,7 @@ class NewSessionPickerTest {
         }
 
     @Test
-    fun `账号抽屉：打开那一刻问一次账号 · 额度 · 轮换；额度字照那个号的 5h 那一格；新会话用的那份是默认`() =
+    fun `账号抽屉：打开那一刻问一次账号 · 轮换（5h 那一格就在号行上，不另问额度）；新会话用的那份是默认`() =
         runTest {
             val l = link()
             val p = picker(l)
@@ -163,9 +166,9 @@ class NewSessionPickerTest {
             p.openAccounts()
             runCurrent()
             assertEquals(before + 1, l.calls("accounts-list").size)
-            assertEquals(1, l.calls("quota-read").size)
+            assertEquals(0, l.calls("quota-read").size)
             val s = p.state.value
-            assertEquals(mapOf("work" to "5h 63%", "personal" to "5h 12%"), s.quota)
+            assertEquals(listOf("5h 4%", "5h 8%", null), s.accounts.map { it.quota })
             assertEquals(listOf("night", "spread"), s.strategies?.map { it.id })
             assertEquals("spread", s.rotation)
             assertEquals("spread", s.forNew)

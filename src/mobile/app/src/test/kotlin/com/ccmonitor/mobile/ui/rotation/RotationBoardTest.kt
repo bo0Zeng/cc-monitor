@@ -35,7 +35,6 @@ class RotationBoardTest {
             more(cmd, args) ?: when (cmd) {
                 Rotation.STRATEGIES -> Reply.Ok(strategies())
                 Rotation.VIEW -> Reply.Ok(view())
-                "accounts-list" -> Reply.Ok(mapOf("accounts" to listOf(mapOf("name" to "work", "label" to "Work", "color" to 2.0, "configDir" to "/c", "mode" to "isolated", "selectable" to true)), "meta" to emptyMap<String, Any?>()))
                 else -> Reply.Ok(emptyMap<String, Any?>())
             }
         }
@@ -44,7 +43,7 @@ class RotationBoardTest {
     }
 
     @Test
-    fun `会话：读 rotation-view {sid} 推 12 小时；号牌名字照账号库的 label；四块画的全是回包里的那一份`() =
+    fun `会话：读 rotation-view {sid} 推 12 小时；号牌照每个号身上那一枚（不另问账号清单）；四块画的全是回包里的那一份`() =
         runTest {
             val (link, b) = board()
             val s = b.state.value
@@ -60,6 +59,9 @@ class RotationBoardTest {
             assertEquals("team", s.view.current)
             assertEquals("Work", b.label("work"))
             assertEquals("lab", b.label("lab"))
+            assertEquals("视图里没有的号照原名", "nope", b.label("nope"))
+            assertEquals("wo", s.plate("work")?.text)
+            assertTrue("不另问账号清单", link.calls("accounts-list").isEmpty())
             assertEquals(listOf("spread", "night"), s.list?.strategies?.map { it.id })
         }
 

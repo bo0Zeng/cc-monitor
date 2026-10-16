@@ -1046,7 +1046,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// （入参 items ＋ 可选票，回 BatchReply；删目录不再分趟、没有 remaining）· 两台之间复制一组 · 撤一组 · 进度帧 files_batch；
 /// transfer-upload 收一组、先在落点探同名；同名清单的时刻字由后端写。会话帧 · 清单 · 需手动每行多 hidden（不隐藏为 null）、
 /// 推帧主题 session_hidden、history-annotate 回包带 prev；偏好多 childTab · bgTab · pbDir；ccm 多 --tab · --no-rotation。
-pub const BUILD_ID: &str = "p10p-batch-hide";
+///
+/// p10q-route-kind：子命令集多 --profiles-from-line、通道多 profiles-from-line。额度 · 轮换 · 账号清单的类型进 cmd-wire，
+/// 线上带 agent 的那几格只认 kind（认不出 ⇒ bad_args）；每号多「1% 约多少用量」；「一轮结束」与 endsTurn 删；
+/// ssh-config-import 带 partial；帧形状进 cmd-wire（字节不变）；files-stat 回包多 name · up ⇒ 形状指纹表与冻结格跟着变。
+pub const BUILD_ID: &str = "p10q-route-kind";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1416,6 +1420,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-commands",
     "--session-model",
     "--session-permission",
+    "--session-resume",
     "--session-say",
     "--sessions-start",
     "--sessions-stop",
@@ -1906,6 +1911,13 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     },
     TargetGap {
         family: "wire-commands",
+        capability: "session-resume",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "恢复再附着：同 `session-say` 终端没了那一支（在 tmux 里起）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
         capability: "session-say",
         target: Target::Windows,
         kind: GapKind::Owed,
@@ -1938,6 +1950,13 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `session-permission` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--session-resume",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `session-resume` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",

@@ -276,6 +276,10 @@ impl crate::wire::typed::Handle for AccountsListCmd {
                 &cx.tz,
             );
             with_quota(&mut v, &quota, kind);
+            crate::observe::accounts_query::with_sign_in(
+                &mut v,
+                crate::agents::accounts_face(kind).is_some_and(|f| f.sign_in.is_some()),
+            );
             let size = serde_json::to_string(&v).map_or(0, |t| t.len());
             if size > LINES_CAP_BYTES {
                 return Err(AccountsListErr::TooLarge(too_large(size).1));

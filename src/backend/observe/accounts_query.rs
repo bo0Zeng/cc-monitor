@@ -382,6 +382,26 @@ fn unselectable_of(a: &ScannedAccount, api_key: bool) -> Option<String> {
     })
 }
 
+/// 选不了只差登录（四条里只有「需登录」那一条没过）。
+fn needs_login(a: &ScannedAccount) -> bool {
+    !a.selectable
+        && a.config_dir.is_some()
+        && a.mode == "isolated"
+        && a.exists
+        && a.auth_kind != acct_core::AUTH_KIND_API_KEY
+}
+
+/// ★ 每个号给不给［登录…］（唯一一处）：只差登录、而这一家能在 app 里登录（`sign_in`）⇒ 给；只差登录却登不了 ⇒ 那一句换成「需登录 · 不支持在 app 里登录」。
+pub(crate) fn with_sign_in(list: &mut AccountsList, sign_in: bool) {
+    for r in &mut list.accounts {
+        let need = needs_login(&r.scanned);
+        r.login = need && sign_in;
+        if need && !sign_in {
+            r.unselectable = Some(Words(copy_text("accounts.row.loginElsewhere", &[])));
+        }
+    }
+}
+
 /// 号目录里那份凭据文件的名字（「已登录」只 stat 它在不在；watcher 盯它出现 / 变了）。
 pub(crate) const CREDENTIALS_FILE: &str = CREDENTIALS_NAME;
 
@@ -576,6 +596,7 @@ pub(crate) fn list_product_with(
                 plate: Words(crate::accounts::quota::name_words::plate_text(&a.name)),
                 quota: None,
                 unselectable: unselectable_of(&a, api_key).map(Words),
+                login: false,
                 scanned: a,
             }
         })

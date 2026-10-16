@@ -11,25 +11,6 @@ use super::source::Row;
 pub static COPY_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinCopy.label.copy", &[]));
 
-/// 这一行能不能复制。**唯一住址** —— 列表画不画那颗按钮（[`super::rows`]）
-/// 与状态机接不接那一跳（[`super::shell::FileWindow::begin_copy`]），问的都是这一个函数。
-///
-/// **目录能复制了**：后端 `files-copy` 带 `recursive: true` 复制整棵（逐条目过路径解析）。
-/// 今天不能的只剩一档：
-///
-/// - **有损名** —— 非 UTF-8 文件名经库有损解码之后**寻址不到真字节**，
-///   一切写操作灰置（同旧面板 `panel.ts::mkRowBtn` 的 `disabled = e.lossyName`）。
-pub fn is_copyable(r: &Row) -> bool {
-    !r.lossy_name
-}
-
-/// 〔「有损名的…复制」〕**窗口里一行**能不能复制：名字寻址得到，或者有损但带着原始字节
-/// （后端 `files-ls` 送的，`Listed::raw_name`）—— 线上那一形走字节（[`super::source::RemotePath`]）。
-/// 行上那颗按钮、右键菜单、「复制到另一栏」问的都是它；[`is_copyable`] 留着给只有那五格的地方。
-pub fn copyable(l: &super::source::Listed) -> bool {
-    !l.lossy_name || l.raw_name.is_some()
-}
-
 /// 「复制到另一栏」的一件：同一台远端，`from` → `to`（整条路径）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CopyJob {
