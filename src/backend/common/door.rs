@@ -253,7 +253,7 @@ pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<()
     only(d.chmod(wire::FilesChmodReq {
         root: wp(root),
         items: vec![wire::ChmodItem { rel: wp(rel) }],
-        mode,
+        mode: format!("{mode:o}"),
         ticket: None,
     }))
     .map_err(|e| refused(e).said())

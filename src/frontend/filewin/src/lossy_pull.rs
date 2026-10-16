@@ -131,6 +131,7 @@ pub async fn pull_by_bytes(
         },
         chunks: Some(s.chunks),
         bytes: Some(s.bytes),
+        single: Some(true),
     };
     ask_typed(line, &here, &req, super::transfer::COMMIT_BUDGET)
         .await

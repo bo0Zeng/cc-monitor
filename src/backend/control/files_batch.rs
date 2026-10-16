@@ -420,7 +420,7 @@ fn delete_item(
 pub(crate) fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<BatchReply, WriteFail> {
     let root = root_of(&req.root, "root")?;
     let total = req.items.len();
-    let mode = req.mode;
+    let mode = super::files_write::mode_of_text(&req.mode)?;
     let items = req.items;
     ticketed(
         req.ticket.as_deref(),

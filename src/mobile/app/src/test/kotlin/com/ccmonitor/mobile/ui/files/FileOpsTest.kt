@@ -103,12 +103,4 @@ class FileOpsTest {
             val e = FileOps(FakeCoreLink()) { "box" }.list(dir).exceptionOrNull() as FileOps.Failed
             assertEquals(copyText("front.body.offline", "machine" to "box"), e.problem.text)
         }
-
-    @Test
-    fun theModeIsTypedAsOctalDigits() {
-        assertEquals(420L, FileOps.modeOf("644").getOrThrow())
-        assertEquals(copyText("rsFilewinWriteops.mode.empty"), FileOps.modeOf(" ").exceptionOrNull()?.message)
-        assertEquals(copyText("rsFilewinWriteops.mode.notOctal"), FileOps.modeOf("69").exceptionOrNull()?.message)
-        assertEquals(copyText("rsFilewinWriteops.mode.outOfRange"), FileOps.modeOf("17777").exceptionOrNull()?.message)
-    }
 }

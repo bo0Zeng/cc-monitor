@@ -830,7 +830,6 @@ impl Workspace {
             return false;
         }
         let other = 1 - self.focus;
-        let dest_dir = self.pane_on(other).cwd.clone();
         let dest_path = self.pane_on(other).cwd_path();
         if dest_path == from.cwd_path() {
             self.notice = Some(copy_text("rsFilewinWorkspace.copyToOther.sameDir", &[]).into());

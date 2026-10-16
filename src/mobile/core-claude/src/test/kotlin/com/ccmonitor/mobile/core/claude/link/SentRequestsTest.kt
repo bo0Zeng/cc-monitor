@@ -21,7 +21,7 @@ class SentRequestsTest {
         mapOf(
             AccountsList.COMMAND to listOf(AccountsList.args("claude"), AccountsList.args("")),
             AccountsSetDefault.COMMAND to listOf(AccountsSetDefault.args("a")),
-            FilesChmod.COMMAND to listOf(FilesChmod.args(dir, bin, 420L)),
+            FilesChmod.COMMAND to listOf(FilesChmod.args(dir, bin, "644")),
             FilesCommitUpload.COMMAND to listOf(FilesCommitUpload.args(dir, "up.bin", "k", SHA, 3L, 9L)),
             FilesCreate.COMMAND to listOf(FilesCreate.args(dir, "a.txt")),
             FilesDelete.COMMAND to listOf(FilesDelete.args(dir, bin, recursive = true), FilesDelete.args(dir, bin, recursive = false)),

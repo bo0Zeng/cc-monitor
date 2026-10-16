@@ -501,15 +501,14 @@ private fun DeleteDialog(
     )
 }
 
-/** 改权限：敲八进制（同桌面）；此刻的权限位写在框下。 */
+/** 改权限：敲八进制（同桌面），原样交那台判；此刻的权限位写在框下。 */
 @Composable
 private fun ChmodDialog(
     d: FilesDialog.Chmod,
     onDismiss: () -> Unit,
-    onConfirm: (Long) -> Unit,
+    onConfirm: (String) -> Unit,
 ) {
     var value by remember(d) { mutableStateOf(d.now.orEmpty()) }
-    val parsed = FileOps.modeOf(value)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(copyText("rsFilewinWriteops.heading.chmodOne", "name" to d.entry.name), maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -517,19 +516,16 @@ private fun ChmodDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value, { value = it }, singleLine = true, textStyle = monoSmall, modifier = Modifier.fillMaxWidth())
                 val hint =
-                    parsed.exceptionOrNull()?.message
-                        ?: d.now?.let { copyText("rsFilewinWriteops.mode.now", "mode" to it) }
+                    d.now?.let { copyText("rsFilewinWriteops.mode.now", "mode" to it) }
                         ?: copyText("rsFilewinWriteops.mode.unreadable")
                 Text(hint, style = monoSmall, color = LocalAppTokens.current.textFaint)
             }
         },
         confirmButton = {
             SecondaryButton(onClick = {
-                parsed.onSuccess {
-                    onConfirm(it)
-                    onDismiss()
-                }
-            }, enabled = parsed.isSuccess) { Text(copyText("rsFilewinWriteops.label.chmod")) }
+                onConfirm(value)
+                onDismiss()
+            }) { Text(copyText("rsFilewinWriteops.label.chmod")) }
         },
         dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )

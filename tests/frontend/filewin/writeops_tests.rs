@@ -124,7 +124,7 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
         },
         WriteOp::Chmod {
             path: "/home/u/.claude/sessions/4321.json".to_string(),
-            mode: 0o600,
+            mode: "600".into(),
             raw: None,
         },
         WriteOp::Rename {
@@ -208,7 +208,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         &origin,
         &WriteOp::Chmod {
             path: "/srv/data/x".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None,
         },
     )
@@ -245,7 +245,7 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
     let mut ops = dels.clone();
     ops.push(WriteOp::Chmod {
         path: "/srv/data/c".into(),
-        mode: 0o755,
+        mode: "755".into(),
         raw: None,
     });
     ops.push(WriteOp::Mkdir {
@@ -471,7 +471,7 @@ fn exactly_delete_asks_first() {
         },
         WriteOp::Chmod {
             path: "/a".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None,
         },
     ];
@@ -516,7 +516,7 @@ fn every_op_can_say_what_it_is() {
     assert_eq!(
         WriteOp::Chmod {
             path: "/srv/a".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None,
         }
         .label(),
@@ -570,17 +570,16 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
         p.to_op().unwrap(),
         WriteOp::Chmod {
             path: "/srv/data/a.bin".into(),
-            mode: 0o755,
+            mode: "755".into(),
             raw: None,
         }
     );
 }
 
-/// 🔴 **名字合不合法不在窗口判**：框里敲什么（去掉两头空白）就交什么，那台按它的平台判（`single`，不合 ⇒ `bad_name`）。
-/// 权限位与「改名成原名」这两档仍在这里拒：一个是这一格的写法，一个是没有要做的事。
-/// 逐档的理由住 `super::parse_mode`：权限超范围 = 把文件类型位也一起改（服务端行为未定义）。
+/// 🔴 **名字与权限位都不在窗口判**：框里敲什么（去掉两头空白）就交什么，那台判（名字带 `single`，不合 ⇒ `bad_name`；
+/// 权限位的八进制那台解，不合 ⇒ `refused`）。只有「改名成原名」在这里拒：没有要做的事。
 #[test]
-fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
+fn typed_names_and_modes_go_to_the_far_side_as_typed() {
     let r = row("a.bin", false, false);
     for typed in ["", "sub/x", ".", "..", "CON"] {
         let mut p = WritePrompt::for_mkdir("/srv/data");
@@ -598,16 +597,17 @@ fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
     p.text = " a.bin ".into();
     assert!(p.to_op().is_err(), "改名成原名竟然过了");
 
-    for bad in ["", "  ", "abc", "899", "10000", "-1", "0x644"] {
+    for typed in ["", "abc", "899", "10000", "0x644", "0755"] {
         let mut p = WritePrompt::for_chmod("/srv/data", &r);
-        p.text = bad.into();
-        assert!(p.to_op().is_err(), "权限位接受了「{bad}」");
-    }
-    // 反空真：合法的那几个真的过。
-    for good in ["644", "0755", "7777", "0"] {
-        let mut p = WritePrompt::for_chmod("/srv/data", &r);
-        p.text = good.into();
-        assert!(p.to_op().is_ok(), "权限位拒了合法的「{good}」");
+        p.text = format!(" {typed} ");
+        assert_eq!(
+            p.to_op().expect("权限位交给那台判，窗口不拒"),
+            WriteOp::Chmod {
+                path: "/srv/data/a.bin".into(),
+                mode: typed.into(),
+                raw: None,
+            }
+        );
     }
 }
 
@@ -679,7 +679,7 @@ async fn the_board_answers_once_and_only_once() {
         },
         WriteOp::Chmod {
             path: "/b".into(),
-            mode: 0o600,
+            mode: "600".into(),
             raw: None,
         },
     ];
@@ -768,7 +768,7 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         },
         WriteOp::Chmod {
             path: "/srv/data/y.bin".into(),
-            mode: 0o640,
+            mode: "640".into(),
             raw: None,
         },
     ];
@@ -782,7 +782,7 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         serde_json::json!({ "cmd": "files-mkdir", "args": { "root": "/srv/data", "rel": "新目录", "single": true } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "x.bin" }] } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": "x.bin", "to": "y.bin", "single": true } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": 0o640 } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": "y.bin" }], "mode": "640" } }),
     ];
     assert_eq!(got, want, "线上那四行与期望不等");
 }
@@ -826,7 +826,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         },
         WriteOp::Chmod {
             path: "/srv/data/caf\u{FFFD}.txt".into(),
-            mode: 0o600,
+            mode: "600".into(),
             raw: Some(raw.clone()),
         },
     ];
@@ -841,7 +841,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": "build", "recursive": true }] } }),
         serde_json::json!({ "cmd": "files-delete", "args": { "root": "/srv/data", "items": [{ "rel": b16 }] } }),
         serde_json::json!({ "cmd": "files-rename", "args": { "root": "/srv/data", "from": b16, "to": "cafe.txt", "single": true } }),
-        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": 0o600 } }),
+        serde_json::json!({ "cmd": "files-chmod", "args": { "root": "/srv/data", "items": [{ "rel": b16 }], "mode": "600" } }),
     ];
     assert_eq!(got, want, "线上那几行与期望不等");
     // 往返上限：删目录那一件放宽，其余照旧。
@@ -900,17 +900,17 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
         vec![
             WriteOp::Chmod {
                 path: "/srv/data/a.bin".into(),
-                mode: 0o750,
+                mode: "750".into(),
                 raw: None,
             },
             WriteOp::Chmod {
                 path: "/srv/data/sub".into(),
-                mode: 0o750,
+                mode: "750".into(),
                 raw: None,
             },
             WriteOp::Chmod {
                 path: "/srv/data/\u{FFFD}".into(),
-                mode: 0o750,
+                mode: "750".into(),
                 raw: Some(b"\xff".to_vec()),
             },
         ]
@@ -1040,7 +1040,7 @@ fn gp1_the_current_mode_is_prefilled_at_most_once_and_never_over_what_you_typed(
         p.to_op().expect("合法"),
         WriteOp::Chmod {
             path: "/srv/data/a.bin".into(),
-            mode: 0o640,
+            mode: "640".into(),
             raw: None,
         }
     );
@@ -1147,7 +1147,7 @@ fn the_chmod_grid_and_the_octal_field_follow_each_other() {
     // 只勾上其他人读（第 6 格）⇒ 「—」那一位逐项留原值：640 → 644、600 → 604。
     m.toggle_bit(6);
     assert_eq!(m.text, "", "还有「—」却写出了一个整数");
-    let modes: Vec<u32> = m
+    let modes: Vec<String> = m
         .to_ops()
         .expect("定了几位、其余读得到 ⇒ 算得出")
         .into_iter()
@@ -1156,7 +1156,7 @@ fn the_chmod_grid_and_the_octal_field_follow_each_other() {
             _ => unreachable!(),
         })
         .collect();
-    assert_eq!(modes, vec![0o644, 0o604]);
+    assert_eq!(modes, vec!["644", "604"]);
     // 读不到其中一项 ⇒ 「—」那几位算不出 ⇒ 拒（不猜）；整份填数字就照数字。
     let mut u = WritePrompt::for_chmod_many("/srv", &[&a, &b]);
     apply_prefill(&mut u, &mode_readout(&[Some(0o640), None]));
@@ -1202,7 +1202,7 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
 fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
     let ch = |p: &str, m: u32| WriteOp::Chmod {
         path: p.into(),
-        mode: m,
+        mode: format!("{m:o}"),
         raw: None,
     };
     let ok = WriteOutcome {
@@ -1287,14 +1287,14 @@ fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
     };
     let op = WriteOp::Chmod {
         path: "/s/run.sh".into(),
-        mode: 0o755,
+        mode: "755".into(),
         raw: None,
     };
     assert_eq!(
         chmod_undo(&op, &chmod_reply(Some(420))),
         Some(WriteOp::Chmod {
             path: "/s/run.sh".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None
         })
     );

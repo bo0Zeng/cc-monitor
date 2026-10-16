@@ -3518,7 +3518,7 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
         undo,
         vec![WriteOp::Chmod {
             path: "/srv/data/deploy.sh".into(),
-            mode: 0o644,
+            mode: "644".into(),
             raw: None
         }]
     );

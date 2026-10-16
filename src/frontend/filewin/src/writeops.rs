@@ -178,10 +178,10 @@ pub enum WriteOp {
         name: String,
         raw: Option<Vec<u8>>,
     },
-    /// 改权限位。`mode` 是 unix mode 的低 12 位。
+    /// 改权限位。`mode` 是八进制写法原样（框里敲的那几个字，或九格算出来的数写成八进制）；那台解、那台拒。
     Chmod {
         path: String,
-        mode: u32,
+        mode: String,
         raw: Option<Vec<u8>>,
     },
 }
@@ -211,10 +211,7 @@ impl WriteOp {
             ),
             WriteOp::Chmod { path, mode, .. } => copy_text(
                 "rsFilewinWriteops.op.chmod",
-                &[
-                    ("path", &path.to_string()),
-                    ("mode", &format!("{:o}", mode)),
-                ],
+                &[("path", &path.to_string()), ("mode", &mode.to_string())],
             ),
         }
     }
@@ -400,7 +397,7 @@ pub async fn apply_remote_coded(
                 items: vec![w::ChmodItem {
                     rel: rel_wire(remote_basename(path), raw.as_deref()),
                 }],
-                mode: *mode,
+                mode: mode.clone(),
                 ticket: None,
             };
             super::source::ask_one(line, origin, &req, t)
@@ -429,12 +426,14 @@ pub async fn apply_all(
     };
     let mut out = Vec::with_capacity(ops.len());
     // 一组：(动词, 根, 权限位) ⇒ 那几件。
-    let mut groups: Vec<((super::batch::Verb, String, u32), Vec<WriteOp>)> = Vec::new();
+    let mut groups: Vec<((super::batch::Verb, String, String), Vec<WriteOp>)> = Vec::new();
     for op in ops {
         let key = match &op {
-            WriteOp::Delete { path, .. } => (super::batch::Verb::Delete, parent_dir(path), 0),
+            WriteOp::Delete { path, .. } => {
+                (super::batch::Verb::Delete, parent_dir(path), String::new())
+            }
             WriteOp::Chmod { path, mode, .. } => {
-                (super::batch::Verb::Chmod, parent_dir(path), *mode)
+                (super::batch::Verb::Chmod, parent_dir(path), mode.clone())
             }
             _ => {
                 let r = apply_remote_coded(line, origin, &op, root_raw).await;
@@ -777,21 +776,18 @@ impl WritePrompt {
                 if targets.is_empty() {
                     return Err(copy_text("rsFilewinWriteops.toOps.nothingToChmod", &[]));
                 }
-                // 「数字写法」那一栏有字 ⇒ 照它（整份一个数）；空着 ⇒ 照 3 × 3 勾：定了的位照勾，「—」那几位逐项留原值。
-                if !t.is_empty() {
-                    let mode = parse_mode(t)?;
+                // 「数字写法」那一栏有字、或九格一格都没定 ⇒ 那几个字原样交那台（解与拒都在那台）；
+                // 否则照 3 × 3 勾：定了的位照勾，「—」那几位逐项留原值。
+                let (mask, want) = grid_bits(&self.grid);
+                if !t.is_empty() || mask == 0 {
                     return Ok(targets
                         .iter()
                         .map(|c| WriteOp::Chmod {
                             path: c.path.clone(),
-                            mode,
+                            mode: t.to_string(),
                             raw: c.raw.clone(),
                         })
                         .collect());
-                }
-                let (mask, want) = grid_bits(&self.grid);
-                if mask == 0 {
-                    return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
                 }
                 targets
                     .iter()
@@ -807,7 +803,7 @@ impl WritePrompt {
                         };
                         Ok(WriteOp::Chmod {
                             path: c.path.clone(),
-                            mode: (old & !mask) | want,
+                            mode: format!("{:o}", (old & !mask) | want),
                             raw: c.raw.clone(),
                         })
                     })
@@ -873,9 +869,12 @@ impl WritePrompt {
         self.text = grid_text(&self.grid).unwrap_or_default();
     }
 
-    /// 「数字写法」那一栏改了 ⇒ 是一个能用的数就把九格照它摆；不是就不动九格（框上那一句说为什么）。
+    /// 「数字写法」那一栏改了 ⇒ 读得成一个权限位就把九格照它摆，读不成就不动九格（只是摆格子；能不能用由那台判）。
     pub fn typed(&mut self) {
-        if let Ok(m) = parse_mode(self.text.trim()) {
+        if let Some(m) = u32::from_str_radix(self.text.trim(), 8)
+            .ok()
+            .filter(|m| *m <= 0o7777)
+        {
             self.grid = grid_of(Some(m & 0o777));
         }
     }
@@ -936,23 +935,6 @@ pub fn grid_text(g: &[Option<bool>; 9]) -> Option<String> {
 /// 「新建空文件」（[`super::create`]）问的也是这一个函数。
 pub(super) fn clean_name(t: &str) -> String {
     t.trim().to_string()
-}
-
-/// 八进制权限位。
-///
-/// ⚠ 掩到 `0o7777` 那一步在池子里（`sftp_pool::sftp_chmod` 转给 `chmod_attrs`），
-/// 这里**拒**超出范围的输入而不是悄悄掩掉：用户输了 `100644`（连文件类型位一起抄来的）
-/// 而我们掩成 `644` ⇒ 他以为改的是别的东西。
-fn parse_mode(t: &str) -> Result<u32, String> {
-    if t.is_empty() {
-        return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
-    }
-    let mode =
-        u32::from_str_radix(t, 8).map_err(|_| copy_text("rsFilewinWriteops.mode.notOctal", &[]))?;
-    if mode > 0o7777 {
-        return Err(copy_text("rsFilewinWriteops.mode.outOfRange", &[]));
-    }
-    Ok(mode)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1179,10 +1161,7 @@ pub fn receipt_of(
         let text = match done {
             [WriteOp::Chmod { path, mode, .. }] => copy_text(
                 "rsFilewinWriteops.result.chmodOne",
-                &[
-                    ("name", remote_basename(path)),
-                    ("mode", &format!("{mode:o}")),
-                ],
+                &[("name", remote_basename(path)), ("mode", mode)],
             ),
             _ => copy_text(
                 "rsFilewinWriteops.result.chmodMany",
@@ -1202,7 +1181,7 @@ pub fn chmod_undo(op: &WriteOp, reply: &Applied) -> Option<WriteOp> {
     let before = low12(r.before)?;
     Some(WriteOp::Chmod {
         path: path.clone(),
-        mode: before,
+        mode: format!("{before:o}"),
         raw: raw.clone(),
     })
 }

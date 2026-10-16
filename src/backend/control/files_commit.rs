@@ -694,6 +694,7 @@ pub fn commit_upload_at(
     let root = root_of(&req.root, "root")?;
     // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
     let mut rel = root_of(&req.rel, "rel")?;
+    super::files_write::names_ok(req.single.unwrap_or(false), &rel)?;
     let on = req.on_exists.unwrap_or_default();
     if on == OnExists::Skip {
         return Err(plain((

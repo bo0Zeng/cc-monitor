@@ -906,7 +906,7 @@ fn chmod_reports_the_mode_it_had_before() {
         .expect("先收成 640");
     let data = answer_wire(
         "files-chmod",
-        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "run.sh", "mode": 0o755}),
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "run.sh", "mode": "755"}),
     )
     .expect("改权限被拒");
     assert_eq!(data["mode"], serde_json::json!(0o755));
@@ -1052,10 +1052,33 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
         .mode();
     assert_eq!(before, after, "🔴 根外那一份的权限位被改了");
 
-    // 超出低 12 位 ⇒ 拒。
-    let err = change_mode(&Face::issue(), &root, "run.sh", 0o100000).expect_err("高位被收下了");
-    assert_eq!(err.code(), "refused", "{err:?}");
     std::fs::remove_dir_all(&base).ok();
+}
+
+/// 权限位的八进制只在这里解：前后空白剪掉；空 · 不是八进制 · 超出 7777（连文件类型位抄来的）各一句、码 `refused`。
+#[test]
+fn the_mode_text_is_read_and_refused_in_one_place() {
+    for (t, m) in [("644", 0o644), (" 0755 ", 0o755), ("7777", 0o7777), ("0", 0)] {
+        assert_eq!(mode_of_text(t).expect(t), m);
+    }
+    for (t, key) in [
+        ("", "empty"),
+        ("  ", "empty"),
+        ("abc", "notOctal"),
+        ("899", "notOctal"),
+        ("0x644", "notOctal"),
+        ("-1", "notOctal"),
+        ("10000", "outOfRange"),
+        ("100644", "outOfRange"),
+    ] {
+        let e = mode_of_text(t).expect_err(t);
+        assert_eq!(e.code, "refused", "{t}");
+        assert!(
+            copy_core::copy_matches(&format!("beFilesWrite.mode.{key}"), &e.said),
+            "「{t}」说的不是 {key}：{}",
+            e.said
+        );
+    }
 }
 
 #[test]
@@ -1125,7 +1148,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     #[cfg(unix)]
     ok(
         "files-chmod",
-        serde_json::json!({"root": r, "rel": "d/b.md", "mode": 384}),
+        serde_json::json!({"root": r, "rel": "d/b.md", "mode": "600"}),
     );
     ok(
         "files-delete",
@@ -1148,7 +1171,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
     #[cfg(unix)]
     ok(
         "files-chmod",
-        serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "mode": 384}),
+        serde_json::json!({"root": r, "rel": "projects/-x/abc.jsonl", "mode": "600"}),
     );
     ok(
         "files-rename",
@@ -1179,7 +1202,7 @@ fn the_five_mutating_commands_are_reachable_and_fenced_on_the_command_face() {
         ),
         (
             "files-chmod",
-            serde_json::json!({"root": r, "rel": "../esc", "mode": 0}),
+            serde_json::json!({"root": r, "rel": "../esc", "mode": "0"}),
         ),
         (
             "files-delete",
@@ -1721,14 +1744,14 @@ fn a_non_utf8_name_can_be_renamed_chmodded_and_deleted_through_b16() {
     assert!(
         answer_wire(
             "files-chmod",
-            &serde_json::json!({"root": r, "rel": String::from_utf8_lossy(raw), "mode": 384}),
+            &serde_json::json!({"root": r, "rel": String::from_utf8_lossy(raw), "mode": "600"}),
         )
         .is_err(),
         "有损串竟然寻址到了原文件 —— 那这条判据量不出 b16 的价值"
     );
     answer_wire(
         "files-chmod",
-        &serde_json::json!({"root": r, "rel": b16(raw), "mode": 384}),
+        &serde_json::json!({"root": r, "rel": b16(raw), "mode": "600"}),
     )
     .expect("🔴 b16 的相对段改不了权限");
     // 改名：from 走 b16，to 是正常名字 —— 「改成一个读得出的名字」正是乱码名最常要的那一下。

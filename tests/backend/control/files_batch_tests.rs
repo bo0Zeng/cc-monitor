@@ -284,7 +284,7 @@ fn one_failed_item_does_not_fail_the_group_and_carries_its_reason() {
         FilesChmodReq {
             root: wp(&root.to_string_lossy()),
             items: vec![ChmodItem { rel: wp("a") }, ChmodItem { rel: wp("missing") }],
-            mode: 0o640,
+            mode: "640".into(),
             ticket: None,
         },
     )

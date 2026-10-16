@@ -104,6 +104,7 @@ impl Pending {
             },
             chunks: chunked.map(|c| c.0),
             bytes: chunked.map(|c| c.1),
+            single: Some(true),
         }
     }
 
