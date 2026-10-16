@@ -35,6 +35,7 @@ class SentRequestsTest {
             FilesStageChunk.COMMAND to listOf(FilesStageChunk.args("k", 0L, byteArrayOf(0, -1), 2)),
             FilesStat.COMMAND to listOf(FilesStat.args(bin)),
             FilesWriteText.COMMAND to listOf(FilesWriteText.args(dir, bin, "x", SHA)),
+            HistoryFacts.COMMAND to listOf(HistoryFacts.args("/p/s.jsonl")),
             HistoryLines.COMMAND to listOf(HistoryLines.args("/p/s.jsonl", 0L, 10L)),
             HistoryAnnotate.COMMAND to listOf(HistoryAnnotate.hide("s", Hide.ON), HistoryAnnotate.hide("s", Hide.OFF), HistoryAnnotate.hide("s", null)),
             HistoryList.COMMAND to listOf(HistoryList.args(false), HistoryList.args(true)),
