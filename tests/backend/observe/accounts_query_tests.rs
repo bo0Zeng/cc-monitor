@@ -2651,3 +2651,44 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
         ["wo", "w", "工", "?", "0"].map(str::to_string)
     );
 }
+
+/// KS11 上屏：两份自家秘密文件同一套判法、各一句。钥匙文件 0644 · 凭据文件 0600 ⇒ 恰好一句，点名钥匙文件；
+/// 两份都只给本人 · 都不在 ⇒ 不说。
+#[cfg(unix)]
+#[test]
+fn a_too_wide_relay_key_file_has_its_own_sentence_like_the_credentials_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmpdir("secret-notices");
+    let creds = dir.join("apikey-credentials.json");
+    let key = dir.join("relay-key");
+    assert!(
+        secret_file_notices(Some(&creds), Some(&key)).is_empty(),
+        "都不在 ⇒ 不说"
+    );
+    fs::write(&creds, "{}").unwrap();
+    fs::write(&key, "k").unwrap();
+    let mode = |p: &Path, m| fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
+    mode(&creds, 0o600);
+    mode(&key, 0o600);
+    assert!(
+        secret_file_notices(Some(&creds), Some(&key)).is_empty(),
+        "只给本人 ⇒ 不说"
+    );
+    mode(&key, 0o644);
+    let got = secret_file_notices(Some(&creds), Some(&key));
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(
+        got[0].contains(&key.display().to_string())
+            && got[0].contains(&copy_text("credsPerm.notice.relayKey", &[]))
+            && got[0].contains("0644"),
+        "{got:?}"
+    );
+    mode(&creds, 0o640);
+    let got = secret_file_notices(Some(&creds), Some(&key));
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert!(
+        got[0].contains(&copy_text("credsPerm.notice.apikey", &[])),
+        "{got:?}"
+    );
+    fs::remove_dir_all(&dir).ok();
+}

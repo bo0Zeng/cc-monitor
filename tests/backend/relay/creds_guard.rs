@@ -179,6 +179,21 @@ mod tests {
         ),
         (
             "relay/listen.rs",
+            "[relay] key file permissions too wide:",
+            "钥匙文件权限过宽（与凭据文件 `[apikey]` 那一行同一套判法）：只带 `perm::judge` 造的句子",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] how to fix:",
+            "同上，怎么修（一句固定的指引）",
+        ),
+        (
+            "relay/listen.rs",
+            "[relay] key file permissions unknown:",
+            "钥匙文件权限查不出来（不是绿灯，照样说）",
+        ),
+        (
+            "relay/listen.rs",
             "[relay] listening on",
             "起来了，监听在哪",
         ),

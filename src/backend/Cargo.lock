@@ -469,6 +469,8 @@ name = "creds-core"
 version = "0.1.0"
 dependencies = [
  "copy-core",
+ "libc",
+ "serde",
  "serde_json",
  "win-path-core",
  "windows 0.56.0",

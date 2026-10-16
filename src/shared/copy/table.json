@@ -16517,18 +16517,6 @@
       "zh": "读取任务目录失败 · {dir} · {why}",
       "args": ["dir", "why"]
     },
-    "beAccountsQuery.listProductAt.credsPerm": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "API key 凭据文件 {path}：{how} · {fix}",
-      "args": ["path", "how", "fix"]
-    },
-    "beAccountsQuery.listProductAt.credsPermUnknown": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "API key 凭据文件 {path}：{why}",
-      "args": ["path", "why"]
-    },
     "beAccountsQuery.listProductAt.joined": {
       "kind": "body",
       "role": "说明",
@@ -16789,15 +16777,9 @@
       "zh": "上游 {host}:{port} {result} · 卡在{hop}",
       "args": ["host", "port", "result", "hop"]
     },
-    "credsPerm.windowsProbe.toText": {
+    "credsPerm.measure.noSecurity": {
       "kind": "error",
       "role": "原因格",
-      "zh": "访问权限无法转写",
-      "args": []
-    },
-    "credsPerm.windowsProbe.unreadable": {
-      "kind": "error",
-      "role": "报错",
       "zh": "读取访问权限失败 · {why}",
       "args": ["why"]
     },
@@ -16807,23 +16789,23 @@
       "zh": "此系统不支持建仅本人可读的文件 · {path}",
       "args": ["path"]
     },
-    "credsPerm.probe.unsupported": {
+    "credsPerm.measure.unsupported": {
       "kind": "error",
       "role": "原因格",
       "zh": "此平台不支持查文件权限",
       "args": []
     },
-    "credsPerm.probe.notHardened": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "本构建不支持查 Windows 文件权限",
-      "args": []
-    },
-    "credsPerm.probe.noMetadata": {
+    "credsPerm.measure.noMetadata": {
       "kind": "error",
       "role": "原因格",
       "zh": "读取文件信息失败 · {why}",
       "args": ["why"]
+    },
+    "credsPerm.measure.unknownAce": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "权限列表里有无法识别的条目 · 类型 {kind}",
+      "args": ["kind"]
     },
     "credsPerm.judge.undetermined": {
       "kind": "error",
@@ -16834,7 +16816,7 @@
     "credsPerm.judge.fixWindows": {
       "kind": "body",
       "role": "说明",
-      "zh": "资源管理器「属性 → 安全」里删掉 Everyone / Users 等条目；或让程序重写此文件",
+      "zh": "资源管理器「属性 → 安全」里只留本人、SYSTEM 与 Administrators",
       "args": [],
       "waive": {
         "C-W13": "「」里是 Windows 资源管理器里的叫法，不是本程序界面上的名字"
@@ -16843,13 +16825,13 @@
     "credsPerm.judge.tooWideWindows": {
       "kind": "body",
       "role": "说明",
-      "zh": "这份文件的权限列表里有对所有人开放的条目：{who}",
+      "zh": "权限列表里本人之外还有可读写的条目：{who}",
       "args": ["who"]
     },
     "credsPerm.judge.fixUnix": {
       "kind": "body",
       "role": "说明",
-      "zh": "跑 chmod 600 <这份文件>，或者让程序重写一次它",
+      "zh": "跑 chmod 600 <这份文件>",
       "args": []
     },
     "credsPerm.judge.tooWideUnix": {
@@ -16857,6 +16839,48 @@
       "role": "说明",
       "zh": "同机他人可读 · 权限 {mode} · 本人之外开着 {extra}",
       "args": ["mode", "extra"]
+    },
+    "credsPerm.judge.notOwner": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "属主不是本人 · 属主 {owner}",
+      "args": ["owner"]
+    },
+    "credsPerm.judge.fixOwner": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "确认来历后改由本人持有 · 只给本人读写",
+      "args": []
+    },
+    "credsPerm.judge.noDacl": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "没有权限列表 · 所有人可读写",
+      "args": []
+    },
+    "credsPerm.notice.tooWide": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{what} {path}：{how} · {fix}",
+      "args": ["what", "path", "how", "fix"]
+    },
+    "credsPerm.notice.unknown": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{what} {path}：{why}",
+      "args": ["what", "path", "why"]
+    },
+    "credsPerm.notice.apikey": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "API key 凭据文件",
+      "args": []
+    },
+    "credsPerm.notice.relayKey": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "中转钥匙文件",
+      "args": []
     },
     "beAssetSync.report.errorSep": {
       "kind": "body",

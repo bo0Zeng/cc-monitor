@@ -53,6 +53,10 @@ test-home = { path = "../test-home" }
 # **必须是 dev-dependency**：判据全在 `#[cfg(test)]` 里，它没有理由进发布二进制。
 guard-core = { path = "../guard-core" }
 
+[target.'cfg(unix)'.dependencies]
+# 按句柄量属主时比的「本进程的有效用户」（`geteuid`）。只在 `harden` 那一半用；两份 lock 里都已有它。
+libc = { version = "0.2", optional = true }
+
 [target.'cfg(windows)'.dependencies]
 # 只在 `harden` 打开时才真的进来。API 与 feature 的对应关系（08-27 实测，非空对照见件文件 `§0c 一`）：
 #   · `SetNamedSecurityInfoW` / SDDL 转换 / `ConvertSidToStringSidW` ⇒ `Win32_Security_Authorization`
@@ -74,4 +78,4 @@ windows = { version = "0.56", optional = true, features = [
 [features]
 default = []
 # 「把这份文件收窄到只给本人」的能力。**只给会写这份文件的那一侧开。**
-harden = ["dep:windows", "dep:win-path-core"]
+harden = ["dep:windows", "dep:win-path-core", "dep:libc"]
