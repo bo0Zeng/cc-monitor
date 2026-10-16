@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// 一时没续上之后隔多久再试（秒）。
-const RETRY_AFTER: u64 = 5 * 60;
+const AGAIN_AFTER: u64 = 5 * 60;
 
 /// 续不上之后那个号此刻的样子。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +63,7 @@ pub(super) fn note(
             Some(Unrenewed::Manual)
         }
         Err(Unusable::NotRenewed(_) | Unusable::WriteFailed(_) | Unusable::Unreadable(_)) => {
-            Some(Unrenewed::RetryAt(now.saturating_add(RETRY_AFTER)))
+            Some(Unrenewed::RetryAt(now.saturating_add(AGAIN_AFTER)))
         }
     };
     let mut g = book();
