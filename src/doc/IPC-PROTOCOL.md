@@ -3,8 +3,8 @@
 两件事：**后端的线上协议**（monitor 与第二个前端都按它接后端）与**本机进程之间的几份文件**（PowerShell 绑窗 · 设置 · 历史注解）。
 
 本页只写不随命令变的总述。每一帧、每一条命令、每一个子命令的逐格形状在 **[IPC-COMMANDS.md](IPC-COMMANDS.md)** —— 那一份从代码生成
-（`tests/backend/protocol_doc_gen.rs`，判据「重新生成 == 仓里那份」），改了帧字段或命令登记之后在 `src/backend` 下跑
-`CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen` 重生成。
+（`tests/backend/protocol_doc_gen.rs`，判据「重新生成 == 仓里那份」），改了帧字段或命令登记之后那条判据红、
+现打的那份落在 `.build/golden/`，对过后 `bash tests/scripts/bless-golden.sh` 拷回。
 
 ## 1. 载体
 

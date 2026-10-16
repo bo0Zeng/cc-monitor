@@ -9,6 +9,7 @@
 //! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
 //!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
+//!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
 //! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
 //!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
 
@@ -32,6 +33,7 @@ mod tests {
         "tests/scripts/session-scrub.sh",
         "tests/scripts/base.sh",
         "tests/scripts/generated-drift.sh",
+        "tests/scripts/bless-golden.sh",
     ];
 
     /// 带 `--help` 的入口。
@@ -1228,6 +1230,34 @@ mod tests {
         assert_eq!(o.status.code(), Some(1), "{said}");
         let got: BTreeSet<String> = said.lines().map(|l| l[3..].to_string()).collect();
         assert_eq!(got, want, "印出来的与没提交的生成物对不上");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// ★ 重打金样（`bless-golden.sh`）：金样判据落在 `.build/golden/` 下的现打那份逐份拷回仓里原处、删掉现打的那份、逐份印出；
+    /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`crate::golden::FRESH_DIR`]：两边对不上这条就红。
+    #[test]
+    fn bless_golden_copies_each_fresh_golden_back_and_clears_it() {
+        let d = scratch("bless");
+        git(&d, &["init", "-q", "-b", "main"]);
+        let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
+        write(&d, "tests/__fixtures__/a.json", "old\n");
+        let fresh = crate::golden::FRESH_DIR;
+        write(&d, &format!("{fresh}/tests/__fixtures__/a.json"), "new\n");
+        write(&d, &format!("{fresh}/src/doc/X.md"), "doc\n");
+        let o = bless(&d);
+        let said = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(0), "{said}");
+        let got: BTreeSet<&str> = said.lines().collect();
+        assert_eq!(
+            got,
+            BTreeSet::from(["重打 src/doc/X.md", "重打 tests/__fixtures__/a.json"])
+        );
+        let read = |rel: &str| std::fs::read_to_string(d.join(rel)).unwrap();
+        assert_eq!(read("tests/__fixtures__/a.json"), "new\n");
+        assert_eq!(read("src/doc/X.md"), "doc\n");
+        assert!(!d.join(fresh).exists(), "拷回之后现打的那份还在");
+        let o = bless(&d);
+        assert_eq!(o.status.code(), Some(1), "没有现打的金样却没说");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
