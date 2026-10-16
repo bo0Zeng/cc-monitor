@@ -23,6 +23,52 @@ fn ids(a: &Ask) -> Vec<&str> {
     a.choices.iter().map(|c| c.id.as_str()).collect()
 }
 
+fn rows(a: &Ask) -> Vec<(&str, ChoiceRow)> {
+    a.choices.iter().map(|c| (c.id.as_str(), c.row)).collect()
+}
+
+/// 每一项排在哪一段由这里定：拒绝一族 · 继续规划另起一段，改到终端里答 · 有题时的不回答放到最后那一段，其余照做那一段。
+#[test]
+fn each_choice_carries_the_row_it_goes_in() {
+    use ChoiceRow::{Hold, Main, Release};
+    let mut a = ask_in(AskKind::Approve);
+    a.blocks_terminal = true;
+    a.suggestions = vec![AskSuggestion {
+        text: "r".into(),
+        raw: Value::Null,
+    }];
+    assert_eq!(
+        rows(&product_of("a", &a, 1)),
+        [
+            ("allow", Main),
+            ("always-0", Main),
+            ("deny", Hold),
+            ("deny-note", Hold),
+            ("deny-stop", Hold),
+            ("release", Release)
+        ]
+    );
+    let plan = product_of("a", &ask_in(AskKind::Plan), 1);
+    assert_eq!(rows(&plan).last(), Some(&("plan-keep", Hold)));
+    assert!(rows(&plan)[..3].iter().all(|(_, r)| *r == Main));
+    assert_eq!(
+        rows(&product_of("a", &ask_in(AskKind::Question), 1)),
+        [("dismiss", Main)],
+        "没有题 ⇒ 不回答是唯一那一项"
+    );
+    let mut q = ask_in(AskKind::Question);
+    q.questions = vec![AskQuestion {
+        header: None,
+        question: "first".into(),
+        multi: false,
+        options: Vec::new(),
+    }];
+    assert_eq!(
+        rows(&product_of("a", &q, 1)),
+        [("answer", Main), ("dismiss", Release)]
+    );
+}
+
 /// 批准：允许在前、「以后不再问」那几条按建议序居中（`always-<i>`、字里带那条建议）、三种拒在后；只有「拒并附言」要附言。
 #[test]
 fn approve_puts_allow_first_then_the_suggestions_then_the_denials() {

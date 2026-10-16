@@ -259,6 +259,7 @@ private fun HostedSession(
                     open.hostId,
                     target.cd,
                     target.tmuxSession, // 进终端 tab 首连即敲那台渲出的那一行，接回该会话
+                    target.resume,
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
                     onEditKeys = onEditKeys,
@@ -451,7 +452,7 @@ private fun NavGraphBuilder.chatRoutes(
             draftCwd = entry.arguments?.getString(Screen.Chat.ARG_CWD),
             onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
             onOpenRotation = { s -> nav.navigate(Screen.Rotation.of(hostId, s)) },
-            onOpenTerminal = { name -> nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(tmuxSession = name))}") },
+            onOpenTerminal = { to -> nav.navigate("session/${tabManager.open(hostId, to)}") },
         )
     }
 }
