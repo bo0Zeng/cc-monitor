@@ -243,7 +243,11 @@ mod tests {
             .filter_map(|l| l.strip_prefix("COVER-MISS: "))
             .map(str::to_string)
             .collect();
-        assert_eq!(rc, i32::from(!miss.is_empty()), "--cover 的退出码与漏的条数对不上：{said}");
+        assert_eq!(
+            rc,
+            i32::from(!miss.is_empty()),
+            "--cover 的退出码与漏的条数对不上：{said}"
+        );
         miss
     }
 
@@ -278,7 +282,11 @@ mod tests {
             "M\tsrc/backend/ssh-dial/lib.rs\n",
             "M\tsrc/vendor/russh/russh/src/lib.rs\n",
         ] {
-            assert_eq!(cells(change), ("affected".into(), with_mobile.clone()), "{change}");
+            assert_eq!(
+                cells(change),
+                ("affected".into(), with_mobile.clone()),
+                "{change}"
+            );
         }
         for change in [
             "M\tsrc/frontend/ui/main.ts\n",
@@ -286,7 +294,11 @@ mod tests {
         ] {
             assert_eq!(cells(change), ("affected".into(), set(&suites)), "{change}");
         }
-        assert_eq!(cells("A\tnowhere/never.txt\n"), ("full".into(), set(&[])), "表不认识");
+        assert_eq!(
+            cells("A\tnowhere/never.txt\n"),
+            ("full".into(), set(&[])),
+            "表不认识"
+        );
     }
 
     /// PATH 里没有 `systemd-run` ⇒ 直接跑，并在 stderr 说一声；命令的退出码照传。
@@ -895,7 +907,9 @@ mod tests {
         let all = run("nowhere/never.txt，表说这条要全量");
         assert_eq!(
             lines(&plan),
-            ["BACKEND", "SHELL", "VITEST", "MOBILE"].map(|s| format!("{s}: {all}")).to_vec(),
+            ["BACKEND", "SHELL", "VITEST", "MOBILE"]
+                .map(|s| format!("{s}: {all}"))
+                .to_vec(),
             "{plan}"
         );
     }
@@ -1374,11 +1388,7 @@ mod tests {
             String::from_utf8_lossy(&o.stdout).trim().to_string()
         };
         let plan = |d: &Path| {
-            let o = bash(
-                &root().join("tests/scripts/quick-check.sh"),
-                &["--plan"],
-                d,
-            );
+            let o = bash(&root().join("tests/scripts/quick-check.sh"), &["--plan"], d);
             String::from_utf8_lossy(&o.stdout).into_owned()
         };
         assert_eq!(base(&d), format!("{a} main"));

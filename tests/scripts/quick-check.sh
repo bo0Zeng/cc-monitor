@@ -9,7 +9,7 @@
 #     交给 gate-affected/plan.py 照 gate-affected/map 判（与 gate-affected 同一张表）：挑上那一段的格（backend · cargo · npm · mobile）才跑；
 #     前三段在表里恒跑（@suites：它们都扫全仓），手机那一段按改动挑。表不认识的路径、找不到起点、plan.py 停了 ⇒ 四段全跑。
 #     起点是 base.sh 印的那一个（分支上游，没设就 origin/main）。
-#   `--all` 四段全跑（合并树：gate-affected --trust-ci 这样调）；`--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑）。
+#   `--all` 四段全跑（gate-affected --trust-ci 这样调）；`--plan` 只印四段跑不跑、为什么；`--only <段>` 只跑那一段（照挑）。
 #   「加了子命令要打版本号」那一条在各路树上必红（版本号合并时打：bump-build-id.sh）⇒ 单列成「待打版本号」，不算红。
 # 环境：每一步经 session-scrub.sh 摘掉会话继承来的变量（表在 session-vars）；HOME 与 TMUX_TMPDIR 指到 `.build/` 下一次性沙箱目录。
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（换 HOME 之前定下）。
