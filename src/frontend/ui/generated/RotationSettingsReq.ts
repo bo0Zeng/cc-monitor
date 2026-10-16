@@ -2,4 +2,15 @@
 import type { RotEdit } from "./RotEdit";
 import type { RotWhere } from "./RotWhere";
 
-export type RotationSettingsReq = { target: RotWhere, settings?: unknown, edit: RotEdit, ifRev?: string, };
+/**
+ * `rotation-settings` 的入参。
+ */
+export type RotationSettingsReq = { target: RotWhere, 
+/**
+ * 设置页：界面手上那份草稿（上一次回包的 `settings` 原样带回；缺 ⇒ 文件里的）。会话 ⇒ 不带（草稿在这台）。
+ */
+settings?: unknown, edit: RotEdit, 
+/**
+ * 改之前读到的那份策略文件的版本；对不上 ⇒ `conflict`。
+ */
+ifRev?: string, };

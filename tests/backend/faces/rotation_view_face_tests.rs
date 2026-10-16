@@ -282,7 +282,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let st = v.strategy.as_ref().expect("在轮换");
     assert_eq!(st.id, "by-list");
     assert_eq!(
-        v.board.rows[0].cells.iter().map(|c| c.key.as_str()).collect::<Vec<_>>(),
+        v.board.rows[0]
+            .cells
+            .iter()
+            .map(|c| c.key.as_str())
+            .collect::<Vec<_>>(),
         ["caps", "caps", "capKind", "fallback", "delay", "stint"],
         "照号列表那份的声明（用量上限两窗 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
     );
@@ -596,7 +600,11 @@ fn a_session_view_draws_what_already_happened() {
     let a = lane("a");
     assert_eq!(a.segs.len(), 1, "{:?}", a.segs);
     assert!(a.segs[0].reset && a.segs[0].sendable && near(a.segs[0].from, n - 3600));
-    assert!(a.segs[0].text.starts_with('↻') && a.segs[0].text.chars().count() == 6, "{:?}", a.segs[0]);
+    assert!(
+        a.segs[0].text.starts_with('↻') && a.segs[0].text.chars().count() == 6,
+        "{:?}",
+        a.segs[0]
+    );
     let b = lane("b");
     assert_eq!(
         b.segs.iter().map(|s| s.sendable).collect::<Vec<_>>(),
@@ -708,7 +716,10 @@ fn the_hints_carry_what_their_buttons_need() {
     assert!(
         v.hints
             .iter()
-            .filter(|h| matches!(h.hint, RotHint::TzUnknown { .. } | RotHint::OldScripts { .. }))
+            .filter(|h| matches!(
+                h.hint,
+                RotHint::TzUnknown { .. } | RotHint::OldScripts { .. }
+            ))
             .all(|h| h.tone == Tone::Need),
         "要人动手的那两种是「需手动」：{:?}",
         v.hints
@@ -921,13 +932,17 @@ fn quota_read_hands_over_the_candidates_without_the_unnamed_account() {
 fn the_board_carries_each_cell_resolved_once() {
     let home = Home::new("board");
     let ctx = home.ctx();
-    seen(&ctx, "b", 40.0, None);
+    seen(&ctx, "b", 0.4, None);
     let draft = json!({"force": null, "capKind": "hard", "caps": {"5h": [{"from": 0, "to": 600, "v": 0}, {"from": 600, "to": 1440, "v": 80}]},
                        "accounts": [{"start": true, "stint": null}, {"id": "b", "capKind": "soft"}]});
     let v = view_with(
         &ctx,
         &RotationViewReq {
-            target: RotTarget::Strategy { strategy: "by-reset".into(), settings: Some(draft), rev: None },
+            target: RotTarget::Strategy {
+                strategy: "by-reset".into(),
+                settings: Some(draft),
+                rev: None,
+            },
             hours: None,
         },
         now(),
@@ -936,29 +951,56 @@ fn the_board_carries_each_cell_resolved_once() {
     )
     .expect("ok");
     let pick = |cells: &[RotCell], key: &str, w: Option<&str>| -> RotCell {
-        cells.iter().find(|c| c.key == key && c.window.as_deref() == w).cloned().unwrap_or_else(|| panic!("{key}"))
+        cells
+            .iter()
+            .find(|c| c.key == key && c.window.as_deref() == w)
+            .cloned()
+            .unwrap_or_else(|| panic!("{key}"))
     };
     let force = pick(&v.board.all, "force", None);
-    assert_eq!((force.v.clone(), force.from), (Value::Null, form::From::Own));
+    assert_eq!(
+        (force.v.clone(), force.from),
+        (Value::Null, form::RotFrom::Own)
+    );
     assert_eq!(force.label, "强制切换阈值");
     assert_eq!(force.nullable.as_deref(), Some("不强制切换"));
-    assert_eq!(force.num, Some(0.0), "空的那一项：框里写声明默认 · 下限 · 0 里头一个是数的");
+    assert_eq!(
+        force.num,
+        Some(0.0),
+        "空的那一项：框里写声明默认 · 下限 · 0 里头一个是数的"
+    );
     assert_eq!(v.board.rows.len(), v.listed);
     let (r0, r1) = (&v.board.rows[0].cells, &v.board.rows[1].cells);
     assert_eq!(v.board.rows[1].account, "b");
-    assert!(v.board.rows[1].line.starts_with("5h 40% · 7d "), "{}", v.board.rows[1].line);
-    assert!(v.board.rows[1].hover.contains("40%"), "{}", v.board.rows[1].hover);
+    assert!(
+        v.board.rows[1].line.starts_with("5h 40% · 7d "),
+        "{}",
+        v.board.rows[1].line
+    );
+    assert!(
+        v.board.rows[1].hover.contains("40%"),
+        "{}",
+        v.board.rows[1].hover
+    );
     let stint0 = pick(r0, "stint", None);
-    assert_eq!((stint0.v, stint0.from), (Value::Null, form::From::Own));
-    assert_eq!(pick(r1, "stint", None).from, form::From::Default);
+    assert_eq!((stint0.v, stint0.from), (Value::Null, form::RotFrom::Own));
+    assert_eq!(pick(r1, "stint", None).from, form::RotFrom::Default);
     let kind0 = pick(r0, "capKind", None);
-    assert_eq!((kind0.v, kind0.from), (json!("hard"), form::From::All));
-    assert_eq!(pick(r1, "capKind", None).from, form::From::Own);
+    assert_eq!((kind0.v, kind0.from), (json!("hard"), form::RotFrom::All));
+    assert_eq!(pick(r1, "capKind", None).from, form::RotFrom::Own);
     assert!(!kind0.choices.is_empty() && kind0.choices.iter().all(|c| !c.label.is_empty()));
     let caps = pick(r0, "caps", Some("5h"));
-    assert_eq!(caps.from, form::From::All);
+    assert_eq!(caps.from, form::RotFrom::All);
     assert_eq!(caps.label, "用量上限 · 5h");
-    assert_eq!(caps.segs.iter().map(|s| (s.from, s.to, s.text.as_str(), s.tip.as_str())).collect::<Vec<_>>(),
-        [(0, 600, "0% · 不用", "00:00–10:00 · 上限 0%"), (600, 1440, "80%", "10:00–24:00 · 上限 80%")]);
+    assert_eq!(
+        caps.segs
+            .iter()
+            .map(|s| (s.from, s.to, s.text.as_str(), s.tip.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (0, 600, "0% · 不用", "00:00–10:00 · 上限 0%"),
+            (600, 1440, "80%", "10:00–24:00 · 上限 80%")
+        ]
+    );
     assert_eq!(pick(r0, "caps", Some("7d")).segs, []);
 }

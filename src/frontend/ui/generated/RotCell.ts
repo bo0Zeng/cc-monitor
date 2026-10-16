@@ -4,4 +4,27 @@ import type { RotDaySeg } from "./RotDaySeg";
 import type { RotFormKind } from "./RotFormKind";
 import type { RotFrom } from "./RotFrom";
 
-export type RotCell = { key: string, kind: RotFormKind, window?: string, label: string, help?: string, v: unknown, num?: number, from: RotFrom, nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, };
+/**
+ * 设置的一格（24 小时条每窗一格），照声明解好：此刻的值 · 从哪来 · 字。
+ */
+export type RotCell = { key: string, kind: RotFormKind, 
+/**
+ * 24 小时条那一格是哪一窗（`5h` · `7d`）。
+ */
+window?: string, 
+/**
+ * 标签（24 小时条那一格带窗名）。
+ */
+label: string, help?: string, 
+/**
+ * 此刻生效的值（`null` ＝ 可空的那一格选了空的那一项；24 小时条 ⇒ `null`，段在 `segs`）。
+ */
+v: unknown, 
+/**
+ * 数格框里写的数（值是空的那一项 ⇒ 声明默认 · 下限 · 0 里头一个是数的）。
+ */
+num?: number, from: RotFrom, 
+/**
+ * 能是空（`null`）：空的那一项怎么叫。
+ */
+nullable?: string, choices?: Array<RotChoice>, min?: number, max?: number, segs?: Array<RotDaySeg>, };

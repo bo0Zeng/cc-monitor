@@ -25,11 +25,14 @@ title: string | null,
  * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
  */
 strategy: RotStrategyItem | null, 
-
 /**
- * 生效的设置（会话有草稿 ⇒ 草稿）。
+ * 生效的设置（会话有草稿 ⇒ 草稿）：设置页把它当草稿原样存着、随读带回，界面不拆。
  */
-settings: unknown, board: RotBoard, 
+settings: unknown, 
+/**
+ * 设置那几格照声明解好（此刻的值 · 从哪来 · 字）。
+ */
+board: RotBoard, 
 /**
  * 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
  */

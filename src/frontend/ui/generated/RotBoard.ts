@@ -2,4 +2,7 @@
 import type { RotCell } from "./RotCell";
 import type { RotRow } from "./RotRow";
 
+/**
+ * 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，与 `accounts` 前 `listed` 个一一对应）。
+ */
 export type RotBoard = { all: Array<RotCell>, rows: Array<RotRow>, };

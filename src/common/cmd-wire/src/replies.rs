@@ -13,9 +13,9 @@ use crate::needs::{Answered, NeedsList};
 use crate::quota::QuotaRead;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::rotation::{
-    RotDone, RotStrategyId, RotStrategyRev, RotationFactsReply,
-    RotationSaveReply, RotationSettingsReply, RotationStrategiesReply, RotationTempReply,
-    RotationTryReply, RotationViewReply,
+    RotDone, RotStrategyId, RotStrategyRev, RotationFactsReply, RotationSaveReply,
+    RotationSettingsReply, RotationStrategiesReply, RotationTempReply, RotationTryReply,
+    RotationViewReply,
 };
 use crate::session::{
     Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands,

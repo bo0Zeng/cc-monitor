@@ -288,17 +288,17 @@ class RotationBoard(
                 val id = _state.value.view?.strategy?.id ?: return
                 Rotation.settings(RotWhere.Strategy(id), edit, draft = draft)
             }
+        val failed = { p: Problem ->
+            _state.update { it.copy(cellFailed = CellFailure(cell, listOf(copyText("rot.fail.settings"), p.text).filter(String::isNotEmpty).joinToString(copyText("kit.text.sep")))) }
+        }
+        val took = { data: Any? ->
+            if (sid == null) {
+                if (draft == null) draftRev = _state.value.view?.strategy?.rev
+                draft = Rotation.ofSettings(data)?.settings
+            }
+        }
         scope.launch {
-            val ok =
-                write(copyText("rot.fail.settings"), Rotation.SETTINGS, args, onFail = { p ->
-                    _state.update { it.copy(cellFailed = CellFailure(cell, listOf(copyText("rot.fail.settings"), p.text).filter(String::isNotEmpty).joinToString(copyText("kit.text.sep")))) }
-                }, onOk = { data ->
-                    if (sid == null) {
-                        if (draft == null) draftRev = _state.value.view?.strategy?.rev
-                        draft = Rotation.ofSettings(data)?.settings
-                    }
-                })
-            if (ok) _state.update { it.copy(cellFailed = null) }
+            if (write(copyText("rot.fail.settings"), Rotation.SETTINGS, args, failed, took)) _state.update { it.copy(cellFailed = null) }
         }
     }
 

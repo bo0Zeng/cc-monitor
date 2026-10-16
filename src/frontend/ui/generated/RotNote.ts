@@ -3,7 +3,7 @@ import type { RotHint } from "./RotHint";
 import type { Tone } from "./Tone";
 
 /**
- * 一条提示：哪一种（界面照它挑颜色）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
+ * 一条提示：哪一种（按钮照它挂）· 语气（`need` ＝ 需手动）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
  */
 export type RotNote = { hint: RotHint, tone: Tone, text: string, 
 /**

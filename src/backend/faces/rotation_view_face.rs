@@ -11,12 +11,12 @@ use crate::common::cells::Words;
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of};
 use crate::wire::typed::Command;
+use cmd_wire::cells::Tone;
 pub(crate) use cmd_wire::rotation::{
     RotBadCell, RotBoard, RotCell, RotChoice, RotDaySeg, RotHint, RotLogRow, RotNote, RotOldFile,
     RotPast, RotPastLane, RotPastSeg, RotPastUse, RotPlate, RotRefused, RotRow, RotStrategyError,
     RotStrategyItem, RotationStrategiesReply, RotationViewReply,
 };
-use cmd_wire::cells::Tone;
 use copy_core::copy_text;
 use serde::Deserialize;
 use serde_json::Value;
@@ -691,7 +691,11 @@ fn day_seg((from, to, v): (u64, u64, f64)) -> RotDaySeg {
         },
         tip: copy_text(
             "rot.day.seg",
-            &[("from", &day_clock(from)), ("to", &day_clock(to)), ("v", &n)],
+            &[
+                ("from", &day_clock(from)),
+                ("to", &day_clock(to)),
+                ("v", &n),
+            ],
         ),
     }
 }
@@ -707,7 +711,7 @@ fn cells_of(c: &form::Cell, settings: &Value, row: Option<usize>) -> Vec<RotCell
         help: c.help.as_ref().map(text_of).filter(|h| !h.is_empty()),
         v: Value::Null,
         num: None,
-        from: form::From::Default,
+        from: form::RotFrom::Default,
         nullable: c.nullable.as_ref().map(text_of),
         choices: c
             .choices

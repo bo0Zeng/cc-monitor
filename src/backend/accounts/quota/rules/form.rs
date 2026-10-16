@@ -5,7 +5,7 @@
 use super::script::Text;
 /// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
 pub(crate) use cmd_wire::rotation::{
-    FormCell as Cell, FormKind as Kind, FormScope as Scope, RotFrom as From,
+    FormCell as Cell, FormKind as Kind, FormScope as Scope, RotFrom,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -267,18 +267,23 @@ fn row_of(settings: &Value, row: usize) -> Option<&serde_json::Map<String, Value
 
 /// ★ 一格此刻生效的值与它从哪来（`row` ＝ 号列表第几行；缺 ⇒ 总体那一格）。号那一行有这一格（值是 `null` 也算有）⇒ 自己的；
 /// 声明说跟总体 ⇒ 总体的（总体也没设 ⇒ 声明默认）；否则声明默认。全仓只这一处解继承。
-pub(crate) fn value_of(c: &Cell, settings: &Value, row: Option<usize>) -> (Value, From) {
+pub(crate) fn value_of(c: &Cell, settings: &Value, row: Option<usize>) -> (Value, RotFrom) {
     let total = settings.get(&c.key);
     let Some(i) = row else {
-        return total.map_or((c.default.clone(), From::Default), |v| (v.clone(), From::Own));
+        return total.map_or((c.default.clone(), RotFrom::Default), |v| {
+            (v.clone(), RotFrom::Own)
+        });
     };
     if let Some(v) = row_of(settings, i).and_then(|r| r.get(&c.key)) {
-        return (v.clone(), From::Own);
+        return (v.clone(), RotFrom::Own);
     }
     if c.inherit {
-        (total.cloned().unwrap_or_else(|| c.default.clone()), From::All)
+        (
+            total.cloned().unwrap_or_else(|| c.default.clone()),
+            RotFrom::All,
+        )
     } else {
-        (c.default.clone(), From::Default)
+        (c.default.clone(), RotFrom::Default)
     }
 }
 
@@ -300,18 +305,19 @@ pub(crate) fn day_of(
     settings: &Value,
     row: Option<usize>,
     window: &str,
-) -> (Vec<(u64, u64, f64)>, From) {
+) -> (Vec<(u64, u64, f64)>, RotFrom) {
     let total = settings.get(&c.key);
     let Some(i) = row else {
-        return segs_in(total, window).map_or((Vec::new(), From::Default), |s| (s, From::Own));
+        return segs_in(total, window)
+            .map_or((Vec::new(), RotFrom::Default), |s| (s, RotFrom::Own));
     };
     if let Some(s) = segs_in(row_of(settings, i).and_then(|r| r.get(&c.key)), window) {
-        return (s, From::Own);
+        return (s, RotFrom::Own);
     }
     if c.inherit {
-        (segs_in(total, window).unwrap_or_default(), From::All)
+        (segs_in(total, window).unwrap_or_default(), RotFrom::All)
     } else {
-        (Vec::new(), From::Default)
+        (Vec::new(), RotFrom::Default)
     }
 }
 
@@ -377,20 +383,29 @@ pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<V
             .cloned()
             .unwrap_or_default()
     };
-    let no_row = |i: usize| format!("no row {i} in `accounts`");
-    let row_mut = |top: &mut serde_json::Map<String, Value>, i: usize| -> Result<&mut serde_json::Map<String, Value>, String> {
+    fn no_row(i: usize) -> String {
+        format!("no row {i} in `accounts`")
+    }
+    fn row_mut(
+        top: &mut serde_json::Map<String, Value>,
+        i: usize,
+    ) -> Result<&mut serde_json::Map<String, Value>, String> {
         top.get_mut(ACCOUNTS)
             .and_then(Value::as_array_mut)
             .and_then(|a| a.get_mut(i))
             .and_then(Value::as_object_mut)
             .ok_or_else(|| no_row(i))
-    };
+    }
     match edit {
         RotEdit::Keep => {}
         RotEdit::Set { key, row: None, v } => {
             top.insert(key.clone(), v.clone());
         }
-        RotEdit::Set { key, row: Some(i), v } => {
+        RotEdit::Set {
+            key,
+            row: Some(i),
+            v,
+        } => {
             row_mut(top, *i)?.insert(key.clone(), v.clone());
         }
         RotEdit::Day {

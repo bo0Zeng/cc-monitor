@@ -8,7 +8,11 @@ export type RotStrategyItem = { id: string,
 /**
  * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
  */
-description: string, summary: string, rev: string, error?: RotStrategyError, 
+description: string, 
+/**
+ * 说明的第一行（下拉里那行灰字；没有 ⇒ 空）。
+ */
+summary: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */

@@ -46,20 +46,51 @@ fn session_settings_become_a_draft_and_are_checked() {
         )
     };
     let draft = || ctx.hop.store.now().sessions[S1].strategy.draft.clone();
-    let got = edit(RotEdit::Add { account: "b".into() }).expect("ok");
+    let got = edit(RotEdit::Add {
+        account: "b".into(),
+    })
+    .expect("ok");
     assert!(got.dirty);
     assert_eq!(draft(), Some(got.settings.clone()));
-    edit(RotEdit::Set { key: "delay".into(), row: Some(1), v: json!(30) }).expect("ok");
-    let got = edit(RotEdit::Day { key: "caps".into(), row: None, window: "5h".into(), from: 0, to: 0, v: Some(80.0) }).expect("ok");
+    edit(RotEdit::Set {
+        key: "delay".into(),
+        row: Some(1),
+        v: json!(30),
+    })
+    .expect("ok");
+    let got = edit(RotEdit::Day {
+        key: "caps".into(),
+        row: None,
+        window: "5h".into(),
+        from: 0,
+        to: 0,
+        v: Some(80.0),
+    })
+    .expect("ok");
     assert_eq!(got.settings, mine(), "一步步改出来的就是那一份");
     assert_eq!(draft(), Some(mine()));
-    match edit(RotEdit::Set { key: "delay".into(), row: Some(1), v: json!(-1) }) {
+    match edit(RotEdit::Set {
+        key: "delay".into(),
+        row: Some(1),
+        v: json!(-1),
+    }) {
         Err(RotationSettingsErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "accounts[1].delay"),
         other => panic!("该拒：{other:?}"),
     }
-    assert!(matches!(edit(RotEdit::Remove { row: 9 }), Err(RotationSettingsErr::BadArgs(_))));
+    assert!(matches!(
+        edit(RotEdit::Remove { row: 9 }),
+        Err(RotationSettingsErr::BadArgs(_))
+    ));
     assert_eq!(draft(), Some(mine()), "没收下的不动草稿");
-    edit(RotEdit::Day { key: "caps".into(), row: None, window: "5h".into(), from: 0, to: 0, v: None }).expect("ok");
+    edit(RotEdit::Day {
+        key: "caps".into(),
+        row: None,
+        window: "5h".into(),
+        from: 0,
+        to: 0,
+        v: None,
+    })
+    .expect("ok");
     edit(RotEdit::Remove { row: 1 }).expect("ok");
     assert!(!edit(RotEdit::Keep).expect("ok").dirty);
     assert_eq!(draft(), None, "跟文件相同没丢草稿");
@@ -68,14 +99,19 @@ fn session_settings_become_a_draft_and_are_checked() {
         &ctx,
         &home.own(),
         &RotationSettingsReq {
-            target: RotWhere::Strategy { strategy: "by-list".into() },
+            target: RotWhere::Strategy {
+                strategy: "by-list".into(),
+            },
             settings: Some(mine()),
             edit: RotEdit::Move { from: 1, to: 0 },
             if_rev: None,
         },
     )
     .expect("ok");
-    assert_eq!(page.settings["accounts"], json!([{"id": "b", "delay": 30}, {"start": true}]));
+    assert_eq!(
+        page.settings["accounts"],
+        json!([{"id": "b", "delay": 30}, {"start": true}])
+    );
     assert!(page.dirty);
 }
 
@@ -92,7 +128,9 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         &RotationSettingsReq {
             target: RotWhere::Session { sid: S1.into() },
             settings: None,
-            edit: RotEdit::Add { account: "b".into() },
+            edit: RotEdit::Add {
+                account: "b".into(),
+            },
             if_rev: None,
         },
     )

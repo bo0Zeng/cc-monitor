@@ -12,8 +12,8 @@ pub(crate) use cmd_wire::rotation::{
     RotBadStrategy, RotConflict, RotDone, RotInUse, RotStrategyId, RotStrategyRev, RotUnusable,
     RotationSaveReply, RotationSettingsReply, RotationTempReply,
 };
-pub(crate) use form::RotEdit;
 use copy_core::copy_text;
+pub(crate) use form::RotEdit;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -158,9 +158,8 @@ pub(crate) fn settings_with(
     .or_else(|| head.map(|h| h.settings.clone()))
     .unwrap_or_else(|| Value::Object(Default::default()));
     let form = head.map_or(&[][..], |h| h.form.as_slice());
-    let settings = form::apply(form, &base, &req.edit).map_err(|e| {
-        RotationSettingsErr::BadArgs(crate::common::contract::malformed(&e))
-    })?;
+    let settings = form::apply(form, &base, &req.edit)
+        .map_err(|e| RotationSettingsErr::BadArgs(crate::common::contract::malformed(&e)))?;
     checked(sh.file.as_ref().ok(), &settings)
         .map_err(|r| RotationSettingsErr::Refused(refused_said(), r))?;
     if req.if_rev.as_deref().is_some_and(|r| r != sh.rev) {
