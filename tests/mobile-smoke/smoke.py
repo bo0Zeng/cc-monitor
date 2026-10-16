@@ -1344,7 +1344,7 @@ def report():
         if not wait(t("mobSettings.section.machine"), 15):
             raise Step.Fail("没进设置屏")
         tap("smokebox")  # 账号卡头那一行是那台的名字
-        if not wait(t("mobUsage.title"), 15):
+        if not wait(t("mobUsage.page.title"), 15):
             raise Step.Fail("点账号卡没进用量屏")
         head = (q.get("verdict") or {}).get("text") or q.get("text")
         if head and not wait(head, 15):

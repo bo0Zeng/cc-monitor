@@ -30019,7 +30019,7 @@
       "zh": "cc-monitor {version}",
       "args": ["version"]
     },
-    "mobUsage.title": {
+    "mobUsage.page.title": {
       "kind": "title",
       "role": "标题",
       "zh": "用量",

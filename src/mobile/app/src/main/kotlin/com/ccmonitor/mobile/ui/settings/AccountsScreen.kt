@@ -193,7 +193,7 @@ private fun AccountSheet(
             )
         }
         PickRow(copyText("acctPage.detail.model"), AccountsTags.MODEL, second = modelText(ui, ui.model(a.name)), onClick = onModel)
-        PickRow(copyText("mobUsage.title"), AccountsTags.USAGE, second = ui.usage(a.name)?.text, onClick = onUsage)
+        PickRow(copyText("mobUsage.page.title"), AccountsTags.USAGE, second = ui.usage(a.name)?.text, onClick = onUsage)
     }
 }
 
