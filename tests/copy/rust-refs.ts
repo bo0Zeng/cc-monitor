@@ -1,5 +1,6 @@
 /**
- * 生产 Rust 源码里的取文调用点（`copy_text("…", &[("名", 值), …])` · `copy_static!("…")`）：按调用形状读，不是编译器解析。
+ * 生产 Rust 源码里的取文调用点（`copy_text("…", &[("名", 值), …])` · 壳的 `Said::of("…", &[…])`（同形，句子进 `Said`）·
+ * `copy_static!("…")`）：按调用形状读，不是编译器解析。
  * 两个读者：文案表 ↔ 代码两向相等（`copy-table.vitest.ts`）· C-W18「原话不上句子」按值认原话型占位（`copy-rules.vitest.ts`）。
  */
 import { productionRsFiles } from "../test-support/production-sources.ts";
@@ -22,6 +23,10 @@ export function isRawValue(v: string): boolean {
 /** Rust 取文口自己住的文件：它里头的 `copy_text` 是定义，不是引用。 */
 export const RS_HOME = "src/frontend/shell/src/copy_table.rs";
 const RS_FN = "copy_text";
+/** 壳那一句的构造（`shell/src/detail.rs::Said::of`）：参数与 `copy_text` 同形，按同一套读。 */
+const RS_SAID = "Said::of";
+/** `Said::of` 住的文件：它体里那一句 `copy_text(key, args)` 是转发，不是引用。 */
+const SAID_HOME = "src/frontend/shell/src/detail.rs";
 /** 同一个取文口的 `&'static str` 形（`copy-core` 的宏）。 */
 const RS_STATIC = "copy_static";
 /**
@@ -56,28 +61,30 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
   const problems: string[] = [];
   const code = stripRustLineComments(text);
   const lineOf = (at: number): number => code.slice(0, at).split("\n").length;
-  const re = new RegExp(`\\b${RS_FN}\\b`, "g");
+  const re = new RegExp(`\\b(?:${RS_FN}|${RS_SAID})\\b`, "g");
   for (const m of code.matchAll(re)) {
     const at = m.index ?? 0;
+    const name = m[0];
     const before = code.slice(Math.max(0, at - 3), at);
-    const after = code.slice(at + RS_FN.length);
+    const after = code.slice(at + name.length);
     if (file === RS_HOME && before === "fn ") continue;
+    if (file === SAID_HOME && /^\(\s*key\s*,\s*args\s*\)/.test(after)) continue;
     // 别人的同名**方法**（`ui.ctx().copy_text(…)`，egui 的剪贴板）不是我们的取文口。
     if (before.endsWith(".")) continue;
     // `\buse`：原先裸 `use\s` 把「OursFault::Misuse => copy_text(…)」这一行当成了 `use` 导入 ⇒ 那个调用点
     //   从「引用」一侧漏掉、表里那条被报成死文案（现打逮到：filewin/source.rs 的 said.internal）。
     if (/^\s*[;,}]/.test(after) || /^::/.test(after) || /\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) {
       if (/\buse\s[^;]*$/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;
-      problems.push(`${file}:${lineOf(at)}：${RS_FN} 被当值用了（不是直接调用）`);
+      problems.push(`${file}:${lineOf(at)}：${name} 被当值用了（不是直接调用）`);
       continue;
     }
     if (!after.startsWith("(")) {
-      problems.push(`${file}:${lineOf(at)}：${RS_FN} 后面不是调用`);
+      problems.push(`${file}:${lineOf(at)}：${name} 后面不是调用`);
       continue;
     }
     const km = /^\(\s*"([^"\\]*)"\s*(,|\))/.exec(after);
     if (!km) {
-      problems.push(`${file}:${lineOf(at)}：${RS_FN} 的 key 不是字面量`);
+      problems.push(`${file}:${lineOf(at)}：${name} 的 key 不是字面量`);
       continue;
     }
     const args: string[] = [];
@@ -86,7 +93,7 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
       const rest = after.slice(km[0].length);
       const am = /^\s*&\[/.exec(rest);
       if (!am) {
-        problems.push(`${file}:${lineOf(at)}：${RS_FN} 的参数不是 &[…] 数组字面量`);
+        problems.push(`${file}:${lineOf(at)}：${name} 的参数不是 &[…] 数组字面量`);
         continue;
       }
       // 取到与 `&[` 配对的 `]`。
@@ -122,7 +129,7 @@ export function rustRefsIn(file: string, text: string): { refs: Ref[]; problems:
         if (nm) {
           args.push(nm[1]);
           if (isRawValue(nm[2])) raw.push(nm[1]);
-        } else problems.push(`${file}:${lineOf(at)}：${RS_FN} 的参数项不是 ("名", 值)：${item}`);
+        } else problems.push(`${file}:${lineOf(at)}：${name} 的参数项不是 ("名", 值)：${item}`);
       }
     }
     refs.push({ file: `${file}:${lineOf(at)}`, key: km[1], args, ...(raw.length ? { raw } : {}) });
@@ -152,7 +159,7 @@ export function rustRefsOfTree(): { files: { file: string; text: string }[]; ref
   ];
   const all = files
     .filter((f) => !RS_DEFINITIONS.has(f.file))
-    .filter((f) => new RegExp(`\\b(?:${RS_FN}\\b|${RS_STATIC}!)`).test(f.text))
+    .filter((f) => new RegExp(`\\b(?:${RS_FN}\\b|${RS_SAID}\\b|${RS_STATIC}!)`).test(f.text))
     .map((f) => rustRefsIn(f.file, f.text));
   return { files, refs: all.flatMap((x) => x.refs), problems: all.flatMap((x) => x.problems) };
 }

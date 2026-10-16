@@ -47,7 +47,7 @@ use std::sync::Mutex;
 pub fn load_config() -> Result<Value, Said> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
         let path =
-            resolve_config_path().ok_or_else(|| copy_text("rsShellCmd.config.noHome", &[]))?;
+            resolve_config_path().ok_or_else(|| Said::of("rsShellCmd.config.noHome", &[]))?;
         if !path.exists() {
             return Ok(default_config());
         }
@@ -127,7 +127,7 @@ impl ConfigWriteError {
                 let raw = detail.clone();
                 Said::with_raw(self.to_string(), raw)
             }
-            other => Said::from(other.to_string()),
+            other => Said::written(other.to_string()),
         }
     }
 }
@@ -152,7 +152,7 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[tauri::command]
 pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
-        let path = resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
+        let path = resolve_config_path().ok_or_else(|| Said::of("rsConfig.write.noHome", &[]))?;
         patch_config_at(&path, &edits).map_err(ConfigWriteError::into_said)?;
         Ok(())
     })();
@@ -178,7 +178,7 @@ pub(crate) fn patch_config_at(
     // ②b 跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
     let dir = path.parent().ok_or_else(|| {
         ConfigWriteError::Io(
-            copy_text(
+            Said::of(
                 "rsConfig.write.noParent",
                 &[("path", &path.display().to_string())],
             )

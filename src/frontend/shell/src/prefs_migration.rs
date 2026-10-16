@@ -71,10 +71,10 @@ pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
     let root = match serde_json::from_str::<Value>(&text) {
         Ok(Value::Object(m)) => m,
         _ => {
-            return Err(Said::from(copy_text(
+            return Err(Said::of(
                 "rsConfig.write.unreadable",
                 &[("path", &path.display().to_string())],
-            )))
+            ))
         }
     };
     let present: Vec<&str> = keys

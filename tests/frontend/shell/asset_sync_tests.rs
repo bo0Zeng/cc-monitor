@@ -90,7 +90,6 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     let req = decl_keys(&gen("src/frontend/ui/generated/AssetsSyncReq.ts"));
     let reply = decl_keys(&gen("src/frontend/ui/generated/AssetsSynced.ts"));
     let sent: std::collections::BTreeSet<String> = args_for(&cfg())
-        .unwrap()
         .as_object()
         .unwrap()
         .keys()
@@ -219,7 +218,7 @@ fn the_reach_registration_sends_what_the_backend_registers() {
     );
     let req = decl_keys(&gen("src/frontend/ui/generated/ReachReq.ts"));
     let reply = decl_keys(&gen("src/frontend/ui/generated/Reached.ts"));
-    let args = args_for(&cfg()).unwrap();
+    let args = args_for(&cfg());
     let sent: std::collections::BTreeSet<String> =
         args.as_object().unwrap().keys().cloned().collect();
     assert_eq!(

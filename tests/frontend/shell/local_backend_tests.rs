@@ -1062,8 +1062,9 @@ fn place() -> Result<serde_json::Value, crate::backend_once::OnceErr> {
 fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     let d = tmpdir_e2("place");
     let mark = |_: &Path| Ok(());
-    let dirs =
-        |p: &Path| std::fs::create_dir_all(p).map_err(|e| crate::detail::Said::from(e.to_string()));
+    let dirs = |p: &Path| {
+        std::fs::create_dir_all(p).map_err(|e| crate::detail::Said::written(e.to_string()))
+    };
     let dest = d.join(local_ccm_entry_name());
     let disk = || std::fs::read(&dest).unwrap_or_default();
     let partial = d.join(format!(
@@ -1305,7 +1306,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
         arch: "x86_64".into(),
     }
     .say(&copy_text("rsLocalBackendHost.local.machine", &[]));
-    let absent = crate::detail::Said::from(absent);
+    let absent = crate::detail::Said::written(absent);
     assert!(
         refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"

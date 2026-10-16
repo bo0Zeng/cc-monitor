@@ -26,7 +26,7 @@ const HANDSHAKE_LINE: std::time::Duration = std::time::Duration::from_secs(60);
 /// 「这台」那几句的读法：给人看的那一句 ＋ 复制详情。
 fn said_of(p: &Problem) -> crate::detail::Said {
     if p.detail.trim().is_empty() {
-        p.text.clone().into()
+        crate::detail::Said::written(p.text.clone())
     } else {
         crate::detail::Said::with_raw(p.text.clone(), &p.detail)
     }

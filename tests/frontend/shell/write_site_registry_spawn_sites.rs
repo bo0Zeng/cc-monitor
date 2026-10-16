@@ -57,7 +57,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           第五列记的是 Plan B 那一跳；本表的对拍粒度是文件，盖不到同函数内两跳的差别 —— 如实记。",
      "NewVisible · Detached · Inherit"),
     // `dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，目录模块，后端 `readonly_guard::spawn_registry` 登记）。
-    ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
+    ("lib.rs", "open_with", "`cmd` / `open` / `xdg-open`",
      "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录
           ★ 三条策略为什么是这三格：`Detached` 是承重的：fire-and-forget，**绝不能是 `JobKillOnClose`** —— 那会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",
      "Hidden · Detached · Inherit"),
@@ -117,7 +117,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           零 CPU、零唤醒 —— 刻意**不**用「隔一会儿看一眼」，那是一个新节拍
           ★ 三条策略为什么是这三格：`Hidden` —— Windows 上不带它系统会**替子进程新开一个可关的控制台**，\
           用户一关 `CTRL_CLOSE_EVENT` 就把文件窗口杀了；egui 那个窗口自己会出来，它不需要控制台。\
-          `Detached` 是**承重的**，与 `lib.rs::open_with_os` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
+          `Detached` 是**承重的**，与 `lib.rs::open_with` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
           `JobKillOnClose` 会在那一瞬间把刚开出来的窗口收掉；顺带买到「关掉 monitor 不带走已开的文件窗口」。\
           `Captured`：它 stderr 上是「窗口为什么没立起来」那几句（例如缺 OpenGL 2.0），双击起的 GUI app 没有 stderr 可跟 \
           ⇒ 接出来，一条线程读到 EOF、逐行记进 monitor 日志、留最后几行给开窗没成 / 开了又退那一句话。",
@@ -327,7 +327,7 @@ fn every_local_spawn_is_declared() {
         // 今天不是了：走 [`crate::spawn_managed::spawn_managed`] 那个五参数形态的落点
         // **自己不造 `Command`**（出口替它造）⇒ 只数 `Command::new(` 的话，
         // 那种落点会**悄悄从人群里消失**，而它一样在用户机器上起进程
-        //（现打：`lib.rs::open_with_os` 就是这一形）。
+        //（现打：`lib.rs::open_with` 就是这一形）。
         // ⇒ 第二个锚点 = **调用那个唯一出口**。两个锚点是并集，落点只要沾一个就得申报。
         //
         // ⚠ **出口自己那份源码只按第一个锚点数**：在 `spawn_managed.rs` 里面，
