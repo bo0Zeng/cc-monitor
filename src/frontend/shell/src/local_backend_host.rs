@@ -68,7 +68,7 @@ pub enum StartOutcome {
     Started(std::path::PathBuf),
     /// 已经在跑（`C8`①）—— **不是失败**。
     AlreadyRunning,
-    /// 起不来：没内嵌 / 释放失败 / exe 旁边也没有。
+    /// 起不来：没内嵌 / 释放失败。
     /// `reason` 是给人看的那一句 ＋ 复制详情（下层原话在详情里，不在句子里）。
     Failed {
         reason: Said,
@@ -933,7 +933,7 @@ enum DetachOutcome {
 /// 常驻那条路的正题：**认得出已有实例 ⇒ 接上它；没有 ⇒ 起一个脱离的。**
 ///
 /// 两个入参都是**注入**，理由各不相同：
-/// - `resolve_bin`：生产路径喂 [`resolve_backend_bin`]（exe 旁 → 内嵌释放）；
+/// - `resolve_bin`：生产路径喂 [`resolve_backend_bin`]（内嵌那份释放到本机）；
 ///   而判据喂一个现成的二进制 —— 否则那条真进程判据只能去动用户真实的 `~/.cc-monitor`。
 /// - `extra_env`：生产路径喂**空表**；e2e 用它塞一条**前面挂着 shim 的 PATH**。
 ///   ⚠ 这一条不是方便，是 `C7i` 红线：被起的后端一上来就往它连得到的 tmux server

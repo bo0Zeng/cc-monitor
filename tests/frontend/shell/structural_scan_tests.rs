@@ -1676,7 +1676,6 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     ///
     /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
     const INVENTORY: &[(&str, &str, usize)] = &[
-        ("atomic_replace_registry.rs", "fenced_block.rs", 5),
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("launch_tests.rs", "launch.rs", 122),
         // 🔴 **这一行删了 —— 那处行号地址改成了符号地址。**
