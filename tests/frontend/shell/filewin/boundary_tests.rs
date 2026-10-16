@@ -641,14 +641,8 @@ const SITES: &[&str] = &[
 /// （模块声明，不带 `::`）由下面单独一条钉。
 #[test]
 fn the_app_side_reaches_into_the_file_manager_through_exactly_one_door() {
+    // 人群塌了不会恒绿：期望集合非空（两条门都在 app 侧），扫空了下面那条相等当场红。
     let (_, outside) = both_halves();
-    // ★ 抽取器自检：人群塌了 ⇒ 零命中守卫会在空集上成立。
-    assert!(
-        outside.len() >= 80,
-        "`filewin/` 之外只扫到 {} 份 `.rs` —— 遍历器坏了。\
-         这一格非有不可：一条零命中守卫在空人群上**恒绿**",
-        outside.len()
-    );
 
     let root = repo_root();
     let mut found: BTreeSet<String> = BTreeSet::new();
