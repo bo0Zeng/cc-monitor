@@ -2,7 +2,7 @@
 //! 手机嵌的 Rust 核心按这里的类型解（`replies::decode_reply`），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 策略文件头里那份设置声明（`FormCell` 那几样）与换号记录（`RotLog`）后端也拿来读写盘上那几份，同一个形。
 
-use crate::cells::Words;
+use crate::cells::{Tone, Words};
 use crate::quota::{Kind, LoginState};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -113,14 +113,6 @@ pub enum FormKind {
 /// 作用范围。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "RotFormScope",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
 pub enum FormScope {
     /// 总体设置那一块画一份（值在 `settings[key]`）。
     All,
@@ -131,14 +123,6 @@ pub enum FormScope {
 /// `choice` 的一项。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "RotFormChoice",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
 pub struct FormChoice {
     pub v: String,
     pub label: StrategyText,
@@ -147,71 +131,42 @@ pub struct FormChoice {
 /// 一格。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "RotFormCell",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
 pub struct FormCell {
     pub key: String,
     pub kind: FormKind,
     pub scope: FormScope,
     /// 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<bool>"))]
     pub inherit: bool,
     pub label: StrategyText,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub help: Option<StrategyText>,
     /// 只对 `daySegments`：哪几个窗口（`5h` · `7d`）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
     pub windows: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub min: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub max: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub unit: Option<String>,
     #[serde(default)]
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub default: Value,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[cfg_attr(
-        any(test, feature = "ts"),
-        ts(optional, as = "Option<Vec<FormChoice>>")
-    )]
     pub choices: Vec<FormChoice>,
     /// 能是空（`null`）：空的那一项怎么叫（例如「不回切」）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub nullable: Option<StrategyText>,
 }
 
 /// 头里能写成一句、也能分语言写的字。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"),
-    ts(
-        rename = "StrategyText",
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
-    )
-)]
 pub enum StrategyText {
     One(String),
     Langs {
         zh: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
         en: Option<String>,
     },
 }
@@ -342,8 +297,8 @@ pub struct RotTryLaneSeg {
     /// 这一段开头两窗的用量（5 小时 · 7 天）。
     pub used: [f64; 2],
     pub reset: bool,
-    /// 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
-    pub from_text: String,
+    /// 这一段写的字：发不出去 ⇒ 空；重置那段 `↻18:30`；此刻那段 `剩 40%`。
+    pub text: String,
     /// 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
     pub left: f64,
 }
@@ -440,6 +395,8 @@ pub struct RotStrategyItem {
     pub id: String,
     /// 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
     pub description: String,
+    /// 说明的第一行（下拉里那行灰字；没有 ⇒ 空）。
+    pub summary: String,
     pub rev: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -528,7 +485,7 @@ pub struct RotPastUse {
     pub account: Option<String>,
 }
 
-/// 过去那一截每号一行的一段：发得出去吗 · 开头是不是刚开了新窗 · 起点的钟面（重置那段写成 `↻HH:MM`，字由界面照文案表配）。
+/// 过去那一截每号一行的一段：发得出去吗 · 开头是不是刚开了新窗 · 写的字（重置那段 `↻HH:MM`，别的空）。
 /// 不带「剩多少」：只知道此刻的读数。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -541,7 +498,7 @@ pub struct RotPastSeg {
     pub to: u64,
     pub sendable: bool,
     pub reset: bool,
-    pub from_text: String,
+    pub text: String,
 }
 
 /// 过去那一截一个号那一行（说不出的那几截不在 `segs` 里：空着）。
@@ -564,12 +521,13 @@ pub struct RotPast {
     pub lanes: Vec<RotPastLane>,
 }
 
-/// 一条提示：哪一种（界面照它挑颜色）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
+/// 一条提示：哪一种（按钮照它挂）· 语气（`need` ＝ 需手动）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct RotNote {
     pub hint: RotHint,
+    pub tone: Tone,
     pub text: String,
     /// 复制详情（出错那一条带原话；别的没有）。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -602,11 +560,11 @@ pub struct RotationViewReply {
     pub title: Option<String>,
     /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
     pub strategy: Option<RotStrategyItem>,
-    /// 设置怎么画（策略的声明）。
-    pub form: Vec<FormCell>,
-    /// 生效的设置（会话有草稿 ⇒ 草稿）。
+    /// 生效的设置（会话有草稿 ⇒ 草稿）：设置页把它当草稿原样存着、随读带回，界面不拆。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
     pub settings: Value,
+    /// 设置那几格照声明解好（此刻的值 · 从哪来 · 字）。
+    pub board: RotBoard,
     /// 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
     pub dirty: bool,
     /// 开会话用的号 · 此刻在用的号。
@@ -671,6 +629,9 @@ pub struct RotDone {}
 pub struct RotationSettingsReply {
     /// 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
     pub dirty: bool,
+    /// 改完的整份（设置页当新的草稿存着；会话那边已存成草稿）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
+    pub settings: Value,
 }
 
 /// `rotation-save` 的应答：写成的那一份。
@@ -739,19 +700,6 @@ pub struct RotInUse {
     pub sids: Vec<String>,
 }
 
-/// 一段：一天里的分钟 `[from, to)` · 值。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotSeg {
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub from: u64,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-    pub to: u64,
-    pub v: f64,
-}
-
 /// `rotation-facts` 的应答。
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -765,14 +713,6 @@ pub struct RotationFactsReply {
     pub accounts: Vec<Fact>,
 }
 
-/// `rotation-day-paint` 的应答：照先后排好、连着一样的并成一段。
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
-pub struct RotationDayPaintReply {
-    pub segs: Vec<RotSeg>,
-}
-
 /// `rotation-view` 里一个号的号牌：号色（`--acct-c0..c7` 第几格，同 `accounts-list` 那一格）· 号名（人眼里叫什么，同额度那几处）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -780,4 +720,101 @@ pub struct RotationDayPaintReply {
 pub struct RotPlate {
     pub color: u8,
     pub label: Words,
+}
+
+/// 一格此刻的值从哪来：自己设的 · 跟总体（号那一行没设、声明说跟总体）· 声明里的默认。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum RotFrom {
+    Own,
+    All,
+    Default,
+}
+
+/// 24 小时条上的一段：一天里的分钟 `[from, to)` · 值 · 段上写的字 · 悬停那一句。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotDaySeg {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub from: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub to: u64,
+    pub v: f64,
+    pub text: String,
+    pub tip: String,
+}
+
+/// `choice` 的一项（字已挑好）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotChoice {
+    pub v: String,
+    pub label: String,
+}
+
+/// 设置的一格（24 小时条每窗一格），照声明解好：此刻的值 · 从哪来 · 字。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotCell {
+    pub key: String,
+    pub kind: FormKind,
+    /// 24 小时条那一格是哪一窗（`5h` · `7d`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub window: Option<String>,
+    /// 标签（24 小时条那一格带窗名）。
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub help: Option<String>,
+    /// 此刻生效的值（`null` ＝ 可空的那一格选了空的那一项；24 小时条 ⇒ `null`，段在 `segs`）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "unknown"))]
+    pub v: Value,
+    /// 数格框里写的数（值是空的那一项 ⇒ 声明默认 · 下限 · 0 里头一个是数的）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub num: Option<f64>,
+    pub from: RotFrom,
+    /// 能是空（`null`）：空的那一项怎么叫。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub nullable: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<RotChoice>>"))]
+    pub choices: Vec<RotChoice>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<RotDaySeg>>"))]
+    pub segs: Vec<RotDaySeg>,
+}
+
+/// 号列表的一行：号 · 展开头一行（两窗用量 · 重置）· 号牌悬停那一句 · `scope: each` 那几格。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotRow {
+    pub account: String,
+    pub line: String,
+    pub hover: String,
+    pub cells: Vec<RotCell>,
+}
+
+/// 设置那几块：总体设置（`scope: all`）· 号列表每一行（照 `settings.accounts` 的先后，与 `accounts` 前 `listed` 个一一对应）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct RotBoard {
+    pub all: Vec<RotCell>,
+    pub rows: Vec<RotRow>,
 }

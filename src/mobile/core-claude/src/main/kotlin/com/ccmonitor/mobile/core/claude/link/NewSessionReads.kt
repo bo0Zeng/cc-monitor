@@ -72,14 +72,6 @@ object RotationStrategies {
     const val COMMAND: String = "rotation-strategies"
 
     fun of(data: Any?): RotationStrategiesReply? = Wire.bind<RotationStrategiesReply>(data)
-
-    /** 说明的第一行（行里第二行起是细节，同桌面新建会话框）。 */
-    fun firstLine(description: String): String =
-        description
-            .lineSequence()
-            .map(String::trim)
-            .firstOrNull(String::isNotEmpty)
-            .orEmpty()
 }
 
 /** 在 app 里登录一个号：`login-start` 起那一家的登录、交回链接；粘回来的那一段经 `login-finish` 交给它；`login-cancel` 收。 */

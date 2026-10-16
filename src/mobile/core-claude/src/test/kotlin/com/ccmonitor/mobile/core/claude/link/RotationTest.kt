@@ -45,6 +45,5 @@ class RotationTest {
             Rotation.view(RotWhere.Strategy("a"), 12, mapOf("x" to 1), "r"),
         )
         assertEquals(mapOf("target" to mapOf("sid" to "s"), "ifRev" to "r"), Rotation.save(RotWhere.Session("s"), "r", mapOf("x" to 1)))
-        assertEquals("策略写的字：一句 · 分语言", listOf("a", "b", ""), listOf(Rotation.text("a"), Rotation.text(mapOf("zh" to "b", "en" to "B")), Rotation.text(null)))
     }
 }

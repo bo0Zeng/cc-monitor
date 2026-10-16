@@ -12,10 +12,7 @@ sendable: boolean,
  * 这一段开头两窗的用量（5 小时 · 7 天）。
  */
 used: [number, number], reset: boolean, 
-/**
- * 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
- */
-fromText: string, 
+text: string, 
 /**
  * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
  */

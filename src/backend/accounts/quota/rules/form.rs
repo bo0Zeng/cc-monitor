@@ -4,7 +4,9 @@
 
 use super::script::Text;
 /// 设置声明那几格（策略文件头里写的 · `rotation-view` 带的同一形）：线上形住 `cmd-wire`。
-pub(crate) use cmd_wire::rotation::{FormCell as Cell, FormKind as Kind, FormScope as Scope};
+pub(crate) use cmd_wire::rotation::{
+    FormCell as Cell, FormKind as Kind, FormScope as Scope, RotFrom as From,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -259,7 +261,207 @@ pub(crate) fn words_bad(form: &[Cell]) -> bool {
     })
 }
 
-/// 24 小时条上拖出一段（`rotation-day-paint`）：在 `segs` 上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截，回到跟总体）；
+fn row_of(settings: &Value, row: usize) -> Option<&serde_json::Map<String, Value>> {
+    settings.get(ACCOUNTS)?.as_array()?.get(row)?.as_object()
+}
+
+/// ★ 一格此刻生效的值与它从哪来（`row` ＝ 号列表第几行；缺 ⇒ 总体那一格）。号那一行有这一格（值是 `null` 也算有）⇒ 自己的；
+/// 声明说跟总体 ⇒ 总体的（总体也没设 ⇒ 声明默认）；否则声明默认。全仓只这一处解继承。
+pub(crate) fn value_of(c: &Cell, settings: &Value, row: Option<usize>) -> (Value, From) {
+    let total = settings.get(&c.key);
+    let Some(i) = row else {
+        return total.map_or((c.default.clone(), From::Default), |v| (v.clone(), From::Own));
+    };
+    if let Some(v) = row_of(settings, i).and_then(|r| r.get(&c.key)) {
+        return (v.clone(), From::Own);
+    }
+    if c.inherit {
+        (total.cloned().unwrap_or_else(|| c.default.clone()), From::All)
+    } else {
+        (c.default.clone(), From::Default)
+    }
+}
+
+fn segs_in(v: Option<&Value>, window: &str) -> Option<Vec<(u64, u64, f64)>> {
+    let a = v?.get(window)?.as_array()?;
+    Some(
+        a.iter()
+            .filter_map(|s| {
+                let n = |k: &str| s.get(k).and_then(Value::as_u64);
+                Some((n("from")?, n("to")?, s.get("v")?.as_f64()?))
+            })
+            .collect(),
+    )
+}
+
+/// ★ 24 小时条某一窗此刻生效的那一组段与它从哪来（同 [`value_of`]，按窗：那一窗是段组才算设了）。
+pub(crate) fn day_of(
+    c: &Cell,
+    settings: &Value,
+    row: Option<usize>,
+    window: &str,
+) -> (Vec<(u64, u64, f64)>, From) {
+    let total = settings.get(&c.key);
+    let Some(i) = row else {
+        return segs_in(total, window).map_or((Vec::new(), From::Default), |s| (s, From::Own));
+    };
+    if let Some(s) = segs_in(row_of(settings, i).and_then(|r| r.get(&c.key)), window) {
+        return (s, From::Own);
+    }
+    if c.inherit {
+        (segs_in(total, window).unwrap_or_default(), From::All)
+    } else {
+        (Vec::new(), From::Default)
+    }
+}
+
+/// 改设置的一个意图（`rotation-settings` 的 `edit`）：设一格 · 24 小时条上刷一段 · 拖号牌 · 加号 · 移出 · 只把基于的版本跟上。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) enum RotEdit {
+    /// 设一格（`row` 缺 ⇒ 总体那一格）。
+    Set {
+        key: String,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        row: Option<usize>,
+        #[cfg_attr(test, ts(type = "unknown"))]
+        v: Value,
+    },
+    /// 在那一窗此刻生效的段上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截；`to ≤ from` ⇒ 跨午夜），写成那一行自己的。
+    Day {
+        key: String,
+        #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
+        row: Option<usize>,
+        window: String,
+        #[cfg_attr(test, ts(type = "number"))]
+        from: u64,
+        #[cfg_attr(test, ts(type = "number"))]
+        to: u64,
+        #[cfg_attr(test, ts(type = "number | null"))]
+        v: Option<f64>,
+    },
+    /// 拖号牌：第 `from` 行松在第 `to` 行上 ⇒ 排到它前头。
+    Move { from: usize, to: usize },
+    /// 加一个号（排在最后）。
+    Add { account: String },
+    /// 移出一行。
+    Remove { row: usize },
+    /// 设置不动（「留着这边的」：只把基于的版本跟上）。
+    Keep,
+}
+
+/// 数照它的样子落盘：整数写成整数（同界面交来的、文件里写的那一形）。
+fn num(x: f64) -> Value {
+    if x.fract() == 0.0 && x.abs() < 1e15 {
+        Value::from(x as i64)
+    } else {
+        Value::from(x)
+    }
+}
+
+/// 照意图改出整份新设置（形状照声明的校验另做：[`check`]）。行号越界 · 那一格不是 24 小时条 · 分钟越界 ⇒ 那一句（入参不对）。
+pub(crate) fn apply(form: &[Cell], settings: &Value, edit: &RotEdit) -> Result<Value, String> {
+    let mut out = settings.clone();
+    if !out.is_object() {
+        out = Value::Object(Default::default());
+    }
+    let top = out.as_object_mut().ok_or("settings is not an object")?;
+    let rows = || -> Vec<Value> {
+        settings
+            .get(ACCOUNTS)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let no_row = |i: usize| format!("no row {i} in `accounts`");
+    let row_mut = |top: &mut serde_json::Map<String, Value>, i: usize| -> Result<&mut serde_json::Map<String, Value>, String> {
+        top.get_mut(ACCOUNTS)
+            .and_then(Value::as_array_mut)
+            .and_then(|a| a.get_mut(i))
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| no_row(i))
+    };
+    match edit {
+        RotEdit::Keep => {}
+        RotEdit::Set { key, row: None, v } => {
+            top.insert(key.clone(), v.clone());
+        }
+        RotEdit::Set { key, row: Some(i), v } => {
+            row_mut(top, *i)?.insert(key.clone(), v.clone());
+        }
+        RotEdit::Day {
+            key,
+            row,
+            window,
+            from,
+            to,
+            v,
+        } => {
+            let c = form
+                .iter()
+                .find(|c| c.key == *key && c.kind == Kind::DaySegments)
+                .ok_or_else(|| format!("`{key}` is not a daySegments cell"))?;
+            if *from > DAY_MIN || *to > DAY_MIN {
+                return Err("`from` and `to` must be minutes of a day (0–1440)".into());
+            }
+            let (now, _) = day_of(c, settings, *row, window);
+            let segs: Vec<Value> = day_paint(&now, *from, *to, *v)
+                .into_iter()
+                .map(|(a, b, x)| serde_json::json!({"from": a, "to": b, "v": num(x)}))
+                .collect();
+            let place = match row {
+                None => &mut *top,
+                Some(i) => row_mut(top, *i)?,
+            };
+            let mut cell = place
+                .get(key)
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            if segs.is_empty() {
+                cell.remove(window);
+            } else {
+                cell.insert(window.clone(), Value::Array(segs));
+            }
+            if row.is_some() && cell.is_empty() {
+                place.remove(key);
+            } else {
+                place.insert(key.clone(), Value::Object(cell));
+            }
+        }
+        RotEdit::Move { from, to } => {
+            let mut r = rows();
+            if *from >= r.len() || *to >= r.len() {
+                return Err(no_row((*from).max(*to)));
+            }
+            if from != to {
+                let m = r.remove(*from);
+                r.insert(if to > from { to - 1 } else { *to }, m);
+            }
+            top.insert(ACCOUNTS.into(), Value::Array(r));
+        }
+        RotEdit::Add { account } => {
+            let mut r = rows();
+            r.push(serde_json::json!({"id": account}));
+            top.insert(ACCOUNTS.into(), Value::Array(r));
+        }
+        RotEdit::Remove { row } => {
+            let mut r = rows();
+            if *row >= r.len() {
+                return Err(no_row(*row));
+            }
+            r.remove(*row);
+            top.insert(ACCOUNTS.into(), Value::Array(r));
+        }
+    }
+    Ok(out)
+}
+
+/// 24 小时条上刷一段（[`RotEdit::Day`]）：在 `segs` 上把 `[from, to)` 刷成 `v`（`null` ⇒ 删掉那一截，回到跟总体）；
 /// `to ≤ from` ⇒ 跨午夜（相等 ⇒ 一整天）。回照先后排好、连着一样的并成一段的新分段。只是分段的算术，不是换号的想法。
 pub(crate) fn day_paint(
     segs: &[(u64, u64, f64)],

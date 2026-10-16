@@ -257,8 +257,6 @@ import type { Resynced } from "./Resynced";
 import type { RotDone } from "./RotDone";
 import type { RotStrategyId } from "./RotStrategyId";
 import type { RotStrategyRev } from "./RotStrategyRev";
-import type { RotationDayPaintReply } from "./RotationDayPaintReply";
-import type { RotationDayPaintReq } from "./RotationDayPaintReq";
 import type { RotationFactsReply } from "./RotationFactsReply";
 import type { RotationFactsReq } from "./RotationFactsReq";
 import type { RotationForNewReq } from "./RotationForNewReq";
@@ -489,7 +487,6 @@ export interface TypedCommands {
   "resident-verdict": { req: VerdictReq; reply: VerdictReply; code: "bad_args" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
-  "rotation-day-paint": { req: RotationDayPaintReq; reply: RotationDayPaintReply; code: "bad_args" };
   "rotation-facts": { req: RotationFactsReq; reply: RotationFactsReply; code: "bad_args" };
   "rotation-for-new": { req: RotationForNewReq; reply: RotDone; code: "bad_args" | "no_strategy" | "io_failed" };
   "rotation-revert": { req: RotationRevertReq; reply: RotDone; code: "bad_args" | "no_session" | "io_failed" };

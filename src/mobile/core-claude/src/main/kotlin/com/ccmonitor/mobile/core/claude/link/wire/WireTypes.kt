@@ -667,6 +667,7 @@ data class RotationStrategiesReply(
 data class RotStrategyItem(
     val id: String,
     val description: String,
+    val summary: String,
     val rev: String,
     val error: RotStrategyError?,
     val inUse: List<String>,
@@ -806,7 +807,7 @@ enum class BatchItemState {
     CANCELLED,
 }
 
-// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。策略写的字（`StrategyText` ＝ 一句或分语言）声明成 `Any`，取字在 `Rotation.text`。 ──
+// ── 轮换屏（mobrot）：`rotation-view` 那一份 ＋ 写那几条的回包。设置那几格（`board`）的值 · 从哪来 · 字都是那台解好的。 ──
 
 @WireOf("RotationViewReply")
 @JsonClass(generateAdapter = true)
@@ -815,8 +816,8 @@ data class RotationViewReply(
     val nowText: String,
     val title: String?,
     val strategy: RotStrategyItem?,
-    val form: List<RotFormCell>,
     val settings: Any?,
+    val board: RotBoard,
     val dirty: Boolean,
     val start: String,
     val current: String,
@@ -829,22 +830,64 @@ data class RotationViewReply(
     val hints: List<RotNote>,
 )
 
-@WireOf("RotFormCell")
+@WireOf("RotBoard")
 @JsonClass(generateAdapter = true)
-data class RotFormCell(
+data class RotBoard(
+    val all: List<RotCell>,
+    val rows: List<RotRow>,
+)
+
+@WireOf("RotRow")
+@JsonClass(generateAdapter = true)
+data class RotRow(
+    val account: String,
+    val line: String,
+    val hover: String,
+    val cells: List<RotCell>,
+)
+
+@WireOf("RotCell")
+@JsonClass(generateAdapter = true)
+data class RotCell(
     val key: String,
     val kind: RotFormKind,
-    val scope: RotFormScope,
-    val inherit: Boolean?,
-    val label: Any,
-    val help: Any?,
-    val windows: List<String>?,
-    val min: Double?,
-    val max: Double?,
-    val unit: String?,
-    val default: Any?,
-    val choices: List<RotFormChoice>?,
-    val nullable: Any?,
+    val window: String?,
+    val label: String,
+    val help: String?,
+    val v: Any?,
+    val num: Double?,
+    val from: RotFrom,
+    val nullable: String?,
+    val choices: List<RotChoice>?,
+    val segs: List<RotDaySeg>?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class RotFrom {
+    @Json(name = "own")
+    OWN,
+
+    @Json(name = "all")
+    ALL,
+
+    @Json(name = "default")
+    DEFAULT,
+}
+
+@WireOf("RotChoice")
+@JsonClass(generateAdapter = true)
+data class RotChoice(
+    val v: String,
+    val label: String,
+)
+
+@WireOf("RotDaySeg")
+@JsonClass(generateAdapter = true)
+data class RotDaySeg(
+    val from: Long,
+    val to: Long,
+    val v: Double,
+    val text: String,
 )
 
 @JsonClass(generateAdapter = false)
@@ -864,22 +907,6 @@ enum class RotFormKind {
     @Json(name = "daySegments")
     DAY_SEGMENTS,
 }
-
-@JsonClass(generateAdapter = false)
-enum class RotFormScope {
-    @Json(name = "all")
-    ALL,
-
-    @Json(name = "each")
-    EACH,
-}
-
-@WireOf("RotFormChoice")
-@JsonClass(generateAdapter = true)
-data class RotFormChoice(
-    val v: String,
-    val label: Any,
-)
 
 @WireOf("Fact")
 @JsonClass(generateAdapter = true)
@@ -951,8 +978,7 @@ data class RotTryLaneSeg(
     val to: Long,
     val sendable: Boolean,
     val reset: Boolean,
-    val fromText: String,
-    val left: Double,
+    val text: String,
 )
 
 @WireOf("RotTryTick")
@@ -992,13 +1018,14 @@ data class RotPastSeg(
     val to: Long,
     val sendable: Boolean,
     val reset: Boolean,
-    val fromText: String,
+    val text: String,
 )
 
 @WireOf("RotNote")
 @JsonClass(generateAdapter = true)
 data class RotNote(
     val hint: RotHint,
+    val tone: Tone,
     val text: String,
     val detail: String?,
 )
@@ -1046,18 +1073,10 @@ data class RotOldFile(
     val path: String,
 )
 
-@WireOf("RotSeg")
+@WireOf("RotationSettingsReply")
 @JsonClass(generateAdapter = true)
-data class RotSeg(
-    val from: Long,
-    val to: Long,
-    val v: Double,
-)
-
-@WireOf("RotationDayPaintReply")
-@JsonClass(generateAdapter = true)
-data class RotationDayPaintReply(
-    val segs: List<RotSeg>,
+data class RotationSettingsReply(
+    val settings: Any?,
 )
 
 @WireOf("RotationSaveReply")

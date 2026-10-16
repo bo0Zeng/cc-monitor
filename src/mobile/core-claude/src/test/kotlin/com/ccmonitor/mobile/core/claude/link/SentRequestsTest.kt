@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.Hide
-import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,11 +53,20 @@ class SentRequestsTest {
             Profiles.FROM_LINE to listOf(Profiles.fromLineArgs("cct", "claude --resume", "~/w", "cc"), Profiles.fromLineArgs("cct", "claude", null, null)),
             Profiles.WRITE to listOf(Profiles.createArgs("f", FORM), Profiles.createArgs(null, FORM)),
             QuotaRead.COMMAND to listOf(null),
-            Rotation.DAY_PAINT to listOf(Rotation.dayPaint(listOf(RotSeg(0L, 10L, 1.0)), 0L, 10L, 0.5), Rotation.dayPaint(emptyList(), 0L, 10L, null)),
             Rotation.FOR_NEW to listOf(Rotation.forNew("s1"), Rotation.forNew(null)),
             Rotation.REVERT to listOf(Rotation.revert("s")),
             Rotation.SAVE to listOf(Rotation.save(RotWhere.Session("s"), "r"), Rotation.save(RotWhere.Strategy("x"), "r", mapOf("k" to 1L))),
-            Rotation.SETTINGS to listOf(Rotation.settings(RotWhere.Strategy("x"), mapOf("k" to 1L), "r")),
+            Rotation.SETTINGS to
+                listOf(
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.set("k", null, 1L), ifRev = "r"),
+                    Rotation.settings(RotWhere.Strategy("x"), RotEdit.set("k", 0, null), draft = mapOf("k" to 1L)),
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.day("caps", 1, "5h", 0L, 10L, 0.5), ifRev = "r"),
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.day("caps", null, "7d", 0L, 0L, null), ifRev = "r"),
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.move(0, 2), ifRev = "r"),
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.add("a"), ifRev = "r"),
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.remove(1), ifRev = "r"),
+                    Rotation.settings(RotWhere.Session("s"), RotEdit.KEEP, ifRev = "r"),
+                ),
             Rotation.STRATEGIES to listOf(emptyMap()),
             Rotation.ADD to listOf(Rotation.add("x", "n")),
             Rotation.COPY to listOf(Rotation.copy("x", "n")),

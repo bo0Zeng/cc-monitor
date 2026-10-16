@@ -44,11 +44,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.claude.link.wire.RotHintKind
 import com.ccmonitor.mobile.core.claude.link.wire.RotNote
 import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyItem
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
@@ -171,7 +171,7 @@ private fun PickSheet(
             PickRow(
                 st.id,
                 "rot-pick-${st.id}",
-                second = if (st.error != null) copyText("rot.top.unreadable") else RotationStrategies.firstLine(st.description).ifEmpty { null },
+                second = if (st.error != null) copyText("rot.top.unreadable") else st.summary.ifEmpty { null },
                 selected = st.id == current,
                 onClick = { onPick(st.id) },
                 trail = { if (inSession && st.forNew) Tag(copyText("rot.tag.forNew")) },
@@ -294,9 +294,9 @@ private fun Hint(
 ) {
     val k = n.hint.k
     val text = hintText(n, view.now)
-    NoteBox(toneOf(k), Modifier.testTag("rot-hint-${k.name.lowercase()}")) {
+    NoteBox(toneOf(n.tone), Modifier.testTag("rot-hint-${k.name.lowercase()}")) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (needsHand(k)) NeedsTag()
+            if (n.tone == Tone.NEED) NeedsTag()
             Text(text, style = MaterialTheme.typography.bodyMedium)
         }
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {

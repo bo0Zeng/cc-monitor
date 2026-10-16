@@ -43,7 +43,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.LinkState
-import com.ccmonitor.mobile.core.claude.link.wire.RotFormScope
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
@@ -127,10 +126,10 @@ private fun BoardBody(
     Hints(ui, view, board, onOpenFile)
     if (view.strategy == null) return
     Cards(ui, view, board)
-    val all = view.form.filter { it.scope == RotFormScope.ALL }
+    val all = view.board.all
     if (all.isNotEmpty()) {
         RotHeader(copyText("rot.h.all"))
-        all.forEach { CellRows(ui, view, board, it, null) }
+        all.forEach { CellRows(ui, board, it, null) }
     }
     if (view.timeline != null) Simulation(ui, view, board)
     Spacer(Modifier.height(24.dp))
@@ -268,7 +267,6 @@ internal fun toneInk(tone: NoteTone) =
         NoteTone.ERROR -> MaterialTheme.colorScheme.error
         NoteTone.WARN -> LocalAppTokens.current.warn
         NoteTone.INFO -> MaterialTheme.colorScheme.primary
-        NoteTone.PLAIN -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
 private const val BACK = "←"

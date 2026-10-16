@@ -165,3 +165,70 @@ fn painting_a_span_splits_merges_and_wraps() {
     );
     assert_eq!(day_paint(&[], 60, 60, Some(10.0)), [(0, 1440, 10.0)]);
 }
+
+fn cell<'a>(f: &'a [Cell], key: &str) -> &'a Cell {
+    f.iter().find(|c| c.key == key).expect(key)
+}
+
+/// ★ 继承只在这里解：号那一行有这一格（值是 `null` 也算有）⇒ 自己的；声明说跟总体 ⇒ 总体的（总体也没设 ⇒ 默认）；否则默认。
+/// 24 小时条按窗解：那一窗是段组才算设了。
+#[test]
+fn a_cell_resolves_own_then_all_then_default_and_null_counts_as_set() {
+    let f = full_form();
+    let s = json!({
+        "force": null,
+        "capKind": "hard",
+        "caps": {"5h": [{"from": 0, "to": 1440, "v": 80}]},
+        "accounts": [
+            {"start": true, "stint": null, "capKind": "soft", "caps": {"7d": [{"from": 0, "to": 600, "v": 30}]}},
+            {"id": "b"},
+        ],
+    });
+    assert_eq!(value_of(cell(&f, "force"), &s, None), (Value::Null, From::Own), "总体设成空的那一项");
+    assert_eq!(value_of(cell(&f, "close"), &s, None), (json!(0), From::Default));
+    assert_eq!(value_of(cell(&f, "stint"), &s, Some(0)), (Value::Null, From::Own), "号那一行设成空的那一项");
+    assert_eq!(value_of(cell(&f, "stint"), &s, Some(1)), (Value::Null, From::Default), "不跟总体 ⇒ 默认");
+    assert_eq!(value_of(cell(&f, "capKind"), &s, Some(0)), (json!("soft"), From::Own));
+    assert_eq!(value_of(cell(&f, "capKind"), &s, Some(1)), (json!("hard"), From::All));
+    assert_eq!(value_of(cell(&f, "capKind"), &json!({"accounts": [{"id": "b"}]}), Some(0)), (json!("soft"), From::All), "总体也没设 ⇒ 默认，仍是跟总体");
+    let caps = cell(&f, "caps");
+    assert_eq!(day_of(caps, &s, None, "5h"), (vec![(0, 1440, 80.0)], From::Own));
+    assert_eq!(day_of(caps, &s, None, "7d"), (vec![], From::Default));
+    assert_eq!(day_of(caps, &s, Some(0), "7d"), (vec![(0, 600, 30.0)], From::Own));
+    assert_eq!(day_of(caps, &s, Some(0), "5h"), (vec![(0, 1440, 80.0)], From::All), "号设了别的窗，这一窗照样跟总体");
+    assert_eq!(day_of(caps, &s, Some(1), "5h"), (vec![(0, 1440, 80.0)], From::All));
+}
+
+/// ★ 改设置交意图：设一格 · 刷段（照此刻生效的那组刷、写成那一行自己的；刷空 ⇒ 删那一窗、那一行全空 ⇒ 删那一格回到跟总体）·
+/// 拖号牌（排到落点前头）· 加 · 移出 · 不动；行号越界 · 不是 24 小时条 ⇒ 入参不对。
+#[test]
+fn an_edit_is_applied_where_the_form_says() {
+    let f = full_form();
+    let s = json!({"caps": {"5h": [{"from": 0, "to": 1440, "v": 80}]},
+                   "accounts": [{"start": true}, {"id": "a"}, {"id": "b", "delay": 5}]});
+    let ap = |e: RotEdit| apply(&f, &s, &e);
+    let painted = ap(RotEdit::Day { key: "caps".into(), row: Some(1), window: "5h".into(), from: 0, to: 600, v: Some(50.0) }).expect("ok");
+    assert_eq!(painted["accounts"][1]["caps"], json!({"5h": [{"from": 0, "to": 600, "v": 50}, {"from": 600, "to": 1440, "v": 80}]}), "照跟着的总体那组刷");
+    assert_eq!(painted["caps"], s["caps"], "总体没动");
+    let erased = apply(&f, &painted, &RotEdit::Day { key: "caps".into(), row: Some(1), window: "5h".into(), from: 0, to: 0, v: None }).expect("ok");
+    assert_eq!(erased["accounts"][1], json!({"id": "a"}), "刷空 ⇒ 回到跟总体");
+    let total = ap(RotEdit::Day { key: "caps".into(), row: None, window: "5h".into(), from: 0, to: 0, v: None }).expect("ok");
+    assert_eq!(total["caps"], json!({}), "总体那一格刷空只删那一窗");
+    assert_eq!(ap(RotEdit::Set { key: "force".into(), row: None, v: Value::Null }).expect("ok")["force"], Value::Null);
+    assert_eq!(ap(RotEdit::Set { key: "delay".into(), row: Some(2), v: json!(9) }).expect("ok")["accounts"][2]["delay"], json!(9));
+    let ids = |v: Value| -> Vec<Value> { v["accounts"].as_array().expect("排").iter().map(|r| r.get("id").cloned().unwrap_or(json!("start"))).collect() };
+    assert_eq!(ids(ap(RotEdit::Move { from: 2, to: 0 }).expect("ok")), [json!("b"), json!("start"), json!("a")]);
+    assert_eq!(ids(ap(RotEdit::Move { from: 0, to: 2 }).expect("ok")), [json!("a"), json!("start"), json!("b")]);
+    assert_eq!(ids(ap(RotEdit::Add { account: "c".into() }).expect("ok")), [json!("start"), json!("a"), json!("b"), json!("c")]);
+    assert_eq!(ids(ap(RotEdit::Remove { row: 0 }).expect("ok")), [json!("a"), json!("b")]);
+    assert_eq!(ap(RotEdit::Keep).expect("ok"), s);
+    for bad in [
+        RotEdit::Remove { row: 3 },
+        RotEdit::Move { from: 0, to: 3 },
+        RotEdit::Set { key: "delay".into(), row: Some(7), v: json!(1) },
+        RotEdit::Day { key: "close".into(), row: None, window: "5h".into(), from: 0, to: 60, v: Some(1.0) },
+        RotEdit::Day { key: "caps".into(), row: None, window: "5h".into(), from: 0, to: 2000, v: Some(1.0) },
+    ] {
+        assert!(apply(&f, &s, &bad).is_err(), "{bad:?}");
+    }
+}

@@ -36,7 +36,7 @@ import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
 import type { ForkSlot } from "./generated/ForkSlot";
-import { firstLine, readStrategies } from "./rot-reads";
+import { readStrategies } from "./rot-reads";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import s from "./new-session.module.css";
 
@@ -424,7 +424,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     rotSel.setOptions(
       [
         { value: "", label: copyText("rot.none.label"), detail: copyText("rot.none.desc"), note: list.forNew === "" ? copyText("rot.tag.forNew") : undefined },
-        ...list.strategies.map((st) => ({ value: st.id, label: st.id, note: st.forNew ? copyText("rot.tag.forNew") : undefined, detail: firstLine(st.description) })),
+        ...list.strategies.map((st) => ({ value: st.id, label: st.id, note: st.forNew ? copyText("rot.tag.forNew") : undefined, detail: st.summary })),
       ],
       list.forNew,
     );

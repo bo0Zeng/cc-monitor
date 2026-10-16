@@ -14,7 +14,6 @@ import { button } from "./kit/button";
 import { askText, confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { failToast } from "./kit/toast";
 import { readStrategies, readView, refusedCode, rotBudget } from "./rot-reads";
-import type { RotSeg } from "./generated/RotSeg";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 
@@ -237,20 +236,19 @@ export function mountRotation(spec: RotMountSpec): RotMount {
             callTyped(origin, "rotation-strategy-add", { source: f.text, name }, rotBudget()),
           );
       })(),
-    settings: (next) => {
-      if (sid === null) {
-        if (draft === undefined) draftRev = view?.strategy?.rev;
-        draft = next;
-        void refresh();
-        return;
-      }
-      void write(copyText("rot.fail.settings"), () =>
-        callTyped(origin, "rotation-settings", {
-          target: { sid },
-          settings: next,
-          ifRev: rev(),
-        }, rotBudget()),
-      );
+    // 会话 ⇒ 草稿在后端；设置页 ⇒ 后端照交来的草稿改、回改完的那份，界面原样存着随读带回。
+    edit: (edit) => {
+      const id = view?.strategy?.id;
+      if (sid !== null)
+        void write(copyText("rot.fail.settings"), () =>
+          callTyped(origin, "rotation-settings", { target: { sid }, edit, ifRev: rev() }, rotBudget()),
+        );
+      else if (id !== undefined)
+        void write(copyText("rot.fail.settings"), async () => {
+          const r = await callTyped(origin, "rotation-settings", { target: { strategy: id }, settings: draft, edit }, rotBudget());
+          if (draft === undefined) draftRev = view?.strategy?.rev;
+          draft = r.settings;
+        });
     },
     save: () =>
       void (async () => {
@@ -283,21 +281,6 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         draft = undefined;
         draftRev = undefined;
         void refresh();
-      }
-    },
-    dayPaint: async (
-      segs: RotSeg[],
-      from: number,
-      to: number,
-      v: number | null,
-    ) => {
-      try {
-        return (
-          await callTyped(origin, "rotation-day-paint", { segs, from, to, v }, rotBudget())
-        ).segs;
-      } catch (e) {
-        failToast(copyText("rot.fail.settings"), e);
-        throw e;
       }
     },
     hours: (h) => {
@@ -339,11 +322,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       if (now === undefined) return;
       if (sid !== null)
         void write(copyText("rot.fail.settings"), () =>
-          callTyped(origin, "rotation-settings", {
-            target: { sid },
-            settings: view?.settings,
-            ifRev: now,
-          }, rotBudget()),
+          callTyped(origin, "rotation-settings", { target: { sid }, edit: "keep", ifRev: now }, rotBudget()),
         );
       else {
         draftRev = now;

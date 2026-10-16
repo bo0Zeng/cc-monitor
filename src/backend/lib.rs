@@ -1215,7 +1215,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--rotation-strategy-rename",
     "--rotation-strategy-delete",
     "--rotation-strategy-tz",
-    "--rotation-day-paint",
     "--exit-policy-set",
     // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。
     // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。

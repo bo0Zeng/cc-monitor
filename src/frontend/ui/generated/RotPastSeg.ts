@@ -4,4 +4,4 @@
  * 过去那一截每号一行的一段：发得出去吗 · 开头是不是刚开了新窗 · 起点的钟面（重置那段写成 `↻HH:MM`，字由界面照文案表配）。
  * 不带「剩多少」：只知道此刻的读数。
  */
-export type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
+export type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, text: string, };

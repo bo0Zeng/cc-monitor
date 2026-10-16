@@ -1,7 +1,6 @@
 package com.ccmonitor.mobile.core.claude.link
 
-import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
-import com.ccmonitor.mobile.core.claude.link.wire.RotationDayPaintReply
+import com.ccmonitor.mobile.core.claude.link.wire.RotationSettingsReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
@@ -43,7 +42,6 @@ object Rotation {
     const val RENAME = "rotation-strategy-rename"
     const val DELETE = "rotation-strategy-delete"
     const val TZ = "rotation-strategy-tz"
-    const val DAY_PAINT = "rotation-day-paint"
 
     /** 推送主题：这个会话的轮换（`key` ＝ sid）· 这台的策略目录。 */
     const val TOPIC = "rotation"
@@ -76,11 +74,22 @@ object Rotation {
 
     fun ofView(data: Any?): RotationViewReply? = Wire.bind<RotationViewReply>(data)
 
+    /** 改设置交一个意图（[RotEdit]）：会话 ⇒ 带 `ifRev`；设置页 ⇒ 带手上那份草稿（上一次回的，没有 ⇒ 不带）。 */
     fun settings(
         where: RotWhere,
-        settings: Any?,
-        ifRev: String,
-    ): Map<String, Any?> = mapOf("target" to where.wire(), "settings" to settings, "ifRev" to ifRev)
+        edit: Any,
+        ifRev: String? = null,
+        draft: Any? = null,
+    ): Map<String, Any?> =
+        buildMap {
+            put("target", where.wire())
+            put("edit", edit)
+            ifRev?.let { put("ifRev", it) }
+            draft?.let { put("settings", it) }
+        }
+
+    /** 改完的那一份（设置页当新的草稿存着）。 */
+    fun ofSettings(data: Any?): RotationSettingsReply? = Wire.bind<RotationSettingsReply>(data)
 
     /** 存：会话 ⇒ 存它的草稿（不带 `settings`）；策略 ⇒ 手上那份草稿。 */
     fun save(
@@ -143,30 +152,41 @@ object Rotation {
         ifRev: String,
     ): Map<String, Any?> = mapOf("id" to id, "tz" to tz, "ifRev" to ifRev)
 
-    /** 24 小时条上刷一段（一天里的分钟；`to ≤ from` 跨午夜、相等 ＝ 一整天）；[v] 为 `null` ＝ 删这一截。 */
-    fun dayPaint(
-        segs: List<RotSeg>,
+}
+
+/** 改设置的一个意图（线上 `RotEdit`）：那台照声明改完、校验；`row` ＝ 号列表第几行（缺 ⇒ 总体那一格）。 */
+object RotEdit {
+    const val KEEP = "keep"
+
+    fun set(
+        key: String,
+        row: Int?,
+        v: Any?,
+    ): Map<String, Any?> = mapOf("set" to at(row, mapOf("key" to key, "v" to v)))
+
+    /** 24 小时条那一窗上把 `[from, to)` 刷成 [v]（`null` ＝ 删这一截；一天里的分钟，`to ≤ from` 跨午夜、相等 ＝ 一整天）。 */
+    fun day(
+        key: String,
+        row: Int?,
+        window: String,
         from: Long,
         to: Long,
         v: Double?,
-    ): Map<String, Any?> =
-        mapOf(
-            "segs" to segs.map { mapOf("from" to it.from, "to" to it.to, "v" to it.v) },
-            "from" to from,
-            "to" to to,
-            "v" to v,
-        )
+    ): Map<String, Any?> = mapOf("day" to at(row, mapOf("key" to key, "window" to window, "from" to from, "to" to to, "v" to v)))
 
-    fun ofDayPaint(data: Any?): List<RotSeg>? = Wire.bind<RotationDayPaintReply>(data)?.segs
+    fun move(
+        from: Int,
+        to: Int,
+    ): Map<String, Any?> = mapOf("move" to mapOf("from" to from, "to" to to))
 
-    /** 策略写的字（`StrategyText`：一句，或 `{zh, en?}`）。 */
-    fun text(t: Any?): String =
-        when (t) {
-            null -> ""
-            is String -> t
-            is Map<*, *> -> t["zh"] as? String ?: ""
-            else -> ""
-        }
+    fun add(account: String): Map<String, Any?> = mapOf("add" to mapOf("account" to account))
+
+    fun remove(row: Int): Map<String, Any?> = mapOf("remove" to mapOf("row" to row))
+
+    private fun at(
+        row: Int?,
+        m: Map<String, Any?>,
+    ): Map<String, Any?> = if (row == null) m else m + ("row" to row)
 }
 
 /** 流上一帧 `changed`：哪一样变了（`topic`）· 哪一个（`key`）。 */

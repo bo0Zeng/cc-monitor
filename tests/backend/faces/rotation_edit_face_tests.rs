@@ -25,48 +25,58 @@ fn mine() -> Value {
            "accounts": [{"start": true}, {"id": "b", "delay": 30}]})
 }
 
-/// ★ 会话里改设置 ⇒ 存成草稿（跟文件相同 ⇒ 草稿丢掉）；不合声明 ⇒ `refused` 带那一格、草稿不动。
+/// ★ 会话里改设置交意图 ⇒ 改完存成草稿（跟文件相同 ⇒ 草稿丢掉）；不合声明 ⇒ `refused` 带那一格、草稿不动；行号越界 ⇒ `bad_args`。
+/// 设置页 ⇒ 照交来的那份草稿改、只回改完的那份。
 #[test]
 fn session_settings_become_a_draft_and_are_checked() {
     let home = Home::new("edit-draft");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
     let target = RotWhere::Session { sid: S1.into() };
-    let set = |settings: Value| {
+    let edit = |edit: RotEdit| {
         settings_with(
             &ctx,
             &home.own(),
             &RotationSettingsReq {
                 target: target.clone(),
-                settings,
+                settings: None,
+                edit,
                 if_rev: None,
             },
         )
     };
-    assert!(set(mine()).expect("ok").dirty);
-    assert_eq!(
-        ctx.hop.store.now().sessions[S1].strategy.draft,
-        Some(mine())
-    );
-    match set(json!({"accounts": [{"id": "b", "delay": -1}]})) {
-        Err(RotationSettingsErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "accounts[0].delay"),
+    let draft = || ctx.hop.store.now().sessions[S1].strategy.draft.clone();
+    let got = edit(RotEdit::Add { account: "b".into() }).expect("ok");
+    assert!(got.dirty);
+    assert_eq!(draft(), Some(got.settings.clone()));
+    edit(RotEdit::Set { key: "delay".into(), row: Some(1), v: json!(30) }).expect("ok");
+    let got = edit(RotEdit::Day { key: "caps".into(), row: None, window: "5h".into(), from: 0, to: 0, v: Some(80.0) }).expect("ok");
+    assert_eq!(got.settings, mine(), "一步步改出来的就是那一份");
+    assert_eq!(draft(), Some(mine()));
+    match edit(RotEdit::Set { key: "delay".into(), row: Some(1), v: json!(-1) }) {
+        Err(RotationSettingsErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "accounts[1].delay"),
         other => panic!("该拒：{other:?}"),
     }
-    assert_eq!(
-        ctx.hop.store.now().sessions[S1].strategy.draft,
-        Some(mine())
-    );
-    let head = shelf::all(ctx.hop.store.strategy_dir().as_deref())
-        .iter()
-        .find(|s| s.id == "by-list")
-        .and_then(|s| s.file.as_ref().ok().map(|f| f.head.settings.clone()))
-        .expect("夹具那份");
-    assert!(!set(head).expect("ok").dirty);
-    assert_eq!(
-        ctx.hop.store.now().sessions[S1].strategy.draft,
-        None,
-        "跟文件相同没丢草稿"
-    );
+    assert!(matches!(edit(RotEdit::Remove { row: 9 }), Err(RotationSettingsErr::BadArgs(_))));
+    assert_eq!(draft(), Some(mine()), "没收下的不动草稿");
+    edit(RotEdit::Day { key: "caps".into(), row: None, window: "5h".into(), from: 0, to: 0, v: None }).expect("ok");
+    edit(RotEdit::Remove { row: 1 }).expect("ok");
+    assert!(!edit(RotEdit::Keep).expect("ok").dirty);
+    assert_eq!(draft(), None, "跟文件相同没丢草稿");
+
+    let page = settings_with(
+        &ctx,
+        &home.own(),
+        &RotationSettingsReq {
+            target: RotWhere::Strategy { strategy: "by-list".into() },
+            settings: Some(mine()),
+            edit: RotEdit::Move { from: 1, to: 0 },
+            if_rev: None,
+        },
+    )
+    .expect("ok");
+    assert_eq!(page.settings["accounts"], json!([{"id": "b", "delay": 30}, {"start": true}]));
+    assert!(page.dirty);
 }
 
 /// ★ 存：只重写头、代码逐字节不变，会话的草稿丢掉；版本对不上 ⇒ `conflict` 带此刻的版本；另存 ⇒ 新的一份、会话改用它。
@@ -81,7 +91,8 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         &home.own(),
         &RotationSettingsReq {
             target: RotWhere::Session { sid: S1.into() },
-            settings: mine(),
+            settings: None,
+            edit: RotEdit::Add { account: "b".into() },
             if_rev: None,
         },
     )
@@ -114,7 +125,10 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
     let after = file(&home, "by-list");
     assert_eq!(code_of(&after), code_of(&before), "代码动了");
     assert_eq!(got.rev, shelf::rev_of(&after));
-    assert_eq!(script::parse(&after).expect("读得懂").head.settings, mine());
+    assert_eq!(
+        script::parse(&after).expect("读得懂").head.settings,
+        json!({"caps": {}, "capKind": "soft", "accounts": [{"start": true}, {"id": "b"}]})
+    );
     assert_eq!(ctx.hop.store.now().sessions[S1].strategy.draft, None);
 
     let as_new = save_with(
@@ -433,55 +447,6 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         .root
         .join(format!("strategies/{}.rhai", added.id))
         .exists());
-}
-
-/// 24 小时条上刷一段（无状态的算术）：越界的分钟 ⇒ `bad_args`。
-#[test]
-fn day_paint_is_plain_arithmetic() {
-    let cx = || crate::wire::typed::Cx {
-        tz: crate::Tz::default(),
-        until: None,
-        needs: (),
-    };
-    let got = crate::wire::spec::finish(RotationDayPaint::run(
-        RotationDayPaintReq {
-            segs: vec![RotSeg {
-                from: 0,
-                to: 1440,
-                v: 80.0,
-            }],
-            from: 1200,
-            to: 1380,
-            v: None,
-        },
-        cx(),
-    ))
-    .expect("ok");
-    assert_eq!(
-        got.segs,
-        [
-            RotSeg {
-                from: 0,
-                to: 1200,
-                v: 80.0
-            },
-            RotSeg {
-                from: 1380,
-                to: 1440,
-                v: 80.0
-            }
-        ]
-    );
-    assert!(crate::wire::spec::finish(RotationDayPaint::run(
-        RotationDayPaintReq {
-            segs: Vec::new(),
-            from: 0,
-            to: 2000,
-            v: Some(1.0)
-        },
-        cx()
-    ))
-    .is_err());
 }
 
 /// ★ 设时区：只把设置块里的 `tz` 换掉（说明 · 代码逐字节不变、设置照旧）；之后不再提示「时区不明」；

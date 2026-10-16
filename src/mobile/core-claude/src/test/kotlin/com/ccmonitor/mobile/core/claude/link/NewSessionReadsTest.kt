@@ -89,8 +89,8 @@ class NewSessionReadsTest {
                 mapOf(
                     "strategies" to
                         listOf(
-                            mapOf("id" to "night", "description" to "夜里只用 personal\n第二行", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
-                            mapOf("id" to "spread", "description" to "", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
+                            mapOf("id" to "night", "description" to "夜里只用 personal\n第二行", "summary" to "夜里只用 personal", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to false, "wordsBad" to false, "tzUnknown" to false),
+                            mapOf("id" to "spread", "description" to "", "summary" to "", "rev" to "r", "inUse" to emptyList<Any>(), "forNew" to true, "wordsBad" to false, "tzUnknown" to false),
                         ),
                     "forNew" to "spread",
                     "oldScripts" to 0.0,
@@ -98,7 +98,7 @@ class NewSessionReadsTest {
             )!!
         assertEquals("spread", r.forNew)
         assertEquals(listOf("night", "spread"), r.strategies.map { it.id })
-        assertEquals("夜里只用 personal", RotationStrategies.firstLine(r.strategies[0].description))
+        assertEquals("夜里只用 personal", r.strategies[0].summary)
         assertNull(RotationStrategies.of(mapOf("strategies" to emptyList<Any>())))
     }
 

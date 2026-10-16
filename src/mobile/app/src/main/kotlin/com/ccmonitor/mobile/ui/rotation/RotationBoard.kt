@@ -4,10 +4,10 @@ import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.Changed
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.RotEdit
 import com.ccmonitor.mobile.core.claude.link.RotWhere
 import com.ccmonitor.mobile.core.claude.link.Rotation
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
-import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
 import com.ccmonitor.mobile.core.claude.link.wire.RotationStrategiesReply
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
@@ -24,12 +24,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** 提示的颜色（轮换屏）：出错红 · 需手动与停发琥珀 · 别处被改了蓝 · 只告知灰（同桌面那张表）。 */
+/** 提示的颜色（轮换屏）：出错红 · 需手动与停发琥珀 · 只告知蓝。 */
 enum class NoteTone {
     ERROR,
     WARN,
     INFO,
-    PLAIN,
 }
 
 /** 一格改动没收下：哪一格（[RotCellId]）· 那一句（`rot.fail.settings` ＋ 那台的话）。 */
@@ -172,9 +171,11 @@ class RotationBoard(
         command: String,
         args: Map<String, Any?>,
         onFail: (Problem) -> Unit = { p -> fail(what, p) },
+        onOk: (Any?) -> Unit = {},
     ): Boolean {
         val r = link.call(command, args, WRITE_MS)
         if (r is Reply.Ok) {
+            onOk(r.data)
             refresh()
             return true
         }
@@ -273,43 +274,32 @@ class RotationBoard(
     // ── 设置
 
     /**
-     * 改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 拖了号牌 · 移出 · 加号：整份新设置。
-     * 会话 ⇒ `rotation-settings`（`ifRev` ＝ 那台给的 `baseRev`）；设置页 ⇒ 草稿留在手上、随读交给那台。
+     * 改了一格（[cell] ＝ 哪一格，没收下时那一行底下写那一句）· 刷了一段 · 拖了号牌 · 移出 · 加号：一个意图（[RotEdit]），那台照声明改。
+     * 会话 ⇒ 草稿在那台（`ifRev` ＝ 那台给的 `baseRev`）；设置页 ⇒ 那台照手上的草稿改、回改完的那份，原样存着随读交回。
      */
-    fun settings(
-        next: Map<String, Any?>,
+    fun edit(
+        edit: Any,
         cell: String = "",
     ) {
-        if (sid == null) {
-            if (draft == null) {
-                draftRev =
-                    _state.value.view
-                        ?.strategy
-                        ?.rev
+        val args =
+            if (sid != null) {
+                Rotation.settings(RotWhere.Session(sid), edit, ifRev = rev())
+            } else {
+                val id = _state.value.view?.strategy?.id ?: return
+                Rotation.settings(RotWhere.Strategy(id), edit, draft = draft)
             }
-            draft = next
-            _state.update { it.copy(cellFailed = null) }
-            scope.launch { refresh() }
-            return
-        }
         scope.launch {
             val ok =
-                write(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), next, rev())) { p ->
+                write(copyText("rot.fail.settings"), Rotation.SETTINGS, args, onFail = { p ->
                     _state.update { it.copy(cellFailed = CellFailure(cell, listOf(copyText("rot.fail.settings"), p.text).filter(String::isNotEmpty).joinToString(copyText("kit.text.sep")))) }
-                }
+                }, onOk = { data ->
+                    if (sid == null) {
+                        if (draft == null) draftRev = _state.value.view?.strategy?.rev
+                        draft = Rotation.ofSettings(data)?.settings
+                    }
+                })
             if (ok) _state.update { it.copy(cellFailed = null) }
         }
-    }
-
-    /** 24 小时条刷一段 ⇒ 那台刷完的那一组（`null` ＝ 没成，那一句已报）。 */
-    suspend fun dayPaint(
-        segs: List<RotSeg>,
-        from: Long,
-        to: Long,
-        v: Double?,
-    ): List<RotSeg>? {
-        val r = link.call(Rotation.DAY_PAINT, Rotation.dayPaint(segs, from, to, v), WRITE_MS)
-        return (r as? Reply.Ok)?.let { Rotation.ofDayPaint(it.data) } ?: null.also { fail(copyText("rot.fail.settings"), problemOf(r, Rotation.DAY_PAINT)) }
     }
 
     fun save() {
@@ -405,7 +395,7 @@ class RotationBoard(
                 ?.strategy
                 ?.rev ?: return
         if (sid != null) {
-            launchWrite(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), _state.value.view?.settings, now))
+            launchWrite(copyText("rot.fail.settings"), Rotation.SETTINGS, Rotation.settings(RotWhere.Session(sid), RotEdit.KEEP, ifRev = now))
         } else {
             draftRev = now
             scope.launch { refresh() }

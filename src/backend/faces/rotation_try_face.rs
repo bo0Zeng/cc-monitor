@@ -240,14 +240,18 @@ pub(crate) fn timeline_of(
                 account: a.clone(),
                 segs: segs
                     .iter()
-                    .map(|s| RotTryLaneSeg {
-                        from: s.from,
-                        to: s.to,
-                        sendable: s.sendable,
-                        used: s.used,
-                        reset: s.reset,
-                        from_text: face(s.from),
-                        left: (100.0 - s.used[0].max(s.used[1])).max(0.0),
+                    .enumerate()
+                    .map(|(k, s)| {
+                        let left = (100.0 - s.used[0].max(s.used[1])).max(0.0);
+                        RotTryLaneSeg {
+                            from: s.from,
+                            to: s.to,
+                            sendable: s.sendable,
+                            used: s.used,
+                            reset: s.reset,
+                            text: seg_text(s.sendable, s.reset, &face(s.from), (k == 0).then_some(left)),
+                            left,
+                        }
                     })
                     .collect(),
             })
@@ -257,6 +261,18 @@ pub(crate) fn timeline_of(
             .into_iter()
             .map(|at| RotTryTick { at, text: face(at) })
             .collect(),
+    }
+}
+
+/// 时间轴上一段写的字：发不出去 ⇒ 空；开头刚开了新窗 ⇒ `↻HH:MM`；此刻那段（`left` 有）⇒ 剩多少；别的空。
+pub(crate) fn seg_text(sendable: bool, reset: bool, at: &str, left: Option<f64>) -> String {
+    match (sendable, reset, left) {
+        (false, ..) => String::new(),
+        (true, true, _) => copy_core::copy_text("rot.sim.reset", &[("at", at)]),
+        (true, false, Some(n)) => {
+            copy_core::copy_text("rot.sim.left", &[("n", &format!("{}", n.round()))])
+        }
+        (true, false, None) => String::new(),
     }
 }
 
