@@ -62,8 +62,15 @@ fun ConflictSheet(
             if (dirInto) Text(copyText("rsFilewinBatch.ask.dirNoMerge"), style = monoSmall, color = tokens.textFaint)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.End)) {
                 SecondaryButton(onClick = { onAnswer(null) }) { Text(copyText("rsFilewinBatch.btn.cancel")) }
-                answers.filter { !(dirInto && it == OVERWRITE) }.forEach { a ->
-                    SecondaryButton(onClick = { onAnswer(a) }, danger = a == OVERWRITE) { Text(button(a)) }
+                // 按钮字是界面自己的骨架词（同桌面冲突框那几颗）；认不得的答不画。
+                answers.forEach { a ->
+                    when (a) {
+                        OVERWRITE ->
+                            if (!dirInto) {
+                                SecondaryButton(onClick = { onAnswer(a) }, danger = true) { Text(copyText("rsFilewinBatch.btn.overwrite")) }
+                            }
+                        KEEP_BOTH -> SecondaryButton(onClick = { onAnswer(a) }) { Text(copyText("rsFilewinBatch.btn.keepBoth")) }
+                    }
                 }
             }
         }
@@ -77,11 +84,4 @@ private fun side(
 ): String = listOfNotNull(size?.let(SizeFormat::text), mtime).joinToString(" · ")
 
 private const val OVERWRITE = "overwrite"
-
-/** 线上那一个答 ⇒ 按钮字（同桌面冲突框那几颗）。 */
-private fun button(answer: String): String =
-    when (answer) {
-        OVERWRITE -> copyText("rsFilewinBatch.btn.overwrite")
-        "keep_both" -> copyText("rsFilewinBatch.btn.keepBoth")
-        else -> answer
-    }
+private const val KEEP_BOTH = "keep_both"
