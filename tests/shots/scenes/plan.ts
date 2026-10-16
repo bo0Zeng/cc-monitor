@@ -7,7 +7,7 @@ import { defaultWorld, LOCAL } from "../fake/world";
 import { LEDGER_REL, LEDGER_WS, ledgerDump, planWorld, type Landed, type PlanWorldOpts } from "../fake/plan";
 import { dumpFile } from "../disk/plan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { byText, click, mainReady, sleep, type, waitFor } from "./helpers";
+import { byText, click, mainReady, sleep, type, until, waitFor } from "./helpers";
 
 const TABS = 12;
 
@@ -125,7 +125,9 @@ export const PLAN_SCENES: Scene[] = [
     await openPlan();
     await click('.plan-view [data-act="take"]');
     await click(await byText("[role=dialog] button", copyText("plan.take.action")));
-    await sleep(900);
+    // pb 改了工作区 ⇒ 那台后端盯盘推一帧、页上重读：等那颗按钮没了。
+    await until(() => (document.querySelector('.plan-view [data-act="take"]') ? null : true), 20_000);
+    await sleep(300);
   }, { docsOnly: true }),
   plan("plan-21-leaf-done", "一格 · 叶子格 做完了", "点「解析模块」：在哪 · 头 · 位置 · 要做成什么样（话里的格换成标题链接）· 连着的 · 连着它的", async () => {
     await openPlan();
