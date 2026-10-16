@@ -1649,7 +1649,7 @@ impl FileWindow {
 
     /// 摆出「把第 `i` 行复制成什么名字」那个框。回值 = 真的摆出来了。
     ///
-    /// ⚠ **这里只剩一道闸了，如实记**：`super::copy::is_copyable` —— 目录与有损名
+    /// ⚠ **这里只剩一道闸了，如实记**：`pick_core::Pick::copyable` —— 名字寻址不到的
     /// 一律不接。列表上那两档压根不画那颗按钮，这里是第二道，防的是
     /// 「按钮没了、调用还在」（那正是死值验刀 2 那一形）。
     ///
@@ -1661,7 +1661,7 @@ impl FileWindow {
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if super::copy::copyable(r) => r.clone(),
+                Some(r) if r.pick().copyable() => r.clone(),
                 _ => return false,
             }
         };
@@ -2647,11 +2647,7 @@ impl FileWindow {
             let all = self.listing.rows.lock().unwrap();
             idx.iter().filter_map(|&i| all.get(i).cloned()).collect()
         };
-        if rows.is_empty()
-            || rows
-                .iter()
-                .any(|r| !super::download::is_downloadable_listed(r))
-        {
+        if rows.is_empty() || rows.iter().any(|r| !r.pick().downloadable()) {
             self.key_notice = Some(select::refusal(Action::Download, rows.len()));
             return false;
         }
@@ -2717,7 +2713,7 @@ impl FileWindow {
     pub fn begin_pull_row(&mut self, row: Listed) -> bool {
         *self.prompt_error.lock().unwrap() = None;
         // 有损名带着字节 / 有损目录里的行也拉得下来（按字节，`lossy_pull.rs`）。
-        if !super::download::is_downloadable_listed(&row) {
+        if !row.pick().downloadable() {
             return false;
         }
         let full = self.row_path(&row);

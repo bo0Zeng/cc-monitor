@@ -383,7 +383,7 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
 /// 旧写法是 `name.contains('\u{FFFD}')`（`list_local` 里那一行，今天还在退路上）：
 /// 它把「转换时产生了替换字符」与「这个文件真叫这个名字」混成一件事
 /// ⇒ 一个**真叫** `\u{FFFD}` 的文件会被误判成有损，于是复制/改名/删除三颗按钮
-/// 对它一颗都不画（`is_copyable` / `is_writable` 都看这一格）。
+/// 对它一颗都不画（复制那道门与 `is_writable` 都看这一格）。
 ///
 /// 新写法看的是**字节**：`files-ls` 的 `path` 走原始字节
 /// （字符串 或 `{"b16":…}`）⇒ 有损与否是**事实**不是猜。

@@ -35,6 +35,16 @@ impl Pick<'_> {
         !self.lossy || self.raw
     }
 
+    /// 复制得了（行上那颗按钮 · 复制到另一栏 · 改名复制）：名字寻址得到；目录也行（后端整棵复制）。
+    pub fn copyable(&self) -> bool {
+        self.named()
+    }
+
+    /// 拉得下来：是文件（不是目录、不是指向目录的链接）且名字寻址得到（有损但带字节的按字节拉）。
+    pub fn downloadable(&self) -> bool {
+        !self.opens_as_dir() && self.named()
+    }
+
     /// 查看页开得了（那台给了查看那道门）。
     pub fn viewable(&self) -> bool {
         !self.opens_as_dir() && !self.lossy && self.gates.is_some_and(|g| g.view.is_some())

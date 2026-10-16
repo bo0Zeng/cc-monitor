@@ -190,3 +190,33 @@ fn the_phone_hands_in_camel_case_facts() {
     .unwrap();
     assert_eq!(picked_kind(&[p.pick()]), Picked::Dir);
 }
+
+/// ★ 一行的复制 · 下载两道门（桌面行上那颗按钮 · 复制到另一栏 · 下载问的都是它）：复制收名字寻址得到的文件与目录；
+/// 下载只收文件（目录 · 指向目录的链接都不收）；有损名带着原始字节两道都过，不带就都不过。
+#[test]
+fn copy_and_download_gates_of_one_row() {
+    let g = gates(false);
+    let plain = file("a.txt", C::Text, &g);
+    let d = dir("sub");
+    let mut link_dir = file("to-dir", C::Folder, &g);
+    link_dir.link = true;
+    link_dir.link_dir = true;
+    let mut lossy = file("\u{FFFD}odd", C::Other, &g);
+    lossy.lossy = true;
+    let mut lossy_raw = lossy;
+    lossy_raw.raw = true;
+    let got: Vec<(bool, bool)> = [plain, d, link_dir, lossy, lossy_raw]
+        .iter()
+        .map(|p| (p.copyable(), p.downloadable()))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (true, true),
+            (true, false),
+            (true, false),
+            (false, false),
+            (true, true)
+        ]
+    );
+}
