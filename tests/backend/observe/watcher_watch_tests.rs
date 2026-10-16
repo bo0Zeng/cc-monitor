@@ -4,7 +4,7 @@
 //! 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
 use super::*;
-use crate::wire::WatchFrom;
+use cmd_wire::watch::WatchFrom;
 
 const A: &str = "s-wa";
 const B: &str = "s-wb";
@@ -61,8 +61,8 @@ fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
     out
 }
 
-fn ids(v: &[&str]) -> crate::wire::WatchAsk {
-    crate::wire::WatchAsk {
+fn ids(v: &[&str]) -> cmd_wire::watch::WatchAsk {
+    cmd_wire::watch::WatchAsk {
         sids: v.iter().map(|s| s.to_string()).collect(),
         branch: Vec::new(),
     }
@@ -196,5 +196,71 @@ fn coming_into_view_resends_the_run_table_and_the_branch_list() {
         }
     }
     assert_eq!(kinds, vec![B.to_string()], "新看的会话补一帧运行表（整份）");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// attach 行带了名单：这条连接从接上那一份起就照它发 —— 名单外的会话运行表 · 行一帧不收、名单里的照收；
+/// 名单里要了主线外清单的接上即收它（不等 `stream-watch`）；宣告照发（不挑）。
+#[test]
+fn a_list_on_the_attach_line_holds_from_the_first_frame() {
+    let (dir, mut state, mut sink, _rx0) = rig("join");
+    let (pa, pb) = (file(&dir, A), file(&dir, B));
+    append(&pa, 1);
+    append(&pb, 1);
+    process_jsonl(&pa, &mut state, &mut sink);
+    process_jsonl(&pb, &mut state, &mut sink);
+    for sid in [A, B] {
+        crate::observe::runs::testing::seed_running(&state.book, sid, "r1", None);
+        // 宣告那一帧的形状这里不看：join 原样转发留着的那一帧。
+        state.added.insert(
+            sid.to_string(),
+            Frame::SessionFileGone(crate::wire::SessionFileGone {
+                session_id: sid.into(),
+                path: String::new(),
+            }),
+        );
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let ask = cmd_wire::watch::WatchAsk {
+        sids: vec![A.into()],
+        branch: vec![cmd_wire::watch::BranchHeld::nothing(A)],
+    };
+    join(
+        Sub::new(7, tx, crate::Tz::default()),
+        Some(ask),
+        &mut state,
+        &mut sink,
+    );
+    append(&pa, 1);
+    append(&pb, 1);
+    process_jsonl(&pa, &mut state, &mut sink);
+    process_jsonl(&pb, &mut state, &mut sink);
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(match f {
+            Frame::SessionRuns(crate::wire::SessionRuns { sid, .. }) => format!("runs {sid}"),
+            Frame::SessionBranch(crate::wire::SessionBranch { sid, .. }) => format!("branch {sid}"),
+            Frame::Line(crate::wire::Line {
+                session_id, seq, ..
+            }) => {
+                format!("line {session_id} {seq}")
+            }
+            Frame::SessionFileGone(crate::wire::SessionFileGone { session_id, .. }) => {
+                format!("added {session_id}")
+            }
+            _ => continue,
+        });
+    }
+    assert_eq!(
+        got,
+        vec![
+            format!("added {A}"),
+            format!("runs {A}"),
+            format!("added {B}"),
+            format!("branch {A}"),
+            format!("line {A} 1"),
+        ],
+        "名单外的 B：运行表 · 行一帧不收"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }

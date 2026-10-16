@@ -1,9 +1,18 @@
-//! **每条长连接报「在看哪几个会话」**（那台后端的 `stream-watch {sids}`，`IPC-PROTOCOL.md`「流只发要看的会话」）：
-//! 名单整份换；换了一条新连接（＝ 没报过 ＝ 全看）就照当前名单重报一次；应答 `from[]`（刚进名单的会话从第几行起上流）原样交出去，
-//! 由看着那一条的去补 `[已有, seq)`。桌面（monitor `stream_watch.rs`，名单来自窗口与订阅）与手机（[`crate::feed`]，名单来自 [`Watched`]）同一份。
+//! **每台一张名单台（[`Desk`]）**：宿主只交「现在在看哪几条会话」（整份换），报给那台、新连接重报、应答 `from[]` 交出去都在这里，全仓只这一处。
+//!
+//! - 新连接：attach 行带上此刻的名单（[`Desk::ask_for_attach`]），那台从第一帧起照它发；接上之后（[`Desk::up`]）带过的那份与此刻的不一样
+//!   （握手中变了 · 这条载体没有 attach 行）⇒ 当场在它上面整份报一次（`stream-watch`）。
+//! - 名单变了 ⇒ 在当前连接上整份报；一台只一个发送任务，手里只留最新一份，同一台按序报、不后发先到；报没成不重试，下一条连接照样带上。
+//! - 应答 `from[]`（刚进名单的会话从第几行起上流）原样交宿主，由看着那一条的去补 `[已有, seq)`。
+//!
+//! 名单从空开始（一条都还没人看 ⇒ 那台一条都不发）。读主线外清单的宿主（桌面）经 `held` 交回手上各份有什么，那台只补缺的；不读的（手机）交空的。
 
-use std::collections::{BTreeMap, BTreeSet};
+use crate::client::InboundClient;
+use cmd_wire::watch::{BranchHeld, WatchAsk, WatchFrom, WatchReply};
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
+use tokio::sync::Notify;
 
 /// 那台后端的命令名。
 pub const WATCH_CMD: &str = "stream-watch";
@@ -11,98 +20,141 @@ pub const WATCH_CMD: &str = "stream-watch";
 /// 一次报名单的期限：后端在连接内就地做完（只是换一张表、数几个游标），几秒足够；超了就等下一次变化 / 下一条连接。
 pub const WATCH_BUDGET: Duration = Duration::from_secs(10);
 
-/// 应答里的一格：这条会话从第 `seq` 行起上流。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct WatchFrom {
-    pub sid: String,
-    /// 那份记录在那台机器上的绝对路径。
-    pub path: String,
-    pub seq: u64,
+type HeldFn = Box<dyn Fn(&BTreeSet<String>) -> Vec<BranchHeld> + Send + Sync>;
+type FromFn = Box<dyn Fn(Vec<WatchFrom>) + Send + Sync>;
+
+/// 一台的名单台。
+pub struct Desk {
+    now: Mutex<Now>,
+    /// 名单里各条手上那份主线外清单有什么（读在报的那一刻）。
+    held: HeldFn,
+    /// 应答里的 `from[]` 交给谁（空的不交）。
+    from: FromFn,
+    /// 叫醒发送任务（名单变了 · 换了一条连接 · 台没了）。
+    poke: Arc<Notify>,
 }
 
-/// `branch` 的一格：要这个会话的主线外清单，手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（都照手上最后一帧 `session_branch`：
-/// `at + off.len()` 与它的 `sum`）。手上没有 / 说不准 ⇒ [`BranchHeld::nothing`]（那台给整份）。摘要是那台铸的，这里只记、只交回。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct BranchHeld {
-    pub sid: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-    pub at: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sum: Option<String>,
+#[derive(Default)]
+struct Now {
+    sids: BTreeSet<String>,
+    /// 当前那条连接（弱引用：连接走了就不报）。
+    link: Weak<InboundClient>,
+    /// 那条连接已经知道的那一份（attach 行带过的 · 报过的）；`None` ＝ 它还什么都不知道（全发）。
+    told: Option<BTreeSet<String>>,
 }
 
-impl BranchHeld {
-    /// 要这个会话的清单、手上什么都没有。
-    pub fn nothing(sid: &str) -> Self {
-        BranchHeld {
-            sid: sid.to_string(),
-            path: None,
-            at: 0,
-            sum: None,
-        }
-    }
-}
-
-/// 请求的入参：整份名单 ＋ 要哪几个的主线外清单、手上各有什么（空 ＝ 一份都不要：不读清单的那一头就交空的，那台一帧清单都不推）。
-pub fn args(sids: &BTreeSet<String>, branch: &[BranchHeld]) -> serde_json::Value {
-    serde_json::json!({ "sids": sids, "branch": branch })
-}
-
-/// 应答 `{from: [{sid, path, seq}]}` ⇒ 那几格。形状不对的那一格不收（记一行）。
-pub fn from_of(data: Option<&serde_json::Value>) -> Vec<WatchFrom> {
-    let Some(rows) = data.and_then(|d| d.get("from")).and_then(|f| f.as_array()) else {
-        return Vec::new();
-    };
-    rows.iter()
-        .filter_map(|r| {
-            let got = (|| {
-                Some(WatchFrom {
-                    sid: r.get("sid")?.as_str()?.to_string(),
-                    path: r.get("path")?.as_str()?.to_string(),
-                    seq: r.get("seq")?.as_u64()?,
-                })
-            })();
-            if got.is_none() {
-                tracing::warn!("stream_watch 应答里一格形状不对，不收：{r}");
-            }
-            got
-        })
-        .collect()
-}
-
-/// 此刻有人在看的那几条（每条记有几处在看：一处放手不影响别处）。名单 = 计数大于零的那几条。
-#[derive(Debug, Default, Clone)]
-pub struct Watched {
-    held: BTreeMap<String, u32>,
-}
-
-impl Watched {
-    /// 多一处在看。回名单变没变。
-    pub fn hold(&mut self, sid: &str) -> bool {
-        let n = self.held.entry(sid.to_string()).or_insert(0);
-        *n += 1;
-        *n == 1
+impl Desk {
+    /// 起一张（在当前 tokio 运行时上起它的发送任务；台没了任务跟着收）。
+    pub fn new(
+        held: impl Fn(&BTreeSet<String>) -> Vec<BranchHeld> + Send + Sync + 'static,
+        from: impl Fn(Vec<WatchFrom>) + Send + Sync + 'static,
+    ) -> Arc<Desk> {
+        let desk = Arc::new(Desk {
+            now: Mutex::new(Now::default()),
+            held: Box::new(held),
+            from: Box::new(from),
+            poke: Arc::new(Notify::new()),
+        });
+        tokio::spawn(send_loop(Arc::downgrade(&desk), Arc::clone(&desk.poke)));
+        desk
     }
 
-    /// 少一处在看。回名单变没变（本来就没在看 ⇒ 不变）。
-    pub fn release(&mut self, sid: &str) -> bool {
-        match self.held.get_mut(sid) {
-            Some(n) if *n > 1 => {
-                *n -= 1;
-                false
-            }
-            Some(_) => {
-                self.held.remove(sid);
-                true
-            }
-            None => false,
+    /// 宿主：此刻在看这几条（整份换）。没变不惊动。
+    pub fn set(&self, sids: BTreeSet<String>) {
+        let moved = {
+            let mut n = lock(&self.now);
+            let moved = n.sids != sids;
+            n.sids = sids;
+            moved
+        };
+        if moved {
+            self.poke.notify_one();
         }
     }
 
+    /// 此刻的名单。
     pub fn sids(&self) -> BTreeSet<String> {
-        self.held.keys().cloned().collect()
+        lock(&self.now).sids.clone()
     }
+
+    /// 连接那一侧：要写 attach 行了 ⇒ 此刻的名单 ＋ 各条手上的清单。
+    pub fn ask_for_attach(&self) -> WatchAsk {
+        self.ask(self.sids())
+    }
+
+    /// 连接那一侧：接上了；`carried` ＝ 它的 attach 行带过的那一份（这条载体没有 attach 行 ⇒ `None`）。
+    /// 与此刻的名单不一样 ⇒ 当场在它上面报一次。
+    pub fn up(&self, client: &Arc<InboundClient>, carried: Option<&WatchAsk>) {
+        {
+            let mut n = lock(&self.now);
+            n.link = Arc::downgrade(client);
+            n.told = carried.map(|a| a.sids.iter().cloned().collect());
+        }
+        self.poke.notify_one();
+    }
+
+    fn ask(&self, sids: BTreeSet<String>) -> WatchAsk {
+        let branch = (self.held)(&sids);
+        WatchAsk {
+            sids: sids.into_iter().collect(),
+            branch,
+        }
+    }
+
+    /// 当前连接还不知道此刻的名单 ⇒ 报到它知道为止（报的时候又变了 ⇒ 接着报最新那份）。
+    async fn flush(&self) {
+        loop {
+            let (client, sids) = {
+                let mut n = lock(&self.now);
+                let Some(client) = n.link.upgrade() else {
+                    return;
+                };
+                if n.told.as_ref() == Some(&n.sids) {
+                    return;
+                }
+                n.told = Some(n.sids.clone());
+                (client, n.sids.clone())
+            };
+            let args = serde_json::to_value(self.ask(sids)).unwrap_or_default();
+            match client.call(WATCH_CMD, args, WATCH_BUDGET).await {
+                Ok(data) => {
+                    let from = match data.map(serde_json::from_value::<WatchReply>) {
+                        Some(Ok(r)) => r.from,
+                        Some(Err(e)) => {
+                            tracing::warn!("stream_watch 应答形状不对，不收：{e}");
+                            Vec::new()
+                        }
+                        None => Vec::new(),
+                    };
+                    if !from.is_empty() {
+                        (self.from)(from);
+                    }
+                }
+                Err(e) => tracing::warn!("stream_watch 报名单没报上：{e:?}"),
+            }
+        }
+    }
+}
+
+impl Drop for Desk {
+    fn drop(&mut self) {
+        self.poke.notify_one();
+    }
+}
+
+/// 一台的发送任务：被叫醒就把当前连接报到最新那份；台没了就收。
+async fn send_loop(desk: Weak<Desk>, poke: Arc<Notify>) {
+    loop {
+        poke.notified().await;
+        let Some(d) = desk.upgrade() else {
+            return;
+        };
+        d.flush().await;
+    }
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[cfg(test)]

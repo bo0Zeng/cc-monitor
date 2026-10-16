@@ -1,7 +1,7 @@
 //! 一台的常驻流（两端同一条循环）：直接接 · 不在就 ensure 再接 · 那台旧（回话说旧 · 认不得新一形 attach 行）：装不了的照接 / 断着并说要更新、装得了的换一次再接 ·
 //! 那台新不点名「更新」· 开出链路到通着一个来回 ·
-//! 发完 hello 就死退避照样涨 · 问答等它接上 · 新连接整份重报在看名单 · 没装：装不了的要人动手、装得了的自己再试 ·
-//! 不是 Unix 两端都等人 · ［重新连接］在拨的时候按也算数、接上那一刻作废 · 断线重连续上之后数格。全部虚拟时钟。
+//! 发完 hello 就死退避照样涨 · 问答等它接上 · 新连接的 attach 行带在看名单（握手中改了才补报） · 没装：装不了的要人动手、装得了的自己再试 ·
+//! 不是 Unix 两端都等人 · ［重新连接］在拨的时候按也算数、接上那一刻作废 · 断线重连之后数格。全部虚拟时钟。
 use super::*;
 use crate::backoff::RECONNECT_MIN;
 use crate::client::CallError;
@@ -93,14 +93,14 @@ struct Fake {
     rounds: AtomicUsize,
     /// 每一轮开拨之前那一步各等一个放行（有就等，没有就直接过）。
     holds: Mutex<VecDeque<Arc<tokio::sync::Notify>>>,
-    /// 那台报 `stream-watch` 时答的 `from[]`（每答一次取一份；没有 ⇒ 空）。
-    froms: Mutex<VecDeque<serde_json::Value>>,
     /// 拨它 ⇒ 接着的那一条当场断（断网）。
     drop_link: tokio::sync::Notify,
     /// 那台收到的 `ping`（问活）条数。
     pings: AtomicUsize,
     /// 置位 ⇒ 应答缺 `ok` 那一格（两端契约对不上）。
     reply_without_ok: std::sync::atomic::AtomicBool,
+    /// 有 ⇒ 下一条 attach 行收到之后、回话之前等它放行一次（握手中改名单）。
+    reply_hold: Mutex<Option<Arc<tokio::sync::Notify>>>,
 }
 
 struct T(Arc<Fake>);
@@ -196,6 +196,7 @@ fn start_desk(f: &Arc<Fake>) -> (Arc<Feed<D>>, Seen) {
     let feed = Feed::start(
         cfg(),
         Some(Arc::new(D(Arc::clone(f)))),
+        desk(),
         sink(move |e| s.lock().unwrap().push(e)),
     );
     (feed, seen)
@@ -228,6 +229,10 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         .lock()
         .unwrap()
         .push(line.trim_end().to_string());
+    let hold = f.reply_hold.lock().unwrap().take();
+    if let Some(h) = hold {
+        h.notified().await;
+    }
     // 新旧照后端同一个函数算；比带 `mine` 那一形还早的那台认不得这一格 ⇒ 拒（同它当年的 `attach_flags`）。
     let attach: serde_json::Value = serde_json::from_str(&line).unwrap();
     let reply = match attach["mine"].as_str() {
@@ -285,12 +290,7 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         if v["cmd"] == "stream-watch" {
             f.watches.lock().unwrap().push(v["args"].clone());
         }
-        let data = if v["cmd"] == "stream-watch" {
-            let from = f.froms.lock().unwrap().pop_front();
-            serde_json::json!({"from": from.unwrap_or_else(|| serde_json::json!([]))})
-        } else {
-            serde_json::json!({"from":[]})
-        };
+        let data = serde_json::json!({"from":[]});
         let mut reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":data});
         if f.reply_without_ok.load(Ordering::SeqCst) {
             reply.as_object_mut().unwrap().remove("ok");
@@ -311,11 +311,27 @@ fn cfg() -> Config {
 type Seen = Arc<Mutex<Vec<Event>>>;
 
 fn start(f: &Arc<Fake>) -> (Arc<Feed<T>>, Seen) {
+    start_with(f, desk())
+}
+
+/// 同 [`start`]，名单台由判据给（看 attach 行带什么 · 握手中改名单）。
+fn start_with(f: &Arc<Fake>, desk: Arc<Desk>) -> (Arc<Feed<T>>, Seen) {
     let seen: Seen = Arc::default();
     let s = Arc::clone(&seen);
-    let feed = Feed::start(cfg(), None, sink(move |e| s.lock().unwrap().push(e)));
+    let feed = Feed::start(cfg(), None, desk, sink(move |e| s.lock().unwrap().push(e)));
     feed.set_transport(Some(Arc::new(T(Arc::clone(f)))));
     (feed, seen)
+}
+
+/// 不读清单、不收 `from[]` 的名单台（手机那一形）；名单从空开始。
+fn desk() -> Arc<Desk> {
+    Desk::new(|_| Vec::new(), |_| {})
+}
+
+/// 那台收到的第 `i` 条 attach 行里的名单。
+fn carried(f: &Fake, i: usize) -> serde_json::Value {
+    let l = f.attach_lines.lock().unwrap()[i].clone();
+    serde_json::from_str::<serde_json::Value>(&l).unwrap()["watch"]["sids"].clone()
 }
 
 /// 虚拟时钟下等一个条件（封顶那个兜底的数：本组全在 `start_paused` 下跑，墙钟上不费时）。
@@ -439,9 +455,9 @@ async fn the_relation_comes_back_in_the_attach_reply_and_only_an_older_one_asks_
         assert_eq!(
             *f.attach_lines.lock().unwrap(),
             [format!(
-                r#"{{"attach":true,"tz":"Asia/Shanghai","mine":"{MINE}"}}"#
+                r#"{{"attach":true,"tz":"Asia/Shanghai","mine":"{MINE}","watch":{{"sids":[],"branch":[]}}}}"#
             )],
-            "attach 行带手上这一版"
+            "attach 行带手上这一版（名单从空开始）"
         );
         assert!(
             ask(&feed, "ping", Duration::from_secs(5)).await.is_ok(),
@@ -463,6 +479,7 @@ async fn without_its_own_build_the_relation_is_incomparable() {
             ..cfg()
         },
         None,
+        desk(),
         sink(move |e| s.lock().unwrap().push(e)),
     );
     feed.set_transport(Some(Arc::new(T(Arc::clone(&f)))));
@@ -477,7 +494,7 @@ async fn without_its_own_build_the_relation_is_incomparable() {
     ));
     assert_eq!(
         *f.attach_lines.lock().unwrap(),
-        [r#"{"attach":true,"tz":"Asia/Shanghai"}"#]
+        [r#"{"attach":true,"tz":"Asia/Shanghai","watch":{"sids":[],"branch":[]}}"#]
     );
 }
 
@@ -511,8 +528,8 @@ async fn a_backend_that_refuses_the_new_attach_line_is_old() {
     );
 }
 
-/// 往返数：每个方向的字节各晚 1 s 到（暂停时钟），从开出链路到 `Up` 恰一个来回 —— attach 行不等 hello 就发；
-/// 桌面也一样（不另问本机后端）。
+/// 往返数：每个方向的字节各晚 1 s 到（暂停时钟），从开出链路到 `Up` 恰一个来回 —— attach 行不等 hello 就发、带着名单；
+/// 桌面也一样（不另问本机后端）。接上之后不再为名单多一个来回（那台从第一帧起照名单发）。
 #[tokio::test(start_paused = true)]
 async fn from_link_open_to_up_takes_one_round_trip() {
     for desk in [false, true] {
@@ -529,10 +546,12 @@ async fn from_link_open_to_up_takes_one_round_trip() {
                 u.lock().unwrap().get_or_insert(tokio::time::Instant::now());
             }
         });
+        let d = self::desk();
+        d.set(["s1".to_string()].into());
         if desk {
-            Feed::start(cfg(), Some(Arc::new(D(Arc::clone(&f)))), events);
+            Feed::start(cfg(), Some(Arc::new(D(Arc::clone(&f)))), d, events);
         } else {
-            Feed::start(cfg(), Some(Arc::new(T(Arc::clone(&f)))), events);
+            Feed::start(cfg(), Some(Arc::new(T(Arc::clone(&f)))), d, events);
         }
         until("流接上了", || up_at.lock().unwrap().is_some()).await;
         let opened = f.attach_at.lock().unwrap()[0];
@@ -540,6 +559,12 @@ async fn from_link_open_to_up_takes_one_round_trip() {
             up_at.lock().unwrap().unwrap() - opened,
             2 * lag,
             "桌面 {desk}：开出链路到通着该是一个来回"
+        );
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        assert_eq!(carried(&f, 0), serde_json::json!(["s1"]));
+        assert!(
+            f.watches.lock().unwrap().is_empty(),
+            "桌面 {desk}：接上之后又为名单问了一次"
         );
     }
 }
@@ -657,7 +682,7 @@ async fn a_missing_backend_needs_a_hand_and_does_not_retry_by_itself() {
 async fn a_call_made_before_the_link_is_up_waits_for_it() {
     let f = Arc::new(Fake::default());
     f.attaches.lock().unwrap().push_back(upp(MINE));
-    let feed: Arc<Feed<T>> = Feed::start(cfg(), None, sink(|_| {}));
+    let feed: Arc<Feed<T>> = Feed::start(cfg(), None, desk(), sink(|_| {}));
     let fe = Arc::clone(&feed);
     let call = tokio::spawn(async move { ask(&fe, "ping", Duration::from_secs(30)).await });
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -675,33 +700,50 @@ async fn a_call_made_before_the_link_is_up_waits_for_it() {
     assert!(call.await.unwrap().is_ok(), "等它接上再问");
 }
 
+/// 名单并进 attach 行：每条新连接的 attach 行带此刻那份，那台从第一帧起照它发 ⇒ 接上之后不再问 `stream-watch`；
+/// 握手中改了（attach 行写出之后、接上之前）⇒ 接上后补报一次、是最新那份。
 #[tokio::test(start_paused = true)]
-async fn every_new_link_gets_the_whole_watch_list_again() {
+async fn every_new_link_carries_the_watch_list_on_its_attach_line() {
     let f = Arc::new(Fake::default());
     f.attaches.lock().unwrap().push_back(upp(MINE));
-    let (feed, _) = start(&f);
+    let d = desk();
+    d.set(["s1".to_string()].into());
+    let (feed, _) = start_with(&f, Arc::clone(&d));
     until("流接上了", || up(&feed)).await;
-    feed.watch("s1", true);
-    feed.watch("s1", true);
-    until("报了 s1", || {
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(carried(&f, 0), serde_json::json!(["s1"]));
+    assert!(f.watches.lock().unwrap().is_empty(), "attach 行带过了还问");
+    // 换一条 SSH（网络换了）⇒ 新连接的 attach 行照当前名单整份带上。
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    feed.set_transport(Some(Arc::new(T(Arc::clone(&f)))));
+    until("第二条连接接上", || {
+        matches!(feed.state(), State::Up { epoch: 2, .. })
+    })
+    .await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(carried(&f, 1), serde_json::json!(["s1"]));
+    assert!(f.watches.lock().unwrap().is_empty());
+    // 握手中名单变了：第三条连接的 attach 行写出之后、回话之前改 ⇒ 接上后补报一次最新那份。
+    let gate = Arc::new(tokio::sync::Notify::new());
+    *f.reply_hold.lock().unwrap() = Some(Arc::clone(&gate));
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    feed.set_transport(Some(Arc::new(T(Arc::clone(&f)))));
+    until("第三条 attach 行到了", || {
+        f.attach_lines.lock().unwrap().len() == 3
+    })
+    .await;
+    d.set(["s1".to_string(), "s2".to_string()].into());
+    gate.notify_one();
+    until("补报了最新那份", || {
         f.watches
             .lock()
             .unwrap()
             .iter()
-            .any(|a| a["sids"] == serde_json::json!(["s1"]))
+            .any(|a| a["sids"] == serde_json::json!(["s1", "s2"]))
     })
     .await;
-    feed.watch("s1", false);
-    let before = f.watches.lock().unwrap().len();
-    // 换一条 SSH（网络换了）⇒ 旧流关掉、当场在新的上接；新连接照当前名单整份重报。
-    f.attaches.lock().unwrap().push_back(upp(MINE));
-    feed.set_transport(Some(Arc::new(T(Arc::clone(&f)))));
-    until("新连接上又报了一次", || {
-        let w = f.watches.lock().unwrap();
-        w.len() > before && w.last().unwrap()["sids"] == serde_json::json!(["s1"])
-    })
-    .await;
-    assert!(matches!(feed.state(), State::Up { epoch: 2, .. }));
+    assert_eq!(carried(&f, 2), serde_json::json!(["s1"]));
+    assert_eq!(f.watches.lock().unwrap().len(), 1, "只补那一次");
 }
 
 /// 装得了后端的宿主（桌面那一形）：那台旧（回话说旧 · 认不得新一形 attach 行）⇒ `--resident-ensure --replace` 换一次再接；换上的同一版 ⇒ 接、不说。
@@ -887,37 +929,29 @@ async fn a_wake_while_dialing_skips_one_wait_and_is_void_once_up() {
     );
 }
 
-/// **断线 → 重连 → 续上，数格**（手机那一侧交给 Kotlin 的就是这几件）：在看 s1；那台答「s1 从第 5 行起上流」；断网；
-/// 重连之后整份重报名单，那台答「从第 9 行起」。每件事恰好几格、按序，不看墙钟。
+/// **断线 → 重连，数格**（手机那一侧交给 Kotlin 的就是这几件）：在看 s1；断网；重连。每条连接的 attach 行都带着 s1、
+/// 接上之后不再问名单（续点由那台的宣告给，`from[]` 只答连接中途刚进名单的）。每件事恰好几格、按序，不看墙钟。
 #[tokio::test(start_paused = true)]
-async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
+async fn a_drop_then_reconnect_hands_over_exactly_these_cells() {
     let f = Arc::new(Fake::default());
     {
         let mut a = f.attaches.lock().unwrap();
         a.push_back(upp(MINE));
         a.push_back(upp(MINE));
-        let mut fr = f.froms.lock().unwrap();
-        fr.push_back(serde_json::json!([{"sid":"s1","path":"/p/s1.jsonl","seq":5}]));
-        fr.push_back(serde_json::json!([{"sid":"s1","path":"/p/s1.jsonl","seq":9}]));
     }
-    let (feed, seen) = start(&f);
-    feed.watch("s1", true);
-    let from_cells = |seen: &Seen| {
+    let d = desk();
+    d.set(["s1".to_string()].into());
+    let (feed, seen) = start_with(&f, d);
+    let ups = |seen: &Seen| {
         seen.lock()
             .unwrap()
             .iter()
-            .filter(|e| matches!(e, Event::WatchFrom(_)))
+            .filter(|e| matches!(e, Event::State(State::Up { .. })))
             .count()
     };
-    until("第一条连接上报了名单、拿到续点", || {
-        from_cells(&seen) == 1
-    })
-    .await;
+    until("第一条连接接上", || ups(&seen) == 1).await;
     f.drop_link.notify_waiters();
-    until("重连之后又报了一次、拿到新的续点", || {
-        from_cells(&seen) == 2
-    })
-    .await;
+    until("重连接上", || ups(&seen) == 2).await;
     tokio::time::sleep(Duration::from_secs(60)).await;
     let cells: Vec<String> = seen
         .lock()
@@ -935,59 +969,35 @@ async fn a_drop_then_reconnect_then_resume_hands_over_exactly_these_cells() {
                     .unwrap()
             ),
             Event::Gap => "gap".to_string(),
-            Event::WatchFrom(w) => format!("from {}@{}", w[0].sid, w[0].seq),
             Event::Ssh(b) => format!("ssh {b}"),
         })
         .collect();
-    // 名单报在连上之后、那台的第一帧与它谁先到不定 ⇒ 每条连接内只比集合，跨连接的先后照比。
-    let (first, second) = cells.split_at(
-        cells
-            .iter()
-            .position(|c| c == "down hand=false")
-            .expect("断网要交一格「断了」"),
-    );
-    let sorted = |xs: &[String]| {
-        let mut v = xs.to_vec();
-        v.sort();
-        v
-    };
     assert_eq!(
-        sorted(first),
-        sorted(&[
-            "connecting".into(),
-            "attached".into(),
-            "up 1".into(),
-            "frame sessions_replayed".into(),
-            "from s1@5".into(),
-            "ssh true".into(),
-            "ssh false".into(),
-        ]),
-        "第一条连接：{cells:?}"
+        cells,
+        [
+            "connecting",
+            "ssh true",
+            "attached",
+            "up 1",
+            "frame sessions_replayed",
+            "ssh false",
+            "down hand=false",
+            "connecting",
+            "ssh true",
+            "attached",
+            "up 2",
+            "frame sessions_replayed",
+        ]
+        .map(String::from),
+        "断了 → 重连：{cells:?}"
     );
-    assert_eq!(
-        sorted(second),
-        sorted(&[
-            "down hand=false".into(),
-            "connecting".into(),
-            "attached".into(),
-            "up 2".into(),
-            "frame sessions_replayed".into(),
-            "from s1@9".into(),
-            "ssh true".into(),
-        ]),
-        "断了 → 重连 → 续上：{cells:?}"
+    assert_eq!(carried(&f, 0), serde_json::json!(["s1"]));
+    assert_eq!(carried(&f, 1), serde_json::json!(["s1"]));
+    assert!(
+        f.watches.lock().unwrap().is_empty(),
+        "attach 行带过的不再问"
     );
-    assert_eq!(
-        &first[..4],
-        &[
-            "connecting".to_string(),
-            "ssh true".into(),
-            "attached".into(),
-            "up 1".into()
-        ],
-        "先接上（hello 与客户端先于 Up），再有帧"
-    );
-    assert_eq!(f.watches.lock().unwrap().len(), 2, "名单每条连接整份报一次");
+    feed.close();
 }
 
 /// `--resident-ensure [--replace]` 的答（两端同一个读法）：成了 ⇒ 那个对象（pid 可能是 null）；不是对象 ⇒ 认不得；
@@ -1327,6 +1337,7 @@ async fn the_phone_is_told_whether_to_install_or_update() {
     let feed = Feed::start(
         cfg(),
         Some(Arc::new(D(Arc::clone(&f)))),
+        desk(),
         sink(move |e| {
             if let Event::State(State::Down { fix, .. }) = e {
                 s.lock().unwrap().push(fix);
@@ -1367,7 +1378,7 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
     );
     until("接上新的", || feed.theirs().as_deref() == Some(MINE)).await;
 
-    let none: Arc<Feed<T>> = Feed::start(cfg(), None, sink(|_| {}));
+    let none: Arc<Feed<T>> = Feed::start(cfg(), None, desk(), sink(|_| {}));
     let e = none.replace().await.unwrap_err();
     assert_eq!(
         e.text,

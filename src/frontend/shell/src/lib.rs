@@ -144,7 +144,7 @@ mod sftp;
 // 远端行带 origin=host 标签。
 mod ccm_probe;
 mod stream_source;
-// 每条长连接报「在看哪几个会话」（那台后端 `stream-watch`）：主窗口在看的 tab ∪ 查看窗跟着的会话。
+// 每台的「在看」名单（主窗口在看的 tab ∪ 查看窗跟着的会话）交那台的名单台（`resident_client::watch::Desk`）。
 mod stream_watch;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 // `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
@@ -1330,7 +1330,7 @@ fn forget_session(
 }
 
 /// 主窗口此刻在看的会话（整份换；切 tab 时界面报）：与查看窗跟着的会话合成每台的「在看」名单，
-/// 由 `stream_watch` 报给那台那条长连接（没在看的会话，它的行不上流）。
+/// 由 `stream_watch` 交那台的名单台（没在看的会话，它的行不上流）。
 #[tauri::command]
 fn watch_sessions(
     sessions: Vec<ui_contract::WatchedSession>,

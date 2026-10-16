@@ -154,11 +154,11 @@ enum WatchEvent {
     Watch {
         /// 哪条连接报的（[`Attachment`] 的号）。
         sub: u64,
-        ask: crate::wire::WatchAsk,
-        done: tokio::sync::oneshot::Sender<Vec<crate::wire::WatchFrom>>,
+        ask: cmd_wire::watch::WatchAsk,
+        done: tokio::sync::oneshot::Sender<Vec<cmd_wire::watch::WatchFrom>>,
     },
-    /// 一条流连接接上来了：从这一刻起它收这台的帧（先收一份此刻的样子，[`join`]）。
-    Join(Sub),
+    /// 一条流连接接上来了：从这一刻起它收这台的帧（先收一份此刻的样子，[`join`]）；带着 attach 行里的名单（没带 ⇒ 全看）。
+    Join(Sub, Option<cmd_wire::watch::WatchAsk>),
     /// 那条流连接走了（[`Attachment`] 丢了）。
     Leave(u64),
     /// 一条会话的后台预读做完了（线程池交回，[`primed`] 装回）。
@@ -837,11 +837,18 @@ impl WatcherPoke {
 
     /// 接上一条流连接：回它的出方向通道（这台的帧从这里来；先来一份此刻的样子）与它在这台 watcher 上的那一份（丢了 ＝ 走了）。
     /// 这条连接要的时区（attach 行 / 流模式起参的 `tz`）给按连接现写的那几帧用（任务清单变了那一帧的体）。
-    pub fn attach(&self, tz: &crate::Tz) -> (mpsc::Receiver<Frame>, Attachment) {
+    /// `watch` ＝ attach 行带的名单：从那一份此刻的样子起就照它发（没带 ⇒ 全看，等 `stream-watch`）。
+    pub fn attach(
+        &self,
+        tz: &crate::Tz,
+        watch: Option<cmd_wire::watch::WatchAsk>,
+    ) -> (mpsc::Receiver<Frame>, Attachment) {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
-        let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone())));
+        let _ = self
+            .0
+            .send(WatchEvent::Join(Sub::new(id, tx, tz.clone()), watch));
         (
             rx,
             Attachment(WatchHandle {
@@ -879,9 +886,9 @@ impl WatchHandle {
     /// 这条流此刻在看哪几个会话（整份换）；回刚进名单的那几个从第几行起上流。watcher 已停 ⇒ 回的那一头直接断。
     pub fn watch(
         &self,
-        ask: crate::wire::WatchAsk,
-    ) -> tokio::sync::oneshot::Receiver<Vec<crate::wire::WatchFrom>> {
-        let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>();
+        ask: cmd_wire::watch::WatchAsk,
+    ) -> tokio::sync::oneshot::Receiver<Vec<cmd_wire::watch::WatchFrom>> {
+        let (done, rx) = tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>();
         let _ = self.tx.send(WatchEvent::Watch {
             sub: self.id,
             ask,
@@ -1470,7 +1477,7 @@ fn watch_loop(
             WatchEvent::Watch { sub, ask, done } => {
                 let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));
             }
-            WatchEvent::Join(sub) => join(sub, &mut state, &mut sink),
+            WatchEvent::Join(sub, watch) => join(sub, watch, &mut state, &mut sink),
             WatchEvent::Leave(id) => sink.leave(id),
             WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
@@ -2413,14 +2420,37 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
 /// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发，[`primed`]）、也不回续点（它的续点由 `session_primed` 给）。
 fn watch_sessions(
     sub: u64,
-    ask: crate::wire::WatchAsk,
+    ask: cmd_wire::watch::WatchAsk,
     state: &mut ReaderState,
     sink: &mut FrameSink,
-) -> Vec<crate::wire::WatchFrom> {
-    let next: HashSet<String> = ask.sids.into_iter().collect();
-    let Some(me) = sink.subs.iter_mut().find(|s| s.id == sub) else {
+) -> Vec<cmd_wire::watch::WatchFrom> {
+    let Some((fresh, starting)) = take_ask(sub, ask, state, sink) else {
         return Vec::new();
     };
+    let mut from = Vec::new();
+    for sid in fresh {
+        sink.send_to(sub, state.runs_frame(&sid));
+        for p in paths_of(state, &sid) {
+            from.push(cmd_wire::watch::WatchFrom {
+                sid: sid.clone(),
+                path: p.to_string_lossy().into_owned(),
+                seq: state.seqs.peek(&p.to_string_lossy()),
+            });
+        }
+    }
+    branch_starting(sub, &starting, state, sink);
+    from
+}
+
+/// 这条连接的名单换成 `ask`：回刚进名单的（先前报过、又不在里面的）与刚要起主线外清单的（排好序；预读没交回的不算刚进）。没这条连接 ⇒ `None`。
+fn take_ask(
+    sub: u64,
+    ask: cmd_wire::watch::WatchAsk,
+    state: &ReaderState,
+    sink: &mut FrameSink,
+) -> Option<(Vec<String>, Vec<String>)> {
+    let next: HashSet<String> = ask.sids.into_iter().collect();
+    let me = sink.subs.iter_mut().find(|s| s.id == sub)?;
     let fresh: Vec<String> = match &me.watching {
         None => Vec::new(),
         Some(old) => {
@@ -2434,7 +2464,7 @@ fn watch_sessions(
         }
     };
     // 要清单的：只算在看的那几个（不在看的清单本来就不上流）。
-    let held: HashMap<String, crate::wire::BranchHeld> = ask
+    let held: HashMap<String, cmd_wire::watch::BranchHeld> = ask
         .branch
         .into_iter()
         .filter(|h| next.contains(&h.sid))
@@ -2453,43 +2483,48 @@ fn watch_sessions(
         .filter_map(|(_, h)| Some((h.path?, (h.at, h.sum?))))
         .collect();
     me.watching = Some(next);
-    let mine = |state: &ReaderState, sid: &str| -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = state
-            .offsets
-            .keys()
-            .filter(|k| state.sid_of(k).as_deref() == Some(sid))
-            .cloned()
-            .collect();
-        v.sort();
-        v
-    };
-    let mut from = Vec::new();
-    for sid in fresh {
-        sink.send_to(sub, state.runs_frame(&sid));
-        for p in mine(state, &sid) {
-            from.push(crate::wire::WatchFrom {
-                sid: sid.clone(),
-                path: p.to_string_lossy().into_owned(),
-                seq: state.seqs.peek(&p.to_string_lossy()),
-            });
-        }
-    }
+    Some((fresh, starting))
+}
+
+/// 这台上这个会话的每份记录（排好序）。
+fn paths_of(state: &ReaderState, sid: &str) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = state
+        .offsets
+        .keys()
+        .filter(|k| state.sid_of(k).as_deref() == Some(sid))
+        .cloned()
+        .collect();
+    v.sort();
+    v
+}
+
+/// 刚要起清单的那几个：照它交回的手上那份只补缺的（预读没交回的读完那一帧之后再给，[`primed`]）。
+fn branch_starting(sub: u64, starting: &[String], state: &ReaderState, sink: &mut FrameSink) {
     for sid in starting.iter().filter(|s| !state.priming.contains_key(*s)) {
-        for p in mine(state, sid) {
+        for p in paths_of(state, sid) {
             branch_to(state, sink, sub, sid, &p);
         }
     }
-    from
 }
 
 /// 一条流连接接上来了：先给它一份这台此刻的样子，之后它与别的连接一样收每一帧。
 ///
 /// 那一份 ＝ 每个活会话一帧 `session_added`（宣告那一帧，此刻的活动 · 名字 · 在等什么 · 记录路径换成现值）·
 /// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 ·
-/// 会话账本的那一份（可重连的 · 清单报完了没有）。主线外清单不在里面：它只给在 `stream-watch` 里要了的连接、照它手上的只补缺的（[`watch_sessions`]）。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
-fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
+/// 会话账本的那一份（可重连的 · 清单报完了没有）。主线外清单只给要了的连接、照它手上的只补缺的（attach 行 · `stream-watch` 带的 `branch`），跟在那一份后面。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
+/// attach 行带了名单 ⇒ 先照它定这条连接的名单，那一份里的运行表只发名单里的（同之后的每一帧）。
+fn join(
+    sub: Sub,
+    watch: Option<cmd_wire::watch::WatchAsk>,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
     let id = sub.id;
     sink.subs.push(sub);
+    let starting = watch
+        .and_then(|ask| take_ask(id, ask, state, sink))
+        .map(|(_, starting)| starting)
+        .unwrap_or_default();
     let mut sids: Vec<String> = state.active_sids.iter().cloned().collect();
     sids.sort_unstable();
     for sid in sids {
@@ -2538,7 +2573,7 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
             }),
         );
         if state.book.has_runs(&sid) {
-            sink.send_to(id, state.runs_frame(&sid));
+            sink.send_wanted(id, state.runs_frame(&sid));
         }
     }
     for f in sink
@@ -2549,6 +2584,7 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
     {
         sink.send_to(id, f);
     }
+    branch_starting(id, &starting, state, sink);
 }
 
 /// 这份记录的主线外清单变了 ⇒ 发变了的那一截（`whole` ⇒ 从头整份：从 0 重读 · 读完那一刻）。
@@ -4595,6 +4631,13 @@ impl FrameSink {
     /// 只给一条连接（名单补发 · 接上来那一份）：不过会话账本、不看名单。
     fn send_to(&mut self, id: u64, frame: Frame) {
         if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
+            s.push(frame);
+        }
+    }
+
+    /// 只给一条连接、照它的名单（接上来那一份里的运行表）：不过会话账本。
+    fn send_wanted(&mut self, id: u64, frame: Frame) {
+        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id && s.wants(&frame)) {
             s.push(frame);
         }
     }

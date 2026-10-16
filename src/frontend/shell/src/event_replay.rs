@@ -146,8 +146,8 @@ struct Inner {
     sink: Option<Arc<dyn ItemSink>>,
     /// 终端画面流（`terminal-screen/<票>`）撤掉时替界面退订的那一口（`lib.rs` 起步时装：向那台发退订）。
     screen_dropped: Option<ScreenDropped>,
-    /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。`None` ＝ 还没报过 ⇒ 不替任何一台报名单（那台全看）。
-    main_watch: Option<BTreeSet<TailKey>>,
+    /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。从起来就在、初值是空的（还没报过 ＝ 一个都不看）。
+    main_watch: BTreeSet<TailKey>,
     /// 旁路快照在途的电平：最近一次交出去的那个数（[`EventReplay::on_snapshot_inflight`] 在本锁里记）。
     /// 重放补电平读它、不回头读 `stream_source` 那把计数锁 —— 交电平的那一边是「持计数锁 → 要本锁」，
     /// 这边再「持本锁 → 要计数锁」就是两条线程互等（截图台架偶发整条流停住，抓栈就是这一对）。
@@ -525,7 +525,7 @@ impl EventReplay {
                 seen: HashMap::new(),
                 sink: None,
                 screen_dropped: None,
-                main_watch: None,
+                main_watch: BTreeSet::new(),
                 snapshot_level: 0,
             }),
             credit_changed: tokio::sync::Notify::new(),
@@ -1221,8 +1221,8 @@ impl EventReplay {
         let next: BTreeSet<TailKey> = sessions.into_iter().collect();
         let moved = {
             let mut inner = self.inner.lock();
-            let moved = inner.main_watch.as_ref() != Some(&next);
-            inner.main_watch = Some(next);
+            let moved = inner.main_watch != next;
+            inner.main_watch = next;
             moved
         };
         if moved {
@@ -1231,12 +1231,12 @@ impl EventReplay {
     }
 
     /// 那台那条流该报的「在看」名单：主窗口在看的那台上的会话 ∪ 那台上有 `session-lines/<sid>` 订阅的会话。
-    /// 主窗口还没报过 ⇒ `None`（不报 ＝ 那台全看，与从没报过的流同一个口径）。
-    pub fn watched(&self, origin: &crate::origin::Origin) -> Option<BTreeSet<String>> {
+    /// 主窗口还没报过 ⇒ 只有查看窗那几条（冷起不全发全拉：界面第一次报的那个 tab 照「刚进名单」补）。
+    pub fn watched(&self, origin: &crate::origin::Origin) -> BTreeSet<String> {
         let origin = origin.as_wire_str();
         let inner = self.inner.lock();
-        let main = inner.main_watch.as_ref()?;
-        let mut out: BTreeSet<String> = main
+        let mut out: BTreeSet<String> = inner
+            .main_watch
             .iter()
             .filter(|(o, _)| o == origin)
             .map(|(_, sid)| sid.clone())
@@ -1248,7 +1248,7 @@ impl EventReplay {
                 .filter(|s| s.kind == SubKind::Lines && s.origin == origin)
                 .filter_map(|s| s.only.clone()),
         );
-        Some(out)
+        out
     }
 
     /// 「在看」可能变了就醒的那个收端（`stream_watch` 拿它等）。

@@ -148,7 +148,7 @@ async fn one_line(input: &str) -> Vec<String> {
         std::io::Cursor::new(input.as_bytes().to_vec()),
         tx,
         crate::stream::inbound::WatchDesk::new(|_| {
-            tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
+            tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
         }),
         crate::platform::fs::Own::for_tests(),
         crate::wire::HelloFlushed::for_tests(),
@@ -361,7 +361,7 @@ async fn an_oversized_line_does_not_grow_memory() {
             },
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
             crate::wire::HelloFlushed::for_tests(),
@@ -452,7 +452,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1)), 0),
                 Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. }))
                     if c == "unknown_command"
             )
@@ -469,7 +469,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1)), 0),
             Disposition::Reply(Frame::Reply(crate::wire::Reply { code: Some(ref c), .. })) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -498,7 +498,7 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     &xfers,
                     &follows,
                     &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
-                        tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
+                        tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
                     })),
                     0,
                 ),
@@ -556,7 +556,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &xfers,
         &follows,
         &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
-            tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
+            tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
         })),
         0,
     )
@@ -851,13 +851,13 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
 /// `sids` 不是串数组 · `branch` 形状不对 ⇒ `bad_args`、不交。`branch` 可缺（＝ 一份都不要）。
 #[tokio::test]
 async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its_answer() {
-    use crate::wire::{BranchHeld, WatchAsk};
+    use cmd_wire::watch::{BranchHeld, WatchAsk};
     let asked: Arc<Mutex<Vec<WatchAsk>>> = Arc::default();
     let seen = asked.clone();
     let desk = WatchDesk::new(move |ask| {
         seen.lock().unwrap().push(ask);
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = tx.send(vec![crate::wire::WatchFrom {
+        let _ = tx.send(vec![cmd_wire::watch::WatchFrom {
             sid: "a".into(),
             path: "/p/a.jsonl".into(),
             seq: 7,
@@ -932,7 +932,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     use tokio::io::AsyncWriteExt;
     let watch = || {
         crate::stream::inbound::WatchDesk::new(|_| {
-            tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
+            tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
         })
     };
     let hook = |sid: &str| {

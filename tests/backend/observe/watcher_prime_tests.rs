@@ -284,6 +284,7 @@ fn three_connections_on_one_record_prime_it_once() {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         join(
             Sub::new(id, tx, crate::Tz::default()),
+            None,
             &mut state,
             &mut sink,
         );
@@ -340,7 +341,7 @@ fn the_watched_session_is_primed_first() {
     // 这条连接说它在看 B。
     let _ = watch_sessions(
         0,
-        crate::wire::WatchAsk {
+        cmd_wire::watch::WatchAsk {
             sids: vec!["p-w-b".to_string()],
             branch: vec![],
         },

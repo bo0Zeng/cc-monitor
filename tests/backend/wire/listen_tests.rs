@@ -49,7 +49,7 @@ fn the_resident_switch_is_empty_one_or_refused() {
 }
 
 /// attach 行只认 `cmd_wire::attach::AttachLine` 那一形（认不得的格 · `attach` 不是 `true` · 不是 JSON ⇒ malformed，同一句拒）；
-/// 带 `mine` ⇒ 回话里是这台相对它的新旧，四态各一：那台旧 · 新 · 同 · 解不出序键；没带 ⇒ 回话与只说「可以」那一行逐字节相同。
+/// 名单（`watch`）原样交出去；带 `mine` ⇒ 回话里是这台相对它的新旧，四态各一：那台旧 · 新 · 同 · 解不出序键；没带 ⇒ 回话与只说「可以」那一行逐字节相同。
 #[test]
 fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
     let own = "p5c-own";
@@ -75,8 +75,14 @@ fn the_attach_reply_says_how_this_build_stands_against_the_clients() {
         Admit::Stream {
             tz: Some("Asia/Shanghai".into()),
             reply: cmd_wire::attach::AttachReply::Ok { relation: None },
+            watch: None,
         }
     );
+    // 带名单 ⇒ 原样交给接流那一步（从第一帧起照它发）。
+    assert!(matches!(
+        admit(r#"{"attach":true,"watch":{"sids":["a"]}}"#, own),
+        Admit::Stream { watch: Some(w), .. } if w.sids == ["a"]
+    ));
     for bad in [
         r#"{"attach":"0123456789abcdef0123456789abcdef"}"#,
         r#"{"attach":false}"#,

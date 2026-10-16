@@ -20,13 +20,14 @@
 //!   那台不是 Unix（常驻脱离不了）恒是；没装 · 起不了常驻 · 不是我们的后端只在装不了后端的宿主上是（装得了的下一轮装过再试）。
 //!
 //! 每次接上先交 [`Event::Attached`]（那台的 hello 原样一行 ＋ 这条连接的客户端），再交 [`State::Up`]（`epoch` 加一，之前在路上的问答作废）。
+//! 在看名单住这一台的名单台（[`Desk`]）：attach 行带它此刻那份（那台从第一帧起照它发），接上之后把这条连接交给它（[`Desk::up`]）。
 
 use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
 use crate::backoff::{should_reset_backoff, Backoff, DIAL_WITHIN, HEARTBEAT_IDLE, PING_WITHIN};
 use crate::client::{deliver_answer, InboundClient};
 use crate::frames::Admit;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
-use crate::watch::{self, WatchFrom, Watched};
+use crate::watch::Desk;
 use cmd_wire::attach::Relation;
 use copy_core::copy_text;
 use serde::Serialize;
@@ -177,8 +178,6 @@ pub enum Event {
     Frame(String),
     /// 流上有一行超过上限、整行丢了（看着的那一处原位留一个缺口）。
     Gap,
-    /// `stream-watch` 应答里的 `from[]`。
-    WatchFrom(Vec<WatchFrom>),
     /// **SSH 够没够着那一台**（拨通 · 认证过、开得出 exec），与常驻流通不通分开报：那台常驻后端起不来时它照样是 `true`。
     /// 手机 SSH 那层（终端 · 文件）跟它走 —— 终端是逃生口，不跟着后端卡住。变了才报。
     Ssh(bool),
@@ -193,7 +192,6 @@ impl std::fmt::Debug for Event {
             }
             Event::Frame(l) => f.debug_tuple("Frame").field(l).finish(),
             Event::Gap => f.write_str("Gap"),
-            Event::WatchFrom(w) => f.debug_tuple("WatchFrom").field(w).finish(),
             Event::Ssh(b) => f.debug_tuple("Ssh").field(b).finish(),
         }
     }
@@ -266,6 +264,8 @@ struct Connected<S> {
     relation: Relation,
     /// 形状对不上的那几种帧（[`State::Up`] 那一格）。
     differs: Vec<String>,
+    /// attach 行带过的那份名单。
+    carried: Option<cmd_wire::watch::WatchAsk>,
 }
 
 /// 一台的常驻流。
@@ -285,16 +285,21 @@ pub struct Feed<T: Transport> {
     cut: Mutex<Option<Arc<Notify>>>,
     /// 连着的时候被叫醒（[`Feed::wake`]）⇒ 当场问一句活（[`Feed::pump`] 收它）。
     ask: Notify,
-    /// 在看名单：`None` ＝ 宿主从没报过（不发 `stream-watch`，那台照旧全发）。
-    watched: Mutex<Option<Watched>>,
-    watch_tick: tw::Sender<u64>,
-    /// 这一台那两个循环（重连 · 报名单）：[`Feed::close`] 收掉。
+    /// 这一台的名单台：attach 行带它此刻那份，接上之后交它这条连接（报名单只在它那里）。
+    desk: Arc<Desk>,
+    /// 这一台的重连循环：[`Feed::close`] 收掉。
     tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl<T: Transport> Feed<T> {
-    /// 起一台（在当前 tokio 运行时上起它的循环）；`transport` ＝ 起来那一刻手上的那条 SSH（还没有 ⇒ `None`，之后经 [`Feed::set_transport`] 交）。
-    pub fn start(cfg: Config, transport: Option<Arc<T>>, events: Sink) -> Arc<Self> {
+    /// 起一台（在当前 tokio 运行时上起它的循环）；`transport` ＝ 起来那一刻手上的那条 SSH（还没有 ⇒ `None`，之后经 [`Feed::set_transport`] 交）；
+    /// `desk` ＝ 这一台的名单台（宿主往它里交名单）。
+    pub fn start(
+        cfg: Config,
+        transport: Option<Arc<T>>,
+        desk: Arc<Desk>,
+        events: Sink,
+    ) -> Arc<Self> {
         let feed = Arc::new(Feed {
             cfg,
             events,
@@ -306,17 +311,15 @@ impl<T: Transport> Feed<T> {
             kick: tw::channel(0).0,
             cut: Mutex::new(None),
             ask: Notify::new(),
-            watched: Mutex::new(None),
-            watch_tick: tw::channel(0).0,
+            desk,
             tasks: Mutex::new(Vec::new()),
         });
         let run = tokio::spawn(Arc::clone(&feed).run());
-        let report = tokio::spawn(Arc::clone(&feed).report_watch());
-        lock(&feed.tasks).extend([run, report]);
+        lock(&feed.tasks).push(run);
         feed
     }
 
-    /// 不再看这台：两个循环收掉、流关掉、在等的问答一律「断了」。
+    /// 不再看这台：循环收掉、流关掉、在等的问答一律「断了」。
     pub fn close(&self) {
         for t in lock(&self.tasks).drain(..) {
             t.abort();
@@ -383,33 +386,6 @@ impl<T: Transport> Feed<T> {
     async fn set_ssh(&self, reached: bool) {
         if self.reached.send_replace(reached) != reached {
             (self.events)(Event::Ssh(reached)).await;
-        }
-    }
-
-    /// 名单从空开始报（宿主起步时一次：一条会话都还没人看 ⇒ 那台一条都不发）。
-    pub fn watch_none(&self) {
-        let fresh = {
-            let mut w = lock(&self.watched);
-            let fresh = w.is_none();
-            w.get_or_insert_with(Watched::default);
-            fresh
-        };
-        if fresh {
-            self.watch_tick.send_modify(|t| *t += 1);
-        }
-    }
-
-    /// 多一处 / 少一处在看这条会话。名单变了 ⇒ 在当前连接上整份重报。
-    pub fn watch(&self, sid: &str, holding: bool) {
-        let changed = {
-            let mut g = lock(&self.watched);
-            let fresh = g.is_none();
-            let w = g.get_or_insert_with(Watched::default);
-            let changed = if holding { w.hold(sid) } else { w.release(sid) };
-            changed || fresh
-        };
-        if changed {
-            self.watch_tick.send_modify(|t| *t += 1);
         }
     }
 
@@ -494,6 +470,7 @@ impl<T: Transport> Feed<T> {
                     hello,
                     relation,
                     differs,
+                    carried,
                 }) => {
                     epoch += 1;
                     *lock(&self.client) = Some(Arc::clone(&client));
@@ -503,6 +480,7 @@ impl<T: Transport> Feed<T> {
                         client: Arc::clone(&client),
                     })
                     .await;
+                    self.desk.up(&client, carried.as_ref());
                     self.set_state(State::Up {
                         epoch,
                         relation,
@@ -513,7 +491,6 @@ impl<T: Transport> Feed<T> {
                     .await;
                     // 连上那一刻：断着时按过、还没用掉的那一下作废。
                     kicks.borrow_and_update();
-                    self.watch_tick.send_modify(|t| *t += 1);
                     self.pump(&client, reader, &cut).await;
                     client.shutdown();
                     *lock(&self.client) = None;
@@ -624,6 +601,7 @@ impl<T: Transport> Feed<T> {
             writer,
             hello,
             relation,
+            carried,
         } = attached;
         let client = writer.into_client(hello.witness());
         client.name_machine(&self.cfg.machine);
@@ -646,6 +624,7 @@ impl<T: Transport> Feed<T> {
             hello,
             relation,
             differs,
+            carried,
         })
     }
 
@@ -707,6 +686,7 @@ impl<T: Transport> Feed<T> {
             stream,
             self.cfg.tz.as_deref(),
             self.cfg.mine.as_deref(),
+            Some(self.desk.ask_for_attach()),
             self.cfg.handshake,
         )
         .await
@@ -917,37 +897,6 @@ impl<T: Transport> Feed<T> {
                     (self.events)(Event::Gap).await;
                 }
                 Ok(CappedLine::Eof) | Err(_) => return,
-            }
-        }
-    }
-
-    /// 名单变了 · 换了一条新连接 ⇒ 在当前连接上整份重报；`from[]` 交宿主。报没成不重试：下一次接上照样整份重报。
-    /// 宿主从没报过名单 ⇒ 不报（那台照旧全发）。经这里报名单的宿主（手机）不读主线外清单 ⇒ `branch` 交空的（一帧清单都不要）；
-    /// 读它的宿主（桌面壳 `stream_watch.rs`）自己报，照手上那份交回。
-    async fn report_watch(self: Arc<Self>) {
-        let mut tick = self.watch_tick.subscribe();
-        while tick.changed().await.is_ok() {
-            let Some(client) = lock(&self.client).clone() else {
-                continue;
-            };
-            let Some(sids) = lock(&self.watched).as_ref().map(Watched::sids) else {
-                continue;
-            };
-            match client
-                .call(
-                    watch::WATCH_CMD,
-                    watch::args(&sids, &[]),
-                    watch::WATCH_BUDGET,
-                )
-                .await
-            {
-                Ok(data) => {
-                    let from = watch::from_of(data.as_ref());
-                    if !from.is_empty() {
-                        (self.events)(Event::WatchFrom(from)).await;
-                    }
-                }
-                Err(e) => tracing::warn!("stream_watch 报名单没报上（这条连接照旧全看）：{e:?}"),
             }
         }
     }

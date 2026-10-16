@@ -403,9 +403,10 @@ async fn run_over_stdio(
     let (poke, book) = observe::watcher::spawn(agent_home, own.clone(), WATCH_REACTIONS);
     tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, attached) = poke.attach(&wants.tz);
+    // stdio 载体没有 attach 行 ⇒ 名单等 `stream-watch` 报上来（之前全发）。
+    let (rx, attached) = poke.attach(&wants.tz, None);
     // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
-    let tap_rx = tap::attach(tz.clone());
+    let tap_rx = tap::attach(tz.clone(), None);
     let mut inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
@@ -549,6 +550,8 @@ struct Attached {
     hello_flushed: wire::HelloFlushed,
     /// 看的这一台的时区（attach 行里的 `tz`）。
     tz: cc_monitor_backend::Tz,
+    /// attach 行带的在看名单（没带 ⇒ 全发，等 `stream-watch`）。
+    watch: Option<cmd_wire::watch::WatchAsk>,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
@@ -600,7 +603,7 @@ async fn handshake_one(
             let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;
             tracing::warn!("拒绝一条 attach 请求：{reason}");
         }
-        listen::Admit::Stream { tz, reply } => {
+        listen::Admit::Stream { tz, reply, watch } => {
             if listen::write_line(&mut w, &reply.line()).await.is_err() {
                 return;
             }
@@ -614,6 +617,7 @@ async fn handshake_one(
                     writer: w,
                     hello_flushed,
                     tz,
+                    watch,
                 })
                 .await;
         }
@@ -771,13 +775,14 @@ async fn serve_listening(
             // ② 有人认证通过 ⇒ 接上这台那份 watcher（先收一份此刻的样子），起流。
             Some(att) = attached_rx.recv() => {
                 let id = clients.join();
-                let Attached { reader, writer, hello_flushed, tz } = att;
-                let (rx, poke) = watcher.attach(&tz);
+                let Attached { reader, writer, hello_flushed, tz, watch } = att;
+                // 名单在接上那一刻就定（watcher 那份与活卡同拍）：这条流从第一帧起只发名单里的。
+                let (rx, poke) = watcher.attach(&tz, watch.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
-                let tap_rx = tap::attach(tz.clone());
+                let tap_rx = tap::attach(tz.clone(), watch.as_ref().map(|w| &w.sids[..]));
                 let mut inbound_task =
                     inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke, &tap_rx), own.clone(), hello_flushed);
                 let done = done_tx.clone();

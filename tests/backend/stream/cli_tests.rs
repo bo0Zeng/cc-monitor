@@ -1032,7 +1032,7 @@ fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> s
             std::io::Cursor::new(line.into_bytes()),
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<cmd_wire::watch::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
             crate::wire::HelloFlushed::for_tests(),

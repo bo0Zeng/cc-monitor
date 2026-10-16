@@ -3178,20 +3178,20 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
         }
     }
     assert_eq!(
-        crate::local_backend_host::attach_line(None, None),
+        crate::local_backend_host::attach_line(None, None, None),
         "{\"attach\":true}\n"
     );
     assert_eq!(
-        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None),
+        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None, None),
         "{\"attach\":true,\"tz\":\"Asia/Shanghai\"}\n",
         "看的这一台的时区跟在旁边一格（后端按 `cmd_wire::attach::AttachLine` 读 `tz`）"
     );
-    // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧。
+    // 本机换装只认同一版（`hello_verdict`）⇒ 不带这一版、不问新旧；名单照本机名单台此刻那份带上。
     guard_core::find_pinned(
         &host,
-        "attach_line(host_core::viewer_tz().as_deref(), None)",
+        "attach_line(host_core::viewer_tz().as_deref(), None, Some(watch.clone()))",
     )
-    .expect("本机常驻那条 attach 行带了这一版");
+    .expect("本机常驻那条 attach 行带了这一版 / 没带名单");
     for w in ["token", "LISTEN_TOKEN"] {
         assert!(
             !guard_core::contains_word(&host, w),
