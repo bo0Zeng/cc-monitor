@@ -51,6 +51,8 @@ class NewSessionPickerTest {
         "plate" to name.take(2),
         "quota" to if (selectable) "5h ${name.length}%" else null,
         "unselectable" to if (selectable) null else "需登录",
+        "authKind" to "subscription",
+        "badge" to mapOf("text" to if (selectable) "已登录" else "需登录", "warn" to !selectable),
     )
 
     private fun accounts(

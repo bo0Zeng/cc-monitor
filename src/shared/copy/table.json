@@ -29727,18 +29727,6 @@
       "args": [],
       "limited": ["SSH", "连接"]
     },
-    "mobSettings.entry.hosts": {
-      "kind": "action",
-      "role": "菜单项",
-      "zh": "服务器与身份",
-      "args": []
-    },
-    "mobSettings.section.terminal": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "终端",
-      "args": []
-    },
     "mobSettings.section.machine": {
       "kind": "title",
       "role": "标题",
@@ -29749,6 +29737,72 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "轮换",
+      "args": []
+    },
+    "mobSettings.entry.machines": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "机器",
+      "args": []
+    },
+    "mobSettings.entry.accounts": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "账号",
+      "args": []
+    },
+    "mobSettings.entry.keys": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "密钥",
+      "args": []
+    },
+    "mobSettings.section.prefs": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine} 上的偏好",
+      "args": ["machine"]
+    },
+    "mobSettings.section.look": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "外观",
+      "args": []
+    },
+    "mobSettings.entry.fontSize": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "字号",
+      "args": []
+    },
+    "mobSettings.entry.fontSystem": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "跟随系统",
+      "args": []
+    },
+    "mobSettings.section.about": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "关于",
+      "args": []
+    },
+    "mobSettings.about.version": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "cc-monitor {version}",
+      "args": ["version"]
+    },
+    "mobAccounts.list.section": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "{machine} 上的账号",
+      "args": ["machine"]
+    },
+    "mobAccounts.model.follow": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "跟随",
       "args": []
     },
     "mobKit.act.back": {
