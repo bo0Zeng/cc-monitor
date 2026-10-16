@@ -380,6 +380,8 @@ pub(crate) struct Wired {
     to: crate::dial::sftp::Session,
     to_dial: serde_json::Value,
     tz: crate::Tz,
+    /// 问落点那台后端经它（生产 [`crate::dial::remote_ask::DialRemote`]）。
+    remote: Box<dyn crate::dial::remote_ask::Remote>,
     /// 本机暂存区（`$HOME/.cc-monitor/staging`）。
     staging: PathBuf,
 }
@@ -391,7 +393,7 @@ async fn ask_to(w: &Wired, cmd: &str, args: serde_json::Value) -> Result<serde_j
         cmd,
         &args,
         &w.tz,
-        &crate::dial::remote_ask::DialRemote,
+        w.remote.as_ref(),
     )
     .await
     .map_err(|s| {
@@ -423,20 +425,35 @@ impl Wired {
         let to_s = open_for_transfer(&td).await.map_err(unreach)?;
         let home = crate::platform::paths::home_dir()
             .ok_or_else(|| CopyErr::Unreachable(copy_text("beTransferCopy.local.noHome", &[])))?;
+        let remote = Box::new(crate::dial::remote_ask::DialRemote);
+        Wired::over(face, from_s, to_s, to.clone(), tz, &home, remote).await
+    }
+
+    /// 两条会话已开：备好本机暂存区（`home` 底下）、问落点那台后端的家目录（与它的 SFTP 起始目录比）。
+    pub(crate) async fn over(
+        face: crate::platform::fs::Face,
+        from: crate::dial::sftp::Session,
+        to: crate::dial::sftp::Session,
+        to_dial: serde_json::Value,
+        tz: crate::Tz,
+        home: &Path,
+        remote: Box<dyn crate::dial::remote_ask::Remote>,
+    ) -> Result<Wired, CopyErr> {
         let staging = home.join(relay_route_core::STAGING_DIR_REL);
         if crate::platform::fs::Ro::symlink_metadata(&staging).is_err() {
             if let Ok(at) =
-                crate::common::root_path::resolve_in_root(&home, relay_route_core::STAGING_DIR_REL)
+                crate::common::root_path::resolve_in_root(home, relay_route_core::STAGING_DIR_REL)
             {
                 let _ = face.make_dir_private(&at);
             }
         }
         let w = Wired {
             face,
-            from: from_s,
-            to: to_s,
-            to_dial: to.clone(),
+            from,
+            to,
+            to_dial,
             tz,
+            remote,
             staging,
         };
         let h = ask_to(&w, "files-home", serde_json::json!({}))

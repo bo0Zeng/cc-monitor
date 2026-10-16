@@ -1,5 +1,6 @@
 //! `control/transfer_copy.rs` 的判据：两台之间复制一组的本体（`copy_with`）。两头用本机两个目录上的替身（[`Local`]）：
-//! 源那台 ＝ `a/`，落点那台 ＝ `b/`；路径照远端那一形写（绝对路径串）。SFTP 与问那台后端那一层（`Wired`）不在这里判。
+//! 源那台 ＝ `a/`，落点那台 ＝ `b/`；路径照远端那一形写（绝对路径串）。
+//! 生产那一份两头（`Wired`）另有一趟：两台都是合成 SFTP 台架，问落点那台后端经一台假远端（解入参 · 提交都走真的那一份）。
 
 use super::*;
 use cmd_wire::batch::OnExists;
@@ -131,6 +132,7 @@ fn keyed(r: &BatchReply) -> Vec<(String, ItemState)> {
 fn on_rt<T: Send>(f: impl FnOnce(&tokio::runtime::Handle) -> T + Send) -> T {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
+        .enable_all()
         .build()
         .unwrap();
     let h = rt.handle().clone();
@@ -287,4 +289,198 @@ fn progress_counts_bytes_across_the_group_and_moves_inside_a_file() {
         .windows(2)
         .all(|w| w[0].1.map_or(0, |b| b.0) <= w[1].1.map_or(0, |b| b.0));
     assert!(mono, "字节进度不倒退：{seen:?}");
+}
+
+// ───────────────────────── 生产那一份两头：两台台架 ＋ 假远端 ─────────────────────────
+
+use crate::dial::sftp::rig;
+
+/// 落点那台的后端：命令行里认出子命令、入参照真的解码器解，建目录与提交走真的那一份。
+/// 那台的盘 ＝ 一个临时目录（`disk`），与台架互为镜像：问之前台架 → 盘，问完盘 → 台架；入参与回包里的路径按 `rig::HOME` ↔ `disk` 换。
+#[derive(Clone)]
+struct RigBackend {
+    fs: Arc<std::sync::Mutex<rig::Fs>>,
+    disk: PathBuf,
+    /// 被问过的子命令与没成那几条的码。
+    asked: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl RigBackend {
+    fn to_disk(&self) {
+        fs::remove_dir_all(&self.disk).ok();
+        fs::create_dir_all(&self.disk).unwrap();
+        let g = self.fs.lock().unwrap();
+        for d in &g.dirs {
+            fs::create_dir_all(self.disk.join(d)).unwrap();
+        }
+        for (f, e) in &g.files {
+            fs::write(self.disk.join(f), &e.bytes).unwrap();
+        }
+    }
+
+    fn from_disk(&self) {
+        let mut g = self.fs.lock().unwrap();
+        g.files.clear();
+        g.dirs.clear();
+        let mut stack = vec![self.disk.clone()];
+        while let Some(d) = stack.pop() {
+            for e in fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                let rel = p.strip_prefix(&self.disk).unwrap().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    g.dirs.insert(rel);
+                    stack.push(p);
+                } else {
+                    g.files.insert(rel, rig::Entry { bytes: fs::read(&p).unwrap() });
+                }
+            }
+        }
+    }
+
+    fn answer(&self, flag: &str, args: &serde_json::Value) -> Result<serde_json::Value, (String, String)> {
+        use crate::wire::typed::take;
+        let face = crate::platform::fs::Face::issue();
+        let w = |f: crate::control::files_write::WriteFail| (f.code.to_string(), f.said);
+        let t = |f: crate::wire::spec::Fail| (f.code, f.message);
+        let v = match flag {
+            "files-home" => {
+                take::<cwf::HomeReq>(args).map_err(t)?;
+                serde_json::json!({ "path": rig::HOME })
+            }
+            "files-mkdir" => serde_json::to_value(
+                crate::control::files_write::answer(take::<cwf::FilesMkdirReq>(args).map_err(t)?, &face)
+                    .map_err(w)?,
+            )
+            .unwrap(),
+            "files-commit-upload" => serde_json::to_value(
+                crate::control::files_commit::commit_upload_at(
+                    &face,
+                    &self.disk,
+                    take::<cwf::FilesCommitUploadReq>(args).map_err(t)?,
+                    &crate::Tz::default(),
+                )
+                .map_err(|e| w(e.flat()))?,
+            )
+            .unwrap(),
+            other => return Err(("unknown_command".to_string(), other.to_string())),
+        };
+        Ok(v)
+    }
+}
+
+impl crate::dial::remote_ask::Remote for RigBackend {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Fut<'a, Result<String, String>> {
+        Box::pin(async { Err("走 run_coded".to_string()) })
+    }
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a serde_json::Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Fut<'a, Result<String, crate::dial::remote_ask::Said>> {
+        let flag = command
+            .split(" -- ")
+            .nth(1)
+            .and_then(|t| t.split('\'').nth(1))
+            .unwrap_or_default()
+            .trim_start_matches('-')
+            .to_string();
+        let disk = self.disk.to_string_lossy().into_owned();
+        let line = stdin.unwrap_or_default().replace(rig::HOME, &disk);
+        let args: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+        self.to_disk();
+        let out = self.answer(&flag, &args);
+        self.from_disk();
+        self.asked.lock().unwrap().push(match &out {
+            Ok(_) => flag,
+            Err((c, m)) => format!("{flag} ✗ {c}: {m}"),
+        });
+        Box::pin(async move {
+            out.map(|v| v.to_string().replace(&disk, rig::HOME))
+                .map_err(|(c, m)| crate::dial::remote_ask::Said {
+                    code: Some(c),
+                    message: m,
+                })
+        })
+    }
+}
+
+/// ★ 两台之间复制从头走到提交：一份文件 ＋ 一棵目录，落点那台上逐字节一样，两头暂存都不留。
+#[test]
+fn a_copy_between_two_machines_goes_through_to_the_commit_byte_for_byte() {
+    let base = std::env::temp_dir().join(format!("ccm-tc-wired-{}", std::process::id()));
+    fs::remove_dir_all(&base).ok();
+    let (here, disk) = (base.join("here"), base.join("b-disk"));
+    fs::create_dir_all(here.join(".cc-monitor")).unwrap();
+    let (one, two) = (rig::corpus(70_000), rig::corpus(1_234));
+    let a = rig::home(false, false);
+    {
+        let mut g = a.lock().unwrap();
+        g.dirs.extend(["src".to_string(), "src/d".to_string()]);
+        g.files.insert("src/f.bin".into(), rig::Entry { bytes: one.clone() });
+        g.files.insert("src/d/x.bin".into(), rig::Entry { bytes: two.clone() });
+    }
+    let b = rig::home(false, true);
+    b.lock().unwrap().dirs.insert("dst".into());
+    let back = RigBackend {
+        fs: b.clone(),
+        disk,
+        asked: Default::default(),
+    };
+    let at = |p: &str| format!("{}/{p}", rig::HOME);
+    let r = on_rt(|rt| {
+        let (fa, fb) = rt.block_on(async {
+            (rig::session_on(a.clone()).await, rig::session_on(b.clone()).await)
+        });
+        let w = rt
+            .block_on(Wired::over(
+                crate::platform::fs::Face::issue(),
+                fa,
+                fb,
+                serde_json::json!({}),
+                crate::Tz::default(),
+                &here,
+                Box::new(back.clone()),
+            ))
+            .unwrap_or_else(|e| panic!("两头没备好：{e:?}"));
+        copy_with(
+            &w,
+            rt,
+            TransferCopyReq {
+                from: serde_json::json!({}),
+                to: serde_json::json!({}),
+                items: ["src/f.bin", "src/d"]
+                    .iter()
+                    .map(|p| CopyFrom { remote_path: at(p) })
+                    .collect(),
+                to_dir: at("dst"),
+                on_exists: Some(OnExists::Ask),
+                decide: None,
+                ticket: None,
+            },
+        )
+    })
+    .unwrap();
+    let asked = back.asked.lock().unwrap().clone();
+    assert!(
+        r.outcomes.iter().all(|o| o.state == ItemState::Done),
+        "每一项都该落地：{:?}；落点那台被问的：{asked:?}",
+        r.outcomes
+    );
+    let g = b.lock().unwrap();
+    assert_eq!(g.bytes("dst/f.bin"), Some(one), "那份文件逐字节一样");
+    assert_eq!(g.bytes("dst/d/x.bin"), Some(two), "目录里那份逐字节一样");
+    let left: Vec<_> = g.files.keys().filter(|k| k.starts_with(".cc-monitor/")).collect();
+    assert!(left.is_empty(), "落点那台不留暂存件：{left:?}");
+    let here_left: Vec<_> = fs::read_dir(here.join(relay_route_core::STAGING_DIR_REL))
+        .map(|d| d.map(|e| e.unwrap().file_name()).collect())
+        .unwrap_or_default();
+    assert!(here_left.is_empty(), "本机不留暂存件：{here_left:?}");
+    drop(g);
+    fs::remove_dir_all(&base).ok();
 }
