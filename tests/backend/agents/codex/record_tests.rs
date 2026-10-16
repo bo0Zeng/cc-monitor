@@ -558,14 +558,12 @@ fn codex_records_carry_the_clock_face_too() {
 }
 
 /// 金样重写开关（人读过「现打」再落盘）。
-const CODEX_REGEN: &str = "CCM_REGEN_CODEX_RECORD_GOLDEN";
-
 /// ★ 造的中性 rollout（`codex-rollout.sample.jsonl`，一整份会话：元记录 · 事件 · 人话 · 注入 · 推理 · 两种工具 · 回复 · 认不出的一类）
 /// 走核心读页那一遍（适配层 ＋ `record_page::rows_of`，与 `history-read` 同一条路）⇒ 通用记录金样 `record-codex.golden.jsonl`。
 /// 手机（`CodexRecordGoldenTest.kt`）与界面（`codex-record.vitest.ts`）解的是同一份金样，逐格对。
 #[test]
 fn codex_sample_rollout_reads_to_the_record_golden() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let sample = std::fs::read(root.join("tests/__fixtures__/codex-rollout.sample.jsonl")).unwrap();
     let face = super::super::RECORDS;
     let tz = crate::Tz::named("UTC").unwrap();
@@ -579,14 +577,10 @@ fn codex_sample_rollout_reads_to_the_record_golden() {
             got.push('\n');
         }
     }
-    let path = root.join("tests/__fixtures__/record-codex.golden.jsonl");
-    if std::env::var_os(CODEX_REGEN).is_some() {
-        std::fs::write(&path, &got).unwrap();
-    }
-    let want = std::fs::read_to_string(&path).unwrap_or_default();
-    assert_eq!(
-        got, want,
-        "Codex 通用记录与金样不一致（{CODEX_REGEN}=1 重写）。现打：\n{got}"
+    crate::golden::assert_golden(
+        "tests/__fixtures__/record-codex.golden.jsonl",
+        &got,
+        "Codex 通用记录与金样不一致",
     );
 }
 

@@ -37,7 +37,7 @@
 
 #[cfg(test)]
 pub(super) mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
     use std::collections::BTreeSet;
 
     /// 中转在后端里的模块（宿主 `src/backend/relay/`，经它转出中转的契约件）。
@@ -163,14 +163,16 @@ pub(super) mod tests {
         "host",
         // tee 的落点：`host_relay` 只把宿主交进来的那个 tap 口原样递给 `host`（不碰它交出去的任何一件事）。
         "TapPort",
-        // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
+        // 出「直接敲的也走中转」那一段（「待办」那一件）时把这台的钥匙插进地址（只交插好的地址）。
         "keyed_with_key_on_disk",
         // 非得经 shell 那一趟、地址拼进参数的那一家：照字面插的只许直通那一把（根钥匙派生，`ccm` 拼那一行时要）。
         "pass_key_on_disk",
-        // 插哪一把：全权 / 只许直通（`ccm` 起会话 · 直接敲的也走中转按那一家的注入格选）。
+        // 插哪一把：全权 / 只许直通（`ccm` 起会话按那一家的注入格选 · 直接敲的也走中转按地址的路由选）。
         "KeyKind",
         "KeyKind::Full",
         "KeyKind::Pass",
+        // 一条地址该插哪一把（按路由前缀：`/s/` 全权 · `/t/` 只许直通）：出「直接敲的也走中转」那一段时问。
+        "KeyKind::for_url",
         // 出成品时问「这台机器上我们的中转在不在听」（账号清单徽章 · 别名预览那一面）。
         "our_relay_listening",
         // `run`（`--relay` 进程的中转入口）随那一形删了。
@@ -181,7 +183,7 @@ pub(super) mod tests {
 
     /// 整个后端 crate 的生产段：`(相对 src/backend 的路径, 生产段文本)`。
     fn crate_production() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let files: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, raw)| {
@@ -280,7 +282,7 @@ pub(super) mod tests {
     /// `word` 在 `text` 里作为**完整标识符**出现几次。
     /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`）。
     fn top_level_modules() -> BTreeSet<String> {
-        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+        let lib = std::fs::read_to_string(guard_core::addr::backend_src_root().join("lib.rs"))
             .expect("读 lib.rs");
         lib.lines()
             .filter_map(|l| l.trim().strip_prefix("pub mod "))

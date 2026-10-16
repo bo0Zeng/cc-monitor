@@ -1,11 +1,10 @@
 //! 壳（monitor）这一侧的**系统适配层**〔收尾重排 ·  ＋  阶段 H 的第一格〕。
 //!
 //! 与后端 `src/backend/platform/` 同一条纪律（`backend-split` C10）：平台原语与平台 cfg 的唯一住址。
-//! 今天有 [`fs`]（原 `platform_fs.rs`，只挪住址）与 [`console_text`]（控制台子进程的字节按那台的 OEM 代码页解）。
+//! 今天有 [`fs`]（原 `platform_fs.rs`，只挪住址）等。
 //! 判据立了：壳源码人群里平台形态只许住这里（与 `host-core`），还没收的逐份点名在待收名单里、只许变短
 //! （`tests/frontend/shell/platform/platform_home_guard.rs`）。住这里的只是「读法」；判定规则留在调用方。
 
-pub mod console_text;
 // 别的进程的控制台显示在哪个窗口（↗ 认窗口）· Linux 往终端设备写改标题序列。
 pub mod console;
 // X11 上找 / 验 / 拉前窗口的 EWMH 读法（`hwnd` 的 Linux 那一臂）。
@@ -17,7 +16,6 @@ pub mod fs;
 // 界面要按系统分的那几件事（↗ · shell 方言 · ccm 缓存），起页时注入给界面。
 pub mod host_facts;
 pub mod hwnd;
-pub mod login_shell;
 // 系统通知（Linux 直调 notify-rust、连接留到通知关掉；别处经插件）。
 pub mod notify;
 pub mod pid;

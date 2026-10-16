@@ -562,57 +562,27 @@ fn the_profiles_wire_matches_the_cross_language_golden() {
         &json!({"changes": g["impactArgs"]["changes"], "fingerprint": read["fingerprint"]}),
     )
     .unwrap();
-    let got = json!({
-        "readReply": normalized(&read, &home),
-        "resolveReply": normalized(&resolve, &home),
-        "impactReply": normalized(&impact, &home),
-        "basesReply": normalized(&bases, &home),
-        "writeReply": normalized(&write, &home),
-    });
-    // `CCM_BLESS_PROFILES_GOLDEN=<路径>`：把现算的那一份（连同夹具与码集合）写到那个路径，人对过再拷回金样。
-    if let Some(out) = std::env::var_os("CCM_BLESS_PROFILES_GOLDEN") {
-        let mut g2 = g.clone();
-        for k in [
-            "readReply",
-            "resolveReply",
-            "impactReply",
-            "basesReply",
-            "writeReply",
-        ] {
-            g2[k] = got[k].clone();
-        }
-        g2["codes"] = json!(crate::stream::inbound::REGISTRY
-            .iter()
-            .filter(|s| s.name.starts_with("profiles-"))
-            .map(|s| (s.name.to_string(), s.codes.to_vec()))
-            .collect::<std::collections::BTreeMap<_, _>>());
-        std::fs::write(out, serde_json::to_string_pretty(&g2).unwrap()).unwrap();
-    }
-    for k in [
-        "readReply",
-        "resolveReply",
-        "impactReply",
-        "basesReply",
-        "writeReply",
+    // 现打的那份 ＝ 金样里的夹具原样 ＋ 五口现算的回包 ＋ 登记表里五口的码集合。
+    let mut fresh = g.clone();
+    for (k, v) in [
+        ("readReply", &read),
+        ("resolveReply", &resolve),
+        ("impactReply", &impact),
+        ("basesReply", &bases),
+        ("writeReply", &write),
     ] {
-        assert_eq!(
-            g[k],
-            got[k],
-            "{k} 与金样不一样；现算：{}",
-            serde_json::to_string_pretty(&got[k]).unwrap()
-        );
+        fresh[k] = normalized(v, &home);
     }
-    let codes: std::collections::BTreeMap<String, Vec<String>> = crate::stream::inbound::REGISTRY
+    fresh["codes"] = json!(crate::stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.name.starts_with("profiles-"))
-        .map(|s| {
-            (
-                s.name.to_string(),
-                s.codes.iter().map(|c| c.to_string()).collect(),
-            )
-        })
-        .collect();
-    assert_eq!(serde_json::to_value(&codes).unwrap(), g["codes"]);
+        .map(|s| (s.name.to_string(), s.codes.to_vec()))
+        .collect::<std::collections::BTreeMap<_, _>>());
+    crate::golden::assert_golden(
+        "tests/__fixtures__/profiles.golden.json",
+        &format!("{}\n", serde_json::to_string_pretty(&fresh).unwrap()),
+        "五口的回包或码集合与金样不一样（界面的解码器读同一份）",
+    );
 }
 
 /// 别名表单 tmux 那一格旁的提示要的事实：这台有没有 tmux（与「文件与数据」· 起新会话框同一个判法），原样带着、不在这里猜。

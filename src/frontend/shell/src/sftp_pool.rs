@@ -151,19 +151,18 @@ pub async fn transfer_call(
     payload: &serde_json::Value,
 ) -> Result<serde_json::Value, Refusal> {
     use cmd_wire::transfer::{TransferDownloadAsk, TransferUploadAsk};
-    let dial = || crate::dial_host::transfer_dial(&cfg).map_err(|e| Refusal::of("bad_args", e));
     match op {
         // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比。
         TRANSFER_UPLOAD => {
             let ask: TransferUploadAsk = ask_of(op, payload)?;
-            relay(&cfg, ask.dialed(dial()?)).await
+            relay(&cfg, ask.dialed(crate::dial_host::transfer_dial(&cfg))).await
         }
         // 这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
         // 下载的本机落点是原始字节（字符串或 `{"b16": …}`：有损名在 Linux 上按原始字节落名），原样转给本机后端判。
         TRANSFER_DOWNLOAD => {
             let ask: TransferDownloadAsk = ask_of(op, payload)?;
-            relay(&cfg, ask.dialed(dial()?)).await
+            relay(&cfg, ask.dialed(crate::dial_host::transfer_dial(&cfg))).await
         }
         other => Err(Refusal::of(
             "bad_args",
@@ -184,8 +183,8 @@ pub async fn copy_call(
     left: Duration,
 ) -> Result<serde_json::Value, Refusal> {
     let ask: cmd_wire::transfer::TransferCopyAsk = ask_of(TRANSFER_COPY, payload)?;
-    let from = crate::dial_host::transfer_dial(&cfg).map_err(|e| Refusal::of("bad_args", e))?;
-    let to = crate::dial_host::transfer_dial(&to_cfg).map_err(|e| Refusal::of("bad_args", e))?;
+    let from = crate::dial_host::transfer_dial(&cfg);
+    let to = crate::dial_host::transfer_dial(&to_cfg);
     let req = ask.dialed(from, to);
     let args = serde_json::to_value(&req).map_err(|e| Refusal::of("bad_args", e.to_string()))?;
     let client = crate::dial_host::local_backend_accepting(TRANSFER_COPY)
@@ -404,8 +403,3 @@ pub(crate) fn fail_owned_by(client: &Arc<InboundClient>, why: &str) {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/sftp_pool_tests.rs"]
 pub(crate) mod tests;
-
-/// **SFTP 那一族收到只剩传输**的恒等登记；再收到「中继零 SFTP」。
-#[cfg(test)]
-#[path = "../../../../tests/frontend/shell/sftp_family_registry_tests.rs"]
-mod family_registry;

@@ -1,10 +1,10 @@
 //! **一台的常驻流，断了自己接回去** —— 桌面与手机同一条重连循环（全仓只这一处，`one_loop_guard`）。宿主只接几根线：
-//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 装不装得了后端（[`Transport::installs`]）。
+//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 每一轮装不装后端（[`Transport::installs`]）。
 //!
 //! 接一台只有一条路：先直接接常驻流（`--resident-attach`，平时一条 exec 就接上）；没接上 ⇒ `--resident-ensure`（常驻不在就起）
 //! ⇒ 再接（小中继回 `absent` 时隔 [`RELAY_WAIT`] 再试）。新旧由那台在 attach 回话里给（attach 行带手上这一版）；认不得这一形 attach 行的当旧：
-//! - 装得了后端的宿主（桌面）：那台旧 ⇒ `--resident-ensure --replace` 换一次再接；同或新 ⇒ 接。
-//! - 装不了的（手机）：旧 ⇒ 照接、说「要更新」（认不得 attach 行的接不上 ⇒ 断着、修法「更新」）；同或新 ⇒ 接。
+//! - 每一轮自己装后端的宿主（桌面）：接上的不是手上这一版 ⇒ `--resident-ensure --replace`（只升不降由那台判）、换了就再接；
+//! - 不装的（手机）：旧 ⇒ 照接、说「要更新」（认不得 attach 行的接不上 ⇒ 断着、修法「更新」）；同或新 ⇒ 接。
 //!
 //! 能不能用逐条命令由形状指纹判（[`InboundClient::call`]）。
 //!
@@ -127,7 +127,7 @@ pub trait Transport: Send + Sync + 'static {
     fn before_round(&self) -> Boxed<'_, ()> {
         Box::pin(async {})
     }
-    /// 这一侧装得了后端 ⇒ 那台旧了换装（桌面）；装不了 ⇒ `false`（手机，缺省）。
+    /// 这一侧每一轮自己装后端（桌面）⇒ 接上的不是这一版时请那台 `--replace`；不装 ⇒ `false`（手机，缺省）。
     fn installs(&self) -> bool {
         false
     }
@@ -369,16 +369,21 @@ impl<T: Transport> Feed<T> {
         lock(&self.theirs).clone()
     }
 
-    /// 换上落点上那一份（装得了后端、却不在每一轮自己装的宿主：手机按［装后端］装完之后）：在此刻那条 SSH 上跑一次
-    /// `--resident-ensure --replace`（在听的那一位停掉、起落点上那一份），成了就整份重接。回话照 `--resident-ensure` 同一套读（[`read_one_shot`]）。
-    pub async fn replace(&self) -> Result<(), Problem> {
+    /// 换上落点上那一份（手机按［装后端］装完之后）：在此刻那条 SSH 上跑一次 `--resident-ensure --replace`
+    /// （在听的那一位比落点旧才停掉、起新的；只升不降那一判在那台），换了就整份重接、没换就叫醒。回换没换。
+    pub async fn replace(&self) -> Result<bool, Problem> {
         let Some(t) = self.transport.borrow().clone() else {
             return Err(self.offline());
         };
         let exec = t.capture(backend_command(ENSURE_REPLACE)).await?;
-        read_one_shot(&exec, &self.cfg.machine).map_err(|f| f.problem)?;
-        self.reconnect();
-        Ok(())
+        let replaced =
+            read_one_shot(&exec, &self.cfg.machine).map_err(|f| f.problem)?["replaced"] == true;
+        if replaced {
+            self.reconnect();
+        } else {
+            self.wake();
+        }
+        Ok(replaced)
     }
 
     /// 这台在屏上的名字。
@@ -603,7 +608,7 @@ impl<T: Transport> Feed<T> {
         }
     }
 
-    /// 接一次：直接接 ⇒ 没接上就 ensure ⇒ 再接；装得了后端的宿主见那台旧（回话说旧 · 认不得这一形 attach 行）⇒ 换一次再接。
+    /// 接一次：直接接 ⇒ 没接上就 ensure ⇒ 再接；每一轮自己装后端的宿主见那台不是这一版（或认不得这一形 attach 行）⇒ 请它换一次、换了再接。
     /// 链路都开不出来（拨不通 · 没人回话 · 拨着被宿主叫停）⇒ 不 ensure（ensure 走的是同一条路）。
     async fn connect(&self, t: &Arc<T>, cut: &Notify) -> Result<Connected<T::Stream>, Fail> {
         let attached = match self.attach_on(t, cut).await {
@@ -617,23 +622,30 @@ impl<T: Transport> Feed<T> {
                 Some(self.attach_after_ensure(t, cut).await?)
             }
         };
-        let old = attached
-            .as_ref()
-            .is_none_or(|a| a.relation == Relation::Older);
+        // 每一轮自己装后端的宿主：那台不是手上这一版 ⇒ 请它确保在听的不旧于落点（只升不降由 `--replace` 自己判）；换了才重接。
         let attached = match attached {
-            Some(a) if !(old && t.installs()) => a,
-            None if !t.installs() => {
-                return Err(self.attach_problem(AttachOr::Shake(AttachFail::Old)))
+            Some(a) if t.installs() && a.relation != Relation::Same => {
+                if self.ensure(t, ENSURE_REPLACE).await? {
+                    tracing::info!(
+                        "resident feed [{}] 那台换上了落点那一份 ⇒ 重接",
+                        self.cfg.machine
+                    );
+                    drop(a);
+                    self.attach_after_ensure(t, cut).await?
+                } else {
+                    a
+                }
             }
-            stale => {
+            Some(a) => a,
+            None if t.installs() => {
                 tracing::info!(
-                    "resident feed [{}] 那台常驻后端比手上这一版旧 ⇒ 换掉再接",
+                    "resident feed [{}] 那台认不得这一形 attach 行 ⇒ 换掉再接",
                     self.cfg.machine
                 );
-                drop(stale);
                 self.ensure(t, ENSURE_REPLACE).await?;
                 self.attach_after_ensure(t, cut).await?
             }
+            None => return Err(self.attach_problem(AttachOr::Shake(AttachFail::Old))),
         };
         let attach::Attached {
             reader,
@@ -818,13 +830,13 @@ impl<T: Transport> Feed<T> {
         }
     }
 
-    /// `--resident-ensure`（常驻不在就起）/ `--resident-ensure --replace`（换成落点上这一版）。
-    async fn ensure(&self, t: &Arc<T>, word: &'static str) -> Result<(), Fail> {
+    /// `--resident-ensure`（常驻不在就起）/ `--resident-ensure --replace`（在听的比落点旧才换）。回那台起没起新的一位。
+    async fn ensure(&self, t: &Arc<T>, word: &'static str) -> Result<bool, Fail> {
         let exec = t
             .capture(backend_command(word))
             .await
             .map_err(|p| Fail::new(p, FailKind::Transient))?;
-        read_one_shot(&exec, &self.cfg.machine).map(|_| ())
+        read_one_shot(&exec, &self.cfg.machine).map(|v| v["replaced"] == true)
     }
 
     /// 读到头为止：应答交回请求方，别的帧原样交宿主。到头 · 读不动 · 被叫停（[`Feed::reconnect`]）· 心跳判死 ⇒ 回。

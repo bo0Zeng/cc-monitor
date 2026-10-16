@@ -24,7 +24,7 @@ const HANDSHAKE_LINE: std::time::Duration = std::time::Duration::from_secs(60);
 /// 「这台」那几句的读法：给人看的那一句 ＋ 复制详情。
 fn said_of(p: &Problem) -> crate::detail::Said {
     if p.detail.trim().is_empty() {
-        p.text.clone().into()
+        crate::detail::Said::written(p.text.clone())
     } else {
         crate::detail::Said::with_raw(p.text.clone(), &p.detail)
     }
@@ -188,10 +188,9 @@ async fn preflight(cfg: &RemoteConfig, health: &HealthOut) {
     let confirmed_build = if skip_preflight {
         mine.map(str::to_string)
     } else {
-        match crate::sftp::ensure_backend_deployed(cfg).await {
+        match crate::deploy::ensure_backend_deployed(cfg).await {
             Ok(c) => Some(c),
-            Err(e) => {
-                let said = e.said();
+            Err(said) => {
                 tracing::warn!(
                     "stream_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {said}: {}",
                     said.raw()

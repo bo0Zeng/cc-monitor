@@ -569,9 +569,9 @@ fn install_preserves_existing_user_content() {
     assert!(after.contains("# === cc-monitor BEGIN"));
     assert!(!after.is_empty());
 
-    // 备份由后端做（`files-put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
+    // 备份由后端做（`Door::put` 的 `backup: true`，判据在 `files_write_tests.rs`）；
     //   这一侧钉的是「要了备份」—— 用户的 profile 不许在没有备份的情况下被改。
-    // 门就是本进程的 `files-put` ⇒ 直接看盘：旁边真留了一份备份。
+    // 门就是本进程的 `Door::put` ⇒ 直接看盘：旁边真留了一份备份。
     let parent = p.parent().unwrap();
     let stem = p.file_name().unwrap().to_string_lossy().to_string();
     let backups = std::fs::read_dir(parent)
@@ -735,7 +735,7 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
 #[test]
 fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
     // 人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut files =
         guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[]);
     files.extend(guard_core::scan_tree_excluding(
@@ -892,7 +892,7 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 
     // 扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
-    // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
+    // 那一趟改走门（`rc_candidates_via`，读经那台后端的 `Door::peek`）；这里的门是落在临时目录上的替身。
     let door = super::super::tests::HomeDoor(td.0.clone());
     let names = ["cc".to_string(), "zz".to_string()];
     let cands = super::super::rc_candidates_via(
@@ -1003,7 +1003,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
             "这一块又在动会话级 `$env:PATH` 了。\n\
                  `R86` 逐字把这一段删了，理由是它造出「PowerShell 里能、`cmd` 里不能」\
                  那个半通状态 —— 要让 `{word}` 在**所有**终端里都找得到，\
-                 走的是**用户级** PATH 那一条（`render_user_path_setup_command`，\
+                 走的是**用户级** PATH 那一条（`ccm-user-path`，\
                  由用户点一下）。\n实得 {} 行：\n{:#?}",
             touches.len(),
             touches
@@ -1346,7 +1346,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
     );
 }
 
-/// 🔴 **别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `files-put`）。
+/// 🔴 **别名块只有一个写口**：`user_files::edit`（→ 那台机器后端的 `Door::put`）。
 ///
 /// 要求：「写入 —— **那台机器后端的文件管理那一面**（带围栏，本机和远端同一条路）」·
 /// `§4.5`「围栏管理 · 备份 · 原子写 · 写后校验 · 回滚 —— 这些是『判定的规则』，只许一份」。
@@ -1402,7 +1402,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
     ];
     const OTHER_WRITES: &[&str] = &[".put(", "std::fs::write", "fenced_block::apply"];
     // 人群 = 后端生产段全树（别名块整族搬进来了）。
-    let root = crate::guard_support::repo_root().join("src/backend");
+    let root = guard_core::addr::repo_root().join("src/backend");
     let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
     let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
     let mut fns_scanned = 0usize;
@@ -1623,4 +1623,57 @@ fn the_posix_block_leaves_a_terminal_record_only_in_a_local_graphical_shell() {
             "{sh}: CCM_DATA_DIR 设了就写那里：{line}"
         );
     }
+}
+
+/// **共用的 POSIX 别名 snippet 把 `ccm` 落点放上 PATH，而且只放它。** 真 `source` 一趟问 `$PATH`：加进来的目录集合 == {落点}（两向）；
+/// source 两趟 PATH 不变（幂等）。要 `bash`（这份 snippet 本来就只装进 POSIX rc）。
+#[cfg(unix)]
+#[test]
+fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
+    let (local, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .expect("后端落点的目录");
+    let td = tmpdir("aliassnip");
+    let home = td.0.join("h");
+    std::fs::create_dir_all(&home).expect("造假家目录");
+    let snip = td.0.join("snippet.sh");
+    std::fs::write(&snip, CCM_WRAPPER_SNIPPET).expect("写 snippet");
+    let run = |times: usize| -> String {
+        let dots = format!(". '{}'; ", snip.display());
+        let script = format!("{}printf '%s' \"$PATH\"", dots.repeat(times));
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(&script)
+            .env("HOME", &home)
+            .env("PATH", "/usr/bin:/bin")
+            .output()
+            .expect("跑 bash —— 沙箱里没有 bash 的话这条判据够不着被测对象");
+        assert!(
+            out.status.success(),
+            "source 那份 snippet 直接失败了（这本身就是一条缺陷）：\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let path = run(1);
+    let added: Vec<&str> = path
+        .split(':')
+        .filter(|s| !["/usr/bin", "/bin"].contains(s))
+        .collect();
+    let segs: Vec<&str> = path.split(':').collect();
+    assert_eq!(
+        segs[segs.len().saturating_sub(2)..],
+        ["/usr/bin", "/bin"],
+        "原来的 PATH 被动了：{path}"
+    );
+    assert_eq!(
+        added,
+        vec![format!("{}/{local}", home.display())],
+        "别名块加进 PATH 的目录不是恰好 `ccm` 落点那一个（旧的 `~/.local/bin` 退役了）"
+    );
+    assert_eq!(
+        run(2),
+        path,
+        "source 两趟 PATH 变了 —— 嵌套 shell 会让 PATH 无限变长"
+    );
 }

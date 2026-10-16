@@ -39,8 +39,6 @@ class KeystoreCryptoTest {
         val enc = box.encrypt(plain)
         assertFalse("ciphertext must differ from plaintext", enc.contentEquals(plain))
         assertArrayEquals(plain, box.decrypt(enc))
-        assertTrue(box.isEncrypted(enc))
-        assertFalse(box.isEncrypted("-----BEGIN OPENSSH PRIVATE KEY-----".toByteArray()))
     }
 
     @Test

@@ -260,7 +260,7 @@ do_check() {
     printf 'skip  本机内嵌后端 :: 没铺（这棵树编出来的 exe 起不了本机后端 —— 开发构建要它就跑 --native，判它用 --check-dev）\n'
   fi
 
-  # 文件窗口程序：铺了、而且是给这台编的 ⇒ 真起一趟（`filewin_starts`）。没铺：只 skip（开窗走 exe 旁边那一份）。
+  # 文件窗口程序：铺了、而且是给这台编的 ⇒ 真起一趟（`filewin_starts`）。没铺：只 skip（开窗只剩环境变量指的那一份）。
   local wf="$NATIVE_DIR/cc-monitor-filewin" wstaged whost wout wrc wline wshape
   if [ -f "$wf" ]; then
     present=$((present + 1))
@@ -284,7 +284,7 @@ do_check() {
       printf 'skip  内嵌文件窗口程序起不起得来 :: 它是给 [%s] 编的、这台是 [%s] —— 不在这里起\n' "$wstaged" "$whost"
     fi
   else
-    printf 'skip  内嵌文件窗口程序 :: 没铺（单文件的 monitor 只在旁边有它时开得了文件窗口）\n'
+    printf 'skip  内嵌文件窗口程序 :: 没铺（这棵树编出来的 monitor 只在环境变量指着一份时开得了文件窗口）\n'
   fi
 
   if [ "$fail" -ne 0 ]; then

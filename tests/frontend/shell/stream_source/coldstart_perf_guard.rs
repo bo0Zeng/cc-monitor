@@ -46,7 +46,7 @@ fn source_of(sig: &str) -> String {
     if sig == "async fn open" {
         include_str!("../../../../src/frontend/shell/src/dial_host.rs").to_string()
     } else {
-        crate::guard_support::stream_source_raw()
+        guard_core::addr::stream_source_raw()
     }
 }
 
@@ -72,7 +72,7 @@ fn body_of(src: &str, sig: &str) -> String {
 #[test]
 fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
     // 抽取器坏了 ⇒ 下面每一相的函数都找不到、`body_of` 当场红（不靠字节数地板）。
-    let src = crate::guard_support::stream_source_raw();
+    let src = guard_core::addr::stream_source_raw();
     for (phase, sig, needle) in PHASES {
         let body = body_of(&source_of(sig), sig);
         assert!(
@@ -91,7 +91,7 @@ fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
 #[test]
 fn the_perf_probes_in_this_file_only_grow() {
     let src = [
-        crate::guard_support::stream_source_raw(),
+        guard_core::addr::stream_source_raw(),
         include_str!("../../../../src/frontend/shell/src/dial_host.rs").to_string(),
     ]
     .concat();

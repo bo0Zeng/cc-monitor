@@ -1,16 +1,12 @@
-//! 部署那一族的帧面（入参 · 回包形状 · 码）：判定与计划的本体住 `deploy` crate（`src/backend/deploy/`，桌面与手机同一份），monitor 只放字节。
+//! 部署那一族的帧面（入参 · 回包形状 · 码）：判定与编排的本体住 `deploy` crate（`src/backend/deploy/`，桌面与手机同一份）。
 //!
-//! # 帧命令 `deploy-plan`（本机常驻后端答）
+//! # 帧命令 `deploy-install`（本机常驻后端答）
 //!
-//! monitor 交两样事实：怎么够到那台（`dial`，与 `files` 链路同一份拨号请求）· 自己带着哪几格后端字节、各自自报的身份
-//! （`carried`，`[{os, arch, id}]`，放字节的一侧才知道）。`deploy::plan` 沿池里那条 SSH 问那台：
-//!
-//! 1. `uname -s -m` → 表 A / 表 B（[`judge`]）→ 这一版带没带那一格（`carried`）—— **换成什么**；拒绝点在写第一个字节之前；
-//! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）—— **身份判定**；
-//! 3. **该不该换**（[`identity_decision`]：只升不降；不说自己是谁 ⇒ 显式失败、不动）；
-//! 4. 落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
-//!
-//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 ＋ 读回比对，`ssh_dial::sftp::put_verified`）与删残件是 monitor 经 `files` 链路做。
+//! monitor 交三样事实：怎么够到那台（`dial`）· 自己带着哪几格后端字节（`slots`，`[{os, arch, id, path}]`：那一格自报的身份 ·
+//! 落在本机哪个文件，本后端从文件读，不经帧传字节）· 那台叫什么。`deploy::install` 沿池里那条 SSH 走完 ①–④
+//! （计划 · 取字节 ＋ 自检 · 放进暂存区 ＋ 读回 · 那一份自己换进落点 · 收拾残件），同手机那一趟。
+//! 每走一步往本连接的应答通道推一帧 `deploy {machine, step, said}`（那一句是 `deploy::Step::said`），结局是应答。
+//! ⑤ 换常驻不在这里：monitor 接那台时 `--resident-ensure --replace`，那台自己判换不换。
 //!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
@@ -19,13 +15,12 @@
 //!
 //! # 它归 `control/` 的理由
 //!
-//! 同 [`super::resolve_query`]：产「要怎么改变世界」的计划属于控制的前半；它自己只读（stat · read · 两条只读 exec）。
+//! 会改变那台（放字节）属于控制；判定与编排在 `deploy` crate，本文件只是帧面那一层。
 //!
 //! # 买不到的
 //!
-//! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，monitor 照计划放。
-//! - 第一次连一台没钉过指纹的机器：这一问在本机后端里拨，ack 里那枚指纹这一跳不交 monitor 去钉；
-//!   紧接着 monitor 开 `files` 链路（池里同一条连接）那一跳照旧钉（`dial_host::settle_host_key`）。
+//! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，照计划放。
+//! - 第一次连一台没钉过指纹的机器：这一趟在本机后端里拨，ack 交 monitor 去钉（`dial_host::settle_host_key`）。
 
 use crate::platform::fs::Ro;
 
@@ -53,10 +48,11 @@ fn refused(r: &Refusal, machine: &str) -> Fail {
     fail_of(deploy::refused(r, machine))
 }
 
-/// 出计划（[`deploy::plan`]）。`machine` = monitor 交来的那台的名字（只用来说话）；`now_secs` = 此刻（判残件新旧）。
+/// 出计划（[`deploy::plan`]，一个字节都不写）：判据经它问判定那一半。
+#[cfg(test)]
 pub async fn plan(
     facing: &dyn Facing,
-    carried: &[(Key, String)],
+    carried: &[(deploy_contract::Key, String)],
     machine: &str,
     now_secs: u64,
 ) -> Result<Plan, Fail> {
@@ -65,92 +61,111 @@ pub async fn plan(
         .map_err(fail_of)
 }
 
-/// `deploy-plan` 的应答：换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
+/// `slots` 的一行：monitor 带着的那一格（哪种机器 · 字节自报的身份 · 落在本机哪个文件）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SlotRow {
+    pub(crate) os: String,
+    pub(crate) arch: String,
+    pub(crate) id: String,
+    /// 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+    pub(crate) path: String,
+}
+
+/// `slots` 那几行 ⇒ `deploy::Slot`。键认不出 / 身份空 / 路径不是绝对 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
+pub(crate) fn slots_of(rows: &[SlotRow]) -> Result<Vec<deploy::Slot>, Fail> {
+    let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
+    rows.iter()
+        .map(|r| {
+            let key = deploy_contract::key_of(&r.os, &r.arch)
+                .map_err(|_| bad("`slots` row names a machine outside table A"))?;
+            if r.id.is_empty() {
+                return Err(bad("`slots` row without `id`"));
+            }
+            if !std::path::Path::new(&r.path).is_absolute() {
+                return Err(bad("`slots` row without an absolute `path`"));
+            }
+            Ok(deploy::Slot {
+                key,
+                id: r.id.clone(),
+                path: r.path.clone().into(),
+            })
+        })
+        .collect()
+}
+
+/// `deploy-install` 的入参：怎么够到那台 · monitor 带着的那几格 · 对人说话时那台叫什么。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeployInstallReq {
+    pub(crate) dial: crate::dial::pick::MachineDial,
+    pub(crate) slots: Vec<SlotRow>,
+    /// 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
+    pub(crate) machine: String,
+}
+
+/// `deploy-install` 的应答：这一趟做了什么 · 那一句 · 落点上现在是哪一版 · 那台是什么 OS · 问 `uname` 那一趟拨号的 ack。
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Planned {
-    /// 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）。
-    pub(crate) os: &'static str,
-    pub(crate) arch: &'static str,
-    pub(crate) label: String,
-    /// 那一格这一版带着的字节自报的身份（对照物）。
-    pub(crate) expected: String,
-    /// `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）。
+pub(crate) struct Installed {
+    /// `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
     #[cfg_attr(test, ts(type = "\"skip\" | \"deploy\" | \"keep\""))]
     pub(crate) action: &'static str,
-    /// 人读原因（`skip` 时空串）。
-    pub(crate) why: String,
-    /// `keep` 时那台上那一份自报的身份，否则 `null`。
-    pub(crate) theirs: Option<String>,
-    /// 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
-    pub(crate) leftovers: Vec<String>,
+    /// 这一趟做了什么那一句（`deploy::Plan::said`）。
+    pub(crate) said: String,
+    /// 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
+    pub(crate) build: String,
+    /// 那台的 OS（表 A 的词）。
+    pub(crate) os: &'static str,
     /// 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
     #[cfg_attr(test, ts(type = "unknown"))]
     pub(crate) ack: Value,
 }
 
-/// 计划 → 帧面那一格。
-pub fn plan_json(p: &Plan) -> Planned {
-    let (action, why, theirs) = match &p.action {
-        DeployAction::Skip => ("skip", String::new(), None),
-        DeployAction::Deploy(why) => ("deploy", why.clone(), None),
-        DeployAction::Keep { theirs, why } => ("keep", why.clone(), Some(theirs.clone())),
+/// 装完的那份计划 → 应答。
+pub(crate) fn installed_of(p: &Plan) -> Installed {
+    let (action, build) = match &p.action {
+        DeployAction::Skip => ("skip", p.expected.clone()),
+        DeployAction::Deploy(_) => ("deploy", p.expected.clone()),
+        DeployAction::Keep { theirs, .. } => ("keep", theirs.clone()),
     };
-    Planned {
-        os: p.key.os.label(),
-        arch: p.key.arch.label(),
-        label: p.key.label(),
-        expected: p.expected.clone(),
+    Installed {
         action,
-        why,
-        theirs,
-        leftovers: p.leftovers.clone(),
+        said: p.said(),
+        build,
+        os: p.key.os.label(),
         ack: p.ack.clone(),
     }
 }
 
-/// `carried` 的一行：monitor 手上带着的那一格字节自报的身份。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Carried {
-    pub(crate) os: String,
-    pub(crate) arch: String,
-    pub(crate) id: String,
+/// 一步 ⇒ 进度帧（那一句是 `deploy::Step::said`）。换常驻那一步不在这一趟里（宿主接那台时自己走）。
+pub(crate) fn step_frame(machine: &str, s: deploy::Step) -> Option<crate::wire::Deploy> {
+    use crate::wire::DeployStep;
+    let step = match s {
+        deploy::Step::Plan => DeployStep::Plan,
+        deploy::Step::Place { updating: false } => DeployStep::Install,
+        deploy::Step::Place { updating: true } => DeployStep::Update,
+        deploy::Step::Restart => return None,
+    };
+    Some(crate::wire::Deploy {
+        machine: machine.to_string(),
+        step,
+        said: s.said(machine),
+    })
 }
 
-/// `carried` 那几行 ⇒ 表 A 的键 ＋ 身份。键认不出 / 身份空 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
-pub fn carried_of(rows: &[Carried]) -> Result<Vec<(Key, String)>, Fail> {
-    let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
-    rows.iter()
-        .map(|r| {
-            let key = deploy_contract::key_of(&r.os, &r.arch)
-                .map_err(|_| bad("`carried` row names a machine outside table A"))?;
-            match r.id.as_str() {
-                "" => Err(bad("`carried` row without `id`")),
-                id => Ok((key, id.to_string())),
-            }
-        })
-        .collect()
-}
-
-/// `deploy-plan` 的入参：怎么够到那台 · monitor 手上带着的那几格 · 对人说话时那台叫什么。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DeployPlanReq {
-    pub(crate) dial: crate::dial::pick::MachineDial,
-    pub(crate) carried: Vec<Carried>,
-    /// 那台的名字（非空）。
-    pub(crate) machine: String,
-}
-
-/// `deploy-plan` 的本体（对面由调用方给）。
-pub async fn answer(req: &DeployPlanReq, facing: &dyn Facing) -> Result<Planned, Fail> {
-    let carried = carried_of(&req.carried)?;
+/// `deploy-install` 的本体（对面由调用方给）：每走一步交 `on` 一帧，结局是应答。
+pub async fn install(
+    req: &DeployInstallReq,
+    host: &dyn deploy::Place,
+    on: &(dyn Fn(crate::wire::Deploy) + Send + Sync),
+) -> Result<Installed, Fail> {
+    let slots = slots_of(&req.slots)?;
     if req.machine.trim().is_empty() {
         return Err(Fail::new(
             "bad_args",
@@ -161,57 +176,79 @@ pub async fn answer(req: &DeployPlanReq, facing: &dyn Facing) -> Result<Planned,
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    plan(facing, &carried, &req.machine, now)
+    let load = |p: &std::path::Path| Ro::read(p);
+    let machine = req.machine.as_str();
+    let step = |s: deploy::Step| {
+        if let Some(f) = step_frame(machine, s) {
+            on(f);
+        }
+    };
+    deploy::install(host, &slots, &load, machine, now, &step)
         .await
-        .map(|p| plan_json(&p))
+        .map(|p| installed_of(&p))
+        .map_err(fail_of)
 }
 
 crate::wire::typed::codes! {
-    /// `deploy-plan` 的码：读那台没读成 · 那一格这一版不承诺 · 够不到那台 · 那台那一份说不清自己是谁。
-    pub(crate) enum DeployPlanErr {
+    /// `deploy-install` 的码：读写那台没成 · 那一格这一版不承诺 / 没带 · 够不到那台 · 那台那一份说不清自己是谁 ·
+    /// 推不上去（围栏拒）· 那一份没换进落点。
+    pub(crate) enum DeployInstallErr {
         IoFailed = "io_failed",
         Refused = "refused",
         Unreachable = "unreachable",
         Undecidable = "undecidable",
+        NotCarried = "not_carried",
+        Fenced = "fenced",
+        PlaceFailed = "place_failed",
     }
 }
 
-/// `deploy-plan`：那台的后端要不要换、换成哪一格。真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。
-pub(crate) struct DeployPlan;
+/// `deploy-install`：给那台装 / 升级后端（帧面硬臂：进度帧走本连接的应答通道）。真异步（拨号 / 等远端）。
+pub(crate) struct DeployInstall;
 
-impl crate::wire::typed::Command for DeployPlan {
-    const NAME: &'static str = "deploy-plan";
-    type Req = DeployPlanReq;
-    type Reply = Planned;
-    type Err = DeployPlanErr;
+impl crate::wire::typed::Command for DeployInstall {
+    const NAME: &'static str = "deploy-install";
+    type Req = DeployInstallReq;
+    type Reply = Installed;
+    type Err = DeployInstallErr;
 }
 
-impl crate::wire::typed::Handle for DeployPlan {
-    type Needs = crate::wire::typed::needs::Nothing;
-    fn run(
-        req: DeployPlanReq,
-        _cx: crate::wire::typed::Cx<Self::Needs>,
-    ) -> impl std::future::Future<Output = Result<Planned, DeployPlanErr>> + Send + 'static {
-        async move {
-            let dial = req
-                .dial
-                .stored()
-                .map_err(|(_, said)| DeployPlanErr::BadArgs(said))?;
-            let to = crate::dial::machine::resolve(&dial)
-                .map_err(|(_, said)| DeployPlanErr::BadArgs(said))?;
-            // 拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上，再开那条连接。
-            crate::dial::host();
-            // 一次性命令走全后端那一处（`remote_ask::capture_full`，池里那条连接上多开一个 exec）。
-            let exec: deploy::Exec = Box::new(move |command| {
-                let dial = dial.clone();
-                Box::pin(async move { crate::dial::remote_ask::capture_full(&dial, command).await })
-            });
-            let facing = DialFacing::new(to, exec);
-            answer(&req, &facing)
-                .await
-                .map_err(|f| crate::wire::typed::of_fail(f, DeployPlanErr::IoFailed))
+/// 生产的 `deploy-install`：真拨号；进度帧进本连接的应答通道（不丢、与应答同序）。
+pub(crate) async fn answer_install(
+    req: DeployInstallReq,
+    replies: &tokio::sync::mpsc::Sender<crate::wire::Frame>,
+) -> Result<Installed, DeployInstallErr> {
+    let dial = req
+        .dial
+        .stored()
+        .map_err(|(_, said)| DeployInstallErr::BadArgs(said))?;
+    let to = crate::dial::machine::resolve(&dial)
+        .map_err(|(_, said)| DeployInstallErr::BadArgs(said))?;
+    // 拨号核心那一套（钥匙 · known_hosts · 写规矩）先装上，再开那条连接。
+    crate::dial::host();
+    // 一次性命令走全后端那一处（`remote_ask::capture_full`，池里那条连接上多开一个 exec）。
+    let exec: deploy::Exec = Box::new(move |command| {
+        let dial = dial.clone();
+        Box::pin(async move { crate::dial::remote_ask::capture_full(&dial, command).await })
+    });
+    let facing = DialFacing::new(to, exec);
+    // 进度帧先进一条不封顶的队，由一个任务按序送进应答通道（`on` 是同步回调，送不了 `await`）。
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::wire::Deploy>();
+    let out = replies.clone();
+    let pump = tokio::spawn(async move {
+        while let Some(f) = rx.recv().await {
+            if out.send(crate::wire::Frame::Deploy(f)).await.is_err() {
+                break;
+            }
         }
-    }
+    });
+    let got = install(&req, &facing, &move |f: crate::wire::Deploy| {
+        let _ = tx.send(f);
+    })
+    .await;
+    // 进度帧排在应答之前：等那条队送完。
+    let _ = pump.await;
+    got.map_err(|f| crate::wire::typed::of_fail(f, DeployInstallErr::IoFailed))
 }
 
 // ═══ 本机那一份放不放（帧命令 `place-verdict`）═══════════════════════════════════════════

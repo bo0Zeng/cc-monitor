@@ -137,10 +137,10 @@
 //!
 //! 它认的是下面那张表里的**字面锚点与次数**。有人把 fan-out 写成一个新模块、
 //! 而这几处字面一个都不动 ⇒ 本条照样绿。⇒ 它买的是「**动到这三处时有人会被拦一下**」，
-//! 不是「fan-out 不可能被实现」。这一句是照 `relay/bind_guard.rs` 头注那条订正写的：
-//! 那条守卫**只认 4 个拼写，别的一律看不见**，而它先前把自己写得比这更强。
+//! 不是「fan-out 不可能被实现」。这一句是照 `tests/common/guard-core/rules/bind_guard.rs` 头注那条订正写的：
+//! 那条规则**只认 4 个拼写，别的一律看不见**，而它先前把自己写得比这更强。
 //!
-//! ⚠ **本模块刻意与被扫的代码不同住一个文件**（`relay/bind_guard.rs` 头注逐字给的理由：
+//! ⚠ **本模块刻意与被扫的代码不同住一个文件**（理由：
 //! 判据在自己的登记表 / 注释 / 常量里找到自己 ⇒ 恒绿）。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
@@ -149,7 +149,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// `(锚点住的那个文件, 锚点, **那个文件里**恰好几处, **全 crate** 恰好几处, 它一变就意味着什么)`。
     /// **次数钉死**（`KP4` 第四轮买牙的两个价钱之一）。
@@ -285,7 +285,7 @@ mod tests {
     /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::backend_sources` 头注记着
     /// 不递归的实测后果：**目录没有扩展名于是被整个跳过**，护栏一行业务代码都没扫还全绿。
     fn crate_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(path, src)| {
@@ -295,14 +295,14 @@ mod tests {
                     .to_string_lossy()
                     .replace('\\', "/");
                 // 🔴 同 `no_timer_guard`：按住哪棵树分流，
-                // 理由在 `guard_support::production_side_of` 的头注里。
-                (rel, crate::guard_support::production_side_of(&path, &src))
+                // 理由在 `guard_core::addr::production_side_of` 的头注里。
+                (rel, guard_core::addr::production_side_of(&path, &src))
             })
             .collect()
     }
 
     fn source_of(rel: &str) -> String {
-        let p = crate::guard_support::src_root().join(rel);
+        let p = guard_core::addr::backend_src_root().join(rel);
         production_code(
             &std::fs::read_to_string(&p)
                 .unwrap_or_else(|e| panic!("读不到 {} —— 文件搬家了就来改本表：{e}", p.display())),
@@ -416,7 +416,7 @@ mod tests {
         // backend 这半边今天也住两处：生产段 `src/backend`、测试段 `<repo>/tests/backend`。
         // 本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话，
         // `min_blocks` 会在一个已经掉空的分母上通过。两条地板（62 / 500）逐字照旧。
-        let roots = crate::guard_support::code_roots();
+        let roots = guard_core::addr::backend_code_roots();
         guard_core::assert_block_comment_model_holds(&[&roots[0], &roots[1]], 62, 500);
     }
 

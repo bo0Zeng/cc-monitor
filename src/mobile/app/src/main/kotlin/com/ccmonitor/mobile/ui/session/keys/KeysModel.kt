@@ -52,11 +52,12 @@ data class Slot(
     }
 }
 
-/** 编辑一颗时的草稿。[id] 为 null ＝ 新建。[label] 空 ＝ 照单击自动写。 */
+/** 编辑一颗时的草稿。[id] 为 null ＝ 新建。键帽要么另写字（[label]）要么另选图标（[icon]，图标名），都空 ＝ 照单击自动写。 */
 data class KeyDraft(
     val id: String?,
     val groupId: String,
     val label: String = "",
+    val icon: String? = null,
     val modifier: KeyMod? = null,
     val tap: Slot = Slot(),
     val doubleTap: Slot = Slot(),
@@ -81,6 +82,12 @@ data class KeyDraft(
             Trigger.LONG -> copy(longPress = s)
         }
 
+    /** 另写字 ⇒ 图标不用。 */
+    fun withLabel(s: String): KeyDraft = copy(label = s, icon = null)
+
+    /** 选了图标 ⇒ 另写的字清掉；null ＝ 不用图标。 */
+    fun withIcon(name: String?): KeyDraft = copy(label = "", icon = name)
+
     /** 单击必填（修饰键不绑触发）；另设的时长越界不许存（不悄悄夹回去）。 */
     val canSave: Boolean
         get() =
@@ -89,8 +96,8 @@ data class KeyDraft(
                 longPressMs.inOrNull(SettingsRepository.LONG_PRESS_MS_RANGE)
 
     /**
-     * 写回库的那一颗：改过就没有「未能转换」那条记号了；默认来源 · 图标照原样留。换了组 ⇒ 排到新组最后（[endOf]）。
-     * 修饰键三个触发恒为空。
+     * 写回库的那一颗：改过就没有「未能转换」那条记号了；默认来源照原样留。换了组 ⇒ 排到新组最后（[endOf]）。
+     * 修饰键三个触发与图标恒为空（键帽写修饰名）。
      */
     fun toKey(
         existing: TermKey?,
@@ -103,6 +110,7 @@ data class KeyDraft(
             groupId = groupId,
             sortOrder = order,
             label = label.trim().ifEmpty { null },
+            icon = if (modifier == null) icon else null,
             modifier = modifier,
             tap = if (modifier == null) tap.binding else null,
             doubleTap = if (modifier == null) doubleTap.binding else null,
@@ -119,6 +127,7 @@ data class KeyDraft(
                 id = k.id,
                 groupId = k.groupId,
                 label = k.label.orEmpty(),
+                icon = k.icon,
                 modifier = k.modifier,
                 tap = Slot.of(k.tap),
                 doubleTap = Slot.of(k.doubleTap),

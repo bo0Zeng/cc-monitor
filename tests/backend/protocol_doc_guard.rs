@@ -243,7 +243,7 @@ pub(crate) const CHILD_FLAGS_NOT_SENT: &[(&str, &str, &str)] = &[
 /// 一份源码生产段里的 `"--x"` 字面量（按出现序去重）—— [`dispatched_subcommands`] 与
 /// 子进程旗标那条接盘判据**共用这一处取法**（两处各写一份的话，一处放宽、一处没跟，就会各说各话）。
 pub(crate) fn dashdash_literals(raw: &str) -> Vec<String> {
-    let src = crate::guard_support::production_code(raw);
+    let src = guard_core::production_code(raw);
     let mut out: Vec<String> = Vec::new();
     {
         let mut from = 0usize;
@@ -344,7 +344,7 @@ mod tests {
                     //
                     // 现在只要**提到**一个 `--token` 就得登记。宁可多登记几个文件，
                     // 也不要让一个 token 因为「写法不是 match 臂」而隐形。
-                    let prod = crate::guard_support::production_code(&raw);
+                    let prod = guard_core::production_code(&raw);
                     if prod.contains("\"--") {
                         hits.push(
                             p.strip_prefix(root)
@@ -356,7 +356,7 @@ mod tests {
                 }
             }
         }
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut found = Vec::new();
         walk(&root, &mut found, &root);
         found.sort();
@@ -391,7 +391,7 @@ mod tests {
             "登记表空了 —— 要么真没有子进程旗标了（那就连同 `dispatched_subcommands` 里那段摘除一起删），\
              要么是被人掏空了"
         );
-        let repo = crate::guard_support::src_root()
+        let repo = guard_core::addr::backend_src_root()
             .parent()
             .and_then(|p| p.parent())
             .expect("从 src/backend 回不到仓根")
@@ -804,7 +804,7 @@ mod tests {
 
         let mut found: Vec<(String, String)> = Vec::new();
         for (name, raw) in files {
-            let src = crate::guard_support::production_code(raw);
+            let src = guard_core::production_code(raw);
             let mut from = 0usize;
             while let Some(rel) = src[from..].find("#[derive(") {
                 let d = from + rel;
@@ -910,7 +910,7 @@ mod tests {
         }
         let mut violations: Vec<String> = Vec::new();
         for (name, raw) in files {
-            let prod = crate::guard_support::production_code(raw);
+            let prod = guard_core::production_code(raw);
             for c in &protocol_codes {
                 if prod.contains(c) {
                     violations.push(format!("{name} 里出现了协议级 code `{c}`"));
@@ -941,9 +941,8 @@ mod tests {
     /// ⚠ **必须先框段界再数**：那份文件里不止一个枚举，
     /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
     fn frame_variants() -> Vec<String> {
-        let src = crate::guard_support::production_code(include_str!(
-            "../../src/common/cmd-wire/src/frame.rs"
-        ));
+        let src =
+            guard_core::production_code(include_str!("../../src/common/cmd-wire/src/frame.rs"));
         // 运行时拼，免得命中本文件自己的说明文字。
         let needle = format!("pub enum {}", "Frame");
         let at = src
@@ -1026,11 +1025,11 @@ mod tests {
             reg.iter().any(|s| s.codes.contains(&"bad_args")),
             "正控：一条声明 `bad_args` 的命令都没有"
         );
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut hits = Vec::new();
         let mut control = false;
         for (at, raw) in guard_core::scan_tree!(&root, &["rs"]) {
-            let prod = crate::guard_support::production_code(&raw);
+            let prod = guard_core::production_code(&raw);
             control |= prod.contains("\"bad_args\"");
             if prod.contains("\"invalid_args\"") {
                 hits.push(at.display().to_string());

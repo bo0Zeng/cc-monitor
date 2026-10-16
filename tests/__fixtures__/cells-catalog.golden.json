@@ -1,5 +1,4 @@
 {
-  "pending": [],
   "products": [
     {
       "cells": [
@@ -678,6 +677,18 @@
           "frozen": false,
           "kind": "text",
           "path": "answerOff",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "autoAnswer",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "autoAnswered",
           "type": "string"
         },
         {

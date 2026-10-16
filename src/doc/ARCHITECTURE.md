@@ -208,7 +208,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 ### 2.8 其余几块
 
-- **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。「换不换、换成什么」由后端帧命令 `deploy-plan` 出计划（只升不降，身份读字节里的戳、不跑它），monitor 只按计划放字节。手机今天只核 `BUILD_ID`、对不上就说那台要更新，不自己装后端。
+- **部署**：后端的字节随 monitor 内嵌，全仓只有壳的字节表一个取字节口，按目标机器的 (OS, arch) 选，没覆盖的格子写第一个字节前拒绝。装那一趟整趟在后端（帧命令 `deploy-install`，手机同一份 `deploy` crate）：「换不换、换成什么」只升不降，身份读字节里的戳、不跑它；SFTP 只写暂存区，落点由新传上去的那一份自己 `--place-self` 换进去。monitor 只交字节文件的路径、收进度。手机今天只核 `BUILD_ID`、对不上就说那台要更新，不自己装后端。
 - **资产**：每台后端一份资产目录，本机后端按事件在各后端之间拉 / 合 / 推；装到别的机器要用户点，先看差异。
 - **退出行为**：住那台机器自己的 `~/.cc-monitor/backend.json`，只有那台后端读写（`control/exit_policy`），决定那一刻现读。
 
@@ -282,7 +282,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 - **命令表**：后端每条入方向命令一行 `CommandSpec`（名字 · 一句说明 · 错误码 · 入参与回包的每一格 · 跑在哪一档），按域分文件住 `src/backend/stream/inbound/registry/`；信封、取消、期限在 `stream/inbound/`。
 - **一张表两个面**：帧面（长连接上的 `{op, args}`）与 CLI 面（`ccm -- --<命令>`，入参从 stdin 读一段 JSON 或 `--args-b64`）从同一张表派生；只上帧面的登记为 `STREAM_ONLY`。CLI 面的子命令全表是 `lib.rs::SUBCOMMANDS`，其中不从命令表派生、只在 CLI 面的那几条说明在 `stream/inbound/cli_only.rs`。
-- **协议参考从代码生成**：`IPC-COMMANDS.md` 由 `tests/backend/protocol_doc_gen.rs` 从命令表与帧类型写出，判据是「重新生成 == 仓里那份」；改了命令或帧之后在 `src/backend` 下跑 `CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen`。
+- **协议参考从代码生成**：`IPC-COMMANDS.md` 由 `tests/backend/protocol_doc_gen.rs` 从命令表与帧类型写出，判据是「重新生成 == 仓里那份」；改了命令或帧之后那条判据红、现打的那份落在 `.build/golden/`，对过后 `bash tests/scripts/bless-golden.sh` 拷回（所有金样判据都是这一个写口，判据本身只比不写）。
 - **握手**：hello 带 `commands`（这台接受的命令）· `unavailable`（接得下、这台做不到的，带码）· `shapes`（每条 typed 命令的形状指纹，撤不撤得动算在里面）；出口据它置灰，不猜。
 - **调用方**：桌面界面经 `chan.call(origin, op, payload)`，回包解码写在各 `*-reads.ts`；手机经 `core-claude` 的 `FrameClient`；脚本与 skill 走 CLI 面。
 
@@ -315,7 +315,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 - **窗口**：`cc-monitor-filewin`（独立包 `src/frontend/filewin/`，egui，一窗一进程）经父子管道只说 `call` / `subscribe`；开窗那一侧在壳 `filewin/`，契约在共享 crate `src/common/filewin-contract/`。配色读同一份界面令牌。
 - **读**：后端 `files/`（常驻文件名索引 · 列目录 · 元数据 · 按块读 · 按内容搜）。
-- **写**：只经那台后端的文件管理面 `control/files_write.rs`（`files-peek` · `files-put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `control/files_upload_chunks.rs` · `control/files_extract.rs` · `control/files_commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
+- **写**：只经那台后端的文件管理面 `control/files_write.rs`（`Door::peek` · `Door::put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `control/files_upload_chunks.rs` · `control/files_extract.rs` · `control/files_commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
 - **传输**：两台之间搬字节归原生那一块的传输台 `control/transfer.rs`（经 `dial/` 的 SFTP 写暂存区，远端那台的 `files-commit-upload` 提交）；下载的本机落点也由它写（过同一套路径解析，经帧面分派交来的写句柄）。
 - **手机**：文件屏（`app` 的 `ui/files/`）读写都问那台后端的 `files-*`（经这台的常驻流，入参与桌面窗口同一套切法：`root` ＝ 当前目录、`rel` ＝ 一段名字）；手机进程里没有后端，`transfer-*` 用不上：上传走块形（`files-stage-chunk` → `files-commit-upload`，不覆盖），下载走 `files-read-chunk`。手机经 SFTP 只剩部署那两处（写规矩 `Deploy`，与后端同一种）。
 
@@ -349,7 +349,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 ### 3.6 文案表
 
 - 对外的每一句话都从一张表来：`src/shared/copy/table.json`（键 → 每种语言一句 ＋ 具名插值点；`rules.json` · `terms.json` 是写法规矩与用词表）。
-- 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-copy`（构建时只抄手机代码引到的那几条，`src/mobile/core-copy/build.gradle.kts`）。
+- 取文口各一份、读同一张表：Rust `src/common/copy-core/`（后端 · monitor · `creds-core` 共用，编译期内嵌）· 界面 `copy-table.ts::copyText`（Vite 读）· 手机 `core-copy`（经 JNI 调手机那份 `.so` 里的 `copy-core`，大小 · 时长同）。
 - 键必须是字面量，参数名集合等于表里那一条的 `args`；判据 `tests/copy/copy-table.vitest.ts`，手机生产源码不写死界面中文由 `tests/copy/mobile-literals.vitest.ts` 钉。
 - 描述数据与状态的句子由核心写（§2.9），出口只取自己骨架上的字。
 

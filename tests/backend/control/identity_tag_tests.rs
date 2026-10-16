@@ -171,9 +171,8 @@ fn a_bad_sid_short_circuits_before_any_io() {
 /// 键名不许成为一维参数。多一处 `proc_env_var(pid, …)` ⇒ 红，来回答新那个键是什么。
 #[test]
 fn the_env_key_this_file_reads_is_one_named_constant() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/identity_tag.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/backend/control/identity_tag.rs"));
     // 反空真地板：抽取塌了 ⇒ 下面几条都会零命中地绿。
     assert!(
         prod.len() > 2_000,
@@ -369,12 +368,10 @@ fn w5vis_s2_the_only_caller_says_the_failure_and_the_outcome_is_must_use() {
         }
         Ok(())
     }
-    let watcher = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/observe/watcher.rs"
-    ));
-    let tag_src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/identity_tag.rs"
-    ));
+    let watcher =
+        guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
+    let tag_src =
+        guard_core::production_code(include_str!("../../../src/backend/control/identity_tag.rs"));
     caller_says_it(&watcher).unwrap_or_else(|e| panic!("{e}"));
     must_use_on_outcome(&tag_src).unwrap_or_else(|e| panic!("{e}"));
     // 正控：S2 之前的原形必须被认出（量具没瞎）。

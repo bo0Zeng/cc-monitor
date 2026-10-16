@@ -3,7 +3,7 @@ import type { MachineConfig } from "./MachineConfig";
 import type { Prefer } from "./Prefer";
 
 /**
- * 一份拨号（线上形）：拨哪台那几格 ＋ 用法 ＋ 界面进程此刻的 ssh-agent 套接字。可达表存它（`remote-reach` · `assets-sync`），部署计划拿它去问那台（`deploy-plan`）。
+ * 一份拨号（线上形）：拨哪台那几格 ＋ 用法 ＋ 界面进程此刻的 ssh-agent 套接字。可达表存它（`remote-reach` · `assets-sync`），给那台装后端拿它去拨那台（`deploy-install`）。
  */
 export type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
 /**

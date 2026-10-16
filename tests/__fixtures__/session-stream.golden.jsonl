@@ -34,6 +34,8 @@
 {"kind":"transfer","id":"x1","got":0,"total":4}
 {"kind":"probe","ticket":"t1","cell":{"reached":"ssh"}}
 {"kind":"probe","ticket":"t1","cell":{"reached":"ssh"}}
+{"kind":"deploy","machine":"box","step":"update","said":"更新 box · cc-monitor"}
+{"kind":"deploy","machine":"box","step":"update","said":"更新 box · cc-monitor"}
 {"kind":"files_batch","ticket":"b1","done":1,"total":3,"current":"a.txt","bytes_done":512,"bytes_total":2048}
 {"kind":"files_batch","ticket":"b1","done":3,"total":3}
 {"kind":"live_card","sid":"s1","run":"a1","card":0,"n":0,"op":"open","rid":"r1","phase":"awaiting","clipped":true,"blocks":[{"kind":"text","text":"hi"},{"kind":"tool","tool":"Bash"}]}

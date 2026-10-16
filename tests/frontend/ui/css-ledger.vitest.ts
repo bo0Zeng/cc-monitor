@@ -111,7 +111,7 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  *   `cc-bus-hooks-ok`、`history-chip`…）在别处有**直接字面量**住址，`literal` 那一档先接住了。
  *
  * ⇒ 真正需要靠前缀才解释得通的，现打就是下面这 **10** 条（比那份 11 个清单还少一条：
- * `paste-block` 不在这里，当时的理由见 `KNOWN_DEAD` —— 那条死规则已删）。**每条都带住址与理由，缺一条本表就不该有它。**
+ * `paste-block` 那条死规则已删）。**每条都带住址与理由，缺一条本表就不该有它。**
  * 〔10 → 7〕`conf-` · `kind-` · `remote-gap-` 三族摘了：它们是**有限枚举状态拼成的类名族**，
  *   按约定改走 `data-conf` / `data-kind`（`css-conventions` ⑧「同一个状态名不许同现于两种载体」逮到的，
  *   `remote-gap-` 那一族同一个值还同时写进了 `data-kind`）⇒ 拼接点与 CSS 类都没了，前缀随之是死条目。
@@ -143,19 +143,6 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
     why: "`src/frontend/ui/tasks-panel.ts:177` 把任务态拼成类名（running/aborted/completed/in_progress/deleted）。态值直接来自会话记录，是**协议里的字符串**，前端不重新枚举。",
   },
 ];
-
-/**
- * ★ **已登记的死规则** —— CSS 里写着、今天确实没有任何人挂它。
- *
- * 登记在这儿不是赦免，是**把它变成一条会红的欠账**：修掉（删那几行 CSS）之后
- * 这张表里的条目会变成死条目，下面那条自检会红并叫人来删登记。
- *
- * ⚠ 〔当时〕**不能自己修** —— `src/frontend/ui/styles.css` 在明令禁碰之列（另有一路正在改它）。
- */
-// 〔D §D8〕唯一那条 `.paste-block-warning` 删了（规则在 `src/frontend/ui/styles/settings.css`，
-//   它的 `warning` 槽早先已移回消费者那儿，`src/frontend/ui/paste-block.ts` 头注写着）⇒ 规则与登记同拍删，本表空。
-//   空的是人群不是判据：② 那一格仍是**恒等**（未解释的类名 == 本表），再冒出一条死规则当场红。
-const KNOWN_DEAD: readonly { name: string; why: string }[] = [];
 
 /**
  * ★ **`npx stylelint "src/**\/*.css"` 的报错（除 `no-descending-specificity`）== 本表**（两向，多重集）。
@@ -487,25 +474,24 @@ describe("S25 ② CSS 里的类名有人用", () => {
       if (v.kind === "unexplained") unexplained.push(`.${name}  ←  ${sites[0]}`);
       else tally[v.kind]++;
     }
-    const registered = KNOWN_DEAD.map((d) => `.${d.name}  ←  ${led.cssClasses.get(d.name)?.[0] ?? "<不在 CSS 里>"}`);
     expect(
       unexplained.sort(),
-      "这些 CSS 类名今天没有任何人挂它，而且不在 `KNOWN_DEAD` 里：\n  " +
+      "这些 CSS 类名今天没有任何人挂它：\n  " +
         unexplained.join("\n  ") +
         "\n★ 删之前**先确认它不是假阳性**（上一轮 13 个里有 3 个是活的，`S21` 步 3）：\n" +
         "  ① 是不是 `` `${某个常量}-后缀` `` 拼出来的？② 是不是第三方库自产的？\n" +
         "  ③ 是不是模板拼接？是的话把前缀连**理由**一起加进 `ALLOWED_PREFIXES`。\n" +
-        "  ④ 确实是死的 ⇒ 删掉那几行 CSS；删不了（不归这里改）⇒ 加进 `KNOWN_DEAD` 并写清凭什么。",
-    ).toEqual(registered.sort());
+        "  ④ 确实是死的 ⇒ 删掉那几行 CSS。",
+    ).toEqual([]);
 
     denom(
       "②",
       led.cssClasses.size,
-      `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix} · 已登记死规则 ${KNOWN_DEAD.length}）`,
+      `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix}）`,
     );
   });
 
-  it("登记表不许有死条目（前缀要还派生得出来、还真解释着东西；已知死规则要还在 CSS 里）", () => {
+  it("登记表不许有死条目（前缀要还派生得出来、还真解释着东西）", () => {
     const led = ledger();
     const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
 
@@ -529,12 +515,6 @@ describe("S25 ② CSS 里的类名有人用", () => {
         "⇒ 要么对应的样式被删了（那就把登记也删了），要么它本来就不必登记。",
     ).toEqual([]);
 
-    const gone = KNOWN_DEAD.filter((d) => !led.cssClasses.has(d.name)).map((d) => d.name);
-    expect(
-      gone,
-      `这些已知死规则已经不在 CSS 里了：${gone.join(", ")}\n⇒ 有人把它删了（好事），把 \`KNOWN_DEAD\` 里那一条也删掉。`,
-    ).toEqual([]);
-
     // 🔴 前缀是开区间 —— 掩掉的是谁必须钉住，理由全文见 `PREFIX_MASKED`。
     const maskedAll = [...covered.values()].flat().sort();
     expect(
@@ -548,7 +528,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
     const lines = [...covered].sort().map(([p, ns]) => `${p}→${ns.length}`);
     denom(
       "②",
-      ALLOWED_PREFIXES.length + KNOWN_DEAD.length,
+      ALLOWED_PREFIXES.length,
       `条登记（前缀共掩 ${maskedAll.length} 个类 == 登记：${lines.join(" ")}）`,
     );
   });

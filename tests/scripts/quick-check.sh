@@ -15,7 +15,7 @@
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（沙箱换 HOME 之前就定下）。
 # 手机那一套（ktlint · detekt · 各模块 JVM 单测；经 heavy.sh，gradle 带 --no-daemon）：这棵树（连没提交的改动）相对起点改到了
 #   下面 mobile_reads 里的路径才跑，没改到就跳过并打一行说明。手机的单测与构建在 src/mobile 之外还读：tests/__fixtures__/（金样）·
-#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/shared/copy/（文案表，生成 CopyEntries）· src/shared/theme/（令牌正本，生成 ThemeTokens）。这张表漏没漏，由判据
+#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/common/copy-core/ · src/shared/copy/（手机写字经 JNI 调它，表编译期内嵌；JVM 单测加载宿主版那份 .so）· src/shared/theme/（令牌正本，生成 ThemeTokens）。这张表漏没漏，由判据
 #   tests/backend/flow_scripts_guard.rs 对着 src/mobile 里字面写到的仓内路径核。Android Lint 与 release 构建不在这里（门禁 mobile 格跑）。
 #   起点是 base.sh 印的那一个：分支上游（合并用的分支）与 HEAD 的 merge-base，没设上游就对 origin/main；不必先合 main。
 #   工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev（沙箱换 HOME 之前就定下）。
@@ -27,7 +27,7 @@ root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
-mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/deploy/ src/common/deploy-contract/ src/frontend/shell/embedded-backends/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/common/copy-core/ src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/deploy/ src/common/deploy-contract/ src/frontend/shell/embedded-backends/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
 # 后端那棵 workspace 的包 → 编进它的路径（git 路径规格，空格分隔）
 clippy_pkgs=("cc-monitor-backend:src/backend/ tests/backend/ :(exclude)src/backend/ssh-dial/ :(exclude)src/backend/deploy/" "ssh-dial:src/backend/ssh-dial/" "deploy:src/backend/deploy/" "mobcore:src/mobile/core-rs/rust/")
 # 便宜的静态格：只读盘上文本，合计十来秒（shellcheck 按核数并起）。
@@ -59,9 +59,15 @@ npm_cache=${npm_config_cache:-$HOME/.npm}
 trap 'rm -rf "$box"' EXIT
 trap 'rm -rf "$box"; exit 130' INT TERM
 mkdir -p "$box/home" "$box/tmux"
+# 每路测试的并行数：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤（10-15 量过：
+#   每路 8 个比默认省一到三成 CPU、墙钟持平；4 个墙钟变长）⇒ Rust 测试线程 · vitest worker · gradle worker
+#   都拿「核数 ÷ heavy 槽位数」那一份（槽位数照 HEAVY_SLOTS，默认与 heavy.sh 同一个数）。外面设了 RUST_TEST_THREADS /
+#   GATE_VITEST_WORKERS 就听外面的。
+share=$(( $(nproc) / ${HEAVY_SLOTS:-3} )); [ "$share" -ge 1 ] || share=1
 run() { bash "$HERE/session-scrub.sh" env HOME="$box/home" TMUX_TMPDIR="$box/tmux" \
   CARGO_HOME="$cargo_home" RUSTUP_HOME="$rustup_home" \
-  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" "$@"; }
+  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" \
+  RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}" GATE_VITEST_WORKERS="${GATE_VITEST_WORKERS:-$share}" "$@"; }
 # 每路 cargo 并行数默认 4。要改就在外面设 CARGO_BUILD_JOBS。
 # cargo 那几步不按墙钟判 ⇒ 降到 nice 10，机器忙时给别处按墙钟判的测试让路（vitest / tsc 不降）。
 runcargo() { run nice -n 10 "$@"; }
@@ -94,8 +100,8 @@ mobile_step() {
       . ./scripts/env.sh >/dev/null || { echo "mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了"; exit 1; }
     else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
     rm -rf "$out"/*/test-results
-    ./gradlew --no-daemon --console=plain ktlintCheck detektDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain || exit $?
+    ./gradlew --no-daemon --console=plain --max-workers='"$share"' ktlintCheck detektDebug testDebugUnitTest \
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain || exit $?
     n=$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE "<testsuite [^>]*tests=\"[0-9]+\"" | grep -oE "tests=\"[0-9]+\"" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null)
     echo "mobile: ${n:-0} passed"'
 }
@@ -143,8 +149,8 @@ else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
 clippy_step
 # 壳那棵 workspace 整套 --lib（全部成员）
 step shell        runcargo bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -q'
-# 界面：整套 vitest
-step vitest       run node_modules/.bin/vitest run --reporter=dot
+# 界面：整套 vitest；逐条耗时另存一份（找慢测试时读它）
+step vitest       run node_modules/.bin/vitest run --reporter=dot --reporter=json --outputFile.json=.build/quick-check/vitest-times.json
 # 手机：改到才跑
 mobile_step
 # 生成物：上面几步现写过的 generated/ 与 HEAD 比，逐份印出

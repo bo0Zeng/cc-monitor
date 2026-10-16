@@ -51,6 +51,8 @@
  *   本判据只核它们在表里，**不核** TS 里真没有同义实现（语义判不动）。
  * - 指纹只抓「登记过的那几种写法」：换个名字、换种写法重写一遍，这里看不见。
  * - Rust 侧一条判定有几个家只判**登记过的并家**（⑦ `rustGone` / `rustNeedles`）；没登记的多家看不见。
+ * - 人群只取共享 crate 的项：**后端模块里的判定在 TS 里长出孪生，这里看不见**。按「两侧都读的金样」认也认不出 ——
+ *   两侧都读的金样多半是线上形状（后端写、界面解），按文件名分不出哪一份是规则对拍。
  * - `guard-core` 的 dev-only 现核只看下面 [`CARGO_TOMLS`] 列的那几份；仓里新长一份 `Cargo.toml` 不会自动进来。
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -410,7 +412,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J16: {
     what: "账号种类的取值集",
     homes: ["acct-core::AUTH_KINDS"],
-    // 解码白名单与 `AuthKind` 类型都读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
+    // `AuthKind` 类型读生成物（`acct_core::AUTH_KINDS` 现生成）；手写字面量两形钉零。
     status: "generated",
     defs: [],
     gone: ["AUTH_KINDS"],
@@ -421,11 +423,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     gen: {
       file: "src/frontend/ui/generated/judgment-rules.ts",
       exports: ["AUTH_KINDS", "AuthKind"],
-      importers: ["src/frontend/ui/accounts-decode.ts", "src/frontend/ui/accounts.ts"],
+      importers: ["src/frontend/ui/accounts.ts"],
     },
     parity: {
       via: "tests/__fixtures__/accounts.golden.json",
-      tests: ["tests/backend/observe/accounts_query_tests.rs", "tests/frontend/ui/accounts-decode.vitest.ts"],
+      tests: ["tests/backend/observe/accounts_query_tests.rs"],
     },
   },
   J20: {
@@ -533,7 +535,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     what: "短时长（N5：45s · 6m · 1h50m · 3d）与距今（+12m）⇒ 会走的钟那一截 · 已等多久 · 到重置还有多久",
     homes: ["copy-core::short_duration", "copy-core::rel_duration"],
     // 认可的双读口（与 J24 同理）：核心写静态的那一刻填一次（`…Text` · `…RelText`），桌面会走的钟只留这一个读口（`duration-format.ts`），
-    //   手机端 `DurationFormat.kt` 同一份金样；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
+    //   手机经 JNI 调核心那一份；界面别处自己拼时长由出口扫描判据（`exit-judgment-scan.vitest.ts` 的 `durUnit`）钉着。
     status: "mirror",
     defs: ["fmtDur"],
     needles: [],
@@ -962,7 +964,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     set_read_timeout: NONE,
     set_write_timeout: NONE,
     into_async: NONE,
-    someone_listening: NONE,
+    peer: NONE,
   },
   // 测试档的家一开始就是沙箱（各 crate 只在 dev 侧引它）；TS 侧没有孪生。
   "test-home": {
@@ -987,13 +989,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     PREFS_HANDOFF_REL: NONE,
     MACHINES_REL: NONE,
     file_name_of: NONE,
+    // 家目录底下一条相对路径的远端 POSIX 写法（部署叫暂存那一份用）；TS 侧没有孪生。
+    home_shell: NONE,
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,
     LISTEN_SOCKET_NAME: NONE,
-    LISTEN_PID_NAME: NONE,
     listen_dir_for: NONE,
     listen_socket_for: NONE,
-    listen_pid_for: NONE,
     // 升级那一跳找旧版常驻后端用（跨过 4.1.x 之后删）；TS 侧没有孪生。
     legacy_listen_pid_for: NONE,
     LEGACY_LISTEN_TOKEN_NAME: NONE,
@@ -1034,6 +1036,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     BACKEND_LANDING_SHELL: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
+    // 一行里插好钥匙的地址把钥匙段换成 `…`（「待办」摘出的原文行）；界面照画，TS 侧没有孪生。
+    hide_key: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
     // 把钥匙插进中转地址（`split_keyed_base_url` 的逆，给用户自己贴的那一段用）；TS 侧没有孪生。

@@ -71,7 +71,7 @@ const DEPLOY_DECISIONS: &[(&str, &str)] = &[
 const DEPLOY_HOME: &str = "src/backend/deploy/lib.rs";
 
 fn root() -> PathBuf {
-    crate::guard_support::repo_root()
+    guard_core::addr::repo_root()
 }
 
 fn class_of(name: &str) -> Option<Class> {

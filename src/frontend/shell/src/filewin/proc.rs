@@ -76,7 +76,7 @@ pub fn resolve_window_bin() -> Result<PathBuf, ProcFail> {
 
 /// 自带那份放到哪：本机后端落点所在的那个目录（`~/.cc-monitor/bin`）。家目录问不到 ⇒ `None`（不发明一个目录）。
 fn landing_dir() -> Option<PathBuf> {
-    let rel = crate::profile_installer::ccm_bin_dir_rel()?;
+    let (rel, _) = relay_route_core::BACKEND_LANDING_REL.rsplit_once('/')?;
     creds_core::store::home_dir().map(|h| rel.split('/').fold(h, |p, seg| p.join(seg)))
 }
 

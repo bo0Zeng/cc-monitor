@@ -24,7 +24,7 @@ fn read(p: &Path) -> String {
 }
 
 fn production_files() -> Vec<(String, String)> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, src)| {
@@ -33,14 +33,14 @@ fn production_files() -> Vec<(String, String)> {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            (rel, crate::guard_support::production_code(&src))
+            (rel, guard_core::production_code(&src))
         })
         .collect()
 }
 
 #[test]
 fn c2_the_clock_dial_only_compiles_under_the_feature() {
-    let manifest = read(&crate::guard_support::src_root().join("Cargo.toml"));
+    let manifest = read(&guard_core::addr::backend_src_root().join("Cargo.toml"));
     let mut in_features = false;
     let mut feat = None;
     let mut default = None;
@@ -73,8 +73,8 @@ fn c2_the_clock_dial_only_compiles_under_the_feature() {
         );
     }
 
-    let src = read(&crate::guard_support::src_root().join(CLOCK_FILE));
-    let prod = crate::guard_support::production_code(&src);
+    let src = read(&guard_core::addr::backend_src_root().join(CLOCK_FILE));
+    let prod = guard_core::production_code(&src);
     let lines: Vec<&str> = prod.lines().collect();
     let decl: Vec<usize> = lines
         .iter()
@@ -134,7 +134,7 @@ fn c2_the_clock_dial_only_compiles_under_the_feature() {
 
 #[test]
 fn c3_the_rig_builds_it_and_hands_a_moment() {
-    let pool = read(&crate::guard_support::repo_root().join("tests/shots/real/pool.mjs"));
+    let pool = read(&guard_core::addr::repo_root().join("tests/shots/real/pool.mjs"));
     let build = pool
         .lines()
         .find(|l| l.contains("cwd: path.join(repo, \"src/backend\")"))

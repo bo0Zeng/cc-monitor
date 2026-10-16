@@ -299,7 +299,7 @@ fn digest_sees_every_byte_and_nothing_else() {
 /// 文件名在 `src/` 全部生产代码里恰好一个家（第二个写者 / 空转两向都红）。正控：把针塞进一份副本里数得出来。
 #[test]
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
-    let src = crate::guard_support::repo_root().join("src");
+    let src = guard_core::addr::repo_root().join("src");
     let needle = format!("{}-{}.json", "skill", "installs");
     // 字面量挪进契约 crate ⇒ 按「字面量或契约常量名」认谁叫得出它。
     let via_const = format!("{}_{}_REL", "SKILL", "LEDGER");
@@ -308,7 +308,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     for (path, body) in guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]) {
         scanned += 1;
         let code = match path.extension().and_then(|e| e.to_str()) {
-            Some("rs") => crate::guard_support::production_code(&body),
+            Some("rs") => guard_core::production_code(&body),
             Some("ts") => guard_core::strip_comment_lines(&body),
             _ => guard_core::strip_hash_comment_lines(&body),
         };
@@ -339,7 +339,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     // 〔MG1 合 SU1〕直接从仓根拼整条路径：`test_tiers` 的 T2（根锚路径字面量要指得到盘上东西）把 `let src = repo_root().join("src")`
     // 读成「src 绑的是 repo_root」，`src.join("bridge/…")` 就被核成 `./bridge/…` 报断 —— 写成整条之后 T2 真核得到它。
     let registry = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/agents/claudecode/footprint.rs"),
+        guard_core::addr::repo_root().join("src/backend/agents/claudecode/footprint.rs"),
     )
     .unwrap();
     let declared = format!(
@@ -348,15 +348,14 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         FILE_NAME
     );
     assert_eq!(
-        crate::guard_support::production_code(&registry)
+        guard_core::production_code(&registry)
             .matches(declared.as_str())
             .count(),
         1,
         "足迹里申报的装记录路径（{declared}）与本模块写的那一个对不上"
     );
     // 正控：同一个判法在一份塞了针的副本上数得出来
-    let planted =
-        crate::guard_support::production_code(&format!("const X: &str = \"{needle}\";\n"));
+    let planted = guard_core::production_code(&format!("const X: &str = \"{needle}\";\n"));
     assert!(planted.contains(needle.as_str()));
 }
 

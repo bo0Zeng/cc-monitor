@@ -32,7 +32,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 后端命令表各族生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**，逐族切）。
 /// 抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
-    let families = crate::guard_support::backend_registry_sources();
+    let families = guard_core::addr::backend_registry_sources();
     let mut blocks: Vec<(String, String)> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
@@ -130,7 +130,7 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
 /// 另一侧从后端 `lib.rs` 的 `SUBCOMMANDS` 那张表的源码数（正控：同一块里认得出今天真在的 `--history-read`）。
 #[test]
 fn the_moved_subcommands_are_gone_from_the_backend() {
-    let lib = std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/lib.rs"))
+    let lib = std::fs::read_to_string(guard_core::addr::repo_root().join("src/backend/lib.rs"))
         .expect("读不到后端 lib.rs");
     let at = lib
         .find("pub const SUBCOMMANDS: &[&str] = &[")
@@ -194,7 +194,7 @@ fn the_dial_per_query_path_is_gone() {
 // 八条里哪几条已经**只走通道**（主界面经 `src/comms/inward/chan.ts`）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 已迁到通道的帧命令：前端经 `chan.call(origin, "<op>", …)` 直接问那台后端，monitor 那一跳只搬字节。
+/// 已迁到通道的帧命令：前端经通道（`callTyped(origin, "<op>", …)`）直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
     (
@@ -225,7 +225,7 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
-         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 按生成类型问，本机与远端同一条路",
     ),
     (
         "accounts-trust",
@@ -239,6 +239,9 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `stream/inbound/` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 别名页最上那一句（`src/frontend/ui/alias-reads.ts::readCcmOnPath`）：终端里敲 ccm 走到哪由那台后端现问、判、出句子。
+    ("ccm-probe", "取代本机那条 Tauri 命令（壳自己起登录 shell 探 PATH、判、写那句话）；本机远端同一问"),
+    ("ccm-user-path", "取代本机那三条 Tauri 命令（壳自己起 PowerShell 读 / 改用户级 PATH、拼那句话）"),
     // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
     ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
@@ -340,7 +343,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 测试连接：monitor 那条 Tauri 命令与它手里那份探针退役，本机后端组请求、拨一次、回结局。
     (
         "remote-probe",
-        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按恰好的键集合收",
+        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按生成类型问、收进度帧",
     ),
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
@@ -498,9 +501,19 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          前端 `src/frontend/ui/resync.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
+        "sessions-needs",
+        "`BORN_ON_FRAME` 那一条：后端出成品（这台需手动的会话，`needs_first` 排好）；前端 `src/frontend/ui/needs-order.ts::askNeedsOrder` 逐台问，\
+         monitor 这一侧零发送点",
+    ),
+    (
+        "sessions-needs-merge",
+        "`BORN_ON_FRAME` 那一条：各台的需手动清单合成一个先后（`facts_query::merge_needs`，同一个 `needs_first`）；\
+         前端 `needs-order.ts::askNeedsOrder` 问本机后端（`Ctrl+J` 走它），monitor 这一侧零发送点",
+    ),
+    (
         "machine-interrupts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
-         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按生成类型收，monitor 这一侧零发送点",
     ),
     // 生在帧面上、界面直接问的那一条。
     (
@@ -1084,7 +1097,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 
 /// 生产段里含 `needle` 的「文件::外层函数」集合（按行往回找最近的 `fn `）。
 fn loc1a_sites(needle: &str) -> std::collections::BTreeSet<String> {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut out = std::collections::BTreeSet::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&src);
@@ -1128,7 +1141,7 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         .filter(|site| {
             let (file, _) = site.split_once("::").unwrap();
             let src =
-                std::fs::read_to_string(crate::guard_support::crate_src_root().join(file)).unwrap();
+                std::fs::read_to_string(guard_core::addr::shell_src_root().join(file)).unwrap();
             // 路径短了一截，rustfmt 可能把实参折回同一行 ⇒ 去掉空白再认。
             let flat: String = guard_core::production_code(&src)
                 .chars()
@@ -1407,7 +1420,7 @@ fn deadline_makers(file: &str, prod: &str) -> Vec<(String, String)> {
 /// 正控：合成语料里多种一处必被认出、且认对所在函数。
 #[test]
 fn every_deadline_is_made_where_its_job_begins_and_only_there() {
-    let root = crate::guard_support::crate_src_root();
+    let root = guard_core::addr::shell_src_root();
     let mut got: Vec<(String, String)> = Vec::new();
     let mut scanned = 0usize;
     for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
@@ -1459,7 +1472,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
     // 历史浏览器读整份那一件进了界面，后来查看器改成骨架 ＋ 按视口取（`src/frontend/ui/record-reads.ts::readRange`），整份读这件事没了。
-    let snapshot_src = crate::guard_support::stream_source_file("snapshot.rs");
+    let snapshot_src = guard_core::addr::stream_source_file("snapshot.rs");
     let cases: [(&str, &str, &str); 1] =
         [(&snapshot_src, "async fn fetch_snapshot(", "'read: loop ")];
     fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {

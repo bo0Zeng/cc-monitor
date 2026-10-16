@@ -286,6 +286,10 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
     expect(rustRefsIn("x.rs", "ui.ctx().copy_text(s.to_string());").refs).toEqual([]);
     // 行里前面有个以 use 结尾的标识符（Misuse）不是 `use` 导入 —— 这个调用点照样得认出来。
     expect(rustRefsIn("x.rs", 'Fault::Misuse => copy_text("a.b.c", &[]),').refs.map((r) => r.key)).toEqual(["a.b.c"]);
+    // 壳那一句的构造 `Said::of` 与 `copy_text` 同形：key 与参数名照样认得出；非字面 key 照样被逮住；`detail.rs` 里那一句转发不算。
+    expect(rustRefsIn("x.rs", 'Err(Said::of("a.b.c", &[("n", &x)]))').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", ["n"]]]);
+    expect(rustRefsIn("x.rs", "Said::of(KEY, &[])").problems.join()).toMatch(/不是字面量/);
+    expect(rustRefsIn("src/frontend/shell/src/detail.rs", "Said::written(copy_text(key, args))").problems).toEqual([]);
     // `&'static str` 形：字面量 key 认得出；非字面 key / 带参数 各被逮住。
     expect(rustRefsIn("x.rs", 'let w = copy_static!("a.b.c");').refs.map((r) => [r.key, r.args])).toEqual([["a.b.c", []]]);
     expect(rustRefsIn("x.rs", "copy_static!(KEY);").problems.join()).toMatch(/不是字面量/);

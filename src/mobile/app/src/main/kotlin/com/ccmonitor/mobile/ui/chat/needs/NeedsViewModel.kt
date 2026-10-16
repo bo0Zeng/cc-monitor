@@ -32,12 +32,13 @@ fun rememberChatNeeds(
     machine: String,
 ): NeedsViewModel = viewModel(key = "needs/$key") { NeedsViewModel(feed, sid, machine) }
 
-/** 聊天屏的需手动：钉条（输入框上方）＋ 答题抽屉。 */
+/** 聊天屏的需手动：钉条（输入框上方）· 替人答过的那一行 ＋ 答题抽屉。 */
 @Composable
 fun ChatNeeds(vm: NeedsViewModel) {
     val ui by vm.desk.state.collectAsStateWithLifecycle()
     val d = vm.desk
     ui.bar?.let { NeedsBarView(it, ::monoMs, onAnswer = d::open) }
+    ui.answered?.let { NeedsAnsweredView(it) }
     ui.sheet?.let {
         AskSheetView(
             it,

@@ -95,6 +95,11 @@
 //! 少买一件（活样本那个字节数倍数刻意没抽上来 —— 那是一份文件的数）。
 //! 人群怎么枚举、今天补到了哪几条、哪几条还欠着，逐字住 `P28` 的交付记录。
 
+// 读盘的禁令（本 crate 的 `clippy.toml`）只管规则：`rules` 模块自己 deny；量具与还没挪进规则目录的判据照旧自己读。
+#![allow(clippy::disallowed_methods)]
+
+pub mod addr;
+
 /// 测试里「等多久算挂了」的**唯一**上限（10-11 起）。
 ///
 /// 判据只许拿墙钟当兜底，不许拿它判「够不够快」：等一件事发生、给整条用例封顶，一律用这一个数；
@@ -604,7 +609,7 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
 /// - 万一词法认错、把真代码当成串/注释 ⇒ 收尾会挪过头，**测试段吞掉生产代码**
 ///   （这是 `production_source` 头注里记的那个老病灶的方向）。
 ///   看着这一档的是两侧既有的「生产段里必须还找得到某锚点」判据
-///   （backend `guard_support::main_production_section_keeps_its_load_bearing_items`），
+///   （规则 `strip_clean::main_production_section_keeps_its_load_bearing_items`），
 ///   以及本模块的 [`assert_test_module_ranges_are_brace_balanced`]。
 /// - 词法**自己**崩了（收不了口）⇒ 走兜底、退回裸文本，形状退回 09-13 之前那一档，
 ///   而 [`assert_block_comment_model_holds`] 与本模块那条新判据都会出声。
@@ -1139,7 +1144,7 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
 /// [`assert_no_unstripped_test_module`] 数残留的测试模块）。**过剥那一半一直没有原语** ——
 /// 本函数头注上游那句「那一族由两侧的『生产段里必须还找得到某锚点』判据守」
 /// 说的就是它，而那句话当时只在 backend 一侧有**一处**落点
-/// （`guard_support_tests::main_production_section_keeps_its_load_bearing_items`）。
+/// （规则 `strip_clean::main_production_section_keeps_its_load_bearing_items`）。
 ///
 /// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
 /// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 的第一个测试模块在
@@ -1340,17 +1345,14 @@ fn path_suffix_matches(hay: &str, needle: &str) -> bool {
 ///
 /// | 那一侧 | 根怎么来的 | 串里有 `..` 吗 | 自摘 |
 /// |---|---|---|---|
-/// | monitor | 一律过 `guard_support::repo_root()`（`.parent().parent()`，会规范化） | 没有 | **一处都命不中** |
-/// | backend · 生产树 | `guard_support::src_root()` = `CARGO_MANIFEST_DIR` | 没有 | 命不中（而且调用者本来就不在这棵树里） |
-/// | backend · 测试树 | `guard_support::tests_root()` = `CARGO_MANIFEST_DIR.join("../../tests/backend")` | **有** | **真的落刀** |
+/// | 住址 | 根怎么来的 | 串里有 `..` 吗 | 自摘 |
+/// |---|---|---|---|
+/// | [`addr`] 的每一个 | 从仓根往下拼（`ancestors()`，词法上不带 `..`） | 没有 | **一处都命不中** |
 ///
-/// ⇒ 全仓现打：唯一一处**真的会把调用者摘走**的调用点是
-/// `plugin_walk_fixture.rs` 扫 backend 测试树那一趟（`P4` 当轮已改成明写名单）；
-/// 别处的这一刀**一份都摘不到**，而「摘不到」与「摘到了」在输出上一模一样。
+/// ⇒ 这一刀**一份都摘不到**，而「摘不到」与「摘到了」在输出上一模一样。要摘掉自己走 [`scan_tree_excluding`] 的明写名单。
 ///
-/// ⚠ **别把上面那张表读成一条性质** —— 它是三个字符串今天长什么样的读数。
-/// 有人把 `tests_root()` 改成规范化的写法，第三行当场变成「命不中」，
-/// 而**不会有任何东西变红**（那正是本函数最危险的地方）。
+/// ⚠ **别把上面那张表读成一条性质** —— 它是住址今天长什么样的读数：
+/// 有人拼出一个带 `..` 的根，自摘就可能重新落刀，而**不会有任何东西变红**（那正是本函数最危险的地方）。
 /// 半条绊线在 `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split`：
 /// 它钉的是 **guard-core 自己这棵树**上自摘不命中；它**钉不住**上面第三行。
 ///
@@ -1425,6 +1427,64 @@ pub fn scan_tree_excluding_self(
         .collect()
 }
 
+/// 逐分量消掉 `.` 与 `..`，不碰文件系统（两侧都是拼出来的路径时，词法消解就够）。
+pub fn lexically_normalized(p: &std::path::Path) -> std::path::PathBuf {
+    let mut o = std::path::PathBuf::new();
+    for c in p.components() {
+        match c {
+            std::path::Component::ParentDir => {
+                o.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => o.push(other.as_os_str()),
+        }
+    }
+    o
+}
+
+/// 一份 manifest 的 `[package.metadata.guard] population` 明写的兄弟包目录（相对那份 manifest，原样）。没写 ⇒ 空。
+/// 盘上遍历（[`population_trees`]）与规则入口的快照共用这一份读法。
+///
+/// # Panics
+///
+/// 写了但不是一个数组（`pkg` 只用来点名）。
+pub fn population_decl(manifest: &str, pkg: &std::path::Path) -> Vec<String> {
+    let text = strip_hash_comment_lines(manifest);
+    let Some(at) = text.find("\n[package.metadata.guard]") else {
+        return Vec::new();
+    };
+    let section = &text[at + 1..];
+    let section = section[1..]
+        .find("\n[")
+        .map_or(section, |end| &section[..end + 1]);
+    let Some(list) = section.split_once("population").map(|(_, rest)| rest) else {
+        return Vec::new();
+    };
+    let list = list
+        .split_once('[')
+        .and_then(|(_, rest)| rest.split_once(']'))
+        .map(|(inner, _)| inner)
+        .unwrap_or_else(|| panic!("{pkg:?} 的 `[package.metadata.guard] population` 不是一个数组"));
+    list.split(',')
+        .map(|s| s.trim().trim_matches('"'))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// 一行 `#[path = "…"]` 挂的那个路径；别的行 ⇒ `None`。
+pub fn path_attr(line: &str) -> Option<&str> {
+    line.trim_start()
+        .strip_prefix("#[path = \"")?
+        .split('"')
+        .next()
+}
+
+/// 这个挂载指向某个 `tests` 段（那是测试段，不是生产人群）。
+pub fn mounts_tests(rel: &str) -> bool {
+    rel.split(['/', '\\']).any(|seg| seg == "tests")
+}
+
 /// 一个包的**源码人群**里、住在它自己 `src/` 之外的兄弟源码树：`(包名, 那棵 src/)`。
 ///
 /// 由那个包的 manifest 明写：`[package.metadata.guard]` 下 `population = ["<包目录，相对本 manifest>", …]`。
@@ -1448,37 +1508,11 @@ pub fn population_trees(root: &std::path::Path) -> Vec<(String, std::path::PathB
     };
     let manifest = std::fs::read_to_string(pkg.join("Cargo.toml"))
         .unwrap_or_else(|e| panic!("读 {:?} 失败: {e}", pkg.join("Cargo.toml")));
-    let text = strip_hash_comment_lines(&manifest);
-    let Some(at) = text.find("\n[package.metadata.guard]") else {
-        return Vec::new();
-    };
-    let section = &text[at + 1..];
-    let section = section[1..]
-        .find("\n[")
-        .map_or(section, |end| &section[..end + 1]);
-    let Some(list) = section.split_once("population").map(|(_, rest)| rest) else {
-        return Vec::new();
-    };
-    let list = list
-        .split_once('[')
-        .and_then(|(_, rest)| rest.split_once(']'))
-        .map(|(inner, _)| inner)
-        .unwrap_or_else(|| panic!("{pkg:?} 的 `[package.metadata.guard] population` 不是一个数组"));
-    list.split(',')
-        .map(|s| s.trim().trim_matches('"'))
-        .filter(|s| !s.is_empty())
+    population_decl(&manifest, &pkg)
+        .into_iter()
         .map(|rel| {
             // 词法归一（`shell/../filewin` ⇒ `filewin`）：住址按它拼，带 `..` 的串会让调用方的 `strip_prefix` 对不上。
-            let mut dir = std::path::PathBuf::new();
-            for c in pkg.join(rel).components() {
-                match c {
-                    std::path::Component::ParentDir => {
-                        dir.pop();
-                    }
-                    std::path::Component::CurDir => {}
-                    other => dir.push(other.as_os_str()),
-                }
-            }
+            let dir = lexically_normalized(&pkg.join(&rel));
             let raw = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap_or_else(|e| {
                 panic!("{pkg:?} 明写的人群 `{rel}` 下没有 Cargo.toml（{e}）—— 声明坏了")
             });
@@ -1531,22 +1565,9 @@ fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, 
         out.sort_by(|a, b| a.0.cmp(&b.0));
         return out;
     }
-    let norm = |p: &std::path::Path| -> std::path::PathBuf {
-        let mut o = std::path::PathBuf::new();
-        for c in p.components() {
-            match c {
-                std::path::Component::ParentDir => {
-                    o.pop();
-                }
-                std::path::Component::CurDir => {}
-                other => o.push(other.as_os_str()),
-            }
-        }
-        o
-    };
-    let root_n = norm(root);
+    let root_n = lexically_normalized(root);
     let mut seen: std::collections::BTreeSet<std::path::PathBuf> =
-        out.iter().map(|(p, _)| norm(p)).collect();
+        out.iter().map(|(p, _)| lexically_normalized(p)).collect();
     let mut i = 0;
     while i < out.len() {
         let (host, text) = (out[i].0.clone(), out[i].1.clone());
@@ -1555,17 +1576,11 @@ fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, 
             continue;
         }
         let Some(dir) = host.parent() else { continue };
-        for line in text.lines() {
-            let Some(rest) = line.trim_start().strip_prefix("#[path = \"") else {
-                continue;
-            };
-            let Some(rel) = rest.split('"').next() else {
-                continue;
-            };
-            if rel.split(['/', '\\']).any(|seg| seg == "tests") {
+        for rel in text.lines().filter_map(path_attr) {
+            if mounts_tests(rel) {
                 continue;
             }
-            let target = norm(&dir.join(rel));
+            let target = lexically_normalized(&dir.join(rel));
             if target.starts_with(&root_n) || !target.is_file() || !seen.insert(target.clone()) {
                 continue;
             }
@@ -1575,7 +1590,7 @@ fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, 
                 walk_dir_files(&[target.clone()], exts)
             };
             for (p, src) in found {
-                let pn = norm(&p);
+                let pn = lexically_normalized(&p);
                 if pn == target || seen.insert(pn.clone()) {
                     out.push((pn, src));
                 }
@@ -1594,28 +1609,15 @@ fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, 
 /// 认不出来（不在根下、也没被挂）⇒ 原样的路径串。
 pub fn module_address(root: &std::path::Path, path: &std::path::Path) -> String {
     let fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let norm = |p: &std::path::Path| -> std::path::PathBuf {
-        let mut o = std::path::PathBuf::new();
-        for c in p.components() {
-            match c {
-                std::path::Component::ParentDir => {
-                    o.pop();
-                }
-                std::path::Component::CurDir => {}
-                other => o.push(other.as_os_str()),
-            }
-        }
-        o
-    };
-    let root_n = norm(root);
-    let path_n = norm(path);
+    let root_n = lexically_normalized(root);
+    let path_n = lexically_normalized(path);
     if let Ok(rel) = path_n.strip_prefix(&root_n) {
         return fwd(rel);
     }
     // 人群里的兄弟源码树（[`population_trees`]）：`<包名>/<在那个包里的模块住址>`。
     let trees: Vec<(String, std::path::PathBuf)> = population_trees(root)
         .into_iter()
-        .map(|(label, tree)| (label, norm(&tree)))
+        .map(|(label, tree)| (label, lexically_normalized(&tree)))
         .collect();
     for (label, tree) in &trees {
         if let Ok(rel) = path_n.strip_prefix(tree) {
@@ -1626,17 +1628,14 @@ pub fn module_address(root: &std::path::Path, path: &std::path::Path) -> String 
         .chain(trees.into_iter().map(|(l, t)| (t, l)));
     for (base_root, label) in bases {
         for (host, text) in walk_dir(&base_root, &["rs"]) {
-            let host_n = norm(&host);
+            let host_n = lexically_normalized(&host);
             let Some(dir) = host_n.parent() else { continue };
             let lines: Vec<&str> = text.lines().collect();
             for (i, line) in lines.iter().enumerate() {
-                let Some(rest) = line.trim_start().strip_prefix("#[path = \"") else {
+                let Some(rel) = path_attr(line) else {
                     continue;
                 };
-                let Some(rel) = rest.split('"').next() else {
-                    continue;
-                };
-                let target = norm(&dir.join(rel));
+                let target = lexically_normalized(&dir.join(rel));
                 // 紧跟着的 `mod 名;`（中间只许隔着属性行 / 注释行）。
                 let name = lines[i + 1..]
                     .iter()
@@ -2398,7 +2397,7 @@ pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
 ///
 /// 一族「**声明缺口**」：某张表上写着「这一格今天盘上没有实现」（`None` / `false`），
 /// 而那句话**没有任何东西核**。本仓的活体是（今天住后端的）`registry.rs::TOOLS` 的 `remote-daemon`：
-/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_backend` 是设置面板上
+/// 字段写着 `uninstallable: false`，而 `deploy.rs::uninstall_remote_backend` 是设置面板上
 /// 那个「卸载后端」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
 ///
 /// ⇒ 处方：申报「没有」的那一格，**去它家里扫一眼有没有一个没人认领的同族实现**。
@@ -2441,6 +2440,11 @@ pub fn fn_names_starting_with(text: &str, verbs: &[&str]) -> Vec<String> {
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/lib_tests.rs"]
 mod tests;
+
+/// 扫源码守规矩的判据（规则）：一个入口，规则只交「看哪片 · 找什么 · 登记了什么」（入口头注）。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/rules/mod.rs"]
+mod rules;
 
 /// 测试层分级（TQ1）：五层各一张登记表 ＋ 各一条反空真自检。人群是整个仓的测试树，
 /// 住在这里是因为它是「元层的元层」，而且本 crate 跟着门禁 `cargo` 那一格跑。

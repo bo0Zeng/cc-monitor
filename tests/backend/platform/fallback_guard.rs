@@ -91,7 +91,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 会引出一个**平台分支**的 cfg 写法 —— 正向与反向都要认。
     ///
@@ -143,7 +143,7 @@ mod tests {
     }
 
     pub(super) fn platform_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root().join("platform");
+        let root = guard_core::addr::backend_src_root().join("platform");
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
@@ -469,7 +469,7 @@ mod tests {
 #[cfg(test)]
 mod g6_reach {
     use super::tests::{block_after, fabricates, platform_cfgs, platform_sources};
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 取某个 cfg 属性后面那个块（合成样本与真语料共用同一条取块逻辑）。
     fn block_of(code: &str, cfg: &str) -> String {

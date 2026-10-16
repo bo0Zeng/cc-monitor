@@ -63,6 +63,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>(
         "这台上需手动的会话清单",
     ),
+    // 各台需手动的清单合成一个先后（纯计算 ⇒ 异步档，同 `history-search-merge`）：界面逐台问 `sessions-needs`，本机后端排。
+    crate::wire::typed::asynchronous::<crate::faces::history_face::NeedsMergeCmd>(
+        "把各台的需手动清单合成一个先后",
+    ),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
     //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `stream::cli::STREAM_ONLY`）。
     crate::wire::typed::frame::<crate::control::asks::NeedsAsk>(

@@ -32,6 +32,29 @@ fn save_and_load_roundtrip() {
     let _ = fs::remove_file(&tmp);
 }
 
+/// 开机启动那一格存不下：句子是「保存开机启动设置失败 · 原因词」，系统原话只进复制详情。
+#[test]
+fn a_failed_save_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
+    // 数据目录那一格其实是个文件 ⇒ 写不进去（真的下层错，不是造的）。
+    let not_a_dir =
+        std::env::temp_dir().join(format!("ccm-auto-launch-notdir-{}", std::process::id()));
+    fs::write(&not_a_dir, b"x").unwrap();
+    let e = set_enabled(&not_a_dir, true).expect_err("文件下面建不了文件");
+    let _ = fs::remove_file(&not_a_dir);
+    let raw = crate::copy_table::copy_text("detail.label.raw", &[]);
+    assert!(
+        e.said.starts_with(&crate::copy_table::copy_text(
+            "rsShellCmd.autoLaunch.saveFailed",
+            &[("why", "")]
+        )),
+        "{}",
+        e.said
+    );
+    assert!(!e.said.contains("auto-launch.json"), "{}", e.said);
+    assert!(e.detail.contains(&format!("{raw}：")), "{}", e.detail);
+    assert!(e.detail.contains("auto-launch.json"), "{}", e.detail);
+}
+
 /// ★**`auto-launch.json` 的线上名，两种语言两向相等。**
 ///
 /// 要求住址：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— 写它的是 monitor（Rust，

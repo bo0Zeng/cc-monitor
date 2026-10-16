@@ -80,20 +80,27 @@ fn a_changed_host_key_is_its_own_state() {
     assert_eq!(product(&o, true).seen_host_key, None);
 }
 
+/// 装那一趟的几步照后端推的那一帧：状态跟着那一步、那一句照后端写的；连上之后不再挂着那一句。
 #[test]
-fn deploying_says_install_first_then_update_once_seen() {
+fn deploy_steps_carry_the_backend_sentence_until_the_round_ends() {
     let o = fresh("装");
-    deploying_auto(&o);
-    assert_eq!(product(&o, true).state, MachineStateKind::Installing);
-    up(&o, "p7a", Relation::Older);
-    deploying_auto(&o);
+    deploy_step(&o, DeployStep::Plan, "问".into());
+    let p = product(&o, true);
     assert_eq!(
-        product(&o, true).state,
-        MachineStateKind::Updating,
-        "握过手的那台换版本说成了「安装」"
+        (p.state, p.stage.as_deref(), p.said.as_deref()),
+        (MachineStateKind::Connecting, Some("deploy"), Some("问"))
     );
-    deploying(&o, true);
+    deploy_step(&o, DeployStep::Install, "装".into());
+    let p = product(&o, true);
+    assert_eq!(
+        (p.state, p.stage, p.said.as_deref()),
+        (MachineStateKind::Installing, None, Some("装"))
+    );
+    deploy_step(&o, DeployStep::Update, "换".into());
+    assert_eq!(product(&o, true).state, MachineStateKind::Updating);
     assert_eq!(product(&o, true).fixes, Vec::<MachineFix>::new());
+    up(&o, "p7a", Relation::Same);
+    assert_eq!(product(&o, true).said, None, "连上了还挂着装那一句");
 }
 
 #[test]
@@ -205,8 +212,10 @@ fn the_product_matches_the_cross_language_golden() {
             "版本不可比" => up(&o, "dev", Relation::Incomparable),
             "不是 Unix" => unsupported(&o, NOT_UNIX, &said("拨号没成")),
             "要密码" => down(&o, &said("拨号没成"), Some(Why::Password), None),
-            "正在装" => deploying(&o, true),
-            "正在更新" => deploying(&o, false),
+            "正在装" => deploy_step(&o, DeployStep::Install, "安装 cc-monitor → gpu-01".into()),
+            "正在更新" => {
+                deploy_step(&o, DeployStep::Update, "更新 gpu-01 · cc-monitor".into())
+            }
             "停用" => {}
             "本机没连上" => {
                 let _g = crate::inbound_client::local_origin_test_lock();

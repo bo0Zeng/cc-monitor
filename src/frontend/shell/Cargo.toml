@@ -163,8 +163,6 @@ comms-inward = { path = "../../comms/inward" }
 resident-client = { path = "../../comms/resident-client" }
 # 前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
-# 交给 Win32 的路径（长路径前缀）只从它来：配置换名那一处用（`platform/fs.rs`）；仓内 crate、零依赖。
-win-path-core = { path = "../../common/win-path-core" }
 # monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
 filewin-contract = { path = "../../common/filewin-contract" }
 # `gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
@@ -249,7 +247,6 @@ arboard = { version = "3.6", default-features = false, features = ["wayland-data
 # ProcessStatus 仍不需要（v1.6 拉前算法时也没真用）。
 windows = { version = "0.56", features = [
     "Win32_Foundation",
-    "Win32_Storage_FileSystem",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     # ccbus-win 09-10 第七拍：`cc_bus::reap_whole_tree_on_drop` 要 Job Object
@@ -285,6 +282,31 @@ windows = { version = "0.56", features = [
 # ——与上面项目自用的 windows 0.56 **类型不互通**，故 package rename 引入；
 # 版本收敛到 lock 里已有的 0.61.3，不新增依赖树条目。
 windows-wv2 = { package = "windows", version = "0.61", features = ["Win32_Foundation"] }
+
+# 测试档（dev 与继承它的 test）里给 egui 那一族开优化：文件窗口的 hover 扫读与滚动区那几条测试跑在它上面，
+#   依赖不开优化时文件窗口测试二进制的墙钟就是它们（10-15 量过：40–42 s → 28–31 s；冷编多不到一成）。只给这几样，
+#   工作区自己的 crate 照旧不开。判据：后端 `build_features_tests.rs` 的
+#   `the_test_build_optimizes_the_dependencies_the_slowest_tests_run_on`（与表两向相等、每项都在 Cargo.lock 里）。
+[profile.dev.package.egui]
+opt-level = 3
+
+[profile.dev.package.epaint]
+opt-level = 3
+
+[profile.dev.package.emath]
+opt-level = 3
+
+[profile.dev.package.ecolor]
+opt-level = 3
+
+[profile.dev.package.ab_glyph]
+opt-level = 3
+
+[profile.dev.package.ab_glyph_rasterizer]
+opt-level = 3
+
+[profile.dev.package.egui_extras]
+opt-level = 3
 
 [profile.release]
 opt-level = "z"

@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ssh
 
-import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
 import com.ccmonitor.mobile.core.data.db.Identity
@@ -8,6 +7,7 @@ import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.AuthMethod
+import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -36,8 +36,8 @@ class ResolveJumpChainTest {
     ) = Host(id = id, label = id, host = "$id.example", port = 22, username = "u$id", authRef = "idk", proxyJumpHostId = jump)
 
     private fun repos(hosts: List<Host>): Pair<HostRepository, IdentityRepository> {
-        val hostRepo = HostRepository(JumpFakeHostDao(hosts.associateBy { it.id }), JumpNoopCrypto)
-        val idRepo = IdentityRepository(JumpFakeIdentityDao(mapOf("idk" to ksIdentity("idk"))), JumpNoopCrypto)
+        val hostRepo = HostRepository(JumpFakeHostDao(hosts.associateBy { it.id }), PlainCryptoBox)
+        val idRepo = IdentityRepository(JumpFakeIdentityDao(mapOf("idk" to ksIdentity("idk"))), PlainCryptoBox)
         return hostRepo to idRepo
     }
 
@@ -123,12 +123,4 @@ private class JumpFakeIdentityDao(
     override suspend fun upsert(identity: Identity) = throw NotImplementedError()
 
     override suspend fun delete(identity: Identity) = throw NotImplementedError()
-}
-
-private object JumpNoopCrypto : CryptoBox {
-    override fun encrypt(plaintext: ByteArray): ByteArray = plaintext
-
-    override fun decrypt(ciphertext: ByteArray): ByteArray = ciphertext
-
-    override fun isEncrypted(blob: ByteArray): Boolean = true // 测试用；keystore 身份路径不触及
 }

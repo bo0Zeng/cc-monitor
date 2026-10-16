@@ -3,8 +3,8 @@
 两件事：**后端的线上协议**（monitor 与第二个前端都按它接后端）与**本机进程之间的几份文件**（PowerShell 绑窗 · 设置 · 历史注解）。
 
 本页只写不随命令变的总述。每一帧、每一条命令、每一个子命令的逐格形状在 **[IPC-COMMANDS.md](IPC-COMMANDS.md)** —— 那一份从代码生成
-（`tests/backend/protocol_doc_gen.rs`，判据「重新生成 == 仓里那份」），改了帧字段或命令登记之后在 `src/backend` 下跑
-`CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen` 重生成。
+（`tests/backend/protocol_doc_gen.rs`，判据「重新生成 == 仓里那份」），改了帧字段或命令登记之后那条判据红、
+现打的那份落在 `.build/golden/`，对过后 `bash tests/scripts/bless-golden.sh` 拷回。
 
 ## 1. 载体
 
@@ -85,7 +85,7 @@
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
-  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
+  同走这条通道的还有几种「丢了就停住」的帧：链路字节（`link_data` / `link_end`）· 传输进度（`transfer`）· 测试连接进度（`probe`）· 装后端那一趟的进度（`deploy`）· 终端实时预览的画面与收尾（`terminal_screen` / `terminal_follow_end`）。
   终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
@@ -181,7 +181,7 @@
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那三条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
   终端管理 `tests/__fixtures__/terminals.golden.json` · `resolve` `tests/__fixtures__/resolve-contract.golden.json`。
-- 部署：第二个前端不部署后端。它连上一台先 `--backend-probe`，那台的 `BUILD_ID` 与自己这一版不同就提示那台要更新、不接；远端的后端由桌面端按 `deploy-plan` 放。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
+- 部署：第二个前端不部署后端。它连上一台先 `--backend-probe`，那台的 `BUILD_ID` 与自己这一版不同就提示那台要更新、不接；远端的后端由桌面端经本机后端 `deploy-install` 装。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
 
 ### 通用记录
 

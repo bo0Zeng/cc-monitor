@@ -25,7 +25,7 @@ const KINDS: readonly MachineStateKind[] = [
 ];
 const RELATIONS: readonly VersionRelation[] = ["same", "older", "newer", "incomparable"];
 const FIXES: readonly MachineFix[] = ["retry", "conn_settings", "push_key", "compare_fingerprint", "update", "connect"];
-const KEYS = ["detail", "fixes", "os", "reason", "seenHostKey", "stage", "state", "version", "versionRelation"];
+const KEYS = ["detail", "fixes", "os", "reason", "said", "seenHostKey", "stage", "state", "version", "versionRelation"];
 
 const strOrNull = (v: unknown): v is string | null => v === null || (typeof v === "string" && v !== "");
 
@@ -34,7 +34,7 @@ export function decodeMachineState(raw: unknown): MachineState | null {
   if (!isObj(raw) || !exactKeys(raw, KEYS)) return null;
   const v = raw;
   if (!KINDS.includes(v.state as MachineStateKind)) return null;
-  if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.detail)) return null;
+  if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.said) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey) || !strOrNull(v.detail)) return null;
   if (v.versionRelation !== null && !RELATIONS.includes(v.versionRelation as VersionRelation)) return null;
   if (!Array.isArray(v.fixes) || !v.fixes.every((f) => FIXES.includes(f as MachineFix))) return null;
   return v as unknown as MachineState;

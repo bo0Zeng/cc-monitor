@@ -113,8 +113,7 @@ fn refusal_reasons_are_a_closed_set() {
     //    它读起来完全正常，而它一个字节都没在守。⇒ 人群搬到真正的调用点。
     //    ★ 这是「守卫范围 ≠ 性质范围」那一族的第四形：**人群画在了错的文件上**。
     // 小中继（`control/resident.rs`）那一处由下面另一段钉。
-    let caller =
-        crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let caller = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     let calls: Vec<&str> = caller
         .lines()
         .map(str::trim)
@@ -140,9 +139,8 @@ fn refusal_reasons_are_a_closed_set() {
              那它是从哪来的？闭集这件事就断在这里。"
     );
     // 小中继那一处：实参是 `relay_refusal` 的答（只回两个常量）。
-    let relay = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/resident.rs"
-    ));
+    let relay =
+        guard_core::production_code(include_str!("../../../src/backend/control/resident.rs"));
     let relay_calls: Vec<&str> = relay
         .lines()
         .map(str::trim)
@@ -223,16 +221,16 @@ fn every_file_this_head_note_points_at_really_exists() {
     let roots = [
         // 后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
         // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
-        crate::guard_support::src_root(),
+        guard_core::addr::backend_src_root(),
         // 头注里点名的很多是判据文件，它们今天住第二棵树。
-        crate::guard_support::tests_root(),
-        crate::guard_support::repo_root(),
-        crate::guard_support::repo_root().join("src/frontend/shell/src"),
+        guard_core::addr::backend_tests_root(),
+        guard_core::addr::repo_root(),
+        guard_core::addr::repo_root().join("src/frontend/shell/src"),
         // 🔴 **monitor 也有第二棵树。**
         //    上一格（`src/frontend/shell/src`）接的是「头注点名 monitor 侧的裸文件名」那一形，
         //    而剖分之后 monitor 的判据整批住 `<repo>/tests/frontend/shell/`
         //    ⇒ 头注里那些 `X_tests.rs` 四个根一个都够不着，被读成「假住址」。
-        crate::guard_support::repo_root().join("tests/frontend/shell"),
+        guard_core::addr::repo_root().join("tests/frontend/shell"),
     ];
     let mut checked = 0usize;
     for word in head.split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))) {
@@ -244,7 +242,7 @@ fn every_file_this_head_note_points_at_really_exists() {
         // `relay/xxx.rs` 是模块住址：`relay` 的根（`mod.rs` 所在）住 `src/comms/outward/`，非成员 door / listen 住 `src/backend/relay/`。
         let as_relay_module = w
             .strip_prefix("relay/")
-            .is_some_and(|r| crate::guard_support::relay_root().join(r).exists());
+            .is_some_and(|r| guard_core::addr::relay_root().join(r).exists());
         assert!(
             roots.iter().any(|r| r.join(w).exists()) || as_relay_module,
             "头注指着 `{w}`，而五个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · \

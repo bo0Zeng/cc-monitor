@@ -31,16 +31,16 @@ const ESCAPE_ALT_PLAIN: &str = r#"'\"'\"'"#;
 const SOLE_HOME: &str = "src/common/shell-quote-core/src/lib.rs";
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 扫 monitor + backend + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    // monitor 那棵根换成它的全部人群根（`guard_support::crate_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
+    // monitor 那棵根换成它的全部人群根（`guard_core::addr::shell_population_roots`：壳 `src/` ＋ manifest 明写的兄弟包，
     //   窗口包也在内）；兄弟包有几个住 `src/common/`，下面去重。
-    for base in crate::guard_support::crate_population_roots()
+    for base in guard_core::addr::shell_population_roots()
         .into_iter()
         .chain(["src/common", "src/backend"].iter().map(|b| root.join(b)))
     {

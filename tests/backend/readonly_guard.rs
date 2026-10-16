@@ -68,7 +68,7 @@ mod tests {
     ///
     /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
     /// [`guard_core::production_source`]（`src/common/guard-core`），
-    /// 本 crate 经 `guard_support` 再导出。`guard_support` 的模块头注逐字记着搬家的理由：
+    /// 本 crate 直接用它。`guard_core` 的模块头注逐字记着搬家的理由：
     /// 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
     /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
     /// 那一族近似都是启发式（括号配平不认字符串/注释里的大括号），并且已经造成过 ≥4 次事故。
@@ -104,7 +104,7 @@ mod tests {
     /// 本护栏各条判据的人群：后端生产树 `src/backend/` 递归全部 `.rs`（`lib.rs` · `main.rs` 在内）。
     /// 从前由一张模块分区表派生；碰盘挡在类型上之后，人群就是整个 crate，分区表删了。
     pub(super) fn core_files() -> Vec<std::path::PathBuf> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut out: Vec<std::path::PathBuf> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, _)| p)
@@ -167,7 +167,7 @@ mod tests {
     /// （两向；每份**恰好一处**）—— 多出来的 ⇒ 有人绕过写句柄自己拿锁、多半也在自己写。
     #[test]
     fn hx2_the_cross_process_lock_is_taken_only_where_registered() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let needle = "platform::lock::hold(";
         let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
         for path in core_files() {
@@ -218,7 +218,7 @@ mod tests {
     /// 4. 真跑：多给一个 `path` ⇒ `bad_args`（「只收 sid」是行为，不只是登记）。
     #[test]
     fn the_session_file_exception_lives_in_exactly_one_place() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let call = format!("fenced_session_file{}", "(");
         let def = format!("fn {call}");
         let locate = format!("session_file_for_delete{}", "");
@@ -375,7 +375,7 @@ mod tests {
             "抽取器在合成语料上认不出那一处调用 / 把定义行当成了调用 —— 下面那个集合不可信"
         );
 
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut found: std::collections::BTreeSet<(String, String)> = Default::default();
         let mut scanned = 0usize;
         for path in core_files() {
@@ -431,7 +431,7 @@ mod tests {
     /// 它量的仍然是「剥完的生产段里不许残留测试属性」，只是尺子换成了那个唯一住址。
     #[test]
     fn no_test_code_leaks_into_any_production_section() {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let mut stack = vec![src_dir];
         let mut leaks: Vec<(String, usize)> = Vec::new();
         while let Some(dir) = stack.pop() {
@@ -448,7 +448,7 @@ mod tests {
                 if name == "readonly_guard.rs" {
                     continue; // 与 `scan` 同款跳过：本文件的模式字面量必然含这些子串
                 }
-                let prod = crate::guard_support::production_source(
+                let prod = guard_core::production_source(
                     &std::fs::read_to_string(&path).expect("read rs file"),
                 );
                 // 用拼接写法，免得本行自己被数进去。
@@ -555,7 +555,7 @@ mod tests {
     /// 今后加一个读动词只改 `platform/fs/` 一处，本条不用动。
     #[test]
     fn only_the_fs_platform_module_names_the_filesystem() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut bad = Vec::new();
         let (mut scanned, mut home_hits) = (0usize, 0usize);
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
@@ -689,7 +689,7 @@ mod tests {
 
     #[test]
     fn the_fs_home_names_only_its_registered_entries() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut named = 0usize;
         let mut bad = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root.join("platform/fs"), &["rs"]) {
@@ -760,7 +760,7 @@ mod tests {
 
     #[test]
     fn the_write_handles_are_issued_only_at_startup() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         for (needle, want) in ISSUERS {
             let mut got: Vec<String> = Vec::new();
             for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
@@ -820,9 +820,10 @@ mod tests {
     /// （建链接那一处的链接内容是原样写的文本，不是落点 ⇒ 登记的唯一例外）。拿 `&Path` 调它编不过 —— 本条钉的是签名没被放宽。
     #[test]
     fn the_face_writes_take_only_resolved_paths() {
-        let src =
-            std::fs::read_to_string(crate::guard_support::src_root().join("platform/fs/face.rs"))
-                .expect("读 face.rs");
+        let src = std::fs::read_to_string(
+            guard_core::addr::backend_src_root().join("platform/fs/face.rs"),
+        )
+        .expect("读 face.rs");
         let code = guard_core::production_code(&src);
         let body = code
             .split("impl Face {")
@@ -1260,7 +1261,7 @@ mod spawn_registry {
         // 实测：**它不在表里 ⇒ 这条护栏根本扫不到它**，加一个未登记的起进程点全绿。
         // 这正是本仓「扫描面画小了」那一族的第五次，而且是**我自己**在 D1 那轮埋的。
         // 同文件上方 `scan()` 早就因为同样的理由改成递归了（Phase G 审计），这里没跟。
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let mut stack = vec![src_dir.clone()];
         let mut files: Vec<(String, String)> = Vec::new();
         while let Some(dir) = stack.pop() {
@@ -1292,7 +1293,7 @@ mod spawn_registry {
         );
         let mut found: Vec<(String, String)> = Vec::new();
         for (name, raw) in &files {
-            let prod = crate::guard_support::production_code(raw);
+            let prod = guard_core::production_code(raw);
             let mut from = 0usize;
             while let Some(rel) = prod[from..].find("Child::new(") {
                 let at = from + rel + "Child::new(".len();
@@ -1334,7 +1335,7 @@ mod spawn_registry {
     /// 别处零命中；正控：原语那一份恰好一处（抽取没坏）。
     #[test]
     fn command_new_lives_only_in_the_spawn_primitive() {
-        let src = crate::guard_support::src_root();
+        let src = guard_core::addr::backend_src_root();
         let mut hits: Vec<(String, usize)> = Vec::new();
         for (p, raw) in guard_core::scan_tree_excluding(&src, &["rs"], &[]) {
             let rel = p
@@ -1342,7 +1343,7 @@ mod spawn_registry {
                 .unwrap_or(&p)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let n = crate::guard_support::production_code(&raw)
+            let n = guard_core::production_code(&raw)
                 .matches("Command::new(")
                 .count();
             if n > 0 {
@@ -1384,15 +1385,13 @@ mod spawn_registry {
                 unlock.trim().chars().count()
             );
         }
-        let hook = crate::guard_support::production_code(include_str!(
-            "../../src/backend/control/tmux_hook.rs"
-        ));
+        let hook =
+            guard_core::production_code(include_str!("../../src/backend/control/tmux_hook.rs"));
         // 🔴 `K-R55`（09-11）：这一处的住址从 `observe/watcher.rs` 换成了
         //    `platform/shell.rs` —— 起 shell 那一跳搬进适配层（`K33` 裁定二）。
         //    ⚠ 换的是**住址**，不是判据：核的仍是「登记的那一条在生产段里真的找得到」。
-        let shell = crate::guard_support::production_code(include_str!(
-            "../../src/backend/platform/shell/mod.rs"
-        ));
+        let shell =
+            guard_core::production_code(include_str!("../../src/backend/platform/shell/mod.rs"));
         assert!(
             hook.contains("Child::new(\"tmux\")"),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
@@ -1424,7 +1423,7 @@ mod spawn_registry {
     ///   不会红（同一个洞的另一面）。
     #[test]
     fn every_registered_entry_is_backed_by_a_real_spawn_site() {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         // 与上面那条**分开走一遍树**：那边还要分类、比数，这边只回答「表里这一条今天还在吗」。
         let mut stack = vec![src_dir.clone()];
         let mut found: Vec<(String, String)> = Vec::new();
@@ -1446,9 +1445,8 @@ mod spawn_registry {
                 if rel == "readonly_guard.rs" {
                     continue;
                 }
-                let prod = crate::guard_support::production_code(
-                    &std::fs::read_to_string(&path).expect("read rs"),
-                );
+                let prod =
+                    guard_core::production_code(&std::fs::read_to_string(&path).expect("read rs"));
                 let mut from = 0usize;
                 while let Some(at) = prod[from..].find("Child::new(") {
                     let i = from + at + "Child::new(".len();
@@ -1515,7 +1513,7 @@ mod spawn_registry {
 ///   没有它，上面那条「零命中」是空真。
 #[cfg(test)]
 mod capture_is_read_only {
-    use crate::guard_support::production_code;
+    use guard_core::production_code;
 
     /// 被测对象：那一处抓屏的**生产段**。
     fn site() -> String {
@@ -1594,7 +1592,7 @@ mod capture_is_read_only {
              本模块此刻是无效的",
             prod.len()
         );
-        crate::guard_support::assert_no_test_code("capture_is_read_only", &prod);
+        guard_core::assert_no_test_code("capture_is_read_only", &prod);
         assert!(
             prod.contains(&format!("Child::{}", "new(\"tmux\")")),
             "那一处起进程不见了 —— 本模块声称盖的东西已经不在它声称的地方了"
@@ -1930,7 +1928,7 @@ mod g6_reach {
             KNOWN_PASSING_COUNTEREXAMPLES.len()
         );
         for (rel, frag, why, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
-            let prod = crate::guard_support::production_source(source_of(rel));
+            let prod = guard_core::production_source(source_of(rel));
             assert!(
                 prod.contains(frag),
                 "反例 `{rel}` 里找不到 `{frag}` 了 —— 修掉了就**同轮摘登记**，\
@@ -1973,7 +1971,7 @@ mod g6_reach {
     /// 本条把「今天是三条」钉成**相等**：加第四条就必须回来重读那条豁免理由。
     #[test]
     fn the_non_literal_spawn_key_still_covers_exactly_three_commands() {
-        let prod = crate::guard_support::production_source(source_of("control/cc_bus.rs"));
+        let prod = guard_core::production_source(source_of("control/cc_bus.rs"));
         let mut cmds: Vec<&str> = Vec::new();
         // 只读三条经 `read_via("…"` 转调（同一个起进程口）。
         for opener in ["run(\"", "run_as(\"", "read_via(\""] {
@@ -2094,10 +2092,10 @@ mod g6_staged_zero {
     /// ⚠ 住址口径：生产树的文件相对 `src/backend`（表里旧行**一个字没改**），
     ///   测试树的文件写成 `tests/backend/…`（仓根相对）—— 两种靠前缀就分得开。
     fn backend_files() -> Vec<(String, String, String)> {
-        let src_root = crate::guard_support::src_root();
-        let tests_root = crate::guard_support::tests_root();
+        let src_root = guard_core::addr::backend_src_root();
+        let tests_root = guard_core::addr::backend_tests_root();
         // 中转 crate 的单测住 `tests/comms/outward/`（生产那一半经后端的人群声明收进 `src_root` 的人群）。
-        let comms_tests = crate::guard_support::comms_tests_root();
+        let comms_tests = guard_core::addr::comms_tests_root();
         let mut out = Vec::new();
         for (root, excluded, prefix) in [
             (&src_root, &[] as &[&str], ""),
@@ -2114,7 +2112,7 @@ mod g6_staged_zero {
                 );
                 // 生产段按「住哪棵树」分流：测试树的文件贡献 0 字节生产代码
                 // （否则下面那条「跨文件生产消费者为 0」会把判据夹具算成消费者）。
-                let prod = crate::guard_support::production_side_of(&path, &src);
+                let prod = guard_core::addr::production_side_of(&path, &src);
                 out.push((rel, src, prod));
             }
         }
@@ -2391,7 +2389,7 @@ mod error_envelope_registry {
     }
 
     fn src_root() -> std::path::PathBuf {
-        crate::guard_support::src_root()
+        guard_core::addr::backend_src_root()
     }
 
     /// 全树一趟：每一处信封的 `(文件相对路径, 那一行逐字, 该行起三行的窗口)`。
@@ -2783,9 +2781,10 @@ mod g6_dependency_signoff {
         (
             "guard-core",
             DEV_DEPS,
-            MEASURED_CLEAN,
-            "源码扫描型判据的共用剥法。**只在测试期链接**，不进发布二进制；\
-             仓内 crate，现打 0 处写面",
+            MEASURED_WRITES,
+            "源码扫描型判据的共用剥法与住址（`addr`）。现打 0 处写盘、1 处起进程：`addr::tracked_under` 起一个只读的 \
+             `git ls-files` 问索引。进不了发布二进制：它只在各包的 `[dev-dependencies]`，本行的段与清单逐条对拍 \
+             （`every_dependency_this_manifest_declares_carries_a_signature`），挪进 `[dependencies]` 就红",
         ),
         (
             "libc",
@@ -2925,6 +2924,13 @@ mod g6_dependency_signoff {
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
         (
+            "tokio",
+            DEV_DEPS,
+            UNMEASURED,
+            "测试档多开 `test-util`（停着的钟，`advance` 才走）：判「挂着的提问自己带的期限」不按墙钟等。\
+             同一个包（`[dependencies]` 里那一条），**只在测试期多一个特性**，不进发布二进制",
+        ),
+        (
             "shell-quote-core",
             DEPS,
             MEASURED_CLEAN,
@@ -2971,7 +2977,7 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "配置文件（`~/.cc-monitor/profiles.toml`）的解析与按条目改（`assets/aliases/profile.rs`）：缺省 feature 关了，只开 `parse` 与 `display`，\
              纯内存把文本变成文档树、再变回文本（保留注释与排版）。读盘与落盘都在本 crate：读是 ccm 那一趟的 `read_to_string` 与经文件管理面的 `files-peek`，\
-             写经文件管理面的 `files-put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
+             写经文件管理面的 `Door::put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
         ),
         (
             "tracing-subscriber",
@@ -3340,7 +3346,7 @@ mod g6_dependency_signoff {
     /// 前提翻了一次：先前是「那个 feature 本清单没开 ⇒ 今天编不进来」
     /// （`已量·有写面`），今天是「开了、写面就是账号域那一份要用的」（`已量·有写面·就是要它写`）。
     /// ⇒ 两个方向都钉：feature 被关掉了而签字还说「就是要它写」⇒ 红；
-    ///   `已量·有写面`（「凭什么进不来」那一档）今天**零成员** —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
+    ///   `已量·有写面`（「凭什么进不来」那一档）今天只有 guard-core —— 有人把它签回那一档而 feature 还开着 ⇒ 红。
     /// 本仓最高频的病是「代码订正了，盘没跟着改」，这一条挡的正是它的反面：
     /// **盘上写着的前提被代码改掉了而盘不知道。**
     #[test]
@@ -3350,10 +3356,11 @@ mod g6_dependency_signoff {
             .filter(|(_, _, v, _)| *v == MEASURED_WRITES)
             .map(|(n, ..)| *n)
             .collect();
+        // 今天只有 guard-core：起一个只读的 `git ls-files`，进不来是因为它只在 `[dev-dependencies]`（签字里写着谁钉）。
         assert_eq!(
             gated,
-            Vec::<&str>::new(),
-            "「有写面、但被一个没开的 feature 关着」那一档今天应当零成员，实得 {gated:?}\n\
+            vec!["guard-core"],
+            "「有写面、但进不了发布二进制」那一档的成员变了，实得 {gated:?}\n\
              新来一条这样的依赖 ⇒ 先回答「它凭什么进不来」「那个前提谁钉着」，再改这里。"
         );
         let purposeful: Vec<&str> = SIGNED
@@ -3426,7 +3433,7 @@ mod g6_dependency_signoff {
     /// `use` 那一行本身带着名字，所以「引入」这件事照样看得见；再往外一层的重导出看不见。
     #[test]
     fn the_credentials_write_half_is_reached_only_from_the_account_file_face() {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let needles = [format!("create_{}", "private")];
         let mut found: std::collections::BTreeSet<String> = Default::default();
         let mut scanned = 0usize;
@@ -3886,16 +3893,14 @@ mod remote_write_layer {
     //! 两张表各自的理由逐条写在表里，这里只说那条总的：
     //!
     //! **远端写不是一个动词，是一条链**：先取得一个能改远端文件系统的**能力**，再拿它发**操作**。
-    //! monitor 侧 `remote_write_registry` 的头注现打过这条链的读数 —— 按写原语的方法名取样是
-    //! 8 份文件、其中 6 份是本机噪声；换成「谁持有 SFTP 会话」立刻收到 3 份、零噪声。
+    //! 按写原语的方法名取样会混进本机写的噪声；按「谁持有 SFTP 会话」取样零噪声。
     //! ⇒ **能力那一端是扼流点，动词那一端不是。** 本层因此把能力网排在第一位，
     //! 动词网只作第二道（能力取得点住在别的文件时，动词那一处仍然点得出名）。
     //!
     //! # ⚠ 它认不出什么 —— **口径与射程同句写清**（`KR79D3` 的落点是 [`BLIND_SPOT_LAYERS`]）
     //!
     //! - **远端 exec**：`channel_open_session` ＋ 把一条会写的 shell 命令交给远端。
-    //!   一条命令写不写，**源码文本上判不了**（monitor 侧 `remote_write_registry` 头注
-    //!   逐字给过同一条结论：`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
+    //!   一条命令写不写，**源码文本上判不了**（`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
     //!   是**同一个洞的远端孪生** —— 盘上今天就有一处，登记在
     //!   [`the_remote_exec_hole_is_a_registered_counterexample_and_still_passes`]。
     //! - **不经 SSH 的远端写协议**（手写 HTTP PUT / 云存储 SDK / 自己封的传输层）：
@@ -3933,9 +3938,8 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
         ),
         (
             FAMILY_SUBSYSTEM,
-            "SFTP **会话类型名**。monitor 侧 `remote_write_registry` 头注现打过：\
-             按写原语的方法名取样 = 8 份文件、6 份是本机噪声；换成「谁持有 SFTP 会话」\
-             = 3 份、零噪声。⇒ **会话对象是远端写那条路的扼流点**，方法名不是。",
+            "SFTP **会话类型名**：按写原语的方法名取样混进本机噪声，按「谁持有 SFTP 会话」零噪声 \
+             ⇒ **会话对象是远端写那条路的扼流点**，方法名不是。",
         ),
         (
             FAMILY_SUBSYSTEM,
@@ -4074,7 +4078,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
     /// ⇒ **不补回来这件事照旧**，理由与 `super::tests::scan` 跳过本文件逐字同一条：
     /// 本文件整体在 `#[cfg(test)]` 内、生产段是空的，而它的锚点表本身就是一串会自匹配的字面量。
     fn production_tree() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         let mut out: Vec<(String, String)> = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path
@@ -4082,7 +4086,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            out.push((rel, crate::guard_support::production_source(&src)));
+            out.push((rel, guard_core::production_source(&src)));
         }
         out.sort();
         out.dedup_by(|a, b| a.0 == b.0);

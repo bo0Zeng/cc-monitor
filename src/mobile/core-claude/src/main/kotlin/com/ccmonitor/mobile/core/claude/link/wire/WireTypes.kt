@@ -218,6 +218,14 @@ enum class Tone {
 @JsonClass(generateAdapter = true)
 data class NeedsList(
     val waiting: List<NeedsRow>,
+    val answered: List<AnsweredRow>,
+)
+
+@WireOf("AnsweredRow")
+@JsonClass(generateAdapter = true)
+data class AnsweredRow(
+    val sid: String,
+    val said: String,
 )
 
 @WireOf("NeedsRow")

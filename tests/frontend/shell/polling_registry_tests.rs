@@ -182,8 +182,8 @@ const NO_PERIODIC_WAKE: &[(&str, &str)] = &[(
 )];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 剥掉整行注释（`//` / `*` / `/*`）。
@@ -300,19 +300,13 @@ fn the_scan_actually_reads_the_frontend_and_ccm() {
     let mut ts = Vec::new();
     collect_ts(&root.join("src"), &mut ts);
     // 采集面与 git 跟踪着的前端 `.ts` 对拍（测试与声明文件不在人群里）。
-    let seen: Vec<String> = ts.iter().map(|p| crate::guard_support::rel_of(p)).collect();
-    let skip: Vec<String> = crate::guard_support::tracked_under("src", "ts")
+    let seen: Vec<String> = ts.iter().map(|p| guard_core::addr::rel_of(p)).collect();
+    let skip: Vec<String> = guard_core::addr::tracked_under("src", "ts")
         .into_iter()
         .filter(|r| r.contains(".vitest.") || r.contains(".test.") || r.ends_with(".d.ts"))
         .collect();
     let skip: Vec<&str> = skip.iter().map(String::as_str).collect();
-    crate::guard_support::assert_scanned_every_tracked(
-        "前端周期唤醒",
-        &seen,
-        &["src"],
-        "ts",
-        &skip,
-    );
+    guard_core::addr::assert_scanned_every_tracked("前端周期唤醒", &seen, &["src"], "ts", &skip);
     // 剥注释不能把整份文件剥空。
     //
     // ★上一版是 `strip_comment_lines(&ccm).len() * 2 > ccm.len()`。

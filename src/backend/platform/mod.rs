@@ -32,6 +32,8 @@ mod cfgless_guard;
 pub(crate) mod child;
 /// 常驻后端自有的那几格环境的名字（常驻开关 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
 pub(crate) mod child_env;
+/// 控制台子进程写进管道的字节按那台控制台的代码页解（PowerShell 5.1 的报错）。
+pub(crate) mod console_text;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;

@@ -70,7 +70,7 @@ mod tests {
         ),
     ];
 
-    use crate::guard_support::{assert_no_test_code, production_code};
+    use guard_core::{assert_no_test_code, production_code};
 
     /// 从 `main.rs` 的生产段抠出 `Some("--x")` 形态的子命令，排序去重。
     ///
@@ -533,7 +533,7 @@ mod tests {
     #[test]
     fn the_bump_script_walks_both_paths() {
         use std::process::Command;
-        let script = crate::guard_support::repo_root().join("tests/scripts/bump-build-id.sh");
+        let script = guard_core::addr::repo_root().join("tests/scripts/bump-build-id.sh");
         assert!(script.is_file(), "打版本号的脚本不在：{}", script.display());
         // 脚本认的那一行与本文件红时印的那一行是同一个形状。
         assert!(
@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn the_bump_script_takes_exactly_the_ids_the_order_key_reads() {
         use std::process::Command;
-        let script = crate::guard_support::repo_root().join("tests/scripts/bump-build-id.sh");
+        let script = guard_core::addr::repo_root().join("tests/scripts/bump-build-id.sh");
         let d = std::env::temp_dir().join(format!("bump-shape-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();

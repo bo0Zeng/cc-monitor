@@ -158,7 +158,7 @@ fn session(home: &Path, proj: &str, sid: &str, n: usize, torn: bool) -> PathBuf 
 /// 左边从命令表各族的**生产段源码**切 `CommandSpec {` 块数出来（异源：不读本文件的任何常量）。
 #[test]
 fn the_registry_hands_exactly_the_eight_to_this_host() {
-    let families = crate::guard_support::registry_sources();
+    let families = guard_core::addr::backend_registry_sources();
     let mut got: Vec<String> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
@@ -189,8 +189,8 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
                     continue;
                 }
                 let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
-                // 这两条住同一份宿主、不读会话也不读账号（诊断那一族），不在本族里。
-                if ["BackendLog", "DriftReportCmd"].contains(&ty) {
+                // 这几条与本族同住一个模块、不读会话也不读账号（诊断那两条 · 各台需手动清单的纯计算合并），不在本族里。
+                if ["BackendLog", "DriftReportCmd", "NeedsMergeCmd"].contains(&ty) {
                     continue;
                 }
                 let imp = [
@@ -737,17 +737,12 @@ fn facts_say_what_the_session_is_waiting_for() {
     let pids = crate::observe::watcher::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
     // 「没挂答题口」那一句照持着它的进程的环境与命令行现判：环境不从本进程继承那两格（本进程的环境是全局的），
-    // 并且等它真 exec 完再问 —— exec 窗口里 /proc/<pid>/environ 读回 0 字节，判成「取不到」、那一句就没了
-    // （机器忙时整套里偶发红的就是这一形：manualText 成了「只能在终端里答」）。
-    //   它活到这里亲手停它为止（`cat` 等着读标准输入）：不按墙钟给它定寿命（`sleep 30` 在机器忙时会先走，僵尸读不出环境）。
-    let mut c = std::process::Command::new("cat")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV)
-        .env_remove(crate::agents::claudecode::asks::PLUGIN_ENV)
-        .spawn()
-        .unwrap();
-    exec_done(c.id(), b"cat\0");
+    // 等它真 exec 完再问（见 `held`）。
+    let mut c = held(
+        std::process::Command::new("cat")
+            .env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV)
+            .env_remove(crate::agents::claudecode::asks::PLUGIN_ENV),
+    );
     let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
     let pidfile = |status: &str| {
         let body = format!(
@@ -778,7 +773,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
@@ -1733,11 +1728,19 @@ fn a_hidden_background_session_still_lists_its_needs() {
 }
 
 /// 一份 `needs` 拆成「已等多久（毫秒）」与其余各格（已等的那两格随问的时刻变，单拿出来判）。
+/// 先答序跟着已等多久走 ⇒ 一起摘掉，先核它就是那一处算出来的（同一种类、同一个已等多久）。
 fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     let mut rest = n.clone();
     let o = rest.as_object_mut().expect("needs 是对象");
     let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
     o.remove("waitedText");
+    let kind: crate::observe::facts_query::NeedsKind =
+        serde_json::from_value(o["kind"].clone()).expect("needs.kind");
+    assert_eq!(
+        o.remove("rank").and_then(|v| v.as_u64()),
+        Some(crate::observe::facts_query::needs_rank(kind, ms)),
+        "needs.rank 不是先答序那一处算的"
+    );
     (ms, rest)
 }
 
@@ -1929,21 +1932,24 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }
 
-/// 等刚起的那个子进程**真 exec 完**：命令行换成了它自己的（`head` 打头）**并且**环境读得出来。
-/// fork 之后、exec 之前 /proc/<pid>/environ 还是父进程那一份；exec 当中内核先写命令行、再写环境，
-/// 两样之间读环境回 0 字节（判成「取不到」，那一句就没了）⇒ 两样都等到。上限是兜底的那一个数，不按快慢判。
+/// 起一个持着会话的进程，等它**真 exec 完**再交回：写一行进去、读回同一行 —— 回声只能出自 exec 之后的那个程序，
+/// 那时它的命令行与环境都已就位（exec 当中读 /proc/<pid>/environ 回 0 字节，会判成「取不到」）。
+/// 它回声后接着等标准输入，活到调用方亲手停它为止，不按墙钟定寿命。
 #[cfg(target_os = "linux")]
-fn exec_done(pid: u32, head: &[u8]) {
-    let cmdline = std::path::PathBuf::from(format!("/proc/{pid}/cmdline"));
-    let environ = std::path::PathBuf::from(format!("/proc/{pid}/environ"));
-    for () in guard_core::wall::rounds() {
-        if std::fs::read(&cmdline).is_ok_and(|b| b.starts_with(head))
-            && std::fs::read(&environ).is_ok_and(|b| !b.is_empty())
-        {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+fn held(cmd: &mut std::process::Command) -> std::process::Child {
+    use std::io::{BufRead, Write};
+    let mut c = cmd
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    writeln!(c.stdin.as_mut().unwrap(), "up").unwrap();
+    let mut line = String::new();
+    std::io::BufReader::new(c.stdout.as_mut().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line, "up\n", "持着会话的进程没回声");
+    c
 }
 
 /// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
@@ -1967,15 +1973,12 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         // 持着会话的那个进程活到这里亲手停它为止（`cat` 等着读它的标准输入，那一头在这里攥着）：
         //   不按墙钟给它定寿命 —— 从前是 `sleep 30`，机器忙到这一问拖过 30 秒时它先走了，留下的僵尸读不出环境，那一格成了 `null`。
         let mut cmd = std::process::Command::new("cat");
-        cmd.stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null());
         if let Some(v) = off {
             cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, v);
         } else {
             cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         }
-        let mut c = cmd.spawn().unwrap();
-        exec_done(c.id(), b"cat\0");
+        let mut c = held(&mut cmd);
         let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
         let body = format!(
             r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
@@ -2063,13 +2066,11 @@ fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
     let facts_with = |extra: &[&str], noted: bool| {
         // 同上一条：`sh` 等着读标准输入，活到这里亲手停它为止（不按墙钟给它定寿命）。
         let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", "read _; :", "sh"])
-            .args(extra)
-            .stdin(std::process::Stdio::piped());
+        cmd.args(["-c", "read l; echo \"$l\"; read _", "sh"])
+            .args(extra);
         cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         cmd.env_remove(var);
-        let mut c = cmd.spawn().unwrap();
-        exec_done(c.id(), b"sh\0-c\0");
+        let mut c = held(&mut cmd);
         if noted {
             let now = crate::common::time::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2176,7 +2177,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
         tail,
         r#"{"end":273,"eof":true,"from":1,"held":{"mark":"152-273-b4aa604defe0685c","next":3,"next_byte":273,"path":"<home>/projects/-golden/r.jsonl"},"how":"tail","next":273,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":273,"hash":11353788305326452798,"record":{"agent":"claude","at":"t2","autoReply":false,"blocks":[{"text":"a","type":"text"}],"id":"r-2","t":"reply"}}],"split_at":55,"tail_from":1,"total":3}"#
     );
-    assert_eq!(needs, r#"{"waiting":[]}"#);
+    assert_eq!(needs, r#"{"answered":[],"waiting":[]}"#);
     // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
     let row = {
         use crate::observe::facts_query::{needs_of, PidWait};
@@ -2193,6 +2194,10 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
                 )
                 .expect("在等就有需手动"),
                 hidden: None,
+            }],
+            answered: vec![crate::faces::history_face::AnsweredRow {
+                sid: "s-2".into(),
+                said: crate::common::cells::Words("w".into()),
             }],
         }
     };
@@ -2211,7 +2216,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"answered":[{"said":"w","sid":"s-2"}],"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":3298534883325,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 
@@ -2326,15 +2331,12 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
     let facts_with = |dirs: Option<String>| {
         // 活到这里亲手停它为止（`cat` 等着读标准输入），不按墙钟给它定寿命。
         let mut cmd = std::process::Command::new("cat");
-        cmd.stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null());
         cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         match &dirs {
             Some(v) => cmd.env(var, v),
             None => cmd.env_remove(var),
         };
-        let mut c = cmd.spawn().unwrap();
-        exec_done(c.id(), b"cat\0");
+        let mut c = held(&mut cmd);
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

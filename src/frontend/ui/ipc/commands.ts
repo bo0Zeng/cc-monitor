@@ -54,7 +54,6 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { Origin } from "../generated/Origin";
 import type { FrontOutcome } from "../generated/FrontOutcome";
 import type { WatchedSession } from "../generated/WatchedSession";
-import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
@@ -67,25 +66,6 @@ import type { RestartHint } from "../generated/RestartHint";
 export interface StopAnswer {
   stopped: "graceful" | "killed" | "not_running";
   pid: number | null;
-}
-
-/**
- * 用户级 PATH 那一格的现状。手写（理由见 `ccm_user_path_status` 那一条），
- * 字段名与 Rust 侧 `profile_installer::UserPathStatus` 的线上名由判据对拍。
- */
-export interface UserPathStatus {
-  /** 这台机器有没有「用户级 PATH」这一档 —— 它是 Windows 独有的。 */
-  supported: boolean;
-  /** 我们那个 bin 目录的绝对路径。探不动 ⇒ null。 */
-  dir: string | null;
-  /** 在不在用户级 PATH 上。🔴 `error` 非空时这一格恒 false，**别单看它**。 */
-  onUserPath: boolean;
-  /** 「加」那条命令的逐字文本（与按钮跑的是同一份字节）。 */
-  addCommand: string | null;
-  /** 「撤」那条命令的逐字文本。 */
-  removeCommand: string | null;
-  /** 探不动时的那一句 ＋ 复制详情（PowerShell 的原话 · 退出码在详情里）。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
-  error: Said | null;
 }
 
 /** 两条开窗命令的结局（壳 `platform/terminal.rs::TerminalOpen`）：开了 · 一个终端都没探到 · 设置里指定的那个不在。 */
@@ -103,19 +83,6 @@ export const commands = {
   /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   cc_set_auto_launch: (args: { enabled: boolean }) =>
     invoke<void>("cc_set_auto_launch", args),
-
-  /**
-   * 用户级 PATH 那一格的现状。现算、不缓存：每调一次后端真跑一趟 `powershell.exe`（几百 ms）⇒ 只在打开那一格 / 点刷新时调，不许轮询。
-   * 返回类型手写（`UserPathStatus`，桶③里唯一不用生成物的一处）：Rust 侧判据
-   * `the_user_path_status_wire_fields_match_the_hand_written_ts` 把线上字段名与这份接口逐字对拍，改了 Rust 不改这里当场红。
-   */
-  ccm_user_path_status: () => invoke<UserPathStatus>("ccm_user_path_status"),
-
-  /** 把我们那个 bin 目录加到用户级 PATH。桶①。 */
-  ccm_user_path_add: () => invoke<void>("ccm_user_path_add"),
-
-  /** 从用户级 PATH 上只摘掉我们那一格。桶①。 */
-  ccm_user_path_remove: () => invoke<void>("ccm_user_path_remove"),
 
   /**
    * 前端性能日志落进 monitor 日志（无 devtools 环境下的唯一取证通道，grep `fe_perf`）。
@@ -148,12 +115,6 @@ export const commands = {
    *  结局同 `open_terminal_window`（`"noWindow"` ＝ 这台找不到终端）。只经 `src/frontend/ui/terminal-open.ts` 调。桶①。 */
   open_local_terminal: (args: { cmd: string; cwd: string | null }) =>
     invoke<TerminalOpened>("open_local_terminal", args),
-
-  /** 本机那条 `ccm` 入口现在是什么样：我们放下去的那一份在哪、它自报什么身份、
-   *  你 PATH 上那个 `ccm` 是不是它，以及给人读的那句话。`LocalCcmEntry` 是生成物 ⇒ **桶③**。
-   *  只读：跑两次 `--ccm-probe`，一个字节都不写；`~/.local/bin/ccm` 下的旧份由用户自己删，产品不删。 */
-  local_ccm_entry_status: (fresh?: boolean) =>
-    invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
 
   /** 开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好、本机那一串由本机后端起会话那一问交回 —— monitor 只开窗）。
    *  Rust 返回 `Result<TerminalOpen, String>`（`"opened"` / `"noWindow"`）⇒ **桶①**。
@@ -207,8 +168,6 @@ export const commands = {
   footprint_client_facts: () =>
     invoke<Record<string, unknown>>("footprint_client_facts"),
 
-  /** 装出来的 `cc-spawn` 在本机跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。扩展页把 cc-bus 装到本机之后问一次。 */
-  cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
   list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),
 

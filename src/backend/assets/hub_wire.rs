@@ -163,9 +163,9 @@ pub(crate) struct SkillLedgerFile {
 pub(crate) struct SkillPlan {
     pub root: String,
     pub dir: String,
-    /// 写的时候 `files-put` 用的 `root`。
+    /// 写的时候 `Door::put` 用的 `root`。
     pub base: String,
-    /// 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+    /// 写的时候 `Door::put` 用的相对前缀：`rel` = `<prefix>/<path>`。
     pub prefix: String,
     pub rows: Vec<SkillPlanRow>,
     pub target: Vec<SkillTargetFile>,

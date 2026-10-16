@@ -16,7 +16,7 @@ const GUARDED: &[&str] = &[
     "src/frontend/shell/src/inbound_client.rs",
     "src/frontend/shell/src/local_backend.rs",
     // 原先被 SFTP 拨号挡路石那张底账挡回的那份：那张账随 SR1b 退役，它今天只照本机后端的计划经 `files` 链路放字节，两道都过。
-    "src/frontend/shell/src/sftp.rs",
+    "src/frontend/shell/src/deploy.rs",
     // 原先被宿主无关判据挡回的那份：`remote-health` 改经注入的 `HealthOut`（`lib.rs::remote_health_out` 造），生产段零窗口把手。
     // 会话流来源是一个目录：整个目录都在人群里（[`guarded_files`] 展开以 `/` 结尾的那一格）。
     "src/frontend/shell/src/stream_source/",
@@ -24,7 +24,7 @@ const GUARDED: &[&str] = &[
 ];
 
 fn repo_root() -> PathBuf {
-    crate::guard_support::repo_root()
+    guard_core::addr::repo_root()
 }
 
 /// 两道守卫共同的扫描面：`(展示名, 绝对路径)`。以 `/` 结尾的那一格是目录，展开成其下每一份 `.rs`。
@@ -33,7 +33,7 @@ fn guarded_files() -> Vec<(String, PathBuf)> {
         .iter()
         .flat_map(|rel| {
             if rel.ends_with('/') {
-                let files = crate::guard_support::stream_source_files();
+                let files = guard_core::addr::stream_source_files();
                 assert!(
                     files.iter().all(|(f, _)| f.starts_with(rel)),
                     "目录那一格 `{rel}` 与会话流来源的住址对不上"

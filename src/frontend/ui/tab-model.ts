@@ -119,6 +119,10 @@ export interface Tab {
   switch: SwitchCells | null;
   /** 需手动（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
+  /** 没人答的提问等几分钟替人答（后端 `history-facts` 的 `autoAnswer`，会话注解里那一格）；关 ⇒ `null`。 */
+  autoAnswer: number | null;
+  /** 上一条提问没人答、已替人答过 ⇒ 后端写好的那一句（`history-facts` 的 `autoAnswered`）；没有 ⇒ `null`。 */
+  autoAnswered: string | null;
   /** 后台任务运行中那一句（后端 `history-facts` 的 `background`：写好的字 · 会走的那一句 · 命令那一格 · 几条）；不是这一态 ⇒ `null`。 */
   backgroundWork: BackgroundWork | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */

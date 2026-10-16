@@ -3,10 +3,10 @@
  */
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
-import { hms } from "../fake/clock";
+import { LAUNCH_FAILED_SCREEN } from "../disk/screen";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
+import { defaultWorld, LOCAL } from "../fake/world";
 import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
 import { emit } from "@tauri-apps/api/event";
 
@@ -95,17 +95,7 @@ function startFailedWorld(): World {
 /** 点了［新建］、那台起好了（tmux 里）但会话一直没报到：那个 tmux 会话还在，画面末几行是启动器的报错。 */
 function unarrivedWorld(): World {
   const w = defaultWorld();
-  const list = w.ops["terminals-list"];
-  w.ops["terminals-list"] = (o, r, ww) => {
-    const got = list(o, r, ww) as { terminals: Record<string, unknown>[] };
-    return { ...got, terminals: [...got.terminals, { ...got.terminals[0], terminal: "tmux-orders-cc-2", tmux_name: "orders-cc-2", title: "orders-cc-2", session: null, clients: [] }] };
-  };
-  w.ops["terminal-preview"] = () => ({
-    lines: ["$ ccm -- claude --modle opus", "claude: error: unknown option '--modle'", "(Did you mean --model?)", "$ "].map((text) => ({ text })),
-    screen: "00000000000000b2",
-    captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
-    captured_at_text: hms(Date.parse("2026-10-06T10:42:05")),
-  });
+  w.disk[LOCAL].bareTmux = [{ name: "orders-cc-2", screen: LAUNCH_FAILED_SCREEN }];
   return w;
 }
 

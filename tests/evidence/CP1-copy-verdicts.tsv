@@ -164,8 +164,6 @@ src/backend/control/files_write.rs:2688	删一组（`control/files_batch.rs`）�
 src/backend/control/files_write.rs:2695	一组改成同一个 unix 权限位（低 12 位，`control/files_batch.rs`）；**跟链接**，所以落点解到底再判一次；\n没有 unix 权限位的平台上那一项回 `no_unix_mode`；每项带改之前的那一份（撤销用）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:2701	同根内复制一组（`control/files_batch.rs`）：先探整组落点，同名而没答 ⇒ 一项不做、回 `exists` 与同名清单；\n               答法 `overwrite` · `skip` · `keep_both`（另起 `名 (2).ext`，撞上往后试）；目录整棵复制、同名不合并；\n               **三条路径各过一遍路径解析**；不覆盖的那几项 `O_EXCL`，探完之后冒出来的同名不盖（那一项 `exists`）；\n               覆盖经暂存旁名原子顶掉；权限位从源抄；树里的链接复制**链接本身**	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:2439	覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\n`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:1996	读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
-src/backend/control/files_write.rs:2003	整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \n               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/files/mod.rs:213	列一个目录的直接子项（名字走原始字节）	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/files/mod.rs:229	一个路径的元数据	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面

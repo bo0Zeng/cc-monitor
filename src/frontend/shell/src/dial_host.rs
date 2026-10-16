@@ -124,7 +124,7 @@ pub(crate) fn request(
     cfg: &RemoteConfig,
     use_: &str,
     extra: serde_json::Value,
-) -> Result<serde_json::Value, String> {
+) -> serde_json::Value {
     let mut req = machine_facts(cfg);
     if let Some(obj) = req.as_object_mut() {
         obj.insert("use".into(), serde_json::json!(use_));
@@ -133,7 +133,7 @@ pub(crate) fn request(
     if let (Some(obj), serde_json::Value::Object(more)) = (req.as_object_mut(), extra) {
         obj.extend(more);
     }
-    Ok(req)
+    req
 }
 
 /// 一台远端**原样的配置**那几格：`{machine, saved, jump, prefer}`（[`request`] 头注逐格）。
@@ -159,7 +159,7 @@ pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
 
 /// 传输台那一趟的拨号请求（本机后端开单时读进去、起跑时拿它开 sftp 会话）。
 /// 用法写 `files`（SFTP 那一族）；后端的传输台只读身份与鉴权那几项，用法不看。
-pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> Result<serde_json::Value, String> {
+pub(crate) fn transfer_dial(cfg: &RemoteConfig) -> serde_json::Value {
     request(cfg, "files", serde_json::json!({}))
 }
 
@@ -375,13 +375,13 @@ async fn open(
 ) -> Result<(DialStream, Ack), Unopened> {
     // 这一趟的总时限从这一刻起算（开链路本身也在里面）。
     let due = tokio::time::Instant::now() + ONE_SHOT_DEADLINE;
-    let client = local_channel().await.map_err(Said::from)?;
+    let client = local_channel().await.map_err(Said::written)?;
     // ★ F05 下半的那条埋点跟着拨号搬到这里：量的是「开链路 ＋（池里没有时）TCP ＋ 握手 ＋ 指纹校验 ＋ 鉴权 ＋ 开通道」。
     // 同一台远端已经有连接时，这个数只剩「开一条 channel」—— 复用的收益就在这一行里看得见。
     let t_handshake = std::time::Instant::now();
     let link = LinkStream::open(client, req.clone(), LINK_CALL_BUDGET)
         .await
-        .map_err(Said::from)?;
+        .map_err(Said::written)?;
     let mut r = BufReader::new(Bounded::new(link, Some((due, ONE_SHOT_DEADLINE))));
     let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage, on_step);
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
@@ -401,7 +401,7 @@ async fn open(
         Ok(Err(e)) => return Err(link_said(e).into()),
         // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
         Err(_) => {
-            return Err(Unopened::from(Said::from(copy_text(
+            return Err(Unopened::from(Said::of(
                 "rsDialHost.open.timeout",
                 &[
                     ("dur", &copy_core::format_elapsed(ACK_DEADLINE)),
@@ -419,7 +419,7 @@ async fn open(
                             .join(", "),
                     ),
                 ],
-            ))));
+            )));
         }
     };
     // 握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
@@ -446,7 +446,7 @@ async fn open(
 pub(crate) fn refused_said(why: String, detail: Option<&str>) -> Said {
     match detail.filter(|d| !d.trim().is_empty()) {
         Some(d) => Said::with_written(why, d),
-        None => Said::from(why),
+        None => Said::written(why),
     }
 }
 
@@ -454,7 +454,7 @@ pub(crate) fn refused_said(why: String, detail: Option<&str>) -> Said {
 pub(crate) fn link_said(e: LinkError) -> Said {
     match &e {
         LinkError::Io(raw) | LinkError::Garbled(raw) => Said::with_raw(e.to_string(), raw),
-        _ => Said::from(e.to_string()),
+        _ => Said::written(e.to_string()),
     }
 }
 
@@ -693,8 +693,7 @@ pub(crate) async fn stream(
         cfg,
         "stream",
         serde_json::json!({ "command": cmd, "progress": true }),
-    )
-    .map_err(Said::from)?;
+    );
     open(cfg, &req, "stream", &mut |_| {}, on_step)
         .await
         .map(|(s, _)| s)
@@ -714,8 +713,7 @@ pub(crate) async fn capture(
             "command": cmd,
             "capture": { "max_bytes": max_bytes, "abort_marker": abort_marker },
         }),
-    )
-    .map_err(Said::from)?;
+    );
     let (mut link, _) = open(cfg, &req, "capture", &mut |_| {}, &mut || {}).await?;
     // 结果那一行最多是两份 `max_bytes` 加 JSON 转义的开销 —— 上限给四倍。
     let cap = (max_bytes as u64).saturating_mul(4).max(ack_line_cap());
@@ -737,7 +735,7 @@ pub(crate) async fn capture(
 // ═══ 部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
 //
 // 用户「SFTP 进本机常驻后端，只写暂存区」：界面进程零 SSH / 零 SFTP。自部署（F08 后端二进制 · `.build_id` ·
-// `ccm` 入口）的**业务判定**留在 monitor（`sftp.rs`，一个判定函数都没动），
+// `ccm` 入口）照本机常驻后端出的计划放字节（`deploy.rs`），
 // 执行交给本机常驻后端那一份 SFTP（`src/backend/ssh-dial/sftp.rs`）—— 它**只许往 `~/.cc-monitor/staging/` 与
 // `~/.cc-monitor/bin/` 写**（越界 ⇒ 应答 `code:"fenced"`，这里原话带回）。线上形状住后端那份头注与协议文档。
 
@@ -763,7 +761,7 @@ pub(crate) struct RemoteFs {
 impl RemoteFs {
     /// 开一条 `files` 链路（拨号 / 池里复用 · 开 sftp 子系统），问一次起始目录（答得出 = 链路通了；值本身没人要）。
     pub(crate) async fn open(cfg: &RemoteConfig) -> Result<RemoteFs, Said> {
-        let req = request(cfg, "files", serde_json::json!({}))?;
+        let req = request(cfg, "files", serde_json::json!({}));
         let (link, _) = open(cfg, &req, "files", &mut |_| {}, &mut || {}).await?;
         let fs = RemoteFs {
             // 长活：一次部署问好几次，**每一问**自带期限（[`FILES_ASK_DEADLINE`] / [`FILES_PUT_DEADLINE`]）。
@@ -811,10 +809,10 @@ impl RemoteFs {
                 .map_err(link_said)
         };
         let v = tokio::time::timeout(deadline, round).await.map_err(|_| {
-            Said::from(copy_text(
+            Said::of(
                 "rsDialHost.ask.timeout",
                 &[("dur", &copy_core::format_elapsed(deadline))],
-            ))
+            )
         })??;
         if let Some(code) = v.get("code").and_then(serde_json::Value::as_str) {
             let message = v

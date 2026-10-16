@@ -19,15 +19,11 @@ describe("机器状态成品", () => {
   it("★ 每一形画出来：连着不出问题行；没连上 / 指纹 / 要更新 / 停用 / 做不了各有一句，修法照成品摆", () => {
     const face = (name: string) => machineFace(decodeMachineState(cases.find((c) => c.name === name)!.machine)!, "gpu-01");
     expect(face("连着")).toMatchObject({ dot: "up", word: "", problem: "", offline: false, needsUpdate: false });
-    expect(face("正在连")).toMatchObject({
-      dot: "unknown",
-      word: copyText("machineState.word.connecting"),
-      problem: copyText("machineState.busy.connecting", { machine: "gpu-01", stage: copyText("machineState.stage.attach") }),
-      tone: "busy",
-      bar: false,
-    });
-    expect(face("正在装")).toMatchObject({ word: copyText("machineState.word.installing"), problem: copyText("machineState.busy.installing", { machine: "gpu-01" }), tone: "busy", bar: true });
-    expect(face("正在更新")).toMatchObject({ word: copyText("machineState.word.updating"), problem: copyText("machineState.busy.updating", { machine: "gpu-01" }), tone: "busy", bar: true });
+    // 正在连 / 装 / 更新那一句是写好的（成品的 `said`），照画、不另拼。
+    const said = (name: string) => cases.find((c) => c.name === name)!.machine.said as string;
+    expect(face("正在连")).toMatchObject({ dot: "unknown", word: copyText("machineState.word.connecting"), problem: said("正在连"), tone: "busy", bar: false });
+    expect(face("正在装")).toMatchObject({ word: copyText("machineState.word.installing"), problem: said("正在装"), tone: "busy", bar: true });
+    expect(face("正在更新")).toMatchObject({ word: copyText("machineState.word.updating"), problem: said("正在更新"), tone: "busy", bar: true });
     expect(face("要密码")).toMatchObject({ dot: "failed", problem: copyText("machineState.down.password"), tone: "error" });
     expect(face("要密码").fixes.map(fixLabel)).toEqual([copyText("machineCard.build.pushKey")]);
     expect(face("密钥被拒")).toMatchObject({ dot: "failed", problem: copyText("machineState.down.auth"), offline: true });

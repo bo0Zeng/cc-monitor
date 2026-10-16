@@ -420,7 +420,7 @@ describe("TabManager 生命周期", () => {
     tm.onLine(mkPayload(7, "u-1") as never); // 同 (sid,seq) 重复 → 去重
     expect(spy.mock.calls.length).toBe(after1);
     tm.onLine(mkPayload(8, "u-2") as never); // 新 seq → 放行
-    expect(spy.mock.calls.length).toBeGreaterThan(after1);
+    expect(spy.mock.calls.length).toBe(after1 + 1);
   });
 
   // === issue #63①：fork 血缘徽标 ===
@@ -770,7 +770,7 @@ describe("TabManager 生命周期", () => {
     tm.onBatchStart();
     tm.onLine(mkContent("act", 101, "a-2")); // active 批期直渲
     const actCalls = spy.mock.calls.length;
-    expect(actCalls).toBeGreaterThanOrEqual(2);
+    expect(actCalls).toBe(2);
     expect(home(tm).store.tabs.get("act")!.window.floorSeq).toBe(100);
 
     tm.onLine(mkContent("bg", 50, "b-1")); // 后台 virgin：收纳
@@ -5187,6 +5187,8 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     background: null,
     mcp: [],
     answerOff: null,
+    autoAnswer: null,
+    autoAnswered: null,
     quietUnread: null,
     ...p,
   });
@@ -6074,7 +6076,9 @@ describe("拖整组 · 多选拖 · 自动滚", () => {
     expect(document.body.querySelector(".tab-drag-ghost")!.textContent).toContain(copyText("tabDrop.ghost.many", { title: "z", n: 1 }).slice(-2));
     up(5);
     expect(home(tm).store.orderedIds).toEqual(["y", "z", "x", "a", "b"]);
-    expect([...bar.querySelectorAll(".tab.selected")].length, "仍选着").toBeGreaterThanOrEqual(2);
+    const selected = ["x", "y", "z", "a", "b"].filter((s) => rootOf(s).classList.contains("selected"));
+    expect(selected, "仍选着").toEqual(["y", "z"]);
+    expect(bar.querySelectorAll(".tab.selected").length).toBe(2);
   });
 
   it("多选一起压在组员中间停住 ⇒ 一起进组，「已移到「订单」 ×2」", () => {
@@ -6395,7 +6399,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段", () 
     tm.onLine(line("wf", 50));
     for (let k = 0; k < 5; k++) await settle();
     const live = turnsAsks();
-    expect(live, "实时来一行就要一次").toBeGreaterThan(before);
+    expect(live, "实时来一行就要一次").toBe(before + 1);
     tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wf", path: "/p/wf.jsonl", seq: 50 });
     for (let k = 0; k < 5; k++) await settle();
     expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
@@ -6668,6 +6672,8 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
     background: null,
     mcp: [],
     answerOff: null,
+    autoAnswer: null,
+    autoAnswered: null,
     quietUnread: null,
   });
   const line = (sid: string, seq: number) =>

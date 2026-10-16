@@ -8,7 +8,7 @@
 //! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
 //! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] · [`build_relation`] |
-//! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] |
+//! | 装那一趟做了什么 | `IPC-PROTOCOL.md` 的 `deploy-install` | [`DeployAction`] |
 //!
 //! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `deploy` crate 一家（`src/backend/deploy/`，桌面后端与手机同一份）；
 //! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
@@ -230,7 +230,7 @@ pub const LINES: &[Key] = &[
     },
 ];
 
-/// 问那台机器的 (OS, arch) 那条命令（一次性 exec，`exec_site_registry` 登记）。
+/// 问那台机器的 (OS, arch) 那条命令（后端部署那一趟一次性 exec）。
 pub const UNAME_CMD: &str = "uname -s -m";
 
 /// `uname -s -m` 的收全结果 → 键。**纯函数**。

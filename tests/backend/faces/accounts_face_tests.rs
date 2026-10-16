@@ -307,7 +307,40 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
         json!({ "name": "lab", "dryRun": true }),
     );
     assert_eq!(dry["applied"], false);
-    assert!(dry["steps"].as_array().unwrap().len() >= 8, "{dry}");
+    let h = t.0.display().to_string();
+    let (acct, lab, cl) = (
+        format!("{h}/.cc-monitor/accounts"),
+        format!("{h}/.cc-monitor/accounts/lab"),
+        format!("{h}/.claude"),
+    );
+    let mut steps = vec![format!("建目录 {acct}"), format!("建目录 {lab}")];
+    for (from, name) in [
+        (format!("{cl}/.credentials.json"), ".credentials.json"),
+        (format!("{h}/.claude.json"), ".claude.json"),
+        (format!("{cl}/backups"), "backups"),
+        (format!("{cl}/policy-limits.json"), "policy-limits.json"),
+        (
+            format!("{cl}/remote-settings.json.synced-at"),
+            "remote-settings.json.synced-at",
+        ),
+        (format!("{cl}/stats-cache.json"), "stats-cache.json"),
+    ] {
+        steps.push(format!("搬文件 {from} → {lab}/{name}"));
+    }
+    steps.extend(["agents", "plans"].map(|d| format!("建目录 {cl}/{d}")));
+    for name in [
+        "CLAUDE.md",
+        "agents",
+        "plans",
+        "projects",
+        "settings.json",
+        "skills",
+    ] {
+        steps.push(format!("建链接 {lab}/{name} → {cl}/{name}"));
+    }
+    steps.extend([".credentials.json", ".claude.json"].map(|f| format!("改权限 {lab}/{f} → 600")));
+    steps.push(format!("写账号清单 {acct}/accounts.json"));
+    assert_eq!(dry["steps"], json!(steps), "{dry}");
     assert_eq!(tree(&t.0), before, "预演动了盘");
 
     let got = ok(&t, "accounts-init", json!({ "name": "lab" }));

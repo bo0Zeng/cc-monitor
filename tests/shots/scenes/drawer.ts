@@ -2,9 +2,8 @@
  * 主窗口状态栏（这个会话的几枚 · 竖线 · 命令）与底部抽屉（任务 · agent · 终端）。
  */
 import type { Scene } from "./index";
-import { Refuse, type World } from "../fake/types";
-import { defaultWorld } from "../fake/world";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import type { World } from "../fake/types";
+import { defaultWorld, LOCAL } from "../fake/world";
 import { emit } from "@tauri-apps/api/event";
 import { Convo } from "../fake/records";
 import { click, mainReady, openTab, waitFor, sleep } from "./helpers";
@@ -35,19 +34,10 @@ function outsideWorld(): World {
   return w;
 }
 
-/** 终端实时画面那一路停了：推一屏之后那台断开。 */
-function liveOfflineWorld(): World {
-  const w = defaultWorld();
-  w.terminalLive = "offline";
-  return w;
-}
-
-/** 那台只能快照：订实时被拒（tmux 低于 3.2）。 */
+/** 那台的 tmux 低于 3.2（边界上的 tmux 替身报 3.1c）：订实时被拒、只能快照。 */
 function snapOnlyWorld(): World {
   const w = defaultWorld();
-  w.ops["terminal-follow"] = () => {
-    throw new Refuse("tmux_too_old", "tmux 3.1c 不支持实时画面 · 需要 3.2 以上");
-  };
+  w.disk[LOCAL].tmuxShim = { version: "3.1c" };
   return w;
 }
 
@@ -126,7 +116,7 @@ export const DRAWER_SCENES: Scene[] = [
   scene(
     "drawer-terminal-failed",
     "底部抽屉 · 终端 · 画面读不出",
-    "那台说「无运行中的 tmux」：终端页顶一条错误条 ＝ 那台写好的一句（原话不上句子）＋［刷新］＋［复制详情］（详情是那台后端写好、monitor 转交的那几行）",
+    "那台抓屏时 tmux 说没有 server：终端页顶一条错误条 ＝ 那台写好的一句（原话不上句子）＋［刷新］＋［复制详情］（详情是那台后端写好、monitor 转交的那几行）",
     async () => {
       await mainReady(ALL_TABS);
       await click("#session-head button[aria-label='看它的终端']");
@@ -137,12 +127,8 @@ export const DRAWER_SCENES: Scene[] = [
     },
     () => {
       const w = defaultWorld();
-      // 没有 tmux server：抓一屏与订实时画面两问一样被拒（订实时要先问名单认终端）。
-      const noServer = (): never => {
-        throw new Refuse("no_server", copyText("terminalReads.preview.noServer"), undefined, "no server running on /tmp/tmux-1000/default");
-      };
-      w.ops["terminal-preview"] = noServer;
-      w.ops["terminal-follow"] = noServer;
+      // 名单认出了那个终端、抓屏那一下 tmux 说没有 server（边界上的 tmux 替身）：抓一屏与实时画面的头一屏都读不出。
+      w.disk[LOCAL].tmuxShim = { noServer: ["capture-pane"] };
       return w;
     },
   ),
@@ -180,13 +166,14 @@ export const DRAWER_SCENES: Scene[] = [
     height: 1000,
     storage: TALL_DRAWER,
   },
-  scene("drawer-terminal-live-stopped", "底部抽屉 · 终端 · 实时断了", "远端会话的实时画面推了一屏之后那台断开：画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条「实时已停 · devbox 断开」＋［重新接上］、输入灰（不自己重连）", async () => {
+  scene("drawer-terminal-live-stopped", "底部抽屉 · 终端 · 实时断了", "远端会话的实时画面推了一屏之后那台断开（后端被杀）：画面留着变淡、头上退回「画面几点 ＋ 重新看」、头下一条「实时已停 · devbox 离线」＋［重新接上］、输入灰（不自己重连）；整台跟着离线", async ({ backend }) => {
     await mainReady(ALL_TABS);
     await openTab(3);
     await click("#session-head button[aria-label='看它的终端']");
     await waitFor("#bottom-drawer pre span");
+    await backend.dropMachine("devbox");
     await sleep(1200);
-  }, liveOfflineWorld),
+  }),
   scene("drawer-terminal-snaponly", "底部抽屉 · 终端 · 只能快照", "那台的 tmux 低于 3.2：照 L1 的样子（画面几点 ＋ 重新看），多一枚「仅快照」，悬停说为什么", async () => {
     await mainReady(ALL_TABS);
     await click("#session-head button[aria-label='看它的终端']");

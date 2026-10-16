@@ -411,7 +411,7 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
     const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
 
     // backend 侧：命令表各族里每一条的 `name: "…"`（`hello.commands` 就从这里派生）＋ typed 那几条（名字随形状指纹表编进来）。
-    let mut backend: Vec<String> = crate::guard_support::backend_registry_sources()
+    let mut backend: Vec<String> = guard_core::addr::backend_registry_sources()
         .iter()
         .flat_map(|(_, prod)| {
             prod.split("name: \"")

@@ -186,9 +186,9 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
 /// 否则「零命中」可能只是剥法把它剥没了。
 #[test]
 fn the_derivation_never_reads_the_gap_table() {
-    let path = crate::guard_support::src_root().join("lib.rs");
+    let path = guard_core::addr::backend_src_root().join("lib.rs");
     let raw = std::fs::read_to_string(&path).expect("读 lib.rs");
-    let prod = crate::guard_support::production_code(&raw);
+    let prod = guard_core::production_code(&raw);
     let needle = "TARGET_GAPS";
     assert!(
         prod.matches(needle).count() >= 1,
@@ -369,7 +369,7 @@ fn every_parity_face_is_populated_on_every_target() {
             f.family
         );
         assert!(
-            crate::guard_support::src_root()
+            guard_core::addr::backend_src_root()
                 .join(f.declared_in)
                 .is_file(),
             "命令面 `{}` 说它住 `{}`，盘上没有这份文件",
@@ -527,7 +527,7 @@ type Tree = std::collections::BTreeMap<String, String>;
 /// 后端 crate 的库那棵树（`main.rs` 是二进制根，不在库的模块树里 ⇒ 不收）。
 fn backend_tree() -> Tree {
     // 走仓里唯一的遍历口径（`scanning_guard_registry` 那条纪律）；本文件住 `tests/backend/`，不在被扫的树里。
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, raw)| {
@@ -1192,7 +1192,7 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     };
     // 账号那一格要一个**真在盘上**的目录（`resolve_account` 会看它在不在）：借后端源码根（一定在，不建不删 ——
     // 建临时目录会让本文件在测试层分区里从「源码扫描」升成「集成」，`test_tiers` 那张表跟着要挪）。
-    let acct_dir = crate::guard_support::src_root();
+    let acct_dir = guard_core::addr::backend_src_root();
     // 账号 0 排第一个：没标默认号 ⇒ 默认号是它（不指定号），基线不落到 `acct-x` 上（否则 `--account acct-x` 与基线同形）。
     let table = AccountTable::from_accounts(vec![
         Account {

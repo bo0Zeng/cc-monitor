@@ -1,7 +1,7 @@
 //! PowerShell profile 路径解析 + 块插入/卸载 + 命令名冲突检测。
 //!
 //! 从 monitor `profile_installer.rs` 搬来**别名块那一半**：规划 · 围栏 · 装 / 卸
-//! 今天在那台机器的后端里算、经它自己的文件管理面写（[`super`]）。用户级 PATH 那一格（本机后端的引导）仍住 monitor。
+//! 今天在那台机器的后端里算、经它自己的文件管理面写（[`super`]）。用户级 PATH 那一格是另一条命令（`control/ccm/user_path.rs`）。
 //!
 //! ## 块标记
 //!
@@ -319,8 +319,6 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
     Ok(expanded)
 }
 
-// `K-R132` 那一节「装上了、能跑、用户敲不到」（用户级 PATH 那一格）留在 monitor（`profile_installer.rs`，本机后端的引导）。
-
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R132` 真机现打逮到的**第二条缺陷**：BOM-less UTF-8 ＋ PS 5.1 ＝ 吞掉一行
 // ═══════════════════════════════════════════════════════════════════════════
@@ -341,7 +339,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // ## 机制
 //
-// 落盘在后端 `files-put`：原样写字节、不加 BOM，写出来的是**不带 BOM 的 UTF-8**。
+// 落盘在后端 `Door::put`：原样写字节、不加 BOM，写出来的是**不带 BOM 的 UTF-8**。
 // 而 **Windows PowerShell 5.1 把不带 BOM 的 `.ps1` 按系统 ANSI 代码页解**
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
 // **落单的前导字节**，它把紧随其后的换行吃掉 ⇒ 下一行被并进注释。
@@ -362,7 +360,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // BOM 是 Microsoft 自己对 PS 5.1 脚本的建议编码，PS 5.1 / PS 7 / Notepad / VSCode
 // 都认。⚠ **不能加在落盘那一层** —— 那一层还有别的用户（项目 `.mcp.json`、别名那份 shell 脚本；
-// 今天那一层是后端的 `files-put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
+// 今天那一层是后端的 `Door::put`，照样是这几家共用），给 JSON 和 `.sh` 加 BOM 是往别人身上引入同族的病。
 // ⇒ 分岔点放在**方言**这一层（[`encode_for_disk`] / [`strip_bom`]），与
 // 「写什么」那一处分岔（[`plan_install`]）同一条线。
 
@@ -390,7 +388,7 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 ///
 /// 切到终端不靠这一块：cc-monitor 点 ↗ 那一刻按终端的控制台认窗口（v9 起块里没有握手、没有后台）。`cc` 进了清单（清单渲染出来的
 /// PowerShell 别名带一行有守卫的 `__ccm_bind` 调用）；没有 tmux 的目标没有 `cct` / `cca`。
-/// 用户级 PATH 那件事是另一格（用户点一下，命令文本由 monitor `profile_installer.rs` 生成）。
+/// 用户级 PATH 那件事是另一格（用户点一下，`ccm-user-path`）。
 ///
 /// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `auto-launch.json` 的那个目录），按 PowerShell
 /// 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`（跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
@@ -404,7 +402,7 @@ pub(crate) fn render_cc_code(monitor_data_dir: &Path) -> String {
 /// idempotent 安装：把别名块写到 profile / rc，已有块则原地替换。用户在 BEGIN/END 块外的内容完全不动。
 ///
 /// v1.7.10 那四道安全加固（先备份 · 真原子替换 · 写后回读 · 盘上有字节却读到空就中止）
-/// **住后端**（`files-put` ／ `files-peek`，本机与远端同一份规则）——
+/// **住后端**（`Door::put` ／ `Door::peek`，本机与远端同一份规则）——
 /// 本进程不再落盘。本函数只答方言那一半：[`plan_install`] ＋ [`encode_for_disk`]，读写经 `door`。
 /// ⚠ 内容与盘上逐字相同时**一个字节都不写**。
 pub(crate) fn install_to_profile(d: &dyn Door, path: &Path) -> Result<(), String> {

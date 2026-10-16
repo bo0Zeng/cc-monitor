@@ -904,7 +904,7 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
     T::deserialize(d).map(Some)
 }
 
-/// 必给、可为 `null` 的一格（`files-put` 的 `expect`：`null` ＝「我读的时候它不在」）。缺席 ⇒ 拒。
+/// 必给、可为 `null` 的一格（`Door::put` 的 `expect`：`null` ＝「我读的时候它不在」）。缺席 ⇒ 拒。
 fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
     Option::<T>::deserialize(d)
 }
@@ -1250,13 +1250,8 @@ pub struct FilesExtractReq {
     pub fresh: Option<bool>,
 }
 
-/// `files-link`：建一条符号链接（`target` 原样写进去）。
+/// 建一条符号链接（只走后端内部的 `Door::link`，不上线）（`target` 原样写进去）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
 #[serde(deny_unknown_fields)]
 pub struct FilesLinkReq {
     pub root: WirePath,
@@ -1294,26 +1289,16 @@ pub struct FilesWrittenReply {
     pub sha256: Sha256Hex,
 }
 
-/// `files-peek`：读改写的读那一半。
+/// 读改写的读那一半（只走后端内部的 `Door::peek`，不上线）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
 #[serde(deny_unknown_fields)]
 pub struct FilesPeekReq {
     pub root: WirePath,
     pub rel: WirePath,
 }
 
-/// `files-peek` 的回包：`exists: false` ⇒ 确定不在（`text` 为 `null`）。
+/// `Door::peek` 的回包：`exists: false` ⇒ 确定不在（`text` 为 `null`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
 #[serde(deny_unknown_fields)]
 pub struct FilesPeekReply {
     pub path: WirePath,
@@ -1321,13 +1306,8 @@ pub struct FilesPeekReply {
     pub text: Option<String>,
 }
 
-/// `files-put`：整份替换一份文本文件（`expect` 必给：`null` ＝ 读的时候它不在）。
+/// 整份替换一份文本文件（只走后端内部的 `Door::put`，不上线）（`expect` 必给：`null` ＝ 读的时候它不在）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
 #[serde(deny_unknown_fields)]
 pub struct FilesPutReq {
     pub root: WirePath,
@@ -1340,28 +1320,20 @@ pub struct FilesPutReq {
         deserialize_with = "present",
         skip_serializing_if = "Option::is_none"
     )]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub backup: Option<bool>,
     #[serde(
         default,
         deserialize_with = "present",
         skip_serializing_if = "Option::is_none"
     )]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub parents: Option<bool>,
 }
 
-/// `files-put` 的回包。
+/// `Door::put` 的回包。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(
-    any(test, feature = "ts"),
-    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
-)]
 #[serde(deny_unknown_fields)]
 pub struct FilesPutReply {
     pub path: WirePath,
-    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub bytes: u64,
     pub changed: bool,
     pub created: bool,
@@ -1498,10 +1470,7 @@ calls! {
     FilesChmodReq => "files-chmod", crate::batch::BatchReply;
     FilesCopyReq => "files-copy", crate::batch::BatchReply;
     FilesExtractReq => "files-extract", FilesTreeReply;
-    FilesLinkReq => "files-link", FilesPathReply;
     FilesWriteTextReq => "files-write-text", FilesWrittenReply;
-    FilesPeekReq => "files-peek", FilesPeekReply;
-    FilesPutReq => "files-put", FilesPutReply;
     FilesDeleteSessionReq => "files-delete-session", FilesPathReply;
     FilesStageChunkReq => "files-stage-chunk", FilesStageChunkReply;
     FilesCommitTextReq => "files-commit-text", FilesWrittenReply;

@@ -3,7 +3,7 @@
 //! | 口 | 答什么 | 谁问 |
 //! |---|---|---|
 //! | [`relay_for_exec`] | 这个号这一发指到哪个中转地址（或不指；地址不随会话变，不带会话段；怎么交给那一家由它的注入格定）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
-//! | `relay-optin` | 直接敲的那一家（入参 `agent`）也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
+//! | [`optin_report_at`] | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那条地址（后端只读、不写那份文件） | 「待办」那一件（`footprint/chores/gather.rs`） |
 //!
 //! 起会话只有 `ccm` 一处：环境、中转地址由那台机器上的 `ccm` 自己定，界面只交一行 `ccm …`。
 //!
@@ -193,9 +193,8 @@ pub(crate) fn keyed_for_exec(
     crate::relay::keyed_with_key_on_disk(&home, url, kind)
 }
 
-/// 路由名那一家的地址插哪一把钥匙：地址只能经命令行参数交给它的那一家（注入格 `Inject::Args`）⇒ 只许直通那一把
-/// （argv 同机别的用户读得到、它也会写进自己的日志）；其余 ⇒ 全权那一把。起会话与「直接敲的也走中转」同一把，
-/// 两处贴出来的地址一模一样。
+/// `ccm` 起会话那一发的地址插哪一把钥匙：地址只能经命令行参数交给它的那一家（注入格 `Inject::Args`）⇒ 只许直通那一把
+/// （argv 同机别的用户读得到、它也会写进自己的日志）；其余 ⇒ 全权那一把。
 pub(crate) fn key_kind_of(agent: &str) -> crate::relay::KeyKind {
     match crate::agents::inject_of_route(agent) {
         Some(crate::agents::Inject::Args(_)) => crate::relay::KeyKind::Pass,
@@ -313,30 +312,7 @@ pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> Op
     }
 }
 
-/// `relay-optin` 的应答。
-#[derive(Debug, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Optin {
-    /// `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
-    #[cfg_attr(
-        test,
-        ts(type = "\"installed\" | \"stale\" | \"absent\" | \"other\" | \"unreadable\"")
-    )]
-    pub(crate) state: &'static str,
-    /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。
-    pub(crate) note: String,
-    /// 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
-    pub(crate) missing: String,
-    /// 读的是哪份文件（这台后端看到的路径）。
-    pub(crate) source: String,
-    /// 要合并进那份文件的那一段（**带钥匙**）；已装或生成不了 ⇒ `null`。
-    pub(crate) snippet: Option<String>,
-    /// 这台我们的中转此刻在不在听。
-    pub(crate) listening: bool,
-}
-
-/// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「待办」那一件同读这一份）。
+/// 一家「直接敲的也走中转」此刻的样子（「待办」那一件读它）。
 pub(crate) struct OptinReport {
     pub(crate) state: OptinState,
     /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。
@@ -348,24 +324,7 @@ pub(crate) struct OptinReport {
     pub(crate) url: Option<String>,
 }
 
-/// 这台、这一家的 [`OptinReport`]（家目录 · 表 · 已登记都按这台现取）。没有家目录 / 那一家没有这一形 ⇒ 拒的那一句。
-pub(crate) fn optin_report(agent: &str) -> Result<OptinReport, (&'static str, String)> {
-    let home = crate::platform::paths::home_dir()
-        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
-    let face = crate::agents::settings_env_face(agent)
-        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
-    let registered =
-        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
-    Ok(optin_report_at(
-        &home,
-        agent,
-        &face,
-        &super::file_face::machine_rows(),
-        registered,
-    ))
-}
-
-/// [`optin_report`] 的本体（家目录 · 那一家 · 表 · 已登记都是参数，判据喂夹具）。
+/// 这一家的 [`OptinReport`]（家目录 · 那一家 · 表 · 已登记都是参数，判据喂夹具；「待办」按这台现取）。
 pub(crate) fn optin_report_at(
     home: &std::path::Path,
     agent: &str,
@@ -382,8 +341,10 @@ pub(crate) fn optin_report_at(
         routed,
         registered,
     ) {
+        // 插哪一把按地址定（这一发恒是 `/t/` ⇒ 只许直通那一把，全权那一把不出后端）。
         Endpoint::Inject { url, .. } => Some(
-            crate::relay::keyed_with_key_on_disk(home, &url, key_kind_of(agent))
+            crate::relay::KeyKind::for_url(&url)
+                .and_then(|kind| crate::relay::keyed_with_key_on_disk(home, &url, kind))
                 .ok_or(copy_text("beUpstreamEndpoint.optin.noKey", &[])),
         ),
         Endpoint::None => None,
@@ -428,26 +389,6 @@ pub(crate) fn optin_report_at(
         missing,
         source: file,
         url,
-    }
-}
-
-/// [`OptinReport`] ⇒ `relay-optin` 的成品（要贴的那一段按那一家的格式拼）。
-pub(crate) fn optin_at(
-    home: &std::path::Path,
-    agent: &str,
-    face: &SettingsEnvFace,
-    routed: &[String],
-    registered: bool,
-    listening: &dyn Fn(u16) -> bool,
-) -> Optin {
-    let r = optin_report_at(home, agent, face, routed, registered);
-    Optin {
-        state: r.state.name(),
-        note: r.note,
-        missing: r.missing,
-        source: r.source.display().to_string(),
-        snippet: r.url.as_deref().map(face.snippet),
-        listening: listening(PORT),
     }
 }
 

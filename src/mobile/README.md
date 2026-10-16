@@ -18,7 +18,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-ui` | 共用主题与反馈 |
-| `core-copy` | 取文口 `copyText` 与大小 · 时长格式（纯 JVM，上屏有字的模块依赖它，`core-claude` · `core-remote` 不上屏、不依赖；构建时从 `src/shared/copy/table.json` 抄手机各模块代码引到的那几条）。手机生产源码不写死界面中文，判据 `tests/copy/mobile-literals.vitest.ts` |
+| `core-copy` | 取文口 `copyText` 与大小 · 时长格式（纯 JVM，上屏有字的模块依赖它，`core-claude` · `core-remote` 不上屏、不依赖；写法都经 JNI 调手机那份核心里的 `copy-core`，JVM 单测加载它的宿主版）。手机生产源码不写死界面中文，判据 `tests/copy/mobile-literals.vitest.ts` |
 
 ## 技术栈
 

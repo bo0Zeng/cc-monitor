@@ -15,7 +15,7 @@ fn judge_named(name: &str) -> bool {
 
 #[test]
 fn no_judge_module_lives_in_the_shell_production_tree() {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let mut seen = 0usize;
     let mut named: BTreeSet<String> = BTreeSet::new();
     for tree in ["src/frontend/shell/src", "src/frontend/filewin/src"] {

@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// 仓里要扫的生产源码：`src/` 下（摘掉 `vendor/`）的 Rust · TS · shell（`.sh` 与无后缀带 shebang 的脚本）。
 /// 返回 `(仓内相对路径, 剥掉注释与测试段之后的正文)`。
 fn production_sources() -> Vec<(String, String)> {
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     let src = root.join("src");
     // 遍历口径只有一份（`guard_core`）：带扩展名的那几种 ＋ 整棵 `src/shared/`（cc-bus 脚本没有扩展名）。
     let mut files = guard_core::scan_tree_excluding(&src, &["rs", "ts", "sh"], &[]);
@@ -578,7 +578,7 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         "`INVARIANTS §47` 的人群（把值 quote 进 shell 串的生产文件 × 外层函数）与登记表对不上（两向）。\n\
          多出来的 = 新长的拼接点：说清拼进去的是什么、外部值靠哪个放行判定（`§47` ① / ②）；登记了而盘上没有 = 删了 / 改了，跟着改表。"
     );
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     for &(f, _, checked, quote_only, ours) in QUOTE_SITES {
         assert!(
             !checked.is_empty() || !quote_only.is_empty() || !ours.is_empty(),

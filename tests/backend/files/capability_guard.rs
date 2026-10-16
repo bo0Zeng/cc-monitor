@@ -221,7 +221,7 @@ fn derive_effect(src: &str) -> Effect {
 /// 是折返路径 ⇒ 后缀比不命中。承重的只剩第二重：本文件住 `tests/backend/files/`、
 /// **根本不在被扫的那棵树里**。
 fn family_sources() -> Vec<(String, String)> {
-    let dir = crate::guard_support::src_root().join("files");
+    let dir = guard_core::addr::backend_src_root().join("files");
     let mut out: Vec<(String, String)> = guard_core::scan_tree!(&dir, &["rs"])
         .into_iter()
         .map(|(p, src)| {

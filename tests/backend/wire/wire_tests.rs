@@ -48,7 +48,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
                  与 write_and_flush_hello 同一个性质：那一刻这条连接上还没有第二个写者。",
         ),
     ];
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let verb = format!("write_{}(", "all");
     let mut found: Vec<(String, usize)> = Vec::new();
     // ⚠ 本条的人群里**必须有 `wire.rs`** —— 握手帧就写在这里。
@@ -485,6 +485,11 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::Probe(crate::wire::Probe {
             ticket: s("t1"),
             cell: serde_json::json!({"reached": "ssh"}),
+        })),
+        both(Frame::Deploy(crate::wire::Deploy {
+            machine: s("box"),
+            step: crate::wire::DeployStep::Update,
+            said: s("更新 box · cc-monitor"),
         })),
         [
             Frame::FilesBatch(crate::wire::FilesBatch {
@@ -1781,14 +1786,14 @@ fn session_frames_say_whether_model_and_permission_can_switch_now() {
 /// ＝ 后端 `wire` 那几个构造口（集合相等）。删除条件：哪天 Rust 能按 crate 限定构造。
 #[test]
 fn the_written_faces_are_built_in_one_place_only() {
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let mut seen = std::collections::BTreeSet::new();
     for dir in ["src", "tests"] {
         for (path, raw) in guard_core::scan_tree!(&repo.join(dir), &["rs"]) {
             if path.starts_with(repo.join("src/vendor")) {
                 continue;
             }
-            let code = crate::guard_support::production_code(&raw);
+            let code = guard_core::production_code(&raw);
             let rel = path
                 .strip_prefix(&repo)
                 .unwrap_or(&path)

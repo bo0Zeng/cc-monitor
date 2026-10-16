@@ -33,12 +33,6 @@ impl PartialEq for AttachErr {
     }
 }
 
-impl From<String> for AttachErr {
-    fn from(s: String) -> Self {
-        AttachErr::Failed(s.into())
-    }
-}
-
 impl From<Said> for AttachErr {
     fn from(s: Said) -> Self {
         AttachErr::Failed(s)
@@ -62,7 +56,7 @@ pub(crate) fn parse_answer(
     machine: &str,
 ) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
-        return Err(copy_core::backend_old(machine).into());
+        return Err(Said::written(copy_core::backend_old(machine)).into());
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
@@ -102,7 +96,7 @@ pub(crate) fn parse_answer(
             } else {
                 Err(AttachErr::Failed(match wrote {
                     Some(d) => Said::relayed_from(msg, d, None),
-                    None => msg.into(),
+                    None => Said::written(msg),
                 }))
             }
         }

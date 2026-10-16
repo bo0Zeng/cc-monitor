@@ -49,7 +49,8 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
-mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
+#[path = "../../tests/backend/golden.rs"]
+mod golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（仅测试构建）
 pub mod history; // 历史清单与注解（history_list · history_annotations）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
@@ -1137,6 +1138,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--sessions-needs",
+    // 各台需手动清单合成一个先后（`sessions-needs-merge`，纯计算）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--sessions-needs-merge",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--accounts-trust",
     // 帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
@@ -1165,8 +1168,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
     // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
     "--bus-state",
-    // 部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
-    "--deploy-plan",
     // 本机那一份放不放（帧面 `place-verdict` 的 CLI 面，自动派生；monitor 自举时跑手上那份字节问它）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
@@ -1230,6 +1231,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--agent-home-check",
     // 「待办」记下一个选择（`chores-mark`，写后端自己的 `~/.cc-monitor/chores.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--chores-mark",
+    // 用户级 PATH 那一格（`ccm-user-path`，typed）派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--ccm-user-path",
     // 离线那台的上次值（`last-seen-read` / `last-seen-write`，读写后端自己的 `~/.cc-monitor/last-seen.json`）派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--last-seen-read",
     "--last-seen-write",
@@ -1244,7 +1247,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-preview",
     "--mcp-sync-apply",
     "--cc-bus-install",
-    "--files-link",
     "--cc-bus-install-state",
     "--skill-install-apply",
     "--aliases-read",
@@ -1336,10 +1338,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 存盘装不进一行时的两步（逐块进暂存区 ＋ 读回拼起来原地覆盖）。登记理由同上。
     "--files-stage-chunk",
     "--files-commit-text",
-    // 用户文件的读改写 ＋ 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
+    // 删历史会话。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-delete-session",
-    "--files-peek",
-    "--files-put",
     "--files-browse",
     "--files-find",
     "--files-index-rebuild",
@@ -1402,6 +1402,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     // 远端那台的小中继（连常驻后端的套接字、原样对拷；monitor 经链路 stream 跑）。⚠ 新子命令 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    // 部署那一趟：暂存区里新传上去的那一份自己换进落点（`control/place_self.rs`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--place-self",
     "--resident-attach",
     "--resident-ensure",
     "--resident-stop",
@@ -2316,11 +2318,6 @@ mod fourth_face_tests;
 #[cfg(test)]
 #[path = "../../tests/backend/main_window_raise_guard.rs"]
 mod window_raise_guard;
-
-#[allow(clippy::items_after_test_module)]
-#[cfg(test)]
-#[path = "../../tests/backend/raw_said_guard.rs"]
-mod raw_said_guard;
 
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]

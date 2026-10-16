@@ -32,7 +32,7 @@ mod tests {
         // ⇒ 但下面这条结论**仍然成立**：本判据不能住在 `control/cc_bus.rs` 的
         //   `#[cfg(test)]` 段里 —— 那种**不经 `#[path]`** 的测试模块，`file!()` 给的
         //   就是 `control/cc_bus.rs` 本身，后缀比**会命中** ⇒ 最该被扫的那份被摘走。
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let files: Vec<(String, String)> = guard_core::scan_tree!(&src_dir, &["rs"])
             .into_iter()
             .map(|(p, s)| {
@@ -66,7 +66,7 @@ mod tests {
         const DECLARED_NOT_READ: &[(&str, &str)] = &[("agents/claudecode/footprint.rs", ".cc-bus")];
         let mut hits: Vec<String> = Vec::new();
         for (name, raw) in &files {
-            let prod = crate::guard_support::production_code(raw);
+            let prod = guard_core::production_code(raw);
             for n in &needles {
                 if DECLARED_NOT_READ.iter().any(|(f, k)| f == name && k == n) {
                     assert_eq!(

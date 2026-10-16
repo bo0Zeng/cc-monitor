@@ -51,7 +51,7 @@
 //! 那时它会以「那一行不见了」的形式红，而那**正是要的**：结构变了就该有人回来重判。
 //! 但反过来，**在别处新开一条更松的路**它看不见。如实登记，不假装它是证明。
 //!
-//! ⚠ 本模块刻意**不与被扫的代码同住一个文件**（`relay/bind_guard.rs` 头注给的理由：
+//! ⚠ 本模块刻意**不与被扫的代码同住一个文件**（理由：
 //! 判据在自己的登记表 / 注释 / 常量里找到自己 ⇒ 恒绿）。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
@@ -349,7 +349,7 @@ mod tests {
     /// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself`
     /// 是一条**递减棘轮**，08-27 当场把一份裸遍历打红过。
     fn crate_production_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        let root = guard_core::addr::backend_src_root();
         guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(path, src)| {
@@ -358,7 +358,7 @@ mod tests {
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                (rel, crate::guard_support::production_code(&src))
+                (rel, guard_core::production_code(&src))
             })
             .collect()
     }

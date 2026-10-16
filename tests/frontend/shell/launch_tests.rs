@@ -91,7 +91,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
 #[test]
 fn no_prose_claims_the_session_container_is_always_tmux() {
     let needle = format!("会话容器{}是 tmux", "本来就");
-    let root = crate::guard_support::repo_root();
+    let root = guard_core::addr::repo_root();
     // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `src/doc/DEVELOPMENT.md`
     // （不在那三份里）**不会红** —— 扫描面本身就是个洞。⇒ 改成「全 `doc/` + 两份 README + 本文件」。
     //
@@ -692,6 +692,27 @@ fn local_posix_spawn_actually_runs_the_command() {
 
 /// 造一份只属于这一条判据的临时目录（名字取中性名，**不进任何断言**）。
 #[cfg(not(windows))]
+/// 终端程序起不来：句子是「启动本机命令失败 · 原因词」，系统原话进复制详情（不只进日志）。
+#[cfg(not(windows))]
+#[test]
+fn a_terminal_that_cannot_start_says_the_reason_and_keeps_the_raw_words() {
+    let term = vec!["/nonexistent-ccm-term/xterm".to_string()];
+    let e = crate::platform::terminal::open_window_via("true", None, Some(&term))
+        .expect_err("不存在的终端起不来");
+    assert_eq!(
+        e.said,
+        copy_text(
+            "rsLaunch.local.spawnFailed",
+            &[(
+                "why",
+                &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+            )]
+        )
+    );
+    let raw = copy_text("detail.label.raw", &[]);
+    assert!(e.detail.contains(&format!("{raw}：")), "{}", e.detail);
+}
+
 fn scratch_dir(tag: &str) -> std::path::PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1104,7 +1125,7 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     let prod = guard_core::production_code(LAUNCH_SRC);
     // 锚点必须**唯一**：Windows 那一份的形参带下划线前缀（`_cmd` / `_cwd`）⇒ 签名不同。
     let head =
-        "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {";
+        "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, Said> {";
     let at = guard_core::find_pinned(&prod, head)
         .unwrap_or_else(|e| panic!("`launch_local_posix` 的签名不是恰好一处 —— 先修锚点：{e}"));
     // 花括号配平切体（本文件唯一一处切块，刻意不另造第二种切法）。

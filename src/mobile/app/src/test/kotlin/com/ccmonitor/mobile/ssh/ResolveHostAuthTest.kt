@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ssh
 
-import com.ccmonitor.mobile.core.data.crypto.CryptoBox
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.HostDao
 import com.ccmonitor.mobile.core.data.db.Identity
@@ -8,6 +7,7 @@ import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.ssh.AuthMethod
+import com.ccmonitor.mobile.testing.PlainCryptoBox
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -35,9 +35,9 @@ class ResolveHostAuthTest {
     @Test
     fun passwordHostReturnsPasswordAuth() =
         runBlocking {
-            val hostRepo = HostRepository(HAFakeHostDao(), NoopCrypto)
+            val hostRepo = HostRepository(HAFakeHostDao(), PlainCryptoBox)
             val host = hostRepo.withPassword(hostBase(), "s3cret") // 加密进 passwordEnc
-            val auth = resolveHostAuth(host, null, IdentityRepository(HAFakeIdentityDao(emptyMap<String, Identity>()), NoopCrypto), hostRepo)
+            val auth = resolveHostAuth(host, null, IdentityRepository(HAFakeIdentityDao(emptyMap<String, Identity>()), PlainCryptoBox), hostRepo)
             assertTrue("有密码 → Password", auth is AuthMethod.Password)
             assertEquals("s3cret", (auth as AuthMethod.Password).password)
         }
@@ -46,8 +46,8 @@ class ResolveHostAuthTest {
     fun keyHostDispatchesByIdentity() =
         runBlocking {
             val host = hostBase().copy(authRef = "id1")
-            val idRepo = IdentityRepository(HAFakeIdentityDao(mapOf("id1" to ksIdentity("id1"))), NoopCrypto)
-            val auth = resolveHostAuth(host, null, idRepo, HostRepository(HAFakeHostDao(), NoopCrypto))
+            val idRepo = IdentityRepository(HAFakeIdentityDao(mapOf("id1" to ksIdentity("id1"))), PlainCryptoBox)
+            val auth = resolveHostAuth(host, null, idRepo, HostRepository(HAFakeHostDao(), PlainCryptoBox))
             assertTrue("无密码有身份 → 按身份路由（keystore→KeystoreSigner）", auth is AuthMethod.KeystoreSigner)
         }
 
@@ -55,8 +55,8 @@ class ResolveHostAuthTest {
     fun pendingIdentityUsedWhenNoPasswordNoAuthRef() =
         runBlocking {
             val host = hostBase() // authRef null, passwordEnc null
-            val idRepo = IdentityRepository(HAFakeIdentityDao(mapOf("pend" to ksIdentity("pend"))), NoopCrypto)
-            val auth = resolveHostAuth(host, "pend", idRepo, HostRepository(HAFakeHostDao(), NoopCrypto)) // 本次选定
+            val idRepo = IdentityRepository(HAFakeIdentityDao(mapOf("pend" to ksIdentity("pend"))), PlainCryptoBox)
+            val auth = resolveHostAuth(host, "pend", idRepo, HostRepository(HAFakeHostDao(), PlainCryptoBox)) // 本次选定
             assertTrue(auth is AuthMethod.KeystoreSigner)
         }
 
@@ -65,18 +65,10 @@ class ResolveHostAuthTest {
         val host = hostBase()
         assertThrows(IllegalStateException::class.java) {
             runBlocking {
-                resolveHostAuth(host, null, IdentityRepository(HAFakeIdentityDao(emptyMap<String, Identity>()), NoopCrypto), HostRepository(HAFakeHostDao(), NoopCrypto))
+                resolveHostAuth(host, null, IdentityRepository(HAFakeIdentityDao(emptyMap<String, Identity>()), PlainCryptoBox), HostRepository(HAFakeHostDao(), PlainCryptoBox))
             }
         }
     }
-}
-
-private object NoopCrypto : CryptoBox {
-    override fun encrypt(plain: ByteArray) = plain
-
-    override fun decrypt(blob: ByteArray) = blob
-
-    override fun isEncrypted(blob: ByteArray) = false
 }
 
 private class HAFakeHostDao : HostDao {

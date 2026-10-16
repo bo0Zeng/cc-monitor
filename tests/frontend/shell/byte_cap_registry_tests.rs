@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "NEEDS_TIER_SPAN",
+        "**毫秒**不是字节：`backend/observe/facts_query.rs` 先答序里一档危险度占多宽，同一档里已等多久只在这一格里动。",
+    ),
+    (
         "LIVE_TEXT_KEEP",
         "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
     ),
@@ -544,6 +548,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/resident.rs",
+        "HELLO_CAP",
+        "停 / 换之前问在听的那一位读的那一行 hello（同上，几 KiB）",
+        "拒收+回错",
+    ),
+    (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
         "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",
@@ -944,11 +954,11 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
         "降级+说清",
     ),
-    // 「直接敲的也走中转」（`relay-optin`，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
+    // 「直接敲的也走中转」（「待办」那一件，只读）读那台用户级设置文件多大；超了按「读不了」说，不当没装。
     (
         "src/backend/agents/claudecode/paths.rs",
         "SETTINGS_CAP_BYTES",
-        "`relay-optin` 读那台 `~/.claude/settings.json` 多大",
+        "「待办」里「直接敲的也走中转」那一件读那台 `~/.claude/settings.json` 多大",
         "降级+说清",
     ),
     // 一次改动的结果里随记录带出的逐段 diff 至多多少字；超了在段的边界停下、立 `patchTruncated`（数照整份）。
@@ -969,7 +979,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/agents/codex/relay.rs",
         "CONFIG_CAP_BYTES",
-        "`relay-optin` 读那台 `~/.codex/config.toml` 多大",
+        "「待办」里「直接敲的也走中转」那一件读那台 `~/.codex/config.toml` 多大",
         "降级+说清",
     ),
     // 资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
@@ -1286,8 +1296,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
 ];
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// ★ **小到这个数以下的就不当体量看**〔audit-0805 §5 1y，08-06 给它一个名字〕。
@@ -2103,7 +2113,7 @@ fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
 fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
     let prod = format!(
         "{}\n{}",
-        crate::guard_support::stream_source_production(),
+        guard_core::addr::stream_source_production(),
         guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"))
     );
     let lines: Vec<&str> = prod.lines().collect();

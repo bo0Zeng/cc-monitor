@@ -55,12 +55,6 @@ const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, 
   ["this.view.ingest", "渲染管线", null, "渲染管线本体（按 seq 门控建卡 / 收纳）"],
 ];
 
-/**
- * 表里标「事件，留在流上」的那几行（异源：设计原文，不是上面那张表）—— 今天一行都不挂在 `onLine` 上：
- * compact 完成随换号重启下沉了后端。
- */
-const DESIGN_TRUE_EVENTS: string[] = [];
-
 /** 一个表达式（去括号 / `as` / 非空断言）是不是以 `roots` 里某个名字为根、只经取属性 / 取下标得来。 */
 function rootedIn(e: ts.Expression, roots: ReadonlySet<string>): boolean {
   let cur: ts.Expression = e;
@@ -151,9 +145,10 @@ describe("〔STC〕L1 · onLine 上只剩真事件", () => {
     );
   });
 
-  it("★ 真事件恰好是那两个；渲染管线只有登记那一行；活卡定稿一行都没有（在后端）", () => {
+  it("★ 没有真事件挂在 `onLine` 上；渲染管线只有登记那一行；活卡定稿一行都没有（在后端）", () => {
     const events = [...new Set(ONLINE_CALLS.filter(([, k]) => k === "真事件").map(([, , e]) => e))].sort();
-    expect(events).toEqual([...DESIGN_TRUE_EVENTS].sort());
+    // 今天一行都不挂在 `onLine` 上：compact 完成随换号重启下沉了后端。
+    expect(events).toEqual([]);
     for (const [c, k, e, why] of ONLINE_CALLS) {
       expect(why.trim().length, `${c} 没写理由`).toBeGreaterThan(0);
       expect(k === "真事件", `${c}：只有真事件那一类带事件名`).toBe(e !== null);

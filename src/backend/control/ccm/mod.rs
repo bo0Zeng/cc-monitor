@@ -33,7 +33,9 @@
 //!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
+pub(crate) mod on_path;
 pub(crate) mod plan;
+pub(crate) mod user_path;
 
 use crate::ccm_line::{argv, is_backend_word, is_own_name, PROFILE_SIGIL, SUBCOMMAND_WORD};
 use crate::platform::child::Child;
@@ -41,8 +43,7 @@ use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
 use plan::{AccountTable, Env, Plan};
 
-/// 这套 CLI 的版本号。**行为变了就要动它** —— 消费者（`ccm_probe.rs`）靠
-/// `version=` 这一行分辨对面是哪一版。
+/// 这套 CLI 的版本号（`--ccm-probe` 的 `version=` · 帧 `ccm-probe` 的 `version`）。**行为变了就要动它**。
 ///
 /// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）；`6` 起是 claude 的壳（
 /// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）；`7` 起认 `@<名>` 与按被叫成的名字取配置文件里那一段。
@@ -408,17 +409,7 @@ struct Planned {
 const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: usize = 4096;
 
-/// 帧命令 `ccm-probe`：**这台的 `ccm` 会哪些** —— 与 `ccm --ccm-probe` 同一张名片（同一组常量）。
-/// 为什么问后端而不是进交互 shell 查 `PATH`：`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`，
-/// 「它会哪些」这一问退化成问它自己。
-/// 应答是**成品** `{version, capabilities, agents, build}`（此前是那几行原文、由 monitor 解析）：
-/// 界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。
-/// 纯函数：不起进程、不碰盘。
-pub(crate) fn answer_probe() -> CcmCard {
-    answer_probe_for(crate::platform::tmux::TMUX_PLATFORM)
-}
-
-/// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）。
+/// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）＋ 终端里敲 `ccm` 走到哪。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -431,15 +422,23 @@ pub(crate) struct CcmCard {
     pub(crate) agents: Vec<&'static str>,
     /// 这一份的 `BUILD_ID`。
     pub(crate) build: &'static str,
+    /// 终端里敲 `ccm` 走到的是不是这一份，与那一句。
+    #[serde(rename = "onPath")]
+    pub(crate) on_path: on_path::OnPath,
 }
 
-/// [`answer_probe`] 的内核（平台档是入参，与 [`probe_output_for`] 同一组来源）。
-pub(crate) fn answer_probe_for(platform: crate::platform::tmux::TmuxPlatform) -> CcmCard {
+/// 帧命令 `ccm-probe` 的成品：与 `ccm --ccm-probe` 同一张名片（同一组常量，[`probe_output_for`]）＋ 终端里敲 `ccm` 走到哪那一格
+/// （[`on_path::here`]）。`ccm` 就是这台后端本身，「它会哪些」退化成问它自己。平台档与那一格是入参。
+pub(crate) fn answer_probe_for(
+    platform: crate::platform::tmux::TmuxPlatform,
+    on_path: on_path::OnPath,
+) -> CcmCard {
     CcmCard {
         version: CCM_VERSION,
         capabilities: crate::ccm_launcher_with(platform),
         agents: agents(),
         build: crate::BUILD_ID,
+        on_path,
     }
 }
 
@@ -448,7 +447,7 @@ crate::wire::typed::codes! {
     pub(crate) enum ProbeErr {}
 }
 
-/// `ccm-probe`：这台的 `ccm` 会哪些。纯函数（不起进程、不碰盘）⇒ 不进阻塞档。
+/// `ccm-probe`：这台的 `ccm` 会哪些 ＋ 终端里敲它走到哪（起一次登录 shell 问 `PATH`，在 `spawn_blocking` 里等）。
 pub(crate) struct CcmProbe;
 
 impl crate::wire::typed::Command for CcmProbe {
@@ -465,7 +464,12 @@ impl crate::wire::typed::Handle for CcmProbe {
         _req: crate::wire::typed::NoArgs,
         _cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<CcmCard, ProbeErr>> + Send + 'static {
-        std::future::ready(Ok(answer_probe()))
+        async move {
+            let here = tokio::task::spawn_blocking(on_path::here)
+                .await
+                .unwrap_or_else(|_| on_path::on_path(&on_path::Reach::Unknown, ""));
+            Ok(answer_probe_for(crate::platform::tmux::TMUX_PLATFORM, here))
+        }
     }
 }
 
@@ -704,8 +708,7 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
     env.inherited_config_dir.is_none()
 }
 
-/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`** —— `ccm_probe.rs::parse_probe_output`
-/// 拿它当判活依据，改它等于把「装没装」这件事判瞎。
+/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`**（认得出这是 ccm 的名片；`cc-spawn` 的能力协商读 `capabilities=` 那一行）。
 ///
 /// # 🔴 `K-R70`：`build=` 那一行答的是「**你是哪一份**」，与 `version=` 不是同一个问题
 ///

@@ -421,7 +421,14 @@ fn dispatch(
         "needs-ask" => Disposition::SpawnData(
             req,
             crate::wire::typed::answer_async::<crate::control::asks::NeedsAsk, _, _>(
-                move |r, _cx| async move { Ok(crate::control::asks::ask(asks, r).await) },
+                move |r, _cx| async move {
+                    Ok(crate::control::asks::ask(
+                        asks,
+                        r,
+                        crate::history::history_annotations::auto_answer_of,
+                    )
+                    .await)
+                },
             ),
         ),
         // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
@@ -465,6 +472,18 @@ fn dispatch(
                         crate::dial::probe::answer_probe(&r, &tx).await.map_err(
                             crate::wire::typed::of_pair(crate::dial::probe::ProbeErr::Failed),
                         )
+                    },
+                ),
+            )
+        }
+        // 给那台装后端：进度帧走**本连接的应答通道**（不丢、排在应答之前）⇒ 与测试连接同一档硬臂。
+        "deploy-install" => {
+            let tx = replies.clone();
+            Disposition::SpawnData(
+                req,
+                crate::wire::typed::answer_async::<crate::control::deploy_plan::DeployInstall, _, _>(
+                    move |r, _cx| async move {
+                        crate::control::deploy_plan::answer_install(r, &tx).await
                     },
                 ),
             )

@@ -2,7 +2,7 @@
 //! 写的规矩（宿主装、线上改不动）。都对一台**进程内**的 SSH 服务端（[`Door`]，回环口上，测试档不许出网）真拨一趟：
 //! 走生产那条 `uses::run`（拨号 → 鉴权 → 开通道 → 阶段行 ＋ ack ＋ 字节），不另写一份拨号。
 
-use crate::guard_support::{register, test_host, TestCred};
+use crate::guard_support::{register, remembered, test_host, TestCred};
 use crate::{DialRequest, StageSink};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -751,4 +751,58 @@ fn the_quiet_sink_of_a_raced_dial_still_reports_progress() {
     quiet.emit(crate::Stage::Established);
     assert_eq!(steps.try_recv().ok(), Some(crate::step::TCP));
     assert_eq!(live.why(), None, "另拨那一条的原因码不进这一趟");
+}
+
+/// ★ 首见的 host key 鉴权过了才交宿主记：鉴权被拒的那一趟握手照样过了核钥匙那一步，但那把钥匙不进信任库
+/// （冒充的端点鉴权不过，写不进终端那一跳要认的那份库）；对的密码再连一次 ⇒ 记下正好那一把、一笔。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_first_seen_key_is_remembered_only_after_login() {
+    let host_key = ed25519_key(31);
+    let (port, _l, _s) = door_keyed(Some("right"), None, Some(vec![host_key.clone()])).await;
+    register("tofu-bad", TestCred::Password("wrong".into()));
+    register("tofu-good", TestCred::Password("right".into()));
+    let req = |key: &str| {
+        request(serde_json::json!({
+            "host": "127.0.0.1", "port": port, "user": "u", "key_path": key,
+            "use": "capture", "command": "echo", "capture": {"max_bytes": 64}
+        }))
+    };
+    let (ack, ..) = open(req("tofu-bad"), crate::uses::Control::none()).await;
+    assert_eq!(ack["ok"], false, "{ack}");
+    assert_eq!(ack["reason"], crate::why::AUTH, "{ack}");
+    assert!(
+        ack["fingerprint"].is_string(),
+        "握手要先过核钥匙那一步：{ack}"
+    );
+    assert_eq!(remembered(port), vec![], "鉴权没过的那一趟把钥匙记下了");
+    let (ack, ..) = open(req("tofu-good"), crate::uses::Control::none()).await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    assert_eq!(
+        remembered(port),
+        vec![("127.0.0.1".to_string(), port, key_line(&host_key))]
+    );
+}
+
+/// ★ 经跳板：每一台鉴权过了才记它自己那一把 —— 外一台过了、记下；内一台鉴权被拒、不记；目标没走到、不记。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_hop_is_remembered_only_after_its_own_login() {
+    let (p_outer, _) = door(Some("a"), None).await;
+    let (p_inner, _) = door(Some("b"), None).await;
+    let (p_target, _) = door(Some("c"), None).await;
+    register("rem-a", TestCred::Password("a".into()));
+    register("rem-b-wrong", TestCred::Password("x".into()));
+    register("rem-c", TestCred::Password("c".into()));
+    let req = request(serde_json::json!({
+        "host": "127.0.0.1", "port": p_target, "user": "u", "key_path": "rem-c",
+        "use": "capture", "command": "uname", "capture": {"max_bytes": 64},
+        "jump": {
+            "host": "127.0.0.1", "port": p_inner, "user": "u", "key_path": "rem-b-wrong", "label": "乙",
+            "jump": {"host": "127.0.0.1", "port": p_outer, "user": "u", "key_path": "rem-a", "label": "甲"}
+        }
+    }));
+    let (ack, ..) = open(req, crate::uses::Control::none()).await;
+    assert_eq!(ack["ok"], false, "{ack}");
+    assert_eq!(remembered(p_outer).len(), 1, "外一台鉴权过了却没记");
+    assert_eq!(remembered(p_inner), vec![], "内一台鉴权没过却记下了");
+    assert_eq!(remembered(p_target), vec![], "目标没走到却记下了");
 }

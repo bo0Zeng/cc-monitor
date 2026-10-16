@@ -3,11 +3,13 @@ package com.ccmonitor.mobile.core.ssh
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
+import com.ccmonitor.mobile.core.rs.Core
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -58,17 +60,23 @@ class RustTransportTest {
         assertTrue(r.stderrTail, r.stderrTail.contains("oops"))
     }
 
-    /** 流式 exec 与常驻流交给核心的那一份拨号请求：连上过就有（关了也还在），照它开的链路复用这一条连接；同一份身份上再握的那条请求一字不差。 */
+    /**
+     * 流式 exec 与常驻流交给核心的那一份拨号请求：连上过就有（关了也还在），照它开的链路复用这一条连接；同一份身份上再握的那条请求一字不差。
+     * 钥匙跟着身份走：这一条与再握的那条都关了，核心里那把就没了（再握一份 ⇒ 编号不在）。
+     */
     @Test
-    fun a_stream_rides_the_same_connection_and_the_dial_request_outlives_the_hold() {
+    fun a_stream_rides_the_same_connection_and_the_keys_go_with_the_last_of_its_identity() {
         val t = connected()
         val out = runBlocking { withTimeout(WALL_CEILING_MS) { t.execStream("printf 'a\\nb\\n'").toList() } }
         assertEquals("a\nb\n", out.joinToString("") { it.toString(Charsets.UTF_8) })
         val req = org.json.JSONObject(t.dialRequest ?: error("连着却没有拨号请求"))
         assertTrue(req.toString(), req.has("host") && !req.has("use"))
+        val next = t.again() ?: error("同一份身份上再握不了")
+        assertEquals(req.toString(), next.dialRequest)
         t.close()
         assertEquals(req.toString(), t.dialRequest)
-        assertEquals(req.toString(), t.again()?.dialRequest)
+        next.close()
+        assertFalse("身份全关了，钥匙还在核心里", Core.holdKey(req.getString("key_path"), true))
     }
 
     @Test

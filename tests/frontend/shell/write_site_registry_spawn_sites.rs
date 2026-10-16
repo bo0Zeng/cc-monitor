@@ -23,34 +23,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           不在用户机器上跑。每台机器起一个真后端、两根管子交产品那条本机读循环 —— 台架要的就是壳的真代码接真后端。",
      "Hidden · JobKillOnClose · Inherit（台架看后端的 stderr）"),
     // 构建期（`build.rs`）那一行（vendor 新鲜度自检起 `git`）随 vendored 引擎整棵删了。
-    ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
-     "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
-          零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
-          而 shell 里的 `command -v` 那种探法只答得了「在不在」，答不了能力集，\
-          拿它当依据渲染就会在老 ccm 上渲出带未知 flag 的命令且**已经没有回落可走**（fail-open）。\
-          `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到。\
-          ⚠ **命令是参数**（D 阶段补审为了能测「挂住」而开）——生产侧唯一实参是 `CCM_PROBE_CMD`，\
-          由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」
-          ★ 三条策略为什么是这三格：探针绝不该在用户桌面上闪窗口；`-lic` 起出来的整棵树超时时要一起收（只杀 `bash` 漏得掉用户 rc 起的东西）；有用的字节只在 stdout 上。",
-     "Hidden · JobKillOnClose · Null"),
-    // ── Windows 那一形的「你 PATH 上那个 `ccm` 是谁」。
-    ("ccm_probe.rs", "probe_via_fresh_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <现拼 PATH 的常量串>` ＋ `powershell.exe -NonInteractive -Command <常量探测串>`（带那份 PATH、照常加载 profile）",
-     "同 `probe_with` 那一行问的是「终端里敲 `ccm` 走到哪」，Windows 上的终端是 PowerShell ⇒ 非起一个加载 profile 的 PowerShell 不可（profile 里的函数 / 别名与 PATH 一样决定走到哪）。\
-          第一跳只读注册表里机器级 ＋ 用户级 PATH（新开终端拿到的是这一份，本进程继承来的可能是改之前的），第二跳带着它问 `Get-Command ccm` ＋ 名片；\
-          两段脚本都是常量（`FRESH_PATH_PS` · `CCM_PROBE_PS`），零插值、不吃用户输入；一个字节都不写
-          ★ 三条策略为什么是这三格：同 `probe_with`：不闪窗口；超时收整棵（profile 里起了什么不知道）；有用的字节只在 stdout 上。",
-     "Hidden · JobKillOnClose · Null"),
-    // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
-    ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
-     "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\
-          上一行问的是「你 PATH 上那个是谁」（非走登录 shell 不可，PATH 就是 rc 决定的），\
-          这一行问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不起，\
-          也就不吃用户 rc 的任何影响。两张名片一比才判得出「你 PATH 上那个是旧的」，\
-          而**只比路径认不出同名不同物** —— 那正是要修的（用户 `~/.local/bin/ccm` 那份旧 bash）。\
-          ⚠ 参数是**路径**，来自 `local_backend::local_ccm_entry_name()` 拼出来的落点，\
-          不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）
-          ★ 三条策略为什么是这三格：同上一行逐字，只有 `Hidden` 那格更重：Windows 上问的是我们自己放下去的 `ccm.exe`（控制台子系统），不带 flag 就是每问一次身份闪一次黑框。",
-     "Hidden · JobKillOnClose · Null"),
     // ── 〔判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
     ("console.rs", "run_helper", "`<本二进制> --ccm-console <件> <进程号…>`（不经 shell）",
      "↗ 认窗口要借别人的控制台（`AttachConsole`），而挂控制台是整个进程的状态：monitor 自己挂着控制台时恒被拒（开发构建是控制台程序）\
@@ -58,10 +30,10 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           参数只有子命令名与进程号 / 窗口句柄（数），不吃用户输入；一个字节都不写
           ★ 三条策略为什么是这三格：`Hidden` —— 不闪窗口（开发构建是控制台程序，小助手起来自己先摘掉那个隐藏控制台）；          `Detached` —— 到点不掐、也不随 monitor 死：切标签页那一件挂着记号标题，掐断它记号就留在终端标题上，小助手自己有 2 秒预算、到点写回标题再退（`ask_helper` 只是不再等）；答话只在 stdout 上。",
      "Hidden · Detached · Null"),
-    ("ccm_probe.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
+    ("backend_once.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
      "本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
           ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
-          ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
+          ★ 三条策略为什么是这三格：`Hidden` —— Windows 上问的是控制台子系统的 `ccm.exe`，不带 flag 每问一次闪一次黑框；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
      "Hidden · JobKillOnClose · Captured"),
     // `dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——
     //   拨号挪进本机那一个常驻后端，经流上的链路做（`link_mux.rs`）。
@@ -84,35 +56,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           **照盘面写、不顺手改**（没有任何 Windows 读数支持那个改动，而这是主用途那条路）。\
           第五列记的是 Plan B 那一跳；本表的对拍粒度是文件，盖不到同函数内两跳的差别 —— 如实记。",
      "NewVisible · Detached · Inherit"),
-    // 🔴 〔`K-R135` / `R88` 09-15〕**这一行就是 `R88` 放行的那一行，只加了这一行。**
-    //
-    // `R87` 原本写着「不需要起进程」——**那是假前提，`R88` 已推翻**：`§0b` 明禁拿
-    // `$env:PATH` 判用户级 PATH（它是机器级＋用户级拼起来的）⇒ **状态 / 加 / 撤三样
-    // 都得碰 `HKCU\Environment`**，而「现在状态」那一格**根本不可能靠用户自己去跑**。
-    //
-    // **为什么必须起进程**：Rust 侧够到那一档只有两条路 —— 起 PowerShell，或直接读写
-    // 注册表。后者现打编不过（`windows::Win32::System::Registry` 是 `E0432`，全仓
-    // `Cargo.toml` 开这个 feature **0 处**、现有注册表调用 **0 处**），而且 `R88` 按份量
-    // 否掉了它：① 直接写注册表会造出**第二份 PATH 编辑实现**，而走 Tauri 命令的理由
-    // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
-    // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
-    // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
-    // 那个 .NET 调用按 `REG_SZ` 写、读回展开值（`%VAR%` 被冻成字面）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
-    // 广播自己做（`profile_installer.rs::SETTING_CHANGE_BROADCAST`）；仍是这一跳、这一段生成的字节，写点仍是加 / 撤两处。
-    //
-    // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
-    // `<脚本>` **只可能是 `profile_installer` 那三个 `render_*` 函数的输出**
-    // （探 / 加 / 撤），**不吃任何用户输入** —— 里面唯一的变量是 `tool_registry` 申报的
-    // 那个目录。同文件的 `the_generated_path_command_edits_only_the_user_scope_and_never_via_setx`
-    // 在数「生产段起进程恰好一处、写用户级 PATH 恰好两处」，别读成「这里能跑任意命令」。
-    ("profile_installer.rs", "run_user_path_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <我们自己生成的那段>`",
-     "`R85` 用户逐字「应当让用户手动点击加，也能管理删除」⇒ **点击即执行是允许的**（`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定）。\
-          必须起进程的理由是**那一档只有 Windows 的用户级环境块里有**，而 Rust 侧够得着它的另一条路（直接写注册表）会造出第二份 PATH 编辑实现、并把 `WM_SETTINGCHANGE` 广播的责任揽到自己身上 —— 两条都被 `R88` 否掉了。\
-          ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
-          ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
-     "Hidden · JobKillOnClose · Captured"),
     // `dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，目录模块，后端 `readonly_guard::spawn_registry` 登记）。
-    ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
+    ("lib.rs", "open_with", "`cmd` / `open` / `xdg-open`",
      "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录
           ★ 三条策略为什么是这三格：`Detached` 是承重的：fire-and-forget，**绝不能是 `JobKillOnClose`** —— 那会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",
      "Hidden · Detached · Inherit"),
@@ -172,7 +117,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           零 CPU、零唤醒 —— 刻意**不**用「隔一会儿看一眼」，那是一个新节拍
           ★ 三条策略为什么是这三格：`Hidden` —— Windows 上不带它系统会**替子进程新开一个可关的控制台**，\
           用户一关 `CTRL_CLOSE_EVENT` 就把文件窗口杀了；egui 那个窗口自己会出来，它不需要控制台。\
-          `Detached` 是**承重的**，与 `lib.rs::open_with_os` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
+          `Detached` 是**承重的**，与 `lib.rs::open_with` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
           `JobKillOnClose` 会在那一瞬间把刚开出来的窗口收掉；顺带买到「关掉 monitor 不带走已开的文件窗口」。\
           `Captured`：它 stderr 上是「窗口为什么没立起来」那几句（例如缺 OpenGL 2.0），双击起的 GUI app 没有 stderr 可跟 \
           ⇒ 接出来，一条线程读到 EOF、逐行记进 monitor 日志、留最后几行给开窗没成 / 开了又退那一句话。",
@@ -187,8 +132,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
 ];
 
 fn src_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 语料 = `src/` 整棵树 **+ `build.rs`**。
@@ -382,7 +327,7 @@ fn every_local_spawn_is_declared() {
         // 今天不是了：走 [`crate::spawn_managed::spawn_managed`] 那个五参数形态的落点
         // **自己不造 `Command`**（出口替它造）⇒ 只数 `Command::new(` 的话，
         // 那种落点会**悄悄从人群里消失**，而它一样在用户机器上起进程
-        //（现打：`lib.rs::open_with_os` 就是这一形）。
+        //（现打：`lib.rs::open_with` 就是这一形）。
         // ⇒ 第二个锚点 = **调用那个唯一出口**。两个锚点是并集，落点只要沾一个就得申报。
         //
         // ⚠ **出口自己那份源码只按第一个锚点数**：在 `spawn_managed.rs` 里面，

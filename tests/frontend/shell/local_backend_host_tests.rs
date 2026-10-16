@@ -115,8 +115,9 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let body = &prod[at..];
     let made = guard_core::find_pinned(body, "let handed = backend_env();")
         .unwrap_or_else(|e| panic!("`start_local_backend` 里没有恰好一处算那份环境：{e}"));
-    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &handed) {")
-        .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
+    let detached =
+        guard_core::find_pinned(body, "match start_detached(&resolve, &landing, &handed) {")
+            .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
     let supervised = guard_core::find_pinned(body, "handed,\n")
         .unwrap_or_else(|e| panic!("被监护那条没交那份环境：{e}"));
     assert!(
@@ -661,7 +662,7 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
     .unwrap_or_else(|e| panic!("{e}"));
     // 等带期限（与本机探针同一段等法），交的环境与起它时同一份。
     for needle in [
-        "crate::ccm_probe::capture_full(",
+        "crate::backend_once::capture_full(",
         ".envs(handed.iter().cloned())",
     ] {
         guard_core::find_pinned(&run, needle).unwrap_or_else(|e| panic!("{e}"));
@@ -818,7 +819,7 @@ fn starting_twice_does_not_spawn_a_second_local_backend_host() {
 /// 那条更是把它逐字叫作「反向自检②」。
 ///
 /// ★ 「字节数地板 → 语义锚点」这个换法**本仓已有判例**：
-/// `guard_support_tests.rs::main_production_section_keeps_its_load_bearing_items` 的头注逐字写着
+/// 规则 `strip_clean.rs::main_production_section_keeps_its_load_bearing_items` 的头注写着
 /// 「字节数地板挡不住『单个文件被剥空/剥过头』…… 这条用**语义锚点**直接钉住那一类失效」。
 fn body_of(prod: &str, head: &str) -> String {
     let at = guard_core::find_pinned(prod, head)
@@ -1401,10 +1402,6 @@ fn the_socket_follows_the_home() {
         relay_route_core::listen_socket_for(a),
         a.join("run").join("backend.sock")
     );
-    assert_eq!(
-        relay_route_core::listen_pid_for(a),
-        a.join("run").join("backend.pid")
-    );
     assert_ne!(
         relay_route_core::listen_socket_for(a),
         relay_route_core::listen_socket_for(Path::new("/home/other/.cc-monitor"))
@@ -1448,25 +1445,6 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
         hello_verdict("HTTP/1.1 200 OK", None, &[]),
         HelloVerdict::Stranger(_)
     ));
-}
-
-/// 「谁在听那个口」那份记录**是上一个 monitor 写的** —— 它可能残缺。
-/// 残缺一律回 `None`，而 `None` 的处置是**不杀**（fail closed）。
-#[test]
-fn a_half_written_owner_record_is_refused_rather_than_guessed() {
-    assert_eq!(
-        parse_listen_owner("123\n/opt/ccm/backend\n"),
-        Some((123, std::path::PathBuf::from("/opt/ccm/backend")))
-    );
-    assert_eq!(
-        parse_listen_owner("123\n"),
-        None,
-        "只有 pid 没有二进制 ⇒ 核对不了身份 ⇒ 不许杀"
-    );
-    assert_eq!(parse_listen_owner("123\n\n"), None, "第二行是空的 ⇒ 同上");
-    assert_eq!(parse_listen_owner("abc\n/x\n"), None);
-    assert_eq!(parse_listen_owner(""), None);
-    assert_eq!(parse_listen_owner("0\n/x\n"), None, "pid 0 不是一个进程");
 }
 
 /// ★★ **起真后端的判据必须 fail-closed 地要一个私有 tmux 隔离。**
@@ -1717,7 +1695,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    - `E2eSandbox` 在 **2** 个 `.rs` 里（就是这两个）—— 这半也是真的；
 ///    - **`embedded-backends` 在 8 个 `.rs` 里**：本文件 · `local_backend.rs` ·
 ///      `src/frontend/shell/build.rs`（`Path::new("embedded-backends")`，**是代码不是散文**）·
-///      `src/frontend/shell/src/tool_registry.rs`（登记表数据）· `src/frontend/shell/src/sftp.rs` ·
+///      `src/frontend/shell/src/tool_registry.rs`（登记表数据）· `src/frontend/shell/src/deploy.rs` ·
 ///      `tests/frontend/shell/write_site_registry.rs` · `src/backend/main.rs` ·
 ///      `src/backend/build_id_guard.rs`（后四个是文档注释 / 错误文案）。
 ///    ⇒ **结论不变**（那 6 个文件里一条起真后端的测试都没有，逐个看过），
@@ -2880,15 +2858,15 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
              写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
     );
     // 按文案键断言，不按原文：原先钉着「下一步」三个字（CP1 裁「改·§2.3」处方形），
-    //   现在认那一臂取的是拒绝那一条、并把 pid 文件交给它当 `pidPath`。
+    //   现在认那一臂取的是拒绝那一条、并把套接字对端的 pid 交给它当 `pid`。
     for (needle, why) in [
         (
             "\"rsLocalBackendHost.start.refusedNotice\"",
             "只报「起不来」是没用的：用户要的是**现在该干什么** —— 那一句住这条文案",
         ),
         (
-            "(\"pidPath\", &(pid_path(&dir)",
-            "「把那个进程停掉」要说得出它是哪个进程 —— pid 记在那个文件里",
+            "(\"pid\", &listener_pid(&sock)",
+            "「把那个进程停掉」要说得出它是哪个进程 —— pid 由内核报（套接字的对端）",
         ),
     ] {
         assert!(
@@ -3278,9 +3256,9 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
     guard_core::assert_block_comment_model_holds(
         &[
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-            &crate::guard_support::tests_root().join("frontend/shell"),
+            &guard_core::addr::tests_root().join("frontend/shell"),
             // 文件窗口独立成包：它的判据搬到 `tests/frontend/filewin/`（代码随 `src` 那棵根的人群声明收）。
-            &crate::guard_support::tests_root().join("frontend/filewin"),
+            &guard_core::addr::tests_root().join("frontend/filewin"),
         ],
         100,
         1200,
@@ -3518,7 +3496,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         // ── 宿主① ────────────────────────────────────────────────
         let bin = sb.bin.clone();
         expect_started(
-            start_detached(&|| Ok(bin.clone()), &sb.envs()),
+            start_detached(&|| Ok(bin.clone()), &bin, &sb.envs()),
             "第一个宿主",
         );
         let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -3527,13 +3505,9 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
 
         // 「谁在听那个口」那份记录要真的落了盘 —— 没有它，下一个宿主停不了它。
         let home = crate::config::resolve_monitor_data_dir().expect("沙箱的家");
-        let owner = read_listen_owner(&home);
-        assert_eq!(
-            owner.as_ref().map(|(p, _)| *p),
-            Some(pid1),
-            "「谁在听」没记对"
-        );
-        println!("E2E-OK KPY2 「谁在听」落了盘且带二进制路径（停按钮的凭据）");
+        let home = relay_route_core::listen_socket_for(&home);
+        assert_eq!(listener_pid(&home), pid1, "套接字的对端不是起出来的那一个");
+        println!("E2E-OK KPY2 套接字的对端就是起出来的那一个（停按钮的凭据）");
 
         // ── 宿主①退出（不碰那个进程 —— 那正是「脱离」）────────────
         sb.forget_like_a_host_that_exited();
@@ -3546,7 +3520,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         // ── 宿主② ────────────────────────────────────────────────
         let bin2 = sb.bin.clone();
         expect_adopted(
-            start_detached(&|| Ok(bin2.clone()), &sb.envs()),
+            start_detached(&|| Ok(bin2.clone()), &bin2, &sb.envs()),
             "第二个宿主",
         );
         let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -3570,7 +3544,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         *DETACHED.lock().expect("锁") = None;
         let bin3 = sb.bin.clone();
         expect_started(
-            start_detached(&|| Ok(bin3.clone()), &sb.envs()),
+            start_detached(&|| Ok(bin3.clone()), &bin3, &sb.envs()),
             "非空对照（换一个数据目录 = 换一个口）",
         );
         let pid3 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -3601,7 +3575,10 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         *DETACHED.lock().expect("锁") = None;
 
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &sb.envs()), "本条");
+        expect_started(
+            start_detached(&|| Ok(bin.clone()), &bin, &sb.envs()),
+            "本条",
+        );
         let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         assert!(alive(pid), "起出来的 pid={pid} 不在进程表里");
 
@@ -3697,7 +3674,7 @@ fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
             }
         }
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &env), "本条");
+        expect_started(start_detached(&|| Ok(bin.clone()), &bin, &env), "本条");
         let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         sb.remember(pid);
         let own = ["CCM_RESIDENT", "CCM_BACKEND_STDERR_LOG"];
@@ -3780,7 +3757,10 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
             env
         };
         let bin = sb.bin.clone();
-        expect_started(start_detached(&|| Ok(bin.clone()), &env_now()), "第一次起");
+        expect_started(
+            start_detached(&|| Ok(bin.clone()), &bin, &env_now()),
+            "第一次起",
+        );
         let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         sb.remember(pid1);
         // 常驻后端的环境里只有常驻开关，没有任何钥匙或钥匙文件（门由内核给）。
@@ -3822,7 +3802,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         std::env::set_var("CLAUDE_CONFIG_DIR", &claude_c);
         let bin2 = sb.bin.clone();
         expect_adopted(
-            start_detached(&|| Ok(bin2.clone()), &env_now()),
+            start_detached(&|| Ok(bin2.clone()), &bin2, &env_now()),
             "改了设置之后再起",
         );
         assert_eq!(
@@ -3851,7 +3831,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         sb.forget_like_a_host_that_exited();
         let bin3 = sb.bin.clone();
         expect_started(
-            start_detached(&|| Ok(bin3.clone()), &env_now()),
+            start_detached(&|| Ok(bin3.clone()), &bin3, &env_now()),
             "停了之后再起",
         );
         let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
@@ -4033,7 +4013,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
     ];
     let before = local_health();
     let out = note_never_started(StartOutcome::Failed {
-        reason: reason.clone().into(),
+        reason: crate::detail::Said::written(reason.clone()),
         looked_at: looked_at.clone(),
     });
     // ① 结局**原样**还回去 —— 记一笔不许动调用方手上的东西。
@@ -4700,4 +4680,41 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
         "报错没说等的是哪个口、等了多久：{}",
         silent.said
     );
+}
+
+/// **用户级 PATH 上写的那个目录（后端按落点算），就是本机真放 `ccm` 下去的那个。**
+/// 真落点：`install_local_ccm_entry` 的 `dir` 实参，`local_backend_host.rs` 算的 `extract_dir`；按源码文本对拍（跑起来要一台 Windows）。
+/// 有人改成用一个中间变量拼路径，它会**红**而不是静默放过：「PATH 指向一个空目录」与「根本没补 PATH」在用户终端上是同一个结果。
+#[test]
+fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
+    let (dir, _) = relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .expect("后端落点的目录");
+    // `.cc-monitor/bin` ⇒ `.join(".cc-monitor").join("bin")` —— 真落点那一行的形状。
+    let want: String = dir
+        .split('/')
+        .map(|seg| format!(".join(\"{seg}\")"))
+        .collect::<Vec<_>>()
+        .join("");
+
+    // 真落点：`install_local_ccm_entry` 的 `dir` 实参是 `local_backend_host.rs` 算的 `extract_dir`。
+    //
+    // ⚠ **比之前先把空白抹掉**：rustfmt 会把 `.join(…)` 链断成几行，按原文 `contains` 会漏掉它。
+    let squeeze = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let want = squeeze(&want);
+    let hosts: [(&str, &str); 1] = [(
+        "local_backend_host.rs",
+        include_str!("../../../src/frontend/shell/src/local_backend_host.rs"),
+    )];
+    for (name, raw) in hosts {
+        let prod = squeeze(&guard_core::production_code(raw));
+        assert!(
+            prod.contains(&want),
+            "`{name}` 的生产段里找不到 `{want}` —— 也就是说\
+                 「PATH 上写的那个目录」与「盘上真放 ccm 的那个目录」已经分家了。\n\
+                 PATH 那一侧现算自后端落点那个常量的 `{dir}`；\
+                 要么那个常量改错了，要么真落点搬了家而这一侧没跟。\n\
+                 ⚠ 指错目录与根本没补 PATH，在用户终端上是**同一个结果**（命令找不到）。"
+        );
+    }
 }

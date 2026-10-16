@@ -66,6 +66,12 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
          一次性进程「1 请求 1 响应 1 退出」里那张表只有它自己、没有任何出口答得到它 ⇒ 结构上答不了。\
          hook 那一侧要的是 `--answer-hook`（它自己连常驻套接字发这一条）。",
     ),
+    // 装后端那一趟边走边推进度：那几帧走**本连接的应答通道**（`deploy` 帧）。
+    (
+        "deploy-install",
+        "装那一趟每走一步推一帧进度到**发起它的那条流连接**的应答通道（壳照它画机器状态）；一次性进程没有那条通道。\
+         它只有帧面一个调用方（壳经本机常驻后端），手机直接调同一份 `deploy::install`。",
+    ),
     // 测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
     (
         "remote-probe",
@@ -156,10 +162,6 @@ const STREAM_ONLY_WHY: &[(&str, &str)] = &[
     (
         "accounts-list",
         "每个号的徽章（API key 号「经中转 / 中转未运行」）读本进程的监听状态；一次性进程里没有中转，只能说「中转未运行」—— 那是假话。",
-    ),
-    (
-        "relay-optin",
-        "「直接敲的也走中转」那一段的成品里「中转在不在」同样读本进程的监听状态，一次性进程里恒答「不在」—— 假话。",
     ),
     (
         "launch-local",
@@ -295,7 +297,7 @@ fn every_wire_command_is_either_on_the_cli_or_has_a_written_reason() {
 #[test]
 fn the_cli_entry_never_names_a_concrete_handler() {
     let raw = include_str!("../../../src/backend/stream/cli.rs");
-    let prod = crate::guard_support::production_code(raw);
+    let prod = guard_core::production_code(raw);
     for banned in [
         "control::launch::",
         "control::kill::",
@@ -322,8 +324,7 @@ fn the_cli_entry_never_names_a_concrete_handler() {
 /// 只是**开始说谎** —— 而 skill 按它的话决定走不走新路 ⇒ 静默降级，没有任何报错。
 #[test]
 fn the_probe_reports_exactly_what_it_can_dispatch() {
-    let raw =
-        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
+    let raw = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         !raw.contains("\"--launch\"") && !raw.contains("\"--kill\""),
         "`probe()` 里出现了硬编码的命令字面量 —— 清单必须从 `REGISTRY` 派生"
@@ -415,7 +416,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "manual-list",
         // 读回配置文件整份：无入参（问的就是「这台」那一份）。
         "profiles-read",
-        // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()
@@ -435,8 +435,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     );
     assert!(!declared.is_empty(), "一条无输入命令都没有 —— 本断言在空转");
     // `run` 必须用的就是这个决定，不是另写一份判断。
-    let prod =
-        crate::guard_support::production_code(include_str!("../../../src/backend/stream/cli.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/backend/stream/cli.rs"));
     assert!(
         prod.contains("if reads_stdin(spec) {"),
         "`run` 不再按 `reads_stdin` 决定读不读 stdin —— 上面那条断言此刻钉的是一个没人用的函数"

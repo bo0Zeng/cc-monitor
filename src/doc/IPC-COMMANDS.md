@@ -1,4 +1,4 @@
-<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen -->
+<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 cargo test --lib -- protocol_doc_gen 现打，再 bash tests/scripts/bless-golden.sh 拷回 -->
 
 # 协议参考（帧 · 命令 · CLI）
 
@@ -221,6 +221,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `ticket` | string | 测试连接那一趟的票（`remote-probe` 交来的） |
 | `cell` | JSON | 一格进度，恰好一个键：`stage` · `reached` · `end` |
 
+### `deploy`
+
+**装 / 升级远端后端那一趟走到哪一步**（`deploy-install` 在跑时才出现，只推给发起它的那条连接）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `machine` | string | 那台的名字（发起时交的 `machine`） |
+| `step` | DeployStep |  |
+| `said` | string |  |
+
 ### `live_card`
 
 `live_card` 帧的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -284,6 +294,15 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `build_id` | string | 这份后端二进制的身份（`BUILD_ID`） |
+=======
+
+#### `DeployStep`
+
+`Deploy::step`：问那台 · 放字节（落点上原来没有 ⇒ 装；有 ⇒ 更新）。
+
+- `plan`
+- `install`
+- `update`
 
 #### `SessionActivity`
 
@@ -387,7 +406,7 @@ hello 的头：版本门第一步只解它（全形解不开时也认得出是�
 - `rotation_strategies` —— 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
-- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
+- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
@@ -1359,22 +1378,6 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `bad_path` · `exists` · `io_failed` · `refused` · `unsupported`
 
-#### `files-link`
-
-建一条符号链接。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-link`
-
-入参 `FilesLinkReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesLinkReq = { root: WirePath, rel: WirePath, target: WirePath, };
-type FilesPathReply = { path: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused`
-
 #### `files-write-text`
 
 覆盖写一份已经在的普通文件。
@@ -1388,38 +1391,6 @@ type FilesWriteTextReq = { root: WirePath, rel: WirePath, content: WirePath, exp
 type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
-
-#### `files-peek`
-
-读改写的读那一半。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-peek`
-
-入参 `FilesPeekReq` · 回包 `FilesPeekReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPeekReply = { path: WirePath, exists: boolean, text: string | null, };
-type FilesPeekReq = { root: WirePath, rel: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `not_text` · `refused` · `too_large`
-
-#### `files-put`
-
-整份替换一份文本文件。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-put`
-
-入参 `FilesPutReq` · 回包 `FilesPutReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPutReply = { path: WirePath, bytes: number, changed: boolean, created: boolean, backup: WirePath | null, };
-type FilesPutReq = { root: WirePath, rel: WirePath, content: WirePath, expect: WirePath | null, backup?: boolean, parents?: boolean, };
 type WirePath = string | { b16: string };
 ```
 
@@ -4011,11 +3982,24 @@ type Annotated = { entry: Entry,
  * 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
  */
 prev: Hide | null, };
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
 type Entry = { starred: boolean, customTitle: string | null, 
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
-hide?: Hide, updatedAt: number, };
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, updatedAt: number, };
 type Hide = "on" | "off";
 type HideAsk = "on" | "off" | "rule";
 type Patch = { 
@@ -4030,7 +4014,11 @@ customTitle?: string | null,
 /**
  * 单个那一格：`on` · `off` · `rule`（摘掉、回到规则）。
  */
-hide?: HideAsk | null, };
+hide?: HideAsk | null, 
+/**
+ * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+ */
+autoAnswer?: AutoAnswer | null, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
@@ -4086,6 +4074,15 @@ type NoArgs = Record<symbol, never>;
 入参 `HistoryListReq` · 回包 `HistoryListReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4109,7 +4106,11 @@ type Entry = { starred: boolean, customTitle: string | null,
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
-hide?: Hide, updatedAt: number, };
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, updatedAt: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -5987,6 +5988,7 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 入参 `NoArgs` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -6024,7 +6026,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6098,9 +6101,13 @@ note: NeedsNote, };
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
- * 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+ * 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
  */
-waiting: Array<NeedsRow>, };
+waiting: Array<NeedsRow>, 
+/**
+ * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
+ */
+answered: Array<AnsweredRow>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -6122,6 +6129,156 @@ type NeedsRow = { sid: string, needs: Needs,
  */
 hidden: Hidden | null, };
 type NoArgs = Record<symbol, never>;
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Words = string;
+```
+
+码：`bad_args`
+
+#### `sessions-needs-merge`
+
+把各台的需手动清单合成一个先后。
+
+收 `args` · 可撤 · CLI：`ccm -- --sessions-needs-merge`
+
+入参 `NeedsMergeReq` · 回包 `NeedsMerged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskKind = "approve" | "answer" | "plan";
+type Hidden = { by: HiddenBy, said: string, };
+type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
+type Needs = { kind: NeedsKind, 
+/**
+ * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
+ */
+tool: string | null, 
+/**
+ * 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
+ */
+call: string | null, 
+/**
+ * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+ */
+sinceMs: number | null, 
+/**
+ * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+ */
+text: Words, 
+/**
+ * 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+ */
+head: Words, 
+/**
+ * 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
+ */
+headCode: string | null, 
+/**
+ * 语气（恒 `need`）。
+ */
+tone: Tone, 
+/**
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
+ */
+rank: number, 
+/**
+ * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ */
+waitedMs: number | null, 
+/**
+ * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
+ */
+waitedText: Words | null, 
+/**
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ */
+ask: NeedsAsk | null, 
+/**
+ * `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+ */
+manualText: Words | null, };
+type NeedsAsk = { 
+/**
+ * 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
+ */
+id: string, 
+/**
+ * 种类（同 `needs.kind` 那一套里的三种：approve · answer · plan）。
+ */
+kind: AskKind, 
+/**
+ * 工具名原样。
+ */
+tool: string, 
+/**
+ * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ */
+run: NeedsAskRun | null, 
+/**
+ * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
+ */
+detail: string, 
+/**
+ * 能选的几项，排好序（「以后不再问」那几项不放第一位）。
+ */
+choices: Array<NeedsChoice>, 
+/**
+ * 提问那一种的题目；别的种类为空。
+ */
+questions: Array<NeedsQuestion>, 
+/**
+ * 何时挂上的（epoch ms，这台的钟）。
+ */
+sinceMs: number, };
+type NeedsAskRun = { id: string, 
+/**
+ * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ */
+kind: string | null, };
+type NeedsAt = { origin: Origin, sid: string, };
+type NeedsChoice = { 
+/**
+ * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
+ */
+id: string, text: Words, tone: Tone, 
+/**
+ * 要不要附一句话：none · optional · required。
+ */
+note: NeedsNote, };
+type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
+type NeedsMachine = { origin: Origin, waiting: Array<NeedsRow>, };
+type NeedsMergeReq = { machines: Array<NeedsMachine>, };
+type NeedsMerged = { order: Array<NeedsAt>, };
+type NeedsNote = "none" | "optional" | "required";
+type NeedsQuestion = { 
+/**
+ * `q0` · `q1` …（答的时候 `picks` 按它键）。
+ */
+id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+/**
+ * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
+ */
+other: boolean, };
+type NeedsQuestionOption = { 
+/**
+ * `q0o0` …
+ */
+id: string, text: string, detail: string | null, };
+type NeedsRow = { sid: string, needs: Needs, 
+/**
+ * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
+ */
+hidden: Hidden | null, };
+type Origin = string;
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type Words = string;
 ```
@@ -6326,7 +6483,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6560,6 +6718,14 @@ background: FactsBackground | null,
  * （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
  */
 answerOff: Words | null, 
+/**
+ * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+ */
+autoAnswer: number | null, 
+/**
+ * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+ */
+autoAnswered: Words | null, 
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
@@ -7497,11 +7663,7 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -7587,6 +7749,71 @@ type FirstRunStepId = "terminal" | "named" | "remote";
 入参 `LastSeenReadReq` · 回包 `LastSeen`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AccountRow = { 
+/**
+ * API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
+ */
+keyMasked: string | null, 
+/**
+ * 同上，那一行的端点。
+ */
+baseUrl: string | null, 
+/**
+ * 账号菜单每一项右边那一枚徽章。
+ */
+badge: Badge, 
+/**
+ * 号牌上那一两个字（号色那一格里画的，唯一写法在后端）。
+ */
+plate: Words, 
+/**
+ * 这个号「5h 那一格」写好的字（同 `quota-read` 那一格：账读不出 ⇒ `5h 读不到`）；没出过数 · 按量号 ⇒ `null`。
+ */
+quota: Words | null, 
+/**
+ * 选不了（`selectable: false`）的那一句：需登录 · 没配 key · 不隔离 · 号目录不在；选得了 ⇒ `null`。
+ * 账号 0 不经选号（起它走「不指定号」那一条）⇒ 恒 `null`。
+ */
+unselectable: Words | null, name: string, 
+/**
+ * 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
+ */
+label: string, email: string, 
+/**
+ * `null` ＝ 账号 0（下游据此不注入配置目录那一格）。
+ */
+configDir: string | null, isDefault: boolean, 
+/**
+ * `isolated` · `in-place`。
+ */
+mode: string, exists: boolean, 
+/**
+ * 凭据文件在不在（不代表凭据有效；可用性看 `authReady`）。
+ */
+loggedIn: boolean, 
+/**
+ * `subscription` · `api-key`。
+ */
+authKind: string, authReady: boolean, 
+/**
+ * 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
+ */
+selectable: boolean, 
+/**
+ * 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+ */
+color: number, };
+type AccountsList = { meta: ListMeta, 
+/**
+ * 每账号一行，清单次序。
+ */
+accounts: Array<AccountRow>, 
+/**
+ * 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）·
+ * 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
+ */
+notice: string | null, };
+type Badge = { text: Words, warn: boolean, title: Words, };
 type ChangedFile = { path: string, what: string, 
 /**
  * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
@@ -7600,11 +7827,7 @@ wholeCovers: Array<string>, file: string | null,
 /**
  * 去哪一处做（设置窗的页 · 栏 · 锚点）。
  */
-go: UndoAt | null, howUrl: string | null, 
-/**
- * 显示时要遮住的那把钥匙。
- */
-mask: string | null, action: ChoreAction, };
+go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
@@ -7623,12 +7846,45 @@ tmux: boolean | null,
 chores: number, own: Array<OwnItem>, };
 type DiffOp = "same" | "del" | "add";
 type DiffRow = { n: number | null, op: DiffOp, text: string, };
-type LastSeen = { accounts: SeenEntry | null, data: SeenData | null, };
+type LastSeen = { accounts: Seen<AccountsList> | null, data: Seen<DataReport> | null, };
 type LastSeenReadReq = { 
 /**
  * 哪台（机器名）。
  */
 origin: Origin, };
+type ListMeta = { 
+/**
+ * 这台建了账号库（清单读得出）。
+ */
+enabled: boolean, acctsDir: string, manifestPath: string, updatedAt: string | null, 
+/**
+ * 账号 0 的配置目录（清单里写了才有）。
+ */
+sharedStore: string | null, 
+/**
+ * 清单里认得的号数。
+ */
+count: number, 
+/**
+ * 清单读不出的那一句。
+ */
+error: string | null, 
+/**
+ * 这台做不了多账号的那一句（做得了 ⇒ `null`）。
+ */
+unsupported: string | null, 
+/**
+ * 删掉默认号之后新会话默认谁（同删号那一条的答案）。
+ */
+nextDefault: string | null, 
+/**
+ * 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
+ */
+effectiveDefault: string | null, 
+/**
+ * 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+ */
+home: string | null, };
 type Origin = string;
 type OwnClass = "truth" | "cache";
 type OwnItem = { 
@@ -7648,21 +7904,18 @@ path: string, dir: boolean, class: OwnClass, exists: boolean,
  * 文件的字节数；目录 / 不在 ⇒ `null`。
  */
 size: number | null, };
-type SeenData = { "state": "kept", 
+type Seen<T> = { "state": "kept", 
 /**
  * 记下的时刻（毫秒）。
  */
-atMs: number, value: DataReport, } | { "state": "unreadable", atMs: number, };
-type SeenEntry = { 
+atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
+type Seen<T> = { "state": "kept", 
 /**
  * 记下的时刻（毫秒）。
  */
-atMs: number, 
-/**
- * 那一份应答原样。
- */
-value: Record<string, unknown>, };
+atMs: number, value: T, } | { "state": "unreadable", atMs: number, };
 type UndoAt = { page: string, tab?: string, anchor?: string, };
+type Words = string;
 ```
 
 码：`bad_args` · `io_failed`
@@ -8013,11 +8266,11 @@ name: string, project: string | null, };
 type SkillLedgerFile = { digest: string, created: boolean, };
 type SkillPlan = { root: string, dir: string, 
 /**
- * 写的时候 `files-put` 用的 `root`。
+ * 写的时候 `Door::put` 用的 `root`。
  */
 base: string, 
 /**
- * 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+ * 写的时候 `Door::put` 用的相对前缀：`rel` = `<prefix>/<path>`。
  */
 prefix: string, rows: Array<SkillPlanRow>, target: Array<SkillTargetFile>, 
 /**
@@ -11303,7 +11556,7 @@ args: Array<string>, };
 
 #### `ccm-probe`
 
-这台的 `ccm` 会哪些。
+这台的 `ccm` 会哪些、终端里敲它走到哪。
 
 不收 `args` · 可撤 · 只在流上
 
@@ -11326,27 +11579,78 @@ agents: Array<string>,
 /**
  * 这一份的 `BUILD_ID`。
  */
-build: string, };
+build: string, 
+/**
+ * 终端里敲 `ccm` 走到的是不是这一份，与那一句。
+ */
+onPath: OnPath, };
 type NoArgs = Record<symbol, never>;
+type OnPath = { verdict: OnPathVerdict, said: string, };
+type OnPathVerdict = "ours" | "other" | "absent" | "unknown";
 ```
 
 码：`bad_args`
 
-#### `deploy-plan`
+#### `ccm-user-path`
 
-那台的后端要不要换、换成哪一格。
+`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤。
 
-收 `args` · 可撤 · CLI：`ccm -- --deploy-plan`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ccm-user-path`
 
-入参 `DeployPlanReq` · 回包 `Planned`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `UserPathReq` · 回包 `UserPath`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Carried = { os: string, arch: string, id: string, };
-type DeployPlanReq = { dial: MachineDial, carried: Array<Carried>, 
+type UserPath = { state: UserPathState, said: string, 
 /**
- * 那台的名字（非空）。
+ * 问不出 / 改没成时的复制详情（原话在里面）；顺利 ⇒ `null`。
+ */
+detail: string | null, 
+/**
+ * 在 ⇒ 撤那一段；不在 ⇒ 加那一段；判不了 ⇒ `null`。
+ */
+command: string | null, };
+type UserPathOp = "read" | "add" | "remove";
+type UserPathReq = { op: UserPathOp, };
+type UserPathState = "on" | "off" | "unknown" | "not_windows";
+```
+
+码：`bad_args`
+
+#### `deploy-install`
+
+给那台装 / 升级后端。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+入参 `DeployInstallReq` · 回包 `Installed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DeployInstallReq = { dial: MachineDial, slots: Array<SlotRow>, 
+/**
+ * 那台的名字（非空；进度帧 `deploy.machine` 也是它）。
  */
 machine: string, };
+type Installed = { 
+/**
+ * `skip`（已是这一版）· `deploy`（放上了这一版）· `keep`（那台不比这一版旧 ⇒ 一个字节没写）。
+ */
+action: "skip" | "deploy" | "keep", 
+/**
+ * 这一趟做了什么那一句（`deploy::Plan::said`）。
+ */
+said: string, 
+/**
+ * 落点上现在那一份自报的身份（`keep` ⇒ 那台上那一份的；否则这一版的）。
+ */
+build: string, 
+/**
+ * 那台的 OS（表 A 的词）。
+ */
+os: string, 
+/**
+ * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+ */
+ack: unknown, };
 type MachineConfig = { 
 /**
  * 首选地址。
@@ -11389,39 +11693,15 @@ use?: string | null,
  * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
  */
 agent_sock?: string | null, };
-type Planned = { 
-/**
- * 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）。
- */
-os: string, arch: string, label: string, 
-/**
- * 那一格这一版带着的字节自报的身份（对照物）。
- */
-expected: string, 
-/**
- * `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）。
- */
-action: "skip" | "deploy" | "keep", 
-/**
- * 人读原因（`skip` 时空串）。
- */
-why: string, 
-/**
- * `keep` 时那台上那一份自报的身份，否则 `null`。
- */
-theirs: string | null, 
-/**
- * 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
- */
-leftovers: Array<string>, 
-/**
- * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
- */
-ack: unknown, };
 type Prefer = { host: string, port: number, };
+type SlotRow = { os: string, arch: string, id: string, 
+/**
+ * 本机上那一格字节的文件（绝对路径；本后端读它，不经帧传字节）。
+ */
+path: string, };
 ```
 
-码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable`
+码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable` · `not_carried` · `fenced` · `place_failed`
 
 #### `place-verdict`
 
@@ -11994,46 +12274,6 @@ type PinnedDay = { origin: Origin, day: string, };
 码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
 失败带 `data` 的码：`element_gone` ⇒ `Gone` · `bad_machine` ⇒ `MachineFault`
-
-#### `relay-optin`
-
-直接敲的 agent 也走中转。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
-
-入参 `OptinReq` · 回包 `Optin`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type AgentKind = string;
-type Optin = { 
-/**
- * `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
- */
-state: "installed" | "stale" | "absent" | "other" | "unreadable", 
-/**
- * 那份文件为什么读不了（`unreadable` 才有，其余空串）。
- */
-note: string, 
-/**
- * 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
- */
-missing: string, 
-/**
- * 读的是哪份文件（这台后端看到的路径）。
- */
-source: string, 
-/**
- * 要合并进那份文件的那一段（**带钥匙**）；已装或生成不了 ⇒ `null`。
- */
-snippet: string | null, 
-/**
- * 这台我们的中转此刻在不在听。
- */
-listening: boolean, };
-type OptinReq = { agent: AgentKind, };
-```
-
-码：`bad_args` · `failed`
 
 #### `drift-report`
 
@@ -12954,9 +13194,9 @@ needs: string | null, };
 | `--bus-state` | ＝ 帧命令 `bus-state`：总线名单 ＋ spawn 台账一次回全 |
 | `--cc-bus-install` | ＝ 帧命令 `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台 |
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
+| `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
-| `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |
@@ -12979,11 +13219,8 @@ needs: string | null, };
 | `--files-home` | ＝ 帧命令 `files-home`：后端这个用户的 home |
 | `--files-index-rebuild` | ＝ 帧命令 `files-index-rebuild`：重建常驻文件名索引：走一遍，做完返回 |
 | `--files-index-status` | ＝ 帧命令 `files-index-status`：索引的新鲜度 / 条目数 / 常驻字节 |
-| `--files-link` | ＝ 帧命令 `files-link`：建一条符号链接 |
 | `--files-ls` | ＝ 帧命令 `files-ls`：列一个目录的直接子项 |
 | `--files-mkdir` | ＝ 帧命令 `files-mkdir`：新建一个目录 |
-| `--files-peek` | ＝ 帧命令 `files-peek`：读改写的读那一半 |
-| `--files-put` | ＝ 帧命令 `files-put`：整份替换一份文本文件 |
 | `--files-read-chunk` | ＝ 帧命令 `files-read-chunk`：按字节寻址分块读回 |
 | `--files-read-text` | ＝ 帧命令 `files-read-text`：读一份文本进编辑器 |
 | `--files-rename` | ＝ 帧命令 `files-rename`：改名 / 同根内移动 |
@@ -13027,6 +13264,7 @@ needs: string | null, };
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
+| `--place-self` | 部署那一趟：暂存区里新传上去的这一份读自己的字节，自报是这一版才 `rename(2)` 盖掉落点 `~/.cc-monitor/bin/ccm`；回 `{placed: true, build_id}`；不在暂存区 ⇒ `outside_staging`；自报不是这一版 ⇒ `not_self`、暂存件当场删 |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--plan-ack` | ＝ 帧命令 `plan-ack`：认可一条要你看（只记在 cc-monitor；键带条目版本，版本换了那一条再出）；推一帧 `changed {plan}` 带新的数 |
 | `--plan-cell-view` | ＝ 帧命令 `plan-cell-view`：一格的 agent 视角（agent 站在这一格时 pb 印给它的那一段，原样） |
@@ -13051,8 +13289,8 @@ needs: string | null, };
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
-| `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起 |
-| `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
+| `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid, replaced: false}`（pid 是套接字对端）；没在 ⇒ 起一个脱离的自己、回 `{pid, replaced}`；`--replace` 在听那一位比自己旧才停掉再起（只升不降） |
+| `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：问套接字在听的是谁 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-day-paint` | ＝ 帧命令 `rotation-day-paint`：在 24 小时条上刷一段 |
 | `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
@@ -13080,6 +13318,7 @@ needs: string | null, };
 | `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
+| `--sessions-needs-merge` | ＝ 帧命令 `sessions-needs-merge`：把各台的需手动清单合成一个先后 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
 | `--sessions-where` | ＝ 帧命令 `sessions-where`：一批会话各在这台哪个终端里 |

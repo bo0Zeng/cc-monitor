@@ -187,7 +187,7 @@ fn derived_in(repo: &Path, file: &Path, src: &str) -> Vec<Derived> {
 }
 
 fn all_derived() -> Vec<Derived> {
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let src = repo.join("src");
     let files = guard_core::scan_tree!(&src, &["rs"]);
     let out: Vec<Derived> = files
@@ -253,7 +253,7 @@ fn every_generated_type_name_has_one_source() {
 /// 正控：落点 · 名字的现算在合成文本上对。
 #[test]
 fn the_export_ruler_works_on_synthetic_text() {
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let backend = repo.join("src/backend");
     let wire = repo.join("src/common/cmd-wire");
     let w = |s: &str| format!("#[cfg_attr(test, {s})]\n");

@@ -313,7 +313,7 @@ mod tests {
     /// （`the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split` 守着这件事）。
     /// 本条的人群里没有本文件，靠的是**住址**：判据住 `tests/backend/`，不在被扫的 `src/` 下。
     fn sources() -> Vec<(String, String)> {
-        let src_dir = crate::guard_support::src_root();
+        let src_dir = guard_core::addr::backend_src_root();
         let files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_dir, &["rs"]);
         files
             .into_iter()

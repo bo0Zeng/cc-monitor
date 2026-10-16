@@ -85,8 +85,8 @@ fn every_test_that_uses_this_probe_stays_single_threaded() {
     // 红得对，而它红的正是「一棵树掉出全部扫描面」（`§5.4b` 的第四种形状）。
     // ⇒ 两棵根，互不包含；排除**明写**（本文件的代码里有 `reset_peak(` 当 needle 的字面量，
     //   而 `scan_tree_excluding` 摘不到就 panic ⇒ 本文件改名会出声）。
-    let src_root = crate::guard_support::src_root();
-    let tests_root = crate::guard_support::tests_root();
+    let src_root = guard_core::addr::backend_src_root();
+    let tests_root = guard_core::addr::backend_tests_root();
     let mut files = guard_core::scan_tree_excluding(&src_root, &["rs"], &[]);
     files.extend(guard_core::scan_tree_excluding(
         &tests_root,
@@ -95,7 +95,7 @@ fn every_test_that_uses_this_probe_stays_single_threaded() {
     ));
     // 中转 crate 的单测住 `tests/comms/outward/`。
     files.extend(guard_core::scan_tree_excluding(
-        &crate::guard_support::comms_tests_root(),
+        &guard_core::addr::comms_tests_root(),
         &["rs"],
         &[],
     ));

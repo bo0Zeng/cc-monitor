@@ -1,5 +1,5 @@
-//! **执行与备份**：按一份计划落盘 —— 每一步都经这台的文件管理面（[`Door`]：`files-mkdir` · `files-link` · `files-copy` ·
-//! `files-rename` · `files-delete` · `files-chmod` · `files-put`），判据给的是落在临时家目录上的同一扇门。
+//! **执行与备份**：按一份计划落盘 —— 每一步都经这台的文件管理面（[`Door`]：`files-mkdir` · `Door::link` · `files-copy` ·
+//! `files-rename` · `files-delete` · `files-chmod` · `Door::put`），判据给的是落在临时家目录上的同一扇门。
 //!
 //! 先备份再改：一趟改动之前在 `<账号库>/.backup-<时间戳>/` 建一份备份（`0700`）；每一步动一份既有的东西之前先把它原样
 //! 拷进 `root/<它的绝对路径>`，**这一步真做成了之后**才往 `undo.tsv` 记一行（`RESTORE\t<路径>` = 还原那一份 ·

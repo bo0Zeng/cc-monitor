@@ -453,7 +453,7 @@ fn warming_the_listing_leaves_nothing_to_rescan() {
 /// 〔perfC #4〕接线：`main.rs` 起来就热清单缓存，恰好一处（按行为量要起真二进制再从外面看缓存）。
 #[test]
 fn main_warms_the_listing_once() {
-    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(
         &main,
         "history::listing::warm_listing_in_background(agent_home.clone());",
@@ -493,7 +493,7 @@ fn background_warmers_run_at_low_priority() {
             include_str!("../../../src/backend/observe/search_query.rs"),
         ),
     ] {
-        let src = crate::guard_support::production_code(src);
+        let src = guard_core::production_code(src);
         assert!(
             src.contains("crate::platform::proc::lower_this_thread();"),
             "{file} 的后台热缓存线程没降优先级"

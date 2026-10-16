@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// 本机读面登记表：`(相对 src/frontend/shell 的路径, 外层函数 / 项, 类别, 为什么 + 退役归谁)`。
 ///
-/// 每一处碰本机 claude 目录的源码按「文件 × 外层项」认（[`crate::guard_support::enclosing_fn`]）：
+/// 每一处碰本机 claude 目录的源码按「文件 × 外层项」认（[`guard_core::addr::enclosing_fn`]）：
 /// 新的一处 ⇒ 下面那条红（直读点不许无声地长）；退役了 ⇒ **也红**（把那一行删掉）。
 const REGISTERED: &[(&str, &str, &str, &str)] = &[];
 
@@ -40,7 +40,7 @@ fn hit_fns(prod: &str) -> Vec<String> {
     let lines: Vec<&str> = code.lines().collect();
     (0..lines.len())
         .filter(|&i| ns.iter().any(|n| lines[i].contains(n.as_str())))
-        .map(|i| crate::guard_support::enclosing_fn(&lines, i))
+        .map(|i| guard_core::addr::enclosing_fn(&lines, i))
         .collect()
 }
 
@@ -106,16 +106,13 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
     ),
     // 数据位置页列本机后端家里那几样的那一行摘了：那一块改照本机后端 `data-report` 的 `own` 画，壳不再伸手进家目录。
+    // 这一版带着的远端后端那几格落成本机文件，交本机后端 `deploy-install` 读（不经帧传字节）。
     (
-        "ccm_probe.rs",
-        "local_ccm_entry_now",
-        "`~/.cc-monitor/bin/<本机 ccm 入口名>`（`K-R69`：在不在 + 它自报的身份）",
-        "**不是伸手拿用户的东西**：这是 monitor 自己的目录，那一份也是我们自己放下去的\
-             （写侧登记在 `write_site_registry` 的 `local_backend.rs::extract_embedded_to`；它就是后端本身）。\
-             `home_dir()` 只为「每个用户各一份」。\
-             🔴 **它刻意够不到 `~/.local/bin/ccm`** —— 用户那份旧的由产品**一个字节都不碰**\
-             （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\
-             问出来的，不是靠 stat 一个路径（比路径认不出同名不同物）。",
+        "deploy.rs",
+        "slots_dir",
+        "`~/.cc-monitor/bin/slots/<os>-<arch>`（这一版带着的远端后端字节）",
+        "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。每个进程落一次；\
+             写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
     ),
     // 文件窗口程序的落点：monitor 旁边没有它时，把自带那份放到 `~/.cc-monitor/bin/` 再起。
     (

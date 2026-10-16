@@ -1,22 +1,53 @@
 {
-  "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <LINE> 是机器上会变的几格。",
-  "book": "# 我的配置\n[mycc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n\n[mycct]\nfrom = \"mycc\"   # tmux 版\nccm-tmux = true\n\n[teamcct]\nfrom = \"mycct\"\naccount = \"team\"\n\n[workcct]\nfrom = \"mycct\"\ntmux-sise = \"200x50\"\n\n[pcc]\nbase = true\ncwd = \"/srv/p\"\nargs = [\"--model\", \"opus\"]\n",
-  "manifest": {
-    "accounts": [
+  "basesReply": {
+    "bases": [
       {
-        "configDir": "<HOME>/.cc-monitor/accounts/work",
-        "email": "",
-        "isDefault": true,
-        "name": "work"
+        "from": null,
+        "name": "mycc",
+        "said": "当前终端 · 在 ~ 敲进 ~/projects/notes",
+        "selectable": true
       },
       {
-        "configDir": "<HOME>/.cc-monitor/accounts/team",
-        "email": "",
-        "isDefault": false,
-        "name": "team"
+        "from": "mycc",
+        "name": "mycct",
+        "said": "+ tmux · 自动取名",
+        "selectable": false
+      },
+      {
+        "from": null,
+        "name": "pcc",
+        "said": "当前终端 · 不用账号 · 进 /srv/p · 交给 agent --model opus",
+        "selectable": true
       }
+    ]
+  },
+  "book": "# 我的配置\n[mycc]\ncwd-if = [[\"~\", \"~/projects/notes\"]]\n\n[mycct]\nfrom = \"mycc\"   # tmux 版\nccm-tmux = true\n\n[teamcct]\nfrom = \"mycct\"\naccount = \"team\"\n\n[workcct]\nfrom = \"mycct\"\ntmux-sise = \"200x50\"\n\n[pcc]\nbase = true\ncwd = \"/srv/p\"\nargs = [\"--model\", \"opus\"]\n",
+  "codes": {
+    "profiles-bases": [
+      "bad_args",
+      "refused"
     ],
-    "version": 1
+    "profiles-from-line": [
+      "bad_args",
+      "refused"
+    ],
+    "profiles-impact": [
+      "bad_args",
+      "refused"
+    ],
+    "profiles-read": [
+      "bad_args",
+      "refused"
+    ],
+    "profiles-resolve": [
+      "bad_args",
+      "refused"
+    ],
+    "profiles-write": [
+      "bad_args",
+      "refused",
+      "stale"
+    ]
   },
   "impactArgs": {
     "changes": [
@@ -33,6 +64,39 @@
         "was": "mycct"
       }
     ]
+  },
+  "impactReply": {
+    "affected": [
+      {
+        "changes": [
+          {
+            "after": "tmux · 名称固定 work",
+            "before": "tmux · 自动取名",
+            "label": "在哪起",
+            "slot": "tmux"
+          }
+        ],
+        "name": "teamcct",
+        "problem": null
+      }
+    ]
+  },
+  "manifest": {
+    "accounts": [
+      {
+        "configDir": "<HOME>/.cc-monitor/accounts/work",
+        "email": "",
+        "isDefault": true,
+        "name": "work"
+      },
+      {
+        "configDir": "<HOME>/.cc-monitor/accounts/team",
+        "email": "",
+        "isDefault": false,
+        "name": "team"
+      }
+    ],
+    "version": 1
   },
   "readReply": {
     "accounts": [
@@ -282,8 +346,8 @@
       "teamcct"
     ],
     "line": null,
-    "lineShort": null,
     "lineError": "账号 'team' 不可用 · 不在 <HOME>/.cc-monitor/accounts/accounts.json 或其目录不存在 · 可用 work team",
+    "lineShort": null,
     "problem": null,
     "rows": [
       {
@@ -320,74 +384,10 @@
       }
     ]
   },
-  "impactReply": {
-    "affected": [
-      {
-        "changes": [
-          {
-            "after": "tmux · 名称固定 work",
-            "before": "tmux · 自动取名",
-            "label": "在哪起",
-            "slot": "tmux"
-          }
-        ],
-        "name": "teamcct",
-        "problem": null
-      }
-    ]
-  },
-  "basesReply": {
-    "bases": [
-      {
-        "from": null,
-        "name": "mycc",
-        "said": "当前终端 · 在 ~ 敲进 ~/projects/notes",
-        "selectable": true
-      },
-      {
-        "from": "mycc",
-        "name": "mycct",
-        "said": "+ tmux · 自动取名",
-        "selectable": false
-      },
-      {
-        "from": null,
-        "name": "pcc",
-        "said": "当前终端 · 不用账号 · 进 /srv/p · 交给 agent --model opus",
-        "selectable": true
-      }
-    ]
-  },
   "writeReply": {
     "fingerprint": "264-1093cf62d3b20d25",
     "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
     "wrote": true
   },
-  "codes": {
-    "profiles-bases": [
-      "bad_args",
-      "refused"
-    ],
-    "profiles-from-line": [
-      "bad_args",
-      "refused"
-    ],
-    "profiles-impact": [
-      "bad_args",
-      "refused"
-    ],
-    "profiles-read": [
-      "bad_args",
-      "refused"
-    ],
-    "profiles-resolve": [
-      "bad_args",
-      "refused"
-    ],
-    "profiles-write": [
-      "bad_args",
-      "refused",
-      "stale"
-    ]
-  }
+  "说明": "设置窗「别名与配置文件」五口（profiles-read / -resolve / -impact / -bases / -write）的跨语言金样：后端 page_tests.rs::the_profiles_wire_matches_the_cross_language_golden 现算对拍，界面 profiles-reads.ts 的解码器读同一份。<HOME> · <LINE> 是机器上会变的几格。"
 }

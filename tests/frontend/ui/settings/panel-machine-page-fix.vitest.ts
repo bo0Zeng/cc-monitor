@@ -143,6 +143,7 @@ describe("机器单页问题行的修法接到真流程", () => {
       state: "host_key_changed",
       reason: null,
       stage: null,
+      said: null,
       version: null,
       versionRelation: null,
       os: null,

@@ -144,7 +144,7 @@ const FILES: &[(&str, &[u8])] = &[
 ];
 
 /// ★ **白名单（独立 realpath 围栏）**：`<skills 根>` 若已在，解到底必须仍在它的上一层底下（挡「skills 是个指向别处的软链」）。
-/// 还不在 ⇒ 写的时候逐级建（`files-put` 的 `parents`，每一级各过写口那道围栏）。回 `(写的根, 落点)`：根 = skills 根的上一层。
+/// 还不在 ⇒ 写的时候逐级建（`Door::put` 的 `parents`，每一级各过写口那道围栏）。回 `(写的根, 落点)`：根 = skills 根的上一层。
 fn fenced_root(skills: &Path) -> Result<(PathBuf, PathBuf), crate::common::said::Said> {
     let top = skills
         .parent()

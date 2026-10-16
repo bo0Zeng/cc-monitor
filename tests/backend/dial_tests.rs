@@ -117,18 +117,18 @@ fn dial_locality(corpus: &[(String, String)]) -> Result<usize, String> {
 /// `dedup_by` 收掉），而**刻意不删**：它把「被测那一份一定在人群里」钉成一件
 /// **不依赖扫描面**的事 —— 扫描面哪天被改窄（只扫某个子目录），少扫不会红，而它还在。
 fn crate_sources() -> Vec<(String, String)> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let mut out: Vec<(String, String)> = Vec::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
         // 住址按模块树认（拨号核心那个包认作 `ssh-dial/<文件>`，`guard_core::module_address`）。
         let rel = guard_core::module_address(&root, &path);
-        out.push((rel, crate::guard_support::production_code(&src)));
+        out.push((rel, guard_core::production_code(&src)));
     }
     // 被测那一份。它走普通遍历**本来就在**人群里（自摘不生效，理由见本函数头注）；
     // 这一份是**冗余但刻意保留**的第二个来源，尾部 `dedup_by` 收掉重复。
     out.push((
         "dial/mod.rs".to_string(),
-        crate::guard_support::production_code(include_str!("../../src/backend/dial/mod.rs")),
+        guard_core::production_code(include_str!("../../src/backend/dial/mod.rs")),
     ));
     out.sort();
     out.dedup_by(|a, b| a.0 == b.0);
@@ -162,9 +162,8 @@ fn the_dial_only_happens_under_dial_home() {
 /// ② `--dial` 那条老入口**零处**（它删了；留着一半 = `is_query_mode` 认它却没有臂接，v3.4.0 那一形）。
 #[test]
 fn the_link_arms_are_actually_wired_into_the_dispatch() {
-    let inbound_prod = crate::guard_support::production_code(include_str!(
-        "../../src/backend/stream/inbound/mod.rs"
-    ));
+    let inbound_prod =
+        guard_core::production_code(include_str!("../../src/backend/stream/inbound/mod.rs"));
     assert!(
         inbound_prod.len() > 3_000,
         "剥完 stream/inbound/ 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",
@@ -194,8 +193,7 @@ fn the_link_arms_are_actually_wired_into_the_dispatch() {
         let without = inbound_prod.replace(call.as_str(), "nothing_at_all(");
         assert_eq!(without.matches(call.as_str()).count(), 0);
     }
-    let root_prod =
-        crate::guard_support::production_code(&crate::guard_support::backend_root_source());
+    let root_prod = guard_core::production_code(&guard_core::addr::backend_root_source());
     let flag = format!("{}{}", "\"--", "dial\"");
     assert_eq!(
         root_prod.matches(flag.as_str()).count(),
@@ -560,8 +558,7 @@ fn a_dial_error_is_bucketed_into_a_stage_label() {
 /// 且 `Extra(` 只在 `place` 里造。针运行时拼。
 #[test]
 fn the_multi_open_judge_lives_in_one_function() {
-    let src =
-        crate::guard_support::production_code(include_str!("../../src/backend/ssh-dial/pool.rs"));
+    let src = guard_core::production_code(include_str!("../../src/backend/ssh-dial/pool.rs"));
     let body = |name: &str| -> String {
         let at = src
             .find(&format!("fn {name}("))
@@ -659,8 +656,7 @@ async fn dropping_the_guard_closes_the_channel_exactly_once() {
 /// exec 走守卫里那一半、收全走读半边；裸通道（`&channel` / `&mut channel`）在那一臂里零处。
 #[test]
 fn the_capture_arm_holds_its_channel_under_the_close_guard() {
-    let src =
-        crate::guard_support::production_code(include_str!("../../src/backend/ssh-dial/uses.rs"));
+    let src = guard_core::production_code(include_str!("../../src/backend/ssh-dial/uses.rs"));
     let at = guard_core::find_pinned(&src, "Use::Capture => {")
         .unwrap_or_else(|e| panic!("capture 那一臂不是恰好一处：{e}"));
     let end = guard_core::find_pinned(&src, "Use::Forward => {")

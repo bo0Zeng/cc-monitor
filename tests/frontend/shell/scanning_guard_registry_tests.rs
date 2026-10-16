@@ -20,7 +20,6 @@ const PENDING: &[&str] = &[
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/session_name_registry_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
-    "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
     "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
@@ -133,8 +132,8 @@ fn guards_declaring_a_table(test_src: &str) -> Vec<(String, String)> {
 }
 
 fn repo_root() -> PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::repo_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::repo_root()
 }
 
 /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
@@ -177,7 +176,7 @@ fn test_regions(src: &str) -> String {
 ///    单例守卫里各指各的常量），**真正的共用开关只有字段表空那一处**，随手写字段表一起删了。
 /// ② **多条判据共用同一个采集器**（它一坏就集体失明）：逐个核过
 ///    `rust_files` / `collect_ts` / `doc_files` / `backend_sources` / `layer_sources` /
-///    `scan_files` / `platform_cfgs` / `backend_files` / `backend_control_production` …
+///    `scan_files` / `platform_cfgs` / `backend_files` …
 ///    —— **每一个都有自检**（地板、或与登记表的数量相等对拍）。**零发现。**
 ///
 /// ⚠ 为什么不把这条横扫做成判据：我写的两版探测器**都不可靠** ——
@@ -262,7 +261,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     }
     // 抽取器自检⑤：**逐子树对拍采集面** —— git 跟踪着的每一份 `.rs` 都得被打开过。
     // 路径拼错 · 后缀过滤掉 · 静默跳过子目录都红。
-    crate::guard_support::assert_scanned_every_tracked(
+    guard_core::addr::assert_scanned_every_tracked(
         "登记表型判据",
         &seen,
         &["src/frontend/shell/src", "src/backend", "tests"],
@@ -1253,7 +1252,7 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
                 .iter()
                 .find(|(s, _)| s == sub)
                 .map_or(0, |(_, n)| *n);
-            let want = crate::guard_support::tracked_under(sub, "rs").len();
+            let want = guard_core::addr::tracked_under(sub, "rs").len();
             (got < want).then(|| format!("  {sub} —— 采到 {got} 份，git 跟踪着 {want} 份"))
         })
         .collect();

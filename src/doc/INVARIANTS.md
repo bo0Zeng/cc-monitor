@@ -12,9 +12,9 @@
 **例外（穷举，都是用户显式动作）**：
 
 1. **删历史会话**：帧命令 `files-delete-session`，只收 sid；落点由后端按 sid 在自己的记录树里找（`agents::claudecode::paths::session_file_for_delete`：解到底必须恰是 `projects/<项目>/<sid>.jsonl`，链接出界不跟），删前二次确认。
-2. **后端自部署**：写那台的 `~/.cc-monitor/bin/`（非用户数据、幂等、按 `deploy-plan` 只升不降），绝不碰 `<claude_dir>`。
+2. **后端自部署**：写那台的 `~/.cc-monitor/bin/`（非用户数据、幂等、按 `deploy-install` 只升不降），绝不碰 `<claude_dir>`。
 3. 已并进第 1 条（远端删历史也是 `files-delete-session`）。
-4. **别名块与别名文件**：rc / `$PROFILE` 里的 BEGIN / END 块（`aliases_block_install` / `aliases_block_remove`，本机远端同一条），经 `files-put`（§4）。
+4. **别名块与别名文件**：rc / `$PROFILE` 里的 BEGIN / END 块（`aliases_block_install` / `aliases_block_remove`，本机远端同一条），经 `Door::put`（§4）。
 5. **项目 MCP 配置**：帧命令 `mcp-sync-apply`（装）/ `ext-uninstall-apply`（卸），写面只有项目 `.mcp.json`（落点必须是那台上的绝对项目目录，不含 `..`），绝不写 `~/.claude.json` / `settings.json`。
 6. **公钥推送**：帧命令 `pubkey-push`，只追加到远端 `~/.ssh/authorized_keys`（幂等去重）。那台后端不在时走一次 SSH exec：这是建立信任那一跳，按构造发生在后端可达之前，是「用户文件只经后端写」唯一的 monitor 侧远端例外。
 7. **装 cc-bus skill**：往 `<claude_dir>/skills/cc-bus/` 写（`src/backend/assets/cc_bus_install.rs`），四个配套一条不许省：只由扩展页确认卡触发 · realpath 白名单（解到底仍在 claude 目录底下）· 逐文件比、一致就不写 · 覆盖前整目录改名成 `cc-bus.bak-<秒>`。
@@ -31,7 +31,7 @@
 
 **为什么不能松动**：核心价值是「看 claude 的输出不破坏它」。用户对「数据源就是我自己的命令痕迹」的信任一旦破了就回不来；写只能是显式的、可见的（足迹页逐条列出）。
 
-**谁在守**：`write_site_registry_tests.rs::every_monitor_write_site_lands_outside_the_users_files`（monitor 写盘落点闭集，没有「用户文件」一档）· `write_site_registry_tests.rs::the_files_that_used_to_write_users_files_write_nothing_now` · `remote_write_registry_tests.rs::every_remaining_sftp_write_lands_outside_the_users_files` · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
+**谁在守**：`write_site_registry_tests.rs::every_monitor_write_site_lands_outside_the_users_files`（monitor 写盘落点闭集，没有「用户文件」一档）· `write_site_registry_tests.rs::the_files_that_used_to_write_users_files_write_nothing_now` · `dial_home_registry_tests.rs::the_interface_side_ssh_debt_is_one_number_and_it_is_printed`（monitor 的依赖清单里没有 SSH crate，拿不到远端写的能力） · `readonly_guard.rs::every_process_spawn_in_production_is_registered` · `cc_bus_install_tests.rs::a_symlinked_skills_dir_is_refused`。
 
 ---
 
@@ -72,9 +72,9 @@
 
 ---
 
-## 4. profile 等用户文件写入 = 后端 `files-put`：CAS ＋ backup ＋ 原子替换 ＋ 写后校验 ＋ 回滚
+## 4. profile 等用户文件写入 = 后端 `Door::put`：CAS ＋ backup ＋ 原子替换 ＋ 写后校验 ＋ 回滚
 
-用户文件（rc / `$PROFILE` / `.mcp.json` / skills 目录）只由后端写，规则只有一份：`src/backend/control/files_write.rs::put_text`（线上 `files-put`）——
+用户文件（rc / `$PROFILE` / `.mcp.json` / skills 目录）只由后端写，规则只有一份：`src/backend/control/files_write.rs::put_text`（经 `Door::put`）——
 ① `expect` 必给（读改写之间盘上那份被改过 ⇒ `stale`、不写）· ② 与盘上逐字节相同 ⇒ 不写 · ③ 要备份 ⇒ `O_EXCL` 另存 `<名>.ccm-backup-<毫秒>-<序号>`（沿用原权限位）· ④ 替换：unix 同目录暂存旁名写满后换名上位（原子）；Windows 已在的目标**就地覆盖写**，保住 dst 的 ACL / ADS / 创建时间 · ⑤ 回读逐字节比对，不符回滚 · 盘上有字节却读到空 ⇒ 停。最后一段是链接 ⇒ 改真文件、链接留着。
 
 **为什么不能松动**：用 `MoveFileExW` / rename 拿暂存文件覆盖，会用暂存文件继承来的 ACL 盖掉用户文件上的显式 ACE（Documents 重定向到别的盘的用户会读不了自己的 profile）——这正是从前用 `ReplaceFileW` 的理由，今天由「Windows 就地覆盖」承担；OneDrive 占位 / 杀软会让读回成空，纯写就是清空用户内容 ⇒ 备份加回读双保险。
@@ -129,7 +129,7 @@
 
 **为什么不能松动**：同步的 Tauri 命令跑在 IPC 派发线程上，一个慢命令阻塞期间其余 IPC 全排队，整个界面没反应。
 
-**谁在守**：`sync_command_registry_tests.rs::every_sync_command_is_on_the_whitelist_with_a_reason` · `sync_command_registry_tests.rs::no_sync_command_waits_on_the_outside_except_the_registered_deviations`。
+**谁在守**：`sync_command_registry_tests.rs::every_sync_command_is_on_the_whitelist_with_a_reason` · `sync_command_registry_tests.rs::no_sync_command_waits_on_the_outside`。
 
 ---
 
@@ -364,7 +364,7 @@ monitor 里已没有 `remote_active`。会话活 / 可重连 / 已结束由那�
 
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
-`ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值，如 `BUS_ID_RECIPE`）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（`src/frontend/shell/src/ccm_probe.rs::parse_probe_output` 靠它判装没装），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
+`ccm --print` 打印将要执行的命令而不执行，全仓把它当离线预言机用。① 凡是真 exec 会设的、`ccm` 自己决定的环境变量，`--print` 必须说出来且顺序对齐；② `--print` 必须是纯的（不查实时 tmux、不写文件、对宿主环境逐字节稳定）——值不知道就打印配方（执行时才求值，如 `BUS_ID_RECIPE`）。它刻意不说撞名避让退到第几个（要查实时状态）。`--ccm-probe` 首行逐字 `name=ccm`（`cc-spawn` 的能力协商读同一张名片），`capabilities=` 必须覆盖 `src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS`（⊇，不是 ==）。
 
 **谁在守**：`tests/e2e/ccm-contract-parity.sh`（差分 ＋ 每条保住项各一条绝对断言 ＋ 「真跑确实产出了环境」自检 ＋ 顺序两侧各钉一条）。
 
@@ -458,7 +458,7 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 后端与拨号核心的生产段由 clippy 挡（`src/backend/clippy.toml` 的 `disallowed-methods`，deny）：sleep · 带期限的等待 · interval · 掐表 · 造 `Duration` · 带期限的 `poll`，每用一处在那一处就地放行并写理由（今天都是一次性期限，不是节拍）。clippy 看不见的两格（交给 shell 的自带循环的串 · 只在 Windows 编的那一臂）留在 `no_timer_guard.rs`。
 
-三条派生纪律：① 后端源码的散文里不逐字引守卫的禁用模式（守卫连注释一起扫，改措辞，不改守卫）；② 删一个周期性信号时，要连依赖那个节拍的 e2e 一起跑；③ 源码扫描型守卫「剥测试段」的剥法必须同时防欠剥与过剥 —— 剥法只有共享 crate `src/common/guard-core` 一份，剥完断言残留 `#[test]` 为 0（`guard_support::assert_no_test_code`），扫描面用字节总量下限 ＋ 文件数与独立遍历相等双判据钉住。验证一条守卫只有一种算数：把违规代码分别放进「应被扫到」与「应被剥掉」的位置，看红绿是否相反。
+三条派生纪律：① 后端源码的散文里不逐字引守卫的禁用模式（守卫连注释一起扫，改措辞，不改守卫）；② 删一个周期性信号时，要连依赖那个节拍的 e2e 一起跑；③ 源码扫描型守卫「剥测试段」的剥法必须同时防欠剥与过剥 —— 剥法只有共享 crate `src/common/guard-core` 一份，剥完断言残留 `#[test]` 为 0（`guard_core::assert_no_test_code`），扫描面用字节总量下限 ＋ 文件数与独立遍历相等双判据钉住。验证一条守卫只有一种算数：把违规代码分别放进「应被扫到」与「应被剥掉」的位置，看红绿是否相反。
 
 ### 41.6 后端的写盘边界（铁律 I7，2026-07-31 G2 起收窄）
 
@@ -502,9 +502,9 @@ monitor 生产段每一处会让线程自己醒来的构件都登记在 `rust_ti
 
 ## 44. **monitor 侧**起进程的面也要逐条登记 —— 而它**不是**「防写盘」
 
-monitor 生产段每一处起进程的地方都登记在 `exec_site_registry`，写明起的是什么、谁是它唯一的出口。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
+monitor 生产段每一处起进程的地方都登记在 `write_site_registry::spawn_sites`，经拨号链路跑 shell 的每一处登记在 `exec_site_registry`（写明为什么它不是那台后端的具名命令）。它防的是同一件事出现第二条起法（参数拼装、环境擦洗、错误归因一定会漂）与没人认领的子进程；与 §41.6 正交。
 
-**谁在守**：`tests/frontend/shell/exec_site_registry_tests.rs`。
+**谁在守**：`write_site_registry_spawn_sites.rs::every_local_spawn_is_declared` · `exec_site_registry_tests.rs::every_remaining_dial_shell_says_why_it_is_not_a_backend_command`。
 
 ---
 
@@ -549,7 +549,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：对端校验的是它自己的入口，本侧不判，拼错的那一段已经在路上了（收掉一个 agent 的后果是杀掉一棵进程树）；盘上真出现过没人预料的 id（一份名叫 `--help.jsonl` 的收件箱文件）。
 
-**谁在守**：`ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` · `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` · `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` · `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `mcp_edit_tests.rs::relative_or_dotdot_project_dirs_are_refused` · `exec_site_registry_tests.rs::every_remote_exec_declares_where_its_command_came_from` · `lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered`（拼值进 shell 的文件逐份登记）。
+**谁在守**：`ccm_invocation_tests.rs::every_value_is_judged_before_it_becomes_a_ccm_argument` · `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` · `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` · `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` · `dial_terminal_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `mcp_edit_tests.rs::relative_or_dotdot_project_dirs_are_refused` · `lib_invariant_population_tests.rs::every_file_that_quotes_a_value_into_a_shell_line_is_registered`（拼值进 shell 的文件逐份登记）。
 
 ---
 
@@ -569,11 +569,11 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 中转口（常驻后端进程内的回环口，本机远端同一份代码）每条请求在读请求体、问上游选择之前过三问：带 `Origin` ⇒ 403；`Host` 不是回环字面量、缺或不止一个 ⇒ 421（防 DNS rebinding）；路径第一段不是钥匙 ⇒ 403（定长时间比对，`comms/outward/door.rs` 的 `tokens_match`）。过了才剥掉那一段交给路由（「钥匙对、没这条路由」是 404，与 403 可分）。
 
-**一把根钥匙、门上两个范围**：根钥匙 `~/.cc-monitor/relay-key`（`0600`，256 位，中转绑上口之后读回或铸，跨重起不变）开 `/s/` 与 `/t/`；只许直通那一把不落盘，由根钥匙派生（`relay/key.rs::pass_of`）、只开 `/t/`（中转在 `/t/` 永不代入凭据），它可以进 argv（有的 agent 只认命令行参数里的上游地址）。根钥匙只从那份文件进 agent 进程自己的环境：交给终端的那一行 `ccm …` 不带地址也不带钥匙，`ccm` 在最终 exec 那一处读文件、拼进 agent 环境（插钥匙只在 `relay/key.rs::keyed_with_key_on_disk` 一处）。唯一的例外：用户选「直接敲的 claude 也走中转」时，`relay-optin` 的成品带着要贴的那一段。
+**一把根钥匙、门上两个范围**：根钥匙 `~/.cc-monitor/relay-key`（`0600`，256 位，中转绑上口之后读回或铸，跨重起不变）开 `/s/` 与 `/t/`；只许直通那一把不落盘，由根钥匙派生（`relay/key.rs::pass_of`）、只开 `/t/`（中转在 `/t/` 永不代入凭据），它可以进 argv（有的 agent 只认命令行参数里的上游地址）。根钥匙只从那份文件进 agent 进程自己的环境：交给终端的那一行 `ccm …` 不带地址也不带钥匙，`ccm` 在最终 exec 那一处读文件、拼进 agent 环境（插钥匙只在 `relay/key.rs::keyed_with_key_on_disk` 一处）。用户选「直接敲的 agent 也走中转」时，「待办」里要贴的那一段插的是只许直通那一把（那条地址恒是 `/t/`）；贴过的旧地址里的钥匙段显示成 `…`。全权那一把不进线上帧。
 
 **为什么不能松动**：中转会代入账号的凭据打上游；门开着，同机任何进程（别的用户、浏览器里的网页）就能以这个账号的额度发请求。
 
-**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::the_pass_key_gets_in_but_only_for_passthrough_routes` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` · `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` · `key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts` · `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream` · `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there` · `plan_tests.rs::an_inherited_relay_address_of_ours_never_goes_into_the_pane`。诚实边界：`ccm` 是一次性进程，读不到常驻后端的监听状态 ⇒ 钥匙文件在、口被别人占着时会被认成在听（`accounts/upstream_select/endpoint.rs::relay_for_exec`）。
+**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::the_pass_key_gets_in_but_only_for_passthrough_routes` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` · `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` · `chores_gather_tests.rs::待办里的钥匙只有只许直通那一把` · `key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts` · `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream` · `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there` · `plan_tests.rs::an_inherited_relay_address_of_ours_never_goes_into_the_pane`。诚实边界：`ccm` 是一次性进程，读不到常驻后端的监听状态 ⇒ 钥匙文件在、口被别人占着时会被认成在听（`accounts/upstream_select/endpoint.rs::relay_for_exec`）。
 
 ### 48.2 脱离后不留僵尸
 

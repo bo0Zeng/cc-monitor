@@ -47,7 +47,7 @@ use std::sync::Mutex;
 pub fn load_config() -> Result<Value, Said> {
     let r: Result<Value, Said> = (move || -> Result<Value, Said> {
         let path =
-            resolve_config_path().ok_or_else(|| copy_text("rsShellCmd.config.noHome", &[]))?;
+            resolve_config_path().ok_or_else(|| Said::of("rsShellCmd.config.noHome", &[]))?;
         if !path.exists() {
             return Ok(default_config());
         }
@@ -127,7 +127,7 @@ impl ConfigWriteError {
                 let raw = detail.clone();
                 Said::with_raw(self.to_string(), raw)
             }
-            other => Said::from(other.to_string()),
+            other => Said::written(other.to_string()),
         }
     }
 }
@@ -152,7 +152,7 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[tauri::command]
 pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
-        let path = resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
+        let path = resolve_config_path().ok_or_else(|| Said::of("rsConfig.write.noHome", &[]))?;
         patch_config_at(&path, &edits).map_err(ConfigWriteError::into_said)?;
         Ok(())
     })();
@@ -178,7 +178,7 @@ pub(crate) fn patch_config_at(
     // ②b 跨进程：两个 monitor 进程同写也串起来 —— 先保证目录在（锁的就是它），再拿它的锁，锁住之后才现读。
     let dir = path.parent().ok_or_else(|| {
         ConfigWriteError::Io(
-            copy_text(
+            Said::of(
                 "rsConfig.write.noParent",
                 &[("path", &path.display().to_string())],
             )
@@ -237,8 +237,12 @@ pub(crate) fn patch_config_at(
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     crate::platform::fs::only_me_on_create(&mut opts);
+    // 换名前先落盘：不然断电后换上去的可能是一份空文件。
     opts.open(&tmp)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, pretty.as_bytes()))
+        .and_then(|mut f| {
+            std::io::Write::write_all(&mut f, pretty.as_bytes())?;
+            f.sync_all()
+        })
         .map_err(|e| {
             ConfigWriteError::Io(Said::with_raw(
                 copy_text(
@@ -251,7 +255,8 @@ pub(crate) fn patch_config_at(
                 &e,
             ))
         })?;
-    crate::platform::fs::atomic_replace(&tmp, path).map_err(|e| {
+    // 标准库的换名在 Windows 上就是覆盖已在的目标，长路径前缀它自己补。
+    std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         ConfigWriteError::Io(Said::with_raw(
             copy_text(
@@ -295,8 +300,6 @@ fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
         }
     }
 }
-
-// `atomic_replace`（两个平台臂：`MoveFileExW` / `rename`）搬进 `platform/fs.rs`，本文件经 `crate::platform::fs::atomic_replace` 调。
 
 /// 文件缺失时返回的最小骨架。仅做占位，前端读到没有 `theme` 字段会用 :root 默认值。
 fn default_config() -> Value {

@@ -38,6 +38,7 @@ pub enum Frame<R = Record> {
     Transfer(Transfer),
     FilesBatch(FilesBatch),
     Probe(Probe),
+    Deploy(Deploy),
     LiveCard(LiveCard),
     SessionRuns(SessionRuns),
     SessionBranch(SessionBranch),
@@ -564,6 +565,24 @@ pub struct Probe {
     pub cell: Value,
 }
 
+/// **装 / 升级远端后端那一趟走到哪一步**（`deploy-install` 在跑时才出现，只推给发起它的那条连接）。`said` 是写好的那一句，两端照画。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deploy {
+    /// 那台的名字（发起时交的 `machine`）。
+    pub machine: String,
+    pub step: DeployStep,
+    pub said: String,
+}
+
+/// [`Deploy::step`]：问那台 · 放字节（落点上原来没有 ⇒ 装；有 ⇒ 更新）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployStep {
+    Plan,
+    Install,
+    Update,
+}
+
 /// 一个会话的运行表（主运行之外的那几个子运行）。表变了就整份发一次；`ended`：被挤出运行表的已收场子运行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -847,7 +866,7 @@ pub enum Topic {
     Plan,
     /// 这台某个会话的任务清单（`key` ＝ sid）。
     Tasks,
-    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）。
+    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）。
     Needs,
     /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。
     Login,

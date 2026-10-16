@@ -201,7 +201,7 @@ fn cases(root: &Path) -> Vec<(&'static str, &'static str, Value)> {
 }
 
 fn pinned() -> BTreeMap<String, String> {
-    let p = crate::guard_support::repo_root().join("tests/__fixtures__/files.wire-bytes.txt");
+    let p = guard_core::addr::repo_root().join("tests/__fixtures__/files.wire-bytes.txt");
     std::fs::read_to_string(&p)
         .unwrap_or_default()
         .lines()
@@ -271,7 +271,7 @@ fn the_registered_names_are_the_ones_the_file_window_calls() {
 
 /// 写面那几条的回包换形之前那一版的字节（每行 `名字<TAB>字节`），同读的那一份的写法。
 fn pinned_writes() -> BTreeMap<String, String> {
-    let p = crate::guard_support::repo_root().join("tests/__fixtures__/files-write.wire-bytes.txt");
+    let p = guard_core::addr::repo_root().join("tests/__fixtures__/files-write.wire-bytes.txt");
     std::fs::read_to_string(&p)
         .unwrap_or_default()
         .lines()
@@ -368,36 +368,6 @@ fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
             "write-text",
             "files-write-text",
             json!({ "root": r, "rel": "moved.txt", "content": "abcd", "expect": sha(b"abc") }),
-        ),
-        (
-            "peek",
-            "files-peek",
-            json!({ "root": r, "rel": "moved.txt" }),
-        ),
-        (
-            "peek-missing",
-            "files-peek",
-            json!({ "root": r, "rel": "nope.txt" }),
-        ),
-        (
-            "put-new",
-            "files-put",
-            json!({ "root": r, "rel": "put.txt", "content": "p1", "expect": null }),
-        ),
-        (
-            "put-backup",
-            "files-put",
-            json!({ "root": r, "rel": "put.txt", "content": "p2", "expect": "p1", "backup": true }),
-        ),
-        (
-            "put-same",
-            "files-put",
-            json!({ "root": r, "rel": "put.txt", "content": "p2", "expect": "p2" }),
-        ),
-        (
-            "link",
-            "files-link",
-            json!({ "root": r, "rel": "ln", "target": "moved.txt" }),
         ),
         (
             "delete",

@@ -68,7 +68,7 @@ pub enum StartOutcome {
     Started(std::path::PathBuf),
     /// 已经在跑（`C8`①）—— **不是失败**。
     AlreadyRunning,
-    /// 起不来：没内嵌 / 释放失败 / exe 旁边也没有。
+    /// 起不来：没内嵌 / 释放失败。
     /// `reason` 是给人看的那一句 ＋ 复制详情（下层原话在详情里，不在句子里）。
     Failed {
         reason: Said,
@@ -145,31 +145,11 @@ pub(crate) const RESIDENT_ENV: &str = "CCM_RESIDENT";
 /// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
 pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 
-/// 「谁在听」的住址（常驻后端拿到锁之后自己写；本宿主只读）。
-fn pid_path(dir: &std::path::Path) -> std::path::PathBuf {
-    relay_route_core::listen_pid_for(dir)
-}
-
-// `~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
-//   与释放后端二进制那几处（`local_backend.rs`，经注入）共用一份。
-
-/// 解那两行。**纯函数**，所以「只有一行」「pid 不是数字」这些残缺形都测得到 ——
-/// 这个文件是上一个 monitor 写的，它可能被中途打断、可能是旧版本写的。
-pub(crate) fn parse_listen_owner(body: &str) -> Option<(u32, std::path::PathBuf)> {
-    let mut lines = body.lines();
-    let pid: u32 = lines.next()?.trim().parse().ok()?;
-    if pid == 0 {
-        return None;
-    }
-    let bin = lines.next()?.trim();
-    if bin.is_empty() {
-        return None;
-    }
-    Some((pid, std::path::PathBuf::from(bin)))
-}
-
-fn read_listen_owner(dir: &std::path::Path) -> Option<(u32, std::path::PathBuf)> {
-    parse_listen_owner(&std::fs::read_to_string(pid_path(dir)).ok()?)
+/// 在听的那一位的 pid：连它的套接字、内核报的对端（不靠盘上的记录）。问不到 ⇒ 0（不知道）。
+fn listener_pid(sock: &std::path::Path) -> u32 {
+    own_chan::connect_blocking(sock)
+        .and_then(|s| s.peer())
+        .map_or(0, |(_, pid)| pid)
 }
 
 /// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
@@ -364,7 +344,7 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
                     crate::machine_state::note_local_foreign(Some(&build_id));
                 }
             }
-            Probe::Stranger(why.into())
+            Probe::Stranger(Said::written(why))
         }
     }
 }
@@ -381,7 +361,7 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     let mut one = [0u8; 1];
     loop {
         match sock.read(&mut one) {
-            Ok(0) => return Err(copy_text("rsLocalBackendHost.handshake.closed", &[]).into()),
+            Ok(0) => return Err(Said::of("rsLocalBackendHost.handshake.closed", &[])),
             Ok(_) => {
                 if one[0] == b'\n' {
                     return String::from_utf8(out).map_err(|e| {
@@ -391,7 +371,7 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
                 out.push(one[0]);
                 if out.len() > LISTEN_HANDSHAKE_LINE_CAP {
                     // **拒收 + 出声**，不静默截断成一行「看起来对」的 JSON。
-                    return Err(copy_text(
+                    return Err(Said::of(
                         "rsLocalBackendHost.handshake.tooLong",
                         &[("cap", &LISTEN_HANDSHAKE_LINE_CAP.to_string())],
                     )
@@ -435,9 +415,9 @@ fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {
         Some(cmd_wire::attach::AttachReply::Ok { .. }) => Ok(()),
         // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
         Some(cmd_wire::attach::AttachReply::Refused { reason }) => {
-            Err(copy_text("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
+            Err(Said::of("rsLocalBackendHost.attach.refused", &[("reason", &reason)]).into())
         }
-        None => Err(copy_text(
+        None => Err(Said::of(
             "rsLocalBackendHost.attach.unreadable",
             &[("line", &line.to_string())],
         )
@@ -465,7 +445,7 @@ fn spawn_detached(
 ) -> Result<crate::spawn_managed::ManagedChild, Said> {
     use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
     if !crate::platform::proc::CAN_DETACH {
-        return Err(copy_text(
+        return Err(Said::of(
             "rsLocalBackendHost.spawn.unsupported",
             &[("bin", &(bin.display()).to_string())],
         )
@@ -515,7 +495,7 @@ fn spawn_detached(
     local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
         local_backend::SpawnFailure::TransientBusy { tries, last } => {
-            local_backend::etxtbsy_gave_up_reason(bin, tries, &last).into()
+            Said::written(local_backend::etxtbsy_gave_up_reason(bin, tries, &last))
         }
         // 别的错 ⇒ **今天那句照旧，一个字不改**。
         local_backend::SpawnFailure::Broken(e) => Said::with_raw(
@@ -530,7 +510,7 @@ fn spawn_detached(
 
 /// 脱离之后手里剩下的东西。
 pub struct DetachedHandle {
-    /// 那个后端的 pid。**0 表示不知道**（接管来的、而上一次那个 monitor 没记下来）。
+    /// 那个后端的 pid。**0 表示不知道**（接管来的、而那一下问不到套接字的对端）。
     pid: u32,
     /// **我们起的**那个 `Child`；接管别人起的那个时是 `None`。
     ///
@@ -539,8 +519,7 @@ pub struct DetachedHandle {
     /// 而两份表示会漂（本区最贵的那一族：「一个值装了两件事」的近亲）。
     /// 要问这句话就问 `child.is_some()`。
     child: Option<crate::spawn_managed::ManagedChild>,
-    /// 那个二进制的路径。杀它之前拿它核对 `/proc/<pid>/exe`（防 pid 复用误伤）。
-    /// 接管来的那个从 pid 文件的第二行读回；读不回就是空的，而空的**不许杀**。
+    /// 那个二进制的路径（停它时跑它的 `--resident-stop`；停哪一位由那一跳问套接字）。接管来的就是落点那一份。
     bin: std::path::PathBuf,
 }
 
@@ -558,7 +537,7 @@ static SUPERVISED_BIN: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync:
 
 /// **正在跑的那份**本机常驻后端的二进制 —— 给终端窗口导 `CCM_BACKEND_BIN`（`D11`）。
 ///
-/// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的从 pid 文件第二行读回；读不回是空的 ⇒ `None`，不猜）；
+/// 常驻那条（起的 / 接管的）⇒ `DETACHED.bin`（接管来的是落点那一份）；
 /// 被监护那条 ⇒ 起它时解析出的那一份。都不在 ⇒ `None`（窗口里不设，同「本机后端不在」）。
 /// 此前窗口那一格自己去找 exe 旁边那份文件，不认自释放之后正在跑的那一份（RT1 F2 / WIN1 报备）。
 pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
@@ -817,9 +796,9 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
     let frame = crate::stream_source::decode(hello_line)
-        .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
+        .map_err(|_| Said::of("rsLocalBackendHost.stream.badFirstLine", &[]))?;
     let witness = crate::inbound_client::witness_of(&frame)
-        .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
+        .ok_or_else(|| Said::of("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。
     let handshake = handshake_from_hello(&witness);
@@ -927,7 +906,7 @@ enum DetachOutcome {
 /// 常驻那条路的正题：**认得出已有实例 ⇒ 接上它；没有 ⇒ 起一个脱离的。**
 ///
 /// 两个入参都是**注入**，理由各不相同：
-/// - `resolve_bin`：生产路径喂 [`resolve_backend_bin`]（exe 旁 → 内嵌释放）；
+/// - `resolve_bin`：生产路径喂 [`resolve_backend_bin`]（内嵌那份释放到本机）；
 ///   而判据喂一个现成的二进制 —— 否则那条真进程判据只能去动用户真实的 `~/.cc-monitor`。
 /// - `extra_env`：生产路径喂**空表**；e2e 用它塞一条**前面挂着 shim 的 PATH**。
 ///   ⚠ 这一条不是方便，是 `C7i` 红线：被起的后端一上来就往它连得到的 tmux server
@@ -935,6 +914,7 @@ enum DetachOutcome {
 ///   tmux server 的状态（08-11 那次事故打没了用户 9 个真实会话）。
 fn start_detached(
     resolve_bin: &dyn Fn() -> Result<std::path::PathBuf, (Said, Vec<std::path::PathBuf>)>,
+    landing: &std::path::Path,
     extra_env: &[(String, String)],
 ) -> DetachOutcome {
     if !detach_wanted(
@@ -947,7 +927,7 @@ fn start_detached(
     let Some(home) = crate::config::resolve_monitor_data_dir() else {
         return DetachOutcome::NotTaken;
     };
-    // 套接字与「谁在听」都住这个家（后端 `--resident-stop` 在同一个家里找同一份）。
+    // 套接字住这个家（后端 `--resident-stop` 在同一个家里问同一个）。
     let dir = home;
     let sock = relay_route_core::listen_socket_for(&dir);
 
@@ -958,12 +938,12 @@ fn start_detached(
     //    ⇒ **脱离而不认已有实例 = 每台机 N 个后端互相盖槽位，比今天更糟。**
     match adopt_existing(&sock, extra_env) {
         Adopt::Attached => {
-            let (pid, bin) = read_listen_owner(&dir).unwrap_or((0, std::path::PathBuf::new()));
+            let pid = listener_pid(&sock);
             let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
             *g = Some(DetachedHandle {
                 pid,
                 child: None,
-                bin,
+                bin: landing.to_path_buf(),
             });
             return DetachOutcome::Done(StartOutcome::AlreadyRunning);
         }
@@ -976,7 +956,8 @@ fn start_detached(
                 "rsLocalBackendHost.start.refusedNotice",
                 &[
                     ("why", &why.said),
-                    ("pidPath", &(pid_path(&dir).display()).to_string()),
+                    ("pid", &listener_pid(&sock).to_string()),
+                    ("sock", &sock.display().to_string()),
                 ],
             ));
             return DetachOutcome::Done(StartOutcome::Failed {
@@ -987,7 +968,7 @@ fn start_detached(
                     ),
                     why,
                 ),
-                looked_at: vec![pid_path(&dir), sock.clone()],
+                looked_at: vec![sock.clone()],
             });
         }
         // 〔HOST 余项〕常驻后端多客户之后不再有「被另一个 monitor 占着」那一臂（连同两句话删了）。
@@ -1011,7 +992,6 @@ fn start_detached(
         }
     };
     let pid = child.id();
-    // 「谁在听」由它自己绑上口之后记（后端 `control/resident.rs::record_owner`，本机远端同一个写者）。
     {
         let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
         *g = Some(DetachedHandle {
@@ -1075,7 +1055,7 @@ fn probe_and_attach_after_spawn(
     match adopt_with(sock, env, Some(within)) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
-        Adopt::None => Err(copy_text(
+        Adopt::None => Err(Said::of(
             "rsLocalBackendHost.afterSpawn.neverListened",
             &[("path", &sock.display().to_string())],
         )
@@ -1135,15 +1115,14 @@ pub(crate) fn wait_listening<T>(
             return Ok(Some(t));
         }
         if let Some(how) = exited() {
-            return Err(copy_text(
+            return Err(Said::of(
                 "rsLocalBackendHost.afterSpawn.exited",
                 &[("path", &path), ("how", &how)],
             )
             .into());
         }
         if now() >= deadline {
-            let last: Said =
-                copy_text("rsLocalBackendHost.adopt.notYet", &[("path", &path)]).into();
+            let last: Said = Said::of("rsLocalBackendHost.adopt.notYet", &[("path", &path)]);
             return Err(Said::restate(
                 copy_text(
                     "rsLocalBackendHost.adopt.waited",
@@ -1197,7 +1176,7 @@ fn resolve_backend_bin(
         &crate::platform::fs::make_executable,
         &crate::platform::fs::ensure_private_dir,
         // 放不放问手上那份字节自己（起进程的三条策略由宿主给）。
-        &crate::ccm_probe::ask_place_verdict,
+        &crate::backend_once::ask_place_verdict,
     ) {
         Resolved::Found(p) => Ok(p),
         Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
@@ -1238,7 +1217,7 @@ fn stop_detached() -> Option<Result<crate::remote_resident::StopAnswer, Said>> {
                 h.child = Some(c);
                 let pid = h.pid;
                 put_back(h);
-                return Some(Err(copy_text(
+                return Some(Err(Said::of(
                     "rsLocalBackendHost.stop.noRecord",
                     &[("pid", &pid.to_string())],
                 )
@@ -1267,13 +1246,13 @@ fn run_resident_stop_within(
 ) -> Result<crate::remote_resident::StopAnswer, Said> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     if bin.as_os_str().is_empty() {
-        return Err(copy_text("rsLocalBackendHost.stop.noBin", &[]).into());
+        return Err(Said::of("rsLocalBackendHost.stop.noBin", &[]));
     }
     let handed = backend_env();
     // 三条策略：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·
     // `Captured`（失败那一句 `{code,message}` 在 stderr 上，要读回来说给人听）。
-    // 等法与本机探针同一段（`ccm_probe::capture_full`：读线程 ＋ 带上限地等，到点杀掉收尸）。
-    let got = crate::ccm_probe::capture_full(
+    // 等法与问后端一次同一段（`backend_once::capture_full`：读线程 ＋ 带上限地等，到点杀掉收尸）。
+    let got = crate::backend_once::capture_full(
         deadline,
         &|| {
             let mut cmd = std::process::Command::new(bin);
@@ -1294,7 +1273,7 @@ fn run_resident_stop_within(
     );
     let out = match got {
         Ok(c) => c,
-        Err(crate::ccm_probe::CaptureFail::Spawn(e)) => {
+        Err(crate::backend_once::CaptureFail::Spawn(e)) => {
             return Err(Said::with_raw(
                 copy_text(
                     "rsLocalBackendHost.stop.spawnFailed",
@@ -1303,14 +1282,14 @@ fn run_resident_stop_within(
                 &e,
             ))
         }
-        Err(crate::ccm_probe::CaptureFail::TimedOut) => {
-            return Err(copy_text(
+        Err(crate::backend_once::CaptureFail::TimedOut) => {
+            return Err(Said::of(
                 "rsLocalBackendHost.stop.timedOut",
                 &[("dur", &copy_core::format_elapsed(deadline))],
             )
             .into())
         }
-        Err(crate::ccm_probe::CaptureFail::Read(e)) => {
+        Err(crate::backend_once::CaptureFail::Read(e)) => {
             return Err(Said::with_raw(
                 copy_text("rsLocalBackendHost.stop.readFailed", &[]),
                 &e,
@@ -1481,8 +1460,7 @@ pub fn start_local_backend() -> StartOutcome {
     // 两样宿主知识在这里给（backend 层不认识它们）：
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
     //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-    //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，
-    //     函数把它接在「旁边没有」后面，不伪造理由。
+    //   · 这台机器的 (OS, arch)：`byte_table::choose` 按它挑内嵌字节（下面那一段）；取不到时交进去的是那句拒绝的话，原样交出、不伪造理由。
     let extract_dir = creds_core::store::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
@@ -1517,7 +1495,8 @@ pub fn start_local_backend() -> StartOutcome {
     let handed = backend_env();
     // `embedded` 里可能是那句拒绝的话（`String`），不再是 `Copy` ⇒ 常驻那条拿一份拷贝。
     let resolve = || resolve_backend_bin(&extract_dir, embedded.clone());
-    match start_detached(&resolve, &handed) {
+    let landing = extract_dir.join(local_backend::local_ccm_entry_name());
+    match start_detached(&resolve, &landing, &handed) {
         // ★ `K-P3b`：这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
         DetachOutcome::Done(out) => return note_never_started(out),
         DetachOutcome::NotTaken => {}
@@ -1535,7 +1514,7 @@ pub fn start_local_backend() -> StartOutcome {
         // 与常驻那条路交的是**同一份**（上面那个 `handed`）。
         handed,
         // 同上：放不放问手上那份字节自己。
-        &crate::ccm_probe::ask_place_verdict,
+        &crate::backend_once::ask_place_verdict,
     );
     if let Some(h) = sup {
         let mut g = LOCAL_BACKEND.lock().unwrap_or_else(|e| e.into_inner());

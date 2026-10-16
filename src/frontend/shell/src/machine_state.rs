@@ -62,6 +62,8 @@ pub struct MachineState {
     pub reason: Option<String>,
     /// 正在连时到哪一步：`deploy`（部署预检 / 装）· `attach`（接那台的常驻后端）。
     pub stage: Option<String>,
+    /// 正在连 / 装 / 更新时那一句（写好的：装那一趟的几步是后端写的，接常驻那一步是这里写的；界面照画）。不在这三种 ⇒ 空。
+    pub said: Option<String>,
     /// 那台 cc-monitor 的产品版本号（发版那个号，`CARGO_PKG_VERSION`）：与这一版同一份字节时就是这一版的号；
     /// 不同的那台报不出它的号（握手只带构建标识）⇒ 空；开发构建 ⇒ 空（关系是 `incomparable`）。构建标识只进日志与诊断信息。
     pub version: Option<String>,
@@ -86,6 +88,7 @@ struct Entry {
     state: Option<MachineStateKind>,
     reason: Option<String>,
     stage: Option<String>,
+    said: Option<String>,
     version: Option<String>,
     relation: Option<Relation>,
     os: Option<String>,
@@ -126,12 +129,45 @@ fn with<R>(origin: &str, f: impl FnOnce(&mut Entry) -> R) -> R {
     r
 }
 
-/// 这一轮开始拨 / 到了哪一步。
+/// 这一轮开始拨 / 到了哪一步（`deploy` 部署预检 · `attach` 接那台的常驻后端）；那一句照这一步写。
 pub(crate) fn connecting(origin: &str, stage: &str) {
+    let said = crate::copy_table::copy_text(
+        "machineState.busy.connecting",
+        &[
+            ("machine", origin),
+            (
+                "stage",
+                &if stage == "attach" {
+                    crate::copy_table::copy_text("machineState.stage.attach", &[])
+                } else {
+                    crate::copy_table::copy_text("machineState.stage.deploy", &[])
+                },
+            ),
+        ],
+    );
     with(origin, |e| {
         e.state = Some(MachineStateKind::Connecting);
         e.reason = None;
         e.stage = Some(stage.to_string());
+        e.said = Some(said);
+        e.detail = None;
+    });
+}
+
+/// 装远端后端那一趟走到哪一步（本机后端推的 `deploy` 帧的 `step`；问那台 · 装 · 更新）。
+pub(crate) use cmd_wire::frame::DeployStep;
+
+/// 装那一趟的一步：状态照这一步、那一句照后端写的。
+pub(crate) fn deploy_step(origin: &str, step: DeployStep, said: String) {
+    with(origin, |e| {
+        e.state = Some(match step {
+            DeployStep::Plan => MachineStateKind::Connecting,
+            DeployStep::Install => MachineStateKind::Installing,
+            DeployStep::Update => MachineStateKind::Updating,
+        });
+        e.reason = None;
+        e.stage = (step == DeployStep::Plan).then(|| "deploy".to_string());
+        e.said = Some(said);
         e.detail = None;
     });
 }
@@ -142,30 +178,6 @@ pub(crate) const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 与这一版同一份字节 ⇒ 这一版的号；别的报不出 ⇒ `None`。
 fn product_version(relation: Relation) -> Option<String> {
     (relation == Relation::Same).then(|| PRODUCT_VERSION.to_string())
-}
-
-/// 正在把这一版放上去：`first` ＝ 那台还没有（装）；否则是换掉旧的（更新）。
-pub(crate) fn deploying(origin: &str, first: bool) {
-    with(origin, |e| {
-        e.state = Some(if first {
-            MachineStateKind::Installing
-        } else {
-            MachineStateKind::Updating
-        });
-        e.reason = None;
-        e.stage = None;
-        e.detail = None;
-    });
-}
-
-/// 连上时自动放这一版：这次运行里那台握过手（报过版本关系）⇒ 是换旧的（更新）；没握过 ⇒ 当作第一次装。
-pub(crate) fn deploying_auto(origin: &str) {
-    let seen = TABLE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(origin)
-        .is_some_and(|e| e.relation.is_some());
-    deploying(origin, !seen);
 }
 
 /// 握手成了：那台报的构建标识（只进日志）＋ 与这一版的关系。
@@ -297,6 +309,14 @@ pub(crate) fn product(origin: &str, enabled: bool) -> MachineState {
         fixes: fixes_of(state, reason.as_deref()),
         reason,
         stage: if enabled { e.stage } else { None },
+        said: e.said.filter(|_| {
+            matches!(
+                state,
+                MachineStateKind::Connecting
+                    | MachineStateKind::Installing
+                    | MachineStateKind::Updating
+            )
+        }),
         version: e.version,
         version_relation: e.relation,
         os: e.os,
@@ -345,6 +365,7 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         fixes: fixes_of(state, reason.as_deref()),
         reason,
         stage: None,
+        said: None,
         version: (relation == Relation::Same).then(|| PRODUCT_VERSION.to_string()),
         version_relation: Some(relation),
         os: None,

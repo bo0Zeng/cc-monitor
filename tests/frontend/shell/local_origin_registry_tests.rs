@@ -1,8 +1,8 @@
 use super::*;
 
 fn src_root() -> std::path::PathBuf {
-    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
-    crate::guard_support::crate_src_root()
+    // 住址唯一源：`guard_core::addr`。
+    guard_core::addr::shell_src_root()
 }
 
 /// 一行是不是**顶层** `fn` 声明。

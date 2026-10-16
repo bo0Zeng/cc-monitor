@@ -65,9 +65,15 @@ pub(crate) fn route(
         Frame::Transfer(t) if local => crate::sftp_pool::deliver(&t.id, t.got, t.total, t.end),
         // 测试连接在本机常驻后端里跑：那一格原样交中继（界面严格收）。
         Frame::Probe(p) if local => crate::probe_relay::deliver(&p.ticket, p.cell.to_string()),
-        Frame::LinkData(_) | Frame::LinkEnd(_) | Frame::Transfer(_) | Frame::Probe(_) => {
+        // 装远端后端那一趟在本机常驻后端里跑：走到哪一步 ＋ 那一句进机器状态。
+        Frame::Deploy(d) if local => crate::machine_state::deploy_step(&d.machine, d.step, d.said),
+        Frame::LinkData(_)
+        | Frame::LinkEnd(_)
+        | Frame::Transfer(_)
+        | Frame::Probe(_)
+        | Frame::Deploy(_) => {
             tracing::warn!(
-                "[{at}] 远端后端发来了只开在本机后端上的帧（链路 / 传输 / 测试连接），丢掉"
+                "[{at}] 远端后端发来了只开在本机后端上的帧（链路 / 传输 / 测试连接 / 装后端），丢掉"
             )
         }
         // 一组复制 · 删除 · 改权限的进度：按票交给订了它的那扇文件窗口（没人订就丢）。

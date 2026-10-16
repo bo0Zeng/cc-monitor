@@ -51,7 +51,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // **skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
     //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
-    //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `files-put`（CAS）。阻塞档（扫盘）。
+    //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `Door::put`（CAS）。阻塞档（扫盘）。
     crate::wire::typed::blocking::<crate::faces::hub_inner_face::SkillReadCmd>(
         "读来源那台上的一个 skill",
     ),

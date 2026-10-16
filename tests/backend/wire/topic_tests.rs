@@ -26,7 +26,7 @@ fn a_body_has_a_cap_and_only_then() {
 
 /// 生产段里每个 `Topic::X` 出现在哪几份文件（只数发端那两份与本表）。
 fn emitters(topic: &str) -> Vec<String> {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needle = format!("Topic::{topic},");
     let mut out = Vec::new();
     for rel in [
@@ -35,7 +35,7 @@ fn emitters(topic: &str) -> Vec<String> {
         "stream/inbound/mod.rs",
     ] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读源码");
-        if crate::guard_support::production_code(&src).contains(&needle) {
+        if guard_core::production_code(&src).contains(&needle) {
             out.push(rel.to_string());
         }
     }
@@ -67,7 +67,7 @@ fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
 /// 生产段造 `changed` 帧只经 `Frame::changed`（上限在那一处判）：别处写 `Changed {` 结构字面量 ⇒ 红。
 #[test]
 fn changed_frames_are_built_in_one_place() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let needle = format!("{} {{", "Changed");
     let literal = |code: &str| {
         code.match_indices(&needle).any(|(at, _)| {
@@ -79,7 +79,7 @@ fn changed_frames_are_built_in_one_place() {
     };
     let mut hits = Vec::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-        let code = crate::guard_support::production_code(&src);
+        let code = guard_core::production_code(&src);
         if literal(&code) {
             hits.push(
                 path.strip_prefix(&root)
@@ -96,7 +96,7 @@ fn changed_frames_are_built_in_one_place() {
 #[test]
 fn the_protocol_topic_table_is_this_table() {
     let doc =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("src/doc/IPC-PROTOCOL.md"))
+        std::fs::read_to_string(guard_core::addr::repo_root().join("src/doc/IPC-PROTOCOL.md"))
             .expect("读 IPC-PROTOCOL.md");
     let (_, rest) = doc
         .split_once("<!-- topic-table:begin -->\n")
@@ -212,9 +212,9 @@ fn a_computed_body_is_the_reask_reply() {
 /// 发端只经那一层调，不直接引命令表那一份。
 #[test]
 fn main_installs_the_body_and_emitters_go_through_the_hook() {
-    let root = crate::guard_support::src_root();
+    let root = guard_core::addr::backend_src_root();
     let main = std::fs::read_to_string(root.join("main.rs")).expect("读 main.rs");
-    let prod = crate::guard_support::production_code(&main);
+    let prod = guard_core::production_code(&main);
     let install = format!("{}::install({})", "topic_hook", "topic_body::body_now");
     assert_eq!(
         prod.matches(&install).count(),
@@ -224,7 +224,7 @@ fn main_installs_the_body_and_emitters_go_through_the_hook() {
     // `login` 的小成品由发端自己给（作业怎么收的），不现算 ⇒ 分派那一层不在这里。
     for rel in ["stream/tap.rs", "observe/watcher.rs"] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读发端");
-        let code = crate::guard_support::production_code(&src);
+        let code = guard_core::production_code(&src);
         assert!(
             !code.contains("topic_body"),
             "{rel} 直接引了现算那一份（该经 topic_hook）"

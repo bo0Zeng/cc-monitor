@@ -74,11 +74,8 @@ const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
       "合成拒答的复制详情（`detail.value.backend`：场景演「那台拒了」的那几条帧命令还是合成的，机器页那一族）· Windows 那台账号清单的 `meta.unsupported`（台架只有 Linux 编的后端，`cfg(windows)` 那一句演不出来，回包其余照真后端）",
     ],
   },
-  "clock.ts": {
-    clock: [2, "钟面 `hms`（真后端按那台本地钟写）：终端预览的 `captured_at_text`（`terminal-preview`，machine.ts 与 panels 那一场）还是合成的 —— 终端名单 · 预览 · 实时画面要一起换（替身窗格里要先画出那一屏）"],
-  },
   "machine.ts": {
-    coreKey: [26, "机器页那一族帧命令（扩展 · 别名 · 数据报告 · 终端 · ssh 导入 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],
+    coreKey: [26, "机器页那一族帧命令（扩展 · 别名 · 数据报告 · ssh 导入 …）还是合成的，回包里的后端那几句是照抄的；要先给每条造好盘上的输入（多数还要假的 ssh / 终端在边界上替身）"],
   },
   "plan.ts": {
     clock: [4, "计划那一族（plan-*）还是合成的：计划 dump 的读法与成品没接真后端（要造计划工作区的原始 dump）"],

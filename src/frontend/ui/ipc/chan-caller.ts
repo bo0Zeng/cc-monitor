@@ -54,21 +54,6 @@ export function readJson(body: Uint8Array): unknown {
 }
 
 /**
- * 按行那一族（`read_face` 的 `{"lines": [...]}`，C1 那几条）⇒ 逐行，trim 过、剔空行 ——
- * 与 monitor 侧 `frame_query::lines` 同形（那一份在迁过来的命令上已经没有调用方）。
- * 应答里没有 `lines` 数组 ⇒ 抛（两端契约对不上）。
- */
-export function linesOf(body: Uint8Array): string[] {
-  const v = readJson(body);
-  const rows = v !== null && typeof v === "object" ? (v as { lines?: unknown }).lines : undefined;
-  if (!Array.isArray(rows)) throw new Error(copyText("chanCaller.linesOf.badShape"));
-  return rows
-    .filter((r): r is string => typeof r === "string")
-    .map((r) => r.trim())
-    .filter((r) => r !== "");
-}
-
-/**
  * 对端「不行」的那份体（后端的拒绝信封 `{code, message, data?}`）⇒ `(code, message, data)`；解不出 ⇒ `null`。
  * `data` 只有协议里按码定了形的那几个码带（今天只有 `account_unavailable`），按码收的那一侧自己核形状。
  */

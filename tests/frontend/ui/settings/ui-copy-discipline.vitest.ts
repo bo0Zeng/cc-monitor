@@ -247,7 +247,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     ).toEqual([]);
   });
 
-  const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, mask: null, action: "copySnippet" };
+  const CHORE = { id: "", kind: "optional", state: "todo", name: "", loc: "", said: "", why: "", steps: [], diff: [], copy: null, whole: null, wholeCovers: [], file: null, go: null, howUrl: null, action: "copySnippet" };
 
   it("〔ST2〕文件与数据**喂一份真成品**再扫：待办各类 ＋ 改过你的文件都上屏，一条都不许命中", async () => {
     // 文件与数据经通道问本机后端（`data-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。

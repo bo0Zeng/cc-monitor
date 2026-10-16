@@ -4,11 +4,12 @@
  * 页里的帧命令与订阅经 vite 的这几个口原样交给无头壳。成品（额度行 · 时刻字 · 状态字 · 拒答的复制详情 …）一律是真后端与壳算的，台架不写。
  *
  *   POST /__ccm/world  {key, machines: {<origin>: {files: {<相对家目录的路径>: <内容>}}}}  ⇒ 造好家目录、起无头壳与各台后端、全部握上手再答
- *   POST /__ccm/call   {key, origin, op, args, view?}         ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
+ *   POST /__ccm/call   {key, origin, op, args, view?, leftMs?} ⇒ 壳 `chan_call` 那一跳的结局：`{ok:true, body}` / `{ok:false, fail:{err, body, detail}}`
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
  *   POST /__ccm/write  {key, origin, rel, text, append?}    ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录；`append` ⇒ 接在末尾写）
  *   POST /__ccm/status {key, origin, sid, status, waitingFor?} ⇒ 场景演那一家改了自己 pidfile 里的状态（答了框 ⇒ busy）
+ *   POST /__ccm/paint  {key, origin, sid, text}            ⇒ 那个会话的替身往自己的窗格里再印一段（原样的终端输出）
  *   POST /__ccm/end    {key, origin}                         ⇒ 那台已结束 / 可重连的那几个这时收场（页里收到那台的清单之后发），见到裁出来的那一格才答
  *   POST /__ccm/kill   {key, origin}                         ⇒ 那台后端当场杀掉（演「断了」）
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
@@ -17,7 +18,8 @@
  *
  *   世界里的 `warm`（quota-warm 在跑）：同样配一个替身进程，写 `.cc-monitor/quota-warm.json` 带它的 pid。
  *   世界里的 `live`（活会话）：每个配一个 `sleep` 进程当 claude 的替身（缺省住在那台私有 tmux 的一个窗格里），写 `.claude/sessions/<pid>.json`
- *   （带 `procStart`，判活照真的那一套）；替身 · tmux · 后端同在一个沙箱里（见 `start`）。
+ *   （带 `procStart`，判活照真的那一套）；替身 · tmux · 后端同在一个沙箱里（见 `start`）。替身先把 `screen` 那一屏印进自己的窗格，
+ *   `windows` 个终端窗口是同一台 tmux 里嵌套的客户端（真后端的终端名单 · 抓屏 · 实时画面照真的那样读）。
  *
  * 隔离：每台后端跑在 bwrap 里 —— 家目录挂成 `/home/user`（界面上看到的路径与机器无关）、断网（`--unshare-net`）、主机名 `shots`、
  * `/tmp` 是空的；白名单环境（PATH · HOME · LANG · TZ · TMUX_TMPDIR · XDG_RUNTIME_DIR 都指沙箱）；不起 claude、不碰用户的 tmux。
@@ -76,6 +78,46 @@ export function pinDateSource(now = SHOTS_NOW_MS) {
  */
 export function procStartSh(stat) {
   return `sed 's/.*) //' ${stat} | awk '{print $20}'`;
+}
+
+/** 替身窗格的尺寸（列 × 行；替身印的那一屏照它排，`tests/shots/disk/screen.ts`）。 */
+export const PANE_COLS = 120;
+export const PANE_ROWS = 32;
+
+/** 真 tmux 在哪（沙箱里 `/` 只读挂着，同一个路径）：台架自己敲的那几下不经边界上的替身。 */
+const TMUX_BIN = spawnSync("sh", ["-c", "command -v tmux"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } }).stdout.trim() || "/usr/bin/tmux";
+
+/**
+ * 各活会话那个 tmux 会话的名字：照起会话那一处铸名的样子（`<目录名>-cc`，重名往后加 `-2` · `-3`），先让开不住 claude 的那几个（`bareTmux`）。
+ * 回 `live` 下标 ⇒ 名字（不住 tmux 的没有）。
+ */
+export function tmuxNames(m) {
+  const taken = new Set((m.bareTmux ?? []).map((b) => b.name));
+  const out = new Map();
+  (m.live ?? []).forEach((l, k) => {
+    if (l.tmux === false) return;
+    const base = `${l.cwd.split("/").filter(Boolean).pop() ?? "session"}-cc`;
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+    taken.add(name);
+    out.set(k, name);
+  });
+  return out;
+}
+
+/**
+ * 边界上的 tmux 替身（一段 sh）：参数里有 `#{version}` 那一问 ⇒ 答给定的版本；子命令在 `noServer` 里 ⇒ 照真 tmux 没有 server 时那一句失败；
+ * 其余原样交真 tmux。
+ */
+export function tmuxShim(shim, sock) {
+  const lines = ["#!/bin/sh"];
+  if (shim.version) lines.push(`for a in "$@"; do [ "$a" = '#{version}' ] && { echo ${JSON.stringify(shim.version)}; exit 0; }; done`);
+  for (const sub of shim.noServer ?? []) {
+    if (!/^[a-z-]+$/.test(sub)) throw new Error(`tmuxShim.noServer 里的子命令形状不对：${sub}`);
+    lines.push(`for a in "$@"; do [ "$a" = ${sub} ] && { echo "no server running on ${sock}" >&2; exit 1; }; done`);
+  }
+  lines.push(`exec ${TMUX_BIN} "$@"`);
+  return lines.join("\n") + "\n";
 }
 
 /** 台架那一份后端的构建目录（带特性 `shots`）。 */
@@ -151,27 +193,61 @@ export function backendPool({ repo, sandbox }) {
     mkdirSync(path.join(dir, "tmux", `tmux-${process.getuid()}`), { recursive: true, mode: 0o700 });
     mkdirSync(path.join(dir, "run"), { recursive: true, mode: 0o700 });
     const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
-    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE tmux -S ${H}/.shots-tmux/tmux-${process.getuid()}/default -f /dev/null "$@"; }`];
+    const sock = `${H}/.shots-tmux/tmux-${process.getuid()}/default`;
+    // 台架自己敲的 tmux 一律是真的那一个（边界上的替身只挡后端那几问，见下面 `tmuxShim`）。
+    const sh = ["set -e", `T() { env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null "$@"; }`];
+    sh.push(`ln -s "$(readlink -f /bin/sh)" ${H}/.shots-setup/claude`);
     /**
      * 开页之后才收场的那几个（台架见到那台的清单之后收）：已结束 ⇒ 关掉它那个 tmux 会话（替身跟着没了）；
      * 可重连 ⇒ 只杀替身（claude 退了），窗格接着跑一个 shell、后端打过的标签还挂着。
      */
     const doomed = [];
+    /** 替身窗格往后再印的那一口（sid ⇒ 沙箱外那一份命名管道；替身读它、原样印进窗格）。 */
+    const paints = new Map();
+    const names = tmuxNames(m);
+    let first = true;
+    const newSession = (name, cmd, fmt) => {
+      const line = `T new-session -d -s ${q(name)} -x ${PANE_COLS} -y ${PANE_ROWS}${fmt ? ` -P -F '${fmt}'` : ""} ${q(cmd)}`;
+      // 头一个会话把 server 起起来：状态栏关掉（窗格与连上来的终端窗口同高，嵌套的客户端不把窗口挤矮一行）。
+      const after = first ? ` \\; set -g status off` : "";
+      first = false;
+      return line + after;
+    };
+    const viewers = [];
     (m.live ?? []).forEach((l, k) => {
-      const pane = `T new-session -d -s s${k} -x 120 -y 32 -P -F`;
       if (l.tmux === false && l.fate) throw new Error(`${origin} 上 ${l.sid}：不住 tmux 的替身演不了收场（台架从沙箱外够不着它）`);
+      if (l.tmux === false && (l.screen || l.windows)) throw new Error(`${origin} 上 ${l.sid}：不住 tmux 的替身没有窗格，印不了那一屏、也连不了终端窗口`);
+      const name = names.get(k);
+      // 替身先把那一屏印进自己的窗格（真后端抓屏读的就是它）。
+      writeFileSync(path.join(setup, `${k}.screen`), l.screen ?? "");
+      const paint = `cat ${H}/.shots-setup/${k}.screen; `;
       if (l.tmux === false) sh.push("sleep 3600 & pid=$!");
       else if (l.fate === "reconnectable") {
         // 替身是窗格里那个 shell 的子进程：它被杀之后窗格还在（shell 接着睡）。
         const pf = `${H}/.shots-setup/${k}.pid`;
-        sh.push(`${pane} '#{pane_id}' ${q(`sleep 3600 & echo $! > ${pf}; wait; exec sleep 3600`)} >/dev/null`, `while [ ! -s ${pf} ]; do sleep 0.02; done`, `pid=$(cat ${pf})`);
+        sh.push(`${newSession(name, `${paint}sleep 3600 & echo $! > ${pf}; wait; exec sleep 3600`, "#{pane_id}")} >/dev/null`, `while [ ! -s ${pf} ]; do sleep 0.02; done`, `pid=$(cat ${pf})`);
         doomed.push({ sid: l.sid, fate: "reconnectable", act: ["run-shell", `kill $(cat ${pf})`] });
-      } else sh.push(`pid=$(${pane} '#{pane_pid}' 'exec sleep 3600')`);
-      if (l.fate === "ended") doomed.push({ sid: l.sid, fate: "ended", act: ["kill-session", "-t", `s${k}`] });
+      } else {
+        // 替身印完那一屏就读一个命名管道、读到的原样印进窗格（台架往后再印一屏走它：`/__ccm/paint`）；pid 经 exec 不变。
+        // 它以 `claude` 的名字跑（指向 sh 的链接，读管道的 cat 是它的子进程）：后端按前台程序名认「agent 在跑」（`agents::is_agent_process`）。
+        // 不把 cat 本身改名：有的发行版 cat 是按自己名字分派的多合一程序，改了名就不是 cat 了。
+        const fifo = `${H}/.shots-setup/${k}.paint`;
+        sh.push(`mkfifo ${fifo}`, `pid=$(${newSession(name, `${paint}exec ${H}/.shots-setup/claude -c ${q(`cat 0<> ${fifo}; exit`)}`, "#{pane_pid}")})`);
+        paints.set(l.sid, path.join(setup, `${k}.paint`));
+      }
+      if (l.fate === "ended") doomed.push({ sid: l.sid, fate: "ended", act: ["kill-session", "-t", `=${name}`] });
+      for (let j = 0; j < (l.windows ?? 0); j++) viewers.push(name);
       const body = { pid: "__PID__", sessionId: l.sid, cwd: l.cwd, startedAt: l.startedAt ?? now, kind: l.kind ?? "interactive", procStart: "__PS__", ...(l.name ? { name: l.name } : {}), ...(l.status ? { status: l.status } : {}), ...(l.waitingFor ? { waitingFor: l.waitingFor } : {}), ...(l.statusUpdatedAt ? { statusUpdatedAt: l.statusUpdatedAt } : {}) };
       writeFileSync(path.join(setup, `${k}.json`), JSON.stringify(body).replace('"__PID__"', "__PID__"));
       sh.push(`ps=$(${procStartSh("/proc/$pid/stat")})`, `sed "s/__PID__/$pid/; s/__PS__/$ps/" ${H}/.shots-setup/${k}.json > ${H}/.claude/sessions/$pid.json`);
     });
+    // 不住 claude 的 tmux 会话：印完那一屏落回一个 shell（前台是 shell ⇒ 后端照真的那样判它闲着）。
+    (m.bareTmux ?? []).forEach((b, k) => {
+      writeFileSync(path.join(setup, `bare${k}.screen`), b.screen);
+      sh.push(`${newSession(b.name, `cat ${H}/.shots-setup/bare${k}.screen; exec sh`)}`);
+    });
+    // 终端窗口：同一台私有 tmux 里另起一个会话，窗格里跑一个嵌套的客户端 attach 到它那个会话上（后端 `list-clients` 照真的那样数到它）。
+    viewers.forEach((name, j) => sh.push(newSession(`window-${j}`, `exec env -u TMUX -u TMUX_PANE ${TMUX_BIN} -S ${sock} -f /dev/null attach -t ${q(`=${name}`)}`)));
     if (m.warm) {
       mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
       writeFileSync(path.join(setup, "warm.json"), JSON.stringify({ pid: "__PID__", next: m.warm }).replace('"__PID__"', "__PID__"));
@@ -194,8 +270,11 @@ export function backendPool({ repo, sandbox }) {
       sh.push(`${backend} | grep --line-buffered -v -E ${q(pat)}`);
     }
     writeFileSync(path.join(setup, "run.sh"), sh.join("\n") + "\n");
+    // tmux 在边界上的替身（`tmuxShim`）：放在沙箱 PATH 最前，后端照常敲 `tmux` 先碰到它；没给 ⇒ 那一格目录是空的。
+    mkdirSync(path.join(home, ".shots-bin"), { recursive: true });
+    if (m.tmuxShim) writeFileSync(path.join(home, ".shots-bin", "tmux"), tmuxShim(m.tmuxShim, sock), { mode: 0o755 });
     const env = {
-      PATH: "/usr/bin:/bin",
+      PATH: `${H}/.shots-bin:/usr/bin:/bin`,
       HOME: H,
       LANG: "C.UTF-8",
       TMUX_TMPDIR: `${H}/.shots-tmux`,
@@ -205,6 +284,8 @@ export function backendPool({ repo, sandbox }) {
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
     };
+    const passwd = path.join(dir, "passwd");
+    writeFileSync(passwd, `root:x:0:0:root:/root:/bin/sh\nuser:x:${process.getuid()}:${process.getgid()}:user:${H}:/bin/sh\n`);
     const box = [
       "--ro-bind", "/", "/",
       "--tmpfs", "/home",
@@ -212,6 +293,10 @@ export function backendPool({ repo, sandbox }) {
       "--bind", path.join(dir, "tmux"), `${H}/.shots-tmux`,
       "--bind", path.join(dir, "run"), `${H}/.shots-run`,
       "--tmpfs", "/tmp",
+      // 系统那一份 ssh 配置不进来；账号表只有沙箱里这一个用户（`ssh -G` 照账号表找家目录与缺省用户名：
+      // 读的是台架盘上的 `~/.ssh/config`、缺省用户名是 `user`，不随跑截图那台机器变、不带出它的登录名）。
+      "--tmpfs", "/etc/ssh",
+      "--ro-bind", passwd, "/etc/passwd",
       "--ro-bind", bin, "/tmp/ccm-shots/cc-monitor-backend",
       "--dev", "/dev",
       // 自成一个进程命名空间：沙箱的头一个进程一退（壳杀那一台 · 台架收场），替身与 tmux 跟着全没。
@@ -223,7 +308,7 @@ export function backendPool({ repo, sandbox }) {
       "/bin/sh", `${H}/.shots-setup/run.sh`,
     ];
     // 每台一条整命令（沙箱 ＋ 后端），交给无头壳去起（它拿着各台的标准输入输出，就像壳拿着本机后端那一条）。
-    return { argv: ["bwrap", ...box], doomed, tmux: tmuxOf(dir) };
+    return { argv: ["bwrap", ...box], doomed, paints, tmux: tmuxOf(dir) };
   }
 
   /** 无头壳：一行一个 JSON 进出（`shots_shell.rs` 头注）。 */
@@ -280,7 +365,8 @@ export function backendPool({ repo, sandbox }) {
         replies.set(id, resolve);
         send({ ...cmd, n: id });
       });
-    const call = (origin, op, args, view) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), view: view ?? null, left_ms: 30_000 });
+    /** `leftMs` ＝ 这一跳的期限（缺 ⇒ 30 秒；挂着等人答的那种由场景给长一些）。 */
+    const call = (origin, op, args, view, leftMs = 30_000) => ask({ t: "call", origin, op, payload: JSON.stringify(args ?? {}), view: view ?? null, left_ms: leftMs });
     /** 各台都握上手（壳那一侧的入方向通道登记了）：隔一会儿问一次，30 秒上限。 */
     const up = async (origins) => {
       const until = Date.now() + 30_000;
@@ -354,12 +440,13 @@ export function backendPool({ repo, sandbox }) {
       lines.push(`${String(Date.now() - t0).padStart(7)} ${t}`);
       if (lines.length > TRACE_KEEP) lines.splice(0, lines.length - TRACE_KEEP);
     };
-    const w = { dir, homes: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
+    const w = { dir, homes: new Map(), paints: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
     worlds.set(key, w);
     const list = Object.entries(machines).map(([origin, m], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
-      const { argv, doomed, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
+      const { argv, doomed, paints, tmux } = start(path.join(dir, `m${i}`), origin, m, now);
       w.doomed.push(...doomed.map((d) => ({ ...d, origin, act: () => tmux(d.act) })));
+      for (const [sid, fifo] of paints) w.paints.set(`${origin}\0${sid}`, fifo);
       return { origin, argv };
     });
     const sh = startShell(dir, w);
@@ -393,7 +480,7 @@ export function backendPool({ repo, sandbox }) {
   async function call(body) {
     const w = worlds.get(body.key);
     if (!w) return { ok: false, fail: { err: { Ours: "Misuse" }, body: [], detail: `没有这个世界：${body.key}` } };
-    return w.sh.call(body.origin, body.op, body.args, body.view);
+    return w.sh.call(body.origin, body.op, body.args, body.view, body.leftMs);
   }
 
   /** 页里的订阅那几样原样交给无头壳（窗口只有一扇）。 */
@@ -420,6 +507,11 @@ export function backendPool({ repo, sandbox }) {
         v.statusUpdatedAt = Date.now() + w.shift;
         writeFileSync(p, JSON.stringify(v));
       }
+    } else if (url === "/__ccm/paint") {
+      // 那个会话的替身往自己的窗格里再印一段（原样的终端输出）：写进它读的那个命名管道。
+      const fifo = w.paints.get(`${body.origin}\0${body.sid}`);
+      if (!fifo) throw new Error(`${body.origin} 上 ${body.sid} 没有住在窗格里的替身`);
+      appendFileSync(fifo, String(body.text));
     } else if (url === "/__ccm/write") {
       const home = w.homes.get(body.origin);
       const rel = String(body.rel);
@@ -442,7 +534,7 @@ export function backendPool({ repo, sandbox }) {
       req.on("error", reject);
     });
 
-  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/write", "/__ccm/status"]);
+  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/write", "/__ccm/status", "/__ccm/paint"]);
 
   async function serve(req, res, next) {
     if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {

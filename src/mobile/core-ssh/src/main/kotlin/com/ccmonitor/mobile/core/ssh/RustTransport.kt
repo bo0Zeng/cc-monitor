@@ -27,7 +27,6 @@ import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.interfaces.ECPublicKey
 import java.util.Base64
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -38,12 +37,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   shell 各开一条链路，按同一份拨号身份复用那条连接（核心的连接池）。握着的那条收工（对端断 · 保活判死）⇒ [isConnected] 变假。
  * - host key：这台记过的全部钥匙交进请求，照 OpenSSH 比（记过的类型协商排前、按协商出的那一种严格比、那一种没记过 ⇒ 拒）；
  *   一把都没记过 ⇒ 首见接受，**鉴权过了**才落 [KnownHostStore]。
- * - 钥匙按编号交进核心（密码 · PEM · Keystore 别名＋公钥）；Keystore 的签名在这里做（回 DER，核心换成 SSH 的格式）。
+ * - 钥匙交进核心、拨号请求写它的编号（密码 · PEM · Keystore 别名＋公钥）；每一条都握着自己那份身份的钥匙，[close] 时放掉 ——
+ *   身份的最后一条收掉，核心里那几把就没了。Keystore 的签名在这里做（回 DER，核心换成 SSH 的格式）。
  */
 class RustTransport(
     private val knownHostStore: KnownHostStore? = null,
     /** 照这一份拨号身份再握一条（[again]）；`null` ⇒ [connect] 照配置组一份新的。 */
     private val preset: JSONObject? = null,
+    /** [preset] 那份身份的钥匙编号（[again] 已替这一条多握了一份）。 */
+    held: List<String> = emptyList(),
 ) : SshTransport {
     /** 拨号身份那一份请求（不带用法）：每条链路照它开，核心按它复用同一条连接。 */
     @Volatile private var base: JSONObject? = preset
@@ -55,9 +57,21 @@ class RustTransport(
 
     private val drops = mutableListOf<() -> Unit>()
 
+    /** 这一条握着的钥匙编号（[close] 时放掉）。 */
+    private val keys = held.toMutableList()
+
     override val isConnected: Boolean get() = !closed.get() && hold?.isOpen == true
 
-    override fun again(): SshTransport? = base?.let { RustTransport(knownHostStore, JSONObject(it.toString())) }
+    override fun again(): SshTransport? {
+        val b = base ?: return null
+        val ids = synchronized(keys) { keys.takeUnless { closed.get() }?.toList() } ?: return null
+        val kept = ids.takeWhile { Core.holdKey(it, true) }
+        if (kept.size < ids.size) {
+            kept.forEach { Core.holdKey(it, false) }
+            return null
+        }
+        return RustTransport(knownHostStore, JSONObject(b.toString()), ids)
+    }
 
     override fun onDrop(f: () -> Unit) {
         synchronized(drops) { drops += f }
@@ -172,6 +186,8 @@ class RustTransport(
         children.clear()
         hold?.close()
         watcher.cancel()
+        val ids = synchronized(keys) { keys.toList().also { keys.clear() } }
+        ids.forEach { Core.holdKey(it, false) }
     }
 
     // ── 链路 ─────────────────────────────────────────────────────────────────────
@@ -195,20 +211,25 @@ class RustTransport(
 
     // ── 钥匙 · host key ─────────────────────────────────────────────────────────
 
-    /** 把一样鉴权交进核心，回它的编号（拨号请求的 `key_path`）。 */
+    /** 把一样鉴权交进核心（这一条握一份），回它的编号（拨号请求的 `key_path`）；这一条已经关了 ⇒ 当场放掉、抛。 */
     private fun keyFor(auth: AuthMethod): String {
         RustCore.ensure()
-        val id = "k-" + UUID.randomUUID()
-        when (auth) {
-            is AuthMethod.Password -> Core.putPassword(id, auth.password)
-            is AuthMethod.PrivateKey -> Core.putPem(id, auth.pem, auth.passphrase?.concatToString())
-            is AuthMethod.KeystoreSigner -> {
-                val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-                val pub =
-                    ks.getCertificate(auth.alias)?.publicKey as? ECPublicKey
-                        ?: error(copyText("mobSsh.keystore.noCert", "alias" to auth.alias))
-                check(Core.putKeystore(id, auth.alias, uncompressedPoint(pub))) { copyText("mobSsh.keystore.noCert", "alias" to auth.alias) }
-            }
+        val id =
+            when (auth) {
+                is AuthMethod.Password -> Core.putPassword(auth.password)
+                is AuthMethod.PrivateKey -> Core.putPem(auth.pem, auth.passphrase?.concatToString())
+                is AuthMethod.KeystoreSigner -> {
+                    val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+                    val pub =
+                        ks.getCertificate(auth.alias)?.publicKey as? ECPublicKey
+                            ?: error(copyText("mobSsh.keystore.noCert", "alias" to auth.alias))
+                    Core.putKeystore(auth.alias, uncompressedPoint(pub)) ?: error(copyText("mobSsh.keystore.noCert", "alias" to auth.alias))
+                }
+            } ?: throw IOException(copyText("mobSsh.conn.unavailable"))
+        val kept = synchronized(keys) { !closed.get() && keys.add(id) }
+        if (!kept) {
+            Core.holdKey(id, false)
+            throw IOException(copyText("mobSsh.conn.closedNew"))
         }
         return id
     }

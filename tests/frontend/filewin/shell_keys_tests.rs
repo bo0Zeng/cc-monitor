@@ -1194,7 +1194,7 @@ fn drive_real_keys(
     use crate::rows::testing::xvfb;
     let mut log = Vec::new();
     let sleep = |ms: u64| std::thread::sleep(std::time::Duration::from_millis(ms));
-    let ids = xvfb::wait_for_windows(display, KEY_PROBE_TITLE, 20_000);
+    let ids = xvfb::wait_for_windows(display, KEY_PROBE_TITLE);
     let Some(id) = ids.first().cloned() else {
         shared.lock().unwrap().close_now = true;
         log.push("一个窗口都没等到".into());

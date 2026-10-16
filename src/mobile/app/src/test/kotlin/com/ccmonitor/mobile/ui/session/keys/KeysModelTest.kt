@@ -71,6 +71,20 @@ class KeysModelTest {
     }
 
     @Test
+    fun capIsEitherTextOrAnIcon() {
+        val d = KeyDraft(id = null, groupId = "a", label = "go", tap = Slot.of(esc))
+        val iconed = d.withIcon("arrow-up")
+        assertEquals("选了图标 ⇒ 另写的字清掉", KeyDraft(id = null, groupId = "a", icon = "arrow-up", tap = Slot.of(esc)), iconed)
+        assertEquals("写字 ⇒ 图标清掉", d.copy(label = "x"), iconed.withLabel("x"))
+        assertEquals(d.copy(label = ""), d.withIcon(null))
+        val saved = iconed.toKey(null, endOf = { 0 }, newId = { "n" })
+        assertEquals(TermKey("n", "a", 0, icon = "arrow-up", tap = esc), saved)
+        assertEquals(iconed.copy(id = "n"), KeyDraft.of(saved))
+        val mod = KeyDraft(id = null, groupId = "a", modifier = KeyMod.CTRL, icon = "arrow-up").toKey(null, endOf = { 0 }, newId = { "m" })
+        assertNull("修饰键写修饰名，不带图标", mod.icon)
+    }
+
+    @Test
     fun naturalHintFollowsWhatTheTapIs() {
         assertEquals(copyText("mobKeys.natural.longRepeat"), naturalHint(Trigger.LONG, up))
         assertEquals(copyText("mobKeys.natural.longOnce"), naturalHint(Trigger.LONG, esc))

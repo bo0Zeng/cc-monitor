@@ -29,7 +29,9 @@ pub use topic::TopicExt;
 pub use cmd_wire::frame::{decode, Frame, Hello, Line, SessionAdded, SessionPrimed, SessionStatus};
 pub use cmd_wire::frame::{ActivityFace, CanSwitch, NameFace, SessionActivity, Switch};
 pub use cmd_wire::frame::{Cancelled, Changed, Overflow, Reply, SessionRemoved, SessionState};
-pub use cmd_wire::frame::{FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer};
+pub use cmd_wire::frame::{
+    Deploy, DeployStep, FilesBatch, LinkData, LinkEnd, Probe, SessionsReplayed, Transfer,
+};
 pub use cmd_wire::frame::{FollowEnd, RereadWhy, SessionContainer, TerminalHost, TransferEnd};
 pub use cmd_wire::frame::{LostFrame, RemovalCause, SessionFate, Topic, Unavailable};
 pub use cmd_wire::frame::{RunDid, RunEnded, RunInfo, RunState, RunWhy};
@@ -400,6 +402,8 @@ impl FrameRules for Frame {
             Frame::Transfer(_) => false,
             // 测试连接的进度 / 结局：同上（走应答通道）。
             Frame::Probe(_) => false,
+            // 装后端那一趟走到哪一步：同上（走应答通道）。
+            Frame::Deploy(_) => false,
             // 一组的进度：只是快照（结局在应答里），但走应答通道、不丢。
             Frame::FilesBatch(_) => false,
             // SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对），丢了由位置号 `n` 原位说出来。
@@ -438,6 +442,7 @@ impl FrameRules for Frame {
             | Frame::LinkEnd(_)
             | Frame::Transfer(_)
             | Frame::Probe(_)
+            | Frame::Deploy(_)
             | Frame::FilesBatch(_)
             | Frame::TerminalScreen(_)
             | Frame::TerminalFollowEnd(_) => None,
@@ -480,6 +485,7 @@ impl FrameRules for Frame {
             Frame::LinkEnd(LinkEnd { link, .. }) => ("link_end", Some(link.clone())),
             Frame::Transfer(Transfer { id, .. }) => ("transfer", Some(id.clone())),
             Frame::Probe(Probe { ticket, .. }) => ("probe", Some(ticket.clone())),
+            Frame::Deploy(Deploy { machine, .. }) => ("deploy", Some(machine.clone())),
             Frame::FilesBatch(FilesBatch { ticket, .. }) => ("files_batch", Some(ticket.clone())),
             Frame::LiveCard(l) => ("live_card", Some(l.sid.clone())),
             Frame::SessionRuns(SessionRuns { sid, .. }) => ("session_runs", Some(sid.clone())),

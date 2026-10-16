@@ -72,7 +72,6 @@ import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
 import { forgetResumeDefaults, resumeInTmuxAt } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import { __resetLastSeenForTests } from "../../../../src/frontend/ui/last-seen";
 
 const settle = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -94,7 +93,6 @@ const chore = (over: Record<string, unknown>) => ({
   file: null,
   go: null,
   howUrl: null,
-  mask: null,
   action: "copySnippet",
   ...over,
 });
@@ -139,7 +137,6 @@ beforeEach(() => {
   fileWin.length = 0;
   localOpened.length = 0;
   localRevealed.length = 0;
-  __resetLastSeenForTests();
   opened.mockClear();
   marks.length = 0;
   clipFake = fakeClipboard();
@@ -184,8 +181,8 @@ describe("待办", () => {
     expect(row("install:git").querySelector("button"), "没有链接还摆一颗点不出东西的按钮").toBeNull();
   });
 
-  it("★ 复制 ⇒ 剪贴板是真内容（钥匙不遮）、那件标「已复制 · 等你贴」；整份盖两件 ⇒ 两件一起标；那台认出已做 ⇒ 段头说一句、收进「已做的 N」", async () => {
-    const relay = chore({ id: "relay", name: "实时显示", copy: "K=SECRET", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], mask: "SECRET", why: "为什么", steps: ["打开 f"], diff: [{ n: 3, op: "same", text: "{" }, { n: null, op: "add", text: "K=SECRET" }] });
+  it("★ 复制 ⇒ 剪贴板是那一件交来的整份、那件标「已复制 · 等你贴」；整份盖两件 ⇒ 两件一起标；那台认出已做 ⇒ 段头说一句、收进「已做的 N」", async () => {
+    const relay = chore({ id: "relay", name: "实时显示", copy: "K=SECRET", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "为什么", steps: ["打开 f"], diff: [{ n: 3, op: "same", text: "{" }, { n: null, op: "add", text: "K=SECRET" }] });
     const hooks = chore({ id: "cc-bus-hooks", name: "收信", copy: "h", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "w" });
     answers.set(LOCAL_ORIGIN, report({ todo: [relay, hooks], chores: 0 }));
     const { page } = mount();
@@ -193,7 +190,6 @@ describe("待办", () => {
     await settle();
     const row = (id: string) => page.element.querySelector<HTMLElement>(`[data-chore="${id}"]`)!;
     row("relay").querySelector<HTMLButtonElement>("[aria-expanded]")!.click();
-    expect(row("relay").querySelector(".chore-diff")!.textContent, "显示时钥匙要遮住").not.toContain("SECRET");
     [...row("relay").querySelectorAll("button")].find((b) => b.textContent === copyText("dataPage.chore.copyWholeN", { n: 2 }))!.click();
     await settle();
     expect(clipFake.written).toEqual(["{SECRET}"]);
@@ -346,8 +342,7 @@ describe("cc-monitor 放了什么", () => {
     await settle();
     expect(seen.get("devbox")?.data, "读成了那台 ⇒ 交本机后端记下").toBeTruthy();
     expect(seen.has(LOCAL_ORIGIN), "本机那台不记").toBe(false);
-    // 「重启」：界面那份记忆清掉，那台这回断开。
-    __resetLastSeenForTests();
+    // 「重启」：那台这回断开。
     answers.delete("devbox");
     document.body.replaceChildren();
     const { page } = mount();

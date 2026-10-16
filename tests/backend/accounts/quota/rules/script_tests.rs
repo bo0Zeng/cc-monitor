@@ -222,7 +222,7 @@ fn unreadable_files_say_why_and_where() {
 /// 积木库里那几项设置的名字（`capKind`）也不在后端源码里（`row` · `delay` 这种常见词别处另有用处，不搜）。
 #[test]
 fn the_backend_knows_no_strategy_and_no_rule() {
-    let root = crate::guard_support::repo_root().join("src/backend");
+    let root = guard_core::addr::repo_root().join("src/backend");
     let mut needles: Vec<String> = vec!["\"capKind\"".into()];
     for (id, _) in fixtures() {
         needles.push(format!("{id}.rhai"));
@@ -235,7 +235,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             !p.ends_with("rotation/migrate.rs") && !p.ends_with("rules/upgrade.rs")
         })
         .flat_map(|(p, t)| {
-            let t = crate::guard_support::production_code(&t);
+            let t = guard_core::production_code(&t);
             needles
                 .iter()
                 .filter(|n| guard_core::contains_word(&t, n))

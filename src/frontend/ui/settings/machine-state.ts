@@ -87,18 +87,13 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
   switch (m.state) {
     case "up":
       return face(m.versionRelation === "incomparable" ? copyText("machineState.word.incomparable") : "", "");
+    // 正在连 / 装 / 更新那一句是写好的（装那一趟的几步是后端写的），照画。
     case "connecting":
-      return face(
-        copyText("machineState.word.connecting"),
-        copyText("machineState.busy.connecting", {
-          machine,
-          stage: m.stage === "attach" ? copyText("machineState.stage.attach") : copyText("machineState.stage.deploy"),
-        }),
-      );
+      return face(copyText("machineState.word.connecting"), m.said ?? "");
     case "installing":
-      return face(copyText("machineState.word.installing"), copyText("machineState.busy.installing", { machine }));
+      return face(copyText("machineState.word.installing"), m.said ?? "");
     case "updating":
-      return face(copyText("machineState.word.updating"), copyText("machineState.busy.updating", { machine }));
+      return face(copyText("machineState.word.updating"), m.said ?? "");
     case "unknown":
       return face("", "");
     case "down":

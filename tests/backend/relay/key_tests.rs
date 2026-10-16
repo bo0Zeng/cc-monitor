@@ -199,10 +199,10 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
         }
         out
     };
-    let repo = crate::guard_support::repo_root();
+    let repo = guard_core::addr::repo_root();
     let mut got = BTreeMap::new();
     for (p, src) in
-        guard_core::scan_tree_excluding(&crate::guard_support::relay_host_root(), &["rs"], &[])
+        guard_core::scan_tree_excluding(&guard_core::addr::relay_host_root(), &["rs"], &[])
     {
         let mut norm = PathBuf::new();
         for c in p.components() {
@@ -222,7 +222,7 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
         if rel == "src/backend/relay/key.rs" {
             continue;
         }
-        for (w, n) in words_in(&crate::guard_support::production_side_of(&p, &src)) {
+        for (w, n) in words_in(&guard_core::addr::production_side_of(&p, &src)) {
             got.insert((rel.clone(), w), n);
         }
     }
@@ -231,7 +231,7 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
         got, want,
         "钥匙读盘那一半（读 · 铸）只许宿主 `listen.rs` 绑上口之后调；中转只收宿主交进来的 `Key`"
     );
-    let mod_rs = std::fs::read_to_string(crate::guard_support::relay_host_root().join("mod.rs"))
+    let mod_rs = std::fs::read_to_string(guard_core::addr::relay_host_root().join("mod.rs"))
         .expect("读 relay/mod.rs");
     guard_core::pin_line(&guard_core::production_code(&mod_rs), "mod key;")
         .unwrap_or_else(|e| panic!("`key` 不再是 relay 的私有子模块 ⇒ 本条的人群前提不成立：{e}"));

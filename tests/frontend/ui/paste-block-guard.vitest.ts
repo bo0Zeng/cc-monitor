@@ -47,22 +47,6 @@ const FAMILY_B = [
 ];
 
 /**
- * ★ 族 AB：**两族都属于**的文件。Z05 撞出来的：`accounts-section.ts` 原先是纯族 B
- * （复制命令 / 复制路径 / 复制诊断文本 = 复制完就完事），Z05 给它加了一个真·待贴块
- *（rc 片段 → 远端 `~/.bashrc`）⇒ 它同时有两种语义。
- *
- * **原先的 A/B 二分覆盖不了这种文件**：塞进族 A 会被「族 A 里不得再出现裸 writeText」
- * 打红（那三处 `writeText` 是正当的族 B 用途）；留在族 B 会被「族 B 不许出现待贴语义」打红。
- *
- * **判据换成计数上下界，不是「有没有 writeText」**：族 A 那条规则真正要防的是
- * 「有人手搓一个复制按钮绕开组件」。对混合文件而言，能表达这个性质的是
- * **`writeText` 处数恰好等于已登记的族 B 用途数** —— 多出一处就说明又手搓了一个。
- */
-// 今天没有成员（唯一那一员 `accounts-section.ts` 的待贴块随 rc 片段那一段删了，回到族 B）。表留着：
-// 下一处「既复制命令又出待贴块」的文件照这个形状登记。
-const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [];
-
-/**
  * 收集源文件，**路径一律用 `/`**。
  *
  * `join` 在 Windows 上产出 `src\main.ts`，而上面三张名单是手写的 `src/frontend/ui/main.ts`
@@ -99,16 +83,14 @@ describe("待贴配置文本只有一个实现", () => {
     // 而这条注释正是阈值的论证依据。族 A 三处迁移后各自不再持有 `writeText`，
     // 于是 7 → 5：**这个数字下降就是迁移成功的直接证据**。
     expect(hits.length).toBeGreaterThanOrEqual(5);
-    const known = new Set([...FAMILY_A, ...FAMILY_B, ...FAMILY_AB.map((x) => x.file)]);
+    const known = new Set([...FAMILY_A, ...FAMILY_B]);
     const unknown = hits.filter((f) => !known.has(f));
     expect(unknown).toEqual([]);
   });
 
   it("族 A 两处都必须走 buildPasteBlock，不许再自己拼复制按钮", () => {
-    // 族 A 与族 AB 一起量（哪边空着都不让这一条零命中地绿）。
-    const withPaste = [...FAMILY_A, ...FAMILY_AB.map((x) => x.file)];
-    expect(withPaste.length).toBeGreaterThan(0);
-    for (const f of withPaste) {
+    expect(FAMILY_A.length).toBeGreaterThan(0);
+    for (const f of FAMILY_A) {
       const src = readFileSync(f, "utf8");
       expect(src, `${f} 应引入统一组件`).toContain("buildPasteBlock");
     }
@@ -150,25 +132,6 @@ describe("待贴配置文本只有一个实现", () => {
           `${f} 出现了待贴语义 ${smell}：要么它其实是族 A（走组件），要么改个说法`,
         ).toBe(false);
       }
-    }
-  });
-
-  it("★ 族 AB：既走组件，又只保留已登记的那几处族 B 复制（多一处即红）", () => {
-    for (const { file, writeTextUses, why } of FAMILY_AB) {
-      const raw = readFileSync(file, "utf8");
-      const code = raw
-        .split("\n")
-        .filter((l) => !l.trimStart().startsWith("//"))
-        .join("\n");
-      // 族 A 侧的约束：待贴块必须来自组件，不许手搓。
-      expect(code, `${file} 是族 AB，待贴那半必须走组件（${why}）`).toContain("buildPasteBlock");
-      // 族 B 侧的约束换成**计数上下界**：这才是「没有人手搓第 N+1 个复制按钮」的可判据。
-      const uses = code.split(WRITE).length - 1;
-      expect(
-        uses,
-        `${file} 的 writeText 处数从 ${writeTextUses} 变成了 ${uses}：` +
-          "多出来的那处要么该走组件（待贴语义），要么在这里登记它是第几处族 B 用途",
-      ).toBe(writeTextUses);
     }
   });
 
