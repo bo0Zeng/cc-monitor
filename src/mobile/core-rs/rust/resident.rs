@@ -2,7 +2,8 @@
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
 //! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
-//! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
+//! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）·
+//! `moved`（分块传走到哪，`transfer.rs`）。
 
 use resident_client::client::CallError;
 use resident_client::feed::{
@@ -328,11 +329,16 @@ pub fn ssh(h: i64, base: Option<&str>) -> bool {
     }
 }
 
+/// 下一个问答编号（一问一答与分块传同一族：结局都经 `reply` 回、Kotlin 按它认）。
+pub(crate) fn next_call() -> i64 {
+    static NEXT: AtomicI64 = AtomicI64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 /// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0。
 pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) -> i64 {
-    static NEXT: AtomicI64 = AtomicI64::new(1);
     let Some(f) = feed(h) else { return 0 };
-    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let id = next_call();
     let args: serde_json::Value = serde_json::from_str(args).unwrap_or(serde_json::Value::Null);
     let machine = f.machine().to_string();
     tokio::spawn(async move {

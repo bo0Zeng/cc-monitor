@@ -72,6 +72,29 @@ class ResidentFeedTest {
             kicks += retry
         }
 
+        val transfers = mutableListOf<List<Any>>()
+
+        override fun stage(
+            handle: Long,
+            fd: Int,
+            name: String,
+            withinMs: Long,
+        ): Long {
+            transfers += listOf("stage", fd, name, withinMs)
+            return 40L + transfers.size
+        }
+
+        override fun pull(
+            handle: Long,
+            fd: Int,
+            args: String,
+            shown: String,
+            withinMs: Long,
+        ): Long {
+            transfers += listOf("pull", fd, args, shown, withinMs)
+            return 40L + transfers.size
+        }
+
         override fun deploy(
             handle: Long,
             slots: String,
@@ -194,6 +217,26 @@ class ResidentFeedTest {
                 core.emit("reply", line)
                 assertEquals(want, r.await())
             }
+        }
+
+    @Test
+    fun `分块传：描述符交给核心、走到哪按编号交给那一趟、结局同一问一答那一行`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val core = FakeCore()
+            val f = feed(core)
+            val seen = mutableListOf<Pair<Long, Long>>()
+            val up = async { f.transfer(Transfer.Stage("up.bin"), { 17 }, 20_000) { d, t -> seen += d to t } }
+            assertEquals(listOf<Any>("stage", 17, "up.bin", 20_000L), core.transfers.single())
+            core.emit("moved", """{"call":41,"done":5,"total":10}""")
+            core.emit("moved", """{"call":99,"done":1,"total":1}""")
+            core.emit("moved", """{"call":41,"done":10,"total":null}""")
+            core.emit("reply", """{"call":41,"ok":true,"data":{"key":"k"}}""")
+            assertEquals(Reply.Ok(mapOf("key" to "k")), up.await())
+            assertEquals("别的那一趟的不算；总数不知道 ⇒ -1", listOf(5L to 10L, 10L to -1L), seen)
+            val down = async { f.transfer(Transfer.Pull(RemotePath.of("/w/f"), "/sd/f"), { 18 }, 9_000) { _, _ -> } }
+            assertEquals(listOf<Any>("pull", 18, """{"path":"/w/f"}""", "/sd/f", 9_000L), core.transfers.last())
+            core.emit("reply", """{"call":42,"down":true}""")
+            assertEquals(Reply.LinkDown, down.await())
         }
 
     @Test

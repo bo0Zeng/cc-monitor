@@ -1,7 +1,7 @@
 //! **手机嵌的 Rust 核心**（`libmobcore.so`）：只有 FFI 外壳。拨号 · 鉴权 · 复用 · 用法是后端同一份拨号核心（`ssh-dial`）。
 //!
 //! 边界是**手写 JNI、窄口、走消息**：一条链路就是拨号核心那一条（上行字节 → 下行阶段行 ＋ ack ＋ 字节），
-//! Kotlin 只开 · 送 · 改窗口 · 关；回调四个：下行字节 · Keystore 签名 · 认下的 host key · 常驻流交的事（`Core.Sink`）。
+//! Kotlin 只开 · 送 · 改窗口 · 关；分块传（`transfer.rs`）交的是文件描述符；回调四个：下行字节 · Keystore 签名 · 认下的 host key · 常驻流交的事（`Core.Sink`）。
 //! 常驻流（重连 · 握手 · 版本门 · 在看名单 · 一问一答）整条在 `resident-client`（桌面同一份），宿主住 [`resident`]。
 //! 不用 UniFFI / JNA（运行时多一份 JNA、两 ABI 多 2.2 MB，量过）。
 //!
@@ -26,6 +26,7 @@ use tokio::sync::mpsc;
 mod copy;
 pub mod install;
 pub mod resident;
+pub mod transfer;
 
 /// 这一份核心的身份那一行（JSON）：拨号核心的 ack 协议版本 ＋ 认得的用法。Kotlin 侧冒烟与「装上的是不是这一份」用它。
 pub fn version_json() -> String {
@@ -940,6 +941,75 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_deploy<'l>(
         } else {
             JNI_FALSE
         }
+    })
+}
+
+/// Kotlin 交来的文件描述符（`ParcelFileDescriptor.detachFd()`）⇒ 归核心的一份文件，用完就关。不是 unix ⇒ 没有这一说。
+fn file_of(fd: jint) -> Option<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::FromRawFd as _;
+        // SAFETY: Kotlin 交出（detach）了这个描述符的所有权，此后只有这一份 `File` 持有它。
+        (fd >= 0).then(|| unsafe { std::fs::File::from_raw_fd(fd) })
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = fd;
+        None
+    }
+}
+
+/// `Core.transferStage(handle, fd, name, withinMs)`：本机那一份（`fd`，读）逐块送进那台的暂存区（`transfer.rs`）；
+/// 回问答编号，走到哪经 `moved`、结局经 `reply` 交回。这台不在 ⇒ 0。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferStage<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    fd: jint,
+    name: JString<'l>,
+    within_ms: jlong,
+) -> jlong {
+    guarded(0, || {
+        let Some(file) = file_of(fd) else { return 0 };
+        let name = string(&mut env, &name).unwrap_or_default();
+        let _rt = runtime().enter();
+        transfer::stage(
+            handle,
+            file,
+            name,
+            u64::try_from(within_ms).unwrap_or(0),
+            on_resident(),
+        )
+    })
+}
+
+/// `Core.transferPull(handle, fd, args, shown, withinMs)`：那台上的 `args.path` 逐块读回、写进本机那一份（`fd`，写；`shown` 是它在句子里的名字）。
+/// 回问答编号（同 [`Java_com_ccmonitor_mobile_core_rs_Core_transferStage`]）；这台不在 · 入参读不动 ⇒ 0。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_transferPull<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    fd: jint,
+    args: JString<'l>,
+    shown: JString<'l>,
+    within_ms: jlong,
+) -> jlong {
+    guarded(0, || {
+        let Some(file) = file_of(fd) else { return 0 };
+        let (Some(args), shown) = (string(&mut env, &args), string(&mut env, &shown).unwrap_or_default()) else {
+            return 0;
+        };
+        let _rt = runtime().enter();
+        transfer::pull(
+            handle,
+            file,
+            &args,
+            shown,
+            u64::try_from(within_ms).unwrap_or(0),
+            on_resident(),
+        )
     })
 }
 
