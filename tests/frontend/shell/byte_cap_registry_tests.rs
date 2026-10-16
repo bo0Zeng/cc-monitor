@@ -1153,6 +1153,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，冷开扫描图落的那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
         "跳过+说清",
     ),
+    // 历史清单缓存读回来的上限：超了 ⇒ 当没有缓存，照记录重扫（说一声）。
+    (
+        "src/backend/history/listing.rs",
+        "STORE_MAX_READ",
+        "读回历史清单缓存（数据目录 `cache/listing.json`，清单那一族落的一份）：超了 ⇒ `warn!` 说一声，当没有缓存、照记录重扫",
+        "跳过+说清",
+    ),
     (
         "src/backend/observe/search_query.rs",
         "RESIDENT_MAX_BYTES",

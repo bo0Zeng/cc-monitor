@@ -1015,6 +1015,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     KNOWN_HOSTS_REL: NONE,
     // 记录骨架目录（后端冷开扫描图落的缓存；数据位置页按它列）。
     SKELETON_DIR_REL: NONE,
+    // 历史清单缓存（后端清单那一族落的缓存；数据位置页按它列）。
+    LISTING_CACHE_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,

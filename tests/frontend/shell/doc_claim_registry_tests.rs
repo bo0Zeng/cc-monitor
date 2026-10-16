@@ -375,10 +375,16 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
 #[test]
 fn every_repo_path_named_in_the_docs_still_resolves() {
     /// 例外：**解析不到却是对的**。三种形状，每种都在本仓真实出现过。
-    const EXCEPTIONS: &[(&str, &str)] = &[(
-        "src/frontend/shell/gen/schemas/acl-manifests.json",
-        "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
-    )];
+    const EXCEPTIONS: &[(&str, &str)] = &[
+        (
+            "src/frontend/shell/gen/schemas/acl-manifests.json",
+            "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
+        ),
+        (
+            "cache/listing.json",
+            "数据目录里后端运行时落的文件（历史清单缓存），不是仓内路径；§2.1 那张表按这个名字与足迹逐样对拍",
+        ),
+    ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 
     // 解析口径：跟踪着的文件（自检在 [`tracked_files`] 里：清单太短 ⇒ 口径坏了）。
