@@ -44,7 +44,8 @@ fn window(rows: Vec<Row>) -> FileWindow {
         Source::remote(synth_cfg("keys")),
         "/srv/data".to_string(),
         None,
-        rows,
+        rows.into_iter()
+            .map(|r| crate::find::testing::gated(r.into())),
     );
     *w.listing.error.lock().unwrap() = None;
     w
@@ -709,7 +710,7 @@ fn open_menu(
 #[test]
 fn the_menu_lists_exactly_what_the_selection_allows() {
     use copy_core::copy_static as c;
-    let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
+    let big = 8 * 1024 * 1024 + 1;
     let lossy = "\u{FFFD}x";
     let delete = copy_core::copy_text("rsFilewinSelect.menu.delete", &[]);
     let delete2 = copy_core::copy_text("rsFilewinSelect.menu.deleteMany", &[("n", "2")]);

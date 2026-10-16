@@ -61,6 +61,10 @@ pub struct HistoryRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub forked_from_message_uuid: Option<String>,
+    /// 分叉来的：父会话那一行（显示标题）；不是分叉来的 · 父会话不在这台的清单里 ⇒ 缺（界面写「分叉自其他会话」）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub forked_from: Option<ForkedFrom>,
     pub project_dir: String,
     pub group: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -95,6 +99,15 @@ pub struct HistoryRow {
     pub origin: Option<Machine>,
 }
 
+/// 分叉来的那一行的父会话：显示标题（同父会话自己那一行的 `label`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct ForkedFrom {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub label: Words,
+}
+
 /// 按项目看时的一组。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -113,6 +126,9 @@ pub struct HistoryGroup {
     pub starred: bool,
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub last_activity: i64,
+    /// `last_activity` 写好的字（同行尾那一格的写法）；读不了的那一组 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub at_text: Option<Words>,
     /// 几台的组并成一列时按它（大的在前）。
     #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
     pub order: i64,

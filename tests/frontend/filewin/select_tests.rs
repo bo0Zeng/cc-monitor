@@ -10,13 +10,13 @@ use super::*;
 use crate::source::{Listed, Row};
 
 fn row(name: &str, is_dir: bool, size: u64, lossy: bool) -> Listed {
-    Listed::plain(Row {
+    crate::find::testing::gated(Listed::plain(Row {
         name: name.to_string(),
         path: format!("/srv/sel/{name}"),
         is_dir,
         size,
         lossy_name: lossy,
-    })
+    }))
 }
 
 /// 五行：`a.txt · B.log · c.bin · dir · zeta.txt`（大小写刻意混着，给打字跳转那一格用）。
@@ -376,7 +376,7 @@ fn jumping_finds_the_first_name_with_that_prefix_ignoring_case() {
 #[test]
 fn what_can_be_done_matches_a_hand_written_table() {
     use Action::*;
-    let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
+    let big = 8 * 1024 * 1024 + 1;
     let file = row("f.txt", false, 3, false);
     let dir = row("d", true, 0, false);
     let huge = row("h.bin", false, big, false);

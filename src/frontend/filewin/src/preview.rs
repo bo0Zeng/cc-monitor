@@ -4,9 +4,8 @@
 //!
 //! # 一、读：已有那条命令，自己的上限
 //!
-//! 经通道问后端 `files-read-text`（编辑器读文本走的同一条命令，**不加子命令**），`max_bytes` 给
-//! [`PREVIEW_MAX_BYTES`]。那个数刻意比编辑上限小得多：预览**跟着光标走**，↑↓ 一路按下去每一步都是一趟，
-//! 而编辑上限是「用户点了编辑」那一下的量。超上限**不读、出声**（不截一半来预览：截断的文本会被当成全文）。
+//! 经通道问后端 `files-read-text`（编辑器读文本走的同一条命令），读不读、读多少、按哪种语法上色都照列表那一行上
+//! 后端给的门（`gates.preview`）；不许 ⇒ 摆出后端写好的那一句，不读（不截一半来预览：截断的文本会被当成全文）。
 //!
 //! # 二、节奏：同一时刻最多一趟在飞，最新的赢 —— 零定时器
 //!
@@ -20,8 +19,7 @@
 //!
 //! # 四、图片：后端按上限给字节，窗口解码
 //!
-//! 认得的图片（png · jpg · gif · webp · bmp）列表那一行不超过 [`IMAGE_MAX_BYTES`] 才读（超了不读、出声）；
-//! 读与解码住 [`super::picture`]：与查看页共用那一份（同一张图只读一次、只解一次，谁先要谁读）。
+//! 门说当图读 ⇒ 按它给的上限读；读与解码住 [`super::picture`]：与查看页共用那一份（同一张图只读一次、只解一次，谁先要谁读）。
 //!
 //! # ⚠ 买不到什么
 //!
@@ -32,17 +30,6 @@ use copy_core::copy_text;
 use std::sync::{Arc, Mutex};
 
 use super::shell::{FileWindow, NO_LINE};
-
-/// 预览读一份文本的上限（字节）。**唯一住址**；登记在 `byte_cap_registry`。
-///
-/// 超了：**不读、出声**（「有 N，预览只看 M 以内的文件」），不截断。
-pub const PREVIEW_MAX_BYTES: u64 = 64 * 1024;
-
-/// 预览一张图的上限（字节）。**唯一住址**；登记在 `byte_cap_registry`。超了：不读、出声。
-pub const IMAGE_MAX_BYTES: u64 = 4 * 1024 * 1024;
-
-/// 窗口自己解得开的图片扩展名。
-pub const DECODABLE: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 
 /// 面板上摆着的是什么。
 #[derive(Clone, PartialEq, Eq)]
@@ -100,6 +87,10 @@ pub struct Preview {
     wire: cmd_wire::files::WirePath,
     /// 那一份按文本读还是按图读。
     how: Want,
+    /// 那一份许读多少（门给的）。
+    cap: u64,
+    /// 那一份按哪种语法上色（门给的；纯文本 ⇒ `None`）。
+    lang: Option<String>,
     /// 按图读时那一张的钥匙（[`super::picture::Pictures`] 里认它）。
     pic: Option<super::picture::PicKey>,
     /// 起过读、还在读的那一张（同一时刻最多一张在读：最新的赢，同文本那一条）。
@@ -122,6 +113,8 @@ pub struct Preview {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Head {
     pub name: String,
+    /// 画哪种图标（后端判的）。
+    pub class: cmd_wire::files::FileClass,
     pub size: u64,
     /// 修改时间的短写法（列表那一行上后端写好的那一格）。
     pub mtime_text: Option<String>,
@@ -158,6 +151,8 @@ impl Default for Preview {
             want: None,
             wire: cmd_wire::files::WirePath::default(),
             how: Want::Text,
+            cap: 0,
+            lang: None,
             pic: None,
             pic_wait: None,
             painted: Vec::new(),
@@ -281,7 +276,7 @@ impl Preview {
                 self.painted.clear();
                 self.view = match r {
                     Ok(Some(text)) => {
-                        let lang = code_lang(&path);
+                        let lang = self.lang.clone();
                         if let (Some(l), Some(c)) = (&lang, &ctx) {
                             self.painted = highlight_lines(c, &text, l);
                         }
@@ -389,6 +384,7 @@ impl Preview {
             let can = super::select::actions_for(&[&r]);
             self.head = Some(Head {
                 name: r.name.clone(),
+                class: r.class,
                 size: r.size,
                 mtime_text: r.mtime_text.clone(),
                 edit: can.contains(&super::select::Action::Edit),
@@ -411,80 +407,30 @@ impl Preview {
             ));
             return;
         }
-        if let Some(ext) = super::kind::ext_of(&r.name)
-            .filter(|_| super::kind::kind_of(&r) == super::kind::Kind::Image)
-        {
-            if !DECODABLE.contains(&ext.as_str()) && ext != "svg" {
-                self.view = View::Idle(copy_text(
-                    "rsFilewinPreview.decide.imageKind",
-                    &[("name", &name.to_string())],
-                ));
-                return;
+        match r.gates.as_ref().map(|g| &g.preview) {
+            None => {
+                self.view = View::Idle(copy_text("rsFilewinSource.gates.unlisted", &[]));
             }
-            if DECODABLE.contains(&ext.as_str()) {
-                // 预览放不下：查看页放得下 ⇒ 指向头上的「查看」；连查看页也放不下 ⇒ 与查看页同一句（下载到本机再打开）。
-                if r.size > IMAGE_MAX_BYTES {
-                    let size = copy_core::size_text(r.size);
-                    self.view = View::Idle(if r.size > super::picture::PICTURE_MAX_BYTES {
-                        copy_text(
-                            "rsFilewinImgview.state.tooBig",
-                            &[
-                                ("name", &name),
-                                ("size", &size),
-                                (
-                                    "limit",
-                                    &copy_core::size_text(super::picture::PICTURE_MAX_BYTES),
-                                ),
-                            ],
-                        )
-                    } else {
-                        copy_text(
-                            "rsFilewinPreview.decide.imageTooBig",
-                            &[
-                                ("name", &name),
-                                ("size", &size),
-                                ("limit", &copy_core::size_text(IMAGE_MAX_BYTES)),
-                            ],
-                        )
-                    });
-                    return;
-                }
+            Some(cmd_wire::files::PreviewGate::No(said)) => {
+                self.view = View::Idle(said.clone());
+            }
+            Some(cmd_wire::files::PreviewGate::Image(cap)) => {
                 self.how = Want::Image;
+                self.cap = *cap;
                 self.pic = Some(super::picture::PicKey::of(&r));
                 self.wire = pane.row_path(&r).path();
                 self.want = Some(r.path.clone());
                 self.view = View::Loading(r.path.clone());
-                return;
+            }
+            Some(cmd_wire::files::PreviewGate::Text(t)) => {
+                self.how = Want::Text;
+                self.cap = t.cap;
+                self.lang = t.lang.clone();
+                self.wire = pane.row_path(&r).path();
+                self.want = Some(r.path.clone());
+                self.view = View::Loading(r.path.clone());
             }
         }
-        if matches!(
-            super::kind::kind_of(&r),
-            super::kind::Kind::Archive | super::kind::Kind::Pdf
-        ) {
-            self.view = View::Idle(copy_text(
-                "rsFilewinPreview.decide.binaryKind",
-                &[("name", &name.to_string())],
-            ));
-            return;
-        }
-        if r.size > PREVIEW_MAX_BYTES {
-            self.view = View::Idle(copy_text(
-                "rsFilewinPreview.decide.tooBig",
-                &[
-                    ("name", &name.to_string()),
-                    ("size", &(copy_core::size_text(r.size)).to_string()),
-                    (
-                        "limit",
-                        &(copy_core::size_text(PREVIEW_MAX_BYTES)).to_string(),
-                    ),
-                ],
-            ));
-            return;
-        }
-        self.how = Want::Text;
-        self.wire = pane.row_path(&r).path();
-        self.want = Some(r.path.clone());
-        self.view = View::Loading(r.path.clone());
     }
 
     /// 发一趟 `files-read-text`。没运行时 / 没通道 ⇒ 出声，不发。
@@ -511,7 +457,7 @@ impl Preview {
                     line,
                     origin,
                     wire: self.wire.clone(),
-                    cap: super::picture::PICTURE_MAX_BYTES,
+                    cap: self.cap,
                     side,
                     ctx,
                 },
@@ -525,10 +471,11 @@ impl Preview {
         self.inflight = true;
         self.fired += 1;
         let wire = self.wire.clone();
+        let max_bytes = self.cap;
         h.spawn(async move {
             let req = cmd_wire::files::ReadTextReq {
                 path: wire,
-                max_bytes: PREVIEW_MAX_BYTES,
+                max_bytes,
             };
             let r = super::editor::text_from_reply(
                 super::source::ask_typed(&line, &origin, &req, super::editor::READ_BUDGET).await,
@@ -549,12 +496,7 @@ impl Preview {
         match &self.head {
             Some(h) => {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(super::kind::icon(super::kind::kind_of_name(
-                            &h.name, false, false,
-                        )))
-                        .color(p.text2),
-                    );
+                    ui.label(egui::RichText::new(super::kind::icon(h.class)).color(p.text2));
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(&h.name)
@@ -743,20 +685,6 @@ impl Preview {
             i += 1;
         }
     }
-}
-
-/// 认得的代码 / 标记文本 ⇒ 按哪种语法上色（扩展名，交给语法库认）；认不得 ⇒ `None`。
-pub fn code_lang(path: &str) -> Option<String> {
-    let name = super::source::remote_basename(path);
-    let ext = super::kind::ext_of(name)?;
-    let k = super::kind::kind_of(&super::source::Listed::plain(super::source::Row {
-        name: name.to_string(),
-        path: path.to_string(),
-        is_dir: false,
-        size: 0,
-        lossy_name: false,
-    }));
-    (k == super::kind::Kind::Code || ext == "md" || ext == "svg").then_some(ext)
 }
 
 /// 整份文本按 `lang` 上色，再按行切开（每行一份排版，画的时候只排看得见的那几行）。

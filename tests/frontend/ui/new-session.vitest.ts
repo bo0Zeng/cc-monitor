@@ -43,16 +43,19 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
     backend_start: vi.fn(async () => ""),
   },
 }));
-vi.mock("../../../src/frontend/ui/account-reads", () => ({
-  fetchAccounts: vi.fn(async () => ({
-    available: true,
-    meta: { effectiveDefault: "work" },
-    accounts: [
-      { name: "personal", email: "", configDir: "/h/.cc/personal", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false, selectable: false },
-      { name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
-    ],
-  })),
-}));
+vi.mock("../../../src/frontend/ui/account-reads", async () => {
+  const { copyText } = await import("../../../src/frontend/ui/copy-table");
+  return {
+    fetchAccounts: vi.fn(async () => ({
+      available: true,
+      meta: { effectiveDefault: "work" },
+      accounts: [
+        { name: "personal", email: "", configDir: "/h/.cc/personal", isDefault: false, mode: "isolated", exists: true, loggedIn: false, authKind: "subscription", authReady: false, selectable: false, unselectable: copyText("acct.tag.login"), login: true },
+        { name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, selectable: true },
+      ],
+    })),
+  };
+});
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
 vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {} } })) }));
@@ -64,6 +67,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: v
 
 import { openNewSession, setNewSessionPlaceholder } from "../../../src/frontend/ui/new-session";
 import { commands } from "../../../src/frontend/ui/ipc/commands";
+import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const flush = async (): Promise<void> => {
@@ -123,7 +127,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     const acct = sel(copyText("newSession.label.account"));
     expect(acct.dataset.value).toBe("work");
     expect(acct.querySelector(".acct-avatar"), "框上带头像").not.toBeNull();
-    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("newSession.account.default")}`, `▣personal${copyText("newSession.account.needLogin")}`]);
+    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("newSession.account.default")}`, `▣personal${copyText("acct.tag.login")}`]);
     expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("orders-cc");
     expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({});
   });
@@ -139,14 +143,25 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     expect(dialog().textContent).toContain(copyText("newSession.place.noTmux"));
   });
 
-  it("选了需登录的号 ⇒ 那一格下说「需登录」＋［登录…］，［新建］灰着", async () => {
+  it("选了需登录的号 ⇒ 那一格下照那台那一句说「需登录」＋［登录…］（那台说给才给），［新建］灰着", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
     const acct = sel(copyText("newSession.label.account"));
     choose(acct, "personal");
-    expect(rowOf(acct).textContent).toContain(copyText("launch.account.notLoggedIn", { name: "personal" }));
+    expect(rowOf(acct).textContent).toContain(copyText("acct.tag.login"));
     expect(rowOf(acct).textContent).toContain(copyText("newSession.account.login"));
     expect(createBtn().getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("★ 那台说登不了（`login: false`）⇒ 只写那一句、不给［登录…］", async () => {
+    const st = await fetchAccounts("devbox");
+    vi.mocked(fetchAccounts).mockResolvedValueOnce({ ...st, accounts: st.accounts.map((a) => (a.name === "personal" ? { ...a, login: false, unselectable: copyText("accounts.row.loginElsewhere") } : a)) });
+    void openNewSession({ origin: "devbox" });
+    await flush();
+    const acct = sel(copyText("newSession.label.account"));
+    choose(acct, "personal");
+    expect(rowOf(acct).textContent).toContain(copyText("accounts.row.loginElsewhere"));
+    expect(rowOf(acct).textContent).not.toContain(copyText("newSession.account.login"));
   });
 });
 

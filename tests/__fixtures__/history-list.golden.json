@@ -2,6 +2,7 @@
   "groups": [
     {
       "agent": "claude",
+      "atText": "00:00",
       "count": 1,
       "failed": null,
       "hasLive": true,
@@ -16,6 +17,7 @@
     },
     {
       "agent": "codex",
+      "atText": "00:00",
       "count": 1,
       "failed": null,
       "hasLive": null,
@@ -30,6 +32,7 @@
     },
     {
       "agent": "claude",
+      "atText": "00:00",
       "count": 1,
       "failed": null,
       "hasLive": false,
@@ -44,6 +47,7 @@
     },
     {
       "agent": "claude",
+      "atText": "00:00",
       "count": 1,
       "failed": null,
       "hasLive": false,
@@ -58,6 +62,7 @@
     },
     {
       "agent": "claude",
+      "atText": null,
       "count": 0,
       "failed": "读不了 /h/.claude/projects/-w-gamma",
       "hasLive": null,
@@ -87,6 +92,9 @@
       },
       "customTitle": null,
       "firstUserExcerpt": "子",
+      "forkedFrom": {
+        "label": "分叉的父会话"
+      },
       "forkedFromMessageUuid": "m-1",
       "forkedFromSessionId": "0000aaaa-0000-4000-8000-000000000004",
       "group": "claude:/w/beta",

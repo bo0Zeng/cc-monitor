@@ -91,11 +91,13 @@ async function listMachines(): Promise<MachineOpt[]> {
   );
 }
 
-/** 账号那一格的一项。`ready: false` ⇒ 需登录。 */
+/** 账号那一格的一项。`ready: false` ⇒ 选不了（`why` 是那台写好的那一句，`login` ⇒ 给［登录…］）。 */
 interface AccountOpt {
   name: string;
   isDefault: boolean;
   ready: boolean;
+  why: string | null;
+  login: boolean;
   quota: string | null;
   /** 号在哪一台（头像照那台账号库的号色画）。 */
   origin: Origin;
@@ -119,6 +121,8 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     name: a.name,
     isDefault: a.name === def,
     ready: a.selectable,
+    why: a.unselectable ?? null,
+    login: a.login ?? false,
     quota: a.quota ?? null,
     origin,
   }));
@@ -130,7 +134,7 @@ function accountOption(a: AccountOpt): SelectOption {
   const note: string[] = [];
   if (a.isDefault) note.push(copyText("newSession.account.default"));
   if (a.quota) note.push(a.quota);
-  if (!a.ready) note.push(copyText("newSession.account.needLogin"));
+  if (!a.ready && a.why) note.push(a.why);
   return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
 }
 
@@ -476,7 +480,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintAccountNote = (): void => {
     const a = chosenAccountOpt();
     if (a && !a.ready) {
-      accountRow.setNote(copyText("launch.account.notLoggedIn", { name: a.name }), "error", [loginBtn()]);
+      accountRow.setNote(a.why ?? "", "error", a.login ? [loginBtn()] : []);
     } else {
       accountRow.setNote("");
     }
@@ -688,7 +692,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       if (!up()) return copyText("newSession.machine.offline", { machine: machineName(origin) });
       if (facts === null) return copyText("kit.state.reading");
       const a = chosenAccountOpt();
-      if (a && !a.ready && !accountRow.root.hidden) return copyText("launch.account.notLoggedIn", { name: a.name });
+      if (a && !a.ready && !accountRow.root.hidden) return a.why ?? "";
       if (cwdInput.value.trim() === "") return copyText("newSession.cwd.empty");
       return null;
     },

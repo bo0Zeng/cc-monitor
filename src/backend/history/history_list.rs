@@ -188,8 +188,7 @@ pub(crate) fn machine_listing() -> Result<Listing, (&'static str, String)> {
 fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, String)> {
     let home = crate::history::listing::agent_home();
     let live = LiveSet(crate::history::live::live_session_ids(&home));
-    let tree =
-        crate::history::listing::sessions_by_dir_for(&home, only).map_err(|e| ("failed", e))?;
+    let tree = tree_for(&home, only).map_err(|e| ("failed", e))?;
     let synth: Vec<(
         &'static str,
         Vec<crate::agents::SynthSession>,
@@ -211,6 +210,41 @@ fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, Str
         &crate::control::session_hidden::Here::read_now(),
     );
     Ok(listing)
+}
+
+/// 记录树分好的目录（[`crate::history::listing::sessions_by_dir_for`]）；按 sid 问的那一条是分叉来的 ⇒ 父会话那一份也整份扫
+/// （那一行要父会话的显示标题，与整台扫那一份同一个字）。
+pub(crate) fn tree_for(
+    home: &std::path::Path,
+    only: Option<&str>,
+) -> Result<Option<Vec<(String, Result<Vec<Value>, String>)>>, String> {
+    let tree = crate::history::listing::sessions_by_dir_for(home, only)?;
+    let (Some(sid), Some(mut tree)) = (only, tree) else {
+        return crate::history::listing::sessions_by_dir_for(home, only);
+    };
+    let parent = tree
+        .iter()
+        .filter_map(|(_, r)| r.as_ref().ok())
+        .flatten()
+        .find(|v| v["sessionId"] == sid)
+        .and_then(|v| v["forkedFromSessionId"].as_str())
+        .map(str::to_string);
+    let Some(p) = parent.filter(|p| p != sid) else {
+        return Ok(Some(tree));
+    };
+    let full = crate::history::listing::sessions_by_dir_for(home, Some(&p))?.unwrap_or_default();
+    for (dir, rows) in &mut tree {
+        let Ok(rows) = rows else { continue };
+        let Some(Ok(got)) = full.iter().find(|(d, _)| d == dir).map(|(_, r)| r) else {
+            continue;
+        };
+        for v in rows.iter_mut().filter(|v| v["sessionId"] == p.as_str()) {
+            if let Some(w) = got.iter().find(|w| w["sessionId"] == p.as_str()) {
+                *v = w.clone();
+            }
+        }
+    }
+    Ok(Some(tree))
 }
 
 /// **这台隐藏要的那几样并进它自己那份清单**（`raw` 那一形也带，同注解）：每行起会话时的 `--tab` · 主会话，整份带这台偏好那两格。
@@ -477,8 +511,22 @@ fn hits(f: &Finished, q: &str) -> bool {
 }
 
 /// 一行成品（活不活只出 `status` 一格：`isLive` 是它的来路，两格并存读的人就得猜听哪一格）。
-fn row_of(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> HistoryRow {
+fn row_of(
+    f: Finished,
+    at: i64,
+    context: bool,
+    now_ms: i64,
+    tz: &crate::Tz,
+    labels: &BTreeMap<String, String>,
+) -> HistoryRow {
     let r = f.raw;
+    let forked_from = r
+        .forked_from_session_id
+        .as_deref()
+        .and_then(|p| labels.get(p))
+        .map(|l| cmd_wire::listing::ForkedFrom {
+            label: Words(l.clone()),
+        });
     let (at_text, section_text, span_text) =
         crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
     HistoryRow {
@@ -510,6 +558,7 @@ fn row_of(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> H
         hidden: f.hidden,
         forked_from_session_id: r.forked_from_session_id,
         forked_from_message_uuid: r.forked_from_message_uuid,
+        forked_from,
         project_dir: r.project_dir,
         group: r.group,
         last_account: r.last_account,
@@ -593,7 +642,7 @@ pub(crate) fn answer_from(
         .zip(context)
         .map(|(f, cx)| {
             let at = key(&f);
-            row_of(f, at, cx, now_ms, tz)
+            row_of(f, at, cx, now_ms, tz, &labels)
         })
         .collect();
     rows.sort_by(|a, b| {
@@ -602,7 +651,7 @@ pub(crate) fn answer_from(
     });
     let truncated = rows.len() > ask.limit;
     rows.truncate(ask.limit);
-    let mut groups = groups_of(&rows, listing);
+    let mut groups = groups_of(&rows, listing, now_ms, tz);
     // 问的是哪一台：每行每组都带上（界面把几台并成一列时认得出是哪台的）。
     if let Some(o) = origin {
         rows.iter_mut()
@@ -631,7 +680,12 @@ fn live_rank(g: &HistoryGroup) -> i64 {
 
 /// 按项目看时的分组：在列的那几行按 `group` 归，每组 {key · 那一家 · 名字 · 目录 · 读它的键 · 几个 · 有没有在跑的 · 最后动过 · 机器}；
 /// 读不了的那几个记录目录也是一组（`failed` 带原因）。排序：有在跑的 → 有星标的 → 最近动过的。
-fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
+fn groups_of(
+    rows: &[HistoryRow],
+    listing: &Listing,
+    now_ms: i64,
+    tz: &crate::Tz,
+) -> Vec<HistoryGroup> {
     let mut by: BTreeMap<String, HistoryGroup> = BTreeMap::new();
     for v in rows.iter().filter(|v| v.context.is_none()) {
         let g = by.entry(v.group.clone()).or_insert_with(|| HistoryGroup {
@@ -644,6 +698,7 @@ fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
             has_live: Some(false),
             starred: false,
             last_activity: 0,
+            at_text: None,
             order: 0,
             failed: None,
             origin: None,
@@ -667,6 +722,11 @@ fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
     // 各台各自排好，界面要把几台的组并成一列 ⇒ 把这个序压成一个数交出去（`order` 大的在前；界面只按它并，不另判）：
     //   档位 × 10^14 ＋ 有星标 × 10^13 ＋ 最后动过（毫秒，< 10^13）。
     for g in &mut out {
+        g.at_text = Some(crate::common::time::history_at_text(
+            g.last_activity,
+            now_ms,
+            tz,
+        ));
         g.order = live_rank(g) * 100_000_000_000_000
             + i64::from(g.starred) * 10_000_000_000_000
             + g.last_activity.clamp(0, 9_999_999_999_999);
@@ -684,6 +744,7 @@ fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
             has_live: None,
             starred: false,
             last_activity: 0,
+            at_text: None,
             order: 0,
             failed: Some(f.error.clone()),
             origin: None,
@@ -718,6 +779,7 @@ pub(crate) fn specimen() -> HistoryList {
             }),
             forked_from_session_id: Some(s("f")),
             forked_from_message_uuid: Some(s("u")),
+            forked_from: Some(cmd_wire::listing::ForkedFrom { label: w("f") }),
             project_dir: s("-w"),
             group: s("agent:/w"),
             last_account: Some(s("a")),
@@ -743,6 +805,7 @@ pub(crate) fn specimen() -> HistoryList {
             has_live: Some(false),
             starred: false,
             last_activity: 2,
+            at_text: Some(w("t")),
             order: 2,
             failed: Some(s("x")),
             origin: Some(cmd_wire::Machine(s("m"))),

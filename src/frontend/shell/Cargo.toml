@@ -14,6 +14,8 @@ members = [
     "../../common/cmd-wire",
     # 分块传的循环（上传进暂存区 ＋ 整份摘要 · 下载逐块读回）：文件窗口与手机嵌的核心同一份。
     "../../common/chunk-core",
+    # 选中这几项 ⇒ 能做什么（种类 · 每个出口那张表 · 做不了的为什么）：文件窗口与手机嵌的核心同一份。
+    "../../common/pick-core",
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
@@ -73,6 +75,7 @@ population = [
     "../../common/filewin-contract",
     "../../common/win-manifest",
     "../../common/chunk-core",
+    "../../common/pick-core",
     "../filewin",
 ]
 

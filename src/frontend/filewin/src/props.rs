@@ -80,7 +80,7 @@ impl Props {
         let st = self.state.lock().unwrap().clone();
         let mut out = vec![(
             copy_text("rsFilewinProps.label.kind", &[]),
-            super::kind::type_text(&self.row),
+            self.row.type_text.clone(),
         )];
         let unknown = || copy_text("rsFilewinProps.value.unknown", &[]);
         match st {

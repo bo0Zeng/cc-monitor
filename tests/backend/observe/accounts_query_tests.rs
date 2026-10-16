@@ -1464,6 +1464,7 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
             o.remove("unselectable").is_some(),
             "帧面每个号带选不了的那一句"
         );
+        assert!(o.remove("login").is_some(), "帧面每个号带给不给［登录…］");
     }
     assert_eq!(
         product["meta"], cli_meta,
@@ -2649,5 +2650,49 @@ fn a_row_says_why_it_cannot_be_picked_and_its_plate() {
     assert_eq!(
         ["work", "w", "工作", "", "0"].map(plate_text),
         ["wo", "w", "工", "?", "0"].map(str::to_string)
+    );
+}
+
+/// ★ 每个号给不给［登录…］：只差登录、这一家能在 app 里登录 ⇒ 给；按量号没配 key · 号目录不在 · 不隔离 · 已就绪 ⇒ 不给；
+/// 只差登录却登不了 ⇒ 不给、那一句说「需登录 · 不支持在 app 里登录」。
+#[test]
+fn only_an_account_that_only_needs_signing_in_gets_the_login_button() {
+    use test_support::row_with;
+    let list = |sign_in: bool| {
+        let mut l = test_support::list(vec![
+            row_with("ready", |_| {}),
+            row_with("need", |a| a.auth_ready = false),
+            row_with("api", |a| {
+                a.auth_kind = acct_core::AUTH_KIND_API_KEY.to_string();
+                a.auth_ready = false;
+            }),
+            row_with("gone", |a| {
+                a.exists = false;
+                a.auth_ready = false;
+            }),
+            row_with("here", |a| {
+                a.mode = "in-place".to_string();
+                a.auth_ready = false;
+            }),
+        ]);
+        with_sign_in(&mut l, sign_in);
+        l.accounts
+            .iter()
+            .map(|r| (r.scanned.name.clone(), r.login))
+            .collect::<Vec<_>>()
+    };
+    let named = |v: Vec<(String, bool)>| {
+        v.into_iter()
+            .filter(|(_, b)| *b)
+            .map(|(n, _)| n)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(named(list(true)), vec!["need".to_string()]);
+    assert!(named(list(false)).is_empty());
+    let mut l = test_support::list(vec![row_with("need", |a| a.auth_ready = false)]);
+    with_sign_in(&mut l, false);
+    assert_eq!(
+        l.accounts[0].unselectable.as_ref().map(|w| w.0.clone()),
+        Some(copy_core::copy_text("accounts.row.loginElsewhere", &[]))
     );
 }

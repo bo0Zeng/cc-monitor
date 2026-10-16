@@ -43,6 +43,14 @@ seenAtRelText?: string, from: QuotaSource,
  */
 tokensPerPct?: number, 
 /**
+ * `tokens_per_pct` 写好的字（`1% ≈ 2.1M`）；量不到 ⇒ 缺。
+ */
+perPctText?: string, 
+/**
  * 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
  */
-resetSinceSeen?: boolean, };
+resetSinceSeen?: boolean, 
+/**
+ * 这一窗口的语气（`rows` 里更细窗口那一行的值照它上色）：用满 ⇒ `fail`；快满 ⇒ `warn`；否则 `plain`。
+ */
+tone: "plain" | "fail" | "warn", };

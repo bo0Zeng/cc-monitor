@@ -386,6 +386,8 @@ fn row(sid: &str, updated: i64, hits: u32, cut: bool) -> SessionHits {
         is_bg: false,
         status: Liveness::Ended,
         can: crate::history::listing::can_of("a", "ended", false),
+        forked_from: None,
+        parent: None,
     }
 }
 

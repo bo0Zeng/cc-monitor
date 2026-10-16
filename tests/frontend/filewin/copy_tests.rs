@@ -60,18 +60,3 @@ fn the_suggested_name_matches_the_old_panel() {
     assert_eq!(p.new_name, "big.bin.copy");
     assert_eq!(p.to_job().unwrap().to, "/srv/data/big.bin.copy");
 }
-
-/// 能复制的是「名字寻址得到」的那一档 —— 文件与**目录**都行（目录经后端 `recursive: true` 复制整棵，
-/// 要求：「复制目录」· `§7 #6`）。**相等断言，逐档。**
-#[test]
-fn files_and_directories_with_addressable_names_can_be_copied() {
-    assert!(is_copyable(&row("big.bin", false, false)));
-    assert!(
-        is_copyable(&row("adir", true, false)),
-        "目录复制不了 —— 后端 `files-copy` 已经收 `recursive: true`"
-    );
-    assert!(
-        !is_copyable(&row("\u{FFFD}odd", false, true)),
-        "有损名能复制 —— 那个名字寻址不到真字节，写操作一律灰置"
-    );
-}

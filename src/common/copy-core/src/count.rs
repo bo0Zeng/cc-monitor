@@ -13,3 +13,37 @@ pub fn count_text(n: u64) -> String {
     }
     out
 }
+
+/// 短写的计数（`2.1M` · `25K` · `999`）：不满一千写整数；往上按千进位到 K · M · B，不满 10 带一位小数、否则取整（四舍五入，
+/// 先化成整数再算，不靠浮点格式化）；舍到 1000 的进一档。单位格住文案表 `countFormat.unit.*`。
+pub fn count_short(n: u64) -> String {
+    const UNITS: u32 = 3;
+    if n < 1_000 {
+        return n.to_string();
+    }
+    let mut u = 1u32;
+    while u < UNITS && u128::from(n) >= 1_000u128.pow(u + 1) {
+        u += 1;
+    }
+    let round = |u: u32, scale: u128| {
+        let div = 1_000u128.pow(u);
+        (u128::from(n) * scale + div / 2) / div
+    };
+    let (u, num) = loop {
+        let tenths = round(u, 10);
+        if tenths < 100 {
+            break (u, format!("{}.{}", tenths / 10, tenths % 10));
+        }
+        let whole = round(u, 1);
+        if whole >= 1_000 && u < UNITS {
+            u += 1;
+            continue;
+        }
+        break (u, whole.to_string());
+    };
+    match u {
+        1 => crate::copy_text("countFormat.unit.k", &[("n", &num)]),
+        2 => crate::copy_text("countFormat.unit.m", &[("n", &num)]),
+        _ => crate::copy_text("countFormat.unit.b", &[("n", &num)]),
+    }
+}
