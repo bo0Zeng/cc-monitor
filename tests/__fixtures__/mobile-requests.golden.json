@@ -18,7 +18,7 @@
   "history-lines": [{"path":"/p/s.jsonl","from":0,"until":10}],
   "history-list": [null,{"hidden":true}],
   "history-read": [{"path":"/p/s.jsonl","offset":0,"until":10}],
-  "history-tail": [{"path":"/p/s.jsonl","n":50}],
+  "history-tail": [{"path":"/p/s.jsonl","n":50},{"path":"/p/s.jsonl","n":50,"held":{"path":"/p/s.jsonl","next":3,"next_byte":30,"mark":"m"}}],
   "kill": [{"name":"demo","client":"mobile"}],
   "launch-render-cli": [{"agent":"claude","action":{"kind":"attach","name":"demo"},"container":{"kind":"tmux","name":"demo","send_into":false},"account":{"kind":"base"}}],
   "login-cancel": [{"job":"j"}],

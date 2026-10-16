@@ -4,8 +4,6 @@ import com.ccmonitor.mobile.cache.Anchor
 import com.ccmonitor.mobile.cache.ChatCache
 import com.ccmonitor.mobile.cache.Pending
 import com.ccmonitor.mobile.cache.RawPage
-import com.ccmonitor.mobile.cache.Resume
-import com.ccmonitor.mobile.cache.resumeOf
 import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.HistoryLines
 import com.ccmonitor.mobile.core.claude.link.HistoryList
@@ -20,11 +18,12 @@ import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.SessionSay
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
+import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
-import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
+import com.ccmonitor.mobile.core.claude.link.wire.TailHow
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -191,10 +190,10 @@ class ChatSession(
     private var nextSeq = 0L
     private var tailLines = PAGE_LINES
 
-    /** 已有最新一行之后的字节（续读从这里接）；不知道 ⇒ `null`（下次从头读）。手上的记录是哪份文件的（[anchorPath] · 身份 [anchorFile]）。 */
+    /** 已有最新一行之后的字节（续读从这里接）；不知道 ⇒ `null`（下次从头读）。手上的记录是哪份文件的（[anchorPath]）· 那台给的记号（[anchorMark]，原样交回）。 */
     private var anchorOffset: Long? = null
     private var anchorPath: String? = null
-    private var anchorFile: String = ""
+    private var anchorMark: String = ""
 
     /** 存草稿那一下（停手一会儿才存）：发出去之前先撤掉，免得删了的草稿又被写回来。 */
     private var draftSave: Job? = null
@@ -355,7 +354,13 @@ class ChatSession(
         _state.value = _state.value.copy(loadingOlder = true, historyError = null)
         scope.launch {
             val want = tailLines + PAGE_LINES
-            val got = readTail(p, want)?.let { t -> readRange(p, t.splitAt, head)?.let { t to it } }
+            val got =
+                when (val r = link.call(HistoryTail.COMMAND, HistoryTail.args(p, want), READ_MS)) {
+                    is Reply.Ok ->
+                        HistoryTail.of(r.data)?.let { t -> readRange(p, t.splitAt, head, r.data)?.let { t to it } }
+                            ?: null.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, r.data.toString()).text) }
+                    else -> null.also { readFailed(r.problem(machine, HistoryTail.COMMAND)?.text) }
+                }
             lock.withLock {
                 if (got == null) {
                     _state.value = _state.value.copy(loadingOlder = false)
@@ -592,12 +597,8 @@ class ChatSession(
         when (e) {
             is Event.Line -> lineLocked(p, e.line)
             is Event.From -> e.seq <= nextSeq || fillLocked(p, e.seq)
-            Event.Reconnected -> {
-                val t = readTail(p, 1)
-                val filled = t != null && (t.total <= nextSeq || fillLocked(p, t.total))
-                if (filled) _state.value = _state.value.copy(failedWhy = null, historyError = null)
-                filled
-            }
+            // 换了一条流：交手上那一份问一次，断开那一段怎么补那台判（续得上就只读那一截）。
+            Event.Reconnected -> reloadLocked(p)
         }
 
     /**
@@ -614,7 +615,7 @@ class ChatSession(
         cached.anchor?.let {
             anchorPath = it.path
             anchorOffset = it.offset
-            anchorFile = it.file
+            anchorMark = it.mark
             nextSeq = it.seq
         }
         _state.value = _state.value.copy(canLoadOlder = head > 0L)
@@ -646,60 +647,44 @@ class ChatSession(
         line.record?.let { records += it }
         nextSeq = line.seq + 1
         anchorOffset = line.byteOffset
-        sid?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq, anchorFile) }) }
+        sid?.let { s -> cache.append(s, listOf(HistoryRead.row(line.byteOffset, line.raw)), line.byteOffset?.let { Anchor(p, it, nextSeq, anchorMark) }) }
         return true
     }
 
     /**
-     * 对齐那台：读最后一屏（[tailLines] 行）。手上有续点、那台的文件没变短（`end` 不比续点小）、缺得不多 ⇒ 从续点往下读到 `end`、接在后面；
-     * 否则整份重来（变短 ＝ 文件被截过或换过，续点那个位置已经不在了，不从那里往后读）。没读成 ⇒ `false`（那一句已上屏），已有的不动。
+     * 对齐那台：交手上那一份（续点）问 `history-tail`，怎么接那台判、第一页随回包来。续得上 ⇒ 从续点往下读到 `end`、接在后面；
+     * 没交 · 变短 · 被改写 ⇒ 读最后一屏（[tailLines] 行）、整份重来；缺得比一屏多 ⇒ 那台不读那一截，这里读最后一屏、整份重来。
+     * 没读成 ⇒ `false`（那一句已上屏），已有的不动。
      */
     private suspend fun reloadLocked(p: String): Boolean {
-        val t = readTail(p, tailLines) ?: return false
         val s = sid ?: return false
-        val anchor = anchorOffset?.let { o -> anchorPath?.let { Anchor(it, o, nextSeq, anchorFile) } }
-        val ok =
-            when (val resume = resumeOf(anchor, records.isNotEmpty(), p, t.file, t.end, t.total, PAGE_LINES.toLong())) {
-                is Resume.Continue -> continueLocked(s, p, resume.from, t)
-                Resume.FromScratch -> scratchLocked(s, p, t)
+        val held = anchorOffset?.takeIf { records.isNotEmpty() }?.let { o -> anchorPath?.let { Held(it, nextSeq, o, anchorMark) } }
+        val r = link.call(HistoryTail.COMMAND, HistoryTail.args(p, tailLines, held), READ_MS)
+        val data = (r as? Reply.Ok)?.data ?: return false.also { readFailed(r.problem(machine, HistoryTail.COMMAND)?.text) }
+        val t = HistoryTail.of(data) ?: return false.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, data.toString()).text) }
+        val anchor = Anchor(t.held.path, t.held.nextByte, t.held.next, t.held.mark)
+        when (t.how) {
+            TailHow.RESUME -> {
+                val read = readRange(p, held!!.nextByte, t.end, data) ?: return false
+                records.addAll(read.records)
+                cache.append(s, read.pages.flatMap { it.rows }, anchor)
             }
-        if (!ok) return false
+            else -> {
+                // 缺得多那一形那台没读那一截：最后一屏这里自己读。
+                val read = readRange(p, t.splitAt, t.end, data.takeIf { t.how != TailHow.HANDOFF }) ?: return false
+                head = t.splitAt
+                records.clear()
+                records.addAll(read.records)
+                // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
+                cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, anchor)
+            }
+        }
+        nextSeq = anchor.seq
+        anchorOffset = anchor.offset
+        anchorPath = anchor.path
+        anchorMark = anchor.mark
         _state.value = _state.value.copy(canLoadOlder = head > 0L, failedWhy = null, historyError = null)
         publishLocked()
-        return true
-    }
-
-    /** 从续点 [from] 往下读到 `end`、接在后面。 */
-    private suspend fun continueLocked(
-        s: String,
-        p: String,
-        from: Long,
-        t: TailPlan,
-    ): Boolean {
-        val read = readRange(p, from, t.end) ?: return false
-        records.addAll(read.records)
-        nextSeq = t.total
-        anchorOffset = t.end
-        cache.append(s, read.pages.flatMap { it.rows }, Anchor(p, t.end, t.total, t.file))
-        return true
-    }
-
-    /** 整份重来：读最后一屏，手上的与缓存里的都换掉。 */
-    private suspend fun scratchLocked(
-        s: String,
-        p: String,
-        t: TailPlan,
-    ): Boolean {
-        val read = readRange(p, t.splitAt, t.end) ?: return false
-        head = t.splitAt
-        nextSeq = t.total
-        anchorOffset = t.end
-        anchorPath = p
-        anchorFile = t.file
-        records.clear()
-        records.addAll(read.records)
-        // 一页都没有（尾段是空的）也记一页空的：页锚留着，下次先上缓存时「还能往上翻」照样对。
-        cache.replace(s, read.pages.ifEmpty { listOf(RawPage(t.splitAt, t.end, emptyList())) }, Anchor(p, t.end, t.total, t.file))
         return true
     }
 
@@ -726,7 +711,7 @@ class ChatSession(
             nextSeq = maxOf(nextSeq, page.next)
             // 续点跟到这一段最后一个可计行之后；每格带它那一行之后的字节落末页。
             anchorOffset = page.end
-            val anchor = anchorPath?.takeIf { it == p }?.let { Anchor(it, page.end, nextSeq, anchorFile) }
+            val anchor = anchorPath?.takeIf { it == p }?.let { Anchor(it, page.end, nextSeq, anchorMark) }
             sid?.let { s -> cache.append(s, page.raw.mapIndexed { i, r -> HistoryRead.row(page.ends.getOrNull(i), r) }, anchor) }
         }
         nextSeq = maxOf(nextSeq, until)
@@ -783,38 +768,38 @@ class ChatSession(
         }
     }
 
-    private suspend fun readTail(
-        p: String,
-        n: Int,
-    ): TailPlan? =
-        when (val r = link.call(HistoryTail.COMMAND, HistoryTail.args(p, n), READ_MS)) {
-            is Reply.Ok -> HistoryTail.of(r.data) ?: null.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, r.data.toString()).text) }
-            else -> null.also { readFailed(r.problem(machine, HistoryTail.COMMAND)?.text) }
-        }
-
     /** 读到的一段：记录 ＋ 每一问的 `rows[]` 原样（一问一页，缓存存它）。 */
     private class Read(
         val records: List<LineRecord>,
         val pages: List<RawPage>,
     )
 
-    /** 读 `[from, until)` 里的记录，一页不够就接着读。 */
+    /**
+     * 读 `[from, until)` 里的记录，一页不够就接着读。[first] 是已经拿到的第一页（`history-tail` 随回包带来的，从 [from] 起）；
+     * 那一页越过 [until] 的几行不要（往上翻时第一页是整个尾段的）。
+     */
     private suspend fun readRange(
         p: String,
         from: Long,
         until: Long,
+        first: Any? = null,
     ): Read? {
         val out = mutableListOf<LineRecord>()
         val pages = mutableListOf<RawPage>()
         var at = from
+        var given = first
         while (at < until) {
-            val r = link.call(HistoryRead.COMMAND, HistoryRead.args(p, at, until), READ_MS)
-            val ok = r as? Reply.Ok
-            val page =
-                ok?.let { HistoryRead.of(it.data) }
-                    ?: return null.also { readFailed(r.problem(machine, HistoryRead.COMMAND)?.text ?: unreadableReply(machine, HistoryRead.COMMAND, r.toString()).text) }
-            out += page.records
-            pages += RawPage(at, page.next, HistoryRead.rawRows(ok.data).orEmpty())
+            val data =
+                given ?: link.call(HistoryRead.COMMAND, HistoryRead.args(p, at, until), READ_MS).let { r ->
+                    (r as? Reply.Ok)?.data ?: return null.also { readFailed(r.problem(machine, HistoryRead.COMMAND)?.text) }
+                }
+            given = null
+            val page = HistoryRead.of(data)
+            val rows = HistoryRead.rawRows(data)?.filter { ((it as? Map<*, *>)?.get("end") as? Number)?.toLong()?.let { e -> e <= until } ?: true }
+            val got = rows?.let { HistoryRead.decodeRows(it) }
+            if (page == null || rows == null || got == null) return null.also { readFailed(unreadableReply(machine, HistoryRead.COMMAND, data.toString()).text) }
+            out += got
+            pages += RawPage(at, minOf(page.next, until), rows)
             if (page.eof || page.next <= at) break
             at = page.next
         }
