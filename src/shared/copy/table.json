@@ -30810,7 +30810,7 @@
     "mobTmux.kill.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已结束 tmux 会话「{name}」",
+      "zh": "已关闭 tmux 会话「{name}」",
       "args": ["name"],
       "limited": ["tmux"]
     },
@@ -31113,22 +31113,10 @@
       "zh": "添加机器",
       "args": []
     },
-    "mobHosts.delete.body": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除主机「{label}」\n此操作不可撤销 · 只删本地主机配置，不影响远端数据",
-      "args": ["label"]
-    },
     "mobHosts.delete.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "删除机器",
-      "args": []
-    },
-    "mobHosts.delete.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "删除",
       "args": []
     },
     "mobHosts.row.edit": {

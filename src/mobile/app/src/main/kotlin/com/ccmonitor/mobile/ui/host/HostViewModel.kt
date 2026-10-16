@@ -51,6 +51,9 @@ class HostViewModel(
 
     fun deleteHost(host: Host) = viewModelScope.launch(Dispatchers.IO) { hostRepo.delete(host) }
 
+    /** 撤销删除：照原样（连 id）放回。撤销在应用根部的反馈里跑，这一屏可能已经关了 ⇒ 不挂 [viewModelScope]。 */
+    suspend fun restoreHost(host: Host) = withContext(Dispatchers.IO) { hostRepo.save(host) }
+
     /**
      * 解析粘贴的 ssh config 文本并批量导入主机，返回导入条数。
      * IdentityFile 按 basename 匹配已导入钥匙的 label，匹配到就设 authRef，否则留 null 待编辑器里补。

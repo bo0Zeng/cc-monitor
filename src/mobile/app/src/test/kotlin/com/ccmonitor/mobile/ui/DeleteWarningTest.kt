@@ -1,19 +1,12 @@
 package com.ccmonitor.mobile.ui
 
-import com.ccmonitor.mobile.ui.host.hostDeleteWarning
 import com.ccmonitor.mobile.ui.identity.identityDeleteWarning
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 删除确认文案——必须点明不可撤销/级联后果。 */
+/** 删除密钥的确认文案——必须点明不可撤销 / 级联后果（删机器撤得回，不弹框）。 */
 class DeleteWarningTest {
-    @Test fun hostWarningMentionsIrreversibleAndLabel() {
-        val w = hostDeleteWarning("devbox")
-        assertTrue(w.contains("devbox"))
-        assertTrue("主机删除须点明不可撤销", w.contains("不可撤销"))
-    }
-
     @Test fun identityWarningKeystoreMentionsUnrecoverableDestruction() {
         val w = identityDeleteWarning("hw-key", keystoreBacked = true)
         assertTrue(w.contains("hw-key"))

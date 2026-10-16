@@ -100,7 +100,6 @@ class SettingsGroupWordlistTest {
     fun theCopyThatLivesInPureFunctionsIsPinnedBecauseTheScannerCannotSeeIt() {
         val produced =
             mapOf(
-                "hostDeleteWarning" to hostDeleteWarning(SAMPLE),
                 "identityDeleteWarning(硬件)" to identityDeleteWarning(SAMPLE, keystoreBacked = true),
                 "identityDeleteWarning(软件)" to identityDeleteWarning(SAMPLE, keystoreBacked = false),
             )
