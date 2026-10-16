@@ -32,6 +32,13 @@ dependencyResolutionManagement {
     }
 }
 
+// 构建缓存落本树 `.build/mobile/build-cache`（同一台机器上几棵工作树各一份：共用一份时几趟同时写会互相踩）。
+buildCache {
+    local {
+        directory = rootDir.resolve("../../.build/mobile/build-cache")
+    }
+}
+
 rootProject.name = "cc-monitor-mobile"
 include(":app")
 include(":core-ui")
