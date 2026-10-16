@@ -4703,23 +4703,25 @@ fn a_backend_that_never_listens_is_reported_for_what_was_awaited() {
 }
 
 /// 起来时起本机后端不挡调用方：替身那一趟卡着（等放行），调用方已经回来了；放行之后结局照样交到 `then`。
-/// 同步起 ⇒ 替身等满 2 秒没人放行、自己回来，调用方回来时它已经起完 ⇒ 红。
+/// 同步起 ⇒ 替身跑在调用方的线程上，不等放行当场回来，调用方回来时它已经起完 ⇒ 红（不靠墙钟）。
 #[test]
 fn the_launch_start_returns_before_the_backend_is_up() {
+    let caller = std::thread::current().id();
     let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
     let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
     let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let f = finished.clone();
     super::start_off_thread(
         move || {
-            let released = release_rx
-                .recv_timeout(std::time::Duration::from_secs(2))
-                .is_ok();
+            let off_caller = std::thread::current().id() != caller;
+            if off_caller {
+                let _ = release_rx.recv_timeout(guard_core::wall::CEILING);
+            }
             f.store(true, std::sync::atomic::Ordering::SeqCst);
-            if released {
+            if off_caller {
                 StartOutcome::AlreadyRunning
             } else {
-                StartOutcome::Started(std::path::PathBuf::from("timed-out"))
+                StartOutcome::Started(std::path::PathBuf::from("on-caller"))
             }
         },
         move |out| {
