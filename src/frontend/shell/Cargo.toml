@@ -286,6 +286,31 @@ windows = { version = "0.56", features = [
 # 版本收敛到 lock 里已有的 0.61.3，不新增依赖树条目。
 windows-wv2 = { package = "windows", version = "0.61", features = ["Win32_Foundation"] }
 
+# 测试档（dev 与继承它的 test）里给 egui 那一族开优化：文件窗口的 hover 扫读与滚动区那几条测试跑在它上面，
+#   依赖不开优化时文件窗口测试二进制的墙钟就是它们（10-15 量过：40–42 s → 28–31 s；冷编多不到一成）。只给这几样，
+#   工作区自己的 crate 照旧不开。判据：后端 `build_features_tests.rs` 的
+#   `the_test_build_optimizes_the_dependencies_the_slowest_tests_run_on`（与表两向相等、每项都在 Cargo.lock 里）。
+[profile.dev.package.egui]
+opt-level = 3
+
+[profile.dev.package.epaint]
+opt-level = 3
+
+[profile.dev.package.emath]
+opt-level = 3
+
+[profile.dev.package.ecolor]
+opt-level = 3
+
+[profile.dev.package.ab_glyph]
+opt-level = 3
+
+[profile.dev.package.ab_glyph_rasterizer]
+opt-level = 3
+
+[profile.dev.package.egui_extras]
+opt-level = 3
+
 [profile.release]
 opt-level = "z"
 lto = true
