@@ -287,16 +287,17 @@ describe("P2s backend 开关区", () => {
       { channel: false, pid: null },
       { channel: true, pid: 7 },
     ];
-    s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!.click();
-    // 等到画上「已连接」为止（按条件等，不按墙钟歇）；上限只防挂死。
-    await vi.waitFor(
-      () =>
-        expect(
-          s.element.querySelector(".backend-row-state")?.textContent,
-          "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
-        ).toContain(copyText("backend.status.connected")),
-      UNTIL_CEILING,
-    );
+    const start = s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!;
+    start.click();
+    expect(start.disabled, "起的那一趟没禁用本行按钮").toBe(true);
+    // 等这一趟收场（按钮放开 = 轮询停了），不按墙钟歇；上限只防挂死。
+    //   等「已连接」不行：起之前就画着「已连接」，等到的是操作前那张，轮询还在跑、漏进后面的用例。
+    await vi.waitFor(() => expect(start.disabled).toBe(false), UNTIL_CEILING);
+    expect(statusQueue, "没轮询到落定就放开了按钮").toEqual([]);
+    expect(
+      s.element.querySelector(".backend-row-state")?.textContent,
+      "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
+    ).toContain(copyText("backend.status.connected"));
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
@@ -544,9 +545,11 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     await flush();
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
-    s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!.click();
-    // 等起完那一趟画完（两次 channel:false 都读过）再数；按条件等，上限只防挂死。
-    await vi.waitFor(() => expect(statusQueue.length).toBe(0), UNTIL_CEILING);
+    const start = s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!;
+    start.click();
+    // 等起完那一趟收场（按钮放开 = 轮询停了）再数；只等队列读空不够，那之后还要再画一遍。按条件等，上限只防挂死。
+    await vi.waitFor(() => expect(start.disabled).toBe(false), UNTIL_CEILING);
+    expect(statusQueue).toEqual([]);
     await vi.waitFor(
       () => expect(s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!.querySelectorAll("[data-health-extra]").length).toBe(1),
       UNTIL_CEILING,
