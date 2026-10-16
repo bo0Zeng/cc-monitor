@@ -18,4 +18,12 @@ tmux: boolean | null,
 /**
  * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
  */
-chores: number, own: Array<OwnItem>, };
+chores: number, 
+/**
+ * 「待办」里还没做完的件数（不是已做、也不是不用了）。
+ */
+open: number, 
+/**
+ * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
+ */
+rank: number, own: Array<OwnItem>, };

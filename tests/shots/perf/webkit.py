@@ -389,7 +389,7 @@ return true;
 """
 NAV = '.settings-shell:not(.settings-shell-h) > .settings-nav .settings-nav-item[data-route-id="%s"]'
 TAB = '.settings-page:not([hidden]) .settings-shell-h .settings-nav-item[data-route-id="%s"]'
-LOCAL_PAGE = "machine:（本机）"
+LOCAL_PAGE = "machine:<local>"
 
 
 def s_click(v, sel, watch_ms=1500):

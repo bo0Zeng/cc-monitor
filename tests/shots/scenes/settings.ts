@@ -295,7 +295,7 @@ export const SETTINGS_SCENES: Scene[] = [
     },
   ),
   page("settings-machines", "设置 · 机器", "机器列表：本机 ＋ 三台远端，每台的连接 / 后端 / ccm / 账号四格", "machines"),
-  page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:（本机）"),
+  page("settings-machine-local", "设置 · 本机", "本机那一页", "machine:<local>"),
   page("settings-machine-remote", "设置 · 远端机器", "devbox 那一页（落在第一个子页）", "machine:devbox"),
   settings("settings-machine-conn", "设置 · 远端 · 连接设置", "devbox 卡头里展开「连接设置」", async () => {
     await go("machine:devbox");
@@ -308,12 +308,12 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(800);
   }),
   settings("settings-machine-local-cc", "设置 · 本机 · 这台上的 cc-monitor", "本机卡头里展开「这台上的 cc-monitor」：状态 · 随退出停止 · 恢复会话的启动程序 · 恢复到 tmux 里 · 子会话 / 分身会话", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
   }),
   settings("settings-machine-local-cc-launcher-open", "设置 · 本机 · 启动程序下拉", "本机「这台上的 cc-monitor」里启动程序点开：默认那一家的启动器（灰字默认）· 用过的 · 自定义…", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(800);
     document.querySelector<HTMLButtonElement>('.settings-page:not([hidden]) [data-role="resume-select"]')?.click();
@@ -324,7 +324,7 @@ export const SETTINGS_SCENES: Scene[] = [
     "设置 · 本机 · 退出策略读不出",
     "本机「这台上的 cc-monitor」：随退出停止那一行下，后端写好的那一句（读的哪份 · 原因词 · 按默认）＋［复制详情］",
     async () => {
-      await go("machine:（本机）");
+      await go("machine:<local>");
       await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
       await sleep(800);
     },
@@ -408,7 +408,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(900);
   }),
   settings("settings-machine-local-context-limits", "设置 · 本机 · 上下文上限", "本机「这台上的 cc-monitor」里展开「上下文上限」", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     const head = await waitFor('.settings-page:not([hidden]) [data-anchor="context-limits"] [aria-expanded]');
@@ -417,7 +417,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(700);
   }),
   settings("settings-machine-local-pb-dir", "设置 · 本机 · pb 路径", "本机「这台上的 cc-monitor」里「pb 路径」那一行：设过的那个插件根目录（留空 ⇒ 用已装的插件）", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     (await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]')).scrollIntoView({ block: "center" });
@@ -428,7 +428,7 @@ export const SETTINGS_SCENES: Scene[] = [
     return w;
   }),
   settings("settings-machine-local-pb-dir-bad", "设置 · 本机 · pb 路径不能用", "「pb 路径」填一个底下没有 pb 的目录：那台说不能用、不存，行下是那台那一句", async () => {
-    await go("machine:（本机）");
+    await go("machine:<local>");
     await click(await byText(".settings-page:not([hidden]) button", copyText("machinePage.cc.title")));
     await sleep(500);
     const row = await waitFor('.settings-page:not([hidden]) [data-anchor="pb-dir"]');

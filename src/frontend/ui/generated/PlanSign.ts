@@ -13,8 +13,4 @@ at: string | null,
 /**
  * 那一刻写成给人看的字（按看的那一台的时区）；读不出时刻 ⇒ 没有。
  */
-atText?: string, 
-/**
- * 那一刻的毫秒（自 1970，排序用）；读不出时刻 ⇒ `null`。
- */
-atMs: number | null, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };
+atText?: string, by: PlanWho | null, reason: string | null, refs: Array<PlanRef>, };

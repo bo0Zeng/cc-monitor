@@ -763,7 +763,7 @@ async function configuredCommand(origin: Origin, agent: string): Promise<string>
 
 /** ［登录…］：开设置的账号页那一台（登录在那里做）。 */
 async function openLogin(origin: Origin): Promise<void> {
-  const { openSettingsWindow } = await import("./settings/open-settings");
+  const { openSettingsWindow } = await import("./open-settings");
   await openSettingsWindow(undefined, accountsOf(origin));
 }
 

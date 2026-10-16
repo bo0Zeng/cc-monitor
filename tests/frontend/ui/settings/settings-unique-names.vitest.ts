@@ -48,7 +48,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { factsOn } from "../../../test-support/host-facts";
 

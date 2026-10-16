@@ -1,14 +1,15 @@
 //! 一份 `pb dump`（形状 1）⇒ 界面直接排版的成品。纯函数：不读盘、不起进程。
 //!
-//! 只做「换个方向排」与「换个名字」，不加判断：
+//! 换个方向排、换个名字，再把界面要的数与先后算好（界面照画、不数不排）：
 //! - 摘掉每格的 `agent_view`（研究盘上它占输出的一半），另交一张表，点到那一格再给；
 //! - 每格「指着它的」边：把全片的边倒过来排；每份文件还挂在哪几格：把全片的文件声明倒过来查；
 //! - 块的接手 · 每格在长它的 · 每条签收的「由」：经 [`super::WhoPort`] 对到会话；
-//! - 顶层进度：顶层格按 pb 给的状态数一数。
+//! - 顶层进度：顶层格按 pb 给的状态数一数；块根格的直接子做完几格 · 没做完的格数 · 签收新的在上 · 行尾原因短词，也在这里数好、排好、写好。
 //!
 //! 键名一律换成线上惯例（小驼峰）；pb 那边多出来的键不带过来（形状版本没变就不该多，多了说明该升形状版本了）。
 
 use super::{Live, WhoPort, Whose};
+use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
@@ -47,6 +48,30 @@ pub(crate) fn why_code(s: Option<&str>) -> Value {
         Some((done, of)) => json!({"kind": "inside", "done": done, "of": of}),
         None => Value::Null,
     }
+}
+
+/// 行尾那一个原因短词（`whyShort`）：没签 · d/m · 等收下（`wait`：等收下用正文色）；认不出 ⇒ pb 原话；没有原因 ⇒ `null`。
+fn why_short(s: Option<&str>) -> Value {
+    let code = why_code(s);
+    let (text, wait) = match code.get("kind").and_then(Value::as_str) {
+        Some("nosign") => (copy_text("plan.whyShort.nosign", &[]), false),
+        Some("upper") => (copy_text("plan.whyShort.upper", &[]), true),
+        Some("inside") => (
+            copy_text(
+                "plan.whyShort.inside",
+                &[
+                    ("done", &code["done"].to_string()),
+                    ("of", &code["of"].to_string()),
+                ],
+            ),
+            false,
+        ),
+        _ => match s {
+            Some(raw) => (raw.to_string(), false),
+            None => return Value::Null,
+        },
+    };
+    json!({"text": text, "wait": wait})
 }
 
 /// 对账的四种（在 · 缺 · 空 · 坏）⇒ `stateCode`；认不出 ⇒ `None`。
@@ -229,6 +254,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         }
         m.insert("done".into(), json!(false));
         m.insert("progress".into(), Value::Null);
+        m.insert("openCells".into(), json!(0));
+        m.insert("recentSigns".into(), json!([]));
         m.insert(
             "check".into(),
             json!({"unreadable": [], "red": [], "undecidable": []}),
@@ -319,8 +346,6 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 .map(|g| {
                     json!({
                         "at": s(g, "at"),
-                        // 排序用的毫秒（界面「新的在上」只按它排，不解析 `at`）；读不出时刻 ⇒ null（排后）。
-                        "atMs": g.get("at").and_then(Value::as_str).and_then(crate::common::time::parse_iso8601_ms),
                         "by": who_json(g.get("by").and_then(Value::as_str), who),
                         "reason": s(g, "reason"),
                         "refs": g.get("refs").cloned().unwrap_or_else(|| json!([])),
@@ -341,6 +366,7 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
                 "statusCode": status_code(c.get("status").and_then(Value::as_str)),
                 "why": s(c, "why"),
                 "whyCode": why_code(c.get("why").and_then(Value::as_str)),
+                "whyShort": why_short(c.get("why").and_then(Value::as_str)),
                 "signs": signs,
                 "owner": who_json(c.get("owner").and_then(Value::as_str), who),
                 // 签它的那一位（pb 还没给 ⇒ `null`；请求单第 2 条）。
@@ -366,6 +392,41 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
             _ => open += 1,
         }
     }
+
+    // 没做完的格（不是做完了、也不是不做了）。
+    let open_cells = cells_in
+        .iter()
+        .filter(|c| {
+            !matches!(
+                c.get("status").and_then(Value::as_str),
+                Some(DONE | DROPPED)
+            )
+        })
+        .count();
+    // 全片的签收，新的在上；读不出时刻的排后（同为读不出的照原来的先后）。
+    let mut recent: Vec<(Option<i64>, &str, usize)> = cells_in
+        .iter()
+        .flat_map(|c| {
+            let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
+            c.get("signs")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .map(move |(i, g)| {
+                    let ms = g
+                        .get("at")
+                        .and_then(Value::as_str)
+                        .and_then(crate::common::time::parse_iso8601_ms);
+                    (ms, id, i)
+                })
+        })
+        .collect();
+    recent.sort_by(|a, b| b.0.cmp(&a.0));
+    let recent_signs: Vec<Value> = recent
+        .iter()
+        .map(|(_, cell, i)| json!({"cell": cell, "i": i}))
+        .collect();
 
     let kinds: Vec<Value> = sl
         .get("kinds")
@@ -394,9 +455,19 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         .into_iter()
         .flatten()
         .map(|b| {
+            let cells = strs(b.get("cells"));
+            let inside = cells
+                .first()
+                .and_then(|r| {
+                    cells_in
+                        .iter()
+                        .find(|c| c.get("id").and_then(Value::as_str) == Some(r))
+                })
+                .map_or(Value::Null, |root| kids_done(&cells_in, root));
             json!({
                 "id": s(b, "id"),
-                "cells": strs(b.get("cells")),
+                "cells": cells,
+                "inside": inside,
                 "dir": s(b, "dir"),
                 "owner": who_json(b.get("owner").and_then(Value::as_str), who),
                 "phase": s(b, "phase"),
@@ -441,6 +512,8 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         "progress".into(),
         json!({"done": done, "open": open, "dropped": dropped}),
     );
+    m.insert("openCells".into(), json!(open_cells));
+    m.insert("recentSigns".into(), json!(recent_signs));
     m.insert("blocks".into(), json!(blocks));
     m.insert(
         "check".into(),
@@ -453,6 +526,26 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
     m.insert("cells".into(), json!(cells));
     m.insert("archived".into(), json!(archived));
     Value::Object(m)
+}
+
+/// 一格的直接子里做完了几格 / 一共几格（不做了的不算）。
+fn kids_done(cells: &[&Value], root: &Value) -> Value {
+    let (mut done, mut of) = (0u32, 0u32);
+    for k in strs(root.get("children")) {
+        let status = cells
+            .iter()
+            .find(|c| c.get("id").and_then(Value::as_str) == Some(k.as_str()))
+            .map(|c| c.get("status").and_then(Value::as_str));
+        match status {
+            None | Some(Some(DROPPED)) => {}
+            Some(Some(DONE)) => {
+                done += 1;
+                of += 1;
+            }
+            Some(_) => of += 1,
+        }
+    }
+    json!({"done": done, "of": of})
 }
 
 /// `plan-list` 里一个工作区那一行（标过认可的成品 ⇒ 去掉格与签收，只留切换与计数要的）。

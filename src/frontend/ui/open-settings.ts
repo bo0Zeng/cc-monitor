@@ -17,9 +17,9 @@
  *
  * ⚠ 本模块是给主窗用的：不许 import 设置面板。
  */
-import { commands } from "../ipc/commands";
-import { failToast } from "../kit/toast";
-import { copyText } from "../copy-table";
+import { commands } from "./ipc/commands";
+import { failToast } from "./kit/toast";
+import { copyText } from "./copy-table";
 
 export interface SettingsTarget {
   page?: string;

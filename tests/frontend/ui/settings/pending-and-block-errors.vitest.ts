@@ -30,7 +30,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 

@@ -5,9 +5,9 @@
  * 不持久化（会话内导航状态；存下来会停在一台可能已删的机器上）；同值不通知（每次通知都是一次 ssh 往返，同值广播就是变相轮询）。
  */
 
-import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 // 值与订阅住 `app-store.ts` 那一格（唯一的 pub-sub）；本文件只剩「空白名不是任何一台」这道门。
-import { appStore } from "../app-store";
+import { appStore } from "./app-store";
 
 type Listener = (origin: Origin) => void;
 

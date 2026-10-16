@@ -16,7 +16,7 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { toast } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
 import { detailOf, failSaid } from "./kit/detail";
-import { openSettingsWindow } from "./settings/open-settings";
+import { openSettingsWindow } from "./open-settings";
 
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
 const RENDER_BUDGET_MS = 10_000;

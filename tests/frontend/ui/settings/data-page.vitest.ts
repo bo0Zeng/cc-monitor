@@ -106,6 +106,8 @@ const report = (over: Record<string, unknown> = {}) => ({
   ],
   tmux: false,
   chores: 1,
+  open: 2,
+  rank: 0,
   own: [
     { id: "profiles", what: copyText("rsDataPaths.backend.profiles"), path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 2048 },
     { id: "accounts", what: copyText("rsDataPaths.backend.accounts"), path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
@@ -168,6 +170,16 @@ describe("待办", () => {
     const gpu = page.element.querySelector<HTMLElement>('[data-machine="gpu"]')!;
     expect(gpu.textContent).toContain(copyText("dataPage.chores.offline", { machine: "gpu" }));
     expect(page.element.querySelector('[data-machine="devbox"]')!.textContent).toContain(copyText("dataPage.chores.noneOn", { machine: "devbox" }));
+  });
+
+  it("★ 几台照各台成品的先后键排（读不成的排最后）；顶上那一句的数 ＝ 各台 open 相加，界面不数", async () => {
+    answers.set(LOCAL_ORIGIN, report({ rank: 2, open: 0 }));
+    answers.set("devbox", report({ rank: 1, open: 5, chores: 0 }));
+    const { page } = mount();
+    page.loadNow();
+    await settle();
+    expect([...page.element.querySelectorAll<HTMLElement>(".data-machine")].map((e) => e.dataset.machine)).toEqual(["devbox", LOCAL_ORIGIN, "gpu"]);
+    expect(page.element.querySelector(".data-summary")!.textContent).toContain(copyText("dataPage.chores.open", { n: 5 }));
   });
 
   it("［安装方法］开的是那份成品给的链接；没有链接的那件不摆这颗", async () => {

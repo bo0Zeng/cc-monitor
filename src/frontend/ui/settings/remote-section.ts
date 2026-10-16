@@ -18,7 +18,7 @@
  * 每台各有「测试连接」（问本机后端 `remote-probe`）展示 SSH/指纹/backend，指纹可一键固化。
  */
 
-import { openPortForwardPanel } from "../views/port-forward";
+import { openPortForwardPanel } from "./port-forward";
 import { listForwards, stopForward } from "../port-forward-reads";
 import { askInterrupts } from "./interrupts";
 // 配置数据层在 src/frontend/ui/remote-config.ts，这里只排版。
@@ -48,7 +48,7 @@ import { fetchAccounts } from "../account-reads";
 import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
-// 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`），与本机那一页的路由键不是同一个串。
+// 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`）。
 import { LOCAL_ORIGIN } from "../backend-policy";
 // 调用点（含测试）从本模块 import 它，原样再导出。
 export { shouldShowResetFingerprint };
@@ -134,13 +134,8 @@ export interface RemoteSectionOptions {
 
 /** 机器详情页的路由 id 前缀。 */
 export const MACHINE_PAGE_PREFIX = "machine:";
-/**
- * 本机那一页的路由键。本机没有 origin 那一格的写法（它不走 ssh），用一个**不可能与真实 origin 撞车**的名字：
- * origin 来自 `label || host`，用户填不出带中文括号的 host，label 也不会长这样。
- */
-const LOCAL_MACHINE_KEY = "（本机）";
-/** 本机那一页的路由 id。 */
-export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}`;
+/** 本机那一页的路由 id：本机的 origin（`LOCAL_ORIGIN`）不是任何一台远端的名字，不会撞车。 */
+export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_ORIGIN}`;
 
 /**
  * 列表那一行右侧那一句：照那台账号库的成品排（做不了多账号 · 没启用 · `N 个账号 · 默认 X`）；问不到 ⇒ 空。
@@ -664,7 +659,7 @@ export class RemoteSection {
    */
   private assignPageId(card: MachineCard, base: string): string {
     // 空白卡（还没填 host/label）没有可读身份 —— 给个占位，别让它变成裸 `machine:`。
-    const stem = `${MACHINE_PAGE_PREFIX}${base || "新机器"}`;
+    const stem = `${MACHINE_PAGE_PREFIX}${base || "<new>"}`;
     let id = stem;
     for (let n = 2; this.machinePageIds.includes(id); n += 1) id = `${stem}#${n}`;
     this.pageIdOf.set(card, id);

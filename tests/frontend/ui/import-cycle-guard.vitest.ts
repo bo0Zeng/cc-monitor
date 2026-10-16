@@ -326,6 +326,35 @@ describe("〔FE1〕全图（值边 ＋ 类型边）的环 == 登记表（两向�
     expect(cycleComponents(graph).some((c) => c.includes(commands))).toBe(false);
   });
 
+  /** 主窗口的视图（`views/`）与设置窗（`settings/`）之间的边（值边 ＋ 类型边），`from → to` 写成仓相对路径。 */
+  const dirOf = (p: string): string | null => {
+    const r = relative(UI, p).replace(/\\/g, "/");
+    return r.startsWith("views/") ? "views" : r.startsWith("settings/") ? "settings" : null;
+  };
+  const crossing = (g: Map<string, string[]>): string[] => {
+    const out: string[] = [];
+    for (const [f, deps] of g) {
+      const from = dirOf(f);
+      for (const d of deps) {
+        const to = dirOf(d);
+        if (from && to && from !== to) out.push(`${rel(f)} → ${rel(d)}`);
+      }
+    }
+    return out.sort();
+  };
+
+  it("★★ `views/` 与 `settings/` 互不引用（两边共用的住在两边都往下引的那一层）", () => {
+    const views = [...graph.keys()].filter((f) => dirOf(f) === "views");
+    const settings = [...graph.keys()].filter((f) => dirOf(f) === "settings");
+    expect(views.flatMap((f) => graph.get(f) ?? []).length, "views/ 一条边都没抠到 —— 下面那条恒绿").toBeGreaterThan(0);
+    expect(settings.flatMap((f) => graph.get(f) ?? []).length, "settings/ 一条边都没抠到 —— 下面那条恒绿").toBeGreaterThan(0);
+    expect(crossing(graph), "主窗口的视图与设置窗互相引用了：只一边用的挪到那一边，两边都用的挪到 `src/frontend/ui/` 那一层").toEqual([]);
+    // 人造一条 views → settings 的边，必须被看见。
+    const injected = new Map(graph);
+    injected.set(views[0], [...(injected.get(views[0]) ?? []), settings[0]]);
+    expect(crossing(injected)).toEqual([`${rel(views[0])} → ${rel(settings[0])}`]);
+  });
+
   it("每条登记都写清为什么还在、归谁拆", () => {
     for (const [m, why] of TYPE_CYCLE_EXEMPT) {
       expect(why.length, `${m.join(" ⇄ ")} 的理由像占位`).toBeGreaterThan(40);

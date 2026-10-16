@@ -33,7 +33,7 @@ const PER_FILE_FLOORS = [
   ["src/frontend/ui/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
   ["src/frontend/ui/settings/remote-section.ts", 60, 65.6, 40, 45.1],
   ["src/frontend/ui/settings/ext-section.ts", 69, 74.6, 61, 66.4],
-  ["src/frontend/ui/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
+  ["src/frontend/ui/views/cc-bus-section.ts", 90, 95.7, 70, 75.0],
   ["src/frontend/ui/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
   ["src/frontend/ui/accounts.ts", 83, 88.9, 83, 88.1],
   ["src/frontend/ui/account-reads.ts", 92, 97.3, 89, 94.3],

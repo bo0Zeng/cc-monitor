@@ -20,7 +20,7 @@ const clip = vi.hoisted(() => ({ writeClipboard: vi.fn() }));
 vi.mock("../../../src/frontend/ui/clipboard", () => clip);
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn() }));
 const settingsWin = vi.hoisted(() => ({ openSettingsWindow: vi.fn() }));
-vi.mock("../../../src/frontend/ui/settings/open-settings", () => settingsWin);
+vi.mock("../../../src/frontend/ui/open-settings", () => settingsWin);
 vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({
   offerResyncRetry: vi.fn(),

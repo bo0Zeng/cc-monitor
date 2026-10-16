@@ -35,7 +35,7 @@ const out = path.resolve(args.out ?? path.join(repo, ".build/perf-settings"));
 const sandbox = path.join(repo, ".build/perf-sandbox");
 const only = new Set(String(args.only ?? "open,pages,scroll,filter,reopen,soak").split(","));
 /** 本机那一页（`remote-section.ts::LOCAL_MACHINE_PAGE_ID`）。 */
-const LOCAL_PAGE = "machine:（本机）";
+const LOCAL_PAGE = "machine:<local>";
 const probe = readFileSync(path.join(here, "probe.js"), "utf8");
 
 const children = [];

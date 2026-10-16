@@ -1,5 +1,5 @@
 /**
- * 主窗口打开设置窗的每个入口落到哪（目的地的形状见 `settings/open-settings.ts` 头注）。
+ * 主窗口打开设置窗的每个入口落到哪（目的地的形状见 `open-settings.ts` 头注）。
  *
  * | 入口 | 落到 |
  * |---|---|
@@ -18,7 +18,7 @@
  * 认不出的那一节设置窗会忽略（照常打开那一页、高亮页头）。
  */
 import type { Origin } from "./ipc/origin";
-import type { SettingsTarget } from "./settings/open-settings";
+import type { SettingsTarget } from "./open-settings";
 
 /** 那台的「账号」栏（没有当前标签页时调用方给本机）。 */
 export function accountsOf(origin: Origin): SettingsTarget {

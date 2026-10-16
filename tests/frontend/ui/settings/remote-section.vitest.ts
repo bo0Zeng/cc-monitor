@@ -741,7 +741,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     opens[1]!.click(); // [0] 是本机
     expect(p.navigated).toEqual(["machine:a"]);
     opens[0]!.click(); // 本机也点得进去
-    expect(p.navigated[1]).toContain("本机");
+    expect(p.navigated[1]).toBe(LOCAL_MACHINE_PAGE_ID);
   });
 
   it("★ 删掉一台 → 它那一页也被收掉（否则导航里留个指向已删机器的死项）", async () => {

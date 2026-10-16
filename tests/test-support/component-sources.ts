@@ -10,7 +10,7 @@
  *
  * # 为什么**不是**「扫整个目录」
  *
- * 那些不变量是**针对某个组件**的，不是针对整个 `src/frontend/ui/settings/`。
+ * 那些不变量是**针对某个组件**的，不是针对整个目录。
  * 「不许写盘」对只读面板成立，对 `accounts-section` / `remote-section`
  * 根本不成立（它们本来就要写配置）。一刀切会得到一堆假红，然后守卫被放宽或删掉 ——
  * 比范围缩小更糟。
@@ -25,7 +25,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const SETTINGS_DIR = resolve(process.cwd(), "src/frontend/ui/settings");
+const UI_DIR = resolve(process.cwd(), "src/frontend/ui");
 
 /** 剥掉整行注释——守卫扫的是**代码**，文件头注里写了禁用模式不该打红自己。 */
 export function stripLineComments(src: string): string {
@@ -42,11 +42,12 @@ export interface ComponentSource {
 }
 
 /**
- * 收集 `src/frontend/ui/settings/` 下所有以 `prefix` 开头的**生产**源文件（排除测试）。
+ * 收集 `src/frontend/ui/<dir>/` 下所有以 `prefix` 开头的**生产**源文件（排除测试）。
  * 调用方应断言返回非空（反向自检：别让守卫空转成假绿）。
  */
-export function componentSources(prefix: string): ComponentSource[] {
-  return readdirSync(SETTINGS_DIR)
+export function componentSources(dir: "settings" | "views", prefix: string): ComponentSource[] {
+  const at = resolve(UI_DIR, dir);
+  return readdirSync(at)
     .filter(
       (f) =>
         f.startsWith(prefix) &&
@@ -57,13 +58,6 @@ export function componentSources(prefix: string): ComponentSource[] {
     .sort()
     .map((f) => ({
       file: f,
-      code: stripLineComments(readFileSync(resolve(SETTINGS_DIR, f), "utf8")),
+      code: stripLineComments(readFileSync(resolve(at, f), "utf8")),
     }));
-}
-
-/** 组件全部源码拼成一段（多数守卫只关心「整个组件里有没有出现 X」）。 */
-export function componentCode(prefix: string): string {
-  return componentSources(prefix)
-    .map((s) => s.code)
-    .join("\n");
 }

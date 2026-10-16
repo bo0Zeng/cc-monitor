@@ -55,7 +55,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
-  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
+  LOCAL_MACHINE_PAGE_ID: "machine:<local>",
   RemoteSection: class {
     headActions = (): HTMLElement[] => [];
     pageIdOfMachine = (): string | null => null;
@@ -71,7 +71,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
     }) {
       setTimeout(() => {
         opts?.pages?.addMachinePage(
-          "machine:（本机）",
+          "machine:<local>",
           "本机",
           document.createElement("div"),
         );
@@ -109,7 +109,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
-import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/machine-context";
 import { factsOn } from "../../../test-support/host-facts";
 
 /** 那五种形状，一条规则一个名字（红的时候要说得出是哪一种）。 */
@@ -225,7 +225,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
     await p.open();
     await tick();
     // 各页 + 本机子页都走一遍 —— 只看落地页等于只判了一部分。
-    for (const id of ["general", "appearance", "logs", "data", "machine:（本机）", "machines"]) {
+    for (const id of ["general", "appearance", "logs", "data", "machine:<local>", "machines"]) {
       const btn = document.querySelector<HTMLButtonElement>(
         `[id="settings-tab-${id}"]`,
       );
@@ -260,6 +260,8 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       ],
       tmux: false,
       chores: 1,
+      open: 2,
+      rank: 0,
       own: [],
     };
     ipc.replies.set("footprint_client_facts", { home: "/h", path: null });

@@ -8,6 +8,7 @@ import type { PlanNeed } from "./PlanNeed";
 import type { PlanPhase } from "./PlanPhase";
 import type { PlanProgress } from "./PlanProgress";
 import type { PlanReturned } from "./PlanReturned";
+import type { PlanSignAt } from "./PlanSignAt";
 import type { PlanStale } from "./PlanStale";
 
 /**
@@ -25,7 +26,15 @@ docsOnly: boolean,
 /**
  * 这一刻读不成的那一句（pb 原样）。
  */
-error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
+error: string | null, stale: PlanStale | null, bare: boolean, kinds: Array<PlanKind>, phases: Array<PlanPhase>, done: boolean, top: Array<string>, progress: PlanProgress | null, 
+/**
+ * 没做完的格数（不是做完了、也不是不做了）。
+ */
+openCells: number, 
+/**
+ * 全片的签收，新的在上（读不出时刻的排后）。
+ */
+recentSigns: Array<PlanSignAt>, blocks: Array<PlanBlock>, check: PlanCheck, cells: Array<PlanCell>, archived: Array<PlanArchived>, needs: Array<PlanNeed>, 
 /**
  * 这一片要你看的数（没认可的，不含问人）。
  */

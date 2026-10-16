@@ -9,7 +9,7 @@
  */
 import { spanNow } from "../duration-format";
 import { emit } from "@tauri-apps/api/event";
-import { getCurrentMachine, subscribeMachine } from "./machine-context";
+import { getCurrentMachine, subscribeMachine } from "../machine-context";
 import { SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";

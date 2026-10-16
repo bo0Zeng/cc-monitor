@@ -19,7 +19,7 @@
 //!
 //! **那个论证到今天没人做过** —— 于是前端与 `shared/ccm` 这半**一条机检都没有**，
 //! 而两个文件的头注里写着「本文件里不得出现 setInterval / setTimeout 轮询」这类**散文纪律**
-//! （`settings/cc-bus-section.ts`；之前还有一份 `account-usage.ts`）。散文纪律 = 没有纪律，
+//! （`views/cc-bus-section.ts`；之前还有一份 `account-usage.ts`）。散文纪律 = 没有纪律，
 //! 这正是本工作区一直在治的病。
 //!
 //! # 论证：这一半为什么是**登记表**而不是禁令

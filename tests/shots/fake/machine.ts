@@ -207,6 +207,8 @@ export function machineOps(): Record<string, OpHandler> {
         todo,
         tmux: o !== "win-laptop",
         chores: todo.filter((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")).length,
+        open: todo.filter((c) => c.state !== "done" && c.state !== "declined").length,
+        rank: todo.some((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")) ? 0 : todo.some((c) => c.state !== "done" && c.state !== "declined") ? 1 : 2,
         own: [
           { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },

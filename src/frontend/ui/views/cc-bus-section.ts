@@ -7,7 +7,7 @@
 //  ③ 脏数据不能把面板搞崩：后端解析器跳过坏行并计数，这里如实显示「N 条无法解析」。
 //
 // 派生调的是 `cc-spawn`（内部经 `ccm`），这里不碰建会话逻辑、不开标签页（远端 exec，发出即走）。
-import { setCurrentMachine, subscribeMachine } from "./machine-context";
+import { setCurrentMachine, subscribeMachine } from "../machine-context";
 import { commands } from "../ipc/commands";
 // 查在线 · 发消息 · 收掉 · 派生 · 广播 · 读面都经通道直接问那台机器的后端；形状由 `cc-bus-control.ts` 的解码器严格收。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";

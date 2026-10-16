@@ -73,7 +73,7 @@ import { bindRemoteHealthToast } from "./remote-health";
 import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
 import { readRemoteConfig } from "./remote-config";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
-import { openSettingsWindow } from "./settings/open-settings"; // 点「设置」有反馈（不 import 设置面板）
+import { openSettingsWindow } from "./open-settings"; // 点「设置」有反馈（不 import 设置面板）
 import * as dest from "./settings-dest";
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
