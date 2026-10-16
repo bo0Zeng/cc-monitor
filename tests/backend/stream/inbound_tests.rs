@@ -905,7 +905,7 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
         vec![
             WatchAsk {
                 sids: vec!["a".to_string(), "b".to_string()],
-                branch: vec![]
+                ..Default::default()
             },
             WatchAsk {
                 sids: vec!["a".to_string()],
@@ -921,6 +921,7 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
                         ..Default::default()
                     },
                 ],
+                ..Default::default()
             },
         ]
     );

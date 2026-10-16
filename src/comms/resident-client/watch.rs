@@ -98,6 +98,7 @@ impl Desk {
         WatchAsk {
             sids: sids.into_iter().collect(),
             branch,
+            kept: Vec::new(),
         }
     }
 

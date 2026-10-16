@@ -108,7 +108,7 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
 fn the_attach_line_asks_for_the_stream_and_nothing_else() {
     let watch = cmd_wire::watch::WatchAsk {
         sids: vec!["s1".into()],
-        branch: Vec::new(),
+        ..Default::default()
     };
     let l = crate::local_backend_host::attach_line(Some("Asia/Shanghai"), None, Some(watch));
     assert!(l.ends_with('\n'));

@@ -16,6 +16,7 @@
 //! | tmux 观测（可观测的） | 收割**只对可重连的**（活不活只认 pidfile / pidfd）：它挂的那个 tmux 会话没了（按句柄 `#{session_id}` 认，改名不算没了）⇒ 当场已结束；连续 [`RETIRE_MISS_THRESHOLD`] 份哪个窗格都不挂它 ⇒ 已结束。每一份还宣告「挂着 `@ccm_sid`、却不在活会话里、没报过、也不在等裁」的为可重连 |
 //! | `sessions_replayed` | 第一份 tmux 快照到之前**压住**，到了（不论可不可观测）先放上一格的宣告、再放它 ⇒ 客户端收到「清单报完了」时可重连的也已报过 |
 //! | 一条连接半路接上来 | 账本整台一份（read8a）：给它补 [`SessionLedger::snapshot`]（可重连的 · 清单报完了没有） |
+//! | 一条连接报了手上留着的会话 | 清单报完了、账上没有它（[`SessionLedger::knows`]）⇒ 只给那条连接一帧已结束（`watcher::FrameSink::settle_kept`） |
 //!
 //! `@ccm_sid` 打在**窗格**上：一个 tmux 会话里可以挂几个 sid，快照按会话句柄记它挂着的那一组。
 //! 不可观测的快照（没装 tmux · 观测失败）不收割、不推导；等裁的照它裁（它说的是「这一刻一个 `@ccm_sid` 都看不见」）。
@@ -207,6 +208,18 @@ impl SessionLedger {
     /// 此刻可重连的那几条（历史清单那一行照它分出 `reconnectable`，[`crate::history::live::set_reconnectable`]）。
     pub(crate) fn reconnectable(&self) -> &BTreeSet<String> {
         &self.reconnectable
+    }
+
+    /// 清单报完了（`sessions_replayed` 已放出去）。
+    pub(crate) fn listed(&self) -> bool {
+        self.listed
+    }
+
+    /// 这条会话账上有：活的 · 可重连的 · 等裁的之一。
+    pub(crate) fn knows(&self, sid: &str) -> bool {
+        self.live.contains(sid)
+            || self.reconnectable.contains(sid)
+            || self.pending.contains_key(sid)
     }
 
     /// 一条连接半路接上来时它该补的那一份账（账本整台一份，它没看见之前那些帧）：可重连的各一帧 ·

@@ -2,7 +2,8 @@
 import type { BranchHeld } from "./BranchHeld";
 
 /**
- * `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
+ * `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）
+ * ＋ 手上留着、要那台说清去向的（`kept`）。
  */
 export type WatchAsk = { 
 /**
@@ -12,4 +13,8 @@ sids: Array<string>,
 /**
  * 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）。
  */
-branch?: Array<BranchHeld>, };
+branch?: Array<BranchHeld>, 
+/**
+ * 手上留着记录、要那台说清去向的会话 id：那台报完清单、又不在说的 ⇒ 这条连接收一帧已结束（可缺 ＝ 一个都没有）。
+ */
+kept?: Array<string>, };

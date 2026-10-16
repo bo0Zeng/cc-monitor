@@ -1376,7 +1376,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
         0,
         crate::wire::WatchAsk {
             sids: vec!["other".into()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,
@@ -4584,6 +4584,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     let ask = |held: Option<BranchHeld>| WatchAsk {
         sids: vec!["rw-sid".into()],
         branch: held.into_iter().collect(),
+        ..Default::default()
     };
     let none = BranchHeld {
         sid: "rw-sid".into(),
@@ -4630,7 +4631,7 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
         0,
         WatchAsk {
             sids: vec!["other".into()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,

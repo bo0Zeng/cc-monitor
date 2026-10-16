@@ -21,7 +21,8 @@ pub struct WatchFrom {
     pub seq: u64,
 }
 
-/// `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
+/// `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）
+/// ＋ 手上留着、要那台说清去向的（`kept`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
@@ -36,6 +37,10 @@ pub struct WatchAsk {
     #[serde(default)]
     #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
     pub branch: Vec<BranchHeld>,
+    /// 手上留着记录、要那台说清去向的会话 id：那台报完清单、又不在说的 ⇒ 这条连接收一帧已结束（可缺 ＝ 一个都没有）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, as = "Option<Vec<String>>"))]
+    pub kept: Vec<String>,
 }
 
 /// `stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。

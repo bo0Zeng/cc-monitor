@@ -27,17 +27,17 @@
 | 载体 | 怎么交 |
 |---|---|
 | SSH exec / stdio（CLI 那一臂） | `ccm -- --stream [--tz <IANA 名>] [--view <声明>]`。`--stream` 是「我是流模式」的显式词；`--view` 的值同 §8 CLI 面那一格（JSON 原样或 base64）。声明认不出 ⇒ 不起流：stderr 一行失败信封（`bad_args`）、退出 2 |
-| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>","watch":{"sids":[…],"branch":[…]}}`：三格都可缺；`watch` 与 `stream-watch` 的入参同形，这条流从第一帧起照它发；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
+| 常驻那条连接 | attach 行 `{"attach":true,"tz":"Asia/Shanghai","mine":"<BUILD_ID>","watch":{"sids":[…],"branch":[…],"kept":[…]}}`：三格都可缺；`watch` 与 `stream-watch` 的入参同形，这条流从第一帧起照它发；别的键 ⇒ `{"attach":"refused","reason":"malformed-attach"}` |
 
 - **`tz`**：这条流**推**出去的钟面（`line.record.timeText` · `session_runs.runs[].startedText`）按它写。缺 · 认不得 ⇒ UTC。见 §4「时刻按谁的钟」。
 - **`view`**（只 CLI 那一臂）：与请求信封的 `view` 同一套词、同一处解（§4）；只许点推送帧里住着的成品：`record`（`line.record`）· `session_added` · `session_status` · `session_state` · `session_removed`（整帧就是那件成品，`kind` 不受裁）。
   点了别的成品 ⇒ 当认不出。缺 ＝ 全量。应答不受它管（应答各按各的请求信封）。
 - **`mine`**（只常驻那条）：手上这一版的 `BUILD_ID`；回话里那一格 `relation` 由它算，客户端不另问新旧。
-- **`watch`**（只常驻那条）：在看名单 `{sids, branch?}`（同 `stream-watch` 的入参，下一节）；那台接上那一刻就照它定这条连接的名单，宣告之后的运行表 · 行 · 活卡只发名单里的，`branch` 里的会话接上即补清单。缺 ＝ 全看（不报名单的载体）。
+- **`watch`**（只常驻那条）：在看名单 `{sids, branch?, kept?}`（同 `stream-watch` 的入参，下一节）；那台接上那一刻就照它定这条连接的名单，宣告之后的运行表 · 行 · 活卡只发名单里的，`branch` 里的会话接上即补清单。缺 ＝ 全看（不报名单的载体）。
 
 ### 流只发要看的会话
 
-一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。
+一条流此刻在看哪几个会话（整份换）：常驻那条连接在 attach 行的 `watch` 里带上，从第一帧起生效；之后变了用 `stream-watch {sids, branch, kept}` 报（同形）；stdio 载体没有 attach 行，接上之后报一次（报之前 ＝ 全看）。客户端名单从空开始（还没人看 ＝ 一个都不看），每台一张名单台（`resident-client` 的 `watch::Desk`）管报、重报与 `from[]`，桌面与手机同一份。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。`kept`（可缺）：手上留着记录、要那台说清去向的会话 id（桌面 ＝ 重放留存里那台有行的）；那台清单报完了、会话账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给这条连接一帧 `session_state {state: ended}`（清单还没报完 ⇒ 放出 `sessions_replayed` 那一刻答，排在它后面），一条只答一次。「已结束」只由那台答，客户端不自己推。
 应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
 
 桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。

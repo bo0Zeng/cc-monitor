@@ -13,6 +13,7 @@ fn the_attach_line_is_four_cells_and_nothing_else() {
                 sid: "s1".into(),
                 ..Default::default()
             }],
+            ..Default::default()
         }),
     };
     assert_eq!(

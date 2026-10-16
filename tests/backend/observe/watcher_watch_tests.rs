@@ -64,7 +64,7 @@ fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
 fn ids(v: &[&str]) -> crate::wire::WatchAsk {
     crate::wire::WatchAsk {
         sids: v.iter().map(|s| s.to_string()).collect(),
-        branch: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -227,6 +227,7 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
             sid: A.into(),
             ..Default::default()
         }],
+        ..Default::default()
     };
     join(
         Sub::new(7, tx, crate::Tz::default()),
@@ -266,4 +267,131 @@ fn a_list_on_the_attach_line_holds_from_the_first_frame() {
         "名单外的 B：运行表 · 行一帧不收"
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// ── 手上留着的会话：那台报完清单、又不在说的 ⇒ 会话账答一句已结束（只答报它的那条连接）──
+
+/// 生产那一份发帧口（带会话账本）；`listed` ⇒ 清单已报完、第一份 tmux 观测已到。
+fn ledgered(listed: bool) -> FrameSink {
+    let mut sink = FrameSink::hub();
+    if listed {
+        sink.send(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));
+        sink.tmux(crate::observe::tmux_observe::TmuxObservation::NoServer);
+    }
+    sink
+}
+
+fn kept(v: &[&str]) -> crate::wire::WatchAsk {
+    crate::wire::WatchAsk {
+        kept: v.iter().map(|s| s.to_string()).collect(),
+        ..Default::default()
+    }
+}
+
+fn conn(
+    sink: &mut FrameSink,
+    state: &mut ReaderState,
+    id: u64,
+    ask: Option<crate::wire::WatchAsk>,
+) -> tokio::sync::mpsc::Receiver<Frame> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    join(Sub::new(id, tx, crate::Tz::default()), ask, state, sink);
+    rx
+}
+
+/// 这一趟收到的会话账那几帧：`ended x` · `reconnectable x` · `listed`。
+fn told(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+    let mut out = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        match f {
+            Frame::SessionState(s) => {
+                assert_eq!(
+                    Frame::SessionState(s.clone()),
+                    Frame::session_state(s.sid.clone(), s.state),
+                    "与别处发的同一句"
+                );
+                out.push(format!("{:?} {}", s.state, s.sid));
+            }
+            Frame::SessionsReplayed(_) => out.push("listed".into()),
+            _ => {}
+        }
+    }
+    out
+}
+
+fn added_frame(sid: &str) -> Frame {
+    Frame::SessionAdded(crate::wire::SessionAdded {
+        sid: sid.into(),
+        agent_kind: "claude".to_string(),
+        background: false,
+        attachable: None,
+        cwd: None,
+        project_dir: None,
+        name: None,
+        path: None,
+        face: crate::wire::ActivityFace::of(None),
+        name_face: crate::history::search_rules::name_face(&Default::default()),
+        waiting_for: None,
+        hidden: None,
+        container: None,
+        pid: 0,
+    })
+}
+
+/// ① 带上来一个那台从没说过的 ⇒ 清单已报完时当场答已结束，只给这条连接。
+#[test]
+fn a_kept_session_the_backend_never_spoke_of_is_answered_ended_on_that_connection_only() {
+    let mut state = ReaderState::new(std::env::temp_dir());
+    let mut sink = ledgered(true);
+    let mut other = conn(&mut sink, &mut state, 1, None);
+    let mut mine = conn(&mut sink, &mut state, 2, Some(kept(&["x"])));
+    assert_eq!(told(&mut mine), vec!["listed", "Ended x"]);
+    assert_eq!(told(&mut other), vec!["listed"]);
+}
+
+/// ② 活的 · 可重连的 · 等裁的都不答（前两样接上那一份里已说过；等裁的裁了照常扇给每条连接）。
+#[test]
+fn kept_sessions_the_ledger_still_holds_are_not_answered() {
+    let mut state = ReaderState::new(std::env::temp_dir());
+    let mut sink = ledgered(true);
+    sink.send(added_frame("live"));
+    sink.send(added_frame("due"));
+    sink.send(Frame::SessionRemoved(crate::wire::SessionRemoved {
+        sid: "due".into(),
+        cause: crate::wire::RemovalCause::Gone,
+        by: None,
+    }));
+    sink.tmux(crate::observe::tmux_observe::TmuxObservation::Sessions(
+        "n\t/w\tzsh\t0\t1\tback\t$1\tback \n".into(),
+    ));
+    let mut rx = conn(
+        &mut sink,
+        &mut state,
+        1,
+        Some(kept(&["live", "back", "due"])),
+    );
+    assert_eq!(told(&mut rx), vec!["Reconnectable back", "listed"]);
+}
+
+/// ③ 清单报完之前带上来 ⇒ 先不答；放出 `sessions_replayed` 那一刻答，排在它后面。
+#[test]
+fn a_kept_session_is_answered_right_after_the_list_is_released() {
+    let mut state = ReaderState::new(std::env::temp_dir());
+    let mut sink = ledgered(false);
+    let mut rx = conn(&mut sink, &mut state, 1, Some(kept(&["x"])));
+    sink.send(Frame::SessionsReplayed(crate::wire::SessionsReplayed {}));
+    assert_eq!(told(&mut rx), Vec::<String>::new(), "清单还压着");
+    sink.tmux(crate::observe::tmux_observe::TmuxObservation::NoServer);
+    assert_eq!(told(&mut rx), vec!["listed", "Ended x"]);
+}
+
+/// ④ 再报一次（多了 y）⇒ 只答 y，x 不重答。
+#[test]
+fn reporting_again_answers_only_the_new_ones() {
+    let mut state = ReaderState::new(std::env::temp_dir());
+    let mut sink = ledgered(true);
+    let mut rx = conn(&mut sink, &mut state, 1, Some(kept(&["x"])));
+    assert_eq!(told(&mut rx), vec!["listed", "Ended x"]);
+    watch_sessions(1, kept(&["x", "y"]), &mut state, &mut sink);
+    assert_eq!(told(&mut rx), vec!["Ended y"]);
 }

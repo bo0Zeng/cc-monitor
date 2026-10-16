@@ -67,7 +67,7 @@ use crate::wire::{ActivityFaceExt as _, FrameMake as _, FrameRules as _};
 use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter, Topic};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // U2：平台原语搬进 `platform/`（§1.1 第一条解耦线）。这里 re-import 回来，
@@ -2417,6 +2417,7 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
 /// 刚要起主线外清单的会话（这一次的 `branch` 里有、在看，上一次没有 —— 换了一条连接的头一次报都算）：照它手上那份只补缺的那一截
 /// （[`FrameSink::branch_to`]）。不要清单的会话（`branch` 里没有）一帧清单都不收。
 /// 在看的会话照读照数（行号与运行表、链索引都照常推进），只是那几种帧不上这条流（拦在 [`FrameSink::send`]）。
+/// 手上留着的（`ask.kept`）里新报上来、账上没有的，答已结束（[`FrameSink::settle_kept`]）。
 /// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发，[`primed`]）、也不回续点（它的续点由 `session_primed` 给）。
 fn watch_sessions(
     sub: u64,
@@ -2427,6 +2428,7 @@ fn watch_sessions(
     let Some((fresh, starting)) = take_ask(sub, ask, state, sink) else {
         return Vec::new();
     };
+    sink.settle_kept(sub);
     let mut from = Vec::new();
     for sid in fresh {
         sink.send_to(sub, state.runs_frame(&sid));
@@ -2483,6 +2485,8 @@ fn take_ask(
         .filter_map(|(_, h)| Some((h.path?, (h.at, h.sum?))))
         .collect();
     me.watching = Some(next);
+    me.kept = ask.kept.into_iter().collect();
+    me.kept_answered.retain(|sid| me.kept.contains(sid));
     Some((fresh, starting))
 }
 
@@ -2512,7 +2516,8 @@ fn branch_starting(sub: u64, starting: &[String], state: &ReaderState, sink: &mu
 /// 那一份 ＝ 每个活会话一帧 `session_added`（宣告那一帧，此刻的活动 · 名字 · 在等什么 · 记录路径换成现值）·
 /// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 ·
 /// 会话账本的那一份（可重连的 · 清单报完了没有）。主线外清单只给要了的连接、照它手上的只补缺的（attach 行 · `stream-watch` 带的 `branch`），跟在那一份后面。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
-/// attach 行带了名单 ⇒ 先照它定这条连接的名单，那一份里的运行表只发名单里的（同之后的每一帧）。
+/// attach 行带了名单 ⇒ 先照它定这条连接的名单，那一份里的运行表只发名单里的（同之后的每一帧）；
+/// 它手上留着的（`kept`）里账上没有的，跟在账本那一份后面答已结束（[`FrameSink::settle_kept`]）。
 fn join(
     sub: Sub,
     watch: Option<crate::wire::WatchAsk>,
@@ -2584,6 +2589,7 @@ fn join(
     {
         sink.send_to(id, f);
     }
+    sink.settle_kept(id);
     branch_starting(id, &starting, state, sink);
 }
 
@@ -4545,6 +4551,10 @@ pub(crate) struct Sub {
     branch_stale: HashSet<String>,
     /// 刚要起清单、还没给它发过的那几份记录：它交回的手上那份（路径 ⇒ 条数 · 摘要）。头一次给它这份时照它只补缺的那一截，用完即摘。
     branch_held: HashMap<String, (u64, String)>,
+    /// 它手上留着、要说清去向的会话（`stream-watch.kept`，整份换）。
+    kept: BTreeSet<String>,
+    /// 其中已经答过已结束的（[`FrameSink::settle_kept`]；不在 `kept` 里了就摘）。
+    kept_answered: BTreeSet<String>,
 }
 
 /// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
@@ -4588,8 +4598,37 @@ impl FrameSink {
         let (raw, observation) = observation_parts(obs);
         let out = l.on_tmux(&raw, observation);
         crate::history::live::set_reconnectable(l.reconnectable());
+        let released = out.iter().any(|f| matches!(f, Frame::SessionsReplayed(_)));
         for f in out {
             self.fan(f);
+        }
+        // 清单这一刻才放出去：之前报上来的手上留着的，现在答得了（排在清单后面）。
+        if released {
+            let ids: Vec<u64> = self.subs.iter().map(|s| s.id).collect();
+            for id in ids {
+                self.settle_kept(id);
+            }
+        }
+    }
+
+    /// 这条连接手上留着、还没答过的会话：那台清单已报完、账上没有它（不活 · 不可重连 · 不在等裁）⇒ 只给它一帧已结束
+    /// （与别处发的已结束同一句）。活的 · 可重连的接上那一份里已说过；等裁的裁了照常扇给每条连接。清单没报完 ⇒ 等放出那一刻再答。
+    fn settle_kept(&mut self, id: u64) {
+        let Some(l) = self.ledger.as_ref().filter(|l| l.listed()) else {
+            return;
+        };
+        let Some(s) = self.subs.iter_mut().find(|s| s.id == id) else {
+            return;
+        };
+        let due: Vec<String> = s
+            .kept
+            .iter()
+            .filter(|sid| !s.kept_answered.contains(*sid) && !l.knows(sid))
+            .cloned()
+            .collect();
+        for sid in due {
+            s.kept_answered.insert(sid.clone());
+            s.push(Frame::session_state(sid, crate::wire::SessionFate::Ended));
         }
     }
 
@@ -4716,6 +4755,8 @@ impl Sub {
             branching: HashSet::new(),
             branch_stale: HashSet::new(),
             branch_held: HashMap::new(),
+            kept: BTreeSet::new(),
+            kept_answered: BTreeSet::new(),
         }
     }
 

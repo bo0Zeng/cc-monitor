@@ -343,7 +343,7 @@ fn the_watched_session_is_primed_first() {
         0,
         crate::wire::WatchAsk {
             sids: vec!["p-w-b".to_string()],
-            branch: vec![],
+            ..Default::default()
         },
         &mut state,
         &mut sink,
