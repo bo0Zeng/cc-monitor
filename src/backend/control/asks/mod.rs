@@ -196,15 +196,7 @@ async fn due(min: u32) {
     tokio::time::sleep(std::time::Duration::from_secs(u64::from(min) * 60)).await;
 }
 
-/// 挂上一条（`conn` ＝ 它那条连接）。
-pub(crate) fn open(
-    agent: &str,
-    asked: AskIn,
-    conn: u64,
-) -> tokio::sync::oneshot::Receiver<Option<Value>> {
-    open_id(agent, asked, conn).1
-}
-
+/// 挂上一条（`conn` ＝ 它那条连接）：回它的号与等答的那一头。
 fn open_id(
     agent: &str,
     asked: AskIn,

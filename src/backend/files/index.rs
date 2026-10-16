@@ -518,7 +518,8 @@ impl Ranked {
     }
 }
 
-fn name_bytes(path: &[u8]) -> &[u8] {
+/// 路径的末段（按这台的分隔符切）。
+pub fn name_bytes(path: &[u8]) -> &[u8] {
     let path = trim_sep(path);
     match path.iter().rposition(|&b| is_sep(b)) {
         Some(i) if i + 1 < path.len() => &path[i + 1..],

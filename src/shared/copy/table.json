@@ -10932,11 +10932,11 @@
       "zh": "预览",
       "args": []
     },
-    "rsFilewinPreview.decide.tooBig": {
+    "beFilesOpen.preview.tooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 预览上限 {limit} · 可点「编辑」打开",
-      "args": ["name", "size", "limit"]
+      "zh": "{size} · 预览上限 {limit} · 可点「编辑」打开",
+      "args": ["size", "limit"]
     },
     "rsFilewinPreview.decide.badName": {
       "kind": "body",
@@ -11218,7 +11218,7 @@
       "zh": "{path} 不是文本（含 NUL 或非 UTF-8） · 不可编辑 · 刚改过就刷新",
       "args": ["path"]
     },
-    "rsFilewinEditor.notEditable.tooBig": {
+    "beFilesOpen.edit.tooBig": {
       "kind": "error",
       "role": "报错",
       "zh": "文件 {size} · {bytes} 字节 · 超过编辑上限 {limit} · 多 {over} 字节\n超限拒绝编辑 · 不截断 · 截断的文本存回会写坏文件",
@@ -13237,12 +13237,6 @@
       "zh": "cc-monitor 设置",
       "args": []
     },
-    "rsLib.run.localBackendDown": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "本机后端未运行",
-      "args": []
-    },
     "backendPolicy.exit.kills": {
       "kind": "body",
       "role": "说明",
@@ -15065,10 +15059,10 @@
       "args": ["path", "why"],
       "limited": ["连接"]
     },
-    "rsLocalBackendHost.start.refusedNotice": {
+    "rsLocalBackendHost.start.refusedNext": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机后端未启动 · 已在运行的后端连接失败 · {why}\n结束该进程再重开 cc-monitor 即可 · 进程号记在 {pidPath}",
+      "zh": "已在运行的后端连接失败 · {why}\n结束该进程再重试 · 进程号记在 {pidPath}",
       "args": ["why", "pidPath"],
       "limited": ["连接"]
     },
@@ -20596,59 +20590,65 @@
       "zh": "打开其他机器的文件窗口失败 · 程序出错 · 重开本窗口再试",
       "args": []
     },
-    "rsFilewinKind.label.folder": {
+    "beFilesKind.label.folder": {
       "kind": "body",
       "role": "片段",
       "zh": "目录",
       "args": []
     },
-    "rsFilewinKind.label.text": {
+    "beFilesKind.label.text": {
       "kind": "body",
       "role": "片段",
       "zh": "文本",
       "args": []
     },
-    "rsFilewinKind.label.code": {
+    "beFilesKind.label.code": {
       "kind": "body",
       "role": "片段",
       "zh": "代码",
       "args": []
     },
-    "rsFilewinKind.label.image": {
+    "beFilesKind.label.image": {
       "kind": "body",
       "role": "片段",
       "zh": "图片",
       "args": []
     },
-    "rsFilewinKind.label.archive": {
+    "beFilesKind.label.archive": {
       "kind": "body",
       "role": "片段",
       "zh": "压缩包",
       "args": []
     },
-    "rsFilewinKind.label.pdf": {
+    "beFilesKind.label.pdf": {
       "kind": "body",
       "role": "片段",
       "zh": "PDF",
       "args": []
     },
-    "rsFilewinKind.label.link": {
+    "beFilesKind.label.link": {
       "kind": "body",
       "role": "片段",
       "zh": "链接",
       "args": []
     },
-    "rsFilewinKind.label.other": {
+    "beFilesKind.label.other": {
       "kind": "body",
       "role": "片段",
       "zh": "文件",
       "args": []
     },
-    "rsFilewinKind.type.withExt": {
+    "beFilesKind.type.withExt": {
       "kind": "body",
       "role": "片段",
       "zh": "{kind} · {ext}",
       "args": ["kind", "ext"]
+    },
+    "rsFilewinSource.gates.unlisted": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "读取上限未知 · 刷新列表后再打开",
+      "args": []
     },
     "rsFilewinSource.sort.mtime": {
       "kind": "control",
@@ -20994,11 +20994,11 @@
       "zh": "读取中 · {name} · {got} / {total}",
       "args": ["name", "got", "total"]
     },
-    "rsFilewinImgview.state.tooBig": {
+    "beFilesOpen.view.tooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 超过查看上限 {limit} · 可下载到本机再打开",
-      "args": ["name", "size", "limit"]
+      "zh": "{size} · 超过查看上限 {limit} · 可下载到本机再打开",
+      "args": ["size", "limit"]
     },
     "rsFilewinImgview.state.failed": {
       "kind": "error",
@@ -21006,23 +21006,23 @@
       "zh": "{name} · {why}",
       "args": ["name", "why"]
     },
-    "rsFilewinPreview.decide.imageKind": {
+    "beFilesOpen.preview.imageKind": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} · 此图片格式不预览",
-      "args": ["name"]
+      "zh": "此图片格式不预览",
+      "args": []
     },
-    "rsFilewinPreview.decide.imageTooBig": {
+    "beFilesOpen.preview.imageTooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 图片预览上限 {limit} · 可点「查看」打开",
-      "args": ["name", "size", "limit"]
+      "zh": "{size} · 图片预览上限 {limit} · 可点「查看」打开",
+      "args": ["size", "limit"]
     },
-    "rsFilewinPreview.decide.binaryKind": {
+    "beFilesOpen.preview.binaryKind": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} 不是文本 · 不预览 · 可下载到本机再打开",
-      "args": ["name"]
+      "zh": "不是文本 · 不预览 · 可下载到本机再打开",
+      "args": []
     },
     "rsFilewinPreview.ui.imageSize": {
       "kind": "body",
@@ -22547,13 +22547,13 @@
       "zh": "上传文件",
       "args": []
     },
-    "rsFilewinKind.type.linkTo": {
+    "beFilesKind.type.linkTo": {
       "kind": "body",
       "role": "片段",
       "zh": "链接 → {kind}",
       "args": ["kind"]
     },
-    "rsFilewinKind.type.linkBroken": {
+    "beFilesKind.type.linkBroken": {
       "kind": "body",
       "role": "片段",
       "zh": "链接 · 目标不存在",

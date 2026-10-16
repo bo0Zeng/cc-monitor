@@ -21,10 +21,12 @@ class SessionTabManager {
          * 终端 shell 会话。
          * - [cd]：初始工作目录（文件屏「在此打开终端」传入）。
          * - [tmuxSession]：首连即接回的会话名（敲那台渲出的那一行）。进去重键：不同名各开一个 tab，同名复用。
+         * - [resume]：终端已经不在的那条会话（sid）：首连先让那台恢复它，再接回它落在的那个会话。
          */
         data class Terminal(
             val cd: String? = null,
             val tmuxSession: String? = null,
+            val resume: String? = null,
         ) : TabTarget
 
         /** 文件浏览（Termius 式）。无 payload——同主机至多 1 个（去重键仅 hostId+类型）。 */

@@ -3157,13 +3157,11 @@ Used by:
     crate: tauri-plugin 2.6.2
     crate: tauri-plugin-dialog 2.7.1
     crate: tauri-plugin-fs 2.5.1
-    crate: tauri-plugin-notification 2.3.3
     crate: tauri-plugin-opener 2.5.4
     crate: tauri-plugin-single-instance 2.4.2
     crate: tauri-runtime 2.11.2
     crate: tauri-runtime-wry 2.11.2
     crate: tauri-utils 2.9.2
-    crate: tauri-winrt-notification 0.7.3
     crate: ts-rs 12.0.1
     crate: ts-rs-macros 12.0.1
     crate: type-map 0.5.1
@@ -7918,33 +7916,6 @@ DEALINGS IN THE SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: notify-rust 4.18.0
-
-MIT License
-
-Copyright (c) 2017 Hendrik Sollich
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
     crate: nu-ansi-term 0.50.3
 
 The MIT License (MIT)
@@ -8386,37 +8357,6 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: ppv-lite86 0.2.21
-
-Copyright (c) 2019 The CryptoCorrosion Contributors
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
--------- MIT License (MIT) --------
-Used by:
     crate: precomputed-hash 0.1.1
 
 MIT License
@@ -8559,9 +8499,6 @@ THE SOFTWARE.
 -------- MIT License (MIT) --------
 Used by:
     crate: rand 0.10.1
-    crate: rand 0.9.4
-    crate: rand_chacha 0.9.0
-    crate: rand_core 0.9.5
 
 Copyright 2018 Developers of the Rand project
 Copyright (c) 2014 The Rust Project Developers

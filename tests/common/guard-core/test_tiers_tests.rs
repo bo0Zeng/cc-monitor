@@ -411,6 +411,16 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("读数不是判据：`W2_COST=1` 时才量慢路与快路的墙钟（墙钟不当判据）"),
     ),
     (
+        "tests/shots/proc-start.vitest.ts",
+        "process.platform===\"\"",
+        Trigger::Manual("Windows 上让开：判的是沙箱开场 sh 里读 `/proc` 的那一句；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
+        "tests/shots/tmux-stand-in.vitest.ts",
+        "process.platform===\"\"",
+        Trigger::Manual("Windows 上让开：替身是一段 sh、转交真 tmux；Linux 上门禁与 quick-check 的整套 vitest 跑它"),
+    ),
+    (
         "tests/frontend/shell/deploy_tests.rs",
         "sr1b_loopback_deploy_and_transfer_through_the_resident_backend",
         Trigger::Filter { by: "tests/evidence/SR1b-sftp-loopback.py", needle: "sr1b_loopback_deploy_and_transfer_through_the_resident_backend" },

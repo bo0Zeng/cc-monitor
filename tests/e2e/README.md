@@ -246,9 +246,6 @@ fixtures / 驱动:
 5. 「在此打开终端」→ wt.exe 起 ssh 落到当前目录;非 UTF-8 名文件行写按钮灰置;
 6. 拒写验证:导航到 ~/.claude/projects 试删/传 jsonl → 应被守卫拒(提示用历史浏览器)。
 
-**F42 turn-end 系统通知(真机观感)**:窗口切到后台,让某会话跑完一轮 → 应出系统通知
-「Claude 完成一轮 — <tab 标题>」;窗口在前台时不应有通知;启动 monitor(历史重放)不应放礼花。
-
 **F41 远端一键 resume(Windows 真机)**:触发面 = wt.exe/PowerShell 拉起 + Windows OpenSSH,
 本仓 e2e 跑在 Linux 无法覆盖。人工验证流程(装含 F41 的版本后):
 1. 远端某会话结束(tab 变灰)→ tab 右键「Resume」→ 应弹出新终端窗口自动 ssh 并 resume,

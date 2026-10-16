@@ -195,7 +195,7 @@ private fun UseSeg(
     temp: Boolean,
 ) {
     val acct = LocalAppTokens.current.acct
-    val (bg, ink) = account?.let { acct[(ui.accounts[it]?.color ?: 0).mod(acct.size)].let { c -> c.bg to c.ink } } ?: (MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurface)
+    val (bg, ink) = account?.let { acct[(ui.plate(it)?.color ?: 0).mod(acct.size)].let { c -> c.bg to c.ink } } ?: (MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurface)
     Box(
         at
             .fillMaxHeight()
@@ -256,7 +256,7 @@ private fun LaneHead(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        AccountBadge(account, ui.accounts[account]?.color, 16)
+        AccountBadge(ui.plate(account)?.text, ui.plate(account)?.color, 16)
         Text(board.label(account), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

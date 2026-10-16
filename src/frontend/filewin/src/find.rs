@@ -96,6 +96,8 @@ pub struct Hit {
     pub dir: bool,
     /// 后端说它是链接（`kind == "symlink"`）。
     pub link: bool,
+    /// 画哪种图标（后端判的 `class`）。
+    pub class: cmd_wire::files::FileClass,
     /// 所在目录相对搜索起点那一段（后端算的；直接在起点里 ⇒ 空）。
     pub location: Vec<u8>,
     pub size: Option<u64>,
@@ -137,7 +139,7 @@ impl Hit {
             mtime_text: self.mtime_text.clone(),
             size: self.size,
             dir: self.dir,
-            link: self.link,
+            class: self.class,
         }
     }
 
@@ -227,6 +229,7 @@ pub fn decode_find(d: cmd_wire::files::FindReply) -> FindOutcome {
                 path: h.path.0,
                 dir: h.kind == FileKind::Dir,
                 link: h.kind == FileKind::Symlink,
+                class: h.class,
                 location: h.location.0,
                 size: h.size,
                 mtime_text: h.mtime_text,

@@ -278,12 +278,12 @@ export class TabBarView {
 
   /**
    * 计划那一侧的「需手动」（计划页挂进来）：几条 · 此刻站在第几条（计划页开着且选着那一条；否则 `null`）· 去第几条。
-   * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题，不发系统通知。
+   * 会话在前、计划项在后；计划项的数进「需手动 N」与窗口标题。
    */
   plan: PlanNeeds = { count: () => 0, at: () => null, open: () => {}, slices: () => [] };
 
   /**
-   * 会话外的「需手动」（宿主挂进来）：每台 `manual-list` 的账 · 点那一行开登录抽屉。条数进「需手动 N」与窗口标题，不进 `Ctrl+J`、不发系统通知。
+   * 会话外的「需手动」（宿主挂进来）：每台 `manual-list` 的账 · 点那一行开登录抽屉。条数进「需手动 N」与窗口标题，不进 `Ctrl+J`。
    */
   manual: { book: ManualBook | null; login: (origin: Origin, item: ManualItem) => void } = { book: null, login: () => {} };
 

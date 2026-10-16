@@ -31,6 +31,8 @@ export interface MachineFace {
   needsUpdate: boolean;
   /** 问题行那句后面跟的复制详情（壳写好的；空 ＝ 不出［复制详情］）。 */
   detail: string;
+  /** 问题行下面那一句下一步（壳写好的；空 ＝ 不出那一行）。 */
+  next: string;
 }
 
 const DOT: Record<MachineStateKind, MachineDotState> = {
@@ -83,6 +85,7 @@ export function machineFace(m: MachineState, machine: string): MachineFace {
     offline: m.state === "down" || m.state === "host_key_changed" || m.state === "unsupported",
     needsUpdate: m.state === "needs_update",
     detail: m.detail ?? "",
+    next: m.next ?? "",
   });
   switch (m.state) {
     case "up":
@@ -135,7 +138,7 @@ export function fixLabel(f: MachineFix): string {
 }
 
 /**
- * 问题行（列表那一行与卡头同一个画法）：一句话 ＋ 修法按钮；正在连 / 装 / 更新时转圈（装 / 更新另有一条走动的进度条）。
+ * 问题行（列表那一行与卡头同一个画法）：一句话 ＋ 修法按钮，壳写了下一步就另起一行跟在下面；正在连 / 装 / 更新时转圈（装 / 更新另有一条走动的进度条）。
  * `face.problem` 为空 ⇒ 收起。
  */
 export function paintProblem(el: HTMLElement, face: MachineFace, onFix: (fix: MachineFix) => void): void {
@@ -165,5 +168,10 @@ export function paintProblem(el: HTMLElement, face: MachineFace, onFix: (fix: Ma
         },
       }),
     );
+  }  if (face.next !== "") {
+    const next = document.createElement("div");
+    next.className = "machine-problem-next";
+    next.textContent = face.next;
+    el.appendChild(next);
   }
 }

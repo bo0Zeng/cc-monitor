@@ -1337,7 +1337,7 @@ fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
         v
     };
     let data = with_hits(serde_json::json!([{
-        "path": { "b16": hex }, "kind": "file", "location": "", "size": null,
+        "path": { "b16": hex }, "kind": "file", "class": "other", "location": "", "size": null,
         "mtime_secs": null, "mtime_text": null, "marks": [],
     }]));
     let o = decode_find(&data).expect("该解析得动");
@@ -1353,7 +1353,7 @@ fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
     );
     // 而有效 UTF-8 那一形不许被当成有损。
     let plain = with_hits(serde_json::json!([{
-        "path": "/tmp/a", "kind": "dir", "location": "", "size": null,
+        "path": "/tmp/a", "kind": "dir", "class": "folder", "location": "", "size": null,
         "mtime_secs": null, "mtime_text": null, "marks": [],
     }]));
     let p = decode_find(&plain).expect("该解析得动");

@@ -308,7 +308,7 @@ fn front_failed(raw: impl std::fmt::Display) -> Said {
     Said::with_raw(copy_text("rsWindow.front.failed", &[]), raw)
 }
 
-/// 把主窗口拉回来（第二次启动 · 点了通知）：最小化着就还原、藏着就显示；`focus` ⇒ 再拉到前面。
+/// 把主窗口拉回来（第二次启动 · 界面要它到前面）：最小化着就还原、藏着就显示；`focus` ⇒ 再拉到前面。
 /// Linux 带上启动方给的激活令牌（GTK `set_startup_id` ＋ `present`）：Wayland 上没有令牌桌面不让抢前台，只弹「已就绪」。
 pub fn raise_main(app: &tauri::AppHandle, token: Option<String>, focus: bool) {
     use tauri::Manager;

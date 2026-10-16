@@ -11,6 +11,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const POOL = "./real/pool.mjs";
@@ -36,7 +37,8 @@ describe("各活会话的 tmux 会话名", () => {
   });
 });
 
-describe("边界上的 tmux 替身", () => {
+// 替身是一段 sh、转交真 tmux：截图台架只在 Linux 上跑，Windows 那一格让开。
+describe.skipIf(process.platform === "win32")("边界上的 tmux 替身", () => {
   const run = (shim: { version?: string; noServer?: string[] }, args: string[]) => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "shots-tmux-shim-"));
     try {
@@ -60,5 +62,25 @@ describe("边界上的 tmux 替身", () => {
   it("别的原样交真 tmux", () => {
     const real = execFileSync("env", ["-u", "TMUX", "-u", "TMUX_PANE", "tmux", "-L", "shots-stand-in", "-V"], { encoding: "utf8" });
     expect(run({ version: "3.1c", noServer: ["capture-pane"] }, ["-V"]).stdout).toBe(real);
+  });
+});
+
+describe("池子的导入", () => {
+  // 导入只取函数、不起进程（CI 的 Windows 那一格也导入它，那里没有 sh）；找 tmux 用到时才找，找不到退回 `/usr/bin/tmux`。
+  // 另起一个 node：把起进程的几个口换成「起不来」（同 Windows 上找不到 sh：`stdout` 是 undefined）再导入。
+  it("导入不起进程；起不来进程 ⇒ 替身转交 /usr/bin/tmux", () => {
+    const probe = `
+      import cp from "node:child_process";
+      import { syncBuiltinESMExports } from "node:module";
+      const spawned = [];
+      const fail = (cmd) => (spawned.push(cmd), { error: Object.assign(new Error("ENOENT"), { code: "ENOENT" }), status: null, stdout: undefined, stderr: undefined });
+      Object.assign(cp, { spawn: fail, spawnSync: fail, execFile: fail, execFileSync: fail, exec: fail, execSync: fail });
+      syncBuiltinESMExports();
+      const pool = await import(process.argv[1]);
+      const atImport = [...spawned];
+      console.log(JSON.stringify({ atImport, last: pool.tmuxShim({}, "/s/default").trimEnd().split("\\n").pop() }));`;
+    const r = spawnSync(process.execPath, ["--input-type=module", "-e", probe, pathToFileURL(path.join(import.meta.dirname, POOL)).href], { encoding: "utf8" });
+    expect(r.stderr).toBe("");
+    expect(JSON.parse(r.stdout)).toEqual({ atImport: [], last: 'exec /usr/bin/tmux "$@"' });
   });
 });

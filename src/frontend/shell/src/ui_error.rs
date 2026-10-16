@@ -101,7 +101,7 @@ impl UiError {
                     ),
                     // 读坏了而监护器已经重起它：用户那边只是闪断一下，只记日志。
                     (Death::Misread { .. }, Then::Restarted) => return None,
-                    // 起不来：开机那一下走系统通知（`lib.rs`），手动起回的是失败 toast ⇒ 这里不再说一遍。
+                    // 起不来：被拒那一句下一步在本机那一台的状态成品里，手动起回的是失败 toast ⇒ 这里不再说一遍。
                     (Death::NeverStarted { .. }, _) => return None,
                 };
                 let reconnect =

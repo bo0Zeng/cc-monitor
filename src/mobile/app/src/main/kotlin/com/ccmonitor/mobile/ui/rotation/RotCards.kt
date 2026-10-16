@@ -46,7 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.link.wire.Fact
+import com.ccmonitor.mobile.core.claude.link.wire.RotAccount
 import com.ccmonitor.mobile.core.claude.link.wire.RotFormScope
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.WinFact
@@ -105,7 +105,7 @@ internal fun Cards(
         }
     }
     ui.open?.let { a -> AccountPane(ui, view, board, a) }
-    if (adding) AddSheet(view, ui, board) { adding = false }
+    if (adding) AddSheet(view, board) { adding = false }
 }
 
 /** 长按（先震一下）再拖：拖的时候号牌浮起；松在哪张号牌上 ⇒ 排到它前头。 */
@@ -135,7 +135,7 @@ private fun Modifier.cardDrag(
 @Composable
 private fun Card(
     i: Int,
-    f: Fact,
+    f: RotAccount,
     ui: RotationUi,
     board: RotationBoard,
     inUse: Boolean,
@@ -165,7 +165,7 @@ private fun Card(
         ) {
             Row(Modifier.padding(horizontal = 8.dp).dim(f.blocked != null), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text((i + 1).toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                AccountBadge(f.account, ui.accounts[f.account]?.color, 18)
+                AccountBadge(f.plate.text, f.plate.color, 18)
                 Text(board.label(f.account), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Meters(f)
             }
@@ -184,7 +184,7 @@ private fun Card(
 
 /** 号牌上的两条小计量（上 5h、下 7d）。 */
 @Composable
-private fun Meters(f: Fact) {
+private fun Meters(f: RotAccount) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Meter(copyText("rot.card.w5h"), f.w5h)
         Meter(copyText("rot.card.w7d"), f.w7d)
@@ -232,7 +232,6 @@ private fun AddCard(
 @Composable
 private fun AddSheet(
     view: RotationViewReply,
-    ui: RotationUi,
     board: RotationBoard,
     onDismiss: () -> Unit,
 ) {
@@ -242,7 +241,7 @@ private fun AddSheet(
             PickRow(board.label(f.account), "rot-add-${f.account}", onClick = {
                 onDismiss()
                 board.settings(added(view.settings, f.account))
-            }, lead = { AccountBadge(f.account, ui.accounts[f.account]?.color, 20) })
+            }, lead = { AccountBadge(f.plate.text, f.plate.color, 20) })
         }
         SheetEnd()
     }
@@ -261,7 +260,7 @@ private fun AccountPane(
     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().testTag("rot-pane-$account")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AccountBadge(account, ui.accounts[account]?.color, 20)
+                AccountBadge(f.plate.text, f.plate.color, 20)
                 Text(board.label(account), fontWeight = FontWeight.SemiBold)
             }
             Text(acctLine(f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

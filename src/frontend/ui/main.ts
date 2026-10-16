@@ -321,7 +321,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
       queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
       empty.el.style.display = total > 0 ? "none" : "";
-      // 会话头 · 「需手动」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
+      // 会话头 · 「需手动」钉条 · 窗口标题：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
@@ -578,12 +578,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   planView.switchTo = (sid) => tabs.switchTo(sid);
   planView.reconnect = (origin) => tabs.reconnect(origin);
   planView.resume = (anchor, sid) => tabs.openResumeFor(anchor, sid);
-  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后（不发系统通知）。
+  // 计划那一侧的「需手动」：数进标签栏「需手动 N」与窗口标题，Ctrl J 会话在前、计划项在后。
   planView.book = planNeeds;
   // 文件窗口「在计划里看」：壳已把主窗口拉到前面；开计划页、选中那一格（片按机器区分）。
   void listen<PlanOpenSaid>(PLAN_OPEN_EVENT, (e) => void planView.openAt(e.payload.origin, e.payload.workspace, e.payload.slice, e.payload.id));
   tabs.attachPlanNeeds({ count: () => planNeeds.total(), at: () => planView.needAt(), open: (i) => void planView.openNeedItem(i), slices: () => planSlices(planNeeds.items()) });
-  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。不发系统通知。
+  // 会话外的「需手动」（`manual-list`）：数进「需手动 N」与窗口标题；点那一行开登录抽屉（入参 ＝ 那一项的 `fix.args`）。
   tabs.attachManual(manualBook, (origin, item) => {
     if (item.fix) openLoginDrawer({ origin, target: item.fix.args, onDone: () => void manualBook.refresh(origin) });
   });

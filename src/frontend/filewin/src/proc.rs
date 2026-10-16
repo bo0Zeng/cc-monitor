@@ -55,7 +55,7 @@ pub async fn first_screen(
         None => super::source::home_of(line, &source.origin(), FIRST_SCREEN_BUDGET).await?,
     };
     let (rows, _truncated) =
-        super::source::list_dir(line, source, &cwd, super::source::SortBy::default()).await?;
+        super::source::list_dir(line, source, &cwd, super::source::Sort::default()).await?;
     Ok((cwd, rows))
 }
 

@@ -41,6 +41,7 @@ import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 @Composable
 fun LoginSheet(
     flow: LoginFlow,
+    plate: String?,
     color: Int?,
     machine: String,
     onClosed: () -> Unit,
@@ -54,11 +55,11 @@ fun LoginSheet(
     Sheet(onDismiss = close) {
         SheetHead(copyText("login.sheet.account"), null)
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AccountBadge(s.account, color)
+            AccountBadge(plate, color)
             Text(s.account, style = MaterialTheme.typography.bodyLarge)
             Text(machine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        s.failed?.let { Failed(it, onRestart = flow::start) } ?: Body(flow, s)
+        s.failed?.let { Failed(it, onRestart = flow::start.takeIf { s.canRestart }) } ?: Body(flow, s)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
             SecondaryButton(onClick = close) { Text(if (s.failed != null) copyText("kit.drawer.close") else copyText("kit.dialog.cancel")) }
         }
@@ -91,7 +92,6 @@ private fun Body(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { clipboard.getText()?.text?.let { pasted = it } }, enabled = started != null && !s.submitting) { Text(copyText("login.act.paste")) }
             Button(onClick = { flow.submit(pasted) }, enabled = started != null && pasted.isNotBlank() && !s.submitting) { Text(copyText("login.act.submit")) }
-            if (s.pasteError != null) SecondaryButton(onClick = flow::start) { Text(copyText("login.act.restart")) }
         }
     }
 }
@@ -99,11 +99,12 @@ private fun Body(
 @Composable
 private fun Failed(
     text: String,
-    onRestart: () -> Unit,
+    /** 那台说还能重来 ⇒［重新开始］；不能 ⇒ `null`。 */
+    onRestart: (() -> Unit)?,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick = onRestart) { Text(copyText("login.act.restart")) }
+        onRestart?.let { OutlinedButton(onClick = it) { Text(copyText("login.act.restart")) } }
     }
 }
 
