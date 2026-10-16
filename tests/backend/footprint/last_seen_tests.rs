@@ -318,21 +318,25 @@ fn 同一份再交_内容不变_时刻是新的() {
         )
         .unwrap()
     };
-    let acc = json!({"meta": {"enabled": true}, "accounts": []});
+    let acc = accounts_list();
     put(&acc, "accounts", 10);
     put(&report(), "data", 11);
     assert_eq!(put(&acc, "accounts", 20), json!({"atMs": 20}));
     assert_eq!(put(&report(), "data", 21), json!({"atMs": 21}));
     let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
-    assert_eq!(got["accounts"], json!({"atMs": 20, "value": acc}));
+    assert_eq!(
+        got["accounts"],
+        json!({"state": "kept", "atMs": 20, "value": acc})
+    );
     assert_eq!(
         got["data"],
         json!({"state": "kept", "atMs": 21, "value": report()})
     );
-    let changed = json!({"meta": {"enabled": false}, "accounts": []});
+    let mut changed = accounts_list();
+    changed["accounts"][0]["label"] = json!("renamed");
     assert_eq!(put(&changed, "accounts", 30), json!({"atMs": 30}));
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
-        json!({"atMs": 30, "value": changed})
+        json!({"state": "kept", "atMs": 30, "value": changed})
     );
 }
