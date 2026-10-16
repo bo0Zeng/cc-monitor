@@ -33,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,7 +75,7 @@ import com.ccmonitor.mobile.ui.common.DeployStepLine
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.common.deployLabel
-import com.ccmonitor.mobile.ui.common.rememberHostLink
+import com.ccmonitor.mobile.ui.common.rememberDeployPress
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -636,29 +635,20 @@ object HostEditTags {
     const val DEPLOY = "host-edit-deploy"
 }
 
-/**
- * 主机设置里那一行：标题 ＋ 一颗按钮（核心点名的那一种：安装 / 更新；没点名 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。
- * 按下去才连那台（这一屏在就持有那条连接），连上就叫核心装；判定 · 做法 · 话都在核心，同对话屏问题条那几句。
- */
+/** 主机设置里那一行：标题 ＋ 一颗按钮（核心点名的那一种：安装 / 更新；没点名 ⇒ 核对版本）＋ 过程与结局（核心写好的话）。 */
 @Composable
 private fun BackendRow(hostId: String) {
     val backends = koinInject<HostBackends>()
     val feed = remember(hostId) { backends.of(hostId) }
     val link by feed.state.collectAsState()
     val deploying by feed.deploying.collectAsState()
-    // 按过几下：按过一次起，这一屏在就持有那条连接（装到一半屏还在，连接不许随按钮放手）。
-    var presses by remember { mutableIntStateOf(0) }
-    var conn: HostLink? = null
-    if (presses > 0) {
-        val held by rememberHostLink(hostId, "deploy-$hostId")
-        conn = held
-        LaunchedEffect(held, presses) { if (held == HostLink.Ready) backends.deploy(hostId) }
-    }
+    val deploy = rememberDeployPress(hostId)
+    val conn = deploy.held
     val fix = (link as? LinkState.Down)?.fix ?: (link as? LinkState.Up)?.fix
     val step = deploying as? Deploying.Step
     Text(copyText("mobHostEdit.backend.title"), style = MaterialTheme.typography.labelMedium)
     SecondaryButton(
-        onClick = { presses++ },
+        onClick = deploy.press,
         enabled = step == null && conn != HostLink.Connecting,
         modifier = Modifier.testTag(HostEditTags.DEPLOY),
     ) { Text(deployLabel(fix)) }

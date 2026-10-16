@@ -43,6 +43,7 @@ enum class Ph(
     Stop(0xE46C),
     Trash(0xE4A6),
     UploadSimple(0xE4C0),
+    UserCircle(0xE4C4),
     X(0xE4F6),
     Tabs(0xE778),
     TerminalWindow(0xEAE8),

@@ -1221,7 +1221,106 @@ data class AccountRow(
     val login: Boolean,
     val configDir: String?,
     val mode: String,
+    val authKind: String,
+    val badge: Badge,
 )
+
+/** 号行右边那一枚（[warn] ⇒ 要人动手的那一种，界面只画这一种）。 */
+@WireOf("Badge")
+@JsonClass(generateAdapter = true)
+data class Badge(
+    val text: String,
+    val warn: Boolean,
+)
+
+/** `quota-read`：每号用量那一格（出过数的在 [accounts]，没出过数的在 [unseen]）。 */
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaAccount>,
+    val unseen: List<QuotaUnseen>,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaAccount(
+    val account: String,
+    val usage: Usage,
+)
+
+@WireOf("QuotaUnseen")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseen(
+    val account: String,
+    val usage: QuotaUnseenUsage,
+)
+
+/** 用量那一格：连成的一句 ＋ 语气（状态栏按钮 · 切号下拉同一份）。 */
+@WireOf("Usage")
+@JsonClass(generateAdapter = true)
+data class Usage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@WireOf("QuotaUnseenUsage")
+@JsonClass(generateAdapter = true)
+data class QuotaUnseenUsage(
+    val text: String,
+    val tone: UsageTone,
+)
+
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}
+
+/** `prefs-read` · `prefs-set`（写完读回）：这台的偏好；读不懂（[state] 为 unreadable）也照答那一份。 */
+@WireOf("PrefsReply")
+@JsonClass(generateAdapter = true)
+data class PrefsReply(
+    val state: PrefsState,
+    val reason: String?,
+    val detail: String?,
+    val prefs: Prefs,
+)
+
+@JsonClass(generateAdapter = false)
+enum class PrefsState {
+    @Json(name = "absent")
+    ABSENT,
+
+    @Json(name = "ok")
+    OK,
+
+    @Json(name = "unreadable")
+    UNREADABLE,
+}
+
+@WireOf("Prefs")
+@JsonClass(generateAdapter = true)
+data class Prefs(
+    val models: Map<String, String>,
+    val childTab: TabPref,
+    val bgTab: TabPref,
+)
+
+/** 一种会话进不进标签栏（也管手机的「最近」列不列它）。 */
+@JsonClass(generateAdapter = false)
+enum class TabPref {
+    @Json(name = "show")
+    SHOW,
+
+    @Json(name = "hide")
+    HIDE,
+}
 
 /** 登录失败的 `data`：还能怎么办（那台照码定）。 */
 @WireOf("LoginAgain")

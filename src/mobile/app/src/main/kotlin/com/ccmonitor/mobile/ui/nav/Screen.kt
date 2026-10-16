@@ -84,4 +84,7 @@ sealed class Screen(
 
     /** 设置 → 机器与账号 → 轮换：当前服务器（上次那台）新会话用的那份。 */
     data object RotationHere : Screen("settings/rotation")
+
+    /** 设置 → 机器与账号 → 账号：当前那台（上次那台）账号库里的号。 */
+    data object Accounts : Screen("settings/accounts")
 }
