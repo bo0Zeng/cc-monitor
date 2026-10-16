@@ -615,8 +615,8 @@ mod tests {
 
         // 反空真自检㈠：真的切到了那一块（它里面必须有这两个今天确实在的字段）。
         assert!(
-            block.contains("tee:") && block.contains("served:"),
-            "切出来的窗口里没有 `tee:` / `served:` —— 取法坏了，下面的断言在空转"
+            block.contains("tee:") && block.contains("door:"),
+            "切出来的窗口里没有 `tee:` / `door:` —— 取法坏了，下面的断言在空转"
         );
         // 反空真自检㈡：窗口没有跨进下一个 item。
         assert!(

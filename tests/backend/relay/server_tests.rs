@@ -819,7 +819,7 @@ fn the_relay_notes_whether_each_request_carries_the_wide_context_item() {
 fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     let up = spawn_fake_upstream(None);
     // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
-    let (relay_addr, relay, tee) = spawn_relay(up.addr);
+    let (relay_addr, _relay, tee) = spawn_relay(up.addr);
     // 流标签取自请求自带的会话标识头（路径里没有会话段）。
     let mut c = send_request(
         relay_addr,
@@ -844,7 +844,6 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
         assert_eq!(line, "POST /v1/messages?beta=true HTTP/1.1 auth=false");
     }
 
-    assert_eq!(relay.served(), 2, "两个键必须由同一个中转实例服务");
     // 两发响应，每发 `UPSTREAM_EVENTS` 件事件 ＋ 1 件收尾 ⇒ 等够这么多件再读。
     tee.wait_events(2 * (UPSTREAM_EVENTS + 1));
     // ★ 只认**带事件原文**的那几件，按流标签分（标签取自请求头）。
@@ -2415,7 +2414,7 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
 ///
 /// # 先前量的是别的东西
 ///
-/// `routes_two_keys…` 断的是 `relay.served() == 2` —— 那是「同一个 **`Relay` 实例**」。
+/// `routes_two_keys…` 断的是两发的响应序号出自同一个 tee —— 那是「同一个 **`Relay` 实例**」。
 /// 全量测试跑在**一个**测试进程里 ⇒ 「进程数 = 1」这句话**没有任何判据在量**。
 ///
 /// # 今天量的是什么（三格，逐格说它证什么）
@@ -2545,8 +2544,8 @@ fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
 ///    **发完终止块之后再等一次确认**，射程才真的是 **4/4**；
 ///    死值验见件文件 §8.18.7（同一刀今天 1/392 红）。
 /// ㈡ **块数对账**（`DoD-2` acceptor ㈡ 逐字「下游读到的块数 ≈ 上游发出的块数」）：
-///    三个数必须是**同一个** —— 上游真的发出的块数（夹具自己数的）
-///    · 下游自己数到的读次数 · `pump` 返回的「写给下游并 flush 成功的次数」。
+///    上游真的发出的块数（夹具自己数的）必须等于下游自己数到的读次数，
+///    且 tee 收尾那一件说这一趟是干净收尾（不是以错误断开）。
 ///
 /// # 为什么门闩是**逐块**的，而不是靠「上游 RST 时丢尾巴」
 ///
@@ -2559,7 +2558,7 @@ fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
 fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     let (gate_tx, gate_rx) = mpsc::channel();
     let up = spawn_fake_upstream(Some(gate_rx));
-    let (relay_addr, relay, _sink) = spawn_relay(up.addr);
+    let (relay_addr, _relay, tee) = spawn_relay(up.addr);
     let t0 = std::time::Instant::now();
     let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     // 读期限比假上游那道闸（两倍）短：中转攒住块时先到这里、红（见 `spawn_fake_upstream` 那段）。
@@ -2624,7 +2623,7 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
         );
     }
 
-    // ㈡ 块数对账 —— 三个数必须是同一个。
+    // ㈡ 块数对账。
     let up_chunks = up.sent();
     // 非空对照：夹具自己得真发出这么多块，否则下面两条是空真。
     assert_eq!(
@@ -2636,18 +2635,70 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
         body_reads, up_chunks,
         "下游数到的块数必须等于上游发出的块数（{up_chunks}）—— 少一块就是中转把它攒住了"
     );
-    // `Some(_)` 同时断言这一趟是**干净 EOF** 收尾；`None` = pump 以错误收尾（上游 RST 那一路）。
+    // 收尾那一件：`broken: false` = 干净 EOF（以错误收尾是上游 RST / 下游写不动那一路）。
+    tee.wait_events(UPSTREAM_EVENTS + 1);
+    let ends: Vec<TapBody> = tee
+        .events()
+        .into_iter()
+        .map(|e| e.body)
+        .filter(|b| matches!(b, TapBody::End { .. }))
+        .collect();
     assert_eq!(
-        relay.pumps(),
-        vec![Some(up_chunks)],
-        "中转写给下游的块数必须等于上游发出的块数，且必须以干净 EOF 收尾"
+        ends,
+        vec![TapBody::End { broken: false }],
+        "这一趟必须以干净 EOF 收尾"
     );
     // ⚠ 这两个时刻**只印不断言**：`t_first` 先量、时钟单调 ⇒ `t_first <= t_last` 恒真，
     // 断它等于加一条永远不会红的判据（同上，铁律 15 自查逮到的第二处）。
     println!(
-        "[DoD-2] 首块 {:?} · 末块 {t_last:?} · 上游发出 {up_chunks} 块 · 下游数到 {body_reads} 块 · pump 写出 {:?}",
-        t_first.expect("首块时刻"),
-        relay.pumps()
+        "[DoD-2] 首块 {:?} · 末块 {t_last:?} · 上游发出 {up_chunks} 块 · 下游数到 {body_reads} 块",
+        t_first.expect("首块时刻")
+    );
+}
+
+/// 中转跟着常驻后端活：转发多少发，它自己留着的东西都不许跟着涨（无界堆积）。
+/// 连接在本线程上由 `serve_one` 处理，量具是本线程「已分配未释放」的字节数；预热之后再转 N 发，水位必须一个字节不差。
+/// 客户端在另一条线程上一口气发完、不经通道交东西过来（跨线程释放会让本线程的数漂）。
+#[test]
+fn forwarding_keeps_nothing_per_request_on_the_relay() {
+    const WARM: usize = 8;
+    const N: usize = 64;
+    let up = spawn_fake_upstream(None);
+    let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+    let relay = Relay::new(
+        dest_of(two_accounts_no_key(&base)),
+        super::key::key_tests::test_keys(),
+        no_tap(),
+        DOWNSTREAM_DEADLINE,
+        UPSTREAM_DEADLINE,
+    );
+    let listener = listen(0).expect("listen");
+    let addr = listener.local_addr().expect("addr");
+    let client = std::thread::spawn(move || {
+        for _ in 0..WARM + N {
+            let mut c = send_request(addr, "/s/agentA/acctA/v1/messages", "");
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read");
+            assert!(String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"));
+        }
+    });
+    let mut one = || {
+        let (down, _) = listener.accept().expect("accept");
+        serve_one(down, &relay).expect("serve_one");
+    };
+    for _ in 0..WARM {
+        one();
+    }
+    let before = crate::alloc_probe::reset_peak();
+    for _ in 0..N {
+        one();
+    }
+    let after = crate::alloc_probe::reset_peak();
+    client.join().expect("client");
+    assert_eq!(
+        after - before,
+        0,
+        "转了 {N} 发之后中转这一侧多留了这么多字节"
     );
 }
 
