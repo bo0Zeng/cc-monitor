@@ -183,6 +183,6 @@ fn a_refused_link_hands_its_reason_and_seen_key_to_the_loop() {
         (p.why, p.seen_key.as_deref()),
         (Some(cmd_wire::machine::Why::HostKey), Some("SHA256:seen"))
     );
-    let broken = super::problem_of(crate::detail::Said::from("读不动".to_string()).into());
+    let broken = super::problem_of(crate::detail::Said::written("读不动".to_string()).into());
     assert_eq!((broken.why, broken.seen_key), (None, None));
 }

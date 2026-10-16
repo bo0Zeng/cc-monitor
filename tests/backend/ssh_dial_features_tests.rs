@@ -769,7 +769,7 @@ async fn a_first_seen_key_is_remembered_only_after_login() {
     };
     let (ack, ..) = open(req("tofu-bad"), crate::uses::Control::none()).await;
     assert_eq!(ack["ok"], false, "{ack}");
-    assert_eq!(ack["reason"], crate::why::AUTH, "{ack}");
+    assert_eq!(ack["reason"], serde_json::json!(cmd_wire::machine::Why::Auth), "{ack}");
     assert!(
         ack["fingerprint"].is_string(),
         "握手要先过核钥匙那一步：{ack}"
