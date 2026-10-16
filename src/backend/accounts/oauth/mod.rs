@@ -6,6 +6,7 @@
 //! - 续失败照实说（哪个号、为什么），不静默跳过、不猜。
 //! - 续成了而写回碰上那一家正在存盘（它的整份写锁在）⇒ 新令牌不丢：先在内存里照用，等锁放开再写回（[`writeback`]）。
 
+pub(crate) mod missed;
 pub(crate) mod store;
 pub(crate) mod writeback;
 
@@ -144,7 +145,7 @@ fn fresh(n: &Now, face: &LoginFace, now_ms: u64) -> bool {
 }
 
 /// 这个号此刻能用的访问令牌：没过期直接给；快过期就续（加锁、写回）再给。
-/// 真去续的每一发记一行进后端日志（[`renew_line`]：号 `account` · 成败 · 状态码 · 错误码）。
+/// 拿不到的每一次记一行进后端日志（真去续的那一发是 [`renew_line`]：号 `account` · 成败 · 状态码 · 错误码），并记成那个号的事实（[`missed`]）。
 /// `own`：写自家状态的句柄 —— 续了要写回时从它铸这个号的凭据窄句柄（[`store::creds_of`]）。
 pub(crate) fn access_token(
     own: &crate::platform::fs::Own,
@@ -153,6 +154,28 @@ pub(crate) fn access_token(
     endpoint: &TokenEndpoint,
     now_ms: u64,
     account: &str,
+) -> Result<SecretKey, Unusable> {
+    let mut logged = false;
+    let r = fetch(own, dir, face, endpoint, now_ms, account, &mut logged);
+    if let Err(u) = &r {
+        if !logged {
+            tracing::warn!("[auth] {}", u.said(account).logged());
+        }
+    }
+    if missed::note(dir, face, now_ms / 1000, &r) {
+        crate::accounts::sign_in::ring_manual();
+    }
+    r
+}
+
+fn fetch(
+    own: &crate::platform::fs::Own,
+    dir: &Path,
+    face: &LoginFace,
+    endpoint: &TokenEndpoint,
+    now_ms: u64,
+    account: &str,
+    logged: &mut bool,
 ) -> Result<SecretKey, Unusable> {
     // 刚续成、写回还在等那一家放写锁 ⇒ 照用内存里那份，不再续一次（等到期限没放开 ⇒ 这里照实报一次写回失败）。
     if let Some(r) = writeback::served(dir, face, now_ms) {
@@ -177,6 +200,7 @@ pub(crate) fn access_token(
             reclaimed,
             (&creds, held),
             &mut later,
+            logged,
         )
     }) {
         Ok(store::Locked::Held(r)) => r,
@@ -202,6 +226,7 @@ fn refresh_locked(
     reclaimed: &store::Reclaimed,
     write: Writing<'_>,
     later: &mut Option<Renewed>,
+    logged: &mut bool,
 ) -> Result<SecretKey, Unusable> {
     let n = look(dir, face)?;
     let mut trail = Trail {
@@ -222,6 +247,7 @@ fn refresh_locked(
     };
     let r = renew(face, endpoint, now_ms, &n, posted, &mut trail, write, later);
     let line = renew_line(account, &trail, &r);
+    *logged = true;
     if r.is_ok() {
         tracing::info!("{line}");
     } else {

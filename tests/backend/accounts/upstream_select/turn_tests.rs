@@ -78,6 +78,11 @@ impl Home {
     }
 
     fn hop(&self) -> Hop {
+        self.hop_at(dead_token_endpoint())
+    }
+
+    /// 续令牌发到 `ep`。
+    fn hop_at(&self, ep: crate::accounts::oauth::TokenEndpoint) -> Hop {
         let accts = self.root.join("accts");
         Hop::new(
             Arc::new(RotationStore::with_nodes(
@@ -98,7 +103,7 @@ impl Home {
                     .collect(),
             }),
             Arc::new(std::collections::BTreeSet::new),
-            Some(dead_token_endpoint()),
+            Some(ep),
         )
     }
 
@@ -459,6 +464,130 @@ fn a_switch_whose_account_cannot_be_reached_is_not_logged() {
         "没换成的那一号记进了换号记录：{:?}",
         s.log
     );
+}
+
+/// 本机的假令牌端点：每一发都答 `status`（不读请求体里的令牌）；回端点与「收到过几发」。
+fn counting_token_endpoint(
+    status: u16,
+) -> (
+    crate::accounts::oauth::TokenEndpoint,
+    Arc<std::sync::atomic::AtomicUsize>,
+) {
+    use std::io::{BufRead, Read as _, Write as _};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = l.local_addr().expect("addr").port();
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let h2 = Arc::clone(&hits);
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { continue };
+            let mut r = std::io::BufReader::new(s.try_clone().expect("clone"));
+            let mut clen = 0usize;
+            loop {
+                let mut h = String::new();
+                if r.read_line(&mut h).unwrap_or(0) == 0 || h == "\r\n" {
+                    break;
+                }
+                if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                    clen = v.trim().parse().unwrap_or(0);
+                }
+            }
+            let _ = r.read_exact(&mut vec![0u8; clen]);
+            h2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let answer = r#"{"error":"invalid_grant"}"#;
+            let _ = s.write_all(
+                format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
+                    answer.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    (
+        crate::accounts::oauth::TokenEndpoint {
+            base: crate::relay::Base::parse(&format!("http://127.0.0.1:{port}")).expect("base"),
+            rest: "/v1/oauth/token".into(),
+            deadline: std::time::Duration::from_millis(2_000),
+        },
+        hits,
+    )
+}
+
+/// b 的访问令牌已过期（有刷新令牌）：要用它就得去续。
+fn expire_b(home: &Home) {
+    let far_past = (now() - 3_600) * 1000;
+    std::fs::write(
+        home.root.join("accts/b/.credentials.json"),
+        format!("{{\"claudeAiOauth\":{{\"accessToken\":\"fake-access-of-b\",\"refreshToken\":\"fake-refresh\",\"expiresAt\":{far_past}}}}}"),
+    )
+    .expect("creds");
+}
+
+fn fact_b(hop: &Hop, at: u64) -> Option<(crate::accounts::quota::facts::FactWhy, Option<u64>)> {
+    hop.fact_one("claude-code", &hop.library(), "b", &|_| None, at, &crate::Tz::default())
+        .blocked
+        .map(|b| (b.why, b.until))
+}
+
+/// ★ 换到的号续不上令牌、端点不收那个刷新令牌 ⇒ 当场成那个号的事实「需重新登录」（不带时刻）：事实里它用不了，
+/// 下一发不再去续、也不再排它；那个号的登录文件换了（重新登录）、节点一到 ⇒ 再试，接得上就换过去。
+#[test]
+fn a_refused_renewal_bars_the_account_until_its_login_changes() {
+    let home = Home::new("relogin", [None, None]);
+    home.strategy(Some(50), false);
+    expire_b(&home);
+    let (ep, hits) = counting_token_endpoint(400);
+    let hop = home.hop_at(ep);
+    let own = home.own();
+    let t = now();
+    home.seen(&hop.quota, None, "a", 0.6, t);
+    let hits = || hits.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(fact_b(&hop, t), None, "还没去续时 b 是能用的");
+    assert_ne!(which(&steer(&hop, &own, t + 1)), "b");
+    assert_eq!(hits(), 1);
+    use crate::accounts::quota::facts::FactWhy;
+    assert_eq!(fact_b(&hop, t + 1), Some((FactWhy::Login, None)), "续不上没成事实");
+    for i in 2..6 {
+        assert_ne!(which(&steer(&hop, &own, t + i)), "b");
+    }
+    assert_eq!(hits(), 1, "同一个号每一发都去续");
+    let far = (now() + 3_600) * 1000;
+    std::fs::write(
+        home.root.join("accts/b/.credentials.json"),
+        format!("{{\"claudeAiOauth\":{{\"accessToken\":\"fake-access-of-b\",\"refreshToken\":\"fake-refresh-2\",\"expiresAt\":{far}}}}}"),
+    )
+    .expect("creds");
+    assert_eq!(fact_b(&hop, t + 6), None, "重新登录之后还记着续不上");
+    hop.quota.notify(Source::Logins, None);
+    assert_eq!(which(&steer(&hop, &own, t + 7)), "b", "重新登录之后没再试");
+}
+
+/// ★ 续期那一发一时没成（端点答 500）⇒ 事实「续不上 · 几点再试」：到那一刻之前不再去续，到点（已知节点）再试一次。
+#[test]
+fn a_failed_renewal_retries_at_the_time_it_names() {
+    let home = Home::new("retry", [None, None]);
+    home.strategy(Some(50), false);
+    expire_b(&home);
+    let (ep, hits) = counting_token_endpoint(500);
+    let hop = home.hop_at(ep);
+    let own = home.own();
+    let t = now();
+    home.seen(&hop.quota, None, "a", 0.6, t);
+    let hits = || hits.load(std::sync::atomic::Ordering::SeqCst);
+    assert_ne!(which(&steer(&hop, &own, t + 1)), "b");
+    assert_eq!(hits(), 1);
+    use crate::accounts::quota::facts::FactWhy;
+    let Some((FactWhy::Login, Some(again))) = fact_b(&hop, t + 1) else {
+        panic!("续不上没成带时刻的事实：{:?}", fact_b(&hop, t + 1));
+    };
+    assert!(again > t + 1, "再试的时刻不在以后：{again}");
+    for i in [2, 3, again - t - 1] {
+        steer(&hop, &own, t + i);
+    }
+    assert_eq!(hits(), 1, "约的时刻之前又去续了");
+    steer(&hop, &own, again);
+    assert_eq!(hits(), 2, "到了约的时刻没再试");
 }
 
 // ── 推演的用速：只量、不借、量不到不编数 ───────────────────────────────────────────────

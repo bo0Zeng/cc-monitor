@@ -520,22 +520,29 @@ impl crate::wire::typed::Handle for ManualListCmd {
                     crate::agents::mcp_read(kind, None, &look).unwrap_or_default(),
                 )
             });
+            let relogin = crate::faces::rotation_face::Ctx::here().hop.needs_relogin(
+                crate::faces::rotation_face::LIBRARY_AGENT,
+                crate::accounts::quota::now_unix(),
+            );
             manual_of(
                 agent,
                 &accounts_product(agent),
                 crate::observe::accounts_query::library_unreadable_here(),
+                &relogin,
                 mcp.as_ref().map(|(k, r)| (*k, r)),
             )
         }
     }
 }
 
-/// [`ManualListCmd`] 的纯构造器：账号清单成品（`accounts-list` 那一份）· MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
+/// [`ManualListCmd`] 的纯构造器：账号清单成品（`accounts-list` 那一份）· 续令牌被拒的号（`relogin`，换号那一侧记的）·
+/// MCP 读面（哪一家的 · 用户级那一份）⇒ 清单。判据拿夹具喂它。
 /// `unreadable` ＝ 账号库清单在、却读不懂的那一句（`accounts_query::library_unreadable`）：给了 ⇒ 回 `unreadable`，不列。
 pub(crate) fn manual_of(
     agent: &str,
     accounts: &crate::observe::accounts_query::AccountsList,
     unreadable: Option<String>,
+    relogin: &[String],
     mcp: Option<(&str, &crate::agents::McpRead)>,
 ) -> Result<ManualList, ManualListErr> {
     if let Some(why) = unreadable {
@@ -550,26 +557,27 @@ pub(crate) fn manual_of(
             signs_in
                 && a.auth_kind == acct_core::AUTH_KIND_SUBSCRIPTION
                 && a.exists
-                && !a.auth_ready
+                && (!a.auth_ready || relogin.contains(&a.name))
         })
-        .map(|a| a.name.as_str())
-        .map(|name| ManualItem::AccountLogin {
-            agent: agent.to_string(),
-            account: name.to_string(),
-            said: copy_text(
-                "beManual.list.accountLogin",
-                &[(
-                    "account",
-                    &crate::accounts::quota::name_words::account_text(name),
-                )],
-            ),
-            fix: ManualFix {
-                command: "login-start",
-                args: LoginStartReq::Account {
-                    agent: agent.to_string(),
-                    account: name.to_string(),
+        .map(|a| {
+            let who = crate::accounts::quota::name_words::account_text(&a.name);
+            ManualItem::AccountLogin {
+                agent: agent.to_string(),
+                account: a.name.clone(),
+                // 盘上有登录、续令牌却被拒 ⇒ 要重新登录；盘上没有 ⇒ 要登录。
+                said: if a.auth_ready {
+                    copy_text("beManual.list.accountRelogin", &[("account", &who)])
+                } else {
+                    copy_text("beManual.list.accountLogin", &[("account", &who)])
                 },
-            },
+                fix: ManualFix {
+                    command: "login-start",
+                    args: LoginStartReq::Account {
+                        agent: agent.to_string(),
+                        account: a.name.clone(),
+                    },
+                },
+            }
         })
         .collect();
     let (mcp_kind, entries) = match mcp {

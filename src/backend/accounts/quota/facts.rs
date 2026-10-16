@@ -76,12 +76,13 @@ enum WhyNot {
     Login,
 }
 
-/// ★ 一个号此刻**事实上**能不能用（唯一一处）：被拒 · 超额在兜 · 用满（某个窗口用到 100%、还没重置）· 要重新登录。
-/// 回 `(为什么不能用, 几点回来)`；能用 ⇒ `None`。
+/// ★ 一个号此刻**事实上**能不能用（唯一一处）：被拒 · 超额在兜 · 用满（某个窗口用到 100%、还没重置）· 要重新登录 ·
+/// 续令牌一时没成（`retry` ＝ 几点再试）。回 `(为什么不能用, 几点回来)`；能用 ⇒ `None`。
 fn standing(
     r: Option<&QuotaReading>,
     kind: Kind,
     login_ok: bool,
+    retry: Option<u64>,
     now: u64,
 ) -> Option<(WhyNot, Option<u64>)> {
     if let Some(r) = r {
@@ -107,7 +108,12 @@ fn standing(
             return Some((WhyNot::Full, back));
         }
     }
-    (!login_ok).then_some((WhyNot::Login, None))
+    if !login_ok {
+        return Some((WhyNot::Login, None));
+    }
+    retry
+        .filter(|t| *t > now)
+        .map(|t| (WhyNot::Login, Some(t)))
 }
 
 /// 一个窗口在额度账上量出来的那两样（按窗口原名问；调用方交）：用速（点 / 分）· 1% ≈ 多少用量。
@@ -145,7 +151,8 @@ fn win_of(
     }
 }
 
-/// ★ 拼一个号的事实（唯一一处的纯函数部分）：额度账那一条 ＋ 种类 ＋ 登录。`when` 把时刻写成给人看的样子。
+/// ★ 拼一个号的事实（唯一一处的纯函数部分）：额度账那一条 ＋ 种类 ＋ 登录（`retry` ＝ 续令牌一时没成、几点再试）。
+/// `when` 把时刻写成给人看的样子。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn fact_of(
     account: &str,
@@ -153,12 +160,13 @@ pub(crate) fn fact_of(
     seen_at: Option<u64>,
     kind: Kind,
     login: LoginState,
+    retry: Option<u64>,
     now: u64,
     slot_of: &dyn Fn(&str) -> Option<&'static str>,
     m: &Measured<'_>,
     when: &dyn Fn(u64) -> String,
 ) -> Fact {
-    let st = standing(r, kind, login == LoginState::Ok, now);
+    let st = standing(r, kind, login == LoginState::Ok, retry, now);
     let blocked = st.map(|(w, until)| {
         let why = match w {
             WhyNot::Refused => FactWhy::Refused,
@@ -193,7 +201,8 @@ fn blocked_text(why: FactWhy, at: Option<&str>) -> String {
         (FactWhy::Overage, _) => copy_text("beRotation.fact.overage", &[]),
         (FactWhy::Used, Some(at)) => copy_text("beRotation.fact.used", &[("at", at)]),
         (FactWhy::Used, None) => copy_text("beRotation.fact.usedOpen", &[]),
-        (FactWhy::Login, _) => copy_text("beRotation.fact.login", &[]),
+        (FactWhy::Login, Some(at)) => copy_text("beRotation.fact.loginRetry", &[("at", at)]),
+        (FactWhy::Login, None) => copy_text("beRotation.fact.login", &[]),
         (FactWhy::Key, _) => copy_text("beRotation.fact.key", &[]),
     }
 }

@@ -249,11 +249,13 @@ impl Hop {
         let ep = self.endpoint(&face).ok_or(Unready::NeedsLogin)?;
         let token = oauth::access_token(own, &dir, &face, &ep, now.saturating_mul(1000), account)
             .map_err(|u| {
-            tracing::warn!("[rotate] {}", u.said(account).logged());
-            self.quota
-                .notify(super::super::quota::nodes::Source::Login, None);
-            Unready::NeedsLogin
-        })?;
+                // 续不上已成那个号的事实（`oauth::missed`）：发一件节点，判照新的事实重来；别人正在续不算。
+                if u != oauth::Unusable::Busy {
+                    self.quota
+                        .notify(super::super::quota::nodes::Source::Login, None);
+                }
+                Unready::NeedsLogin
+            })?;
         let who = self
             .identity(&face, &dir, base.as_deref())
             .ok_or(Unready::NeedsLogin)?;
@@ -261,7 +263,7 @@ impl Hop {
     }
 
     /// ★ 一个号此刻接不接得上（只读，不续令牌）—— 帧面（[`Self::view`]）只问它，真换号（[`Self::prepare`]）先问它再拿令牌，
-    /// 两边同一处判：起会话的号 ⇒ 接得上；按量号 ⇒ key 表里那一行接得上；订阅号 ⇒ 盘上有登录、读得出账号身份。
+    /// 两边同一处判：起会话的号 ⇒ 接得上；按量号 ⇒ key 表里那一行接得上；订阅号 ⇒ 盘上有登录、读得出账号身份、没记着续不上。
     pub(super) fn reach(
         &self,
         a: &Turn<'_>,
@@ -274,7 +276,10 @@ impl Hop {
         match kind_of(a, lib, account) {
             Kind::Api if (a.row)(account) == Some(true) => Ok(Reach::Api),
             Kind::Api => Err(Unready::NeedsKey),
-            Kind::Sub => self.who_on_disk(a.agent, lib, account).map(|_| Reach::Sub),
+            Kind::Sub => match self.who_on_disk(a.agent, lib, account) {
+                Ok(_) if self.missed(a.agent, lib, account, a.now).is_none() => Ok(Reach::Sub),
+                _ => Err(Unready::NeedsLogin),
+            },
         }
     }
 
@@ -326,13 +331,40 @@ impl Hop {
             .ok_or(Unready::NeedsLogin)
     }
 
-    /// 一个号显示态要的几格：种类 · 登录（只读，不续令牌）· 订阅标识（账号身份的散列，原值不出这里）。
+    /// 这个号上一次续令牌没成、此刻还作数（[`oauth::missed`]）。
+    fn missed(
+        &self,
+        agent: &str,
+        lib: &Library,
+        account: &str,
+        now: u64,
+    ) -> Option<oauth::missed::Missed> {
+        let face = crate::agents::login_of(agent)?;
+        let (dir, _) = self.dir_of(&face, lib, account)?;
+        oauth::missed::missed(&dir, &face, now)
+    }
+
+    /// 账号库里续令牌被拒、要重新登录的那几个号（需手动清单列它们）。
+    pub(crate) fn needs_relogin(&self, agent: &str, now: u64) -> Vec<String> {
+        let lib = self.library();
+        lib.accounts
+            .iter()
+            .filter(|a| {
+                !a.api
+                    && self.missed(agent, &lib, &a.id, now) == Some(oauth::missed::Missed::Manual)
+            })
+            .map(|a| a.id.clone())
+            .collect()
+    }
+
+    /// 一个号显示态要的几格：种类 · 登录（只读，不续令牌；续令牌被拒过 ⇒ 要重新登录）· 订阅标识（账号身份的散列，原值不出这里）。
     pub(crate) fn show_facts(
         &self,
         agent: &str,
         lib: &Library,
         account: &str,
         row: &dyn Fn(&str) -> Option<bool>,
+        now: u64,
     ) -> show::Facts {
         let kind = kind_with(row, lib, account);
         let (login, sub_id) = match kind {
@@ -349,6 +381,12 @@ impl Hop {
                 None,
             ),
             Kind::Sub => match self.who_on_disk(agent, lib, account) {
+                Ok(_)
+                    if self.missed(agent, lib, account, now)
+                        == Some(oauth::missed::Missed::Manual) =>
+                {
+                    (LoginState::NeedsLogin, None)
+                }
                 Ok(who) => (LoginState::Ok, Some(show::sub_id_of(&who))),
                 Err(_) => (LoginState::NeedsLogin, None),
             },
@@ -401,7 +439,11 @@ impl Hop {
             o.as_ref().map(|o| &o.reading),
             o.as_ref().map(|o| o.seen_at),
             kind_with(row, lib, id),
-            self.show_facts(agent, lib, id, row).login,
+            self.show_facts(agent, lib, id, row, now).login,
+            match self.missed(agent, lib, id, now) {
+                Some(oauth::missed::Missed::RetryAt(t)) => Some(t),
+                _ => None,
+            },
             now,
             &slot,
             &crate::accounts::quota::facts::Measured {

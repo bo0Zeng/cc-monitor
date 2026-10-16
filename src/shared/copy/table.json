@@ -21732,6 +21732,12 @@
       "zh": "{account} 需登录",
       "args": ["account"]
     },
+    "beManual.list.accountRelogin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{account} 需重新登录",
+      "args": ["account"]
+    },
     "beManual.list.mcpLogin": {
       "kind": "body",
       "role": "片段",
@@ -31511,6 +31517,12 @@
       "role": "片段",
       "zh": "需重新登录",
       "args": []
+    },
+    "beRotation.fact.loginRetry": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "登录续期失败 · {at} 再试",
+      "args": ["at"]
     },
     "beRotation.fact.key": {
       "kind": "body",

@@ -153,7 +153,7 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64, tz: &crate::Tz) -> QuotaRead 
         let mut sh = show::show(
             o.map(|o| (&o.reading, o.seen_at)),
             ctx.hop
-                .show_facts(agent, &lib, account, &|a| (ctx.rows)(agent, a)),
+                .show_facts(agent, &lib, account, &|a| (ctx.rows)(agent, a), now),
             now,
             &slot,
         );
