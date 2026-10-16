@@ -608,14 +608,10 @@ fn a_cell_is_text_only_when_its_type_says_so() {
     assert_eq!(catalog_of("facts")["usage.limitFrom"].ty, "enum");
 }
 
-/// 金样重写开关（人读过「现打」再落盘）。
-const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
-
-/// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重写：
-/// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
+/// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重打。
 ///
 /// 冻结的格（[`Product::frozen`]，目录里每格的 `frozen`）不许删、改名、换类别或类型：金样里标了冻结的每一格，
-/// 目录里还得在、还冻结 —— 先于重写判，所以重写金样也不放行（要解冻得先手改金样，那是一次有意的协议变化）。
+/// 目录里还得在、还冻结 —— 先于比对判，红在落现打那份之前，所以重打金样也不放行（要解冻得先手改金样，那是一次有意的协议变化）。
 #[test]
 fn the_golden_is_what_the_command_writes() {
     let now = catalog();
@@ -652,11 +648,11 @@ fn the_golden_is_what_the_command_writes() {
         kept_any >= 20,
         "落盘的金样里冻结的格只有 {kept_any} 个 —— 本条在空转"
     );
-    if std::env::var_os(REGEN).is_some() {
-        std::fs::write(&path, &got).unwrap();
-    }
-    let want = std::fs::read_to_string(&path).unwrap_or_default();
-    assert!(got == want, "格目录与金样不一致（{REGEN}=1 重写）");
+    crate::golden::assert_golden(
+        "tests/__fixtures__/cells-catalog.golden.json",
+        &got,
+        "格目录与金样不一致",
+    );
 }
 
 /// 只冻结几格的成品：点名的每一格都得是目录里真有的格（写错路径 ＝ 以为冻住了、其实什么也没冻）。

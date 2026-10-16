@@ -1,4 +1,4 @@
-<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen -->
+<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 cargo test --lib -- protocol_doc_gen 现打，再 bash tests/scripts/bless-golden.sh 拷回 -->
 
 # 协议参考（帧 · 命令 · CLI）
 

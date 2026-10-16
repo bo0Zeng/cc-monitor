@@ -465,7 +465,7 @@ fn closing_the_window_ends_the_process_even_though_stdin_stays_open() {
         Ready::Listed(2),
         "第一屏不是替身答的那两行"
     );
-    let ids = xvfb::wait_for_windows(screen.display(), ORIGIN, 20_000);
+    let ids = xvfb::wait_for_windows(screen.display(), ORIGIN);
     assert_eq!(
         ids.len(),
         1,

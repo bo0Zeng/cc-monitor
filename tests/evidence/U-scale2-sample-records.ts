@@ -2,15 +2,9 @@
 /**
  * 秤 2（表第 2 行）的**语料采样器**。
  *
- * # 🔴 2026-09-18 改判：采结构，不采内容
+ * # 采结构，不采内容
  *
- * 上一版逐字照着当时那条「**不要造合成数据。用真机
- * `~/.claude/projects` 下 p99 与 max 的那几条记录，固化进 fixtures**」做，
- * 结果把 **74 条真实会话记录（57 544 字符正文 + 本机绝对路径 + 会话 id）**
- * 写进了 `tests/__fixtures__/` —— 而那 74 条**全部来自当时正在进行的那次会话本身**。
- *
- * 用户原话：「**这是测试啊 / 不应该进**」。那条纪律已随之改判，
- * 新纪律逐字是「**结构照真的，内容一律合成**」。本文件是那条新纪律的实现。
+ * 夹具只采真会话的结构，正文 · 本机路径 · 会话 id 一律不进仓；落盘前三道自检（形状 · 泄漏 · 会话 id），不过就不落。
  *
  * ## 做法：逐字符**同形替换**，不是"按分布重新生成"
  *
@@ -620,7 +614,7 @@ if (picked.length === 0)
 const text = picked.map((p) => p.line).join("\n") + "\n";
 
 // ════════════════════════════════════════════════════════════════════════
-// 五、两道自检 —— 不过就抛，绝不悄悄落一份脏语料
+// 五、三道自检 —— 不过就抛，绝不悄悄落一份脏语料
 // ════════════════════════════════════════════════════════════════════════
 
 // ① 形状自检：换完之后每一项结构量必须与原记录**逐位相同**
@@ -709,14 +703,10 @@ if (leaks.size) {
   const top = [...leaks.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25);
   throw new Error(
     `★ 泄漏自检失败：落盘语料里有 ${leaks.size} 个既不是填充、也不在保留词表里的字母串。\n` +
-      `  这正是「这是测试啊 / 不应该进」那条裁决治的东西 —— **没有落盘**。\n  ` +
+      `  **没有落盘**。\n  ` +
       top.map(([w, n]) => `${w} ×${n}`).join("\n  "),
   );
 }
-
-// ── 落盘 ─────────────────────────────────────────────────────────────────
-mkdirSync(resolve(REPO_ROOT, "tests/__fixtures__"), { recursive: true });
-writeFileSync(OUT, text, "utf8");
 
 const agg = (sel: (p: Pick) => Shape): Shape =>
   picked.reduce(
@@ -738,14 +728,12 @@ const agg = (sel: (p: Pick) => Shape): Shape =>
       maxLine: 0,
     },
   );
-writeFileSync(
-  SHAPE_OUT,
+const shapeText =
   JSON.stringify(
     {
       note: "秤 2 语料的形状指纹。`src` = 真机原记录，`out` = 落盘语料。两者必须逐项相同 —— 这就是「结构照真的，内容一律合成」那句话的可验证形式。",
       generatedAt: new Date().toISOString(),
       records: picked.length,
-      sourceFiles: notes,
       src: agg((p) => p.srcShape),
       out: agg((p) => p.outShape),
       keptVerbatim: {
@@ -757,9 +745,27 @@ writeFileSync(
     },
     null,
     2,
-  ) + "\n",
-  "utf8",
+  ) + "\n";
+
+// ③ 会话 id 自检：要落盘的两份（语料 ＋ 形状指纹）里，UUID 形的串只许是 `mapId` 造的计数器 id。
+//    真会话 id 也是 UUID 形，换掉的漏一个、或哪一栏把源文件名带进来，都在这里拦下。
+const realIds = [text, shapeText].flatMap(
+  (t) =>
+    t
+      .match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)
+      ?.filter((id) => !id.startsWith("00000000-0000-4000-8000-")) ?? [],
 );
+if (realIds.length) {
+  throw new Error(
+    `★ 会话 id 自检失败：要落盘的东西里有 ${realIds.length} 个不是计数器造的 UUID —— **没有落盘**。\n  ` +
+      [...new Set(realIds)].slice(0, 12).join("\n  "),
+  );
+}
+
+// ── 落盘 ─────────────────────────────────────────────────────────────────
+mkdirSync(resolve(REPO_ROOT, "tests/__fixtures__"), { recursive: true });
+writeFileSync(OUT, text, "utf8");
+writeFileSync(SHAPE_OUT, shapeText, "utf8");
 
 console.log(`扫了 ${files.length} 个文件 / ${scanned} 条候选记录`);
 for (const n of notes) console.log(`  ${n}`);

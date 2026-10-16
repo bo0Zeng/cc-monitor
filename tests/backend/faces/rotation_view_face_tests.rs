@@ -471,15 +471,12 @@ fn a_session_view_writes_every_time_it_carries() {
     let hm = |t: &str| t.len() == 5 && t.as_bytes()[2] == b':';
     assert!(hm(&v.now_text), "{}", v.now_text);
     let tl = v.timeline.as_ref().expect("推演");
-    assert!(tl.ticks.len() >= 5, "12 小时每 2 小时一格：{:?}", tl.ticks);
-    for t in &tl.ticks {
-        assert!(
-            hm(&t.text)
-                && t.text.ends_with(":00")
-                && t.at > v.past.as_ref().map_or(v.now, |p| p.from),
-            "{t:?}"
-        );
-    }
+    // 01:00–15:00（UTC）这一截里每个整两点一格：02:00 起到 14:00。
+    let want: Vec<(u64, String)> = (0..7u64)
+        .map(|k| (now() - 3600 + k * 7200, format!("{:02}:00", 2 + 2 * k)))
+        .collect();
+    let got: Vec<(u64, String)> = tl.ticks.iter().map(|t| (t.at, t.text.clone())).collect();
+    assert_eq!(got, want, "12 小时每 2 小时一格");
     for w in tl.switches.iter() {
         assert!(hm(&w.at_text), "{w:?}");
     }

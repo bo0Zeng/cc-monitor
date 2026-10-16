@@ -147,8 +147,8 @@ else printf '  红   %-16s %ss\n' backend $((SECONDS-t0))
 clippy_step
 # 壳那棵 workspace 整套 --lib（全部成员）
 step shell        runcargo bash -c 'cd src/frontend/shell && cargo test --workspace --lib --no-fail-fast -q'
-# 界面：整套 vitest
-step vitest       run node_modules/.bin/vitest run --reporter=dot
+# 界面：整套 vitest；逐条耗时另存一份（找慢测试时读它）
+step vitest       run node_modules/.bin/vitest run --reporter=dot --reporter=json --outputFile.json=.build/quick-check/vitest-times.json
 # 手机：改到才跑
 mobile_step
 # 生成物：上面几步现写过的 generated/ 与 HEAD 比，逐份印出

@@ -48,6 +48,9 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 #[path = "../../tests/backend/flow_scripts_guard.rs"]
 mod flow_scripts_guard; // flow3：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录（整体 #[cfg(test)]）
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
+#[cfg(test)]
+#[path = "../../tests/backend/golden.rs"]
+mod golden; // 金样判据只比不写；现打的落 `.build/golden/`，由 `tests/scripts/bless-golden.sh` 拷回（仅测试构建）
 pub mod history; // 历史清单与注解（history_list · history_annotations）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]

@@ -16,7 +16,7 @@ cargo test --workspace --lib     # 单测与登记类判据（后端 ＋ 拨号�
 cargo fmt --check -p cc-monitor-backend -p ssh-dial
 cargo clippy --workspace --all-targets
 cargo check --workspace --all-targets --target x86_64-pc-windows-msvc   # 平台线的判据：跨 target 编得过
-CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen   # 改了命令 / 帧之后重生成协议参考
+bash ../../tests/scripts/bless-golden.sh   # 金样判据（协议参考 · 跨语言金样）红了、对过 .build/golden/ 下现打的那份之后拷回
 ```
 
 测试一律在沙箱里跑：起 tmux 的测试显式 `-S` / `-L` 私有 socket 并摘掉 `$TMUX`，起真后端的测试经唯一的隔离口拿私有 tmux（INVARIANTS §48.3）。

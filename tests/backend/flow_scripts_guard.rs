@@ -9,6 +9,7 @@
 //! - `heavy.sh` 在没有 `systemd-run --user` 的机器上（CI · Windows · 没有 user session）退成直接跑，并说一声；起的命令看不见外面会话的变量
 //!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
+//!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
 //! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
 //!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
 
@@ -32,6 +33,7 @@ mod tests {
         "tests/scripts/session-scrub.sh",
         "tests/scripts/base.sh",
         "tests/scripts/generated-drift.sh",
+        "tests/scripts/bless-golden.sh",
     ];
 
     /// 带 `--help` 的入口。
@@ -481,6 +483,95 @@ mod tests {
             .env_remove("TMUX_PANE")
             .output()
             .unwrap()
+    }
+
+    /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开一个 ⇒ A 先拿到。
+    /// B 那一份认 4 个槽位、第 4 个空着：各自去问槽位的写法 B 一进门就拿走第 4 个、插到 A 前面；
+    /// 排队的写法 B 排在 A 后面，轮到它之前不问槽位。
+    #[test]
+    fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Child, Stdio};
+        let d = scratch("heavy-fifo");
+        let bin = tool_bin(
+            &d,
+            &[
+                "bash", "sh", "flock", "seq", "sleep", "mkdir", "echo", "cat", "true", "rm",
+            ],
+        );
+        let slots = d.join("state/heavy-slots");
+        std::fs::create_dir_all(&slots).unwrap();
+        // 三个槽位各由一个持锁的子进程占着；关掉它的标准输入就放开。
+        let mut holders: Vec<Child> = (1..=3)
+            .map(|i| {
+                let mut h = Command::new("bash")
+                    .args(["-c", "exec 9>\"$0\"; flock 9; echo held; read _"])
+                    .arg(slots.join(i.to_string()))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                let mut line = String::new();
+                BufReader::new(h.stdout.as_mut().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                assert_eq!(line, "held\n");
+                h
+            })
+            .collect();
+        let order = d.join("order");
+        // 起一个等的人，等它说出「排队等」才回（它已经问过一圈、没拿到）。
+        let waiter = |name: &str, slots: &str| -> Child {
+            let mut c = Command::new(bin.join("bash"))
+                .arg(root().join("tests/scripts/heavy.sh"))
+                .args(["bash", "-c", "echo \"$0\" >> order", name])
+                .current_dir(&d)
+                .env("PATH", &bin)
+                .env("GATE_STATE_DIR", d.join("state"))
+                .env("HEAVY_SLOTS", slots)
+                .env_remove("HEAVY_HELD")
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut err = BufReader::new(c.stderr.take().unwrap());
+            let mut line = String::new();
+            while line.trim_end() != format!("heavy: {slots} 个槽位都占着，排队等…") {
+                line.clear();
+                assert!(
+                    err.read_line(&mut line).unwrap() > 0,
+                    "{name} 没排队就拿到了槽位（插在先来的前面）"
+                );
+            }
+            std::thread::spawn(move || std::io::copy(&mut err, &mut std::io::sink()));
+            c
+        };
+        let mut a = waiter("A", "3");
+        let mut b = waiter("B", "4");
+        drop(holders[0].stdin.take());
+        let _ = holders[0].wait();
+        let first = guard_core::wall::rounds()
+            .find_map(|()| {
+                let got = std::fs::read_to_string(&order).unwrap_or_default();
+                if got.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    return None;
+                }
+                Some(got)
+            })
+            .expect("放开一个槽位后谁都没拿到");
+        assert_eq!(
+            first.lines().next(),
+            Some("A"),
+            "后来的 B 抢在先来的 A 前面拿到了槽位"
+        );
+        for h in &mut holders[1..] {
+            drop(h.stdin.take());
+            let _ = h.wait();
+        }
+        assert!(a.wait().unwrap().success());
+        assert!(b.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&order).unwrap(), "A\nB\n");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// 本进程的 nice 值再降 10（封顶 19）：判据自己可能就跑在一份降过的重活里。
@@ -1315,6 +1406,34 @@ mod tests {
         assert_eq!(o.status.code(), Some(1), "{said}");
         let got: BTreeSet<String> = said.lines().map(|l| l[3..].to_string()).collect();
         assert_eq!(got, want, "印出来的与没提交的生成物对不上");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// ★ 重打金样（`bless-golden.sh`）：金样判据落在 `.build/golden/` 下的现打那份逐份拷回仓里原处、删掉现打的那份、逐份印出；
+    /// 一份都没有 ⇒ 退 1。落点取判据那一侧的 [`crate::golden::FRESH_DIR`]：两边对不上这条就红。
+    #[test]
+    fn bless_golden_copies_each_fresh_golden_back_and_clears_it() {
+        let d = scratch("bless");
+        git(&d, &["init", "-q", "-b", "main"]);
+        let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
+        write(&d, "tests/g/a.json", "old\n");
+        let fresh = crate::golden::FRESH_DIR;
+        write(&d, &format!("{fresh}/tests/g/a.json"), "new\n");
+        write(&d, &format!("{fresh}/src/doc/X.md"), "doc\n");
+        let o = bless(&d);
+        let said = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(0), "{said}");
+        let got: BTreeSet<&str> = said.lines().collect();
+        assert_eq!(
+            got,
+            BTreeSet::from(["重打 src/doc/X.md", "重打 tests/g/a.json"])
+        );
+        let read = |rel: &str| std::fs::read_to_string(d.join(rel)).unwrap();
+        assert_eq!(read("tests/g/a.json"), "new\n");
+        assert_eq!(read("src/doc/X.md"), "doc\n");
+        assert!(!d.join(fresh).exists(), "拷回之后现打的那份还在");
+        let o = bless(&d);
+        assert_eq!(o.status.code(), Some(1), "没有现打的金样却没说");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

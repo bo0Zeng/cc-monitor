@@ -1,15 +1,13 @@
 //! 协议参考 `src/doc/IPC-COMMANDS.md` 从代码生成：帧与出参读源码里的 serde 类型（字段说明取 `///` 第一句），
 //! 命令读 `inbound::REGISTRY`（一句话 · 入参与回包的类型 · 码 · 档位），CLI 子命令读 `SUBCOMMANDS` ＋ `CLI_ONLY_DOCS`。
 //!
-//! 判据只有一条：重新生成 == 仓里那份。改了帧字段 / 命令登记之后红是预期的，重生成：
-//! `CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen`（在 `src/backend` 下）。
+//! 判据只有一条：重新生成 == 仓里那份。改了帧字段 / 命令登记之后红是预期的，对过现打的那份后 `bash tests/scripts/bless-golden.sh` 拷回。
 
 use crate::stream::inbound::REGISTRY;
 use crate::wire::spec::CommandSpec;
 use std::fmt::Write as _;
 
 const OUT: &str = "src/doc/IPC-COMMANDS.md";
-const REGEN: &str = "CCM_REGEN_PROTOCOL_DOC";
 
 /// 协议级错误码：与命令无关、只有 `stream/inbound/` 发得出（`protocol_doc_guard` 的 R4 钉「控制层零命中」）。
 pub(crate) const PROTOCOL_CODES: &[(&str, &str)] = &[
@@ -952,7 +950,7 @@ fn oneshot_types(out: &mut String) {
 
 pub(crate) fn render() -> String {
     let mut out = String::new();
-    out.push_str("<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen -->\n\n");
+    out.push_str("<!-- 生成物，勿手改：由 tests/backend/protocol_doc_gen.rs 从代码生成。重生成：在 src/backend 下 cargo test --lib -- protocol_doc_gen 现打，再 bash tests/scripts/bless-golden.sh 拷回 -->\n\n");
     out.push_str("# 协议参考（帧 · 命令 · CLI）\n\n总述（载体 · 信封 · 握手 · 冻结面）在 [IPC-PROTOCOL.md](IPC-PROTOCOL.md)；本页逐格列形状。\n\n");
     frames(&mut out);
     protocol_codes(&mut out);
@@ -967,24 +965,7 @@ pub(crate) fn render() -> String {
 
 #[test]
 fn the_protocol_reference_is_what_the_code_generates() {
-    let fresh = render();
-    let path = guard_core::addr::repo_root().join(OUT);
-    // 设了重生成开关 ⇒ 先写回，再照常比（比的就是刚写进去的那一份）。
-    if std::env::var_os(REGEN).is_some() {
-        std::fs::write(&path, &fresh).expect("写不回协议参考");
-    }
-    let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
-    if on_disk != fresh {
-        let line = on_disk
-            .lines()
-            .zip(fresh.lines())
-            .position(|(a, b)| a != b)
-            .unwrap_or_else(|| on_disk.lines().count().min(fresh.lines().count()));
-        panic!(
-            "\n{OUT} 与代码生成的不一致（第 {} 行起）。\n重生成：在 src/backend 下 {REGEN}=yes cargo test --lib -- protocol_doc_gen\n",
-            line + 1
-        );
-    }
+    crate::golden::assert_golden(OUT, &render(), "协议参考与代码生成的不一致");
 }
 
 #[test]

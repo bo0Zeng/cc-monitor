@@ -485,20 +485,10 @@ fn a_hit_carries_this_machines_status_and_can() {
         .iter()
         .map(|r| r.to_string().replace(&prefix, "<HOME>"))
         .collect::<Vec<_>>() });
-    let path =
-        guard_core::addr::repo_root().join("tests/__fixtures__/history-search-row.golden.json");
-    if std::env::var_os("CCM_BLESS").is_some() {
-        std::fs::write(
-            &path,
-            format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
-        )
-        .unwrap();
-    }
-    let golden: Value =
-        serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).unwrap();
-    assert_eq!(
-        got, golden,
-        "命中行形状变了：TS 解码器读的是同一份金样，两边一起改（CCM_BLESS=1 重写）"
+    crate::golden::assert_golden(
+        "tests/__fixtures__/history-search-row.golden.json",
+        &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
+        "命中行形状变了：TS 解码器读的是同一份金样，两边一起改",
     );
 }
 

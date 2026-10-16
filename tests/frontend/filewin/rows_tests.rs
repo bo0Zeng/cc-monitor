@@ -97,14 +97,11 @@ fn the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits() {
         small.rows_materialized, big.rows_materialized,
         "50 条命中与 20 000 条命中物化的行数必须相等 —— 不相等就说明命中那一摞没走虚拟滚动"
     );
+    // 50 条一屏放不下（1280×800 的视口）：两边相等又都非零 ⇒ 两边都只画了一屏，没有另立上限的必要。
     assert!(
-        small.rows_materialized > 0,
-        "一行命中都没画 —— 0 不是绿（那也会让上面那条恒等成立）"
-    );
-    assert!(
-        big.rows_materialized < 20_000 / 100,
-        "物化了 {} 行命中；虚拟滚动应当只物化一屏的量级",
-        big.rows_materialized
+        small.rows_materialized > 0 && small.rows_materialized < 50,
+        "50 条命中画了 {} 行 —— 该是一屏、比 50 少，也不是 0",
+        small.rows_materialized
     );
     assert_eq!(big.total_rows, 20_000, "总条数没喂进去");
 }
@@ -581,7 +578,7 @@ fn drive_real_pointer(
     let sleep = |ms: u64| std::thread::sleep(std::time::Duration::from_millis(ms));
 
     // 等「窗口在屏幕上」且「已经画过几帧」两件同时成立。
-    let ids = xvfb::wait_for_windows(display, REAL_EVENT_WINDOW_TITLE, 20_000);
+    let ids = xvfb::wait_for_windows(display, REAL_EVENT_WINDOW_TITLE);
     log.push(format!("窗口 {ids:?}"));
     let Some(id) = ids.first().cloned() else {
         // 关不掉的话 `run_native` 永远不回，那一格会以超时收场 —— 让它快点收。

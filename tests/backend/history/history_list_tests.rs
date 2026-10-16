@@ -569,7 +569,7 @@ fn the_remote_listing_never_spawns_a_oneshot_process() {
     )));
 }
 
-/// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。`CCM_BLESS=1` 重写。
+/// ★ 判据 9：跨语言金样（远端一台的成品，带 context 父会话与读不了的那一组）。
 #[test]
 fn the_product_matches_the_cross_language_golden() {
     let got = answer_from(
@@ -580,19 +580,10 @@ fn the_product_matches_the_cross_language_golden() {
         1_000,
         &Default::default(),
     );
-    let path = fixtures().join("history-list.golden.json");
-    if std::env::var_os("CCM_BLESS").is_some() {
-        std::fs::write(
-            &path,
-            format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
-        )
-        .unwrap();
-    }
-    let golden: Value =
-        serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).unwrap();
-    assert_eq!(
-        got, golden,
-        "成品形状变了：TS 解码器读的是同一份金样，两边一起改（CCM_BLESS=1 重写）"
+    crate::golden::assert_golden(
+        "tests/__fixtures__/history-list.golden.json",
+        &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
+        "成品形状变了：TS 解码器读的是同一份金样，两边一起改",
     );
 }
 

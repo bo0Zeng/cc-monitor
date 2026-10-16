@@ -3,11 +3,10 @@
 use super::*;
 use serde_json::Value;
 
-const REGEN: &str = "CCM_REGEN_QUOTA_ROWS";
+const GOLDEN: &str = "tests/__fixtures__/quota-text.golden.json";
 
 fn golden_path() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/__fixtures__/quota-text.golden.json")
+    guard_core::addr::repo_root().join(GOLDEN)
 }
 
 /// 金样里一个出过数的号：原数 ＋ 显示态（格的字与语气、时刻字都不在，由出口写）。
@@ -123,14 +122,13 @@ fn texts(rows: &Value) -> Value {
     )
 }
 
-/// ★★ 每个号的几行、`--text` 的整段字、开窗那一判，逐字对金样（人读过「现打」再落盘：`CCM_REGEN_QUOTA_ROWS=1`）。
+/// ★★ 每个号的几行、`--text` 的整段字、开窗那一判，逐字对金样（输入与期望同住一份，现打的那份是把期望格换成现算的）。
 #[test]
 fn rows_text_and_warm_match_the_golden() {
     let raw = std::fs::read_to_string(golden_path()).unwrap();
     let mut g: Value = serde_json::from_str(&raw).unwrap();
     let cases = g["cases"].as_array_mut().unwrap();
     assert!(cases.len() >= 10, "金样读空了");
-    let mut wrong = Vec::new();
     for c in cases.iter_mut() {
         let tz = crate::Tz::of(&c["tz"]);
         let v = through_the_exit(&c["reply"], &tz);
@@ -143,23 +141,13 @@ fn rows_text_and_warm_match_the_golden() {
             Value::Array(blocks),
             Value::String(crate::control::ship_text::ship_text(&v)),
         );
-        if (c["blocks"].clone(), c["text"].clone()) != got {
-            wrong.push(format!("{}\n{}\n{}", c["name"], got.0, got.1));
-        }
         c["blocks"] = got.0;
         c["text"] = got.1;
     }
-    if std::env::var_os(REGEN).is_some() {
-        std::fs::write(
-            golden_path(),
-            format!("{}\n", serde_json::to_string_pretty(&g).unwrap()),
-        )
-        .unwrap();
-    }
-    assert!(
-        wrong.is_empty(),
-        "与金样不一致（{REGEN}=1 重写）。现打：\n{}",
-        wrong.join("\n\n")
+    crate::golden::assert_golden(
+        GOLDEN,
+        &format!("{}\n", serde_json::to_string_pretty(&g).unwrap()),
+        "每号的几行 · `--text` · 开窗那一判与金样不一致",
     );
 }
 
@@ -302,7 +290,6 @@ fn the_five_hour_cell_is_written_by_the_core() {
 
 /// ★ `quota-read` 线上形状的金样（Rust · TS · Kotlin 共用这一份）：`quota-text` 金样里每个案例的回包照真出口走完
 /// （每格的字与语气 · 时刻字 · 每号 `rows: [[{text, tone}]]` · `fiveHour` · `warm` · 号名 / 位名 `names`）原样落盘。
-/// 重写：`CCM_REGEN_QUOTA_READ=1 cargo test --lib -- quota_rows`。
 #[test]
 fn the_wire_golden_is_what_the_exit_writes() {
     let raw = std::fs::read_to_string(golden_path()).unwrap();
@@ -317,16 +304,10 @@ fn the_wire_golden_is_what_the_exit_writes() {
         "说明": "quota-read 的线上形状（后端真出口走完那一份，由 quota_rows_tests::the_wire_golden_is_what_the_exit_writes 写）：每号 rows 是 [[{text, tone}]]、fiveHour、warm、names。三个语言的读者都照它比，不各自手抄。",
         "cases": cases,
     });
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/__fixtures__/quota-read.golden.json");
-    let text = format!("{}\n", serde_json::to_string_pretty(&got).unwrap());
-    if std::env::var_os("CCM_REGEN_QUOTA_READ").is_some() {
-        std::fs::write(&path, &text).unwrap();
-    }
-    let want = std::fs::read_to_string(&path).unwrap_or_default();
-    assert!(
-        text == want,
-        "quota-read 线上金样与真出口不一致（CCM_REGEN_QUOTA_READ=1 重写）"
+    crate::golden::assert_golden(
+        "tests/__fixtures__/quota-read.golden.json",
+        &format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
+        "quota-read 线上金样与真出口不一致",
     );
 }
 
