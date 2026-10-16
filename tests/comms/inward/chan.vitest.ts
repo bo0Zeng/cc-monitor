@@ -97,15 +97,16 @@ describe("〔C4a〕webview 通道客户端", () => {
     expect(invokeMock, "过期了还发了").not.toHaveBeenCalled();
   });
 
-  it("★ 过线的是「还剩多少」：`leftMs` 在 (0, 给的毫秒] 之内，绝对时刻不上线", async () => {
+  it("★ 过线的是「还剩多少」：钟定住时 `leftMs` 恰是给的毫秒，绝对时刻不上线", async () => {
     invokeMock.mockResolvedValue(new Uint8Array([7]).buffer);
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
     await chan.call("<local>", "op", new Uint8Array(), budgetWithin(5_000));
+    clock.mockRestore();
     const args = invokeMock.mock.calls[0][1] as { leftMs: number; origin: string; op: string };
     expect(invokeMock.mock.calls[0][0]).toBe("chan_call");
     expect(args.origin).toBe("<local>");
     expect(args.op).toBe("op");
-    expect(args.leftMs).toBeGreaterThan(0);
-    expect(args.leftMs).toBeLessThanOrEqual(5_000);
+    expect(args.leftMs).toBe(5_000);
     expect(remaining({ until: performance.now() - 10 }), "过了期限不许是负数").toBe(0);
   });
 

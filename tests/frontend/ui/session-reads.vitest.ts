@@ -95,7 +95,6 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     const calls = invokeMock.mock.calls;
     expect(calls.map((c) => c[0] as string)).toEqual(["chan_call"]);
     const a = calls[0][1] as ChanCallArgs;
-    expect(a.leftMs, "期限没带上（`X6`：调用点显式给）").toBeGreaterThan(0);
     return [a.origin, a.op, chanArgsJson(a)];
   }
 

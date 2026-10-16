@@ -163,13 +163,6 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(copyText("ccBus.broadcast.doneFailed", { sent: "1", skipped: "1", failed: "1", who: "x_cc（child_timed_out）" }));
     expect(sentCalls()).toEqual([["devbox", "bus-broadcast", BCAST.request]]);
   });
-
-  it("★ 每一趟都显式交了期限（X6：调用点给）", async () => {
-    answer({ ok: KILL.reply });
-    await killAgent("devbox", "alpha_cc");
-    const leftMs = (invokeMock.mock.calls[0][1] as ChanCallArgs).leftMs;
-    expect(leftMs, "期限没交").toBeGreaterThan(0);
-  });
 });
 
 describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）", () => {

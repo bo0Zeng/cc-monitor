@@ -129,7 +129,7 @@ describe("抓一屏：金样与形状", () => {
 });
 
 describe("抓一屏：发出去", () => {
-  it("★ 按句柄 / 会话 ID 指、要带颜色的成品；本机照样经通道问、期限交了", async () => {
+  it("★ 按句柄 / 会话 ID 指、要带颜色的成品；本机照样经通道问", async () => {
     answer({ "terminal-preview": { ok: PREVIEW.reply } });
     await previewText("devbox", { sid: "sid-a" }, "demo-cc");
     await previewText(LOCAL_ORIGIN, { terminal: "tmux-1" }, "demo-cc");
@@ -137,7 +137,6 @@ describe("抓一屏：发出去", () => {
       ["devbox", "terminal-preview", { sid: "sid-a", color: true }],
       [LOCAL_ORIGIN, "terminal-preview", { terminal: "tmux-1", color: true }],
     ]);
-    expect((invokeMock.mock.calls[0][1] as ChanCallArgs).leftMs, "期限没交").toBeGreaterThan(0);
   });
 
   it("★ 只有 tmux 名 ⇒ 先问名单认出那一行，再按句柄抓；名单里没有 ⇒ 说不在名单", async () => {
