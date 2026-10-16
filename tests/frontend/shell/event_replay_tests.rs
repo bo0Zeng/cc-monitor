@@ -256,7 +256,6 @@ fn total_retention_stays_under_the_cap_however_many_sessions() {
 #[test]
 fn when_full_sessions_that_are_not_live_go_first() {
     use crate::session_book::In;
-    use cmd_wire::frame::SessionFate as Fate;
     let book: &'static parking_lot::RwLock<crate::session_book::Book> =
         Box::leak(Box::new(parking_lot::RwLock::new(Default::default())));
     let mut r = EventReplay::new();
@@ -269,9 +268,7 @@ fn when_full_sessions_that_are_not_live_go_first() {
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
-        sid: "done".into(),
-        fate: Fate::Ended,
-        words: words("done", "T"),
+        state: ended_state("done", "T"),
     });
     let rows = |sid: &str| -> Vec<JsonlLinePayload> {
         (0..10).map(|i| sized(None, sid, i, 100)).collect()
@@ -1036,16 +1033,14 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
 }
 
 /// 那台答的去向（`text` 是那台写的短名）。
-fn words(sid: &str, text: &str) -> crate::session_book::FateWords {
-    crate::session_book::FateWords::of(crate::guard_support::session_state(sid, "ended", text))
+fn ended_state(sid: &str, text: &str) -> cmd_wire::frame::SessionState {
+    crate::guard_support::session_state(sid, "ended", text)
 }
 
 fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
     crate::session_book::Out::Left {
         origin: "<local>".into(),
-        sid: sid.into(),
-        fate: cmd_wire::frame::SessionFate::Ended,
-        words: words(sid, "T"),
+        state: ended_state(sid, "T"),
     }
     .frame()
 }
@@ -1054,7 +1049,6 @@ fn ended(sid: &str) -> crate::ui_contract::SessionStreamFrame {
 #[tokio::test]
 async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     use crate::session_book::In;
-    use cmd_wire::frame::SessionFate as Fate;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
     book.write().step(In::Live {
@@ -1064,9 +1058,7 @@ async fn the_ready_point_puts_lifecycle_frames_around_the_lines() {
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
-        sid: "b".into(),
-        fate: Fate::Ended,
-        words: words("b", "T"),
+        state: ended_state("b", "T"),
     });
     r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
     r.subscribe("w", 1, &local(), "session-lines", None, 10);
@@ -1125,7 +1117,6 @@ async fn the_main_window_tabs_are_kept_too() {
 #[tokio::test]
 async fn a_tab_without_lines_gets_its_answered_end_replayed() {
     use crate::session_book::In;
-    use cmd_wire::frame::SessionFate as Fate;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
     book.write().step(In::Listed {
@@ -1133,9 +1124,7 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
     });
     book.write().step(In::Left {
         origin: "<local>".into(),
-        sid: "p".into(),
-        fate: Fate::Ended,
-        words: words("p", "那台写的"),
+        state: ended_state("p", "那台写的"),
     });
     r.set_main_kept([("<local>".to_string(), "p".to_string())]);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
@@ -1159,7 +1148,6 @@ async fn a_tab_without_lines_gets_its_answered_end_replayed() {
 #[tokio::test]
 async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     use crate::session_book::In;
-    use cmd_wire::frame::SessionFate as Fate;
     let ((r, rec), book) = hub_with_book();
     r.origin_seen(&local(), true);
     book.write().step(In::Listed {
@@ -1170,9 +1158,7 @@ async fn an_ended_cell_carries_the_words_of_the_backend_that_answered_it() {
     r.ready_point(None).await;
     let out = book.write().step(In::Left {
         origin: "<local>".into(),
-        sid: "x".into(),
-        fate: Fate::Ended,
-        words: words("x", "那台写的"),
+        state: ended_state("x", "那台写的"),
     });
     r.on_lifecycle("<local>", out.iter().map(|o| o.frame()).collect());
     let ended: Vec<serde_json::Value> = rec

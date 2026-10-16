@@ -17,36 +17,12 @@ use std::sync::OnceLock;
 
 use cmd_wire::frame::{SessionAdded, SessionFate, SessionRuns, SessionState, SessionStatus};
 
-/// 去向那一种写好的字与语气（那台核心写的 `session_state.state_text` · `state_hint` · `state_tone` · `switch`，原样转交）。
-/// 去向只由那台裁（手上留着、那台不在说的，那台也答一句已结束），每一份都带这几格。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FateWords {
-    pub text: cmd_wire::cells::Words,
-    pub hint: cmd_wire::cells::Words,
-    pub tone: cmd_wire::cells::Tone,
-    /// 监控板组内的序（与活会话同一把尺）。
-    pub order: u8,
-    pub switch: cmd_wire::frame::Switch,
-}
-
-impl FateWords {
-    /// `session_state` 带来的那几格。
-    pub fn of(s: SessionState) -> Self {
-        FateWords {
-            text: s.state_text,
-            hint: s.state_hint,
-            tone: s.state_tone,
-            order: s.state_order,
-            switch: s.switch,
-        }
-    }
-}
-
 /// 一条会话此刻的最新成品。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Product {
     Live(SessionAdded),
-    Left(SessionFate, FateWords),
+    /// 那台答的去向（`session_state`：哪一种 · 写好的字与语气 · 监控板组内的序 · 能不能换），原样转交。
+    Left(SessionState),
 }
 
 /// 两条流交进来的一件事。`origin` 是线上串（本机 `<local>`）。
@@ -63,16 +39,21 @@ pub enum In {
     },
     Left {
         origin: String,
-        sid: String,
-        fate: SessionFate,
-        words: FateWords,
+        state: SessionState,
     },
     /// `sessions_replayed`：那台的活会话清单报完了（可重连的也已报过）。
-    Listed { origin: String },
+    Listed {
+        origin: String,
+    },
     /// 到那台的连接断了。
-    LinkLost { origin: String },
+    LinkLost {
+        origin: String,
+    },
     /// `session_runs`：那台后端给的一个会话的运行表 ＋ 被挤出表的已收场那几个。
-    Runs { origin: String, runs: SessionRuns },
+    Runs {
+        origin: String,
+        runs: SessionRuns,
+    },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
     /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
     Branch {
@@ -99,17 +80,24 @@ pub enum Out {
     },
     Left {
         origin: String,
-        sid: String,
-        fate: SessionFate,
-        words: FateWords,
+        state: SessionState,
     },
     /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一刻：前端据此收空组、说记住的那一格没出现）。
-    Listed { origin: String, all: bool },
+    Listed {
+        origin: String,
+        all: bool,
+    },
     /// 那台看不见了（**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
     /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
-    Unseen { origin: String, sids: Vec<String> },
+    Unseen {
+        origin: String,
+        sids: Vec<String>,
+    },
     /// 一个会话的运行表（原样转）。
-    Runs { origin: String, runs: SessionRuns },
+    Runs {
+        origin: String,
+        runs: SessionRuns,
+    },
     /// 一个会话的主线外清单（拼好的整份）。
     Branch {
         origin: crate::origin::Origin,
@@ -176,25 +164,15 @@ impl Book {
                 }
                 vec![Out::Status { origin, status }]
             }
-            In::Left {
-                origin,
-                sid,
-                fate,
-                words,
-            } => {
+            In::Left { origin, state } => {
                 let b = self.origins.entry(origin.clone()).or_default();
                 b.sessions
-                    .insert(sid.clone(), Product::Left(fate, words.clone()));
-                b.runs.remove(&sid);
+                    .insert(state.sid.clone(), Product::Left(state.clone()));
+                b.runs.remove(&state.sid);
                 if let Some(m) = self.branch.get_mut(&origin) {
-                    m.remove(&sid);
+                    m.remove(&state.sid);
                 }
-                vec![Out::Left {
-                    origin,
-                    sid,
-                    fate,
-                    words,
-                }]
+                vec![Out::Left { origin, state }]
             }
             In::Runs { origin, runs } => {
                 self.origins
@@ -254,7 +232,9 @@ impl Book {
                 let sids: Vec<String> = b
                     .sessions
                     .into_iter()
-                    .filter(|(_, p)| !matches!(p, Product::Left(SessionFate::Ended, _)))
+                    .filter(
+                        |(_, p)| !matches!(p, Product::Left(s) if s.state == SessionFate::Ended),
+                    )
                     .map(|(s, _)| s)
                     .collect();
                 if sids.is_empty() {
@@ -380,13 +360,13 @@ impl Book {
                             });
                         }
                     }
-                    Product::Left(SessionFate::Reconnectable, words) => r.after.push(Out::Left {
-                        origin: (*o).clone(),
-                        sid: sid.clone(),
-                        fate: SessionFate::Reconnectable,
-                        words: words.clone(),
-                    }),
-                    _ => {}
+                    Product::Left(s) if s.state == SessionFate::Reconnectable => {
+                        r.after.push(Out::Left {
+                            origin: (*o).clone(),
+                            state: s.clone(),
+                        })
+                    }
+                    Product::Left(_) => {}
                 }
             }
         }
@@ -395,12 +375,11 @@ impl Book {
         for (sid, origin) in kept {
             let b = self.origins.get(origin);
             match b.and_then(|b| b.sessions.get(sid)) {
-                Some(Product::Live(_)) | Some(Product::Left(SessionFate::Reconnectable, _)) => {}
-                Some(Product::Left(SessionFate::Ended, words)) => settled.push(Out::Left {
+                Some(Product::Live(_)) => {}
+                Some(Product::Left(s)) if s.state == SessionFate::Reconnectable => {}
+                Some(Product::Left(s)) => settled.push(Out::Left {
                     origin: origin.clone(),
-                    sid: sid.clone(),
-                    fate: SessionFate::Ended,
-                    words: words.clone(),
+                    state: s.clone(),
                 }),
                 // 那台报完了清单、这条没被说过 ⇒ 不说：那台后端照手上留着的答它的去向（答过就在账里）。
                 None if b.is_some_and(|b| b.listed) => {}
@@ -448,17 +427,7 @@ impl Out {
         match self {
             Out::Live { meta, .. } => F::Added(meta.clone()),
             Out::Status { status, .. } => F::Status(status.clone()),
-            Out::Left {
-                sid, fate, words, ..
-            } => F::State(SessionState {
-                sid: sid.clone(),
-                state: *fate,
-                state_text: words.text.clone(),
-                state_hint: words.hint.clone(),
-                state_tone: words.tone,
-                state_order: words.order,
-                switch: words.switch.clone(),
-            }),
+            Out::Left { state, .. } => F::State(state.clone()),
             Out::Listed { origin, all } => F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin(origin.clone()),
                 all: *all,
@@ -483,11 +452,9 @@ impl Book {
         let b = self.origins.get(origin);
         match b.and_then(|b| b.sessions.get(sid)) {
             Some(Product::Live(_)) => Vec::new(),
-            Some(Product::Left(fate, words)) => vec![Out::Left {
+            Some(Product::Left(s)) => vec![Out::Left {
                 origin: origin.to_string(),
-                sid: sid.to_string(),
-                fate: *fate,
-                words: words.clone(),
+                state: s.clone(),
             }],
             None if b.is_some_and(|b| b.listed) => Vec::new(),
             None => self.unseen_block(origin, vec![sid.to_string()]),
@@ -509,13 +476,13 @@ impl Book {
                         sid: sid.clone(),
                         meta: m.clone(),
                     }),
-                    Product::Left(SessionFate::Reconnectable, words) => v.push(Out::Left {
-                        origin: origin.to_string(),
-                        sid: sid.clone(),
-                        fate: SessionFate::Reconnectable,
-                        words: words.clone(),
-                    }),
-                    Product::Left(SessionFate::Ended, _) => {}
+                    Product::Left(s) if s.state == SessionFate::Reconnectable => {
+                        v.push(Out::Left {
+                            origin: origin.to_string(),
+                            state: s.clone(),
+                        })
+                    }
+                    Product::Left(_) => {}
                 }
             }
         }

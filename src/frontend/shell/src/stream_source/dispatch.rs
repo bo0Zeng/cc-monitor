@@ -173,13 +173,11 @@ pub(crate) async fn apply(
             intake.removed(&sid);
         }
         Ordered::SessionState(s) => {
-            let (sid, state) = (s.sid.clone(), s.state);
+            let (sid, state) = (&s.sid, s.state);
             tracing::info!("session-state: [{host_label}] sid={sid} → {state:?}");
             crate::session_book::feed(BookIn::Left {
                 origin: at,
-                sid,
-                fate: state,
-                words: crate::session_book::FateWords::of(s),
+                state: s,
             });
         }
         Ordered::Overflow(o) => on_overflow(origin, health, &o),

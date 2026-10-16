@@ -23,9 +23,7 @@ fn left(o: &str, s: &str, fate: SessionFate) -> In {
     };
     In::Left {
         origin: o.into(),
-        sid: s.into(),
-        fate,
-        words: FateWords::of(crate::guard_support::session_state(s, state, "T")),
+        state: crate::guard_support::session_state(s, state, "T"),
     }
 }
 
@@ -57,7 +55,7 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
         .map(|o| match o {
             Out::Live { sid, .. } => format!("live {sid}"),
             Out::Status { status, .. } => format!("status {}", status.sid),
-            Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
+            Out::Left { state, .. } => format!("left {} {:?}", state.sid, state.state),
             Out::Listed { origin, all } => {
                 format!("listed {origin}{}", if *all { " all" } else { "" })
             }
@@ -112,9 +110,9 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
         v.iter()
             .map(|o| match o {
                 Out::Live { origin, sid, .. } => format!("live {origin}/{sid}"),
-                Out::Left {
-                    origin, sid, fate, ..
-                } => format!("left {origin}/{sid} {fate:?}"),
+                Out::Left { origin, state } => {
+                    format!("left {origin}/{} {:?}", state.sid, state.state)
+                }
                 Out::Listed { origin, all } => {
                     format!("listed {origin}{}", if *all { " all" } else { "" })
                 }
@@ -163,7 +161,7 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
         v.iter()
             .map(|o| match o {
                 Out::Live { sid, .. } => format!("live {sid}"),
-                Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
+                Out::Left { state, .. } => format!("left {} {:?}", state.sid, state.state),
                 Out::Unseen { origin, .. } => format!("unseen {origin}"),
                 other => format!("{other:?}"),
             })
