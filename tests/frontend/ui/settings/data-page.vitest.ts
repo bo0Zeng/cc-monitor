@@ -1,11 +1,13 @@
 /**
- * 设置窗「文件与数据」：那台后端的 `data-report` 严格收 · 两栏照那份成品画 · 角标 ＝ 各台 `chores` 相加（读不到的不算）·
+ * 设置窗「文件与数据」：那台后端的 `data-report` 严格收 · 两栏照那份成品画 · 角标与顶上那一行 ＝ 读到的各台 `counts` 交本机后端合的那一份 ·
  * 那台说了没有 tmux ⇒ 恢复默认的「运行于」回落 · 改过你的文件［前往］带上那台去撤回那一处。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
-const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed } = vi.hoisted(() => ({
+const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed, merges } = vi.hoisted(() => ({
+  /** 交给本机后端 `chores-merge` 的每一趟（`reply` 设了就照它答，否则逐格相加）。 */
+  merges: { asked: [] as unknown[][], reply: null as Record<string, number> | null },
   localOpened: [] as string[],
   localRevealed: [] as string[],
   seen: new Map<string, Record<string, unknown>>(),
@@ -27,6 +29,15 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
   ChanError: class extends Error {},
   chan: {
     call: (origin: string, op: string, body: Uint8Array) => {
+      if (op === "chores-merge") {
+        if (origin !== "<local>") return Promise.reject(new Error("合计只问本机后端"));
+        const { machines } = JSON.parse(new TextDecoder().decode(body)) as { machines: Record<string, number>[] };
+        merges.asked.push(machines);
+        const sum: Record<string, number> = {};
+        for (const m of machines) for (const [k, v] of Object.entries(m)) sum[k] = (sum[k] ?? 0) + v;
+        const out = merges.reply ?? { badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0, ...sum };
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
+      }
       if (op === "chores-mark") {
         marks.push({ origin, args: JSON.parse(new TextDecoder().decode(body)) });
         return Promise.resolve(new TextEncoder().encode("{}"));
@@ -97,6 +108,8 @@ const chore = (over: Record<string, unknown>) => ({
   ...over,
 });
 
+const counts = (over: Record<string, number> = {}) => ({ badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0, ...over });
+
 const report = (over: Record<string, unknown> = {}) => ({
   home: "/h",
   changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
@@ -105,8 +118,7 @@ const report = (over: Record<string, unknown> = {}) => ({
     chore({ id: "install:git", kind: "installOptional", name: "git", action: "how" }),
   ],
   tmux: false,
-  chores: 1,
-  open: 2,
+  counts: counts({ badge: 1, open: 2, install: 1, optional: 1 }),
   rank: 0,
   own: [
     { id: "profiles", what: copyText("rsDataPaths.backend.profiles"), path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 2048 },
@@ -141,6 +153,8 @@ beforeEach(() => {
   localRevealed.length = 0;
   opened.mockClear();
   marks.length = 0;
+  merges.asked.length = 0;
+  merges.reply = null;
   clipFake = fakeClipboard();
   disk.cfg = { remote: { hosts: [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }] } };
   forgetResumeDefaults();
@@ -156,13 +170,15 @@ describe("上次值", () => {
 });
 
 describe("待办", () => {
-  it("★ 每台一段、照成品画要装两档；连不上的那台说离线未检查；角标 ＝ 读到的各台 chores 相加", async () => {
+  it("★ 每台一段、照成品画要装两档；连不上的那台说离线未检查；角标 ＝ 读到的各台 counts 交本机后端合的 badge", async () => {
     answers.set(LOCAL_ORIGIN, report());
-    answers.set("devbox", report({ chores: 2, todo: [] }));
+    answers.set("devbox", report({ counts: counts({ badge: 2 }), todo: [] }));
     const { page, badge } = mount();
     page.loadNow();
     await settle();
-    expect(badge.at(-1), "角标不是各台 chores 相加（读不到的那台不该算成 0 以外的数）").toBe(3);
+    expect(merges.asked.at(-1), "交的是读到的那几台（读不到的那台不交）").toEqual(expect.arrayContaining([counts({ badge: 1, open: 2, install: 1, optional: 1 }), counts({ badge: 2 })]));
+    expect(merges.asked.at(-1)).toHaveLength(2);
+    expect(badge.at(-1)).toBe(3);
     const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL_ORIGIN}"]`)!;
     expect([...local.querySelectorAll<HTMLElement>("[data-chore]")].map((r) => r.dataset.chore)).toEqual(["install:claude-cli", "install:git"]);
     expect(local.textContent).toContain(copyText("dataPage.install.kind"));
@@ -172,14 +188,24 @@ describe("待办", () => {
     expect(page.element.querySelector('[data-machine="devbox"]')!.textContent).toContain(copyText("dataPage.chores.noneOn", { machine: "devbox" }));
   });
 
-  it("★ 几台照各台成品的先后键排（读不成的排最后）；顶上那一句的数 ＝ 各台 open 相加，界面不数", async () => {
-    answers.set(LOCAL_ORIGIN, report({ rank: 2, open: 0 }));
-    answers.set("devbox", report({ rank: 1, open: 5, chores: 0 }));
-    const { page } = mount();
+  it("★ 几台照各台成品的先后键排（读不成的排最后）；顶上那一行照本机后端合的那一份画、段头照那台的 counts，界面不数", async () => {
+    answers.set(LOCAL_ORIGIN, report({ rank: 2, counts: counts() }));
+    answers.set("devbox", report({ rank: 1, counts: counts({ open: 5, optional: 5 }) }));
+    merges.reply = counts({ badge: 4, open: 9, must: 3, decide: 1, done: 2 });
+    const { page, badge } = mount();
     page.loadNow();
     await settle();
     expect([...page.element.querySelectorAll<HTMLElement>(".data-machine")].map((e) => e.dataset.machine)).toEqual(["devbox", LOCAL_ORIGIN, "gpu"]);
-    expect(page.element.querySelector(".data-summary")!.textContent).toContain(copyText("dataPage.chores.open", { n: 5 }));
+    const top = page.element.querySelector<HTMLElement>(".data-summary")!;
+    expect(top.textContent).toContain(copyText("dataPage.chores.open", { n: 9 }));
+    expect([...top.querySelectorAll<HTMLElement>("[data-kind]:not(button)")].map((t) => [t.dataset.kind, t.textContent])).toEqual([
+      ["must", copyText("dataPage.chores.countMust", { n: 3 })],
+      ["decide", copyText("dataPage.chores.countDecide", { n: 1 })],
+      ["done", copyText("dataPage.chores.countDone", { n: 2 })],
+    ]);
+    expect(badge.at(-1)).toBe(4);
+    const dev = page.element.querySelector<HTMLElement>('[data-machine="devbox"] .data-machine-head')!;
+    expect([...dev.querySelectorAll<HTMLElement>("[data-kind]:not(button)")].map((t) => t.textContent)).toEqual([copyText("dataPage.chores.countOptional", { n: 5 })]);
   });
 
   it("［安装方法］开的是那份成品给的链接；没有链接的那件不摆这颗", async () => {
@@ -196,7 +222,7 @@ describe("待办", () => {
   it("★ 复制 ⇒ 剪贴板是那一件交来的整份、那件标「已复制 · 等你贴」；整份盖两件 ⇒ 两件一起标；那台认出已做 ⇒ 段头说一句、收进「已做的 N」", async () => {
     const relay = chore({ id: "relay", name: "实时显示", copy: "K=SECRET", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "为什么", steps: ["打开 f"], diff: [{ n: 3, op: "same", text: "{" }, { n: null, op: "add", text: "K=SECRET" }] });
     const hooks = chore({ id: "cc-bus-hooks", name: "收信", copy: "h", whole: "{SECRET}", wholeCovers: ["relay", "cc-bus-hooks"], why: "w" });
-    answers.set(LOCAL_ORIGIN, report({ todo: [relay, hooks], chores: 0 }));
+    answers.set(LOCAL_ORIGIN, report({ todo: [relay, hooks] }));
     const { page } = mount();
     page.loadNow();
     await settle();
@@ -207,7 +233,7 @@ describe("待办", () => {
     expect(clipFake.written).toEqual(["{SECRET}"]);
     expect(row("relay").textContent).toContain(copyText("dataPage.state.copied"));
     expect(row("cc-bus-hooks").textContent).toContain(copyText("dataPage.state.copied"));
-    answers.set(LOCAL_ORIGIN, report({ todo: [{ ...relay, state: "done" }, hooks], chores: 0 }));
+    answers.set(LOCAL_ORIGIN, report({ todo: [{ ...relay, state: "done" }, hooks] }));
     page.loadNow();
     await settle();
     const local = page.element.querySelector<HTMLElement>(`[data-machine="${LOCAL_ORIGIN}"]`)!;

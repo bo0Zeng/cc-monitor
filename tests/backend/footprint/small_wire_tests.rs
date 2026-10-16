@@ -107,7 +107,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
         wire(
             &ls(
                 &own,
-                &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h", "changedFiles": [], "todo": [], "tmux": null, "chores": 0, "open": 0, "rank": 2, "own": []}}),
+                &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h", "changedFiles": [], "todo": [], "tmux": null, "counts": {"badge": 0, "open": 0, "must": 0, "decide": 0, "install": 0, "optional": 0, "done": 0}, "rank": 2, "own": []}}),
                 2000
             )
             .unwrap()
@@ -116,7 +116,7 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     );
     assert_eq!(
         read("devbox"),
-        r#"{"accounts":{"atMs":1000,"state":"kept","value":{"accounts":[],"meta":{"acctsDir":"/a","count":0,"effectiveDefault":null,"enabled":true,"error":null,"home":null,"manifestPath":"/a/m.json","nextDefault":null,"sharedStore":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"atMs":2000,"state":"kept","value":{"changedFiles":[],"chores":0,"home":"/h","open":0,"own":[],"rank":2,"tmux":null,"todo":[]}}}"#
+        r#"{"accounts":{"atMs":1000,"state":"kept","value":{"accounts":[],"meta":{"acctsDir":"/a","count":0,"effectiveDefault":null,"enabled":true,"error":null,"home":null,"manifestPath":"/a/m.json","nextDefault":null,"sharedStore":null,"unsupported":null,"updatedAt":null},"notice":null}},"data":{"atMs":2000,"state":"kept","value":{"changedFiles":[],"counts":{"badge":0,"decide":0,"done":0,"install":0,"must":0,"open":0,"optional":0},"home":"/h","own":[],"rank":2,"tmux":null,"todo":[]}}}"#
     );
     assert_eq!(
         wire(&ls(&own, &json!({"origin": "devbox", "forget": true}), 3000).unwrap()),

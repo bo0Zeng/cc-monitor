@@ -225,20 +225,19 @@ function buildDataPointers(spec: ConfigPageSpec, onSelfPaste: (c: { state: strin
   const load = (): void => {
     readDataReport(spec.origin()).then(
       (r) => {
-        const open = r.todo.filter((c) => c.state !== "done" && c.state !== "declined");
-        const optional = open.filter((c) => c.kind === "optional" || c.kind === "installOptional").length;
+        const { badge, optional } = r.counts;
         const machine = spec.machine();
-        head.hidden = r.chores === 0 && optional === 0;
+        head.hidden = badge === 0 && optional === 0;
         head.replaceChildren();
         if (!head.hidden) {
           const dot = document.createElement("span");
           dot.className = "data-dot";
-          dot.dataset.tone = r.chores > 0 ? "bad" : "muted";
-          const text = r.chores > 0 ? copyText("cfgPage.pointer.chores", { machine, n: r.chores, m: optional }) : copyText("cfgPage.pointer.optional", { machine, m: optional });
+          dot.dataset.tone = badge > 0 ? "bad" : "muted";
+          const text = badge > 0 ? copyText("cfgPage.pointer.chores", { machine, n: badge, m: optional }) : copyText("cfgPage.pointer.optional", { machine, m: optional });
           // 那几枚分类数小标签（要做 · 待定 · 要装 · 可选），与「文件与数据」同一套。
           const tags = document.createElement("span");
           tags.className = "data-summary cfg-pointer-tags";
-          tags.append(...countTags(r.todo, ["must", "decide", "install", "optional"]));
+          tags.append(...countTags(r.counts, ["must", "decide", "install", "optional"]));
           head.append(dot, line("cfg-pointer-text", text), tags, button({ label: copyText("cfgPage.pointer.go"), size: "compact", onClick: () => go(head, `chores:${spec.origin()}`) }));
         }
         foot.hidden = r.changedFiles.length === 0;

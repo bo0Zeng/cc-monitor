@@ -169,7 +169,8 @@ export function machineOps(): Record<string, OpHandler> {
                 changedFiles: [BASHRC_CHANGED],
                 todo: [],
                 tmux: true,
-                chores: 0,
+                counts: choreCounts([]),
+                rank: 2,
                 own: [
                   { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
                   { id: "profiles", what: "台架编的一句 · profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 920 },
@@ -206,9 +207,8 @@ export function machineOps(): Record<string, OpHandler> {
         ],
         todo,
         tmux: o !== "win-laptop",
-        chores: todo.filter((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")).length,
-        open: todo.filter((c) => c.state !== "done" && c.state !== "declined").length,
-        rank: todo.some((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")) ? 0 : todo.some((c) => c.state !== "done" && c.state !== "declined") ? 1 : 2,
+        counts: choreCounts(todo),
+        rank: ((n) => (n.badge > 0 ? 0 : n.open > 0 ? 1 : 2))(choreCounts(todo)),
         own: [
           { id: "bin", what: "台架编的一句 · bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
           { id: "relayKey", what: "台架编的一句 · relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
@@ -223,6 +223,20 @@ export function machineOps(): Record<string, OpHandler> {
       };
     },
   };
+}
+
+/** 一台各类的件数（照 `footprint/chores::counts` 的分法；`data-report` 还是合成的那几条之一）。 */
+function choreCounts(todo: readonly { kind: string; state: string }[]): Record<string, number> {
+  const n = { badge: 0, open: 0, must: 0, decide: 0, install: 0, optional: 0, done: 0 };
+  for (const c of todo) {
+    if (c.state === "done") n.done++;
+    if (c.state === "done" || c.state === "declined") continue;
+    n.open++;
+    const k = c.kind === "installOptional" ? "optional" : (c.kind as "must" | "decide" | "install" | "optional");
+    n[k]++;
+    if (c.state !== "blocked" && k !== "optional") n.badge++;
+  }
+  return n;
 }
 
 /** 「改过你的文件」里那一行 ~/.bashrc（data-report 与离线那台的上次值共用）。 */

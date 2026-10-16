@@ -259,14 +259,15 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
         { ...CHORE, id: "relay", name: "实时显示", loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidTodo"), why: "慢一拍", steps: ["打开 ~/.claude/settings.json"], diff: [{ n: 3, op: "same", text: '  "env": {' }, { n: null, op: "add", text: '    "K": "v",' }], copy: '"K": "v"', whole: "{}", wholeCovers: ["relay"], file: "/h/.claude/settings.json" },
       ],
       tmux: false,
-      chores: 1,
-      open: 2,
+      counts: { badge: 1, open: 2, must: 0, decide: 0, install: 1, optional: 1, done: 0 },
       rank: 0,
       own: [],
     };
     ipc.replies.set("footprint_client_facts", { home: "/h", path: null });
     ipc.replies.set("chan_call", (a: unknown) => {
       const { op } = a as { op: string };
+      // 只有本机这一台 ⇒ 合计就是它那一份。
+      if (op === "chores-merge") return Promise.resolve(new TextEncoder().encode(JSON.stringify(report.counts)).buffer);
       if (op !== "data-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(report)).buffer);
     });

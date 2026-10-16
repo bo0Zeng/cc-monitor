@@ -57,8 +57,10 @@ import type { CcBusState } from "./CcBusState";
 import type { CcmCard } from "./CcmCard";
 import type { CcmLine } from "./CcmLine";
 import type { CcmPrintReq } from "./CcmPrintReq";
+import type { ChoreCounts } from "./ChoreCounts";
 import type { ChoresMarkReq } from "./ChoresMarkReq";
 import type { ChoresMarks } from "./ChoresMarks";
+import type { ChoresMergeReq } from "./ChoresMergeReq";
 import type { CliRenderRequest } from "./CliRenderRequest";
 import type { CommandPlan } from "./CommandPlan";
 import type { ConfigSurfaceReport } from "./ConfigSurfaceReport";
@@ -379,6 +381,7 @@ export interface TypedCommands {
   "ccm-probe": { req: NoArgs; reply: CcmCard; code: "bad_args" };
   "ccm-user-path": { req: UserPathReq; reply: UserPath; code: "bad_args" };
   "chores-mark": { req: ChoresMarkReq; reply: ChoresMarks; code: "bad_args" | "io_failed" | "marks_unreadable" };
+  "chores-merge": { req: ChoresMergeReq; reply: ChoreCounts; code: "bad_args" };
   "data-report": { req: FootprintReq; reply: DataReport; code: "bad_args" | "failed" };
   "deploy-plan": { req: DeployPlanReq; reply: Planned; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "undecidable" };
   "drift-report": { req: NoArgs; reply: DriftReport; code: "bad_args" };

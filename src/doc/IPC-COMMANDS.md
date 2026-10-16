@@ -7340,6 +7340,35 @@ wholeCovers: Array<string>, file: string | null,
  */
 go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
+type ChoreCounts = { 
+/**
+ * 进角标的：要做 ＋ 待定 ＋ 要装，还没做完的（没做 · 过期）。
+ */
+badge: number, 
+/**
+ * 还没做完的：不是已做、也不是不用了。
+ */
+open: number, 
+/**
+ * 还没做完的要做（过期的本来就升成要做）。以下四类合起来就是 `open`。
+ */
+must: number, 
+/**
+ * 还没做完的待定。
+ */
+decide: number, 
+/**
+ * 还没做完的要装。
+ */
+install: number, 
+/**
+ * 还没做完的要装 · 可选与可选（含先决没满足的）。
+ */
+optional: number, 
+/**
+ * 已做。
+ */
+done: number, };
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
 type DataReport = { 
@@ -7352,13 +7381,9 @@ home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>,
  */
 tmux: boolean | null, 
 /**
- * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+ * 「待办」各类的件数。
  */
-chores: number, 
-/**
- * 「待办」里还没做完的件数（不是已做、也不是不用了）。
- */
-open: number, 
+counts: ChoreCounts, 
 /**
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
@@ -7512,6 +7537,35 @@ wholeCovers: Array<string>, file: string | null,
  */
 go: UndoAt | null, howUrl: string | null, action: ChoreAction, };
 type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
+type ChoreCounts = { 
+/**
+ * 进角标的：要做 ＋ 待定 ＋ 要装，还没做完的（没做 · 过期）。
+ */
+badge: number, 
+/**
+ * 还没做完的：不是已做、也不是不用了。
+ */
+open: number, 
+/**
+ * 还没做完的要做（过期的本来就升成要做）。以下四类合起来就是 `open`。
+ */
+must: number, 
+/**
+ * 还没做完的待定。
+ */
+decide: number, 
+/**
+ * 还没做完的要装。
+ */
+install: number, 
+/**
+ * 还没做完的要装 · 可选与可选（含先决没满足的）。
+ */
+optional: number, 
+/**
+ * 已做。
+ */
+done: number, };
 type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
 type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
 type DataReport = { 
@@ -7524,13 +7578,9 @@ home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>,
  */
 tmux: boolean | null, 
 /**
- * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+ * 「待办」各类的件数。
  */
-chores: number, 
-/**
- * 「待办」里还没做完的件数（不是已做、也不是不用了）。
- */
-open: number, 
+counts: ChoreCounts, 
 /**
  * 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
  */
@@ -7666,6 +7716,49 @@ startSkipped: boolean, };
 ```
 
 码：`bad_args` · `io_failed` · `marks_unreadable`
+
+#### `chores-merge`
+
+把几台的「待办」件数合成一份。
+
+收 `args` · 可撤 · CLI：`ccm -- --chores-merge`
+
+入参 `ChoresMergeReq` · 回包 `ChoreCounts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ChoreCounts = { 
+/**
+ * 进角标的：要做 ＋ 待定 ＋ 要装，还没做完的（没做 · 过期）。
+ */
+badge: number, 
+/**
+ * 还没做完的：不是已做、也不是不用了。
+ */
+open: number, 
+/**
+ * 还没做完的要做（过期的本来就升成要做）。以下四类合起来就是 `open`。
+ */
+must: number, 
+/**
+ * 还没做完的待定。
+ */
+decide: number, 
+/**
+ * 还没做完的要装。
+ */
+install: number, 
+/**
+ * 还没做完的要装 · 可选与可选（含先决没满足的）。
+ */
+optional: number, 
+/**
+ * 已做。
+ */
+done: number, };
+type ChoresMergeReq = { machines: Array<ChoreCounts>, };
+```
+
+码：`bad_args`
 
 #### `agent-home-check`
 
@@ -12942,6 +13035,7 @@ needs: string | null, };
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
 | `--ccm-user-path` | ＝ 帧命令 `ccm-user-path`：`ccm` 所在目录在不在用户级 `PATH` 上 · 加 · 撤 |
 | `--chores-mark` | ＝ 帧命令 `chores-mark`：记下「待办」里的一个选择 |
+| `--chores-merge` | ＝ 帧命令 `chores-merge`：把几台的「待办」件数合成一份 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |

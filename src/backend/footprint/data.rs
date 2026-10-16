@@ -5,8 +5,8 @@
 //! - `todo`：「待办」各件（[`super::chores`]）；其中「要装」那一类来自 [`needs_install`]：你自己装、cc-monitor 只查的那几样里，
 //!   这台**确实缺**的（查不动的不算缺，不报；tmux 一律可选、不进这里）；`required` ＝ 缺了起不了会话。
 //! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`；与起新会话那一问同一个判法 `control::terminals::rows_here`）。
-//! - `chores`：「待办」里进角标的件数（要做 ＋ 要装 ＋ 待定，还没做完的），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
-//! - `open` · `rank`：还没做完的件数 · 几台排先后的键（设置窗那一页按它排各台，不自己数）。
+//! - `counts`：「待办」各类的件数（[`super::chores::counts`]）；跨台合计由本机后端 `chores-merge` 出，界面不自己数。
+//! - `rank`：几台排先后的键（设置窗那一页按它排各台）。
 //!
 //! - `own`：cc-monitor 在这台自己家里（`~/.cc-monitor/`）放的每一样（[`own_rows`]）：在不在 · 文件多大 · 删了会丢还是能重建。
 //!
@@ -131,10 +131,8 @@ pub(crate) struct DataReport {
     pub(crate) todo: Vec<super::chores::Chore>,
     /// 这台有没有 tmux（查不动 ⇒ `null`）。
     pub(crate) tmux: Option<bool>,
-    /// 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
-    pub(crate) chores: usize,
-    /// 「待办」里还没做完的件数（不是已做、也不是不用了）。
-    pub(crate) open: usize,
+    /// 「待办」各类的件数。
+    pub(crate) counts: super::chores::ChoreCounts,
     /// 几台排先后的键，小的在前：有进角标的件 0 · 只剩别的没做完的 1 · 没事 2。
     pub(crate) rank: u8,
     pub(crate) own: Vec<OwnItem>,
@@ -261,14 +259,12 @@ pub(crate) fn shape(
     tmux: Option<bool>,
     own: Vec<OwnItem>,
 ) -> DataReport {
-    let chores = super::chores::badge(&todo);
-    let open = super::chores::open(&todo);
+    let counts = super::chores::counts(&todo);
     DataReport {
         home: report.home.clone(),
         changed_files: report.rows.iter().filter_map(changed).collect(),
-        chores,
-        open,
-        rank: match (chores, open) {
+        counts,
+        rank: match (counts.badge, counts.open) {
             (1.., _) => 0,
             (0, 1..) => 1,
             _ => 2,

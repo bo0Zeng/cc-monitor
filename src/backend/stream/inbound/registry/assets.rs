@@ -1,4 +1,4 @@
-//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `cc-bus-*`。
+//! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `chores-*` · `cc-bus-*`。
 
 use crate::wire::spec::CommandSpec;
 
@@ -29,6 +29,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   （`footprint/chores/marks.rs`，读—改—写在跨进程锁里、原子写）。一个用户文件都不写。阻塞档（同步文件 I/O）。
     crate::wire::typed::blocking::<crate::faces::footprint_face::ChoresMarkCmd>(
         "记下「待办」里的一个选择",
+    ),
+    // 几台的「待办」件数合成一份（纯计算 ⇒ 异步档，同 `sessions-needs-merge`）：界面逐台问 `data-report`，本机后端相加。
+    crate::wire::typed::asynchronous::<crate::faces::footprint_face::ChoresMergeCmd>(
+        "把几台的「待办」件数合成一份",
     ),
     // 设置里换 agent 家目录存之前那一问：在不在 · 是不是目录 · 有没有那一家的记录树，回一个码（`footprint/agent_home_check.rs`）。只读，阻塞档（stat）。
     crate::wire::typed::blocking::<crate::faces::footprint_face::AgentHomeCheckCmd>(
