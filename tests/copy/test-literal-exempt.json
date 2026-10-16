@@ -203,8 +203,7 @@
       { "text": "本机", "use": "输入" }
     ],
     "tests/frontend/ui/settings/machine-state.vitest.ts": [
-      { "text": "要更新", "use": "用例名" },
-      { "text": "无应答", "use": "用例名" }
+      { "text": "要更新", "use": "用例名" }
     ],
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts": [
       { "text": "本机", "use": "输入" }

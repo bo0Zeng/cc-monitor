@@ -27,7 +27,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 import { KT_RULES, RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
 
 /** 上一批收完时的合计（`ceiling` 只许往下改；改小了这里一起改小）。 */
-const CEILING_AT_MOST = 163;
+const CEILING_AT_MOST = 160;
 
 type Lang = "ts" | "rs" | "kt";
 
