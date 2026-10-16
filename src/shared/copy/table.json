@@ -1132,8 +1132,8 @@
     "beCcBus.timedOut.say": {
       "kind": "error",
       "role": "报错",
-      "zh": "cc-bus 等 {secs}s 未结束 · 已停",
-      "args": ["secs"]
+      "zh": "cc-bus 等 {dur} 未结束 · 已停",
+      "args": ["dur"]
     },
     "beCcBus.read.tooOld": {
       "kind": "error",
@@ -3380,19 +3380,6 @@
       "kind": "action",
       "role": "按钮",
       "zh": "打开窗口",
-      "args": []
-    },
-    "hostIdentity.changed.body": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "cc-monitor 记下的主机指纹与当前主机不符",
-      "args": [],
-      "limited": ["SSH 主机指纹"]
-    },
-    "hostIdentity.trust.consequence": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "改记当前指纹 · 主机若被冒充，之后的输入都会发给它",
       "args": []
     },
     "speaker.interrupt.line": {
@@ -8557,7 +8544,7 @@
     "ccBus.spawn.go": {
       "kind": "action",
       "role": "按钮",
-      "zh": "新开 agent",
+      "zh": "新开 agent…",
       "args": []
     },
     "ccBus.row.kill": {
@@ -10423,8 +10410,8 @@
     "rsFilewinFind.firstBuild.line": {
       "kind": "body",
       "role": "说明",
-      "zh": "首建文件清单 · {machine} · 约 {secs}s",
-      "args": ["machine", "secs"]
+      "zh": "首建文件清单 · {machine} · 约 {dur}",
+      "args": ["machine", "dur"]
     },
     "rsFilewinFind.refusal.badQuery": {
       "kind": "error",
@@ -11436,8 +11423,8 @@
     "rsLocalBackend.decide.crashLoop": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机离线 · {windowMs}ms 内退出 ×{recent}（上限 {maxCrashes}） · 远端同样不可连",
-      "args": ["windowMs", "recent", "maxCrashes"]
+      "zh": "本机离线 · {dur} 内退出 ×{recent} · 远端也离线",
+      "args": ["recent", "dur"]
     },
     "rsBackendControl.handle.missing": {
       "kind": "error",
@@ -12455,8 +12442,8 @@
     "rsDialHost.local.absent": {
       "kind": "error",
       "role": "报错",
-      "zh": "本机离线 · 远端不可连 · 已等 {ms}ms",
-      "args": ["ms"]
+      "zh": "本机离线 · 远端也离线 · 已等 {dur}",
+      "args": ["dur"]
     },
     "rsLinkMux.b64.badChar": {
       "kind": "error",
@@ -13380,31 +13367,46 @@
       "kind": "body",
       "role": "片段",
       "zh": "{n}s",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W6": "短时长格式化（fmtDur · short_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
     },
     "durationFormat.short.min": {
       "kind": "body",
       "role": "片段",
       "zh": "{n}m",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W6": "短时长格式化（fmtDur · short_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
     },
     "durationFormat.short.hour": {
       "kind": "body",
       "role": "片段",
       "zh": "{n}h",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W6": "短时长格式化（fmtDur · short_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
     },
     "durationFormat.short.hourMin": {
       "kind": "body",
       "role": "片段",
       "zh": "{h}h{m}m",
-      "args": ["h", "m"]
+      "args": ["h", "m"],
+      "waive": {
+        "C-W6": "短时长格式化（fmtDur · short_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
     },
     "durationFormat.short.day": {
       "kind": "body",
       "role": "片段",
       "zh": "{n}d",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {
+        "C-W6": "短时长格式化（fmtDur · short_duration）自己的单位格：表里别处只放 {dur}，单位只住这里"
+      }
     },
     "durationFormat.rel.ahead": {
       "kind": "body",
@@ -14177,14 +14179,14 @@
     "launch.slot.missedState": {
       "kind": "body",
       "role": "说明",
-      "zh": "未报到 · {secs}s",
-      "args": ["secs"]
+      "zh": "未报到 · {dur}",
+      "args": ["dur"]
     },
     "launch.slot.missedCard": {
       "kind": "error",
       "role": "报错",
-      "zh": "已发启动命令 · {secs}s 未报到",
-      "args": ["secs"]
+      "zh": "已发启动命令 · {dur} 未报到",
+      "args": ["dur"]
     },
     "launch.slot.tmuxThere": {
       "kind": "body",
@@ -14260,28 +14262,28 @@
     "launchArrival.missed.inWindow": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {secs}s · 启动器原话在终端窗口里",
-      "args": ["secs", "machine"]
+      "zh": "{machine} 未报到 · 已等 {dur} · 详情在终端窗口",
+      "args": ["machine", "dur"]
     },
     "launchArrival.missed.words": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {secs}s · tmux 会话「{name}」末几行\n{words}",
-      "args": ["secs", "machine", "name", "words"],
+      "zh": "{machine} 未报到 · 已等 {dur} · tmux 会话「{name}」末几行\n{words}",
+      "args": ["machine", "name", "words", "dur"],
       "limited": ["tmux"]
     },
     "launchArrival.missed.emptyScreen": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {secs}s · tmux 会话「{name}」画面为空",
-      "args": ["secs", "machine", "name"],
+      "zh": "{machine} 未报到 · 已等 {dur} · tmux 会话「{name}」画面为空",
+      "args": ["machine", "name", "dur"],
       "limited": ["tmux"]
     },
     "launchArrival.missed.noScreen": {
       "kind": "error",
       "role": "报错",
-      "zh": "{machine} 未报到 · 已等 {secs}s · 读取 tmux 会话「{name}」画面失败 · {why}",
-      "args": ["secs", "machine", "name", "why"],
+      "zh": "{machine} 未报到 · 已等 {dur} · 读取 tmux 会话「{name}」画面失败 · {why}",
+      "args": ["machine", "name", "why", "dur"],
       "limited": ["tmux"]
     },
     "ccBus.spawn.arrived": {
@@ -19426,8 +19428,8 @@
     "beProbe.hello.ok": {
       "kind": "body",
       "role": "说明",
-      "zh": "{ms}ms · {build} · 功能完整",
-      "args": ["ms", "build"]
+      "zh": "{dur} · {build} · 功能完整",
+      "args": ["build", "dur"]
     },
     "beProbe.hello.noAnswer": {
       "kind": "body",
@@ -21936,30 +21938,6 @@
       "zh": "{name} 不可用 · 未启动",
       "args": ["name"]
     },
-    "rsFilewinFind.age.secs": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}s",
-      "args": ["n"]
-    },
-    "rsFilewinFind.age.mins": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}m",
-      "args": ["n"]
-    },
-    "rsFilewinFind.age.hours": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}h",
-      "args": ["n"]
-    },
-    "rsFilewinFind.age.days": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n}d",
-      "args": ["n"]
-    },
     "rsFilewinFind.status.scope": {
       "kind": "body",
       "role": "说明",
@@ -22905,23 +22883,11 @@
       "zh": "{bytes} · {left}",
       "args": ["bytes", "left"]
     },
-    "rsFilewinProgress.eta.secs": {
+    "rsFilewinProgress.eta.about": {
       "kind": "body",
       "role": "进度",
-      "zh": "约 {n}s",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.eta.mins": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "约 {n}m",
-      "args": ["n"]
-    },
-    "rsFilewinProgress.eta.hours": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "约 {n}h",
-      "args": ["n"]
+      "zh": "约 {dur}",
+      "args": ["dur"]
     },
     "rsFilewinChrome.link.reconnecting": {
       "kind": "body",
@@ -24807,51 +24773,51 @@
       "zh": "{fp} · 记于 {date}",
       "args": ["fp", "date"]
     },
-    "machineCard.hostKey.compareTitle": {
+    "hostKey.compare.title": {
       "kind": "title",
       "role": "标题",
       "zh": "主机指纹变更 · {machine}",
       "args": ["machine"],
       "limited": ["SSH 主机指纹"]
     },
-    "machineCard.hostKey.trust": {
+    "hostKey.compare.trust": {
       "kind": "action",
       "role": "按钮",
       "zh": "信任新的指纹",
       "args": []
     },
-    "machineCard.hostKey.dontConnect": {
+    "hostKey.compare.dontConnect": {
       "kind": "action",
       "role": "按钮",
       "zh": "不连接",
       "args": [],
       "limited": ["连接"]
     },
-    "machineCard.hostKey.caution": {
+    "hostKey.compare.caution": {
       "kind": "body",
       "role": "说明",
       "zh": "未重装 / 未换地址时勿信任 · 先向管理员核实",
       "args": []
     },
-    "machineCard.hostKey.pinned": {
+    "hostKey.compare.pinned": {
       "kind": "body",
       "role": "片段",
       "zh": "记下的",
       "args": []
     },
-    "machineCard.hostKey.pinnedAt": {
+    "hostKey.compare.pinnedAt": {
       "kind": "body",
       "role": "片段",
       "zh": "记于 {date}",
       "args": ["date"]
     },
-    "machineCard.hostKey.seen": {
+    "hostKey.compare.seen": {
       "kind": "body",
       "role": "片段",
       "zh": "当前",
       "args": []
     },
-    "machineCard.hostKey.none": {
+    "hostKey.compare.none": {
       "kind": "body",
       "role": "空态",
       "zh": "无",
@@ -24943,8 +24909,8 @@
     "beProbe.hello.okGaps": {
       "kind": "body",
       "role": "说明",
-      "zh": "{ms}ms · {build} · {gaps} 项不可用",
-      "args": ["ms", "build", "gaps"]
+      "zh": "{dur} · {build} · {gaps} 项不可用",
+      "args": ["build", "gaps", "dur"]
     },
     "backend.cc.state": {
       "kind": "control",
@@ -29992,54 +29958,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "mobHostKey.page.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "主机指纹已变更",
-      "args": [],
-      "limited": ["SSH 主机指纹"]
-    },
-    "mobHostKey.page.cases": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "重装系统或重建机器后属正常\n否则勿连接 · 主机可能被冒充",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobHostKey.page.fingerprints": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "已记  {old}\n本次  {new}",
-      "args": ["old", "new"]
-    },
-    "mobHostKey.page.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "—",
-      "args": []
-    },
-    "mobHostKey.page.confirm": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "我确认是我自己改的",
-      "args": [],
-      "waive": {
-        "C-W15": "安全确认按钮：字面要说清确认的是什么，短了就成了闭眼点通过"
-      }
-    },
-    "mobHostKey.trust.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "信任新指纹",
-      "args": []
-    },
-    "mobHostKey.trust.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "信任并连接",
-      "args": [],
-      "limited": ["连接"]
-    },
     "mobSession.connect.progress": {
       "kind": "body",
       "role": "进度",
@@ -30568,8 +30486,11 @@
     "mobKeys.double.cost": {
       "kind": "body",
       "role": "说明",
-      "zh": "已设双击：单击晚 {ms} ms 才送 · 连按两下不再送两次",
-      "args": ["ms"]
+      "zh": "已设双击 · 单击延后 {ms} ms 发送",
+      "args": ["ms"],
+      "waive": {
+        "C-W6": "按键时长那一栏以毫秒为单位输入，这里说的是输入框的单位，不是时长读数"
+      }
     },
     "mobKeys.double.tip": {
       "kind": "body",
@@ -30616,8 +30537,11 @@
     "mobKeys.dur.sysNow": {
       "kind": "body",
       "role": "说明",
-      "zh": "系统当前 {ms} ms",
-      "args": ["ms"]
+      "zh": "系统 {ms} ms",
+      "args": ["ms"],
+      "waive": {
+        "C-W6": "按键时长那一栏以毫秒为单位输入，这里说的是输入框的单位，不是时长读数"
+      }
     },
     "mobKeys.dur.tip": {
       "kind": "body",
@@ -30628,8 +30552,11 @@
     "mobKeys.dur.range": {
       "kind": "error",
       "role": "报错",
-      "zh": "超出 {min}–{max} ms",
-      "args": ["min", "max"]
+      "zh": "限 {min}–{max} ms",
+      "args": ["min", "max"],
+      "waive": {
+        "C-W6": "按键时长那一栏以毫秒为单位输入，这里说的是输入框的单位，不是时长读数"
+      }
     },
     "mobKeys.mod.title": {
       "kind": "title",

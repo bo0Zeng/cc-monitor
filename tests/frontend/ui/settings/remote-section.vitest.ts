@@ -830,7 +830,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       backendOk: true,
       fingerprint: null,
       endpoint: null,
-      backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", ms: "12" }),
+      backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", dur: "12 ms" }),
       backendGaps: [{ code: "no_tmux", count: 3 }],
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);

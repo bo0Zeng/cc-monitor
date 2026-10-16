@@ -982,7 +982,7 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
             "rsFilewinFind.firstBuild.line",
             &[
                 ("machine", machine.as_str()),
-                ("secs", secs.to_string().as_str()),
+                ("dur", copy_core::format_duration(secs * 1000).as_str()),
             ],
         );
         assert!(

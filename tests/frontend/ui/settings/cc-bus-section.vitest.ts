@@ -246,9 +246,9 @@ describe("B03 脏数据如实呈现", () => {
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
     const metas = [...s.element.querySelectorAll(".cc-bus-meta")].map((e) => e.textContent ?? "");
-    // 「cc-spawn 派生」改说「派生」（spawn 是术语表禁档的英文实现词）⇒ 区分改成两向：一边有、一边没有。
-    expect(metas[0]).toContain(copyText("ccBus.spawn.go"));
-    expect(metas[1]).not.toContain(copyText("ccBus.spawn.go"));
+    // 新开的那一行带「已新开」，自行登记的不带 ⇒ 区分是两向：一边有、一边没有。
+    expect(metas[0]).toContain(copyText("ccBus.row.spawned"));
+    expect(metas[1]).not.toContain(copyText("ccBus.row.spawned"));
     expect(metas[0]).toContain("/home/user/proj");
     expect(metas[1]).toContain(copyText("ccBus.row.selfRegistered"));
   });

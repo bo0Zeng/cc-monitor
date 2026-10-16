@@ -89,7 +89,7 @@ describe("等它", () => {
     expect(capture).toHaveBeenCalledWith("devbox", "cc-s1");
     expect(toast.mock.calls[0][0]).toBe(copyText("launchArrival.missed.title"));
     expect(toast.mock.calls[0][1]).toBe(
-      copyText("launchArrival.missed.words", { secs: "45", machine: "devbox", name: "cc-s1", words: "$ claude --resume s1\nbash: claude: command not found\n$" }),
+      copyText("launchArrival.missed.words", { dur: "45s", machine: "devbox", name: "cc-s1", words: "$ claude --resume s1\nbash: claude: command not found\n$" }),
     );
   });
 
@@ -100,8 +100,8 @@ describe("等它", () => {
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     const bodies = toast.mock.calls.map((c) => String(c[1])).sort();
     expect(bodies).toEqual([
-      copyText("launchArrival.missed.noScreen", { secs: "45", machine: "devbox", name: "cc-x", why: "Error: 没有这个会话" }),
-      copyText("launchArrival.missed.inWindow", { secs: "45", machine: copyText("control.machine.local") }),
+      copyText("launchArrival.missed.noScreen", { dur: "45s", machine: "devbox", name: "cc-x", why: "Error: 没有这个会话" }),
+      copyText("launchArrival.missed.inWindow", { dur: "45s", machine: copyText("control.machine.local") }),
     ]);
   });
 });
@@ -164,7 +164,7 @@ describe("发起方在别的窗口 ⇒ 那一句也交回那扇窗", () => {
       {
         to: "settings",
         title: copyText("launchArrival.missed.title"),
-        body: copyText("launchArrival.missed.words", { secs: "45", machine: "devbox", name: "nope-cc", words: "ccm: 无法进入目录: /home/u/nope" }),
+        body: copyText("launchArrival.missed.words", { dur: "45s", machine: "devbox", name: "nope-cc", words: "ccm: 无法进入目录: /home/u/nope" }),
         level: "error",
       },
     ]);

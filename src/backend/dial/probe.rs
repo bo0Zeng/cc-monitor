@@ -387,13 +387,13 @@ where
         }
         match answered {
             Ok(()) => {
-                let ms = t0.elapsed().map(|d| d.as_millis()).unwrap_or(0).to_string();
+                let dur = t0.elapsed().map(copy_core::format_elapsed).unwrap_or_else(|_| copy_core::format_duration(0));
                 let line = if facts.gaps == 0 {
-                    copy_text("beProbe.hello.ok", &[("build", &build), ("ms", &ms)])
+                    copy_text("beProbe.hello.ok", &[("build", &build), ("dur", &dur)])
                 } else {
                     copy_text(
                         "beProbe.hello.okGaps",
-                        &[("build", &build), ("gaps", &gaps), ("ms", &ms)],
+                        &[("build", &build), ("gaps", &gaps), ("dur", &dur)],
                     )
                 };
                 (line, copy_text("beProbe.test.ok", &[]), None)

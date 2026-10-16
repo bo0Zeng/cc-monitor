@@ -1054,17 +1054,17 @@ export class MachineCard {
   async compareFingerprint(seen: string | null): Promise<void> {
     const pinned = this.fingerprintInput.value.trim();
     const ok = await confirmDialog({
-      title: copyText("machineCard.hostKey.compareTitle", { machine: this.displayName() }),
-      action: copyText("machineCard.hostKey.trust"),
-      cancel: copyText("machineCard.hostKey.dontConnect"),
+      title: copyText("hostKey.compare.title", { machine: this.displayName() }),
+      action: copyText("hostKey.compare.trust"),
+      cancel: copyText("hostKey.compare.dontConnect"),
       danger: true,
-      body: copyText("machineCard.hostKey.caution"),
+      body: copyText("hostKey.compare.caution"),
       rows: [
         {
-          label: copyText("machineCard.hostKey.pinned"),
-          items: pinned ? [pinned, ...(this.pinnedAt ? [copyText("machineCard.hostKey.pinnedAt", { date: this.pinnedAt })] : [])] : [copyText("machineCard.hostKey.none")],
+          label: copyText("hostKey.compare.pinned"),
+          items: pinned ? [pinned, ...(this.pinnedAt ? [copyText("hostKey.compare.pinnedAt", { date: this.pinnedAt })] : [])] : [copyText("hostKey.compare.none")],
         },
-        { label: copyText("machineCard.hostKey.seen"), items: [seen ?? copyText("machineCard.hostKey.none")] },
+        { label: copyText("hostKey.compare.seen"), items: [seen ?? copyText("hostKey.compare.none")] },
       ],
     });
     if (!ok || seen === null) return;

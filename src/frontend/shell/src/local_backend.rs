@@ -152,9 +152,8 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
             reason: copy_text(
                 "rsLocalBackend.decide.crashLoop",
                 &[
-                    ("windowMs", &limits.window_ms.to_string()),
+                    ("dur", &copy_core::format_duration(limits.window_ms)),
                     ("recent", &recent.to_string()),
-                    ("maxCrashes", &limits.max_crashes.to_string()),
                 ],
             ),
         };

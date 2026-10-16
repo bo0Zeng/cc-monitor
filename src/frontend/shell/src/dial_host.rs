@@ -93,8 +93,8 @@ pub(crate) async fn local_backend_accepting(cmd: &str) -> Result<Arc<InboundClie
     Err(copy_text(
         "rsDialHost.local.absent",
         &[(
-            "ms",
-            &(u64::from(LOCAL_WAIT_TRIES) * LOCAL_WAIT_INTERVAL_MS).to_string(),
+            "dur",
+            &copy_core::format_duration(u64::from(LOCAL_WAIT_TRIES) * LOCAL_WAIT_INTERVAL_MS),
         )],
     ))
 }

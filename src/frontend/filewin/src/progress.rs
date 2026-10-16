@@ -902,22 +902,18 @@ pub fn eta(got: u64, total: u64, elapsed: f64) -> Option<String> {
     }
     let left = (total - got) as f64 / (got as f64 / elapsed);
     let secs = left.ceil() as u64;
-    Some(if secs < 60 {
-        copy_text(
-            "rsFilewinProgress.eta.secs",
-            &[("n", &secs.max(1).to_string())],
-        )
+    // 向上取整到这一档的单位（秒 / 分 / 时），再交短时长出字。
+    let up = if secs < 60 {
+        secs.max(1)
     } else if secs < 3600 {
-        copy_text(
-            "rsFilewinProgress.eta.mins",
-            &[("n", &secs.div_ceil(60).to_string())],
-        )
+        secs.div_ceil(60) * 60
     } else {
-        copy_text(
-            "rsFilewinProgress.eta.hours",
-            &[("n", &secs.div_ceil(3600).to_string())],
-        )
-    })
+        secs.div_ceil(3600) * 3600
+    };
+    Some(copy_text(
+        "rsFilewinProgress.eta.about",
+        &[("dur", &copy_core::short_duration(up * 1000))],
+    ))
 }
 
 /// 画那张表（窗口底部一块）。回这一帧按了哪颗按钮。
