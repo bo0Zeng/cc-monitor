@@ -119,9 +119,27 @@ def hide_keyboard():
         time.sleep(0.5)
 
 
+# 本机的真名（登录名 · 主机名 · 家目录）：台架里的机器名 · 钥匙名都是假的，只有登录名躲不开（台架 sshd 不是 root 起的，
+# 只认跑它的那个账号）。截图里露出来的那几处当场涂掉，截出来的图能外传；涂过哪几张记在 [masked]。
+PRIVATE = sorted({x for x in (USER, os.uname().nodename, os.path.expanduser("~")) if len(x) > 1})
+masked = []
+
+
 def shot(name):
     p = os.path.join(OUT, f"{name}.png")
     open(p, "wb").write(ui.adb("exec-out", "screencap", "-p").stdout)
+    hits = [ui.bounds(n) for n in ui.nodes() if any(x in ui.label(n) for x in PRIVATE)]
+    if hits:
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError:
+            masked.append(f"{name}（没涂：缺 Pillow）")
+            return p
+        im = Image.open(p)
+        for b in hits:
+            ImageDraw.Draw(im).rectangle(b, fill="black")
+        im.save(p)
+        masked.append(name)
     return p
 
 
@@ -193,10 +211,9 @@ def drawer(item):
 
 
 def reset():
-    """红了之后回到已知的起点：网 · 屏上键盘放回来，App 停掉重开到带抽屉按钮那一屏（停在半截的抽屉 · 框 · 别的 App 都不留）。"""
+    """红了之后回到已知的起点：网放回来，App 停掉重开到带抽屉按钮那一屏（停在半截的抽屉 · 框 · 别的 App 都不留）。"""
     adb("shell", "cmd", "connectivity", "airplane-mode", "disable")
     adb("shell", "svc", "wifi", "enable")
-    restore_ime()
     adb("shell", "am", "force-stop", PKG)
     launch()
 
@@ -239,7 +256,10 @@ class Step:
         if not ok:
             # 红的那一刻屏上有什么（控件树 ＋ 前台是谁），分得清是没画出来还是画错了；再回到起点，后面那几步不跟着连红。
             focus = [ln.strip() for ln in adb("shell", "dumpsys", "window").splitlines() if "mCurrentFocus" in ln]
-            open(p[:-4] + ".xml", "w").write(adb("exec-out", "uiautomator", "dump", "/dev/tty") + "\n" + "\n".join(focus) + "\n")
+            tree = adb("exec-out", "uiautomator", "dump", "/dev/tty") + "\n" + "\n".join(focus) + "\n"
+            for x in PRIVATE:
+                tree = tree.replace(x, "<本机>")
+            open(p[:-4] + ".xml", "w").write(tree)
             try:
                 reset()
             except Step.Fail as e:
@@ -325,8 +345,6 @@ def type_key(key):
     """把整把私钥敲进「粘贴那段私钥」那一格，敲完读回框里的字逐字核：输入法偶尔把一行 base64 换成词（实测过），
     对不上就全选删掉重敲，最多三回。核的是框里真有的字，不是「最后一行在不在」。"""
     want = "\n".join(key)
-    # 先把屏上键盘停掉：没有输入法时 `input text` 的按键直接进框，联想 · 纠错插不进来（停不掉也照敲，读回照核）。
-    #   调用方先 [stop_ime]，点完「搬进来」再 [restore_ime]：中途放回来它会再弹出来，收它的那一下返回键可能把框一起关掉。
     _type_key(key, want)
 
 
@@ -334,7 +352,7 @@ _IME = ""
 
 
 def stop_ime():
-    """停掉屏上键盘（钥匙那一框用）：按键直接进框，也不再有键盘盖住框里的按钮。"""
+    """停掉屏上键盘（记下原来那一个）。"""
     global _IME
     _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
     if _IME and _IME != "null":
@@ -342,7 +360,7 @@ def stop_ime():
 
 
 def restore_ime():
-    """[type_key] 停掉的屏上键盘放回来。"""
+    """[stop_ime] 停掉的屏上键盘放回来。"""
     if _IME and _IME != "null":
         adb("shell", "ime", "enable", _IME)
         adb("shell", "ime", "set", _IME)
@@ -366,16 +384,35 @@ def _type_key(key, want):
     bad = next((f"第 {i + 1} 行 {g!r}" for i, (w, g) in enumerate(zip(want.split("\n"), got.split("\n"))) if w != g), "行数不一样")
     raise Step.Fail(f"钥匙敲不进框里（三回都与原文不一致：{bad[:160]}）")
 
-def fill(field, value):
-    """点 [field] 那一格、全选删掉、敲 [value]，读回屏上有它才算：忙时点下去那一格还没拿到焦点，敲的字会丢，没读回就再来一回。"""
-    for _ in range(2):
-        tap(field)
+def focused_text():
+    """此刻拿着焦点的那一格里的字（没有格拿着焦点 ⇒ None）。"""
+    n = next((n for n in ui.nodes() if n.get("focused") == "true" and "EditText" in (n.get("class") or "")), None)
+    return None if n is None else n.get("text") or ""
+
+
+def type_in(value, tries=3):
+    """往拿着焦点的那一格敲 [value]：先全选删掉，敲完读回那一格逐字核。忙时 `input text` 会丢字 · 多打字（实测「smoke」成「smo」、
+    「smokebox」成「smmokebox」），对不上就清空重敲，[tries] 回都不对照实红在这一步。"""
+    got = None
+    for _ in range(tries):
         adb("shell", "input", "keycombination", "113", "29")
         adb("shell", "input", "keyevent", "67")
         typed(value)
-        if wait(value, 10):
+        end = ui.within(5)
+        while (got := focused_text()) != value and time.time() < end:
+            time.sleep(0.5)
+        if got == value:
             return
-    raise Step.Fail(f"「{field}」那一格敲不进「{value}」")
+    raise Step.Fail(f"敲「{value}」读回是「{got}」（{tries} 回都对不上）")
+
+
+def fill(field, value):
+    """点 [field] 那一格、敲 [value]、读回核过（[type_in]）。"""
+    tap(field)
+    end = ui.within(5)
+    while focused_text() is None and time.time() < end:
+        time.sleep(0.5)
+    type_in(value)
 
 
 def add_host(name):
@@ -496,17 +533,15 @@ def files_page():
     shot("11-预览")
     tap(t("mobKit.act.close")); time.sleep(1)
     mk = t("rsFilewinWriteops.label.mkdir")
-    tap(mk); time.sleep(1)
-    typed(f"new{T}"); hide_keyboard()
+    tap(mk)
+    type_in(f"new{T}"); hide_keyboard()
     tap_last(mk)
     if not wait(f"new{T}", 15) or "new" + T not in sh(f"ls ~/work/{d}"):
         raise Step.Fail("新建目录没落到那台")
     long_press(f"new{T}")
     rn = t("rsFilewinWriteops.label.rename")
-    tap(rn); time.sleep(1)
-    for _ in range(12):
-        adb("shell", "input", "keyevent", "67")
-    typed(f"ren{T}"); hide_keyboard()
+    tap(rn)
+    type_in(f"ren{T}"); hide_keyboard()
     tap_last(rn)
     if not wait(f"ren{T}", 15) or "ren" + T not in sh(f"ls ~/work/{d}"):
         raise Step.Fail("改名没落到那台")
@@ -760,7 +795,12 @@ def deploy_steps():
 
 
 def main():
-    tidy_tmux(walk)
+    # 整趟停掉屏上键盘：`input text` 的按键直接进框，忙时输入法改字 · 吞字插不进来，键盘也不盖住按钮、不把敲过的词（登录名）列在联想条上截进图里。
+    stop_ime()
+    try:
+        tidy_tmux(walk)
+    finally:
+        restore_ime()
 
 
 def walk():
@@ -779,7 +819,7 @@ def walk():
             launch(fresh=True)
             tap(t("mobIdentity.page.title")); time.sleep(1)
             open_import()
-            tap(t("mobIdentity.import.name")); typed("smoke")
+            fill(t("mobIdentity.import.name"), "smoke")
             tap(t("mobIdentity.import.pem")); time.sleep(0.5)
             for line in key:
                 typed(line)
@@ -800,7 +840,7 @@ def walk():
             launch(fresh=True)
             tap(t("mobIdentity.page.title")); time.sleep(1)
             open_import()
-            tap(t("mobIdentity.import.name")); typed("smoke")
+            fill(t("mobIdentity.import.name"), "smoke")
             tap(t("mobIdentity.import.pem")); time.sleep(0.5)
             for line in key:
                 typed(line)
@@ -820,9 +860,8 @@ def walk():
         rig("land", "none")
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
-        stop_ime()
         open_import()
-        tap(t("mobIdentity.import.name")); typed("smoke")
+        fill(t("mobIdentity.import.name"), "smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
         tap(t("mobIdentity.import.ok")); time.sleep(2)
@@ -834,14 +873,13 @@ def walk():
         if fab_under_notice(t("mobIdentity.fab.aria"), t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
         open_import()
-        tap(t("mobIdentity.import.name")); typed("smoke")
+        fill(t("mobIdentity.import.name"), "smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         # `input text` 敲进去是异步的、输入法还可能改字：type_key 读回框里的字逐字核过才往下走。
         type_key(key)
         tap(t("mobIdentity.import.ok"))
         # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
         ok = wait("SHA256:", 40)
-        restore_ime()
         if not ok:
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
@@ -1327,11 +1365,7 @@ def report():
         if box is None:
             raise Step.Fail("找不到「权重容差」那一格的数")
         adb("shell", "input", "tap", *map(str, ui.center(box)))
-        time.sleep(0.5)
-        adb("shell", "input", "keyevent", "123")
-        for _ in range(4):
-            adb("shell", "input", "keyevent", "67")
-        typed("30")
+        type_in("30")
         adb("shell", "input", "keyevent", "66")
         if not wait(t("rot.top.save"), 15):
             raise Step.Fail("改了一格，底部没出没存条")
@@ -1360,6 +1394,8 @@ def report():
     print("|---|---|---|---|---|")
     for name, res, took, slack, p in results:
         print(f"| {name} | {res} | {took} | ×{slack} | {p} |")
+    if masked:
+        print(f"截图里露了本机真名、已涂掉：{'、'.join(masked)}")
     if ui.anrs:
         # 应用无响应照实记（时刻 · 框上的字 · 系统留的那份记录），关掉接着走过的步不算绿。
         open(os.path.join(OUT, "anr.txt"), "w").write(adb("shell", "dumpsys", "dropbox", "--print", "data_app_anr"))
