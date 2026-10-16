@@ -140,3 +140,132 @@ fn subscribing_and_the_ready_point_never_wait_for_the_inflight_level_lock() {
         "持着快照在途电平锁的时候，登记 / 就绪点卡住了（要的是 replay 锁 → 电平锁，与交电平那一向相反：两条线程会互等卡死）"
     );
 }
+
+/// 一个真 `InboundClient` 接一根内存双工管子、登记在只有本用例用的 origin 名下；对端（后端）由用例扮演。
+fn peer_for(
+    origin: &str,
+) -> (
+    Arc<crate::inbound_client::InboundClient>,
+    tokio::io::BufReader<tokio::io::DuplexStream>,
+) {
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let hello = crate::inbound_client::witness_of(&crate::guard_support::our_hello(&[
+        "history-tail",
+        "history-read",
+    ]))
+    .expect("是 Hello 帧");
+    let client = crate::inbound_client::park(mine).into_client(hello);
+    crate::inbound_client::register(origin, client.clone());
+    (client, tokio::io::BufReader::new(theirs))
+}
+
+/// 对端收到的下一行请求；`within` 内没有 ⇒ `None`。
+async fn next_ask(
+    peer: &mut tokio::io::BufReader<tokio::io::DuplexStream>,
+    within: std::time::Duration,
+) -> Option<serde_json::Value> {
+    use tokio::io::AsyncBufReadExt;
+    let mut line = String::new();
+    match tokio::time::timeout(within, peer.read_line(&mut line)).await {
+        Ok(Ok(n)) if n > 0 => Some(serde_json::from_str(line.trim_end()).expect("请求行是 JSON")),
+        _ => None,
+    }
+}
+
+/// 后端回的那一份 `history-tail`：尾段两行、一页读完。
+fn tail_reply(how: &str, from: u64) -> serde_json::Value {
+    serde_json::json!({
+        "total": from + 2, "tail_from": from, "split_at": 100, "end": 120,
+        "how": how, "from": from,
+        "rows": [{"end": 110, "hash": 1}, {"end": 120, "hash": 2}],
+        "next": 120, "eof": true,
+        "held": {"path": "/p/s.jsonl", "next": from + 2, "next_byte": 120, "mark": "100-120-0"},
+    })
+}
+
+/// 跑一次快照、扮演后端：第一问照 `reply` 答、之后再有一问就记下来（不答）。回（第一问、多出来的那一问、结果）。
+async fn one_snapshot(
+    origin: &str,
+    sid: &str,
+    reply: serde_json::Value,
+) -> (
+    serde_json::Value,
+    Option<serde_json::Value>,
+    Result<u64, String>,
+) {
+    let (client, mut peer) = peer_for(origin);
+    let q = SnapshotQueue::new();
+    let replay = Arc::new(EventReplay::new());
+    let item = SnapshotItem {
+        sid: sid.to_string(),
+        path: "/p/s.jsonl".to_string(),
+        expected_lines: None,
+    };
+    let host = origin.to_string();
+    let run = tokio::spawn(async move {
+        fetch_snapshot(&q, &item, &host, &replay)
+            .await
+            .map(|o| match o {
+                FetchOutcome::Done(n) => n,
+                FetchOutcome::Cancelled => u64::MAX,
+            })
+    });
+    let first = next_ask(&mut peer, std::time::Duration::from_secs(5))
+        .await
+        .expect("一问都没发");
+    client.route_reply(
+        first["id"].as_str().expect("id"),
+        true,
+        None,
+        None,
+        None,
+        Some(reply),
+    );
+    let extra = next_ask(&mut peer, std::time::Duration::from_millis(300)).await;
+    if extra.is_some() {
+        run.abort();
+        crate::inbound_client::unregister(origin, &client);
+        return (first, extra, Err("多问了一趟".into()));
+    }
+    let out = run.await.expect("快照那一趟崩了");
+    crate::inbound_client::unregister(origin, &client);
+    (first, extra, out)
+}
+
+/// ★ 冷连上（手上没有续点）一个会话只发 **1** 条命令：`history-tail` 连第一页正文一起回。
+#[tokio::test]
+async fn a_cold_snapshot_asks_once() {
+    let (first, extra, out) = one_snapshot("frame3-cold", "s-cold", tail_reply("tail", 7)).await;
+    assert_eq!(first["cmd"], "history-tail");
+    assert_eq!(extra.map(|e| e["cmd"].clone()), None, "冷连上多问了一趟");
+    assert_eq!(out, Ok(2));
+}
+
+/// ★ 断线重连、手上有那台上一次给的那一份 ⇒ 原样交回去，一个会话只发 **1** 条命令（不另问图、不另读一行核对）；
+/// 做完存后端新给的那一份。
+#[tokio::test]
+async fn a_resumed_snapshot_hands_back_what_it_holds_and_asks_once() {
+    let origin = crate::origin::Origin("frame3-resume".into());
+    let held = cmd_wire::session::Held {
+        path: "/p/s.jsonl".into(),
+        next: 7,
+        next_byte: 100,
+        mark: "40-100-0".into(),
+    };
+    crate::snapshot_resume::note_done(&origin, "s-resume", held.clone());
+    let (first, extra, out) =
+        one_snapshot(origin.as_wire_str(), "s-resume", tail_reply("resume", 7)).await;
+    assert_eq!(first["cmd"], "history-tail");
+    assert_eq!(
+        first["args"]["held"],
+        serde_json::to_value(&held).unwrap(),
+        "手上那一份没原样交回"
+    );
+    assert_eq!(extra.map(|e| e["cmd"].clone()), None, "续传多问了一趟");
+    assert_eq!(out, Ok(2));
+    assert_eq!(
+        crate::snapshot_resume::cursor_of(&origin, "s-resume").map(|h| (h.next, h.next_byte)),
+        Some((9, 120))
+    );
+    crate::snapshot_resume::forget(&origin, "s-resume");
+}

@@ -18,8 +18,8 @@ use crate::rotation::{
     RotationTryReply, RotationViewReply,
 };
 use crate::session::{
-    Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands,
-    SessionNew, TailPlan, TerminalsList,
+    HistoryTail, Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent,
+    SessionCommands, SessionNew, TerminalsList,
 };
 use serde::Serialize;
 
@@ -75,7 +75,7 @@ replies! {
     "history-lines" => HistoryLines<OrUnread>,
     "history-list" => HistoryListReply,
     "history-read" => HistoryRead<OrUnread>,
-    "history-tail" => TailPlan,
+    "history-tail" => HistoryTail<OrUnread>,
     "kill" => Killed,
     "launch-render-cli" => Rendered,
     "needs-answer" => Answered,
@@ -159,7 +159,9 @@ mod tests {
     /// 缺一格 ⇒ 解不开；多出来的格不拦（回包不 deny_unknown_fields：新版多一格不算对不上，形状指纹另管）。
     #[test]
     fn a_missing_cell_is_refused_and_the_rewrite_is_the_same_bytes() {
-        let tail = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30, "file": "0123456789abcdef"});
+        let tail = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30, "how": "resume", "from": 2,
+            "rows": [{"end": 30, "hash": 7}], "next": 30, "eof": true,
+            "held": {"path": "/p", "next": 3, "next_byte": 30, "mark": "m"}});
         assert_eq!(decode_reply("history-tail", tail.clone()), Some(Ok(tail)));
         let short = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10, "end": 30});
         assert!(matches!(decode_reply("history-tail", short), Some(Err(_))));
