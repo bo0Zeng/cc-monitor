@@ -1,4 +1,4 @@
-//! 每台机器的状态成品：`{state, reason, stage, version, versionRelation, os, fixes}`。
+//! 每台机器的状态成品：`{state, reason, stage, version, versionRelation, os, fixes, seenHostKey, detail, next}`。
 //!
 //! 界面按码取那一句与修法，自己不判（「那台断开 / 要更新 / 版本较新 / 停用了」只在这里定）。
 //! 写点：远端那条流的每一轮（`stream_source::run`：起拨 · 握手成了 · 这一轮没成）、拨号那一处
@@ -83,6 +83,8 @@ pub struct MachineState {
     /// 这一轮没连上 / 做不了时的复制详情（`down` · `host_key_changed` · `unsupported` 才可能有）：时刻 · 机器 · 本机 · 命令 ·
     /// 断在（哪一步没成的那一句）· 码 · 原话。界面照原样跟在问题行那句后面（［复制详情］），自己不拼。说不出 ⇒ 空。
     pub detail: Option<String>,
+    /// 下一步那一句（壳写好的；只有本机起后端被拒时有）。界面照原样画在问题行下面。
+    pub next: Option<String>,
 }
 
 /// 「做不了」的原因码。
@@ -341,6 +343,7 @@ pub(crate) fn product(origin: &str, enabled: bool) -> MachineState {
             None
         },
         detail: if enabled { e.detail } else { None },
+        next: None,
     }
 }
 
@@ -354,9 +357,18 @@ pub(crate) fn note_local_foreign(build: Option<&str>) {
     notify(crate::inbound_client::LOCAL_ORIGIN);
 }
 
+/// 起本机后端被拒（口上有东西、接不上）时那一句下一步；每次起之前清掉（`local_backend_host::start_local_backend`）。
+static LOCAL_REFUSED: Mutex<Option<String>> = Mutex::new(None);
+
+/// 记下（或清掉）起本机后端被拒的那一句下一步。
+pub(crate) fn note_local_refused(next: Option<&str>) {
+    *LOCAL_REFUSED.lock().unwrap_or_else(|e| e.into_inner()) = next.map(str::to_string);
+    notify(crate::inbound_client::LOCAL_ORIGIN);
+}
+
 /// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，`local_backend_host::hello_verdict`；没带后端字节 ⇒ 开发构建、不可比）；
 /// 通道在 ⇒ 连着；不在而口上占着别的构建（终端里先起的那一份）⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 不可比、照没连上说）；
-/// 别的不在 ⇒ 没连上。本机没连上一律原因码 `local`，修法只给［重试］。
+/// 别的不在 ⇒ 没连上。本机没连上一律原因码 `local`，修法只给［重试］；起的时候被拒 ⇒ 带上那一句下一步。
 pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
     let foreign = LOCAL_FOREIGN
         .lock()
@@ -394,6 +406,14 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         os: None,
         seen_host_key: None,
         detail: None,
+        next: if channel {
+            None
+        } else {
+            LOCAL_REFUSED
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        },
     }
 }
 
