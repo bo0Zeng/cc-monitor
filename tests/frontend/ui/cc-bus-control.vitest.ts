@@ -283,7 +283,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
 });
 
 describe("〔C4e〕失败怎么说", () => {
-  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）；拒绝体读不出 ⇒ 仍说出一句", async () => {
+  it("★★ 拒绝码（取自金样）：那台写好的那一句原样上屏、复制详情带码（逐码一句由后端判：`said_tests.rs`）", async () => {
     const drives: [string, GoldenOp, () => Promise<unknown>][] = [
       ["bus-list", LIST, () => agentOnline("devbox", "alpha_cc")],
       ["bus-send", SEND, () => sendMessage("devbox", "alpha_cc", "hi")],
@@ -299,20 +299,15 @@ describe("〔C4e〕失败怎么说", () => {
         answer({ fail: refusedReply(code, `S-${code}`) });
         expect(await detailOf(act), `${op}：复制详情里没有码`).toContain(code);
       }
-      answer({ fail: { err: "Refused", body: [0xff] } });
-      expect(await saidOf(act), `${op}：拒绝体读不出来时没说出一句`).not.toBe("");
     }
   });
 
 
-  it("★ 本机照样经通道问；通道不在时本机与远端两句话不同，远端那句点得出是哪台", async () => {
+  it("★ 本机照样经通道问；通道不在时原样取 monitor 写的那一句（本机远端怎么称呼由它说）", async () => {
     answer({ ok: KILL.reply });
     await killAgent(LOCAL_ORIGIN, "alpha_cc");
     expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "bus-kill", KILL.request]]);
-    answer({ fail: NO_CHANNEL });
-    const local = await saidOf(() => sendMessage(LOCAL_ORIGIN, "alpha_cc", "hi"));
-    const remote = await saidOf(() => sendMessage("kr-remote-label", "alpha_cc", "hi"));
-    expect(local).not.toBe(remote);
-    expect(remote).toContain("kr-remote-label");
+    answer({ fail: { ...NO_CHANNEL, said: "M-kr-remote-label" } });
+    expect(await saidOf(() => sendMessage("kr-remote-label", "alpha_cc", "hi"))).toBe("M-kr-remote-label");
   });
 });

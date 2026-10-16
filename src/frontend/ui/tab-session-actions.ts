@@ -14,7 +14,8 @@ import { frontByLocalLabel, planRemoteFront } from "./remote-terminal-front";
 import type { FrontResult } from "./front-result";
 import type { FrontOutcome } from "./generated/FrontOutcome";
 import { commands } from "./ipc/commands";
-import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
+import { probeSessionRecord, type RecordProbe } from "./session-reads";
+import { saidOf } from "./kit/detail";
 import { openFileWindow } from "./file-window";
 import {
   readRemoteConfig,
@@ -89,7 +90,7 @@ export class TabSessionActions {
       // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦 —— 但说出来。
       toast(
         copyText("tabSessionActions.recordUnknown.title"),
-        reasonOf(e, tab.origin),
+        saidOf(e),
       );
       return true;
     }

@@ -64,11 +64,6 @@ src/frontend/ui/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) �
 src/frontend/ui/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
 src/frontend/ui/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
-src/comms/inward/chan.ts:66	通道：{…}	保留	[不对外] `ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
-src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] `describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
-src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 同上（`peer/unsupported` 那一档的日志句）
-src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 同上（`peer/refused` 那一档的日志句）
-src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 同上（`ours` 那一档的日志句）
 src/frontend/ui/settings/remote-section.ts:163	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一页的路由键（头注：刻意取一个用户填不出的名字防撞车），显示时换成「本机」
 src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
 src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约

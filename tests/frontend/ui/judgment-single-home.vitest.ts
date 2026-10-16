@@ -455,11 +455,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J22: {
     what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
-    // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
-    // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
+    // 版本旧那一句只有 Rust 写（monitor 交在 `ChanError.message`）；回的认不出是界面自己知道的事，两侧各一个取句口，
+    // 取的是表里同一条键（`peerVersion.said.unreadable`）与同一个本机称呼（`control.machine.local`）。
     homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
-    defs: ["peerVersionSaid"],
+    defs: ["unreadableSaid"],
+    gone: ["peerVersionSaid"],
     needles: [],
     parity: {
       via: "src/shared/copy/table.json",
@@ -650,13 +651,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J37: {
     what: "那台握手时说做不到的一个码 ⇒ 说成哪一句（置灰 · 测试连接那一格的「做不到的那几类」）",
-    // 置灰那一句已由壳按码写好、随能力事实交来（`chan/webview.rs::offer_view`）；测试连接那一格还拿后端交的码在界面现说。
+    // 置灰那一句由壳随能力事实交来，测试连接那几类由后端答复带来 ⇒ 界面那一份删了。
     homes: ["copy-core::unavailable"],
-    status: "open",
+    status: "zero",
     defs: ["unavailableReason"],
     needles: [],
-    owner: "界面不写句那一步：测试连接那一格（`settings/machine-card.ts`）改读后端写好的那一句，`unavailableReason` 随之删",
-    why: "测试连接的答复今天只带码与项数，没带那一句",
   },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",

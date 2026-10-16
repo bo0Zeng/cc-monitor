@@ -21,7 +21,6 @@ import {
   NO_CHANNEL,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
-import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 

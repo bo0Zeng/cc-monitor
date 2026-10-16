@@ -62,8 +62,10 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const refused = (e: unknown) => {
             const code = e instanceof Error && "kind" in e ? String((e as { kind: unknown }).kind) : "bad_machine";
             const said: Record<string, string> = { element_gone: copyText("rsConfig.write.elementGone"), element_exists: copyText("rsConfig.write.elementExists") };
-            const body = new TextEncoder().encode(JSON.stringify({ code, message: said[code] ?? (e instanceof Error ? e.message : String(e)) }));
-            return Promise.reject({ err: "Refused", body: [...body] });
+            const message = said[code] ?? (e instanceof Error ? e.message : String(e));
+            const body = new TextEncoder().encode(JSON.stringify({ code, message }));
+            // monitor 照对端那一句原样交（`said`）。
+            return Promise.reject({ err: "Refused", body: [...body], said: message, detail: "" });
           };
           return fakeMachinesCall(op, req).then((r) => {
             const u = new TextEncoder().encode(JSON.stringify(r));
@@ -824,14 +826,15 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 认形状 ＋ 机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
   it("★〔FIX5 续〕测试连接那一格是人话：不含「=」「[」；这台做不到的那几类在一个点开看的格里", async () => {
     localStorage.clear();
-    const noTmux = copyText("machineCard.test.gapRow", { reason: copyText("control.unavailable.noTmux", { machine: "a" }), n: "3" });
+    // 每类那一句后端写好（`probe.rs` 取置灰那一句同一个家），界面原样放进那一行。
+    const noTmux = copyText("machineCard.test.gapRow", { reason: "后端·a 无 tmux", n: "3" });
     ipcReplies.set("remote-probe", {
       sshOk: true,
       backendOk: true,
       fingerprint: null,
       endpoint: null,
       backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", ms: "12" }),
-      backendGaps: [{ code: "no_tmux", count: 3 }],
+      backendGaps: [{ code: "no_tmux", count: 3, said: "后端·a 无 tmux" }],
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();

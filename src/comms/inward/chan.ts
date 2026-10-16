@@ -84,18 +84,6 @@ export class ChanError extends Error {
   }
 }
 
-/** 给日志 / 开发者看的一句（不是界面文案：给人看的那一句是 monitor 写的 `message`）。 */
-export function describeCallError(e: CallError): string {
-  switch (e.layer) {
-    case "hop":
-      return `第 ${e.at.idx} 跳卡在 ${e.at.tag}：${e.why}（发出去了没有：${e.reach}）`;
-    case "peer":
-      return e.why === "unsupported" ? "对端不认这个操作" : "对端答「不行」";
-    case "ours":
-      return `本侧：${e.why}`;
-  }
-}
-
 const HOP_TAGS: readonly string[] = ["open", "auth", "write", "read", "wait"];
 const REACHES: readonly string[] = ["NotSent", "Sent", "Unknown"];
 const HOP_FAULTS: readonly string[] = ["Unreachable", "Dropped", "Overrun"];

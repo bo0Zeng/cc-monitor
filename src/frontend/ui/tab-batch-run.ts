@@ -7,14 +7,15 @@
  * 按形状收 · 把每一个的结局说成一句人话 · 开终端那一形逐个开窗。
  */
 import { budgetWithin, callTyped } from "./ipc/chan-caller";
-import { machineName, saidOfControl, settleTyped, unavailableSaid, type Refusals } from "./control-said";
+import { settleTyped, unavailableSaid } from "./control-said";
+import { batchRefused } from "./sessions-where";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import type { Tab } from "./tab-model";
 import type { AccountAsk } from "./launch-account";
 import type { Outcome } from "./generated/Outcome";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
-import { failSaid } from "./kit/detail";
+import { failSaid, saidOf } from "./kit/detail";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
 export interface BatchOutcome {
@@ -30,16 +31,8 @@ export type Reply = Outcome;
 
 /** 一台的整体失败（通道不在 · 后端太旧 · 拒了整批）⇒ 那一台的每一个都记成失败、带同一句。 */
 function machineFailed(sids: readonly string[], e: unknown): BatchOutcome[] {
-  const why = saidOfControl(e);
+  const why = saidOf(e);
   return sids.map((sid) => ({ sid, outcome: "failed", why }));
-}
-
-/** 整批被那台拒了（命令级的码）怎么说。 */
-function batchRefusals(origin: Origin): Refusals {
-  return {
-    byCode: (_code, said) => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said }),
-    noReason: () => copyText("tabBatch.why.batchRefused", { machine: machineName(origin), said: copyText("reason.io.unknown") }),
-  };
 }
 
 /** 起那一项跳过 / 失败的原因码 ⇒ 人话（停的那一句那台写好，在 `said`）。机器由提示里那一行的标题说。 */
@@ -91,7 +84,7 @@ const BATCH_EACH_MS = 6_000;
 /** 停：问那台一次（`sids` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。 */
 export async function callStop(origin: Origin, sids: readonly string[]): Promise<Reply[]> {
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefusals(origin));
+  const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefused(origin));
   return v.results;
 }
 
@@ -104,7 +97,7 @@ export async function callStart(origin: Origin, mode: "tmux" | "window", items: 
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
   // 启动命令 · 模型偏好表那台自己读（`prefs.json`），整批只交哪一家。
   const req = { mode, local: isLocalOrigin(origin), agent, items: [...items] };
-  const v = await settleTyped(origin, "sessions-start", callTyped(origin, "sessions-start", req, budget), batchRefusals(origin));
+  const v = await settleTyped(origin, "sessions-start", callTyped(origin, "sessions-start", req, budget), batchRefused(origin));
   return v.results;
 }
 

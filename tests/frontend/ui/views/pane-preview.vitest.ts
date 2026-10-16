@@ -18,17 +18,14 @@
 // 用一个手动 resolve 的 deferred 把「回包」按在半空，就能确定地造出那个时序。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const capture = vi.fn<(args: { origin: string; target: string; which: unknown }) => Promise<string>>();
+const capture = vi.fn<(args: { origin: string; which: unknown }) => Promise<string>>();
 const toast = vi.fn();
 
 // 抓屏经通道问那台后端（`src/frontend/ui/terminal-reads.ts::previewShot`）：
 //   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/frontend/ui/terminal-reads.vitest.ts`）。
 vi.mock("../../../../src/frontend/ui/terminal-reads", () => ({
-  previewShot: (origin: string, which: unknown, target: string) =>
-    capture({ origin, target, which }).then((text) => ({ lines: text === "" ? [] : text.split("\n").map((t) => ({ text: t, spans: [] })), text, screen: "", atText: "" })),
-}));
-vi.mock("../../../../src/frontend/ui/control-said", () => ({
-  saidOfControl: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  previewShot: (origin: string, which: unknown) =>
+    capture({ origin, which }).then((text) => ({ lines: text === "" ? [] : text.split("\n").map((t) => ({ text: t, spans: [] })), text, screen: "", atText: "" })),
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({
   toast: (...a: unknown[]) => toast(...a),
@@ -74,8 +71,8 @@ describe("远端画面预览：正路", () => {
     (overlayEl()?.querySelector("button.pane-preview-btn") as HTMLButtonElement | null)?.click(); // 头一个是「刷新」
     await Promise.resolve();
     expect(capture.mock.calls.map(([a]) => a)).toEqual([
-      { origin: "devbox", target: "two-cc", which: { terminal: "tmux-2-5" } },
-      { origin: "devbox", target: "two-cc", which: { terminal: "tmux-2-5" } },
+      { origin: "devbox", which: { terminal: "tmux-2-5" } },
+      { origin: "devbox", which: { terminal: "tmux-2-5" } },
     ]);
   });
 

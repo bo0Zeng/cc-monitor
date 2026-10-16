@@ -36,7 +36,6 @@ import {
   UNSUPPORTED,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
-import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;

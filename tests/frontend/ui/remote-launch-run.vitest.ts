@@ -40,7 +40,7 @@ import {
 } from "../../../src/frontend/ui/remote-launch-run";
 import { NoTerminalWindow } from "../../../src/frontend/ui/terminal-open";
 import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire";
-import { ControlError } from "../../../src/frontend/ui/control-said";
+import { ChanError } from "../../../src/comms/inward/chan";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
@@ -79,15 +79,8 @@ beforeEach(() => {
 
 describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选择", () => {
   it("★ 跟随 ⇒ 那台回 account_unavailable ⇒ 零次开窗 ＋ 一条可点提示；点了 ⇒ 点名替代号再问一次、开窗", async () => {
-    const refusal = Object.assign(
-      new ControlError(
-        "号选不了",
-        "launch-render-cli refused: account_unavailable",
-      ),
-      {},
-    );
-    Object.defineProperty(refusal, "error", {
-      value: {
+    const refusal = new ChanError(
+      {
         layer: "peer",
         why: "refused",
         body: new TextEncoder().encode(
@@ -103,7 +96,9 @@ describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选
           }),
         ),
       },
-    });
+      "号选不了",
+      "launch-render-cli refused: account_unavailable",
+    );
     render.renderCli.mockImplementation(
       async (_o: string, req: CliRenderRequest) => {
         if (req.account.kind === "follow") throw refusal;

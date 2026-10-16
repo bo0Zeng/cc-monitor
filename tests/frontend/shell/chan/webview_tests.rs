@@ -7,6 +7,8 @@
 //! | 句柄的错误原样过线（不在这一跳改层） | [`backend_errors_pass_through_unchanged`] |
 //! | 交回 webview 的失败形状 == 金标准（TS 那侧解的是同一份文件） | [`the_fail_shape_equals_the_golden_file_the_ts_side_decodes`] |
 //! | 交回 webview 的失败带通道那一句（`chan::said`） | [`the_fail_carries_the_channel_sentence`] |
+//! | 期限已过 ⇒ 不碰句柄，答 `Hop{0 write, NotSent, Overrun}` | [`an_expired_budget_never_reaches_the_backend`] |
+//! | 能力事实里每个做不到的操作都带置灰那一句（称呼那台） | [`every_unavailable_op_carries_its_sentence`] |
 //! | 「能不能回落」的收拢 == 金标准（TS 那侧 `provablyNotSent` 判的是同一份文件） | [`the_fallback_rule_equals_the_golden_file_the_ts_side_judges`] |
 //!
 //! 买不到：真 Tauri IPC 那一跳（`#[tauri::command]` 的实参反序列化、`Response` 的字节交付）——
@@ -17,7 +19,7 @@ use super::super::wire::{
     Body, CallError, CancelToken, Cursor, HopFault, HopId, Item, Kind, Op, Origin, OursFault,
     PeerFault, Reach,
 };
-use super::{call_via, fail, Fail};
+use super::{call_via, fail, offer_view, Fail};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use std::sync::Mutex;
@@ -492,6 +494,41 @@ fn the_fail_carries_the_channel_sentence() {
             let got = serde_json::to_value(fail(&origin, "op", e.clone())).expect("可序列化");
             assert!(!want.trim().is_empty(), "{e:?}");
             assert_eq!(got["said"], want, "{e:?} @ {}", origin.0);
+        }
+    }
+}
+
+#[test]
+fn every_unavailable_op_carries_its_sentence() {
+    let codes = ["no_tmux", "no_unix_mode", "odd_new_code"];
+    let offer = super::super::wire::Offer::new(
+        ["a", "b", "c", "free"].map(String::from).to_vec(),
+        ["a", "b", "c"]
+            .iter()
+            .zip(codes)
+            .map(|(op, c)| (op.to_string(), c.to_string()))
+            .collect(),
+    );
+    for (origin, name) in [
+        (Origin("devbox".into()), "devbox".to_string()),
+        (
+            Origin::local(),
+            copy_core::copy_text("control.machine.local", &[]),
+        ),
+    ] {
+        let v = offer_view(&offer, &origin);
+        let got: Vec<(&str, &str)> = v
+            .unavailable
+            .iter()
+            .map(|(op, c, _)| (op.as_str(), c.as_str()))
+            .collect();
+        assert_eq!(got, [("a", codes[0]), ("b", codes[1]), ("c", codes[2])]);
+        for (op, code, said) in &v.unavailable {
+            assert!(
+                !said.trim().is_empty() && said.contains(&name) && !said.contains(code.as_str()),
+                "{op} {code} @ {}：{said}",
+                origin.0
+            );
         }
     }
 }

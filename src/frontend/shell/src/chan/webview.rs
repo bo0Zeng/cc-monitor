@@ -6,7 +6,7 @@
 //! 第 0 跳：webview ↔ monitor                                      第 1 跳：monitor ↔ 后端
 //! ```
 //!
-//! 跳号与回环那条同一张读法表（`wire::HopId` 头注）。第 0 跳的期限在 TS 那一侧执行（过期就一个字节都不发）；第 1 跳的上界由 [`super::router::settle`] 执行（与回环那条同一份）。
+//! 跳号与回环那条同一张读法表（`wire::HopId` 头注）。第 0 跳的期限 TS 那一侧换成还剩多少（过期交 0），本文件见 0 就不交句柄、一个字节都不发；第 1 跳的上界由 [`super::router::settle`] 执行（与回环那条同一份）。
 //! 不是通信层成员（与 `host.rs` 同一条理由）：它碰 Tauri、按生产注入句柄（[`super::host::InboundBackends`]）、给「空白名」那一档当场拒；成员那一半是 TS 的 `src/comms/inward/chan.ts`。
 //!
 //! 载荷原样：请求体在 IPC 上是一个字节数组，应答走 `tauri::ipc::Response`（原样字节，TS 拿 `ArrayBuffer`）—— 两个方向都不把载荷当 JSON 读。
@@ -29,7 +29,8 @@
 use super::host::InboundBackends;
 use super::router::{self, Backends};
 use super::wire::{
-    err_to_wire, Body, By, CallError, CancelToken, Cursor, HopFault, Item, Op, OursFault, WireErr,
+    err_to_wire, Body, By, CallError, CancelToken, Cursor, HopFault, HopId, Item, Op, OursFault,
+    Reach, WireErr,
 };
 use serde::Serialize;
 use std::time::Duration;
@@ -62,6 +63,7 @@ pub(crate) fn fail(origin: &crate::origin::Origin, op: &str, e: CallError) -> Fa
 }
 
 /// 经给定句柄走一次 `call`（第 1 跳）。判据用它喂合成句柄；生产由 [`chan_call`] 喂 [`InboundBackends`]。
+/// 期限已过（`left` 为 0）⇒ 不碰句柄，答第 0 跳没发出去就超时。
 pub(crate) async fn call_via(
     backends: &dyn Backends,
     origin: super::wire::Origin,
@@ -70,12 +72,22 @@ pub(crate) async fn call_via(
     view: Option<serde_json::Value>,
     left: Duration,
 ) -> Result<Body, CallError> {
+    if left.is_zero() {
+        return Err(CallError::Hop {
+            at: HopId {
+                idx: 0,
+                tag: "write",
+            },
+            reach: Reach::NotSent,
+            why: HopFault::Overrun,
+        });
+    }
     let cancel = CancelToken::new();
     let fut = backends.call(origin, Op(op), Body(payload), view, left, cancel.clone());
     router::settle(fut, left, cancel).await
 }
 
-/// 主界面说 `call` 的那一条命令。`left_ms` = 这一跳还剩多少（TS 那侧由绝对时刻换算，过期的根本不发）。
+/// 主界面说 `call` 的那一条命令。`left_ms` = 这一跳还剩多少（TS 那侧由绝对时刻换算，过期交 0）。
 /// `view` = 出口的声明（`chan.ts::call` 的那一格），原样交给句柄、进后端的请求信封；不进载荷。
 ///
 /// 空白名当场按「用法错」拒（`Origin::route` 那道闸，同全仓吃 `Origin` 的命令）：

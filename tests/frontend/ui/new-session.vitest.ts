@@ -22,13 +22,13 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => {
         sent.push({ op, body: JSON.parse(new TextDecoder().decode(body)) });
         if (hang > 0 && op === "session-new") {
           hang--;
-          throw new real.ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "码：Overrun");
+          throw new real.ChanError({ layer: "hop", at: { idx: 0, tag: "wait" }, reach: "Sent", why: "Overrun" }, "壳·无应答", "码：Overrun");
         }
         if (stall && op === "session-new") await new Promise(() => {});
         if (refusal && refusal.op === op) {
           const r = refusal;
           refusal = null;
-          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, message: r.message, data: r.data })) }, r.detail ?? "");
+          throw new real.ChanError({ layer: "peer", why: "refused", body: new TextEncoder().encode(JSON.stringify({ code: r.code, message: r.message, data: r.data })) }, r.message, r.detail ?? "");
         }
         if (boom && op === "session-new") throw boom;
         return new TextEncoder().encode(JSON.stringify(replies.get(op)));

@@ -263,17 +263,30 @@ fn every_stop_item_not_done_carries_its_sentence() {
     let said_of = |rig: Rig, sid: &str| -> (String, Value) {
         let out = rig.run(|d| stop(&json!({ "sids": [sid] }), d)).unwrap();
         let r = &out["results"][0];
-        (r["why"].as_str().unwrap_or_default().to_string(), r["said"].clone())
+        (
+            r["why"].as_str().unwrap_or_default().to_string(),
+            r["said"].clone(),
+        )
     };
     let mut cases = vec![
         said_of(Rig::new(None), A),
         said_of(Rig::new(Some(vec![])), A),
         said_of(
-            Rig::new(Some(vec![row("c-cc", Some(C), true), row("c-cc-2", Some(C), true)])),
+            Rig::new(Some(vec![
+                row("c-cc", Some(C), true),
+                row("c-cc-2", Some(C), true),
+            ])),
             C,
         ),
     ];
-    for code in ["too_many_windows", "wrong_owner", "child_timed_out", "kill_failed", "no_such_session", "odd_new_code"] {
+    for code in [
+        "too_many_windows",
+        "wrong_owner",
+        "child_timed_out",
+        "kill_failed",
+        "no_such_session",
+        "odd_new_code",
+    ] {
         let mut rig = Rig::new(Some(vec![row("a-cc", Some(A), true)]));
         rig.kill_err = Some(code);
         cases.push(said_of(rig, A));
@@ -281,11 +294,26 @@ fn every_stop_item_not_done_carries_its_sentence() {
     let codes: Vec<&str> = cases.iter().map(|(c, _)| c.as_str()).collect();
     assert_eq!(
         codes,
-        ["no_tmux", "not_in_tmux", "ambiguous", "too_many_windows", "wrong_owner", "child_timed_out", "kill_failed", "no_such_session", "odd_new_code"]
+        [
+            "no_tmux",
+            "not_in_tmux",
+            "ambiguous",
+            "too_many_windows",
+            "wrong_owner",
+            "child_timed_out",
+            "kill_failed",
+            "no_such_session",
+            "odd_new_code"
+        ]
     );
     for (code, said) in &cases {
-        let said = said.as_str().unwrap_or_else(|| panic!("{code}：没有那一句"));
-        assert!(!said.is_empty() && !said.contains(code.as_str()), "{code}：{said}");
+        let said = said
+            .as_str()
+            .unwrap_or_else(|| panic!("{code}：没有那一句"));
+        assert!(
+            !said.is_empty() && !said.contains(code.as_str()),
+            "{code}：{said}"
+        );
     }
     assert!(cases[2].1.as_str().unwrap().contains("c-cc, c-cc-2"));
     let done = Rig::new(Some(vec![row("a-cc", Some(A), true)]));

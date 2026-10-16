@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 177,
+  "ceiling": 173,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -71,13 +71,6 @@
       "why": "界面自己出的事（状态栏提示）的钟面：那件事生在这一台、不经后端，看的人就在这一台 ⇒ 按这一台的钟本来就对；写法与核心 `common/time.rs::hm` 同一套、对同一份金样 `clock-face.golden.json`。界面里只此一处换算时刻"
     },
     {
-      "file": "src/frontend/ui/control-said.ts",
-      "rule": "caseWord",
-      "n": 2,
-      "kind": "第 1 批",
-      "why": "这台不可用的原因码（no_tmux · no_unix_mode）⇒ 字：后端回包带 said"
-    },
-    {
       "file": "src/frontend/ui/e2e-probe.ts",
       "rule": "toFixed",
       "n": 1,
@@ -111,13 +104,6 @@
       "n": 7,
       "kind": "留",
       "why": "↗ 浮层上的按钮名（界面自己的动作闭集），骨架词"
-    },
-    {
-      "file": "src/frontend/ui/ipc/chan-caller.ts",
-      "rule": "codeWord",
-      "n": 2,
-      "kind": "留",
-      "why": "通道层自己的失败句（对端版本码 backend_old · 超时 Overrun），宿主本职"
     },
     {
       "file": "src/frontend/ui/kit/detail.ts",
