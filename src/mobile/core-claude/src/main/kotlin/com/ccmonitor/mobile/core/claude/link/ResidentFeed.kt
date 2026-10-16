@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 嵌的 Rust 核心里那一台常驻流的几个口（`Core.resident*`，手写 JNI、走消息）。生产上直通 JNI；JVM 单测给假的。
- * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `watch_from` · `ssh` · `reply` · `deploy`）。
+ * 交回来的事经 [open] 时给的 `events` 回（`state` · `frame` · `unread` · `watch_from` · `ssh` · `reply` · `deploy`）。
  */
 interface ResidentCore {
     fun open(
@@ -206,6 +206,8 @@ class ResidentFeed(
         when (kind) {
             "state" -> Json.obj(body)?.let(::onState) ?: broke(kind, body)
             "frame" -> Json.obj(body)?.let { onFrame(it) } ?: broke(kind, body)
+            // 核心按 `cmd-wire` 那一份类型解不开的一帧（两端版本对不上），原样那一行。
+            "unread" -> broke("frame", body)
             "watch_from" -> watchFromOf(body)?.forEach { fromFlow.tryEmit(it) } ?: broke(kind, body)
             "ssh" -> sshFlow.value = body == "true"
             "reply" -> onReply(body)

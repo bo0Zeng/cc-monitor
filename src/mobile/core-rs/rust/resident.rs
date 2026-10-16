@@ -4,6 +4,7 @@
 //! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON；SSH 那层跟着它换连接）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）·
 //! `watch_from`（JSON 数组）· `ssh`（SSH 够没够着那一台：`true` / `false`，与流通不通分开；SSH 那层跟它走）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
 
+use cmd_wire::record::OrUnread;
 use resident_client::client::CallError;
 use resident_client::feed::{
     sink, Boxed, Config, Event, Exec, Feed, Problem, Progress, State, Transport,
@@ -244,14 +245,17 @@ pub(crate) fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
         .cloned()
 }
 
-/// 一件事 ⇒ `(种类, 文本)`（帧原样，只有 `line` 帧里解不开的那条记录换成认不出那一条：`cmd_wire::record::mend_line_frame`）；Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+/// 一件事 ⇒ `(种类, 文本)`。帧按 `cmd-wire` 那一份类型解过、再按类型写一行（`line` 帧里解不开的那条记录成认不出那一条：[`OrUnread`]）；
+/// 解不开 ⇒ `unread` 原样那一行。Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
 pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     Some(match e {
         Event::State(s) => ("state", state_json(s)),
-        Event::Frame(line) => (
-            "frame",
-            cmd_wire::record::mend_line_frame(line).unwrap_or_else(|| line.clone()),
-        ),
+        Event::Frame(line) => match cmd_wire::frame::decode::<OrUnread>(line)
+            .and_then(|f| serde_json::to_string(&f))
+        {
+            Ok(typed) => ("frame", typed),
+            Err(_) => ("unread", line.clone()),
+        },
         Event::Ssh(reached) => ("ssh", reached.to_string()),
         Event::Attached { .. } | Event::Gap => return None,
     })
@@ -637,7 +641,7 @@ mod tests {
         );
         assert!(!rec["id"].as_str().unwrap().is_empty());
 
-        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）；别的帧原样。
+        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）。
         let frame = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 7, "byte_offset": 70, "record": short});
         let (k, b) = event_of(&Event::Frame(frame.to_string())).unwrap();
         assert_eq!(k, "frame");
@@ -647,13 +651,31 @@ mod tests {
             (v["seq"].as_u64(), v["byte_offset"].as_u64()),
             (Some(7), Some(70))
         );
-        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "record": good});
+        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "byte_offset": 80, "record": good});
         let v: serde_json::Value =
             serde_json::from_str(&event_of(&Event::Frame(fine.to_string())).unwrap().1).unwrap();
         assert_eq!(v, fine);
     }
 
-    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样。
+    /// 帧按 `cmd-wire` 那一份类型解过、再按类型写一行交 Kotlin（线上同名的格；类型里没有的格不交）；解不开 ⇒ 照实交认不出的那一行。
+    #[test]
+    fn frames_are_rewritten_by_type_and_an_unreadable_one_says_so() {
+        let removed = r#"{"kind":"session_removed","sid":"s","cause":"gone","later":1}"#;
+        let (k, b) = event_of(&Event::Frame(removed.into())).unwrap();
+        assert_eq!(k, "frame");
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(
+            (v["kind"].as_str(), v["sid"].as_str()),
+            (Some("session_removed"), Some("s"))
+        );
+        assert!(v.get("later").is_none(), "类型里没有的格不交：{v}");
+        assert_eq!(
+            event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
+            Some(("unread", "{\"kind\":\"x\"}".to_string()))
+        );
+    }
+
+    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON。
     #[test]
     fn events_are_tagged_and_frames_go_through_untouched() {
         let (k, b) = event_of(&Event::State(State::Up {
@@ -686,10 +708,6 @@ mod tests {
                 v["problem"]["text"].as_str()
             ),
             (Some("down"), Some(true), Some("box 离线"))
-        );
-        assert_eq!(
-            event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
-            Some(("frame", "{\"kind\":\"x\"}".to_string()))
         );
         assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
         assert_eq!(

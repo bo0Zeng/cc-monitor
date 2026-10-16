@@ -741,13 +741,12 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
     kind: NONE,
     of: NONE,
-    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份），
-    //   流上 `line` 帧里解不开的那条换成它（手机核心）。界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
+    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份）。
+    //   界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
     EXCERPT_BYTES: NONE,
     excerpt_of: NONE,
     unread_text: NONE,
     unread: NONE,
-    mend_line_frame: NONE,
     // 帧的线上形（`frame`）：一行解一帧 · 宿主那个词（`terminals-list` 的 `host` 与容器那一格同一套）。
     //   解帧的是 Rust 那几端（壳 · 通信层 · 手机核心）；界面读壳转过的载荷，TS 侧没有孪生。
     decode: NONE,
