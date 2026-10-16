@@ -5,7 +5,15 @@ import type { WirePath } from "./WirePath";
 /**
  * `files-stat` 的回包（跟链接）。
  */
-export type StatReply = { path: WirePath, kind: FileKind, size: number, readonly: boolean, 
+export type StatReply = { path: WirePath, 
+/**
+ * 末段名（那台按自己的分隔符切好；到顶 ⇒ 空）。
+ */
+name: WirePath, 
+/**
+ * 上一级；到顶 ⇒ `null`。
+ */
+up: WirePath | null, kind: FileKind, size: number, readonly: boolean, 
 /**
  * unix 权限位低 12 位；非 unix 缺席。
  */

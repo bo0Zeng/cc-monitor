@@ -202,3 +202,19 @@ fn stat_reports_the_owner_and_where_a_link_points() {
     assert_eq!(l["owner"], f["owner"], "属主跟链接，与它指向的那份同一个");
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// `files-stat` 带末段名与上一级（那台按自己的分隔符切好；客户端打开一个路径时不自己切）。
+#[test]
+fn stat_names_the_last_segment_and_the_folder_it_is_in() {
+    let base = temp_root("stat-place");
+    std::fs::write(base.join("a.bin"), b"abc").expect("铺");
+    let f = crate::files::tests::answer_wire(
+        "files-stat",
+        &serde_json::json!({ "path": base.join("a.bin").to_string_lossy() }),
+        &Default::default(),
+    )
+    .expect("该答得出来");
+    assert_eq!(f["name"], serde_json::json!("a.bin"));
+    assert_eq!(f["up"], serde_json::json!(base.to_string_lossy()));
+    std::fs::remove_dir_all(&base).ok();
+}
