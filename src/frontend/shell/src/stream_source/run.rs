@@ -30,8 +30,9 @@ fn said_of(p: &Problem) -> crate::detail::Said {
     }
 }
 
-fn problem_of(s: crate::detail::Said) -> Problem {
-    Problem::new(s.said, s.detail)
+/// 链路没开成 ⇒ 交给循环的那一份（原因码与那台出示的指纹随它走）。
+fn problem_of(u: crate::dial_host::Unopened) -> Problem {
+    Problem::new(u.said.said, u.said.detail).because(u.why, u.seen_key)
 }
 
 /// 远端那台的链路：本机常驻后端开的（`dial_host`）。monitor 装得了后端 ⇒ 每一轮先部署预检、版本门问本机常驻后端。
@@ -393,12 +394,10 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
         said.raw()
     );
     crate::inbound_client::note_round_failed(host_label);
-    // 这一轮没成的那一句与详情进那台的状态成品（收尾时机器那一行的［复制详情］跟它）。
-    crate::machine_state::round_failed(&crate::origin::Origin(host_label.to_string()), &said);
     // 没接上 ⇒ 抹掉自证记忆：否则一台后端被删 / 被换旧的机器会每一轮都跳预检、每一轮都失败。代价是多一次预检（`VERIFIED_BUILD` 头注）。
     forget_verified_build(host_label);
     if unsupported {
-        crate::machine_state::unsupported(host_label, crate::machine_state::NOT_UNIX);
+        crate::machine_state::unsupported(host_label, crate::machine_state::NOT_UNIX, &said);
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.to_string(),
             kind: "unsupported".to_string(),
@@ -409,7 +408,7 @@ fn on_round_failed(host_label: &str, health: &HealthOut, problem: &Problem, unsu
             tracing::warn!("stream_source remote-health (unsupported) emit failed: {e}");
         }
     } else {
-        crate::machine_state::down(host_label);
+        crate::machine_state::down(host_label, &said, problem.why, problem.seen_key.as_deref());
     }
 }
 

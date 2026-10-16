@@ -290,8 +290,8 @@ pub struct DialAck {
     pub strict: bool,
     /// 同上，跳板那一台（直连 ⇒ `false`）。
     pub jump_strict: bool,
-    /// 没拨成时的原因码（闭集，[`why`]）：界面按码说那一句、给那颗修法。拨成了 / 说不清 ⇒ `None`。additive。
-    pub reason: Option<&'static str>,
+    /// 没拨成时的原因码（[`Why`]）：接这台的宿主按它定那一态与修法。拨成了 / 说不清 ⇒ `None`。additive。
+    pub reason: Option<Why>,
     /// 目标那一台握手时给的 host key 是什么类型（「钥匙变了」那一句要说是哪一种）。没握到那一步 ⇒ 不出这一格。additive。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_type: Option<String>,
@@ -323,7 +323,7 @@ impl DialAck {
     }
 
     /// 带上这一趟记下的原因码（[`StageSink::why`]）。
-    pub fn because(self, why: Option<&'static str>) -> Self {
+    pub fn because(self, why: Option<Why>) -> Self {
         DialAck {
             reason: why,
             ..self
@@ -339,48 +339,17 @@ impl DialAck {
     }
 }
 
-/// 拨号没成的原因码（ack 的 `reason`，闭集；线上形状见协议文档 `link-open` 一节）。
-pub mod why {
-    /// 地址解析不出来（DNS）。
-    pub const RESOLVE: &str = "resolve";
-    /// 那个口拨不通（拒绝 / 主机或网络不可达）。
-    pub const UNREACHABLE: &str = "unreachable";
-    /// 拨号 / 握手超时。
-    pub const TIMEOUT: &str = "timeout";
-    /// 主机指纹与记下的不一样。
-    pub const HOST_KEY: &str = "host_key";
-    /// 密钥被拒（公钥 · agent 都没过）。
-    pub const AUTH: &str = "auth";
-    /// 那台只收密码（服务端剩下的方法里没有公钥）。
-    pub const PASSWORD: &str = "password";
-    /// 私钥文件读不出来。
-    pub const KEY_UNREADABLE: &str = "key_unreadable";
-    /// 跳板那一台断开（拨号 · 鉴权 · 经它开隧道任一步）。
-    pub const JUMP: &str = "jump";
-    /// 别的（看人话）。
-    pub const OTHER: &str = "other";
-    /// 全集（判据两向比：后端那边的线上文档与它对拍）。
-    pub const ALL: [&str; 9] = [
-        RESOLVE,
-        UNREACHABLE,
-        TIMEOUT,
-        HOST_KEY,
-        AUTH,
-        PASSWORD,
-        KEY_UNREADABLE,
-        JUMP,
-        OTHER,
-    ];
-}
+/// 没拨成的原因码（ack 的 `reason`；线上形状见协议文档 `link-open` 一节）。
+pub use cmd_wire::machine::Why;
 
 /// 竞速那一格的阶段标签（[`connect::stage_of_io`] 那几个，外加 `resolve`）→ 原因码。
-pub fn why_of_stage(stage: &str) -> &'static str {
+pub fn why_of_stage(stage: &str) -> Why {
     match stage {
-        "resolve" => why::RESOLVE,
-        "tcp" => why::UNREACHABLE,
-        "timeout" => why::TIMEOUT,
-        "hostkey" => why::HOST_KEY,
-        _ => why::OTHER,
+        "resolve" => Why::Resolve,
+        "tcp" => Why::Unreachable,
+        "timeout" => Why::Timeout,
+        "hostkey" => Why::HostKey,
+        _ => Why::Other,
     }
 }
 
@@ -445,8 +414,8 @@ pub struct Captured {
 pub struct StageSink {
     on: bool,
     buf: Arc<Mutex<Vec<Stage>>>,
-    /// 这一趟没拨成的原因码（[`why`] 里那几个；不论要不要阶段行都记）。
-    why: Arc<Mutex<Option<&'static str>>>,
+    /// 这一趟没拨成的原因码（不论要不要阶段行都记）。
+    why: Arc<Mutex<Option<Why>>>,
     /// 这一趟最后一次握手时服务端给的 host key 类型。
     key_type: Arc<Mutex<Option<String>>>,
     /// 进展往哪报（请求带 `progress` 时 [`uses::run_with`] 接上；没有 ⇒ 不报）。
@@ -497,7 +466,7 @@ impl StageSink {
     }
 
     /// 记下没拨成的原因码（后记的盖前记的：跳板那一层比它里面那次竞速更说明问题）。
-    pub fn note_why(&self, w: &'static str) {
+    pub fn note_why(&self, w: Why) {
         *self.why.lock().unwrap_or_else(|e| e.into_inner()) = Some(w);
     }
 
@@ -513,7 +482,7 @@ impl StageSink {
             .clone()
     }
 
-    pub fn why(&self) -> Option<&'static str> {
+    pub fn why(&self) -> Option<Why> {
         *self.why.lock().unwrap_or_else(|e| e.into_inner())
     }
 

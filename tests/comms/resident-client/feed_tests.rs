@@ -76,6 +76,8 @@ enum Peer {
     Slow { gaps: Vec<u64>, then: Box<Peer> },
     /// 链路通了、每个方向的字节各晚 `lag` 到（握手成，之后照答）。
     Laggy { build: String, lag: Duration },
+    /// 拨号核心说没拨成（那一句 ＋ 原因码 ＋ 那台出示的指纹）。
+    Refused(Problem),
 }
 
 #[derive(Default)]
@@ -134,6 +136,9 @@ impl Transport for T {
             }
             if matches!(peer, Peer::Hang) {
                 return std::future::pending().await;
+            }
+            if let Peer::Refused(p) = peer {
+                return Err(p);
             }
             let (mine, theirs) = match &peer {
                 Peer::Laggy { lag, .. } => laggy(*lag),
@@ -838,6 +843,35 @@ async fn a_remote_that_is_not_unix_waits_for_a_hand() {
     f.ensures.lock().unwrap().push_back(unsupported());
     let (feed, _) = start_desk(&f);
     waits(&feed, &f).await;
+}
+
+/// 拨号拒了：原因码与那台出示的指纹随断开那一句走到 `Down`（宿主按它定那一态与修法）；交给手机的 JSON 里不出这两格。
+#[tokio::test(start_paused = true)]
+async fn a_refused_dial_carries_its_reason_and_the_seen_key_into_down() {
+    let f = Arc::new(Fake::default());
+    let refused = Problem::new("密钥被拒", "命令：dial").because(
+        Some(cmd_wire::machine::Why::Auth),
+        Some("SHA256:seen".into()),
+    );
+    f.attaches
+        .lock()
+        .unwrap()
+        .push_back(Peer::Refused(refused));
+    let (feed, _) = start(&f);
+    until("断开", || matches!(feed.state(), State::Down { .. })).await;
+    let state = feed.state();
+    let State::Down { problem, .. } = &state else {
+        unreachable!()
+    };
+    assert_eq!(
+        (problem.why, problem.seen_key.as_deref()),
+        (Some(cmd_wire::machine::Why::Auth), Some("SHA256:seen"))
+    );
+    assert_eq!(
+        serde_json::to_value(&state).unwrap()["problem"],
+        serde_json::json!({"text": "密钥被拒", "detail": "命令：dial"}),
+        "交出去的那一份多了格"
+    );
 }
 
 /// ［重新连接］在拨的时候按也算数：这一轮没成就不睡；接上那一刻之前按的作废（下一次断线照样按退避等）。

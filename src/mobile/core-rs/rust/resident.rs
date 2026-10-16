@@ -175,7 +175,7 @@ pub fn ack_ok(ack: &serde_json::Value) -> bool {
     ack.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
 }
 
-/// 没拨成的 ack ⇒ 那一句（拨号核心写好）＋ 复制详情。
+/// 没拨成的 ack ⇒ 那一句（拨号核心写好）＋ 复制详情 ＋ 原因码与那台出示的指纹。
 pub fn ack_problem(ack: &serde_json::Value) -> Problem {
     let s = |k: &str| {
         ack.get(k)
@@ -191,6 +191,12 @@ pub fn ack_problem(ack: &serde_json::Value) -> Problem {
             text
         },
         s("detail"),
+    )
+    .because(
+        serde_json::from_value(ack["reason"].clone()).ok(),
+        ack.get("fingerprint")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
     )
 }
 
@@ -643,6 +649,14 @@ mod tests {
         assert!(ack_ok(&serde_json::json!({"ok": true})));
         let p = ack_problem(&serde_json::json!({"ok": false, "error": "拨号失败", "detail": "d"}));
         assert_eq!((p.text.as_str(), p.detail.as_str()), ("拨号失败", "d"));
+        assert_eq!((p.why, p.seen_key), (None, None));
+        let p = ack_problem(&serde_json::json!({
+            "ok": false, "error": "指纹变了", "reason": "host_key", "fingerprint": "SHA256:seen"
+        }));
+        assert_eq!(
+            (p.why, p.seen_key.as_deref()),
+            (Some(cmd_wire::machine::Why::HostKey), Some("SHA256:seen"))
+        );
         assert_eq!(
             exec_of(r#"{"exit_status":127,"stdout":"","stderr":"nope"}"#),
             Exec {

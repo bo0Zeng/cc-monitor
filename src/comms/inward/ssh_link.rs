@@ -88,9 +88,9 @@ pub struct Ack {
     /// 同上，跳板那一台。
     #[serde(default)]
     pub jump_strict: bool,
-    /// 没拨成时后端给的原因码（闭集：`resolve` · `unreachable` · `timeout` · `host_key` · `auth` · `password` · `key_unreadable` · `jump` · `other`）；老后端 / 拨成了 ⇒ `None`。
+    /// 没拨成时后端给的原因码；拨成了 ⇒ `None`。
     #[serde(default)]
-    pub reason: Option<String>,
+    pub reason: Option<cmd_wire::machine::Why>,
     #[serde(default)]
     pub v: u32,
     #[serde(default)]
@@ -116,7 +116,7 @@ pub enum LinkError {
         why: String,
         fingerprint: Option<String>,
         /// 没拨成的原因码（[`Ack::reason`] 原样）。
-        reason: Option<String>,
+        reason: Option<cmd_wire::machine::Why>,
         /// 后端写好的复制详情（[`Ack::detail`] 原样；老后端 ⇒ `None`）。
         detail: Option<String>,
     },

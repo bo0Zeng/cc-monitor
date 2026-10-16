@@ -28,6 +28,7 @@ use crate::frames::Admit;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
 use crate::watch::{self, WatchFrom, Watched};
 use cmd_wire::attach::Relation;
+use cmd_wire::machine::Why;
 use copy_core::copy_text;
 use serde::Serialize;
 use std::future::Future;
@@ -37,11 +38,15 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch as tw, Notify};
 
-/// 给人看的那一句 ＋ 复制详情。
+/// 给人看的那一句 ＋ 复制详情；拨号拒了时另带原因码与那台出示的指纹（宿主在进程里按它们定那一态与修法，不上线）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Problem {
     pub text: String,
     pub detail: String,
+    #[serde(skip)]
+    pub why: Option<Why>,
+    #[serde(skip)]
+    pub seen_key: Option<String>,
 }
 
 impl Problem {
@@ -49,6 +54,17 @@ impl Problem {
         Problem {
             text: text.into(),
             detail: detail.into(),
+            why: None,
+            seen_key: None,
+        }
+    }
+
+    /// 拨号核心说没拨成的原因码 ＋ 那台出示的指纹。
+    pub fn because(self, why: Option<Why>, seen_key: Option<String>) -> Self {
+        Problem {
+            why,
+            seen_key,
+            ..self
         }
     }
 }

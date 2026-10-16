@@ -1,8 +1,8 @@
 //! 每台机器的状态成品：`{state, reason, stage, version, versionRelation, os, fixes}`。
 //!
 //! 界面按码取那一句与修法，自己不判（「那台断开 / 要更新 / 版本较新 / 停用了」只在这里定）。
-//! 写点：远端那条流的每一轮（`stream_source::run`：起拨 · 握手成了 · 这一轮没成）、拨号那一处
-//! （`dial_host::open`：后端 ack 带回的原因码）、部署计划（那台的系统）；读点：`backend_status` 的 `machine` 一格。
+//! 写点：远端那条流的每一轮（`stream_source::run`：起拨 · 握手成了 · 这一轮没成，没成的原因码随那一句来）、
+//! 部署计划（那台的系统）；读点：`backend_status` 的 `machine` 一格。
 //! 「连接这台」关着的那台由读点按机器表说「停用」（不进这张表）。
 
 use serde::Serialize;
@@ -34,6 +34,7 @@ pub enum MachineStateKind {
 // 那台与这一版的版本关系（连上时判一次；类型住 `cmd-wire`，那台在 attach 回话里给的就是它）：
 //   `incomparable` ＝ 序解不出 · 手上没带后端字节（开发树），不判旧、不自动换装。
 pub use cmd_wire::attach::Relation;
+use cmd_wire::machine::Why;
 
 /// 那一行上给的修法（闭集；界面按它摆按钮，按钮名在文案表）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -88,16 +89,10 @@ struct Entry {
     version: Option<String>,
     relation: Option<Relation>,
     os: Option<String>,
-    /// 拨号那一层最近一次没拨成的原因码（这一轮收尾时用）。
-    dial_why: Option<String>,
     /// 指纹不对那一次那台出示的指纹（拨号那一层带回）。
     seen_key: Option<String>,
     /// 那台握手报的构建标识（只进日志与诊断信息）。
     build: Option<String>,
-    /// 拨号那一层最近一次没拨成的那一句 ＋ 详情（这一轮收尾时用）。
-    dial_said: Option<crate::detail::Said>,
-    /// 这一轮没成的那一句 ＋ 详情（接常驻后端那一步记；比拨号那一层的更完整，收尾时先用它）。
-    round_said: Option<crate::detail::Said>,
     /// 收尾时定下的那份详情（读点原样交出）。
     detail: Option<String>,
 }
@@ -138,11 +133,6 @@ pub(crate) fn connecting(origin: &str, stage: &str) {
         e.reason = None;
         e.stage = Some(stage.to_string());
         e.detail = None;
-        if stage == "deploy" {
-            // 新一轮从头起：上一轮记下的那几句不跟进来。
-            e.round_said = None;
-            e.dial_said = None;
-        }
     });
 }
 
@@ -191,11 +181,8 @@ pub(crate) fn up(origin: &str, build: &str, relation: Relation) {
         e.stage = None;
         e.version = product_version(relation);
         e.relation = Some(relation);
-        e.dial_why = None;
         e.seen_key = None;
         e.build = Some(build.to_string());
-        e.dial_said = None;
-        e.round_said = None;
         e.detail = None;
     });
 }
@@ -209,64 +196,45 @@ pub(crate) fn build_of(origin: &str) -> Option<String> {
         .and_then(|e| e.build.clone())
 }
 
-/// 拨号那一层没拨成（后端 ack 带回的原因码 · 那台出示的指纹 · 那一句与详情；老后端没给码 ⇒ 码与指纹不记，那一句照记）。
-pub(crate) fn dial_failed(
-    origin: &str,
-    why: Option<&str>,
-    fingerprint: Option<&str>,
-    said: &crate::detail::Said,
-) {
-    with(origin, |e| {
-        if let Some(w) = why {
-            e.dial_why = Some(w.to_string());
-            e.seen_key = fingerprint.map(str::to_string);
-        }
-        e.dial_said = Some(said.clone());
-    });
-}
-
-/// 这一轮没成的那一句 ＋ 详情（接常驻后端那一步没成时记；收尾时 [`down`] / [`unsupported`] 交给读点）。
-pub(crate) fn round_failed(origin: &crate::origin::Origin, said: &crate::detail::Said) {
-    with(&origin.0, |e| e.round_said = Some(said.clone()));
-}
-
-/// 收尾那一份详情：这一轮记下的（没有 ⇒ 拨号那一层的）那一句进「断在」，其余照它的详情（拨号那一层是本机后端写的：
-/// 「机器」是本机那一份后端）；连的是哪一台进「对象」，码是这一轮的原因码。
-fn round_detail(target: &str, e: &mut Entry) -> Option<String> {
-    let said = e.round_said.take().or_else(|| e.dial_said.take())?;
+/// 收尾那一份详情：这一轮那一句进「断在」，其余照它的详情（拨号那一层是本机后端写的：「机器」是本机那一份后端）；
+/// 连的是哪一台进「对象」，码是这一轮的原因码。
+fn round_detail(target: &str, said: &crate::detail::Said, code: &str) -> String {
     use copy_core::detail::Label;
-    let step = said.said.clone();
-    Some(
-        said.with_target(copy_core::detail::Target::Machine(target))
-            .with_item(Label::Hop, &step)
-            .with_item(Label::Code, e.reason.as_deref().unwrap_or(""))
-            .detail,
-    )
+    said.clone()
+        .with_target(copy_core::detail::Target::Machine(target))
+        .with_item(Label::Hop, &said.said)
+        .with_item(Label::Code, code)
+        .detail
 }
 
-/// 这一轮没连上：原因取拨号那一层记下的码（没有 ⇒ `other`）；指纹不对单列一态。
-pub(crate) fn down(origin: &str) {
+/// 这一轮没连上：原因码随那一句来（没有 ⇒ `other`）；指纹不对单列一态，带那台出示的指纹。
+pub(crate) fn down(origin: &str, said: &crate::detail::Said, why: Option<Why>, seen_key: Option<&str>) {
+    let why = why.unwrap_or(Why::Other);
+    let code = serde_json::to_value(why)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default();
     with(origin, |e| {
-        let why = e.dial_why.take().unwrap_or_else(|| "other".to_string());
-        e.state = Some(if why == "host_key" {
+        e.state = Some(if why == Why::HostKey {
+            e.seen_key = seen_key.map(str::to_string);
             MachineStateKind::HostKeyChanged
         } else {
             e.seen_key = None;
             MachineStateKind::Down
         });
-        e.reason = Some(why);
         e.stage = None;
-        e.detail = round_detail(origin, e);
+        e.detail = Some(round_detail(origin, said, &code));
+        e.reason = Some(code);
     });
 }
 
 /// 那台做不了（这条流就此收工）。
-pub(crate) fn unsupported(origin: &str, why: &str) {
+pub(crate) fn unsupported(origin: &str, why: &str, said: &crate::detail::Said) {
     with(origin, |e| {
         e.state = Some(MachineStateKind::Unsupported);
         e.reason = Some(why.to_string());
         e.stage = None;
-        e.detail = round_detail(origin, e);
+        e.detail = Some(round_detail(origin, said, why));
     });
 }
 

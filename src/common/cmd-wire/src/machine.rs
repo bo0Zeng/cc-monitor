@@ -228,3 +228,27 @@ pub enum Route<'a> {
 }
 
 // 判据 `tests/comms/inward/origin_tests.rs` 挂在 monitor 的 `lib.rs`（它的棘轮扫的是 monitor 的命令面）；那边经 `comms_inward::origin` 的再导出用它。
+
+/// 拨一台没拨成的原因（闭集）：拨号核心判、写进拨号应答的 `reason`；接这台的宿主随断开那一句带着它，按它定那一态与修法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Why {
+    /// 地址解析不出来（DNS）。
+    Resolve,
+    /// 那个口拨不通（拒绝 / 主机或网络不可达）。
+    Unreachable,
+    /// 拨号 / 握手超时。
+    Timeout,
+    /// 主机指纹与记下的不一样。
+    HostKey,
+    /// 密钥被拒（公钥 · agent 都没过）。
+    Auth,
+    /// 那台只收密码（服务端剩下的方法里没有公钥）。
+    Password,
+    /// 私钥文件读不出来。
+    KeyUnreadable,
+    /// 跳板那一台断开（拨号 · 鉴权 · 经它开隧道任一步）。
+    Jump,
+    /// 别的（看那一句）。
+    Other,
+}

@@ -184,7 +184,7 @@
         "os": null,
         "fixes": [],
         "seenHostKey": null,
-        "detail": null
+        "detail": "命令：dial\n对象：ms-金样-不是 Unix\n断在：拨号没成\n码：not_unix\n原话：raw words"
       }
     },
     {
