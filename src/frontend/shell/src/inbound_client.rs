@@ -14,21 +14,11 @@ use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use std::time::Duration;
 
-/// monitor 的帧类型是不是 hello：只有 `InboundFrame::Hello` 交得出能力事实（见证只经它换得出）。
-impl HelloFrame for InboundFrame {
-    fn hello_offer(&self) -> Option<crate::chan::wire::Offer> {
-        match self {
-            InboundFrame::Hello {
-                commands,
-                unavailable,
-                shapes,
-                ..
-            } => Some(
-                crate::chan::wire::Offer::new(commands.clone(), unavailable.clone())
-                    .with_shapes(shapes.clone()),
-            ),
-            _ => None,
-        }
+/// 这一帧是 hello ⇒ 见证（[`BackendHello::of`]）；别的帧 ⇒ `None`。
+pub fn witness_of(frame: &InboundFrame) -> Option<BackendHello> {
+    match frame {
+        InboundFrame::Hello(h) => Some(BackendHello::of(h)),
+        _ => None,
     }
 }
 

@@ -23,7 +23,8 @@
 
 use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
 use crate::backoff::{should_reset_backoff, Backoff, DIAL_WITHIN, HEARTBEAT_IDLE, PING_WITHIN};
-use crate::client::{BackendHello, InboundClient};
+use crate::client::{deliver_answer, InboundClient};
+use crate::frames::Admit;
 use crate::gate::Verdict;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
 use crate::watch::{self, WatchFrom, Watched};
@@ -141,10 +142,13 @@ pub const ENSURE_REPLACE: &str = "--resident-ensure --replace";
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum State {
     Connecting,
-    /// 通着：第 `epoch` 条流；`notice` = 通着但要人动手的那一句（那台后端旧了）。
+    /// 通着：第 `epoch` 条流；`notice` = 通着但要人动手的那一句（那台后端旧了 · 有几种帧形状对不上）；
+    /// `differs` = 握手那一刻比出形状对不上的那几种帧（这几种的行在帧门上丢）。
     Up {
         epoch: u64,
         notice: Option<Problem>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        differs: Vec<String>,
     },
     /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）；`unsupported` ⇒ 那台不是 Unix（常驻脱离不了）；
     /// `fix` ⇒ 装一次会好、而这一侧不自己装（手机：等人按［装后端］/［更新后端］）—— 装得了的宿主（桌面）下一轮自己装，恒缺。
@@ -256,8 +260,10 @@ struct Connected<S> {
     client: Arc<InboundClient>,
     reader: tokio::io::BufReader<tokio::io::ReadHalf<S>>,
     hello: attach::Hello,
-    /// 装得了后端的宿主：本机常驻后端判那台比手上这一版旧（换过一次还旧）⇒ 那一句。
+    /// 装得了后端的宿主：本机常驻后端判那台比手上这一版旧（换过一次还旧）⇒ 那一句；有几种帧形状对不上 ⇒ 并进同一句。
     notice: Option<Problem>,
+    /// 形状对不上的那几种帧（[`State::Up`] 那一格）。
+    differs: Vec<String>,
 }
 
 /// 一台的常驻流。
@@ -485,6 +491,7 @@ impl<T: Transport> Feed<T> {
                     reader,
                     hello,
                     notice,
+                    differs,
                 }) => {
                     epoch += 1;
                     *lock(&self.client) = Some(Arc::clone(&client));
@@ -494,7 +501,12 @@ impl<T: Transport> Feed<T> {
                         client: Arc::clone(&client),
                     })
                     .await;
-                    self.set_state(State::Up { epoch, notice }).await;
+                    self.set_state(State::Up {
+                        epoch,
+                        notice,
+                        differs: differs.clone(),
+                    })
+                    .await;
                     // 连上那一刻：断着时按过、还没用掉的那一下作废。
                     kicks.borrow_and_update();
                     self.watch_tick.send_modify(|t| *t += 1);
@@ -503,13 +515,16 @@ impl<T: Transport> Feed<T> {
                         let me = Arc::clone(&self);
                         let c = Arc::clone(&client);
                         let theirs = hello.build_id.clone();
+                        let differs = differs.clone();
                         tokio::spawn(async move {
                             if let Some(notice) = me.version_notice(&c, &theirs).await {
                                 let same = matches!(*me.state.borrow(), State::Up { epoch: e, .. } if e == epoch);
                                 if same {
+                                    let notice = Some(me.with_frames(Some(notice), &differs));
                                     me.set_state(State::Up {
                                         epoch,
-                                        notice: Some(notice),
+                                        notice,
+                                        differs,
                                     })
                                     .await;
                                 }
@@ -634,16 +649,50 @@ impl<T: Transport> Feed<T> {
             writer,
             hello,
         } = attached;
-        let witness = BackendHello::from_hello_frame(&hello).expect("Hello 恒交得出能力事实");
-        let client = writer.into_client(witness);
+        let client = writer.into_client(hello.witness());
         client.name_machine(&self.cfg.machine);
         client.set_viewer_tz(self.cfg.tz.clone());
+        let differs = client.offer().frames_differ().to_vec();
+        if !differs.is_empty() {
+            tracing::warn!(
+                "resident feed [{}] 那台这几种帧形状跟本侧不同，不解、不交：{differs:?}{}",
+                self.cfg.machine,
+                if hello.frame.is_none() {
+                    "（hello 全形解不开）"
+                } else {
+                    ""
+                }
+            );
+        }
+        let notice =
+            (notice.is_some() || !differs.is_empty()).then(|| self.with_frames(notice, &differs));
         Ok(Connected {
             client,
             reader,
             hello,
             notice,
+            differs,
         })
+    }
+
+    /// 帧形状对不上的那几种并进那一句：已有一句（那台旧了）⇒ 照它、详情添一行；没有 ⇒ 「版本不同 · 需更新」。
+    fn with_frames(&self, notice: Option<Problem>, differs: &[String]) -> Problem {
+        let line = (!differs.is_empty()).then(|| format!("frames: {}", differs.join(", ")));
+        match (notice, line) {
+            (Some(mut p), Some(l)) => {
+                p.detail = if p.detail.is_empty() {
+                    l
+                } else {
+                    format!("{}\n{l}", p.detail)
+                };
+                p
+            }
+            (Some(p), None) => p,
+            (None, l) => Problem::new(
+                copy_core::backend_frames_differ(&self.cfg.machine),
+                l.unwrap_or_default(),
+            ),
+        }
     }
 
     fn old_notice(&self, theirs: &str) -> Problem {
@@ -847,6 +896,8 @@ impl<T: Transport> Feed<T> {
         let mut buf = Vec::new();
         // 这条流上有几行不是合法 UTF-8（按替换字符读的）：数着，按 2 的幂次说一句。
         let mut bad_utf8 = 0u64;
+        // 帧门挡下的那几种：每种说一次（之后只数）。
+        let mut held: std::collections::BTreeMap<String, u64> = Default::default();
         let beats = client.accepts(PING);
         let heard = std::sync::atomic::AtomicU64::new(0);
         let mut reader = Counted {
@@ -910,7 +961,24 @@ impl<T: Transport> Feed<T> {
                         }
                     }
                     let text = String::from_utf8_lossy(&buf);
-                    route(client, text.trim_end_matches(['\n', '\r']), &self.events).await;
+                    let line = text.trim_end_matches(['\n', '\r']);
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    match client.admit(line) {
+                        Admit::Pass(kind) => route(client, &kind, line, &self.events).await,
+                        Admit::Differs(kind) | Admit::Unknown(kind) => {
+                            let n = held.entry(kind).or_default();
+                            *n += 1;
+                            if *n == 1 {
+                                tracing::warn!(
+                                    "[{}] 常驻流上这种帧形状对不上 / 不认，丢（之后只数）：{:?}",
+                                    self.cfg.machine,
+                                    held.keys().collect::<Vec<_>>()
+                                );
+                            }
+                        }
+                    }
                 }
                 Ok(CappedLine::TooLong(n)) => {
                     tracing::warn!(
@@ -1013,64 +1081,38 @@ enum AttachOr {
     Shake(AttachFail),
 }
 
-/// 只有含这两个词的行才可能是应答（别的帧不必整行解一遍 JSON 才交出去）。
-fn maybe_reply(line: &str) -> bool {
-    line.contains("\"reply\"") || line.contains("\"cancelled\"")
-}
-
-/// 一行帧：`reply` · `cancelled` 交回请求方；别的原样交宿主。空行跳过。
-async fn route(client: &InboundClient, line: &str, events: &Sink) {
-    if line.trim().is_empty() {
-        return;
-    }
-    let v = if maybe_reply(line) {
-        serde_json::from_str::<serde_json::Value>(line).ok()
-    } else {
-        None
-    };
-    let Some(v) = v else {
+/// 过了帧门的一行：`reply` · `cancelled` 按类型解后交回请求方（[`deliver_answer`]）；别的原样交宿主。
+/// 应答解不开 ⇒ 两端契约对不上：当一条失败交回去，原文进详情。
+async fn route(client: &InboundClient, kind: &str, line: &str, events: &Sink) {
+    if kind != "reply" && kind != "cancelled" {
         events(Event::Frame(line.to_string())).await;
         return;
-    };
-    let id = v
-        .get("id")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    match v.get("kind").and_then(serde_json::Value::as_str) {
-        Some("reply") => {
-            let s = |k: &str| {
-                v.get(k)
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
-            };
-            match v.get("ok").and_then(serde_json::Value::as_bool) {
-                Some(ok) => {
-                    client.route_reply(
-                        id,
-                        ok,
-                        s("code"),
-                        s("message"),
-                        s("detail"),
-                        v.get("data").cloned(),
-                    );
-                }
-                // 应答缺 `ok`：两端契约对不上 ⇒ 当一条失败交回去，原文进详情。
-                None => {
-                    client.route_reply(
-                        id,
-                        false,
-                        Some("unreadable".to_string()),
-                        Some(copy_core::reply_unreadable(&copy_core::peer_machine())),
-                        Some(line.to_string()),
-                        None,
-                    );
-                }
+    }
+    match cmd_wire::frame::decode::<serde::de::IgnoredAny>(line) {
+        Ok(f) => {
+            if deliver_answer(client, f).is_some() {
+                events(Event::Frame(line.to_string())).await;
             }
         }
-        Some("cancelled") => {
-            client.route_cancelled(id);
+        Err(e) => {
+            #[derive(serde::Deserialize)]
+            struct IdOnly {
+                #[serde(default)]
+                id: String,
+            }
+            let id = serde_json::from_str::<IdOnly>(line)
+                .map(|i| i.id)
+                .unwrap_or_default();
+            tracing::warn!("应答解不开（{e}）");
+            client.route_reply(
+                &id,
+                false,
+                Some("unreadable".to_string()),
+                Some(copy_core::reply_unreadable(&copy_core::peer_machine())),
+                Some(line.to_string()),
+                None,
+            );
         }
-        _ => events(Event::Frame(line.to_string())).await,
     }
 }
 

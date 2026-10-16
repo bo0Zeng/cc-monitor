@@ -1206,17 +1206,22 @@ fn client_for_test(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = BackendHello::from_hello_frame(&crate::stream_source::InboundFrame::Hello {
-        build_id: "test".into(),
-        host_arch: "x86_64".into(),
-        commands: commands.iter().map(|s| s.to_string()).collect(),
-        unavailable: vec![],
-        // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
-        shapes: commands
-            .iter()
-            .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string())))
-            .collect(),
-    })
+    let hello = crate::inbound_client::witness_of(&crate::stream_source::InboundFrame::Hello(
+        cmd_wire::frame::Hello {
+            build_id: "test".into(),
+            host_arch: "x86_64".into(),
+            commands: commands.iter().map(|s| s.to_string()).collect(),
+            unavailable: vec![],
+            // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
+            shapes: commands
+                .iter()
+                .filter_map(|c| {
+                    cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string()))
+                })
+                .collect(),
+            ..Default::default()
+        },
+    ))
     .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
     inbound_client::register(origin, client.clone());

@@ -204,7 +204,8 @@ pub(crate) fn hello_verdict(
             &[("bytes", &(line.len()).to_string())],
         ));
     };
-    let crate::stream_source::InboundFrame::Hello { build_id, .. } = &frame else {
+    let crate::stream_source::InboundFrame::Hello(cmd_wire::frame::Hello { build_id, .. }) = &frame
+    else {
         return HelloVerdict::Stranger(
             copy_text("rsLocalBackendHost.hello.notBackend", &[]).into(),
         );
@@ -356,8 +357,10 @@ fn probe_listen_socket(sock_path: &std::path::Path, want_env: &[(String, String)
         }
         HelloVerdict::Stranger(why) => {
             // 在听的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
-            if let Ok(crate::stream_source::InboundFrame::Hello { build_id, .. }) =
-                crate::stream_source::parse_frame(&line)
+            if let Ok(crate::stream_source::InboundFrame::Hello(cmd_wire::frame::Hello {
+                build_id,
+                ..
+            })) = crate::stream_source::parse_frame(&line)
             {
                 if mine.is_some_and(|m| m != build_id) {
                     crate::machine_state::note_local_foreign(Some(&build_id));
@@ -738,11 +741,11 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 脱离那条路上「它跟我们说过话没有」这一维。
 ///
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
-/// [`attach_stream`] 开头两行是 `parse_frame` + `BackendHello::from_hello_frame`，
+/// [`attach_stream`] 开头两行是 `parse_frame` + `inbound_client::witness_of`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
 /// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
-/// 没有见证就调不出这个函数（见证的构造入口只有 `from_hello_frame` 一个，
+/// 没有见证就调不出这个函数（见证的构造入口只有 `BackendHello::of` 一个，
 /// 由 `inbound_client` 那条「见证不许凭空造」的判据钉着）。
 ///
 /// ⚠ 前提哪天变了（有人让 `attach_stream` 不带 hello 也能进流循环），
@@ -822,13 +825,13 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
 ///
 /// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条套接字的两半。
-/// **复用的是纯零件**（`parse_frame` · `BackendHello::from_hello_frame` ·
+/// **复用的是纯零件**（`parse_frame` · `inbound_client::witness_of` ·
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(), Said> {
     let frame = crate::stream_source::parse_frame(hello_line)
         .map_err(|_| Said::from(copy_text("rsLocalBackendHost.stream.badFirstLine", &[])))?;
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let witness = crate::inbound_client::witness_of(&frame)
         .ok_or_else(|| Said::from(copy_text("rsLocalBackendHost.stream.notHello", &[])))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一刻，而不是在那边写一个 `Handshake::Spoke` 字面量。

@@ -1,62 +1,24 @@
 use super::*;
 use crate::session_book::SessionActivity;
 
-/// hello 帧解析：取 build_id / host_arch。
+/// hello 按 `cmd-wire` 的类型解：缺的可选格 ⇒ 空；`commands` 不是串数组 ⇒ 整帧形状不对（不逐项猜）。
 #[test]
-fn parses_hello_and_captures_build_id() {
-    let line = r#"{"kind":"hello","build_id":"abc123","host_arch":"aarch64","frames":{}}"#;
-    let frame = parse_frame(line).expect("hello must parse");
+fn hello_parses_as_the_typed_frame() {
+    let line = r#"{"kind":"hello","build_id":"abc123","host_arch":"aarch64","commands":["cancel","ping"]}"#;
+    let InboundFrame::Hello(h) = parse_frame(line).expect("hello must parse") else {
+        panic!("不是 hello")
+    };
     assert_eq!(
-        frame,
-        InboundFrame::Hello {
-            build_id: "abc123".to_string(),
-            host_arch: "aarch64".to_string(),
-            // U8a-2a：无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
-            commands: Vec::new(),
-            unavailable: vec![],
-            shapes: vec![],
-        }
+        (h.build_id.as_str(), h.host_arch.as_str()),
+        ("abc123", "aarch64")
     );
-}
-
-/// ★ U8a-2a：`hello.commands` 的**解析**必须有判据。
-///
-/// D 审计变异 B1：把 `obj.get("commands")` 改成 `obj.get("commandz")`（两侧字段名漂移
-/// 或一个笔误）⇒ `cargo test` 与 e2e **双双全绿**，而后果是 `commands` 永远空集 ⇒
-/// `InboundClient::accepts()` 永远假 ⇒ **一条入方向命令都发不出去**，
-/// 也就是 U8a-2a 要修的那个「通道不可达」原地复活。
-///
-/// e2e 挡不住的原因：它 `grep` 的是整行 hello，backend 把 `ping` 放哪个键里都绿。
-#[test]
-fn parses_hello_commands_across_the_three_shapes() {
-    let with = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","ping","resolve"]}"#;
-    match parse_frame(with).expect("hello must parse") {
-        InboundFrame::Hello { commands, .. } => {
-            assert_eq!(
-                commands,
-                vec!["cancel", "ping", "resolve"],
-                "声明的命令集没解出来"
-            );
-        }
-        other => panic!("不是 hello：{other:?}"),
-    }
-    // 旧后端：无该字段 → 空集（保守缺省，不发任何入方向命令）。
-    let without = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d"}"#;
-    match parse_frame(without).expect("hello must parse") {
-        InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
-        other => panic!("不是 hello：{other:?}"),
-    }
-    // 坏后端：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 commands 口径）。
-    let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":"ping"}"#;
-    match parse_frame(junk).expect("hello must parse") {
-        InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
-        other => panic!("不是 hello：{other:?}"),
-    }
-    let mixed = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["ping",7,null]}"#;
-    match parse_frame(mixed).expect("hello must parse") {
-        InboundFrame::Hello { commands, .. } => assert_eq!(commands, vec!["ping"]),
-        other => panic!("不是 hello：{other:?}"),
-    }
+    assert_eq!(h.commands, ["cancel", "ping"]);
+    assert!(h.frames.is_empty() && h.shapes.is_empty());
+    let junk = r#"{"kind":"hello","build_id":"b","host_arch":"x86_64","commands":"ping"}"#;
+    assert!(
+        matches!(parse_frame(junk), Err(Unread::BadShape { kind, .. }) if kind == "hello"),
+        "commands 不是数组 ⇒ 形状不对"
+    );
 }
 
 /// ★ U8a-2a：`reply` 帧的**字段**解析必须有判据。
@@ -561,7 +523,7 @@ fn dispatch_over_a_frame_sequence() {
     ];
     let parsed: Vec<Result<InboundFrame, Unread>> = lines.iter().map(|l| parse_frame(l)).collect();
 
-    assert!(matches!(parsed[0], Ok(InboundFrame::Hello { .. })));
+    assert!(matches!(parsed[0], Ok(InboundFrame::Hello(_))));
     assert!(matches!(parsed[1], Ok(InboundFrame::Line { seq: 0, .. })));
     assert!(matches!(parsed[2], Ok(InboundFrame::Line { seq: 1, .. })));
     assert_eq!(

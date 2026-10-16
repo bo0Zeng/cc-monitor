@@ -612,6 +612,7 @@ mod tests {
         let (k, b) = event_of(&Event::State(State::Up {
             epoch: 3,
             notice: None,
+            differs: vec![],
         }))
         .unwrap();
         assert_eq!(k, "state");

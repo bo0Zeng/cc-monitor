@@ -14,7 +14,7 @@ const GOLDEN: &str = include_str!("../../../__fixtures__/session-stream.golden.j
 /// 解成的那一种 → 线上 kind（穷尽，无兜底臂）。
 fn kind_of(f: &InboundFrame) -> &'static str {
     match f {
-        InboundFrame::Hello { .. } => "hello",
+        InboundFrame::Hello(_) => "hello",
         InboundFrame::Line { .. } => "line",
         InboundFrame::SessionAdded { .. } => "session_added",
         InboundFrame::SessionPrimed { .. } => "session_primed",

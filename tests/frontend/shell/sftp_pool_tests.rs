@@ -35,7 +35,7 @@ impl Drop for Rig {
 pub(crate) fn rig(commands: &[&str]) -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
-    let hello = InboundFrame::Hello {
+    let hello = InboundFrame::Hello(cmd_wire::frame::Hello {
         build_id: "t".into(),
         host_arch: "x86_64".into(),
         commands: commands.iter().map(|s| s.to_string()).collect(),
@@ -45,8 +45,9 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
             .iter()
             .map(|(c, h)| (c.to_string(), h.to_string()))
             .collect(),
-    };
-    let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
+        ..Default::default()
+    });
+    let witness = crate::inbound_client::witness_of(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
     register(LOCAL_ORIGIN, Arc::clone(&client));
     let c2 = Arc::clone(&client);

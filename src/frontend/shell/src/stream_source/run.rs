@@ -363,12 +363,12 @@ fn on_attached(
         }
     };
     // 循环那一侧认过它是 hello（不然接不上）；这一侧的帧类型解不出 ⇒ 两边对 hello 的读法漂了，说出来。
-    let Some(InboundFrame::Hello {
+    let Some(InboundFrame::Hello(cmd_wire::frame::Hello {
         build_id,
         host_arch,
         commands,
         ..
-    }) = conn.unread.take(hello, &mut conn.tally, &say_health)
+    })) = conn.unread.take(hello, &mut conn.tally, &say_health)
     else {
         tracing::warn!("stream_source [{host_label}] hello 这一侧解不出：{hello}");
         return conn;
@@ -584,9 +584,7 @@ async fn dispatch(
         }
         // hello 只在接上那一刻来（循环那一侧握手时读走、交 `Attached`）；应答由循环交回请求方。流中间再来 ⇒ 协议对不上，照实说、丢掉。
         Some(
-            InboundFrame::Hello { .. }
-            | InboundFrame::Reply { .. }
-            | InboundFrame::Cancelled { .. },
+            InboundFrame::Hello(_) | InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. },
         ) => {
             tracing::warn!("stream_source [{host_label}] 流中间来了 hello / 应答帧，丢掉：{line}");
         }

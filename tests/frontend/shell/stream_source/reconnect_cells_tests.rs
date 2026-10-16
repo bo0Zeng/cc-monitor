@@ -89,15 +89,19 @@ impl Remote {
     }
 }
 
-/// 替身的握手：typed 那两条（`history-tail` · `history-read`）照这一版的形状指纹交（对不上 monitor 事前就拒、一个字节不发）。
+/// 替身的握手：typed 那两条（`history-tail` · `history-read`）与帧表照这一版的形状指纹交（对不上的 monitor 事前就拒 / 不解）。
 fn hello() -> String {
     let commands = ["ping", "cancel", "history-tail", "history-read"];
     let shapes: serde_json::Map<String, serde_json::Value> = commands
         .iter()
         .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.into())))
         .collect();
-    serde_json::json!({"kind": "hello", "v": 1, "build_id": "rc-build", "host_arch": "x86_64",
-        "claude_dir": "/c", "commands": commands, "shapes": shapes})
+    let frames: serde_json::Map<String, serde_json::Value> = cmd_wire::frame_shapes::FRAMES
+        .iter()
+        .map(|(k, h)| (k.to_string(), (*h).into()))
+        .collect();
+    serde_json::json!({"kind": "hello", "build_id": "rc-build", "host_arch": "x86_64",
+        "commands": commands, "shapes": shapes, "frames": frames})
     .to_string()
 }
 

@@ -1979,6 +1979,7 @@ version = "0.1.0"
 name = "resident-client"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "comms-inward",
  "copy-core",
  "relay-route-core",

@@ -25,7 +25,7 @@
 use comms_inward::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
 // 「问后端失败了」那一套词（失败原因 · 在等应答的上限）住通信层 crate，与分流规则同一个家。
 pub use comms_inward::backend_route::{CallError, MAX_PENDING};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -63,25 +63,20 @@ enum WriteJob {
 
 /// **Hello 见证**：拿到它 = 已经真的收到过后端的 `hello` 帧。
 ///
-/// 唯一构造入口是 [`BackendHello::from_hello_frame`]，它只对 hello 帧（[`HelloFrame::hello_offer`] 回 `Some`）返回 `Some`。
-/// 字段私有 ⇒ 外部造不出来。
+/// 唯一构造入口是 [`BackendHello::of`]：它要一帧真解出来的 hello。字段私有 ⇒ 外部造不出来。
 #[derive(Debug, Clone)]
 pub struct BackendHello {
-    /// 握手交出的 op 集 —— 「认不认」只问它（家在 `chan::wire::Offer`）。
+    /// 握手交出的能力事实 —— 「认不认」只问它（家在 `chan::wire::Offer`）。
     offer: Offer,
 }
 
 impl BackendHello {
-    /// 从一个真的 Hello 帧换见证。非 Hello 帧 → `None`。
-    pub fn from_hello_frame<F: HelloFrame + ?Sized>(frame: &F) -> Option<Self> {
-        frame.hello_offer().map(|offer| Self { offer })
+    /// 那台交来的 hello ⇒ 见证。
+    pub fn of(hello: &cmd_wire::frame::Hello) -> Self {
+        Self {
+            offer: Offer::of(hello),
+        }
     }
-}
-
-/// 一帧（解成哪一种帧类型由各端定：monitor 的 `InboundFrame` · 本 crate 的 [`crate::attach::Hello`]）是不是 hello、交出了哪些能力事实。
-/// 只有 hello 帧回 `Some`（能力事实的家在 `chan::wire::Offer`）—— 见证只经它换得出。
-pub trait HelloFrame {
-    fn hello_offer(&self) -> Option<Offer>;
 }
 
 /// 「重新对齐」那条帧命令：它的应答顺带交回那台当下的能力事实（见 [`InboundClient::take_fresh_facts`]）。
@@ -251,16 +246,17 @@ impl InboundClient {
 
     /// `resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有那一格（旧后端）⇒ 不动。
     fn take_fresh_facts(&self, data: Option<&Value>) {
-        let Some(obj) = data.and_then(Value::as_object) else {
+        let Some(got) = data.and_then(|d| d.get("unavailable")) else {
             return;
         };
-        if !obj.contains_key("unavailable") {
-            return;
+        match Vec::<cmd_wire::frame::Unavailable>::deserialize(got) {
+            Ok(u) => self
+                .offer
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .refresh_facts(&u),
+            Err(e) => tracing::warn!("resync 交回的 `unavailable` 解不开，照用握手那一份：{e}"),
         }
-        self.offer
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .refresh_facts(Offer::facts_of(obj));
     }
 
     /// 本连接内唯一的请求 `id`。
@@ -461,6 +457,11 @@ impl InboundClient {
     /// 收到 `{"kind":"cancelled",…}` 时调。返回是否找到了对应的等待者。
     pub fn route_cancelled(&self, id: &str) -> bool {
         self.deliver(id, Outcome::Cancelled)
+    }
+
+    /// 流上这一行进不进（帧门，[`crate::frames::admit`]）。
+    pub fn admit(&self, line: &str) -> crate::frames::Admit {
+        crate::frames::admit(&self.offer_now(), line)
     }
 
     /// 显式关掉写半边 —— backend 的入方向 reader 见 EOF 后寿终。只编进测试档。长连接上调它 = 之后再也发不出任何命令，而连接看起来一切正常；
@@ -764,6 +765,25 @@ fn fallback_runtime() -> &'static tokio::runtime::Runtime {
             .build()
             .expect("建不起写任务的兜底运行时")
     })
+}
+
+/// 一帧应答（`reply` · `cancelled`）交回等它的那一处 ⇒ `None`；别的帧原样交回。应答路由只此一处（远端的常驻流 · 本机的读循环）。
+pub fn deliver_answer<R>(
+    client: &InboundClient,
+    frame: cmd_wire::frame::Frame<R>,
+) -> Option<cmd_wire::frame::Frame<R>> {
+    use cmd_wire::frame::Frame;
+    match frame {
+        Frame::Reply(r) => {
+            client.route_reply(&r.id, r.ok, r.code, r.message, r.detail, r.data);
+            None
+        }
+        Frame::Cancelled(c) => {
+            client.route_cancelled(&c.id);
+            None
+        }
+        other => Some(other),
+    }
 }
 
 #[cfg(test)]

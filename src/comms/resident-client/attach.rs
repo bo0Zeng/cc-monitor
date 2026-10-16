@@ -2,9 +2,8 @@
 //! 小中继的拒绝行 → hello → attach 行 → `{"attach":"ok"}`。桌面与手机同一份零件；
 //! 两端都整段走 [`handshake`]（经 [`crate::feed`]）。
 
-use crate::client::{split_and_park, HelloFrame, ParkedWriter};
+use crate::client::{split_and_park, BackendHello, ParkedWriter};
 use crate::line::{read_capped_line, CappedLine};
-use comms_inward::chan::wire::Offer;
 use copy_core::copy_text;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
@@ -60,56 +59,41 @@ pub fn attach_reply(line: &str) -> Result<(), String> {
     ))
 }
 
-/// 一行 hello：协议版本 · 自报的身份 · 能力事实。
+/// 一行 hello：自报的身份 ＋ 全形（解不开 ⇒ 只有头）。
 #[derive(Debug, Clone)]
 pub struct Hello {
-    pub v: u64,
     pub build_id: String,
     /// 那一行原样（宿主要读别的几格时照它的帧类型再解一遍）。
     pub line: String,
-    offer: Offer,
+    /// 全形解得开 ⇒ 那一帧；解不开 ⇒ `None`（认得出是我们的后端、哪一版，别的一格都不信：一条命令不发、一帧不进）。
+    pub frame: Option<cmd_wire::frame::Hello>,
 }
 
 impl Hello {
-    /// 是 hello 那一形 ⇒ `Some`；别的 ⇒ `None`。能力事实缺格 ⇒ 当空（旧后端）。
+    /// 两步：先只解头（不是 hello / 头解不出 ⇒ `None`：那头不是我们的后端），再解全形。
     pub fn parse(line: &str) -> Option<Hello> {
-        let v: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-        let obj = v.as_object()?;
-        if obj.get("kind")?.as_str()? != "hello" {
-            return None;
-        }
-        let strs = |k: &str| -> Vec<String> {
-            obj.get(k)
-                .and_then(serde_json::Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default()
+        let line = line.trim();
+        let head = cmd_wire::frame::HelloHead::of(line)?;
+        let frame = match cmd_wire::frame::decode::<serde::de::IgnoredAny>(line) {
+            Ok(cmd_wire::frame::Frame::Hello(h)) => Some(h),
+            _ => None,
         };
-        // 能力事实的另两格：读法住 `Offer::facts_of` · `Offer::shapes_of`（monitor 解 hello 同调它们）。
-        let offer =
-            Offer::new(strs("commands"), Offer::facts_of(obj)).with_shapes(Offer::shapes_of(obj));
         Some(Hello {
-            v: obj
-                .get("v")
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or(0),
-            build_id: obj
-                .get("build_id")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            line: line.trim().to_string(),
-            offer,
+            build_id: head.build_id,
+            line: line.to_string(),
+            frame,
         })
     }
-}
 
-impl HelloFrame for Hello {
-    fn hello_offer(&self) -> Option<Offer> {
-        Some(self.offer.clone())
+    /// 见证：全形解不开 ⇒ 按只有头的那一帧给（能力事实全空、帧种全对不上）。
+    pub fn witness(&self) -> BackendHello {
+        match &self.frame {
+            Some(h) => BackendHello::of(h),
+            None => BackendHello::of(&cmd_wire::frame::Hello {
+                build_id: self.build_id.clone(),
+                ..Default::default()
+            }),
+        }
     }
 }
 

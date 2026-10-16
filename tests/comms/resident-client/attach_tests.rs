@@ -2,7 +2,8 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
-const HELLO: &str = r#"{"kind":"hello","v":1,"build_id":"p10g-x","host_arch":"x86_64","claude_dir":"/c","commands":["ping"]}"#;
+const HELLO: &str =
+    r#"{"kind":"hello","build_id":"p10g-x","host_arch":"x86_64","commands":["ping"]}"#;
 
 async fn peer(lines: &'static [&'static str]) -> tokio::io::DuplexStream {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);

@@ -42,18 +42,8 @@ pub struct LostFrameInfo {
 /// 两侧形状由跨语言金样 `tests/__fixtures__/session-stream.golden.jsonl` 对拍。
 #[derive(Debug, Clone, PartialEq)]
 pub enum InboundFrame {
-    /// 握手帧：连接建立后后端发一次。`build_id` = backend 构建标识（版本门比它）。
-    Hello {
-        build_id: String,
-        host_arch: String,
-        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。
-        /// 旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
-        commands: Vec<String>,
-        /// `hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
-        unavailable: Vec<(String, String)>,
-        /// `hello.shapes`：typed 命令的形状指纹。旧后端无此字段 ⇒ 空（typed 命令一律当对不上，见 `Offer::unavailable`）。
-        shapes: Vec<(String, String)>,
-    },
+    /// 握手帧：连接建立后后端发一次（`cmd-wire` 的类型，见证 · 能力事实 · 版本门都读它）。
+    Hello(cmd_wire::frame::Hello),
     /// 一行从后端 session jsonl 尾随读到的原始行（远端流与本机流同一种帧）。字段语义见 [`JsonlLine`]。
     Line {
         session_id: String,
@@ -452,27 +442,10 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         .ok_or_else(|| bad("", "no string `kind`"))?;
     let k = kind;
     Ok(match kind {
-        "hello" => {
-            let strings = |key: &str| -> Vec<String> {
-                obj.get(key)
-                    .and_then(|c| c.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|x| x.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            };
-            // 能力事实那一格：读法住 `Offer::facts_of`（`resync` 应答同形）。
-            let unavailable = crate::chan::wire::Offer::facts_of(obj);
-            InboundFrame::Hello {
-                build_id: req_str(obj, k, "build_id")?,
-                host_arch: req_str(obj, k, "host_arch")?,
-                commands: strings("commands"),
-                unavailable,
-                shapes: crate::chan::wire::Offer::shapes_of(obj),
-            }
-        }
+        "hello" => InboundFrame::Hello(
+            serde_json::from_str::<cmd_wire::frame::Hello>(line)
+                .map_err(|e| bad(k, e.to_string()))?,
+        ),
         // 键序不是直解那一形时落到这里，同一个解码结构。
         "line" => decode_line(line)?,
         "session_added" => {

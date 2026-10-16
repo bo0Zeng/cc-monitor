@@ -51,13 +51,7 @@ const LINE: &str = "line";
 /// 一行 ⇒ 一帧。`line` 那一种直接解它自己的结构（记录那一格可能是进不了内部标签枚举的 `RawValue`），别的经枚举。
 /// 标签照例在行首（`{"kind":"…"`），不在行首就整行扫一次找它。
 pub fn decode<'a, R: Deserialize<'a>>(line: &'a str) -> serde_json::Result<Frame<R>> {
-    let kind = match line
-        .strip_prefix(r#"{"kind":""#)
-        .and_then(|r| r.split_once('"'))
-    {
-        Some((k, _)) => k.to_string(),
-        None => serde_json::from_str::<KindOnly>(line)?.kind,
-    };
+    let kind = kind_of(line)?;
     if kind == LINE {
         serde_json::from_str::<Line<R>>(line).map(Frame::Line)
     } else {
@@ -116,9 +110,37 @@ pub fn gated_tys() -> Vec<(&'static str, crate::fingerprint::Ty)> {
     }
 }
 
+/// 一行的 `kind`（不解别的格）：照例在行首就直接切出来，不在就整行扫一次。
+pub fn kind_of(line: &str) -> serde_json::Result<String> {
+    match line
+        .strip_prefix(r#"{"kind":""#)
+        .and_then(|r| r.split_once('"'))
+    {
+        Some((k, _)) => Ok(k.to_string()),
+        None => Ok(serde_json::from_str::<KindOnly>(line)?.kind),
+    }
+}
+
 #[derive(Deserialize)]
 struct KindOnly {
     kind: String,
+}
+
+/// hello 的头：版本门第一步只解它（全形解不开时也认得出是不是我们的后端、是哪一版）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct HelloHead {
+    /// 这份后端二进制的身份（`BUILD_ID`）。
+    pub build_id: String,
+}
+
+impl HelloHead {
+    /// 这一行是 hello、头那一格解得出 ⇒ `Some`；别的 ⇒ `None`（那头不是我们的后端）。
+    pub fn of(line: &str) -> Option<HelloHead> {
+        if kind_of(line).ok()? != "hello" {
+            return None;
+        }
+        serde_json::from_str(line).ok()
+    }
 }
 
 fn is_false(b: &bool) -> bool {
@@ -130,7 +152,7 @@ fn is_zero(n: &u32) -> bool {
 }
 
 /// 握手：连上之后那台发的第一帧。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Hello {

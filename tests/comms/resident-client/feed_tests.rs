@@ -24,9 +24,13 @@ async fn ask(
 
 const MINE: &str = "p10g-mine";
 
-/// 那台握手那一行：交它认的命令与那几条的形状指纹（跟本侧编进来的同一份）。
-/// `p0a-ancient` 比版本门那一问还早（不认 `resident-verdict`）；`p9b-reshaped` 认它、可那一条的形状与本侧对不上（比形状改过之前的那一版）。
+/// 那台握手那一行：交它认的命令与那几条的形状指纹 ＋ 帧表（跟本侧编进来的同一份）。
+/// `p0a-ancient` 比版本门那一问还早（不认 `resident-verdict`）；`p9b-reshaped` 认它、可那一条的形状与本侧对不上（比形状改过之前的那一版）；
+/// [`SKEWED`] 的 `session_status` 帧形状不同；[`HEAD_ONLY`] 的 hello 只解得出头。
 fn hello(build: &str) -> String {
+    if build == HEAD_ONLY {
+        return format!(r#"{{"kind":"hello","build_id":"{build}"}}"#);
+    }
     let cmds: &[&str] = if build == "p0a-ancient" {
         &["ping", "cancel", "stream-watch"]
     } else {
@@ -43,12 +47,27 @@ fn hello(build: &str) -> String {
             Some((c.to_string(), serde_json::Value::String(fp.into())))
         })
         .collect();
+    let frames: serde_json::Map<String, serde_json::Value> = cmd_wire::frame_shapes::FRAMES
+        .iter()
+        .map(|(k, h)| {
+            let h = if build == SKEWED && *k == "session_status" {
+                "00000000"
+            } else {
+                h
+            };
+            (k.to_string(), serde_json::Value::String(h.into()))
+        })
+        .collect();
     format!(
-        r#"{{"kind":"hello","v":1,"build_id":"{build}","host_arch":"x86_64","claude_dir":"/c","commands":{cmds},"shapes":{shapes}}}"#,
+        r#"{{"kind":"hello","build_id":"{build}","host_arch":"x86_64","commands":{cmds},"shapes":{shapes},"frames":{frames}}}"#,
         cmds = serde_json::to_string(cmds).unwrap(),
         shapes = serde_json::Value::Object(shapes),
+        frames = serde_json::Value::Object(frames),
     )
 }
+
+const SKEWED: &str = "p10h-skewed";
+const HEAD_ONLY: &str = "p10h-head-only";
 
 /// 对端那一台怎么回一条 `--resident-attach`。
 #[derive(Clone)]
@@ -85,6 +104,8 @@ struct Fake {
     drop_link: tokio::sync::Notify,
     /// 那台收到的 `ping`（问活）条数。
     pings: AtomicUsize,
+    /// 置位 ⇒ 应答缺 `ok` 那一格（两端契约对不上）。
+    reply_without_ok: std::sync::atomic::AtomicBool,
 }
 
 struct T(Arc<Fake>);
@@ -232,6 +253,20 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         .get_mut()
         .write_all(b"{\"kind\":\"sessions_replayed\"}\n")
         .await;
+    // 帧门那两条：会话状态 ＋ 一行（别的替身只发上面那一帧）。
+    let gated = build == SKEWED || build == HEAD_ONLY;
+    let _ = r
+        .get_mut()
+        .write_all(if !gated { &b""[..] } else {
+            concat!(
+                r#"{"kind":"session_status","sid":"s","activity":"idle","said":"闲着","tone":"neutral","activity_order":2,"name":"n"}"#,
+                "\n",
+                r#"{"kind":"line","session_id":"s","path":"/p","seq":0,"byte_offset":3}"#,
+                "\n"
+            )
+            .as_bytes()
+        })
+        .await;
     loop {
         line.clear();
         let got = tokio::select! {
@@ -262,7 +297,10 @@ async fn serve(peer: Peer, s: tokio::io::DuplexStream, f: Arc<Fake>) {
         } else {
             serde_json::json!({"from":[]})
         };
-        let reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":data});
+        let mut reply = serde_json::json!({"kind":"reply","id":v["id"],"ok":true,"data":data});
+        if f.reply_without_ok.load(Ordering::SeqCst) {
+            reply.as_object_mut().unwrap().remove("ok");
+        }
         let _ = r.get_mut().write_all(format!("{reply}\n").as_bytes()).await;
     }
 }
@@ -323,7 +361,8 @@ async fn a_running_resident_is_attached_with_one_exec() {
         feed.state(),
         State::Up {
             epoch: 1,
-            notice: None
+            notice: None,
+            differs: vec![]
         }
     );
     assert_eq!(
@@ -588,7 +627,8 @@ async fn a_host_that_installs_replaces_an_older_backend_once_then_attaches() {
         feed.state(),
         State::Up {
             epoch: 1,
-            notice: None
+            notice: None,
+            differs: vec![]
         }
     );
     assert_eq!(f.rounds.load(Ordering::SeqCst), 1, "开拨之前那一步跑一回");
@@ -1235,4 +1275,78 @@ async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
         copy_core::copy_text("front.body.offline", &[("machine", "box")])
     );
     assert_eq!(none.theirs(), None);
+}
+
+fn frames_seen(seen: &Seen) -> Vec<String> {
+    seen.lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            Event::Frame(l) => Some(cmd_wire::frame::kind_of(l).unwrap()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// 那台有一种帧形状不同：握手那一刻就点名（`differs` ＋ 那一句），那一种的行一条不交，别的照交。
+#[tokio::test(start_paused = true)]
+async fn a_frame_kind_whose_shape_differs_is_named_at_hello_and_never_handed_over() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(SKEWED));
+    let (feed, seen) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    match feed.state() {
+        State::Up {
+            differs,
+            notice: Some(p),
+            ..
+        } => {
+            assert_eq!(differs, ["session_status"]);
+            assert_eq!(p.text, copy_core::backend_frames_differ("box"));
+            assert!(p.detail.contains("session_status"), "{}", p.detail);
+        }
+        other => panic!("形状不同的那一种要在接上那一刻点名：{other:?}"),
+    }
+    until("line 照交", || {
+        frames_seen(&seen).iter().any(|k| k == "line")
+    })
+    .await;
+    assert_eq!(frames_seen(&seen), ["sessions_replayed", "line"]);
+}
+
+/// hello 只解得出头：照接（认得出是我们的后端），帧种全部当对不上、一帧不交，一条命令不发。
+#[tokio::test(start_paused = true)]
+async fn a_hello_whose_body_does_not_parse_attaches_and_hands_over_nothing() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(HEAD_ONLY));
+    let (feed, seen) = start(&f);
+    until("流接上了", || up(&feed)).await;
+    let State::Up {
+        differs, notice, ..
+    } = feed.state()
+    else {
+        unreachable!()
+    };
+    assert_eq!(differs.len(), cmd_wire::frame_shapes::FRAMES.len());
+    assert!(notice.is_some());
+    // 那台照发了三行；读完它们（再等一会儿）也一行不交。
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert!(frames_seen(&seen).is_empty(), "{:?}", frames_seen(&seen));
+    assert_eq!(f.ensured.load(Ordering::SeqCst), 0);
+}
+
+/// 应答解不开（缺 `ok`）：当一条失败交回请求方，码是「认不出」、原文进详情。
+#[tokio::test(start_paused = true)]
+async fn an_answer_that_does_not_parse_comes_back_as_unreadable() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    f.reply_without_ok.store(true, Ordering::SeqCst);
+    let (feed, _seen) = start(&f);
+    match ask(&feed, "ping", Duration::from_secs(5)).await {
+        Err(CallError::Remote { code, detail, .. }) => {
+            assert_eq!(code, "unreadable");
+            assert!(detail.contains("\"reply\""), "{detail}");
+        }
+        other => panic!("缺 `ok` 的应答该交回「认不出」：{other:?}"),
+    }
 }

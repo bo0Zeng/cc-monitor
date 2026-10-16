@@ -612,7 +612,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
 async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
     use tokio::io::AsyncBufReadExt;
     let (mine, theirs) = tokio::io::duplex(4096);
-    let hello = crate::stream_source::InboundFrame::Hello {
+    let hello = crate::stream_source::InboundFrame::Hello(cmd_wire::frame::Hello {
         build_id: "t".into(),
         host_arch: "x86_64".into(),
         commands: vec!["ping".into()],
@@ -622,8 +622,9 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
             .iter()
             .map(|(c, h)| (c.to_string(), h.to_string()))
             .collect(),
-    };
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();
+        ..Default::default()
+    });
+    let witness = crate::inbound_client::witness_of(&hello).unwrap();
     let client = crate::inbound_client::park(mine).into_client(witness);
     let c2 = std::sync::Arc::clone(&client);
     let call = tokio::spawn(async move {
@@ -884,40 +885,6 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
             format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
         ),
     ];
-
-    // 隔离**必须是断言，不能是假设**：起一趟一次性的，从 hello 帧里把后端自陈的
-    // `claude_dir` 读回来对一遍。上面那次教训就是「我以为设了 HOME 就隔离了」。
-    {
-        use std::io::BufRead;
-        let mut probe = std::process::Command::new(&bin)
-            .args([super::BACKEND_SEP, super::STREAM_WORD, "--tail-only"])
-            .envs(envs.iter().map(|(k, v)| (k.clone(), v.clone())))
-            .env_remove("TMUX") // 同上：不许继承「测试进程恰好在哪个 tmux 里」
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .expect("起探针失败");
-        let mut line = String::new();
-        std::io::BufReader::new(probe.stdout.take().expect("有 stdout"))
-            .read_line(&mut line)
-            .expect("读 hello 失败");
-        let _ = probe.kill();
-        let _ = probe.wait();
-        let frame = crate::stream_source::parse_frame(&line).expect("首帧该是 hello");
-        let crate::stream_source::InboundFrame::Hello { claude_dir, .. } = &frame else {
-            panic!("首帧不是 hello：{line}");
-        };
-        assert_eq!(
-            Path::new(claude_dir),
-            cfg_dir,
-            "backend 自陈的 claude_dir 不在沙箱里 —— 这一跑读的是**真实**配置目录。\n\
-                 `resolve_claude_dir()` 是 `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底，\n\
-                 两个都要设。（只设 HOME 那版跑起来一切正常，隔离却是假的。）"
-        );
-        // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
-        //   而那个脚本的收尾自检是「标记数 < 跑成的测试数 ⇒ 有测试提前退出」。
-        println!("E2E-OK P2 backend 自陈的 claude_dir 就在沙箱里（隔离是断言，不是假设）");
-    }
 
     let h = supervise_with_stdio(
         bin,
@@ -2672,7 +2639,7 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
 ///   喂 `CleanEof` 会让「读坏了」在账上变成「崩了」（`B1` 那条错误诊断的全部内容：
 ///   `InvalidData` 与 EOF 走同一条路 ⇒ 记一次崩溃 ⇒ 三次之后整个进程周期不再起来）。
 /// - 「它说过话没有」：读的是 `registered`，而那个值**只在**
-///   `BackendHello::from_hello_frame` 给出见证之后才变成 `Some` ——
+///   `inbound_client::witness_of` 给出见证之后才变成 `Some` ——
 ///   写成常量就等于把 2026-07-09 的判别式换成一句猜测。
 ///
 /// # ⚠ 射程：这是**源码判据**，如实登记

@@ -1503,7 +1503,7 @@ impl StdioRoute {
 /// 远端那一条（重连循环 `resident_client::feed` ＋ 收事那一头 `stream_source::consume_remote`）管 ensure / 换装 / 退避 /
 /// 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
-/// `parse_frame(&str) -> Result<InboundFrame, Unread>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
+/// `parse_frame(&str) -> Result<InboundFrame, Unread>` · `inbound_client::witness_of(&InboundFrame)` ·
 /// `ParkedWriter::into_client(BackendHello)`。
 /// ⇒ 复用**纯零件**，不把一个绑传输的循环硬掰成泛型。
 ///
@@ -1602,7 +1602,7 @@ pub(crate) fn local_stdio_consumer(
         // P3 刀 1 ＋应答与链路帧：**理由与前置条件写在 `absorb_local_frame` 的头注上**
         // ——抽函数时这段散文一度**两处各一份**，那是第二份源头，收敛掉。
         let witness = if parked.is_some() {
-            crate::inbound_client::BackendHello::from_hello_frame(&frame)
+            crate::inbound_client::witness_of(&frame)
         } else {
             None
         };
@@ -1616,10 +1616,10 @@ pub(crate) fn local_stdio_consumer(
         // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
         // 为了打一行日志去开访问器是把封装换成方便。帧的字段本来就是公开的。
         let (build_id, commands) = match &frame {
-            crate::stream_source::InboundFrame::Hello {
-                build_id, commands, ..
-            } => (build_id.clone(), commands.clone()),
-            // `from_hello_frame` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。
+            crate::stream_source::InboundFrame::Hello(h) => {
+                (h.build_id.clone(), h.commands.clone())
+            }
+            // `witness_of` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。
             _ => (String::new(), Vec::new()),
         };
         let client = parked
@@ -1645,7 +1645,7 @@ pub(crate) fn local_stdio_consumer(
     // 告诉本机内容消费者这条流结束了（冲掉残批、下一条流换新的收口）。
     route.out.stream_ended();
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
-    //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
+    //   —— 而那一行只在 `inbound_client::witness_of` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
     let handshake = if registered.is_some() {
         crate::backend_policy::Handshake::Spoke

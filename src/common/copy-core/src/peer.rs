@@ -27,6 +27,11 @@ pub fn backend_differs(machine: &str) -> String {
     copy_text("peerVersion.said.differs", &[("machine", machine)])
 }
 
+/// 见 [`backend_old`]：接上了，那台有几种帧的形状跟这一侧不一样（那几种收不到，别的照常）。
+pub fn backend_frames_differ(machine: &str) -> String {
+    copy_text("peerVersion.said.framesDiffer", &[("machine", machine)])
+}
+
 /// 见 [`backend_old`]。
 pub fn reply_unreadable(machine: &str) -> String {
     copy_text("peerVersion.said.unreadable", &[("machine", machine)])
