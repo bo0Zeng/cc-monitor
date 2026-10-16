@@ -97,10 +97,11 @@ class SentRequestsTest {
             sent.toSortedMap().entries.joinToString(",\n", "{\n", "\n}\n") { (cmd, all) ->
                 "  ${Json.line(cmd)}: " + all.joinToString(",", "[", "]") { it?.let(Json::args) ?: "null" }
             }
-        val file = File(Fixtures.repoRoot, "tests/__fixtures__/$GOLDEN")
-        if (file.takeIf { it.isFile }?.readText() != want) {
-            file.writeText(want)
-            error("$GOLDEN 跟这里拼出来的不一样，已重写：提交新的那一份")
+        // 金样只比不写：不一样时现拼的那份落到 .build/golden/ 下同一路径，对过后 tests/scripts/bless-golden.sh 拷回。
+        val rel = "tests/__fixtures__/$GOLDEN"
+        if (File(Fixtures.repoRoot, rel).takeIf { it.isFile }?.readText() != want) {
+            File(Fixtures.repoRoot, ".build/golden/$rel").apply { parentFile.mkdirs() }.writeText(want)
+            error("$GOLDEN 跟这里拼出来的不一样：现拼的在 .build/golden/$rel，对过后跑 tests/scripts/bless-golden.sh")
         }
     }
 
