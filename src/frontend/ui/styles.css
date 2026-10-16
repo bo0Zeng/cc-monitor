@@ -705,10 +705,7 @@
 }
 
 .empty-state {
-  color: var(--text-2);
-  text-align: center;
   margin-top: 30vh;
-  font-family: var(--font-mono);
 }
 
 /* === Cards === */
@@ -2179,19 +2176,6 @@
   border-radius: var(--radius-s);
   background: var(--field-bg);
   color: var(--text-2);
-}
-
-.empty-state small {
-  display: block;
-  margin-top: 8px;
-  color: var(--text-faint);
-}
-
-.empty-state code {
-  background: var(--overlay-deep);
-  padding: 0 4px;
-  border-radius: var(--radius-s);
-  font-size: var(--font-size-small);
 }
 
 /* issue #8: ESC 回退分支折叠。
