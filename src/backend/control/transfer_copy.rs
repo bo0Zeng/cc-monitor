@@ -425,9 +425,11 @@ impl Wired {
             .ok_or_else(|| CopyErr::Unreachable(copy_text("beTransferCopy.local.noHome", &[])))?;
         let staging = home.join(relay_route_core::STAGING_DIR_REL);
         if crate::platform::fs::Ro::symlink_metadata(&staging).is_err() {
-            if let Ok(at) =
-                crate::common::root_path::walk_in_root(crate::common::root_path::Last::Link, &home, relay_route_core::STAGING_DIR_REL)
-            {
+            if let Ok(at) = crate::common::root_path::walk_in_root(
+                crate::common::root_path::Last::Link,
+                &home,
+                relay_route_core::STAGING_DIR_REL,
+            ) {
                 let _ = face.make_dir_private(&at);
             }
         }
@@ -580,9 +582,11 @@ impl Ends for Wired {
             }
             .await;
             // 本机那一份不论成败都删；没成 ⇒ 落点那台的暂存件也删。
-            if let Ok(at) =
-                crate::common::root_path::walk_in_root(crate::common::root_path::Last::Link, &self.staging, format!("{key}.copy"))
-            {
+            if let Ok(at) = crate::common::root_path::walk_in_root(
+                crate::common::root_path::Last::Link,
+                &self.staging,
+                format!("{key}.copy"),
+            ) {
                 let _ = self.face.delete_file(&at);
             }
             if r.is_err() {

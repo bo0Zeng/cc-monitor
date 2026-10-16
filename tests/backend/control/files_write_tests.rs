@@ -327,7 +327,8 @@ fn a_symlink_onto_a_session_file_passes_inside_the_root_and_is_refused_only_for_
     std::fs::create_dir_all(&other).expect("建目标根");
     std::os::unix::fs::symlink(&live, other.join("docs")).expect("放 symlink");
     let lexical = lexical_in_root(&other, "docs/abc.jsonl").expect("解析① 本来就该放过它");
-    let err = walk_in_root(Last::Link, &other, lexical.strip_prefix(&other).unwrap()).expect_err("链接指出根外，解析② 竟然放行了");
+    let err = walk_in_root(Last::Link, &other, lexical.strip_prefix(&other).unwrap())
+        .expect_err("链接指出根外，解析② 竟然放行了");
     assert!(
         copy_core::copy_matches("beFilesWrite.path.escaped", &err),
         "拒了，但说的不是越界：{err}"
@@ -357,8 +358,8 @@ fn the_resolved_fence_lets_a_symlink_into_a_claude_tree_through_when_it_is_not_a
     std::os::unix::fs::symlink(&skills, root.join("s")).expect("放 symlink");
 
     let lexical = lexical_in_root(&root, "s/SKILL.md").expect("围栏① 该放过它");
-    let err =
-        walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap()).expect_err("这一格今天该以「跑出目标根」被拒");
+    let err = walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap())
+        .expect_err("这一格今天该以「跑出目标根」被拒");
     // 🔴 它仍然被拒，**但理由必须是越界，不是 Claude** —— 两者的差别就是这一裁的全部内容。
     assert!(
         copy_core::copy_matches("beFilesWrite.path.escaped", &err),
@@ -410,8 +411,8 @@ fn the_resolved_fence_catches_a_symlink_out_of_the_target_root() {
     std::os::unix::fs::symlink(&outside, root.join("out")).expect("放 symlink");
 
     let lexical = lexical_in_root(&root, "out/a.md").expect("围栏① 该放过它");
-    let err =
-        walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap()).expect_err("symlink 指出目标根，围栏② 竟然放行了");
+    let err = walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap())
+        .expect_err("symlink 指出目标根，围栏② 竟然放行了");
     assert!(
         copy_core::copy_matches("beFilesWrite.path.escaped", &err),
         "拒了，但说的不是越界：{err}"
@@ -425,7 +426,8 @@ fn the_resolved_fence_lets_a_clean_path_through() {
     let root = temp_root("clean2");
     std::fs::create_dir_all(root.join("docs")).expect("建子目录");
     let lexical = lexical_in_root(&root, "docs/a.md").expect("围栏① 该放过它");
-    let got = walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap()).expect("围栏② 误拒了干净路径");
+    let got = walk_in_root(Last::Link, &root, lexical.strip_prefix(&root).unwrap())
+        .expect("围栏② 误拒了干净路径");
     assert_eq!(
         got.file_name().and_then(|s| s.to_str()),
         Some("a.md"),
@@ -444,8 +446,7 @@ fn the_resolved_fence_lets_a_clean_path_through() {
 #[test]
 fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     let root = temp_root("noparent");
-    let err =
-        walk_in_root(Last::Link, &root, "nope/a.md").expect_err("父目录不在，却没拒");
+    let err = walk_in_root(Last::Link, &root, "nope/a.md").expect_err("父目录不在，却没拒");
     assert!(
         copy_core::copy_matches("beFilesWrite.path.unresolved", &err),
         "拒的理由不对：{err}"
@@ -1344,15 +1345,25 @@ fn explicit_overwrite_writes_through_a_link_only_inside_the_root() {
     let err = copy_entry(&Face::issue(), &root, "a.md", "ln.md", false)
         .expect_err("链接上 O_EXCL 竟然成了");
     assert_eq!(err.code(), "exists", "{err:?}");
-    let err = copy_entry(&Face::issue(), &root, "a.md", "ln.md", true)
-        .expect_err("经链接写到了根外");
+    let err =
+        copy_entry(&Face::issue(), &root, "a.md", "ln.md", true).expect_err("经链接写到了根外");
     assert_eq!(err.code(), "refused", "{err:?}");
-    assert!(std::fs::symlink_metadata(root.join("ln.md")).expect("ln").file_type().is_symlink());
-    assert_eq!(std::fs::read(&live).expect("读根外"), bytes, "🔴 根外那一份被经由链接改写了");
+    assert!(std::fs::symlink_metadata(root.join("ln.md"))
+        .expect("ln")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        std::fs::read(&live).expect("读根外"),
+        bytes,
+        "🔴 根外那一份被经由链接改写了"
+    );
     std::fs::write(root.join("c.md"), b"C").expect("铺 c");
     std::os::unix::fs::symlink("c.md", root.join("in.md")).expect("铺根里的链接");
     copy_entry(&Face::issue(), &root, "a.md", "in.md", true).expect("根里的链接被拒了");
-    assert!(std::fs::symlink_metadata(root.join("in.md")).expect("in").file_type().is_symlink());
+    assert!(std::fs::symlink_metadata(root.join("in.md"))
+        .expect("in")
+        .file_type()
+        .is_symlink());
     assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"NEW");
     for n in ["b.md", "ln.md", "c.md"] {
         assert!(

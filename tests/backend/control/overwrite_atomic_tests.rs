@@ -216,7 +216,11 @@ fn w4_the_only_in_place_write_is_the_in_place_arm_of_replace_contents() {
     assert_eq!(prod.matches("fn replace_contents(").count(), 1);
     let seg = &prod[prod.find("fn replace_contents(").expect("replace_contents")..];
     let seg = &seg[..seg.find("\n}\n").expect("replace_contents 的尾")];
-    assert_eq!(write_calls(seg).len(), 1, "replace_contents 里就地写不是恰好一处");
+    assert_eq!(
+        write_calls(seg).len(),
+        1,
+        "replace_contents 里就地写不是恰好一处"
+    );
     let asked = seg.find("in_place_reason(").expect("那一问");
     let arm = seg.find("if let Some(why) = in_place").expect("就地那一支");
     let w = write_calls(seg)[0];

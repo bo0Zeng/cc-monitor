@@ -186,7 +186,11 @@ fn an_overwriting_commit_keeps_the_target_mode() {
     )
     .expect("该换掉");
     assert_eq!(std::fs::read(root.join("k")).unwrap(), b"new");
-    let mode = std::fs::metadata(root.join("k")).unwrap().permissions().mode() & 0o7777;
+    let mode = std::fs::metadata(root.join("k"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o7777;
     assert_eq!(mode, 0o600, "盖掉之后权限位跟了暂存件");
 }
 

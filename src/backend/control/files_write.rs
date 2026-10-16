@@ -1182,8 +1182,8 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
         Vec::new()
     };
     while let Some(tail) = pending.pop() {
-        let dir_at =
-            walk_in_root(Last::Link, &real_root, join_tail(&src, &tail)).map_err(WriteRefusal::Refused)?;
+        let dir_at = walk_in_root(Last::Link, &real_root, join_tail(&src, &tail))
+            .map_err(WriteRefusal::Refused)?;
         let listing = Ro::read_dir(&dir_at).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
@@ -1575,7 +1575,8 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
         }
         Ok(_) => {}
     }
-    let real = walk_in_root(Last::Follow, root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
+    let real =
+        walk_in_root(Last::Follow, root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
     let md = Ro::metadata(&real).map_err(|e| {
         WriteFail::io(
             copy_text(
@@ -1802,7 +1803,11 @@ fn put_text_racing(
         _ => None,
     };
     // 原来不在（`expect: null`）⇒ 上位不许顶掉任何东西：CAS 判完「不在」之后冒出来的那一份照样不盖，回 `stale`。
-    let was = if current.is_none() { Was::New } else { Was::Old };
+    let was = if current.is_none() {
+        Was::New
+    } else {
+        Was::Old
+    };
     match replace_contents(face, root, rel, Content::Bytes(bytes), None, was, between) {
         Err(WriteRefusal::Exists(_)) => {
             return Err(WriteRefusal::Stale(copy_text(

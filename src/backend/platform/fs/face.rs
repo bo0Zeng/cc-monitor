@@ -39,9 +39,8 @@ impl Resolved {
     /// 从已解到底的根 `real_root` 往下逐段开 `inner`（只许普通段，每一段都不跟链接、必须是目录），停在那一层，
     /// 最后一段 `name` 不开。只给路径解析调（`common/root_path.rs`）。
     pub(crate) fn walk(real_root: &Path, inner: &Path, name: &OsStr) -> io::Result<Resolved> {
-        let path = real_root.join(inner).join(name);
         #[cfg(unix)]
-        {
+        let dir = {
             let mut dir = at::open_dir(None, real_root.as_os_str())?;
             for c in inner.components() {
                 match c {
@@ -49,16 +48,15 @@ impl Resolved {
                     _ => return Err(io::Error::from(io::ErrorKind::InvalidInput)),
                 }
             }
-            Ok(Resolved {
-                path,
-                dir: std::sync::Arc::new(dir),
-                name: name.to_os_string(),
-            })
-        }
-        #[cfg(not(unix))]
-        {
-            Ok(Resolved { path })
-        }
+            std::sync::Arc::new(dir)
+        };
+        Ok(Resolved {
+            path: real_root.join(inner).join(name),
+            #[cfg(unix)]
+            dir,
+            #[cfg(unix)]
+            name: name.to_os_string(),
+        })
     }
 
     /// 担保 `p` 是要动的那一格（按路径开它的上一层）。只许删会话那一道调（构造判据钉）。
@@ -104,6 +102,26 @@ impl AsRef<Path> for Resolved {
     }
 }
 
+/// 非 unix 臂按路径开文件的三种开法（都只写）：新建（已在即失败）· 截断已在的 · 开已在的（落盘用）。
+#[cfg_attr(unix, allow(dead_code))]
+enum Open {
+    New,
+    Truncate,
+    Existing,
+}
+
+#[cfg_attr(unix, allow(dead_code))]
+fn by_path(how: Open) -> std::fs::OpenOptions {
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true);
+    match how {
+        Open::New => o.create_new(true),
+        Open::Truncate => o.truncate(true),
+        Open::Existing => &mut o,
+    };
+    o
+}
+
 /// 文件管理面的写句柄（零大小）。造只经 [`Face::issue`]；克隆只给已经拿着它的那一处（传输台把它带进起跑的那趟任务）。
 #[derive(Clone, Debug)]
 pub struct Face(());
@@ -123,11 +141,7 @@ impl Face {
         }
         #[cfg(not(unix))]
         {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&at.path)
-                .map(FaceFile)
+            by_path(Open::New).open(&at.path).map(FaceFile)
         }
     }
 
@@ -139,11 +153,7 @@ impl Face {
         }
         #[cfg(not(unix))]
         {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .open(&at.path)
-                .map(FaceFile)
+            by_path(Open::Truncate).open(&at.path).map(FaceFile)
         }
     }
 
@@ -175,7 +185,13 @@ impl Face {
     pub(crate) fn move_file(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
-            at::rename(&from.dir, &from.name, &to.dir, &to.name, at::Rename::Replace)
+            at::rename(
+                &from.dir,
+                &from.name,
+                &to.dir,
+                &to.name,
+                at::Rename::Replace,
+            )
         }
         #[cfg(not(unix))]
         {
@@ -188,7 +204,13 @@ impl Face {
     pub(crate) fn move_noreplace(&self, from: &Resolved, to: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
         {
-            at::rename(&from.dir, &from.name, &to.dir, &to.name, at::Rename::NoReplace)
+            at::rename(
+                &from.dir,
+                &from.name,
+                &to.dir,
+                &to.name,
+                at::Rename::NoReplace,
+            )
         }
         #[cfg(not(unix))]
         {
@@ -266,24 +288,16 @@ impl Face {
         }
         #[cfg(not(unix))]
         {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(&at.path)?
-                .sync_all()
+            by_path(Open::Existing).open(&at.path)?.sync_all()
         }
     }
 
     /// 把 `at` 所在那一层目录落盘（换名上位之后：目录项也要落到盘上）。非 unix 无此事 ⇒ `Ok`。
     pub(crate) fn sync_dir(&self, at: &Resolved) -> io::Result<()> {
         #[cfg(unix)]
-        {
-            at::open(&at.dir, OsStr::new("."), libc::O_RDONLY | libc::O_DIRECTORY)?.sync_all()
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = at;
-            Ok(())
-        }
+        at::open(&at.dir, OsStr::new("."), libc::O_RDONLY | libc::O_DIRECTORY)?.sync_all()?;
+        let _ = at;
+        Ok(())
     }
 }
 
@@ -431,7 +445,11 @@ mod at {
     }
 
     /// 开一份文件（一律不跟链接；建出来的按 0666 ＆ umask）。
-    pub(super) fn open(dir: &OwnedFd, name: &OsStr, flags: libc::c_int) -> io::Result<std::fs::File> {
+    pub(super) fn open(
+        dir: &OwnedFd,
+        name: &OsStr,
+        flags: libc::c_int,
+    ) -> io::Result<std::fs::File> {
         let n = c(name)?;
         // SAFETY：同上。
         let fd = unsafe {

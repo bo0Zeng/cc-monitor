@@ -20,8 +20,7 @@
 //! 认下的：修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    walk_in_root, Last, wire_of, Act, ManageCommand, WriteFail,
-    WriteRefusal, TREE_ENTRY_CAP,
+    walk_in_root, wire_of, Act, Last, ManageCommand, WriteFail, WriteRefusal, TREE_ENTRY_CAP,
 };
 use crate::platform::fs::{Face, Ro, RoFile};
 use cmd_wire::files as wire;

@@ -98,7 +98,10 @@ async fn a_clash_is_asked_once_from_the_conflicts_and_skip_is_the_default() {
     until(|| board.is_asking()).await;
     let c = board.conflicts();
     assert_eq!(c.len(), 2, "照 data.conflicts 画：{c:?}");
-    assert!(!c[1].answers.contains(&Decide::Overwrite), "目录同名那一行不给覆盖");
+    assert!(
+        !c[1].answers.contains(&Decide::Overwrite),
+        "目录同名那一行不给覆盖"
+    );
     assert_eq!(
         conflict_row(&c[1]).meta,
         copy_text("rsFilewinBatch.ask.dirNoMerge", &[])

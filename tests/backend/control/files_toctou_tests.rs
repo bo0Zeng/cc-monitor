@@ -258,8 +258,16 @@ fn a_parent_swapped_for_a_link_after_resolving_does_not_lead_out_of_the_root() {
             std::os::unix::fs::symlink(&out, root.join("d")).unwrap();
         },
     );
-    assert_eq!(std::fs::read(out.join("a")).unwrap(), b"out", "根外那一份被挪走了：{got:?}");
+    assert_eq!(
+        std::fs::read(out.join("a")).unwrap(),
+        b"out",
+        "根外那一份被挪走了：{got:?}"
+    );
     assert!(!out.join("b").exists(), "改名落到了根外：{got:?}");
-    assert_eq!(std::fs::read(root.join("d.was/b")).unwrap(), b"in", "{got:?}");
+    assert_eq!(
+        std::fs::read(root.join("d.was/b")).unwrap(),
+        b"in",
+        "{got:?}"
+    );
     std::fs::remove_dir_all(&base).ok();
 }

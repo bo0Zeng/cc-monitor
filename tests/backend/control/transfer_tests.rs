@@ -1340,7 +1340,11 @@ async fn an_upload_group_asks_once_about_remote_names_and_settles_each_answer() 
             there: cwf::FileKind::File,
             there_size: Some(3),
             there_mtime_text: Some("2023-11-15 07:13".into()),
-            answers: vec![cmd_wire::batch::Decide::Overwrite, cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth],
+            answers: vec![
+                cmd_wire::batch::Decide::Overwrite,
+                cmd_wire::batch::Decide::Skip,
+                cmd_wire::batch::Decide::KeepBoth
+            ],
         }],
         "只有 a.txt 同名；那台那一格按东京的钟写"
     );
@@ -1408,7 +1412,10 @@ async fn an_upload_onto_a_remote_dir_never_merges() {
     };
     assert_eq!(
         c.conflicts[0].answers,
-        vec![cmd_wire::batch::Decide::Skip, cmd_wire::batch::Decide::KeepBoth],
+        vec![
+            cmd_wire::batch::Decide::Skip,
+            cmd_wire::batch::Decide::KeepBoth
+        ],
         "目录同名不该给覆盖"
     );
     let got = ready(upload_with(

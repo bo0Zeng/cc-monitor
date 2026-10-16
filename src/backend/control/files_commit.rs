@@ -35,8 +35,8 @@
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
 
 use crate::control::files_write::{
-    content_sha256, overwrite_text_expecting, rel_of, replace_contents, Content, Was, walk_in_root, Last, root_of, wire_of, Act,
-    ManageCommand, WriteFail, WriteRefusal,
+    content_sha256, overwrite_text_expecting, rel_of, replace_contents, root_of, walk_in_root,
+    wire_of, Act, Content, Last, ManageCommand, Was, WriteFail, WriteRefusal,
 };
 use crate::platform::fs::{Face, Ro};
 use cmd_wire::files as wire;
@@ -239,7 +239,8 @@ pub fn stage_chunk(
         )));
     }
     let dir = ensure_staging(face, home)?;
-    let at = walk_in_root(Last::Link, &dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
+    let at =
+        walk_in_root(Last::Link, &dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
     let mut f = face.create_new(&at).map_err(|e| {
         WriteRefusal::io(
             copy_text(

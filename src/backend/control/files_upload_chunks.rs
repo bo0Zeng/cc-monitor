@@ -51,7 +51,8 @@ fn assemble(
         )));
     }
     let dir = home.join(STAGING_DIR);
-    let part = walk_in_root(Last::Link, &dir, format!("{key}.part")).map_err(WriteRefusal::Refused)?;
+    let part =
+        walk_in_root(Last::Link, &dir, format!("{key}.part")).map_err(WriteRefusal::Refused)?;
     let io = |what: &Path, e: std::io::Error| {
         WriteRefusal::io(
             copy_text(
