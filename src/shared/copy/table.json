@@ -17123,10 +17123,7 @@
       "kind": "error",
       "role": "报错",
       "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未恢复\n点此提示改用「不指定账号」启动",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "accountPick.refused.explicitGoneToCurrent": {
       "kind": "error",
@@ -17138,19 +17135,13 @@
       "kind": "error",
       "role": "报错",
       "zh": "{name} 不可用 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "accountPick.refused.listUnknown": {
       "kind": "error",
       "role": "报错",
       "zh": "账号 {name} 是否可用不明 · 未读到 {machine} 的账号清单 · 未启动\n点此提示改用「不指定账号」启动",
-      "args": ["machine", "name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["machine", "name"]
     },
     "events.stream.closedTitle": {
       "kind": "error",
@@ -22152,10 +22143,7 @@
       "kind": "error",
       "role": "报错",
       "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动\n可改用「不指定账号」",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "beLaunchAccount.unavailable.namedToDefault": {
       "kind": "error",
@@ -22167,19 +22155,13 @@
       "kind": "error",
       "role": "报错",
       "zh": "{name} 不可用 · 未启动\n可改用「不指定账号」",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "beLaunchAccount.unavailable.listUnknown": {
       "kind": "error",
       "role": "报错",
       "zh": "账号 {name} 是否可用不明 · 未读到账号清单 · 未启动\n可改用「不指定账号」",
-      "args": ["name"],
-      "waive": {
-        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
-      }
+      "args": ["name"]
     },
     "rsFilewinFind.age.secs": {
       "kind": "body",
@@ -32581,6 +32563,74 @@
       "kind": "action",
       "role": "菜单项",
       "zh": "清空会话",
+      "args": []
+    },
+    "sessionOpen.attached.title": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已接上",
+      "args": []
+    },
+    "sessionOpen.attached.body": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{machine} · tmux 会话「{name}」",
+      "args": ["machine", "name"],
+      "limited": ["tmux"]
+    },
+    "sessionOpen.arrived.resume": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已恢复",
+      "args": []
+    },
+    "sessionOpen.arrived.new": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已新建",
+      "args": []
+    },
+    "sessionOpen.timeout.title": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 未在期限内应答 · 结果未知",
+      "args": ["machine"]
+    },
+    "sessionOpen.account.useAlt": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改用 {alt}",
+      "args": ["alt"]
+    },
+    "sessionOpen.account.useBase": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "不指定账号",
+      "args": []
+    },
+    "sessionOpen.copy.copied": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "终端未打开 · 命令已复制",
+      "args": []
+    },
+    "sessionOpen.copy.manual": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "终端未打开 · 手动复制下面的命令",
+      "args": []
+    },
+    "sessionOpen.copy.runRemote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在 {machine} 的 ssh 终端里粘贴运行",
+      "args": ["machine"],
+      "limited": ["SSH"]
+    },
+    "sessionOpen.copy.runLocal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在本机 bash 里运行",
       "args": []
     }
   }
