@@ -202,4 +202,3 @@ fn stat_reports_the_owner_and_where_a_link_points() {
     assert_eq!(l["owner"], f["owner"], "属主跟链接，与它指向的那份同一个");
     std::fs::remove_dir_all(&base).ok();
 }
-

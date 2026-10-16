@@ -390,7 +390,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `rotation_strategies` —— 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
-- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
+- `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉 · 「没人答时自动答」那一格改了；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
@@ -1362,22 +1362,6 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `bad_path` · `exists` · `io_failed` · `refused` · `unsupported`
 
-#### `files-link`
-
-建一条符号链接。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-link`
-
-入参 `FilesLinkReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesLinkReq = { root: WirePath, rel: WirePath, target: WirePath, };
-type FilesPathReply = { path: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused`
-
 #### `files-write-text`
 
 覆盖写一份已经在的普通文件。
@@ -1391,38 +1375,6 @@ type FilesWriteTextReq = { root: WirePath, rel: WirePath, content: WirePath, exp
 type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
-
-#### `files-peek`
-
-读改写的读那一半。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-peek`
-
-入参 `FilesPeekReq` · 回包 `FilesPeekReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPeekReply = { path: WirePath, exists: boolean, text: string | null, };
-type FilesPeekReq = { root: WirePath, rel: WirePath, };
-type WirePath = string | { b16: string };
-```
-
-码：`bad_args` · `bad_path` · `io_failed` · `not_text` · `refused` · `too_large`
-
-#### `files-put`
-
-整份替换一份文本文件。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-put`
-
-入参 `FilesPutReq` · 回包 `FilesPutReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type FilesPutReply = { path: WirePath, bytes: number, changed: boolean, created: boolean, backup: WirePath | null, };
-type FilesPutReq = { root: WirePath, rel: WirePath, content: WirePath, expect: WirePath | null, backup?: boolean, parents?: boolean, };
 type WirePath = string | { b16: string };
 ```
 
@@ -4032,11 +3984,24 @@ type Annotated = { entry: Entry,
  * 改之前单个隐藏那一格（`on` · `off` · 没有 ⇒ `null`）：撤销「隐藏」照它交回去（`null` ⇒ `rule`），不把照规则显示的钉成单独显示。
  */
 prev: Hide | null, };
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
 type Entry = { starred: boolean, customTitle: string | null, 
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
-hide?: Hide, updatedAt: number, };
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, updatedAt: number, };
 type Hide = "on" | "off";
 type HideAsk = "on" | "off" | "rule";
 type Patch = { 
@@ -4051,7 +4016,11 @@ customTitle?: string | null,
 /**
  * 单个那一格：`on` · `off` · `rule`（摘掉、回到规则）。
  */
-hide?: HideAsk | null, };
+hide?: HideAsk | null, 
+/**
+ * 没人答时自动答：`{afterMin, say?}`，`afterMin: 0` 摘掉（关）；没给 `say` ⇒ 留着原来那一句、空白 ⇒ 回到缺省；值怎么算数由 `control::asks::auto_checked` 判。
+ */
+autoAnswer?: AutoAnswer | null, };
 ```
 
 码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
@@ -4107,6 +4076,15 @@ type NoArgs = Record<symbol, never>;
 入参 `HistoryListReq` · 回包 `HistoryListReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AutoAnswer = { 
+/**
+ * 挂上的提问等满几分钟还没人答就替人答；补丁里给 0 ＝ 关（摘掉这一格）。
+ */
+afterMin: number, 
+/**
+ * 替人答的那一句；缺 ⇒ 后端那一句缺省的。
+ */
+say?: string, };
 type Can = { 
 /**
  * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
@@ -4130,7 +4108,11 @@ type Entry = { starred: boolean, customTitle: string | null,
 /**
  * 单个那一格：`on` 隐藏 · `off` 不隐藏 · 缺 ＝ 照规则。
  */
-hide?: Hide, updatedAt: number, };
+hide?: Hide, 
+/**
+ * 没人答的提问等几分钟替人答一句（判定住后端 `control::asks`）；缺 ＝ 关。
+ */
+autoAnswer?: AutoAnswer, updatedAt: number, };
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
 type Hide = "on" | "off";
@@ -6008,6 +5990,7 @@ type TurnSpan = { text: string, from: number | null, to: number | null, };
 入参 `NoArgs` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AnsweredRow = { sid: string, said: Words, };
 type AskKind = "approve" | "answer" | "plan";
 type Hidden = { by: HiddenBy, said: string, };
 type HiddenBy = "self" | "alias" | "launch" | "child" | "bg";
@@ -6045,7 +6028,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6124,9 +6108,13 @@ type NeedsChoiceRow = "main" | "hold" | "release";
 type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
 type NeedsList = { 
 /**
- * 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+ * 此刻活着、那台说在等人的会话（`needs.rank` 小的在前）；一个都没有 ⇒ 空。
  */
-waiting: Array<NeedsRow>, };
+waiting: Array<NeedsRow>, 
+/**
+ * 提问没人答、已替人答过的会话（各留最近一次，那条会话下一次挂上提问才换掉），按会话 id 排。
+ */
+answered: Array<AnsweredRow>, };
 type NeedsNote = "none" | "optional" | "required";
 type NeedsQuestion = { 
 /**
@@ -6352,7 +6340,8 @@ headCode: string | null,
  */
 tone: Tone, 
 /**
- * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ * 先答序（小的先答，出口只按它排）：危险度那一档在高位（顶上那个框先答，再按危险度），同一档里等得越久越小，
+ * 不知道等了多久的排这一档最后。算进的是这一份答出那一刻已等多久 ⇒ 会走的钟那一侧从收到起又等了多久照减（`waitedMs` 为 `null` 的不减）。
  */
 rank: number, 
 /**
@@ -6591,6 +6580,14 @@ background: FactsBackground | null,
  * （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
  */
 answerOff: Words | null, 
+/**
+ * **没人答时自动答**：会话注解里那一格设的几分钟（`control::asks` 判只管提问）；关 ⇒ `null`。不累加，每次现读。
+ */
+autoAnswer: number | null, 
+/**
+ * 上一条提问没人答、已替人答过 ⇒ 写好的那一句（「10 分钟没人答，已自动答：…」，这条会话下一次挂上提问才换掉）；没有 ⇒ `null`。不累加，每次现查。
+ */
+autoAnswered: Words | null, 
 /**
  * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
  */
@@ -7723,11 +7720,11 @@ name: string, project: string | null, };
 type SkillLedgerFile = { digest: string, created: boolean, };
 type SkillPlan = { root: string, dir: string, 
 /**
- * 写的时候 `files-put` 用的 `root`。
+ * 写的时候 `Door::put` 用的 `root`。
  */
 base: string, 
 /**
- * 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+ * 写的时候 `Door::put` 用的相对前缀：`rel` = `<prefix>/<path>`。
  */
 prefix: string, rows: Array<SkillPlanRow>, target: Array<SkillTargetFile>, 
 /**
@@ -11036,7 +11033,7 @@ args: Array<string>, };
 
 #### `ccm-probe`
 
-这台的 `ccm` 会哪些。
+这台的 `ccm` 会哪些、终端里敲它走到哪。
 
 不收 `args` · 可撤 · 只在流上
 
@@ -11059,8 +11056,14 @@ agents: Array<string>,
 /**
  * 这一份的 `BUILD_ID`。
  */
-build: string, };
+build: string, 
+/**
+ * 终端里敲 `ccm` 走到的是不是这一份，与那一句。
+ */
+onPath: OnPath, };
 type NoArgs = Record<symbol, never>;
+type OnPath = { verdict: OnPathVerdict, said: string, };
+type OnPathVerdict = "ours" | "other" | "absent" | "unknown";
 ```
 
 码：`bad_args`
@@ -12748,11 +12751,8 @@ needs: string | null, };
 | `--files-home` | ＝ 帧命令 `files-home`：后端这个用户的 home |
 | `--files-index-rebuild` | ＝ 帧命令 `files-index-rebuild`：重建常驻文件名索引：走一遍，做完返回 |
 | `--files-index-status` | ＝ 帧命令 `files-index-status`：索引的新鲜度 / 条目数 / 常驻字节 |
-| `--files-link` | ＝ 帧命令 `files-link`：建一条符号链接 |
 | `--files-ls` | ＝ 帧命令 `files-ls`：列一个目录的直接子项 |
 | `--files-mkdir` | ＝ 帧命令 `files-mkdir`：新建一个目录 |
-| `--files-peek` | ＝ 帧命令 `files-peek`：读改写的读那一半 |
-| `--files-put` | ＝ 帧命令 `files-put`：整份替换一份文本文件 |
 | `--files-read-chunk` | ＝ 帧命令 `files-read-chunk`：按字节寻址分块读回 |
 | `--files-read-text` | ＝ 帧命令 `files-read-text`：读一份文本进编辑器 |
 | `--files-rename` | ＝ 帧命令 `files-rename`：改名 / 同根内移动 |
