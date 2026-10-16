@@ -2,7 +2,7 @@
 //!
 //! 核原文：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** …… 后端要提供的查询都是『读一遍文件』级别：
 //! …… 改动文件集 / agent 列表 / 分叉血缘（没做）」（agent 列表今天是运行表，不在会话事实里）；「旁路记账员改读 json」。
-//! 本族钉的是**口径**（逐格、从前端旧实现逐字搬来的那几条）与**续传**（接力扫 == 一次扫完）。
+//! 本族钉的是**口径**（逐格、从前端旧实现逐字搬来的那几条）与**接着算**（接力扫 == 一次扫完）。
 //!
 //! 夹具只造**结构**（记录类型、工具名、键名、占位串），不采任何真会话正文。
 
@@ -12,6 +12,21 @@ use serde_json::json;
 /// 一份夹具会话：每条记录一行（`\n` 收尾）。
 fn jsonl(records: &[Value]) -> String {
     records.iter().map(|r| format!("{r}\n")).collect()
+}
+
+/// 读 `r` 的完整行逐行累加到 `facts` 上（每行经 [`note_line`]，同事实尾巴接着读那一路），再按 `limits` · `relay` 定上下文上限。
+fn scan_facts<R: std::io::BufRead>(
+    r: R,
+    mut facts: SessionFacts,
+    limits: &ContextLimits,
+    relay: Option<bool>,
+) -> std::io::Result<SessionFacts> {
+    let mut lines = crate::observe::lines::Lines::new(r, 0);
+    while let Some(row) = lines.next()? {
+        note_line(&mut facts, row.body());
+    }
+    settle_limit(&mut facts, limits, relay);
+    Ok(facts)
 }
 
 fn scan_all(text: &str) -> SessionFacts {
@@ -121,11 +136,10 @@ fn only_complete_lines_count() {
     let f = scan_all(&body);
     assert_eq!(f.touched_files, vec!["/p/a"]);
     assert_eq!(f.usage, None, "残尾那条带 usage，但没写完 ⇒ 不算");
-    assert_eq!(f.end as usize, body.rfind('\n').unwrap() + 1);
 }
 
-/// ★★ **续传 == 一次扫完**：夹具在**每一个**行边界切成两段，前一段的成品（常驻后端表里记的那一份，`facts_cache`）
-/// 当 `prior` 接着扫后一段 ⇒ 与一次扫完逐格相等（两向：`assert_eq` 比整个结构）。
+/// ★★ **接着算 == 一次扫完**：夹具在**每一个**行边界切成两段，前一段的成品（后端按路径留着的那一份累加器）
+/// 接着扫后一段 ⇒ 与一次扫完逐格相等（两向：`assert_eq` 比整个结构）。
 #[test]
 fn resuming_from_any_line_boundary_equals_one_pass() {
     let mut recs = mixed();
@@ -139,7 +153,6 @@ fn resuming_from_any_line_boundary_equals_one_pass() {
     assert!(cuts.len() > recs.len(), "切点没取到");
     for cut in cuts {
         let head = scan_all(&text[..cut]);
-        assert_eq!(head.end as usize, cut);
         let resumed = scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap();
         assert_eq!(resumed, whole, "在字节 {cut} 处接力，结果与一次扫完不同");
     }
@@ -171,7 +184,6 @@ fn the_fast_path_never_changes_the_answer() {
     );
     let mut slow = SessionFacts::default();
     for line in text.lines() {
-        slow.end += line.len() as u64 + 1;
         if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
@@ -314,8 +326,8 @@ fn the_context_limit_is_decided_here_and_never_below_what_was_seen() {
     );
 }
 
-/// ★ 一份会话：最新一轮掉下来了（压缩过），见过的最大一轮照样记着 ⇒ 上限仍是 1M；续传接力也一样（peak 跟着 prior 走）。
-/// 设置表随每一次问交来：同一份 `prior` 换一张表再问 ⇒ 上限跟着变。
+/// ★ 一份会话：最新一轮掉下来了（压缩过），见过的最大一轮照样记着 ⇒ 上限仍是 1M；接力也一样（peak 跟着累加器走）。
+/// 设置表随每一次问交来：同一份累加器换一张表再问 ⇒ 上限跟着变。
 #[test]
 fn the_peak_survives_a_compaction_and_a_resume_and_the_setting_applies_each_time() {
     let text = jsonl(&[
@@ -575,7 +587,6 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     let fast = scan_all(&text);
     let mut slow = SessionFacts::default();
     for line in text.lines() {
-        slow.end += line.len() as u64 + 1;
         if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
@@ -635,7 +646,7 @@ fn handed_back_runs_are_the_ones_that_handed_back() {
 }
 
 /// ★ 一步还没结果时的样子只在这里判：那台说在等的正是它 ⇒ 在等你；有活进程 ⇒ 在跑；没有 ⇒ 状态不明、带原因码
-/// （没有活进程持着 `noWriter` · 这一家不留 pidfile、判不了活 `untracked`）；每次现判、不随续传令牌留下来。
+/// （没有活进程持着 `noWriter` · 这一家不留 pidfile、判不了活 `untracked`）；每次现判、不随累加器留下来。
 #[test]
 fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session() {
     let text = jsonl(&[assistant(vec![
@@ -679,7 +690,7 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
         states(&f),
         [(StepWait::Awaiting, None), (StepWait::Running, None)]
     );
-    // 续传：令牌里带着上一次的样子也收（形状恰好）。
+    // 上线那一形：每一步的样子照写。
     let wire = serde_json::to_value(&f).unwrap();
     assert_eq!(
         (
@@ -768,7 +779,7 @@ fn priced(req: &str, model: &str, usage: Value) -> Value {
 }
 
 /// 用量成品：同一次请求写出的几条只算一次（取最后一条）· 写缓存分 5m / 1h 两档（没分档的整份算 5m）· 成品串后端写好；
-/// 续传接力（从任一行边界接着扫）== 一次扫完。
+/// 接力（从任一行边界接着扫）== 一次扫完。
 #[test]
 fn tokens_count_each_request_once_with_two_cache_write_tiers() {
     let text = jsonl(&[
@@ -1105,7 +1116,6 @@ fn background_commands_are_kept_until_their_end_notice() {
     // 快路：每行都解析与先过滤再解析结果一样。
     let mut slow = SessionFacts::default();
     for line in text.lines() {
-        slow.end += line.len() as u64 + 1;
         if let Some(v) = crate::observe::lines::parse(line.as_bytes()) {
             note_record(&mut slow, &v);
         }

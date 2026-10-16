@@ -16,7 +16,6 @@ pub mod accounts_query;
 // cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod cc_bus_hooks;
 // 续算会话事实的那份累加器表（`history-facts` 的续点令牌）。
-pub(crate) mod facts_cache;
 // 读行：一行行读到最后一个完整行 · 算不算一行 · 一行怎么解析（读记录的各处都经它）。
 pub(crate) mod lines;
 // 一次性等待（记录里长出某一条 · 会话由新进程报出）：换号重启那条命令用，期限由发起方给。

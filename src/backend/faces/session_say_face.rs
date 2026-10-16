@@ -99,7 +99,7 @@ pub(crate) fn resume_here(
     let path = path.to_str()?;
     let agent = hq::facts_agent(&home, path)?;
     let cwd = hq::facts_project_dir(&home, path)?;
-    let facts = hq::cold_scan(&home, path).ok()?.facts(&Vec::new(), None);
+    let facts = hq::facts(&home, path, &Vec::new(), None).ok()?;
     let item = Item {
         sid: sid.to_string(),
         cwd,

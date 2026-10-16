@@ -132,6 +132,19 @@ pub(crate) fn cold_scan(
         .map_err(|e| format!("open failed: {e}"))
 }
 
+/// 会话事实（同一道围栏）：图在 ⇒ 照图；图被挤掉 ⇒ 接着它留下的事实尾巴读；都没有 ⇒ 现扫（见 [`super::super::record_scan::RecordScans::facts`]）。
+pub(crate) fn facts(
+    agent_home: &Path,
+    jsonl_path: &str,
+    limits: &super::super::recognize::facts::ContextLimits,
+    relay: Option<bool>,
+) -> Result<super::super::recognize::facts::SessionFacts, String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    super::super::record_scan::global()
+        .facts(&target, limits, relay)
+        .map_err(|e| format!("open failed: {e}"))
+}
+
 /// 续取用（同一道围栏）：从 `from` 起问的那一张扫描图（同 [`cold_scan`]：留着且没变 ⇒ 那一张；变长了 ⇒ 接着扫追加的那一截；
 /// 不在了 ⇒ 照骨架起步或整份重扫）。`from` 越过文件尾 ⇒ 报错（截断 / 重写过，调用方从 0 重要）。
 pub(crate) fn scan_from(
@@ -169,41 +182,6 @@ pub(crate) fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String>
 pub(crate) fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
     let target = validate_session_path(agent_home, jsonl_path).ok()?;
     super::super::accounts_query::session_holders(agent_home, &target)
-}
-
-/// `history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
-/// ① `from` 不越过文件尾（越过 = 截断 / 重写）；② `from > 0` 时文件第 `from-1` 字节是 `\n`
-/// （续点恒是某个完整行的末字节 —— 不在行边界上 = 被重写过，接着读会从半行起、把后面的事实算歪）。
-/// 挡不住的一形：重写成更长、而旧续点恰好也落在新内容的行边界上（与大纲同一个口子）。
-pub(crate) fn open_facts_at(
-    agent_home: &Path,
-    jsonl_path: &str,
-    from: u64,
-) -> Result<std::io::BufReader<RoFile>, String> {
-    use std::io::{Read, Seek, SeekFrom};
-    let target = validate_session_path(agent_home, jsonl_path)?;
-    let mut f = Ro::open(&target).map_err(|e| format!("open failed: {e}"))?;
-    let len = f.metadata().map_err(|e| format!("stat failed: {e}"))?.len();
-    if from > len {
-        return Err(format!(
-            "resume point {from} is past EOF ({len} bytes): file was truncated or rewritten"
-        ));
-    }
-    if from > 0 {
-        f.seek(SeekFrom::Start(from - 1))
-            .map_err(|e| format!("seek failed: {e}"))?;
-        let mut last = [0u8; 1];
-        f.read_exact(&mut last)
-            .map_err(|e| format!("read failed: {e}"))?;
-        if last[0] != b'\n' {
-            return Err(format!(
-                "resume point {from} is not at a line boundary: file was rewritten"
-            ));
-        }
-    }
-    f.seek(SeekFrom::Start(from))
-        .map_err(|e| format!("seek failed: {e}"))?;
-    Ok(std::io::BufReader::new(f))
 }
 
 /// 过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。

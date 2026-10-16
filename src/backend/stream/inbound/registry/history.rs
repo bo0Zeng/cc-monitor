@@ -72,7 +72,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
         "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
     ),
-    // 会话事实（`observe/recognize/facts.rs`）。`prior` 是调用方上一次拿到的应答里的 `{end, rev}`（续传令牌，那台续算表 `observe::facts_cache`）；带 `view` 时这两格照样在（`views::TOKENS`）。
+    // 会话事实（`observe/recognize/facts.rs`）。只收路径：接着上一次算由后端按路径留着（`observe::record_scan`）。
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFactsCmd>("会话事实"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
     crate::wire::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),

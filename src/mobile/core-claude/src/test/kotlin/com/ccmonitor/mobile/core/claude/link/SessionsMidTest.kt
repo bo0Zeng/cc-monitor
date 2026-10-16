@@ -65,7 +65,7 @@ class SessionsMidTest {
     @Test
     fun `history-facts：入参只有路径；chip 上的两个显示字照抄，没有就是没有`() {
         assertEquals(mapOf("path" to "/p/s.jsonl"), HistoryFacts.args("/p/s.jsonl"))
-        val f = HistoryFacts.of(mapOf("modelText" to "Opus 4.5", "permissionModeText" to null, "end" to 9.0))!!
+        val f = HistoryFacts.of(mapOf("modelText" to "Opus 4.5", "permissionModeText" to null))!!
         assertEquals("Opus 4.5", f.modelText)
         assertNull(f.permissionModeText)
     }

@@ -27,8 +27,8 @@ const opt = (k, d) => {
 
 if (argv[0] === "--compare") {
   const [a, b] = [argv[1], argv[2]];
-  // 抹掉每趟都不一样的：活进程的 pid、事实续传令牌的 `rev`（按进程起来的时刻起号）。
-  const scrub = (s) => s.replace(/"writers":\[[0-9,]*\]/g, '"writers":[]').replace(/"rev":[0-9]+/g, '"rev":0');
+  // 抹掉每趟都不一样的：活进程的 pid。
+  const scrub = (s) => s.replace(/"writers":\[[0-9,]*\]/g, '"writers":[]');
   let bad = 0;
   const names = new Set([...readdirSync(join(a, "replies")), ...readdirSync(join(b, "replies"))]);
   for (const n of [...names].sort()) {

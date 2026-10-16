@@ -23,7 +23,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 /// 格式版本：骨架里任何一样的形状变了就加一（旧的那几份读出来版本对不上 ⇒ 整份重扫、覆盖）。
-pub(crate) const VERSION: u32 = 3;
+pub(crate) const VERSION: u32 = 4;
 
 /// 见证多长：游标前这么多字节（续读核「游标之前没被改写」的那一段，watcher 的续读指纹也是这个数）。
 pub const WITNESS: u64 = 64;

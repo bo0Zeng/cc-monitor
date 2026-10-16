@@ -690,8 +690,8 @@ mod specimens {
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
     use crate::observe::recognize::facts::{
-        Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,
-        RetryOutcome, RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
+        Cost, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall, RetryOutcome,
+        RetryRun, SessionFacts, StepWait, TokenUse, UnclearWhy, UsageFact,
     };
     use crate::observe::recognize::index_row::IndexRow;
     use crate::wire::{ActivityFace, Frame, RemovalCause, SessionContainer, SessionFate};
@@ -938,8 +938,6 @@ mod specimens {
             .into_iter()
             .map(|kind| {
                 let f = SessionFacts {
-                    end: 1,
-                    rev: 1,
                     forked_from: some("src"),
                     touched_files: vec![s("/f")],
                     usage: Some(UsageFact::new(
@@ -1001,10 +999,7 @@ mod specimens {
                         cache_write1h: 1,
                         requests: 1,
                         text: Words(s("1")),
-                        last: Some(LastRequest {
-                            id: s("q"),
-                            tokens: [1; 5],
-                        }),
+                        last: None,
                     }),
                     cost: Some(Cost {
                         micros: 1,

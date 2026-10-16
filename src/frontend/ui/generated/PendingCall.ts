@@ -28,7 +28,7 @@ at: string | null,
  */
 atMs: number | null, 
 /**
- * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+ * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加）。
  */
 state: StepWait, 
 /**

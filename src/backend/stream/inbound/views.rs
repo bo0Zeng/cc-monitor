@@ -21,10 +21,6 @@ pub(crate) const PLACES: &[(&str, &[(&str, &str)])] = &[
     ("history-facts", &[("", "facts")]),
 ];
 
-/// 命令 → 应答里**续算令牌**那几格：下一问把它们交回来接着算（`history-facts` 的 `end` · `rev` ⇒ 入参 `prior`）。
-/// 这几格**投影不去**（`cells` 没点 · `omit` 点了都照样在）：出口去了它们就续不上了。
-pub(crate) const TOKENS: &[(&str, &[&str])] = &[("history-facts", &["end", "rev"])];
-
 /// 这条命令的应答里成品住的那几处（没登记 ⇒ 空）。
 pub(crate) fn places_of(cmd: &str) -> &'static [(&'static str, &'static str)] {
     PLACES
@@ -37,26 +33,14 @@ pub(crate) fn places_of(cmd: &str) -> &'static [(&'static str, &'static str)] {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Plan {
     view: Option<(View, &'static [(&'static str, &'static str)])>,
-    /// 这条命令的续算令牌那几格（[`TOKENS`]）。
-    token: &'static [&'static str],
 }
 
 impl Plan {
-    /// 成功的应答照声明裁好；续算令牌那几格裁完放回去（不受投影管）。
+    /// 成功的应答照声明裁好。
     pub(crate) fn apply(&self, data: Option<Value>) -> Option<Value> {
         match (&self.view, data) {
             (Some((view, places)), Some(mut v)) => {
-                let kept: Vec<(&str, Value)> = self
-                    .token
-                    .iter()
-                    .filter_map(|k| v.get(*k).map(|x| (*k, x.clone())))
-                    .collect();
                 project_reply(&mut v, places, view);
-                if let Some(o) = v.as_object_mut() {
-                    for (k, x) in kept {
-                        o.insert(k.to_string(), x);
-                    }
-                }
                 Some(v)
             }
             (_, d) => d,
@@ -104,10 +88,6 @@ pub(crate) fn plan_for(cmd: &str, view: &Value) -> Result<Plan, Fail> {
     }
     Ok(Plan {
         view: Some((view, places)),
-        token: TOKENS
-            .iter()
-            .find(|(c, _)| *c == cmd)
-            .map_or(&[], |(_, k)| *k),
     })
 }
 

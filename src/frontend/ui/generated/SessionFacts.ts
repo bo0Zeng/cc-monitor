@@ -18,15 +18,6 @@ import type { Words } from "./Words";
  */
 export type SessionFacts = { 
 /**
- * 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
- */
-end: number, 
-/**
- * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`crate::observe::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
- * 扫描本身不读它；只在出成品那一刻由续算表铸。
- */
-rev: number, 
-/**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
  */
 forkedFrom: string | null, 
@@ -40,7 +31,7 @@ touchedFiles: Array<string>,
 usage: UsageFact | null, 
 /**
  * `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
- * （界面照抄，不自己拼）。每次现给，不进续算表。
+ * （界面照抄，不自己拼）。每次现给，不累加。
  */
 modelText: Words | null, 
 /**
@@ -53,7 +44,7 @@ projectDir: string | null,
  */
 agent: string | null, 
 /**
- * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+ * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
  * 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
  */
 writers: Array<number>, 
@@ -66,7 +57,7 @@ pending: Array<PendingCall>,
  */
 lastSay: LastSay | null, 
 /**
- * **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+ * **需手动**：那台说在等、等的是什么（不累加，每次现查）。不在等 ⇒ `null`。
  */
 needs: Needs | null, 
 /**
@@ -83,7 +74,7 @@ retries: Array<RetryRun>,
 permissionMode: string | null, 
 /**
  * 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
- * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+ * 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
  */
 permissionModeText: Words | null, 
 /**
@@ -95,11 +86,11 @@ tokens: TokenUse | null,
  */
 cost: FactsCost | null, 
 /**
- * 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+ * 还没收场的后台命令（文件序）：累加的那一份账。
  */
 bgTasks: Array<BgTask>, 
 /**
- * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+ * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
  */
 background: FactsBackground | null, 
 /**
@@ -112,7 +103,7 @@ answerOff: Words | null,
  */
 mcp: Array<McpTrouble>, 
 /**
- * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
+ * 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查。
  */
 startedBy: Kin | null, 
 /**

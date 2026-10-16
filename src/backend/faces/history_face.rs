@@ -987,26 +987,17 @@ pub(crate) fn find_at(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HistoryFactsReq {
-    /// jsonl 路径（围栏同 `history-read`）。
+    /// jsonl 路径（围栏同 `history-read`）。接着上一次算由后端按路径留着（`observe::record_scan`），调用方什么都不带。
     pub(crate) path: String,
-    /// 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
-    /// 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
-    ///
-    /// [`facts_cache`]: crate::observe::facts_cache
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) prior: Option<crate::observe::facts_cache::FactsToken>,
 }
 
 codes! {
     /// `history-facts` 的码。
     pub(crate) enum HistoryFactsErr {
-        /// 读不动（围栏外 · 打不开 · 续点越过文件尾 / 不在行边界：调用方从 0 重要一份）。
+        /// 读不动（围栏外 · 打不开）。
         Failed = "failed",
         /// 整份回包过上限（不截断）。
         TooLarge = "too_large",
-        /// 续传令牌对不上这台续算表里的任何一份（挤掉了 · 后端重启过 · 一次性进程）：调用方不带令牌从 0 要一份。
-        StalePrior = "stale_prior",
     }
 }
 
@@ -1043,17 +1034,8 @@ pub(crate) fn facts_at(
     req: HistoryFactsReq,
     limits: &crate::observe::recognize::facts::ContextLimits,
 ) -> Result<crate::observe::recognize::facts::SessionFacts, HistoryFactsErr> {
-    use crate::observe::{accounts_query, facts_cache, recognize::facts};
+    use crate::observe::{accounts_query, recognize::facts};
     let path = req.path.as_str();
-    let prior = match req.prior {
-        None => None,
-        Some(token) => Some(facts_cache::find(path, token).ok_or_else(|| {
-            HistoryFactsErr::StalePrior(format!(
-                "resume token {}@{} is not in this backend's table",
-                token.rev, token.end
-            ))
-        })?),
-    };
     // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
     let sid = Path::new(path)
         .file_stem()
@@ -1062,26 +1044,13 @@ pub(crate) fn facts_at(
     let relay = crate::agents::context_marks()
         .into_iter()
         .find_map(|m| crate::observe::relay_marks::seen(sid, m));
-    let mut facts = match prior {
-        // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
-        None => locate::cold_scan(home, path)
-            .map_err(HistoryFactsErr::Failed)?
-            .facts(limits, relay),
-        Some(prior) => {
-            let r =
-                locate::open_facts_at(home, path, prior.end).map_err(HistoryFactsErr::Failed)?;
-            facts::scan_facts(r, prior, limits, relay)
-                .map_err(|e| HistoryFactsErr::Failed(format!("stream failed: {e}")))?
-        }
-    };
+    let mut facts = locate::facts(home, path, limits, relay).map_err(HistoryFactsErr::Failed)?;
     if facts.project_dir.is_none() {
         facts.project_dir = locate::facts_project_dir(home, path);
     }
     if facts.agent.is_none() {
         facts.agent = locate::facts_agent(home, path);
     }
-    // 记进续算表、铸新 rev（项目目录 · 哪一家读到即锁定、跟着进表；下面那几格每次现查，不进表）；从哪一份续来的那一份同时摘掉。
-    facts_cache::keep(path, &mut facts, req.prior.map(|t| t.rev));
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = locate::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
@@ -1099,7 +1068,7 @@ pub(crate) fn facts_at(
         .zip(facts.usage.as_ref().and_then(|u| u.model.as_deref()))
         .and_then(|(kind, model)| crate::agents::model_text(kind, model))
         .map(crate::common::cells::Words);
-    // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+    // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加）。
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
     facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
@@ -1111,7 +1080,7 @@ pub(crate) fn facts_at(
         sid,
         facts.answer_off.as_ref(),
     );
-    // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
+    // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加）。
     facts.background = accounts_query::session_background(home, sid).map(|born| {
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)

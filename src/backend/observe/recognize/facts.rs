@@ -9,13 +9,10 @@
 //! 所以由本文件读一遍文件算出来，经帧命令 `history-facts`（宿主 `read_face.rs`）出成品，
 //! 界面经通道直接问、按形状收（`src/frontend/ui/session-reads.ts`），**本机与远端同一条路**。
 //!
-//! # 续传令牌 `{end, rev}`（后端有界缓存）
+//! # 续算住哪
 //!
-//! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：常驻后端记下最近出过的几份累加器
-//! （[`super::super::facts_cache`]，有界），调用方只交回上一份应答里的 `{end, rev}`（`prior`），本文件从那一份的 `end` 接着扫、
-//! 把新的一截累加在它上面 —— 判定与累加都只在这里。表里没有了（挤掉了 · 后端重启过 · 一次性 CLI 进程）⇒ `stale_prior`，
-//! 调用方不带令牌从 0 要一份：丢了只是多一次冷扫，不会算错。从前令牌是整份成品（改过上千个文件的会话一问上下各 60–85 KB）。
-//! 续点的两道校验（截断 · 不在行边界）在 `query::locate::open_facts_at`。
+//! 事实要跟着会话长，而大会话每批整份重扫是撞墙的：调用方只交路径，累加器由后端按路径留着（`observe::record_scan`：
+//! 扫描图在 ⇒ 图接着扫追加的那一截；图被挤掉 ⇒ 它留下的事实尾巴接着读）。判定与累加都只在这里（[`note_record`] · [`note_line`]）。
 //!
 //! # 口径（逐格，三样各一个住址）
 //!
@@ -101,7 +98,7 @@ pub(crate) const RETRY_KEEP: usize = 200;
 /// 还没收场的后台命令至多留几条（超 ⇒ 丢最早的）。
 pub(crate) const BG_KEEP: usize = 16;
 
-/// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
+/// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。回包有上限，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
 
 /// `quietUnread` 至多记多少种类型（再多的只加行数）。
@@ -138,7 +135,7 @@ pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
     input.get(key).and_then(Value::as_str).and_then(one_line)
 }
 
-/// 改动文件集至多留多少条（超 ⇒ 丢最久没碰的）。成品要原样回传当续传令牌，而一条请求行 ≤ `inbound::MAX_LINE_BYTES`（1 MiB）：
+/// 改动文件集至多留多少条（超 ⇒ 丢最久没碰的）。回包有上限：
 /// 1000 条 × 路径长（百来字节）≈ 140 KB；实际会话里多不过几十条。
 pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 
@@ -148,13 +145,6 @@ pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionFacts {
-    /// 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) end: u64,
-    /// 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`crate::observe::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
-    /// 扫描本身不读它；只在出成品那一刻由续算表铸。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) rev: u64,
     /// 源会话 sid；不是分叉来的 ⇒ `null`。
     pub(crate) forked_from: Option<String>,
     /// 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
@@ -162,21 +152,21 @@ pub(crate) struct SessionFacts {
     /// 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
     pub(crate) usage: Option<UsageFact>,
     /// `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
-    /// （界面照抄，不自己拼）。每次现给，不进续算表。
+    /// （界面照抄，不自己拼）。每次现给，不累加。
     pub(crate) model_text: Option<Words>,
     /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub(crate) project_dir: Option<String>,
     /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
     pub(crate) agent: Option<String>,
-    /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+    /// 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查。
     /// 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
     pub(crate) writers: Vec<u32>,
     /// 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
     pub(crate) pending: Vec<PendingCall>,
     /// 最后一段正文的头一行（悬停卡「它最后一句」）。
     pub(crate) last_say: Option<LastSay>,
-    /// **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+    /// **需手动**：那台说在等、等的是什么（不累加，每次现查）。不在等 ⇒ `null`。
     pub(crate) needs: Option<Needs>,
     /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
     pub(crate) handed_back: Vec<String>,
@@ -185,22 +175,22 @@ pub(crate) struct SessionFacts {
     /// 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
     pub(crate) permission_mode: Option<String>,
     /// 同一档写给人看的那一句（那一家的权限档那一处给：`agents::permission_mode_text`，切档回包的 `modeText` 同一处）；
-    /// 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不进续算表。
+    /// 没有档 · 认不出是哪一家 · 这一家认不出这一档 ⇒ `null`（界面照抄，不自己拼）。每次现给，不累加。
     pub(crate) permission_mode_text: Option<Words>,
     /// 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
     pub(crate) tokens: Option<TokenUse>,
     /// 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
     pub(crate) cost: Option<Cost>,
-    /// 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+    /// 还没收场的后台命令（文件序）：累加的那一份账。
     pub(crate) bg_tasks: Vec<BgTask>,
-    /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+    /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查）。不是这一态 ⇒ `null`。
     pub(crate) background: Option<Background>,
     /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
     /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
     pub(crate) answer_off: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,
-    /// 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查（`prior` 里那一份不用）。
+    /// 由谁启动（会话血缘里它的主会话）；不是谁起的 ⇒ `null`。不累加，每次现查。
     #[serde(default)]
     pub(crate) started_by: Option<Kin>,
     /// 它起的子会话（按起的先后）；不累加，每次现查。
@@ -435,25 +425,17 @@ pub(crate) struct TokenUse {
     pub(crate) requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
     pub(crate) text: Words,
-    /// 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
+    /// 上一次请求（接着算时同一次请求的后一条要替掉它）：键 · 那一次的五个数。不上线，骨架落它（[`skel`]）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
     pub(crate) last: Option<LastRequest>,
 }
 
 /// [`TokenUse::last`]。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "FactsLastRequest"
-    )
-)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct LastRequest {
     pub(crate) id: String,
-    #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) tokens: [u64; 5],
 }
 
@@ -516,7 +498,7 @@ pub(crate) struct PendingCall {
     /// `at` 的毫秒（自 1970）：出口算「已经跑了多久」只用这一格（交那一个读口走字），不自己解析 `at`；解不出 ⇒ `null`。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) at_ms: Option<i64>,
-    /// 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+    /// 这一步此刻的样子（[`settle_pending`] 每次现判，不累加）。
     pub(crate) state: StepWait,
     /// `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
     pub(crate) why: Option<UnclearWhy>,
@@ -920,27 +902,13 @@ pub(crate) fn context_limit(
     }
 }
 
-/// 读 `r`（已定位在 `facts.end`）逐行累加到 `facts` 上，回累加后的那一份（`end` 推进到最后一个完整行的末字节）。
-/// **纯 I/O 泛型**，单测直接喂字节。只看完整行（`\n` 收尾）；torn 残尾不看、不计进 `end`。
-/// 上限每次按此刻的 `limits` 与中转看见的（`relay`）重判（设置改过 / 中转看见了 ⇒ 带着上一份成品再问一次就是新的数）。
-pub(crate) fn scan_facts<R: std::io::BufRead>(
-    r: R,
-    mut facts: SessionFacts,
-    limits: &ContextLimits,
-    relay: Option<bool>,
-) -> std::io::Result<SessionFacts> {
-    let mut lines = super::super::lines::Lines::new(r, facts.end);
-    while let Some(row) = lines.next()? {
-        facts.end = row.at + row.whole.len() as u64;
-        let line = row.body();
-        if could_matter(line, &facts) {
-            if let Some(v) = super::super::lines::parse(line) {
-                note_record(&mut facts, &v);
-            }
+/// 一个完整行（不含结尾 `\n`）累加到 `facts` 上：先过快路（[`could_matter`]），过了才解析。没解析过这一行的读者（事实尾巴接着读）走它。
+pub(crate) fn note_line(facts: &mut SessionFacts, line: &[u8]) {
+    if could_matter(line, facts) {
+        if let Some(v) = super::super::lines::parse(line) {
+            note_record(facts, &v);
         }
     }
-    settle_limit(&mut facts, limits, relay);
-    Ok(facts)
 }
 
 /// 说 MCP 样子的那种记录行里必有的字（快路只放过带它的行；[`could_matter`] 与 [`mcp_from`] 同一个口径）。
@@ -1443,6 +1411,41 @@ fn short_tokens(n: u64) -> String {
         1_000..=9_999 => one(n as f64 / 1e3, "k"),
         10_000..=999_999 => format!("{}k", (n as f64 / 1e3).round() as u64),
         _ => one(n as f64 / 1e6, "M"),
+    }
+}
+
+/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的 [`TokenUse::last`] 另落一格，读回来放回去。
+pub(crate) mod skel {
+    use super::{LastRequest, SessionFacts};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize)]
+    struct Ref<'a> {
+        facts: &'a SessionFacts,
+        last: Option<&'a LastRequest>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Owned {
+        facts: SessionFacts,
+        last: Option<LastRequest>,
+    }
+
+    pub(crate) fn serialize<S: Serializer>(f: &&SessionFacts, s: S) -> Result<S::Ok, S::Error> {
+        Ref {
+            facts: f,
+            last: f.tokens.as_ref().and_then(|t| t.last.as_ref()),
+        }
+        .serialize(s)
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<SessionFacts, D::Error> {
+        let Owned { mut facts, last } = Owned::deserialize(d)?;
+        if let Some(t) = facts.tokens.as_mut() {
+            t.last = last;
+        }
+        Ok(facts)
     }
 }
 

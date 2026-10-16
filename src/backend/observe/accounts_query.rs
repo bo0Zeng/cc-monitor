@@ -964,8 +964,10 @@ fn live_activity(
 fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::recognize::facts::Needs> {
     let pending = super::query::locate::session_record(agent_home, sid)
         .ok()
-        .and_then(|p| super::query::locate::cold_scan(agent_home, &p.to_string_lossy()).ok())
-        .map(|m| m.pending().to_vec())
+        .and_then(|p| {
+            super::query::locate::facts(agent_home, &p.to_string_lossy(), &Vec::new(), None).ok()
+        })
+        .map(|f| f.pending)
         .unwrap_or_default();
     let wait = session_wait(agent_home, sid).unwrap_or(super::recognize::facts::PidWait {
         waiting_for: None,

@@ -17,7 +17,6 @@
       "partial": false,
       "text": "$0.42"
     },
-    "end": 3131,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -87,23 +86,12 @@
         "outcome": "retrying"
       }
     ],
-    "rev": 1,
     "startedBy": null,
     "tokens": {
       "cacheRead": 3,
       "cacheWrite1h": 0,
       "cacheWrite5m": 2,
       "input": 1,
-      "last": {
-        "id": "",
-        "tokens": [
-          1,
-          0,
-          3,
-          2,
-          0
-        ]
-      },
       "output": 0,
       "requests": 1,
       "text": "输入 1 · 输出 0 · 读缓存 3 · 写缓存 2"

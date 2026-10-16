@@ -125,7 +125,7 @@ async function bench(name, cmd, args, reps = REPS) {
   let last;
   const c0 = cpuTicks(child.pid);
   for (let i = 0; i < reps; i++) {
-    last = await call(cmd, typeof args === "function" ? args(i, last) : args);
+    last = await call(cmd, args);
     ms.push(last.ms);
   }
   const cpu = (cpuTicks(child.pid) - c0) * 10;
@@ -186,11 +186,8 @@ if (!ONLY.length || ONLY.includes("history-list-grow")) {
   emit({ name: "history-list-after-append-big", ms: ms.map((x) => +x.toFixed(1)) });
 }
 for (const [tag, path] of [["big", big], ["mid", mid]]) {
-  const facts = await bench(`history-facts-${tag}-cold`, "history-facts", { path }, 1);
+  await bench(`history-facts-${tag}-cold`, "history-facts", { path }, 1);
   await bench(`history-facts-${tag}`, "history-facts", { path }, REPS);
-  // 续传令牌 `{end, rev}`：每一问交回上一问的那两格（续过一次的令牌就换掉了）。
-  const token = (r) => ({ end: r.data.end, rev: r.data.rev });
-  if (facts?.ok) await bench(`history-facts-${tag}-prior`, "history-facts", (_i, last) => ({ path, prior: token(last?.ok ? last : facts) }), REPS);
   await bench(`history-index-${tag}`, "history-index", { path, offset: 0 });
   await bench(`history-turns-${tag}`, "history-turns", { path, from: 0 });
   await bench(`history-user-inputs-${tag}`, "history-user-inputs", { path, from: 0 });

@@ -1449,7 +1449,8 @@ mod tests {
                 let n = [format!("crate::{top}::{t}"), format!("{up}{t}")]
                     .iter()
                     .map(|needle| {
-                        layer_src.match_indices(needle.as_str())
+                        layer_src
+                            .match_indices(needle.as_str())
                             .filter(|(i, _)| {
                                 let after = layer_src[i + needle.len()..].chars().next();
                                 let before = layer_src[..*i].chars().next_back();
