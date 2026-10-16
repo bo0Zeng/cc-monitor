@@ -177,3 +177,22 @@ fn asks_and_plans_are_named_by_this_agents_tool_words() {
     assert_eq!(ask_of("ExitPlanMode"), CallAsk::Plan);
     assert_eq!(ask_of("Bash"), CallAsk::Plain);
 }
+
+/// 「工具 → 主参数」只有一张表（`steps::MAIN_ARGS`）：没结果的调用那一行（`pending[].what`）与消息流那一行认同一批工具。
+#[test]
+fn every_tool_with_a_main_argument_in_the_step_line_names_it_in_pending_too() {
+    for (tool, key, want) in [
+        ("Skill", "skill", "pdf"),
+        ("BashOutput", "bash_id", "b-1"),
+        ("KillShell", "shell_id", "s-1"),
+        ("SlashCommand", "command", "/review"),
+        ("NotebookRead", "notebook_path", "/w/n.ipynb"),
+    ] {
+        assert_eq!(
+            what_of(tool, Some(&json!({ key: want }))).as_deref(),
+            Some(want),
+            "{tool}"
+        );
+    }
+    assert_eq!(what_of("TodoWrite", Some(&json!({"todos": []}))), None);
+}

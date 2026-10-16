@@ -30,25 +30,7 @@ pub(crate) const EDIT_TOOL_PATH_KEYS: &[(&str, &str)] = &[
     ("NotebookEdit", "notebook_path"),
 ];
 
-/// 交互工具：在等**回答**的 · 在等**批准计划**的。
-const ANSWER_TOOLS: &[&str] = &["AskUserQuestion"];
-const PLAN_TOOLS: &[&str] = &["ExitPlanMode"];
-
-/// 工具 → 「它在做什么」那一格取哪个入参（一行人话的主参数）。没登记的工具 ⇒ 不给（界面只写工具名）。
-const WHAT_KEYS: &[(&str, &str)] = &[
-    ("Bash", "command"),
-    ("Read", "file_path"),
-    ("Edit", "file_path"),
-    ("Write", "file_path"),
-    ("MultiEdit", "file_path"),
-    ("NotebookEdit", "notebook_path"),
-    ("Grep", "pattern"),
-    ("Glob", "pattern"),
-    ("WebFetch", "url"),
-    ("WebSearch", "query"),
-    ("Task", "description"),
-    ("Agent", "description"),
-];
+use super::asks::{ASK_TOOL, PLAN_TOOL};
 
 /// 注册表 `RecordFace.beats` 那一格。
 pub(crate) const BEATS: crate::agents::beat::BeatFace = crate::agents::beat::BeatFace {
@@ -58,19 +40,17 @@ pub(crate) const BEATS: crate::agents::beat::BeatFace = crate::agents::beat::Bea
 };
 
 fn ask_of(tool: &str) -> CallAsk {
-    if ANSWER_TOOLS.contains(&tool) {
-        CallAsk::Answer
-    } else if PLAN_TOOLS.contains(&tool) {
-        CallAsk::Plan
-    } else {
-        CallAsk::Plain
+    match tool {
+        ASK_TOOL => CallAsk::Answer,
+        PLAN_TOOL => CallAsk::Plan,
+        _ => CallAsk::Plain,
     }
 }
 
-/// 一个工具调用的主参数一行（[`WHAT_KEYS`]；提问工具取第一问）。
+/// 一个工具调用的主参数一行（主参数取哪格查 [`super::steps::main_arg`]，头一个非空行；提问工具取第一问）。
 pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
     let input = input?;
-    if ANSWER_TOOLS.contains(&name) {
+    if name == ASK_TOOL {
         return input
             .get("questions")
             .and_then(Value::as_array)
@@ -79,10 +59,7 @@ pub(crate) fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
             .and_then(Value::as_str)
             .and_then(one_line);
     }
-    let key = WHAT_KEYS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, k)| *k)?;
+    let (key, _) = super::steps::main_arg(name)?;
     input.get(key).and_then(Value::as_str).and_then(one_line)
 }
 

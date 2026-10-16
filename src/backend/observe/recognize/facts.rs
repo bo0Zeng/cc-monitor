@@ -416,7 +416,7 @@ pub(crate) struct PendingCall {
     pub(crate) id: String,
     /// 工具名原样。
     pub(crate) name: String,
-    /// 主参数一行（[`WHAT_KEYS`]；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
+    /// 主参数一行（那一家的「工具 → 主参数」表；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
     pub(crate) what: Option<String>,
     /// 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
