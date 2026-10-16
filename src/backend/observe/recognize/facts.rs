@@ -151,7 +151,7 @@ pub(crate) struct SessionFacts {
     /// 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) end: u64,
-    /// 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
+    /// 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`crate::observe::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
     /// 扫描本身不读它；只在出成品那一刻由续算表铸。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) rev: u64,

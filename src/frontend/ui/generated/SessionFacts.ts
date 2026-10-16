@@ -22,7 +22,7 @@ export type SessionFacts = {
  */
 end: number, 
 /**
- * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
+ * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`crate::observe::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
  * 扫描本身不读它；只在出成品那一刻由续算表铸。
  */
 rev: number, 
