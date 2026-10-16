@@ -121,7 +121,8 @@ fn a_keyed_url_splits_only_when_the_key_and_the_route_both_have_our_shape() {
 fn hiding_the_key_replaces_only_the_key_segment_of_our_keyed_urls() {
     let k1 = "0123456789abcdef".repeat(4);
     let k2 = "fedcba9876543210".repeat(4);
-    let json = format!(r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/{k1}/t/claude-code/_","#);
+    let json =
+        format!(r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/{k1}/t/claude-code/_","#);
     assert_eq!(
         hide_key(&json),
         r#"    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/…/t/claude-code/_","#

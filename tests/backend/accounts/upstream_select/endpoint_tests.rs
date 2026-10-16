@@ -332,7 +332,10 @@ fn snippet_url(v: &Value) -> String {
 fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     let home = optin_home("states");
     put_key(&home, OPTIN_K1);
-    let want1 = format!("http://127.0.0.1:8788/{}/t/claude-code/_", pass_hex(OPTIN_K1));
+    let want1 = format!(
+        "http://127.0.0.1:8788/{}/t/claude-code/_",
+        pass_hex(OPTIN_K1)
+    );
 
     // 文件不在 ⇒ 没装。
     let v = optin(&home, &[], true);
@@ -373,7 +376,10 @@ fn optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk() {
     assert_eq!(v["state"], "stale", "{v}");
     assert_eq!(
         snippet_url(&v),
-        format!("http://127.0.0.1:8788/{}/t/claude-code/_", pass_hex(OPTIN_K2))
+        format!(
+            "http://127.0.0.1:8788/{}/t/claude-code/_",
+            pass_hex(OPTIN_K2)
+        )
     );
     // 照旧贴的是全权那一把（根钥匙本身）⇒ 过期，要贴的换成直通那一把。
     put_settings(

@@ -245,14 +245,19 @@ pub fn keyed_base_url(url: &str, key: &str) -> Option<String> {
 /// 读者：「待办」里从用户文件原样摘出的行（贴过的老地址里那把钥匙不出后端）。
 pub fn hide_key(line: &str) -> String {
     const HEAD: &str = "http://127.0.0.1:";
-    let url_byte = |b: u8| b.is_ascii_alphanumeric() || matches!(b, b':' | b'/' | b'-' | b'_' | b'~');
+    let url_byte =
+        |b: u8| b.is_ascii_alphanumeric() || matches!(b, b':' | b'/' | b'-' | b'_' | b'~');
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
     while let Some(at) = rest.find(HEAD) {
         let (before, from) = rest.split_at(at);
         out.push_str(before);
         let len = HEAD.len()
-            + from.bytes().skip(HEAD.len()).position(|b| !url_byte(b)).unwrap_or(from.len() - HEAD.len());
+            + from
+                .bytes()
+                .skip(HEAD.len())
+                .position(|b| !url_byte(b))
+                .unwrap_or(from.len() - HEAD.len());
         let (url, after) = from.split_at(len);
         match split_keyed_base_url(url) {
             Some((head, tail)) => {

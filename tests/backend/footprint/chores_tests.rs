@@ -53,12 +53,7 @@ fn relay_of(
     }
 }
 
-fn claude_relay(
-    state: &str,
-    path: &str,
-    text: Option<&str>,
-    url: Option<&str>,
-) -> Relay {
+fn claude_relay(state: &str, path: &str, text: Option<&str>, url: Option<&str>) -> Relay {
     relay_of(
         crate::agents::claudecode::paths::SETTINGS_ENV,
         "claude-code",
@@ -207,12 +202,7 @@ fn cc_bus_收信_没装_cc_bus_先决_windows_不出() {
 fn 同一份文件两件_整份含两件_各自的_diff_按现在的文件算() {
     let mut f = base();
     let text = "{\n  \"model\": \"opus\"\n}\n".to_string();
-    f.relay = vec![claude_relay(
-        "absent",
-        "/h/s.json",
-        Some(&text),
-        Some("u"),
-    )];
+    f.relay = vec![claude_relay("absent", "/h/s.json", Some(&text), Some("u"))];
     f.hooks = Some(Hooks {
         ccbus: true,
         installed: false,
