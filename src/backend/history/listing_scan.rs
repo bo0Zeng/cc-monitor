@@ -5,7 +5,7 @@
 use std::path::Path;
 
 /// 扫一份会话记录时逐行累计的那几格（[`analyze_session`] 的口径，逐格说明在它的头注）。
-#[derive(Default, Clone)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SessionScan {
     /// 读到过一行不是合法 UTF-8 ⇒ 那一行和之后的都不算（逐行读到读不动就停，与整份逐行读同一个口径）。
     pub(super) stopped: bool,
