@@ -490,7 +490,8 @@ mod tests {
     }
 
     /// ★ 槽位先来先得：三个槽位都占着时先后来了 A、B，放开一个 ⇒ A 先拿到。
-    /// 放开的时刻挑在 A 刚问过一圈、B 还没问的那一段（各自起来后约 5.5 秒 · 3 秒）：各自轮询的写法这时 B 抢在前面；排队的写法谁先来谁先拿，与何时放开无关。
+    /// B 那一份认 4 个槽位、第 4 个空着：各自去问槽位的写法 B 一进门就拿走第 4 个、插到 A 前面；
+    /// 排队的写法 B 排在 A 后面，轮到它之前不问槽位。
     #[test]
     fn heavy_hands_a_freed_slot_to_whoever_waited_first() {
         use std::io::{BufRead, BufReader};
@@ -524,37 +525,32 @@ mod tests {
             .collect();
         let order = d.join("order");
         // 起一个等的人，等它说出「排队等」才回（它已经问过一圈、没拿到）。
-        let waiter = |name: &str| -> (Child, std::time::Instant) {
+        let waiter = |name: &str, slots: &str| -> Child {
             let mut c = Command::new(bin.join("bash"))
                 .arg(root().join("tests/scripts/heavy.sh"))
                 .args(["bash", "-c", "echo \"$0\" >> order", name])
                 .current_dir(&d)
                 .env("PATH", &bin)
                 .env("GATE_STATE_DIR", d.join("state"))
-                .env("HEAVY_SLOTS", "3")
+                .env("HEAVY_SLOTS", slots)
                 .env_remove("HEAVY_HELD")
                 .stderr(Stdio::piped())
                 .spawn()
                 .unwrap();
             let mut err = BufReader::new(c.stderr.take().unwrap());
             let mut line = String::new();
-            while !line.contains("排队") {
+            while line.trim_end() != format!("heavy: {slots} 个槽位都占着，排队等…") {
                 line.clear();
                 assert!(
                     err.read_line(&mut line).unwrap() > 0,
-                    "{name} 没说排队就退了"
+                    "{name} 没排队就拿到了槽位（插在先来的前面）"
                 );
             }
             std::thread::spawn(move || std::io::copy(&mut err, &mut std::io::sink()));
-            (c, std::time::Instant::now())
+            c
         };
-        let (mut a, a_at) = waiter("A");
-        std::thread::sleep(std::time::Duration::from_millis(2_500));
-        let (mut b, _) = waiter("B");
-        std::thread::sleep(
-            (a_at + std::time::Duration::from_millis(5_500))
-                .saturating_duration_since(std::time::Instant::now()),
-        );
+        let mut a = waiter("A", "3");
+        let mut b = waiter("B", "4");
         drop(holders[0].stdin.take());
         let _ = holders[0].wait();
         let first = guard_core::wall::rounds()
@@ -1333,9 +1329,9 @@ mod tests {
         let d = scratch("bless");
         git(&d, &["init", "-q", "-b", "main"]);
         let bless = |d: &Path| bash(&root().join("tests/scripts/bless-golden.sh"), &[], d);
-        write(&d, "tests/__fixtures__/a.json", "old\n");
+        write(&d, "tests/g/a.json", "old\n");
         let fresh = crate::golden::FRESH_DIR;
-        write(&d, &format!("{fresh}/tests/__fixtures__/a.json"), "new\n");
+        write(&d, &format!("{fresh}/tests/g/a.json"), "new\n");
         write(&d, &format!("{fresh}/src/doc/X.md"), "doc\n");
         let o = bless(&d);
         let said = String::from_utf8_lossy(&o.stdout);
@@ -1343,10 +1339,10 @@ mod tests {
         let got: BTreeSet<&str> = said.lines().collect();
         assert_eq!(
             got,
-            BTreeSet::from(["重打 src/doc/X.md", "重打 tests/__fixtures__/a.json"])
+            BTreeSet::from(["重打 src/doc/X.md", "重打 tests/g/a.json"])
         );
         let read = |rel: &str| std::fs::read_to_string(d.join(rel)).unwrap();
-        assert_eq!(read("tests/__fixtures__/a.json"), "new\n");
+        assert_eq!(read("tests/g/a.json"), "new\n");
         assert_eq!(read("src/doc/X.md"), "doc\n");
         assert!(!d.join(fresh).exists(), "拷回之后现打的那份还在");
         let o = bless(&d);
