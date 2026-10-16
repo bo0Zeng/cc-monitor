@@ -54,7 +54,8 @@ subprojects {
         // 风格规则集中在根 .editorconfig；这里只配行为。
         filter {
             // 不检 build 产物（KSP/Room 生成的 Kotlin）。
-            exclude { it.file.path.contains("${layout.buildDirectory.get().asFile.path}") }
+            val built = layout.buildDirectory.get().asFile.path // 抄成本地串：lambda 里引 layout 会把工程对象带进配置缓存
+            exclude { it.file.path.contains(built) }
         }
     }
 
@@ -78,7 +79,8 @@ subprojects {
     }
     // 同 ktlint：不检 build 产物（KSP 生成的 Moshi 解码器等，带类型解析的变体任务把生成目录也算进源）。
     tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
-        exclude { it.file.path.contains("${layout.buildDirectory.get().asFile.path}") }
+        val built = layout.buildDirectory.get().asFile.path
+        exclude { it.file.path.contains(built) }
     }
 
     // compileSdk / minSdk / Java 版本 / jvmTarget 只在这里写一份；模块只留自己的

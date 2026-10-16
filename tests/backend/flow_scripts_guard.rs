@@ -10,8 +10,8 @@
 //!   （表 `session-vars`；枚举环境的只有 `session-scrub.sh`，e2e 的 `sandbox-env.sh` 照它摘）；
 //! - 「这棵树自己改了哪些」的起点（`base.sh`）先认分支上游；没提交的生成物（`generated-drift.sh`）逐份印出；
 //!   金样判据落下的现打那份由 `bless-golden.sh` 逐份拷回原处；
-//! - `quick-check.sh` 的手机那一段：相对 main 改到手机读的东西才跑（经 heavy、gradle 带 `--no-daemon`），没改到就跳过并说一声；
-//!   「手机读的东西」那张表（`mobile_reads`）对着 `src/mobile` 里字面写到的仓内路径核，漏一处就红。
+//! - `quick-check.sh` 重的那四段（后端 · 壳 · vitest · 手机）照挑格那张表挑：前三段恒跑，手机那一段改到它读的东西才跑，没改到说一声；
+//!   手机读的仓外路径对着 `src/mobile` 里字面写到的核（`plan.py --cover mobile`），漏一处就红。
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -202,6 +202,101 @@ mod tests {
         let (rc, said) = plan("A\tnowhere/never.txt\n", false);
         assert_eq!(rc, 0, "{said}");
         assert_eq!(line(&said, "PLAN-MODE:"), "full", "{said}");
+    }
+
+    /// 挑格那一半的一趟：(退出码, 输出)。`args` 跟在仓根后面。
+    fn plan_py(repo: &Path, args: &[&str], stdin: &str) -> (i32, String) {
+        let mut ch = Command::new("python3")
+            .arg(root().join("tests/scripts/gate-affected/plan.py"))
+            .arg(repo)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .env_remove("GATE_AFFECTED_MAP")
+            .spawn()
+            .expect("python3 起不来");
+        use std::io::Write;
+        ch.stdin
+            .take()
+            .unwrap()
+            .write_all(stdin.as_bytes())
+            .unwrap();
+        let out = ch.wait_with_output().unwrap();
+        (
+            out.status.code().unwrap_or(-1),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+        )
+    }
+
+    /// `plan.py --cover <格>`：改了不会挑上这一格的那几条。
+    fn cover(repo: &Path, cell: &str, paths: &str) -> Vec<String> {
+        let (rc, said) = plan_py(repo, &["--cover", cell], paths);
+        let miss: Vec<String> = said
+            .lines()
+            .filter_map(|l| l.strip_prefix("COVER-MISS: "))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            rc,
+            i32::from(!miss.is_empty()),
+            "--cover 的退出码与漏的条数对不上：{said}"
+        );
+        miss
+    }
+
+    /// 重的那几格（后端 · 壳 · vitest · 手机的单测）：前三格恒跑（它们都扫全仓）；手机那一格只在改到手机读的东西时挑上 ——
+    /// 手机树本身 · 手机嵌的 Rust 核心顺 path 依赖链到的共享 crate（新加的文件也算）；只动界面不挑；表不认识的 ⇒ 全量。
+    #[test]
+    fn the_plan_picks_mobile_by_what_it_reads_and_always_runs_the_other_suites() {
+        let cells = |changes: &str| -> (String, BTreeSet<String>) {
+            let (rc, said) = plan_py(&root(), &[], changes);
+            assert_eq!(rc, 0, "{said}");
+            let line = |key: &str| {
+                said.lines()
+                    .find_map(|l| l.strip_prefix(key))
+                    .unwrap_or_else(|| panic!("计划里没有 `{key}`：{said}"))
+                    .trim()
+                    .to_string()
+            };
+            let picked = line("PLAN-CELLS:")
+                .split_whitespace()
+                .filter(|c| ["backend", "cargo", "npm", "mobile"].contains(c))
+                .map(str::to_string)
+                .collect();
+            (line("PLAN-MODE:"), picked)
+        };
+        let set = |c: &[&str]| c.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>();
+        let suites = ["backend", "cargo", "npm"];
+        let with_mobile = set(&["backend", "cargo", "npm", "mobile"]);
+        for change in [
+            "M\tsrc/mobile/app/src/main/kotlin/X.kt\n",
+            "M\tsrc/common/copy-core/src/lib.rs\n",
+            "A\tsrc/common/copy-core/src/new_part.rs\n",
+            "M\tsrc/backend/ssh-dial/lib.rs\n",
+            "M\tsrc/vendor/russh/russh/src/lib.rs\n",
+        ] {
+            assert_eq!(
+                cells(change),
+                ("affected".into(), with_mobile.clone()),
+                "{change}"
+            );
+        }
+        for change in [
+            "M\tsrc/frontend/ui/main.ts\n",
+            "M\tsrc/common/guard-core/src/lib.rs\n",
+        ] {
+            assert_eq!(cells(change), ("affected".into(), set(&suites)), "{change}");
+        }
+        assert_eq!(
+            cells("A\tnowhere/never.txt\n"),
+            ("full".into(), set(&[])),
+            "表不认识"
+        );
     }
 
     /// PATH 里没有 `systemd-run` ⇒ 直接跑，并在 stderr 说一声；命令的退出码照传。
@@ -722,7 +817,7 @@ mod tests {
         std::fs::write(p, text).unwrap();
     }
 
-    /// quick-check `--mobile` 那一趟：输出 · 假 gradlew 收到的参数 · 它看到的那几个并行数变量（没被调就是 None）。
+    /// quick-check `--only mobile` 那一趟：输出 · 假 gradlew 收到的参数 · 它看到的那几个并行数变量（没被调就是 None）。
     struct QuickMobile {
         plan: String,
         said: String,
@@ -772,12 +867,12 @@ mod tests {
             std::env::var("PATH").unwrap_or_default()
         );
         let (outer, kept) = outer_session();
-        let run = |arg: &str| {
+        let run_args = |args: &[&str]| {
             let mut cmd = Command::new("bash");
             for k in outer.iter().chain(&kept) {
                 cmd.env(k, "outer-session");
             }
-            cmd.arg(&script).arg(arg).env("PATH", &path);
+            cmd.arg(&script).args(args).env("PATH", &path);
             for (k, v) in envs {
                 match v {
                     Some(v) => cmd.env(k, v),
@@ -795,8 +890,8 @@ mod tests {
                 .output()
                 .unwrap()
         };
-        let plan = String::from_utf8_lossy(&run("--mobile-plan").stdout).into_owned();
-        let out = run("--mobile");
+        let plan = String::from_utf8_lossy(&run_args(&["--plan"]).stdout).into_owned();
+        let out = run_args(&["--only", "mobile"]);
         let said = format!(
             "{}{}",
             String::from_utf8_lossy(&out.stdout),
@@ -857,13 +952,53 @@ mod tests {
         let QuickMobile {
             plan, said, args, ..
         } = quick_mobile("mobile-skip", "src/frontend/ui/x.ts", &[]);
-        assert!(plan.contains("MOBILE: 跳过"), "{plan}");
+        assert!(plan.contains("MOBILE: 不跑"), "{plan}");
         assert!(args.is_none(), "没改到手机读的东西却调了 gradle：{said}");
         assert!(
-            said.contains("跳过：相对 main 没改到"),
+            said.contains("不跑：相对 main 的改动没有一条落在它读的面上"),
             "跳过了却没说：{said}"
         );
         assert!(said.trim_end().contains("QUICK: OK"), "{said}");
+    }
+
+    /// quick-check 重的四段照挑格表：前三段恒跑；只动手机 ⇒ 手机那一段跑、只动界面 ⇒ 不跑；表不认识的 ⇒ 四段全跑（说不准的一律跑）。
+    #[test]
+    fn quick_check_plans_the_heavy_segments_by_the_map() {
+        let plan = quick_mobile("plan-mobile", "src/mobile/app/src/main/kotlin/X.kt", &[]).plan;
+        let lines = |p: &str| p.lines().map(str::to_string).collect::<Vec<_>>();
+        let skip = "不跑 —— 相对 main 的改动没有一条落在它读的面上（gate-affected/map）";
+        let run = |why: &str| format!("跑 —— 改到 {why}");
+        let always = "跑 —— 恒跑（gate-affected/map 的 @suites）";
+        assert_eq!(
+            lines(&plan),
+            vec![
+                format!("BACKEND: {always}"),
+                format!("SHELL: {always}"),
+                format!("VITEST: {always}"),
+                format!("MOBILE: {}", run("src/mobile/app/src/main/kotlin/X.kt")),
+            ],
+            "{plan}"
+        );
+        let plan = quick_mobile("plan-ui", "src/frontend/ui/x.ts", &[]).plan;
+        assert_eq!(
+            lines(&plan),
+            vec![
+                format!("BACKEND: {always}"),
+                format!("SHELL: {always}"),
+                format!("VITEST: {always}"),
+                format!("MOBILE: {skip}"),
+            ],
+            "{plan}"
+        );
+        let plan = quick_mobile("plan-unknown", "nowhere/never.txt", &[]).plan;
+        let all = run("nowhere/never.txt，表说这条要全量");
+        assert_eq!(
+            lines(&plan),
+            ["BACKEND", "SHELL", "VITEST", "MOBILE"]
+                .map(|s| format!("{s}: {all}"))
+                .to_vec(),
+            "{plan}"
+        );
     }
 
     /// 快检每路的测试并行数（10-15）：几路快检同时跑时，每路的测试按默认各起满核数的线程 / worker，互相挤
@@ -917,8 +1052,8 @@ mod tests {
         .unwrap_or_else(|e| panic!("快检按的槽位默认认不出了：{e}"));
     }
 
-    /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。
-    /// 按路径段比（`src/backend` 不会被 `src/backend-x` 冒认）；Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
+    /// 手机读的仓内路径挑格表漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，改了每一条都得挑上 `mobile`
+    /// （`plan.py --cover mobile`；目录或带模板的那几条拿目录下一份新文件当探针）。Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
     /// 手机嵌的 Rust 核心用的 NDK 只钉在一处（`src/mobile/gradle.properties` 的 `ccm.ndkVersion`，Gradle 与门禁 `androidbuild` 读它）；
     /// CI 的 `mobile` job 与发版的 `build-mobile` job 装的就是那一版（装错一版 ⇒ Gradle 找不到 NDK、CI 才红）。
     #[test]
@@ -969,21 +1104,13 @@ mod tests {
     }
 
     #[test]
-    fn the_mobile_reads_cover_every_repo_path_the_mobile_tree_names() {
+    fn the_plan_runs_mobile_for_every_repo_path_the_mobile_tree_names() {
         let segs = |p: &str| -> Vec<String> {
             p.split('/')
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect()
         };
-        let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
-        let line = qc
-            .lines()
-            .find_map(|l| l.strip_prefix("mobile_reads=("))
-            .and_then(|l| l.strip_suffix(')'))
-            .expect("quick-check.sh 里没有 `mobile_reads=(…)` 那一行");
-        let reads: Vec<Vec<String>> = line.split_whitespace().map(|r| segs(r)).collect();
-        assert!(reads.contains(&segs("src/mobile")), "{reads:?}");
         let outside: Vec<Vec<String>> = [
             "tests",
             "src/backend",
@@ -1038,13 +1165,18 @@ mod tests {
                 .any(|(_, p)| segs(p).starts_with(&segs("tests/__fixtures__"))),
             "一条金样路径都没认出来 —— 扫法坏了：{named:?}"
         );
-        let missed: Vec<_> = named
-            .iter()
-            .filter(|(_, p)| !reads.iter().any(|r| segs(p).starts_with(r)))
-            .collect();
+        let probe = |p: &str| {
+            if root().join(p).is_file() {
+                p.to_string()
+            } else {
+                format!("{p}/__new__")
+            }
+        };
+        let paths: Vec<String> = named.iter().map(|(_, p)| probe(p)).collect();
+        let missed = cover(&root(), "mobile", &paths.join("\n"));
         assert!(
             missed.is_empty(),
-            "手机树读了这些仓内路径，quick-check 的 mobile_reads 里没有 —— 改了它们 quick-check 不会跑手机那一套：{missed:?}"
+            "手机树读了这些仓内路径，挑格表改了它们不挑手机那一格（quick-check 不跑手机那一套）：{missed:?}\n{named:?}"
         );
     }
 
@@ -1331,7 +1463,7 @@ mod tests {
         (d, a, b)
     }
 
-    /// ★ 「这棵树自己改了哪些」的起点（`base.sh`，quick-check 挑手机那一套与 gate-affected 挑格都用它）：
+    /// ★ 「这棵树自己改了哪些」的起点（`base.sh`，quick-check 挑段与 gate-affected 挑格都用它）：
     /// 分支设了上游 ⇒ 与上游的 merge-base；没设 ⇒ origin/main；再没有 ⇒ main。上游比 origin/main 先认。
     /// 连着 quick-check 的计划核：别的路在合并分支上改了手机读的文件，这条分支设了上游就不该因此跑手机那一套。
     #[test]
@@ -1343,11 +1475,7 @@ mod tests {
             String::from_utf8_lossy(&o.stdout).trim().to_string()
         };
         let plan = |d: &Path| {
-            let o = bash(
-                &root().join("tests/scripts/quick-check.sh"),
-                &["--mobile-plan"],
-                d,
-            );
+            let o = bash(&root().join("tests/scripts/quick-check.sh"), &["--plan"], d);
             String::from_utf8_lossy(&o.stdout).into_owned()
         };
         assert_eq!(base(&d), format!("{a} main"));
@@ -1363,7 +1491,7 @@ mod tests {
         assert_eq!(base(&d), format!("{b} merge"), "设了上游却没先认上游");
         let p = plan(&d);
         assert!(
-            p.contains("MOBILE: 跳过 —— 相对 merge 没改到"),
+            p.contains("MOBILE: 不跑 —— 相对 merge 的改动没有一条落在它读的面上"),
             "别的路改的手机文件算到了这条分支头上：{p}"
         );
         let _ = std::fs::remove_dir_all(&d);

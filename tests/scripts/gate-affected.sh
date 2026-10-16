@@ -5,7 +5,7 @@
 #   --base <ref>  跟谁比（取 merge-base，只算这棵树自己的改动）；不给 ⇒ base.sh 那一个：分支上游，没设就 origin/main
 #   --trust-ci    合并工作树推候选分支 next 之前用（push-candidate.sh 推 next、等 CI 全绿才快进 main）：CI 会跑的格这一趟不跑，只跑
 #                 恒跑的便宜格 ＋ 被改到的、本机才有的格（muslbuild 等）＋ @keep-local 那几格 ＋ 被改到被测对象的 e2e 套件（逐套现算）；
-#                 先跑一遍 tests/scripts/quick-check.sh（两棵树整套 cargo test --lib ＋ 整套 vitest）兜跨路冲突
+#                 先跑一遍 tests/scripts/quick-check.sh --all（重的四段不挑、全跑）兜跨路冲突
 #   --dry-run     只印挑格的计划，不跑
 # 规矩照 gate-clean.sh：工作树必须干净；经 heavy.sh 跑（它摘掉会话继承来的变量，表在 session-vars）；排门禁锁；拿到锁时负载 > 核数 × 0.6 就串跑。
 # 门禁锁 · 槽位在 GATE_STATE_DIR（默认 ${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate，几棵树共用一把锁）。
@@ -56,10 +56,10 @@ jobs=${CARGO_BUILD_JOBS:-4}
 fails=()
 
 if [ -n "$trust" ]; then
-  echo; echo "── quick-check（两棵树整套 cargo test --lib ＋ 整套 vitest）"
+  echo; echo "── quick-check --all（两棵树整套 cargo test --lib ＋ 整套 vitest ＋ 手机那一套）"
   qc="$root/tests/scripts/quick-check.sh"   # 判的是哪棵树就用哪棵树里那份
   [ -f "$qc" ] || qc="$HERE/quick-check.sh"
-  CARGO_BUILD_JOBS=$jobs GATE_STATE_DIR="$state" bash "$HERE/heavy.sh" bash "$qc" || fails+=("quick-check")
+  CARGO_BUILD_JOBS=$jobs GATE_STATE_DIR="$state" bash "$HERE/heavy.sh" bash "$qc" --all || fails+=("quick-check")
 fi
 
 if [ ${#fails[@]} -eq 0 ]; then

@@ -62,6 +62,7 @@ listOf("debug", "release", "minified").forEach { buildType ->
             val ndk = androidComponents.sdkComponents.ndkDirectory
             // workspace 根 = 后端那份根清单所在的目录（cargo 在那里找 lock 与两份 profile）。
             val workspace = repoRoot.resolve("src/backend/Cargo.toml").parentFile
+            val so = repoRoot.resolve(".build/backend/$triple/$profile/libmobcore.so") // 本地抄好：doLast 里引脚本顶层的 repoRoot 进不了配置缓存
             workingDir = workspace
             doFirst {
                 val bin = ndk.get().asFile.resolve("toolchains/llvm/prebuilt/linux-x86_64/bin")
@@ -74,7 +75,6 @@ listOf("debug", "release", "minified").forEach { buildType ->
             commandLine("cargo", "build", "-p", "mobcore", "--target", triple, "--profile", profile)
             outputs.upToDateWhen { false }
             doLast {
-                val so = repoRoot.resolve(".build/backend/$triple/$profile/libmobcore.so")
                 if (!so.isFile) throw GradleException("cargo 说编完了，$so 却不在")
                 val dest = jniDir.get().asFile.resolve(abi)
                 dest.mkdirs()
