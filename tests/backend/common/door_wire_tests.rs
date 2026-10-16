@@ -229,6 +229,9 @@ fn an_edit_that_keeps_losing_the_race_says_so_and_keeps_the_last_word_for_the_de
     );
     let raw = raw.expect("最后一次被拒的原话没跟着走（复制详情里会没有它）");
     assert!(!said.contains(&raw), "原话进了句子：{said}");
-    assert!(raw.contains("a.txt"), "跟着走的不是最后一次被拒的那一句：{raw}");
+    assert!(
+        raw.contains("a.txt"),
+        "跟着走的不是最后一次被拒的那一句：{raw}"
+    );
     let _ = std::fs::remove_dir_all(&base);
 }

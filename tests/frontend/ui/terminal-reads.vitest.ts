@@ -27,6 +27,7 @@ import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
+import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -181,7 +182,7 @@ describe("抓一屏：失败怎么说", () => {
       return chanReply({ added: 0, removed: 0, retagged: 0, caught_up: 0, watchers: 1 });
     });
     e.action!.run();
-    await vi.waitFor(() => expect(asked).toEqual(["devbox:resync"]));
+    await vi.waitFor(() => expect(asked).toEqual(["devbox:resync"]), { timeout: WALL_CEILING_MS });
     answer({ "terminal-preview": { fail: UNSUPPORTED } });
     expect((await failureOf(() => previewText("devbox", { sid: "sid-a" }, "demo-cc"))).action).toBeUndefined();
   });
