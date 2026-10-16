@@ -1,4 +1,4 @@
-//! Claude 的**过程一步一行**：一次工具调用的主参数与说明（[`step_of`]）·
+//! Claude 的**过程一步一行**：一次工具调用的主参数与说明、展开要画的改动 / 命令 / 文件（[`step_of`]）·
 //! 它的结果一句（[`result_of`]，读了几行 / `+N −M` / 命中几个文件 / 被拒 / 提问与计划答了什么）·
 //! 报错与重试的原因种类（[`api_reason`]）。
 //!
@@ -9,8 +9,8 @@
 use crate::agents::PlanTitleExt as _;
 use crate::agents::StepResultExt as _;
 use crate::agents::{
-    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepBody, StepResult, TextChange,
-    ToolStep,
+    Answer, ApiReason, AskOption, AskQuestion, PatchHunk, StepAsk, StepBody, StepResult,
+    TextChange, ToolStep,
 };
 
 /// 一次改动的 diff 至多带多少字（各段行正文的字数之和）：超了就只给前几段、立 `patchTruncated`，**整段不劈**；

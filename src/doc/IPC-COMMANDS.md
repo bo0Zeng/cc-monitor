@@ -4713,6 +4713,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -4775,6 +4776,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -4791,9 +4793,17 @@ arg?: string,
  */
 path?: boolean, 
 /**
- * 说明（Bash 的 `description` 那一类）。
+ * 说明（命令那一句注一类）。
  */
 note?: string, 
+/**
+ * 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+ */
+file?: string, 
+/**
+ * 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+ */
+body?: StepBody, 
 /**
  * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
  */
@@ -5078,6 +5088,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -5140,6 +5151,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -5156,9 +5168,17 @@ arg?: string,
  */
 path?: boolean, 
 /**
- * 说明（Bash 的 `description` 那一类）。
+ * 说明（命令那一句注一类）。
  */
 note?: string, 
+/**
+ * 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+ */
+file?: string, 
+/**
+ * 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+ */
+body?: StepBody, 
 /**
  * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
  */
@@ -5396,6 +5416,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -5458,6 +5479,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -5474,9 +5496,17 @@ arg?: string,
  */
 path?: boolean, 
 /**
- * 说明（Bash 的 `description` 那一类）。
+ * 说明（命令那一句注一类）。
  */
 note?: string, 
+/**
+ * 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+ */
+file?: string, 
+/**
+ * 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+ */
+body?: StepBody, 
 /**
  * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
  */
@@ -5730,6 +5760,7 @@ body?: string, } | { "kind": "compactSummary",
  */
 charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
 type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepBody = { "kind": "changes", changes: Array<TextChange>, } | { "kind": "command", line: string, };
 type StepResult = { 
 /**
  * 成功（`false` ＝ 失败或被拒）。
@@ -5792,6 +5823,7 @@ chars?: number,
  * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
  */
 kind?: ResultKind, };
+type TextChange = { old: string, new: string, };
 type TitleBy = "agent" | "user";
 type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
 type ToolStep = { 
@@ -5808,9 +5840,17 @@ arg?: string,
  */
 path?: boolean, 
 /**
- * 说明（Bash 的 `description` 那一类）。
+ * 说明（命令那一句注一类）。
  */
 note?: string, 
+/**
+ * 这一步说的那份文件：绝对路径原样（界面「在文件窗口里定位」按它）；不是路径 · 相对路径 ⇒ 缺。
+ */
+file?: string, 
+/**
+ * 展开那一下画什么（改动 · 命令）；没有 ⇒ 界面照原文画入参。
+ */
+body?: StepBody, 
 /**
  * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
  */

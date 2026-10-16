@@ -373,7 +373,12 @@ fn the_desktop_folded_view_in_shared_parses_and_drops_only_the_tool_bodies() {
         }
     }
     let fold = serde_json::to_string(&lines).unwrap();
-    for m in ["ZQBODY-input", "ZQBODY-result", "ZQBODY-patch", "ZQBODY-change"] {
+    for m in [
+        "ZQBODY-input",
+        "ZQBODY-result",
+        "ZQBODY-patch",
+        "ZQBODY-change",
+    ] {
         assert!(full.contains(m), "不投影时 `{m}` 不在 —— 下面那一条会恒绿");
         assert!(!fold.contains(m), "照桌面那份声明投影，`{m}` 还在：{fold}");
     }

@@ -4,9 +4,9 @@ use super::*;
 use crate::agents::claudecode::parse::parse_line;
 use crate::agents::claudecode::schema::JsonlRecord;
 use crate::agents::{ResultKind, StepBody, TextChange};
-use serde_json::Value;
 use crate::common::cells::Words;
 use serde_json::json;
+use serde_json::Value;
 
 #[test]
 fn a_step_is_tool_main_arg_and_note() {
@@ -564,7 +564,10 @@ fn the_body_kind_agrees_with_the_card_kind() {
     for (name, input) in [
         ("Edit", json!({"old_string": "a", "new_string": "b"})),
         ("Write", json!({"content": "a"})),
-        ("MultiEdit", json!({"edits": [{"old_string": "a", "new_string": "b"}]})),
+        (
+            "MultiEdit",
+            json!({"edits": [{"old_string": "a", "new_string": "b"}]}),
+        ),
         ("Bash", json!({"command": "ls"})),
     ] {
         let card = super::super::cards::tool_card(name);
@@ -581,7 +584,10 @@ fn the_body_kind_agrees_with_the_card_kind() {
 fn a_path_step_names_its_file_when_absolute() {
     let file = |name: &str, input: Value| step_of(name, &input).file;
     let deep = format!("/w/{}/a.ts", "d".repeat(ARG_MAX));
-    assert_eq!(file("Read", json!({ "file_path": deep })), Some(deep.clone()));
+    assert_eq!(
+        file("Read", json!({ "file_path": deep })),
+        Some(deep.clone())
+    );
     assert_eq!(
         file("NotebookEdit", json!({"notebook_path": "/w/n.ipynb"})),
         Some("/w/n.ipynb".into())
@@ -633,10 +639,11 @@ fn the_frontends_never_read_a_tool_input_key() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    let in_adapter: std::collections::BTreeSet<String> = scan("src/backend/agents/claudecode", &["rs"])
-        .into_iter()
-        .map(|(k, _)| k)
-        .collect();
+    let in_adapter: std::collections::BTreeSet<String> =
+        scan("src/backend/agents/claudecode", &["rs"])
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
     assert_eq!(
         in_adapter,
         KEYS.iter().map(|k| k.to_string()).collect(),

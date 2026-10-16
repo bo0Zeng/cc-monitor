@@ -45,7 +45,7 @@ beforeEach(() => {
 const calls = (): ChanCallArgs[] => invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
 
 describe("记录读面：折起那一行的声明", () => {
-  it("那份声明就是省掉工具入参 · 结果正文 · 逐段改动那四格", () => {
+  it("那份声明就是省掉工具入参 · 结果正文 · 逐段改动 · 一步展开那一格", () => {
     expect(FOLDED).toEqual({
       omit: {
         record: [
@@ -53,6 +53,7 @@ describe("记录读面：折起那一行的声明", () => {
           "blocks[type=tool_result].content",
           "results.*.patch",
           "results.*.patchTruncated",
+          "steps.*.body",
         ],
       },
     });

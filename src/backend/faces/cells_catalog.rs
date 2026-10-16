@@ -680,7 +680,8 @@ mod specimens {
     use crate::agents::record::{Block, Body, Record, ReplyError, TitleBy};
     use crate::agents::{
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
-        ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard, ToolStep, UserText,
+        ResultKind, SessionActivity, Speaker, StepAsk, StepBody, StepResult, TextChange, ToolCard,
+        ToolStep, UserText,
     };
     use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
