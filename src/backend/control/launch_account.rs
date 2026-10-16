@@ -97,7 +97,7 @@ pub(crate) enum Picked {
 }
 
 /// 选不了的那一形（线上 `account_unavailable` 的 `data`）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -232,10 +232,24 @@ pub(crate) fn settled_as_asked(a: &AccountAsk, models: &BTreeMap<String, String>
 
 /// `account_unavailable` 那一句（界面照 `data` 自己说，这一句给命令行面与日志）。
 pub(crate) fn unavailable_said(u: &AccountUnavailable) -> String {
-    copy_text(
-        "beLaunchAccount.unavailable.said",
-        &[("name", &u.requested)],
-    )
+    let name = u.requested.as_str();
+    match (u.list_known, u.pinned, u.alternative.as_deref()) {
+        (false, ..) => copy_text("beLaunchAccount.unavailable.listUnknown", &[("name", name)]),
+        (true, true, Some(alt)) => copy_text(
+            "beLaunchAccount.unavailable.lastToDefault",
+            &[("name", name), ("alt", alt)],
+        ),
+        (true, true, None) => {
+            copy_text("beLaunchAccount.unavailable.lastToBase", &[("name", name)])
+        }
+        (true, false, Some(alt)) => copy_text(
+            "beLaunchAccount.unavailable.namedToDefault",
+            &[("name", name), ("alt", alt)],
+        ),
+        (true, false, None) => {
+            copy_text("beLaunchAccount.unavailable.namedToBase", &[("name", name)])
+        }
+    }
 }
 
 // ───────────────────────────── 记录 ─────────────────────────────

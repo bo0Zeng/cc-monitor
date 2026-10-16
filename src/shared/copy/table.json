@@ -1665,6 +1665,38 @@
       "zh": "此机器无会话记录树 · 未找到要分叉的会话",
       "args": []
     },
+    "beSessionOpen.record.gone": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未恢复 · 会话记录已不在",
+      "args": []
+    },
+    "beSessionOpen.live.writing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未恢复 · 进程 ×{n} 在写会话 · pid {pids}",
+      "args": ["n", "pids"]
+    },
+    "beSessionOpen.look.notInTmux": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未接回 · 会话不在 tmux 里",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beSessionOpen.look.noSession": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未接回 · 无 tmux 会话 {name}",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beSessionOpen.look.many": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在跑 ×{n} · 接的是 {name}",
+      "args": ["n", "name"]
+    },
     "beSessionNew.place.noTmux": {
       "kind": "error",
       "role": "报错",
@@ -21935,11 +21967,44 @@
       "zh": "答题插件 · 自定义启动器起会话时用 · 随时重写",
       "args": []
     },
-    "beLaunchAccount.unavailable.said": {
+    "beLaunchAccount.unavailable.lastToDefault": {
       "kind": "error",
       "role": "报错",
-      "zh": "{name} 不可用 · 未启动",
-      "args": ["name"]
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动\n可改用默认账号 {alt}",
+      "args": ["name", "alt"]
+    },
+    "beLaunchAccount.unavailable.lastToBase": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "上次的账号 {name} 不可用 · 不换号无法续 · 未启动\n可改用「不指定账号」",
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
+    },
+    "beLaunchAccount.unavailable.namedToDefault": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} 不可用 · 未启动\n可改用默认账号 {alt}",
+      "args": ["name", "alt"]
+    },
+    "beLaunchAccount.unavailable.namedToBase": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} 不可用 · 未启动\n可改用「不指定账号」",
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
+    },
+    "beLaunchAccount.unavailable.listUnknown": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "账号 {name} 是否可用不明 · 未读到账号清单 · 未启动\n可改用「不指定账号」",
+      "args": ["name"],
+      "waive": {
+        "C-W13": "「」里是账号选单里那一项（不指定账号）的名字"
+      }
     },
     "rsFilewinFind.age.secs": {
       "kind": "body",

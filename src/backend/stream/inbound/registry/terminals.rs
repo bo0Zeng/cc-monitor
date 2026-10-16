@@ -78,6 +78,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **起新会话 —— 全产品一个请求**（`control/session_new.rs`，宿主 `faces/session_new_face.rs`）：这台判目录 · 号（选不了带替代号）·
     //   终端名 · 分叉（只在这一步写分支记录）· 起；回「起好了 / 要开窗跑那一行」，某一格不行 ⇒ 失败信封 `data.field` 说是哪一格。
     crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNew>("起一个新会话（全产品一个框、一个请求）"),
+    // **起会话 · 恢复 · 接回 —— 一个请求**（`control/session_open.rs`，宿主 `faces/session_open_face.rs`）：意图进去，这台判号 · 放在哪 ·
+    //   记录在不在 · 已有进程在写 · 在跑 / 就地 / 新开，回「落在哪 ＋ 要开终端就跑这一行」；每个码的那一句后端写好。
+    crate::wire::typed::blocking::<crate::faces::session_open_face::SessionOpen>("起会话 · 恢复 · 接回（一个请求：落在哪 ＋ 要开终端就跑的那一行）"),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
     crate::wire::typed::blocking::<crate::faces::session_new_face::SessionNewFacts>(
         "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
