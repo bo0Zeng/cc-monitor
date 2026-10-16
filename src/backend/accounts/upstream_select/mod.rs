@@ -769,7 +769,7 @@ fn dispatch_auth(row: &Row, tag: &str, body: Option<&[u8]>, act: &mut dyn FnMut(
         (Some(k), Some((name, prefix))) => {
             // ★★ **这是整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）。
             //    它就在「拼这一行要写的那个鉴权头值」这一句上。
-            //    处数由 `creds_store_tests::PLAINTEXT_EXIT_SITES` 钉着（三棵树恰好 1 处）；加第二处是**放宽**。
+            //    处数由 `creds_store_exits::PLAINTEXT_EXIT_SITES` 钉着（三棵树恰好 1 处）；加第二处是**放宽**。
             //    ⚠ 为什么搬：中转的类型面上不许再出现 `creds-core` 的类型（`C2`）
             //      ⇒ 「把 `AuthStyle` 翻成 HTTP」与「把 key 拼成头值」**同属上游选择的判断**，
             //      中转只拿到一个 `(头名, 完整头值)` 照写。

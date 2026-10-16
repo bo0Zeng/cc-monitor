@@ -154,7 +154,7 @@ fn every_shell_script_is_either_linted_or_registered_as_exempt() {
 fn every_exemption_still_points_at_a_real_unlinted_script() {
     let scripts = guard_core::shell_scripts(&repo_root());
     let patterns = shellcheck_patterns();
-    for (path, why) in EXEMPT {
+    for (path, _) in EXEMPT {
         assert!(
             scripts.contains(&path.to_string()),
             "`EXEMPT` 里登记着 `{path}`，而全仓扫不到这个 shell 脚本 —— \

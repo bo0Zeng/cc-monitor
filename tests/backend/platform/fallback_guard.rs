@@ -543,7 +543,7 @@ mod g6_reach {
     #[test]
     fn every_blind_shape_passes_and_says_why() {
         assert_eq!(BLIND.len(), 5, "拦不住的形状表条数变了：{}", BLIND.len());
-        for (shape, sample, why) in BLIND {
+        for (shape, sample, _) in BLIND {
             assert!(
                 fabricates(sample).is_empty(),
                 "「{shape}」今天红了 —— 本护栏的射程变了，这张表说的话已经不成立"

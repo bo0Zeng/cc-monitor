@@ -200,7 +200,7 @@ fn every_atomic_replace_call_site_says_which_semantics_and_why() {
 /// 每条登记都得说清**写的是哪类文件**（那才是选语义的依据），不许只写「原子替换」。
 #[test]
 fn each_entry_names_the_file_class_it_writes() {
-    for (f, sym, _, class, why) in SITES {
+    for (f, sym, _, class, _) in SITES {
         assert!(
             class.contains("用户") || class.contains("monitor 自己"),
             "{f} [{sym}] 的文件类别写的是「{class}」—— 必须明说是**用户文件**还是\

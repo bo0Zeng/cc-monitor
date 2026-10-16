@@ -396,7 +396,7 @@ mod tests {
             .and_then(|p| p.parent())
             .expect("从 src/backend 回不到仓根")
             .to_path_buf();
-        for (file, child, flags, why) in CHILD_PROCESS_FLAGS {
+        for (file, child, flags, _) in CHILD_PROCESS_FLAGS {
             // ① 这份文件里的 `"--x"` 字面量 == 登记的（两向）
             let raw = DISPATCH_FILES
                 .iter()
@@ -466,7 +466,7 @@ mod tests {
             accepts.sort();
             accepts.dedup();
             let mut want: Vec<String> = reg.clone();
-            for (c, f, why) in CHILD_FLAGS_NOT_SENT {
+            for (c, f, _) in CHILD_FLAGS_NOT_SENT {
                 if c == child {
                     want.push(f.to_string());
                 }
@@ -601,7 +601,7 @@ mod tests {
                 && render_side.contains("argv::parse("),
             "渲染器那一格的接盘判据不在了 —— `ccm_invocation.rs` 的旗标从此没人管"
         );
-        for (f, why) in TERMINAL_SURFACE_FILES {
+        for (f, _) in TERMINAL_SURFACE_FILES {
             assert!(
                 f.starts_with("ccm_line/")
                     || f.starts_with("control/ccm/")

@@ -199,6 +199,11 @@ impl Repo {
             .unwrap_or_else(|| panic!("仓里没有 `{rel}` —— 住址坏了"))
     }
 
+    /// 仓里有没有这份文件。
+    pub fn has(&self, rel: &str) -> bool {
+        self.find(rel).is_some()
+    }
+
     fn find(&self, rel: &str) -> Option<&File> {
         self.files
             .binary_search_by(|f| f.rel.as_str().cmp(rel))
@@ -318,8 +323,8 @@ impl Repo {
 /// [`Repo::with_rules`] 的产物：取人群时不摘本目录。
 pub struct WithRules<'a>(&'a Repo);
 
-impl WithRules<'_> {
-    pub fn under(&self, dirs: &[&str], exts: &[&str]) -> Vec<&File> {
+impl<'a> WithRules<'a> {
+    pub fn under(&self, dirs: &[&str], exts: &[&str]) -> Vec<&'a File> {
         self.0.pick(dirs, exts, true)
     }
 }

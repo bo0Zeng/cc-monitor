@@ -1,5 +1,3 @@
-use super::*;
-
 const READ_ARGS_CODES: &[&str] = &[
     "bad_args",
     "bad_request",
@@ -8,7 +6,7 @@ const READ_ARGS_CODES: &[&str] = &[
     "stdin_read_failed",
 ];
 
-/// ★ [`READ_ARGS_CODES`]（[`read_args`] 会回的码）就是读入参那一处真会回的码（两向）：本文件（`control/cli_args.rs`）生产源码里交给错误出口的蛇形字面量。
+/// ★ [`READ_ARGS_CODES`]（`read_args` 会回的码）就是读入参那一处真会回的码（两向）：本文件（`control/cli_args.rs`）生产源码里交给错误出口的蛇形字面量。
 #[test]
 fn the_read_args_codes_are_the_ones_that_section_returns() {
     let src = guard_core::strip_comment_lines(&guard_core::production_code(include_str!(

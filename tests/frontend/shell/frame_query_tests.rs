@@ -1478,7 +1478,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
     );
     let mut want: Vec<(String, String)> = DEADLINE_MAKERS
         .iter()
-        .flat_map(|(f, func, n, why)| {
+        .flat_map(|(f, func, n, _)| {
             std::iter::repeat_n((f.to_string(), func.to_string()), *n)
         })
         .collect();

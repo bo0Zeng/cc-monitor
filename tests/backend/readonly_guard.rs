@@ -1656,7 +1656,7 @@ mod capture_is_read_only {
             "改状态动词表只剩 {} 条 —— 被掏瘪了，正题此刻在空转",
             verbs.len()
         );
-        for (needle, why) in &verbs {
+        for (needle, _) in &verbs {
             let sample = format!("let _ = tmux_argv({needle}, target);");
             assert_eq!(
                 hits(&sample),
@@ -1723,7 +1723,7 @@ mod capture_is_read_only {
 //   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
 //   `no_timer_guard`），**顶层那一行再导出没有了**。
 //   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
-//   `structural_scan_tests.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
+//   `structural_scan.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
 //   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
 
 /// **`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
@@ -1817,7 +1817,7 @@ pub(crate) mod g6_doctrine {
         names.sort_unstable();
         names.dedup();
         assert_eq!(before, names.len(), "四情形表里有重名的格：{names:?}");
-        for (cell, when, how, why, unlock) in CELLS {
+        for (cell, when, how, _, unlock) in CELLS {
             assert!(
                 !when.trim().is_empty() && !how.trim().is_empty(),
                 "`{cell}` 这一格没写「什么时候落在这一格」或「正确处置」"
@@ -1915,7 +1915,7 @@ mod g6_reach {
             "反例表从 1 条变成 {} 条了 —— 加反例是好事，但要连它的语料与断言一起加",
             KNOWN_PASSING_COUNTEREXAMPLES.len()
         );
-        for (rel, frag, why, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
+        for (rel, frag, _, unlock) in KNOWN_PASSING_COUNTEREXAMPLES {
             let prod = guard_core::production_source(source_of(rel));
             assert!(
                 prod.contains(frag),
@@ -2528,7 +2528,7 @@ mod error_envelope_registry {
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );
-        for (p, anchor, whose, why) in SIGNED {
+        for (p, anchor, whose, _) in SIGNED {
             assert!(!anchor.is_empty(), "{p} 的锚点是空串 —— 那会匹配到任何地方");
             assert!(
                 whose.chars().count() >= 5,
@@ -3320,7 +3320,7 @@ mod g6_dependency_signoff {
             );
         }
         let declared = dep_entries(MANIFEST);
-        for (name, sect, verdict, why) in SIGNED {
+        for (name, sect, verdict, _) in SIGNED {
             assert!(
                 is_verdict(verdict),
                 "`{name}` 的判档是 `{verdict}` —— 它不在闭集里。闭集（现算）：{}",
@@ -4316,7 +4316,7 @@ backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机
     /// ★ 两张能力表**逐格对齐**，家族在闭集里，理由有长度地板。
     #[test]
     fn the_two_capability_tables_stay_aligned() {
-        for (family, why) in REMOTE_CAPABILITY_ANCHORS {
+        for (family, _) in REMOTE_CAPABILITY_ANCHORS {
             assert!(
                 FAMILIES.contains(family),
                 "`{family}` 不在家族闭集里：{FAMILIES:?}"

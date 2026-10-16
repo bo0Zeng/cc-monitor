@@ -1349,6 +1349,10 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
         .filter(|r| r.note.is_some())
         .map(|r| r.tool_id)
         .collect();
+    assert!(
+        with_note.len() >= 2,
+        "note 至少两个工具用上，实得 {with_note:?}"
+    );
 }
 
 /// `host` 必须进到行里（T04）——不上屏的话用户分不出说的是哪台机器。

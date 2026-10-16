@@ -61,6 +61,7 @@ mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostSc
                       //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
                       //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
+mod history;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend_control;

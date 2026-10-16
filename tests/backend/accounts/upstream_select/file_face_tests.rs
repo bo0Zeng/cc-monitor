@@ -637,7 +637,7 @@ fn hx2_the_account_id_is_derived_here_from_the_config_dir() {
         vec![want.clone()],
         "写进去的那一行不是规则推出的那个 id"
     );
-    // 〔原 monitor `creds_store_tests` 那一条搬来〕说不出 id ⇒ 报错、不回落到顶层那一格；文件逐字节不变、话里不带明文。
+    // 说不出 id ⇒ 报错、不回落到顶层那一格；文件逐字节不变、话里不带明文。
     let before = std::fs::read(&f).unwrap();
     for bad in ["", "   ", "/", "/h/accts/.."] {
         assert_eq!(

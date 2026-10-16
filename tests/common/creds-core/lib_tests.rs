@@ -282,7 +282,7 @@ fn the_sealed_module_is_the_only_place_that_can_reach_the_field() {
                  所以每加一个都要写清它对明文做什么。今天登记的是：{registered:?}"
         );
     }
-    for (n, why) in SEALED_FNS {
+    for (n, _) in SEALED_FNS {
         assert!(
             names.iter().any(|x| x == n),
             "登记表里的 `{n}` 已经不在 `sealed` 里了 —— 表和盘对不上"

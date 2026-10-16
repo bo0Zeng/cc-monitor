@@ -709,7 +709,7 @@ mod tests {
                 "又登记了一个夹具家 `{name}` —— 只许那一个最小假 agent"
             );
         }
-        for (name, why) in FIXTURE_HOMES {
+        for (name, _) in FIXTURE_HOMES {
             assert!(
                 in_tree.iter().any(|n| n == name),
                 "`FIXTURE_HOMES` 里登记的夹具家 `{name}` 在文件树里不存在 —— \n\

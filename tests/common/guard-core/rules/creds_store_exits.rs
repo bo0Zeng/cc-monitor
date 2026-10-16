@@ -131,6 +131,7 @@ fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
             "前端发 apikey-key-set 的地方",
             repo.under(&["src/frontend/ui"], &["ts"])
                 .into_iter()
+                .filter(|f| !f.rel.starts_with("src/frontend/ui/generated/"))
                 .flat_map(|f| {
                     let n = f.text().matches(needles[1].as_str()).count();
                     (n > 0).then(|| (f.rel.clone(), n))

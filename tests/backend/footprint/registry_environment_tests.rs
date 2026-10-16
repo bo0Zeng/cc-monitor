@@ -92,7 +92,7 @@ fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
          这一档留给下一件「该由 app 带、实现还没有」的东西",
     )];
     let env = environment();
-    for (tier, why) in MAY_BE_EMPTY {
+    for (tier, _) in MAY_BE_EMPTY {
         assert_eq!(
             env.iter().filter(|e| e.tier == *tier).count(),
             0,

@@ -4,11 +4,16 @@ use super::repo;
 use crate::*;
 
 /// `dir`（仓根相对）下后缀在 `exts` 里（空 = 不筛）的文本文件 `(绝对路径, 原文)`，经入口那份快照取（含规则目录：这几族判的是全部源码）。
+/// `dir` 是一个包（或它的 `src/`）⇒ 取那个包的源码人群（连 manifest 明写的兄弟包与 `#[path]` 挂进来的）。
 fn tree(dir: &str, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
     let root = addr::repo_root();
-    repo()
-        .with_rules()
-        .under(&[dir], exts)
+    let pkg = dir.strip_suffix("/src").unwrap_or(dir);
+    let files = if repo().has(&format!("{pkg}/Cargo.toml")) {
+        repo().crate_tree(pkg, exts)
+    } else {
+        repo().with_rules().under(&[dir], exts)
+    };
+    files
         .into_iter()
         .map(|f| (root.join(&f.rel), f.text().to_string()))
         .collect()
@@ -448,36 +453,10 @@ fn the_detour_ratchet_reaches_both_trees() {
             tests += 1;
         }
     }
-    // 地板逐棵树各一条 —— 合起来一条挡不住「一棵塌了另一棵涨了」。
-    // 09-12 现打：monitor 118（`src/frontend/shell/src` 108 ＋ `src/common` 9 ＋ `build.rs` 1；
-    //   当年 `scan_tree!` 的自摘把本文件摘掉过，`addr_corpus` 用相对住址补回来；
-    //   那一刀在本仓**已经不生效**，补回来的是第二份，见 `addr_corpus` 头注）· backend 88。
-    assert!(
-        monitor >= 100,
-        "monitor 那棵树只收到 {monitor} 份 .rs（09-12 现打 118）—— 分母缩水了"
-    );
-    // 〔2026-09-18 下调 80 → 65〕不是分母缩水：搬树把 **19 份纯测试文件**从
-    // 后端树移到了 `<repo>/tests/backend/`。当时现打 `src/backend/**.rs` = 72
-    // （`tests/backend` 另有 19）⇒ 72 + 19 = 91，与 09-12 的 88 同量级。
-    // 🔴 地板 65 → 58：**这一次是真的少了文件，不是分母缩水**：
-    // 用户逐字「**不在现在设计里的全部删掉**」⇒ `sidecars/` 整棵四份 `.rs`（2 008 行）
-    // ＋ `platform/landing.rs`（唯一消费者没了）一起删 ⇒ 72 − 5 = **64**。
-    // 留 6 份余量（与上一版 65 vs 72 的 margin 同量级）。
-    // ⚠ 这两种情形的读数**长得一模一样**（都是「backend 那个数变小了」），
-    //   所以每一次下调都必须逐份点名删的是谁 —— 那是本条唯一能分辨它们的办法。
-    assert!(
-        backend >= 58,
-        "🔴 后端那棵树只收到 {backend} 份 .rs（2026-09-18 条 67 之后现打 64，另有 19 份在 tests/backend）—— \
-             `src/backend` 掉出语料面了。\n\
-             那一刻上面那条棘轮照样绿，而它只守着一棵树 —— \
-             **报「已守住」而分母只有一棵树**，正是本条要挡的形状。"
-    );
-    // 〔2026-09-18 新增〕测试树也要有自己的地板 —— 它是第三棵，现打 19 份。
-    assert!(
-        tests >= 15,
-        "测试那棵树只收到 {tests} 份 .rs（2026-09-18 现打 19）—— \
-             `tests/` 掉出语料面了，而上面两条照样绿。"
-    );
+    // 三棵树各自非空：合起来一条挡不住「一棵塌了另一棵涨了」。
+    for (tree, n) in [("monitor", monitor), ("后端", backend), ("测试", tests)] {
+        assert!(n > 0, "{tree}那棵树一份 .rs 都没收到 —— 掉出语料面了");
+    }
     // 点名：三份真长过绕道的文件必须都在语料里（地板是数，这一条是**住址**）。
     let names: std::collections::BTreeSet<String> =
         corpus.iter().map(|(p, _)| detour_addr(p)).collect();
@@ -2068,4 +2047,74 @@ fn the_dead_name_scanner_really_sees_each_shape() {
     let json_text = format!("{{\"k\": \"{n}\"}}\n");
     let json_rows = dead_name_split("a.json", &json_text);
     assert!(json_rows[0].2.is_empty() && json_rows[0].1.contains(n.as_str()));
+}
+
+// ── 生产树里不放测试体 ────────────────────────────────────────
+
+/// `#[cfg(test)]` 罩着的测试专用支撑项（`thread_local!` · `impl Drop` · 辅助 `fn`）的上限：只许降。
+const SUPPORT_ITEM_CEILINGS: &[(&str, usize)] =
+    &[("src/backend", 7), ("src/frontend/shell/src", 15)];
+
+/// 一棵生产树里：真 `#[test]` 属性（整行逐字）· 内联 `#[cfg(test)] mod X {` · 别的 `#[cfg(test)]` 块项。
+/// 分号声明形（`#[cfg(test)] #[path = "…"] mod X;`）不算：那是把测试体挂到 `tests/` 的桩。
+fn test_bodies_in(text: &str) -> (usize, usize, usize) {
+    let (mut attrs, mut mods, mut support) = (0usize, 0usize, 0usize);
+    let test_attr = format!("#[{}]", "test");
+    let cfg_attr = format!("#[cfg({})]", "test");
+    let attr_open = format!("#{}", "[");
+    let mod_kw = format!("{} ", "mod");
+    {
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            if l.trim() == test_attr {
+                attrs += 1;
+            }
+            if l.trim() != cfg_attr {
+                continue;
+            }
+            let mut j = i + 1;
+            while j < lines.len() && lines[j].trim_start().starts_with(attr_open.as_str()) {
+                j += 1;
+            }
+            let Some(t) = lines.get(j).map(|x| x.trim()) else {
+                continue;
+            };
+            if t.ends_with(';') || !t.ends_with('{') {
+                continue;
+            }
+            if strip_visibility(t).starts_with(mod_kw.as_str()) {
+                mods += 1;
+            } else {
+                support += 1;
+            }
+        }
+    }
+    (attrs, mods, support)
+}
+
+/// 生产树里只留三行桩（`#[cfg(test)]` ＋ `#[path = "…"]` ＋ `mod X;`），测试体住 `tests/`。
+#[test]
+fn the_production_trees_hold_no_test_bodies() {
+    for (tree, ceiling) in SUPPORT_ITEM_CEILINGS {
+        let (attrs, mods, support) = repo()
+            .under(&[tree], &["rs"])
+            .iter()
+            .map(|f| test_bodies_in(f.text()))
+            .fold((0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+        assert_eq!(
+            (attrs, mods),
+            (0, 0),
+            "`{tree}` 里测试代码回来了：`#[test]` {attrs} 个 · 内联测试模块 {mods} 处 —— 剖到 `tests/` 去"
+        );
+        assert!(
+            support <= *ceiling,
+            "`{tree}` 的测试专用支撑项涨到 {support}（上限 {ceiling}，只许降）"
+        );
+    }
+    // 正控：同一个认法在合成样本上三样各认出一处，挂到 `tests/` 的桩不算。
+    let sample = format!(
+        "#[{t}]\nfn a() {{}}\n#[cfg({t})]\npub(crate) mod probe {{\n}}\n#[cfg({t})]\nfn helper() {{\n}}\n#[cfg({t})]\n#[path = \"x.rs\"]\nmod tests;\n",
+        t = "test"
+    );
+    assert_eq!(test_bodies_in(&sample), (1, 1, 1), "认法坏了");
 }

@@ -527,7 +527,7 @@ mod tests {
             .collect();
         want.sort();
         // 同 `S1`（Phase D 审计）那条纪律：**登记项必须钉到符号级**，模块级等于把整层放开。
-        for (_, e, why) in ALLOWED_INTO_PLUGIN {
+        for (_, e, _) in ALLOWED_INTO_PLUGIN {
             let tail = e
                 .strip_prefix("crate::plugin::")
                 .unwrap_or_else(|| panic!("登记项必须以 `crate::plugin::` 开头：{e}"));

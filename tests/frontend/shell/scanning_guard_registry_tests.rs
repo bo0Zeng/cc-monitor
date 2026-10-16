@@ -427,16 +427,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     /// `the_per_guard_split_does_not_hand_every_guard_the_whole_file`。
     /// ⇒ 这条元判据**判得到自己**（它俩都带 `assert_eq!(`，所以今天不缺反向那半）。
     /// 这张表自己那半腐烂仍然由紧跟着的那条**幽灵检查**接着。
-    const REGISTERED: &[(&str, &str, &str)] = &[(
-        // 住址订正：那条判据住 `tests/frontend/shell/`，不在 `src/frontend/shell/src/`。
-        "tests/frontend/shell/structural_scan_tests.rs::comment_stripping_has_exactly_one_shared_implementation",
-        "它自带扫描面（`scan_tree!`）与登记表，但只断了「扫到的里有没有没登记的」这一向；\
-             「登记了却已经不在」那一向没人接 —— 而那正是本条要治的族。\
-             按 `D2②` 只让它红出来，不代补",
-        "给它补上双向对拍（`assert_eq!(found, want)`），\
-             或一条「登记表里的 X 已经不在了」的诊断；补完把这一行删掉 —— \
-             不删的话下面那条幽灵检查会逼你删",
-    )];
+    const REGISTERED: &[(&str, &str, &str)] = &[];
 
     // 这张豁免表自己那半**反向**：登记了却**已经不在了**的豁免，必须红。
     // 没有它，豁免表就是一张只会长草的免检名单（`D2③乙` 逐字写着的那个代价）。

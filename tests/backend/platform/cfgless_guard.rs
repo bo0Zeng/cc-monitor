@@ -1240,14 +1240,14 @@ mod tests {
             "信号表只剩 {} 条 —— 它在缩水",
             SIGNALS.len()
         );
-        for (name, tier, _, _, needle, why) in SIGNALS {
+        for (name, tier, _, _, needle, _) in SIGNALS {
             assert!(!needle.is_empty(), "信号 `{name}` 的 needle 是空串");
             assert!(
                 *tier == "A1" || *tier == "A2",
                 "信号 `{name}` 的档不认识：{tier}"
             );
         }
-        for (p, anchor, pile, why) in REGISTERED {
+        for (p, anchor, pile, _) in REGISTERED {
             assert!(
                 *pile == "真漏" || *pile == "合法线外",
                 "`REGISTERED` 里 {p} :: {anchor} 的堆不认识：{pile}"
