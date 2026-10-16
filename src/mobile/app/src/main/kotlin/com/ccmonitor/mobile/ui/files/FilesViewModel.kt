@@ -139,7 +139,7 @@ class FilesViewModel(
                 is FileOps.Opening.File -> {
                     navigateTo(at.dir)
                     _busy.value = true
-                    ops.readText(at.file).onSuccess { _opened.tryEmit(at.file.name.shown to it.text) }.onFailure(::say)
+                    ops.readText(at.file).onSuccess { _opened.tryEmit(at.file.shown.substringAfterLast('/') to it.text) }.onFailure(::say)
                     _busy.value = false
                 }
             }
