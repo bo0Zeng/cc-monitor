@@ -2726,13 +2726,13 @@
     "ccBus.spawn.done": {
       "kind": "body",
       "role": "toast",
-      "zh": "已派生 {id}\n{said}",
+      "zh": "已新开 agent {id}\n{said}",
       "args": ["id", "said"]
     },
     "ccBus.spawn.noName": {
       "kind": "body",
       "role": "说明",
-      "zh": "已派生 · 新会话名字未识别\n会话应已在运行 · 勿重试 · 到 cc-bus 名单里找\n{said}",
+      "zh": "已新开 agent · 名字未识别\n会话应已在运行 · 勿重试 · 到 cc-bus 名单里找\n{said}",
       "args": ["said"]
     },
     "ccBus.broadcast.empty": {
@@ -13175,6 +13175,13 @@
       "role": "原因格",
       "zh": "启动本机命令失败 · {why}",
       "args": ["why"]
+    },
+    "rsLaunch.local.powershellFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "启动 PowerShell 失败 · {why}",
+      "args": ["why"],
+      "limited": ["PowerShell"]
     },
     "rsLaunch.what.localCmd": {
       "kind": "body",
@@ -28415,6 +28422,12 @@
       "zh": "保存开机启动设置失败 · 无数据目录",
       "args": []
     },
+    "rsShellCmd.autoLaunch.saveFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "保存开机启动设置失败 · {why}",
+      "args": ["why"]
+    },
     "rsShellCmd.viewer.openFailed": {
       "kind": "error",
       "role": "报错",
@@ -28431,6 +28444,12 @@
       "kind": "error",
       "role": "报错",
       "zh": "打开日志目录失败 · {why}",
+      "args": ["why"]
+    },
+    "rsShellCmd.open.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "打开失败 · {why}",
       "args": ["why"]
     },
     "rsShellCmd.config.readFailed": {

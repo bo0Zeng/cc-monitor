@@ -136,7 +136,7 @@ fn naming_a_shell_command_failure_adds_the_command_once() {
             .filter(|l| l.starts_with(&format!("{}：", label("detail.label.command"))))
             .count()
     };
-    let bare = Said::from("读取失败".to_string()).named("load_config");
+    let bare = Said::written("读取失败".to_string()).named("load_config");
     assert_eq!(cmd(&bare.detail), 1, "{}", bare.detail);
     assert!(
         bare.detail
@@ -149,35 +149,81 @@ fn naming_a_shell_command_failure_adds_the_command_once() {
     assert!(own.detail.contains("deploy-plan"), "{}", own.detail);
 }
 
-/// 每条返回 `Said` 的壳命令，最外层都经 `.named("<它自己的名字>")` 一次（复制详情里有「命令」那一项）。人群：生产源码里全部 `#[tauri::command]`。
+/// 一份源码里全部 `#[tauri::command]`：(名字, 签名到 `{` 为止, 整块)。
+fn shell_commands(prod: &str) -> Vec<(String, String, String)> {
+    let starts: Vec<usize> = prod
+        .match_indices("#[tauri::command]")
+        .map(|(i, _)| i)
+        .collect();
+    let mut out = Vec::new();
+    for (k, at) in starts.iter().enumerate() {
+        let end = starts.get(k + 1).copied().unwrap_or(prod.len());
+        let chunk = &prod[*at..end];
+        let Some(f) = chunk.find("fn ") else { continue };
+        let name: String = chunk[f + 3..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let sig_end = chunk[f..].find('{').map_or(chunk.len(), |b| f + b);
+        out.push((name, chunk[..sig_end].to_string(), chunk.to_string()));
+    }
+    out
+}
+
+/// 签名里返回的 `Result<…, E>` 的 `E`（没有 `Result` ⇒ `None`）。
+fn error_type(sig: &str) -> Option<String> {
+    let ret = &sig[sig.find("->")?..];
+    let open = ret.find("Result<")? + "Result<".len();
+    let (mut depth, mut last_comma) = (1, open);
+    for (i, c) in ret[open..].char_indices() {
+        match c {
+            '<' | '(' => depth += 1,
+            '>' | ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(ret[last_comma..open + i].trim().to_string());
+                }
+            }
+            ',' if depth == 1 => last_comma = open + i + 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// 壳命令的失败只一形：签名回 `Result` 的，错型只许 [`Said`]（`chan_call` 一条回通道那一形 `Fail`）。不合的那几条。
+fn commands_failing_otherwise(prod: &str) -> Vec<String> {
+    shell_commands(prod)
+        .into_iter()
+        .filter_map(|(name, sig, _)| {
+            let e = error_type(&sig)?;
+            let allowed = if name == "chan_call" { "Fail" } else { "Said" };
+            (e != allowed).then(|| format!("{name} → {e}"))
+        })
+        .collect()
+}
+
+/// 每条返回 `Said` 的壳命令，最外层都经 `.named("<它自己的名字>")` 一次（复制详情里有「命令」那一项）；
+/// 回 `Result` 的壳命令错型只许 `Said`（`chan_call` 许 `Fail`）。人群：生产源码里全部 `#[tauri::command]`。
 #[test]
-fn every_shell_command_names_itself_in_its_failure_detail() {
+fn every_shell_command_fails_as_said_and_names_itself() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let (mut seen, mut bad) = (0usize, Vec::new());
+    let (mut seen, mut bad, mut other) = (0usize, Vec::new(), Vec::new());
     for (p, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         let prod = guard_core::production_code(&text);
-        let starts: Vec<usize> = prod
-            .match_indices("#[tauri::command]")
-            .map(|(i, _)| i)
-            .collect();
-        for (k, at) in starts.iter().enumerate() {
-            let end = starts.get(k + 1).copied().unwrap_or(prod.len());
-            let chunk = &prod[*at..end];
-            let Some(f) = chunk.find("fn ") else { continue };
-            let name: String = chunk[f + 3..]
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            let sig_end = chunk[f..].find('{').map_or(chunk.len(), |b| f + b);
-            if !chunk[..sig_end].contains("Said>") {
+        let file = p.file_name().unwrap().to_string_lossy().to_string();
+        other.extend(
+            commands_failing_otherwise(&prod)
+                .into_iter()
+                .map(|c| format!("{file}::{c}")),
+        );
+        for (name, sig, chunk) in shell_commands(&prod) {
+            if !sig.contains("Said>") {
                 continue;
             }
             seen += 1;
             if !chunk.contains(&format!(".named(\"{name}\")")) {
-                bad.push(format!(
-                    "{}::{name}",
-                    p.file_name().unwrap().to_string_lossy()
-                ));
+                bad.push(format!("{file}::{name}"));
             }
         }
     }
@@ -185,6 +231,73 @@ fn every_shell_command_names_itself_in_its_failure_detail() {
     assert!(
         bad.is_empty(),
         "这几条壳命令失败时复制详情里没有命令名：{bad:?}"
+    );
+    assert!(
+        other.is_empty(),
+        "这几条壳命令的错不是 `Said`（句子 ＋ 复制详情）：{other:?}"
+    );
+    // 正控：一条回 `Result<(), String>` 的命令要被认出来；`chan_call` 回 `Fail` 不算。
+    let fixture = "#[tauri::command]\nfn bare() -> Result<(), String> {\n}\n\
+                   #[tauri::command]\npub async fn chan_call(a: u8) -> Result<tauri::ipc::Response, Fail> {\n}\n\
+                   #[tauri::command]\nfn fine() -> Result<Vec<(u8, String)>, Said> {\n}\n";
+    assert_eq!(commands_failing_otherwise(fixture), vec!["bare → String"]);
+}
+
+/// 壳生产段不把下层的错拼成那一句（`map_err(|e| format!(…))`）：句子取文案表的原因词，原话进详情（[`Said::with_raw`]）。
+fn format_into_said(prod: &str) -> Vec<usize> {
+    prod.lines()
+        .enumerate()
+        .filter(|(_, l)| l.contains("map_err(|e| format!("))
+        .map(|(i, _)| i + 1)
+        .collect()
+}
+
+#[test]
+fn no_shell_error_is_a_formatted_lower_error() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let files = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(files.len() > 50, "扫描面塌了：{}", files.len());
+    let bad: Vec<String> = files
+        .iter()
+        .flat_map(|(p, text)| {
+            format_into_said(&guard_core::production_code(text))
+                .into_iter()
+                .map(move |n| format!("{}:{n}", p.display()))
+        })
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "这几处把下层原话拼进了那一句（改 `Said::with_raw(<原因词那一句>, e)`）：\n{}",
+        bad.join("\n")
+    );
+    assert_eq!(
+        format_into_said("ok\n    .map_err(|e| format!(\"x failed: {e}\"))?;\n"),
+        vec![2],
+        "正控没认出来 —— 量法坏了"
+    );
+}
+
+/// 打开日志那一下起不来：句子是「打开失败 · 原因词」，系统原话只进详情。
+#[test]
+fn a_failed_open_says_the_reason_and_keeps_the_raw_words_in_the_detail() {
+    let bin = "/nonexistent-ccm-opener/xdg-open";
+    let e = crate::open_with(bin, &[]).expect_err("不存在的程序起不来");
+    assert_eq!(
+        e.said,
+        copy_text(
+            "rsShellCmd.open.failed",
+            &[(
+                "why",
+                &copy_core::spawn_reason(std::io::ErrorKind::NotFound)
+            )]
+        )
+    );
+    assert!(!e.said.contains(bin), "{}", e.said);
+    assert!(
+        e.detail
+            .contains(&format!("{}：{bin}", label("detail.label.raw"))),
+        "{}",
+        e.detail
     );
 }
 

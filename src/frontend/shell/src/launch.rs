@@ -30,15 +30,15 @@ const MAX_REMOTE_CMD: usize = 4096;
 /// **刻意不含「拒绝双引号」那条**：它的理由是 PowerShell 5.1 向 native 程序传参对内嵌 `"`
 /// 有历史畸变（见调用处），是**那条送法的**约束，不是命令本身的性质。
 /// 把它一并搬进来，等于把一个 Windows 怪癖套到 Linux 上 —— 判据要落在性质上。
-fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
+fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), Said> {
     if cmd.trim().is_empty() {
-        return Err(copy_text(
+        return Err(Said::of(
             "rsLaunch.refuse.empty",
             &[("what", &what.to_string())],
         ));
     }
     if cmd.len() > MAX_REMOTE_CMD {
-        return Err(copy_text(
+        return Err(Said::of(
             "rsLaunch.refuse.tooLong",
             &[
                 ("what", &what.to_string()),
@@ -48,7 +48,7 @@ fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
         ));
     }
     if cmd.chars().any(|c| c.is_control()) {
-        return Err(copy_text(
+        return Err(Said::of(
             "rsLaunch.refuse.control",
             &[("what", &what.to_string())],
         ));
@@ -66,7 +66,7 @@ fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
 /// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh（那一层今天由本机后端 `terminal-ssh` 渲）。
 /// 两侧各有测试逐字节钉住（本侧 `local_posix_sends_the_payload_itself_without_an_ssh_wrap`，
 /// 远端那侧在 `tests/backend/dial_terminal_tests.rs`）。
-pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
+pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, Said> {
     validate_launch_cmd(cmd, &copy_text("rsLaunch.what.localCmd", &[]))?;
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
 }
@@ -92,7 +92,7 @@ pub async fn open_terminal_window(
         Ok(tokio::task::spawn_blocking(move || {
             let opened = crate::platform::terminal::open_local(&command, None)?;
             tracing::info!("launch: terminal window {opened:?}");
-            Ok::<_, String>(opened)
+            Ok::<_, Said>(opened)
         })
         .await
         .map_err(|e| Said::with_raw(copy_text("rsLaunch.remote.taskFailed", &[]), e))??)
@@ -116,10 +116,10 @@ pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, Said> {
     let r: Result<serde_json::Value, Said> = async move {
         // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
         if origin == crate::inbound_client::LOCAL_ORIGIN {
-            return Err(copy_text("rsLaunch.terminalDial.local", &[]).into());
+            return Err(Said::of("rsLaunch.terminalDial.local", &[]));
         }
         let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-            copy_text(
+            Said::of(
                 "rsLaunch.remote.noConfig",
                 &[("machine", &format!("{:?}", origin))],
             )

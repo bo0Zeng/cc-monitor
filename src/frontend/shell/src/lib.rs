@@ -1379,7 +1379,9 @@ async fn open_session_in_new_window(
         use tauri::Manager;
         // 独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
         //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
-        origin.route("open_session_in_new_window")?;
+        origin
+            .route("open_session_in_new_window")
+            .map_err(Said::written)?;
         let origin_q = pct_encode(origin.as_wire_str());
         let run = run.filter(|r| !r.is_empty());
         let label = match &run {
@@ -1616,7 +1618,7 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
     let r: Result<auto_launch::AutoLaunchConfig, Said> =
         (move || -> Result<auto_launch::AutoLaunchConfig, Said> {
             let dir = auto_launch::data_dir()
-                .ok_or_else(|| copy_text("rsShellCmd.autoLaunch.readNoDir", &[]))?;
+                .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.readNoDir", &[]))?;
             Ok(auto_launch::get_config(&dir))
         })();
     r.map_err(|s| s.named("cc_get_auto_launch"))
@@ -1627,7 +1629,7 @@ fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, Said> {
 fn cc_set_auto_launch(enabled: bool) -> Result<(), Said> {
     let r: Result<(), Said> = (move || -> Result<(), Said> {
         let dir = auto_launch::data_dir()
-            .ok_or_else(|| copy_text("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
+            .ok_or_else(|| Said::of("rsShellCmd.autoLaunch.writeNoDir", &[]))?;
         Ok(auto_launch::set_enabled(&dir, enabled)?)
     })();
     r.map_err(|s| s.named("cc_set_auto_launch"))
@@ -1733,7 +1735,7 @@ async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> R
     let r: Result<(), Said> = async move {
         let path = state
             .current_log_file()
-            .ok_or_else(|| copy_text("rsLib.log.none", &[]))?;
+            .ok_or_else(|| Said::of("rsLib.log.none", &[]))?;
         let path_str = path.to_string_lossy().into_owned();
         Ok(tokio::task::spawn_blocking(move || open_with_os(&path_str))
             .await
@@ -1771,17 +1773,18 @@ async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Re
 
 /// 跨平台调系统默认 opener。Windows 用 `cmd /C start ""` 兜 path 中的空格。
 /// 复用 tauri-plugin-opener 也行（前端就是走它），但这里在 Rust 端直接调更直接。
-fn open_with_os(path_or_dir: &str) -> Result<(), String> {
-    use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
-    // 「用哪个程序打开」是平台差异（住壳的平台层）；「怎么起它」三条策略走唯一出口。
-    //
-    // ★ 这一处走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**（
-    //   逐字写的那个签名），而不是它的内层 `spawn_managed_cmd` —— 因为这一跳**真的
-    //   只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
-    //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于
-    //   那三条策略，硬塞进这个签名只会长出第七、第八个参数。
+fn open_with_os(path_or_dir: &str) -> Result<(), Said> {
     // 「用哪个程序打开」按平台选（`cmd /C start ""` · `open` · `xdg-open`）住 `platform/proc.rs::os_opener`。
     let (bin, args) = crate::platform::proc::os_opener(path_or_dir);
+    open_with(bin, &args)
+}
+
+/// [`open_with_os`] 挑完程序之后那一下（程序是入参：判据喂一个不存在的程序，量失败那一句）。起不来 ⇒ 原因词进句子，原话进详情。
+fn open_with(bin: &str, args: &[String]) -> Result<(), Said> {
+    use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
+    // 「怎么起它」三条策略走唯一出口。走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**，而不是它的内层
+    //   `spawn_managed_cmd` —— 这一跳**真的只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
+    //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于那三条策略。
     // 三条策略：
     // · `Hidden` —— 这一跳只是转交给系统默认 opener，**先前那个 `CREATE_NO_WINDOW`
     //   就是这一条**（它是「仓里有、却用在最不需要的那处」的那一份）；
@@ -1792,13 +1795,21 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
     //   而这一跳失败时用户当场就看得见（东西没打开）。
     spawn_managed(
         std::path::Path::new(bin),
-        &args,
+        args,
         ConsolePolicy::Hidden,
         Lifetime::Detached,
         StderrSink::Inherit,
     )
     .map(|_| ())
-    .map_err(|e| format!("{bin} failed: {e}"))
+    .map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "rsShellCmd.open.failed",
+                &[("why", &copy_core::spawn_reason(e.kind()))],
+            ),
+            format!("{bin}: {e}"),
+        )
+    })
 }
 
 // 搜索口径那道守卫原挂在 `search.rs` 下；那份文件删了，挂到这里。今天只剩「monitor 这一侧零处」（「恰一份」那两道随家进了后端）。

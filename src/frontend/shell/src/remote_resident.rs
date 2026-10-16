@@ -34,12 +34,6 @@ impl PartialEq for AttachErr {
     }
 }
 
-impl From<String> for AttachErr {
-    fn from(s: String) -> Self {
-        AttachErr::Failed(s.into())
-    }
-}
-
 impl From<Said> for AttachErr {
     fn from(s: Said) -> Self {
         AttachErr::Failed(s)
@@ -63,7 +57,7 @@ pub(crate) fn parse_answer(
     machine: &str,
 ) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
-        return Err(copy_core::backend_old(machine).into());
+        return Err(Said::written(copy_core::backend_old(machine)).into());
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
@@ -103,7 +97,7 @@ pub(crate) fn parse_answer(
             } else {
                 Err(AttachErr::Failed(match wrote {
                     Some(d) => Said::relayed_from(msg, d, None),
-                    None => msg.into(),
+                    None => Said::written(msg),
                 }))
             }
         }
@@ -122,7 +116,9 @@ pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
 /// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
 pub(crate) async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, Said> {
     use crate::backend_route::{route_call_error, Routed};
-    let client = crate::dial_host::local_backend_accepting(VERDICT_CMD).await?;
+    let client = crate::dial_host::local_backend_accepting(VERDICT_CMD)
+        .await
+        .map_err(Said::written)?;
     let args = resident_client::gate::verdict_args(mine, theirs, replaced);
     let data = client
         .call(VERDICT_CMD, args, VERDICT_BUDGET)
@@ -131,7 +127,7 @@ pub(crate) async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Res
             match route_call_error(&e, &copy_core::local_machine(), |_code, message| {
                 message.to_string()
             }) {
-                Routed::NoChannel(s) | Routed::Refused(s) => Said::from(s),
+                Routed::NoChannel(s) | Routed::Refused(s) => Said::written(s),
             }
         })?;
     decode_verdict(&data.unwrap_or_default())

@@ -172,7 +172,7 @@ pub async fn open_file_window(
     let r: Result<usize, Said> = async move {
         use tauri::{Emitter, Manager};
         // 窗口的样子：主界面此刻 `:root` 上的那一套（含用户改过的）解成数。解不出来就不开（不替它补一套）。
-        let theme = filewin_contract::Theme::from_tokens(&theme)?;
+        let theme = filewin_contract::Theme::from_tokens(&theme).map_err(Said::written)?;
         // 主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
         let work_area = app
             .get_webview_window(crate::MAIN_WINDOW_LABEL)
