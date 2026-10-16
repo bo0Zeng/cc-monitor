@@ -126,12 +126,16 @@ fn is_file_text(t: &str) -> bool {
 
 /// 本族量的是**编辑面自己**（排版 · 编辑 · 撤销）在大文本上的形状。
 /// 上一版这里要把「打开即只读」摘掉（1 MiB 以上存不回）；存盘改走暂存区之后那一档整个删了。
+/// 后端给的编辑上限（合成后端那个数）。
+const EDIT_CAP: u64 = 8 * 1024 * 1024;
+
 fn pane(text: String) -> Pane {
     Pane::opened(
         "/srv/big.txt",
         "big.txt",
         text,
         crate::find::testing::fake_sha256(""),
+        EDIT_CAP,
     )
 }
 
@@ -688,6 +692,7 @@ fn the_file_window_really_goes_through_the_big_mode() {
             name: "x.json".into(),
             text: text.clone(),
             sha256: crate::find::testing::fake_sha256(""),
+            cap: 8 * 1024 * 1024,
         });
         let ctx = egui::Context::default();
         let mut painted = Vec::new();
@@ -895,7 +900,7 @@ fn the_readings_behind_the_two_thresholds() {
     //    `Pane` 克隆）与打字帧（真点一下拿焦点、再送字）。⚠ 不含后端读盘与线上搬运那一段。
     //    ⚠ 这一段第一版量的是 8 MiB（后端 `files-read-text` 一趟的天花板），读数记在；
     //    那次逮出「存不回去」之后上限一度定成一行的上限（1 MiB）；存盘走暂存区之后回到 8 MiB，
-    //    「存得回的最大」＝ 恰好 `MAX_EDIT_BYTES` 那么大（每一形都存得回，不再按转义削）。
+    //    「存得回的最大」＝ 恰好编辑上限那么大（每一形都存得回，不再按转义削）。
     let window = |text: &str| -> ((f64, f64), (f64, f64), bool) {
         let mut w = crate::shell::FileWindow::seeded(
             crate::source::Source::remote(String::from("readings")),
@@ -921,6 +926,7 @@ fn the_readings_behind_the_two_thresholds() {
             name: "big.txt".into(),
             text: text.to_string(),
             sha256: crate::find::testing::fake_sha256(""),
+            cap: 8 * 1024 * 1024,
         });
         // 打开 ＝ 到货之后、**第一屏文件文字真画出来**为止的那几帧之和
         //（egui 的模态框第一帧只量尺寸不画 ⇒ 通常是两帧）。
@@ -952,10 +958,10 @@ fn the_readings_behind_the_two_thresholds() {
         assert!(w.editing().unwrap().dirty(), "送的字没落进全文");
         (open, k, big)
     };
-    // 存得回的最大那一份：恰好 `MAX_EDIT_BYTES`（语料生成器按它切齐）。
+    // 存得回的最大那一份：恰好编辑上限（语料生成器按它切齐）。
     let largest = |make: &dyn Fn(usize) -> String| -> String {
-        let mut t = make(crate::editor::MAX_EDIT_BYTES);
-        let mut cut = t.len().min(crate::editor::MAX_EDIT_BYTES);
+        let mut t = make((EDIT_CAP as usize));
+        let mut cut = t.len().min((EDIT_CAP as usize));
         while !t.is_char_boundary(cut) {
             cut -= 1;
         }

@@ -51,6 +51,7 @@ class NewSessionPickerTest {
         "plate" to name.take(2),
         "quota" to if (selectable) "5h ${name.length}%" else null,
         "unselectable" to if (selectable) null else "需登录",
+        "login" to !selectable,
     )
 
     private fun accounts(

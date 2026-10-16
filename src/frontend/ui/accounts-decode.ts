@@ -62,6 +62,7 @@ const ACCOUNT_KEYS = keysOf<AccountRow>()([
   "plate",
   "quota",
   "unselectable",
+  "login",
 ]);
 const BADGE_KEYS = keysOf<Badge>()(["text", "warn", "title"]);
 const TRUST_KEYS = keysOf<Trust>()(["trusted", "known"]);
@@ -130,7 +131,8 @@ export function decodeAccountsList(v: unknown): {
       (a.color as number) > 7 ||
       typeof a.plate !== "string" ||
       !(a.quota === null || typeof a.quota === "string") ||
-      !(a.unselectable === null || typeof a.unselectable === "string")
+      !(a.unselectable === null || typeof a.unselectable === "string") ||
+      typeof a.login !== "boolean"
     ) {
       return bad(copyText("accountsDecode.where.nth", { i }));
     }
@@ -152,6 +154,7 @@ export function decodeAccountsList(v: unknown): {
       plate: a.plate as string,
       quota: a.quota as string | null,
       unselectable: a.unselectable as string | null,
+      login: a.login as boolean,
     };
   });
   const meta: AccountsMeta = {

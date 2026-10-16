@@ -337,8 +337,23 @@ enum class AnswerResult {
 @JsonClass(generateAdapter = true)
 data class HistoryListPage(
     val rows: List<HistoryRow>,
+    val groups: List<HistoryGroup>,
     val notice: String?,
     val truncated: Boolean,
+)
+
+/** 按目录看时的一组：几台的组按 `order` 并成一列；时刻照那台写好的 `atText`（读不了的那一组 ⇒ `null`）。 */
+@WireOf("HistoryGroup")
+@JsonClass(generateAdapter = true)
+data class HistoryGroup(
+    val key: String,
+    val projectName: String,
+    val projectPath: String,
+    val count: Long,
+    val hasLive: Boolean?,
+    val order: Long,
+    val atText: String?,
+    val failed: String?,
 )
 
 @WireOf("HistoryRow")
@@ -354,6 +369,44 @@ data class HistoryRow(
     val agentTag: String?,
     val status: String,
     val hidden: Hidden?,
+    val forkedFromSessionId: String?,
+    val forkedFrom: ForkedFrom?,
+)
+
+/** 分叉来的那一行的父会话（显示标题）；父会话不在那台的清单里 ⇒ 行上没有这一格，写「分叉自其他会话」。 */
+@WireOf("ForkedFrom")
+@JsonClass(generateAdapter = true)
+data class ForkedFrom(
+    val label: String,
+)
+
+/** `history-search`：每个命中会话一行。 */
+@WireOf("HistorySearchReply")
+@JsonClass(generateAdapter = true)
+data class HistorySearchReply(
+    val sessions: List<SessionHits>,
+    val unreadable: Long,
+)
+
+@WireOf("SessionHits")
+@JsonClass(generateAdapter = true)
+data class SessionHits(
+    val sessionId: String,
+    val title: String,
+    val hitCount: Long,
+    val hits: List<SearchHit>,
+    val forkedFrom: ForkedFrom?,
+)
+
+/** 一条命中：`offset` 交给 `history-read` 就从那一条读起。 */
+@WireOf("SearchHit")
+@JsonClass(generateAdapter = true)
+data class SearchHit(
+    val uuid: String,
+    val before: String,
+    val matched: String,
+    val after: String,
+    val offset: Long,
 )
 
 /** 隐藏那一格（判定只住后端）：手机只读后端写好的那一句（长按菜单里说为什么隐藏）。不隐藏 ⇒ 行上是 `null`。 */
@@ -725,8 +778,37 @@ data class LsEntry(
     val name: Any,
     val kind: FileKind,
     val size: Long?,
+    @Json(name = "size_text") val sizeText: String?,
     @Json(name = "mtime_text") val mtimeText: String?,
     @Json(name = "link_dir") val linkDir: Boolean?,
+    val gates: Gates?,
+)
+
+@WireOf("Gates")
+@JsonClass(generateAdapter = true)
+data class Gates(
+    val preview: PreviewGate,
+    val edit: Gate,
+)
+
+@WireOf("PreviewGate")
+@JsonClass(generateAdapter = true)
+data class PreviewGate(
+    val text: TextPreview?,
+    val no: String?,
+)
+
+@WireOf("TextPreview")
+@JsonClass(generateAdapter = true)
+data class TextPreview(
+    val cap: Long,
+)
+
+@WireOf("Gate")
+@JsonClass(generateAdapter = true)
+data class Gate(
+    val cap: Long?,
+    val no: String?,
 )
 
 @WireOf("LsReply")
@@ -749,6 +831,8 @@ data class Crumb(
 @WireOf("StatReply")
 @JsonClass(generateAdapter = true)
 data class StatReply(
+    val name: Any,
+    val up: Any?,
     val kind: FileKind,
     val mode: Long?,
 )
@@ -1126,6 +1210,7 @@ data class AccountRow(
     val quota: String?,
     val unselectable: String?,
     val selectable: Boolean,
+    val login: Boolean,
     val configDir: String?,
     val mode: String,
 )
@@ -1155,3 +1240,54 @@ enum class LoginAgainHow {
 data class Resumed(
     val session: String,
 )
+
+/*
+ * `quota-read`（用量屏）：结论两行 · 每号两条计量条那一格（字 · 语气 · 重置 · 1% ≈ 多少），全照那台写好的。
+ */
+
+@WireOf("QuotaRead")
+@JsonClass(generateAdapter = true)
+data class QuotaReadReply(
+    val accounts: List<QuotaAccount>,
+    val verdict: QuotaVerdict?,
+)
+
+/** 「现在还能不能发」：大字 · 小字（说不出 ⇒ `null`）· 语气。 */
+@WireOf("QuotaVerdict")
+@JsonClass(generateAdapter = true)
+data class QuotaVerdict(
+    val text: String,
+    val sub: String?,
+    val tone: UsageTone,
+)
+
+@WireOf("QuotaAccount")
+@JsonClass(generateAdapter = true)
+data class QuotaAccount(
+    val account: String,
+    val slots: List<SlotShow>,
+)
+
+/** 一个语义位那一格：字 · 语气 · 重置那一格（`↻18:30` / `↻13:10 已过`，说不出 ⇒ `null`）· 「1% ≈ 多少」（量不到 ⇒ `null`）。 */
+@WireOf("SlotShow")
+@JsonClass(generateAdapter = true)
+data class SlotShow(
+    val slot: String,
+    val text: String,
+    val tone: UsageTone,
+    val resetText: String?,
+    val perPctText: String?,
+)
+
+/** 用量那几格的语气（线上那一列只有这三个值）。 */
+@JsonClass(generateAdapter = false)
+enum class UsageTone {
+    @Json(name = "plain")
+    PLAIN,
+
+    @Json(name = "fail")
+    FAIL,
+
+    @Json(name = "warn")
+    WARN,
+}

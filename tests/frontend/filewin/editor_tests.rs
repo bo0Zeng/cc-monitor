@@ -20,125 +20,96 @@ fn opened_from_reply(
     super::opened_from_reply(o, typed(r))
 }
 
-fn row(name: &str, is_dir: bool, lossy: bool, size: u64) -> Row {
-    Row {
+/// 后端给的编辑上限（窗口不认这个数，照门上给的用；夹具取后端那一份的值）。
+const CAP: u64 = 8 * 1024 * 1024;
+const MAX_EDIT_BYTES: usize = CAP as usize;
+
+async fn read_text(
+    line: &crate::source::Line,
+    origin: &crate::source::Origin,
+    path: &str,
+) -> Result<Option<Opened>, crate::source::Failed> {
+    read_text_at(line, origin, &crate::source::RemotePath::plain(path), CAP).await
+}
+
+async fn write_text(
+    line: &crate::source::Line,
+    origin: &crate::source::Origin,
+    path: &str,
+    content: &str,
+    expect_sha256: &str,
+) -> Result<Saved, SaveError> {
+    write_text_at(
+        line,
+        origin,
+        &crate::source::RemotePath::plain(path),
+        content,
+        expect_sha256,
+        CAP,
+    )
+    .await
+}
+
+/// 一行，带着后端那道编辑门（`None` ＝ 问不出门的那一形）。
+fn row(
+    name: &str,
+    is_dir: bool,
+    lossy: bool,
+    edit: Option<cmd_wire::files::Gate>,
+) -> crate::source::Listed {
+    let mut l = crate::source::Listed::plain(crate::source::Row {
         name: name.to_string(),
         path: format!("/srv/data/{name}"),
         is_dir,
-        size,
+        size: 1,
         lossy_name: lossy,
-    }
+    });
+    l.gates = edit.map(|edit| cmd_wire::files::Gates {
+        preview: cmd_wire::files::PreviewGate::No(String::new()),
+        view: None,
+        edit,
+    });
+    l
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// 「超了怎么办」—— 指名留给这一刀的第二问
-// ═══════════════════════════════════════════════════════════════════
-
-/// 普通小文本 ⇒ 改得了，而且**一句话都不用说**。
+/// 门放行 ⇒ 改得了、一句话都不用说，读的那一趟许读多少就是门上那个数。
 #[test]
-fn a_small_text_file_is_editable_with_nothing_to_explain() {
-    let r = row("a.txt", false, false, 1024);
+fn an_open_gate_is_editable_with_nothing_to_explain() {
+    let r = row("a.txt", false, false, Some(cmd_wire::files::Gate::Cap(CAP)));
     assert_eq!(why_not_editable(&r), None);
-    assert!(is_editable(&r));
+    assert!(editable(&r));
+    assert_eq!(edit_cap(&r), Some(CAP));
 }
 
-/// 🔴 **太大那一档在本地就判得出来，而且那句话里带着两个真数。**
-///
-/// # 它买到什么（这一条是这一刀的正题）
-///
-/// 池子那条命令回的 `Option<String>` 把三件事压成一件（太大 / 含 NUL / 非 UTF-8）
-/// ⇒ 谁拿到 `None` 都说不出为什么，老面板的做法是把那一行灰置。
-/// 而**列目录回来的每一行都带着 `size`** ⇒ 最常见的那一档在这儿就答完了，
-/// **连那趟往返都不发**。
+/// 门不许 ⇒ 照摆后端写好的那一句（窗口不另写一句）；没有门 ⇒ 说读取上限未知。
 #[test]
-fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
-    let over = row(
+fn a_closed_gate_says_the_backends_sentence_and_a_missing_gate_says_unknown() {
+    let r = row(
         "big.log",
         false,
         false,
-        crate::editor::MAX_EDIT_BYTES as u64 + 1,
+        Some(cmd_wire::files::Gate::No("后端那一句".into())),
     );
-    let why = why_not_editable(&over).expect("超上限却说改得了");
-    // 上限那个数要在那句话里。
-    // 上限 256 KiB → 1 MiB（`MAX_EDIT_BYTES` 头注），`copy_core::size_text` 印出来是 `1.0 M`。
-    assert!(
-        why.contains(&copy_core::size_text(crate::editor::MAX_EDIT_BYTES as u64)),
-        "那句话里没有上限那个数：{why}"
+    assert_eq!(why_not_editable(&r).as_deref(), Some("后端那一句"));
+    assert_eq!(edit_cap(&r), None);
+    assert_eq!(
+        why_not_editable(&row("x", false, false, None)),
+        Some(copy_core::copy_text("rsFilewinSource.gates.unlisted", &[]))
     );
-    // 🔴 **「多了多少」必须在，而且不许退化。**
-    //
-    // 第一版这里判的是「两个 `copy_core::size_text` 都在」，而生产那一版正是那么写的
-    // ⇒ 判据当场逮到它退化成「这份 **256.0 K** 超过 **256.0 K** 的编辑上限」
-    //（`256 KiB + 1` 被四舍成 `256.0 K`）。那句话读出来什么都没说。
-    // ⇒ 现在判的是「多了 1 字节」这个**永不退化**的数，
-    //   它直接答「我该把文件弄小多少」。
-    assert!(
-        copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &why),
-        "那句话没说超出多少 —— 在边界附近两个 `copy_core::size_text` 会一模一样：{why}"
-    );
-    // 精确字节数也要在（`copy_core::size_text` 在边界上分不开两个值）。
-    assert!(
-        copy_core::copy_matches_with(
-            "rsFilewinEditor.notEditable.tooBig",
-            &[("bytes", &(crate::editor::MAX_EDIT_BYTES + 1).to_string())],
-            &why
-        ),
-        "那句话里没有这份文件的精确字节数：{why}"
-    );
-    // 而「拒编而非截断」这条契约要说出来（`editor::MAX_EDIT_BYTES` 头注逐字；第九刀时那句话住池子那份同名常量上）。
-    assert!(
-        copy_core::copy_matches("rsFilewinEditor.notEditable.tooBig", &why),
-        "没说清为什么不是「截断给你看」：{why}"
-    );
-    assert!(!is_editable(&over));
-
-    // 🔴 边界：**正好等于上限**的那一份是改得了的（`>` 不是 `>=`）。
-    //    这一比不是洁癖 —— 池子那边 `decode_editable` 用的正是 `>`，
-    //    两侧用不同的比较符会造出「这边说能改、那边拒」的静默态。
-    let exact = row("exact", false, false, crate::editor::MAX_EDIT_BYTES as u64);
-    assert_eq!(why_not_editable(&exact), None, "正好到上限那一份被拒了");
 }
 
-/// 目录与有损名各有自己那句话（**不是同一句**）。
+/// 目录与有损名各有自己那句话（**不是同一句**），门放行也挡。
 #[test]
 fn a_directory_and_a_lossy_name_each_get_their_own_sentence() {
-    let d = why_not_editable(&row("sub", true, false, 0)).expect("目录竟然可编辑");
-    let l = why_not_editable(&row("bad", false, true, 10)).expect("有损名竟然可编辑");
+    let open = || Some(cmd_wire::files::Gate::Cap(CAP));
+    let d = why_not_editable(&row("sub", true, false, open())).expect("目录竟然可编辑");
+    let l = why_not_editable(&row("bad", false, true, open())).expect("有损名竟然可编辑");
     assert!(
         d.contains(copy_core::copy_static!("gridMonitor.fact.dir")),
         "{d}"
     );
     assert!(l.contains("UTF-8"), "{l}");
     assert_ne!(d, l, "两种拒绝说的是同一句话 —— 那用户分不清是哪一种");
-}
-
-/// 🔴 「画不画那颗按钮」与「为什么不画」是**同一个判定**。
-///
-/// 两处各写一份条件时的失效形状是个静默态：按钮画出来了、点了没反应。
-#[test]
-fn the_button_and_the_reason_are_one_judgement() {
-    let corpus = [
-        row("a.txt", false, false, 10),
-        row("sub", true, false, 0),
-        row("bad", false, true, 10),
-        row(
-            "big",
-            false,
-            false,
-            crate::editor::MAX_EDIT_BYTES as u64 + 1,
-        ),
-    ];
-    // 反空真：两种答案都要出现。
-    assert!(corpus.iter().any(|r| is_editable(r)));
-    assert!(corpus.iter().any(|r| !is_editable(r)));
-    for r in &corpus {
-        assert_eq!(
-            is_editable(r),
-            why_not_editable(r).is_none(),
-            "`{}` 上两个判定不一致 —— 那就是「按钮画了但点了没反应」那一形",
-            r.name
-        );
-    }
 }
 
 /// 池子回 `None` 之后那句话里**没有**「太大」，而且提了那个竞态。
@@ -267,7 +238,7 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
 /// 于是用户每次都要答一遍一个假问题，而假问题答多了他就不看了。
 #[test]
 fn dirty_is_an_equality_not_a_keystroke_flag() {
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "hello".into(), SHA0.to_string());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "hello".into(), SHA0.to_string(), CAP);
     assert!(!p.dirty(), "刚读回来就说改过了");
     assert_eq!(judge_close(&p), Close::Now);
 
@@ -284,7 +255,7 @@ fn dirty_is_an_equality_not_a_keystroke_flag() {
 /// 存成功 ⇒ 基准线跟上；存失败 ⇒ **一个字都不碰用户敲的东西**。
 #[test]
 fn a_failed_save_keeps_every_character_the_user_typed() {
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string(), CAP);
     p.text = "new".into();
 
     // 失败：`text` 与 `dirty` 都不许变（那些字是用户唯一的一份）。
@@ -306,8 +277,8 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
 /// 敲超上限 ⇒ **屏幕上先说**，不等存的时候才失败。
 #[test]
 fn typing_past_the_cap_is_visible_before_the_save_fails() {
-    let cap = crate::editor::MAX_EDIT_BYTES;
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "x".into(), SHA0.to_string());
+    let cap = MAX_EDIT_BYTES;
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "x".into(), SHA0.to_string(), CAP);
     assert!(!p.over_cap());
     assert_eq!(p.headroom(), cap as i64 - 1);
 
@@ -356,7 +327,7 @@ fn typing_past_the_cap_is_visible_before_the_save_fails() {
 ///   但它印出来那个毫秒数**不许**再被当成每帧代价。逐条住 `editor.rs` 头注 §四.0。
 #[test]
 fn a_full_cap_worth_of_text_still_lays_out_in_one_frame() {
-    let cap = crate::editor::MAX_EDIT_BYTES;
+    let cap = MAX_EDIT_BYTES;
     // 造一段**满上限**的文字，带换行（单行 256 KiB 与多行的排版代价不是一回事，
     // 而真实文本是多行的）。
     let line = "远端配置的一行 abcdefghijklmnopqrstuvwxyz 0123456789\n";
@@ -539,7 +510,7 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
 async fn the_worst_case_full_cap_file_saves_back_through_the_staging_area() {
     let (wired, origin, committed) = save_rig("save-worst", None).await;
     let text = "\u{1}".repeat(MAX_EDIT_BYTES);
-    let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone(), SHA0.to_string());
+    let mut p = Pane::opened(SAVE_PATH, "app.conf", text.clone(), SHA0.to_string(), CAP);
     assert!(!p.over_cap());
     let saved = write_text(&wired.line, &origin, SAVE_PATH, &p.text, &opened_sha())
         .await
@@ -587,7 +558,7 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
     let text = "\u{1}".repeat(2 * 1024 * 1024);
     let total = plan_chunks(&text, chunk_budget()).len();
     assert!(total > 3, "夹具切不出第三块");
-    let mut p = Pane::opened(SAVE_PATH, "app.conf", "old".into(), SHA0.to_string());
+    let mut p = Pane::opened(SAVE_PATH, "app.conf", "old".into(), SHA0.to_string(), CAP);
     p.text = text.clone();
     let SaveError::Failed(why) =
         write_text(&wired.line, &origin, SAVE_PATH, &p.text, &opened_sha())
@@ -702,7 +673,7 @@ fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
 /// 存成之后基准是**发出去的那一份**：存在路上时又敲的字仍算没存（`dirty`）；摘要换成应答交的那一个。
 #[test]
 fn after_a_save_the_baseline_is_what_was_sent_and_the_digest_is_the_new_one() {
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string(), CAP);
     p.text = "sent".into();
     let sent = p.text.clone();
     p.text.push_str(" + typed while saving");
@@ -766,6 +737,7 @@ fn window_editing(text: &str) -> (crate::shell::FileWindow, egui::Context) {
         name: "a.txt".into(),
         text: text.to_string(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     let ctx = egui::Context::default();
     for _ in 0..2 {
@@ -908,7 +880,7 @@ fn a_lossy_path_is_saved_by_its_bytes() {
 /// 基准摘要不动 ⇒ 下一次存交旧的那一份，撞 stale 而不是悄悄覆盖。
 #[test]
 fn a_save_without_a_new_digest_is_saved_with_a_note_and_keeps_the_old_baseline() {
-    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string());
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string(), CAP);
     p.text = "new".into();
     p.mark_saved("new", None);
     assert!(!p.dirty(), "写进去了却还算没存");

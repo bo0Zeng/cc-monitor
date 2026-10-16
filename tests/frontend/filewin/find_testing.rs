@@ -631,6 +631,7 @@ impl FakeBackend {
                         serde_json::json!({
                             "path": to_json(p),
                             "kind": if *d { "dir" } else { "file" },
+                            "class": if *d { "folder" } else { "other" },
                             "location": to_json(&location(p)),
                             "size": md.as_ref().filter(|m| !m.is_dir()).map(|m| m.len()),
                             "mtime_secs": md.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t| t.as_secs()),
@@ -676,7 +677,30 @@ impl FakeBackend {
                     );
                 };
                 match crate::source::list_local(std::path::Path::new(dir)) {
-                    Ok(rows) => {
+                    Ok(mut rows) => {
+                        // 合成后端也排：目录在前，按名称（小写）· 大小（大的在前）· 类型；`reverse` 只反那一列。
+                        let sort: cmd_wire::files::LsSort = args
+                            .get("sort")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok())
+                            .unwrap_or_default();
+                        rows.sort_by(|a, b| {
+                            use cmd_wire::files::LsSortBy as B;
+                            let col = match sort.by {
+                                B::Size => b.size.cmp(&a.size),
+                                B::Type => fake_gates(&a.name, a.is_dir, 0)
+                                    .0
+                                    .cmp(&fake_gates(&b.name, b.is_dir, 0).0),
+                                B::Name | B::Mtime => std::cmp::Ordering::Equal,
+                            };
+                            let col = if sort.reverse { col.reverse() } else { col };
+                            let name = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+                            let name = if sort.reverse && sort.by == B::Name {
+                                name.reverse()
+                            } else {
+                                name
+                            };
+                            b.is_dir.cmp(&a.is_dir).then(col).then(name)
+                        });
                         // 照线上类型拼（两端共用的那一份）：形状由类型定，不手写。
                         let entries: Vec<cmd_wire::files::LsEntry> = rows
                             .iter()
@@ -691,11 +715,15 @@ impl FakeBackend {
                                     cmd_wire::files::FileKind::File
                                 },
                                 size: Some(r.size),
+                                size_text: Some(copy_core::size_text(r.size)),
                                 mtime_secs: None,
                                 mtime_text: None,
                                 mtime_full: None,
                                 link_dir: None,
                                 link_to: None,
+                                class: fake_gates(&r.name, r.is_dir, r.size).0,
+                                type_text: fake_gates(&r.name, r.is_dir, r.size).1,
+                                gates: fake_gates(&r.name, r.is_dir, r.size).2,
                             })
                             .collect();
                         let total = entries.len() as u64;
@@ -751,6 +779,8 @@ impl FakeBackend {
                     }
                     let v = serde_json::to_value(cmd_wire::files::StatReply {
                         path: cmd_wire::files::WirePath::from(p),
+                        name: cmd_wire::files::WirePath::from(""),
+                        up: None,
                         kind: cmd_wire::files::FileKind::File,
                         size: 0,
                         readonly: false,
@@ -1556,4 +1586,126 @@ fn said_done(verb: &str, n: usize) -> String {
         "beFiles.batch.done",
         &[("action", &v), ("n", &n.to_string())],
     )
+}
+
+/// 合成后端给一行的种类 · 「类型」那一列 · 三道门：一张手写的小表 ＋ 后端那几个上限的值（窗口不认这几个数，
+/// 合成后端替真后端答；真后端怎么判由后端自己的判据钉）。
+pub fn fake_gates(
+    name: &str,
+    is_dir: bool,
+    size: u64,
+) -> (
+    cmd_wire::files::FileClass,
+    String,
+    Option<cmd_wire::files::Gates>,
+) {
+    use cmd_wire::files::{FileClass as C, Gate, Gates, PreviewGate, TextPreview};
+    use copy_core::{copy_text, size_text};
+    const PREVIEW: u64 = 64 * 1024;
+    const IMAGE: u64 = 4 * 1024 * 1024;
+    const VIEW: u64 = 32 * 1024 * 1024;
+    const EDIT: u64 = 8 * 1024 * 1024;
+    if is_dir {
+        return (C::Folder, copy_text("beFilesKind.label.folder", &[]), None);
+    }
+    let ext = name
+        .rsplit_once('.')
+        .filter(|(a, _)| !a.is_empty())
+        .map(|(_, e)| e.to_ascii_lowercase());
+    let e = ext.as_deref().unwrap_or("");
+    let class = match e {
+        "txt" | "md" | "log" | "conf" | "csv" => C::Text,
+        "rs" | "ts" | "js" | "py" | "json" | "toml" | "yaml" | "sh" | "html" => C::Code,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "heic" | "tiff" => C::Image,
+        "zip" | "tar" | "gz" | "tgz" | "xz" | "rar" => C::Archive,
+        "pdf" => C::Pdf,
+        _ => C::Other,
+    };
+    let decodable = matches!(e, "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp");
+    let preview = if decodable && size > VIEW {
+        PreviewGate::No(copy_text(
+            "beFilesOpen.view.tooBig",
+            &[("size", &size_text(size)), ("limit", &size_text(VIEW))],
+        ))
+    } else if decodable && size > IMAGE {
+        PreviewGate::No(copy_text(
+            "beFilesOpen.preview.imageTooBig",
+            &[("size", &size_text(size)), ("limit", &size_text(IMAGE))],
+        ))
+    } else if decodable {
+        PreviewGate::Image(IMAGE)
+    } else if class == C::Image && e != "svg" {
+        PreviewGate::No(copy_text("beFilesOpen.preview.imageKind", &[]))
+    } else if matches!(class, C::Archive | C::Pdf) {
+        PreviewGate::No(copy_text("beFilesOpen.preview.binaryKind", &[]))
+    } else if size > PREVIEW {
+        PreviewGate::No(copy_text(
+            "beFilesOpen.preview.tooBig",
+            &[("size", &size_text(size)), ("limit", &size_text(PREVIEW))],
+        ))
+    } else {
+        PreviewGate::Text(TextPreview {
+            cap: PREVIEW,
+            lang: (class == C::Code || e == "md" || e == "svg").then(|| e.to_string()),
+        })
+    };
+    let view = decodable.then(|| {
+        if size > VIEW {
+            Gate::No(copy_text(
+                "beFilesOpen.view.tooBig",
+                &[("size", &size_text(size)), ("limit", &size_text(VIEW))],
+            ))
+        } else {
+            Gate::Cap(VIEW)
+        }
+    });
+    let edit = if size > EDIT {
+        Gate::No(copy_text(
+            "beFilesOpen.edit.tooBig",
+            &[
+                ("size", &size_text(size)),
+                ("bytes", &size.to_string()),
+                ("limit", &size_text(EDIT)),
+                ("over", &(size - EDIT).to_string()),
+            ],
+        ))
+    } else {
+        Gate::Cap(EDIT)
+    };
+    let label = |c: C| match c {
+        C::Folder => copy_text("beFilesKind.label.folder", &[]),
+        C::Text => copy_text("beFilesKind.label.text", &[]),
+        C::Code => copy_text("beFilesKind.label.code", &[]),
+        C::Image => copy_text("beFilesKind.label.image", &[]),
+        C::Archive => copy_text("beFilesKind.label.archive", &[]),
+        C::Pdf => copy_text("beFilesKind.label.pdf", &[]),
+        C::Link => copy_text("beFilesKind.label.link", &[]),
+        C::Other => copy_text("beFilesKind.label.other", &[]),
+    };
+    let type_text = match (class, ext.as_deref()) {
+        (C::Pdf, _) | (_, None) => label(class),
+        (_, Some(x)) => copy_text(
+            "beFilesKind.type.withExt",
+            &[("kind", &label(class)), ("ext", &x.to_uppercase())],
+        ),
+    };
+    (
+        class,
+        type_text,
+        Some(Gates {
+            preview,
+            view,
+            edit,
+        }),
+    )
+}
+
+/// 一行补上合成后端给的种类 · 那一列的字 · 门（夹具那几行照真列表那样带着它们）。
+pub fn gated(mut l: crate::source::Listed) -> crate::source::Listed {
+    let (class, type_text, gates) = fake_gates(&l.row.name, l.opens_as_dir(), l.row.size);
+    l.class = class;
+    l.type_text = type_text;
+    l.gates = gates;
+    l.size_text = Some(copy_core::size_text(l.row.size));
+    l
 }

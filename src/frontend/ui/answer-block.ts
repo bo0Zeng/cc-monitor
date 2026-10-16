@@ -40,13 +40,6 @@ export interface AnswerHost {
   room?(px: number): void;
 }
 
-/** 选项进哪一行（按协议里的选项 id；字只照抄）。 */
-function rowOf(c: AskChoice): "main" | "deny" | "release" {
-  if (c.id === "release") return "release";
-  if (c.id === "deny" || c.id === "deny-note" || c.id === "deny-stop") return "deny";
-  return "main";
-}
-
 /** 一道题此刻答成什么样。 */
 interface Pick {
   options: Set<string>;
@@ -218,16 +211,19 @@ export class AnswerBlock {
   private drawChoices(tab: Tab, ask: Ask): void {
     const parts: HTMLElement[] = ask.questions.map((q) => this.question(q));
     const rows = new Map<string, HTMLElement>();
+    // 段照核心给的 `row`；批计划那几项并成一行，有题时「不回答」与「提交答案」同一行。
+    const oneRow = ask.kind === "plan" || ask.questions.length > 0;
     let key = 0;
     let first = true;
     for (const c of ask.choices) {
-      const where = rowOf(c);
-      let row = rows.get(where);
+      const where = c.row;
+      const line = oneRow ? "main" : where;
+      let row = rows.get(line);
       if (!row) {
         row = document.createElement("div");
         row.className = s.abRow;
-        row.dataset.row = where;
-        rows.set(where, row);
+        row.dataset.row = line;
+        rows.set(line, row);
       }
       const kind = where === "release" ? "ghost" : c.id === "deny-stop" ? "danger-text" : first ? "primary" : "secondary";
       first = false;

@@ -322,8 +322,16 @@ fn finishing_a_drop_round_triggers_exactly_one_reload() {
 
 /// 造一个「看着某个远端目录、列表里有几行」的窗口。**不起连接**
 /// （`host` 是 `.invalid`，而且这几条一次 `reload` 都不触发远端那一支）。
+/// 手上那一屏补上合成后端给的种类与门（照真列表那样）。
+fn gate_all(w: &FileWindow) {
+    for r in w.listing.rows.lock().unwrap().iter_mut() {
+        *r = crate::find::testing::gated(r.clone());
+    }
+}
+
 fn remote_window_with_rows(cwd: &str, rows: Vec<Row>) -> FileWindow {
     let mut w = FileWindow::seeded(Source::remote(synth_cfg("r")), cwd.to_string(), None, rows);
+    gate_all(&w);
     *w.listing.error.lock().unwrap() = None;
     w.tally = crate::rows::RenderTally::default();
     w
@@ -1657,6 +1665,7 @@ async fn a_real_click_on_edit_fires_the_read() {
             lossy_name: false,
         }],
     );
+    gate_all(&w);
     let wired = crate::find::testing::wire_up(
         "edit-e2e",
         crate::find::testing::FakeBackend::new(
@@ -1701,7 +1710,7 @@ async fn a_real_click_on_edit_fires_the_read() {
             "cmd": crate::editor::CMD_READ_TEXT,
             "args": {
                 "path": "/srv/data/app.conf",
-                "max_bytes": crate::editor::MAX_EDIT_BYTES,
+                "max_bytes": 8 * 1024 * 1024,
             },
         })],
         "线上那一行不是「那一行的路径 ＋ 窗口的编辑上限」"
@@ -1714,7 +1723,7 @@ async fn a_real_click_on_edit_fires_the_read() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
     use crate::editor::EDIT_LABEL;
-    let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
+    let big = 8 * 1024 * 1024 + 1;
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("edit-big")),
         "/srv/data".to_string(),
@@ -1727,6 +1736,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
             lossy_name: false,
         }],
     );
+    gate_all(&w);
     let ctx = egui::Context::default();
     let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
     let painted = crate::copy::testing::painted_text(
@@ -1761,7 +1771,7 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         .expect("拒了却一个字都没说 —— 那与「点了没反应」同形")
         .said;
     assert!(
-        copy_core::copy_matches_with("rsFilewinEditor.notEditable.tooBig", &[("over", "1")], &e),
+        copy_core::copy_matches_with("beFilesOpen.edit.tooBig", &[("over", "1")], &e),
         "那句话没说超出多少：{e}"
     );
     assert!(e.contains("huge.log"), "没说是哪一行：{e}");
@@ -1782,6 +1792,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         name: "app.conf".into(),
         text: "a=1\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
     assert!(w.editing().is_some());
@@ -1798,6 +1809,7 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
         name: "app.conf".into(),
         text: "a=1\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().expect("编辑面不见了") = "a=2\n".into();
@@ -1835,6 +1847,7 @@ fn editing_window(name: &str, text: String) -> FileWindow {
         name: name.into(),
         text,
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
     w
@@ -1993,6 +2006,7 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         name: "a.txt".into(),
         text: "a\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(
         !w.begin_edit(1, None),
@@ -2197,6 +2211,7 @@ async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
         name: "s.jsonl".into(),
         text: "{}\n".into(),
         sha256: crate::find::testing::fake_sha256(""),
+        cap: 8 * 1024 * 1024,
     });
     assert!(w.settle_opened_edits());
     *w.editing_text_mut().unwrap() = "改坏它\n".into();
@@ -2443,25 +2458,22 @@ fn sized_row(name: &str, size: u64) -> Row {
     }
 }
 
-/// 🔴 **换档当场重排手上那一摞**（不是「记下来等下次列目录」）；同一档再点一次什么都不做。
+/// 换档当场重列一趟（先后由后端排；号 +1，路上那一趟作废）；同一档再点一次什么都不做。
 #[test]
-fn picking_a_sort_reorders_the_rows_already_on_screen() {
-    let mut w = remote_window_with_rows(
-        "/srv/data",
-        vec![sized_row("a", 1), sized_row("b", 300), sized_row("c", 20)],
-    );
-    assert_eq!(names(&w), ["a", "b", "c"]);
+fn picking_a_sort_relists_right_away() {
+    let mut w = remote_window_with_rows("/srv/data", vec![sized_row("a", 1), sized_row("b", 300)]);
+    let by_size = crate::source::Sort {
+        by: crate::source::SortBy::Size,
+        reverse: false,
+    };
+    let before = w.listing.epoch.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(w.set_sort(by_size), "换到另一档该回 true");
     assert!(
-        w.set_sort(crate::source::SortBy::Size),
-        "换到另一档该回 true"
+        w.listing.epoch.load(std::sync::atomic::Ordering::SeqCst) > before,
+        "换了档却没重列"
     );
-    assert_eq!(names(&w), ["b", "c", "a"], "换档之后屏幕上那一摞没重排");
-    assert!(
-        !w.set_sort(crate::source::SortBy::Size),
-        "同一档再点一次不该算「换了」"
-    );
-    assert!(w.set_sort(crate::source::SortBy::Name));
-    assert_eq!(names(&w), ["a", "b", "c"]);
+    assert_eq!(w.sort, by_size);
+    assert!(!w.set_sort(by_size), "同一档再点一次不该算「换了」");
 }
 
 /// 窗口的框上真画出了那几样：「终端」· 面包屑每一段 · 表头带当前那一列的箭头。
@@ -2476,7 +2488,7 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
         .into_iter()
         .map(|(t, _)| t)
         .collect();
-    let name = crate::source::SortBy::Name.label();
+    let name = crate::rows::column_label(crate::source::SortBy::Name);
     let up = format!("{name} {}", egui_phosphor::regular::CARET_UP);
     for want in [
         copy_core::copy_static!("rsFilewinShell.frame.terminal"),
@@ -2491,14 +2503,14 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
         );
     }
     // 换一列之后箭头跟着走（它读的是同一个状态，不是一个写死的串）。
-    w.set_sort(crate::source::SortBy::Type);
+    w.click_header(crate::source::SortBy::Type);
     let painted: Vec<String> = crate::chrome::testing::frame(&ctx, &mut w, Vec::new())
         .into_iter()
         .map(|(t, _)| t)
         .collect();
     let ty = format!(
         "{} {}",
-        crate::source::SortBy::Type.label(),
+        crate::rows::column_label(crate::source::SortBy::Type),
         egui_phosphor::regular::CARET_UP
     );
     assert!(painted.iter().any(|t| *t == ty));
@@ -2587,6 +2599,7 @@ async fn a_save_over_a_file_someone_else_changed_asks_instead_of_overwriting() {
             lossy_name: false,
         }],
     );
+    gate_all(&w);
     let be = crate::find::testing::FakeBackend::new(
         &["files-read-text", "files-write-text"],
         crate::find::testing::Declared::default(),
@@ -2821,7 +2834,7 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
             lossy_name: true,
         })
     };
-    *w.listing.rows.lock().unwrap() = vec![file];
+    *w.listing.rows.lock().unwrap() = vec![crate::find::testing::gated(file)];
     w.apply_intent(Intent::SelectAll, 0.0, None);
     // 算大小（菜单上算大小只给目录与多选；这里看的是寻址按字节，直接走那一口）。
     assert!(w.start_sizes(&[0], None), "{:?}", w.key_notice());
@@ -3163,35 +3176,22 @@ fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     assert!(!next.cancels().is_cancelled(), "上一趟的取消拦下了下一趟");
 }
 
-/// 列表还在路上时换了排序：落地那一屏按**现在**那一档排（表头指着「大小」，行就按大小）。
+/// 列表还在路上时换了排序：换档重列了一趟，出发时那一档的那一屏落地时作废（表头不许指着一列、行却是另一种序）。
 #[test]
-fn a_listing_that_lands_after_the_sort_changed_comes_back_in_the_new_order() {
+fn a_listing_that_lands_after_the_sort_changed_is_dropped() {
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
     let mine = w.listing.start();
-    let by_size = w.sort.after_click(crate::source::SortBy::Size);
-    assert!(w.set_sort(by_size));
-    let sized = |n: &str, size: u64| {
-        Listed::plain(Row {
-            size,
-            ..file_row(n)
-        })
-    };
-    // 出发时按名称排好的那一屏。
-    let landed = vec![sized("a", 30), sized("b", 10), sized("c", 20)];
-    assert!(store_listed_if_current(
-        &w.listing,
-        mine,
-        Ok((landed, crate::source::Cut::default())),
-        Sort::default(),
-    ));
-    let mut want = vec![sized("a", 30), sized("b", 10), sized("c", 20)];
-    crate::source::sort_rows(&mut want, by_size);
-    assert_ne!(
-        names_of(&want),
-        vec!["a", "b", "c"],
-        "夹具按大小排和按名字排一样，判不出来"
+    assert!(w.click_header(crate::source::SortBy::Size));
+    let landed = vec![Listed::plain(file_row("a")), Listed::plain(file_row("b"))];
+    assert!(
+        !store_listed_if_current(
+            &w.listing,
+            mine,
+            Ok((landed, crate::source::Cut::default()))
+        ),
+        "出发时那一档的那一屏落了地"
     );
-    assert_eq!(names(&w), names_of(&want), "落地那一屏还是出发时那一档的序");
+    assert!(names(&w).is_empty());
 }
 
 fn names_of(rows: &[Listed]) -> Vec<String> {
@@ -3385,7 +3385,6 @@ fn entries_that_could_not_be_read_are_said() {
                 total: 4,
             },
         )),
-        Sort::default(),
     ));
     let painted = crate::copy::testing::painted_text(
         &ctx,
@@ -3423,6 +3422,7 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
         tokio::runtime::Handle::try_current().ok(),
         vec![file_row("a.txt")],
     );
+    gate_all(&w);
     let wired = crate::find::testing::wire_up(
         "inline-rename",
         crate::find::testing::FakeBackend::new(
