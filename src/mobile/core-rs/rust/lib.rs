@@ -23,6 +23,7 @@ use ssh_dial::Said;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
+mod copy;
 pub mod install;
 pub mod resident;
 

@@ -105,6 +105,7 @@ tests/common/**                 shellrs  共享 crate 的测试（只在壳 work
 tests/comms/**                  shellrs  通信层两包的测试（壳 workspace 成员）
 
 # ── 两棵都链的 ───────────────────────────────────────────────────────────────────────
+src/common/copy-core/**         mobile  手机写字（取文 · 大小 · 时长）经 JNI 调它，JVM 单测加载宿主版那份 .so
 src/common/**                   shellrs,backendrs,e2e  共享 crate：两棵 workspace 都编它，后端二进制（e2e 的被测对象）链它
 src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链它，它的单测在壳 workspace 里
 
@@ -123,6 +124,7 @@ tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 
 
 # ── 部署到远端 / 共用的那几份 ───────────────────────────────────────────────────────────
 src/shared/cc-bus/**            e2e    cc-bus 脚本：cc-spawn-uplift · backend-cc-bus · cc-bus-queue-drain 真跑它；ccbus-twophase 恒跑；shellcheck 由规则 ③ 另加
+src/shared/copy/**              mobile  文案表：编进手机那份核心（copy-core 内嵌），手机的 JVM 单测经宿主版那份 .so 读它
 src/shared/theme/**             mobile,android-device,shots  令牌正本：手机 core-ui 构建时从它生成 ThemeTokens；网页三窗链它（截图格看像素）；文件窗口判据的主题从它解（在恒跑的 cargo 里）
 src/shared/**                   e2e,coverage  文案表 JSON（TS 与 Rust 都读、e2e 也读）· ccm 别名 · quota-warm；被 Rust include_str! 的由规则 ① 另加
 src/doc/**                      -      协议 / IPC 文档：读它的判据在 cargo / backend（恒跑）；被 include_str! 的由规则 ① 另加
