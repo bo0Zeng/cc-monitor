@@ -1108,7 +1108,7 @@ data class ProfilesWriteDone(
     val reload: String?,
 )
 
-/* 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。 */
+// 流上的会话帧（核心按 `cmd-wire` 那一份类型重写过的一行）。
 
 @WireOf("SessionAdded")
 @JsonClass(generateAdapter = true)
@@ -1203,4 +1203,73 @@ enum class CanWord {
 
     @Json(name = "no")
     NO,
+}
+
+@WireOf("Line")
+@JsonClass(generateAdapter = true)
+data class LineFrame(
+    @Json(name = "session_id") val sid: String,
+    val path: String,
+    val seq: Long,
+    @Json(name = "byte_offset") val byteOffset: Long,
+)
+
+@WireOf("Changed")
+@JsonClass(generateAdapter = true)
+data class ChangedFrame(
+    val topic: String,
+    val key: String?,
+)
+
+@WireOf("LiveCard")
+@JsonClass(generateAdapter = true)
+data class LiveCardFrame(
+    val sid: String,
+    val run: String?,
+    val card: Long,
+    val n: Long,
+    val op: LiveOpWord,
+    val rid: String?,
+    val phase: LivePhaseWord?,
+    val clipped: Boolean?,
+    val blocks: List<LiveBlockCell>?,
+    val i: Long?,
+    val block: String?,
+    val tool: String?,
+    val s: String?,
+)
+
+@WireOf("LiveBlock")
+@JsonClass(generateAdapter = true)
+data class LiveBlockCell(
+    val kind: String,
+    val text: String?,
+    val tool: String?,
+)
+
+@JsonClass(generateAdapter = false)
+enum class LiveOpWord {
+    @Json(name = "open")
+    OPEN,
+
+    @Json(name = "block")
+    BLOCK,
+
+    @Json(name = "text")
+    TEXT,
+
+    @Json(name = "awaiting")
+    AWAITING,
+
+    @Json(name = "close")
+    CLOSE,
+}
+
+@JsonClass(generateAdapter = false)
+enum class LivePhaseWord {
+    @Json(name = "streaming")
+    STREAMING,
+
+    @Json(name = "awaiting")
+    AWAITING,
 }

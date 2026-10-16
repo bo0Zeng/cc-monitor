@@ -121,7 +121,7 @@ class SessionsTest {
     @Test
     fun `line 帧：核心把解不开的那条换成的认不出那一条照常装进来（类名可空 · 没有时刻）`() {
         val card = mapOf("agent" to "", "id" to "unread:00ab", "t" to "unread", "why" to "unknownType", "type" to null, "text" to "无法识别的记录 · 无类型", "tone" to "warn", "excerpt" to "{}", "count" to 1)
-        val line = RecordLine.of(mapOf("kind" to "line", "session_id" to "s", "path" to "/p", "seq" to 3L, "record" to card))!!
+        val line = RecordLine.of(mapOf("kind" to "line", "session_id" to "s", "path" to "/p", "seq" to 3L, "byte_offset" to 30L, "record" to card))!!
         assertEquals("无法识别的记录 · 无类型", line.record!!.text)
         assertEquals("{}", line.record!!.excerpt)
     }

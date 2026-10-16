@@ -197,7 +197,7 @@ pub struct Hello {
 /// **两个前端共同的契约面**：`session_id` · `path` · `seq` · `byte_offset` 四格在冻结表里（`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Line<R = Record> {
     /// 会话 id。
     pub session_id: String,
@@ -415,7 +415,7 @@ pub struct Cancelled {
 /// `key` 说是哪一个（会话 · 工作区）；`rev` 说变成了哪一版；`body` 是那一样的小成品（超了上限就不带，客户端重问）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-#[cfg_attr(any(test, feature = "ts"), ts(export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
 pub struct Changed {
     /// 哪一样变了。
     pub topic: Topic,

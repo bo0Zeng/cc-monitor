@@ -282,7 +282,7 @@ class WireTypesTest {
                         .filterNot { it.startsWith("//") || it.startsWith("import ") }
                         .joinToString(" ")
                 val rhs =
-                    Regex("export type \\w+ = (.*);")
+                    Regex("export type \\w+(?:<[^>]*>)? = (.*);")
                         .find(body)
                         ?.groupValues
                         ?.get(1)

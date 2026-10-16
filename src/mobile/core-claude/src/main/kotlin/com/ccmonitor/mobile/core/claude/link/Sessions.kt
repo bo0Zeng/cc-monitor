@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Held
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryTailReply
+import com.ccmonitor.mobile.core.claude.link.wire.LineFrame
 import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModeSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
@@ -319,10 +320,9 @@ data class RecordLine(
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
+            val f = Wire.bind<LineFrame>(frame) ?: return null
             val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
-            return decoding {
-                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record, frame["record"])
-            }
+            return RecordLine(f.sid, f.path, f.seq, f.byteOffset, record, frame["record"])
         }
     }
 }
