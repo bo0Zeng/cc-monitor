@@ -392,8 +392,7 @@ def tap_last(text):
 def files_page():
     """文件页那几步：列目录 · 进一层 · 预览 · 新建 · 改名 · 删除 · 上传 · 下载；读写都问那台后端（台架盘上看结果）。"""
     d = f"files{T}"
-    # 上几趟留下的先清掉（台架家里的），这一趟那一份要在第一屏里。
-    sh(f"rm -rf ~/work/files* && mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
+    sh(f"mkdir -p ~/work/{d} && printf 'hello {T}\\n' > ~/work/{d}/a.txt")
     drawer(t("mobDrawer.item.files"))
     if not wait("work", 30):
         raise Step.Fail("家目录没列出来")
@@ -679,6 +678,8 @@ def walk():
     if os.environ.get("CCM_SMOKE_NIGHT") in ("yes", "no"):
         adb("shell", "cmd", "uimode", "night", os.environ["CCM_SMOKE_NIGHT"])
     adb("shell", "pm", "clear", PKG)
+    # 台架目录跨趟留着：上一趟在 ~/work 下建的目录不清，浏览屏一层攒得滚不下，新建的那个排到屏外。
+    sh("rm -rf ~/work && mkdir ~/work")
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
     key = open(os.path.join(BOX, "sshd", "client_ed25519")).read().splitlines()
 

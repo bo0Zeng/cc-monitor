@@ -254,3 +254,34 @@ fn 存档不是这一版_照实说读不懂_不交原样() {
         );
     }
 }
+
+/// 同一份再交 ⇒ 内容不变、时刻换成这一次（离线时「上次的」说的是最后一次看到它）；回包也是这一次。内容变了照常记。
+#[test]
+fn 同一份再交_内容不变_时刻是新的() {
+    let d = Dir::new("same");
+    let put = |v: &serde_json::Value, kind: &str, now: u64| {
+        write_at(
+            &d.own(),
+            &json!({"origin": "devbox", "kind": kind, "value": v}),
+            now,
+        )
+        .unwrap()
+    };
+    let acc = json!({"meta": {"enabled": true}, "accounts": []});
+    put(&acc, "accounts", 10);
+    put(&report(), "data", 11);
+    assert_eq!(put(&acc, "accounts", 20), json!({"atMs": 20}));
+    assert_eq!(put(&report(), "data", 21), json!({"atMs": 21}));
+    let got = read_at(&d.file(), &json!({"origin": "devbox"})).unwrap();
+    assert_eq!(got["accounts"], json!({"atMs": 20, "value": acc}));
+    assert_eq!(
+        got["data"],
+        json!({"state": "kept", "atMs": 21, "value": report()})
+    );
+    let changed = json!({"meta": {"enabled": false}, "accounts": []});
+    assert_eq!(put(&changed, "accounts", 30), json!({"atMs": 30}));
+    assert_eq!(
+        read_at(&d.file(), &json!({"origin": "devbox"})).unwrap()["accounts"],
+        json!({"atMs": 30, "value": changed})
+    );
+}

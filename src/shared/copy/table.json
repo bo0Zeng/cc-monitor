@@ -30492,6 +30492,24 @@
       "zh": "照单击",
       "args": []
     },
+    "mobKeys.edit.capIcon": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "图标",
+      "args": []
+    },
+    "mobKeys.icon.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "键帽图标",
+      "args": []
+    },
+    "mobKeys.icon.none": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "不用图标",
+      "args": []
+    },
     "mobKeys.edit.group": {
       "kind": "control",
       "role": "标签",

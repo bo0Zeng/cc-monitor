@@ -1,6 +1,6 @@
 //! 离线那台的上次值：本机后端替界面记下每台最近一次读成的那几份（账号清单 · 「文件与数据」那一份），断开时界面照它画「上次的」，跨重启还在。
 //! 住 `~/.cc-monitor/last-seen.json`（`relay_route_core::LAST_SEEN_REL`），后端自己的状态；能重建（再连上一次就有），按缓存记。
-//! 全仓唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
+//! 全仓唯一的写者是 [`answer_write`]（记下一份 · 删机器时清掉那台）；同一份再交照记（时刻换成这一次）；读不懂 ⇒ 照没记过算，写的那一下整份重来（它只是缓存）。
 //! `data` 那一份按 `data-report` 的回包类型核：写时核过才收、连同形状指纹存，读时不是这一版 ⇒ 说读不懂（[`SeenData`]）。
 //! 种类闭集 [`KINDS`]；每份封顶 [`MAX_VALUE_BYTES`]、台数封顶 [`MAX_ORIGINS`]（超了先丢最久没更新的那台）。
 
@@ -201,7 +201,7 @@ pub(crate) fn read_at(path: &Path, req: &LastSeenReadReq) -> Answer<LastSeen> {
     })
 }
 
-/// `{origin, kind, value}` ⇒ 记下（时刻由这里盖）；`{origin, forget: true}` ⇒ 清掉那台（删机器时）。回 `{atMs}`。
+/// `{origin, kind, value}` ⇒ 记下（时刻由这里盖，同一份再交也换成这一次）；`{origin, forget: true}` ⇒ 清掉那台（删机器时）。回 `{atMs}`。
 pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenWritten> {
     if req.forget.is_some() {
         return forget_at(own, req, now_ms);

@@ -93,6 +93,7 @@ fun ExtraKeysRow(
                 val mod = k.modifier
                 KeyChip(
                     label = k.cap(groupName),
+                    icon = k.icon,
                     look = mod?.let { mods.of(it.term()) } ?: ModState.OFF,
                     spec = gestureSpec(k, doubleTapMs, longPressMs, sys),
                     onGesture = { out ->
@@ -111,6 +112,7 @@ fun ExtraKeysRow(
 @Composable
 private fun KeyChip(
     label: String,
+    icon: String?,
     look: ModState,
     spec: GestureSpec,
     onGesture: (GestureOut) -> Unit,
@@ -136,7 +138,7 @@ private fun KeyChip(
                 .padding(horizontal = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
-        KeyCapLabel(label, style = monoSmall, color = if (look == ModState.LOCKED) scheme.onPrimary else scheme.onSurface)
+        KeyCapLabel(label, style = monoSmall, color = if (look == ModState.LOCKED) scheme.onPrimary else scheme.onSurface, icon = icon)
         // 锁住：右上角一把小锁（再点一下解开）。
         if (look == ModState.LOCKED) {
             PhIcon(Ph.Lock, contentDescription = null, size = 10.dp, tint = scheme.onPrimary, modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp))

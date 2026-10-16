@@ -72,7 +72,6 @@ import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
 import { forgetResumeDefaults, resumeInTmuxAt } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import { __resetLastSeenForTests } from "../../../../src/frontend/ui/last-seen";
 
 const settle = async () => {
   for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
@@ -139,7 +138,6 @@ beforeEach(() => {
   fileWin.length = 0;
   localOpened.length = 0;
   localRevealed.length = 0;
-  __resetLastSeenForTests();
   opened.mockClear();
   marks.length = 0;
   clipFake = fakeClipboard();
@@ -346,8 +344,7 @@ describe("cc-monitor 放了什么", () => {
     await settle();
     expect(seen.get("devbox")?.data, "读成了那台 ⇒ 交本机后端记下").toBeTruthy();
     expect(seen.has(LOCAL_ORIGIN), "本机那台不记").toBe(false);
-    // 「重启」：界面那份记忆清掉，那台这回断开。
-    __resetLastSeenForTests();
+    // 「重启」：那台这回断开。
     answers.delete("devbox");
     document.body.replaceChildren();
     const { page } = mount();

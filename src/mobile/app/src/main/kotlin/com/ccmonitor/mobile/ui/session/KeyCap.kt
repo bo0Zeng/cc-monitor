@@ -38,20 +38,63 @@ internal fun keyCapIcon(label: String): Pair<Ph, String>? {
     return icon to label.substringAfter(' ').trim()
 }
 
-/** 键帽上的那一格：有图标画图标（行内 16 dp），再跟余下的字。 */
+/** 键帽可选的图标（选图标那一屏照这个先后列）。库里存的是 Phosphor 的图标名（[iconName]，`arrow-up` 这种），不存图。 */
+internal val KEY_ICONS: List<Ph> =
+    listOf(
+        Ph.ArrowUp,
+        Ph.ArrowDown,
+        Ph.ArrowLeft,
+        Ph.ArrowRight,
+        Ph.ArrowsLeftRight,
+        Ph.ArrowElbowDownLeft,
+        Ph.Backspace,
+        Ph.ArrowLineUp,
+        Ph.ArrowLineDown,
+        Ph.Tabs,
+        Ph.Keyboard,
+        Ph.Command,
+        Ph.Clipboard,
+        Ph.Copy,
+        Ph.MagnifyingGlass,
+        Ph.FloppyDisk,
+        Ph.ArrowCounterClockwise,
+        Ph.X,
+        Ph.Check,
+        Ph.Play,
+        Ph.Stop,
+        Ph.SignOut,
+        Ph.TerminalWindow,
+        Ph.GitBranch,
+    )
+
+/** Phosphor 的图标名（桌面 `@phosphor-icons/core` 同一套写法）：`ArrowElbowDownLeft` → `arrow-elbow-down-left`。 */
+internal fun Ph.iconName(): String = name.replace(Regex("(?<=[a-z0-9])(?=[A-Z])"), "-").lowercase()
+
+/** 库里存的图标名 → 图标；没选 · 不在 [KEY_ICONS] 里 ⇒ null（照字画）。 */
+internal fun keyIcon(name: String?): Ph? = name?.let { n -> KEY_ICONS.firstOrNull { it.iconName() == n } }
+
+/**
+ * 键帽上的那一格。另选了图标（[icon]，库里的图标名）⇒ 只画那个图标，读屏念 [label]；
+ * 没选 ⇒ [label] 里当图标用的字符照 [keyCapIcon] 画成图标（行内 16 dp），再跟余下的字。
+ */
 @Composable
 internal fun KeyCapLabel(
     label: String,
     style: TextStyle,
     color: Color = LocalContentColor.current,
+    icon: String? = null,
 ) {
-    val icon = keyCapIcon(label)
-    if (icon == null) {
+    keyIcon(icon)?.let {
+        PhIcon(it, contentDescription = label, size = Touch.iconInline, tint = color)
+        return
+    }
+    val glyph = keyCapIcon(label)
+    if (glyph == null) {
         Text(text = label, style = style, color = color)
         return
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LocalAppTokens.current.spacing.xs)) {
-        PhIcon(icon.first, contentDescription = label, size = Touch.iconInline, tint = color)
-        if (icon.second.isNotEmpty()) Text(text = icon.second, style = style, color = color)
+        PhIcon(glyph.first, contentDescription = label, size = Touch.iconInline, tint = color)
+        if (glyph.second.isNotEmpty()) Text(text = glyph.second, style = style, color = color)
     }
 }

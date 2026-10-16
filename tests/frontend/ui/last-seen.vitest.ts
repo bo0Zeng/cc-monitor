@@ -1,5 +1,5 @@
 /**
- * 离线那台的上次值：读成了交本机后端记（`last-seen-write`，同一份这次运行里只交一次、本机那台不记）；
+ * 离线那台的上次值：读成了交本机后端记（`last-seen-write`，读成一次交一次、时刻是最后一次读成的那一刻；本机那台不记）；
  * 账号那一问这次运行里还没答成过而那台问不到 ⇒ 问本机后端记着的那一份，照它画「上次的」（跨重启还在）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -35,7 +35,7 @@ vi.mock("../../../src/comms/inward/chan", () => ({
   },
 }));
 
-import { forgetSeen, recallSeen, rememberSeen, __resetLastSeenForTests } from "../../../src/frontend/ui/last-seen";
+import { forgetSeen, recallSeen, rememberSeen } from "../../../src/frontend/ui/last-seen";
 import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 
 const settle = async () => {
@@ -46,18 +46,17 @@ beforeEach(() => {
   calls.length = 0;
   store.clear();
   reachable.clear();
-  __resetLastSeenForTests();
 });
 
 describe("上次值交本机后端记", () => {
-  it("★ 只交本机后端；同一份只交一次；本机那台不记；值不是对象不交", async () => {
+  it("★ 只交本机后端；读成一次交一次（界面不记交过什么）；本机那台不记；值不是对象不交", async () => {
     await rememberSeen("devbox", "data", { a: 1 });
     await rememberSeen("devbox", "data", { a: 1 });
     await rememberSeen("<local>", "data", { a: 1 });
     await rememberSeen("devbox", "accounts", [1, 2]);
-    expect(calls.map((c) => `${c.origin}:${c.op}:${c.args.origin}:${c.args.kind}`)).toEqual(["<local>:last-seen-write:devbox:data"]);
+    expect(calls.map((c) => `${c.origin}:${c.op}:${c.args.origin}:${c.args.kind}`)).toEqual(["<local>:last-seen-write:devbox:data", "<local>:last-seen-write:devbox:data"]);
     await rememberSeen("devbox", "data", { a: 2 });
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     expect(await recallSeen("devbox", "data")).toEqual({ atMs: 42, value: { a: 2 } });
     expect(await recallSeen("devbox", "accounts")).toBeNull();
   });
@@ -74,8 +73,7 @@ describe("上次值交本机后端记", () => {
     expect(off.available).toBe(false);
     expect(off.last?.atMs).toBe(42);
     expect(off.last?.meta.enabled).toBe(true);
-    // 「重启」：界面这一侧的记忆都没了，照样画得出上次的。
-    __resetLastSeenForTests();
+    // 界面这一侧不记任何东西：画上次的只凭本机后端那一份（重启也一样）。
     expect((await fetchAccounts("devbox")).last?.atMs).toBe(42);
   });
 
@@ -89,7 +87,7 @@ describe("上次值交本机后端记", () => {
     expect(await recallSeen("gpu-01", "data")).toEqual({ atMs: 42, value: { b: 1 } });
     calls.length = 0;
     await rememberSeen("devbox", "data", { a: 1 });
-    expect(calls.map((c) => c.op), "同名那台再加回来：这次运行里交过的记忆跟着清").toEqual(["last-seen-write"]);
+    expect(calls.map((c) => c.op), "同名那台再加回来：照样交").toEqual(["last-seen-write"]);
     calls.length = 0;
     await forgetSeen("<local>");
     expect(calls, "本机那台不记，也不清").toEqual([]);
