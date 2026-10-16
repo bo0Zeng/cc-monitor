@@ -1587,6 +1587,8 @@ struct ReaderState {
     added: HashMap<String, Frame>,
     /// 宣告时说的是「读记录中」的会话（此刻在干什么只有记录说、记录还没读完）：读完必说一次判出来的那一态（判不出 ⇒ 说不清）。
     reading: HashSet<String>,
+    /// 这台的账号库目录：宣告时判会话跑在哪个号下读它（夹具换成自己的）。
+    accts_dir: PathBuf,
 }
 
 impl ReaderState {
@@ -1817,6 +1819,7 @@ impl ReaderState {
             prime_bytes: 0,
             added: HashMap::new(),
             reading: HashSet::new(),
+            accts_dir: crate::observe::accounts_query::default_accts_dir(),
         }
     }
 }
@@ -3136,6 +3139,9 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         container,
         // pid 与 verdict 核过的是同一个进程（见 `wire::Frame::SessionAdded::pid`）。
         pid,
+        // 那一家有账号库才判：进程环境里的配置目录对上账号库里哪个号。
+        account: crate::agents::accounts_face(a.kind)
+            .and_then(|f| crate::observe::accounts_query::account_of_process(pid, &f, &state.accts_dir)),
     });
     state.added.insert(sid.clone(), added.clone());
     sink.send(added);

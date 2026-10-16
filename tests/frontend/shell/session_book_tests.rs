@@ -382,3 +382,22 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
         vec![BranchHeld::nothing("a")]
     );
 }
+
+/// 那台宣告里说的号（`session_added.account`）原样交到界面那一格：账号徽章只读它，壳不判、不丢。
+#[test]
+fn the_account_the_backend_said_reaches_the_live_cell() {
+    let out = Out::Live {
+        origin: "pi".into(),
+        sid: "a".into(),
+        meta: crate::guard_support::session_added("a", serde_json::json!({ "account": "b" })),
+    };
+    let got: Vec<Option<String>> = out
+        .frames()
+        .into_iter()
+        .filter_map(|f| match f {
+            crate::ui_contract::SessionStreamFrame::Live(p) => Some(p.account),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(got, vec![Some("b".to_string())]);
+}

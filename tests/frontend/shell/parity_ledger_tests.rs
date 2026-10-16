@@ -219,8 +219,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   本机与远端收成**同一条路** —— 前端经通道（`chan_call`）直接说帧命令 `accounts-list`，后端出成品（并它自己那份 apikey 表）。
     //   ⇒ 这项能力不再是一条 Tauri 命令；两侧都有，住到了帧面上（后端 `read_face.rs`）。
     // 「某会话属哪个账号」那两行（远端 A2 · 本机 E79，能力 `accounts.session-accounts`）退役：
-    //   本机与远端收成**同一条路** —— 前端经通道（下面 `chan_call` 那一行）直接说帧命令 `accounts-sessions`。
-    //   ⇒ 这项能力不再是一条 Tauri 命令；它两侧都有，只是住到了帧面上（后端 `read_face.rs`）。
+    //   那台后端在会话宣告里说（`session_added.account`），本机与远端同一形 ⇒ 不再是一条命令。
     // **主界面说 `call` 的那一跳**（`chan/webview.rs`）：按 `origin` 转给注入的后端句柄，
     //   本机（`<local>`）与远端同一条路 ⇒ `Both`；它吃 `origin`，理由登记在 `ORIGIN_TAKING_BOTH`。
     ("chan_call", "comm.face-a.call", Side::Both),

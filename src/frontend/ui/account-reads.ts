@@ -1,18 +1,18 @@
 /**
  * **账号域的读面**：经通道问那台机器（本机也一样）的后端。界面不存一份：每一次要用都问那台，推来「变了」也是重问。
  *
- * 三条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 会话 ↔ 账号 `accounts-sessions`· 信任预检 `accounts-trust`。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
+ * 两条帧命令：账号清单 `accounts-list`（每号带 API key 那一枚徽章）· 信任预检 `accounts-trust`。会话跑在哪个号下由那台在会话宣告里说。全程走 A2 的 `available:false` 降级：未迁移 / 旧后端一律安静隐藏账号 UI，不报错。
  *
  * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收」。
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, isOldBackend, jsonBody, readJson, saidFrom } from "./ipc/chan-caller";
 import { DEFAULT_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
 import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
-import type { AccountsState, SessionAccount } from "./accounts";
+import type { AccountsState } from "./accounts";
 import { recallSeen, rememberSeen } from "./last-seen";
 
 /**
@@ -101,88 +101,6 @@ export function accountsAgentProfile(): AgentProfileRow | null {
     return null;
   }
   return AGENT_PROFILE_TABLE.find((r) => r.agent === id) ?? null;
-}
-
-/**
- * 那台机器（**本机也一样**）上正在跑的会话各属于哪个账号：每次都问那台。
- *
- * **走通道**：`chan.call(origin, "accounts-sessions", …)` —— 帧命令直接问那台机器的后端，
- * 本机与远端**同一条路**（本机那台由 `<local>` 那条长连接答）；行的解释只在 [`parseSessionAccountLines`] 一处。
- *
- * 失败（没有控制通道 / 后端不认 / 对端说不行 / 期限到）一律按「这一次没问出来」：空表、`console.warn`，不猜。
- */
-export async function fetchSessionAccounts(origin: Origin): Promise<SessionAccount[]> {
-  try {
-    const empty = jsonBody({});
-    const budget = budgetWithin(SESSION_ACCOUNTS_BUDGET_MS);
-    const reply = await chan.call(origin, "accounts-sessions", empty, budget);
-    return parseSessionAccountLines(linesOf(reply));
-  } catch (e) {
-    console.warn(`fetchSessionAccounts(${origin}) failed:`, e);
-    return [];
-  }
-}
-
-/**
- * 「会话 ↔ 账号」那一问的期限：30 秒 —— 与它上一个住址（monitor 侧 `frame_query` 的 `LINES_BUDGET`）同值，
- * 它盖的是「那台后端扫一遍活会话 ＋ 回程」，不含握手（长连接早就连着）。
- */
-const SESSION_ACCOUNTS_BUDGET_MS = 30_000;
-
-const optStr = (v: unknown): v is string | null | undefined =>
-  v === undefined || v === null || typeof v === "string";
-const optBool = (v: unknown): v is boolean | undefined => v === undefined || typeof v === "boolean";
-const optBoolOrNull = (v: unknown): v is boolean | null | undefined => v === null || optBool(v);
-
-/**
- * `accounts-sessions` 的逐行 ⇒ [`SessionAccount`]。**坏行跳过**（`console.warn`），不毁整次。
- *
- * 口径逐格照它上一个住址（Rust `accounts.rs::SessionAccount` 的 serde：`camelCase`、`pid` 必有、
- * 其余可缺；`bare` / `alive` 缺 ⇒ `false`）：
- * - 某一格**在但类型不对** ⇒ 整行坏（serde 同样整行拒）—— 不替后端猜一个值。
- */
-export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
-  const out: SessionAccount[] = [];
-  for (const line of lines) {
-    let v: unknown;
-    try {
-      v = JSON.parse(line);
-    } catch (e) {
-      console.warn("session-accounts 行解析失败（跳过）:", e);
-      continue;
-    }
-    if (v === null || typeof v !== "object" || Array.isArray(v)) {
-      console.warn("session-accounts 行不是对象（跳过）");
-      continue;
-    }
-    const o = v as Record<string, unknown>;
-    if (
-      typeof o.pid !== "number" ||
-      !Number.isInteger(o.pid) ||
-      o.pid < 0 ||
-      !optStr(o.sessionId) ||
-      !optStr(o.cwd) ||
-      !optStr(o.configDir) ||
-      !optStr(o.account) ||
-      !optBool(o.bare) ||
-      !optBool(o.alive) ||
-      !optBoolOrNull(o.viaRelay)
-    ) {
-      console.warn("session-accounts 行字段类型不对（跳过）");
-      continue;
-    }
-    out.push({
-      pid: o.pid,
-      sessionId: o.sessionId ?? null,
-      cwd: o.cwd ?? null,
-      configDir: o.configDir ?? null,
-      account: o.account ?? null,
-      bare: o.bare ?? false,
-      alive: o.alive ?? false,
-      viaRelay: o.viaRelay ?? null,
-    });
-  }
-  return out;
 }
 
 /** 换号前的目录信任预检（A5 会用；A3 先提供）。available:false → 视为"未知"，调用方只警告不拦。 */

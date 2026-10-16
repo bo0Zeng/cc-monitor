@@ -8,7 +8,6 @@
  * 零 DOM、零 IPC：它只存东西、只做「新 tab 落在哪一格」这类纯顺序运算。谁什么时候改它、
  * 改完要刷哪块界面，是 `TabManager`（组装根）与各视图的事。
  */
-import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
 import type { SwitchCells } from "./generated/SwitchCells";
 import type { Tab, TabsSummary } from "./tab-model";
@@ -58,14 +57,12 @@ export class TabStore {
   savedOrder: string[] = [];
   /**
    * sid → attach 进去对人有没有意义（pidfile 的 `attachable`，经后端帧透传）。只记显式 false 的那些；缺席 = 可以。
-   * 单独一张表：它是「某个 sid 的一条会话级元信息」，与 `sessionAccountsByS` 同形。
+   * 单独一张表：它是「某个 sid 的一条会话级元信息」。
    */
   readonly notAttachableSids = new Set<string>();
-  /** 远端 live 探测的会话账号归属（sid → 探测行）。main.ts 喂。 */
-  sessionAccountsByS = new Map<string, SessionAccount>();
   /** 账号名 → 邮箱（徽章悬停用）。 */
   accountEmailByName = new Map<string, string>();
-  /** sid → lastAccount（history-metadata）：live 探测不到时徽章的兜底来源。main.ts 喂。 */
+  /** sid → lastAccount（history-metadata）：宣告没说号时徽章的兜底来源。 */
   accountLastByS = new Map<string, string>();
   /** 账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
   accountReadyOrigins = new Set<string>();

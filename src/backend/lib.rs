@@ -1131,7 +1131,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     //（`stream::cli::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
     //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`stream::cli::STREAM_ONLY`）。
-    "--accounts-sessions",
     // 会话级答题 hook 的客户端（`control/asks/hook.rs`）：那一家的 hook 叫它，它经本机常驻后端问人、把答案交回去。⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--answer-hook",
     "--machine-interrupts",

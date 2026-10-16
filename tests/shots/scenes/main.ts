@@ -175,7 +175,7 @@ function groupedWorld(): World {
 /** 本机后端比界面老：账号、任务、大纲那几问它都不认。 */
 function oldBackendWorld(): World {
   const w = defaultWorld();
-  w.older = { [LOCAL]: ["accounts-list", "accounts-sessions", "history-last-accounts", "tasks-list", "history-user-inputs", "history-facts", "history-index"] };
+  w.older = { [LOCAL]: ["accounts-list", "history-last-accounts", "tasks-list", "history-user-inputs", "history-facts", "history-index"] };
   return w;
 }
 

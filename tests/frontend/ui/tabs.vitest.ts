@@ -216,6 +216,8 @@ import type { TabStreamView } from "../../../src/frontend/ui/tab-stream-view";
 import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore } from "../../../src/frontend/ui/app-store";
+import { createAccountFacts } from "../../../src/frontend/ui/account-facts";
+import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
@@ -2167,46 +2169,54 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
+    // 别的判据留下的 TabManager 不再订阅
+    appStore.accountFacts.__resetForTests(null);
+    appStore.sessionAccount.__resetForTests(new Map());
     tm = makeTM();
   });
   const badge = (): HTMLElement | null =>
     document.body.querySelector<HTMLElement>(".tab-acct-badge");
-  const liveRow = (sid: string, account: string) => ({
-    pid: 1,
-    sessionId: sid,
-    cwd: "/w",
-    configDir: `/h/${account}`,
-    account,
-    bare: false,
-    alive: true,
-  });
-  // setSessionAccounts(rows, emailByName, lastAccountByS, readyOrigins, currentByOrigin)
-  function feed(
-    rows: ReturnType<typeof liveRow>[],
-    last: Map<string, string>,
-    current: Map<string, string>,
-  ): void {
-    tm.setSessionAccounts(rows, new Map(), last, new Set(["devbox"]), current);
+  /** 账号清单那一侧（各台问回来的）：上次用的号 · 那台默认号。 */
+  function facts(last: Map<string, string>, current: Map<string, string>): void {
+    appStore.accountFacts.set({ emailByName: new Map(), lastByS: last, readyOrigins: new Set(["devbox"]), currentByOrigin: current });
   }
+  /** 那台宣告一条会话，宣告里说它跑在哪个号下（`null` ＝ 没说）。 */
+  const announce = (sid: string, account: string | null): void =>
+    tm.createSkeletonTab(sid, "/w", "devbox", false, null, null, null, account);
 
-  // 「账号快照变了」改订阅 store：宿主整份换进来，徽章**同一拍**就换（与原先宿主直调 `setSessionAccounts` 同时机）。
-  it("★ 〔GAP1〕账号快照经 store 换进来 ⇒ 同一拍徽章就挂上（不等任何一拍）", () => {
-    appStore.sessionAccounts.__resetForTests(null); // 别的判据留下的 TabManager 不再订阅
-    tm = makeTM();
-    tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
-    expect(badge()?.querySelector(".acct-avatar") ?? null).toBeNull();
-    appStore.sessionAccounts.set({
-      rows: [liveRow("r1", "b")],
-      emailByName: new Map(),
-      lastByS: new Map(),
-      readyOrigins: new Set(["devbox"]),
-      currentByOrigin: new Map([["devbox", "z"]]),
+  it("★ 3 台、起停一条会话：账号那一侧一问不发；徽章照宣告说的号（活着实心、结束了幽灵）", async () => {
+    const asked: string[] = [];
+    const feed = createAccountFacts({
+      fetchers: {
+        fetchAccounts: async (origin) => {
+          asked.push(`${origin} accounts-list`);
+          return { origin, available: true, accounts: [] } as unknown as AccountsState;
+        },
+        currentAccountForBadge: () => ({ name: "z" }) as Account,
+        lastAccounts: async (origin) => {
+          asked.push(`${origin} history-last-accounts`);
+          return {};
+        },
+      },
+      hosts: async () => ["devbox", "nano", "pi"],
+      publish: (f) => appStore.accountFacts.set(f),
     });
-    expect(badge()?.querySelector(".acct-avatar"), "store 换了快照，徽章没跟上").not.toBeNull();
+    feed.refresh();
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+    expect(asked.length, "量具自检：连上时各台各问一次清单 ＋ 上次用的号").toBe(6);
+    asked.length = 0;
+
+    announce("r1", "b");
+    expect(badge()?.querySelector(".acct-avatar.ghost") ?? null).toBeNull();
+    expect(badge()?.querySelector(".acct-avatar"), "宣告说了号，徽章没跟上").not.toBeNull();
+    tm.archiveTab("r1");
+    expect(badge()?.querySelector(".acct-avatar.ghost"), "结束了 ⇒ 幽灵头像（上次用的号）").not.toBeNull();
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0));
+    expect(asked, "会话起停又去各台问账号了").toEqual([]);
   });
   it("会话账号 != 当前账号(live) → 挂实心头像", () => {
-    tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
-    feed([liveRow("r1", "b")], new Map(), new Map([["devbox", "z"]]));
+    announce("r1", "b");
+    facts(new Map(), new Map([["devbox", "z"]]));
     const el = badge();
     expect(el?.style.display).not.toBe("none");
     expect(el?.querySelector(".acct-avatar")).not.toBeNull();
@@ -2215,30 +2225,29 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
   // 头像**只在这个会话的号 ≠ 那台默认号时出**——全都出 ⇒ 每行一块、信息为零。
   // 悬停卡里永远写账号（下一条）；头像悬停说「账号 {name}」。
   it("会话账号 == 默认账号 → 不挂头像；悬停卡里照样写账号", () => {
-    tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
-    feed([liveRow("r1", "z")], new Map(), new Map([["devbox", "z"]]));
+    announce("r1", "z");
+    facts(new Map(), new Map([["devbox", "z"]]));
     expect(badge()?.style.display).toBe("none");
     expect(cardText(tm, "r1")).toContain(copyText("tabBar.hover.account", { name: "z" }));
   });
   it("lastAccount 软来源且 != 当前 → 幽灵头像", () => {
-    tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
-    feed([], new Map([["r1", "b"]]), new Map([["devbox", "z"]]));
+    announce("r1", null);
+    facts(new Map([["r1", "b"]]), new Map([["devbox", "z"]]));
     const av = badge()?.querySelector(".acct-avatar");
     expect(av).not.toBeNull();
     expect(av?.classList.contains("ghost")).toBe(true);
   });
-  it("未知账号(无 live 无 last) → 不挂徽章", () => {
-    tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
-    feed([], new Map(), new Map([["devbox", "z"]]));
+  it("未知账号(宣告没说 · 无 last) → 不挂徽章", () => {
+    announce("r1", null);
+    facts(new Map(), new Map([["devbox", "z"]]));
     expect(badge()?.style.display).toBe("none");
   });
   it("默认账号未就绪(currentByOrigin 无该 origin) → 不挂头像（说不出「不同」，不猜）；悬停卡里写账号", () => {
-    tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
-    feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
+    announce("r1", "b");
+    facts(new Map(), new Map()); // 无 current
     expect(badge()?.style.display).toBe("none");
     expect(cardText(tm, "r1")).toContain(copyText("tabBar.hover.account", { name: "b" }));
   });
-
 });
 
 /**

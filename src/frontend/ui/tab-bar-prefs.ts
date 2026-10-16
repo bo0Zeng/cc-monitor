@@ -34,6 +34,7 @@ import {
 } from "./tab-bar-state";
 import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
+import { appStore } from "./app-store";
 import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
 import { toast, failToast, silentUndo, undoToast } from "./kit/toast";
@@ -445,7 +446,7 @@ export class TabBarPrefs {
       origin: tab.origin,
       // 缺了 resume 会静默落到默认号：两个源都读不到 ⇒ `null`（没记到，不是默认号）。
       account:
-        this.store.sessionAccountsByS.get(tab.sessionId)?.account ??
+        appStore.sessionAccount.get().get(tab.sessionId) ??
         this.store.accountLastByS.get(tab.sessionId) ??
         prev?.account ??
         null,

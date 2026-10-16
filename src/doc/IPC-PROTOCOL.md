@@ -98,7 +98,7 @@
 ## 5. 会话流：帧的先后与续传
 
 1. 连上：`hello` → 每个活会话一帧 `session_added`（宣告时带初始 `activity` / `waiting_for`；后台会话带 `background: true`）→ `sessions_replayed`（「清单报完了」：分清「还没说完」与「说完了、里面没有它」）。
-   `session_added.agent_kind` 每条都带（那一家的 kind）。哪几家进流、各自怎么判活由适配层在注册表那一行声明（`Adapter::live`：认 pidfile · 认开着写 · 判不了），
+   `session_added.agent_kind` 每条都带（那一家的 kind）；`account` 是这条会话跑在账号库里哪个号下（宣告时读会话进程环境里的配置目录判一次；那一家没有账号库 · 判不了 ⇒ 缺），界面的账号徽章只读它，起停不再回头问。哪几家进流、各自怎么判活由适配层在注册表那一行声明（`Adapter::live`：认 pidfile · 认开着写 · 判不了），
    冷读（`history-facts` 的 `writers` 与「状态不明」的原因 · `history-turns` 还在跑那一轮）问同一个声明（`accounts_query::session_holders`）：
    - 有 pidfile 的那一家（Claude Code）：活会话 ＝ pidfile 在、进程在。
    - 没有 pidfile 的那一家（Codex）：活会话 ＝ **有进程开着它的那份记录写**（看 `/proc/<pid>/fdinfo` 的打开方式，不看进程名）；

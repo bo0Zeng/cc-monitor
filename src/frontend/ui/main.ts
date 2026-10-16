@@ -74,7 +74,7 @@ import { readRemoteConfig } from "./remote-config";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // 点「设置」有反馈（不 import 设置面板）
 import * as dest from "./settings-dest";
-import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
+import { createAccountFacts } from "./account-facts";
 import { lastAccounts } from "./history-reads";
 import { decodeTasks, TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
@@ -97,7 +97,7 @@ import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
-import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
+import { fetchAccounts } from "./account-reads";
 import { bindLaunchArrivals, noteLive, setArrivalSlots } from "./launch-arrival";
 import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from "./new-session";
 import { copyText } from "./copy-table";
@@ -351,7 +351,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   void tabs.loadPinned().finally(() => void tabs.loadOrder());
 
   // 状态栏「当前账号」chip：绑第一台可用远端的默认账号；未连远端 / 未启用多账号安静降级。点击弹选单切默认账号。
-  // 构造在 `refreshSessionAccounts`（下方 `const`）之前：`onDefaultChanged` 回调间接调它，只在用户切号时才执行，
+  // 构造在 `accountFacts`（下方 `const`）之前：`onDefaultChanged` 回调间接调它，只在用户切号时才执行，
   //   那时它早已初始化 —— 别在这中间插一个会触发回调的 await（会踩 TDZ）。
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
   // 会话里停发提示的重画（接线在下面 `acctSessionWiring`）。
@@ -392,57 +392,26 @@ window.addEventListener("DOMContentLoaded", async () => {
   const accountChipDeps = {
     openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(activeOrigin() ?? LOCAL_ORIGIN)),
     togglePanel: openAcctPanel,
-    // 切号后立刻重算一次：currentByOrigin 只由下面那个事件驱动的刷新器喂，不主动刷的话
+    // 切号后立刻重问那一台：currentByOrigin 只由下面那一路喂，不主动问的话
     // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
-    onDefaultChanged: () => accountsRefresher.request(),
+    onDefaultChanged: (origin: Origin) => accountFacts.refresh(origin),
   };
   const accountChip = new AccountChip(accountChipDeps);
   status.append(statusDivider, accountChip.element); // 还没有当前会话：账号排在竖线后（有会话时挪到前面那一组）
   void accountChip.refresh();
 
-  // 账号徽章数据管道：对每台远端拉 session-accounts（哪条会话属于哪个号）＋ 账号邮箱，聚合喂 tabs。每一轮都问那几台（界面不存一份）＋ available:false 降级。
-  // 序号门：每次进入 ++refreshSeq，写快照前若已被更晚一次推大 ⇒ 丢弃本次（慢的旧快照不覆盖新快照）。
-  let refreshSeq = 0;
-  const refreshSessionAccounts = async (): Promise<void> => {
-    const mySeq = ++refreshSeq;
-    try {
-      const cfg = await readRemoteConfig();
-      if (mySeq !== refreshSeq) return; // 有更晚的刷新已开始 → 本次作废，别覆盖它
-      if (!cfg.hosts.some((h) => h.connect)) {
-        // 账号快照整份换进 store，tab 栏徽章订阅它（同一拍应用）。
-        appStore.sessionAccounts.set({
-          rows: [],
-          emailByName: new Map(),
-          lastByS: new Map(),
-          readyOrigins: new Set(),
-          currentByOrigin: new Map(),
-        });
-        return;
-      }
-      // 各台并行问（`collectAccountRows`：并发上限 4、保序；判据在 `session-accounts-poll.vitest.ts`）。
-      const { rows, emailByName, readyOrigins, currentByOrigin, lastByS } = await collectAccountRows(
-        cfg.hosts,
-        { fetchSessionAccounts, fetchAccounts, currentAccountForBadge, lastAccounts },
-      );
-      if (mySeq !== refreshSeq) return; // 晚到的旧快照不覆盖新快照
-      appStore.sessionAccounts.set({ rows, emailByName, lastByS, readyOrigins, currentByOrigin });
-    } catch (e) {
-      console.warn("refreshSessionAccounts failed:", e);
-    }
-  };
-  // 刷新由事件驱动、零定时器（「会话 ↔ 账号」只在会话起停时变；理由在 `session-accounts-poll.ts` 头注）：
-  //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 重问账号清单，
-  //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 经通道订的 `changed/accounts`；
-  //   · 远端 `live` 格 / `ended` 格：会话起停；
-  //   · 本 UI 切号：上面 `onDefaultChanged`。
-  const accountsRefresher = createEventRefresher(refreshSessionAccounts);
-  accountsRefresher.request();
-  // 「某台长连接握手完成 / 那台账号清单变了」⇒ 重问账号清单 ＋ chip：经通道订每台的 `changed/accounts`（下面 `bindEvents` 的 `changed` ＋ `onChanged`）。
-  const onAccountsChanged = (): void => {
-    accountsRefresher.request();
+  // 账号徽章要的清单那一侧（`account-facts.ts`）：各台的账号清单 ＋ 上次用的号，并好放进 store。
+  //   会话跑在哪个号下不在这里：那台在会话宣告里说，起停不回头问。
+  const accountFacts = createAccountFacts({
+    fetchers: { fetchAccounts, currentAccountForBadge, lastAccounts },
+    hosts: async () => (await readRemoteConfig()).hosts.filter((h) => h.connect).map((h) => h.label || h.host),
+    publish: (f) => appStore.accountFacts.set(f),
+  });
+  // 那台连上 / 那台账号清单变了 ⇒ 重问那一台 ＋ chip（经通道订的 `changed/accounts`，下面 `bindEvents` 的 `onChanged`）；不给 ⇒ 各台。
+  const onAccountsChanged = (origin?: Origin): void => {
+    accountFacts.refresh(origin);
     void accountChip.refresh();
   };
-  // 会话起停：下面 `bindEvents` 的 `onRemoteSessionAdded` / `onSessionEnded` 里各请一次。
 
   // 用户手动切过 tab 后，迟到的宣告不补切抢焦点（用户的选择优先，记下此刻所在那一格）
   tabs.onManualSwitch = () => {
@@ -851,7 +820,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionEnded: (sessionId, sw, order) => {
       const origin = tabs.tabsInOrder().find((t) => t.sessionId === sessionId)?.origin ?? null;
       tabs.archiveTab(sessionId, sw ?? null, order ?? null);
-      accountsRefresher.request(); // 会话结束了
       if (origin !== null) void planNeeds.refresh(origin); // 接手的会话停了 ⇒ 那台的「需手动」可能多一条
     },
     // 远端 claude 退了但 tmux 会话仍在 → 灰灯（idle-tmux，不归档）。
@@ -884,7 +852,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionStarted: (sessionId, meta) => {
       const had = tabs.hasTab(sessionId);
       // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden);
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name, null, meta.hidden, meta.account);
       if (had) tabs.reviveTab(sessionId);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
@@ -906,7 +874,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onChanged: (origin, topic, change) => {
       switch (topic) {
         case "accounts":
-          onAccountsChanged();
+          onAccountsChanged(origin);
           break;
         case "tasks": {
           // 帧里带了那个会话的清单（同 `tasks-list` 的应答）⇒ 同一个解码器收、直接落账；没带 / 解不开 / 可能漏了 ⇒ 重问。
@@ -962,11 +930,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         meta.name,
         meta.attachable,
         meta.hidden,
+        meta.account,
       );
       // 上次所在 tab 是远端会话时在此补切（应用一次即清）。
       startup?.onAppeared(sessionId);
-      accountsRefresher.request(); // 会话起了
-
     },
     // 那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
     onStreamGap: (origin) => tabs.onStreamGap(origin),

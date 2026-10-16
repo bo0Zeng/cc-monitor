@@ -53,8 +53,8 @@ export interface AccountChipDeps {
   openSettings: () => void;
   /** 有当前会话时点按钮：开 / 关本会话的「账号」面板。 */
   togglePanel?: (sid: string, origin: Origin) => void;
-  /** 切完当前账号后回调：让 main.ts 立刻重算会话账号归属，否则最长有 10s 的反向窗口。 */
-  onDefaultChanged?: () => void;
+  /** 切完当前账号后回调：让 main.ts 立刻重问那几台的默认号（徽章「不一致」照它比）。 */
+  onDefaultChanged?: (origin: Origin) => void;
 }
 
 export class AccountChip {
@@ -120,7 +120,7 @@ export class AccountChip {
     };
     appStore.quota.subscribe(repaint);
     appStore.sessionRotation.subscribe(repaint);
-    appStore.sessionAccounts.subscribe(repaint);
+    appStore.sessionAccount.subscribe(repaint);
   }
 
   /** 当前会话换了（`tabs.active`）：有 ⇒ 按钮画本会话那个号；没有 ⇒ 退成「默认 work」。 */
@@ -130,9 +130,9 @@ export class AccountChip {
     this.paint();
   }
 
-  /** 这个会话在 tab 栏徽章那份快照里归属的号（中转没见过它时只能画这个）。 */
+  /** 会话宣告说的它跑在哪个号下（中转没见过它时只能画这个）。 */
   private fallbackAccount(sid: string): string | null {
-    return appStore.sessionAccounts.get()?.rows.find((r) => r.sessionId === sid)?.account ?? null;
+    return appStore.sessionAccount.get().get(sid) ?? null;
   }
 
   /** 本会话那一形这一刻的样子（没有当前会话 / 一样都不知道 ⇒ `null`）。 */
@@ -360,8 +360,8 @@ export class AccountChip {
       // 默认账号住那台的账号库清单：重问那一台。
       if (origin === this.origin) await this.refresh();
       else await fetchAccounts(origin);
-      // 立刻重算会话账号（否则要等下一拍 10s 轮询，期间「对齐」会把会话打回刚被切走的旧账号）。
-      this.deps.onDefaultChanged?.();
+      // 立刻重问那一台的默认号（否则「对齐」会把会话打回刚被切走的旧账号）。
+      this.deps.onDefaultChanged?.(origin);
       // 选即生效、不另报：下拉合上、按钮上的字就是结果。
     } catch (e) {
       failToast(copyText("accountChip.selectDefault.failed"), e, { level: "error" });

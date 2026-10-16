@@ -4,7 +4,7 @@
 //!
 //! 「帧面 16 条，账号与 8 条只读查询都不在 ⇒ 每点一下拨一次 SSH、
 //! 每 10 秒对每台机器握一次手」。那八条（`--list-projects` / `--list-sessions` /
-//! `--read-session` / `--read-session-tail` / `--session-accounts` / `--list-accounts` /
+//! `--read-session` / `--read-session-tail` / `--list-accounts` /
 //! `--search` 等）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
 //! 读完 stdout 就断 —— 而同一台机器上**早就有一条**长连接（流模式那条），
 //! 入方向一问一答也早就通了（`inbound_client`）。后端那边把八条登记上了帧面
@@ -44,7 +44,6 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--read-session-tail", "history-tail"),
     ("--search", "history-search"),
     ("--list-accounts", "accounts-list"),
-    ("--session-accounts", "accounts-sessions"),
     // 骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
     //   `--read-session-from-offset` 的另一形（`--until`，按区间取正文）早就走 `history-read` ——
     //   两形都上了帧面，这个子命令从此一条拨号都不剩。

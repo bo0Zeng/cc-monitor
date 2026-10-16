@@ -1164,6 +1164,7 @@ mod specimens {
                 terminal: some("tmux-1-1"),
             }),
             pid: 1,
+            account: some("b"),
         })
     }
 

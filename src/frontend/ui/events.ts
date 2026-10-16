@@ -57,6 +57,8 @@ export interface EventHandlers {
       name: string | null;
       /** 隐藏那一格（后端判好；不隐藏 ⇒ `null`）。 */
       hidden: SessionHidden | null;
+      /** 这条会话跑在哪个号下（那台后端判好；判不了 ⇒ `null`）。 */
+      account: string | null;
     },
   ) => void;
   /** 远端会话宣告 → 建骨架 Tab（不等首行），附 pidfile 元信息。 */
@@ -74,6 +76,8 @@ export interface EventHandlers {
       name: string | null;
       /** 隐藏那一格（后端判好；不隐藏 ⇒ `null`）。 */
       hidden: SessionHidden | null;
+      /** 这条会话跑在哪个号下（那台后端判好；判不了 ⇒ `null`）。 */
+      account: string | null;
     },
   ) => void;
   /**
@@ -211,6 +215,7 @@ type QueueItem =
       background: boolean;
       name: string | null;
       hidden: SessionHidden | null;
+      account: string | null;
     }
   // 远端会话宣告 —— 骨架 Tab 入口。走同一 queue 与 ended / started / 行保序（INVARIANT § 20）。
   | {
@@ -224,6 +229,7 @@ type QueueItem =
       projectDir: string | null;
       name: string | null;
       hidden: SessionHidden | null;
+      account: string | null;
     }
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: SessionContainer }
@@ -492,6 +498,7 @@ export async function bindEvents(
           background: item.background,
           name: item.name,
           hidden: item.hidden,
+          account: item.account,
         });
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
@@ -501,6 +508,7 @@ export async function bindEvents(
           projectDir: item.projectDir,
           name: item.name,
           hidden: item.hidden,
+          account: item.account,
         });
       } else if (item.kind === "container") {
         handlers.onSessionContainer?.(item.sessionId, item.container);
@@ -644,6 +652,7 @@ export async function bindEvents(
               background: p.background,
               name: p.name ?? null,
               hidden,
+              account: p.account ?? null,
             });
           } else {
             queue.push({
@@ -656,6 +665,7 @@ export async function bindEvents(
               projectDir: p.project_dir ?? null,
               name: p.name ?? null,
               hidden,
+              account: p.account ?? null,
             });
           }
         } else if (f !== null && typeof f === "object" && "activity" in f) {

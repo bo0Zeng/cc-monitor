@@ -187,6 +187,7 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         hidden: None,
         container: None,
         pid: 42,
+        account: None,
     });
     let full: serde_json::Value = serde_json::from_str(to_line(&added).unwrap().trim()).unwrap();
     assert_eq!(full["pid"], 42, "没声明的时候该有 pid");

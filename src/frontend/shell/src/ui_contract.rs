@@ -361,6 +361,8 @@ pub struct SessionLivePayload {
     /// 隐藏那一格（那台后端判好的 `{by, said}`，`session_added.hidden` 原样；不隐藏 ⇒ `null`）：界面照它决定占不占标签页，不自己判。
     /// 之后变了走推帧主题 `session_hidden`（`changed`，壳原样交）。
     pub hidden: Option<cmd_wire::session::Hidden>,
+    /// 这条会话跑在哪个号下（那台后端宣告时判好的，`session_added.account` 原样；判不了 ⇒ `null`）：账号徽章 · 账号按钮只读这一格。
+    pub account: Option<String>,
 }
 
 /// `container` 格 的 payload：在认得的宿主里（带终端句柄）· 不在任何宿主里 · 不认识的宿主（判不了的不发这一格）。

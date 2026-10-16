@@ -257,7 +257,9 @@ export function diskOf(w: World): Record<string, MachineDisk> {
         Object.assign(files, s.convo.files());
         Object.assign(mtimes, s.convo.mtimes());
       }
-      return [m, { ...d, files, mtimes, live: [...d.live, ...mine.map(liveOf)] }];
+      // 活会话轮着跑在前两个号下（账号徽章有东西画）。
+      const live = mine.map((s, i) => ({ ...liveOf(s), account: ACCOUNTS[i % 2].name }));
+      return [m, { ...d, files, mtimes, live: [...d.live, ...live] }];
     }),
   );
 }

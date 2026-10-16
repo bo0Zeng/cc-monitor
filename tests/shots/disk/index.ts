@@ -27,6 +27,8 @@ export interface LiveSession {
   status?: "busy" | "waiting" | "idle" | "shell";
   waitingFor?: string;
   statusUpdatedAt?: number;
+  /** 替身进程环境里的配置目录指向账号库里哪个号（后端读它，宣告里说会话跑在哪个号下）。缺 ⇒ 不设（账号 0）。 */
+  account?: string;
 }
 
 export interface MachineDisk {

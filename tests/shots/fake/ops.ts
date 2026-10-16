@@ -15,22 +15,6 @@ export function defaultOps(): Record<string, OpHandler> {
     "manual-list": () => ({ items: [] }),
     // 计划清单：默认世界里没有计划（计划页的世界 `plan.ts::planWorld` 换掉这一条）。
     "plan-list": () => ({ pb: { state: "ok", said: null }, workspaces: [] }),
-    "accounts-sessions": (origin, _req, w) => ({
-      lines: w.sessions
-        .filter((s) => s.origin === origin && !s.ended)
-        .map((s, i) =>
-          JSON.stringify({
-            pid: 4100 + i,
-            sessionId: s.sid,
-            cwd: s.cwd,
-            configDir: `/home/user/.cc-monitor/accounts/${ACCOUNTS[i % 2].name}`,
-            account: ACCOUNTS[i % 2].name,
-            bare: false,
-            alive: true,
-            viaRelay: null,
-          }),
-        ),
-    }),
     "accounts-trust": () => ({ known: true, trusted: true }),
     // 账号页打开时顺手核一次：缺省世界里都对得上。
     "accounts-verify": () => ({ pass: true, fails: 0, warns: 0, checks: [] }),

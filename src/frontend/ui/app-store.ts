@@ -8,7 +8,7 @@
  * 语义两条（与原先 `machine-context.ts` 同）：**同值不通知**（每次通知都可能是一次往返，同值广播 = 变相轮询）；
  * 一个订阅者抛异常不挡其余订阅者。零 DOM、零 IPC。
  */
-import type { AccountsState, SessionAccount } from "./accounts";
+import type { AccountsState } from "./accounts";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { QuotaRead } from "./acct-words";
 import type { RotationViewReply } from "./generated/RotationViewReply";
@@ -53,9 +53,8 @@ export class Slice<T> {
   }
 }
 
-/** tab 栏徽章那份账号快照（主窗口的会话账号刷新器算好、整份换）。 */
-export interface SessionAccountsSnapshot {
-  rows: SessionAccount[];
+/** 账号徽章要的清单那一侧（`account-facts.ts` 并好、整份换）。 */
+export interface AccountFacts {
   emailByName: Map<string, string>;
   lastByS: Map<string, string>;
   readyOrigins: Set<string>;
@@ -74,8 +73,10 @@ export const appStore = {
   machine: new Slice<Origin>(LOCAL_ORIGIN),
   /** 每台机器最近一次问回来的账号清单（`account-reads.ts` 每问一次换一份）：只给同步画的那几处（头像号色 · 号牌字 · chip）读，要用清单的地方现问。 */
   accounts: new Slice<ReadonlyMap<Origin, AccountsState>>(new Map()),
-  /** tab 栏账号徽章那份快照（`null` = 还没算过）。 */
-  sessionAccounts: new Slice<SessionAccountsSnapshot | null>(null),
+  /** 账号徽章要的清单那一侧（`null` = 还没问过）。 */
+  accountFacts: new Slice<AccountFacts | null>(null),
+  /** sid → 会话宣告说的它跑在哪个号下（那台后端判的；没说的不在表里）。 */
+  sessionAccount: new Slice<ReadonlyMap<string, string>>(new Map()),
   /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果）。 */
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
   /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */

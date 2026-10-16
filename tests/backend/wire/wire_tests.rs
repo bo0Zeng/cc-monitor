@@ -333,6 +333,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     terminal: Some("tmux-3-7".into()),
                 }),
                 pid: 42,
+                account: Some("b".to_string()),
             }),
             Frame::SessionAdded(crate::wire::SessionAdded {
                 sid: s("s1"),
@@ -349,6 +350,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 hidden: None,
                 container: None,
                 pid: 0,
+                account: None,
             }),
         ],
         [
@@ -1169,6 +1171,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             hidden: None,
             container: c,
             pid: 0,
+            account: None,
         }))
         .unwrap()
     };
@@ -1251,6 +1254,7 @@ fn loc1b_session_added_carries_the_pid() {
         hidden: None,
         container: None,
         pid: 4242,
+        account: None,
     }))
     .unwrap();
     assert_eq!(

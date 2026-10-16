@@ -370,8 +370,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
     /// ⚠ 同族另外三条（`files-ls` / `files-stat` / `files-find`）**要**输入，不在这张表里。
     ///
-    /// 只读查询面今天只有 `accounts-sessions` 在表里（无入参、有输出字段 `lines`；账号库目录跟着家走）。
-    ///
     /// `exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
     /// 它是「那台机器上的值是什么」那一问，挂住等 EOF 就是把一句问话变成一次卡死。
     /// 同族 `exit-policy-set` 要输入（`killOnExit`），不在表里。
@@ -385,7 +383,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "accounts-verify",
         // 各账号共用的用户级 MCP 此刻的样子：同上，问的就是「这台」，不收参数。
         "accounts-mcp-read",
-        "accounts-sessions",
         // 这台上需手动的会话清单：问的就是「这台」此刻在等人的那几个，不收参数（手机一次问一台）。
         "sessions-needs",
         "bus-list",

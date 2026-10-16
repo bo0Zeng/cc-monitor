@@ -494,6 +494,7 @@ impl Out {
                         project_dir: meta.project_dir.clone(),
                         name: meta.name.clone(),
                         hidden: meta.hidden.clone(),
+                        account: meta.account.clone(),
                     }),
                     F::Activity(b::SessionActivityPayload {
                         session_id: sid.clone(),

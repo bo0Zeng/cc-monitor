@@ -292,7 +292,6 @@ import type { Sent } from "./Sent";
 import type { SessionCommands } from "./SessionCommands";
 import type { SessionCommandsReq } from "./SessionCommandsReq";
 import type { SessionFacts } from "./SessionFacts";
-import type { SessionLines } from "./SessionLines";
 import type { SessionModelReq } from "./SessionModelReq";
 import type { SessionNew } from "./SessionNew";
 import type { SessionNewDirReq } from "./SessionNewDirReq";
@@ -351,7 +350,6 @@ export interface TypedCommands {
   "accounts-remove": { req: AccountRemoveArgs; reply: AccountChange; code: "bad_args" | "io_failed" | "not_enabled" | "refused" | "unsupported" };
   "accounts-repair": { req: AccountRepairArgs; reply: AccountChange; code: "bad_args" | "io_failed" | "not_enabled" | "refused" | "unsupported" };
   "accounts-rollback": { req: AccountRollbackArgs; reply: AccountChange; code: "bad_args" | "io_failed" | "not_enabled" | "refused" | "unsupported" };
-  "accounts-sessions": { req: NoArgs; reply: SessionLines; code: "bad_args" | "too_large" };
   "accounts-set-default": { req: AccountNameArgs; reply: AccountChange; code: "bad_args" | "io_failed" | "not_enabled" | "refused" | "unsupported" };
   "accounts-trust": { req: AccountsTrustReq; reply: Trust; code: "bad_args" | "failed" | "manifest_unavailable" | "no_home" | "unknown_config_dir" | "unsafe_config_dir" };
   "accounts-verify": { req: NoArgs; reply: VerifyReport; code: "bad_args" | "io_failed" | "unsupported" };

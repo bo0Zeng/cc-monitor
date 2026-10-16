@@ -158,9 +158,11 @@ export function backendPool({ repo, sandbox }) {
      */
     const doomed = [];
     (m.live ?? []).forEach((l, k) => {
-      const pane = `T new-session -d -s s${k} -x 120 -y 32 -P -F`;
+      // 替身跑在哪个号下：环境里的配置目录（后端读替身的 environ 判，同真的 claude）。
+      const cfg = l.account ? `CLAUDE_CONFIG_DIR=${q(`${H}/.cc-monitor/accounts/${l.account}`)}` : "";
+      const pane = `T new-session -d -s s${k} -x 120 -y 32${cfg ? ` -e ${cfg}` : ""} -P -F`;
       if (l.tmux === false && l.fate) throw new Error(`${origin} 上 ${l.sid}：不住 tmux 的替身演不了收场（台架从沙箱外够不着它）`);
-      if (l.tmux === false) sh.push("sleep 3600 & pid=$!");
+      if (l.tmux === false) sh.push(`${cfg ? `${cfg} ` : ""}sleep 3600 & pid=$!`);
       else if (l.fate === "reconnectable") {
         // 替身是窗格里那个 shell 的子进程：它被杀之后窗格还在（shell 接着睡）。
         const pf = `${H}/.shots-setup/${k}.pid`;

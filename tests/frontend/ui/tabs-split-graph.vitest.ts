@@ -92,7 +92,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
-    "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
+    "src/frontend/ui/app-store.ts", // 账号清单那一侧 · 会话宣告说的号改订阅 store（`appStore.accountFacts` · `appStore.sessionAccount`）
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
@@ -233,6 +233,7 @@ const DEPS: Record<string, readonly string[]> = {
   // 固定复活的空态文字住文案表（说到会话状态的字一处定）。
   // 集合到上界说那一句的出口（`sayCollectionRefusal`）也住这里。
   "src/frontend/ui/tab-bar-prefs.ts": [
+    "src/frontend/ui/app-store.ts", // 固定落盘记下会话跑的号：会话宣告说的号（`appStore.sessionAccount`）
     "src/frontend/ui/config.ts", // 分组一次改动的全部补丁一次 `patchConfig`
     "src/frontend/ui/copy-table.ts",
     "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句

@@ -1123,10 +1123,6 @@ fn the_account_reads_keep_their_wire_bytes() {
         serde_json::to_string(&run_registered(cmd, args).unwrap()).unwrap()
     };
     assert_eq!(
-        wire("accounts-sessions", serde_json::json!({})),
-        r#"{"lines":[]}"#
-    );
-    assert_eq!(
         wire("machine-interrupts", serde_json::json!({})),
         r#"{"forwards":0,"liveStreams":0,"relayedMaybe":0,"relayedSessions":0}"#
     );

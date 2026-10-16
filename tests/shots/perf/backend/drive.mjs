@@ -243,7 +243,6 @@ await bench("history-search-tools", "history-search", { query: "npm test", inclu
 await bench("quota-read", "quota-read", {});
 await bench("rotation-rules-read", "rotation-rules-read", {});
 await bench("accounts-list", "accounts-list", { agent: "claude" });
-await bench("accounts-sessions", "accounts-sessions", {});
 await bench("tasks-list", "tasks-list", { sid: midSid });
 await bench("terminals-list", "terminals-list", {});
 await bench("machine-interrupts", "machine-interrupts", {});

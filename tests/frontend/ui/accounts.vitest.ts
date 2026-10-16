@@ -14,24 +14,15 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
-import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines } from "../../../src/frontend/ui/account-reads";
+import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account } from "../../../src/frontend/ui/accounts";
+import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { accountUnavailableOf, chosenAccount, refuseUnavailableAccount, type AccountUnavailable } from "../../../src/frontend/ui/launch-account";
 import { ControlError } from "../../../src/frontend/ui/control-said";
 import { ChanError } from "../../../src/comms/inward/chan";
-import {
-  accountReadCalls,
-  chanArgsJson,
-  isChanCall,
-  linesReply,
-  NO_CHANNEL,
-  withAccountReads,
-  withHistoryReads,
-  type ChanCallArgs,
-} from "../../test-support/chan-fake";
+import { accountReadCalls, withAccountReads, withHistoryReads } from "../../test-support/chan-fake";
 import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -220,21 +211,18 @@ describe("detectAccountMismatch（account-ux U1）", () => {
 
 describe("sessionBadge source 字段（account-ux U1/U5）", () => {
   const emailBy = new Map([["z", "z@example.test"]]);
-  it("live → source:'live' + account 全名", () => {
-    const m = new Map<string, SessionAccount>([
-      ["s1", { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: true }],
-    ]);
-    const b = sessionBadge("s1", "devbox", m, emailBy);
+  it("宣告说了号 ＋ 活着 → source:'live' + account 全名", () => {
+    const b = sessionBadge("s1", "devbox", "z", true, emailBy);
     expect(b?.source).toBe("live");
     expect(b?.account).toBe("z");
   });
   it("lastAccount 兜底 → source:'last'", () => {
-    const b = sessionBadge("s1", "devbox", new Map(), emailBy, new Map([["s1", "b"]]));
+    const b = sessionBadge("s1", "devbox", null, true, emailBy, new Map([["s1", "b"]]));
     expect(b?.source).toBe("last");
     expect(b?.account).toBe("b");
   });
   it("未知 → source:'unknown' + account:null", () => {
-    const b = sessionBadge("s1", "devbox", new Map(), emailBy);
+    const b = sessionBadge("s1", "devbox", null, true, emailBy);
     expect(b?.source).toBe("unknown");
     expect(b?.account).toBeNull();
   });
@@ -242,35 +230,20 @@ describe("sessionBadge source 字段（account-ux U1/U5）", () => {
 
 describe("sessionBadge（§3 优先级）", () => {
   const emailBy = new Map([["z", "z@example.test"]]);
-  function live(rows: SessionAccount[]): Map<string, SessionAccount> {
-    const m = new Map<string, SessionAccount>();
-    for (const r of rows) if (r.sessionId) m.set(r.sessionId, r);
-    return m;
-  }
   it("本地会话（origin null）→ 无徽章", () => {
-    expect(sessionBadge("s1", LOCAL_ORIGIN, new Map(), emailBy)).toBeNull();
+    expect(sessionBadge("s1", LOCAL_ORIGIN, "z", true, emailBy)).toBeNull();
   });
-  it("live 探测到账号 → 已知徽章", () => {
-    const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: true }]);
-    const b = sessionBadge("s1", "devbox", m, emailBy);
+  it("宣告说了号 → 已知徽章，悬停带邮箱", () => {
+    const b = sessionBadge("s1", "devbox", "z", true, emailBy);
     expect(b?.known).toBe(true);
     expect(b?.account).toBe("z");
     expect(b?.tooltip).toContain("z@example.test");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
-  it("account:null（探测不到）→ — 不猜", () => {
-    const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: null, account: null, bare: true, alive: true }]);
-    const b = sessionBadge("s1", "devbox", m, emailBy);
+  it("宣告没说（判不了）→ — 不猜", () => {
+    const b = sessionBadge("s1", "devbox", null, true, emailBy);
     expect(b?.known).toBe(false);
     expect(b?.account).toBeNull();
-  });
-  it("会话不在 live 表里 → —", () => {
-    const b = sessionBadge("s1", "devbox", new Map(), emailBy);
-    expect(b?.account).toBeNull();
-  });
-  it("探测到但已死 → —（不贴陈旧账号）", () => {
-    const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: false }]);
-    expect(sessionBadge("s1", "devbox", m, emailBy)?.known).toBe(false);
   });
 });
 
@@ -314,140 +287,35 @@ describe("fetchAccounts：要用时问后端，界面不存一份", () => {
   });
 });
 
-// 这一组原先驱动两条 Tauri 命令的 `available` 形状；它们退役了，
-//   「会话 ↔ 账号」经通道问后端 `accounts-sessions`（本机与远端同一条路）。量的是那一跳的真实形状。
-describe("fetchSessionAccounts（经通道 `accounts-sessions`）", () => {
-  it("那台没有控制通道 → 空数组（不猜）", async () => {
-    invokeMock.mockRejectedValue(NO_CHANNEL);
-    expect(await fetchSessionAccounts("devbox")).toEqual([]);
-  });
-  it("★ 每一次都问那台（界面不存一份）：两次两问", async () => {
-    invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>
-      Promise.resolve(isChanCall(cmd, args, "accounts-sessions") ? linesReply([]) : undefined),
-    ));
-    await fetchSessionAccounts("devbox");
-    await fetchSessionAccounts("devbox");
-    expect(invokeMock.mock.calls.filter((c) => isChanCall(String(c[0]), c[1], "accounts-sessions"))).toHaveLength(2);
-  });
-  it("后端答了几行 → 解回几行；问的是那台机器、那条帧命令、请求体是空对象", async () => {
-    invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>
-      Promise.resolve(
-        isChanCall(cmd, args, "accounts-sessions")
-          ? linesReply([{ pid: 1, sessionId: "s", cwd: "/w", configDir: null, account: null, bare: true, alive: true }])
-          : undefined,
-      ),
-    ));
-    const s = await fetchSessionAccounts("devbox");
-    expect(s).toHaveLength(1);
-    const call = invokeMock.mock.calls.find((c) => c[0] === "chan_call");
-    const args = call?.[1] as ChanCallArgs;
-    expect(args.origin).toBe("devbox");
-    expect(args.op).toBe("accounts-sessions");
-    expect(chanArgsJson(args)).toEqual({});
-    expect(args.leftMs, "期限由调用方给（30 秒那一档），不是库里的默认").toBeGreaterThan(29_000);
-  });
-  it("本机也走同一条路（`<local>` 就是一个 origin）", async () => {
-    invokeMock.mockImplementation(withHistoryReads((cmd: string, args: unknown) =>
-      Promise.resolve(isChanCall(cmd, args, "accounts-sessions") ? linesReply([]) : undefined),
-    ));
-    expect(await fetchSessionAccounts("<local>")).toEqual([]);
-    const args = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as ChanCallArgs;
-    expect(args.origin).toBe("<local>");
-    expect(
-      invokeMock.mock.calls.some((c) => /session_accounts/.test(String(c[0]))),
-      "退役的那两条 Tauri 命令又被调了",
-    ).toBe(false);
-  });
-});
-
-// 「停本机后端之前数一数会断几条」那一问（`settings/backend-section.ts` 用）：现问、不走缓存，问不到就是 null ——
-//   空表在这里的意思是「没有会话会断」，把失败折成空表就是一句假话。
-// 逐行解释从 Rust（`accounts.rs::SessionAccount` 的 serde）搬到 `parseSessionAccountLines`，
-//   Rust 那侧两条金样（`accounts_tests.rs` 原来那两条）逐字节搬到这里。
-describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
-  it("一行逐格读回（裸起的账号 0）", () => {
-    const rows = parseSessionAccountLines([
-      `{"pid":66936,"sessionId":"9d66c46d","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true}`,
-    ]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].pid).toBe(66936);
-    expect(rows[0].bare).toBe(true);
-    expect(rows[0].alive).toBe(true);
-    expect(rows[0].account).toBeNull();
-  });
-  it("坏行跳过、不毁整次：不是 JSON / 不是对象 / 缺 pid / 某格类型不对", () => {
-    const rows = parseSessionAccountLines([
-      "not json",
-      "[1,2]",
-      `{"sessionId":"no-pid"}`,
-      `{"pid":2,"bare":"yes"}`,
-      `{"pid":4,"viaRelay":"yes"}`,
-      `{"pid":3}`,
-    ]);
-    expect(rows.map((r) => r.pid)).toEqual([3]);
-    expect(rows[0]).toEqual({
-      pid: 3,
-      sessionId: null,
-      cwd: null,
-      configDir: null,
-      account: null,
-      bare: false,
-      alive: false,
-      // 老后端没有这个键 ⇒ null（不知道），不是坏行。
-      viaRelay: null,
-    });
-  });
-  it("〔HX1 · D-f〕`viaRelay`：true / false / null 逐字带回；缺 ⇒ null；类型不对 ⇒ 整行坏", () => {
-    const [t, f, n, gone] = parseSessionAccountLines([
-      `{"pid":1,"alive":true,"viaRelay":true}`,
-      `{"pid":2,"alive":true,"viaRelay":false}`,
-      `{"pid":3,"alive":true,"viaRelay":null}`,
-      `{"pid":4,"alive":true}`,
-    ]);
-    expect([t.viaRelay, f.viaRelay, n.viaRelay, gone.viaRelay]).toEqual([true, false, null, null]);
-    expect(parseSessionAccountLines([`{"pid":5,"viaRelay":1}`])).toEqual([]);
-  });
-});
-
 describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
   const emailBy = new Map([
     ["z", "z@example.test"],
     ["b", "b@example.org"],
   ]);
-  function live(rows: SessionAccount[]): Map<string, SessionAccount> {
-    const m = new Map<string, SessionAccount>();
-    for (const r of rows) if (r.sessionId) m.set(r.sessionId, r);
-    return m;
-  }
-  it("有 live 探测 → 用源①，忽略 lastAccount", () => {
-    const m = live([
-      { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/z", account: "z", bare: false, alive: true },
-    ]);
-    const b = sessionBadge("s1", "devbox", m, emailBy, new Map([["s1", "b"]]));
+  it("活着、宣告说了号 → 用源①，忽略 lastAccount", () => {
+    const b = sessionBadge("s1", "devbox", "z", true, emailBy, new Map([["s1", "b"]]));
     expect(b?.account).toBe("z");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
-  it("无 live 但有 lastAccount → 用源②，标注上次 + 带邮箱", () => {
-    const b = sessionBadge("s1", "devbox", new Map(), emailBy, new Map([["s1", "b"]]));
+  it("宣告没说但有 lastAccount → 用源②，标注上次 + 带邮箱", () => {
+    const b = sessionBadge("s1", "devbox", null, true, emailBy, new Map([["s1", "b"]]));
     expect(b?.known).toBe(true);
     expect(b?.account).toBe("b");
     expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.last"));
     expect(b?.tooltip).toContain("b@example.org");
   });
-  it("live 存在但已死 + 有 lastAccount → 回退源②", () => {
-    const m = live([
-      { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/z", account: "z", bare: false, alive: false },
-    ]);
-    const b = sessionBadge("s1", "devbox", m, emailBy, new Map([["s1", "b"]]));
-    expect(b?.account).toBe("b");
+  it("结束了 → 宣告说过的号标「上次」（它就是这条会话最后跑的号），不当此刻", () => {
+    const b = sessionBadge("s1", "devbox", "z", false, emailBy, new Map([["s1", "b"]]));
+    expect(b?.source).toBe("last");
+    expect(b?.account).toBe("z");
     expect(b?.tooltip).toContain(copyText("resumeMenu.account.last"));
   });
   it("都无 → —（含不传 lastAccountByS 也安全）", () => {
-    expect(sessionBadge("s1", "devbox", new Map(), emailBy, new Map())?.account).toBeNull();
-    expect(sessionBadge("s1", "devbox", new Map(), emailBy)?.account).toBeNull();
+    expect(sessionBadge("s1", "devbox", null, false, emailBy, new Map())?.account).toBeNull();
+    expect(sessionBadge("s1", "devbox", null, false, emailBy)?.account).toBeNull();
   });
   it("本地会话（origin null）源②也不显", () => {
-    expect(sessionBadge("s1", LOCAL_ORIGIN, new Map(), emailBy, new Map([["s1", "b"]]))).toBeNull();
+    expect(sessionBadge("s1", LOCAL_ORIGIN, null, false, emailBy, new Map([["s1", "b"]]))).toBeNull();
   });
 });
 

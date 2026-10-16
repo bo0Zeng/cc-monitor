@@ -64,7 +64,6 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 },
             ))
         }),
-        "accounts-sessions" => via::<super::AccountsSessions>(args, |_| super::sessions_at(home)),
         "machine-interrupts" => {
             via::<super::MachineInterrupts>(args, |r| Ok(super::interrupts_at(home, &r)))
         }
@@ -104,7 +103,6 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
 /// 随账号域一起上帧面 —— 异源是手抄的要求，不是 `stream/inbound/`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
-    "accounts-sessions",
     "machine-interrupts",
     "accounts-trust",
     "history-index",

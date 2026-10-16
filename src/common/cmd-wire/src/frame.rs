@@ -284,6 +284,10 @@ pub struct SessionAdded {
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 **pid**（恒在）。不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
     pub pid: u32,
+    /// 这条会话跑在哪个号下（账号库里的号名；那台后端宣告时判一次）。那一家没有账号库 · 判不了 ⇒ 不上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub account: Option<String>,
 }
 
 /// 这条会话的记录读完了（宣告之后后台那一趟预读做完）：从这一帧起它的 `line` 帧从第 `lines` 行起、连续地来。

@@ -7,7 +7,6 @@ use super::*;
 const DESIGN_EIGHT: &[&str] = &[
     "--read-session",
     "--read-session-tail",
-    "--session-accounts",
     "--list-accounts",
     "--search",
     // `--list-subagents` 摘了：按目录列子 agent 候选那一条随「按运行读」（`history-run`）删了，没有被替掉的拨号子命令。
@@ -197,11 +196,6 @@ fn the_dial_per_query_path_is_gone() {
 /// 已迁到通道的帧命令：前端经 `chan.call(origin, "<op>", …)` 直接问那台后端，monitor 那一跳只搬字节。
 /// 迁的判准只有一条：迁过去之后，**那条应答的解释只有一个家**。
 const CHANNELED: &[(&str, &str)] = &[
-    (
-        "accounts-sessions",
-        "本机与远端都迁：两条 Tauri 命令（远端帧面 · 本机一次性 exec）各在 Rust 里把同一种行解析一遍；\
-         迁过去之后逐行解释只剩 `src/frontend/ui/account-reads.ts::parseSessionAccountLines` 一处",
-    ),
     (
         "history-search",
         "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/frontend/ui/views/history-search.ts`，\

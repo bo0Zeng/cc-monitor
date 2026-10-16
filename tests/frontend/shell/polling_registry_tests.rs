@@ -6,15 +6,6 @@ use std::path::{Path, PathBuf};
 /// 多一处没登记的 ⇒ 下面那条红。**登记表不是豁免清单**，是「这些我看过、
 /// 而且知道它归谁」的账。
 const REGISTERED: &[(&str, &str, &str)] = &[
-    // 🔴 **这里原来的第一条出去了**：`src/frontend/ui/session-accounts-poll.ts` 那个
-    //    10s `refreshSessionAccounts`（data-poll）。它自己的说法栏写着退役条件 ——「先有一种账号事件
-    //    （新帧或文件事件）」—— 兑现的是两件事：两条查询搬上了已有长连接（`accounts-sessions` /
-    //    `accounts-list`，不再每拍握一次手），而「会话 ↔ 账号」只在会话起停时变、**起停本来就有帧**
-    //    （`session_added` / `session_removed` ⇒ 远端 `live` 格 / `ended` 格），
-    //    再加一个握手完成事件 `remote-backend-ready`（后来改经通道订 `accounts-changed`，那一格 `seen`）。⇒ 刷新改由事件驱动（`createEventRefresher`，零定时器），
-    //    `setInterval` 删了。留着这一行，下面那条反向检查（「登记了却已经没有周期唤醒」）会当场红。
-    //    买不到的一格写在 `session-accounts-poll.ts` 头注：别处改了默认账号、而这台上没有会话起停时，
-    //    账号清单要等下一次握手 / 起停 / 本 UI 操作才刷新。
     (
         "src/frontend/ui/views/agent-window.ts",
         "ui-clock",
@@ -383,7 +374,7 @@ fn every_data_poll_names_its_event_source_and_owner() {
         }
     }
     // 地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；`tab-session-actions.ts` 的
-    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那次少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
+    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
     assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }

@@ -56,9 +56,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::read_face::MachineInterrupts>(
         "停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么",
     ),
-    crate::wire::typed::blocking::<crate::faces::read_face::AccountsSessions>(
-        "正在跑的会话各属哪个账号",
-    ),
     // 换号前的信任预检：`configDir`（缺席 / null = 账号 0）＋ `cwd` → `{trusted, known}`。
     //   同族同档（读一份 manifest ＋ 一份 `.claude.json` ⇒ 阻塞档）、同一个只读宿主。
     crate::wire::typed::blocking::<crate::faces::read_face::AccountsTrust>("换号前的信任预检"),

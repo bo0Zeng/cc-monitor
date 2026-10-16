@@ -17,7 +17,7 @@ import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
-import { detectAccountMismatch, type SessionAccount } from "./accounts";
+import { detectAccountMismatch } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { failToast, toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
@@ -43,7 +43,7 @@ import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
-import { appStore, type Slice } from "./app-store";
+import { appStore, type AccountFacts, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter } from "./live-card";
 import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
@@ -113,10 +113,11 @@ export class TabManager {
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
-    // 账号快照变了 ⇒ 同一拍应用。
-    appStore.sessionAccounts.subscribe((snap) => {
-      if (snap) this.setSessionAccounts(snap.rows, snap.emailByName, snap.lastByS, snap.readyOrigins, snap.currentByOrigin);
+    // 账号清单那一侧 · 会话宣告说的号，哪样变了 ⇒ 同一拍重画徽章。
+    appStore.accountFacts.subscribe((f) => {
+      if (f) this.setAccountFacts(f);
     });
+    appStore.sessionAccount.subscribe(() => this.bar.refreshAccountBadges());
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
       closeEndedIn: (gid) => this.closeEndedIn(gid),
@@ -526,9 +527,20 @@ export class TabManager {
     attachable: boolean | null = null,
     // 会话宣告带的隐藏那一格（`undefined` ＝ 不是宣告来的，如固定复活 ⇒ 不动）。
     hidden?: SessionHidden | null,
+    // 会话宣告说的它跑在哪个号下（`null` ＝ 没说；`undefined` 同上 ⇒ 不动）。
+    account?: string | null,
   ): void {
     if (attachable === false) this.store.notAttachableSids.add(sessionId);
     else this.store.notAttachableSids.delete(sessionId);
+    if (account !== undefined) {
+      const was = appStore.sessionAccount.get();
+      if ((was.get(sessionId) ?? null) !== account) {
+        const next = new Map(was);
+        if (account === null) next.delete(sessionId);
+        else next.set(sessionId, account);
+        appStore.sessionAccount.set(next);
+      }
+    }
     this.ensureTab(sessionId, projectDir, "", origin, background, name);
     if (hidden !== undefined) this.hider.land(sessionId, hidden);
   }
@@ -546,24 +558,12 @@ export class TabManager {
     return this.store.tabs.has(sessionId);
   }
 
-  /**
-   * 会话账号归属 ＋ 账号邮箱表，喂完刷新所有 tab 的账号徽章。生产上只由 `appStore.sessionAccounts` 的订阅调；判据可直接喂。
-   */
-  setSessionAccounts(
-    rows: SessionAccount[],
-    emailByName: Map<string, string>,
-    lastAccountByS: Map<string, string> = new Map(),
-    readyOrigins: Set<string> = new Set(),
-    currentByOrigin: Map<string, string> = new Map(),
-  ): void {
-    this.store.sessionAccountsByS = new Map();
-    for (const r of rows) {
-      if (r.sessionId) this.store.sessionAccountsByS.set(r.sessionId, r);
-    }
-    this.store.accountEmailByName = emailByName;
-    this.store.accountLastByS = lastAccountByS;
-    this.store.accountReadyOrigins = readyOrigins;
-    this.store.currentByOrigin = currentByOrigin;
+  /** 账号清单那一侧换了一份 ⇒ 刷新所有 tab 的账号徽章。只由 `appStore.accountFacts` 的订阅调。 */
+  private setAccountFacts(f: AccountFacts): void {
+    this.store.accountEmailByName = f.emailByName;
+    this.store.accountLastByS = f.lastByS;
+    this.store.accountReadyOrigins = f.readyOrigins;
+    this.store.currentByOrigin = f.currentByOrigin;
     this.bar.refreshAccountBadges();
   }
 
@@ -588,7 +588,7 @@ export class TabManager {
         unread: tab.unread,
         background: tab.background,
         backgroundWork: tab.backgroundWork,
-        account: this.store.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
+        account: appStore.sessionAccount.get().get(tab.sessionId) ?? null,
       });
     }
     return out;
