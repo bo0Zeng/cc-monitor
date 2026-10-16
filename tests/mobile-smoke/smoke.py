@@ -6,6 +6,7 @@
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -348,22 +349,25 @@ def type_key(key):
     _type_key(key, want)
 
 
-_IME = ""
+_IME = []
 
 
 def stop_ime():
-    """停掉屏上键盘（记下原来那一个）。"""
+    """停掉屏上所有的输入法（记下原来开着的几个、头一个是默认那个）：只停默认那一个，系统会换上语音输入那一个接着改字。"""
     global _IME
-    _IME = adb("shell", "settings", "get", "secure", "default_input_method").strip()
-    if _IME and _IME != "null":
-        adb("shell", "ime", "disable", _IME)
+    default = adb("shell", "settings", "get", "secure", "default_input_method").strip()
+    on = adb("shell", "ime", "list", "-s").split()
+    _IME = ([default] if default in on else []) + [x for x in on if x != default]
+    for x in _IME:
+        adb("shell", "ime", "disable", x)
 
 
 def restore_ime():
-    """[stop_ime] 停掉的屏上键盘放回来。"""
-    if _IME and _IME != "null":
-        adb("shell", "ime", "enable", _IME)
-        adb("shell", "ime", "set", _IME)
+    """[stop_ime] 停掉的输入法放回来，默认的还是原来那一个。"""
+    for x in _IME:
+        adb("shell", "ime", "enable", x)
+    if _IME:
+        adb("shell", "ime", "set", _IME[0])
 
 
 def _type_key(key, want):
@@ -796,6 +800,7 @@ def deploy_steps():
 
 def main():
     # 整趟停掉屏上键盘：`input text` 的按键直接进框，忙时输入法改字 · 吞字插不进来，键盘也不盖住按钮、不把敲过的词（登录名）列在联想条上截进图里。
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))  # 被停掉时也走下面的收尾
     stop_ime()
     try:
         tidy_tmux(walk)
