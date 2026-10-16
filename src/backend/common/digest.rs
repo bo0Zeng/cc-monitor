@@ -56,6 +56,9 @@ impl Fnv {
         self.0 = cmd_wire::fnv::fnv1a64_from(h, bytes);
         self
     }
+    pub fn value(&self) -> u64 {
+        self.0
+    }
     pub fn hex(&self) -> String {
         format!("{:016x}", self.0)
     }
