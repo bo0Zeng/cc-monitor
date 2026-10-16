@@ -10572,7 +10572,7 @@ why: string | null,
  */
 detail: string, 
 /**
- * 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
+ * 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 / 起 ⇒ `null`。
  */
 said: string | null, 
 /**
@@ -10743,7 +10743,7 @@ why: string | null,
  */
 detail: string, 
 /**
- * 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
+ * 停的那一项没做成的那一句（失败的与 `kill` 被拒同一张表）；做成了 / 起 ⇒ `null`。
  */
 said: string | null, 
 /**
